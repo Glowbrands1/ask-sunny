@@ -668,6 +668,21 @@ function context(): ReplayContext {
           .filter((row) => row.instance_id === instanceId && Array.isArray(row.checked) && (row.checked as unknown[]).length > 0)
           .map((row) => [String(row.field_key), (row.checked as unknown[]).map(String)]),
       ),
+    pinVersion: (instanceId, document, version, checked) => {
+      const row = store.form_instances.find((entry) => entry.id === instanceId);
+      expect(row, "no form to pin").toBeTruthy();
+      const current = store.form_template_versions.find((entry) => entry.id === row!.template_version_id);
+      expect(current, "the form has no version row").toBeTruthy();
+      const id = randomUUID();
+      store.form_template_versions.push({ ...current!, id, document, version } as never);
+      row!.template_version_id = id;
+      joinOverview();
+      for (const [key, options] of Object.entries(checked ?? {})) {
+        const value = store.form_instance_values.find((entry) => entry.instance_id === instanceId && entry.field_key === key);
+        if (value) Object.assign(value, { checked: [...options] });
+        else store.form_instance_values.push({ id: `pinned-${key}`, instance_id: instanceId, field_key: key, value: null, checked: [...options], filled_by: "ai", provenance: {}, updated_at: new Date().toISOString() } as never);
+      }
+    },
     draftNotYetSaved: (instanceId) => {
       store.form_instance_values = store.form_instance_values.filter((row) => !(row.instance_id === instanceId && row.filled_by === "ai"));
     },
