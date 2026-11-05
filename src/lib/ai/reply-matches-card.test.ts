@@ -90,6 +90,13 @@ describe("1b. the card's own list of details already asks for the name", () => {
   });
 });
 
+describe("1c. the sibling app's combined pre-check (5 Nov 2026): the CA list's \"1. Employee's full name\" already asks", () => {
+  it("a CA intake list asking \"1. Employee's full name\" is asked once", () => {
+    const text = "Great, I can help you create a **Corrective Action Form**. To get started, please provide me with these details:\n\n1. Employee's full name\n2. Date for the form";
+    expect(replyMatchesCard(reply(text, card(null)), ROSTER, "create a corrective action form").content).toBe(text);
+  });
+});
+
 describe("2. an employee on the card: never asked who, and the person drafted for is the card's", () => {
   it("\"Who is this form for?\" beside a card that has its employee goes", () => {
     const out = replyMatchesCard(reply("I'll draft a **Corrective Action Form** for **Corwin Hale** from what you've described.\n\nWho is this form for? Tell me the employee's full name.", card("Corwin Hale")), ROSTER);
