@@ -53,4 +53,33 @@ describe("an underperformance CA cites the Standards of Conduct and nothing besi
     const late = attachFormTurnSources({ content: "card", citations: [], notes: "write a CA for wynne sarrow, she opened the salon late on 11/2", chunks, documentId: "d", documentTitle: "JBA Policy Manual", modelHeading: "Late Opening" });
     expect(late.content).toMatch(/Late Opening/);
   });
+
+  /*
+   * Priority replay s11 (the flag classification of 5 Nov 2026): a Coaching
+   * Form for a cell-phone account, after a turn that said the app "reflected
+   * it as underperformance", cited the Standards of Conduct instead of the
+   * Cell Phone/Smart Watch Policy p.19. The pin is the Corrective Action
+   * Form's only. The turns are s11's own.
+   */
+  const S11 = [
+    "create coaching form for employee test testy who is a tanning consultant at manhattan. on 9-29-26 test was out of dress code",
+    "employee name is corena schardt",
+    "create coaching form for corena schardt",
+    "sunny created a coaching form for an employee who was not in dress code and reflected it as underperformance and should be retraining",
+    "create a coaching form for lawrence location tanning consultant, corena schardt, who was talking on her cell phone for 25 minutes on 9-29-26 when customers were waiting to check in",
+  ].join("\n");
+
+  it("on, a Coaching Form keeps the model's heading: an earlier \"underperformance\" is no sales CA", () => {
+    process.env.CA_SALES_POLICY_ENABLED = "true";
+    const { content } = attachFormTurnSources({ content: "card", citations: [], notes: S11, chunks, documentId: "d", documentTitle: "JBA Policy Manual", modelHeading: "Cell Phone/Smart Watch", templateKey: "coaching" });
+    // The first cited section is the account's, as on main. (Main's flag-on notes reader also adds a Standards of Conduct line after it; that is not this pin, and it is reported separately.)
+    expect(content.split("\n").find((line) => line.includes("JBA Policy Manual p."))).toBe("Cell Phone/Smart Watch Policy, JBA Policy Manual p.19");
+  });
+
+  it("on, the same words on a Corrective Action Form still read as the sales account", () => {
+    process.env.CA_SALES_POLICY_ENABLED = "true";
+    const { content } = attachFormTurnSources({ content: "card", citations: [], notes: MSG_8, chunks, documentId: "d", documentTitle: "JBA Policy Manual", modelHeading: "Evaluations and Raises", templateKey: "dpoa" });
+    expect(content).toContain("Standards of Conduct Policy, JBA Policy Manual p.12");
+    expect(content).not.toMatch(/Evaluations and Raises/);
+  });
 });

@@ -656,6 +656,7 @@ async function answerQuestionUntraced(
             modelHeading: cardManualHeading(notes),
             attendanceCitation: attendancePolicyCitationEnabled(),
             pageRequired: policyPageRequiredEnabled(),
+            templateKey: response.formProposal.templateKey,
           });
           content = attached.content;
           citations = attached.citations;

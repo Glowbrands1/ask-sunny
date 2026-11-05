@@ -205,6 +205,8 @@ export function attachFormTurnSources(given: {
   readonly modelHeading?: string | null;
   readonly attendanceCitation?: boolean;
   readonly pageRequired?: boolean;
+  /** The card's template; the sales reading's Standards of Conduct pin is the Corrective Action Form's only. */
+  readonly templateKey?: string;
 }): { content: string; citations: SourceCitation[] } {
   // CARD_POLICY_DESCRIBED_ENABLED (sf-s25): a stored heading the manager's words do not support is not read from the notes either.
   const read = unsupportedStoredHeading(given.notes) ? { ...given, notes: withoutPolicyReference(given.notes) } : given;
@@ -252,7 +254,8 @@ export function attachFormTurnSources(given: {
    * Conduct (Pau, 4 Nov 2026), and nothing beside it; its sources are that
    * section's.
    */
-  const conduct = salesConductOnly(input.notes, input.chunks, content);
+  // A Coaching Form is not a sales CA (priority replay s11): "reflected it as underperformance" in an earlier turn never pins its cell-phone account to the Standards of Conduct.
+  const conduct = input.templateKey === undefined || input.templateKey === "dpoa" ? salesConductOnly(input.notes, input.chunks, content) : null;
   if (conduct) {
     sections = [conduct];
     const key = headingKey(conduct.heading);
