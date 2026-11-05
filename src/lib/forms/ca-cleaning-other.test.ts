@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { caPolicyProposalLine, readCaPolicy } from "./ca-policy";
+import { caPolicyProposalLine, cleaningIncidentPhrase, readCaPolicy } from "./ca-policy";
 import { withoutUnreasonedConduct } from "./ca-conduct-reason";
 
 /*
@@ -30,6 +30,15 @@ describe("CA_SALES_POLICY_ENABLED: cleaning left undone is Other", () => {
     expect(reading.suggestion).toBe("standards_of_conduct");
     expect(reading.other).toBeUndefined();
     expect(caPolicyProposalLine(reading)).toMatch(/this reads as \*\*Standards of Conduct\*\*/);
+    expect(guard(SF_S15)).toBeNull();
+  });
+
+  it("POLICY_CLEANING_INCIDENT_ENABLED on, CA_SALES off: the cleaning reader and the reading are as before (no Other mark)", () => {
+    vi.stubEnv("POLICY_CLEANING_INCIDENT_ENABLED", "true");
+    expect(cleaningIncidentPhrase(SF_S15)).toBe("did not complete daily cleaning");
+    const reading = readCaPolicy(SF_S15);
+    expect(reading.other).toBeUndefined();
+    expect(reading.topics).not.toContain("task");
     expect(guard(SF_S15)).toBeNull();
   });
 
