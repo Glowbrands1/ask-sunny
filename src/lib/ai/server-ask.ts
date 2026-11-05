@@ -70,6 +70,7 @@ import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import { buildFormInventory, publishedEntries } from "@/lib/forms/inventory";
 import { listTemplateSummaries, type TemplateSummary } from "@/lib/forms/repository";
 import { isFormRecordsQuestion, loadFormRecords } from "@/lib/forms/chat-form-records";
+import { withRosterOnlyNames } from "@/lib/forms/roster-only-names";
 import { priorFormsReadingForChat } from "@/lib/forms/prior-forms";
 import { applyOptionalPriorCoaching } from "./prior-coaching-optional";
 import { withMappedPolicy } from "./violation-policy";
@@ -301,7 +302,8 @@ export async function answerQuestion(
   if (passwordHelp) {
     return { content: passwordHelp, citations: [], coverage: "grounded", recommendedVideoIds: [] };
   }
-  return withoutSensitiveDefaults(await answerQuestionChecked(request, actor, memory), request.question);
+  // FORM_NAME_FROM_ROSTER_ENABLED, last: only roster people are the employee or a choice (`forms/roster-only-names.ts`).
+  return withRosterOnlyNames(withoutSensitiveDefaults(await answerQuestionChecked(request, actor, memory), request.question));
 }
 
 async function answerQuestionChecked(
