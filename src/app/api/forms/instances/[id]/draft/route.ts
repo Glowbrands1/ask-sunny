@@ -238,6 +238,7 @@ const PREVIOUS_ACTION_DATE_KEY = LEGACY_PREVIOUS_ACTION_DATE_KEY;
 import { exitDetailValues, exitStatedKeys, readExitDetails } from "@/lib/forms/exit-details";
 import { businessToday } from "@/lib/business-date";
 import { updateChatTrace } from "@/lib/ai/chat-trace-store";
+import { conductLineWithoutUnderPerformance, leaveOutOtherWriteInLine, leaveOutUnderPerformanceLine } from "@/lib/ai/stale-prompt-lines";
 import {
   correctDraftedDates,
   draftBriefDates,
@@ -1137,12 +1138,16 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
        * things on the document, and ticking one without filling the other
        * prints a ticked box with no label beside it.
        */
-      promptGroups.some((group) => group.options.some((option) => option.key === "other"))
+      // STALE_PROMPT_LINES_OFF_ENABLED: left out when this version has no write-in beside Other (`stale-prompt-lines.ts`). Off, as before.
+      promptGroups.some((group) => group.options.some((option) => option.key === "other")) && !leaveOutOtherWriteInLine(fields)
         ? policySpecificTopicsEnabled()
           ? OTHER_WRITE_IN_INSTRUCTION
           : 'When no listed option fits, tick "other" AND name the topic in the matching write-in field — for lateness that write-in is "Punctuality".'
         : "",
-      offersConductPolicy
+      // STALE_PROMPT_LINES_OFF_ENABLED: with no under_performance box, the line's first sentence alone. Off, as before.
+      offersConductPolicy && leaveOutUnderPerformanceLine(offenseOffered)
+        ? conductLineWithoutUnderPerformance(STANDARDS_OF_CONDUCT)
+        : offersConductPolicy
         ? `Type of Offense: assigned work, a required deadline, or required Woven items or training not completed, and a manager's direction not followed, are ${STANDARDS_OF_CONDUCT}. under_performance is for results against a sales or performance target.`
         : "",
       // CA_SALES_POLICY_ENABLED: one added line after the one above, which stays as it is. Off, nothing is added.

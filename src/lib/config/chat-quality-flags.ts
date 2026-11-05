@@ -2587,3 +2587,18 @@ export function replyMatchesCardEnabled(): boolean {
 export function citationLineKeptOnRevisionEnabled(): boolean {
   return envFlag("CITATION_LINE_KEPT_ON_REVISION_ENABLED");
 }
+
+/**
+ * STALE_PROMPT_LINES_OFF_ENABLED (QA, 5 Nov 2026; default off). Two lines of
+ * the Corrective Action draft's prompt describe boxes the current template no
+ * longer has: "name the topic in the matching write-in field" (revision 7 has
+ * no write-in beside Other) and "under_performance is for results against a
+ * sales or performance target" (revision 7 has no Under Performance box). With
+ * the flag on, each line is left out when the version being drafted lacks what
+ * it describes, read from the version's own fields and options
+ * (`ai/stale-prompt-lines.ts`). A version that still has them keeps the line.
+ * Off, the prompt is byte for byte as before.
+ */
+export function stalePromptLinesOffEnabled(): boolean {
+  return envFlag("STALE_PROMPT_LINES_OFF_ENABLED");
+}
