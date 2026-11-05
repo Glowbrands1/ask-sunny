@@ -195,6 +195,7 @@ import { withManagerNameGuard, withManagerNameRule } from "./manager-name-guard"
 import { withoutReportTurnsForForm } from "./report-turns";
 import { withReplyMatchesCard } from "./reply-matches-card";
 import { withTitleOfTheEmployee } from "./title-of-the-employee";
+import { withoutSourceNotes } from "@/lib/ai/source-note";
 
 /**
  * THE GROUNDED ANSWER PATH — server-side, and only server-side.
@@ -1911,7 +1912,8 @@ async function answerQuestionUntraced(
     attachedDocumentIds: request.attachedDocumentIds,
   }).content;
 
-  const content = suggested ? `${prose}\n\n${suggested.lead}` : prose;
+  // SOURCE_NOTE_GUARD_ENABLED: a bracketed note about a source ("[S1 doesn't actually cover …]") is removed (`source-note.ts`). Off, as before.
+  const content = withoutSourceNotes(suggested ? `${prose}\n\n${suggested.lead}` : prose);
   // CA_SALES_POLICY_ENABLED: the Corrective Action offer is added at the turn's one exit (`answerQuestion`, `withCaOffer`).
   return {
     content,

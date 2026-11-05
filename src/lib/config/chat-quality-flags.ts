@@ -2587,3 +2587,17 @@ export function replyMatchesCardEnabled(): boolean {
 export function citationLineKeptOnRevisionEnabled(): boolean {
   return envFlag("CITATION_LINE_KEPT_ON_REVISION_ENABLED");
 }
+
+/**
+ * SOURCE_NOTE_GUARD_ENABLED (QA, 5 Nov 2026; default off). A reply reached a
+ * manager with the model's own note about a source in it: "[S1 doesn't actually
+ * cover general tardiness — it only covers failing to open the salon…]". The
+ * marker stripping removes only a bare marker ("[S1]") or a group of them, so
+ * a bracket that starts with a source tag and goes on in prose stayed. With the
+ * flag on, the answer's last step removes such a bracket; a citation marker,
+ * a group of markers, or a tag with only a page or section after it is kept
+ * for the marker stripping as before (`ai/source-note.ts`). Off, as before.
+ */
+export function sourceNoteGuardEnabled(): boolean {
+  return envFlag("SOURCE_NOTE_GUARD_ENABLED");
+}
