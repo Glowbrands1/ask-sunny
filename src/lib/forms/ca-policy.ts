@@ -417,7 +417,7 @@ export function readCaPolicy(rawText: string): CaPolicyReading {
  * the reading is returned untouched.
  */
 function withSalesPolicy(reading: CaPolicyReading, rawText: string): CaPolicyReading {
-  if (!caSalesPolicyEnabled()) return reading;
+  if (!caSalesPolicyEnabled() || salesReadingHeld) return reading;
   if (reading.stated !== null && reading.stated !== "under_performance") return reading;
   if (reading.missedEvent !== null) return reading;
   const sentences = statements(normalize(rawText));
@@ -436,6 +436,24 @@ function withSalesPolicy(reading: CaPolicyReading, rawText: string): CaPolicyRea
     source: msb ? "msb" : "sales_performance",
     ambiguous: null,
   };
+}
+
+let salesReadingHeld = false;
+
+/**
+ * CA_SALES_POLICY_ENABLED is a Corrective Action rule (Pau: "sales/MSB
+ * Corrective Actions cite Standards of Conduct"). QA, 5 Nov 2026: a Coaching
+ * Form does not get the sales reading. `read` runs with it held: every
+ * readCaPolicy inside it reads as with the flag off. Synchronous only.
+ */
+export function withoutSalesReading<T>(read: () => T): T {
+  const was = salesReadingHeld;
+  salesReadingHeld = true;
+  try {
+    return read();
+  } finally {
+    salesReadingHeld = was;
+  }
 }
 
 /** Whether the reading is CA_SALES_POLICY_ENABLED's: a sales or MSB account read as the Standards of Conduct. */

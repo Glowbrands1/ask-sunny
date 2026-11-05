@@ -42,7 +42,7 @@ import { extractJobTitle, titleAfterJobTitleLabel } from "@/lib/forms/proposal";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
 import type { ChatFormProposal, KnowledgeCategory, SourceCitation } from "@/types";
 
-import { CA_POLICY_LABEL, describedAttendanceKeys, isSalesPolicyReading, readCaPolicy, statedOffenseKeys } from "@/lib/forms/ca-policy";
+import { CA_POLICY_LABEL, describedAttendanceKeys, isSalesPolicyReading, readCaPolicy, statedOffenseKeys, withoutSalesReading } from "@/lib/forms/ca-policy";
 import {
   citeAttendanceForTardiness,
   formatPolicyCitation,
@@ -208,6 +208,12 @@ export function attachFormTurnSources(given: {
   /** The card's template; the sales reading's Standards of Conduct pin is the Corrective Action Form's only. */
   readonly templateKey?: string;
 }): { content: string; citations: SourceCitation[] } {
+  // CA_SALES_POLICY_ENABLED is the Corrective Action Form's: any other card reads the manager's turns without the sales reading (QA, 5 Nov 2026, priority replay s11).
+  if (given.templateKey !== undefined && given.templateKey !== "dpoa") return withoutSalesReading(() => cardTurnSources(given));
+  return cardTurnSources(given);
+}
+
+function cardTurnSources(given: Parameters<typeof attachFormTurnSources>[0]): { content: string; citations: SourceCitation[] } {
   // CARD_POLICY_DESCRIBED_ENABLED (sf-s25): a stored heading the manager's words do not support is not read from the notes either.
   const read = unsupportedStoredHeading(given.notes) ? { ...given, notes: withoutPolicyReference(given.notes) } : given;
   const input = formChoiceStatedEnabled() ? { ...read, modelHeading: headingForCard(read) } : read;

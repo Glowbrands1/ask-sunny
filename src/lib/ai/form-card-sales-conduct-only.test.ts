@@ -72,8 +72,9 @@ describe("an underperformance CA cites the Standards of Conduct and nothing besi
   it("on, a Coaching Form keeps the model's heading: an earlier \"underperformance\" is no sales CA", () => {
     process.env.CA_SALES_POLICY_ENABLED = "true";
     const { content } = attachFormTurnSources({ content: "card", citations: [], notes: S11, chunks, documentId: "d", documentTitle: "JBA Policy Manual", modelHeading: "Cell Phone/Smart Watch", templateKey: "coaching" });
-    // The first cited section is the account's, as on main. (Main's flag-on notes reader also adds a Standards of Conduct line after it; that is not this pin, and it is reported separately.)
     expect(content.split("\n").find((line) => line.includes("JBA Policy Manual p."))).toBe("Cell Phone/Smart Watch Policy, JBA Policy Manual p.19");
+    // QA's ruling (5 Nov 2026): a Coaching Form gets no sales reading, so no Standards of Conduct line beside it either.
+    expect(content).not.toMatch(/Standards of Conduct/);
   });
 
   it("on, the same words on a Corrective Action Form still read as the sales account", () => {
