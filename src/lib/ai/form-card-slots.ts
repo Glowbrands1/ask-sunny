@@ -13,6 +13,7 @@ import {
   followUpNotPriorEnabled,
   followUpReadbackCueEnabled,
   correctedEmployeeSlotEnabled,
+  caSalesPolicyEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { templateHasWarningLevel } from "@/lib/forms/warning-level";
 import { followUpDatesByRules } from "./edit-date-rules";
@@ -39,7 +40,7 @@ import { extractJobTitle, titleAfterJobTitleLabel } from "@/lib/forms/proposal";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
 import type { ChatFormProposal, KnowledgeCategory, SourceCitation } from "@/types";
 
-import { describedAttendanceKeys, readCaPolicy, statedOffenseKeys } from "@/lib/forms/ca-policy";
+import { CA_POLICY_LABEL, describedAttendanceKeys, isSalesPolicyReading, readCaPolicy, statedOffenseKeys } from "@/lib/forms/ca-policy";
 import {
   citeAttendanceForTardiness,
   formatPolicyCitation,
@@ -239,6 +240,21 @@ export function attachFormTurnSources(given: {
   // LATE_OPEN_DATE_ENABLED: a late opening cites Late Opening, never Attendance,
   // whichever reader found the sections.
   sections = withoutAttendanceForLateOpening(sections, input.notes);
+  /*
+   * CA_SALES_POLICY_ENABLED (QA round 2, row B, 5 Nov 2026): message 8 ("… -
+   * verbal / 146 tans / Below in PPTA, LPSVA, …") cited "Evaluations and
+   * Raises" (p.34) beside the Standards of Conduct, and the Action Plan
+   * reviewed both. A sales or performance account cites the Standards of
+   * Conduct (Pau, 4 Nov 2026), and nothing beside it; its sources are that
+   * section's.
+   */
+  const conduct = salesConductOnly(input.notes, input.chunks, content);
+  if (conduct) {
+    sections = [conduct];
+    const key = headingKey(conduct.heading);
+    citations = citations.filter((citation) => headingKey(citation.excerpt.split(".")[0] ?? "") === key);
+    if (citations.length === 0) citations = formTurnCitations({ ...input, modelHeading: conduct.heading }).filter((citation) => headingKey(citation.excerpt.split(".")[0] ?? "") === key);
+  }
   const mustCitePage = input.pageRequired === true || input.attendanceCitation === true;
   for (const section of sections) {
     const line =
@@ -254,6 +270,20 @@ export function attachFormTurnSources(given: {
     input.attendanceCitation === true && sections.some((section) => /^attendance$/i.test(section.heading)),
   );
   return { content, citations };
+}
+
+/**
+ * CA_SALES_POLICY_ENABLED: the Standards of Conduct section when the account
+ * is a sales or performance one — read so, or the card's own Policy line
+ * already names the Standards of Conduct for it; otherwise null.
+ */
+function salesConductOnly(notes: string, chunks: readonly ManualChunk[], content: string): ManualSection | null {
+  if (!caSalesPolicyEnabled()) return null;
+  const conduct = CA_POLICY_LABEL.standards_of_conduct;
+  const line = content.split("\n").find((item) => item.trim().startsWith("**Policy:**")) ?? "";
+  const named = line.replace("**Policy:**", "").replace(/\*\*/g, "").trim().toLowerCase().startsWith(conduct.toLowerCase());
+  const sales = isSalesPolicyReading(readCaPolicy(notes)) || named;
+  return sales ? findManualSection(chunks, [conduct]) : null;
 }
 
 /**
