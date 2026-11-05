@@ -283,6 +283,31 @@ export const NOV4_METRICS_NOT_PEOPLE_CASES: ReplayCase[] = [
       expect(reply.content, `a card with no employee does not ask who:\n${reply.content}`).toMatch(/Who is this (?:\*\*[^*]+\*\* |form )?for\?/);
     },
   },
+  {
+    /*
+     * With FORM_NAME_FROM_ROSTER_ENABLED (the flip, 4 Nov 2026) the request slot
+     * makes a card for this typed name, the keeper takes it off ("one"), and the
+     * reply said "I'll draft … for **QA Probe XZT One**" over an empty Employee.
+     * The keeper's rewrite runs with FORM_NAME too. Negative control: the same message for a name with "One" in it that is
+     * NOT on the roster. The grounding step already leaves it off the card and
+     * the reply asks who (it never drafts "for **<name>**" over an empty
+     * Employee) — with production's flags and with the keeper flag on.
+     */
+    id: "nov4-qa-off-roster-name-with-one-form-name",
+    title: "the same off-roster name ending in \"One\" with FORM_NAME_FROM_ROSTER_ENABLED and the sales policy on (the flip): the request slot makes a card for it, the keeper takes it off — the reply never drafts for it; it asks who",
+    report: `QA, 4 Nov 2026: "I need a corrective action verbal for <QA test account>. …" → "I'll draft … for <name>", card Employee empty`,
+    status: "fixed",
+    fixFlags: [FLAG, SALES, GLOSSARY],
+    async run(t) {
+      const thread = start(t);
+      const reply = await thread.say(say("QA Probe XZT One"));
+      if (!thread.proposal) return; // CA_SALES_POLICY_ENABLED off: the metric-only answer, no card.
+      expect(thread.proposal, `no card:\n${reply.content}`).toBeTruthy();
+      if (thread.proposal?.employeeName) return;
+      expect(reply.content, `the reply drafts for a name the card does not hold:\n${reply.content}`).not.toMatch(/\*\*QA Probe XZT One\*\*/);
+      expect(reply.content, `a card with no employee does not ask who:\n${reply.content}`).toMatch(/Who is this (?:\*\*[^*]+\*\* |form )?for\?/);
+    },
+  },
   /*
    * QA, 4 NOV 2026, 19:21 UTC: CA_SALES_POLICY_ENABLED rolled back in this
    * app. Live, a REAL roster employee (QA's "Employee R", never written),
