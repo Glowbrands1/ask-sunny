@@ -81,4 +81,32 @@ export const NOV5_CLEANING_OTHER_CASES: ReplayCase[] = [
       expect(policyLine(reply.content)).not.toMatch(/\*\*Policy:\*\* Other\b/);
     },
   },
+  {
+    id: "nov5-cleaning-other-sf-s15-policy-citation",
+    title: "sf-s15 with POLICY_CITATION on (on in production): the draft ticks Other and Direct policy quotes no Standards of Conduct",
+    report: `${REPORT}; QA's production-flags bisect #3 (POLICY_CITATION fills Direct policy)`,
+    status: { open: "with production's flags (CA_SALES_POLICY_ENABLED off) the draft keeps the Standards of Conduct" },
+    fixFlags: [...FLIP, "POLICY_CITATION_ENABLED"],
+    async run(t) {
+      const { thread } = await card(t, "Write me a CA for Isolde Brannock for failing to complete opening duties. Isolde did not complete daily cleaning duties. on november 2, 2026");
+      t.draftWrites({ observation: "Observed:\nIsolde Brannock did not complete the daily cleaning duties at opening on November 2, 2026." }, { offense_type: ["standards_of_conduct"] });
+      const id = await thread.create();
+      expect(t.checked(id).offense_type, "the draft's Type of Offense").toEqual(["other"]);
+      expect(t.values(id).policy_language ?? "", "Direct policy quotes the Standards of Conduct").not.toMatch(/Standards of Conduct/i);
+    },
+  },
+  {
+    id: "nov5-upkeep-other-policy-citation",
+    title: "upkeep that is not cleaning (\"the restocking duties were not completed\"), the model's basis upkeep_or_task: Other ticked, so Direct policy quotes no Standards of Conduct (POLICY_CITATION on)",
+    report: `${REPORT}; QA's production-flags bisect #3: the citation fill follows the ticked box`,
+    status: { open: "with production's flags (CA_SALES_POLICY_ENABLED off) the draft keeps the Standards of Conduct" },
+    fixFlags: [...FLIP, "POLICY_CITATION_ENABLED"],
+    async run(t) {
+      const { thread } = await card(t, "make a corrective action for Isolde Brannock, the restocking duties were not completed before close on 11/2");
+      t.draftWrites({ observation: "Observed:\nThe restocking duties were not completed before close on November 2, 2026." }, { offense_type: ["standards_of_conduct"] }, { offense_basis: "upkeep_or_task" });
+      const id = await thread.create();
+      expect(t.checked(id).offense_type, "the draft's Type of Offense").toEqual(["other"]);
+      expect(t.values(id).policy_language ?? "", "Direct policy quotes the Standards of Conduct").not.toMatch(/Standards of Conduct/i);
+    },
+  },
 ];
