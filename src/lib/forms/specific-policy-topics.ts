@@ -112,12 +112,20 @@ const VISITORS_ANIMAL = new RegExp(
  * ANIMAL_VISITORS_ONLY_WHEN_VISITOR_ENABLED, case (c) (Pau, 5 Nov 2026, "Ok,
  * A", relayed by QA; only these words): a visitor described with no animal is
  * Visitors in the Workplace. A person who does not work here and, in the same
- * sentence, where or when at work they were.
+ * sentence, where at work they were.
  */
 const PRESENT_PERSON = String.raw`(?:visitors?|guests?|friends?|boyfriend|girlfriend|partner|husband|wife|family\s+members?|relatives?|kids?|child(?:ren)?|someone\s+who\s+(?:doesn['’]?t|does\s+not)\s+work\s+here|non-?employees?)`;
-const AT_WORK_CONTEXT = String.raw`(?:back\s?room|behind\s+the\s+counter|in\s+the\s+salon|during\s+(?:(?:his|her|their)\s+)?shift|on\s+the\s+clock)`;
+/*
+ * QA's ruling on the same day (option b, no new words): a time context
+ * ("during … shift", "on the clock") counts only together with a place
+ * context, so a person and a place in one sentence is the reading. "her
+ * friend called during her shift" (no one there) cites nothing, and so does
+ * "his girlfriend hung out with him during his shift" (an open miss: it needs
+ * a place word; Pau can widen this later).
+ */
+const AT_WORK_PLACE = String.raw`(?:back\s?room|behind\s+the\s+counter|in\s+the\s+salon)`;
 const VISITOR_AT_WORK = new RegExp(
-  String.raw`\b${PRESENT_PERSON}\b[^.!?\n]*?\b${AT_WORK_CONTEXT}\b|\b${AT_WORK_CONTEXT}\b[^.!?\n]*?\b${PRESENT_PERSON}\b`,
+  String.raw`\b${PRESENT_PERSON}\b[^.!?\n]*?\b${AT_WORK_PLACE}\b|\b${AT_WORK_PLACE}\b[^.!?\n]*?\b${PRESENT_PERSON}\b`,
 );
 const AT_WORK =
   /\b(?:store|salon|location|shop|lobby|building|work|shift|team|coworkers?|co-workers?|clients?|customers?|guests?|counter|front desk|back room|break ?room)\b/;

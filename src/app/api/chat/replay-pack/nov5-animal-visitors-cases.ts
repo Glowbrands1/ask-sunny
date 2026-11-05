@@ -127,4 +127,17 @@ export const NOV5_ANIMAL_VISITORS_CASES: ReplayCase[] = [
       expect(all, `a guest's complaint cited as a visitor (card or draft):\n${all}`).not.toMatch(VISITORS);
     },
   },
+  {
+    id: "nov5-visitor-friend-called-negative",
+    title: "negative (c): \"his friend called during his shift\" — no one there: no Visitors in the Workplace (QA, option b: a time needs a place)",
+    report: `${REPORT}, negative (c) (QA)`,
+    status: "fixed",
+    fixFlags: ["ANIMAL_VISITORS_ONLY_WHEN_VISITOR_ENABLED"],
+    async run(t) {
+      const thread = start(t);
+      const reply = await thread.say("create a ca for corwin hale at kearney. his friend called during his shift on 11-4-26 and he talked for 30 minutes. verbal. no payroll deduct");
+      const all = await cardAndDraft(t, thread, reply, "On November 4, 2026, Corwin Hale's friend called during his shift and he talked for 30 minutes.");
+      expect(all, `a phone call cited as a visitor (card or draft):\n${all}`).not.toMatch(VISITORS);
+    },
+  },
 ];

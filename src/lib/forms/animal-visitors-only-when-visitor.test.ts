@@ -84,6 +84,17 @@ describe("ANIMAL_VISITORS_ONLY_WHEN_VISITOR_ENABLED: a visitor, no animal", () =
     expect(specificTopic("a guest complained at the counter")?.id).not.toBe("visitors");
   });
 
+  it("flag on: \"her friend called during her shift\" — no one there: no topic (QA's ruling, option b)", () => {
+    on();
+    expect(specificTopic("her friend called during her shift")).toBeNull();
+  });
+
+  it("flag on, an OPEN miss (QA's ruling, option b): a time context with no place cites nothing — \"during his shift\" needs a place word", () => {
+    on();
+    // Documented, not wanted: Pau can widen the words later; until then a miss is no citation, as before the flag.
+    expect(specificTopic("his girlfriend hung out with him during his shift")).toBeNull();
+  });
+
   it("flag on: an animal is still Animals in the Workplace first", () => {
     on();
     expect(specificTopic(CUSTOMER_DOG)?.id).toBe("animals");
