@@ -109,6 +109,7 @@ export const NOV5_PAU_SF_S26_S28_CASES: ReplayCase[] = [
     report:
       "Pau via QA, 5 Nov 2026, sf-s28: \"can i give a ca for not signing off on the cleaning check list\" → \"can you write me a ca for Employee R from o street\" → \"You haven't told me what happened yet\", the Observation was the question",
     status: { open: "\"You haven't told me what happened yet\"; the earlier turn's incident is not used" },
+    fixFlags: ["OMISSION_IS_ACCOUNT_ENABLED"],
     async run(t: T) {
       /*
        * CA_ASKS_WHAT_HAPPENED_ENABLED is on in production (QA, 5 Nov 2026; in

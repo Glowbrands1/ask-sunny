@@ -1209,6 +1209,16 @@ export function caAsksWhatHappenedEnabled(): boolean {
 }
 
 /**
+ * A duty not done is an account (Pau, sf-s28, 5 Nov 2026; same flag in both
+ * apps): "can i give a ca for not signing off on the cleaning check list" then
+ * "can you write me a ca for <name>" was answered "You haven't told me what
+ * happened yet". See `ai/ca-what-happened.ts`. Off, as before.
+ */
+export function omissionIsAccountEnabled(): boolean {
+  return envFlag("OMISSION_IS_ACCOUNT_ENABLED");
+}
+
+/**
  * A step's date is not the incident date (QA SF4, 27 Oct 2026; same flag in
  * both apps): "for opening salon late on 9-28-26" / "note a verbal ca was given
  * on 9-1-26" left the card's Date blank and dated the form today. See
