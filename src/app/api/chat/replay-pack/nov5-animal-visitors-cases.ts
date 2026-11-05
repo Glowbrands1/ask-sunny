@@ -99,4 +99,18 @@ export const NOV5_ANIMAL_VISITORS_CASES: ReplayCase[] = [
       expect(all, `Animals in the Workplace with no animal:\n${all}`).not.toMatch(ANIMALS);
     },
   },
+  {
+    id: "nov5-animal-customers-saw-it",
+    title: "negative: \"brought his kitten to the salon, customers saw it\" — customers only present: Animals in the Workplace only",
+    report: `${REPORT}, negative (QA)`,
+    status: { open: "with production's flags the draft quotes Visitors in the Workplace beside Animals in the Workplace" },
+    fixFlags: ["ANIMAL_VISITORS_ONLY_WHEN_VISITOR_ENABLED"],
+    async run(t) {
+      const thread = start(t);
+      const reply = await thread.say("create a ca for corwin hale at kearney. he brought his kitten to the salon on 11-4-26, customers saw it. verbal. no payroll deduct");
+      const all = await cardAndDraft(t, thread, reply, "Corwin Hale brought his kitten to the salon on November 4, 2026; customers saw it.");
+      expect(all, `Animals in the Workplace is not cited:\n${all}`).toMatch(ANIMALS);
+      expect(all, `customers who only saw the animal made it a visitor's (card or draft):\n${all}`).not.toMatch(VISITORS);
+    },
+  },
 ];

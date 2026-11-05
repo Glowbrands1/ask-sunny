@@ -101,7 +101,7 @@ const ANIMAL_ALONE = new RegExp(String.raw`\b${ANIMAL}\b`);
  * "a customer brought her dog in", "her friend's dog", "a guest's puppy".
  * Limited to this rule.
  */
-const VISITOR_PERSON = String.raw`(?:customers?|guests?|visitors?|friends?|family(?:\s+members?)?)`;
+const VISITOR_PERSON = String.raw`(?:customers?|clients?|guests?|visitors?|friends?|family(?:\s+members?)?)`;
 const VISITORS_ANIMAL = new RegExp(
   String.raw`\b${VISITOR_PERSON}(?:['’]s?)?\s+(?:\S+\s+){0,2}?${ANIMAL}\b|\b${VISITOR_PERSON}\s+(?:\S+\s+){0,3}?(?:brought|brings|bringing|came in with|come in with|walked in with|showed up with|had|has)\s+(?:\S+\s+){0,3}?${ANIMAL}\b|\b${ANIMAL}\s+(?:that\s+)?(?:belong(?:s|ed|ing)?\s+to|of)\s+(?:a|an|the|her|his|their|my|our)?\s*${VISITOR_PERSON}\b`,
   "i",
