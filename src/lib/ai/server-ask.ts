@@ -70,6 +70,7 @@ import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import { buildFormInventory, publishedEntries } from "@/lib/forms/inventory";
 import { listTemplateSummaries, type TemplateSummary } from "@/lib/forms/repository";
 import { isFormRecordsQuestion, loadFormRecords } from "@/lib/forms/chat-form-records";
+import { withRosterOnlyNames } from "@/lib/forms/roster-only-names";
 import { priorFormsReadingForChat } from "@/lib/forms/prior-forms";
 import { applyOptionalPriorCoaching } from "./prior-coaching-optional";
 import { withMappedPolicy } from "./violation-policy";
@@ -159,7 +160,7 @@ import { pinnedManualBlock } from "./policy-citation-fields";
 import { deliverFormProposal } from "./grounded-turn";
 import { withJobTitleCase, withJobTitleFromWords, withJobTitleReadBackCase, withSpelledOutTitle } from "./job-title-from-words";
 import { withTerseSlots } from "./terse-slots";
-import { withCaWhatHappened } from "./ca-what-happened";
+import { withCaWhatHappened, withCoachingWhatHappened } from "./ca-what-happened";
 import { withFirstNameAsk } from "./first-name-ask";
 import { withFirstNameAnswerFor, withFirstNameSuggestFor } from "./first-name-suggest";
 import { withAmountUnknownAck } from "./amount-unknown-ack";
@@ -309,7 +310,8 @@ export async function answerQuestion(
    * Form is replaced by it. Nothing is made until the manager says yes (Pau,
    * 4 Nov 2026; QA's live traces). Off, nothing is read or added.
    */
-  if (!caSalesPolicyEnabled()) return answered;
+  // FORM_NAME_FROM_ROSTER_ENABLED, last on every return: only roster people are the employee or a choice (`forms/roster-only-names.ts`).
+  if (!caSalesPolicyEnabled()) return withRosterOnlyNames(answered);
   let roster: Awaited<ReturnType<typeof loadScopedRoster>> = [];
   try {
     roster = await loadScopedRoster(actor.scope);
@@ -322,7 +324,7 @@ export async function answerQuestion(
     questionMessageId: request.questionMessageId,
     roster,
   });
-  return withCaOffer(answered, offer);
+  return withRosterOnlyNames(withCaOffer(answered, offer));
 }
 
 async function answerQuestionChecked(
@@ -341,6 +343,7 @@ async function answerQuestionChecked(
     noteTraceOutcome(response);
     // Last on every path, after the reply check too: the Action Plan is the manager's or none.
     // CA_ASKS_WHAT_HAPPENED_ENABLED: a Corrective Action card with no account asks what happened.
+    // COACHING_ASKS_WHAT_HAPPENED_ENABLED: a Coaching Form card with no account asks what happened, never "Everything I need is here" (sf-s27).
     // JOB_TITLE_FROM_WORDS_ENABLED: an empty Job Title takes the title the manager typed; JOB_TITLE_CASE_ENABLED: in title case.
     // WARNING_LEVEL_AND_CLAUSE_ENABLED: "this should be a written and note a verbal ca was given …" states written.
     // FIRST_NAME_ASK_ENABLED: "Is this for ivy? Tell me her full name.", never the same question twice.
@@ -358,7 +361,7 @@ async function answerQuestionChecked(
         withUnreadDateAsk(
           withStatedAmount(
             withFirstNameAsk(
-              withWarningLevelFromClause(withSpelledOutTitle(withJobTitleReadBackCase(withJobTitleCase(withJobTitleFromWords(withCaWhatHappened(await applyQuietQuality(response), request), request)))), request),
+              withWarningLevelFromClause(withSpelledOutTitle(withJobTitleReadBackCase(withJobTitleCase(withJobTitleFromWords(withCoachingWhatHappened(withCaWhatHappened(await applyQuietQuality(response), request), request), request)))), request),
               request,
             ),
             request,

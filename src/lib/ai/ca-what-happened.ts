@@ -1,4 +1,4 @@
-import { caAsksWhatHappenedEnabled } from "@/lib/config/chat-quality-flags";
+import { caAsksWhatHappenedEnabled, coachingAsksWhatHappenedEnabled, omissionIsAccountEnabled } from "@/lib/config/chat-quality-flags";
 import {
   NO_INCIDENT_NOTE,
   answeredWhatHappened,
@@ -61,6 +61,25 @@ function turnsForThisForm(history: readonly Turn[], templateKey: string): readon
 /** Only what did not happen: "she was not late", "nothing happened", "no incident", "she didn't do anything wrong". */
 const NEGATED = /\b(?:not|never|nothing|no\s+(?:incident|issue|problems?|concerns?))\b|n['’]t\b/i;
 
+/*
+ * OMISSION_IS_ACCOUNT_ENABLED (Pau, sf-s28): a duty not done is something the
+ * employee did. "not signing off on the cleaning check list", "did not clock
+ * in", "she never called in" say what she failed to do: the negation governs
+ * an action verb. "she was not late", "not late" and "she didn't do anything
+ * wrong" only say what did not happen: the negation governs "be", an
+ * adjective, or "do anything". Grammar, not a list of offenses.
+ */
+const DENIAL = /\b(?:nothing|anything|no\s+(?:incident|issue|problems?|concerns?))\b/i;
+const NEGATED_ACTION =
+  /(?:\b(?:did|does|do)\s+not\s+|\b(?:did|does|do)n['’]t\s+|\bnever\s+)(?!(?:do|be|been|being)\b)[a-z]+|\bnot\s+(?!being\b)[a-z]+ing\b/i;
+
+/** A clause that says only what did not happen; with OMISSION_IS_ACCOUNT, a duty not done is not that. */
+function onlyWhatDidNotHappen(clause: string): boolean {
+  if (!NEGATED.test(clause)) return false;
+  if (!omissionIsAccountEnabled()) return true;
+  return DENIAL.test(clause) || !NEGATED_ACTION.test(clause);
+}
+
 const NOT_A_PERSON = new Set(["she", "he", "they", "the", "a", "an", "her", "his", "their", "our", "my", "this", "that", "it", "i", "we", "you", "and", "also", "then"]);
 
 /** "rory vance was late today": somebody else did it. */
@@ -80,7 +99,7 @@ function hasAccount(said: string, name: string, ignore: readonly string[]): bool
     .filter(Boolean)
     .some(
       (clause) =>
-        !NEGATED.test(clause) &&
+        !onlyWhatDidNotHappen(clause) &&
         !aboutSomebodyElse(clause, name) &&
         (describesIncident(clause) || describesMoreThanTheRequest(clause, { ignore })),
     );
@@ -106,5 +125,44 @@ export function askCaWhatHappened(response: AskResponse, question: string, histo
   const lines = response.content.split("\n");
   // Second, after the card's opening line, where the card puts it on a name alone.
   lines.splice(Math.min(1, lines.length), 0, "", NO_INCIDENT_NOTE);
+  return { ...response, content: lines.join("\n").replace(/\n{3,}/g, "\n\n").trim() };
+}
+
+/**
+ * COACHING_ASKS_WHAT_HAPPENED_ENABLED (Pau, 5 Nov 2026, sf-s27): "Create a
+ * coaching form." → "<name>" answered "Everything I need is here, drawn from
+ * your messages above. … I have the employee and the salon." with no incident.
+ * A Coaching Form card for a person with no account in the manager's turns for
+ * it (the same test as the Corrective Action's) never says it has everything:
+ * those sentences go, and it asks what happened, once per card. The question
+ * opens with the same marker, so the next reply is read as the account.
+ */
+export const COACHING_WHAT_HAPPENED_NOTE = `**${MARKER}.** What happened, or what should this coaching cover? Tell me here and I'll draft it from your words.`;
+
+const SAYS_READY = /^Everything I need is here[^\n]*$/i;
+// "I have the employee and the salon (**<salon>**)." — the salon's name is optional.
+const HAS_EMPLOYEE_AND_PLACE = /I have the employee and the salon(?: \(\*\*[^*]+\*\*\))?\.\s*/gi;
+
+export function withCoachingWhatHappened(response: AskResponse, request: AskRequest): AskResponse {
+  if (!coachingAsksWhatHappenedEnabled()) return response;
+  return askCoachingWhatHappened(response, request.question, request.history as readonly Turn[]);
+}
+
+export function askCoachingWhatHappened(response: AskResponse, question: string, history: readonly Turn[]): AskResponse {
+  const proposal = response.formProposal;
+  if (!proposal || proposal.templateKey !== "coaching" || proposal.subject === "team") return response;
+  const name = proposal.employeeName?.trim();
+  if (!name || response.content.includes(MARKER)) return response;
+  const turns = turnsForThisForm(history, proposal.templateKey);
+  if (turns.some((turn) => turn.role === "assistant" && turn.content.includes(MARKER))) return response;
+  const said = [...turns.filter((turn) => turn.role === "user").map((turn) => turn.content), question].map(withoutStateLead).join("\n");
+  const ignore = [name, proposal.employeeRole ?? "", proposal.locationName ?? ""];
+  if (hasAccount(said, name, ignore)) return response;
+  if (answeredWhatHappened([...history, { role: "user", content: question }])) return response;
+  const lines = response.content
+    .replace(HAS_EMPLOYEE_AND_PLACE, "")
+    .split("\n")
+    .filter((line) => !SAYS_READY.test(line.trim()));
+  lines.splice(Math.min(1, lines.length), 0, "", COACHING_WHAT_HAPPENED_NOTE);
   return { ...response, content: lines.join("\n").replace(/\n{3,}/g, "\n\n").trim() };
 }
