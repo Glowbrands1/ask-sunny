@@ -111,6 +111,15 @@ export const NOV3_ADDRESS_DATE_CASES: readonly ReplayCase[] = [
         .say(
           "Corrective action for the primary salon manager: on Monday 10/05/2026 corin bellweather was working a shift at the front desk and was rude to a guest",
         );
+      /*
+       * CHANGED ON PURPOSE (Pau, 5 Nov 2026, FORM_NAME_FROM_ROSTER_ENABLED): a
+       * name on no roster is never the card's employee; the reply asks who.
+       */
+      if (process.env.FORM_NAME_FROM_ROSTER_ENABLED === "true") {
+        expect(reply.formProposal?.employeeName ?? null).toBeNull();
+        expect(reply.content).toMatch(/Who is this (?:\*\*[^*]+\*\* |form )?for\?/);
+        return;
+      }
       expect(reply.formProposal?.employeeName).toBe("Corin Bellweather");
     },
   },
@@ -134,7 +143,10 @@ export const NOV3_ADDRESS_DATE_CASES: readonly ReplayCase[] = [
       t.slotsRead({ employee: null, formType: "Corrective Action Form", formTurn: true }, "corin bellweather");
       t.as("salon_director", KEARNEY);
       const reply = await t.thread().say("Corrective action: corin bellweather was rude to a guest at the front desk on Monday");
-      if (process.env.SLOT_NAME_ON_FORM_REQUEST_ENABLED === "true") {
+      // CHANGED ON PURPOSE (Pau, 5 Nov 2026, FORM_NAME_FROM_ROSTER_ENABLED): off the roster, the reply asks who instead.
+      if (process.env.FORM_NAME_FROM_ROSTER_ENABLED === "true") {
+        expect(reply.formProposal?.employeeName ?? null).toBeNull();
+      } else if (process.env.SLOT_NAME_ON_FORM_REQUEST_ENABLED === "true") {
         expect(reply.formProposal?.employeeName).toBe("Corin Bellweather");
       }
       expect(reply.content).not.toMatch(/street address/i);
