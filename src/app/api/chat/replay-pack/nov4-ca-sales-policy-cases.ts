@@ -135,9 +135,11 @@ export const NOV4_CA_SALES_POLICY_CASES: ReplayCase[] = [
       const thread = start(t);
       const reply = await thread.say("create a corrective action for Ilsabet Harrowgate for ringing up the wrong items on a guest's sale");
       expect(thread.proposal, `no CA card for Ilsabet Harrowgate:\n${reply.content}`).toMatchObject({ templateKey: "dpoa", employeeName: "Ilsabet Harrowgate" });
+      // The drafting model's offense_basis (CA_SALES_POLICY_ENABLED's optional tool field; Pau, 4 Nov 2026: wrong items keeps the Standards of Conduct, `ca-conduct-reason.ts`).
       t.draftWrites(
         { observation: "Observed:\nIlsabet Harrowgate rang up the wrong items on a guest's sale." },
         { offense_type: ["under_performance"] },
+        { offense_basis: "sales" },
       );
       const id = await thread.create();
       citesStandardsOfConduct(t.values(id));
