@@ -2572,3 +2572,16 @@ export function rosterNearMissEnabled(): boolean {
 export function replyMatchesCardEnabled(): boolean {
   return envFlag("REPLY_MATCHES_CARD_ENABLED");
 }
+
+/**
+ * ROSTER_COMPOUND_SURNAME_ENABLED (the re-flip's rollback, 5 Nov 2026; default
+ * off). The flip's live testers (R3/R5/R7): a real employee's surname is two
+ * words, and the manager typed one with a transposed or swapped letter. The
+ * matcher compared only the typed last word with the whole two-word surname,
+ * so it was never close: with FORM_NAME + ROSTER_NEAR_MISS the card emptied and
+ * asked who. On: a compound surname is compared word by word
+ * (`forms/employee-match.ts` compoundSurnameScore). Off, as before.
+ */
+export function rosterCompoundSurnameEnabled(): boolean {
+  return envFlag("ROSTER_COMPOUND_SURNAME_ENABLED");
+}
