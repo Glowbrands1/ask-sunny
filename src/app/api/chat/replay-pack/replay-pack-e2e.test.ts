@@ -58,6 +58,8 @@ vi.hoisted(() => {
 const revisionAsked = vi.hoisted(() => [] as string[]);
 /** What the drafting model was given, per Create. */
 const draftAsked = vi.hoisted(() => [] as string[]);
+/** The drafting model's system prompt, per Create, as text (CA_SALES_POLICY_ENABLED prompt lines). */
+const draftSystemAsked = vi.hoisted(() => [] as string[]);
 /** The draft call's tools, as sent (CA_SALES_POLICY_ENABLED adds an optional property). */
 const draftToolsAsked = vi.hoisted(() => [] as string[]);
 const state = vi.hoisted(() => ({
@@ -266,6 +268,14 @@ vi.mock("@/lib/ai/anthropic", () => ({
         if (!revising) {
           state.draftCalls += 1;
           draftAsked.push(JSON.stringify((request as { messages?: unknown; system?: unknown }).messages ?? []));
+          const system = (request as { system?: unknown }).system;
+          draftSystemAsked.push(
+            typeof system === "string"
+              ? system
+              : Array.isArray(system)
+                ? system.map((block) => (block as { text?: string }).text ?? "").join("\n")
+                : "",
+          );
           draftToolsAsked.push(JSON.stringify((request as { tools?: unknown }).tools ?? []));
         }
         if (revising) {
@@ -609,6 +619,7 @@ afterEach(() => {
   editTool.offered = 0;
   editTool.lastData = null;
   draftAsked.length = 0;
+  draftSystemAsked.length = 0;
   draftToolsAsked.length = 0;
 });
 
@@ -646,6 +657,7 @@ function context(): ReplayContext {
     calls: () => ({ chat: state.chatModelCalls, draft: state.draftCalls, revision: state.revisionCalls, tool: state.toolCalls, patch: patchScript.calls }),
     forms: () => store.form_instances as never,
     draftPrompts: () => [...draftAsked],
+    draftSystems: () => [...draftSystemAsked],
     draftTools: () => [...draftToolsAsked],
     redraft: (instanceId, notes) =>
       call<Record<string, unknown>>(`/api/forms/instances/${instanceId}/draft`, {
@@ -713,7 +725,13 @@ describe("the replay pack", () => {
         await recorded(replay.id, "open", () => replay.run(context()));
       });
     }
-    if (replay.fixFlags?.length) {
+    if (replay.fixFlags?.length && replay.fixStatus) {
+      // A fix-flag run that fails today (`fixStatus`): expected to fail. The day it passes, drop fixStatus.
+      it.fails(`${title} — OPEN with ${replay.fixFlags.join(", ")} on (${replay.fixStatus.open})`, async () => {
+        production(replay.fixFlags);
+        await recorded(replay.id, `fix-open:${replay.fixFlags!.join(",")}`, () => replay.run(context()));
+      });
+    } else if (replay.fixFlags?.length) {
       it(`${title} — holds with ${replay.fixFlags.join(", ")} on`, async () => {
         production(replay.fixFlags);
         await recorded(replay.id, `fix:${replay.fixFlags!.join(",")}`, () => replay.run(context()));

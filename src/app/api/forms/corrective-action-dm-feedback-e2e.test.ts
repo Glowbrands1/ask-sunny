@@ -2055,3 +2055,41 @@ describe("owner decision, 22 Oct 2026: a manual found only by its title warns bu
     expect((await review(reference.instanceId)).instance.status).toBe("finalized");
   });
 });
+
+/* ========================================================================= */
+/* CA_SALES_POLICY_ENABLED — THE DRAFT'S TWO ADDED LINES (QA's prompt audit,  */
+/* Pau's "go", 5 Nov 2026)                                                    */
+/* ========================================================================= */
+
+describe("CA_SALES_POLICY_ENABLED: the Corrective Action draft's added lines", () => {
+  afterEach(() => vi.unstubAllEnvs());
+  const SALES_RESULTS = "Sales and performance results are standards_of_conduct.";
+  const CA_CHOSEN = "When the manager has already chosen a Corrective Action, do not recommend coaching instead.";
+
+  async function draftSystem(flag: boolean): Promise<string> {
+    vi.stubEnv("CA_SALES_POLICY_ENABLED", flag ? "true" : "");
+    state.modelNotes = [];
+    const { create } = await conversation([A1]);
+    await create();
+    return state.modelNotes.at(-1) ?? "";
+  }
+
+  it("off: neither line is in the draft's prompt (as before)", async () => {
+    const system = await draftSystem(false);
+    expect(system).toContain("under_performance is for results against a sales or performance target.");
+    expect(system).not.toContain(SALES_RESULTS);
+    expect(system).not.toContain(CA_CHOSEN);
+  });
+
+  it("on: the form has no under_performance box, so sales results read as standards_of_conduct; the Corrective Action line follows the lowest-rung rule", async () => {
+    const system = await draftSystem(true);
+    expect(system).toContain(SALES_RESULTS);
+    const lowest = system.indexOf("choose the LOWEST rung that fits.");
+    const chosen = system.indexOf(CA_CHOSEN);
+    expect(lowest).toBeGreaterThan(-1);
+    // Right after it: only the separator between the two rules (the prompt is recorded as JSON).
+    expect(system.slice(lowest + "choose the LOWEST rung that fits.".length, chosen)).toMatch(/^(?:\\n|\s|",\s*")*$/);
+    // Added only: the line it follows is unchanged.
+    expect(system).toContain("under_performance is for results against a sales or performance target.");
+  });
+});
