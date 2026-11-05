@@ -265,6 +265,7 @@ export const NOV5_SILENT_FAILURE_CASES: readonly ReplayCase[] = [
     report:
       "QA, 5 Nov 2026 (the sibling app): \"Reply ended mid-sentence: 'Based on what you've described, I can prepare:'\". The trace says the model finished (end_turn); the heading was the form picker's, offered while a CA was in progress.",
     status: { open: "REPLY_CUT_CHECK_ENABLED (Step 1): no picker or heading while a form is in progress" },
+    fixFlags: ["REPLY_CUT_CHECK_ENABLED"],
     async run(t) {
       const thread = start(t);
       const first = await thread.say("I need a corrective action form for Talia Brennick for closing the salon early and turning away a guest");
