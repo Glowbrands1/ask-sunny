@@ -96,6 +96,8 @@ function run(mode: "off" | "on", index: number, scratch: string): { statuses: Ma
     ...Object.fromEntries(WITH.map((name) => [name, "true"])),
     ...(WITH.length > 0 ? { FLAG_CLASSIFY_ON: WITH.join(",") } : {}),
     ...(mode === "on" ? { [FLAG]: "true", ...Object.fromEntries(AND.map((name) => [name, "true"])), FLAG_CLASSIFY_ON: [...WITH, FLAG, ...AND].join(",") } : {}),
+    // The baseline has every flipped flag off, even one production-flags.json lists as on ("assumedOn"): the replay pack leaves these off.
+    ...(mode === "off" ? { FLAG_CLASSIFY_OFF: [FLAG, ...AND].join(",") } : {}),
   };
   const started = Date.now();
   const child = spawnSync(
@@ -222,7 +224,7 @@ function main(): void {
   const lines = [
     `# ${NAME}: which tests ${AND.length > 0 ? "they change" : "it changes"}, and why`,
     "",
-    `Written by \`node scripts/flag-classify.ts\` (${RUNS} runs off, ${RUNS} on, each a child process with a clean env${WITH.length > 0 ? `; on in both: ${WITH.map((name) => `\`${name}\``).join(", ")}` : ""}${AND.length > 0 ? `; on together with ${FLAG} in the on runs only: ${AND.map((name) => `\`${name}\``).join(", ")}` : ""}). Paths: ${PATHS.length > 0 ? PATHS.map((path) => `\`${path}\``).join(", ") : "the whole suite"}. Classifications are kept in \`${CLASSES}\`.`,
+    `Written by \`node scripts/flag-classify.ts\` (${RUNS} runs off, ${RUNS} on, each a child process with a clean env${WITH.length > 0 ? `; on in both: ${WITH.map((name) => `\`${name}\``).join(", ")}` : ""}${AND.length > 0 ? `; on together with ${FLAG} in the on runs only: ${AND.map((name) => `\`${name}\``).join(", ")}` : ""}; off in the off runs, even where production-flags.json lists them as on: ${[FLAG, ...AND].map((name) => `\`${name}\``).join(", ")}). Paths: ${PATHS.length > 0 ? PATHS.map((path) => `\`${path}\``).join(", ") : "the whole suite"}. Classifications are kept in \`${CLASSES}\`.`,
     "",
     `Tests run: ${ids.length}. Changed: ${rows.length}. ${(["INTENDED", "INTENDED-HARNESS", "REGRESSION", "FLAKY", "UNCLASSIFIED"] as const).map((category) => `${category} ${counts.get(category) ?? 0}`).join(", ")}.`,
     "",

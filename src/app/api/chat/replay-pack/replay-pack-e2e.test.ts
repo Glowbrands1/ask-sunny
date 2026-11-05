@@ -566,6 +566,14 @@ const KNOWN_OFF = PRODUCTION_FLAGS.off;
  * behaviour change in a case that still passes is seen.
  */
 const CLASSIFY_ON = (process.env.FLAG_CLASSIFY_ON ?? "").split(",").map((name) => name.trim()).filter((name) => name !== "");
+/*
+ * FLAG_CLASSIFY_OFF (the same script, its "off" runs only): flags the gate
+ * flips that this file lists as production's ("assumedOn" included) are OFF
+ * in the baseline. QA, 5 Nov 2026: PRIOR_COACHING_OPTIONAL_ENABLED is listed
+ * under assumedOn but is off in Vercel production; flipped with the sales
+ * flags, its off column must not have it on.
+ */
+const CLASSIFY_OFF = new Set((process.env.FLAG_CLASSIFY_OFF ?? "").split(",").map((name) => name.trim()).filter((name) => name !== ""));
 const record: { turns: { question: string; reply: string; updated: string[] | null }[] } = { turns: [] };
 async function recorded(id: string, mode: string, run: () => Promise<void>) {
   record.turns = [];
@@ -589,7 +597,7 @@ function production(extra: readonly string[] = []) {
     if (!saved.has(name)) saved.set(name, process.env[name]);
     delete process.env[name];
   }
-  for (const name of [...PRODUCTION, ...extra]) {
+  for (const name of [...PRODUCTION.filter((flag) => !CLASSIFY_OFF.has(flag)), ...extra]) {
     if (!saved.has(name)) saved.set(name, process.env[name]);
     process.env[name] = "true";
   }
