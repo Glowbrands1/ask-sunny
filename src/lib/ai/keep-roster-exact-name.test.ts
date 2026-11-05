@@ -61,6 +61,12 @@ afterEach(() => {
 
 describe("a roster name with a not-a-name word in it", () => {
   it("off: the keeper takes it off the card, and the reply still drafts for it (the live report)", () => {
+    /*
+     * FORM_NAME_FROM_ROSTER_ENABLED off too, explicitly: with it on (production
+     * since 5 Nov 2026), #531 runs the same reply rewrite, so this pin of the
+     * live report holds only with both flags off.
+     */
+    vi.stubEnv("FORM_NAME_FROM_ROSTER_ENABLED", "");
     const held = hold([ENTRY]);
     expect(held.formProposal?.employeeName ?? null).toBeNull();
     expect(held.content).toContain(`**${NAME}**`);

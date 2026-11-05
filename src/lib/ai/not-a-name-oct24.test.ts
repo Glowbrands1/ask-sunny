@@ -651,6 +651,13 @@ describe("QA L23: the exit form is for the person the manager typed", { timeout:
    * manager, so it does not survive, and "Test Employee" replaces it.
    */
   it("a saved name the manager never typed gives way to the one they type", async () => {
+    /*
+     * FORM_NAME_FROM_ROSTER_ENABLED off, explicitly: turn 1 recreates the
+     * pre-guard bug ("for **One Tanner**") with NOT_A_NAME_GUARD off, and with
+     * FORM_NAME on (production since 5 Nov 2026) #531's rewrite already takes
+     * that name out of the reply. The guard's own turns are the test.
+     */
+    vi.stubEnv("FORM_NAME_FROM_ROSTER_ENABLED", "");
     let savedAfterTurn2: string | null | undefined;
     const turns = await converse(L23_TURNS, { 0: L23_PETS_REPLY }, (index) => {
       if (index === 2) {
