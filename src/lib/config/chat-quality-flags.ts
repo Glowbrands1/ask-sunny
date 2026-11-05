@@ -2503,3 +2503,14 @@ export function formEditNoopGuardEnabled(): boolean {
 export function keepRosterExactNameEnabled(): boolean {
   return envFlag("KEEP_ROSTER_EXACT_NAME_ENABLED");
 }
+
+/**
+ * An incident the policy reading's specific topics find in the manager's
+ * words ("he brought his new kitten to the store") is an account: the
+ * Corrective Action card never says "You haven't told me what happened yet"
+ * beside a citation "from what you described" (coordinator via QA,
+ * production, 5 Nov 2026). Off, the account is read exactly as before.
+ */
+export function describedTopicIsAccountEnabled(): boolean {
+  return envFlag("DESCRIBED_TOPIC_IS_ACCOUNT_ENABLED");
+}
