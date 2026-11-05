@@ -2559,3 +2559,16 @@ export function titleOfTheEmployeeEnabled(): boolean {
 export function rosterNearMissEnabled(): boolean {
   return envFlag("ROSTER_NEAR_MISS_ENABLED");
 }
+
+/**
+ * REPLY_MATCHES_CARD_ENABLED (port from the sibling app; QA for Pau, 5 Nov
+ * 2026; default off). The last step of every chat turn compares the finished
+ * reply with the finished card and makes the reply agree with it: no employee
+ * on the card, no person named and "Who is this form for?"; an employee on the
+ * card, never asked who; one policy, the card's; no removed Type of Offense
+ * label; never "You haven't told me what happened yet" beside an account
+ * (`ai/reply-matches-card.ts`). Off, as before.
+ */
+export function replyMatchesCardEnabled(): boolean {
+  return envFlag("REPLY_MATCHES_CARD_ENABLED");
+}

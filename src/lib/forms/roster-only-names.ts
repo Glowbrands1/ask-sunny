@@ -6,6 +6,7 @@ import { HAS_EMPLOYEE_AND_PLACE, SAYS_READY } from "@/lib/ai/ca-what-happened";
 import { matchEmployeeName, normalizeTypedName, type RosterEmployee } from "./employee-match";
 import { personRosterNames } from "./person-guard";
 import { requestMessage } from "./request-slot";
+import { namesAForm } from "./template-intent";
 
 /**
  * ============================================================================
@@ -42,8 +43,8 @@ import { requestMessage } from "./request-slot";
 
 export const ASK_WHO = "Who is this form for? Tell me the employee's full name.";
 /** The card's own invitation to create the draft (`ai/form-proposal.ts`), said only when the card has its employee. */
-const CREATE_WHEN_READY = /Create the draft here when you're ready,? and edit it below — nothing is saved to anyone's file until you do\.[ \t]*/g;
-const ASKS_WHO = /Who is this (?:\*\*[^*]+\*\* |form )?for\?/i;
+export const CREATE_WHEN_READY = /Create the draft here when you're ready,? and edit it below — nothing is saved to anyone's file until you do\.[ \t]*/g;
+export const ASKS_WHO = /Who is this (?:\*\*[^*]+\*\* |form )?for\?/i;
 
 function rowsFrom(names: readonly string[]): RosterEmployee[] {
   return names.flatMap((name, index) => {
@@ -146,7 +147,7 @@ export function rosterOnlyNames(response: AskResponse, names: readonly string[],
         names,
         draftedFor(content),
       );
-      if (!ask && !ASKS_WHO.test(content) && !ASKS_A_CHOICE.test(content)) ask = ASK_WHO;
+      if (!ask && !ASKS_WHO.test(content) && !ASKS_A_CHOICE.test(content) && !ASKS_FOR_THE_NAME.test(content)) ask = ASK_WHO;
     }
   }
 
@@ -217,9 +218,12 @@ function withoutSlotNameInObservation(content: string, message: string | undefin
  * words only: no word list.
  */
 /** A reply line that asks the manager to choose or confirm a person: its names are the choices. */
-const ASKS_A_CHOICE = /Did you mean|Which of them|Is this for \*\*/;
+/** The reply's own list of details asks who already: "1. Employee's full name", "1. The employee's full name — or tell me it's for the whole team." */
+// FIRST_NAME_ASK's "Is this for ivy? Tell me her full name." asks too (the sibling app's final gate, 5 Nov 2026).
+export const ASKS_FOR_THE_NAME = /\b(?:employee['’]s|her|his|their) full name\b/i;
+export const ASKS_A_CHOICE = /Did you mean|Which of them|Is this for (?:\*\*|[^?\n*]{1,60}\?)/;
 
-function withoutUnseatedName(content: string, typed: readonly (string | null)[], names: readonly string[], drafted: readonly string[] = []): string {
+export function withoutUnseatedName(content: string, typed: readonly (string | null)[], names: readonly string[], drafted: readonly string[] = []): string {
   const unseated = (list: readonly (string | null)[]) => [...new Set(list.map((name) => name?.trim() ?? "").filter((name) => name && !rosterSpelling(name, names)))];
   const people = unseated(typed);
   // The name the reply drafted for ("… for **zebulon marchbanks**") is a person's however it was typed: its words in any case.
@@ -251,14 +255,15 @@ function withoutUnseatedName(content: string, typed: readonly (string | null)[],
 }
 
 /** The person the reply says it drafts for: "I'll draft a **Corrective Action Form** for **<name>**". */
-function draftedFor(content: string): string[] {
+export function draftedFor(content: string): string[] {
   return [...content.matchAll(/\b(?:draft|create|put)\b[^\n.]*?\*\*[^*]+\*\* for \*\*([^*]+)\*\*/gi)].map((match) => match[1]!.trim());
 }
 
 /** The name the request put straight after "for" ("create a CA for <Name>, …"), when it is nobody's roster spelling; or null. */
-function slotName(message: string | undefined, names: readonly string[]): string | null {
+export function slotName(message: string | undefined, names: readonly string[]): string | null {
   const named = message ? /\bfor\s+(\p{Lu}[\p{L}'’-]+(?:\s+\p{Lu}[\p{L}'’-]+){0,2})\s*[,.]/u.exec(message)?.[1] : undefined;
-  return named && !rosterSpelling(named, names) ? named : null;
+  // A form's name is never the person: "a corrective action for Coaching Form." (the sibling app's pre-check, 5 Nov 2026).
+  return named && !rosterSpelling(named, names) && !namesAForm(named) ? named : null;
 }
 
 /** FORM_NAME_FROM_ROSTER_ENABLED: `rosterOnlyNames` with the actor's roster read this turn. Off, or no roster: as built. */
