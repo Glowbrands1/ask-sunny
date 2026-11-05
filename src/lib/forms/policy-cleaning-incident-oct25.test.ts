@@ -293,3 +293,27 @@ describe("flag on: denied refusals and failures, and leaving without cleaning", 
     expect(cleaningIncidentPhrase(text)).toBeNull();
   });
 });
+
+/*
+ * QA's overnight scan, 4 Nov 2026, sf-s15, in the manager's exact words (the
+ * person invented): opening duties and daily cleaning left undone. The card
+ * read "Standards of Conduct — assigned work that wasn't completed"; with the
+ * flag on the code reads the cleaning and cites Care and Cleaning p.21.
+ */
+describe("sf-s15: \"failing to complete opening duties … did not complete daily cleaning duties\"", () => {
+  const SF_S15 = "Write me a CA for Isolde Brannock for failing to complete opening duties. Isolde did not complete daily cleaning duties. on november 2, 2026";
+
+  it("flag off: the task reading stands (the bug)", () => {
+    expect(cleaningIncidentPhrase(SF_S15)).toBeNull();
+    expect(readCaPolicy(SF_S15).topics).toContain("task");
+  });
+
+  it("flag on: Care and Cleaning of Equipment and Facilities p.21, never the task reading", () => {
+    on();
+    expect(cleaningIncidentPhrase(SF_S15)).toBe("did not complete daily cleaning");
+    expect(readCaPolicy(SF_S15).topics).not.toContain("task");
+    const section = describedManualSection({ text: SF_S15, chunks: CHUNKS });
+    expect(section?.section.heading).toBe(CARE);
+    expect(section?.section.page).toBe(21);
+  });
+});

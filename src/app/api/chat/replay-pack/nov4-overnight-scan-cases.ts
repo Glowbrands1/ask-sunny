@@ -184,6 +184,7 @@ export const NOV4_OVERNIGHT_SCAN_CASES: readonly ReplayCase[] = [
   {
     /* Coverage (QA): step 7, but the "as you said" attribution is NOT COVERED. */
     id: "nov4-scan-sf-s15-opening-duties-cleaning",
+    fixFlags: ["POLICY_CLEANING_INCIDENT_ENABLED"],
     title: "a CA for not completing opening/cleaning duties on 11/2/2026 — Care and Cleaning of Equipment and Facilities (p.21), not Late Opening or Attendance, and no \"as you said\"",
     report: `${REPORT}, sf-s15: "Write me a CA for Isolde Brannock for failing to complete opening duties. Isolde did not complete daily cleaning duties. on november 2, 2026"`,
     // Run 4 Nov 2026 (production flags): fails as below.
