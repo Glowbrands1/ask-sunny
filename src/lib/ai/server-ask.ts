@@ -160,7 +160,7 @@ import { pinnedManualBlock } from "./policy-citation-fields";
 import { deliverFormProposal } from "./grounded-turn";
 import { withJobTitleCase, withJobTitleFromWords, withJobTitleReadBackCase, withSpelledOutTitle } from "./job-title-from-words";
 import { withTerseSlots } from "./terse-slots";
-import { withCaWhatHappened } from "./ca-what-happened";
+import { withCaWhatHappened, withCoachingWhatHappened } from "./ca-what-happened";
 import { withFirstNameAsk } from "./first-name-ask";
 import { withFirstNameAnswerFor, withFirstNameSuggestFor } from "./first-name-suggest";
 import { withAmountUnknownAck } from "./amount-unknown-ack";
@@ -193,6 +193,7 @@ import type { AskRequest, AskResponse } from "./types";
 import { keepManagerActionPlan } from "./manager-action-plan-reply";
 import { withManagerNameGuard, withManagerNameRule } from "./manager-name-guard";
 import { withoutReportTurnsForForm } from "./report-turns";
+import { withTitleOfTheEmployee } from "./title-of-the-employee";
 
 /**
  * THE GROUNDED ANSWER PATH — server-side, and only server-side.
@@ -302,7 +303,8 @@ export async function answerQuestion(
   if (passwordHelp) {
     return { content: passwordHelp, citations: [], coverage: "grounded", recommendedVideoIds: [] };
   }
-  const answered = withoutSensitiveDefaults(await answerQuestionChecked(request, actor, memory), request.question);
+  // TITLE_OF_THE_EMPLOYEE_ENABLED: a title the manager attached to another named person is never the card's (`ai/title-of-the-employee.ts`).
+  const answered = withTitleOfTheEmployee(withoutSensitiveDefaults(await answerQuestionChecked(request, actor, memory), request.question), request);
   /*
    * CA_SALES_POLICY_ENABLED: a reply about a policy and an employee the roster
    * recognises ends with ONE offer to start a Corrective Action citing that
@@ -343,6 +345,7 @@ async function answerQuestionChecked(
     noteTraceOutcome(response);
     // Last on every path, after the reply check too: the Action Plan is the manager's or none.
     // CA_ASKS_WHAT_HAPPENED_ENABLED: a Corrective Action card with no account asks what happened.
+    // COACHING_ASKS_WHAT_HAPPENED_ENABLED: a Coaching Form card with no account asks what happened, never "Everything I need is here" (sf-s27).
     // JOB_TITLE_FROM_WORDS_ENABLED: an empty Job Title takes the title the manager typed; JOB_TITLE_CASE_ENABLED: in title case.
     // WARNING_LEVEL_AND_CLAUSE_ENABLED: "this should be a written and note a verbal ca was given …" states written.
     // FIRST_NAME_ASK_ENABLED: "Is this for ivy? Tell me her full name.", never the same question twice.
@@ -360,7 +363,7 @@ async function answerQuestionChecked(
         withUnreadDateAsk(
           withStatedAmount(
             withFirstNameAsk(
-              withWarningLevelFromClause(withSpelledOutTitle(withJobTitleReadBackCase(withJobTitleCase(withJobTitleFromWords(withCaWhatHappened(await applyQuietQuality(response), request), request)))), request),
+              withWarningLevelFromClause(withSpelledOutTitle(withJobTitleReadBackCase(withJobTitleCase(withJobTitleFromWords(withCoachingWhatHappened(withCaWhatHappened(await applyQuietQuality(response), request), request), request)))), request),
               request,
             ),
             request,

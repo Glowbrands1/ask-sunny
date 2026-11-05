@@ -1,3 +1,5 @@
+import { rosterNameInCandidateEnabled } from "@/lib/config/chat-quality-flags";
+
 import { matchEmployeeName, normalizeTypedName, type RosterEmployee } from "./employee-match";
 
 /**
@@ -54,7 +56,26 @@ export function couldBeOnRoster(name: string, names: readonly string[]): boolean
   const rows = rowsFromNames(names);
   if (rows.length === 0) return true;
   if (rosterShaped(name, rows)) return true;
-  return matchEmployeeName(name, rows).kind !== "none";
+  if (matchEmployeeName(name, rows).kind !== "none") return true;
+  return rosterNameInCandidateEnabled() && endsWithRosterName(name, rows);
+}
+
+/**
+ * ROSTER_NAME_IN_CANDIDATE_ENABLED (QA, 5 Nov 2026, R2): "When Odalys" — a
+ * word that opens the sentence, then the employee's first name — is the
+ * employee, not somebody shaped like nobody. The candidate's last words are a
+ * roster person's first name alone, or a roster-shaped name (a roster first
+ * name, then more). Exact words only: no close match, no last name alone, so
+ * "Club Close" and "Under" are still nobody.
+ */
+function endsWithRosterName(name: string, rows: readonly RosterEmployee[]): boolean {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  const firsts = new Set(rows.flatMap((row) => [row.firstName, row.preferredFirstName ?? ""]).map((first) => normalizeTypedName(first)).filter(Boolean));
+  for (let start = 1; start < words.length; start += 1) {
+    const rest = words.slice(start);
+    if (rest.length === 1 ? firsts.has(normalizeTypedName(rest[0]!)) : rosterShaped(rest.join(" "), rows)) return true;
+  }
+  return false;
 }
 
 /* ------------------------------------------------- the message's anchor -- */

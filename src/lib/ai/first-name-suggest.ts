@@ -1,11 +1,12 @@
 import {
+  rosterNearMissEnabled,
   firstNameSuggestEnabled,
   firstNameYesKeepsRequestEnabled,
   formNameFromRosterEnabled,
   partialSurnameAskEnabled,
   suggestAnswerReplacesTypedEnabled,
 } from "@/lib/config/chat-quality-flags";
-import { displayName, type RosterEmployee } from "@/lib/forms/employee-match";
+import { displayName, editDistance, type RosterEmployee } from "@/lib/forms/employee-match";
 import { looseFits } from "@/lib/forms/loose-fit";
 import { typedWithOtherSurname } from "@/lib/forms/request-slot";
 
@@ -276,7 +277,10 @@ function replaceTyped(text: string, first: RegExp, options: readonly string[], n
     next &&
     options.some((option) => {
       const surname = words(option).slice(1).join(" ");
-      return surname !== "" && looseFits(`${typed} ${next[1]}`, { name: `${typed} ${surname}`, preferred: null });
+      if (surname === "") return false;
+      if (looseFits(`${typed} ${next[1]}`, { name: `${typed} ${surname}`, preferred: null })) return true;
+      // ROSTER_NEAR_MISS_ENABLED (QA's testers, 5 Nov 2026, R3): "Wexlarby" for Wexlerby — the surname typed with one letter wrong is the one answered.
+      return rosterNearMissEnabled() && !/\s/.test(surname) && surname.length >= 4 && editDistance(next[1]!.toLowerCase(), surname.toLowerCase()) === 1;
     })
   ) {
     end += next[0].length;

@@ -2503,3 +2503,59 @@ export function formEditNoopGuardEnabled(): boolean {
 export function keepRosterExactNameEnabled(): boolean {
   return envFlag("KEEP_ROSTER_EXACT_NAME_ENABLED");
 }
+
+/**
+ * COACHING_ASKS_WHAT_HAPPENED_ENABLED (Pau, 5 Nov 2026, sf-s27; default off).
+ * "Create a coaching form." → "<name>" answered "Everything I need is here …
+ * I have the employee and the salon." with no incident and no draft. On: a
+ * Coaching Form card for a person with no account in the manager's turns for
+ * it does not say it has everything; it asks what happened, once per card
+ * (`ai/ca-what-happened.ts`, the Corrective Action's same test). Off, as
+ * before.
+ */
+export function coachingAsksWhatHappenedEnabled(): boolean {
+  return envFlag("COACHING_ASKS_WHAT_HAPPENED_ENABLED");
+}
+
+/**
+ * ROSTER_NAME_IN_CANDIDATE_ENABLED (QA, 5 Nov 2026, R2 checked in this app;
+ * default off). One employee's story that names their district manager in
+ * passing ("When <employee> spoke with District manager <name> …"): with
+ * FORM_NAME_FROM_ROSTER_ENABLED on, the candidate "When <employee>" is set
+ * aside as shaped like nobody on the roster (its first word is nobody's first
+ * name), and the card went to the district manager, the only other roster
+ * person the turn names. On: a candidate whose last words are a roster
+ * person's first name, or a roster-shaped name, could be that person
+ * (`forms/roster-shape.ts` couldBeOnRoster). Off, as before.
+ */
+export function rosterNameInCandidateEnabled(): boolean {
+  return envFlag("ROSTER_NAME_IN_CANDIDATE_ENABLED");
+}
+
+/**
+ * TITLE_OF_THE_EMPLOYEE_ENABLED (port from the sibling app; QA, 5 Nov 2026,
+ * R2; default off). One employee's story named their district manager in
+ * passing, and the card's Job title was "District Manager", the other
+ * person's. On: a title the manager's turns only ever attach to another named
+ * person is not the employee's; the card has none
+ * (`ai/title-of-the-employee.ts`). Off, as before.
+ */
+export function titleOfTheEmployeeEnabled(): boolean {
+  return envFlag("TITLE_OF_THE_EMPLOYEE_ENABLED");
+}
+
+/**
+ * ROSTER_NEAR_MISS_ENABLED (port from the sibling app; QA's testers, 5 Nov
+ * 2026, R3/R5/R7; default off, on with FORM_NAME_FROM_ROSTER_ENABLED). A real,
+ * active roster person's surname typed with one letter wrong: with FORM_NAME
+ * on there, the card's Employee was "Not yet", the Action Plan still named the
+ * person, and the reply asked "Who is this form for?"; here, with the flip's
+ * flags, the empty card's reply names the person. On: (a) a near-miss of
+ * exactly one roster name is asked "Is this for <roster full name>?" as a first
+ * name typed alone is, and the card waits (`forms/roster-only-names.ts`); (b)
+ * with no employee on the card, no reply text names the person who is not on
+ * it. Off, as before.
+ */
+export function rosterNearMissEnabled(): boolean {
+  return envFlag("ROSTER_NEAR_MISS_ENABLED");
+}
