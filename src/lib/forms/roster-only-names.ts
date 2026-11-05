@@ -1,11 +1,12 @@
-import { formNameFromRosterEnabled, rosterNearMissEnabled } from "@/lib/config/chat-quality-flags";
+import { formNameFromRosterEnabled, metricGuardEnabled, rosterNearMissEnabled } from "@/lib/config/chat-quality-flags";
+import { isGlossaryTerm } from "@/lib/ai/chat-glossary";
 import type { AskResponse } from "@/lib/ai/types";
 
 import { HAS_EMPLOYEE_AND_PLACE, SAYS_READY } from "@/lib/ai/ca-what-happened";
 
 import { matchEmployeeName, normalizeTypedName, type RosterEmployee } from "./employee-match";
 import { personRosterNames } from "./person-guard";
-import { requestMessage } from "./request-slot";
+import { metricMessage, namesAMetric, requestMessage } from "./request-slot";
 import { namesAForm } from "./template-intent";
 
 /**
@@ -146,6 +147,8 @@ export function rosterOnlyNames(response: AskResponse, names: readonly string[],
         [employee, slotName(message, names)],
         names,
         draftedFor(content),
+        // The app's own words stay (QA, 5 Nov 2026: "QA Probe XZT One" made "One more question" "The employee more question").
+        { ownWords: true },
       );
       if (!ask && !ASKS_WHO.test(content) && !ASKS_A_CHOICE.test(content) && !ASKS_FOR_THE_NAME.test(content)) ask = ASK_WHO;
       content = withNotFoundNote(content, slotName(message, names), names);
@@ -224,7 +227,20 @@ function withoutSlotNameInObservation(content: string, message: string | undefin
 export const ASKS_FOR_THE_NAME = /\b(?:employee['’]s|her|his|their) full name\b/i;
 export const ASKS_A_CHOICE = /Did you mean|Which of them|Is this for (?:\*\*|[^?\n*]{1,60}\?)/;
 
-export function withoutUnseatedName(content: string, typed: readonly (string | null)[], names: readonly string[], drafted: readonly string[] = []): string {
+/**
+ * `ownWords` (REPLY_MATCHES_CARD_ENABLED's rule 1; QA, 5 Nov 2026): one word of the name, alone, is the app's own
+ * word — kept — where it starts a line or a sentence with no other word of that name beside it ("One more
+ * question" for "QA Probe XZT One", "Will you want …" for "Will Drummet"), and where it is written in another case
+ * than the name was typed ("Management will review"), unless the name was typed all in lowercase. The whole name,
+ * and the word mid-sentence as typed ("with Will"), are still "the employee".
+ */
+export function withoutUnseatedName(
+  content: string,
+  typed: readonly (string | null)[],
+  names: readonly string[],
+  drafted: readonly string[] = [],
+  options: { readonly ownWords?: boolean } = {},
+): string {
   const unseated = (list: readonly (string | null)[]) => [...new Set(list.map((name) => name?.trim() ?? "").filter((name) => name && !rosterSpelling(name, names)))];
   const people = unseated(typed);
   // The name the reply drafted for ("… for **zebulon marchbanks**") is a person's however it was typed: its words in any case.
@@ -237,6 +253,20 @@ export function withoutUnseatedName(content: string, typed: readonly (string | n
     ...words.map((word) => new RegExp(String.raw`\*{0,2}\b${escape(word)}\b\*{0,2}`, "g")),
     ...anyCase.map((word) => new RegExp(String.raw`\*{0,2}\b${escape(word)}\b\*{0,2}`, "gi")),
   ];
+  const nameWords = new Set([...people, ...draftedPeople].flatMap((name) => name.toLowerCase().split(/\s+/)));
+  const typedLower = new Set(draftedPeople.filter((name) => name === name.toLowerCase()).flatMap((name) => name.split(/\s+/)));
+  const typedAs = new Set([...people, ...draftedPeople].flatMap((name) => name.split(/\s+/)));
+  /** `ownWords`: this one-word match is the app's word, not the name. */
+  const ownWord = (line: string, found: string, at: number): boolean => {
+    if (!options.ownWords) return false;
+    const word = found.replace(/\*/g, "");
+    if (!typedAs.has(word) && !typedLower.has(word.toLowerCase())) return true;
+    const before = line.slice(0, at);
+    const after = line.slice(at + found.length);
+    const besideName = nameWords.has((/([\p{L}'’-]+)\W*$/u.exec(before)?.[1] ?? "").toLowerCase()) || nameWords.has((/^\W*([\p{L}'’-]+)/u.exec(after)?.[1] ?? "").toLowerCase());
+    // A line or a sentence starts here (after ".", "!" or "?"; never after ":", where a name begins a field: "action plan: Zebulon will …").
+    return /^\s*$|[.!?]\s+$/.test(before) && !besideName && !found.startsWith("*");
+  };
   return content
     .split("\n")
     .filter((line) => !/^\s*\**\s*Name\s*:/i.test(line))
@@ -248,7 +278,8 @@ export function withoutUnseatedName(content: string, typed: readonly (string | n
       for (const roster of names) {
         next = next.replace(new RegExp(String.raw`\b${escape(roster)}\b`, "gi"), (found) => `\u0000${kept.push(found) - 1}\u0000`);
       }
-      for (const pattern of [...whole, ...single]) next = next.replace(pattern, "the employee");
+      for (const pattern of whole) next = next.replace(pattern, "the employee");
+      for (const pattern of single) next = next.replace(pattern, (found: string, at: number, line: string) => (ownWord(line, found, at) ? found : "the employee"));
       next = next.replace(/(^|[.!?]\s+|\*\*\s*)the employee/g, (_all, lead: string) => `${lead}The employee`);
       return next.replace(/\u0000(\d+)\u0000/g, (_all, index: string) => kept[Number(index)]!);
     })
@@ -283,8 +314,46 @@ export function slotName(message: string | undefined, names: readonly string[]):
 
 /** FORM_NAME_FROM_ROSTER_ENABLED: `rosterOnlyNames` with the actor's roster read this turn. Off, or no roster: as built. */
 export function withRosterOnlyNames(response: AskResponse): AskResponse {
-  if (!formNameFromRosterEnabled()) return response;
+  // METRIC_GUARD_ENABLED: with FORM_NAME off, the choices still never offer a metric (`withoutMetricChoices`).
+  if (!formNameFromRosterEnabled()) return metricGuardEnabled() ? withoutMetricChoices(response, metricMessage(), personRosterNames() ?? []) : response;
   const names = personRosterNames();
   if (!names || names.length === 0) return response;
   return rosterOnlyNames(response, names, requestMessage());
+}
+
+/**
+ * METRIC_GUARD_ENABLED (the sibling app's LIVE=1, 5 Nov 2026, the smaller set: CA_SALES + REPLY_MATCHES_CARD
+ * + TITLE, 3/3 runs). "I need a corrective action verbal for <first name> <last initial>. This is for Under
+ * Performance on PPTA, LPSVA, Club Average, Club Close %, and Spa %." replied "Which of them is this Corrective
+ * Action Form for — **Club Close**, **<first name>** or **Under**?". Every guard that rules a metric out
+ * (`request-slot.ts` outsideRequestSlot, `answer-not-a-name.ts`) is behind FORM_NAME_FROM_ROSTER_ENABLED; this
+ * runs on the final reply whatever FORM_NAME says. A choice of "Which of them … — A, B or C?" or "Is this for
+ * **X**?" whose every word is an item of the request's capitalised list ("Club Close") or of a "for <offense>"
+ * phrase ("Under Performance") is never offered; a roster person is always kept. One choice left is asked
+ * "Is this for **<them>**?" (their roster name when one roster person has that first name), none asks who.
+ * Pure; no message, as built.
+ */
+export function withoutMetricChoices(response: AskResponse, message: string | undefined, names: readonly string[]): AskResponse {
+  if (!message) return response;
+  const words = (text: string) => text.toLowerCase().match(/[\p{L}\p{N}'’]+/gu) ?? [];
+  const isMetric = (name: string) => {
+    if (rosterSpelling(name, names)) return false;
+    // CHAT_GLOSSARY_ENABLED: an approved term ("MSB") is never a person, wherever the message put it.
+    if (isGlossaryTerm(name)) return true;
+    // The same rule as the name readers' (`request-slot.ts` namesAMetric): a list item, a "… %" phrase, an offense word.
+    return namesAMetric(name, message);
+  };
+  const asked = (name: string) => {
+    const byFirst = names.filter((roster) => words(roster)[0] === words(name)[0]);
+    return `Is this for **${rosterSpelling(name, names) ?? (words(name).length === 1 && byFirst.length === 1 ? byFirst[0] : name)}**?`;
+  };
+  let content = response.content.replace(/Which of them is this ((?:\*\*[^*]+\*\* )?)for\s*[—–-]\s*([^?\n]+)\?/g, (whole, form: string, list: string) => {
+    const all = listedNames(list);
+    const kept = all.filter((name) => !isMetric(name));
+    if (kept.length === all.length) return whole;
+    if (kept.length >= 2) return `Which of them is this ${form}for — ${said(kept)}?`;
+    return kept.length === 1 ? asked(kept[0]!) : ASK_WHO;
+  });
+  content = content.replace(/Is this for \*\*([^*]+)\*\*\?/g, (whole, name: string) => (isMetric(name) ? ASK_WHO : whole));
+  return content === response.content ? response : { ...response, content };
 }

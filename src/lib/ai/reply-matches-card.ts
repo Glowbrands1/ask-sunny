@@ -77,7 +77,8 @@ function withNobodyNamed(content: string, names: readonly string[], message: str
     .split("\n")
     .filter((line) => !SAYS_READY.test(line.trim()))
     .join("\n");
-  next = withoutUnseatedName(next, [slotName(message, names)], names, draftedFor(next));
+  // The app's own words stay: one word of the name alone at a sentence start, or in another case (`ownWords`).
+  next = withoutUnseatedName(next, [slotName(message, names)], names, draftedFor(next), { ownWords: true });
   if (!ASKS_WHO.test(next) && !ASKS_A_CHOICE.test(next) && !ASKS_FOR_THE_NAME.test(next)) next = `${next.trim()}\n\n${ASK_WHO}`;
   return next;
 }
