@@ -2522,3 +2522,15 @@ export function formLeadFullSentenceEnabled(): boolean {
 export function payrollAnswerSpellingEnabled(): boolean {
   return envFlag("PAYROLL_ANSWER_SPELLING_ENABLED");
 }
+
+/**
+ * OBSERVATION_NOT_EARLIER_QUESTION_ENABLED (Pau via QA, 5 Nov 2026, sf-s25;
+ * default off; same flag in both apps). The card's Observation of Offense
+ * began with a question asked before the request ("What policy would it be
+ * if …"). On, a Corrective Action's account is read without the turns before
+ * the latest request that were questions to answer
+ * (`forms/earlier-questions.ts`). Off, as before.
+ */
+export function observationNotEarlierQuestionEnabled(): boolean {
+  return envFlag("OBSERVATION_NOT_EARLIER_QUESTION_ENABLED");
+}

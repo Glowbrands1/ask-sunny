@@ -10,6 +10,7 @@ import { readExitFacts } from "@/lib/forms/exit-facts";
 import { statedPayrollDeduct } from "@/lib/forms/payroll-deduct";
 import { withoutAmountAnswers } from "@/lib/forms/amount-answer";
 import { answersOnlyPayroll } from "@/lib/forms/account-only-policy-query";
+import { withoutEarlierQuestions } from "@/lib/forms/earlier-questions";
 import { normalizePayrollWording } from "@/lib/forms/payroll-deduct-answer";
 import { managerStatedWarningLevel, templateHasWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
 import { describesIncident, describesMoreThanTheRequest } from "@/lib/forms/corrective-action-intake";
@@ -44,6 +45,7 @@ import {
   observationNotPolicyNameEnabled,
   keepRosterExactNameEnabled,
   caSalesPolicyEnabled,
+  observationNotEarlierQuestionEnabled,
   payrollAnswerSpellingEnabled,
   formNameFromRosterEnabled,
 } from "@/lib/config/chat-quality-flags";
@@ -254,7 +256,9 @@ export function holdFilledSlots(input: {
       // AMOUNT_ANSWER_NOT_ACCOUNT_ENABLED: "i dont know the amount" says nothing that happened.
       // CARD_OBSERVATION_OWN_REQUEST_ENABLED (QA live check, 3 Nov 2026): a new request's card reads back only
       // that request's turns, never the earlier incident ("…rugs untl 12;30pm <name> for being late to opening").
-      const said = withoutAmountAnswers(cardObservationOwnRequestEnabled() ? currentRequestTurns(turns, next.employeeName) : turns);
+      const own = withoutAmountAnswers(cardObservationOwnRequestEnabled() ? currentRequestTurns(turns, next.employeeName) : turns);
+      // OBSERVATION_NOT_EARLIER_QUESTION_ENABLED (sf-s25): a question asked before the request is not the account.
+      const said = observationNotEarlierQuestionEnabled() && next.templateKey === "dpoa" ? withoutEarlierQuestions(own) : own;
       // FORM_EDIT_DATE_RULES_ENABLED: an edit replaces, adds to, or never touches the Observation.
       if (formEditDateRulesEnabled()) content = observationByRules(content, said, build);
       else if (grammarAskNotAccountEnabled()) content = withGrammarAnswered(build(content, said.map(withoutAsksToTheApp)), turns);
