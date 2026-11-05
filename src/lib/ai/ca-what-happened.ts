@@ -1,4 +1,5 @@
-import { caAsksWhatHappenedEnabled } from "@/lib/config/chat-quality-flags";
+import { caAsksWhatHappenedEnabled, caSalesPolicyEnabled } from "@/lib/config/chat-quality-flags";
+import { deniesAFault } from "@/lib/forms/draft-never-blank";
 import {
   NO_INCIDENT_NOTE,
   answeredWhatHappened,
@@ -72,6 +73,23 @@ function aboutSomebodyElse(clause: string, name: string): boolean {
   return !words.some((word) => NOT_A_PERSON.has(word) || own.has(word));
 }
 
+/*
+ * CA_SALES_POLICY_ENABLED (QA, Sunny production, 4 Nov 2026: eight managers'
+ * requests asked "You haven't told me what happened yet"): "for not
+ * completing her woven courses by the deadline", "Not meeting sales
+ * requirements", "did not follow must see behaviors" name the failure — the
+ * account. With the flag on, a clause is "only what did not happen" when it
+ * denies a fault (`deniesAFault`, the never-blank reader: "never late",
+ * "didn't do anything wrong") or says nothing / no incident happened; a "not"
+ * before what the employee failed to do is an account. Off, any negation.
+ */
+const NOTHING_HAPPENED = /\bnothing\b|\bno\s+(?:incident|issue|problems?|concerns?)\b/i;
+
+function onlyWhatDidNotHappen(clause: string): boolean {
+  if (!caSalesPolicyEnabled()) return NEGATED.test(clause);
+  return deniesAFault(clause) || NOTHING_HAPPENED.test(clause);
+}
+
 /** A clause that says what this employee did. */
 function hasAccount(said: string, name: string, ignore: readonly string[]): boolean {
   return said
@@ -80,7 +98,7 @@ function hasAccount(said: string, name: string, ignore: readonly string[]): bool
     .filter(Boolean)
     .some(
       (clause) =>
-        !NEGATED.test(clause) &&
+        !onlyWhatDidNotHappen(clause) &&
         !aboutSomebodyElse(clause, name) &&
         (describesIncident(clause) || describesMoreThanTheRequest(clause, { ignore })),
     );
