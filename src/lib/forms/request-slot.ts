@@ -49,6 +49,11 @@ export function installRequestMessage(read: () => string | undefined): void {
   readMessage = read;
 }
 
+/** The manager's message for this turn, as installed; undefined with none. */
+export function requestMessage(): string | undefined {
+  return readMessage();
+}
+
 let readRosterNames: () => readonly string[] | undefined = () => undefined;
 
 /** `person-guard.ts` installs the turn's roster names (it reads this module, so this module does not read it). */
