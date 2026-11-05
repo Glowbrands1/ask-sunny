@@ -193,6 +193,7 @@ import type { AskRequest, AskResponse } from "./types";
 import { keepManagerActionPlan } from "./manager-action-plan-reply";
 import { withManagerNameGuard, withManagerNameRule } from "./manager-name-guard";
 import { withoutReportTurnsForForm } from "./report-turns";
+import { withReplyMatchesCard } from "./reply-matches-card";
 import { withTitleOfTheEmployee } from "./title-of-the-employee";
 
 /**
@@ -313,7 +314,8 @@ export async function answerQuestion(
    * 4 Nov 2026; QA's live traces). Off, nothing is read or added.
    */
   // FORM_NAME_FROM_ROSTER_ENABLED, last on every return: only roster people are the employee or a choice (`forms/roster-only-names.ts`).
-  if (!caSalesPolicyEnabled()) return withRosterOnlyNames(answered);
+  // REPLY_MATCHES_CARD_ENABLED, the very last step on both returns: the reply agrees with the finished card (`ai/reply-matches-card.ts`).
+  if (!caSalesPolicyEnabled()) return withReplyMatchesCard(withRosterOnlyNames(answered));
   let roster: Awaited<ReturnType<typeof loadScopedRoster>> = [];
   try {
     roster = await loadScopedRoster(actor.scope);
@@ -326,7 +328,7 @@ export async function answerQuestion(
     questionMessageId: request.questionMessageId,
     roster,
   });
-  return withRosterOnlyNames(withCaOffer(answered, offer));
+  return withReplyMatchesCard(withRosterOnlyNames(withCaOffer(answered, offer)));
 }
 
 async function answerQuestionChecked(
