@@ -14,6 +14,7 @@ import {
   followUpReadbackCueEnabled,
   correctedEmployeeSlotEnabled,
   caSalesPolicyEnabled,
+  cardPolicyDescribedEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { templateHasWarningLevel } from "@/lib/forms/warning-level";
 import { followUpDatesByRules } from "./edit-date-rules";
@@ -27,6 +28,7 @@ import {
   findManualSection,
   headingKey,
   withoutAttendanceForLateOpening,
+  wordsSupportHeading,
   type ManualChunk,
   type ManualSection,
 } from "@/lib/forms/official-policy-manual";
@@ -51,7 +53,7 @@ import {
 import { accountManualSections } from "./account-manual-sections";
 import { appSentencesOnePerLine } from "./app-sentences";
 import { titleTextFromQuestion } from "./title-words";
-import type { ConversationFormState } from "./form-state";
+import { withoutPolicyReference, type ConversationFormState } from "./form-state";
 import type { GroundedPerson } from "./grounded-entities";
 import { formatManualCitation } from "./policy-citation-fields";
 import { remapCitations, remapManualSections, withoutStateCodes } from "./remap-incident";
@@ -204,12 +206,14 @@ export function attachFormTurnSources(given: {
   readonly attendanceCitation?: boolean;
   readonly pageRequired?: boolean;
 }): { content: string; citations: SourceCitation[] } {
-  const input = formChoiceStatedEnabled() ? { ...given, modelHeading: headingForCard(given) } : given;
+  // CARD_POLICY_DESCRIBED_ENABLED (sf-s25): a stored heading the manager's words do not support is not read from the notes either.
+  const read = unsupportedStoredHeading(given.notes) ? { ...given, notes: withoutPolicyReference(given.notes) } : given;
+  const input = formChoiceStatedEnabled() ? { ...read, modelHeading: headingForCard(read) } : read;
   const found = formTurnCitations(input);
   let citations = lateOpeningCitations(input.citations.length > 0 ? [...input.citations] : found, input.notes);
   let content = input.content;
   let sections = violatedSections(
-    sectionsFor(input.notes, input.chunks, input.modelHeading ?? statedManualHeading(input.notes)),
+    sectionsFor(input.notes, input.chunks, input.modelHeading ?? cardManualHeading(input.notes)),
   );
   sections = citeAttendanceForTardiness({
     enabled: input.attendanceCitation === true,
@@ -310,7 +314,7 @@ function isDisciplineProcedure(heading: string): boolean {
  * only source was "Page 14 — Disciplinary Action").
  */
 function headingForCard(input: { readonly content: string; readonly notes: string; readonly modelHeading?: string | null }): string | null {
-  const stated = input.modelHeading ?? statedManualHeading(input.notes);
+  const stated = input.modelHeading ?? cardManualHeading(input.notes);
   return (stated && !isDisciplineProcedure(stated) ? stated : null) ?? policyNamedInReply(input.content);
 }
 
@@ -349,7 +353,7 @@ function sectionsFor(notes: string, chunks: readonly ManualChunk[], modelHeading
     return citedPolicies([described, ...fromAccount.filter((section) => section.heading.toLowerCase() !== key)]);
   }
   if (fromAccount.length > 0) return citedPolicies(fromAccount);
-  const heading = modelHeading ?? statedManualHeading(notes);
+  const heading = modelHeading ?? cardManualHeading(notes);
   if (!heading) return [];
   const section = findManualSection(chunks, [heading]);
   return section ? citedPolicies(withConductLinePage([section], notes, chunks)) : [];
@@ -523,13 +527,38 @@ function withoutStateSentences(question: string): string {
     .replace(/\bPayroll amount: [^.\n]+\./gi, " ");
 }
 
+/** CARD_POLICY_DESCRIBED_ENABLED: the notes carry a stored "Policy reference:" heading their own words do not support. */
+function unsupportedStoredHeading(notes: string): boolean {
+  return cardPolicyDescribedEnabled() && statedManualHeading(notes) !== null && cardManualHeading(notes) === null;
+}
+
+/**
+ * The heading the card cites from the conversation's text (`statedManualHeading`).
+ * CARD_POLICY_DESCRIBED_ENABLED (Pau via QA, 5 Nov 2026, sf-s25): a heading
+ * read only from the stored "Policy reference:" line was chosen for the
+ * manager, and is cited only when their own words support it
+ * (`wordsSupportHeading`): a closing account never cites Late Opening.
+ */
+export function cardManualHeading(text: string): string | null {
+  const heading = statedManualHeading(text);
+  if (!heading || !cardPolicyDescribedEnabled()) return heading;
+  const ownWords = withoutStateSentences(text);
+  if (statedManualHeading(ownWords)) return heading;
+  return wordsSupportHeading(heading, ownWords) ? heading : null;
+}
+
 function statedPolicy(text: string, saved: ConversationFormState | null): { heading: string; page: number | null } | null {
-  const fromLine = statedManualHeading(text);
+  const fromLine = cardManualHeading(text);
+  const ownWords = withoutStateSentences(text);
   if (fromLine) {
     const page = /Policy reference:[^\n]*\bp\.(\d+)/i.exec(text)?.[1];
     return { heading: fromLine, page: page ? Number(page) : saved?.policyPage ?? null };
   }
-  if (saved?.policyHeading) return { heading: saved.policyHeading, page: saved.policyPage };
+  if (saved?.policyHeading) {
+    // CARD_POLICY_DESCRIBED_ENABLED (sf-s25): a heading chosen for the manager is printed only when their words support it.
+    if (cardPolicyDescribedEnabled() && !wordsSupportHeading(saved.policyHeading, ownWords)) return null;
+    return { heading: saved.policyHeading, page: saved.policyPage };
+  }
   return null;
 }
 

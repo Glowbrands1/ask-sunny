@@ -126,7 +126,7 @@ import { loadGoogleReviewsChatBlock } from "./google-reviews-chat-read";
 import { prepareLongContext } from "./long-context-claude";
 import { formCommandBypassesSearch, routeUnderstoodFormTurn } from "./form-tool-route";
 import { understandFormTurn } from "./form-tool-understand";
-import { attachFormTurnSources, statedManualHeading } from "./form-card-slots";
+import { attachFormTurnSources, cardManualHeading } from "./form-card-slots";
 import { prepareProposalQuestion } from "./proposal-question";
 import { applyIntentExtraction } from "./intent-extraction";
 import { isQuestionNotForm } from "./question-not-form";
@@ -649,7 +649,8 @@ async function answerQuestionUntraced(
             documentId: manual.documentId,
             documentTitle: manual.documentTitle,
             documentCategory: manual.documentCategory,
-            modelHeading: statedManualHeading(notes),
+            // CARD_POLICY_DESCRIBED_ENABLED: a stored heading the manager's words do not support is not cited.
+            modelHeading: cardManualHeading(notes),
             attendanceCitation: attendancePolicyCitationEnabled(),
             pageRequired: policyPageRequiredEnabled(),
           });

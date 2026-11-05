@@ -974,6 +974,20 @@ export function describesLateOpening(notes: string): boolean {
 }
 
 /**
+ * CARD_POLICY_DESCRIBED_ENABLED (Pau via QA, 5 Nov 2026, sf-s25): whether the
+ * manager's words support a heading chosen for them. A heading this table
+ * reads (Late Opening, …) is supported only when its rule describes the
+ * words; a heading it has no rule for is not contradicted here. A closing
+ * account ("scheduled until 9:15PM and clocked out at 9:01 … before the Salon
+ * was closed") does not describe a late opening.
+ */
+export function wordsSupportHeading(heading: string, notes: string): boolean {
+  const key = headingKey(heading);
+  const rules = DESCRIBED_SECTIONS.filter((entry) => entry.headings.some((named) => headingKey(named) === key));
+  return rules.length === 0 || rules.some((rule) => describesRule(rule, notes ?? ""));
+}
+
+/**
  * A LATE OPENING CITES LATE OPENING ONLY (LATE_OPEN_DATE_ENABLED).
  *
  * The Tardiness box cites Attendance, and a late opening under it cited both

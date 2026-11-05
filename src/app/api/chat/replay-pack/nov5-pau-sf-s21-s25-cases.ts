@@ -162,7 +162,7 @@ export const NOV5_PAU_SF_S21_S25_CASES: ReplayCase[] = [
     title: "sf-s25: a closing account is never \"Late Opening, as you said\"; the Observation is the incident, not the earlier question",
     report: `${REPORT}, sf-s25`,
     status: { open: "the card's Observation begins with the earlier question (\"What policy would it be …\")" },
-    fixFlags: ["OBSERVATION_NOT_EARLIER_QUESTION_ENABLED"],
+    fixFlags: ["OBSERVATION_NOT_EARLIER_QUESTION_ENABLED", "CARD_POLICY_DESCRIBED_ENABLED"],
     // The live "Late Opening, as you said" is asserted too (the trace's heading is read); here the Observation fails first.
     async run(t) {
       const thread = start(t);
@@ -178,6 +178,8 @@ export const NOV5_PAU_SF_S21_S25_CASES: ReplayCase[] = [
       const reply = await thread.say(said[2]!);
       expect(claimsUnsaid(reply, said), `"as you said" for a policy the manager never typed:\n${policyLine(reply)}`).toBeNull();
       expect(observationLine(reply), `the earlier question is in the Observation:\n${observationLine(reply)}`).not.toMatch(/What policy would it be/i);
+      // QA, 5 Nov 2026: a closing account never cites Late Opening (the intent read's heading, stored).
+      expect(reply.content, `a closing account cites Late Opening:\n${reply.content}`).not.toMatch(/Late Opening/i);
     },
   },
   {

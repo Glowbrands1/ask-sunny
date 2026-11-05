@@ -2559,3 +2559,16 @@ export function observationOtherPersonTurnEnabled(): boolean {
 export function pastedBlockFormEnabled(): boolean {
   return envFlag("PASTED_BLOCK_FORM_ENABLED");
 }
+
+/**
+ * CARD_POLICY_DESCRIBED_ENABLED (Pau via QA, 5 Nov 2026, sf-s25; default off;
+ * same flag in both apps). A closing account's card cited "Late Opening
+ * Policy, JBA Policy Manual p.15": the heading the intent read chose, stored
+ * and printed though the manager's words describe no late opening. On, a
+ * stored heading the manual's described-section table reads is printed only
+ * when its rule describes the manager's words (`forms/official-policy-manual.ts`
+ * wordsSupportHeading). Off, as before.
+ */
+export function cardPolicyDescribedEnabled(): boolean {
+  return envFlag("CARD_POLICY_DESCRIBED_ENABLED");
+}
