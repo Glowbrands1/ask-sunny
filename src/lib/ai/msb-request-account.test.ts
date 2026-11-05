@@ -25,12 +25,16 @@ describe("a glossary term before the request is not the account (CA_SALES_POLICY
     flags(true);
     const account = managerAccount(SAID, NAME);
     expect(account).not.toMatch(/\bMSB\s+CA\b|\bCA\s+for\b/i);
-    /*
-     * The same account "CA for <name> for …" gives today (the name before
-     * "for" is kept for every request worded so; not this change's).
-     */
+    // The same account "CA for <name> for …" gives.
     expect(account).toBe(managerAccount(SAID.replace(/^MSB\s+/, ""), NAME));
     expect(account).toMatch(/underperformance in the month of October$/);
+  });
+
+  it("QA's words (4 Nov 2026, live): the employee the request named is not the account", () => {
+    flags(true);
+    expect(managerAccount(SAID, NAME)).toBe("underperformance in the month of October");
+    expect(managerAccount("CA for Briony Fellwater due to under performance in salon metrics", "Briony Fellwater")).toBe("under performance in salon metrics");
+    expect(managerAccount("make a ca for Osric Vantablade, Osric was rude to a guest", NAME)).toBe("Osric was rude to a guest");
   });
 
   it("a glossary term that is the account stays: \"MSB was not followed\"", () => {
