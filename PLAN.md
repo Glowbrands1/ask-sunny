@@ -19,8 +19,12 @@ session, as one commit per app (`Port from Ask Sunny (<sha>): …` /
 4. **New tool wording.** The four new tool descriptions (`answer`,
    `start_form`, `finalize_draft`, `ask_one_question`) are drafted for approval
    before they are used.
-5. **Scope now: Steps 0 and 1 only**, on a branch, with no merge. Steps 2 to 7
-   wait until the owner says the sales fix is stable.
+5. **Scope now: Steps 0 and 1 only**, built on `claude/router-plan` in both
+   repos, with no merge and no pull request to `main` without QA. Steps 2 to
+   7 wait until the owner says the sales fix is stable. Step 1 is both parts
+   (no picker or heading while a form is in progress, and the final
+   dangling-heading check) behind `REPLY_CUT_CHECK_ENABLED`, off by default.
+   Tool wording is held until Step 4.
 6. **Before any step's flag is switched on,** its replay cases must also pass
    once on **the production model for each app** (Sonnet in Bubbles, Opus in
    Sunny). Haiku live runs alone are not enough.
@@ -29,6 +33,115 @@ session, as one commit per app (`Port from Ask Sunny (<sha>): …` /
    track). This plan builds, copies and changes none of that. It reads the
    form's pinned template version and today's behaviour as they are. See
    "Compatibility with the approved template changes" below.
+
+## Progress (5 Nov 2026): Steps 0 and 1 built, not merged
+
+Both are on `claude/router-plan` in both repos, the same mechanism in each,
+with each app's own wording and fixtures.
+
+**Step 0: replay cases** (`src/app/api/chat/replay-pack/`):
+
+- **Case files:**
+  - `nov5-silent-failure-cases.ts`: sf-s21 to sf-s29 and sf-b6.
+  - `nov5-picker-heading-cases.ts`: the 9 earlier Bubbles replies that ended
+    on "I can prepare:".
+  - `nov5-template-changes-cases.ts`: tc-1 to tc-8.
+- **Helpers in `cases.ts`, additive:** `endsAsSentence` and
+  `noAsYouSaidUnlessSaid` (structural, no phrase list).
+- **Harness, additive:** `pinVersion` in the harness, which puts a form on an
+  earlier template version with that version's own ticks.
+
+**Invented names**, each checked against both apps' employee directories
+(0 matches):
+
+- Odessa Quillfeather is "Employee R".
+- Rhea Vantress is the other employee in sf-s21 and sf-s22.
+- Talia Brennick is the sf-b6 employee.
+- Ember Thistlecombe is the employee in the tc cases.
+
+**How each case runs on production's flags today.** "open" fails on its own
+assertion, as production did. "fixed" already holds.
+
+| Case | Ask Sunny | Ask Bubbles |
+|---|---|---|
+| sf-s21 | open (full remap pinned, see below) | fixed: the other employee's facts never land here |
+| sf-s22 | open | open |
+| sf-s23 | open | open |
+| sf-s24 | open (full remap pinned) | fixed: no false "as you said" here |
+| sf-s25 | open (full remap pinned) | open (observation is the question) |
+| sf-s26 | open | open |
+| sf-s27 | open (full remap pinned) | open |
+| sf-s28 | open | fixed: the previous turn's incident is used here |
+| sf-s29 | open | fixed: the question goes to the forms on file here |
+| sf-b6-reply | open → **holds with `REPLY_CUT_CHECK_ENABLED`** | open → **holds with `REPLY_CUT_CHECK_ENABLED`** |
+| sf-b6-policy | — | open (a later step) |
+| sf-b6-card | — | open (a later step) |
+| pk-1026-a…e (5) | fixed | fixed: the picker's cards come with the heading |
+| pk-1102-a…d (4) | fixed | fixed: `OPEN_FORM_NO_SELECTION` since 3 Nov; also hold with Step 1 |
+| tc-1 removed box never saved | fixed | fixed |
+| tc-2 "Standards of Conduct — Cell Phone" | fixed | fixed |
+| tc-3 cleaning → Other | open (not in this app yet) | open → holds with `CA_SALES_POLICY_ENABLED` |
+| tc-4 old draft keeps its version | fixed | fixed |
+| tc-5 old tick not converted by chat | fixed | fixed |
+| tc-6 sales/MSB cites Standards of Conduct + page | fixed | open → holds with `CA_SALES_POLICY_ENABLED` + `CHAT_GLOSSARY_ENABLED` |
+| tc-7 action plan two sentences | fixed (plan is manager-only here) | **open: an attendance CA's plan is saved as five sentences** |
+| tc-8 payroll amount only the manager's | fixed | fixed |
+
+**Findings for QA and the other tracks** (nothing here changes them):
+
+1. **`FORM_FULL_REMAP_ENABLED` in Sunny production.** sf-s21, sf-s24, sf-s25
+   and sf-s27 have a card shape ("**Policy:** …, as you said") that only
+   `form-full-remap.ts` writes. Sunny's `production-flags.json` lists that
+   flag as off.
+   - Those four cases switch it on for their own run, with a comment saying
+     so.
+   - QA should confirm the production setting and update
+     `production-flags.json` (QA's file) if it is on.
+   - With the remap on, the card also says "**Job title:** … , as you said" and
+     "**Salon:** …, as you said" for words the manager never wrote.
+2. **tc-7, for the CA revision track.** With Bubbles' production flags, an
+   attendance CA's action plan is saved as five sentences, written by code,
+   not the drafting model.
+
+**Step 1: `REPLY_CUT_CHECK_ENABLED`**, off by default, in both apps:
+
+- **Code:**
+  - `src/lib/chat/reply-ends.ts` (`checkedReplyEnd`).
+  - One guarded block in `src/app/api/chat/route.ts`, after every reply
+    rewrite.
+  - The flag in `chat-quality-flags.ts` (Bubbles `CHAT_QUALITY_FLAG_NAMES`;
+    Sunny `NEW_FLAGS` in `flags-off-parity.test.ts`).
+- **Unit tests:** `src/lib/chat/reply-ends.test.ts`, 18 tests. They cover:
+  - the sf-b6 reply;
+  - the heading in the middle of a reply;
+  - a picker with nothing in progress, which stays;
+  - a list, a table, a citation marker, a time and a question, all left
+    exactly as they were;
+  - a reply is never left empty;
+  - the flag reading off for unset, empty, 0, false, off and no;
+  - the route loading the module only inside the flag.
+- **Flag off is byte-identical.** The whole replay pack was run with replies
+  recorded (`REPLAY_RECORD`) on `main` and on this branch, with the same case
+  files. Every reply of every case is identical: 243 cases in Bubbles and 246
+  in Sunny.
+- **Not built: the live runs** (`ROUTER_LIVE=haiku` / `production`). This
+  session has no Anthropic key, so a live harness could not be run even once.
+  It is needed before any flag is switched on (decision 6).
+
+## Found, not fixed (listed only; not built)
+
+1. **Sunny's stream reader.** `collectModelResult` (`call-claude.ts`) returns
+   partial text as a full answer when a stream ends without a `message_delta`
+   (the stop reason stays `null`). Bubbles uses `finalMessage()`, which throws
+   instead.
+2. **Sunny's chat revision.** The `chat-revision.ts` model call is not wrapped
+   in `withTruncationRetry`, so a revision cut off at `max_tokens` can be
+   saved. Bubbles wraps it. The file is protected, so the fix needs approval.
+3. **The cross-chat guard's sentence split** (both apps).
+   `withoutCrossChatClaims` (`lib/chat/cross-chat-guard.ts`) treats every "."
+   as a sentence end: decimals, "a.m.", "e.g.", `[p.12]` page markers. When
+   it removes a sentence, it can leave a cut one. It did not cause sf-b6, and
+   no reported case shows it yet.
 
 ## Why the bugs keep coming back
 
@@ -244,12 +357,8 @@ The flag-off test proves nothing changes with the flag unset.
 Nothing protected is touched. `server-ask.ts` is not changed: it already
 exposes the in-progress inputs on the request.
 
-**Also found, and not part of Step 1** (each is listed for its own pull
-request):
-
-- Sunny's `collectModelResult` returns partial text when a stream ends
-  without `message_delta`.
-- Sunny's `chat-revision` model call is not wrapped in `withTruncationRetry`.
+Three related issues were also found; they are listed under "Found, not
+fixed" below and are not part of Step 1.
 
 **Tests:** sf-b6-reply moves from `open` to `fixFlags:
 ["REPLY_CUT_CHECK_ENABLED"]` in both apps. A regression test uses the
@@ -677,8 +786,8 @@ path at a time after QA has had the router flags on in staging.
 
 ## Open questions for you
 
-1. **Tool wording.** Do you approve the four draft tool descriptions above, or
-   want them changed? They are needed only at Step 4.
-2. **The sf-b6 Step 1 fix.** Is "no form picker while a form is in progress,
-   plus the reply-end check", both behind `REPLY_CUT_CHECK_ENABLED`, the fix
-   you want? Or should Step 1 cover only the in-progress picker?
+1. **The live harness.** It can't be built and run in this session (no
+   Anthropic key). Should it be built in a session that has one, before QA
+   switches `REPLY_CUT_CHECK_ENABLED` on?
+2. **`FORM_FULL_REMAP_ENABLED` in Sunny production.** QA to confirm (see
+   Progress, finding 1).
