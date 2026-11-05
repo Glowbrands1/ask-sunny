@@ -103,13 +103,14 @@ export const NOV5_METRIC_GUARD_CASES: ReplayCase[] = [
    * (`roster-only-names.ts` withoutUnseatedName) replaces each word of the name the reply drafted for, in any
    * case, so the app's own "One more question: **Is payroll deduct applicable?**" reads "The employee more
    * question". The guard only exposes it (without it the reply takes another path); the scrub is the
-   * reply step's. Recorded OPEN, no fix yet. QA's own probe wording (no real person).
+   * reply step's. QA's own probe wording (no real person). Changed on purpose (5 Nov 2026): fixed by the
+   * scrub's ownWords (ported from Ask-bubbles#478 in this same PR), so the case is now "fixed".
    */
   {
     id: "nov5-metric-guard-reply-keeps-own-words",
     title: "the smaller set + METRIC_GUARD: an off-roster name ending in a common word (\"QA Probe XZT One\") never rewrites the app's own \"One more question\"",
     report: "this port's side-effect run (5 Nov 2026): nov4-qa-off-roster-name-with-one, \"The employee more question\"",
-    status: { open: "REPLY_MATCHES_CARD's name scrub replaces \"One\" in \"One more question\" (\"The employee more question\")" },
+    status: "fixed",
     async run(t) {
       vi.stubEnv("METRIC_GUARD_ENABLED", "true");
       const thread = start(t);
