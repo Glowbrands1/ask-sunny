@@ -437,8 +437,10 @@ export const NOV3_STEP_B_CASES: readonly ReplayCase[] = [
      * production's flags (replayed 3 Nov 2026), so the case is "fixed" here;
      * it is open in Ask Bubbles, whose plan gains the sentence with Step B.
      */
-    status: "fixed",
+    // fails with production's real flags (QA Vercel read 5 Nov); tracked: ACTION_PLAN_MANAGER_ONLY_ENABLED is off in production (this case assumed on) and PLAN_PAYROLL_SENTENCE_ENABLED is on, so the built Action Plan gains "will be payroll deducted $3.25".
+    status: { open: "fails with production's real flags (QA Vercel read 5 Nov); tracked: ACTION_PLAN_MANAGER_ONLY_ENABLED is off in production (this case assumed on) and PLAN_PAYROLL_SENTENCE_ENABLED is on, so the built Action Plan gains \"will be payroll deducted $3.25\"" },
     fixFlags: STEP_B_FLAGS,
+    fixStatus: { open: "fails with production's real flags (QA Vercel read 5 Nov); tracked: ACTION_PLAN_MANAGER_ONLY_ENABLED is off in production (this case assumed on) and PLAN_PAYROLL_SENTENCE_ENABLED is on, so the built Action Plan gains \"will be payroll deducted $3.25\"" },
     async run(t) {
       t.directory(PEOPLE);
       t.as("salon_director", KEARNEY);

@@ -713,7 +713,13 @@ describe("the replay pack", () => {
         await recorded(replay.id, "open", () => replay.run(context()));
       });
     }
-    if (replay.fixFlags?.length) {
+    if (replay.fixFlags?.length && replay.fixStatus) {
+      // A fix-flag run that fails today (`fixStatus`): expected to fail. The day it passes, drop fixStatus.
+      it.fails(`${title} — OPEN with ${replay.fixFlags.join(", ")} on (${replay.fixStatus.open})`, async () => {
+        production(replay.fixFlags);
+        await recorded(replay.id, `fix-open:${replay.fixFlags!.join(",")}`, () => replay.run(context()));
+      });
+    } else if (replay.fixFlags?.length) {
       it(`${title} — holds with ${replay.fixFlags.join(", ")} on`, async () => {
         production(replay.fixFlags);
         await recorded(replay.id, `fix:${replay.fixFlags!.join(",")}`, () => replay.run(context()));

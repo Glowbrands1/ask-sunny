@@ -94,6 +94,12 @@ export interface ReplayCase {
   report: string;
   status: "fixed" | { open: string };
   fixFlags?: string[];
+  /**
+   * A fix-flag run that fails today: it runs as an expected failure (like `status.open`), so it
+   * flips to a reported pass the day it is fixed. Used for production defects found with
+   * production's real flags (QA's Vercel read, 5 Nov 2026).
+   */
+  fixStatus?: { open: string };
   run(context: ReplayContext): Promise<void>;
 }
 
