@@ -52,6 +52,8 @@ const MESSAGES: readonly { readonly n: number; readonly say: string; readonly na
   { n: 6, say: "I need a verbal corrective action made for Brielle Oakhurst. Not meeting sales requirements for the month of October", name: "Brielle Oakhurst" },
   { n: 7, say: "I need a verbal corrective action for brielle oakhurst not meeting msb for the month of october.", name: "Brielle Oakhurst" },
   { n: 8, say: "Can you write me a performace ca for an employee who did not meet their numbers for the month of october Talise Vorn  - verbal\n146 tans \nBelow in PPTA, LPSVA, Average Club, CC%, Spa%", name: "Talise Vorn" },
+  // QA's 2-week audit (5 Nov 2026; Pau: "yes, include #542/#543"): one of the 7 Sunny managers' requests that was asked "You haven't told me what happened" after the reason. The name is invented.
+  { n: 9, say: "can you write me a Ca for Talise Vorn for performance for october", name: "Talise Vorn" },
 ];
 
 function start(t: T) {
