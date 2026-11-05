@@ -74,6 +74,7 @@ export const NOV5_POLICY_KEPT_ACROSS_TURNS_CASES: ReplayCase[] = [
     title: "R6/R7: \"Create a Corrective Action Form from this conversation.\" after name corrections keeps the Standards of Conduct the card cited for \"a customer complaint\"",
     report: `${REPORT}: the card cited Standards of Conduct p.12 at R7; at R6 it read "review the applicable company policy" with no Policy line`,
     status: { open: "with production's flags the card made at R6 has no Policy line" },
+    fixFlags: ["REQUEST_KEPT_IN_WINDOW_ENABLED", "NEXT_PUBLIC_REQUEST_KEPT_IN_WINDOW_ENABLED"],
     async run(t) {
       const thread = start(t);
       let cited = "";
