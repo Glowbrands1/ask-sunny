@@ -8,7 +8,6 @@ import {
   offensePhrases,
   outsideRequestSlot,
   requestSlotNames,
-  typedAfterFor,
   typedWithOtherSurname,
 } from "./request-slot";
 
@@ -232,33 +231,5 @@ describe("a message rules out only the candidates it contains", () => {
     // Its own words are still judged: a name in the message outside its slot is out.
     expect(outsideRequestSlot("Kearney", stored)).toBe(true);
     expect(outsideRequestSlot("Club Close", PAU)).toBe(true);
-  });
-});
-
-/*
- * The flip's eval check (5 Nov 2026): two lowercase-typed names lost with the
- * flags on — the eval cases' exact wording (s9, sf-s4).
- */
-describe("the words typed straight after \"for\" in a request are the person asked for", () => {
-  const S9 = "create a CA form for ima employee, tan consultant at manhattan, for opening salon late on 9-28-26";
-  const SF_S4 = "make me a CA for Odalys merriwether for being late to opening this morning";
-
-  it("off (main): no reading", () => {
-    expect(typedAfterFor("ima", S9)).toBe(false);
-  });
-
-  it("on: \"ima\" and \"Odalys merriwether\" are asked for; the slot does not rule the full name out", () => {
-    on();
-    expect(typedAfterFor("ima", S9)).toBe(true);
-    expect(typedAfterFor("Odalys merriwether", SF_S4)).toBe(true);
-    expect(outsideRequestSlot("Odalys merriwether", SF_S4)).toBe(false);
-  });
-
-  it("on, controls: an offense after \"for\" is not a person; \"Club Close\" in Pau's list is still out", () => {
-    on();
-    expect(typedAfterFor("under", METRICS)).toBe(false);
-    expect(typedAfterFor("being late", SF_S4)).toBe(false);
-    expect(outsideRequestSlot("Club Close", PAU)).toBe(true);
-    expect(outsideRequestSlot("Under", PAU)).toBe(true);
   });
 });

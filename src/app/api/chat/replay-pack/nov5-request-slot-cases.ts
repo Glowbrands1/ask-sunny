@@ -217,36 +217,4 @@ export const NOV5_REQUEST_SLOT_CASES: ReplayCase[] = [
       expect(reply.content, `Jordan Testperson's form is dropped without a word:\n${reply.content}`).toMatch(/Jordan Testperson/);
     },
   },
-  /*
-   * The flip's eval check (5 Nov 2026, evals/replay_set.json s9 and sf-s4):
-   * with FORM_NAME_FROM_ROSTER_ENABLED and the sales policy on, a name typed
-   * in lowercase straight after "for" was lost — "ima" to the lowercase rule
-   * (the card had no employee and asked who), "merriwether" to the request
-   * slot (the card was for "Odalys"). The words after a request's first "for"
-   * are the person asked for, in any case (`request-slot.ts` typedAfterFor).
-   */
-  {
-    id: "nov5-lowercase-after-for-ima",
-    title: "eval s9: \"create a CA form for ima employee, tan consultant at manhattan, for opening salon late on 9-28-26\": the card is for Ima",
-    report: "The flip's eval check, 5 Nov 2026 (evals s9, Pau's 23 Oct replay)",
-    status: "fixed",
-    fixFlags: [FLAG, SALES, GLOSSARY],
-    async run(t) {
-      const thread = start(t);
-      const reply = await thread.say("create a CA form for ima employee, tan consultant at manhattan, for opening salon late on 9-28-26");
-      expect(thread.proposal?.employeeName ?? null, `no card for Ima:\n${reply.content}`).toMatch(/^Ima\b/i);
-    },
-  },
-  {
-    id: "nov5-lowercase-after-for-surname",
-    title: "eval sf-s4: \"make me a CA for Odalys merriwether for being late to opening this morning\": the card keeps the surname",
-    report: "The flip's eval check, 5 Nov 2026 (evals sf-s4)",
-    status: "fixed",
-    fixFlags: [FLAG, SALES, GLOSSARY],
-    async run(t) {
-      const thread = start(t);
-      const reply = await thread.say("make me a CA for Odalys merriwether for being late to opening this morning");
-      expect(thread.proposal?.employeeName ?? null, `the card lost the surname:\n${reply.content}`).toMatch(/^Odalys Merriwether$/i);
-    },
-  },
 ];

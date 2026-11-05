@@ -9,7 +9,7 @@ import {
 import { isGlossaryTerm } from "@/lib/ai/chat-glossary";
 
 import { notAPerson, personRosterNames } from "./person-guard";
-import { outsideRequestSlot, typedAfterFor } from "./request-slot";
+import { outsideRequestSlot } from "./request-slot";
 import { couldBeOnRoster, lowercaseNobody, rosterAnchored } from "./roster-shape";
 import { isPayrollWords } from "./payroll-words";
 
@@ -102,8 +102,6 @@ function isLowercaseNobody(name: string): boolean {
   if (!formNameFromRosterEnabled()) return false;
   const roster = personRosterNames();
   if (!roster || roster.length === 0) return false;
-  // Typed straight after "for" in a request ("a CA form for ima employee"): the person asked for (the flip's eval check).
-  if (typedAfterFor(name)) return false;
   return lowercaseNobody(name, roster);
 }
 
