@@ -2509,3 +2509,16 @@ export function caPolicySaidOnlyEnabled(): boolean {
 export function formLeadFullSentenceEnabled(): boolean {
   return envFlag("FORM_LEAD_FULL_SENTENCE_ENABLED");
 }
+
+/**
+ * PAYROLL_ANSWER_SPELLING_ENABLED (Pau via QA, 5 Nov 2026, sf-s23; default
+ * off; same flag in both apps). "not pay roll deductable" answered the payroll
+ * question, but the card asked it again and wrote it as the Observation of
+ * Offense. On, "pay roll" and "deductable" / "deductible" read as payroll
+ * deduct (`forms/payroll-deduct-answer.ts`, which reads the env itself), and
+ * a sentence that only answers the payroll question is never the Observation
+ * (`ai/keep-filled-slots.ts`). Off, as before.
+ */
+export function payrollAnswerSpellingEnabled(): boolean {
+  return envFlag("PAYROLL_ANSWER_SPELLING_ENABLED");
+}

@@ -230,6 +230,22 @@ function caShortcutWordsOn(): boolean {
   return typeof raw === "string" && ["1", "true", "on", "yes"].includes(raw.trim().toLowerCase());
 }
 
+/**
+ * PAYROLL_ANSWER_SPELLING_ENABLED (Pau via QA, 5 Nov 2026, sf-s23): "not pay
+ * roll deductable" answered the payroll question, and the card asked it again
+ * and wrote it as the Observation. On, "pay roll" is "payroll" and
+ * "deductable" / "deductible" is "deduct", so the patterns read it. Read here,
+ * not through `chat-quality-flags`, because this module imports nothing.
+ */
+function payrollSpellingOn(): boolean {
+  const raw = typeof process === "undefined" ? undefined : process.env.PAYROLL_ANSWER_SPELLING_ENABLED;
+  return typeof raw === "string" && ["1", "true", "on", "yes"].includes(raw.trim().toLowerCase());
+}
+
+function withPayrollSpelling(text: string): string {
+  return text.replace(/\bpay ?roll\b/g, "payroll").replace(/\bdeduct[ai]ble\b/g, "deduct");
+}
+
 /** Lower case, curly quotes straightened, "payroll-deduct" spaced — the text the patterns read. */
 export function normalizePayrollWording(text: string): string {
   const read = (text ?? "")
@@ -239,9 +255,10 @@ export function normalizePayrollWording(text: string): string {
     .replace(/[‐‑–—]/g, "-")
     .replace(/\bpayroll-deduct/g, "payroll deduct")
     .replace(/[^\S\n]+/g, " ");
-  if (!caShortcutWordsOn()) return read;
+  const spelled = payrollSpellingOn() ? withPayrollSpelling(read) : read;
+  if (!caShortcutWordsOn()) return spelled;
   return (
-    read
+    spelled
       // CA_SHORTCUT_WORDS_ENABLED: "no PD", "PD applies", "pd yes", "PD $25" — the form's own abbreviation.
       .replace(/\bp\.?\s?d\.?(?=\s|:|=|-|,|;|\.|!|$)/g, "payroll deduct")
       // "deduct 25", "payroll deduct 25" — an amount with no dollar sign, not a time or a count.

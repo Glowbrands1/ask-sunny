@@ -127,11 +127,14 @@ export const NOV5_PAU_SF_S21_S25_CASES: ReplayCase[] = [
     title: "sf-s23: \"not pay roll deductable\" answers the payroll question (not the Observation, not asked again); \"under performance not standard of conduct\" changes the Action Plan and Direct policy too",
     report: `${REPORT}, sf-s23`,
     status: { open: "\"not pay roll deductable\" becomes the card's Observation and the payroll question is asked again" },
+    fixFlags: ["PAYROLL_ANSWER_SPELLING_ENABLED"],
     async run(t) {
       const thread = start(t);
       await thread.say("can you write me a Ca for wynne sarrow for performance for october");
       const payroll = await thread.say("not pay roll deductable");
-      expect(payroll.content, `the payroll question is asked again:\n${payroll.content}`).not.toMatch(/Is payroll deduct applicable\?/);
+      // The question as asked is bold ("**Is payroll deduct applicable?** Yes or No?"); the answer read back
+      // ("Is payroll deduct applicable? **No** — tell me if that should change.") is not asking it again.
+      expect(payroll.content, `the payroll question is asked again:\n${payroll.content}`).not.toMatch(/\*\*Is payroll deduct applicable\?\*\*/);
       expect(observationLine(payroll), `the payroll answer is the Observation:\n${observationLine(payroll)}`).not.toMatch(/pay\s*roll/i);
     },
   },
