@@ -2572,3 +2572,16 @@ export function pastedBlockFormEnabled(): boolean {
 export function cardPolicyDescribedEnabled(): boolean {
   return envFlag("CARD_POLICY_DESCRIBED_ENABLED");
 }
+
+/**
+ * NEW_PERSON_OWN_WORDS_ENABLED (Pau via QA, 5 Nov 2026, sf-s22; default off;
+ * same flag in both apps). "It needs to be a CA, not a coaching form" was read
+ * with the stored state in front of it ("The form is the Corrective Action
+ * Form. The employee is …") as a new request for that employee, so the card
+ * was read from that turn alone and lost its Observation. On, whether a turn
+ * starts a form for another person is read from the manager's own lines
+ * (`ai/new-person-request.ts`). Off, as before.
+ */
+export function newPersonOwnWordsEnabled(): boolean {
+  return envFlag("NEW_PERSON_OWN_WORDS_ENABLED");
+}
