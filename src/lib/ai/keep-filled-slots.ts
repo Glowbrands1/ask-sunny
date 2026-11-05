@@ -42,6 +42,7 @@ import {
   observationNotPolicyNameEnabled,
   keepRosterExactNameEnabled,
   caSalesPolicyEnabled,
+  formNameFromRosterEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { namesOnlyAPolicy } from "@/lib/forms/person-guard";
 import { foldsToGlossaryTerm } from "./chat-glossary";
@@ -281,8 +282,12 @@ export function holdFilledSlots(input: {
       if (!content.includes(line)) content = content ? `${content}\n\n${line}` : line;
     }
   }
-  // KEEP_ROSTER_EXACT_NAME_ENABLED: a name the keeper took off the card is not drafted for in the reply; it asks who.
-  if (keepRosterExactNameEnabled() && proposal.employeeName && !next.employeeName) {
+  /*
+   * KEEP_ROSTER_EXACT_NAME_ENABLED: a name the keeper took off the card is not drafted for in the reply; it asks who.
+   * FORM_NAME_FROM_ROSTER_ENABLED too (4 Nov 2026): its request slot makes a card for a typed name on no roster, and
+   * one with a not-a-name word in it ("… One") is then taken off by the keeper — the reply must not draft for it.
+   */
+  if ((keepRosterExactNameEnabled() || formNameFromRosterEnabled()) && proposal.employeeName && !next.employeeName) {
     content = withDroppedNameAsked(content, proposal.employeeName);
   }
   const same =

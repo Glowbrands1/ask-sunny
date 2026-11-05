@@ -3,7 +3,12 @@
  * WHICH TESTS A FLAG CHANGES, AND WHY (QA CONDITION 6; dev only, no network)
  * ============================================================================
  *
- *   node scripts/flag-classify.ts [--flag NAME] [--with NAME,...] [--runs 3] [--keep] [path ...]
+ *   node scripts/flag-classify.ts [--flag NAME] [--with NAME,...] [--and NAME,...] [--runs 3] [--keep] [path ...]
+ *
+ * `--and` names flags turned on WITH the flag, in the "on" mode only: the
+ * flags flipped together (QA, 4 Nov 2026: FORM_NAME_FROM_ROSTER_ENABLED and
+ * CA_SALES_POLICY_ENABLED flip together), against a baseline with all of them
+ * off. The results go to `<FLAG>+<AND…>.md` / `.classes.json`.
  *
  * `--with` names flags turned on in BOTH modes — the flags the flag under
  * test needs (FORM_EDIT_TOOL_IN_STREAM_ENABLED needs
@@ -68,11 +73,14 @@ function argument(name: string): string | null {
 const FLAG = argument("--flag") ?? "FORM_EDIT_SINGLE_WRITER_ENABLED";
 const RUNS = Number(argument("--runs") ?? "3");
 const WITH = (argument("--with") ?? "").split(",").map((name) => name.trim()).filter((name) => name !== "");
+const AND = (argument("--and") ?? "").split(",").map((name) => name.trim()).filter((name) => name !== "");
 const KEEP = process.argv.includes("--keep");
-const PATHS = process.argv.slice(2).filter((value, index, all) => !value.startsWith("--") && !["--flag", "--runs", "--with"].includes(all[index - 1] ?? ""));
+const PATHS = process.argv.slice(2).filter((value, index, all) => !value.startsWith("--") && !["--flag", "--runs", "--with", "--and"].includes(all[index - 1] ?? ""));
 const DOCS = join("docs", "flag-classification");
-const CLASSES = join(DOCS, `${FLAG}.classes.json`);
-const OUT = join(DOCS, `${FLAG}.md`);
+/** The doc's name: the flag, and any flags flipped with it (`--and`). */
+const NAME = [FLAG, ...AND].join("+");
+const CLASSES = join(DOCS, `${NAME}.classes.json`);
+const OUT = join(DOCS, `${NAME}.md`);
 
 /** One child run: the failing ids, every id's status, and the replay records. */
 function run(mode: "off" | "on", index: number, scratch: string): { statuses: Map<string, string>; replay: ReplayRecord[]; seconds: number } {
@@ -87,7 +95,7 @@ function run(mode: "off" | "on", index: number, scratch: string): { statuses: Ma
     REPLAY_RECORD: replay,
     ...Object.fromEntries(WITH.map((name) => [name, "true"])),
     ...(WITH.length > 0 ? { FLAG_CLASSIFY_ON: WITH.join(",") } : {}),
-    ...(mode === "on" ? { [FLAG]: "true", FLAG_CLASSIFY_ON: [...WITH, FLAG].join(",") } : {}),
+    ...(mode === "on" ? { [FLAG]: "true", ...Object.fromEntries(AND.map((name) => [name, "true"])), FLAG_CLASSIFY_ON: [...WITH, FLAG, ...AND].join(",") } : {}),
   };
   const started = Date.now();
   const child = spawnSync(
@@ -212,9 +220,9 @@ function main(): void {
   for (const row of rows) counts.set(row.category, (counts.get(row.category) ?? 0) + 1);
   const cell = (text: string) => text.split("|").join("\\|").split("\n").join(" ");
   const lines = [
-    `# ${FLAG}: which tests it changes, and why`,
+    `# ${NAME}: which tests ${AND.length > 0 ? "they change" : "it changes"}, and why`,
     "",
-    `Written by \`node scripts/flag-classify.ts\` (${RUNS} runs off, ${RUNS} on, each a child process with a clean env${WITH.length > 0 ? `; on in both: ${WITH.map((name) => `\`${name}\``).join(", ")}` : ""}). Paths: ${PATHS.length > 0 ? PATHS.map((path) => `\`${path}\``).join(", ") : "the whole suite"}. Classifications are kept in \`${CLASSES}\`.`,
+    `Written by \`node scripts/flag-classify.ts\` (${RUNS} runs off, ${RUNS} on, each a child process with a clean env${WITH.length > 0 ? `; on in both: ${WITH.map((name) => `\`${name}\``).join(", ")}` : ""}${AND.length > 0 ? `; on together with ${FLAG} in the on runs only: ${AND.map((name) => `\`${name}\``).join(", ")}` : ""}). Paths: ${PATHS.length > 0 ? PATHS.map((path) => `\`${path}\``).join(", ") : "the whole suite"}. Classifications are kept in \`${CLASSES}\`.`,
     "",
     `Tests run: ${ids.length}. Changed: ${rows.length}. ${(["INTENDED", "INTENDED-HARNESS", "REGRESSION", "FLAKY", "UNCLASSIFIED"] as const).map((category) => `${category} ${counts.get(category) ?? 0}`).join(", ")}.`,
     "",
