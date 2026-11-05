@@ -110,6 +110,8 @@ import {
   priorRowNotOnIncidentDateEnabled,
   jobTitleFromWordsEnabled,
   caAsksWhatHappenedEnabled,
+  omissionIsAccountEnabled,
+  observationWithoutAskEnabled,
   stepDateNotIncidentEnabled,
   warningLevelAndClauseEnabled,
   jobTitleAppositionEnabled,
@@ -287,6 +289,8 @@ const NEW_FLAGS = [
   "PRIVATE_CREATOR_FORMS_ENABLED",
   "JOB_TITLE_FROM_WORDS_ENABLED",
   "CA_ASKS_WHAT_HAPPENED_ENABLED",
+  "OMISSION_IS_ACCOUNT_ENABLED",
+  "OBSERVATION_WITHOUT_ASK_ENABLED",
   "STEP_DATE_NOT_INCIDENT_ENABLED",
   "WARNING_LEVEL_AND_CLAUSE_ENABLED",
   "JOB_TITLE_APPOSITION_ENABLED",
@@ -401,7 +405,11 @@ const NEW_FLAGS = [
   "PRIMARY_SALON_NOT_EDIT_ENABLED",
   "CA_SALES_POLICY_ENABLED",
   "FORM_NAME_FROM_ROSTER_ENABLED",
+  "COACHING_ASKS_WHAT_HAPPENED_ENABLED",
   "KEEP_ROSTER_EXACT_NAME_ENABLED",
+  "ROSTER_NAME_IN_CANDIDATE_ENABLED",
+  "TITLE_OF_THE_EMPLOYEE_ENABLED",
+  "ROSTER_NEAR_MISS_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -622,6 +630,8 @@ describe("new flags default off and wrappers are inert", () => {
     for (const name of NEW_FLAGS) delete process.env[name];
     expect(slotRetentionEnabled()).toBe(false);
     expect(caAsksWhatHappenedEnabled()).toBe(false);
+    expect(omissionIsAccountEnabled()).toBe(false);
+    expect(observationWithoutAskEnabled()).toBe(false);
     expect(stepDateNotIncidentEnabled()).toBe(false);
     expect(warningLevelAndClauseEnabled()).toBe(false);
     expect(jobTitleAppositionEnabled()).toBe(false);
