@@ -69,6 +69,25 @@ function salonForReaders(name: string, salonId: string): string {
   return number ? `salon ${number}` : name;
 }
 
+/** The stored policy heading as the sentence the readers see ahead of the manager's words. */
+function policyReferenceSentence(heading: string, page: number | null): string {
+  return `Policy reference: ${heading}, JBA Policy Manual${page && page > 0 ? ` p.${page}` : ""}.`;
+}
+
+/**
+ * CA_POLICY_SAID_ONLY_ENABLED (Pau via QA, 5 Nov 2026, sf-s21/s24/s25): the
+ * text without the stored policy sentence. The heading the intent read chose
+ * is stored state, not the manager's words, so a reader that decides whether
+ * the manager NAMED a policy ("Standards of Conduct, as you said") reads the
+ * text without it.
+ */
+export function withoutPolicyReference(text: string): string {
+  return text.replace(POLICY_REFERENCE, "").replace(/^ +/gm, "").replace(/^\n+/, "");
+}
+
+/** Every sentence `policyReferenceSentence` writes. */
+const POLICY_REFERENCE = /Policy reference: [^\n]*?, JBA Policy Manual(?: p\.\d+)?\. ?/g;
+
 export function stateSentences(state: ConversationFormState): string[] {
   const lines: string[] = [];
   if (state.employeeName) lines.push(`The employee is ${state.employeeName}.`);
@@ -81,10 +100,7 @@ export function stateSentences(state: ConversationFormState): string[] {
   if (state.warningLevel) lines.push(`Warning level: ${state.warningLevel}.`);
   if (state.payrollDeduct === "yes") lines.push("Payroll deduct applies.");
   if (state.payrollDeduct === "no") lines.push("No payroll deduction.");
-  if (state.policyHeading) {
-    const page = state.policyPage && state.policyPage > 0 ? ` p.${state.policyPage}` : "";
-    lines.push(`Policy reference: ${state.policyHeading}, JBA Policy Manual${page}.`);
-  }
+  if (state.policyHeading) lines.push(policyReferenceSentence(state.policyHeading, state.policyPage));
   if (state.incidentType) lines.push(`Incident: ${state.incidentType}.`);
   if (state.payrollAmount) lines.push(`Payroll amount: ${state.payrollAmount}.`);
   if (payrollAmountFieldEnabled() && state.payrollDeductAmount) {

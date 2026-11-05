@@ -102,6 +102,7 @@ import { PRODUCTION_SALONS, salonById } from "@/data/salons";
 import { correctedDates, correctedFormDate, extractFormDate, priorSteps } from "@/lib/forms/form-date-answer";
 import { answersDateQuestion, dateAnswerTurns, decideFormDate, incidentDates } from "@/lib/forms/incident-dates";
 import { statedPriorActions } from "@/lib/forms/prior-actions";
+import { withoutPolicyReference } from "./form-state";
 import { endsIntake } from "@/lib/forms/proposal-continuation";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
 import { answersSalon, latestSalonAnswer } from "@/lib/forms/salon-reply";
@@ -114,6 +115,7 @@ import {
 } from "@/lib/forms/employee-match";
 import { loadScopedRoster } from "@/lib/forms/employee-roster";
 import {
+  caPolicySaidOnlyEnabled,
   nameQuestionOnlyEnabled,
   payrollAmountFieldEnabled,
   storedSlotsNotARequestEnabled,
@@ -2241,7 +2243,8 @@ function proposalContent(
         proposal,
         intake,
         asksPayrollDeduct(match),
-        readCaPolicy(context.text),
+        // CA_POLICY_SAID_ONLY_ENABLED: the stored heading is not the manager naming a policy.
+        readCaPolicy(caPolicySaidOnlyEnabled() ? withoutPolicyReference(context.text) : context.text),
         statedPriorActions(context.text, today),
         extra.namedPolicy ?? null,
         extra.priorOnFile ?? NO_PRIOR_FORMS,

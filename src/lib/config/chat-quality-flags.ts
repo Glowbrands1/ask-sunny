@@ -2483,3 +2483,18 @@ export function formEditNoopGuardEnabled(): boolean {
 export function keepRosterExactNameEnabled(): boolean {
   return envFlag("KEEP_ROSTER_EXACT_NAME_ENABLED");
 }
+
+/**
+ * CA_POLICY_SAID_ONLY_ENABLED (Pau via QA, 5 Nov 2026, sf-s21/s24/s25;
+ * default off; same flag in both apps). Live, the card said "**Policy:**
+ * Standards of Conduct, as you said" (and "Late Opening, as you said") for a
+ * policy the manager never typed: the intent read's heading is stored as
+ * "Policy reference: <heading>, JBA Policy Manual p.N." ahead of the
+ * manager's words, and the Corrective Action card's policy reader took that
+ * sentence as the manager naming it. On, the card's policy line reads the
+ * manager's words without the stored sentence (`ai/form-state.ts`
+ * withoutPolicyReference). Off, as before.
+ */
+export function caPolicySaidOnlyEnabled(): boolean {
+  return envFlag("CA_POLICY_SAID_ONLY_ENABLED");
+}

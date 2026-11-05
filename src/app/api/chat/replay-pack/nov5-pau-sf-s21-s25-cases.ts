@@ -42,6 +42,9 @@ export function pauSfS21People(): readonly DirectoryRow[] {
 
 const REPORT = "Pau via QA, 5 Nov 2026 (this app's production, 4 Nov)";
 
+/** The "as you said" fix: the card's policy line reads the manager's words, not the stored heading. */
+const SAID_ONLY = ["CA_POLICY_SAID_ONLY_ENABLED"];
+
 function start(t: T) {
   vi.setSystemTime(new Date("2026-11-04T23:30:00Z"));
   t.directory([...STAFF, ...PEOPLE]);
@@ -138,6 +141,7 @@ export const NOV5_PAU_SF_S21_S25_CASES: ReplayCase[] = [
     report: `${REPORT}, sf-s24`,
     // Reproduced with the live trace's intent read (policyHeading "Standards of Conduct"; QA, 5 Nov 2026).
     status: { open: "\"**Policy:** Standards of Conduct, as you said\" although the manager said must see behaviors" },
+    fixFlags: SAID_ONLY,
     async run(t) {
       const thread = start(t);
       const t1 = "Can you write me a performace ca for an employee who did not meet their numbers for the month of october Wynne Sarrow  - verbal\n146 tans \nBelow in PPTA, LPSVA, Average Club, CC%, Spa%";
@@ -169,6 +173,43 @@ export const NOV5_PAU_SF_S21_S25_CASES: ReplayCase[] = [
       const reply = await thread.say(said[2]!);
       expect(claimsUnsaid(reply, said), `"as you said" for a policy the manager never typed:\n${policyLine(reply)}`).toBeNull();
       expect(observationLine(reply), `the earlier question is in the Observation:\n${observationLine(reply)}`).not.toMatch(/What policy would it be/i);
+    },
+  },
+  {
+    id: "nov5-sf-s21-no-as-you-said",
+    title: "sf-s21 turn 1 alone: the intent read's \"Standards of Conduct\" is never \"as you said\"",
+    report: `${REPORT}, sf-s21`,
+    status: { open: "\"**Policy:** Standards of Conduct, as you said\" on turn 1 (the intent read's heading, as in the live trace)" },
+    fixFlags: SAID_ONLY,
+    async run(t) {
+      const thread = start(t);
+      t.slotsRead({ policyHeading: "Standards of Conduct" });
+      const first = await thread.say(S21_T1);
+      expect(thread.proposal, `no CA card for Wynne Sarrow:\n${first.content}`).toMatchObject({ templateKey: "dpoa", employeeName: "Wynne Sarrow" });
+      expect(claimsUnsaid(first, [S21_T1]), `"as you said" for a policy the manager never typed:\n${policyLine(first)}`).toBeNull();
+    },
+  },
+  {
+    id: "nov5-sf-s25-no-late-opening-claim",
+    title: "sf-s25 alone: a closing account is never \"Late Opening, as you said\"",
+    report: `${REPORT}, sf-s25`,
+    // A guard: here the turn takes the "what I would put on" path, which has no
+    // "as you said" line, so the live claim does not reproduce. The reader that
+    // wrote it live is the one sf-s24 reaches (ca-policy-said-only.test.ts has
+    // the "Late Opening" sentence).
+    status: "fixed",
+    async run(t) {
+      const thread = start(t);
+      const said = [
+        "closing policy",
+        "What policy would it be if a tanning consultant did not complete the closing correctly and i have already talked to her about it",
+        "Write a CA for Wynne Sarrow she is TC works at Omaha Pacific and on 11/3/26 she was scheduled until 9:15PM and clocked out at 9:01. She also took down the spray booths down at 8:11 PM before the Salon was closed.",
+      ];
+      await thread.say(said[0]!);
+      await thread.say(said[1]!);
+      t.slotsRead({ policyHeading: "Late Opening" });
+      const reply = await thread.say(said[2]!);
+      expect(claimsUnsaid(reply, said), `"as you said" for a policy the manager never typed:\n${policyLine(reply)}`).toBeNull();
     },
   },
 ];
