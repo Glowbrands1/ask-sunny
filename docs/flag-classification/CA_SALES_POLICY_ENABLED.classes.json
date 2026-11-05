@@ -278,5 +278,210 @@
   "category": "FLAKY",
   "twin": "itself, off and on",
   "reason": "Failed in 1 of 3 runs with the flag on and passed in all 3 off; a migration-file check that reads no chat or form code this flag gates (run under machine load)."
+ },
+ "src/app/api/chat/replay-pack/replay-pack-e2e.test.ts :: the replay pack nov4-cleaning-basis-upkeep-duties: \"did not complete daily cleaning duties\" with the model's upkeep basis: Other — OPEN in production (with production's flags the task reading ticks and cites the Standards of Conduct)": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off (CI default); nov4-cleaning-negative-no-basis; src/lib/forms/ca-conduct-reason.test.ts",
+  "reason": "Pau, 4 Nov 2026: a cleaning CA does not cite the Standards of Conduct by default. With the flag on, the model's Standards of Conduct tick moves to Other when its offense_basis is upkeep_or_task and no reader gives a reason (ca-conduct-reason.ts); revision 8 has no Other write-in, so Policy Violated reads \"Other\"."
+ },
+ "src/app/api/chat/replay-pack/replay-pack-e2e.test.ts :: the replay pack nov4-cleaning-tanning-beds-not-conduct: \"the tanning beds were left dirty at close\": the model's Standards of Conduct tick moves to Other, no Standards of Conduct citation — OPEN in production (with production's flags the model's Standards of Conduct tick stands and is cited (p.12))": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off (CI default); nov4-cleaning-negative-no-basis; src/lib/forms/ca-conduct-reason.test.ts",
+  "reason": "Pau, 4 Nov 2026: a cleaning CA does not cite the Standards of Conduct by default. With the flag on, the model's Standards of Conduct tick moves to Other when its offense_basis is upkeep_or_task and no reader gives a reason (ca-conduct-reason.ts); revision 8 has no Other write-in, so Policy Violated reads \"Other\"."
+ },
+ "src/app/api/chat/replay-pack/replay-pack-e2e.test.ts :: the replay pack nov4-pau-metrics-not-people-lowercase-roster-name: negative control: a roster first name typed alone in lowercase (\"perpetua\"), answering who the form is for, is still matched — OPEN in production (production answers turn 1 as metric-only (CA_SALES_POLICY_ENABLED off), so there is no form for \"perpetua\" to answer)": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off (CI default); ca-sales-policy.test.ts",
+  "reason": "Client request (4 Nov 2026), Pau: a CA for sales or Under Performance cites the Standards of Conduct. With the flag on a stated metric shortfall goes to the Corrective Action Form citing the Standards of Conduct instead of the progression's metric-only answer; the names reader (FORM_NAME_FROM_ROSTER_ENABLED, Success) keeps metric words from being people."
+ },
+ "src/app/api/chat/replay-pack/replay-pack-e2e.test.ts :: the replay pack nov4-pau-metrics-not-people-metrics-only: metrics with no roster name (\"CA for under performance on Club Close % and Spa %\"): no card for \"under\"; it asks who the form is for — holds with production's flags": {
+  "category": "REGRESSION",
+  "twin": "nov4-pau-metrics-not-people-metrics-only [fix: CA_SALES + FORM_NAME_FROM_ROSTER] holds",
+  "reason": "Known, from main, not this branch: with CA_SALES_POLICY_ENABLED on WITHOUT FORM_NAME_FROM_ROSTER_ENABLED, \"CA for under performance on Club Close % and Spa %\" makes a card for \"under\". With both flags on it holds (the case's fixFlags). CA_SALES must be on only together with FORM_NAME_FROM_ROSTER (QA's flip condition)."
+ },
+ "src/app/api/chat/replay-pack/replay-pack-e2e.test.ts :: the replay pack nov4-pau-metrics-not-people-typo: negative control: a typo of a roster person on the same message still gets the close-match question — OPEN in production (no card or question: production answers the message as metric-only (CA_SALES_POLICY_ENABLED off))": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off (CI default); ca-sales-policy.test.ts",
+  "reason": "Client request (4 Nov 2026), Pau: a CA for sales or Under Performance cites the Standards of Conduct. With the flag on a stated metric shortfall goes to the Corrective Action Form citing the Standards of Conduct instead of the progression's metric-only answer; the names reader (FORM_NAME_FROM_ROSTER_ENABLED, Success) keeps metric words from being people."
+ },
+ "src/app/api/chat/replay-pack/replay-pack-e2e.test.ts :: the replay pack nov4-pau-metrics-not-people: sf-s19: Pau's Under Performance CA on PPTA, LPSVA, Club Average, Club Close %, Spa %: no roster note, the card cites Standards of Conduct — OPEN in production (no card: production answers the message as metric-only (CA_SALES_POLICY_ENABLED off))": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off (CI default); ca-sales-policy.test.ts",
+  "reason": "Client request (4 Nov 2026), Pau: a CA for sales or Under Performance cites the Standards of Conduct. With the flag on a stated metric shortfall goes to the Corrective Action Form citing the Standards of Conduct instead of the progression's metric-only answer; the names reader (FORM_NAME_FROM_ROSTER_ENABLED, Success) keeps metric words from being people."
+ },
+ "replay: nov2-p2-new-request-old-incident [fix:NEW_REQUEST_OWN_TURNS_ENABLED]": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off (CI default); src/lib/ai/msb-request-account.test.ts",
+  "reason": "QA, live, 4 Nov 2026 (\"CA for <name> for X\"): with the flag on, the employee a request names before \"for / due to / because\" is not the card's account, so the Observation of Offense no longer starts with the name (remap-incident.ts managerAccount). Holds in both modes."
+ },
+ "replay: nov2-p2-new-request-old-incident [production]": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off (CI default); src/lib/ai/msb-request-account.test.ts",
+  "reason": "QA, live, 4 Nov 2026 (\"CA for <name> for X\"): with the flag on, the employee a request names before \"for / due to / because\" is not the card's account, so the Observation of Offense no longer starts with the name (remap-incident.ts managerAccount). Holds in both modes."
+ },
+ "replay: nov3-ca-name-from-chat [fix:CA_NAME_FROM_CHAT_ENABLED]": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off (CI default); src/lib/ai/msb-request-account.test.ts",
+  "reason": "QA, live, 4 Nov 2026 (\"CA for <name> for X\"): with the flag on, the employee a request names before \"for / due to / because\" is not the card's account, so the Observation of Offense no longer starts with the name (remap-incident.ts managerAccount). Holds in both modes."
+ },
+ "replay: nov3-ca-name-from-chat [production]": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off (CI default); src/lib/ai/msb-request-account.test.ts",
+  "reason": "QA, live, 4 Nov 2026 (\"CA for <name> for X\"): with the flag on, the employee a request names before \"for / due to / because\" is not the card's account, so the Observation of Offense no longer starts with the name (remap-incident.ts managerAccount). Holds in both modes."
+ },
+ "replay: nov3-ca-name-not-on-roster [fix:CA_NAME_FROM_CHAT_ENABLED]": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off (CI default); src/lib/ai/msb-request-account.test.ts",
+  "reason": "QA, live, 4 Nov 2026 (\"CA for <name> for X\"): with the flag on, the employee a request names before \"for / due to / because\" is not the card's account, so the Observation of Offense no longer starts with the name (remap-incident.ts managerAccount). Holds in both modes."
+ },
+ "replay: nov3-ca-name-not-on-roster [production]": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off (CI default); src/lib/ai/msb-request-account.test.ts",
+  "reason": "QA, live, 4 Nov 2026 (\"CA for <name> for X\"): with the flag on, the employee a request names before \"for / due to / because\" is not the card's account, so the Observation of Offense no longer starts with the name (remap-incident.ts managerAccount). Holds in both modes."
+ },
+ "replay: nov3-card-observation-own-request [fix:CARD_OBSERVATION_OWN_REQUEST_ENABLED]": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off (CI default); src/lib/ai/msb-request-account.test.ts",
+  "reason": "QA, live, 4 Nov 2026 (\"CA for <name> for X\"): with the flag on, the employee a request names before \"for / due to / because\" is not the card's account, so the Observation of Offense no longer starts with the name (remap-incident.ts managerAccount). Holds in both modes."
+ },
+ "replay: nov3-card-observation-own-request [production]": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off (CI default); src/lib/ai/msb-request-account.test.ts",
+  "reason": "QA, live, 4 Nov 2026 (\"CA for <name> for X\"): with the flag on, the employee a request names before \"for / due to / because\" is not the card's account, so the Observation of Offense no longer starts with the name (remap-incident.ts managerAccount). Holds in both modes."
+ },
+ "replay: nov3-card-policy-label [fix:NEXT_PUBLIC_CARD_POLICY_TO_DRAFT_ENABLED,CARD_POLICY_LABEL_ENABLED]": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off (CI default); src/lib/ai/msb-request-account.test.ts",
+  "reason": "QA, live, 4 Nov 2026 (\"CA for <name> for X\"): with the flag on, the employee a request names before \"for / due to / because\" is not the card's account, so the Observation of Offense no longer starts with the name (remap-incident.ts managerAccount). Holds in both modes."
+ },
+ "replay: nov3-card-policy-label [production]": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off (CI default); src/lib/ai/msb-request-account.test.ts",
+  "reason": "QA, live, 4 Nov 2026 (\"CA for <name> for X\"): with the flag on, the employee a request names before \"for / due to / because\" is not the card's account, so the Observation of Offense no longer starts with the name (remap-incident.ts managerAccount). Holds in both modes."
+ },
+ "replay: nov3-draft-cites-card-policy [fix:NEXT_PUBLIC_CARD_POLICY_TO_DRAFT_ENABLED]": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off (CI default); src/lib/ai/msb-request-account.test.ts",
+  "reason": "QA, live, 4 Nov 2026 (\"CA for <name> for X\"): with the flag on, the employee a request names before \"for / due to / because\" is not the card's account, so the Observation of Offense no longer starts with the name (remap-incident.ts managerAccount). Holds in both modes."
+ },
+ "replay: nov3-draft-cites-card-policy [production]": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off (CI default); src/lib/ai/msb-request-account.test.ts",
+  "reason": "QA, live, 4 Nov 2026 (\"CA for <name> for X\"): with the flag on, the employee a request names before \"for / due to / because\" is not the card's account, so the Observation of Offense no longer starts with the name (remap-incident.ts managerAccount). Holds in both modes."
+ },
+ "replay: nov3-open-draft-new-request [fix:NEW_REQUEST_OPEN_DRAFT_ENABLED]": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off (CI default); src/lib/ai/msb-request-account.test.ts",
+  "reason": "QA, live, 4 Nov 2026 (\"CA for <name> for X\"): with the flag on, the employee a request names before \"for / due to / because\" is not the card's account, so the Observation of Offense no longer starts with the name (remap-incident.ts managerAccount). Holds in both modes."
+ },
+ "replay: nov3-open-draft-new-request [production]": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off (CI default); src/lib/ai/msb-request-account.test.ts",
+  "reason": "QA, live, 4 Nov 2026 (\"CA for <name> for X\"): with the flag on, the employee a request names before \"for / due to / because\" is not the card's account, so the Observation of Offense no longer starts with the name (remap-incident.ts managerAccount). Holds in both modes."
+ },
+ "replay: nov3-stepb-payroll-as-given [fix:FORM_PATCH_REDUCER_ENABLED,FORM_REPLY_FROM_DIFF_ENABLED]": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off (CI default); src/lib/ai/msb-request-account.test.ts",
+  "reason": "QA, live, 4 Nov 2026 (\"CA for <name> for X\"): with the flag on, the employee a request names before \"for / due to / because\" is not the card's account, so the Observation of Offense no longer starts with the name (remap-incident.ts managerAccount). Holds in both modes."
+ },
+ "replay: nov3-stepb-payroll-as-given [production]": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off (CI default); src/lib/ai/msb-request-account.test.ts",
+  "reason": "QA, live, 4 Nov 2026 (\"CA for <name> for X\"): with the flag on, the employee a request names before \"for / due to / because\" is not the card's account, so the Observation of Offense no longer starts with the name (remap-incident.ts managerAccount). Holds in both modes."
+ },
+ "replay: nov3-stepb-true-claim-keeps-guidance [fix:FORM_PATCH_REDUCER_ENABLED,FORM_REPLY_FROM_DIFF_ENABLED]": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off (CI default); src/lib/ai/msb-request-account.test.ts",
+  "reason": "QA, live, 4 Nov 2026 (\"CA for <name> for X\"): with the flag on, the employee a request names before \"for / due to / because\" is not the card's account, so the Observation of Offense no longer starts with the name (remap-incident.ts managerAccount). Holds in both modes."
+ },
+ "replay: nov3-stepb-true-claim-keeps-guidance [production]": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off (CI default); src/lib/ai/msb-request-account.test.ts",
+  "reason": "QA, live, 4 Nov 2026 (\"CA for <name> for X\"): with the flag on, the employee a request names before \"for / due to / because\" is not the card's account, so the Observation of Offense no longer starts with the name (remap-incident.ts managerAccount). Holds in both modes."
+ },
+ "replay: nov4-ca-sales-wrong-items [production]": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off (CI default); src/lib/ai/msb-request-account.test.ts",
+  "reason": "QA, live, 4 Nov 2026 (\"CA for <name> for X\"): with the flag on, the employee a request names before \"for / due to / because\" is not the card's account, so the Observation of Offense no longer starts with the name (remap-incident.ts managerAccount). Holds in both modes."
+ },
+ "replay: nov4-ca-sales-wrong-items-card [open]": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off (CI default); src/lib/ai/msb-request-account.test.ts",
+  "reason": "QA, live, 4 Nov 2026 (\"CA for <name> for X\"): with the flag on, the employee a request names before \"for / due to / because\" is not the card's account, so the Observation of Offense no longer starts with the name (remap-incident.ts managerAccount). Holds in both modes."
+ },
+ "replay: nov4-cleaning-basis-upkeep-duties [open]": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off (CI default); nov4-cleaning-negative-no-basis; src/lib/forms/ca-conduct-reason.test.ts",
+  "reason": "Pau, 4 Nov 2026: a cleaning CA does not cite the Standards of Conduct by default. With the flag on, the model's Standards of Conduct tick moves to Other when its offense_basis is upkeep_or_task and no reader gives a reason (ca-conduct-reason.ts); revision 8 has no Other write-in, so Policy Violated reads \"Other\"."
+ },
+ "replay: nov4-cleaning-negative-msb [production]": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off (CI default)",
+  "reason": "MSB CA: with the flag on the card cites Standards of Conduct — Must See Behaviors (MSB), p.12 (the sales/MSB reading); holds in both modes."
+ },
+ "replay: nov4-cleaning-negative-named-conduct [production]": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off (CI default); src/lib/ai/msb-request-account.test.ts",
+  "reason": "QA, live, 4 Nov 2026 (\"CA for <name> for X\"): with the flag on, the employee a request names before \"for / due to / because\" is not the card's account, so the Observation of Offense no longer starts with the name (remap-incident.ts managerAccount). Holds in both modes."
+ },
+ "replay: nov4-cleaning-tanning-beds-not-conduct [open]": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off (CI default); nov4-cleaning-negative-no-basis; src/lib/forms/ca-conduct-reason.test.ts",
+  "reason": "Pau, 4 Nov 2026: a cleaning CA does not cite the Standards of Conduct by default. With the flag on, the model's Standards of Conduct tick moves to Other when its offense_basis is upkeep_or_task and no reader gives a reason (ca-conduct-reason.ts); revision 8 has no Other write-in, so Policy Violated reads \"Other\"."
+ },
+ "replay: nov4-cleaning-wrong-items-keeps-conduct [production]": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off (CI default); src/lib/ai/msb-request-account.test.ts",
+  "reason": "QA, live, 4 Nov 2026 (\"CA for <name> for X\"): with the flag on, the employee a request names before \"for / due to / because\" is not the card's account, so the Observation of Offense no longer starts with the name (remap-incident.ts managerAccount). Holds in both modes."
+ },
+ "replay: nov4-pau-metrics-not-people [open]": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off (CI default); ca-sales-policy.test.ts",
+  "reason": "Client request (4 Nov 2026), Pau: a CA for sales or Under Performance cites the Standards of Conduct. With the flag on a stated metric shortfall goes to the Corrective Action Form citing the Standards of Conduct instead of the progression's metric-only answer; the names reader (FORM_NAME_FROM_ROSTER_ENABLED, Success) keeps metric words from being people."
+ },
+ "replay: nov4-pau-metrics-not-people-lowercase-first-name [open]": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off (CI default); ca-sales-policy.test.ts",
+  "reason": "Client request (4 Nov 2026), Pau: a CA for sales or Under Performance cites the Standards of Conduct. With the flag on a stated metric shortfall goes to the Corrective Action Form citing the Standards of Conduct instead of the progression's metric-only answer; the names reader (FORM_NAME_FROM_ROSTER_ENABLED, Success) keeps metric words from being people."
+ },
+ "replay: nov4-pau-metrics-not-people-lowercase-roster-name [open]": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off (CI default); ca-sales-policy.test.ts",
+  "reason": "Client request (4 Nov 2026), Pau: a CA for sales or Under Performance cites the Standards of Conduct. With the flag on a stated metric shortfall goes to the Corrective Action Form citing the Standards of Conduct instead of the progression's metric-only answer; the names reader (FORM_NAME_FROM_ROSTER_ENABLED, Success) keeps metric words from being people."
+ },
+ "replay: nov4-pau-metrics-not-people-metrics-only [production]": {
+  "category": "REGRESSION",
+  "twin": "nov4-pau-metrics-not-people-metrics-only [fix: CA_SALES + FORM_NAME_FROM_ROSTER] holds",
+  "reason": "Known, from main, not this branch: with CA_SALES_POLICY_ENABLED on WITHOUT FORM_NAME_FROM_ROSTER_ENABLED, \"CA for under performance on Club Close % and Spa %\" makes a card for \"under\". With both flags on it holds (the case's fixFlags). CA_SALES must be on only together with FORM_NAME_FROM_ROSTER (QA's flip condition)."
+ },
+ "replay: nov4-pau-metrics-not-people-typo [open]": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off (CI default); ca-sales-policy.test.ts",
+  "reason": "Client request (4 Nov 2026), Pau: a CA for sales or Under Performance cites the Standards of Conduct. With the flag on a stated metric shortfall goes to the Corrective Action Form citing the Standards of Conduct instead of the progression's metric-only answer; the names reader (FORM_NAME_FROM_ROSTER_ENABLED, Success) keeps metric words from being people."
+ },
+ "replay: nov4-pau-metrics-not-people-unknown [production]": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off (CI default); ca-sales-policy.test.ts",
+  "reason": "Client request (4 Nov 2026), Pau: a CA for sales or Under Performance cites the Standards of Conduct. With the flag on a stated metric shortfall goes to the Corrective Action Form citing the Standards of Conduct instead of the progression's metric-only answer; the names reader (FORM_NAME_FROM_ROSTER_ENABLED, Success) keeps metric words from being people."
+ },
+ "replay: nov4-rev8-described-late-opening-keeps-attendance [production]": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off (CI default); src/lib/ai/msb-request-account.test.ts",
+  "reason": "QA, live, 4 Nov 2026 (\"CA for <name> for X\"): with the flag on, the employee a request names before \"for / due to / because\" is not the card's account, so the Observation of Offense no longer starts with the name (remap-incident.ts managerAccount). Holds in both modes."
+ },
+ "replay: nov4-rev8-named-late-opening-keeps-attendance [production]": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off (CI default); src/lib/ai/msb-request-account.test.ts",
+  "reason": "QA, live, 4 Nov 2026 (\"CA for <name> for X\"): with the flag on, the employee a request names before \"for / due to / because\" is not the card's account, so the Observation of Offense no longer starts with the name (remap-incident.ts managerAccount). Holds in both modes."
+ },
+ "replay: nov4-scan-sf-s15-opening-duties-cleaning [open]": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off (CI default); src/lib/ai/msb-request-account.test.ts",
+  "reason": "QA, live, 4 Nov 2026 (\"CA for <name> for X\"): with the flag on, the employee a request names before \"for / due to / because\" is not the card's account, so the Observation of Offense no longer starts with the name (remap-incident.ts managerAccount). Holds in both modes."
+ },
+ "replay: nov4-scan-sf-s17-woven-courses-written [open]": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off (CI default); src/lib/ai/msb-request-account.test.ts",
+  "reason": "QA, live, 4 Nov 2026 (\"CA for <name> for X\"): with the flag on, the employee a request names before \"for / due to / because\" is not the card's account, so the Observation of Offense no longer starts with the name (remap-incident.ts managerAccount). Holds in both modes."
  }
 }
