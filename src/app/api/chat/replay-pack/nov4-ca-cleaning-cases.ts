@@ -166,7 +166,9 @@ export const NOV4_CA_CLEANING_CASES: ReplayCase[] = [
     title: "\"did not complete daily cleaning duties\" with the model's upkeep basis: Other",
     report: `${REPORT}: Pau's wording, with offense_basis`,
     status: { open: "with production's flags the task reading ticks and cites the Standards of Conduct" },
+    // The fix-flag run: fails with production's real flags (QA Vercel read 5 Nov); tracked: POLICY_CITATION_ENABLED (on in production) — flaggedCitationWrite fills the empty Direct policy with the Standards of Conduct after the tick moved to Other.
     fixFlags: [FLAG],
+    fixStatus: { open: "fails with production's real flags (QA Vercel read 5 Nov); tracked: POLICY_CITATION_ENABLED (on in production) — flaggedCitationWrite fills the empty Direct policy with the Standards of Conduct after the tick moved to Other" },
     async run(t) {
       const thread = start(t);
       await thread.say("make a corrective action for Halloran Sweetbriar, he did not complete daily cleaning duties");

@@ -282,7 +282,10 @@ async function coachingChat(t: T, upTo: number): Promise<void> {
 }
 
 /** Today's status of each prefix (production flags). */
-const COACHING_OPEN: Readonly<Record<number, string>> = {};
+const COACHING_OPEN: Readonly<Record<number, string>> = {
+  // fails with production's real flags (QA Vercel read 5 Nov); tracked: POLICY_CITATION_ENABLED (on in production) — "fix her last name, it is Laine" no longer reaches the Details.
+  1: "fails with production's real flags (QA Vercel read 5 Nov); tracked: POLICY_CITATION_ENABLED (on in production) — \"fix her last name, it is Laine\" no longer reaches the Details",
+};
 
 const COACHING_CASES: readonly ReplayCase[] = COACHING_CHAIN.map((said, index): ReplayCase => {
   const turn = index + 1;
