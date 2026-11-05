@@ -79,12 +79,14 @@ export const NOV5_PAU_SF_S21_S25_CASES: ReplayCase[] = [
     id: "nov5-sf-s21-must-see-behaviors-template",
     title: "sf-s21: \"create a ca for must see behaviors …\": no \"Standards of Conduct, as you said\"; the template's outline is applied with Wynne's own facts, never \"I haven't changed the form\"",
     report: `${REPORT}, sf-s21`,
-    status: { open: "the template turns (\"No this should be the same out line …\") are answered \"I haven't changed the Corrective Action Form\"" },
-    // The live \"Standards of Conduct, as you said\" on turn 1 is not reproduced here (asserted, holds in the pack): the reader that wrote it needs flags or manual rows the pack does not have.
+    status: { open: "\"**Policy:** Standards of Conduct, as you said\" on turn 1 (the intent read's heading, as in the live trace), and the template turns are answered \"I haven't changed the Corrective Action Form\"" },
     async run(t) {
       const thread = start(t);
       const said: string[] = [S21_T1];
+      // The live trace (5 Nov 2026): the intent read returned policyHeading "Standards of Conduct" (p.12) for this turn.
+      t.slotsRead({ policyHeading: "Standards of Conduct" });
       const first = await thread.say(S21_T1);
+      t.slotsRead({});
       expect(thread.proposal, `no CA card for Wynne Sarrow:\n${first.content}`).toMatchObject({ templateKey: "dpoa", employeeName: "Wynne Sarrow" });
       expect(claimsUnsaid(first, said), `"as you said" for a policy the manager never typed:\n${policyLine(first)}`).toBeNull();
       t.draftWrites({ observation: "Observed:\nIn October 2026, Wynne completed 146 tanning transactions and was below average in PPTA, LPSVA, Average Club, CC%, and Spa%." });
@@ -134,18 +136,15 @@ export const NOV5_PAU_SF_S21_S25_CASES: ReplayCase[] = [
     id: "nov5-sf-s24-must-see-behaviors-and-coaching-on-file",
     title: "sf-s24: \"it should be must see behaviors and she also had coaching on file …\": no \"Standards of Conduct, as you said\"; the card and the saved form agree",
     report: `${REPORT}, sf-s24`,
-    /*
-     * HOLDS IN THE PACK (with production's flags, and with CA_SALES and
-     * FORM_NAME on): the live \"Standards of Conduct, as you said\" is not
-     * reproduced, so this stays a guard rather than an open case; reported
-     * to QA. The live reply came from flags or manual rows the pack lacks.
-     */
-    status: "fixed",
+    // Reproduced with the live trace's intent read (policyHeading "Standards of Conduct"; QA, 5 Nov 2026).
+    status: { open: "\"**Policy:** Standards of Conduct, as you said\" although the manager said must see behaviors" },
     async run(t) {
       const thread = start(t);
       const t1 = "Can you write me a performace ca for an employee who did not meet their numbers for the month of october Wynne Sarrow  - verbal\n146 tans \nBelow in PPTA, LPSVA, Average Club, CC%, Spa%";
       const t2 = "it should be must see behaviors and she also had coaching on file for open ended questions coahing done one 10/22 and sunless bundle coachings done 10/15";
       await thread.say(t1);
+      // The live trace (5 Nov 2026): the intent read returned policyHeading "Standards of Conduct" (p.12) for this turn.
+      t.slotsRead({ policyHeading: "Standards of Conduct" });
       const reply = await thread.say(t2);
       expect(claimsUnsaid(reply, [t1, t2]), `"as you said" for a policy the manager never typed:\n${policyLine(reply)}`).toBeNull();
     },
@@ -155,7 +154,7 @@ export const NOV5_PAU_SF_S21_S25_CASES: ReplayCase[] = [
     title: "sf-s25: a closing account is never \"Late Opening, as you said\"; the Observation is the incident, not the earlier question",
     report: `${REPORT}, sf-s25`,
     status: { open: "the card's Observation begins with the earlier question (\"What policy would it be …\")" },
-    // The live \"Late Opening, as you said\" is asserted too but not reproduced here (holds in the pack).
+    // The live "Late Opening, as you said" is asserted too (the trace's heading is read); here the Observation fails first.
     async run(t) {
       const thread = start(t);
       const said = [
@@ -165,6 +164,8 @@ export const NOV5_PAU_SF_S21_S25_CASES: ReplayCase[] = [
       ];
       await thread.say(said[0]!);
       await thread.say(said[1]!);
+      // The live trace (5 Nov 2026): the intent read returned policyHeading "Late Opening" (p.15) for this turn.
+      t.slotsRead({ policyHeading: "Late Opening" });
       const reply = await thread.say(said[2]!);
       expect(claimsUnsaid(reply, said), `"as you said" for a policy the manager never typed:\n${policyLine(reply)}`).toBeNull();
       expect(observationLine(reply), `the earlier question is in the Observation:\n${observationLine(reply)}`).not.toMatch(/What policy would it be/i);
