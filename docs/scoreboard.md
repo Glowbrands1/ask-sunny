@@ -100,6 +100,7 @@ Harness events (not case failures):
 - prompts.ts sha256, cross-chat reply rule (CROSS_CHAT_REPLY_GUARD_ENABLED, off by default; flags-off prompt text unchanged): `e3e039dc61724e95b68a35f31748a7aae997d27be0d1c4751b1b55eb9dcae14a`
 - prompts.ts sha256, retrieved-sources rule (retrieved sources are never "the sources you shared"): `14577433ba7a80bb1798e9335b94a29e6f691e36a2b3b94b20223e92be67456a`
 - prompts.ts sha256, framework general sections and tidy marker stripping (FRAMEWORK_GENERAL_SECTIONS_ENABLED and REFORMAT_KEEPS_SOURCES_ENABLED, off by default; flags-off prompt text unchanged): `ecc5177c98714a8a23e7340304409aef61d5ef43a47600b0be2beaf608b90594`
+- prompts.ts sha256, form rule asks for the form and a typed prior step is never on file (FACSIMILE_ASK_ONLY_ENABLED and TYPED_PRIOR_NOT_ON_FILE_ENABLED, off by default; flags-off prompt text unchanged): `3eb9abe1290817f75d29aff963e68ffc2f271b9ea2a8bef6f6dcf78d9b5ac750`
 - commit: `f4b261628145bc17059fa753a5bc22f96a06694e`
 - model: `claude-opus-5`
 - flag set: `INTENT_EXTRACTION_ENABLED, FEWSHOT_EXAMPLES_ENABLED, SELF_CHECK_ENABLED, QUERY_REWRITE_ENABLED, GROUNDED_ENTITIES_ENABLED, DRAFT_MERGE_ENABLED, ACTION_PLAN_SENTENCES_ENABLED, TYPED_NAME_PROCEEDS_ENABLED, ATTENDANCE_POLICY_CITATION_ENABLED, POLICY_PAGE_REQUIRED_ENABLED, MANAGER_PAYROLL_AMOUNT_ONLY_ENABLED, POLICY_GATE_NONBLOCKING_ENABLED, MANUAL_SECTION_DEDUPE_ENABLED, PRINTED_PAGE_CITATION_ENABLED, PAYROLL_AMOUNT_FIELD_ENABLED, CODE_SLOTS_ENABLED, GLOBAL_SALON_ASK_ENABLED`
