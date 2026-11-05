@@ -2572,3 +2572,18 @@ export function rosterNearMissEnabled(): boolean {
 export function replyMatchesCardEnabled(): boolean {
   return envFlag("REPLY_MATCHES_CARD_ENABLED");
 }
+
+/**
+ * CITATION_LINE_KEPT_ON_REVISION_ENABLED (QA's production-flags read and
+ * bisect, 5 Nov 2026; default off): with POLICY_CITATION_ENABLED on in
+ * production, the app appends "Policy reference: …, JBA Policy Manual p.N" to
+ * a Coaching draft's Details. A chat edit ("fix her last name, it is Laine")
+ * whose revision did not repeat that line was refused: keepsSubstance found
+ * the line's page numbers missing, so nothing was written and the reply said
+ * "I haven't changed the Coaching Form". With the flag on, a wording or
+ * additive revision keeps the app's own trailing line (`forms/app-citation-line.ts`),
+ * so the edit lands and the citation stays. Off, as before.
+ */
+export function citationLineKeptOnRevisionEnabled(): boolean {
+  return envFlag("CITATION_LINE_KEPT_ON_REVISION_ENABLED");
+}
