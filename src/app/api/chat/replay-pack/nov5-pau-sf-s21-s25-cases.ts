@@ -42,6 +42,9 @@ export function pauSfS21People(): readonly DirectoryRow[] {
 
 const REPORT = "Pau via QA, 5 Nov 2026 (this app's production, 4 Nov)";
 
+/** The "as you said" fix: the card's policy line reads the manager's words, not the stored heading. */
+const SAID_ONLY = ["CA_POLICY_SAID_ONLY_ENABLED"];
+
 function start(t: T) {
   vi.setSystemTime(new Date("2026-11-04T23:30:00Z"));
   t.directory([...STAFF, ...PEOPLE]);
@@ -103,6 +106,7 @@ export const NOV5_PAU_SF_S21_S25_CASES: ReplayCase[] = [
     title: "sf-s22: \"It needs to be a CA, not a coaching form\" and \"Its a CA\" keep the Corrective Action; another employee's reviewer notes never go into the Observation",
     report: `${REPORT}, sf-s22`,
     status: { open: "after \"It needs to be a CA\" the card goes back to \"Here is what I would put on a Coaching Form\", and the Observation carries Corwen's reviewer notes" },
+    fixFlags: ["OBSERVATION_OTHER_PERSON_TURN_ENABLED", "PASTED_BLOCK_FORM_ENABLED", "NEW_PERSON_OWN_WORDS_ENABLED"],
     async run(t) {
       const thread = start(t);
       const first = await thread.say(
@@ -113,6 +117,8 @@ export const NOV5_PAU_SF_S21_S25_CASES: ReplayCase[] = [
       const caTurn = await thread.say("It needs to be a CA, not a coaching form");
       expect(thread.proposal, `"It needs to be a CA" is not a Corrective Action:\n${caTurn.content}`).toMatchObject({ templateKey: "dpoa" });
       expect(observationLine(caTurn), `another employee's notes in the Observation:\n${observationLine(caTurn)}`).not.toMatch(/Corwen/i);
+      // QA, 5 Nov 2026: the card still reads back turn 1's facts after "It needs to be a CA".
+      expect(observationLine(caTurn), `"It needs to be a CA" lost the account:\n${caTurn.content}`).toMatch(/146 tans/);
       const again = await thread.say(`Make this:${REVIEWER_NOTES}`);
       expect(again.content, `back to the Coaching Form after "It needs to be a CA":\n${again.content}`).not.toMatch(/what I would put on a \*\*Coaching Form\*\*/);
       const its = await thread.say("Its a CA");
@@ -124,11 +130,14 @@ export const NOV5_PAU_SF_S21_S25_CASES: ReplayCase[] = [
     title: "sf-s23: \"not pay roll deductable\" answers the payroll question (not the Observation, not asked again); \"under performance not standard of conduct\" changes the Action Plan and Direct policy too",
     report: `${REPORT}, sf-s23`,
     status: { open: "\"not pay roll deductable\" becomes the card's Observation and the payroll question is asked again" },
+    fixFlags: ["PAYROLL_ANSWER_SPELLING_ENABLED"],
     async run(t) {
       const thread = start(t);
       await thread.say("can you write me a Ca for wynne sarrow for performance for october");
       const payroll = await thread.say("not pay roll deductable");
-      expect(payroll.content, `the payroll question is asked again:\n${payroll.content}`).not.toMatch(/Is payroll deduct applicable\?/);
+      // The question as asked is bold ("**Is payroll deduct applicable?** Yes or No?"); the answer read back
+      // ("Is payroll deduct applicable? **No** — tell me if that should change.") is not asking it again.
+      expect(payroll.content, `the payroll question is asked again:\n${payroll.content}`).not.toMatch(/\*\*Is payroll deduct applicable\?\*\*/);
       expect(observationLine(payroll), `the payroll answer is the Observation:\n${observationLine(payroll)}`).not.toMatch(/pay\s*roll/i);
     },
   },
@@ -138,6 +147,7 @@ export const NOV5_PAU_SF_S21_S25_CASES: ReplayCase[] = [
     report: `${REPORT}, sf-s24`,
     // Reproduced with the live trace's intent read (policyHeading "Standards of Conduct"; QA, 5 Nov 2026).
     status: { open: "\"**Policy:** Standards of Conduct, as you said\" although the manager said must see behaviors" },
+    fixFlags: SAID_ONLY,
     async run(t) {
       const thread = start(t);
       const t1 = "Can you write me a performace ca for an employee who did not meet their numbers for the month of october Wynne Sarrow  - verbal\n146 tans \nBelow in PPTA, LPSVA, Average Club, CC%, Spa%";
@@ -154,6 +164,7 @@ export const NOV5_PAU_SF_S21_S25_CASES: ReplayCase[] = [
     title: "sf-s25: a closing account is never \"Late Opening, as you said\"; the Observation is the incident, not the earlier question",
     report: `${REPORT}, sf-s25`,
     status: { open: "the card's Observation begins with the earlier question (\"What policy would it be …\")" },
+    fixFlags: ["OBSERVATION_NOT_EARLIER_QUESTION_ENABLED", "CARD_POLICY_DESCRIBED_ENABLED"],
     // The live "Late Opening, as you said" is asserted too (the trace's heading is read); here the Observation fails first.
     async run(t) {
       const thread = start(t);
@@ -169,6 +180,45 @@ export const NOV5_PAU_SF_S21_S25_CASES: ReplayCase[] = [
       const reply = await thread.say(said[2]!);
       expect(claimsUnsaid(reply, said), `"as you said" for a policy the manager never typed:\n${policyLine(reply)}`).toBeNull();
       expect(observationLine(reply), `the earlier question is in the Observation:\n${observationLine(reply)}`).not.toMatch(/What policy would it be/i);
+      // QA, 5 Nov 2026: a closing account never cites Late Opening (the intent read's heading, stored).
+      expect(reply.content, `a closing account cites Late Opening:\n${reply.content}`).not.toMatch(/Late Opening/i);
+    },
+  },
+  {
+    id: "nov5-sf-s21-no-as-you-said",
+    title: "sf-s21 turn 1 alone: the intent read's \"Standards of Conduct\" is never \"as you said\"",
+    report: `${REPORT}, sf-s21`,
+    status: { open: "\"**Policy:** Standards of Conduct, as you said\" on turn 1 (the intent read's heading, as in the live trace)" },
+    fixFlags: SAID_ONLY,
+    async run(t) {
+      const thread = start(t);
+      t.slotsRead({ policyHeading: "Standards of Conduct" });
+      const first = await thread.say(S21_T1);
+      expect(thread.proposal, `no CA card for Wynne Sarrow:\n${first.content}`).toMatchObject({ templateKey: "dpoa", employeeName: "Wynne Sarrow" });
+      expect(claimsUnsaid(first, [S21_T1]), `"as you said" for a policy the manager never typed:\n${policyLine(first)}`).toBeNull();
+    },
+  },
+  {
+    id: "nov5-sf-s25-no-late-opening-claim",
+    title: "sf-s25 alone: a closing account is never \"Late Opening, as you said\"",
+    report: `${REPORT}, sf-s25`,
+    // A guard: here the turn takes the "what I would put on" path, which has no
+    // "as you said" line, so the live claim does not reproduce. The reader that
+    // wrote it live is the one sf-s24 reaches (ca-policy-said-only.test.ts has
+    // the "Late Opening" sentence).
+    status: "fixed",
+    async run(t) {
+      const thread = start(t);
+      const said = [
+        "closing policy",
+        "What policy would it be if a tanning consultant did not complete the closing correctly and i have already talked to her about it",
+        "Write a CA for Wynne Sarrow she is TC works at Omaha Pacific and on 11/3/26 she was scheduled until 9:15PM and clocked out at 9:01. She also took down the spray booths down at 8:11 PM before the Salon was closed.",
+      ];
+      await thread.say(said[0]!);
+      await thread.say(said[1]!);
+      t.slotsRead({ policyHeading: "Late Opening" });
+      const reply = await thread.say(said[2]!);
+      expect(claimsUnsaid(reply, said), `"as you said" for a policy the manager never typed:\n${policyLine(reply)}`).toBeNull();
     },
   },
 ];

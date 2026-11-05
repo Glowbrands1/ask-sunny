@@ -1,3 +1,4 @@
+import { formLeadFullSentenceEnabled } from "@/lib/config/chat-quality-flags";
 import { extractJobTitle } from "./proposal";
 import type { BoundedContext } from "./bounded-context";
 
@@ -298,7 +299,20 @@ export function suggestedTemplateKeys(input: {
   return [...new Set(keys)];
 }
 
-/** The line that introduces the cards. Short, and it decides nothing. */
-export function formOpportunityLead(): string {
-  return "Based on what you've described, I can prepare:";
+/**
+ * The line that introduces the cards. Short, and it decides nothing.
+ *
+ * FORM_LEAD_FULL_SENTENCE_ENABLED (Pau via QA, 5 Nov 2026, sf-b6 in the sibling app): the reply
+ * ended "Based on what you've described, I can prepare:" with nothing after
+ * it. On, the line is a whole sentence that names the forms offered, so it
+ * reads complete whether or not the cards show. Off, as before.
+ */
+export function formOpportunityLead(names: readonly string[] = []): string {
+  if (!formLeadFullSentenceEnabled() || names.length === 0) return "Based on what you've described, I can prepare:";
+  const named = names.map((name) => `the **${name}**`);
+  const list = named.length === 1 ? named[0]! : `${named.slice(0, -1).join(", ")} or ${named[named.length - 1]}`;
+  return `Based on what you've described, I can prepare ${list}${named.length === 1 ? "" : " — pick one below"}.`;
 }
+
+/** Either form of the lead, at the end of a reply (`formOpportunityLead`). */
+export const FORM_OPPORTUNITY_LEAD_AT_END = /\n*Based on what you've described, I can prepare(?::|\s[^\n]*\.)\s*$/;

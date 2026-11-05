@@ -64,6 +64,7 @@ import {
   isActivitySurface,
 } from "@/lib/analytics/taxonomy";
 import { activeKnowledgeCorpus } from "@/lib/knowledge/corpus";
+import { FORM_OPPORTUNITY_LEAD_AT_END } from "@/lib/forms/form-opportunity";
 import { CONTINUATION_KEY_MAX } from "@/lib/forms/proposal-continuation";
 import { mayAskToReopen } from "@/lib/forms/reopen-cue";
 import { parseChatReportContext } from "@/lib/reporting/read/chat-report-context";
@@ -772,7 +773,7 @@ async function postChat(request: Request) {
       if (openFormNoSelectionEnabled() && parsed.activeFormInstanceId && answer.formSelection) {
         const { formSelection: _dropped, ...rest } = answer;
         void _dropped;
-        answer = { ...rest, content: rest.content.replace(/\n*Based on what you've described, I can prepare:\s*$/, "").trimEnd() };
+        answer = { ...rest, content: rest.content.replace(FORM_OPPORTUNITY_LEAD_AT_END, "").trimEnd() };
       }
     } catch (error) {
       /*

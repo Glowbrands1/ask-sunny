@@ -13,6 +13,8 @@ import {
   followUpNotPriorEnabled,
   followUpReadbackCueEnabled,
   correctedEmployeeSlotEnabled,
+  caSalesPolicyEnabled,
+  cardPolicyDescribedEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { templateHasWarningLevel } from "@/lib/forms/warning-level";
 import { followUpDatesByRules } from "./edit-date-rules";
@@ -26,6 +28,7 @@ import {
   findManualSection,
   headingKey,
   withoutAttendanceForLateOpening,
+  wordsSupportHeading,
   type ManualChunk,
   type ManualSection,
 } from "@/lib/forms/official-policy-manual";
@@ -39,7 +42,7 @@ import { extractJobTitle, titleAfterJobTitleLabel } from "@/lib/forms/proposal";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
 import type { ChatFormProposal, KnowledgeCategory, SourceCitation } from "@/types";
 
-import { describedAttendanceKeys, readCaPolicy, statedOffenseKeys } from "@/lib/forms/ca-policy";
+import { CA_POLICY_LABEL, describedAttendanceKeys, isSalesPolicyReading, readCaPolicy, statedOffenseKeys, withoutSalesReading } from "@/lib/forms/ca-policy";
 import {
   citeAttendanceForTardiness,
   formatPolicyCitation,
@@ -50,7 +53,7 @@ import {
 import { accountManualSections } from "./account-manual-sections";
 import { appSentencesOnePerLine } from "./app-sentences";
 import { titleTextFromQuestion } from "./title-words";
-import type { ConversationFormState } from "./form-state";
+import { withoutPolicyReference, type ConversationFormState } from "./form-state";
 import type { GroundedPerson } from "./grounded-entities";
 import { formatManualCitation } from "./policy-citation-fields";
 import { remapCitations, remapManualSections, withoutStateCodes } from "./remap-incident";
@@ -202,13 +205,23 @@ export function attachFormTurnSources(given: {
   readonly modelHeading?: string | null;
   readonly attendanceCitation?: boolean;
   readonly pageRequired?: boolean;
+  /** The card's template; the sales reading's Standards of Conduct pin is the Corrective Action Form's only. */
+  readonly templateKey?: string;
 }): { content: string; citations: SourceCitation[] } {
-  const input = formChoiceStatedEnabled() ? { ...given, modelHeading: headingForCard(given) } : given;
+  // CA_SALES_POLICY_ENABLED is the Corrective Action Form's: any other card reads the manager's turns without the sales reading (QA, 5 Nov 2026, priority replay s11).
+  if (given.templateKey !== undefined && given.templateKey !== "dpoa") return withoutSalesReading(() => cardTurnSources(given));
+  return cardTurnSources(given);
+}
+
+function cardTurnSources(given: Parameters<typeof attachFormTurnSources>[0]): { content: string; citations: SourceCitation[] } {
+  // CARD_POLICY_DESCRIBED_ENABLED (sf-s25): a stored heading the manager's words do not support is not read from the notes either.
+  const read = unsupportedStoredHeading(given.notes) ? { ...given, notes: withoutPolicyReference(given.notes) } : given;
+  const input = formChoiceStatedEnabled() ? { ...read, modelHeading: headingForCard(read) } : read;
   const found = formTurnCitations(input);
   let citations = lateOpeningCitations(input.citations.length > 0 ? [...input.citations] : found, input.notes);
   let content = input.content;
   let sections = violatedSections(
-    sectionsFor(input.notes, input.chunks, input.modelHeading ?? statedManualHeading(input.notes)),
+    sectionsFor(input.notes, input.chunks, input.modelHeading ?? cardManualHeading(input.notes)),
   );
   sections = citeAttendanceForTardiness({
     enabled: input.attendanceCitation === true,
@@ -239,6 +252,22 @@ export function attachFormTurnSources(given: {
   // LATE_OPEN_DATE_ENABLED: a late opening cites Late Opening, never Attendance,
   // whichever reader found the sections.
   sections = withoutAttendanceForLateOpening(sections, input.notes);
+  /*
+   * CA_SALES_POLICY_ENABLED (QA round 2, row B, 5 Nov 2026): message 8 ("… -
+   * verbal / 146 tans / Below in PPTA, LPSVA, …") cited "Evaluations and
+   * Raises" (p.34) beside the Standards of Conduct, and the Action Plan
+   * reviewed both. A sales or performance account cites the Standards of
+   * Conduct (Pau, 4 Nov 2026), and nothing beside it; its sources are that
+   * section's.
+   */
+  // A Coaching Form is not a sales CA (priority replay s11): "reflected it as underperformance" in an earlier turn never pins its cell-phone account to the Standards of Conduct.
+  const conduct = input.templateKey === undefined || input.templateKey === "dpoa" ? salesConductOnly(input.notes, input.chunks, content) : null;
+  if (conduct) {
+    sections = [conduct];
+    const key = headingKey(conduct.heading);
+    citations = citations.filter((citation) => headingKey(citation.excerpt.split(".")[0] ?? "") === key);
+    if (citations.length === 0) citations = formTurnCitations({ ...input, modelHeading: conduct.heading }).filter((citation) => headingKey(citation.excerpt.split(".")[0] ?? "") === key);
+  }
   const mustCitePage = input.pageRequired === true || input.attendanceCitation === true;
   for (const section of sections) {
     const line =
@@ -254,6 +283,20 @@ export function attachFormTurnSources(given: {
     input.attendanceCitation === true && sections.some((section) => /^attendance$/i.test(section.heading)),
   );
   return { content, citations };
+}
+
+/**
+ * CA_SALES_POLICY_ENABLED: the Standards of Conduct section when the account
+ * is a sales or performance one — read so, or the card's own Policy line
+ * already names the Standards of Conduct for it; otherwise null.
+ */
+function salesConductOnly(notes: string, chunks: readonly ManualChunk[], content: string): ManualSection | null {
+  if (!caSalesPolicyEnabled()) return null;
+  const conduct = CA_POLICY_LABEL.standards_of_conduct;
+  const line = content.split("\n").find((item) => item.trim().startsWith("**Policy:**")) ?? "";
+  const named = line.replace("**Policy:**", "").replace(/\*\*/g, "").trim().toLowerCase().startsWith(conduct.toLowerCase());
+  const sales = isSalesPolicyReading(readCaPolicy(notes)) || named;
+  return sales ? findManualSection(chunks, [conduct]) : null;
 }
 
 /**
@@ -280,7 +323,7 @@ function isDisciplineProcedure(heading: string): boolean {
  * only source was "Page 14 — Disciplinary Action").
  */
 function headingForCard(input: { readonly content: string; readonly notes: string; readonly modelHeading?: string | null }): string | null {
-  const stated = input.modelHeading ?? statedManualHeading(input.notes);
+  const stated = input.modelHeading ?? cardManualHeading(input.notes);
   return (stated && !isDisciplineProcedure(stated) ? stated : null) ?? policyNamedInReply(input.content);
 }
 
@@ -319,7 +362,7 @@ function sectionsFor(notes: string, chunks: readonly ManualChunk[], modelHeading
     return citedPolicies([described, ...fromAccount.filter((section) => section.heading.toLowerCase() !== key)]);
   }
   if (fromAccount.length > 0) return citedPolicies(fromAccount);
-  const heading = modelHeading ?? statedManualHeading(notes);
+  const heading = modelHeading ?? cardManualHeading(notes);
   if (!heading) return [];
   const section = findManualSection(chunks, [heading]);
   return section ? citedPolicies(withConductLinePage([section], notes, chunks)) : [];
@@ -493,13 +536,38 @@ function withoutStateSentences(question: string): string {
     .replace(/\bPayroll amount: [^.\n]+\./gi, " ");
 }
 
+/** CARD_POLICY_DESCRIBED_ENABLED: the notes carry a stored "Policy reference:" heading their own words do not support. */
+function unsupportedStoredHeading(notes: string): boolean {
+  return cardPolicyDescribedEnabled() && statedManualHeading(notes) !== null && cardManualHeading(notes) === null;
+}
+
+/**
+ * The heading the card cites from the conversation's text (`statedManualHeading`).
+ * CARD_POLICY_DESCRIBED_ENABLED (Pau via QA, 5 Nov 2026, sf-s25): a heading
+ * read only from the stored "Policy reference:" line was chosen for the
+ * manager, and is cited only when their own words support it
+ * (`wordsSupportHeading`): a closing account never cites Late Opening.
+ */
+export function cardManualHeading(text: string): string | null {
+  const heading = statedManualHeading(text);
+  if (!heading || !cardPolicyDescribedEnabled()) return heading;
+  const ownWords = withoutStateSentences(text);
+  if (statedManualHeading(ownWords)) return heading;
+  return wordsSupportHeading(heading, ownWords) ? heading : null;
+}
+
 function statedPolicy(text: string, saved: ConversationFormState | null): { heading: string; page: number | null } | null {
-  const fromLine = statedManualHeading(text);
+  const fromLine = cardManualHeading(text);
+  const ownWords = withoutStateSentences(text);
   if (fromLine) {
     const page = /Policy reference:[^\n]*\bp\.(\d+)/i.exec(text)?.[1];
     return { heading: fromLine, page: page ? Number(page) : saved?.policyPage ?? null };
   }
-  if (saved?.policyHeading) return { heading: saved.policyHeading, page: saved.policyPage };
+  if (saved?.policyHeading) {
+    // CARD_POLICY_DESCRIBED_ENABLED (sf-s25): a heading chosen for the manager is printed only when their words support it.
+    if (cardPolicyDescribedEnabled() && !wordsSupportHeading(saved.policyHeading, ownWords)) return null;
+    return { heading: saved.policyHeading, page: saved.policyPage };
+  }
   return null;
 }
 

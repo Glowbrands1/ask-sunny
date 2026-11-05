@@ -1,4 +1,4 @@
-import { caSalesPolicyEnabled } from "@/lib/config/chat-quality-flags";
+import { caProcedureBasisEnabled, caSalesPolicyEnabled } from "@/lib/config/chat-quality-flags";
 
 import { isSalesPolicyReading, STANDARDS_OF_CONDUCT, type CaPolicyReading } from "./ca-policy";
 import { managerIssueWords } from "./other-write-in";
@@ -49,7 +49,9 @@ export function conductHasReason(reading: CaPolicyReading, stated: boolean, basi
    * stands unless the model's basis is upkeep_or_task; with no basis, as
    * before this flag.
    */
-  return basis !== "upkeep_or_task";
+  if (basis === "upkeep_or_task") return false;
+  // CA_PROCEDURE_BASIS_ENABLED (sf-b6): a store procedure the model names is no reason either.
+  return !(caProcedureBasisEnabled() && basis === PROCEDURE_BASIS);
 }
 
 /*
@@ -61,7 +63,7 @@ export function conductHasReason(reading: CaPolicyReading, stated: boolean, basi
  * keep it. No extra call, no word list in the code.
  */
 export const OFFENSE_BASES = ["sales", "msb", "conduct", "upkeep_or_task", "other"] as const;
-export type OffenseBasis = (typeof OFFENSE_BASES)[number];
+export type OffenseBasis = (typeof OFFENSE_BASES)[number] | "store_procedure";
 
 /** The tool's optional property, added with CA_SALES_POLICY_ENABLED on a form offering Other. */
 export const OFFENSE_BASIS_PROPERTY = {
@@ -71,10 +73,38 @@ export const OFFENSE_BASIS_PROPERTY = {
     "Corrective Action only: what the manager's account is about. sales = ringing up a sale inaccurately, or sales performance or goals; msb = Must See Behaviors; conduct = a manager's direction not followed, how the employee treated guests or co-workers, or required training, Woven items, acknowledgements or deadlines not completed; upkeep_or_task = cleaning or store upkeep left undone; other = none of these.",
 } as const;
 
+/*
+ * CA_PROCEDURE_BASIS_ENABLED (Pau via QA, 5 Nov 2026, sf-b6; default off):
+ * "counting the drawer early and turning away a customer" — closing a
+ * register before close — came back with Standards of Conduct ticked and its
+ * section quoted, though the chat had told the manager no source states a
+ * policy for it and it would leave that field to them. Pau chose the narrow
+ * rule: like upkeep, a store procedure the drafting model names as the basis
+ * moves its Standards of Conduct tick to Other when no reader of the
+ * manager's words gives a reason. "Rude to a guest" stays conduct. The enum
+ * value and its line in the description are sent only with the flag on.
+ */
+export const PROCEDURE_BASIS = "store_procedure";
+
+/** The values the tool may send: with CA_PROCEDURE_BASIS_ENABLED, the store-procedure basis too. */
+function offenseBases(): readonly string[] {
+  return caProcedureBasisEnabled() ? [...OFFENSE_BASES, PROCEDURE_BASIS] : OFFENSE_BASES;
+}
+
+/** The tool's optional property as sent: `OFFENSE_BASIS_PROPERTY`, or with CA_PROCEDURE_BASIS_ENABLED its store-procedure value. */
+export function offenseBasisProperty(): { readonly type: "string"; readonly enum: readonly string[]; readonly description: string } {
+  if (!caProcedureBasisEnabled()) return OFFENSE_BASIS_PROPERTY;
+  return {
+    type: "string",
+    enum: offenseBases(),
+    description: `${OFFENSE_BASIS_PROPERTY.description} store_procedure = an opening, closing or register procedure not followed, such as closing early.`,
+  };
+}
+
 /** The basis the tool call carried, or null when missing or not one of the values. */
 export function readOffenseBasis(input: unknown): OffenseBasis | null {
   const value = input && typeof input === "object" ? (input as { offense_basis?: unknown }).offense_basis : undefined;
-  return typeof value === "string" && (OFFENSE_BASES as readonly string[]).includes(value) ? (value as OffenseBasis) : null;
+  return typeof value === "string" && offenseBases().includes(value) ? (value as OffenseBasis) : null;
 }
 
 /**
@@ -98,7 +128,7 @@ export function withoutUnreasonedConduct<T extends { values: Record<string, stri
    */
   readonly writeInOffered?: boolean;
 }): T | null {
-  if (!caSalesPolicyEnabled() || !input.reading) return null;
+  if (!(caSalesPolicyEnabled() || caProcedureBasisEnabled()) || !input.reading) return null;
   const ticked = input.draft.checked.offense_type ?? [];
   if (!ticked.includes(STANDARDS_OF_CONDUCT) || !input.offered.includes(OTHER)) return null;
   if (input.specific || conductHasReason(input.reading, input.stated, input.basis ?? null)) return null;

@@ -9,6 +9,10 @@ import { readExitDetails } from "@/lib/forms/exit-details";
 import { readExitFacts } from "@/lib/forms/exit-facts";
 import { statedPayrollDeduct } from "@/lib/forms/payroll-deduct";
 import { withoutAmountAnswers } from "@/lib/forms/amount-answer";
+import { answersOnlyPayroll } from "@/lib/forms/account-only-policy-query";
+import { withoutEarlierQuestions } from "@/lib/forms/earlier-questions";
+import { withoutOtherPersonTurns } from "@/lib/forms/other-person-turns";
+import { normalizePayrollWording } from "@/lib/forms/payroll-deduct-answer";
 import { managerStatedWarningLevel, templateHasWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
 import { describesIncident, describesMoreThanTheRequest } from "@/lib/forms/corrective-action-intake";
 import { twoSentenceActionPlan } from "@/lib/forms/action-plan-sentences";
@@ -42,6 +46,9 @@ import {
   observationNotPolicyNameEnabled,
   keepRosterExactNameEnabled,
   caSalesPolicyEnabled,
+  observationNotEarlierQuestionEnabled,
+  observationOtherPersonTurnEnabled,
+  payrollAnswerSpellingEnabled,
   formNameFromRosterEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { namesOnlyAPolicy } from "@/lib/forms/person-guard";
@@ -251,7 +258,11 @@ export function holdFilledSlots(input: {
       // AMOUNT_ANSWER_NOT_ACCOUNT_ENABLED: "i dont know the amount" says nothing that happened.
       // CARD_OBSERVATION_OWN_REQUEST_ENABLED (QA live check, 3 Nov 2026): a new request's card reads back only
       // that request's turns, never the earlier incident ("…rugs untl 12;30pm <name> for being late to opening").
-      const said = withoutAmountAnswers(cardObservationOwnRequestEnabled() ? currentRequestTurns(turns, next.employeeName) : turns);
+      const own = withoutAmountAnswers(cardObservationOwnRequestEnabled() ? currentRequestTurns(turns, next.employeeName) : turns);
+      // OBSERVATION_NOT_EARLIER_QUESTION_ENABLED (sf-s25): a question asked before the request is not the account.
+      const asked = observationNotEarlierQuestionEnabled() && next.templateKey === "dpoa" ? withoutEarlierQuestions(own) : own;
+      // OBSERVATION_OTHER_PERSON_TURN_ENABLED (sf-s22): another employee's notes are not this account.
+      const said = observationOtherPersonTurnEnabled() ? withoutOtherPersonTurns(asked, next.employeeName) : asked;
       // FORM_EDIT_DATE_RULES_ENABLED: an edit replaces, adds to, or never touches the Observation.
       if (formEditDateRulesEnabled()) content = observationByRules(content, said, build);
       else if (grammarAskNotAccountEnabled()) content = withGrammarAnswered(build(content, said.map(withoutAsksToTheApp)), turns);
@@ -707,6 +718,16 @@ function onlyAGlossaryTerm(sentence: string): boolean {
   return caSalesPolicyEnabled() && foldsToGlossaryTerm(sentence.replace(/[.!?]+$/, ""));
 }
 
+/**
+ * PAYROLL_ANSWER_SPELLING_ENABLED (Pau via QA, 5 Nov 2026, sf-s23): "not pay
+ * roll deductable" answered the payroll question and was put on the card as
+ * the Observation of Offense. A sentence that only answers the payroll
+ * question is the answer, not what happened. Off, false.
+ */
+function onlyAPayrollAnswer(sentence: string): boolean {
+  return payrollAnswerSpellingEnabled() && answersOnlyPayroll(normalizePayrollWording(sentence));
+}
+
 /** The account already given, copied onto the card so the offense is not asked again. */
 function withObservation(content: string, turns: readonly string[], employeeName: string | null, today?: string): string {
   const ignore = employeeName ? [employeeName] : [];
@@ -734,6 +755,7 @@ function withObservation(content: string, turns: readonly string[], employeeName
       if (!sentence) continue;
       // CA_SALES_POLICY_ENABLED (QA, live, 4 Nov 2026): "a corrective action for msb" left "msb"; a glossary term is the reason, not an account.
       if (onlyAGlossaryTerm(sentence)) continue;
+      if (onlyAPayrollAnswer(sentence)) continue;
       // OBSERVATION_NOT_POLICY_NAME_ENABLED: "must see behaviors" names the policy, not what happened.
       if (observationNotPolicyNameEnabled() && namesOnlyAPolicy(sentence)) continue;
       if (content.toLowerCase().includes(sentence.toLowerCase())) continue;
@@ -806,6 +828,7 @@ function withAccount(content: string, turns: readonly string[], employeeName: st
   const sentences = accountSentences(turns, employeeName, { managerOnly: managerWordsOnlyEnabled() }).filter(
     (sentence) =>
       !onlyAGlossaryTerm(sentence) &&
+      !onlyAPayrollAnswer(sentence) &&
       !content.toLowerCase().includes(sentence.toLowerCase()) &&
       // OBSERVATION_NOT_POLICY_NAME_ENABLED: "must see behaviors" names the policy, not what happened.
       !(observationNotPolicyNameEnabled() && namesOnlyAPolicy(sentence)),
