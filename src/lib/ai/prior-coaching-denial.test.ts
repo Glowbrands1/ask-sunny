@@ -60,10 +60,28 @@ describe("PRIOR_COACHING_DENIAL_ENABLED", () => {
       expect(text).not.toMatch(/\bno note was given\b/);
     });
 
-    it("'no prior coaching or warnings in the last 6 months' is kept as a visible note (accepted by QA, 5 Nov 2026)", () => {
+    /*
+     * Expectation changed on purpose: QA first accepted this as a visible note
+     * (5 Nov 2026); Pau's decision B, 6 Nov 2026 (QA): a step inside the
+     * negation is part of the denial, so the line stays blank.
+     */
+    it("'no prior coaching or warnings in the last 6 months' leaves the line blank (Pau's decision B, 6 Nov 2026)", () => {
       vi.stubEnv("PRIOR_COACHING_DENIAL_ENABLED", "true");
       const text = note(["CA for Odessa Quarrington, front desk unattended. no prior coaching or warnings in the last 6 months"]);
-      expect(text).toContain("Prior coaching note: prior coaching: warnings in the last 6 months. No finalized record was required.");
+      expect(text).not.toMatch(/Prior coaching note:/);
+      expect(text).toContain("no note was given, so the line stays blank");
+    });
+
+    it("a step inside the negation is denied with it: 'no write-ups or warnings', 'never been warned, no verbal or written'", () => {
+      vi.stubEnv("PRIOR_COACHING_DENIAL_ENABLED", "true");
+      expect(withoutDeniedPriorCoaching("She was late. No prior coaching, no write-ups or warnings.", TODAY)).toBe("She was late.");
+      expect(withoutDeniedPriorCoaching("She was late. She's never been warned, no verbal or written.", TODAY)).toBe("She was late.");
+    });
+
+    it("'other than' and 'but' keep the step like 'except' (Pau's decision B)", () => {
+      vi.stubEnv("PRIOR_COACHING_DENIAL_ENABLED", "true");
+      expect(note(["no prior coaching other than a verbal warning"])).toContain("Prior coaching note: prior coaching: verbal warning.");
+      expect(note(["no prior coaching but a verbal in July"])).toContain("Prior coaching note: prior coaching: verbal in July.");
     });
 
     it("'coached verbally in July' is unchanged", () => {

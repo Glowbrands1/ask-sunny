@@ -2594,8 +2594,9 @@ export function citationLineKeptOnRevisionEnabled(): boolean {
  * as "Prior coaching note: prior coaching on file." — the protected note
  * reader starts at "prior coaching" and drops the "no". With the flag on, the
  * caller hands it the manager's turns with each sentence that denies prior
- * coaching left out, unless it names a further step ("no prior coaching
- * except a verbal in July", "… except a verbal warning"), which is kept as that step
+ * coaching left out, unless it names a further step after "except", "other
+ * than" or "but" ("no prior coaching except a verbal in July", "… except a
+ * verbal warning"; Pau's decision B, 6 Nov 2026), which is kept as that step
  * (`ai/prior-coaching-denial.ts`). Off, the turns as before.
  */
 export function priorCoachingDenialEnabled(): boolean {
