@@ -54,3 +54,38 @@ describe("ANIMAL_VISITORS_ONLY_WHEN_VISITOR_ENABLED", () => {
     expect(also(text)).toEqual([]);
   });
 });
+
+/*
+ * Case (c) (Pau, 5 Nov 2026, "Ok, A", relayed by QA; only her words): a
+ * visitor described with no animal is Visitors in the Workplace — a person
+ * who does not work here and, in the same sentence, where or when at work.
+ * The negatives are QA's.
+ */
+describe("ANIMAL_VISITORS_ONLY_WHEN_VISITOR_ENABLED: a visitor, no animal", () => {
+  const VISITOR_C = "create a ca for corwin hale at kearney. he had a visitor in the back room during his shift on 11-4-26. verbal. no payroll deduct";
+
+  it("flag off: a visitor in the back room is no topic (as before)", () => {
+    expect(specificTopic(VISITOR_C)).toBeNull();
+  });
+
+  it.each([
+    VISITOR_C,
+    "his girlfriend was behind the counter with him for an hour",
+    "she had her kids in the salon during her shift",
+    "he let someone who doesn't work here into the back room",
+    "a non-employee was in the back room on the clock",
+  ])("flag on: %s cites Visitors in the Workplace", (text) => {
+    on();
+    expect(specificTopic(text)).toMatchObject({ id: "visitors", cite: { kind: "heading", heading: VISITORS } });
+  });
+
+  it("flag on: \"a guest complained at the counter\" is a customer service matter, never a visitor", () => {
+    on();
+    expect(specificTopic("a guest complained at the counter")?.id).not.toBe("visitors");
+  });
+
+  it("flag on: an animal is still Animals in the Workplace first", () => {
+    on();
+    expect(specificTopic(CUSTOMER_DOG)?.id).toBe("animals");
+  });
+});

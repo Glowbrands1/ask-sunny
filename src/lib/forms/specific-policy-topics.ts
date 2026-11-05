@@ -67,6 +67,8 @@ interface TopicRule {
   readonly cite: Cite;
   /** The words ARE the incident when negated ("no wet floor sign"): not read as a denial. */
   readonly negationIsTheIncident?: boolean;
+  /** When given and off, the rule is not read at all (a flagged rule). */
+  readonly enabled?: () => boolean;
   /** Further sections the same incident is cited under, in order. */
   readonly also?: readonly {
     readonly heading: string;
@@ -105,6 +107,17 @@ const VISITOR_PERSON = String.raw`(?:customers?|clients?|guests?|visitors?|frien
 const VISITORS_ANIMAL = new RegExp(
   String.raw`\b${VISITOR_PERSON}(?:['’]s?)?\s+(?:\S+\s+){0,2}?${ANIMAL}\b|\b${VISITOR_PERSON}\s+(?:\S+\s+){0,3}?(?:brought|brings|bringing|came in with|come in with|walked in with|showed up with|had|has)\s+(?:\S+\s+){0,3}?${ANIMAL}\b|\b${ANIMAL}\s+(?:that\s+)?(?:belong(?:s|ed|ing)?\s+to|of)\s+(?:a|an|the|her|his|their|my|our)?\s*${VISITOR_PERSON}\b`,
   "i",
+);
+/*
+ * ANIMAL_VISITORS_ONLY_WHEN_VISITOR_ENABLED, case (c) (Pau, 5 Nov 2026, "Ok,
+ * A", relayed by QA; only these words): a visitor described with no animal is
+ * Visitors in the Workplace. A person who does not work here and, in the same
+ * sentence, where or when at work they were.
+ */
+const PRESENT_PERSON = String.raw`(?:visitors?|guests?|friends?|boyfriend|girlfriend|partner|husband|wife|family\s+members?|relatives?|kids?|child(?:ren)?|someone\s+who\s+(?:doesn['’]?t|does\s+not)\s+work\s+here|non-?employees?)`;
+const AT_WORK_CONTEXT = String.raw`(?:back\s?room|behind\s+the\s+counter|in\s+the\s+salon|during\s+(?:(?:his|her|their)\s+)?shift|on\s+the\s+clock)`;
+const VISITOR_AT_WORK = new RegExp(
+  String.raw`\b${PRESENT_PERSON}\b[^.!?\n]*?\b${AT_WORK_CONTEXT}\b|\b${AT_WORK_CONTEXT}\b[^.!?\n]*?\b${PRESENT_PERSON}\b`,
 );
 const AT_WORK =
   /\b(?:store|salon|location|shop|lobby|building|work|shift|team|coworkers?|co-workers?|clients?|customers?|guests?|counter|front desk|back room|break ?room)\b/;
@@ -241,6 +254,13 @@ const TOPICS: readonly TopicRule[] = [
     ],
     cite: { kind: "heading", heading: CONDUCT_HEADING },
   },
+  {
+    /* Last: an account that is any incident above is that incident, a visitor or not. */
+    id: "visitors",
+    words: [VISITOR_AT_WORK],
+    enabled: animalVisitorsOnlyWhenVisitorEnabled,
+    cite: { kind: "heading", heading: "Visitors in the Workplace" },
+  },
 ];
 
 /* ------------------------------------------------------------- reading -- */
@@ -307,6 +327,7 @@ export function specificTopic(text: string): SpecificTopic | null {
   if (!policySpecificTopicsEnabled()) return null;
   const sentences = sentencesOf(text);
   for (const rule of TOPICS) {
+    if (rule.enabled && !rule.enabled()) continue;
     for (const sentence of sentences) {
       if (rule.not?.test(sentence) && !rule.unless?.test(sentence)) continue;
       const anywhere = rule.id === "animals" && animalAnywhereEnabled() && AT_WORK.test(sentence) ? [ANIMAL_ALONE] : [];

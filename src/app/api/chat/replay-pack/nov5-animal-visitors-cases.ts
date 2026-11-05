@@ -89,8 +89,9 @@ export const NOV5_ANIMAL_VISITORS_CASES: ReplayCase[] = [
     id: "nov5-visitor-alone-control",
     title: "(c) a visitor in the back room, no animal — Visitors in the Workplace only",
     report: `${REPORT}, (c)`,
-    // Meant as a control, but open today: "had a visitor in the back room" cites no policy at all (card and draft).
+    // Open with production's flags: "had a visitor in the back room" cites no policy at all (card and draft). Pau's words for case (c) ("Ok, A") fix it behind the flag.
     status: { open: "with production's flags nothing cites Visitors in the Workplace for \"had a visitor in the back room\"" },
+    fixFlags: ["ANIMAL_VISITORS_ONLY_WHEN_VISITOR_ENABLED"],
     async run(t) {
       const thread = start(t);
       const reply = await thread.say("create a ca for corwin hale at kearney. he had a visitor in the back room during his shift on 11-4-26. verbal. no payroll deduct");
@@ -111,6 +112,19 @@ export const NOV5_ANIMAL_VISITORS_CASES: ReplayCase[] = [
       const all = await cardAndDraft(t, thread, reply, "Corwin Hale brought his kitten to the salon on November 4, 2026; customers saw it.");
       expect(all, `Animals in the Workplace is not cited:\n${all}`).toMatch(ANIMALS);
       expect(all, `customers who only saw the animal made it a visitor's (card or draft):\n${all}`).not.toMatch(VISITORS);
+    },
+  },
+  {
+    id: "nov5-visitor-guest-complained-negative",
+    title: "negative (c): \"a guest complained at the counter\" — a customer service matter: no Visitors in the Workplace",
+    report: `${REPORT}, negative (c) (QA)`,
+    status: "fixed",
+    fixFlags: ["ANIMAL_VISITORS_ONLY_WHEN_VISITOR_ENABLED"],
+    async run(t) {
+      const thread = start(t);
+      const reply = await thread.say("create a ca for corwin hale at kearney. a guest complained at the counter about him on 11-4-26. verbal. no payroll deduct");
+      const all = await cardAndDraft(t, thread, reply, "On November 4, 2026, a guest complained at the counter about Corwin Hale.");
+      expect(all, `a guest's complaint cited as a visitor (card or draft):\n${all}`).not.toMatch(VISITORS);
     },
   },
 ];
