@@ -219,8 +219,9 @@ function withoutSlotNameInObservation(content: string, message: string | undefin
  */
 /** A reply line that asks the manager to choose or confirm a person: its names are the choices. */
 /** The reply's own list of details asks who already: "1. Employee's full name", "1. The employee's full name — or tell me it's for the whole team." */
-export const ASKS_FOR_THE_NAME = /\bemployee['’]s full name\b/i;
-export const ASKS_A_CHOICE = /Did you mean|Which of them|Is this for \*\*/;
+// FIRST_NAME_ASK's "Is this for ivy? Tell me her full name." asks too (the sibling app's final gate, 5 Nov 2026).
+export const ASKS_FOR_THE_NAME = /\b(?:employee['’]s|her|his|their) full name\b/i;
+export const ASKS_A_CHOICE = /Did you mean|Which of them|Is this for (?:\*\*|[^?\n*]{1,60}\?)/;
 
 export function withoutUnseatedName(content: string, typed: readonly (string | null)[], names: readonly string[], drafted: readonly string[] = []): string {
   const unseated = (list: readonly (string | null)[]) => [...new Set(list.map((name) => name?.trim() ?? "").filter((name) => name && !rosterSpelling(name, names)))];

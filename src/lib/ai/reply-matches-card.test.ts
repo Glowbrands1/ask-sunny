@@ -97,6 +97,13 @@ describe("1c. the sibling app's combined pre-check (5 Nov 2026): the CA list's \
   });
 });
 
+describe("1d. the sibling app's final gate (5 Nov 2026): FIRST_NAME_ASK's own question already asks who", () => {
+  it("\"Is this for ivy? Tell me her full name.\" is not followed by \"Who is this form for?\"", () => {
+    const text = "Here is what I would put on a **Coaching Form**.\n\nIs this for ivy? Tell me her full name.";
+    expect(replyMatchesCard(reply(text, card(null, { templateKey: "coaching" })), ROSTER, "make a coaching form for ivy, she was late").content).toBe(text);
+  });
+});
+
 describe("2. an employee on the card: never asked who, and the person drafted for is the card's", () => {
   it("\"Who is this form for?\" beside a card that has its employee goes", () => {
     const out = replyMatchesCard(reply("I'll draft a **Corrective Action Form** for **Corwin Hale** from what you've described.\n\nWho is this form for? Tell me the employee's full name.", card("Corwin Hale")), ROSTER);
