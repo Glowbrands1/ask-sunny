@@ -49,6 +49,17 @@ describe("ROSTER_COMPOUND_SURNAME_ENABLED on: the surname compared word by word"
     expect(kind("Odalys Vansikcle", [ODALYS, ODALYS_D])).toBe("confirm:Odalys Dunmore Vansickle|Odalys Prewett Vansickle");
   });
 
+  it("QA's R3 shape: word 2 with letters 4–6 rotated (Damerau 2) and word 1 exact is close to her, asked, never filled", () => {
+    vi.stubEnv("ROSTER_COMPOUND_SURNAME_ENABLED", "true");
+    expect(kind("Odalys Prewett Vancsikle")).toBe("confirm:Odalys Prewett Vansickle");
+  });
+
+  it("negative at distance 2: two people two edits apart in one surname word, typed one edit from each, are both a question", () => {
+    vi.stubEnv("ROSTER_COMPOUND_SURNAME_ENABLED", "true");
+    const ODALYS_C = row("e", "Odalys", "Prewett Vancsikle");
+    expect(kind("Odalys Prewett Vanscikle", [ODALYS, ODALYS_C])).toBe("confirm:Odalys Prewett Vancsikle|Odalys Prewett Vansickle");
+  });
+
   it("negative: a word of three letters or fewer counts only exactly (\"Ask\" is not \"Ash\")", () => {
     vi.stubEnv("ROSTER_COMPOUND_SURNAME_ENABLED", "true");
     expect(kind("Thorne Ask")).toBe("none");

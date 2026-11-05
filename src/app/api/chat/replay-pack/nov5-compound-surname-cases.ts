@@ -34,6 +34,8 @@ const person = (id: string, firstName: string, lastName: string): DirectoryRow =
 const ODALYS = person("e-odalys-prewett-vansickle", "Odalys", "Prewett Vansickle");
 const ODALYS_D = person("e-odalys-dunmore-vansickle", "Odalys", "Dunmore Vansickle");
 const THORNE = person("e-thorne-ash-merrow", "Thorne", "Ash Merrow");
+// Two edits from ODALYS in one word (letters 4–6 of "Vansickle" rotated): the distance-2 negative.
+const ODALYS_C = person("e-odalys-prewett-vancsikle", "Odalys", "Prewett Vancsikle");
 
 const FIX = ["FORM_NAME_FROM_ROSTER_ENABLED", "ROSTER_NEAR_MISS_ENABLED", "ROSTER_COMPOUND_SURNAME_ENABLED"];
 const REPORT = "The re-flip's live testers, 5 Nov 2026 (R3/R5/R7, flags on): a two-word roster surname typed with one word mistyped; the card emptied and asked who";
@@ -69,6 +71,25 @@ export const NOV5_COMPOUND_SURNAME_CASES: ReplayCase[] = [
   typo("nov5-compound-surname-word1-typo", "Odalys Perwett Vansickle", "a typo in surname word 1"),
   typo("nov5-compound-surname-word2-typo", "Odalys Prewett Vansikcle", "a typo in surname word 2"),
   typo("nov5-compound-surname-one-word-typo", "Odalys Vansikcle", "one surname word only, with a typo"),
+  // QA's R3 shape (5 Nov 2026): surname word 2 with letters 4–6 rotated ("sic" typed "csi", Damerau 2), word 1 exact.
+  typo("nov5-compound-surname-word2-rotated", "Odalys Prewett Vancsikle", "R3: surname word 2 with letters 4–6 rotated"),
+  {
+    id: "nov5-compound-surname-word2-rotated-earlier-turn",
+    title: "R7: the R3 spelling \"Odalys Prewett Vancsikle\" only in turn 2; the CA request comes later with no name: the card is hers, or the reply asks \"Is this for **Odalys Prewett Vansickle**?\"",
+    report: `${REPORT}; R7, the name in an earlier turn`,
+    status: { open: "with production's flags (FORM_NAME off) the card keeps the typed spelling" },
+    fixFlags: FIX,
+    async run(t) {
+      const { reply, employee } = await said(
+        t,
+        [ODALYS],
+        "I need help with one of my employees",
+        "Odalys Prewett Vancsikle was late opening the salon on 11/2",
+        "can you write up a corrective action for that",
+      );
+      offered(reply, employee, "Odalys Prewett Vansickle");
+    },
+  },
   {
     id: "nov5-compound-surname-word1-typo-yes",
     title: "\"create a ca form for Odalys Perwett Vansickle\", then \"yes\" to \"Is this for **Odalys Prewett Vansickle**?\": the card is hers, in the roster's spelling",
@@ -102,6 +123,18 @@ export const NOV5_COMPOUND_SURNAME_CASES: ReplayCase[] = [
       const { reply, employee } = await said(t, [ODALYS, ODALYS_D], "create a ca form for Odalys Vansikcle");
       expect([ODALYS, ODALYS_D].map((p) => `${p.firstName} ${p.lastName}`), `filled with one of them:\n${reply.content}`).not.toContain(employee);
       expect(reply.content, `one of them is offered alone:\n${reply.content}`).not.toMatch(/Is this for \*\*Odalys (?:Prewett|Dunmore) Vansickle\*\*\?/);
+    },
+  },
+  {
+    id: "nov5-compound-surname-distance-two-pair-asks",
+    title: "negative (QA): two roster people whose surnames are two edits apart in one word (Prewett Vansickle, Prewett Vancsikle); \"Odalys Prewett Vanscikle\", one edit from each, is a question listing both, never a pick",
+    report: `${REPORT}; negative at distance 2 (QA)`,
+    status: "fixed",
+    fixFlags: FIX,
+    async run(t) {
+      const { reply, employee } = await said(t, [ODALYS, ODALYS_C], "create a ca form for Odalys Prewett Vanscikle");
+      expect([ODALYS, ODALYS_C].map((p) => `${p.firstName} ${p.lastName}`), `filled with one of them:\n${reply.content}`).not.toContain(employee);
+      expect(reply.content, `one of them is offered alone:\n${reply.content}`).not.toMatch(/Is this for \*\*Odalys Prewett Van(?:sickle|csikle)\*\*\?/);
     },
   },
   {
