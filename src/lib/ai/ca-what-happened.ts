@@ -1,4 +1,4 @@
-import { caAsksWhatHappenedEnabled } from "@/lib/config/chat-quality-flags";
+import { caAsksWhatHappenedEnabled, omissionIsAccountEnabled } from "@/lib/config/chat-quality-flags";
 import {
   NO_INCIDENT_NOTE,
   answeredWhatHappened,
@@ -61,6 +61,25 @@ function turnsForThisForm(history: readonly Turn[], templateKey: string): readon
 /** Only what did not happen: "she was not late", "nothing happened", "no incident", "she didn't do anything wrong". */
 const NEGATED = /\b(?:not|never|nothing|no\s+(?:incident|issue|problems?|concerns?))\b|n['’]t\b/i;
 
+/*
+ * OMISSION_IS_ACCOUNT_ENABLED (Pau, sf-s28): a duty not done is something the
+ * employee did. "not signing off on the cleaning check list", "did not clock
+ * in", "she never called in" say what she failed to do: the negation governs
+ * an action verb. "she was not late", "not late" and "she didn't do anything
+ * wrong" only say what did not happen: the negation governs "be", an
+ * adjective, or "do anything". Grammar, not a list of offenses.
+ */
+const DENIAL = /\b(?:nothing|anything|no\s+(?:incident|issue|problems?|concerns?))\b/i;
+const NEGATED_ACTION =
+  /(?:\b(?:did|does|do)\s+not\s+|\b(?:did|does|do)n['’]t\s+|\bnever\s+)(?!(?:do|be|been|being)\b)[a-z]+|\bnot\s+(?!being\b)[a-z]+ing\b/i;
+
+/** A clause that says only what did not happen; with OMISSION_IS_ACCOUNT, a duty not done is not that. */
+function onlyWhatDidNotHappen(clause: string): boolean {
+  if (!NEGATED.test(clause)) return false;
+  if (!omissionIsAccountEnabled()) return true;
+  return DENIAL.test(clause) || !NEGATED_ACTION.test(clause);
+}
+
 const NOT_A_PERSON = new Set(["she", "he", "they", "the", "a", "an", "her", "his", "their", "our", "my", "this", "that", "it", "i", "we", "you", "and", "also", "then"]);
 
 /** "rory vance was late today": somebody else did it. */
@@ -80,7 +99,7 @@ function hasAccount(said: string, name: string, ignore: readonly string[]): bool
     .filter(Boolean)
     .some(
       (clause) =>
-        !NEGATED.test(clause) &&
+        !onlyWhatDidNotHappen(clause) &&
         !aboutSomebodyElse(clause, name) &&
         (describesIncident(clause) || describesMoreThanTheRequest(clause, { ignore })),
     );
