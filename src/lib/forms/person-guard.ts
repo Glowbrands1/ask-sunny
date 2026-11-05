@@ -1,10 +1,10 @@
 import { NOT_A_NAME as BUSINESS_WORDS } from "@/lib/ai/employee-performance-gate";
 import { isDocumentName, isReportName, isRosterStateName } from "@/lib/ai/not-a-person";
-import { addressNotPersonEnabled, personGuardEnabled } from "@/lib/config/chat-quality-flags";
+import { addressNotPersonEnabled, metricGuardEnabled, personGuardEnabled } from "@/lib/config/chat-quality-flags";
 import { businessToday } from "@/lib/business-date";
 import { datesInText } from "@/lib/forms/form-date-answer";
 import { isNotAName } from "@/lib/forms/not-a-name";
-import { installSlotRosterNames, outsideRequestSlot } from "@/lib/forms/request-slot";
+import { installSlotRosterNames, namesAMetric, outsideRequestSlot } from "@/lib/forms/request-slot";
 
 /**
  * ============================================================================
@@ -139,6 +139,8 @@ export function notAPerson(candidate: string | null | undefined): boolean {
   if (onRoster(candidate)) return false;
   // FORM_NAME_FROM_ROSTER_ENABLED, part 2: the message's shape rules it out (`request-slot.ts`).
   if (outsideRequestSlot(candidate)) return true;
+  // METRIC_GUARD_ENABLED: a list item or an offense word of the message ("Club Close") is never the card's person, with FORM_NAME off too.
+  if (metricGuardEnabled() && namesAMetric(candidate)) return true;
   const words = wordsOf(candidate);
   if (words.length === 0) return false;
   if (words.some((word) => THING_WORDS.has(word))) return true;

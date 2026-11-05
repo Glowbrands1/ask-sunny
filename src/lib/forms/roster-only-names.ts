@@ -1,11 +1,12 @@
-import { formNameFromRosterEnabled, rosterNearMissEnabled } from "@/lib/config/chat-quality-flags";
+import { formNameFromRosterEnabled, metricGuardEnabled, rosterNearMissEnabled } from "@/lib/config/chat-quality-flags";
+import { isGlossaryTerm } from "@/lib/ai/chat-glossary";
 import type { AskResponse } from "@/lib/ai/types";
 
 import { HAS_EMPLOYEE_AND_PLACE, SAYS_READY } from "@/lib/ai/ca-what-happened";
 
 import { matchEmployeeName, normalizeTypedName, type RosterEmployee } from "./employee-match";
 import { personRosterNames } from "./person-guard";
-import { requestMessage } from "./request-slot";
+import { metricMessage, namesAMetric, requestMessage } from "./request-slot";
 import { namesAForm } from "./template-intent";
 
 /**
@@ -268,8 +269,46 @@ export function slotName(message: string | undefined, names: readonly string[]):
 
 /** FORM_NAME_FROM_ROSTER_ENABLED: `rosterOnlyNames` with the actor's roster read this turn. Off, or no roster: as built. */
 export function withRosterOnlyNames(response: AskResponse): AskResponse {
-  if (!formNameFromRosterEnabled()) return response;
+  // METRIC_GUARD_ENABLED: with FORM_NAME off, the choices still never offer a metric (`withoutMetricChoices`).
+  if (!formNameFromRosterEnabled()) return metricGuardEnabled() ? withoutMetricChoices(response, metricMessage(), personRosterNames() ?? []) : response;
   const names = personRosterNames();
   if (!names || names.length === 0) return response;
   return rosterOnlyNames(response, names, requestMessage());
+}
+
+/**
+ * METRIC_GUARD_ENABLED (the sibling app's LIVE=1, 5 Nov 2026, the smaller set: CA_SALES + REPLY_MATCHES_CARD
+ * + TITLE, 3/3 runs). "I need a corrective action verbal for <first name> <last initial>. This is for Under
+ * Performance on PPTA, LPSVA, Club Average, Club Close %, and Spa %." replied "Which of them is this Corrective
+ * Action Form for — **Club Close**, **<first name>** or **Under**?". Every guard that rules a metric out
+ * (`request-slot.ts` outsideRequestSlot, `answer-not-a-name.ts`) is behind FORM_NAME_FROM_ROSTER_ENABLED; this
+ * runs on the final reply whatever FORM_NAME says. A choice of "Which of them … — A, B or C?" or "Is this for
+ * **X**?" whose every word is an item of the request's capitalised list ("Club Close") or of a "for <offense>"
+ * phrase ("Under Performance") is never offered; a roster person is always kept. One choice left is asked
+ * "Is this for **<them>**?" (their roster name when one roster person has that first name), none asks who.
+ * Pure; no message, as built.
+ */
+export function withoutMetricChoices(response: AskResponse, message: string | undefined, names: readonly string[]): AskResponse {
+  if (!message) return response;
+  const words = (text: string) => text.toLowerCase().match(/[\p{L}\p{N}'’]+/gu) ?? [];
+  const isMetric = (name: string) => {
+    if (rosterSpelling(name, names)) return false;
+    // CHAT_GLOSSARY_ENABLED: an approved term ("MSB") is never a person, wherever the message put it.
+    if (isGlossaryTerm(name)) return true;
+    // The same rule as the name readers' (`request-slot.ts` namesAMetric): a list item, a "… %" phrase, an offense word.
+    return namesAMetric(name, message);
+  };
+  const asked = (name: string) => {
+    const byFirst = names.filter((roster) => words(roster)[0] === words(name)[0]);
+    return `Is this for **${rosterSpelling(name, names) ?? (words(name).length === 1 && byFirst.length === 1 ? byFirst[0] : name)}**?`;
+  };
+  let content = response.content.replace(/Which of them is this ((?:\*\*[^*]+\*\* )?)for\s*[—–-]\s*([^?\n]+)\?/g, (whole, form: string, list: string) => {
+    const all = listedNames(list);
+    const kept = all.filter((name) => !isMetric(name));
+    if (kept.length === all.length) return whole;
+    if (kept.length >= 2) return `Which of them is this ${form}for — ${said(kept)}?`;
+    return kept.length === 1 ? asked(kept[0]!) : ASK_WHO;
+  });
+  content = content.replace(/Is this for \*\*([^*]+)\*\*\?/g, (whole, name: string) => (isMetric(name) ? ASK_WHO : whole));
+  return content === response.content ? response : { ...response, content };
 }
