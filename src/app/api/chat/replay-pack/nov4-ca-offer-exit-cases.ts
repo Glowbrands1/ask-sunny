@@ -40,7 +40,7 @@ export const NOV4_CA_OFFER_EXIT_CASES: ReplayCase[] = [
     id: "nov4-offer-exit-replaces-menu",
     title: "a Coaching / Corrective Action menu for the employee is replaced by the one offer; \"yes\" makes the card",
     report: `${REPORT}: the menu (this app's trace and the sibling app's)`,
-    status: { open: "with production's flags the reply is a Coaching / Corrective Action menu, with no offer" },
+    status: "fixed",
     fixFlags: FLAGS,
     async run(t) {
       const thread = start(t);

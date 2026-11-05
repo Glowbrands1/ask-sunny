@@ -205,7 +205,15 @@ const FLAG = "CHAT_GLOSSARY_ENABLED";
  * 4 Nov 2026 production-flags.json lists CHAT_GLOSSARY_ENABLED on (QA's flip).
  * The recorded fixture is main before the glossary, so the base must leave it off.
  */
-const PRODUCTION = [...PRODUCTION_FLAGS.on, ...PRODUCTION_FLAGS.assumedOn].filter((name) => name !== FLAG);
+/*
+ * CA_SALES_POLICY_ENABLED and FORM_NAME_FROM_ROSTER_ENABLED are left out too:
+ * they went on in production together (5 Nov 2026) after the fixture was
+ * recorded, and they change the msb script's replies on their own; this test
+ * is about the glossary flag alone.
+ */
+const PRODUCTION = [...PRODUCTION_FLAGS.on, ...PRODUCTION_FLAGS.assumedOn].filter(
+  (name) => name !== FLAG && name !== "CA_SALES_POLICY_ENABLED" && name !== "FORM_NAME_FROM_ROSTER_ENABLED",
+);
 const TOUCHED = [...new Set([FLAG, "FORM_EDIT_SINGLE_WRITER_ENABLED", "FORM_EDIT_TOOL_IN_STREAM_ENABLED", ...PRODUCTION, ...PRODUCTION_FLAGS.off])];
 const saved = new Map<string, string | undefined>();
 

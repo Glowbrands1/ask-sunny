@@ -235,7 +235,16 @@ vi.mock("@/lib/forms/prior-forms", async (importOriginal) => ({
 
 vi.setConfig({ testTimeout: 300_000, hookTimeout: 60_000 });
 
-const PRODUCTION = [...PRODUCTION_FLAGS.on, ...PRODUCTION_FLAGS.assumedOn];
+/*
+ * CA_SALES_POLICY_ENABLED and FORM_NAME_FROM_ROSTER_ENABLED are left out: they
+ * went on in production together (5 Nov 2026) after this fixture was recorded,
+ * and they change these chats' replies on their own (the flags-on
+ * classification, `docs/flag-classification/FORM_NAME_FROM_ROSTER_ENABLED+CA_SALES_POLICY_ENABLED.md`);
+ * this test is about the no-op guard alone.
+ */
+const PRODUCTION = [...PRODUCTION_FLAGS.on, ...PRODUCTION_FLAGS.assumedOn].filter(
+  (name) => name !== "CA_SALES_POLICY_ENABLED" && name !== "FORM_NAME_FROM_ROSTER_ENABLED",
+);
 const TOOL_FLAGS = ["FORM_EDIT_SINGLE_WRITER_ENABLED", "FORM_EDIT_TOOL_IN_STREAM_ENABLED"] as const;
 const NOOP = "FORM_EDIT_NOOP_GUARD_ENABLED";
 const TOUCHED = [...new Set([NOOP, ...TOOL_FLAGS, ...PRODUCTION, ...PRODUCTION_FLAGS.off, "FORM_PATCH_REDUCER_ENABLED", "FORM_REPLY_FROM_DIFF_ENABLED"])];
