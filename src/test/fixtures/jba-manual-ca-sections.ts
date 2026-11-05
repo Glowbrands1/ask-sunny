@@ -134,6 +134,15 @@ const ROWS: Row[] = [
     c: "Cell Phone/Smart Watch Policy\nPersonal cell phones may be brought to work but stay out of sight. Texting, phone calls or social\nmedia while working take attention away from customers. Phones stay on silent and off the\nEmployee's person (not in a pocket or on the counter). A cell phone is used while clocked in only\nfor an emergency.\nSmart Watches may be worn if they are not used for social media, texting or phone calls.",
   },
   {
+    i: 70,
+    l: "Page 21 — Care and Cleaning of Equipment and Facilities",
+    p: 22,
+    s: "Care and Cleaning of Equipment and Facilities",
+    printedPage: 21,
+    sections: [{ page: 21, heading: "Care and Cleaning of Equipment and Facilities" }],
+    c: "Care and Cleaning of Equipment and Facilities\nEmployees keep the equipment and the location clean and sanitized, and finish the cleaning duties\nassigned to their shift before it ends.",
+  },
+  {
     i: 73,
     l: "Page 22 — Talking to the Media/Press",
     p: 23,
