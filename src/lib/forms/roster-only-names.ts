@@ -1,4 +1,4 @@
-import { formNameFromRosterEnabled } from "@/lib/config/chat-quality-flags";
+import { formNameFromRosterEnabled, rosterNearMissEnabled } from "@/lib/config/chat-quality-flags";
 import type { AskResponse } from "@/lib/ai/types";
 
 import { HAS_EMPLOYEE_AND_PLACE, SAYS_READY } from "@/lib/ai/ca-what-happened";
@@ -105,6 +105,16 @@ export function rosterOnlyNames(response: AskResponse, names: readonly string[],
       }
     } else {
       const close = oneCloseRosterPerson(employee, names);
+      /*
+       * ROSTER_NEAR_MISS_ENABLED (QA's testers, 5 Nov 2026, R3): a near-miss of
+       * one roster person is asked exactly as a first name typed alone is
+       * (`ai/first-name-suggest.ts`): only the question, the card waits, and the
+       * answer ("yes", the name) is read by that machinery as the request with
+       * the roster's name in full.
+       */
+      if (rosterNearMissEnabled() && close) {
+        return { ...response, content: `Is this for **${close}**? Tell me if that should change.`, formProposal: undefined };
+      }
       proposal = { ...proposal, employeeName: null, status: "needs_employee" };
       // The reply never drafts for a name that is not on the card.
       content = content.replace(new RegExp(String.raw`\s+for\s+\*\*${escape(employee)}\*\*`, "g"), "").split(`**${employee}**`).join("the employee");
@@ -128,6 +138,16 @@ export function rosterOnlyNames(response: AskResponse, names: readonly string[],
     content = withoutSlotNameInObservation(content, message, names);
     // QA, 5 Nov 2026: "Create the draft here when you're ready" beside "Who is this form for?" contradicts it.
     content = content.replace(CREATE_WHEN_READY, "");
+    if (rosterNearMissEnabled()) {
+      // ROSTER_NEAR_MISS_ENABLED: an empty card never says it has the employee, never names them, and asks who.
+      content = withoutUnseatedName(
+        content.replace(HAS_EMPLOYEE_AND_PLACE, "").split("\n").filter((line) => !SAYS_READY.test(line.trim())).join("\n"),
+        [employee, slotName(message, names)],
+        names,
+        draftedFor(content),
+      );
+      if (!ask && !ASKS_WHO.test(content) && !ASKS_A_CHOICE.test(content)) ask = ASK_WHO;
+    }
   }
 
   // "I'll draft a **Corrective Action Form** for **ima**": the person drafted for is the card's, in the roster's spelling.
@@ -183,6 +203,62 @@ function withoutSlotNameInObservation(content: string, message: string | undefin
     if (!typed || typed.split(/\s+/).length > 4 || rosterSpelling(typed, names)) return whole;
     return new RegExp(String.raw`\bfor\s+${escape(typed)}\s*,`, "i").test(message) ? label : whole;
   });
+}
+
+/**
+ * ROSTER_NEAR_MISS_ENABLED (QA's testers, 5 Nov 2026, R3/R5/R7): with no
+ * employee on the card, no reply text names the person who is not on it.
+ * The card was emptied and the reply asked "Who is this form for?", but the
+ * Action Plan still read "… with Ignatius", and an off-roster request's reply
+ * said "I can create a CA for <A>" / "Name: <B>". The name taken off the card,
+ * and the name the manager's request put after "for", are "the employee" in
+ * every line; a "Name:" line goes. The line that says the name is not on the
+ * roster ("I couldn't find **<name>** …") says why, and stays. The person's
+ * words only: no word list.
+ */
+/** A reply line that asks the manager to choose or confirm a person: its names are the choices. */
+const ASKS_A_CHOICE = /Did you mean|Which of them|Is this for \*\*/;
+
+function withoutUnseatedName(content: string, typed: readonly (string | null)[], names: readonly string[], drafted: readonly string[] = []): string {
+  const unseated = (list: readonly (string | null)[]) => [...new Set(list.map((name) => name?.trim() ?? "").filter((name) => name && !rosterSpelling(name, names)))];
+  const people = unseated(typed);
+  // The name the reply drafted for ("… for **zebulon marchbanks**") is a person's however it was typed: its words in any case.
+  const draftedPeople = unseated(drafted);
+  if (people.length === 0 && draftedPeople.length === 0) return content;
+  const words = [...new Set(people.flatMap((name) => name.split(/\s+/)).filter((word) => /^\p{Lu}[\p{L}'’-]{2,}$/u.test(word)))];
+  const anyCase = [...new Set(draftedPeople.flatMap((name) => name.split(/\s+/)).filter((word) => /^[\p{L}'’-]{3,}$/u.test(word)))];
+  const whole = [...people, ...draftedPeople].map((name) => new RegExp(String.raw`\*{0,2}\b${escape(name)}\b\*{0,2}`, "gi"));
+  const single = [
+    ...words.map((word) => new RegExp(String.raw`\*{0,2}\b${escape(word)}\b\*{0,2}`, "g")),
+    ...anyCase.map((word) => new RegExp(String.raw`\*{0,2}\b${escape(word)}\b\*{0,2}`, "gi")),
+  ];
+  return content
+    .split("\n")
+    .filter((line) => !/^\s*\**\s*Name\s*:/i.test(line))
+    .map((line) => {
+      if (/I couldn['’]t find \*\*/.test(line) || ASKS_A_CHOICE.test(line)) return line;
+      // A roster person's name in the line is somebody else's: kept as written.
+      const kept: string[] = [];
+      let next = line;
+      for (const roster of names) {
+        next = next.replace(new RegExp(String.raw`\b${escape(roster)}\b`, "gi"), (found) => `\u0000${kept.push(found) - 1}\u0000`);
+      }
+      for (const pattern of [...whole, ...single]) next = next.replace(pattern, "the employee");
+      next = next.replace(/(^|[.!?]\s+|\*\*\s*)the employee/g, (_all, lead: string) => `${lead}The employee`);
+      return next.replace(/\u0000(\d+)\u0000/g, (_all, index: string) => kept[Number(index)]!);
+    })
+    .join("\n");
+}
+
+/** The person the reply says it drafts for: "I'll draft a **Corrective Action Form** for **<name>**". */
+function draftedFor(content: string): string[] {
+  return [...content.matchAll(/\b(?:draft|create|put)\b[^\n.]*?\*\*[^*]+\*\* for \*\*([^*]+)\*\*/gi)].map((match) => match[1]!.trim());
+}
+
+/** The name the request put straight after "for" ("create a CA for <Name>, …"), when it is nobody's roster spelling; or null. */
+function slotName(message: string | undefined, names: readonly string[]): string | null {
+  const named = message ? /\bfor\s+(\p{Lu}[\p{L}'’-]+(?:\s+\p{Lu}[\p{L}'’-]+){0,2})\s*[,.]/u.exec(message)?.[1] : undefined;
+  return named && !rosterSpelling(named, names) ? named : null;
 }
 
 /** FORM_NAME_FROM_ROSTER_ENABLED: `rosterOnlyNames` with the actor's roster read this turn. Off, or no roster: as built. */
