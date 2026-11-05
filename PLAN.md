@@ -5,6 +5,31 @@ both repositories. Every step is built the same way in both apps, in the same
 session, as one commit per app (`Port from Ask Sunny (<sha>): …` /
 `Port from Ask Bubbles (<sha>): …`). QA alone merges and flips flags.
 
+## Decisions (owner, 5 Nov 2026)
+
+1. **Where the record lives.** It goes under the `formRecord` key of the
+   existing `chat_form_state.state` column, merged with what is already there
+   and never overwriting it.
+2. **"No extra model calls"** covers the form readers only. The retrieval
+   helpers (query rewrite, recall, long-context summary) stay as they are for
+   now.
+3. **Transcripts.** sf-s21 to sf-s29 and sf-b6 have been received, with names
+   replaced. They are summarised in Step 0. In the case files, "Employee R"
+   becomes an invented roster name, used the same way in every fixture.
+4. **New tool wording.** The four new tool descriptions (`answer`,
+   `start_form`, `finalize_draft`, `ask_one_question`) are drafted for approval
+   before they are used.
+5. **Scope now: Steps 0 and 1 only**, on a branch, with no merge. Steps 2 to 7
+   wait until the owner says the sales fix is stable.
+6. **Before any step's flag is switched on,** its replay cases must also pass
+   once on **the production model for each app** (Sonnet in Bubbles, Opus in
+   Sunny). Haiku live runs alone are not enough.
+7. **The approved template changes are built elsewhere** (the Corrective
+   Action revision in Bubbles #424 / Sunny #512 and the `CA_SALES_POLICY`
+   track). This plan builds, copies and changes none of that. It reads the
+   form's pinned template version and today's behaviour as they are. See
+   "Compatibility with the approved template changes" below.
+
 ## Why the bugs keep coming back
 
 No single place says which form is open in a chat, who it is about, which
@@ -85,101 +110,151 @@ tool's ops and is the only thing that writes.
 
 ## The steps, in order
 
-### Step 0: the silent-failure cases become replay cases first (no flag)
+### Step 0: the reported cases become replay cases first (no flag)
 
-The replay cases go in before any other code.
+The cases go in before any fix.
 
-- **Sunny:** `src/app/api/chat/replay-pack/nov5-silent-failure-cases.ts` holds
-  **sf-s21 to sf-s29**.
-- **Bubbles:** the same file name holds **sf-b6**.
-- Each case is ported to the sibling app wherever the mechanism reproduces
-  there.
+- **Where:** `src/app/api/chat/replay-pack/nov5-silent-failure-cases.ts` and
+  `nov5-template-changes-cases.ts`, **in both apps**. Every case is in both
+  repos.
+- **Company wording:** each app's copy keeps the mechanism and uses that app's
+  own fixtures (store ↔ salon). Sunny wording never goes into Bubbles, and
+  Bubbles wording never goes into Sunny.
+- **Status:** each case starts as `status: { open: "…" }`, so it runs as
+  `it.fails` and CI flags the day it starts passing. A step that fixes it sets
+  `fixFlags: [...]`.
+- **Assertions:** cases assert invariants, never model wording. They use the
+  existing helpers in `cases.ts` plus two additive ones:
+  - `endsAsSentence(reply)`: the reply does not end on a heading, a colon or a
+    cut word.
+  - `noAsYouSaidUnlessSaid(reply, managerTurns)`: an attributed claim
+    ("as you said") only stands for words in the manager's own messages. It is
+    a structural check: the attributed span must appear in the manager's
+    turns. There is no phrase list.
+- **Wording in the case files:** each case quotes the manager's wording
+  exactly as QA supplied it. The only change is that "Employee R" becomes the
+  invented roster name.
 
-How each case is written:
+#### Live runs (opt-in, never in CI)
 
-- It uses the reporter's exact wording, with every real person swapped for an
-  invented name that is checked against the roster
-  (`no-real-people.test.ts`).
-- It asserts invariants, never model wording:
-  - `noClaimWithoutUpdate`
-  - `replyMatchesDiff`
-  - `savedForm`
-  - a new `endsAsSentence` (the reply does not stop mid-sentence)
-- Each case starts as `status: { open: "…" }`, so it runs as `it.fails` and
-  CI flags the day it starts passing.
-- A later step sets `fixFlags: [...]` on the cases it is meant to fix.
+Live runs use a new `src/app/api/chat/replay-pack/live.test.ts`:
 
-New: `src/lib/ai/router-live.test.ts`. It is skipped unless `ROUTER_LIVE=1`,
-and runs the same cases against Haiku with `maxRetries: 0`.
+- `ROUTER_LIVE=haiku` runs the cases through the real route with
+  `CLAUDE_READER_MODEL` (Haiku) and `maxRetries: 0`.
+- `ROUTER_LIVE=production` runs the same cases once on each app's own
+  `CLAUDE_MODEL`. This is the gate in decision 6, run before any flag is
+  switched on.
+- Neither mode retries. Results go to
+  `docs/flag-classification/<FLAG>.live.md`.
 
-- **Touches:** two new case files per app, one helper in `cases.ts`
-  (`endsAsSentence`, additive), one live test file per app.
-- **Blocker:** none of sf-s21 to sf-s29 or sf-b6 are in either repo. The
-  repos only hold sf-s1 to sf-s20 and sf-b1 to sf-b5. **I need the transcripts
-  for today's ten cases** (QA's scan, or the sessions running now).
+#### The silent-failure cases
 
-### Step 1: why the Bubbles reply stopped mid-sentence (sf-b6) — `REPLY_CUT_CHECK_ENABLED`
+| Id | App reported | What happened | Invariant the case asserts |
+|---|---|---|---|
+| sf-s21 | Sunny | A CA request with the employee's metrics. The bot claimed the policy "as you said". A pasted CA for another employee was used as a template; the bot twice said it hadn't changed the form; "fill in the information for me" saved the **other** employee's month and numbers in the observation, policy text was only names, and there was no policy violated or action plan. | Only Employee R's facts on the form. No "as you said" for a policy the manager didn't say. The requested changes are applied and the reply matches the saved diff. The pasted CA's facts never reach a field. |
+| sf-s22 | Sunny | "It needs to be a CA, not a coaching form". The bot went back to a Coaching Form twice after "Its a CA". Another employee's reviewer notes were pasted into the observation. | The type the manager typed wins and stays on every later turn. Another person's notes never reach the observation. |
+| sf-s23 | Sunny | "not pay roll deductable" went into the observation, and the payroll question was asked again. "it should be under performance not standard of conduct" changed the policy, but the action plan and policy text still said Standards of Conduct. | The answer fills the payroll Yes/No field and is not asked again. A policy change updates the action plan and policy text too. |
+| sf-s24 | Sunny | "it should be must see behaviors and she also had coaching on file … 10/22 and … 10/15" got a false "as you said". The whole message was dumped into the observation, and the saved policy differed from the card. | The card and the saved form agree. No false "as you said". The observation is not the whole message. |
+| sf-s25 | Sunny | A CA with times (scheduled until 9:15PM, clocked out 9:01, equipment down at 8:11 PM) got an invented "as you said" policy, and the observation held an earlier question. | No invented policy claim. The observation is the incident, not a question. |
+| sf-s26 | Sunny | "Edit [misspelled name] CA" asked who it was for. In a new chat, "Change Employee R CA" started a new form. | The existing CA is found and opened for editing. No new form. |
+| sf-s27 | Sunny | "Create a coaching form." then the name. The bot said "Everything I need is here" with no draft and no incident. | It asks what happened, and never says everything is ready when a required field is missing. |
+| sf-s28 | Sunny | The incident was asked about in one turn, then "write me a ca for Employee R from <salon>". The bot said "You haven't told me what happened yet", and the observation was the question. | The incident from the previous turn is used. The observation is never the question. |
+| sf-s29 | Sunny | "are there any coaching and ca's for Employee R" described the CA form type. | The past-forms lookup runs and lists that employee's forms on file. |
+| sf-b6-reply | Bubbles | The reply ended "Based on what you've described, I can prepare:". | `endsAsSentence`. No form picker while a form for this chat is already in progress (Step 1). |
+| sf-b6-policy | Bubbles | The bot said no source states a policy and it would leave the field for the manager; the saved form then had an AI-filled policy. | No AI-written policy field after the reply said it would leave it blank. Policy fields only from a retrieved manual section. |
+| sf-b6-card | Bubbles | The next card ignored the detail added after the first card. | The card after an added detail includes that detail. |
 
-Why `truncation.ts` did not catch it: it checks only
-`stop_reason === "max_tokens"` on the model's response. The likeliest cause is
-code that runs **after** the model call, where no stop reason exists. Ranked
-by evidence:
+sf-b6 is split into three cases because Step 1 fixes only the reply. The
+other two stay open until their own steps.
 
-1. **The cross-chat guard splits at a full stop that does not end a sentence
-   (most likely).**
-   - `withoutCrossChatClaims` (`src/lib/chat/cross-chat-guard.ts`;
-     `CROSS_CHAT_REPLY_GUARD` is assumed on) splits a line into "sentences"
-     with `SENTENCE = /[^.!?\n]+(?:[.!?]+…|$)\s*/g`.
-   - That regex treats every `.` as a sentence end, including:
-     - the `.` inside `[p.12]` page markers
-     - decimals ("$10.25")
-     - "a.m."
-     - "e.g."
-   - When a later fragment reads as "you told me … in another chat", the guard
-     deletes it, and the kept text ends at `…policy [p` or `…was $10.`.
-   - **Why Bubbles is hit harder:** in Bubbles the guard runs **after**
-     `citePolicyAnswer` has inserted `[p.N]` markers (`server-ask.ts` ~1211 →
-     1229). Sunny runs it on the raw model text, before its citation step.
-   - The same decimal bug was fixed for `forms/incident-issue.ts` behind
-     `DECIMAL_NOT_SENTENCE_END_ENABLED`. That fix never reached this guard.
-2. **`honestFormReply`** (`forms/form-content-turn.ts`) drops whole lines that
-   claim a form change. It can leave a lead-in like "Here's what I changed:"
-   with nothing after it.
-3. **`withoutSpeakersManagerTitle`** (`reply-guards.ts`) deletes from
-   `**Position:**` to the end of the line.
-4. **Another stop reason.** A `stop_reason` other than `max_tokens`, such as
-   `model_context_window_exceeded` with the full manual on Sonnet, is returned
-   as a full answer.
+#### The approved template changes: replay cases only, no build
 
-How to confirm which cause it was:
+Each case reads the form's **pinned** template version. A case passes or
+fails on today's behaviour plus the flags of the track that owns it
+(`CA_SALES_POLICY_ENABLED`, `ACTION_PLAN_SENTENCES_ENABLED`, the payroll
+flags). This plan adds no behaviour for them.
 
-- the `chat_traces` row for that turn (`stopReason`), and
-- the `noteCrossChatRemoval` log line for that turn.
+| Id | Invariant |
+|---|---|
+| tc-1 offense boxes | A new CA on the newest version offers Type of Offense = Attendance Policy / Standards of Conduct / Dress Code Violation / Other. Absenteeism is not offered. |
+| tc-2 conduct sections | A Cell Phone, Social Media or Animals incident reads "Standards of Conduct — <section>", with the section from the retrieved manual. |
+| tc-3 cleaning | A cleaning CA (e.g. not signing the cleaning checklist) ticks **Other**. |
+| tc-4 old draft stays | A draft pinned to the older version keeps its version and boxes on every chat edit. The missing-fields list is computed from **its** version. |
+| tc-5 revise converts | "Edit as new draft" on a newer version maps old ticks as #424/#512 do. The filed form, its version, its rows and its PDF are unchanged. |
+| tc-6 sales/MSB policy | A sales or must-see-behaviours CA cites Standards of Conduct, with heading and page from the manual section retrieved that turn. It runs with `CA_SALES_POLICY_ENABLED` on as that track defines it, and the case only observes. |
+| tc-7 action plan | The CA action plan is exactly two sentences. |
+| tc-8 payroll amount | The payroll amount comes right after payroll Yes/No. It is asked once, only when Yes, and filled only from the manager's own number. A No never asks for it, and an amount never comes from the model. |
 
-Found while reading, Sunny only:
+- **Touches:** two new case files per app, two additive helpers in
+  `cases.ts`, and one live test file per app. No source file outside the
+  replay pack.
 
-- `collectModelResult` returns partial text when a stream ends without a
-  `message_delta` (`stopReason` stays `null`).
+### Step 1: the sf-b6 reply that ended on "I can prepare:" — `REPLY_CUT_CHECK_ENABLED`
+
+**The cause, confirmed from `chat_traces`** (Bubbles production, the
+4 Nov 2026 19:45 UTC turn):
+
+- **The model finished normally.** The trace row has `stop_reason: end_turn`,
+  617 of 2,048 output tokens, `claude-sonnet-5`, with `form_in_progress: true`.
+  Nothing was truncated, so `truncation.ts` correctly had nothing to catch.
+- **Code added the last line.** `server-ask.ts` (~1185 / ~1218) adds
+  `formOpportunityLead()` (`forms/form-opportunity.ts:303`, "Based on what
+  you've described, I can prepare:") after the model's text whenever
+  `suggestedFormsFor` returns a form selection. The stored message has
+  `metadata.formSelection` (Corrective Action + Coaching).
+- **The guard that should remove it didn't fire.**
+  `OPEN_FORM_NO_SELECTION_ENABLED` (on in production) strips the selection
+  and its lead only when `parsed.activeFormInstanceId` is set (`route.ts`
+  ~789). On this turn no instance existed yet: the CA was a proposal card in
+  progress (`continueProposalTemplateKey`, which is what made the trace's
+  `form_in_progress` true). So the reply kept a form picker heading for the
+  form the manager was already making, under an answer about adding a detail.
+- **It is not a one-off.** The same ending is on at least 9 earlier Bubbles
+  replies (26 Oct and 2 Nov).
+- **Sunny has the same code:** `form-opportunity.ts:303`, the same guard on
+  `activeFormInstanceId` only (`route.ts` ~772). It is fixed the same way.
+
+**The cross-chat guard theory in the first draft was wrong.** That guard did
+not run on this reply's text. Its "." sentence split is a latent risk only, is
+not fixed here, and is listed under Risks.
+
+**The fix, behind one flag, in both apps:**
+
+1. **No picker while a form is in progress.** The no-selection rule applies
+   while a form is in progress, not only once an instance exists. "In
+   progress" is the same expression `server-ask.ts` already uses for the
+   trace: `continueProposalTemplateKey || openForm || activeFormInstanceId`.
+   The selection is dropped, and its lead is removed by
+   `formOpportunityLead()`'s own text, not a new phrase.
+2. **Last-chance check, after every reply rewrite in `route.ts`.** A reply
+   whose last line is a heading ending in ":" with nothing under it, and no
+   `formSelection` or proposal card to show, has that line removed. The trace
+   records it as `reply_cut_fixed`.
+
+The remove-only check in (2) cannot change a reply that is already complete.
+The flag-off test proves nothing changes with the flag unset.
+
+**Touches** (both apps):
+
+- `route.ts`: one guarded block next to `OPEN_FORM_NO_SELECTION`.
+- `chat-quality-flags.ts`: the flag, with its comment.
+- A new `src/lib/chat/reply-ends.ts`.
+- A new `reply-cut-check-flags-off.test.ts`.
+
+Nothing protected is touched. `server-ask.ts` is not changed: it already
+exposes the in-progress inputs on the request.
+
+**Also found, and not part of Step 1** (each is listed for its own pull
+request):
+
+- Sunny's `collectModelResult` returns partial text when a stream ends
+  without `message_delta`.
 - Sunny's `chat-revision` model call is not wrapped in `withTruncationRetry`.
 
-The fix, behind one flag:
-
-- **Sentence split.** The cross-chat guard's split does not end a sentence
-  inside a marker, a decimal or an abbreviation. It shares one sentence
-  splitter with `incident-issue.ts`'s fixed version.
-- **Stop reasons.** Truncation uses an allow-list, not a deny-list: only
-  `end_turn`, `tool_use` and `stop_sequence` count as finished, and a `null`
-  stop reason counts as cut off.
-- **Last-chance check.** A reply-level check runs after every rewrite. A reply
-  that ended mid-sentence before a guard ran must still end as a sentence after
-  it; otherwise the guard's cut is undone (the original reply is kept) and the
-  trace logs it.
-
-- **Touches:** `cross-chat-guard.ts`, `truncation.ts` (add `isFinished(stopReason)`;
-  existing exports unchanged), Sunny `call-claude.ts` `collectModelResult`,
-  `route.ts` (one guarded call after the rewrites), and a new `sentence-split.ts`.
-  `incident-issue.ts` is read, not changed.
-- **Tests:** sf-b6 (and the Sunny mirror) moves from `open` to `fixFlags`.
+**Tests:** sf-b6-reply moves from `open` to `fixFlags:
+["REPLY_CUT_CHECK_ENABLED"]` in both apps. A regression test uses the
+manager's exact sf-b6 wording, with the name replaced; it is shown failing
+before the fix and passing after.
 
 ### Step 2: the form record — `FORM_RECORD_ENABLED`
 
@@ -213,6 +288,20 @@ data column, so the record goes in the existing `chat_form_state` row
   data". The other option is `chat_messages.metadata` on each assistant
   message, which gives one copy per turn and needs a "latest wins" read. I
   recommend `chat_form_state`.
+
+**The pinned template version decides the keys.** `templateVersionId` is
+the form's own pinned version (`form_instances` → `form_template_versions`),
+never "the newest".
+
+- A draft on an older Corrective Action version keeps that version's keys,
+  boxes and missing-fields list, and the record never converts it.
+- Conversion happens only where #424/#512 already do it: "Edit as new draft"
+  opening a revision on the newer version. The record then follows the new
+  instance's pinned version.
+- Saved forms and PDFs are never rewritten.
+- Before an instance exists, the record uses the version
+  `form_template_current` would pin at creation, and re-reads it when the
+  instance is created.
 
 **`fields` is never a second copy.** Once an instance exists, the record's
 `fields` are refreshed from the reread that `writeFormEdits` already does after
@@ -368,6 +457,23 @@ is retired by its own flag in step 7. Card Save
 (`PATCH /api/forms/instances/[id]`) and `createInstance` stay as they are: they
 are the manager's own UI save and the system seed, not chat writers.
 
+**The rules the template changes rely on keep applying.** `applyFormOps`
+goes through `writeFormEdits` → `applyPatch` and today's write guards
+unchanged. So the following still hold exactly as their own tracks define
+them:
+
+- the two-sentence action plan (`ACTION_PLAN_SENTENCES_ENABLED`);
+- the manager-only action plan;
+- the payroll amount: asked once after Yes/No, only the manager's number
+  (Bubbles `PAYROLL_DEDUCT_AMOUNT_ENABLED`; Sunny `PAYROLL_AMOUNT_FIELD_ENABLED`
+  + `MANAGER_PAYROLL_AMOUNT_ONLY_ENABLED`);
+- the offense-box mapping;
+- the `CA_SALES_POLICY` sales/MSB citation.
+
+`ask_one_question` takes its next question from the missing-fields list in
+the pinned version's field order, so the payroll amount comes right after
+payroll Yes/No and only when Yes.
+
 - **Touches:** new `apply-form-ops.ts`; `route.ts` / `router-turn.ts`; the
   draft route (one guarded branch at the write). `form-write.ts` is reused
   unchanged.
@@ -387,6 +493,10 @@ and the reply says what was not saved.
      the shared mechanism to bring into both apps, so the check is the same
      code in both.
    - `policy-citation.ts` is protected and is only read.
+   - A sales or must-see-behaviours CA's Standards of Conduct citation is
+     produced by the `CA_SALES_POLICY` track. This check only verifies that
+     its heading and page were retrieved that turn; it never picks or changes
+     the policy.
 2. **Quoting the manager.** Text put in quotation marks or attributed to the
    manager in a field value must appear verbatim in the manager's own messages
    in this chat, not in assistant turns and not in `sourceNotes`.
@@ -433,6 +543,37 @@ The order goes from least to most live:
   flag exists.
 
 ---
+
+## Compatibility with the approved template changes (both apps)
+
+These are built in other sessions (Corrective Action revision: Bubbles #424
+as revision 7, Sunny #512 as revision 8; the `CA_SALES_POLICY_ENABLED`
+track). This plan **does not build, copy or change any of it**. It only reads
+what they produce.
+
+| Approved change | How this plan stays compatible | Replay case |
+|---|---|---|
+| New CA version: Type of Offense = Attendance Policy / Standards of Conduct / Dress Code Violation / Other; Absenteeism removed | Field and box keys always come from the form's **pinned** version (`fieldsForVariant` / `checkboxGroupsForVariant`); no key is hard-coded. `edit_form`'s key enum is built from that version, so a removed box can't be set on a new form and an old draft keeps its own boxes. | tc-1, tc-4 |
+| Cell Phone, Social Media, Animals stay "Standards of Conduct — <section>" | Read as-is from the existing drafting/mapping. The record stores whatever box and section the existing writers produce. | tc-2 |
+| Cleaning CAs go to "Other" | Same. Not re-decided by the router. | tc-3 |
+| Old drafts stay on their version; converted only when a revision lands on the newer one (#424) | The record follows `instance.template_version_id`. Conversion stays in `reviseInstance` (protected, already approved). Saved forms and PDFs are never rewritten. | tc-4, tc-5 |
+| Sales/MSB CAs cite Standards of Conduct from the retrieved manual section | `CA_SALES_POLICY_ENABLED` behaviour unchanged; Step 6 only checks the citation was retrieved that turn. | tc-6 |
+| Action plans are exactly two sentences | The existing guard (`ACTION_PLAN_SENTENCES_ENABLED`, on in both production lists) stays in the write path. | tc-7 |
+| Payroll amount right after payroll Yes/No, asked once when Yes, only the manager's number | The existing payroll flags stay in the write path. `ask_one_question` follows the pinned field order; amount ops are refused unless the number is in the manager's own message (Step 6 check 2). | tc-8 |
+
+**Different version numbers per app** (Bubbles revision 7, Sunny revision 8):
+nothing in this plan names a revision number. It only ever reads "this form's
+pinned version".
+
+## Draft tool wording (for approval; not used until approved)
+
+These are new text; no existing prompt changes. `edit_form` keeps its
+approved wording exactly.
+
+- **`answer`**: "Reply to the manager in the chat. Use this when the latest message asks a question or needs an answer, and no change to the open form was asked for. Do not describe a form change here; form changes are made only with edit_form."
+- **`start_form`**: "Start a new HR form in this chat. Use this only when the manager asks for a form and no form of that type for that person is open. Give the form type from the list provided. If the manager typed the form type, that type is used whatever you choose."
+- **`finalize_draft`**: "Mark the open form's draft as ready for the manager to review. Use this only when the missing-fields list provided with this message is empty and the manager has asked for the draft. Do not say the draft is ready in text; the app says so after it is saved."
+- **`ask_one_question`**: "Ask the manager one question about one field on the missing-fields list provided with this message. Name the field key and write one short question. Never ask about a field that already has a value, and never ask two things at once."
 
 ## Protected files (not edited by any step)
 
@@ -498,15 +639,22 @@ read. `instances.ts` is only called, through `writeFormEdits`.
    run on Haiku. A case passing on Haiku is a floor, not proof for production
    models. QA's flip check remains the gate.
 7. **Sentence-ending checks without a phrase list.** Step 1's reply-level
-   check must not flag replies that end with a list, a table or a citation
-   marker. Its tests include those shapes.
+   check only removes a final heading line ending in ":" when no card follows.
+   Its tests include replies ending in a list, a table, a citation marker and
+   a heading that does have a card under it, and none of those change.
 8. **Pasted-form detection by label count.** A manager who writes naturally
    but uses two or three field labels could be treated as pasting. The
    threshold comes from the template's label count, and the case where it
    wrongly fires is a test.
-9. **Cases not in the repo yet.** Step 0 can't start until the transcripts for
-   sf-s21 to sf-s29 and sf-b6 are supplied.
-10. **Other sessions running now.** Their changes to `route.ts` and
+9. **The cross-chat guard's sentence split (latent, not observed).**
+   `withoutCrossChatClaims` treats every "." as a sentence end (decimals,
+   `[p.N]` markers). It did not cause sf-b6. It is left for its own reported
+   case.
+10. **Template changes landing in parallel.** The CA revision and the
+    `CA_SALES_POLICY` track change the same CA fields. The tc-1 to tc-8 cases
+    pin the agreed outcome. This plan never edits those modules, so a conflict
+    can only show as a failing case, not a silent change.
+11. **Other sessions running now.** Their changes to `route.ts` and
     `server-ask.ts` will conflict. Each step rebases on `main` before its
     pull request, and no other session's branch is touched.
 
@@ -514,8 +662,8 @@ read. `instances.ts` is only called, through `writeFormEdits`.
 
 | Step | Estimate |
 |---|---|
-| 0. Replay cases sf-s21 to sf-s29 and sf-b6, plus the Haiku live harness | 1 day, once transcripts are in |
-| 1. sf-b6: confirm the cause from the trace, fix the split and stop-reason checks | 1 day |
+| 0. Replay cases (9 sf-s, 3 sf-b6, 8 template-change) in both apps, plus the live harness | 1.5 days |
+| 1. sf-b6 (cause confirmed): no picker while a form is in progress, plus the reply-end check | 0.5 day |
 | 2. Form record, store, missing fields, shadow write | 1.5 days |
 | 3. Main call on the AI SDK (parity, no tools) | 2 days |
 | 4. Tools + explicit type | 2 days |
@@ -529,12 +677,8 @@ path at a time after QA has had the router flags on in staging.
 
 ## Open questions for you
 
-1. **Storage.** Is `chat_form_state.state.formRecord` acceptable as "the chat
-   row's data"? The alternative is `chat_messages.metadata` per turn.
-2. **Model calls.** Does "no extra model calls" also cover the retrieval
-   helpers (query rewrite, recall, long-context summary), or only the form
-   readers?
-3. **Transcripts.** Please send the transcripts or report for sf-s21 to sf-s29
-   and sf-b6.
-4. **Tool descriptions.** Do you want to approve the four new tool
-   descriptions before step 4 starts?
+1. **Tool wording.** Do you approve the four draft tool descriptions above, or
+   want them changed? They are needed only at Step 4.
+2. **The sf-b6 Step 1 fix.** Is "no form picker while a form is in progress,
+   plus the reply-end check", both behind `REPLY_CUT_CHECK_ENABLED`, the fix
+   you want? Or should Step 1 cover only the in-progress picker?
