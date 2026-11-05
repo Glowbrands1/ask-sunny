@@ -53,4 +53,18 @@ describe("OBSERVATION_OTHER_PERSON_TURN_ENABLED: another employee's notes are no
   it("no roster: unchanged", () => {
     expect(withoutOtherPersonTurns([T1, NOTES], "Wynne Sarrow")).toEqual([T1, NOTES]);
   });
+  /*
+   * coding 2's 3+3 of the bundle, 5 Nov 2026: on the live path the question is
+   * the app's state lines around the manager's turn, and "Policy reference:"
+   * on the first line read as a lead ending in a colon, so "create a coaching
+   * form for Test Employee, late to her shift on 10-20" opened no card
+   * (hidden-form-no-card-oct25, exit-form-not-ca-oct25, prior-actions-yearless-oct25).
+   */
+  it("on, the app's own lines are no lead: the manager's request still opens its form", () => {
+    process.env.PASTED_BLOCK_FORM_ENABLED = "true";
+    const live =
+      "The employee is Test Employee. Policy reference: Attendance, JBA Policy Manual p.14. Incident: Attendance.\ncreate a coaching form for Test Employee, late to her shift on 10-20\nIt happened on 10/20/2026.";
+    expect(detectTemplateIntent(live)).toMatchObject({ kind: "explicit", templateKey: "coaching" });
+    expect(detectTemplateIntent(`The employee is Wynne Sarrow.\nMake this:${NOTES}`).kind).toBe("none");
+  });
 });

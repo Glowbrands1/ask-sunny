@@ -23,6 +23,7 @@
  * Here, that sentence is AMBIGUOUS and the answer is a question.
  */
 
+import { withoutAppLines } from "@/lib/ai/app-sentences";
 import { caSalesPolicyEnabled, caShortcutWordsEnabled, formChoiceStatedEnabled, formNameFromRosterEnabled, pastedBlockFormEnabled } from "@/lib/config/chat-quality-flags";
 import { foldsToGlossaryTerm } from "@/lib/ai/chat-glossary";
 
@@ -1514,7 +1515,8 @@ export function withoutLeadingGlossaryTerm(question: string): string {
  * turn is not that shape.
  */
 function pastedBlockLead(text: string): string | null {
-  const match = /^\s*([^\n:]{1,60}):\s*([\s\S]*)$/.exec(text);
+  // The manager's lines only: the app's own lines ("The employee is …. Policy reference: …") are no lead.
+  const match = /^\s*([^\n:]{1,60}):\s*([\s\S]*)$/.exec(withoutAppLines(text));
   if (!match) return null;
   const lines = match[2]!.split("\n").filter((line) => line.trim() !== "");
   return lines.length >= 3 ? match[1]! : null;
