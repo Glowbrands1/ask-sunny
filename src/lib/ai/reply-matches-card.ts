@@ -6,6 +6,7 @@ import { requestMessage } from "@/lib/forms/request-slot";
 import {
   ASK_WHO,
   ASKS_A_CHOICE,
+  ASKS_FOR_THE_NAME,
   ASKS_WHO,
   CREATE_WHEN_READY,
   draftedFor,
@@ -55,8 +56,6 @@ const ACCOUNT_LINE = /^\s*\*\*(?:Issue|What happened|Observation of Offense):\*\
 const FROM_DESCRIBED = /\*\*Policy:\*\*[^\n]*\bfrom what you described\b/i;
 /** A manual citation line: "<Section> Policy, JBA Policy Manual p.15". */
 const MANUAL_LINE = /^\s*(?:[-*]\s*)?\**([^*\n,]+?)\**(?:\s+Policy)?,\s*JBA Policy Manual\b[^\n]*$/i;
-/** The card's own list of details asks who already: "1. Employee's full name", "1. The employee's full name — or tell me it's for the whole team." */
-const ASKS_FOR_THE_NAME = /\bemployee['’]s full name\b/i;
 const WHO_LINE = /^\s*Who is this (?:\*\*[^*]+\*\* |form )?for\?[^\n]*$/i;
 
 function normalHeading(text: string): string {

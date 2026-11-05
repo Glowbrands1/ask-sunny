@@ -6,6 +6,7 @@ import { HAS_EMPLOYEE_AND_PLACE, SAYS_READY } from "@/lib/ai/ca-what-happened";
 import { matchEmployeeName, normalizeTypedName, type RosterEmployee } from "./employee-match";
 import { personRosterNames } from "./person-guard";
 import { requestMessage } from "./request-slot";
+import { namesAForm } from "./template-intent";
 
 /**
  * ============================================================================
@@ -146,7 +147,7 @@ export function rosterOnlyNames(response: AskResponse, names: readonly string[],
         names,
         draftedFor(content),
       );
-      if (!ask && !ASKS_WHO.test(content) && !ASKS_A_CHOICE.test(content)) ask = ASK_WHO;
+      if (!ask && !ASKS_WHO.test(content) && !ASKS_A_CHOICE.test(content) && !ASKS_FOR_THE_NAME.test(content)) ask = ASK_WHO;
     }
   }
 
@@ -217,6 +218,8 @@ function withoutSlotNameInObservation(content: string, message: string | undefin
  * words only: no word list.
  */
 /** A reply line that asks the manager to choose or confirm a person: its names are the choices. */
+/** The reply's own list of details asks who already: "1. Employee's full name", "1. The employee's full name — or tell me it's for the whole team." */
+export const ASKS_FOR_THE_NAME = /\bemployee['’]s full name\b/i;
 export const ASKS_A_CHOICE = /Did you mean|Which of them|Is this for \*\*/;
 
 export function withoutUnseatedName(content: string, typed: readonly (string | null)[], names: readonly string[], drafted: readonly string[] = []): string {
@@ -258,7 +261,8 @@ export function draftedFor(content: string): string[] {
 /** The name the request put straight after "for" ("create a CA for <Name>, …"), when it is nobody's roster spelling; or null. */
 export function slotName(message: string | undefined, names: readonly string[]): string | null {
   const named = message ? /\bfor\s+(\p{Lu}[\p{L}'’-]+(?:\s+\p{Lu}[\p{L}'’-]+){0,2})\s*[,.]/u.exec(message)?.[1] : undefined;
-  return named && !rosterSpelling(named, names) ? named : null;
+  // A form's name is never the person: "a corrective action for Coaching Form." (the sibling app's pre-check, 5 Nov 2026).
+  return named && !rosterSpelling(named, names) && !namesAForm(named) ? named : null;
 }
 
 /** FORM_NAME_FROM_ROSTER_ENABLED: `rosterOnlyNames` with the actor's roster read this turn. Off, or no roster: as built. */

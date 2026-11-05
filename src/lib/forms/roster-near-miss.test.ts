@@ -54,6 +54,26 @@ describe("ROSTER_NEAR_MISS_ENABLED (a): a near-miss of one roster name is asked,
   });
 });
 
+describe("ROSTER_NEAR_MISS_ENABLED: the sibling app's combined pre-check, its two regressions (5 Nov 2026)", () => {
+  it("\"I need a corrective action for Coaching Form. …\": a form's name is never the person, so \"**Corrective Action Form**\" is never \"**Corrective Action the employee\"", () => {
+    vi.stubEnv("ROSTER_NEAR_MISS_ENABLED", "true");
+    const out = rosterOnlyNames(
+      reply("Great, I can help you create a **Corrective Action Form**. To get started, please provide me with these details:\n\n1. Employee's full name", null),
+      ROSTER,
+      "I need a corrective action for Coaching Form. This is for Under Performance on PPTA, LPSVA, Club Average, Club Close %, and Spa %.",
+    );
+    expect(out.content).toContain("**Corrective Action Form**");
+    expect(out.content).not.toMatch(/the employee\. To get started/);
+  });
+
+  it("a reply whose list already asks \"1. Employee's full name\" is not asked \"Who is this form for?\" again", () => {
+    vi.stubEnv("ROSTER_NEAR_MISS_ENABLED", "true");
+    const text = "Great, I can help you create a **Corrective Action Form**. To get started, please provide me with these details:\n\n1. Employee's full name\n2. Date for the form";
+    const out = rosterOnlyNames(reply(text, null), ROSTER, "create a corrective action form");
+    expect(out.content).not.toContain(ASK_WHO);
+  });
+});
+
 describe("ROSTER_NEAR_MISS_ENABLED (b): with no employee on the card, no reply text names them", () => {
   const message = "create a CA for Zebulon Marchbanks, he was late opening the salon on 11/2";
 
