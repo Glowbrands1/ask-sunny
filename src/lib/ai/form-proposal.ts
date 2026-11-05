@@ -1197,7 +1197,7 @@ export function suggestFormsForTurn(input: ProposalTurn): SuggestedForms | null 
   if (offered.length === 0) return null;
 
   return {
-    lead: formOpportunityLead(),
+    lead: formOpportunityLead(offered.map((summary) => summary.name)),
     selection: {
       primary: choice(offered[0]!),
       additional: offered.slice(1).map(choice),

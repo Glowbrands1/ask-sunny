@@ -2498,3 +2498,14 @@ export function keepRosterExactNameEnabled(): boolean {
 export function caPolicySaidOnlyEnabled(): boolean {
   return envFlag("CA_POLICY_SAID_ONLY_ENABLED");
 }
+
+/**
+ * FORM_LEAD_FULL_SENTENCE_ENABLED (Pau via QA, 5 Nov 2026, sf-b6 in the
+ * sibling app; default off; same flag in both apps). The reply ended "Based on
+ * what you've described, I can prepare:" with nothing after it. On, the line
+ * before the form cards is a whole sentence naming the forms offered
+ * (`forms/form-opportunity.ts` formOpportunityLead). Off, as before.
+ */
+export function formLeadFullSentenceEnabled(): boolean {
+  return envFlag("FORM_LEAD_FULL_SENTENCE_ENABLED");
+}
