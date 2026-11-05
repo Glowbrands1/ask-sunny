@@ -379,6 +379,8 @@ export function ChatScreen() {
            * on this answer. A pointer, like a created form's.
            */
           formInstanceRef: openedFormReference(response.formOpened),
+          // FORM_EDIT_SOURCE_TURN_ENABLED: kept on the message and sent back with the history.
+          ...(response.formReply ? { formReply: response.formReply } : {}),
         };
 
         // A chat correction saved a form further up the thread: have it re-read.

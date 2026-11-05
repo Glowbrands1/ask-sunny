@@ -19,6 +19,8 @@ import { expect } from "vitest";
 
 export interface ReplayAnswer {
   content: string;
+  /** FORM_EDIT_SOURCE_TURN_ENABLED: the reply was about the open form; `unwritten` is the manager's turn it did not write. */
+  formReply?: { instanceId: string; unwritten?: string };
   formProposal?: { templateKey?: string; employeeName?: string | null; employeeRole?: string | null; status?: string; subject?: string; locationId?: string | null };
   formUpdate?: { instanceId: string; updated: string[] };
   formOpened?: { instanceId: string };
@@ -67,6 +69,12 @@ export interface ReplayContext {
   checked(instanceId: string): Record<string, string[]>;
   /** What the drafting model was given, one entry per draft written. */
   draftPrompts(): string[];
+  /**
+   * What the revision model was HANDED, one prompt per revision call (its user message, as text).
+   * Assert on this, not only on the saved form: the stand-in writes whatever `revisionWrites` scripts,
+   * whatever it was handed.
+   */
+  revisionPrompts(): string[];
   /** The drafting model's system prompt, one entry per draft written. */
   draftSystems?(): string[];
   /** The draft call's tools as sent, one JSON string per call. */

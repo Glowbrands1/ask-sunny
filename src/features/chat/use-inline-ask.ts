@@ -245,6 +245,8 @@ export function useInlineAsk({ reportContext, onActiveChange, surface }: InlineA
             formSelection: response.formSelection,
             // A form on file this turn opened; see `openedFormReference`.
             formInstanceRef: openedFormReference(response.formOpened),
+          // FORM_EDIT_SOURCE_TURN_ENABLED: kept on the message and sent back with the history.
+          ...(response.formReply ? { formReply: response.formReply } : {}),
           },
         ]);
         if (response.formUpdate) announceFormUpdate(response.formUpdate.instanceId);

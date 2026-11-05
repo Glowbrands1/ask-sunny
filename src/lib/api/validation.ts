@@ -143,10 +143,49 @@ export function parseTags(value: unknown): string[] {
   return [...seen];
 }
 
-/** Chat history, filtered to well-formed turns and capped to the recent tail. */
+/** At most this much of a manager's unwritten turn is carried back on `formReply` (FORM_EDIT_SOURCE_TURN_ENABLED). */
+export const UNWRITTEN_MAX = 2_000;
+
+/**
+ * FORM_EDIT_SOURCE_TURN_ENABLED: the two markers a turn keeps from what the
+ * browser sent. `card`: the message carried a form card (`formProposal` or
+ * `formInstanceRef`) — the card's own words are never content for the form.
+ * `formReply`: the reply was about the open form (stamped by the chat route),
+ * with `unwritten`, the manager's turn it did not write. Bounded and
+ * type-checked; a malformed one is dropped. They select which earlier turn an
+ * edit like "the details we just discussed" means; nothing is trusted beyond
+ * that, and `unwritten` is only ever the manager's own words echoed back.
+ */
+export interface HistoryMarkers {
+  card?: true;
+  formReply?: { instanceId: string; unwritten?: string };
+}
+
+function historyMarkers(entry: object): HistoryMarkers {
+  const markers: HistoryMarkers = {};
+  const { formProposal, formInstanceRef, formReply } = entry as { formProposal?: unknown; formInstanceRef?: unknown; formReply?: unknown };
+  if ((formProposal && typeof formProposal === "object") || (formInstanceRef && typeof formInstanceRef === "object")) markers.card = true;
+  if (formReply && typeof formReply === "object") {
+    const { instanceId, unwritten } = formReply as { instanceId?: unknown; unwritten?: unknown };
+    if (typeof instanceId === "string" && UUID.test(instanceId)) {
+      markers.formReply =
+        typeof unwritten === "string" && unwritten.trim() !== ""
+          ? { instanceId, unwritten: unwritten.slice(0, UNWRITTEN_MAX) }
+          : { instanceId };
+    }
+  }
+  return markers;
+}
+
+/**
+ * Chat history, filtered to well-formed turns and capped to the recent tail.
+ * `markers` (FORM_EDIT_SOURCE_TURN_ENABLED): each turn keeps its `card` and
+ * `formReply` markers; off, id, role and content only, as before.
+ */
 export function parseHistory(
   value: unknown,
-): { id?: string; role: "user" | "assistant"; content: string }[] {
+  options: { markers?: boolean } = {},
+): ({ id?: string; role: "user" | "assistant"; content: string } & HistoryMarkers)[] {
   if (!Array.isArray(value)) return [];
   return value
     .filter(
@@ -173,8 +212,9 @@ export function parseHistory(
        */
       const id = (entry as { id?: unknown }).id;
       const usable = typeof id === "string" && id.length > 0 && id.length <= LIMITS.messageId;
+      const markers = options.markers ? historyMarkers(entry) : {};
       return usable
-        ? { id: id as string, role: entry.role, content: entry.content }
-        : { role: entry.role, content: entry.content };
+        ? { id: id as string, role: entry.role, content: entry.content, ...markers }
+        : { role: entry.role, content: entry.content, ...markers };
     });
 }

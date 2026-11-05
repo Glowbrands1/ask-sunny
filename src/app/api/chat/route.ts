@@ -22,6 +22,7 @@ import {
   titleNotSpeakersManagerEnabled,
   newRequestOwnTurnsEnabled,
   formEditPlainWordsEnabled,
+  formEditSourceTurnEnabled,
   questionNotFormEnabled,
   sameFormCopyEnabled,
   secondFormEnabled,
@@ -389,6 +390,18 @@ async function postChat(request: Request) {
         formPatchReducerEnabled() && formReplyFromDiffEnabled() && parsed.activeFormInstanceId
           ? await (await import("@/lib/forms/form-snapshot")).snapshotForm(parsed.activeFormInstanceId, request)
           : null;
+      /*
+       * FORM_EDIT_SOURCE_TURN_ENABLED: the open form as saved before this turn
+       * (a plain read), so the reply can say whether this turn changed it, and
+       * a turn of hers it did not write is carried back as `unwritten`. See
+       * `sourceTurn` in `lib/forms/form-content-turn.ts`.
+       */
+      const sourceBefore =
+        formEditSourceTurnEnabled() && parsed.activeFormInstanceId
+          ? await (await import("@/lib/forms/form-noop-reply")).formBeforeTurn(parsed.activeFormInstanceId, request)
+          : null;
+      // Which content reader answered: the manager's own words ("turn"), or a turn she referred back to ("earlier").
+      let contentRead: "turn" | "earlier" | null = null;
       // NAME_CORRECTION_WORDS_ENABLED: the open draft, for "fix her last name …". See `lib/forms/name-correction-words.ts`.
       const nameFix =
         nameCorrectionWordsEnabled() && parsed.activeFormInstanceId
@@ -584,8 +597,10 @@ async function postChat(request: Request) {
                 history: parsed.history,
                 templateName: open.templateName,
                 employeeName: open.employeeName,
+                instanceId: parsed.activeFormInstanceId,
               });
               if (!rewritten) return null;
+              contentRead = rewritten.source;
               const revised = await (await import("@/lib/forms/chat-revision")).reviseActiveForm({
                 request,
                 instanceId: parsed.activeFormInstanceId!,
@@ -653,6 +668,8 @@ async function postChat(request: Request) {
             })
           : null;
       let toolNothing: Awaited<ReturnType<typeof answerQuestion>> | null = null;
+      // The ordinary answer, when no path above answered (FORM_EDIT_SOURCE_TURN_ENABLED reads it).
+      let ordinaryAnswer: AskResponse | null = null;
       answer =
         draftAnswer ??
         correction ??
@@ -666,7 +683,7 @@ async function postChat(request: Request) {
         // FORM_EDIT_TOOL_IN_STREAM_ENABLED: the tool was called and wrote nothing — said so, never the model's text.
         (toolNothing = formEditTool?.calledWithoutEdit() ? (await import("@/lib/forms/form-edit-tool")).nothingChangedAnswer() : null) ??
         toolMain ??
-        (await answerQuestion(
+        (ordinaryAnswer = await answerQuestion(
           // FORM_EDIT_TOOL_IN_STREAM_ENABLED: a turn the tool was not offered on carries only its trace (and a failed main call's fallback, no offer).
           { ...parsed, openForm, ...(formEditTool && !formEditTool.turn.offer ? { formEditTool: formEditTool.turn } : {}) },
           {
@@ -721,6 +738,45 @@ async function postChat(request: Request) {
         const formAfter = await snapshot.snapshotForm(formBefore.instanceId, request);
         if (formAfter) answer = snapshot.checkedClaim(answer, formBefore, formAfter);
       }
+      /*
+       * FORM_EDIT_SOURCE_TURN_ENABLED: did this turn change the open form (read
+       * again, compared with `sourceBefore`)? If it did not, the manager's turn
+       * a content path took and did not write is `unwritten` (a turn about the
+       * form itself is not); an earlier one still pending is carried forward.
+       * And an ordinary answer, with her words still not on the draft, is
+       * replaced by a reply built from the saved state — never left to the
+       * claim guard's list of phrasings ("It should update automatically — no
+       * copy-and-paste needed").
+       */
+      let formReply: AskResponse["formReply"] | undefined;
+      let unwrittenAnswered = false;
+      if (sourceBefore && parsed.activeFormInstanceId) {
+        const content = await import("@/lib/forms/form-content-turn");
+        const after = await (await import("@/lib/forms/form-noop-reply")).formBeforeTurn(parsed.activeFormInstanceId, request);
+        const { snapshotDiff } = await import("@/lib/forms/form-snapshot");
+        const changed = !after || snapshotDiff(sourceBefore, after).length > 0;
+        const pending = content.pendingUnwritten(parsed.history, parsed.activeFormInstanceId);
+        const ownTurn = contentRead === "turn" || (!plainRevision && revision !== null);
+        const unwritten = changed ? null : ((ownTurn ? content.unwrittenTurn(parsed.question) : null) ?? pending);
+        formReply = { instanceId: parsed.activeFormInstanceId, ...(unwritten ? { unwritten } : {}) };
+        const ordinary = answer === ordinaryAnswer || (toolMain !== null && answer === toolMain);
+        if (!changed && pending && ordinary && !answer.formUpdate && sourceBefore.status === "draft") {
+          const open = await (await import("@/lib/forms/open-form-summary")).describeOpenForm(request, parsed.activeFormInstanceId);
+          if (open && open.status === "draft") {
+            answer = {
+              ...answer,
+              content: content.unwrittenReply({
+                unwritten: pending,
+                templateName: open.templateName,
+                employeeName: open.employeeName,
+                canWrite: /\bcoaching\b/i.test(open.templateName),
+                citedAnswer: answer.citations.length > 0 ? answer.content : null,
+              }),
+            };
+            unwrittenAnswered = true;
+          }
+        }
+      }
       // NEW_REQUEST_OWN_TURNS_ENABLED: a new request for the same person is drafted from its own turns. See `lib/forms/new-request-turns.ts`.
       if (newRequestOwnTurnsEnabled() && answer.formProposal) {
         answer = (await import("@/lib/forms/new-request-turns")).withOwnRequestTurns(answer, [
@@ -760,6 +816,8 @@ async function postChat(request: Request) {
         !answer.formUpdate
         // FORM_PATCH_REDUCER_ENABLED: a patch turn's reply is already the realized diff.
         && !patchTurn
+        // FORM_EDIT_SOURCE_TURN_ENABLED: already the reply from the saved state.
+        && !unwrittenAnswered
       ) {
         const honest = (await import("@/lib/forms/form-content-turn")).honestFormReply(answer.content, formEditPlainWordsEnabled());
         if (honest) answer = { ...answer, content: honest };
@@ -774,6 +832,8 @@ async function postChat(request: Request) {
         void _dropped;
         answer = { ...rest, content: rest.content.replace(/\n*Based on what you've described, I can prepare:\s*$/, "").trimEnd() };
       }
+      // FORM_EDIT_SOURCE_TURN_ENABLED: every reply with a form open says so; the browser sends it back with the history.
+      if (formReply) answer = { ...answer, formReply };
     } catch (error) {
       /*
        * A FAILED ANSWER IS STILL A RECORDED TURN, closed as a failure. The row
@@ -840,7 +900,8 @@ function parseAskRequest(body: Partial<AskRequest>): AskRequest {
       ? requireChatQuestion(body.question, LONG_MESSAGE_LIMIT)
       : requireString(body.question, "A question", LIMITS.question),
     mode: optionalEnum<AnswerMode>(body.mode, MODES, "standard"),
-    history: parseHistory(body.history) as ChatMessage[],
+    // FORM_EDIT_SOURCE_TURN_ENABLED: each turn keeps its `card` and `formReply` markers (`sourceTurn`).
+    history: parseHistory(body.history, { markers: formEditSourceTurnEnabled() }) as ChatMessage[],
     questionMessageId: optionalString(body.questionMessageId, LIMITS.messageId) || undefined,
     /*
      * A TEMPLATE KEY, BOUNDED, AND NOTHING ELSE. It says which kind of form the
