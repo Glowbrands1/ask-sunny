@@ -38,6 +38,7 @@ import {
   googleReviewsInChatEnabled,
   typoReadingCopyEnabled,
   caSalesPolicyEnabled,
+  pastFormsBeforeLibraryEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
 import { approvedManualConfirmed, manualDisplayTitle } from "@/lib/forms/official-policy-manual";
@@ -69,7 +70,7 @@ import {
 import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import { buildFormInventory, publishedEntries } from "@/lib/forms/inventory";
 import { listTemplateSummaries, type TemplateSummary } from "@/lib/forms/repository";
-import { isFormRecordsQuestion, loadFormRecords } from "@/lib/forms/chat-form-records";
+import { candidateNameWords, isFormRecordsQuestion, loadFormRecords } from "@/lib/forms/chat-form-records";
 import { priorFormsReadingForChat } from "@/lib/forms/prior-forms";
 import { applyOptionalPriorCoaching } from "./prior-coaching-optional";
 import { withMappedPolicy } from "./violation-policy";
@@ -504,8 +505,23 @@ async function answerQuestionUntraced(
       request.continueProposalTemplateKey || request.openForm || request.activeFormInstanceId,
     ),
   });
-  const detected = detectInventoryQuestion(routingQuestion);
-  const spokenIntent = detectTemplateIntent(routingQuestion);
+  const libraryReading = detectInventoryQuestion(routingQuestion);
+  const formReading = detectTemplateIntent(routingQuestion);
+  /*
+   * PAST_FORMS_BEFORE_LIBRARY_ENABLED (Pau, 5 Nov 2026, sf-s29): a message
+   * the forms library would answer — a question about the library, or a form
+   * named without asking to make one ("are there any coaching and ca's for
+   * <name>" reads as the Corrective Action, not requested) — that names a
+   * person or asks about forms already on file is answered from the forms on
+   * file: the past-forms lookup below runs for it, and the library answer
+   * steps aside. A request to make a form is never one of these.
+   */
+  const pastFormsFirst =
+    pastFormsBeforeLibraryEnabled() &&
+    (libraryReading.kind !== "none" || (formReading.kind === "corrective_action" && !formReading.requestedCreation)) &&
+    (isFormRecordsQuestion(request.question) || candidateNameWords(request.question).length > 0);
+  const detected: InventoryQuestion = pastFormsFirst ? { kind: "none" } : libraryReading;
+  const spokenIntent: ReturnType<typeof detectTemplateIntent> = pastFormsFirst ? { kind: "none" } : formReading;
 
   /*
    * "I NEED TO FIND THOSE DOCUMENTS" IS ABOUT WHICHEVER REGISTER THE LAST TURN
@@ -1245,8 +1261,9 @@ async function answerQuestionUntraced(
    * coaching jba manual 11-1-26"), and each row says who created it.
    */
   const readsFormRecords =
-    isFormRecordsQuestion(request.question) &&
-    (!crossChatGuard || asksAboutRecords(request.question) || refersBack(request.question, request.history));
+    pastFormsFirst ||
+    (isFormRecordsQuestion(request.question) &&
+      (!crossChatGuard || asksAboutRecords(request.question) || refersBack(request.question, request.history)));
   const formRecordsPromise = readsFormRecords
     ? loadFormRecords({
         actor,
