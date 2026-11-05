@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { detectTemplateIntent } from "./template-intent";
 
@@ -49,5 +49,39 @@ describe("QA F-04: writing THE FORM is still a request", () => {
     "write her up for being late",
   ])("%s names the Corrective Action Form", (text) => {
     expect(detectTemplateIntent(text)).toEqual({ kind: "explicit", templateKey: "dpoa" });
+  });
+});
+
+describe("WRITE_ME_A_REQUEST_ENABLED: \"write me a CA …\" is a request (QA, coding-3, 5 Nov 2026)", () => {
+  // The manager's exact wording; the name is invented.
+  const REQUEST = "can you write me a Ca for Oriel Marchbourne for performance for october";
+  const FLAG = "WRITE_ME_A_REQUEST_ENABLED";
+  const saved = process.env[FLAG];
+  afterEach(() => {
+    if (saved === undefined) delete process.env[FLAG];
+    else process.env[FLAG] = saved;
+  });
+
+  it("off: the exact wording is not a request to create the form, as before", () => {
+    delete process.env[FLAG];
+    expect(creation(REQUEST)).toBe(false);
+  });
+
+  it("on: the exact wording asks for the Corrective Action Form to be created", () => {
+    process.env[FLAG] = "true";
+    expect(creation(REQUEST)).toBe(true);
+  });
+
+  it.each([
+    "can you write me a summary of the corrective action policy",
+    "write me a note explaining the corrective action steps",
+  ])("on: writing ABOUT corrective action for me is still no request: %s", (text) => {
+    process.env[FLAG] = "true";
+    expect(creation(text)).toBe(false);
+  });
+
+  it("on: a question stays a question", () => {
+    process.env[FLAG] = "true";
+    expect(creation("how do I write a CA?")).toBe(false);
   });
 });

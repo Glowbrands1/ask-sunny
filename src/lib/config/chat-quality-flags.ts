@@ -2434,6 +2434,19 @@ export function caSalesPolicyEnabled(): boolean {
 }
 
 /**
+ * WRITE_ME_A_REQUEST_ENABLED (QA, coding-3, 5 Nov 2026; default off; same flag
+ * in both apps). "can you write me a Ca for <name> …" was not read as a
+ * request for the Corrective Action Form: "write a CA" was, but the indirect
+ * object "me" between the verb and the form had no slot. On, the same
+ * "writes the form" pattern also reads "write me a …" (`writesTheForm`,
+ * `forms/template-intent.ts`); its object must still be the form or the
+ * warning. Off, as before.
+ */
+export function writeMeARequestEnabled(): boolean {
+  return envFlag("WRITE_ME_A_REQUEST_ENABLED");
+}
+
+/**
  * Step 5, names from the roster: first piece, the overnight scan's sf-s19
  * "metrics read as people". A metric is never read as a person (Pau, 4 Nov
  * 2026: "I need a corrective action verbal for <name>. This is for Under

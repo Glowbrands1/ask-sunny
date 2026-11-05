@@ -23,7 +23,7 @@
  * Here, that sentence is AMBIGUOUS and the answer is a question.
  */
 
-import { caSalesPolicyEnabled, caShortcutWordsEnabled, formChoiceStatedEnabled, formNameFromRosterEnabled } from "@/lib/config/chat-quality-flags";
+import { caSalesPolicyEnabled, caShortcutWordsEnabled, formChoiceStatedEnabled, formNameFromRosterEnabled, writeMeARequestEnabled } from "@/lib/config/chat-quality-flags";
 import { foldsToGlossaryTerm } from "@/lib/ai/chat-glossary";
 
 import { NOT_A_NAME, NOT_A_TYPED_NAME, TYPED_NAME_WORD } from "./name-words";
@@ -658,8 +658,22 @@ function leadsWithTheForm(q: string, original: string): boolean {
 const WRITES_THE_FORM =
   /\bwrite\s+(?:up\s+)?(?:a|an|the|another|one|her|his|their)\s+(?:(?:new|formal|first|second|third|final|verbal|written|official)\s+){0,2}(?:c\.?\s?a\.?|c\/a|corrective[\s-]+actions?|warning|write[\s-]?up|dpoa|disciplinary(?:\s+action)?)\b/;
 
+/*
+ * "WRITE ME A …" (WRITE_ME_A_REQUEST_ENABLED, QA, coding-3, 5 Nov 2026; default
+ * off; same flag in both apps). "can you write me a Ca for <name> for
+ * performance for october" was not read as a request: "me" sits between the
+ * verb and its object, and the pattern above has no slot for it. "Me" is the
+ * verb's indirect object — grammar, not a phrase — so the same pattern is read
+ * with an optional "me" after "write" and nothing else changed: the object
+ * must still be the form or the warning, so "write me a summary of the
+ * corrective action policy" stays a question. Built from the pattern's own
+ * source so the two never drift.
+ */
+const WRITES_ME_THE_FORM = new RegExp(WRITES_THE_FORM.source.replace(String.raw`\bwrite\s+`, String.raw`\bwrite\s+(?:me\s+)?`));
+
 function writesTheForm(q: string): boolean {
-  return WRITES_THE_FORM.test(q);
+  if (WRITES_THE_FORM.test(q)) return true;
+  return writeMeARequestEnabled() && WRITES_ME_THE_FORM.test(q);
 }
 
 /**
