@@ -1,8 +1,11 @@
 import { formNameFromRosterEnabled } from "@/lib/config/chat-quality-flags";
 import type { AskResponse } from "@/lib/ai/types";
 
+import { HAS_EMPLOYEE_AND_PLACE, SAYS_READY } from "@/lib/ai/ca-what-happened";
+
 import { matchEmployeeName, normalizeTypedName, type RosterEmployee } from "./employee-match";
 import { personRosterNames } from "./person-guard";
+import { requestMessage } from "./request-slot";
 
 /**
  * ============================================================================
@@ -38,6 +41,8 @@ import { personRosterNames } from "./person-guard";
  */
 
 export const ASK_WHO = "Who is this form for? Tell me the employee's full name.";
+/** The card's own invitation to create the draft (`ai/form-proposal.ts`), said only when the card has its employee. */
+const CREATE_WHEN_READY = /Create the draft here when you're ready,? and edit it below — nothing is saved to anyone's file until you do\.[ \t]*/g;
 const ASKS_WHO = /Who is this (?:\*\*[^*]+\*\* |form )?for\?/i;
 
 function rowsFrom(names: readonly string[]): RosterEmployee[] {
@@ -84,7 +89,7 @@ function said(names: readonly string[]): string {
 }
 
 /** The reply and card with only roster people as the employee and as choices. Pure; see `withRosterOnlyNames`. */
-export function rosterOnlyNames(response: AskResponse, names: readonly string[]): AskResponse {
+export function rosterOnlyNames(response: AskResponse, names: readonly string[], message?: string): AskResponse {
   if (names.length === 0) return response;
   let content = response.content;
   let proposal = response.formProposal;
@@ -104,9 +109,26 @@ export function rosterOnlyNames(response: AskResponse, names: readonly string[])
       // The reply never drafts for a name that is not on the card.
       content = content.replace(new RegExp(String.raw`\s+for\s+\*\*${escape(employee)}\*\*`, "g"), "").split(`**${employee}**`).join("the employee");
       ask = close ? `Is this for **${close}**?` : ASK_WHO;
+      /*
+       * THE GATE (5 Nov 2026, nov3-street-then-placeholder): the card was ready
+       * when it was built, so the reply said "Everything I need is here … I have
+       * the employee and the salon" — and then asked who. A card with no
+       * employee never says it has one (the same sentences
+       * `ai/ca-what-happened.ts` takes out of a card with no account).
+       */
+      content = content
+        .replace(HAS_EMPLOYEE_AND_PLACE, "")
+        .split("\n")
+        .filter((line) => !SAYS_READY.test(line.trim()))
+        .join("\n");
     }
   }
   const onCard = proposal?.employeeName ?? null;
+  if (proposal && !onCard && proposal.subject !== "team") {
+    content = withoutSlotNameInObservation(content, message, names);
+    // QA, 5 Nov 2026: "Create the draft here when you're ready" beside "Who is this form for?" contradicts it.
+    content = content.replace(CREATE_WHEN_READY, "");
+  }
 
   // "I'll draft a **Corrective Action Form** for **ima**": the person drafted for is the card's, in the roster's spelling.
   if (onCard && proposal?.subject !== "team") {
@@ -143,10 +165,30 @@ export function rosterOnlyNames(response: AskResponse, names: readonly string[])
   return { ...response, content, formProposal: proposal };
 }
 
+/**
+ * THE GATE (5 Nov 2026, nov5-roster-only-ima-off-roster): "create a CA form for
+ * ima employee, for opening salon late on 9-28-26" asked who, as it should, but
+ * the Observation read "ima employee, opening salon late on 9-28-26" — the name
+ * that is not on the card, kept because the account is drafted without the
+ * employee it would have left out. With no employee on the card, an
+ * Observation that opens with the request's own "for <…>," — words of the
+ * manager's message, not a roster person — opens with what happened instead.
+ * Only the opening clause, and only when the message has it straight after
+ * "for": a name later in the account is the account's.
+ */
+function withoutSlotNameInObservation(content: string, message: string | undefined, names: readonly string[]): string {
+  if (!message) return content;
+  return content.replace(/(\*\*Observation of Offense:\*\*[ \t]*)([^,\n]+),[ \t]*(?=\S)/g, (whole, label: string, lead: string) => {
+    const typed = lead.trim();
+    if (!typed || typed.split(/\s+/).length > 4 || rosterSpelling(typed, names)) return whole;
+    return new RegExp(String.raw`\bfor\s+${escape(typed)}\s*,`, "i").test(message) ? label : whole;
+  });
+}
+
 /** FORM_NAME_FROM_ROSTER_ENABLED: `rosterOnlyNames` with the actor's roster read this turn. Off, or no roster: as built. */
 export function withRosterOnlyNames(response: AskResponse): AskResponse {
   if (!formNameFromRosterEnabled()) return response;
   const names = personRosterNames();
   if (!names || names.length === 0) return response;
-  return rosterOnlyNames(response, names);
+  return rosterOnlyNames(response, names, requestMessage());
 }
