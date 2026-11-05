@@ -45,7 +45,7 @@ import { MissingConfigurationError, liveReadiness } from "@/lib/config/server-en
 import { ACTIVE_BRAND } from "@/lib/brand";
 import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import { proposeFormForTurn, suggestFormsForTurn, type ChatActor } from "./form-proposal";
-import { acceptedCaOffer, caOfferLine } from "./ca-offer";
+import { acceptedCaOffer, caOfferLine, withCaOffer } from "./ca-offer";
 import { remapFormTurn, remapShouldRun, type FormRemapSlots } from "./form-full-remap";
 import { priorShorthand, requestScopedHistory } from "./remap-incident";
 import { historyForRemap } from "./form-remap-scope";
@@ -302,8 +302,29 @@ export async function answerQuestion(
   if (passwordHelp) {
     return { content: passwordHelp, citations: [], coverage: "grounded", recommendedVideoIds: [] };
   }
-  // FORM_NAME_FROM_ROSTER_ENABLED, last: only roster people are the employee or a choice (`forms/roster-only-names.ts`).
-  return withRosterOnlyNames(withoutSensitiveDefaults(await answerQuestionChecked(request, actor, memory), request.question));
+  const answered = withoutSensitiveDefaults(await answerQuestionChecked(request, actor, memory), request.question);
+  /*
+   * CA_SALES_POLICY_ENABLED: a reply about a policy and an employee the roster
+   * recognises ends with ONE offer to start a Corrective Action citing that
+   * policy, on whichever path answered; a menu offering the Corrective Action
+   * Form is replaced by it. Nothing is made until the manager says yes (Pau,
+   * 4 Nov 2026; QA's live traces). Off, nothing is read or added.
+   */
+  // FORM_NAME_FROM_ROSTER_ENABLED, last on every return: only roster people are the employee or a choice (`forms/roster-only-names.ts`).
+  if (!caSalesPolicyEnabled()) return withRosterOnlyNames(answered);
+  let roster: Awaited<ReturnType<typeof loadScopedRoster>> = [];
+  try {
+    roster = await loadScopedRoster(actor.scope);
+  } catch {
+    roster = [];
+  }
+  const offer = caOfferLine({
+    history: request.history,
+    question: request.question,
+    questionMessageId: request.questionMessageId,
+    roster,
+  });
+  return withRosterOnlyNames(withCaOffer(answered, offer));
 }
 
 async function answerQuestionChecked(
@@ -1885,28 +1906,8 @@ async function answerQuestionUntraced(
     attachedDocumentIds: request.attachedDocumentIds,
   }).content;
 
-  let content = suggested ? `${prose}\n\n${suggested.lead}` : prose;
-  /*
-   * CA_SALES_POLICY_ENABLED: an answer about a policy and an employee the
-   * roster recognises ends with ONE offer to start a Corrective Action citing
-   * that policy; nothing is made until the manager says yes (Pau, 4 Nov 2026).
-   * Not beside a form suggestion. Off, nothing is read or added.
-   */
-  if (caSalesPolicyEnabled() && !suggested) {
-    let roster: Awaited<ReturnType<typeof loadScopedRoster>> = [];
-    try {
-      roster = await loadScopedRoster(actor.scope);
-    } catch {
-      roster = [];
-    }
-    const offer = caOfferLine({
-      history: request.history,
-      question: request.question,
-      questionMessageId: request.questionMessageId,
-      roster,
-    });
-    if (offer) content = `${content}\n\n${offer}`;
-  }
+  const content = suggested ? `${prose}\n\n${suggested.lead}` : prose;
+  // CA_SALES_POLICY_ENABLED: the Corrective Action offer is added at the turn's one exit (`answerQuestion`, `withCaOffer`).
   return {
     content,
     formSelection: suggested?.selection,
