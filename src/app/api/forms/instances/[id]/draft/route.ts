@@ -29,6 +29,7 @@ import {
   teamCardWordingEnabled,
   cardPolicyLabelEnabled,
   caSalesPolicyEnabled,
+  sameFormOtherPersonEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { withoutAsksToTheApp } from "@/lib/ai/asks-to-the-app";
 import { AiError } from "@/lib/ai/errors";
@@ -362,7 +363,15 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
 
     const body = ((await request.json().catch(() => null)) ?? {}) as DraftBody;
     // GRAMMAR_ASK_NOT_ACCOUNT_ENABLED: "can you clean up my grammar …?" is no account (`ai/asks-to-the-app.ts`).
-    const typed = String(body.notes ?? "").trim().slice(0, 4000);
+    const sent = String(body.notes ?? "").trim().slice(0, 4000);
+    // SAME_FORM_OTHER_PERSON_ENABLED: "do the same thing for <B> …" is drafted from A's turns with the names swapped, never as the account.
+    const typed = sameFormOtherPersonEnabled()
+      ? ((await import("@/lib/forms/same-form-other-person")).sameFormOtherPersonNotes(
+          sent,
+          loaded.instance.employeeName,
+          await (await import("@/lib/forms/employee-roster")).loadScopedRoster(actor.scope).catch(() => []),
+        ) ?? sent)
+      : sent;
     const asTyped = grammarAskNotAccountEnabled() ? withoutAsksToTheApp(typed).trim() : typed;
     // TYPO_READING_ROUTES_ENABLED: the readers below see "coahed", "notcie", "amont" as the words they can only be.
     const notes = typoReadingRoutesEnabled() ? typoReadingText(asTyped, await protectedNameWords()) : asTyped;

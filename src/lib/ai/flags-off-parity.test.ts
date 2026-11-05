@@ -412,6 +412,7 @@ const NEW_FLAGS = [
   "ROSTER_NEAR_MISS_ENABLED",
   "REPLY_MATCHES_CARD_ENABLED",
   "METRIC_GUARD_ENABLED",
+  "SAME_FORM_OTHER_PERSON_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -811,6 +812,9 @@ describe("new flags default off and wrappers are inert", () => {
         chunks: [],
       }).values,
     ).toBe(values);
+
+    // SAME_FORM_OTHER_PERSON_ENABLED off: "do the same thing for <B>" is read as before.
+    expect(envFlag("SAME_FORM_OTHER_PERSON_ENABLED")).toBe(false);
 
     // The flags on by default still turn off when the variable says so (the emergency off switch).
     for (const name of DEFAULT_ON) {

@@ -100,6 +100,8 @@ export const NOV4_OVERNIGHT_SCAN_CASES: readonly ReplayCase[] = [
     report: `${REPORT}, sf-s11: "what information do you need for a corrective action for an employee" → "Odalys Frewen. Verbal Warning. Under Performance." → "Can you do the same thing for Perrin Haldane but switch it to a written"`,
     // Run 4 Nov 2026 (production flags): fails as below.
     status: { open: "turn 3 is read as an edit of Odalys Frewen's card: the card stays Odalys Frewen, Verbal, and its Observation of Offense becomes the request sentence \"Can you do the same thing for Perrin Haldane but switch it to a written\"; no card for Perrin Haldane" },
+    // SAME_FORM_OTHER_PERSON_ENABLED: one other roster person, no account, no form named — B's card from A's request turns.
+    fixFlags: ["SAME_FORM_OTHER_PERSON_ENABLED"],
     async run(t) {
       const thread = start(t);
       await thread.say("what information do you need for a corrective action for an employee");
