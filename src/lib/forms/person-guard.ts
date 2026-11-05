@@ -4,7 +4,7 @@ import { addressNotPersonEnabled, personGuardEnabled } from "@/lib/config/chat-q
 import { businessToday } from "@/lib/business-date";
 import { datesInText } from "@/lib/forms/form-date-answer";
 import { isNotAName } from "@/lib/forms/not-a-name";
-import { outsideRequestSlot } from "@/lib/forms/request-slot";
+import { installSlotRosterNames, outsideRequestSlot } from "@/lib/forms/request-slot";
 
 /**
  * ============================================================================
@@ -96,6 +96,9 @@ export function installPersonRoster(read: RosterRead): void {
 export function personRosterNames(): readonly string[] | undefined {
   return readRoster();
 }
+
+// FORM_NAME_FROM_ROSTER_ENABLED: the request slot never rules out somebody's whole roster name (`request-slot.ts`).
+installSlotRosterNames(personRosterNames);
 
 /** On the roster: the full name, or a one-word candidate that is someone's first or last name. */
 function onRoster(candidate: string): boolean {

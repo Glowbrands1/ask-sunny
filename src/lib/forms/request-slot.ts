@@ -49,6 +49,19 @@ export function installRequestMessage(read: () => string | undefined): void {
   readMessage = read;
 }
 
+let readRosterNames: () => readonly string[] | undefined = () => undefined;
+
+/** `person-guard.ts` installs the turn's roster names (it reads this module, so this module does not read it). */
+export function installSlotRosterNames(read: () => readonly string[] | undefined): void {
+  readRosterNames = read;
+}
+
+/** Somebody's whole roster name, in any case ("Odalys merriwether"). */
+function isRosterName(candidate: string): boolean {
+  const typed = normalizeTypedName(candidate);
+  return Boolean(typed) && (readRosterNames() ?? []).some((name) => normalizeTypedName(name) === typed);
+}
+
 function wordsOf(text: string): string[] {
   return normalizeTypedName(text).split(/[\s-]+/).filter(Boolean);
 }
@@ -171,6 +184,13 @@ function inSlot(candidate: string, slot: readonly string[]): boolean {
  */
 export function outsideRequestSlot(candidate: string, text: string | undefined = readMessage()): boolean {
   if (!formNameFromRosterEnabled() || !text || !candidate.trim()) return false;
+  /*
+   * Pau, 5 Nov 2026: the text after "for" is matched against the roster
+   * ignoring capitals — somebody's whole roster name is never ruled out by the
+   * message's shape ("make me a CA for Odalys merriwether …": the slot reads
+   * capitalised words, so it held "Odalys" and the full name was outside it).
+   */
+  if (isRosterName(candidate)) return false;
   /*
    * The message rules out only candidates it contains (the flip check, 5 Nov
    * 2026, in the sibling app): a name read from another turn of the
