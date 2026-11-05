@@ -121,7 +121,8 @@ export function askCaWhatHappened(response: AskResponse, question: string, histo
 export const COACHING_WHAT_HAPPENED_NOTE = `**${MARKER}.** What happened, or what should this coaching cover? Tell me here and I'll draft it from your words.`;
 
 const SAYS_READY = /^Everything I need is here[^\n]*$/i;
-const HAS_EMPLOYEE_AND_PLACE = /I have the employee and the (?:salon|store)\.\s*/gi;
+// "I have the employee and the salon (**<salon>**)." — the salon's name is optional.
+const HAS_EMPLOYEE_AND_PLACE = /I have the employee and the salon(?: \(\*\*[^*]+\*\*\))?\.\s*/gi;
 
 export function withCoachingWhatHappened(response: AskResponse, request: AskRequest): AskResponse {
   if (!coachingAsksWhatHappenedEnabled()) return response;
