@@ -194,3 +194,42 @@ describe("a corrective action for another form's name", () => {
     expect(requestSlotNames("I need a corrective action for Perpetua Thornquist, she was rude to a guest")).toEqual(["Perpetua Thornquist"]);
   });
 });
+
+/*
+ * The flip check (5 Nov 2026): with the flags on, a message that asks for two
+ * forms lost the second form's person — only the first "for <Name>" was the
+ * slot. The sibling app's multi-form tests' exact wordings.
+ */
+describe("every form asked for has its slot", () => {
+  const AND = "coaching form for Avery Testperson and a CA for Jordan Testperson";
+  const SENTENCES = "Coaching form for Avery Testperson. Also a CA for Jordan Testperson.";
+  const COMMA = "coaching form for Avery Testperson, CA for Jordan Testperson";
+
+  it("on: both people are in the slot, and the second form's name is not a person", () => {
+    on();
+    for (const text of [AND, SENTENCES, COMMA]) {
+      expect(requestSlotNames(text), text).toEqual(["Avery Testperson", "Jordan Testperson"]);
+      expect(outsideRequestSlot("Jordan Testperson", text), text).toBe(false);
+      expect(outsideRequestSlot("CA", text), text).toBe(true);
+    }
+  });
+
+  it("on, controls: Pau's message keeps one slot; \"This is for Under Performance\" is still no slot", () => {
+    on();
+    expect(requestSlotNames(PAU)).toEqual(["Remy Fenn"]);
+    expect(outsideRequestSlot("Under", PAU)).toBe(true);
+    expect(requestSlotNames(TWO)).toEqual(["Wilhelmina Corvina", "Peregrine Varnholt"]);
+  });
+});
+
+describe("a message rules out only the candidates it contains", () => {
+  it("on: \"remy calder\" from another turn is not ruled out by an earlier request for another person", () => {
+    on();
+    const stored = "create a coaching form for Marnie Holloway at Kearney";
+    expect(outsideRequestSlot("remy calder", stored)).toBe(false);
+    expect(outsideRequestSlot("Remy Calder", stored)).toBe(false);
+    // Its own words are still judged: a name in the message outside its slot is out.
+    expect(outsideRequestSlot("Kearney", stored)).toBe(true);
+    expect(outsideRequestSlot("Club Close", PAU)).toBe(true);
+  });
+});

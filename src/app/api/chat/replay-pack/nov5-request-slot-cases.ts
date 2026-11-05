@@ -202,4 +202,24 @@ export const NOV5_REQUEST_SLOT_CASES: ReplayCase[] = [
       expect(reply.content, `a location is named or asked about as a person:\n${reply.content}`).not.toMatch(/\*\*Salon(?: \d+)?\*\*|couldn't find \*\*Salon/i);
     },
   },
+  {
+    /*
+     * The flip check (5 Nov 2026; the sibling app's multi-form tests' exact
+     * wording): with the flags on, only the first sentence's "for <Name>" was
+     * the slot, so "Jordan Testperson" was ruled out — the card was Avery's
+     * Coaching Form, "I have the employee", and Jordan's Corrective Action was
+     * dropped without a word. Every form asked for now has its slot: the
+     * reply is production's (it asks which of them).
+     */
+    id: "nov5-request-slot-second-form-not-dropped",
+    title: "\"Coaching form for Avery Testperson. Also a CA for Jordan Testperson.\": the second form's person is never dropped silently",
+    report: "The flip check, 5 Nov 2026: \"Coaching form for Avery Testperson. Also a CA for Jordan Testperson.\"",
+    status: "fixed",
+    fixFlags: [FLAG, SALES, GLOSSARY],
+    async run(t) {
+      const thread = start(t, [...STAFF, person("e-avery-testperson", "Avery", "Testperson"), person("e-jordan-testperson", "Jordan", "Testperson")]);
+      const reply = await thread.say("Coaching form for Avery Testperson. Also a CA for Jordan Testperson.");
+      expect(reply.content, `Jordan Testperson's form is dropped without a word:\n${reply.content}`).toMatch(/Jordan Testperson/);
+    },
+  },
 ];
