@@ -70,6 +70,7 @@ import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import { buildFormInventory, publishedEntries } from "@/lib/forms/inventory";
 import { listTemplateSummaries, type TemplateSummary } from "@/lib/forms/repository";
 import { isFormRecordsQuestion, loadFormRecords } from "@/lib/forms/chat-form-records";
+import { withRosterOnlyNames } from "@/lib/forms/roster-only-names";
 import { priorFormsReadingForChat } from "@/lib/forms/prior-forms";
 import { applyOptionalPriorCoaching } from "./prior-coaching-optional";
 import { withMappedPolicy } from "./violation-policy";
@@ -309,7 +310,8 @@ export async function answerQuestion(
    * Form is replaced by it. Nothing is made until the manager says yes (Pau,
    * 4 Nov 2026; QA's live traces). Off, nothing is read or added.
    */
-  if (!caSalesPolicyEnabled()) return answered;
+  // FORM_NAME_FROM_ROSTER_ENABLED, last on every return: only roster people are the employee or a choice (`forms/roster-only-names.ts`).
+  if (!caSalesPolicyEnabled()) return withRosterOnlyNames(answered);
   let roster: Awaited<ReturnType<typeof loadScopedRoster>> = [];
   try {
     roster = await loadScopedRoster(actor.scope);
@@ -322,7 +324,7 @@ export async function answerQuestion(
     questionMessageId: request.questionMessageId,
     roster,
   });
-  return withCaOffer(answered, offer);
+  return withRosterOnlyNames(withCaOffer(answered, offer));
 }
 
 async function answerQuestionChecked(
