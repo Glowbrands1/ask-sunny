@@ -94,6 +94,7 @@ export const NOV5_PAU_SF_S26_S28_CASES: ReplayCase[] = [
     title: "sf-s27: \"Create a coaching form.\" → \"Thessaly Brandt\": asks what happened; never \"Everything I need is here\"",
     report: "Pau via QA, 5 Nov 2026, sf-s27: \"Create a coaching form.\" → \"Employee R\" → \"Everything I need is here … I have the employee and the salon.\" with no incident",
     status: { open: "says \"Everything I need is here … I have the employee and the salon.\" with no incident" },
+    fixFlags: ["COACHING_ASKS_WHAT_HAPPENED_ENABLED"],
     async run(t: T) {
       start(t);
       const thread = t.thread();
