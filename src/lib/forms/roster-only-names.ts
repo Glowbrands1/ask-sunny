@@ -317,6 +317,21 @@ export function withoutUnseatedName(
 }
 
 /**
+ * OFF_ROSTER_CONFIRM_ENABLED (the Sunny flip-3 gate, 6 Nov 2026): anybody on the roster the typed name is close to —
+ * one person or several ("Odalys Vansikcle" beside Odalys Prewett Vansickle and Odalys Dunmore Vansickle) — means the
+ * name is a near miss of a roster person, asked about as them, and never offered as a name not in Woven. A first name
+ * typed with another surname ("Remy Fenn" beside Remy Calder) is close to nobody, and is still offered.
+ */
+function anyRosterPersonClose(name: string, names: readonly string[]): boolean {
+  if (oneCloseRosterPerson(name, names)) return true;
+  // Each roster person on their own: the matcher answers "none" when two people are equally close, which is no answer here.
+  return rowsFrom(names).some((row) => {
+    const kind = matchEmployeeName(name, [row]).kind;
+    return kind === "exact" || kind === "confirm";
+  });
+}
+
+/**
  * OFF_ROSTER_CONFIRM_ENABLED (the sibling app's gate rerun 2, 6 Nov 2026; QA: lowercase too): the cleared name is offered only where the
  * manager typed it as a person — "for <name>," / "for <name>" ending the message / "employee, <name>", a line of the
  * message that is only the name (an exit form typed as lines), or "use <name>" — and only in a name's shape: two or
@@ -327,7 +342,7 @@ export function withoutUnseatedName(
  */
 function offRosterTyped(employee: string, message: string | undefined, names: readonly string[]): string | null {
   const typed = employee.trim();
-  if (!NAME_SHAPE.test(typed) || rosterSpelling(typed, names) || oneCloseRosterPerson(typed, names) || namesAForm(typed)) return null;
+  if (!NAME_SHAPE.test(typed) || rosterSpelling(typed, names) || anyRosterPersonClose(typed, names) || namesAForm(typed)) return null;
   if (normalizeTypedName(typed).split(/\s+/).includes(UNNAMED_PERSON_WORD)) return null;
   const same = (said: string | null | undefined) => Boolean(said) && normalizeTypedName(said!) === normalizeTypedName(typed);
   const text = message ?? "";
