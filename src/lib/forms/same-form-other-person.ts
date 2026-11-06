@@ -124,7 +124,7 @@ interface CardTurn {
  * one, else the person the newest manager turn names (the server reads the
  * conversation without its cards).
  */
-function cardEmployee(history: readonly CardTurn[], people: readonly RosterEmployee[]): string | null {
+export function cardEmployee(history: readonly CardTurn[], people: readonly RosterEmployee[]): string | null {
   for (const turn of [...history].reverse()) {
     const card = turn.formProposal?.employeeName?.trim();
     if (card) return card;

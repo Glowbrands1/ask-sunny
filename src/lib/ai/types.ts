@@ -128,6 +128,12 @@ export interface AskRequest {
    */
   sameFormFor?: { readonly sourceMessageIds: readonly string[]; readonly level: "verbal" | "written" | null };
   /**
+   * DIFFERENT_EMPLOYEE_NEW_FORM_ENABLED: set by the request reading when "now
+   * one for <B> … <B>'s account" was read as <B>'s own request, from this turn
+   * only. Never sent by the browser.
+   */
+  differentEmployeeFor?: { readonly employeeName: string };
+  /**
    * What the form named by `activeFormInstanceId` says now, for an answer that
    * no correction or revision handled.
    *

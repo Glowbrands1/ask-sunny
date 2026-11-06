@@ -39,8 +39,10 @@ import {
   typoReadingCopyEnabled,
   caSalesPolicyEnabled,
   sameFormOtherPersonEnabled,
+  differentEmployeeNewFormEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { withSameFormOtherPerson, withSameFormSources } from "@/lib/forms/same-form-other-person";
+import { withDifferentEmployee, withDifferentEmployeeSources } from "@/lib/forms/different-employee-new-form";
 import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
 import { approvedManualConfirmed, manualDisplayTitle } from "@/lib/forms/official-policy-manual";
 import { MissingConfigurationError, liveReadiness } from "@/lib/config/server-env";
@@ -346,8 +348,12 @@ async function answerQuestionChecked(
     // FORM_TYPE_SWITCH_ENABLED: "change to coaching" with the card open switches it to the other form.
     // FIRST_NAME_SUGGEST_ENABLED: "yes" to "Is this for **Quinn Marlowe**?" is read as that name.
     // SAME_FORM_OTHER_PERSON_ENABLED: "Can you do the same thing for <B> but switch it to a written" on <A>'s card starts B's card. Off: no roster read.
-    const sameFormPeople = sameFormOtherPersonEnabled() ? await sameFormRoster(actor) : [];
-    const sameForm = withSameFormOtherPerson(withTerseSlots(withNameBeforeTitle(withTypoReadingCopy(await withFirstNameAnswerFor(request, actor), names))), sameFormPeople);
+    // DIFFERENT_EMPLOYEE_NEW_FORM_ENABLED, beside it: "now one for <B> … <B>'s account" on <A>'s card is <B>'s own request, from this turn only. Off: no roster read.
+    const sameFormPeople = sameFormOtherPersonEnabled() || differentEmployeeNewFormEnabled() ? await sameFormRoster(actor) : [];
+    const sameForm = withDifferentEmployee(
+      withSameFormOtherPerson(withTerseSlots(withNameBeforeTitle(withTypoReadingCopy(await withFirstNameAnswerFor(request, actor), names))), sameFormPeople),
+      sameFormPeople,
+    );
     const response = await answerQuestionUntraced(withFormTypeSwitch(sameForm), actor, memory);
     noteTraceOutcome(response);
     // Last on every path, after the reply check too: the Action Plan is the manager's or none.
@@ -366,7 +372,7 @@ async function answerQuestionChecked(
     return withManagerNameGuard(keepManagerActionPlan(await withFirstNameSuggestFor(
       // OUT_OF_SCOPE_PLACE_KEEPS_OWN_ENABLED: the card goes back to the manager's own salon, or asks which.
       // FORM_TYPE_SWITCH: the switched card is drafted from the account, never from the switch turn.
-      withSameFormSources(withSwitchSources(withSwitchNote(withOutOfScopePlace(withOwnPlace(withAmountUnknownAck(
+      withDifferentEmployeeSources(withSameFormSources(withSwitchSources(withSwitchNote(withOutOfScopePlace(withOwnPlace(withAmountUnknownAck(
         withUnreadDateAsk(
           withStatedAmount(
             withFirstNameAsk(
@@ -378,7 +384,8 @@ async function answerQuestionChecked(
           request,
         ),
         request,
-      ), request, actor), request, actor), request, "Form Monitoring"), request), sameForm),
+      // DIFFERENT_EMPLOYEE_NEW_FORM_ENABLED: <B>'s own card is drafted from this turn only.
+      ), request, actor), request, actor), request, "Form Monitoring"), request), sameForm), sameForm),
       request,
       actor,
     ), request), request);
