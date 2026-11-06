@@ -119,4 +119,34 @@ describe("SALES_SHORTFALL_OBJECT_ENABLED", () => {
       expect(readCaPolicy(text).source).not.toBe("sales_performance");
     },
   );
+
+  /*
+   * A manager's exact wording (QA, 6 Nov 2026): "sales underperformance". The card reads the manager's words
+   * with the app's own context lines ("The form is …", "It happened at …"), so the text is long, and
+   * a policy name then counts only where its sentence frames it as one. "under performance" frames
+   * itself (its own "under"); the one-word spelling did not, and the card cited nothing.
+   */
+  const CONTEXT = "The form is the Corrective Action Form.\nThe employee is Odalys Fenmarrow. Job title: Tanning Consultant. It happened at NE Kearney.\n";
+
+  it.each(["CA for Odalys Fenmarrow for underperformance", "CA for Odalys Fenmarrow, sales underperformance this month"])(
+    "off (main): %s, read as the card reads it, cites nothing (the bug)",
+    (text) => {
+      vi.stubEnv("CA_SALES_POLICY_ENABLED", "true");
+      expect(readCaPolicy(CONTEXT + text).suggestion).toBeNull();
+    },
+  );
+
+  it.each([
+    "CA for Odalys Fenmarrow for underperformance",
+    "CA for Odalys Fenmarrow, sales underperformance this month",
+    "CA for Odalys Fenmarrow, she is underperforming",
+  ])("on: %s, read as the card reads it, is the Standards of Conduct", (text) => {
+    on();
+    expect(readCaPolicy(CONTEXT + text)).toMatchObject({ suggestion: "standards_of_conduct", source: "sales_performance" });
+  });
+
+  it("on: the two-word spelling reads as before", () => {
+    on();
+    expect(readCaPolicy(CONTEXT + "CA for Odalys Fenmarrow for under performance")).toMatchObject({ suggestion: "standards_of_conduct" });
+  });
 });

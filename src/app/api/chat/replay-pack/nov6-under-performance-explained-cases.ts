@@ -62,14 +62,28 @@ export const NOV6_UNDER_PERFORMANCE_EXPLAINED_CASES: ReplayCase[] = [
     title: "\"CA for <name> for underperformance for october\" (one word): the card cites the Standards of Conduct and says why",
     report: `${REPORT}; found while adding the line (6 Nov 2026): the one-word spelling gets no Policy line on the card`,
     status: { open: "with production's flags the card has no Policy line for one-word \"underperformance\"" },
-    fixFlags: ["CA_SALES_POLICY_ENABLED", "UNDER_PERFORMANCE_EXPLAINED_ENABLED"],
-    // Still open with the fix flags: the card's own reading misses the one-word spelling though `readCaPolicy` reads it (QA, separate item).
-    fixStatus: { open: "the card path gives no Policy line for one-word \"underperformance\" (root cause not yet found)" },
+    // The card's reading took the one-word name only in a short message (QA, 6 Nov 2026); SALES_SHORTFALL_OBJECT reads it like "under performance".
+    fixFlags: ["CA_SALES_POLICY_ENABLED", "SALES_SHORTFALL_OBJECT_ENABLED", "UNDER_PERFORMANCE_EXPLAINED_ENABLED"],
     async run(t) {
       vi.setSystemTime(new Date("2026-11-06T15:00:00Z"));
       t.directory([...STAFF, ODALYS]);
       t.as("salon_director", KEARNEY);
       const content = (await t.thread().say("CA for Odalys Fenmarrow for underperformance for october")).content;
+      expect(content, "the card does not cite the Standards of Conduct").toMatch(/\*\*Policy:\*\* Standards of Conduct/);
+      expect(content).toContain(EXPLAINED);
+    },
+  },
+  {
+    id: "nov6-under-performance-explained-sales-underperformance",
+    title: "the manager's wording: \"CA for <name>, sales underperformance this month\": the card cites the Standards of Conduct and says why",
+    report: `${REPORT}; a manager's exact words "sales underperformance" (QA, 6 Nov 2026)`,
+    status: { open: "with production's flags the card has no Policy line for one-word \"underperformance\"" },
+    fixFlags: ["CA_SALES_POLICY_ENABLED", "SALES_SHORTFALL_OBJECT_ENABLED", "UNDER_PERFORMANCE_EXPLAINED_ENABLED"],
+    async run(t) {
+      vi.setSystemTime(new Date("2026-11-06T15:00:00Z"));
+      t.directory([...STAFF, ODALYS]);
+      t.as("salon_director", KEARNEY);
+      const content = (await t.thread().say("CA for Odalys Fenmarrow, sales underperformance this month")).content;
       expect(content, "the card does not cite the Standards of Conduct").toMatch(/\*\*Policy:\*\* Standards of Conduct/);
       expect(content).toContain(EXPLAINED);
     },

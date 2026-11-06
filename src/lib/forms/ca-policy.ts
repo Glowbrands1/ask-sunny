@@ -384,7 +384,12 @@ function statedIn(turn: string): CaPolicyName | null {
       if (!match) continue;
       if (NEGATED_BEFORE.test(sentence.slice(0, match.index))) continue;
       if (formEditDateRulesEnabled() && SET_ASIDE_BEFORE.test(sentence.slice(0, match.index))) continue;
-      if (!alwaysAPolicy && !short && !POLICY_FRAME.test(sentence) && !AGAINST_BEFORE.test(sentence.slice(0, match.index))) {
+      /*
+       * SALES_SHORTFALL_OBJECT_ENABLED (QA, 6 Nov 2026: "sales underperformance"): "under performance" is framed by its own
+       * "under" (POLICY_FRAME), so the one-word spelling is read the same way. Off, it needs a frame like any other name.
+       */
+      const framedByItsSpelling = name === "under_performance" && salesShortfallObjectEnabled() && /^underperform/.test(match[0]);
+      if (!alwaysAPolicy && !short && !framedByItsSpelling && !POLICY_FRAME.test(sentence) && !AGAINST_BEFORE.test(sentence.slice(0, match.index))) {
         continue;
       }
       // The last policy named in the turn is its answer: "not attendance — standards of conduct".
