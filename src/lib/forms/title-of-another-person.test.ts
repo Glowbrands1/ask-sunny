@@ -55,3 +55,15 @@ describe("TITLE_ENDS_AT_LINE_ENABLED: a name beside a title is on the title's ow
     expect(titleNamesAnotherPerson("Rowan Kestrel\nDistrict Manager\nNE Kearney", "District Manager", "Marnie Kettering")).toBe(true);
   });
 });
+
+describe("TITLE_ENDS_AT_LINE_ENABLED: a title line of capitalised words is one title", () => {
+  const LIST = "Marnie Kettering\nSalon Director In Training\nNE Kearney\nGave notice - fulfilled notice";
+  it("on: \"Salon Director\" read from the line \"Salon Director In Training\" is the employee's (\"In Training\" is not a person)", () => {
+    vi.stubEnv("TITLE_ENDS_AT_LINE_ENABLED", "true");
+    expect(titleNamesAnotherPerson(LIST, "Salon Director", "Marnie Kettering")).toBe(false);
+  });
+  it("off: as before, \"In Training\" beside \"Salon Director\" reads as another person", () => {
+    vi.stubEnv("TITLE_ENDS_AT_LINE_ENABLED", "");
+    expect(titleNamesAnotherPerson(LIST, "Salon Director", "Marnie Kettering")).toBe(true);
+  });
+});
