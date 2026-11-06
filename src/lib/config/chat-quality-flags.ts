@@ -2665,3 +2665,16 @@ export function rosterCompoundSurnameEnabled(): boolean {
 export function rosterNotFoundAnyPhrasingEnabled(): boolean {
   return envFlag("ROSTER_NOT_FOUND_ANY_PHRASING_ENABLED");
 }
+
+
+/**
+ * EXIT_STATED_ONLY_ENABLED (QA, 5 Nov 2026, severe; default off). A salon director pasted a termination letter and
+ * asked for an exit form: How Employee Resigned became "Text message" (the text that caused the termination), Salon
+ * Key Returned "returned" (the letter told the employee to return them), and Last Day Worked the final paycheck's
+ * "hours worked through" date. On: an Exit field is filled only from what the manager said happened — a termination
+ * is not a resignation, an instruction or condition to return is not a return, a pay period is not a last day
+ * (`forms/exit-details.ts`, `forms/exit-facts.ts`). Off, as before.
+ */
+export function exitStatedOnlyEnabled(): boolean {
+  return envFlag("EXIT_STATED_ONLY_ENABLED");
+}
