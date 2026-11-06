@@ -2598,3 +2598,16 @@ export function citationLineKeptOnRevisionEnabled(): boolean {
 export function metricGuardEnabled(): boolean {
   return envFlag("METRIC_GUARD_ENABLED");
 }
+
+/**
+ * AS_YOU_SAID_MANAGER_WORDS_ENABLED (live chats, 4 Nov 2026; default off). "**Policy:** Late Opening, as you said"
+ * for leaving early and taking the spray booths down early, and "Standards of Conduct, as you said" for "it should be
+ * must see behaviors": the manager never named either. The intent reader's heading is written back onto the turn as
+ * the app's own line ("Policy reference: <heading>, JBA Policy Manual p.N.", `ai/form-state.ts`), and the policy
+ * reader took it as the manager naming that policy. On: the reader that decides "as you said"
+ * (`forms/ca-policy.ts` readCaPolicy) reads without the app's lines (`ai/app-sentences.ts` withoutAppLines).
+ * Off, as before.
+ */
+export function asYouSaidManagerWordsEnabled(): boolean {
+  return envFlag("AS_YOU_SAID_MANAGER_WORDS_ENABLED");
+}
