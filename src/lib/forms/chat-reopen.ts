@@ -103,7 +103,7 @@ export async function reopenRequestedForm(input: {
    * REOPEN_BY_ANY_OPEN_VERB_ENABLED: "bring up the coaching form" names nobody
    * whose form to look up, and is left as it was before the flag.
    */
-  if (reading.opensToEdit && names.length === 0) return null;
+  if (reading.byAddedVerb && names.length === 0 && !input.activeInstanceId) return null;
 
   let target: { id: string; templateName: string; employeeName: string } | null = null;
 

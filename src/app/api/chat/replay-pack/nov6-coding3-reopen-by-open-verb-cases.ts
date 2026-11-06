@@ -246,6 +246,114 @@ export const NOV6_CODING3_REOPEN_PREVIOUS_FORMS_CASES: ReplayCase[] = [
   },
 ];
 
+/*
+ * QA's decisions, 6 Nov 2026. (b) "show" and "find" DISPLAY a finalized form
+ * (with the "Edit as new draft" offer); "bring up", "pull up", "open" and
+ * "edit" OPEN it as a new draft. (c) "open a CA for <name>" starts a new one;
+ * "open the CA for <name>", "open her CA" reopen. (d) several on file → asked
+ * which, for every verb, "edit" included.
+ */
+function opened(reply: ReplayAnswer) {
+  return reply.formOpened as { instanceId: string; revisesInstanceId?: string | null } | undefined;
+}
+
+export const NOV6_CODING3_REOPEN_QA_DECISION_CASES: ReplayCase[] = [
+  ...(
+    [
+      ["find", "find my earlier CA for Odalys Fairbank"],
+      ["show", "show my previous corrective action for Odalys Fairbank"],
+    ] as const
+  ).map(
+    ([verb, said]): ReplayCase => ({
+      id: `nov6-reopen-qa-b-${verb}-displays-finalized`,
+      title: `QA (b): "${said}" with it finalized DISPLAYS it (Edit as new draft offered); no new draft`,
+      report: `${REPORT}: QA decision (b), 6 Nov 2026 — "show" and "find" display a finalized form`,
+      status: { open: "the form on file is not displayed (\"find\" is no reopen verb; \"corrective action\" names no form)" },
+      fixFlags: FLAG,
+      async run(t: T) {
+        start(t);
+        const id = await onFile(t, "ca", ODALYS, true);
+        const reply = await t.thread().say(said);
+        opens(reply, id, said);
+        expect(opened(reply)!.instanceId, `"${said}" opens a new draft instead of displaying:\n${reply.content}`).toBe(id);
+        expect(reply.content, `no "Edit as new draft" offer:\n${reply.content}`).toMatch(/Edit as new draft/);
+      },
+    }),
+  ),
+  ...(
+    [
+      ["bring-up", "bring up the CA for Odalys Fairbank"],
+      ["pull-up", "pull up Odalys Fairbank's CA"],
+      ["open", "open the CA for Odalys Fairbank"],
+    ] as const
+  ).map(
+    ([verb, said]): ReplayCase => ({
+      id: `nov6-reopen-qa-b-${verb}-opens-finalized-as-draft`,
+      title: `QA (b)/(c): "${said}" with it finalized OPENS it as a new draft of it`,
+      report: `${REPORT}: QA decision (b), 6 Nov 2026 — "bring up", "pull up", "open" open a finalized form as a revision draft`,
+      status: { open: "starts a new Corrective Action instead of opening the one on file" },
+      fixFlags: FLAG,
+      async run(t: T) {
+        start(t);
+        const id = await onFile(t, "ca", ODALYS, true);
+        const reply = await t.thread().say(said);
+        opens(reply, id, said);
+        expect(opened(reply)!.revisesInstanceId, `"${said}" does not open a new draft of the finalized form:\n${reply.content}`).toBe(id);
+      },
+    }),
+  ),
+  {
+    id: "nov6-reopen-qa-c-open-a-ca-is-new",
+    title: "QA (c): \"open a CA for Odalys Fairbank\" with one on file starts a NEW Corrective Action card",
+    report: `${REPORT}: QA decision (c), 6 Nov 2026 — managers say "open a CA for <name>" to start a new one`,
+    status: "fixed",
+    fixFlags: FLAG,
+    async run(t: T) {
+      start(t);
+      await onFile(t, "ca", ODALYS);
+      const thread = t.thread();
+      const reply = await thread.say("open a CA for Odalys Fairbank for being late opening the salon on Tuesday");
+      expect(reply.formOpened, `opens the one on file:\n${reply.content}`).toBeUndefined();
+      expect(thread.proposal, `no new Corrective Action card:\n${reply.content}`).toMatchObject({ templateKey: "dpoa", employeeName: "Odalys Fairbank" });
+    },
+  },
+  {
+    id: "nov6-reopen-qa-c-open-her-ca",
+    title: "QA (c): in the chat it was made in, \"open her CA\" opens it",
+    report: `${REPORT}: QA decision (c), 6 Nov 2026 — a possessive determiner means the form on file`,
+    status: { open: "\"open her CA\" does not open the form" },
+    fixFlags: FLAG,
+    async run(t: T) {
+      start(t);
+      const thread = t.thread();
+      await thread.say("I need a corrective action for Odalys Fairbank, she was late opening the salon on Monday");
+      t.draftWrites({ observation: "Observed:\nOdalys Fairbank opened the salon late on Monday." });
+      const id = await thread.create();
+      const reply = await thread.say("open her CA");
+      opens(reply, id, "open her CA");
+    },
+  },
+  {
+    id: "nov6-reopen-qa-d-edit-several-asks-which",
+    title: "QA (d): two Corrective Actions on file, \"edit Odalys Fairbank's CA\" lists both and asks which; \"1\" opens the newer",
+    report: `${REPORT}: QA decision (d), 6 Nov 2026 — several on file: ask which, for every verb including "edit"`,
+    status: { open: "\"edit\" opens the newest without asking" },
+    fixFlags: FLAG,
+    async run(t: T) {
+      start(t);
+      vi.setSystemTime(new Date("2026-11-03T15:00:00Z"));
+      await onFile(t, "ca", ODALYS, true);
+      vi.setSystemTime(new Date("2026-11-05T15:00:00Z"));
+      const newer = await onFile(t, "ca", ODALYS);
+      const thread = t.thread();
+      const asked = await thread.say("edit Odalys Fairbank's CA");
+      expect(asked.content, `does not ask which:\n${asked.content}`).toMatch(/Which one should I open\?/);
+      expect(asked.formOpened, `opens one without asking:\n${asked.content}`).toBeUndefined();
+      opens(await thread.say("1"), newer, "1");
+    },
+  },
+];
+
 export const NOV6_CODING3_REOPEN_BY_OPEN_VERB_CASES: ReplayCase[] = [
   {
     id: "nov6-reopen-bring-up-possessive-ca",

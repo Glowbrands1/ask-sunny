@@ -14,11 +14,14 @@ export const SHOW_VERB = new RegExp(String.raw`\b(?:${SHOW_WORDS})\b`, "i");
  * location manager's chats, 5 Nov 2026): "bring up <name>'s corrective
  * action", "bring up an old coaching form for <first name>" started a new
  * form, because only the words above open one on file. SHOW_VERB, extended by
- * the four verbs QA listed and nothing else; read only as the request itself
- * (see `readReopenRequest`), so "she didn't open the salon" is no reopen.
+ * the four verbs QA listed and nothing else (QA decision (a), 6 Nov 2026);
+ * read only as the request itself (see `readReopenRequest`), so "she didn't
+ * open the salon" is no reopen. "find" DISPLAYS a form, as "show" does; the
+ * others OPEN it, as "edit" does (QA decision (b), 6 Nov 2026).
  */
-export const OPEN_WORDS = String.raw`bring\s+up|pull\s+up|open|find`;
-export const SHOW_OR_OPEN_VERB = new RegExp(String.raw`\b(?:${SHOW_WORDS}|${OPEN_WORDS})\b`, "i");
+export const OPEN_WORDS = String.raw`bring\s+up|pull\s+up|open`;
+export const FIND_WORDS = String.raw`find`;
+export const SHOW_OR_OPEN_VERB = new RegExp(String.raw`\b(?:${SHOW_WORDS}|${OPEN_WORDS}|${FIND_WORDS})\b`, "i");
 
 /** `anyOpenVerb`: REOPEN_BY_ANY_OPEN_VERB_ENABLED, read by the caller (this module imports nothing). */
 export function mayAskToReopen(question: string, anyOpenVerb = false): boolean {

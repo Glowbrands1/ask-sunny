@@ -61,8 +61,10 @@ describe("REOPEN_BY_ANY_OPEN_VERB_ENABLED: a form on file asked for with any ver
     ["bring up a previously edited corrective action for Odalys Fairbank", "dpoa"],
     ["bring up a previous corrective action form that i made for Odalys Fairbank earlier today", "dpoa"],
     ["pull up Odalys Fairbank's CA", "dpoa"],
-    ["can you find the coaching form for Marisol Quintero", "coaching"],
     ["open Odalys Fairbank's corrective action", "dpoa"],
+    ["open the CA for Odalys Fairbank", "dpoa"],
+    ["open her CA", "dpoa"],
+    ["open my CA for Odalys Fairbank", "dpoa"],
   ] as const;
 
   it.each(OPENED)("off: %s is not read as a form on file", (question) => {
@@ -71,7 +73,17 @@ describe("REOPEN_BY_ANY_OPEN_VERB_ENABLED: a form on file asked for with any ver
 
   it.each(OPENED)("on: %s → opens the %s on file to edit", (question, templateKey) => {
     on();
-    expect(readReopenRequest(question)).toEqual({ mode: "show", templateKey, asksChange: false, opensToEdit: true });
+    expect(readReopenRequest(question)).toEqual({ mode: "show", templateKey, asksChange: false, opensToEdit: true, byAddedVerb: true });
+  });
+
+  // QA decision (b), 6 Nov 2026: "find" displays the form, as "show" does; it does not open a finalized one to edit.
+  it.each([
+    ["can you find the coaching form for Marisol Quintero", "coaching"],
+    ["find my earlier CA for Odalys Fairbank", "dpoa"],
+  ])("on: %s → shows the %s on file", (question, templateKey) => {
+    expect(readReopenRequest(question)).toBeNull();
+    on();
+    expect(readReopenRequest(question)).toEqual({ mode: "show", templateKey, asksChange: false, byAddedVerb: true });
   });
 
   it("on: \"Change <name> CA\" names the Corrective Action Form (sf-s26); off, it names none", () => {
@@ -85,6 +97,10 @@ describe("REOPEN_BY_ANY_OPEN_VERB_ENABLED: a form on file asked for with any ver
     "Odalys didn't open the salon on time, write her up",
     "create a corrective action for Odalys Fairbank",
     "pull up a coaching form for Marisol Quintero",
+    // QA decision (c), 6 Nov 2026: an indefinite article before the form starts a new one.
+    "open a CA for Odalys Fairbank",
+    "open a new corrective action for Odalys Fairbank",
+    "bring up a coaching form for Marisol Quintero",
     "how do I find an old coaching form?",
   ])("on: %s is still not a form on file", (question) => {
     on();

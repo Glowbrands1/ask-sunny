@@ -1,6 +1,6 @@
 import { reopenByAnyOpenVerbEnabled, reopenVerbGuardEnabled } from "@/lib/config/chat-quality-flags";
 
-import { EDIT_VERB, OPEN_WORDS, SHOW_VERB } from "./reopen-cue";
+import { EDIT_VERB, FIND_WORDS, OPEN_WORDS, SHOW_VERB } from "./reopen-cue";
 import { asksAboutForms, detectTemplateIntent, leadingFormRequest, type TemplateIntent } from "./template-intent";
 
 /**
@@ -33,11 +33,16 @@ export interface ReopenRequest {
    */
   asksChange: boolean;
   /**
-   * REOPEN_BY_ANY_OPEN_VERB_ENABLED: asked for with "bring up", "pull up",
-   * "open" or "find". Opened to edit as "edit" opens it — a finalized form as
-   * a new draft of it — with no change read from the sentence.
+   * REOPEN_BY_ANY_OPEN_VERB_ENABLED: asked for with "bring up", "pull up" or
+   * "open". Opened to edit as "edit" opens it — a finalized form as a new
+   * draft of it — with no change read from the sentence.
    */
   opensToEdit?: boolean;
+  /**
+   * REOPEN_BY_ANY_OPEN_VERB_ENABLED: asked for with one of the verbs the flag
+   * adds ("find" shows, the others open). Only for a person named.
+   */
+  byAddedVerb?: boolean;
 }
 
 /*
@@ -82,8 +87,22 @@ const LEADING_REQUEST = new RegExp(`${REQUEST_OPENING}(?:${REQUEST_VERBS})${REQU
  * verbs of `reopen-cue.ts`. An open verb counts only here, as the request
  * itself: "write her up, she didn't open the salon" is no reopen.
  */
-const LEADING_REQUEST_ANY_OPEN = new RegExp(`${REQUEST_OPENING}(?:${REQUEST_VERBS}|${OPEN_WORDS})${REQUEST_OBJECT}`, "i");
+const LEADING_REQUEST_ANY_OPEN = new RegExp(`${REQUEST_OPENING}(?:${REQUEST_VERBS}|${OPEN_WORDS}|${FIND_WORDS})${REQUEST_OBJECT}`, "i");
 const LEADS_WITH_AN_OPEN_VERB = new RegExp(`${REQUEST_OPENING}(?:${OPEN_WORDS})\\b`, "i");
+const LEADS_WITH_FIND = new RegExp(`${REQUEST_OPENING}(?:${FIND_WORDS})\\b`, "i");
+/*
+ * QA decision (c), 6 Nov 2026: "open a CA for <name>" STARTS a new one. After
+ * an added verb, an indefinite article before the form means a new form; a
+ * definite or possessive one ("the", "her", "my", "<name>'s") a form on file.
+ * An indefinite one followed by one of these words still points at a form on
+ * file ("bring up an old coaching form", "a previously edited corrective
+ * action"): the one small list of them.
+ */
+const EARLIER_WORDS = String.raw`old|older|previous|previously|last|earlier|existing`;
+const ADDED_VERB_THEN_A_NEW_ONE = new RegExp(
+  `${REQUEST_OPENING}(?:${OPEN_WORDS}|${FIND_WORDS})\\s+(?:me\\s+)?(?:a|an)\\s+(?!(?:${EARLIER_WORDS})\\b)`,
+  "i",
+);
 /** Words that point at a form when none is named: "edit the form", "show the draft". */
 const POINTS_AT_A_FORM = /\b(?:form|draft|paperwork)\b/i;
 
@@ -98,9 +117,11 @@ export function readReopenRequest(question: string): ReopenRequest | null {
 
   const anyOpenVerb = reopenByAnyOpenVerbEnabled();
   const edit = EDIT_VERB.test(verbs);
-  const show = !edit && SHOW_VERB.test(verbs);
+  const finds = anyOpenVerb && !edit && !SHOW_VERB.test(verbs) && LEADS_WITH_FIND.test(text);
+  const show = !edit && (SHOW_VERB.test(verbs) || finds);
   const opens = anyOpenVerb && !edit && !show && LEADS_WITH_AN_OPEN_VERB.test(text);
   if (!edit && !show && !opens) return null;
+  if ((opens || finds) && ADDED_VERB_THEN_A_NEW_ONE.test(text)) return null;
   const leading = anyOpenVerb ? LEADING_REQUEST_ANY_OPEN : LEADING_REQUEST;
   if (asksAboutForms(text) && !leading.test(text)) return null;
 
@@ -112,6 +133,7 @@ export function readReopenRequest(question: string): ReopenRequest | null {
     templateKey,
     asksChange: edit && asksForAChange(text),
     ...(opens ? { opensToEdit: true } : {}),
+    ...(opens || finds ? { byAddedVerb: true } : {}),
   };
 }
 
