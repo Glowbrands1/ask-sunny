@@ -97,6 +97,8 @@ export function rosterOnlyNames(response: AskResponse, names: readonly string[],
   let content = response.content;
   let proposal = response.formProposal;
   let ask: string | null = null;
+  // OFF_ROSTER_CONFIRM_ENABLED: the off-roster offer was made this reply, so it is the one question about the person.
+  let offerMade = false;
 
   const employee = proposal?.employeeName?.trim() ?? "";
   if (proposal && employee && proposal.subject !== "team") {
@@ -164,7 +166,10 @@ export function rosterOnlyNames(response: AskResponse, names: readonly string[],
       // OFF_ROSTER_CONFIRM_ENABLED: the cleared name, however it was typed (alone on its own line too), is said back and offered.
       const offered = offRosterConfirmEnabled() && employee ? offRosterTyped(employee, message, names) : null;
       content = withNotFoundNote(content, notFoundName(message, names) ?? offered, names);
-      if (offered) content = withOffRosterOffer(content, offered);
+      if (offered) {
+        content = withOffRosterOffer(content, offered);
+        offerMade = true;
+      }
     }
   }
 
@@ -191,6 +196,18 @@ export function rosterOnlyNames(response: AskResponse, names: readonly string[],
     return close ? `Is this for **${close}**?` : onCard ? "" : ASK_WHO;
   });
 
+  /*
+   * OFF_ROSTER_CONFIRM_ENABLED (the sibling app's flip-3 tester, 6 Nov 2026, finding C): with the offer ("reply
+   * **use <name>**") made, the reply never also asks "Who is this form for?", and the card list never shows "Name: The
+   * employee". Any other question (the job title) stays.
+   */
+  if (offerMade) {
+    ask = null;
+    content = content
+      .split("\n")
+      .filter((line) => !ASKS_WHO.test(line) && !/^- \*\*Name:\*\* the employee$/i.test(line.trim()))
+      .join("\n");
+  }
   if (ask && !content.includes(ask) && !(ask === ASK_WHO && ASKS_WHO.test(content))) {
     content = `${content.trim()}\n\n${ask}`;
   }
