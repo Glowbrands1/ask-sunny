@@ -2600,6 +2600,18 @@ export function metricGuardEnabled(): boolean {
 }
 
 /**
+ * UNDER_PERFORMANCE_EXPLAINED_ENABLED (Pau, 6 Nov 2026; the Sunny tester
+ * after the flip: "it should be under performance not standard of conduct";
+ * default off). When the manager's message names Under Performance and the
+ * card cites the Standards of Conduct, the reply says why, once: "Under
+ * Performance isn't on the CA form. Sales performance CAs use the Standards
+ * of Conduct." (`ai/under-performance-explained.ts`). Off, as before.
+ */
+export function underPerformanceExplainedEnabled(): boolean {
+  return envFlag("UNDER_PERFORMANCE_EXPLAINED_ENABLED");
+}
+
+/**
  * SALES_SHORTFALL_OBJECT_ENABLED (QA, 6 Nov 2026, tester batch 1 after the
  * Sunny flip; default off). "Not meeting sales requirements for the month of
  * October" got a Corrective Action with no policy: the stated-shortfall reader

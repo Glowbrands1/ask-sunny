@@ -418,6 +418,7 @@ const NEW_FLAGS = [
   "PLACE_FROM_CUE_ENABLED",
   // After the Sunny flip (6 Nov 2026): forced off with the others in the child run.
   "SALES_SHORTFALL_OBJECT_ENABLED",
+  "UNDER_PERFORMANCE_EXPLAINED_ENABLED",
 ] as const;
 
 const PROTECTED = [
