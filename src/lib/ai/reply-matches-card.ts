@@ -1,4 +1,5 @@
-import { replyMatchesCardEnabled } from "@/lib/config/chat-quality-flags";
+import { bareNotDenialEnabled, replyMatchesCardEnabled } from "@/lib/config/chat-quality-flags";
+import { deniesAFault, deniesAFaultWithBareNot } from "@/lib/forms/draft-never-blank";
 import { removedOffenseLabels } from "@/lib/forms/ca-policy";
 import { cardPolicyHeading } from "@/lib/forms/card-policy";
 import { personRosterNames } from "@/lib/forms/person-guard";
@@ -127,9 +128,28 @@ function withoutRemovedOffense(content: string): string {
   return next;
 }
 
+/*
+ * BARE_NOT_DENIAL_ENABLED (QA's second Sunny gate, 6 Nov 2026): "not late", "she was never late"
+ * deny a fault; an Issue or Observation that says only that is no account, so rule 5 keeps the ask.
+ * Each clause must deny: "not late but left the bed dirty" says what happened and stays an account.
+ */
+function onlyDeniesAFault(text: string): boolean {
+  const clauses = text.split(/[.;,]+|\s+(?:but|and|also)\s+/i).map((clause) => clause.trim()).filter(Boolean);
+  return clauses.length > 0 && clauses.every((clause) => deniesAFault(clause) || deniesAFaultWithBareNot(clause));
+}
+
+/** The "What happened" / "Observation of Offense" lines' text, for the denial check above. */
+function accountLineTexts(content: string): string[] {
+  return [...content.matchAll(/^\s*\*\*(?:Issue|What happened|Observation of Offense):\*\*[ \t]*(\S[^\n]*)$/gm)].map((match) => match[1]!.trim());
+}
+
 /** Rule 5: an account on the card is never "not told". */
 function withoutNotToldWhenTold(content: string, issue: string | null | undefined): string {
-  const told = Boolean(issue?.trim()) || ACCOUNT_LINE.test(content) || FROM_DESCRIBED.test(content);
+  const told = bareNotDenialEnabled()
+    ? (Boolean(issue?.trim()) && !onlyDeniesAFault(issue!)) ||
+      accountLineTexts(content).some((text) => !onlyDeniesAFault(text)) ||
+      FROM_DESCRIBED.test(content)
+    : Boolean(issue?.trim()) || ACCOUNT_LINE.test(content) || FROM_DESCRIBED.test(content);
   if (!told || !NO_ACCOUNT.test(content)) return content;
   return content
     .split("\n")
