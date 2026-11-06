@@ -353,3 +353,8 @@ export async function staffPickerTurn(input: {
       : await roster.loadScopedRoster(input.scope);
   return staffPickerAnswer(staffPickerReply({ ...input, locations, namedLocationIds, roster: people })!);
 }
+
+/** One of the company's own position names, as the directory writes them (TITLE_ENDS_AT_LINE_ENABLED reads it). */
+export function isCompanyPositionTitle(text: string): boolean {
+  return SALON_TITLES.has(text.trim().replace(/\s+/g, " ").toLowerCase());
+}
