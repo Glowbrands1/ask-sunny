@@ -27,4 +27,21 @@ export const NOV6_BARE_NOT_DENIAL_CASES: ReplayCase[] = [
       expect(reply.content, `drafted with no account:\n${reply.content}`).toMatch(ASKS);
     },
   },
+  {
+    id: "nov6-bare-not-denial-not-late-reply-matches-card",
+    title: "the same, with REPLY_MATCHES_CARD on (the second gate): rule 5 keeps the ask, \"not late\" is no account",
+    report: "QA's second Sunny gate, 6 Nov 2026: REPLY_MATCHES_CARD's rule 5 removed the ask that BARE_NOT_DENIAL put back",
+    status: "fixed",
+    fixFlags: [...FIX, "REPLY_MATCHES_CARD_ENABLED"],
+    async run(t) {
+      vi.setSystemTime(new Date("2026-11-06T02:00:00Z"));
+      t.directory(STAFF);
+      t.as("salon_director", KEARNEY);
+      const thread = t.thread();
+      const reply = await thread.say("create a corrective action for Rowan Kestrel, not late");
+      expect(thread.proposal, `no Corrective Action card:\n${reply.content}`).toMatchObject({ templateKey: "dpoa" });
+      expect(reply.content, `drafted with no account:\n${reply.content}`).toMatch(ASKS);
+    },
+  },
 ];
+
