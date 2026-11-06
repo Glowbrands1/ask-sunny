@@ -17,6 +17,7 @@ import {
 } from "@/lib/forms/roster-only-names";
 
 import { HAS_EMPLOYEE_AND_PLACE, SAYS_READY } from "./ca-what-happened";
+import { withOwnBrandOnly } from "./own-brand-only";
 import type { AskResponse } from "./types";
 
 /**
@@ -176,6 +177,8 @@ export function replyMatchesCard(response: AskResponse, names: readonly string[]
 
 /** REPLY_MATCHES_CARD_ENABLED, the last step of the turn: `replyMatchesCard` with the actor's roster read this turn. Off: as built. */
 export function withReplyMatchesCard(response: AskResponse): AskResponse {
-  if (!replyMatchesCardEnabled()) return response;
-  return replyMatchesCard(response, personRosterNames() ?? [], requestMessage());
+  // OWN_BRAND_ONLY_ENABLED, gated on its own: only this company's brand is named (`ai/own-brand-only.ts`).
+  const branded = withOwnBrandOnly(response);
+  if (!replyMatchesCardEnabled()) return branded;
+  return replyMatchesCard(branded, personRosterNames() ?? [], requestMessage());
 }
