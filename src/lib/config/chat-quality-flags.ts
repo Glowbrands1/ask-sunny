@@ -2598,3 +2598,18 @@ export function citationLineKeptOnRevisionEnabled(): boolean {
 export function metricGuardEnabled(): boolean {
   return envFlag("METRIC_GUARD_ENABLED");
 }
+
+/**
+ * PLACE_FROM_CUE_ENABLED (QA's Sunny gate, 6 Nov 2026, sf-s28; default off).
+ * "can you write me a ca for <name> from o street", from a manager not
+ * assigned to O Street: "from" was no place cue, so the salon was not read and
+ * (with CA_SALES_POLICY_ENABLED on) the card silently took the employee's own
+ * salon with no word about O Street. With this flag on, "for <name> from
+ * <salon>" names the salon (`forms/location-scope.ts`), so a salon outside the
+ * assignment gets the "isn't a salon on your assignment" question on every
+ * path. Other "from"s ("transferred from", "a call from the salon", "from
+ * 10/5") are left alone. Off, as before.
+ */
+export function placeFromCueEnabled(): boolean {
+  return envFlag("PLACE_FROM_CUE_ENABLED");
+}
