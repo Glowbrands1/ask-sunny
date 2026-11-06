@@ -49,3 +49,29 @@ describe("SOURCE_NOTE_GUARD_ENABLED: a bracketed note about a source is removed"
     expect(withoutSourceNotes(text)).toBe(text);
   });
 });
+
+describe("SOURCE_NOTE_GUARD_ENABLED: bare markers on every path (QA's live Sunny tester, 6 Nov 2026)", () => {
+  const LIVE_1 = "All cash discrepancies need to be documented and reported to your District Manager [S46].";
+  const LIVE_2 = "Future policy violations may result in additional corrective action up to and including termination [S1].";
+
+  it("off: the reply keeps the markers (the live leak)", async () => {
+    const { withoutSourceMarkers } = await import("./source-note");
+    expect(withoutSourceMarkers(LIVE_1)).toBe(LIVE_1);
+  });
+
+  it("on: the two live sentences lose their markers, and keep their full stop", async () => {
+    vi.stubEnv("SOURCE_NOTE_GUARD_ENABLED", "true");
+    const { withoutSourceMarkers } = await import("./source-note");
+    expect(withoutSourceMarkers(LIVE_1)).toBe("All cash discrepancies need to be documented and reported to your District Manager.");
+    expect(withoutSourceMarkers(LIVE_2)).toBe("Future policy violations may result in additional corrective action up to and including termination.");
+    expect(withoutSourceMarkers("Clock in on time [S12, S14], every shift.")).toBe("Clock in on time, every shift.");
+  });
+
+  it("on, negative: a page citation and other brackets are left alone", async () => {
+    vi.stubEnv("SOURCE_NOTE_GUARD_ENABLED", "true");
+    const { withoutSourceMarkers } = await import("./source-note");
+    expect(withoutSourceMarkers("See the Late Opening Policy [S1 p.14].")).toBe("See the Late Opening Policy [S1 p.14].");
+    expect(withoutSourceMarkers("Hi [Employee], [Salon 12 opens at 9].")).toBe("Hi [Employee], [Salon 12 opens at 9].");
+  });
+});
+

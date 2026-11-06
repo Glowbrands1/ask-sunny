@@ -195,7 +195,7 @@ import { withManagerNameGuard, withManagerNameRule } from "./manager-name-guard"
 import { withoutReportTurnsForForm } from "./report-turns";
 import { withReplyMatchesCard } from "./reply-matches-card";
 import { withTitleOfTheEmployee } from "./title-of-the-employee";
-import { withoutSourceNotes } from "@/lib/ai/source-note";
+import { withoutSourceMarkers, withoutSourceNotes } from "@/lib/ai/source-note";
 
 /**
  * THE GROUNDED ANSWER PATH — server-side, and only server-side.
@@ -306,7 +306,9 @@ export async function answerQuestion(
     return { content: passwordHelp, citations: [], coverage: "grounded", recommendedVideoIds: [] };
   }
   // TITLE_OF_THE_EMPLOYEE_ENABLED: a title the manager attached to another named person is never the card's (`ai/title-of-the-employee.ts`).
-  const answered = withTitleOfTheEmployee(withoutSensitiveDefaults(await answerQuestionChecked(request, actor, memory), request.question), request);
+  const titled = withTitleOfTheEmployee(withoutSensitiveDefaults(await answerQuestionChecked(request, actor, memory), request.question), request);
+  // SOURCE_NOTE_GUARD_ENABLED: no bare source marker ("[S1]", "[S12, S14]") reaches the reply on any path (`ai/source-note.ts`).
+  const answered = { ...titled, content: withoutSourceMarkers(titled.content) };
   /*
    * CA_SALES_POLICY_ENABLED: a reply about a policy and an employee the roster
    * recognises ends with ONE offer to start a Corrective Action citing that

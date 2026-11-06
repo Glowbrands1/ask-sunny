@@ -39,3 +39,20 @@ export function withoutSourceNotes(text: string): string {
     .replace(/[^\S\n]+([.,;:!?])/g, "$1")
     .trim();
 }
+
+/*
+ * SOURCE_NOTE_GUARD_ENABLED, the bare markers (QA's live Sunny tester, 6 Nov 2026): "…need to be
+ * documented… [S46]." and "…up to and including termination [S1]." reached the reply. `stripMarkers` runs
+ * on the knowledge answer only, and handles one tag, not a group ("[S12, S14]"); a form or Corrective
+ * Action reply never passes through it. With the flag on, the final reply on every path loses a bare
+ * source tag or a group of them where a sentence goes on or ends. A tag with a page or section
+ * ("[S1 p.14]") and any other bracket ("[Employee]") are left alone. Off, the text as it is.
+ */
+const BARE_MARKERS = /[^\S\n]*\[\s*S\d{1,3}(?:\s*(?:,|;|&|and)\s*S\d{1,3})*\s*\](?=[\s.,;:!?)]|$)/gi;
+
+export function withoutSourceMarkers(text: string): string {
+  if (!sourceNoteGuardEnabled() || !/\[\s*S\d/i.test(text)) return text;
+  const out = text.replace(BARE_MARKERS, "");
+  return out === text ? text : out.replace(/[^\S\n]+([.,;:!?])/g, "$1");
+}
+
