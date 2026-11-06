@@ -2585,3 +2585,15 @@ export function replyMatchesCardEnabled(): boolean {
 export function rosterCompoundSurnameEnabled(): boolean {
   return envFlag("ROSTER_COMPOUND_SURNAME_ENABLED");
 }
+
+/**
+ * LAST_FIRST_AI_FALLBACK_ENABLED (QA's old-PR audit of #352, 6 Nov 2026; ported from Ask Bubbles, same flag in
+ * both apps; default off). The model-free "Calder, Remy" reading (LAST_FIRST_NAME_READ_ENABLED) ran only with the
+ * AI reader off, and the AI reader is on in production: "My employee Calder, Remy was late on the 2nd … Please
+ * create a CA form" gave a card for "Calder" whenever the AI reader read no employee, timed out or failed. On
+ * (with LAST_FIRST_NAME_READ_ENABLED): the same last-first reading fills the employee the AI reader left empty;
+ * an employee the AI reader read is kept (`ai/reader/last-first-fallback.ts`). Off, as before.
+ */
+export function lastFirstAiFallbackEnabled(): boolean {
+  return envFlag("LAST_FIRST_AI_FALLBACK_ENABLED") && lastFirstNameReadEnabled();
+}

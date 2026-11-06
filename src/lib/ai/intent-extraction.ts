@@ -2,7 +2,7 @@ import "server-only";
 
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { CLAUDE_HAIKU_MODEL, CLAUDE_READER_MODEL } from "@/lib/config/models";
-import { aiReadsCodeChecksEnabled, intentExtractionEnabled, lastFirstNameReadEnabled, remapIncidentFixEnabled } from "@/lib/config/chat-quality-flags";
+import { aiReadsCodeChecksEnabled, intentExtractionEnabled, lastFirstAiFallbackEnabled, lastFirstNameReadEnabled, remapIncidentFixEnabled } from "@/lib/config/chat-quality-flags";
 import { readDirectoryFacts, loadScopedRoster, type DirectoryFact } from "@/lib/forms/employee-roster";
 import { listTemplateSummaries } from "@/lib/forms/repository";
 import { detectTemplateIntent } from "@/lib/forms/template-intent";
@@ -24,6 +24,7 @@ import {
   INTENT_TOOL_NAME,
 } from "./intent-slots";
 import { lastFirstReading } from "./reader/last-first";
+import { withLastFirstFallback } from "./reader/last-first-fallback";
 import { readFormRequest, type ReaderResult } from "./reader/read";
 import { priorShorthand, requestScopedHistory, startsNewForm } from "./remap-incident";
 import { startsFormForAnotherPerson } from "./new-person-request";
@@ -98,7 +99,10 @@ export async function applyIntentExtraction(input: {
     // LAST_FIRST_NAME_READ_ENABLED: with no AI reader, "Marlowe, Quinn" is read by the reader's own checks, no model.
     const lastFirst = !reading && readsForm && lastFirstNameReadEnabled() ? lastFirstReading(checkContext) : null;
     const read: ReaderResult | { readonly fallback: string } | null = reading
-      ? await reading
+      ? lastFirstAiFallbackEnabled()
+        ? // LAST_FIRST_AI_FALLBACK_ENABLED: the AI reader read no employee or fell back; "Marlowe, Quinn" is read as above.
+          withLastFirstFallback(await reading, checkContext)
+        : await reading
       : lastFirst
         ? { checked: lastFirst, usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }, ms: 0 }
         : null;

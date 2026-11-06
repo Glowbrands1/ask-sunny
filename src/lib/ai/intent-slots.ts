@@ -46,7 +46,7 @@ import { newestManagerTurnSalon } from "@/lib/forms/newest-place-turn";
 import { typedEmployeeName } from "@/lib/forms/typed-employee-name";
 import { managerStatedWarningLevel, templateHasWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
 import { isDocumentName, isReportName, isRosterStateName } from "./not-a-person";
-import { reportNameNotAPersonEnabled } from "@/lib/config/chat-quality-flags";
+import { lastFirstAiFallbackEnabled, reportNameNotAPersonEnabled } from "@/lib/config/chat-quality-flags";
 import { readsAsStatedTitle, titleTextFromTurns } from "./title-words";
 import { titleInWords } from "./title-in-words";
 import { describedAttendanceKeys } from "@/lib/forms/ca-policy";
@@ -61,6 +61,7 @@ import {
 } from "./form-state";
 import type { GroundedPerson } from "./grounded-entities";
 import type { CheckedReading } from "./reader/check";
+import { withFilledEmployeeKept } from "./reader/last-first-fallback";
 import { mergeCheckedReading } from "./reader/merge";
 import { withoutStateCodes } from "./remap-incident";
 
@@ -270,12 +271,10 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
    */
   const typedEmployee = keepFormEmployeeEnabled() && !choice?.person ? typedEmployeeName(input.question) : null;
   // CORRECTED_EMPLOYEE_SLOT_ENABLED: "actually it's for rowan kestrel" on an open card is Rowan Kestrel, not the first person named.
-  const employee = withCorrectedEmployee(
-    merge.employee(typedEmployee ? withTypedEmployee(grounded, typedEmployee) : grounded),
-    input.history,
-    input.question,
-    input.people,
-  );
+  const merged = merge.employee(typedEmployee ? withTypedEmployee(grounded, typedEmployee) : grounded);
+  const corrected = withCorrectedEmployee(merged, input.history, input.question, input.people);
+  // LAST_FIRST_AI_FALLBACK_ENABLED: "Calder" of "Calder, Remy" is not a correction of the Remy Calder just read.
+  const employee = lastFirstAiFallbackEnabled() ? withFilledEmployeeKept(merged, corrected) : corrected;
   const userText = [input.question, ...input.history.filter((turn) => turn.role !== "assistant").map((turn) => turn.content)]
     .filter((part) => part.trim() !== "")
     .join("\n");
