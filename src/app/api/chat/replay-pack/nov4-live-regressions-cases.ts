@@ -295,7 +295,8 @@ const COACHING_CASES: readonly ReplayCase[] = COACHING_CHAIN.map((said, index): 
     title: `coaching chat C${turn} "${said}" — the old path`,
     report: `${REPORT} (coaching): C${turn} "${said}"`,
     status: open ? { open } : "fixed",
-    fixFlags: [],
+    // C1 is open with production's real flags (POLICY_CITATION); CITATION_LINE_KEPT_ON_REVISION_ENABLED fixes it.
+    fixFlags: turn === 1 ? ["CITATION_LINE_KEPT_ON_REVISION_ENABLED"] : [],
     run: (t) => coachingChat(t, turn),
   };
 });

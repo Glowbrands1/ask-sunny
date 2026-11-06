@@ -2574,6 +2574,75 @@ export function replyMatchesCardEnabled(): boolean {
 }
 
 /**
+ * CITATION_LINE_KEPT_ON_REVISION_ENABLED (QA's production-flags read and
+ * bisect, 5 Nov 2026; default off): with POLICY_CITATION_ENABLED on in
+ * production, the app appends "Policy reference: …, JBA Policy Manual p.N" to
+ * a Coaching draft's Details. A chat edit ("fix her last name, it is Laine")
+ * whose revision did not repeat that line was refused: keepsSubstance found
+ * the line's page numbers missing, so nothing was written and the reply said
+ * "I haven't changed the Coaching Form". With the flag on, a wording or
+ * additive revision keeps the app's own trailing line (`forms/app-citation-line.ts`),
+ * so the edit lands and the citation stays. Off, as before.
+ */
+export function citationLineKeptOnRevisionEnabled(): boolean {
+  return envFlag("CITATION_LINE_KEPT_ON_REVISION_ENABLED");
+}
+
+/**
+ * METRIC_GUARD_ENABLED (the sibling app's LIVE=1, 5 Nov 2026; default off). With the smaller set
+ * (CA_SALES + REPLY_MATCHES_CARD + TITLE, FORM_NAME off), a metrics CA for a person typed short was asked
+ * "Which of them is this Corrective Action Form for — **Club Close**, **<first name>** or **Under**?": the
+ * metric guards are all behind FORM_NAME_FROM_ROSTER_ENABLED. On: the final reply never offers a metric or
+ * offense word as a choice (`forms/roster-only-names.ts` withoutMetricChoices). Off, as before.
+ */
+export function metricGuardEnabled(): boolean {
+  return envFlag("METRIC_GUARD_ENABLED");
+}
+
+/**
+ * PLACE_FROM_CUE_ENABLED (QA's Sunny gate, 6 Nov 2026, sf-s28; default off).
+ * "can you write me a ca for <name> from o street", from a manager not
+ * assigned to O Street: "from" was no place cue, so the salon was not read and
+ * (with CA_SALES_POLICY_ENABLED on) the card silently took the employee's own
+ * salon with no word about O Street. With this flag on, "for <name> from
+ * <salon>" names the salon (`forms/location-scope.ts`), so a salon outside the
+ * assignment gets the "isn't a salon on your assignment" question on every
+ * path. Other "from"s ("transferred from", "a call from the salon", "from
+ * 10/5") are left alone. Off, as before.
+ */
+export function placeFromCueEnabled(): boolean {
+  return envFlag("PLACE_FROM_CUE_ENABLED");
+}
+
+/**
+ * BARE_NOT_DENIAL_ENABLED (QA's Sunny gate, 6 Nov 2026; default off). With
+ * CA_SALES_POLICY_ENABLED on, a clause is "only what did not happen" when it
+ * denies a fault ("never late", "wasn't late"); a bare "not late" was missed,
+ * so it was read as the account and a Corrective Action was drafted instead of
+ * "You haven't told me what happened". With this flag on, a clause that starts
+ * with a bare "not" before one of the same fault words is a denial too
+ * (`forms/draft-never-blank.ts` deniesAFaultWithBareNot). "not meeting sales
+ * requirements" stays an account. Off, as before.
+ */
+export function bareNotDenialEnabled(): boolean {
+  return envFlag("BARE_NOT_DENIAL_ENABLED");
+}
+
+/**
+ * TITLE_ENDS_AT_LINE_ENABLED (QA's Sunny gate, 6 Nov 2026, s16; default off).
+ * With TITLE_OF_THE_EMPLOYEE_ENABLED on, an exit form typed as lines
+ * ("<name>\nTanning Consultant \nNE Kearney\n…") lost the employee's own job
+ * title: the capitalised words on the NEXT line (the salon) were read as
+ * another person beside the title. With this flag on, the name after a title
+ * must be on the title's own line (`forms/title-of-another-person.ts`); a
+ * typed list's name on the line before still owns the title below it, and
+ * "District manager <name>" on one line is still that person's. Off, as before.
+ */
+export function titleEndsAtLineEnabled(): boolean {
+  return envFlag("TITLE_ENDS_AT_LINE_ENABLED");
+}
+
+/**
  * ROSTER_COMPOUND_SURNAME_ENABLED (the re-flip's rollback, 5 Nov 2026; default
  * off). The flip's live testers (R3/R5/R7): a real employee's surname is two
  * words, and the manager typed one with a transposed or swapped letter. The
