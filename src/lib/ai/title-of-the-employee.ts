@@ -1,4 +1,5 @@
-import { titleOfTheEmployeeEnabled } from "@/lib/config/chat-quality-flags";
+import { exitStatedOnlyEnabled, titleOfTheEmployeeEnabled } from "@/lib/config/chat-quality-flags";
+import { EXIT_TEMPLATE_KEY } from "@/lib/forms/exit-library";
 import { titleNamesAnotherPerson } from "@/lib/forms/title-of-another-person";
 
 import type { AskRequest, AskResponse } from "./types";
@@ -22,17 +23,34 @@ import type { AskRequest, AskResponse } from "./types";
  * goes. Default off: the response as built.
  */
 export function withTitleOfTheEmployee(response: AskResponse, request: Pick<AskRequest, "question" | "history">): AskResponse {
-  if (!titleOfTheEmployeeEnabled()) return response;
+  const exitOwned = exitStatedOnlyEnabled();
+  if (!titleOfTheEmployeeEnabled() && !exitOwned) return response;
   const card = response.formProposal;
   const role = card?.employeeRole?.trim();
   if (!card || !role || !card.employeeName || card.subject === "team") return response;
   const said = [...(request.history ?? []).filter((turn) => turn.role === "user").map((turn) => turn.content), request.question].join("\n");
-  if (!titleNamesAnotherPerson(said, role, card.employeeName)) return response;
+  const another = titleOfTheEmployeeEnabled() && titleNamesAnotherPerson(said, role, card.employeeName);
+  // EXIT_STATED_ONLY_ENABLED (QA, 5 Nov 2026): on an exit card, a title the manager only ever wrote as someone's
+  // ("your Salon Director", "our Salon Directors") is that person's, never the employee's.
+  const owned = exitOwned && card.templateKey === EXIT_TEMPLATE_KEY && onlyAsSomeonesTitle(said, role);
+  if (!another && !owned) return response;
   const content = response.content
     .split("\n")
-    .filter((line) => !line.trim().startsWith(`**Job title:** ${role}`))
+    .filter((line) => !line.trim().startsWith(`**Job title:** ${role}`) && !(owned && new RegExp(String.raw`^(?:-\s*)?\*\*Job title:\*\*\s*${escape(role)}\s*$`, "i").test(line.trim())))
     .join("\n")
     .replace(/\n{3,}/g, "\n\n")
-    .trim();
+    .trim()
+    // EXIT_STATED_ONLY_ENABLED: the title taken off an exit card is one for the manager to fill.
+    .replace(/(\*\*Left blank for you to review:\*\*\s*)(?!Job Title\b)/, (lead: string) => (owned ? `${lead}Job Title, ` : lead));
   return { ...response, content, formProposal: { ...card, employeeRole: null } };
+}
+
+function escape(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Every place the manager wrote the title has a possessive before it: "your Salon Director", "our Salon Directors". */
+function onlyAsSomeonesTitle(said: string, role: string): boolean {
+  const all = [...said.matchAll(new RegExp(String.raw`(\S+\s+)?\b${escape(role)}s?\b`, "gi"))];
+  return all.length > 0 && all.every((match) => /^(?:your|her|his|their|my|our)\s+$/i.test(match[1] ?? ""));
 }

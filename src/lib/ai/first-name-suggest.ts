@@ -1,4 +1,5 @@
 import {
+  rosterCompoundSurnameEnabled,
   rosterNearMissEnabled,
   firstNameSuggestEnabled,
   firstNameYesKeepsRequestEnabled,
@@ -6,7 +7,7 @@ import {
   partialSurnameAskEnabled,
   suggestAnswerReplacesTypedEnabled,
 } from "@/lib/config/chat-quality-flags";
-import { displayName, editDistance, type RosterEmployee } from "@/lib/forms/employee-match";
+import { compoundSurnameScore, displayName, editDistance, type RosterEmployee } from "@/lib/forms/employee-match";
 import { looseFits } from "@/lib/forms/loose-fit";
 import { typedWithOtherSurname } from "@/lib/forms/request-slot";
 
@@ -284,6 +285,16 @@ function replaceTyped(text: string, first: RegExp, options: readonly string[], n
     })
   ) {
     end += next[0].length;
+  } else if (rosterCompoundSurnameEnabled()) {
+    // ROSTER_COMPOUND_SURNAME_ENABLED: the typed two-word surname ("Perwett Vansickle") is the one answered.
+    const surname = words(name).slice(1).join(" ");
+    const after = text.slice(end);
+    for (let count = words(surname).length; count >= 1; count -= 1) {
+      const typedWords = new RegExp(String.raw`^(?:\s+[A-Za-z][A-Za-z'’-]*){${count}}`).exec(after)?.[0];
+      if (!typedWords || compoundSurnameScore(typedWords.trim().split(/\s+/), surname) === null) continue;
+      end += typedWords.length;
+      break;
+    }
   }
   return text.slice(0, found.index) + name + text.slice(end);
 }
