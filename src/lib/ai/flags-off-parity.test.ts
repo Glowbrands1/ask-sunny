@@ -416,6 +416,8 @@ const NEW_FLAGS = [
   "TITLE_ENDS_AT_LINE_ENABLED",
   "BARE_NOT_DENIAL_ENABLED",
   "PLACE_FROM_CUE_ENABLED",
+  // Ported from the sibling app's flip-3 gate (6 Nov 2026).
+  "OFF_ROSTER_CONFIRM_ENABLED",
 ] as const;
 
 const PROTECTED = [
