@@ -1,4 +1,5 @@
-import { caAsksWhatHappenedEnabled, coachingAsksWhatHappenedEnabled, omissionIsAccountEnabled } from "@/lib/config/chat-quality-flags";
+import { bareNotDenialEnabled, caAsksWhatHappenedEnabled, caSalesPolicyEnabled, coachingAsksWhatHappenedEnabled, omissionIsAccountEnabled } from "@/lib/config/chat-quality-flags";
+import { deniesAFault, deniesAFaultWithBareNot } from "@/lib/forms/draft-never-blank";
 import {
   NO_INCIDENT_NOTE,
   answeredWhatHappened,
@@ -73,8 +74,8 @@ const DENIAL = /\b(?:nothing|anything|no\s+(?:incident|issue|problems?|concerns?
 const NEGATED_ACTION =
   /(?:\b(?:did|does|do)\s+not\s+|\b(?:did|does|do)n['’]t\s+|\bnever\s+)(?!(?:do|be|been|being)\b)[a-z]+|\bnot\s+(?!being\b)[a-z]+ing\b/i;
 
-/** A clause that says only what did not happen; with OMISSION_IS_ACCOUNT, a duty not done is not that. */
-function onlyWhatDidNotHappen(clause: string): boolean {
+/** OMISSION_IS_ACCOUNT's reading: a clause that says only what did not happen; with the flag, a duty not done is not that. */
+function omissionReading(clause: string): boolean {
   if (!NEGATED.test(clause)) return false;
   if (!omissionIsAccountEnabled()) return true;
   return DENIAL.test(clause) || !NEGATED_ACTION.test(clause);
@@ -89,6 +90,26 @@ function aboutSomebodyElse(clause: string, name: string): boolean {
   const own = new Set(name.toLowerCase().split(/\s+/));
   const words = [said[1]!.toLowerCase(), said[2]!.toLowerCase()];
   return !words.some((word) => NOT_A_PERSON.has(word) || own.has(word));
+}
+
+/*
+ * CA_SALES_POLICY_ENABLED (QA, Sunny production, 4 Nov 2026: eight managers'
+ * requests asked "You haven't told me what happened yet"): "for not
+ * completing her woven courses by the deadline", "Not meeting sales
+ * requirements", "did not follow must see behaviors" name the failure — the
+ * account. With the flag on, a clause is "only what did not happen" when it
+ * denies a fault (`deniesAFault`, the never-blank reader: "never late",
+ * "didn't do anything wrong") or says nothing / no incident happened; a "not"
+ * before what the employee failed to do is an account. Off, any negation.
+ */
+const NOTHING_HAPPENED = /\bnothing\b|\bno\s+(?:incident|issue|problems?|concerns?)\b/i;
+
+function onlyWhatDidNotHappen(clause: string): boolean {
+  // Off: OMISSION_IS_ACCOUNT's reading alone (as main). On: a clause is only what did not happen when both readings say so, so an account either reading finds is one.
+  if (!caSalesPolicyEnabled()) return omissionReading(clause);
+  // BARE_NOT_DENIAL_ENABLED (QA's gate, 6 Nov 2026): "not late" is a denial too. Off, as before.
+  const denies = deniesAFault(clause) || (bareNotDenialEnabled() && deniesAFaultWithBareNot(clause));
+  return omissionReading(clause) && (denies || NOTHING_HAPPENED.test(clause));
 }
 
 /** A clause that says what this employee did. */
