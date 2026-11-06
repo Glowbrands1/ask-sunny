@@ -1,4 +1,4 @@
-import { addressNotPersonEnabled, formNameFromRosterEnabled, metricGuardEnabled, offRosterConfirmEnabled, rosterNearMissEnabled, rosterNotFoundAnyPhrasingEnabled } from "@/lib/config/chat-quality-flags";
+import { addressNotPersonEnabled, formNameFromRosterEnabled, metricChoiceOneQuestionEnabled, metricGuardEnabled, offRosterConfirmEnabled, rosterNearMissEnabled, rosterNotFoundAnyPhrasingEnabled } from "@/lib/config/chat-quality-flags";
 import { isGlossaryTerm } from "@/lib/ai/chat-glossary";
 import type { AskResponse } from "@/lib/ai/types";
 
@@ -500,12 +500,18 @@ export function withoutMetricChoices(response: AskResponse, message: string | un
     const byFirst = names.filter((roster) => words(roster)[0] === words(name)[0]);
     return `Is this for **${rosterSpelling(name, names) ?? (words(name).length === 1 && byFirst.length === 1 ? byFirst[0] : name)}**?`;
   };
-  let content = response.content.replace(/Which of them is this ((?:\*\*[^*]+\*\* )?)for\s*[—–-]\s*([^?\n]+)\?/g, (whole, form: string, list: string) => {
+  // METRIC_CHOICE_ONE_QUESTION_ENABLED: the question's own "Tell me and I'll …" after it on the same line is read with it.
+  const oneQuestion = metricChoiceOneQuestionEnabled();
+  const CHOICE = oneQuestion
+    ? /Which of them is this ((?:\*\*[^*]+\*\* )?)for\s*[—–-]\s*([^?\n]+)\?([ \t]+Tell me\b[^\n]*)?/g
+    : /Which of them is this ((?:\*\*[^*]+\*\* )?)for\s*[—–-]\s*([^?\n]+)\?/g;
+  let content = response.content.replace(CHOICE, (whole, form: string, list: string, tail: string | undefined) => {
     const all = listedNames(list);
     const kept = all.filter((name) => !isMetric(name));
     if (kept.length === all.length) return whole;
-    if (kept.length >= 2) return `Which of them is this ${form}for — ${said(kept)}?`;
-    return kept.length === 1 ? asked(kept[0]!) : ASK_WHO;
+    const keptTail = oneQuestion ? (tail ?? "") : "";
+    if (kept.length >= 2) return `Which of them is this ${form}for — ${said(kept)}?${keptTail}`;
+    return kept.length === 1 ? `${asked(kept[0]!)}${keptTail}` : ASK_WHO;
   });
   content = content.replace(/Is this for \*\*([^*]+)\*\*\?/g, (whole, name: string) => (isMetric(name) ? ASK_WHO : whole));
   return content === response.content ? response : { ...response, content };
