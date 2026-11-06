@@ -10,6 +10,7 @@ import { errorResponse } from "@/lib/api/respond";
 import {
   conversationDraftReuseEnabled,
   draftReuseSameChatOnlyEnabled,
+  draftReuseOwnOnlyEnabled,
   conversationProposalDedupeEnabled,
   draftActionsEnabled,
   draftDedupeEnabled,
@@ -357,6 +358,16 @@ export async function POST(request: Request) {
       : null;
     const sameChat: SameChat | undefined = sameChatOnly ? { conversationKey: chatKey } : undefined;
     const cardDate = isIsoCalendarDate(body.formDate) ? body.formDate : null;
+    /*
+     * DRAFT_REUSE_OWN_ONLY_ENABLED (QA, 25 Oct 2026). On, no lookup below
+     * hands this manager a draft another manager made: the finders read only
+     * this manager's drafts, and each draft found is checked here again
+     * (`mine`). No acting user reuses nothing. Off, `mine` is always true.
+     * Opening or editing a named draft through the chat, and DRAFT_MERGE, are
+     * not a reuse and are not changed by this.
+     */
+    const ownOnly = draftReuseOwnOnlyEnabled();
+    const mine = (instance: { createdBy?: string | null }) => !ownOnly || (Boolean(actor.id) && instance.createdBy === actor.id);
     const reused = (instance: { formDate?: string | null }) =>
       NextResponse.json({
         instance,
@@ -378,7 +389,7 @@ export async function POST(request: Request) {
         turns: chatTurns,
         ...(sameChatOnly && cardDate ? { formDate: cardDate } : {}),
       }).catch(() => null);
-      if (same) {
+      if (same && mine(same.instance)) {
         /*
          * The facts said since that draft was made, then this card's own
          * stated answers where the draft is still blank — never over a value.
@@ -400,7 +411,8 @@ export async function POST(request: Request) {
      * SAME EMPLOYEE, SAME TEMPLATE, SAME INCIDENT, ANY CHAT. An open draft is
      * reopened instead of filing another one. A different date or a different
      * account of what happened still creates. Not after "different incident"
-     * (`newIncident`, above).
+     * (`newIncident`, above). With DRAFT_REUSE_OWN_ONLY_ENABLED on, only a
+     * draft this manager made is reopened; off, any manager's counts.
      */
     if (body.source === "ask_sunny" && !newIncident && !historyWantsSeparateDocument(body.conversation)) {
       const turns = Array.isArray(body.conversation) ? parseHistory(body.conversation) : [];
@@ -419,7 +431,7 @@ export async function POST(request: Request) {
         incident: incidentText || null,
         ...(sameChat ? { sameChat } : {}),
       }).catch(() => null);
-      if (open) return reused(open);
+      if (open && mine(open)) return reused(open);
     }
 
     /*
@@ -450,7 +462,7 @@ export async function POST(request: Request) {
         proposalId,
         conversationKey,
       }).catch(() => null);
-      if (existing) return reused(existing);
+      if (existing && mine(existing)) return reused(existing);
     } else if (proposalId) {
       // A guard that cannot read is no guard: the create goes ahead as before.
       const existing = await findRecentAssistantDraft({
@@ -460,7 +472,7 @@ export async function POST(request: Request) {
         locationId,
         proposalId,
       }).catch(() => null);
-      if (existing) return reused(existing);
+      if (existing && mine(existing)) return reused(existing);
     }
 
     /*
@@ -491,7 +503,7 @@ export async function POST(request: Request) {
           : {}),
         ...(sameChat ? { sameChat } : {}),
       }).catch(() => null);
-      if (resent) return reused(resent);
+      if (resent && mine(resent)) return reused(resent);
     }
 
     const instance = await createInstance({
