@@ -196,6 +196,7 @@ import { withoutReportTurnsForForm } from "./report-turns";
 import { withReplyMatchesCard } from "./reply-matches-card";
 import { withTitleOfTheEmployee } from "./title-of-the-employee";
 import { withoutSourceMarkers, withoutSourceNotes } from "@/lib/ai/source-note";
+import { withUnderPerformanceExplained } from "./under-performance-explained";
 
 /**
  * THE GROUNDED ANSWER PATH — server-side, and only server-side.
@@ -326,10 +327,14 @@ export async function answerQuestion(
     return { content: passwordHelp, citations: [], coverage: "grounded", recommendedVideoIds: [] };
   }
   // TITLE_OF_THE_EMPLOYEE_ENABLED: a title the manager attached to another named person is never the card's (`ai/title-of-the-employee.ts`).
+  // UNDER_PERFORMANCE_EXPLAINED_ENABLED: Under Performance asked for, the Standards of Conduct cited: the reply says why (`ai/under-performance-explained.ts`).
   // SOURCE_NOTE_GUARD_ENABLED: no bare source marker ("[S1]", "[S12, S14]") reaches the reply on any path (`ai/source-note.ts`).
   const answer = async (turn: AskRequest) => {
-    const titled = withTitleOfTheEmployee(withoutSensitiveDefaults(await answerQuestionChecked(turn, actor, memory), turn.question), turn);
-    return { ...titled, content: withoutSourceMarkers(titled.content) };
+    const explained = withUnderPerformanceExplained(
+      withTitleOfTheEmployee(withoutSensitiveDefaults(await answerQuestionChecked(turn, actor, memory), turn.question), turn),
+      turn,
+    );
+    return { ...explained, content: withoutSourceMarkers(explained.content) };
   };
   let answered = await answer(request);
   const fallbacks = kept ? [withoutReportTurnsForForm({ ...asked, question: kept.employee, continueProposalTemplateKey: kept.templateKey }), plain] : [];
