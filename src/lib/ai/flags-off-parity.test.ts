@@ -421,6 +421,7 @@ const NEW_FLAGS = [
   "EXIT_STATED_ONLY_ENABLED",
   // Ported from the sibling app's flip-3 gate (6 Nov 2026).
   "OFF_ROSTER_CONFIRM_ENABLED",
+  "POLICY_CHANGE_RELEVANT_ENABLED",
 ] as const;
 
 const PROTECTED = [
