@@ -1,5 +1,7 @@
 import { titleEndsAtLineEnabled } from "@/lib/config/chat-quality-flags";
 
+import { isCompanyPositionTitle } from "./staff-picker";
+
 /**
  * ============================================================================
  * "DISTRICT MANAGER THESSALY BROOKHART" IS HER TITLE, NOT THE EMPLOYEE'S
@@ -41,16 +43,16 @@ export function titleNamesAnotherPerson(text: string, title: string, employeeNam
 const NAME_WORD = /^\p{Lu}[\p{L}'’-]+$/u;
 
 /**
- * TITLE_ENDS_AT_LINE_ENABLED: the title begins its own line and the rest of that line is only
- * capitalised words ("Team Member Part Time"). That line is a longer title, not a title and a
- * name; its owner is the line before.
+ * TITLE_ENDS_AT_LINE_ENABLED: the title begins its own line and the whole line is one of the
+ * company's own position names ("Team Member Part Time", `staff-picker.ts`). That line is a longer
+ * title, not a title and a name; its owner is the line before. A line such as "District Manager
+ * <name>" is no position name, so the name on it stays that title's owner (QA's review, 6 Nov 2026).
  */
 function titleLine(text: string, at: number, length: number): boolean {
   const start = text.lastIndexOf("\n", at - 1) + 1;
   if (text.slice(start, at).trim() !== "") return false;
   const end = text.indexOf("\n", at + length);
-  const rest = text.slice(at + length, end === -1 ? text.length : end).trim();
-  return rest === "" || rest.split(/\s+/).every((word) => NAME_WORD.test(word));
+  return isCompanyPositionTitle(text.slice(start, end === -1 ? text.length : end));
 }
 
 /** One to three capitalised words straight after (or before) the title, or null. */

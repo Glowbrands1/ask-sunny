@@ -56,14 +56,14 @@ describe("TITLE_ENDS_AT_LINE_ENABLED: a name beside a title is on the title's ow
   });
 });
 
-describe("TITLE_ENDS_AT_LINE_ENABLED: a title line of capitalised words is one title", () => {
-  const LIST = "Marnie Kettering\nSalon Director In Training\nNE Kearney\nGave notice - fulfilled notice";
-  it("on: \"Salon Director\" read from the line \"Salon Director In Training\" is the employee's (\"In Training\" is not a person)", () => {
+/* QA's review of the title-line rule, 6 Nov 2026: a DM named on her own line is not a longer title. */
+describe("TITLE_ENDS_AT_LINE_ENABLED: a title line ends where a person's name begins", () => {
+  it("(a) \"District Manager Thessaly Brookhart\" on its own line is hers, not the employee's above", () => {
     vi.stubEnv("TITLE_ENDS_AT_LINE_ENABLED", "true");
-    expect(titleNamesAnotherPerson(LIST, "Salon Director", "Marnie Kettering")).toBe(false);
+    expect(titleNamesAnotherPerson("Marnie Kettering\nDistrict Manager Thessaly Brookhart\nNE Kearney\nGave notice", "District Manager", "Marnie Kettering")).toBe(true);
   });
-  it("off: as before, \"In Training\" beside \"Salon Director\" reads as another person", () => {
-    vi.stubEnv("TITLE_ENDS_AT_LINE_ENABLED", "");
-    expect(titleNamesAnotherPerson(LIST, "Salon Director", "Marnie Kettering")).toBe(true);
+  it("(b) a position name alone on its line (\"Tanning Consultant\") is still the employee's", () => {
+    vi.stubEnv("TITLE_ENDS_AT_LINE_ENABLED", "true");
+    expect(titleNamesAnotherPerson("Marnie Kettering\nTanning Consultant\nNE Kearney\nGave notice", "Tanning Consultant", "Marnie Kettering")).toBe(false);
   });
 });
