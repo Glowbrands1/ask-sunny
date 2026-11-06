@@ -62,4 +62,36 @@ describe("SALES_SHORTFALL_OBJECT_ENABLED", () => {
     on();
     expect(statesMetricShortfall("her sales are low")).toBe(true);
   });
+
+  /*
+   * QA's tester batch 2 (6 Nov 2026, paraphrased, invented names): H01 and H13 gave "performance"
+   * alone as the reason and got no policy and "You haven't told me what happened yet". With the flag
+   * on, "performance" ending its phrase, governed by the request's reason word, is Under Performance,
+   * which CA_SALES_POLICY reads as the Standards of Conduct.
+   */
+  it.each(["written CA for Odalys Fenmarrow on performance", "CA for Odalys Fenmarrow for performance for october"])(
+    "off (main): %s reads no policy (the bug)",
+    (text) => {
+      vi.stubEnv("CA_SALES_POLICY_ENABLED", "true");
+      expect(readCaPolicy(text).suggestion).toBeNull();
+    },
+  );
+
+  it.each([
+    "written CA for Odalys Fenmarrow on performance",
+    "CA for Odalys Fenmarrow for performance for october",
+    "CA for Odalys Fenmarrow for her performance.",
+    "CA for Odalys Fenmarrow due to performance this month",
+  ])("on: %s is Under Performance, read as the Standards of Conduct", (text) => {
+    on();
+    expect(readCaPolicy(text)).toMatchObject({ suggestion: "standards_of_conduct", source: "sales_performance" });
+  });
+
+  it.each(["CA for Odalys Fenmarrow for her performance review", "CA for Odalys Fenmarrow for a performance improvement plan"])(
+    "on, negative: %s is not Under Performance (\"performance\" does not end its phrase)",
+    (text) => {
+      on();
+      expect(readCaPolicy(text).source).not.toBe("sales_performance");
+    },
+  );
 });

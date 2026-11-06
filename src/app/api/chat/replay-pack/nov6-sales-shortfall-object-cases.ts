@@ -1,6 +1,6 @@
 import { expect, vi } from "vitest";
 
-import { KEARNEY, STAFF, type DirectoryRow, type ReplayAnswer, type ReplayCase } from "./cases";
+import { KEARNEY, STAFF, type DirectoryRow, type ReplayAnswer, type ReplayCase, type ReplayContext } from "./cases";
 
 /**
  * QA, 6 Nov 2026, after the Sunny flip: the real history wording "Not meeting sales requirements for
@@ -58,4 +58,45 @@ export const NOV6_SALES_SHORTFALL_OBJECT_CASES: ReplayCase[] = [
       expect(reply.content, `read as a sales shortfall:\n${reply.content}`).not.toMatch(/sales (?:performance|shortfall)/i);
     },
   },
+  ...(
+    [
+      ["h01", "H01", ["written CA for Odalys Fenmarrow on performance"]],
+      ["h13", "H13 (turn 1)", ["CA for Odalys Fenmarrow for performance for october"]],
+    ] as const
+  ).map(
+    ([key, row, turns]): ReplayCase => ({
+      id: `nov6-sales-shortfall-object-performance-${key}`,
+      title: `${row}: "${turns.at(-1)}": the card cites the Standards of Conduct and does not ask what happened`,
+      report: `QA, 6 Nov 2026 (tester batch 2 after the Sunny flip, ${row}, paraphrased): "performance" as the reason got no policy and "You haven't told me what happened yet"`,
+      status: { open: "with production's flags (SALES_SHORTFALL_OBJECT_ENABLED off) the card cites no policy and asks what happened" },
+      fixFlags: ["CA_SALES_POLICY_ENABLED", "SALES_SHORTFALL_OBJECT_ENABLED"],
+      async run(t) {
+        await performanceCase(t, turns);
+      },
+    }),
+  ),
+  {
+    id: "nov6-sales-shortfall-object-count-h18",
+    title: "H18 (turn 2): \"<name> 131 tans verbal\": the card cites the Standards of Conduct and does not ask what happened",
+    report: "QA, 6 Nov 2026 (tester batch 2 after the Sunny flip, H18, paraphrased): a metric count as the reason got \"You haven't told me what happened yet\"",
+    status: { open: "no reader knows \"tans\" as a metric: the card cites no policy and asks what happened" },
+    fixFlags: ["CA_SALES_POLICY_ENABLED", "SALES_SHORTFALL_OBJECT_ENABLED"],
+    // Approved in principle (QA, 6 Nov 2026): a number and a glossary metric term is the metric named and counted. Open until Pau's glossary line.
+    fixStatus: { open: "the glossary has no \"Tans\" line yet (Pau's wording, pending)" },
+    async run(t) {
+      await performanceCase(t, ["create a corrective action", "Odalys Fenmarrow 131 tans verbal"]);
+    },
+  },
 ];
+
+async function performanceCase(t: ReplayContext, turns: readonly string[]) {
+  vi.setSystemTime(new Date("2026-11-06T15:00:00Z"));
+  t.directory([...STAFF, ODALYS]);
+  t.as("salon_director", KEARNEY);
+  const thread = t.thread();
+  let reply: ReplayAnswer | null = null;
+  for (const turn of turns) reply = await thread.say(turn);
+  expect(thread.proposal, `no CA card for Odalys Fenmarrow:\n${reply!.content}`).toMatchObject({ templateKey: "dpoa", employeeName: "Odalys Fenmarrow" });
+  expect(policyLine(reply!), `the card does not cite Standards of Conduct:\n${reply!.content}`).toMatch(/standards of conduct/i);
+  expect(reply!.content, "the card asks what happened though a reason was given").not.toMatch(/haven['’]t told me what happened/i);
+}
