@@ -1,0 +1,64 @@
+import { expect, vi } from "vitest";
+
+import { KEARNEY, STAFF, type ReplayCase } from "./cases";
+
+/**
+ * ============================================================================
+ * THE WHOLE TYPED POSITION IS THE CARD'S POSITION — GUARD CASES (QA task A,
+ * 6 Nov 2026; the sibling app's FULL_POSITION_TITLE_ENABLED)
+ * ============================================================================
+ *
+ * The sibling app's exit form typed as lines cut its position "<words> Part
+ * Time" to the shorter title inside it. Checked here: every one of this
+ * company's salon positions typed on its own line on an exit form is the card's
+ * whole Position with production's flags. "Assistant Salon Director" is read
+ * as "ASD" and spelled back out (TITLE_SPELLED_OUT_ENABLED, on in production);
+ * no title in this company's list is a shorter part of another of its
+ * positions. So no flag here: these cases hold the reading, and the negative
+ * keeps a title with other words after it as read today. See
+ * `docs/parity-log/2026-11-06-full-position-title.md`. Names are invented and
+ * not on the directory.
+ */
+const EXIT_ASK = "Can you create an exit form for me?";
+const typed = (title: string) =>
+  `Isaura Corvadine\n${title} \nNE Kearney\nGave notice - fulfilled notice\nGave notice 10/20/26 - date notice fulfilled 11/3/26\nResigning to pursue other career options\nSalon items returned payroll deduction does not apply eligible for rehire`;
+
+function exitCase(id: string, typedTitle: string, position: string, title: string): ReplayCase {
+  return {
+    id,
+    title,
+    report: "QA task A, 6 Nov 2026: the sibling app's exit card cut a typed position to the shorter title inside it; checked here",
+    status: "fixed",
+    async run(t) {
+      vi.setSystemTime(new Date("2026-11-06T02:00:00Z"));
+      t.directory(STAFF);
+      t.as("salon_director", KEARNEY);
+      const thread = t.thread();
+      await thread.say(EXIT_ASK);
+      const reply = await thread.say(typed(typedTitle));
+      expect(thread.proposal, `no exit card:\n${reply.content}`).toMatchObject({ employeeName: "Isaura Corvadine" });
+      expect(thread.proposal?.employeeRole ?? null, `the card's Position:\n${reply.content}`).toBe(position);
+    },
+  };
+}
+
+export const NOV6_CODING3_FULL_POSITION_TITLE_CASES: ReplayCase[] = [
+  exitCase(
+    "nov6-coding3-full-position-title-asd-exit",
+    "Assistant Salon Director",
+    "Assistant Salon Director",
+    "Guard: an exit form typed as lines with the position \"Assistant Salon Director\": the card's Position is the whole position, not \"Salon Director\"",
+  ),
+  exitCase(
+    "nov6-coding3-full-position-title-sd-exit",
+    "Salon Director",
+    "Salon Director",
+    "Guard: an exit form typed as lines with the position \"Salon Director\": the card's Position is \"Salon Director\"",
+  ),
+  exitCase(
+    "nov6-coding3-full-position-title-negative",
+    "Tanning Consultant Weekends Only",
+    "Tanning Consultant",
+    "Negative: \"Tanning Consultant Weekends Only\" is not one of the company's positions; the card's Position stays \"Tanning Consultant\" as today",
+  ),
+];
