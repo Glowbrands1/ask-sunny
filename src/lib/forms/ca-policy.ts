@@ -103,6 +103,11 @@ export interface CaPolicyReading {
   ambiguous: CaPolicyName[] | null;
   /** A scheduled meeting, seminar or training session the account says was not attended: "the monthly meeting". */
   missedEvent: string | null;
+  /**
+   * CA_SALES_POLICY_ENABLED: cleaning left undone is the form's Other box, not
+   * the Standards of Conduct (Pau's ruling; `withCleaningOther`). Absent off.
+   */
+  other?: "cleaning";
 }
 
 /* ------------------------------------------------------------ the words -- */
@@ -239,6 +244,15 @@ function readsAsIncident(sentence: string, match: RegExpExecArray, pattern: numb
 /** The manager's words that say the cleaning was left undone, as written, or null. */
 export function cleaningIncidentPhrase(rawText: string): string | null {
   if (!policyCleaningIncidentEnabled()) return null;
+  return cleaningUndonePhrase(rawText);
+}
+
+/**
+ * The same reader, whatever POLICY_CLEANING_INCIDENT_ENABLED says: CA_SALES_POLICY_ENABLED's
+ * cleaning-is-Other rule (`withCleaningOther`) reads the cleaning with these
+ * patterns and no others.
+ */
+export function cleaningUndonePhrase(rawText: string): string | null {
   for (const sentence of statements(normalize(rawText))) {
     for (const [index, pattern] of CLEANING_UNDONE.entries()) {
       const match = pattern.exec(sentence);
@@ -390,7 +404,32 @@ function statedIn(turn: string): CaPolicyName | null {
  * the drafting notes carry them.
  */
 export function readCaPolicy(rawText: string): CaPolicyReading {
-  return withSalesPolicy(readCaPolicyFromWords(rawText), rawText);
+  return withCleaningOther(withSalesPolicy(readCaPolicyFromWords(rawText), rawText), rawText);
+}
+
+/**
+ * ============================================================================
+ * CLEANING LEFT UNDONE IS OTHER, NOT THE STANDARDS OF CONDUCT
+ * (CA_SALES_POLICY_ENABLED; Pau's ruling, QA sf-s15, 5 Nov 2026)
+ * ============================================================================
+ *
+ * "Isolde did not complete daily cleaning duties" read as unfinished assigned
+ * work, so the card said "this reads as Standards of Conduct" and cited
+ * Standards of Conduct p.12, and a draft whose model sent no basis kept that
+ * tick. Pau: a cleaning Corrective Action is Other, with no Standards of
+ * Conduct. With the flag on, an account read only as that general task
+ * incident whose words the cleaning reader matches (`cleaningUndonePhrase`, no
+ * new words) keeps its topic but loses the Standards of Conduct suggestion and
+ * is marked Other. A policy the manager named, a sales reading, a question
+ * between policies, or any other conduct topic leaves it alone. Off, the
+ * reading is returned untouched.
+ */
+function withCleaningOther(reading: CaPolicyReading, rawText: string): CaPolicyReading {
+  if (!caSalesPolicyEnabled()) return reading;
+  if (reading.stated !== null || reading.source !== "incident" || reading.ambiguous) return reading;
+  if (reading.topics.length === 0 || reading.topics.some((topic) => topic !== "task")) return reading;
+  if (cleaningUndonePhrase(rawText) === null) return reading;
+  return { ...reading, suggestion: null, source: null, other: "cleaning" };
 }
 
 /**
@@ -659,6 +698,13 @@ const OFFENSE_BOX_LABEL: Record<string, string> = {
  * reads as citing the catch-all instead of it (District Manager feedback,
  * 21 Oct 2026; eval b6).
  */
+/** REPLY_MATCHES_CARD_ENABLED: the Type of Offense labels a box can be cited under that are no longer on the current form. */
+export function removedOffenseLabels(): string[] {
+  return Object.entries(OFFENSE_BOX_LABEL)
+    .filter(([key]) => !CURRENT_CA_OFFENSE_KEYS.includes(key))
+    .map(([, label]) => label);
+}
+
 function currentBoxLabel(key: string): string | undefined {
   const current = offeredOffenseKey(key, CURRENT_CA_OFFENSE_KEYS) ?? key;
   if (current !== key && current === STANDARDS_OF_CONDUCT) return undefined;
@@ -730,6 +776,10 @@ export function unconfirmedManualLine(named: NamedPolicyReading | null): string 
 }
 
 export function caPolicyProposalLine(reading: CaPolicyReading, named: NamedPolicyReading | null = null): string | null {
+  // CA_SALES_POLICY_ENABLED (`withCleaningOther`): cleaning left undone is the form's Other box. Off, never set.
+  if (reading.other === "cleaning") {
+    return "**Policy:** Other — cleaning duties left undone are recorded under Other on the Corrective Action Form, not the Standards of Conduct. Tell me if a different policy applies.";
+  }
   // CA_SALES_POLICY_ENABLED: a sales or MSB account. Off, the source is never set and this line is never said.
   if (isSalesPolicyReading(reading)) {
     const what = reading.source === "msb" ? "Must See Behaviors (MSB)" : "sales performance against goals";

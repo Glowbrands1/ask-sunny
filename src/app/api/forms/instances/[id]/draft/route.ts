@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { salesResultsOffenseLine, withCaChosenRule } from "@/lib/ai/ca-sales-prompt-lines";
 import { noteSpendUser } from "@/lib/ai/spend-meter";
 import { withSpendMeter } from "@/lib/ai/spend-meter-run";
 
@@ -213,6 +214,7 @@ import {
 } from "@/lib/forms/coaching-framing";
 import { OFFENSE_BASIS_PROPERTY, readOffenseBasis, withoutUnreasonedConduct, type OffenseBasis } from "@/lib/forms/ca-conduct-reason";
 import { guardOtherWriteIn } from "@/lib/forms/other-write-in";
+import { withoutRequestInObservation } from "@/lib/forms/request-observation";
 import {
   MANAGER_FOLLOW_UP_RULES,
   guardManagerFollowUp,
@@ -1056,7 +1058,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
             "Each plan you do write is one or two sentences, tied to what the manager described and to the objective printed beside the category. No dates, no disciplinary step, no quoted policy wording.",
           ]
         : []),
-      ...(governance.governed ? PERFORMANCE_MANAGEMENT_DRAFT_RULES : []),
+      // CA_SALES_POLICY_ENABLED (Pau, 5 Nov 2026): one added rule after the lowest-rung rule. Off, the rules are as before.
+      ...withCaChosenRule(governance.governed ? PERFORMANCE_MANAGEMENT_DRAFT_RULES : []),
       /*
        * THE EPP'S OWN RULES, on the versions that have the appendix field.
        * They say what a performance plan IS — coaching, not a warning — and
@@ -1149,6 +1152,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       offersConductPolicy && offenseOffered.includes(ATTENDANCE_POLICY) && !offenseOffered.includes("under_performance")
         ? CA_REVISION_8_OFFENSE_RULE
         : "",
+      // CA_SALES_POLICY_ENABLED (Pau, 5 Nov 2026): a form with no under_performance box reads sales results as standards_of_conduct. Off, nothing is added.
+      offersConductPolicy ? salesResultsOffenseLine(offenseOffered) : "",
     ]
       .filter(Boolean)
       .join("\n");
@@ -1704,9 +1709,18 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       return base;
     })();
 
+    /*
+     * CA_SALES_POLICY_ENABLED (QA, live, 4 Nov 2026): an Observation the
+     * model began with the manager's request ("CA for <name> due to …") begins
+     * with the request's reason instead. Off, null. See `request-observation.ts`.
+     */
+    const observationNotRequest =
+      (loaded.instance.layoutFamily === "corrective"
+        ? withoutRequestInObservation(draftedValues, narrativeTargets[0], loaded.instance.employeeName ?? null)
+        : null) ?? draftedValues;
     const enforced = enforceResponsibilities(document, variantKey, {
       values: withoutPrimedTopic(
-        priorDate ? { ...draftedValues, [PREVIOUS_ACTION_DATE_KEY]: priorDate } : draftedValues,
+        priorDate ? { ...observationNotRequest, [PREVIOUS_ACTION_DATE_KEY]: priorDate } : observationNotRequest,
         `${body.topic ?? ""} ${notes}`,
       ),
       /*
@@ -2281,6 +2295,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
           templateKey: loaded.instance.templateKey,
           values: planned.values,
           notes,
+          // CA_SALES_POLICY_ENABLED: the Direct policy fill follows the ticked Type of Offense.
+          ticked: validated.checked.offense_type ?? [],
           chunks: manual.ok ? manual.chunks : [],
           manual: manual.ok
             ? {

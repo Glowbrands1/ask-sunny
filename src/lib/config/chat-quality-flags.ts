@@ -2561,6 +2561,45 @@ export function rosterNearMissEnabled(): boolean {
 }
 
 /**
+ * REPLY_MATCHES_CARD_ENABLED (port from the sibling app; QA for Pau, 5 Nov
+ * 2026; default off). The last step of every chat turn compares the finished
+ * reply with the finished card and makes the reply agree with it: no employee
+ * on the card, no person named and "Who is this form for?"; an employee on the
+ * card, never asked who; one policy, the card's; no removed Type of Offense
+ * label; never "You haven't told me what happened yet" beside an account
+ * (`ai/reply-matches-card.ts`). Off, as before.
+ */
+export function replyMatchesCardEnabled(): boolean {
+  return envFlag("REPLY_MATCHES_CARD_ENABLED");
+}
+
+/**
+ * CITATION_LINE_KEPT_ON_REVISION_ENABLED (QA's production-flags read and
+ * bisect, 5 Nov 2026; default off): with POLICY_CITATION_ENABLED on in
+ * production, the app appends "Policy reference: …, JBA Policy Manual p.N" to
+ * a Coaching draft's Details. A chat edit ("fix her last name, it is Laine")
+ * whose revision did not repeat that line was refused: keepsSubstance found
+ * the line's page numbers missing, so nothing was written and the reply said
+ * "I haven't changed the Coaching Form". With the flag on, a wording or
+ * additive revision keeps the app's own trailing line (`forms/app-citation-line.ts`),
+ * so the edit lands and the citation stays. Off, as before.
+ */
+export function citationLineKeptOnRevisionEnabled(): boolean {
+  return envFlag("CITATION_LINE_KEPT_ON_REVISION_ENABLED");
+}
+
+/**
+ * METRIC_GUARD_ENABLED (the sibling app's LIVE=1, 5 Nov 2026; default off). With the smaller set
+ * (CA_SALES + REPLY_MATCHES_CARD + TITLE, FORM_NAME off), a metrics CA for a person typed short was asked
+ * "Which of them is this Corrective Action Form for — **Club Close**, **<first name>** or **Under**?": the
+ * metric guards are all behind FORM_NAME_FROM_ROSTER_ENABLED. On: the final reply never offers a metric or
+ * offense word as a choice (`forms/roster-only-names.ts` withoutMetricChoices). Off, as before.
+ */
+export function metricGuardEnabled(): boolean {
+  return envFlag("METRIC_GUARD_ENABLED");
+}
+
+/**
  * ROSTER_NOT_FOUND_ANY_PHRASING_ENABLED (QA-A/QA-B, the re-flip's live testers, 5 Nov 2026; default off). With
  * FORM_NAME + ROSTER_NEAR_MISS on, an off-roster full name got no "I couldn't find **<name>** in the Woven roster"
  * note when the request did not put it straight after "for" with a comma or period ("i have an employee, <name>

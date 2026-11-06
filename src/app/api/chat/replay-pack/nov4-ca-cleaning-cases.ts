@@ -84,15 +84,22 @@ export const NOV4_CA_CLEANING_CASES: ReplayCase[] = [
   },
   {
     id: "nov4-cleaning-negative-no-basis",
-    title: "negative control: with no offense_basis from the model, its Standards of Conduct tick stands (as before the flag; Woven training past due reads the same as a task)",
-    report: `${REPORT}: no basis, the model's tick stands`,
-    status: "fixed",
+    title: "no offense_basis from the model: cleaning left undone still moves the Standards of Conduct tick to Other (Pau's cleaning ruling; QA sf-s15, 5 Nov 2026)",
+    report: `${REPORT}: no basis — changed on purpose by Pau's cleaning ruling`,
+    status: { open: "with production's flags (CA_SALES_POLICY_ENABLED off) the model's Standards of Conduct tick stands" },
     fixFlags: [FLAG],
     async run(t) {
       const thread = start(t);
       await thread.say("make a corrective action for Halloran Sweetbriar, he did not complete daily cleaning duties");
       const saved = await draftTickingConduct(t, thread, "Halloran Sweetbriar did not complete the daily cleaning duties.");
-      expect(saved.checked.offense_type ?? [], "the model's Standards of Conduct was unticked with no basis").toContain("standards_of_conduct");
+      /*
+       * EXPECTATION CHANGED ON PURPOSE (Pau's ruling, QA's sf-s15 trace, 5 Nov 2026): cleaning
+       * duties not done are Other, never the Standards of Conduct, so with no basis from the
+       * model the existing cleaning reader (`cleaningUndonePhrase`) stands in as the upkeep
+       * basis. This case used to assert the tick stood. Woven training past due, which reads the
+       * same "task" way but is no cleaning, still keeps it: nov5-cleaning-other-negative-woven.
+       */
+      expect(saved.checked.offense_type ?? [], "cleaning with no basis is not Other").toEqual(["other"]);
     },
   },
   {
@@ -159,6 +166,7 @@ export const NOV4_CA_CLEANING_CASES: ReplayCase[] = [
     title: "\"did not complete daily cleaning duties\" with the model's upkeep basis: Other",
     report: `${REPORT}: Pau's wording, with offense_basis`,
     status: { open: "with production's flags the task reading ticks and cites the Standards of Conduct" },
+    // The fix-flag run holds with #558: the fill follows the ticked box.
     fixFlags: [FLAG],
     async run(t) {
       const thread = start(t);

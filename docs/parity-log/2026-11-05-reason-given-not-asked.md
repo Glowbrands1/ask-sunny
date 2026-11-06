@@ -1,0 +1,9 @@
+# CA_SALES_POLICY_ENABLED: a "not" before what the employee failed to do is the account, so a reason given is never asked for again (Sunny only)
+
+**Report.** QA, 4 Nov 2026: this app's production with CA_SALES_POLICY_ENABLED and FORM_NAME_FROM_ROSTER_ENABLED on, eight managers' requests. Each made the Corrective Action card, then said "You haven't told me what happened yet" although the reason was in the message. The reasons were Woven courses past the deadline, metrics, "Not meeting sales requirements" and MSB. Pau's pass criterion: never "what happened" when a reason is given.
+
+**Cause.** `src/lib/ai/ca-what-happened.ts` (CA_ASKS_WHAT_HAPPENED_ENABLED) drops every clause with a negation as "only what did not happen" (`NEGATED`). "for not completing her woven courses by the deadline", "Not meeting sales requirements" and "did not follow must see behaviors" name the failure, so they were dropped and the card was taken to have no account.
+
+**Fix.** Behind CA_SALES_POLICY_ENABLED, default off. A clause is "only what did not happen" when it denies a fault (`deniesAFault`, the never-blank reader's existing EXONERATING test: "never late", "didn't do anything wrong") or says nothing or no incident happened. Off, any negation counts, as before. The tests use QA's eight wordings with invented names: `nov5-reason-given-cases.ts` and `src/lib/ai/ca-what-happened-reason.test.ts`.
+
+**Why Sunny only.** Ask Bubbles has no `ca-what-happened.ts` (no CA_ASKS_WHAT_HAPPENED_ENABLED card note), so this path does not exist there. The same eight wordings, run through Ask Bubbles' replay pack with CA_SALES_POLICY_ENABLED and FORM_NAME_FROM_ROSTER_ENABLED on, never ask what happened. One Ask Bubbles difference was found on the way: message 8 (a multi-line request naming "an employee … <name> - verbal") makes no card there. That is reported separately and is not this fix.

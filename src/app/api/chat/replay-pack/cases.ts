@@ -67,6 +67,8 @@ export interface ReplayContext {
   checked(instanceId: string): Record<string, string[]>;
   /** What the drafting model was given, one entry per draft written. */
   draftPrompts(): string[];
+  /** The drafting model's system prompt, one entry per draft written. */
+  draftSystems?(): string[];
   /** The draft call's tools as sent, one JSON string per call. */
   draftTools(): string[];
   /** The draft route's POST for this form, as a redraft sends it (`keepManagerValues`); the route's response. */
@@ -94,6 +96,12 @@ export interface ReplayCase {
   report: string;
   status: "fixed" | { open: string };
   fixFlags?: string[];
+  /**
+   * A fix-flag run that fails today: it runs as an expected failure (like `status.open`), so it
+   * flips to a reported pass the day it is fixed. Used for production defects found with
+   * production's real flags (QA's Vercel read, 5 Nov 2026).
+   */
+  fixStatus?: { open: string };
   run(context: ReplayContext): Promise<void>;
 }
 
