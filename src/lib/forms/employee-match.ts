@@ -279,6 +279,31 @@ export function matchEmployeeName(typed: string, roster: readonly RosterEmployee
     const last = normalize(employee.lastName);
     if (firsts.length === 0) continue;
 
+    /*
+     * ROSTER_COMPOUND_SURNAME_ENABLED, compound names first or last (QA's roster shapes, 6 Nov 2026): a two-word
+     * first name ("Rosa Lind") is the first TWO typed words, and the rest is the surname — exact when it is the
+     * surname, asked when it is an initial of it or close to it. "Rosa Lind T" emptied the card: "rosa" alone was
+     * compared with "rosa lind".
+     */
+    const multiFirst = rosterCompoundSurnameEnabled()
+      ? firsts.find((first) => first.includes(" ") && words.slice(0, first.split(" ").length).join(" ") === first)
+      : undefined;
+    if (multiFirst) {
+      const rest = words.slice(multiFirst.split(" ").length);
+      const restText = rest.join(" ");
+      if (rest.length === 0) close.push({ employee, score: 0 });
+      else if (restText === last) exact.push(employee);
+      else if (rest.length === 1 && rest[0]!.length === 1) {
+        if (last.split(/[\s-]+/).some((word) => word.startsWith(rest[0]!))) close.push({ employee, score: 1 });
+      } else if (closeWord(restText, last)) close.push({ employee, score: editDistance(restText, last) });
+      else {
+        const compound = compoundSurnameScore(rest, employee.lastName);
+        if (compound !== null) close.push({ employee, score: Math.max(1, compound) });
+      }
+      continue;
+    }
+
+
     if (typedLast === null) {
       if (firsts.includes(typedFirst)) close.push({ employee, score: 0 });
       else if (firsts.some((first) => closeWord(typedFirst, first))) {
@@ -293,6 +318,21 @@ export function matchEmployeeName(typed: string, roster: readonly RosterEmployee
      */
     const lastMatches = typedLast.length === 1 ? last.startsWith(typedLast) : last === typedLast;
     if (firsts.includes(typedFirst) && lastMatches) {
+      exact.push(employee);
+      continue;
+    }
+    // ROSTER_COMPOUND_SURNAME_ENABLED: an initial may start any word of a two-word surname ("Severin F" for Ashdown
+    // Ferrant) — asked, never filled (QA's roster shapes, 6 Nov 2026: it emptied the card).
+    if (
+      rosterCompoundSurnameEnabled() &&
+      typedLast.length === 1 &&
+      !lastMatches &&
+      firsts.includes(typedFirst) &&
+      last.split(/[\s-]+/).filter(Boolean).length > 1 &&
+      last.split(/[\s-]+/).some((word) => word.startsWith(typedLast))
+    ) {
+      // With the initial-of-the-whole-surname matches, never instead of them: "Crystal R" offers both people whose
+      // surname has a word starting with R (the real-roster check, 6 Nov 2026). An initial is never filled.
       exact.push(employee);
       continue;
     }

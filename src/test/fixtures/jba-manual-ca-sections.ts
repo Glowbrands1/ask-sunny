@@ -194,6 +194,17 @@ const ROWS: Row[] = [
     c: "Seminar/Webinar Attendance\nMissing a seminar/webinar you are enrolled in without telling your Supervisor counts as a no call\nno show to a scheduled shift. If you cannot attend, call your Supervisor personally at least two\n(2) hours before it starts; in an emergency, call as soon as you can.",
   },
   {
+    // The manual's benefits sheet headed "Warning" (the 401k distribution warning), on its printed page 36 (QA, 5 Nov 2026:
+    // a revision cited it on a Corrective Action Form in the sibling app). Wording invented, heading and page as printed.
+    i: 118,
+    l: "Page 36 — Warning",
+    p: 37,
+    s: "Warning",
+    printedPage: 36,
+    sections: [{ page: 36, heading: "Warning" }],
+    c: "Warning:\no You may owe current income taxes – and possibly tax penalties – on your distribution if you\ntake money out before your legal retirement age unless you transfer it to an IRA.",
+  },
+  {
     i: 128,
     l: "Page 39 — Bonus Policy",
     p: 40,
