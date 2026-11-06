@@ -422,6 +422,7 @@ const NEW_FLAGS = [
   // Ported from the sibling app's flip-3 gate (6 Nov 2026).
   "OFF_ROSTER_CONFIRM_ENABLED",
   "POLICY_CHANGE_RELEVANT_ENABLED",
+  "CA_OFFER_KEEPS_ACCOUNT_ENABLED",
 ] as const;
 
 const PROTECTED = [
