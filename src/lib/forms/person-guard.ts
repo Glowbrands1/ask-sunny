@@ -183,22 +183,28 @@ export function withAddressNotPerson<T extends { content: string; formProposal?:
 ): T {
   const card = answer.formProposal;
   if (!addressNotPersonEnabled() || !card?.employeeName || card.subject === "team") return answer;
-  const words = card.employeeName.trim().split(/\s+/).map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-  const afterNumber = new RegExp(`\\b\\d+[a-z]?\\s+${words.join("\\s+")}\\b`, "i");
   // A date's digits are never a house number ("On 10-20-26 Jane Doe was late"; QA live check, 3 Nov 2026):
   // every date the existing date reader finds is blanked before the house-number test.
-  const turns = rawTurns.map((turn) => withoutDates(turn, today));
-  if (!turns.some((turn) => afterNumber.test(turn))) return answer;
+  if (!rawTurns.some((turn) => followsHouseNumber(card.employeeName!, turn, today))) return answer;
   const form = card.templateName ?? "form";
   // The address is named only on the turn that gave it; a later turn just asks (QA live check, 3 Nov 2026).
-  const saidNow = afterNumber.test(turns[turns.length - 1] ?? "");
+  const saidNow = followsHouseNumber(card.employeeName, rawTurns[rawTurns.length - 1] ?? "", today);
   return {
     ...answer,
-    content: saidNow
-      ? `Who is this **${form}** for? "${card.employeeName}" reads as a street address, not a person — tell me the employee's full name, and I'll put it on the card.`
-      : `Who is this **${form}** for? Tell me the employee's full name.`,
+    content: saidNow ? addressNotPersonAsk(form, card.employeeName) : `Who is this **${form}** for? Tell me the employee's full name.`,
     formProposal: { ...card, employeeName: null, employeeRole: null, status: "needs_employee", supportsInlineDraft: false },
   };
+}
+
+/** The name follows a house number in the turn ("123 Main Street"), with the turn's dates blanked first. */
+export function followsHouseNumber(name: string, turn: string, today: string = businessToday()): boolean {
+  const words = name.trim().split(/\s+/).map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return new RegExp(`\\b\\d+[a-z]?\\s+${words.join("\\s+")}\\b`, "i").test(withoutDates(turn, today));
+}
+
+/** ADDRESS_NOT_PERSON_ENABLED's question when the address was given on this turn. */
+export function addressNotPersonAsk(form: string, name: string): string {
+  return `Who is this **${form}** for? "${name}" reads as a street address, not a person — tell me the employee's full name, and I'll put it on the card.`;
 }
 
 /** The turn with each date `datesInText` reads blanked to spaces (same length, so nothing else moves). */
