@@ -423,6 +423,9 @@ const NEW_FLAGS = [
   "OFF_ROSTER_CONFIRM_ENABLED",
   "POLICY_CHANGE_RELEVANT_ENABLED",
   "CA_OFFER_KEEPS_ACCOUNT_ENABLED",
+  // After the Sunny flip (6 Nov 2026): forced off with the others in the child run.
+  "SALES_SHORTFALL_OBJECT_ENABLED",
+  "UNDER_PERFORMANCE_EXPLAINED_ENABLED",
 ] as const;
 
 const PROTECTED = [
