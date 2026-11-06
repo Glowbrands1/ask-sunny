@@ -286,11 +286,11 @@ describe('"verbal/written", "verbal or written" name the choice, not a level', (
  * QA, coding-3 item 6, 6 Nov 2026 (found in the sibling app): the written
  * warning asked for in the request's own clause was read there as an earlier
  * warning, because the incident's date (10/22) followed it. This app's reader
- * never made a level history from a date alone; these hold with
- * REQUEST_LEVEL_NOT_HISTORY_ENABLED off and on (a guard; the flag changes
- * nothing here). Names invented.
+ * never made a level history from a date alone; these are guards (no flag
+ * here, see docs/parity-log/2026-11-06-request-level-not-history.md). Names
+ * invented.
  */
-describe("the level asked for in the request's clause is this form's, whatever date follows (guard, REQUEST_LEVEL_NOT_HISTORY_ENABLED)", () => {
+describe("the level asked for in the request's clause is this form's, whatever date follows (guard)", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
   });
@@ -298,20 +298,14 @@ describe("the level asked for in the request's clause is this form's, whatever d
   it.each([
     "I need to write up Marisol Pendergrast with a written warning for leaving the front desk unattended for 30 minutes on 10/22. There's no prior coaching on file.",
     "give Tamsin Okafor a written warning for being late on 10/22",
-  ])("%s states Written, flag off and on", (text) => {
-    for (const value of ["", "true"]) {
-      vi.stubEnv("REQUEST_LEVEL_NOT_HISTORY_ENABLED", value);
-      expect(statedWarningLevel(text), `flag "${value}"`).toBe("written");
-    }
+  ])("%s states Written", (text) => {
+    expect(statedWarningLevel(text)).toBe("written");
   });
 
   it.each([
     "Brielle Hartsough got a written warning on 9/1 and now she was late again on 10/22, write her up",
     "write up Brielle Hartsough, she already had a written warning on 9/1",
-  ])("%s keeps the dated warning as history, flag off and on", (text) => {
-    for (const value of ["", "true"]) {
-      vi.stubEnv("REQUEST_LEVEL_NOT_HISTORY_ENABLED", value);
-      expect(statedWarningLevel(text), `flag "${value}"`).toBeNull();
-    }
+  ])("%s keeps the dated warning as history", (text) => {
+    expect(statedWarningLevel(text)).toBeNull();
   });
 });

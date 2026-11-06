@@ -2598,16 +2598,3 @@ export function citationLineKeptOnRevisionEnabled(): boolean {
 export function metricGuardEnabled(): boolean {
   return envFlag("METRIC_GUARD_ENABLED");
 }
-
-/**
- * REQUEST_LEVEL_NOT_HISTORY_ENABLED (QA, coding-3 item 6, 6 Nov 2026, found in the sibling app; same flag in
- * both apps; default off). There, "I need to write up <name> with a written warning for leaving the front desk
- * unattended for 30 minutes on 10/22" was answered "I've treated the earlier warning you mentioned as previous
- * corrective action history" and asked the level: the incident's date after the level made it history. This
- * app's `forms/warning-level.ts` never reads a level as history from a date alone (only with a history verb,
- * label or heading), and writes no earlier-warning line, so the flag changes nothing here; the replay pack
- * runs it (nov6-coding3-request-level-not-history-cases.ts) to keep the guard.
- */
-export function requestLevelNotHistoryEnabled(): boolean {
-  return envFlag("REQUEST_LEVEL_NOT_HISTORY_ENABLED");
-}
