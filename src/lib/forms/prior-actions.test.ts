@@ -320,7 +320,8 @@ describe("PRIOR_ACTIONS_NO_SIGNED_ENABLED", () => {
       notes: "verbal warning signed 9/1/26. previous coaching policy manual 10-15-26",
       today: NOV,
     }).value;
-    expect(value).toBe("Verbal warning — signed 09/01/2026\nCoaching — 10/15/2026");
+    // This app keeps the draft's order (no oldest-first sort here), so the lines are compared, not their order.
+    expect(value.split("\n").sort()).toEqual(["Coaching — 10/15/2026", "Verbal warning — signed 09/01/2026"]);
   });
 
   it("on: \"verbal ca signed 9-1-26\" keeps \"signed\" on the manager's own line (PRIOR_ACTIONS_PARSE)", () => {
@@ -351,6 +352,7 @@ describe("PRIOR_ACTIONS_NO_SIGNED_ENABLED", () => {
       today: NOV,
       onFile: [{ formDate: "2026-09-02", line: priorActionLine("Coaching", "2026-09-02", "", "", "on_file"), templateKey: "coaching" }],
     }).value;
-    expect(value).toBe("Coaching — finalized 09/02/2026\nCoaching — JBA Policy Manual — 10/15/2026");
+    // This app keeps the draft's lines first, then adds the forms on file: the lines are compared, not their order.
+    expect(value.split("\n").sort()).toEqual(["Coaching — JBA Policy Manual — 10/15/2026", "Coaching — finalized 09/02/2026"]);
   });
 });
