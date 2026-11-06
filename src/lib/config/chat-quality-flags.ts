@@ -2598,3 +2598,15 @@ export function citationLineKeptOnRevisionEnabled(): boolean {
 export function metricGuardEnabled(): boolean {
   return envFlag("METRIC_GUARD_ENABLED");
 }
+
+/**
+ * NEGATED_LATENESS_TOPIC_ENABLED (QA tester 2, 26 Oct 2026, production; default off; rebuilds #304). "coaching
+ * form for <employee>, she was not late today" came back with Topic of Coaching "Other: Punctuality". On: a
+ * Coaching draft whose notes mention lateness only to deny it ("not late", "wasn't late", "never late", "was on
+ * time") and name no other attendance problem keeps no Punctuality "Other" topic (`forms/negated-lateness.ts`),
+ * and the Corrective Action policy reader does not read a denied lateness as attendance (`forms/ca-policy.ts`).
+ * Off, as before.
+ */
+export function negatedLatenessTopicEnabled(): boolean {
+  return envFlag("NEGATED_LATENESS_TOPIC_ENABLED");
+}

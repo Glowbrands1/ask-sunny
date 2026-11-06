@@ -619,3 +619,72 @@ describe("P7 — shared and service accounts are never a name suggestion", () =>
     expect(response!.content).toMatch(/^Did you mean \*\*Kaitlyn Marsh\*\*\?/);
   });
 });
+
+/*
+ * NEGATED_LATENESS_TOPIC_ENABLED (QA tester 2, 26 Oct 2026, production; the
+ * employee is the harness's invented one): "coaching form for <employee>, she
+ * was not late today" came back ticked "Other: Punctuality". Off, as drafted;
+ * on, the denied topic is cleared and the Details stay as the manager put them.
+ * Rebuilds #304 on today's main.
+ */
+describe("a lateness that did not happen is no Punctuality topic", () => {
+  const NOT_LATE = "coaching form for kaitlyn marsh, she was not late today";
+  const DRAFTED = {
+    values: { coaching_details: "Observed:\nKaitlyn was not late today.", other_topic: "Punctuality" },
+    checked: { coaching_topics: ["other"] },
+  };
+
+  function withFlags<T>(flags: Record<string, boolean>, run: () => Promise<T>): Promise<T> {
+    const before = Object.fromEntries(Object.keys(flags).map((name) => [name, process.env[name]]));
+    for (const [name, on] of Object.entries(flags)) {
+      if (on) process.env[name] = "true";
+      else delete process.env[name];
+    }
+    return run().finally(() => {
+      for (const [name, value] of Object.entries(before)) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+    });
+  }
+
+  for (const on of [false, true]) {
+    it(`flag ${on ? "on" : "off"}: ${on ? "no" : "the drafted"} Other: Punctuality`, () =>
+      withFlags({ NEGATED_LATENESS_TOPIC_ENABLED: on }, async () => {
+        state.draft = DRAFTED;
+        const { id } = await createFrom([said(NOT_LATE)]);
+        const read = await snapshot(id);
+        expect(read.coaching_details!.value).toBe("Observed:\nKaitlyn was not late today.");
+        if (on) {
+          expect(read.other_topic?.value ?? "").toBe("");
+          expect(read.coaching_topics?.checked ?? []).not.toContain("other");
+        } else {
+          expect(read.other_topic!.value).toBe("Punctuality");
+          expect(read.coaching_topics!.checked).toEqual(["other"]);
+        }
+      }));
+  }
+
+  it("flag on with OTHER_WRITE_IN_GUARD on (production): the cleared Other is not refilled", () =>
+    withFlags({ NEGATED_LATENESS_TOPIC_ENABLED: true, OTHER_WRITE_IN_GUARD_ENABLED: true }, async () => {
+      state.draft = DRAFTED;
+      const { id } = await createFrom([said(NOT_LATE)]);
+      const read = await snapshot(id);
+      expect(read.other_topic?.value ?? "").toBe("");
+      expect(read.coaching_topics?.checked ?? []).not.toContain("other");
+    }));
+
+  it("flag on, NEVER-BREAK: a real lateness keeps its Punctuality topic", () =>
+    withFlags({ NEGATED_LATENESS_TOPIC_ENABLED: true }, async () => {
+      state.draft = DRAFTED;
+      const { id } = await createFrom([said("coaching form for kaitlyn marsh, she was late today")]);
+      expect((await snapshot(id)).other_topic!.value).toBe("Punctuality");
+    }));
+
+  it("flag on, NEVER-BREAK: not late but left early keeps its Punctuality topic", () =>
+    withFlags({ NEGATED_LATENESS_TOPIC_ENABLED: true }, async () => {
+      state.draft = DRAFTED;
+      const { id } = await createFrom([said("coaching form for kaitlyn marsh, she was not late but left early")]);
+      expect((await snapshot(id)).other_topic!.value).toBe("Punctuality");
+    }));
+});
