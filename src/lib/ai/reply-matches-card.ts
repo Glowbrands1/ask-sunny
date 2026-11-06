@@ -1,4 +1,5 @@
 import { bareNotDenialEnabled, replyMatchesCardEnabled } from "@/lib/config/chat-quality-flags";
+import { offeredOffRosterName } from "@/lib/forms/off-roster-confirm";
 import { deniesAFault, deniesAFaultWithBareNot } from "@/lib/forms/draft-never-blank";
 import { removedOffenseLabels } from "@/lib/forms/ca-policy";
 import { cardPolicyHeading } from "@/lib/forms/card-policy";
@@ -80,7 +81,9 @@ function withNobodyNamed(content: string, names: readonly string[], message: str
     .join("\n");
   // The app's own words stay: one word of the name alone at a sentence start, or in another case (`ownWords`).
   next = withoutUnseatedName(next, [slotName(message, names)], names, draftedFor(next), { ownWords: true });
-  if (!ASKS_WHO.test(next) && !ASKS_A_CHOICE.test(next) && !ASKS_FOR_THE_NAME.test(next)) next = `${next.trim()}\n\n${ASK_WHO}`;
+  // OFF_ROSTER_CONFIRM_ENABLED (the sibling app's finding C, 6 Nov 2026): the off-roster offer ("reply **use <name>**") is the question.
+  const offers = offeredOffRosterName(next) !== null;
+  if (!offers && !ASKS_WHO.test(next) && !ASKS_A_CHOICE.test(next) && !ASKS_FOR_THE_NAME.test(next)) next = `${next.trim()}\n\n${ASK_WHO}`;
   return next;
 }
 
