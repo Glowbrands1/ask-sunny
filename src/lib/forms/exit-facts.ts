@@ -1,5 +1,5 @@
 import { shiftDays, weekdayOf } from "@/lib/business-date";
-import { exitFulfilledIsLastDayEnabled, exitIntakeFixEnabled, exitShortcutWordsEnabled } from "@/lib/config/chat-quality-flags";
+import { exitFulfilledIsLastDayEnabled, exitIntakeFixEnabled, exitShortcutWordsEnabled, exitStatedOnlyEnabled } from "@/lib/config/chat-quality-flags";
 
 import {
   EXIT_DATE_FIELDS,
@@ -371,6 +371,8 @@ function nearestCue(
       ) {
         continue;
       }
+      // EXIT_STATED_ONLY_ENABLED (QA, 5 Nov 2026): "your final paycheck, including all hours worked through 11/05" is a pay period, not a last day.
+      if (cue.role === "lastDayWorked" && exitStatedOnlyEnabled() && /\bhours?\s+$/i.test(window.slice(0, start))) continue;
       if (!best || end >= best.end) best = { role: cue.role, end };
     }
   }
