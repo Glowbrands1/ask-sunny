@@ -1,4 +1,4 @@
-import { sharedLoginNotStaffEnabled } from "@/lib/config/chat-quality-flags";
+import { rosterCompoundSurnameEnabled, sharedLoginNotStaffEnabled } from "@/lib/config/chat-quality-flags";
 
 /**
  * ============================================================================
@@ -215,6 +215,36 @@ function closeWord(typed: string, actual: string): boolean {
   return editDistance(typed, actual) <= limit;
 }
 
+/**
+ * ROSTER_COMPOUND_SURNAME_ENABLED (the re-flip's rollback, 5 Nov 2026): a two-word (or longer) roster surname
+ * against the typed surname words, word by word. Every typed word must be the roster word in its place, or a
+ * typo of it — the full surname in order, or one of its words alone. A word of three letters or fewer counts
+ * only exactly ("Ask" is not "Ash"). The summed edits, or null when the typed words are not this surname.
+ */
+export function compoundSurnameScore(typed: readonly string[], lastName: string): number | null {
+  const parts = normalize(lastName).split(/[\s-]+/).filter(Boolean);
+  const words = typed.map(normalize).filter(Boolean);
+  if (parts.length < 2 || words.length === 0 || words.length > parts.length) return null;
+  const pair = (word: string, part: string): number | null => {
+    if (word === part) return 0;
+    if (word.length <= 3 || part.length <= 3) return null;
+    return closeWord(word, part) ? editDistance(word, part) : null;
+  };
+  if (words.length === parts.length) {
+    let sum = 0;
+    for (const [index, word] of words.entries()) {
+      const score = pair(word, parts[index]!);
+      if (score === null) return null;
+      sum += score;
+    }
+    return sum;
+  }
+  if (words.length !== 1) return null;
+  const scores = parts.map((part) => pair(words[0]!, part)).filter((score): score is number => score !== null);
+  // One word of the surname alone is never the whole name: at least one edit, so it is asked, not filled.
+  return scores.length > 0 ? Math.max(1, Math.min(...scores)) : null;
+}
+
 function firstNames(employee: RosterEmployee): string[] {
   return [employee.firstName, employee.preferredFirstName ?? ""]
     .map(normalize)
@@ -268,10 +298,16 @@ export function matchEmployeeName(typed: string, roster: readonly RosterEmployee
     }
     const firstClose = firsts.some((first) => closeWord(typedFirst, first));
     const lastClose = typedLast.length > 1 && closeWord(typedLast, last);
-    if (firstClose && (lastMatches || lastClose)) {
+    // ROSTER_COMPOUND_SURNAME_ENABLED: a two-word surname compared word by word.
+    const compound = !lastMatches && !lastClose && rosterCompoundSurnameEnabled() ? compoundSurnameScore(words.slice(1), employee.lastName) : null;
+    if (compound === 0 && firsts.includes(typedFirst) && words.length - 1 === normalize(employee.lastName).split(/[\s-]+/).filter(Boolean).length) {
+      exact.push(employee);
+      continue;
+    }
+    if (firstClose && (lastMatches || lastClose || compound !== null)) {
       const score =
         Math.min(...firsts.map((first) => editDistance(typedFirst, first))) +
-        (typedLast.length > 1 ? editDistance(typedLast, last) : 0);
+        (compound !== null ? compound : typedLast.length > 1 ? editDistance(typedLast, last) : 0);
       close.push({ employee, score });
     }
   }
