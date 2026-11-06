@@ -1,3 +1,5 @@
+import { titleEndsAtLineEnabled } from "@/lib/config/chat-quality-flags";
+
 /**
  * ============================================================================
  * "DISTRICT MANAGER THESSALY BROOKHART" IS HER TITLE, NOT THE EMPLOYEE'S
@@ -26,7 +28,8 @@ export function titleNamesAnotherPerson(text: string, title: string, employeeNam
   for (const match of text.matchAll(pattern)) {
     seen += 1;
     const at = match.index ?? 0;
-    const after = nameAt(text.slice(at + match[0].length), "after");
+    // TITLE_ENDS_AT_LINE_ENABLED (Sunny gate, 6 Nov 2026, s16): the name after a title is on the title's line; the next line ("NE Kearney") is not its owner.
+    const after = nameAt(text.slice(at + match[0].length), "after", titleEndsAtLineEnabled());
     const before = nameAt(text.slice(0, at), "before");
     const beside = [after, before].filter((name): name is string[] => name !== null);
     const other = beside.some((name) => name.every((word) => !employee.has(word.toLowerCase())));
@@ -38,8 +41,10 @@ export function titleNamesAnotherPerson(text: string, title: string, employeeNam
 const NAME_WORD = /^\p{Lu}[\p{L}'’-]+$/u;
 
 /** One to three capitalised words straight after (or before) the title, or null. */
-function nameAt(text: string, side: "after" | "before"): string[] | null {
-  const tokens = side === "after" ? text.replace(/^\s+/, "").split(/\s+/) : text.replace(/\s+$/, "").split(/\s+/).reverse();
+function nameAt(text: string, side: "after" | "before", sameLine = false): string[] | null {
+  // sameLine: only what is on the title's own line counts (a line break ends the name).
+  const source = sameLine ? (text.match(/^[^\S\n]*([^\n]*)/)?.[1] ?? "") : text;
+  const tokens = side === "after" ? source.replace(/^\s+/, "").split(/\s+/) : source.replace(/\s+$/, "").split(/\s+/).reverse();
   const name: string[] = [];
   for (const raw of tokens) {
     const word = raw.replace(/[.,;:!?)("]+$/u, "").replace(/^[("]+/u, "");
