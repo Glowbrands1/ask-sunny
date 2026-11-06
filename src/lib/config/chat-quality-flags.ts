@@ -2643,6 +2643,8 @@ export function titleEndsAtLineEnabled(): boolean {
 }
 
 /**
+
+
  * ROSTER_COMPOUND_SURNAME_ENABLED (the re-flip's rollback, 5 Nov 2026; default
  * off). The flip's live testers (R3/R5/R7): a real employee's surname is two
  * words, and the manager typed one with a transposed or swapped letter. The
