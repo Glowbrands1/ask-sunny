@@ -73,3 +73,32 @@ describe("ROSTER_COMPOUND_SURNAME_ENABLED on: the surname compared word by word"
     expect(kind("Marnie Holoway")).toBe("confirm:Marnie Holloway");
   });
 });
+
+describe("ROSTER_COMPOUND_SURNAME_ENABLED: compound first names, and an initial of any surname word (QA's roster shapes, 6 Nov 2026)", () => {
+  const ROSA = row("r", "Rosa Lind", "Thistlewood");
+  const SEVERIN = row("s", "Severin", "Ashdown Ferrant");
+
+  it("off (the bug): \"Rosa Lind T\" and \"Severin F\" match no one, so the card empties", () => {
+    expect(kind("Rosa Lind T", [ROSA])).toBe("none");
+    expect(kind("Severin F", [SEVERIN])).toBe("none");
+  });
+
+  it("on: a two-word first name and an initial is asked; typed in full it is exact; first name alone is asked", () => {
+    vi.stubEnv("ROSTER_COMPOUND_SURNAME_ENABLED", "true");
+    expect(kind("Rosa Lind T", [ROSA])).toBe("confirm:Rosa Lind Thistlewood");
+    expect(kind("Rosa Lind Thistlewood", [ROSA])).toBe("exact:Rosa Lind Thistlewood");
+    expect(kind("rosa lind thistlewod", [ROSA])).toBe("confirm:Rosa Lind Thistlewood");
+    expect(kind("Rosa Lind", [ROSA])).toBe("confirm:Rosa Lind Thistlewood");
+  });
+
+  it("on: an initial of the second surname word is asked, never filled", () => {
+    vi.stubEnv("ROSTER_COMPOUND_SURNAME_ENABLED", "true");
+    expect(kind("Severin F", [SEVERIN])).toBe("confirm:Severin Ashdown Ferrant");
+    expect(kind("Severin A", [SEVERIN])).toBe("confirm:Severin Ashdown Ferrant");
+  });
+
+  it("negative, on: an initial that starts no surname word is no match", () => {
+    vi.stubEnv("ROSTER_COMPOUND_SURNAME_ENABLED", "true");
+    expect(kind("Severin Q", [SEVERIN])).toBe("none");
+  });
+});
