@@ -80,10 +80,10 @@ async function coachingOnFile(t: T): Promise<void> {
 }
 
 /** The Corrective Action from the manager's words; the model writes `priorLine`. Its saved Prior actions. */
-async function correctiveAction(t: T, said: string, priorLine: string): Promise<string> {
+async function correctiveAction(t: T, said: string | readonly string[], priorLine: string): Promise<string> {
   const thread = t.thread();
   await thread.say(`I need a corrective action for ${NAME}, she left the front desk unattended again on 11/3/26`);
-  await thread.say(said);
+  for (const turn of typeof said === "string" ? [said] : said) await thread.say(turn);
   expect(thread.proposal, `no Corrective Action card for ${NAME}`).toMatchObject({ templateKey: "dpoa", employeeName: NAME });
   t.draftWrites({ prior_actions: priorLine });
   const id = await thread.create();
@@ -143,6 +143,25 @@ export const NOV6_CODING3_PRIOR_ACTIONS_SIGNED_CASES: ReplayCase[] = [
       start(t);
       const prior = await correctiveAction(t, "this is a written warning. verbal warning signed 9/1/26", "Verbal warning — signed 09/01/2026");
       expect(prior, `the verbal warning the manager said was signed lost "signed":\n${prior}`).toMatch(/verbal warning[^\n]*signed 09\/01\/2026/i);
+    },
+  },
+  {
+    id: "nov6-coding3-prior-actions-signed-policy-manual-kept",
+    title: "\"<name> signed the jba policy manual on 10-15-26\": the manager said signed, so the 10/15/2026 line keeps \"signed\"; the form on file still reads \"finalized\"",
+    report: `${REPORT} (QA follow-up, 6 Nov 2026): the manager's chat also said "<name> signed the jba policy manual on 10-15-26"`,
+    status: "fixed",
+    fixFlags: [FIX],
+    async run(t: T) {
+      start(t);
+      await coachingOnFile(t);
+      const prior = await correctiveAction(t, [SAID, `${NAME} signed the jba policy manual on 10-15-26`], MODEL_LINE);
+      const lines = prior.split("\n");
+      expect(lines.filter((line) => /10\/15\/2026/.test(line)), `the coaching the manager said was signed lost "signed":\n${prior}`).toEqual([MODEL_LINE]);
+      const onFile = lines.filter((line) => /09\/02\/2026/.test(line));
+      expect(onFile, `the finalized Coaching Form of 09/02/2026 is not listed once:\n${prior}`).toHaveLength(1);
+      // With the fix the form on file reads "finalized"; production today writes "signed" there (the OPEN case above).
+      if (process.env[FIX] === "true") expect(onFile[0], `the form on file says "signed", which nobody said:\n${prior}`).toBe("Coaching — finalized 09/02/2026");
+      expect(prior, `the DRAFT Coaching Form of 10/01/2026 is listed:\n${prior}`).not.toMatch(/10\/01\/2026/);
     },
   },
 ];

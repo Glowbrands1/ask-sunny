@@ -313,6 +313,14 @@ describe("PRIOR_ACTIONS_NO_SIGNED_ENABLED", () => {
     expect(groundPriorActions({ drafted, notes: "this is a written warning. verbal warning signed 9/1/26", today: NOV }).value).toBe(drafted);
   });
 
+  for (const parse of [true, false]) {
+    it(`on (PRIOR_ACTIONS_PARSE ${parse ? "on" : "off"}): "<name> signed the jba policy manual on 10-15-26" keeps "signed" on that date (QA follow-up, 6 Nov 2026)`, () => {
+      flags(true, parse);
+      const notes = `${SAID}\nOdalys Penwarden signed the jba policy manual on 10-15-26`;
+      expect(groundPriorActions({ drafted: MODEL, notes, today: NOV }).value).toBe(MODEL);
+    });
+  }
+
   it("on: \"signed\" said for one date does not keep it on another", () => {
     flags(true);
     const value = groundPriorActions({
