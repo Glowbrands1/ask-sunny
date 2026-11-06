@@ -2600,6 +2600,34 @@ export function metricGuardEnabled(): boolean {
 }
 
 /**
+ * CLEANING_OTHER_EVERY_WORDING_ENABLED (QA's live eval ca-sales-negative-cleaning-duties and replay, 6 Nov 2026;
+ * same flag in both apps; default off; Pau's ruling: cleaning left undone is Other, never the Standards of
+ * Conduct). With CA_SALES_POLICY_ENABLED on, "for not completing his daily cleaning duties" and "for not
+ * completing closing cleaning tasks" got no Policy line and a draft ticked Standards of Conduct (the cleaning
+ * reader missed "completing"), and the live model's own reply named the Standards of Conduct for "he did not
+ * complete daily cleaning duties". On: the cleaning reader also reads "not completing / finishing / doing …
+ * cleaning", an account that reads only as cleaning is Other (`forms/ca-policy.ts` withCleaningOther), and the
+ * final reply's **Policy:** line is the Other line whenever the account reads so (`ai/reply-matches-card.ts`).
+ * Off, as before.
+ */
+export function cleaningOtherEveryWordingEnabled(): boolean {
+  return envFlag("CLEANING_OTHER_EVERY_WORDING_ENABLED");
+}
+
+/**
+ * AS_YOU_SAID_MANAGER_WORDS_ENABLED (live chats, 4 Nov 2026; default off). "**Policy:** Late Opening, as you said"
+ * for leaving early and taking the spray booths down early, and "Standards of Conduct, as you said" for "it should be
+ * must see behaviors": the manager never named either. The intent reader's heading is written back onto the turn as
+ * the app's own line ("Policy reference: <heading>, JBA Policy Manual p.N.", `ai/form-state.ts`), and the policy
+ * reader took it as the manager naming that policy. On: the reader that decides "as you said"
+ * (`forms/ca-policy.ts` readCaPolicy) reads without the app's lines (`ai/app-sentences.ts` withoutAppLines).
+ * Off, as before.
+ */
+export function asYouSaidManagerWordsEnabled(): boolean {
+  return envFlag("AS_YOU_SAID_MANAGER_WORDS_ENABLED");
+}
+
+/**
  * PLACE_FROM_CUE_ENABLED (QA's Sunny gate, 6 Nov 2026, sf-s28; default off).
  * "can you write me a ca for <name> from o street", from a manager not
  * assigned to O Street: "from" was no place cue, so the salon was not read and
@@ -2720,4 +2748,16 @@ export function policyChangeRelevantEnabled(): boolean {
  */
 export function caOfferKeepsAccountEnabled(): boolean {
   return envFlag("CA_OFFER_KEEPS_ACCOUNT_ENABLED");
+}
+
+/**
+ * OWN_BRAND_ONLY_ENABLED (Pau, 6 Nov 2026, for the sibling app; same flag in both apps; default off). A reply quoting
+ * the manual listed every brand ("across all brands — <this brand>, <other brands> — …"); each app names only its own.
+ * On: the finished reply names only this company's brand — a list of brands holding it becomes it, a line headed by
+ * another brand goes, any other sentence naming one goes; a quotation is kept or dropped whole, never reworded
+ * (`ai/own-brand-only.ts`). The brands are read from existing config and patterns, not written anew; the JBA office is
+ * not a brand and its sentences stay (Pau, answer "A"). Off, as before.
+ */
+export function ownBrandOnlyEnabled(): boolean {
+  return envFlag("OWN_BRAND_ONLY_ENABLED");
 }
