@@ -78,10 +78,13 @@ function namesNobodyOffTheCard(reply: ReplayAnswer, employee: string | null, typ
   if (employee) return;
   const offered = /Is this for \*\*[^*]+\*\*\?/.exec(reply.content)?.[0] ?? "";
   // "I couldn't find **<name>** in the Woven roster, so that name is not on the form." says why the card is empty: not a contradiction.
+  // Changed on purpose (QA, 6 Nov: the OFF_ROSTER_CONFIRM offer names the typed person by design): the offer line
+  // ("If **<name>** isn't in Woven …, reply **use <name>** …") may name them too. Anywhere else — the action plan, the
+  // Observation, a "draft for <name>" line — still not, until the manager accepts.
   const text = reply.content
     .replace(offered, "")
     .split("\n")
-    .filter((line) => !/I couldn['’]t find \*\*/.test(line))
+    .filter((line) => !/I couldn['’]t find \*\*/.test(line) && !/reply \*\*use [^*]+\*\* and I'll put that name on the form/.test(line))
     .join("\n");
   for (const word of typed) {
     expect(text, `the card is empty but the reply names "${word}":\n${reply.content}`).not.toMatch(new RegExp(`\\b${word}\\b`, "i"));
