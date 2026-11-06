@@ -2641,3 +2641,13 @@ export function bareNotDenialEnabled(): boolean {
 export function titleEndsAtLineEnabled(): boolean {
   return envFlag("TITLE_ENDS_AT_LINE_ENABLED");
 }
+
+/**
+ * STORE_WORD_NOT_A_MISSING_PERSON_ENABLED (port of the sibling app's flip-3 gate, QA, 6 Nov 2026; default off; same
+ * flag in both apps). With the name flags, "coaching form for Kearney, the team was slow at the front desk" said "I
+ * couldn't find **Kearney** in the Woven roster": the salon, as a missing person. On: a name that is only a salon's
+ * name (`forms/salon-mention.ts` namesOnlyASalon) is never said back as a person not found. Off, as before.
+ */
+export function storeWordNotAMissingPersonEnabled(): boolean {
+  return envFlag("STORE_WORD_NOT_A_MISSING_PERSON_ENABLED");
+}

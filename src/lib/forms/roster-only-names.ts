@@ -1,4 +1,4 @@
-import { formNameFromRosterEnabled, metricGuardEnabled, rosterNearMissEnabled } from "@/lib/config/chat-quality-flags";
+import { formNameFromRosterEnabled, metricGuardEnabled, rosterNearMissEnabled, storeWordNotAMissingPersonEnabled } from "@/lib/config/chat-quality-flags";
 import { isGlossaryTerm } from "@/lib/ai/chat-glossary";
 import type { AskResponse } from "@/lib/ai/types";
 
@@ -7,6 +7,7 @@ import { HAS_EMPLOYEE_AND_PLACE, SAYS_READY } from "@/lib/ai/ca-what-happened";
 import { matchEmployeeName, normalizeTypedName, type RosterEmployee } from "./employee-match";
 import { personRosterNames } from "./person-guard";
 import { metricMessage, namesAMetric, requestMessage } from "./request-slot";
+import { namesOnlyASalon } from "./salon-mention";
 import { namesAForm } from "./template-intent";
 
 /**
@@ -296,6 +297,8 @@ export function withoutUnseatedName(
  * else. A metric or a form's name is never the request's name (`slotName`).
  */
 function withNotFoundNote(content: string, typed: string | null, names: readonly string[]): string {
+  // STORE_WORD_NOT_A_MISSING_PERSON_ENABLED: a salon ("Kearney") is never said back as a person not found.
+  if (typed && storeWordNotAMissingPersonEnabled() && namesOnlyASalon(typed)) return content;
   if (!typed || /I couldn['’]t find \*\*/.test(content) || oneCloseRosterPerson(typed, names)) return content;
   return `I couldn't find **${typed}** in the Woven roster, so that name is not on the form.\n\n${content.trim()}`;
 }

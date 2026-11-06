@@ -320,3 +320,14 @@ export function isMultiWordSalonName(candidate: string): boolean {
 export function rosterSalonName(id: string): string | null {
   return PRODUCTION_SALONS.find((salon: ProductionSalon) => salon.id === id)?.name ?? null;
 }
+
+/**
+ * STORE_WORD_NOT_A_MISSING_PERSON_ENABLED (port of the sibling app's flip-3 gate, QA, 6 Nov 2026): the words are
+ * only a salon's name — the roster name, or a name this module reads as that salon ("Kearney", "grand island").
+ * Pure.
+ */
+export function namesOnlyASalon(name: string): boolean {
+  const typed = key(name).trim();
+  if (!typed) return false;
+  return ALIASES.some((alias) => alias.phrase === typed && alias.salonIds.length > 0);
+}
