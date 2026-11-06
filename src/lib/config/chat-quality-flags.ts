@@ -2641,3 +2641,27 @@ export function bareNotDenialEnabled(): boolean {
 export function titleEndsAtLineEnabled(): boolean {
   return envFlag("TITLE_ENDS_AT_LINE_ENABLED");
 }
+
+/**
+ * ROSTER_COMPOUND_SURNAME_ENABLED (the re-flip's rollback, 5 Nov 2026; default
+ * off). The flip's live testers (R3/R5/R7): a real employee's surname is two
+ * words, and the manager typed one with a transposed or swapped letter. The
+ * matcher compared only the typed last word with the whole two-word surname,
+ * so it was never close: with FORM_NAME + ROSTER_NEAR_MISS the card emptied and
+ * asked who. On: a compound surname is compared word by word
+ * (`forms/employee-match.ts` compoundSurnameScore). Off, as before.
+ */
+export function rosterCompoundSurnameEnabled(): boolean {
+  return envFlag("ROSTER_COMPOUND_SURNAME_ENABLED");
+}
+
+/**
+ * ROSTER_NOT_FOUND_ANY_PHRASING_ENABLED (QA-A/QA-B, the re-flip's live testers, 5 Nov 2026; default off). With
+ * FORM_NAME + ROSTER_NEAR_MISS on, an off-roster full name got no "I couldn't find **<name>** in the Woven roster"
+ * note when the request did not put it straight after "for" with a comma or period ("i have an employee, <name>
+ * that needs …", or "… for <name>" at the end). On: the note also reads "employee, <Name>" and "for <Name>" at the
+ * end of the message, Title Case names only (`forms/roster-only-names.ts` notFoundName). Off, as before.
+ */
+export function rosterNotFoundAnyPhrasingEnabled(): boolean {
+  return envFlag("ROSTER_NOT_FOUND_ANY_PHRASING_ENABLED");
+}
