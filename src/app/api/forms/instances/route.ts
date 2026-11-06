@@ -15,7 +15,9 @@ import {
   draftDedupeEnabled,
   payrollAmountFieldEnabled,
   typoReadingRoutesEnabled,
+  switchNotForAnotherPersonEnabled,
 } from "@/lib/config/chat-quality-flags";
+import { loadScopedRoster } from "@/lib/forms/employee-roster";
 import { parseHistory } from "@/lib/api/validation";
 import { authorizeForms } from "@/lib/forms/access";
 import {
@@ -225,7 +227,11 @@ export async function POST(request: Request) {
       const alsoCalled = await preferredNamesOf(actor.scope, body.employeeName);
       const currency = checkProposalIsCurrent({
         // FORM_TYPE_SWITCH_ENABLED: "change to coaching" is read as the chat read it, so the switched card is current.
-        conversation: switchReadConversation(parseHistory(body.conversation)),
+        // SWITCH_NOT_FOR_ANOTHER_PERSON_ENABLED: "also make a coaching form for <B>" is read as typed, as the chat read it. Off: no roster read.
+        conversation: switchReadConversation(
+          parseHistory(body.conversation),
+          switchNotForAnotherPersonEnabled() ? await loadScopedRoster(actor.scope).catch(() => []) : [],
+        ),
         templateKey: body.templateKey,
         employeeName: body.employeeName,
         alsoCalled,

@@ -150,6 +150,8 @@ export const NOV5_CODING3_SAME_FORM_OTHER_EMPLOYEE_CASES: readonly ReplayCase[] 
     report: `${REPORT_C}; the card not created yet`,
     // Was "fixed" on 5 Nov 2026 with the old flag file; FORM_TYPE_SWITCH_ENABLED is on in production since #555's reading (as in the sibling app), so it is OPEN here too.
     status: { open: "the Coaching card is Mireya Vantrell's: the form-type switch reads the turn as \"change this to coaching\" and drops Caspian Drummet" },
+    // SWITCH_NOT_FOR_ANOTHER_PERSON_ENABLED: a turn naming a roster person other than the card's employee is never a switch.
+    fixFlags: ["SWITCH_NOT_FOR_ANOTHER_PERSON_ENABLED"],
     async run(t) {
       const thread = start(t);
       await thread.say(MIREYA_CA);
@@ -169,6 +171,8 @@ export const NOV5_CODING3_SAME_FORM_OTHER_EMPLOYEE_CASES: readonly ReplayCase[] 
     report: `${REPORT_C}; after Create`,
     // Was "fixed" on 5 Nov 2026 with the old flag file; FORM_TYPE_SWITCH_AFTER_CREATE_NOTE_ENABLED is on in production since #555's reading (as in the sibling app), so it is OPEN here too.
     status: { open: "the Coaching card is Mireya Vantrell's: the switch-after-create note swaps in her opening request and drops Caspian Drummet" },
+    // SWITCH_NOT_FOR_ANOTHER_PERSON_ENABLED: a turn naming a roster person other than the card's employee is never a switch.
+    fixFlags: ["SWITCH_NOT_FOR_ANOTHER_PERSON_ENABLED"],
     async run(t) {
       const thread = start(t);
       await thread.say(MIREYA_CA);

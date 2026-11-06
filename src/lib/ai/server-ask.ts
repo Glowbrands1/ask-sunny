@@ -38,6 +38,7 @@ import {
   googleReviewsInChatEnabled,
   typoReadingCopyEnabled,
   caSalesPolicyEnabled,
+  switchNotForAnotherPersonEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
 import { approvedManualConfirmed, manualDisplayTitle } from "@/lib/forms/official-policy-manual";
@@ -343,7 +344,9 @@ async function answerQuestionChecked(
     const names = typoReadingCopyEnabled() ? await protectedNameWords() : new Set<string>();
     // FORM_TYPE_SWITCH_ENABLED: "change to coaching" with the card open switches it to the other form.
     // FIRST_NAME_SUGGEST_ENABLED: "yes" to "Is this for **Quinn Marlowe**?" is read as that name.
-    const response = await answerQuestionUntraced(withFormTypeSwitch(withTerseSlots(withNameBeforeTitle(withTypoReadingCopy(await withFirstNameAnswerFor(request, actor), names)))), actor, memory);
+    // SWITCH_NOT_FOR_ANOTHER_PERSON_ENABLED: "also make a coaching form for <B>" on <A>'s card is B's request, never a switch. Off: no roster read.
+    const switchPeople = switchNotForAnotherPersonEnabled() ? await switchRoster(actor) : [];
+    const response = await answerQuestionUntraced(withFormTypeSwitch(withTerseSlots(withNameBeforeTitle(withTypoReadingCopy(await withFirstNameAnswerFor(request, actor), names))), switchPeople), actor, memory);
     noteTraceOutcome(response);
     // Last on every path, after the reply check too: the Action Plan is the manager's or none.
     // CA_ASKS_WHAT_HAPPENED_ENABLED: a Corrective Action card with no account asks what happened.
@@ -373,7 +376,7 @@ async function answerQuestionChecked(
           request,
         ),
         request,
-      ), request, actor), request, actor), request, "Form Monitoring"), request),
+      ), request, actor), request, actor), request, "Form Monitoring"), request, switchPeople),
       request,
       actor,
     ), request), request);
@@ -2076,4 +2079,13 @@ function noteCrossChatRemoval(check: CrossChatCheck): void {
   );
   const tag = neutral ? "cross_chat_neutral" : "cross_chat_removed";
   updateChatTrace({ intent: [chatTraceDraft()?.intent, tag].filter(Boolean).join("|") });
+}
+
+/** SWITCH_NOT_FOR_ANOTHER_PERSON_ENABLED: the manager's roster, or none when it cannot be read. */
+async function switchRoster(actor: ChatActor): Promise<Awaited<ReturnType<typeof loadScopedRoster>>> {
+  try {
+    return await loadScopedRoster(actor.scope);
+  } catch {
+    return [];
+  }
 }

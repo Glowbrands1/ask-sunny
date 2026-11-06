@@ -1,4 +1,11 @@
-import { formTypeSwitchAfterCreateNoteEnabled, formTypeSwitchEnabled, switchKeepsNamedFormEnabled } from "@/lib/config/chat-quality-flags";
+import {
+  formTypeSwitchAfterCreateNoteEnabled,
+  formTypeSwitchEnabled,
+  switchKeepsNamedFormEnabled,
+  switchNotForAnotherPersonEnabled,
+} from "@/lib/config/chat-quality-flags";
+import { matchEmployeeName, type RosterEmployee } from "@/lib/forms/employee-match";
+import { extractEmployeeNames, samePerson } from "@/lib/forms/proposal";
 import { detectTemplateIntent } from "@/lib/forms/template-intent";
 
 import type { AskRequest, AskResponse } from "./types";
@@ -80,15 +87,19 @@ function readAs(turn: string, current: Family): string | null {
   return wanted && wanted !== current ? READ_AS[wanted] : null;
 }
 
-export function withFormTypeSwitch(request: AskRequest): AskRequest {
+export function withFormTypeSwitch(request: AskRequest, people: readonly RosterEmployee[] = []): AskRequest {
   if (!formTypeSwitchEnabled() || request.activeFormInstanceId) return request;
   const current = familyOf(request.continueProposalTemplateKey);
   if (!current) return request;
+  // SWITCH_NOT_FOR_ANOTHER_PERSON_ENABLED: "also make a coaching form for <B>" on <A>'s card asks for B's form, never a switch.
+  const forOther = (content: string, index: number) => forAnotherPerson(content, cardEmployeeBefore(request.history, index, people), people);
   // SWITCH_KEEPS_NAMED_FORM_ENABLED: "make it a follow up coaching" is read as typed here too, so the card and Create agree.
-  const question = namesAnotherForm(request.question) ? null : readAs(request.question, current);
+  const question = namesAnotherForm(request.question) || forOther(request.question, request.history.length) ? null : readAs(request.question, current);
   // The newest switch decides the form; the turns before it are read as asking for that form.
   const users = request.history.map((turn, index) => ({ turn, index })).filter(({ turn }) => turn.role === "user" && typeof turn.content === "string");
-  const switches = users.slice(1).filter(({ turn }) => requestedForm(turn.content as string) !== null && !namesAnotherForm(turn.content as string));
+  const switches = users
+    .slice(1)
+    .filter(({ turn, index }) => requestedForm(turn.content as string) !== null && !namesAnotherForm(turn.content as string) && !forOther(turn.content as string, index));
   const last = question ? null : switches.at(-1);
   const target = question ? requestedForm(request.question)! : last ? requestedForm(last.turn.content as string)! : null;
   if (!target) return request;
@@ -114,11 +125,20 @@ export function withFormTypeSwitch(request: AskRequest): AskRequest {
  * newest switch request as the request the chat switched on, and the turns
  * before it as asking for that form. Nothing stored is changed.
  */
-export function switchReadConversation<T extends { readonly role: string; readonly content: string }>(turns: T[]): T[] {
+export function switchReadConversation<T extends { readonly role: string; readonly content: string }>(
+  turns: T[],
+  people: readonly RosterEmployee[] = [],
+): T[] {
   // Either flag: the after-Create switch's new card is checked against the same conversation.
   if (!formTypeSwitchEnabled() && !formTypeSwitchAfterCreateNoteEnabled()) return turns;
   const users = turns.map((turn, index) => ({ turn, index })).filter(({ turn }) => turn.role === "user" && typeof turn.content === "string");
-  const switches = users.slice(1).filter(({ turn }) => requestedForm(turn.content) !== null && !namesAnotherForm(turn.content));
+  // SWITCH_NOT_FOR_ANOTHER_PERSON_ENABLED: a request for somebody else's form is read as typed, as the chat read it.
+  const switches = users
+    .slice(1)
+    .filter(
+      ({ turn, index }) =>
+        requestedForm(turn.content) !== null && !namesAnotherForm(turn.content) && !forAnotherPerson(turn.content, cardEmployeeBefore(turns, index, people), people),
+    );
   const last = switches.at(-1);
   if (!last) return turns;
   const target = requestedForm(last.turn.content)!;
@@ -162,10 +182,16 @@ function namesAnotherForm(turn: string): boolean {
  * (`withSwitchNote`). The existing form is never changed, archived or deleted:
  * the turn is no longer about it, so none of the open-form paths run.
  */
-export function withSwitchAfterCreate<T extends AskRequest>(request: T): T {
+export function withSwitchAfterCreate<T extends AskRequest>(
+  request: T,
+  openEmployee?: string | null,
+  people: readonly RosterEmployee[] = [],
+): T {
   if (!formTypeSwitchAfterCreateNoteEnabled() || !request.activeFormInstanceId) return request;
   const wanted = requestedForm(request.question);
   if (!wanted) return request;
+  // SWITCH_NOT_FOR_ANOTHER_PERSON_ENABLED: "also make a coaching form for <B>" with A's form open is B's request, read as typed.
+  if (forAnotherPerson(request.question, openEmployee, people)) return request;
   const opening = request.history
     .filter((turn) => turn.role === "user" && typeof turn.content === "string")
     .map((turn) => turn.content)
@@ -210,17 +236,20 @@ export function withSwitchNote(response: AskResponse, request: AskRequest, regis
  * a switch turn is never a draft source, and after Create the turns from the
  * one that asked for the first form are (the account it was drafted from).
  */
-export function withSwitchSources(response: AskResponse, request: AskRequest): AskResponse {
+export function withSwitchSources(response: AskResponse, request: AskRequest, people: readonly RosterEmployee[] = []): AskResponse {
   const card = response.formProposal;
   if (!card || (!formTypeSwitchEnabled() && !formTypeSwitchAfterCreateNoteEnabled())) return response;
   const users = request.history.filter(
     (turn): turn is typeof turn & { id: string } => turn.role === "user" && typeof turn.content === "string" && typeof turn.id === "string",
   );
   // A switch turn asks for the OTHER form than the one asked for before it; "make it a written ca" on a CA is not one.
+  // SWITCH_NOT_FOR_ANOTHER_PERSON_ENABLED: nor is a request for somebody else's form, so it stays the new card's source.
+  const at = new Map(request.history.map((turn, index) => [turn as unknown, index]));
   const dropped = new Set<string>();
   let current: Family | null = null;
-  const read = (content: string, id: string | undefined, first: boolean) => {
-    const wanted = first || namesAnotherForm(content) ? null : requestedForm(content);
+  const read = (content: string, id: string | undefined, first: boolean, index: number) => {
+    const other = forAnotherPerson(content, cardEmployeeBefore(request.history, index, people), people);
+    const wanted = first || namesAnotherForm(content) || other ? null : requestedForm(content);
     if (wanted && current && wanted !== current) {
       if (id) dropped.add(id);
       current = wanted;
@@ -228,11 +257,11 @@ export function withSwitchSources(response: AskResponse, request: AskRequest): A
     }
     current = askedForm(content) ?? current;
   };
-  users.forEach((turn, index) => read(turn.content, turn.id, index === 0));
+  users.forEach((turn, index) => read(turn.content, turn.id, index === 0, at.get(turn) ?? 0));
   if (request.switchedFromForm) {
     if (request.questionMessageId) dropped.add(request.questionMessageId);
   } else {
-    read(request.question, request.questionMessageId, users.length === 0);
+    read(request.question, request.questionMessageId, users.length === 0, request.history.length);
   }
   let sources = card.sourceMessageIds.filter((id) => !dropped.has(id));
   if (request.switchedFromForm) {
@@ -241,4 +270,70 @@ export function withSwitchSources(response: AskResponse, request: AskRequest): A
   }
   if (sources.length === 0 || sources.join() === card.sourceMessageIds.join()) return response;
   return { ...response, formProposal: { ...card, sourceMessageIds: sources } };
+}
+
+/**
+ * ============================================================================
+ * A REQUEST FOR SOMEBODY ELSE'S FORM IS NEVER A SWITCH
+ * ============================================================================
+ *
+ * SWITCH_NOT_FOR_ANOTHER_PERSON_ENABLED (QA, 5 Nov 2026; same flag in both
+ * apps). With <A>'s Corrective Action card open — or created and open — "also
+ * make a coaching form for <B>" is short and says "make … coaching", so it was
+ * read as "change this to a coaching form": the Coaching card was A's and B
+ * was dropped. With the flag on, a turn that names somebody on the manager's
+ * roster other than the card's (or the open form's) employee is read as typed,
+ * a request of its own. Names are read as every name check reads them
+ * (`extractEmployeeNames`) and kept only when the roster has them
+ * (`matchEmployeeName`); A's first name, preferred name or full name is A
+ * (`samePerson`, or the same roster person). With no roster to read, every
+ * name read counts, as the roster gate keeps them (`keepRosterNames`).
+ * Off: false, as before.
+ */
+export function forAnotherPerson(turn: string, employee: string | null | undefined, people: readonly RosterEmployee[]): boolean {
+  const own = employee?.trim();
+  if (!switchNotForAnotherPersonEnabled() || !own) return false;
+  const ownIds = new Set(rosterIdsOf(own, people));
+  return rosterPeopleIn(turn, people).some((name) => !samePerson(name, own) && !rosterIdsOf(name, people).some((id) => ownIds.has(id)));
+}
+
+/** The roster people a typed name can be: the exact one, or those the name check would ask about. */
+function rosterIdsOf(name: string, people: readonly RosterEmployee[]): string[] {
+  const match = matchEmployeeName(name, people);
+  if (match.kind === "exact") return [match.employee.id];
+  if (match.kind === "confirm") return match.candidates.map((candidate) => candidate.employee.id);
+  return [];
+}
+
+/** The names a turn says that are somebody on the roster; every name read when there is no roster. */
+function rosterPeopleIn(turn: string, people: readonly RosterEmployee[]): string[] {
+  const names = extractEmployeeNames(turn);
+  if (people.length === 0) return names;
+  return names.filter((name) => rosterIdsOf(name, people).length > 0);
+}
+
+interface CardTurn {
+  readonly role: string;
+  readonly content: unknown;
+  readonly formProposal?: { readonly employeeName?: string | null } | null;
+}
+
+/**
+ * Whose card was on screen before turn `index`: the newest card's employee in
+ * the history; where the turns carry no card (the conversation Create
+ * checks), the person the newest earlier manager turn names.
+ */
+function cardEmployeeBefore(turns: readonly unknown[], index: number, people: readonly RosterEmployee[]): string | null {
+  if (!switchNotForAnotherPersonEnabled()) return null;
+  const before = (turns as readonly CardTurn[]).slice(0, index);
+  for (const turn of [...before].reverse()) {
+    const card = turn.formProposal?.employeeName?.trim();
+    if (card) return card;
+  }
+  for (const turn of [...before].reverse()) {
+    if (turn.role !== "user" || typeof turn.content !== "string") continue;
+    const named = rosterPeopleIn(turn.content, people)[0];
+    if (named) return named;
+  }
+  return null;
 }
