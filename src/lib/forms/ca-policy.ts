@@ -3,6 +3,7 @@ import { foldsToGlossaryTerm } from "@/lib/ai/chat-glossary";
 import {
   asYouSaidManagerWordsEnabled,
   caSalesPolicyEnabled,
+  cleaningOtherEveryWordingEnabled,
   formEditDateRulesEnabled,
   policyCleaningIncidentEnabled,
 } from "@/lib/config/chat-quality-flags";
@@ -201,6 +202,15 @@ const CLEANING_UNDONE = [
   ),
 ];
 
+/*
+ * CLEANING_OTHER_EVERY_WORDING_ENABLED (6 Nov 2026): "for not completing his daily cleaning duties" — the
+ * same reading as `CLEANING_UNDONE`'s "not complete … cleaning", in the -ing form. Read with that pattern's
+ * denial guards (index 1). Off, never read.
+ */
+const CLEANING_UNDONE_GERUND = new RegExp(
+  String.raw`\b(?:${FAILED}|not)\s+(?:\S+\s+){0,3}?(?:completing|finishing|doing)\b[^.;!?\n]{0,30}?\b${CLEANING_WORD}\b`,
+);
+
 /**
  * Whether the account says cleaning was left undone: "the cleaning didn't get
  * done", "left the beds dirty". Questions are not accounts. Off, never.
@@ -263,6 +273,10 @@ export function cleaningUndonePhrase(rawText: string): string | null {
     for (const [index, pattern] of CLEANING_UNDONE.entries()) {
       const match = pattern.exec(sentence);
       if (match && readsAsIncident(sentence, match, index)) return match[0].trim();
+    }
+    if (cleaningOtherEveryWordingEnabled()) {
+      const match = CLEANING_UNDONE_GERUND.exec(sentence);
+      if (match && readsAsIncident(sentence, match, 1)) return match[0].trim();
     }
   }
   return null;
@@ -443,8 +457,14 @@ export function managerWords(rawText: string): string {
  */
 function withCleaningOther(reading: CaPolicyReading, rawText: string): CaPolicyReading {
   if (!caSalesPolicyEnabled()) return reading;
-  if (reading.stated !== null || reading.source !== "incident" || reading.ambiguous) return reading;
-  if (reading.topics.length === 0 || reading.topics.some((topic) => topic !== "task")) return reading;
+  if (reading.stated !== null || reading.ambiguous) return reading;
+  /*
+   * CLEANING_OTHER_EVERY_WORDING_ENABLED: an account read as nothing else ("for not completing his daily cleaning
+   * duties" has no task topic) is Other too, where the cleaning reader reads it. Off, only the task incident.
+   */
+  const onlyCleaning = cleaningOtherEveryWordingEnabled() && reading.source === null && reading.topics.length === 0 && reading.missedEvent === null;
+  if (reading.source !== "incident" && !onlyCleaning) return reading;
+  if ((reading.topics.length === 0 && !onlyCleaning) || reading.topics.some((topic) => topic !== "task")) return reading;
   if (cleaningUndonePhrase(rawText) === null) return reading;
   return { ...reading, suggestion: null, source: null, other: "cleaning" };
 }
