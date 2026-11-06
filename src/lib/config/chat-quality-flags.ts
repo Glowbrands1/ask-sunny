@@ -2600,6 +2600,20 @@ export function metricGuardEnabled(): boolean {
 }
 
 /**
+ * SALES_SHORTFALL_OBJECT_ENABLED (QA, 6 Nov 2026, tester batch 1 after the
+ * Sunny flip; default off). "Not meeting sales requirements for the month of
+ * October" got a Corrective Action with no policy: the stated-shortfall reader
+ * (`forms/metric-shortfall.ts`) named "sales" only as "sales are / is", so the
+ * CA_SALES_POLICY_ENABLED reading never fired. With this flag on, "sales" is a
+ * named metric where a shortfall verb of the reader's own judged list governs
+ * it, with only determiners or possessives between ("not meeting her sales
+ * goals"); "missing from the sales floor" is not. Off, as before.
+ */
+export function salesShortfallObjectEnabled(): boolean {
+  return envFlag("SALES_SHORTFALL_OBJECT_ENABLED");
+}
+
+/**
  * PLACE_FROM_CUE_ENABLED (QA's Sunny gate, 6 Nov 2026, sf-s28; default off).
  * "can you write me a ca for <name> from o street", from a manager not
  * assigned to O Street: "from" was no place cue, so the salon was not read and
