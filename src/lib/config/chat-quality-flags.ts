@@ -2600,6 +2600,19 @@ export function metricGuardEnabled(): boolean {
 }
 
 /**
+ * AS_YOU_SAID_MANAGER_WORDS_ENABLED (live chats, 4 Nov 2026; default off). "**Policy:** Late Opening, as you said"
+ * for leaving early and taking the spray booths down early, and "Standards of Conduct, as you said" for "it should be
+ * must see behaviors": the manager never named either. The intent reader's heading is written back onto the turn as
+ * the app's own line ("Policy reference: <heading>, JBA Policy Manual p.N.", `ai/form-state.ts`), and the policy
+ * reader took it as the manager naming that policy. On: the reader that decides "as you said"
+ * (`forms/ca-policy.ts` readCaPolicy) reads without the app's lines (`ai/app-sentences.ts` withoutAppLines).
+ * Off, as before.
+ */
+export function asYouSaidManagerWordsEnabled(): boolean {
+  return envFlag("AS_YOU_SAID_MANAGER_WORDS_ENABLED");
+}
+
+/**
  * PLACE_FROM_CUE_ENABLED (QA's Sunny gate, 6 Nov 2026, sf-s28; default off).
  * "can you write me a ca for <name> from o street", from a manager not
  * assigned to O Street: "from" was no place cue, so the salon was not read and
