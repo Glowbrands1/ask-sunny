@@ -12,7 +12,7 @@ import { KEARNEY, STAFF, type ReplayCase, type ReplayContext } from "./cases";
  *
  * The "as you said" line is the model's policy heading written back onto the turn as the app's own
  * "Policy reference: …" line, which the policy reader took as the manager's words; ask-sunny #588
- * (AS_YOU_SAID_MANAGER_WORDS_ENABLED, open) fixes it. Those cases are OPEN until it merges (fixStatus).
+ * (AS_YOU_SAID_MANAGER_WORDS_ENABLED, merged 6 Nov 2026) fixes it; those cases hold with its flag.
  * (b)'s missing ask is BARE_NOT_AFTER_REQUEST_ENABLED's: "not late" after "ca for <A>" in the same clause.
  */
 const ASKS = /haven'?t told me what happened/i;
@@ -84,7 +84,7 @@ export const NOV6_BARE_NOT_AFTER_REQUEST_CASES: ReplayCase[] = [
       report: "QA's live Sunny re-check, 6 Nov 2026: \"Policy: Attendance, as you said.\" though the manager never named Attendance",
       status: { open: "the reader's heading is written back as the app's own \"Policy reference\" line and read as the manager naming Attendance" },
       fixFlags: ["AS_YOU_SAID_MANAGER_WORDS_ENABLED"],
-      fixStatus: { open: "fixed by ask-sunny #588 (AS_YOU_SAID_MANAGER_WORDS_ENABLED), not merged yet: drop this fixStatus when it merges" },
+      // Holds with the fix flag since ask-sunny #588 (AS_YOU_SAID_MANAGER_WORDS_ENABLED) merged; open with production's flags.
       async run(t) {
         const thread = await start(t);
         t.slotsRead({ policyHeading: "Attendance" });
