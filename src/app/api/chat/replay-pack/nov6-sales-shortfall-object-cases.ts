@@ -79,10 +79,9 @@ export const NOV6_SALES_SHORTFALL_OBJECT_CASES: ReplayCase[] = [
     id: "nov6-sales-shortfall-object-count-h18",
     title: "H18 (turn 2): \"<name> 131 tans verbal\": the card cites the Standards of Conduct and does not ask what happened",
     report: "QA, 6 Nov 2026 (tester batch 2 after the Sunny flip, H18, paraphrased): a metric count as the reason got \"You haven't told me what happened yet\"",
-    status: { open: "no reader knows \"tans\" as a metric: the card cites no policy and asks what happened" },
+    status: { open: "with production's flags (SALES_SHORTFALL_OBJECT_ENABLED off) no reader knows \"tans\" as a metric: the card cites no policy and asks what happened" },
+    // Fixed with the flag (Pau, 6 Nov 2026): the "Tans" glossary line, and a number with a glossary count term is the metric named and counted.
     fixFlags: ["CA_SALES_POLICY_ENABLED", "SALES_SHORTFALL_OBJECT_ENABLED"],
-    // Approved in principle (QA, 6 Nov 2026): a number and a glossary metric term is the metric named and counted. Open until Pau's glossary line.
-    fixStatus: { open: "the glossary has no \"Tans\" line yet (Pau's wording, pending)" },
     async run(t) {
       await performanceCase(t, ["create a corrective action", "Odalys Fenmarrow 131 tans verbal"]);
     },

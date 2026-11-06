@@ -1,4 +1,4 @@
-import { foldsToGlossaryTerm } from "@/lib/ai/chat-glossary";
+import { foldsToGlossaryTerm, isSalesCountTerm } from "@/lib/ai/chat-glossary";
 import { caSalesPolicyEnabled, formEditDateRulesEnabled, policyCleaningIncidentEnabled, salesShortfallObjectEnabled } from "@/lib/config/chat-quality-flags";
 
 import { JOIN } from "./bounded-context";
@@ -471,6 +471,15 @@ const PERFORMANCE_AS_REASON = new RegExp(
   String.raw`\b(?:for|on|about|regarding|due to)\s+(?:${REASON_DETERMINER}\s+){0,2}performance\b${PHRASE_ENDS}`,
 );
 
+/**
+ * SALES_SHORTFALL_OBJECT_ENABLED (Pau, 6 Nov 2026; H18, "<name> 131 tans
+ * verbal"): a number directly before a sales count term of the glossary
+ * (`isSalesCountTerm`, read from Pau's line) is the metric named and counted.
+ */
+function countsASalesTerm(rawText: string): boolean {
+  return [...normalize(rawText).matchAll(/\b\d[\d,]*\s+([a-z]+)\b/g)].some((match) => isSalesCountTerm(match[1]));
+}
+
 function performanceIsTheReason(rawText: string): boolean {
   return statements(normalize(rawText)).some((sentence) => PERFORMANCE_AS_REASON.test(sentence));
 }
@@ -484,7 +493,7 @@ function withSalesPolicy(reading: CaPolicyReading, rawText: string): CaPolicyRea
     sentence.split(/[^a-z0-9.]+/).some((word) => foldsToGlossaryTerm(word.replace(/^\.+|\.+$/g, ""))),
   );
   // The stated shortfall reader the progression already uses (`corrective-action-intake.ts`): a metric named and judged.
-  const target = reading.stated === "under_performance" || statesMetricShortfall(rawText) || (salesShortfallObjectEnabled() && performanceIsTheReason(rawText));
+  const target = reading.stated === "under_performance" || statesMetricShortfall(rawText) || (salesShortfallObjectEnabled() && (performanceIsTheReason(rawText) || countsASalesTerm(rawText)));
   if (!msb && !target) return reading;
   if (reading.stated === null && sentences.some((s) => ATTENDANCE.test(s))) return reading;
   return {

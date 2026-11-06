@@ -94,4 +94,29 @@ describe("SALES_SHORTFALL_OBJECT_ENABLED", () => {
       expect(readCaPolicy(text).source).not.toBe("sales_performance");
     },
   );
+
+  /*
+   * H18 (QA's tester batch 2, paraphrased): "<name> 131 tans verbal". Pau, 6 Nov 2026: "Tans" is a
+   * glossary term, and a tan count is a sales number, so a CA that names one is sales performance.
+   */
+  it("off (main): \"131 tans\" reads no policy (the bug)", () => {
+    vi.stubEnv("CA_SALES_POLICY_ENABLED", "true");
+    expect(readCaPolicy("Odalys Fenmarrow 131 tans verbal").suggestion).toBeNull();
+  });
+
+  it.each(["Odalys Fenmarrow 131 tans verbal", "verbal CA for Odalys Fenmarrow, only 1,204 tans in October"])(
+    "on: %s is a counted sales metric, read as the Standards of Conduct",
+    (text) => {
+      on();
+      expect(readCaPolicy(text)).toMatchObject({ suggestion: "standards_of_conduct", source: "sales_performance" });
+    },
+  );
+
+  it.each(["she left the tans log on the counter", "Odalys Fenmarrow has 2 days of tans training left"])(
+    "on, negative: %s counts no tans",
+    (text) => {
+      on();
+      expect(readCaPolicy(text).source).not.toBe("sales_performance");
+    },
+  );
 });
