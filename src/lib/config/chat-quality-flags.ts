@@ -2598,3 +2598,18 @@ export function citationLineKeptOnRevisionEnabled(): boolean {
 export function metricGuardEnabled(): boolean {
   return envFlag("METRIC_GUARD_ENABLED");
 }
+
+/**
+ * SAME_FORM_OTHER_PERSON_ENABLED (QA's overnight scan sf-s11, 4 Nov 2026, and
+ * coding3 (a), 5 Nov 2026; same flag in both apps; default off). With <A>'s
+ * card on screen or <A>'s form created and open, "Can you do the same thing
+ * for <B> but switch it to a written" kept <A>'s card and wrote the request
+ * into its Observation of Offense. With the flag on, a turn naming exactly one
+ * other roster person, with no account and no form of its own, starts <B>'s
+ * card from <A>'s request turns with the names swapped and this turn's level
+ * (`forms/same-form-other-person.ts`); Create drafts it the same way. Off, as
+ * before.
+ */
+export function sameFormOtherPersonEnabled(): boolean {
+  return envFlag("SAME_FORM_OTHER_PERSON_ENABLED");
+}

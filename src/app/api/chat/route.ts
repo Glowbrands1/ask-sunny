@@ -38,6 +38,7 @@ import {
   formReplyFromDiffEnabled,
   formEditToolInStreamEnabled,
   formEditNoopGuardEnabled,
+  sameFormOtherPersonEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { streamWhenSlow } from "@/lib/api/streamed-response";
 import {
@@ -351,8 +352,25 @@ async function postChat(request: Request) {
                 ?.employeeName,
             })
           : false;
+      /*
+       * SAME_FORM_OTHER_PERSON_ENABLED: with A's form open, "Can you do the same
+       * thing for <B> but switch it to a written" starts B's card from A's
+       * request turns; A's form is not touched. See `lib/forms/same-form-other-person.ts`.
+       */
+      const sameForm =
+        !draftAction && !staffPick && !team && !newRequestOpen && asked.activeFormInstanceId && sameFormOtherPersonEnabled()
+          ? await (async () => {
+              const { withSameFormOtherPerson } = await import("@/lib/forms/same-form-other-person");
+              const open = await (await import("@/lib/forms/open-form-summary")).describeOpenForm(request, asked.activeFormInstanceId!);
+              const people = await (await import("@/lib/forms/employee-roster")).loadScopedRoster(context.identity.scope).catch(() => []);
+              const read = withSameFormOtherPerson(asked, people, open?.employeeName ?? null);
+              return read === asked ? null : read;
+            })()
+          : null;
       const parsed = withSwitchAfterCreate(
-        draftAction || staffPick || newRequestOpen
+        sameForm
+          ? sameForm
+          : draftAction || staffPick || newRequestOpen
           ? {
               ...asked,
               ...(draftAction && "question" in draftAction ? { question: draftAction.question } : {}),

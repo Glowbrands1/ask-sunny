@@ -60,6 +60,14 @@ function start(t: T) {
   return t.thread();
 }
 
+/** What the drafting model was handed as the manager's account. */
+function described(t: T): string {
+  return t
+    .draftPrompts()
+    .map((prompt) => prompt.split("WHAT THE MANAGER DESCRIBED:")[1] ?? "")
+    .join("\n");
+}
+
 /** The warning level the card carries (the pack's answer type leaves it out). */
 function warningLevel(card: ReplayAnswer["formProposal"] | null | undefined): string | null {
   return (card as { warningLevel?: string | null } | null | undefined)?.warningLevel ?? null;
@@ -92,6 +100,8 @@ export const NOV5_CODING3_SAME_FORM_OTHER_EMPLOYEE_CASES: readonly ReplayCase[] 
     report: `${REPORT_A}; the same words before Create`,
     // Run 5 Nov 2026 (production flags): the card stays Mireya Vantrell, Verbal, and the request sentence is added to its Observation of Offense.
     status: { open: "the card stays Mireya Vantrell's Verbal CA and the request sentence is added to its Observation of Offense; no card for Caspian Drummet" },
+    // SAME_FORM_OTHER_PERSON_ENABLED: one other roster person, no account, no form named — B's card from A's request turns.
+    fixFlags: ["SAME_FORM_OTHER_PERSON_ENABLED"],
     async run(t) {
       const thread = start(t);
       await thread.say(MIREYA_VERBAL);
@@ -102,6 +112,28 @@ export const NOV5_CODING3_SAME_FORM_OTHER_EMPLOYEE_CASES: readonly ReplayCase[] 
       expect(reply.content, "Caspian's card lost the late opening").toMatch(/late opening/i);
       expect(reply.content, "Mireya is on Caspian's card").not.toMatch(/mireya|vantrell/i);
       expect(reply.content, "the request sentence is on the card").not.toMatch(/do the same thing|switch it to a written/i);
+      // QA, 6 Nov 2026: the level reaches the form as the card's field; the drafting notes hold only the manager's words.
+      const caspian = await thread.create();
+      expect(t.values(caspian).employee_name).toBe("Caspian Drummet");
+      expect(t.checked(caspian).warning_type, "Caspian's form is not a Written Warning").toEqual(["written"]);
+      // The app's own checkbox list names "Written Warning"; a level line of its own is a sentence nobody typed.
+      expect(described(t), "a level sentence the manager never wrote is in the drafting notes").not.toMatch(/(?:^|\n)\s*written warning\.?\s*(?:\n|$)/i);
+      expect(described(t), "the request sentence was handed to the drafting model").not.toMatch(/do the same thing|switch it to a written/i);
+    },
+  },
+  {
+    id: "nov5-coding3-sfo-a-coworker-in-account-stays-a",
+    title: "(a) guard: with Mireya's Verbal CA card on screen, \"she was rude to Caspian Drummet when he reminded her\" is more of Mireya's account — never a card for Caspian",
+    report: `${REPORT_A}; the risk QA named for the fix: an account that mentions a coworker`,
+    status: "fixed",
+    // SAME_FORM_OTHER_PERSON_ENABLED reads an account (the incident or account reader finds one) as no request for the coworker.
+    fixFlags: ["SAME_FORM_OTHER_PERSON_ENABLED"],
+    async run(t) {
+      const thread = start(t);
+      await thread.say(MIREYA_VERBAL);
+      expect(thread.proposal, "turn 1 made no CA card for Mireya Vantrell").toMatchObject({ templateKey: "dpoa", employeeName: "Mireya Vantrell" });
+      const reply = await thread.say("she was rude to Caspian Drummet when he reminded her");
+      expect(reply.formProposal?.employeeName ?? "Mireya Vantrell", `a card for Caspian Drummet:\n${reply.content}`).not.toBe("Caspian Drummet");
     },
   },
   {

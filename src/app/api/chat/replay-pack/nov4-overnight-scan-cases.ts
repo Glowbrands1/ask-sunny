@@ -100,6 +100,8 @@ export const NOV4_OVERNIGHT_SCAN_CASES: readonly ReplayCase[] = [
     report: `${REPORT}, sf-s11: "what information do you need for a corrective action for an employee" → "Odalys Frewen. Verbal Warning. Under Performance." → "Can you do the same thing for Perrin Haldane but switch it to a written"`,
     // Run 4 Nov 2026 (production flags): fails as below.
     status: { open: "turn 3 is read as an edit of Odalys Frewen's card: the card stays Odalys Frewen, Verbal, and its Observation of Offense becomes the request sentence \"Can you do the same thing for Perrin Haldane but switch it to a written\"; no card for Perrin Haldane" },
+    // SAME_FORM_OTHER_PERSON_ENABLED: one other roster person, no account, no form named — B's card from A's request turns.
+    fixFlags: ["SAME_FORM_OTHER_PERSON_ENABLED"],
     async run(t) {
       const thread = start(t);
       await thread.say("what information do you need for a corrective action for an employee");
@@ -120,6 +122,10 @@ export const NOV4_OVERNIGHT_SCAN_CASES: readonly ReplayCase[] = [
       expect(second, "Perrin's CA is the first form, not a new one").not.toBe(first);
       expect(t.values(second).employee_name).toBe("Perrin Haldane");
       expect(described(t), "the request sentence was handed to the drafting model as the account").not.toMatch(/do the same thing|switch it to a written/i);
+      // QA, 6 Nov 2026: the level reaches the form as the card's field, never as a sentence the manager did not write.
+      expect(t.checked(second).warning_type, "Perrin's form is not a Written Warning").toEqual(["written"]);
+      // The app's own checkbox list names "Written Warning"; a level line of its own is a sentence nobody typed.
+      expect(described(t), "a level sentence the manager never wrote is in the drafting notes").not.toMatch(/(?:^|\n)\s*written warning\.?\s*(?:\n|$)/i);
       expect(JSON.stringify(t.values(second)), "Odalys is on Perrin's form").not.toMatch(/odalys|frewen/i);
     },
   },

@@ -121,6 +121,13 @@ export interface AskRequest {
    */
   switchedFromForm?: "coaching" | "ca";
   /**
+   * SAME_FORM_OTHER_PERSON_ENABLED: set by the request reading when "do the
+   * same thing for <B>" started <B>'s card from <A>'s request turns — those
+   * turns' ids, the new card's draft sources with this turn's, and the level
+   * the turn stated. Never sent by the browser.
+   */
+  sameFormFor?: { readonly sourceMessageIds: readonly string[]; readonly level: "verbal" | "written" | null };
+  /**
    * What the form named by `activeFormInstanceId` says now, for an answer that
    * no correction or revision handled.
    *

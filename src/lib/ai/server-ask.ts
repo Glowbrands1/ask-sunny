@@ -38,7 +38,9 @@ import {
   googleReviewsInChatEnabled,
   typoReadingCopyEnabled,
   caSalesPolicyEnabled,
+  sameFormOtherPersonEnabled,
 } from "@/lib/config/chat-quality-flags";
+import { withSameFormOtherPerson, withSameFormSources } from "@/lib/forms/same-form-other-person";
 import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
 import { approvedManualConfirmed, manualDisplayTitle } from "@/lib/forms/official-policy-manual";
 import { MissingConfigurationError, liveReadiness } from "@/lib/config/server-env";
@@ -343,7 +345,10 @@ async function answerQuestionChecked(
     const names = typoReadingCopyEnabled() ? await protectedNameWords() : new Set<string>();
     // FORM_TYPE_SWITCH_ENABLED: "change to coaching" with the card open switches it to the other form.
     // FIRST_NAME_SUGGEST_ENABLED: "yes" to "Is this for **Quinn Marlowe**?" is read as that name.
-    const response = await answerQuestionUntraced(withFormTypeSwitch(withTerseSlots(withNameBeforeTitle(withTypoReadingCopy(await withFirstNameAnswerFor(request, actor), names)))), actor, memory);
+    // SAME_FORM_OTHER_PERSON_ENABLED: "Can you do the same thing for <B> but switch it to a written" on <A>'s card starts B's card. Off: no roster read.
+    const sameFormPeople = sameFormOtherPersonEnabled() ? await sameFormRoster(actor) : [];
+    const sameForm = withSameFormOtherPerson(withTerseSlots(withNameBeforeTitle(withTypoReadingCopy(await withFirstNameAnswerFor(request, actor), names))), sameFormPeople);
+    const response = await answerQuestionUntraced(withFormTypeSwitch(sameForm), actor, memory);
     noteTraceOutcome(response);
     // Last on every path, after the reply check too: the Action Plan is the manager's or none.
     // CA_ASKS_WHAT_HAPPENED_ENABLED: a Corrective Action card with no account asks what happened.
@@ -361,7 +366,7 @@ async function answerQuestionChecked(
     return withManagerNameGuard(keepManagerActionPlan(await withFirstNameSuggestFor(
       // OUT_OF_SCOPE_PLACE_KEEPS_OWN_ENABLED: the card goes back to the manager's own salon, or asks which.
       // FORM_TYPE_SWITCH: the switched card is drafted from the account, never from the switch turn.
-      withSwitchSources(withSwitchNote(withOutOfScopePlace(withOwnPlace(withAmountUnknownAck(
+      withSameFormSources(withSwitchSources(withSwitchNote(withOutOfScopePlace(withOwnPlace(withAmountUnknownAck(
         withUnreadDateAsk(
           withStatedAmount(
             withFirstNameAsk(
@@ -373,7 +378,7 @@ async function answerQuestionChecked(
           request,
         ),
         request,
-      ), request, actor), request, actor), request, "Form Monitoring"), request),
+      ), request, actor), request, actor), request, "Form Monitoring"), request), sameForm),
       request,
       actor,
     ), request), request);
@@ -2076,4 +2081,13 @@ function noteCrossChatRemoval(check: CrossChatCheck): void {
   );
   const tag = neutral ? "cross_chat_neutral" : "cross_chat_removed";
   updateChatTrace({ intent: [chatTraceDraft()?.intent, tag].filter(Boolean).join("|") });
+}
+
+/** SAME_FORM_OTHER_PERSON_ENABLED: the manager's roster, or none when it cannot be read. */
+async function sameFormRoster(actor: ChatActor): Promise<Awaited<ReturnType<typeof loadScopedRoster>>> {
+  try {
+    return await loadScopedRoster(actor.scope);
+  } catch {
+    return [];
+  }
 }
