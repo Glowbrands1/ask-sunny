@@ -2613,3 +2613,18 @@ export function metricGuardEnabled(): boolean {
 export function sameFormOtherPersonEnabled(): boolean {
   return envFlag("SAME_FORM_OTHER_PERSON_ENABLED");
 }
+
+/**
+ * DIFFERENT_EMPLOYEE_NEW_FORM_ENABLED (QA live B21-4, 25 Oct 2026, #224; the
+ * old-PR audit, 6 Nov 2026; same flag in both apps; default off). With <A>'s
+ * card on screen, "now one for <B> at <salon> for being late on 10-20-26"
+ * added <B>'s turn to <A>'s card; with <A>'s form created, it gave no card for
+ * <B>. With the flag on, a turn that asks for a form for one other roster
+ * person and gives that person's account starts <B>'s own card from that turn
+ * only (`forms/different-employee-new-form.ts`); <A>'s card and form are not
+ * touched. A turn naming <B> with no account stays SAME_FORM_OTHER_PERSON's.
+ * Off, as before.
+ */
+export function differentEmployeeNewFormEnabled(): boolean {
+  return envFlag("DIFFERENT_EMPLOYEE_NEW_FORM_ENABLED");
+}

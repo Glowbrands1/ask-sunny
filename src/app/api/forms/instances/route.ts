@@ -16,9 +16,11 @@ import {
   payrollAmountFieldEnabled,
   typoReadingRoutesEnabled,
   sameFormOtherPersonEnabled,
+  differentEmployeeNewFormEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { loadScopedRoster } from "@/lib/forms/employee-roster";
 import { sameFormReadConversation } from "@/lib/forms/same-form-other-person";
+import { differentEmployeeReadConversation } from "@/lib/forms/different-employee-new-form";
 import { parseHistory } from "@/lib/api/validation";
 import { authorizeForms } from "@/lib/forms/access";
 import {
@@ -229,10 +231,13 @@ export async function POST(request: Request) {
       const currency = checkProposalIsCurrent({
         // FORM_TYPE_SWITCH_ENABLED: "change to coaching" is read as the chat read it, so the switched card is current.
         // SAME_FORM_OTHER_PERSON_ENABLED: "do the same thing for <B> …" is read as the chat read it — A's turns with B's name. Off: no roster read.
+        // DIFFERENT_EMPLOYEE_NEW_FORM_ENABLED: "now one for <B> … <B>'s account" is read as the chat read it — <B>'s own request, from that turn on. Off: no roster read.
         conversation: switchReadConversation(
-          sameFormOtherPersonEnabled()
-            ? sameFormReadConversation(parseHistory(body.conversation), await sameFormRoster(actor.scope))
-            : parseHistory(body.conversation),
+          await (async () => {
+            const sent = parseHistory(body.conversation);
+            const sameRead = sameFormOtherPersonEnabled() ? sameFormReadConversation(sent, await sameFormRoster(actor.scope)) : sent;
+            return differentEmployeeNewFormEnabled() ? differentEmployeeReadConversation(sameRead, await sameFormRoster(actor.scope)) : sameRead;
+          })(),
         ),
         templateKey: body.templateKey,
         employeeName: body.employeeName,

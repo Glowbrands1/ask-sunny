@@ -39,6 +39,7 @@ import {
   formEditToolInStreamEnabled,
   formEditNoopGuardEnabled,
   sameFormOtherPersonEnabled,
+  differentEmployeeNewFormEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { streamWhenSlow } from "@/lib/api/streamed-response";
 import {
@@ -367,8 +368,27 @@ async function postChat(request: Request) {
               return read === asked ? null : read;
             })()
           : null;
+      /*
+       * DIFFERENT_EMPLOYEE_NEW_FORM_ENABLED (QA B21-4, #224): with A's form
+       * open, "now one for <B> at <salon> for being late on 10-20-26" is B's
+       * own request, read from this turn only; A's form is not touched. See
+       * `lib/forms/different-employee-new-form.ts`.
+       */
+      const otherEmployee =
+        !draftAction && !staffPick && !team && !newRequestOpen && !sameForm && asked.activeFormInstanceId && differentEmployeeNewFormEnabled()
+          ? await (async () => {
+              const { withDifferentEmployee } = await import("@/lib/forms/different-employee-new-form");
+              const open = await (await import("@/lib/forms/open-form-summary")).describeOpenForm(request, asked.activeFormInstanceId!);
+              if (!open) return null;
+              const people = await (await import("@/lib/forms/employee-roster")).loadScopedRoster(context.identity.scope).catch(() => []);
+              const read = withDifferentEmployee(asked, people, { employeeName: open.employeeName ?? null, templateName: open.templateName ?? null });
+              return read === asked ? null : read;
+            })()
+          : null;
       const parsed = withSwitchAfterCreate(
-        sameForm
+        otherEmployee
+          ? otherEmployee
+          : sameForm
           ? sameForm
           : draftAction || staffPick || newRequestOpen
           ? {
