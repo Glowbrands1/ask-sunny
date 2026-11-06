@@ -1,5 +1,5 @@
 import { shiftDays, weekdayOf } from "@/lib/business-date";
-import { exitFulfilledIsLastDayEnabled, exitIntakeFixEnabled, exitShortcutWordsEnabled } from "@/lib/config/chat-quality-flags";
+import { exitFulfilledIsLastDayEnabled, exitIntakeFixEnabled, exitShortcutWordsEnabled, noNoticeNoDateEnabled } from "@/lib/config/chat-quality-flags";
 
 import {
   EXIT_DATE_FIELDS,
@@ -629,7 +629,15 @@ export function readExitFacts(rawText: string, today: string): ExitFacts {
   };
 
   let lastDayWorked = settle("lastDayWorked");
-  const noticeGiven = settle("noticeGiven");
+  const noticeRead = settle("noticeGiven");
+  /*
+   * NO_NOTICE_NO_DATE_ENABLED (port of the sibling app's, QA, 6 Nov 2026: "resigned 11-3-26 with no notice"):
+   * "resigned" is a notice-given cue, so a resignation date was also printed as "Date that notice was given" when
+   * the manager said no notice was given. With the flag on, a stated "no notice" leaves that date empty; the date
+   * still stands as the resignation's.
+   */
+  const noticeDenied = noNoticeNoDateEnabled() && NO_NOTICE.test(text.toLowerCase());
+  const noticeGiven = noticeDenied ? null : noticeRead;
   let noticeFulfilled = settle("noticeFulfilled");
   const quitDate = settle("resigned");
   /*
@@ -637,7 +645,7 @@ export function readExitFacts(rawText: string, today: string): ExitFacts {
    * resignation date nobody stated separately. Two different ones — "gave
    * notice 9/1, then quit 9/10" — are the manager's to settle.
    */
-  let resignationDate = quitDate ?? noticeGiven;
+  let resignationDate = quitDate ?? noticeRead;
   if (quitDate && noticeGiven && quitDate !== noticeGiven) {
     ambiguities.push({ kind: "date_conflict", role: "resigned", dates: [noticeGiven, quitDate].sort() });
     resignationDate = null;
