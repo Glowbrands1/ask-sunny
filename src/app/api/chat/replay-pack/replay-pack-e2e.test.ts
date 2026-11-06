@@ -132,7 +132,7 @@ vi.mock("@/lib/auth/server", async () => {
       }
       return {
         identity: {
-          subject: "qa-manager",
+          subject: (state as { subject?: string }).subject ?? "qa-manager",
           email: "qa-manager@example.test",
           displayName: "QA Manager",
           role,
@@ -619,9 +619,13 @@ function setScope(scope: unknown) {
 function setRole(role: string | undefined) {
   (state as { role?: string }).role = role;
 }
+function setSubject(subject: string | undefined) {
+  (state as { subject?: string }).subject = subject;
+}
 afterEach(() => {
   setScope(undefined);
   setRole(undefined);
+  setSubject(undefined);
   said.answer = null;
   editTool.input = null;
   editTool.offered = 0;
@@ -634,9 +638,10 @@ afterEach(() => {
 function context(): ReplayContext {
   return {
     thread: () => new Thread(),
-    as: (role, scope) => {
+    as: (role, scope, subject) => {
       setRole(role);
       setScope(scope);
+      setSubject(subject);
     },
     directory: (rows) => {
       state.directory = rows as never;

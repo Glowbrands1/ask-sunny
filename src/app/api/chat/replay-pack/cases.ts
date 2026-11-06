@@ -36,7 +36,8 @@ export interface ReplayThread {
 
 export interface ReplayContext {
   thread(): ReplayThread;
-  as(role: string, scope: unknown): void;
+  /** `subject`: who is signed in (default "qa-manager"), for a case with two managers. */
+  as(role: string, scope: unknown, subject?: string): void;
   directory(rows: readonly DirectoryRow[]): void;
   /** What the drafting model writes at Create. */
   /** `extra`: other fields of the draft tool's input, e.g. `{ offense_basis: "sales" }` (CA_SALES_POLICY_ENABLED). */

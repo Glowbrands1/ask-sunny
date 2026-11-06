@@ -457,6 +457,22 @@ export function draftReuseSameChatOnlyEnabled(): boolean {
 }
 
 /**
+ * DRAFT_REUSE_OWN_ONLY_ENABLED (QA, 25 Oct 2026; rebuilt 6 Nov 2026; default
+ * off): a create from chat reopens an existing draft only when the manager
+ * creating made it (`created_by`). Every lookup that can hand the create
+ * route an existing draft reads only this manager's drafts, in the query
+ * itself, and a create with no acting user reuses nothing. Another manager's
+ * draft for the same employee, form and incident is never handed over: a new
+ * draft is filed. It holds whatever DRAFT_REUSE_SAME_CHAT_ONLY_ENABLED says
+ * and whatever chat key the browser sends. Opening or editing a named draft at
+ * the same salon, and DRAFT_MERGE, are not a reuse and are not changed. Off,
+ * every lookup is as it was.
+ */
+export function draftReuseOwnOnlyEnabled(): boolean {
+  return envFlag("DRAFT_REUSE_OWN_ONLY_ENABLED");
+}
+
+/**
  * Keep other conversations out of the reply text. The person-memory recall
  * quotes another chat only when the manager refers back to it ("again", "last
  * time", "like before", "same as …"); a name read from a turn that is only
