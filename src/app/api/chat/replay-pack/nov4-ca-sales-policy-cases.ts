@@ -77,7 +77,8 @@ export const NOV4_CA_SALES_POLICY_CASES: ReplayCase[] = [
     id: "nov4-ca-sales-msb",
     title: "a CA for MSB (Must See Behaviors) cites the Standards of Conduct, heading and page",
     report: `${REPORT}: (a) a CA for MSB`,
-    status: { open: "no policy is cited for an MSB corrective action" },
+    // Changed on purpose (7 Nov 2026): QA's flips of 5 and 6 Nov turned CA_SALES_POLICY, REPLY_MATCHES_CARD, TITLE_OF_THE_EMPLOYEE, METRIC_GUARD, TITLE_ENDS_AT_LINE, BARE_NOT_DENIAL and PLACE_FROM_CUE on in production (production-flags.json); this case now holds with production's flags.
+    status: "fixed",
     fixFlags: [FLAG],
     async run(t) {
       const thread = start(t);
@@ -104,7 +105,8 @@ export const NOV4_CA_SALES_POLICY_CASES: ReplayCase[] = [
      * stated sales shortfall goes to the form (`correctiveActionBasis`,
      * corrective-action-intake.ts).
      */
-    status: { open: "no card: a low-sales request is answered with the progression (metric only), so no policy is cited" },
+    // Changed on purpose (7 Nov 2026): QA's flips of 5 and 6 Nov turned CA_SALES_POLICY, REPLY_MATCHES_CARD, TITLE_OF_THE_EMPLOYEE, METRIC_GUARD, TITLE_ENDS_AT_LINE, BARE_NOT_DENIAL and PLACE_FROM_CUE on in production (production-flags.json); this case now holds with production's flags.
+    status: "fixed",
     fixFlags: [FLAG],
     async run(t) {
       const thread = start(t);

@@ -44,7 +44,8 @@ export const NOV6_FORM_NAME_SUNNY_GATE_CASES: ReplayCase[] = [
     id: "nov6-form-name-keeps-under-performance",
     title: "gate defect 3: \"I need a CA for Under Performance on PPTA, …\" with the name set on: the Observation keeps \"Under Performance on PPTA\"",
     report: "The Sunny flip-3 gate (6 Nov 2026): FORM_NAME_FROM_ROSTER dropped the manager's words from the Observation",
-    status: { open: "in production, as nov5-request-slot-ca-for-under-performance is: its fix flags (CA_SALES, the glossary) are not in the flags file yet" },
+    // Changed on purpose (7 Nov 2026): QA's flips of 5 and 6 Nov turned CA_SALES_POLICY, REPLY_MATCHES_CARD, TITLE_OF_THE_EMPLOYEE, METRIC_GUARD, TITLE_ENDS_AT_LINE, BARE_NOT_DENIAL and PLACE_FROM_CUE on in production (production-flags.json); this case now holds with production's flags.
+    status: "fixed",
     fixFlags: [...LIVE, ...NAME_SET],
     async run(t) {
       t.directory(STAFF);
