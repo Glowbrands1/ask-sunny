@@ -160,7 +160,7 @@ export function rosterOnlyNames(response: AskResponse, names: readonly string[],
       );
       if (!ask && !ASKS_WHO.test(content) && !ASKS_A_CHOICE.test(content) && !ASKS_FOR_THE_NAME.test(content)) ask = ASK_WHO;
       // OFF_ROSTER_CONFIRM_ENABLED: the cleared name, however it was typed (alone on its own line too), is said back and offered.
-      const offered = offRosterConfirmEnabled() && employee && !rosterSpelling(employee, names) && !oneCloseRosterPerson(employee, names) ? employee : null;
+      const offered = offRosterConfirmEnabled() && employee ? offRosterTyped(employee, message, names) : null;
       content = withNotFoundNote(content, slotName(message, names) ?? offered, names);
       if (offered) content = withOffRosterOffer(content, offered);
     }
@@ -296,6 +296,26 @@ export function withoutUnseatedName(
     })
     .join("\n");
 }
+
+/**
+ * OFF_ROSTER_CONFIRM_ENABLED (the sibling app's gate rerun 2, 6 Nov 2026): the cleared name is offered only where the
+ * manager typed it as a person — the not-found note's own place ("for <Name>,"), or a line of the message that is only
+ * the name (an exit form typed as lines; "use <Name>") — and only as two or three Title Case words, never a form's name, nobody on
+ * the roster or close to them. So a product, the placeholder "ima employee", an all-caps run or a lowercase name is
+ * never offered. Null: no offer.
+ */
+function offRosterTyped(employee: string, message: string | undefined, names: readonly string[]): string | null {
+  if (!TITLE_NAME.test(employee) || rosterSpelling(employee, names) || oneCloseRosterPerson(employee, names) || namesAForm(employee)) return null;
+  const same = (typed: string | null | undefined) => Boolean(typed) && normalizeTypedName(typed!) === normalizeTypedName(employee);
+  const typedAsPerson = same(slotName(message, names)) || (message ?? "").split(/\n/).some((line) => same(line.trim().replace(USE_NAME, "")) && TITLE_NAME.test(line.trim().replace(USE_NAME, "")));
+  return typedAsPerson ? employee : null;
+}
+
+/** "use <Name>": the manager says which name to use. */
+const USE_NAME = /^use\s+/i;
+
+/** Two or three words, each Title Case: the shape a name is offered in. */
+const TITLE_NAME = /^\p{Lu}\p{Ll}[\p{Ll}'’-]*(?:\s+\p{Lu}\p{Ll}[\p{Ll}'’-]*){1,2}$/u;
 
 /** OFF_ROSTER_CONFIRM_ENABLED: the offer right after the not-found note about this name (or first, with none). */
 function withOffRosterOffer(content: string, name: string): string {
