@@ -18,8 +18,9 @@ import { extractEmployeeNames, samePerson } from "./proposal";
 import { draftMergeEnabled, formEditDateRulesEnabled, formEditSingleWriterEnabled, reopenByAnyOpenVerbEnabled } from "@/lib/config/chat-quality-flags";
 
 import { fieldsToRestore, showDraftWithEdits } from "./draft-merge";
-import { WHICH_FORM_ON_FILE } from "./reopen-cue";
+import { EDIT_VERB, SHOW_OR_OPEN_VERB, WHICH_FORM_ON_FILE } from "./reopen-cue";
 import { readReopenRequest } from "./reopen-request";
+import { getTemplateByKey } from "./repository";
 
 /**
  * ============================================================================
@@ -96,14 +97,36 @@ export async function reopenRequestedForm(input: {
    * corrective action" — a first name the name reader does not take, that is
    * the first name of exactly one person on this manager's roster.
    */
-  if (anyOpenVerb && names.length === 0 && !input.activeInstanceId) names = await onePersonByFirstName(input.request, question);
+  /*
+   * QA, 6 Nov 2026 (follow-up): for every verb, "edit" included, a first name
+   * alone is a person only when exactly one person on the roster has it;
+   * when several do, the manager is asked whose, and nothing is opened.
+   */
+  if (anyOpenVerb) {
+    // "edit Odalys's CA" was read as the name "edit Odalys": the request's own verb is no part of a name.
+    names = names.map((name) => name.replace(LEADING_VERB_IN_NAME, "")).filter(Boolean);
+    const firstNames = names.length === 0 ? (input.activeInstanceId ? [] : candidateNameWords(question)) : names.filter((name) => !/\s/.test(name.trim()));
+    if (firstNames.length > 0) {
+      const people = await rosterPeopleByFirstName(input.request, firstNames);
+      if (people.length > 1) return reply(whichPersonReply(people, await templateLabel(templateKey)));
+      if (people.length === 1) names = [...names.filter((name) => /\s/.test(name.trim())), people[0]!];
+    }
+  }
   const named = (employee: string) =>
     names.some((name) => samePerson(name, employee)) || mentionsFullName(question, employee);
   /*
    * REOPEN_BY_ANY_OPEN_VERB_ENABLED: "bring up the coaching form" names nobody
    * whose form to look up, and is left as it was before the flag.
    */
-  if (reading.byAddedVerb && names.length === 0 && !input.activeInstanceId) return null;
+  const unnamed = names.length === 0;
+  /*
+   * QA decision (c) follow-up, 6 Nov 2026: "open her CA" / "bring up her
+   * coaching form" (any verb, with the flag) that is not the form already in
+   * this chat asks whose form it is; never a blank form, never somebody
+   * picked.
+   */
+  const pointsAtSomeone = anyOpenVerb && unnamed && POSSESSIVE_PRONOUN.test(question);
+  if (reading.byAddedVerb && unnamed && !input.activeInstanceId && !pointsAtSomeone) return null;
 
   let target: { id: string; templateName: string; employeeName: string } | null = null;
 
@@ -119,6 +142,9 @@ export async function reopenRequestedForm(input: {
       // Gone or no longer permitted: fall through to the lookup by name.
     }
   }
+
+  if (!target && pointsAtSomeone) return reply(whoseFormReply(await templateLabel(templateKey)));
+  if (!target && reading.byAddedVerb && unnamed) return null;
 
   /* Otherwise the newest one on file for the named employee. */
   if (!target && (templateKey || finalizedMeant)) {
@@ -271,8 +297,8 @@ export async function reopenRequestedForm(input: {
  * word of the question that could be a name — read as the forms-on-file
  * lookup reads one (`candidateNameWords`). None, or several: nobody.
  */
-async function onePersonByFirstName(request: Request, question: string): Promise<string[]> {
-  const words = new Set(candidateNameWords(question));
+async function rosterPeopleByFirstName(request: Request, firstNames: readonly string[]): Promise<string[]> {
+  const words = new Set(firstNames.map((name) => name.trim().toLowerCase().replace(/['’]s$/, "")));
   if (words.size === 0) return [];
   try {
     const actor = await authorizeForms(request, "view_form_monitoring");
@@ -280,10 +306,36 @@ async function onePersonByFirstName(request: Request, question: string): Promise
     const people = roster.filter((person) =>
       [person.firstName, person.preferredFirstName ?? ""].some((first) => words.has(first.trim().toLowerCase())),
     );
-    return people.length === 1 ? [displayName(people[0]!)] : [];
+    return [...new Set(people.map((person) => displayName(person)))];
   } catch {
     return [];
   }
+}
+
+/** A reopen verb the name reader took as the start of a name. */
+const LEADING_VERB_IN_NAME = new RegExp(`^(?:${EDIT_VERB.source}|${SHOW_OR_OPEN_VERB.source})\\s+`, "i");
+
+/** "her", "his", "their" before the form: a person meant, and not named. */
+const POSSESSIVE_PRONOUN = /\b(?:her|his|their)\b/i;
+
+/** The template's name as the library publishes it, or "form". */
+async function templateLabel(templateKey: string | null): Promise<string | null> {
+  if (!templateKey) return null;
+  try {
+    return (await getTemplateByKey(templateKey))?.name ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function whoseFormReply(templateName: string | null): string {
+  return `Whose ${templateName ? `**${templateName}**` : "form"} should I open? Tell me the employee's full name.`;
+}
+
+function whichPersonReply(people: readonly string[], templateName: string | null): string {
+  const listed = people.map((name) => `**${name}**`);
+  const choices = listed.length > 1 ? `${listed.slice(0, -1).join(", ")} or ${listed[listed.length - 1]}` : listed[0];
+  return `More than one person on your roster has that first name. Whose ${templateName ? `**${templateName}**` : "form"} should I open — ${choices}?`;
 }
 
 /** A finalized form whose new draft is also on file is that draft. */

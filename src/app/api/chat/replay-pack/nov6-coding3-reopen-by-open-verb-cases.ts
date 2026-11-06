@@ -63,9 +63,12 @@ const MARISOL: DirectoryRow = {
   positionName: "Tanning Consultant",
 };
 
+/** A second Odalys on the roster, for the first name two people share. */
+const ODALYS_WEXLEY: DirectoryRow = { ...ODALYS, id: "e-odalys-wexley", lastName: "Wexley" };
+
 /** The invented people of this file (a function: the registry reads exported arrays as cases). */
 export function reopenByOpenVerbPeople(): readonly DirectoryRow[] {
-  return [ODALYS, MARISOL];
+  return [ODALYS, MARISOL, ODALYS_WEXLEY];
 }
 
 const ASKS_WHO = /Who is this (?:\*\*[^*]+\*\* |form )?for\?|Is this for \*{0,2}[A-Z]/i;
@@ -352,6 +355,70 @@ export const NOV6_CODING3_REOPEN_QA_DECISION_CASES: ReplayCase[] = [
       opens(await thread.say("1"), newer, "1");
     },
   },
+];
+
+/*
+ * QA's follow-up, 6 Nov 2026: "her" with no form of hers in this chat asks
+ * whose form it is; a first name two roster people share asks which of them.
+ * Never a blank form, never somebody picked, nothing opened.
+ */
+const ASKS_WHOSE = /Whose \*\*[^*]+\*\* should I open/;
+
+function asksAndDoesNothing(t: T, reply: ReplayAnswer, proposal: unknown, before: number, said: string) {
+  expect(reply.content, `"${said}" does not ask whose form:\n${reply.content}`).toMatch(ASKS_WHOSE);
+  expect(reply.formOpened, `"${said}" opens a form:\n${reply.content}`).toBeUndefined();
+  expect(proposal, `"${said}" makes a card:\n${reply.content}`).toBeNull();
+  expect(t.forms().length, `"${said}" makes a form:\n${reply.content}`).toBe(before);
+}
+
+export const NOV6_CODING3_REOPEN_QA_FOLLOW_UP_CASES: ReplayCase[] = [
+  ...(
+    [
+      ["nov6-reopen-qa-c-her-unresolved-asks-whose", "ca", "open her CA", /Corrective Action Form/],
+      ["nov6-reopen-qa-c-her-unresolved-asks-whose-coaching", "coaching", "bring up her coaching form", /Coaching Form/],
+    ] as const
+  ).map(
+    ([id, family, said, form]): ReplayCase => ({
+      id,
+      title: `QA (c) follow-up: in a new chat, "${said}" asks whose form it is; never a blank form, never somebody picked`,
+      report: `${REPORT}: QA's follow-up, 6 Nov 2026 — "her" not resolved to a form in this chat`,
+      status: { open: "does not ask whose form it is" },
+      fixFlags: FLAG,
+      async run(t: T) {
+        start(t);
+        await onFile(t, family, family === "ca" ? ODALYS : MARISOL);
+        const before = t.forms().length;
+        const thread = t.thread();
+        const reply = await thread.say(said);
+        asksAndDoesNothing(t, reply, thread.proposal, before, said);
+        expect(reply.content, `names another form:\n${reply.content}`).toMatch(form);
+      },
+    }),
+  ),
+  ...(
+    [
+      ["bring-up", "bring up Odalys's corrective action"],
+      ["edit", "edit Odalys's CA"],
+    ] as const
+  ).map(
+    ([verb, said]): ReplayCase => ({
+      id: `nov6-reopen-qa-first-name-two-on-roster-${verb}`,
+      title: `QA follow-up (1): "${said}" with two Odalyses on the roster asks which; opens nothing, no card`,
+      report: `${REPORT}: QA's follow-up, 6 Nov 2026 — a first name is a person only when exactly one roster person has it`,
+      status: { open: "does not ask which Odalys" },
+      fixFlags: FLAG,
+      async run(t: T) {
+        start(t);
+        t.directory([...STAFF, ODALYS, MARISOL, ODALYS_WEXLEY]);
+        await onFile(t, "ca", ODALYS);
+        const before = t.forms().length;
+        const thread = t.thread();
+        const reply = await thread.say(said);
+        asksAndDoesNothing(t, reply, thread.proposal, before, said);
+        expect(reply.content, `does not offer both:\n${reply.content}`).toMatch(/Odalys Fairbank\*\*.*Odalys Wexley|Odalys Wexley\*\*.*Odalys Fairbank/);
+      },
+    }),
+  ),
 ];
 
 export const NOV6_CODING3_REOPEN_BY_OPEN_VERB_CASES: ReplayCase[] = [
