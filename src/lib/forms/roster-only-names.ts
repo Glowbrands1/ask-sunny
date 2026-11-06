@@ -111,8 +111,10 @@ export function rosterOnlyNames(response: AskResponse, names: readonly string[],
        * OFF_ROSTER_CONFIRM_ENABLED: the manager took the name as typed ("use <name>" to the offer below) — somebody
        * not in Woven, nobody close on it. The card keeps it and says so, in the reply and in the card's note.
        */
-      proposal = { ...proposal, wovenCloseMatch: offRosterCardNote(employee) };
-      content = `${offRosterTakenLine(employee)}\n\n${content.trim()}`;
+      // A name typed in lowercase goes on the card in Title Case, as the offer said it.
+      const named = titleCased(employee);
+      proposal = { ...proposal, employeeName: named, wovenCloseMatch: offRosterCardNote(named) };
+      content = `${offRosterTakenLine(named)}\n\n${content.trim().split(`**${employee}**`).join(`**${named}**`)}`;
     } else {
       const close = oneCloseRosterPerson(employee, names);
       /*
@@ -298,24 +300,44 @@ export function withoutUnseatedName(
 }
 
 /**
- * OFF_ROSTER_CONFIRM_ENABLED (the sibling app's gate rerun 2, 6 Nov 2026): the cleared name is offered only where the
- * manager typed it as a person — the not-found note's own place ("for <Name>,"), or a line of the message that is only
- * the name (an exit form typed as lines; "use <Name>") — and only as two or three Title Case words, never a form's name, nobody on
- * the roster or close to them. So a product, the placeholder "ima employee", an all-caps run or a lowercase name is
- * never offered. Null: no offer.
+ * OFF_ROSTER_CONFIRM_ENABLED (the sibling app's gate rerun 2, 6 Nov 2026; QA: lowercase too): the cleared name is offered only where the
+ * manager typed it as a person — "for <name>," / "for <name>" ending the message / "employee, <name>", a line of the
+ * message that is only the name (an exit form typed as lines), or "use <name>" — and only in a name's shape: two or
+ * three words, each Title Case or all lowercase (an all-caps word, "BY", "QA", is no name word), never a form's name,
+ * nobody on the roster or close to them. So "Bath Bomb Kits" (typed as no person) and "BY CORIN BELLWEATHER" or
+ * "QA Probe XZT One" are never offered; "zebulon marchbanks" is, said back in Title Case. Null: no offer; else the
+ * name in Title Case.
  */
 function offRosterTyped(employee: string, message: string | undefined, names: readonly string[]): string | null {
-  if (!TITLE_NAME.test(employee) || rosterSpelling(employee, names) || oneCloseRosterPerson(employee, names) || namesAForm(employee)) return null;
-  const same = (typed: string | null | undefined) => Boolean(typed) && normalizeTypedName(typed!) === normalizeTypedName(employee);
-  const typedAsPerson = same(slotName(message, names)) || (message ?? "").split(/\n/).some((line) => same(line.trim().replace(USE_NAME, "")) && TITLE_NAME.test(line.trim().replace(USE_NAME, "")));
-  return typedAsPerson ? employee : null;
+  const typed = employee.trim();
+  if (!NAME_SHAPE.test(typed) || rosterSpelling(typed, names) || oneCloseRosterPerson(typed, names) || namesAForm(typed)) return null;
+  const same = (said: string | null | undefined) => Boolean(said) && normalizeTypedName(said!) === normalizeTypedName(typed);
+  const text = message ?? "";
+  const placed =
+    PERSON_PLACES.some((place) => same(place.exec(text.trim())?.[1])) ||
+    text.split(/\n/).some((line) => same(line.trim().replace(USE_NAME, "")) && NAME_SHAPE.test(line.trim().replace(USE_NAME, "")));
+  return placed ? titleCased(typed) : null;
 }
 
-/** "use <Name>": the manager says which name to use. */
+/** One word of a name, as typed: Title Case or all lowercase. */
+const NAME_WORD = String.raw`(?:\p{Lu}\p{Ll}[\p{Ll}'’-]*|\p{Ll}[\p{Ll}'’-]+)`;
+const NAME_RUN = String.raw`(${NAME_WORD}(?:\s+${NAME_WORD}){1,2})`;
+/** Two or three name words. */
+const NAME_SHAPE = new RegExp(String.raw`^${NAME_RUN}$`, "u");
+/** Where a request types its person: "for <name>,", "for <name>" ending it, "employee, <name>". */
+const PERSON_PLACES = [
+  new RegExp(String.raw`\bfor\s+${NAME_RUN}\s*[,.]`, "u"),
+  new RegExp(String.raw`\bfor\s+${NAME_RUN}\s*[.!]?$`, "u"),
+  new RegExp(String.raw`\bemployee,?\s+${NAME_RUN}(?=[\s,.!?]|$)`, "u"),
+];
+
+/** "use <name>": the manager says which name to use. */
 const USE_NAME = /^use\s+/i;
 
-/** Two or three words, each Title Case: the shape a name is offered in. */
-const TITLE_NAME = /^\p{Lu}\p{Ll}[\p{Ll}'’-]*(?:\s+\p{Lu}\p{Ll}[\p{Ll}'’-]*){1,2}$/u;
+/** "zebulon marchbanks" → "Zebulon Marchbanks"; a word already capitalised is kept. */
+function titleCased(name: string): string {
+  return name.replace(/(^|[\s'’-])(\p{Ll})/gu, (_whole, lead: string, letter: string) => `${lead}${letter.toUpperCase()}`);
+}
 
 /** OFF_ROSTER_CONFIRM_ENABLED: the offer right after the not-found note about this name (or first, with none). */
 function withOffRosterOffer(content: string, name: string): string {
