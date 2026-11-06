@@ -315,7 +315,7 @@ function offRosterTyped(employee: string, message: string | undefined, names: re
   const same = (said: string | null | undefined) => Boolean(said) && normalizeTypedName(said!) === normalizeTypedName(typed);
   const text = message ?? "";
   const placed =
-    PERSON_PLACES.some((place) => same(place.exec(text.trim())?.[1])) ||
+    personPlaces(typed).some((place) => place.test(text.trim())) ||
     text.split(/\n/).some((line) => same(line.trim().replace(USE_NAME, "")) && NAME_SHAPE.test(line.trim().replace(USE_NAME, "")));
   return placed ? titleCased(typed) : null;
 }
@@ -336,12 +336,19 @@ const NAME_WORD = String.raw`(?:\p{Lu}(?=[\p{L}'’-]*\p{Ll})[\p{L}'’-]+|\p{Ll
 const NAME_RUN = String.raw`(${NAME_WORD}(?:\s+${NAME_WORD}){1,2})`;
 /** Two or three name words. */
 const NAME_SHAPE = new RegExp(String.raw`^${NAME_RUN}$`, "u");
-/** Where a request types its person: "for <name>,", "for <name>" ending it, "employee, <name>". */
-const PERSON_PLACES = [
-  new RegExp(String.raw`\bfor\s+${NAME_RUN}\s*[,.]`, "u"),
-  new RegExp(String.raw`\bfor\s+${NAME_RUN}\s*[.!]?$`, "u"),
-  new RegExp(String.raw`\bemployee,?\s+${NAME_RUN}(?=[\s,.!?]|$)`, "u"),
-];
+/**
+ * Where a request types its person — "for <name>,", "for <name>" ending it, "employee, <name>" — read with the card's
+ * own name, so the words after it ("…, Zebulon Marchbanks that needs …"; gate rerun 3) are never taken as part of it.
+ */
+function personPlaces(name: string): RegExp[] {
+  const spelled = name.trim().split(/\s+/).map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(String.raw`\s+`);
+  const end = String.raw`(?![\p{L}'’-])`;
+  return [
+    new RegExp(String.raw`\bfor\s+${spelled}${end}\s*[,.]`, "iu"),
+    new RegExp(String.raw`\bfor\s+${spelled}${end}\s*[.!]?$`, "iu"),
+    new RegExp(String.raw`\bemployee,?\s+${spelled}${end}`, "iu"),
+  ];
+}
 
 /** "use <name>": the manager says which name to use. */
 const USE_NAME = /^use\s+/i;
