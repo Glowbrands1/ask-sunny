@@ -38,6 +38,14 @@ describe("WOVEN_TRAINING_CONDUCT_ENABLED off: what this app says for the sibling
   });
 });
 
+describe("WOVEN_TRAINING_CONDUCT_ENABLED off: the card line for a section the manual lacks is today's, byte for byte", () => {
+  it("pins the old string", () => {
+    expect(caPolicyProposalLine(readCaPolicy("ca for rowan kestrel for violating visitors at work policy"), { phrase: "visitors at work", lookup: "missing" })).toBe(
+      '**Policy:** Woven does not see a section of the current policy manual for "visitors at work" in the knowledge base, so I won\'t cite one. Tell me the policy as the manual names it, or tick Type of Offense and complete Direct policy on the form.',
+    );
+  });
+});
+
 describe("WOVEN_TRAINING_CONDUCT_ENABLED on", () => {
   const on = () => vi.stubEnv("WOVEN_TRAINING_CONDUCT_ENABLED", "true");
 
