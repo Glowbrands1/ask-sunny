@@ -81,6 +81,8 @@ export const NOV5_PAU_SF_S26_S28_CASES: ReplayCase[] = [
     title: "sf-s26: in a new chat, \"Change Thessaly Brandt CA\" opens her existing Corrective Action; never a new form \"You haven't told me what happened yet\"",
     report: "Pau via QA, 5 Nov 2026, sf-s26: in a new chat \"Change Employee R CA\" → a new form, \"You haven't told me what happened yet\"",
     status: { open: "starts a new Corrective Action instead of opening the one on file" },
+    // REOPEN_BY_ANY_OPEN_VERB_ENABLED (QA, 6 Nov 2026): "CA" after the name is read as the Corrective Action Form.
+    fixFlags: ["REOPEN_BY_ANY_OPEN_VERB_ENABLED"],
     async run(t: T) {
       start(t);
       const id = await existingCa(t);
