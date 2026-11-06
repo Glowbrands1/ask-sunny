@@ -1,5 +1,5 @@
-import { caAsksWhatHappenedEnabled, caSalesPolicyEnabled, coachingAsksWhatHappenedEnabled, omissionIsAccountEnabled } from "@/lib/config/chat-quality-flags";
-import { deniesAFault } from "@/lib/forms/draft-never-blank";
+import { bareNotDenialEnabled, caAsksWhatHappenedEnabled, caSalesPolicyEnabled, coachingAsksWhatHappenedEnabled, omissionIsAccountEnabled } from "@/lib/config/chat-quality-flags";
+import { deniesAFault, deniesAFaultWithBareNot } from "@/lib/forms/draft-never-blank";
 import {
   NO_INCIDENT_NOTE,
   answeredWhatHappened,
@@ -107,7 +107,9 @@ const NOTHING_HAPPENED = /\bnothing\b|\bno\s+(?:incident|issue|problems?|concern
 function onlyWhatDidNotHappen(clause: string): boolean {
   // Off: OMISSION_IS_ACCOUNT's reading alone (as main). On: a clause is only what did not happen when both readings say so, so an account either reading finds is one.
   if (!caSalesPolicyEnabled()) return omissionReading(clause);
-  return omissionReading(clause) && (deniesAFault(clause) || NOTHING_HAPPENED.test(clause));
+  // BARE_NOT_DENIAL_ENABLED (QA's gate, 6 Nov 2026): "not late" is a denial too. Off, as before.
+  const denies = deniesAFault(clause) || (bareNotDenialEnabled() && deniesAFaultWithBareNot(clause));
+  return omissionReading(clause) && (denies || NOTHING_HAPPENED.test(clause));
 }
 
 /** A clause that says what this employee did. */
