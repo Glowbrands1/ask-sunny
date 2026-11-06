@@ -419,6 +419,8 @@ const NEW_FLAGS = [
   "ROSTER_COMPOUND_SURNAME_ENABLED",
   "ROSTER_NOT_FOUND_ANY_PHRASING_ENABLED",
   "EXIT_STATED_ONLY_ENABLED",
+  // Ported from the sibling app's flip-3 gate (6 Nov 2026).
+  "OFF_ROSTER_CONFIRM_ENABLED",
 ] as const;
 
 const PROTECTED = [

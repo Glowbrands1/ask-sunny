@@ -2678,3 +2678,16 @@ export function rosterNotFoundAnyPhrasingEnabled(): boolean {
 export function exitStatedOnlyEnabled(): boolean {
   return envFlag("EXIT_STATED_ONLY_ENABLED");
 }
+
+
+/**
+ * OFF_ROSTER_CONFIRM_ENABLED (port of the sibling app's flip-3 gate, QA, 6 Nov 2026; default off; ships with
+ * FORM_NAME_FROM_ROSTER). With the name flags a card's employee comes from the roster only, so a form for somebody
+ * not in Woven (an exit form for someone just removed) asked "Who is this form for?" on every answer and never made a
+ * card. On: the not-found note offers "reply **use <name>**"; that, "yes", or the same name again puts the typed name
+ * on the card, which says it is not from Woven. Another name is looked up as any name is
+ * (`forms/off-roster-confirm.ts`). Off, as before.
+ */
+export function offRosterConfirmEnabled(): boolean {
+  return envFlag("OFF_ROSTER_CONFIRM_ENABLED");
+}
