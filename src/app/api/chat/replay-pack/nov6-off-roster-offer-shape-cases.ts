@@ -43,6 +43,28 @@ function neverOffered(id: string, title: string, turns: readonly string[], name:
   };
 }
 
+/** A mixed-case surname (QA, 6 Nov 2026): offered, then the answer makes the card READY with that name. */
+function offeredThenReady(id: string, title: string, turn: string, name: string): ReplayCase {
+  return {
+    id,
+    title,
+    report: "QA, the review of gate rerun 2's fix (6 Nov 2026): real rosters have mixed-case surnames (McDonald, O'Brien)",
+    status: "fixed",
+    fixFlags: FLAGS,
+    async run(t) {
+      t.directory(STAFF);
+      t.as("salon_director", KEARNEY);
+      const thread = t.thread();
+      let reply = await thread.say(turn);
+      if (thread.proposal?.status !== "ready") {
+        expect(reply.content, `the name is not offered:\n${reply.content}`).toContain(`reply **use ${name}**`);
+        reply = await thread.say(`use ${name}`);
+      }
+      expect(thread.proposal, `no card the manager can create:\n${reply.content}`).toMatchObject({ employeeName: name, status: "ready" });
+    },
+  };
+}
+
 export const NOV6_OFF_ROSTER_OFFER_SHAPE_CASES: ReplayCase[] = [
   neverOffered(
     "nov6-offer-never-a-product",
@@ -91,4 +113,16 @@ export const NOV6_OFF_ROSTER_OFFER_SHAPE_CASES: ReplayCase[] = [
       expect((thread.proposal?.employeeName ?? "").toLowerCase(), `not his card:\n${reply.content}`).toBe("zebulon marchbanks");
     },
   },
+  offeredThenReady(
+    "nov6-offer-apostrophe-surname",
+    "\"exit form for Siobhan O'Callaghan, …\" (not in Woven): offered, and \"use Siobhan O'Callaghan\" makes the card READY",
+    "exit form for Siobhan O'Callaghan, she gave notice 9/25/26 and her last day was 10/9/26, resigning to pursue other career options",
+    "Siobhan O'Callaghan",
+  ),
+  offeredThenReady(
+    "nov6-offer-mixed-case-surname",
+    "\"ca for Ruairi McAllister, …\" (not in Woven): offered, and \"use Ruairi McAllister\" makes the card READY",
+    "ca for Ruairi McAllister, he was late opening the salon on 11/2",
+    "Ruairi McAllister",
+  ),
 ];

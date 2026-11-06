@@ -303,7 +303,7 @@ export function withoutUnseatedName(
  * OFF_ROSTER_CONFIRM_ENABLED (the sibling app's gate rerun 2, 6 Nov 2026; QA: lowercase too): the cleared name is offered only where the
  * manager typed it as a person — "for <name>," / "for <name>" ending the message / "employee, <name>", a line of the
  * message that is only the name (an exit form typed as lines), or "use <name>" — and only in a name's shape: two or
- * three words, each Title Case or all lowercase (an all-caps word, "BY", "QA", is no name word), never a form's name,
+ * three words, each capitalised with a lowercase letter in it, or all lowercase (an all-caps word, "BY", "QA", is no name word), never a form's name,
  * nobody on the roster or close to them. So "Bath Bomb Kits" (typed as no person) and "BY CORIN BELLWEATHER" or
  * "QA Probe XZT One" are never offered; "zebulon marchbanks" is, said back in Title Case. Null: no offer; else the
  * name in Title Case.
@@ -327,8 +327,12 @@ function offRosterTyped(employee: string, message: string | undefined, names: re
  */
 const UNNAMED_PERSON_WORD = "employee";
 
-/** One word of a name, as typed: Title Case or all lowercase. */
-const NAME_WORD = String.raw`(?:\p{Lu}\p{Ll}[\p{Ll}'’-]*|\p{Ll}[\p{Ll}'’-]+)`;
+/**
+ * One word of a name, as typed: a capital, then letters, apostrophes or hyphens with at least one lowercase letter
+ * ("Marchbanks", "McAllister", "O'Callaghan", "DeLuca", "St-Pierre"; QA, 6 Nov 2026), or all lowercase. An all-caps
+ * word ("BY", "QA") is no name word.
+ */
+const NAME_WORD = String.raw`(?:\p{Lu}(?=[\p{L}'’-]*\p{Ll})[\p{L}'’-]+|\p{Ll}[\p{Ll}'’-]+)`;
 const NAME_RUN = String.raw`(${NAME_WORD}(?:\s+${NAME_WORD}){1,2})`;
 /** Two or three name words. */
 const NAME_SHAPE = new RegExp(String.raw`^${NAME_RUN}$`, "u");
