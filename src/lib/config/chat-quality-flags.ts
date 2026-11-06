@@ -2598,3 +2598,18 @@ export function citationLineKeptOnRevisionEnabled(): boolean {
 export function metricGuardEnabled(): boolean {
   return envFlag("METRIC_GUARD_ENABLED");
 }
+
+/**
+ * CLEANING_OTHER_EVERY_WORDING_ENABLED (QA's live eval ca-sales-negative-cleaning-duties and replay, 6 Nov 2026;
+ * same flag in both apps; default off; Pau's ruling: cleaning left undone is Other, never the Standards of
+ * Conduct). With CA_SALES_POLICY_ENABLED on, "for not completing his daily cleaning duties" and "for not
+ * completing closing cleaning tasks" got no Policy line and a draft ticked Standards of Conduct (the cleaning
+ * reader missed "completing"), and the live model's own reply named the Standards of Conduct for "he did not
+ * complete daily cleaning duties". On: the cleaning reader also reads "not completing / finishing / doing …
+ * cleaning", an account that reads only as cleaning is Other (`forms/ca-policy.ts` withCleaningOther), and the
+ * final reply's **Policy:** line is the Other line whenever the account reads so (`ai/reply-matches-card.ts`).
+ * Off, as before.
+ */
+export function cleaningOtherEveryWordingEnabled(): boolean {
+  return envFlag("CLEANING_OTHER_EVERY_WORDING_ENABLED");
+}

@@ -1,5 +1,5 @@
-import { replyMatchesCardEnabled } from "@/lib/config/chat-quality-flags";
-import { removedOffenseLabels } from "@/lib/forms/ca-policy";
+import { cleaningOtherEveryWordingEnabled, replyMatchesCardEnabled } from "@/lib/config/chat-quality-flags";
+import { caPolicyProposalLine, readCaPolicy, removedOffenseLabels } from "@/lib/forms/ca-policy";
 import { cardPolicyHeading } from "@/lib/forms/card-policy";
 import { personRosterNames } from "@/lib/forms/person-guard";
 import { requestMessage } from "@/lib/forms/request-slot";
@@ -137,6 +137,34 @@ function withoutNotToldWhenTold(content: string, issue: string | null | undefine
     .join("\n");
 }
 
+/**
+ * CLEANING_OTHER_EVERY_WORDING_ENABLED (QA's live eval, 6 Nov 2026: the live model's reply said the Standards of
+ * Conduct for "he did not complete daily cleaning duties"). On a Corrective Action card whose account reads as
+ * cleaning left undone (`readCaPolicy`'s `other`, from the manager's message and the card's Issue), the
+ * **Policy:** line is the Other line, and a Standards of Conduct citation line goes. Pau: cleaning is Other.
+ */
+const CORRECTIVE_ACTION_KEY = "dpoa";
+const SOC_CITATION = /^\s*(?:[-*]\s*)?\**Standards of Conduct\**(?:\s+Policy)?,\s*JBA Policy Manual\b/i;
+
+export function withCleaningOtherPolicy(response: AskResponse, message?: string): AskResponse {
+  const card = response.formProposal;
+  if (!cleaningOtherEveryWordingEnabled() || !card || card.templateKey !== CORRECTIVE_ACTION_KEY) return response;
+  const reading = readCaPolicy([message ?? "", card.issue ?? ""].filter(Boolean).join("\n"));
+  if (reading.other !== "cleaning") return response;
+  const other = caPolicyProposalLine(reading);
+  if (!other) return response;
+  let placed = false;
+  const lines = response.content.split("\n").flatMap((line) => {
+    if (SOC_CITATION.test(line)) return [];
+    if (!/\*\*Policy:?\*\*/.test(line)) return [line];
+    if (placed) return [];
+    placed = true;
+    return [other];
+  });
+  const content = tidy(lines.join("\n"));
+  return content === response.content ? response : { ...response, content };
+}
+
 /** The reply made to agree with its card. Pure; see `withReplyMatchesCard`. */
 export function replyMatchesCard(response: AskResponse, names: readonly string[], message?: string): AskResponse {
   const card = response.formProposal;
@@ -153,6 +181,7 @@ export function replyMatchesCard(response: AskResponse, names: readonly string[]
 
 /** REPLY_MATCHES_CARD_ENABLED, the last step of the turn: `replyMatchesCard` with the actor's roster read this turn. Off: as built. */
 export function withReplyMatchesCard(response: AskResponse): AskResponse {
-  if (!replyMatchesCardEnabled()) return response;
-  return replyMatchesCard(response, personRosterNames() ?? [], requestMessage());
+  const cleaned = withCleaningOtherPolicy(response, requestMessage());
+  if (!replyMatchesCardEnabled()) return cleaned;
+  return replyMatchesCard(cleaned, personRosterNames() ?? [], requestMessage());
 }
