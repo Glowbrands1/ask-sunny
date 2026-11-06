@@ -2598,3 +2598,17 @@ export function citationLineKeptOnRevisionEnabled(): boolean {
 export function metricGuardEnabled(): boolean {
   return envFlag("METRIC_GUARD_ENABLED");
 }
+
+/**
+ * BARE_NOT_DENIAL_ENABLED (QA's Sunny gate, 6 Nov 2026; default off). With
+ * CA_SALES_POLICY_ENABLED on, a clause is "only what did not happen" when it
+ * denies a fault ("never late", "wasn't late"); a bare "not late" was missed,
+ * so it was read as the account and a Corrective Action was drafted instead of
+ * "You haven't told me what happened". With this flag on, a clause that starts
+ * with a bare "not" before one of the same fault words is a denial too
+ * (`forms/draft-never-blank.ts` deniesAFaultWithBareNot). "not meeting sales
+ * requirements" stays an account. Off, as before.
+ */
+export function bareNotDenialEnabled(): boolean {
+  return envFlag("BARE_NOT_DENIAL_ENABLED");
+}
