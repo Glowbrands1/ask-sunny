@@ -2600,6 +2600,34 @@ export function metricGuardEnabled(): boolean {
 }
 
 /**
+ * CLEANING_OTHER_EVERY_WORDING_ENABLED (QA's live eval ca-sales-negative-cleaning-duties and replay, 6 Nov 2026;
+ * same flag in both apps; default off; Pau's ruling: cleaning left undone is Other, never the Standards of
+ * Conduct). With CA_SALES_POLICY_ENABLED on, "for not completing his daily cleaning duties" and "for not
+ * completing closing cleaning tasks" got no Policy line and a draft ticked Standards of Conduct (the cleaning
+ * reader missed "completing"), and the live model's own reply named the Standards of Conduct for "he did not
+ * complete daily cleaning duties". On: the cleaning reader also reads "not completing / finishing / doing …
+ * cleaning", an account that reads only as cleaning is Other (`forms/ca-policy.ts` withCleaningOther), and the
+ * final reply's **Policy:** line is the Other line whenever the account reads so (`ai/reply-matches-card.ts`).
+ * Off, as before.
+ */
+export function cleaningOtherEveryWordingEnabled(): boolean {
+  return envFlag("CLEANING_OTHER_EVERY_WORDING_ENABLED");
+}
+
+/**
+ * AS_YOU_SAID_MANAGER_WORDS_ENABLED (live chats, 4 Nov 2026; default off). "**Policy:** Late Opening, as you said"
+ * for leaving early and taking the spray booths down early, and "Standards of Conduct, as you said" for "it should be
+ * must see behaviors": the manager never named either. The intent reader's heading is written back onto the turn as
+ * the app's own line ("Policy reference: <heading>, JBA Policy Manual p.N.", `ai/form-state.ts`), and the policy
+ * reader took it as the manager naming that policy. On: the reader that decides "as you said"
+ * (`forms/ca-policy.ts` readCaPolicy) reads without the app's lines (`ai/app-sentences.ts` withoutAppLines).
+ * Off, as before.
+ */
+export function asYouSaidManagerWordsEnabled(): boolean {
+  return envFlag("AS_YOU_SAID_MANAGER_WORDS_ENABLED");
+}
+
+/**
  * UNDER_PERFORMANCE_EXPLAINED_ENABLED (Pau, 6 Nov 2026; the Sunny tester
  * after the flip: "it should be under performance not standard of conduct";
  * default off). When the manager's message names Under Performance and the
