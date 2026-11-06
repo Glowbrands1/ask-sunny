@@ -45,7 +45,7 @@ import { MissingConfigurationError, liveReadiness } from "@/lib/config/server-en
 import { ACTIVE_BRAND } from "@/lib/brand";
 import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import { proposeFormForTurn, suggestFormsForTurn, type ChatActor } from "./form-proposal";
-import { acceptedCaOffer, caOfferLine, withCaOffer } from "./ca-offer";
+import { acceptedCaOffer, acceptedCaOfferTurn, caOfferLine, withCaOffer } from "./ca-offer";
 import { remapFormTurn, remapShouldRun, type FormRemapSlots } from "./form-full-remap";
 import { priorShorthand, requestScopedHistory } from "./remap-incident";
 import { historyForRemap } from "./form-remap-scope";
@@ -293,7 +293,27 @@ export async function answerQuestion(
   // REPORT_NAME_NOT_A_PERSON_ENABLED: a form is never built from a question about a report. See `report-turns.ts`.
   // CA_SALES_POLICY_ENABLED: "yes" to the Corrective Action offer is the request it offered (`ca-offer.ts`). Off, unchanged.
   const accepted = acceptedCaOffer({ question: asked.question, history: asked.history });
-  const request = withoutReportTurnsForForm(accepted ? { ...asked, question: accepted } : asked);
+  /*
+   * CA_OFFER_KEEPS_ACCOUNT_ENABLED: the accepted yes is first answered as the
+   * turn the offer answered — her own words, asked for as a Corrective Action
+   * Form — so the card's account is never the rewritten request sentence
+   * (QA's MSB case M5). When her turn alone makes no card (the offer followed
+   * words with no account), the yes is the employee the offer named, as the
+   * answer to a Corrective Action Form: still no sentence of the app's, so
+   * the card asks for what happened or shows only her words (and only if that
+   * makes no card either, the request as before). Off, the request as before.
+   */
+  const kept = accepted ? acceptedCaOfferTurn({ question: asked.question, history: asked.history }) : null;
+  const plain = withoutReportTurnsForForm(accepted ? { ...asked, question: accepted } : asked);
+  let request = kept
+    ? withoutReportTurnsForForm({
+        ...asked,
+        question: kept.account.content,
+        questionMessageId: kept.account.id ?? asked.questionMessageId,
+        history: kept.history,
+        continueProposalTemplateKey: kept.templateKey,
+      })
+    : plain;
   /*
    * APP_PASSWORD_HELP_ENABLED: "I forgot my password" is answered about this
    * app's own sign-in, the "Forgot your password?" link (QA and Pau, 25 Oct
@@ -306,9 +326,18 @@ export async function answerQuestion(
     return { content: passwordHelp, citations: [], coverage: "grounded", recommendedVideoIds: [] };
   }
   // TITLE_OF_THE_EMPLOYEE_ENABLED: a title the manager attached to another named person is never the card's (`ai/title-of-the-employee.ts`).
-  const titled = withTitleOfTheEmployee(withoutSensitiveDefaults(await answerQuestionChecked(request, actor, memory), request.question), request);
   // SOURCE_NOTE_GUARD_ENABLED: no bare source marker ("[S1]", "[S12, S14]") reaches the reply on any path (`ai/source-note.ts`).
-  const answered = { ...titled, content: withoutSourceMarkers(titled.content) };
+  const answer = async (turn: AskRequest) => {
+    const titled = withTitleOfTheEmployee(withoutSensitiveDefaults(await answerQuestionChecked(turn, actor, memory), turn.question), turn);
+    return { ...titled, content: withoutSourceMarkers(titled.content) };
+  };
+  let answered = await answer(request);
+  const fallbacks = kept ? [withoutReportTurnsForForm({ ...asked, question: kept.employee, continueProposalTemplateKey: kept.templateKey }), plain] : [];
+  for (const next of fallbacks) {
+    if (madeCard(answered)) break;
+    request = next;
+    answered = await answer(request);
+  }
   /*
    * CA_SALES_POLICY_ENABLED: a reply about a policy and an employee the roster
    * recognises ends with ONE offer to start a Corrective Action citing that
@@ -332,6 +361,11 @@ export async function answerQuestion(
     roster,
   });
   return withReplyMatchesCard(withRosterOnlyNames(withCaOffer(answered, offer)));
+}
+
+/** A reply that made, changed or opened a form: the accepted offer's card (CA_OFFER_KEEPS_ACCOUNT_ENABLED). */
+function madeCard(response: AskResponse): boolean {
+  return Boolean(response.formProposal || response.formUpdate || response.formOpened);
 }
 
 async function answerQuestionChecked(

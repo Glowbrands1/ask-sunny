@@ -1,4 +1,6 @@
-import { replyMatchesCardEnabled } from "@/lib/config/chat-quality-flags";
+import { bareNotDenialEnabled, replyMatchesCardEnabled } from "@/lib/config/chat-quality-flags";
+import { offeredOffRosterName } from "@/lib/forms/off-roster-confirm";
+import { deniesAFault, deniesAFaultWithBareNot } from "@/lib/forms/draft-never-blank";
 import { removedOffenseLabels } from "@/lib/forms/ca-policy";
 import { cardPolicyHeading } from "@/lib/forms/card-policy";
 import { personRosterNames } from "@/lib/forms/person-guard";
@@ -77,8 +79,11 @@ function withNobodyNamed(content: string, names: readonly string[], message: str
     .split("\n")
     .filter((line) => !SAYS_READY.test(line.trim()))
     .join("\n");
-  next = withoutUnseatedName(next, [slotName(message, names)], names, draftedFor(next));
-  if (!ASKS_WHO.test(next) && !ASKS_A_CHOICE.test(next) && !ASKS_FOR_THE_NAME.test(next)) next = `${next.trim()}\n\n${ASK_WHO}`;
+  // The app's own words stay: one word of the name alone at a sentence start, or in another case (`ownWords`).
+  next = withoutUnseatedName(next, [slotName(message, names)], names, draftedFor(next), { ownWords: true });
+  // OFF_ROSTER_CONFIRM_ENABLED (the sibling app's finding C, 6 Nov 2026): the off-roster offer ("reply **use <name>**") is the question.
+  const offers = offeredOffRosterName(next) !== null;
+  if (!offers && !ASKS_WHO.test(next) && !ASKS_A_CHOICE.test(next) && !ASKS_FOR_THE_NAME.test(next)) next = `${next.trim()}\n\n${ASK_WHO}`;
   return next;
 }
 
@@ -126,9 +131,28 @@ function withoutRemovedOffense(content: string): string {
   return next;
 }
 
+/*
+ * BARE_NOT_DENIAL_ENABLED (QA's second Sunny gate, 6 Nov 2026): "not late", "she was never late"
+ * deny a fault; an Issue or Observation that says only that is no account, so rule 5 keeps the ask.
+ * Each clause must deny: "not late but left the bed dirty" says what happened and stays an account.
+ */
+function onlyDeniesAFault(text: string): boolean {
+  const clauses = text.split(/[.;,]+|\s+(?:but|and|also)\s+/i).map((clause) => clause.trim()).filter(Boolean);
+  return clauses.length > 0 && clauses.every((clause) => deniesAFault(clause) || deniesAFaultWithBareNot(clause));
+}
+
+/** The "What happened" / "Observation of Offense" lines' text, for the denial check above. */
+function accountLineTexts(content: string): string[] {
+  return [...content.matchAll(/^\s*\*\*(?:Issue|What happened|Observation of Offense):\*\*[ \t]*(\S[^\n]*)$/gm)].map((match) => match[1]!.trim());
+}
+
 /** Rule 5: an account on the card is never "not told". */
 function withoutNotToldWhenTold(content: string, issue: string | null | undefined): string {
-  const told = Boolean(issue?.trim()) || ACCOUNT_LINE.test(content) || FROM_DESCRIBED.test(content);
+  const told = bareNotDenialEnabled()
+    ? (Boolean(issue?.trim()) && !onlyDeniesAFault(issue!)) ||
+      accountLineTexts(content).some((text) => !onlyDeniesAFault(text)) ||
+      FROM_DESCRIBED.test(content)
+    : Boolean(issue?.trim()) || ACCOUNT_LINE.test(content) || FROM_DESCRIBED.test(content);
   if (!told || !NO_ACCOUNT.test(content)) return content;
   return content
     .split("\n")
