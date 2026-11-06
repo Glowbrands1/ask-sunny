@@ -195,3 +195,37 @@ describe("only a reply with a card, and only with the flag", () => {
     expect(withReplyMatchesCard(response).content).toBe("I'll draft a **Corrective Action Form** for **Corwin Hale**.");
   });
 });
+
+/*
+ * QA's second Sunny gate (6 Nov 2026, c2971f11): with REPLY_MATCHES_CARD on, rule 5 counted the
+ * card's Issue "not late" as an account and removed "You haven't told me what happened yet", undoing
+ * BARE_NOT_DENIAL_ENABLED. With that flag on, an Issue or Observation that only denies a fault is no
+ * account; one that also says what happened still is.
+ */
+describe("rule 5 with BARE_NOT_DENIAL_ENABLED: a denial alone is no account", () => {
+  const ASK = "Here is what I would put on a **Corrective Action Form**.\n\n**You haven't told me what happened yet**, so I can't cite the policy manual.";
+  const OBS = (text: string) => `${ASK}\n\n**Observation of Offense:** ${text}`;
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("off: as before, an Issue of \"not late\" removes the ask (the gate's finding)", () => {
+    vi.stubEnv("BARE_NOT_DENIAL_ENABLED", "");
+    expect(replyMatchesCard(reply(OBS("not late"), card("Rowan Kestrel", { issue: "not late" })), ROSTER).content).not.toMatch(/haven't told me what happened/);
+  });
+
+  it.each(["not late", "she was never late", "not absent"])("on: an Issue and Observation of %s keep the ask", (text) => {
+    vi.stubEnv("BARE_NOT_DENIAL_ENABLED", "true");
+    expect(replyMatchesCard(reply(OBS(text), card("Rowan Kestrel", { issue: text })), ROSTER).content).toMatch(/haven't told me what happened/);
+  });
+
+  it("on: \"not late but left the bed dirty\" is an account, so the ask goes", () => {
+    vi.stubEnv("BARE_NOT_DENIAL_ENABLED", "true");
+    const text = "not late but left the bed dirty";
+    expect(replyMatchesCard(reply(OBS(text), card("Rowan Kestrel", { issue: text })), ROSTER).content).not.toMatch(/haven't told me what happened/);
+  });
+
+  it("on: a real account (\"she left the tanning beds dirty at close\") still removes the ask", () => {
+    vi.stubEnv("BARE_NOT_DENIAL_ENABLED", "true");
+    const text = "she left the tanning beds dirty at close";
+    expect(replyMatchesCard(reply(OBS(text), card("Rowan Kestrel", { issue: text })), ROSTER).content).not.toMatch(/haven't told me what happened/);
+  });
+});

@@ -288,6 +288,16 @@ const EXONERATING =
 export function deniesAFault(sentence: string): boolean {
   return EXONERATING.test(sentence);
 }
+/*
+ * BARE_NOT_DENIAL_ENABLED (QA's gate, 6 Nov 2026): "not late" is the same denial with a bare "not"
+ * at the start of the clause; the fault words are EXONERATING's own. "not meeting sales
+ * requirements" names no fault word, so it stays an account.
+ */
+const BARE_NOT_FAULT = new RegExp(String.raw`^\s*not\b(?:\s+[\w']+){0,2}?\s+` + EXONERATING.source.slice(EXONERATING.source.lastIndexOf("(?:late")), "i");
+/** "not late", "not absent": a clause that starts with a bare "not" before a fault. */
+export function deniesAFaultWithBareNot(clause: string): boolean {
+  return BARE_NOT_FAULT.test(clause);
+}
 /* Talk about the conversation, not about the employee. */
 const CONVERSATIONAL =
   /\bnever\s*mind\b|\b(?:i|we)\s+(?:never|did\s+not|didn['’]?t)\s+(?:said|say|told|tell|meant|mean|asked|ask|thought|think|knew|know)\b/i;

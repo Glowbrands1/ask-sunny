@@ -411,6 +411,11 @@ const NEW_FLAGS = [
   "TITLE_OF_THE_EMPLOYEE_ENABLED",
   "ROSTER_NEAR_MISS_ENABLED",
   "REPLY_MATCHES_CARD_ENABLED",
+  "METRIC_GUARD_ENABLED",
+  // The second Sunny gate's fix flags (6 Nov 2026): forced off with the others in the child run.
+  "TITLE_ENDS_AT_LINE_ENABLED",
+  "BARE_NOT_DENIAL_ENABLED",
+  "PLACE_FROM_CUE_ENABLED",
 ] as const;
 
 const PROTECTED = [
