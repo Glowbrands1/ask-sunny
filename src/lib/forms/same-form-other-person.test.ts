@@ -116,11 +116,11 @@ describe("Create", () => {
     ]);
   });
 
-  it("the draft notes are A's turns with B's name and the level, never the request sentence", () => {
+  it("the draft notes are A's turns with B's name, the manager's own words only: never the request sentence, never a level sentence", () => {
     const notes = [OPENING, SAME].join(JOIN);
-    expect(sameFormOtherPersonNotes(notes, "Caspian Drummet", ROSTER)).toBe(
-      ["I need a verbal corrective action for Caspian Drummet, she was late opening the salon on Monday", "Written warning."].join(JOIN),
-    );
+    const read = sameFormOtherPersonNotes(notes, "Caspian Drummet", ROSTER);
+    expect(read).toBe("I need a verbal corrective action for Caspian Drummet, she was late opening the salon on Monday");
+    expect(read).not.toMatch(/written warning/i);
   });
 
   it("notes for A's own form, or an account, are read as sent", () => {

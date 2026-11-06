@@ -38,7 +38,7 @@ import { statedWarningLevel, type StatedWarningLevel } from "@/lib/forms/warning
  * level (`statedWarningLevel`) as the newest turn. <A>'s card and form are not
  * touched. At Create the drafting notes are read the same way
  * (`sameFormOtherPersonNotes`): never the request sentence as the account,
- * never <A>'s name on <B>'s form.
+ * never <A>'s name on <B>'s form, and the level only as the card's field.
  *
  * Off: nothing here runs, and no roster is read.
  */
@@ -110,11 +110,6 @@ export function readSameFormOtherPerson(input: {
   if (requestIncident({ text: question, employeeName: to, slotClause: () => false }) !== null) return null;
   if (accountSentences([question], to).length > 0) return null;
   return { from, to, level: turnLevel(question, to) };
-}
-
-/** The level as a turn of its own, the way the level reader reads one. */
-function levelTurn(level: StatedWarningLevel): string {
-  return level === "verbal" ? "Verbal warning." : "Written warning.";
 }
 
 interface CardTurn {
@@ -251,8 +246,10 @@ export function withSameFormSources(response: AskResponse, request: AskRequest):
  * THE DRAFT, READ THE WAY THE CARD WAS. The notes Create sends are <A>'s
  * request turns and, last, "do the same thing for <B> …". When the last turn
  * is that request for the form's own employee, the notes are the earlier turns
- * with <A>'s name swapped for <B>'s, and the level the request states — never
- * the request sentence. Anything else: null, and the notes are read as sent.
+ * with <A>'s name swapped for <B>'s — the manager's own words only, never the
+ * request sentence and never a sentence the manager did not write. The level
+ * this turn states goes on the form from the card (`withSameFormSources`), as
+ * a stated level does. Anything else: null, and the notes are read as sent.
  */
 export function sameFormOtherPersonNotes(notes: string, employeeName: string, people: readonly RosterEmployee[]): string | null {
   if (!sameFormOtherPersonEnabled() || !employeeName.trim()) return null;
@@ -265,5 +262,6 @@ export function sameFormOtherPersonNotes(notes: string, employeeName: string, pe
   const reading = readSameFormOtherPerson({ question: turns.at(-1)!, employeeName: from, people });
   if (!reading || !isEmployee(reading.to, employeeName, people)) return null;
   const swapped = earlier.map((turn) => swapName(turn, from, employeeName));
-  return [...swapped, ...(reading.level ? [levelTurn(reading.level)] : [])].join(JOIN);
+  // The level is never written into the notes: it reaches the form as the card's own field (`warningLevel`, set at Create).
+  return swapped.join(JOIN);
 }
