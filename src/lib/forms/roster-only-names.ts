@@ -1,4 +1,4 @@
-import { formNameFromRosterEnabled, metricGuardEnabled, offRosterConfirmEnabled, rosterNearMissEnabled, rosterNotFoundAnyPhrasingEnabled } from "@/lib/config/chat-quality-flags";
+import { addressNotPersonEnabled, formNameFromRosterEnabled, metricGuardEnabled, offRosterConfirmEnabled, rosterNearMissEnabled, rosterNotFoundAnyPhrasingEnabled } from "@/lib/config/chat-quality-flags";
 import { isGlossaryTerm } from "@/lib/ai/chat-glossary";
 import type { AskResponse } from "@/lib/ai/types";
 
@@ -6,7 +6,7 @@ import { HAS_EMPLOYEE_AND_PLACE, SAYS_READY } from "@/lib/ai/ca-what-happened";
 
 import { matchEmployeeName, normalizeTypedName, type RosterEmployee } from "./employee-match";
 import { isAcceptedOffRoster, offRosterCardNote, offRosterOffer, offRosterTakenLine } from "./off-roster-confirm";
-import { personRosterNames } from "./person-guard";
+import { addressNotPersonAsk, followsHouseNumber, personRosterNames } from "./person-guard";
 import { metricMessage, namesAMetric, requestMessage } from "./request-slot";
 import { namesAForm } from "./template-intent";
 
@@ -134,6 +134,15 @@ export function rosterOnlyNames(response: AskResponse, names: readonly string[],
       content = content.replace(new RegExp(String.raw`\s+for\s+\*\*${escape(employee)}\*\*`, "g"), "").split(`**${employee}**`).join("the employee");
       ask = close ? `Is this for **${close}**?` : ASK_WHO;
       /*
+       * The Sunny flip-3 gate (6 Nov 2026, defect 2): "coaching form for 123 Main Street" — the name follows a house
+       * number in this turn, so ADDRESS_NOT_PERSON's question (it runs later and finds the card already empty) is
+       * asked here, not the bare who-ask.
+       */
+      if (!close && addressNotPersonEnabled() && message && followsHouseNumber(employee, message)) {
+        ask = addressNotPersonAsk(proposal.templateName ?? "form", employee);
+        content = content.split("\n").filter((line) => !ASKS_WHO.test(line)).join("\n");
+      }
+      /*
        * THE GATE (5 Nov 2026, nov3-street-then-placeholder): the card was ready
        * when it was built, so the reply said "Everything I need is here … I have
        * the employee and the salon" — and then asked who. A card with no
@@ -236,6 +245,11 @@ function withoutSlotNameInObservation(content: string, message: string | undefin
   return content.replace(/(\*\*Observation of Offense:\*\*[ \t]*)([^,\n]+),[ \t]*(?=\S)/g, (whole, label: string, lead: string) => {
     const typed = lead.trim();
     if (!typed || typed.split(/\s+/).length > 4 || rosterSpelling(typed, names)) return whole;
+    // The Sunny flip-3 gate (6 Nov 2026, defect 3): "a CA for Under Performance on PPTA, LPSVA, …" — the clause after
+    // "for" opens with what happened (the name readers' metric rule: "Under Performance"), not a person, so the
+    // Observation keeps it.
+    const words = typed.split(/\s+/);
+    if (metricGuardEnabled() && words.some((_, end) => namesAMetric(words.slice(0, end + 1).join(" "), message))) return whole;
     return new RegExp(String.raw`\bfor\s+${escape(typed)}\s*,`, "i").test(message) ? label : whole;
   });
 }
