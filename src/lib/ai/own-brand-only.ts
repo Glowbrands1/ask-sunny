@@ -41,8 +41,16 @@ export interface BrandWords {
   readonly others: readonly string[];
 }
 
-/* The other brands are the pattern the manual block already leaves out (`full-manual-context.ts` EXCLUDED_BRAND). */
-const DEFAULT_WORDS: BrandWords = { own: ACTIVE_BRAND.brandName, others: [EXCLUDED_BRAND.source] };
+/*
+ * The other brands are the alternatives of the pattern the manual block already leaves out (`full-manual-context.ts`
+ * EXCLUDED_BRAND), without its office alternatives: the JBA office is not a brand, and a sentence about it stays
+ * (Pau, 6 Nov 2026, answer "A").
+ */
+const OTHER_BRANDS = EXCLUDED_BRAND.source
+  .replace(/^\\b\(\?:|\)\\b$/g, "")
+  .split("|")
+  .filter((alternative) => !/\boffice\b/.test(alternative));
+const DEFAULT_WORDS: BrandWords = { own: ACTIVE_BRAND.brandName, others: OTHER_BRANDS };
 
 function patterns(words: BrandWords) {
   const own = escape(words.own).replace(/\\? /g, String.raw`\s+`);

@@ -37,10 +37,13 @@ export const NOV6_OWN_BRAND_ONLY_CASES: ReplayCase[] = [
       t.directory(STAFF);
       t.as("salon_director", KEARNEY);
       const thread = t.thread();
-      t.modelSays(`This applies company-wide across all brands — ${OWN}, ${OTHERS.join(", ")} — pets are not allowed in the workplace [p.29].`);
+      // Pau, answer "A" (6 Nov 2026): a sentence about the JBA office is not another brand's, and stays byte for byte.
+      const office = "Corporate staff at the JBA office follow the same rule [p.29].";
+      t.modelSays(`This applies company-wide across all brands — ${OWN}, ${OTHERS.join(", ")} — pets are not allowed in the workplace [p.29]. ${office}`);
       const reply = await thread.say("can employees bring their dog to work?");
       for (const other of OTHERS) expect(reply.content, `the reply names another brand:\n${reply.content}`).not.toContain(other);
       expect(reply.content, `the reply lost the policy:\n${reply.content}`).toMatch(new RegExp(`at ${OWN} — pets are not allowed`));
+      expect(reply.content, `the JBA office sentence was changed:\n${reply.content}`).toContain(office);
     },
   },
 ];

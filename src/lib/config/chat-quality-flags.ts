@@ -2755,7 +2755,8 @@ export function caOfferKeepsAccountEnabled(): boolean {
  * the manual listed every brand ("across all brands — <this brand>, <other brands> — …"); each app names only its own.
  * On: the finished reply names only this company's brand — a list of brands holding it becomes it, a line headed by
  * another brand goes, any other sentence naming one goes; a quotation is kept or dropped whole, never reworded
- * (`ai/own-brand-only.ts`). The brands are read from existing config and patterns, not written anew. Off, as before.
+ * (`ai/own-brand-only.ts`). The brands are read from existing config and patterns, not written anew; the JBA office is
+ * not a brand and its sentences stay (Pau, answer "A"). Off, as before.
  */
 export function ownBrandOnlyEnabled(): boolean {
   return envFlag("OWN_BRAND_ONLY_ENABLED");

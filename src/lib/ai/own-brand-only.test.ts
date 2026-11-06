@@ -73,6 +73,16 @@ describe("OWN_BRAND_ONLY_ENABLED", () => {
     expect(out).not.toContain("two uniform shirts");
   });
 
+  it("on: a JBA office sentence stays byte for byte; only the other brand's sentence goes (Pau, answer \"A\")", () => {
+    vi.stubEnv("OWN_BRAND_ONLY_ENABLED", "true");
+    const office = "Corporate staff at the JBA office get New Year's Day, Memorial Day and Labor Day as paid holidays [p.43].";
+    expect(withOwnBrandOnly(reply(office)).content).toBe(office);
+    const officeLine = "- **JB & Associates Office** — any JBA franchise branded top, fitted blouse or collared shirt [p.17].";
+    expect(ownBrandOnly(officeLine)).toBe(officeLine);
+    const mixed = `${office} ${FIRST} staff get Thanksgiving and Christmas only.`;
+    expect(ownBrandOnly(mixed)).toBe(office);
+  });
+
   it("on: a quotation is never reworded — kept whole or dropped whole", () => {
     const quoted = `The manual says "Employees of ${OWN}, ${FIRST} and ${SECOND} must wear name tags." Name tags are required [p.15].`;
     expect(ownBrandOnly(quoted)).toBe("Name tags are required [p.15].");
