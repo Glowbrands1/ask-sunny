@@ -416,6 +416,8 @@ const NEW_FLAGS = [
   "TITLE_ENDS_AT_LINE_ENABLED",
   "BARE_NOT_DENIAL_ENABLED",
   "PLACE_FROM_CUE_ENABLED",
+  // After the Sunny flip (6 Nov 2026, row 6): forced off with the others in the child run.
+  "TWO_FORMS_OWN_PERSON_ENABLED",
 ] as const;
 
 const PROTECTED = [
