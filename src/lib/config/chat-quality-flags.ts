@@ -2598,3 +2598,14 @@ export function citationLineKeptOnRevisionEnabled(): boolean {
 export function metricGuardEnabled(): boolean {
   return envFlag("METRIC_GUARD_ENABLED");
 }
+
+/**
+ * CA_REASON_DUE_TO_ENABLED (ported from the sibling app, QA, live, 4 Nov 2026; default off). "CA for <name> due
+ * to …" reads the reason after the person whatever CA_SALES_POLICY says, and a drafted Observation the model
+ * began with the request ("CA for <name> due to …", or "create a ca for <name> at <salon>, she was late …")
+ * begins with the request's reason or the account after its comma (`forms/request-observation.ts`). Off, as
+ * before.
+ */
+export function caReasonDueToEnabled(): boolean {
+  return envFlag("CA_REASON_DUE_TO_ENABLED");
+}
