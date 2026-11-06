@@ -21,6 +21,8 @@ const FLAGS = [
   "FORM_NAME_FROM_ROSTER_ENABLED",
   "ROSTER_NEAR_MISS_ENABLED",
   "ROSTER_NAME_IN_CANDIDATE_ENABLED",
+  "ROSTER_COMPOUND_SURNAME_ENABLED",
+  "ROSTER_NOT_FOUND_ANY_PHRASING_ENABLED",
   "OFF_ROSTER_CONFIRM_ENABLED",
 ];
 
@@ -61,6 +63,25 @@ function offeredThenReady(id: string, title: string, turn: string, name: string)
         reply = await thread.say(`use ${name}`);
       }
       expect(thread.proposal, `no card the manager can create:\n${reply.content}`).toMatchObject({ employeeName: name, status: "ready" });
+    },
+  };
+}
+
+/** Two roster people the typed name is close to: the app asks which, and never offers the typed spelling (gate, 6 Nov 2026). */
+function neverOfferedBesideTwo(id: string, title: string, turn: string, typed: string, a: [string, string], b: [string, string]): ReplayCase {
+  const row = (key: string, [firstName, lastName]: [string, string]) => ({ id: key, firstName, lastName, preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" });
+  return {
+    id,
+    title,
+    report: "The Sunny flip-3 gate (6 Nov 2026): a near miss of two roster people was offered as a name not in Woven",
+    status: "fixed",
+    fixFlags: FLAGS,
+    async run(t) {
+      t.directory([...STAFF, row("e-near-a", a), row("e-near-b", b)] as never);
+      t.as("salon_director", KEARNEY);
+      const thread = t.thread();
+      const reply = await thread.say(turn);
+      expect(reply.content, `a near miss of a roster person is offered as not in Woven:\n${reply.content}`).not.toContain(`reply **use ${typed}**`);
     },
   };
 }
@@ -130,5 +151,21 @@ export const NOV6_OFF_ROSTER_OFFER_SHAPE_CASES: ReplayCase[] = [
     "\"i have an employee, Zebulon Marchbanks that needs a corrective action form …\" (not in Woven): offered, then READY (the sibling app's gate rerun 3)",
     "i have an employee, Zebulon Marchbanks that needs a corrective action form with a customer complaint",
     "Zebulon Marchbanks",
+  ),
+  neverOfferedBesideTwo(
+    "nov6-offer-never-a-shared-word-near-miss",
+    "two roster people share the surname word (Odalys Prewett Vansickle, Odalys Dunmore Vansickle): \"create a ca form for Odalys Vansikcle\" is never offered as a name not in Woven",
+    "create a ca form for Odalys Vansikcle",
+    "Odalys Vansikcle",
+    ["Odalys", "Prewett Vansickle"],
+    ["Odalys", "Dunmore Vansickle"],
+  ),
+  neverOfferedBesideTwo(
+    "nov6-offer-never-a-distance-two-near-miss",
+    "two roster people two edits apart (Prewett Vansickle, Prewett Vancsikle): \"create a ca form for Odalys Prewett Vanscikle\" is never offered as a name not in Woven",
+    "create a ca form for Odalys Prewett Vanscikle",
+    "Odalys Prewett Vanscikle",
+    ["Odalys", "Prewett Vansickle"],
+    ["Odalys", "Prewett Vancsikle"],
   ),
 ];
