@@ -331,7 +331,9 @@ export function matchEmployeeName(typed: string, roster: readonly RosterEmployee
       last.split(/[\s-]+/).filter(Boolean).length > 1 &&
       last.split(/[\s-]+/).some((word) => word.startsWith(typedLast))
     ) {
-      close.push({ employee, score: 1 });
+      // With the initial-of-the-whole-surname matches, never instead of them: "Crystal R" offers both people whose
+      // surname has a word starting with R (the real-roster check, 6 Nov 2026). An initial is never filled.
+      exact.push(employee);
       continue;
     }
     const firstClose = firsts.some((first) => closeWord(typedFirst, first));

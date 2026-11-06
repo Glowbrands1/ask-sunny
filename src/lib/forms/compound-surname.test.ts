@@ -97,6 +97,13 @@ describe("ROSTER_COMPOUND_SURNAME_ENABLED: compound first names, and an initial 
     expect(kind("Severin A", [SEVERIN])).toBe("confirm:Severin Ashdown Ferrant");
   });
 
+  it("on: an initial shared by two people (one surname starts with it, the other's second word does) offers both, never one", () => {
+    vi.stubEnv("ROSTER_COMPOUND_SURNAME_ENABLED", "true");
+    const ROOK = row("k", "Linnea", "Rook");
+    const RUSK = row("u", "Linnea", "Garvey Rusk");
+    expect(kind("Linnea R", [ROOK, RUSK])).toBe("confirm:Linnea Garvey Rusk|Linnea Rook");
+  });
+
   it("negative, on: an initial that starts no surname word is no match", () => {
     vi.stubEnv("ROSTER_COMPOUND_SURNAME_ENABLED", "true");
     expect(kind("Severin Q", [SEVERIN])).toBe("none");
