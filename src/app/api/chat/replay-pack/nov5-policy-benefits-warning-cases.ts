@@ -40,4 +40,26 @@ export const NOV5_POLICY_BENEFITS_WARNING_CASES: ReplayCase[] = [
       expect(t.values(id).policy_language ?? "", "Direct policy quotes the benefits sheet").not.toMatch(/legal retirement age|income taxes|\bIRA\b/);
     },
   },
+  {
+    id: "nov6-policy-change-relevant-remove-attendance",
+    title: "a CA cites Attendance, then \"take the attendance policy off the form\": Attendance is removed, with POLICY_CHANGE_RELEVANT on too",
+    report: "The sibling app's flip-3 gate, 6 Nov 2026: with POLICY_CHANGE_RELEVANT_ENABLED on, the form's option \"Attendance Policy\" was taken out of the manager's words, so the section was not found",
+    status: "fixed",
+    fixFlags: ["POLICY_CHANGE_RELEVANT_ENABLED"],
+    async run(t) {
+      t.directory(STAFF);
+      t.as("salon_director", KEARNEY);
+      const thread = t.thread();
+      await thread.say("corrective action");
+      await thread.say("marnie holloway");
+      await thread.say("marnie was 30 minutes late to her shift on 10/31");
+      t.draftWrites({});
+      const id = await thread.create();
+      await thread.say("add the attendance policy");
+      expect(t.values(id).policy_language ?? "", "Attendance was never cited").toMatch(/Attendance/);
+      const reply = await thread.say("take the attendance policy off the form");
+      expect(reply.content, `the section was not found:\n${reply.content}`).not.toMatch(/I couldn't find a section called/);
+      expect(t.values(id).policy_language ?? "", "Attendance is still cited").not.toMatch(/Attendance/);
+    },
+  },
 ];

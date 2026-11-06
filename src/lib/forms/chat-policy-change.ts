@@ -66,6 +66,9 @@ const REFERS_BACK =
 const REFERS_BACK_TO_A_POLICY =
   /\b(?:that|this|the same|those|above|it)\s+(?:[a-z'’-]+\s+){0,2}?(?:polic(?:y|ies)|sections?|rules?)\b|\byou (?:just\s+)?(?:quoted|found|mentioned|showed|cited|shared|pulled)\b/i;
 
+/** The words that call a section a section — the same ones `REFERS_BACK_TO_A_POLICY` reads. */
+const POLICY_WORD = /\b(?:polic(?:y|ies)|sections?|rules?)\b/gi;
+
 /**
  * POLICY_CHANGE_RELEVANT_ENABLED: a message whose only "policy" is the manual's own name ("signed the jba policy
  * manual on 10-15-26", "the employee policy manual") asks for no change to the cited policy.
@@ -175,7 +178,10 @@ export async function changeActiveFormPolicy(input: {
     ? [...new Set([...fieldsForVariant(document, instance.variantKey).map((entry) => entry.label), ...checkboxGroupsForVariant(document, instance.variantKey).flatMap((group) => [group.label, ...group.options.map((option) => option.label)])])]
         .filter((label) => {
           const key = ` ${headingKey(label)} `;
-          return !headingKeysAll.includes(headingKey(label)) && headingKeysAll.some((heading) => heading && key.includes(` ${heading} `));
+          // A label that is a heading once its "policy" / "section" / "rule" word is off ("Attendance Policy") names
+          // that section: the manager's "take the attendance policy off" means it (the sibling app's flip-3 gate, 6 Nov 2026).
+          const named = headingKey(label.replace(POLICY_WORD, " "));
+          return !headingKeysAll.includes(headingKey(label)) && !headingKeysAll.includes(named) && headingKeysAll.some((heading) => heading && key.includes(` ${heading} `));
         })
         .sort((a, b) => b.length - a.length)
     : [];
