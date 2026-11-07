@@ -2523,6 +2523,20 @@ export function formPatchReaderFixesEnabled(): boolean {
   return envFlag("FORM_PATCH_READER_FIXES_ENABLED") && formPatchReducerEnabled();
 }
 /**
+ * PROPOSAL_MAKE_IT_ABOUT_ENABLED (coding 5, QA's Sunny flip-9 tester item 9, 8 Nov 2026; same flag in both apps;
+ * default off). On a proposal card (no draft yet), "I need you to make it about showing up late and please list
+ * the policy make the date for 10/14/26." was read as more account: the card's Observation and the drafting
+ * model's notes at Create held the instruction word for word. On: a "make it / this / the form … about <X>"
+ * sentence makes <X> the account from that turn on: the card's Observation (`ai/keep-filled-slots.ts`) and the
+ * draft's notes (`forms/instances/[id]/draft/route.ts`) read <X>, never the instruction, and the account said
+ * before it is set aside (`ai/make-it-about.ts`). The date and policy asks in the same sentence stay with their own
+ * readers. Off, as before.
+ */
+export function proposalMakeItAboutEnabled(): boolean {
+  return envFlag("PROPOSAL_MAKE_IT_ABOUT_ENABLED");
+}
+
+/**
  * PROPOSAL_POLICY_SET_ASIDE_ENABLED (coding 5; QA, 8 Nov 2026: live in both apps; same flag in both apps; default
  * off). On a proposal card, "take the attendance policy off the form", sent after the manager had named that policy,
  * left the Attendance citation and "Policy: Attendance, as you said" on the card, and the sentence was read back as

@@ -46,8 +46,10 @@ import {
   caSalesPolicyEnabled,
   formNameFromRosterEnabled,
   complaintAccountEnabled,
+  proposalMakeItAboutEnabled,
   proposalPolicySetAsideEnabled,
 } from "@/lib/config/chat-quality-flags";
+import { turnsMadeAbout, withObservationMadeAbout } from "./make-it-about";
 import { NOTHING_SET_ASIDE, citationSetAside, policiesSetAside, setAsideAnything, withPolicySetAside, withoutPolicyTakeOff } from "@/lib/forms/policy-set-aside";
 import { namesOnlyAPolicy } from "@/lib/forms/person-guard";
 import { foldsToGlossaryTerm } from "./chat-glossary";
@@ -257,12 +259,15 @@ export function holdFilledSlots(input: {
       // CARD_OBSERVATION_OWN_REQUEST_ENABLED (QA live check, 3 Nov 2026): a new request's card reads back only
       // that request's turns, never the earlier incident ("…rugs untl 12;30pm <name> for being late to opening").
       const own = withoutAmountAnswers(cardObservationOwnRequestEnabled() ? currentRequestTurns(turns, next.employeeName) : turns);
+      // PROPOSAL_MAKE_IT_ABOUT_ENABLED: "make it about showing up late …" is the account from that turn on, never the instruction (`ai/make-it-about.ts`).
+      const about = proposalMakeItAboutEnabled() ? turnsMadeAbout(own) : own;
       // PROPOSAL_POLICY_SET_ASIDE_ENABLED: "take the attendance policy off the form" is an ask, never account (`forms/policy-set-aside.ts`).
-      const said = proposalPolicySetAsideEnabled() ? withoutPolicyTakeOff(own) : own;
+      const said = proposalPolicySetAsideEnabled() ? withoutPolicyTakeOff(about) : about;
       // FORM_EDIT_DATE_RULES_ENABLED: an edit replaces, adds to, or never touches the Observation.
       if (formEditDateRulesEnabled()) content = observationByRules(content, said, build);
       else if (grammarAskNotAccountEnabled()) content = withGrammarAnswered(build(content, said.map(withoutAsksToTheApp)), turns);
       else content = build(content, said);
+      if (proposalMakeItAboutEnabled()) content = withObservationMadeAbout(content, own);
     }
     if (fixed && next.templateKey === "dpoa") {
       content = withPriorActions(content, currentRequestTurns(turns, next.employeeName), input.today);
