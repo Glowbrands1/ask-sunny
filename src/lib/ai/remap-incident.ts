@@ -265,13 +265,19 @@ export function currentRequestStart(input: {
     // SECOND_REQUEST_OWN_ACCOUNT_ENABLED (QA's audit, 7 Nov 2026): after a request, a turn that names a form anywhere
     // ("I need another corrective action for <A>, …", "now make a separate CA for <A> …") is a request too; it starts a
     // new one only with its own incident, below.
-    const isRequest = REQUEST_TURN.test(asked) || (secondRequestOwnAccountEnabled() && requests >= 1 && FORM_WORD_ANYWHERE.test(turn));
+    // QA's Sunny round-4 gate (8 Nov 2026, sf-s21 / sf-s22): only in the turn's own first line — a pasted document
+    // after it ("Use this to make it: … 1. **Kit Coaching Document** …") names a form without asking for one.
+    const isRequest =
+      REQUEST_TURN.test(asked) || (secondRequestOwnAccountEnabled() && requests >= 1 && FORM_WORD_ANYWHERE.test(firstLine(turn)));
     if (!isRequest) continue;
     requests += 1;
     // SECOND_REQUEST_OWN_ACCOUNT_ENABLED (QA's Sunny round-3 gate, 7 Nov 2026): the turn's incident must also stand
     // without the request words, a few words at least, so "ok create the CA now" ("now") or "create a CA for <A>" ("for <A>")
     // after an account is never a new request with nothing in it.
-    const own = withoutRequestWords(turn);
+    // QA's Sunny round-4 gate (8 Nov 2026, sf-s22 t3): "It needs to be a CA, not a coaching form" chooses the form; a
+    // form named in what is left (", not a coaching form") is no account, so it is not counted.
+    // The state lines the intent read appends after the turn ("Warning level: verbal.") are no account either.
+    const own = withoutRequestWords(withoutStateLines(turn)).replace(FORM_WORDS_EVERYWHERE, " ");
     const tells =
       !secondRequestOwnAccountEnabled() ||
       (own.split(/\s+/).filter(Boolean).length >= OWN_ACCOUNT_WORDS && turnIncident(own, input.employeeName, input.slotClause) !== null);
@@ -303,9 +309,25 @@ const FORM_WORD_ANYWHERE = new RegExp(String.raw`\b${FORM_WORDS}\b`, "i");
 /** SECOND_REQUEST_OWN_ACCOUNT_ENABLED: an incident of its own is more than "now" or "for <first> <last>". */
 const OWN_ACCOUNT_WORDS = 4;
 
+/** Every form named in a text, for leaving them out of a turn's own account. */
+const FORM_WORDS_EVERYWHERE = new RegExp(String.raw`\b${FORM_WORDS}\b`, "gi");
+
+/** Each line without the state sentences the intent read puts in front of it or appends ("Warning level: verbal."). */
+function withoutStateLines(turn: string): string {
+  return turn
+    .split("\n")
+    .map((line) => line.replace(STATE_LEAD, ""))
+    .join("\n");
+}
+
+/** The turn's first non-empty line: where a request is asked, before anything pasted under it. */
+function firstLine(turn: string): string {
+  return turn.split("\n").find((line) => line.trim() !== "") ?? "";
+}
+
 function withoutRequestWords(turn: string): string {
   return turn
-    .split(/(?<=[.!?;])\s+/)
+    .split(/(?<=[.!?;])\s+|\n+/)
     .map((sentence) => {
       const form = FORM_WORD_ANYWHERE.exec(sentence);
       return form ? sentence.slice(form.index + form[0].length).trim() : sentence;

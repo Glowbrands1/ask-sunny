@@ -205,13 +205,20 @@ export function attachFormTurnSources(given: {
   readonly modelHeading?: string | null;
   readonly attendanceCitation?: boolean;
   readonly pageRequired?: boolean;
+  /**
+   * The manager's turns, oldest first, when the caller has them. SECOND_REQUEST_OWN_ACCOUNT_ENABLED cuts the request
+   * now being written by turn; `notes` joins them by line, and a turn of several lines (a pasted document, "… in the
+   * format of <name>'s ca …") was cut in the middle (QA's Sunny round-4 gate, 8 Nov 2026, sf-s22 t1).
+   */
+  readonly turns?: readonly string[];
 }): { content: string; citations: SourceCitation[] } {
   /*
    * SECOND_REQUEST_OWN_ACCOUNT_ENABLED (QA's audit, 7 Nov 2026): the card's citation and policy line read the request
    * now being written. The notes are every manager turn joined line by line, so the request starts at the last line
    * that asks for a form; a cash-drawer CA after a late-opening one was cited "Late Opening Policy … p.15".
    */
-  const scoped = secondRequestOwnAccountEnabled() ? { ...given, notes: currentFormRequestTurns(given.notes.split("\n")).join("\n") } : given;
+  const own = secondRequestOwnAccountEnabled() ? currentFormRequestTurns(given.turns ?? given.notes.split("\n")) : null;
+  const scoped = own ? { ...given, notes: own.join("\n") } : given;
   const input = formChoiceStatedEnabled() ? { ...scoped, modelHeading: headingForCard(scoped) } : scoped;
   const found = formTurnCitations(input);
   let citations = lateOpeningCitations(input.citations.length > 0 ? [...input.citations] : found, input.notes);
@@ -262,7 +269,26 @@ export function attachFormTurnSources(given: {
     content,
     input.attendanceCitation === true && sections.some((section) => /^attendance$/i.test(section.heading)),
   );
+  if (own && own.length < (given.turns ?? given.notes.split("\n")).length) content = withOwnRequestPolicyLine(content, sections);
   return { content, citations };
+}
+
+/*
+ * SECOND_REQUEST_OWN_ACCOUNT_ENABLED (QA's Sunny round-4 gate, 8 Nov 2026: nov2-p2 t5, nov2-p4 t2,
+ * nov3-card-observation-own-request t3, nov3-open-draft-new-request t3). A later request ("make me a CA for <A> for
+ * being late to opening this morning") no longer carries the earlier request's saved policy, so its card lost the
+ * "**Policy:** Attendance — read from this request." paragraph it had (said from that saved policy) while still citing
+ * the section this request reads as. With the request cut to its own turns and exactly one section cited for it, a
+ * Corrective Action card without a Policy paragraph says that section the same way.
+ */
+const CA_CARD_LEAD = /^I'll draft an? \*\*Corrective Action Form\*\* for \*\*[^*\n]+\*\*[^\n]*$/m;
+
+function withOwnRequestPolicyLine(content: string, sections: readonly { heading: string }[]): string {
+  if (sections.length !== 1 || /^\*\*Policy:\*\*/m.test(content) || !CA_CARD_LEAD.test(content)) return content;
+  const label = sections[0]!.heading.replace(/\s+policy$/i, "").trim();
+  if (!label) return content;
+  const line = `**Policy:** ${label} — read from this request. I'll quote that section from the current policy manual on the draft; tell me if a different policy applies.`;
+  return content.replace(CA_CARD_LEAD, (lead) => `${lead}\n\n${line}`);
 }
 
 /**

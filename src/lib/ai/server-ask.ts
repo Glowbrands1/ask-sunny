@@ -714,6 +714,7 @@ async function answerQuestionUntraced(
             content,
             citations,
             notes,
+            turns,
             chunks: manual.chunks,
             documentId: manual.documentId,
             documentTitle: manual.documentTitle,
