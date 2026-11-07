@@ -1,8 +1,10 @@
-import { bareNotDenialEnabled, cleaningOtherEveryWordingEnabled, replyMatchesCardEnabled } from "@/lib/config/chat-quality-flags";
+import { bareNotDenialEnabled, cleaningOtherEveryWordingEnabled, exitDateLineAgreesEnabled, replyMatchesCardEnabled } from "@/lib/config/chat-quality-flags";
 import { offeredOffRosterName } from "@/lib/forms/off-roster-confirm";
 import { deniesAFault, deniesAFaultWithBareNot } from "@/lib/forms/draft-never-blank";
 import { caPolicyProposalLine, readCaPolicy, removedOffenseLabels } from "@/lib/forms/ca-policy";
 import { cardPolicyHeading } from "@/lib/forms/card-policy";
+import { EXIT_TEMPLATE_KEY } from "@/lib/forms/exit-library";
+import { exitDateInWords } from "@/lib/forms/exit-intake";
 import { personRosterNames } from "@/lib/forms/person-guard";
 import { requestMessage } from "@/lib/forms/request-slot";
 import {
@@ -189,6 +191,19 @@ export function withCleaningOtherPolicy(response: AskResponse, message?: string)
   return content === response.content ? response : { ...response, content };
 }
 
+/*
+ * EXIT_DATE_LINE_AGREES_ENABLED (QA round 5, 8 Nov 2026; same flag in both apps; default off). "exit form for <name>,
+ * last day 11/05, gave no notice": the reply's list said "- **Date:** the day the draft is created" while the card
+ * under it said "**Date:** 11/5/2026", and the form was created dated 11/5. On: an exit card that carries a date has
+ * that date on the list's Date line. A card with no date keeps "the day the draft is created". Off, as before.
+ */
+const EXIT_DATE_BULLET = /^- \*\*Date:\*\* the day the draft is created$/m;
+
+function withTheCardsExitDate(content: string, card: NonNullable<AskResponse["formProposal"]>): string {
+  if (!exitDateLineAgreesEnabled() || card.templateKey !== EXIT_TEMPLATE_KEY || !card.formDate) return content;
+  return content.replace(EXIT_DATE_BULLET, `- **Date:** ${exitDateInWords(card.formDate)}`);
+}
+
 /** The reply made to agree with its card. Pure; see `withReplyMatchesCard`. */
 export function replyMatchesCard(response: AskResponse, names: readonly string[], message?: string): AskResponse {
   const card = response.formProposal;
@@ -199,6 +214,7 @@ export function replyMatchesCard(response: AskResponse, names: readonly string[]
     content = employee ? withTheCardsEmployee(content, employee) : withNobodyNamed(content, names, message);
   }
   content = withoutNotToldWhenTold(withoutRemovedOffense(withOnePolicy(content)), card.issue);
+  content = withTheCardsExitDate(content, card);
   content = tidy(content);
   return content === response.content ? response : { ...response, content };
 }
