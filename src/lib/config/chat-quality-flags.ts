@@ -3158,6 +3158,18 @@ export function sourceNoteGuardEnabled(): boolean {
   return envFlag("SOURCE_NOTE_GUARD_ENABLED");
 }
 
+// coding 2: NO_ACCOUNT_NO_APP_POLICY
+/**
+ * NO_ACCOUNT_NO_APP_POLICY_ENABLED (QA's Sunny flip-9 live tester, 8 Nov 2026; default off). "ca for <A> not late"
+ * asked "You haven't told me what happened yet" and, beside it, said "**Policy:** Attendance — read from this
+ * request" (AS_YOU_SAID_APP_READ's reading of the app's own line, for a fault the manager denied). With this flag on,
+ * a Corrective Action card that asks what happened carries no "— read from this request" Policy line: with no
+ * account there is no policy to read (`ai/no-account-policy-line.ts`). Off, as before.
+ */
+export function noAccountNoAppPolicyEnabled(): boolean {
+  return envFlag("NO_ACCOUNT_NO_APP_POLICY_ENABLED");
+}
+
 // coding 2: REMOVE_POLICY_NOT_NAMED
 /**
  * REMOVE_POLICY_NOT_NAMED_ENABLED (port from the sibling app; A1, QA 6 Nov 2026; default off). "take the
