@@ -11,6 +11,7 @@ import {
   removePolicyNotNamedEnabled,
   policyCleaningIncidentEnabled,
   salesShortfallObjectEnabled,
+  wovenTrainingConductEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { JOIN } from "./bounded-context";
@@ -112,7 +113,9 @@ export interface CaPolicyReading {
    * CA_SALES_POLICY_ENABLED on: the account reads as the Under Performance
    * offense type, or uses a glossary term (MSB). See `withSalesPolicy`.
    */
-  source: "stated" | "incident" | "sales_performance" | "msb" | null;
+  source: "stated" | "incident" | "sales_performance" | "msb" | "woven" | null;
+  /** WOVEN_TRAINING_CONDUCT_ENABLED: the manager's words that say the Woven work was not done ("not signing the woven policies"). */
+  woven?: string;
   /** Policies to ask between, when the account reads more than one way and none was named. */
   ambiguous: CaPolicyName[] | null;
   /** A scheduled meeting, seminar or training session the account says was not attended: "the monthly meeting". */
@@ -459,7 +462,88 @@ function statedIn(turn: string): CaPolicyName | null {
  */
 export function readCaPolicy(rawText: string): CaPolicyReading {
   const said = managerWords(rawText);
-  return withAppReading(withCleaningOther(withSalesPolicy(readCaPolicyFromWords(said), said), said), rawText, said);
+  // Merge of main into #595: WOVEN_TRAINING_CONDUCT's reading (default off) before AS_YOU_SAID_APP_READ's fallback, on the manager's words.
+  return withAppReading(withWovenWork(withCleaningOther(withSalesPolicy(readCaPolicyFromWords(said), said), said), said), rawText, said);
+}
+
+/**
+ * ============================================================================
+ * WOVEN WORK NOT DONE IS THE STANDARDS OF CONDUCT
+ * (WOVEN_TRAINING_CONDUCT_ENABLED, default off; Pau's ruling, 6 Nov 2026)
+ * ============================================================================
+ *
+ * Three managers, the same thing — assigned Woven policy acknowledgements not
+ * completed by the deadline — and three answers: "not signing the woven
+ * policies by 10-30-26" said no policy at all; "was assigned to complete policy acknowledgements in Woven
+ * by 10-31-26. <first> failed to meet the 10-31-26 deadline" was a tentative
+ * suggestion; "did not complete the assigned policy acknowledgements in Woven
+ * by the 10-31-26 deadline" was tentative too, and "not signing" said no
+ * policy at all. Pau: always the Standards of Conduct, with the
+ * manual's section and page.
+ *
+ * A SENTENCE THAT NAMES WOVEN AND SAYS THE WORK WAS NOT DONE — by the readings
+ * above (unfinished work, policy acknowledgements, a missed deadline), or
+ * by `NOT_DONE` (a negated sign / complete / acknowledge) — or one that names
+ * Woven work as assigned or required beside a deadline missed elsewhere in the
+ * account. Woven is where assigned acknowledgements and training live, so the
+ * word is enough to know whose work it was; nothing else is listed.
+ *
+ * WHAT IT LEAVES ALONE: a policy the manager named (other than Under
+ * Performance, which the current form records under the Standards of Conduct);
+ * a sales or MSB reading. A missed meeting that is Woven training ("missed the
+ * woven training") is this, not Attendance. Off, the reading is untouched.
+ */
+const NOT_DONE = new RegExp(
+  String.raw`\b(?:${FAILED}|not|never|without)\s+(?:\S+\s+){0,2}?(?:sign|signs|signed|signing|complete|completes|completed|completing|finish|finished|finishing|acknowledge|acknowledged|acknowledging)\b(?:(?!\s+(?:and|but)\s)[^.;,!?\n])*`,
+);
+const WOVEN = /\bwoven\b/;
+const WOVEN_ASSIGNED = /\b(?:assigned|required|due)\b/;
+const WOVEN_TOPICS: readonly ConductTopic[] = ["task", "deadline"];
+
+function wovenWork(sentences: readonly string[]): string | null {
+  const topicIn = (sentence: string) =>
+    CONDUCT_TOPICS.filter(({ topic }) => WOVEN_TOPICS.includes(topic))
+      .map(({ pattern }) => pattern.exec(sentence))
+      .find((match) => match !== null) ?? null;
+  for (const sentence of sentences) {
+    if (!WOVEN.test(sentence)) continue;
+    const said = NOT_DONE.exec(sentence) ?? topicIn(sentence);
+    if (said) return said[0].trim();
+  }
+  if (!sentences.some((sentence) => WOVEN.test(sentence) && WOVEN_ASSIGNED.test(sentence))) return null;
+  const deadline = CONDUCT_TOPICS.find(({ topic }) => topic === "deadline")!.pattern;
+  for (const sentence of sentences) {
+    const missed = deadline.exec(sentence);
+    if (missed) return sentence.slice(Math.max(0, sentence.lastIndexOf(" ", missed.index - 2) + 1)).replace(/[.!]+$/, "").trim();
+  }
+  return null;
+}
+
+function withWovenWork(reading: CaPolicyReading, rawText: string): CaPolicyReading {
+  if (!wovenTrainingConductEnabled()) return reading;
+  if (isSalesPolicyReading(reading)) return reading;
+  const wovenEvent = reading.missedEvent !== null && WOVEN.test(reading.missedEvent);
+  const readAsMissedEvent = reading.stated === "attendance" && reading.missedEvent !== null;
+  if (reading.stated !== null && reading.stated !== "under_performance" && !(readAsMissedEvent && wovenEvent)) return reading;
+  if (reading.missedEvent !== null && !wovenEvent) return reading;
+  const woven = wovenWork(statements(normalize(rawText))) ?? (wovenEvent ? missedEventPhrase(reading.missedEvent!) : null);
+  if (!woven) return reading;
+  return {
+    ...reading,
+    stated: null,
+    topics: reading.topics.includes("task") ? reading.topics : [...reading.topics, "task"],
+    alternatives: [],
+    suggestion: STANDARDS_OF_CONDUCT,
+    source: "woven",
+    ambiguous: null,
+    missedEvent: null,
+    woven,
+  };
+}
+
+/** WOVEN_TRAINING_CONDUCT_ENABLED: Woven work not done, read as the Standards of Conduct. */
+export function isWovenWorkReading(reading: CaPolicyReading): boolean {
+  return reading.source === "woven";
 }
 
 /**
@@ -647,9 +731,13 @@ function asksForCorrectiveAction(sentence: string): boolean {
   return intent.kind === "corrective_action" || (intent.kind === "explicit" && intent.templateKey === "dpoa");
 }
 
-/** Whether the reading is CA_SALES_POLICY_ENABLED's: a sales or MSB account read as the Standards of Conduct. */
+/**
+ * Whether the reading is CA_SALES_POLICY_ENABLED's: a sales or MSB account read as the Standards of Conduct.
+ * WOVEN_TRAINING_CONDUCT_ENABLED's reading (Woven work not done) is settled the same way — the box is ticked,
+ * nothing is asked — so it counts here too; `isWovenWorkReading` tells it apart.
+ */
 export function isSalesPolicyReading(reading: CaPolicyReading): boolean {
-  return reading.source === "sales_performance" || reading.source === "msb";
+  return reading.source === "sales_performance" || reading.source === "msb" || reading.source === "woven";
 }
 
 function readCaPolicyFromWords(rawText: string): CaPolicyReading {
@@ -911,6 +999,10 @@ function namedPolicyLine(named: NamedPolicyReading): string {
     return `**Policy:** ${named.heading}, as you said — the policy manual's section on page ${named.page}. I'll quote it on the draft${box ? ` under **${box}**` : ""}.`;
   }
   if (named.lookup === "missing") {
+    // WOVEN_TRAINING_CONDUCT_ENABLED: the app says what it did not find; "Woven" is the product, not the one looking.
+    if (wovenTrainingConductEnabled()) {
+      return `**Policy:** I don't see a section of the current policy manual for "${named.phrase}" in the knowledge base, so I won't cite one. Tell me the policy as the manual names it, or tick Type of Offense and complete Direct policy on the form.`;
+    }
     return `**Policy:** Woven does not see a section of the current policy manual for "${named.phrase}" in the knowledge base, so I won't cite one. Tell me the policy as the manual names it, or tick Type of Offense and complete Direct policy on the form.`;
   }
   return `**Policy:** "${named.phrase}", as you said. I'll look for that section in the current policy manual and quote it on the draft; if the manual has no section by that name, Direct policy is left for you to complete.`;
@@ -949,6 +1041,14 @@ export function caPolicyProposalLine(reading: CaPolicyReading, named: NamedPolic
   // CA_SALES_POLICY_ENABLED (`withCleaningOther`): cleaning left undone is the form's Other box. Off, never set.
   if (reading.other === "cleaning") {
     return "**Policy:** Other — cleaning duties left undone are recorded under Other on the Corrective Action Form, not the Standards of Conduct. Tell me if a different policy applies.";
+  }
+  /*
+   * WOVEN_TRAINING_CONDUCT_ENABLED: the manual's section and page, where it was read (`named`, from
+   * `describedManualSection`); where the manual could not be read, the policy is still said, not offered.
+   */
+  if (isWovenWorkReading(reading)) {
+    if (named && named.lookup === "described") return namedPolicyLine(named);
+    return "**Policy:** Standards of Conduct — required Woven policy acknowledgements or training not completed. I'll cite that section of the current policy manual, with its page, on the draft; tell me if a different policy applies.";
   }
   // CA_SALES_POLICY_ENABLED: a sales or MSB account. Off, the source is never set and this line is never said.
   if (isSalesPolicyReading(reading)) {
@@ -1072,6 +1172,11 @@ export function groundConductPolicy(input: {
   })[0];
   if (!section) return { ok: false, reason: "no_section" };
   if (input.reading.source === "stated") return { ok: true, section, anchor: null };
+  // WOVEN_TRAINING_CONDUCT_ENABLED (Pau, 6 Nov 2026): always the Standards of Conduct; its line is quoted where the manual has one.
+  if (input.reading.source === "woven") {
+    const line = sectionText(input.chunks, section).split("\n").find((candidate) => ANCHORS.task.some((anchor) => anchor.test(candidate)));
+    return { ok: true, section, anchor: line?.trim() ?? null };
+  }
 
   const text = sectionText(input.chunks, section);
   const lines = text.split("\n");
