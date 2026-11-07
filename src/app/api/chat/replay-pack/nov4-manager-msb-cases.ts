@@ -108,7 +108,8 @@ export const NOV4_MANAGER_MSB_CASES: ReplayCase[] = [
     title: `"${byId("mgr-1-verbal-metrics").text}" — a CA card, no "what happened", cites the Standards of Conduct`,
     report: `${REPORT}, #1`,
     // Run 4 Nov 2026 (production flags): fails as below.
-    status: { open: "no card at all: the metrics are answered with the progression (\"I won't open formal corrective action off a metric\"), so no Standards of Conduct citation" },
+    // Changed on purpose (7 Nov 2026): QA's flips of 5 and 6 Nov turned CA_SALES_POLICY, REPLY_MATCHES_CARD, TITLE_OF_THE_EMPLOYEE, METRIC_GUARD, TITLE_ENDS_AT_LINE, BARE_NOT_DENIAL and PLACE_FROM_CUE on in production (production-flags.json); this case now holds with production's flags.
+    status: "fixed",
     fixFlags: ["CA_SALES_POLICY_ENABLED"],
     run: (t) => runMessage(t, byId("mgr-1-verbal-metrics")),
   },
@@ -139,7 +140,8 @@ export const NOV4_MANAGER_MSB_CASES: ReplayCase[] = [
     // Run 4 Nov 2026 on main before #512: OPEN, a card for the person, but no Standards of Conduct citation on the card or the draft.
     // Holds with production's flags since Corrective Action revision 8 (#512): the draft's Under Performance tick is the Standards of Conduct box, so the draft cites it.
     // Open again with QA's live finding (4 Nov 2026, 13:23 UTC), asserted below: with production's flags the card's Observation is the whole request.
-    status: { open: "the card's Observation of Offense is the whole request (\"MSB CA for <name> for underperformance in the month of October\") with production's flags" },
+    // Changed on purpose (7 Nov 2026): QA's flips of 5 and 6 Nov turned CA_SALES_POLICY, REPLY_MATCHES_CARD, TITLE_OF_THE_EMPLOYEE, METRIC_GUARD, TITLE_ENDS_AT_LINE, BARE_NOT_DENIAL and PLACE_FROM_CUE on in production (production-flags.json); this case now holds with production's flags.
+    status: "fixed",
     // CHAT_GLOSSARY_ENABLED is on in production since 4 Nov 2026 (13:07 UTC); the case holds with both, as in the sibling app.
     fixFlags: ["CA_SALES_POLICY_ENABLED", "CHAT_GLOSSARY_ENABLED"],
     /*
@@ -165,7 +167,8 @@ export const NOV4_MANAGER_MSB_CASES: ReplayCase[] = [
     title: `"${byId("mgr-5-msb-soc").text}" — asks once "Do you want a Corrective Action for …?" (Standards of Conduct); "yes" makes the card, citing the Standards of Conduct`,
     report: `${REPORT}, #5 (Pau: asks once, card after yes)`,
     // Run 4 Nov 2026 (production flags): fails as below.
-    status: { open: "turn 1 is answered as a policy question (the pack's stand-in answer): no offer \"Do you want a Corrective Action for …?\", so \"yes\" makes no card" },
+    // Changed on purpose (7 Nov 2026): QA's flips of 5 and 6 Nov turned CA_SALES_POLICY, REPLY_MATCHES_CARD, TITLE_OF_THE_EMPLOYEE, METRIC_GUARD, TITLE_ENDS_AT_LINE, BARE_NOT_DENIAL and PLACE_FROM_CUE on in production (production-flags.json); this case now holds with production's flags.
+    status: "fixed",
     // Holds with the offer behind CA_SALES_POLICY_ENABLED (src/lib/ai/ca-offer.ts, claude/ca-sales-msb-cases), with CHAT_GLOSSARY_ENABLED on.
     fixFlags: ["CA_SALES_POLICY_ENABLED", "CHAT_GLOSSARY_ENABLED"],
     run: (t) => runAsksOnceThenYes(t, byId("mgr-5-msb-soc")),
