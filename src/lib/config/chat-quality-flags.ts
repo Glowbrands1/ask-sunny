@@ -777,6 +777,22 @@ export function reopenVerbGuardEnabled(): boolean {
   return envFlag("REOPEN_VERB_GUARD_ENABLED");
 }
 
+/**
+ * A form on file is asked for with any verb that opens it, not only "edit"
+ * (QA, 6 Nov 2026; QA's history review of a location manager's chats, 5 Nov
+ * 2026: "bring up <name>'s corrective action", "bring up an old coaching form
+ * for <first name>" started over). On, a request that leads with "bring up",
+ * "pull up", "open" or "find" and names a person and a form opens that
+ * person's form on file through the "edit" reopen path (a finalized one as a
+ * new draft of it), or says none is on file; and a form named only as "CA" /
+ * "corrective action" ("Change <name> CA") counts as named. A request to
+ * create one ("write up", "create", "make") still creates. Off, the reopen
+ * reading is exactly as before.
+ */
+export function reopenByAnyOpenVerbEnabled(): boolean {
+  return envFlag("REOPEN_BY_ANY_OPEN_VERB_ENABLED");
+}
+
 function flagOn(value: string | undefined): boolean {
   if (typeof value !== "string") return false;
   return ON.has(value.trim().toLowerCase());
@@ -2592,6 +2608,21 @@ export function keepRosterExactNameEnabled(): boolean {
 }
 
 /**
+ * PAST_FORMS_BEFORE_LIBRARY_ENABLED (Pau, 5 Nov 2026; overnight scan sf-s29,
+ * default off). "are there any coaching and ca's for <name>" was answered
+ * from the forms library ("Yes. **Corrective Action Form** — …") instead of
+ * the forms on file for that person. On: when the forms-library check
+ * (`detectInventoryQuestion`) would answer a message that names a person or
+ * asks about forms already on file, the past-forms lookup
+ * (`chat-form-records.ts`) runs for it instead and the library answer steps
+ * aside. "do we have a coaching form?" still gets the library answer. Off, as
+ * before.
+ */
+export function pastFormsBeforeLibraryEnabled(): boolean {
+  return envFlag("PAST_FORMS_BEFORE_LIBRARY_ENABLED");
+}
+
+/**
  * COACHING_ASKS_WHAT_HAPPENED_ENABLED (Pau, 5 Nov 2026, sf-s27; default off).
  * "Create a coaching form." → "<name>" answered "Everything I need is here …
  * I have the employee and the salon." with no incident and no draft. On: a
@@ -2602,6 +2633,23 @@ export function keepRosterExactNameEnabled(): boolean {
  */
 export function coachingAsksWhatHappenedEnabled(): boolean {
   return envFlag("COACHING_ASKS_WHAT_HAPPENED_ENABLED");
+}
+
+/**
+ * The turn that asked for the form stays in the bounded manager window when
+ * later turns push it out (the coordinator's replays R6/R7, 5 Nov 2026; see
+ * `forms/bounded-context.ts`). The window is computed on the server (the
+ * card) and in the browser (the draft), so there are two variables:
+ * REQUEST_KEPT_IN_WINDOW_ENABLED for the server and
+ * NEXT_PUBLIC_REQUEST_KEPT_IN_WINDOW_ENABLED for the browser. FLIP BOTH
+ * TOGETHER: with one on and the other off the card and the draft read
+ * different turns. NEXT_PUBLIC_ is inlined at build time, so a flip needs a
+ * redeploy. Off, the window is exactly as before.
+ */
+export function requestKeptInWindowEnabled(): boolean {
+  if (typeof window === "undefined") return envFlag("REQUEST_KEPT_IN_WINDOW_ENABLED");
+  const inlined = process.env.NEXT_PUBLIC_REQUEST_KEPT_IN_WINDOW_ENABLED;
+  return typeof inlined === "string" && ON.has(inlined.trim().toLowerCase());
 }
 
 /**
@@ -2673,6 +2721,21 @@ export function replyMatchesCardEnabled(): boolean {
  */
 export function citationLineKeptOnRevisionEnabled(): boolean {
   return envFlag("CITATION_LINE_KEPT_ON_REVISION_ENABLED");
+}
+
+/**
+ * STALE_PROMPT_LINES_OFF_ENABLED (QA, 5 Nov 2026; default off). Two lines of
+ * the Corrective Action draft's prompt describe boxes the current template no
+ * longer has: "name the topic in the matching write-in field" (revision 7 has
+ * no write-in beside Other) and "under_performance is for results against a
+ * sales or performance target" (revision 7 has no Under Performance box). With
+ * the flag on, each line is left out when the version being drafted lacks what
+ * it describes, read from the version's own fields and options
+ * (`ai/stale-prompt-lines.ts`). A version that still has them keeps the line.
+ * Off, the prompt is byte for byte as before.
+ */
+export function stalePromptLinesOffEnabled(): boolean {
+  return envFlag("STALE_PROMPT_LINES_OFF_ENABLED");
 }
 
 /**
