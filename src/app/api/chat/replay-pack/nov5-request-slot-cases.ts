@@ -94,7 +94,8 @@ export const NOV5_REQUEST_SLOT_CASES: ReplayCase[] = [
       expect(thread.proposal?.employeeName ?? "", "the card is for Remy Calder").not.toMatch(/Calder/);
       // This app never says "I couldn't find … in the Woven roster"; a card for the name as typed is acceptable here (QA, 5 Nov 2026).
       const card = thread.proposal?.employeeName === "Remy Fenn";
-      const asks = !thread.proposal?.employeeName && /Who is this (?:\*\*[^*]+\*\* |form )?for\?|Employee's full name/.test(reply.content);
+      // Changed on purpose (QA, 7 Nov 2026; as the sibling app's #516, finding C): with OFF_ROSTER_CONFIRM the off-roster offer ("reply **use Remy Fenn**", the typed name only) is the question about the person, instead of "Who is this form for?".
+      const asks = !thread.proposal?.employeeName && /Who is this (?:\*\*[^*]+\*\* |form )?for\?|Employee's full name|reply \*\*use Remy Fenn\*\* and I'll put that name on the form/.test(reply.content);
       expect(card || asks, `neither a card for Remy Fenn nor the question who the form is for:\n${reply.content}`).toBe(true);
     },
   },
@@ -114,7 +115,8 @@ export const NOV5_REQUEST_SLOT_CASES: ReplayCase[] = [
       expect(thread.proposal?.employeeName ?? "", "the card is for Remy Calder").not.toMatch(/Calder/);
       // This app never says "I couldn't find … in the Woven roster"; a card for the name as typed is acceptable here (QA, 5 Nov 2026).
       const card = thread.proposal?.employeeName === "Remy Fenn";
-      const asks = !thread.proposal?.employeeName && /Who is this (?:\*\*[^*]+\*\* |form )?for\?|Employee's full name/.test(reply.content);
+      // Changed on purpose (QA, 7 Nov 2026; as the sibling app's #516, finding C): with OFF_ROSTER_CONFIRM the off-roster offer ("reply **use Remy Fenn**", the typed name only) is the question about the person, instead of "Who is this form for?".
+      const asks = !thread.proposal?.employeeName && /Who is this (?:\*\*[^*]+\*\* |form )?for\?|Employee's full name|reply \*\*use Remy Fenn\*\* and I'll put that name on the form/.test(reply.content);
       expect(card || asks, `neither a card for Remy Fenn nor the question who the form is for:\n${reply.content}`).toBe(true);
     },
   },
