@@ -3,6 +3,7 @@ import { noteSpendUser } from "@/lib/ai/spend-meter";
 import { withSpendMeter } from "@/lib/ai/spend-meter-run";
 
 import { withSwitchAfterCreate } from "@/lib/ai/form-type-switch";
+import { withProposalNameCorrection } from "@/lib/forms/proposal-name-correction";
 import { enterChatRequestClock } from "@/lib/ai/chat-trace-store";
 import { answerQuestion } from "@/lib/ai/server-ask";
 import { modelSpendGuard } from "@/lib/ai/spend-guard";
@@ -395,7 +396,8 @@ async function postChat(request: Request) {
                 ?.employeeName,
             })
           : false;
-      const parsed = withSwitchAfterCreate(
+      // PROPOSAL_NAME_CORRECTION_ENABLED: "fix her last name …" on a card not yet created. See `lib/forms/proposal-name-correction.ts`.
+      const parsed = withProposalNameCorrection(withSwitchAfterCreate(
         draftAction || staffPick || newRequestOpen
           ? {
               ...asked,
@@ -411,7 +413,7 @@ async function postChat(request: Request) {
                 continueProposalTemplateKey: undefined,
               }
             : asked,
-      );
+      ));
       /*
        * A CORRECTION TO A FORM THIS CONVERSATION ALREADY CREATED — "change her
        * new location to salon 24". Tried first, and only where the browser
