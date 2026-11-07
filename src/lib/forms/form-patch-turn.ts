@@ -64,6 +64,16 @@ function lastAssistant(history: readonly Pick<ChatMessage, "role" | "content" | 
 }
 
 /**
+ * FORM_PATCH_READER_FIXES_ENABLED (QA's trace, bub-phone r1): the prompt shows a field's lines joined by " / "
+ * (`buildFormPatchUserMessage`); a value the model returns in that shape, for a field that holds lines, gets its
+ * lines back.
+ */
+function relined(value: FieldValue, current: FieldValue | undefined): FieldValue {
+  if (typeof value !== "string" || typeof current !== "string" || !current.includes("\n") || !value.includes(" / ")) return value;
+  return value.split(" / ").join("\n");
+}
+
+/**
  * FORM_PATCH_READER_FIXES_ENABLED: every value the reader set is already what the form says. One honest line,
  * no `formUpdate`, never "Updated".
  */
@@ -293,7 +303,7 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
         ...Object.entries(reading.patch.set).map(([field, value]) => ({
           op: reading.patch.how?.[field] === "add" ? ("append" as const) : ("set" as const),
           field,
-          value,
+          value: readerFixes ? relined(value, before[field]?.value) : value,
           ...(reading.patch.evidence?.[field] !== undefined ? { evidence: reading.patch.evidence[field] } : {}),
           // FORM_PATCH_READER_FIXES_ENABLED: a reword, and the Job Title as the manager's own edit.
           ...(readerFixes && reading.patch.how?.[field] === "reword" ? { reword: true } : {}),

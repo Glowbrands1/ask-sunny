@@ -1,7 +1,7 @@
 import { expect } from "vitest";
 
 import { KEARNEY, replyMatchesDiff, savedForm, type ReplayCase } from "./cases";
-import { CASH, ROOM_PROCESS, ROOM_STEPS, STEP_B_REFUSAL_SCENARIOS, STEP_B_READER_FLAGS, SUN_LATE, SUN_MEETING, SUN_TOWEL, SUN_YES, patch, type RefusalScenario } from "./nov7-step-b-refusals-scenarios";
+import { BUB_PHONE, CASH, ROOM_PROCESS, ROOM_STEPS, STEP_B_REFUSAL_SCENARIOS, STEP_B_READER_FLAGS, SUN_LATE, SUN_MEETING, SUN_TOWEL, SUN_YES, patch, type RefusalScenario } from "./nov7-step-b-refusals-scenarios";
 
 /**
  * ============================================================================
@@ -82,6 +82,30 @@ async function play(t: Parameters<ReplayCase["run"]>[0], scenario: RefusalScenar
  */
 const byId = (id: string) => STEP_B_REFUSAL_SCENARIOS.find((scenario) => scenario.id === id)!;
 const LIVE_SHAPES: readonly RefusalScenario[] = [
+  /*
+   * QA's trace (bub-phone r1, 7 Nov 2026): the reader returned an "add" as the WHOLE field, lines joined by the
+   * prompt's " / ", the new sentence inserted, with a quote that echoed a word ("also she was also on her phone");
+   * refused not_in_manager_words, and the old revision's "She was on her phone." refused too. Now the add is judged as
+   * an edit of the field (only its added words), the quote's words are all hers, and the lines come back.
+   */
+  {
+    ...byId("bub-phone"),
+    id: "bub-phone-trace",
+    script: {
+      draft: { observation: "Observed:\nWrenna Thistlecombe missed the October 15, 2026 Woven deadline.\nExpectation:\nWoven deadlines are met on time." },
+      patch: {
+        [BUB_PHONE]: patch("this_form", [
+          {
+            field: "observation",
+            value: "Observed: / Wrenna Thistlecombe missed the October 15, 2026 Woven deadline. / Also observed: Wrenna was on her phone. / Expectation: / Woven deadlines are met on time.",
+            how: "add",
+            evidence: "also she was also on her phone",
+          },
+        ]),
+      },
+      revisionFrom: { [BUB_PHONE]: { observation: "Observed:\nWrenna Thistlecombe missed the October 15, 2026 Woven deadline.\nShe was on her phone.\nExpectation:\nWoven deadlines are met on time." } },
+    },
+  },
   {
     ...byId("sun-yes-do-that"),
     id: "sun-yes-do-that-live-shape",

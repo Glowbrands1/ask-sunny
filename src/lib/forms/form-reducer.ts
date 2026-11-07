@@ -553,6 +553,15 @@ function faithfulEvidenceFrom(evidence: string, rules: PatchRules): "manager" | 
   if (!strong) return null;
   const turns = [sources.manager, ...(sources.managerTurns ?? []), sources.namingTurn ?? ""];
   if (turns.some((turn) => ` ${wordsOf(turn).join(" ")} `.includes(run))) return "manager";
+  /*
+   * QA's trace (bub-phone r1, 7 Nov 2026): the model's quote echoed a word ("also she was also on her phone" for "add
+   * that she was also on her phone"). Every word of it in one of her turns is still her words; the value itself is
+   * judged on its own words next.
+   */
+  if ((sources.managerTurns ?? [sources.manager]).some((turn) => {
+    const said = new Set(wordsOf(turn));
+    return want.every((word) => said.has(word));
+  })) return "manager";
   if (sources.accepted && sources.offered !== undefined && ` ${wordsOf(sources.offered).join(" ")} `.includes(run)) return "offered";
   return null;
 }
@@ -861,8 +870,22 @@ function setOne(draft: FormDraft, key: string, value: FieldValue, patch: FormPat
   const asked = patch.how?.[key] ?? "replace";
   // "reword" exists only with FORM_PATCH_READER_FIXES_ENABLED (`faithful`); anywhere else it is a replace.
   const reword = asked === "reword" && rules.faithful !== undefined;
-  const how: "add" | "replace" = asked === "add" ? "add" : "replace";
   const text = typeof value === "string" ? value.trim() : asList(value).join("\n");
+  /*
+   * FORM_PATCH_READER_FIXES_ENABLED (QA's trace, bub-phone r1): an "add" returned as the whole field with the new
+   * sentence inserted is an edit of the field's text: judged as a replace, so only the words it adds are checked and
+   * the field is not written twice.
+   */
+  const haveText = typeof field.value === "string" ? field.value.trim() : asList(field.value).join("\n");
+  const wholeFieldAdd =
+    asked === "add" &&
+    rules.faithful !== undefined &&
+    !group &&
+    !isList &&
+    haveText !== "" &&
+    sentencesOf(text).length > sentencesOf(haveText).length &&
+    !isNewContent(text, haveText);
+  const how: "add" | "replace" = asked === "add" && !wholeFieldAdd ? "add" : "replace";
 
   // FORM_PATCH_READER_FIXES_ENABLED: the Job Title takes the latest message's own words, and nothing else.
   if (rules.verbatimKeys?.has(key) && !group) {

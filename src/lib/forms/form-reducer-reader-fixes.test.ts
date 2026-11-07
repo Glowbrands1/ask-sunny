@@ -352,3 +352,22 @@ describe("FORM_PATCH_READER_FIXES_ENABLED: an invented clause is refused (the si
     expect(applyPatch(draft, invented, rules(what, ["coaching_details"], { employeeName: "Rowan Kestrel", formText: "" })).diff.refused).toEqual([{ key: "coaching_details", reason: "not_in_manager_words" }]);
   });
 });
+
+describe("FORM_PATCH_READER_FIXES_ENABLED: QA's bub-phone trace (7 Nov 2026)", () => {
+  const LATEST = "add that she was also on her phone";
+  const OLD = "Observed:\nWrenna Thistlecombe missed the Woven deadline.\nExpectation:\nDeadlines are met on time.";
+  const draft: FormDraft = { observation: field("observation", OLD, "assistant") };
+  const fixes = { employeeName: "Wrenna Thistlecombe", formText: OLD };
+
+  it("an add returned as the whole field, with a quote that echoes a word, is written once as an edit", () => {
+    const whole = "Observed:\nWrenna Thistlecombe missed the Woven deadline.\nAlso observed: Wrenna was on her phone.\nExpectation:\nDeadlines are met on time.";
+    const { diff } = applyPatch(draft, op("observation", whole, "add", "also she was also on her phone"), rules(LATEST, ["observation"], fixes));
+    expect(diff.refused).toEqual([]);
+    expect(diff.changed[0]!.after).toBe(whole);
+  });
+
+  it("off: the same op is refused (not_in_manager_words), as live", () => {
+    const whole = "Observed:\nWrenna Thistlecombe missed the Woven deadline.\nAlso observed: Wrenna was on her phone.\nExpectation:\nDeadlines are met on time.";
+    expect(applyPatch(draft, op("observation", whole, "add", "also she was also on her phone"), rules(LATEST, ["observation"], null)).diff.changed).toEqual([]);
+  });
+});
