@@ -5,8 +5,8 @@ import { formEditSingleWriterEnabled, formPatchReaderFixesEnabled } from "@/lib/
 import { syncCorrectiveActionPlan } from "./ca-action-plan-sync";
 import { checkboxGroupsForVariant, fieldsForVariant, parseFormDocument } from "./document";
 import { replyFromDiff } from "./form-diff-reply";
-import { readFormPatch } from "./form-patch-model";
-import type { FormPatchField, FormPatchReadOnly, FormPatchTurn } from "./form-patch-prompt";
+import { readFormPatch, type FormPatchReading } from "./form-patch-model";
+import type { FormPatchField, FormPatchInput, FormPatchReadOnly, FormPatchTurn } from "./form-patch-prompt";
 import { MANAGER_STATED_KEYS, statedDates, templateRules } from "./form-reducer-draft";
 import { applyPatch, draftFromRows, fold, type FieldValue, type PatchRules } from "./form-reducer";
 import { formLabels, snapshotDiff, snapshotOf } from "./form-snapshot";
@@ -63,24 +63,27 @@ function lastAssistant(history: readonly Pick<ChatMessage, "role" | "content" | 
   return undefined;
 }
 
-export async function patchActiveForm(input: {
+/**
+ * FORM_PATCH_READER_FIXES_ENABLED: every value the reader set is already what the form says. One honest line,
+ * no `formUpdate`, never "Updated".
+ */
+function alreadyThere(keys: readonly string[], labels: Readonly<Record<string, string>>): AskResponse {
+  const named = [...new Set(keys.map((key) => labels[key] ?? key))].filter((label) => label.trim() !== "");
+  const which = named.length > 0 ? `**${named.join("**, **")}** already says that` : "The form already says that";
+  return { content: `${which}, so I didn't change anything on the form.`, citations: [], coverage: "not_applicable", recommendedVideoIds: [] };
+}
+
+type PatchTurnInput = {
   request: Request;
   instanceId: string;
   question: string;
   history: Pick<ChatMessage, "id" | "role" | "content" | "error">[];
   /** The business day, YYYY-MM-DD. */
   today: string;
-}): Promise<AskResponse | null> {
-  try {
-    let authorized: Awaited<ReturnType<typeof authorizeInstance>>;
-    try {
-      authorized = await authorizeInstance(input.request, input.instanceId, "edit");
-    } catch {
-      return null;
-    }
-    const { actor, loaded } = authorized;
-    if (loaded.instance.status !== "draft") return null;
+};
 
+/** Everything the turn reads from the loaded form before the model call, and the model's input. Null: not this path's form. */
+function preparePatch(loaded: Awaited<ReturnType<typeof authorizeInstance>>["loaded"], input: PatchTurnInput) {
     const document = parseFormDocument(loaded.version.document);
     const variantKey = loaded.instance.variantKey;
     const aiFields = draftableFields(document, variantKey);
@@ -146,7 +149,7 @@ export async function patchActiveForm(input: {
           verbatimKeys: verbatim,
         }
       : null;
-    const reading = await readFormPatch({
+    const modelInput: FormPatchInput = {
       today: input.today,
       templateName: loaded.instance.templateName,
       employeeName: loaded.instance.employeeName || null,
@@ -154,7 +157,58 @@ export async function patchActiveForm(input: {
       readOnly,
       turns,
       latest: input.question,
-    });
+    };
+    return { template, before, allFields, allGroups, labels, stated, verbatim, writable, readerFixes, modelInput };
+}
+
+/*
+ * FORM_PATCH_READER_FIXES_ENABLED (QA's latency ask, 7 Nov 2026): the route starts the reading as soon as
+ * the turn is known, so the model call runs while the route's other steps do. Kept per request, and used
+ * only when the turn's own input is the same, word for word; otherwise the turn calls the model itself.
+ */
+const early = new WeakMap<Request, { key: string | null; reading: Promise<FormPatchReading> }>();
+
+/** Starts the patch reading for this turn (no write). Never throws; a failure is simply no early reading. */
+export function startPatchReading(input: PatchTurnInput): void {
+  if (!formPatchReaderFixesEnabled()) return;
+  const entry: { key: string | null; reading: Promise<FormPatchReading> } = { key: null, reading: Promise.resolve({ fallback: "error" }) };
+  entry.reading = (async (): Promise<FormPatchReading> => {
+    const { loaded } = await authorizeInstance(input.request, input.instanceId, "edit");
+    if (loaded.instance.status !== "draft") return { fallback: "no_fields" };
+    const prepared = preparePatch(loaded, input);
+    if (!prepared) return { fallback: "no_fields" };
+    entry.key = JSON.stringify(prepared.modelInput);
+    return readFormPatch(prepared.modelInput);
+  })().catch((): FormPatchReading => ({ fallback: "error" }));
+  early.set(input.request, entry);
+}
+
+/** The early reading when it was made from this very input; otherwise the model is called now. */
+async function readingFor(input: PatchTurnInput, modelInput: FormPatchInput): Promise<FormPatchReading> {
+  const started = early.get(input.request);
+  early.delete(input.request);
+  if (started) {
+    const reading = await started.reading;
+    if (started.key !== null && started.key === JSON.stringify(modelInput)) return reading;
+  }
+  return readFormPatch(modelInput);
+}
+
+export async function patchActiveForm(input: PatchTurnInput): Promise<AskResponse | null> {
+  try {
+    let authorized: Awaited<ReturnType<typeof authorizeInstance>>;
+    try {
+      authorized = await authorizeInstance(input.request, input.instanceId, "edit");
+    } catch {
+      return null;
+    }
+    const { actor, loaded } = authorized;
+    if (loaded.instance.status !== "draft") return null;
+
+    const prepared = preparePatch(loaded, input);
+    if (!prepared) return null;
+    const { template, before, allGroups, labels, stated, verbatim, writable, readerFixes, modelInput } = prepared;
+    const reading = await readingFor(input, modelInput);
     if (!("ok" in reading) || reading.turn !== "this_form") return null;
     /*
      * QA, 3 Nov 2026 (blocker before the Step B flip; ported from Ask
@@ -239,8 +293,12 @@ export async function patchActiveForm(input: {
         ...(readerFixes ? { readerFixes } : {}),
       });
       if (result.handoff === "refused") return null;
-      // FORM_PATCH_READER_FIXES_ENABLED: a write that changed nothing is not this path's turn (the old path runs).
-      if (readerFixes && result.handoff === "noop") return null;
+      /*
+       * FORM_PATCH_READER_FIXES_ENABLED (QA's live run, 7 Nov 2026: "yes, do that" after the edit was saved went
+       * to the old path, whose revision rewrote the form and said "Updated"): what the reader set is already on
+       * the form. Said so; the old path does not run.
+       */
+      if (readerFixes && result.handoff === "noop") return alreadyThere(Object.keys(reading.patch.set), labels);
     } else {
       const { diff } = applyPatch(before, reading.patch, rules);
 
@@ -288,11 +346,8 @@ export async function patchActiveForm(input: {
     const reloaded = await loadInstance(input.instanceId);
     if (!reloaded) return null;
     const changed = snapshotDiff(snapshotOf(loaded), snapshotOf(reloaded));
-    /*
-     * FORM_PATCH_READER_FIXES_ENABLED (QA's trace, 6 Nov 2026: "I didn't change anything on the form." for
-     * "can you make it more professional"): a patch that changed nothing hands the turn to the old path.
-     */
-    if (readerFixes && changed.length === 0) return null;
+    /* FORM_PATCH_READER_FIXES_ENABLED: the reader's values are already on the form (the old writers' path). */
+    if (readerFixes && changed.length === 0) return alreadyThere(Object.keys(reading.patch.set), labels);
     return {
       content: replyFromDiff({ changed }, labels),
       citations: [],

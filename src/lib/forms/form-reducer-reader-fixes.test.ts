@@ -183,3 +183,19 @@ describe("the schema", () => {
     expect(toPatch(parsed.data!).how).toEqual({ a: "reword" });
   });
 });
+
+describe("FORM_PATCH_READER_FIXES_ENABLED: content she gave is kept (QA's live run, 7 Nov 2026)", () => {
+  const STEPS = "wipe down the bed with the approved cleaner, use a fresh towel, empty the trash, reset the timer and check the room before the next guest is taken back.";
+  const LATEST = `this is what i am wanting to coach on: getting rooms ready between guests, here are the details of the process: ${STEPS}`;
+  const draft: FormDraft = { coaching_details: field("coaching_details", "Observed:\nNeeds coaching on room turnover.", "assistant") };
+  const fixes = { employeeName: "Leopold Ashdown", formText: "Observed:\nNeeds coaching on room turnover." };
+
+  it("on: a shorter summary that drops the towel is refused (drops_words)", () => {
+    const summary = op("coaching_details", "Observed:\nReviewed the process for getting rooms ready between guests, including wiping down the bed.", "replace", STEPS);
+    expect(applyPatch(draft, summary, rules(LATEST, ["coaching_details"], fixes)).diff.refused).toEqual([{ key: "coaching_details", reason: "drops_words" }]);
+  });
+
+  it("on: the process as she gave it is written", () => {
+    expect(applyPatch(draft, op("coaching_details", STEPS, "replace", STEPS), rules(LATEST, ["coaching_details"], fixes)).diff.refused).toEqual([]);
+  });
+});

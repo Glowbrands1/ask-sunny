@@ -36,6 +36,7 @@ import {
   staffPickerEnabled,
   chatResponseStreamEnabled,
   formPatchReducerEnabled,
+  formPatchReaderFixesEnabled,
   formReplyFromDiffEnabled,
   formEditToolInStreamEnabled,
   formEditNoopGuardEnabled,
@@ -395,6 +396,19 @@ async function postChat(request: Request) {
        * `lib/ai/question-not-form.ts`. Behind QUESTION_NOT_FORM_ENABLED.
        */
       const askedQuestion = questionNotFormEnabled() && isQuestionNotForm(parsed.question, parsed.history);
+      /*
+       * FORM_PATCH_READER_FIXES_ENABLED (QA's latency ask, 7 Nov 2026): the Step B reading is started now, so
+       * its model call runs while the steps below do; the patch turn takes it only if its input is the same.
+       */
+      if (formPatchReaderFixesEnabled() && !formEditToolInStreamEnabled() && !askedQuestion && parsed.activeFormInstanceId) {
+        (await import("@/lib/forms/form-patch-turn")).startPatchReading({
+          request,
+          instanceId: parsed.activeFormInstanceId,
+          question: parsed.question,
+          history: parsed.history,
+          today: parsed.context.todayIso,
+        });
+      }
       /*
        * STEP B (FORM_PATCH_REDUCER_ENABLED + FORM_REPLY_FROM_DIFF_ENABLED): the
        * open form as saved before this turn, so the reply about it can come

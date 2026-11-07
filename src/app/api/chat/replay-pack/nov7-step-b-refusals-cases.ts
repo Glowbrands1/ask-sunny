@@ -1,7 +1,7 @@
 import { expect } from "vitest";
 
 import { KEARNEY, replyMatchesDiff, savedForm, type ReplayCase } from "./cases";
-import { STEP_B_REFUSAL_SCENARIOS, STEP_B_READER_FLAGS, type RefusalScenario } from "./nov7-step-b-refusals-scenarios";
+import { CASH, ROOM_PROCESS, ROOM_STEPS, STEP_B_REFUSAL_SCENARIOS, STEP_B_READER_FLAGS, SUN_YES, patch, type RefusalScenario } from "./nov7-step-b-refusals-scenarios";
 
 /**
  * ============================================================================
@@ -31,7 +31,7 @@ import { STEP_B_REFUSAL_SCENARIOS, STEP_B_READER_FLAGS, type RefusalScenario } f
 const OPEN_IN_PRODUCTION = "production answers \"I haven't changed the …\" (Step B is off; the revision path writes nothing)";
 
 /** Production's outcome per case, from the run with production's flags (7 Nov 2026). */
-const PRODUCTION_HOLDS = new Set<string>(["bub-date-question", "bub-name-redo", "sun-towel-nothing-said", "sun-msb-format"]);
+const PRODUCTION_HOLDS = new Set<string>(["bub-date-question", "bub-name-redo", "sun-towel-nothing-said", "sun-msb-format", "sun-make-that-update-live-shape"]);
 
 /** Fix runs that still fail, and why (the path that owns the turn is not Step B's reader). */
 const FIX_OPEN: Readonly<Record<string, string>> = {};
@@ -51,6 +51,8 @@ async function play(t: Parameters<ReplayCase["run"]>[0], scenario: RefusalScenar
       continue;
     }
     t.modelSays(scenario.script.says?.[step.say] ?? null);
+    const revision = scenario.script.revisionFrom?.[step.say];
+    if (revision) t.revisionWrites(revision);
     const before = id ? savedForm(t, id) : null;
     const reply = await thread.say(step.say);
     replies.push(reply.content);
@@ -71,7 +73,51 @@ async function play(t: Parameters<ReplayCase["run"]>[0], scenario: RefusalScenar
   expect(why, `${scenario.id} — expected: ${scenario.expect.says}\nlast reply: ${(replies.at(-1) ?? "").slice(0, 300)}`).toBeNull();
 }
 
-export const NOV7_STEP_B_REFUSAL_CASES: readonly ReplayCase[] = STEP_B_REFUSAL_SCENARIOS.map(
+/*
+ * QA'S LIVE SHAPES (claude-sonnet-5, 7 Nov 2026), replay only: the reader's output and the old revision
+ * model's write as the live run showed them, so the two regressions it found are pinned.
+ *   sun-yes-do-that: "yes, do that" read as the same sentence again; with the fallback, the old revision
+ *     rewrote the form and said "Updated" (a claim nobody asked for).
+ *   sun-make-that-update: the process she gave saved as a shorter summary without the fresh towel.
+ */
+const byId = (id: string) => STEP_B_REFUSAL_SCENARIOS.find((scenario) => scenario.id === id)!;
+const LIVE_SHAPES: readonly RefusalScenario[] = [
+  {
+    ...byId("sun-yes-do-that"),
+    id: "sun-yes-do-that-live-shape",
+    script: {
+      patch: {
+        [CASH]: patch("this_form", [{ field: "coaching_details", value: "Reminded her to call a manager for any cash drawer shortage.", how: "add", evidence: "reminded her to call a manager for any cash drawer shortage" }]),
+        [SUN_YES]: patch("this_form", [{ field: "coaching_details", value: "Reminded her to call a manager for any cash drawer shortage.", how: "add", evidence: "Reminded her to call a manager for any cash drawer shortage" }]),
+      },
+      revisionFrom: {
+        [SUN_YES]: { coaching_details: "Reminded her to call a manager for any cash drawer shortage.\nReminded her to call a manager for any cash drawer shortage." },
+      },
+    },
+  },
+  {
+    ...byId("sun-make-that-update"),
+    id: "sun-make-that-update-live-shape",
+    script: {
+      ...byId("sun-make-that-update").script,
+      patch: {
+        ...byId("sun-make-that-update").script.patch,
+        [ROOM_PROCESS]: patch("this_form", [
+          {
+            field: "coaching_details",
+            value: `Observed:\nReviewed the process for ${ROOM_PROCESS.split(": ")[1]!.split(",")[0]}, including ${ROOM_STEPS.split(",")[0]}.`,
+            how: "replace",
+            evidence: ROOM_STEPS,
+          },
+        ]),
+      },
+      // The old path's revision writes the process she gave (QA's OFF run passed this case).
+      revisionFrom: { [ROOM_PROCESS]: { coaching_details: ROOM_STEPS } },
+    },
+  },
+];
+
+export const NOV7_STEP_B_REFUSAL_CASES: readonly ReplayCase[] = [...STEP_B_REFUSAL_SCENARIOS, ...LIVE_SHAPES].map(
   (scenario): ReplayCase => ({
     id: `nov7-refusal-${scenario.id}`,
     title: `"${scenario.refused}" — ${scenario.expect.says}`,

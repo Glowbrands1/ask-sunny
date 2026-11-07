@@ -65,7 +65,10 @@ import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
  *                            LIVE_SCENARIOS=step-b-refusals LIVE_FLAGS=FORM_PATCH_REDUCER_ENABLED,FORM_REPLY_FROM_DIFF_ENABLED,FORM_EDIT_SINGLE_WRITER_ENABLED,FORM_EDIT_SAID_REPLACEMENT_ENABLED,FORM_PATCH_READER_FIXES_ENABLED
  *                          About 3 calls per edit turn; LIVE_CASES picks a few.
  *                          On another model: ANTHROPIC_READER_MODEL=<id> (every
- *                          call, the patch model included, goes to it).
+ *                          call, the patch model included, goes to it);
+ *                          LIVE_PATCH_MODEL=<id> sends the patch call alone to
+ *                          another (production runs it on CLAUDE_READER_MODEL).
+ *                          The md has every turn's ms, patch-call ms and calls.
  *   LIVE_SCENARIOS=all|failures|names|gate|glossary|ca-sales|none  which
  *                          scenarios (default all: the live failures, the 40
  *                          name runs, then the 8 edit-tool gate wordings on an
@@ -245,7 +248,7 @@ const actor = vi.hoisted(() => ({ directory: [] as unknown[] }));
  * QA (6 Nov 2026, Step B's live check): per edit turn, the form-patch model's raw output and the
  * reducer's refusals (key + reason), so an empty diff says why. Test-only; written into the results.
  */
-const patchTrace = vi.hoisted(() => ({ outputs: [] as unknown[], refusals: [] as unknown[] }));
+const patchTrace = vi.hoisted(() => ({ outputs: [] as unknown[], refusals: [] as unknown[], ms: [] as number[] }));
 
 /* -------------------------------------------------- the real model, metered -- */
 
@@ -324,8 +327,10 @@ vi.mock("@/lib/forms/form-patch-call", async (importOriginal) => {
         const { generateObject, jsonSchema } = await import("ai");
         const { createAnthropic } = await import("@ai-sdk/anthropic");
         const anthropic = createAnthropic({ apiKey: process.env.ANTHROPIC_API_KEY, baseURL: `${live.BASE_URL}/v1` });
+        const patchStarted = performance.now();
         const result = await generateObject({
-          model: anthropic(live.HAIKU),
+          // LIVE_PATCH_MODEL (coding 5): the patch call's own model, e.g. production's Haiku while the rest runs on another model.
+          model: anthropic(process.env.LIVE_PATCH_MODEL?.trim() || live.HAIKU),
           schema: jsonSchema(input.schema),
           system: input.system,
           prompt: input.prompt,
@@ -335,6 +340,7 @@ vi.mock("@/lib/forms/form-patch-call", async (importOriginal) => {
           abortSignal: AbortSignal.timeout(actual.formPatchTimeoutMs()),
         });
         live.add({ input_tokens: result.usage.inputTokens ?? 0, output_tokens: result.usage.outputTokens ?? 0 });
+        patchTrace.ms.push(Math.round(performance.now() - patchStarted));
         patchTrace.outputs.push({ ok: true, output: result.object });
         return { ok: true as const, output: result.object };
       } catch (caught) {
@@ -631,6 +637,10 @@ interface Turn {
   /** Step B: the form-patch model's raw outputs this turn, and the reducer's results (refused key + reason, changed keys). */
   readonly patches?: readonly unknown[];
   readonly reducer?: readonly unknown[];
+  /** coding 5 (QA's latency ask, 7 Nov 2026): the turn's wall time, the patch call's own ms, and the model calls it made by kind. */
+  readonly ms?: number;
+  readonly patchMs?: readonly number[];
+  readonly calls?: Record<string, number>;
 }
 
 interface PathRun {
@@ -705,6 +715,9 @@ async function runScenario(scenario: LiveScenario, extraFlags: readonly string[]
       const before = values(instanceId);
       patchTrace.outputs.length = 0;
       patchTrace.refusals.length = 0;
+      patchTrace.ms.length = 0;
+      const turnKinds = { ...live.kinds };
+      const turnStarted = performance.now();
       const id = `m${index}`;
       const continuation = routes.continuationFor(messages);
       const response = await routes.chat.POST(
@@ -745,6 +758,9 @@ async function runScenario(scenario: LiveScenario, extraFlags: readonly string[]
         card: payload.formProposal ? { templateKey: payload.formProposal.templateKey ?? null, employeeName: payload.formProposal.employeeName ?? null } : null,
         patches: [...patchTrace.outputs],
         reducer: [...patchTrace.refusals],
+        ms: Math.round(performance.now() - turnStarted),
+        patchMs: [...patchTrace.ms],
+        calls: Object.fromEntries(Object.entries(live.kinds).map(([kind, count]) => [kind, count - turnKinds[kind as keyof typeof turnKinds]]).filter(([, count]) => Number(count) > 0)),
       });
     }
   } catch (caught) {
@@ -906,12 +922,17 @@ function writeResults(): void {
       `| ${id} | ${created} | ${edited} | ${cell(oldPath.error === NO_CARD ? "NO CARD at T1" : oldPath.error ? `ERROR ${oldPath.error}` : oldPath.reply)} | ${cell(changed || "—")} | ${cell(card)} | ${oldPath.ms} | ${oldPath.calls} (${oldPath.kinds.draft}/${oldPath.kinds.revision}) | ${fresh} |`,
     );
   }
+  // coding 5 (QA's latency ask, 7 Nov 2026): every chat turn's ms and model calls, so each edit turn's cost is seen.
+  lines.push("", "## Per turn: ms and model calls", "", "| Case | Turn | ms | patch ms | calls |", "|---|---|---|---|---|");
+  for (const { id, oldPath } of results) {
+    for (const turn of oldPath.turns) if (turn.ms !== undefined) lines.push(`| ${id} | ${cell(turn.said).slice(0, 60)} | ${turn.ms} | ${turn.patchMs?.join(", ") || "—"} | ${cell(JSON.stringify(turn.calls ?? {}))} |`);
+  }
   // Step B's trace (QA, 6 Nov 2026): each edit turn's form-patch output and reducer result, when the patch model ran.
   const traced = results.flatMap(({ id, oldPath }) => oldPath.turns.filter((turn) => (turn.patches?.length ?? 0) + (turn.reducer?.length ?? 0) > 0).map((turn) => ({ id, turn })));
   if (traced.length > 0) {
     lines.push("", "## Step B trace: form-patch output and reducer result per edit turn", "");
     for (const { id, turn } of traced) {
-      lines.push(`### ${id}: "${turn.said}"`, "", "```json", JSON.stringify({ patches: turn.patches, reducer: turn.reducer, diff: Object.keys(turn.diff) }, null, 1), "```", "");
+      lines.push(`### ${id}: "${turn.said}"`, "", `${turn.ms ?? "?"} ms (patch call ${turn.patchMs?.join(", ") || "—"} ms); calls ${JSON.stringify(turn.calls ?? {})}`, "", "```json", JSON.stringify({ patches: turn.patches, reducer: turn.reducer, diff: Object.keys(turn.diff), reply: turn.reply.slice(0, 200) }, null, 1), "```", "");
     }
   }
   writeFileSync(`${base}.md`, `${lines.join("\n")}\n`);

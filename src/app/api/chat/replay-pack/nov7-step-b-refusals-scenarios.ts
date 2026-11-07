@@ -80,6 +80,8 @@ export interface RefusalScript {
   readonly says?: Readonly<Record<string, string>>;
   /** By the manager's message (exact): the form-patch model's raw output. A message not listed falls back. */
   readonly patch?: Readonly<Record<string, unknown>>;
+  /** Replay only, by the manager's message: what the old path's revision model writes from that turn on. */
+  readonly revisionFrom?: Readonly<Record<string, Record<string, string>>>;
 }
 
 export interface RefusalScenario extends CheckedScenario {
@@ -292,7 +294,7 @@ const SUN_OUTLINE = "No this should be the same out line but with sabelines info
 const SUN_MSB = "I need the CA for the Must see behaviors and not the standard of conduct. Make it in the format that I explained above in the first chat for Sabeline.";
 const SUN_LATE = "I need you to make it about showing up late and please list the policy make the date for 10/14/26.";
 const SUN_MAKE_UPDATE = "make that update";
-const SUN_YES = "yes, do that";
+export const SUN_YES = "yes, do that";
 
 const OUTLINE_FIRST =
   "create a ca for must see behaviors for performace  this should be for sabeline delacourt  - verbal\n146 tans \nBelow in PPTA, LPSVA, Average Club, CC%, Spa%";
@@ -303,10 +305,10 @@ const OUTLINE_OBSERVATION_PASTED =
 const OUTLINE_OBSERVATION_SABELINE =
   "During the month of September 2026, Sabeline Delacourt completed 146 tanning transactions. Throughout these transactions, Sabeline failed to follow their Must See Behaviors resulting in a performance below Sun Tan City averages in the following areas PPTA, LPSVA, Average Club, CC%, and Spa %.\nAt Sun Tan City, we strive to provide the ultimate tanning experience for every client. In order to ensure the best results for our clients, every employee is expected to follow their Client Service Must See Behaviors and Engagement Must See Behaviors with every client interaction.";
 
-const ROOM_PROCESS =
+export const ROOM_PROCESS =
   "this is what i am wanting to coach on: getting rooms ready between guests, here are the details of the process: wipe down the bed with the approved cleaner, use a fresh towel, empty the trash, reset the timer and check the room before the next guest is taken back.";
-const ROOM_STEPS = "wipe down the bed with the approved cleaner, use a fresh towel, empty the trash, reset the timer and check the room before the next guest is taken back.";
-const CASH = "add to the details: reminded her to call a manager for any cash drawer shortage";
+export const ROOM_STEPS = "wipe down the bed with the approved cleaner, use a fresh towel, empty the trash, reset the timer and check the room before the next guest is taken back.";
+export const CASH = "add to the details: reminded her to call a manager for any cash drawer shortage";
 
 export const SUNNY_REFUSALS: readonly RefusalScenario[] = [
   {

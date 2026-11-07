@@ -391,6 +391,25 @@ function faithfulValueSaid(value: string, old: string, rules: PatchRules, floor:
   return hits / others.length >= MIN_SAID_SHARE;
 }
 
+/** Evidence of at least this many words is content the manager gave, not an instruction: the value keeps it. */
+export const CONTENT_EVIDENCE_WORDS = 12;
+/** With content evidence, at least this share of its words (by stem) is in the value. */
+export const MIN_KEPT_SHARE = 0.75;
+
+/**
+ * FORM_PATCH_READER_FIXES_ENABLED (QA's live run, 7 Nov 2026: a process she gave, "… use a fresh towel, …",
+ * saved as a shorter summary without the towel): when the evidence is content the manager gave
+ * (CONTENT_EVIDENCE_WORDS or more), an add or replace keeps MIN_KEPT_SHARE of its words. A reword is not
+ * checked (its evidence is the request).
+ */
+function keepsEvidence(value: string, evidence: string | undefined): boolean {
+  const want = wordsOf(evidence ?? "");
+  if (want.length < CONTENT_EVIDENCE_WORDS) return true;
+  const have = wordsOf(value);
+  const kept = want.filter((word) => have.some((written) => sameStem(word, written))).length;
+  return kept / want.length >= MIN_KEPT_SHARE;
+}
+
 /** The evidence's words, the employee's name words left out, are a run of words of one manager turn (or the accepted offer). */
 function faithfulEvidenceFrom(evidence: string, rules: PatchRules): "manager" | "offered" | null {
   const name = new Set(wordsOf(rules.faithful!.employeeName));
@@ -755,6 +774,8 @@ function setOne(draft: FormDraft, key: string, value: FieldValue, patch: FormPat
   }
   // The value itself, not only its evidence, must be words the manager said (or an accepted offer).
   if (!valueWasSaid(text, rules, { old: how === "add" ? "" : have, evidence })) return refuse(key, "not_in_manager_words");
+  // FORM_PATCH_READER_FIXES_ENABLED: content she gave is kept, not summarised away.
+  if (rules.faithful && !keepsEvidence(text, evidence)) return refuse(key, "drops_words");
   /*
    * FORM_PATCH_READER_FIXES_ENABLED: a replace the manager asked for ("make it about showing up late") may
    * drop words of text the assistant wrote; what she typed herself still keeps every word she did not name.
