@@ -36,6 +36,10 @@
  *      knowing it is partial.
  */
 
+import { requestKeptInWindowEnabled } from "@/lib/config/chat-quality-flags";
+
+import { detectTemplateIntent } from "./template-intent";
+
 /** How many manager turns the bounded window may hold, including the current one. */
 export const MANAGER_CONTEXT_TURNS = 6;
 
@@ -103,6 +107,35 @@ export function boundManagerTurns(
     remaining -= cost;
   }
 
+  /*
+   * REQUEST_KEPT_IN_WINDOW_ENABLED / NEXT_PUBLIC_REQUEST_KEPT_IN_WINDOW_ENABLED
+   * (the coordinator's replays R6/R7, 5 Nov 2026): "i have an employee, <name>
+   * that needs a corrective action form with a customer complaint", then six
+   * corrections of the name and "can i review the card", then "Create a
+   * Corrective Action Form from this conversation." — the request was the
+   * seventh manager turn back, outside the window, and the card lost the
+   * Standards of Conduct it had cited. With the flag on, the turns that ask
+   * for the latest form asked for — back to the first one, stopping at a
+   * request for a different form — are kept at the window's start where they
+   * fall before it, oldest first, budget permitting ("verbal warning, no
+   * payroll deduct, …" reads as a request for the same form, so the opening
+   * request is reached through it). Off, the window is exactly as before.
+   */
+  if (requestKeptInWindowEnabled()) {
+    const firstKept = prior.length - (retained.length - 1);
+    // Oldest first, so the opening request (the one that carried the account) claims the budget first.
+    const outside = thisFormsRequests(prior).filter((index) => index < firstKept);
+    const kept: BoundedTurn[] = [];
+    for (const index of outside) {
+      const content = prior[index]!.content.trim();
+      const cost = content.length + JOIN.length;
+      if (content === "" || cost > remaining) break;
+      kept.push({ id: prior[index]!.id, content });
+      remaining -= cost;
+    }
+    retained.unshift(...kept);
+  }
+
   return {
     messages: retained,
     ids: retained
@@ -111,4 +144,26 @@ export function boundManagerTurns(
     text: retained.map((turn) => turn.content).join(JOIN),
     truncated,
   };
+}
+
+/** The form a turn asks for: its template key ("dpoa" for a Corrective Action asked for in the progression's words), or null. */
+function requestedForm(turn: string): string | null {
+  const intent = detectTemplateIntent(turn);
+  if (intent.kind === "explicit") return intent.templateKey;
+  if (intent.kind === "corrective_action" && intent.requestedCreation) return "dpoa";
+  return null;
+}
+
+/** The prior turns that ask for the latest form asked for, back to the first one (stopping at a request for another form), oldest first. */
+function thisFormsRequests(prior: readonly BoundedTurn[]): number[] {
+  let form: string | null = null;
+  const found: number[] = [];
+  for (let index = prior.length - 1; index >= 0; index -= 1) {
+    const asked = requestedForm(prior[index]!.content);
+    if (asked === null) continue;
+    if (form === null) form = asked;
+    else if (asked !== form) break;
+    found.unshift(index);
+  }
+  return found;
 }

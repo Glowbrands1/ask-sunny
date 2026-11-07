@@ -14,7 +14,7 @@ import { KEARNEY, STAFF, type ReplayAnswer, type ReplayCase, type ReplayContext,
  * said") and Action Plan, and — when the request was not worded as a create request — its Observation.
  * SECOND_REQUEST_OWN_ACCOUNT_ENABLED reads each request on its own. Three parts per wording, each with its own status:
  * the form (a second form, the first untouched, its Policy Violated the second request's), the card's policy line (in
- * `ai/form-proposal.ts`, waiting on Pau), and the Observation (in `ai/remap-incident.ts`, with coding 4). A realistic
+ * `ai/form-proposal.ts`, Pau-approved 7 Nov 2026), and the Observation (in `ai/remap-incident.ts`, with coding 4). A realistic
  * two-request chat; the person is invented (STAFF's Remy Calder).
  */
 const FLAG = "SECOND_REQUEST_OWN_ACCOUNT_ENABLED";
@@ -62,9 +62,8 @@ export const NOV7_SECOND_CA_SAME_EMPLOYEE_CASES: ReplayCase[] = Object.entries(S
     report: REPORT,
     status: { open: "the second card says \"Late Opening, as you said\", its Action Plan reviews Late Opening, and the second form's Policy Violated is Late Opening" },
     fixFlags: [FLAG],
-    // The draft route reads the policy from this request (SECOND_REQUEST_OWN_ACCOUNT_ENABLED), but the card's policy
-    // reaches the draft too (NEXT_PUBLIC_CARD_POLICY_TO_DRAFT), so both follow the card's line.
-    fixStatus: { open: "the card's policy line is read in ai/form-proposal.ts (protected): the two lines wait on Pau" },
+    // Changed on purpose (7 Nov 2026): holds with the flag since Pau approved the two ai/form-proposal.ts lines; the
+    // card's citation step and the saved state's incident read this request too (ai/form-card-slots.ts, ai/form-state.ts).
     async run(t) {
       const { thread, reply } = await secondRequest(t, second);
       expect(line(reply.content, "Policy"), `the Policy is the first request's:\n${reply.content}`).not.toMatch(/late opening/i);
@@ -82,7 +81,8 @@ export const NOV7_SECOND_CA_SAME_EMPLOYEE_CASES: ReplayCase[] = Object.entries(S
       : {
           status: { open: "the Observation reads both requests run together" },
           fixFlags: [FLAG],
-          fixStatus: { open: "the request start is read in ai/remap-incident.ts (with coding 4, after ask-sunny #611)" },
+          // Changed on purpose (7 Nov 2026): holds with the flag since ai/remap-incident.ts currentRequestStart reads a
+          // form named anywhere in a later turn, with its own incident, as a new request.
         }),
     async run(t) {
       const { reply } = await secondRequest(t, second);
@@ -91,4 +91,40 @@ export const NOV7_SECOND_CA_SAME_EMPLOYEE_CASES: ReplayCase[] = Object.entries(S
       expect(observation, `the Observation keeps the first request:\n${reply.content}`).not.toMatch(/late opening/i);
     },
   },
+]).concat([
+  {
+    id: "nov7-second-ca-same-employee-history-not-a-request",
+    title: "negative (coding 4): after a CA request, \"he already had a CA on 10/14 for being late\" is history, not a new request: the Observation still reads the request's account",
+    report: REPORT,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      t.directory(STAFF);
+      t.as("salon_director", KEARNEY);
+      const thread = t.thread();
+      await thread.say(FIRST);
+      const reply = await thread.say("he already had a CA on 10/14 for being late");
+      expect(line(reply.content, "Observation of Offense"), `the request's account is lost:\n${reply.content}`).toMatch(/late opening the salon/i);
+    },
+  },
+  ...[
+    "add to the CA that he was also late on 11/3",
+    "on the write up, also put that he left early on 11/3",
+  ].map(
+    (added, index): ReplayCase => ({
+      id: `nov7-second-ca-same-employee-addition-${index + 1}`,
+      title: `negative (coding 4): after a CA request, "${added}" adds to the same form: the Observation keeps the request's account`,
+      report: REPORT,
+      status: "fixed",
+      fixFlags: [FLAG],
+      async run(t) {
+        t.directory(STAFF);
+        t.as("salon_director", KEARNEY);
+        const thread = t.thread();
+        await thread.say(FIRST);
+        const reply = await thread.say(added);
+        expect(line(reply.content, "Observation of Offense"), `the request's account is lost:\n${reply.content}`).toMatch(/late opening the salon/i);
+      },
+    }),
+  ),
 ]);

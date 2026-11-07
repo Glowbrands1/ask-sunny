@@ -1,4 +1,5 @@
 import { PRODUCTION_SALONS, salonById } from "@/data/salons";
+import { observationAccount } from "@/lib/forms/ca-policy";
 import { onlyDeniesForObservation } from "./ca-what-happened";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
 import { listIncidentDates, withoutPriorStepClauses } from "@/lib/forms/form-date-answer";
@@ -10,7 +11,7 @@ import { readExitDetails } from "@/lib/forms/exit-details";
 import { readExitFacts } from "@/lib/forms/exit-facts";
 import { statedPayrollDeduct } from "@/lib/forms/payroll-deduct";
 import { withoutAmountAnswers } from "@/lib/forms/amount-answer";
-import { managerStatedWarningLevel, templateHasWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
+import { managerStatedWarningLevel, statedWarningLevel, templateHasWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
 import { describesIncident, describesMoreThanTheRequest } from "@/lib/forms/corrective-action-intake";
 import { twoSentenceActionPlan } from "@/lib/forms/action-plan-sentences";
 import { replyWithManagerActionPlan } from "@/lib/forms/manager-action-plan";
@@ -44,6 +45,7 @@ import {
   keepRosterExactNameEnabled,
   caSalesPolicyEnabled,
   formNameFromRosterEnabled,
+  complaintAccountEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { namesOnlyAPolicy } from "@/lib/forms/person-guard";
 import { foldsToGlossaryTerm } from "./chat-glossary";
@@ -731,7 +733,8 @@ function withObservation(content: string, turns: readonly string[], employeeName
       if (managerOnly && onlySaysWhereTheyWork(said, ignore)) continue;
       // MANAGER_WORDS_ONLY_ENABLED: without the clauses that only request the
       // form, name the employee or give their place (QA, 25 Oct 2026).
-      const sentence = managerOnly ? managerAccount(said, employeeName) : said;
+      // SALES_OBSERVATION_ACCOUNT_ENABLED: the account only, never the request's words, the name or a payroll answer (`forms/ca-policy.ts`).
+      const sentence = observationAccount(managerOnly ? managerAccount(said, employeeName) ?? "" : said, employeeName);
       if (!sentence) continue;
       // BARE_NOT_AFTER_REQUEST_ENABLED: "ca for <A> not late" says only what did not happen, so it is no Observation.
       if (onlyDeniesForObservation(said, employeeName) || onlyDeniesForObservation(sentence, employeeName)) continue;
@@ -745,7 +748,9 @@ function withObservation(content: string, turns: readonly string[], employeeName
     }
   }
   if (sentences.length === 0) return content;
-  return `${content}\n\n**Observation of Offense:** ${sentences.join(" ")}`.trim();
+  // COMPLAINT_ACCOUNT_ENABLED: the warning level is the form's Type of Warning, never the account.
+  const told = complaintAccountEnabled() ? sentences.map(withoutLevelLead) : sentences;
+  return `${content}\n\n**Observation of Offense:** ${told.join(" ")}`.trim();
 }
 
 /**
@@ -806,7 +811,10 @@ function stateCodeTitle(text: string, role: string): boolean {
  * 24 Oct 2026: "create a corrective action form for" was What happened).
  */
 function withAccount(content: string, turns: readonly string[], employeeName: string | null): string {
-  const sentences = accountSentences(turns, employeeName, { managerOnly: managerWordsOnlyEnabled() }).filter(
+  // SALES_OBSERVATION_ACCOUNT_ENABLED: the account only, never the request's words, the name or a payroll answer (`forms/ca-policy.ts`).
+  const sentences = accountSentences(turns, employeeName, { managerOnly: managerWordsOnlyEnabled() }).map((sentence) => observationAccount(sentence, employeeName)).filter(
+    (sentence) => sentence !== "",
+  ).filter(
     (sentence) =>
       !onlyAGlossaryTerm(sentence) &&
       // BARE_NOT_AFTER_REQUEST_ENABLED: a sentence that only says what did not happen is no Observation.
@@ -816,7 +824,22 @@ function withAccount(content: string, turns: readonly string[], employeeName: st
       !(observationNotPolicyNameEnabled() && namesOnlyAPolicy(sentence)),
   );
   if (sentences.length === 0) return content;
-  return `${content}\n\n**Observation of Offense:** ${sentences.join(". ")}`.trim();
+  const told = complaintAccountEnabled() ? sentences.map(withoutLevelLead) : sentences;
+  return `${content}\n\n**Observation of Offense:** ${told.join(". ")}`.trim();
+}
+
+/**
+ * COMPLAINT_ACCOUNT_ENABLED (QA's audit, 7 Nov 2026): "verbal warning The date she complained was Oct 31st" — the
+ * level the app reads as this form's Type of Warning is not the account. Its words come off the front of a sentence
+ * that runs on: "<level> warning" before three or more words, or the level alone before a new sentence (a capital).
+ * "written up twice already for being late" keeps its words; a sentence that is only the level is left as it was.
+ */
+export function withoutLevelLead(sentence: string): string {
+  const lead = /^(\S+)(\s+warning)?\s+(?=\S)/i.exec(sentence);
+  if (!lead || statedWarningLevel(lead[0].trim()) === null) return sentence;
+  const rest = sentence.slice(lead[0].length);
+  if (rest.split(/\s+/).length < 3) return sentence;
+  return lead[2] || /^\p{Lu}/u.test(rest) ? rest : sentence;
 }
 
 /** The global salon question is once per conversation. A later turn does not ask it again. */

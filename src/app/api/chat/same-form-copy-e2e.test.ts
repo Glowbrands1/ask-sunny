@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { continuationFor } from "@/lib/forms/proposal-continuation";
+import { continuationFor, offeredCopyForTurn, type OfferedCopy } from "@/lib/forms/proposal-continuation";
 import { createId } from "@/lib/utils/id";
 import { fakeSupabase, type FakeStore } from "@/test/fake-supabase";
 import { JBA_MANUAL_CA_CHUNKS } from "@/test/fixtures/jba-manual-ca-sections";
@@ -396,6 +396,7 @@ type Answer = {
   formSelection?: unknown;
   formOpened?: { instanceId: string; revisesInstanceId?: string | null };
   formUpdate?: { instanceId: string; updated: string[] };
+  pendingCopy?: { fromInstanceId: string };
 };
 
 /** The thread as the browser holds it: a card the answer carried stays open. */
@@ -404,6 +405,7 @@ class Thread {
   proposal: ChatFormProposal | null = null;
   instanceId: string | null = null;
   private sequence = 0;
+  private offeredCopy: OfferedCopy | undefined;
   // A well-formed client id, so the route keeps the intake state between turns (`isClientConversationId`).
   private readonly conversationId = createId("conv");
 
@@ -411,6 +413,8 @@ class Thread {
     state.reading = reading;
     const history = this.messages.map(({ id, role, content, formProposal }) => ({ id, role, content, ...(formProposal ? { formProposal } : {}) }));
     const id = `m${(this.sequence += 1)}`;
+    const pendingCopy = offeredCopyForTurn(this.offeredCopy, this.messages);
+    this.offeredCopy = undefined;
     const response = await chatRoute.POST(
       new Request("https://app.test/api/chat", {
         method: "POST",
@@ -424,6 +428,8 @@ class Thread {
           // As the browser does: the card on screen, or the intake still asking (`continuationFor`).
           ...(!this.instanceId && continuationFor(this.messages) ? { continueProposalTemplateKey: continuationFor(this.messages)!.templateKey } : {}),
           ...(this.instanceId ? { activeFormInstanceId: this.instanceId } : {}),
+          // As the browser does (`ClaudeProvider`): the copy the last answer offered (SAME_FORM_COPY_NEW_PERSON_ENABLED).
+          ...(pendingCopy ? { pendingCopyFromInstanceId: pendingCopy } : {}),
         }),
       }),
     );
@@ -439,6 +445,7 @@ class Thread {
         ...(payload.formProposal ? { formProposal: payload.formProposal } : {}),
       } as ChatMessage,
     );
+    if (payload.pendingCopy) this.offeredCopy = { fromInstanceId: payload.pendingCopy.fromInstanceId, answer: payload.content };
     if (payload.formProposal) this.proposal = payload.formProposal;
     if (payload.formOpened) this.instanceId = toUuid(payload.formOpened.instanceId);
     return payload;
@@ -986,5 +993,125 @@ describe('"Show me the most recent Daily Stats …" → "create a coaching form"
     const reply = await card(true);
     expect(reply.formProposal?.employeeName ?? "").not.toMatch(/daily stats/i);
     expect(reply.formProposal?.status).toBe("needs_employee");
+  });
+});
+
+/*
+ * SAME_FORM_COPY_NEW_PERSON_ENABLED (coding3, 5 Nov 2026): a location
+ * manager's "can you create the same draft that we did with <C> by changing the
+ * name and position?" with <C>'s OWN draft open and the new person not named
+ * yet, then the new person's name, then Create. Names invented.
+ */
+describe('"can you create the same draft that we did with marnie holloway by changing the name and position?" with Marnie\'s own draft open, then "Remy Calder"', () => {
+  const ASK = "can you create the same draft that we did with marnie holloway by changing the name and position?";
+  const NEW_PERSON = "SAME_FORM_COPY_NEW_PERSON_ENABLED";
+
+  function newPerson(on: boolean) {
+    flags(true);
+    if (!saved.has(NEW_PERSON)) saved.set(NEW_PERSON, process.env[NEW_PERSON]);
+    delete process.env[NEW_PERSON];
+    if (on) process.env[NEW_PERSON] = "true";
+  }
+
+  async function askThenName(thread: Thread) {
+    const asked = await thread.say(ASK);
+    state.draft = { values: { coaching_details: "Observed:\nCoaching for Remy Calder." } };
+    const named = await thread.say("Remy Calder", { templateKey: "coaching", employeeName: "Remy Calder" });
+    return { asked, named };
+  }
+
+  it("on: with no form open, Marnie's own form on file is the one offered", async () => {
+    newPerson(true);
+    directory();
+    const thread = new Thread();
+    const marnie = await marnieForm(thread);
+    thread.instanceId = null;
+    const { asked, named } = await askThenName(thread);
+    expect(asked.formProposal).toBeUndefined();
+    expect(asked.pendingCopy?.fromInstanceId).toBe(marnie);
+    expect(named.formProposal?.employeeName).toMatch(/remy calder/i);
+    expect(named.formProposal?.copyFromInstanceId).toBe(marnie);
+  });
+
+  it("off: no copy offered, and Remy's card copies nothing at Create", async () => {
+    newPerson(false);
+    directory();
+    const thread = new Thread();
+    await marnieForm(thread);
+    const { asked, named } = await askThenName(thread);
+    expect(asked.pendingCopy).toBeUndefined();
+    expect(named.formProposal?.copyFromInstanceId).toBeUndefined();
+  });
+
+  it("on: asks who, writes nothing and makes no card; Remy's card copies Marnie's form at Create, his name in it", async () => {
+    newPerson(true);
+    directory();
+    const thread = new Thread();
+    const marnie = await marnieForm(thread);
+    const before = detailsOf(marnie);
+    const { asked, named } = await askThenName(thread);
+    expect(asked.formProposal).toBeUndefined();
+    expect(asked.formUpdate).toBeUndefined();
+    expect(asked.pendingCopy?.fromInstanceId).toBe(marnie);
+    expect(asked.content).toMatch(/who is the new coaching form for\?/i);
+    expect(detailsOf(marnie)).toBe(before);
+    expect(named.formProposal?.employeeName).toMatch(/remy calder/i);
+    expect(named.formProposal?.copyFromInstanceId).toBe(marnie);
+    state.draftCalls = 0;
+    const remy = await thread.create();
+    expect(remy).not.toBe(marnie);
+    const details = detailsOf(remy) ?? "";
+    expect(details).toContain("Remy Calder takes the next guest back");
+    expect(details).not.toMatch(/marnie|holloway/i);
+    expect(state.draftCalls).toBe(0);
+    expect(store.form_instances.find((row) => row.id === remy)?.employee_name).toMatch(/remy calder/i);
+    expect(detailsOf(marnie)).toBe(before);
+  });
+
+  it("on: a turn that is not a name drops the pending copy — Remy's later card copies nothing", async () => {
+    newPerson(true);
+    directory();
+    const thread = new Thread();
+    await marnieForm(thread);
+    const asked = await thread.say(ASK);
+    expect(asked.pendingCopy).toBeDefined();
+    const other = await thread.say("what does the manual say about late opening?");
+    expect(other.pendingCopy).toBeUndefined();
+    const named = await thread.say("Remy Calder", { templateKey: "coaching", employeeName: "Remy Calder" });
+    expect(named.formProposal?.copyFromInstanceId).toBeUndefined();
+  });
+
+  it("on: another manager's draft open is never a source — no copy offered", async () => {
+    newPerson(true);
+    directory();
+    const thread = new Thread();
+    const marnie = await marnieForm(thread);
+    for (const row of store.form_instances) if (row.id === marnie) row.created_by = "another-manager";
+    const asked = await thread.say(ASK);
+    expect(asked.pendingCopy).toBeUndefined();
+  });
+
+  it("on: a pending copy naming a form that is no longer this manager's is dropped", async () => {
+    newPerson(true);
+    directory();
+    const thread = new Thread();
+    const marnie = await marnieForm(thread);
+    await thread.say(ASK);
+    // Marnie's form changes hands after the ask (a shared browser, another manager).
+    for (const row of store.form_instances) if (row.id === marnie) row.created_by = "another-manager";
+    const named = await thread.say("Remy Calder", { templateKey: "coaching", employeeName: "Remy Calder" });
+    expect(named.formProposal?.copyFromInstanceId).toBeUndefined();
+  });
+
+  it("on: Create re-checks the card's source — another manager's form copies nothing", async () => {
+    newPerson(true);
+    directory();
+    const thread = new Thread();
+    const marnie = await marnieForm(thread);
+    const { named } = await askThenName(thread);
+    expect(named.formProposal?.copyFromInstanceId).toBe(marnie);
+    for (const row of store.form_instances) if (row.id === marnie) row.created_by = "another-manager";
+    const remy = await thread.create();
+    expect(detailsOf(remy)).not.toContain("approved cleaner");
   });
 });

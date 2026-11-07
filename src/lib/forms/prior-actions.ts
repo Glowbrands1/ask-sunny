@@ -1,4 +1,4 @@
-import { futurePriorRowDropEnabled, priorActionsParseEnabled, priorRowNotOnIncidentDateEnabled, priorStepPreviouslyEnabled, priorStepSentenceEnabled } from "@/lib/config/chat-quality-flags";
+import { futurePriorRowDropEnabled, priorActionsNoSignedEnabled, priorActionsParseEnabled, priorRowNotOnIncidentDateEnabled, priorStepPreviouslyEnabled, priorStepSentenceEnabled } from "@/lib/config/chat-quality-flags";
 
 import { statesFirstOccurrence } from "./corrective-action-intake";
 import { correctedDates, datesInText, managerDatesForDraft, priorSteps } from "./form-date-answer";
@@ -113,9 +113,41 @@ function stepDescription(named: string): string {
   return /^(?:for|about|regarding|over)\s+\S/i.test(rest) ? rest : "";
 }
 
-export function priorActionLine(step: string, iso: string, topic = "", description = ""): string {
+/**
+ * Where a line's date comes from, which says how it reads with
+ * PRIOR_ACTIONS_NO_SIGNED_ENABLED: `on_file`, a finalized form in Form
+ * Monitoring ("— finalized 09/02/2026"); `said`, a step the manager told
+ * ("— 09/02/2026"); `said_signed`, a step the manager said was signed
+ * ("— signed 09/02/2026"). Off, every line reads "— signed <date>".
+ */
+export type PriorLineSource = "on_file" | "said" | "said_signed";
+
+export function priorActionLine(step: string, iso: string, topic = "", description = "", source: PriorLineSource = "said"): string {
   const what = description ? `${step} ${description}` : step;
-  return `${topic ? `${what} — ${topic}` : what} — signed ${signedDate(iso)}`;
+  const head = topic ? `${what} — ${topic}` : what;
+  if (!priorActionsNoSignedEnabled()) return `${head} — signed ${signedDate(iso)}`;
+  const mark = source === "on_file" ? "finalized " : source === "said_signed" ? "signed " : "";
+  return `${head} — ${mark}${signedDate(iso)}`;
+}
+
+/*
+ * READING A LINE'S DATE BACK (PRIOR_ACTIONS_NO_SIGNED_ENABLED). The list's
+ * parsers (`form-reducer.ts` priorLineKey, `ca-chat-dates.ts`,
+ * `chat-correction.ts`) found a line's date after " — signed ". A line now
+ * ends "— signed 09/01/2026", "— finalized 09/01/2026" or "— 09/01/2026";
+ * these read all three.
+ */
+const LINE_DATE = /(\s—\s(?:(?:signed|finalized)\s+)?)(\d{2}\/\d{2}\/\d{4})\s*$/i;
+
+/** The MM/DD/YYYY a list line ends with, whatever marks it; "" when it ends with none. */
+export function priorLineDate(line: string): string {
+  return LINE_DATE.exec(line)?.[2] ?? /\bsigned\s+(\d{2}\/\d{2}\/\d{4})/i.exec(line)?.[1] ?? "";
+}
+
+/** The line with its date replaced by `us` (MM/DD/YYYY), its mark ("signed", "finalized" or none) kept. */
+export function withPriorLineDate(line: string, us: string): string {
+  if (LINE_DATE.test(line)) return line.replace(LINE_DATE, (_match, mark: string) => `${mark}${us}`);
+  return line.replace(/signed\s+\d{2}\/\d{2}\/\d{4}/, `signed ${us}`);
 }
 
 /**
@@ -235,15 +267,51 @@ function stepsSaid(notes: string, today: string): { iso: string; named: string; 
 function managerStepLine(step: { iso: string; named: string; topic?: string; about?: string }): string {
   const label = stepLabel(step.named);
   const description = stepDescription(step.named) || (step.about ?? "");
-  if (!priorActionsParseEnabled()) return priorActionLine(label, step.iso, stepTopic(step.topic), description);
+  if (!priorActionsParseEnabled()) return priorActionLine(label, step.iso, stepTopic(step.topic), description, saidSigned(step) ? "said_signed" : "said");
   const what = description ? `${label} ${description}` : label;
   // "verbal ca signed 9-1-26": "signed" marks the date, it is not what the step was about.
   const topic = manualTitled(stepTopic(step.topic))
     .replace(/\bsign(?:ed|ing)?\b/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
-  const signed = /\bsign(?:ed|ing)?\b/i.test(`${step.named} ${step.topic ?? ""}`);
-  return `${topic ? `${what} — ${topic}` : what} — ${signed ? "signed " : ""}${signedDate(step.iso)}`;
+  return `${topic ? `${what} — ${topic}` : what} — ${saidSigned(step) ? "signed " : ""}${signedDate(step.iso)}`;
+}
+
+/** Whether the manager's own words for a step say it was signed ("verbal ca signed 9-1-26"). */
+function saidSigned(step: { named: string; topic?: string }): boolean {
+  return /\bsign(?:ed|ing)?\b/i.test(`${step.named} ${step.topic ?? ""}`);
+}
+
+/**
+ * PRIOR_ACTIONS_NO_SIGNED_ENABLED: the dates the manager said a step was
+ * signed — a step they dated in words that say so (`saidSigned`), or a
+ * sentence of theirs that says sign/signed and gives the date ("verbal
+ * warning signed 9/1/26", which no step reader takes as a step).
+ */
+function signedDatesSaid(notes: string, today: string, steps: readonly { iso: string; named: string; topic?: string }[]): Set<string> {
+  const dates = new Set(steps.filter(saidSigned).map((step) => step.iso));
+  for (const sentence of (notes ?? "").split(/(?<=[!?\n])|(?<=\.)(?!\d)/)) {
+    if (!/\bsign(?:ed|ing)?\b/i.test(sentence)) continue;
+    for (const found of [...datesInText(sentence, today), ...dotDates(sentence, today)]) dates.add(found.iso);
+  }
+  return dates;
+}
+
+/**
+ * A drafted line without the "signed" nobody said: "Coaching — JBA Policy
+ * Manual — signed 10/15/2026" → "Coaching — JBA Policy Manual — 10/15/2026".
+ * Kept as written when the manager said a step on one of its dates was signed.
+ */
+function withoutUnsaidSigned(line: string, today: string, signedSaid: ReadonlySet<string>): string {
+  if (!/\bsign(?:ed|ing)?\b/i.test(line)) return line;
+  if (datesInText(line, today).some((found) => signedSaid.has(found.iso))) return line;
+  return line
+    .replace(/\(\s*sign(?:ed|ing)?\s*\)/gi, " ")
+    .replace(/\bsign(?:ed|ing)?\b(?:\s+(?:on|off(?:\s+on)?))?\s*:?/gi, " ")
+    .replace(/\s+/g, " ")
+    .replace(/—\s*—/g, "—")
+    .replace(/\s*—\s*$/, "")
+    .trim();
 }
 
 /** "jba manual", "policy manual", "JBA Policy Manual": the manual's title, never renamed. */
@@ -321,6 +389,18 @@ export function groundPriorActions(input: {
       return true;
     });
 
+  /*
+   * PRIOR_ACTIONS_NO_SIGNED_ENABLED (QA, a location manager's chat in the
+   * sibling app, 5 Nov 2026: "this is a verbal warning. previous coaching
+   * policy manual 10-15-26" drafted "Coaching — JBA Policy Manual — signed
+   * 10/15/2026"). Nothing on the record says a step was signed, so a kept
+   * line says so only where the manager did. Off, as before.
+   */
+  if (priorActionsNoSignedEnabled()) {
+    const signedSaid = signedDatesSaid(input.notes, input.today, stepsSaid(input.notes, input.today));
+    kept.splice(0, kept.length, ...kept.map((line) => withoutUnsaidSigned(line, input.today, signedSaid)));
+  }
+
   const present = new Set(kept.flatMap((line) => datesInText(line, input.today).map((found) => found.iso)));
   const added: string[] = [];
   for (const step of stepsSaid(input.notes, input.today)) {
@@ -387,7 +467,8 @@ export function legacyPriorActions(
   if (action === "" && date === "") return null;
   if (date === "") return action;
   const step = action === "" ? "Previous corrective action" : action;
-  return `${step} — signed ${signedDate(date)}`;
+  // PRIOR_ACTIONS_NO_SIGNED_ENABLED: the old form recorded a date, not that anything was signed.
+  return priorActionsNoSignedEnabled() ? `${step} — ${signedDate(date)}` : `${step} — signed ${signedDate(date)}`;
 }
 
 /*
