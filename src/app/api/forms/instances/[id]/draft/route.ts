@@ -1764,7 +1764,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         : null);
     const statedKeys = caPolicy
       ? ((cardSection ? [cardSection.offenseKey] : null) ??
-        statedOffenseKeys(caPolicy, notes) ??
+        statedOffenseKeys(caPolicy, policyNotes) ??
         (policySection ? [policySection.offenseKey] : null))
       : null;
     const statedOffense = statedKeys
