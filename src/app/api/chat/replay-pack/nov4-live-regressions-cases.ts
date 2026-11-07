@@ -187,7 +187,8 @@ const STEP_B_CASES: readonly ReplayCase[] = [
     report:
       `${REPORT}: the sibling app's root cause, confirmed by QA — live, the form-patch model sent how:"replace" on the Observation with its own sentence (the new surname, no first name); the reducer checks the evidence, not what the new text removes (form-reducer.ts setOne, a replace on an assistant-owned field). The tester here, flags off, saw the first name kept ("Jane Doe-Smith"); this is the step-B-on variant with a scripted live-shaped patch`,
     // Run 4 Nov 2026: this app has Step B's reducer on main (#494–#496) and it fails here exactly as in the sibling app.
-    status: { open: "with Step B on, the replace is accepted on its evidence and the Observation becomes \"Doe-Smith was late to open on 10-20-26.\": \"Jane\" is dropped (and the Expectation with it); nothing checks what a replace removes" },
+    // Changed on purpose (7 Nov 2026): QA's flip 7 (21:29 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+    status: "fixed",
     fixFlags: [],
     async run(t) {
       await withStepB(async () => {
