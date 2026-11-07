@@ -1,4 +1,5 @@
 import { PRODUCTION_SALONS, salonById } from "@/data/salons";
+import { observationAccount } from "@/lib/forms/ca-policy";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
 import { listIncidentDates, withoutPriorStepClauses } from "@/lib/forms/form-date-answer";
 import { lateOpenOn, withYearlessDatesWritten } from "@/lib/forms/late-open";
@@ -730,7 +731,8 @@ function withObservation(content: string, turns: readonly string[], employeeName
       if (managerOnly && onlySaysWhereTheyWork(said, ignore)) continue;
       // MANAGER_WORDS_ONLY_ENABLED: without the clauses that only request the
       // form, name the employee or give their place (QA, 25 Oct 2026).
-      const sentence = managerOnly ? managerAccount(said, employeeName) : said;
+      // SALES_OBSERVATION_ACCOUNT_ENABLED: the account only, never the request's words, the name or a payroll answer (`forms/ca-policy.ts`).
+      const sentence = observationAccount(managerOnly ? managerAccount(said, employeeName) ?? "" : said, employeeName);
       if (!sentence) continue;
       // CA_SALES_POLICY_ENABLED (QA, live, 4 Nov 2026): "a corrective action for msb" left "msb"; a glossary term is the reason, not an account.
       if (onlyAGlossaryTerm(sentence)) continue;
@@ -803,7 +805,10 @@ function stateCodeTitle(text: string, role: string): boolean {
  * 24 Oct 2026: "create a corrective action form for" was What happened).
  */
 function withAccount(content: string, turns: readonly string[], employeeName: string | null): string {
-  const sentences = accountSentences(turns, employeeName, { managerOnly: managerWordsOnlyEnabled() }).filter(
+  // SALES_OBSERVATION_ACCOUNT_ENABLED: the account only, never the request's words, the name or a payroll answer (`forms/ca-policy.ts`).
+  const sentences = accountSentences(turns, employeeName, { managerOnly: managerWordsOnlyEnabled() }).map((sentence) => observationAccount(sentence, employeeName)).filter(
+    (sentence) => sentence !== "",
+  ).filter(
     (sentence) =>
       !onlyAGlossaryTerm(sentence) &&
       !content.toLowerCase().includes(sentence.toLowerCase()) &&

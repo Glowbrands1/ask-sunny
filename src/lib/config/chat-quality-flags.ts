@@ -2799,3 +2799,18 @@ export function caOfferKeepsAccountEnabled(): boolean {
 export function ownBrandOnlyEnabled(): boolean {
   return envFlag("OWN_BRAND_ONLY_ENABLED");
 }
+
+// --- coding 2 flags ---
+
+/**
+ * SALES_OBSERVATION_ACCOUNT_ENABLED (QA's Sunny flip-4 gate, 7 Nov 2026;
+ * default off; only with SALES_SHORTFALL_OBJECT_ENABLED). With "on
+ * performance" read as the account, the card's Observation of Offense was the
+ * request's own words: "<name> on performance", "performance for october not
+ * pay roll deductable". With this flag on, an Observation sentence loses the
+ * request head, the leading employee name, the request's reason and a payroll
+ * answer (`forms/ca-policy.ts` observationAccount). Off, as before.
+ */
+export function salesObservationAccountEnabled(): boolean {
+  return envFlag("SALES_OBSERVATION_ACCOUNT_ENABLED");
+}
