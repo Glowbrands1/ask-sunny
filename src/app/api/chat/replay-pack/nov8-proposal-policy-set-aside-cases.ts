@@ -16,6 +16,7 @@ import { KEARNEY, STAFF, type ReplayAnswer, type ReplayCase, type ReplayContext 
  */
 
 const SAID = "take the attendance policy off the form";
+const REMARK = "In the past we have quoted the standards of conduct for creating a ca due to underperformance";
 const CA_REQUEST = "create a corrective action for marnie holloway for violating the attendance policy, she was 30 minutes late to her shift on 10/31";
 const COACHING_REQUEST = "create a coaching form for marnie holloway, she was 30 minutes late to her shift on 10/31. cite the attendance policy";
 const FIX = ["PROPOSAL_POLICY_SET_ASIDE_ENABLED"];
@@ -155,6 +156,28 @@ export const NOV8_PROPOSAL_POLICY_SET_ASIDE_CASES: ReplayCase[] = [
       const reply = await thread.say("actually it is the attendance policy");
       expect(policyLines(reply).some((line) => /attendance/i.test(line)), `the policy named again is not cited:\n${reply.content}`).toBe(true);
       expect(reply.content).not.toMatch(/took the (?:Attendance )?policy off/i);
+    },
+  },
+  /*
+   * QA, 8 Nov 2026 (pre-existing; this app's live chat 1cc79ee9 on 6 Nov, and again that night; the sibling app too):
+   * the manager's follow-up about which policy to quote is no account. The policy readers settle it (Standards of
+   * Conduct); the card's account stays what happened. Here the remark was appended to the card's Observation.
+   */
+  {
+    id: "nov8-policy-remark-not-account",
+    title: "\"In the past we have quoted the standards of conduct for creating a ca due to underperformance\": the policy is the Standards of Conduct, and the card's account stays the under performance",
+    report: "QA, 8 Nov 2026 (pre-existing, live): a remark about which policy to use was put on the card as the account",
+    status: { open: "the card's Observation becomes \"under performance … In the past we have quoted the standards of conduct …\"" },
+    fixFlags: FIX,
+    async run(t) {
+      const thread = start(t);
+      await thread.say("put together a corrective action for marnie holloway due to under performance in salon metrics for the month of october");
+      const reply = await thread.say(REMARK);
+      expect(thread.proposal?.templateKey).toBe("dpoa");
+      expect(reply.content, "the policy is not the Standards of Conduct").toMatch(/\*\*Policy:\*\*\s*Standards of Conduct/i);
+      const account = observationLine(reply);
+      expect(account, `the remark is on the card as the account:\n${reply.content}`).not.toMatch(/in the past|quoted/i);
+      expect(account, "the account lost what happened").toMatch(/under performance/i);
     },
   },
 ];

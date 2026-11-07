@@ -50,7 +50,7 @@ import {
   proposalPolicySetAsideEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { turnsMadeAbout, withObservationMadeAbout } from "./make-it-about";
-import { NOTHING_SET_ASIDE, citationSetAside, policiesSetAside, setAsideAnything, withPolicySetAside, withoutPolicyTakeOff } from "@/lib/forms/policy-set-aside";
+import { NOTHING_SET_ASIDE, citationSetAside, policiesSetAside, setAsideAnything, withPolicySetAside, withoutPolicyAsks } from "@/lib/forms/policy-set-aside";
 import { namesOnlyAPolicy } from "@/lib/forms/person-guard";
 import { foldsToGlossaryTerm } from "./chat-glossary";
 import { statedFormDate } from "@/lib/forms/incident-dates";
@@ -261,8 +261,9 @@ export function holdFilledSlots(input: {
       const own = withoutAmountAnswers(cardObservationOwnRequestEnabled() ? currentRequestTurns(turns, next.employeeName) : turns);
       // PROPOSAL_MAKE_IT_ABOUT_ENABLED: "make it about showing up late …" is the account from that turn on, never the instruction (`ai/make-it-about.ts`).
       const about = proposalMakeItAboutEnabled() ? turnsMadeAbout(own) : own;
-      // PROPOSAL_POLICY_SET_ASIDE_ENABLED: "take the attendance policy off the form" is an ask, never account (`forms/policy-set-aside.ts`).
-      const said = proposalPolicySetAsideEnabled() ? withoutPolicyTakeOff(about) : about;
+      // PROPOSAL_POLICY_SET_ASIDE_ENABLED: "take the attendance policy off the form", and "we have quoted the standards of
+      // conduct for …", are policy asks, never account (`forms/policy-set-aside.ts`).
+      const said = proposalPolicySetAsideEnabled() ? withoutPolicyAsks(about) : about;
       // FORM_EDIT_DATE_RULES_ENABLED: an edit replaces, adds to, or never touches the Observation.
       if (formEditDateRulesEnabled()) content = observationByRules(content, said, build);
       else if (grammarAskNotAccountEnabled()) content = withGrammarAnswered(build(content, said.map(withoutAsksToTheApp)), turns);

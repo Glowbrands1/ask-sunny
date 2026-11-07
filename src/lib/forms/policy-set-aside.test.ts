@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { citesSetAside, policiesSetAside, takesPolicyOff, valuesWithPolicySetAside, withPolicySetAside, withoutPolicyTakeOff } from "./policy-set-aside";
+import { citesSetAside, policiesSetAside, remarksOnPolicy, takesPolicyOff, valuesWithPolicySetAside, withPolicySetAside, withoutPolicyAsks, withoutPolicyTakeOff } from "./policy-set-aside";
 
 // QA, 8 Nov 2026 (live in both apps), word for word.
 const SAID = "take the attendance policy off the form";
@@ -87,5 +87,22 @@ describe("the card and the draft", () => {
         setAside,
       ),
     ).toEqual({ policy_violated: "", policy_language: "", coaching_details: "Observed:\nShe was late.", observation: "Observed:\nShe was late." });
+  });
+});
+
+describe("a remark about which policy to cite", () => {
+  // QA, 8 Nov 2026 (live), word for word.
+  const REMARK = "In the past we have quoted the standards of conduct for creating a ca due to underperformance";
+
+  it("is a policy ask, never account", () => {
+    expect(remarksOnPolicy(REMARK)).toBe(true);
+    expect(remarksOnPolicy("use the attendance policy")).toBe(true);
+    expect(remarksOnPolicy("this falls under the dress code")).toBe(true);
+    expect(withoutPolicyAsks(["she was under her sales goal for october", REMARK])).toEqual(["she was under her sales goal for october"]);
+  });
+
+  it("is not an account that names a policy", () => {
+    expect(remarksOnPolicy("she violated the attendance policy by being late on 10/31")).toBe(false);
+    expect(remarksOnPolicy("she used her phone on the floor")).toBe(false);
   });
 });
