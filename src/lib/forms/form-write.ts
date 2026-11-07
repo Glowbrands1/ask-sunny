@@ -3,7 +3,8 @@ import "server-only";
 import type { AskResponse } from "@/lib/ai/types";
 import { payrollAmounts } from "@/lib/ai/intent-slots";
 import { businessToday } from "@/lib/business-date";
-import { formEditNoopGuardEnabled, formPatchReaderFixesEnabled } from "@/lib/config/chat-quality-flags";
+import { formEditNoopGuardEnabled, formPatchReaderFixesEnabled, stepBAddUnderObservedEnabled, stepBSectionSpacingEnabled } from "@/lib/config/chat-quality-flags";
+import { addUnderObserved, hasSections, tailAfterLastSection, withSectionSpacing } from "./outline-sections";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { isGlossaryTerm } from "@/lib/ai/chat-glossary";
 
@@ -508,6 +509,30 @@ export async function writeFormEdits(instanceId: string, ops: readonly FormEditO
       how[op.field] = op.op === "append" ? "add" : op.reword ? "reword" : "replace";
     }
     evidence[op.field] = op.evidence ?? latest;
+  }
+  /*
+   * STEP_B_ADD_UNDER_OBSERVED_ENABLED / STEP_B_SECTION_SPACING_ENABLED (QA's live draft test, 8 Nov 2026): a field
+   * written in sections (Observed / Expectation / Going Forward) keeps them. Added text goes at the end of Observed,
+   * never after the last section; the blank line before each heading stays. See `outline-sections.ts`.
+   */
+  const underObserved = stepBAddUnderObservedEnabled();
+  const spacing = stepBSectionSpacingEnabled();
+  if (underObserved || spacing) {
+    for (const key of Object.keys(set)) {
+      const value = set[key];
+      const current = before[key]?.value;
+      if (typeof value !== "string" || typeof current !== "string" || current.trim() === "") continue;
+      let written = value;
+      if (underObserved && how[key] === "add" && hasSections(current)) {
+        written = addUnderObserved(current, value);
+        how[key] = "replace";
+      } else if (underObserved && how[key] === "replace") {
+        const tail = tailAfterLastSection(current, value);
+        if (tail !== null) written = addUnderObserved(current, tail);
+      }
+      if (spacing && how[key] !== "add") written = withSectionSpacing(current, written);
+      set[key] = written;
+    }
   }
   const patch: FormPatch = { set, clear, how, evidence };
 
