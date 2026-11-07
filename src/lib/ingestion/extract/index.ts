@@ -4,6 +4,7 @@ import { IngestionError } from "../errors";
 import type { SupportedFileType } from "../validation";
 import { extractDocx } from "./docx";
 import { extractPdf } from "./pdf";
+import type { OcrBudget } from "./pdf-ocr";
 import { extractTextFile } from "./txt";
 import type { ExtractedDocument } from "./types";
 
@@ -18,10 +19,12 @@ export { splitHtmlByHeading } from "./docx";
 export async function extractDocument(
   fileType: SupportedFileType,
   buffer: Uint8Array,
+  /** WOVEN_PDF_OCR_ENABLED: a Woven sync's page budget for scanned PDFs (`extract/pdf-ocr.ts`). */
+  options: { ocr?: OcrBudget } = {},
 ): Promise<ExtractedDocument> {
   switch (fileType) {
     case "pdf":
-      return extractPdf(buffer);
+      return extractPdf(buffer, options);
     case "docx":
       return extractDocx(buffer);
     case "txt":
