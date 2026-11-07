@@ -103,6 +103,18 @@ export function draftDedupeEnabled(): boolean {
 }
 
 /**
+ * SECOND_REQUEST_OWN_ACCOUNT_ENABLED (QA's audit, 7 Nov 2026; default off). With a Corrective Action for <A> already
+ * created in a chat, a second request for <A> ("I need another corrective action for <A>, his cash drawer was short")
+ * reopened the first draft (the reopen lookup read every turn of the chat as the incident), or its card carried the
+ * first request's policy ("Late Opening, as you said"), Action Plan and, when not worded as a create request, its
+ * account. On: a turn that starts a new form request does not carry the saved policy heading (`ai/form-state.ts`,
+ * `ai/form-card-slots.ts`). Off, as before.
+ */
+export function secondRequestOwnAccountEnabled(): boolean {
+  return envFlag("SECOND_REQUEST_OWN_ACCOUNT_ENABLED");
+}
+
+/**
  * A follow-up or second document is not revised into the form on screen.
  * Off, the open form keeps the revision path it has now.
  */
@@ -2800,6 +2812,19 @@ export function ownBrandOnlyEnabled(): boolean {
   return envFlag("OWN_BRAND_ONLY_ENABLED");
 }
 
+// --- coding 4 flags ---
+
+/**
+ * AS_YOU_SAID_APP_READ_ENABLED (QA's Sunny gate, 7 Nov 2026: 45 regressions from AS_YOU_SAID_MANAGER_WORDS; ships
+ * with it; same flag in both apps; default off). With AS_YOU_SAID on, an attendance or late-opening CA whose only
+ * Policy line was "<policy>, as you said" (read from the app's own line) lost the line. On: the policy the app's own
+ * lines named is kept as its reading and said as one ("**Policy:** Late Opening — read from this request …"),
+ * never "as you said" and never nothing (`forms/ca-policy.ts` readCaPolicy, caPolicyProposalLine). Off, as before.
+ */
+export function asYouSaidAppReadEnabled(): boolean {
+  return envFlag("AS_YOU_SAID_APP_READ_ENABLED");
+}
+
 // --- coding 2 flags ---
 
 /**
@@ -2813,16 +2838,14 @@ export function noNoticeNoDateEnabled(): boolean {
   return envFlag("NO_NOTICE_NO_DATE_ENABLED");
 }
 
-// --- Coding flags ---
-
 /**
- * SECOND_REQUEST_OWN_ACCOUNT_ENABLED (QA's audit, 7 Nov 2026; default off). With a Corrective Action for <A> already
- * created in a chat, a second request for <A> ("I need another corrective action for <A>, his cash drawer was short")
- * reopened the first draft (the reopen lookup read every turn of the chat as the incident), or its card carried the
- * first request's policy ("Late Opening, as you said"), Action Plan and, when not worded as a create request, its
- * account. On: a turn that starts a new form request does not carry the saved policy heading (`ai/form-state.ts`,
- * `ai/form-card-slots.ts`). Off, as before.
+ * BARE_NOT_AFTER_REQUEST_ENABLED (QA's live Sunny re-check, 6 Nov 2026;
+ * default off). "ca for <A> not late" asked nothing: the clause starts with
+ * the request, so BARE_NOT_DENIAL's clause-start "not" missed it. With this
+ * flag on, the CA what-happened test also reads each clause without its
+ * request head and the employee's name (`ai/ca-what-happened.ts`). Off, as
+ * before.
  */
-export function secondRequestOwnAccountEnabled(): boolean {
-  return envFlag("SECOND_REQUEST_OWN_ACCOUNT_ENABLED");
+export function bareNotAfterRequestEnabled(): boolean {
+  return envFlag("BARE_NOT_AFTER_REQUEST_ENABLED");
 }
