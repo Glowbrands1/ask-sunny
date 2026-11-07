@@ -82,10 +82,13 @@ describe("ROSTER_NEAR_MISS_ENABLED (b): with no employee on the card, no reply t
     expect(out.content).toMatch(/Zebulon/);
   });
 
-  it("on: none of them names him; it asks who", () => {
+  it("on: none of them names him as the employee; it says he was not found and asks who", () => {
     vi.stubEnv("ROSTER_NEAR_MISS_ENABLED", "true");
     const out = rosterOnlyNames(reply("I can create a CA for Zebulon Marchbanks.\n\nName: Zebulon Marchbanks\n\n**Action plan:** Zebulon will be on time for every opening shift.", null), ROSTER, message);
-    expect(out.content).not.toMatch(/Zebulon|Marchbanks/);
+    // Changed on purpose (the sibling app's live run, 5 Nov 2026, mgr-1-off-roster-name): the not-found sentence names the
+    // typed name, so the manager is not asked for a name they already gave; every other line still names nobody.
+    expect(out.content).toMatch(/^I couldn't find \*\*Zebulon Marchbanks\*\* in the Woven roster, so that name is not on the form\./);
+    expect(out.content.split("\n").filter((line) => !/I couldn't find \*\*/.test(line)).join("\n")).not.toMatch(/Zebulon|Marchbanks/);
     expect(out.content).not.toMatch(/^\s*Name:/m);
     expect(out.content).toContain("**Action plan:** The employee will be on time for every opening shift.");
     expect(out.content).toContain(ASK_WHO);
