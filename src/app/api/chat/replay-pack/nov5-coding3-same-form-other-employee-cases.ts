@@ -110,6 +110,7 @@ export const NOV5_CODING3_SAME_FORM_OTHER_EMPLOYEE_CASES: readonly ReplayCase[] 
     report: `${REPORT_B}; Liora's own draft open, the new person not named yet`,
     // Run 5 Nov 2026 (production flags): INTENT_EXTRACTION_ENABLED reads the turn as a Coaching request for Liora — a second card for her.
     status: { open: "a second Coaching card for Liora Pellow (the form to copy FROM): the copy finds no source but the open draft's own person, and the intent reader makes the turn a new request for her" },
+    fixFlags: ["SAME_FORM_COPY_NEW_PERSON_ENABLED"],
     async run(t) {
       const thread = start(t);
       const liora = await lioraDraft(t, thread);
@@ -127,6 +128,7 @@ export const NOV5_CODING3_SAME_FORM_OTHER_EMPLOYEE_CASES: readonly ReplayCase[] 
     report: `${REPORT_B}; then the new person's name, then Create`,
     // Run 5 Nov 2026 (production flags): Teodric's card comes, but Create drafts it from "Teodric Sabrin" alone — Liora's Details are not copied.
     status: { open: "Teodric Sabrin's created draft has none of Liora Pellow's Details: Create copies only when the card's own request turn asks for \"the same draft\"" },
+    fixFlags: ["SAME_FORM_COPY_NEW_PERSON_ENABLED"],
     async run(t) {
       const thread = start(t);
       const liora = await lioraDraft(t, thread);

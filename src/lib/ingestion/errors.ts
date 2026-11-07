@@ -8,7 +8,11 @@ export type IngestionErrorCode =
   | "extraction_failed"
   | "embedding_failed"
   | "persistence_failed"
-  | "not_configured";
+  | "not_configured"
+  /* WOVEN_PDF_OCR_ENABLED: a scanned PDF over a cap, or the transcription request failed (`extract/pdf-ocr.ts`). */
+  | "ocr_too_many_pages"
+  | "ocr_budget_spent"
+  | "ocr_failed";
 
 export class IngestionError extends Error {
   readonly code: IngestionErrorCode;

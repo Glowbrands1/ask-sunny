@@ -1889,6 +1889,22 @@ export function sameFormCopyEnabled(): boolean {
 }
 
 /**
+ * SAME_FORM_COPY_NEW_PERSON_ENABLED (coding3, 5 Nov 2026; same flag in both
+ * apps; default off). "can you create the same draft that we did with <C> by
+ * changing the name and position?" with <C>'s own form open (or no form open
+ * and <C>'s own form on file), the new person not named yet: asks who the new
+ * form is for, leaves <C>'s form alone and makes no card for <C>. The reply
+ * carries the form to copy from (`pendingCopy`); the next turn naming one
+ * roster person starts that person's card with `copyFromInstanceId`, and
+ * Create copies that form's content onto the new draft (creator and visibility
+ * re-checked) — never re-read from the wording. Any other turn drops it. See
+ * `forms/same-form-copy.ts`. Off, as before.
+ */
+export function sameFormCopyNewPersonEnabled(): boolean {
+  return envFlag("SAME_FORM_COPY_NEW_PERSON_ENABLED");
+}
+
+/**
  * "A coaching form for my whole staff": no card for everyone. Several salons
  * in scope and none named → asks which; one → lists its staff from the scoped
  * Woven directory (name and position) and asks who the form is for (ported
@@ -2053,6 +2069,17 @@ export function teamCardWordingEnabled(): boolean {
  */
 export function observationNotPolicyNameEnabled(): boolean {
   return envFlag("OBSERVATION_NOT_POLICY_NAME_ENABLED");
+}
+
+/**
+ * COMPLAINT_ACCOUNT_ENABLED (QA's audit, 7 Nov 2026; default off). "verbal warning The date she complained was Oct
+ * 31st . The customer said …" made the Observation of Offense open "verbal warning The date she complained was …": the
+ * warning level is the form's Type of Warning, never the account. On: a sentence that opens with the level the app
+ * reads as this form's (`forms/warning-level.ts` statedWarningLevel) runs on without it (`ai/keep-filled-slots.ts`
+ * withAccount). Off, as before.
+ */
+export function complaintAccountEnabled(): boolean {
+  return envFlag("COMPLAINT_ACCOUNT_ENABLED");
 }
 
 /**
@@ -2548,6 +2575,36 @@ export function caSalesPolicyEnabled(): boolean {
 }
 
 /**
+ * CA_PERFORMANCE_REASON_ENABLED (QA, coding-3 item 5, 5 Nov 2026; default
+ * off; same flag in both apps; only effective with CA_SALES_POLICY_ENABLED).
+ * "can you write me a Ca for <name> for performance for october" got "You
+ * haven't told me what happened yet": the bare "performance" is neither a
+ * metric named and judged (`statesMetricShortfall`) nor the removed Under
+ * Performance box's name. On, the sentence that asks for the Corrective
+ * Action naming performance (the EPP reader's existing performance pattern,
+ * `namesPerformance` in `forms/epp-policy.ts`), with nothing else read from
+ * the account, is the sales-performance reading: the card cites the
+ * Standards of Conduct and does not ask what happened. See `withSalesPolicy`
+ * in `forms/ca-policy.ts`. Off, as before.
+ */
+export function caPerformanceReasonEnabled(): boolean {
+  return envFlag("CA_PERFORMANCE_REASON_ENABLED");
+}
+
+/**
+ * WOVEN_TRAINING_CONDUCT_ENABLED (Pau's ruling, 6 Nov 2026; default off). Three managers asking for a Corrective
+ * Action for assigned Woven policy acknowledgements or training not completed by a deadline got three answers: a
+ * tentative Standards of Conduct, "Woven does not see a section … for \"not signing the woven\" … so I won't cite
+ * one", and no policy line at all, with "the applicable company policy" in the Action Plan. On: such an account is
+ * the Standards of Conduct, said on the card with the manual's section and page, ticked and quoted on the draft
+ * (`forms/ca-policy.ts` wovenWork, `forms/named-policy-section.ts`), and a section the manual lacks is said in
+ * the app's own voice ("I don't see a section …"), not with the product as its subject. Off, as before.
+ */
+export function wovenTrainingConductEnabled(): boolean {
+  return envFlag("WOVEN_TRAINING_CONDUCT_ENABLED");
+}
+
+/**
  * Step 5, names from the roster: first piece, the overnight scan's sf-s19
  * "metrics read as people". A metric is never read as a person (Pau, 4 Nov
  * 2026: "I need a corrective action verbal for <name>. This is for Under
@@ -2761,6 +2818,17 @@ export function metricGuardEnabled(): boolean {
 }
 
 /**
+ * METRIC_CHOICE_ONE_QUESTION_ENABLED (QA, 7 Nov 2026; default off). The same doubled ask as the sibling app's FORM_NAME
+ * re-flip gate regression, under METRIC_GUARD_ENABLED: a choice question with its own "Tell me and I'll …" after it,
+ * every choice a metric, became "Who is this form for? Tell me the employee's full name. Tell me and I'll fill in …".
+ * On: the question's tail goes with a choice that is replaced, and stays with one still asked
+ * (`forms/roster-only-names.ts` withoutMetricChoices). Off, as before.
+ */
+export function metricChoiceOneQuestionEnabled(): boolean {
+  return envFlag("METRIC_CHOICE_ONE_QUESTION_ENABLED");
+}
+
+/**
  * COACHING_OBSERVED_KEPT_ENABLED (Pau's scan, sf-s37, 7 Nov 2026; same flag in both apps; default off). Three Coaching
  * Forms for "not hitting her numbers for the month of October" were saved with no "Observed:" section and with
  * Underperformance unticked: the framing guard (`forms/coaching-framing.ts`) did not read the account as a shortfall,
@@ -2970,6 +3038,17 @@ export function ownBrandOnlyEnabled(): boolean {
   return envFlag("OWN_BRAND_ONLY_ENABLED");
 }
 
+/**
+ * WOVEN_PDF_OCR_ENABLED (ported from the sibling app; QA's plan, approved by Pau, 7 Nov 2026; same flag in both apps;
+ * default off). Scanned Woven PDFs have no text layer, so the sync left them in ERROR ("no_text") and their knowledge
+ * never reached an answer. On: a Woven sync has a PDF with no text at all transcribed page by page by Claude
+ * (`ingestion/extract/pdf-ocr.ts`), capped per document and per run, and indexes it like any PDF. Uploads, and PDFs
+ * with any text, are unchanged. Off, as before.
+ */
+export function wovenPdfOcrEnabled(): boolean {
+  return envFlag("WOVEN_PDF_OCR_ENABLED");
+}
+
 // --- coding 4 flags ---
 
 /**
@@ -3028,6 +3107,20 @@ export function noNoticeNoDateEnabled(): boolean {
   return envFlag("NO_NOTICE_NO_DATE_ENABLED");
 }
 
+// coding 2: SALES_OBSERVATION_ACCOUNT
+/**
+ * SALES_OBSERVATION_ACCOUNT_ENABLED (QA's Sunny flip-4 gate, 7 Nov 2026;
+ * default off; only with SALES_SHORTFALL_OBJECT_ENABLED). With "on
+ * performance" read as the account, the card's Observation of Offense was the
+ * request's own words: "<name> on performance", "performance for october not
+ * pay roll deductable". With this flag on, an Observation sentence loses the
+ * request head, the leading employee name, the request's reason and a payroll
+ * answer (`forms/ca-policy.ts` observationAccount). Off, as before.
+ */
+export function salesObservationAccountEnabled(): boolean {
+  return envFlag("SALES_OBSERVATION_ACCOUNT_ENABLED");
+}
+
 /**
  * BARE_NOT_AFTER_REQUEST_ENABLED (QA's live Sunny re-check, 6 Nov 2026;
  * default off). "ca for <A> not late" asked nothing: the clause starts with
@@ -3038,6 +3131,17 @@ export function noNoticeNoDateEnabled(): boolean {
  */
 export function bareNotAfterRequestEnabled(): boolean {
   return envFlag("BARE_NOT_AFTER_REQUEST_ENABLED");
+}
+
+// coding 2: OBSERVATION_NO_LEVEL_LEAD
+/**
+ * OBSERVATION_NO_LEVEL_LEAD_ENABLED (the flip-3 tester's D, in this app; QA 6–7 Nov 2026; default off). "create a
+ * CA for <name>, verbal, she was late on 10-20-26" made the Observation "verbal, she was late on 10-20-26". With
+ * this flag on, a clause that is only a warning level is not part of the account (`ai/remap-incident.ts`
+ * managerAccount). Off, as before.
+ */
+export function observationNoLevelLeadEnabled(): boolean {
+  return envFlag("OBSERVATION_NO_LEVEL_LEAD_ENABLED");
 }
 
 /**

@@ -1237,10 +1237,18 @@ export function namesAForm(phrase: string): boolean {
  * the same message is a detail of that request — read by this function itself on the words before it — unless the
  * manager switches to it ("…, actually make it a coaching form"; `SWITCH_BEFORE`). Off, as before.
  */
-function detailOfAnEarlierCaRequest(key: string, before: string): boolean {
+/*
+ * ONE READING, NOT ONE PER NAMING (QA's gate runner, 7 Nov 2026). Reading the words before each naming with
+ * detectTemplateIntent re-read every shorter prefix, which read its own namings the same way: the work doubled with
+ * each naming, and a ~40-naming coaching intake never finished. The answer is the same for every naming after the
+ * first: if the words before the FIRST form named (other than the CA itself) are a Corrective Action request, every
+ * form named after it is a detail of that request; if they are not, the first form named is the one asked for. So
+ * `requestedNaming` reads that one prefix, once, lazily — it names no other form, so nothing recurses.
+ */
+function detailOfAnEarlierCaRequest(key: string, before: string, leadIsCaRequest: () => boolean): boolean {
   if (!caRequestNotPriorCoachingEnabled() || key === "dpoa" || before.trim() === "") return false;
   if (SWITCH_BEFORE.test(before)) return false;
-  return detectTemplateIntent(before).kind === "corrective_action";
+  return leadIsCaRequest();
 }
 
 function requestedNaming(q: string, original: string): { key: string; phrase: string } | null {
@@ -1260,6 +1268,16 @@ function requestedNaming(q: string, original: string): { key: string; phrase: st
       !all.slice(0, index).some((kept) => kept.order < naming.order && kept.start < naming.end && naming.start < kept.end),
     );
 
+  /* CA_REQUEST_NOT_PRIOR_COACHING_ENABLED: the words before the first non-CA naming, read once and only if asked. */
+  let caLead: boolean | undefined;
+  const leadIsCaRequest = (): boolean => {
+    if (caLead === undefined) {
+      const first = Math.min(...spans.filter((naming) => naming.key !== "dpoa").map((naming) => naming.start));
+      caLead = Number.isFinite(first) && first > 0 && detectTemplateIntent(q.slice(0, first)).kind === "corrective_action";
+    }
+    return caLead;
+  };
+
   // 2 and 3. Not wanted, and only the topic.
   const wanted = spans.filter((naming) => {
     const before = q.slice(0, naming.start);
@@ -1267,7 +1285,7 @@ function requestedNaming(q: string, original: string): { key: string; phrase: st
       !NEGATED_BEFORE.test(before) &&
       !TOPIC_BEFORE.test(before) &&
       !caForAnotherForm(naming.key, before) &&
-      !detailOfAnEarlierCaRequest(naming.key, before)
+      !detailOfAnEarlierCaRequest(naming.key, before, leadIsCaRequest)
     );
   });
   if (wanted.length === 0) return null;

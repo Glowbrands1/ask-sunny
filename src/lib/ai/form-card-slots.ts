@@ -13,7 +13,9 @@ import {
   followUpNotPriorEnabled,
   followUpReadbackCueEnabled,
   correctedEmployeeSlotEnabled,
+  secondRequestOwnAccountEnabled,
 } from "@/lib/config/chat-quality-flags";
+import { currentFormRequestTurns } from "@/lib/forms/current-request";
 import { templateHasWarningLevel } from "@/lib/forms/warning-level";
 import { followUpDatesByRules } from "./edit-date-rules";
 import { matchEmployeeName, rosterNameNamedIn } from "@/lib/forms/employee-match";
@@ -204,7 +206,13 @@ export function attachFormTurnSources(given: {
   readonly attendanceCitation?: boolean;
   readonly pageRequired?: boolean;
 }): { content: string; citations: SourceCitation[] } {
-  const input = formChoiceStatedEnabled() ? { ...given, modelHeading: headingForCard(given) } : given;
+  /*
+   * SECOND_REQUEST_OWN_ACCOUNT_ENABLED (QA's audit, 7 Nov 2026): the card's citation and policy line read the request
+   * now being written. The notes are every manager turn joined line by line, so the request starts at the last line
+   * that asks for a form; a cash-drawer CA after a late-opening one was cited "Late Opening Policy … p.15".
+   */
+  const scoped = secondRequestOwnAccountEnabled() ? { ...given, notes: currentFormRequestTurns(given.notes.split("\n")).join("\n") } : given;
+  const input = formChoiceStatedEnabled() ? { ...scoped, modelHeading: headingForCard(scoped) } : scoped;
   const found = formTurnCitations(input);
   let citations = lateOpeningCitations(input.citations.length > 0 ? [...input.citations] : found, input.notes);
   let content = input.content;

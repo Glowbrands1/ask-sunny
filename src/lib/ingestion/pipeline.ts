@@ -10,6 +10,7 @@ import { escapeLike } from "@/lib/supabase/like";
 import type { KnowledgeCategory, KnowledgeDocument } from "@/types";
 import { rowToDocument, type KnowledgeDocumentRow } from "@/lib/knowledge/mappers";
 import { chunkSegments, type DocumentChunk } from "./chunking";
+import type { OcrBudget } from "./extract/pdf-ocr";
 import { IngestionError } from "./errors";
 import { extractDocument } from "./extract";
 import { buildStoragePath, sanitizeFileName } from "./paths";
@@ -67,6 +68,11 @@ export interface IngestInput {
   documentId?: string;
   /** Where the document came from. Uploads default to `upload`. */
   source?: "upload" | "woven";
+  /**
+   * WOVEN_PDF_OCR_ENABLED: the sync run's page budget for scanned PDFs. Given only by the Woven sink; an upload
+   * passes none and is never read by OCR.
+   */
+  ocrBudget?: OcrBudget;
   /** The note recorded against the version this ingestion supersedes. */
   supersededNote?: string;
 }
@@ -201,7 +207,7 @@ export async function ingestDocument(input: IngestInput): Promise<IngestResult> 
 
     /* 5. Extract, preserving page/section locators. */
     const buffer = new Uint8Array(await input.file.arrayBuffer());
-    const extracted = await extractDocument(validated.fileType, buffer);
+    const extracted = await extractDocument(validated.fileType, buffer, { ocr: input.ocrBudget });
 
     /* 6. Chunk. Deterministic, so an unchanged version hashes identically. */
     const chunks = chunkSegments(extracted.segments);
@@ -273,6 +279,8 @@ export async function ingestDocument(input: IngestInput): Promise<IngestResult> 
            */
           printedPage: chunk.printedPage,
           sections: chunk.sections,
+          // WOVEN_PDF_OCR_ENABLED: this text was read from the page images (which model, when).
+          ...(extracted.ocr ? { ocr: { model: extracted.ocr.model, at: new Date().toISOString() } } : {}),
         },
         embedding_model: embeddings.model,
         embedding: vectors[index]!,

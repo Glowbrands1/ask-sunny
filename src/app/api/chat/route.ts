@@ -26,6 +26,7 @@ import {
   formEditPlainWordsEnabled,
   questionNotFormEnabled,
   sameFormCopyEnabled,
+  sameFormCopyNewPersonEnabled,
   secondFormEnabled,
   staffPickerBareAnswerEnabled,
   wholeTeamCoachingEnabled,
@@ -217,6 +218,35 @@ async function postChat(request: Request) {
           asked = taken.request;
           (await import("@/lib/forms/off-roster-store")).enterAcceptedOffRoster(taken.accepted);
         }
+      }
+      /*
+       * SAME_FORM_COPY_NEW_PERSON_ENABLED: "can you create the same draft that
+       * we did with <C> by changing the name and position?" with <C>'s own form
+       * open — asked who the new form is for, nothing written, no card. The
+       * turn after it that names one roster person is read as the request for
+       * that person's form, and the card carries the form to copy from. See
+       * `lib/forms/same-form-copy.ts`.
+       */
+      const newPersonCopy =
+        sameFormCopyEnabled() && sameFormCopyNewPersonEnabled()
+          ? await (await import("@/lib/forms/same-form-copy")).newPersonCopyTurn({
+              request,
+              question: asked.question,
+              activeInstanceId: asked.activeFormInstanceId,
+              pendingFromInstanceId: asked.pendingCopyFromInstanceId,
+            })
+          : null;
+      if (newPersonCopy && "answer" in newPersonCopy) {
+        await closeTurn(turnId, { category: "unclassified", succeeded: true, latencyMs: Date.now() - askedAt });
+        return NextResponse.json({ ...newPersonCopy.answer, turnId });
+      }
+      if (newPersonCopy) {
+        asked = {
+          ...asked,
+          question: newPersonCopy.question,
+          activeFormInstanceId: undefined,
+          continueProposalTemplateKey: newPersonCopy.source.templateKey,
+        };
       }
       // FORM_NAME_FROM_ROSTER_ENABLED, part 2: every name reader of the turn reads this message's request slot (`lib/forms/request-slot.ts`).
       if (formNameFromRosterEnabled()) (await import("@/lib/forms/request-message-store")).enterRequestMessage(asked.question);
@@ -806,6 +836,10 @@ async function postChat(request: Request) {
         void _dropped;
         answer = { ...rest, content: rest.content.replace(/\n*Based on what you've described, I can prepare:\s*$/, "").trimEnd() };
       }
+      // SAME_FORM_COPY_NEW_PERSON_ENABLED: the named person's card carries the form to copy from.
+      if (newPersonCopy) {
+        answer = (await import("@/lib/forms/same-form-copy")).withCopyFrom(answer, newPersonCopy.source, newPersonCopy.name);
+      }
     } catch (error) {
       /*
        * A FAILED ANSWER IS STILL A RECORDED TURN, closed as a failure. The row
@@ -887,6 +921,10 @@ function parseAskRequest(body: Partial<AskRequest>): AskRequest {
     // An id and nothing more; malformed ones are dropped rather than looked up.
     activeFormInstanceId: UUID.test(String(body.activeFormInstanceId ?? ""))
       ? String(body.activeFormInstanceId)
+      : undefined,
+    // SAME_FORM_COPY_NEW_PERSON_ENABLED: an id and nothing more, re-checked before it is used.
+    pendingCopyFromInstanceId: UUID.test(String(body.pendingCopyFromInstanceId ?? ""))
+      ? String(body.pendingCopyFromInstanceId)
       : undefined,
     // A `conv_*` id and nothing more; anything else is dropped. See `AskRequest`.
     conversationId: isClientConversationId(String(body.conversationId ?? ""))
