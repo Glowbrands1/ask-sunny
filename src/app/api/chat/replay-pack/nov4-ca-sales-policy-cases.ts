@@ -1,6 +1,7 @@
 import { expect, vi } from "vitest";
 
 import { KEARNEY, STAFF, type DirectoryRow, type ReplayAnswer, type ReplayCase, type ReplayContext } from "./cases";
+import { citedPolicy } from "./policy-line";
 
 /**
  * ============================================================================
@@ -77,7 +78,8 @@ export const NOV4_CA_SALES_POLICY_CASES: ReplayCase[] = [
     id: "nov4-ca-sales-msb",
     title: "a CA for MSB (Must See Behaviors) cites the Standards of Conduct, heading and page",
     report: `${REPORT}: (a) a CA for MSB`,
-    status: { open: "no policy is cited for an MSB corrective action" },
+    // Changed on purpose (7 Nov 2026): QA's flips of 5 and 6 Nov turned CA_SALES_POLICY, REPLY_MATCHES_CARD, TITLE_OF_THE_EMPLOYEE, METRIC_GUARD, TITLE_ENDS_AT_LINE, BARE_NOT_DENIAL and PLACE_FROM_CUE on in production (production-flags.json); this case now holds with production's flags.
+    status: "fixed",
     fixFlags: [FLAG],
     async run(t) {
       const thread = start(t);
@@ -104,7 +106,8 @@ export const NOV4_CA_SALES_POLICY_CASES: ReplayCase[] = [
      * stated sales shortfall goes to the form (`correctiveActionBasis`,
      * corrective-action-intake.ts).
      */
-    status: { open: "no card: a low-sales request is answered with the progression (metric only), so no policy is cited" },
+    // Changed on purpose (7 Nov 2026): QA's flips of 5 and 6 Nov turned CA_SALES_POLICY, REPLY_MATCHES_CARD, TITLE_OF_THE_EMPLOYEE, METRIC_GUARD, TITLE_ENDS_AT_LINE, BARE_NOT_DENIAL and PLACE_FROM_CUE on in production (production-flags.json); this case now holds with production's flags.
+    status: "fixed",
     fixFlags: [FLAG],
     async run(t) {
       const thread = start(t);
@@ -135,9 +138,11 @@ export const NOV4_CA_SALES_POLICY_CASES: ReplayCase[] = [
       const thread = start(t);
       const reply = await thread.say("create a corrective action for Ilsabet Harrowgate for ringing up the wrong items on a guest's sale");
       expect(thread.proposal, `no CA card for Ilsabet Harrowgate:\n${reply.content}`).toMatchObject({ templateKey: "dpoa", employeeName: "Ilsabet Harrowgate" });
+      // The drafting model's offense_basis (CA_SALES_POLICY_ENABLED's optional tool field; Pau, 4 Nov 2026: wrong items keeps the Standards of Conduct, `ca-conduct-reason.ts`).
       t.draftWrites(
         { observation: "Observed:\nIlsabet Harrowgate rang up the wrong items on a guest's sale." },
         { offense_type: ["under_performance"] },
+        { offense_basis: "sales" },
       );
       const id = await thread.create();
       citesStandardsOfConduct(t.values(id));
@@ -204,7 +209,13 @@ export const NOV4_CA_SALES_POLICY_CASES: ReplayCase[] = [
       const thread = start(t);
       const reply = await thread.say("make a corrective action for Anselm Fenwright, the tanning beds were left dirty at close");
       expect(thread.proposal, `no CA card for Anselm Fenwright:\n${reply.content}`).toMatchObject({ templateKey: "dpoa", employeeName: "Anselm Fenwright" });
-      expect(policyLine(reply), `the card cites Standards of Conduct for cleaning:\n${reply.content}`).not.toMatch(/standards of conduct/i);
+      /*
+       * Changed on purpose (QA, 7 Nov 2026, the sibling app's gate A): the check reads the policy the line CITES, not
+       * whether the words appear. With CLEANING_OTHER on, the right reply is "**Policy:** Other — … not the Standards of
+       * Conduct.", which names the Standards of Conduct only to say it is not cited. A line that does cite it still
+       * fails (policy-line.test.ts, negative examples).
+       */
+      expect(citedPolicy(policyLine(reply)), `the card cites Standards of Conduct for cleaning:\n${reply.content}`).not.toMatch(/standards of conduct/i);
       t.draftWrites({ observation: "Observed:\nThe tanning beds were left dirty at close." });
       const id = await thread.create();
       expect(t.values(id).policy_violated ?? "", "Policy Violated is Standards of Conduct").not.toMatch(/standards of conduct/i);

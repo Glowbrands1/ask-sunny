@@ -1,6 +1,17 @@
 import { expect } from "vitest";
 
-import { KEARNEY, noClaimWithoutUpdate, STAFF, type ReplayCase } from "./cases";
+import { KEARNEY, noClaimWithoutUpdate, STAFF, type DirectoryRow, type ReplayCase } from "./cases";
+
+/*
+ * FORM_NAME_FROM_ROSTER_ENABLED (Pau, 5 Nov 2026): only a roster person is
+ * ever the card's employee, so with the flag on the person these chats correct
+ * is on the roster (as typed) for the card to exist; the claims under test are
+ * the same. Off, the directory as before.
+ */
+function claimRoster(): DirectoryRow[] {
+  if (process.env.FORM_NAME_FROM_ROSTER_ENABLED !== "true") return STAFF;
+  return [...STAFF, { id: "e-delia", firstName: "Delia", lastName: "Garza Ramso", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" }];
+}
 
 /** The sibling app's 2 Nov scan, honesty report (P5): "updated" and "confirmed" with nothing changed or read. The same mechanism here. */
 export const NOV2_CLAIM_CASES: readonly ReplayCase[] = [
@@ -13,7 +24,7 @@ export const NOV2_CLAIM_CASES: readonly ReplayCase[] = [
     status: "fixed",
     fixFlags: ["CLAIM_GUARD_ENABLED", "OPEN_FORM_NO_SELECTION_ENABLED"],
     async run(t) {
-      t.directory(STAFF);
+      t.directory(claimRoster());
       t.as("salon_director", KEARNEY);
       const thread = t.thread();
       await thread.say("i have an employee, Delia Garza Ramso that needs a corrective action form with a customer complaint");
@@ -72,7 +83,7 @@ export const NOV2_NAME_CORRECTION_CASES: readonly ReplayCase[] = [
     status: "fixed",
     fixFlags: ["NAME_CORRECTION_WORDS_ENABLED"],
     async run(t) {
-      t.directory(STAFF);
+      t.directory(claimRoster());
       t.as("salon_director", KEARNEY);
       const thread = t.thread();
       await thread.say("i have an employee, Delia Garza Ramso that needs a corrective action form with a customer complaint");

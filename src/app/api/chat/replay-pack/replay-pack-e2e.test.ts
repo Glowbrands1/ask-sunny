@@ -1,3 +1,4 @@
+import { STREAM_HEADER, unwrapStreamed } from "@/lib/api/streamed-response";
 import { randomUUID } from "node:crypto";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -58,6 +59,10 @@ vi.hoisted(() => {
 const revisionAsked = vi.hoisted(() => [] as string[]);
 /** What the drafting model was given, per Create. */
 const draftAsked = vi.hoisted(() => [] as string[]);
+/** The drafting model's system prompt, per Create, as text (CA_SALES_POLICY_ENABLED prompt lines). */
+const draftSystemAsked = vi.hoisted(() => [] as string[]);
+/** The draft call's tools, as sent (CA_SALES_POLICY_ENABLED adds an optional property). */
+const draftToolsAsked = vi.hoisted(() => [] as string[]);
 const state = vi.hoisted(() => ({
   slotReading: "none" as "none" | "ca" | "copy",
   /** What the slot model (record_intent_slots) reads this turn, when a case sets it — as a production trace shows. */
@@ -67,7 +72,7 @@ const state = vi.hoisted(() => ({
   remapObservation: null as string | null,
   /** What the form-reading model returns for this turn (extract_form_fields). */
   reading: {} as Record<string, unknown>,
-  draft: {} as { values?: Record<string, unknown>; checked?: Record<string, unknown> },
+  draft: {} as { values?: Record<string, unknown>; checked?: Record<string, unknown>; [extra: string]: unknown },
   revision: {} as { values?: Record<string, unknown>; checked?: Record<string, unknown>; clear?: string[] },
   revisionCalls: 0,
   draftCalls: 0,
@@ -264,6 +269,15 @@ vi.mock("@/lib/ai/anthropic", () => ({
         if (!revising) {
           state.draftCalls += 1;
           draftAsked.push(JSON.stringify((request as { messages?: unknown; system?: unknown }).messages ?? []));
+          const system = (request as { system?: unknown }).system;
+          draftSystemAsked.push(
+            typeof system === "string"
+              ? system
+              : Array.isArray(system)
+                ? system.map((block) => (block as { text?: string }).text ?? "").join("\n")
+                : "",
+          );
+          draftToolsAsked.push(JSON.stringify((request as { tools?: unknown }).tools ?? []));
         }
         if (revising) {
           state.revisionCalls += 1;
@@ -461,8 +475,15 @@ class Thread {
         }),
       }),
     );
-    const payload = (await response.json()) as Answer & { error?: string };
-    expect(response.status, JSON.stringify(payload)).toBe(200);
+    /*
+     * CHAT_RESPONSE_STREAM_ENABLED: an answer slower than START_AFTER_MS comes as one streamed envelope
+     * {"status", "body"}; the browser (`ai/claude-provider.ts`) unwraps it, and so does the pack (ported from
+     * the sibling app, 5 Nov 2026: a slow redraft was recorded there as an empty reply because the envelope
+     * was read as the answer).
+     */
+    const streamed = response.headers.get(STREAM_HEADER) === "1" ? unwrapStreamed(await response.text()) : null;
+    const payload = (streamed ? streamed.body : await response.json()) as Answer & { error?: string };
+    expect(streamed?.status ?? response.status, JSON.stringify(payload)).toBe(200);
     // EVERY REPLY (QA, 3 Nov 2026): "I still need …" is never said unless the reply asks who, which location or which date.
     if (/^I still need\b/m.test(payload.content ?? "")) {
       expect(stillAsks(payload.content), `"I still need" without a question:\n${payload.content}`).not.toBeNull();
@@ -606,6 +627,8 @@ afterEach(() => {
   editTool.offered = 0;
   editTool.lastData = null;
   draftAsked.length = 0;
+  draftSystemAsked.length = 0;
+  draftToolsAsked.length = 0;
 });
 
 function context(): ReplayContext {
@@ -618,8 +641,8 @@ function context(): ReplayContext {
     directory: (rows) => {
       state.directory = rows as never;
     },
-    draftWrites: (values, checked) => {
-      state.draft = { values, ...(checked ? { checked } : {}) };
+    draftWrites: (values, checked, extra) => {
+      state.draft = { values, ...(checked ? { checked } : {}), ...(extra ?? {}) };
     },
     revisionWrites: (values) => {
       state.revision = { values };
@@ -642,6 +665,8 @@ function context(): ReplayContext {
     calls: () => ({ chat: state.chatModelCalls, draft: state.draftCalls, revision: state.revisionCalls, tool: state.toolCalls, patch: patchScript.calls }),
     forms: () => store.form_instances as never,
     draftPrompts: () => [...draftAsked],
+    draftSystems: () => [...draftSystemAsked],
+    draftTools: () => [...draftToolsAsked],
     redraft: (instanceId, notes) =>
       call<Record<string, unknown>>(`/api/forms/instances/${instanceId}/draft`, {
         method: "POST",
@@ -708,7 +733,13 @@ describe("the replay pack", () => {
         await recorded(replay.id, "open", () => replay.run(context()));
       });
     }
-    if (replay.fixFlags?.length) {
+    if (replay.fixFlags?.length && replay.fixStatus) {
+      // A fix-flag run that fails today (`fixStatus`): expected to fail. The day it passes, drop fixStatus.
+      it.fails(`${title} — OPEN with ${replay.fixFlags.join(", ")} on (${replay.fixStatus.open})`, async () => {
+        production(replay.fixFlags);
+        await recorded(replay.id, `fix-open:${replay.fixFlags!.join(",")}`, () => replay.run(context()));
+      });
+    } else if (replay.fixFlags?.length) {
       it(`${title} — holds with ${replay.fixFlags.join(", ")} on`, async () => {
         production(replay.fixFlags);
         await recorded(replay.id, `fix:${replay.fixFlags!.join(",")}`, () => replay.run(context()));

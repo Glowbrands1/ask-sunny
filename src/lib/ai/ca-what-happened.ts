@@ -1,4 +1,5 @@
-import { caAsksWhatHappenedEnabled } from "@/lib/config/chat-quality-flags";
+import { bareNotAfterRequestEnabled, bareNotDenialEnabled, caAsksWhatHappenedEnabled, caSalesPolicyEnabled, coachingAsksWhatHappenedEnabled, omissionIsAccountEnabled } from "@/lib/config/chat-quality-flags";
+import { deniesAFault, deniesAFaultWithBareNot } from "@/lib/forms/draft-never-blank";
 import {
   NO_INCIDENT_NOTE,
   answeredWhatHappened,
@@ -61,6 +62,25 @@ function turnsForThisForm(history: readonly Turn[], templateKey: string): readon
 /** Only what did not happen: "she was not late", "nothing happened", "no incident", "she didn't do anything wrong". */
 const NEGATED = /\b(?:not|never|nothing|no\s+(?:incident|issue|problems?|concerns?))\b|n['’]t\b/i;
 
+/*
+ * OMISSION_IS_ACCOUNT_ENABLED (Pau, sf-s28): a duty not done is something the
+ * employee did. "not signing off on the cleaning check list", "did not clock
+ * in", "she never called in" say what she failed to do: the negation governs
+ * an action verb. "she was not late", "not late" and "she didn't do anything
+ * wrong" only say what did not happen: the negation governs "be", an
+ * adjective, or "do anything". Grammar, not a list of offenses.
+ */
+const DENIAL = /\b(?:nothing|anything|no\s+(?:incident|issue|problems?|concerns?))\b/i;
+const NEGATED_ACTION =
+  /(?:\b(?:did|does|do)\s+not\s+|\b(?:did|does|do)n['’]t\s+|\bnever\s+)(?!(?:do|be|been|being)\b)[a-z]+|\bnot\s+(?!being\b)[a-z]+ing\b/i;
+
+/** OMISSION_IS_ACCOUNT's reading: a clause that says only what did not happen; with the flag, a duty not done is not that. */
+function omissionReading(clause: string): boolean {
+  if (!NEGATED.test(clause)) return false;
+  if (!omissionIsAccountEnabled()) return true;
+  return DENIAL.test(clause) || !NEGATED_ACTION.test(clause);
+}
+
 const NOT_A_PERSON = new Set(["she", "he", "they", "the", "a", "an", "her", "his", "their", "our", "my", "this", "that", "it", "i", "we", "you", "and", "also", "then"]);
 
 /** "rory vance was late today": somebody else did it. */
@@ -72,6 +92,44 @@ function aboutSomebodyElse(clause: string, name: string): boolean {
   return !words.some((word) => NOT_A_PERSON.has(word) || own.has(word));
 }
 
+/*
+ * CA_SALES_POLICY_ENABLED (QA, Sunny production, 4 Nov 2026: eight managers'
+ * requests asked "You haven't told me what happened yet"): "for not
+ * completing her woven courses by the deadline", "Not meeting sales
+ * requirements", "did not follow must see behaviors" name the failure — the
+ * account. With the flag on, a clause is "only what did not happen" when it
+ * denies a fault (`deniesAFault`, the never-blank reader: "never late",
+ * "didn't do anything wrong") or says nothing / no incident happened; a "not"
+ * before what the employee failed to do is an account. Off, any negation.
+ */
+const NOTHING_HAPPENED = /\bnothing\b|\bno\s+(?:incident|issue|problems?|concerns?)\b/i;
+
+function onlyWhatDidNotHappen(clause: string): boolean {
+  // Off: OMISSION_IS_ACCOUNT's reading alone (as main). On: a clause is only what did not happen when both readings say so, so an account either reading finds is one.
+  if (!caSalesPolicyEnabled()) return omissionReading(clause);
+  // BARE_NOT_DENIAL_ENABLED (QA's gate, 6 Nov 2026): "not late" is a denial too. Off, as before.
+  const denies = deniesAFault(clause) || (bareNotDenialEnabled() && deniesAFaultWithBareNot(clause));
+  return omissionReading(clause) && (denies || NOTHING_HAPPENED.test(clause));
+}
+
+/*
+ * BARE_NOT_AFTER_REQUEST_ENABLED (QA's live Sunny re-check, 6 Nov 2026, (b)): "ca for <A> not late" is one
+ * clause, so BARE_NOT_DENIAL (a "not" that starts the clause) never saw "not late", and "late" read as an
+ * account: no ask. With the flag on, the clause is also read without its request head ("ca / corrective
+ * action / write-up / warning … for") and the card's employee-name words; what is left ("not late") is read
+ * by the same test. A clause with nothing left is not passed over. Off, as before.
+ */
+const REQUEST_HEAD = /^.*?\b(?:corrective\s+action(?:\s+form)?|ca|c\/a|write[- ]?up|warning|dpoa)\s+(?:for|to)\s+/i;
+
+function onlyWhatDidNotHappenAfterRequest(clause: string, name: string): boolean {
+  if (!REQUEST_HEAD.test(clause)) return false;
+  const own = new Set(name.toLowerCase().split(/\s+/).filter(Boolean));
+  const words = clause.replace(REQUEST_HEAD, "").split(/\s+/).filter(Boolean);
+  while (words.length > 0 && own.has(words[0]!.toLowerCase().replace(/[^\p{L}'’-]/gu, ""))) words.shift();
+  const rest = words.join(" ").trim();
+  return rest !== "" && onlyWhatDidNotHappen(rest);
+}
+
 /** A clause that says what this employee did. */
 function hasAccount(said: string, name: string, ignore: readonly string[]): boolean {
   return said
@@ -80,7 +138,8 @@ function hasAccount(said: string, name: string, ignore: readonly string[]): bool
     .filter(Boolean)
     .some(
       (clause) =>
-        !NEGATED.test(clause) &&
+        !onlyWhatDidNotHappen(clause) &&
+        !(bareNotAfterRequestEnabled() && onlyWhatDidNotHappenAfterRequest(clause, name)) &&
         !aboutSomebodyElse(clause, name) &&
         (describesIncident(clause) || describesMoreThanTheRequest(clause, { ignore })),
     );
@@ -106,5 +165,44 @@ export function askCaWhatHappened(response: AskResponse, question: string, histo
   const lines = response.content.split("\n");
   // Second, after the card's opening line, where the card puts it on a name alone.
   lines.splice(Math.min(1, lines.length), 0, "", NO_INCIDENT_NOTE);
+  return { ...response, content: lines.join("\n").replace(/\n{3,}/g, "\n\n").trim() };
+}
+
+/**
+ * COACHING_ASKS_WHAT_HAPPENED_ENABLED (Pau, 5 Nov 2026, sf-s27): "Create a
+ * coaching form." → "<name>" answered "Everything I need is here, drawn from
+ * your messages above. … I have the employee and the salon." with no incident.
+ * A Coaching Form card for a person with no account in the manager's turns for
+ * it (the same test as the Corrective Action's) never says it has everything:
+ * those sentences go, and it asks what happened, once per card. The question
+ * opens with the same marker, so the next reply is read as the account.
+ */
+export const COACHING_WHAT_HAPPENED_NOTE = `**${MARKER}.** What happened, or what should this coaching cover? Tell me here and I'll draft it from your words.`;
+
+export const SAYS_READY = /^Everything I need is here[^\n]*$/i;
+// "I have the employee and the salon (**<salon>**)." — the salon's name is optional.
+export const HAS_EMPLOYEE_AND_PLACE = /I have the employee and the salon(?: \(\*\*[^*]+\*\*\))?\.\s*/gi;
+
+export function withCoachingWhatHappened(response: AskResponse, request: AskRequest): AskResponse {
+  if (!coachingAsksWhatHappenedEnabled()) return response;
+  return askCoachingWhatHappened(response, request.question, request.history as readonly Turn[]);
+}
+
+export function askCoachingWhatHappened(response: AskResponse, question: string, history: readonly Turn[]): AskResponse {
+  const proposal = response.formProposal;
+  if (!proposal || proposal.templateKey !== "coaching" || proposal.subject === "team") return response;
+  const name = proposal.employeeName?.trim();
+  if (!name || response.content.includes(MARKER)) return response;
+  const turns = turnsForThisForm(history, proposal.templateKey);
+  if (turns.some((turn) => turn.role === "assistant" && turn.content.includes(MARKER))) return response;
+  const said = [...turns.filter((turn) => turn.role === "user").map((turn) => turn.content), question].map(withoutStateLead).join("\n");
+  const ignore = [name, proposal.employeeRole ?? "", proposal.locationName ?? ""];
+  if (hasAccount(said, name, ignore)) return response;
+  if (answeredWhatHappened([...history, { role: "user", content: question }])) return response;
+  const lines = response.content
+    .replace(HAS_EMPLOYEE_AND_PLACE, "")
+    .split("\n")
+    .filter((line) => !SAYS_READY.test(line.trim()));
+  lines.splice(Math.min(1, lines.length), 0, "", COACHING_WHAT_HAPPENED_NOTE);
   return { ...response, content: lines.join("\n").replace(/\n{3,}/g, "\n\n").trim() };
 }

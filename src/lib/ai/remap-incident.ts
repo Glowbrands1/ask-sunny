@@ -1,5 +1,12 @@
 import { salonById } from "@/data/salons";
-import { levelRequestDateEnabled, priorSentenceFixEnabled, requestLeadFillerEnabled } from "@/lib/config/chat-quality-flags";
+import {
+  caSalesPolicyEnabled,
+  levelRequestDateEnabled,
+  observationWithoutAskEnabled,
+  politeRequestOwnTurnsEnabled,
+  priorSentenceFixEnabled,
+  requestLeadFillerEnabled,
+} from "@/lib/config/chat-quality-flags";
 import { withoutPriorStepClauses } from "@/lib/forms/form-date-answer";
 import { CA_POLICY_LABEL, readCaPolicy, STANDARDS_OF_CONDUCT, type CaPolicyName } from "@/lib/forms/ca-policy";
 import {
@@ -12,7 +19,7 @@ import {
 import { extractJobTitle, titleAfterJobTitleLabel } from "@/lib/forms/proposal";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
 import { US_STATE_CODE } from "@/lib/forms/state-code-place";
-import { withoutLeadingGlossaryTerm } from "@/lib/forms/template-intent";
+import { detectTemplateIntent, withoutLeadingGlossaryTerm } from "@/lib/forms/template-intent";
 import type { KnowledgeCategory, SourceCitation } from "@/types";
 
 import { accountManualSections } from "./account-manual-sections";
@@ -251,7 +258,9 @@ export function currentRequestStart(input: {
   let start = 0;
   for (const [index, raw] of input.turns.entries()) {
     const turn = raw.replace(STATE_LEAD, "");
-    if (!REQUEST_TURN.test(turn.trim())) continue;
+    // POLITE_REQUEST_OWN_TURNS_ENABLED: "Can you create me a coaching document for …" is a request too.
+    const asked = politeRequestOwnTurnsEnabled() ? turn.trim().replace(POLITE_LEAD, "") : turn.trim();
+    if (!REQUEST_TURN.test(asked)) continue;
     requests += 1;
     if (requests > 1 && turnIncident(turn, input.employeeName, input.slotClause)) start = index;
   }
@@ -261,6 +270,14 @@ export function currentRequestStart(input: {
 /** The state sentences the intent read puts in front of a question ("The employee is …."). */
 const STATE_LEAD =
   /^\s*(?:(?:The form is the|The employee is|Job title:|It happened at|It happened on|Warning level:|Payroll amount:|Policy reference:|Incident:|The account continues)[^\n]*?\.(?=\s|$)\s*|(?:Payroll deduct applies|No payroll deduction)\.\s*)+/i;
+
+/*
+ * POLITE_REQUEST_OWN_TURNS_ENABLED (Pau's scan, sf-s37, 7 Nov 2026): three requests in one chat, each "Can you create
+ * me a coaching document for <name> for …", were never read as requests, so the second card's Observation read back
+ * the first employee's request too. A polite lead before the request words is not part of them: "can / could /
+ * would / will you (please)". Off, as before.
+ */
+const POLITE_LEAD = /^(?:hey,?\s+|hi,?\s+)?(?:can|could|would|will)\s+(?:you|u)\s+(?:please\s+)?/i;
 
 const REQUEST_TURN = new RegExp(
   String.raw`^\s*(?:please\s+)?(?:(?:create|make|start|open|do|file|write|draft)\s+(?:me\s+)?)?${LEVEL_WORDS}${FORM_WORDS}\b`,
@@ -652,6 +669,18 @@ export function currentRequestTurns(turns: readonly string[], employeeName: stri
  * opening salon late on 9-28-26" is "opening salon late on 9-28-26". Empty
  * when nothing is left.
  */
+/** "<name> for …" / "<name> due to …" after a request: the reason, without the name. */
+function withoutRequestedEmployee(text: string, employeeName: string | null): string {
+  if (!employeeName) return text;
+  const names = [employeeName, employeeName.split(/\s+/)[0] ?? ""].filter((name) => name.length > 1);
+  for (const name of names) {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
+    const match = new RegExp(`^${escaped}\\s+(?:for|due\\s+to|because(?:\\s+of)?)\\s+`, "i").exec(text);
+    if (match) return text.slice(match[0].length);
+  }
+  return text;
+}
+
 export function managerAccount(sentence: string, employeeName: string | null): string {
   const end = /[.!?]+$/.exec(sentence.trim())?.[0] ?? "";
   const body = sentence.trim().slice(0, sentence.trim().length - end.length);
@@ -677,8 +706,31 @@ export function managerAccount(sentence: string, employeeName: string | null): s
       if (!text || /^(?:so|to|with|from|because|now)\b/i.test(text)) continue;
       if (onlyNamesThem(text, employeeName) || /^[A-Z][\w'-]*(?:\s+[A-Z][\w'-]*){0,2}$/.test(text)) continue;
     }
+    /*
+     * OBSERVATION_WITHOUT_ASK_ENABLED (Pau, sf-s28, 5 Nov 2026): "can i give a
+     * ca for not signing off on the cleaning check list" was the card's whole
+     * Observation; the request lead above reads only "can you …". A clause
+     * the intent reader takes as a Corrective Action asked for or asked about
+     * is the ask up to its "for"; what follows is the account. Off, unchanged.
+     */
+    if (!requested && observationWithoutAskEnabled()) {
+      const read = detectTemplateIntent(text);
+      const forAt = text.search(/\bfor\s/i);
+      if ((read.kind === "corrective_action" || (read.kind === "explicit" && read.templateKey === "dpoa")) && forAt > 0) {
+        requested = true;
+        text = text.slice(forAt).trim();
+        if (onlyNamesThem(text.replace(/^for\s+/i, ""), employeeName)) continue;
+      }
+    }
     if (onlyWhoOrWhere(text, employeeName)) continue;
     text = withoutPlace(text);
+    /*
+     * CA_SALES_POLICY_ENABLED (QA, live, 4 Nov 2026): "CA for <name> due to
+     * under performance in salon metrics" kept "<name> due to …" as the
+     * account. The employee the request named, before the word that joins the
+     * reason, is the request's, not the account. Off, unchanged.
+     */
+    if (requested && caSalesPolicyEnabled()) text = withoutRequestedEmployee(text, employeeName);
     // The "for" the dropped request left: "… for opening salon late".
     if (requested) text = text.replace(/^(?:for|about|regarding)\s+/i, "");
     if (text) kept.push(text);

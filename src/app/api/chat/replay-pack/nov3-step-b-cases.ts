@@ -425,17 +425,16 @@ export const NOV3_STEP_B_CASES: readonly ReplayCase[] = [
   },
   {
     id: "nov3-stepb-payroll-as-given",
-    title: "\"payroll deduct applies and $3.25 will be deducted from check\" — Yes, $3.25 exactly in its own field, and the manager-only action plan does not gain it",
+    title: "\"payroll deduct applies and $3.25 will be deducted from check\" — Yes, $3.25 exactly in its own field, and the Action Plan the AI writes may carry the payroll sentence",
     report:
       'HR, 21 Oct 2026: "create ca form for pat rivera for a register shortage on 10-20-26. payroll deduct applies and $3.25 will be deducted from check."',
     /*
-     * BEHAVIOUR DIFFERENCE FROM ASK BUBBLES (docs/parity-log/2026-11-03-step-b-form-patch.md):
-     * here ACTION_PLAN_MANAGER_ONLY_ENABLED is on in production, so the Action
-     * Plan is the manager's alone and Step B never writes the deduction into
-     * it (`syncCorrectiveActionPlan` returns at once). The $3.25 goes to the
-     * Payroll deduction amount field, verbatim. That already holds with
-     * production's flags (replayed 3 Nov 2026), so the case is "fixed" here;
-     * it is open in Ask Bubbles, whose plan gains the sentence with Step B.
+     * EXPECTATION CHANGED ON PURPOSE — Pau 5 Nov 2026: the AI writes the Action Plan;
+     * ACTION_PLAN_MANAGER_ONLY off in production. This case used to assert a manager-only
+     * plan without the deduction, on the belief that ACTION_PLAN_MANAGER_ONLY_ENABLED was on
+     * here (QA's Vercel read, 5 Nov 2026: it is off in both apps). The plan the AI builds may
+     * carry PLAN_PAYROLL_SENTENCE's "<name> will be payroll deducted $3.25.", as in Ask
+     * Bubbles; the $3.25 still goes to the Payroll deduction amount field verbatim.
      */
     status: "fixed",
     fixFlags: STEP_B_FLAGS,
@@ -450,7 +449,8 @@ export const NOV3_STEP_B_CASES: readonly ReplayCase[] = [
       expect(t.checked(id).payroll_deduct, "payroll deduct is not saved as Yes").toEqual(["yes"]);
       const values = t.values(id);
       expect(values.payroll_deduct_amount, "the amount is not $3.25 as given").toBe("$3.25");
-      expect(values.action_plan ?? "", "the manager-only action plan was given the deduction").not.toMatch(/\$3\.25/);
+      // Pau 5 Nov 2026: the AI writes the Action Plan; ACTION_PLAN_MANAGER_ONLY off in production. Any $3.25 in it is PLAN_PAYROLL_SENTENCE's sentence.
+      for (const amount of (values.action_plan ?? "").match(/\$\d+(?:[.,]\d+)*/g) ?? []) expect(amount, "the Action Plan names an amount she did not give").toBe("$3.25");
       expect(JSON.stringify(values), "an amount she did not give is on the form").not.toMatch(/\$(?!3\.25\b)\d/);
     },
   },

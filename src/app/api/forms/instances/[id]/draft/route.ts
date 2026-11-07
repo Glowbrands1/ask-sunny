@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { salesResultsOffenseLine, withCaChosenRule } from "@/lib/ai/ca-sales-prompt-lines";
 import { noteSpendUser } from "@/lib/ai/spend-meter";
 import { withSpendMeter } from "@/lib/ai/spend-meter-run";
 
@@ -28,6 +29,7 @@ import {
   teamCardWordingEnabled,
   cardPolicyLabelEnabled,
   caSalesPolicyEnabled,
+  secondRequestOwnAccountEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { withoutAsksToTheApp } from "@/lib/ai/asks-to-the-app";
 import { AiError } from "@/lib/ai/errors";
@@ -39,6 +41,7 @@ import {
 } from "@/lib/api/respond";
 import { ACTIVE_BRAND } from "@/lib/brand";
 import { CLAUDE_MAX_TOKENS, CLAUDE_MODEL } from "@/lib/config/models";
+import { currentFormRequestText } from "@/lib/forms/current-request";
 import { authorizeInstance, InstanceNotVisibleError } from "@/lib/forms/instance-scope";
 import { readPriorFormsOnFile } from "@/lib/forms/prior-forms";
 import {
@@ -163,7 +166,7 @@ import {
   describedManualSection,
   namedManualSection,
 } from "@/lib/forms/named-policy-section";
-import { OTHER_WRITE_IN_INSTRUCTION, withConductLinePage, withConductLineWording, withoutPrimedTopic } from "@/lib/forms/specific-policy-topics";
+import { OTHER_WRITE_IN_INSTRUCTION, specificTopic, withConductLinePage, withConductLineWording, withoutPrimedTopic } from "@/lib/forms/specific-policy-topics";
 import {
   PAYROLL_AMOUNT_KEY,
   PAYROLL_AMOUNT_STATED_KEYS,
@@ -211,7 +214,9 @@ import {
   LANGUAGE_CLEANUP_RULES,
   guardCoachingFraming,
 } from "@/lib/forms/coaching-framing";
+import { OFFENSE_BASIS_PROPERTY, readOffenseBasis, withoutUnreasonedConduct, type OffenseBasis } from "@/lib/forms/ca-conduct-reason";
 import { guardOtherWriteIn } from "@/lib/forms/other-write-in";
+import { withoutRequestInObservation } from "@/lib/forms/request-observation";
 import {
   MANAGER_FOLLOW_UP_RULES,
   guardManagerFollowUp,
@@ -670,13 +675,20 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      * would turn a coaching document into a policy review, and the value is
      * derived by this route rather than written by the model either way.
      */
+    /*
+     * SECOND_REQUEST_OWN_ACCOUNT_ENABLED (QA's audit, 7 Nov 2026): the policy is read from the request this form is
+     * for, never the whole chat. A second Corrective Action for the same person ("I need another corrective action
+     * for <A>, his cash drawer was short") was drafted with the first request's policy (Late Opening) as its Policy
+     * Violated. Only the policy reads below use it; payroll, exit and every other reader keep the notes as sent.
+     */
+    const policyNotes = secondRequestOwnAccountEnabled() ? currentFormRequestText(notes) : notes;
     const wantsEppPolicy = fields.some((field) => field.key === EPP_POLICY_REFERENCE_KEY);
     const needsPolicy = fields.some(
       (field) => field.policyGrounded && field.key !== EPP_POLICY_REFERENCE_KEY,
     );
     const grounding = needsPolicy
       ? // ACCOUNT_ONLY_POLICY_QUERY_ENABLED: "yes payroll deduct" and "$25" do not choose the policy.
-        await groundPolicy(`${body.topic ?? ""} ${policyQueryNotes(notes)}`.trim())
+        await groundPolicy(`${body.topic ?? ""} ${policyQueryNotes(policyNotes)}`.trim())
       : { passages: [], sources: [], unverified: false, reason: null };
 
     /*
@@ -717,7 +729,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         (group) =>
           group.key === "offense_type" && group.options.some((option) => option.key === STANDARDS_OF_CONDUCT),
       );
-    const caPolicy = offersConductPolicy ? readCaPolicy(notes) : null;
+    const caPolicy = offersConductPolicy ? readCaPolicy(policyNotes) : null;
     /*
      * A POLICY THE MANAGER NAMED BY THE MANUAL'S OWN HEADING — "violating
      * visitors at work policy" is the manual's Visitors in the Workplace
@@ -738,12 +750,12 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         : null;
     // Only where it ticks the box the manager's own words tick, or they tick none: a card's generic
     // "Attendance" never turns a missed meeting (Absenteeism) into Tardiness.
-    const ownKeys = cardHeading && caPolicy ? statedOffenseKeys(caPolicy, notes) : null;
+    const ownKeys = cardHeading && caPolicy ? statedOffenseKeys(caPolicy, policyNotes) : null;
     const cardSection = cardHeading && (!ownKeys || ownKeys.includes(cardHeading.offenseKey)) ? cardHeading : null;
     const namedSection =
       cardSection ??
       (caPolicy && caPolicy.stated === null && manual.ok
-        ? namedManualSection({ text: notes, chunks: manual.chunks })
+        ? namedManualSection({ text: policyNotes, chunks: manual.chunks })
         : null);
     /*
      * NO POLICY NAMED, BUT ONE DESCRIBED — "talking on her cell phone" is the
@@ -756,7 +768,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      */
     const describedSection =
       caPolicy && caPolicy.stated === null && !namedSection && manual.ok
-        ? describedManualSection({ text: notes, chunks: manual.chunks })
+        ? describedManualSection({ text: policyNotes, chunks: manual.chunks })
         : null;
     /*
      * A MEETING NOT ATTENDED, WHERE THE MANUAL SAYS WHAT THAT IS — its
@@ -782,7 +794,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      */
     const describedChoices =
       caPolicy && caPolicy.stated === null && !namedSection && !describedSection && !eventSection && manual.ok
-        ? describedManualChoices({ text: notes, chunks: manual.chunks })
+        ? describedManualChoices({ text: policyNotes, chunks: manual.chunks })
         : null;
 
     /*
@@ -1055,7 +1067,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
             "Each plan you do write is one or two sentences, tied to what the manager described and to the objective printed beside the category. No dates, no disciplinary step, no quoted policy wording.",
           ]
         : []),
-      ...(governance.governed ? PERFORMANCE_MANAGEMENT_DRAFT_RULES : []),
+      // CA_SALES_POLICY_ENABLED (Pau, 5 Nov 2026): one added rule after the lowest-rung rule. Off, the rules are as before.
+      ...withCaChosenRule(governance.governed ? PERFORMANCE_MANAGEMENT_DRAFT_RULES : []),
       /*
        * THE EPP'S OWN RULES, on the versions that have the appendix field.
        * They say what a performance plan IS — coaching, not a warning — and
@@ -1148,11 +1161,16 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       offersConductPolicy && offenseOffered.includes(ATTENDANCE_POLICY) && !offenseOffered.includes("under_performance")
         ? CA_REVISION_8_OFFENSE_RULE
         : "",
+      // CA_SALES_POLICY_ENABLED (Pau, 5 Nov 2026): a form with no under_performance box reads sales results as standards_of_conduct. Off, nothing is added.
+      offersConductPolicy ? salesResultsOffenseLine(offenseOffered) : "",
     ]
       .filter(Boolean)
       .join("\n");
 
     const client = getAnthropicClient();
+    /* CA_SALES_POLICY_ENABLED: the tool's optional offense_basis, and what the last call said (`ca-conduct-reason.ts`). */
+    const basisAsked = caSalesPolicyEnabled() && offersConductPolicy && offenseOffered.includes("other");
+    let offenseBasis: OffenseBasis | null = null;
     const draftCall = () => client.messages.create({
       model: CLAUDE_MODEL,
       max_tokens: CLAUDE_MAX_TOKENS.detailed,
@@ -1175,6 +1193,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
                 additionalProperties: { type: "array", items: { type: "string" } },
                 description: "Checkbox group key to the option keys that apply.",
               },
+              // CA_SALES_POLICY_ENABLED only, on a form offering Other: added, optional (`ca-conduct-reason.ts`). Off, absent.
+              ...(basisAsked ? { offense_basis: OFFENSE_BASIS_PROPERTY } : {}),
             },
             required: ["values"],
           },
@@ -1215,6 +1235,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       }
       const call = toolCall(reply);
       const read = readCall(call?.input);
+      if (basisAsked) offenseBasis = readOffenseBasis(call?.input);
       if (neverBlank) {
         const empty = emptyCallReason(call?.input, read, reply.stop_reason ?? null);
         if (empty) reasons.push(empty);
@@ -1697,9 +1718,18 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       return base;
     })();
 
+    /*
+     * CA_SALES_POLICY_ENABLED (QA, live, 4 Nov 2026): an Observation the
+     * model began with the manager's request ("CA for <name> due to …") begins
+     * with the request's reason instead. Off, null. See `request-observation.ts`.
+     */
+    const observationNotRequest =
+      (loaded.instance.layoutFamily === "corrective"
+        ? withoutRequestInObservation(draftedValues, narrativeTargets[0], loaded.instance.employeeName ?? null)
+        : null) ?? draftedValues;
     const enforced = enforceResponsibilities(document, variantKey, {
       values: withoutPrimedTopic(
-        priorDate ? { ...draftedValues, [PREVIOUS_ACTION_DATE_KEY]: priorDate } : draftedValues,
+        priorDate ? { ...observationNotRequest, [PREVIOUS_ACTION_DATE_KEY]: priorDate } : observationNotRequest,
         `${body.topic ?? ""} ${notes}`,
       ),
       /*
@@ -1734,7 +1764,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         : null);
     const statedKeys = caPolicy
       ? ((cardSection ? [cardSection.offenseKey] : null) ??
-        statedOffenseKeys(caPolicy, notes) ??
+        statedOffenseKeys(caPolicy, policyNotes) ??
         (policySection ? [policySection.offenseKey] : null))
       : null;
     const statedOffense = statedKeys
@@ -1820,6 +1850,22 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
             },
           }
         : offenseStated;
+    /*
+     * CA_SALES_POLICY_ENABLED (Pau, 4 Nov 2026): a Standards of Conduct tick
+     * with no reason in the manager's words (a cleaning CA) moves to Other,
+     * with their words beside it. Off, null. See `ca-conduct-reason.ts`.
+     */
+    const conductReasoned =
+      withoutUnreasonedConduct({
+        draft: offenseApplied,
+        reading: caPolicy,
+        stated: statedKeys !== null,
+        offered: offenseOffered,
+        notes,
+        basis: offenseBasis,
+        specific: specificTopic(notes) !== null,
+        writeInOffered: fields.some((field) => field.key === "other_offense"),
+      }) ?? offenseApplied;
     const policyLeftForManager =
       describedChoices !== null && !(offenseApplied.checked.offense_type ?? []).some((key) => SPECIFIC_SECTION_BOXES.has(key));
 
@@ -1837,8 +1883,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     const managerKeys = new Set(managerRows.map((row) => row.fieldKey));
     const managerOffense = managerRows.find((row) => row.fieldKey === "offense_type" && row.checked.length > 0);
     const validated = managerOffense
-      ? { ...offenseApplied, checked: { ...offenseApplied.checked, offense_type: [...managerOffense.checked] } }
-      : offenseApplied;
+      ? { ...conductReasoned, checked: { ...conductReasoned.checked, offense_type: [...managerOffense.checked] } }
+      : conductReasoned;
 
     /*
      * ========================================================================
@@ -2258,6 +2304,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
           templateKey: loaded.instance.templateKey,
           values: planned.values,
           notes,
+          // CA_SALES_POLICY_ENABLED: the Direct policy fill follows the ticked Type of Offense.
+          ticked: validated.checked.offense_type ?? [],
           chunks: manual.ok ? manual.chunks : [],
           manual: manual.ok
             ? {
@@ -2285,19 +2333,20 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
             sections: cardSection && cardPolicyLabelEnabled() && manualSections.some((section) => section.page > 0)
               ? manualSections
               : (() => {
-              const reading = readCaPolicy(notes);
-              const keys = statedOffenseKeys(reading, notes) ?? describedAttendanceKeys(notes) ?? [];
-              const resolved = manualSectionsFor({ chunks: manual.chunks, offenseKeys: keys, notes });
+              // SECOND_REQUEST_OWN_ACCOUNT_ENABLED: this line cites the request this form is for (policyNotes).
+              const reading = readCaPolicy(policyNotes);
+              const keys = statedOffenseKeys(reading, policyNotes) ?? describedAttendanceKeys(policyNotes) ?? [];
+              const resolved = manualSectionsFor({ chunks: manual.chunks, offenseKeys: keys, notes: policyNotes });
               const withAttendance = citeAttendanceForTardiness({
                 enabled: attendanceOn,
-                notes,
+                notes: policyNotes,
                 chunks: manual.chunks,
                 sections: resolved,
               });
               if (!pageOn) return withAttendance;
               const required = sectionsWithNameAndPage({
                 enabled: true,
-                notes,
+                notes: policyNotes,
                 chunks: manual.chunks,
                 offenseKeys: keys,
               });

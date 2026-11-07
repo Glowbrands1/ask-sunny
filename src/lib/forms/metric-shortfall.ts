@@ -1,3 +1,5 @@
+import { salesShortfallObjectEnabled } from "@/lib/config/chat-quality-flags";
+
 /**
  * ============================================================================
  * A SALES OR PERFORMANCE SHORTFALL THE MANAGER STATED
@@ -36,6 +38,21 @@ const METRIC_JUDGED: readonly RegExp[] = [
   /\bneeds? (?:to )?improve\b/,
 ];
 
+/**
+ * SALES_SHORTFALL_OBJECT_ENABLED: "sales" governed by a shortfall verb — the
+ * judged list's own verbs ("not meeting", "missing", "misses", "not hitting",
+ * "failing to hit"), or "below" directly before it — is a named metric: "not
+ * meeting sales requirements", "not meeting her sales goals", "below sales
+ * expectations". Only determiners or possessives may stand between, so a
+ * preposition breaks it: "missing from the sales floor" is absence, and "below
+ * the sales counter" a place. No new words: "sales" and the verbs are the
+ * lists' own.
+ */
+const DETERMINER = String.raw`(?:the|a|an|her|his|their|its|my|our|your|this|that|these|those|[a-z]+'s)`;
+const SALES_GOVERNED = new RegExp(
+  String.raw`\b(?:not meeting|missing|misses|not hitting|failing to hit)\s+(?:${DETERMINER}\s+){0,3}sales\b|\bbelow\s+sales\b`,
+);
+
 /** The same reading `correctiveActionBasis` makes: lower case, runs of spaces as one. */
 function normalize(text: string): string {
   return (text ?? "").toLowerCase().replace(/[^\S\n]+/g, " ");
@@ -44,5 +61,6 @@ function normalize(text: string): string {
 /** Whether the manager stated a shortfall: a metric named and judged. */
 export function statesMetricShortfall(text: string): boolean {
   const normalized = normalize(text);
+  if (salesShortfallObjectEnabled() && SALES_GOVERNED.test(normalized.replace(/[‘’]/g, "'"))) return true;
   return METRIC_NAMED.some((pattern) => pattern.test(normalized)) && METRIC_JUDGED.some((pattern) => pattern.test(normalized));
 }

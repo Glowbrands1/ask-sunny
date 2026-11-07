@@ -46,7 +46,7 @@ import { MissingConfigurationError, liveReadiness } from "@/lib/config/server-en
 import { ACTIVE_BRAND } from "@/lib/brand";
 import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import { proposeFormForTurn, suggestFormsForTurn, type ChatActor } from "./form-proposal";
-import { acceptedCaOffer, caOfferLine } from "./ca-offer";
+import { acceptedCaOffer, acceptedCaOfferTurn, caOfferLine, withCaOffer } from "./ca-offer";
 import { remapFormTurn, remapShouldRun, type FormRemapSlots } from "./form-full-remap";
 import { priorShorthand, requestScopedHistory } from "./remap-incident";
 import { historyForRemap } from "./form-remap-scope";
@@ -71,6 +71,7 @@ import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import { buildFormInventory, publishedEntries } from "@/lib/forms/inventory";
 import { listTemplateSummaries, type TemplateSummary } from "@/lib/forms/repository";
 import { candidateNameWords, isFormRecordsQuestion, loadFormRecords } from "@/lib/forms/chat-form-records";
+import { withRosterOnlyNames } from "@/lib/forms/roster-only-names";
 import { priorFormsReadingForChat } from "@/lib/forms/prior-forms";
 import { applyOptionalPriorCoaching } from "./prior-coaching-optional";
 import { withMappedPolicy } from "./violation-policy";
@@ -160,7 +161,7 @@ import { pinnedManualBlock } from "./policy-citation-fields";
 import { deliverFormProposal } from "./grounded-turn";
 import { withJobTitleCase, withJobTitleFromWords, withJobTitleReadBackCase, withSpelledOutTitle } from "./job-title-from-words";
 import { withTerseSlots } from "./terse-slots";
-import { withCaWhatHappened } from "./ca-what-happened";
+import { withCaWhatHappened, withCoachingWhatHappened } from "./ca-what-happened";
 import { withFirstNameAsk } from "./first-name-ask";
 import { withFirstNameAnswerFor, withFirstNameSuggestFor } from "./first-name-suggest";
 import { withAmountUnknownAck } from "./amount-unknown-ack";
@@ -193,6 +194,11 @@ import type { AskRequest, AskResponse } from "./types";
 import { keepManagerActionPlan } from "./manager-action-plan-reply";
 import { withManagerNameGuard, withManagerNameRule } from "./manager-name-guard";
 import { withoutReportTurnsForForm } from "./report-turns";
+import { withReplyMatchesCard } from "./reply-matches-card";
+import { withTwoFormsOwnPerson } from "./two-forms-own-person";
+import { withTitleOfTheEmployee } from "./title-of-the-employee";
+import { withoutSourceMarkers, withoutSourceNotes } from "@/lib/ai/source-note";
+import { withUnderPerformanceExplained } from "./under-performance-explained";
 
 /**
  * THE GROUNDED ANSWER PATH — server-side, and only server-side.
@@ -290,7 +296,27 @@ export async function answerQuestion(
   // REPORT_NAME_NOT_A_PERSON_ENABLED: a form is never built from a question about a report. See `report-turns.ts`.
   // CA_SALES_POLICY_ENABLED: "yes" to the Corrective Action offer is the request it offered (`ca-offer.ts`). Off, unchanged.
   const accepted = acceptedCaOffer({ question: asked.question, history: asked.history });
-  const request = withoutReportTurnsForForm(accepted ? { ...asked, question: accepted } : asked);
+  /*
+   * CA_OFFER_KEEPS_ACCOUNT_ENABLED: the accepted yes is first answered as the
+   * turn the offer answered — her own words, asked for as a Corrective Action
+   * Form — so the card's account is never the rewritten request sentence
+   * (QA's MSB case M5). When her turn alone makes no card (the offer followed
+   * words with no account), the yes is the employee the offer named, as the
+   * answer to a Corrective Action Form: still no sentence of the app's, so
+   * the card asks for what happened or shows only her words (and only if that
+   * makes no card either, the request as before). Off, the request as before.
+   */
+  const kept = accepted ? acceptedCaOfferTurn({ question: asked.question, history: asked.history }) : null;
+  const plain = withoutReportTurnsForForm(accepted ? { ...asked, question: accepted } : asked);
+  let request = kept
+    ? withoutReportTurnsForForm({
+        ...asked,
+        question: kept.account.content,
+        questionMessageId: kept.account.id ?? asked.questionMessageId,
+        history: kept.history,
+        continueProposalTemplateKey: kept.templateKey,
+      })
+    : plain;
   /*
    * APP_PASSWORD_HELP_ENABLED: "I forgot my password" is answered about this
    * app's own sign-in, the "Forgot your password?" link (QA and Pau, 25 Oct
@@ -302,7 +328,54 @@ export async function answerQuestion(
   if (passwordHelp) {
     return { content: passwordHelp, citations: [], coverage: "grounded", recommendedVideoIds: [] };
   }
-  return withoutSensitiveDefaults(await answerQuestionChecked(request, actor, memory), request.question);
+  // TITLE_OF_THE_EMPLOYEE_ENABLED: a title the manager attached to another named person is never the card's (`ai/title-of-the-employee.ts`).
+  // UNDER_PERFORMANCE_EXPLAINED_ENABLED: Under Performance asked for, the Standards of Conduct cited: the reply says why (`ai/under-performance-explained.ts`).
+  // SOURCE_NOTE_GUARD_ENABLED: no bare source marker ("[S1]", "[S12, S14]") reaches the reply on any path (`ai/source-note.ts`).
+  const answer = async (turn: AskRequest) => {
+    const explained = withUnderPerformanceExplained(
+      withTitleOfTheEmployee(withoutSensitiveDefaults(await answerQuestionChecked(turn, actor, memory), turn.question), turn),
+      turn,
+    );
+    return { ...explained, content: withoutSourceMarkers(explained.content) };
+  };
+  const original = request;
+  let answered = await answer(request);
+  const fallbacks = kept ? [withoutReportTurnsForForm({ ...asked, question: kept.employee, continueProposalTemplateKey: kept.templateKey }), plain] : [];
+  for (const next of fallbacks) {
+    if (madeCard(answered)) break;
+    request = next;
+    answered = await answer(request);
+  }
+  // TWO_FORMS_OWN_PERSON_ENABLED: two forms asked for in one message never put the other form's person on this card (`ai/two-forms-own-person.ts`); read on the manager's own message.
+  answered = withTwoFormsOwnPerson(answered, original);
+  /*
+   * CA_SALES_POLICY_ENABLED: a reply about a policy and an employee the roster
+   * recognises ends with ONE offer to start a Corrective Action citing that
+   * policy, on whichever path answered; a menu offering the Corrective Action
+   * Form is replaced by it. Nothing is made until the manager says yes (Pau,
+   * 4 Nov 2026; QA's live traces). Off, nothing is read or added.
+   */
+  // FORM_NAME_FROM_ROSTER_ENABLED, last on every return: only roster people are the employee or a choice (`forms/roster-only-names.ts`).
+  // REPLY_MATCHES_CARD_ENABLED, the very last step on both returns: the reply agrees with the finished card (`ai/reply-matches-card.ts`).
+  if (!caSalesPolicyEnabled()) return withReplyMatchesCard(withRosterOnlyNames(answered));
+  let roster: Awaited<ReturnType<typeof loadScopedRoster>> = [];
+  try {
+    roster = await loadScopedRoster(actor.scope);
+  } catch {
+    roster = [];
+  }
+  const offer = caOfferLine({
+    history: request.history,
+    question: request.question,
+    questionMessageId: request.questionMessageId,
+    roster,
+  });
+  return withReplyMatchesCard(withRosterOnlyNames(withCaOffer(answered, offer)));
+}
+
+/** A reply that made, changed or opened a form: the accepted offer's card (CA_OFFER_KEEPS_ACCOUNT_ENABLED). */
+function madeCard(response: AskResponse): boolean {
+  return Boolean(response.formProposal || response.formUpdate || response.formOpened);
 }
 
 async function answerQuestionChecked(
@@ -321,6 +394,7 @@ async function answerQuestionChecked(
     noteTraceOutcome(response);
     // Last on every path, after the reply check too: the Action Plan is the manager's or none.
     // CA_ASKS_WHAT_HAPPENED_ENABLED: a Corrective Action card with no account asks what happened.
+    // COACHING_ASKS_WHAT_HAPPENED_ENABLED: a Coaching Form card with no account asks what happened, never "Everything I need is here" (sf-s27).
     // JOB_TITLE_FROM_WORDS_ENABLED: an empty Job Title takes the title the manager typed; JOB_TITLE_CASE_ENABLED: in title case.
     // WARNING_LEVEL_AND_CLAUSE_ENABLED: "this should be a written and note a verbal ca was given …" states written.
     // FIRST_NAME_ASK_ENABLED: "Is this for ivy? Tell me her full name.", never the same question twice.
@@ -338,7 +412,7 @@ async function answerQuestionChecked(
         withUnreadDateAsk(
           withStatedAmount(
             withFirstNameAsk(
-              withWarningLevelFromClause(withSpelledOutTitle(withJobTitleReadBackCase(withJobTitleCase(withJobTitleFromWords(withCaWhatHappened(await applyQuietQuality(response), request), request)))), request),
+              withWarningLevelFromClause(withSpelledOutTitle(withJobTitleReadBackCase(withJobTitleCase(withJobTitleFromWords(withCoachingWhatHappened(withCaWhatHappened(await applyQuietQuality(response), request), request), request)))), request),
               request,
             ),
             request,
@@ -1900,28 +1974,9 @@ async function answerQuestionUntraced(
     attachedDocumentIds: request.attachedDocumentIds,
   }).content;
 
-  let content = suggested ? `${prose}\n\n${suggested.lead}` : prose;
-  /*
-   * CA_SALES_POLICY_ENABLED: an answer about a policy and an employee the
-   * roster recognises ends with ONE offer to start a Corrective Action citing
-   * that policy; nothing is made until the manager says yes (Pau, 4 Nov 2026).
-   * Not beside a form suggestion. Off, nothing is read or added.
-   */
-  if (caSalesPolicyEnabled() && !suggested) {
-    let roster: Awaited<ReturnType<typeof loadScopedRoster>> = [];
-    try {
-      roster = await loadScopedRoster(actor.scope);
-    } catch {
-      roster = [];
-    }
-    const offer = caOfferLine({
-      history: request.history,
-      question: request.question,
-      questionMessageId: request.questionMessageId,
-      roster,
-    });
-    if (offer) content = `${content}\n\n${offer}`;
-  }
+  // SOURCE_NOTE_GUARD_ENABLED: a bracketed note about a source ("[S1 doesn't actually cover …]") is removed (`source-note.ts`). Off, as before.
+  const content = withoutSourceNotes(suggested ? `${prose}\n\n${suggested.lead}` : prose);
+  // CA_SALES_POLICY_ENABLED: the Corrective Action offer is added at the turn's one exit (`answerQuestion`, `withCaOffer`).
   return {
     content,
     formSelection: suggested?.selection,
