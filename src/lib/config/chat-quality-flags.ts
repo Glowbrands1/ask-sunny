@@ -2812,3 +2812,15 @@ export function ownBrandOnlyEnabled(): boolean {
 export function noNoticeNoDateEnabled(): boolean {
   return envFlag("NO_NOTICE_NO_DATE_ENABLED");
 }
+
+/**
+ * BARE_NOT_AFTER_REQUEST_ENABLED (QA's live Sunny re-check, 6 Nov 2026;
+ * default off). "ca for <A> not late" asked nothing: the clause starts with
+ * the request, so BARE_NOT_DENIAL's clause-start "not" missed it. With this
+ * flag on, the CA what-happened test also reads each clause without its
+ * request head and the employee's name (`ai/ca-what-happened.ts`). Off, as
+ * before.
+ */
+export function bareNotAfterRequestEnabled(): boolean {
+  return envFlag("BARE_NOT_AFTER_REQUEST_ENABLED");
+}

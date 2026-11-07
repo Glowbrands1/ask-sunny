@@ -418,6 +418,8 @@ const NEW_FLAGS = [
   "PLACE_FROM_CUE_ENABLED",
   // Port of the sibling app's flip-3 fix (6 Nov 2026): forced off with the others in the child run.
   "NO_NOTICE_NO_DATE_ENABLED",
+  // QA's live Sunny re-check (6 Nov 2026): forced off with the others in the child run.
+  "BARE_NOT_AFTER_REQUEST_ENABLED",
   "ROSTER_COMPOUND_SURNAME_ENABLED",
   "ROSTER_NOT_FOUND_ANY_PHRASING_ENABLED",
   "EXIT_STATED_ONLY_ENABLED",
