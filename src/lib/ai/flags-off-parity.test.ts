@@ -416,6 +416,8 @@ const NEW_FLAGS = [
   "TITLE_ENDS_AT_LINE_ENABLED",
   "BARE_NOT_DENIAL_ENABLED",
   "PLACE_FROM_CUE_ENABLED",
+  // Port of the sibling app's flip-3 fix (6 Nov 2026): forced off with the others in the child run.
+  "NO_NOTICE_NO_DATE_ENABLED",
   "ROSTER_COMPOUND_SURNAME_ENABLED",
   "ROSTER_NOT_FOUND_ANY_PHRASING_ENABLED",
   "EXIT_STATED_ONLY_ENABLED",
@@ -423,6 +425,11 @@ const NEW_FLAGS = [
   "OFF_ROSTER_CONFIRM_ENABLED",
   "POLICY_CHANGE_RELEVANT_ENABLED",
   "CA_OFFER_KEEPS_ACCOUNT_ENABLED",
+  // After the Sunny flip (6 Nov 2026): forced off with the others in the child run.
+  "SALES_SHORTFALL_OBJECT_ENABLED",
+  "UNDER_PERFORMANCE_EXPLAINED_ENABLED",
+  // After the Sunny flip (6 Nov 2026, row 6): forced off with the others in the child run.
+  "TWO_FORMS_OWN_PERSON_ENABLED",
 ] as const;
 
 const PROTECTED = [

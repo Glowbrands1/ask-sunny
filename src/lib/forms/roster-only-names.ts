@@ -193,11 +193,15 @@ export function rosterOnlyNames(response: AskResponse, names: readonly string[],
     });
   }
 
-  // "Which of them is this … for — A, B or C?": roster people only.
-  content = content.replace(/Which of them is this ((?:\*\*[^*]+\*\* )?)for\s*[—–-]\s*([^?\n]+)\?/g, (whole, form: string, list: string) => {
+  /*
+   * "Which of them is this … for — A, B or C?": roster people only. The question's own "Tell me and I'll …" after it
+   * on the same line stays with a choice that is still asked, and goes with one that is not: ASK_WHO asks it already
+   * (the sibling app's FORM_NAME re-flip gate, 7 Nov 2026: "… full name. Tell me and I'll fill in …" asked twice).
+   */
+  content = content.replace(/Which of them is this ((?:\*\*[^*]+\*\* )?)for\s*[—–-]\s*([^?\n]+)\?([ \t]+Tell me\b[^\n]*)?/g, (whole, form: string, list: string, tail: string | undefined) => {
     const kept = [...new Set(listedNames(list).map((name) => rosterSpelling(name, names)).filter((name): name is string => Boolean(name)))];
-    if (kept.length >= 2) return `Which of them is this ${form}for — ${said(kept)}?`;
-    if (kept.length === 1) return kept[0] === onCard ? "" : `Is this for **${kept[0]}**?`;
+    if (kept.length >= 2) return `Which of them is this ${form}for — ${said(kept)}?${tail ?? ""}`;
+    if (kept.length === 1) return kept[0] === onCard ? "" : `Is this for **${kept[0]}**?${tail ?? ""}`;
     return onCard ? "" : ASK_WHO;
   });
   // "Is this for X?": a roster person only.
