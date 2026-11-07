@@ -21,7 +21,8 @@ export const NOV7_AS_YOU_SAID_APP_READ_CASES: ReplayCase[] = [
     id: "nov7-as-you-said-app-read-late-opening",
     title: "\"make me a CA for <name> for being late to opening this morning\": a Policy line, never \"as you said\"",
     report: "QA's Sunny gate, 7 Nov 2026 (AS_YOU_SAID_MANAGER_WORDS: the card lost its Policy line; nov3-draft-cites-card-policy)",
-    status: { open: "the Policy line says \"as you said\" for the app's own reading (AS_YOU_SAID off), or there is none (on)" },
+    // Changed on purpose (7 Nov 2026): QA's flip 7 (21:29 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+    status: "fixed",
     fixFlags: ["AS_YOU_SAID_MANAGER_WORDS_ENABLED", "AS_YOU_SAID_APP_READ_ENABLED", "NEXT_PUBLIC_CARD_POLICY_TO_DRAFT_ENABLED"],
     async run(t) {
       t.directory(STAFF);
@@ -38,7 +39,8 @@ export const NOV7_AS_YOU_SAID_APP_READ_CASES: ReplayCase[] = [
     title: "\"create a corrective action for <name>, not late\": the app's Policy line does not stand in for an account",
     report: "QA's Sunny gate, 7 Nov 2026 (nov6-bare-not-denial-not-late, with AS_YOU_SAID and its fallback on)",
     // Open with the flags file as it stands (AS_YOU_SAID not yet listed there): the card says "Attendance, as you said".
-    status: { open: "the Policy line says \"as you said\" for the app's own reading" },
+    // Changed on purpose (7 Nov 2026): QA's flip 7 (21:29 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+    status: "fixed",
     fixFlags: ["AS_YOU_SAID_MANAGER_WORDS_ENABLED", "AS_YOU_SAID_APP_READ_ENABLED", "REPLY_MATCHES_CARD_ENABLED", "BARE_NOT_DENIAL_ENABLED", "CA_SALES_POLICY_ENABLED"],
     async run(t) {
       t.directory(STAFF);
