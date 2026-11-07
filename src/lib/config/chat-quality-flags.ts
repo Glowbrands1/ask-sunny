@@ -1391,6 +1391,18 @@ export function stepDateNoQuestionEnabled(): boolean {
   return envFlag("STEP_DATE_NO_QUESTION_ENABLED");
 }
 
+// coding 5: FORM_DATE_SAID_SETTLES (placed beside the date flags, not at a block end, so merges do not collide)
+/**
+ * FORM_DATE_SAID_SETTLES_ENABLED (coding 5; QA, 8 Nov 2026; same flag in both apps; default off). "… make the date for
+ * 10/14/26." on a card about a meeting missed on 10/10/26 still asked "You mentioned more than one date (10/10,
+ * 10/14)". On: a date the manager says the form takes ("make / set / change the date to …", "date it …", "the date
+ * should be …") is the form's Date, and the question is not asked (`forms/form-date-said.ts`, `forms/incident-dates.ts`
+ * decideFormDate). Off, as before.
+ */
+export function formDateSaidSettlesEnabled(): boolean {
+  return envFlag("FORM_DATE_SAID_SETTLES_ENABLED");
+}
+
 /**
  * The date reader also reads "2 october", "the 2nd of october", "on 10.2" and
  * "on the 2nd" (QA, 27 Oct 2026; same flag in both apps). See
