@@ -3,6 +3,7 @@ import "server-only";
 import type { AskResponse } from "@/lib/ai/types";
 import { formEditSingleWriterEnabled, formPatchReaderFixesEnabled, stepBMakeItAboutAccountEnabled } from "@/lib/config/chat-quality-flags";
 import { madeAbout } from "@/lib/ai/make-it-about";
+import { accountMadeAbout } from "./make-it-about-account";
 import { syncCorrectiveActionPlan } from "./ca-action-plan-sync";
 import { checkboxGroupsForVariant, fieldsForVariant, parseFormDocument } from "./document";
 import { replyFromDiff } from "./form-diff-reply";
@@ -224,16 +225,17 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
     const prepared = preparePatch(loaded, input);
     if (!prepared) return null;
     const { template, before, allGroups, labels, stated, verbatim, writable, readerFixes, modelInput } = prepared;
-    const reading = await readingFor(input, modelInput);
+    let reading = await readingFor(input, modelInput);
     /*
      * FORM_PATCH_READER_FIXES_ENABLED: a hand-off after a reading tells the old path's revision what the reader saw —
      * "nothing to write" (an empty reading: the revision may not add nothing new), and the evidence of ops it
      * refused (the revision's new content there keeps it). A model fallback tells it nothing.
      */
     const handOff = async (found: "nothing" | "refused" | "none"): Promise<null> => {
-      if (readerFixes && found !== "none" && "ok" in reading) {
+      const read = reading;
+      if (readerFixes && found !== "none" && "ok" in read) {
         const evidence = Object.fromEntries(
-          Object.entries(reading.patch.evidence ?? {}).filter(([key, quote]) => key in reading.patch.set && fold(input.question).includes(fold(quote))),
+          Object.entries(read.patch.evidence ?? {}).filter(([key, quote]) => key in read.patch.set && fold(input.question).includes(fold(quote))),
         );
         (await import("./reader-found-nothing")).noteReaderFoundNothing(input.instanceId, evidence, found === "nothing");
       }
@@ -241,18 +243,35 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
     };
     if (!("ok" in reading) || reading.turn !== "this_form") return handOff("none");
     /*
-     * STEP_B_MAKE_IT_ABOUT_ACCOUNT_ENABLED (QA's live draft test, 8 Nov 2026): "I need you to make it about showing up
-     * late" was read as the Other topic alone, and Details of Coaching stayed about the missed meeting. A turn that
-     * says what the form is about, whose patch does not set the form's account, goes to the old path before anything
-     * is written: EDIT_MAKE_IT_ABOUT's revision rewrites the account there.
+     * STEP_B_MAKE_IT_ABOUT_ACCOUNT_ENABLED (QA's live AI checks, 8 Nov 2026). "I need you to make it about showing up
+     * late" was read as the Other topic alone (Details stayed about the missed meeting), and once the account was
+     * written it blended X into the old event ("showed up late to the monthly meeting"), a fact nobody said. A turn that
+     * says what the form is about writes the account as X alone, in the form's outline, with nothing of the earlier
+     * event (`make-it-about-account.ts`); the reader's other writes (the topic) stay. The reader's own text is kept
+     * when it is about X and holds none of the old event.
      */
-    if (
-      stepBMakeItAboutAccountEnabled() &&
-      madeAbout(input.question) !== null &&
-      ACCOUNT_KEYS.some((key) => writable.has(key)) &&
-      !ACCOUNT_KEYS.some((key) => key in reading.patch.set)
-    ) {
-      return handOff("none");
+    const about = stepBMakeItAboutAccountEnabled() ? madeAbout(input.question) : null;
+    const accountKey = about !== null ? ACCOUNT_KEYS.find((key) => writable.has(key)) : undefined;
+    if (about !== null && accountKey !== undefined && "ok" in reading && reading.turn === "this_form") {
+      const current = before[accountKey]?.value;
+      const proposed = reading.patch.set[accountKey];
+      const rebuilt = accountMadeAbout({
+        about,
+        current: typeof current === "string" ? current : "",
+        proposed: typeof proposed === "string" ? proposed : null,
+        employeeName: loaded.instance.employeeName ?? null,
+      });
+      if (rebuilt !== proposed) {
+        reading = {
+          ...reading,
+          patch: {
+            ...reading.patch,
+            set: { ...reading.patch.set, [accountKey]: rebuilt },
+            how: { ...(reading.patch.how ?? {}), [accountKey]: "replace" },
+            evidence: { ...(reading.patch.evidence ?? {}), [accountKey]: reading.patch.evidence?.[accountKey] ?? about },
+          },
+        };
+      }
     }
     /*
      * QA, 3 Nov 2026 (blocker before the Step B flip; ported from Ask

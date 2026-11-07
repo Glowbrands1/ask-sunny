@@ -24,9 +24,10 @@ When the latest message says what the form is about or for ("make it about …",
 /**
  * STEP_B_MAKE_IT_ABOUT_ACCOUNT_ENABLED (coding 5; QA's live draft test, 8 Nov 2026): a line ADDED after the approved
  * system text and the reader lines (neither is edited). Live, "I need you to make it about showing up late" set only
- * the Other topic. Sent only with the flag on.
+ * the Other topic, and then (QA's next live check) wrote "showed up late to the monthly meeting", X joined to the
+ * missed meeting. Sent only with the flag on.
  */
-export const FORM_PATCH_ACCOUNT_LINE = `The field that gives the account is the form's narrative field (Details of Coaching, Observation of Offense), never a topic, type or "Other" field: "make it about …" always sets the narrative field, how "replace", keeping its headings (Observed:, Expectation:, Going Forward:) and writing what is under them about what the manager said; a topic field may be set as well.`;
+export const FORM_PATCH_ACCOUNT_LINE = `The field that gives the account is the form's narrative field (Details of Coaching, Observation of Offense), never a topic, type or "Other" field: "make it about …" always sets the narrative field, how "replace", keeping its headings (Observed:, Expectation:, Going Forward:) and writing what is under them about what the manager said, and about that alone: nothing of the event the field described before (another incident, meeting, task or place) stays in it, and it is never joined to that event ("late to the meeting" when the meeting was missed); a date the field held may stay. A topic field may be set as well.`;
 
 export interface FormPatchField {
   readonly key: string;
