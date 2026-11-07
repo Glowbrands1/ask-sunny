@@ -1,5 +1,7 @@
 import { correctedDates, datesInText, listFormDates, priorSteps } from "./form-date-answer";
-import { statedPriorActions } from "./prior-actions";
+import { priorActionsNoSignedEnabled } from "@/lib/config/chat-quality-flags";
+
+import { statedPriorActions, withPriorLineDate } from "./prior-actions";
 import { isQuestion } from "./employment-change";
 
 /**
@@ -103,6 +105,15 @@ function sameKind(a: string, b: string): boolean {
   return kind(a) === kind(b);
 }
 
+/**
+ * A history line with its date moved. PRIOR_ACTIONS_NO_SIGNED_ENABLED: the
+ * line may end "— signed", "— finalized" or a bare date; each is moved, its
+ * mark kept. Off, only "signed <date>" is.
+ */
+function movedDate(line: string, us: string): string {
+  return priorActionsNoSignedEnabled() ? withPriorLineDate(line, us) : line.replace(/signed\s+\d{2}\/\d{2}\/\d{4}/, `signed ${us}`);
+}
+
 function readPrior(text: string, today: string, current: string): CaDateEdit | null {
   const lines = current
     .split("\n")
@@ -115,7 +126,7 @@ function readPrior(text: string, today: string, current: string): CaDateEdit | n
   for (const [from, to] of correctedDates(text, today)) {
     const at = next.findIndex((line) => lineDate(line, today) === from);
     if (at < 0) continue;
-    next[at] = next[at]!.replace(/signed\s+\d{2}\/\d{2}\/\d{4}/, `signed ${shownUs(to)}`);
+    next[at] = movedDate(next[at]!, shownUs(to));
     changes.push({ from: lines[at]!, to: next[at]! });
   }
 
@@ -130,7 +141,7 @@ function readPrior(text: string, today: string, current: string): CaDateEdit | n
       const same = next.filter((existing) => sameKind(lineStep(existing), lineStep(line)));
       if (correcting && same.length === 1 && date) {
         const at = next.indexOf(same[0]!);
-        next[at] = same[0]!.replace(/signed\s+\d{2}\/\d{2}\/\d{4}/, `signed ${shownUs(date)}`);
+        next[at] = movedDate(same[0]!, shownUs(date));
         changes.push({ from: same[0]!, to: next[at]! });
       } else {
         next.push(line);

@@ -89,11 +89,24 @@ const state = vi.hoisted(() => ({
  * the evidence and date checks, the reducer, the writes and the reload are
  * the real ones.
  */
-const patchScript = vi.hoisted(() => ({ outputs: [] as unknown[], calls: 0 }));
+const patchScript = vi.hoisted(() => ({ outputs: [] as unknown[], calls: 0, byLatest: null as Record<string, unknown> | null }));
 vi.mock("@/lib/forms/form-patch-call", () => ({
   FORM_PATCH_DEFAULT_TIMEOUT_MS: 5_000,
   formPatchTimeoutMs: () => 5_000,
-  callFormPatchModel: async () => {
+  callFormPatchModel: async (input?: { prompt?: string }) => {
+    /*
+     * `t.patchReads` (coding 5, 7 Nov 2026): the reading is picked by the
+     * manager's latest message, so a turn another path answers first (a
+     * correction, a policy change) never shifts the script.
+     */
+    if (patchScript.byLatest) {
+      patchScript.calls += 1;
+      const marker = "LATEST MESSAGE FROM THE MANAGER: ";
+      const prompt = input?.prompt ?? "";
+      const latest = prompt.slice(prompt.lastIndexOf(marker) + marker.length).trim();
+      const output = patchScript.byLatest[latest];
+      return output === undefined || output === null ? { fallback: "error" } : { ok: true, output };
+    }
     const output = patchScript.outputs[patchScript.calls];
     patchScript.calls += 1;
     return output === undefined || output === null ? { fallback: "error" } : { ok: true, output };
@@ -551,6 +564,7 @@ beforeEach(async () => {
   state.revision = { values: {} };
   patchScript.outputs = [];
   patchScript.calls = 0;
+  patchScript.byLatest = null;
   state.directory = [
     { id: "e-1", firstName: "Quinn", lastName: "Marlowe", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-66"], positionName: null },
     { id: "e-2", firstName: "Dale", lastName: "Ferris", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-66"], positionName: null },
@@ -661,6 +675,12 @@ function context(): ReplayContext {
     patchWrites: (outputs) => {
       patchScript.outputs = [...outputs];
       patchScript.calls = 0;
+      patchScript.byLatest = null;
+    },
+    patchReads: (byLatest) => {
+      patchScript.outputs = [];
+      patchScript.calls = 0;
+      patchScript.byLatest = { ...byLatest };
     },
     calls: () => ({ chat: state.chatModelCalls, draft: state.draftCalls, revision: state.revisionCalls, tool: state.toolCalls, patch: patchScript.calls }),
     forms: () => store.form_instances as never,

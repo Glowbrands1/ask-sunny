@@ -1,11 +1,13 @@
 import { withoutAppLines } from "@/lib/ai/app-sentences";
-import { foldsToGlossaryTerm, isSalesCountTerm } from "@/lib/ai/chat-glossary";
+import { CHAT_GLOSSARY, foldsToGlossaryTerm, isSalesCountTerm } from "@/lib/ai/chat-glossary";
 import {
   asYouSaidAppReadEnabled,
   asYouSaidManagerWordsEnabled,
+  msbPhraseSocEnabled,
   caSalesPolicyEnabled,
   cleaningOtherEveryWordingEnabled,
   formEditDateRulesEnabled,
+  removePolicyNotNamedEnabled,
   policyCleaningIncidentEnabled,
   salesShortfallObjectEnabled,
 } from "@/lib/config/chat-quality-flags";
@@ -401,6 +403,22 @@ const NEGATED_BEFORE = /\b(?:not|never|isn't|is not|wasn't|was not|no)\s+(?:\S+\
  */
 const SET_ASIDE_BEFORE = /\b(?:instead\s+of|rather\s+than|in\s+place\s+of|replac(?:e|ing)|remov(?:e|ing)|swap\s+out)\s+(?:the\s+|our\s+|that\s+)?$/;
 
+/*
+ * REMOVE_POLICY_NOT_NAMED_ENABLED (A1, QA 6 Nov 2026; the flip-3 tester): "take the attendance policy off the
+ * form" got "Policy: Attendance, as you said": the verb's "off" comes after the policy, so SET_ASIDE_BEFORE never
+ * saw it. With the flag on, a policy between "take / get / pull" and "off / out", or after "drop / delete /
+ * strip", is the one set aside too. Off, as before.
+ */
+const TAKEN_OFF_BEFORE = /\b(?:take|taking|get|getting|pull|pulling)\s+(?:the\s+|our\s+|that\s+)?$/;
+const TAKEN_OFF_AFTER = /^\s*(?:polic(?:y|ies)\s+)?(?:off|out)\b/;
+const DROPPED_BEFORE = /\b(?:drop|dropping|delete|deleting|strip|stripping)\s+(?:the\s+|our\s+|that\s+)?$/;
+
+function takenOff(sentence: string, start: number, end: number): boolean {
+  if (!removePolicyNotNamedEnabled()) return false;
+  const before = sentence.slice(0, start);
+  return DROPPED_BEFORE.test(before) || (TAKEN_OFF_BEFORE.test(before) && TAKEN_OFF_AFTER.test(sentence.slice(end)));
+}
+
 function statedIn(turn: string): CaPolicyName | null {
   let found: { name: CaPolicyName; at: number } | null = null;
   const short = turn.split(/\s+/).filter(Boolean).length <= 8;
@@ -411,6 +429,7 @@ function statedIn(turn: string): CaPolicyName | null {
       if (!match) continue;
       if (NEGATED_BEFORE.test(sentence.slice(0, match.index))) continue;
       if (formEditDateRulesEnabled() && SET_ASIDE_BEFORE.test(sentence.slice(0, match.index))) continue;
+      if (takenOff(sentence, match.index, match.index + match[0].length)) continue;
       /*
        * SALES_SHORTFALL_OBJECT_ENABLED (QA, 6 Nov 2026: "sales underperformance"): "under performance" is framed by its own
        * "under" (POLICY_FRAME), so the one-word spelling is read the same way. Off, it needs a frame like any other name.
@@ -548,14 +567,35 @@ function performanceIsTheReason(rawText: string): boolean {
   return statements(normalize(rawText)).some((sentence) => PERFORMANCE_AS_REASON.test(sentence));
 }
 
+/**
+ * MSB_PHRASE_SOC_ENABLED (Pau, 7 Nov 2026: "create a ca for must see behaviors for <name>" cited no policy; same flag
+ * in both apps; default off). The glossary term is matched word by word, so "MSB" was read and the spelled-out
+ * "must see behaviors" was not. The spelled-out phrases are the approved table's own: the right side of each
+ * "X = <phrase>." line of `CHAT_GLOSSARY`, folded to letters and digits — no list kept here. A singular
+ * ("must see behavior") and hyphens ("must-see") fold the same.
+ */
+const GLOSSARY_PHRASES: readonly string[] = CHAT_GLOSSARY.split("\n")
+  .map((line) => /^[A-Za-z0-9][A-Za-z0-9.&-]*\s+=\s+([^.]+)\./.exec(line)?.[1])
+  .filter((phrase): phrase is string => Boolean(phrase))
+  .map((phrase) => phrase.toLowerCase().replace(/[^a-z0-9]+/g, "").replace(/s$/, ""))
+  .filter((phrase) => phrase.length >= 6);
+
+function spellsOutGlossaryTerm(sentence: string): boolean {
+  const folded = sentence.toLowerCase().replace(/[^a-z0-9]+/g, "");
+  return GLOSSARY_PHRASES.some((phrase) => folded.includes(phrase));
+}
+
 function withSalesPolicy(reading: CaPolicyReading, rawText: string): CaPolicyReading {
   if (!caSalesPolicyEnabled()) return reading;
   if (reading.stated !== null && reading.stated !== "under_performance") return reading;
   if (reading.missedEvent !== null) return reading;
   const sentences = statements(normalize(rawText));
-  const msb = sentences.some((sentence) =>
-    sentence.split(/[^a-z0-9.]+/).some((word) => foldsToGlossaryTerm(word.replace(/^\.+|\.+$/g, ""))),
-  );
+  const msb =
+    sentences.some((sentence) =>
+      sentence.split(/[^a-z0-9.]+/).some((word) => foldsToGlossaryTerm(word.replace(/^\.+|\.+$/g, ""))),
+    ) ||
+    // MSB_PHRASE_SOC_ENABLED: the term spelled out ("must see behaviors") is the term too.
+    (msbPhraseSocEnabled() && sentences.some(spellsOutGlossaryTerm));
   // The stated shortfall reader the progression already uses (`corrective-action-intake.ts`): a metric named and judged.
   const target = reading.stated === "under_performance" || statesMetricShortfall(rawText) || (salesShortfallObjectEnabled() && (performanceIsTheReason(rawText) || countsASalesTerm(rawText)));
   if (!msb && !target) return reading;
