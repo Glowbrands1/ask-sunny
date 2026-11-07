@@ -777,6 +777,22 @@ export function reopenVerbGuardEnabled(): boolean {
   return envFlag("REOPEN_VERB_GUARD_ENABLED");
 }
 
+/**
+ * A form on file is asked for with any verb that opens it, not only "edit"
+ * (QA, 6 Nov 2026; QA's history review of a location manager's chats, 5 Nov
+ * 2026: "bring up <name>'s corrective action", "bring up an old coaching form
+ * for <first name>" started over). On, a request that leads with "bring up",
+ * "pull up", "open" or "find" and names a person and a form opens that
+ * person's form on file through the "edit" reopen path (a finalized one as a
+ * new draft of it), or says none is on file; and a form named only as "CA" /
+ * "corrective action" ("Change <name> CA") counts as named. A request to
+ * create one ("write up", "create", "make") still creates. Off, the reopen
+ * reading is exactly as before.
+ */
+export function reopenByAnyOpenVerbEnabled(): boolean {
+  return envFlag("REOPEN_BY_ANY_OPEN_VERB_ENABLED");
+}
+
 function flagOn(value: string | undefined): boolean {
   if (typeof value !== "string") return false;
   return ON.has(value.trim().toLowerCase());
@@ -1988,6 +2004,19 @@ export function newRequestOpenDraftEnabled(): boolean {
  */
 export function priorActionsPolicyEnabled(): boolean {
   return envFlag("PRIOR_ACTIONS_POLICY_ENABLED");
+}
+
+/**
+ * PRIOR_ACTIONS_NO_SIGNED_ENABLED (QA, a location manager's chat in the sibling app, 5 Nov 2026; default off).
+ * "this is a verbal warning. previous coaching policy manual 10-15-26" drafted Prior actions that said the
+ * earlier steps were SIGNED; nothing was ever signed or given. Rule (Pau / QA): list only finalized forms, and
+ * never say "signed" unless the record or the manager says so. On: the drafting prompt no longer asks for
+ * "— signed <date>", `groundPriorActions` drops a "signed" the manager did not write for that date, and the
+ * code's own lines read "<step> — finalized MM/DD/YYYY" for a form on file and "<step> — MM/DD/YYYY" for a step
+ * the manager told ("signed" only when they said so). The list parsers read every format. Off, as before.
+ */
+export function priorActionsNoSignedEnabled(): boolean {
+  return envFlag("PRIOR_ACTIONS_NO_SIGNED_ENABLED");
 }
 
 /**

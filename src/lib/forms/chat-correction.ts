@@ -21,7 +21,7 @@ import { resolveFormDate, withDateMoved } from "./form-date-grounding";
 import { authorizeInstance } from "./instance-scope";
 import { caNameFromChat } from "./ca-name-from-chat";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
-import { formEditSingleWriterEnabled, payrollAmountFieldEnabled } from "@/lib/config/chat-quality-flags";
+import { formEditSingleWriterEnabled, payrollAmountFieldEnabled, priorActionsNoSignedEnabled } from "@/lib/config/chat-quality-flags";
 
 import { syncCorrectiveActionPlan } from "./ca-action-plan-sync";
 import {
@@ -41,7 +41,7 @@ import {
 } from "./payroll-deduct";
 import { extractEmployeeNames } from "./proposal";
 import { describesIncident, statedWarningLevel, WARNING_TYPE_KEY } from "./corrective-action-intake";
-import { NO_PRIOR_ACTION, statedPriorActions } from "./prior-actions";
+import { NO_PRIOR_ACTION, priorLineDate, statedPriorActions } from "./prior-actions";
 import { detectTemplateIntent } from "./template-intent";
 import { applyAssistantDraft, saveInstanceValues } from "./instances";
 import { correctCaFromChat } from "./ca-chat-corrections";
@@ -598,7 +598,8 @@ const WARNING_LEVEL_OPTIONS: ReadonlySet<string> = new Set(["verbal", "written"]
 /** The step and the signed date a Prior Actions line names, for telling a repeat. */
 function priorLineKey(line: string): string {
   const step = line.split(" — ")[0]!.trim().toLowerCase();
-  const date = /signed\s+(\d{2}\/\d{2}\/\d{4})/i.exec(line)?.[1] ?? "";
+  // PRIOR_ACTIONS_NO_SIGNED_ENABLED: the date of "— signed <date>", "— finalized <date>" or "— <date>".
+  const date = priorActionsNoSignedEnabled() ? priorLineDate(line) : (/signed\s+(\d{2}\/\d{2}\/\d{4})/i.exec(line)?.[1] ?? "");
   return `${step}|${date}`;
 }
 
