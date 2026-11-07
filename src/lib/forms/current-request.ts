@@ -25,6 +25,14 @@ export function currentFormRequestTurns(turns: readonly string[]): readonly stri
   return turns;
 }
 
+/**
+ * The incident a resent draft is looked up by (`ai/grounded-turn.ts` reopenSameIncident): every manager turn, or —
+ * `ownRequest`, SECOND_REQUEST_OWN_ACCOUNT_ENABLED — only the request now being written.
+ */
+export function reopenIncidentText(said: readonly string[], ownRequest: boolean): string {
+  return (ownRequest ? currentFormRequestTurns(said) : said).join("\n").trim().slice(0, 2000);
+}
+
 /** The same over a window's joined text (`bounded-context.ts` JOIN); a turn holding a blank line reads as several. */
 export function currentFormRequestText(text: string): string {
   return currentFormRequestTurns(text.split(JOIN)).join(JOIN);
