@@ -1,6 +1,7 @@
 import { expect, vi } from "vitest";
 
 import { KEARNEY, STAFF, type DirectoryRow, type ReplayAnswer, type ReplayCase, type ReplayContext } from "./cases";
+import { citedPolicy } from "./policy-line";
 
 /**
  * ============================================================================
@@ -206,7 +207,13 @@ export const NOV4_CA_SALES_POLICY_CASES: ReplayCase[] = [
       const thread = start(t);
       const reply = await thread.say("make a corrective action for Anselm Fenwright, the tanning beds were left dirty at close");
       expect(thread.proposal, `no CA card for Anselm Fenwright:\n${reply.content}`).toMatchObject({ templateKey: "dpoa", employeeName: "Anselm Fenwright" });
-      expect(policyLine(reply), `the card cites Standards of Conduct for cleaning:\n${reply.content}`).not.toMatch(/standards of conduct/i);
+      /*
+       * Changed on purpose (QA, 7 Nov 2026, the sibling app's gate A): the check reads the policy the line CITES, not
+       * whether the words appear. With CLEANING_OTHER on, the right reply is "**Policy:** Other — … not the Standards of
+       * Conduct.", which names the Standards of Conduct only to say it is not cited. A line that does cite it still
+       * fails (policy-line.test.ts, negative examples).
+       */
+      expect(citedPolicy(policyLine(reply)), `the card cites Standards of Conduct for cleaning:\n${reply.content}`).not.toMatch(/standards of conduct/i);
       t.draftWrites({ observation: "Observed:\nThe tanning beds were left dirty at close." });
       const id = await thread.create();
       expect(t.values(id).policy_violated ?? "", "Policy Violated is Standards of Conduct").not.toMatch(/standards of conduct/i);
