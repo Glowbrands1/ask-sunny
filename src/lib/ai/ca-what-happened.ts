@@ -121,13 +121,41 @@ function onlyWhatDidNotHappen(clause: string): boolean {
  */
 const REQUEST_HEAD = /^.*?\b(?:corrective\s+action(?:\s+form)?|ca|c\/a|write[- ]?up|warning|dpoa)\s+(?:for|to)\s+/i;
 
+/*
+ * BARE_NOT_AFTER_REQUEST_ENABLED reads only a DENIAL as no account (the Sunny gate, 7 Nov 2026): with the flag
+ * alone, `onlyWhatDidNotHappen` reads any negation, so "did not complete her closing checklist", "cleaning
+ * duties not being completed" and "missed the monthly meeting" lost their account. An omission is an account;
+ * only a denied fault ("not late", "never late", "no problems") or "nothing happened" is not, whatever the other
+ * flags say.
+ */
+function onlyADenial(text: string): boolean {
+  return deniesAFault(text) || deniesAFaultWithBareNot(text) || NOTHING_HAPPENED.test(text);
+}
+
 function onlyWhatDidNotHappenAfterRequest(clause: string, name: string): boolean {
   if (!REQUEST_HEAD.test(clause)) return false;
   const own = new Set(name.toLowerCase().split(/\s+/).filter(Boolean));
   const words = clause.replace(REQUEST_HEAD, "").split(/\s+/).filter(Boolean);
   while (words.length > 0 && own.has(words[0]!.toLowerCase().replace(/[^\p{L}'’-]/gu, ""))) words.shift();
   const rest = words.join(" ").trim();
-  return rest !== "" && onlyWhatDidNotHappen(rest);
+  return rest !== "" && onlyADenial(rest);
+}
+
+/**
+ * BARE_NOT_AFTER_REQUEST_ENABLED, its second half (Coding's bisect, 7 Nov 2026): with the live
+ * REPLY_MATCHES_CARD a card with an Observation line never asks what happened, and "ca for <A> not late" put
+ * "<A> not late" there. A sentence that, without its request head and the employee's name, only says what did
+ * not happen is no Observation either. Off, false.
+ */
+export function onlyDeniesForObservation(sentence: string, name: string | null): boolean {
+  if (!bareNotAfterRequestEnabled()) return false;
+  const own = new Set((name ?? "").toLowerCase().split(/\s+/).filter(Boolean));
+  const words = sentence.trim().replace(REQUEST_HEAD, "").split(/\s+/).filter(Boolean);
+  while (words.length > 0 && own.has(words[0]!.toLowerCase().replace(/[^\p{L}'’-]/gu, ""))) words.shift();
+  const rest = words.join(" ").replace(/[.!?]+$/, "").trim();
+  // Every part must deny: "not late but left the bed dirty" says what happened.
+  const parts = rest.split(/\s*[,;]\s*|\s+(?:but|and)\s+/i).map((part) => part.trim()).filter(Boolean);
+  return parts.length > 0 && parts.every((part) => onlyADenial(part));
 }
 
 /** A clause that says what this employee did. */

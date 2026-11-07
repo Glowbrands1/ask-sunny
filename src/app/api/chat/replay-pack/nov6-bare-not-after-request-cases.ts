@@ -48,7 +48,9 @@ export const NOV6_BARE_NOT_AFTER_REQUEST_CASES: ReplayCase[] = [
      */
     status: { open: "production (BARE_NOT_AFTER_REQUEST off): \"not late\" reads as an account, and the card drafts \"Policy: Attendance, as you said\"" },
     fixFlags: ASKS_FIX,
-    fixStatus: { open: "with REPLY_MATCHES_CARD (live) the fix flags still draft \"Policy: Attendance, as you said\"; they hold without it" },
+    // fixStatus removed on purpose (7 Nov 2026): it was OPEN because the live REPLY_MATCHES_CARD dropped the ask
+    // beside the card's "Observation of Offense: <A> not late"; BARE_NOT_AFTER_REQUEST's Observation half
+    // (ask-sunny #624, keep-filled-slots.ts) keeps that line off the card, so the fix flags hold with it on.
     async run(t) {
       const thread = await start(t);
       const reply = await thread.say("ca for Rowan Kestrel not late");
