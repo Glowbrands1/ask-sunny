@@ -777,6 +777,22 @@ export function reopenVerbGuardEnabled(): boolean {
   return envFlag("REOPEN_VERB_GUARD_ENABLED");
 }
 
+/**
+ * A form on file is asked for with any verb that opens it, not only "edit"
+ * (QA, 6 Nov 2026; QA's history review of a location manager's chats, 5 Nov
+ * 2026: "bring up <name>'s corrective action", "bring up an old coaching form
+ * for <first name>" started over). On, a request that leads with "bring up",
+ * "pull up", "open" or "find" and names a person and a form opens that
+ * person's form on file through the "edit" reopen path (a finalized one as a
+ * new draft of it), or says none is on file; and a form named only as "CA" /
+ * "corrective action" ("Change <name> CA") counts as named. A request to
+ * create one ("write up", "create", "make") still creates. Off, the reopen
+ * reading is exactly as before.
+ */
+export function reopenByAnyOpenVerbEnabled(): boolean {
+  return envFlag("REOPEN_BY_ANY_OPEN_VERB_ENABLED");
+}
+
 function flagOn(value: string | undefined): boolean {
   if (typeof value !== "string") return false;
   return ON.has(value.trim().toLowerCase());
