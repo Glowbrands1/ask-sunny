@@ -40,7 +40,8 @@ export const NOV4_CA_OFFER_EXIT_CASES: ReplayCase[] = [
     id: "nov4-offer-exit-replaces-menu",
     title: "a Coaching / Corrective Action menu for the employee is replaced by the one offer; \"yes\" makes the card",
     report: `${REPORT}: the menu (this app's trace and the sibling app's)`,
-    status: { open: "with production's flags the reply is a Coaching / Corrective Action menu, with no offer" },
+    // Changed on purpose (7 Nov 2026): QA's flips of 5 and 6 Nov turned CA_SALES_POLICY, REPLY_MATCHES_CARD, TITLE_OF_THE_EMPLOYEE, METRIC_GUARD, TITLE_ENDS_AT_LINE, BARE_NOT_DENIAL and PLACE_FROM_CUE on in production (production-flags.json); this case now holds with production's flags.
+    status: "fixed",
     fixFlags: FLAGS,
     async run(t) {
       const thread = start(t);

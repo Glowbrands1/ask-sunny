@@ -58,6 +58,9 @@ export const NOV5_CA_SALES_PROMPT_LINES_CASES: ReplayCase[] = [
     report: `${REPORT}, flag off`,
     status: "fixed",
     async run(t) {
+      // Changed on purpose (7 Nov 2026): CA_SALES_POLICY_ENABLED is now ON in production (production-flags.json), so this
+      // flag-off case turns it off itself; the assertions are unchanged.
+      vi.stubEnv("CA_SALES_POLICY_ENABLED", "false");
       const prompt = await draftPrompt(t);
       expect(prompt, "the sales results line with the flag off").not.toContain(SALES_RESULTS_OFFENSE_LINE);
       expect(prompt, "the Corrective Action line with the flag off").not.toContain(CA_CHOSEN_LINE);
@@ -68,7 +71,8 @@ export const NOV5_CA_SALES_PROMPT_LINES_CASES: ReplayCase[] = [
     id: "nov5-ca-sales-prompt-lines-on",
     title: "flag on: \"When the manager has already chosen a Corrective Action, do not recommend coaching instead.\" follows the lowest-rung rule in the draft's prompt",
     report: `${REPORT}, flag on`,
-    status: { open: "with production's flags (CA_SALES_POLICY_ENABLED off) the draft's prompt does not have the line" },
+    // Changed on purpose (7 Nov 2026): QA's flips of 5 and 6 Nov turned CA_SALES_POLICY, REPLY_MATCHES_CARD, TITLE_OF_THE_EMPLOYEE, METRIC_GUARD, TITLE_ENDS_AT_LINE, BARE_NOT_DENIAL and PLACE_FROM_CUE on in production (production-flags.json); this case now holds with production's flags.
+    status: "fixed",
     fixFlags: ["CA_SALES_POLICY_ENABLED"],
     async run(t) {
       const prompt = await draftPrompt(t);
