@@ -2803,6 +2803,17 @@ export function ownBrandOnlyEnabled(): boolean {
 // --- coding 2 flags ---
 
 /**
+ * NO_NOTICE_NO_DATE_ENABLED (port of the sibling app's, QA, 6 Nov 2026;
+ * default off). "exit form for <X>, resigned 11-3-26 with no notice" printed
+ * "Date that notice was given: November 3, 2026": "resigned" is a notice-given
+ * cue. With this flag on, a stated "no notice" leaves the notice date empty,
+ * and the date stays the resignation's (`forms/exit-facts.ts`). Off, as before.
+ */
+export function noNoticeNoDateEnabled(): boolean {
+  return envFlag("NO_NOTICE_NO_DATE_ENABLED");
+}
+
+/**
  * SALES_OBSERVATION_ACCOUNT_ENABLED (QA's Sunny flip-4 gate, 7 Nov 2026;
  * default off; only with SALES_SHORTFALL_OBJECT_ENABLED). With "on
  * performance" read as the account, the card's Observation of Offense was the
