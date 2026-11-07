@@ -1,4 +1,7 @@
+import { formEditSaidReplacementEnabled } from "@/lib/config/chat-quality-flags";
+
 import type { InstanceValueRow } from "./instances";
+import { offeredOffenseKey } from "./offense-keys";
 
 /**
  * ============================================================================
@@ -357,16 +360,87 @@ function keepsUnnamed(key: string, old: string, next: string, rules: PatchRules)
   const latest = wordsOf(rules.sources?.namingTurn ?? "");
   const wholeValue = rules.droppedWordsReplaced === true && (rules.wholeValueKeys?.has(key) ?? false);
   const dropped: string[] = [];
+  // FORM_EDIT_SAID_REPLACEMENT_ENABLED: words the new text replaces in place with a word the latest message says.
+  const saidInPlace = formEditSaidReplacementEnabled() ? replacedInPlaceBySaid(wordsOf(old), wordsOf(next), latest) : null;
   for (const word of wordsOf(old)) {
     const left = kept.get(word) ?? 0;
     if (left > 0) {
       kept.set(word, left - 1);
       continue;
     }
-    if (!wholeValue && !latestNames(word, latest)) return false;
+    if (!wholeValue && !latestNames(word, latest) && !(saidInPlace?.has(word) ?? false)) return false;
     dropped.push(word);
   }
   return !rules.droppedWordsReplaced || everyDropReplaced(dropped, addedWords(next, old));
+}
+
+/*
+ * FORM_EDIT_SAID_REPLACEMENT_ENABLED (QA's Step B gate, 6 Nov 2026): "fix her last name, it is Laine" turns
+ * "Tessaly Lane" into "Tessaly Laine", and "Lane" is not inside "Laine", so it was refused. The old words the
+ * new text REPLACES IN PLACE — where the two texts differ by words taken out and words put in at the same
+ * spot, paired one for one — may go when the word put in is one the latest message says AND a correction of
+ * the old word (`correctionOf`). A word taken out
+ * with nothing put in its place ("Marnie" when "Marnie Quill" becomes "Quill-Hart") is not replaced in place.
+ */
+/**
+ * A correction of the word, not another word: it contains it ("quill" → "quill-hart"), or it is spelled
+ * within two letters of it ("lane" → "laine"). "marnie" → "quill-hart" is neither (QA's gate, 6 Nov 2026).
+ */
+function correctionOf(old: string, put: string): boolean {
+  if (put.includes(old) || old.includes(put)) return true;
+  const row = Array.from({ length: put.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= old.length; i += 1) {
+    let diagonal = row[0]!;
+    row[0] = i;
+    for (let j = 1; j <= put.length; j += 1) {
+      const above = row[j]!;
+      row[j] = Math.min(row[j]! + 1, row[j - 1]! + 1, diagonal + (old[i - 1] === put[j - 1] ? 0 : 1));
+      diagonal = above;
+    }
+  }
+  return row[put.length]! <= 2;
+}
+
+function replacedInPlaceBySaid(old: readonly string[], next: readonly string[], latest: readonly string[]): Set<string> {
+  const said = new Set(latest);
+  const rows = old.length + 1;
+  const cols = next.length + 1;
+  const lcs: number[][] = Array.from({ length: rows }, () => new Array<number>(cols).fill(0));
+  for (let i = old.length - 1; i >= 0; i -= 1) {
+    for (let j = next.length - 1; j >= 0; j -= 1) {
+      lcs[i]![j] = old[i] === next[j] ? lcs[i + 1]![j + 1]! + 1 : Math.max(lcs[i + 1]![j]!, lcs[i]![j + 1]!);
+    }
+  }
+  const out = new Set<string>();
+  let removed: string[] = [];
+  let added: string[] = [];
+  const flush = () => {
+    if (removed.length > 0 && removed.length === added.length) {
+      removed.forEach((word, index) => {
+        const put = added[index]!;
+        if (said.has(put) && correctionOf(word, put)) out.add(word);
+      });
+    }
+    removed = [];
+    added = [];
+  };
+  let i = 0;
+  let j = 0;
+  while (i < old.length || j < next.length) {
+    if (i < old.length && j < next.length && old[i] === next[j]) {
+      flush();
+      i += 1;
+      j += 1;
+    } else if (j < next.length && (i >= old.length || lcs[i]![j + 1]! >= lcs[i + 1]![j]!)) {
+      added.push(next[j]!);
+      j += 1;
+    } else {
+      removed.push(old[i]!);
+      i += 1;
+    }
+  }
+  flush();
+  return out;
 }
 
 /** Each dropped word pairs with its own added word: one containing it first, then any left. */
@@ -387,9 +461,11 @@ function keepsProtected(key: string, old: string, next: string, rules: PatchRule
   if (!guard || guard.skip?.has(key) || old.trim() === "") return true;
   const latestWords = [...wordsOf(guard.latest), ...(guard.named ?? []).flatMap((name) => wordsOf(name))];
   const nextText = fold(next);
+  // FORM_EDIT_SAID_REPLACEMENT_ENABLED: a name word the new text replaces in place with a word the latest message says ("Lane" → "Laine").
+  const saidInPlace = formEditSaidReplacementEnabled() ? replacedInPlaceBySaid(wordsOf(old), wordsOf(next), latestWords) : null;
   for (const word of wordsOf(guard.employeeName)) {
     if (!fold(old).includes(word)) continue;
-    if (!nextText.includes(word) && !latestNames(word, latestWords)) return false;
+    if (!nextText.includes(word) && !latestNames(word, latestWords) && !(saidInPlace?.has(word) ?? false)) return false;
   }
   const nextDates = new Set(guard.datesIn(next));
   const latestDates = new Set(guard.datesIn(guard.latest));
@@ -485,7 +561,10 @@ function evidenceFrom(evidence: string | undefined, rules: PatchRules): "manager
 }
 
 function checkboxValue(key: string, field: DraftField, value: FieldValue, how: "add" | "replace", group: CheckboxGroup): Written {
-  const options = asList(value);
+  // FORM_EDIT_SAID_REPLACEMENT_ENABLED: an old offense box is written as the box that replaced it ("absenteeism" → Attendance Policy).
+  const options = formEditSaidReplacementEnabled()
+    ? asList(value).map((option) => (group.options.includes(option) ? option : (offeredOffenseKey(option, group.options) ?? option)))
+    : asList(value);
   if (options.some((option) => !group.options.includes(option))) return refuse(key, "unknown_option");
   if (group.single) {
     if (options.length !== 1) return refuse(key, "unknown_option");
