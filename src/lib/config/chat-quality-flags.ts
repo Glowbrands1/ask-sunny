@@ -2722,7 +2722,6 @@ export function titleEndsAtLineEnabled(): boolean {
 
 /**
 
-
  * ROSTER_COMPOUND_SURNAME_ENABLED (the re-flip's rollback, 5 Nov 2026; default
  * off). The flip's live testers (R3/R5/R7): a real employee's surname is two
  * words, and the manager typed one with a transposed or swapped letter. The
@@ -2746,7 +2745,6 @@ export function rosterNotFoundAnyPhrasingEnabled(): boolean {
   return envFlag("ROSTER_NOT_FOUND_ANY_PHRASING_ENABLED");
 }
 
-
 /**
  * EXIT_STATED_ONLY_ENABLED (QA, 5 Nov 2026, severe; default off). A salon director pasted a termination letter and
  * asked for an exit form: How Employee Resigned became "Text message" (the text that caused the termination), Salon
@@ -2758,7 +2756,6 @@ export function rosterNotFoundAnyPhrasingEnabled(): boolean {
 export function exitStatedOnlyEnabled(): boolean {
   return envFlag("EXIT_STATED_ONLY_ENABLED");
 }
-
 
 /**
  * OFF_ROSTER_CONFIRM_ENABLED (port of the sibling app's flip-3 gate, QA, 6 Nov 2026; default off; ships with
@@ -2823,6 +2820,17 @@ export function ownBrandOnlyEnabled(): boolean {
  */
 export function asYouSaidAppReadEnabled(): boolean {
   return envFlag("AS_YOU_SAID_APP_READ_ENABLED");
+}
+
+/**
+ * EDIT_MAKE_IT_ABOUT_ENABLED (Pau's scan, sf-s34, 7 Nov 2026; Pau-approved 7 Nov; same flag in both apps; default
+ * off). On an open Coaching draft, "I need you to make it about showing up late and please list the policy make the
+ * date for 10/14/26." was scoped to the date alone, so the Details rewrite was refused and the reply said nothing
+ * changed. On: "make it / this / the form … about …" also allows the form's account (Coaching Details, or a CA's
+ * Observation) in `forms/revision.ts` scopeRevision. Off, as before.
+ */
+export function editMakeItAboutEnabled(): boolean {
+  return envFlag("EDIT_MAKE_IT_ABOUT_ENABLED");
 }
 
 // --- coding 2 flags ---
