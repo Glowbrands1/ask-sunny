@@ -3,7 +3,12 @@ import "server-only";
 import type { AskResponse } from "@/lib/ai/types";
 import { payrollAmounts } from "@/lib/ai/intent-slots";
 import { businessToday } from "@/lib/business-date";
-import { formEditNoopGuardEnabled, formPatchReaderFixesEnabled } from "@/lib/config/chat-quality-flags";
+import { formEditNoopGuardEnabled, formPatchReaderFixesEnabled, stepBMakeItAboutAccountEnabled } from "@/lib/config/chat-quality-flags";
+import { madeAbout } from "@/lib/ai/make-it-about";
+import { accountMadeAbout, blendsOldEvent } from "./make-it-about-account";
+
+/** STEP_B_MAKE_IT_ABOUT_ACCOUNT_ENABLED: the fields that give a form's account. */
+const ACCOUNT_KEYS = ["coaching_details", "observation"] as const;
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { isGlossaryTerm } from "@/lib/ai/chat-glossary";
 
@@ -508,6 +513,23 @@ export async function writeFormEdits(instanceId: string, ops: readonly FormEditO
       how[op.field] = op.op === "append" ? "add" : op.reword ? "reword" : "replace";
     }
     evidence[op.field] = op.evidence ?? latest;
+  }
+  /*
+   * STEP_B_MAKE_IT_ABOUT_ACCOUNT_ENABLED (QA's live AI check, 8 Nov 2026): after "make it about <X>", a write that
+   * joins X to the account's old event ("showed up late to the monthly meeting") is written as X alone, whichever
+   * path wrote it: the old revision blended too when the reader did not answer. A draft path keeps the name and dates
+   * the account held (its protected values). See `make-it-about-account.ts`.
+   */
+  const about = stepBMakeItAboutAccountEnabled() ? madeAbout(latest) : null;
+  if (about !== null) {
+    for (const key of ACCOUNT_KEYS) {
+      const value = set[key];
+      const current = before[key]?.value;
+      if (typeof value !== "string" || typeof current !== "string") continue;
+      const name = loaded.instance.employeeName ?? null;
+      if (!blendsOldEvent(value, current, about, name)) continue;
+      set[key] = accountMadeAbout({ about, current, proposed: value, employeeName: name, keepFacts: patchRules.mode === "draft" });
+    }
   }
   const patch: FormPatch = { set, clear, how, evidence };
 

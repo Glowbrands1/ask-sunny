@@ -85,18 +85,43 @@ function asSentence(about: string): string {
  * The account after "make it about <X>": the form's outline kept, its Observed part about X alone, and nothing of the
  * earlier event left in any part.
  */
-export function accountMadeAbout(input: { about: string; current: string; proposed: string | null; employeeName: string | null }): string {
+/** The dates the earlier account's Observed part gives, as written. */
+const WRITTEN_DATE = /\b\d{1,2}[/.-]\d{1,2}(?:[/.-]\d{2,4})?\b/g;
+
+function observedOf(text: string): string {
+  const sections = sectionsOf(text);
+  return sections.find((section) => isObserved(section.heading))?.body ?? (sections.every((section) => section.heading === null) ? text : "");
+}
+
+/** X, with the name and dates the earlier account held (a draft's write keeps them): "<Name> — showing up late (10/10/26)." */
+function aboutWithFacts(about: string, current: string, employeeName: string | null): string {
+  const observed = observedOf(current);
+  const named = employeeName && observed.toLowerCase().includes(employeeName.toLowerCase()) ? employeeName : null;
+  const dates = [...new Set(observed.match(WRITTEN_DATE) ?? [])];
+  const said = `${named ? `${named} — ` : ""}${named ? about : about.charAt(0).toUpperCase() + about.slice(1)}`;
+  return `${said}${dates.length > 0 ? ` (${dates.join(", ")})` : ""}.`;
+}
+
+export function accountMadeAbout(input: {
+  about: string;
+  current: string;
+  proposed: string | null;
+  employeeName: string | null;
+  /** The one writer's draft paths keep every protected value (name, dates) the earlier account held. */
+  keepFacts?: boolean;
+}): string {
   const event = oldEventWords(input.current, input.about, input.employeeName);
   const base = sectionsOf(input.proposed ?? input.current);
   const outline = base.some((section) => section.heading !== null) ? base : sectionsOf(input.current);
   if (!outline.some((section) => section.heading !== null)) {
     const proposed = (input.proposed ?? "").trim();
-    return proposed && !speaksOf(proposed, event) && speaksOf(proposed, new Set(words(input.about))) ? proposed : asSentence(input.about);
+    const own = input.keepFacts ? aboutWithFacts(input.about, input.current, input.employeeName) : asSentence(input.about);
+    return proposed && !speaksOf(proposed, event) && speaksOf(proposed, new Set(words(input.about))) ? proposed : own;
   }
   const proposedObserved = input.proposed ? sectionsOf(input.proposed).find((section) => isObserved(section.heading))?.body ?? "" : "";
   const aboutWords = new Set(words(input.about));
-  const observedBody =
-    proposedObserved && !speaksOf(proposedObserved, event) && speaksOf(proposedObserved, aboutWords) ? proposedObserved : asSentence(input.about);
+  const own = input.keepFacts ? aboutWithFacts(input.about, input.current, input.employeeName) : asSentence(input.about);
+  const observedBody = proposedObserved && !speaksOf(proposedObserved, event) && speaksOf(proposedObserved, aboutWords) ? proposedObserved : own;
   const parts = outline
     .filter((section) => section.heading !== null || section.body !== "")
     .map((section) => {

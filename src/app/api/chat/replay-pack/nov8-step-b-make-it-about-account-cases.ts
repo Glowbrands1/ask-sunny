@@ -93,4 +93,33 @@ export const NOV8_STEP_B_MAKE_IT_ABOUT_ACCOUNT_CASES: ReplayCase[] = [
       expect(details, "the outline is lost").toMatch(/Observed:[\s\S]*Expectation:/);
     },
   },
+  {
+    id: "nov8-step-b-make-it-about-revision-blend",
+    title: "…and when the reader falls back and the old revision writes X joined to the old event, the account is still about showing up late alone",
+    report: "QA's live AI check in this app, 8 Nov 2026 (1174700, 3 of 4 runs with the flag on): the old path wrote \"Observed: <A> showed up late to the monthly meeting on 10/10/26\" and replied \"Updated … Details of Coaching\"",
+    status: { open: "the old revision writes \"showed up late to the monthly meeting\", a fact nobody said" },
+    fixFlags: FIX,
+    async run(t) {
+      vi.setSystemTime(new Date("2026-11-07T19:40:00Z"));
+      t.directory(REFUSAL_ROSTER);
+      t.as("salon_director", KEARNEY);
+      // The reader does not answer this turn (a fallback): the old path's revision writes it.
+      t.patchReads!({});
+      const thread = t.thread();
+      await thread.say(REQUEST);
+      t.draftWrites({ coaching_details: DETAILS });
+      const id = await thread.create();
+      t.revisionWrites({
+        coaching_details:
+          "Observed:\nOttoline Ormsworth showed up late to the monthly meeting on 10/10/26.\n\nExpectation:\nOttoline is expected to arrive on time.\n\nGoing Forward:\nOttoline will arrive on time.",
+      });
+      const before = savedForm(t, id);
+      const reply = await thread.say(STEP_B_MAKE_IT_ABOUT);
+      replyMatchesDiff(t, id, before, reply, STEP_B_MAKE_IT_ABOUT);
+      const details = t.values(id).coaching_details ?? "";
+      expect(details, `Details of Coaching is not about showing up late:\n${details}\nreply: ${reply.content}`).toMatch(/\blate\b/i);
+      expect(details, `the old event survives in the new account:\n${details}`).not.toMatch(/meeting/i);
+      expect(details, "the outline is lost").toMatch(/Observed:[\s\S]*Expectation:/);
+    },
+  },
 ];

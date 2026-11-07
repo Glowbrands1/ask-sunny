@@ -9,5 +9,6 @@ So this app also has the blend fix, under the same flag (`forms/make-it-about-ac
 - Observed is the reader's text when that text is about X and holds none of the old event's words. Otherwise it is X in the manager's own words ("Observed: Showing up late."; QA's ruling, 8 Nov 2026).
 - Any other part that still speaks of the old event is left empty.
 - The reader's topic write is kept.
+- QA's next live check (1174700) still blended in 3 of 4 runs. The reader did not answer, and the old path's revision wrote it. So the same rule now also runs in the one writer (`forms/form-write.ts`), for every path's write of the account after "make it about <X>". On the draft paths (the revision), it keeps the name and dates the account held: "Observed: <Name> — showing up late (10/10/26)."
 
 Not ported to the sibling app. QA's decision (A), 8 Nov 2026: its behaviour is validated 6/6 as it is, and it shows no blend. The port was written and tested there (local branch `claude/step-b-blend-rebuild-unused`, e8b2b8b), not pushed. Port it if the sibling app's live runs ever show the blend.

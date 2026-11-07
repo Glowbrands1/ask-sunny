@@ -46,3 +46,17 @@ describe("accountMadeAbout", () => {
     expect(accountMadeAbout({ about: ABOUT, current: "Ottoline missed the monthly meeting.", proposed: null, employeeName: NAME })).toBe("Showing up late.");
   });
 });
+
+describe("on the one writer's draft paths", () => {
+  it("keeps the name and dates the account held (its protected values), never the old event", () => {
+    expect(
+      accountMadeAbout({
+        about: ABOUT,
+        current: CURRENT,
+        proposed: "Observed:\nOttoline Ormsworth showed up late to the monthly meeting on 10/10/26.\n\nExpectation:\nOttoline is expected to arrive on time.",
+        employeeName: NAME,
+        keepFacts: true,
+      }),
+    ).toBe("Observed:\nOttoline Ormsworth — showing up late (10/10/26).\n\nExpectation:\nOttoline is expected to arrive on time.");
+  });
+});
