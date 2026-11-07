@@ -427,6 +427,8 @@ const NEW_FLAGS = [
   "ROSTER_NEAR_MISS_ENABLED",
   "REPLY_MATCHES_CARD_ENABLED",
   "METRIC_GUARD_ENABLED",
+  // QA, 7 Nov 2026 (default off).
+  "METRIC_CHOICE_ONE_QUESTION_ENABLED",
   // The second Sunny gate's fix flags (6 Nov 2026): forced off with the others in the child run.
   "TITLE_ENDS_AT_LINE_ENABLED",
   "BARE_NOT_DENIAL_ENABLED",
