@@ -936,12 +936,13 @@ const CHILD = process.env.FLAGS_OFF_PARITY_CHILD === "1";
  * four folders it took about 526 s of its 540 s on CI and timed out (ETIMEDOUT)
  * whenever the runner was busy, so it was split in two. By 7 Nov the chat+forms
  * half alone took 530 s on main on a 4-CPU runner (564–607 s on branches that add
- * replay cases) and timed out again. Measured there, its parts were: the replay
- * pack 145 s, the rest of src/app/api/chat with src/app/api/forms 462 s. So it
- * is four children now — src/lib; src/app/api/chat without the replay pack;
- * src/app/api/forms; the replay pack — each well under the budget. The folders,
- * the flags and what must pass are unchanged, and every test file still runs in
- * exactly one child.
+ * replay cases) and timed out again. Measured there (4-CPU), its parts were:
+ * src/app/api/chat without the replay pack 386 s, src/app/api/forms 80 s, the
+ * replay pack 144 s (src/lib 185 s). So it is five children now — src/lib; the
+ * chat folder without the pack, in two halves by name; src/app/api/forms; the
+ * replay pack — each well under the budget, and the chat folder can keep growing.
+ * The folders, the flags and what must pass are unchanged, and every test file
+ * still runs in exactly one child.
  *
  * Vitest's `--exclude` does not reach inside a project (the "unit" project's own
  * `exclude` wins), and a path filter matches any file whose path contains it. So
@@ -954,11 +955,19 @@ function chatWithoutReplayPack(): string[] {
   return readdirSync(CHAT, { withFileTypes: true })
     .filter((entry) => `${CHAT}/${entry.name}` !== REPLAY_PACK)
     .filter((entry) => entry.isDirectory() || /\.test\.tsx?$/.test(entry.name))
-    .map((entry) => `${CHAT}/${entry.name}${entry.isDirectory() ? "/" : ""}`);
+    .map((entry) => `${CHAT}/${entry.name}${entry.isDirectory() ? "/" : ""}`)
+    .sort();
+}
+/** The chat folder without the pack, in two halves by name (`half` 0 or 1): each half is its own child. */
+function chatHalf(half: 0 | 1): string[] {
+  const all = chatWithoutReplayPack();
+  const middle = Math.ceil(all.length / 2);
+  return half === 0 ? all.slice(0, middle) : all.slice(middle);
 }
 const CHILDREN: readonly { readonly name: string; readonly paths: () => readonly string[] }[] = [
   { name: "src/lib/ai, src/lib/forms", paths: () => ["src/lib/ai", "src/lib/forms"] },
-  { name: `${CHAT} (without the replay pack)`, paths: () => chatWithoutReplayPack() },
+  { name: `${CHAT} (without the replay pack), first half by name`, paths: () => chatHalf(0) },
+  { name: `${CHAT} (without the replay pack), second half by name`, paths: () => chatHalf(1) },
   { name: "src/app/api/forms", paths: () => ["src/app/api/forms"] },
   { name: REPLAY_PACK, paths: () => [REPLAY_PACK] },
 ];
