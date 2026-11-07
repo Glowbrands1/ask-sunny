@@ -3,6 +3,7 @@ import {
   caSalesPolicyEnabled,
   levelRequestDateEnabled,
   observationWithoutAskEnabled,
+  politeRequestOwnTurnsEnabled,
   priorSentenceFixEnabled,
   requestLeadFillerEnabled,
 } from "@/lib/config/chat-quality-flags";
@@ -257,7 +258,9 @@ export function currentRequestStart(input: {
   let start = 0;
   for (const [index, raw] of input.turns.entries()) {
     const turn = raw.replace(STATE_LEAD, "");
-    if (!REQUEST_TURN.test(turn.trim())) continue;
+    // POLITE_REQUEST_OWN_TURNS_ENABLED: "Can you create me a coaching document for …" is a request too.
+    const asked = politeRequestOwnTurnsEnabled() ? turn.trim().replace(POLITE_LEAD, "") : turn.trim();
+    if (!REQUEST_TURN.test(asked)) continue;
     requests += 1;
     if (requests > 1 && turnIncident(turn, input.employeeName, input.slotClause)) start = index;
   }
@@ -267,6 +270,14 @@ export function currentRequestStart(input: {
 /** The state sentences the intent read puts in front of a question ("The employee is …."). */
 const STATE_LEAD =
   /^\s*(?:(?:The form is the|The employee is|Job title:|It happened at|It happened on|Warning level:|Payroll amount:|Policy reference:|Incident:|The account continues)[^\n]*?\.(?=\s|$)\s*|(?:Payroll deduct applies|No payroll deduction)\.\s*)+/i;
+
+/*
+ * POLITE_REQUEST_OWN_TURNS_ENABLED (Pau's scan, sf-s37, 7 Nov 2026): three requests in one chat, each "Can you create
+ * me a coaching document for <name> for …", were never read as requests, so the second card's Observation read back
+ * the first employee's request too. A polite lead before the request words is not part of them: "can / could /
+ * would / will you (please)". Off, as before.
+ */
+const POLITE_LEAD = /^(?:hey,?\s+|hi,?\s+)?(?:can|could|would|will)\s+(?:you|u)\s+(?:please\s+)?/i;
 
 const REQUEST_TURN = new RegExp(
   String.raw`^\s*(?:please\s+)?(?:(?:create|make|start|open|do|file|write|draft)\s+(?:me\s+)?)?${LEVEL_WORDS}${FORM_WORDS}\b`,
