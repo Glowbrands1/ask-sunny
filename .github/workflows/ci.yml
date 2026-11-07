@@ -3,8 +3,15 @@ name: CI
 # Runs on every pull request and every push to main, so a change that breaks
 # lint, the typecheck or a test shows a red ✗ on the pull request before it is
 # merged — not after a manager finds it in production.
+#
+# merge_group: GitHub's merge queue (Pau, 7 Nov 2026). The queue tests each pull
+# request on top of main and the pull requests ahead of it, on a temporary
+# gh-readonly-queue/main/… branch, and merges only when the required checks
+# ("checks" and "eval", below) pass there. They are the same jobs with the same
+# names; neither reads pull-request-only context, so they run unchanged.
 on:
   pull_request:
+  merge_group:
   push:
     branches: [main]
 
