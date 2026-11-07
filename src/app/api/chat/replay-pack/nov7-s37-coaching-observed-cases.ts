@@ -63,7 +63,8 @@ export const NOV7_S37_COACHING_OBSERVED_CASES: ReplayCase[] = [
     id: "nov7-s37-observed-kept",
     title: "sf-s37 (a): a Coaching Form for \"not hitting her numbers\" keeps its Observed section and the Underperformance tick",
     report: `${REPORT}: the saved coaching_details had no "Observed:"`,
-    status: { open: "the framing guard strikes \"did not meet …\" and the empty Observed label goes with it" },
+    // Changed on purpose (7 Nov 2026): QA's flip 7 (21:29 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+    status: "fixed",
     fixFlags: ["COACHING_OBSERVED_KEPT_ENABLED"],
     async run(t) {
       const thread = start(t);
@@ -82,7 +83,8 @@ export const NOV7_S37_COACHING_OBSERVED_CASES: ReplayCase[] = [
     id: "nov7-s37-own-request-turns",
     title: "sf-s37 (b): three \"Can you create me a coaching document for <name> …\" requests: each card's Observation names only its own request",
     report: `${REPORT}: the second card read back the first employee's request`,
-    status: { open: "\"Can you create me …\" is not read as a new request, so the card reads every earlier turn" },
+    // Changed on purpose (7 Nov 2026): QA's flip 7 (21:29 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+    status: "fixed",
     fixFlags: ["POLITE_REQUEST_OWN_TURNS_ENABLED"],
     async run(t) {
       const thread = start(t);
