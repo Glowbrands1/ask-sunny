@@ -2802,6 +2802,7 @@ export function ownBrandOnlyEnabled(): boolean {
 
 // --- coding 2 flags ---
 
+// coding 2: PRIOR_STEP_PREVIOUSLY
 /**
  * PRIOR_STEP_PREVIOUSLY_ENABLED (port from the sibling app; A2, one of Pau's 7; QA 6 Nov 2026; default off).
  * "in the previously recieved coaching include that <name> signed the jba policy manual on 10-15-26" listed no
@@ -2810,4 +2811,27 @@ export function ownBrandOnlyEnabled(): boolean {
  */
 export function priorStepPreviouslyEnabled(): boolean {
   return envFlag("PRIOR_STEP_PREVIOUSLY_ENABLED");
+}
+
+/**
+ * NO_NOTICE_NO_DATE_ENABLED (port of the sibling app's, QA, 6 Nov 2026;
+ * default off). "exit form for <X>, resigned 11-3-26 with no notice" printed
+ * "Date that notice was given: November 3, 2026": "resigned" is a notice-given
+ * cue. With this flag on, a stated "no notice" leaves the notice date empty,
+ * and the date stays the resignation's (`forms/exit-facts.ts`). Off, as before.
+ */
+export function noNoticeNoDateEnabled(): boolean {
+  return envFlag("NO_NOTICE_NO_DATE_ENABLED");
+}
+
+/**
+ * BARE_NOT_AFTER_REQUEST_ENABLED (QA's live Sunny re-check, 6 Nov 2026;
+ * default off). "ca for <A> not late" asked nothing: the clause starts with
+ * the request, so BARE_NOT_DENIAL's clause-start "not" missed it. With this
+ * flag on, the CA what-happened test also reads each clause without its
+ * request head and the employee's name (`ai/ca-what-happened.ts`). Off, as
+ * before.
+ */
+export function bareNotAfterRequestEnabled(): boolean {
+  return envFlag("BARE_NOT_AFTER_REQUEST_ENABLED");
 }
