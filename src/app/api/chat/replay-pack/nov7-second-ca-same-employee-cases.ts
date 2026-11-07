@@ -14,7 +14,7 @@ import { KEARNEY, STAFF, type ReplayAnswer, type ReplayCase, type ReplayContext,
  * said") and Action Plan, and — when the request was not worded as a create request — its Observation.
  * SECOND_REQUEST_OWN_ACCOUNT_ENABLED reads each request on its own. Three parts per wording, each with its own status:
  * the form (a second form, the first untouched, its Policy Violated the second request's), the card's policy line (in
- * `ai/form-proposal.ts`, waiting on Pau), and the Observation (in `ai/remap-incident.ts`, with coding 4). A realistic
+ * `ai/form-proposal.ts`, Pau-approved 7 Nov 2026), and the Observation (in `ai/remap-incident.ts`, with coding 4). A realistic
  * two-request chat; the person is invented (STAFF's Remy Calder).
  */
 const FLAG = "SECOND_REQUEST_OWN_ACCOUNT_ENABLED";
@@ -62,9 +62,8 @@ export const NOV7_SECOND_CA_SAME_EMPLOYEE_CASES: ReplayCase[] = Object.entries(S
     report: REPORT,
     status: { open: "the second card says \"Late Opening, as you said\", its Action Plan reviews Late Opening, and the second form's Policy Violated is Late Opening" },
     fixFlags: [FLAG],
-    // The draft route reads the policy from this request (SECOND_REQUEST_OWN_ACCOUNT_ENABLED), but the card's policy
-    // reaches the draft too (NEXT_PUBLIC_CARD_POLICY_TO_DRAFT), so both follow the card's line.
-    fixStatus: { open: "the card's policy line is read in ai/form-proposal.ts (protected): the two lines wait on Pau" },
+    // Changed on purpose (7 Nov 2026): holds with the flag since Pau approved the two ai/form-proposal.ts lines; the
+    // card's citation step and the saved state's incident read this request too (ai/form-card-slots.ts, ai/form-state.ts).
     async run(t) {
       const { thread, reply } = await secondRequest(t, second);
       expect(line(reply.content, "Policy"), `the Policy is the first request's:\n${reply.content}`).not.toMatch(/late opening/i);
