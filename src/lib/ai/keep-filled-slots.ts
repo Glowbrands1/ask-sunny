@@ -46,7 +46,9 @@ import {
   caSalesPolicyEnabled,
   formNameFromRosterEnabled,
   complaintAccountEnabled,
+  proposalMakeItAboutEnabled,
 } from "@/lib/config/chat-quality-flags";
+import { turnsMadeAbout, withObservationMadeAbout } from "./make-it-about";
 import { namesOnlyAPolicy } from "@/lib/forms/person-guard";
 import { foldsToGlossaryTerm } from "./chat-glossary";
 import { statedFormDate } from "@/lib/forms/incident-dates";
@@ -254,11 +256,14 @@ export function holdFilledSlots(input: {
       // AMOUNT_ANSWER_NOT_ACCOUNT_ENABLED: "i dont know the amount" says nothing that happened.
       // CARD_OBSERVATION_OWN_REQUEST_ENABLED (QA live check, 3 Nov 2026): a new request's card reads back only
       // that request's turns, never the earlier incident ("…rugs untl 12;30pm <name> for being late to opening").
-      const said = withoutAmountAnswers(cardObservationOwnRequestEnabled() ? currentRequestTurns(turns, next.employeeName) : turns);
+      const own = withoutAmountAnswers(cardObservationOwnRequestEnabled() ? currentRequestTurns(turns, next.employeeName) : turns);
+      // PROPOSAL_MAKE_IT_ABOUT_ENABLED: "make it about showing up late …" is the account from that turn on, never the instruction (`ai/make-it-about.ts`).
+      const said = proposalMakeItAboutEnabled() ? turnsMadeAbout(own) : own;
       // FORM_EDIT_DATE_RULES_ENABLED: an edit replaces, adds to, or never touches the Observation.
       if (formEditDateRulesEnabled()) content = observationByRules(content, said, build);
       else if (grammarAskNotAccountEnabled()) content = withGrammarAnswered(build(content, said.map(withoutAsksToTheApp)), turns);
       else content = build(content, said);
+      if (proposalMakeItAboutEnabled()) content = withObservationMadeAbout(content, own);
     }
     if (fixed && next.templateKey === "dpoa") {
       content = withPriorActions(content, currentRequestTurns(turns, next.employeeName), input.today);

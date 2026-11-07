@@ -32,7 +32,9 @@ import {
   caSalesPolicyEnabled,
   priorActionsNoSignedEnabled,
   secondRequestOwnAccountEnabled,
+  proposalMakeItAboutEnabled,
 } from "@/lib/config/chat-quality-flags";
+import { notesMadeAbout } from "@/lib/ai/make-it-about";
 import { withoutAsksToTheApp } from "@/lib/ai/asks-to-the-app";
 import { AiError } from "@/lib/ai/errors";
 import {
@@ -377,7 +379,9 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     const typed = String(body.notes ?? "").trim().slice(0, 4000);
     const asTyped = grammarAskNotAccountEnabled() ? withoutAsksToTheApp(typed).trim() : typed;
     // TYPO_READING_ROUTES_ENABLED: the readers below see "coahed", "notcie", "amont" as the words they can only be.
-    const notes = typoReadingRoutesEnabled() ? typoReadingText(asTyped, await protectedNameWords()) : asTyped;
+    const read = typoReadingRoutesEnabled() ? typoReadingText(asTyped, await protectedNameWords()) : asTyped;
+    // PROPOSAL_MAKE_IT_ABOUT_ENABLED: "make it about showing up late …" makes "Showing up late." the account from that turn on (`ai/make-it-about.ts`).
+    const notes = proposalMakeItAboutEnabled() ? notesMadeAbout(read) : read;
     if (notes.length < 10) {
       throw new AiError(
         "bad_request",
