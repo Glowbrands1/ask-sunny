@@ -2851,3 +2851,13 @@ export function bareNotAfterRequestEnabled(): boolean {
 export function sourceNoteGuardEnabled(): boolean {
   return envFlag("SOURCE_NOTE_GUARD_ENABLED");
 }
+
+// coding 2: REMOVE_POLICY_NOT_NAMED
+/**
+ * REMOVE_POLICY_NOT_NAMED_ENABLED (port from the sibling app; A1, QA 6 Nov 2026; default off). "take the
+ * attendance policy off the form" got "Policy: Attendance, as you said". With this flag on, a policy the turn
+ * takes off ("take … off", "drop …") is not the one it names (`forms/ca-policy.ts` statedIn). Off, as before.
+ */
+export function removePolicyNotNamedEnabled(): boolean {
+  return envFlag("REMOVE_POLICY_NOT_NAMED_ENABLED");
+}
