@@ -89,6 +89,42 @@ export function withoutPolicyTakeOff(turns: readonly string[]): string[] {
   ).filter((turn) => turn !== "");
 }
 
+/*
+ * A REMARK ABOUT WHICH POLICY TO CITE IS NO ACCOUNT EITHER (QA, 8 Nov 2026; the sibling app's live chat 1cc79ee9, 6 Nov,
+ * and again that night): "In the past we have quoted the standards of conduct for creating a ca due to
+ * underperformance" settles the policy; it says nothing that happened. A sentence that names a policy and says to
+ * quote, cite, reference, use or list it, or what it falls under, is a policy ask: the policy readers read it, the
+ * account never holds it.
+ */
+const CITING = /\b(?:quot(?:e|ed|es|ing)|cit(?:e|ed|es|ing)|referenc(?:e|ed|es|ing)|us(?:e|ed|es|ing)|list(?:ed|s|ing)?|go(?:es)?\s+under|falls?\s+under|put\s+(?:it\s+|this\s+)?under)\b/;
+
+/** A sentence that only says which policy to cite. */
+export function remarksOnPolicy(sentence: string): boolean {
+  const text = (sentence ?? "").toLowerCase().replace(/[‘’]/g, "'");
+  return policiesNamedIn(text).length > 0 && CITING.test(text);
+}
+
+/** A sentence that is a policy ask, never account: a take-off, or a remark about which policy to cite. */
+export function asksAboutPolicy(sentence: string): boolean {
+  return takesPolicyOff(sentence) || remarksOnPolicy(sentence);
+}
+
+/** The turns without their policy asks (take-offs and remarks): what is left is account. For the card's account. */
+export function withoutPolicyAsks(turns: readonly string[]): string[] {
+  return turns.map((turn) =>
+    turn
+      .split("\n")
+      .map((line) =>
+        line
+          .split(/(?<=[.!?])\s+/)
+          .filter((sentence) => !asksAboutPolicy(sentence))
+          .join(" "),
+      )
+      .join("\n")
+      .trim(),
+  ).filter((turn) => turn !== "");
+}
+
 function labelsOf(setAside: PolicySetAside): string[] {
   return [...setAside.names].map((name) => CA_POLICY_LABEL[name]);
 }
