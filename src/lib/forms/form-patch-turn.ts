@@ -213,7 +213,14 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
     const reading = await readingFor(input, modelInput);
     /* FORM_PATCH_READER_FIXES_ENABLED: every hand-off after a reading tells the old path's revision (no instruction, no repeat). */
     const handOff = async (): Promise<null> => {
-      if (readerFixes) (await import("./reader-found-nothing")).noteReaderFoundNothing(input.instanceId);
+      if (readerFixes) {
+        // The reader's evidence for text it set from her latest message: the revision's new content keeps it.
+        const evidence =
+          "ok" in reading
+            ? Object.fromEntries(Object.entries(reading.patch.evidence ?? {}).filter(([key, quote]) => key in reading.patch.set && fold(input.question).includes(fold(quote))))
+            : {};
+        (await import("./reader-found-nothing")).noteReaderFoundNothing(input.instanceId, evidence);
+      }
       return null;
     };
     if (!("ok" in reading) || reading.turn !== "this_form") return handOff();

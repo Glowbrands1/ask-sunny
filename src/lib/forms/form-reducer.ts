@@ -240,6 +240,13 @@ export interface PatchRules {
    * form's name (`formWords`, by key) — is refused as `copies_message`, on every path that carries it.
    */
   readonly echoOf?: { readonly latest: string; readonly name: string; readonly formWords: Readonly<Record<string, string>> };
+  /**
+   * FORM_PATCH_READER_FIXES_ENABLED (QA's trace, 7 Nov 2026): the evidence Step B's reader gave this turn, when it
+   * handed the turn off. A text value the old path's revision writes as NEW content must keep it as the reader's
+   * own op would (`keepsEvidence`), else `drops_words` — so a refused "make it about X" never comes back as
+   * text about the form ("This coaching document was created on …").
+   */
+  readonly readerEvidence?: Readonly<Record<string, string>>;
 }
 
 export interface ProtectedValues {
@@ -455,6 +462,14 @@ export const MIN_KEPT_SHARE = 0.75;
  * words of content the manager gave (CONTENT_EVIDENCE_WORDS or more), MIN_SAID_SHARE of shorter evidence. A
  * reword is not checked (its evidence is the request).
  */
+/** The value is new content for the field, not an edit of its text: the field is empty, or it keeps less than half its words. */
+export function isNewContent(value: string, old: string): boolean {
+  const before = wordsOf(old);
+  if (before.length === 0) return true;
+  const after = new Set(wordsOf(value));
+  return before.filter((word) => after.has(word)).length / before.length < MIN_SAID_SHARE;
+}
+
 function keepsEvidence(value: string, evidence: string | undefined, old = ""): boolean {
   const want = wordsOf(evidence ?? "");
   if (want.length === 0) return true;
@@ -847,7 +862,16 @@ function setOne(draft: FormDraft, key: string, value: FieldValue, patch: FormPat
    */
   const dropsAllowed = rules.faithful !== undefined && !typed;
   if (how === "replace" && rules.keepsUnnamedWords && !dropsAllowed && !keepsUnnamed(key, have, text, rules)) return refuse(key, "drops_words");
-  if (how === "replace" && !keepsProtected(key, have, text, rules)) return refuse(key, "drops_protected_value");
+  /*
+   * FORM_PATCH_READER_FIXES_ENABLED (QA's trace, 7 Nov 2026; QA's proposal): "make it about showing up late" read
+   * right ("Observed: showing up late.") was refused because the old account named her and its date. A replace that
+   * is NEW content (`isNewContent`), whose evidence is the manager's own words in her latest message, on a field
+   * she did not type, replaces the old account whole: its name and dates may go (the header keeps her name, the
+   * Date line its date). Every fact it adds was checked above. Anything else keeps the protected values.
+   */
+  const newAccount =
+    rules.faithful !== undefined && how === "replace" && !typed && from === "manager" && evidence !== undefined && contains(rules.faithful.latest, evidence) && isNewContent(text, have);
+  if (how === "replace" && !newAccount && !keepsProtected(key, have, text, rules)) return refuse(key, "drops_protected_value");
   if (how === "add") {
     if (have === "") return { value: text, owner };
     return { value: `${have}\n${text}`, owner: typed ? "manager" : owner };
@@ -902,6 +926,13 @@ export function applyPatch(draft: FormDraft, patch: FormPatch, rules: PatchRules
     // FORM_PATCH_READER_FIXES_ENABLED: the instruction written back as the field's content.
     if (rules.echoOf !== undefined && typeof value === "string" && !isRefusal(written) && written !== null && repeatsInstruction(value, rules.echoOf, key)) {
       return refuse(key, "copies_message");
+    }
+    // FORM_PATCH_READER_FIXES_ENABLED: the old path's new content keeps what the reader read from her ("make it about X").
+    if (rules.readerEvidence !== undefined && typeof value === "string" && !isRefusal(written) && written !== null) {
+      const old = current(next, key).value;
+      const before = typeof old === "string" ? old : old.join("\n");
+      const evidence = rules.readerEvidence[key];
+      if (evidence !== undefined && isNewContent(value, before) && !keepsEvidence(value, evidence, before)) return refuse(key, "drops_words");
     }
     // FORM_PATCH_READER_FIXES_ENABLED: after the reader found nothing to write, a value that adds nothing new.
     if (rules.nothingNewFrom !== undefined && typeof value === "string" && !isRefusal(written) && written !== null && addsNothingNew(value, current(next, key).value, rules.nothingNewFrom)) {

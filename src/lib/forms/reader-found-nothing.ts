@@ -11,19 +11,20 @@
  * and void after TURN_MS. Pure state; no I/O.
  */
 const TURN_MS = 60_000;
-const found = new Map<string, number>();
+const found = new Map<string, { at: number; evidence: Readonly<Record<string, string>> }>();
 
-export function noteReaderFoundNothing(instanceId: string): void {
-  found.set(instanceId, Date.now());
+/** `evidence`: by field, the reader's evidence for the ops it read (a refused "make it about X"); the revision keeps it. */
+export function noteReaderFoundNothing(instanceId: string, evidence: Readonly<Record<string, string>> = {}): void {
+  found.set(instanceId, { at: Date.now(), evidence });
 }
 
 export function clearReaderFoundNothing(instanceId: string): void {
   found.delete(instanceId);
 }
 
-/** True once, when this turn's reader found nothing to write on this form. */
-export function takeReaderFoundNothing(instanceId: string): boolean {
-  const at = found.get(instanceId);
+/** Once, when this turn's reader handed off on this form: its evidence (empty when it read nothing to set). Null otherwise. */
+export function takeReaderFoundNothing(instanceId: string): { evidence: Readonly<Record<string, string>> } | null {
+  const entry = found.get(instanceId);
   found.delete(instanceId);
-  return at !== undefined && Date.now() - at <= TURN_MS;
+  return entry !== undefined && Date.now() - entry.at <= TURN_MS ? { evidence: entry.evidence } : null;
 }

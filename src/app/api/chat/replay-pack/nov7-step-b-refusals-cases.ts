@@ -183,6 +183,30 @@ const LIVE_SHAPES: readonly RefusalScenario[] = [
       revisionFrom: { [SUN_LATE]: { coaching_details: "Observed:\nThaddeus showed up late." } },
     },
   },
+  /*
+   * QA's trace (2× run, 7 Nov 2026): the reader was right ("Observed: showing up late.", "Observed: missing out
+   * monthly meeting") and the reducer refused it (drops_protected_value: the old account named her and its date);
+   * the old revision then wrote text about the form. Now the new account is written, and the revision could not
+   * write the drift anyway (it must keep the reader's evidence).
+   */
+  {
+    ...byId("sun-late-date"),
+    id: "sun-late-date-trace",
+    script: {
+      draft: { coaching_details: "Observed:\nThaddeus Lowestoft already has a coaching document dated 10/14/26, but the policy was not listed." },
+      patch: { [SUN_LATE]: patch("this_form", [{ field: "coaching_details", value: "Observed:\nshowing up late.", how: "replace", evidence: "make it about showing up late" }]) },
+      revisionFrom: { [SUN_LATE]: { coaching_details: "Observed:\nThis coaching document was created on 10/14/26 to add the policy reference that was missing." } },
+    },
+  },
+  {
+    ...byId("sun-monthly-meeting"),
+    id: "sun-monthly-meeting-trace",
+    script: {
+      draft: { coaching_details: "Observed:\nPerrin Fennimore is being coached on the attendance policy." },
+      patch: { [SUN_MEETING]: patch("this_form", [{ field: "coaching_details", value: "Observed:\nmissing out monthly meeting", how: "replace", evidence: "make it for missing out monthly meeting" }]) },
+      revisionFrom: { [SUN_MEETING]: { coaching_details: "Observed:\nThis coaching session with Perrin addressed the attendance policy. No specific incident was described." } },
+    },
+  },
   {
     ...byId("sun-make-that-update"),
     id: "sun-make-that-update-live-shape",

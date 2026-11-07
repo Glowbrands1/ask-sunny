@@ -278,3 +278,39 @@ describe("FORM_PATCH_READER_FIXES_ENABLED: the instruction is never written back
     expect(repeatsInstruction("Details: use a fresh towel for every guest.", echo("add details about the towel"), "coaching_details")).toBe(false);
   });
 });
+
+describe("FORM_PATCH_READER_FIXES_ENABLED: a new account she asks for replaces the old one whole (QA's trace, 7 Nov 2026)", () => {
+  const LATE = "I need you to make it about showing up late and please list the policy make the date for 10/14/26.";
+  const OLD = "Observed:\nThaddeus Lowestoft already has a coaching document from October 14, 2026, but the policy was not listed.";
+  const draft: FormDraft = { coaching_details: field("coaching_details", OLD, "assistant") };
+  const guard = { employeeName: "Thaddeus Lowestoft", datesIn: (text: string) => (/October 14, 2026/.test(text) ? ["2026-10-14"] : []), amountsIn: () => [], latest: LATE };
+
+  it("\"Observed: showing up late.\" (her words, new content) is written; the old account's name and date may go", () => {
+    const base = rules(LATE, ["coaching_details"], { employeeName: "Thaddeus Lowestoft", formText: OLD });
+    const withDates: PatchRules = { ...base, protectedValues: guard };
+    const { diff } = applyPatch(draft, op("coaching_details", "Observed:\nshowing up late.", "replace", "make it about showing up late"), withDates);
+    expect(diff.refused).toEqual([]);
+    // Off (no reader fixes): the protected values hold, as before.
+    const off: PatchRules = { ...rules(LATE, ["coaching_details"], null), protectedValues: guard };
+    expect(applyPatch(draft, op("coaching_details", "Observed:\nshowing up late.", "replace", "make it about showing up late"), off).diff.changed).toEqual([]);
+  });
+
+  it("an in-place edit still keeps her name (not new content)", () => {
+    const base: PatchRules = { ...rules(LATE, ["coaching_details"], { employeeName: "Thaddeus Lowestoft", formText: OLD }), protectedValues: guard };
+    const edit = op("coaching_details", OLD.replace("Thaddeus Lowestoft already", "Already").replace(", but", " but"), "replace", "make it about showing up late");
+    expect(applyPatch(draft, edit, base).diff.refused.map((refusal) => refusal.reason)).toContain("drops_protected_value");
+  });
+
+  it("evidence that is not in her latest message keeps the protected values", () => {
+    const base: PatchRules = { ...rules(LATE, ["coaching_details"], { employeeName: "Thaddeus Lowestoft", formText: OLD }, [LATE, "she was late again"]), protectedValues: guard };
+    const { diff } = applyPatch(draft, op("coaching_details", "Observed:\nshe was late again.", "replace", "she was late again"), base);
+    expect(diff.refused.map((refusal) => refusal.reason)).toContain("drops_protected_value");
+  });
+
+  it("the old path's new content must keep the reader's evidence (`readerEvidence`)", () => {
+    const revision: PatchRules = { mode: "draft", writable: new Set(["coaching_details"]), typedExempt: new Set(["coaching_details"]), sources: { manager: LATE }, readerEvidence: { coaching_details: "make it about showing up late" } };
+    const drift = { set: { coaching_details: "This coaching document was created on 10/14/26 to add the policy reference that was missing." }, clear: [] };
+    expect(applyPatch(draft, drift, revision).diff.refused).toEqual([{ key: "coaching_details", reason: "drops_words" }]);
+    expect(applyPatch(draft, { set: { coaching_details: "Observed:\nThaddeus showed up late." }, clear: [] }, revision).diff.refused).toEqual([]);
+  });
+});
