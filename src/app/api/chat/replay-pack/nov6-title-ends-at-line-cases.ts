@@ -33,7 +33,13 @@ export const NOV6_TITLE_ENDS_AT_LINE_CASES: ReplayCase[] = [
       t.as("salon_director", KEARNEY);
       const thread = t.thread();
       await thread.say(TURNS[0]!);
-      const reply = await thread.say(TURNS[1]!);
+      let reply = await thread.say(TURNS[1]!);
+      /*
+       * Changed on purpose (QA, 7 Nov 2026; as the sibling app's #516, finding C): with FORM_NAME_FROM_ROSTER +
+       * OFF_ROSTER_CONFIRM the off-roster name is offered first ("reply **use Marnie Kettering**"); the card is filled
+       * after "use Marnie Kettering", and its job title is still the line's.
+       */
+      if (!thread.proposal?.employeeName && reply.content.includes("reply **use Marnie Kettering**")) reply = await thread.say("use Marnie Kettering");
       expect(thread.proposal, `no exit card:\n${reply.content}`).toMatchObject({ employeeName: "Marnie Kettering" });
       expect(thread.proposal?.employeeRole ?? null, `the card's job title:\n${reply.content}`).toBe("Tanning Consultant");
     },
