@@ -2654,6 +2654,18 @@ export function salesShortfallObjectEnabled(): boolean {
 }
 
 /**
+ * TWO_FORMS_OWN_PERSON_ENABLED (QA, Sunny tester after the flip, 6 Nov 2026,
+ * row 6; default off). "Coaching form for <R>. Also a CA for <R2>." gave one
+ * Coaching card whose employee was R2, the other form's person. With this flag
+ * on, when one message asks for two forms the card keeps its employee only
+ * when its own clause names them, or it is emptied and asks who; the reply
+ * names the other request back (`ai/two-forms-own-person.ts`). Off, as before.
+ */
+export function twoFormsOwnPersonEnabled(): boolean {
+  return envFlag("TWO_FORMS_OWN_PERSON_ENABLED");
+}
+
+/**
  * PLACE_FROM_CUE_ENABLED (QA's Sunny gate, 6 Nov 2026, sf-s28; default off).
  * "can you write me a ca for <name> from o street", from a manager not
  * assigned to O Street: "from" was no place cue, so the salon was not read and
@@ -2786,6 +2798,19 @@ export function caOfferKeepsAccountEnabled(): boolean {
  */
 export function ownBrandOnlyEnabled(): boolean {
   return envFlag("OWN_BRAND_ONLY_ENABLED");
+}
+
+// --- coding 2 flags ---
+
+/**
+ * NO_NOTICE_NO_DATE_ENABLED (port of the sibling app's, QA, 6 Nov 2026;
+ * default off). "exit form for <X>, resigned 11-3-26 with no notice" printed
+ * "Date that notice was given: November 3, 2026": "resigned" is a notice-given
+ * cue. With this flag on, a stated "no notice" leaves the notice date empty,
+ * and the date stays the resignation's (`forms/exit-facts.ts`). Off, as before.
+ */
+export function noNoticeNoDateEnabled(): boolean {
+  return envFlag("NO_NOTICE_NO_DATE_ENABLED");
 }
 
 // --- coding 5 flags ---
