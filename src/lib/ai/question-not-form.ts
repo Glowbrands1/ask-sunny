@@ -1,3 +1,5 @@
+import { caRequestNotPriorCoachingEnabled } from "@/lib/config/chat-quality-flags";
+
 /**
  * ============================================================================
  * A QUESTION IS ANSWERED. IT IS NEVER A FORM TURN.
@@ -116,8 +118,17 @@ const REQUEST_READINGS = [
   ["ANY_CREATE", ANY_CREATE],
 ] as const;
 
+/*
+ * CA_REQUEST_NOT_PRIOR_COACHING_ENABLED (QA's live tester, 7 Nov 2026, sf-s35's exact wording): "Can you draw me up a
+ * CA for <name> …" asks for the form. "draw" is in none of the readings above, so its "Can" read as a question and the
+ * turn never reached the forms path. Only "draw (me / us) up", leading the clause or after "can / could / would / will
+ * you": "draw up a plan with her" is still not a form by itself (the form reader decides that). Off, as before.
+ */
+const DRAWS_UP = /^(?:(?:can|could|would|will)\s+(?:you|u|ya)\s+)?(?:please\s+|pls\s+|just\s+)*draw\s+(?:(?:me|us)\s+)?up\b/i;
+
 function requestReading(clause: string): string | null {
   for (const [name, reading] of REQUEST_READINGS) if (reading.test(clause)) return name;
+  if (caRequestNotPriorCoachingEnabled() && DRAWS_UP.test(clause)) return "DRAWS_UP";
   return null;
 }
 
