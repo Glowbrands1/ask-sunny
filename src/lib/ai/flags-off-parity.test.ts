@@ -75,6 +75,7 @@ import {
   remapDraftSourcesEnabled,
   formDateIncidentOnlyEnabled,
   reopenVerbGuardEnabled,
+  reopenByAnyOpenVerbEnabled,
   formRevisionsEnabled,
   formRevisionsUiEnabled,
   sensitiveDefaultsRedactEnabled,
@@ -252,6 +253,8 @@ const NEW_FLAGS = [
   "NEXT_PUBLIC_REMAP_DRAFT_SOURCES_ENABLED",
   "FORM_DATE_INCIDENT_ONLY_ENABLED",
   "REOPEN_VERB_GUARD_ENABLED",
+  "REOPEN_BY_ANY_OPEN_VERB_ENABLED",
+  "PAST_FORMS_BEFORE_LIBRARY_ENABLED",
   "FORM_REVISIONS_ENABLED",
   "NEXT_PUBLIC_FORM_REVISIONS_ENABLED",
   "SENSITIVE_DEFAULTS_REDACT_ENABLED",
@@ -775,6 +778,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(remapDraftSourcesClientEnabled()).toBe(false);
     expect(formDateIncidentOnlyEnabled()).toBe(false);
     expect(reopenVerbGuardEnabled()).toBe(false);
+    expect(reopenByAnyOpenVerbEnabled()).toBe(false);
     expect(formRevisionsEnabled()).toBe(false);
     expect(formRevisionsUiEnabled()).toBe(false);
     expect(sensitiveDefaultsRedactEnabled()).toBe(false);
