@@ -26,3 +26,39 @@ export function asksOnlyToListPolicy(question: string): boolean {
 export function listPolicyIsEdit(question: string, formOpen: boolean): boolean {
   return listPolicyIsEditEnabled() && formOpen && asksOnlyToListPolicy(question);
 }
+
+/*
+ * ============================================================================
+ * WITH ONLY A CARD OPEN (no draft yet): THE CARD SAYS WHERE THE POLICY GOES (QA, 8 Nov 2026, option b)
+ * ============================================================================
+ *
+ * EDIT_POLICY_ASK writes to a draft, so on a card alone "please list the policy" stays a card turn: never a question,
+ * the card proposed again from the manager's last turn, and, when the card shows no manual policy line of its own,
+ * one sentence saying the policy is listed on the draft at Create. Never a "**Policy:**" line: the card's Policy
+ * heading is read onto the draft (CARD_POLICY_TO_DRAFT), and this sentence names no policy.
+ */
+export const LISTED_AT_CREATE = "I'll list the manual's policy that matches what happened on the draft when you create it.";
+const SHOWS_POLICY = /^\*\*Policy:\*\*|JBA Policy Manual(?: p\.\s?\d+)?/m;
+
+interface CardTurn {
+  readonly question: string;
+  readonly history: readonly { readonly role: string; readonly content: string }[];
+  readonly continueProposalTemplateKey?: string | null;
+  readonly activeFormInstanceId?: string | null;
+}
+
+/** A card open, no draft, and the turn only asks to list the policy. Off, false. */
+export function listPolicyOnCard(request: CardTurn): boolean {
+  return listPolicyIsEdit(request.question, Boolean(request.continueProposalTemplateKey)) && !request.activeFormInstanceId;
+}
+
+/** The question the card is proposed again from: the manager's last turn before this one, or this one. */
+export function cardRequestTurn(request: CardTurn): string {
+  return request.history.filter((turn) => turn.role === "user").at(-1)?.content ?? request.question;
+}
+
+/** The card shows its manual policy line already, or gains the one sentence saying it goes on the draft. */
+export function withPolicyListedAtCreate<T extends { content: string; formProposal?: unknown }>(response: T): T {
+  if (!response.formProposal || SHOWS_POLICY.test(response.content) || response.content.includes(LISTED_AT_CREATE)) return response;
+  return { ...response, content: `${response.content.trimEnd()}\n\n${LISTED_AT_CREATE}` };
+}

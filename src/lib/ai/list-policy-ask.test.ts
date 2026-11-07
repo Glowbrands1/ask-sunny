@@ -44,3 +44,42 @@ describe("listPolicyIsEdit", () => {
     expect(listPolicyIsEdit("please list the policy", false)).toBe(false);
   });
 });
+
+describe("with only a card open", () => {
+  const history = [
+    { role: "user", content: "create a coaching form for Rowan Kestrel" },
+    { role: "assistant", content: "Here is what I would put on a **Coaching Form**." },
+  ];
+
+  it("listPolicyOnCard: a card and no draft; off, a draft open, or no card: false", async () => {
+    const { listPolicyOnCard } = await import("./list-policy-ask");
+    const turn = { question: "please list the policy", history, continueProposalTemplateKey: "coaching" };
+    expect(listPolicyOnCard(turn)).toBe(false);
+    vi.stubEnv("LIST_POLICY_IS_EDIT_ENABLED", "true");
+    expect(listPolicyOnCard(turn)).toBe(true);
+    expect(listPolicyOnCard({ ...turn, activeFormInstanceId: "f-1" })).toBe(false);
+    expect(listPolicyOnCard({ ...turn, continueProposalTemplateKey: null })).toBe(false);
+    expect(listPolicyOnCard({ ...turn, question: "what policy covers lateness?" })).toBe(false);
+  });
+
+  it("cardRequestTurn: the manager's last turn, or this one", async () => {
+    const { cardRequestTurn } = await import("./list-policy-ask");
+    expect(cardRequestTurn({ question: "please list the policy", history })).toBe("create a coaching form for Rowan Kestrel");
+    expect(cardRequestTurn({ question: "please list the policy", history: [] })).toBe("please list the policy");
+  });
+
+  it("withPolicyListedAtCreate: a card with no manual line gains the sentence once; a card with one, or no card, is unchanged", async () => {
+    const { LISTED_AT_CREATE, withPolicyListedAtCreate } = await import("./list-policy-ask");
+    const card = { content: "Here is what I would put on a **Coaching Form**.", formProposal: { templateKey: "coaching" } };
+    const once = withPolicyListedAtCreate(card);
+    expect(once.content).toContain(LISTED_AT_CREATE);
+    expect(withPolicyListedAtCreate(once)).toBe(once);
+    const cited = { ...card, content: `${card.content}\n\nAttendance Policy, JBA Policy Manual p.14` };
+    expect(withPolicyListedAtCreate(cited)).toBe(cited);
+    const policyLine = { ...card, content: "**Policy:** Attendance, as you said." };
+    expect(withPolicyListedAtCreate(policyLine)).toBe(policyLine);
+    const noCard = { content: "A grounded answer." };
+    expect(withPolicyListedAtCreate(noCard)).toBe(noCard);
+    expect(LISTED_AT_CREATE.startsWith("**Policy:**")).toBe(false);
+  });
+});

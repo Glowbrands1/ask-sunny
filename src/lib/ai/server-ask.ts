@@ -162,6 +162,7 @@ import { deliverFormProposal } from "./grounded-turn";
 import { withJobTitleCase, withJobTitleFromWords, withJobTitleReadBackCase, withSpelledOutTitle } from "./job-title-from-words";
 import { withTerseSlots } from "./terse-slots";
 import { withCaWhatHappened, withCoachingWhatHappened } from "./ca-what-happened";
+import { cardRequestTurn, listPolicyOnCard, withPolicyListedAtCreate } from "./list-policy-ask";
 import { withFirstNameAsk } from "./first-name-ask";
 import { withFirstNameAnswerFor, withFirstNameSuggestFor } from "./first-name-suggest";
 import { withAmountUnknownAck } from "./amount-unknown-ack";
@@ -521,7 +522,9 @@ async function answerQuestionUntraced(
    * phrased, is not a question. See `question-not-form.ts`. Behind
    * QUESTION_NOT_FORM_ENABLED; off, every turn is routed as before.
    */
-  const askedQuestion = questionNotFormEnabled() && isQuestionNotForm(request.question, request.history);
+  // LIST_POLICY_IS_EDIT_ENABLED: "please list the policy" with only a card open is a card turn, never a question.
+  const listPolicyCard = listPolicyOnCard(request);
+  const askedQuestion = !listPolicyCard && questionNotFormEnabled() && isQuestionNotForm(request.question, request.history);
   let intentForm = false;
   if (intentExtractionEnabled() && !askedQuestion) {
     const prepared = await applyIntentExtraction({ request, actor });
@@ -874,12 +877,14 @@ async function answerQuestionUntraced(
       question: withPriorShorthand(
         prepareProposalQuestion(
           questionForProposal(
-            proposalQuestion(separateLead, heard ? routingQuestion : request.question, managerQuestion),
+            // LIST_POLICY_IS_EDIT_ENABLED: the card is proposed again from the manager's last turn.
+            proposalQuestion(separateLead, listPolicyCard ? cardRequestTurn(request) : heard ? routingQuestion : request.question, managerQuestion),
             remapIncidentFixEnabled() ? { ...request, history: formHistory() } : request,
           ),
         ),
       ),
-      decorate: decorateFormAnswer,
+      // LIST_POLICY_IS_EDIT_ENABLED: the card shows its policy line, or says the policy is listed on the draft at Create.
+      decorate: listPolicyCard ? async (response) => withPolicyListedAtCreate(await decorateFormAnswer(response)) : decorateFormAnswer,
       propose: (question) => proposeFormForTurn({
       history: withPriorShorthandTurns(formHistory()),
       question,
