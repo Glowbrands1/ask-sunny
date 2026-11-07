@@ -195,12 +195,15 @@ const LIVE_SHAPES: readonly RefusalScenario[] = [
     id: "sun-monthly-meeting-drift",
     // QA: the account is her X, or nothing is written (the old path's honest reply); never text about the form.
     expect: {
-      says: "the drift (text about the form) is never written and nothing is claimed; her X is written, or the old refusal stands",
+      says: "the drift (text about the form) is never written; a change is claimed only when her X is written",
       check: (run) =>
         /addressed the attendance policy/i.test(run.saved.coaching_details ?? "")
           ? `the drift was written: "${(run.saved.coaching_details ?? "").slice(0, 120)}"`
-          : /\b(?:updated|changed)\b/i.test(run.reply) && !/haven't changed|didn't change/i.test(run.reply)
-            ? `a change is claimed: "${run.reply.slice(0, 120)}"`
+          : // Changed on purpose (QA's gate, 7 Nov 2026): with CITATION_LINE_KEPT_ON_REVISION_ENABLED the old revision
+            // may write Details (her X, with the app's citation line kept), so its "Updated … Details of Coaching" claim
+            // is true. A claim is refused only when Details is not about the monthly meeting.
+            /\b(?:updated|changed)\b/i.test(run.reply) && !/haven't changed|didn't change/i.test(run.reply) && !/monthly meeting/i.test(run.saved.coaching_details ?? "")
+            ? `a change is claimed but Details is not about the monthly meeting: "${run.reply.slice(0, 120)}"`
             : null,
     },
     script: {
