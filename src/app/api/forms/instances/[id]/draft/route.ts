@@ -2333,19 +2333,20 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
             sections: cardSection && cardPolicyLabelEnabled() && manualSections.some((section) => section.page > 0)
               ? manualSections
               : (() => {
-              const reading = readCaPolicy(notes);
-              const keys = statedOffenseKeys(reading, notes) ?? describedAttendanceKeys(notes) ?? [];
-              const resolved = manualSectionsFor({ chunks: manual.chunks, offenseKeys: keys, notes });
+              // SECOND_REQUEST_OWN_ACCOUNT_ENABLED: this line cites the request this form is for (policyNotes).
+              const reading = readCaPolicy(policyNotes);
+              const keys = statedOffenseKeys(reading, policyNotes) ?? describedAttendanceKeys(policyNotes) ?? [];
+              const resolved = manualSectionsFor({ chunks: manual.chunks, offenseKeys: keys, notes: policyNotes });
               const withAttendance = citeAttendanceForTardiness({
                 enabled: attendanceOn,
-                notes,
+                notes: policyNotes,
                 chunks: manual.chunks,
                 sections: resolved,
               });
               if (!pageOn) return withAttendance;
               const required = sectionsWithNameAndPage({
                 enabled: true,
-                notes,
+                notes: policyNotes,
                 chunks: manual.chunks,
                 offenseKeys: keys,
               });
