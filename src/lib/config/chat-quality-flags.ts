@@ -115,6 +115,17 @@ export function secondRequestOwnAccountEnabled(): boolean {
 }
 
 /**
+ * CARD_POLICY_OWN_REQUEST_ENABLED (QA's live tester, flip 7, 7 Nov 2026; same flag in both apps; default off).
+ * "Coaching form for <A> for being on her phone …", then "Coaching form for <B>": B's card cited Cell Phone/Smart
+ * Watch from A's request, because the form answer's policy line is read over every manager turn of the chat. On: the
+ * policy line and citations are read from the latest form request that names the card's employee, when no earlier
+ * turn names them (`ai/card-policy-request.ts`). Off, as before.
+ */
+export function cardPolicyOwnRequestEnabled(): boolean {
+  return envFlag("CARD_POLICY_OWN_REQUEST_ENABLED");
+}
+
+/**
  * A follow-up or second document is not revised into the form on screen.
  * Off, the open form keeps the revision path it has now.
  */

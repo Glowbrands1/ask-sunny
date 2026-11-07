@@ -38,6 +38,7 @@ import {
   googleReviewsInChatEnabled,
   typoReadingCopyEnabled,
   caSalesPolicyEnabled,
+  cardPolicyOwnRequestEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
 import { approvedManualConfirmed, manualDisplayTitle } from "@/lib/forms/official-policy-manual";
@@ -47,6 +48,7 @@ import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import { proposeFormForTurn, suggestFormsForTurn, type ChatActor } from "./form-proposal";
 import { acceptedCaOffer, acceptedCaOfferTurn, caOfferLine, withCaOffer } from "./ca-offer";
 import { remapFormTurn, remapShouldRun, type FormRemapSlots } from "./form-full-remap";
+import { cardPolicyTurns } from "./card-policy-request";
 import { priorShorthand, requestScopedHistory } from "./remap-incident";
 import { historyForRemap } from "./form-remap-scope";
 import { withRemapDraftSources } from "./remap-draft-sources";
@@ -693,7 +695,8 @@ async function answerQuestionUntraced(
         const manual = await knowledge.fetchOfficialPolicyManual(ACTIVE_BRAND.knowledgeScopeId);
         if (manual.ok && recallOn) content = withMappedPolicy(content, turns, manual.chunks, true);
         if (manual.ok && citeOn && response.formProposal) {
-          const notes = turns.join("\n");
+          // CARD_POLICY_OWN_REQUEST_ENABLED: a card for <B> is not cited from <A>'s earlier request.
+          const notes = (cardPolicyOwnRequestEnabled() ? cardPolicyTurns(turns, response.formProposal.employeeName) : turns).join("\n");
           const attached = attachFormTurnSources({
             content,
             citations,

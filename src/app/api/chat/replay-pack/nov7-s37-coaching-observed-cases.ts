@@ -103,4 +103,23 @@ export const NOV7_S37_COACHING_OBSERVED_CASES: ReplayCase[] = [
       }
     },
   },
+  {
+    id: "nov7-s37-second-card-own-policy",
+    title: "flip 7 live tester: \"Coaching form for <A> for being on her phone\", then \"Coaching form for <B>\": B's card cites no policy from A's request",
+    report: "QA's live tester, Sunny flip 7 (s37 flags on), 7 Nov 2026: B's card (right salon) cited Cell Phone/Smart Watch p.19 from A's request",
+    status: { open: "the form answer's policy line is read over every manager turn, so B's card cites A's Cell Phone/Smart Watch" },
+    fixFlags: ["COACHING_OBSERVED_KEPT_ENABLED", "POLITE_REQUEST_OWN_TURNS_ENABLED", "CARD_POLICY_OWN_REQUEST_ENABLED"],
+    async run(t) {
+      const thread = start(t);
+      const first = await thread.say("Coaching form for Tamsin Holt for being on her phone");
+      expect(thread.proposal, "no Coaching card for Tamsin Holt").toMatchObject({ templateKey: "coaching", employeeName: "Tamsin Holt" });
+      // A's own request cites the cell phone policy (the line B must not inherit).
+      expect(first.content, `A's card does not cite the cell phone policy:\n${first.content}`).toMatch(/Cell Phone/i);
+      t.draftWrites({ coaching_details: "Observed:\nTamsin was on her phone during her shift." }, { coaching_type: ["standards_of_conduct"] });
+      await thread.create();
+      const second = await thread.say("Coaching form for Corwin Hale");
+      expect(thread.proposal, "no Coaching card for Corwin Hale").toMatchObject({ templateKey: "coaching", employeeName: "Corwin Hale", locationId: "loc-0309" });
+      expect(second.content, `B's card cites A's policy:\n${second.content}`).not.toMatch(/Cell Phone|Smart Watch/i);
+    },
+  },
 ];
