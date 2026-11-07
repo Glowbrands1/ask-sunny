@@ -2592,6 +2592,23 @@ export function coachingAsksWhatHappenedEnabled(): boolean {
 }
 
 /**
+ * The turn that asked for the form stays in the bounded manager window when
+ * later turns push it out (the coordinator's replays R6/R7, 5 Nov 2026; see
+ * `forms/bounded-context.ts`). The window is computed on the server (the
+ * card) and in the browser (the draft), so there are two variables:
+ * REQUEST_KEPT_IN_WINDOW_ENABLED for the server and
+ * NEXT_PUBLIC_REQUEST_KEPT_IN_WINDOW_ENABLED for the browser. FLIP BOTH
+ * TOGETHER: with one on and the other off the card and the draft read
+ * different turns. NEXT_PUBLIC_ is inlined at build time, so a flip needs a
+ * redeploy. Off, the window is exactly as before.
+ */
+export function requestKeptInWindowEnabled(): boolean {
+  if (typeof window === "undefined") return envFlag("REQUEST_KEPT_IN_WINDOW_ENABLED");
+  const inlined = process.env.NEXT_PUBLIC_REQUEST_KEPT_IN_WINDOW_ENABLED;
+  return typeof inlined === "string" && ON.has(inlined.trim().toLowerCase());
+}
+
+/**
  * ROSTER_NAME_IN_CANDIDATE_ENABLED (QA, 5 Nov 2026, R2 checked in this app;
  * default off). One employee's story that names their district manager in
  * passing ("When <employee> spoke with District manager <name> …"): with
