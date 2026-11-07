@@ -93,7 +93,8 @@ export const NOV5_REPLY_MATCHES_CARD_CASES: ReplayCase[] = [
     id: "nov5-reply-card-r3-typo-action-plan",
     title: "R3: \"create a CA for Ignatius Wexlarby …\" (one letter wrong): whatever the card, the reply agrees with it (never the Action plan naming him beside an empty card)",
     report: `${REPORT}; R3 (QA's testers): the card emptied, the Action plan "with Ignatius", then "Who is this form for?"`,
-    status: { open: "the empty card's Action plan names Ignatius" },
+    // Changed on purpose (7 Nov 2026): QA's flips of 5 and 6 Nov turned CA_SALES_POLICY, REPLY_MATCHES_CARD, TITLE_OF_THE_EMPLOYEE, METRIC_GUARD, TITLE_ENDS_AT_LINE, BARE_NOT_DENIAL and PLACE_FROM_CUE on in production (production-flags.json); this case now holds with production's flags.
+    status: "fixed",
     fixFlags: [FIX],
     run: withFlip(async (t) => {
       const { reply, employee } = await said(t, "create a CA for Ignatius Wexlarby, he was 40 minutes late opening the salon on 11/2. action plan: Ignatius will be on time for every opening shift");
@@ -104,7 +105,8 @@ export const NOV5_REPLY_MATCHES_CARD_CASES: ReplayCase[] = [
     id: "nov5-reply-card-off-roster-name-line",
     title: "off roster: \"I need a coaching form for Zebulon Marchbanks. Name: Zebulon Marchbanks. …\": the empty card's reply never says it has the employee, names nobody, and asks who",
     report: `${REPORT}; QA's testers: "Name: <B>" and "I have the employee" while the card is empty`,
-    status: { open: "the empty card's reply says \"Everything I need is here … I have the employee and the salon\"" },
+    // Changed on purpose (7 Nov 2026): QA's flips of 5 and 6 Nov turned CA_SALES_POLICY, REPLY_MATCHES_CARD, TITLE_OF_THE_EMPLOYEE, METRIC_GUARD, TITLE_ENDS_AT_LINE, BARE_NOT_DENIAL and PLACE_FROM_CUE on in production (production-flags.json); this case now holds with production's flags.
+    status: "fixed",
     fixFlags: [FIX],
     run: withFlip(async (t) => {
       const { reply, employee } = await said(t, "I need a coaching form for Zebulon Marchbanks. Name: Zebulon Marchbanks. He did not restock the lotion shelves before close on 11/2. Action plan: Zebulon will restock before every close");
