@@ -41,15 +41,45 @@ describe("withoutNoAccountAppPolicy", () => {
       expect(out.content).not.toMatch(/\n{3,}/);
     });
 
+    it("nor a citation line, nor citations, and the Action Plan names no policy", () => {
+      vi.stubEnv("NO_ACCOUNT_NO_APP_POLICY_ENABLED", "true");
+      const built = {
+        ...reply(
+          "I'll draft a **Corrective Action Form** for **Rowan Kestrel**.",
+          ASK,
+          APP_READ,
+          "Attendance Policy, JBA Policy Manual p.14",
+          "**Action Plan:** Management will review the Attendance policy with Rowan. Future policy violations may result in additional corrective action up to and including termination of employment.",
+        ),
+        citations: [{ excerpt: "Attendance Policy. …" }],
+      } as unknown as AskResponse;
+      const out = withoutNoAccountAppPolicy(built);
+      expect(out.content).not.toMatch(/JBA Policy Manual/);
+      expect(out.content).toContain("**Action Plan:** Management will review the applicable company policy with Rowan.");
+      expect(out.citations).toEqual([]);
+    });
+
+    it("a citation inside a sentence is not a citation-only line", () => {
+      vi.stubEnv("NO_ACCOUNT_NO_APP_POLICY_ENABLED", "true");
+      const out = withoutNoAccountAppPolicy(reply(ASK, "I'll quote Attendance Policy, JBA Policy Manual p.14 once you tell me what happened, if it applies."));
+      expect(out.content).toContain("once you tell me what happened");
+    });
+
     it("a card with an account keeps the app's reading", () => {
       vi.stubEnv("NO_ACCOUNT_NO_APP_POLICY_ENABLED", "true");
       const built = reply("I'll draft a **Corrective Action Form** for **Rowan Kestrel**.", APP_READ);
       expect(withoutNoAccountAppPolicy(built)).toBe(built);
     });
 
-    it("a policy the manager named stays beside the ask", () => {
+    it("a policy the manager named stays beside the ask, with its citation and plan", () => {
       vi.stubEnv("NO_ACCOUNT_NO_APP_POLICY_ENABLED", "true");
-      const built = reply("I'll draft a **Corrective Action Form** for **Rowan Kestrel**.", ASK, AS_YOU_SAID);
+      const built = reply(
+        "I'll draft a **Corrective Action Form** for **Rowan Kestrel**.",
+        ASK,
+        AS_YOU_SAID,
+        "Attendance Policy, JBA Policy Manual p.14",
+        "**Action Plan:** Management will review the Attendance policy with Rowan.",
+      );
       expect(withoutNoAccountAppPolicy(built)).toBe(built);
     });
 
