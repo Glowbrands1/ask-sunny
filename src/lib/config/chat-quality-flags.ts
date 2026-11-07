@@ -2628,15 +2628,29 @@ export function asYouSaidManagerWordsEnabled(): boolean {
 }
 
 /**
- * BARE_NOT_AFTER_REQUEST_ENABLED (QA's live Sunny re-check, 6 Nov 2026;
- * default off). "ca for <A> not late" asked nothing: the clause starts with
- * the request, so BARE_NOT_DENIAL's clause-start "not" missed it. With this
- * flag on, the CA what-happened test also reads each clause without its
- * request head and the employee's name (`ai/ca-what-happened.ts`). Off, as
- * before.
+ * UNDER_PERFORMANCE_EXPLAINED_ENABLED (Pau, 6 Nov 2026; the Sunny tester
+ * after the flip: "it should be under performance not standard of conduct";
+ * default off). When the manager's message names Under Performance and the
+ * card cites the Standards of Conduct, the reply says why, once: "Under
+ * Performance isn't on the CA form. Sales performance CAs use the Standards
+ * of Conduct." (`ai/under-performance-explained.ts`). Off, as before.
  */
-export function bareNotAfterRequestEnabled(): boolean {
-  return envFlag("BARE_NOT_AFTER_REQUEST_ENABLED");
+export function underPerformanceExplainedEnabled(): boolean {
+  return envFlag("UNDER_PERFORMANCE_EXPLAINED_ENABLED");
+}
+
+/**
+ * SALES_SHORTFALL_OBJECT_ENABLED (QA, 6 Nov 2026, tester batch 1 after the
+ * Sunny flip; default off). "Not meeting sales requirements for the month of
+ * October" got a Corrective Action with no policy: the stated-shortfall reader
+ * (`forms/metric-shortfall.ts`) named "sales" only as "sales are / is", so the
+ * CA_SALES_POLICY_ENABLED reading never fired. With this flag on, "sales" is a
+ * named metric where a shortfall verb of the reader's own judged list governs
+ * it, with only determiners or possessives between ("not meeting her sales
+ * goals"); "missing from the sales floor" is not. Off, as before.
+ */
+export function salesShortfallObjectEnabled(): boolean {
+  return envFlag("SALES_SHORTFALL_OBJECT_ENABLED");
 }
 
 /**
@@ -2760,4 +2774,30 @@ export function policyChangeRelevantEnabled(): boolean {
  */
 export function caOfferKeepsAccountEnabled(): boolean {
   return envFlag("CA_OFFER_KEEPS_ACCOUNT_ENABLED");
+}
+
+/**
+ * OWN_BRAND_ONLY_ENABLED (Pau, 6 Nov 2026, for the sibling app; same flag in both apps; default off). A reply quoting
+ * the manual listed every brand ("across all brands — <this brand>, <other brands> — …"); each app names only its own.
+ * On: the finished reply names only this company's brand — a list of brands holding it becomes it, a line headed by
+ * another brand goes, any other sentence naming one goes; a quotation is kept or dropped whole, never reworded
+ * (`ai/own-brand-only.ts`). The brands are read from existing config and patterns, not written anew; the JBA office is
+ * not a brand and its sentences stay (Pau, answer "A"). Off, as before.
+ */
+export function ownBrandOnlyEnabled(): boolean {
+  return envFlag("OWN_BRAND_ONLY_ENABLED");
+}
+
+// --- coding 2 flags ---
+
+/**
+ * BARE_NOT_AFTER_REQUEST_ENABLED (QA's live Sunny re-check, 6 Nov 2026;
+ * default off). "ca for <A> not late" asked nothing: the clause starts with
+ * the request, so BARE_NOT_DENIAL's clause-start "not" missed it. With this
+ * flag on, the CA what-happened test also reads each clause without its
+ * request head and the employee's name (`ai/ca-what-happened.ts`). Off, as
+ * before.
+ */
+export function bareNotAfterRequestEnabled(): boolean {
+  return envFlag("BARE_NOT_AFTER_REQUEST_ENABLED");
 }

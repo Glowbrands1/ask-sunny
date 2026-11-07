@@ -21,6 +21,8 @@ const FLAGS = [
   "FORM_NAME_FROM_ROSTER_ENABLED",
   "ROSTER_NEAR_MISS_ENABLED",
   "ROSTER_NAME_IN_CANDIDATE_ENABLED",
+  "ROSTER_COMPOUND_SURNAME_ENABLED",
+  "ROSTER_NOT_FOUND_ANY_PHRASING_ENABLED",
   "OFF_ROSTER_CONFIRM_ENABLED",
 ];
 
@@ -58,6 +60,58 @@ function offeredThenReady(id: string, title: string, turn: string, name: string)
       let reply = await thread.say(turn);
       if (thread.proposal?.status !== "ready") {
         expect(reply.content, `the name is not offered:\n${reply.content}`).toContain(`reply **use ${name}**`);
+        reply = await thread.say(`use ${name}`);
+      }
+      expect(thread.proposal, `no card the manager can create:\n${reply.content}`).toMatchObject({ employeeName: name, status: "ready" });
+    },
+  };
+}
+
+/** Two roster people the typed name is close to: the app asks which, and never offers the typed spelling (gate, 6 Nov 2026). */
+function neverOfferedBesideTwo(id: string, title: string, turn: string, typed: string, a: [string, string], b: [string, string]): ReplayCase {
+  const row = (key: string, [firstName, lastName]: [string, string]) => ({ id: key, firstName, lastName, preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" });
+  return {
+    id,
+    title,
+    report: "The Sunny flip-3 gate (6 Nov 2026): a near miss of two roster people was offered as a name not in Woven",
+    status: "fixed",
+    fixFlags: FLAGS,
+    async run(t) {
+      t.directory([...STAFF, row("e-near-a", a), row("e-near-b", b)] as never);
+      t.as("salon_director", KEARNEY);
+      const thread = t.thread();
+      const reply = await thread.say(turn);
+      expect(reply.content, `a near miss of a roster person is offered as not in Woven:\n${reply.content}`).not.toContain(`reply **use ${typed}**`);
+    },
+  };
+}
+
+/**
+ * B1 (port of the sibling app's flip-3 tester, 6 Nov 2026, live there): a company job title typed where the person
+ * goes is never said back as a person not found nor offered; and after the first reply the manager gives the name as
+ * "name is <name>" / "her name is <name>" / "it's <name>". Offered (the name is not in Woven), then the answer makes
+ * the card READY. The title is this app's own (Tanning Consultant); the names are invented.
+ */
+const TITLE = "Tanning Consultant";
+
+function namedLaterThenReady(id: string, title: string, turns: readonly string[], name: string): ReplayCase {
+  return {
+    id,
+    title,
+    report: "The sibling app's flip-3 tester (6 Nov 2026, B1): \"name is <name>\" for a person not in Woven asked \"Who is this form for?\" again on every turn",
+    status: "fixed",
+    fixFlags: FLAGS,
+    async run(t) {
+      t.directory(STAFF);
+      t.as("salon_director", KEARNEY);
+      const thread = t.thread();
+      let reply = { content: "" };
+      for (const turn of turns) {
+        reply = await thread.say(turn);
+        expect(reply.content, `the job title is said back as a person:\n${reply.content}`).not.toMatch(new RegExp(String.raw`\*\*${TITLE}\*\*`));
+      }
+      if (thread.proposal?.status !== "ready") {
+        expect(reply.content, `"${name}" is not offered:\n${reply.content}`).toContain(`reply **use ${name}**`);
         reply = await thread.say(`use ${name}`);
       }
       expect(thread.proposal, `no card the manager can create:\n${reply.content}`).toMatchObject({ employeeName: name, status: "ready" });
@@ -129,6 +183,52 @@ export const NOV6_OFF_ROSTER_OFFER_SHAPE_CASES: ReplayCase[] = [
     "nov6-offer-employee-comma-place",
     "\"i have an employee, Zebulon Marchbanks that needs a corrective action form …\" (not in Woven): offered, then READY (the sibling app's gate rerun 3)",
     "i have an employee, Zebulon Marchbanks that needs a corrective action form with a customer complaint",
+    "Zebulon Marchbanks",
+  ),
+  neverOfferedBesideTwo(
+    "nov6-offer-never-a-shared-word-near-miss",
+    "two roster people share the surname word (Odalys Prewett Vansickle, Odalys Dunmore Vansickle): \"create a ca form for Odalys Vansikcle\" is never offered as a name not in Woven",
+    "create a ca form for Odalys Vansikcle",
+    "Odalys Vansikcle",
+    ["Odalys", "Prewett Vansickle"],
+    ["Odalys", "Dunmore Vansickle"],
+  ),
+  neverOfferedBesideTwo(
+    "nov6-offer-never-a-distance-two-near-miss",
+    "two roster people two edits apart (Prewett Vansickle, Prewett Vancsikle): \"create a ca form for Odalys Prewett Vanscikle\" is never offered as a name not in Woven",
+    "create a ca form for Odalys Prewett Vanscikle",
+    "Odalys Prewett Vanscikle",
+    ["Odalys", "Prewett Vansickle"],
+    ["Odalys", "Prewett Vancsikle"],
+  ),
+  neverOffered(
+    "nov6-b1-title-never-a-person",
+    `B1: "create a CA for ${TITLE}, she was late opening the salon on 11/2": the job title is never offered as a person`,
+    [`create a CA for ${TITLE}, she was late opening the salon on 11/2`],
+    TITLE,
+  ),
+  namedLaterThenReady(
+    "nov6-b1-title-then-her-name-is",
+    `B1: "create a CA for ${TITLE}, …", then "her name is <name>" (not in Woven): offered, then READY`,
+    [`create a CA for ${TITLE}, she was late opening the salon on 11/2`, "her name is Zebulon Marchbanks"],
+    "Zebulon Marchbanks",
+  ),
+  namedLaterThenReady(
+    "nov6-b1-my-title-then-name-is",
+    `B1: "I need a CA form for my ${TITLE} who was late …", then "name is <name>" (not in Woven): offered, then READY`,
+    [`I need a CA form for my ${TITLE} who was late opening the salon on 11/2`, "name is Zebulon Marchbanks"],
+    "Zebulon Marchbanks",
+  ),
+  namedLaterThenReady(
+    "nov6-b1-its-name",
+    `B1: "I need a CA form for my ${TITLE} who was late …", then "it's <name>" (not in Woven): offered, then READY`,
+    [`I need a CA form for my ${TITLE} who was late opening the salon on 11/2`, "it's Zebulon Marchbanks"],
+    "Zebulon Marchbanks",
+  ),
+  namedLaterThenReady(
+    "nov6-b1-name-with-title-then-name-is",
+    `B1: "create a corrective action for <name>, ${TITLE}, …", then "name is <name>": the offer is made again, then READY`,
+    [`create a corrective action for Zebulon Marchbanks, ${TITLE}, he was late opening the salon on 11/2`, "name is Zebulon Marchbanks"],
     "Zebulon Marchbanks",
   ),
 ];
