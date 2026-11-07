@@ -339,6 +339,10 @@ export const SUNNY_REFUSALS: readonly RefusalScenario[] = [
       says: "Details of Coaching is about missing the monthly meeting",
       check: (run) => all(noError(run), created(run), has(run, "coaching_details", /monthly meeting/i, "is not about the monthly meeting"), notRefused(run)),
     },
+    // QA's bar for CITATION_LINE_KEPT_ON_REVISION + Step B (7 Nov 2026): no drift sentence, i.e. text about the session or
+    // the policy in place of her account (the drift the reader and the old revision wrote live).
+    liveCheck: (run) =>
+      hasNot(run, "coaching_details", /\baddressed the attendance policy\b|\bno specific incident\b|\bthis coaching (?:session|document)\b/i, "holds a drift sentence"),
   },
   {
     id: "sun-towel-nothing-said",

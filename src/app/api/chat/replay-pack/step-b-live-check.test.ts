@@ -40,3 +40,20 @@ describe("step-b-refusals LIVE: sun-late-date's policy ask", () => {
     expect(scripted.expect.check(run("Observed:\nThaddeus showed up late.", updated))).toBeNull();
   });
 });
+
+describe("step-b-refusals LIVE: sun-monthly-meeting has no drift sentence", () => {
+  const meeting = STEP_B_REFUSAL_LIVE_SCENARIOS.find((scenario) => scenario.id === "sun-monthly-meeting")!;
+  const updated = "Updated the **Coaching Form** for **Perrin Fennimore**: Details of Coaching. Everything else on the form is as it was.";
+  const at = (coachingDetails: string) =>
+    ({ ...(run(coachingDetails, updated) as object), card: { templateKey: "coaching", employeeName: "Perrin Fennimore" } }) as never;
+
+  it("passes on her account with the app's citation line", () => {
+    expect(meeting.expect.check(at("Observed:\nPerrin missed the monthly meeting.\n\nPolicy reference: Attendance Policy, JBA Policy Manual p.14"))).toBeNull();
+  });
+
+  it("fails when a drift sentence is written next to the meeting", () => {
+    expect(
+      meeting.expect.check(at("Observed:\nThis coaching session with Perrin addressed the attendance policy. Perrin missed the monthly meeting.")),
+    ).toMatch(/drift sentence/);
+  });
+});
