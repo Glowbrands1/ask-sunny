@@ -2197,6 +2197,17 @@ export function caShortcutWordsEnabled(): boolean {
 }
 
 /**
+ * CA_REQUEST_NOT_PRIOR_COACHING_ENABLED (Pau's scan, sf-s35, 7 Nov 2026; same flag in both apps; default off). "Can you
+ * draw me up a CA for <name> for being late on 10/23/26. <first> has signed a coaching document for being late on
+ * 10/14/26. …" opened a Coaching Form: the coaching named as history was read as the form asked for. On: a form named
+ * after a Corrective Action request in the same message is a detail of that request, unless the manager switches to
+ * it (`forms/template-intent.ts` requestedNaming). Off, as before.
+ */
+export function caRequestNotPriorCoachingEnabled(): boolean {
+  return envFlag("CA_REQUEST_NOT_PRIOR_COACHING_ENABLED");
+}
+
+/**
  * A name candidate inside a street address ("Ne Oakfield Lane", "kearney ne"
  * in "125 Ne Oakfield Lane, kearney, NE. 68847") is not a person (QA, 29 Oct
  * 2026; same flag in both apps). See `forms/answer-not-a-name.ts`. Off, as
@@ -2654,6 +2665,18 @@ export function salesShortfallObjectEnabled(): boolean {
 }
 
 /**
+ * TWO_FORMS_OWN_PERSON_ENABLED (QA, Sunny tester after the flip, 6 Nov 2026,
+ * row 6; default off). "Coaching form for <R>. Also a CA for <R2>." gave one
+ * Coaching card whose employee was R2, the other form's person. With this flag
+ * on, when one message asks for two forms the card keeps its employee only
+ * when its own clause names them, or it is emptied and asks who; the reply
+ * names the other request back (`ai/two-forms-own-person.ts`). Off, as before.
+ */
+export function twoFormsOwnPersonEnabled(): boolean {
+  return envFlag("TWO_FORMS_OWN_PERSON_ENABLED");
+}
+
+/**
  * PLACE_FROM_CUE_ENABLED (QA's Sunny gate, 6 Nov 2026, sf-s28; default off).
  * "can you write me a ca for <name> from o street", from a manager not
  * assigned to O Street: "from" was no place cue, so the salon was not read and
@@ -2698,7 +2721,6 @@ export function titleEndsAtLineEnabled(): boolean {
 
 /**
 
-
  * ROSTER_COMPOUND_SURNAME_ENABLED (the re-flip's rollback, 5 Nov 2026; default
  * off). The flip's live testers (R3/R5/R7): a real employee's surname is two
  * words, and the manager typed one with a transposed or swapped letter. The
@@ -2722,7 +2744,6 @@ export function rosterNotFoundAnyPhrasingEnabled(): boolean {
   return envFlag("ROSTER_NOT_FOUND_ANY_PHRASING_ENABLED");
 }
 
-
 /**
  * EXIT_STATED_ONLY_ENABLED (QA, 5 Nov 2026, severe; default off). A salon director pasted a termination letter and
  * asked for an exit form: How Employee Resigned became "Text message" (the text that caused the termination), Salon
@@ -2734,7 +2755,6 @@ export function rosterNotFoundAnyPhrasingEnabled(): boolean {
 export function exitStatedOnlyEnabled(): boolean {
   return envFlag("EXIT_STATED_ONLY_ENABLED");
 }
-
 
 /**
  * OFF_ROSTER_CONFIRM_ENABLED (port of the sibling app's flip-3 gate, QA, 6 Nov 2026; default off; ships with
@@ -2791,12 +2811,37 @@ export function ownBrandOnlyEnabled(): boolean {
 // --- coding 4 flags ---
 
 /**
- * CA_REQUEST_NOT_PRIOR_COACHING_ENABLED (Pau's scan, sf-s35, 7 Nov 2026; same flag in both apps; default off). "Can you
- * draw me up a CA for <name> for being late on 10/23/26. <first> has signed a coaching document for being late on
- * 10/14/26. …" opened a Coaching Form: the coaching named as history was read as the form asked for. On: a form named
- * after a Corrective Action request in the same message is a detail of that request, unless the manager switches to
- * it (`forms/template-intent.ts` requestedNaming). Off, as before.
+ * AS_YOU_SAID_APP_READ_ENABLED (QA's Sunny gate, 7 Nov 2026: 45 regressions from AS_YOU_SAID_MANAGER_WORDS; ships
+ * with it; same flag in both apps; default off). With AS_YOU_SAID on, an attendance or late-opening CA whose only
+ * Policy line was "<policy>, as you said" (read from the app's own line) lost the line. On: the policy the app's own
+ * lines named is kept as its reading and said as one ("**Policy:** Late Opening — read from this request …"),
+ * never "as you said" and never nothing (`forms/ca-policy.ts` readCaPolicy, caPolicyProposalLine). Off, as before.
  */
-export function caRequestNotPriorCoachingEnabled(): boolean {
-  return envFlag("CA_REQUEST_NOT_PRIOR_COACHING_ENABLED");
+export function asYouSaidAppReadEnabled(): boolean {
+  return envFlag("AS_YOU_SAID_APP_READ_ENABLED");
+}
+
+// --- coding 2 flags ---
+
+/**
+ * NO_NOTICE_NO_DATE_ENABLED (port of the sibling app's, QA, 6 Nov 2026;
+ * default off). "exit form for <X>, resigned 11-3-26 with no notice" printed
+ * "Date that notice was given: November 3, 2026": "resigned" is a notice-given
+ * cue. With this flag on, a stated "no notice" leaves the notice date empty,
+ * and the date stays the resignation's (`forms/exit-facts.ts`). Off, as before.
+ */
+export function noNoticeNoDateEnabled(): boolean {
+  return envFlag("NO_NOTICE_NO_DATE_ENABLED");
+}
+
+/**
+ * BARE_NOT_AFTER_REQUEST_ENABLED (QA's live Sunny re-check, 6 Nov 2026;
+ * default off). "ca for <A> not late" asked nothing: the clause starts with
+ * the request, so BARE_NOT_DENIAL's clause-start "not" missed it. With this
+ * flag on, the CA what-happened test also reads each clause without its
+ * request head and the employee's name (`ai/ca-what-happened.ts`). Off, as
+ * before.
+ */
+export function bareNotAfterRequestEnabled(): boolean {
+  return envFlag("BARE_NOT_AFTER_REQUEST_ENABLED");
 }
