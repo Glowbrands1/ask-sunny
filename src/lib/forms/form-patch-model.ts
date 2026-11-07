@@ -1,7 +1,9 @@
 import { z } from "zod/v4";
 
+import { formPatchReaderFixesEnabled } from "@/lib/config/chat-quality-flags";
+
 import { callFormPatchModel } from "./form-patch-call";
-import { buildFormPatchUserMessage, FORM_PATCH_SYSTEM_PROMPT, type FormPatchInput } from "./form-patch-prompt";
+import { buildFormPatchUserMessage, FORM_PATCH_READER_LINES, FORM_PATCH_SYSTEM_PROMPT, type FormPatchInput } from "./form-patch-prompt";
 import { patchOutputSchema, toPatch, type PatchOutput } from "./form-patch-schema";
 import type { FormPatch } from "./form-reducer";
 
@@ -20,9 +22,11 @@ export type FormPatchReading =
 export async function readFormPatch(input: FormPatchInput): Promise<FormPatchReading> {
   const keys = input.fields.map((field) => field.key);
   if (keys.length === 0) return { fallback: "no_fields" };
-  const schema = patchOutputSchema(keys as [string, ...string[]]);
+  // FORM_PATCH_READER_FIXES_ENABLED: "reword", and its prompt lines added after the approved text.
+  const fixes = formPatchReaderFixesEnabled();
+  const schema = fixes ? patchOutputSchema(keys as [string, ...string[]], { reword: true }) : patchOutputSchema(keys as [string, ...string[]]);
   const called = await callFormPatchModel({
-    system: FORM_PATCH_SYSTEM_PROMPT,
+    system: fixes ? `${FORM_PATCH_SYSTEM_PROMPT}\n${FORM_PATCH_READER_LINES}` : FORM_PATCH_SYSTEM_PROMPT,
     prompt: buildFormPatchUserMessage(input),
     schema: z.toJSONSchema(schema) as Record<string, unknown>,
   });
