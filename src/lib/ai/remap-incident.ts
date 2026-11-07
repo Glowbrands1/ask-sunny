@@ -7,10 +7,11 @@ import {
   politeRequestOwnTurnsEnabled,
   priorSentenceFixEnabled,
   requestLeadFillerEnabled,
+  requestParticipleLeadEnabled,
   secondRequestOwnAccountEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { withoutPriorStepClauses } from "@/lib/forms/form-date-answer";
-import { CA_POLICY_LABEL, readCaPolicy, STANDARDS_OF_CONDUCT, type CaPolicyName } from "@/lib/forms/ca-policy";
+import { CA_POLICY_LABEL, isSalesPolicyReading, readCaPolicy, STANDARDS_OF_CONDUCT, type CaPolicyName } from "@/lib/forms/ca-policy";
 import {
   findManualSection,
   headingKey,
@@ -64,7 +65,28 @@ const REQUEST_LEAD = new RegExp(
  */
 const REQUEST_LEAD_FILLED = new RegExp(String.raw`^\s*(?:also|now|and|then)\s+(?:${REQUEST_LEAD.source.replace(/^\^\\s\*/, "")})`, "i");
 
+/*
+ * REQUEST_PARTICIPLE_LEAD_ENABLED (QA's round-5 live Sunny check, 8 Nov 2026): "I need a corrective action made for
+ * under performance. <A> was below on PPTA, …" made the card's Observation of Offense "made for under performance.
+ * <A> was below …": a past participle between the form and "for" ("made / done / written up for") was not read as
+ * part of the request. With the flag on it is, only when "for" follows it. Off, as before.
+ */
+const REQUEST_PARTICIPLE = String.raw`(?:made|done|created|drawn\s+up|written(?:\s+up)?|filled\s+out|put\s+together|prepared|started|completed)`;
+const REQUEST_LEAD_PARTICIPLE = new RegExp(
+  String.raw`^\s*(?:please\s+)?(?:(?:can|could)\s+you\s+)?(?:(?:i\s+)?(?:need|want)\s+(?:to\s+)?)?(?:(?:create|make|start|open|do|file|write|draft|fill\s+out|put\s+together)\s+(?:me\s+)?)?${LEVEL_WORDS}${FORM_WORDS}\b\s*(?:${REQUEST_PARTICIPLE}\s+for\s+|for\s+)?`,
+  "i",
+);
+const REQUEST_LEAD_PARTICIPLE_FILLED = new RegExp(
+  String.raw`^\s*(?:also|now|and|then)\s+(?:${REQUEST_LEAD_PARTICIPLE.source.replace(/^\^\\s\*/, "")})`,
+  "i",
+);
+
 function requestLead(): RegExp {
+  if (requestParticipleLeadEnabled()) {
+    return requestLeadFillerEnabled()
+      ? new RegExp(`${REQUEST_LEAD_PARTICIPLE_FILLED.source}|${REQUEST_LEAD_PARTICIPLE.source}`, "i")
+      : REQUEST_LEAD_PARTICIPLE;
+  }
   return requestLeadFillerEnabled() ? new RegExp(`${REQUEST_LEAD_FILLED.source}|${REQUEST_LEAD.source}`, "i") : REQUEST_LEAD;
 }
 
@@ -570,6 +592,7 @@ export function accountSentences(
   options: { readonly managerOnly?: boolean } = {},
 ): string[] {
   const kept: string[] = [];
+  const reasonOnly = new Set<string>();
   // A later create request with its own incident is a new form; an edit or a
   // command turn ("change the date to 10-22", "show draft") is not an account.
   const start = currentRequestStart({ turns, employeeName, slotClause: accountSlot });
@@ -598,10 +621,23 @@ export function accountSentences(
       const joined = parts.join(", ").trim();
       if (joined.length < 8) continue;
       if (kept.some((seen) => seen.toLowerCase() === joined.toLowerCase())) continue;
+      if (requestParticipleLeadEnabled() && isRequestReasonOnly(trimmed, joined)) reasonOnly.add(joined);
       kept.push(joined);
     }
   }
+  // REQUEST_PARTICIPLE_LEAD_ENABLED: "I need a corrective action (made) for under performance." gives the request's
+  // reason, not the account; with the account in another sentence ("<A> was below on PPTA, …") it is left out, so the
+  // Observation starts at the account. Alone, it stays: the manager's only words about what happened.
+  if (reasonOnly.size > 0 && kept.some((sentence) => !reasonOnly.has(sentence))) return kept.filter((sentence) => !reasonOnly.has(sentence));
   return kept;
+}
+
+/** REQUEST_PARTICIPLE_LEAD_ENABLED: the sentence is a request whose rest is only a sales reason ("under performance"). */
+export function isRequestReasonOnly(sentence: string, rest: string): boolean {
+  const words = rest.replace(/[.!?]+$/, "").trim();
+  if (!requestLead().test(sentence.trim()) || !words || words.split(/\s+/).length > 5) return false;
+  const reading = readCaPolicy(words);
+  return reading.stated === null && isSalesPolicyReading(reading);
 }
 
 const STATE_SENTENCE =

@@ -46,6 +46,7 @@ import {
   caSalesPolicyEnabled,
   formNameFromRosterEnabled,
   complaintAccountEnabled,
+  requestParticipleLeadEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { namesOnlyAPolicy } from "@/lib/forms/person-guard";
 import { foldsToGlossaryTerm } from "./chat-glossary";
@@ -60,7 +61,16 @@ import { withoutAsksToTheApp } from "./asks-to-the-app";
 import { GRAMMAR_ANSWER, observationByRules, readSentenceEdit } from "./edit-date-rules";
 import { titleTextFromQuestion, titleTextFromTurns } from "./title-words";
 import type { GroundedPerson } from "./grounded-entities";
-import { accountSentences, currentRequestTurns, managerAccount, priorShorthand, withoutPriorList, withoutStateCodes, withoutStateLead } from "./remap-incident";
+import {
+  accountSentences,
+  currentRequestTurns,
+  isRequestReasonOnly,
+  managerAccount,
+  priorShorthand,
+  withoutPriorList,
+  withoutStateCodes,
+  withoutStateLead,
+} from "./remap-incident";
 import { statedPriorActions } from "@/lib/forms/prior-actions";
 import { displayTypedName, repairSpeaksAsValidator, scrubRosterBlock } from "./roster-reply";
 import { PRIMARY_SALON_STATEMENT } from "@/lib/forms/primary-salon-statement";
@@ -715,6 +725,7 @@ function withObservation(content: string, turns: readonly string[], employeeName
   const ignore = employeeName ? [employeeName] : [];
   const managerOnly = managerWordsOnlyEnabled();
   const sentences: string[] = [];
+  const reasons = new Set<string>();
   const conversation = turns.join("\n");
   for (const turn of managerOnly ? turns.map(withoutAppLines) : turns) {
     // PRIOR_SENTENCE_FIX_ENABLED (QA, 26 Oct 2026): "…she was late on 10-5 and 10-15. i coached her on
@@ -744,12 +755,17 @@ function withObservation(content: string, turns: readonly string[], employeeName
       if (observationNotPolicyNameEnabled() && namesOnlyAPolicy(sentence)) continue;
       if (content.toLowerCase().includes(sentence.toLowerCase())) continue;
       if (sentences.some((kept) => kept.toLowerCase() === sentence.toLowerCase())) continue;
+      // REQUEST_PARTICIPLE_LEAD_ENABLED: "I need a corrective action made for under performance." is the reason.
+      if (requestParticipleLeadEnabled() && isRequestReasonOnly(said, sentence)) reasons.add(sentence);
       sentences.push(sentence);
     }
   }
   if (sentences.length === 0) return content;
+  // REQUEST_PARTICIPLE_LEAD_ENABLED (QA's round-5 live Sunny check, 8 Nov 2026): with the account in another sentence,
+  // the request's reason is left out, so the Observation starts at the account. Alone, it stays.
+  const account = sentences.some((sentence) => !reasons.has(sentence)) ? sentences.filter((sentence) => !reasons.has(sentence)) : sentences;
   // COMPLAINT_ACCOUNT_ENABLED: the warning level is the form's Type of Warning, never the account.
-  const told = complaintAccountEnabled() ? sentences.map(withoutLevelLead) : sentences;
+  const told = complaintAccountEnabled() ? account.map(withoutLevelLead) : account;
   return `${content}\n\n**Observation of Offense:** ${told.join(" ")}`.trim();
 }
 
