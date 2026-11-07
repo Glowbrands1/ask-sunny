@@ -130,6 +130,23 @@ function onlyWhatDidNotHappenAfterRequest(clause: string, name: string): boolean
   return rest !== "" && onlyWhatDidNotHappen(rest);
 }
 
+/**
+ * BARE_NOT_AFTER_REQUEST_ENABLED, its second half (Coding's bisect, 7 Nov 2026): with the live
+ * REPLY_MATCHES_CARD a card with an Observation line never asks what happened, and "ca for <A> not late" put
+ * "<A> not late" there. A sentence that, without its request head and the employee's name, only says what did
+ * not happen is no Observation either. Off, false.
+ */
+export function onlyDeniesForObservation(sentence: string, name: string | null): boolean {
+  if (!bareNotAfterRequestEnabled()) return false;
+  const own = new Set((name ?? "").toLowerCase().split(/\s+/).filter(Boolean));
+  const words = sentence.trim().replace(REQUEST_HEAD, "").split(/\s+/).filter(Boolean);
+  while (words.length > 0 && own.has(words[0]!.toLowerCase().replace(/[^\p{L}'’-]/gu, ""))) words.shift();
+  const rest = words.join(" ").replace(/[.!?]+$/, "").trim();
+  // Every part must deny: "not late but left the bed dirty" says what happened.
+  const parts = rest.split(/\s*[,;]\s*|\s+(?:but|and)\s+/i).map((part) => part.trim()).filter(Boolean);
+  return parts.length > 0 && parts.every((part) => onlyWhatDidNotHappen(part));
+}
+
 /** A clause that says what this employee did. */
 function hasAccount(said: string, name: string, ignore: readonly string[]): boolean {
   return said
