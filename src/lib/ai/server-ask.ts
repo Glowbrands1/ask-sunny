@@ -74,6 +74,7 @@ import { candidateNameWords, isFormRecordsQuestion, loadFormRecords } from "@/li
 import { withRosterOnlyNames } from "@/lib/forms/roster-only-names";
 import { priorFormsReadingForChat } from "@/lib/forms/prior-forms";
 import { applyOptionalPriorCoaching } from "./prior-coaching-optional";
+import { priorCoachingManagerText } from "./prior-coaching-denial";
 import { withMappedPolicy } from "./violation-policy";
 import { manualScopeFetchLimit, scopeToCurrentManual } from "@/lib/knowledge/current-manual-scope";
 import {
@@ -701,7 +702,8 @@ async function answerQuestionUntraced(
       content = applyOptionalPriorCoaching(content, {
         enabled: true,
         records: [],
-        managerText: turns.join("\n"),
+        // PRIOR_COACHING_DENIAL_ENABLED: "There's no prior coaching on file." is not read as a note; off, as before.
+        managerText: priorCoachingManagerText(turns, request.context.todayIso),
       });
     }
     if (recallOn || (citeOn && response.formProposal)) {
