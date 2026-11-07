@@ -3211,6 +3211,18 @@ export function twoFormsEachPersonEnabled(): boolean {
   return envFlag("TWO_FORMS_EACH_PERSON_ENABLED");
 }
 
+// coding 2: REOPEN_NOT_OPEN_FORM
+/**
+ * REOPEN_NOT_OPEN_FORM_ENABLED (QA's Sunny round-4 gate, 8 Nov 2026; default off; same flag in both apps). With
+ * REOPEN_BY_ANY_OPEN_VERB on, "I need the CA for the Must see behaviors … Make it in the format that I explained
+ * above" with that CA open was answered "… is still a draft, so it's open to edit." with no edit ("see" read as a
+ * show verb). With this flag on, a reopen of the form already open whose verb is not the request at the start of the
+ * turn steps aside (`forms/chat-reopen.ts`); "show me the draft" still shows it. Off, as before.
+ */
+export function reopenNotOpenFormEnabled(): boolean {
+  return envFlag("REOPEN_NOT_OPEN_FORM_ENABLED");
+}
+
 // coding 2: REMOVE_POLICY_NOT_NAMED
 /**
  * REMOVE_POLICY_NOT_NAMED_ENABLED (port from the sibling app; A1, QA 6 Nov 2026; default off). "take the
