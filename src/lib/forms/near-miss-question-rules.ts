@@ -1,0 +1,71 @@
+import type { AskRequest, AskResponse } from "@/lib/ai/types";
+import { nearMissQuestionRulesEnabled } from "@/lib/config/chat-quality-flags";
+
+import { statedPayrollDeduct } from "./payroll-deduct-answer";
+import { ASK_WHO } from "./roster-only-names";
+
+/**
+ * ============================================================================
+ * "IS THIS FOR <NAME>?" — "NO" TURNS IT DOWN, AND A CARD IS NEVER REPLACED BY IT
+ * ============================================================================
+ *
+ * NEAR_MISS_QUESTION_RULES_ENABLED (QA's Sunny round-4 gate on b2f66960, 8 Nov 2026; ships with the name set).
+ *
+ * (a) nov7-near-miss-details-{corvina,delphine}-turned-down: after "Is this for **<roster name>**? Tell me if that
+ * should change.", the reply "no, verbal warning, no payroll deduct, …" still drafted for the name turned down: the
+ * name readers read the first turn's typed name again and seated its roster near-miss. A reply that opens by turning
+ * the name down ("no", "nope", "wrong", "not …"; not when that opening clause is itself the payroll answer, "no payroll
+ * deduct") never gets a card for that name: the card keeps the details and waits for the employee, and the reply asks
+ * who. A full name given in the same reply ("no, it's <name>") is read as before (`ai/first-name-suggest.ts`), so
+ * only the name turned down is ever taken off.
+ *
+ * (b) is in `roster-only-names.ts`: it needs the card on screen (`cardEmployee`, entered by the chat route).
+ */
+
+const ASKED = /^Is this for \*\*([^*\n]+)\*\*\? Tell me if that should change\.\s*$/;
+const TURNS_DOWN = /^\s*(?:no|nope|wrong|not)\b/i;
+
+/** The card's own first line: "I'll draft a **Corrective Action Form** for **<name>** …". */
+const CARD_LEAD = /^I'll draft an? \*\*[^*\n]+\*\* for \*\*([^*\n]+)\*\*/m;
+
+function lastReply(request: Pick<AskRequest, "history">): string {
+  return String([...(request.history ?? [])].reverse().find((turn) => turn.role === "assistant")?.content ?? "").trim();
+}
+
+/** (b) The employee of the card the reply before this turn drafted, when no form is open; null otherwise. */
+export function cardEmployee(request: Pick<AskRequest, "history" | "activeFormInstanceId">): string | null {
+  if (request.activeFormInstanceId) return null;
+  return CARD_LEAD.exec(lastReply(request))?.[1]?.trim() || null;
+}
+
+/** (a) The name the reply before this turn asked about, when this turn turns it down; null otherwise. */
+export function turnedDownName(request: Pick<AskRequest, "history" | "question">): string | null {
+  const asked = ASKED.exec(lastReply(request))?.[1]?.trim();
+  if (!asked || !TURNS_DOWN.test(request.question)) return null;
+  const opening = request.question.trim().split(/[,.;!\n]/)[0] ?? "";
+  return statedPayrollDeduct(opening) === null ? asked : null;
+}
+
+/** (a) The reply to a turn that turned the asked name down never drafts for that name. */
+export function withoutTurnedDownName(answer: AskResponse, request: Pick<AskRequest, "history" | "question">): AskResponse {
+  if (!nearMissQuestionRulesEnabled()) return answer;
+  const name = turnedDownName(request);
+  const card = answer.formProposal;
+  if (!name || !card || (card.employeeName ?? "").trim().toLowerCase() !== name.toLowerCase()) return answer;
+  const content = answer.content
+    .replace(new RegExp(String.raw`\s+for\s+\*\*${escape(name)}\*\*`, "g"), "")
+    .split(`**${name}**`)
+    .join("the employee")
+    .replace(/^Create the draft here when you're ready[^\n]*$/m, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return {
+    ...answer,
+    content: content.includes(ASK_WHO) ? content : `${content}\n\n${ASK_WHO}`,
+    formProposal: { ...card, employeeName: null, status: "needs_employee", supportsInlineDraft: false },
+  };
+}
+
+function escape(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}

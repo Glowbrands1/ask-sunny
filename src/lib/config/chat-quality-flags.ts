@@ -3181,3 +3181,15 @@ export function sourceNoteGuardEnabled(): boolean {
 export function removePolicyNotNamedEnabled(): boolean {
   return envFlag("REMOVE_POLICY_NOT_NAMED_ENABLED");
 }
+
+/**
+ * NEAR_MISS_QUESTION_RULES_ENABLED (QA's Sunny round-4 gate, 8 Nov 2026; default off; ships with the name set,
+ * FORM_NAME_FROM_ROSTER and ROSTER_NEAR_MISS). Two rules for "Is this for **<roster name>**? Tell me if that should
+ * change.": (a) a reply that turns it down ("no, verbal warning, …") never gets a card for that name, whichever reader
+ * would seat it (`forms/near-miss-question-rules.ts`); (b) a card already on screen is never replaced by the bare
+ * question: a near-miss of the card's own employee keeps the card in the roster's spelling, another name keeps the
+ * card's details with the question under it (`forms/roster-only-names.ts`). Off, as before.
+ */
+export function nearMissQuestionRulesEnabled(): boolean {
+  return envFlag("NEAR_MISS_QUESTION_RULES_ENABLED");
+}
