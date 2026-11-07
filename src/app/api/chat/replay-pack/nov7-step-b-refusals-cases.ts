@@ -1,7 +1,7 @@
 import { expect } from "vitest";
 
 import { KEARNEY, replyMatchesDiff, savedForm, type ReplayCase } from "./cases";
-import { CASH, ROOM_PROCESS, ROOM_STEPS, STEP_B_REFUSAL_SCENARIOS, STEP_B_READER_FLAGS, SUN_YES, patch, type RefusalScenario } from "./nov7-step-b-refusals-scenarios";
+import { CASH, ROOM_PROCESS, ROOM_STEPS, STEP_B_REFUSAL_SCENARIOS, STEP_B_READER_FLAGS, SUN_TOWEL, SUN_YES, patch, type RefusalScenario } from "./nov7-step-b-refusals-scenarios";
 
 /**
  * ============================================================================
@@ -89,6 +89,32 @@ const LIVE_SHAPES: readonly RefusalScenario[] = [
       patch: {
         [CASH]: patch("this_form", [{ field: "coaching_details", value: "Reminded her to call a manager for any cash drawer shortage.", how: "add", evidence: "reminded her to call a manager for any cash drawer shortage" }]),
         [SUN_YES]: patch("this_form", [{ field: "coaching_details", value: "Reminded her to call a manager for any cash drawer shortage.", how: "add", evidence: "Reminded her to call a manager for any cash drawer shortage" }]),
+      },
+      revisionFrom: {
+        [SUN_YES]: { coaching_details: "Reminded her to call a manager for any cash drawer shortage.\nReminded her to call a manager for any cash drawer shortage." },
+      },
+    },
+  },
+  /*
+   * QA's re-run (7 Nov 2026, sonnet-5, patch on Haiku): the reader found nothing to write in "add details about the
+   * towel" and "yes, do that"; the old revision then wrote the instruction ("Observed: Add details about the
+   * towel.") and the reminder a second time.
+   */
+  {
+    ...byId("sun-towel-nothing-said"),
+    id: "sun-towel-nothing-said-live-shape",
+    script: {
+      patch: { [SUN_TOWEL]: patch("this_form") },
+      revisionFrom: { [SUN_TOWEL]: { coaching_details: "Observed:\nAdd details about the towel." } },
+    },
+  },
+  {
+    ...byId("sun-yes-do-that"),
+    id: "sun-yes-do-that-empty-reading",
+    script: {
+      patch: {
+        [CASH]: patch("this_form", [{ field: "coaching_details", value: "Reminded her to call a manager for any cash drawer shortage.", how: "add", evidence: "reminded her to call a manager for any cash drawer shortage" }]),
+        [SUN_YES]: patch("this_form"),
       },
       revisionFrom: {
         [SUN_YES]: { coaching_details: "Reminded her to call a manager for any cash drawer shortage.\nReminded her to call a manager for any cash drawer shortage." },

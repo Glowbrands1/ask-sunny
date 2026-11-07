@@ -259,6 +259,14 @@ export const BUBBLES_REFUSALS: readonly RefusalScenario[] = [
           },
         ]),
       },
+      /*
+       * With FORM_PATCH_READER_FIXES_ENABLED a name correction the app's own reader recognises skips the reading
+       * (QA's latency re-run) and the old path takes it; its revision writes the corrected text, as QA's live
+       * runs did both ways.
+       */
+      revisionFrom: {
+        [BUB_FENWICK]: { coaching_details: "Observed:\nIsolde Pembrooke was late to open the salon today.\nExpectation:\nIsolde is expected to arrive on time and be ready to open." },
+      },
     },
     expect: {
       says: "Details of Coaching names her Isolde Pembrooke (first name kept)",
@@ -287,7 +295,7 @@ export const BUBBLES_REFUSALS: readonly RefusalScenario[] = [
 /* ------------------------------------------------------------- Sunny 9 -- */
 
 const SUN_MEETING = "can you make it for missing out monthly meeting";
-const SUN_TOWEL = "add details about the towel";
+export const SUN_TOWEL = "add details about the towel";
 const SUN_QUITTING = "update the draft: he told the whole team he was quitting";
 const SUN_POSITION = "change her position to Tanning Consultant";
 const SUN_OUTLINE = "No this should be the same out line but with sabelines info i told you in the first chat";

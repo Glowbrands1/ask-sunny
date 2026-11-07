@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { applyPatch, factWords, type FormDraft, type FormPatch, type PatchRules } from "./form-reducer";
+import { addsNothingNew, applyPatch, factWords, type FormDraft, type FormPatch, type PatchRules } from "./form-reducer";
 import { patchOutputSchema, toPatch } from "./form-patch-schema";
 
 /**
@@ -197,5 +197,30 @@ describe("FORM_PATCH_READER_FIXES_ENABLED: content she gave is kept (QA's live r
 
   it("on: the process as she gave it is written", () => {
     expect(applyPatch(draft, op("coaching_details", STEPS, "replace", STEPS), rules(LATEST, ["coaching_details"], fixes)).diff.refused).toEqual([]);
+  });
+});
+
+describe("FORM_PATCH_READER_FIXES_ENABLED: after the reader found nothing to write (QA's re-run, 7 Nov 2026)", () => {
+  it("the instruction written as content adds nothing new (a heading is layout)", () => {
+    expect(addsNothingNew("Observed:\nAdd details about the towel.", "", "add details about the towel")).toBe(true);
+  });
+
+  it("a sentence the field already holds, written again, adds nothing new", () => {
+    const once = "Reminded her to call a manager for any cash drawer shortage.";
+    expect(addsNothingNew(`${once}\n${once}`, once, "yes, do that")).toBe(true);
+  });
+
+  it("content from the conversation is new", () => {
+    expect(addsNothingNew("Use a fresh towel for every guest.", "", "add details about the towel")).toBe(false);
+  });
+
+  it("the revision's write is refused as copies_message with `nothingNewFrom`", () => {
+    const draft: FormDraft = { coaching_details: field("coaching_details", "", "empty") };
+    const rules: PatchRules = { mode: "draft", writable: new Set(["coaching_details"]), typedExempt: new Set(["coaching_details"]), sources: { manager: "add details about the towel" }, nothingNewFrom: "add details about the towel" };
+    const write: FormPatch = { set: { coaching_details: "Observed:\nAdd details about the towel." }, clear: [] };
+    expect(applyPatch(draft, write, rules).diff.refused).toEqual([{ key: "coaching_details", reason: "copies_message" }]);
+    const { nothingNewFrom: _off, ...without } = rules;
+    void _off;
+    expect(applyPatch(draft, write, without).diff.refused).toEqual([]);
   });
 });

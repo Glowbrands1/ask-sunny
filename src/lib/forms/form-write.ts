@@ -3,7 +3,7 @@ import "server-only";
 import type { AskResponse } from "@/lib/ai/types";
 import { payrollAmounts } from "@/lib/ai/intent-slots";
 import { businessToday } from "@/lib/business-date";
-import { formEditNoopGuardEnabled } from "@/lib/config/chat-quality-flags";
+import { formEditNoopGuardEnabled, formPatchReaderFixesEnabled } from "@/lib/config/chat-quality-flags";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { isGlossaryTerm } from "@/lib/ai/chat-glossary";
 
@@ -34,6 +34,7 @@ import {
   type LoadedInstance,
 } from "./instances";
 import { NO_PRIOR_ACTION, PRIOR_ACTIONS_KEY } from "./prior-actions";
+import { takeReaderFoundNothing } from "./reader-found-nothing";
 import { draftableCheckboxGroups, draftableFields, type DraftValues } from "./responsibility";
 import { copiedContent } from "./same-form-copy";
 
@@ -261,7 +262,7 @@ const NOOP_GUARDED_PATHS: ReadonlySet<FormEditPath> = new Set(["tool", "patch", 
 
 /** The reducer's rules for the path. */
 export function presetRules(loaded: LoadedInstance, ops: readonly FormEditOp[], rules: FormEditRules): { patchRules: PatchRules; writable: ReadonlySet<string> } {
-  const preset = basePresetRules(loaded, ops, rules);
+  const preset = withReaderFoundNothing(loaded, rules, basePresetRules(loaded, ops, rules));
   if (!NOOP_GUARDED_PATHS.has(rules.path) || !formEditNoopGuardEnabled()) return preset;
   /*
    * A correction states facts its readers read, a restated one beside the
@@ -274,6 +275,20 @@ export function presetRules(loaded: LoadedInstance, ops: readonly FormEditOp[], 
   const correction = rules.path === "correction" || rules.path === "reopen";
   const refuseSameValue = !correction ? true : (rules.syncPlan?.after.length ?? 0) > 0 ? false : "whole_patch";
   return { ...preset, patchRules: { ...preset.patchRules, refuseSameValue, copiesMessage: rules.latest ?? "" } };
+}
+
+/**
+ * FORM_PATCH_READER_FIXES_ENABLED (QA's live run, 7 Nov 2026): when Step B's reader found nothing to write in
+ * this message, the revision that runs next may not write text that adds nothing new (`nothingNewFrom`).
+ */
+function withReaderFoundNothing(
+  loaded: LoadedInstance,
+  rules: FormEditRules,
+  preset: { patchRules: PatchRules; writable: ReadonlySet<string> },
+): { patchRules: PatchRules; writable: ReadonlySet<string> } {
+  if (rules.path !== "revision" || !formPatchReaderFixesEnabled()) return preset;
+  if (!takeReaderFoundNothing(loaded.instance.id)) return preset;
+  return { ...preset, patchRules: { ...preset.patchRules, nothingNewFrom: rules.latest ?? "" } };
 }
 
 function basePresetRules(loaded: LoadedInstance, ops: readonly FormEditOp[], rules: FormEditRules): { patchRules: PatchRules; writable: ReadonlySet<string> } {

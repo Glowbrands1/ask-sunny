@@ -195,6 +195,8 @@ async function readingFor(input: PatchTurnInput, modelInput: FormPatchInput): Pr
 }
 
 export async function patchActiveForm(input: PatchTurnInput): Promise<AskResponse | null> {
+  // FORM_PATCH_READER_FIXES_ENABLED: a previous turn's "found nothing" never reaches this one.
+  if (formPatchReaderFixesEnabled()) (await import("./reader-found-nothing")).clearReaderFoundNothing(input.instanceId);
   try {
     let authorized: Awaited<ReturnType<typeof authorizeInstance>>;
     try {
@@ -218,7 +220,11 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
      * revision paths run as before. (A patch whose sets were all refused still
      * answers from its diff.)
      */
-    if (Object.keys(reading.patch.set).length === 0 && reading.patch.clear.length === 0) return null;
+    if (Object.keys(reading.patch.set).length === 0 && reading.patch.clear.length === 0) {
+      // FORM_PATCH_READER_FIXES_ENABLED: the old path's revision may not then write the instruction itself.
+      if (readerFixes) (await import("./reader-found-nothing")).noteReaderFoundNothing(input.instanceId);
+      return null;
+    }
 
     /*
      * The assistant's last reply counts as accepted only when the patch quotes

@@ -227,6 +227,12 @@ export interface PatchRules {
    * what is there (the form's Job Title: "change her position to Team Member"); written as the manager's.
    */
   readonly verbatimKeys?: ReadonlySet<string>;
+  /**
+   * FORM_PATCH_READER_FIXES_ENABLED: the latest message, when Step B's reader found nothing in it to write. A
+   * text value whose added words are all words of this message or of the field's own text adds nothing new
+   * (the instruction written as content, a sentence repeated) and is refused as `copies_message`.
+   */
+  readonly nothingNewFrom?: string;
 }
 
 export interface ProtectedValues {
@@ -330,6 +336,20 @@ function valueWasSaid(value: string, rules: PatchRules, context: { old: string; 
 }
 
 /* -------------------------------------- FORM_PATCH_READER_FIXES_ENABLED ---- */
+
+/** Every word the value adds to the field is a word of the message or of the field's own text (and it adds some). */
+export function addsNothingNew(value: string, old: FieldValue, message: string): boolean {
+  const before = typeof old === "string" ? old : old.join("\n");
+  const added = addedWords(value, before);
+  if (added.length === 0) return false;
+  const known = new Set([...wordsOf(message), ...wordsOf(before)]);
+  // A line's heading ("Observed:", "Expectation:") is the field's layout, not content.
+  for (const line of value.split("\n")) {
+    const first = line.trim().split(" ")[0] ?? "";
+    if (first.endsWith(":")) for (const word of wordsOf(first)) known.add(word);
+  }
+  return added.every((word) => known.has(word));
+}
 
 /** Two words share a stem: the same word, or both 4+ letters with the same first four ("missed", "missing"). */
 function sameStem(a: string, b: string): boolean {
@@ -833,6 +853,10 @@ export function applyPatch(draft: FormDraft, patch: FormPatch, rules: PatchRules
   /* FORM_EDIT_NOOP_GUARD_ENABLED: an op that copies the message, or changes nothing, is refused. */
   const guarded = (key: string, value: FieldValue | null, written: Written): Written => {
     if (rules.copiesMessage !== undefined && value !== null && copiesMessage(typeof value === "string" ? value : asList(value).join("\n"), rules.copiesMessage)) {
+      return refuse(key, "copies_message");
+    }
+    // FORM_PATCH_READER_FIXES_ENABLED: after the reader found nothing to write, a value that adds nothing new.
+    if (rules.nothingNewFrom !== undefined && typeof value === "string" && !isRefusal(written) && written !== null && addsNothingNew(value, current(next, key).value, rules.nothingNewFrom)) {
       return refuse(key, "copies_message");
     }
     if (!rules.refuseSameValue || isRefusal(written)) return written;
