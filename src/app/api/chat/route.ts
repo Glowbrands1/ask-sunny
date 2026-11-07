@@ -429,21 +429,6 @@ async function postChat(request: Request) {
           today: parsed.context.todayIso,
         });
       }
-      /*
-       * FORM_PATCH_READER_FIXES_ENABLED (QA's latency ask, 7 Nov 2026): the Step B reading is started now, so
-       * its model call runs while the steps below do; the patch turn takes it only if its input is the same.
-       * A name correction the app's own reader recognised ("fix her last name, it is …") goes to the
-       * correction path without a reading (QA's re-run: those turns paid for both).
-       */
-      if (formPatchReaderFixesEnabled() && !formEditToolInStreamEnabled() && !askedQuestion && !nameFix && parsed.activeFormInstanceId) {
-        (await import("@/lib/forms/form-patch-turn")).startPatchReading({
-          request,
-          instanceId: parsed.activeFormInstanceId,
-          question: parsed.question,
-          history: parsed.history,
-          today: parsed.context.todayIso,
-        });
-      }
       const correction = parsed.activeFormInstanceId && !askedQuestion
         ? await (await import("@/lib/forms/chat-correction")).correctActiveForm({
             request,

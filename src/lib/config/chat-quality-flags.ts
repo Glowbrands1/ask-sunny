@@ -2814,7 +2814,7 @@ export function formEditSaidReplacementEnabled(): boolean {
  *   (2) the evidence and word checks read the form's own employee name as said (a "<Name> must practice …"
  *       for "Add that she Must Practice …"), match a word by its stem ("missed" for "missing"), and hold every
  *       FACT word — a number, a date, a capitalised word inside a sentence — to the manager's words or the
- *       form; at least half of the other added words must be said;
+ *       form; only a few other added words (at most 2, or 15% of them) may be unsaid;
  *   (3) Pau's "yes rewrite" (7 Nov 2026): the reader may answer how "reword" when the latest message asks for
  *       the wording to change; the field's text is rewritten in new words, every fact still the manager's or
  *       the form's, every protected value (name, date, amount) kept (prompt lines added, never edited);

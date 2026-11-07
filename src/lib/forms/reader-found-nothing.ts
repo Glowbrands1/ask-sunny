@@ -11,11 +11,12 @@
  * and void after TURN_MS. Pure state; no I/O.
  */
 const TURN_MS = 60_000;
-const found = new Map<string, { at: number; evidence: Readonly<Record<string, string>> }>();
+const found = new Map<string, { at: number; evidence: Readonly<Record<string, string>>; nothing: boolean }>();
 
 /** `evidence`: by field, the reader's evidence for the ops it read (a refused "make it about X"); the revision keeps it. */
-export function noteReaderFoundNothing(instanceId: string, evidence: Readonly<Record<string, string>> = {}): void {
-  found.set(instanceId, { at: Date.now(), evidence });
+/** `nothing`: the reader read the turn as about the form and found nothing in it to write. */
+export function noteReaderFoundNothing(instanceId: string, evidence: Readonly<Record<string, string>> = {}, nothing = true): void {
+  found.set(instanceId, { at: Date.now(), evidence, nothing });
 }
 
 export function clearReaderFoundNothing(instanceId: string): void {
@@ -23,8 +24,8 @@ export function clearReaderFoundNothing(instanceId: string): void {
 }
 
 /** Once, when this turn's reader handed off on this form: its evidence (empty when it read nothing to set). Null otherwise. */
-export function takeReaderFoundNothing(instanceId: string): { evidence: Readonly<Record<string, string>> } | null {
+export function takeReaderFoundNothing(instanceId: string): { evidence: Readonly<Record<string, string>>; nothing: boolean } | null {
   const entry = found.get(instanceId);
   found.delete(instanceId);
-  return entry !== undefined && Date.now() - entry.at <= TURN_MS ? { evidence: entry.evidence } : null;
+  return entry !== undefined && Date.now() - entry.at <= TURN_MS ? { evidence: entry.evidence, nothing: entry.nothing } : null;
 }

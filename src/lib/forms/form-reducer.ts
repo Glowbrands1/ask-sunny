@@ -213,7 +213,7 @@ export interface PatchRules {
    * holds. Every word of `employeeName` (the header's) and of `formText` (the form's own values) counts as
    * said; evidence that is the manager's words with the employee's name put in still counts as theirs; an
    * added FACT word (`factWords`: a number, or a capitalised word inside a sentence) must be said exactly,
-   * and at least MIN_SAID_SHARE of the other added words must be said or share a stem with a said word.
+   * and only a few of the other added words (MAX_UNSAID_WORDS, or UNSAID_SHARE of them) may be unsaid even by stem.
    * A "reword" op is checked for facts only (Pau, 7 Nov 2026: "yes rewrite"). Absent: unchanged.
    */
   readonly faithful?: {
@@ -236,8 +236,8 @@ export interface PatchRules {
   /**
    * FORM_PATCH_READER_FIXES_ENABLED (QA's stability run, 7 Nov 2026: "Details about the towel." written for "add
    * details about the towel"): a text value that repeats the instruction — every word of it (a line's heading and
-   * the employee's name aside) a word of the latest message, and one of them a word of its own field's label or the
-   * form's name (`formWords`, by key) — is refused as `copies_message`, on every path that carries it.
+   * the employee's name aside) a word of the latest message, and one of them its own field's name (the label's head
+   * word, from `formWords` by key) — is refused as `copies_message`, on every path that carries it.
    */
   readonly echoOf?: { readonly latest: string; readonly name: string; readonly formWords: Readonly<Record<string, string>> };
   /**
@@ -407,9 +407,9 @@ function headingWords(value: string): Set<string> {
 
 /**
  * The value repeats the instruction: every word (headings and the employee's name aside) is a word of the latest
- * message, and one of them (4+ letters) is a word of the field's own label or the form's name ("Details about the
- * towel." for "add details about the towel" on Details of Coaching). Content in her words ("She was also on her
- * phone.") does not name its field.
+ * message, and one of them is its field's own name — the label's head word ("Details about the towel." for "add
+ * details about the towel" on Details of Coaching). Content in her words ("She was also on her phone.", "Coaching
+ * when she signed the policy manual") does not name its field.
  */
 export function repeatsInstruction(value: string, echo: { latest: string; name: string; formWords: Readonly<Record<string, string>> }, key: string): boolean {
   const skip = new Set([...headingWords(value), ...wordsOf(echo.name)]);
@@ -417,8 +417,9 @@ export function repeatsInstruction(value: string, echo: { latest: string; name: 
   if (words.length === 0) return false;
   const said = new Set(wordsOf(echo.latest));
   if (!words.every((word) => said.has(word))) return false;
-  const own = new Set(wordsOf(echo.formWords[key] ?? "").filter((word) => word.length >= 4));
-  return words.some((word) => own.has(word));
+  // The field's own name, as a manager says it: its label's head word ("Details" of Coaching, "Observation" of Offense).
+  const head = wordsOf(echo.formWords[key] ?? "").find((word) => word.length >= 4);
+  return head !== undefined && words.includes(head);
 }
 
 /** Every word the value adds to the field is a word of the message or of the field's own text (and it adds some). */
@@ -478,7 +479,15 @@ function faithfulSaidWords(rules: PatchRules): Set<string> {
   return said;
 }
 
-/** Every added fact word is said; with `floor`, at least MIN_SAID_SHARE of the other added words are said or share a stem with one. */
+/**
+ * With `floor`, at most this many added ordinary words may be unsaid (not even by stem), or UNSAID_SHARE of the
+ * added words if that is more: "the" in "Perrin missed the monthly meeting." passes; an invented clause ("and then
+ * lied to the customer, refused to apologise") does not (the sibling app's replay, 7 Nov 2026).
+ */
+export const MAX_UNSAID_WORDS = 2;
+export const UNSAID_SHARE = 0.15;
+
+/** Every added fact word is said; with `floor`, only a few other added words (MAX_UNSAID_WORDS / UNSAID_SHARE) are unsaid. */
 function faithfulValueSaid(value: string, old: string, rules: PatchRules, floor: boolean): boolean {
   if (!rules.sources || !rules.faithful) return false;
   const said = faithfulSaidWords(rules);
@@ -491,8 +500,8 @@ function faithfulValueSaid(value: string, old: string, rules: PatchRules, floor:
   }
   if (!floor || others.length === 0) return true;
   const saidList = [...said];
-  const hits = others.filter((word) => said.has(word) || saidList.some((have) => sameStem(word, have))).length;
-  return hits / others.length >= MIN_SAID_SHARE;
+  const unsaid = others.filter((word) => !said.has(word) && !saidList.some((have) => sameStem(word, have))).length;
+  return unsaid <= Math.max(MAX_UNSAID_WORDS, Math.floor(UNSAID_SHARE * addedWords(value, old).length));
 }
 
 /** Evidence of at least this many words is content the manager gave, not an instruction: the value keeps it. */

@@ -299,14 +299,15 @@ function withReaderFoundNothing(
       ...preset.patchRules,
       echoOf,
       noRepeat: true,
-      ...(handedOff ? { nothingNewFrom: rules.latest ?? "", ...(Object.keys(handedOff.evidence).length > 0 ? { readerEvidence: handedOff.evidence } : {}) } : {}),
+      ...(handedOff?.nothing ? { nothingNewFrom: rules.latest ?? "" } : {}),
+      ...(handedOff && Object.keys(handedOff.evidence).length > 0 ? { readerEvidence: handedOff.evidence } : {}),
     },
   };
 }
 
-/** Per key: the field's own label and the form's name (FORM_PATCH_READER_FIXES_ENABLED's `echoOf`). */
+/** Per key: the field's own label (FORM_PATCH_READER_FIXES_ENABLED's `echoOf` reads its head word). */
 export function formWordsOf(loaded: LoadedInstance): Record<string, string> {
-  return Object.fromEntries(Object.entries(formLabels(loaded)).map(([key, label]) => [key, `${label} ${loaded.instance.templateName ?? ""}`]));
+  return Object.fromEntries(Object.entries(formLabels(loaded)).map(([key, label]) => [key, label]));
 }
 
 function basePresetRules(loaded: LoadedInstance, ops: readonly FormEditOp[], rules: FormEditRules): { patchRules: PatchRules; writable: ReadonlySet<string> } {

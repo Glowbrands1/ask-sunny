@@ -192,7 +192,10 @@ describe("FORM_PATCH_READER_FIXES_ENABLED: content she gave is kept (QA's live r
 
   it("on: a shorter summary that drops the towel is refused (drops_words)", () => {
     const summary = op("coaching_details", "Observed:\nReviewed the process for getting rooms ready between guests, including wiping down the bed.", "replace", STEPS);
-    expect(applyPatch(draft, summary, rules(LATEST, ["coaching_details"], fixes)).diff.refused).toEqual([{ key: "coaching_details", reason: "drops_words" }]);
+    // Changed on purpose (7 Nov 2026): the stricter unsaid-words floor now refuses it first (not_in_manager_words); refused either way.
+    const { diff } = applyPatch(draft, summary, rules(LATEST, ["coaching_details"], fixes));
+    expect(diff.changed).toEqual([]);
+    expect(diff.refused.map((refusal) => refusal.key)).toEqual(["coaching_details"]);
   });
 
   it("on: the process as she gave it is written", () => {
@@ -232,9 +235,10 @@ describe("FORM_PATCH_READER_FIXES_ENABLED: \"make it for/about X\" keeps her X (
 
   it("text about the form, none of her words in it, is refused (even with every word said earlier)", () => {
     const sameWords = op("coaching_details", "This coaching form for Perrin is about the attendance policy.", "replace", "missing out monthly meeting");
-    expect(applyPatch(draft, sameWords, rules(LATEST, ["coaching_details"], fixes, [LATEST, "can you create a coaching form for attendance policy"])).diff.refused).toEqual([
-      { key: "coaching_details", reason: "drops_words" },
-    ]);
+    // Changed on purpose (7 Nov 2026): the stricter unsaid-words floor may refuse it first (not_in_manager_words); refused either way.
+    const { diff } = applyPatch(draft, sameWords, rules(LATEST, ["coaching_details"], fixes, [LATEST, "can you create a coaching form for attendance policy"]));
+    expect(diff.changed).toEqual([]);
+    expect(diff.refused.map((refusal) => refusal.key)).toEqual(["coaching_details"]);
   });
 
   it("text about the form, with words nobody said, is refused", () => {
@@ -260,7 +264,7 @@ describe("FORM_PATCH_READER_FIXES_ENABLED: an in-place correction is not held to
 });
 
 describe("FORM_PATCH_READER_FIXES_ENABLED: the instruction is never written back as content (QA's stability run 2)", () => {
-  const coaching = { coaching_details: "Details of Coaching Coaching Form" };
+  const coaching = { coaching_details: "Details of Coaching", prior_actions: "Prior Coaching / Corrective Action" };
   const echo = (latest: string) => ({ latest, name: "Maelis Kittredge", formWords: coaching });
 
   it("\"Details about the towel.\" for \"add details about the towel\" repeats the instruction", () => {
@@ -272,6 +276,11 @@ describe("FORM_PATCH_READER_FIXES_ENABLED: the instruction is never written back
     expect(repeatsInstruction("She was also on her phone.", echo("add that she was also on her phone"), "coaching_details")).toBe(false);
     expect(repeatsInstruction("He told the whole team he was quitting.", echo("update the draft: he told the whole team he was quitting"), "coaching_details")).toBe(false);
     expect(repeatsInstruction("Reminded her to call a manager for any cash drawer shortage.", echo("add to the details: reminded her to call a manager for any cash drawer shortage"), "coaching_details")).toBe(false);
+  });
+
+  it("a label word that is content is not an echo (\"Coaching when she signed …\" in Prior Coaching)", () => {
+    expect(repeatsInstruction("Coaching when she signed the policy manual — signed May 2025", echo("Previous coaching was when she signed the policy manual, signed May 2025"), "prior_actions")).toBe(false);
+    expect(repeatsInstruction("She skipped her coaching session.", echo("add that she skipped her coaching session"), "coaching_details")).toBe(false);
   });
 
   it("a word nobody said makes it not an echo (the other checks judge it)", () => {
@@ -332,5 +341,14 @@ describe("FORM_PATCH_READER_FIXES_ENABLED: what the field says is never written 
     const again = op("coaching_details", "Reminded her to call a manager about any cash drawer shortage.", "add", "reminded her to call a manager for any cash drawer shortage");
     const base: PatchRules = { ...rules(latest, ["coaching_details"], { employeeName: "Ottoline Ormsworth", formText: ONCE }, [latest, `add to the details: ${ONCE}`]), noRepeat: true };
     expect(applyPatch(draft, again, base).diff.changed).toEqual([]);
+  });
+});
+
+describe("FORM_PATCH_READER_FIXES_ENABLED: an invented clause is refused (the sibling app's replay, 7 Nov 2026)", () => {
+  it("her sentence plus \"lied to the customer, refused to apologise, and was rude\" is refused", () => {
+    const what = "rowan marked an order as shipped but the customer hadn't picked up yet";
+    const draft: FormDraft = { coaching_details: field("coaching_details", "", "empty") };
+    const invented = op("coaching_details", "Rowan marked an order as shipped and then lied to the customer about it, refused to apologise, and was rude to the team all week.", "add", what);
+    expect(applyPatch(draft, invented, rules(what, ["coaching_details"], { employeeName: "Rowan Kestrel", formText: "" })).diff.refused).toEqual([{ key: "coaching_details", reason: "not_in_manager_words" }]);
   });
 });

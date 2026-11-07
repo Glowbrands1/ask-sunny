@@ -211,19 +211,21 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
     if (!prepared) return null;
     const { template, before, allGroups, labels, stated, verbatim, writable, readerFixes, modelInput } = prepared;
     const reading = await readingFor(input, modelInput);
-    /* FORM_PATCH_READER_FIXES_ENABLED: every hand-off after a reading tells the old path's revision (no instruction, no repeat). */
-    const handOff = async (): Promise<null> => {
-      if (readerFixes) {
-        // The reader's evidence for text it set from her latest message: the revision's new content keeps it.
-        const evidence =
-          "ok" in reading
-            ? Object.fromEntries(Object.entries(reading.patch.evidence ?? {}).filter(([key, quote]) => key in reading.patch.set && fold(input.question).includes(fold(quote))))
-            : {};
-        (await import("./reader-found-nothing")).noteReaderFoundNothing(input.instanceId, evidence);
+    /*
+     * FORM_PATCH_READER_FIXES_ENABLED: a hand-off after a reading tells the old path's revision what the reader saw —
+     * "nothing to write" (an empty reading: the revision may not add nothing new), and the evidence of ops it
+     * refused (the revision's new content there keeps it). A model fallback tells it nothing.
+     */
+    const handOff = async (found: "nothing" | "refused" | "none"): Promise<null> => {
+      if (readerFixes && found !== "none" && "ok" in reading) {
+        const evidence = Object.fromEntries(
+          Object.entries(reading.patch.evidence ?? {}).filter(([key, quote]) => key in reading.patch.set && fold(input.question).includes(fold(quote))),
+        );
+        (await import("./reader-found-nothing")).noteReaderFoundNothing(input.instanceId, evidence, found === "nothing");
       }
       return null;
     };
-    if (!("ok" in reading) || reading.turn !== "this_form") return handOff();
+    if (!("ok" in reading) || reading.turn !== "this_form") return handOff("none");
     /*
      * QA, 3 Nov 2026 (blocker before the Step B flip; ported from Ask
      * Bubbles): "make it sound more professional" is about this form, but the
@@ -232,7 +234,7 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
      * revision paths run as before. (A patch whose sets were all refused still
      * answers from its diff.)
      */
-    if (Object.keys(reading.patch.set).length === 0 && reading.patch.clear.length === 0) return handOff();
+    if (Object.keys(reading.patch.set).length === 0 && reading.patch.clear.length === 0) return handOff("nothing");
 
     /*
      * The assistant's last reply counts as accepted only when the patch quotes
@@ -269,7 +271,7 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
             echoOf: {
               latest: input.question,
               name: readerFixes.employeeName,
-              formWords: Object.fromEntries(Object.entries(labels).map(([key, label]) => [key, `${label} ${loaded.instance.templateName ?? ""}`])),
+              formWords: Object.fromEntries(Object.entries(labels).map(([key, label]) => [key, label])),
             },
           }
         : {}),
@@ -317,7 +319,7 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
         syncPlan: { after: [...stated], amountSentence: true, notes: input.question },
         ...(readerFixes ? { readerFixes } : {}),
       });
-      if (result.handoff === "refused") return handOff();
+      if (result.handoff === "refused") return handOff("refused");
       /*
        * FORM_PATCH_READER_FIXES_ENABLED (QA's live run, 7 Nov 2026: "yes, do that" after the edit was saved went
        * to the old path, whose revision rewrote the form and said "Updated"): what the reader set is already on
