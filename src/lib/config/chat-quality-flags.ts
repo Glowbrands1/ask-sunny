@@ -2799,3 +2799,16 @@ export function caOfferKeepsAccountEnabled(): boolean {
 export function ownBrandOnlyEnabled(): boolean {
   return envFlag("OWN_BRAND_ONLY_ENABLED");
 }
+
+// --- coding 4 flags ---
+
+/**
+ * AS_YOU_SAID_APP_READ_ENABLED (QA's Sunny gate, 7 Nov 2026: 45 regressions from AS_YOU_SAID_MANAGER_WORDS; ships
+ * with it; same flag in both apps; default off). With AS_YOU_SAID on, an attendance or late-opening CA whose only
+ * Policy line was "<policy>, as you said" (read from the app's own line) lost the line. On: the policy the app's own
+ * lines named is kept as its reading and said as one ("**Policy:** Late Opening — from what you described …"),
+ * never "as you said" and never nothing (`forms/ca-policy.ts` readCaPolicy, caPolicyProposalLine). Off, as before.
+ */
+export function asYouSaidAppReadEnabled(): boolean {
+  return envFlag("AS_YOU_SAID_APP_READ_ENABLED");
+}
