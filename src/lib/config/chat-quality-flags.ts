@@ -2800,6 +2800,19 @@ export function ownBrandOnlyEnabled(): boolean {
   return envFlag("OWN_BRAND_ONLY_ENABLED");
 }
 
+// --- coding 4 flags ---
+
+/**
+ * AS_YOU_SAID_APP_READ_ENABLED (QA's Sunny gate, 7 Nov 2026: 45 regressions from AS_YOU_SAID_MANAGER_WORDS; ships
+ * with it; same flag in both apps; default off). With AS_YOU_SAID on, an attendance or late-opening CA whose only
+ * Policy line was "<policy>, as you said" (read from the app's own line) lost the line. On: the policy the app's own
+ * lines named is kept as its reading and said as one ("**Policy:** Late Opening — read from this request …"),
+ * never "as you said" and never nothing (`forms/ca-policy.ts` readCaPolicy, caPolicyProposalLine). Off, as before.
+ */
+export function asYouSaidAppReadEnabled(): boolean {
+  return envFlag("AS_YOU_SAID_APP_READ_ENABLED");
+}
+
 // --- coding 2 flags ---
 
 // coding 2: PRIOR_STEP_PREVIOUSLY
@@ -2834,4 +2847,18 @@ export function noNoticeNoDateEnabled(): boolean {
  */
 export function bareNotAfterRequestEnabled(): boolean {
   return envFlag("BARE_NOT_AFTER_REQUEST_ENABLED");
+}
+
+/**
+ * SOURCE_NOTE_GUARD_ENABLED (QA, 5 Nov 2026; default off). A reply reached a
+ * manager with the model's own note about a source in it: "[S1 doesn't actually
+ * cover general tardiness — it only covers failing to open the salon…]". The
+ * marker stripping removes only a bare marker ("[S1]") or a group of them, so
+ * a bracket that starts with a source tag and goes on in prose stayed. With the
+ * flag on, the answer's last step removes such a bracket; a citation marker,
+ * a group of markers, or a tag with only a page or section after it is kept
+ * for the marker stripping as before (`ai/source-note.ts`). Off, as before.
+ */
+export function sourceNoteGuardEnabled(): boolean {
+  return envFlag("SOURCE_NOTE_GUARD_ENABLED");
 }
