@@ -1,6 +1,7 @@
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { formNameFromRosterEnabled, typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
 import { readCaPolicy } from "@/lib/forms/ca-policy";
+import { namesThisCompany } from "@/lib/forms/company-name";
 import { namesCompanyPositionTitle } from "@/lib/forms/staff-picker";
 import {
   displayName,
@@ -277,6 +278,8 @@ function gateMentions(
     if (isSalonPhrase(name)) continue;
     // B1 (the sibling app's flip-3 tester, 6 Nov 2026), FORM_NAME_FROM_ROSTER_ENABLED: a company position title is never a person missing from the roster.
     if (formNameFromRosterEnabled() && namesCompanyPositionTitle(name)) continue;
+    // QA, 7 Nov 2026, FORM_NAME_FROM_ROSTER_ENABLED: the company's own name or initials are never a person missing from the roster.
+    if (formNameFromRosterEnabled() && namesThisCompany(name)) continue;
     // FORM_NAME_FROM_ROSTER_ENABLED: beside a roster name, "Club Close", "Under" (Pau, 4 Nov 2026) are shaped like nobody on the roster; not unmatched people.
     if (anchored && !rosterShaped(name, roster)) continue;
     // The typed name stays in the question. The reply says Woven does not have it.
