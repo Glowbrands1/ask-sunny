@@ -2233,6 +2233,17 @@ export function caShortcutWordsEnabled(): boolean {
 }
 
 /**
+ * CA_REQUEST_NOT_PRIOR_COACHING_ENABLED (Pau's scan, sf-s35, 7 Nov 2026; same flag in both apps; default off). "Can you
+ * draw me up a CA for <name> for being late on 10/23/26. <first> has signed a coaching document for being late on
+ * 10/14/26. …" opened a Coaching Form: the coaching named as history was read as the form asked for. On: a form named
+ * after a Corrective Action request in the same message is a detail of that request, unless the manager switches to
+ * it (`forms/template-intent.ts` requestedNaming). Off, as before.
+ */
+export function caRequestNotPriorCoachingEnabled(): boolean {
+  return envFlag("CA_REQUEST_NOT_PRIOR_COACHING_ENABLED");
+}
+
+/**
  * A name candidate inside a street address ("Ne Oakfield Lane", "kearney ne"
  * in "125 Ne Oakfield Lane, kearney, NE. 68847") is not a person (QA, 29 Oct
  * 2026; same flag in both apps). See `forms/answer-not-a-name.ts`. Off, as
@@ -2418,6 +2429,46 @@ export function formReplyFromDiffEnabled(): boolean {
 export function formEditSingleWriterEnabled(): boolean {
   return envFlag("FORM_EDIT_SINGLE_WRITER_ENABLED");
 }
+
+// --- coding 5 flags (Step B edit reader; placed after FORM_EDIT_SINGLE_WRITER, not at a block end, so merges do not collide) ---
+
+/**
+ * FORM_EDIT_SAID_REPLACEMENT_ENABLED (QA's Step B gate, 6 Nov 2026; default
+ * off; only with FORM_EDIT_SINGLE_WRITER_ENABLED; ported from Ask Bubbles
+ * #519 by coding 5, who owns Step B since 7 Nov). The single writer refused
+ * "fix her last name, it is Laine" (drops_words) and an offense changed to
+ * "absenteeism" (unknown_option). With this flag on, an old word the new text
+ * replaces in place with a word the manager's latest message says may go, and
+ * an old offense box is written as the box that replaced it; a word dropped
+ * with nothing in its place is still refused (`forms/form-reducer.ts`). Off,
+ * as before.
+ */
+export function formEditSaidReplacementEnabled(): boolean {
+  return envFlag("FORM_EDIT_SAID_REPLACEMENT_ENABLED") && formEditSingleWriterEnabled();
+}
+
+/**
+ * FORM_PATCH_READER_FIXES_ENABLED (coding 5, 7 Nov 2026; QA's Step B target, the real "I haven't changed the
+ * <form>" refusals; same flag in both apps, ported from Ask Bubbles; default off). Step B's reader, fixed
+ * where the real-AI trace (6 Nov) refused faithful edits. Active only with FORM_PATCH_REDUCER_ENABLED. On:
+ *   (1) a patch whose values are already on the form answers "<Field> already says that" (never "Updated"); an
+ *       empty or "other" reading goes to the old path, whose writes may not repeat the field, echo the instruction
+ *       or (after an empty reading) add nothing new;
+ *   (2) the evidence and word checks read the form's own employee name as said (a "<Name> must practice …"
+ *       for "Add that she Must Practice …"), match a word by its stem ("missed" for "missing"), and hold every
+ *       FACT word — a number, a date, a capitalised word inside a sentence — to the manager's words or the
+ *       form; only a few other added words (at most 2, or 15% of them) may be unsaid;
+ *   (3) Pau's "yes rewrite" (7 Nov 2026): the reader may answer how "reword" when the latest message asks for
+ *       the wording to change; the field's text is rewritten in new words, every fact still the manager's or
+ *       the form's, every protected value (name, date, amount) kept (prompt lines added, never edited);
+ *   (4) the form's Job Title is a field the reader may set, only to words of the latest message ("change her
+ *       position to Tanning Consultant"), written as the manager's own edit.
+ * Off, the reader, the schema, the prompt and the reducer are byte for byte as before.
+ */
+export function formPatchReaderFixesEnabled(): boolean {
+  return envFlag("FORM_PATCH_READER_FIXES_ENABLED") && formPatchReducerEnabled();
+}
+// --- end coding 5 flags ---
 
 /**
  * The edit tool in the main call (Step 3, 4 Nov 2026; ported from Ask
@@ -2848,6 +2899,16 @@ export function ownBrandOnlyEnabled(): boolean {
 // --- coding 4 flags ---
 
 /**
+ * MSB_PHRASE_SOC_ENABLED (Pau via QA, 7 Nov 2026; same flag in both apps; default off). With CA_SALES_POLICY_ENABLED
+ * on, "create a ca for MSB for <name>" cites the Standards of Conduct, and "create a ca for must see behaviors for
+ * <name>" cited no policy: the glossary term was matched word by word. On: the phrase the approved glossary spells
+ * the term out as counts as the term (`forms/ca-policy.ts` withSalesPolicy). Off, as before.
+ */
+export function msbPhraseSocEnabled(): boolean {
+  return envFlag("MSB_PHRASE_SOC_ENABLED");
+}
+
+/**
  * AS_YOU_SAID_APP_READ_ENABLED (QA's Sunny gate, 7 Nov 2026: 45 regressions from AS_YOU_SAID_MANAGER_WORDS; ships
  * with it; same flag in both apps; default off). With AS_YOU_SAID on, an attendance or late-opening CA whose only
  * Policy line was "<policy>, as you said" (read from the app's own line) lost the line. On: the policy the app's own
@@ -2870,6 +2931,17 @@ export function editMakeItAboutEnabled(): boolean {
 }
 
 // --- coding 2 flags ---
+
+// coding 2: PRIOR_STEP_PREVIOUSLY
+/**
+ * PRIOR_STEP_PREVIOUSLY_ENABLED (port from the sibling app; A2, one of Pau's 7; QA 6 Nov 2026; default off).
+ * "in the previously recieved coaching include that <name> signed the jba policy manual on 10-15-26" listed no
+ * Prior actions row. With this flag on, a dated step that "previous(ly) / prior / earlier" leads is an earlier
+ * step (`forms/prior-actions.ts`). Off, as before.
+ */
+export function priorStepPreviouslyEnabled(): boolean {
+  return envFlag("PRIOR_STEP_PREVIOUSLY_ENABLED");
+}
 
 /**
  * NO_NOTICE_NO_DATE_ENABLED (port of the sibling app's, QA, 6 Nov 2026;
@@ -2906,4 +2978,14 @@ export function bareNotAfterRequestEnabled(): boolean {
  */
 export function sourceNoteGuardEnabled(): boolean {
   return envFlag("SOURCE_NOTE_GUARD_ENABLED");
+}
+
+// coding 2: REMOVE_POLICY_NOT_NAMED
+/**
+ * REMOVE_POLICY_NOT_NAMED_ENABLED (port from the sibling app; A1, QA 6 Nov 2026; default off). "take the
+ * attendance policy off the form" got "Policy: Attendance, as you said". With this flag on, a policy the turn
+ * takes off ("take … off", "drop …") is not the one it names (`forms/ca-policy.ts` statedIn). Off, as before.
+ */
+export function removePolicyNotNamedEnabled(): boolean {
+  return envFlag("REMOVE_POLICY_NOT_NAMED_ENABLED");
 }
