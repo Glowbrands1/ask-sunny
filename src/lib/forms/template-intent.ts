@@ -23,7 +23,13 @@
  * Here, that sentence is AMBIGUOUS and the answer is a question.
  */
 
-import { caSalesPolicyEnabled, caShortcutWordsEnabled, formChoiceStatedEnabled, formNameFromRosterEnabled } from "@/lib/config/chat-quality-flags";
+import {
+  caRequestNotPriorCoachingEnabled,
+  caSalesPolicyEnabled,
+  caShortcutWordsEnabled,
+  formChoiceStatedEnabled,
+  formNameFromRosterEnabled,
+} from "@/lib/config/chat-quality-flags";
 import { foldsToGlossaryTerm } from "@/lib/ai/chat-glossary";
 
 import { NOT_A_NAME, NOT_A_TYPED_NAME, TYPED_NAME_WORD } from "./name-words";
@@ -1224,6 +1230,19 @@ export function namesAForm(phrase: string): boolean {
  * "Policy Review for Avery Testperson" names one form in a request position,
  * so it is still the standalone Policy Review.
  */
+/**
+ * CA_REQUEST_NOT_PRIOR_COACHING_ENABLED (Pau's scan, sf-s35, 7 Nov 2026): "Can you draw me up a CA for <name> for
+ * being late on 10/23/26. <first> has signed a coaching document for being late on 10/14/26. …" opened a Coaching
+ * Form: the coaching named as history was the only form named. A form named AFTER a Corrective Action request in
+ * the same message is a detail of that request — read by this function itself on the words before it — unless the
+ * manager switches to it ("…, actually make it a coaching form"; `SWITCH_BEFORE`). Off, as before.
+ */
+function detailOfAnEarlierCaRequest(key: string, before: string): boolean {
+  if (!caRequestNotPriorCoachingEnabled() || key === "dpoa" || before.trim() === "") return false;
+  if (SWITCH_BEFORE.test(before)) return false;
+  return detectTemplateIntent(before).kind === "corrective_action";
+}
+
 function requestedNaming(q: string, original: string): { key: string; phrase: string } | null {
   type Naming = { key: string; phrase: string; start: number; end: number; order: number };
   const found: Naming[] = [];
@@ -1244,7 +1263,12 @@ function requestedNaming(q: string, original: string): { key: string; phrase: st
   // 2 and 3. Not wanted, and only the topic.
   const wanted = spans.filter((naming) => {
     const before = q.slice(0, naming.start);
-    return !NEGATED_BEFORE.test(before) && !TOPIC_BEFORE.test(before) && !caForAnotherForm(naming.key, before);
+    return (
+      !NEGATED_BEFORE.test(before) &&
+      !TOPIC_BEFORE.test(before) &&
+      !caForAnotherForm(naming.key, before) &&
+      !detailOfAnEarlierCaRequest(naming.key, before)
+    );
   });
   if (wanted.length === 0) return null;
 
