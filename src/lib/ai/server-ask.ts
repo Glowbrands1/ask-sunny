@@ -194,6 +194,7 @@ import { keepManagerActionPlan } from "./manager-action-plan-reply";
 import { withManagerNameGuard, withManagerNameRule } from "./manager-name-guard";
 import { withoutReportTurnsForForm } from "./report-turns";
 import { withReplyMatchesCard } from "./reply-matches-card";
+import { withTwoFormsOwnPerson } from "./two-forms-own-person";
 import { withTitleOfTheEmployee } from "./title-of-the-employee";
 import { withoutSourceMarkers, withoutSourceNotes } from "@/lib/ai/source-note";
 import { withUnderPerformanceExplained } from "./under-performance-explained";
@@ -336,6 +337,7 @@ export async function answerQuestion(
     );
     return { ...explained, content: withoutSourceMarkers(explained.content) };
   };
+  const original = request;
   let answered = await answer(request);
   const fallbacks = kept ? [withoutReportTurnsForForm({ ...asked, question: kept.employee, continueProposalTemplateKey: kept.templateKey }), plain] : [];
   for (const next of fallbacks) {
@@ -343,6 +345,8 @@ export async function answerQuestion(
     request = next;
     answered = await answer(request);
   }
+  // TWO_FORMS_OWN_PERSON_ENABLED: two forms asked for in one message never put the other form's person on this card (`ai/two-forms-own-person.ts`); read on the manager's own message.
+  answered = withTwoFormsOwnPerson(answered, original);
   /*
    * CA_SALES_POLICY_ENABLED: a reply about a policy and an employee the roster
    * recognises ends with ONE offer to start a Corrective Action citing that
