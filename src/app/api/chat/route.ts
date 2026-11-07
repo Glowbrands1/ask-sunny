@@ -27,6 +27,7 @@ import {
   questionNotFormEnabled,
   sameFormCopyEnabled,
   sameFormCopyNewPersonEnabled,
+  copyOwnSalonEnabled,
   secondFormEnabled,
   staffPickerBareAnswerEnabled,
   wholeTeamCoachingEnabled,
@@ -840,6 +841,8 @@ async function postChat(request: Request) {
       if (newPersonCopy) {
         answer = (await import("@/lib/forms/same-form-copy")).withCopyFrom(answer, newPersonCopy.source, newPersonCopy.name);
       }
+      // COPY_OWN_SALON_ENABLED: a card that copies another person's form takes the new person's own salon.
+      if (copyOwnSalonEnabled()) answer = await (await import("@/lib/forms/same-form-copy")).withCopyOwnSalon(answer, request, asked.question);
     } catch (error) {
       /*
        * A FAILED ANSWER IS STILL A RECORDED TURN, closed as a failure. The row
