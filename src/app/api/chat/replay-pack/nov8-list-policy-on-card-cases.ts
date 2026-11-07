@@ -43,6 +43,10 @@ export const NOV8_LIST_POLICY_ON_CARD_CASES: ReplayCase[] = [
       expect(reply.formProposal, `no card:\n${reply.content}`).toMatchObject({ templateKey: "coaching", employeeName: "Rowan Kestrel" });
       expect(reply.content, `the card shows no manual policy line:\n${reply.content}`).toMatch(MANUAL_LINE);
       expect(reply.content, "a second policy sentence beside the card's own line").not.toMatch(LISTED_AT_CREATE);
+      t.draftWrites({ coaching_details: "Observed:\nOn 10/31/2026 Rowan Kestrel was 30 minutes late to her shift." });
+      const id = await thread.create();
+      expect(t.values(id).coaching_details ?? "", "the account was lost at Create").toMatch(/late/i);
+      expect(t.values(id).coaching_details ?? "", "the ask is drafted as the account").not.toMatch(/list the policy/i);
     },
   },
   {
