@@ -372,6 +372,7 @@ function offRosterTyped(employee: string, message: string | undefined, names: re
   const text = message ?? "";
   const placed =
     personPlaces(typed).some((place) => place.test(text.trim())) ||
+    afterCompanyTitle(typed, text) ||
     text.split(/\n/).some((line) => same(line.trim().replace(USE_NAME, "")) && NAME_SHAPE.test(line.trim().replace(USE_NAME, "")));
   return placed ? titleCased(typed) : null;
 }
@@ -396,6 +397,18 @@ const NAME_SHAPE = new RegExp(String.raw`^${NAME_RUN}$`, "u");
  * Where a request types its person — "for <name>,", "for <name>" ending it, "employee, <name>" — read with the card's
  * own name, so the words after it ("…, Zebulon Marchbanks that needs …"; gate rerun 3) are never taken as part of it.
  */
+/**
+ * The sibling app's FORM_NAME live re-run (QA, 7 Nov 2026, FAIL 1, the real B1 message there): "create a written
+ * corrective action for <job title>, <name>. …" — the name in a person's place after a company position title (the
+ * title list's, `staff-picker.ts` namesCompanyPositionTitle). The offer was never made, so the manager was asked who on
+ * every turn.
+ */
+function afterCompanyTitle(name: string, text: string): boolean {
+  const spelled = name.trim().split(/\s+/).map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(String.raw`\s+`);
+  const found = new RegExp(String.raw`\bfor\s+([\p{L}][\p{L} ]{1,40}?),\s*${spelled}(?![\p{L}'’-])`, "iu").exec(text);
+  return Boolean(found && namesCompanyPositionTitle(found[1]!));
+}
+
 function personPlaces(name: string): RegExp[] {
   const spelled = name.trim().split(/\s+/).map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(String.raw`\s+`);
   const end = String.raw`(?![\p{L}'’-])`;
