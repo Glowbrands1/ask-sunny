@@ -2548,6 +2548,23 @@ export function caSalesPolicyEnabled(): boolean {
 }
 
 /**
+ * CA_PERFORMANCE_REASON_ENABLED (QA, coding-3 item 5, 5 Nov 2026; default
+ * off; same flag in both apps; only effective with CA_SALES_POLICY_ENABLED).
+ * "can you write me a Ca for <name> for performance for october" got "You
+ * haven't told me what happened yet": the bare "performance" is neither a
+ * metric named and judged (`statesMetricShortfall`) nor the removed Under
+ * Performance box's name. On, the sentence that asks for the Corrective
+ * Action naming performance (the EPP reader's existing performance pattern,
+ * `namesPerformance` in `forms/epp-policy.ts`), with nothing else read from
+ * the account, is the sales-performance reading: the card cites the
+ * Standards of Conduct and does not ask what happened. See `withSalesPolicy`
+ * in `forms/ca-policy.ts`. Off, as before.
+ */
+export function caPerformanceReasonEnabled(): boolean {
+  return envFlag("CA_PERFORMANCE_REASON_ENABLED");
+}
+
+/**
  * Step 5, names from the roster: first piece, the overnight scan's sf-s19
  * "metrics read as people". A metric is never read as a person (Pau, 4 Nov
  * 2026: "I need a corrective action verbal for <name>. This is for Under
