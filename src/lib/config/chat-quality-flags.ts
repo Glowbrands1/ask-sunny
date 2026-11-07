@@ -2220,6 +2220,17 @@ export function caShortcutWordsEnabled(): boolean {
 }
 
 /**
+ * CA_REQUEST_NOT_PRIOR_COACHING_ENABLED (Pau's scan, sf-s35, 7 Nov 2026; same flag in both apps; default off). "Can you
+ * draw me up a CA for <name> for being late on 10/23/26. <first> has signed a coaching document for being late on
+ * 10/14/26. …" opened a Coaching Form: the coaching named as history was read as the form asked for. On: a form named
+ * after a Corrective Action request in the same message is a detail of that request, unless the manager switches to
+ * it (`forms/template-intent.ts` requestedNaming). Off, as before.
+ */
+export function caRequestNotPriorCoachingEnabled(): boolean {
+  return envFlag("CA_REQUEST_NOT_PRIOR_COACHING_ENABLED");
+}
+
+/**
  * A name candidate inside a street address ("Ne Oakfield Lane", "kearney ne"
  * in "125 Ne Oakfield Lane, kearney, NE. 68847") is not a person (QA, 29 Oct
  * 2026; same flag in both apps). See `forms/answer-not-a-name.ts`. Off, as
