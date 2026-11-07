@@ -2799,3 +2799,41 @@ export function caOfferKeepsAccountEnabled(): boolean {
 export function ownBrandOnlyEnabled(): boolean {
   return envFlag("OWN_BRAND_ONLY_ENABLED");
 }
+
+// --- coding 4 flags ---
+
+/**
+ * AS_YOU_SAID_APP_READ_ENABLED (QA's Sunny gate, 7 Nov 2026: 45 regressions from AS_YOU_SAID_MANAGER_WORDS; ships
+ * with it; same flag in both apps; default off). With AS_YOU_SAID on, an attendance or late-opening CA whose only
+ * Policy line was "<policy>, as you said" (read from the app's own line) lost the line. On: the policy the app's own
+ * lines named is kept as its reading and said as one ("**Policy:** Late Opening — read from this request …"),
+ * never "as you said" and never nothing (`forms/ca-policy.ts` readCaPolicy, caPolicyProposalLine). Off, as before.
+ */
+export function asYouSaidAppReadEnabled(): boolean {
+  return envFlag("AS_YOU_SAID_APP_READ_ENABLED");
+}
+
+// --- coding 2 flags ---
+
+/**
+ * NO_NOTICE_NO_DATE_ENABLED (port of the sibling app's, QA, 6 Nov 2026;
+ * default off). "exit form for <X>, resigned 11-3-26 with no notice" printed
+ * "Date that notice was given: November 3, 2026": "resigned" is a notice-given
+ * cue. With this flag on, a stated "no notice" leaves the notice date empty,
+ * and the date stays the resignation's (`forms/exit-facts.ts`). Off, as before.
+ */
+export function noNoticeNoDateEnabled(): boolean {
+  return envFlag("NO_NOTICE_NO_DATE_ENABLED");
+}
+
+/**
+ * BARE_NOT_AFTER_REQUEST_ENABLED (QA's live Sunny re-check, 6 Nov 2026;
+ * default off). "ca for <A> not late" asked nothing: the clause starts with
+ * the request, so BARE_NOT_DENIAL's clause-start "not" missed it. With this
+ * flag on, the CA what-happened test also reads each clause without its
+ * request head and the employee's name (`ai/ca-what-happened.ts`). Off, as
+ * before.
+ */
+export function bareNotAfterRequestEnabled(): boolean {
+  return envFlag("BARE_NOT_AFTER_REQUEST_ENABLED");
+}
