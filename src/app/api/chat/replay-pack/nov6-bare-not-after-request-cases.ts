@@ -40,10 +40,15 @@ export const NOV6_BARE_NOT_AFTER_REQUEST_CASES: ReplayCase[] = [
     id: "nov6-bare-not-after-request-ca-for-not-late",
     title: "(b) \"ca for <A> not late\": no account, so the Corrective Action card asks what happened",
     report: "QA's live Sunny re-check, 6 Nov 2026 (b): no ask, and the Observation is \"<A> not late\"",
-    // Holds with the pack's production flags (recorded before the flip, CA_SALES off); with the flip's CA_SALES path on and
-    // BARE_NOT_AFTER_REQUEST off, "not late" after "ca for <A>" read as an account and the ask was lost (QA's live (b)).
-    status: "fixed",
+    /*
+     * Changed on purpose (7 Nov 2026, ask-sunny #609): production-flags.json now has QA's flips (CA_SALES on), and
+     * BARE_NOT_AFTER_REQUEST is off in production, so the pack's production run is QA's live (b): "not late" after
+     * "ca for <A>" reads as an account and the card drafts "Policy: Attendance, as you said". The fix flags still draft
+     * it while REPLY_MATCHES_CARD (live) is on: without it they hold. Reported to coding 2 and QA.
+     */
+    status: { open: "production (BARE_NOT_AFTER_REQUEST off): \"not late\" reads as an account, and the card drafts \"Policy: Attendance, as you said\"" },
     fixFlags: ASKS_FIX,
+    fixStatus: { open: "with REPLY_MATCHES_CARD (live) the fix flags still draft \"Policy: Attendance, as you said\"; they hold without it" },
     async run(t) {
       const thread = await start(t);
       const reply = await thread.say("ca for Rowan Kestrel not late");
@@ -68,9 +73,12 @@ export const NOV6_BARE_NOT_AFTER_REQUEST_CASES: ReplayCase[] = [
       id: `nov6-as-you-said-attendance-${key}`,
       title: `S2a guard: "${text.slice(0, 60)}…" with the reader's heading "Attendance": never "Attendance, as you said"`,
       report: "QA's live Sunny re-check, 6 Nov 2026 (S2a): \"Policy: Attendance, as you said.\" for unfinished duties",
-      // A GUARD: the pack's stand-ins do not build the live line for this wording (it holds off and on); #588's unit test
-      // proves the line from the app's "Policy reference" line, and this case keeps the wording in the pack.
-      status: "fixed",
+      /*
+       * Changed on purpose (7 Nov 2026, ask-sunny #609): with QA's flips in production-flags.json the pack now builds
+       * the live line for this wording too, so it is open with production's flags (AS_YOU_SAID_MANAGER_WORDS is off
+       * in production) and holds with the fix flag (#588).
+       */
+      status: { open: "production (AS_YOU_SAID_MANAGER_WORDS off): the card says \"Policy: Attendance, as you said\" for unfinished duties" },
       fixFlags: ["AS_YOU_SAID_MANAGER_WORDS_ENABLED"],
       async run(t) {
         const thread = await start(t);
