@@ -70,7 +70,8 @@ import {
 import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import { buildFormInventory, publishedEntries } from "@/lib/forms/inventory";
 import { listTemplateSummaries, type TemplateSummary } from "@/lib/forms/repository";
-import { candidateNameWords, isFormRecordsQuestion, loadFormRecords } from "@/lib/forms/chat-form-records";
+import { isFormRecordsQuestion, loadFormRecords } from "@/lib/forms/chat-form-records";
+import { namesAPerson } from "@/lib/forms/names-a-person";
 import { withRosterOnlyNames } from "@/lib/forms/roster-only-names";
 import { priorFormsReadingForChat } from "@/lib/forms/prior-forms";
 import { applyOptionalPriorCoaching } from "./prior-coaching-optional";
@@ -594,7 +595,8 @@ async function answerQuestionUntraced(
   const pastFormsFirst =
     pastFormsBeforeLibraryEnabled() &&
     (libraryReading.kind !== "none" || (formReading.kind === "corrective_action" && !formReading.requestedCreation)) &&
-    (isFormRecordsQuestion(request.question) || candidateNameWords(request.question).length > 0);
+    // Only a message that names a person: a library question naming nobody keeps the library answer (`forms/names-a-person.ts`).
+    namesAPerson(request.question);
   const detected: InventoryQuestion = pastFormsFirst ? { kind: "none" } : libraryReading;
   const spokenIntent: ReturnType<typeof detectTemplateIntent> = pastFormsFirst ? { kind: "none" } : formReading;
 
