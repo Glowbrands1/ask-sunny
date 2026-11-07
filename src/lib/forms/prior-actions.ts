@@ -1,4 +1,4 @@
-import { futurePriorRowDropEnabled, priorActionsParseEnabled, priorRowNotOnIncidentDateEnabled, priorStepSentenceEnabled } from "@/lib/config/chat-quality-flags";
+import { futurePriorRowDropEnabled, priorActionsParseEnabled, priorRowNotOnIncidentDateEnabled, priorStepPreviouslyEnabled, priorStepSentenceEnabled } from "@/lib/config/chat-quality-flags";
 
 import { statesFirstOccurrence } from "./corrective-action-intake";
 import { correctedDates, datesInText, managerDatesForDraft, priorSteps } from "./form-date-answer";
@@ -185,18 +185,33 @@ function dotDates(sentence: string, today: string): { iso: string; index: number
   return out;
 }
 
-function sentenceSteps(notes: string, today: string): { iso: string; named: string }[] {
-  const steps: { iso: string; named: string }[] = [];
+/*
+ * PRIOR_STEP_PREVIOUSLY_ENABLED (A2, one of Pau's 7; QA 6 Nov 2026): "in the previously recieved coaching include
+ * that <name> signed the jba policy manual on 10-15-26" listed no Prior actions row: "recieved" (as typed) is not
+ * a given-verb, so the sentence named no earlier step. With the flag on, a step that "previous(ly) / prior /
+ * earlier" leads, with at most one word between, is an earlier step; a manual named after it is the line's topic,
+ * and "signed" there marks the date signed. Off, as before.
+ */
+const EARLIER_STEP_LEAD = /\b(?:previous(?:ly)?|prior|earlier)\s+(?:[a-z]+\s+)?$/i;
+const MANUAL_NAMED = /\b(?:jba\s+)?(?:policy\s+)?manual\b/i;
+
+function sentenceSteps(notes: string, today: string): { iso: string; named: string; topic?: string }[] {
+  const steps: { iso: string; named: string; topic?: string }[] = [];
   for (const sentence of (notes ?? "").split(/(?<=[!?\n])|(?<=\.)(?!\d)/)) {
     const step = namedStep(sentence);
     if (!step) continue;
     const before = sentence.slice(0, step.start);
     const after = sentence.slice(step.end);
-    const given = [...before.matchAll(STEP_GIVEN)].some((match) => match.index + match[0].length >= step.start - 1) || STEP_THEN_GIVEN.test(after.slice(0, 20));
+    const earlier = priorStepPreviouslyEnabled() && EARLIER_STEP_LEAD.test(before);
+    const given = [...before.matchAll(STEP_GIVEN)].some((match) => match.index + match[0].length >= step.start - 1) || STEP_THEN_GIVEN.test(after.slice(0, 20)) || earlier;
     if (!given) continue;
     const dates = [...datesInText(after, today), ...dotDates(after, today)];
     const first = dates.filter((found) => found.iso <= today).sort((a, b) => a.index - b.index)[0];
-    if (first) steps.push({ iso: first.iso, named: sentence.slice(step.start, step.end) });
+    if (!first) continue;
+    const manual = earlier ? MANUAL_NAMED.exec(after.slice(0, first.index)) : null;
+    const signed = earlier && /\bsign(?:ed)?\b/i.test(after.slice(0, first.index));
+    const topic = manual ? `${manual[0]}${signed ? " signed" : ""}` : undefined;
+    steps.push({ iso: first.iso, named: sentence.slice(step.start, step.end), ...(topic ? { topic } : {}) });
   }
   return steps;
 }

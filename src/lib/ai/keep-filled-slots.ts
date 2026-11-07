@@ -1,5 +1,6 @@
 import { PRODUCTION_SALONS, salonById } from "@/data/salons";
 import { observationAccount } from "@/lib/forms/ca-policy";
+import { onlyDeniesForObservation } from "./ca-what-happened";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
 import { listIncidentDates, withoutPriorStepClauses } from "@/lib/forms/form-date-answer";
 import { lateOpenOn, withYearlessDatesWritten } from "@/lib/forms/late-open";
@@ -734,6 +735,8 @@ function withObservation(content: string, turns: readonly string[], employeeName
       // SALES_OBSERVATION_ACCOUNT_ENABLED: the account only, never the request's words, the name or a payroll answer (`forms/ca-policy.ts`).
       const sentence = observationAccount(managerOnly ? managerAccount(said, employeeName) ?? "" : said, employeeName);
       if (!sentence) continue;
+      // BARE_NOT_AFTER_REQUEST_ENABLED: "ca for <A> not late" says only what did not happen, so it is no Observation.
+      if (onlyDeniesForObservation(said, employeeName) || onlyDeniesForObservation(sentence, employeeName)) continue;
       // CA_SALES_POLICY_ENABLED (QA, live, 4 Nov 2026): "a corrective action for msb" left "msb"; a glossary term is the reason, not an account.
       if (onlyAGlossaryTerm(sentence)) continue;
       // OBSERVATION_NOT_POLICY_NAME_ENABLED: "must see behaviors" names the policy, not what happened.
@@ -811,6 +814,8 @@ function withAccount(content: string, turns: readonly string[], employeeName: st
   ).filter(
     (sentence) =>
       !onlyAGlossaryTerm(sentence) &&
+      // BARE_NOT_AFTER_REQUEST_ENABLED: a sentence that only says what did not happen is no Observation.
+      !onlyDeniesForObservation(sentence, employeeName) &&
       !content.toLowerCase().includes(sentence.toLowerCase()) &&
       // OBSERVATION_NOT_POLICY_NAME_ENABLED: "must see behaviors" names the policy, not what happened.
       !(observationNotPolicyNameEnabled() && namesOnlyAPolicy(sentence)),
