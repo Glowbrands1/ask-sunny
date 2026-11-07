@@ -29,6 +29,7 @@ import {
   teamCardWordingEnabled,
   cardPolicyLabelEnabled,
   caSalesPolicyEnabled,
+  priorActionsNoSignedEnabled,
   secondRequestOwnAccountEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { withoutAsksToTheApp } from "@/lib/ai/asks-to-the-app";
@@ -891,7 +892,19 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      */
     const hasPriorActions = fields.some((field) => field.key === PRIOR_ACTIONS_KEY);
     const PRIOR_ACTIONS_RULES = [
-      `The field ${PRIOR_ACTIONS_KEY} lists every coaching or corrective action the employee PREVIOUSLY received, as the manager described it — one per line, each written as "<what it was> — signed <MM/DD/YYYY>".`,
+      /*
+       * PRIOR_ACTIONS_NO_SIGNED_ENABLED (QA, a location manager's chat in the sibling app, 5 Nov 2026): the line
+       * format asked for "signed", so the model wrote it for steps nobody signed. On, the format has the plain
+       * date and "signed" is written only where the manager said so. Off, as before.
+       */
+      ...(priorActionsNoSignedEnabled()
+        ? [
+            `The field ${PRIOR_ACTIONS_KEY} lists every coaching or corrective action the employee PREVIOUSLY received, as the manager described it — one per line, each written as "<what it was> — <MM/DD/YYYY>".`,
+            'Never write "signed" on this list unless the manager said that step was signed; then write "<what it was> — signed <MM/DD/YYYY>".',
+          ]
+        : [
+            `The field ${PRIOR_ACTIONS_KEY} lists every coaching or corrective action the employee PREVIOUSLY received, as the manager described it — one per line, each written as "<what it was> — signed <MM/DD/YYYY>".`,
+          ]),
       "List only steps and dates the manager actually gave. Never invent a prior step or a date; a step whose date the manager did not give is listed without one.",
       `If the manager said this is the first occurrence, write "${NO_PRIOR_ACTION}". If they said nothing about history, leave it empty.`,
       "A behaviour that happened again is not a prior coaching or corrective action.",

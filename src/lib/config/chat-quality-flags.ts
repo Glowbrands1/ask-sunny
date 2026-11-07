@@ -1991,6 +1991,19 @@ export function priorActionsPolicyEnabled(): boolean {
 }
 
 /**
+ * PRIOR_ACTIONS_NO_SIGNED_ENABLED (QA, a location manager's chat in the sibling app, 5 Nov 2026; default off).
+ * "this is a verbal warning. previous coaching policy manual 10-15-26" drafted Prior actions that said the
+ * earlier steps were SIGNED; nothing was ever signed or given. Rule (Pau / QA): list only finalized forms, and
+ * never say "signed" unless the record or the manager says so. On: the drafting prompt no longer asks for
+ * "— signed <date>", `groundPriorActions` drops a "signed" the manager did not write for that date, and the
+ * code's own lines read "<step> — finalized MM/DD/YYYY" for a form on file and "<step> — MM/DD/YYYY" for a step
+ * the manager told ("signed" only when they said so). The list parsers read every format. Off, as before.
+ */
+export function priorActionsNoSignedEnabled(): boolean {
+  return envFlag("PRIOR_ACTIONS_NO_SIGNED_ENABLED");
+}
+
+/**
  * Two more team-card wordings (QA live check, 3 Nov 2026), read only with
  * WHOLE_TEAM_COACHING on: "salon wide everyone needs the reminder to call a
  * manager for cash drawer shortages" — the team, then what it needs, with no

@@ -1,4 +1,7 @@
+import { priorActionsNoSignedEnabled } from "@/lib/config/chat-quality-flags";
+
 import type { InstanceValueRow } from "./instances";
+import { priorLineDate } from "./prior-actions";
 
 /**
  * ============================================================================
@@ -439,6 +442,8 @@ function lines(value: FieldValue): string[] {
 /** `priorActionLine`'s own format: the step (first " — " segment) and the signed date. */
 export function priorLineKey(line: string): string {
   const step = fold(line.split(STEP_SEPARATOR)[0] ?? "");
+  // PRIOR_ACTIONS_NO_SIGNED_ENABLED: "— signed <date>", "— finalized <date>" and "— <date>" are one date.
+  if (priorActionsNoSignedEnabled()) return `${step}|${fold(priorLineDate(line))}`;
   const at = line.lastIndexOf(SIGNED_SEPARATOR);
   const signed = at >= 0 ? fold(line.slice(at + SIGNED_SEPARATOR.length)) : "";
   return `${step}|${signed}`;
