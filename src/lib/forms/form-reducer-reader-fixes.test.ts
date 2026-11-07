@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { addsNothingNew, applyPatch, factWords, type FormDraft, type FormPatch, type PatchRules } from "./form-reducer";
+import { addsNothingNew, applyPatch, factWords, repeatsInstruction, type FormDraft, type FormPatch, type PatchRules } from "./form-reducer";
 import { patchOutputSchema, toPatch } from "./form-patch-schema";
 
 /**
@@ -256,5 +256,25 @@ describe("FORM_PATCH_READER_FIXES_ENABLED: an in-place correction is not held to
     const draft: FormDraft = { coaching_details: field("coaching_details", old, "assistant") };
     const fixed = op("coaching_details", old.replace("Pembrook", "Pembrooke"), "replace", latest);
     expect(applyPatch(draft, fixed, rules(latest, ["coaching_details"], { employeeName: "Isolde Pembrook", formText: old })).diff.refused).toEqual([]);
+  });
+});
+
+describe("FORM_PATCH_READER_FIXES_ENABLED: the instruction is never written back as content (QA's stability run 2)", () => {
+  const coaching = { coaching_details: "Details of Coaching Coaching Form" };
+  const echo = (latest: string) => ({ latest, name: "Maelis Kittredge", formWords: coaching });
+
+  it("\"Details about the towel.\" for \"add details about the towel\" repeats the instruction", () => {
+    expect(repeatsInstruction("Details about the towel.", echo("add details about the towel"), "coaching_details")).toBe(true);
+    expect(repeatsInstruction("Observed:\nAdd details about the towel.", echo("add details about the towel"), "coaching_details")).toBe(true);
+  });
+
+  it("content in her own words does not name its field", () => {
+    expect(repeatsInstruction("She was also on her phone.", echo("add that she was also on her phone"), "coaching_details")).toBe(false);
+    expect(repeatsInstruction("He told the whole team he was quitting.", echo("update the draft: he told the whole team he was quitting"), "coaching_details")).toBe(false);
+    expect(repeatsInstruction("Reminded her to call a manager for any cash drawer shortage.", echo("add to the details: reminded her to call a manager for any cash drawer shortage"), "coaching_details")).toBe(false);
+  });
+
+  it("a word nobody said makes it not an echo (the other checks judge it)", () => {
+    expect(repeatsInstruction("Details: use a fresh towel for every guest.", echo("add details about the towel"), "coaching_details")).toBe(false);
   });
 });

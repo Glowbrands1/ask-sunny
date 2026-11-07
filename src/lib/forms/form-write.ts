@@ -24,7 +24,7 @@ import {
   type Refusal,
 } from "./form-reducer";
 import { MANAGER_STATED_KEYS, draftDates, statedDates, templateRules, writeInsOf } from "./form-reducer-draft";
-import { HEADER_KEYS, checkedClaim, snapshotDiff, snapshotOf, type FormSnapshot } from "./form-snapshot";
+import { HEADER_KEYS, checkedClaim, formLabels, snapshotDiff, snapshotOf, type FormSnapshot } from "./form-snapshot";
 import {
   applyAssistantDraft,
   applyAssistantRevision,
@@ -286,9 +286,16 @@ function withReaderFoundNothing(
   rules: FormEditRules,
   preset: { patchRules: PatchRules; writable: ReadonlySet<string> },
 ): { patchRules: PatchRules; writable: ReadonlySet<string> } {
-  if (rules.path !== "revision" || !formPatchReaderFixesEnabled()) return preset;
-  if (!takeReaderFoundNothing(loaded.instance.id)) return preset;
-  return { ...preset, patchRules: { ...preset.patchRules, nothingNewFrom: rules.latest ?? "" } };
+  if ((rules.path !== "revision" && rules.path !== "patch") || !formPatchReaderFixesEnabled()) return preset;
+  // The instruction written back as content is refused on both paths (QA's stability run: "Details about the towel.").
+  const echoOf = { latest: rules.latest ?? "", name: loaded.instance.employeeName ?? "", formWords: formWordsOf(loaded) };
+  const nothingNew = rules.path === "revision" && takeReaderFoundNothing(loaded.instance.id);
+  return { ...preset, patchRules: { ...preset.patchRules, echoOf, ...(nothingNew ? { nothingNewFrom: rules.latest ?? "" } : {}) } };
+}
+
+/** Per key: the field's own label and the form's name (FORM_PATCH_READER_FIXES_ENABLED's `echoOf`). */
+export function formWordsOf(loaded: LoadedInstance): Record<string, string> {
+  return Object.fromEntries(Object.entries(formLabels(loaded)).map(([key, label]) => [key, `${label} ${loaded.instance.templateName ?? ""}`]));
 }
 
 function basePresetRules(loaded: LoadedInstance, ops: readonly FormEditOp[], rules: FormEditRules): { patchRules: PatchRules; writable: ReadonlySet<string> } {

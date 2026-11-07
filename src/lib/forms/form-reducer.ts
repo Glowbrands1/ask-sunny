@@ -233,6 +233,13 @@ export interface PatchRules {
    * (the instruction written as content, a sentence repeated) and is refused as `copies_message`.
    */
   readonly nothingNewFrom?: string;
+  /**
+   * FORM_PATCH_READER_FIXES_ENABLED (QA's stability run, 7 Nov 2026: "Details about the towel." written for "add
+   * details about the towel"): a text value that repeats the instruction — every word of it (a line's heading and
+   * the employee's name aside) a word of the latest message, and one of them a word of its own field's label or the
+   * form's name (`formWords`, by key) — is refused as `copies_message`, on every path that carries it.
+   */
+  readonly echoOf?: { readonly latest: string; readonly name: string; readonly formWords: Readonly<Record<string, string>> };
 }
 
 export interface ProtectedValues {
@@ -336,6 +343,32 @@ function valueWasSaid(value: string, rules: PatchRules, context: { old: string; 
 }
 
 /* -------------------------------------- FORM_PATCH_READER_FIXES_ENABLED ---- */
+
+/** A line's leading "Label:" heading words: the field's layout, not content. */
+function headingWords(value: string): Set<string> {
+  const out = new Set<string>();
+  for (const line of value.split("\n")) {
+    const first = line.trim().split(" ")[0] ?? "";
+    if (first.endsWith(":")) for (const word of wordsOf(first)) out.add(word);
+  }
+  return out;
+}
+
+/**
+ * The value repeats the instruction: every word (headings and the employee's name aside) is a word of the latest
+ * message, and one of them (4+ letters) is a word of the field's own label or the form's name ("Details about the
+ * towel." for "add details about the towel" on Details of Coaching). Content in her words ("She was also on her
+ * phone.") does not name its field.
+ */
+export function repeatsInstruction(value: string, echo: { latest: string; name: string; formWords: Readonly<Record<string, string>> }, key: string): boolean {
+  const skip = new Set([...headingWords(value), ...wordsOf(echo.name)]);
+  const words = wordsOf(value).filter((word) => !skip.has(word));
+  if (words.length === 0) return false;
+  const said = new Set(wordsOf(echo.latest));
+  if (!words.every((word) => said.has(word))) return false;
+  const own = new Set(wordsOf(echo.formWords[key] ?? "").filter((word) => word.length >= 4));
+  return words.some((word) => own.has(word));
+}
 
 /** Every word the value adds to the field is a word of the message or of the field's own text (and it adds some). */
 export function addsNothingNew(value: string, old: FieldValue, message: string): boolean {
@@ -864,6 +897,10 @@ export function applyPatch(draft: FormDraft, patch: FormPatch, rules: PatchRules
   /* FORM_EDIT_NOOP_GUARD_ENABLED: an op that copies the message, or changes nothing, is refused. */
   const guarded = (key: string, value: FieldValue | null, written: Written): Written => {
     if (rules.copiesMessage !== undefined && value !== null && copiesMessage(typeof value === "string" ? value : asList(value).join("\n"), rules.copiesMessage)) {
+      return refuse(key, "copies_message");
+    }
+    // FORM_PATCH_READER_FIXES_ENABLED: the instruction written back as the field's content.
+    if (rules.echoOf !== undefined && typeof value === "string" && !isRefusal(written) && written !== null && repeatsInstruction(value, rules.echoOf, key)) {
       return refuse(key, "copies_message");
     }
     // FORM_PATCH_READER_FIXES_ENABLED: after the reader found nothing to write, a value that adds nothing new.

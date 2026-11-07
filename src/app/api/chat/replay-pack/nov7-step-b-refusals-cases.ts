@@ -31,7 +31,7 @@ import { CASH, ROOM_PROCESS, ROOM_STEPS, STEP_B_REFUSAL_SCENARIOS, STEP_B_READER
 const OPEN_IN_PRODUCTION = "production answers \"I haven't changed the …\" (Step B is off; the revision path writes nothing)";
 
 /** Production's outcome per case, from the run with production's flags (7 Nov 2026). */
-const PRODUCTION_HOLDS = new Set<string>(["bub-date-question", "bub-name-redo", "sun-towel-nothing-said", "sun-msb-format", "sun-make-that-update-live-shape", "sun-monthly-meeting-drift", "sun-late-date-drift"]);
+const PRODUCTION_HOLDS = new Set<string>(["bub-date-question", "bub-name-redo", "sun-towel-nothing-said", "sun-msb-format", "sun-make-that-update-live-shape", "sun-monthly-meeting-drift", "sun-late-date-drift", "sun-towel-echo-by-patch"]);
 
 /** Fix runs that still fail, and why (the path that owns the turn is not Step B's reader). */
 const FIX_OPEN: Readonly<Record<string, string>> = {};
@@ -106,6 +106,20 @@ const LIVE_SHAPES: readonly RefusalScenario[] = [
     script: {
       patch: { [SUN_TOWEL]: patch("this_form") },
       revisionFrom: { [SUN_TOWEL]: { coaching_details: "Observed:\nAdd details about the towel." } },
+    },
+  },
+  /* QA's stability run 2 (7 Nov 2026): "Details about the towel." — no heading, the instruction minus its verb. */
+  {
+    ...byId("sun-towel-nothing-said"),
+    id: "sun-towel-echo-by-patch",
+    script: { patch: { [SUN_TOWEL]: patch("this_form", [{ field: "coaching_details", value: "Details about the towel.", how: "add", evidence: SUN_TOWEL }]) } },
+  },
+  {
+    ...byId("sun-towel-nothing-said"),
+    id: "sun-towel-echo-by-revision",
+    script: {
+      patch: { [SUN_TOWEL]: patch("this_form", [{ field: "coaching_details", value: "Details about the towel.", how: "add", evidence: SUN_TOWEL }]) },
+      revisionFrom: { [SUN_TOWEL]: { coaching_details: "Details about the towel." } },
     },
   },
   {

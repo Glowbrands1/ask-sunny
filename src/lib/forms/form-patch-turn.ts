@@ -211,7 +211,12 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
     if (!prepared) return null;
     const { template, before, allGroups, labels, stated, verbatim, writable, readerFixes, modelInput } = prepared;
     const reading = await readingFor(input, modelInput);
-    if (!("ok" in reading) || reading.turn !== "this_form") return null;
+    /* FORM_PATCH_READER_FIXES_ENABLED: every hand-off after a reading tells the old path's revision (no instruction, no repeat). */
+    const handOff = async (): Promise<null> => {
+      if (readerFixes) (await import("./reader-found-nothing")).noteReaderFoundNothing(input.instanceId);
+      return null;
+    };
+    if (!("ok" in reading) || reading.turn !== "this_form") return handOff();
     /*
      * QA, 3 Nov 2026 (blocker before the Step B flip; ported from Ask
      * Bubbles): "make it sound more professional" is about this form, but the
@@ -220,11 +225,7 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
      * revision paths run as before. (A patch whose sets were all refused still
      * answers from its diff.)
      */
-    if (Object.keys(reading.patch.set).length === 0 && reading.patch.clear.length === 0) {
-      // FORM_PATCH_READER_FIXES_ENABLED: the old path's revision may not then write the instruction itself.
-      if (readerFixes) (await import("./reader-found-nothing")).noteReaderFoundNothing(input.instanceId);
-      return null;
-    }
+    if (Object.keys(reading.patch.set).length === 0 && reading.patch.clear.length === 0) return handOff();
 
     /*
      * The assistant's last reply counts as accepted only when the patch quotes
@@ -253,7 +254,17 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
       checkboxGroups: groups,
       listKeys: new Set([PRIOR_ACTIONS_KEY]),
       listNone: NO_PRIOR_ACTION,
-      ...(readerFixes ? { faithful: { employeeName: readerFixes.employeeName, formText: readerFixes.formText, latest: input.question }, verbatimKeys: verbatim } : {}),
+      ...(readerFixes
+        ? {
+            faithful: { employeeName: readerFixes.employeeName, formText: readerFixes.formText, latest: input.question },
+            verbatimKeys: verbatim,
+            echoOf: {
+              latest: input.question,
+              name: readerFixes.employeeName,
+              formWords: Object.fromEntries(Object.entries(labels).map(([key, label]) => [key, `${label} ${loaded.instance.templateName ?? ""}`])),
+            },
+          }
+        : {}),
       sources: {
         manager: said,
         managerTurns: managerTurns(input.history, input.question),
@@ -298,7 +309,7 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
         syncPlan: { after: [...stated], amountSentence: true, notes: input.question },
         ...(readerFixes ? { readerFixes } : {}),
       });
-      if (result.handoff === "refused") return null;
+      if (result.handoff === "refused") return handOff();
       /*
        * FORM_PATCH_READER_FIXES_ENABLED (QA's live run, 7 Nov 2026: "yes, do that" after the edit was saved went
        * to the old path, whose revision rewrote the form and said "Updated"): what the reader set is already on
