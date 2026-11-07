@@ -75,6 +75,7 @@ import {
   remapDraftSourcesEnabled,
   formDateIncidentOnlyEnabled,
   reopenVerbGuardEnabled,
+  reopenByAnyOpenVerbEnabled,
   formRevisionsEnabled,
   formRevisionsUiEnabled,
   sensitiveDefaultsRedactEnabled,
@@ -241,6 +242,8 @@ const NEW_FLAGS = [
   "NEWEST_PLACE_TURN_ENABLED",
   "QUESTION_NOT_FORM_ENABLED",
   "FORM_EDIT_DATE_RULES_ENABLED",
+  // coding 2: REMOVE_POLICY_NOT_NAMED (A1; default off): forced off with the others in the child run.
+  "REMOVE_POLICY_NOT_NAMED_ENABLED",
   "FOLLOWUP_NEW_TOPIC_RETRIEVAL_ENABLED",
   "DRAFT_REUSE_SAME_CHAT_ONLY_ENABLED",
   "RESIGN_METHOD_FOLLOWUP_ENABLED",
@@ -252,6 +255,7 @@ const NEW_FLAGS = [
   "NEXT_PUBLIC_REMAP_DRAFT_SOURCES_ENABLED",
   "FORM_DATE_INCIDENT_ONLY_ENABLED",
   "REOPEN_VERB_GUARD_ENABLED",
+  "REOPEN_BY_ANY_OPEN_VERB_ENABLED",
   "FORM_REVISIONS_ENABLED",
   "NEXT_PUBLIC_FORM_REVISIONS_ENABLED",
   "SENSITIVE_DEFAULTS_REDACT_ENABLED",
@@ -262,6 +266,8 @@ const NEW_FLAGS = [
   "STATE_CODE_NOT_A_PERSON_ENABLED",
   "GOOGLE_REVIEWS_IN_CHAT_ENABLED",
   "DRAFT_NEVER_BLANK_ENABLED",
+  // Missing from this list since its PR (QA, 7 Nov 2026): forced off with the others in the child run.
+  "STALE_PROMPT_LINES_OFF_ENABLED",
   "NAME_BEFORE_TITLE_ENABLED",
   "LATE_OPEN_PAYROLL_FROM_FORM_ENABLED",
   "STORED_SLOTS_NOT_A_REQUEST_ENABLED",
@@ -275,6 +281,8 @@ const NEW_FLAGS = [
   "REQUEST_LINE_ACCOUNT_ENABLED",
   "NOT_DEDUCTIBLE_READ_ENABLED",
   "PRIOR_STEP_SENTENCE_ENABLED",
+  // coding 2: PRIOR_STEP_PREVIOUSLY (A2; default off): forced off with the others in the child run.
+  "PRIOR_STEP_PREVIOUSLY_ENABLED",
   "EXIT_FULFILLED_IS_LAST_DAY_ENABLED",
   "FUTURE_PRIOR_ROW_DROP_ENABLED",
   "NAME_QUESTION_ONLY_ENABLED",
@@ -348,6 +356,7 @@ const NEW_FLAGS = [
   "CA_NAME_FROM_CHAT_ENABLED",
   "NEW_REQUEST_OPEN_DRAFT_ENABLED",
   "PRIOR_ACTIONS_POLICY_ENABLED",
+  "PRIOR_ACTIONS_NO_SIGNED_ENABLED",
   "NEXT_PUBLIC_CARD_POLICY_TO_DRAFT_ENABLED",
   "TEAM_CARD_WORDING_ENABLED",
   "OBSERVATION_NOT_POLICY_NAME_ENABLED",
@@ -356,6 +365,9 @@ const NEW_FLAGS = [
   "STAFF_PICKER_NO_REPEAT_ENABLED",
   "COACHING_FOR_EVERYONE_ENABLED",
   "THIS_PERSONS_TURNS_ENABLED",
+  // Missing from this list since its PR (QA, 7 Nov 2026): forced off with the others in the child run.
+  "REQUEST_KEPT_IN_WINDOW_ENABLED",
+  "NEXT_PUBLIC_REQUEST_KEPT_IN_WINDOW_ENABLED",
   "AM_PRIOR_WARNINGS_ENABLED",
   "TRUNCATION_RETRY_ENABLED",
   "CHAT_RESPONSE_STREAM_ENABLED",
@@ -405,6 +417,7 @@ const NEW_FLAGS = [
   "PRIMARY_SALON_NOT_EDIT_ENABLED",
   "CA_SALES_POLICY_ENABLED",
   "FORM_NAME_FROM_ROSTER_ENABLED",
+  "PAST_FORMS_BEFORE_LIBRARY_ENABLED",
   "COACHING_ASKS_WHAT_HAPPENED_ENABLED",
   "KEEP_ROSTER_EXACT_NAME_ENABLED",
   "ROSTER_NAME_IN_CANDIDATE_ENABLED",
@@ -775,6 +788,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(remapDraftSourcesClientEnabled()).toBe(false);
     expect(formDateIncidentOnlyEnabled()).toBe(false);
     expect(reopenVerbGuardEnabled()).toBe(false);
+    expect(reopenByAnyOpenVerbEnabled()).toBe(false);
     expect(formRevisionsEnabled()).toBe(false);
     expect(formRevisionsUiEnabled()).toBe(false);
     expect(sensitiveDefaultsRedactEnabled()).toBe(false);
