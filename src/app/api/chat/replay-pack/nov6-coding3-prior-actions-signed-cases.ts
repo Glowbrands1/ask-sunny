@@ -100,7 +100,8 @@ export const NOV6_CODING3_PRIOR_ACTIONS_SIGNED_CASES: ReplayCase[] = [
     id: "nov6-coding3-prior-actions-never-signed-unsaid",
     title: "\"this is a verbal warning. previous coaching policy manual 10-15-26\": Prior actions never say \"signed\", and list only the finalized form on file",
     report: `${REPORT}: "${SAID}" → the new Corrective Action's Prior actions said the steps were signed; they were never signed or given`,
-    status: { open: "the drafting prompt asks for \"— signed <date>\" and grounding keeps it; a form on file reads \"— signed <date>\" too" },
+    // Changed on purpose (8 Nov 2026): QA's flip 9 (00:59 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+    status: "fixed",
     fixFlags: [FIX],
     async run(t: T) {
       start(t);
@@ -116,7 +117,8 @@ export const NOV6_CODING3_PRIOR_ACTIONS_SIGNED_CASES: ReplayCase[] = [
     id: "nov6-coding3-prior-actions-never-signed-unsaid-parse-off",
     title: "the same, with PRIOR_ACTIONS_PARSE_ENABLED off: no \"signed\" nobody said",
     report: `${REPORT}: "${SAID}" (PRIOR_ACTIONS_PARSE_ENABLED, on in production, turned off)`,
-    status: { open: "the drafting prompt asks for \"— signed <date>\"; with PRIOR_ACTIONS_PARSE_ENABLED off the manager's own line says \"signed\" too" },
+    // Changed on purpose (8 Nov 2026): QA's flip 9 (00:59 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+    status: "fixed",
     fixFlags: [FIX],
     async run(t: T) {
       // PRIOR_ACTIONS_PARSE_ENABLED is on in production: the case checks the other side.

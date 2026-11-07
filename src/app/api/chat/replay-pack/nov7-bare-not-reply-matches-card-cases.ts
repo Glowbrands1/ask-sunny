@@ -38,7 +38,8 @@ export const NOV7_BARE_NOT_REPLY_MATCHES_CARD_CASES: ReplayCase[] = [
     title: "\"ca for <A> not late\" with REPLY_MATCHES_CARD on: the card asks what happened, and \"<A> not late\" is no Observation",
     report: REPORT,
     // With production's flags (BARE_NOT_AFTER_REQUEST off) the card's Observation is still "<A> not late".
-    status: { open: "the card's Observation of Offense is \"<A> not late\" (BARE_NOT_AFTER_REQUEST is off in production)" },
+    // Changed on purpose (8 Nov 2026): QA's flip 9 (00:59 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const thread = start(t);

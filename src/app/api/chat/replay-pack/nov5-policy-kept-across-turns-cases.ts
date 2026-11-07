@@ -73,7 +73,8 @@ export const NOV5_POLICY_KEPT_ACROSS_TURNS_CASES: ReplayCase[] = [
     id: "nov5-r6-policy-kept-across-turns",
     title: "R6/R7: \"Create a Corrective Action Form from this conversation.\" after name corrections keeps the Standards of Conduct the card cited for \"a customer complaint\"",
     report: `${REPORT}: the card cited Standards of Conduct p.12 at R7; at R6 it read "review the applicable company policy" with no Policy line`,
-    status: { open: "with production's flags the card made at R6 has no Policy line" },
+    // Changed on purpose (8 Nov 2026): QA's flip 9 (00:59 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+    status: "fixed",
     fixFlags: ["REQUEST_KEPT_IN_WINDOW_ENABLED", "NEXT_PUBLIC_REQUEST_KEPT_IN_WINDOW_ENABLED"],
     async run(t) {
       const thread = start(t);
