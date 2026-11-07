@@ -191,3 +191,86 @@ describe("Pau's five messages (4 Nov 2026), exact wording, names invented", () =
     expect(readCaPolicy(P5)).toMatchObject({ stated: "standards_of_conduct", suggestion: "standards_of_conduct" });
   });
 });
+
+describe("CA_PERFORMANCE_REASON_ENABLED: \"for performance\" in the request is the sales reading (QA, coding-3 item 5, 5 Nov 2026)", () => {
+  // The manager's exact wording; the name is invented (replay case nov5-coding3-ca-for-performance-is-an-account).
+  const REQUEST = "can you write me a Ca for Oriel Marchbourne for performance for october";
+  const REASON = "CA_PERFORMANCE_REASON_ENABLED";
+  const savedReason = process.env[REASON];
+  afterEach(() => {
+    if (savedReason === undefined) delete process.env[REASON];
+    else process.env[REASON] = savedReason;
+  });
+  const reasonOn = () => (process.env[REASON] = "true");
+
+  it("off: the exact wording reads as before — no sales reading, \"what happened\" is asked", async () => {
+    const { describesIncident } = await import("./corrective-action-intake");
+    on();
+    delete process.env[REASON];
+    expect(readCaPolicy(REQUEST)).toMatchObject({ suggestion: null, source: null });
+    expect(describesIncident(REQUEST)).toBe(false);
+  });
+
+  it("on: the exact wording is the sales-performance account, cites the Standards of Conduct, and is an account", async () => {
+    const { describesIncident } = await import("./corrective-action-intake");
+    on();
+    reasonOn();
+    const reading = readCaPolicy(REQUEST);
+    expect(reading).toMatchObject({ stated: null, suggestion: "standards_of_conduct", source: "sales_performance", ambiguous: null });
+    expect(caPolicyProposalLine(reading)).toMatch(/Standards of Conduct/);
+    expect(describesIncident(REQUEST)).toBe(true);
+  });
+
+  it("on: \"sales performance\" in the request is the sales reading", () => {
+    on();
+    reasonOn();
+    expect(readCaPolicy("write a CA for Oriel Marchbourne for sales performance")).toMatchObject({
+      suggestion: "standards_of_conduct",
+      source: "sales_performance",
+    });
+  });
+
+  it("on: \"for closing duties\" stays non-sales (duties are not the performance pattern)", () => {
+    const text = "write a CA for Oriel Marchbourne for closing duties";
+    on();
+    delete process.env[REASON];
+    const before = readCaPolicy(text);
+    reasonOn();
+    const reading = readCaPolicy(text);
+    expect(reading).toEqual(before);
+    expect(reading.source === "sales_performance" || reading.source === "msb").toBe(false);
+  });
+
+  it("on: a sentence that asks for no form (\"her performance has been great\") stays non-sales", () => {
+    const text = "her performance has been great";
+    on();
+    reasonOn();
+    expect(readCaPolicy(text)).toMatchObject({ suggestion: null, source: null });
+  });
+
+  it("on: the performance plan's own name is not a CA reason (\"an employee performance plan for …\")", () => {
+    const text = "i need an employee performance plan for Oriel Marchbourne";
+    on();
+    delete process.env[REASON];
+    const before = readCaPolicy(text);
+    reasonOn();
+    expect(readCaPolicy(text)).toEqual(before);
+  });
+
+  it("on: an attendance account in the same request is left alone", () => {
+    const text = "can you write me a CA for Oriel Marchbourne for performance, she was late to her shift three times this week";
+    on();
+    delete process.env[REASON];
+    const before = readCaPolicy(text);
+    reasonOn();
+    expect(readCaPolicy(text)).toEqual(before);
+  });
+
+  it("CA_SALES_POLICY_ENABLED off: the performance-reason flag alone changes nothing", () => {
+    off();
+    delete process.env[REASON];
+    const before = readCaPolicy(REQUEST);
+    reasonOn();
+    expect(readCaPolicy(REQUEST)).toEqual(before);
+  });
+});

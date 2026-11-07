@@ -1,8 +1,10 @@
 import { withoutAppLines } from "@/lib/ai/app-sentences";
-import { foldsToGlossaryTerm, isSalesCountTerm } from "@/lib/ai/chat-glossary";
+import { CHAT_GLOSSARY, foldsToGlossaryTerm, isSalesCountTerm } from "@/lib/ai/chat-glossary";
 import {
   asYouSaidAppReadEnabled,
   asYouSaidManagerWordsEnabled,
+  caPerformanceReasonEnabled,
+  msbPhraseSocEnabled,
   caSalesPolicyEnabled,
   cleaningOtherEveryWordingEnabled,
   formEditDateRulesEnabled,
@@ -12,6 +14,7 @@ import {
 } from "@/lib/config/chat-quality-flags";
 
 import { JOIN } from "./bounded-context";
+import { namesPerformance } from "./epp-policy";
 import { LATE_TO_OPEN, lateOpenOn } from "./late-open";
 import {
   findManualSection,
@@ -23,6 +26,7 @@ import {
 } from "./official-policy-manual";
 import { statesMetricShortfall } from "./metric-shortfall";
 import { CURRENT_CA_OFFENSE_KEYS, offeredOffenseKey, offeredOffenseKeys } from "./offense-keys";
+import { detectTemplateIntent } from "./template-intent";
 
 /**
  * ============================================================================
@@ -632,16 +636,42 @@ function performanceIsTheReason(rawText: string): boolean {
   return statements(normalize(rawText)).some((sentence) => PERFORMANCE_AS_REASON.test(sentence));
 }
 
+/**
+ * MSB_PHRASE_SOC_ENABLED (Pau, 7 Nov 2026: "create a ca for must see behaviors for <name>" cited no policy; same flag
+ * in both apps; default off). The glossary term is matched word by word, so "MSB" was read and the spelled-out
+ * "must see behaviors" was not. The spelled-out phrases are the approved table's own: the right side of each
+ * "X = <phrase>." line of `CHAT_GLOSSARY`, folded to letters and digits — no list kept here. A singular
+ * ("must see behavior") and hyphens ("must-see") fold the same.
+ */
+const GLOSSARY_PHRASES: readonly string[] = CHAT_GLOSSARY.split("\n")
+  .map((line) => /^[A-Za-z0-9][A-Za-z0-9.&-]*\s+=\s+([^.]+)\./.exec(line)?.[1])
+  .filter((phrase): phrase is string => Boolean(phrase))
+  .map((phrase) => phrase.toLowerCase().replace(/[^a-z0-9]+/g, "").replace(/s$/, ""))
+  .filter((phrase) => phrase.length >= 6);
+
+function spellsOutGlossaryTerm(sentence: string): boolean {
+  const folded = sentence.toLowerCase().replace(/[^a-z0-9]+/g, "");
+  return GLOSSARY_PHRASES.some((phrase) => folded.includes(phrase));
+}
+
 function withSalesPolicy(reading: CaPolicyReading, rawText: string): CaPolicyReading {
   if (!caSalesPolicyEnabled()) return reading;
   if (reading.stated !== null && reading.stated !== "under_performance") return reading;
   if (reading.missedEvent !== null) return reading;
   const sentences = statements(normalize(rawText));
-  const msb = sentences.some((sentence) =>
-    sentence.split(/[^a-z0-9.]+/).some((word) => foldsToGlossaryTerm(word.replace(/^\.+|\.+$/g, ""))),
-  );
+  const msb =
+    sentences.some((sentence) =>
+      sentence.split(/[^a-z0-9.]+/).some((word) => foldsToGlossaryTerm(word.replace(/^\.+|\.+$/g, ""))),
+    ) ||
+    // MSB_PHRASE_SOC_ENABLED: the term spelled out ("must see behaviors") is the term too.
+    (msbPhraseSocEnabled() && sentences.some(spellsOutGlossaryTerm));
   // The stated shortfall reader the progression already uses (`corrective-action-intake.ts`): a metric named and judged.
-  const target = reading.stated === "under_performance" || statesMetricShortfall(rawText) || (salesShortfallObjectEnabled() && (performanceIsTheReason(rawText) || countsASalesTerm(rawText)));
+  // Both default-off readings kept (merge of main into #573): CA_PERFORMANCE_REASON's "for performance" request and SALES_SHORTFALL_OBJECT's reason/count.
+  const target =
+    reading.stated === "under_performance" ||
+    statesMetricShortfall(rawText) ||
+    performanceIsTheRequest(reading, sentences) ||
+    (salesShortfallObjectEnabled() && (performanceIsTheReason(rawText) || countsASalesTerm(rawText)));
   if (!msb && !target) return reading;
   if (reading.stated === null && sentences.some((s) => ATTENDANCE.test(s))) return reading;
   return {
@@ -652,6 +682,35 @@ function withSalesPolicy(reading: CaPolicyReading, rawText: string): CaPolicyRea
     source: msb ? "msb" : "sales_performance",
     ambiguous: null,
   };
+}
+
+/**
+ * CA_PERFORMANCE_REASON_ENABLED (QA, coding-3 item 5, 5 Nov 2026; default off;
+ * only with CA_SALES_POLICY_ENABLED): "can you write me a Ca for <name> for
+ * performance for october" is the sales-performance account. The bare
+ * "performance" is not a metric named and judged, and the published template
+ * has no Under Performance box to name — so neither reading above saw it, and
+ * the card asked what happened.
+ *
+ * NO NEW WORDS. The sentence must ASK FOR THE CORRECTIVE ACTION (the reading
+ * `request-slot.ts` uses, `detectTemplateIntent`, narrowed to this form: "an
+ * employee performance plan for …" names performance as its form's own name)
+ * and match the EPP reader's existing performance pattern (`namesPerformance`,
+ * `epp-policy.ts` — its duties/tasks and evaluation patterns left out, so "for
+ * closing duties" stays a task). "Her performance has been great" asks for no
+ * form and is left alone. The account must read as nothing else: no conduct
+ * topic, no policy named (Under Performance is already `target`), no missed
+ * event; attendance is ruled out after, as for every sales reading.
+ */
+function performanceIsTheRequest(reading: CaPolicyReading, sentences: string[]): boolean {
+  if (!caPerformanceReasonEnabled()) return false;
+  if (reading.stated !== null || reading.topics.length > 0 || reading.missedEvent !== null) return false;
+  return sentences.some((sentence) => namesPerformance.test(sentence) && asksForCorrectiveAction(sentence));
+}
+
+function asksForCorrectiveAction(sentence: string): boolean {
+  const intent = detectTemplateIntent(sentence);
+  return intent.kind === "corrective_action" || (intent.kind === "explicit" && intent.templateKey === "dpoa");
 }
 
 /**
