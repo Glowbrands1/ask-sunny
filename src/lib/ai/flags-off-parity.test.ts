@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
@@ -932,20 +932,38 @@ describe("new flags default off and wrappers are inert", () => {
 const CHILD = process.env.FLAGS_OFF_PARITY_CHILD === "1";
 
 /*
- * The child run is split in two (QA, 3 Nov 2026): as one run over all four
- * folders it took about 526 s of its 540 s on CI and timed out (ETIMEDOUT)
- * whenever the runner was busy. Each half now has the whole budget; the
- * folders, the flags and what must pass are unchanged.
+ * The child run is split (QA, 3 Nov 2026, then 7 Nov 2026). As one run over all
+ * four folders it took about 526 s of its 540 s on CI and timed out (ETIMEDOUT)
+ * whenever the runner was busy, so it was split in two. By 7 Nov the chat+forms
+ * half alone took 530 s on main on a 4-CPU runner (564–607 s on branches that add
+ * replay cases): the replay pack had grown into most of it. The replay pack now
+ * runs in a child of its own, so each child has the whole budget with room to
+ * spare. The folders, the flags and what must pass are unchanged, and every test
+ * file still runs in exactly one child.
+ *
+ * Vitest's `--exclude` does not reach inside a project (the "unit" project's own
+ * `exclude` wins), and a path filter matches any file whose path contains it. So
+ * the chat folder without the pack is named entry by entry — each test file, and
+ * each folder with its trailing "/" — read from the folder itself.
  */
-const HALVES: readonly (readonly string[])[] = [
-  ["src/lib/ai", "src/lib/forms"],
-  ["src/app/api/chat", "src/app/api/forms"],
+const CHAT = "src/app/api/chat";
+const REPLAY_PACK = `${CHAT}/replay-pack`;
+function chatWithoutReplayPack(): string[] {
+  return readdirSync(CHAT, { withFileTypes: true })
+    .filter((entry) => `${CHAT}/${entry.name}` !== REPLAY_PACK)
+    .filter((entry) => entry.isDirectory() || /\.test\.tsx?$/.test(entry.name))
+    .map((entry) => `${CHAT}/${entry.name}${entry.isDirectory() ? "/" : ""}`);
+}
+const CHILDREN: readonly { readonly name: string; readonly paths: () => readonly string[] }[] = [
+  { name: "src/lib/ai, src/lib/forms", paths: () => ["src/lib/ai", "src/lib/forms"] },
+  { name: `${CHAT} (without the replay pack), src/app/api/forms`, paths: () => [...chatWithoutReplayPack(), "src/app/api/forms"] },
+  { name: REPLAY_PACK, paths: () => [REPLAY_PACK] },
 ];
 
 describe("existing chat and form suites with every new flag off", () => {
-  for (const folders of HALVES) {
+  for (const child of CHILDREN) {
     it.skipIf(CHILD)(
-      `passes the suites whose expectations are already on main: ${folders.join(", ")}`,
+      `passes the suites whose expectations are already on main: ${child.name}`,
       () => {
         const env: NodeJS.ProcessEnv = { ...process.env, FLAGS_OFF_PARITY_CHILD: "1" };
         delete env.VITEST;
@@ -962,7 +980,7 @@ describe("existing chat and form suites with every new flag off", () => {
             "--maxWorkers=2",
             "--exclude",
             "src/lib/ai/flags-off-parity.test.ts",
-            ...folders,
+            ...child.paths(),
           ],
           // The child's output (every suite's logs) passed Node's 1 MB default
           // buffer on CI and failed with ENOBUFS before any test failed.
