@@ -216,14 +216,19 @@ const LIVE_SHAPES: readonly RefusalScenario[] = [
     ...byId("sun-late-date"),
     id: "sun-late-date-drift",
     // QA: the account is her X, or nothing is written (the old path's honest reply); never text about the form.
+    // Changed on purpose (QA's gate, 7 Nov 2026): with EDIT_MAKE_IT_ABOUT_ENABLED the old revision may write
+    // Details, so "her X is written" now happens and its "Updated … Details of Coaching" claim is true. The check
+    // used to refuse every claim; it now refuses a claim only when Details is not her X (and the date stays put).
     expect: {
-      says: "the drift (text about the form) is never written and nothing is claimed; her X is written, or the old refusal stands",
+      says: "the drift (text about the form) is never written; a change is claimed only when her X is written; the Date stays 2026-10-14",
       check: (run) =>
         /a prior coaching document exists/i.test(run.saved.coaching_details ?? "")
           ? `the drift was written: "${(run.saved.coaching_details ?? "").slice(0, 120)}"`
-          : /\b(?:updated|changed)\b/i.test(run.reply) && !/haven't changed|didn't change/i.test(run.reply)
-            ? `a change is claimed: "${run.reply.slice(0, 120)}"`
-            : null,
+          : run.saved.form_date && run.saved.form_date !== "2026-10-14"
+            ? `the Date is ${run.saved.form_date}`
+            : /\b(?:updated|changed)\b/i.test(run.reply) && !/haven't changed|didn't change/i.test(run.reply) && !/\blate\b/i.test(run.saved.coaching_details ?? "")
+              ? `a change is claimed but Details is not about showing up late: "${run.reply.slice(0, 120)}"`
+              : null,
     },
     script: {
       patch: {
