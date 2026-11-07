@@ -50,6 +50,14 @@ and the pull request says why.
 
 ### Baseline changes
 
+- **7 Nov 2026, s9: card employee null, "employee" and "blocking question" misses (changed on purpose; judge
+  unchanged).** QA's flips of 5 and 6 Nov are now in `production-flags.json` (ask-sunny #609), and
+  METRIC_GUARD_ENABLED (#570) runs the lowercase-nobody guard (`forms/answer-not-a-name.ts`) with FORM_NAME off too.
+  So "create a CA form for ima employee, …", where "ima" is nobody on s9's roster, no longer puts "Ima" on the card;
+  the reply asks who the form is for. That is Pau's 5 Nov 2026 ruling: only roster people go on the card, and "ima
+  employee" with no roster match asks who (replay `nov5-roster-only-ima-*`). **s9's criteria from 23 Oct (employee
+  "Ima", no blocking question) are superseded** by that ruling. s9 is the only changed row; every other case is as it
+  was. With FORM_NAME on later, the off-roster "use <name>" offer follows.
 - **3 Nov 2026, s20 and s28: "blocking question" added (judge unchanged).**
   SAME_ASK_NO_REPEAT is on in production. When a card repeats an unanswered
   question, it now begins "I still need to know who this is for …" (s20, after

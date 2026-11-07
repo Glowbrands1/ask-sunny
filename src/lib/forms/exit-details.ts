@@ -1,4 +1,4 @@
-import { exitIntakeFixEnabled, exitShortcutWordsEnabled, resignMethodFollowupEnabled } from "@/lib/config/chat-quality-flags";
+import { exitIntakeFixEnabled, exitShortcutWordsEnabled, exitStatedOnlyEnabled, resignMethodFollowupEnabled } from "@/lib/config/chat-quality-flags";
 
 import { JOIN } from "./bounded-context";
 import { isQuestion } from "./employment-change";
@@ -182,6 +182,19 @@ interface Returns {
 }
 
 /**
+ * EXIT_STATED_ONLY_ENABLED (QA, 5 Nov 2026, a termination letter pasted for an exit form): a return verb states a
+ * key or an item came back only when it says it HAPPENED. Not after a modal or "to" ("you would turn in your keys",
+ * "will return", "needs to return"), not after "please", and not as a base-form verb opening its clause ("Return
+ * your salon keys … today") — an instruction or a condition. "Returned her key" and "dropped off her key" still do.
+ */
+function returnHappened(clause: string, match: RegExpMatchArray): boolean {
+  const before = clause.slice(0, match.index ?? 0);
+  if (/\b(?:would|will|wo|should|shall|must|can|could|might|may|to|please|gonna)\s+(?:not\s+|also\s+|still\s+)?$/i.test(before)) return false;
+  const base = /^(?:return|turn in|bring back|give back|hand in|hand back|drop off)$/i.test(match[0]);
+  return !(base && /^\s*(?:and\s+|also\s+|then\s+)?$/i.test(before));
+}
+
+/**
  * What a clause says came back, and what did not.
  *
  *   verb … object        "returned her key and shirts", "didn't turn in her key"
@@ -194,8 +207,9 @@ function returnsIn(clause: string): Returns {
   let items: Reading;
   let key: Reading;
 
-  const objects = (verb: RegExp, polarity: (at: number) => YesNo) => {
+  const objects = (verb: RegExp, polarity: (at: number) => YesNo, done?: (match: RegExpMatchArray) => boolean) => {
     for (const match of clause.matchAll(verb)) {
+      if (done && !done(match)) continue;
       const at = match.index ?? 0;
       let object = clause.slice(at + match[0].length, at + match[0].length + 80);
       const exception = EXCEPT.exec(object);
@@ -208,7 +222,7 @@ function returnsIn(clause: string): Returns {
       if (all && KEY.test(excepted)) key = add(key, flip(answer));
     }
   };
-  objects(RETURN_VERB, (at) => (negatedAt(clause, at) ? "no" : "yes"));
+  objects(RETURN_VERB, (at) => (negatedAt(clause, at) ? "no" : "yes"), exitStatedOnlyEnabled() ? (match) => returnHappened(clause, match) : undefined);
   objects(KEPT_VERB, () => "no");
 
   // EXIT_SHORTCUT_WORDS_ENABLED: "$25 will be payroll deducted for salon key" — a key is deducted for only when it did not come back.
@@ -622,6 +636,9 @@ export function inStatedPermanentAddress(candidate: string | null | undefined, t
   return address !== null && address.toLowerCase().includes(phrase);
 }
 
+/** EXIT_STATED_ONLY_ENABLED: the manager's words say the employee was let go ("your employment … is terminated"). */
+const TERMINATED = /\b(?:terminated|termination|terminating|fired|let (?:him|her|them)? ?go|dismissed|dismissal)\b/i;
+
 /* ------------------------------------------------------------ reading -- */
 
 function readAnswers(turn: string): Partial<Record<ExitAnswerKey, Reading>> {
@@ -684,6 +701,11 @@ export function readExitDetails(rawText: string, today: string, facts?: ExitFact
     else if (reading) answers[key] = reading;
   }
 
+  // EXIT_STATED_ONLY_ENABLED: a termination is not a resignation — how and why they "resigned" are never read from it.
+  if (exitStatedOnlyEnabled() && TERMINATED.test(text)) {
+    method = null;
+    reason = null;
+  }
   const permanentAddress = readPermanentAddress(text);
   return {
     resignationDate: exitFacts.resignationDate,

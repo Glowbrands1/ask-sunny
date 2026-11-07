@@ -282,7 +282,10 @@ async function coachingChat(t: T, upTo: number): Promise<void> {
 }
 
 /** Today's status of each prefix (production flags). */
-const COACHING_OPEN: Readonly<Record<number, string>> = {};
+const COACHING_OPEN: Readonly<Record<number, string>> = {
+  // fails with production's real flags (QA Vercel read 5 Nov); tracked: POLICY_CITATION_ENABLED (on in production) — "fix her last name, it is Laine" no longer reaches the Details.
+  1: "fails with production's real flags (QA Vercel read 5 Nov); tracked: POLICY_CITATION_ENABLED (on in production) — \"fix her last name, it is Laine\" no longer reaches the Details",
+};
 
 const COACHING_CASES: readonly ReplayCase[] = COACHING_CHAIN.map((said, index): ReplayCase => {
   const turn = index + 1;
@@ -292,7 +295,8 @@ const COACHING_CASES: readonly ReplayCase[] = COACHING_CHAIN.map((said, index): 
     title: `coaching chat C${turn} "${said}" — the old path`,
     report: `${REPORT} (coaching): C${turn} "${said}"`,
     status: open ? { open } : "fixed",
-    fixFlags: [],
+    // C1 is open with production's real flags (POLICY_CITATION); CITATION_LINE_KEPT_ON_REVISION_ENABLED fixes it.
+    fixFlags: turn === 1 ? ["CITATION_LINE_KEPT_ON_REVISION_ENABLED"] : [],
     run: (t) => coachingChat(t, turn),
   };
 });
@@ -408,8 +412,9 @@ type Mode = "code" | "models";
  * `nov4-live-regressions-scenarios.ts` and their misses here.
  */
 const BY_MISS = "the non-person \"BY CORIN BELLWEATHER\" is taken as the name (\"I'll draft a Corrective Action Form for **BY CORIN BELLWEATHER**\"), and the card has no employee";
+// Changed on purpose (7 Nov 2026): QA's flips of 5 and 6 Nov turned CA_SALES_POLICY, REPLY_MATCHES_CARD, TITLE_OF_THE_EMPLOYEE, METRIC_GUARD, TITLE_ENDS_AT_LINE, BARE_NOT_DENIAL and PLACE_FROM_CUE on in production (production-flags.json): the off-roster BY-line cases now hold with production's flags; the on-roster ones stay open.
 const NAME_OPEN: Readonly<Record<string, string>> = Object.fromEntries(
-  (["on", "off"] as const).flatMap((roster) => (["code", "models"] as const).map((mode) => [`last-date-caps-${roster}-${mode}`, BY_MISS])),
+  (["on"] as const).flatMap((roster) => (["code", "models"] as const).map((mode) => [`last-date-caps-${roster}-${mode}`, BY_MISS])),
 );
 
 const ASKED_WHO = /who is this\b[^?\n]*\bfor\?/i;

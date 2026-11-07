@@ -50,7 +50,7 @@ import {
 import { accountManualSections } from "./account-manual-sections";
 import { appSentencesOnePerLine } from "./app-sentences";
 import { titleTextFromQuestion } from "./title-words";
-import type { ConversationFormState } from "./form-state";
+import { stateForTurn, type ConversationFormState } from "./form-state";
 import type { GroundedPerson } from "./grounded-entities";
 import { formatManualCitation } from "./policy-citation-fields";
 import { remapCitations, remapManualSections, withoutStateCodes } from "./remap-incident";
@@ -144,7 +144,8 @@ export function enrichFormCard(input: {
   else if (next.employeeName && next.locationId && next.status !== "ready") next = settleLocation(next, next.locationId);
 
   const followUps = followUpDates(blob, input.today, next.formDate ?? null);
-  const policy = statedPolicy(blob, input.saved);
+  // SECOND_REQUEST_OWN_ACCOUNT_ENABLED: a new form request never falls back to the earlier request's policy.
+  const policy = statedPolicy(blob, stateForTurn(input.saved, input.question));
   let content = withoutBlocking(input.response.content, next);
   // The salon question used to be the whole reply. Once the salon is known,
   // that line goes and the policy line that was under it stays.

@@ -1,5 +1,6 @@
 import { REPORTS } from "@/features/reports/reports-routes";
 import { promptCacheEnabled } from "@/lib/config/chat-quality-flags";
+import { withSalesException } from "./ca-sales-prompt-lines";
 import { displayLocator } from "@/lib/knowledge/locator";
 import type { AnswerMode } from "@/types";
 import { CROSS_CHAT_REPLY_RULE } from "@/lib/chat/cross-chat-guard";
@@ -634,7 +635,7 @@ export function buildSystemPrompt(input: {
     .join("\n");
 
   const employeeSection = hasFrameworkGrounding
-    ? `\n\n${withUnifiedAuthority(EMPLOYEE_PERFORMANCE_RULES, input.unifiedAuthority === true).replaceAll("{{BRAND}}", brandName)}\n\n${
+    ? `\n\n${withSalesException(withUnifiedAuthority(EMPLOYEE_PERFORMANCE_RULES, input.unifiedAuthority === true)).replaceAll("{{BRAND}}", brandName)}\n\n${
         hasEmployeeFactsBlock ? EMPLOYEE_FACTS_ATTACHED_RULES : NO_INGESTED_DATASET_RULES
       }`
     : "";

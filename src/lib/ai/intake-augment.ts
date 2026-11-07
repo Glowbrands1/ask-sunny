@@ -11,6 +11,7 @@ import {
 } from "@/lib/forms/payroll-deduct";
 import { extractJobTitle, readEmployeeMentions } from "@/lib/forms/proposal";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
+import { placeText } from "@/lib/forms/place-from-cue";
 import { statedWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
 
 /**
@@ -63,7 +64,8 @@ function slotLines(question: string, history: readonly IntakeTurn[]): string[] {
 
   const joined = [...earlier, question].join("\n");
   const salon = singleSalon([...earlier, question]) ?? fuzzySalon(joined) ?? uniqueRosterSalon(joined);
-  if (salon && readSalonMentions(question).length === 0) {
+  // PLACE_FROM_CUE_ENABLED: "… for <name> from <salon>" already names one (`forms/place-from-cue.ts`).
+  if (salon && readSalonMentions(placeText(question)).length === 0) {
     lines.push(`It happened at ${salon}.`);
   }
   return lines;
