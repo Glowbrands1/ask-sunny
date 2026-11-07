@@ -2600,6 +2600,17 @@ export function metricGuardEnabled(): boolean {
 }
 
 /**
+ * METRIC_CHOICE_ONE_QUESTION_ENABLED (QA, 7 Nov 2026; default off). The same doubled ask as the sibling app's FORM_NAME
+ * re-flip gate regression, under METRIC_GUARD_ENABLED: a choice question with its own "Tell me and I'll …" after it,
+ * every choice a metric, became "Who is this form for? Tell me the employee's full name. Tell me and I'll fill in …".
+ * On: the question's tail goes with a choice that is replaced, and stays with one still asked
+ * (`forms/roster-only-names.ts` withoutMetricChoices). Off, as before.
+ */
+export function metricChoiceOneQuestionEnabled(): boolean {
+  return envFlag("METRIC_CHOICE_ONE_QUESTION_ENABLED");
+}
+
+/**
  * CLEANING_OTHER_EVERY_WORDING_ENABLED (QA's live eval ca-sales-negative-cleaning-duties and replay, 6 Nov 2026;
  * same flag in both apps; default off; Pau's ruling: cleaning left undone is Other, never the Standards of
  * Conduct). With CA_SALES_POLICY_ENABLED on, "for not completing his daily cleaning duties" and "for not
@@ -2800,6 +2811,19 @@ export function ownBrandOnlyEnabled(): boolean {
   return envFlag("OWN_BRAND_ONLY_ENABLED");
 }
 
+// --- coding 4 flags ---
+
+/**
+ * AS_YOU_SAID_APP_READ_ENABLED (QA's Sunny gate, 7 Nov 2026: 45 regressions from AS_YOU_SAID_MANAGER_WORDS; ships
+ * with it; same flag in both apps; default off). With AS_YOU_SAID on, an attendance or late-opening CA whose only
+ * Policy line was "<policy>, as you said" (read from the app's own line) lost the line. On: the policy the app's own
+ * lines named is kept as its reading and said as one ("**Policy:** Late Opening — read from this request …"),
+ * never "as you said" and never nothing (`forms/ca-policy.ts` readCaPolicy, caPolicyProposalLine). Off, as before.
+ */
+export function asYouSaidAppReadEnabled(): boolean {
+  return envFlag("AS_YOU_SAID_APP_READ_ENABLED");
+}
+
 // --- coding 2 flags ---
 
 /**
@@ -2813,15 +2837,14 @@ export function noNoticeNoDateEnabled(): boolean {
   return envFlag("NO_NOTICE_NO_DATE_ENABLED");
 }
 
-// --- Coding flags ---
-
 /**
- * METRIC_CHOICE_ONE_QUESTION_ENABLED (QA, 7 Nov 2026; default off). The same doubled ask as the sibling app's FORM_NAME
- * re-flip gate regression, under METRIC_GUARD_ENABLED: a choice question with its own "Tell me and I'll …" after it,
- * every choice a metric, became "Who is this form for? Tell me the employee's full name. Tell me and I'll fill in …".
- * On: the question's tail goes with a choice that is replaced, and stays with one still asked
- * (`forms/roster-only-names.ts` withoutMetricChoices). Off, as before.
+ * BARE_NOT_AFTER_REQUEST_ENABLED (QA's live Sunny re-check, 6 Nov 2026;
+ * default off). "ca for <A> not late" asked nothing: the clause starts with
+ * the request, so BARE_NOT_DENIAL's clause-start "not" missed it. With this
+ * flag on, the CA what-happened test also reads each clause without its
+ * request head and the employee's name (`ai/ca-what-happened.ts`). Off, as
+ * before.
  */
-export function metricChoiceOneQuestionEnabled(): boolean {
-  return envFlag("METRIC_CHOICE_ONE_QUESTION_ENABLED");
+export function bareNotAfterRequestEnabled(): boolean {
+  return envFlag("BARE_NOT_AFTER_REQUEST_ENABLED");
 }
