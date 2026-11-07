@@ -247,6 +247,12 @@ export interface PatchRules {
    * text about the form ("This coaching document was created on …").
    */
   readonly readerEvidence?: Readonly<Record<string, string>>;
+  /**
+   * FORM_PATCH_READER_FIXES_ENABLED (QA's 2x run, 7 Nov 2026: "yes, do that" after the reminder was saved wrote it a
+   * second time, once with "Updated"): a text write whose every new sentence repeats a sentence the field already
+   * holds (the same words, or 80% of them by stem) is refused as `copies_message`.
+   */
+  readonly noRepeat?: boolean;
 }
 
 export interface ProtectedValues {
@@ -350,6 +356,44 @@ function valueWasSaid(value: string, rules: PatchRules, context: { old: string; 
 }
 
 /* -------------------------------------- FORM_PATCH_READER_FIXES_ENABLED ---- */
+
+/** Share of a sentence's words, by stem, that another sentence has, for `repeatsField`. */
+const REPEAT_SHARE = 0.8;
+
+function sentencesOf(text: string): string[][] {
+  return text
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((sentence) => wordsOf(sentence))
+    .filter((words) => words.length > 0);
+}
+
+/**
+ * The new text adds sentences, and only ones the old text already holds: it has more sentences than the old, and
+ * each sentence beyond the old ones (counted, so a second copy is beyond) has REPEAT_SHARE of its words, by stem, in
+ * one old sentence.
+ * A line's heading alone ("Observed:") is layout and not counted.
+ */
+export function repeatsField(value: string, old: string): boolean {
+  const before = sentencesOf(old);
+  if (before.length === 0) return false;
+  // Only a write that ADDS sentences: an in-place edit (a name fixed, a sentence reworded) keeps the count.
+  if (sentencesOf(value).length <= before.length) return false;
+  const unused = before.map((words) => words.join(" "));
+  let repeated = 0;
+  for (const words of sentencesOf(value)) {
+    const joined = words.join(" ");
+    const at = unused.indexOf(joined);
+    if (at >= 0) {
+      unused.splice(at, 1);
+      continue;
+    }
+    if (words.length === 1 && value.includes(`${words[0]}:`)) continue;
+    const near = before.some((have) => words.filter((word) => have.some((other) => sameStem(word, other))).length / words.length >= REPEAT_SHARE);
+    if (!near) return false;
+    repeated += 1;
+  }
+  return repeated > 0;
+}
 
 /** A line's leading "Label:" heading words: the field's layout, not content. */
 function headingWords(value: string): Set<string> {
@@ -922,6 +966,11 @@ export function applyPatch(draft: FormDraft, patch: FormPatch, rules: PatchRules
   const guarded = (key: string, value: FieldValue | null, written: Written): Written => {
     if (rules.copiesMessage !== undefined && value !== null && copiesMessage(typeof value === "string" ? value : asList(value).join("\n"), rules.copiesMessage)) {
       return refuse(key, "copies_message");
+    }
+    // FORM_PATCH_READER_FIXES_ENABLED: what the field already says, written again.
+    if (rules.noRepeat && !isRefusal(written) && written !== null && typeof written.value === "string") {
+      const old = current(next, key).value;
+      if (repeatsField(written.value, typeof old === "string" ? old : old.join("\n"))) return refuse(key, "copies_message");
     }
     // FORM_PATCH_READER_FIXES_ENABLED: the instruction written back as the field's content.
     if (rules.echoOf !== undefined && typeof value === "string" && !isRefusal(written) && written !== null && repeatsInstruction(value, rules.echoOf, key)) {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { addsNothingNew, applyPatch, factWords, repeatsInstruction, type FormDraft, type FormPatch, type PatchRules } from "./form-reducer";
+import { addsNothingNew, applyPatch, factWords, repeatsField, repeatsInstruction, type FormDraft, type FormPatch, type PatchRules } from "./form-reducer";
 import { patchOutputSchema, toPatch } from "./form-patch-schema";
 
 /**
@@ -312,5 +312,25 @@ describe("FORM_PATCH_READER_FIXES_ENABLED: a new account she asks for replaces t
     const drift = { set: { coaching_details: "This coaching document was created on 10/14/26 to add the policy reference that was missing." }, clear: [] };
     expect(applyPatch(draft, drift, revision).diff.refused).toEqual([{ key: "coaching_details", reason: "drops_words" }]);
     expect(applyPatch(draft, { set: { coaching_details: "Observed:\nThaddeus showed up late." }, clear: [] }, revision).diff.refused).toEqual([]);
+  });
+});
+
+describe("FORM_PATCH_READER_FIXES_ENABLED: what the field says is never written again (QA's 2x run, 7 Nov 2026)", () => {
+  const ONCE = "Reminded her to call a manager for any cash drawer shortage.";
+  it("the same sentence twice, or nearly the same, repeats the field", () => {
+    expect(repeatsField(`${ONCE}\n${ONCE}`, ONCE)).toBe(true);
+    expect(repeatsField(`${ONCE}\nReminded her to call a manager about any cash drawer shortage.`, ONCE)).toBe(true);
+  });
+  it("a new sentence, an in-place fix or a rewording does not", () => {
+    expect(repeatsField(`${ONCE}\nShe also left the safe open.`, ONCE)).toBe(false);
+    expect(repeatsField("Observed:\nIsolde Pembrooke was late to open.", "Observed:\nIsolde Pembrook was late to open.")).toBe(false);
+    expect(repeatsField("Observed:\nIsolde arrived after opening time.", "Observed:\nIsolde was late to open.")).toBe(false);
+  });
+  it("a patch add that nearly repeats a sentence is refused with `noRepeat`", () => {
+    const draft: FormDraft = { coaching_details: field("coaching_details", ONCE, "assistant") };
+    const latest = "yes, do that";
+    const again = op("coaching_details", "Reminded her to call a manager about any cash drawer shortage.", "add", "reminded her to call a manager for any cash drawer shortage");
+    const base: PatchRules = { ...rules(latest, ["coaching_details"], { employeeName: "Ottoline Ormsworth", formText: ONCE }, [latest, `add to the details: ${ONCE}`]), noRepeat: true };
+    expect(applyPatch(draft, again, base).diff.changed).toEqual([]);
   });
 });

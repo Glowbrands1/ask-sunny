@@ -286,7 +286,10 @@ function withReaderFoundNothing(
   rules: FormEditRules,
   preset: { patchRules: PatchRules; writable: ReadonlySet<string> },
 ): { patchRules: PatchRules; writable: ReadonlySet<string> } {
-  if ((rules.path !== "revision" && rules.path !== "patch") || !formPatchReaderFixesEnabled()) return preset;
+  if (!formPatchReaderFixesEnabled()) return preset;
+  // QA's 2x run: what the field already says is never written again, on any path that writes her edit.
+  if (rules.path === "open_draft" || rules.path === "tool") return { ...preset, patchRules: { ...preset.patchRules, noRepeat: true } };
+  if (rules.path !== "revision" && rules.path !== "patch") return preset;
   // The instruction written back as content is refused on both paths (QA's stability run: "Details about the towel.").
   const echoOf = { latest: rules.latest ?? "", name: loaded.instance.employeeName ?? "", formWords: formWordsOf(loaded) };
   const handedOff = rules.path === "revision" ? takeReaderFoundNothing(loaded.instance.id) : null;
@@ -295,6 +298,7 @@ function withReaderFoundNothing(
     patchRules: {
       ...preset.patchRules,
       echoOf,
+      noRepeat: true,
       ...(handedOff ? { nothingNewFrom: rules.latest ?? "", ...(Object.keys(handedOff.evidence).length > 0 ? { readerEvidence: handedOff.evidence } : {}) } : {}),
     },
   };

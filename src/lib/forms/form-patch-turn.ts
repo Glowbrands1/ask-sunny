@@ -265,6 +265,7 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
         ? {
             faithful: { employeeName: readerFixes.employeeName, formText: readerFixes.formText, latest: input.question },
             verbatimKeys: verbatim,
+            noRepeat: true,
             echoOf: {
               latest: input.question,
               name: readerFixes.employeeName,

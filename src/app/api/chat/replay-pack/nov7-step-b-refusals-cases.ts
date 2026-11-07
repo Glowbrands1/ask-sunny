@@ -122,6 +122,33 @@ const LIVE_SHAPES: readonly RefusalScenario[] = [
       revisionFrom: { [SUN_TOWEL]: { coaching_details: "Details about the towel." } },
     },
   },
+  /* QA's 2x run (7 Nov 2026): the reminder re-added in other words, then the old revision writing it again. */
+  {
+    ...byId("sun-yes-do-that"),
+    id: "sun-yes-do-that-reworded",
+    script: {
+      patch: {
+        [CASH]: patch("this_form", [{ field: "coaching_details", value: "Reminded her to call a manager for any cash drawer shortage.", how: "add", evidence: "reminded her to call a manager for any cash drawer shortage" }]),
+        [SUN_YES]: patch("this_form", [{ field: "coaching_details", value: "Reminded her to call a manager about any cash drawer shortage.", how: "add", evidence: "reminded her to call a manager for any cash drawer shortage" }]),
+      },
+      revisionFrom: {
+        [SUN_YES]: { coaching_details: "Reminded her to call a manager for any cash drawer shortage.\nReminded her to call a manager about any cash drawer shortage." },
+      },
+    },
+  },
+  {
+    ...byId("sun-yes-do-that"),
+    id: "sun-yes-do-that-other-reading",
+    script: {
+      patch: {
+        [CASH]: patch("this_form", [{ field: "coaching_details", value: "Reminded her to call a manager for any cash drawer shortage.", how: "add", evidence: "reminded her to call a manager for any cash drawer shortage" }]),
+        [SUN_YES]: patch("other"),
+      },
+      revisionFrom: {
+        [SUN_YES]: { coaching_details: "Reminded her to call a manager for any cash drawer shortage.\nReminded her to call a manager for any cash drawer shortage." },
+      },
+    },
+  },
   {
     ...byId("sun-yes-do-that"),
     id: "sun-yes-do-that-empty-reading",
