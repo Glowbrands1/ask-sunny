@@ -936,10 +936,12 @@ const CHILD = process.env.FLAGS_OFF_PARITY_CHILD === "1";
  * four folders it took about 526 s of its 540 s on CI and timed out (ETIMEDOUT)
  * whenever the runner was busy, so it was split in two. By 7 Nov the chat+forms
  * half alone took 530 s on main on a 4-CPU runner (564–607 s on branches that add
- * replay cases): the replay pack had grown into most of it. The replay pack now
- * runs in a child of its own, so each child has the whole budget with room to
- * spare. The folders, the flags and what must pass are unchanged, and every test
- * file still runs in exactly one child.
+ * replay cases) and timed out again. Measured there, its parts were: the replay
+ * pack 145 s, the rest of src/app/api/chat with src/app/api/forms 462 s. So it
+ * is four children now — src/lib; src/app/api/chat without the replay pack;
+ * src/app/api/forms; the replay pack — each well under the budget. The folders,
+ * the flags and what must pass are unchanged, and every test file still runs in
+ * exactly one child.
  *
  * Vitest's `--exclude` does not reach inside a project (the "unit" project's own
  * `exclude` wins), and a path filter matches any file whose path contains it. So
@@ -956,7 +958,8 @@ function chatWithoutReplayPack(): string[] {
 }
 const CHILDREN: readonly { readonly name: string; readonly paths: () => readonly string[] }[] = [
   { name: "src/lib/ai, src/lib/forms", paths: () => ["src/lib/ai", "src/lib/forms"] },
-  { name: `${CHAT} (without the replay pack), src/app/api/forms`, paths: () => [...chatWithoutReplayPack(), "src/app/api/forms"] },
+  { name: `${CHAT} (without the replay pack)`, paths: () => chatWithoutReplayPack() },
+  { name: "src/app/api/forms", paths: () => ["src/app/api/forms"] },
   { name: REPLAY_PACK, paths: () => [REPLAY_PACK] },
 ];
 
