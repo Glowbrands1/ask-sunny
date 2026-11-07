@@ -2788,6 +2788,8 @@ export function ownBrandOnlyEnabled(): boolean {
   return envFlag("OWN_BRAND_ONLY_ENABLED");
 }
 
+// --- coding 4 flags ---
+
 /**
  * CA_REQUEST_NOT_PRIOR_COACHING_ENABLED (Pau's scan, sf-s35, 7 Nov 2026; same flag in both apps; default off). "Can you
  * draw me up a CA for <name> for being late on 10/23/26. <first> has signed a coaching document for being late on
