@@ -3,7 +3,7 @@ import "server-only";
 import type { AskResponse } from "@/lib/ai/types";
 import { payrollAmounts } from "@/lib/ai/intent-slots";
 import { businessToday } from "@/lib/business-date";
-import { formEditNoopGuardEnabled } from "@/lib/config/chat-quality-flags";
+import { formEditNoopGuardEnabled, formPatchReaderFixesEnabled } from "@/lib/config/chat-quality-flags";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { isGlossaryTerm } from "@/lib/ai/chat-glossary";
 
@@ -24,7 +24,7 @@ import {
   type Refusal,
 } from "./form-reducer";
 import { MANAGER_STATED_KEYS, draftDates, statedDates, templateRules, writeInsOf } from "./form-reducer-draft";
-import { HEADER_KEYS, checkedClaim, snapshotDiff, snapshotOf, type FormSnapshot } from "./form-snapshot";
+import { HEADER_KEYS, checkedClaim, formLabels, snapshotDiff, snapshotOf, type FormSnapshot } from "./form-snapshot";
 import {
   applyAssistantDraft,
   applyAssistantRevision,
@@ -34,6 +34,7 @@ import {
   type LoadedInstance,
 } from "./instances";
 import { NO_PRIOR_ACTION, PRIOR_ACTIONS_KEY } from "./prior-actions";
+import { takeReaderFoundNothing } from "./reader-found-nothing";
 import { draftableCheckboxGroups, draftableFields, type DraftValues } from "./responsibility";
 import { copiedContent } from "./same-form-copy";
 
@@ -125,6 +126,8 @@ export interface FormEditOp {
   readonly by?: FormEditWriter;
   /** The words the value came from (the patch turn's model). Default: the latest message. */
   readonly evidence?: string;
+  /** FORM_PATCH_READER_FIXES_ENABLED: a "set" that rewords the field's text (the reducer's how "reword"). */
+  readonly reword?: boolean;
 }
 
 export interface FormEditRules {
@@ -163,6 +166,11 @@ export interface FormEditRules {
     readonly amountSentence?: boolean;
     readonly loaded?: LoadedInstance;
   };
+  /**
+   * FORM_PATCH_READER_FIXES_ENABLED (patch path): the form's own name and text count as said, and these
+   * keys take only words of the latest message (the reducer's `faithful` and `verbatimKeys`).
+   */
+  readonly readerFixes?: { readonly employeeName: string; readonly formText: string; readonly verbatimKeys: ReadonlySet<string> };
 }
 
 /** What the old writers returned, so a call site keeps its own reply code. */
@@ -254,7 +262,7 @@ const NOOP_GUARDED_PATHS: ReadonlySet<FormEditPath> = new Set(["tool", "patch", 
 
 /** The reducer's rules for the path. */
 export function presetRules(loaded: LoadedInstance, ops: readonly FormEditOp[], rules: FormEditRules): { patchRules: PatchRules; writable: ReadonlySet<string> } {
-  const preset = basePresetRules(loaded, ops, rules);
+  const preset = withReaderFoundNothing(loaded, rules, basePresetRules(loaded, ops, rules));
   if (!NOOP_GUARDED_PATHS.has(rules.path) || !formEditNoopGuardEnabled()) return preset;
   /*
    * A correction states facts its readers read, a restated one beside the
@@ -267,6 +275,39 @@ export function presetRules(loaded: LoadedInstance, ops: readonly FormEditOp[], 
   const correction = rules.path === "correction" || rules.path === "reopen";
   const refuseSameValue = !correction ? true : (rules.syncPlan?.after.length ?? 0) > 0 ? false : "whole_patch";
   return { ...preset, patchRules: { ...preset.patchRules, refuseSameValue, copiesMessage: rules.latest ?? "" } };
+}
+
+/**
+ * FORM_PATCH_READER_FIXES_ENABLED (QA's live run, 7 Nov 2026): when Step B's reader found nothing to write in
+ * this message, the revision that runs next may not write text that adds nothing new (`nothingNewFrom`).
+ */
+function withReaderFoundNothing(
+  loaded: LoadedInstance,
+  rules: FormEditRules,
+  preset: { patchRules: PatchRules; writable: ReadonlySet<string> },
+): { patchRules: PatchRules; writable: ReadonlySet<string> } {
+  if (!formPatchReaderFixesEnabled()) return preset;
+  // QA's 2x run: what the field already says is never written again, on any path that writes her edit.
+  if (rules.path === "open_draft" || rules.path === "tool") return { ...preset, patchRules: { ...preset.patchRules, noRepeat: true } };
+  if (rules.path !== "revision" && rules.path !== "patch") return preset;
+  // The instruction written back as content is refused on both paths (QA's stability run: "Details about the towel.").
+  const echoOf = { latest: rules.latest ?? "", name: loaded.instance.employeeName ?? "", formWords: formWordsOf(loaded) };
+  const handedOff = rules.path === "revision" ? takeReaderFoundNothing(loaded.instance.id) : null;
+  return {
+    ...preset,
+    patchRules: {
+      ...preset.patchRules,
+      echoOf,
+      noRepeat: true,
+      ...(handedOff?.nothing ? { nothingNewFrom: rules.latest ?? "" } : {}),
+      ...(handedOff && Object.keys(handedOff.evidence).length > 0 ? { readerEvidence: handedOff.evidence } : {}),
+    },
+  };
+}
+
+/** Per key: the field's own label (FORM_PATCH_READER_FIXES_ENABLED's `echoOf` reads its head word). */
+export function formWordsOf(loaded: LoadedInstance): Record<string, string> {
+  return Object.fromEntries(Object.entries(formLabels(loaded)).map(([key, label]) => [key, label]));
 }
 
 function basePresetRules(loaded: LoadedInstance, ops: readonly FormEditOp[], rules: FormEditRules): { patchRules: PatchRules; writable: ReadonlySet<string> } {
@@ -336,6 +377,12 @@ function basePresetRules(loaded: LoadedInstance, ops: readonly FormEditOp[], rul
           keepsUnnamedWords: true,
           writeIns,
           protectedValues: guard,
+          ...(rules.readerFixes
+            ? {
+                faithful: { employeeName: rules.readerFixes.employeeName, formText: rules.readerFixes.formText, latest },
+                verbatimKeys: rules.readerFixes.verbatimKeys,
+              }
+            : {}),
           sources: {
             manager: turns.join("\n"),
             managerTurns: turns,
@@ -447,7 +494,7 @@ export async function writeFormEdits(instanceId: string, ops: readonly FormEditO
   const derivedOps: FormEditOp[] = [];
   const set: Record<string, FieldValue> = {};
   const clear: string[] = [];
-  const how: Record<string, "add" | "replace"> = {};
+  const how: Record<string, "add" | "replace" | "reword"> = {};
   const evidence: Record<string, string> = {};
   for (const op of ops) {
     const passes = op.derived === true || (patchRules.mode === "draft" && !writable.has(op.field));
@@ -458,7 +505,7 @@ export async function writeFormEdits(instanceId: string, ops: readonly FormEditO
     if (op.op === "clear") clear.push(op.field);
     else {
       set[op.field] = op.value ?? "";
-      how[op.field] = op.op === "append" ? "add" : "replace";
+      how[op.field] = op.op === "append" ? "add" : op.reword ? "reword" : "replace";
     }
     evidence[op.field] = op.evidence ?? latest;
   }
