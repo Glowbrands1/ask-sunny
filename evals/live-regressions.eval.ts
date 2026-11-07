@@ -241,6 +241,11 @@ const live = vi.hoisted(() => {
 });
 
 const actor = vi.hoisted(() => ({ directory: [] as unknown[] }));
+/*
+ * QA (6 Nov 2026, Step B's live check): per edit turn, the form-patch model's raw output and the
+ * reducer's refusals (key + reason), so an empty diff says why. Test-only; written into the results.
+ */
+const patchTrace = vi.hoisted(() => ({ outputs: [] as unknown[], refusals: [] as unknown[] }));
 
 /* -------------------------------------------------- the real model, metered -- */
 
@@ -330,10 +335,25 @@ vi.mock("@/lib/forms/form-patch-call", async (importOriginal) => {
           abortSignal: AbortSignal.timeout(actual.formPatchTimeoutMs()),
         });
         live.add({ input_tokens: result.usage.inputTokens ?? 0, output_tokens: result.usage.outputTokens ?? 0 });
+        patchTrace.outputs.push({ ok: true, output: result.object });
         return { ok: true as const, output: result.object };
-      } catch {
+      } catch (caught) {
+        patchTrace.outputs.push({ fallback: "error", error: caught instanceof Error ? caught.message.slice(0, 300) : String(caught).slice(0, 300) });
         return { fallback: "error" as const };
       }
+    },
+  };
+});
+
+/* The reducer, unchanged, with each call's refusals recorded (key + reason) for the turn's trace. */
+vi.mock("@/lib/forms/form-reducer", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/forms/form-reducer")>();
+  return {
+    ...actual,
+    applyPatch: (...args: Parameters<typeof actual.applyPatch>) => {
+      const result = actual.applyPatch(...args);
+      patchTrace.refusals.push({ refused: result.diff.refused, changed: result.diff.changed.map((change) => change.key) });
+      return result;
     },
   };
 });
@@ -608,6 +628,9 @@ interface Turn {
   readonly diff: Record<string, { before: string; after: string }>;
   /** The card this turn proposed (null: none; absent: Create's turn). */
   readonly card?: { readonly templateKey: string | null; readonly employeeName: string | null } | null;
+  /** Step B: the form-patch model's raw outputs this turn, and the reducer's results (refused key + reason, changed keys). */
+  readonly patches?: readonly unknown[];
+  readonly reducer?: readonly unknown[];
 }
 
 interface PathRun {
@@ -680,6 +703,8 @@ async function runScenario(scenario: LiveScenario, extraFlags: readonly string[]
         edits += 1;
       }
       const before = values(instanceId);
+      patchTrace.outputs.length = 0;
+      patchTrace.refusals.length = 0;
       const id = `m${index}`;
       const continuation = routes.continuationFor(messages);
       const response = await routes.chat.POST(
@@ -718,6 +743,8 @@ async function runScenario(scenario: LiveScenario, extraFlags: readonly string[]
         updated: payload.formUpdate?.updated ?? [],
         diff: diff(before, values(instanceId)),
         card: payload.formProposal ? { templateKey: payload.formProposal.templateKey ?? null, employeeName: payload.formProposal.employeeName ?? null } : null,
+        patches: [...patchTrace.outputs],
+        reducer: [...patchTrace.refusals],
       });
     }
   } catch (caught) {
@@ -878,6 +905,14 @@ function writeResults(): void {
     lines.push(
       `| ${id} | ${created} | ${edited} | ${cell(oldPath.error === NO_CARD ? "NO CARD at T1" : oldPath.error ? `ERROR ${oldPath.error}` : oldPath.reply)} | ${cell(changed || "—")} | ${cell(card)} | ${oldPath.ms} | ${oldPath.calls} (${oldPath.kinds.draft}/${oldPath.kinds.revision}) | ${fresh} |`,
     );
+  }
+  // Step B's trace (QA, 6 Nov 2026): each edit turn's form-patch output and reducer result, when the patch model ran.
+  const traced = results.flatMap(({ id, oldPath }) => oldPath.turns.filter((turn) => (turn.patches?.length ?? 0) + (turn.reducer?.length ?? 0) > 0).map((turn) => ({ id, turn })));
+  if (traced.length > 0) {
+    lines.push("", "## Step B trace: form-patch output and reducer result per edit turn", "");
+    for (const { id, turn } of traced) {
+      lines.push(`### ${id}: "${turn.said}"`, "", "```json", JSON.stringify({ patches: turn.patches, reducer: turn.reducer, diff: Object.keys(turn.diff) }, null, 1), "```", "");
+    }
   }
   writeFileSync(`${base}.md`, `${lines.join("\n")}\n`);
 }
