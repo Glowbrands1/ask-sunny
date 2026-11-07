@@ -793,21 +793,6 @@ export function reopenByAnyOpenVerbEnabled(): boolean {
   return envFlag("REOPEN_BY_ANY_OPEN_VERB_ENABLED");
 }
 
-/**
- * PAST_FORMS_BEFORE_LIBRARY_ENABLED (Pau, 5 Nov 2026; overnight scan sf-s29,
- * default off). "are there any coaching and ca's for <name>" was answered
- * from the forms library ("Yes. **Corrective Action Form** — …") instead of
- * the forms on file for that person. On: when the forms-library check
- * (`detectInventoryQuestion`) would answer a message that names a person or
- * asks about forms already on file, the past-forms lookup
- * (`chat-form-records.ts`) runs for it instead and the library answer steps
- * aside. "do we have a coaching form?" still gets the library answer. Off, as
- * before.
- */
-export function pastFormsBeforeLibraryEnabled(): boolean {
-  return envFlag("PAST_FORMS_BEFORE_LIBRARY_ENABLED");
-}
-
 function flagOn(value: string | undefined): boolean {
   if (typeof value !== "string") return false;
   return ON.has(value.trim().toLowerCase());
