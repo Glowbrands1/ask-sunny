@@ -480,6 +480,15 @@ const NOT_DONE = new RegExp(
 );
 const WOVEN = /\bwoven\b/;
 const WOVEN_ASSIGNED = /\b(?:assigned|required|due)\b/;
+/*
+ * Narrowed (QA's Sunny round-3 gate, 7 Nov 2026): only the acknowledgement CA Pau ruled on — the sentence that
+ * names Woven also names the policies or their acknowledgement ("not signing the woven policies", "policy
+ * acknowledgements in Woven"). "missed the Woven deadline" or "her Woven training is overdue" alone keep the
+ * conduct reading they had (still the Standards of Conduct, as a deadline or a task), and a policy the manager
+ * named wins. Before, any Woven sentence with unfinished work or a deadline took this reading, which changed the
+ * conduct cases' kind, ticked the box over a named policy, and skipped the manual's fail-closed checks.
+ */
+const WOVEN_ACKNOWLEDGEMENT = /\b(?:acknowledg\w*|polic(?:y|ies))\b/;
 const WOVEN_TOPICS: readonly ConductTopic[] = ["task", "deadline"];
 
 function wovenWork(sentences: readonly string[]): string | null {
@@ -488,11 +497,11 @@ function wovenWork(sentences: readonly string[]): string | null {
       .map(({ pattern }) => pattern.exec(sentence))
       .find((match) => match !== null) ?? null;
   for (const sentence of sentences) {
-    if (!WOVEN.test(sentence)) continue;
+    if (!WOVEN.test(sentence) || !WOVEN_ACKNOWLEDGEMENT.test(sentence)) continue;
     const said = NOT_DONE.exec(sentence) ?? topicIn(sentence);
     if (said) return said[0].trim();
   }
-  if (!sentences.some((sentence) => WOVEN.test(sentence) && WOVEN_ASSIGNED.test(sentence))) return null;
+  if (!sentences.some((sentence) => WOVEN.test(sentence) && WOVEN_ASSIGNED.test(sentence) && WOVEN_ACKNOWLEDGEMENT.test(sentence))) return null;
   const deadline = CONDUCT_TOPICS.find(({ topic }) => topic === "deadline")!.pattern;
   for (const sentence of sentences) {
     const missed = deadline.exec(sentence);
@@ -504,11 +513,9 @@ function wovenWork(sentences: readonly string[]): string | null {
 function withWovenWork(reading: CaPolicyReading, rawText: string): CaPolicyReading {
   if (!wovenTrainingConductEnabled()) return reading;
   if (isSalesPolicyReading(reading)) return reading;
-  const wovenEvent = reading.missedEvent !== null && WOVEN.test(reading.missedEvent);
-  const readAsMissedEvent = reading.stated === "attendance" && reading.missedEvent !== null;
-  if (reading.stated !== null && reading.stated !== "under_performance" && !(readAsMissedEvent && wovenEvent)) return reading;
-  if (reading.missedEvent !== null && !wovenEvent) return reading;
-  const woven = wovenWork(statements(normalize(rawText))) ?? (wovenEvent ? missedEventPhrase(reading.missedEvent!) : null);
+  // Narrowed (QA's round-3 gate): any policy the manager named wins, and a missed event keeps its own reading.
+  if (reading.stated !== null || reading.missedEvent !== null) return reading;
+  const woven = wovenWork(statements(normalize(rawText)));
   if (!woven) return reading;
   return {
     ...reading,
@@ -982,7 +989,9 @@ function namedPolicyLine(named: NamedPolicyReading): string {
   }
   if (named.lookup === "missing") {
     // WOVEN_TRAINING_CONDUCT_ENABLED: the app says what it did not find; "Woven" is the product, not the one looking.
-    if (wovenTrainingConductEnabled()) {
+    // Narrowed (QA's round-3 gate): only for a phrase that is about Woven ("not signing the woven"), where "Woven
+    // does not see … for 'not signing the woven'" reads as the product looking. Every other phrase keeps the line.
+    if (wovenTrainingConductEnabled() && WOVEN.test(named.phrase.toLowerCase())) {
       return `**Policy:** I don't see a section of the current policy manual for "${named.phrase}" in the knowledge base, so I won't cite one. Tell me the policy as the manual names it, or tick Type of Offense and complete Direct policy on the form.`;
     }
     return `**Policy:** Woven does not see a section of the current policy manual for "${named.phrase}" in the knowledge base, so I won't cite one. Tell me the policy as the manual names it, or tick Type of Offense and complete Direct policy on the form.`;
