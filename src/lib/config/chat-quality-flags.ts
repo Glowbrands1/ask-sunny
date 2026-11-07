@@ -3038,6 +3038,17 @@ export function ownBrandOnlyEnabled(): boolean {
   return envFlag("OWN_BRAND_ONLY_ENABLED");
 }
 
+/**
+ * WOVEN_PDF_OCR_ENABLED (ported from the sibling app; QA's plan, approved by Pau, 7 Nov 2026; same flag in both apps;
+ * default off). Scanned Woven PDFs have no text layer, so the sync left them in ERROR ("no_text") and their knowledge
+ * never reached an answer. On: a Woven sync has a PDF with no text at all transcribed page by page by Claude
+ * (`ingestion/extract/pdf-ocr.ts`), capped per document and per run, and indexes it like any PDF. Uploads, and PDFs
+ * with any text, are unchanged. Off, as before.
+ */
+export function wovenPdfOcrEnabled(): boolean {
+  return envFlag("WOVEN_PDF_OCR_ENABLED");
+}
+
 // --- coding 4 flags ---
 
 /**
