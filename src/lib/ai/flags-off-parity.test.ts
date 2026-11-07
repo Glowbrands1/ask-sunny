@@ -242,6 +242,8 @@ const NEW_FLAGS = [
   "NEWEST_PLACE_TURN_ENABLED",
   "QUESTION_NOT_FORM_ENABLED",
   "FORM_EDIT_DATE_RULES_ENABLED",
+  // coding 2: LIST_POLICY_IS_EDIT (default off): forced off with the others in the child run.
+  "LIST_POLICY_IS_EDIT_ENABLED",
   // coding 2: REMOVE_POLICY_NOT_NAMED (A1; default off): forced off with the others in the child run.
   "REMOVE_POLICY_NOT_NAMED_ENABLED",
   "FOLLOWUP_NEW_TOPIC_RETRIEVAL_ENABLED",
