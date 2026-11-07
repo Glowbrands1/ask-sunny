@@ -108,4 +108,24 @@ export const NOV7_SECOND_CA_SAME_EMPLOYEE_CASES: ReplayCase[] = Object.entries(S
       expect(line(reply.content, "Observation of Offense"), `the request's account is lost:\n${reply.content}`).toMatch(/late opening the salon/i);
     },
   },
+  ...[
+    "add to the CA that he was also late on 11/3",
+    "on the write up, also put that he left early on 11/3",
+  ].map(
+    (added, index): ReplayCase => ({
+      id: `nov7-second-ca-same-employee-addition-${index + 1}`,
+      title: `negative (coding 4): after a CA request, "${added}" adds to the same form: the Observation keeps the request's account`,
+      report: REPORT,
+      status: "fixed",
+      fixFlags: [FLAG],
+      async run(t) {
+        t.directory(STAFF);
+        t.as("salon_director", KEARNEY);
+        const thread = t.thread();
+        await thread.say(FIRST);
+        const reply = await thread.say(added);
+        expect(line(reply.content, "Observation of Offense"), `the request's account is lost:\n${reply.content}`).toMatch(/late opening the salon/i);
+      },
+    }),
+  ),
 ]);
