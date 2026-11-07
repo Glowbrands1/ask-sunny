@@ -103,6 +103,18 @@ export function draftDedupeEnabled(): boolean {
 }
 
 /**
+ * SECOND_REQUEST_OWN_ACCOUNT_ENABLED (QA's audit, 7 Nov 2026; default off). With a Corrective Action for <A> already
+ * created in a chat, a second request for <A> ("I need another corrective action for <A>, his cash drawer was short")
+ * reopened the first draft (the reopen lookup read every turn of the chat as the incident), or its card carried the
+ * first request's policy ("Late Opening, as you said"), Action Plan and, when not worded as a create request, its
+ * account. On: a turn that starts a new form request does not carry the saved policy heading (`ai/form-state.ts`,
+ * `ai/form-card-slots.ts`). Off, as before.
+ */
+export function secondRequestOwnAccountEnabled(): boolean {
+  return envFlag("SECOND_REQUEST_OWN_ACCOUNT_ENABLED");
+}
+
+/**
  * A follow-up or second document is not revised into the form on screen.
  * Off, the open form keeps the revision path it has now.
  */
@@ -2833,6 +2845,17 @@ export function asYouSaidAppReadEnabled(): boolean {
   return envFlag("AS_YOU_SAID_APP_READ_ENABLED");
 }
 
+/**
+ * EDIT_MAKE_IT_ABOUT_ENABLED (Pau's scan, sf-s34, 7 Nov 2026; Pau-approved 7 Nov; same flag in both apps; default
+ * off). On an open Coaching draft, "I need you to make it about showing up late and please list the policy make the
+ * date for 10/14/26." was scoped to the date alone, so the Details rewrite was refused and the reply said nothing
+ * changed. On: "make it / this / the form … about …" also allows the form's account (Coaching Details, or a CA's
+ * Observation) in `forms/revision.ts` scopeRevision. Off, as before.
+ */
+export function editMakeItAboutEnabled(): boolean {
+  return envFlag("EDIT_MAKE_IT_ABOUT_ENABLED");
+}
+
 // --- coding 2 flags ---
 
 /**
@@ -2856,4 +2879,18 @@ export function noNoticeNoDateEnabled(): boolean {
  */
 export function bareNotAfterRequestEnabled(): boolean {
   return envFlag("BARE_NOT_AFTER_REQUEST_ENABLED");
+}
+
+/**
+ * SOURCE_NOTE_GUARD_ENABLED (QA, 5 Nov 2026; default off). A reply reached a
+ * manager with the model's own note about a source in it: "[S1 doesn't actually
+ * cover general tardiness — it only covers failing to open the salon…]". The
+ * marker stripping removes only a bare marker ("[S1]") or a group of them, so
+ * a bracket that starts with a source tag and goes on in prose stayed. With the
+ * flag on, the answer's last step removes such a bracket; a citation marker,
+ * a group of markers, or a tag with only a page or section after it is kept
+ * for the marker stripping as before (`ai/source-note.ts`). Off, as before.
+ */
+export function sourceNoteGuardEnabled(): boolean {
+  return envFlag("SOURCE_NOTE_GUARD_ENABLED");
 }

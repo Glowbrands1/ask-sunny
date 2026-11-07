@@ -196,6 +196,7 @@ import { withoutReportTurnsForForm } from "./report-turns";
 import { withReplyMatchesCard } from "./reply-matches-card";
 import { withTwoFormsOwnPerson } from "./two-forms-own-person";
 import { withTitleOfTheEmployee } from "./title-of-the-employee";
+import { withoutSourceMarkers, withoutSourceNotes } from "@/lib/ai/source-note";
 import { withUnderPerformanceExplained } from "./under-performance-explained";
 
 /**
@@ -328,11 +329,14 @@ export async function answerQuestion(
   }
   // TITLE_OF_THE_EMPLOYEE_ENABLED: a title the manager attached to another named person is never the card's (`ai/title-of-the-employee.ts`).
   // UNDER_PERFORMANCE_EXPLAINED_ENABLED: Under Performance asked for, the Standards of Conduct cited: the reply says why (`ai/under-performance-explained.ts`).
-  const answer = async (turn: AskRequest) =>
-    withUnderPerformanceExplained(
+  // SOURCE_NOTE_GUARD_ENABLED: no bare source marker ("[S1]", "[S12, S14]") reaches the reply on any path (`ai/source-note.ts`).
+  const answer = async (turn: AskRequest) => {
+    const explained = withUnderPerformanceExplained(
       withTitleOfTheEmployee(withoutSensitiveDefaults(await answerQuestionChecked(turn, actor, memory), turn.question), turn),
       turn,
     );
+    return { ...explained, content: withoutSourceMarkers(explained.content) };
+  };
   const original = request;
   let answered = await answer(request);
   const fallbacks = kept ? [withoutReportTurnsForForm({ ...asked, question: kept.employee, continueProposalTemplateKey: kept.templateKey }), plain] : [];
@@ -1953,7 +1957,8 @@ async function answerQuestionUntraced(
     attachedDocumentIds: request.attachedDocumentIds,
   }).content;
 
-  const content = suggested ? `${prose}\n\n${suggested.lead}` : prose;
+  // SOURCE_NOTE_GUARD_ENABLED: a bracketed note about a source ("[S1 doesn't actually cover …]") is removed (`source-note.ts`). Off, as before.
+  const content = withoutSourceNotes(suggested ? `${prose}\n\n${suggested.lead}` : prose);
   // CA_SALES_POLICY_ENABLED: the Corrective Action offer is added at the turn's one exit (`answerQuestion`, `withCaOffer`).
   return {
     content,
