@@ -53,7 +53,8 @@ function heading(text: string): string {
 function agrees(reply: ReplayAnswer, employee: string | null, typed: readonly string[]): void {
   if (!employee) {
     expect(reply.content, `an empty card's reply claims the employee:\n${reply.content}`).not.toMatch(CLAIMS);
-    expect(reply.content, `an empty card's reply does not ask who:\n${reply.content}`).toMatch(ASKS);
+    // Changed on purpose (QA, 7 Nov 2026; as the sibling app's #516, finding C): with OFF_ROSTER_CONFIRM the off-roster offer ("reply **use <name>**") is the question about the person, instead of "Who is this form for?".
+    expect(reply.content, `an empty card's reply does not ask who:\n${reply.content}`).toMatch(new RegExp(`${ASKS.source}|reply \\*\\*use [^*]+\\*\\* and I'll put that name on the form`, ASKS.flags));
     const said = reply.content
       .split("\n")
       .filter((line) => !/I couldn['’]t find \*\*|Is this for \*\*|Did you mean|Which of them/.test(line))

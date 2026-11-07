@@ -56,6 +56,8 @@ function withFlip(run: ReplayCase["run"]): ReplayCase["run"] {
 const REPORT = "QA's testers, 5 Nov 2026 (R3, R5, R7; the sibling app, flags on), checked here with the flip's flags: a roster surname typed with one letter wrong or missing";
 
 const ASKS_WHO = /Who is this (?:\*\*[^*]+\*\* |form )?for\?/i;
+/** Asks who the form is for, or (OFF_ROSTER_CONFIRM) offers the typed name as the one question about the person. */
+const ASKS_WHO_OR_OFFERS = new RegExp(`${ASKS_WHO.source}|reply \\*\\*use [^*]+\\*\\* and I'll put that name on the form`, ASKS_WHO.flags);
 
 async function said(t: Parameters<ReplayCase["run"]>[0], message: string, when = "2026-11-03T16:00:00Z") {
   vi.setSystemTime(new Date(when));
@@ -153,7 +155,8 @@ export const NOV5_R3_ROSTER_SURNAME_TYPO_CASES: ReplayCase[] = [
       const { reply, employee } = await said(t, "I need a coaching form for Zebulon Marchbanks. Name: Zebulon Marchbanks. He did not restock the shelves before close on 11/2. Action plan: Zebulon will restock before every close");
       expect(employee, "a name on no roster is the employee").toBeNull();
       expect(reply.content, `says it has the employee:\n${reply.content}`).not.toMatch(/Everything I need is here|I have the employee/i);
-      expect(reply.content, `does not ask who:\n${reply.content}`).toMatch(ASKS_WHO);
+      // Changed on purpose (QA, 7 Nov 2026; as the sibling app's #516, finding C): with OFF_ROSTER_CONFIRM the off-roster offer ("reply **use <name>**") is the question about the person, instead of "Who is this form for?".
+      expect(reply.content, `does not ask who:\n${reply.content}`).toMatch(ASKS_WHO_OR_OFFERS);
       namesNobodyOffTheCard(reply, employee, ["Zebulon", "Marchbanks"]);
     }),
   },
@@ -166,7 +169,8 @@ export const NOV5_R3_ROSTER_SURNAME_TYPO_CASES: ReplayCase[] = [
     run: withFlip(async (t) => {
       const { reply, employee } = await said(t, "create a CA for Zebulon Marchbanks, he was 40 minutes late opening the salon on 11/2. action plan: Zebulon will be on time for every opening shift");
       expect(employee, "a name on no roster is the employee").toBeNull();
-      expect(reply.content, `does not ask who:\n${reply.content}`).toMatch(ASKS_WHO);
+      // Changed on purpose (QA, 7 Nov 2026; as the sibling app's #516, finding C): with OFF_ROSTER_CONFIRM the off-roster offer ("reply **use <name>**") is the question about the person, instead of "Who is this form for?".
+      expect(reply.content, `does not ask who:\n${reply.content}`).toMatch(ASKS_WHO_OR_OFFERS);
       namesNobodyOffTheCard(reply, employee, ["Zebulon", "Marchbanks"]);
     }),
   },
