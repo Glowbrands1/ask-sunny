@@ -2072,6 +2072,17 @@ export function observationNotPolicyNameEnabled(): boolean {
 }
 
 /**
+ * COMPLAINT_ACCOUNT_ENABLED (QA's audit, 7 Nov 2026; default off). "verbal warning The date she complained was Oct
+ * 31st . The customer said …" made the Observation of Offense open "verbal warning The date she complained was …": the
+ * warning level is the form's Type of Warning, never the account. On: a sentence that opens with the level the app
+ * reads as this form's (`forms/warning-level.ts` statedWarningLevel) runs on without it (`ai/keep-filled-slots.ts`
+ * withAccount). Off, as before.
+ */
+export function complaintAccountEnabled(): boolean {
+  return envFlag("COMPLAINT_ACCOUNT_ENABLED");
+}
+
+/**
  * The staff picker reads a short salon name ("kearney") among the account's
  * own salons and reuses the salon this conversation already settled, instead
  * of asking "Which salon's staff…" again (same report; same flag in both

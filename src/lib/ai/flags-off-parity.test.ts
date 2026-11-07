@@ -444,6 +444,8 @@ const NEW_FLAGS = [
   "EXIT_STATED_ONLY_ENABLED",
   // Ported from the sibling app's flip-3 gate (6 Nov 2026).
   "OFF_ROSTER_CONFIRM_ENABLED",
+  // QA's audit, 7 Nov 2026 (default off).
+  "COMPLAINT_ACCOUNT_ENABLED",
   "POLICY_CHANGE_RELEVANT_ENABLED",
   "CA_OFFER_KEEPS_ACCOUNT_ENABLED",
   // After the Sunny flip (6 Nov 2026): forced off with the others in the child run.
