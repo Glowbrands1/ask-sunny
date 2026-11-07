@@ -75,6 +75,7 @@ import {
   remapDraftSourcesEnabled,
   formDateIncidentOnlyEnabled,
   reopenVerbGuardEnabled,
+  reopenByAnyOpenVerbEnabled,
   formRevisionsEnabled,
   formRevisionsUiEnabled,
   sensitiveDefaultsRedactEnabled,
@@ -241,6 +242,8 @@ const NEW_FLAGS = [
   "NEWEST_PLACE_TURN_ENABLED",
   "QUESTION_NOT_FORM_ENABLED",
   "FORM_EDIT_DATE_RULES_ENABLED",
+  // coding 2: REMOVE_POLICY_NOT_NAMED (A1; default off): forced off with the others in the child run.
+  "REMOVE_POLICY_NOT_NAMED_ENABLED",
   "FOLLOWUP_NEW_TOPIC_RETRIEVAL_ENABLED",
   "DRAFT_REUSE_SAME_CHAT_ONLY_ENABLED",
   "RESIGN_METHOD_FOLLOWUP_ENABLED",
@@ -252,6 +255,7 @@ const NEW_FLAGS = [
   "NEXT_PUBLIC_REMAP_DRAFT_SOURCES_ENABLED",
   "FORM_DATE_INCIDENT_ONLY_ENABLED",
   "REOPEN_VERB_GUARD_ENABLED",
+  "REOPEN_BY_ANY_OPEN_VERB_ENABLED",
   "FORM_REVISIONS_ENABLED",
   "NEXT_PUBLIC_FORM_REVISIONS_ENABLED",
   "SENSITIVE_DEFAULTS_REDACT_ENABLED",
@@ -262,6 +266,8 @@ const NEW_FLAGS = [
   "STATE_CODE_NOT_A_PERSON_ENABLED",
   "GOOGLE_REVIEWS_IN_CHAT_ENABLED",
   "DRAFT_NEVER_BLANK_ENABLED",
+  // Missing from this list since its PR (QA, 7 Nov 2026): forced off with the others in the child run.
+  "STALE_PROMPT_LINES_OFF_ENABLED",
   "NAME_BEFORE_TITLE_ENABLED",
   "LATE_OPEN_PAYROLL_FROM_FORM_ENABLED",
   "STORED_SLOTS_NOT_A_REQUEST_ENABLED",
@@ -275,6 +281,8 @@ const NEW_FLAGS = [
   "REQUEST_LINE_ACCOUNT_ENABLED",
   "NOT_DEDUCTIBLE_READ_ENABLED",
   "PRIOR_STEP_SENTENCE_ENABLED",
+  // coding 2: PRIOR_STEP_PREVIOUSLY (A2; default off): forced off with the others in the child run.
+  "PRIOR_STEP_PREVIOUSLY_ENABLED",
   "EXIT_FULFILLED_IS_LAST_DAY_ENABLED",
   "FUTURE_PRIOR_ROW_DROP_ENABLED",
   "NAME_QUESTION_ONLY_ENABLED",
@@ -300,6 +308,8 @@ const NEW_FLAGS = [
   "GRAMMAR_ASK_NOT_ACCOUNT_ENABLED",
   "JOB_TITLE_CASE_ENABLED",
   "LEVEL_STEP_NOT_ACCOUNT_ENABLED",
+  // coding 2: OBSERVATION_NO_LEVEL_LEAD (default off): forced off with the others in the child run.
+  "OBSERVATION_NO_LEVEL_LEAD_ENABLED",
   "JOB_TITLE_READBACK_CASE_ENABLED",
   "STEP_DATE_NO_QUESTION_ENABLED",
   "FIRST_NAME_ASK_ENABLED",
@@ -333,6 +343,7 @@ const NEW_FLAGS = [
   "OPEN_DRAFT_KEEPS_TURNS_ENABLED",
   "FORM_EDIT_REFERS_BACK_ENABLED",
   "SAME_FORM_COPY_ENABLED",
+  "SAME_FORM_COPY_NEW_PERSON_ENABLED",
   "STAFF_PICKER_ENABLED",
   "STAFF_PICKER_STORE_TITLES_ENABLED",
   "STAFF_PICKER_BARE_ANSWER_ENABLED",
@@ -348,6 +359,7 @@ const NEW_FLAGS = [
   "CA_NAME_FROM_CHAT_ENABLED",
   "NEW_REQUEST_OPEN_DRAFT_ENABLED",
   "PRIOR_ACTIONS_POLICY_ENABLED",
+  "PRIOR_ACTIONS_NO_SIGNED_ENABLED",
   "NEXT_PUBLIC_CARD_POLICY_TO_DRAFT_ENABLED",
   "TEAM_CARD_WORDING_ENABLED",
   "OBSERVATION_NOT_POLICY_NAME_ENABLED",
@@ -356,6 +368,9 @@ const NEW_FLAGS = [
   "STAFF_PICKER_NO_REPEAT_ENABLED",
   "COACHING_FOR_EVERYONE_ENABLED",
   "THIS_PERSONS_TURNS_ENABLED",
+  // Missing from this list since its PR (QA, 7 Nov 2026): forced off with the others in the child run.
+  "REQUEST_KEPT_IN_WINDOW_ENABLED",
+  "NEXT_PUBLIC_REQUEST_KEPT_IN_WINDOW_ENABLED",
   "AM_PRIOR_WARNINGS_ENABLED",
   "TRUNCATION_RETRY_ENABLED",
   "CHAT_RESPONSE_STREAM_ENABLED",
@@ -404,7 +419,9 @@ const NEW_FLAGS = [
   "FORM_PLACEHOLDER_WORDS_ENABLED",
   "PRIMARY_SALON_NOT_EDIT_ENABLED",
   "CA_SALES_POLICY_ENABLED",
+  "CA_PERFORMANCE_REASON_ENABLED",
   "FORM_NAME_FROM_ROSTER_ENABLED",
+  "PAST_FORMS_BEFORE_LIBRARY_ENABLED",
   "COACHING_ASKS_WHAT_HAPPENED_ENABLED",
   "KEEP_ROSTER_EXACT_NAME_ENABLED",
   "ROSTER_NAME_IN_CANDIDATE_ENABLED",
@@ -412,6 +429,8 @@ const NEW_FLAGS = [
   "ROSTER_NEAR_MISS_ENABLED",
   "REPLY_MATCHES_CARD_ENABLED",
   "METRIC_GUARD_ENABLED",
+  // QA, 7 Nov 2026 (default off).
+  "METRIC_CHOICE_ONE_QUESTION_ENABLED",
   // The second Sunny gate's fix flags (6 Nov 2026): forced off with the others in the child run.
   "TITLE_ENDS_AT_LINE_ENABLED",
   "BARE_NOT_DENIAL_ENABLED",
@@ -427,10 +446,13 @@ const NEW_FLAGS = [
   "EXIT_STATED_ONLY_ENABLED",
   // Ported from the sibling app's flip-3 gate (6 Nov 2026).
   "OFF_ROSTER_CONFIRM_ENABLED",
+  // QA's audit, 7 Nov 2026 (default off).
+  "COMPLAINT_ACCOUNT_ENABLED",
   "POLICY_CHANGE_RELEVANT_ENABLED",
   "CA_OFFER_KEEPS_ACCOUNT_ENABLED",
   // After the Sunny flip (6 Nov 2026): forced off with the others in the child run.
   "SALES_SHORTFALL_OBJECT_ENABLED",
+  "SALES_OBSERVATION_ACCOUNT_ENABLED",
   "UNDER_PERFORMANCE_EXPLAINED_ENABLED",
   // After the Sunny flip (6 Nov 2026, row 6): forced off with the others in the child run.
   "TWO_FORMS_OWN_PERSON_ENABLED",
@@ -775,6 +797,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(remapDraftSourcesClientEnabled()).toBe(false);
     expect(formDateIncidentOnlyEnabled()).toBe(false);
     expect(reopenVerbGuardEnabled()).toBe(false);
+    expect(reopenByAnyOpenVerbEnabled()).toBe(false);
     expect(formRevisionsEnabled()).toBe(false);
     expect(formRevisionsUiEnabled()).toBe(false);
     expect(sensitiveDefaultsRedactEnabled()).toBe(false);

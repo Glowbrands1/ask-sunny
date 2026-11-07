@@ -96,6 +96,11 @@ export interface RefusalScenario extends CheckedScenario {
    * owns the turn.
    */
   readonly owner: string | null;
+  /**
+   * Checked in the LIVE eval only, on top of `expect` (a scripted run's model text is the script's, so this is
+   * not checked there). QA, 7 Nov 2026: a request's other asks are not silently ignored.
+   */
+  readonly liveCheck?: (run: LiveOutcome) => string | null;
 }
 
 /* ------------------------------------------------------------- checks ---- */
@@ -334,6 +339,10 @@ export const SUNNY_REFUSALS: readonly RefusalScenario[] = [
       says: "Details of Coaching is about missing the monthly meeting",
       check: (run) => all(noError(run), created(run), has(run, "coaching_details", /monthly meeting/i, "is not about the monthly meeting"), notRefused(run)),
     },
+    // QA's bar for CITATION_LINE_KEPT_ON_REVISION + Step B (7 Nov 2026): no drift sentence, i.e. text about the session or
+    // the policy in place of her account (the drift the reader and the old revision wrote live).
+    liveCheck: (run) =>
+      hasNot(run, "coaching_details", /\baddressed the attendance policy\b|\bno specific incident\b|\bthis coaching (?:session|document)\b/i, "holds a drift sentence"),
   },
   {
     id: "sun-towel-nothing-said",
@@ -473,6 +482,12 @@ export const SUNNY_REFUSALS: readonly RefusalScenario[] = [
           notRefused(run),
         ),
     },
+    // QA's round-3 bar (EDIT_MAKE_IT_ABOUT + Step B): "please list the policy" is not silently ignored. The policy
+    // appears in Details, or the reply says where it goes.
+    liveCheck: (run) =>
+      /\bpolic(?:y|ies)\b/i.test(run.saved.coaching_details ?? "") || /\bpolic(?:y|ies)\b/i.test(run.reply)
+        ? null
+        : `"please list the policy" was ignored: Details "${(run.saved.coaching_details ?? "").slice(0, 120)}", reply "${run.reply.slice(0, 120)}"`,
   },
   {
     id: "sun-make-that-update",
@@ -608,6 +623,20 @@ export const TRACE_REFUSALS: readonly RefusalScenario[] = [
 
 /** Every refusal, Bubbles' first. LIVE_SCENARIOS=step-b-refusals. */
 export const STEP_B_REFUSAL_SCENARIOS: readonly RefusalScenario[] = [...BUBBLES_REFUSALS, ...SUNNY_REFUSALS, ...TRACE_REFUSALS];
+
+/** The same scenarios for the LIVE eval: each `liveCheck` is added to its `expect`. */
+export const STEP_B_REFUSAL_LIVE_SCENARIOS: readonly RefusalScenario[] = STEP_B_REFUSAL_SCENARIOS.map((scenario) => {
+  const liveCheck = scenario.liveCheck;
+  if (!liveCheck) return scenario;
+  return {
+    ...scenario,
+    expect: {
+      ...scenario.expect,
+      says: `${scenario.expect.says}; live: the other asks are not silently ignored`,
+      check: (run: LiveOutcome) => scenario.expect.check(run) ?? liveCheck(run),
+    },
+  };
+});
 
 /** The Step B flags the scenarios are for, and coding 5's (7 Nov 2026). */
 export const STEP_B_READER_FLAGS = [

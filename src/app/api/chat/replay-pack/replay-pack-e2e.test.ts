@@ -7,7 +7,7 @@ import { appendFileSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 import PRODUCTION_FLAGS from "@/config/production-flags.json";
-import { continuationFor } from "@/lib/forms/proposal-continuation";
+import { continuationFor, offeredCopyForTurn, type OfferedCopy } from "@/lib/forms/proposal-continuation";
 import { createId } from "@/lib/utils/id";
 import { fakeSupabase, type FakeStore } from "@/test/fake-supabase";
 import { JBA_MANUAL_CA_CHUNKS } from "@/test/fixtures/jba-manual-ca-sections";
@@ -457,6 +457,7 @@ type Answer = {
   formSelection?: unknown;
   formOpened?: { instanceId: string; revisesInstanceId?: string | null };
   formUpdate?: { instanceId: string; updated: string[] };
+  pendingCopy?: { fromInstanceId: string };
 };
 
 /** The thread as the browser holds it: a card the answer carried stays open. */
@@ -465,6 +466,7 @@ class Thread {
   proposal: ChatFormProposal | null = null;
   instanceId: string | null = null;
   private sequence = 0;
+  private offeredCopy: OfferedCopy | undefined;
   // A well-formed client id, so the route keeps the intake state between turns (`isClientConversationId`).
   private readonly conversationId = createId("conv");
 
@@ -472,6 +474,8 @@ class Thread {
     state.reading = reading;
     const history = this.messages.map(({ id, role, content, formProposal }) => ({ id, role, content, ...(formProposal ? { formProposal } : {}) }));
     const id = `m${(this.sequence += 1)}`;
+    const pendingCopy = offeredCopyForTurn(this.offeredCopy, this.messages);
+    this.offeredCopy = undefined;
     const response = await chatRoute.POST(
       new Request("https://app.test/api/chat", {
         method: "POST",
@@ -485,6 +489,8 @@ class Thread {
           // As the browser does: the card on screen, or the intake still asking (`continuationFor`).
           ...(!this.instanceId && continuationFor(this.messages) ? { continueProposalTemplateKey: continuationFor(this.messages)!.templateKey } : {}),
           ...(this.instanceId ? { activeFormInstanceId: this.instanceId } : {}),
+          // As the browser does (`ClaudeProvider`): the copy the last answer offered (SAME_FORM_COPY_NEW_PERSON_ENABLED).
+          ...(pendingCopy ? { pendingCopyFromInstanceId: pendingCopy } : {}),
         }),
       }),
     );
@@ -511,6 +517,7 @@ class Thread {
         ...(payload.formProposal ? { formProposal: payload.formProposal } : {}),
       } as ChatMessage,
     );
+    if (payload.pendingCopy) this.offeredCopy = { fromInstanceId: payload.pendingCopy.fromInstanceId, answer: payload.content };
     if (payload.formProposal) this.proposal = payload.formProposal;
     if (payload.formOpened) this.instanceId = toUuid(payload.formOpened.instanceId);
     record.turns.push({ question, reply: payload.content ?? "", updated: payload.formUpdate?.updated ?? null });

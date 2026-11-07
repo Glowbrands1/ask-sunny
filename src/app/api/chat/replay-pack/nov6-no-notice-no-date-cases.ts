@@ -13,7 +13,8 @@ export const NOV6_NO_NOTICE_NO_DATE_CASES: ReplayCase[] = [
     id: "nov6-no-notice-no-date-resigned",
     title: "\"exit form for <X>, resigned 11-3-26 with no notice, not eligible for rehire\": no notice date, and the resignation date stays",
     report: "QA, 6 Nov 2026 (the sibling app's flip-3 tester, B), in this app: \"no notice\" still got a notice date on the exit form",
-    status: { open: "with production's flags the card says \"Date that notice was given: November 3, 2026\"" },
+    // Changed on purpose (7 Nov 2026): QA's flip 7 (21:29 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+    status: "fixed",
     fixFlags: ["NO_NOTICE_NO_DATE_ENABLED"],
     async run(t) {
       vi.setSystemTime(new Date("2026-11-06T15:00:00Z"));

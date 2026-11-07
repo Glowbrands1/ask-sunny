@@ -42,6 +42,8 @@ export interface ExtractedDocument {
   characterCount: number;
   /** Page count when known. */
   pageCount: number | null;
+  /** WOVEN_PDF_OCR_ENABLED: set when the text was read from page images (`extract/pdf-ocr.ts`). */
+  ocr?: { model: string };
 }
 
 export function normalizeWhitespace(value: string): string {
