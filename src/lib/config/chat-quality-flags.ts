@@ -2908,6 +2908,17 @@ export function editMakeItAboutEnabled(): boolean {
 
 // --- coding 2 flags ---
 
+// coding 2: PRIOR_STEP_PREVIOUSLY
+/**
+ * PRIOR_STEP_PREVIOUSLY_ENABLED (port from the sibling app; A2, one of Pau's 7; QA 6 Nov 2026; default off).
+ * "in the previously recieved coaching include that <name> signed the jba policy manual on 10-15-26" listed no
+ * Prior actions row. With this flag on, a dated step that "previous(ly) / prior / earlier" leads is an earlier
+ * step (`forms/prior-actions.ts`). Off, as before.
+ */
+export function priorStepPreviouslyEnabled(): boolean {
+  return envFlag("PRIOR_STEP_PREVIOUSLY_ENABLED");
+}
+
 /**
  * NO_NOTICE_NO_DATE_ENABLED (port of the sibling app's, QA, 6 Nov 2026;
  * default off). "exit form for <X>, resigned 11-3-26 with no notice" printed
