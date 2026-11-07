@@ -456,6 +456,8 @@ const NEW_FLAGS = [
   "UNDER_PERFORMANCE_EXPLAINED_ENABLED",
   // After the Sunny flip (6 Nov 2026, row 6): forced off with the others in the child run.
   "TWO_FORMS_OWN_PERSON_ENABLED",
+  // coding 2: TWO_FORMS_EACH_PERSON (default off): forced off with the others in the child run.
+  "TWO_FORMS_EACH_PERSON_ENABLED",
 ] as const;
 
 const PROTECTED = [

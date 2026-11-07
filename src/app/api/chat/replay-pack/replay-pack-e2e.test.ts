@@ -69,6 +69,7 @@ const state = vi.hoisted(() => ({
   slotsRead: {} as Record<string, unknown>,
   /** The employee the AI reader quotes this turn, when a case sets it (it is checked against the roster as in production). */
   readerEmployee: null as string | null,
+  slotsOnlyIfSaid: false,
   remapObservation: null as string | null,
   /** What the form-reading model returns for this turn (extract_form_fields). */
   reading: {} as Record<string, unknown>,
@@ -270,6 +271,12 @@ vi.mock("@/lib/ai/call-claude", () => ({
       formTurn: state.slotReading === "ca",
       policyHeading: null,
       ...state.slotsRead,
+      // slotsRead(…, { onlyIfSaid: true }): a call that was never shown the scripted employee does not read them.
+      ...(state.slotsOnlyIfSaid &&
+      typeof state.slotsRead.employee === "string" &&
+      !JSON.stringify(input.messages ?? []).toLowerCase().includes(String(state.slotsRead.employee).toLowerCase())
+        ? { employee: null }
+        : {}),
     };
   },
 }));
@@ -565,6 +572,7 @@ beforeEach(async () => {
   state.slotReading = "none";
   state.slotsRead = {};
   state.readerEmployee = null;
+  state.slotsOnlyIfSaid = false;
   state.remapObservation = null;
   state.reading = {};
   state.draft = { values: {} };
@@ -671,9 +679,10 @@ function context(): ReplayContext {
     modelSays: (text) => {
       said.answer = text;
     },
-    slotsRead: (slots, readerEmployee = null) => {
+    slotsRead: (slots, readerEmployee = null, options = {}) => {
       state.slotsRead = slots;
       state.readerEmployee = readerEmployee;
+      state.slotsOnlyIfSaid = options.onlyIfSaid === true;
     },
     modelCallsEditTool: (input) => {
       editTool.input = input;
