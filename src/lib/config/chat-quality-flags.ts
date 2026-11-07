@@ -3122,6 +3122,17 @@ export function bareNotAfterRequestEnabled(): boolean {
   return envFlag("BARE_NOT_AFTER_REQUEST_ENABLED");
 }
 
+// coding 2: OBSERVATION_NO_LEVEL_LEAD
+/**
+ * OBSERVATION_NO_LEVEL_LEAD_ENABLED (the flip-3 tester's D, in this app; QA 6–7 Nov 2026; default off). "create a
+ * CA for <name>, verbal, she was late on 10-20-26" made the Observation "verbal, she was late on 10-20-26". With
+ * this flag on, a clause that is only a warning level is not part of the account (`ai/remap-incident.ts`
+ * managerAccount). Off, as before.
+ */
+export function observationNoLevelLeadEnabled(): boolean {
+  return envFlag("OBSERVATION_NO_LEVEL_LEAD_ENABLED");
+}
+
 /**
  * SOURCE_NOTE_GUARD_ENABLED (QA, 5 Nov 2026; default off). A reply reached a
  * manager with the model's own note about a source in it: "[S1 doesn't actually

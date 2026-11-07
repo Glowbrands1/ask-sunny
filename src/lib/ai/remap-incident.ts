@@ -2,6 +2,7 @@ import { salonById } from "@/data/salons";
 import {
   caSalesPolicyEnabled,
   levelRequestDateEnabled,
+  observationNoLevelLeadEnabled,
   observationWithoutAskEnabled,
   politeRequestOwnTurnsEnabled,
   priorSentenceFixEnabled,
@@ -681,6 +682,14 @@ function withoutRequestedEmployee(text: string, employeeName: string | null): st
   return text;
 }
 
+/*
+ * OBSERVATION_NO_LEVEL_LEAD_ENABLED (the flip-3 tester's D, in this app; QA 6–7 Nov 2026): "create a CA for
+ * <name>, verbal, she was late on 10-20-26" made the card's Observation of Offense "verbal, she was late on
+ * 10-20-26". A clause that is only a warning level ("verbal", "written warning", "final written") is the Type
+ * of Warning, not the account. Off, as before.
+ */
+const ONLY_A_LEVEL = /^(?:a\s+|an\s+)?(?:verbal|written|final(?:\s+written)?)(?:\s+(?:warning|ca|c\/a|corrective\s+action|write[- ]?up))?$/i;
+
 export function managerAccount(sentence: string, employeeName: string | null): string {
   const end = /[.!?]+$/.exec(sentence.trim())?.[0] ?? "";
   const body = sentence.trim().slice(0, sentence.trim().length - end.length);
@@ -689,6 +698,7 @@ export function managerAccount(sentence: string, employeeName: string | null): s
   for (const clause of body.split(",")) {
     let text = clause.trim();
     if (!text) continue;
+    if (observationNoLevelLeadEnabled() && ONLY_A_LEVEL.test(text)) continue;
     /*
      * CA_SALES_POLICY_ENABLED (QA, live, 4 Nov 2026): "MSB CA for <name> for
      * underperformance in the month of October" was the card's whole
