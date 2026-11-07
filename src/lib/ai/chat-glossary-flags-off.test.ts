@@ -205,7 +205,21 @@ const FLAG = "CHAT_GLOSSARY_ENABLED";
  * 4 Nov 2026 production-flags.json lists CHAT_GLOSSARY_ENABLED on (QA's flip).
  * The recorded fixture is main before the glossary, so the base must leave it off.
  */
-const PRODUCTION = [...PRODUCTION_FLAGS.on, ...PRODUCTION_FLAGS.assumedOn].filter((name) => name !== FLAG);
+/*
+ * Changed on purpose (7 Nov 2026): production-flags.json now lists QA's flips of 5 and 6 Nov as on. The recorded
+ * fixture is main before this flag, under production's flags as they were then, so the base leaves those seven off,
+ * as it leaves this flag off. The fixture and every assertion are unchanged.
+ */
+const FLIPPED_AFTER_FIXTURE: readonly string[] = [
+  "CA_SALES_POLICY_ENABLED",
+  "REPLY_MATCHES_CARD_ENABLED",
+  "TITLE_OF_THE_EMPLOYEE_ENABLED",
+  "METRIC_GUARD_ENABLED",
+  "TITLE_ENDS_AT_LINE_ENABLED",
+  "BARE_NOT_DENIAL_ENABLED",
+  "PLACE_FROM_CUE_ENABLED",
+];
+const PRODUCTION = [...PRODUCTION_FLAGS.on, ...PRODUCTION_FLAGS.assumedOn].filter((name) => name !== FLAG && !FLIPPED_AFTER_FIXTURE.includes(name));
 const TOUCHED = [...new Set([FLAG, "FORM_EDIT_SINGLE_WRITER_ENABLED", "FORM_EDIT_TOOL_IN_STREAM_ENABLED", ...PRODUCTION, ...PRODUCTION_FLAGS.off])];
 const saved = new Map<string, string | undefined>();
 

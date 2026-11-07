@@ -18,6 +18,7 @@ import {
   openFormNoSelectionEnabled,
   personGuardEnabled,
   formNameFromRosterEnabled,
+  offRosterConfirmEnabled,
   metricGuardEnabled,
   refusalNoRepeatEnabled,
   titleNotSpeakersManagerEnabled,
@@ -204,7 +205,18 @@ async function postChat(request: Request) {
 
     let answer;
     try {
-      const request0 = parseAskRequest(body);
+      let asked = parseAskRequest(body);
+      /*
+       * OFF_ROSTER_CONFIRM_ENABLED: "use <name>" (or "yes") to the offer for a person not in Woven is read as the
+       * manager's turn that typed the name, and the name is kept on the card as typed (`forms/off-roster-confirm.ts`).
+       */
+      if (offRosterConfirmEnabled()) {
+        const taken = (await import("@/lib/forms/off-roster-confirm")).withOffRosterAnswer(asked);
+        if (taken) {
+          asked = taken.request;
+          (await import("@/lib/forms/off-roster-store")).enterAcceptedOffRoster(taken.accepted);
+        }
+      }
       /*
        * SAME_FORM_COPY_NEW_PERSON_ENABLED: "can you create the same draft that
        * we did with <C> by changing the name and position?" with <C>'s own form
@@ -217,23 +229,23 @@ async function postChat(request: Request) {
         sameFormCopyEnabled() && sameFormCopyNewPersonEnabled()
           ? await (await import("@/lib/forms/same-form-copy")).newPersonCopyTurn({
               request,
-              question: request0.question,
-              activeInstanceId: request0.activeFormInstanceId,
-              pendingFromInstanceId: request0.pendingCopyFromInstanceId,
+              question: asked.question,
+              activeInstanceId: asked.activeFormInstanceId,
+              pendingFromInstanceId: asked.pendingCopyFromInstanceId,
             })
           : null;
       if (newPersonCopy && "answer" in newPersonCopy) {
         await closeTurn(turnId, { category: "unclassified", succeeded: true, latencyMs: Date.now() - askedAt });
         return NextResponse.json({ ...newPersonCopy.answer, turnId });
       }
-      const asked: AskRequest = newPersonCopy
-        ? {
-            ...request0,
-            question: newPersonCopy.question,
-            activeFormInstanceId: undefined,
-            continueProposalTemplateKey: newPersonCopy.source.templateKey,
-          }
-        : request0;
+      if (newPersonCopy) {
+        asked = {
+          ...asked,
+          question: newPersonCopy.question,
+          activeFormInstanceId: undefined,
+          continueProposalTemplateKey: newPersonCopy.source.templateKey,
+        };
+      }
       // FORM_NAME_FROM_ROSTER_ENABLED, part 2: every name reader of the turn reads this message's request slot (`lib/forms/request-slot.ts`).
       if (formNameFromRosterEnabled()) (await import("@/lib/forms/request-message-store")).enterRequestMessage(asked.question);
       // METRIC_GUARD_ENABLED, FORM_NAME off: only the metric guards read the message (`request-slot.ts` metricMessage).
