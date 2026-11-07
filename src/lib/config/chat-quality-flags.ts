@@ -424,6 +424,17 @@ export function remapIncidentFixEnabled(): boolean {
 }
 
 /**
+ * POLITE_REQUEST_OWN_TURNS_ENABLED (Pau's scan, sf-s37, 7 Nov 2026; same flag in both apps; default off). Three
+ * requests in one chat, each "Can you create me a coaching document for <name> for …": the second card's Observation
+ * of Offense read back the first employee's request. A request opened with "can / could / would / will you" was not
+ * read as a request, so a card read every earlier turn as its account. On: that lead is set aside before the request
+ * is read (`ai/remap-incident.ts` currentRequestStart). Off, as before.
+ */
+export function politeRequestOwnTurnsEnabled(): boolean {
+  return envFlag("POLITE_REQUEST_OWN_TURNS_ENABLED");
+}
+
+/**
  * The intent read takes a payroll amount and the Yes/No only from the
  * manager's own turns. A figure the assistant quoted from policy ("reimburse
  * the company $25 via payroll deduction") is not an amount, and "verbal, no
@@ -2600,6 +2611,18 @@ export function metricGuardEnabled(): boolean {
 }
 
 /**
+ * COACHING_OBSERVED_KEPT_ENABLED (Pau's scan, sf-s37, 7 Nov 2026; same flag in both apps; default off). Three Coaching
+ * Forms for "not hitting her numbers for the month of October" were saved with no "Observed:" section and with
+ * Underperformance unticked: the framing guard (`forms/coaching-framing.ts`) did not read the account as a shortfall,
+ * so it struck every "did not meet …" sentence and the label left empty. On: a metric named and judged — the reader
+ * the progression already uses (`forms/metric-shortfall.ts` statesMetricShortfall) — is a shortfall too, and the
+ * guard leaves the draft alone. Off, as before.
+ */
+export function coachingObservedKeptEnabled(): boolean {
+  return envFlag("COACHING_OBSERVED_KEPT_ENABLED");
+}
+
+/**
  * CLEANING_OTHER_EVERY_WORDING_ENABLED (QA's live eval ca-sales-negative-cleaning-duties and replay, 6 Nov 2026;
  * same flag in both apps; default off; Pau's ruling: cleaning left undone is Other, never the Standards of
  * Conduct). With CA_SALES_POLICY_ENABLED on, "for not completing his daily cleaning duties" and "for not
@@ -2710,7 +2733,6 @@ export function titleEndsAtLineEnabled(): boolean {
 
 /**
 
-
  * ROSTER_COMPOUND_SURNAME_ENABLED (the re-flip's rollback, 5 Nov 2026; default
  * off). The flip's live testers (R3/R5/R7): a real employee's surname is two
  * words, and the manager typed one with a transposed or swapped letter. The
@@ -2734,7 +2756,6 @@ export function rosterNotFoundAnyPhrasingEnabled(): boolean {
   return envFlag("ROSTER_NOT_FOUND_ANY_PHRASING_ENABLED");
 }
 
-
 /**
  * EXIT_STATED_ONLY_ENABLED (QA, 5 Nov 2026, severe; default off). A salon director pasted a termination letter and
  * asked for an exit form: How Employee Resigned became "Text message" (the text that caused the termination), Salon
@@ -2746,7 +2767,6 @@ export function rosterNotFoundAnyPhrasingEnabled(): boolean {
 export function exitStatedOnlyEnabled(): boolean {
   return envFlag("EXIT_STATED_ONLY_ENABLED");
 }
-
 
 /**
  * OFF_ROSTER_CONFIRM_ENABLED (port of the sibling app's flip-3 gate, QA, 6 Nov 2026; default off; ships with
@@ -2803,26 +2823,14 @@ export function ownBrandOnlyEnabled(): boolean {
 // --- coding 4 flags ---
 
 /**
- * COACHING_OBSERVED_KEPT_ENABLED (Pau's scan, sf-s37, 7 Nov 2026; same flag in both apps; default off). Three Coaching
- * Forms for "not hitting her numbers for the month of October" were saved with no "Observed:" section and with
- * Underperformance unticked: the framing guard (`forms/coaching-framing.ts`) did not read the account as a shortfall,
- * so it struck every "did not meet …" sentence and the label left empty. On: a metric named and judged — the reader
- * the progression already uses (`forms/metric-shortfall.ts` statesMetricShortfall) — is a shortfall too, and the
- * guard leaves the draft alone. Off, as before.
+ * AS_YOU_SAID_APP_READ_ENABLED (QA's Sunny gate, 7 Nov 2026: 45 regressions from AS_YOU_SAID_MANAGER_WORDS; ships
+ * with it; same flag in both apps; default off). With AS_YOU_SAID on, an attendance or late-opening CA whose only
+ * Policy line was "<policy>, as you said" (read from the app's own line) lost the line. On: the policy the app's own
+ * lines named is kept as its reading and said as one ("**Policy:** Late Opening — read from this request …"),
+ * never "as you said" and never nothing (`forms/ca-policy.ts` readCaPolicy, caPolicyProposalLine). Off, as before.
  */
-export function coachingObservedKeptEnabled(): boolean {
-  return envFlag("COACHING_OBSERVED_KEPT_ENABLED");
-}
-
-/**
- * POLITE_REQUEST_OWN_TURNS_ENABLED (Pau's scan, sf-s37, 7 Nov 2026; same flag in both apps; default off). Three
- * requests in one chat, each "Can you create me a coaching document for <name> for …": the second card's Observation
- * of Offense read back the first employee's request. A request opened with "can / could / would / will you" was not
- * read as a request, so a card read every earlier turn as its account. On: that lead is set aside before the request
- * is read (`ai/remap-incident.ts` currentRequestStart). Off, as before.
- */
-export function politeRequestOwnTurnsEnabled(): boolean {
-  return envFlag("POLITE_REQUEST_OWN_TURNS_ENABLED");
+export function asYouSaidAppReadEnabled(): boolean {
+  return envFlag("AS_YOU_SAID_APP_READ_ENABLED");
 }
 
 // --- coding 2 flags ---
