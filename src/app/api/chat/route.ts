@@ -712,6 +712,8 @@ async function postChat(request: Request) {
               today: parsed.context.todayIso,
               activeInstanceId: parsed.activeFormInstanceId,
               continuingTemplateKey: parsed.continueProposalTemplateKey,
+              // REOPEN_NOT_OPEN_FORM_ENABLED: the form open when the turn arrived, read only by that flag.
+              openWhenAsked: asked.activeFormInstanceId,
             })
           : null;
       let toolNothing: Awaited<ReturnType<typeof answerQuestion>> | null = null;
