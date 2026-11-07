@@ -1862,6 +1862,22 @@ export function sameFormCopyEnabled(): boolean {
 }
 
 /**
+ * SAME_FORM_COPY_NEW_PERSON_ENABLED (coding3, 5 Nov 2026; same flag in both
+ * apps; default off). "can you create the same draft that we did with <C> by
+ * changing the name and position?" with <C>'s own form open (or no form open
+ * and <C>'s own form on file), the new person not named yet: asks who the new
+ * form is for, leaves <C>'s form alone and makes no card for <C>. The reply
+ * carries the form to copy from (`pendingCopy`); the next turn naming one
+ * roster person starts that person's card with `copyFromInstanceId`, and
+ * Create copies that form's content onto the new draft (creator and visibility
+ * re-checked) — never re-read from the wording. Any other turn drops it. See
+ * `forms/same-form-copy.ts`. Off, as before.
+ */
+export function sameFormCopyNewPersonEnabled(): boolean {
+  return envFlag("SAME_FORM_COPY_NEW_PERSON_ENABLED");
+}
+
+/**
  * "A coaching form for my whole staff": no card for everyone. Several salons
  * in scope and none named → asks which; one → lists its staff from the scoped
  * Woven directory (name and position) and asks who the form is for (ported

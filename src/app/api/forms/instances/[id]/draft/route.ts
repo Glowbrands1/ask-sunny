@@ -22,6 +22,7 @@ import {
   policySpecificTopicsEnabled,
   grammarAskNotAccountEnabled,
   sameFormCopyEnabled,
+  sameFormCopyNewPersonEnabled,
   typoReadingRoutesEnabled,
   cardPolicyToDraftEnabled,
   formPatchReducerEnabled,
@@ -293,6 +294,13 @@ interface DraftBody {
    * pinned manual has that heading. See `lib/forms/card-policy.ts`.
    */
   cardPolicy?: string;
+  /**
+   * SAME_FORM_COPY_NEW_PERSON_ENABLED: the form the card was asked to copy
+   * ("the same draft that we did with <name>"). Re-checked: this account's
+   * own form of this template, still visible to it. See
+   * `lib/forms/same-form-copy.ts`.
+   */
+  copyFromInstanceId?: string;
 }
 
 function fieldBrief(field: FormField, variantLabel: string | null): string {
@@ -457,6 +465,33 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       return NextResponse.json({ values: {}, checked: {}, withheld: [], notice: null, statedFacts });
     }
 
+    /*
+     * SAME_FORM_COPY_NEW_PERSON_ENABLED: the card names the form it copies
+     * (asked for before this person was named), so the copy comes from that
+     * form, never from re-reading the card's wording.
+     */
+    if (sameFormCopyEnabled() && sameFormCopyNewPersonEnabled() && typeof body.copyFromInstanceId === "string") {
+      const copy = await import("@/lib/forms/same-form-copy");
+      const source = await copy.ownCopySourceById({
+        actor,
+        instanceId: body.copyFromInstanceId,
+        templateKey: loaded.instance.templateKey,
+        targetInstanceId: id,
+        targetEmployeeName: loaded.instance.employeeName,
+      });
+      if (source) {
+        const copied = await copy.copyFormContent({ source, target: loaded, actorId: actor.id, notes });
+        if (Object.keys(copied.values).length > 0 || Object.keys(copied.checked).length > 0) {
+          return NextResponse.json({
+            values: copied.values,
+            checked: copied.checked,
+            withheld: [],
+            notice: copy.copiedNotice(source.instance),
+            statedFacts,
+          });
+        }
+      }
+    }
     /*
      * "DO THE SAME COACHING FORM FOR <ANOTHER PERSON>" (SAME_FORM_COPY_ENABLED).
      * The content of the manager's own earlier form of this template, name
