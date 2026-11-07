@@ -7,6 +7,7 @@ import {
   cleaningOtherEveryWordingEnabled,
   formEditDateRulesEnabled,
   policyCleaningIncidentEnabled,
+  salesObservationAccountEnabled,
   salesShortfallObjectEnabled,
 } from "@/lib/config/chat-quality-flags";
 
@@ -1174,4 +1175,40 @@ export function caPolicyAmbiguousNotice(reading: CaPolicyReading): string | null
 export function describedPolicyChoiceNotice(choices: readonly { heading: string; page: number }[]): string {
   const listed = choices.map((choice) => `${choice.heading} (page ${choice.page})`);
   return `What you described reads as more than one policy in the manual — ${listed.slice(0, -1).join(", ")} or ${listed.at(-1)} — so the policy is left for you. Tell me which (for example "add the ${choices[0]!.heading}"), or tick Type of Offense and complete Direct policy on the form.`;
+}
+
+/*
+ * SALES_OBSERVATION_ACCOUNT_ENABLED (with SALES_SHORTFALL_OBJECT_ENABLED; QA's Sunny flip-4 gate, 7 Nov 2026):
+ * once "on performance" counts as the account, the request's own words became the card's Observation —
+ * "<name> on performance", "performance for october not pay roll deductable". A sentence for the Observation
+ * loses the request's head ("can you write me a ca for"), the employee's name where it leads, the request's
+ * reason ("on / for performance (for october)") and a payroll answer ("not pay roll deductable"); what is
+ * left is the account, or nothing. Off (either flag), the sentence as it is.
+ */
+const OBSERVATION_REQUEST_HEAD =
+  /^(?:(?:hey|hi|ok|okay)[,\s]+)?(?:(?:can|could|would|will)\s+(?:you|we|i)\s+(?:please\s+)?)?(?:(?:make|write|create|do|draft|start|give|get|put)\s+(?:me\s+)?)?(?:(?:a|an)\s+)?(?:(?:written|verbal|final)\s+)?(?:corrective\s+action(?:\s+form)?|ca|c\/a|write[- ]?up|warning)\s+(?:for|on)\s+/i;
+const OBSERVATION_REASON = new RegExp(
+  String.raw`(?:^|\s)(?:on|for|about|regarding|due to)\s+(?:${REASON_DETERMINER}\s+){0,2}(?:under[- ]?)?performance\b(?:\s+(?:for|in|during)\s+(?:the\s+month\s+of\s+)?[a-z]+)?`,
+  "gi",
+);
+/** The reason with its "for" already cut off upstream: "performance for october …" at the start of a sentence. */
+const OBSERVATION_BARE_REASON = /^\s*(?:under[- ]?)?performance\b(?:\s+(?:for|in|during)\s+(?:the\s+month\s+of\s+)?[a-z]+)?/i;
+const OBSERVATION_PAYROLL = /\b(?:(?:not|no)\s+)?pay\s*roll\s+deduct\w*(?:\s+applicable)?\b|\b(?:not|no)\s+(?:a\s+)?pay\s*roll\s+deduction\b/gi;
+
+export function observationAccount(sentence: string, employeeName: string | null): string {
+  if (!salesObservationAccountEnabled() || !salesShortfallObjectEnabled()) return sentence;
+  const trimmed = sentence.trim();
+  let text = trimmed.replace(OBSERVATION_REQUEST_HEAD, "");
+  const wasRequest = text !== trimmed;
+  const own = new Set((employeeName ?? "").toLowerCase().split(/\s+/).filter(Boolean));
+  const words = text.split(/\s+/);
+  let lead = 0;
+  while (lead < words.length && own.has(words[lead]!.toLowerCase().replace(/[^\p{L}'’-]/gu, ""))) lead += 1;
+  // The name goes only where the sentence is the request ("<name> on performance"); "<name> was rude to a guest" keeps it.
+  OBSERVATION_REASON.lastIndex = 0;
+  const reasonFollows = new RegExp(`^${OBSERVATION_REASON.source}`, "i").test(` ${words.slice(lead).join(" ")}`);
+  if (lead > 0 && (wasRequest || reasonFollows)) words.splice(0, lead);
+  text = words.join(" ").replace(OBSERVATION_REASON, " ").replace(OBSERVATION_BARE_REASON, " ").replace(OBSERVATION_PAYROLL, " ");
+  text = text.replace(/\s{2,}/g, " ").replace(/^[\s,.;:-]+|[\s,;:-]+$/g, "").trim();
+  return /\p{L}{3,}/u.test(text) && text.split(/\s+/).length >= 2 ? text : "";
 }
