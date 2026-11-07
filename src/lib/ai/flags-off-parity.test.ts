@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
@@ -412,6 +412,28 @@ const NEW_FLAGS = [
   "ROSTER_NEAR_MISS_ENABLED",
   "REPLY_MATCHES_CARD_ENABLED",
   "METRIC_GUARD_ENABLED",
+  // The second Sunny gate's fix flags (6 Nov 2026): forced off with the others in the child run.
+  "TITLE_ENDS_AT_LINE_ENABLED",
+  "BARE_NOT_DENIAL_ENABLED",
+  "PLACE_FROM_CUE_ENABLED",
+  // Port of the sibling app's flip-3 fix (6 Nov 2026): forced off with the others in the child run.
+  "NO_NOTICE_NO_DATE_ENABLED",
+  // QA's live Sunny re-check (6 Nov 2026): forced off with the others in the child run.
+  "BARE_NOT_AFTER_REQUEST_ENABLED",
+  // #571 (default off): forced off with the others in the child run.
+  "SOURCE_NOTE_GUARD_ENABLED",
+  "ROSTER_COMPOUND_SURNAME_ENABLED",
+  "ROSTER_NOT_FOUND_ANY_PHRASING_ENABLED",
+  "EXIT_STATED_ONLY_ENABLED",
+  // Ported from the sibling app's flip-3 gate (6 Nov 2026).
+  "OFF_ROSTER_CONFIRM_ENABLED",
+  "POLICY_CHANGE_RELEVANT_ENABLED",
+  "CA_OFFER_KEEPS_ACCOUNT_ENABLED",
+  // After the Sunny flip (6 Nov 2026): forced off with the others in the child run.
+  "SALES_SHORTFALL_OBJECT_ENABLED",
+  "UNDER_PERFORMANCE_EXPLAINED_ENABLED",
+  // After the Sunny flip (6 Nov 2026, row 6): forced off with the others in the child run.
+  "TWO_FORMS_OWN_PERSON_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -912,20 +934,50 @@ describe("new flags default off and wrappers are inert", () => {
 const CHILD = process.env.FLAGS_OFF_PARITY_CHILD === "1";
 
 /*
- * The child run is split in two (QA, 3 Nov 2026): as one run over all four
- * folders it took about 526 s of its 540 s on CI and timed out (ETIMEDOUT)
- * whenever the runner was busy. Each half now has the whole budget; the
- * folders, the flags and what must pass are unchanged.
+ * The child run is split (QA, 3 Nov 2026, then 7 Nov 2026). As one run over all
+ * four folders it took about 526 s of its 540 s on CI and timed out (ETIMEDOUT)
+ * whenever the runner was busy, so it was split in two. By 7 Nov the chat+forms
+ * half alone took 530 s on main on a 4-CPU runner (564–607 s on branches that add
+ * replay cases) and timed out again. Measured there (4-CPU), its parts were:
+ * src/app/api/chat without the replay pack 386 s, src/app/api/forms 80 s, the
+ * replay pack 144 s (src/lib 185 s). So it is five children now — src/lib; the
+ * chat folder without the pack, in two halves by name; src/app/api/forms; the
+ * replay pack — each well under the budget, and the chat folder can keep growing.
+ * The folders, the flags and what must pass are unchanged, and every test file
+ * still runs in exactly one child.
+ *
+ * Vitest's `--exclude` does not reach inside a project (the "unit" project's own
+ * `exclude` wins), and a path filter matches any file whose path contains it. So
+ * the chat folder without the pack is named entry by entry — each test file, and
+ * each folder with its trailing "/" — read from the folder itself.
  */
-const HALVES: readonly (readonly string[])[] = [
-  ["src/lib/ai", "src/lib/forms"],
-  ["src/app/api/chat", "src/app/api/forms"],
+const CHAT = "src/app/api/chat";
+const REPLAY_PACK = `${CHAT}/replay-pack`;
+function chatWithoutReplayPack(): string[] {
+  return readdirSync(CHAT, { withFileTypes: true })
+    .filter((entry) => `${CHAT}/${entry.name}` !== REPLAY_PACK)
+    .filter((entry) => entry.isDirectory() || /\.test\.tsx?$/.test(entry.name))
+    .map((entry) => `${CHAT}/${entry.name}${entry.isDirectory() ? "/" : ""}`)
+    .sort();
+}
+/** The chat folder without the pack, in two halves by name (`half` 0 or 1): each half is its own child. */
+function chatHalf(half: 0 | 1): string[] {
+  const all = chatWithoutReplayPack();
+  const middle = Math.ceil(all.length / 2);
+  return half === 0 ? all.slice(0, middle) : all.slice(middle);
+}
+const CHILDREN: readonly { readonly name: string; readonly paths: () => readonly string[] }[] = [
+  { name: "src/lib/ai, src/lib/forms", paths: () => ["src/lib/ai", "src/lib/forms"] },
+  { name: `${CHAT} (without the replay pack), first half by name`, paths: () => chatHalf(0) },
+  { name: `${CHAT} (without the replay pack), second half by name`, paths: () => chatHalf(1) },
+  { name: "src/app/api/forms", paths: () => ["src/app/api/forms"] },
+  { name: REPLAY_PACK, paths: () => [REPLAY_PACK] },
 ];
 
 describe("existing chat and form suites with every new flag off", () => {
-  for (const folders of HALVES) {
+  for (const child of CHILDREN) {
     it.skipIf(CHILD)(
-      `passes the suites whose expectations are already on main: ${folders.join(", ")}`,
+      `passes the suites whose expectations are already on main: ${child.name}`,
       () => {
         const env: NodeJS.ProcessEnv = { ...process.env, FLAGS_OFF_PARITY_CHILD: "1" };
         delete env.VITEST;
@@ -942,7 +994,7 @@ describe("existing chat and form suites with every new flag off", () => {
             "--maxWorkers=2",
             "--exclude",
             "src/lib/ai/flags-off-parity.test.ts",
-            ...folders,
+            ...child.paths(),
           ],
           // The child's output (every suite's logs) passed Node's 1 MB default
           // buffer on CI and failed with ENOBUFS before any test failed.

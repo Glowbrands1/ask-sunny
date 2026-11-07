@@ -54,7 +54,8 @@ export const NOV5_CLEANING_OTHER_CASES: ReplayCase[] = [
     id: "nov5-cleaning-other-sf-s15",
     title: "sf-s15: \"did not complete daily cleaning duties\" — the card names Other with no Standards of Conduct page, and a draft ticked Standards of Conduct with no basis becomes Other with no Standards of Conduct quote",
     report: `${REPORT}: "Write me a CA for Isolde Brannock for failing to complete opening duties. Isolde did not complete daily cleaning duties. on november 2, 2026"`,
-    status: { open: "with production's flags (CA_SALES_POLICY_ENABLED off) the card reads as Standards of Conduct and cites Standards of Conduct p.12" },
+    // Changed on purpose (7 Nov 2026): QA's flips of 5 and 6 Nov turned CA_SALES_POLICY, REPLY_MATCHES_CARD, TITLE_OF_THE_EMPLOYEE, METRIC_GUARD, TITLE_ENDS_AT_LINE, BARE_NOT_DENIAL and PLACE_FROM_CUE on in production (production-flags.json); this case now holds with production's flags.
+    status: "fixed",
     fixFlags: FLIP,
     async run(t) {
       const { thread, reply } = await card(t, "Write me a CA for Isolde Brannock for failing to complete opening duties. Isolde did not complete daily cleaning duties. on november 2, 2026");
@@ -85,7 +86,8 @@ export const NOV5_CLEANING_OTHER_CASES: ReplayCase[] = [
     id: "nov5-cleaning-other-sf-s15-policy-citation",
     title: "sf-s15 with POLICY_CITATION on (on in production): the draft ticks Other and Direct policy quotes no Standards of Conduct",
     report: `${REPORT}; QA's production-flags bisect #3 (POLICY_CITATION fills Direct policy)`,
-    status: { open: "with production's flags (CA_SALES_POLICY_ENABLED off) the draft keeps the Standards of Conduct" },
+    // Changed on purpose (7 Nov 2026): QA's flips of 5 and 6 Nov turned CA_SALES_POLICY, REPLY_MATCHES_CARD, TITLE_OF_THE_EMPLOYEE, METRIC_GUARD, TITLE_ENDS_AT_LINE, BARE_NOT_DENIAL and PLACE_FROM_CUE on in production (production-flags.json); this case now holds with production's flags.
+    status: "fixed",
     fixFlags: [...FLIP, "POLICY_CITATION_ENABLED"],
     async run(t) {
       const { thread } = await card(t, "Write me a CA for Isolde Brannock for failing to complete opening duties. Isolde did not complete daily cleaning duties. on november 2, 2026");
@@ -99,7 +101,8 @@ export const NOV5_CLEANING_OTHER_CASES: ReplayCase[] = [
     id: "nov5-upkeep-other-policy-citation",
     title: "upkeep that is not cleaning (\"the restocking duties were not completed\"), the model's basis upkeep_or_task: Other ticked, so Direct policy quotes no Standards of Conduct (POLICY_CITATION on)",
     report: `${REPORT}; QA's production-flags bisect #3: the citation fill follows the ticked box`,
-    status: { open: "with production's flags (CA_SALES_POLICY_ENABLED off) the draft keeps the Standards of Conduct" },
+    // Changed on purpose (7 Nov 2026): QA's flips of 5 and 6 Nov turned CA_SALES_POLICY, REPLY_MATCHES_CARD, TITLE_OF_THE_EMPLOYEE, METRIC_GUARD, TITLE_ENDS_AT_LINE, BARE_NOT_DENIAL and PLACE_FROM_CUE on in production (production-flags.json); this case now holds with production's flags.
+    status: "fixed",
     fixFlags: [...FLIP, "POLICY_CITATION_ENABLED"],
     async run(t) {
       const { thread } = await card(t, "make a corrective action for Isolde Brannock, the restocking duties were not completed before close on 11/2");

@@ -1,5 +1,15 @@
-import { foldsToGlossaryTerm } from "@/lib/ai/chat-glossary";
-import { caSalesPolicyEnabled, formEditDateRulesEnabled, policyCleaningIncidentEnabled, wovenTrainingConductEnabled } from "@/lib/config/chat-quality-flags";
+import { withoutAppLines } from "@/lib/ai/app-sentences";
+import { foldsToGlossaryTerm, isSalesCountTerm } from "@/lib/ai/chat-glossary";
+import {
+  asYouSaidAppReadEnabled,
+  asYouSaidManagerWordsEnabled,
+  caSalesPolicyEnabled,
+  cleaningOtherEveryWordingEnabled,
+  formEditDateRulesEnabled,
+  policyCleaningIncidentEnabled,
+  salesShortfallObjectEnabled,
+  wovenTrainingConductEnabled,
+} from "@/lib/config/chat-quality-flags";
 
 import { JOIN } from "./bounded-context";
 import { LATE_TO_OPEN, lateOpenOn } from "./late-open";
@@ -110,6 +120,11 @@ export interface CaPolicyReading {
    * the Standards of Conduct (Pau's ruling; `withCleaningOther`). Absent off.
    */
   other?: "cleaning";
+  /**
+   * AS_YOU_SAID_APP_READ_ENABLED: the policy the app's own lines on the turn named, when the manager's words name
+   * none (AS_YOU_SAID_MANAGER_WORDS_ENABLED reads only the manager's). Said as a reading, never "as you said".
+   */
+  readFromApp?: CaPolicyName;
 }
 
 /* ------------------------------------------------------------ the words -- */
@@ -197,6 +212,15 @@ const CLEANING_UNDONE = [
   ),
 ];
 
+/*
+ * CLEANING_OTHER_EVERY_WORDING_ENABLED (6 Nov 2026): "for not completing his daily cleaning duties" — the
+ * same reading as `CLEANING_UNDONE`'s "not complete … cleaning", in the -ing form. Read with that pattern's
+ * denial guards (index 1). Off, never read.
+ */
+const CLEANING_UNDONE_GERUND = new RegExp(
+  String.raw`\b(?:${FAILED}|not)\s+(?:\S+\s+){0,3}?(?:completing|finishing|doing)\b[^.;!?\n]{0,30}?\b${CLEANING_WORD}\b`,
+);
+
 /**
  * Whether the account says cleaning was left undone: "the cleaning didn't get
  * done", "left the beds dirty". Questions are not accounts. Off, never.
@@ -259,6 +283,10 @@ export function cleaningUndonePhrase(rawText: string): string | null {
     for (const [index, pattern] of CLEANING_UNDONE.entries()) {
       const match = pattern.exec(sentence);
       if (match && readsAsIncident(sentence, match, index)) return match[0].trim();
+    }
+    if (cleaningOtherEveryWordingEnabled()) {
+      const match = CLEANING_UNDONE_GERUND.exec(sentence);
+      if (match && readsAsIncident(sentence, match, 1)) return match[0].trim();
     }
   }
   return null;
@@ -386,7 +414,12 @@ function statedIn(turn: string): CaPolicyName | null {
       if (!match) continue;
       if (NEGATED_BEFORE.test(sentence.slice(0, match.index))) continue;
       if (formEditDateRulesEnabled() && SET_ASIDE_BEFORE.test(sentence.slice(0, match.index))) continue;
-      if (!alwaysAPolicy && !short && !POLICY_FRAME.test(sentence) && !AGAINST_BEFORE.test(sentence.slice(0, match.index))) {
+      /*
+       * SALES_SHORTFALL_OBJECT_ENABLED (QA, 6 Nov 2026: "sales underperformance"): "under performance" is framed by its own
+       * "under" (POLICY_FRAME), so the one-word spelling is read the same way. Off, it needs a frame like any other name.
+       */
+      const framedByItsSpelling = name === "under_performance" && salesShortfallObjectEnabled() && /^underperform/.test(match[0]);
+      if (!alwaysAPolicy && !short && !framedByItsSpelling && !POLICY_FRAME.test(sentence) && !AGAINST_BEFORE.test(sentence.slice(0, match.index))) {
         continue;
       }
       // The last policy named in the turn is its answer: "not attendance — standards of conduct".
@@ -406,7 +439,9 @@ function statedIn(turn: string): CaPolicyName | null {
  * the drafting notes carry them.
  */
 export function readCaPolicy(rawText: string): CaPolicyReading {
-  return withWovenWork(withCleaningOther(withSalesPolicy(readCaPolicyFromWords(rawText), rawText), rawText), rawText);
+  const said = managerWords(rawText);
+  // Merge of main into #595: WOVEN_TRAINING_CONDUCT's reading (default off) before AS_YOU_SAID_APP_READ's fallback, on the manager's words.
+  return withAppReading(withWovenWork(withCleaningOther(withSalesPolicy(readCaPolicyFromWords(said), said), said), said), rawText, said);
 }
 
 /**
@@ -490,6 +525,31 @@ export function isWovenWorkReading(reading: CaPolicyReading): boolean {
 }
 
 /**
+ * AS_YOU_SAID_APP_READ_ENABLED (QA's Sunny gate, 7 Nov 2026; ships with AS_YOU_SAID_MANAGER_WORDS_ENABLED; same flag
+ * in both apps; default off). With AS_YOU_SAID on, "make me a CA for <name> for being late to opening this morning"
+ * lost its card's Policy line: the only one it had was "Late Opening, as you said", read from the app's own heading
+ * line on the turn. On: when the manager's words read as no policy at all and the whole turn (app lines included,
+ * as before AS_YOU_SAID) names one, that policy is kept as the app's reading, and the card says it as one
+ * (`caPolicyProposalLine`), never "as you said". Off, the reading is returned untouched.
+ */
+function withAppReading(reading: CaPolicyReading, rawText: string, said: string): CaPolicyReading {
+  if (!asYouSaidAppReadEnabled() || said === rawText) return reading;
+  if (reading.stated !== null || reading.suggestion !== null || reading.ambiguous || reading.other || reading.missedEvent) return reading;
+  const app = readCaPolicyFromWords(rawText).stated;
+  return app ? { ...reading, readFromApp: app } : reading;
+}
+
+/**
+ * ONLY THE MANAGER'S WORDS NAME A POLICY (AS_YOU_SAID_MANAGER_WORDS_ENABLED; live chats, 4 Nov 2026).
+ * "Policy reference: Late Opening, JBA Policy Manual p.15." is the app's line — the intent reader's heading,
+ * written back onto the turn (`ai/form-state.ts`) — and the card said "Late Opening, as you said" for leaving
+ * early. With the flag on, the app's own lines (`ai/app-sentences.ts`) are not read here. Off, as before.
+ */
+export function managerWords(rawText: string): string {
+  return asYouSaidManagerWordsEnabled() ? withoutAppLines(rawText ?? "") : rawText;
+}
+
+/**
  * ============================================================================
  * CLEANING LEFT UNDONE IS OTHER, NOT THE STANDARDS OF CONDUCT
  * (CA_SALES_POLICY_ENABLED; Pau's ruling, QA sf-s15, 5 Nov 2026)
@@ -508,8 +568,14 @@ export function isWovenWorkReading(reading: CaPolicyReading): boolean {
  */
 function withCleaningOther(reading: CaPolicyReading, rawText: string): CaPolicyReading {
   if (!caSalesPolicyEnabled()) return reading;
-  if (reading.stated !== null || reading.source !== "incident" || reading.ambiguous) return reading;
-  if (reading.topics.length === 0 || reading.topics.some((topic) => topic !== "task")) return reading;
+  if (reading.stated !== null || reading.ambiguous) return reading;
+  /*
+   * CLEANING_OTHER_EVERY_WORDING_ENABLED: an account read as nothing else ("for not completing his daily cleaning
+   * duties" has no task topic) is Other too, where the cleaning reader reads it. Off, only the task incident.
+   */
+  const onlyCleaning = cleaningOtherEveryWordingEnabled() && reading.source === null && reading.topics.length === 0 && reading.missedEvent === null;
+  if (reading.source !== "incident" && !onlyCleaning) return reading;
+  if ((reading.topics.length === 0 && !onlyCleaning) || reading.topics.some((topic) => topic !== "task")) return reading;
   if (cleaningUndonePhrase(rawText) === null) return reading;
   return { ...reading, suggestion: null, source: null, other: "cleaning" };
 }
@@ -537,6 +603,35 @@ function withCleaningOther(reading: CaPolicyReading, rawText: string): CaPolicyR
  * Performance; an account that reads as attendance or a missed meeting. Off,
  * the reading is returned untouched.
  */
+/**
+ * SALES_SHORTFALL_OBJECT_ENABLED (QA's tester batch 2, 6 Nov 2026: "written CA
+ * for <name> on performance", "CA for <name> for performance for october"):
+ * "performance" given as the request's reason is the Under Performance topic.
+ * It is governed by the reason word ("for", "on", "about", "regarding", "due
+ * to"), with only determiners or possessives between, and it ends its phrase:
+ * the text ends, or punctuation, a preposition, a month or a date follows. So
+ * "performance review" and "a performance improvement plan" are not. Grammar
+ * (the closed classes), not a list of offenses.
+ */
+const REASON_DETERMINER = String.raw`(?:the|a|an|her|his|their|its|my|our|your|this|that|[a-z]+'s)`;
+const PHRASE_ENDS = String.raw`(?=\s*$|\s*[.,;:!?)\n]|\s+(?:for|in|on|at|during|since|from|over|of|throughout|through|this|last|past|jan\w*|feb\w*|mar\w*|apr\w*|may|jun\w*|jul\w*|aug\w*|sep\w*|oct\w*|nov\w*|dec\w*|\d))`;
+const PERFORMANCE_AS_REASON = new RegExp(
+  String.raw`\b(?:for|on|about|regarding|due to)\s+(?:${REASON_DETERMINER}\s+){0,2}performance\b${PHRASE_ENDS}`,
+);
+
+/**
+ * SALES_SHORTFALL_OBJECT_ENABLED (Pau, 6 Nov 2026; H18, "<name> 131 tans
+ * verbal"): a number directly before a sales count term of the glossary
+ * (`isSalesCountTerm`, read from Pau's line) is the metric named and counted.
+ */
+function countsASalesTerm(rawText: string): boolean {
+  return [...normalize(rawText).matchAll(/\b\d[\d,]*\s+([a-z]+)\b/g)].some((match) => isSalesCountTerm(match[1]));
+}
+
+function performanceIsTheReason(rawText: string): boolean {
+  return statements(normalize(rawText)).some((sentence) => PERFORMANCE_AS_REASON.test(sentence));
+}
+
 function withSalesPolicy(reading: CaPolicyReading, rawText: string): CaPolicyReading {
   if (!caSalesPolicyEnabled()) return reading;
   if (reading.stated !== null && reading.stated !== "under_performance") return reading;
@@ -546,7 +641,7 @@ function withSalesPolicy(reading: CaPolicyReading, rawText: string): CaPolicyRea
     sentence.split(/[^a-z0-9.]+/).some((word) => foldsToGlossaryTerm(word.replace(/^\.+|\.+$/g, ""))),
   );
   // The stated shortfall reader the progression already uses (`corrective-action-intake.ts`): a metric named and judged.
-  const target = reading.stated === "under_performance" || statesMetricShortfall(rawText);
+  const target = reading.stated === "under_performance" || statesMetricShortfall(rawText) || (salesShortfallObjectEnabled() && (performanceIsTheReason(rawText) || countsASalesTerm(rawText)));
   if (!msb && !target) return reading;
   if (reading.stated === null && sentences.some((s) => ATTENDANCE.test(s))) return reading;
   return {
@@ -922,6 +1017,10 @@ export function caPolicyProposalLine(reading: CaPolicyReading, named: NamedPolic
   if (reading.suggestion && reading.source === "incident") {
     const what = reading.topics.map((topic) => TOPIC_WORDS[topic]).join(" and ");
     return `**Policy:** this reads as **Standards of Conduct** — ${what}. I'll check it against the current policy manual and quote that section on the draft; if the manual doesn't support it, I'll leave the policy for you. Tell me if a different policy applies.`;
+  }
+  // AS_YOU_SAID_APP_READ_ENABLED: the policy the app read, said as its reading. Off, never set.
+  if (reading.readFromApp) {
+    return `**Policy:** ${CA_POLICY_LABEL[reading.readFromApp]} — read from this request. I'll quote that section from the current policy manual on the draft; tell me if a different policy applies.`;
   }
   return null;
 }
