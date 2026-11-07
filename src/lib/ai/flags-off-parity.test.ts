@@ -423,6 +423,11 @@ const NEW_FLAGS = [
   "OFF_ROSTER_CONFIRM_ENABLED",
   "POLICY_CHANGE_RELEVANT_ENABLED",
   "CA_OFFER_KEEPS_ACCOUNT_ENABLED",
+  // After the Sunny flip (6 Nov 2026): forced off with the others in the child run.
+  "SALES_SHORTFALL_OBJECT_ENABLED",
+  "UNDER_PERFORMANCE_EXPLAINED_ENABLED",
+  // After the Sunny flip (6 Nov 2026, row 6): forced off with the others in the child run.
+  "TWO_FORMS_OWN_PERSON_ENABLED",
   // QA, 7 Nov 2026 (default off).
   "METRIC_CHOICE_ONE_QUESTION_ENABLED",
 ] as const;
