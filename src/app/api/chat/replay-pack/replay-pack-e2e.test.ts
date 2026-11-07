@@ -65,6 +65,8 @@ const draftSystemAsked = vi.hoisted(() => [] as string[]);
 const draftToolsAsked = vi.hoisted(() => [] as string[]);
 const state = vi.hoisted(() => ({
   slotReading: "none" as "none" | "ca" | "copy",
+  /** Chunks the pinned manual also has, when a case sets them (`manualAlsoHas`); none by default. */
+  manualExtra: [] as Record<string, unknown>[],
   /** What the slot model (record_intent_slots) reads this turn, when a case sets it — as a production trace shows. */
   slotsRead: {} as Record<string, unknown>,
   /** The employee the AI reader quotes this turn, when a case sets it (it is checked against the roster as in production). */
@@ -355,7 +357,7 @@ vi.mock("@/lib/knowledge/providers/supabase", () => ({
         documentTitle: "2025 JBA Policy Manual - Edited 5-2025",
         documentCategory: "policies_compliance",
         matchedBy: "tag",
-        chunks: JBA_MANUAL_CA_CHUNKS,
+        chunks: [...JBA_MANUAL_CA_CHUNKS, ...state.manualExtra],
       };
     }
   },
@@ -564,6 +566,7 @@ beforeEach(async () => {
   store.form_instances = new JoiningRows() as never;
   state.slotReading = "none";
   state.slotsRead = {};
+  state.manualExtra = [];
   state.readerEmployee = null;
   state.remapObservation = null;
   state.reading = {};
@@ -661,6 +664,9 @@ function context(): ReplayContext {
     },
     directory: (rows) => {
       state.directory = rows as never;
+    },
+    manualAlsoHas: (chunks) => {
+      state.manualExtra = [...chunks];
     },
     draftWrites: (values, checked, extra) => {
       state.draft = { values, ...(checked ? { checked } : {}), ...(extra ?? {}) };
