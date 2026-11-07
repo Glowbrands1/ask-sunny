@@ -466,7 +466,7 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
   });
 
   const asked = formTurn
-    ? questionWithState(input.question, state, input.templates)
+    ? questionWithState(input.question, state, input.templates, input.history.filter((turn) => turn.role === "user").map((turn) => turn.content))
     : typedEmployee && state.employeeName === typedEmployee && asksForAForm(input.question)
       ? `The employee is ${typedEmployee}.\n${input.question}`
       : input.question;
@@ -629,8 +629,9 @@ function questionWithState(
   question: string,
   state: ConversationFormState,
   templates: readonly TemplateRow[],
+  earlier: readonly string[] = [],
 ): string {
-  const named = prependFormState(question, state);
+  const named = prependFormState(question, state, earlier);
   const template = state.templateKey ? templates.find((item) => item.key === state.templateKey) : undefined;
   if (!template) return named;
   if (named.toLowerCase().includes(template.name.toLowerCase())) return named;
