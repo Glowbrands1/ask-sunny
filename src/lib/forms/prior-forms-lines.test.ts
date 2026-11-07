@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { priorFormsFromRows } from "./prior-forms-lines";
 
@@ -53,5 +53,29 @@ describe("the forms on file that count as history", () => {
       warningLevels: new Map(),
     });
     expect(forms[0]?.line).toBe("Corrective action — signed 09/21/2026");
+  });
+});
+
+describe("PRIOR_ACTIONS_NO_SIGNED_ENABLED (QA, 5 Nov 2026): finalized forms only, and never \"signed\"", () => {
+  afterEach(() => vi.unstubAllEnvs());
+  const rows = [
+    row("final-co", "coaching", "2026-09-02"),
+    row("draft-co", "coaching", "2026-10-01", { status: "draft" }),
+    row("revised-ca", "dpoa", "2026-10-05", { status: "revised" }),
+    row("final-ca", "dpoa", "2026-10-10"),
+    row("draft-ca", "dpoa", "2026-10-12", { status: "draft" }),
+  ];
+
+  it("on: lists only the finalized forms, each \"finalized <date>\"; drafts and revised forms never", () => {
+    vi.stubEnv("PRIOR_ACTIONS_NO_SIGNED_ENABLED", "true");
+    const forms = priorFormsFromRows({ employeeName: "Juniper Brandvold", rows, warningLevels: new Map([["final-ca", ["verbal"]]]) });
+    expect(forms.map((form) => form.instanceId)).toEqual(["final-co", "final-ca"]);
+    expect(forms.map((form) => form.line)).toEqual(["Coaching — finalized 09/02/2026", "Verbal corrective action — finalized 10/10/2026"]);
+  });
+
+  it("off: the same finalized forms, \"signed <date>\" as before", () => {
+    vi.stubEnv("PRIOR_ACTIONS_NO_SIGNED_ENABLED", "");
+    const forms = priorFormsFromRows({ employeeName: "Juniper Brandvold", rows, warningLevels: new Map([["final-ca", ["verbal"]]]) });
+    expect(forms.map((form) => form.line)).toEqual(["Coaching — signed 09/02/2026", "Verbal corrective action — signed 10/10/2026"]);
   });
 });

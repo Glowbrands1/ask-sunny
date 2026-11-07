@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   NO_PRIOR_ACTION,
@@ -267,5 +267,100 @@ describe("a history list without a colon", () => {
   it("does not take an incident date after it as history", () => {
     const lines = statedPriorActions("previous coaching jba manual 1-1-26, late again 10-20-26", DAY);
     expect(lines).toEqual(["Coaching — JBA Manual — signed 01/01/2026"]);
+  });
+});
+
+/*
+ * PRIOR_ACTIONS_NO_SIGNED_ENABLED (QA, a location manager's chat in the sibling app, 5 Nov 2026):
+ * "this is a verbal warning. previous coaching policy manual 10-15-26" drafted
+ * Prior actions saying the steps were SIGNED; none was signed or given. Rule
+ * (Pau / QA): never say "signed" unless the record or the manager says so.
+ */
+describe("PRIOR_ACTIONS_NO_SIGNED_ENABLED", () => {
+  const SAID = "this is a verbal warning. previous coaching policy manual 10-15-26";
+  const NOV = "2026-11-05";
+  const MODEL = "Coaching — JBA Policy Manual — signed 10/15/2026";
+  const flags = (noSigned: boolean, parse = true) => {
+    vi.stubEnv("PRIOR_ACTIONS_NO_SIGNED_ENABLED", noSigned ? "true" : "");
+    vi.stubEnv("PRIOR_ACTIONS_PARSE_ENABLED", parse ? "true" : "");
+  };
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("off: the model's \"signed\" is kept, as before (the bug)", () => {
+    flags(false);
+    expect(groundPriorActions({ drafted: MODEL, notes: SAID, today: NOV }).value).toBe(MODEL);
+  });
+
+  for (const parse of [true, false]) {
+    it(`on (PRIOR_ACTIONS_PARSE ${parse ? "on" : "off"}): the model's "signed" goes; the manager never said it`, () => {
+      flags(true, parse);
+      const value = groundPriorActions({ drafted: MODEL, notes: SAID, today: NOV }).value;
+      expect(value).toBe("Coaching — JBA Policy Manual — 10/15/2026");
+      expect(value).not.toMatch(/signed/i);
+    });
+
+    it(`on (PRIOR_ACTIONS_PARSE ${parse ? "on" : "off"}): the manager's own line, when the model left it out, has no "signed"`, () => {
+      flags(true, parse);
+      const value = groundPriorActions({ drafted: "", notes: SAID, today: NOV }).value;
+      expect(value).toMatch(/^Coaching — .*10\/15\/2026$/);
+      expect(value).not.toMatch(/signed/i);
+    });
+  }
+
+  it("on: \"verbal warning signed 9/1/26\" — the manager said signed, so it stays", () => {
+    flags(true);
+    const drafted = "Verbal warning — signed 09/01/2026";
+    expect(groundPriorActions({ drafted, notes: "this is a written warning. verbal warning signed 9/1/26", today: NOV }).value).toBe(drafted);
+  });
+
+  for (const parse of [true, false]) {
+    it(`on (PRIOR_ACTIONS_PARSE ${parse ? "on" : "off"}): "<name> signed the jba policy manual on 10-15-26" keeps "signed" on that date (QA follow-up, 6 Nov 2026)`, () => {
+      flags(true, parse);
+      const notes = `${SAID}\nOdalys Penwarden signed the jba policy manual on 10-15-26`;
+      expect(groundPriorActions({ drafted: MODEL, notes, today: NOV }).value).toBe(MODEL);
+    });
+  }
+
+  it("on: \"signed\" said for one date does not keep it on another", () => {
+    flags(true);
+    const value = groundPriorActions({
+      drafted: "Coaching — signed 10/15/2026\nVerbal warning — signed 09/01/2026",
+      notes: "verbal warning signed 9/1/26. previous coaching policy manual 10-15-26",
+      today: NOV,
+    }).value;
+    // This app keeps the draft's order (no oldest-first sort here), so the lines are compared, not their order.
+    expect(value.split("\n").sort()).toEqual(["Coaching — 10/15/2026", "Verbal warning — signed 09/01/2026"]);
+  });
+
+  it("on: \"verbal ca signed 9-1-26\" keeps \"signed\" on the manager's own line (PRIOR_ACTIONS_PARSE)", () => {
+    flags(true);
+    expect(statedPriorActions("previous coaching: verbal ca signed 9-1-26", NOV)).toEqual(["Verbal corrective action — signed 09/01/2026"]);
+  });
+
+  it("on: a form on file reads \"finalized\"; a step told reads its plain date or \"signed\" only when said", () => {
+    flags(true);
+    expect(priorActionLine("Coaching", "2026-09-02", "", "", "on_file")).toBe("Coaching — finalized 09/02/2026");
+    expect(priorActionLine("Coaching", "2026-09-02")).toBe("Coaching — 09/02/2026");
+    expect(priorActionLine("Coaching", "2026-09-02", "", "", "said_signed")).toBe("Coaching — signed 09/02/2026");
+    expect(legacyPriorActions("Verbal warning", "2026-09-21")).toBe("Verbal warning — 09/21/2026");
+  });
+
+  it("off: every code line reads \"signed\", as before", () => {
+    flags(false);
+    expect(priorActionLine("Coaching", "2026-09-02", "", "", "on_file")).toBe("Coaching — signed 09/02/2026");
+    expect(priorActionLine("Coaching", "2026-09-02")).toBe("Coaching — signed 09/02/2026");
+    expect(legacyPriorActions("Verbal warning", "2026-09-21")).toBe("Verbal warning — signed 09/21/2026");
+  });
+
+  it("on: a finalized form on file is listed as finalized beside the manager's step", () => {
+    flags(true);
+    const value = groundPriorActions({
+      drafted: MODEL,
+      notes: SAID,
+      today: NOV,
+      onFile: [{ formDate: "2026-09-02", line: priorActionLine("Coaching", "2026-09-02", "", "", "on_file"), templateKey: "coaching" }],
+    }).value;
+    // This app keeps the draft's lines first, then adds the forms on file: the lines are compared, not their order.
+    expect(value.split("\n").sort()).toEqual(["Coaching — JBA Policy Manual — 10/15/2026", "Coaching — finalized 09/02/2026"]);
   });
 });
