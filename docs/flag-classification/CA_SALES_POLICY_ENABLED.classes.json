@@ -608,5 +608,50 @@
   "category": "INTENDED",
   "twin": "itself with the flag off (CI default); src/lib/ai/ca-what-happened-reason.test.ts",
   "reason": "QA, 5 Nov 2026 (reason given, not asked): with the flag on a stated sales or MSB shortfall is the account (Pau, 4 Nov 2026), so the Corrective Action card carries the Standards of Conduct and never asks what happened. Off, production's metric-only answer. The case's own expectation is unchanged."
+ },
+ "src/app/api/chat/replay-pack/replay-pack-e2e.test.ts :: the replay pack nov4-request-not-observation-due-to: \"CA for <name> due to under performance in salon metrics\": the Observation is the reason, not the request — OPEN in production (with production's flags the Observation is the request as the model copied it)": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off (CI default); nov4-request-not-observation-negative-account; src/lib/forms/request-observation.test.ts (off: unchanged)",
+  "reason": "QA, live, 4 Nov 2026: \"CA for <name> due to under performance in salon metrics\" came back with the request as the Observation. With the flag on, an Observation whose first sentence asks for the form begins with the request's reason instead (request-observation.ts), and \"due to\" / \"because (of)\" join the reason in the request reader. Off, unchanged."
+ },
+ "replay: nov4-offer-exit-tool-path [production]": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off",
+  "reason": "Holds in both modes. With the flag on, the Observation of Offense no longer starts with the request words \"<name> for\" (withoutRequestInObservation, this PR): it reads as the incident only."
+ },
+ "replay: nov5-roster-only-lowercase-surname [production]": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off",
+  "reason": "Holds in both modes. With the flag on, the Observation of Offense no longer starts with the request words \"<name> for\" (withoutRequestInObservation, this PR): it reads as the incident only."
+ },
+ "replay: nov5-twin-sf-b6-full-sentence-and-added-detail [open]": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off",
+  "reason": "Open in both modes (the reply ends at \"I can prepare:\"; the bundle fixes it). With the flag on, turn 2 Observation drops the request words \"<name> for\" (this PR)."
+ },
+ "replay: nov4-request-not-observation-due-to [open]": {
+  "category": "INTENDED",
+  "twin": "nov4-request-not-observation-negative-account",
+  "reason": "The case this PR fixes: with the flag on, \"due to under performance\" is not copied into the Observation; the card policy line is the sales reading."
+ },
+ "replay: nov4-request-not-observation-negative-account [production]": {
+  "category": "INTENDED",
+  "twin": "nov4-request-not-observation-due-to",
+  "reason": "Holds in both modes. With the flag on, the card policy line is the Standards of Conduct sales reading (\"sales performance against goals\"), the flag being classified."
+ },
+ "replay: nov4-qa-off-roster-name-with-one-form-name [production]": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off",
+  "reason": "Holds in both modes. Off, the metric-only answer and no card; on, the sales Corrective Action card with no employee, and the reply asks who the form is for, as the case states (\"it asks who\")."
+ },
+ "replay: nov5-roster-only-message-8-metrics [production]": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off",
+  "reason": "Holds in both modes. Off, the metric-only answer; on, the sales Corrective Action card for the named person (Pau 4 Nov: under performance is a Corrective Action under the Standards of Conduct). With the flag on, the card policy line is the Standards of Conduct sales reading (\"sales performance against goals\"), the flag being classified."
+ },
+ "replay: nov5-sf-s24-must-see-behaviors-and-coaching-on-file [open]": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off",
+  "reason": "Open in both modes. Off, the metric-only answer; on, the sales card, still open on \"as you said\" (CA_POLICY_SAID_ONLY_ENABLED, the bundle)."
  }
 }
