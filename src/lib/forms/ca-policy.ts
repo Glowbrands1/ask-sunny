@@ -8,6 +8,7 @@ import {
   caSalesPolicyEnabled,
   cleaningOtherEveryWordingEnabled,
   formEditDateRulesEnabled,
+  removePolicyNotNamedEnabled,
   policyCleaningIncidentEnabled,
   salesShortfallObjectEnabled,
 } from "@/lib/config/chat-quality-flags";
@@ -405,6 +406,22 @@ const NEGATED_BEFORE = /\b(?:not|never|isn't|is not|wasn't|was not|no)\s+(?:\S+\
  */
 const SET_ASIDE_BEFORE = /\b(?:instead\s+of|rather\s+than|in\s+place\s+of|replac(?:e|ing)|remov(?:e|ing)|swap\s+out)\s+(?:the\s+|our\s+|that\s+)?$/;
 
+/*
+ * REMOVE_POLICY_NOT_NAMED_ENABLED (A1, QA 6 Nov 2026; the flip-3 tester): "take the attendance policy off the
+ * form" got "Policy: Attendance, as you said": the verb's "off" comes after the policy, so SET_ASIDE_BEFORE never
+ * saw it. With the flag on, a policy between "take / get / pull" and "off / out", or after "drop / delete /
+ * strip", is the one set aside too. Off, as before.
+ */
+const TAKEN_OFF_BEFORE = /\b(?:take|taking|get|getting|pull|pulling)\s+(?:the\s+|our\s+|that\s+)?$/;
+const TAKEN_OFF_AFTER = /^\s*(?:polic(?:y|ies)\s+)?(?:off|out)\b/;
+const DROPPED_BEFORE = /\b(?:drop|dropping|delete|deleting|strip|stripping)\s+(?:the\s+|our\s+|that\s+)?$/;
+
+function takenOff(sentence: string, start: number, end: number): boolean {
+  if (!removePolicyNotNamedEnabled()) return false;
+  const before = sentence.slice(0, start);
+  return DROPPED_BEFORE.test(before) || (TAKEN_OFF_BEFORE.test(before) && TAKEN_OFF_AFTER.test(sentence.slice(end)));
+}
+
 function statedIn(turn: string): CaPolicyName | null {
   let found: { name: CaPolicyName; at: number } | null = null;
   const short = turn.split(/\s+/).filter(Boolean).length <= 8;
@@ -415,6 +432,7 @@ function statedIn(turn: string): CaPolicyName | null {
       if (!match) continue;
       if (NEGATED_BEFORE.test(sentence.slice(0, match.index))) continue;
       if (formEditDateRulesEnabled() && SET_ASIDE_BEFORE.test(sentence.slice(0, match.index))) continue;
+      if (takenOff(sentence, match.index, match.index + match[0].length)) continue;
       /*
        * SALES_SHORTFALL_OBJECT_ENABLED (QA, 6 Nov 2026: "sales underperformance"): "under performance" is framed by its own
        * "under" (POLICY_FRAME), so the one-word spelling is read the same way. Off, it needs a frame like any other name.

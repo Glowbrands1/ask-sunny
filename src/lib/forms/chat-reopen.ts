@@ -4,6 +4,9 @@ import type { AskResponse } from "@/lib/ai/types";
 import type { ChatMessage } from "@/types";
 
 import { authorizeForms } from "./access";
+import { candidateNameWords } from "./chat-form-records";
+import { displayName } from "./employee-match";
+import { loadScopedRoster } from "./employee-roster";
 import { correctActiveForm } from "./chat-correction";
 import { reviseActiveForm } from "./chat-revision";
 import { formOpenedFor, openEditableDraft, openingLine, reasonRequiredReply } from "./editable-draft";
@@ -12,10 +15,12 @@ import { authorizeInstance, instanceListFilterFor, visibleInstances } from "./in
 import { applyAssistantDraft, listInstances, loadInstance, type InstanceRow } from "./instances";
 import { privateAwareLimit } from "./private-creators";
 import { extractEmployeeNames, samePerson } from "./proposal";
-import { draftMergeEnabled, formEditDateRulesEnabled, formEditSingleWriterEnabled } from "@/lib/config/chat-quality-flags";
+import { draftMergeEnabled, formEditDateRulesEnabled, formEditSingleWriterEnabled, reopenByAnyOpenVerbEnabled } from "@/lib/config/chat-quality-flags";
 
 import { fieldsToRestore, showDraftWithEdits } from "./draft-merge";
+import { EDIT_VERB, SHOW_OR_OPEN_VERB, WHICH_FORM_ON_FILE } from "./reopen-cue";
 import { readReopenRequest } from "./reopen-request";
+import { getTemplateByKey } from "./repository";
 
 /**
  * ============================================================================
@@ -54,9 +59,17 @@ export async function reopenRequestedForm(input: {
   /** The template of a proposal still waiting to be created, if any. */
   continuingTemplateKey?: string;
 }): Promise<AskResponse | null> {
-  const reading = readReopenRequest(input.question);
+  /*
+   * REOPEN_BY_ANY_OPEN_VERB_ENABLED (QA, 6 Nov 2026): the answer to "Which one
+   * should I open?" below — a number or a date from that list — is read with
+   * the request it answers, and picks that form.
+   */
+  const anyOpenVerb = reopenByAnyOpenVerbEnabled();
+  const choice = anyOpenVerb ? chosenFromWhichList(input.question, input.history) : null;
+  const question = choice?.request ?? input.question;
+  const reading = readReopenRequest(question);
   if (!reading) return null;
-  const merging = draftMergeEnabled() && reading.mode === "show" && showDraftWithEdits(input.question);
+  const merging = draftMergeEnabled() && reading.mode === "show" && showDraftWithEdits(question);
   /*
    * A PROPOSAL NOT YET CREATED IS WHAT "CHANGE THE EXIT FORM" MEANS while it
    * is on screen — the proposal flow takes that turn, and no form on file is
@@ -68,7 +81,7 @@ export async function reopenRequestedForm(input: {
    * conv_mvnt79t822zud9j) names the form on file, not the card on screen. The
    * card's form is the one looked up, and a finalized one opens as a revision.
    */
-  const finalizedMeant = formEditDateRulesEnabled() && REFERS_TO_FINALIZED.test(input.question);
+  const finalizedMeant = formEditDateRulesEnabled() && REFERS_TO_FINALIZED.test(question);
   if (
     input.continuingTemplateKey &&
     !finalizedMeant &&
@@ -78,9 +91,42 @@ export async function reopenRequestedForm(input: {
   }
   const templateKey = reading.templateKey ?? (finalizedMeant ? (input.continuingTemplateKey ?? null) : null);
 
-  const names = extractEmployeeNames(input.question).map((name) => name.replace(/['’]s?$/, ""));
+  let names = extractEmployeeNames(question).map((name) => name.replace(/['’]s?$/, ""));
+  /*
+   * REOPEN_BY_ANY_OPEN_VERB_ENABLED (QA/Pau, 6 Nov 2026): "bring up Odalys's
+   * corrective action" — a first name the name reader does not take, that is
+   * the first name of exactly one person on this manager's roster.
+   */
+  /*
+   * QA, 6 Nov 2026 (follow-up): for every verb, "edit" included, a first name
+   * alone is a person only when exactly one person on the roster has it;
+   * when several do, the manager is asked whose, and nothing is opened.
+   */
+  if (anyOpenVerb) {
+    // "edit Odalys's CA" was read as the name "edit Odalys": the request's own verb is no part of a name.
+    names = names.map((name) => name.replace(LEADING_VERB_IN_NAME, "")).filter(Boolean);
+    const firstNames = names.length === 0 ? (input.activeInstanceId ? [] : candidateNameWords(question)) : names.filter((name) => !/\s/.test(name.trim()));
+    if (firstNames.length > 0) {
+      const people = await rosterPeopleByFirstName(input.request, firstNames);
+      if (people.length > 1) return reply(whichPersonReply(people, await templateLabel(templateKey)));
+      if (people.length === 1) names = [...names.filter((name) => /\s/.test(name.trim())), people[0]!];
+    }
+  }
   const named = (employee: string) =>
-    names.some((name) => samePerson(name, employee)) || mentionsFullName(input.question, employee);
+    names.some((name) => samePerson(name, employee)) || mentionsFullName(question, employee);
+  /*
+   * REOPEN_BY_ANY_OPEN_VERB_ENABLED: "bring up the coaching form" names nobody
+   * whose form to look up, and is left as it was before the flag.
+   */
+  const unnamed = names.length === 0;
+  /*
+   * QA decision (c) follow-up, 6 Nov 2026: "open her CA" / "bring up her
+   * coaching form" (any verb, with the flag) that is not the form already in
+   * this chat asks whose form it is; never a blank form, never somebody
+   * picked.
+   */
+  const pointsAtSomeone = anyOpenVerb && unnamed && POSSESSIVE_PRONOUN.test(question);
+  if (reading.byAddedVerb && unnamed && !input.activeInstanceId && !pointsAtSomeone) return null;
 
   let target: { id: string; templateName: string; employeeName: string } | null = null;
 
@@ -97,6 +143,9 @@ export async function reopenRequestedForm(input: {
     }
   }
 
+  if (!target && pointsAtSomeone) return reply(whoseFormReply(await templateLabel(templateKey)));
+  if (!target && reading.byAddedVerb && unnamed) return null;
+
   /* Otherwise the newest one on file for the named employee. */
   if (!target && (templateKey || finalizedMeant)) {
     let visible: InstanceRow[];
@@ -112,7 +161,14 @@ export async function reopenRequestedForm(input: {
       .filter((row) => !finalizedMeant || row.status === "finalized")
       .filter((row) => named(row.employeeName))
       .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));
-    const found = candidates[0];
+    /*
+     * REOPEN_BY_ANY_OPEN_VERB_ENABLED (QA/Pau, 6 Nov 2026): several forms on
+     * file for the person named — listed, and the manager asked which. One
+     * finalized form and the new draft of it are one form here: the draft.
+     */
+    const listed = anyOpenVerb ? withoutRevisedOriginals(candidates) : candidates;
+    if (anyOpenVerb && !choice && names.length > 0 && listed.length > 1) return reply(whichFormReply(listed));
+    const found = choice ? listed[choice.index] : candidates[0];
     if (found) {
       target = toTarget(found);
     } else if (names.length > 0) {
@@ -132,7 +188,7 @@ export async function reopenRequestedForm(input: {
 
   let draft: Awaited<ReturnType<typeof openEditableDraft>>;
   try {
-    draft = await openEditableDraft(input.request, target.id, { revise: reading.mode === "edit" });
+    draft = await openEditableDraft(input.request, target.id, { revise: reading.mode === "edit" || reading.opensToEdit === true });
   } catch (error) {
     if (error instanceof RevisionReasonRequiredError) return reasonRequiredReply(input.request, target.id);
     return reply(
@@ -234,6 +290,116 @@ export async function reopenRequestedForm(input: {
     ...(applied?.formUpdate ? { formUpdate: applied.formUpdate } : {}),
     formOpened: formOpenedFor(draft),
   };
+}
+
+/**
+ * The one person on the actor's roster whose first (or preferred) name is a
+ * word of the question that could be a name — read as the forms-on-file
+ * lookup reads one (`candidateNameWords`). None, or several: nobody.
+ */
+async function rosterPeopleByFirstName(request: Request, firstNames: readonly string[]): Promise<string[]> {
+  const words = new Set(firstNames.map((name) => name.trim().toLowerCase().replace(/['’]s$/, "")));
+  if (words.size === 0) return [];
+  try {
+    const actor = await authorizeForms(request, "view_form_monitoring");
+    const roster = await loadScopedRoster(actor.scope);
+    const people = roster.filter((person) =>
+      [person.firstName, person.preferredFirstName ?? ""].some((first) => words.has(first.trim().toLowerCase())),
+    );
+    return [...new Set(people.map((person) => displayName(person)))];
+  } catch {
+    return [];
+  }
+}
+
+/** A reopen verb the name reader took as the start of a name. */
+const LEADING_VERB_IN_NAME = new RegExp(`^(?:${EDIT_VERB.source}|${SHOW_OR_OPEN_VERB.source})\\s+`, "i");
+
+/** "her", "his", "their" before the form: a person meant, and not named. */
+const POSSESSIVE_PRONOUN = /\b(?:her|his|their)\b/i;
+
+/** The template's name as the library publishes it, or "form". */
+async function templateLabel(templateKey: string | null): Promise<string | null> {
+  if (!templateKey) return null;
+  try {
+    return (await getTemplateByKey(templateKey))?.name ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function whoseFormReply(templateName: string | null): string {
+  return `Whose ${templateName ? `**${templateName}**` : "form"} should I open? Tell me the employee's full name.`;
+}
+
+function whichPersonReply(people: readonly string[], templateName: string | null): string {
+  const listed = people.map((name) => `**${name}**`);
+  const choices = listed.length > 1 ? `${listed.slice(0, -1).join(", ")} or ${listed[listed.length - 1]}` : listed[0];
+  return `More than one person on your roster has that first name. Whose ${templateName ? `**${templateName}**` : "form"} should I open — ${choices}?`;
+}
+
+/** A finalized form whose new draft is also on file is that draft. */
+function withoutRevisedOriginals(rows: InstanceRow[]): InstanceRow[] {
+  const revised = new Set(rows.map((row) => row.revisesInstanceId).filter((id): id is string => Boolean(id)));
+  return rows.filter((row) => !revised.has(row.id));
+}
+
+const LISTED_FORM = /^(\d+)\. \*\*[^*]+\*\* for \*\*[^*]+\*\* — (\w+), created ([A-Z][a-z]{2} \d{1,2}), \d{4}$/gm;
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function createdOn(iso: string): string {
+  const [year, month, day] = iso.slice(0, 10).split("-").map(Number);
+  return `${MONTHS[(month ?? 1) - 1]} ${day}, ${year}`;
+}
+
+/** The forms on file for the person named, newest first, and the question which one. */
+function whichFormReply(rows: InstanceRow[]): string {
+  const people = [...new Set(rows.map((row) => row.employeeName))];
+  const lines = rows
+    .slice(0, 9)
+    .map((row, index) => `${index + 1}. **${row.templateName}** for **${row.employeeName}** — ${row.status}, created ${createdOn(row.createdAt)}`);
+  return [
+    `I found ${rows.length} forms on file for ${people.map((name) => `**${name}**`).join(" and ")}:`,
+    lines.join("\n"),
+    `${WHICH_FORM_ON_FILE} Reply with its number or its date.`,
+  ].join("\n\n");
+}
+
+/**
+ * The manager's answer to `whichFormReply`, read only against that reply's
+ * own lines: a date it listed ("the one from nov 3") or a status it listed
+ * ("the finalized one") that picks exactly one line, or else the one number
+ * in the answer. With the request the list answered, which is read again.
+ */
+function chosenFromWhichList(
+  question: string,
+  history: Pick<ChatMessage, "role" | "content">[],
+): { request: string; index: number } | null {
+  let at = -1;
+  for (let i = history.length - 1; i >= 0; i -= 1) {
+    if (history[i]!.role === "assistant") {
+      at = i;
+      break;
+    }
+  }
+  const listing = at >= 0 ? history[at]!.content : "";
+  if (!listing.includes(WHICH_FORM_ON_FILE)) return null;
+  const request = history.slice(0, at).reverse().find((message) => message.role === "user")?.content;
+  if (!request) return null;
+  const lines = [...listing.matchAll(LISTED_FORM)].map((match) => ({
+    number: Number(match[1]),
+    status: match[2]!.toLowerCase(),
+    date: match[3]!.toLowerCase(),
+  }));
+  if (lines.length === 0) return null;
+  const said = question.toLowerCase();
+  const says = (words: string) => new RegExp(`(?:^|[^a-z0-9])${words.replace(/\s+/g, "\\s+")}(?:$|[^a-z0-9])`).test(said);
+  const byDate = lines.filter((line) => says(line.date));
+  const byStatus = lines.filter((line) => says(line.status));
+  const numbers = byDate.length === 0 ? (said.match(/\d+/g) ?? []) : [];
+  const picked =
+    byDate.length === 1 ? byDate[0] : byStatus.length === 1 ? byStatus[0] : numbers.length === 1 ? lines.find((line) => line.number === Number(numbers[0])) : undefined;
+  return picked ? { request, index: picked.number - 1 } : null;
 }
 
 /** "the form I already finalized", "the one we submitted": a form already on file. */
