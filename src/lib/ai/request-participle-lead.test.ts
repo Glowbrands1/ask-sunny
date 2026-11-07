@@ -7,7 +7,7 @@ import { accountSentences, isRequestReasonOnly, managerAccount } from "./remap-i
 /**
  * REQUEST_PARTICIPLE_LEAD_ENABLED (QA's round-5 live Sunny check, 8 Nov 2026, history 1143df48): "I need a corrective
  * action made for under performance. <A> was below on PPTA, …" — the card's Observation began "made for under
- * performance.". The person is invented.
+ * performance.". The people are invented (Wren Halloway is QA's swap for the real name).
  */
 const REQUEST = "I need a corrective action made for under performance.";
 const ACCOUNT = "Remy Calder was below on PPTA, LPSVA, Club Average, Club Close % and Spa in the month of October";
@@ -46,6 +46,9 @@ describe("REQUEST_PARTICIPLE_LEAD_ENABLED", () => {
     });
 
     it("the Observation starts at the account; the reason alone stays", () => {
+      const reported =
+        "I need a corrective action made for under performance. Wren Halloway was below on PPTA, LPSVA, Club Average, Club Close % and Spa in the month of October.";
+      expect(accountSentences([reported], "Wren Halloway").join(" ")).not.toMatch(/under performance|made for/);
       const sentences = accountSentences([`${REQUEST} ${ACCOUNT}`], null);
       expect(sentences[0]).toMatch(/^Remy Calder was below on PPTA\b/);
       expect(sentences.join(" ")).not.toMatch(/under performance|made for/);
