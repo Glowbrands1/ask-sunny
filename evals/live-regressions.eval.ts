@@ -19,6 +19,7 @@ import {
   type LiveExpect,
   type LiveScenario,
 } from "@/app/api/chat/replay-pack/nov4-live-regressions-scenarios";
+import { STEP_B_REFUSAL_SCENARIOS } from "@/app/api/chat/replay-pack/nov7-step-b-refusals-scenarios";
 import { fakeSupabase, type FakeStore } from "@/test/fake-supabase";
 import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
 
@@ -56,6 +57,15 @@ import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
  * evals/results/live-regressions.dry.{json,md}. LIVE=1 wins if both are set.
  *
  * MODES (env, read only with LIVE=1):
+ *   LIVE_SCENARIOS=step-b-refusals (coding 5, 7 Nov 2026): every real "I haven't
+ *                          changed the <form>" refusal in both apps, with its
+ *                          expected outcome (`nov7-step-b-refusals-scenarios.ts`),
+ *                          PASS / FAIL per case. QA runs it twice, with the Step B
+ *                          flags and coding 5's reader fixes on, and off:
+ *                            LIVE_SCENARIOS=step-b-refusals LIVE_FLAGS=FORM_PATCH_REDUCER_ENABLED,FORM_REPLY_FROM_DIFF_ENABLED,FORM_EDIT_SINGLE_WRITER_ENABLED,FORM_EDIT_SAID_REPLACEMENT_ENABLED,FORM_PATCH_READER_FIXES_ENABLED
+ *                          About 3 calls per edit turn; LIVE_CASES picks a few.
+ *                          On another model: ANTHROPIC_READER_MODEL=<id> (every
+ *                          call, the patch model included, goes to it).
  *   LIVE_SCENARIOS=all|failures|names|gate|glossary|ca-sales|none  which
  *                          scenarios (default all: the live failures, the 40
  *                          name runs, then the 8 edit-tool gate wordings on an
@@ -792,6 +802,7 @@ function pickScenarios(): readonly LiveScenario[] {
   if (which === "glossary") return GLOSSARY_SCENARIOS;
   if (which === "ca-sales") return CA_SALES_SCENARIOS;
   if (which === "managers") return MANAGER_SCENARIOS;
+  if (which === "step-b-refusals") return STEP_B_REFUSAL_SCENARIOS;
   return [...LIVE_FAILURE_SCENARIOS, ...NAME_SCENARIOS, ...GATE_SCENARIOS];
 }
 
@@ -897,7 +908,7 @@ describe.skipIf(!LIVE && !DRY)("live regressions (LIVE=1, or LIVE_DRY=1 with sta
   });
 
   /* A flag set's dry run rehearses QA's LIVE_CAP=30 command: the create repeat (20 stand-in calls) only when asked. */
-  const flagSet = ["glossary", "ca-sales", "managers"].includes(process.env.LIVE_SCENARIOS ?? "");
+  const flagSet = ["glossary", "ca-sales", "managers", "step-b-refusals"].includes(process.env.LIVE_SCENARIOS ?? "");
   it.runIf(process.env.LIVE_CREATE_REPEAT === "1" || (DRY && !flagSet))("the same Corrective Action, created 5 times with Step B off and 5 times on: does the Observation keep \"Jane Doe\"?", async () => {
     const create: LiveScenario = { id: "create-repeat", roster: LIVE_ROSTER, field: "observation", steps: [{ say: CA_CHAIN[0] }, { create: true }] };
     const before = live.calls;
