@@ -1,4 +1,4 @@
-import { bareNotDenialEnabled, cleaningOtherEveryWordingEnabled, replyMatchesCardEnabled } from "@/lib/config/chat-quality-flags";
+import { bareNotDenialEnabled, bareNotNameLeadEnabled, cleaningOtherEveryWordingEnabled, replyMatchesCardEnabled } from "@/lib/config/chat-quality-flags";
 import { offeredOffRosterName } from "@/lib/forms/off-roster-confirm";
 import { deniesAFault, deniesAFaultWithBareNot } from "@/lib/forms/draft-never-blank";
 import { caPolicyProposalLine, readCaPolicy, removedOffenseLabels } from "@/lib/forms/ca-policy";
@@ -147,11 +147,29 @@ function accountLineTexts(content: string): string[] {
   return [...content.matchAll(/^\s*\*\*(?:Issue|What happened|Observation of Offense):\*\*[ \t]*(\S[^\n]*)$/gm)].map((match) => match[1]!.trim());
 }
 
+/**
+ * BARE_NOT_NAME_LEAD_ENABLED (Coding's bisect, 7 Nov 2026): "ca for <A> not late" put "**Observation of Offense:** <A>
+ * not late" on the card, and the card's own employee leading the line made it read as an account, so rule 5 dropped
+ * the "what happened" ask. The card's employee (full name, or first name) at the start of the line is not part of
+ * what was said about them. Off, the line is read as it stands.
+ */
+function withoutLeadingEmployee(text: string, employee: string | null | undefined): string {
+  if (!bareNotNameLeadEnabled()) return text;
+  const full = employee?.trim() ?? "";
+  if (full === "") return text;
+  for (const name of [full, full.split(/\s+/)[0]!]) {
+    const lead = new RegExp(String.raw`^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:['’]s)?[\s,:-]+`, "i");
+    if (lead.test(text)) return text.replace(lead, "");
+  }
+  return text;
+}
+
 /** Rule 5: an account on the card is never "not told". */
-function withoutNotToldWhenTold(content: string, issue: string | null | undefined): string {
+function withoutNotToldWhenTold(content: string, issue: string | null | undefined, employee?: string | null): string {
+  const denies = (text: string) => onlyDeniesAFault(withoutLeadingEmployee(text, employee));
   const told = bareNotDenialEnabled()
-    ? (Boolean(issue?.trim()) && !onlyDeniesAFault(issue!)) ||
-      accountLineTexts(content).some((text) => !onlyDeniesAFault(text)) ||
+    ? (Boolean(issue?.trim()) && !denies(issue!)) ||
+      accountLineTexts(content).some((text) => !denies(text)) ||
       FROM_DESCRIBED.test(content)
     : Boolean(issue?.trim()) || ACCOUNT_LINE.test(content) || FROM_DESCRIBED.test(content);
   if (!told || !NO_ACCOUNT.test(content)) return content;
@@ -198,7 +216,7 @@ export function replyMatchesCard(response: AskResponse, names: readonly string[]
     const employee = card.employeeName?.trim();
     content = employee ? withTheCardsEmployee(content, employee) : withNobodyNamed(content, names, message);
   }
-  content = withoutNotToldWhenTold(withoutRemovedOffense(withOnePolicy(content)), card.issue);
+  content = withoutNotToldWhenTold(withoutRemovedOffense(withOnePolicy(content)), card.issue, card.employeeName);
   content = tidy(content);
   return content === response.content ? response : { ...response, content };
 }

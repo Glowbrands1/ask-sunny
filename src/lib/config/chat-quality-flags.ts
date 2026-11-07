@@ -2695,6 +2695,17 @@ export function bareNotDenialEnabled(): boolean {
 }
 
 /**
+ * BARE_NOT_NAME_LEAD_ENABLED (Coding's bisect, 7 Nov 2026; same flag in both apps; default off). With
+ * REPLY_MATCHES_CARD on, "ca for <A> not late" lost its "You haven't told me what happened yet": the card's
+ * "Observation of Offense: <A> not late" led with the employee's name, so BARE_NOT_DENIAL's check read it as an
+ * account. On: the card's own employee at the start of that line is set aside before the denial check
+ * (`ai/reply-matches-card.ts` rule 5). Off, as before.
+ */
+export function bareNotNameLeadEnabled(): boolean {
+  return envFlag("BARE_NOT_NAME_LEAD_ENABLED");
+}
+
+/**
  * TITLE_ENDS_AT_LINE_ENABLED (QA's Sunny gate, 6 Nov 2026, s16; default off).
  * With TITLE_OF_THE_EMPLOYEE_ENABLED on, an exit form typed as lines
  * ("<name>\nTanning Consultant \nNE Kearney\n…") lost the employee's own job
