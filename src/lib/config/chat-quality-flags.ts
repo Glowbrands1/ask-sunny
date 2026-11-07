@@ -313,6 +313,17 @@ export function payrollAmountFieldEnabled(): boolean {
 }
 
 /**
+ * PAYROLL_AMOUNT_SAME_MESSAGE_ENABLED (the sibling app's live chat, 5 Nov 2026; same flag in both apps; default
+ * off). "…the register was off $20. which will be payroll deducted from <name>'s check. … payroll deduct applies"
+ * still asked "**Payroll deduction amount**?". On: an amount followed by "which / that / this / it … (payroll)
+ * deducted" is the stated amount (`forms/payroll-deduct-answer.ts` payrollAmountWording, which reads the env
+ * itself because that file imports nothing). Off, as before.
+ */
+export function payrollAmountSameMessageEnabled(): boolean {
+  return envFlag("PAYROLL_AMOUNT_SAME_MESSAGE_ENABLED");
+}
+
+/**
  * A blank Direct policy does not hold the card or the finalize. The field
  * stays empty. A value somebody typed that was never verified still asks
  * for an acknowledgement. Off, a blank policy field still blocks finalize.
@@ -2620,17 +2631,6 @@ export function citationLineKeptOnRevisionEnabled(): boolean {
  */
 export function metricGuardEnabled(): boolean {
   return envFlag("METRIC_GUARD_ENABLED");
-}
-
-/**
- * PAYROLL_AMOUNT_SAME_MESSAGE_ENABLED (the sibling app's live chat, 5 Nov 2026; same flag in both apps; default
- * off). "…the register was off $20. which will be payroll deducted from <name>'s check. … payroll deduct applies"
- * still asked "**Payroll deduction amount**?". On: an amount followed by "which / that / this / it … (payroll)
- * deducted" is the stated amount (`forms/payroll-deduct-answer.ts` payrollAmountWording, which reads the env
- * itself because that file imports nothing). Off, as before.
- */
-export function payrollAmountSameMessageEnabled(): boolean {
-  return envFlag("PAYROLL_AMOUNT_SAME_MESSAGE_ENABLED");
 }
 
 /**
