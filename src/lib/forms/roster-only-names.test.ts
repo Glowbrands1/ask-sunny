@@ -138,4 +138,14 @@ describe("the gate's regressions: nothing in the reply speaks for a removed empl
     const text = IMA.replace("ima employee, opening", "Dana Lane, opening");
     expect(rosterOnlyNames(reply(text, null), ["Dana Lane"], "create a CA form for Dana Lane, for opening salon late on 9-28-26").content).toContain("Dana Lane, opening");
   });
+
+  it("the sibling app's FORM_NAME re-flip gate (7 Nov 2026): a who-choice of nobody on the roster is asked once, its \"Tell me and I'll …\" tail goes with it", () => {
+    const asked = "Which of them is this **Resignation/Exit Form** for — **Philippa** or **Dorran**? Tell me and I'll fill in what you've already described.\n\n**Job title:** Tanning Consultant";
+    const out = rosterOnlyNames(reply(asked, null), ROSTER).content;
+    expect(out).toContain(ASK_WHO);
+    expect(out).not.toMatch(/full name\.\s*Tell me and I/);
+    // A choice still asked keeps its tail.
+    const two = "Which of them is this **Resignation/Exit Form** for — **Dana Lane** or **Perpetua Thornquist**? Tell me and I'll fill in what you've already described.";
+    expect(rosterOnlyNames(reply(two, null), ROSTER).content).toBe(two);
+  });
 });
