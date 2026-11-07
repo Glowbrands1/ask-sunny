@@ -2522,6 +2522,19 @@ export function formEditSaidReplacementEnabled(): boolean {
 export function formPatchReaderFixesEnabled(): boolean {
   return envFlag("FORM_PATCH_READER_FIXES_ENABLED") && formPatchReducerEnabled();
 }
+/**
+ * PROPOSAL_POLICY_SET_ASIDE_ENABLED (coding 5; QA, 8 Nov 2026: live in both apps; same flag in both apps; default
+ * off). On a proposal card, "take the attendance policy off the form", sent after the manager had named that policy,
+ * left the Attendance citation and "Policy: Attendance, as you said" on the card, and the sentence was read back as
+ * account. REMOVE_POLICY_NOT_NAMED covers only the take-off sentence naming the policy. On: a policy the manager took
+ * off (named, or "the policy" for whatever the card cites) is set aside until named again: the card drops its policy
+ * row and manual citations and says so (`ai/keep-filled-slots.ts`), the take-off sentence is no account, and at
+ * Create the draft leaves it off its policy fields and "Policy reference" lines (`forms/instances/[id]/draft/
+ * route.ts`). See `forms/policy-set-aside.ts`. Off, as before.
+ */
+export function proposalPolicySetAsideEnabled(): boolean {
+  return envFlag("PROPOSAL_POLICY_SET_ASIDE_ENABLED");
+}
 // --- end coding 5 flags ---
 
 /**

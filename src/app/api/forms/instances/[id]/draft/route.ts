@@ -32,7 +32,9 @@ import {
   caSalesPolicyEnabled,
   priorActionsNoSignedEnabled,
   secondRequestOwnAccountEnabled,
+  proposalPolicySetAsideEnabled,
 } from "@/lib/config/chat-quality-flags";
+import { NOTHING_SET_ASIDE, policiesSetAside, setAsideAnything, valuesWithPolicySetAside, withoutPolicyTakeOff } from "@/lib/forms/policy-set-aside";
 import { withoutAsksToTheApp } from "@/lib/ai/asks-to-the-app";
 import { AiError } from "@/lib/ai/errors";
 import {
@@ -377,7 +379,10 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     const typed = String(body.notes ?? "").trim().slice(0, 4000);
     const asTyped = grammarAskNotAccountEnabled() ? withoutAsksToTheApp(typed).trim() : typed;
     // TYPO_READING_ROUTES_ENABLED: the readers below see "coahed", "notcie", "amont" as the words they can only be.
-    const notes = typoReadingRoutesEnabled() ? typoReadingText(asTyped, await protectedNameWords()) : asTyped;
+    const read = typoReadingRoutesEnabled() ? typoReadingText(asTyped, await protectedNameWords()) : asTyped;
+    // PROPOSAL_POLICY_SET_ASIDE_ENABLED: a policy the manager took off stays off the draft, and the take-off sentence is no account (`forms/policy-set-aside.ts`).
+    const setAside = proposalPolicySetAsideEnabled() ? policiesSetAside(read.split(/\n{2,}/)) : NOTHING_SET_ASIDE;
+    const notes = setAsideAnything(setAside) ? withoutPolicyTakeOff(read.split(/\n{2,}/)).join("\n\n") : read;
     if (notes.length < 10) {
       throw new AiError(
         "bad_request",
@@ -2420,6 +2425,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         ),
       ),
     };
+    if (setAsideAnything(setAside)) draftedPayload.values = valuesWithPolicySetAside(draftedPayload.values, setAside);
     const kept = draftMergeEnabled()
       ? retainFilledFields({
           question: notes,

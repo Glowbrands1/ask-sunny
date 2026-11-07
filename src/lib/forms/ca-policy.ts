@@ -453,6 +453,22 @@ function statedIn(turn: string): CaPolicyName | null {
   return found?.name ?? null;
 }
 
+/**
+ * PROPOSAL_POLICY_SET_ASIDE_ENABLED (`forms/policy-set-aside.ts`): every policy this sentence names by name, where
+ * it is in the sentence. Read the same way `statedIn` reads a name, with no frame needed; the caller decides what the
+ * sentence does with it.
+ */
+export function policiesNamedIn(sentence: string): { name: CaPolicyName; start: number; end: number }[] {
+  const text = normalize(sentence);
+  const found: { name: CaPolicyName; start: number; end: number }[] = [];
+  for (const { name, pattern, enabled } of NAMED) {
+    if (enabled && !enabled()) continue;
+    const match = pattern.exec(text);
+    if (match && !found.some((seen) => seen.name === name)) found.push({ name, start: match.index, end: match.index + match[0].length });
+  }
+  return found;
+}
+
 /* ------------------------------------------------------------- reading -- */
 
 /**
