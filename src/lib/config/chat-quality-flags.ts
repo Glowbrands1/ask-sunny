@@ -2852,6 +2852,16 @@ export function ownBrandOnlyEnabled(): boolean {
 // --- coding 4 flags ---
 
 /**
+ * MSB_PHRASE_SOC_ENABLED (Pau via QA, 7 Nov 2026; same flag in both apps; default off). With CA_SALES_POLICY_ENABLED
+ * on, "create a ca for MSB for <name>" cites the Standards of Conduct, and "create a ca for must see behaviors for
+ * <name>" cited no policy: the glossary term was matched word by word. On: the phrase the approved glossary spells
+ * the term out as counts as the term (`forms/ca-policy.ts` withSalesPolicy). Off, as before.
+ */
+export function msbPhraseSocEnabled(): boolean {
+  return envFlag("MSB_PHRASE_SOC_ENABLED");
+}
+
+/**
  * AS_YOU_SAID_APP_READ_ENABLED (QA's Sunny gate, 7 Nov 2026: 45 regressions from AS_YOU_SAID_MANAGER_WORDS; ships
  * with it; same flag in both apps; default off). With AS_YOU_SAID on, an attendance or late-opening CA whose only
  * Policy line was "<policy>, as you said" (read from the app's own line) lost the line. On: the policy the app's own

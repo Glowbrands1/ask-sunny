@@ -1,9 +1,10 @@
 import { withoutAppLines } from "@/lib/ai/app-sentences";
-import { foldsToGlossaryTerm, isSalesCountTerm } from "@/lib/ai/chat-glossary";
+import { CHAT_GLOSSARY, foldsToGlossaryTerm, isSalesCountTerm } from "@/lib/ai/chat-glossary";
 import {
   asYouSaidAppReadEnabled,
   asYouSaidManagerWordsEnabled,
   caPerformanceReasonEnabled,
+  msbPhraseSocEnabled,
   caSalesPolicyEnabled,
   cleaningOtherEveryWordingEnabled,
   formEditDateRulesEnabled,
@@ -551,14 +552,35 @@ function performanceIsTheReason(rawText: string): boolean {
   return statements(normalize(rawText)).some((sentence) => PERFORMANCE_AS_REASON.test(sentence));
 }
 
+/**
+ * MSB_PHRASE_SOC_ENABLED (Pau, 7 Nov 2026: "create a ca for must see behaviors for <name>" cited no policy; same flag
+ * in both apps; default off). The glossary term is matched word by word, so "MSB" was read and the spelled-out
+ * "must see behaviors" was not. The spelled-out phrases are the approved table's own: the right side of each
+ * "X = <phrase>." line of `CHAT_GLOSSARY`, folded to letters and digits — no list kept here. A singular
+ * ("must see behavior") and hyphens ("must-see") fold the same.
+ */
+const GLOSSARY_PHRASES: readonly string[] = CHAT_GLOSSARY.split("\n")
+  .map((line) => /^[A-Za-z0-9][A-Za-z0-9.&-]*\s+=\s+([^.]+)\./.exec(line)?.[1])
+  .filter((phrase): phrase is string => Boolean(phrase))
+  .map((phrase) => phrase.toLowerCase().replace(/[^a-z0-9]+/g, "").replace(/s$/, ""))
+  .filter((phrase) => phrase.length >= 6);
+
+function spellsOutGlossaryTerm(sentence: string): boolean {
+  const folded = sentence.toLowerCase().replace(/[^a-z0-9]+/g, "");
+  return GLOSSARY_PHRASES.some((phrase) => folded.includes(phrase));
+}
+
 function withSalesPolicy(reading: CaPolicyReading, rawText: string): CaPolicyReading {
   if (!caSalesPolicyEnabled()) return reading;
   if (reading.stated !== null && reading.stated !== "under_performance") return reading;
   if (reading.missedEvent !== null) return reading;
   const sentences = statements(normalize(rawText));
-  const msb = sentences.some((sentence) =>
-    sentence.split(/[^a-z0-9.]+/).some((word) => foldsToGlossaryTerm(word.replace(/^\.+|\.+$/g, ""))),
-  );
+  const msb =
+    sentences.some((sentence) =>
+      sentence.split(/[^a-z0-9.]+/).some((word) => foldsToGlossaryTerm(word.replace(/^\.+|\.+$/g, ""))),
+    ) ||
+    // MSB_PHRASE_SOC_ENABLED: the term spelled out ("must see behaviors") is the term too.
+    (msbPhraseSocEnabled() && sentences.some(spellsOutGlossaryTerm));
   // The stated shortfall reader the progression already uses (`corrective-action-intake.ts`): a metric named and judged.
   // Both default-off readings kept (merge of main into #573): CA_PERFORMANCE_REASON's "for performance" request and SALES_SHORTFALL_OBJECT's reason/count.
   const target =
