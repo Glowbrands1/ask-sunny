@@ -95,7 +95,7 @@ const CONTENTS_LEADER = /\.{4,}/;
  * Brand sections inside the shared manual. A heading that also names Sun Tan
  * City stays, because that rule applies here ("STC & Crunch" client tanning).
  */
-const EXCLUDED_BRAND =
+export const EXCLUDED_BRAND =
   /\b(?:buff city(?:\s+soap)?|crunch(?:\s+fitness)?|jba office|jb\s*&\s*associates office)\b/i;
 const SUN_TAN_CITY = /\b(?:sun tan city|\bstc\b)\b/i;
 const SHARED_SCOPE = /\b(?:all locations|for the company|company-wide|company wide)\b/i;

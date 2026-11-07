@@ -1,11 +1,12 @@
 import { withoutAppLines } from "@/lib/ai/app-sentences";
-import { foldsToGlossaryTerm } from "@/lib/ai/chat-glossary";
+import { foldsToGlossaryTerm, isSalesCountTerm } from "@/lib/ai/chat-glossary";
 import {
   asYouSaidManagerWordsEnabled,
   caSalesPolicyEnabled,
   cleaningOtherEveryWordingEnabled,
   formEditDateRulesEnabled,
   policyCleaningIncidentEnabled,
+  salesShortfallObjectEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { JOIN } from "./bounded-context";
@@ -404,7 +405,12 @@ function statedIn(turn: string): CaPolicyName | null {
       if (!match) continue;
       if (NEGATED_BEFORE.test(sentence.slice(0, match.index))) continue;
       if (formEditDateRulesEnabled() && SET_ASIDE_BEFORE.test(sentence.slice(0, match.index))) continue;
-      if (!alwaysAPolicy && !short && !POLICY_FRAME.test(sentence) && !AGAINST_BEFORE.test(sentence.slice(0, match.index))) {
+      /*
+       * SALES_SHORTFALL_OBJECT_ENABLED (QA, 6 Nov 2026: "sales underperformance"): "under performance" is framed by its own
+       * "under" (POLICY_FRAME), so the one-word spelling is read the same way. Off, it needs a frame like any other name.
+       */
+      const framedByItsSpelling = name === "under_performance" && salesShortfallObjectEnabled() && /^underperform/.test(match[0]);
+      if (!alwaysAPolicy && !short && !framedByItsSpelling && !POLICY_FRAME.test(sentence) && !AGAINST_BEFORE.test(sentence.slice(0, match.index))) {
         continue;
       }
       // The last policy named in the turn is its answer: "not attendance — standards of conduct".
@@ -492,6 +498,35 @@ function withCleaningOther(reading: CaPolicyReading, rawText: string): CaPolicyR
  * Performance; an account that reads as attendance or a missed meeting. Off,
  * the reading is returned untouched.
  */
+/**
+ * SALES_SHORTFALL_OBJECT_ENABLED (QA's tester batch 2, 6 Nov 2026: "written CA
+ * for <name> on performance", "CA for <name> for performance for october"):
+ * "performance" given as the request's reason is the Under Performance topic.
+ * It is governed by the reason word ("for", "on", "about", "regarding", "due
+ * to"), with only determiners or possessives between, and it ends its phrase:
+ * the text ends, or punctuation, a preposition, a month or a date follows. So
+ * "performance review" and "a performance improvement plan" are not. Grammar
+ * (the closed classes), not a list of offenses.
+ */
+const REASON_DETERMINER = String.raw`(?:the|a|an|her|his|their|its|my|our|your|this|that|[a-z]+'s)`;
+const PHRASE_ENDS = String.raw`(?=\s*$|\s*[.,;:!?)\n]|\s+(?:for|in|on|at|during|since|from|over|of|throughout|through|this|last|past|jan\w*|feb\w*|mar\w*|apr\w*|may|jun\w*|jul\w*|aug\w*|sep\w*|oct\w*|nov\w*|dec\w*|\d))`;
+const PERFORMANCE_AS_REASON = new RegExp(
+  String.raw`\b(?:for|on|about|regarding|due to)\s+(?:${REASON_DETERMINER}\s+){0,2}performance\b${PHRASE_ENDS}`,
+);
+
+/**
+ * SALES_SHORTFALL_OBJECT_ENABLED (Pau, 6 Nov 2026; H18, "<name> 131 tans
+ * verbal"): a number directly before a sales count term of the glossary
+ * (`isSalesCountTerm`, read from Pau's line) is the metric named and counted.
+ */
+function countsASalesTerm(rawText: string): boolean {
+  return [...normalize(rawText).matchAll(/\b\d[\d,]*\s+([a-z]+)\b/g)].some((match) => isSalesCountTerm(match[1]));
+}
+
+function performanceIsTheReason(rawText: string): boolean {
+  return statements(normalize(rawText)).some((sentence) => PERFORMANCE_AS_REASON.test(sentence));
+}
+
 function withSalesPolicy(reading: CaPolicyReading, rawText: string): CaPolicyReading {
   if (!caSalesPolicyEnabled()) return reading;
   if (reading.stated !== null && reading.stated !== "under_performance") return reading;
@@ -501,7 +536,7 @@ function withSalesPolicy(reading: CaPolicyReading, rawText: string): CaPolicyRea
     sentence.split(/[^a-z0-9.]+/).some((word) => foldsToGlossaryTerm(word.replace(/^\.+|\.+$/g, ""))),
   );
   // The stated shortfall reader the progression already uses (`corrective-action-intake.ts`): a metric named and judged.
-  const target = reading.stated === "under_performance" || statesMetricShortfall(rawText);
+  const target = reading.stated === "under_performance" || statesMetricShortfall(rawText) || (salesShortfallObjectEnabled() && (performanceIsTheReason(rawText) || countsASalesTerm(rawText)));
   if (!msb && !target) return reading;
   if (reading.stated === null && sentences.some((s) => ATTENDANCE.test(s))) return reading;
   return {
