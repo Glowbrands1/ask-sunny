@@ -147,7 +147,7 @@ export function enrichFormCard(input: {
 
   const followUps = followUpDates(blob, input.today, next.formDate ?? null);
   // SECOND_REQUEST_OWN_ACCOUNT_ENABLED: a new form request never falls back to the earlier request's policy.
-  const policy = statedPolicy(blob, stateForTurn(input.saved, input.question));
+  const policy = statedPolicy(blob, stateForTurn(input.saved, input.question, earlierTurns(input.said, input.question)));
   let content = withoutBlocking(input.response.content, next);
   // The salon question used to be the whole reply. Once the salon is known,
   // that line goes and the policy line that was under it stays.
@@ -722,4 +722,11 @@ function slash(iso: string): string {
   const [year, month, day] = iso.split("-");
   if (!year || !month || !day) return iso;
   return `${Number(month)}/${Number(day)}/${year}`;
+}
+
+/** `said` (every manager turn, this one last, joined by line) without this turn: the manager's earlier lines. */
+function earlierTurns(said: string | undefined, question: string): string[] {
+  if (!said) return [];
+  const before = said.endsWith(question) ? said.slice(0, said.length - question.length) : said;
+  return before.split("\n").filter((line) => line.trim() !== "");
 }
