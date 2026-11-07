@@ -2600,17 +2600,6 @@ export function metricGuardEnabled(): boolean {
 }
 
 /**
- * METRIC_CHOICE_ONE_QUESTION_ENABLED (QA, 7 Nov 2026; default off). The same doubled ask as the sibling app's FORM_NAME
- * re-flip gate regression, under METRIC_GUARD_ENABLED: a choice question with its own "Tell me and I'll …" after it,
- * every choice a metric, became "Who is this form for? Tell me the employee's full name. Tell me and I'll fill in …".
- * On: the question's tail goes with a choice that is replaced, and stays with one still asked
- * (`forms/roster-only-names.ts` withoutMetricChoices). Off, as before.
- */
-export function metricChoiceOneQuestionEnabled(): boolean {
-  return envFlag("METRIC_CHOICE_ONE_QUESTION_ENABLED");
-}
-
-/**
  * CLEANING_OTHER_EVERY_WORDING_ENABLED (QA's live eval ca-sales-negative-cleaning-duties and replay, 6 Nov 2026;
  * same flag in both apps; default off; Pau's ruling: cleaning left undone is Other, never the Standards of
  * Conduct). With CA_SALES_POLICY_ENABLED on, "for not completing his daily cleaning duties" and "for not
@@ -2771,4 +2760,17 @@ export function caOfferKeepsAccountEnabled(): boolean {
  */
 export function ownBrandOnlyEnabled(): boolean {
   return envFlag("OWN_BRAND_ONLY_ENABLED");
+}
+
+// --- Coding flags ---
+
+/**
+ * METRIC_CHOICE_ONE_QUESTION_ENABLED (QA, 7 Nov 2026; default off). The same doubled ask as the sibling app's FORM_NAME
+ * re-flip gate regression, under METRIC_GUARD_ENABLED: a choice question with its own "Tell me and I'll …" after it,
+ * every choice a metric, became "Who is this form for? Tell me the employee's full name. Tell me and I'll fill in …".
+ * On: the question's tail goes with a choice that is replaced, and stays with one still asked
+ * (`forms/roster-only-names.ts` withoutMetricChoices). Off, as before.
+ */
+export function metricChoiceOneQuestionEnabled(): boolean {
+  return envFlag("METRIC_CHOICE_ONE_QUESTION_ENABLED");
 }
