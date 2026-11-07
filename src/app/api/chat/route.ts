@@ -3,7 +3,7 @@ import { noteSpendUser } from "@/lib/ai/spend-meter";
 import { withSpendMeter } from "@/lib/ai/spend-meter-run";
 
 import { withSwitchAfterCreate } from "@/lib/ai/form-type-switch";
-import { withProposalNameCorrection } from "@/lib/forms/proposal-name-correction";
+import { withCorrectionNotDropped, withProposalNameCorrection } from "@/lib/forms/proposal-name-correction";
 import { enterChatRequestClock } from "@/lib/ai/chat-trace-store";
 import { answerQuestion } from "@/lib/ai/server-ask";
 import { modelSpendGuard } from "@/lib/ai/spend-guard";
@@ -805,6 +805,8 @@ async function postChat(request: Request) {
       }
       // PERSON_GUARD_ENABLED: whichever reader named the card's employee, a name that is not a person never stays on it.
       if (personGuardEnabled()) answer = (await import("@/lib/forms/person-guard")).withPersonOnCard(answer);
+      // PROPOSAL_NAME_CORRECTION_ENABLED: an off-roster "change her name to …" on the card asks which, never kept silently.
+      answer = withCorrectionNotDropped(answer, parsed);
       // ADDRESS_NOT_PERSON_ENABLED: "coaching form for 123 Main Street" names an address, not a person (QA, 3 Nov 2026).
       if (addressNotPersonEnabled())
         answer = (await import("@/lib/forms/person-guard")).withAddressNotPerson(

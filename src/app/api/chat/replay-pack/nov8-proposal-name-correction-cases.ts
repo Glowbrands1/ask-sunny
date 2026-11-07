@@ -73,6 +73,13 @@ const CORRECTIONS: Record<string, string> = {
 };
 
 // Here "the name is supposed to be …" also already holds with production's flags (the sibling's did not).
+/** The sibling app's answer to an off-roster correction: it asks which, and no one is on the card meanwhile. */
+function offRosterAsked(after: ReplayAnswer): void {
+  expect(after.formProposal?.employeeName ?? null, `a name was kept or seated without the manager:\n${after.content}`).toBeNull();
+  expect(after.formProposal?.status, `the card does not wait for the employee:\n${after.content}`).toBe("needs_employee");
+  expect(after.content, `the reply does not ask which:\n${after.content}`).toMatch(/Which of them is this \*\*Corrective Action Form\*\* for — \*\*Odessa Lark Penhallwo\*\* or \*\*Odessa Lark Penhalloe\*\*\?/);
+}
+
 const ALREADY_HOLDS = new Set(["correct-way", "supposed-to-be"]);
 
 export const NOV8_PROPOSAL_NAME_CORRECTION_CASES: ReplayCase[] = [
@@ -94,15 +101,24 @@ export const NOV8_PROPOSAL_NAME_CORRECTION_CASES: ReplayCase[] = [
   ),
   {
     id: "nov8-proposal-name-correction-off-roster",
-    title: "an off-roster spelling (\"fix her last name penhalloe\") goes the way a typed off-roster name does: no roster person is seated without the manager",
+    title: "an off-roster spelling (\"fix her last name penhalloe\") asks which of the two, as the sibling app does: never kept silently, no roster person seated",
     report: REPORT,
-    status: "fixed",
+    status: { open: "with production's flags the correction is not read, and the card keeps the old name silently" },
     fixFlags: [FLAG],
     async run(t) {
-      // Here "change her name to <an off-roster name>", typed or read from this turn, keeps the card's name and says
-      // nothing of the spelling (the sibling asks which); reported to QA as its own finding, not changed here.
       const { after } = await cardAfter(t, "fix her last name penhalloe");
-      expect(after.formProposal?.employeeName ?? null, `a roster person was seated for an off-roster spelling:\n${after.content}`).not.toBe("Odessa Lark Penhallow");
+      offRosterAsked(after);
+    },
+  },
+  {
+    id: "nov8-proposal-name-correction-typed-off-roster",
+    title: "\"change her name to Odessa Lark Penhalloe\" (typed, off the roster) asks which of the two, as the sibling app does: never kept silently",
+    report: "QA, round 5 (8 Nov 2026): here an off-roster \"change her name to …\" on the card kept the old name and said nothing",
+    status: { open: "with production's flags the card keeps \"Odessa Lark Penhallwo\" and the reply says nothing of the spelling" },
+    fixFlags: [FLAG],
+    async run(t) {
+      const { after } = await cardAfter(t, "change her name to Odessa Lark Penhalloe");
+      offRosterAsked(after);
     },
   },
   {

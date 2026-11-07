@@ -1,4 +1,4 @@
-import type { AskRequest } from "@/lib/ai/types";
+import type { AskRequest, AskResponse } from "@/lib/ai/types";
 import { proposalNameCorrectionEnabled } from "@/lib/config/chat-quality-flags";
 
 import { nameCorrectionQuestion } from "./name-correction-words";
@@ -85,4 +85,35 @@ export function withProposalNameCorrection<T extends AskRequest>(request: T): T 
   if (!employee) return request;
   const question = proposalNameCorrection(request.question, employee);
   return question ? { ...request, question } : request;
+}
+
+/*
+ * AN OFF-ROSTER CORRECTION IS NEVER DROPPED (QA, round 5, 8 Nov 2026; the same flag). In Ask Sunny, "change her name
+ * to <a spelling not on the roster>" on the card — typed, or read from "fix her last name …" above — kept the card's
+ * old name and said nothing of the spelling; Ask Bubbles asks "Which of them is this <form> for — <old> or <new>?"
+ * with no employee on the card. That is the reference: when the turn corrects the card's employee (a name sharing her
+ * first or last name) and the reply's card still shows the old name, the card waits for the manager's choice.
+ */
+const CHANGE_NAME = /^\s*(?:please\s+)?change\s+(?:her|his|their|the\s+employee'?s?)\s+name\s+to\s+(.+?)\s*[.!]?\s*$/i;
+
+function nameWords(name: string): string[] {
+  return name.toLowerCase().split(/[^\p{L}'’-]+/u).filter(Boolean);
+}
+
+/** `request` as the readers saw it (after `withProposalNameCorrection`). */
+export function withCorrectionNotDropped(answer: AskResponse, request: Pick<AskRequest, "question" | "history" | "activeFormInstanceId">): AskResponse {
+  if (!proposalNameCorrectionEnabled()) return answer;
+  const card = answer.formProposal;
+  const old = cardEmployee(request);
+  const wanted = CHANGE_NAME.exec(request.question)?.[1]?.replace(/^["'“‘]+|["'”’]+$/g, "").trim();
+  if (!card || !old || !wanted || card.subject === "team") return answer;
+  if ((card.employeeName ?? "").trim().toLowerCase() !== old.toLowerCase() || wanted.toLowerCase() === old.toLowerCase()) return answer;
+  const said = nameWords(wanted);
+  const had = nameWords(old);
+  if (said.length < 2 || !(said[0] === had[0] || said.at(-1) === had.at(-1))) return answer;
+  return {
+    ...answer,
+    content: `Which of them is this **${card.templateName}** for — **${old}** or **${wanted}**? Tell me and I'll draft it from what you've already described.`,
+    formProposal: { ...card, employeeName: null, status: "needs_employee", supportsInlineDraft: false },
+  };
 }
