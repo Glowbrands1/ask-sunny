@@ -1,7 +1,8 @@
 import "server-only";
 
 import type { AskResponse } from "@/lib/ai/types";
-import { formEditSingleWriterEnabled, formPatchReaderFixesEnabled } from "@/lib/config/chat-quality-flags";
+import { formEditSingleWriterEnabled, formPatchReaderFixesEnabled, stepBMakeItAboutAccountEnabled } from "@/lib/config/chat-quality-flags";
+import { madeAbout } from "@/lib/ai/make-it-about";
 import { syncCorrectiveActionPlan } from "./ca-action-plan-sync";
 import { checkboxGroupsForVariant, fieldsForVariant, parseFormDocument } from "./document";
 import { replyFromDiff } from "./form-diff-reply";
@@ -15,6 +16,9 @@ import { applyAssistantRevision, applyStatedFacts, loadInstance, saveInstanceVal
 import { NO_PRIOR_ACTION, PRIOR_ACTIONS_KEY } from "./prior-actions";
 import { draftableCheckboxGroups, draftableFields } from "./responsibility";
 import type { ChatMessage } from "@/types";
+
+/** STEP_B_MAKE_IT_ABOUT_ACCOUNT_ENABLED: the fields that give a form's account (Coaching Details, a CA's Observation). */
+const ACCOUNT_KEYS = ["coaching_details", "observation"] as const;
 
 /**
  * ============================================================================
@@ -236,6 +240,20 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
       return null;
     };
     if (!("ok" in reading) || reading.turn !== "this_form") return handOff("none");
+    /*
+     * STEP_B_MAKE_IT_ABOUT_ACCOUNT_ENABLED (QA's live draft test, 8 Nov 2026): "I need you to make it about showing up
+     * late" was read as the Other topic alone, and Details of Coaching stayed about the missed meeting. A turn that
+     * says what the form is about, whose patch does not set the form's account, goes to the old path before anything
+     * is written: EDIT_MAKE_IT_ABOUT's revision rewrites the account there.
+     */
+    if (
+      stepBMakeItAboutAccountEnabled() &&
+      madeAbout(input.question) !== null &&
+      ACCOUNT_KEYS.some((key) => writable.has(key)) &&
+      !ACCOUNT_KEYS.some((key) => key in reading.patch.set)
+    ) {
+      return handOff("none");
+    }
     /*
      * QA, 3 Nov 2026 (blocker before the Step B flip; ported from Ask
      * Bubbles): "make it sound more professional" is about this form, but the

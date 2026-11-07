@@ -1,9 +1,9 @@
 import { z } from "zod/v4";
 
-import { formPatchReaderFixesEnabled } from "@/lib/config/chat-quality-flags";
+import { formPatchReaderFixesEnabled, stepBMakeItAboutAccountEnabled } from "@/lib/config/chat-quality-flags";
 
 import { callFormPatchModel } from "./form-patch-call";
-import { buildFormPatchUserMessage, FORM_PATCH_READER_LINES, FORM_PATCH_SYSTEM_PROMPT, type FormPatchInput } from "./form-patch-prompt";
+import { buildFormPatchUserMessage, FORM_PATCH_ACCOUNT_LINE, FORM_PATCH_READER_LINES, FORM_PATCH_SYSTEM_PROMPT, type FormPatchInput } from "./form-patch-prompt";
 import { patchOutputSchema, toPatch, type PatchOutput } from "./form-patch-schema";
 import type { FormPatch } from "./form-reducer";
 
@@ -26,7 +26,10 @@ export async function readFormPatch(input: FormPatchInput): Promise<FormPatchRea
   const fixes = formPatchReaderFixesEnabled();
   const schema = fixes ? patchOutputSchema(keys as [string, ...string[]], { reword: true }) : patchOutputSchema(keys as [string, ...string[]]);
   const called = await callFormPatchModel({
-    system: fixes ? `${FORM_PATCH_SYSTEM_PROMPT}\n${FORM_PATCH_READER_LINES}` : FORM_PATCH_SYSTEM_PROMPT,
+    // STEP_B_MAKE_IT_ABOUT_ACCOUNT_ENABLED: one more line after the reader lines (`form-patch-prompt.ts`).
+    system: fixes
+      ? `${FORM_PATCH_SYSTEM_PROMPT}\n${FORM_PATCH_READER_LINES}${stepBMakeItAboutAccountEnabled() ? `\n${FORM_PATCH_ACCOUNT_LINE}` : ""}`
+      : FORM_PATCH_SYSTEM_PROMPT,
     prompt: buildFormPatchUserMessage(input),
     schema: z.toJSONSchema(schema) as Record<string, unknown>,
   });

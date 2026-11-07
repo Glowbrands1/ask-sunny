@@ -624,8 +624,39 @@ export const TRACE_REFUSALS: readonly RefusalScenario[] = [
 /** Every refusal, Bubbles' first. LIVE_SCENARIOS=step-b-refusals. */
 export const STEP_B_REFUSAL_SCENARIOS: readonly RefusalScenario[] = [...BUBBLES_REFUSALS, ...SUNNY_REFUSALS, ...TRACE_REFUSALS];
 
+/*
+ * STEP_B_MAKE_IT_ABOUT_ACCOUNT_ENABLED (QA's live draft test, the sibling app's production, 8 Nov 2026): "I need you to make
+ * it about showing up late" set only the Other topic. LIVE only (the replay case, with the live reading scripted, is
+ * `nov8-step-b-make-it-about-account-cases.ts`); run it with the flag on.
+ */
+const LIVE_MAKE_IT_ABOUT = "I need you to make it about showing up late";
+export const STEP_B_MAKE_IT_ABOUT_LIVE: readonly RefusalScenario[] = [
+  {
+    id: "sun-make-it-about-account",
+    report: "QA's live draft test, the sibling app's production, 8 Nov 2026 19:39–19:42Z: \"Changed Other to 'Showing up late'\"; Details stayed about the meeting",
+    refused: LIVE_MAKE_IT_ABOUT,
+    owner: null,
+    roster: REFUSAL_ROSTER,
+    field: "coaching_details",
+    steps: [say("create a coaching form for Ottoline Ormsworth, she missed the monthly meeting on 10/10/26"), CREATE, say(LIVE_MAKE_IT_ABOUT)],
+    script: {},
+    expect: {
+      says: "Details of Coaching is about showing up late, not the missed meeting, and keeps its Observed / Expectation outline",
+      check: (run) =>
+        all(
+          noError(run),
+          created(run),
+          has(run, "coaching_details", /\blate\b/i, "is not about showing up late"),
+          hasNot(run, "coaching_details", /monthly meeting/i, "is still about the missed meeting"),
+          has(run, "coaching_details", /Observed:[\s\S]*Expectation:/, "lost its outline"),
+          notRefused(run),
+        ),
+    },
+  },
+];
+
 /** The same scenarios for the LIVE eval: each `liveCheck` is added to its `expect`. */
-export const STEP_B_REFUSAL_LIVE_SCENARIOS: readonly RefusalScenario[] = STEP_B_REFUSAL_SCENARIOS.map((scenario) => {
+export const STEP_B_REFUSAL_LIVE_SCENARIOS: readonly RefusalScenario[] = [...STEP_B_REFUSAL_SCENARIOS, ...STEP_B_MAKE_IT_ABOUT_LIVE].map((scenario) => {
   const liveCheck = scenario.liveCheck;
   if (!liveCheck) return scenario;
   return {
