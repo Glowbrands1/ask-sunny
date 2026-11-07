@@ -19,7 +19,7 @@ import {
   type LiveExpect,
   type LiveScenario,
 } from "@/app/api/chat/replay-pack/nov4-live-regressions-scenarios";
-import { STEP_B_REFUSAL_SCENARIOS } from "@/app/api/chat/replay-pack/nov7-step-b-refusals-scenarios";
+import { STEP_B_REFUSAL_LIVE_SCENARIOS } from "@/app/api/chat/replay-pack/nov7-step-b-refusals-scenarios";
 import { fakeSupabase, type FakeStore } from "@/test/fake-supabase";
 import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
 
@@ -845,7 +845,7 @@ function pickScenarios(): readonly LiveScenario[] {
   if (which === "glossary") return GLOSSARY_SCENARIOS;
   if (which === "ca-sales") return CA_SALES_SCENARIOS;
   if (which === "managers") return MANAGER_SCENARIOS;
-  if (which === "step-b-refusals") return STEP_B_REFUSAL_SCENARIOS;
+  if (which === "step-b-refusals") return STEP_B_REFUSAL_LIVE_SCENARIOS;
   return [...LIVE_FAILURE_SCENARIOS, ...NAME_SCENARIOS, ...GATE_SCENARIOS];
 }
 
