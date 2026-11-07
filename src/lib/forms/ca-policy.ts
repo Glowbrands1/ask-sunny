@@ -920,7 +920,7 @@ export function caPolicyProposalLine(reading: CaPolicyReading, named: NamedPolic
   }
   // AS_YOU_SAID_APP_READ_ENABLED: the policy the app read, said as its reading. Off, never set.
   if (reading.readFromApp) {
-    return `**Policy:** ${CA_POLICY_LABEL[reading.readFromApp]} — from what you described. I'll quote that section from the current policy manual on the draft; tell me if a different policy applies.`;
+    return `**Policy:** ${CA_POLICY_LABEL[reading.readFromApp]} — read from this request. I'll quote that section from the current policy manual on the draft; tell me if a different policy applies.`;
   }
   return null;
 }

@@ -23,7 +23,7 @@ describe("AS_YOU_SAID_APP_READ_ENABLED", () => {
 
   it("on: the app-read policy is said as a reading, never \"as you said\"", () => {
     vi.stubEnv("AS_YOU_SAID_APP_READ_ENABLED", "true");
-    expect(line(LATE)).toMatch(/^\*\*Policy:\*\* Late Opening — from what you described\./);
+    expect(line(LATE)).toMatch(/^\*\*Policy:\*\* Late Opening — read from this request\./);
     expect(line(LATE)).not.toMatch(/as you said/i);
   });
 
