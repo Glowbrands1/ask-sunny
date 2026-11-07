@@ -37,3 +37,25 @@ describe("onlyDeniesForObservation", () => {
     },
   );
 });
+
+/**
+ * The Sunny gate (7 Nov 2026), BARE_NOT_AFTER_REQUEST_ENABLED alone: an omission is an account, not a denial.
+ * "did not complete her closing checklist", "cleaning duties not being completed" and "missed the monthly
+ * meeting" lost their account because the flag read any negation as "nothing happened".
+ */
+describe("BARE_NOT_AFTER_REQUEST_ENABLED alone: omissions stay accounts", () => {
+  it.each([
+    "ca for Rowan Kestrel did not complete her closing checklist",
+    "ca for Rowan Kestrel cleaning duties not being completed",
+    "ca for Rowan Kestrel missed the monthly meeting",
+    "Rowan Kestrel did not clean the beds",
+  ])("%s is an account", (sentence) => {
+    vi.stubEnv("BARE_NOT_AFTER_REQUEST_ENABLED", "true");
+    expect(onlyDeniesForObservation(sentence, NAME)).toBe(false);
+  });
+
+  it.each(["ca for Rowan Kestrel not late", "Rowan Kestrel never late", "ca for Rowan Kestrel no problems"])("%s only denies", (sentence) => {
+    vi.stubEnv("BARE_NOT_AFTER_REQUEST_ENABLED", "true");
+    expect(onlyDeniesForObservation(sentence, NAME)).toBe(true);
+  });
+});

@@ -6,6 +6,15 @@ import {
 } from "./official-policy-manual";
 
 /**
+ * The job-performance topic's first pattern: performance named, or a goal not
+ * met. Exported unchanged for CA_PERFORMANCE_REASON_ENABLED (`withSalesPolicy`
+ * in `ca-policy.ts`), which reads the request sentence with it; the topic's
+ * duties/tasks and evaluation patterns are not part of it, so "closing
+ * duties" is never read as performance there.
+ */
+export const namesPerformance = /\b(?:performance|underperform\w*|under[- ]performing|not meeting (?:her|his|their)? ?(?:goals|targets|expectations))\b/;
+
+/**
  * ============================================================================
  * WHICH PART OF THE JBA MANUAL A PERFORMANCE OBSERVATION POINTS AT
  * ============================================================================
@@ -126,7 +135,7 @@ export const EPP_POLICY_TOPICS: readonly EppPolicyTopic[] = [
     key: "job_performance",
     label: "Job performance",
     patterns: [
-      /\b(?:performance|underperform\w*|under[- ]performing|not meeting (?:her|his|their)? ?(?:goals|targets|expectations))\b/,
+      namesPerformance,
       /\b(?:job duties|closing duties|opening duties|task|tasks|follow[- ]?through|accountab\w+)\b/,
       /\b(?:evaluation|review period|raise)\b/,
     ],

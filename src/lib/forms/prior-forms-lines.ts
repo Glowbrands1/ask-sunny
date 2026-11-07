@@ -13,7 +13,11 @@ export interface PriorFormOnFile {
   readonly templateKey: string;
   /** `YYYY-MM-DD`, the date on the form. */
   readonly formDate: string;
-  /** As it goes on the list: "Verbal corrective action — signed 09/21/2026". */
+  /**
+   * As it goes on the list: "Verbal corrective action — signed 09/21/2026"; with
+   * PRIOR_ACTIONS_NO_SIGNED_ENABLED "Verbal corrective action — finalized 09/21/2026" (only a
+   * finalized form is on file, and nothing records that it was signed).
+   */
   readonly line: string;
   /** Where the form was filed, so a possible match can say which salon it is from. */
   readonly locationId: string | null;
@@ -106,7 +110,7 @@ export function priorFormsFromRows(input: {
         instanceId: row.id,
         templateKey: row.templateKey,
         formDate: row.formDate,
-        line: priorActionLine(policy ? `${step} (${policy})` : step, row.formDate),
+        line: priorActionLine(policy ? `${step} (${policy})` : step, row.formDate, "", "", "on_file"),
         locationId: row.locationId ?? null,
         locationName: row.locationName ?? null,
       };

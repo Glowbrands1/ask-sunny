@@ -111,6 +111,8 @@ export const NOV5_CODING3_SUNNY_CA_CASES: ReplayCase[] = [
     title: "\"can you write me a Ca for <name> for performance for october\": with CA_SALES_POLICY_ENABLED the card cites the Standards of Conduct; never \"You haven't told me what happened yet\"",
     report: `${REPORT}: "can you write me a Ca for <name> for performance for october" → "You haven't told me what happened yet"`,
     status: { open: "\"for performance\" is no account and no sales reading: \"You haven't told me what happened yet\", no policy cited" },
+    // CA_PERFORMANCE_REASON_ENABLED (default off, not in production): "for performance" in the sentence that asks for the form is the sales reading (`withSalesPolicy`, ca-policy.ts).
+    fixFlags: ["CA_SALES_POLICY_ENABLED", "CA_PERFORMANCE_REASON_ENABLED"],
     async run(t: T) {
       /*
        * CA_ASKS_WHAT_HAPPENED_ENABLED is on in production (QA, 5 Nov 2026; as
