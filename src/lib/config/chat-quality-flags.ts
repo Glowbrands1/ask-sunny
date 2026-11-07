@@ -2788,6 +2788,8 @@ export function ownBrandOnlyEnabled(): boolean {
   return envFlag("OWN_BRAND_ONLY_ENABLED");
 }
 
+// --- coding 4 flags ---
+
 /**
  * COACHING_OBSERVED_KEPT_ENABLED (Pau's scan, sf-s37, 7 Nov 2026; same flag in both apps; default off). Three Coaching
  * Forms for "not hitting her numbers for the month of October" were saved with no "Observed:" section and with
