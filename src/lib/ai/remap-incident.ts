@@ -7,6 +7,7 @@ import {
   politeRequestOwnTurnsEnabled,
   priorSentenceFixEnabled,
   requestLeadFillerEnabled,
+  secondRequestOwnAccountEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { withoutPriorStepClauses } from "@/lib/forms/form-date-answer";
 import { CA_POLICY_LABEL, readCaPolicy, STANDARDS_OF_CONDUCT, type CaPolicyName } from "@/lib/forms/ca-policy";
@@ -261,7 +262,11 @@ export function currentRequestStart(input: {
     const turn = raw.replace(STATE_LEAD, "");
     // POLITE_REQUEST_OWN_TURNS_ENABLED: "Can you create me a coaching document for …" is a request too.
     const asked = politeRequestOwnTurnsEnabled() ? turn.trim().replace(POLITE_LEAD, "") : turn.trim();
-    if (!REQUEST_TURN.test(asked)) continue;
+    // SECOND_REQUEST_OWN_ACCOUNT_ENABLED (QA's audit, 7 Nov 2026): after a request, a turn that names a form anywhere
+    // ("I need another corrective action for <A>, …", "now make a separate CA for <A> …") is a request too; it starts a
+    // new one only with its own incident, below.
+    const isRequest = REQUEST_TURN.test(asked) || (secondRequestOwnAccountEnabled() && requests >= 1 && FORM_WORD_ANYWHERE.test(turn));
+    if (!isRequest) continue;
     requests += 1;
     if (requests > 1 && turnIncident(turn, input.employeeName, input.slotClause)) start = index;
   }
@@ -279,6 +284,9 @@ const STATE_LEAD =
  * would / will you (please)". Off, as before.
  */
 const POLITE_LEAD = /^(?:hey,?\s+|hi,?\s+)?(?:can|could|would|will)\s+(?:you|u)\s+(?:please\s+)?/i;
+
+/** SECOND_REQUEST_OWN_ACCOUNT_ENABLED: a form named anywhere in the turn, not only at its start. */
+const FORM_WORD_ANYWHERE = new RegExp(String.raw`\b${FORM_WORDS}\b`, "i");
 
 const REQUEST_TURN = new RegExp(
   String.raw`^\s*(?:please\s+)?(?:(?:create|make|start|open|do|file|write|draft)\s+(?:me\s+)?)?${LEVEL_WORDS}${FORM_WORDS}\b`,
