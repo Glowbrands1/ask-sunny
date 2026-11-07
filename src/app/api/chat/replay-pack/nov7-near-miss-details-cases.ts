@@ -70,6 +70,10 @@ export const NOV7_NEAR_MISS_DETAILS_CASES: ReplayCase[] = CHATS.flatMap(({ id, p
       if (ASKED.test(first.content)) {
         expect(second.content, `the same question is asked twice:\n${second.content}`).not.toMatch(ASKED);
         expect(thread.proposal?.employeeName ?? null, `the card is not for ${person}:\n${second.content}`).toBe(person);
+        // One source of truth (QA's gate runner 2, 7 Nov 2026): Create's out-of-date check counts the accepted name, so
+        // the card is created for them, never refused as "the conversation now says the form is for <typed name>".
+        const id = await thread.create();
+        expect(t.values(id).employee_name, "the created form is not for the accepted name").toBe(person);
       }
       expect(second.content, `the warning level said is lost:\n${second.content}`).toMatch(level);
     },
