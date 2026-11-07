@@ -76,7 +76,8 @@ export const NOV6_CLEANING_OTHER_EVERY_WORDING_CASES: ReplayCase[] = [
     id: "nov6-cleaning-other-qa-live-wording",
     title: "QA's live wording \"make a corrective action for <name>, he did not complete daily cleaning duties\": Other on the card and the draft",
     report: `${REPORT}; live eval ca-sales-negative-cleaning-duties`,
-    status: { open: "with production's flags (CA_SALES off) cleaning is not Other" },
+    // Changed on purpose (7 Nov 2026): QA's flips of 5 and 6 Nov turned CA_SALES_POLICY, REPLY_MATCHES_CARD, TITLE_OF_THE_EMPLOYEE, METRIC_GUARD, TITLE_ENDS_AT_LINE, BARE_NOT_DENIAL and PLACE_FROM_CUE on in production (production-flags.json); this case now holds with production's flags.
+    status: "fixed",
     fixFlags: [...QA_LIVE, FLAG],
     async run(t) {
       await cleaningIsOther(t, "make a corrective action for Ansgar Whitlowe, he did not complete daily cleaning duties");

@@ -28,7 +28,8 @@ export const NOV4_REQUEST_OBSERVATION_CASES: ReplayCase[] = [
     id: "nov4-request-not-observation-due-to",
     title: "\"CA for <name> due to under performance in salon metrics\": the Observation is the reason, not the request",
     report: `${REPORT} (#3)`,
-    status: { open: "with production's flags the Observation is the request as the model copied it" },
+    // Changed on purpose (7 Nov 2026): QA's flips of 5 and 6 Nov turned CA_SALES_POLICY, REPLY_MATCHES_CARD, TITLE_OF_THE_EMPLOYEE, METRIC_GUARD, TITLE_ENDS_AT_LINE, BARE_NOT_DENIAL and PLACE_FROM_CUE on in production (production-flags.json); this case now holds with production's flags.
+    status: "fixed",
     fixFlags: ["CA_SALES_POLICY_ENABLED"],
     async run(t) {
       const thread = start(t);
