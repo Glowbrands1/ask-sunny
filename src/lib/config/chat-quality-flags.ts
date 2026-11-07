@@ -2814,6 +2814,18 @@ export function noNoticeNoDateEnabled(): boolean {
 }
 
 /**
+ * BARE_NOT_AFTER_REQUEST_ENABLED (QA's live Sunny re-check, 6 Nov 2026;
+ * default off). "ca for <A> not late" asked nothing: the clause starts with
+ * the request, so BARE_NOT_DENIAL's clause-start "not" missed it. With this
+ * flag on, the CA what-happened test also reads each clause without its
+ * request head and the employee's name (`ai/ca-what-happened.ts`). Off, as
+ * before.
+ */
+export function bareNotAfterRequestEnabled(): boolean {
+  return envFlag("BARE_NOT_AFTER_REQUEST_ENABLED");
+}
+
+/**
  * SOURCE_NOTE_GUARD_ENABLED (QA, 5 Nov 2026; default off). A reply reached a
  * manager with the model's own note about a source in it: "[S1 doesn't actually
  * cover general tardiness — it only covers failing to open the salon…]". The
