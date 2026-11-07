@@ -224,3 +224,37 @@ describe("FORM_PATCH_READER_FIXES_ENABLED: after the reader found nothing to wri
     expect(applyPatch(draft, write, without).diff.refused).toEqual([]);
   });
 });
+
+describe("FORM_PATCH_READER_FIXES_ENABLED: \"make it for/about X\" keeps her X (QA's run 4, 7 Nov 2026)", () => {
+  const LATEST = "can you make it for missing out monthly meeting";
+  const draft: FormDraft = { coaching_details: field("coaching_details", "", "empty") };
+  const fixes = { employeeName: "Perrin Fennimore", formText: "" };
+
+  it("text about the form, none of her words in it, is refused (even with every word said earlier)", () => {
+    const sameWords = op("coaching_details", "This coaching form for Perrin is about the attendance policy.", "replace", "missing out monthly meeting");
+    expect(applyPatch(draft, sameWords, rules(LATEST, ["coaching_details"], fixes, [LATEST, "can you create a coaching form for attendance policy"])).diff.refused).toEqual([
+      { key: "coaching_details", reason: "drops_words" },
+    ]);
+  });
+
+  it("text about the form, with words nobody said, is refused", () => {
+    const drift = op("coaching_details", "Observed:\nThis coaching session with Perrin addressed the attendance policy.", "replace", "missing out monthly meeting");
+    const { diff } = applyPatch(draft, drift, rules(LATEST, ["coaching_details"], fixes, [LATEST, "can you create a coaching form for attendance policy"]));
+    expect(diff.changed).toEqual([]);
+    expect(diff.refused.map((refusal) => refusal.key)).toEqual(["coaching_details"]);
+  });
+
+  it("her X, in the account, is written", () => {
+    expect(applyPatch(draft, op("coaching_details", "Perrin missed the monthly meeting.", "replace", "missing out monthly meeting"), rules(LATEST, ["coaching_details"], fixes)).diff.refused).toEqual([]);
+  });
+});
+
+describe("FORM_PATCH_READER_FIXES_ENABLED: an in-place correction is not held to its instruction's words", () => {
+  it("\"fix her last name, it is Pembrooke\" rewrites the text with the word corrected", () => {
+    const latest = "fix her last name, it is Pembrooke";
+    const old = "Observed:\nIsolde Pembrook was late to open the salon today.";
+    const draft: FormDraft = { coaching_details: field("coaching_details", old, "assistant") };
+    const fixed = op("coaching_details", old.replace("Pembrook", "Pembrooke"), "replace", latest);
+    expect(applyPatch(draft, fixed, rules(latest, ["coaching_details"], { employeeName: "Isolde Pembrook", formText: old })).diff.refused).toEqual([]);
+  });
+});

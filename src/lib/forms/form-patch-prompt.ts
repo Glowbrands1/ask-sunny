@@ -18,7 +18,8 @@ clear: only fields the manager asked to have removed, with their words as eviden
  */
 export const FORM_PATCH_READER_LINES = `how "reword": only when the latest message asks to change how a field is worded or laid out (more professional, clearer, the same outline as an example) and gives no new content for it. value is the field's whole text in new words; keep every name, date, number, amount and fact it holds, and take any other fact only from the manager's messages or the form. Never reword a field the latest message is not about.
 The employee's position is the field job_title when it is listed: set it only to the words the latest message gives for it, how "replace".
-A correction of a word ("fix her last name, it is …") changes every field whose text holds the old word: set each one, how "replace", with its whole text and only that word corrected.`;
+A correction of a word ("fix her last name, it is …") changes every field whose text holds the old word: set each one, how "replace", with its whole text and only that word corrected.
+When the latest message says what the form is about or for ("make it about …", "make it for …"), that is new content, never a reword: how "replace" on the field that gives the account, written in the manager's own words for it, with those words as evidence. Never describe the form itself in a field.`;
 
 export interface FormPatchField {
   readonly key: string;

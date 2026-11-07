@@ -1,7 +1,7 @@
 import { expect } from "vitest";
 
 import { KEARNEY, replyMatchesDiff, savedForm, type ReplayCase } from "./cases";
-import { CASH, ROOM_PROCESS, ROOM_STEPS, STEP_B_REFUSAL_SCENARIOS, STEP_B_READER_FLAGS, SUN_TOWEL, SUN_YES, patch, type RefusalScenario } from "./nov7-step-b-refusals-scenarios";
+import { CASH, ROOM_PROCESS, ROOM_STEPS, STEP_B_REFUSAL_SCENARIOS, STEP_B_READER_FLAGS, SUN_LATE, SUN_MEETING, SUN_TOWEL, SUN_YES, patch, type RefusalScenario } from "./nov7-step-b-refusals-scenarios";
 
 /**
  * ============================================================================
@@ -31,7 +31,7 @@ import { CASH, ROOM_PROCESS, ROOM_STEPS, STEP_B_REFUSAL_SCENARIOS, STEP_B_READER
 const OPEN_IN_PRODUCTION = "production answers \"I haven't changed the …\" (Step B is off; the revision path writes nothing)";
 
 /** Production's outcome per case, from the run with production's flags (7 Nov 2026). */
-const PRODUCTION_HOLDS = new Set<string>(["bub-date-question", "bub-name-redo", "sun-towel-nothing-said", "sun-msb-format", "sun-make-that-update-live-shape"]);
+const PRODUCTION_HOLDS = new Set<string>(["bub-date-question", "bub-name-redo", "sun-towel-nothing-said", "sun-msb-format", "sun-make-that-update-live-shape", "sun-monthly-meeting-drift", "sun-late-date-drift"]);
 
 /** Fix runs that still fail, and why (the path that owns the turn is not Step B's reader). */
 const FIX_OPEN: Readonly<Record<string, string>> = {};
@@ -119,6 +119,54 @@ const LIVE_SHAPES: readonly RefusalScenario[] = [
       revisionFrom: {
         [SUN_YES]: { coaching_details: "Reminded her to call a manager for any cash drawer shortage.\nReminded her to call a manager for any cash drawer shortage." },
       },
+    },
+  },
+  /*
+   * QA's run 4 (7 Nov 2026): "make it for/about X" written as text about the form, none of her words in it.
+   * Refused (the evidence's words are not in the value); the old path then takes the turn, as OFF passed.
+   */
+  {
+    ...byId("sun-monthly-meeting"),
+    id: "sun-monthly-meeting-drift",
+    // QA: the account is her X, or nothing is written (the old path's honest reply); never text about the form.
+    expect: {
+      says: "the drift (text about the form) is never written and nothing is claimed; her X is written, or the old refusal stands",
+      check: (run) =>
+        /addressed the attendance policy/i.test(run.saved.coaching_details ?? "")
+          ? `the drift was written: "${(run.saved.coaching_details ?? "").slice(0, 120)}"`
+          : /\b(?:updated|changed)\b/i.test(run.reply) && !/haven't changed|didn't change/i.test(run.reply)
+            ? `a change is claimed: "${run.reply.slice(0, 120)}"`
+            : null,
+    },
+    script: {
+      patch: {
+        [SUN_MEETING]: patch("this_form", [
+          { field: "coaching_details", value: "Observed:\nThis coaching session with Perrin addressed the attendance policy. No specific incident was described.", how: "replace", evidence: "missing out monthly meeting" },
+        ]),
+      },
+      revisionFrom: { [SUN_MEETING]: { coaching_details: "Observed:\nPerrin missed the monthly meeting." } },
+    },
+  },
+  {
+    ...byId("sun-late-date"),
+    id: "sun-late-date-drift",
+    // QA: the account is her X, or nothing is written (the old path's honest reply); never text about the form.
+    expect: {
+      says: "the drift (text about the form) is never written and nothing is claimed; her X is written, or the old refusal stands",
+      check: (run) =>
+        /a prior coaching document exists/i.test(run.saved.coaching_details ?? "")
+          ? `the drift was written: "${(run.saved.coaching_details ?? "").slice(0, 120)}"`
+          : /\b(?:updated|changed)\b/i.test(run.reply) && !/haven't changed|didn't change/i.test(run.reply)
+            ? `a change is claimed: "${run.reply.slice(0, 120)}"`
+            : null,
+    },
+    script: {
+      patch: {
+        [SUN_LATE]: patch("this_form", [
+          { field: "coaching_details", value: "Observed:\nA prior coaching document exists for Thaddeus, but it did not list the policy associated with it.", how: "replace", evidence: "make it about showing up late" },
+        ]),
+      },
+      revisionFrom: { [SUN_LATE]: { coaching_details: "Observed:\nThaddeus showed up late." } },
     },
   },
   {
