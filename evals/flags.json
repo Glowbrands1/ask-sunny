@@ -1,4 +1,7 @@
 {
-  "_comment": "on: the step's own flag(s), on only in the flags-on column. Today's production flags come from src/config/production-flags.json (on + assumedOn); a step flag already in production is not listed here. Step 4's flag needs the single writer (Step 2a) and is measured on the edit tool's path (Step 3), so all three are on.",
-  "on": ["FORM_EDIT_SINGLE_WRITER_ENABLED", "FORM_EDIT_TOOL_IN_STREAM_ENABLED", "FORM_EDIT_NOOP_GUARD_ENABLED"]
+  "_comment": "on: the step's own flag(s), on only in the flags-on column. Today's production flags come from src/config/production-flags.json (on + assumedOn); a step flag already in production is not listed here. Step 4's flag needs the single writer (Step 2a) and is measured on the edit tool's path (Step 3), so all three are on. FORM_EDIT_SINGLE_WRITER_ENABLED left this list on 7 Nov 2026: flip 7 put it in production, so the production column already has it.",
+  "on": [
+    "FORM_EDIT_TOOL_IN_STREAM_ENABLED",
+    "FORM_EDIT_NOOP_GUARD_ENABLED"
+  ]
 }

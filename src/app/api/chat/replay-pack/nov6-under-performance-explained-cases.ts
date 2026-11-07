@@ -29,7 +29,8 @@ export const NOV6_UNDER_PERFORMANCE_EXPLAINED_CASES: ReplayCase[] = [
       id: `nov6-under-performance-explained-${key}`,
       title: `"${turns.at(-1)}": the card cites the Standards of Conduct and the reply says why, once`,
       report: REPORT,
-      status: { open: "with production's flags (UNDER_PERFORMANCE_EXPLAINED_ENABLED off) the reply cites the Standards of Conduct with no word why" },
+      // Changed on purpose (7 Nov 2026): QA's flip 7 (21:29 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+      status: "fixed",
       fixFlags: ["CA_SALES_POLICY_ENABLED", "UNDER_PERFORMANCE_EXPLAINED_ENABLED"],
       async run(t) {
         vi.setSystemTime(new Date("2026-11-06T15:00:00Z"));
@@ -61,7 +62,8 @@ export const NOV6_UNDER_PERFORMANCE_EXPLAINED_CASES: ReplayCase[] = [
     id: "nov6-under-performance-explained-one-word",
     title: "\"CA for <name> for underperformance for october\" (one word): the card cites the Standards of Conduct and says why",
     report: `${REPORT}; found while adding the line (6 Nov 2026): the one-word spelling gets no Policy line on the card`,
-    status: { open: "with production's flags the card has no Policy line for one-word \"underperformance\"" },
+    // Changed on purpose (7 Nov 2026): QA's flip 7 (21:29 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+    status: "fixed",
     // The card's reading took the one-word name only in a short message (QA, 6 Nov 2026); SALES_SHORTFALL_OBJECT reads it like "under performance".
     fixFlags: ["CA_SALES_POLICY_ENABLED", "SALES_SHORTFALL_OBJECT_ENABLED", "UNDER_PERFORMANCE_EXPLAINED_ENABLED"],
     async run(t) {
@@ -77,7 +79,8 @@ export const NOV6_UNDER_PERFORMANCE_EXPLAINED_CASES: ReplayCase[] = [
     id: "nov6-under-performance-explained-sales-underperformance",
     title: "the manager's wording: \"CA for <name>, sales underperformance this month\": the card cites the Standards of Conduct and says why",
     report: `${REPORT}; a manager's exact words "sales underperformance" (QA, 6 Nov 2026)`,
-    status: { open: "with production's flags the card has no Policy line for one-word \"underperformance\"" },
+    // Changed on purpose (7 Nov 2026): QA's flip 7 (21:29 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+    status: "fixed",
     fixFlags: ["CA_SALES_POLICY_ENABLED", "SALES_SHORTFALL_OBJECT_ENABLED", "UNDER_PERFORMANCE_EXPLAINED_ENABLED"],
     async run(t) {
       vi.setSystemTime(new Date("2026-11-06T15:00:00Z"));

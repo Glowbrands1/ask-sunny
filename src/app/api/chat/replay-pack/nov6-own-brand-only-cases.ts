@@ -30,7 +30,8 @@ export const NOV6_OWN_BRAND_ONLY_CASES: ReplayCase[] = [
     id: "nov6-own-brand-only-pets",
     title: "a policy answer listing every brand (\"across all brands — …\") names only this company's brand",
     report: "Pau, 6 Nov 2026 (relayed by QA), the mirror of the sibling app's live reply",
-    status: { open: "the reply lists the other brands" },
+    // Changed on purpose (7 Nov 2026): QA's flip 7 (21:29 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+    status: "fixed",
     fixFlags: ["OWN_BRAND_ONLY_ENABLED"],
     async run(t) {
       vi.setSystemTime(new Date("2026-11-06T15:00:00Z"));

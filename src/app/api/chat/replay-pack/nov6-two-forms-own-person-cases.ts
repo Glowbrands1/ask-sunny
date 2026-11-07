@@ -44,7 +44,8 @@ export const NOV6_TWO_FORMS_OWN_PERSON_CASES: ReplayCase[] = SHAPES.map(({ key, 
   id: `nov6-two-forms-own-person-${key}`,
   title: `row 6 (${key}): "${text}" with the models reading the CA's person: the Coaching card is never Tamsin, and the reply names the CA request`,
   report: "QA, 6 Nov 2026 (Sunny tester after the flip, row 6, paraphrased): one Coaching card with the CA's person as its employee",
-  status: { open: "the Coaching card's employee is the Corrective Action's person (the models' reading wins), and the CA request is not named" },
+  // Changed on purpose (7 Nov 2026): QA's flip 7 (21:29 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+  status: "fixed",
   fixFlags: ["TWO_FORMS_OWN_PERSON_ENABLED"],
   async run(t) {
     vi.setSystemTime(new Date("2026-11-06T15:00:00Z"));

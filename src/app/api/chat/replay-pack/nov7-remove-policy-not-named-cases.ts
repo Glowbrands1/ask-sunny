@@ -26,7 +26,8 @@ export const NOV7_REMOVE_POLICY_NOT_NAMED_CASES: ReplayCase[] = [
     id: "nov7-a1-remove-policy-card",
     title: "A1 at the card: \"take the attendance policy off the form\" never gets \"Attendance, as you said\"",
     report: REPORT,
-    status: { open: "the card adds \"**Policy:** Attendance, as you said\" after the removal" },
+    // Changed on purpose (7 Nov 2026): QA's flip 7 (21:29 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const thread = start(t);
