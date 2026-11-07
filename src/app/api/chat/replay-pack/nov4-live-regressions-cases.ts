@@ -412,8 +412,9 @@ type Mode = "code" | "models";
  * `nov4-live-regressions-scenarios.ts` and their misses here.
  */
 const BY_MISS = "the non-person \"BY CORIN BELLWEATHER\" is taken as the name (\"I'll draft a Corrective Action Form for **BY CORIN BELLWEATHER**\"), and the card has no employee";
+// Changed on purpose (7 Nov 2026): QA's flips of 5 and 6 Nov turned CA_SALES_POLICY, REPLY_MATCHES_CARD, TITLE_OF_THE_EMPLOYEE, METRIC_GUARD, TITLE_ENDS_AT_LINE, BARE_NOT_DENIAL and PLACE_FROM_CUE on in production (production-flags.json): the off-roster BY-line cases now hold with production's flags; the on-roster ones stay open.
 const NAME_OPEN: Readonly<Record<string, string>> = Object.fromEntries(
-  (["on", "off"] as const).flatMap((roster) => (["code", "models"] as const).map((mode) => [`last-date-caps-${roster}-${mode}`, BY_MISS])),
+  (["on"] as const).flatMap((roster) => (["code", "models"] as const).map((mode) => [`last-date-caps-${roster}-${mode}`, BY_MISS])),
 );
 
 const ASKED_WHO = /who is this\b[^?\n]*\bfor\?/i;
