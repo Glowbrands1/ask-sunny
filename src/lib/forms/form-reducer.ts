@@ -53,7 +53,8 @@ export type FormDraft = Readonly<Record<string, DraftField>>;
 export interface FormPatch {
   readonly set: Readonly<Record<string, FieldValue>>;
   readonly clear: readonly string[];
-  readonly how?: Readonly<Record<string, "add" | "replace">>;
+  /** "reword" (FORM_PATCH_READER_FIXES_ENABLED only): the field's text in new words, every fact kept. */
+  readonly how?: Readonly<Record<string, "add" | "replace" | "reword">>;
   readonly evidence?: Readonly<Record<string, string>>;
 }
 
@@ -207,6 +208,25 @@ export interface PatchRules {
    * words in order. Absent: unchanged.
    */
   readonly copiesMessage?: string;
+  /**
+   * FORM_PATCH_READER_FIXES_ENABLED (coding 5, 7 Nov 2026): the words checks read what the form already
+   * holds. Every word of `employeeName` (the header's) and of `formText` (the form's own values) counts as
+   * said; evidence that is the manager's words with the employee's name put in still counts as theirs; an
+   * added FACT word (`factWords`: a number, or a capitalised word inside a sentence) must be said exactly,
+   * and at least MIN_SAID_SHARE of the other added words must be said or share a stem with a said word.
+   * A "reword" op is checked for facts only (Pau, 7 Nov 2026: "yes rewrite"). Absent: unchanged.
+   */
+  readonly faithful?: {
+    readonly employeeName: string;
+    readonly formText: string;
+    /** The latest message: a `verbatimKeys` value must be in it. */
+    readonly latest: string;
+  };
+  /**
+   * FORM_PATCH_READER_FIXES_ENABLED: keys whose value is taken only as words of the latest message, replacing
+   * what is there (the form's Job Title: "change her position to Team Member"); written as the manager's.
+   */
+  readonly verbatimKeys?: ReadonlySet<string>;
 }
 
 export interface ProtectedValues {
@@ -299,12 +319,91 @@ function valueWasSaid(value: string, rules: PatchRules, context: { old: string; 
   if (words.length === 0) return false;
   const sources = rules.sources;
   if (!sources) return false;
+  // FORM_PATCH_READER_FIXES_ENABLED: facts said exactly, half the other words said (by stem), the form's name and text count.
+  if (rules.faithful) return faithfulValueSaid(value, context.old, rules, true);
   if (sources.namingTurn !== undefined) return addedWordsNamed(value, context.old, context.evidence, rules);
   const said = new Set(wordsOf(sources.manager));
   if (sources.accepted && sources.offered) for (const word of wordsOf(sources.offered)) said.add(word);
   for (const read of sources.readerValues ?? []) for (const word of wordsOf(read)) said.add(word);
   const hits = words.filter((word) => said.has(word)).length;
   return hits / words.length >= MIN_SAID_SHARE;
+}
+
+/* -------------------------------------- FORM_PATCH_READER_FIXES_ENABLED ---- */
+
+/** Two words share a stem: the same word, or both 4+ letters with the same first four ("missed", "missing"). */
+function sameStem(a: string, b: string): boolean {
+  if (a === b) return true;
+  if (a.length < 4 || b.length < 4) return false;
+  return a.slice(0, 4) === b.slice(0, 4);
+}
+
+/**
+ * The FACT words of a text, folded: a word with a digit in it, or a word written with a capital letter
+ * that is not the first word of its sentence or line (a name, a month, a place). Read from the text's own
+ * shape; no word list. A sentence's first word is not counted (its capital is the sentence's).
+ */
+export function factWords(text: string): Set<string> {
+  const out = new Set<string>();
+  for (const line of text.split("\n")) {
+    let first = true;
+    for (const raw of line.split(" ")) {
+      let start = 0;
+      let end = raw.length;
+      while (start < end && !isWordChar(raw[start]!)) start += 1;
+      while (end > start && !isWordChar(raw[end - 1]!)) end -= 1;
+      if (end === start) continue;
+      const word = raw.slice(start, end);
+      const capital = word[0]! !== word[0]!.toLowerCase();
+      let digit = false;
+      for (const char of word) if (char >= "0" && char <= "9") digit = true;
+      if (digit || (capital && !first)) out.add(word.toLowerCase());
+      first = /[.!?:;]$/.test(raw);
+    }
+  }
+  return out;
+}
+
+/** What counts as said for the reader's checks: every manager turn, an accepted offer, the readers' values, the form's name and text. */
+function faithfulSaidWords(rules: PatchRules): Set<string> {
+  const sources = rules.sources!;
+  const said = new Set(wordsOf([sources.manager, ...(sources.managerTurns ?? []), sources.namingTurn ?? ""].join("\n")));
+  if (sources.accepted && sources.offered) for (const word of wordsOf(sources.offered)) said.add(word);
+  for (const read of sources.readerValues ?? []) for (const word of wordsOf(read)) said.add(word);
+  for (const word of wordsOf(`${rules.faithful!.employeeName}\n${rules.faithful!.formText}`)) said.add(word);
+  return said;
+}
+
+/** Every added fact word is said; with `floor`, at least MIN_SAID_SHARE of the other added words are said or share a stem with one. */
+function faithfulValueSaid(value: string, old: string, rules: PatchRules, floor: boolean): boolean {
+  if (!rules.sources || !rules.faithful) return false;
+  const said = faithfulSaidWords(rules);
+  const facts = factWords(value);
+  const others: string[] = [];
+  for (const word of addedWords(value, old)) {
+    if (facts.has(word)) {
+      if (!said.has(word)) return false;
+    } else others.push(word);
+  }
+  if (!floor || others.length === 0) return true;
+  const saidList = [...said];
+  const hits = others.filter((word) => said.has(word) || saidList.some((have) => sameStem(word, have))).length;
+  return hits / others.length >= MIN_SAID_SHARE;
+}
+
+/** The evidence's words, the employee's name words left out, are a run of words of one manager turn (or the accepted offer). */
+function faithfulEvidenceFrom(evidence: string, rules: PatchRules): "manager" | "offered" | null {
+  const name = new Set(wordsOf(rules.faithful!.employeeName));
+  const want = wordsOf(evidence).filter((word) => !name.has(word));
+  if (want.length === 0) return null;
+  const run = ` ${want.join(" ")} `;
+  const sources = rules.sources!;
+  const strong = want.length >= MIN_EVIDENCE_WORDS || (sources.managerTurns ?? []).some((turn) => wordsOf(turn).join(" ") === want.join(" "));
+  if (!strong) return null;
+  const turns = [sources.manager, ...(sources.managerTurns ?? []), sources.namingTurn ?? ""];
+  if (turns.some((turn) => ` ${wordsOf(turn).join(" ")} `.includes(run))) return "manager";
+  if (sources.accepted && sources.offered !== undefined && ` ${wordsOf(sources.offered).join(" ")} `.includes(run)) return "offered";
+  return null;
 }
 
 /** Each word's count. */
@@ -557,6 +656,8 @@ function evidenceFrom(evidence: string | undefined, rules: PatchRules): "manager
   if (!strongEvidence(evidence, rules)) return null;
   if (contains(sources.manager, evidence)) return "manager";
   if (sources.accepted && sources.offered !== undefined && contains(sources.offered, evidence)) return "offered";
+  // FORM_PATCH_READER_FIXES_ENABLED: the manager's words with the employee's name put in are still theirs.
+  if (rules.faithful) return faithfulEvidenceFrom(evidence, rules);
   return null;
 }
 
@@ -606,8 +707,18 @@ function setOne(draft: FormDraft, key: string, value: FieldValue, patch: FormPat
   const from = evidenceFrom(evidence, rules);
   if (!from) return refuse(key, "not_in_manager_words");
   const owner: Owner = from === "manager" ? "manager" : "assistant";
-  const how = patch.how?.[key] ?? "replace";
+  const asked = patch.how?.[key] ?? "replace";
+  // "reword" exists only with FORM_PATCH_READER_FIXES_ENABLED (`faithful`); anywhere else it is a replace.
+  const reword = asked === "reword" && rules.faithful !== undefined;
+  const how: "add" | "replace" = asked === "add" ? "add" : "replace";
   const text = typeof value === "string" ? value.trim() : asList(value).join("\n");
+
+  // FORM_PATCH_READER_FIXES_ENABLED: the Job Title takes the latest message's own words, and nothing else.
+  if (rules.verbatimKeys?.has(key) && !group) {
+    if (sameValue(field.value, text)) return null;
+    if (!contains(rules.faithful?.latest ?? rules.sources?.namingTurn ?? "", text)) return refuse(key, "not_in_manager_words");
+    return { value: text, owner: "manager" };
+  }
 
   if (rules.managerStated?.has(key)) {
     if (sameValue(field.value, text)) return null;
@@ -630,9 +741,27 @@ function setOne(draft: FormDraft, key: string, value: FieldValue, patch: FormPat
   if (isList) return { value: uniteLines(field.value, value, rules.listNone), owner: typed ? "manager" : owner };
   const have = typeof field.value === "string" ? field.value.trim() : asList(field.value).join("\n");
   if (how === "add" ? have !== "" && contains(have, text) : sameValue(field.value, text)) return null;
+  /*
+   * FORM_PATCH_READER_FIXES_ENABLED, Pau's "yes rewrite" (7 Nov 2026): the field's own text in new words.
+   * Only a field that holds text; every fact word the new text adds is said (the manager's turns, the
+   * form's name and text); every protected value (name, date, amount) is kept. Words may go: the wording is
+   * what the manager asked to change.
+   */
+  if (reword) {
+    if (have === "") return refuse(key, "not_in_manager_words");
+    if (!faithfulValueSaid(text, have, rules, false)) return refuse(key, "not_in_manager_words");
+    if (!keepsProtected(key, have, text, rules)) return refuse(key, "drops_protected_value");
+    return { value: text, owner: typed ? "manager" : owner };
+  }
   // The value itself, not only its evidence, must be words the manager said (or an accepted offer).
   if (!valueWasSaid(text, rules, { old: how === "add" ? "" : have, evidence })) return refuse(key, "not_in_manager_words");
-  if (how === "replace" && rules.keepsUnnamedWords && !keepsUnnamed(key, have, text, rules)) return refuse(key, "drops_words");
+  /*
+   * FORM_PATCH_READER_FIXES_ENABLED: a replace the manager asked for ("make it about showing up late") may
+   * drop words of text the assistant wrote; what she typed herself still keeps every word she did not name.
+   * The new text's words were checked above, and the protected values are checked below.
+   */
+  const dropsAllowed = rules.faithful !== undefined && !typed;
+  if (how === "replace" && rules.keepsUnnamedWords && !dropsAllowed && !keepsUnnamed(key, have, text, rules)) return refuse(key, "drops_words");
   if (how === "replace" && !keepsProtected(key, have, text, rules)) return refuse(key, "drops_protected_value");
   if (how === "add") {
     if (have === "") return { value: text, owner };

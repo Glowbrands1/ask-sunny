@@ -125,6 +125,8 @@ export interface FormEditOp {
   readonly by?: FormEditWriter;
   /** The words the value came from (the patch turn's model). Default: the latest message. */
   readonly evidence?: string;
+  /** FORM_PATCH_READER_FIXES_ENABLED: a "set" that rewords the field's text (the reducer's how "reword"). */
+  readonly reword?: boolean;
 }
 
 export interface FormEditRules {
@@ -163,6 +165,11 @@ export interface FormEditRules {
     readonly amountSentence?: boolean;
     readonly loaded?: LoadedInstance;
   };
+  /**
+   * FORM_PATCH_READER_FIXES_ENABLED (patch path): the form's own name and text count as said, and these
+   * keys take only words of the latest message (the reducer's `faithful` and `verbatimKeys`).
+   */
+  readonly readerFixes?: { readonly employeeName: string; readonly formText: string; readonly verbatimKeys: ReadonlySet<string> };
 }
 
 /** What the old writers returned, so a call site keeps its own reply code. */
@@ -336,6 +343,12 @@ function basePresetRules(loaded: LoadedInstance, ops: readonly FormEditOp[], rul
           keepsUnnamedWords: true,
           writeIns,
           protectedValues: guard,
+          ...(rules.readerFixes
+            ? {
+                faithful: { employeeName: rules.readerFixes.employeeName, formText: rules.readerFixes.formText, latest },
+                verbatimKeys: rules.readerFixes.verbatimKeys,
+              }
+            : {}),
           sources: {
             manager: turns.join("\n"),
             managerTurns: turns,
@@ -447,7 +460,7 @@ export async function writeFormEdits(instanceId: string, ops: readonly FormEditO
   const derivedOps: FormEditOp[] = [];
   const set: Record<string, FieldValue> = {};
   const clear: string[] = [];
-  const how: Record<string, "add" | "replace"> = {};
+  const how: Record<string, "add" | "replace" | "reword"> = {};
   const evidence: Record<string, string> = {};
   for (const op of ops) {
     const passes = op.derived === true || (patchRules.mode === "draft" && !writable.has(op.field));
@@ -458,7 +471,7 @@ export async function writeFormEdits(instanceId: string, ops: readonly FormEditO
     if (op.op === "clear") clear.push(op.field);
     else {
       set[op.field] = op.value ?? "";
-      how[op.field] = op.op === "append" ? "add" : "replace";
+      how[op.field] = op.op === "append" ? "add" : op.reword ? "reword" : "replace";
     }
     evidence[op.field] = op.evidence ?? latest;
   }

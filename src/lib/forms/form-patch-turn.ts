@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { AskResponse } from "@/lib/ai/types";
-import { formEditSingleWriterEnabled } from "@/lib/config/chat-quality-flags";
+import { formEditSingleWriterEnabled, formPatchReaderFixesEnabled } from "@/lib/config/chat-quality-flags";
 import { syncCorrectiveActionPlan } from "./ca-action-plan-sync";
 import { checkboxGroupsForVariant, fieldsForVariant, parseFormDocument } from "./document";
 import { replyFromDiff } from "./form-diff-reply";
@@ -101,7 +101,13 @@ export async function patchActiveForm(input: {
 
     /* What the model may set: the reducer's keys, and the payroll answer and amount where the form has them. */
     const stated = new Set([...allFields.map((field) => field.key), ...allGroups.map((group) => group.key)].filter((key) => MANAGER_STATED_KEYS.has(key)));
-    const writable = new Set([...template.writable, ...stated]);
+    /*
+     * FORM_PATCH_READER_FIXES_ENABLED (coding 5, 7 Nov 2026): the form's Job Title, set only to the latest
+     * message's words ("change her position to Team Member"), written as the manager's own edit.
+     */
+    const fixes = formPatchReaderFixesEnabled();
+    const verbatim = new Set(fixes ? allFields.filter((field) => field.key === "job_title").map((field) => field.key) : []);
+    const writable = new Set([...template.writable, ...stated, ...verbatim]);
     const fields: FormPatchField[] = [];
     const readOnly: FormPatchReadOnly[] = [];
     for (const field of allFields) {
@@ -132,6 +138,14 @@ export async function patchActiveForm(input: {
     const turns: FormPatchTurn[] = input.history
       .filter((turn) => !turn.error && (turn.role === "user" || turn.role === "assistant"))
       .map((turn) => ({ role: turn.role === "user" ? "manager" : "assistant", content: turn.content }));
+    /* FORM_PATCH_READER_FIXES_ENABLED: what the form already holds counts as said (its name, its text). */
+    const readerFixes = fixes
+      ? {
+          employeeName: loaded.instance.employeeName ?? "",
+          formText: loaded.values.map((row) => row.value ?? "").filter((value) => value.trim() !== "").join("\n"),
+          verbatimKeys: verbatim,
+        }
+      : null;
     const reading = await readFormPatch({
       today: input.today,
       templateName: loaded.instance.templateName,
@@ -179,6 +193,7 @@ export async function patchActiveForm(input: {
       checkboxGroups: groups,
       listKeys: new Set([PRIOR_ACTIONS_KEY]),
       listNone: NO_PRIOR_ACTION,
+      ...(readerFixes ? { faithful: { employeeName: readerFixes.employeeName, formText: readerFixes.formText, latest: input.question }, verbatimKeys: verbatim } : {}),
       sources: {
         manager: said,
         managerTurns: managerTurns(input.history, input.question),
@@ -199,6 +214,9 @@ export async function patchActiveForm(input: {
           field,
           value,
           ...(reading.patch.evidence?.[field] !== undefined ? { evidence: reading.patch.evidence[field] } : {}),
+          // FORM_PATCH_READER_FIXES_ENABLED: a reword, and the Job Title as the manager's own edit.
+          ...(readerFixes && reading.patch.how?.[field] === "reword" ? { reword: true } : {}),
+          ...(readerFixes && verbatim.has(field) ? { by: "manager" as const } : {}),
         })),
         ...reading.patch.clear.map((field) => ({
           op: "clear" as const,
@@ -218,8 +236,11 @@ export async function patchActiveForm(input: {
         writable,
         statedKeys: stated,
         syncPlan: { after: [...stated], amountSentence: true, notes: input.question },
+        ...(readerFixes ? { readerFixes } : {}),
       });
       if (result.handoff === "refused") return null;
+      // FORM_PATCH_READER_FIXES_ENABLED: a write that changed nothing is not this path's turn (the old path runs).
+      if (readerFixes && result.handoff === "noop") return null;
     } else {
       const { diff } = applyPatch(before, reading.patch, rules);
 
@@ -236,7 +257,8 @@ export async function patchActiveForm(input: {
       const typed = { values: {} as Record<string, string>, checked: {} as Record<string, string[]> };
       const cleared: string[] = [];
       for (const change of diff.changed) {
-        const target = stated.has(change.key) ? statement : before[change.key]?.owner === "manager" ? typed : assistant;
+        // FORM_PATCH_READER_FIXES_ENABLED: the Job Title is written as the manager's own edit.
+        const target = stated.has(change.key) ? statement : before[change.key]?.owner === "manager" || verbatim.has(change.key) ? typed : assistant;
         const after = change.after;
         const empty = typeof after === "string" ? after.trim() === "" : after.length === 0;
         if (empty) {
@@ -266,6 +288,11 @@ export async function patchActiveForm(input: {
     const reloaded = await loadInstance(input.instanceId);
     if (!reloaded) return null;
     const changed = snapshotDiff(snapshotOf(loaded), snapshotOf(reloaded));
+    /*
+     * FORM_PATCH_READER_FIXES_ENABLED (QA's trace, 6 Nov 2026: "I didn't change anything on the form." for
+     * "can you make it more professional"): a patch that changed nothing hands the turn to the old path.
+     */
+    if (readerFixes && changed.length === 0) return null;
     return {
       content: replyFromDiff({ changed }, labels),
       citations: [],
