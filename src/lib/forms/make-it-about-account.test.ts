@@ -28,12 +28,14 @@ describe("accountMadeAbout", () => {
         proposed: "Observed:\nOttoline Ormsworth showed up late to the monthly meeting on 10/10/26.\n\nExpectation:\nOttoline is expected to arrive on time.",
         employeeName: NAME,
       }),
-    ).toBe("Observed:\nShowing up late.\n\nExpectation:\nOttoline is expected to arrive on time.");
+      // Changed on purpose (QA, 8 Nov 2026): always the full outline; the form's Going Forward speaks of the meeting, so it is empty.
+    ).toBe("Observed:\nShowing up late.\n\nExpectation:\nOttoline is expected to arrive on time.\n\nGoing Forward:");
   });
 
   it("keeps the reader's text when it is about X and holds none of the old event", () => {
     const proposed = "Observed:\nOttoline Ormsworth arrived late to her shift on 10/10/26.\n\nExpectation:\nOttoline is expected to arrive on time.";
-    expect(accountMadeAbout({ about: ABOUT, current: CURRENT, proposed, employeeName: NAME })).toBe(proposed);
+    // Changed on purpose (QA, 8 Nov 2026): always the full outline; the form's Going Forward speaks of the meeting, so it is empty.
+    expect(accountMadeAbout({ about: ABOUT, current: CURRENT, proposed, employeeName: NAME })).toBe(`${proposed}\n\nGoing Forward:`);
   });
 
   it("writes the account when the reader set none, and empties a part that still speaks of the old event", () => {
@@ -42,8 +44,23 @@ describe("accountMadeAbout", () => {
     );
   });
 
-  it("an account with no outline is X alone", () => {
-    expect(accountMadeAbout({ about: ABOUT, current: "Ottoline missed the monthly meeting.", proposed: null, employeeName: NAME })).toBe("Showing up late.");
+  // Changed on purpose (QA's live check of ec47a7f, 8 Nov 2026): the account is always written in the full outline,
+  // even when the form's text had none, so the manager can see where the expectation and plan go.
+  it("an account with no outline is written in the full outline", () => {
+    expect(accountMadeAbout({ about: ABOUT, current: "Ottoline missed the monthly meeting.", proposed: null, employeeName: NAME })).toBe(
+      "Observed:\nShowing up late.\n\nExpectation:\n\nGoing Forward:",
+    );
+  });
+
+  it("a reader's \"Observed: Showing up late.\" alone gets the full outline, the form's clean sections kept", () => {
+    expect(
+      accountMadeAbout({
+        about: ABOUT,
+        current: "Observed:\nOttoline missed the monthly meeting on 10/10/26.\n\nExpectation:\nOttoline arrives on time.\n\nGoing Forward:\nOttoline will set reminders.",
+        proposed: "Observed:\nShowing up late.",
+        employeeName: NAME,
+      }),
+    ).toBe("Observed:\nShowing up late.\n\nExpectation:\nOttoline arrives on time.\n\nGoing Forward:\nOttoline will set reminders.");
   });
 });
 
@@ -57,6 +74,7 @@ describe("on the one writer's draft paths", () => {
         employeeName: NAME,
         keepFacts: true,
       }),
-    ).toBe("Observed:\nOttoline Ormsworth — showing up late (10/10/26).\n\nExpectation:\nOttoline is expected to arrive on time.");
+      // Changed on purpose (QA, 8 Nov 2026): always the full outline.
+    ).toBe("Observed:\nOttoline Ormsworth — showing up late (10/10/26).\n\nExpectation:\nOttoline is expected to arrive on time.\n\nGoing Forward:");
   });
 });

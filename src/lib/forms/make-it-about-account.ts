@@ -111,25 +111,26 @@ export function accountMadeAbout(input: {
   keepFacts?: boolean;
 }): string {
   const event = oldEventWords(input.current, input.about, input.employeeName);
-  const base = sectionsOf(input.proposed ?? input.current);
-  const outline = base.some((section) => section.heading !== null) ? base : sectionsOf(input.current);
-  if (!outline.some((section) => section.heading !== null)) {
-    const proposed = (input.proposed ?? "").trim();
-    const own = input.keepFacts ? aboutWithFacts(input.about, input.current, input.employeeName) : asSentence(input.about);
-    return proposed && !speaksOf(proposed, event) && speaksOf(proposed, new Set(words(input.about))) ? proposed : own;
-  }
-  const proposedObserved = input.proposed ? sectionsOf(input.proposed).find((section) => isObserved(section.heading))?.body ?? "" : "";
   const aboutWords = new Set(words(input.about));
   const own = input.keepFacts ? aboutWithFacts(input.about, input.current, input.employeeName) : asSentence(input.about);
+  const proposed = input.proposed ? sectionsOf(input.proposed) : [];
+  const current = sectionsOf(input.current);
+  const proposedObserved = proposed.find((section) => isObserved(section.heading))?.body ?? (proposed.every((section) => section.heading === null) ? (input.proposed ?? "").trim() : "");
   const observedBody = proposedObserved && !speaksOf(proposedObserved, event) && speaksOf(proposedObserved, aboutWords) ? proposedObserved : own;
-  const parts = outline
-    .filter((section) => section.heading !== null || section.body !== "")
-    .map((section) => {
-      if (isObserved(section.heading)) return `${section.heading}:\n${observedBody}`;
-      const body = speaksOf(section.body, event) ? "" : section.body;
-      return section.heading ? `${section.heading}:${body ? `\n${body}` : ""}` : body;
-    })
-    .filter(Boolean);
-  if (!outline.some((section) => isObserved(section.heading))) parts.unshift(`Observed:\n${observedBody}`);
-  return parts.join("\n\n");
+  /*
+   * QA's live check of ec47a7f (8 Nov 2026): one run saved "Observed: Showing up late." with no other heading. The
+   * account is ALWAYS written in the full outline: Observed, Expectation, Going Forward, a blank line between them,
+   * each later section's text kept when it holds nothing of the old event (the reader's first, then the form's),
+   * left empty under its heading otherwise.
+   */
+  const bodyOf = (heading: RegExp): string => {
+    for (const source of [proposed, current]) {
+      const body = source.find((section) => section.heading !== null && heading.test(section.heading))?.body ?? "";
+      if (body && !speaksOf(body, event)) return body;
+    }
+    return "";
+  };
+  const expectation = bodyOf(/^expectations?$/i);
+  const goingForward = bodyOf(/^going forward$/i);
+  return [`Observed:\n${observedBody}`, `Expectation:${expectation ? `\n${expectation}` : ""}`, `Going Forward:${goingForward ? `\n${goingForward}` : ""}`].join("\n\n");
 }
