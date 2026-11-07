@@ -36,7 +36,7 @@ const PRODUCTION_HOLDS = new Set<string>(["bub-date-question", "bub-name-redo", 
 /** Fix runs that still fail, and why (the path that owns the turn is not Step B's reader). */
 const FIX_OPEN: Readonly<Record<string, string>> = {};
 
-async function play(t: Parameters<ReplayCase["run"]>[0], scenario: RefusalScenario): Promise<void> {
+export async function play(t: Parameters<ReplayCase["run"]>[0], scenario: RefusalScenario): Promise<void> {
   t.directory(scenario.roster);
   t.as("salon_director", KEARNEY);
   t.patchReads!(scenario.script.patch ?? {});

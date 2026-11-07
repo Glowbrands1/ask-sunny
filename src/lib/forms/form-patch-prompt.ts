@@ -21,6 +21,12 @@ The employee's position is the field job_title when it is listed: set it only to
 A correction of a word ("fix her last name, it is …") changes every field whose text holds the old word: set each one, how "replace", with its whole text and only that word corrected.
 When the latest message says what the form is about or for ("make it about …", "make it for …"), that is new content, never a reword: how "replace" on the field that gives the account, written in the manager's own words for it, with those words as evidence. Never describe the form itself in a field.`;
 
+/**
+ * EDIT_POLICY_ASK_ENABLED (coding 5, 7 Nov 2026): a line ADDED after the approved system text (and after the
+ * reader-fix lines when those are on). Sent only with the flag on, with the `policy_asked` key in the schema.
+ */
+export const EDIT_POLICY_ASK_LINES = `policy_asked: true when the latest message asks for a policy to be listed, added, cited or included on this form, whether or not it names one; otherwise false. Do not write a policy for that ask yourself: the app adds the manual's own line.`;
+
 export interface FormPatchField {
   readonly key: string;
   readonly label: string;
