@@ -82,7 +82,8 @@ export const NOV7_SECOND_CA_SAME_EMPLOYEE_CASES: ReplayCase[] = Object.entries(S
       : {
           status: { open: "the Observation reads both requests run together" },
           fixFlags: [FLAG],
-          fixStatus: { open: "the request start is read in ai/remap-incident.ts (with coding 4, after ask-sunny #611)" },
+          // Changed on purpose (7 Nov 2026): holds with the flag since ai/remap-incident.ts currentRequestStart reads a
+          // form named anywhere in a later turn, with its own incident, as a new request.
         }),
     async run(t) {
       const { reply } = await secondRequest(t, second);
@@ -91,4 +92,40 @@ export const NOV7_SECOND_CA_SAME_EMPLOYEE_CASES: ReplayCase[] = Object.entries(S
       expect(observation, `the Observation keeps the first request:\n${reply.content}`).not.toMatch(/late opening/i);
     },
   },
+]).concat([
+  {
+    id: "nov7-second-ca-same-employee-history-not-a-request",
+    title: "negative (coding 4): after a CA request, \"he already had a CA on 10/14 for being late\" is history, not a new request: the Observation still reads the request's account",
+    report: REPORT,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      t.directory(STAFF);
+      t.as("salon_director", KEARNEY);
+      const thread = t.thread();
+      await thread.say(FIRST);
+      const reply = await thread.say("he already had a CA on 10/14 for being late");
+      expect(line(reply.content, "Observation of Offense"), `the request's account is lost:\n${reply.content}`).toMatch(/late opening the salon/i);
+    },
+  },
+  ...[
+    "add to the CA that he was also late on 11/3",
+    "on the write up, also put that he left early on 11/3",
+  ].map(
+    (added, index): ReplayCase => ({
+      id: `nov7-second-ca-same-employee-addition-${index + 1}`,
+      title: `negative (coding 4): after a CA request, "${added}" adds to the same form: the Observation keeps the request's account`,
+      report: REPORT,
+      status: "fixed",
+      fixFlags: [FLAG],
+      async run(t) {
+        t.directory(STAFF);
+        t.as("salon_director", KEARNEY);
+        const thread = t.thread();
+        await thread.say(FIRST);
+        const reply = await thread.say(added);
+        expect(line(reply.content, "Observation of Offense"), `the request's account is lost:\n${reply.content}`).toMatch(/late opening the salon/i);
+      },
+    }),
+  ),
 ]);
