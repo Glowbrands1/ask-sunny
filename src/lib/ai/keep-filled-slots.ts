@@ -52,6 +52,7 @@ import {
   proposalMakeItAboutEnabled,
   proposalPolicySetAsideEnabled,
   dateQuestionKeptEnabled,
+  secondRequestOwnAccountEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { turnsMadeAbout, withObservationMadeAbout } from "./make-it-about";
 import { NOTHING_SET_ASIDE, citationSetAside, policiesSetAside, setAsideAnything, withPolicySetAside, withoutPolicyAsks } from "@/lib/forms/policy-set-aside";
@@ -77,8 +78,7 @@ import {
   priorShorthand,
   withoutPriorList,
   withoutStateCodes,
-  withoutStateLead,
-} from "./remap-incident";
+  withoutStateLead, withoutQuestionsToTheApp } from "./remap-incident";
 import { statedPriorActions } from "@/lib/forms/prior-actions";
 import { displayTypedName, repairSpeaksAsValidator, scrubRosterBlock } from "./roster-reply";
 import { PRIMARY_SALON_STATEMENT } from "@/lib/forms/primary-salon-statement";
@@ -286,7 +286,9 @@ export function holdFilledSlots(input: {
       // AMOUNT_ANSWER_NOT_ACCOUNT_ENABLED: "i dont know the amount" says nothing that happened.
       // CARD_OBSERVATION_OWN_REQUEST_ENABLED (QA live check, 3 Nov 2026): a new request's card reads back only
       // that request's turns, never the earlier incident ("…rugs untl 12;30pm <name> for being late to opening").
-      const own = withoutAmountAnswers(cardObservationOwnRequestEnabled() ? currentRequestTurns(turns, next.employeeName) : turns);
+      const scoped = withoutAmountAnswers(cardObservationOwnRequestEnabled() ? currentRequestTurns(turns, next.employeeName) : turns);
+      // SECOND_REQUEST_OWN_ACCOUNT_ENABLED (QA's Sunny round-6 solo gate, 8 Nov 2026): a question to the app is never the account.
+      const own = secondRequestOwnAccountEnabled() ? scoped.map(withoutQuestionsToTheApp).filter((turn) => turn.trim() !== "") : scoped;
       // PROPOSAL_MAKE_IT_ABOUT_ENABLED: "make it about showing up late …" is the account from that turn on, never the instruction (`ai/make-it-about.ts`).
       const about = proposalMakeItAboutEnabled() ? turnsMadeAbout(own) : own;
       // PROPOSAL_POLICY_SET_ASIDE_ENABLED: "take the attendance policy off the form", and "we have quoted the standards of
