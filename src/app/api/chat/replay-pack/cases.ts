@@ -55,9 +55,10 @@ export interface ReplayContext {
   editToolOffers?(): { offered: number; lastData: string | null };
   /**
    * What the slot model reads on the next turns (record_intent_slots), and the employee the AI reader quotes
-   * (checked against the roster, as in production), as a production trace shows them.
+   * (checked against the roster, as in production), as a production trace shows them. `onlyIfSaid`: the slot
+   * model reads the scripted employee only on a call whose messages contain that name, as the live model would.
    */
-  slotsRead(slots: Record<string, unknown>, readerEmployee?: string | null): void;
+  slotsRead(slots: Record<string, unknown>, readerEmployee?: string | null, options?: { onlyIfSaid?: boolean }): void;
   /** Step B's form-patch model: its raw outputs, one per call in order (null: the call falls back). Unscripted calls fall back. */
   patchWrites(outputs: readonly unknown[]): void;
   /** Step B's form-patch model, by the manager's latest message (exact text): its raw output for that turn; a message not listed falls back. */

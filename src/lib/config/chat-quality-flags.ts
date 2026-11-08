@@ -3200,6 +3200,17 @@ export function sourceNoteGuardEnabled(): boolean {
   return envFlag("SOURCE_NOTE_GUARD_ENABLED");
 }
 
+// coding 2: TWO_FORMS_EACH_PERSON
+/**
+ * TWO_FORMS_EACH_PERSON_ENABLED (QA, Sunny live tester after flip 7, 7 Nov 2026; default off). "Coaching form for <A>.
+ * Also a CA for <B>." gave one Coaching card with no employee and "ask for <B>'s CA on its own". With this flag on,
+ * the card is A's (answered again from A's own request if need be) and B's form is offered; "yes" starts it
+ * (`ai/two-forms-own-person.ts`). Off, as before.
+ */
+export function twoFormsEachPersonEnabled(): boolean {
+  return envFlag("TWO_FORMS_EACH_PERSON_ENABLED");
+}
+
 // coding 2: REMOVE_POLICY_NOT_NAMED
 /**
  * REMOVE_POLICY_NOT_NAMED_ENABLED (port from the sibling app; A1, QA 6 Nov 2026; default off). "take the
