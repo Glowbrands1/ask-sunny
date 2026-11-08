@@ -4,7 +4,18 @@ Dev-only helpers for the pre-flip 3+3 gate. Nothing here runs in CI or touches a
 
 These scripts come from the Ask Bubbles harness (Glowbrands1/Ask-bubbles#556). Ask Sunny's own round 1–3 scripts were never pushed and were lost with their container. Changes for this app:
 - `scan.py` flags the sibling app's company words (Buff City Soap, Ask Bubbles, "store manager"), not this app's. It also lists lost Policy lines: a turn whose OFF reply has `Policy:` and whose ON reply does not.
-- `bisect.sh` replaces `bisect5.sh`/`bisect-r3.sh`. It takes the base flags, the flags to try alone and, optionally, the test files as arguments, instead of hard-coded file names.
+- `bisect.sh` replaces `bisect5.sh`/`bisect-r3.sh`. It runs one flag, or one unit (comma-separated flags that ship together), alone on top of the OFF flags.
+- Round-4 additions: `run.sh` (one full OFF/ON run), `classify-pair.py` (test-status and replay-record diff of OFF-1 vs ON-1), `solo.py` (attribute every changed row to a solo run), `recdiff.py` (paragraph diff of the changed records per solo run), `classify-confirm.py` (the 3+3: flaky rows and records, changed rows, record diff). They read `GATE_R` (the run dir) and `GATE_TREE`.
+
+## Fast path used for Sunny round 4 (no kept dir)
+1. `GATE_TREE=<worktree> GATE_R=<run dir>`. In `$GATE_R` put `off-flags.txt` (OFF flags not in production-flags.json: CHAT_GLOSSARY, flips not yet merged) and `on-flags.txt` (OFF + the candidates), one `_ENABLED` name per line, and copy `run.sh` there.
+2. `printf 'off 1\non 1\n' > jobs.txt; (cd $GATE_R; xargs -P 2 -L 1 ./run.sh < jobs.txt)` writes `off-1.json`, `off-1.replay.jsonl`, `on-1.*`. About 12 min per run with `--project unit`.
+3. `python3 -I classify-pair.py $GATE_R`, then `bisect.sh <unit>` per flag or unit over the changed files (`files.txt`), then `solo.py` and `recdiff.py`.
+4. After dropping the regressors, run the confirm (`on2-flags.txt`, jobs `off 2`, `on2 1`, ...) and `classify-confirm.py`.
+- **`--project unit` is required.** The repo has a separate `flags-off-parity` vitest project; the CLI `--exclude` does not reach it, and its nested runs inherit your flags (it fails in OFF too and adds about 16 min).
+- **Use absolute paths in run scripts.** A relative `$0` resolves after the `cd` into the tree: the flag lists silently load as empty (OFF and ON both run with no flags) and the output lands in the tree.
+- **Check the env of a running worker:** `tr '\0' '\n' < /proc/<pid>/environ | grep -c '_ENABLED=true'` should equal the flag-list length.
+- **Keep the session active while a run goes** (a foreground wait loop, not a background job and an idle turn): the container restarted twice while the session was idle.
 
 ## Set up
 - Make a detached worktree at the exact sha or tree QA names: `git worktree add --detach <dir> <sha>`. Then `ln -s <repo>/node_modules <dir>/node_modules`, after checking that `package-lock.json` matches. If it does not match, run `npm ci` in the worktree.
