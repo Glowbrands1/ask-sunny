@@ -659,9 +659,40 @@ function terminationReason(text: string): string | null {
     if (close && text[from + close.index] === "?") continue;
     const raw = text.slice(from, close ? from + close.index : text.length).replace(/[,\s]+$/g, "").trim();
     if (raw.split(/\s+/).length < 3) continue;
-    return sentence(raw);
+    return sentence(aboutTheEmployee(raw));
   }
   return null;
+}
+
+/*
+ * The letter speaks to the employee ("the text message you sent to your Salon Director … you would turn in your
+ * keys"); the form speaks about them (QA's round-6 follow-up, 8 Nov 2026): the first "you"/"your" is "the employee"
+ * ("the employee's"), every later one "they"/"them"/"their", and "yourself" is "themselves".
+ */
+const OBJECT_BEFORE = /\b(?:to|for|with|about|of|at|by|from|told|asked|gave|give|sent|informed|warned|reminded|thank|thanked|let|see|saw|called|contacted|met)\s+$/i;
+const AGREES: Record<string, string> = { were: "was", are: "is", have: "has", do: "does", "'re": " is", "'ve": " has", "’re": " is", "’ve": " has" };
+
+function aboutTheEmployee(reason: string): string {
+  let named = false;
+  return reason.replace(
+    /\b(yourself|yours|your|you)\b(['’](?:re|ve|d|ll))?(\s+(?:were|are|have|do)\b)?/gi,
+    (match: string, word: string, contraction: string | undefined, verb: string | undefined, index: number) => {
+      const lower = word.toLowerCase();
+      const first = !named;
+      named = true;
+      const capital = index === 0 || /[.!?]\s*$/.test(reason.slice(0, index));
+      const cap = (out: string) => (capital ? out.charAt(0).toUpperCase() + out.slice(1) : out);
+      if (lower === "yourself") return cap("themselves");
+      if (lower === "yours") return cap(first ? "the employee's" : "theirs");
+      if (lower === "your") return cap(first ? "the employee's" : "their");
+      const object = !contraction && !verb && OBJECT_BEFORE.test(reason.slice(0, index));
+      if (object) return cap(first ? "the employee" : "them");
+      if (!first) return cap(`they${contraction ?? ""}${verb ?? ""}`);
+      const agreed = contraction ? (AGREES[contraction.toLowerCase()] ?? contraction) : "";
+      const verbAgreed = verb ? verb.replace(/\S+$/, (v) => AGREES[v.toLowerCase()] ?? v) : "";
+      return cap(`the employee${agreed}${verbAgreed}`);
+    },
+  );
 }
 
 /* ------------------------------------------------------------ reading -- */
