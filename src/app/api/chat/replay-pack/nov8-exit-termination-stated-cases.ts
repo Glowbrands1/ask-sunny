@@ -62,7 +62,9 @@ export const NOV8_EXIT_TERMINATION_STATED_CASES: ReplayCase[] = [
       const { content } = await thread.say("For Dorran Ashby");
       expect(line(content, "Resignation Details"), `the termination is not ticked:\n${content}`).toMatch(/Immediate involuntary separation/);
       expect(line(content, "Resignation Date"), `the effective date is not the Resignation Date:\n${content}`).toMatch(/November 6, 2026/);
-      expect(line(content, "Reason for Resignation"), `the stated reason is missing:\n${content}`).toMatch(/text message you sent/i);
+      expect(line(content, "Reason for Resignation"), `the stated reason is missing:\n${content}`).toMatch(/text message the employee sent/i);
+      // QA's round-6 follow-up (8 Nov 2026): the form speaks about the employee, not to them as the letter does.
+      expect(line(content, "Reason for Resignation"), `the letter's "you" is copied onto the form:\n${content}`).not.toMatch(/\byou(?:r|rs|rself)?\b/i);
       // QA's ruling: "hours worked through 11/05" is a pay line; "return … today" is not a return.
       expect(blank(content), `a fact the letter does not state is filled:\n${content}`).toMatch(/Last Day Worked/);
       expect(blank(content), `the keys are said to be returned:\n${content}`).toMatch(/Salon Key Returned/);

@@ -31,7 +31,10 @@ describe("EXIT_TERMINATION_STATED_ENABLED", () => {
     expect(facts.resignationDate).toBe("2026-11-06");
     expect(facts.lastDayWorked).toBeNull();
     const details = readExitDetails(LETTER, TODAY);
-    expect(details.resignationReason).toMatch(/^The text message you sent/);
+    // QA's round-6 follow-up (8 Nov 2026): the letter's "you" is about the employee on the form.
+    expect(details.resignationReason).toBe(
+      "The text message the employee sent to their Salon Director on 11/05, in which they said they would turn in their keys.",
+    );
     expect(details.resignationMethod).toBeNull();
   });
 
@@ -43,6 +46,14 @@ describe("EXIT_TERMINATION_STATED_ENABLED", () => {
     const facts = readExitFacts(said, TODAY);
     expect(facts.typeOptions).toEqual([]);
     expect(facts.resignationDate).toBeNull();
+  });
+
+  it.each([
+    ["you're repeatedly late and we told you twice", "The employee is repeatedly late and we told them twice."],
+    ["your conduct toward a guest, which you were warned about", "The employee's conduct toward a guest, which they were warned about."],
+  ])("the reason is about the employee, never \"you\": %s", (said, reason) => {
+    const letter = `This decision follows ${said}. Your employment is terminated, effective 11/06/2026.`;
+    expect(readExitDetails(letter, TODAY).resignationReason).toBe(reason);
   });
 
   it("an explicit last day still fills Last Day Worked", () => {
