@@ -3220,3 +3220,13 @@ export function twoFormsEachPersonEnabled(): boolean {
 export function removePolicyNotNamedEnabled(): boolean {
   return envFlag("REMOVE_POLICY_NOT_NAMED_ENABLED");
 }
+
+/**
+ * ACCOUNT_VERB_NOT_A_NAME_ENABLED (QA round 5, sf-s38, 8 Nov 2026; same flag in both apps; default off). "make me CA
+ * for <first name> failing to complete shifts" made the card for "<First> Failing". On, with NOT_A_NAME_GUARD: a verb
+ * that opens the account ("failing", "missing", "not", "being", …) is never part of a name, so the card goes to the
+ * roster person already named in the chat (`forms/not-a-name.ts`). Off, as before.
+ */
+export function accountVerbNotANameEnabled(): boolean {
+  return envFlag("ACCOUNT_VERB_NOT_A_NAME_ENABLED");
+}
