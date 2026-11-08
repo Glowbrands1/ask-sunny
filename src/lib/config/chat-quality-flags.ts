@@ -2681,6 +2681,21 @@ export function wovenTrainingConductEnabled(): boolean {
   return envFlag("WOVEN_TRAINING_CONDUCT_ENABLED");
 }
 
+// coding 5: CONDUCT_INCIDENT_CITES_PAGE (beside WOVEN_TRAINING_CONDUCT, not at a block end, so merges do not collide)
+/**
+ * CONDUCT_INCIDENT_CITES_PAGE_ENABLED (coding 5; QA's live tester, 8 Nov 2026, the managers' Woven wordings; same flag
+ * in both apps; default off). "create a verbal corrective action for <A> for missing the 10-15-26 woven deadline" got
+ * "Policy: this reads as Standards of Conduct …" with no section or page; "… a verbal due to not completing her woven
+ * courses by the deadline" got no Policy line at all. WOVEN_TRAINING_CONDUCT (narrowed to acknowledgements) covers
+ * neither. On: "not completing / not finishing <task>" is unfinished assigned work (`forms/ca-policy.ts`), and the
+ * card keeps its "Standards of Conduct Policy, JBA Policy Manual p.12" line: REPLY_MATCHES_CARD's one-policy rule read
+ * "this reads as **Standards of Conduct**" as another heading and dropped it (`ai/reply-matches-card.ts`). Off, as
+ * before.
+ */
+export function conductIncidentCitesPageEnabled(): boolean {
+  return envFlag("CONDUCT_INCIDENT_CITES_PAGE_ENABLED");
+}
+
 /**
  * Step 5, names from the roster: first piece, the overnight scan's sf-s19
  * "metrics read as people". A metric is never read as a person (Pau, 4 Nov

@@ -13,6 +13,7 @@ import {
   salesObservationAccountEnabled,
   salesShortfallObjectEnabled,
   wovenTrainingConductEnabled,
+  conductIncidentCitesPageEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { JOIN } from "./bounded-context";
@@ -165,6 +166,14 @@ const FAILED = String.raw`(?:did ?n[o']?t|didn't|never|failed to|has ?n[o']?t|ha
 
 /** What an assigned piece of work is called. */
 const TASK_NOUN = String.raw`(?:tasks?|assignments?|assigned work|duties|duty|checklists?|training|trainings|modules?|courses?|items?|paperwork|cleaning|disinfect\w*|projects?|reports?|requirements?|woven)`;
+
+/*
+ * CONDUCT_INCIDENT_CITES_PAGE_ENABLED (QA's live tester, 8 Nov 2026, the managers' Woven wordings): "This would be a
+ * verbal due to not completing her woven courses by the deadline" read as no conduct topic at all: FAILED does not
+ * take a bare "not" ("not completing"). With the flag on, "not completing / not finishing <a task noun>" is unfinished
+ * assigned work too. Off, as before.
+ */
+const NOT_COMPLETING_TASK = new RegExp(String.raw`\b(?:not|never)\s+(?:complet|finish)\w*\s+(?:\S+\s+){0,3}?${TASK_NOUN}\b`);
 
 const CONDUCT_TOPICS: { topic: ConductTopic; pattern: RegExp }[] = [
   {
@@ -798,6 +807,8 @@ function readCaPolicyFromWords(rawText: string): CaPolicyReading {
   let topics = CONDUCT_TOPICS.filter(({ pattern }) => sentences.some((s) => pattern.test(s))).map(
     ({ topic }) => topic,
   );
+  // CONDUCT_INCIDENT_CITES_PAGE_ENABLED: "not completing her woven courses by the deadline" is unfinished assigned work.
+  if (conductIncidentCitesPageEnabled() && !topics.includes("task") && sentences.some((s) => NOT_COMPLETING_TASK.test(s))) topics.push("task");
   if (policyCleaningIncidentEnabled()) {
     if (!topics.includes("task") && sentences.some((s) => UNDONE_DUTIES.test(s))) topics.push("task");
     // Cleaning left undone is Care and Cleaning, not the catch-all: the task reading gives way to that section.

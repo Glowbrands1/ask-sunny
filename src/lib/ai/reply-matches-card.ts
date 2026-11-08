@@ -1,4 +1,5 @@
 import { bareNotDenialEnabled, cleaningOtherEveryWordingEnabled, exitDateLineAgreesEnabled, replyMatchesCardEnabled } from "@/lib/config/chat-quality-flags";
+import { bareNotDenialEnabled, cleaningOtherEveryWordingEnabled, conductIncidentCitesPageEnabled, replyMatchesCardEnabled } from "@/lib/config/chat-quality-flags";
 import { offeredOffRosterName } from "@/lib/forms/off-roster-confirm";
 import { deniesAFault, deniesAFaultWithBareNot } from "@/lib/forms/draft-never-blank";
 import { caPolicyProposalLine, readCaPolicy, removedOffenseLabels } from "@/lib/forms/ca-policy";
@@ -108,7 +109,15 @@ function withTheCardsEmployee(content: string, employee: string): string {
 /** Rule 3: one policy, the card's. */
 function withOnePolicy(content: string): string {
   // The card's policy is its **Policy:** line; a card without one (a Coaching Form) cites it on its first manual line.
-  const heading = cardPolicyHeading(content) ?? content.split("\n").map((line) => MANUAL_LINE.exec(line)?.[1]).find(Boolean) ?? null;
+  const read = cardPolicyHeading(content) ?? content.split("\n").map((line) => MANUAL_LINE.exec(line)?.[1]).find(Boolean) ?? null;
+  /*
+   * CONDUCT_INCIDENT_CITES_PAGE_ENABLED (QA's live tester, 8 Nov 2026): "**Policy:** this reads as **Standards of
+   * Conduct** — a required deadline that was missed …" was read as the heading "this reads as Standards of Conduct",
+   * so the card's own "Standards of Conduct Policy, JBA Policy Manual p.12" line was taken as another policy and
+   * dropped: the card named the policy with no page. With the flag on, the policy such a line reads as is the one in
+   * bold. Off, as before.
+   */
+  const heading = read && conductIncidentCitesPageEnabled() ? (/^this reads as \*\*([^*]+)\*\*/i.exec(read)?.[1] ?? read) : read;
   if (!heading) return content;
   const card = normalHeading(heading);
   return content
