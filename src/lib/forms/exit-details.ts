@@ -694,6 +694,8 @@ function labelledMethod(turn: string): string | null {
   const raw = turn.slice(from, end ? from + end.index : turn.length).trim();
   if (raw.split(/\s+/).length < 2) return null;
   return sentence(raw);
+}
+
 /*
  * The letter speaks to the employee ("the text message you sent to your Salon Director … you would turn in your
  * keys"); the form speaks about them (QA's round-6 follow-up, 8 Nov 2026): the first "you"/"your" is "the employee"
