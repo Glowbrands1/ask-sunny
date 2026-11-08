@@ -27,6 +27,7 @@ import type { KnowledgeCategory, SourceCitation } from "@/types";
 
 import { accountManualSections } from "./account-manual-sections";
 import { withoutAppLines } from "./app-sentences";
+import { withoutPayrollClauses } from "./payroll-clause-not-account";
 import { formatManualCitation } from "./policy-citation-fields";
 
 /**
@@ -646,7 +647,8 @@ export function accountSentences(
   const start = currentRequestStart({ turns, employeeName, slotClause: accountSlot });
   for (const turn of turns.slice(start)) {
     if (isEditTurn(turn)) continue;
-    const text = withoutPriorList(turn.replace(/\bThe account continues\.\s*/g, ""));
+    // PAYROLL_CLAUSE_NOT_ACCOUNT_ENABLED: "$20 payroll deduct applies" and "Payroll deduction amount: $20." are the payroll answer.
+    const text = withoutPayrollClauses(withoutPriorList(turn.replace(/\bThe account continues\.\s*/g, "")));
     for (const sentence of text.split(/\n+|[.!?;]+(?=\s|$)/)) {
       const trimmed = sentence.trim();
       if (STATE_SENTENCE.test(trimmed) || isEditTurn(trimmed) || TALKS_TO_THE_APP.test(trimmed) || ASKS_FOR_HELP.test(trimmed)) continue;
