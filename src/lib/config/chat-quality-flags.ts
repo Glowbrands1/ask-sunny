@@ -2537,6 +2537,19 @@ export function formEditSaidReplacementEnabled(): boolean {
 export function formPatchReaderFixesEnabled(): boolean {
   return envFlag("FORM_PATCH_READER_FIXES_ENABLED") && formPatchReducerEnabled();
 }
+
+/**
+ * EDIT_POLICY_ASK_ENABLED (QA's live run, 7 Nov 2026; coding 5; same flag in both apps; default off; only with
+ * FORM_PATCH_REDUCER_ENABLED). "I need you to make it about showing up late and please list the policy make the
+ * date for 10/14/26." on an open Coaching Form changed Details and said nothing about the policy. On: the patch
+ * reader says whether the latest message asks for the policy (`policy_asked`, a prompt line added after the
+ * approved text), and the app lists it the way a first draft does — the manual sections the account reads as, as
+ * its own "Policy reference" line on the account field — or the reply says it found none and asks which applies
+ * (`forms/edit-policy-ask.ts`). Off, as before.
+ */
+export function editPolicyAskEnabled(): boolean {
+  return envFlag("EDIT_POLICY_ASK_ENABLED") && formPatchReducerEnabled();
+}
 // --- end coding 5 flags ---
 
 /**
