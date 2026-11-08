@@ -39,7 +39,8 @@ export const NOV7_S35_CA_NOT_PRIOR_COACHING_CASES: ReplayCase[] = [
     id: "nov7-s35-ca-not-prior-coaching",
     title: "sf-s35: \"Can you draw me up a CA for <name> … has signed a coaching document …\" opens a Corrective Action card, not a Coaching Form",
     report: "Pau's morning scan, 7 Nov 2026 (sf-s35; live chat 6 Nov 2026)",
-    status: { open: "the card is a Coaching Form: the earlier coaching is read as the form asked for" },
+    // Changed on purpose (8 Nov 2026): fixed in production by CA_REQUEST_NOT_PRIOR_COACHING_ENABLED, QA round 4, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: ["CA_REQUEST_NOT_PRIOR_COACHING_ENABLED"],
     async run(t) {
       vi.setSystemTime(new Date("2026-11-06T14:18:00Z"));
@@ -55,7 +56,8 @@ export const NOV7_S35_CA_NOT_PRIOR_COACHING_CASES: ReplayCase[] = [
     title: "s35 live tester: \"Can you draw me up a CA for <name> … has signed a coaching document …\" (two sentences) opens a Corrective Action card",
     report: "QA's live tester, 7 Nov 2026 (s35 rolled back at 00:22): no card, \"I can't write out the Corrective Action text here…\"",
     // In production (s35 off) no card opens either: "Can you …" reads as a question (`ai/question-not-form.ts`).
-    status: { open: "\"Can you draw me up …\" reads as a question, and \"draw me up\" asks for no form, so no card opens" },
+    // Changed on purpose (8 Nov 2026): fixed in production by CA_REQUEST_NOT_PRIOR_COACHING_ENABLED, QA round 4, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: ["CA_REQUEST_NOT_PRIOR_COACHING_ENABLED"],
     async run(t) {
       vi.setSystemTime(new Date("2026-11-06T14:18:00Z"));

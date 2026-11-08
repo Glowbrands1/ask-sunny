@@ -279,7 +279,8 @@ export const NOV5_REQUEST_SLOT_CASES: ReplayCase[] = [
         key: "coaching-form",
         text: "CA for Coaching Form",
         roster: ROSTER,
-        status: { open: "a Coaching Form card" },
+        // Changed on purpose (8 Nov 2026): fixed in production by CA_REQUEST_NOT_PRIOR_COACHING_ENABLED, QA round 4, 8 Nov 2026; it now holds with production's flags.
+        status: "fixed",
         check: (card: string | null, reply: string, templateKey?: string | null) => {
           expect(templateKey, "not a Corrective Action").toBe("dpoa");
           expect(card, "a form's name is the employee").toBeNull();

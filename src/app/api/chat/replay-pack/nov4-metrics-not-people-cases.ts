@@ -388,12 +388,8 @@ export const NOV4_METRICS_NOT_PEOPLE_CASES: ReplayCase[] = [
         id: `nov4-qa-form-name-as-person-${key}${suffix}`,
         title: `QA 4 Nov (CA_SALES off): "${text.slice(0, 60)}…": a Corrective Action, never a Coaching Form; no metric is the employee; a card with no employee asks who`,
         report: `QA, 4 Nov 2026, production with CA_SALES off: "${text}"`,
-        status: {
-          open:
-            key === "a"
-              ? "a Coaching Form card (with no employee; it asks who)"
-              : "a Coaching Form card for \"Club Close\": \"I have the employee and the salon\"",
-        },
+        // Changed on purpose (8 Nov 2026): fixed in production by CA_REQUEST_NOT_PRIOR_COACHING_ENABLED, QA round 4, 8 Nov 2026; it now holds with production's flags.
+        status: "fixed",
         fixFlags: [...flags],
         async run(t) {
           const thread = start(t);
