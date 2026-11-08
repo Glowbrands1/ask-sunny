@@ -2766,6 +2766,18 @@ export function keptRequestSameFormEnabled(): boolean {
   return typeof inlined === "string" && ON.has(inlined.trim().toLowerCase());
 }
 
+// coding 2: CARRIED_PERSON_NOTICE
+/**
+ * CARRIED_PERSON_NOTICE_ENABLED (QA's round-6 item, 8 Nov 2026; default off; same flag in both apps). On the route,
+ * production's INTENT_EXTRACTION, SLOT_RETENTION and REQUEST_KEPT_IN_WINDOW each made a card that carried a person from
+ * earlier turns drop "I took <A> from earlier in this conversation — if this form is for somebody else, tell me who."
+ * With this flag on, a performance-form card whose person is not named in the manager's own last six turns, but is
+ * named before them, says so (`ai/carried-person-notice.ts`, one server-ask.ts step). Off, as before.
+ */
+export function carriedPersonNoticeEnabled(): boolean {
+  return envFlag("CARRIED_PERSON_NOTICE_ENABLED");
+}
+
 /**
  * ROSTER_NAME_IN_CANDIDATE_ENABLED (QA, 5 Nov 2026, R2 checked in this app;
  * default off). One employee's story that names their district manager in
