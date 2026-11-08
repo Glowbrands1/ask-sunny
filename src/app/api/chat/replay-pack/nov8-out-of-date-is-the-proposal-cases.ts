@@ -51,4 +51,16 @@ export const NOV8_OUT_OF_DATE_IS_THE_PROPOSAL_CASES: ReplayCase[] = [
       expect(t.draftPrompts().join("\n"), "the draft is not written from the account").toMatch(/missing her saturday and sunday shifts/i);
     },
   },
+  {
+    id: "nov8-s38-out-of-date-first-turn",
+    title: "negative: \"what does out of date mean\" as the chat's first turn is answered as before, and nothing throws",
+    report: "coding 2's review of OUT_OF_DATE_IS_THE_PROPOSAL, 8 Nov 2026",
+    status: "fixed",
+    fixFlags: ["OUT_OF_DATE_IS_THE_PROPOSAL_ENABLED", "ACCOUNT_VERB_NOT_A_NAME_ENABLED"],
+    async run(t) {
+      t.directory([...STAFF, RHEA]);
+      const reply = await t.thread().say("what does out of date mean");
+      expect(reply.content, `answered about a card that does not exist:\n${reply.content}`).not.toMatch(/Which part of the proposal looks out of date\?/);
+    },
+  },
 ];
