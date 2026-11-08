@@ -3316,6 +3316,16 @@ export function listPolicyIsEditEnabled(): boolean {
  */
 export function noAccountNoAppPolicyEnabled(): boolean {
   return envFlag("NO_ACCOUNT_NO_APP_POLICY_ENABLED");
+// coding 2: AMOUNT_BEFORE_PAYROLL_DEDUCT
+/**
+ * AMOUNT_BEFORE_PAYROLL_DEDUCT_ENABLED (QA's Sunny flip-9 live tester, 8 Nov 2026; default off). "$20 payroll deduct
+ * applies" read payroll deduct Yes and then asked "**Payroll deduction amount**?": the amount reader reads a figure
+ * before "deducted" or "deduction", never before the bare "payroll deduct" the Yes reader reads. With this flag on, a
+ * figure right before "payroll deduct" (or "payroll deduction") is the amount (`forms/payroll-deduct.ts`). The word
+ * "payroll" is required: "$20 deduct" alone is not read. Off, as before.
+ */
+export function amountBeforePayrollDeductEnabled(): boolean {
+  return envFlag("AMOUNT_BEFORE_PAYROLL_DEDUCT_ENABLED");
 }
 
 // coding 2: REMOVE_POLICY_NOT_NAMED

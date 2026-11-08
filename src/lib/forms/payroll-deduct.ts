@@ -1,3 +1,5 @@
+import { amountBeforePayrollDeductEnabled } from "@/lib/config/chat-quality-flags";
+
 import {
   DENIAL,
   normalizePayrollWording as normalize,
@@ -459,10 +461,18 @@ export function payrollAmountReply(text: string, lastAssistant: string): string 
   return bareMoney(text);
 }
 
+/*
+ * AMOUNT_BEFORE_PAYROLL_DEDUCT_ENABLED (QA's Sunny flip-9 live tester, 8 Nov 2026): "$20 payroll deduct applies" — the
+ * figure right before the bare "payroll deduct" the Yes reader reads. "payroll" is required, so "$20 deduct" and
+ * "deduct 20" are left to the patterns above. Off, not read.
+ */
+const AMOUNT_BEFORE_PAYROLL_DEDUCT = new RegExp(String.raw`(${ANY_MONEY})\s+payroll[- ]?\s*deduct(?:ion)?\b`, "gi");
+
 /** The latest amount stated for the deduction, zero included. */
 function latestAmount(text: string): string | null {
   let found: { at: number; amount: string } | null = null;
-  for (const pattern of AMOUNT_PATTERNS) {
+  const patterns = amountBeforePayrollDeductEnabled() ? [...AMOUNT_PATTERNS, AMOUNT_BEFORE_PAYROLL_DEDUCT] : AMOUNT_PATTERNS;
+  for (const pattern of patterns) {
     for (const match of (text ?? "").matchAll(pattern)) {
       const amount = asDollars(match[1]!);
       if (!found || match.index >= found.at)
