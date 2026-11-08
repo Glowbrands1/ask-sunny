@@ -9,6 +9,7 @@ import {
 } from "@/lib/config/chat-quality-flags";
 import { compoundSurnameScore, displayName, editDistance, type RosterEmployee } from "@/lib/forms/employee-match";
 import { looseFits } from "@/lib/forms/loose-fit";
+import { acceptsNearMissWithDetails, nearMissTypedRest } from "@/lib/forms/near-miss-answer";
 import { typedWithOtherSurname } from "@/lib/forms/request-slot";
 
 import type { ChatActor } from "./form-proposal";
@@ -274,7 +275,11 @@ function replaceTyped(text: string, first: RegExp, options: readonly string[], n
   let end = found.index + found[0].length;
   const next = /^\s+([A-Za-z][A-Za-z'’-]*)/.exec(text.slice(end));
   const typed = found[0].toLowerCase();
-  if (
+  // NEAR_MISS_DETAILS_ACCEPT_ENABLED: "Corvina Ashdown Vellacot" is replaced whole by the name accepted.
+  const typedRest = nearMissTypedRest(text.slice(end), name);
+  if (typedRest > 0) {
+    end += typedRest;
+  } else if (
     next &&
     options.some((option) => {
       const surname = words(option).slice(1).join(" ");
@@ -337,7 +342,8 @@ function answeredQuestions<T extends { readonly role: string; readonly content: 
     const many = one ? null : MANY.exec(turn.content);
     if (!one && !many) return;
     const options = one ? [one[1]!] : [...many![1]!.matchAll(/\*\*([^*]+)\*\*/g)].map((match) => match[1]!.trim());
-    const chosen = chosenName(reply.content.trim(), options, Boolean(one));
+    const typed = conversation.slice(0, index).filter((said) => said.role === "user").map((said) => said.content);
+    const chosen = chosenName(reply.content.trim(), options, Boolean(one), typed);
     if (chosen) answered.push({ index, reply, options, chosen });
   });
   return answered;
@@ -366,7 +372,8 @@ function answeredNow(request: AskRequest, aliases: Aliases): AskRequest {
   const many = one ? null : MANY.exec(asked);
   if (!one && !many) return request;
   const options = one ? [one[1]!] : [...many![1]!.matchAll(/\*\*([^*]+)\*\*/g)].map((match) => match[1]!.trim());
-  const chosen = chosenName(reply, options, Boolean(one));
+  const typed = (request.history ?? []).filter((said) => said.role === "user").map((said) => said.content);
+  const chosen = chosenName(reply, options, Boolean(one), typed);
   if (!chosen) return request;
   const first = firstNamePattern(options, chosen.name, aliases);
   const said = [...(request.history ?? [])].reverse().find((turn) => turn.role === "user" && first.test(turn.content));
@@ -391,7 +398,7 @@ function withAskingTurn(answered: string, said: ChatMessage | undefined, request
   return `${answered}\n${asking.content}`;
 }
 
-function chosenName(reply: string, options: readonly string[], single: boolean): { name: string; rest: string } | null {
+function chosenName(reply: string, options: readonly string[], single: boolean, typed: readonly string[] = []): { name: string; rest: string } | null {
   const text = reply.toLowerCase();
   const full = options.find((name) => text.includes(name.toLowerCase()));
   if (full) return { name: full, rest: "" };
@@ -401,6 +408,8 @@ function chosenName(reply: string, options: readonly string[], single: boolean):
       const rest = reply.slice(yes[0].length).trim();
       return { name: options[0]!, rest: rest ? ` ${rest}` : "" };
     }
+    // NEAR_MISS_DETAILS_ACCEPT_ENABLED: the manager went on with the form's details after a near-miss of a name they typed in full.
+    if (acceptsNearMissWithDetails(reply, options[0]!, typed)) return { name: options[0]!, rest: `\n${reply}` };
   } else {
     const byOrdinal = ORDINALS.findIndex((pattern) => pattern.test(reply));
     if (byOrdinal >= 0 && options[byOrdinal]) return { name: options[byOrdinal]!, rest: "" };
