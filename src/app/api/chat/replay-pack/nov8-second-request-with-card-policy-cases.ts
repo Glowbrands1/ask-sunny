@@ -50,3 +50,29 @@ export const NOV8_SECOND_REQUEST_WITH_CARD_POLICY_CASES: ReplayCase[] = [
     },
   },
 ];
+
+/*
+ * QA, round 5 (8 Nov 2026): the live audit's own wording, which the gate runs live too: "I need another corrective
+ * action for <A>, his cash drawer was short", with <A>'s first Corrective Action already created. With the flag off
+ * the second card says the first request's Late Opening; on, it does not. Fails off, passes on.
+ */
+export const NOV8_SECOND_REQUEST_LIVE_WORDING_CASES: ReplayCase[] = [
+  {
+    id: "nov8-second-request-live-audit-wording",
+    title: "the live audit's \"I need another corrective action for <A>, his cash drawer was short\" after <A>'s first CA is created: the second card cites nothing of Late Opening",
+    report: "QA's live audit (7 Nov 2026), as QA asked for round 5: a second CA for the same employee carried the first request's policy",
+    status: { open: "with SECOND_REQUEST_OWN_ACCOUNT off the second card cites the first request's Late Opening" },
+    fixFlags: ["SECOND_REQUEST_OWN_ACCOUNT_ENABLED"],
+    async run(t) {
+      t.directory(STAFF);
+      t.as("salon_director", KEARNEY);
+      const thread = t.thread();
+      await thread.say(FIRST);
+      await thread.create();
+      const reply = await thread.say("I need another corrective action for Remy Calder, his cash drawer was short");
+      expect(reply.content, `the second card cites the first request's policy:\n${reply.content}`).not.toMatch(/Late Opening/i);
+      const second = await thread.create();
+      expect(t.values(second).policy_violated ?? "", "the second form's Policy Violated is the first request's").not.toMatch(/late opening/i);
+    },
+  },
+];
