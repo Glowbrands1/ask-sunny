@@ -1,5 +1,5 @@
 import { shiftDays, weekdayOf } from "@/lib/business-date";
-import { exitFulfilledIsLastDayEnabled, exitIntakeFixEnabled, exitShortcutWordsEnabled, exitStatedOnlyEnabled, noNoticeNoDateEnabled } from "@/lib/config/chat-quality-flags";
+import { exitFulfilledIsLastDayEnabled, exitIntakeFixEnabled, exitShortcutWordsEnabled, exitStatedOnlyEnabled, exitTerminationStatedEnabled, noNoticeNoDateEnabled } from "@/lib/config/chat-quality-flags";
 
 import {
   EXIT_DATE_FIELDS,
@@ -464,7 +464,37 @@ const COMPLETED_INVOLUNTARY = [
 const HYPOTHETICAL =
   /\b(?:may|might|could|would|should|must|will|shall|can|going to|gonna|plan(?:ning)? to|want(?:s|ed)? to|need(?:s)? to|thinking (?:about|of)|considering|about to|if|whether|unless|once)\b[^.;!?\n]{0,30}$/;
 
+/*
+ * EXIT_TERMINATION_STATED_ENABLED (QA's Sunny round-5 live tester, 8 Nov 2026, item 4): a termination letter says
+ * "your employment with <company> is terminated, effective 11/06/2026" — the act, in the present, with its date — and
+ * EXIT_STATED_ONLY left the separation and its date blank. With the flag on, that sentence is the completed involuntary
+ * separation, and its "effective <date>" is the Resignation Date. A question, a negation or a plan before it still is
+ * not ("should your employment be terminated?", "your employment will be terminated if …").
+ */
+const STATED_TERMINATION = [
+  /\b(?:your|(?:her|his|their)|the)\s+(?:employment|position|job)\b[^.;!?\n]{0,60}?\b(?:is|has been)\s+(?:hereby\s+|now\s+)?terminated\b/g,
+  /\byou\s+are\s+(?:hereby\s+)?terminated\b/g,
+];
+const EFFECTIVE_BEFORE = /\beffective\s+(?:on\s+|as\s+of\s+)?$/;
+
+function statedTermination(q: string): RegExpMatchArray | null {
+  if (!exitTerminationStatedEnabled()) return null;
+  for (const pattern of STATED_TERMINATION) {
+    for (const match of q.matchAll(pattern)) {
+      const start = match.index ?? 0;
+      const clauseStart = Math.max(...[".", "!", "?", ";", "\n"].map((mark) => q.lastIndexOf(mark, start - 1)));
+      const before = q.slice(clauseStart + 1, start);
+      const endMatch = /[.!?\n]/.exec(q.slice(start));
+      if (endMatch && q[start + endMatch.index] === "?") continue;
+      if (NEGATED_BEFORE.test(before) || HYPOTHETICAL.test(before)) continue;
+      return match;
+    }
+  }
+  return null;
+}
+
 function completedInvoluntary(q: string): boolean {
+  if (statedTermination(q)) return true;
   for (const pattern of COMPLETED_INVOLUNTARY) {
     for (const match of q.matchAll(pattern)) {
       const start = match.index ?? 0;
@@ -648,6 +678,16 @@ export function readExitFacts(rawText: string, today: string): ExitFacts {
    * notice 9/1, then quit 9/10" — are the manager's to settle.
    */
   let resignationDate = quitDate ?? noticeRead;
+  // EXIT_TERMINATION_STATED_ENABLED: "… is terminated, effective 11/06/2026" — the date the separation took effect.
+  const terminated = statedTermination(text.toLowerCase());
+  if (!resignationDate && terminated) {
+    const sentenceEnd = text.slice(terminated.index ?? 0).search(/[.!?\n]/);
+    const end = sentenceEnd < 0 ? text.length : (terminated.index ?? 0) + sentenceEnd;
+    const effective = tokens.filter(
+      (token) => token.iso && token.index >= (terminated.index ?? 0) && token.end <= end + 12 && EFFECTIVE_BEFORE.test(text.slice(Math.max(0, token.index - 24), token.index).toLowerCase()),
+    );
+    if (effective.length === 1) resignationDate = effective[0]!.iso;
+  }
   if (quitDate && noticeGiven && quitDate !== noticeGiven) {
     ambiguities.push({ kind: "date_conflict", role: "resigned", dates: [noticeGiven, quitDate].sort() });
     resignationDate = null;

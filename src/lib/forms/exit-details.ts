@@ -1,4 +1,4 @@
-import { exitIntakeFixEnabled, exitShortcutWordsEnabled, exitStatedOnlyEnabled, resignMethodFollowupEnabled } from "@/lib/config/chat-quality-flags";
+import { exitIntakeFixEnabled, exitShortcutWordsEnabled, exitStatedOnlyEnabled, exitTerminationStatedEnabled, resignMethodFollowupEnabled } from "@/lib/config/chat-quality-flags";
 
 import { JOIN } from "./bounded-context";
 import { isQuestion } from "./employment-change";
@@ -639,6 +639,31 @@ export function inStatedPermanentAddress(candidate: string | null | undefined, t
 /** EXIT_STATED_ONLY_ENABLED: the manager's words say the employee was let go ("your employment … is terminated"). */
 const TERMINATED = /\b(?:terminated|termination|terminating|fired|let (?:him|her|them)? ?go|dismissed|dismissal)\b/i;
 
+/*
+ * EXIT_TERMINATION_STATED_ENABLED (QA's Sunny round-5 live tester, 8 Nov 2026, item 4): the reason a termination
+ * letter states — "This decision follows the text message you sent …", "terminated due to …", "the reason for the
+ * termination is …" — in the manager's words, ended where the reason's sentence ends.
+ */
+const TERMINATION_REASON = [
+  /\bthis decision (?:follows|is based on|is due to|comes after)\s+/i,
+  /\b(?:terminated|termination|let go|dismissed)\b[^.;!?\n]{0,40}?\b(?:because of|because|due to|following|for)\s+(?=\S)/i,
+  /\breason for (?:the |your |(?:her|his|their) )?(?:termination|separation|dismissal)\s*(?:is|was|:|-|–|—)\s*/i,
+];
+
+function terminationReason(text: string): string | null {
+  for (const pattern of TERMINATION_REASON) {
+    const match = pattern.exec(text);
+    if (!match) continue;
+    const from = (match.index ?? 0) + match[0].length;
+    const close = /[.!?\n]/.exec(text.slice(from));
+    if (close && text[from + close.index] === "?") continue;
+    const raw = text.slice(from, close ? from + close.index : text.length).replace(/[,\s]+$/g, "").trim();
+    if (raw.split(/\s+/).length < 3) continue;
+    return sentence(raw);
+  }
+  return null;
+}
+
 /* ------------------------------------------------------------ reading -- */
 
 function readAnswers(turn: string): Partial<Record<ExitAnswerKey, Reading>> {
@@ -704,7 +729,8 @@ export function readExitDetails(rawText: string, today: string, facts?: ExitFact
   // EXIT_STATED_ONLY_ENABLED: a termination is not a resignation — how and why they "resigned" are never read from it.
   if (exitStatedOnlyEnabled() && TERMINATED.test(text)) {
     method = null;
-    reason = null;
+    // EXIT_TERMINATION_STATED_ENABLED: the reason the manager stated for the termination ("This decision follows …").
+    reason = exitTerminationStatedEnabled() ? terminationReason(text) : null;
   }
   const permanentAddress = readPermanentAddress(text);
   return {

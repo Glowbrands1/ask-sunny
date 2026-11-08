@@ -3028,6 +3028,19 @@ export function exitStatedOnlyEnabled(): boolean {
   return envFlag("EXIT_STATED_ONLY_ENABLED");
 }
 
+// coding 2: EXIT_TERMINATION_STATED
+/**
+ * EXIT_TERMINATION_STATED_ENABLED (QA's Sunny round-5 live tester, 8 Nov 2026, item 4; default off; only with
+ * EXIT_STATED_ONLY for the reason). A termination letter pasted for an exit form: with EXIT_STATED_ONLY the card invented
+ * nothing but also left the stated facts blank. With this flag on, "your employment … is terminated, effective
+ * 11/06/2026" ticks the involuntary separation and is the Resignation Date, and the letter's stated reason ("This
+ * decision follows …") is the Reason (`forms/exit-facts.ts`, `forms/exit-details.ts`). Keys or property "to return"
+ * are still not returned, and "hours worked through" is still no last day. Off, as before.
+ */
+export function exitTerminationStatedEnabled(): boolean {
+  return envFlag("EXIT_TERMINATION_STATED_ENABLED");
+}
+
 /**
  * OFF_ROSTER_CONFIRM_ENABLED (port of the sibling app's flip-3 gate, QA, 6 Nov 2026; default off; ships with
  * FORM_NAME_FROM_ROSTER). With the name flags a card's employee comes from the roster only, so a form for somebody
