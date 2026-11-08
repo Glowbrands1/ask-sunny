@@ -265,7 +265,8 @@ const TALKS_TO_THE_APP =
  * about reimbursing the company? how much is the late opening fee? and who pays for client restitution?"). A question
  * to the app is never the account: a sentence that ended in "?", or one that opens as a question ("what / how much /
  * who / does …"), asks about the manual, a policy, a fee or who pays, and says nothing of the employee. Nor is a sentence that only confirms the
- * policy ("I have independently verified and the policy is correct"), nor a closing "ok thanks".
+ * policy ("I have independently verified and the policy is correct"), nor one that only names a policy or its source
+ * (below), nor a closing "ok thanks".
  */
 const ASKS_A_QUESTION = /^(?:(?:and|so|also|ok|okay|then)[,\s]+)*(?:what|how|who|whom|whose|which|where|when|why|is|are|does|do|did|can|could|should|would|will)\b/i;
 const ABOUT_THE_RULES = /\b(?:manual|handbook|polic(?:y|ies)|fee|fees|cost|costs|pays?|paid|reimburs\w*|restitution|allowed|supposed\s+to)\b/i;
@@ -275,6 +276,31 @@ const ABOUT_THEM = /\b(?:she|he|they|her|him|them|hers|his|their)\b/i;
 const CONFIRMS_THE_POLICY =
   /\b(?:polic(?:y|ies)|manual|handbook|section)\b[^.!?]*\b(?:is|are)\s+(?:correct|right|accurate|fine|good)\b|\b(?:verified|confirmed|checked|double[- ]checked)\b[^.!?]*\b(?:polic(?:y|ies)|manual|handbook)\b/i;
 const ONLY_THANKS = /^(?:(?:ok(?:ay)?|great|perfect|cool|sounds\s+good|got\s+it)[,!\s]*)*(?:thanks?(?:\s+you)?|thank\s+you|thx|ty)[!.\s]*$/i;
+
+/*
+ * QA (8 Nov 2026, the same gate): "Late Opening from the policy manual." only points to a policy; it says nothing the
+ * employee did. A sentence that names a policy or its source ("<Policy> from the policy manual", "per the manual", "the
+ * policy is <X>") and, without those words, leaves at most a policy's name — no word about the employee, no verb of
+ * what happened — is never the account; the policy stays on the Policy line. "she opened late again, Late Opening
+ * policy" speaks of her, so it stays.
+ */
+const POLICY_SOURCE = /\b(?:(?:from|per|in|under|according\s+to)\s+(?:the\s+)?(?:jba\s+)?(?:policy\s+)?(?:manual|handbook)|the\s+polic(?:y|ies)\s+(?:is|are)|polic(?:y|ies)\s+manual|polic(?:y|ies)|manual|handbook)\b/gi;
+const SOMETHING_HAPPENED = /\b(?:was|were|did|didn['’]?t|has|had|have|been|is\s+late|came|went|left|called|showed|missed|refused|forgot)\b|\b\w{3,}ed\b/i;
+
+function onlyNamesAPolicy(sentence: string): boolean {
+  // The request's own words and its "for <name> for …" are not what it says ("create corrective action for <A> for Late
+  // Opening from the policy manual").
+  const said = withoutRequestWords(sentence)
+    .replace(/^\s*for\s+(?:\p{Lu}[\p{L}'’-]*\s+){1,3}(?=for\b)/u, "")
+    .replace(/^\s*(?:for|about|regarding|over)\s+/i, "");
+  if (!/\b(?:polic(?:y|ies)|manual|handbook)\b/i.test(said) || ABOUT_THEM.test(said) || SOMETHING_HAPPENED.test(said)) return false;
+  const rest = said
+    .replace(POLICY_SOURCE, " ")
+    .replace(/[^\p{L}\p{N}\s'’-]+/gu, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  return rest.length <= 4;
+}
 
 /** SECOND_REQUEST_OWN_ACCOUNT_ENABLED: the turn's text without the sentences that ask the app something. */
 export function withoutQuestionsToTheApp(text: string): string {
@@ -287,6 +313,7 @@ export function withoutQuestionsToTheApp(text: string): string {
       if (/\?\s*$/.test(trimmed)) return false;
       if (ASKS_A_QUESTION.test(trimmed) && ABOUT_THE_RULES.test(trimmed) && !ABOUT_THEM.test(trimmed)) return false;
       if (CONFIRMS_THE_POLICY.test(trimmed)) return false;
+      if (onlyNamesAPolicy(trimmed)) return false;
       return !ONLY_THANKS.test(trimmed);
     })
     .join(" ");

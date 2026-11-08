@@ -10,7 +10,8 @@ import { keptRequestSameFormPeople } from "./nov8-kept-request-same-form-cases";
  * policy manual. I have independently verified and the policy is correct what does the manual say about reimbursing
  * the company? how much is the late opening fee? and who pays for client restitution?". The production conversation of
  * nov8-kept-request-same-form (its invented person). With the flag off there is no Observation line; with it on, the
- * line never holds a question, a confirmation of the policy or a closing "ok thanks".
+ * line never holds a question, a confirmation of the policy, a sentence that only names the policy or a closing
+ * "ok thanks": no Observation line, as with the flag off, and the policy stays on its own line.
  */
 const TURNS = [
   "create corrective action for Briar Castellane for Late Opening from the policy manual. It is a verbal warning",
@@ -42,6 +43,10 @@ export const NOV8_QUESTIONS_NOT_ACCOUNT_CASES: ReplayCase[] = (["Create a Coachi
       expect(thread.proposal, `no Coaching card:\n${reply.content}`).toMatchObject({ employeeName: "Briar Castellane" });
       const observation = /\*\*Observation of Offense:\*\*[^\n]*/.exec(reply.content)?.[0] ?? "";
       expect(observation, `the Observation holds the manager's questions to the app:\n${reply.content}`).not.toMatch(QUESTION_OR_CHATTER);
+      // QA (8 Nov 2026): "Late Opening from the policy manual." only points to the policy, so there is no Observation line,
+      // as with the flag off; the policy stays on its own line.
+      expect(observation, `the Observation only names the policy:\n${reply.content}`).toBe("");
+      expect(reply.content, `the policy line was lost:\n${reply.content}`).toMatch(/Late Opening Policy, JBA Policy Manual p\.15/);
     },
   }),
 );
