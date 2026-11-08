@@ -41,4 +41,17 @@ describe("cardPolicyTurns", () => {
     const turns = [A, "Coaching form for Corwin Hale"];
     expect(cardPolicyTurns(turns, null)).toBe(turns);
   });
+
+  it("a name-only answer behind the app's slot lines is no new request: every turn (QA's round-4 gate, 8 Nov 2026)", () => {
+    const turns = [
+      "can you create a coaching form for attendance policy",
+      "The form is the Coaching Form.\nThe employee is Perrin Fennimore. Job title: Tanning Consultant. It happened at NE Kearney.\nPerrin Fennimore",
+    ];
+    expect(cardPolicyTurns(turns, "Perrin Fennimore")).toBe(turns);
+  });
+
+  it("an apostrophe or hyphen in the name does not throw (QA's round-4 gate, 8 Nov 2026)", () => {
+    const turns = ["Coaching form for Tamsin Holt for being on her phone", "Coaching form for Caoimhe O'Dallagher-Reyes"];
+    expect(cardPolicyTurns(turns, "Caoimhe O'Dallagher-Reyes")).toEqual(["Coaching form for Caoimhe O'Dallagher-Reyes"]);
+  });
 });
