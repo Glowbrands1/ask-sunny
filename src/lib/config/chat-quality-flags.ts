@@ -2047,6 +2047,21 @@ export function priorActionsNoSignedEnabled(): boolean {
 }
 
 /**
+ * PRIOR_COACHING_DENIAL_ENABLED (QA, 5 Nov 2026; default off): "There's no
+ * prior coaching on file." was quoted back by PRIOR_COACHING_OPTIONAL_ENABLED
+ * as "Prior coaching note: prior coaching on file." — the protected note
+ * reader starts at "prior coaching" and drops the "no". With the flag on, the
+ * caller hands it the manager's turns with each sentence that denies prior
+ * coaching left out, unless it names a further step after "except", "other
+ * than" or "but" ("no prior coaching except a verbal in July", "… except a
+ * verbal warning"; Pau's decision B, 6 Nov 2026), which is kept as that step
+ * (`ai/prior-coaching-denial.ts`). Off, the turns as before.
+ */
+export function priorCoachingDenialEnabled(): boolean {
+  return envFlag("PRIOR_COACHING_DENIAL_ENABLED");
+}
+
+/**
  * Two more team-card wordings (QA live check, 3 Nov 2026), read only with
  * WHOLE_TEAM_COACHING on: "salon wide everyone needs the reminder to call a
  * manager for cash drawer shortages" — the team, then what it needs, with no
@@ -2522,6 +2537,19 @@ export function formEditSaidReplacementEnabled(): boolean {
 export function formPatchReaderFixesEnabled(): boolean {
   return envFlag("FORM_PATCH_READER_FIXES_ENABLED") && formPatchReducerEnabled();
 }
+
+/**
+ * EDIT_POLICY_ASK_ENABLED (QA's live run, 7 Nov 2026; coding 5; same flag in both apps; default off; only with
+ * FORM_PATCH_REDUCER_ENABLED). "I need you to make it about showing up late and please list the policy make the
+ * date for 10/14/26." on an open Coaching Form changed Details and said nothing about the policy. On: the patch
+ * reader says whether the latest message asks for the policy (`policy_asked`, a prompt line added after the
+ * approved text), and the app lists it the way a first draft does — the manual sections the account reads as, as
+ * its own "Policy reference" line on the account field — or the reply says it found none and asks which applies
+ * (`forms/edit-policy-ask.ts`). Off, as before.
+ */
+export function editPolicyAskEnabled(): boolean {
+  return envFlag("EDIT_POLICY_ASK_ENABLED") && formPatchReducerEnabled();
+}
 // --- end coding 5 flags ---
 
 /**
@@ -2761,6 +2789,20 @@ export function titleOfTheEmployeeEnabled(): boolean {
  */
 export function rosterNearMissEnabled(): boolean {
   return envFlag("ROSTER_NEAR_MISS_ENABLED");
+}
+
+/**
+ * NEAR_MISS_DETAILS_ACCEPT_ENABLED (ported from the sibling app: QA's gate there on 4d42c342, 7 Nov 2026; default
+ * off). With FORM_NAME on, a full name typed close to one roster person ("Corvina Ashdown Vellacot") got "Is this for
+ * **<roster name>**? Tell me if that should change.", and the next turn ("verbal warning, no payroll deduct, …") got
+ * the same question again: the answer reader took only "yes" or a name, the details were dropped and no card came.
+ * On: a turn after that question that gives form details (a warning level or a payroll answer, by the app's own
+ * readers) and does not turn the name down accepts the asked name, when the manager typed that person's first name and a
+ * surname close to theirs (`ai/first-name-suggest.ts` chosenName). A first name typed alone is still asked, as
+ * before. Off, as before.
+ */
+export function nearMissDetailsAcceptEnabled(): boolean {
+  return envFlag("NEAR_MISS_DETAILS_ACCEPT_ENABLED");
 }
 
 /**
@@ -3156,6 +3198,17 @@ export function observationNoLevelLeadEnabled(): boolean {
  */
 export function sourceNoteGuardEnabled(): boolean {
   return envFlag("SOURCE_NOTE_GUARD_ENABLED");
+}
+
+// coding 2: TWO_FORMS_EACH_PERSON
+/**
+ * TWO_FORMS_EACH_PERSON_ENABLED (QA, Sunny live tester after flip 7, 7 Nov 2026; default off). "Coaching form for <A>.
+ * Also a CA for <B>." gave one Coaching card with no employee and "ask for <B>'s CA on its own". With this flag on,
+ * the card is A's (answered again from A's own request if need be) and B's form is offered; "yes" starts it
+ * (`ai/two-forms-own-person.ts`). Off, as before.
+ */
+export function twoFormsEachPersonEnabled(): boolean {
+  return envFlag("TWO_FORMS_EACH_PERSON_ENABLED");
 }
 
 // coding 2: REMOVE_POLICY_NOT_NAMED

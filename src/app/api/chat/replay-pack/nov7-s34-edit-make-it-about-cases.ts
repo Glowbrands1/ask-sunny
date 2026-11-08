@@ -35,7 +35,8 @@ export const NOV7_S34_EDIT_MAKE_IT_ABOUT_CASES: ReplayCase[] = [
     id: "nov7-s34-edit-make-it-about",
     title: "sf-s34: \"make it about showing up late … make the date for 10/14/26\" rewrites the open Coaching draft's Details",
     report: "Pau's morning scan, 7 Nov 2026 (sf-s34; live chat 6 Nov 2026)",
-    status: { open: "the revision is scoped to the date alone, so the Details rewrite is refused and the reply says nothing changed" },
+    // Changed on purpose (8 Nov 2026): QA's flip 9 (00:59 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+    status: "fixed",
     fixFlags: ["EDIT_MAKE_IT_ABOUT_ENABLED"],
     async run(t) {
       vi.setSystemTime(new Date("2026-11-06T14:00:00Z"));

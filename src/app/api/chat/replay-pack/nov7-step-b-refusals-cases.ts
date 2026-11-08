@@ -24,19 +24,15 @@ import { BUB_PHONE, CASH, ROOM_PROCESS, ROOM_STEPS, STEP_B_REFUSAL_SCENARIOS, ST
  * saved change). The last turn is the refused one; its expected outcome is
  * the scenario's `expect`.
  *
- * `fixFlags`: the four Step B flags and FORM_PATCH_READER_FIXES_ENABLED
- * (coding 5, default off). `status` is production's (Step B off).
+ * `fixFlags`: the four Step B flags and FORM_PATCH_READER_FIXES_ENABLED.
+ * `status` is production's: since QA's flip 7 (7 Nov 2026, 21:29 PHT) all five are on in production, and every
+ * case holds with production's flags.
  */
-
-const OPEN_IN_PRODUCTION = "production answers \"I haven't changed the …\" (Step B is off; the revision path writes nothing)";
-
-/** Production's outcome per case, from the run with production's flags (7 Nov 2026). */
-const PRODUCTION_HOLDS = new Set<string>(["bub-date-question", "bub-name-redo", "sun-towel-nothing-said", "sun-msb-format", "sun-make-that-update-live-shape", "sun-monthly-meeting-drift", "sun-late-date-drift", "sun-towel-echo-by-patch"]);
 
 /** Fix runs that still fail, and why (the path that owns the turn is not Step B's reader). */
 const FIX_OPEN: Readonly<Record<string, string>> = {};
 
-async function play(t: Parameters<ReplayCase["run"]>[0], scenario: RefusalScenario): Promise<void> {
+export async function play(t: Parameters<ReplayCase["run"]>[0], scenario: RefusalScenario): Promise<void> {
   t.directory(scenario.roster);
   t.as("salon_director", KEARNEY);
   t.patchReads!(scenario.script.patch ?? {});
@@ -293,7 +289,9 @@ export const NOV7_STEP_B_REFUSAL_CASES: readonly ReplayCase[] = [...STEP_B_REFUS
     id: `nov7-refusal-${scenario.id}`,
     title: `"${scenario.refused}" — ${scenario.expect.says}`,
     report: scenario.report,
-    status: PRODUCTION_HOLDS.has(scenario.id) ? "fixed" : { open: OPEN_IN_PRODUCTION },
+    // Changed on purpose (7 Nov 2026): QA's flip 7 turned Step B's five flags on in production (production-flags.json);
+    // the cases that were OPEN ("I haven't changed the …") now hold with production's flags.
+    status: "fixed",
     fixFlags: [...STEP_B_READER_FLAGS],
     ...(FIX_OPEN[scenario.id] ? { fixStatus: { open: FIX_OPEN[scenario.id]! } } : {}),
     run: (t) => play(t, scenario),

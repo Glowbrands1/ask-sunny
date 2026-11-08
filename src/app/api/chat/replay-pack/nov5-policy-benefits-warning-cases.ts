@@ -23,7 +23,8 @@ export const NOV5_POLICY_BENEFITS_WARNING_CASES: ReplayCase[] = [
     id: "nov5-policy-benefits-warning-revision",
     title: "a CA asked its warning level, then \"in the previously recieved coaching include that marnie holloway signed the jba policy manual on 10-15-26\": Direct policy never cites the manual's benefits \"Warning\"",
     report: "QA, 5 Nov 2026 (severe; a location manager's revision): Direct policy cited the 401k sheet \"Warning\" (page 36)",
-    status: { open: "the reply is \"I couldn't find a section called 'marnie holloway signed the jba' …\": a policy change, so the revision never runs" },
+    // Changed on purpose (7 Nov 2026): QA's flip 7 (21:29 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       t.directory(STAFF);

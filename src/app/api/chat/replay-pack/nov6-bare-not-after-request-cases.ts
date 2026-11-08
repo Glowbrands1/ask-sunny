@@ -46,7 +46,8 @@ export const NOV6_BARE_NOT_AFTER_REQUEST_CASES: ReplayCase[] = [
      * "ca for <A>" reads as an account and the card drafts "Policy: Attendance, as you said". The fix flags still draft
      * it while REPLY_MATCHES_CARD (live) is on: without it they hold. Reported to coding 2 and QA.
      */
-    status: { open: "production (BARE_NOT_AFTER_REQUEST off): \"not late\" reads as an account, and the card drafts \"Policy: Attendance, as you said\"" },
+    // Changed on purpose (8 Nov 2026): QA's flip 9 (00:59 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+    status: "fixed",
     fixFlags: ASKS_FIX,
     // fixStatus removed on purpose (7 Nov 2026): it was OPEN because the live REPLY_MATCHES_CARD dropped the ask
     // beside the card's "Observation of Offense: <A> not late"; BARE_NOT_AFTER_REQUEST's Observation half
@@ -80,7 +81,8 @@ export const NOV6_BARE_NOT_AFTER_REQUEST_CASES: ReplayCase[] = [
        * the live line for this wording too, so it is open with production's flags (AS_YOU_SAID_MANAGER_WORDS is off
        * in production) and holds with the fix flag (#588).
        */
-      status: { open: "production (AS_YOU_SAID_MANAGER_WORDS off): the card says \"Policy: Attendance, as you said\" for unfinished duties" },
+      // Changed on purpose (7 Nov 2026): QA's flip 7 (21:29 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+      status: "fixed",
       fixFlags: ["AS_YOU_SAID_MANAGER_WORDS_ENABLED"],
       async run(t) {
         const thread = await start(t);
@@ -92,9 +94,10 @@ export const NOV6_BARE_NOT_AFTER_REQUEST_CASES: ReplayCase[] = [
       id: `nov6-as-you-said-attendance-${key}`,
       title: `"${text.slice(0, 60)}…" with the reader's heading "Attendance": never "Attendance, as you said"`,
       report: "QA's live Sunny re-check, 6 Nov 2026: \"Policy: Attendance, as you said.\" though the manager never named Attendance",
-      status: { open: "the reader's heading is written back as the app's own \"Policy reference\" line and read as the manager naming Attendance" },
+      // Changed on purpose (7 Nov 2026): QA's flip 7 (21:29 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+      status: "fixed",
       fixFlags: ["AS_YOU_SAID_MANAGER_WORDS_ENABLED"],
-      // Holds with the fix flag since ask-sunny #588 (AS_YOU_SAID_MANAGER_WORDS_ENABLED) merged; open with production's flags.
+      // Holds with the fix flag since ask-sunny #588 (AS_YOU_SAID_MANAGER_WORDS_ENABLED) merged; with production's flags too since QA's flip 7 (7 Nov 2026).
       async run(t) {
         const thread = await start(t);
         t.slotsRead({ policyHeading: "Attendance" });

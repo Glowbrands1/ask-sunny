@@ -44,7 +44,8 @@ export const NOV6_TWO_FORMS_OWN_PERSON_CASES: ReplayCase[] = SHAPES.map(({ key, 
   id: `nov6-two-forms-own-person-${key}`,
   title: `row 6 (${key}): "${text}" with the models reading the CA's person: the Coaching card is never Tamsin, and the reply names the CA request`,
   report: "QA, 6 Nov 2026 (Sunny tester after the flip, row 6, paraphrased): one Coaching card with the CA's person as its employee",
-  status: { open: "the Coaching card's employee is the Corrective Action's person (the models' reading wins), and the CA request is not named" },
+  // Changed on purpose (7 Nov 2026): QA's flip 7 (21:29 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+  status: "fixed",
   fixFlags: ["TWO_FORMS_OWN_PERSON_ENABLED"],
   async run(t) {
     vi.setSystemTime(new Date("2026-11-06T15:00:00Z"));
@@ -64,6 +65,13 @@ export const NOV6_TWO_FORMS_OWN_PERSON_CASES: ReplayCase[] = SHAPES.map(({ key, 
     const employee = thread.proposal?.employeeName ?? null;
     expect(employee === null || /peregrine/i.test(employee), `the Coaching card is for ${employee}:\n${reply.content}`).toBe(true);
     if (employee === null) expect(reply.content, "an empty card does not ask who").toMatch(/who is this \*\*coaching form\*\* for/i);
-    expect(reply.content, "the Corrective Action request is not named back").toMatch(/you also asked for a \*\*corrective action form\*\* for \*\*tamsin/i);
+    /*
+     * Changed on purpose (coding 2, 8 Nov 2026; QA's round-4 gate): with TWO_FORMS_EACH_PERSON_ENABLED on (#646) the
+     * Corrective Action is offered next ("**Do you want a Corrective Action Form for Tamsin Wexley next?**") instead of
+     * named back as "you also asked for"; either way the request is not lost.
+     */
+    expect(reply.content, "the Corrective Action request is not named back").toMatch(
+      /you also asked for a \*\*corrective action form\*\* for \*\*tamsin|\*\*do you want a corrective action form for tamsin wexley next\?\*\*/i,
+    );
   },
 }));

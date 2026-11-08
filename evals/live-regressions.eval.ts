@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   CA_CHAIN,
   CA_SALES_SCENARIOS,
+  S35_SCENARIOS,
   DRY_SCRIPTS,
   GATE_SCENARIOS,
   GLOSSARY_SCENARIOS,
@@ -69,7 +70,7 @@ import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
  *                          LIVE_PATCH_MODEL=<id> sends the patch call alone to
  *                          another (production runs it on CLAUDE_READER_MODEL).
  *                          The md has every turn's ms, patch-call ms and calls.
- *   LIVE_SCENARIOS=all|failures|names|gate|glossary|ca-sales|none  which
+ *   LIVE_SCENARIOS=all|failures|names|gate|glossary|ca-sales|s35|none  which
  *                          scenarios (default all: the live failures, the 40
  *                          name runs, then the 8 edit-tool gate wordings on an
  *                          open Corrective Action). The flag sets are never in
@@ -844,6 +845,7 @@ function pickScenarios(): readonly LiveScenario[] {
   if (which === "gate") return GATE_SCENARIOS;
   if (which === "glossary") return GLOSSARY_SCENARIOS;
   if (which === "ca-sales") return CA_SALES_SCENARIOS;
+  if (which === "s35") return S35_SCENARIOS;
   if (which === "managers") return MANAGER_SCENARIOS;
   if (which === "step-b-refusals") return STEP_B_REFUSAL_LIVE_SCENARIOS;
   return [...LIVE_FAILURE_SCENARIOS, ...NAME_SCENARIOS, ...GATE_SCENARIOS];
@@ -964,7 +966,7 @@ describe.skipIf(!LIVE && !DRY)("live regressions (LIVE=1, or LIVE_DRY=1 with sta
   });
 
   /* A flag set's dry run rehearses QA's LIVE_CAP=30 command: the create repeat (20 stand-in calls) only when asked. */
-  const flagSet = ["glossary", "ca-sales", "managers", "step-b-refusals"].includes(process.env.LIVE_SCENARIOS ?? "");
+  const flagSet = ["glossary", "ca-sales", "managers", "step-b-refusals", "s35"].includes(process.env.LIVE_SCENARIOS ?? "");
   it.runIf(process.env.LIVE_CREATE_REPEAT === "1" || (DRY && !flagSet))("the same Corrective Action, created 5 times with Step B off and 5 times on: does the Observation keep \"Jane Doe\"?", async () => {
     const create: LiveScenario = { id: "create-repeat", roster: LIVE_ROSTER, field: "observation", steps: [{ say: CA_CHAIN[0] }, { create: true }] };
     const before = live.calls;
@@ -1031,7 +1033,7 @@ describe.skipIf(!LIVE && !DRY)("live regressions (LIVE=1, or LIVE_DRY=1 with sta
      * here), and the whole set fits QA's LIVE_CAP=30.
      */
     const set = process.env.LIVE_SCENARIOS;
-    if (set === "glossary" || set === "ca-sales" || set === "managers") {
+    if (set === "glossary" || set === "ca-sales" || set === "managers" || set === "s35") {
       for (const { id, expect: outcome } of results) expect(outcome, `${id}: no expected outcome recorded`).not.toBeNull();
       expect(results.reduce((sum, run) => sum + run.oldPath.calls, 0), `the ${set} set needs more than 30 calls`).toBeLessThanOrEqual(30);
     }

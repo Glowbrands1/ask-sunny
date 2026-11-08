@@ -33,7 +33,8 @@ export const NOV7_OBSERVATION_NO_LEVEL_LEAD_CASES: ReplayCase[] = [
       id: `nov7-observation-no-level-lead-${key}`,
       title: `"${said}": the Observation is the account, never led by the warning level`,
       report: REPORT,
-      status: { open: "the card's Observation of Offense opens with the level (\"verbal, she was late on 10-20-26\")" },
+      // Changed on purpose (8 Nov 2026): QA's flip 9 (00:59 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+      status: "fixed",
       fixFlags: FIX,
       async run(t) {
         const thread = start(t);

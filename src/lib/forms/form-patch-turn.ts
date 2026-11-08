@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { AskResponse } from "@/lib/ai/types";
-import { formEditSingleWriterEnabled, formPatchReaderFixesEnabled } from "@/lib/config/chat-quality-flags";
+import { editPolicyAskEnabled, formEditSingleWriterEnabled, formPatchReaderFixesEnabled } from "@/lib/config/chat-quality-flags";
 import { syncCorrectiveActionPlan } from "./ca-action-plan-sync";
 import { checkboxGroupsForVariant, fieldsForVariant, parseFormDocument } from "./document";
 import { replyFromDiff } from "./form-diff-reply";
@@ -77,6 +77,11 @@ function relined(value: FieldValue, current: FieldValue | undefined): FieldValue
  * FORM_PATCH_READER_FIXES_ENABLED: every value the reader set is already what the form says. One honest line,
  * no `formUpdate`, never "Updated".
  */
+/** EDIT_POLICY_ASK_ENABLED: the reply also says what happened to "please list the policy". */
+function withPolicySentence(response: AskResponse, outcome: { readonly sentence: string } | null): AskResponse {
+  return outcome ? { ...response, content: `${response.content.trimEnd()}\n\n${outcome.sentence}` } : response;
+}
+
 function alreadyThere(keys: readonly string[], labels: Readonly<Record<string, string>>): AskResponse {
   const named = [...new Set(keys.map((key) => labels[key] ?? key))].filter((label) => label.trim() !== "");
   const which = named.length > 0 ? `**${named.join("**, **")}** already says that` : "The form already says that";
@@ -237,6 +242,15 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
     };
     if (!("ok" in reading) || reading.turn !== "this_form") return handOff("none");
     /*
+     * EDIT_POLICY_ASK_ENABLED (QA's live run, 7 Nov 2026): the latest message asks for the policy on a form whose
+     * account field carries the citation line. Answered after the edit is written, below; asked alone ("please list
+     * the policy"), it is this turn's whole answer.
+     */
+    const policyAsk =
+      editPolicyAskEnabled() && reading.policyAsked === true && (await import("./edit-policy-ask")).policyAskApplies(loaded.instance.templateKey);
+    const answerPolicy = async () =>
+      policyAsk ? (await import("./edit-policy-ask")).answerPolicyAsk({ instanceId: input.instanceId, actorId: actor.id, question: input.question }) : null;
+    /*
      * QA, 3 Nov 2026 (blocker before the Step B flip; ported from Ask
      * Bubbles): "make it sound more professional" is about this form, but the
      * manager gives nothing to set from their own words. A patch that sets and
@@ -244,7 +258,20 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
      * revision paths run as before. (A patch whose sets were all refused still
      * answers from its diff.)
      */
-    if (Object.keys(reading.patch.set).length === 0 && reading.patch.clear.length === 0) return handOff("nothing");
+    if (Object.keys(reading.patch.set).length === 0 && reading.patch.clear.length === 0) {
+      if (!policyAsk) return handOff("nothing");
+      const outcome = await answerPolicy();
+      if (!outcome) return handOff("nothing");
+      const reloadedAlone = await loadInstance(input.instanceId);
+      const changedAlone = reloadedAlone ? snapshotDiff(snapshotOf(loaded), snapshotOf(reloadedAlone)) : [];
+      return {
+        content: outcome.sentence,
+        citations: [],
+        coverage: "not_applicable",
+        recommendedVideoIds: [],
+        ...(changedAlone.length > 0 ? { formUpdate: { instanceId: input.instanceId, updated: changedAlone.map((change) => change.key) } } : {}),
+      };
+    }
 
     /*
      * The assistant's last reply counts as accepted only when the patch quotes
@@ -298,6 +325,7 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
      * owner split below moved there. A patch with any refusal writes nothing
      * and the turn goes on (redraft, revision).
      */
+    let policyOutcome: Awaited<ReturnType<typeof answerPolicy>> = null;
     if (formEditSingleWriterEnabled()) {
       const ops = [
         ...Object.entries(reading.patch.set).map(([field, value]) => ({
@@ -335,7 +363,11 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
        * to the old path, whose revision rewrote the form and said "Updated"): what the reader set is already on
        * the form. Said so; the old path does not run.
        */
-      if (readerFixes && result.handoff === "noop") return alreadyThere(Object.keys(reading.patch.set), labels);
+      if (readerFixes && result.handoff === "noop") {
+        const outcome = await answerPolicy();
+        if (!outcome?.written) return withPolicySentence(alreadyThere(Object.keys(reading.patch.set), labels), outcome);
+        policyOutcome = outcome;
+      }
     } else {
       const { diff } = applyPatch(before, reading.patch, rules);
 
@@ -380,18 +412,20 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
       }
     }
 
+    // EDIT_POLICY_ASK_ENABLED: the policy, after the edit is on the form (its account is what the policy is read from).
+    policyOutcome ??= await answerPolicy();
     const reloaded = await loadInstance(input.instanceId);
     if (!reloaded) return null;
     const changed = snapshotDiff(snapshotOf(loaded), snapshotOf(reloaded));
     /* FORM_PATCH_READER_FIXES_ENABLED: the reader's values are already on the form (the old writers' path). */
-    if (readerFixes && changed.length === 0) return alreadyThere(Object.keys(reading.patch.set), labels);
-    return {
+    if (readerFixes && changed.length === 0) return withPolicySentence(alreadyThere(Object.keys(reading.patch.set), labels), policyOutcome);
+    return withPolicySentence({
       content: replyFromDiff({ changed }, labels),
       citations: [],
       coverage: "not_applicable",
       recommendedVideoIds: [],
       ...(changed.length > 0 ? { formUpdate: { instanceId: input.instanceId, updated: changed.map((change) => change.key) } } : {}),
-    };
+    }, policyOutcome);
   } catch {
     return null;
   }
