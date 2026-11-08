@@ -339,22 +339,6 @@ export function policyGateNonblockingEnabled(): boolean {
   );
 }
 
-// coding 2: REVISION_EDIT_NEEDS_EDIT
-/**
- * REVISION_EDIT_NEEDS_EDIT_ENABLED / NEXT_PUBLIC_REVISION_EDIT_NEEDS_EDIT_ENABLED (QA's Sunny round-5 live tester,
- * 8 Nov 2026, item 1; default off; same flags in both apps). "Change <A> CA" opened a new draft of the finalized form
- * whose banner said "You edited the policy wording: … was changed by hand" when nobody had edited anything: on a
- * revision, every carried policy field without verified provenance counted as an edit. With this flag on, a revision
- * counts as edited only once it has an edit of its own (`forms/policy-verification.ts`). The banner is shown in the
- * browser and Finalize reads the same rule on the server, so there are two variables: FLIP BOTH TOGETHER
- * (NEXT_PUBLIC_ is inlined at build time). Off, as before.
- */
-export function revisionEditNeedsEditEnabled(): boolean {
-  if (typeof window === "undefined") return envFlag("REVISION_EDIT_NEEDS_EDIT_ENABLED");
-  const inlined = process.env.NEXT_PUBLIC_REVISION_EDIT_NEEDS_EDIT_ENABLED;
-  return typeof inlined === "string" && ON.has(inlined.trim().toLowerCase());
-}
-
 /**
  * One chunk per section heading among the current year's manuals. Off, two
  * copies of the same section with different text both stay.
@@ -818,18 +802,6 @@ export function reopenVerbGuardEnabled(): boolean {
  */
 export function reopenByAnyOpenVerbEnabled(): boolean {
   return envFlag("REOPEN_BY_ANY_OPEN_VERB_ENABLED");
-}
-
-// coding 2: POSSESSIVE_NO_APOSTROPHE
-/**
- * POSSESSIVE_NO_APOSTROPHE_ENABLED (QA, 8 Nov 2026, from the sibling app's live tester with round 5; default off; same flag in both
- * apps; only with REOPEN_BY_ANY_OPEN_VERB). "bring up <first name>s corrective action" — the possessive typed without
- * its apostrophe, one roster person by that first name — asked "Who is this form for?" with a blank card, while
- * "<first name>'s" opened the form on file. With this flag on, a first name the roster does not have as typed is tried
- * without its final "s" ("ss" never), by the same one-person rule (`forms/chat-reopen.ts`). Off, as before.
- */
-export function possessiveNoApostropheEnabled(): boolean {
-  return envFlag("POSSESSIVE_NO_APOSTROPHE_ENABLED");
 }
 
 function flagOn(value: string | undefined): boolean {
@@ -2578,48 +2550,6 @@ export function formPatchReaderFixesEnabled(): boolean {
 export function editPolicyAskEnabled(): boolean {
   return envFlag("EDIT_POLICY_ASK_ENABLED") && formPatchReducerEnabled();
 }
-/**
- * UNKNOWN_NAME_ASK_ENABLED (port of the sibling app's flag; QA's round-6 audit, 8 Nov 2026, ran its BF7 chain here;
- * default off). A typed name not on the directory was never read, and "Who is this **<form>** for? Give me their name
- * …" came back on every turn. On: the typed name is named back once and the question is never shown twice in a row
- * (`ai/unknown-name-ask.ts`). Off, as before.
- */
-export function unknownNameAskEnabled(): boolean {
-  return envFlag("UNKNOWN_NAME_ASK_ENABLED");
- * CORRECTED_DATE_KEPT_ENABLED (QA's round-5 trace of corrective-action-conversation-qa Q6, 8 Nov 2026; coding 5;
- * default off). "the meeting was actually on 10-19-26" after a request dated 10-20-26: PRIOR_SENTENCE_FIX's date step
- * saw two incident dates and dated the card null, so Create saved today's date. On: the incident date the manager
- * corrected to is the card's date; a corrected prior step's date never is (`forms/corrected-incident-date.ts`). Off, as
- * before.
- */
-export function correctedDateKeptEnabled(): boolean {
-  return envFlag("CORRECTED_DATE_KEPT_ENABLED");
-}
-/**
- * DATE_QUESTION_KEPT_ENABLED (QA's round-5 trace of Q6, 8 Nov 2026; coding 5; default off). When PRIOR_SENTENCE_FIX's
- * date step (`ai/keep-filled-slots.ts`) left the card's date open between several dates, it dated the card null and
- * dropped its own "Which date goes on the form?", so the manager was never asked and Create dated the form the day it
- * was pressed. On: that question is added to the reply when the reply does not already ask it. Off, as before.
- */
-export function dateQuestionKeptEnabled(): boolean {
-  return envFlag("DATE_QUESTION_KEPT_ENABLED");
- * MISSED_SHIFT_NOT_LATENESS_ENABLED (QA's Sunny live Create test, round 5, 8 Nov 2026; sf-s38; coding 5; same flag in
- * both apps; default off). A Corrective Action for missed weekend shifts was saved with the Attendance lateness plan
- * ("expected to arrive on time … Continued lateness …"), not the plan the card showed. On: an account of a missed or
- * no-show shift, a call-out or an absence that says nothing about lateness keeps the general plan, as a missed meeting
- * does under MEETING_NOT_LATENESS_PLAN (`forms/attendance-action-plan.ts`). Off, as before.
- */
-export function missedShiftNotLatenessEnabled(): boolean {
-  return envFlag("MISSED_SHIFT_NOT_LATENESS_ENABLED");
- * UNDATED_ACCOUNT_BRIEF_ENABLED (QA's live Create test, 8 Nov 2026; coding 5; same flag in both apps; default off). An
- * account with no date ("missing her saturday and sunday shifts …") was saved as "… scheduled shifts on November 8,
- * 2026", the day the form was created: the draft brief told the model the form's date was the incident's. On: with no
- * date stated (a stated "today" is one), the brief says the form is dated the day it is created and no date goes into
- * the account (`forms/form-date-grounding.ts` formDateBrief). Off, as before.
- */
-export function undatedAccountBriefEnabled(): boolean {
-  return envFlag("UNDATED_ACCOUNT_BRIEF_ENABLED");
-}
 // --- end coding 5 flags ---
 
 /**
@@ -2818,36 +2748,6 @@ export function requestKeptInWindowEnabled(): boolean {
   return typeof inlined === "string" && ON.has(inlined.trim().toLowerCase());
 }
 
-// coding 2: KEPT_REQUEST_SAME_FORM
-/**
- * KEPT_REQUEST_SAME_FORM_ENABLED / NEXT_PUBLIC_KEPT_REQUEST_SAME_FORM_ENABLED (QA's round-6 item, 8 Nov 2026; default
- * off; only with REQUEST_KEPT_IN_WINDOW). "Create a Coaching Form from this conversation", asked well after "create
- * corrective action for <A> for Late Opening …", kept that Corrective Action request in the window, so the Coaching
- * card read <A> from the window and no longer said "I took <A> from earlier in this conversation — if this form is for
- * somebody else, tell me who." With this flag on, an earlier request is kept only when the current turn asks for the
- * same form or for none; a turn that asks for a different form keeps the window as it was without the flag, so the
- * person is carried from earlier turns with its notice (`forms/bounded-context.ts`). Same pair as
- * REQUEST_KEPT_IN_WINDOW: the server (the card) and the browser (the draft) read the window, so FLIP BOTH TOGETHER.
- * Off, as before.
- */
-export function keptRequestSameFormEnabled(): boolean {
-  if (typeof window === "undefined") return envFlag("KEPT_REQUEST_SAME_FORM_ENABLED");
-  const inlined = process.env.NEXT_PUBLIC_KEPT_REQUEST_SAME_FORM_ENABLED;
-  return typeof inlined === "string" && ON.has(inlined.trim().toLowerCase());
-}
-
-// coding 2: CARRIED_PERSON_NOTICE
-/**
- * CARRIED_PERSON_NOTICE_ENABLED (QA's round-6 item, 8 Nov 2026; default off; same flag in both apps). On the route,
- * production's INTENT_EXTRACTION, SLOT_RETENTION and REQUEST_KEPT_IN_WINDOW each made a card that carried a person from
- * earlier turns drop "I took <A> from earlier in this conversation — if this form is for somebody else, tell me who."
- * With this flag on, a performance-form card whose person is not named in the manager's own last six turns, but is
- * named before them, says so (`ai/carried-person-notice.ts`, one server-ask.ts step). Off, as before.
- */
-export function carriedPersonNoticeEnabled(): boolean {
-  return envFlag("CARRIED_PERSON_NOTICE_ENABLED");
-}
-
 /**
  * ROSTER_NAME_IN_CANDIDATE_ENABLED (QA, 5 Nov 2026, R2 checked in this app;
  * default off). One employee's story that names their district manager in
@@ -3022,18 +2922,6 @@ export function underPerformanceExplainedEnabled(): boolean {
   return envFlag("UNDER_PERFORMANCE_EXPLAINED_ENABLED");
 }
 
-// coding 2: POLICY_CORRECTION_NOT_ACCOUNT
-/**
- * POLICY_CORRECTION_NOT_ACCOUNT_ENABLED (QA's Sunny round-5 live tester, 8 Nov 2026, item 3; default off; same flag in
- * both apps). "it should be under performance not standard of conduct", turn 4 of a sales Corrective Action, was pasted
- * into the Observation of Offense. With this flag on, a short sentence that only says which policy or category applies
- * ("it should be X not Y", "it's X not Y", "wrong policy") is no account (`ai/policy-correction-turn.ts`); the turn
- * stays in the request for the policy readers. Off, as before.
- */
-export function policyCorrectionNotAccountEnabled(): boolean {
-  return envFlag("POLICY_CORRECTION_NOT_ACCOUNT_ENABLED");
-}
-
 /**
  * SALES_SHORTFALL_OBJECT_ENABLED (QA, 6 Nov 2026, tester batch 1 after the
  * Sunny flip; default off). "Not meeting sales requirements for the month of
@@ -3138,38 +3026,6 @@ export function rosterNotFoundAnyPhrasingEnabled(): boolean {
  */
 export function exitStatedOnlyEnabled(): boolean {
   return envFlag("EXIT_STATED_ONLY_ENABLED");
-}
-
-// coding 2: EXIT_TERMINATION_STATED
-/**
- * EXIT_TERMINATION_STATED_ENABLED (QA's Sunny round-5 live tester, 8 Nov 2026, item 4; default off; only with
- * EXIT_STATED_ONLY for the reason). A termination letter pasted for an exit form: with EXIT_STATED_ONLY the card invented
- * nothing but also left the stated facts blank. With this flag on, "your employment … is terminated, effective
- * 11/06/2026" ticks the involuntary separation and is the Resignation Date, and the letter's stated reason ("This
- * decision follows …") is the Reason (`forms/exit-facts.ts`, `forms/exit-details.ts`). Keys or property "to return"
- * are still not returned, and "hours worked through" is still no last day. Off, as before.
- */
-export function exitTerminationStatedEnabled(): boolean {
-  return envFlag("EXIT_TERMINATION_STATED_ENABLED");
-// coding 2: EXIT_OTHER_PERSON_NOT_SUBJECT
-/**
- * EXIT_OTHER_PERSON_NOT_SUBJECT_ENABLED (QA's Sunny round-5 live tester, 8 Nov 2026, item 4b; default off; same flag in
- * both apps). A termination letter naming "your Salon Director, <B>" was answered "Which of them is this
- * **Resignation/Exit Form** for — **<B>** or **<A>**?" with "**Job title:** Salon Director" under it. With this flag on, a
- * candidate named only right after a title is not offered as the subject, and that title line goes with them
- * (`ai/exit-other-person.ts`, one server-ask.ts step). Off, as before.
- */
-export function exitOtherPersonNotSubjectEnabled(): boolean {
-  return envFlag("EXIT_OTHER_PERSON_NOT_SUBJECT_ENABLED");
-// coding 2: FIELD_LABEL_NOT_A_QUESTION
-/**
- * FIELD_LABEL_NOT_A_QUESTION_ENABLED (QA, 8 Nov 2026, from the sibling app's live tester; the same here; default off;
- * same flag in both apps). On an open exit card, "how employee resigned - told management" was answered as a policy
- * question with no card: "how" read as a question. With this flag on, a clause that opens with one of the exit form's
- * field labels and gives its value is no question (`ai/question-not-form.ts`); with "?" it still is. Off, as before.
- */
-export function fieldLabelNotAQuestionEnabled(): boolean {
-  return envFlag("FIELD_LABEL_NOT_A_QUESTION_ENABLED");
 }
 
 /**
@@ -3344,15 +3200,6 @@ export function sourceNoteGuardEnabled(): boolean {
   return envFlag("SOURCE_NOTE_GUARD_ENABLED");
 }
 
-/**
- * TWO_FORMS_CARD_NOT_ASKED_ENABLED (QA, 8 Nov 2026, live check conv ef902fec; default off). A card that already names
- * its employee is never asked "Which of them is this <form> for — <that employee> or …?": the line is left out of the
- * final reply (`forms/card-not-asked.ts`). Off, as before.
- */
-export function twoFormsCardNotAskedEnabled(): boolean {
-  return envFlag("TWO_FORMS_CARD_NOT_ASKED_ENABLED");
-}
-
 // coding 2: TWO_FORMS_EACH_PERSON
 /**
  * TWO_FORMS_EACH_PERSON_ENABLED (QA, Sunny live tester after flip 7, 7 Nov 2026; default off). "Coaching form for <A>.
@@ -3525,18 +3372,6 @@ export function amountBeforePayrollDeductEnabled(): boolean {
   return envFlag("AMOUNT_BEFORE_PAYROLL_DEDUCT_ENABLED");
 }
 
-// coding 2: PAYROLL_CLAUSE_NOT_ACCOUNT
-/**
- * PAYROLL_CLAUSE_NOT_ACCOUNT_ENABLED (QA's Sunny round-5 live tester, 8 Nov 2026, item 2a; default off). "… she was
- * late today, $20 payroll deduct applies" kept "$20 payroll deduct applies Payroll deduction amount: $20." in the
- * Observation of Offense. With this flag on, the account loses the app's "Payroll deduction amount: $X." line and a bare
- * payroll answer clause; a payroll clause that says what it is for keeps its reason (`ai/payroll-clause-not-account.ts`).
- * Off, as before.
- */
-export function payrollClauseNotAccountEnabled(): boolean {
-  return envFlag("PAYROLL_CLAUSE_NOT_ACCOUNT_ENABLED");
-}
-
 /**
  * COPY_OWN_SALON_ENABLED (QA's Sunny flip-9 live tester, 8 Nov 2026; default off). "copy this form for <B>" — and
  * "the same draft that we did with <A> by changing the name and position?" → "<B>" (SAME_FORM_COPY_NEW_PERSON) —
@@ -3621,6 +3456,9 @@ export function createCommandPointsToCardEnabled(): boolean {
  */
 export function cardComplaintNotAccountEnabled(): boolean {
   return envFlag("CARD_COMPLAINT_NOT_ACCOUNT_ENABLED");
+}
+
+/**
  * PROPOSAL_NAME_CORRECTION_ENABLED (QA, round 5, 8 Nov 2026; ported from Ask Bubbles; default off; reads with
  * NAME_CORRECTION_WORDS_ENABLED, live). On a card not yet created, "fix her last name <surname>" (and "her last name
  * is …", "it's spelled …") was not applied: the card kept the old name, and "it's spelled <surname>" put "Spelled
@@ -3630,4 +3468,175 @@ export function cardComplaintNotAccountEnabled(): boolean {
  */
 export function proposalNameCorrectionEnabled(): boolean {
   return envFlag("PROPOSAL_NAME_CORRECTION_ENABLED");
+}
+
+/**
+ * UNKNOWN_NAME_ASK_ENABLED (port of the sibling app's flag; QA's round-6 audit, 8 Nov 2026, ran its BF7 chain here;
+ * default off). A typed name not on the directory was never read, and "Who is this **<form>** for? Give me their name
+ * …" came back on every turn. On: the typed name is named back once and the question is never shown twice in a row
+ * (`ai/unknown-name-ask.ts`). Off, as before.
+ */
+export function unknownNameAskEnabled(): boolean {
+  return envFlag("UNKNOWN_NAME_ASK_ENABLED");
+}
+
+/**
+ * CORRECTED_DATE_KEPT_ENABLED (QA's round-5 trace of corrective-action-conversation-qa Q6, 8 Nov 2026; coding 5;
+ * default off). "the meeting was actually on 10-19-26" after a request dated 10-20-26: PRIOR_SENTENCE_FIX's date step
+ * saw two incident dates and dated the card null, so Create saved today's date. On: the incident date the manager
+ * corrected to is the card's date; a corrected prior step's date never is (`forms/corrected-incident-date.ts`). Off, as
+ * before.
+ */
+export function correctedDateKeptEnabled(): boolean {
+  return envFlag("CORRECTED_DATE_KEPT_ENABLED");
+}
+
+/**
+ * DATE_QUESTION_KEPT_ENABLED (QA's round-5 trace of Q6, 8 Nov 2026; coding 5; default off). When PRIOR_SENTENCE_FIX's
+ * date step (`ai/keep-filled-slots.ts`) left the card's date open between several dates, it dated the card null and
+ * dropped its own "Which date goes on the form?", so the manager was never asked and Create dated the form the day it
+ * was pressed. On: that question is added to the reply when the reply does not already ask it. Off, as before.
+ */
+export function dateQuestionKeptEnabled(): boolean {
+  return envFlag("DATE_QUESTION_KEPT_ENABLED");
+}
+
+/**
+ * POLICY_CORRECTION_NOT_ACCOUNT_ENABLED (QA's Sunny round-5 live tester, 8 Nov 2026, item 3; default off; same flag in
+ * both apps). "it should be under performance not standard of conduct", turn 4 of a sales Corrective Action, was pasted
+ * into the Observation of Offense. With this flag on, a short sentence that only says which policy or category applies
+ * ("it should be X not Y", "it's X not Y", "wrong policy") is no account (`ai/policy-correction-turn.ts`); the turn
+ * stays in the request for the policy readers. Off, as before.
+ */
+export function policyCorrectionNotAccountEnabled(): boolean {
+  return envFlag("POLICY_CORRECTION_NOT_ACCOUNT_ENABLED");
+}
+
+/**
+ * REVISION_EDIT_NEEDS_EDIT_ENABLED / NEXT_PUBLIC_REVISION_EDIT_NEEDS_EDIT_ENABLED (QA's Sunny round-5 live tester,
+ * 8 Nov 2026, item 1; default off; same flags in both apps). "Change <A> CA" opened a new draft of the finalized form
+ * whose banner said "You edited the policy wording: … was changed by hand" when nobody had edited anything: on a
+ * revision, every carried policy field without verified provenance counted as an edit. With this flag on, a revision
+ * counts as edited only once it has an edit of its own (`forms/policy-verification.ts`). The banner is shown in the
+ * browser and Finalize reads the same rule on the server, so there are two variables: FLIP BOTH TOGETHER
+ * (NEXT_PUBLIC_ is inlined at build time). Off, as before.
+ */
+export function revisionEditNeedsEditEnabled(): boolean {
+  if (typeof window === "undefined") return envFlag("REVISION_EDIT_NEEDS_EDIT_ENABLED");
+  const inlined = process.env.NEXT_PUBLIC_REVISION_EDIT_NEEDS_EDIT_ENABLED;
+  return typeof inlined === "string" && ON.has(inlined.trim().toLowerCase());
+}
+
+/**
+ * MISSED_SHIFT_NOT_LATENESS_ENABLED (QA's Sunny live Create test, round 5, 8 Nov 2026; sf-s38; coding 5; same flag in
+ * both apps; default off). A Corrective Action for missed weekend shifts was saved with the Attendance lateness plan
+ * ("expected to arrive on time … Continued lateness …"), not the plan the card showed. On: an account of a missed or
+ * no-show shift, a call-out or an absence that says nothing about lateness keeps the general plan, as a missed meeting
+ * does under MEETING_NOT_LATENESS_PLAN (`forms/attendance-action-plan.ts`). Off, as before.
+ */
+export function missedShiftNotLatenessEnabled(): boolean {
+  return envFlag("MISSED_SHIFT_NOT_LATENESS_ENABLED");
+}
+
+/**
+ * PAYROLL_CLAUSE_NOT_ACCOUNT_ENABLED (QA's Sunny round-5 live tester, 8 Nov 2026, item 2a; default off). "… she was
+ * late today, $20 payroll deduct applies" kept "$20 payroll deduct applies Payroll deduction amount: $20." in the
+ * Observation of Offense. With this flag on, the account loses the app's "Payroll deduction amount: $X." line and a bare
+ * payroll answer clause; a payroll clause that says what it is for keeps its reason (`ai/payroll-clause-not-account.ts`).
+ * Off, as before.
+ */
+export function payrollClauseNotAccountEnabled(): boolean {
+  return envFlag("PAYROLL_CLAUSE_NOT_ACCOUNT_ENABLED");
+}
+
+/**
+ * EXIT_TERMINATION_STATED_ENABLED (QA's Sunny round-5 live tester, 8 Nov 2026, item 4; default off; only with
+ * EXIT_STATED_ONLY for the reason). A termination letter pasted for an exit form: with EXIT_STATED_ONLY the card invented
+ * nothing but also left the stated facts blank. With this flag on, "your employment … is terminated, effective
+ * 11/06/2026" ticks the involuntary separation and is the Resignation Date, and the letter's stated reason ("This
+ * decision follows …") is the Reason (`forms/exit-facts.ts`, `forms/exit-details.ts`). Keys or property "to return"
+ * are still not returned, and "hours worked through" is still no last day. Off, as before.
+ */
+export function exitTerminationStatedEnabled(): boolean {
+  return envFlag("EXIT_TERMINATION_STATED_ENABLED");
+}
+
+/**
+ * UNDATED_ACCOUNT_BRIEF_ENABLED (QA's live Create test, 8 Nov 2026; coding 5; same flag in both apps; default off). An
+ * account with no date ("missing her saturday and sunday shifts …") was saved as "… scheduled shifts on November 8,
+ * 2026", the day the form was created: the draft brief told the model the form's date was the incident's. On: with no
+ * date stated (a stated "today" is one), the brief says the form is dated the day it is created and no date goes into
+ * the account (`forms/form-date-grounding.ts` formDateBrief). Off, as before.
+ */
+export function undatedAccountBriefEnabled(): boolean {
+  return envFlag("UNDATED_ACCOUNT_BRIEF_ENABLED");
+}
+
+/**
+ * TWO_FORMS_CARD_NOT_ASKED_ENABLED (QA, 8 Nov 2026, live check conv ef902fec; default off). A card that already names
+ * its employee is never asked "Which of them is this <form> for — <that employee> or …?": the line is left out of the
+ * final reply (`forms/card-not-asked.ts`). Off, as before.
+ */
+export function twoFormsCardNotAskedEnabled(): boolean {
+  return envFlag("TWO_FORMS_CARD_NOT_ASKED_ENABLED");
+}
+
+/**
+ * EXIT_OTHER_PERSON_NOT_SUBJECT_ENABLED (QA's Sunny round-5 live tester, 8 Nov 2026, item 4b; default off; same flag in
+ * both apps). A termination letter naming "your Salon Director, <B>" was answered "Which of them is this
+ * **Resignation/Exit Form** for — **<B>** or **<A>**?" with "**Job title:** Salon Director" under it. With this flag on, a
+ * candidate named only right after a title is not offered as the subject, and that title line goes with them
+ * (`ai/exit-other-person.ts`, one server-ask.ts step). Off, as before.
+ */
+export function exitOtherPersonNotSubjectEnabled(): boolean {
+  return envFlag("EXIT_OTHER_PERSON_NOT_SUBJECT_ENABLED");
+}
+
+/**
+ * POSSESSIVE_NO_APOSTROPHE_ENABLED (QA, 8 Nov 2026, from the sibling app's live tester with round 5; default off; same flag in both
+ * apps; only with REOPEN_BY_ANY_OPEN_VERB). "bring up <first name>s corrective action" — the possessive typed without
+ * its apostrophe, one roster person by that first name — asked "Who is this form for?" with a blank card, while
+ * "<first name>'s" opened the form on file. With this flag on, a first name the roster does not have as typed is tried
+ * without its final "s" ("ss" never), by the same one-person rule (`forms/chat-reopen.ts`). Off, as before.
+ */
+export function possessiveNoApostropheEnabled(): boolean {
+  return envFlag("POSSESSIVE_NO_APOSTROPHE_ENABLED");
+}
+
+/**
+ * KEPT_REQUEST_SAME_FORM_ENABLED / NEXT_PUBLIC_KEPT_REQUEST_SAME_FORM_ENABLED (QA's round-6 item, 8 Nov 2026; default
+ * off; only with REQUEST_KEPT_IN_WINDOW). "Create a Coaching Form from this conversation", asked well after "create
+ * corrective action for <A> for Late Opening …", kept that Corrective Action request in the window, so the Coaching
+ * card read <A> from the window and no longer said "I took <A> from earlier in this conversation — if this form is for
+ * somebody else, tell me who." With this flag on, an earlier request is kept only when the current turn asks for the
+ * same form or for none; a turn that asks for a different form keeps the window as it was without the flag, so the
+ * person is carried from earlier turns with its notice (`forms/bounded-context.ts`). Same pair as
+ * REQUEST_KEPT_IN_WINDOW: the server (the card) and the browser (the draft) read the window, so FLIP BOTH TOGETHER.
+ * Off, as before.
+ */
+export function keptRequestSameFormEnabled(): boolean {
+  if (typeof window === "undefined") return envFlag("KEPT_REQUEST_SAME_FORM_ENABLED");
+  const inlined = process.env.NEXT_PUBLIC_KEPT_REQUEST_SAME_FORM_ENABLED;
+  return typeof inlined === "string" && ON.has(inlined.trim().toLowerCase());
+}
+
+/**
+ * CARRIED_PERSON_NOTICE_ENABLED (QA's round-6 item, 8 Nov 2026; default off; same flag in both apps). On the route,
+ * production's INTENT_EXTRACTION, SLOT_RETENTION and REQUEST_KEPT_IN_WINDOW each made a card that carried a person from
+ * earlier turns drop "I took <A> from earlier in this conversation — if this form is for somebody else, tell me who."
+ * With this flag on, a performance-form card whose person is not named in the manager's own last six turns, but is
+ * named before them, says so (`ai/carried-person-notice.ts`, one server-ask.ts step). Off, as before.
+ */
+export function carriedPersonNoticeEnabled(): boolean {
+  return envFlag("CARRIED_PERSON_NOTICE_ENABLED");
+}
+
+/**
+ * FIELD_LABEL_NOT_A_QUESTION_ENABLED (QA, 8 Nov 2026, from the sibling app's live tester; the same here; default off;
+ * same flag in both apps). On an open exit card, "how employee resigned - told management" was answered as a policy
+ * question with no card: "how" read as a question. With this flag on, a clause that opens with one of the exit form's
+ * field labels and gives its value is no question (`ai/question-not-form.ts`); with "?" it still is. Off, as before.
+ */
+export function fieldLabelNotAQuestionEnabled(): boolean {
+  return envFlag("FIELD_LABEL_NOT_A_QUESTION_ENABLED");
 }

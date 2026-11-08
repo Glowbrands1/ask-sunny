@@ -1,10 +1,23 @@
-import { exitIntakeFixEnabled, exitShortcutWordsEnabled, exitStatedOnlyEnabled, exitTerminationStatedEnabled, resignMethodFollowupEnabled } from "@/lib/config/chat-quality-flags";
-import { exitIntakeFixEnabled, exitShortcutWordsEnabled, exitStatedOnlyEnabled, fieldLabelNotAQuestionEnabled, resignMethodFollowupEnabled } from "@/lib/config/chat-quality-flags";
+import {
+  exitIntakeFixEnabled,
+  exitShortcutWordsEnabled,
+  exitStatedOnlyEnabled,
+  exitTerminationStatedEnabled,
+  resignMethodFollowupEnabled,
+  fieldLabelNotAQuestionEnabled,
+} from "@/lib/config/chat-quality-flags";
 
 import { JOIN } from "./bounded-context";
 import { isQuestion } from "./employment-change";
 import { EXIT_DETAIL_FIELDS, EXIT_NOTICE_GROUP, EXIT_TYPE_GROUP } from "./exit-library";
-import { EXIT_DERIVED_KEYS, exitFactValues, JOB_ABANDONED, NO_CALL_FOR_SHIFT, readExitFacts, type ExitFacts } from "./exit-facts";
+import {
+  EXIT_DERIVED_KEYS,
+  exitFactValues,
+  JOB_ABANDONED,
+  NO_CALL_FOR_SHIFT,
+  readExitFacts,
+  type ExitFacts,
+} from "./exit-facts";
 
 /**
  * ============================================================================
@@ -663,6 +676,9 @@ function terminationReason(text: string): string | null {
     return sentence(raw);
   }
   return null;
+}
+
+/**
  * FIELD_LABEL_NOT_A_QUESTION_ENABLED (QA, 8 Nov 2026, from the sibling app's live tester; the same here): "how employee resigned - told
  * management" fills the How Employee Resigned line by its own label. A known channel in it ("by text") is read as
  * before; otherwise the manager's words after the label are the line, ended where the sentence ends.

@@ -10,11 +10,15 @@ import {
   requestParticipleLeadEnabled,
   secondRequestOwnAccountEnabled,
 } from "@/lib/config/chat-quality-flags";
-import { withoutPriorStepClauses } from "@/lib/forms/form-date-answer";
-import { CA_POLICY_LABEL, isSalesPolicyReading, readCaPolicy, STANDARDS_OF_CONDUCT, type CaPolicyName } from "@/lib/forms/ca-policy";
-import { correctedDates, withoutPriorStepClauses } from "@/lib/forms/form-date-answer";
+import { withoutPriorStepClauses, correctedDates } from "@/lib/forms/form-date-answer";
+import {
+  CA_POLICY_LABEL,
+  isSalesPolicyReading,
+  readCaPolicy,
+  STANDARDS_OF_CONDUCT,
+  type CaPolicyName,
+} from "@/lib/forms/ca-policy";
 import { businessToday } from "@/lib/business-date";
-import { CA_POLICY_LABEL, readCaPolicy, STANDARDS_OF_CONDUCT, type CaPolicyName } from "@/lib/forms/ca-policy";
 import {
   findManualSection,
   headingKey,
