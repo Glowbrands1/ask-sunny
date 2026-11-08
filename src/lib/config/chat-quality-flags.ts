@@ -3231,3 +3231,14 @@ export function twoFormsEachPersonEnabled(): boolean {
 export function removePolicyNotNamedEnabled(): boolean {
   return envFlag("REMOVE_POLICY_NOT_NAMED_ENABLED");
 }
+
+/**
+ * REQUEST_PARTICIPLE_LEAD_ENABLED (QA's round-5 live Sunny check, 8 Nov 2026; default off). "I need a corrective
+ * action made for under performance. <A> was below on PPTA, …" made the card's Observation of Offense start "made for
+ * under performance.": "made / done / written up for" after the form was not read as the request. With the flag on it
+ * is, and a request sentence whose rest is only a sales reason ("under performance") is left out of the Observation
+ * when another sentence holds the account (`ai/remap-incident.ts` requestLead, accountSentences). Off, as before.
+ */
+export function requestParticipleLeadEnabled(): boolean {
+  return envFlag("REQUEST_PARTICIPLE_LEAD_ENABLED");
+}
