@@ -43,7 +43,8 @@ export const NOV7_TWO_FORMS_EACH_PERSON_CASES: ReplayCase[] = [
     id: "nov7-two-forms-each-person-coaching-and-ca",
     title: "\"Coaching form for <A>. Also a CA for <B>.\": the Coaching card is A's, and B's Corrective Action is offered with B",
     report: REPORT,
-    status: { open: "the Coaching card's employee is the CA's person, or no one, and B's Corrective Action is not offered" },
+    // Changed on purpose (8 Nov 2026): fixed in production by TWO_FORMS_EACH_PERSON_ENABLED, QA round 4, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const thread = start(t);
@@ -58,7 +59,8 @@ export const NOV7_TWO_FORMS_EACH_PERSON_CASES: ReplayCase[] = [
     id: "nov7-two-forms-each-person-yes-starts-b",
     title: "then \"yes\": the Corrective Action card is B's",
     report: `${REPORT} (the offer accepted)`,
-    status: { open: "nothing was offered, so \"yes\" starts nothing for B" },
+    // Changed on purpose (8 Nov 2026): fixed in production by TWO_FORMS_EACH_PERSON_ENABLED, QA round 4, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const thread = start(t);

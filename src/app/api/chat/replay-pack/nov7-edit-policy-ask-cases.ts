@@ -21,7 +21,6 @@ import { STEP_B_READER_FLAGS, STEP_B_REFUSAL_SCENARIOS, SUN_LATE, patch, type Re
 
 const lateDate = STEP_B_REFUSAL_SCENARIOS.find((scenario) => scenario.id === "sun-late-date")!;
 const FLAGS = [...STEP_B_READER_FLAGS, "EDIT_POLICY_ASK_ENABLED"];
-const OPEN = "the reply says nothing about \"please list the policy\" (the patch reader reads the account and the date only)";
 const POLICY_LINE = /Policy reference:\s*[^\n]*JBA Policy Manual/i;
 const SAYS_POLICY = /\bpolic(?:y|ies)\b/i;
 
@@ -31,7 +30,8 @@ const SCENARIOS: readonly (RefusalScenario & { readonly status: ReplayCase["stat
   {
     ...lateDate,
     id: "sun-late-date",
-    status: { open: OPEN },
+    // Changed on purpose (8 Nov 2026): fixed in production by EDIT_POLICY_ASK_ENABLED, QA round 4, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     expect: {
       says: "Details is about showing up late with the manual's policy line, the Date stays 2026-10-14, and the reply says the policy was listed",
       check: (run) =>

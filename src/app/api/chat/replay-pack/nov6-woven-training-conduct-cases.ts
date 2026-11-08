@@ -73,7 +73,8 @@ export const NOV6_WOVEN_TRAINING_CONDUCT_CASES: ReplayCase[] = SAID.map(
     id: `nov6-woven-training-conduct-${id}`,
     title: `"${said.slice(0, 70)}…": the card and the draft cite the Standards of Conduct, section and page`,
     report: `${REPORT}: here, ${live}`,
-    status: { open: `with production's flags: ${live}` },
+    // Changed on purpose (8 Nov 2026): fixed in production by WOVEN_TRAINING_CONDUCT_ENABLED, QA round 4, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: [FLAG],
     async run(t) {
       const thread = start(t);
