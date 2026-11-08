@@ -46,6 +46,7 @@ import {
   reopenByAnyOpenVerbEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { streamWhenSlow } from "@/lib/api/streamed-response";
+import { finalReplyWithoutMarkers } from "@/lib/ai/source-note";
 import {
   assertLiveMode,
   assertNoConfigurationProblems,
@@ -204,7 +205,7 @@ async function postChat(request: Request) {
     const capped = await modelSpendGuard({ userId: context.identity.subject, role: context.identity.role });
     if (capped) {
       await closeTurn(turnId, { category: "unclassified", succeeded: true, latencyMs: Date.now() - askedAt });
-      return NextResponse.json({ ...capped, turnId });
+      return NextResponse.json({ ...finalReplyWithoutMarkers(capped), turnId });
     }
 
     let answer;
@@ -240,7 +241,7 @@ async function postChat(request: Request) {
           : null;
       if (newPersonCopy && "answer" in newPersonCopy) {
         await closeTurn(turnId, { category: "unclassified", succeeded: true, latencyMs: Date.now() - askedAt });
-        return NextResponse.json({ ...newPersonCopy.answer, turnId });
+        return NextResponse.json({ ...finalReplyWithoutMarkers(newPersonCopy.answer), turnId });
       }
       if (newPersonCopy) {
         asked = {
@@ -895,7 +896,8 @@ async function postChat(request: Request) {
       logTurnEvent("turn.answer.missing_turn", { surface, where: "api/chat" });
     }
 
-    return NextResponse.json({ ...answer, turnId });
+    // FINAL_REPLY_MARKER_GUARD_ENABLED: no bare source tag reaches the manager, whatever path answered. See `ai/source-note.ts`.
+    return NextResponse.json({ ...finalReplyWithoutMarkers(answer), turnId });
   } catch (error) {
     return errorResponse(error, "POST /api/chat");
   }
