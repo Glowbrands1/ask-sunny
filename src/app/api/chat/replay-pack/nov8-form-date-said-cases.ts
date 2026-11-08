@@ -34,7 +34,8 @@ export const NOV8_FORM_DATE_SAID_CASES: ReplayCase[] = [
     id: "nov8-form-date-said-settles",
     title: "\"… make the date for 10/14/26.\" on a card with 10/10 in it: the Date is 10/14/2026 and no date question is asked",
     report: REPORT,
-    status: { open: "the card asks \"You mentioned more than one date (10/10, 10/14). Which date goes on the form?\"" },
+    // Changed on purpose (8 Nov 2026): fixed in production by FORM_DATE_SAID_SETTLES_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       vi.setSystemTime(new Date("2026-11-07T14:00:00Z"));

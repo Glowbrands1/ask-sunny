@@ -179,7 +179,8 @@ export const NOV6_CODING3_REOPEN_PREVIOUS_FORMS_CASES: ReplayCase[] = [
       id: `nov6-reopen-a-${key}`,
       title: `(A) "${said}" (${finalized ? "finalized" : "a draft"}, another chat) opens it; never a new form`,
       report: `${REPORT}: QA/Pau, 6 Nov 2026 — managers asking for previous forms, (A) open`,
-      status: HOLDS_TODAY.has(key) ? "fixed" : { open: "does not open the form on file" },
+      // Changed on purpose (8 Nov 2026): fixed in production by REOPEN_BY_ANY_OPEN_VERB_ENABLED + REOPEN_NOT_OPEN_FORM_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+      status: "fixed",
       fixFlags: FLAG,
       async run(t: T) {
         start(t);
@@ -215,7 +216,8 @@ export const NOV6_CODING3_REOPEN_PREVIOUS_FORMS_CASES: ReplayCase[] = [
     id: "nov6-reopen-coaching-none-on-file",
     title: "\"pull up my old coaching form for Odalys Fairbank\" with none on file says so; no new card",
     report: `${REPORT}: QA/Pau, 6 Nov 2026 — none on file: say so plainly, never a new blank form`,
-    status: { open: "starts a new Coaching Form" },
+    // Changed on purpose (8 Nov 2026): fixed in production by REOPEN_BY_ANY_OPEN_VERB_ENABLED + REOPEN_NOT_OPEN_FORM_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FLAG,
     async run(t: T) {
       start(t);
@@ -231,7 +233,8 @@ export const NOV6_CODING3_REOPEN_PREVIOUS_FORMS_CASES: ReplayCase[] = [
     id: "nov6-reopen-several-coachings-asks-which",
     title: "two Coaching Forms on file for Marisol Quintero: lists both (type, date, status) and asks which; \"the finalized one\" opens it as a new draft",
     report: `${REPORT}: QA/Pau, 6 Nov 2026 — several forms on file: list them and ask which`,
-    status: { open: "starts a new Coaching Form instead of listing the ones on file" },
+    // Changed on purpose (8 Nov 2026): fixed in production by REOPEN_BY_ANY_OPEN_VERB_ENABLED + REOPEN_NOT_OPEN_FORM_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FLAG,
     async run(t: T) {
       start(t);
@@ -272,7 +275,8 @@ export const NOV6_CODING3_REOPEN_QA_DECISION_CASES: ReplayCase[] = [
       id: `nov6-reopen-qa-b-${verb}-displays-finalized`,
       title: `QA (b): "${said}" with it finalized DISPLAYS it (Edit as new draft offered); no new draft`,
       report: `${REPORT}: QA decision (b), 6 Nov 2026 — "show" and "find" display a finalized form`,
-      status: { open: "the form on file is not displayed (\"find\" is no reopen verb; \"corrective action\" names no form)" },
+      // Changed on purpose (8 Nov 2026): fixed in production by REOPEN_BY_ANY_OPEN_VERB_ENABLED + REOPEN_NOT_OPEN_FORM_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+      status: "fixed",
       fixFlags: FLAG,
       async run(t: T) {
         start(t);
@@ -295,7 +299,8 @@ export const NOV6_CODING3_REOPEN_QA_DECISION_CASES: ReplayCase[] = [
       id: `nov6-reopen-qa-b-${verb}-opens-finalized-as-draft`,
       title: `QA (b)/(c): "${said}" with it finalized OPENS it as a new draft of it`,
       report: `${REPORT}: QA decision (b), 6 Nov 2026 — "bring up", "pull up", "open" open a finalized form as a revision draft`,
-      status: { open: "starts a new Corrective Action instead of opening the one on file" },
+      // Changed on purpose (8 Nov 2026): fixed in production by REOPEN_BY_ANY_OPEN_VERB_ENABLED + REOPEN_NOT_OPEN_FORM_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+      status: "fixed",
       fixFlags: FLAG,
       async run(t: T) {
         start(t);
@@ -325,7 +330,8 @@ export const NOV6_CODING3_REOPEN_QA_DECISION_CASES: ReplayCase[] = [
     id: "nov6-reopen-qa-c-open-her-ca",
     title: "QA (c): in the chat it was made in, \"open her CA\" opens it",
     report: `${REPORT}: QA decision (c), 6 Nov 2026 — a possessive determiner means the form on file`,
-    status: { open: "\"open her CA\" does not open the form" },
+    // Changed on purpose (8 Nov 2026): fixed in production by REOPEN_BY_ANY_OPEN_VERB_ENABLED + REOPEN_NOT_OPEN_FORM_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FLAG,
     async run(t: T) {
       start(t);
@@ -341,7 +347,8 @@ export const NOV6_CODING3_REOPEN_QA_DECISION_CASES: ReplayCase[] = [
     id: "nov6-reopen-qa-d-edit-several-asks-which",
     title: "QA (d): two Corrective Actions on file, \"edit Odalys Fairbank's CA\" lists both and asks which; \"1\" opens the newer",
     report: `${REPORT}: QA decision (d), 6 Nov 2026 — several on file: ask which, for every verb including "edit"`,
-    status: { open: "\"edit\" opens the newest without asking" },
+    // Changed on purpose (8 Nov 2026): fixed in production by REOPEN_BY_ANY_OPEN_VERB_ENABLED + REOPEN_NOT_OPEN_FORM_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FLAG,
     async run(t: T) {
       start(t);
@@ -383,7 +390,8 @@ export const NOV6_CODING3_REOPEN_QA_FOLLOW_UP_CASES: ReplayCase[] = [
       id,
       title: `QA (c) follow-up: in a new chat, "${said}" asks whose form it is; never a blank form, never somebody picked`,
       report: `${REPORT}: QA's follow-up, 6 Nov 2026 — "her" not resolved to a form in this chat`,
-      status: { open: "does not ask whose form it is" },
+      // Changed on purpose (8 Nov 2026): fixed in production by REOPEN_BY_ANY_OPEN_VERB_ENABLED + REOPEN_NOT_OPEN_FORM_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+      status: "fixed",
       fixFlags: FLAG,
       async run(t: T) {
         start(t);
@@ -406,7 +414,8 @@ export const NOV6_CODING3_REOPEN_QA_FOLLOW_UP_CASES: ReplayCase[] = [
       id: `nov6-reopen-qa-first-name-two-on-roster-${verb}`,
       title: `QA follow-up (1): "${said}" with two Odalyses on the roster asks which; opens nothing, no card`,
       report: `${REPORT}: QA's follow-up, 6 Nov 2026 — a first name is a person only when exactly one roster person has it`,
-      status: { open: "does not ask which Odalys" },
+      // Changed on purpose (8 Nov 2026): fixed in production by REOPEN_BY_ANY_OPEN_VERB_ENABLED + REOPEN_NOT_OPEN_FORM_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+      status: "fixed",
       fixFlags: FLAG,
       async run(t: T) {
         start(t);
@@ -427,7 +436,8 @@ export const NOV6_CODING3_REOPEN_BY_OPEN_VERB_CASES: ReplayCase[] = [
     id: "nov6-reopen-bring-up-possessive-ca",
     title: "\"bring up Odalys Fairbank's corrective action\" (made in another chat) opens it; never \"Who is this form for?\"",
     report: `${REPORT}: "bring up <name>'s corrective action" → "Who is this form for?"`,
-    status: { open: "asks who the form is for instead of opening the Corrective Action on file" },
+    // Changed on purpose (8 Nov 2026): fixed in production by REOPEN_BY_ANY_OPEN_VERB_ENABLED + REOPEN_NOT_OPEN_FORM_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FLAG,
     async run(t: T) {
       start(t);
@@ -440,7 +450,8 @@ export const NOV6_CODING3_REOPEN_BY_OPEN_VERB_CASES: ReplayCase[] = [
     id: "nov6-reopen-bring-up-old-coaching-first-name",
     title: "\"bring up an old coaching form for Marisol\" (finalized, another chat) opens a new draft of it; never \"Is this for …?\" then a new Coaching proposal",
     report: `${REPORT}: "bring up an old coaching form for <first name>" → "Is this for <name>?" → "yes" → a new Coaching proposal`,
-    status: { open: "asks \"Is this for …?\" and, on \"yes\", proposes a new Coaching Form" },
+    // Changed on purpose (8 Nov 2026): fixed in production by REOPEN_BY_ANY_OPEN_VERB_ENABLED + REOPEN_NOT_OPEN_FORM_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FLAG,
     async run(t: T) {
       start(t);
@@ -457,7 +468,8 @@ export const NOV6_CODING3_REOPEN_BY_OPEN_VERB_CASES: ReplayCase[] = [
     id: "nov6-reopen-bring-up-previously-edited-ca",
     title: "\"bring up a previously edited corrective action for Odalys Fairbank\" (finalized) opens a new draft of it; never a new Corrective Action",
     report: `${REPORT}: "bring up a previously edited corrective action for <name>" → a new Corrective Action`,
-    status: { open: "proposes a new Corrective Action instead of opening the one on file" },
+    // Changed on purpose (8 Nov 2026): fixed in production by REOPEN_BY_ANY_OPEN_VERB_ENABLED + REOPEN_NOT_OPEN_FORM_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FLAG,
     async run(t: T) {
       start(t);
@@ -471,7 +483,8 @@ export const NOV6_CODING3_REOPEN_BY_OPEN_VERB_CASES: ReplayCase[] = [
     id: "nov6-reopen-bring-up-made-earlier-today",
     title: "\"bring up a previous corrective action form that i made for Odalys Fairbank earlier today\" opens it; never starts over",
     report: `${REPORT}: "bring up a previous corrective action form that i made for <name> earlier today" → starts over`,
-    status: { open: "starts a new Corrective Action instead of opening the one made earlier" },
+    // Changed on purpose (8 Nov 2026): fixed in production by REOPEN_BY_ANY_OPEN_VERB_ENABLED + REOPEN_NOT_OPEN_FORM_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FLAG,
     async run(t: T) {
       start(t);
@@ -484,7 +497,8 @@ export const NOV6_CODING3_REOPEN_BY_OPEN_VERB_CASES: ReplayCase[] = [
     id: "nov6-reopen-bring-up-first-name-possessive",
     title: "\"bring up Odalys's corrective action\" (first name, one person on the roster) opens her Corrective Action on file",
     report: `${REPORT}: "bring up <first name>'s corrective action" (QA/Pau, 6 Nov 2026: the first name matches exactly one roster person)`,
-    status: { open: "asks who the form is for instead of opening the Corrective Action on file" },
+    // Changed on purpose (8 Nov 2026): fixed in production by REOPEN_BY_ANY_OPEN_VERB_ENABLED + REOPEN_NOT_OPEN_FORM_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FLAG,
     async run(t: T) {
       start(t);
@@ -497,7 +511,8 @@ export const NOV6_CODING3_REOPEN_BY_OPEN_VERB_CASES: ReplayCase[] = [
     id: "nov6-reopen-several-on-file-asks-which",
     title: "two Corrective Actions on file for Odalys Fairbank: \"bring up Odalys Fairbank's corrective action\" lists both and asks which; \"2\" opens the older (finalized) one as a new draft",
     report: `${REPORT}: QA/Pau, 6 Nov 2026 — several forms on file for that person: list them and ask which`,
-    status: { open: "starts a new Corrective Action instead of listing the ones on file" },
+    // Changed on purpose (8 Nov 2026): fixed in production by REOPEN_BY_ANY_OPEN_VERB_ENABLED + REOPEN_NOT_OPEN_FORM_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FLAG,
     async run(t: T) {
       start(t);
@@ -518,7 +533,8 @@ export const NOV6_CODING3_REOPEN_BY_OPEN_VERB_CASES: ReplayCase[] = [
     id: "nov6-reopen-bring-up-ca-none-on-file",
     title: "\"bring up Odalys Fairbank's CA\" with none on file says it couldn't find one; no new card",
     report: `${REPORT}: negative — a form asked for that is not on file is said to be missing, never started over`,
-    status: { open: "starts a new Corrective Action" },
+    // Changed on purpose (8 Nov 2026): fixed in production by REOPEN_BY_ANY_OPEN_VERB_ENABLED + REOPEN_NOT_OPEN_FORM_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FLAG,
     async run(t: T) {
       start(t);

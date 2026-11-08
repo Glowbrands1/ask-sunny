@@ -41,7 +41,8 @@ export const NOV8_SF_S38_CARD_META_CASES: ReplayCase[] = [
     id: "nov8-sf-s38-create-it",
     title: "sf-s38 (1): \"create it\" and \"create  the draft\" say to press Create draft, never the same proposal text again",
     report: REPORT,
-    status: { open: "each re-sends the same proposal text" },
+    // Changed on purpose (8 Nov 2026): fixed in production by CREATE_COMMAND_POINTS_TO_CARD_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const thread = await start(t);
@@ -57,7 +58,8 @@ export const NOV8_SF_S38_CARD_META_CASES: ReplayCase[] = [
     id: "nov8-sf-s38-out-od-fate",
     title: "sf-s38 (2): \"this proposal is out od fate\" asks what to change, and is never the Observation",
     report: REPORT,
-    status: { open: "\"this proposal is out od fate\" becomes the card's Observation of Offense" },
+    // Changed on purpose (8 Nov 2026): fixed in production by CARD_COMPLAINT_NOT_ACCOUNT_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const thread = await start(t);
@@ -72,12 +74,12 @@ export const NOV8_SF_S38_CARD_META_CASES: ReplayCase[] = [
     id: "nov8-sf-s38-out-od-fate-create",
     title: "sf-s38 (2) at Create: after \"this proposal is out od fate\", the draft keeps the account and never the complaint",
     report: REPORT,
-    status: { open: "\"this proposal is out od fate\" becomes the card's Observation of Offense" },
+    // Changed on purpose (8 Nov 2026): fixed in production by CARD_COMPLAINT_NOT_ACCOUNT_ENABLED + ACCOUNT_VERB_NOT_A_NAME_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
-    // Create refuses this card as out of date for "<A> missing" until coding 4's reader cut (ACCOUNT_VERB_NOT_A_NAME) is
-    // on main; then this holds with FIX and `fixStatus` goes. The draft route's filter is unit-tested meanwhile
-    // (`ai/card-meta-turn.test.ts`, withoutCardMetaTurns).
-    fixStatus: { open: "Create refuses the card as out of date for \"Rowan Kestrel missing\" (the reader cut, coding 4)" },
+    // QA round 5, 8 Nov 2026: the reader cut (ACCOUNT_VERB_NOT_A_NAME) is in production now, so Create no longer refuses the
+    // card as out of date for "<A> missing"; this holds with FIX too (the former `fixStatus` is gone). The draft route's filter
+    // is also unit-tested (`ai/card-meta-turn.test.ts`, withoutCardMetaTurns).
     async run(t) {
       const thread = await start(t);
       await thread.say("create it");

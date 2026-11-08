@@ -41,7 +41,8 @@ export const NOV8_EXIT_DATE_LINE_AGREES_CASES: ReplayCase[] = [
     id: "nov8-r5-exit-date-line-agrees",
     title: "\"exit form for <name>, last day 11/05, gave no notice\": the reply's Date line is the card's 11/5, the form's date",
     report: REPORT,
-    status: { open: "the list says \"the day the draft is created\" above a card dated 11/5/2026" },
+    // Changed on purpose (8 Nov 2026): fixed in production by EXIT_DATE_LINE_AGREES_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const thread = start(t);

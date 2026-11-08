@@ -80,7 +80,8 @@ export const NOV5_PAU_SF_S26_S28_CASES: ReplayCase[] = [
     id: "nov5-sf-s26-change-ca-new-chat",
     title: "sf-s26: in a new chat, \"Change Thessaly Brandt CA\" opens her existing Corrective Action; never a new form \"You haven't told me what happened yet\"",
     report: "Pau via QA, 5 Nov 2026, sf-s26: in a new chat \"Change Employee R CA\" → a new form, \"You haven't told me what happened yet\"",
-    status: { open: "starts a new Corrective Action instead of opening the one on file" },
+    // Changed on purpose (8 Nov 2026): fixed in production by REOPEN_BY_ANY_OPEN_VERB_ENABLED + REOPEN_NOT_OPEN_FORM_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     // REOPEN_BY_ANY_OPEN_VERB_ENABLED (QA, 6 Nov 2026): "CA" after the name is read as the Corrective Action Form.
     fixFlags: ["REOPEN_BY_ANY_OPEN_VERB_ENABLED"],
     async run(t: T) {
@@ -111,7 +112,8 @@ export const NOV5_PAU_SF_S26_S28_CASES: ReplayCase[] = [
     title: "sf-s28: \"can i give a ca for not signing off on the cleaning check list\" → \"can you write me a ca for Thessaly Brandt from o street\": the card uses the earlier incident",
     report:
       "Pau via QA, 5 Nov 2026, sf-s28: \"can i give a ca for not signing off on the cleaning check list\" → \"can you write me a ca for Employee R from o street\" → \"You haven't told me what happened yet\", the Observation was the question",
-    status: { open: "\"You haven't told me what happened yet\"; the earlier turn's incident is not used" },
+    // Changed on purpose (8 Nov 2026): fixed in production by the sales triple (SALES_SHORTFALL_OBJECT_ENABLED, SALES_OBSERVATION_ACCOUNT_ENABLED, CA_PERFORMANCE_REASON_ENABLED), QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: ["OMISSION_IS_ACCOUNT_ENABLED", "OBSERVATION_WITHOUT_ASK_ENABLED"],
     async run(t: T) {
       /*

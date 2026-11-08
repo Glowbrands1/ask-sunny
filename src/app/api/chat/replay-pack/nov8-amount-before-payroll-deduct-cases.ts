@@ -18,7 +18,8 @@ export const NOV8_AMOUNT_BEFORE_PAYROLL_DEDUCT_CASES: ReplayCase[] = [
     id: "nov8-amount-before-payroll-deduct",
     title: `"… $20 payroll deduct applies": the $20 is the amount, never asked again`,
     report: "QA's Sunny flip-9 live tester, 8 Nov 2026 (2): the Yes is read, the $20 isn't, the amount is asked",
-    status: { open: "the amount question is asked after \"$20 payroll deduct applies\"" },
+    // Changed on purpose (8 Nov 2026): fixed in production by AMOUNT_BEFORE_PAYROLL_DEDUCT_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: ["PAYROLL_AMOUNT_SAME_MESSAGE_ENABLED", "AMOUNT_BEFORE_PAYROLL_DEDUCT_ENABLED"],
     async run(t) {
       vi.setSystemTime(new Date("2026-11-07T02:00:00Z"));

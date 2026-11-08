@@ -39,7 +39,8 @@ export const NOV8_WOVEN_DEADLINE_CITES_CONDUCT_CASES: ReplayCase[] = [
     id: "nov8-woven-deadline-cites-conduct",
     title: "\"… for missing the 10-15-26 woven deadline\", then the prior coaching and the payroll answer: every card cites Standards of Conduct with its page",
     report: REPORT,
-    status: { open: "the card says \"this reads as Standards of Conduct\" with no section or page, on every turn" },
+    // Changed on purpose (8 Nov 2026): fixed in production by CONDUCT_INCIDENT_CITES_PAGE_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const thread = start(t);
@@ -58,7 +59,8 @@ export const NOV8_WOVEN_DEADLINE_CITES_CONDUCT_CASES: ReplayCase[] = [
     id: "nov8-woven-courses-cites-conduct",
     title: "\"… a verbal due to not completing her woven courses by the deadline\": the card has a Standards of Conduct Policy line with its page",
     report: REPORT,
-    status: { open: "the card has no Policy line at all" },
+    // Changed on purpose (8 Nov 2026): fixed in production by CONDUCT_INCIDENT_CITES_PAGE_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const thread = start(t);

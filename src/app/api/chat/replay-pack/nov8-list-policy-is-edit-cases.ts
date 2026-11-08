@@ -27,7 +27,8 @@ const SCENARIOS: readonly (RefusalScenario & { readonly status: ReplayCase["stat
     id: "alone",
     refused: ALONE,
     steps: [lateDate.steps[0]!, lateDate.steps[1]!, { say: ALONE }],
-    status: { open: "\"please list the policy\" is answered as a general policy question; nothing is listed on the form" },
+    // Changed on purpose (8 Nov 2026): fixed in production by LIST_POLICY_IS_EDIT_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     flags: FLAGS,
     script: {
       draft: { coaching_details: DETAILS },

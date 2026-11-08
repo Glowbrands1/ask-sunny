@@ -47,7 +47,8 @@ export const NOV8_COPY_OWN_SALON_CASES: ReplayCase[] = [
     id: "nov8-copy-own-salon-copy-this-form-for",
     title: "\"copy this form for <B>\" with <A>'s form open: B's card and form are at B's own salon, never A's",
     report: "QA's Sunny flip-9 live tester, 8 Nov 2026 (3): the copy carries over A's salon",
-    status: { open: "B's card and created form are at A's salon (loc-0309), the one the conversation named for A" },
+    // Changed on purpose (8 Nov 2026): fixed in production by COPY_OWN_SALON_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const { thread, orla } = await orlaForm(t);
@@ -66,7 +67,8 @@ export const NOV8_COPY_OWN_SALON_CASES: ReplayCase[] = [
     id: "nov8-copy-own-salon-same-draft-then-name",
     title: "\"the same draft that we did with <A> by changing the name and position?\" → \"<B>\": B's card is at B's own salon",
     report: "QA's Sunny flip-9 live tester, 8 Nov 2026 (3), the SAME_FORM_COPY_NEW_PERSON wording",
-    status: { open: "B's card is at A's salon (loc-0309)" },
+    // Changed on purpose (8 Nov 2026): fixed in production by COPY_OWN_SALON_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const { thread } = await orlaForm(t);

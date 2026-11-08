@@ -34,7 +34,8 @@ export const NOV8_LIST_POLICY_ON_CARD_CASES: ReplayCase[] = [
     id: "nov8-list-policy-on-card-coaching",
     title: "Coaching card open, with an account: \"please list the policy\" keeps the card, which shows its manual policy line",
     report: "QA, 8 Nov 2026: \"please list the policy\" with a card open is answered as a general policy question",
-    status: { open: "answered as a general policy question; the card's turn is lost" },
+    // Changed on purpose (8 Nov 2026): fixed in production by LIST_POLICY_IS_EDIT_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FLAGS,
     async run(t) {
       const thread = await start(t, COACHING_REQUEST, "coaching");
@@ -53,7 +54,8 @@ export const NOV8_LIST_POLICY_ON_CARD_CASES: ReplayCase[] = [
     id: "nov8-list-policy-on-card-no-account",
     title: "Coaching card open, no account yet: \"please list the policy\" keeps the card and says the policy goes on the draft at Create",
     report: "QA, 8 Nov 2026: \"please list the policy\" with a card open is answered as a general policy question",
-    status: { open: "answered as a general policy question; the card's turn is lost" },
+    // Changed on purpose (8 Nov 2026): fixed in production by LIST_POLICY_IS_EDIT_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FLAGS,
     async run(t) {
       const thread = await start(t, "create a coaching form for Rowan Kestrel", "coaching");

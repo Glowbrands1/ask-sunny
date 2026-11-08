@@ -29,7 +29,8 @@ export const NOV8_OUT_OF_DATE_IS_THE_PROPOSAL_CASES: ReplayCase[] = [
     id: "nov8-s38-what-does-out-of-date-mean",
     title: "\"what does out of date mean\" after a CA card: answered about the proposal, never from the knowledge base",
     report: "QA round 5, sf-s38 (production chat f5e4e29a, 7 Nov 2026)",
-    status: { open: "the turn goes to the knowledge answer" },
+    // Changed on purpose (8 Nov 2026): fixed in production by OUT_OF_DATE_IS_THE_PROPOSAL_ENABLED + ACCOUNT_VERB_NOT_A_NAME_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     // Create needs the name read without "missing" (ACCOUNT_VERB_NOT_A_NAME), or it refuses this very card as out of date.
     fixFlags: ["OUT_OF_DATE_IS_THE_PROPOSAL_ENABLED", "ACCOUNT_VERB_NOT_A_NAME_ENABLED"],
     async run(t) {

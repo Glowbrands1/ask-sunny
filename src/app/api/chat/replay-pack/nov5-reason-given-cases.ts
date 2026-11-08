@@ -63,7 +63,6 @@ const MESSAGES: readonly { readonly n: number; readonly say: string; readonly na
  * branch; recorded OPEN for QA's call (5 Nov 2026). Its fix is CA_PERFORMANCE_REASON_ENABLED (coding-3
  * item 5): with it on as well, the fix-flag run holds; production lacks the flag, so it stays OPEN.
  */
-const NOT_FIXED_9 = "\"for performance for october\" is not read as an account: the card says \"You haven't told me what happened yet\", with production's flags and with CA_SALES + FORM_NAME + CA_ASKS on";
 
 /** Why #1, #2, #4–#7 and the live-models guard are OPEN in production (#555's flags correction). */
 
@@ -91,7 +90,8 @@ export const NOV5_REASON_GIVEN_CASES: ReplayCase[] = [
      * only while the file read them as on); they are OPEN in production and hold with the fix flags.
      */
     // Changed on purpose (7 Nov 2026): QA's flips of 5 and 6 Nov turned CA_SALES_POLICY, REPLY_MATCHES_CARD, TITLE_OF_THE_EMPLOYEE, METRIC_GUARD, TITLE_ENDS_AT_LINE, BARE_NOT_DENIAL and PLACE_FROM_CUE on in production (production-flags.json): #1–#8 now hold with production's flags; #9 is still open in production.
-    status: n === 9 ? ({ open: NOT_FIXED_9 } as const) : ("fixed" as const),
+    // Changed on purpose (8 Nov 2026): fixed in production by CA_PERFORMANCE_REASON_ENABLED (the sales triple), QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed" as const,
     // #9 is fixed by CA_PERFORMANCE_REASON_ENABLED (default off, not in production): "for performance" in the request is the sales reading (`withSalesPolicy`, forms/ca-policy.ts).
     fixFlags: n === 9 ? [...FLAGS, "CA_PERFORMANCE_REASON_ENABLED"] : FLAGS,
     async run(t: T) {

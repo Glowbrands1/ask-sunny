@@ -64,7 +64,8 @@ export const NOV8_NO_ACCOUNT_NO_APP_POLICY_CASES: ReplayCase[] = [
     id: "nov8-no-account-no-app-policy-ca-for-not-late",
     title: "\"ca for <A> not late\": the card asks what happened, and reads no policy from the request",
     report: "QA's Sunny flip-9 live tester, 8 Nov 2026 (1): \"Policy: Attendance — read from this request\" beside the ask",
-    status: { open: "production (flips 7 and 9 not yet in the flags file): no ask, Attendance is read as the account" },
+    // Changed on purpose (8 Nov 2026): fixed in production by NO_ACCOUNT_NO_APP_POLICY_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: [...LIVE, "NO_ACCOUNT_NO_APP_POLICY_ENABLED"],
     async run(t) {
       const thread = await start(t);

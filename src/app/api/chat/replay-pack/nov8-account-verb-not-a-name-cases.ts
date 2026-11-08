@@ -48,11 +48,11 @@ async function cardAndForm(t: ReplayContext, turns: readonly string[], name: str
 type Row = { id: string; title: string; turns: readonly string[]; name: string; open?: string };
 
 const ROWS: Row[] = [
-  // Fixed rows.
-  { id: "failing-first-name-in-chat", title: "T1, T1, \"create it\", then \"make me CA for <first name> failing to complete shifts\"", turns: [T1, T1, "create it", "make me CA for rhea failing to complete shifts"], name: "Rhea Calloway", open: "the card is for \"Rhea Failing\"" },
-  { id: "failing-full-name", title: "\"make me CA for <First Last> failing to complete shifts\"", turns: ["make me CA for Rhea Calloway failing to complete shifts"], name: "Rhea Calloway", open: "Create refuses: \"the form is for Rhea Calloway failing, not Rhea Calloway\"" },
-  { id: "missing-t1", title: "T1 \"make me an CA for <First Last> missing her saturday and sunday shifts …\"", turns: [T1], name: "Rhea Calloway", open: "Create refuses: \"the form is for Rhea Calloway missing, not Rhea Calloway\"" },
-  { id: "missing-hyphenated", title: "\"make me a CA for <First Last-Name> missing her shift\"", turns: ["make me a CA for Ines Varga-Lund missing her shift"], name: "Ines Varga-Lund", open: "Create refuses: \"the form is for Ines Varga-Lund missing, not Ines Varga-Lund\"" },
+  // Fixed rows (fixed in production by ACCOUNT_VERB_NOT_A_NAME_ENABLED, QA round 5, 8 Nov 2026; they now hold with production's flags).
+  { id: "failing-first-name-in-chat", title: "T1, T1, \"create it\", then \"make me CA for <first name> failing to complete shifts\"", turns: [T1, T1, "create it", "make me CA for rhea failing to complete shifts"], name: "Rhea Calloway" },
+  { id: "failing-full-name", title: "\"make me CA for <First Last> failing to complete shifts\"", turns: ["make me CA for Rhea Calloway failing to complete shifts"], name: "Rhea Calloway" },
+  { id: "missing-t1", title: "T1 \"make me an CA for <First Last> missing her saturday and sunday shifts …\"", turns: [T1], name: "Rhea Calloway" },
+  { id: "missing-hyphenated", title: "\"make me a CA for <First Last-Name> missing her shift\"", turns: ["make me a CA for Ines Varga-Lund missing her shift"], name: "Ines Varga-Lund" },
   // Must not change.
   { id: "keep-lowercase-two-words", title: "must not change: \"make me a CA for <first last>\" (lower case)", turns: ["make me a CA for rhea calloway"], name: "Rhea Calloway" },
   { id: "keep-being-late", title: "must not change: \"ca for <first last> being late on 11/2\"", turns: ["ca for rhea calloway being late on 11/2"], name: "Rhea Calloway" },
