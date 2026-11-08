@@ -461,6 +461,8 @@ const NEW_FLAGS = [
   "TWO_FORMS_OWN_PERSON_ENABLED",
   // coding 2: TWO_FORMS_EACH_PERSON (default off): forced off with the others in the child run.
   "TWO_FORMS_EACH_PERSON_ENABLED",
+  // coding 2: CARD_NAME_THEN_WORDS_CURRENT (default off): forced off with the others in the child run.
+  "CARD_NAME_THEN_WORDS_CURRENT_ENABLED",
 ] as const;
 
 const PROTECTED = [

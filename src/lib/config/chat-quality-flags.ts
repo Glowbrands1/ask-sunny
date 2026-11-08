@@ -1439,6 +1439,18 @@ export function checkedReadingEnabled(): boolean {
   return aiReadsCodeChecksEnabled() || lastFirstNameReadEnabled();
 }
 
+// coding 2: CARD_NAME_THEN_WORDS_CURRENT
+/**
+ * CARD_NAME_THEN_WORDS_CURRENT_ENABLED (QA's sf-s38, 8 Nov 2026; default off; same flag in both apps). "make me an CA for
+ * <A> missing her saturday …": Create refused the right card ("… the form is for <A> missing, not <A>"), and typed in
+ * lower case the card itself was for "<A> Missing". With this flag on, a reading that is one roster person's whole name
+ * followed by a verb-shaped word typed in lower case is that person, on the card and at Create
+ * (`ai/card-name-then-words.ts`, `forms/proposal-currency.ts`). Off, as before.
+ */
+export function cardNameThenWordsCurrentEnabled(): boolean {
+  return envFlag("CARD_NAME_THEN_WORDS_CURRENT_ENABLED");
+}
+
 /**
  * A bare "$25" right after the payroll amount question is read back and put on
  * the card (QA, 27 Oct 2026; Sunny-only): the routed turn's slot lines hid it

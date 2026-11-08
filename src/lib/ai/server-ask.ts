@@ -164,6 +164,7 @@ import { deliverFormProposal } from "./grounded-turn";
 import { withJobTitleCase, withJobTitleFromWords, withJobTitleReadBackCase, withSpelledOutTitle } from "./job-title-from-words";
 import { withTerseSlots } from "./terse-slots";
 import { withCaWhatHappened, withCoachingWhatHappened } from "./ca-what-happened";
+import { withCardNameThenWords } from "./card-name-then-words";
 import { withFirstNameAsk } from "./first-name-ask";
 import { withFirstNameAnswerFor, withFirstNameSuggestFor } from "./first-name-suggest";
 import { withAmountUnknownAck } from "./amount-unknown-ack";
@@ -355,6 +356,18 @@ export async function answerQuestion(
   answered = withTwoFormsOwnPerson(answered, original);
   // TWO_FORMS_EACH_PERSON_ENABLED: the card is its own clause's person, answered again from that clause if need be, and each other request with its person is offered (`ai/two-forms-own-person.ts`).
   answered = await withEachPersonsForm(answered, original, answer);
+  // CARD_NAME_THEN_WORDS_CURRENT_ENABLED: a card for "<A> Missing" (from "for <a> missing her shift") is the roster's <A>.
+  answered = await withCardNameThenWords(
+    answered,
+    [...request.history.filter((turn) => turn.role === "user").map((turn) => turn.content), request.question].join("\n"),
+    async () => {
+      try {
+        return await loadScopedRoster(actor.scope);
+      } catch {
+        return [];
+      }
+    },
+  );
   /*
    * CA_SALES_POLICY_ENABLED: a reply about a policy and an employee the roster
    * recognises ends with ONE offer to start a Corrective Action citing that
