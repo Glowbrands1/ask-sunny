@@ -25,8 +25,8 @@ const CHAIN = [
 ];
 const FIX = ["UNKNOWN_NAME_ASK_ENABLED"];
 const REPORT = "QA's round-6 audit (8 Nov 2026), the sibling app's BF7 chain: the name question five times, the typed name never read";
-// The route call (`ai/server-ask.ts`, coding 2's file) is not in yet: the fix-flag run is open until it is.
-const ROUTE = { open: "withUnknownNameAsk is not called on the route yet (server-ask.ts, coding 2)" };
+// Changed on purpose (coding 2, 8 Nov 2026): `ai/server-ask.ts` now calls withUnknownNameAsk inside withStatedAmount,
+// so both cases hold with their fix flag and the `fixStatus: ROUTE` lines are gone.
 
 async function chain(t: ReplayContext): Promise<string[]> {
   vi.setSystemTime(new Date("2026-11-06T15:00:00Z"));
@@ -45,7 +45,6 @@ export const NOV8_UNKNOWN_NAME_ASK_CASES: ReplayCase[] = [
     report: REPORT,
     status: { open: "\"quinn marlowe\" is never said back; every reply asks \"Who is this Corrective Action Form for?\"" },
     fixFlags: FIX,
-    fixStatus: ROUTE,
     async run(t) {
       const out = await chain(t);
       expect(out.some((reply) => /\*\*quinn marlowe\*\*[^\n]*directory/i.test(reply)), `the typed name is never named back:\n${out.join("\n---\n")}`).toBe(true);
@@ -57,7 +56,6 @@ export const NOV8_UNKNOWN_NAME_ASK_CASES: ReplayCase[] = [
     report: REPORT,
     status: { open: "\"Who is this **Corrective Action Form** for? Give me their name …\" on every turn" },
     fixFlags: FIX,
-    fixStatus: ROUTE,
     async run(t) {
       const out = await chain(t);
       const ask = (reply: string) => /Who is this \*\*Corrective Action Form\*\* for\? Give me their name/.test(reply);
