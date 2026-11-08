@@ -87,6 +87,14 @@ export function withProposalNameCorrection<T extends AskRequest>(request: T): T 
   const employee = cardEmployee(request);
   if (!employee) return request;
   const question = proposalNameCorrection(request.question, employee);
+  // QA, round 6: a spelling on nobody's roster that can only be one roster person is read as that person (below).
+  const wanted = changedTo(question ?? request.question);
+  const person = wanted ? rosterPersonFor(wanted, employee) : null;
+  if (wanted && person) {
+    const rewritten = { ...request, question: `${CHANGE_TO}${person}` };
+    TYPED_SPELLING.set(rewritten, wanted);
+    return rewritten;
+  }
   return question ? { ...request, question } : request;
 }
 
@@ -99,6 +107,32 @@ export function withProposalNameCorrection<T extends AskRequest>(request: T): T 
  */
 const CHANGE_NAME = /^\s*(?:please\s+)?change\s+(?:her|his|their|the\s+employee'?s?)\s+name\s+to\s+(.+?)\s*[.!]?\s*$/i;
 
+/** The name a "change her name to <name>" turn asks for, or null. */
+function changedTo(question: string): string | null {
+  return CHANGE_NAME.exec(question)?.[1]?.replace(/^["'“‘]+|["'”’]+$/g, "").trim() || null;
+}
+
+/** The spelling the manager typed, for the request `withProposalNameCorrection` rewrote to a roster person. */
+const TYPED_SPELLING = new WeakMap<object, string>();
+
+/**
+ * QA, round 6 (8 Nov 2026): the one roster person a corrected spelling on nobody's roster can only be (a roster
+ * reader's close match, or one roster name every word of it is at most an edit from), sharing the card employee's
+ * first or last name, and the card's own employee when she is on the roster. Null with no roster, a roster spelling,
+ * a tie or no one close (the turn is read as typed).
+ */
+function rosterPersonFor(wanted: string, onCard: string): string | null {
+  const names = personRosterNames();
+  if (!names || names.length === 0 || rosterSpelling(wanted, names)) return null;
+  const said = nameWords(wanted);
+  const had = nameWords(onCard);
+  if (said.length < 2 || !(said[0] === had[0] || said.at(-1) === had.at(-1))) return null;
+  const meant = oneCloseRosterPerson(wanted, names) ?? oneMistypedRosterName(wanted, names);
+  if (!meant) return null;
+  const cardPerson = rosterSpelling(onCard, names);
+  return cardPerson && cardPerson !== meant ? null : meant;
+}
+
 function nameWords(name: string): string[] {
   return name.toLowerCase().split(/[^\p{L}'’-]+/u).filter(Boolean);
 }
@@ -110,6 +144,11 @@ export function withCorrectionNotDropped(answer: AskResponse, request: Pick<AskR
   const old = cardEmployee(request);
   const wanted = CHANGE_NAME.exec(request.question)?.[1]?.replace(/^["'“‘]+|["'”’]+$/g, "").trim();
   if (!card || !old || !wanted || card.subject === "team") return answer;
+  const typed = TYPED_SPELLING.get(request);
+  if (typed && (card.employeeName ?? "").trim() === wanted) {
+    const note = `"${typed}" isn't a name on the roster, so the card is for **${wanted}**. Tell me if it's someone else.`;
+    return answer.content.includes(note) ? answer : { ...answer, content: `${note}\n\n${answer.content}` };
+  }
   if (wanted.toLowerCase() === old.toLowerCase()) return answer;
   const said = nameWords(wanted);
   const had = nameWords(old);
