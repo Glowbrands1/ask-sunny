@@ -40,6 +40,7 @@ import {
   caSalesPolicyEnabled,
   cardPolicyOwnRequestEnabled,
   pastFormsBeforeLibraryEnabled,
+  outOfDateIsTheProposalEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
 import { approvedManualConfirmed, manualDisplayTitle } from "@/lib/forms/official-policy-manual";
@@ -205,6 +206,7 @@ import { withReplyMatchesCard } from "./reply-matches-card";
 import { acceptedNextFormOffer, withEachPersonsForm, withTwoFormsOwnPerson } from "./two-forms-own-person";
 import { withTitleOfTheEmployee } from "./title-of-the-employee";
 import { withoutSourceMarkers, withoutSourceNotes } from "@/lib/ai/source-note";
+import { asksWhatOutOfDateMeans, cardTurn, outOfDateAnswer } from "@/lib/ai/out-of-date-is-the-proposal";
 import { withUnderPerformanceExplained } from "./under-performance-explained";
 
 /**
@@ -300,6 +302,9 @@ export async function answerQuestion(
   actor: ChatActor,
   memory: { memoryOwnerId?: string } = {},
 ): Promise<AskResponse> {
+  // OUT_OF_DATE_IS_THE_PROPOSAL_ENABLED: "what does out of date mean" in a form chat is about the card (ai/out-of-date-is-the-proposal.ts).
+  const outOfDateTurn = outOfDateIsTheProposalEnabled() && asksWhatOutOfDateMeans(asked) ? cardTurn(asked) : null;
+  if (outOfDateTurn) return outOfDateAnswer(await answerQuestion(outOfDateTurn, actor, memory));
   // REPORT_NAME_NOT_A_PERSON_ENABLED: a form is never built from a question about a report. See `report-turns.ts`.
   // CA_SALES_POLICY_ENABLED: "yes" to the Corrective Action offer is the request it offered (`ca-offer.ts`). Off, unchanged.
   // TWO_FORMS_EACH_PERSON_ENABLED: "yes" to "Do you want a <form> for <B> next?" is that request (`ai/two-forms-own-person.ts`). Off, unchanged.

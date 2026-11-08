@@ -3372,4 +3372,21 @@ export function priorStepDateListEnabled(): boolean {
  */
 export function exitDateLineAgreesEnabled(): boolean {
   return envFlag("EXIT_DATE_LINE_AGREES_ENABLED");
+ * ACCOUNT_VERB_NOT_A_NAME_ENABLED (QA round 5, sf-s38, 8 Nov 2026; same flag in both apps; default off). "make me CA
+ * for <first name> failing to complete shifts" made the card for "<First> Failing". On, with NOT_A_NAME_GUARD: a verb
+ * that opens the account ("failing", "missing", "not", "being", …) is never part of a name, so the card goes to the
+ * roster person already named in the chat (`forms/not-a-name.ts`). Off, as before.
+ */
+export function accountVerbNotANameEnabled(): boolean {
+  return envFlag("ACCOUNT_VERB_NOT_A_NAME_ENABLED");
+}
+
+/**
+ * OUT_OF_DATE_IS_THE_PROPOSAL_ENABLED (QA round 5, sf-s38, 8 Nov 2026; default off). After Create refused a card as
+ * "This proposal is out of date: …", "what does out of date mean" was answered from the knowledge base. On: a question
+ * about "out of date" in a chat with a proposal card is answered about that card, with no retrieval
+ * (`ai/out-of-date-is-the-proposal.ts`). Off, as before.
+ */
+export function outOfDateIsTheProposalEnabled(): boolean {
+  return envFlag("OUT_OF_DATE_IS_THE_PROPOSAL_ENABLED");
 }
