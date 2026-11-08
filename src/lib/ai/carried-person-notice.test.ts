@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ChatMessage } from "@/types";
 
-import { carriedNotice, withCarriedPersonNotice } from "./carried-person-notice";
+import { carriedNotice, names, withCarriedPersonNotice } from "./carried-person-notice";
 import type { AskResponse } from "./types";
 
 // QA's round-6 item (8 Nov 2026): the production turns of 20 Oct 2026, the person invented.
@@ -62,5 +62,19 @@ describe("CARRIED_PERSON_NOTICE_ENABLED", () => {
     const failed = { id: "uX", role: "user", content: "Wren", createdAt: "2026-10-20T15:00:00Z", error: { code: "x" } } as unknown as ChatMessage;
     const out = withCarriedPersonNotice(card("coaching", "Wren Halvorsen"), { history: [...turns, failed], question: QUESTION });
     expect(out.content).toContain(carriedNotice("Wren Halvorsen"));
+  });
+
+  /* QA, 8 Nov 2026: with the flag on, "make me a CA for Mary-Jane O'Neil, she was late" answered 500 (an invalid escape under "u"). */
+  it("names(): hyphen and apostrophe names are read, never thrown on", () => {
+    expect(names("make me a CA for Mary-Jane O'Neil, she was late", "Mary-Jane O'Neil")).toBe(true);
+    expect(names("anne-marie was late on 11/2", "Anne-Marie Lyle")).toBe(true);
+    expect(names("Sean O’Connor was late", "Sean O'Connor")).toBe(true);
+    expect(names("she was late", "Mary-Jane O'Neil")).toBe(false);
+    expect(() => names("anything", "a.b (c) [d] e+f")).not.toThrow();
+  });
+
+  it("on: a hyphen or apostrophe name never fails the answer", () => {
+    const response = card("dpoa", "Mary-Jane O'Neil");
+    expect(() => withCarriedPersonNotice(response, { history: [], question: "make me a CA for Mary-Jane O'Neil, she was late" })).not.toThrow();
   });
 });

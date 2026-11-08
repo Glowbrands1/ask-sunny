@@ -35,13 +35,26 @@ function managerTurns(request: Pick<AskRequest, "history" | "question">): string
   ];
 }
 
-/** Whether a turn names the person: a word of their name (a first or last name of two letters or more), any case. */
-function names(turn: string, person: string): boolean {
-  return person
-    .split(/\s+/)
-    .map((word) => word.replace(/[^\p{L}'-]/gu, ""))
-    .filter((word) => word.length >= 2)
-    .some((word) => new RegExp(`(?<![\\p{L}])${word.replace(/[-']/g, "\\$&")}(?![\\p{L}])`, "iu").test(turn));
+/** A word as a literal pattern: only regex metacharacters are escaped ("-" and "'" are literal, and `\-` is invalid with "u"). */
+function literal(word: string): string {
+  return word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Whether a turn names the person: a word of their name (a first or last name of two letters or more), any case.
+ * "Mary-Jane O'Neil" and "Anne-Marie" included (QA, 8 Nov 2026: escaping "-" and "'" threw under the "u" flag and the
+ * chat answered 500). It never throws: a name that cannot be read as a pattern names nobody, so no notice.
+ */
+export function names(turn: string, person: string): boolean {
+  try {
+    return person
+      .split(/\s+/)
+      .map((word) => word.replace(/[^\p{L}'’-]/gu, ""))
+      .filter((word) => word.length >= 2)
+      .some((word) => new RegExp(`(?<![\\p{L}])${literal(word)}(?![\\p{L}])`, "iu").test(turn));
+  } catch {
+    return false;
+  }
 }
 
 /** The notice the forms path writes, word for word. */
