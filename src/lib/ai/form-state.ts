@@ -1,6 +1,7 @@
 import { payrollAmountFieldEnabled, secondRequestOwnAccountEnabled } from "@/lib/config/chat-quality-flags";
 import { startsFormRequest, startsNewRequest } from "@/lib/forms/current-request";
 import { rosterSalonName } from "@/lib/forms/salon-mention";
+import { editDistance } from "@/lib/forms/typo-match";
 import type { ChatFormProposal } from "@/types";
 
 /**
@@ -110,7 +111,43 @@ export function stateForTurn(
 ): ConversationFormState | null {
   if (!state || !secondRequestOwnAccountEnabled() || (!state.policyHeading && !state.incidentType) || !startsFormRequest(question)) return state;
   if (!startsNewRequest(earlier, question)) return state;
+  // sf-s38 (QA's round-6 gate, 8 Nov 2026): the same request sent again is no new request; its policy stays.
+  if (earlier.some((turn) => sameRequestAgain(turn, question))) return state;
   return { ...state, policyHeading: null, policyPage: null, incidentType: null };
+}
+
+/*
+ * THE SAME REQUEST SENT AGAIN (SECOND_REQUEST_OWN_ACCOUNT_ENABLED; QA's round-6 gate, 8 Nov 2026, sf-s38). The manager
+ * sent "make me an CA for <A> missing her saturday and sunday shifts …" twice; the second was read as a new request,
+ * so the card lost its Policy line and its Action Plan fell back to "the applicable company policy". A turn is the
+ * same request as an earlier one when their words are the same, read without case, punctuation or extra spaces and
+ * without a closing "please" / "thanks" — or when one word differs only as a typo fix: at most a third of the longer
+ * spelling's letters, words of 4 letters or more ("proporley" → "properly"). Another day ("saturday" → "sunday"),
+ * another person or anything added or taken away is a request of its own, as before.
+ */
+const COURTESY = new Set(["please", "pls", "plz", "thanks", "thank", "you", "thx"]);
+
+function requestWords(text: string): string[] {
+  const words = text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s'’-]+/gu, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  while (words.length > 0 && COURTESY.has(words.at(-1)!)) words.pop();
+  while (words.length > 0 && COURTESY.has(words[0]!)) words.shift();
+  return words;
+}
+
+function sameRequestAgain(earlier: string, turn: string): boolean {
+  const a = requestWords(earlier);
+  const b = requestWords(turn);
+  if (a.length === 0 || a.length !== b.length) return false;
+  const differing = a.flatMap((word, index) => (word === b[index] ? [] : [index]));
+  if (differing.length === 0) return true;
+  if (differing.length > 1) return false;
+  const [x, y] = [a[differing[0]!]!, b[differing[0]!]!];
+  const longer = Math.max(x.length, y.length);
+  return Math.min(x.length, y.length) >= 4 && editDistance(x, y) <= Math.floor(longer / 3);
 }
 
 /** Sentences the proposal readers already accept, ahead of this turn's words. */
