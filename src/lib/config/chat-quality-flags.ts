@@ -3434,6 +3434,18 @@ export function amountBeforePayrollDeductEnabled(): boolean {
   return envFlag("AMOUNT_BEFORE_PAYROLL_DEDUCT_ENABLED");
 }
 
+// coding 2: PAYROLL_CLAUSE_NOT_ACCOUNT
+/**
+ * PAYROLL_CLAUSE_NOT_ACCOUNT_ENABLED (QA's Sunny round-5 live tester, 8 Nov 2026, item 2a; default off). "… she was
+ * late today, $20 payroll deduct applies" kept "$20 payroll deduct applies Payroll deduction amount: $20." in the
+ * Observation of Offense. With this flag on, the account loses the app's "Payroll deduction amount: $X." line and a bare
+ * payroll answer clause; a payroll clause that says what it is for keeps its reason (`ai/payroll-clause-not-account.ts`).
+ * Off, as before.
+ */
+export function payrollClauseNotAccountEnabled(): boolean {
+  return envFlag("PAYROLL_CLAUSE_NOT_ACCOUNT_ENABLED");
+}
+
 /**
  * COPY_OWN_SALON_ENABLED (QA's Sunny flip-9 live tester, 8 Nov 2026; default off). "copy this form for <B>" — and
  * "the same draft that we did with <A> by changing the name and position?" → "<B>" (SAME_FORM_COPY_NEW_PERSON) —

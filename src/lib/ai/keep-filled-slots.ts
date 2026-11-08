@@ -1,6 +1,7 @@
 import { PRODUCTION_SALONS, salonById } from "@/data/salons";
 import { isPolicyCorrection } from "./policy-correction-turn";
 import { observationAccount } from "@/lib/forms/ca-policy";
+import { withoutPayrollClauses } from "./payroll-clause-not-account";
 import { onlyDeniesForObservation } from "./ca-what-happened";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
 import { listIncidentDates, withoutPriorStepClauses } from "@/lib/forms/form-date-answer";
@@ -767,7 +768,8 @@ function withObservation(content: string, turns: readonly string[], employeeName
     const read = today === undefined ? { text: turn, dropped: false } : withoutPriorStepClauses(turn, today, conversation);
     for (const part of read.text.split(/\n+|(?<=[.!?])\s+/)) {
       // LEVEL_STEP_NOT_ACCOUNT_ENABLED: "this should be a written and note a verbal ca was given on 9-1-26" says nothing that happened.
-      const said = (levelStepNotAccountEnabled() ? withoutLevelAndStepClauses(part) : part).trim();
+      // PAYROLL_CLAUSE_NOT_ACCOUNT_ENABLED: "$20 payroll deduct applies" and "Payroll deduction amount: $20." are the payroll answer.
+      const said = withoutPayrollClauses((levelStepNotAccountEnabled() ? withoutLevelAndStepClauses(part) : part).trim());
       if (said.length < 12) continue;
       // POLICY_CORRECTION_NOT_ACCOUNT_ENABLED: "it should be under performance not standard of conduct" is about the form.
       if (isPolicyCorrection(said)) continue;
