@@ -242,8 +242,6 @@ const NEW_FLAGS = [
   "NEWEST_PLACE_TURN_ENABLED",
   "QUESTION_NOT_FORM_ENABLED",
   "FORM_EDIT_DATE_RULES_ENABLED",
-  // coding 2: REOPEN_NOT_OPEN_FORM (default off): forced off with the others in the child run.
-  "REOPEN_NOT_OPEN_FORM_ENABLED",
   // coding 2: REMOVE_POLICY_NOT_NAMED (A1; default off): forced off with the others in the child run.
   "REMOVE_POLICY_NOT_NAMED_ENABLED",
   "FOLLOWUP_NEW_TOPIC_RETRIEVAL_ENABLED",
@@ -258,6 +256,8 @@ const NEW_FLAGS = [
   "FORM_DATE_INCIDENT_ONLY_ENABLED",
   "REOPEN_VERB_GUARD_ENABLED",
   "REOPEN_BY_ANY_OPEN_VERB_ENABLED",
+  // coding 2: REOPEN_NOT_OPEN_FORM (default off): forced off with the others in the child run.
+  "REOPEN_NOT_OPEN_FORM_ENABLED",
   "FORM_REVISIONS_ENABLED",
   "NEXT_PUBLIC_FORM_REVISIONS_ENABLED",
   "SENSITIVE_DEFAULTS_REDACT_ENABLED",
