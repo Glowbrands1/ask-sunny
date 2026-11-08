@@ -3028,6 +3028,18 @@ export function exitStatedOnlyEnabled(): boolean {
   return envFlag("EXIT_STATED_ONLY_ENABLED");
 }
 
+// coding 2: EXIT_OTHER_PERSON_NOT_SUBJECT
+/**
+ * EXIT_OTHER_PERSON_NOT_SUBJECT_ENABLED (QA's Sunny round-5 live tester, 8 Nov 2026, item 4b; default off; same flag in
+ * both apps). A termination letter naming "your Salon Director, <B>" was answered "Which of them is this
+ * **Resignation/Exit Form** for — **<B>** or **<A>**?" with "**Job title:** Salon Director" under it. With this flag on, a
+ * candidate named only right after a title is not offered as the subject, and that title line goes with them
+ * (`ai/exit-other-person.ts`, one server-ask.ts step). Off, as before.
+ */
+export function exitOtherPersonNotSubjectEnabled(): boolean {
+  return envFlag("EXIT_OTHER_PERSON_NOT_SUBJECT_ENABLED");
+}
+
 /**
  * OFF_ROSTER_CONFIRM_ENABLED (port of the sibling app's flip-3 gate, QA, 6 Nov 2026; default off; ships with
  * FORM_NAME_FROM_ROSTER). With the name flags a card's employee comes from the roster only, so a form for somebody

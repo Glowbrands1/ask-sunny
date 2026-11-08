@@ -172,6 +172,7 @@ import { cardRequestTurn, listPolicyOnCard, withPolicyListedAtCreate } from "./l
 import { withoutNoAccountAppPolicy } from "./no-account-policy-line";
 import { cardMetaTurn } from "./card-meta-turn";
 import { withFirstNameAsk } from "./first-name-ask";
+import { withExitOtherPersonNotOffered } from "./exit-other-person";
 import { withFirstNameAnswerFor, withFirstNameSuggestFor } from "./first-name-suggest";
 import { withAmountUnknownAck } from "./amount-unknown-ack";
 import { withOutOfScopePlace } from "./out-of-scope-place";
@@ -379,6 +380,8 @@ export async function answerQuestion(
    */
   // FORM_NAME_FROM_ROSTER_ENABLED, last on every return: only roster people are the employee or a choice (`forms/roster-only-names.ts`).
   // REPLY_MATCHES_CARD_ENABLED, the very last step on both returns: the reply agrees with the finished card (`ai/reply-matches-card.ts`).
+  // EXIT_OTHER_PERSON_NOT_SUBJECT_ENABLED: the letter's other person ("your Salon Director, <B>") is never offered as the exit form's subject (`ai/exit-other-person.ts`).
+  answered = withExitOtherPersonNotOffered(answered, original);
   if (!caSalesPolicyEnabled()) return withReplyMatchesCard(withRosterOnlyNames(answered));
   let roster: Awaited<ReturnType<typeof loadScopedRoster>> = [];
   try {
