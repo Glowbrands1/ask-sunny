@@ -172,6 +172,7 @@ import { cardRequestTurn, listPolicyOnCard, withPolicyListedAtCreate } from "./l
 import { withoutNoAccountAppPolicy } from "./no-account-policy-line";
 import { cardMetaTurn } from "./card-meta-turn";
 import { withFirstNameAsk } from "./first-name-ask";
+import { withUnknownNameAsk } from "./unknown-name-ask";
 import { withFirstNameAnswerFor, withFirstNameSuggestFor } from "./first-name-suggest";
 import { withAmountUnknownAck } from "./amount-unknown-ack";
 import { withOutOfScopePlace } from "./out-of-scope-place";
@@ -437,6 +438,12 @@ async function answerQuestionChecked(
           withStatedAmount(
             withFirstNameAsk(
               withWarningLevelFromClause(withSpelledOutTitle(withJobTitleReadBackCase(withJobTitleCase(withJobTitleFromWords(withCoachingWhatHappened(withoutNoAccountAppPolicy(withCaWhatHappened(await applyQuietQuality(response), request)), request), request)))), request),
+            // UNKNOWN_NAME_ASK_ENABLED: a typed name not on the directory is named back, never asked again in the same words.
+            withUnknownNameAsk(
+              withFirstNameAsk(
+                withWarningLevelFromClause(withSpelledOutTitle(withJobTitleReadBackCase(withJobTitleCase(withJobTitleFromWords(withCoachingWhatHappened(withCaWhatHappened(await applyQuietQuality(response), request), request), request)))), request),
+                request,
+              ),
               request,
             ),
             request,
