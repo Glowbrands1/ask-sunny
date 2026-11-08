@@ -375,7 +375,10 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     const body = ((await request.json().catch(() => null)) ?? {}) as DraftBody;
     // GRAMMAR_ASK_NOT_ACCOUNT_ENABLED: "can you clean up my grammar …?" is no account (`ai/asks-to-the-app.ts`).
     const typed = String(body.notes ?? "").trim().slice(0, 4000);
-    const asTyped = grammarAskNotAccountEnabled() ? withoutAsksToTheApp(typed).trim() : typed;
+    const asked = grammarAskNotAccountEnabled() ? withoutAsksToTheApp(typed).trim() : typed;
+    // CREATE_COMMAND_POINTS_TO_CARD_ENABLED / CARD_COMPLAINT_NOT_ACCOUNT_ENABLED: "create it" or "this proposal is out of
+    // date" is no account (`ai/card-meta-turn.ts`).
+    const asTyped = (await import("@/lib/ai/card-meta-turn")).withoutCardMetaTurns(asked);
     // TYPO_READING_ROUTES_ENABLED: the readers below see "coahed", "notcie", "amont" as the words they can only be.
     const notes = typoReadingRoutesEnabled() ? typoReadingText(asTyped, await protectedNameWords()) : asTyped;
     if (notes.length < 10) {
