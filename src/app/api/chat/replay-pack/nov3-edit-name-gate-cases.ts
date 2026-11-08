@@ -15,7 +15,8 @@ export const NOV3_EDIT_NAME_GATE_CASES: readonly ReplayCase[] = [
       "QA (master plan, 3 Nov 2026): \"Names from capitals; form edit dropped\" — Must / Practice / Daily Stats / Dez read as other people in an edit to the open form.",
     // Fixed in production: FORM_EDIT_NAME_GATE_ROSTER_ENABLED on (QA, 3 Nov 2026).
     // fails with production's real flags (QA Vercel read 5 Nov); tracked: POLICY_CITATION_ENABLED (on in production) — the edit to her open Coaching draft is dropped.
-    status: { open: "fails with production's real flags (QA Vercel read 5 Nov); tracked: POLICY_CITATION_ENABLED (on in production) — the edit to her open Coaching draft is dropped" },
+    // Changed on purpose (8 Nov 2026): QA's flip 9 (00:59 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+    status: "fixed",
     // CITATION_LINE_KEPT_ON_REVISION_ENABLED keeps the app's own citation line, so this edit lands with production's real flags.
     fixFlags: ["FORM_EDIT_NAME_GATE_ROSTER_ENABLED", "CITATION_LINE_KEPT_ON_REVISION_ENABLED"],
     async run(t) {

@@ -54,7 +54,8 @@ export const NOV6_AS_YOU_SAID_MANAGER_WORDS_CASES: ReplayCase[] = [
     id: "nov6-as-you-said-reader-heading",
     title: "\"it should be must see behaviors …\" with the reader's heading Standards of Conduct: no \"Standards of Conduct, as you said\"",
     report: "Live chat, 4 Nov 2026 (Pau's sf-s24, relayed by QA): the reader's heading was said back as the manager's",
-    status: { open: "\"**Policy:** Standards of Conduct, as you said\" although the manager said must see behaviors" },
+    // Changed on purpose (7 Nov 2026): QA's flip 7 (21:29 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+    status: "fixed",
     fixFlags: ["AS_YOU_SAID_MANAGER_WORDS_ENABLED"],
     async run(t) {
       vi.setSystemTime(new Date("2026-11-04T23:30:00Z"));

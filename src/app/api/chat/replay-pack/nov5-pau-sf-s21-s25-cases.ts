@@ -137,7 +137,8 @@ export const NOV5_PAU_SF_S21_S25_CASES: ReplayCase[] = [
     title: "sf-s24: \"it should be must see behaviors and she also had coaching on file …\": no \"Standards of Conduct, as you said\"; the card and the saved form agree",
     report: `${REPORT}, sf-s24`,
     // Reproduced with the live trace's intent read (policyHeading "Standards of Conduct"; QA, 5 Nov 2026).
-    status: { open: "\"**Policy:** Standards of Conduct, as you said\" although the manager said must see behaviors" },
+    // Changed on purpose (7 Nov 2026): QA's flip 7 (21:29 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+    status: "fixed",
     async run(t) {
       const thread = start(t);
       const t1 = "Can you write me a performace ca for an employee who did not meet their numbers for the month of october Wynne Sarrow  - verbal\n146 tans \nBelow in PPTA, LPSVA, Average Club, CC%, Spa%";
