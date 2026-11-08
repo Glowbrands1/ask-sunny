@@ -27,19 +27,30 @@ function offeredACard(asked: AskRequest): boolean {
   return asked.history.some((turn) => turn.role === "assistant" && CARD_REPLY.test(turn.content));
 }
 
-/** True when the flag is on and the turn asks what "out of date" means, in a chat where the app offered a card. */
-export function asksWhatOutOfDateMeans(asked: AskRequest): boolean {
-  if (!outOfDateIsTheProposalEnabled()) return false;
-  const question = (asked.question ?? "").trim();
-  if (!OUT_OF_DATE.test(question) || !ASKS.test(question)) return false;
-  return offeredACard(asked) && asked.history.some((turn) => turn.role === "user");
+function asksAboutOutOfDate(text: string): boolean {
+  const question = (text ?? "").trim();
+  return OUT_OF_DATE.test(question) && ASKS.test(question);
 }
 
-/** The manager's previous turn, asked again over the history before it: its answer is the card as it stands. */
-export function cardTurn(asked: AskRequest): AskRequest {
-  const at = asked.history.map((turn) => turn.role).lastIndexOf("user");
-  const previous = asked.history[at]!;
-  return { ...asked, question: previous.content, questionMessageId: previous.id ?? asked.questionMessageId, history: asked.history.slice(0, at) };
+/** True when the flag is on and the turn asks what "out of date" means, in a chat where the app offered a card. */
+export function asksWhatOutOfDateMeans(asked: AskRequest): boolean {
+  if (!outOfDateIsTheProposalEnabled() || !asksAboutOutOfDate(asked.question)) return false;
+  return offeredACard(asked) && cardTurn(asked) !== null;
+}
+
+/**
+ * The manager's last turn before this one that is not itself a question about "out of date" (asked twice: "what does
+ * out of date mean", then "why is it out of date"), asked again over the history before it, under its own message id,
+ * so the rebuilt card's source turns are the account's, never this question's (coding 2's review). Null when there is
+ * none, so the branch never answers itself.
+ */
+export function cardTurn(asked: AskRequest): AskRequest | null {
+  for (let at = asked.history.length - 1; at >= 0; at -= 1) {
+    const turn = asked.history[at]!;
+    if (turn.role !== "user" || asksAboutOutOfDate(turn.content)) continue;
+    return { ...asked, question: turn.content, questionMessageId: turn.id ?? undefined, history: asked.history.slice(0, at) };
+  }
+  return null;
 }
 
 /** The answer about the proposal: what "out of date" means here, and which part to change. The card stays attached. */

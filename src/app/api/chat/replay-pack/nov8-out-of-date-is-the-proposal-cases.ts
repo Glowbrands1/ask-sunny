@@ -30,7 +30,8 @@ export const NOV8_OUT_OF_DATE_IS_THE_PROPOSAL_CASES: ReplayCase[] = [
     title: "\"what does out of date mean\" after a CA card: answered about the proposal, never from the knowledge base",
     report: "QA round 5, sf-s38 (production chat f5e4e29a, 7 Nov 2026)",
     status: { open: "the turn goes to the knowledge answer" },
-    fixFlags: ["OUT_OF_DATE_IS_THE_PROPOSAL_ENABLED"],
+    // Create needs the name read without "missing" (ACCOUNT_VERB_NOT_A_NAME), or it refuses this very card as out of date.
+    fixFlags: ["OUT_OF_DATE_IS_THE_PROPOSAL_ENABLED", "ACCOUNT_VERB_NOT_A_NAME_ENABLED"],
     async run(t) {
       vi.setSystemTime(new Date("2026-11-07T16:14:00Z"));
       t.directory([...STAFF, RHEA]);
@@ -44,6 +45,10 @@ export const NOV8_OUT_OF_DATE_IS_THE_PROPOSAL_CASES: ReplayCase[] = [
       expect(reply.content, `a knowledge answer:\n${reply.content}`).not.toMatch(/grounded answer|knowledge base|schematic/i);
       expect(reply.content, `a source tag reached the reply:\n${reply.content}`).not.toMatch(/\[\s*S\d/i);
       expect(thread.proposal, `the card was dropped:\n${reply.content}`).toMatchObject({ templateKey: "dpoa" });
+      // Create from the rebuilt card drafts from the account, never from this question (coding 2's review).
+      await thread.create();
+      expect(t.draftPrompts().join("\n"), "the draft is written from the meta question").not.toMatch(/what does out of date mean/i);
+      expect(t.draftPrompts().join("\n"), "the draft is not written from the account").toMatch(/missing her saturday and sunday shifts/i);
     },
   },
 ];

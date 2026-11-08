@@ -298,7 +298,7 @@ export async function answerQuestion(
   memory: { memoryOwnerId?: string } = {},
 ): Promise<AskResponse> {
   // OUT_OF_DATE_IS_THE_PROPOSAL_ENABLED: "what does out of date mean" in a form chat is about the card (ai/out-of-date-is-the-proposal.ts).
-  if (outOfDateIsTheProposalEnabled() && asksWhatOutOfDateMeans(asked)) return outOfDateAnswer(await answerQuestion(cardTurn(asked), actor, memory));
+  if (outOfDateIsTheProposalEnabled() && asksWhatOutOfDateMeans(asked)) return outOfDateAnswer(await answerQuestion(cardTurn(asked)!, actor, memory));
   // REPORT_NAME_NOT_A_PERSON_ENABLED: a form is never built from a question about a report. See `report-turns.ts`.
   // CA_SALES_POLICY_ENABLED: "yes" to the Corrective Action offer is the request it offered (`ca-offer.ts`). Off, unchanged.
   // TWO_FORMS_EACH_PERSON_ENABLED: "yes" to "Do you want a <form> for <B> next?" is that request (`ai/two-forms-own-person.ts`). Off, unchanged.

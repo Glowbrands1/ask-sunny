@@ -43,9 +43,32 @@ describe("OUT_OF_DATE_IS_THE_PROPOSAL_ENABLED", () => {
   });
 
   it("the card is rebuilt from the manager's previous turn, over the history before it", () => {
-    const turn = cardTurn(asked("what does out of date mean"));
+    const turn = cardTurn(asked("what does out of date mean"))!;
     expect(turn.question).toBe("create it");
+    expect(turn.questionMessageId).toBe("u2");
     expect(turn.history.map((entry) => entry.id)).toEqual(["u1", "a1"]);
+  });
+
+  it("asked twice in a row: the rebuilt turn skips the earlier out-of-date question (coding 2's review)", () => {
+    const twice = asked("why is it out of date");
+    twice.history.push({ id: "a2", role: "assistant", content: "\"Out of date\" means …", createdAt: "" } as never);
+    twice.history.push({ id: "u3", role: "user", content: "what does out of date mean", createdAt: "" } as never);
+    const turn = cardTurn(twice)!;
+    expect(turn.question).toBe("create it");
+    expect(turn.questionMessageId).toBe("u2");
+  });
+
+  it("no manager turn but out-of-date questions: no branch (it never answers itself)", () => {
+    vi.stubEnv("OUT_OF_DATE_IS_THE_PROPOSAL_ENABLED", "true");
+    const only = {
+      question: "what does out of date mean",
+      history: [
+        { id: "u1", role: "user", content: "what does out of date mean", createdAt: "" },
+        { id: "a1", role: "assistant", content: OFFER, createdAt: "" },
+      ],
+    } as unknown as AskRequest;
+    expect(cardTurn(only)).toBeNull();
+    expect(asksWhatOutOfDateMeans(only)).toBe(false);
   });
 
   it("the answer names the card, asks which part, keeps the card, and cites nothing", () => {
