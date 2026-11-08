@@ -17,7 +17,8 @@ export const NOV7_PRIOR_COACHING_DATE_CASES: ReplayCase[] = [
     id: "nov7-a2-previously-received-coaching-date",
     title: "A2: \"in the previously recieved coaching include that <name> signed the jba policy manual on 10-15-26\": the card lists the coaching with its date",
     report: "QA, 6 Nov 2026 (A2, one of Pau's 7): a prior-coaching line with a date dropped at the proposal card",
-    status: { open: "no Prior actions line: the date appears nowhere on the card" },
+    // Changed on purpose (7 Nov 2026): QA's flip 7 (21:29 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+    status: "fixed",
     fixFlags: ["PRIOR_STEP_PREVIOUSLY_ENABLED"],
     async run(t) {
       vi.setSystemTime(new Date("2026-11-06T15:00:00Z"));
