@@ -53,7 +53,8 @@ export const NOV8_KEPT_REQUEST_SAME_FORM_CASES: ReplayCase[] = [
     id: "nov8-kept-request-coaching-says-where-the-name-came-from",
     title: "\"Create a Coaching Form from this conversation.\" well after a Corrective Action for <A>: the card is <A>'s and says the name came from earlier",
     report: "QA's round-6 item, 8 Nov 2026: with REQUEST_KEPT_IN_WINDOW on, the carried person's notice is gone (a silent carry-over)",
-    status: { open: "the Coaching card names the person with no \"I took … from earlier in this conversation\"" },
+    // Changed on purpose (8 Nov 2026): fixed in production by KEPT_REQUEST_SAME_FORM_ENABLED, QA round 6, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     // On the route, production's INTENT_EXTRACTION and SLOT_RETENTION drop the notice as well as REQUEST_KEPT_IN_WINDOW
     // (coding 2's bisect of the 232 live flags): KEPT_REQUEST_SAME_FORM keeps the CA request out of the Coaching card's
     // window, and CARRIED_PERSON_NOTICE says where the person came from, whichever reader put them on the card.

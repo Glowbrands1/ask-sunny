@@ -88,8 +88,6 @@ function offRosterKept(before: Card, after: ReplayAnswer): void {
   expect(after.content, `the reply does not say the spelling is not on the roster:\n${after.content}`).toContain('"Odessa Lark Penhalloe" isn\'t a name on the roster');
 }
 
-const ALREADY_HOLDS = new Set(["correct-way", "supposed-to-be"]);
-
 export const NOV8_PROPOSAL_NAME_CORRECTION_CASES: ReplayCase[] = [
   ...Object.entries(CORRECTIONS).map(
     ([key, correction]): ReplayCase => ({
@@ -97,7 +95,8 @@ export const NOV8_PROPOSAL_NAME_CORRECTION_CASES: ReplayCase[] = [
       title: `on the card before Create, "${correction}": the card's employee is the roster's Odessa Lark Penhallow, and nothing else changes`,
       report: REPORT,
       // A whole name, capitalised, already re-proposes the card for her with production's flags: a guard there.
-      status: ALREADY_HOLDS.has(key) ? "fixed" : { open: "with production's flags the card keeps \"Odessa Lark Penhallwo\"" },
+      // Changed on purpose (8 Nov 2026): fixed in production by PROPOSAL_NAME_CORRECTION_ENABLED, QA round 6, 8 Nov 2026; it now holds with production's flags.
+      status: "fixed",
       fixFlags: [FLAG],
       async run(t) {
         const { before, after } = await cardAfter(t, correction);
@@ -111,7 +110,8 @@ export const NOV8_PROPOSAL_NAME_CORRECTION_CASES: ReplayCase[] = [
     id: "nov8-proposal-name-correction-off-roster",
     title: "an off-roster spelling (\"fix her last name penhalloe\") keeps the card, for the one roster person that close; the typo is never offered as a person",
     report: REPORT,
-    status: { open: "with production's flags the correction is not read, and the card keeps the old name silently" },
+    // Changed on purpose (8 Nov 2026): fixed in production by PROPOSAL_NAME_CORRECTION_ENABLED, QA round 6, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: [FLAG],
     async run(t) {
       const { before, after } = await cardAfter(t, "fix her last name penhalloe");
@@ -122,7 +122,8 @@ export const NOV8_PROPOSAL_NAME_CORRECTION_CASES: ReplayCase[] = [
     id: "nov8-proposal-name-correction-typed-off-roster",
     title: "\"change her name to Odessa Lark Penhalloe\" (typed, off the roster) keeps the card, for the one roster person that close; never kept silently",
     report: "QA, round 5 (8 Nov 2026): here an off-roster \"change her name to …\" on the card kept the old name and said nothing",
-    status: { open: "with production's flags the card keeps \"Odessa Lark Penhallwo\" and the reply says nothing of the spelling" },
+    // Changed on purpose (8 Nov 2026): fixed in production by PROPOSAL_NAME_CORRECTION_ENABLED, QA round 6, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: [FLAG],
     async run(t) {
       const { before, after } = await cardAfter(t, "change her name to Odessa Lark Penhalloe");
@@ -150,7 +151,8 @@ export const NOV8_PROPOSAL_NAME_CORRECTION_CASES: ReplayCase[] = [
       id: `nov8-proposal-name-correction-r6-${turn}`,
       title: `R6 ${turn}: "${said}" on the card for the roster's Marisol Ortega Valdez keeps the card for her; the typo is never offered or seated`,
       report: `QA, round 6 (8 Nov 2026): nov5-r6-policy-kept-across-turns ${turn} asked "Which of them … — **Marisol Ortega Valdez** or **${typo}**?" (or seated the typo)`,
-      status: { open: "with production's flags the reply asks which, or the typo is put on the card" },
+      // Changed on purpose (8 Nov 2026): fixed in production by PROPOSAL_NAME_CORRECTION_ENABLED, QA round 6, 8 Nov 2026; it now holds with production's flags.
+      status: "fixed",
       fixFlags: [FLAG],
       async run(t) {
         // nov5-r6-policy-kept-across-turns' turns, verbatim, up to this one; the person is that file's invented one.

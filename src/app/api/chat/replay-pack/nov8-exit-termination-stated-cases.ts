@@ -50,7 +50,8 @@ export const NOV8_EXIT_TERMINATION_STATED_CASES: ReplayCase[] = [
     title: "a termination letter for an exit form: the separation, its date and its stated reason are filled; no last day, keys or items are invented",
     report: "QA's Sunny round-5 live tester, 8 Nov 2026 (item 4): EXIT_STATED_ONLY left the letter's stated facts blank",
     // EXIT_STATED_ONLY is live with QA's round 5 (#684); production's flags here are before it.
-    status: { open: "the card leaves the Resignation Details, Resignation Date and Reason blank (or, before round 5, invents a resignation by text)" },
+    // Changed on purpose (8 Nov 2026): fixed in production by EXIT_TERMINATION_STATED_ENABLED, QA round 6, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       vi.setSystemTime(new Date("2026-11-05T20:28:00Z"));

@@ -41,7 +41,8 @@ export const NOV8_POLICY_CORRECTION_NOT_ACCOUNT_CASES: ReplayCase[] = [
     id: "nov8-policy-correction-not-account",
     title: "\"it should be under performance not standard of conduct\" on a sales CA: the Observation keeps the account, never the correction",
     report: REPORT,
-    status: { open: "the Observation ends \"… Spa% it should be under performance not standard of conduct\"" },
+    // Changed on purpose (8 Nov 2026): fixed in production by POLICY_CORRECTION_NOT_ACCOUNT_ENABLED, QA round 6, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const content = await chat(t, TURNS);

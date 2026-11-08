@@ -42,7 +42,8 @@ export const NOV8_CORRECTED_DATE_KEPT_CASES: ReplayCase[] = [
     id: "nov8-corrected-date-kept-q6",
     title: "Q6: \"the meeting was actually on 10-19-26\", then a prior step's correction and \"no payroll deduct\": the card is dated 10-19 on every turn after, and Create saves 10-19",
     report: REPORT,
-    status: { open: "the card's date is null from \"the meeting was actually on 10-19-26\" on, and Create saves 2026-10-21" },
+    // Changed on purpose (8 Nov 2026): fixed in production by CORRECTED_DATE_KEPT_ENABLED, QA round 6, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const thread = start(t);
@@ -86,7 +87,8 @@ export const NOV8_CORRECTED_DATE_KEPT_CASES: ReplayCase[] = [
     id: "nov8-date-question-kept-q6",
     title: "Q6 with only DATE_QUESTION_KEPT: \"the meeting was actually on 10-19-26\" leaves the date open, and the reply asks which date goes on the form",
     report: `${REPORT} (the step's own "Which date goes on the form?" was dropped, so nobody was asked)`,
-    status: { open: "the card's date is null and the reply asks nothing about it" },
+    // Changed on purpose (8 Nov 2026): fixed in production by DATE_QUESTION_KEPT_ENABLED, QA round 6, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: ["DATE_QUESTION_KEPT_ENABLED"],
     async run(t) {
       const thread = start(t);

@@ -28,7 +28,8 @@ export const NOV8_FIELD_LABEL_NOT_A_QUESTION_CASES: ReplayCase[] = [
     id: "nov8-field-label-not-a-question",
     title: "an open exit card: \"how employee resigned - told management\" and \"resignation date … Reason for resignation - …\" fill the card, never a policy answer",
     report: "QA, 8 Nov 2026, from the sibling app's live tester; the same here (a district manager's chat, replayed): field-label turns answered as a policy question",
-    status: { open: "turns 5 and 6 are \"A grounded answer from the policy manual.\" with no card" },
+    // Changed on purpose (8 Nov 2026): fixed in production by FIELD_LABEL_NOT_A_QUESTION_ENABLED, QA round 6, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: ["FIELD_LABEL_NOT_A_QUESTION_ENABLED"],
     async run(t) {
       vi.setSystemTime(new Date("2026-11-08T15:00:00Z"));

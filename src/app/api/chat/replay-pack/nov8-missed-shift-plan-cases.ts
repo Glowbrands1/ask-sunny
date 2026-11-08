@@ -36,7 +36,8 @@ export const NOV8_MISSED_SHIFT_PLAN_CASES: ReplayCase[] = [
     id: "nov8-missed-shift-plan-t1",
     title: "sf-s38 T1 \"… missing her saturday and sunday shifts … failed to communicate proporley\", then Create: the saved Action Plan is the card's, never the lateness plan",
     report: REPORT,
-    status: { open: "the saved Action Plan is \"Rhea is expected to arrive on time for all scheduled shifts … Continued lateness …\"" },
+    // Changed on purpose (8 Nov 2026): fixed in production by MISSED_SHIFT_NOT_LATENESS_ENABLED, QA round 6, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const thread = start(t);

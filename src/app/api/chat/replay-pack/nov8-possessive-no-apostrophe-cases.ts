@@ -65,7 +65,8 @@ export const NOV8_POSSESSIVE_NO_APOSTROPHE_CASES: ReplayCase[] = [
     id: `nov8-possessive-no-apostrophe-${key}`,
     title: `"${said}" with her Corrective Action on file opens it`,
     report: REPORT,
-    status: { open: "\"Who is this form for?\" and a blank Corrective Action card" },
+    // Changed on purpose (8 Nov 2026): fixed in production by POSSESSIVE_NO_APOSTROPHE_ENABLED, QA round 6, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const id = await caOnFile(t);
@@ -76,7 +77,8 @@ export const NOV8_POSSESSIVE_NO_APOSTROPHE_CASES: ReplayCase[] = [
     id: "nov8-possessive-apostrophe-guard",
     title: "must not change: \"bring up Quilla's corrective action\" (with the apostrophe) opens it, with round 5's flags",
     report: REPORT,
-    status: { open: "production's flags here are before round 5's reopen flags" },
+    // Changed on purpose (8 Nov 2026): fixed in production by POSSESSIVE_NO_APOSTROPHE_ENABLED, QA round 6, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: ROUND_5,
     async run(t) {
       const id = await caOnFile(t);

@@ -35,7 +35,8 @@ export const NOV8_PAYROLL_CLAUSE_NOT_ACCOUNT_CASES: ReplayCase[] = [
     id: "nov8-payroll-clause-not-account",
     title: "\"… she was late today, $20 payroll deduct applies\": the Observation is the account, the $20 stays on payroll",
     report: REPORT,
-    status: { open: "the Observation is \"… she was late today, $20 payroll deduct applies Payroll deduction amount: $20.\"" },
+    // Changed on purpose (8 Nov 2026): fixed in production by PAYROLL_CLAUSE_NOT_ACCOUNT_ENABLED, QA round 6, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const content = await card(t, "create a verbal ca for Rowan Kestrel she was late today, $20 payroll deduct applies");

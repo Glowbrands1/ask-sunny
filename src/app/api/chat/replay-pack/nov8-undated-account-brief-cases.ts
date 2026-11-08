@@ -45,7 +45,8 @@ export const NOV8_UNDATED_ACCOUNT_BRIEF_CASES: ReplayCase[] = [
     id: "nov8-undated-weekend-shifts-no-form-date",
     title: "sf-s38 T1 (\"missing her saturday and sunday shifts\", no date) → Create: the drafting model is told no date goes in the account, never that the form's date is the incident's",
     report: REPORT,
-    status: { open: "the draft brief says \"This is the date of the incident and of this form\" with no date given; the saved Observation dated the shifts November 8, 2026" },
+    // Changed on purpose (8 Nov 2026): fixed in production by UNDATED_ACCOUNT_BRIEF_ENABLED, QA round 6, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: [FLAG],
     async run(t) {
       const brief = await briefOnCreate(t, T1);

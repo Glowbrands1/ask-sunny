@@ -51,7 +51,8 @@ export const NOV8_EXIT_OTHER_PERSON_CASES: ReplayCase[] = [
     id: "nov8-exit-other-person-not-offered",
     title: "a termination letter naming \"your Salon Director, Philippa\": the exit form's question never offers Philippa, nor echoes her title",
     report: REPORT,
-    status: { open: "\"Which of them is this **Resignation/Exit Form** for — **Philippa** or **Dorran**?\" with \"**Job title:** Salon Director\"" },
+    // Changed on purpose (8 Nov 2026): fixed in production by EXIT_OTHER_PERSON_NOT_SUBJECT_ENABLED, QA round 6, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const thread = start(t);

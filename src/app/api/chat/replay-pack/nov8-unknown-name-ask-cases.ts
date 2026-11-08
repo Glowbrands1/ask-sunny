@@ -43,7 +43,8 @@ export const NOV8_UNKNOWN_NAME_ASK_CASES: ReplayCase[] = [
     id: "nov8-unknown-name-ask-named-back",
     title: "the BF7 chain: the typed name not on the directory is named back",
     report: REPORT,
-    status: { open: "\"quinn marlowe\" is never said back; every reply asks \"Who is this Corrective Action Form for?\"" },
+    // Changed on purpose (8 Nov 2026): fixed in production by UNKNOWN_NAME_ASK_ENABLED, QA round 6, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const out = await chain(t);
@@ -54,7 +55,8 @@ export const NOV8_UNKNOWN_NAME_ASK_CASES: ReplayCase[] = [
     id: "nov8-unknown-name-ask-no-repeat",
     title: "the BF7 chain: no reply asks the name question in the same words as the reply before",
     report: REPORT,
-    status: { open: "\"Who is this **Corrective Action Form** for? Give me their name …\" on every turn" },
+    // Changed on purpose (8 Nov 2026): fixed in production by UNKNOWN_NAME_ASK_ENABLED, QA round 6, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const out = await chain(t);
