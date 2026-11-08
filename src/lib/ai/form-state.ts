@@ -1,5 +1,5 @@
 import { payrollAmountFieldEnabled, secondRequestOwnAccountEnabled } from "@/lib/config/chat-quality-flags";
-import { startsFormRequest } from "@/lib/forms/current-request";
+import { startsFormRequest, startsNewRequest } from "@/lib/forms/current-request";
 import { rosterSalonName } from "@/lib/forms/salon-mention";
 import type { ChatFormProposal } from "@/types";
 
@@ -98,15 +98,24 @@ export function stateSentences(state: ConversationFormState): string[] {
  * The saved state as this turn may use it: without the earlier request's policy and incident when this turn starts a
  * new one. Both are written in front of the turn ("Policy reference: Late Opening … Incident: Late Opening.") and read
  * as the manager's own words, so a cash-drawer request said "Late Opening, as you said".
+ *
+ * Only when this turn starts a request of its own after earlier ones (`earlier`, the manager's turns before this one;
+ * `forms/current-request.ts` startsNewRequest; QA's Sunny round-3 gate, 7 Nov 2026): the first request's own state ("CA for <name>, she was rude to <name> …" → Standards of Conduct) is this request's,
+ * and dropping it left single-request cards with no Policy line. No earlier turns given: kept, as before the flag.
  */
-export function stateForTurn(state: ConversationFormState | null, question: string): ConversationFormState | null {
+export function stateForTurn(
+  state: ConversationFormState | null,
+  question: string,
+  earlier: readonly string[] = [],
+): ConversationFormState | null {
   if (!state || !secondRequestOwnAccountEnabled() || (!state.policyHeading && !state.incidentType) || !startsFormRequest(question)) return state;
+  if (!startsNewRequest(earlier, question)) return state;
   return { ...state, policyHeading: null, policyPage: null, incidentType: null };
 }
 
 /** Sentences the proposal readers already accept, ahead of this turn's words. */
-export function prependFormState(question: string, given: ConversationFormState | null): string {
-  const state = stateForTurn(given, question);
+export function prependFormState(question: string, given: ConversationFormState | null, earlier: readonly string[] = []): string {
+  const state = stateForTurn(given, question, earlier);
   if (!state) return question;
   const lines = stateSentences(state).filter((line) => !question.includes(line));
   if (lines.length === 0) return question;
