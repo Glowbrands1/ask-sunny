@@ -172,6 +172,9 @@ import { cardRequestTurn, listPolicyOnCard, withPolicyListedAtCreate } from "./l
 import { withoutNoAccountAppPolicy } from "./no-account-policy-line";
 import { cardMetaTurn } from "./card-meta-turn";
 import { withFirstNameAsk } from "./first-name-ask";
+import { withUnknownNameAsk } from "./unknown-name-ask";
+import { withExitOtherPersonNotOffered } from "./exit-other-person";
+import { withCarriedPersonNotice } from "./carried-person-notice";
 import { withFirstNameAnswerFor, withFirstNameSuggestFor } from "./first-name-suggest";
 import { withAmountUnknownAck } from "./amount-unknown-ack";
 import { withOutOfScopePlace } from "./out-of-scope-place";
@@ -370,6 +373,8 @@ export async function answerQuestion(
   answered = withTwoFormsOwnPerson(answered, original);
   // TWO_FORMS_EACH_PERSON_ENABLED: the card is its own clause's person, answered again from that clause if need be, and each other request with its person is offered (`ai/two-forms-own-person.ts`).
   answered = await withEachPersonsForm(answered, original, answer);
+  // CARRIED_PERSON_NOTICE_ENABLED: a card whose person the manager last named before their last six turns says so (`ai/carried-person-notice.ts`).
+  answered = withCarriedPersonNotice(answered, original);
   /*
    * CA_SALES_POLICY_ENABLED: a reply about a policy and an employee the roster
    * recognises ends with ONE offer to start a Corrective Action citing that
@@ -379,6 +384,8 @@ export async function answerQuestion(
    */
   // FORM_NAME_FROM_ROSTER_ENABLED, last on every return: only roster people are the employee or a choice (`forms/roster-only-names.ts`).
   // REPLY_MATCHES_CARD_ENABLED, the very last step on both returns: the reply agrees with the finished card (`ai/reply-matches-card.ts`).
+  // EXIT_OTHER_PERSON_NOT_SUBJECT_ENABLED: the letter's other person ("your Salon Director, <B>") is never offered as the exit form's subject (`ai/exit-other-person.ts`).
+  answered = withExitOtherPersonNotOffered(answered, original);
   if (!caSalesPolicyEnabled()) return withReplyMatchesCard(withRosterOnlyNames(answered));
   let roster: Awaited<ReturnType<typeof loadScopedRoster>> = [];
   try {
@@ -435,8 +442,12 @@ async function answerQuestionChecked(
       withSwitchSources(withSwitchNote(withOutOfScopePlace(withOwnPlace(withAmountUnknownAck(
         withUnreadDateAsk(
           withStatedAmount(
-            withFirstNameAsk(
-              withWarningLevelFromClause(withSpelledOutTitle(withJobTitleReadBackCase(withJobTitleCase(withJobTitleFromWords(withCoachingWhatHappened(withoutNoAccountAppPolicy(withCaWhatHappened(await applyQuietQuality(response), request)), request), request)))), request),
+            // UNKNOWN_NAME_ASK_ENABLED: a typed name not on the directory is named back, never asked again in the same words.
+            withUnknownNameAsk(
+              withFirstNameAsk(
+                withWarningLevelFromClause(withSpelledOutTitle(withJobTitleReadBackCase(withJobTitleCase(withJobTitleFromWords(withCoachingWhatHappened(withoutNoAccountAppPolicy(withCaWhatHappened(await applyQuietQuality(response), request)), request), request)))), request),
+                request,
+              ),
               request,
             ),
             request,

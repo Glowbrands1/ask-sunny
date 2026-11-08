@@ -15,7 +15,7 @@ import { authorizeInstance, instanceListFilterFor, visibleInstances } from "./in
 import { applyAssistantDraft, listInstances, loadInstance, type InstanceRow } from "./instances";
 import { privateAwareLimit } from "./private-creators";
 import { extractEmployeeNames, samePerson } from "./proposal";
-import { draftMergeEnabled, formEditDateRulesEnabled, formEditSingleWriterEnabled, reopenByAnyOpenVerbEnabled, reopenNotOpenFormEnabled } from "@/lib/config/chat-quality-flags";
+import { draftMergeEnabled, formEditDateRulesEnabled, formEditSingleWriterEnabled, possessiveNoApostropheEnabled, reopenByAnyOpenVerbEnabled, reopenNotOpenFormEnabled } from "@/lib/config/chat-quality-flags";
 
 import { fieldsToRestore, showDraftWithEdits } from "./draft-merge";
 import { EDIT_VERB, SHOW_OR_OPEN_VERB, WHICH_FORM_ON_FILE } from "./reopen-cue";
@@ -112,7 +112,17 @@ export async function reopenRequestedForm(input: {
     names = names.map((name) => name.replace(LEADING_VERB_IN_NAME, "")).filter(Boolean);
     const firstNames = names.length === 0 ? (input.activeInstanceId ? [] : candidateNameWords(question)) : names.filter((name) => !/\s/.test(name.trim()));
     if (firstNames.length > 0) {
-      const people = await rosterPeopleByFirstName(input.request, firstNames);
+      let people = await rosterPeopleByFirstName(input.request, firstNames);
+      /*
+       * POSSESSIVE_NO_APOSTROPHE_ENABLED (QA, 8 Nov 2026, ported from the sibling app's live tester with round 5): "bring up <first name>s
+       * corrective action" — a possessive typed without the apostrophe. Only when no roster person has the word as it
+       * was typed, the word without its final "s" ("ss" never) is tried, by the same one-person rule.
+       */
+      if (people.length === 0 && possessiveNoApostropheEnabled()) {
+        const unpossessed = firstNames.map((word) => word.trim()).filter((word) => /^\p{L}{3,}s$/u.test(word) && !/ss$/i.test(word)).map((word) => word.slice(0, -1));
+        if (unpossessed.length > 0) people = await rosterPeopleByFirstName(input.request, unpossessed);
+        if (people.length === 1) names = names.filter((name) => !unpossessed.some((word) => `${word}s`.toLowerCase() === name.trim().toLowerCase()));
+      }
       if (people.length > 1) return reply(whichPersonReply(people, await templateLabel(templateKey)));
       if (people.length === 1) names = [...names.filter((name) => /\s/.test(name.trim())), people[0]!];
     }

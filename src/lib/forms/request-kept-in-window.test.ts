@@ -28,6 +28,8 @@ const REQUEST = PRIOR[1]!.content;
 beforeEach(() => {
   vi.stubEnv("REQUEST_KEPT_IN_WINDOW_ENABLED", "");
   vi.stubEnv("NEXT_PUBLIC_REQUEST_KEPT_IN_WINDOW_ENABLED", "");
+  vi.stubEnv("KEPT_REQUEST_SAME_FORM_ENABLED", "");
+  vi.stubEnv("NEXT_PUBLIC_KEPT_REQUEST_SAME_FORM_ENABLED", "");
 });
 afterEach(() => vi.unstubAllEnvs());
 const on = () => vi.stubEnv("REQUEST_KEPT_IN_WINDOW_ENABLED", "true");
@@ -56,9 +58,19 @@ describe("REQUEST_KEPT_IN_WINDOW_ENABLED", () => {
       { id: "b", content: "create a coaching form for Marisol Ortega Valdez for being late" },
       ...PRIOR.slice(3),
     ];
+    vi.stubEnv("KEPT_REQUEST_SAME_FORM_ENABLED", "");
     const window = boundManagerTurns(prior, CURRENT);
     expect(window.text).not.toContain(REQUEST);
     expect(window.messages[0]!.content).toBe(prior[1]!.content);
+    // Changed on purpose (KEPT_REQUEST_SAME_FORM): this turn asks for the Corrective Action Form and the latest request was
+    // for the Coaching Form, a different form, so neither earlier request is kept; the window is the one without
+    // REQUEST_KEPT_IN_WINDOW.
+    vi.stubEnv("KEPT_REQUEST_SAME_FORM_ENABLED", "true");
+    const sameFormOnly = boundManagerTurns(prior, CURRENT);
+    expect(sameFormOnly.text).not.toContain(REQUEST);
+    expect(sameFormOnly.text).not.toContain(prior[1]!.content);
+    vi.stubEnv("REQUEST_KEPT_IN_WINDOW_ENABLED", "");
+    expect(sameFormOnly).toEqual(boundManagerTurns(prior, CURRENT));
   });
 
   it("flag on: a request already in the window adds nothing", () => {

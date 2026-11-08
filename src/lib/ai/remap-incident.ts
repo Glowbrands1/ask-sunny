@@ -10,8 +10,15 @@ import {
   requestParticipleLeadEnabled,
   secondRequestOwnAccountEnabled,
 } from "@/lib/config/chat-quality-flags";
-import { withoutPriorStepClauses } from "@/lib/forms/form-date-answer";
-import { CA_POLICY_LABEL, isSalesPolicyReading, readCaPolicy, STANDARDS_OF_CONDUCT, type CaPolicyName } from "@/lib/forms/ca-policy";
+import { withoutPriorStepClauses, correctedDates } from "@/lib/forms/form-date-answer";
+import {
+  CA_POLICY_LABEL,
+  isSalesPolicyReading,
+  readCaPolicy,
+  STANDARDS_OF_CONDUCT,
+  type CaPolicyName,
+} from "@/lib/forms/ca-policy";
+import { businessToday } from "@/lib/business-date";
 import {
   findManualSection,
   headingKey,
@@ -27,6 +34,8 @@ import type { KnowledgeCategory, SourceCitation } from "@/types";
 
 import { accountManualSections } from "./account-manual-sections";
 import { withoutAppLines } from "./app-sentences";
+import { isPolicyCorrection } from "./policy-correction-turn";
+import { withoutPayrollClauses } from "./payroll-clause-not-account";
 import { formatManualCitation } from "./policy-citation-fields";
 
 /**
@@ -289,8 +298,11 @@ export function currentRequestStart(input: {
     // new one only with its own incident, below.
     // QA's Sunny round-4 gate (8 Nov 2026, sf-s21 / sf-s22): only in the turn's own first line — a pasted document
     // after it ("Use this to make it: … 1. **Kit Coaching Document** …") names a form without asking for one.
+    // QA's Sunny round-5 gate (8 Nov 2026, Q6): "sorry, the verbal ca was on 9-2-26 not 9-1-26" corrects a prior step's
+    // date; the "ca" in it is that step, never a second request.
     const isRequest =
-      REQUEST_TURN.test(asked) || (secondRequestOwnAccountEnabled() && requests >= 1 && FORM_WORD_ANYWHERE.test(firstLine(turn)));
+      REQUEST_TURN.test(asked) ||
+      (secondRequestOwnAccountEnabled() && requests >= 1 && FORM_WORD_ANYWHERE.test(firstLine(turn)) && !onlyAboutAPriorStep(turn));
     if (!isRequest) continue;
     requests += 1;
     // SECOND_REQUEST_OWN_ACCOUNT_ENABLED (QA's Sunny round-3 gate, 7 Nov 2026): the turn's incident must also stand
@@ -306,6 +318,21 @@ export function currentRequestStart(input: {
     if (requests > 1 && tells && turnIncident(turn, input.employeeName, input.slotClause)) start = index;
   }
   return start;
+}
+
+/*
+ * SECOND_REQUEST_OWN_ACCOUNT_ENABLED (QA's Sunny round-5 gate, 8 Nov 2026, corrective-action-conversation-qa Q6): a turn
+ * that corrects a date ("… on 9-2-26 not 9-1-26") or only states an earlier step ("the verbal ca was on 9-2-26"), and
+ * asks for nothing, is that step's history. The form it names is the step, not a new request.
+ */
+const ASKS_FOR_A_FORM = /\b(?:create|make\s+(?:a|an|it|another|me)|start|draft|new|another|need\s+(?:a|an)|open|write\s+(?:up|her|him|them))\b/i;
+
+function onlyAboutAPriorStep(turn: string): boolean {
+  if (ASKS_FOR_A_FORM.test(turn)) return false;
+  const today = businessToday();
+  if (correctedDates(turn, today).size > 0) return true;
+  const { text, dropped } = withoutPriorStepClauses(turn, today, turn);
+  return dropped && !FORM_WORD_ANYWHERE.test(firstLine(text));
 }
 
 /** The state sentences the intent read puts in front of a question ("The employee is …."). */
@@ -646,11 +673,14 @@ export function accountSentences(
   const start = currentRequestStart({ turns, employeeName, slotClause: accountSlot });
   for (const turn of turns.slice(start)) {
     if (isEditTurn(turn)) continue;
-    const text = withoutPriorList(turn.replace(/\bThe account continues\.\s*/g, ""));
+    // PAYROLL_CLAUSE_NOT_ACCOUNT_ENABLED: "$20 payroll deduct applies" and "Payroll deduction amount: $20." are the payroll answer.
+    const text = withoutPayrollClauses(withoutPriorList(turn.replace(/\bThe account continues\.\s*/g, "")));
     for (const sentence of text.split(/\n+|[.!?;]+(?=\s|$)/)) {
       const trimmed = sentence.trim();
       if (STATE_SENTENCE.test(trimmed) || isEditTurn(trimmed) || TALKS_TO_THE_APP.test(trimmed) || ASKS_FOR_HELP.test(trimmed)) continue;
       if (/^it\s+happened\b/i.test(trimmed)) continue;
+      // POLICY_CORRECTION_NOT_ACCOUNT_ENABLED: "it should be under performance not standard of conduct" is about the form.
+      if (isPolicyCorrection(trimmed)) continue;
       const parts = sentence
         .split(",")
         .map((part) => part.trim())

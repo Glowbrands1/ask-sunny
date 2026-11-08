@@ -1039,7 +1039,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         ? [
             unreadDay
               ? unreadDayBrief(resolvedFormDate, unreadDay)
-              : formDateBrief(resolvedFormDate, draftBriefDates(notes, businessToday())),
+              : formDateBrief(resolvedFormDate, draftBriefDates(notes, businessToday()), notes),
           ]
         : []),
       /*

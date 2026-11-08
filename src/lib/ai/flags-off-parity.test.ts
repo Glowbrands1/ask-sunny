@@ -348,6 +348,8 @@ const NEW_FLAGS = [
   "NAME_CORRECTION_WORDS_ENABLED",
   // Coding: FINAL_REPLY_MARKER_GUARD (round 5, 8 Nov 2026; default off).
   "FINAL_REPLY_MARKER_GUARD_ENABLED",
+  // Coding: PROPOSAL_NAME_CORRECTION (round 5, 8 Nov 2026; port from Ask Bubbles; default off).
+  "PROPOSAL_NAME_CORRECTION_ENABLED",
   "POLICY_CHANGE_REST_OF_TURN_ENABLED",
   "OPEN_FORM_NO_SELECTION_ENABLED",
   "PERSON_GUARD_ENABLED",
@@ -388,6 +390,26 @@ const NEW_FLAGS = [
   // Missing from this list since its PR (QA, 7 Nov 2026): forced off with the others in the child run.
   "REQUEST_KEPT_IN_WINDOW_ENABLED",
   "NEXT_PUBLIC_REQUEST_KEPT_IN_WINDOW_ENABLED",
+  // coding 2: POLICY_CORRECTION_NOT_ACCOUNT (default off): forced off with the others.
+  "POLICY_CORRECTION_NOT_ACCOUNT_ENABLED",
+  // coding 2: REVISION_EDIT_NEEDS_EDIT (default off): forced off with the others.
+  "REVISION_EDIT_NEEDS_EDIT_ENABLED",
+  "NEXT_PUBLIC_REVISION_EDIT_NEEDS_EDIT_ENABLED",
+  // coding 2: PAYROLL_CLAUSE_NOT_ACCOUNT (default off): forced off with the others.
+  "PAYROLL_CLAUSE_NOT_ACCOUNT_ENABLED",
+  // coding 2: EXIT_TERMINATION_STATED (default off): forced off with the others.
+  "EXIT_TERMINATION_STATED_ENABLED",
+  // coding 2: EXIT_OTHER_PERSON_NOT_SUBJECT (default off): forced off with the others.
+  "EXIT_OTHER_PERSON_NOT_SUBJECT_ENABLED",
+  // coding 2: POSSESSIVE_NO_APOSTROPHE (default off): forced off with the others.
+  "POSSESSIVE_NO_APOSTROPHE_ENABLED",
+  // coding 2: KEPT_REQUEST_SAME_FORM (default off): forced off with the others.
+  "KEPT_REQUEST_SAME_FORM_ENABLED",
+  "NEXT_PUBLIC_KEPT_REQUEST_SAME_FORM_ENABLED",
+  // coding 2: CARRIED_PERSON_NOTICE (default off): forced off with the others.
+  "CARRIED_PERSON_NOTICE_ENABLED",
+  // coding 2: FIELD_LABEL_NOT_A_QUESTION (default off): forced off with the others.
+  "FIELD_LABEL_NOT_A_QUESTION_ENABLED",
   "AM_PRIOR_WARNINGS_ENABLED",
   "TRUNCATION_RETRY_ENABLED",
   "CHAT_RESPONSE_STREAM_ENABLED",
@@ -477,6 +499,22 @@ const NEW_FLAGS = [
   "TWO_FORMS_OWN_PERSON_ENABLED",
   // coding 2: TWO_FORMS_EACH_PERSON (default off): forced off with the others in the child run.
   "TWO_FORMS_EACH_PERSON_ENABLED",
+  "TWO_FORMS_CARD_NOT_ASKED_ENABLED",
+  // coding 2: CREATE_COMMAND_POINTS_TO_CARD and CARD_COMPLAINT_NOT_ACCOUNT (default off): forced off with the others.
+  "CREATE_COMMAND_POINTS_TO_CARD_ENABLED",
+  "CARD_COMPLAINT_NOT_ACCOUNT_ENABLED",
+  // coding 5: UNKNOWN_NAME_ASK (port of the sibling app's flag, default off): forced off with the others in the child run.
+  "UNKNOWN_NAME_ASK_ENABLED",
+  // coding 5: CORRECTED_DATE_KEPT (default off): forced off with the others in the child run.
+  "CORRECTED_DATE_KEPT_ENABLED",
+  "DATE_QUESTION_KEPT_ENABLED",
+  // coding 5: MISSED_SHIFT_NOT_LATENESS (default off): forced off with the others in the child run.
+  "MISSED_SHIFT_NOT_LATENESS_ENABLED",
+  // coding 5: UNDATED_ACCOUNT_BRIEF (default off): forced off with the others in the child run.
+  "UNDATED_ACCOUNT_BRIEF_ENABLED",
+  // coding 5: CORRECTED_DATE_KEPT (default off): forced off with the others in the child run.
+  "CORRECTED_DATE_KEPT_ENABLED",
+  "DATE_QUESTION_KEPT_ENABLED",
   // coding 2: CREATE_COMMAND_POINTS_TO_CARD and CARD_COMPLAINT_NOT_ACCOUNT (default off): forced off with the others.
   "CREATE_COMMAND_POINTS_TO_CARD_ENABLED",
   "CARD_COMPLAINT_NOT_ACCOUNT_ENABLED",
