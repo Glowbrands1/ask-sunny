@@ -498,6 +498,8 @@ const NEW_FLAGS = [
   "DATE_QUESTION_KEPT_ENABLED",
   // coding 5: MISSED_SHIFT_NOT_LATENESS (default off): forced off with the others in the child run.
   "MISSED_SHIFT_NOT_LATENESS_ENABLED",
+  // coding 5: UNDATED_ACCOUNT_BRIEF (default off): forced off with the others in the child run.
+  "UNDATED_ACCOUNT_BRIEF_ENABLED",
 ] as const;
 
 const PROTECTED = [
