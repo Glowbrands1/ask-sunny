@@ -44,7 +44,8 @@ export const NOV8_FORM_DATE_SAID_CASES: ReplayCase[] = [
       await thread.say(REQUEST);
       const reply = await thread.say(EDIT);
       expect(reply.content, `the date the manager gave is asked about:\n${reply.content}`).not.toMatch(ASKED);
-      expect(thread.proposal?.formDate ?? null, "the card's Date").toBe("2026-10-14");
+      // The card's formDate is on the proposal as the route sends it; this pack's ReplayAnswer type does not list it.
+      expect((thread.proposal as { formDate?: string | null } | null)?.formDate ?? null, "the card's Date").toBe("2026-10-14");
       const id = await thread.create();
       expect(t.values(id).form_date, "the form's Date").toBe("2026-10-14");
     },
