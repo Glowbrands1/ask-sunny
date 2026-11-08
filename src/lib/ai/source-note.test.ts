@@ -120,6 +120,7 @@ describe("finalReplyWithoutMarkers (FINAL_REPLY_MARKER_GUARD_ENABLED)", () => {
     expect(finalReplyWithoutMarkers({ content: "…in an STC context [S1]- don't cover it." }).content).toBe("…in an STC context- don't cover it.");
     expect(finalReplyWithoutMarkers({ content: "See the Late Opening Policy [S1 p.14]." }).content).toBe("See the Late Opening Policy [S1 p.14].");
     expect(finalReplyWithoutMarkers({ content: "Hi [Employee]." }).content).toBe("Hi [Employee].");
+    expect(finalReplyWithoutMarkers({ content: "It is on page 10 of the manual [p.10]." }).content).toBe("It is on page 10 of the manual [p.10].");
   });
 
   it("off: the answer as it is", async () => {
