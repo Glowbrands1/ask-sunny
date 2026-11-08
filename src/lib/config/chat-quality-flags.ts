@@ -1089,6 +1089,18 @@ export function payrollTypoNotANameEnabled(): boolean {
 }
 
 /**
+ * STEP_B_DATE_SAID_ENABLED (coding 5, port from the sibling app: QA's live test there, 8 Nov 2026; same flag in both apps;
+ * default off). On a saved draft, "I need you to make it about showing up late and please list the policy make the
+ * date for 10/14/26" set the topic and the policy, and the Date stayed 10/10 with nothing said: Step B's reader is
+ * never offered the form's Date. On: a date the manager says the form takes (`forms/form-date-said.ts`) is written on
+ * Step B's path as their own statement, after the reader's edits, and the reply says "Changed Date to …"
+ * (`forms/form-patch-turn.ts`). Off, as before.
+ */
+export function stepBDateSaidEnabled(): boolean {
+  return envFlag("STEP_B_DATE_SAID_ENABLED");
+}
+
+/**
  * The manager's answer to "Which date goes on the form?" sets the form's date
  * (QA, 26 Oct 2026; same flag in both apps): "10-15", "the 15th" and "most
  * recent" are answers, also after a turn in between ("She is at Kearney"),

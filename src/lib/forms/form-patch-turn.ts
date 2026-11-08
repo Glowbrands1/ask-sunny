@@ -1,7 +1,8 @@
 import "server-only";
 
 import type { AskResponse } from "@/lib/ai/types";
-import { formEditSingleWriterEnabled, formPatchReaderFixesEnabled } from "@/lib/config/chat-quality-flags";
+import { formEditSingleWriterEnabled, formPatchReaderFixesEnabled, stepBDateSaidEnabled } from "@/lib/config/chat-quality-flags";
+import { saidFormDate } from "./form-date-said";
 import { syncCorrectiveActionPlan } from "./ca-action-plan-sync";
 import { checkboxGroupsForVariant, fieldsForVariant, parseFormDocument } from "./document";
 import { replyFromDiff } from "./form-diff-reply";
@@ -244,7 +245,15 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
      * revision paths run as before. (A patch whose sets were all refused still
      * answers from its diff.)
      */
-    if (Object.keys(reading.patch.set).length === 0 && reading.patch.clear.length === 0) return handOff("nothing");
+    /*
+     * STEP_B_DATE_SAID_ENABLED (QA's live test in the sibling app, 8 Nov 2026): "… make the date for 10/14/26"
+     * on a saved draft set the topic and the policy, and the Date stayed 10/10 with nothing said: the reader is never
+     * offered the form's Date. A date the manager says the form takes (`form-date-said.ts`) is written as their own
+     * statement after the reader's edits, and the reply says "Changed Date to …".
+     */
+    const saidDate = stepBDateSaidEnabled() ? saidFormDate(input.question, input.today) : null;
+    const dateToWrite = saidDate !== null && "form_date" in before && before.form_date?.value !== saidDate ? saidDate : null;
+    if (Object.keys(reading.patch.set).length === 0 && reading.patch.clear.length === 0 && dateToWrite === null) return handOff("nothing");
 
     /*
      * The assistant's last reply counts as accepted only when the patch quotes
@@ -298,7 +307,8 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
      * owner split below moved there. A patch with any refusal writes nothing
      * and the turn goes on (redraft, revision).
      */
-    if (formEditSingleWriterEnabled()) {
+    const patchOps = Object.keys(reading.patch.set).length + reading.patch.clear.length;
+    if (formEditSingleWriterEnabled() && patchOps > 0) {
       const ops = [
         ...Object.entries(reading.patch.set).map(([field, value]) => ({
           op: reading.patch.how?.[field] === "add" ? ("append" as const) : ("set" as const),
@@ -336,7 +346,7 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
        * the form. Said so; the old path does not run.
        */
       if (readerFixes && result.handoff === "noop") return alreadyThere(Object.keys(reading.patch.set), labels);
-    } else {
+    } else if (patchOps > 0) {
       const { diff } = applyPatch(before, reading.patch, rules);
 
       const groupKeys = new Set(allGroups.map((group) => group.key));
@@ -380,6 +390,19 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
       }
     }
 
+    if (dateToWrite !== null) {
+      const fresh = await loadInstance(input.instanceId);
+      if (fresh) {
+        await (await import("./form-write")).correctionWrite({
+          instanceId: input.instanceId,
+          loaded: fresh,
+          stated: { values: { form_date: dateToWrite }, checked: {} },
+          actorId: actor.id,
+          said: input.question,
+          today: input.today,
+        });
+      }
+    }
     const reloaded = await loadInstance(input.instanceId);
     if (!reloaded) return null;
     const changed = snapshotDiff(snapshotOf(loaded), snapshotOf(reloaded));
