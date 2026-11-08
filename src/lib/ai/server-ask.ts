@@ -170,6 +170,7 @@ import { withCaWhatHappened, withCoachingWhatHappened } from "./ca-what-happened
 import { withCardPolicyPlanOnly } from "./card-policy-plan-only";
 import { cardRequestTurn, listPolicyOnCard, withPolicyListedAtCreate } from "./list-policy-ask";
 import { withoutNoAccountAppPolicy } from "./no-account-policy-line";
+import { cardMetaTurn } from "./card-meta-turn";
 import { withFirstNameAsk } from "./first-name-ask";
 import { withFirstNameAnswerFor, withFirstNameSuggestFor } from "./first-name-suggest";
 import { withAmountUnknownAck } from "./amount-unknown-ack";
@@ -305,6 +306,10 @@ export async function answerQuestion(
   // OUT_OF_DATE_IS_THE_PROPOSAL_ENABLED: "what does out of date mean" in a form chat is about the card (ai/out-of-date-is-the-proposal.ts).
   const outOfDateTurn = outOfDateIsTheProposalEnabled() && asksWhatOutOfDateMeans(asked) ? cardTurn(asked) : null;
   if (outOfDateTurn) return outOfDateAnswer(await answerQuestion(outOfDateTurn, actor, memory));
+  // CREATE_COMMAND_POINTS_TO_CARD_ENABLED / CARD_COMPLAINT_NOT_ACCOUNT_ENABLED: "create it" or "this proposal is out of
+  // date" with only a card open is about the card: kept as it was, answered in one line (`ai/card-meta-turn.ts`).
+  const aboutTheCard = cardMetaTurn(asked);
+  if (aboutTheCard) return aboutTheCard.card ?? aboutTheCard.answer(await answerQuestion({ ...asked, question: aboutTheCard.from }, actor, memory));
   // REPORT_NAME_NOT_A_PERSON_ENABLED: a form is never built from a question about a report. See `report-turns.ts`.
   // CA_SALES_POLICY_ENABLED: "yes" to the Corrective Action offer is the request it offered (`ca-offer.ts`). Off, unchanged.
   // TWO_FORMS_EACH_PERSON_ENABLED: "yes" to "Do you want a <form> for <B> next?" is that request (`ai/two-forms-own-person.ts`). Off, unchanged.
