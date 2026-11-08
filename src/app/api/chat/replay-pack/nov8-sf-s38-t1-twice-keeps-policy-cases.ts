@@ -45,6 +45,10 @@ export const NOV8_SF_S38_T1_TWICE_KEEPS_POLICY_CASES: ReplayCase[] = [
         const second = await thread.say(again);
         expect(policyLine(second.content), `turn 2 lost the Policy line:\n${second.content}`).toMatch(/Attendance/);
         expect(second.content, `turn 2's Action Plan fell back to "the applicable company policy":\n${second.content}`).not.toMatch(/\*\*Action Plan:\*\*[^\n]*applicable company policy/i);
+        // Gate runner 2's checks (8 Nov 2026): the Action Plan reviews the Attendance policy, and the page is kept.
+        const plan = /\*\*Action Plan:\*\*[^\n]*/.exec(second.content)?.[0] ?? "";
+        expect(plan, `turn 2's Action Plan does not review the Attendance policy:\n${second.content}`).toMatch(/attendance/i);
+        expect(second.content, `turn 2 lost the policy page:\n${second.content}`).toMatch(/p\.\s*14|page 14/i);
       },
     }),
   ),
