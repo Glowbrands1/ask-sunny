@@ -14,6 +14,7 @@ import {
   formEditHonestReplyEnabled,
   claimGuardEnabled,
   nameCorrectionWordsEnabled,
+  listPolicyIsEditEnabled,
   policyChangeRestOfTurnEnabled,
   openFormNoSelectionEnabled,
   personGuardEnabled,
@@ -27,6 +28,7 @@ import {
   questionNotFormEnabled,
   sameFormCopyEnabled,
   sameFormCopyNewPersonEnabled,
+  copyOwnSalonEnabled,
   secondFormEnabled,
   staffPickerBareAnswerEnabled,
   wholeTeamCoachingEnabled,
@@ -44,6 +46,7 @@ import {
   reopenByAnyOpenVerbEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { streamWhenSlow } from "@/lib/api/streamed-response";
+import { finalReplyWithoutMarkers } from "@/lib/ai/source-note";
 import {
   assertLiveMode,
   assertNoConfigurationProblems,
@@ -202,7 +205,7 @@ async function postChat(request: Request) {
     const capped = await modelSpendGuard({ userId: context.identity.subject, role: context.identity.role });
     if (capped) {
       await closeTurn(turnId, { category: "unclassified", succeeded: true, latencyMs: Date.now() - askedAt });
-      return NextResponse.json({ ...capped, turnId });
+      return NextResponse.json({ ...finalReplyWithoutMarkers(capped), turnId });
     }
 
     let answer;
@@ -238,7 +241,7 @@ async function postChat(request: Request) {
           : null;
       if (newPersonCopy && "answer" in newPersonCopy) {
         await closeTurn(turnId, { category: "unclassified", succeeded: true, latencyMs: Date.now() - askedAt });
-        return NextResponse.json({ ...newPersonCopy.answer, turnId });
+        return NextResponse.json({ ...finalReplyWithoutMarkers(newPersonCopy.answer), turnId });
       }
       if (newPersonCopy) {
         asked = {
@@ -426,7 +429,10 @@ async function postChat(request: Request) {
        * revision paths below; the answer still knows the form is open. See
        * `lib/ai/question-not-form.ts`. Behind QUESTION_NOT_FORM_ENABLED.
        */
-      const askedQuestion = questionNotFormEnabled() && isQuestionNotForm(parsed.question, parsed.history);
+      // LIST_POLICY_IS_EDIT_ENABLED: "please list the policy" with a form open is an edit (EDIT_POLICY_ASK), never a question.
+      const listPolicyEdit =
+        listPolicyIsEditEnabled() && (await import("@/lib/ai/list-policy-ask")).listPolicyIsEdit(parsed.question, Boolean(parsed.activeFormInstanceId));
+      const askedQuestion = !listPolicyEdit && questionNotFormEnabled() && isQuestionNotForm(parsed.question, parsed.history);
       /*
        * STEP B (FORM_PATCH_REDUCER_ENABLED + FORM_REPLY_FROM_DIFF_ENABLED): the
        * open form as saved before this turn, so the reply about it can come
@@ -712,6 +718,8 @@ async function postChat(request: Request) {
               today: parsed.context.todayIso,
               activeInstanceId: parsed.activeFormInstanceId,
               continuingTemplateKey: parsed.continueProposalTemplateKey,
+              // REOPEN_NOT_OPEN_FORM_ENABLED: the form open when the turn arrived, read only by that flag.
+              openWhenAsked: asked.activeFormInstanceId,
             })
           : null;
       let toolNothing: Awaited<ReturnType<typeof answerQuestion>> | null = null;
@@ -840,6 +848,8 @@ async function postChat(request: Request) {
       if (newPersonCopy) {
         answer = (await import("@/lib/forms/same-form-copy")).withCopyFrom(answer, newPersonCopy.source, newPersonCopy.name);
       }
+      // COPY_OWN_SALON_ENABLED: a card that copies another person's form takes the new person's own salon.
+      if (copyOwnSalonEnabled()) answer = await (await import("@/lib/forms/same-form-copy")).withCopyOwnSalon(answer, request, asked.question);
     } catch (error) {
       /*
        * A FAILED ANSWER IS STILL A RECORDED TURN, closed as a failure. The row
@@ -886,7 +896,8 @@ async function postChat(request: Request) {
       logTurnEvent("turn.answer.missing_turn", { surface, where: "api/chat" });
     }
 
-    return NextResponse.json({ ...answer, turnId });
+    // FINAL_REPLY_MARKER_GUARD_ENABLED: no bare source tag reaches the manager, whatever path answered. See `ai/source-note.ts`.
+    return NextResponse.json({ ...finalReplyWithoutMarkers(answer), turnId });
   } catch (error) {
     return errorResponse(error, "POST /api/chat");
   }

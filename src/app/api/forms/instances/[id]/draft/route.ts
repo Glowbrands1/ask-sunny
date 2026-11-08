@@ -32,7 +32,11 @@ import {
   caSalesPolicyEnabled,
   priorActionsNoSignedEnabled,
   secondRequestOwnAccountEnabled,
+  proposalMakeItAboutEnabled,
+  proposalPolicySetAsideEnabled,
 } from "@/lib/config/chat-quality-flags";
+import { notesMadeAbout } from "@/lib/ai/make-it-about";
+import { NOTHING_SET_ASIDE, policiesSetAside, setAsideAnything, valuesWithPolicySetAside, withoutPolicyTakeOff } from "@/lib/forms/policy-set-aside";
 import { withoutAsksToTheApp } from "@/lib/ai/asks-to-the-app";
 import { AiError } from "@/lib/ai/errors";
 import {
@@ -375,9 +379,17 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     const body = ((await request.json().catch(() => null)) ?? {}) as DraftBody;
     // GRAMMAR_ASK_NOT_ACCOUNT_ENABLED: "can you clean up my grammar …?" is no account (`ai/asks-to-the-app.ts`).
     const typed = String(body.notes ?? "").trim().slice(0, 4000);
-    const asTyped = grammarAskNotAccountEnabled() ? withoutAsksToTheApp(typed).trim() : typed;
+    const asked = grammarAskNotAccountEnabled() ? withoutAsksToTheApp(typed).trim() : typed;
+    // CREATE_COMMAND_POINTS_TO_CARD_ENABLED / CARD_COMPLAINT_NOT_ACCOUNT_ENABLED: "create it" or "this proposal is out of
+    // date" is no account (`ai/card-meta-turn.ts`).
+    const asTyped = (await import("@/lib/ai/card-meta-turn")).withoutCardMetaTurns(asked);
     // TYPO_READING_ROUTES_ENABLED: the readers below see "coahed", "notcie", "amont" as the words they can only be.
-    const notes = typoReadingRoutesEnabled() ? typoReadingText(asTyped, await protectedNameWords()) : asTyped;
+    const read = typoReadingRoutesEnabled() ? typoReadingText(asTyped, await protectedNameWords()) : asTyped;
+    // PROPOSAL_MAKE_IT_ABOUT_ENABLED: "make it about showing up late …" makes "Showing up late." the account from that turn on (`ai/make-it-about.ts`).
+    const about = proposalMakeItAboutEnabled() ? notesMadeAbout(read) : read;
+    // PROPOSAL_POLICY_SET_ASIDE_ENABLED: a policy the manager took off stays off the draft, and the take-off sentence is no account (`forms/policy-set-aside.ts`).
+    const setAside = proposalPolicySetAsideEnabled() ? policiesSetAside(about.split(/\n{2,}/)) : NOTHING_SET_ASIDE;
+    const notes = setAsideAnything(setAside) ? withoutPolicyTakeOff(about.split(/\n{2,}/)).join("\n\n") : about;
     if (notes.length < 10) {
       throw new AiError(
         "bad_request",
@@ -2420,6 +2432,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         ),
       ),
     };
+    if (setAsideAnything(setAside)) draftedPayload.values = valuesWithPolicySetAside(draftedPayload.values, setAside);
     const kept = draftMergeEnabled()
       ? retainFilledFields({
           question: notes,

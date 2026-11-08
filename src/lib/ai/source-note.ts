@@ -1,4 +1,4 @@
-import { sourceNoteGuardEnabled } from "@/lib/config/chat-quality-flags";
+import { finalReplyMarkerGuardEnabled, sourceNoteGuardEnabled } from "@/lib/config/chat-quality-flags";
 
 /**
  * ============================================================================
@@ -50,9 +50,29 @@ export function withoutSourceNotes(text: string): string {
  */
 const BARE_MARKERS = /[^\S\n]*\[\s*S\d{1,3}(?:\s*(?:,|;|&|and)\s*S\d{1,3})*\s*\](?=[\s.,;:!?)]|$)/gi;
 
+/*
+ * FINAL_REPLY_MARKER_GUARD_ENABLED (QA's live Sunny tester after round 4, 8 Nov 2026): "…to see their eyewear [S4][S3]."
+ * kept "[S4]": each tag had to be followed by a space or punctuation, and "[S4]" is followed by "[S3]". With this flag
+ * on, a run of bare tags side by side ("[S4][S3]", "[S4] [S3]", "[S2, S5][S1]") goes as one, and a dash after it is no
+ * bar either (coding 4's sf-s38: "…in an STC context [S1]- don't cover it." kept "[S1]"). Off, as before.
+ */
+const BARE_MARKER = String.raw`\[\s*S\d{1,3}(?:\s*(?:,|;|&|and)\s*S\d{1,3})*\s*\]`;
+const BARE_MARKER_RUNS = new RegExp(String.raw`[^\S\n]*${BARE_MARKER}(?:[^\S\n]*${BARE_MARKER})*(?=[\s.,;:!?)\-–—]|$)`, "gi");
+
 export function withoutSourceMarkers(text: string): string {
   if (!sourceNoteGuardEnabled() || !/\[\s*S\d/i.test(text)) return text;
-  const out = text.replace(BARE_MARKERS, "");
+  const out = text.replace(finalReplyMarkerGuardEnabled() ? BARE_MARKER_RUNS : BARE_MARKERS, "");
   return out === text ? text : out.replace(/[^\S\n]+([.,;:!?])/g, "$1");
 }
 
+/**
+ * FINAL_REPLY_MARKER_GUARD_ENABLED: the last step on every exit of the chat route. The reply that reaches the manager
+ * has no bare source tag, whatever path made it and whether or not SOURCE_NOTE_GUARD ran on it (QA's live tester:
+ * the form path's "…[S4][S3]." was never guarded). A tag with a page or section ("[S1 p.14]") and any other bracket
+ * ("[Employee]") are left alone. Off, the answer as it is.
+ */
+export function finalReplyWithoutMarkers<T extends { readonly content: string }>(answer: T): T {
+  if (!finalReplyMarkerGuardEnabled() || typeof answer?.content !== "string" || !/\[\s*S\d/i.test(answer.content)) return answer;
+  const out = answer.content.replace(BARE_MARKER_RUNS, "").replace(/[^\S\n]+([.,;:!?])/g, "$1");
+  return out === answer.content ? answer : { ...answer, content: out };
+}

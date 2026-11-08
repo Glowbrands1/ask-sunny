@@ -120,12 +120,21 @@ function article(name: string): string {
   return /^[aeiou]/i.test(name) ? "an" : "a";
 }
 
+/*
+ * QA, 8 Nov 2026 (round-5 follow-up, same flag): "… a CA for rowan kestrel" was offered as "for rowan kestrel next?". A
+ * name typed all lower-case is shown with each word capitalised ("Rowan Kestrel", "Mary-Kate O'Neil"); a name with any
+ * capital is shown as typed. The display only: the "yes" reads whatever the offer says.
+ */
+function shownName(name: string): string {
+  return name === name.toLowerCase() ? name.replace(/(^|[\s'’-])(\p{Ll})/gu, (_, lead: string, letter: string) => `${lead}${letter.toUpperCase()}`) : name;
+}
+
 /** The other requests: an offer for each that names its person, the old line for one that does not. */
 function offersFor(others: readonly FormRequest[]): string[] {
   return others.map((other) => {
     const name = formName(other.templateKey);
     return other.employeeName
-      ? `**Do you want ${article(name)} ${name} for ${other.employeeName} next?** Say **yes** and I'll start it.`
+      ? `**Do you want ${article(name)} ${name} for ${shownName(other.employeeName)} next?** Say **yes** and I'll start it.`
       : `You also asked for ${article(name)} **${name}** — ask for it on its own, with who it's for, and I'll set it up.`;
   });
 }

@@ -1,0 +1,5 @@
+# This app only: an exit card's date is the reply's Date line (EXIT_DATE_LINE_AGREES_ENABLED)
+
+QA round 5 (8 Nov 2026; this app's production chat of 7 Nov 2026): "exit form for <name>, last day 11/05, gave no notice" got a reply whose list said "- **Date:** the day the draft is created", above a card line "**Date:** 11/5/2026". The form was created dated 11/5. The same list shows on every exit card here that carries a date (five chats, 2–7 Nov). With the flag on, the reply-matches-card step (`ai/reply-matches-card.ts`, with REPLY_MATCHES_CARD on in production) writes an exit card's own date on the list's Date line; a card with no date keeps "the day the draft is created".
+
+Not needed in the sibling app: the same request through its replay pack, with its production flags, gives an exit card with no date. The form is dated the day it is created, which is what the list says. The sibling app already has EXIT_PROSE_FACTS_ENABLED (QA F2, 25 Oct 2026; not in its production), whose `exitReady` writes the card's date on that line. This app never got that flag. Checked 8 Nov 2026 on its main.

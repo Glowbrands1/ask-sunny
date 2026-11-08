@@ -69,6 +69,8 @@ function claimsUnsaid(reply: ReplayAnswer, said: readonly string[]): string | nu
 }
 
 const S21_T1 = "create a ca for must see behaviors for performace  this should be for wynne sarrow  - verbal\n146 tans \nBelow in PPTA, LPSVA, Average Club, CC%, Spa%";
+const S22_T1 =
+  "create a ca for must see behaviors for performace  this should be for wynne sarrow  - verbal\n146 tans \nBelow in PPTA, LPSVA, Average Club, CC%, Spa%  but i need it to be in the format of Tamsyn ca  it needs to look exactally the same as tamsyns but wtih all of this information";
 const TEMPLATE =
   "Observation of Offense:  During the month of September 2026, Tamsyn completed 237 tanning transactions. Throughout these transactions, Tamsyn failed to follow their Must See Behaviors resulting in a performance below Sun Tan City averages in the following areas UPTA, Average Club, CC%, and Spa %.  \n\nAt Sun Tan City, we strive to provide the ultimate tanning experience for every client. In order to ensure the best results for our clients, every employee is expected to follow their Client Service Must See Behaviors and Engagement Must See Behaviors with every client interaction.\t\n\nAction Plan:  The Leadership Team will coach Tamsyn on Must See Behaviors to make sure these are not only understood but also put into practice. Tamsyn is expected to follow these Must See Behaviors with every client interaction. Failure to consistenly meet expectations may result in additional corrective action up to and including termination of employment.";
 const REVIEWER_NOTES =
@@ -105,9 +107,7 @@ export const NOV5_PAU_SF_S21_S25_CASES: ReplayCase[] = [
     status: { open: "after \"It needs to be a CA\" the card goes back to \"Here is what I would put on a Coaching Form\", and the Observation carries Corwen's reviewer notes" },
     async run(t) {
       const thread = start(t);
-      const first = await thread.say(
-        "create a ca for must see behaviors for performace  this should be for wynne sarrow  - verbal\n146 tans \nBelow in PPTA, LPSVA, Average Club, CC%, Spa%  but i need it to be in the format of Tamsyn ca  it needs to look exactally the same as tamsyns but wtih all of this information",
-      );
+      const first = await thread.say(S22_T1);
       expect(thread.proposal, `no CA card:\n${first.content}`).toMatchObject({ templateKey: "dpoa" });
       await thread.say(`Use this to make it: ${REVIEWER_NOTES}`);
       const caTurn = await thread.say("It needs to be a CA, not a coaching form");
@@ -170,6 +170,51 @@ export const NOV5_PAU_SF_S21_S25_CASES: ReplayCase[] = [
       const reply = await thread.say(said[2]!);
       expect(claimsUnsaid(reply, said), `"as you said" for a policy the manager never typed:\n${policyLine(reply)}`).toBeNull();
       expect(observationLine(reply), `the earlier question is in the Observation:\n${observationLine(reply)}`).not.toMatch(/What policy would it be/i);
+    },
+  },
+];
+
+/*
+ * SECOND_REQUEST_OWN_ACCOUNT_ENABLED (QA's Sunny round-4 gate, 8 Nov 2026): with the flag on, sf-s22's first card lost
+ * "Standards of Conduct Policy, JBA Policy Manual p.12" and its Action Plan's policy (the citation read the turn's lines
+ * as turns, and "… in the format of Tamsyn ca …" as a new request); its later cards lost both, and the Observation lost
+ * Wynne's own facts ("146 tans …"): the pasted reviewer notes ("1. **Kit Coaching Document:** …") and "It needs to be a
+ * CA, not a coaching form" were read as requests of their own. sf-s21's template turn the same. One request, whatever
+ * is pasted into it.
+ */
+const SECOND_REQUEST = "SECOND_REQUEST_OWN_ACCOUNT_ENABLED";
+const GATE = "QA's Sunny round-4 gate (8 Nov 2026): SECOND_REQUEST_OWN_ACCOUNT lost the Policy and Wynne's own facts (sf-s21, sf-s22)";
+
+export const NOV8_SECOND_REQUEST_ONE_REQUEST_PASTED_CASES: ReplayCase[] = [
+  {
+    id: "nov8-second-request-sf-s22-one-request",
+    title: "sf-s22 with SECOND_REQUEST_OWN_ACCOUNT on: every card cites Standards of Conduct p.12 and keeps Wynne's own facts",
+    report: GATE,
+    status: "fixed",
+    fixFlags: [SECOND_REQUEST],
+    async run(t) {
+      const thread = start(t);
+      const first = await thread.say(S22_T1);
+      expect(first.content, `turn 1 lost its citation:\n${first.content}`).toMatch(/Standards of Conduct Policy, JBA Policy Manual p\.12/);
+      expect(first.content, `turn 1's Action Plan lost its policy:\n${first.content}`).toMatch(/review the Standards of Conduct policy with Wynne/);
+      const second = await thread.say(`Use this to make it: ${REVIEWER_NOTES}`);
+      expect(observationLine(second), `turn 2's Observation lost Wynne's own facts:\n${observationLine(second)}`).toMatch(/146 tans/);
+      const third = await thread.say("It needs to be a CA, not a coaching form");
+      expect(third.content, `turn 3 lost its citation:\n${third.content}`).toMatch(/Standards of Conduct Policy, JBA Policy Manual p\.12/);
+      expect(observationLine(third), `turn 3's Observation lost Wynne's own facts:\n${observationLine(third)}`).toMatch(/146 tans/);
+    },
+  },
+  {
+    id: "nov8-second-request-sf-s21-template-one-request",
+    title: "sf-s21 with SECOND_REQUEST_OWN_ACCOUNT on: the pasted template is not a request of its own; the Observation keeps Wynne's own facts",
+    report: GATE,
+    status: "fixed",
+    fixFlags: [SECOND_REQUEST],
+    async run(t) {
+      const thread = start(t);
+      await thread.say(S21_T1);
+      const reply = await thread.say(TEMPLATE);
+      expect(observationLine(reply), `the Observation lost Wynne's own facts:\n${observationLine(reply)}`).toMatch(/146 tans/);
     },
   },
 ];

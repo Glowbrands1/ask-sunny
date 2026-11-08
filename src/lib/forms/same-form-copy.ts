@@ -11,7 +11,7 @@ import {
 import type { FormsActor } from "@/lib/forms/access";
 import { actorMaySeeInstance, authorizeInstance } from "@/lib/forms/instance-scope";
 import type { AskResponse } from "@/lib/ai/types";
-import { formEditSingleWriterEnabled } from "@/lib/config/chat-quality-flags";
+import { copyOwnSalonEnabled, formEditSingleWriterEnabled } from "@/lib/config/chat-quality-flags";
 import { displayName, rosterNameNamedIn, type RosterEmployee } from "@/lib/forms/employee-match";
 import { isBareNameTurn } from "@/lib/chat/cross-chat-guard";
 import {
@@ -680,4 +680,55 @@ async function namedOwnForm(
     return null;
   }
   return ownFormById({ actor, instanceId: row.id });
+}
+
+/**
+ * ============================================================================
+ * THE COPY GOES TO THE NEW PERSON'S OWN SALON
+ * (COPY_OWN_SALON_ENABLED, default off; QA's Sunny flip-9 live tester, 8 Nov 2026)
+ * ============================================================================
+ *
+ * "copy this form for <B>", or the ask above then "<B>": B's card carried the salon the conversation named for A,
+ * and Create put A's salon on B's form, though the ask says "Their own position and location go on it". With the
+ * flag on, a card that copies another person's form (it carries `copyFromInstanceId`, or its turn asks for the same
+ * form) for one roster person whose salons in the manager's scope are exactly one takes that salon. Several, none,
+ * or a person not on the roster: the card is left as it was. Nothing else on the card changes.
+ */
+export function copyOwnSalon(
+  answer: AskResponse,
+  question: string,
+  roster: readonly RosterEmployee[],
+  inScope: readonly string[],
+): AskResponse {
+  const card = answer.formProposal;
+  if (!card || !card.employeeName) return answer;
+  if (!card.copyFromInstanceId && !asksForSameForm(question)) return answer;
+  const people = roster.filter((person) => rosterNames(person).some((name) => sameName(name, card.employeeName!)));
+  if (people.length !== 1) return answer;
+  const own = people[0]!.salonIds.filter((id) => inScope.length === 0 || inScope.includes(id));
+  if (own.length !== 1 || own[0] === card.locationId) return answer;
+  return { ...answer, formProposal: { ...card, locationId: own[0]!, locationName: null, locationResolution: "resolved" } };
+}
+
+/** COPY_OWN_SALON_ENABLED, on the chat route: the roster and scope read here, once, only for a copy card. */
+export async function withCopyOwnSalon(answer: AskResponse, request: Request, question: string): Promise<AskResponse> {
+  if (!copyOwnSalonEnabled()) return answer;
+  const card = answer.formProposal;
+  if (!card || !card.employeeName || (!card.copyFromInstanceId && !asksForSameForm(question))) return answer;
+  const { authorizeForms } = await import("./access");
+  let actor: FormsActor;
+  try {
+    actor = await authorizeForms(request, "ask_questions");
+  } catch {
+    return answer;
+  }
+  const { loadScopedRoster } = await import("./employee-roster");
+  let roster: RosterEmployee[];
+  try {
+    roster = await loadScopedRoster(actor.scope);
+  } catch {
+    return answer;
+  }
+  const { authorizedSalonIds } = await import("./location-scope");
+  return copyOwnSalon(answer, question, roster, actor.scope ? authorizedSalonIds(actor.scope) : []);
 }

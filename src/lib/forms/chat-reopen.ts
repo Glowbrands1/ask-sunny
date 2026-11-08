@@ -15,11 +15,11 @@ import { authorizeInstance, instanceListFilterFor, visibleInstances } from "./in
 import { applyAssistantDraft, listInstances, loadInstance, type InstanceRow } from "./instances";
 import { privateAwareLimit } from "./private-creators";
 import { extractEmployeeNames, samePerson } from "./proposal";
-import { draftMergeEnabled, formEditDateRulesEnabled, formEditSingleWriterEnabled, reopenByAnyOpenVerbEnabled } from "@/lib/config/chat-quality-flags";
+import { draftMergeEnabled, formEditDateRulesEnabled, formEditSingleWriterEnabled, reopenByAnyOpenVerbEnabled, reopenNotOpenFormEnabled } from "@/lib/config/chat-quality-flags";
 
 import { fieldsToRestore, showDraftWithEdits } from "./draft-merge";
 import { EDIT_VERB, SHOW_OR_OPEN_VERB, WHICH_FORM_ON_FILE } from "./reopen-cue";
-import { readReopenRequest } from "./reopen-request";
+import { leadsWithReopenRequest, readReopenRequest } from "./reopen-request";
 import { getTemplateByKey } from "./repository";
 
 /**
@@ -58,6 +58,11 @@ export async function reopenRequestedForm(input: {
   activeInstanceId?: string;
   /** The template of a proposal still waiting to be created, if any. */
   continuingTemplateKey?: string;
+  /**
+   * REOPEN_NOT_OPEN_FORM_ENABLED: the form open when the turn arrived, even when this turn set it aside as a new
+   * request (NEW_REQUEST_OPEN_DRAFT clears `activeInstanceId`). Read only by that flag.
+   */
+  openWhenAsked?: string;
 }): Promise<AskResponse | null> {
   /*
    * REOPEN_BY_ANY_OPEN_VERB_ENABLED (QA, 6 Nov 2026): the answer to "Which one
@@ -185,6 +190,18 @@ export async function reopenRequestedForm(input: {
     );
   }
   if (!target) return null;
+  /*
+   * REOPEN_NOT_OPEN_FORM_ENABLED (QA's Sunny round-4 gate, 8 Nov 2026, nov7-refusal-sun-msb-format): "I need the CA for
+   * the Must see behaviors … Make it in the format that I explained above in the first chat for <first name>." with that
+   * CA open read "see" as a show verb and "the CA" as the form, found the open CA (here or by the name), and answered
+   * "The Corrective Action Form for <A> is still a draft, so it's open to edit." with no edit. When the form found is the
+   * one already open and the verb is no request of its own at the start of the turn, the reopen steps aside and the
+   * turn goes on as it does without REOPEN_BY_ANY_OPEN_VERB. "show me the draft" still opens it. Off, as before.
+   */
+  const openForm = input.activeInstanceId ?? input.openWhenAsked;
+  if (reopenNotOpenFormEnabled() && openForm && target.id === openForm && !leadsWithReopenRequest(question)) {
+    return null;
+  }
 
   let draft: Awaited<ReturnType<typeof openEditableDraft>>;
   try {

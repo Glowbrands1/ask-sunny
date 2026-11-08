@@ -38,7 +38,9 @@ import {
   googleReviewsInChatEnabled,
   typoReadingCopyEnabled,
   caSalesPolicyEnabled,
+  cardPolicyOwnRequestEnabled,
   pastFormsBeforeLibraryEnabled,
+  outOfDateIsTheProposalEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
 import { approvedManualConfirmed, manualDisplayTitle } from "@/lib/forms/official-policy-manual";
@@ -48,6 +50,7 @@ import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import { proposeFormForTurn, suggestFormsForTurn, type ChatActor } from "./form-proposal";
 import { acceptedCaOffer, acceptedCaOfferTurn, caOfferLine, withCaOffer } from "./ca-offer";
 import { remapFormTurn, remapShouldRun, type FormRemapSlots } from "./form-full-remap";
+import { cardPolicyTurns } from "./card-policy-request";
 import { priorShorthand, requestScopedHistory } from "./remap-incident";
 import { historyForRemap } from "./form-remap-scope";
 import { withRemapDraftSources } from "./remap-draft-sources";
@@ -164,6 +167,10 @@ import { deliverFormProposal } from "./grounded-turn";
 import { withJobTitleCase, withJobTitleFromWords, withJobTitleReadBackCase, withSpelledOutTitle } from "./job-title-from-words";
 import { withTerseSlots } from "./terse-slots";
 import { withCaWhatHappened, withCoachingWhatHappened } from "./ca-what-happened";
+import { withCardPolicyPlanOnly } from "./card-policy-plan-only";
+import { cardRequestTurn, listPolicyOnCard, withPolicyListedAtCreate } from "./list-policy-ask";
+import { withoutNoAccountAppPolicy } from "./no-account-policy-line";
+import { cardMetaTurn } from "./card-meta-turn";
 import { withFirstNameAsk } from "./first-name-ask";
 import { withFirstNameAnswerFor, withFirstNameSuggestFor } from "./first-name-suggest";
 import { withAmountUnknownAck } from "./amount-unknown-ack";
@@ -200,6 +207,7 @@ import { withReplyMatchesCard } from "./reply-matches-card";
 import { acceptedNextFormOffer, withEachPersonsForm, withTwoFormsOwnPerson } from "./two-forms-own-person";
 import { withTitleOfTheEmployee } from "./title-of-the-employee";
 import { withoutSourceMarkers, withoutSourceNotes } from "@/lib/ai/source-note";
+import { asksWhatOutOfDateMeans, cardTurn, outOfDateAnswer } from "@/lib/ai/out-of-date-is-the-proposal";
 import { withUnderPerformanceExplained } from "./under-performance-explained";
 
 /**
@@ -295,6 +303,13 @@ export async function answerQuestion(
   actor: ChatActor,
   memory: { memoryOwnerId?: string } = {},
 ): Promise<AskResponse> {
+  // OUT_OF_DATE_IS_THE_PROPOSAL_ENABLED: "what does out of date mean" in a form chat is about the card (ai/out-of-date-is-the-proposal.ts).
+  const outOfDateTurn = outOfDateIsTheProposalEnabled() && asksWhatOutOfDateMeans(asked) ? cardTurn(asked) : null;
+  if (outOfDateTurn) return outOfDateAnswer(await answerQuestion(outOfDateTurn, actor, memory));
+  // CREATE_COMMAND_POINTS_TO_CARD_ENABLED / CARD_COMPLAINT_NOT_ACCOUNT_ENABLED: "create it" or "this proposal is out of
+  // date" with only a card open is about the card: kept as it was, answered in one line (`ai/card-meta-turn.ts`).
+  const aboutTheCard = cardMetaTurn(asked);
+  if (aboutTheCard) return aboutTheCard.card ?? aboutTheCard.answer(await answerQuestion({ ...asked, question: aboutTheCard.from }, actor, memory));
   // REPORT_NAME_NOT_A_PERSON_ENABLED: a form is never built from a question about a report. See `report-turns.ts`.
   // CA_SALES_POLICY_ENABLED: "yes" to the Corrective Action offer is the request it offered (`ca-offer.ts`). Off, unchanged.
   // TWO_FORMS_EACH_PERSON_ENABLED: "yes" to "Do you want a <form> for <B> next?" is that request (`ai/two-forms-own-person.ts`). Off, unchanged.
@@ -401,6 +416,7 @@ async function answerQuestionChecked(
     noteTraceOutcome(response);
     // Last on every path, after the reply check too: the Action Plan is the manager's or none.
     // CA_ASKS_WHAT_HAPPENED_ENABLED: a Corrective Action card with no account asks what happened.
+    // NO_ACCOUNT_NO_APP_POLICY_ENABLED: that card cites no policy (no Policy line read from the request, no citation, no named plan).
     // COACHING_ASKS_WHAT_HAPPENED_ENABLED: a Coaching Form card with no account asks what happened, never "Everything I need is here" (sf-s27).
     // JOB_TITLE_FROM_WORDS_ENABLED: an empty Job Title takes the title the manager typed; JOB_TITLE_CASE_ENABLED: in title case.
     // WARNING_LEVEL_AND_CLAUSE_ENABLED: "this should be a written and note a verbal ca was given …" states written.
@@ -412,14 +428,15 @@ async function answerQuestionChecked(
     // FORM_TYPE_SWITCH_AFTER_CREATE_NOTE_ENABLED: the form already created is said to stay as it is.
     // FIRST_NAME_SUGGEST_ENABLED: a first name alone is asked about from the manager's own roster.
     // MANAGER_NAME_NOT_EMPLOYEE_ENABLED: last — the manager's own name is never the employee.
-    return withManagerNameGuard(keepManagerActionPlan(await withFirstNameSuggestFor(
+    // CARD_POLICY_PLAN_ONLY_ENABLED: outermost — the Action Plan and the sources name only the card's policy.
+    return withCardPolicyPlanOnly(withManagerNameGuard(keepManagerActionPlan(await withFirstNameSuggestFor(
       // OUT_OF_SCOPE_PLACE_KEEPS_OWN_ENABLED: the card goes back to the manager's own salon, or asks which.
       // FORM_TYPE_SWITCH: the switched card is drafted from the account, never from the switch turn.
       withSwitchSources(withSwitchNote(withOutOfScopePlace(withOwnPlace(withAmountUnknownAck(
         withUnreadDateAsk(
           withStatedAmount(
             withFirstNameAsk(
-              withWarningLevelFromClause(withSpelledOutTitle(withJobTitleReadBackCase(withJobTitleCase(withJobTitleFromWords(withCoachingWhatHappened(withCaWhatHappened(await applyQuietQuality(response), request), request), request)))), request),
+              withWarningLevelFromClause(withSpelledOutTitle(withJobTitleReadBackCase(withJobTitleCase(withJobTitleFromWords(withCoachingWhatHappened(withoutNoAccountAppPolicy(withCaWhatHappened(await applyQuietQuality(response), request)), request), request)))), request),
               request,
             ),
             request,
@@ -430,7 +447,7 @@ async function answerQuestionChecked(
       ), request, actor), request, actor), request, "Form Monitoring"), request),
       request,
       actor,
-    ), request), request);
+    ), request), request));
   };
   // MANAGER_NAME_NOT_EMPLOYEE_ENABLED: last on every path — the manager's own name is never the employee.
   if (!chatTraceEnabled()) {
@@ -528,7 +545,9 @@ async function answerQuestionUntraced(
    * phrased, is not a question. See `question-not-form.ts`. Behind
    * QUESTION_NOT_FORM_ENABLED; off, every turn is routed as before.
    */
-  const askedQuestion = questionNotFormEnabled() && isQuestionNotForm(request.question, request.history);
+  // LIST_POLICY_IS_EDIT_ENABLED: "please list the policy" with only a card open is a card turn, never a question.
+  const listPolicyCard = listPolicyOnCard(request);
+  const askedQuestion = !listPolicyCard && questionNotFormEnabled() && isQuestionNotForm(request.question, request.history);
   let intentForm = false;
   if (intentExtractionEnabled() && !askedQuestion) {
     const prepared = await applyIntentExtraction({ request, actor });
@@ -718,11 +737,13 @@ async function answerQuestionUntraced(
         const manual = await knowledge.fetchOfficialPolicyManual(ACTIVE_BRAND.knowledgeScopeId);
         if (manual.ok && recallOn) content = withMappedPolicy(content, turns, manual.chunks, true);
         if (manual.ok && citeOn && response.formProposal) {
-          const notes = turns.join("\n");
+          // CARD_POLICY_OWN_REQUEST_ENABLED: a card for <B> is not cited from <A>'s earlier request.
+          const notes = (cardPolicyOwnRequestEnabled() ? cardPolicyTurns(turns, response.formProposal.employeeName) : turns).join("\n");
           const attached = attachFormTurnSources({
             content,
             citations,
             notes,
+            turns,
             chunks: manual.chunks,
             documentId: manual.documentId,
             documentTitle: manual.documentTitle,
@@ -883,12 +904,14 @@ async function answerQuestionUntraced(
       question: withPriorShorthand(
         prepareProposalQuestion(
           questionForProposal(
-            proposalQuestion(separateLead, heard ? routingQuestion : request.question, managerQuestion),
+            // LIST_POLICY_IS_EDIT_ENABLED: the card is proposed again from the manager's last turn.
+            proposalQuestion(separateLead, listPolicyCard ? cardRequestTurn(request) : heard ? routingQuestion : request.question, managerQuestion),
             remapIncidentFixEnabled() ? { ...request, history: formHistory() } : request,
           ),
         ),
       ),
-      decorate: decorateFormAnswer,
+      // LIST_POLICY_IS_EDIT_ENABLED: the card shows its policy line, or says the policy is listed on the draft at Create.
+      decorate: listPolicyCard ? async (response) => withPolicyListedAtCreate(await decorateFormAnswer(response)) : decorateFormAnswer,
       propose: (question) => proposeFormForTurn({
       history: withPriorShorthandTurns(formHistory()),
       question,
