@@ -26,16 +26,22 @@ import { ASK_WHO } from "./roster-only-names";
 const ASKED = /^Is this for \*\*([^*\n]+)\*\*\? Tell me if that should change\.\s*$/;
 const TURNS_DOWN = /^\s*(?:no|nope|wrong|not)\b/i;
 
-/** The card's own first line: "I'll draft a **Corrective Action Form** for **<name>** …". */
-const CARD_LEAD = /^I'll draft an? \*\*[^*\n]+\*\* for \*\*([^*\n]+)\*\*/m;
+/**
+ * The reply's own line about the card on screen: its first line ("I'll draft a **Corrective Action Form** for
+ * **<name>** …"), or the reply that left it as it was ("I haven't changed the **Corrective Action Form** for **<name>**
+ * — …"; QA's round-4 gate, sun-msb-format turn 3, came after that reply).
+ */
+const CARD_LEAD = /^(?:I'll draft an?|I haven't changed the) \*\*[^*\n]+\*\* for \*\*([^*\n]+)\*\*/m;
 
 function lastReply(request: Pick<AskRequest, "history">): string {
   return String([...(request.history ?? [])].reverse().find((turn) => turn.role === "assistant")?.content ?? "").trim();
 }
 
-/** (b) The employee of the card the reply before this turn drafted, when no form is open; null otherwise. */
+/**
+ * (b) The employee of the card on screen: the one the reply before this turn drafted, or the open form it answered
+ * about (sun-msb-format: the draft was created, and turn 3 replaced it with the bare question); null otherwise.
+ */
 export function cardEmployee(request: Pick<AskRequest, "history" | "activeFormInstanceId">): string | null {
-  if (request.activeFormInstanceId) return null;
   return CARD_LEAD.exec(lastReply(request))?.[1]?.trim() || null;
 }
 

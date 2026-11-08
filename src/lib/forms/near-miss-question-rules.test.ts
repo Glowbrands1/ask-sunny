@@ -42,10 +42,12 @@ describe("NEAR_MISS_QUESTION_RULES_ENABLED", () => {
     expect(withoutTurnedDownName(other, request("no, it's Remy Calder"))).toBe(other);
   });
 
-  it("(b) the card on screen is the one the reply before this turn drafted, when no form is open", () => {
+  it("(b) the card on screen is the one the reply before this turn drafted, or the open form it answered about", () => {
     expect(cardEmployee(request("make that change to x", CARD))).toBe("Corvina Vellacott");
     expect(cardEmployee(request("make that change to x"))).toBeNull();
-    expect(cardEmployee({ ...request("x", CARD), activeFormInstanceId: "00000000-0000-4000-8000-000000000001" })).toBeNull();
+    expect(cardEmployee(request("x", "I haven't changed the **Corrective Action Form** for **Corvina Vellacott** — everything on it is as it was."))).toBe("Corvina Vellacott");
+    // A form open: the reply about it names its employee, who is on screen too.
+    expect(cardEmployee({ ...request("x", CARD), activeFormInstanceId: "00000000-0000-4000-8000-000000000001" })).toBe("Corvina Vellacott");
   });
 
   it("off: nothing changes", () => {
