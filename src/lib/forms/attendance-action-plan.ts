@@ -1,4 +1,4 @@
-import { meetingNotLatenessPlanEnabled } from "@/lib/config/chat-quality-flags";
+import { meetingNotLatenessPlanEnabled, missedShiftNotLatenessEnabled } from "@/lib/config/chat-quality-flags";
 
 import { employeeFirstName } from "./employee-reference";
 import { policyNamesFromViolated, type ActionPlanInput } from "./ca-action-plan";
@@ -34,8 +34,19 @@ const MISSED_MEETING =
   /\b(?:miss(?:ed|es|ing)?|skip(?:ped|s)?|did\s*n[o']?t\s+(?:attend|come\s+to|show\s+(?:up\s+)?(?:to|for))|not\s+attend(?:ing)?|no[- ]show(?:ed)?\s+(?:to|for|at)|absent\s+from)\b[^.!?\n]{0,40}?\bmeetings?\b/i;
 const LATENESS = /\b(?:late|lateness|tard(?:y|iness)|on\s+time|clock(?:ed)?\s+in|arriv\w*)\b/i;
 
+/*
+ * MISSED_SHIFT_NOT_LATENESS_ENABLED (QA's Sunny live Create test, round 5, 8 Nov 2026; sf-s38: "make me an CA for <name>
+ * missing her saturday and sunday shifts due to wanting to go home for the weekend but failed to communicate
+ * proporley"): the saved Action Plan said "<name> is expected to arrive on time for all scheduled shifts … Continued
+ * lateness will result …" about shifts she never came to, and not the plan the card had shown. A missed or no-show
+ * shift, a call-out, or an absence that says nothing about lateness keeps the general plan, as a missed meeting does.
+ */
+const MISSED_SHIFT =
+  /\b(?:miss(?:ed|es|ing)?|skip(?:ped|s)?|did\s*n[o']?t\s+(?:work|show\s+(?:up\s+)?(?:to|for)|come\s+(?:in|to))|not\s+(?:showing|coming)\s+(?:up\s+)?(?:to|for)|walk(?:ed|s)?\s+out\s+(?:on|of)|absent\s+(?:from|for))\b[^.!?\n]{0,40}?\b(?:shifts?|work|days?)\b|\bno[- ]?call[,\s/-]*no[- ]?show\b|\bno[- ]show(?:ed)?\b|\bcall(?:ed|s)?[- ]?(?:out|off)\b/i;
+
 export function missedMeetingNotLateness(account: string): boolean {
-  return meetingNotLatenessPlanEnabled() && MISSED_MEETING.test(account) && !LATENESS.test(account);
+  if (LATENESS.test(account)) return false;
+  return (meetingNotLatenessPlanEnabled() && MISSED_MEETING.test(account)) || (missedShiftNotLatenessEnabled() && MISSED_SHIFT.test(account));
 }
 
 export function attendanceActionPlan(input: ActionPlanInput): string {
