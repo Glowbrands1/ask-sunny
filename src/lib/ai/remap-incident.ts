@@ -287,6 +287,8 @@ const ONLY_THANKS = /^(?:(?:ok(?:ay)?|great|perfect|cool|sounds\s+good|got\s+it)
 const POLICY_SOURCE = /\b(?:(?:from|per|in|under|according\s+to)\s+(?:the\s+)?(?:jba\s+)?(?:policy\s+)?(?:manual|handbook)|the\s+polic(?:y|ies)\s+(?:is|are)|polic(?:y|ies)\s+manual|polic(?:y|ies)|manual|handbook)\b/gi;
 const SOMETHING_HAPPENED = /\b(?:was|were|did|didn['’]?t|has|had|have|been|is\s+late|came|went|left|called|showed|missed|refused|forgot)\b|\b\w{3,}ed\b/i;
 
+const POLICY_NAME_FILLER = new Set(["the", "a", "an", "of", "and", "for", "to", "on", "in", "from", "per", "jba"]);
+
 function onlyNamesAPolicy(sentence: string): boolean {
   // The request's own words and its "for <name> for …" are not what it says ("create corrective action for <A> for Late
   // Opening from the policy manual").
@@ -298,25 +300,36 @@ function onlyNamesAPolicy(sentence: string): boolean {
     .replace(POLICY_SOURCE, " ")
     .replace(/[^\p{L}\p{N}\s'’-]+/gu, " ")
     .split(/\s+/)
-    .filter(Boolean);
-  return rest.length <= 4;
+    .filter((word) => word && !POLICY_NAME_FILLER.has(word.toLowerCase()));
+  // What is left is a policy's name, as managers type one ("Late Opening", "Standards of Conduct"): a few capitalised
+  // words, no date or number ("violating attendance on 10-20-26" says what happened).
+  return rest.length <= 4 && rest.every((word) => /^\p{Lu}/u.test(word) && !/\d/.test(word));
 }
 
 /** SECOND_REQUEST_OWN_ACCOUNT_ENABLED: the turn's text without the sentences that ask the app something. */
 export function withoutQuestionsToTheApp(text: string): string {
   if (!secondRequestOwnAccountEnabled()) return text;
-  return text
-    .split(/(?<=[.!?;])\s+|\n+/)
-    .filter((sentence) => {
-      const trimmed = sentence.trim();
-      if (!trimmed) return false;
-      if (/\?\s*$/.test(trimmed)) return false;
-      if (ASKS_A_QUESTION.test(trimmed) && ABOUT_THE_RULES.test(trimmed) && !ABOUT_THEM.test(trimmed)) return false;
-      if (CONFIRMS_THE_POLICY.test(trimmed)) return false;
-      if (onlyNamesAPolicy(trimmed)) return false;
-      return !ONLY_THANKS.test(trimmed);
-    })
-    .join(" ");
+  // QA's round-7 gate (8 Nov 2026): the text is left as it is but for the sentences left out — its lines, and the app's
+  // own state lines ("Job title: … It happened at <place>. Policy reference: …"), which the app-line readers strip by
+  // shape, are never touched or rejoined.
+  let changed = false;
+  const kept = text.replace(/[^.!?;\n]+(?:[.!?;]+|(?=\n)|$)/g, (sentence) => {
+    const trimmed = sentence.trim();
+    if (!trimmed || STATE_LEAD.test(trimmed) || STATE_SENTENCE.test(trimmed)) return sentence;
+    if (!askOfTheApp(trimmed)) return sentence;
+    changed = true;
+    return "";
+  });
+  return changed ? kept.replace(/[^\S\n]{2,}/g, " ").replace(/^[^\S\n]+|[^\S\n]+$/gm, "") : text;
+}
+
+/** A question to the app, a confirmation of the policy, a sentence that only names a policy, or a closing thanks. */
+function askOfTheApp(sentence: string): boolean {
+  if (/\?\s*$/.test(sentence)) return true;
+  if (ASKS_A_QUESTION.test(sentence) && ABOUT_THE_RULES.test(sentence) && !ABOUT_THEM.test(sentence)) return true;
+  if (CONFIRMS_THE_POLICY.test(sentence)) return true;
+  if (onlyNamesAPolicy(sentence)) return true;
+  return ONLY_THANKS.test(sentence);
 }
 
 /** An edit or a command: it sets a field, shows the draft, or names the policy. It is not an account. */
