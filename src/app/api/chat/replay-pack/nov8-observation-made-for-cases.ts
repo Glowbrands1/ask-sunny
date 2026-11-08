@@ -45,7 +45,8 @@ export const NOV8_OBSERVATION_MADE_FOR_CASES: ReplayCase[] = [
     id: "nov8-observation-made-for-under-performance",
     title: "\"I need a corrective action made for under performance. <A> was below on PPTA, …\": the Observation starts at the account, never \"made for\"",
     report: REPORT,
-    status: { open: "with production's flags the Observation starts \"made for under performance.\"" },
+    // Changed on purpose (8 Nov 2026): fixed in production by REQUEST_PARTICIPLE_LEAD_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: [FLAG],
     async run(t) {
       const line = await observation(t, REPORTED);
@@ -57,7 +58,8 @@ export const NOV8_OBSERVATION_MADE_FOR_CASES: ReplayCase[] = [
     id: "nov8-observation-done-for-under-performance",
     title: "the same with \"done for\"",
     report: REPORT,
-    status: { open: "with production's flags the Observation starts \"done for under performance.\"" },
+    // Changed on purpose (8 Nov 2026): fixed in production by REQUEST_PARTICIPLE_LEAD_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: [FLAG],
     async run(t) {
       const line = await observation(t, `I need a corrective action done for under performance. ${ACCOUNT}`);
@@ -68,7 +70,8 @@ export const NOV8_OBSERVATION_MADE_FOR_CASES: ReplayCase[] = [
     id: "nov8-observation-made-for-late-opening",
     title: "negative: \"… made for <A> for late opening the salon on 11/2\": the account is kept, without \"made for <A>\"",
     report: REPORT,
-    status: { open: "with production's flags the Observation is \"made for Remy Calder for late opening …\"" },
+    // Changed on purpose (8 Nov 2026): fixed in production by REQUEST_PARTICIPLE_LEAD_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: [FLAG],
     async run(t) {
       const line = await observation(t, "I need a corrective action made for Remy Calder for late opening the salon on 11/2");

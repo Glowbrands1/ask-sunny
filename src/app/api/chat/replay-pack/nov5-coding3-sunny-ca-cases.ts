@@ -112,7 +112,8 @@ export const NOV5_CODING3_SUNNY_CA_CASES: ReplayCase[] = [
     id: "nov5-coding3-ca-for-performance-is-an-account",
     title: "\"can you write me a Ca for <name> for performance for october\": with CA_SALES_POLICY_ENABLED the card cites the Standards of Conduct; never \"You haven't told me what happened yet\"",
     report: `${REPORT}: "can you write me a Ca for <name> for performance for october" → "You haven't told me what happened yet"`,
-    status: { open: "\"for performance\" is no account and no sales reading: \"You haven't told me what happened yet\", no policy cited" },
+    // Changed on purpose (8 Nov 2026): fixed in production by the sales triple (SALES_SHORTFALL_OBJECT_ENABLED, SALES_OBSERVATION_ACCOUNT_ENABLED, CA_PERFORMANCE_REASON_ENABLED), QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     // CA_PERFORMANCE_REASON_ENABLED (default off, not in production): "for performance" in the sentence that asks for the form is the sales reading (`withSalesPolicy`, ca-policy.ts).
     fixFlags: ["CA_SALES_POLICY_ENABLED", "CA_PERFORMANCE_REASON_ENABLED"],
     async run(t: T) {

@@ -25,7 +25,8 @@ export const NOV6_SALES_SHORTFALL_OBJECT_CASES: ReplayCase[] = [
     id: "nov6-sales-shortfall-object-requirements",
     title: "\"Not meeting sales requirements for the month of October\": the CA card and the draft cite the Standards of Conduct",
     report: "QA, 6 Nov 2026 (tester batch 1 after the Sunny flip): a sales-requirements CA with no policy",
-    status: { open: "with production's flags (SALES_SHORTFALL_OBJECT_ENABLED off) the card cites no policy (\"check the applicable company policy\")" },
+    // Changed on purpose (8 Nov 2026): fixed in production by the sales triple (SALES_SHORTFALL_OBJECT_ENABLED, SALES_OBSERVATION_ACCOUNT_ENABLED, CA_PERFORMANCE_REASON_ENABLED), QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: ["CA_SALES_POLICY_ENABLED", "SALES_SHORTFALL_OBJECT_ENABLED"],
     async run(t) {
       vi.setSystemTime(new Date("2026-11-06T15:00:00Z"));
@@ -68,7 +69,8 @@ export const NOV6_SALES_SHORTFALL_OBJECT_CASES: ReplayCase[] = [
       id: `nov6-sales-shortfall-object-performance-${key}`,
       title: `${row}: "${turns.at(-1)}": the card cites the Standards of Conduct and does not ask what happened`,
       report: `QA, 6 Nov 2026 (tester batch 2 after the Sunny flip, ${row}, paraphrased): "performance" as the reason got no policy and "You haven't told me what happened yet"`,
-      status: { open: "with production's flags (SALES_SHORTFALL_OBJECT_ENABLED off) the card cites no policy and asks what happened" },
+      // Changed on purpose (8 Nov 2026): fixed in production by the sales triple (SALES_SHORTFALL_OBJECT_ENABLED, SALES_OBSERVATION_ACCOUNT_ENABLED, CA_PERFORMANCE_REASON_ENABLED), QA round 5, 8 Nov 2026; it now holds with production's flags.
+      status: "fixed",
       fixFlags: ["CA_SALES_POLICY_ENABLED", "SALES_SHORTFALL_OBJECT_ENABLED"],
       async run(t) {
         await performanceCase(t, turns);
@@ -79,7 +81,8 @@ export const NOV6_SALES_SHORTFALL_OBJECT_CASES: ReplayCase[] = [
     id: "nov6-sales-shortfall-object-count-h18",
     title: "H18 (turn 2): \"<name> 131 tans verbal\": the card cites the Standards of Conduct and does not ask what happened",
     report: "QA, 6 Nov 2026 (tester batch 2 after the Sunny flip, H18, paraphrased): a metric count as the reason got \"You haven't told me what happened yet\"",
-    status: { open: "with production's flags (SALES_SHORTFALL_OBJECT_ENABLED off) no reader knows \"tans\" as a metric: the card cites no policy and asks what happened" },
+    // Changed on purpose (8 Nov 2026): fixed in production by the sales triple (SALES_SHORTFALL_OBJECT_ENABLED, SALES_OBSERVATION_ACCOUNT_ENABLED, CA_PERFORMANCE_REASON_ENABLED), QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     // Fixed with the flag (Pau, 6 Nov 2026): the "Tans" glossary line, and a number with a glossary count term is the metric named and counted.
     fixFlags: ["CA_SALES_POLICY_ENABLED", "SALES_SHORTFALL_OBJECT_ENABLED"],
     async run(t) {

@@ -32,7 +32,8 @@ export const NOV8_PRIOR_STEP_DATE_LIST_CASES: ReplayCase[] = [
     id: "nov8-r5-prior-step-date-list",
     title: "\"already received a verbal warning and coaching on 9/8/2026, 9/15/2026 and 9/25/2026\": every coaching and the verbal are Prior actions",
     report: "QA round 5, the sibling app live 7 Nov 2026 18:56Z (ported)",
-    status: { open: "Prior actions list only \"Coaching — 09/08/2026\"" },
+    // Changed on purpose (8 Nov 2026): fixed in production by PRIOR_STEP_DATE_LIST_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: ["PRIOR_STEP_DATE_LIST_ENABLED"],
     async run(t) {
       vi.setSystemTime(new Date("2026-11-07T18:56:00Z"));

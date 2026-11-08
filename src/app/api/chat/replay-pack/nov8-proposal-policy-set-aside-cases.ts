@@ -55,7 +55,8 @@ export const NOV8_PROPOSAL_POLICY_SET_ASIDE_CASES: ReplayCase[] = [
     id: "nov8-policy-set-aside-ca-card",
     title: "CA card, Attendance named: \"take the attendance policy off the form\" takes it off the card and says so",
     report: REPORT,
-    status: { open: "the card keeps \"Policy: Attendance, as you said\" and the manual citation, and the sentence is added to the Observation" },
+    // Changed on purpose (8 Nov 2026): fixed in production by PROPOSAL_POLICY_SET_ASIDE_ENABLED + PROPOSAL_MAKE_IT_ABOUT_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const thread = start(t);
@@ -71,7 +72,8 @@ export const NOV8_PROPOSAL_POLICY_SET_ASIDE_CASES: ReplayCase[] = [
     id: "nov8-policy-set-aside-coaching-card",
     title: "Coaching card, Attendance named: \"take the attendance policy off the form\" takes it off the card and says so",
     report: REPORT,
-    status: { open: "the card keeps \"Attendance Policy, JBA Policy Manual p.14\", and the sentence is added to the Observation" },
+    // Changed on purpose (8 Nov 2026): fixed in production by PROPOSAL_POLICY_SET_ASIDE_ENABLED + PROPOSAL_MAKE_IT_ABOUT_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const thread = start(t);
@@ -85,7 +87,8 @@ export const NOV8_PROPOSAL_POLICY_SET_ASIDE_CASES: ReplayCase[] = [
     id: "nov8-policy-set-aside-stays-off",
     title: "…and a later turn on the card keeps it off",
     report: REPORT,
-    status: { open: "the card keeps \"Policy: Attendance, as you said\"" },
+    // Changed on purpose (8 Nov 2026): fixed in production by PROPOSAL_POLICY_SET_ASIDE_ENABLED + PROPOSAL_MAKE_IT_ABOUT_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const thread = start(t);
@@ -99,7 +102,8 @@ export const NOV8_PROPOSAL_POLICY_SET_ASIDE_CASES: ReplayCase[] = [
     id: "nov8-policy-set-aside-ca-create",
     title: "…then Create: the Corrective Action Form's Policy Violated and Policy Language do not cite Attendance",
     report: REPORT,
-    status: { open: "the draft's Policy Violated is \"Attendance Policy, JBA Policy Manual p.14\" with its Policy Language" },
+    // Changed on purpose (8 Nov 2026): fixed in production by PROPOSAL_POLICY_SET_ASIDE_ENABLED + PROPOSAL_MAKE_IT_ABOUT_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const thread = start(t);
@@ -117,7 +121,8 @@ export const NOV8_PROPOSAL_POLICY_SET_ASIDE_CASES: ReplayCase[] = [
     id: "nov8-policy-set-aside-coaching-create",
     title: "…Coaching Create: the Details carry no \"Policy reference: Attendance …\" line",
     report: REPORT,
-    status: { open: "the drafted Details end \"Policy reference: Attendance Policy, JBA Policy Manual p.14\"" },
+    // Changed on purpose (8 Nov 2026): fixed in production by PROPOSAL_POLICY_SET_ASIDE_ENABLED + PROPOSAL_MAKE_IT_ABOUT_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const thread = start(t);
@@ -133,7 +138,8 @@ export const NOV8_PROPOSAL_POLICY_SET_ASIDE_CASES: ReplayCase[] = [
     id: "nov8-policy-set-aside-unnamed",
     title: "the flip-7 tester's \"take the policy off\": whatever policy the card cites comes off",
     report: `${REPORT} (this app's flip-7 tester: "take the policy off" not honoured)`,
-    status: { open: "the card keeps the Attendance policy" },
+    // Changed on purpose (8 Nov 2026): fixed in production by PROPOSAL_POLICY_SET_ASIDE_ENABLED + PROPOSAL_MAKE_IT_ABOUT_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const thread = start(t);
@@ -167,7 +173,8 @@ export const NOV8_PROPOSAL_POLICY_SET_ASIDE_CASES: ReplayCase[] = [
     id: "nov8-policy-remark-not-account",
     title: "\"In the past we have quoted the standards of conduct for creating a ca due to underperformance\": the policy is the Standards of Conduct, and the card's account stays the under performance",
     report: "QA, 8 Nov 2026 (pre-existing, live): a remark about which policy to use was put on the card as the account",
-    status: { open: "the card's Observation becomes \"under performance … In the past we have quoted the standards of conduct …\"" },
+    // Changed on purpose (8 Nov 2026): fixed in production by PROPOSAL_POLICY_SET_ASIDE_ENABLED + PROPOSAL_MAKE_IT_ABOUT_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const thread = start(t);

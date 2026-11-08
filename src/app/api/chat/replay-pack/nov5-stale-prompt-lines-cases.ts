@@ -72,9 +72,9 @@ export const NOV5_STALE_PROMPT_LINES_CASES: ReplayCase[] = [
      * Conduct for a sales account (ca-conduct-reason.ts only moves the Standards of Conduct to Other). The
      * prompt flag makes this tick less likely; the stubbed model cannot show that.
      */
-    status: { open: "a sales Corrective Action ticked Other is saved as Other" },
+    // Changed on purpose (8 Nov 2026): fixed in production by the sales triple (SALES_SHORTFALL_OBJECT_ENABLED, SALES_OBSERVATION_ACCOUNT_ENABLED, CA_PERFORMANCE_REASON_ENABLED), QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FLAGS,
-    fixStatus: { open: "a sales Corrective Action ticked Other is saved as Other, with CA_SALES + FORM_NAME + STALE_PROMPT_LINES_OFF on" },
     async run(t) {
       expect(await salesCa(t, { offense_type: ["other"] }, { other_offense: "Sales" }), "Type of Offense").toEqual(["standards_of_conduct"]);
     },

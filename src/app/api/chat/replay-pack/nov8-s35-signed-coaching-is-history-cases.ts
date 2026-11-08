@@ -38,7 +38,8 @@ export const NOV8_S35_SIGNED_COACHING_IS_HISTORY_CASES: ReplayCase[] = [
     id: "nov8-s35-signed-coaching-is-history",
     title: "\"… <A> has signed a coaching document for being late on 10/14/26 …\": one CA card, the coaching in Prior actions",
     report: REPORT,
-    status: { open: "two cards (a CA and a Coaching Form), and the CA has no Prior actions" },
+    // Changed on purpose (8 Nov 2026): fixed in production by SIGNED_STEP_NOT_A_REQUEST_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     // Two of the round-4 seven (on in this app's production since 8 Nov 2026, 09:05 PHT), with this flag.
     fixFlags: ["CA_REQUEST_NOT_PRIOR_COACHING_ENABLED", "TWO_FORMS_EACH_PERSON_ENABLED", "SIGNED_STEP_NOT_A_REQUEST_ENABLED"],
     async run(t) {

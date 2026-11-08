@@ -47,7 +47,8 @@ export const NOV8_PROPOSAL_MAKE_IT_ABOUT_CASES: ReplayCase[] = [
     id: "nov8-proposal-make-it-about-card",
     title: "on a Coaching proposal card, \"I need you to make it about showing up late …\": the card's account is \"showing up late\", never the instruction",
     report: REPORT,
-    status: { open: "the card's Observation of Offense is the request's account and the instruction, word for word" },
+    // Changed on purpose (8 Nov 2026): fixed in production by PROPOSAL_POLICY_SET_ASIDE_ENABLED + PROPOSAL_MAKE_IT_ABOUT_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const thread = start(t);
@@ -66,7 +67,8 @@ export const NOV8_PROPOSAL_MAKE_IT_ABOUT_CASES: ReplayCase[] = [
     id: "nov8-proposal-make-it-about-create",
     title: "…then Create: the drafting model is told \"showing up late\", and the drafted Details never hold the instruction",
     report: REPORT,
-    status: { open: "the drafting model's notes are both turns as typed, and the drafted Details read \"Observed: I need you to make it about …\"" },
+    // Changed on purpose (8 Nov 2026): fixed in production by PROPOSAL_POLICY_SET_ASIDE_ENABLED + PROPOSAL_MAKE_IT_ABOUT_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const thread = start(t);

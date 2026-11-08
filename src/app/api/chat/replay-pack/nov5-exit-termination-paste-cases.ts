@@ -51,7 +51,8 @@ export const NOV5_EXIT_TERMINATION_PASTE_CASES: ReplayCase[] = [
     id: "nov5-exit-termination-paste-no-invented-facts",
     title: "a termination letter, then \"I need an exit form with this information. …\", then \"For Dorran Ashby\": the exit card never says the employee resigned by text, returned the key, or last worked on 11/05",
     report: "QA, 5 Nov 2026 (severe, this app's production): an Exit card from a termination paste with invented facts",
-    status: { open: "the card says How Employee Resigned \"Text message\", Salon Key Returned \"Salon key was returned\" and Last Day Worked \"November 5, 2026\"" },
+    // Changed on purpose (8 Nov 2026): fixed in production by EXIT_STATED_ONLY_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: ["EXIT_STATED_ONLY_ENABLED"],
     async run(t) {
       vi.setSystemTime(new Date("2026-11-05T20:28:00Z"));
