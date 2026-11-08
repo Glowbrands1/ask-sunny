@@ -512,6 +512,12 @@ const NEW_FLAGS = [
   "MISSED_SHIFT_NOT_LATENESS_ENABLED",
   // coding 5: UNDATED_ACCOUNT_BRIEF (default off): forced off with the others in the child run.
   "UNDATED_ACCOUNT_BRIEF_ENABLED",
+  // coding 5: CORRECTED_DATE_KEPT (default off): forced off with the others in the child run.
+  "CORRECTED_DATE_KEPT_ENABLED",
+  "DATE_QUESTION_KEPT_ENABLED",
+  // coding 2: CREATE_COMMAND_POINTS_TO_CARD and CARD_COMPLAINT_NOT_ACCOUNT (default off): forced off with the others.
+  "CREATE_COMMAND_POINTS_TO_CARD_ENABLED",
+  "CARD_COMPLAINT_NOT_ACCOUNT_ENABLED",
 ] as const;
 
 const PROTECTED = [
