@@ -41,7 +41,8 @@ export const NOV8_TWO_FORMS_OFFER_NAME_CASES: ReplayCase[] = [
     id: "nov8-two-forms-offer-name-lowercase",
     title: "\"coaching form for <a>. also a ca for <b>\" typed in lower case: B is offered as \"Tamsin Wexley\", and \"yes\" starts B's card",
     report: "QA, 8 Nov 2026: the offer named B as typed (\"for rowan kestrel next?\")",
-    status: { open: "no offer for B" },
+    // Changed on purpose (8 Nov 2026): production-flags.json now lists TWO_FORMS_EACH_PERSON_ENABLED (round 4, #666), so this holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const thread = start(t);

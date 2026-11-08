@@ -19,7 +19,8 @@ export const NOV8_FINAL_REPLY_MARKER_GUARD_CASES: ReplayCase[] = [
     // On this path SOURCE_NOTE_GUARD alone takes both tags off; the live reply kept both, so the guard was not on where
     // it was served (reported to QA). FINAL_REPLY_MARKER_GUARD covers a run where the bare-marker step is the only one
     // that runs (`ai/source-note.test.ts`).
-    status: { open: "with production's flags (SOURCE_NOTE_GUARD not listed on) the tags are in the reply" },
+    // Changed on purpose (8 Nov 2026): production-flags.json now lists SOURCE_NOTE_GUARD_ENABLED (round 4, #666), so this holds with production's flags.
+    status: "fixed",
     fixFlags: ["SOURCE_NOTE_GUARD_ENABLED"],
     async run(t) {
       vi.setSystemTime(new Date("2026-11-08T01:06:00Z"));
