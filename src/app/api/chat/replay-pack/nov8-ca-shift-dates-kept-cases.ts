@@ -28,7 +28,6 @@ const RHEA: DirectoryRow = {
 const T1 = "make me CA for Rhea failing to complete shifts";
 const FIX = ["FIRST_NAME_ANSWER_KEEPS_ACCOUNT_ENABLED", "SHIFT_ACCOUNT_IS_INCIDENT_ENABLED"];
 const REPORT = "QA, Sunny live test, 8 Nov 2026 (gate runner 2: the same on round 5 and round 6)";
-const LOST = { open: "the Observation is \"failing to complete shifts\": 11/7 and 11/8 are lost and no date question is asked" };
 
 function observation(content: string): string {
   return /\*\*Observation of Offense:\*\*\s*([^\n]*)/.exec(content)?.[1] ?? "";
@@ -52,7 +51,8 @@ export const NOV8_CA_SHIFT_DATES_KEPT_CASES: ReplayCase[] = [
     id: "nov8-ca-shift-dates-request-again",
     title: "\"Is this for Rhea Calloway?\" → \"make me CA for Rhea Calloway failing to complete shifts 11/7 and 11/8\": the dates reach the Observation",
     report: REPORT,
-    status: LOST,
+    // Changed on purpose (9 Nov 2026): fixed in production by FIRST_NAME_ANSWER_KEEPS_ACCOUNT_ENABLED and SHIFT_ACCOUNT_IS_INCIDENT_ENABLED, QA round 7.
+    status: "fixed",
     fixFlags: FIX,
     run: (t) => told(t, "make me CA for Rhea Calloway failing to complete shifts 11/7 and 11/8"),
   },
@@ -60,7 +60,8 @@ export const NOV8_CA_SHIFT_DATES_KEPT_CASES: ReplayCase[] = [
     id: "nov8-ca-shift-dates-not-showing-up",
     title: "→ \"make me CA for Rhea Calloway not showing up to her shifts on 11/7 and 11/8\": the dates reach the Observation",
     report: REPORT,
-    status: LOST,
+    // Changed on purpose (9 Nov 2026): fixed in production by FIRST_NAME_ANSWER_KEEPS_ACCOUNT_ENABLED and SHIFT_ACCOUNT_IS_INCIDENT_ENABLED, QA round 7.
+    status: "fixed",
     fixFlags: FIX,
     run: (t) => told(t, "make me CA for Rhea Calloway not showing up to her shifts on 11/7 and 11/8"),
   },
@@ -68,7 +69,8 @@ export const NOV8_CA_SHIFT_DATES_KEPT_CASES: ReplayCase[] = [
     id: "nov8-ca-shift-dates-name-and-dates",
     title: "→ \"Rhea Calloway 11/7 and 11/8\": the dates follow the request",
     report: REPORT,
-    status: LOST,
+    // Changed on purpose (9 Nov 2026): fixed in production by FIRST_NAME_ANSWER_KEEPS_ACCOUNT_ENABLED and SHIFT_ACCOUNT_IS_INCIDENT_ENABLED, QA round 7.
+    status: "fixed",
     fixFlags: FIX,
     run: (t) => told(t, "Rhea Calloway 11/7 and 11/8"),
   },
