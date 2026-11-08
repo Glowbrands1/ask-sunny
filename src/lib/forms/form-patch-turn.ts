@@ -392,7 +392,8 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
 
     if (dateToWrite !== null) {
       const fresh = await loadInstance(input.instanceId);
-      if (fresh) {
+      // The manager's own statement: through the one writer when it is on, else as a stated fact, as the old path writes it.
+      if (fresh && formEditSingleWriterEnabled()) {
         await (await import("./form-write")).correctionWrite({
           instanceId: input.instanceId,
           loaded: fresh,
@@ -401,6 +402,8 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
           said: input.question,
           today: input.today,
         });
+      } else if (fresh) {
+        await applyStatedFacts(input.instanceId, { values: { form_date: dateToWrite }, checked: {} }, actor.id, new Set(["form_date"]));
       }
     }
     const reloaded = await loadInstance(input.instanceId);
