@@ -374,6 +374,9 @@ const NEW_FLAGS = [
   // Missing from this list since its PR (QA, 7 Nov 2026): forced off with the others in the child run.
   "REQUEST_KEPT_IN_WINDOW_ENABLED",
   "NEXT_PUBLIC_REQUEST_KEPT_IN_WINDOW_ENABLED",
+  // coding 2: KEPT_REQUEST_SAME_FORM (default off): forced off with the others.
+  "KEPT_REQUEST_SAME_FORM_ENABLED",
+  "NEXT_PUBLIC_KEPT_REQUEST_SAME_FORM_ENABLED",
   "AM_PRIOR_WARNINGS_ENABLED",
   "TRUNCATION_RETRY_ENABLED",
   "CHAT_RESPONSE_STREAM_ENABLED",
