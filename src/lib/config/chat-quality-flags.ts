@@ -3222,11 +3222,15 @@ export function removePolicyNotNamedEnabled(): boolean {
 }
 
 /**
- * ADJACENT_SOURCE_MARKERS_ENABLED (QA's live Sunny tester after round 4, 8 Nov 2026; default off; with
- * SOURCE_NOTE_GUARD_ENABLED). "…to see their eyewear [S4][S3]." reached the reply as "…eyewear [S4].": the bare-marker
- * step removed a tag only when a space or punctuation followed it. With this flag on, a run of bare tags side by side
- * goes as one (`ai/source-note.ts` withoutSourceMarkers). Off, as before.
+ * FINAL_REPLY_MARKER_GUARD_ENABLED (QA's live Sunny tester after round 4, 8 Nov 2026; default off). With
+ * SOURCE_NOTE_GUARD on, a Corrective Action turn answered on the form path ("I need a corrective action for under
+ * performance" → "must see behaviors", intent form|no_card) still reached the manager with "…their eyewear [S4][S3]."
+ * and "…not an employee name [S1][S2]." — the guard never ran on that answer — and the bare-marker step itself left the
+ * first of two side-by-side tags, or a tag followed by a dash ("…context [S1]- don't cover it.", coding 4's sf-s38).
+ * With this flag on: the chat route runs the bare-marker step once more on the final reply, as the very last step on
+ * every exit, whatever path made it; and the step takes a run of tags side by side as one, a dash after it no bar
+ * (`ai/source-note.ts`). Off, as before.
  */
-export function adjacentSourceMarkersEnabled(): boolean {
-  return envFlag("ADJACENT_SOURCE_MARKERS_ENABLED");
+export function finalReplyMarkerGuardEnabled(): boolean {
+  return envFlag("FINAL_REPLY_MARKER_GUARD_ENABLED");
 }

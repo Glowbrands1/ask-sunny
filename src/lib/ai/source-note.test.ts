@@ -77,10 +77,10 @@ describe("SOURCE_NOTE_GUARD_ENABLED: bare markers on every path (QA's live Sunny
 
 
 /*
- * ADJACENT_SOURCE_MARKERS_ENABLED (QA's live Sunny tester after round 4, 8 Nov 2026): the reply to "must see
+ * FINAL_REPLY_MARKER_GUARD_ENABLED (QA's live Sunny tester after round 4, 8 Nov 2026): the reply to "must see
  * behaviors" ended a sentence with "… and asking every client to see their eyewear [S4][S3]."
  */
-describe("ADJACENT_SOURCE_MARKERS_ENABLED", () => {
+describe("FINAL_REPLY_MARKER_GUARD_ENABLED", () => {
   const LIVE = "Membership/pricing discussions, and asking every client to see their eyewear [S4][S3].\n\nI still need the employee's full name.";
   afterEach(() => vi.unstubAllEnvs());
 
@@ -92,7 +92,7 @@ describe("ADJACENT_SOURCE_MARKERS_ENABLED", () => {
 
   it("on: a run of tags side by side goes as one; a page tag and other brackets stay", async () => {
     vi.stubEnv("SOURCE_NOTE_GUARD_ENABLED", "true");
-    vi.stubEnv("ADJACENT_SOURCE_MARKERS_ENABLED", "true");
+    vi.stubEnv("FINAL_REPLY_MARKER_GUARD_ENABLED", "true");
     const { withoutSourceMarkers } = await import("./source-note");
     expect(withoutSourceMarkers(LIVE)).toBe("Membership/pricing discussions, and asking every client to see their eyewear.\n\nI still need the employee's full name.");
     expect(withoutSourceMarkers("Greet every client [S4] [S3], every time [S2, S5][S1].")).toBe("Greet every client, every time.");
@@ -103,8 +103,28 @@ describe("ADJACENT_SOURCE_MARKERS_ENABLED", () => {
   });
 
   it("the guard off: nothing changes", async () => {
-    vi.stubEnv("ADJACENT_SOURCE_MARKERS_ENABLED", "true");
+    vi.stubEnv("FINAL_REPLY_MARKER_GUARD_ENABLED", "true");
     const { withoutSourceMarkers } = await import("./source-note");
     expect(withoutSourceMarkers(LIVE)).toBe(LIVE);
+  });
+});
+
+describe("finalReplyWithoutMarkers (FINAL_REPLY_MARKER_GUARD_ENABLED)", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("on, with or without SOURCE_NOTE_GUARD: the live tails lose every bare tag; a page tag and other brackets stay", async () => {
+    vi.stubEnv("FINAL_REPLY_MARKER_GUARD_ENABLED", "true");
+    const { finalReplyWithoutMarkers } = await import("./source-note");
+    expect(finalReplyWithoutMarkers({ content: "…not an employee name [S1][S2]." }).content).toBe("…not an employee name.");
+    expect(finalReplyWithoutMarkers({ content: "…every time with every client [S1][S2]." }).content).toBe("…every time with every client.");
+    expect(finalReplyWithoutMarkers({ content: "…in an STC context [S1]- don't cover it." }).content).toBe("…in an STC context- don't cover it.");
+    expect(finalReplyWithoutMarkers({ content: "See the Late Opening Policy [S1 p.14]." }).content).toBe("See the Late Opening Policy [S1 p.14].");
+    expect(finalReplyWithoutMarkers({ content: "Hi [Employee]." }).content).toBe("Hi [Employee].");
+  });
+
+  it("off: the answer as it is", async () => {
+    const { finalReplyWithoutMarkers } = await import("./source-note");
+    const answer = { content: "…their eyewear [S4][S3]." };
+    expect(finalReplyWithoutMarkers(answer)).toBe(answer);
   });
 });
