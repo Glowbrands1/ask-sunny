@@ -3220,3 +3220,13 @@ export function twoFormsEachPersonEnabled(): boolean {
 export function removePolicyNotNamedEnabled(): boolean {
   return envFlag("REMOVE_POLICY_NOT_NAMED_ENABLED");
 }
+
+/**
+ * ADJACENT_SOURCE_MARKERS_ENABLED (QA's live Sunny tester after round 4, 8 Nov 2026; default off; with
+ * SOURCE_NOTE_GUARD_ENABLED). "…to see their eyewear [S4][S3]." reached the reply as "…eyewear [S4].": the bare-marker
+ * step removed a tag only when a space or punctuation followed it. With this flag on, a run of bare tags side by side
+ * goes as one (`ai/source-note.ts` withoutSourceMarkers). Off, as before.
+ */
+export function adjacentSourceMarkersEnabled(): boolean {
+  return envFlag("ADJACENT_SOURCE_MARKERS_ENABLED");
+}

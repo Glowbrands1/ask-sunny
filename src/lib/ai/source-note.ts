@@ -1,4 +1,4 @@
-import { sourceNoteGuardEnabled } from "@/lib/config/chat-quality-flags";
+import { adjacentSourceMarkersEnabled, sourceNoteGuardEnabled } from "@/lib/config/chat-quality-flags";
 
 /**
  * ============================================================================
@@ -50,9 +50,17 @@ export function withoutSourceNotes(text: string): string {
  */
 const BARE_MARKERS = /[^\S\n]*\[\s*S\d{1,3}(?:\s*(?:,|;|&|and)\s*S\d{1,3})*\s*\](?=[\s.,;:!?)]|$)/gi;
 
+/*
+ * ADJACENT_SOURCE_MARKERS_ENABLED (QA's live Sunny tester after round 4, 8 Nov 2026): "…to see their eyewear [S4][S3]."
+ * kept "[S4]": each tag had to be followed by a space or punctuation, and "[S4]" is followed by "[S3]". With this flag
+ * on, a run of bare tags side by side ("[S4][S3]", "[S4] [S3]", "[S2, S5][S1]") goes as one. Off, as before.
+ */
+const BARE_MARKER = String.raw`\[\s*S\d{1,3}(?:\s*(?:,|;|&|and)\s*S\d{1,3})*\s*\]`;
+const BARE_MARKER_RUNS = new RegExp(String.raw`[^\S\n]*${BARE_MARKER}(?:[^\S\n]*${BARE_MARKER})*(?=[\s.,;:!?)]|$)`, "gi");
+
 export function withoutSourceMarkers(text: string): string {
   if (!sourceNoteGuardEnabled() || !/\[\s*S\d/i.test(text)) return text;
-  const out = text.replace(BARE_MARKERS, "");
+  const out = text.replace(adjacentSourceMarkersEnabled() ? BARE_MARKER_RUNS : BARE_MARKERS, "");
   return out === text ? text : out.replace(/[^\S\n]+([.,;:!?])/g, "$1");
 }
 

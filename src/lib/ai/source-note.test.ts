@@ -75,3 +75,34 @@ describe("SOURCE_NOTE_GUARD_ENABLED: bare markers on every path (QA's live Sunny
   });
 });
 
+
+/*
+ * ADJACENT_SOURCE_MARKERS_ENABLED (QA's live Sunny tester after round 4, 8 Nov 2026): the reply to "must see
+ * behaviors" ended a sentence with "… and asking every client to see their eyewear [S4][S3]."
+ */
+describe("ADJACENT_SOURCE_MARKERS_ENABLED", () => {
+  const LIVE = "Membership/pricing discussions, and asking every client to see their eyewear [S4][S3].\n\nI still need the employee's full name.";
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("off (as before, guard on): the first of two adjacent tags stays", async () => {
+    vi.stubEnv("SOURCE_NOTE_GUARD_ENABLED", "true");
+    const { withoutSourceMarkers } = await import("./source-note");
+    expect(withoutSourceMarkers(LIVE)).toContain("eyewear [S4].");
+  });
+
+  it("on: a run of tags side by side goes as one; a page tag and other brackets stay", async () => {
+    vi.stubEnv("SOURCE_NOTE_GUARD_ENABLED", "true");
+    vi.stubEnv("ADJACENT_SOURCE_MARKERS_ENABLED", "true");
+    const { withoutSourceMarkers } = await import("./source-note");
+    expect(withoutSourceMarkers(LIVE)).toBe("Membership/pricing discussions, and asking every client to see their eyewear.\n\nI still need the employee's full name.");
+    expect(withoutSourceMarkers("Greet every client [S4] [S3], every time [S2, S5][S1].")).toBe("Greet every client, every time.");
+    expect(withoutSourceMarkers("See the Late Opening Policy [S1 p.14].")).toBe("See the Late Opening Policy [S1 p.14].");
+    expect(withoutSourceMarkers("Hi [Employee], [S2][Salon 12].")).toBe("Hi [Employee], [S2][Salon 12].");
+  });
+
+  it("the guard off: nothing changes", async () => {
+    vi.stubEnv("ADJACENT_SOURCE_MARKERS_ENABLED", "true");
+    const { withoutSourceMarkers } = await import("./source-note");
+    expect(withoutSourceMarkers(LIVE)).toBe(LIVE);
+  });
+});
