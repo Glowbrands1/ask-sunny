@@ -1,6 +1,7 @@
 import {
   rosterCompoundSurnameEnabled,
   rosterNearMissEnabled,
+  firstNameAnswerKeepsAccountEnabled,
   firstNameSuggestEnabled,
   firstNameYesKeepsRequestEnabled,
   formNameFromRosterEnabled,
@@ -375,6 +376,7 @@ function answeredNow(request: AskRequest, aliases: Aliases): AskRequest {
   const typed = (request.history ?? []).filter((said) => said.role === "user").map((said) => said.content);
   const chosen = chosenName(reply, options, Boolean(one), typed);
   if (!chosen) return request;
+  if (answerIsTheRequest(reply, chosen.name)) return request;
   const first = firstNamePattern(options, chosen.name, aliases);
   const said = [...(request.history ?? [])].reverse().find((turn) => turn.role === "user" && first.test(turn.content));
   const answered = said ? replaceTyped(said.content, first, options, chosen.name) + chosen.rest : chosen.name + chosen.rest;
@@ -401,7 +403,7 @@ function withAskingTurn(answered: string, said: ChatMessage | undefined, request
 function chosenName(reply: string, options: readonly string[], single: boolean, typed: readonly string[] = []): { name: string; rest: string } | null {
   const text = reply.toLowerCase();
   const full = options.find((name) => text.includes(name.toLowerCase()));
-  if (full) return { name: full, rest: "" };
+  if (full) return { name: full, rest: firstNameAnswerKeepsAccountEnabled() ? besidesTheName(reply, full) : "" };
   if (single) {
     const yes = YES.exec(reply);
     if (yes && !/\b(?:no|not|nope|wrong)\b/i.test(reply)) {
@@ -423,6 +425,27 @@ function chosenName(reply: string, options: readonly string[], single: boolean, 
   const other = /^(?:no|nope|not\s+\w+)?[\s,.!-]*(?:it'?s|it\s+is|this\s+is\s+for|for)?\s*([A-Za-z][A-Za-z'’-]+\s+[A-Za-z][A-Za-z'’-]+)\s*[.!]?$/i.exec(reply);
   if (other && !/^(?:yes|yeah|yep)\b/i.test(other[1]!)) return { name: other[1]!, rest: "" };
   return null;
+}
+
+/**
+ * FIRST_NAME_ANSWER_KEEPS_ACCOUNT_ENABLED (QA, Sunny live test, 8 Nov 2026; the name invented): "make me CA for Rhea
+ * failing to complete shifts" → "Is this for **Rhea Calloway**?" → "Rhea Calloway 11/7 and 11/8" was read as the name
+ * alone, so the card's Observation was "failing to complete shifts" and the dates were lost. What the answer says
+ * besides the name follows the request it answers ("… failing to complete shifts 11/7 and 11/8"). An answer that asks
+ * for the form itself ("make me CA for Rhea Calloway not showing up to her shifts on 11/7 and 11/8") is the request
+ * (`answeredNow`). Nothing but the name and punctuation: "", as before.
+ */
+const ASKS_FOR_A_FORM = /\b(?:warning|write[- ]?up|corrective\s+action(?:\s+form)?|ca|c\/a|dpoa)\s+(?:for|about|over|regarding)\s/i;
+
+function besidesTheName(reply: string, name: string): string {
+  const at = reply.toLowerCase().indexOf(name.toLowerCase());
+  const rest = `${reply.slice(0, at)} ${reply.slice(at + name.length)}`.replace(/\s+/g, " ").replace(/^[\s,.;:!-]+|[\s,;:-]+$/g, "");
+  return /[\p{L}\d]/u.test(rest) ? ` ${rest}` : "";
+}
+
+/** The answer names the person in full and asks for the form itself: it is the request (FIRST_NAME_ANSWER_KEEPS_ACCOUNT). */
+function answerIsTheRequest(reply: string, chosen: string): boolean {
+  return firstNameAnswerKeepsAccountEnabled() && reply.toLowerCase().includes(chosen.toLowerCase()) && ASKS_FOR_A_FORM.test(reply);
 }
 
 /**

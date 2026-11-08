@@ -1,5 +1,5 @@
 import { mentionsGlossaryTerm } from "@/lib/ai/chat-glossary";
-import { caSalesPolicyEnabled, caShortcutWordsEnabled, nameQuestionOnlyEnabled } from "@/lib/config/chat-quality-flags";
+import { caSalesPolicyEnabled, caShortcutWordsEnabled, nameQuestionOnlyEnabled, shiftAccountIsIncidentEnabled } from "@/lib/config/chat-quality-flags";
 
 import { isSalesPolicyReading, readCaPolicy } from "./ca-policy";
 import { statesMetricShortfall } from "./metric-shortfall";
@@ -499,9 +499,19 @@ export function readCorrectiveActionIntake(input: {
  * The same reading the intake's "what happened" item uses, exported so the
  * other chat forms do not ask for an account the manager has already given.
  */
+/**
+ * SHIFT_ACCOUNT_IS_INCIDENT_ENABLED (QA, Sunny live test, 8 Nov 2026; the name invented): "make me CA for Rhea Calloway
+ * not showing up to her shifts on 11/7 and 11/8" had no Observation: the clause has no subject, no "for" before it and
+ * too few words beside the request's, so it was read as the request alone. A shift not shown up to, not completed or
+ * missed is an account, whoever it is told about. Off, as before.
+ */
+const SHIFT_ACCOUNT =
+  /\b(?:(?:not|never)\s+(?:showing|show|coming|turning)\s+up|no[- ]?show(?:ing|ed)?|(?:failing|failed|fails)\s+to\s+(?:complete|finish|work|show\s+up\s+(?:to|for))|not\s+(?:completing|finishing|working)|missing|missed|skipping|skipped)\s+(?:(?:to|for)\s+)?(?:(?:her|his|their|the|a|my|all|both|two|scheduled)\s+)*shifts?\b/;
+
 export function describesIncident(text: string): boolean {
   const normalized = normalize(text);
   if (any(normalized, INCIDENT_TOPIC) || any(normalized, OBSERVATIONAL_CLAUSE)) return true;
+  if (shiftAccountIsIncidentEnabled() && SHIFT_ACCOUNT.test(normalized)) return true;
   /*
    * WHATEVER THE POLICY READING RECOGNISES IS AN ACCOUNT TOO — a missed
    * deadline, unfinished work, a missed meeting, cash handling — so the two
