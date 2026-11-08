@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { caPolicyProposalLine, readCaPolicy } from "./ca-policy";
 import { namedPolicies } from "./named-policy-section";
@@ -17,6 +17,9 @@ const DID_NOT_COMPLETE =
 afterEach(() => vi.unstubAllEnvs());
 
 describe("WOVEN_TRAINING_CONDUCT_ENABLED off: what this app says for the sibling app's three live wordings", () => {
+  // The flag is set off here, so a run with it on in the environment (QA's flag-on gate) still checks the off side.
+  beforeEach(() => vi.stubEnv("WOVEN_TRAINING_CONDUCT_ENABLED", ""));
+
   it("\"not signing the woven policies\" reads as no policy: the card has no Policy line", () => {
     expect(readCaPolicy(NOT_SIGNING).suggestion).toBeNull();
     expect(caPolicyProposalLine(readCaPolicy(NOT_SIGNING))).toBeNull();
@@ -71,11 +74,13 @@ describe("WOVEN_TRAINING_CONDUCT_ENABLED on", () => {
     expect(line).not.toMatch(/reads as|doesn't support/);
   });
 
-  it("training and acknowledgements in other words", () => {
+  it("acknowledgements in other words; Woven training alone keeps its own reading", () => {
     on();
-    expect(readCaPolicy("write a ca for rowan kestrel, she never completed her woven training modules").source).toBe("woven");
     expect(readCaPolicy("CA for rowan kestrel for not acknowledging the policies in woven by friday").source).toBe("woven");
-    expect(readCaPolicy("ca for rowan kestrel, she missed the woven training").source).toBe("woven");
+    // Changed on purpose (QA's Sunny round-3 gate, 7 Nov 2026): the reading is narrowed to the acknowledgement CA
+    // Pau ruled on. Woven training with no policy or acknowledgement named keeps the reading it had before the flag.
+    expect(readCaPolicy("write a ca for rowan kestrel, she never completed her woven training modules").source).not.toBe("woven");
+    expect(readCaPolicy("ca for rowan kestrel, she missed the woven training").source).not.toBe("woven");
   });
 
   it("leaves alone: a policy the manager named, Woven named in passing, an account with no Woven", () => {
@@ -86,13 +91,20 @@ describe("WOVEN_TRAINING_CONDUCT_ENABLED on", () => {
     expect(readCaPolicy("ca for rowan kestrel for missing the monthly meeting").stated).toBe("attendance");
   });
 
-  it("a section the manual lacks is said in the app's own voice, not with Woven as the subject", () => {
+  it("a Woven phrase the manual lacks is said in the app's own voice; any other phrase keeps the fail-closed line", () => {
     on();
-    const line = caPolicyProposalLine(readCaPolicy("ca for rowan kestrel for violating visitors at work policy"), {
+    const woven = caPolicyProposalLine(readCaPolicy("ca for rowan kestrel for violating the woven policy"), {
+      phrase: "the woven",
+      lookup: "missing",
+    });
+    expect(woven).toMatch(/^\*\*Policy:\*\* I don't see a section of the current policy manual for "the woven"/);
+    expect(woven).not.toMatch(/Woven does not see/);
+    // Changed on purpose (QA's Sunny round-3 gate, 7 Nov 2026): the rewording is narrowed to a phrase about Woven, where
+    // "Woven does not see … for 'the woven'" reads as the product looking. "visitors at work" keeps the line main gives.
+    const other = caPolicyProposalLine(readCaPolicy("ca for rowan kestrel for violating visitors at work policy"), {
       phrase: "visitors at work",
       lookup: "missing",
     });
-    expect(line).toMatch(/^\*\*Policy:\*\* I don't see a section of the current policy manual for "visitors at work"/);
-    expect(line).not.toMatch(/Woven does not see/);
+    expect(other).toMatch(/^\*\*Policy:\*\* Woven does not see a section of the current policy manual for "visitors at work"/);
   });
 });

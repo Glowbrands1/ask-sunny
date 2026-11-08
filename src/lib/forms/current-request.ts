@@ -1,3 +1,5 @@
+import { currentRequestStart } from "@/lib/ai/remap-incident";
+
 import { JOIN } from "./bounded-context";
 import { detectTemplateIntent } from "./template-intent";
 
@@ -17,12 +19,22 @@ export function startsFormRequest(turn: string): boolean {
   return intent.kind === "explicit" || (intent.kind === "corrective_action" && intent.requestedCreation === true);
 }
 
-/** The manager turns from the last one that asks for a form; all of them when none does. */
+/**
+ * The manager turns of the request now being written: from the later request that starts its own (a request turn with
+ * its own incident, `ai/remap-incident.ts` currentRequestStart — the same reading the Observation is cut by); all of
+ * them otherwise. QA's Sunny round-3 gate, 7 Nov 2026: cutting at the last turn that names a form left ordinary
+ * single-request cards with no Policy line — the account said before the request ("she was rude to a guest …" → "make
+ * a CA for her"), a window's state lines ("The form is the Corrective Action Form."), or a closing "salon location is
+ * kearney. create corrective action" after the account were read as a new request with nothing in it.
+ */
 export function currentFormRequestTurns(turns: readonly string[]): readonly string[] {
-  for (let index = turns.length - 1; index >= 0; index -= 1) {
-    if (startsFormRequest(turns[index] ?? "")) return turns.slice(index);
-  }
-  return turns;
+  const start = currentRequestStart({ turns, employeeName: null, slotClause: () => false });
+  return start > 0 ? turns.slice(start) : turns;
+}
+
+/** This turn starts a request of its own after `earlier` turns (`form-state.ts` stateForTurn). */
+export function startsNewRequest(earlier: readonly string[], turn: string): boolean {
+  return earlier.length > 0 && currentFormRequestTurns([...earlier, turn]).length === 1;
 }
 
 /**
