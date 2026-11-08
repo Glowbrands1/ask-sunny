@@ -388,6 +388,8 @@ const NEW_FLAGS = [
   // Missing from this list since its PR (QA, 7 Nov 2026): forced off with the others in the child run.
   "REQUEST_KEPT_IN_WINDOW_ENABLED",
   "NEXT_PUBLIC_REQUEST_KEPT_IN_WINDOW_ENABLED",
+  // coding 2: FIELD_LABEL_NOT_A_QUESTION (default off): forced off with the others.
+  "FIELD_LABEL_NOT_A_QUESTION_ENABLED",
   "AM_PRIOR_WARNINGS_ENABLED",
   "TRUNCATION_RETRY_ENABLED",
   "CHAT_RESPONSE_STREAM_ENABLED",

@@ -1,4 +1,4 @@
-import { exitIntakeFixEnabled, exitShortcutWordsEnabled, exitStatedOnlyEnabled, resignMethodFollowupEnabled } from "@/lib/config/chat-quality-flags";
+import { exitIntakeFixEnabled, exitShortcutWordsEnabled, exitStatedOnlyEnabled, fieldLabelNotAQuestionEnabled, resignMethodFollowupEnabled } from "@/lib/config/chat-quality-flags";
 
 import { JOIN } from "./bounded-context";
 import { isQuestion } from "./employment-change";
@@ -639,6 +639,24 @@ export function inStatedPermanentAddress(candidate: string | null | undefined, t
 /** EXIT_STATED_ONLY_ENABLED: the manager's words say the employee was let go ("your employment … is terminated"). */
 const TERMINATED = /\b(?:terminated|termination|terminating|fired|let (?:him|her|them)? ?go|dismissed|dismissal)\b/i;
 
+/*
+ * FIELD_LABEL_NOT_A_QUESTION_ENABLED (QA, 8 Nov 2026, from the sibling app's live tester; the same here): "how employee resigned - told
+ * management" fills the How Employee Resigned line by its own label. A known channel in it ("by text") is read as
+ * before; otherwise the manager's words after the label are the line, ended where the sentence ends.
+ */
+const METHOD_LABEL = /\bhow\s+(?:the\s+)?employee\s+resigned\s*(?:[-–—:=]|\bis\b|\bwas\b)\s*/i;
+
+function labelledMethod(turn: string): string | null {
+  if (!fieldLabelNotAQuestionEnabled()) return null;
+  const match = METHOD_LABEL.exec(turn);
+  if (!match) return null;
+  const from = (match.index ?? 0) + match[0].length;
+  const end = /[.;!?\n]/.exec(turn.slice(from));
+  const raw = turn.slice(from, end ? from + end.index : turn.length).trim();
+  if (raw.split(/\s+/).length < 2) return null;
+  return sentence(raw);
+}
+
 /* ------------------------------------------------------------ reading -- */
 
 function readAnswers(turn: string): Partial<Record<ExitAnswerKey, Reading>> {
@@ -692,7 +710,8 @@ export function readExitDetails(rawText: string, today: string, facts?: ExitFact
     for (const [key, reading] of Object.entries(readAnswers(turn)) as [ExitAnswerKey, Reading][]) {
       if (reading !== undefined) settled[key] = reading;
     }
-    method = joinMethods(methodsIn(turn)) ?? method;
+    // FIELD_LABEL_NOT_A_QUESTION_ENABLED: "how employee resigned - told management" is the manager's own answer for that line.
+    method = joinMethods(methodsIn(turn)) ?? labelledMethod(turn) ?? method;
     reason = reasonIn(turn) ?? reason;
   }
   for (const key of EXIT_ANSWER_KEYS) {
