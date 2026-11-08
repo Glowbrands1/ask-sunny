@@ -1,5 +1,7 @@
 import "server-only";
 
+import { signedStepNotARequestEnabled } from "@/lib/config/chat-quality-flags";
+
 import { extractEmployeeNames, samePerson } from "./proposal";
 import { detectTemplateIntent } from "./template-intent";
 
@@ -78,6 +80,15 @@ const NEGATION = /\b(?:no|not|don'?t|do\s+not|without|skip|never\s*mind|hold\s+o
 /** One form per person: a plural form, or "each" / "both" / "one for each". */
 const ONE_EACH = /\b(?:forms|cas|c\/as|write[- ]?ups|warnings|reviews|each|both|separate|one\s+for\s+each)\b/i;
 const BARE_FORM = /\b(?:form|forms|ca|c\/a|write[- ]?up)\b/i;
+/*
+ * SIGNED_STEP_NOT_A_REQUEST_ENABLED (ported from the sibling app: QA's live tester there, round 4, 8 Nov 2026): "Can you draw me up a CA for <A>
+ * for being late on 10/23/26. <A> has signed a coaching document for being late on 10/14/26. …" gave a CA card AND a
+ * Coaching Form card: the second sentence names a form and a person, so it read as a second request. It tells a step
+ * already given, signed or received (the reading `step-sentence-dates.ts` and `prior-actions.ts` give it), and asks for
+ * nothing, so with the flag on it is history: the Corrective Action's Prior actions, never a second card.
+ */
+const STEP_GIVEN = /\b(?:was|were|been|got|received|had)\s+(?:already\s+|previously\s+|also\s+)?(?:issued|given|signed)\b|\b(?:has|have|had)\s+(?:already\s+|previously\s+|also\s+)?(?:signed|received|been\s+given|been\s+issued)\b/i;
+
 /** Clause boundaries: sentences, commas, semicolons, and the joining words. */
 const CLAUSE_SPLIT = /\s*(?:[.;!?]+\s+|,\s*|\s+(?:and|&|also|then|plus|but)\s+)/i;
 
@@ -166,6 +177,8 @@ export function readFormRequests(text: string): FormRequestReading | null {
         reading.declined.push(request);
         continue;
       }
+      // SIGNED_STEP_NOT_A_REQUEST_ENABLED: "<A> has signed a coaching document for …" is history, not a request.
+      if (signedStepNotARequestEnabled() && STEP_GIVEN.test(clause) && !ASKS_FOR_IT.test(clause)) continue;
       const asks = ASKS_FOR_IT.test(clause) || people.length > 0;
       if (!asks && !(BARE_FORM.test(clause) && clauses.length > 1)) continue;
       reading.requests.push(request);

@@ -47,7 +47,12 @@ import {
   formNameFromRosterEnabled,
   complaintAccountEnabled,
   dateQuestionKeptEnabled,
+  requestParticipleLeadEnabled,
+  proposalMakeItAboutEnabled,
+  proposalPolicySetAsideEnabled,
 } from "@/lib/config/chat-quality-flags";
+import { turnsMadeAbout, withObservationMadeAbout } from "./make-it-about";
+import { NOTHING_SET_ASIDE, citationSetAside, policiesSetAside, setAsideAnything, withPolicySetAside, withoutPolicyAsks } from "@/lib/forms/policy-set-aside";
 import { namesOnlyAPolicy } from "@/lib/forms/person-guard";
 import { foldsToGlossaryTerm } from "./chat-glossary";
 import { statedFormDate } from "@/lib/forms/incident-dates";
@@ -59,10 +64,19 @@ import type { ChatFormProposal, SourceCitation } from "@/types";
 import { withoutLevelAndStepClauses } from "./account-clauses";
 import { isAppLine, withoutAppLines } from "./app-sentences";
 import { withoutAsksToTheApp } from "./asks-to-the-app";
-import { GRAMMAR_ANSWER, observationByRules, readSentenceEdit } from "./edit-date-rules";
+import { GRAMMAR_ANSWER, managerWords, observationByRules, readSentenceEdit } from "./edit-date-rules";
 import { titleTextFromQuestion, titleTextFromTurns } from "./title-words";
 import type { GroundedPerson } from "./grounded-entities";
-import { accountSentences, currentRequestTurns, managerAccount, priorShorthand, withoutPriorList, withoutStateCodes, withoutStateLead } from "./remap-incident";
+import {
+  accountSentences,
+  currentRequestTurns,
+  isRequestReasonOnly,
+  managerAccount,
+  priorShorthand,
+  withoutPriorList,
+  withoutStateCodes,
+  withoutStateLead,
+} from "./remap-incident";
 import { statedPriorActions } from "@/lib/forms/prior-actions";
 import { displayTypedName, repairSpeaksAsValidator, scrubRosterBlock } from "./roster-reply";
 import { PRIMARY_SALON_STATEMENT } from "@/lib/forms/primary-salon-statement";
@@ -270,11 +284,17 @@ export function holdFilledSlots(input: {
       // AMOUNT_ANSWER_NOT_ACCOUNT_ENABLED: "i dont know the amount" says nothing that happened.
       // CARD_OBSERVATION_OWN_REQUEST_ENABLED (QA live check, 3 Nov 2026): a new request's card reads back only
       // that request's turns, never the earlier incident ("…rugs untl 12;30pm <name> for being late to opening").
-      const said = withoutAmountAnswers(cardObservationOwnRequestEnabled() ? currentRequestTurns(turns, next.employeeName) : turns);
+      const own = withoutAmountAnswers(cardObservationOwnRequestEnabled() ? currentRequestTurns(turns, next.employeeName) : turns);
+      // PROPOSAL_MAKE_IT_ABOUT_ENABLED: "make it about showing up late …" is the account from that turn on, never the instruction (`ai/make-it-about.ts`).
+      const about = proposalMakeItAboutEnabled() ? turnsMadeAbout(own) : own;
+      // PROPOSAL_POLICY_SET_ASIDE_ENABLED: "take the attendance policy off the form", and "we have quoted the standards of
+      // conduct for …", are policy asks, never account (`forms/policy-set-aside.ts`).
+      const said = proposalPolicySetAsideEnabled() ? withoutPolicyAsks(about) : about;
       // FORM_EDIT_DATE_RULES_ENABLED: an edit replaces, adds to, or never touches the Observation.
       if (formEditDateRulesEnabled()) content = observationByRules(content, said, build);
       else if (grammarAskNotAccountEnabled()) content = withGrammarAnswered(build(content, said.map(withoutAsksToTheApp)), turns);
       else content = build(content, said);
+      if (proposalMakeItAboutEnabled()) content = withObservationMadeAbout(content, own);
     }
     if (fixed && next.templateKey === "dpoa") {
       content = withPriorActions(content, currentRequestTurns(turns, next.employeeName), input.today);
@@ -289,7 +309,11 @@ export function holdFilledSlots(input: {
     }
   }
 
-  const citations = (input.response.citations ?? []).filter((citation) => !isWarningCitation(citation));
+  // PROPOSAL_POLICY_SET_ASIDE_ENABLED: a policy the manager took off is not cited on the card; read from the manager's words, never the app's state lines (`forms/policy-set-aside.ts`).
+  const setAside = proposalPolicySetAsideEnabled() ? policiesSetAside(turns.map(managerWords)) : NOTHING_SET_ASIDE;
+  const citations = (input.response.citations ?? []).filter(
+    (citation) => !isWarningCitation(citation) && !citationSetAside(citation, setAside),
+  );
   if (actionPlanManagerOnlyEnabled() && next.templateKey === "dpoa") {
     // The manager's plan, word for word, or none. Never the two sentences.
     content = replyWithManagerActionPlan(content, turns, "Action Plan");
@@ -309,6 +333,7 @@ export function holdFilledSlots(input: {
   if ((keepRosterExactNameEnabled() || formNameFromRosterEnabled()) && proposal.employeeName && !next.employeeName) {
     content = withDroppedNameAsked(content, proposal.employeeName);
   }
+  if (setAsideAnything(setAside)) content = withPolicySetAside(content, setAside);
   const same =
     content === input.response.content &&
     next === proposal &&
@@ -731,6 +756,7 @@ function withObservation(content: string, turns: readonly string[], employeeName
   const ignore = employeeName ? [employeeName] : [];
   const managerOnly = managerWordsOnlyEnabled();
   const sentences: string[] = [];
+  const reasons = new Set<string>();
   const conversation = turns.join("\n");
   for (const turn of managerOnly ? turns.map(withoutAppLines) : turns) {
     // PRIOR_SENTENCE_FIX_ENABLED (QA, 26 Oct 2026): "…she was late on 10-5 and 10-15. i coached her on
@@ -760,12 +786,17 @@ function withObservation(content: string, turns: readonly string[], employeeName
       if (observationNotPolicyNameEnabled() && namesOnlyAPolicy(sentence)) continue;
       if (content.toLowerCase().includes(sentence.toLowerCase())) continue;
       if (sentences.some((kept) => kept.toLowerCase() === sentence.toLowerCase())) continue;
+      // REQUEST_PARTICIPLE_LEAD_ENABLED: "I need a corrective action made for under performance." is the reason.
+      if (requestParticipleLeadEnabled() && isRequestReasonOnly(said, sentence)) reasons.add(sentence);
       sentences.push(sentence);
     }
   }
   if (sentences.length === 0) return content;
+  // REQUEST_PARTICIPLE_LEAD_ENABLED (QA's round-5 live Sunny check, 8 Nov 2026): with the account in another sentence,
+  // the request's reason is left out, so the Observation starts at the account. Alone, it stays.
+  const account = sentences.some((sentence) => !reasons.has(sentence)) ? sentences.filter((sentence) => !reasons.has(sentence)) : sentences;
   // COMPLAINT_ACCOUNT_ENABLED: the warning level is the form's Type of Warning, never the account.
-  const told = complaintAccountEnabled() ? sentences.map(withoutLevelLead) : sentences;
+  const told = complaintAccountEnabled() ? account.map(withoutLevelLead) : account;
   return `${content}\n\n**Observation of Offense:** ${told.join(" ")}`.trim();
 }
 

@@ -242,6 +242,16 @@ const NEW_FLAGS = [
   "NEWEST_PLACE_TURN_ENABLED",
   "QUESTION_NOT_FORM_ENABLED",
   "FORM_EDIT_DATE_RULES_ENABLED",
+  // coding 2: CARD_POLICY_PLAN_ONLY (default off): forced off with the others in the child run.
+  "CARD_POLICY_PLAN_ONLY_ENABLED",
+  // coding 2: LIST_POLICY_IS_EDIT (default off): forced off with the others in the child run.
+  "LIST_POLICY_IS_EDIT_ENABLED",
+  // coding 2: NO_ACCOUNT_NO_APP_POLICY (default off): forced off with the others in the child run.
+  "NO_ACCOUNT_NO_APP_POLICY_ENABLED",
+  // coding 2: AMOUNT_BEFORE_PAYROLL_DEDUCT (default off): forced off with the others in the child run.
+  "AMOUNT_BEFORE_PAYROLL_DEDUCT_ENABLED",
+  // coding 2: COPY_OWN_SALON (default off): forced off with the others in the child run.
+  "COPY_OWN_SALON_ENABLED",
   // coding 2: REMOVE_POLICY_NOT_NAMED (A1; default off): forced off with the others in the child run.
   "REMOVE_POLICY_NOT_NAMED_ENABLED",
   "FOLLOWUP_NEW_TOPIC_RETRIEVAL_ENABLED",
@@ -256,6 +266,8 @@ const NEW_FLAGS = [
   "FORM_DATE_INCIDENT_ONLY_ENABLED",
   "REOPEN_VERB_GUARD_ENABLED",
   "REOPEN_BY_ANY_OPEN_VERB_ENABLED",
+  // coding 2: REOPEN_NOT_OPEN_FORM (default off): forced off with the others in the child run.
+  "REOPEN_NOT_OPEN_FORM_ENABLED",
   "FORM_REVISIONS_ENABLED",
   "NEXT_PUBLIC_FORM_REVISIONS_ENABLED",
   "SENSITIVE_DEFAULTS_REDACT_ENABLED",
@@ -334,6 +346,8 @@ const NEW_FLAGS = [
   "FORM_EDIT_HONEST_REPLY_ENABLED",
   "CLAIM_GUARD_ENABLED",
   "NAME_CORRECTION_WORDS_ENABLED",
+  // Coding: FINAL_REPLY_MARKER_GUARD (round 5, 8 Nov 2026; default off).
+  "FINAL_REPLY_MARKER_GUARD_ENABLED",
   "POLICY_CHANGE_REST_OF_TURN_ENABLED",
   "OPEN_FORM_NO_SELECTION_ENABLED",
   "PERSON_GUARD_ENABLED",
@@ -456,6 +470,8 @@ const NEW_FLAGS = [
   // After the Sunny flip (6 Nov 2026): forced off with the others in the child run.
   "SALES_SHORTFALL_OBJECT_ENABLED",
   "SALES_OBSERVATION_ACCOUNT_ENABLED",
+  // Coding: REQUEST_PARTICIPLE_LEAD (round-5, 8 Nov 2026; default off).
+  "REQUEST_PARTICIPLE_LEAD_ENABLED",
   "UNDER_PERFORMANCE_EXPLAINED_ENABLED",
   // After the Sunny flip (6 Nov 2026, row 6): forced off with the others in the child run.
   "TWO_FORMS_OWN_PERSON_ENABLED",
@@ -464,6 +480,9 @@ const NEW_FLAGS = [
   // coding 5: CORRECTED_DATE_KEPT (default off): forced off with the others in the child run.
   "CORRECTED_DATE_KEPT_ENABLED",
   "DATE_QUESTION_KEPT_ENABLED",
+  // coding 2: CREATE_COMMAND_POINTS_TO_CARD and CARD_COMPLAINT_NOT_ACCOUNT (default off): forced off with the others.
+  "CREATE_COMMAND_POINTS_TO_CARD_ENABLED",
+  "CARD_COMPLAINT_NOT_ACCOUNT_ENABLED",
 ] as const;
 
 const PROTECTED = [

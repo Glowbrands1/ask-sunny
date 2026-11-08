@@ -13,6 +13,7 @@ import {
   salesObservationAccountEnabled,
   salesShortfallObjectEnabled,
   wovenTrainingConductEnabled,
+  conductIncidentCitesPageEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { JOIN } from "./bounded-context";
@@ -165,6 +166,14 @@ const FAILED = String.raw`(?:did ?n[o']?t|didn't|never|failed to|has ?n[o']?t|ha
 
 /** What an assigned piece of work is called. */
 const TASK_NOUN = String.raw`(?:tasks?|assignments?|assigned work|duties|duty|checklists?|training|trainings|modules?|courses?|items?|paperwork|cleaning|disinfect\w*|projects?|reports?|requirements?|woven)`;
+
+/*
+ * CONDUCT_INCIDENT_CITES_PAGE_ENABLED (QA's live tester, 8 Nov 2026, the managers' Woven wordings): "This would be a
+ * verbal due to not completing her woven courses by the deadline" read as no conduct topic at all: FAILED does not
+ * take a bare "not" ("not completing"). With the flag on, "not completing / not finishing <a task noun>" is unfinished
+ * assigned work too. Off, as before.
+ */
+const NOT_COMPLETING_TASK = new RegExp(String.raw`\b(?:not|never)\s+(?:complet|finish)\w*\s+(?:\S+\s+){0,3}?${TASK_NOUN}\b`);
 
 const CONDUCT_TOPICS: { topic: ConductTopic; pattern: RegExp }[] = [
   {
@@ -453,6 +462,22 @@ function statedIn(turn: string): CaPolicyName | null {
   return found?.name ?? null;
 }
 
+/**
+ * PROPOSAL_POLICY_SET_ASIDE_ENABLED (`forms/policy-set-aside.ts`): every policy this sentence names by name, where
+ * it is in the sentence. Read the same way `statedIn` reads a name, with no frame needed; the caller decides what the
+ * sentence does with it.
+ */
+export function policiesNamedIn(sentence: string): { name: CaPolicyName; start: number; end: number }[] {
+  const text = normalize(sentence);
+  const found: { name: CaPolicyName; start: number; end: number }[] = [];
+  for (const { name, pattern, enabled } of NAMED) {
+    if (enabled && !enabled()) continue;
+    const match = pattern.exec(text);
+    if (match && !found.some((seen) => seen.name === name)) found.push({ name, start: match.index, end: match.index + match[0].length });
+  }
+  return found;
+}
+
 /* ------------------------------------------------------------- reading -- */
 
 /**
@@ -731,7 +756,19 @@ function withSalesPolicy(reading: CaPolicyReading, rawText: string): CaPolicyRea
 function performanceIsTheRequest(reading: CaPolicyReading, sentences: string[]): boolean {
   if (!caPerformanceReasonEnabled()) return false;
   if (reading.stated !== null || reading.topics.length > 0 || reading.missedEvent !== null) return false;
-  return sentences.some((sentence) => namesPerformance.test(sentence) && asksForCorrectiveAction(sentence));
+  return sentences.some((sentence) => namesPerformance.test(sentence) && performanceEndsItsPhrase(sentence) && asksForCorrectiveAction(sentence));
+}
+
+/**
+ * "performance" ends its phrase wherever it stands (QA's round-4 gate, 8 Nov 2026): "for her performance review" and
+ * "for a performance improvement plan" name another thing, so they are no sales-performance account. "for sales
+ * performance" and "for performance for october" still are. A sentence without the word (another `namesPerformance`
+ * shape, "not meeting her goals") is unchanged.
+ */
+const PHRASE_END_AFTER = new RegExp(`^${PHRASE_ENDS}`);
+
+function performanceEndsItsPhrase(sentence: string): boolean {
+  return [...sentence.matchAll(/\bperformance\b/gi)].every((match) => PHRASE_END_AFTER.test(sentence.slice(match.index + match[0].length)));
 }
 
 function asksForCorrectiveAction(sentence: string): boolean {
@@ -770,6 +807,8 @@ function readCaPolicyFromWords(rawText: string): CaPolicyReading {
   let topics = CONDUCT_TOPICS.filter(({ pattern }) => sentences.some((s) => pattern.test(s))).map(
     ({ topic }) => topic,
   );
+  // CONDUCT_INCIDENT_CITES_PAGE_ENABLED: "not completing her woven courses by the deadline" is unfinished assigned work.
+  if (conductIncidentCitesPageEnabled() && !topics.includes("task") && sentences.some((s) => NOT_COMPLETING_TASK.test(s))) topics.push("task");
   if (policyCleaningIncidentEnabled()) {
     if (!topics.includes("task") && sentences.some((s) => UNDONE_DUTIES.test(s))) topics.push("task");
     // Cleaning left undone is Care and Cleaning, not the catch-all: the task reading gives way to that section.
@@ -1396,10 +1435,24 @@ export function observationAccount(sentence: string, employeeName: string | null
   let lead = 0;
   while (lead < words.length && own.has(words[lead]!.toLowerCase().replace(/[^\p{L}'’-]/gu, ""))) lead += 1;
   // The name goes only where the sentence is the request ("<name> on performance"); "<name> was rude to a guest" keeps it.
-  OBSERVATION_REASON.lastIndex = 0;
-  const reasonFollows = new RegExp(`^${OBSERVATION_REASON.source}`, "i").test(` ${words.slice(lead).join(" ")}`);
+  const reasonAtStart = new RegExp(`^${OBSERVATION_REASON.source}`, "i");
+  const reasonFollows = reasonAtStart.test(` ${words.slice(lead).join(" ")}`);
   if (lead > 0 && (wasRequest || reasonFollows)) words.splice(0, lead);
-  text = words.join(" ").replace(OBSERVATION_REASON, " ").replace(OBSERVATION_BARE_REASON, " ").replace(OBSERVATION_PAYROLL, " ");
-  text = text.replace(/\s{2,}/g, " ").replace(/^[\s,.;:-]+|[\s,;:-]+$/g, "").trim();
-  return /\p{L}{3,}/u.test(text) && text.split(/\s+/).length >= 2 ? text : "";
+  text = words.join(" ");
+  /*
+   * ONLY THE REQUEST CLAUSE IS CUT (QA's round-4 gate, 8 Nov 2026): the reason and a payroll answer were cut
+   * wherever they stood, so "This is for Under Performance on PPTA, …" became "This is on PPTA, …" and "…payroll
+   * deduct applies and $3.25 will be deducted" lost "payroll deduct". The reason goes only where it opens the request
+   * (after its head or the employee's name). A sentence that is nothing but a reason and a payroll answer
+   * ("performance for october not pay roll deductable") is the request's, and nothing is left. Every other word is the
+   * manager's and stays.
+   */
+  const clean = (value: string) => value.replace(/\s{2,}/g, " ").replace(/^[\s,.;:-]+|[\s,;:-]+$/g, "").trim();
+  const isAccount = (value: string) => /\p{L}{3,}/u.test(value) && value.split(/\s+/).length >= 2;
+  OBSERVATION_PAYROLL.lastIndex = 0;
+  const leftover = clean(` ${text}`.replace(reasonAtStart, " ").replace(OBSERVATION_BARE_REASON, " ").replace(OBSERVATION_PAYROLL, " "));
+  OBSERVATION_PAYROLL.lastIndex = 0;
+  if (!isAccount(leftover)) return "";
+  const account = clean(wasRequest || lead > 0 ? ` ${text}`.replace(reasonAtStart, " ") : text);
+  return isAccount(account) ? account : "";
 }

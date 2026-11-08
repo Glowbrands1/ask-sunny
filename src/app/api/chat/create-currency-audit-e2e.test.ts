@@ -652,7 +652,8 @@ it("two forms in one message: one card at a time, never two", async () => {
    */
   if (answer.formProposal) {
     expect(answer.formProposal).toMatchObject({ templateKey: "coaching", employeeName: "Katrin Dovetail" });
-    expect(answer.content).toMatch(/\*\*Do you want a Corrective Action Form for Rowan Kestrel next\?\*\*/i);
+    // Round-5 follow-up (8 Nov 2026): the name typed in lower case is offered capitalised.
+    expect(answer.content).toMatch(/\*\*Do you want a Corrective Action Form for Rowan Kestrel next\?\*\*/);
   } else {
     expect(answer.content).toMatch(/^Which form should I start with\?/);
   }
