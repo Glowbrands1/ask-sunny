@@ -14,6 +14,7 @@ import {
   formEditHonestReplyEnabled,
   claimGuardEnabled,
   nameCorrectionWordsEnabled,
+  listPolicyIsEditEnabled,
   policyChangeRestOfTurnEnabled,
   openFormNoSelectionEnabled,
   personGuardEnabled,
@@ -426,7 +427,10 @@ async function postChat(request: Request) {
        * revision paths below; the answer still knows the form is open. See
        * `lib/ai/question-not-form.ts`. Behind QUESTION_NOT_FORM_ENABLED.
        */
-      const askedQuestion = questionNotFormEnabled() && isQuestionNotForm(parsed.question, parsed.history);
+      // LIST_POLICY_IS_EDIT_ENABLED: "please list the policy" with a form open is an edit (EDIT_POLICY_ASK), never a question.
+      const listPolicyEdit =
+        listPolicyIsEditEnabled() && (await import("@/lib/ai/list-policy-ask")).listPolicyIsEdit(parsed.question, Boolean(parsed.activeFormInstanceId));
+      const askedQuestion = !listPolicyEdit && questionNotFormEnabled() && isQuestionNotForm(parsed.question, parsed.history);
       /*
        * STEP B (FORM_PATCH_REDUCER_ENABLED + FORM_REPLY_FROM_DIFF_ENABLED): the
        * open form as saved before this turn, so the reply about it can come

@@ -3256,6 +3256,15 @@ export function twoFormsEachPersonEnabled(): boolean {
  */
 export function cardPolicyPlanOnlyEnabled(): boolean {
   return envFlag("CARD_POLICY_PLAN_ONLY_ENABLED");
+// coding 2: LIST_POLICY_IS_EDIT
+/**
+ * LIST_POLICY_IS_EDIT_ENABLED (QA, 8 Nov 2026; default off; works with EDIT_POLICY_ASK_ENABLED). With a form open, a
+ * turn that was only "please list the policy" read as a question and was answered as a general policy question, so
+ * EDIT_POLICY_ASK never saw it. With this flag on, such a turn is not a question and the edit path takes it
+ * (`ai/list-policy-ask.ts`); "what policy covers lateness?" is still a question. Off, as before.
+ */
+export function listPolicyIsEditEnabled(): boolean {
+  return envFlag("LIST_POLICY_IS_EDIT_ENABLED");
 }
 
 // coding 2: REMOVE_POLICY_NOT_NAMED
