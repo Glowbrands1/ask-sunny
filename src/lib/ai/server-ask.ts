@@ -174,6 +174,7 @@ import { cardMetaTurn } from "./card-meta-turn";
 import { withFirstNameAsk } from "./first-name-ask";
 import { withUnknownNameAsk } from "./unknown-name-ask";
 import { withExitOtherPersonNotOffered } from "./exit-other-person";
+import { withCarriedPersonNotice } from "./carried-person-notice";
 import { withFirstNameAnswerFor, withFirstNameSuggestFor } from "./first-name-suggest";
 import { withAmountUnknownAck } from "./amount-unknown-ack";
 import { withOutOfScopePlace } from "./out-of-scope-place";
@@ -372,6 +373,8 @@ export async function answerQuestion(
   answered = withTwoFormsOwnPerson(answered, original);
   // TWO_FORMS_EACH_PERSON_ENABLED: the card is its own clause's person, answered again from that clause if need be, and each other request with its person is offered (`ai/two-forms-own-person.ts`).
   answered = await withEachPersonsForm(answered, original, answer);
+  // CARRIED_PERSON_NOTICE_ENABLED: a card whose person the manager last named before their last six turns says so (`ai/carried-person-notice.ts`).
+  answered = withCarriedPersonNotice(answered, original);
   /*
    * CA_SALES_POLICY_ENABLED: a reply about a policy and an employee the roster
    * recognises ends with ONE offer to start a Corrective Action citing that
