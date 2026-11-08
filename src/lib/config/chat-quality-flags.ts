@@ -3211,6 +3211,26 @@ export function twoFormsEachPersonEnabled(): boolean {
   return envFlag("TWO_FORMS_EACH_PERSON_ENABLED");
 }
 
+// coding 2: CREATE_COMMAND_POINTS_TO_CARD
+/**
+ * CREATE_COMMAND_POINTS_TO_CARD_ENABLED (QA's sf-s38, 8 Nov 2026; default off). With only a card open, "create it" and
+ * "create  the draft" each sent the same proposal text again. With this flag on, such a turn keeps the card and says,
+ * in one line, to press **Create draft** on it (`ai/card-meta-turn.ts`). Off, as before.
+ */
+export function createCommandPointsToCardEnabled(): boolean {
+  return envFlag("CREATE_COMMAND_POINTS_TO_CARD_ENABLED");
+}
+
+// coding 2: CARD_COMPLAINT_NOT_ACCOUNT
+/**
+ * CARD_COMPLAINT_NOT_ACCOUNT_ENABLED (QA's sf-s38, 8 Nov 2026; default off). "this proposal is out od fate" with a card
+ * open became the card's "**Observation of Offense:**". With this flag on, a complaint about the proposal, card or form
+ * keeps the card as it was (its account unchanged) and asks what to change (`ai/card-meta-turn.ts`). Off, as before.
+ */
+export function cardComplaintNotAccountEnabled(): boolean {
+  return envFlag("CARD_COMPLAINT_NOT_ACCOUNT_ENABLED");
+}
+
 // coding 2: REMOVE_POLICY_NOT_NAMED
 /**
  * REMOVE_POLICY_NOT_NAMED_ENABLED (port from the sibling app; A1, QA 6 Nov 2026; default off). "take the
