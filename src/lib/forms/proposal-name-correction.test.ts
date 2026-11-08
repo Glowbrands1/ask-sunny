@@ -4,6 +4,7 @@ import type { AskRequest } from "@/lib/ai/types";
 
 import { proposalNameCorrection, withCorrectionNotDropped, withProposalNameCorrection } from "./proposal-name-correction";
 import type { AskResponse } from "@/lib/ai/types";
+import { installPersonRoster } from "./person-guard";
 
 /**
  * PROPOSAL_NAME_CORRECTION_ENABLED (QA, round 5, 8 Nov 2026; ported from Ask Bubbles, the 2 Nov 2026 chat there). The manager's words; the person is
@@ -90,6 +91,65 @@ describe("PROPOSAL_NAME_CORRECTION_ENABLED", () => {
       expect(withCorrectionNotDropped(kept, request("change her name to Juno Paxton"))).toBe(kept);
       expect(withCorrectionNotDropped(kept, request("verbal warning"))).toBe(kept);
       vi.stubEnv("PROPOSAL_NAME_CORRECTION_ENABLED", "");
+      expect(withCorrectionNotDropped(kept, request("change her name to Odessa Lark Penhalloe"))).toBe(kept);
+    });
+  });
+
+  /*
+   * QA, round 6 (8 Nov 2026): with the actor's roster read, an off-roster or mistyped correction keeps the card for the
+   * one roster person it can only be, and the typo is never offered as a person. Without a roster (above), as before.
+   */
+  describe("with the roster: the card stays, the typo is never a person", () => {
+    const ROSTER = ["Odessa Lark Penhallow", "Juno Paxton"];
+    beforeEach(() => {
+      vi.stubEnv("PROPOSAL_NAME_CORRECTION_ENABLED", "true");
+      installPersonRoster(() => ROSTER);
+    });
+    afterEach(() => installPersonRoster(() => undefined));
+    const card = (employeeName: string | null) =>
+      ({
+        content: CARD,
+        citations: [],
+        formProposal: { templateName: "Corrective Action Form", employeeName, status: "ready", supportsInlineDraft: true },
+      }) as unknown as AskResponse;
+
+    it("a mistyping of one roster person: the card is for her, and the reply says the spelling is not on the roster", () => {
+      const out = withCorrectionNotDropped(card(TYPED), request("change her name to Odessa Lark Penhalloe"));
+      expect(out.formProposal).toMatchObject({ employeeName: "Odessa Lark Penhallow", status: "ready", supportsInlineDraft: true });
+      expect(out.content).not.toMatch(/Which of them|\*\*Odessa Lark Penhalloe\*\*|\*\*Odessa Lark Penhallwo\*\*/);
+      expect(out.content.startsWith('"Odessa Lark Penhalloe" isn\'t a name on the roster, so the card is for **Odessa Lark Penhallow**.')).toBe(true);
+    });
+
+    it("the card already for the roster person: it stays for her, the typo seated by another reader is taken off", () => {
+      const lead = CARD.replace(TYPED, "Odessa Lark Penhallow");
+      const asked = request("change her name to Odessa Lark Penhalloe", { history: [{ id: "a1", role: "assistant", content: lead }] as AskRequest["history"] });
+      const seatedTypo = { ...card("Odessa Lark Penhalloe"), content: CARD.replace(TYPED, "Odessa Lark Penhalloe") };
+      const out = withCorrectionNotDropped(seatedTypo, asked);
+      expect(out.formProposal?.employeeName).toBe("Odessa Lark Penhallow");
+      expect(out.content).toContain("for **Odessa Lark Penhallow** from what you've described");
+      expect(out.content).not.toContain("**Odessa Lark Penhalloe**");
+    });
+
+    it("two roster people that close is a tie: never guessed", () => {
+      installPersonRoster(() => ["Odessa Lark Penhallow", "Odessa Lark Penhallee"]);
+      const out = withCorrectionNotDropped(card(TYPED), request("change her name to Odessa Lark Penhalloe"));
+      expect(out.formProposal?.employeeName).not.toBe("Odessa Lark Penhallow");
+      expect(out.formProposal?.employeeName).not.toBe("Odessa Lark Penhallee");
+    });
+
+    it("nobody close: the card is unchanged, said once, never \"A or B\"", () => {
+      installPersonRoster(() => ["Juno Paxton"]);
+      const out = withCorrectionNotDropped(card(TYPED), request("change her name to Odessa Lark Penhalloe"));
+      expect(out.formProposal).toMatchObject({ employeeName: TYPED, status: "ready" });
+      expect(out.content).not.toMatch(/Which of them/);
+      expect(out.content).toMatch(/^"Odessa Lark Penhalloe" isn't a name on the roster either, so the card is unchanged\./);
+    });
+
+    it("a roster spelling, or the flag off: unchanged", () => {
+      const took = card("Odessa Lark Penhallow");
+      expect(withCorrectionNotDropped(took, request("change her name to Odessa Lark Penhallow"))).toBe(took);
+      vi.stubEnv("PROPOSAL_NAME_CORRECTION_ENABLED", "");
+      const kept = card(TYPED);
       expect(withCorrectionNotDropped(kept, request("change her name to Odessa Lark Penhalloe"))).toBe(kept);
     });
   });

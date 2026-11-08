@@ -2,6 +2,9 @@ import type { AskRequest, AskResponse } from "@/lib/ai/types";
 import { proposalNameCorrectionEnabled } from "@/lib/config/chat-quality-flags";
 
 import { nameCorrectionQuestion } from "./name-correction-words";
+import { editDistance } from "./employee-match";
+import { personRosterNames } from "./person-guard";
+import { oneCloseRosterPerson, rosterSpelling } from "./roster-only-names";
 
 /**
  * ============================================================================
@@ -107,13 +110,74 @@ export function withCorrectionNotDropped(answer: AskResponse, request: Pick<AskR
   const old = cardEmployee(request);
   const wanted = CHANGE_NAME.exec(request.question)?.[1]?.replace(/^["'“‘]+|["'”’]+$/g, "").trim();
   if (!card || !old || !wanted || card.subject === "team") return answer;
-  if ((card.employeeName ?? "").trim().toLowerCase() !== old.toLowerCase() || wanted.toLowerCase() === old.toLowerCase()) return answer;
+  if (wanted.toLowerCase() === old.toLowerCase()) return answer;
   const said = nameWords(wanted);
   const had = nameWords(old);
   if (said.length < 2 || !(said[0] === had[0] || said.at(-1) === had.at(-1))) return answer;
+  const kept = cardKeptOnRoster(answer, card, old, wanted);
+  if (kept) return kept;
+  if ((card.employeeName ?? "").trim().toLowerCase() !== old.toLowerCase()) return answer;
   return {
     ...answer,
     content: `Which of them is this **${card.templateName}** for — **${old}** or **${wanted}**? Tell me and I'll draft it from what you've already described.`,
     formProposal: { ...card, employeeName: null, status: "needs_employee", supportsInlineDraft: false },
   };
+}
+
+/*
+ * AN OFF-ROSTER OR MISTYPED CORRECTION KEEPS THE CARD (QA, round 6, 8 Nov 2026; the same flag). The sibling app's
+ * R6 replay (nov5-r6-policy-kept-across-turns): with the card for the roster's <A>, "under the employee line the
+ * name is supposed to be <A, two letters swapped>" asked "Which of them … — **<A>** or **<the typo>**?", and "make
+ * that change to <A, one letter wrong>" either asked the same or put the typo on the card. A spelling that is on
+ * nobody's roster is never offered as a person and never seated: when one roster person is close to it — the one on
+ * the card, or the one the manager meant ("fix her last name <near miss>" on a card typed off the roster) — the card
+ * is for them, and the reply says so once. With no roster (a test, the browser) or no one close, as before.
+ */
+function cardKeptOnRoster(
+  answer: AskResponse,
+  card: NonNullable<AskResponse["formProposal"]>,
+  old: string,
+  wanted: string,
+): AskResponse | null {
+  const names = personRosterNames();
+  if (!names || names.length === 0 || rosterSpelling(wanted, names)) return null;
+  const meant = oneCloseRosterPerson(wanted, names) ?? oneMistypedRosterName(wanted, names);
+  const person = rosterSpelling(old, names) ?? meant;
+  if (meant && person && meant !== person) return null;
+  if (!person) {
+    // Neither spelling is anyone's, and no one is close: the card stays as the manager first typed it, never "A or B".
+    const unchanged = `"${wanted}" isn't a name on the roster either, so the card is unchanged. Tell me the name as it is on the roster.`;
+    if ((card.employeeName ?? "").trim().toLowerCase() !== old.toLowerCase()) return null;
+    return { ...answer, content: answer.content.includes(unchanged) ? answer.content : `${unchanged}\n\n${answer.content}` };
+  }
+  const onCard = (card.employeeName ?? "").trim();
+  const content = onCard && onCard !== person ? answer.content.split(`**${onCard}**`).join(`**${person}**`) : answer.content;
+  const note = `"${wanted}" isn't a name on the roster, so the card is for **${person}**. Tell me if it's someone else.`;
+  return {
+    ...answer,
+    content: content.includes(note) ? content : `${note}\n\n${content}`,
+    formProposal: { ...card, employeeName: person },
+  };
+}
+
+/**
+ * The one roster name this whole name is a mistyping of: the same number of words, each the same or one edit away
+ * (two for a word of 9 letters or more), two edits in all at most. "Marisol Otrega Valdez", "Odessa Lark Penhalloe".
+ * Two roster people that close is a tie, never guessed.
+ */
+function oneMistypedRosterName(name: string, names: readonly string[]): string | null {
+  const typed = nameWords(name);
+  const close = names.filter((roster) => {
+    const words = nameWords(roster);
+    if (words.length !== typed.length) return false;
+    let total = 0;
+    for (let i = 0; i < words.length; i += 1) {
+      const edits = editDistance(typed[i]!, words[i]!);
+      if (edits > (words[i]!.length >= 9 ? 2 : 1)) return false;
+      total += edits;
+    }
+    return total > 0 && total <= 2;
+  });
+  const people = [...new Set(close.map((roster) => roster.trim()))];
+  return people.length === 1 ? people[0]! : null;
 }

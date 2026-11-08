@@ -805,7 +805,7 @@ async function postChat(request: Request) {
       }
       // PERSON_GUARD_ENABLED: whichever reader named the card's employee, a name that is not a person never stays on it.
       if (personGuardEnabled()) answer = (await import("@/lib/forms/person-guard")).withPersonOnCard(answer);
-      // PROPOSAL_NAME_CORRECTION_ENABLED: an off-roster "change her name to …" on the card asks which, never kept silently.
+      // PROPOSAL_NAME_CORRECTION_ENABLED: an off-roster "change her name to …" on the card is never kept silently; with the roster, the card stays for the one roster person it can only be, and a typo is never offered as a person.
       answer = withCorrectionNotDropped(answer, parsed);
       // ADDRESS_NOT_PERSON_ENABLED: "coaching form for 123 Main Street" names an address, not a person (QA, 3 Nov 2026).
       if (addressNotPersonEnabled())

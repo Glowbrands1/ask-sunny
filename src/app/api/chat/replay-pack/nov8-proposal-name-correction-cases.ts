@@ -1,6 +1,7 @@
 import { expect, vi } from "vitest";
 
 import { KEARNEY, STAFF, type DirectoryRow, type ReplayAnswer, type ReplayCase, type ReplayContext } from "./cases";
+import { policyKeptPeople } from "./nov5-policy-kept-across-turns-cases";
 
 /**
  * ============================================================================
@@ -73,11 +74,17 @@ const CORRECTIONS: Record<string, string> = {
 };
 
 // Here "the name is supposed to be …" also already holds with production's flags (the sibling's did not).
-/** The sibling app's answer to an off-roster correction: it asks which, and no one is on the card meanwhile. */
-function offRosterAsked(after: ReplayAnswer): void {
-  expect(after.formProposal?.employeeName ?? null, `a name was kept or seated without the manager:\n${after.content}`).toBeNull();
-  expect(after.formProposal?.status, `the card does not wait for the employee:\n${after.content}`).toBe("needs_employee");
-  expect(after.content, `the reply does not ask which:\n${after.content}`).toMatch(/Which of them is this \*\*Corrective Action Form\*\* for — \*\*Odessa Lark Penhallwo\*\* or \*\*Odessa Lark Penhalloe\*\*\?/);
+/*
+ * An off-roster correction (QA, round 6, 8 Nov 2026). This expectation changed on purpose: round 5 followed the
+ * sibling app and asked "Which of them … — **Odessa Lark Penhallwo** or **Odessa Lark Penhalloe**?" with no one on the
+ * card. QA's round-6 rule: the card stays, and a spelling on nobody's roster is never offered as a person. One
+ * roster person is that close, so the card is for her, and the reply says the typed spelling is not on the roster.
+ */
+function offRosterKept(after: ReplayAnswer): void {
+  expect(after.formProposal, `the card was dropped:\n${after.content}`).toBeTruthy();
+  expect(after.formProposal?.employeeName, `the card is not for the roster's Odessa:\n${after.content}`).toBe("Odessa Lark Penhallow");
+  expect(after.content, `the typo is offered as a person:\n${after.content}`).not.toMatch(/Which of them|\*\*Odessa Lark Penhalloe\*\*|\*\*Odessa Lark Penhallwo\*\*/);
+  expect(after.content, `the reply does not say the spelling is not on the roster:\n${after.content}`).toContain('"Odessa Lark Penhalloe" isn\'t a name on the roster');
 }
 
 const ALREADY_HOLDS = new Set(["correct-way", "supposed-to-be"]);
@@ -101,24 +108,24 @@ export const NOV8_PROPOSAL_NAME_CORRECTION_CASES: ReplayCase[] = [
   ),
   {
     id: "nov8-proposal-name-correction-off-roster",
-    title: "an off-roster spelling (\"fix her last name penhalloe\") asks which of the two, as the sibling app does: never kept silently, no roster person seated",
+    title: "an off-roster spelling (\"fix her last name penhalloe\") keeps the card, for the one roster person that close; the typo is never offered as a person",
     report: REPORT,
     status: { open: "with production's flags the correction is not read, and the card keeps the old name silently" },
     fixFlags: [FLAG],
     async run(t) {
       const { after } = await cardAfter(t, "fix her last name penhalloe");
-      offRosterAsked(after);
+      offRosterKept(after);
     },
   },
   {
     id: "nov8-proposal-name-correction-typed-off-roster",
-    title: "\"change her name to Odessa Lark Penhalloe\" (typed, off the roster) asks which of the two, as the sibling app does: never kept silently",
+    title: "\"change her name to Odessa Lark Penhalloe\" (typed, off the roster) keeps the card, for the one roster person that close; never kept silently",
     report: "QA, round 5 (8 Nov 2026): here an off-roster \"change her name to …\" on the card kept the old name and said nothing",
     status: { open: "with production's flags the card keeps \"Odessa Lark Penhallwo\" and the reply says nothing of the spelling" },
     fixFlags: [FLAG],
     async run(t) {
       const { after } = await cardAfter(t, "change her name to Odessa Lark Penhalloe");
-      offRosterAsked(after);
+      offRosterKept(after);
     },
   },
   {
@@ -132,5 +139,39 @@ export const NOV8_PROPOSAL_NAME_CORRECTION_CASES: ReplayCase[] = [
       expect(after.formProposal?.employeeName ?? null, `the card's employee was replaced:\n${after.content}`).not.toBe("Odessa Lark Penhallow");
     },
   },
+  ...(
+    [
+      ["t5", "under the employee line the name is supposed to be marisol otrega valdez", "Marisol Otrega Valdez"],
+      ["t7", "make that change to Marisol Prtega Valdez", "Marisol Prtega Valdez"],
+    ] as const
+  ).map(
+    ([turn, said, typo]): ReplayCase => ({
+      id: `nov8-proposal-name-correction-r6-${turn}`,
+      title: `R6 ${turn}: "${said}" on the card for the roster's Marisol Ortega Valdez keeps the card for her; the typo is never offered or seated`,
+      report: `QA, round 6 (8 Nov 2026): nov5-r6-policy-kept-across-turns ${turn} asked "Which of them … — **Marisol Ortega Valdez** or **${typo}**?" (or seated the typo)`,
+      status: { open: "with production's flags the reply asks which, or the typo is put on the card" },
+      fixFlags: [FLAG],
+      async run(t) {
+        // nov5-r6-policy-kept-across-turns' turns, verbatim, up to this one; the person is that file's invented one.
+        const turns = [
+          "i have an employee, Marisol Ortega Valdze that needs a corrective action form with a customer complaint",
+          "verbal warning, no payroll deduct, tanning consultant,",
+          "fix her last name valdez",
+          "make that update",
+          "under the employee line the name is supposed to be marisol otrega valdez",
+          "redo marisol ortega valdez",
+          "make that change to Marisol Prtega Valdez",
+        ];
+        vi.setSystemTime(new Date("2026-11-02T18:00:00Z"));
+        t.directory([...STAFF, ...policyKeptPeople()]);
+        t.as("salon_director", KEARNEY);
+        const thread = t.thread();
+        let after: ReplayAnswer | null = null;
+        for (const turn of turns.slice(0, turns.indexOf(said) + 1)) after = await thread.say(turn);
+        expect(after!.formProposal, `the card was dropped:\n${after!.content}`).toBeTruthy();
+        expect(after!.formProposal?.employeeName, `the card is not for the roster's Marisol:\n${after!.content}`).toBe("Marisol Ortega Valdez");
+        expect(after!.content, `the typo is offered as a person:\n${after!.content}`).not.toMatch(new RegExp(`Which of them|\\*\\*${typo}\\*\\*`));
+      },
+    }),
+  ),
 ];
-
