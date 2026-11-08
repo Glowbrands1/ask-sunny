@@ -2818,6 +2818,18 @@ export function replyMatchesCardEnabled(): boolean {
   return envFlag("REPLY_MATCHES_CARD_ENABLED");
 }
 
+// coding 5: FORM_RECORDS_NO_JUDGEMENT (beside REPLY_MATCHES_CARD, not at a block end, so merges do not collide)
+/**
+ * FORM_RECORDS_NO_JUDGEMENT_ENABLED (coding 5, port from the sibling app: QA's live test there, 8 Nov 2026; same flag in
+ * both apps; default off). Listing someone's forms added "a notable number of Corrective Actions in under two weeks for
+ * one person" and "worth reviewing … before deciding what comes next". On: the Form Monitoring block tells the model
+ * to list each form with its date and status only, and `withoutRecordJudgement` drops such sentences from a records
+ * answer (`forms/chat-form-records.ts`). Off, as before.
+ */
+export function formRecordsNoJudgementEnabled(): boolean {
+  return envFlag("FORM_RECORDS_NO_JUDGEMENT_ENABLED");
+}
+
 /**
  * CITATION_LINE_KEPT_ON_REVISION_ENABLED (QA's production-flags read and
  * bisect, 5 Nov 2026; default off): with POLICY_CITATION_ENABLED on in
