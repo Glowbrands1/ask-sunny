@@ -251,13 +251,14 @@ async function postChat(request: Request) {
       }
       // FORM_NAME_FROM_ROSTER_ENABLED, part 2: every name reader of the turn reads this message's request slot (`lib/forms/request-slot.ts`).
       if (formNameFromRosterEnabled()) (await import("@/lib/forms/request-message-store")).enterRequestMessage(asked.question);
-      // NEAR_MISS_QUESTION_RULES_ENABLED: the card on screen, so a near-miss never replaces it (`lib/forms/near-miss-question-rules.ts`).
+      // METRIC_GUARD_ENABLED, FORM_NAME off: only the metric guards read the message (`request-slot.ts` metricMessage).
+      else if (metricGuardEnabled()) (await import("@/lib/forms/request-message-store")).enterMetricMessage(asked.question);
+      // NEAR_MISS_QUESTION_RULES_ENABLED (after the FORM_NAME / METRIC_GUARD pair above, never between them — the sibling
+      // app's round-6 gate, 8 Nov 2026: there it took that `else` and the metric guards stopped reading the message): the card on screen, so a near-miss never replaces it (`lib/forms/near-miss-question-rules.ts`).
       if (nearMissQuestionRulesEnabled()) {
         const onScreen = (await import("@/lib/forms/near-miss-question-rules")).cardEmployee(asked);
         if (onScreen) (await import("@/lib/forms/request-message-store")).enterCardOnScreen(onScreen);
       }
-      // METRIC_GUARD_ENABLED, FORM_NAME off: only the metric guards read the message (`request-slot.ts` metricMessage).
-      else if (metricGuardEnabled()) (await import("@/lib/forms/request-message-store")).enterMetricMessage(asked.question);
       /*
        * PERSON_GUARD_ENABLED: the actor's roster, for the rule that somebody on
        * it is always a person. One directory read per turn, only with the flag
