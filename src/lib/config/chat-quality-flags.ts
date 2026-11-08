@@ -3304,6 +3304,18 @@ export function cardPolicyPlanOnlyEnabled(): boolean {
  */
 export function listPolicyIsEditEnabled(): boolean {
   return envFlag("LIST_POLICY_IS_EDIT_ENABLED");
+// coding 2: NO_ACCOUNT_NO_APP_POLICY
+/**
+ * NO_ACCOUNT_NO_APP_POLICY_ENABLED (QA's Sunny flip-9 live tester, 8 Nov 2026; default off). "ca for <A> not late"
+ * asked "You haven't told me what happened yet" and, beside it, said "**Policy:** Attendance — read from this
+ * request" (AS_YOU_SAID_APP_READ's reading of the app's own line, for a fault the manager denied), "Attendance Policy,
+ * JBA Policy Manual p.14" and an Action Plan to "review the Attendance policy". QA's rule: no account, so no policy is
+ * cited anywhere on that card; a policy the manager named stays. With this flag on, a Corrective Action card that asks
+ * what happened, with no policy the manager named, loses that Policy line, its citation lines and citations, and its
+ * Action Plan names "the applicable company policy" (`ai/no-account-policy-line.ts`). Off, as before.
+ */
+export function noAccountNoAppPolicyEnabled(): boolean {
+  return envFlag("NO_ACCOUNT_NO_APP_POLICY_ENABLED");
 }
 
 // coding 2: REMOVE_POLICY_NOT_NAMED
