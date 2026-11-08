@@ -3246,6 +3246,16 @@ export function sourceNoteGuardEnabled(): boolean {
  */
 export function twoFormsEachPersonEnabled(): boolean {
   return envFlag("TWO_FORMS_EACH_PERSON_ENABLED");
+// coding 2: CARD_POLICY_PLAN_ONLY
+/**
+ * CARD_POLICY_PLAN_ONLY_ENABLED (QA, 8 Nov 2026; default off). An under-performance Corrective Action whose Policy
+ * line was Standards of Conduct sometimes planned to "review the Standards of Conduct and Evaluations and Raises
+ * policies" with a second source, "Evaluations and Raises" p.34. With this flag on, on a Corrective Action card with a
+ * Policy line, the Action Plan, the citation lines and the reply's citations keep only the policy that line names
+ * (`ai/card-policy-plan-only.ts`). No Policy line, or nothing left: unchanged. Off, as before.
+ */
+export function cardPolicyPlanOnlyEnabled(): boolean {
+  return envFlag("CARD_POLICY_PLAN_ONLY_ENABLED");
 }
 
 // coding 2: REMOVE_POLICY_NOT_NAMED
