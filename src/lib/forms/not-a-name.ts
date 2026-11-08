@@ -52,14 +52,30 @@ const NEVER_IN_A_NAME = new Set(["if", "possible", "possibly", "maybe", "perhaps
 /*
  * ACCOUNT_VERB_NOT_A_NAME_ENABLED (QA round 5, sf-s38, 8 Nov 2026): "make me CA for <first name> failing to complete
  * shifts" made the card for "<First> Failing". A verb that opens the account after a name ("for <name> failing to …",
- * "… missing her shift", "… not showing up", "… being late") is never part of the name. The words are the request's
- * reasons the intake already reads (`corrective-action-intake.ts`, "for missing / not / being / failing …").
+ * "… missing her shift", "… not showing up", "… being late") is never part of the name: the name reader cuts a
+ * candidate there (`nameBeforeAccountVerb`, Pau-approved lines in the protected `forms/proposal.ts`). The words are the
+ * request's reasons the intake already reads (`corrective-action-intake.ts`, "for missing / not / being / failing …").
  */
 const ACCOUNT_VERBS = new Set([
   "not", "missing", "skipping", "being", "failing", "leaving", "arriving", "using", "taking", "violating", "ignoring",
   "refusing", "talking", "wearing", "coming", "showing", "attending", "calling", "opening", "closing", "forgetting",
   "losing", "breaking", "mishandling", "clocking",
 ]);
+
+/**
+ * ACCOUNT_VERB_NOT_A_NAME_ENABLED, for the name reader (protected `forms/proposal.ts`, Pau's lines): a candidate cut
+ * at the first account verb after its first word, so "Rhea Calloway failing" is "Rhea Calloway" and "rhea failing" is
+ * "rhea". Only a word of ACCOUNT_VERBS cuts; any other lower-case word ("de la Cruz", "van der Berg") is kept. Null
+ * when nothing is left. Off, the candidate as it is.
+ */
+export function nameBeforeAccountVerb(candidate: string): string | null {
+  if (!accountVerbNotANameEnabled()) return candidate;
+  const words = candidate.trim().split(/\s+/);
+  const at = words.findIndex((word, index) => index > 0 && ACCOUNT_VERBS.has(word.toLowerCase().replace(/[’]/g, "'")));
+  if (at < 0) return candidate;
+  const kept = words.slice(0, at).join(" ").trim();
+  return kept === "" ? null : kept;
+}
 
 /** Given alone, these are the whole team or nobody in particular. */
 const NOBODY_IN_PARTICULAR = new Set([
@@ -172,7 +188,6 @@ export function isNotAName(candidate: string | null | undefined): boolean {
   if (words.length === 0) return false;
   if (isThingRun(words)) return true;
   if (words.some((word) => NEVER_IN_A_NAME.has(word))) return true;
-  if (accountVerbNotANameEnabled() && words.some((word) => ACCOUNT_VERBS.has(word))) return true;
   if (words.every((word) => NOBODY_IN_PARTICULAR.has(word))) return true;
   if (words.length >= 2 && LEADING_VERB.has(words[0]!)) return true;
   return PLACE_KEYS.has(storeNameKey(candidate));
