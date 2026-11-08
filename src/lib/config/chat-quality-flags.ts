@@ -3456,4 +3456,13 @@ export function createCommandPointsToCardEnabled(): boolean {
  */
 export function cardComplaintNotAccountEnabled(): boolean {
   return envFlag("CARD_COMPLAINT_NOT_ACCOUNT_ENABLED");
+ * PROPOSAL_NAME_CORRECTION_ENABLED (QA, round 5, 8 Nov 2026; ported from Ask Bubbles; default off; reads with
+ * NAME_CORRECTION_WORDS_ENABLED, live). On a card not yet created, "fix her last name <surname>" (and "her last name
+ * is …", "it's spelled …") was not applied: the card kept the old name, and "it's spelled <surname>" put "Spelled
+ * <surname>" on the card. With this flag on, the turn is read as "change her name to <the name>" against the card's
+ * employee, and the roster decides as for any typed name (`forms/proposal-name-correction.ts`, called from the chat
+ * route). Off, as before.
+ */
+export function proposalNameCorrectionEnabled(): boolean {
+  return envFlag("PROPOSAL_NAME_CORRECTION_ENABLED");
 }
