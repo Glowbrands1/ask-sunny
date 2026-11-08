@@ -3200,6 +3200,15 @@ export function sourceNoteGuardEnabled(): boolean {
   return envFlag("SOURCE_NOTE_GUARD_ENABLED");
 }
 
+/**
+ * TWO_FORMS_CARD_NOT_ASKED_ENABLED (QA, 8 Nov 2026, live check conv ef902fec; default off). A card that already names
+ * its employee is never asked "Which of them is this <form> for — <that employee> or …?": the line is left out of the
+ * final reply (`forms/card-not-asked.ts`). Off, as before.
+ */
+export function twoFormsCardNotAskedEnabled(): boolean {
+  return envFlag("TWO_FORMS_CARD_NOT_ASKED_ENABLED");
+}
+
 // coding 2: TWO_FORMS_EACH_PERSON
 /**
  * TWO_FORMS_EACH_PERSON_ENABLED (QA, Sunny live tester after flip 7, 7 Nov 2026; default off). "Coaching form for <A>.
