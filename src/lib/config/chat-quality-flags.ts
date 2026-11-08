@@ -3161,6 +3161,15 @@ export function exitTerminationStatedEnabled(): boolean {
  */
 export function exitOtherPersonNotSubjectEnabled(): boolean {
   return envFlag("EXIT_OTHER_PERSON_NOT_SUBJECT_ENABLED");
+// coding 2: FIELD_LABEL_NOT_A_QUESTION
+/**
+ * FIELD_LABEL_NOT_A_QUESTION_ENABLED (QA, 8 Nov 2026, from the sibling app's live tester; the same here; default off;
+ * same flag in both apps). On an open exit card, "how employee resigned - told management" was answered as a policy
+ * question with no card: "how" read as a question. With this flag on, a clause that opens with one of the exit form's
+ * field labels and gives its value is no question (`ai/question-not-form.ts`); with "?" it still is. Off, as before.
+ */
+export function fieldLabelNotAQuestionEnabled(): boolean {
+  return envFlag("FIELD_LABEL_NOT_A_QUESTION_ENABLED");
 }
 
 /**
