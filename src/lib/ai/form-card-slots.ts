@@ -217,7 +217,7 @@ export function attachFormTurnSources(given: {
    * now being written. The notes are every manager turn joined line by line, so the request starts at the last line
    * that asks for a form; a cash-drawer CA after a late-opening one was cited "Late Opening Policy … p.15".
    */
-  const own = secondRequestOwnAccountEnabled() ? currentFormRequestTurns(given.turns ?? given.notes.split("\n")) : null;
+  const own = secondRequestOwnAccountEnabled() ? currentFormRequestTurns(turnsOfNotes(given)) : null;
   const scoped = own ? { ...given, notes: own.join("\n") } : given;
   const input = formChoiceStatedEnabled() ? { ...scoped, modelHeading: headingForCard(scoped) } : scoped;
   const found = formTurnCitations(input);
@@ -269,8 +269,21 @@ export function attachFormTurnSources(given: {
     content,
     input.attendanceCitation === true && sections.some((section) => /^attendance$/i.test(section.heading)),
   );
-  if (own && own.length < (given.turns ?? given.notes.split("\n")).length) content = withOwnRequestPolicyLine(content, sections);
+  if (own && own.length < turnsOfNotes(given).length) content = withOwnRequestPolicyLine(content, sections);
   return { content, citations };
+}
+
+/**
+ * The turns `notes` was joined from: the last of the caller's turns that make up exactly those notes (a caller may
+ * pass only some, as CARD_POLICY_OWN_REQUEST_ENABLED's `cardPolicyTurns` does, so the cut reads the same turns as the
+ * notes); the notes' lines when no such turns are given (QA, round 5, 8 Nov 2026).
+ */
+function turnsOfNotes(given: { readonly notes: string; readonly turns?: readonly string[] }): readonly string[] {
+  const turns = given.turns ?? [];
+  for (let from = 0; from < turns.length; from += 1) {
+    if (turns.slice(from).join("\n") === given.notes) return turns.slice(from);
+  }
+  return given.notes.split("\n");
 }
 
 /*
