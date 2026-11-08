@@ -3326,6 +3326,17 @@ export function noAccountNoAppPolicyEnabled(): boolean {
  */
 export function amountBeforePayrollDeductEnabled(): boolean {
   return envFlag("AMOUNT_BEFORE_PAYROLL_DEDUCT_ENABLED");
+// coding 2: COPY_OWN_SALON
+/**
+ * COPY_OWN_SALON_ENABLED (QA's Sunny flip-9 live tester, 8 Nov 2026; default off). "copy this form for <B>" — and
+ * "the same draft that we did with <A> by changing the name and position?" → "<B>" (SAME_FORM_COPY_NEW_PERSON) —
+ * gave B's card A's salon: the card took the salon the conversation named for A, though the ask says "Their own
+ * position and location go on it". With this flag on, a card that copies another person's form takes the new
+ * person's own salon when the roster gives them exactly one in the manager's scope (`forms/same-form-copy.ts`
+ * withCopyOwnSalon). Several, or none: the card is left as it was. Off, as before.
+ */
+export function copyOwnSalonEnabled(): boolean {
+  return envFlag("COPY_OWN_SALON_ENABLED");
 }
 
 // coding 2: REMOVE_POLICY_NOT_NAMED

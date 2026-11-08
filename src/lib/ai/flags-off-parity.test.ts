@@ -250,6 +250,8 @@ const NEW_FLAGS = [
   "NO_ACCOUNT_NO_APP_POLICY_ENABLED",
   // coding 2: AMOUNT_BEFORE_PAYROLL_DEDUCT (default off): forced off with the others in the child run.
   "AMOUNT_BEFORE_PAYROLL_DEDUCT_ENABLED",
+  // coding 2: COPY_OWN_SALON (default off): forced off with the others in the child run.
+  "COPY_OWN_SALON_ENABLED",
   // coding 2: REMOVE_POLICY_NOT_NAMED (A1; default off): forced off with the others in the child run.
   "REMOVE_POLICY_NOT_NAMED_ENABLED",
   "FOLLOWUP_NEW_TOPIC_RETRIEVAL_ENABLED",
