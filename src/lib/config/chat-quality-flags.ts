@@ -2550,6 +2550,15 @@ export function formPatchReaderFixesEnabled(): boolean {
 export function editPolicyAskEnabled(): boolean {
   return envFlag("EDIT_POLICY_ASK_ENABLED") && formPatchReducerEnabled();
 }
+/**
+ * UNKNOWN_NAME_ASK_ENABLED (port of the sibling app's flag; QA's round-6 audit, 8 Nov 2026, ran its BF7 chain here;
+ * default off). A typed name not on the directory was never read, and "Who is this **<form>** for? Give me their name
+ * …" came back on every turn. On: the typed name is named back once and the question is never shown twice in a row
+ * (`ai/unknown-name-ask.ts`). Off, as before.
+ */
+export function unknownNameAskEnabled(): boolean {
+  return envFlag("UNKNOWN_NAME_ASK_ENABLED");
+}
 // --- end coding 5 flags ---
 
 /**
