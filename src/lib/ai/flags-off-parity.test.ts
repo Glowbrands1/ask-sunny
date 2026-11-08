@@ -461,6 +461,8 @@ const NEW_FLAGS = [
   "TWO_FORMS_OWN_PERSON_ENABLED",
   // coding 2: TWO_FORMS_EACH_PERSON (default off): forced off with the others in the child run.
   "TWO_FORMS_EACH_PERSON_ENABLED",
+  // coding 5: UNKNOWN_NAME_ASK (port of the sibling app's flag, default off): forced off with the others in the child run.
+  "UNKNOWN_NAME_ASK_ENABLED",
 ] as const;
 
 const PROTECTED = [
