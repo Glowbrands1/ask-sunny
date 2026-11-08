@@ -16,8 +16,9 @@ import { ASK_WHO } from "./roster-only-names";
  * name readers read the first turn's typed name again and seated its roster near-miss. A reply that opens by turning
  * the name down ("no", "nope", "wrong", "not …"; not when that opening clause is itself the payroll answer, "no payroll
  * deduct") never gets a card for that name: the card keeps the details and waits for the employee, and the reply asks
- * who. A full name given in the same reply ("no, it's <name>") is read as before (`ai/first-name-suggest.ts`), so
- * only the name turned down is ever taken off.
+ * who. Nor is the same question asked again about it (the sibling app's Corvina chat: "no, …" → "Is this for
+ * **<that name>**?" once more): the reply asks who. A full name given in the same reply ("no, it's <name>") is read as
+ * before (`ai/first-name-suggest.ts`), so only the name turned down is ever taken off.
  *
  * (b) is in `roster-only-names.ts`: it needs the card on screen (`cardEmployee`, entered by the chat route).
  */
@@ -50,8 +51,11 @@ export function turnedDownName(request: Pick<AskRequest, "history" | "question">
 export function withoutTurnedDownName(answer: AskResponse, request: Pick<AskRequest, "history" | "question">): AskResponse {
   if (!nearMissQuestionRulesEnabled()) return answer;
   const name = turnedDownName(request);
+  if (!name) return answer;
+  const again = ASKED.exec(answer.content.trim())?.[1]?.trim();
+  if (!answer.formProposal && again && again.toLowerCase() === name.toLowerCase()) return { ...answer, content: ASK_WHO };
   const card = answer.formProposal;
-  if (!name || !card || (card.employeeName ?? "").trim().toLowerCase() !== name.toLowerCase()) return answer;
+  if (!card || (card.employeeName ?? "").trim().toLowerCase() !== name.toLowerCase()) return answer;
   const content = answer.content
     .replace(new RegExp(String.raw`\s+for\s+\*\*${escape(name)}\*\*`, "g"), "")
     .split(`**${name}**`)

@@ -36,6 +36,8 @@ describe("NEAR_MISS_QUESTION_RULES_ENABLED", () => {
     expect(out.content).not.toContain("**Corvina Vellacott**");
     expect(out.content).not.toMatch(/Create the draft here/);
     expect(out.content).toMatch(/Who is this form for\? Tell me the employee's full name\.$/);
+    const asked = { content: ASKED, citations: [] } as unknown as AskResponse;
+    expect(withoutTurnedDownName(asked, request("no, verbal warning")).content).toBe("Who is this form for? Tell me the employee's full name.");
     const other = answer("Remy Calder");
     expect(withoutTurnedDownName(other, request("no, it's Remy Calder"))).toBe(other);
   });
