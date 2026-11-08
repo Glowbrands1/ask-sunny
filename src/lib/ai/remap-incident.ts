@@ -12,6 +12,9 @@ import {
 } from "@/lib/config/chat-quality-flags";
 import { withoutPriorStepClauses } from "@/lib/forms/form-date-answer";
 import { CA_POLICY_LABEL, isSalesPolicyReading, readCaPolicy, STANDARDS_OF_CONDUCT, type CaPolicyName } from "@/lib/forms/ca-policy";
+import { correctedDates, withoutPriorStepClauses } from "@/lib/forms/form-date-answer";
+import { businessToday } from "@/lib/business-date";
+import { CA_POLICY_LABEL, readCaPolicy, STANDARDS_OF_CONDUCT, type CaPolicyName } from "@/lib/forms/ca-policy";
 import {
   findManualSection,
   headingKey,
@@ -289,8 +292,11 @@ export function currentRequestStart(input: {
     // new one only with its own incident, below.
     // QA's Sunny round-4 gate (8 Nov 2026, sf-s21 / sf-s22): only in the turn's own first line — a pasted document
     // after it ("Use this to make it: … 1. **Kit Coaching Document** …") names a form without asking for one.
+    // QA's Sunny round-5 gate (8 Nov 2026, Q6): "sorry, the verbal ca was on 9-2-26 not 9-1-26" corrects a prior step's
+    // date; the "ca" in it is that step, never a second request.
     const isRequest =
-      REQUEST_TURN.test(asked) || (secondRequestOwnAccountEnabled() && requests >= 1 && FORM_WORD_ANYWHERE.test(firstLine(turn)));
+      REQUEST_TURN.test(asked) ||
+      (secondRequestOwnAccountEnabled() && requests >= 1 && FORM_WORD_ANYWHERE.test(firstLine(turn)) && !onlyAboutAPriorStep(turn));
     if (!isRequest) continue;
     requests += 1;
     // SECOND_REQUEST_OWN_ACCOUNT_ENABLED (QA's Sunny round-3 gate, 7 Nov 2026): the turn's incident must also stand
@@ -306,6 +312,21 @@ export function currentRequestStart(input: {
     if (requests > 1 && tells && turnIncident(turn, input.employeeName, input.slotClause)) start = index;
   }
   return start;
+}
+
+/*
+ * SECOND_REQUEST_OWN_ACCOUNT_ENABLED (QA's Sunny round-5 gate, 8 Nov 2026, corrective-action-conversation-qa Q6): a turn
+ * that corrects a date ("… on 9-2-26 not 9-1-26") or only states an earlier step ("the verbal ca was on 9-2-26"), and
+ * asks for nothing, is that step's history. The form it names is the step, not a new request.
+ */
+const ASKS_FOR_A_FORM = /\b(?:create|make\s+(?:a|an|it|another|me)|start|draft|new|another|need\s+(?:a|an)|open|write\s+(?:up|her|him|them))\b/i;
+
+function onlyAboutAPriorStep(turn: string): boolean {
+  if (ASKS_FOR_A_FORM.test(turn)) return false;
+  const today = businessToday();
+  if (correctedDates(turn, today).size > 0) return true;
+  const { text, dropped } = withoutPriorStepClauses(turn, today, turn);
+  return dropped && !FORM_WORD_ANYWHERE.test(firstLine(text));
 }
 
 /** The state sentences the intent read puts in front of a question ("The employee is …."). */
