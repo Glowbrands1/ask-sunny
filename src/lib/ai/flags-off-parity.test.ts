@@ -484,6 +484,9 @@ const NEW_FLAGS = [
   "CARD_COMPLAINT_NOT_ACCOUNT_ENABLED",
   // coding 5: UNKNOWN_NAME_ASK (port of the sibling app's flag, default off): forced off with the others in the child run.
   "UNKNOWN_NAME_ASK_ENABLED",
+  // coding 5: CORRECTED_DATE_KEPT (default off): forced off with the others in the child run.
+  "CORRECTED_DATE_KEPT_ENABLED",
+  "DATE_QUESTION_KEPT_ENABLED",
 ] as const;
 
 const PROTECTED = [

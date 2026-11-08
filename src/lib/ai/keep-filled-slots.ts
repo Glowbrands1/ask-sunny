@@ -49,12 +49,14 @@ import {
   requestParticipleLeadEnabled,
   proposalMakeItAboutEnabled,
   proposalPolicySetAsideEnabled,
+  dateQuestionKeptEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { turnsMadeAbout, withObservationMadeAbout } from "./make-it-about";
 import { NOTHING_SET_ASIDE, citationSetAside, policiesSetAside, setAsideAnything, withPolicySetAside, withoutPolicyAsks } from "@/lib/forms/policy-set-aside";
 import { namesOnlyAPolicy } from "@/lib/forms/person-guard";
 import { foldsToGlossaryTerm } from "./chat-glossary";
 import { statedFormDate } from "@/lib/forms/incident-dates";
+import { correctedIncidentDate } from "@/lib/forms/corrected-incident-date";
 import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
 import { cleanPersonName, employeeNamedOnPurpose } from "@/lib/forms/roster-validated-name";
 import type { ChatFormProposal, SourceCitation } from "@/types";
@@ -221,7 +223,7 @@ export function holdFilledSlots(input: {
    * about, and the form is dated the day it is created until they answer —
    * over the intent read's "It happened on …" line, which took one of them.
    */
-  const stated = priorSentenceFixEnabled() && next.templateKey === "dpoa"
+  const read = priorSentenceFixEnabled() && next.templateKey === "dpoa"
     ? statedFormDate(
         // NEW_REQUEST_OWN_DATE_ENABLED: a new create request with its own date is read alone.
         newRequestWithOwnDate(withoutStateLead(input.question), input.today)
@@ -230,6 +232,16 @@ export function holdFilledSlots(input: {
         input.today,
       )
     : null;
+  // CORRECTED_DATE_KEPT_ENABLED: among several dates, the incident date the manager corrected to is the card's date.
+  const corrected =
+    read && read.iso === null && read.candidates.length > 1
+      ? correctedIncidentDate(
+          [...input.history.filter((turn) => turn.role === "user").map((turn) => withoutStateLead(turn.content)), withoutStateLead(input.question)],
+          read.candidates,
+          input.today,
+        )
+      : null;
+  const stated = read && corrected ? { ...read, iso: corrected, candidates: [], question: null } : read;
   if (stated && (stated.iso ?? null) !== (next.formDate ?? null)) next = { ...next, formDate: stated.iso };
   if (payrollDeduct && payrollDeduct !== next.payrollDeduct) next = { ...next, payrollDeduct };
   if (warningLevel && warningLevel !== next.warningLevel) next = { ...next, warningLevel };
@@ -251,6 +263,10 @@ export function holdFilledSlots(input: {
   }
   content = dropWarningLines(content);
   if (stated) content = withDateLine(content, stated.iso);
+  // DATE_QUESTION_KEPT_ENABLED: the date this step leaves open is asked about, never dropped in silence.
+  if (dateQuestionKeptEnabled() && stated && stated.iso === null && stated.question && !/Which date goes on the form\?/i.test(content)) {
+    content = `${content.trimEnd()}\n\n${stated.question}`;
+  }
   if (next.templateKey === "stc-exit" && next.employeeName) {
     content = exitContent(content, next, turns.join("\n"), input.today);
   }

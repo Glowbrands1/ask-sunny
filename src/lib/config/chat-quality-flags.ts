@@ -2558,6 +2558,23 @@ export function editPolicyAskEnabled(): boolean {
  */
 export function unknownNameAskEnabled(): boolean {
   return envFlag("UNKNOWN_NAME_ASK_ENABLED");
+ * CORRECTED_DATE_KEPT_ENABLED (QA's round-5 trace of corrective-action-conversation-qa Q6, 8 Nov 2026; coding 5;
+ * default off). "the meeting was actually on 10-19-26" after a request dated 10-20-26: PRIOR_SENTENCE_FIX's date step
+ * saw two incident dates and dated the card null, so Create saved today's date. On: the incident date the manager
+ * corrected to is the card's date; a corrected prior step's date never is (`forms/corrected-incident-date.ts`). Off, as
+ * before.
+ */
+export function correctedDateKeptEnabled(): boolean {
+  return envFlag("CORRECTED_DATE_KEPT_ENABLED");
+}
+/**
+ * DATE_QUESTION_KEPT_ENABLED (QA's round-5 trace of Q6, 8 Nov 2026; coding 5; default off). When PRIOR_SENTENCE_FIX's
+ * date step (`ai/keep-filled-slots.ts`) left the card's date open between several dates, it dated the card null and
+ * dropped its own "Which date goes on the form?", so the manager was never asked and Create dated the form the day it
+ * was pressed. On: that question is added to the reply when the reply does not already ask it. Off, as before.
+ */
+export function dateQuestionKeptEnabled(): boolean {
+  return envFlag("DATE_QUESTION_KEPT_ENABLED");
 }
 // --- end coding 5 flags ---
 
