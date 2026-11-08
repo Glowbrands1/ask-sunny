@@ -30,6 +30,7 @@ import type { KnowledgeCategory, SourceCitation } from "@/types";
 
 import { accountManualSections } from "./account-manual-sections";
 import { withoutAppLines } from "./app-sentences";
+import { isPolicyCorrection } from "./policy-correction-turn";
 import { formatManualCitation } from "./policy-citation-fields";
 
 /**
@@ -672,6 +673,8 @@ export function accountSentences(
       const trimmed = sentence.trim();
       if (STATE_SENTENCE.test(trimmed) || isEditTurn(trimmed) || TALKS_TO_THE_APP.test(trimmed) || ASKS_FOR_HELP.test(trimmed)) continue;
       if (/^it\s+happened\b/i.test(trimmed)) continue;
+      // POLICY_CORRECTION_NOT_ACCOUNT_ENABLED: "it should be under performance not standard of conduct" is about the form.
+      if (isPolicyCorrection(trimmed)) continue;
       const parts = sentence
         .split(",")
         .map((part) => part.trim())

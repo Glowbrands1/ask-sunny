@@ -2948,6 +2948,18 @@ export function underPerformanceExplainedEnabled(): boolean {
   return envFlag("UNDER_PERFORMANCE_EXPLAINED_ENABLED");
 }
 
+// coding 2: POLICY_CORRECTION_NOT_ACCOUNT
+/**
+ * POLICY_CORRECTION_NOT_ACCOUNT_ENABLED (QA's Sunny round-5 live tester, 8 Nov 2026, item 3; default off; same flag in
+ * both apps). "it should be under performance not standard of conduct", turn 4 of a sales Corrective Action, was pasted
+ * into the Observation of Offense. With this flag on, a short sentence that only says which policy or category applies
+ * ("it should be X not Y", "it's X not Y", "wrong policy") is no account (`ai/policy-correction-turn.ts`); the turn
+ * stays in the request for the policy readers. Off, as before.
+ */
+export function policyCorrectionNotAccountEnabled(): boolean {
+  return envFlag("POLICY_CORRECTION_NOT_ACCOUNT_ENABLED");
+}
+
 /**
  * SALES_SHORTFALL_OBJECT_ENABLED (QA, 6 Nov 2026, tester batch 1 after the
  * Sunny flip; default off). "Not meeting sales requirements for the month of

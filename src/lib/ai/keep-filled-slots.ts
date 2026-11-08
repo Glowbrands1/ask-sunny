@@ -1,4 +1,5 @@
 import { PRODUCTION_SALONS, salonById } from "@/data/salons";
+import { isPolicyCorrection } from "./policy-correction-turn";
 import { observationAccount } from "@/lib/forms/ca-policy";
 import { onlyDeniesForObservation } from "./ca-what-happened";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
@@ -768,6 +769,8 @@ function withObservation(content: string, turns: readonly string[], employeeName
       // LEVEL_STEP_NOT_ACCOUNT_ENABLED: "this should be a written and note a verbal ca was given on 9-1-26" says nothing that happened.
       const said = (levelStepNotAccountEnabled() ? withoutLevelAndStepClauses(part) : part).trim();
       if (said.length < 12) continue;
+      // POLICY_CORRECTION_NOT_ACCOUNT_ENABLED: "it should be under performance not standard of conduct" is about the form.
+      if (isPolicyCorrection(said)) continue;
       // PRIOR_SENTENCE_FIX_ENABLED (coordinator, 26 Oct 2026): "she was late on 10-5" is the account
       // however few words it has beyond the request, with a prior clause beside it or not.
       const incident = today !== undefined && priorSentenceFixEnabled() && !isAppLine(said) && describesIncident(said);
