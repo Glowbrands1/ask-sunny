@@ -96,6 +96,8 @@ describe("ADJACENT_SOURCE_MARKERS_ENABLED", () => {
     const { withoutSourceMarkers } = await import("./source-note");
     expect(withoutSourceMarkers(LIVE)).toBe("Membership/pricing discussions, and asking every client to see their eyewear.\n\nI still need the employee's full name.");
     expect(withoutSourceMarkers("Greet every client [S4] [S3], every time [S2, S5][S1].")).toBe("Greet every client, every time.");
+    // coding 4's sf-s38, the live text: a dash after the tag.
+    expect(withoutSourceMarkers("Those sections are written for an MSB in an STC context [S1]- don't cover it.")).toBe("Those sections are written for an MSB in an STC context- don't cover it.");
     expect(withoutSourceMarkers("See the Late Opening Policy [S1 p.14].")).toBe("See the Late Opening Policy [S1 p.14].");
     expect(withoutSourceMarkers("Hi [Employee], [S2][Salon 12].")).toBe("Hi [Employee], [S2][Salon 12].");
   });
