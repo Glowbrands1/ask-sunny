@@ -80,9 +80,10 @@ const CORRECTIONS: Record<string, string> = {
  * card. QA's round-6 rule: the card stays, and a spelling on nobody's roster is never offered as a person. One
  * roster person is that close, so the card is for her, and the reply says the typed spelling is not on the roster.
  */
-function offRosterKept(after: ReplayAnswer): void {
+function offRosterKept(before: Card, after: ReplayAnswer): void {
   expect(after.formProposal, `the card was dropped:\n${after.content}`).toBeTruthy();
   expect(after.formProposal?.employeeName, `the card is not for the roster's Odessa:\n${after.content}`).toBe("Odessa Lark Penhallow");
+  restUnchanged(before, after.formProposal!);
   expect(after.content, `the typo is offered as a person:\n${after.content}`).not.toMatch(/Which of them|\*\*Odessa Lark Penhalloe\*\*|\*\*Odessa Lark Penhallwo\*\*/);
   expect(after.content, `the reply does not say the spelling is not on the roster:\n${after.content}`).toContain('"Odessa Lark Penhalloe" isn\'t a name on the roster');
 }
@@ -113,8 +114,8 @@ export const NOV8_PROPOSAL_NAME_CORRECTION_CASES: ReplayCase[] = [
     status: { open: "with production's flags the correction is not read, and the card keeps the old name silently" },
     fixFlags: [FLAG],
     async run(t) {
-      const { after } = await cardAfter(t, "fix her last name penhalloe");
-      offRosterKept(after);
+      const { before, after } = await cardAfter(t, "fix her last name penhalloe");
+      offRosterKept(before, after);
     },
   },
   {
@@ -124,8 +125,8 @@ export const NOV8_PROPOSAL_NAME_CORRECTION_CASES: ReplayCase[] = [
     status: { open: "with production's flags the card keeps \"Odessa Lark Penhallwo\" and the reply says nothing of the spelling" },
     fixFlags: [FLAG],
     async run(t) {
-      const { after } = await cardAfter(t, "change her name to Odessa Lark Penhalloe");
-      offRosterKept(after);
+      const { before, after } = await cardAfter(t, "change her name to Odessa Lark Penhalloe");
+      offRosterKept(before, after);
     },
   },
   {

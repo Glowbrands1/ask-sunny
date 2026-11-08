@@ -130,6 +130,16 @@ describe("PROPOSAL_NAME_CORRECTION_ENABLED", () => {
       expect(out.content).not.toContain("**Odessa Lark Penhalloe**");
     });
 
+    it("the turn is read as the roster person before the card is drafted, and the reply names the typed spelling", () => {
+      const asked = withProposalNameCorrection(request("fix her last name penhalloe"));
+      expect(asked.question).toBe("change her name to Odessa Lark Penhallow");
+      const drafted = { ...card("Odessa Lark Penhallow"), content: CARD.replace(TYPED, "Odessa Lark Penhallow") };
+      const out = withCorrectionNotDropped(drafted, asked);
+      expect(out.formProposal?.employeeName).toBe("Odessa Lark Penhallow");
+      expect(out.content.startsWith('"Odessa Lark Penhalloe" isn\'t a name on the roster, so the card is for **Odessa Lark Penhallow**.')).toBe(true);
+      expect(withProposalNameCorrection(request("change her name to Juno Paxton")).question).toBe("change her name to Juno Paxton");
+    });
+
     it("two roster people that close is a tie: never guessed", () => {
       installPersonRoster(() => ["Odessa Lark Penhallow", "Odessa Lark Penhallee"]);
       const out = withCorrectionNotDropped(card(TYPED), request("change her name to Odessa Lark Penhalloe"));

@@ -190,7 +190,9 @@ function cardKeptOnRoster(
     return { ...answer, content: answer.content.includes(unchanged) ? answer.content : `${unchanged}\n\n${answer.content}` };
   }
   const onCard = (card.employeeName ?? "").trim();
-  const content = onCard && onCard !== person ? answer.content.split(`**${onCard}**`).join(`**${person}**`) : answer.content;
+  // A card with no one on it is a question (this app's own "Which of them …"): never a note on top of it.
+  if (!onCard) return null;
+  const content = onCard !== person ? answer.content.split(`**${onCard}**`).join(`**${person}**`) : answer.content;
   const note = `"${wanted}" isn't a name on the roster, so the card is for **${person}**. Tell me if it's someone else.`;
   return {
     ...answer,
