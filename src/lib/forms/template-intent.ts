@@ -1644,6 +1644,12 @@ export function detectTemplateIntent(rawQuestion: string): TemplateIntent {
       requestedCreation:
         !informational &&
         (CREATION_VERBS.some((verb) => mentions(q, verb)) ||
+          /*
+           * CA_REQUEST_NOT_PRIOR_COACHING_ENABLED (QA's live tester, 7 Nov 2026, sf-s35's exact wording): "Can you
+           * draw me up a CA for <name> …" asks for the form. With the coaching document set aside as history, nothing
+           * else in the message asked for one, so no card opened.
+           */
+          (caRequestNotPriorCoachingEnabled() && /\bdraw\s+(?:(?:me|us)\s+)?up\b/.test(q)) ||
           writesTheForm(q) ||
           leadsWithTheForm(q, question) ||
           /*
