@@ -724,7 +724,19 @@ function withSalesPolicy(reading: CaPolicyReading, rawText: string): CaPolicyRea
 function performanceIsTheRequest(reading: CaPolicyReading, sentences: string[]): boolean {
   if (!caPerformanceReasonEnabled()) return false;
   if (reading.stated !== null || reading.topics.length > 0 || reading.missedEvent !== null) return false;
-  return sentences.some((sentence) => namesPerformance.test(sentence) && asksForCorrectiveAction(sentence));
+  return sentences.some((sentence) => namesPerformance.test(sentence) && performanceEndsItsPhrase(sentence) && asksForCorrectiveAction(sentence));
+}
+
+/**
+ * "performance" ends its phrase wherever it stands (QA's round-4 gate, 8 Nov 2026): "for her performance review" and
+ * "for a performance improvement plan" name another thing, so they are no sales-performance account. "for sales
+ * performance" and "for performance for october" still are. A sentence without the word (another `namesPerformance`
+ * shape, "not meeting her goals") is unchanged.
+ */
+const PHRASE_END_AFTER = new RegExp(`^${PHRASE_ENDS}`);
+
+function performanceEndsItsPhrase(sentence: string): boolean {
+  return [...sentence.matchAll(/\bperformance\b/gi)].every((match) => PHRASE_END_AFTER.test(sentence.slice(match.index + match[0].length)));
 }
 
 function asksForCorrectiveAction(sentence: string): boolean {
@@ -1387,10 +1399,24 @@ export function observationAccount(sentence: string, employeeName: string | null
   let lead = 0;
   while (lead < words.length && own.has(words[lead]!.toLowerCase().replace(/[^\p{L}'’-]/gu, ""))) lead += 1;
   // The name goes only where the sentence is the request ("<name> on performance"); "<name> was rude to a guest" keeps it.
-  OBSERVATION_REASON.lastIndex = 0;
-  const reasonFollows = new RegExp(`^${OBSERVATION_REASON.source}`, "i").test(` ${words.slice(lead).join(" ")}`);
+  const reasonAtStart = new RegExp(`^${OBSERVATION_REASON.source}`, "i");
+  const reasonFollows = reasonAtStart.test(` ${words.slice(lead).join(" ")}`);
   if (lead > 0 && (wasRequest || reasonFollows)) words.splice(0, lead);
-  text = words.join(" ").replace(OBSERVATION_REASON, " ").replace(OBSERVATION_BARE_REASON, " ").replace(OBSERVATION_PAYROLL, " ");
-  text = text.replace(/\s{2,}/g, " ").replace(/^[\s,.;:-]+|[\s,;:-]+$/g, "").trim();
-  return /\p{L}{3,}/u.test(text) && text.split(/\s+/).length >= 2 ? text : "";
+  text = words.join(" ");
+  /*
+   * ONLY THE REQUEST CLAUSE IS CUT (QA's round-4 gate, 8 Nov 2026): the reason and a payroll answer were cut
+   * wherever they stood, so "This is for Under Performance on PPTA, …" became "This is on PPTA, …" and "…payroll
+   * deduct applies and $3.25 will be deducted" lost "payroll deduct". The reason goes only where it opens the request
+   * (after its head or the employee's name). A sentence that is nothing but a reason and a payroll answer
+   * ("performance for october not pay roll deductable") is the request's, and nothing is left. Every other word is the
+   * manager's and stays.
+   */
+  const clean = (value: string) => value.replace(/\s{2,}/g, " ").replace(/^[\s,.;:-]+|[\s,;:-]+$/g, "").trim();
+  const isAccount = (value: string) => /\p{L}{3,}/u.test(value) && value.split(/\s+/).length >= 2;
+  OBSERVATION_PAYROLL.lastIndex = 0;
+  const leftover = clean(` ${text}`.replace(reasonAtStart, " ").replace(OBSERVATION_BARE_REASON, " ").replace(OBSERVATION_PAYROLL, " "));
+  OBSERVATION_PAYROLL.lastIndex = 0;
+  if (!isAccount(leftover)) return "";
+  const account = clean(wasRequest || lead > 0 ? ` ${text}`.replace(reasonAtStart, " ") : text);
+  return isAccount(account) ? account : "";
 }
