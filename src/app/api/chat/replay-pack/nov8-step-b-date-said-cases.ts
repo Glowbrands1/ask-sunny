@@ -17,6 +17,7 @@ import { REFUSAL_ROSTER, STEP_B_READER_FLAGS, patch } from "./nov7-step-b-refusa
 
 const SAID = "I need you to make it about showing up late and please list the policy make the date for 10/14/26";
 const FIX = [...STEP_B_READER_FLAGS, "EDIT_POLICY_ASK_ENABLED", "STEP_B_DATE_SAID_ENABLED"];
+const POLICY_LINE = /Policy reference:\s*[^\n]*JBA Policy Manual/i;
 const REPORT = "QA's live test, the sibling app's production, 8 Nov 2026: the Date stayed 10/10 on a saved draft, and the reply said nothing about it";
 
 async function onDraft(t: ReplayContext, reading: unknown, said: string) {
@@ -66,6 +67,41 @@ export const NOV8_STEP_B_DATE_SAID_CASES: ReplayCase[] = [
       const { id, reply } = await onDraft(t, patch("this_form", []), "make the date for 10/14/26");
       expect(t.values(id).form_date, "the Date the manager said").toBe("2026-10-14");
       expect(reply.content, `the reply does not say the Date changed:\n${reply.content}`).toMatch(/Changed Date to/);
+    },
+  },
+  {
+    id: "nov8-step-b-date-said-with-policy-ask",
+    title: "…the live turn whole, after main's EDIT_POLICY_ASK (live): the reader rewrites Details and says the policy was asked; the Date, the topic and the policy all land, and the reply says each",
+    report: `${REPORT} (QA, 8 Nov 2026: the date write must work together with the policy ask; the live turn has all three)`,
+    status: { open: "the Date stays 2026-10-10 (the policy is listed)" },
+    fixFlags: FIX,
+    async run(t) {
+      const { id, reply } = await onDraft(
+        t,
+        { ...patch("this_form", [{ field: "coaching_details", value: "Ottoline Ormsworth showed up late.", how: "replace", evidence: "make it about showing up late" }]), policy_asked: true },
+        SAID,
+      );
+      expect(t.values(id).form_date, "the Date the manager said").toBe("2026-10-14");
+      expect(t.values(id).coaching_details ?? "", "Details is about showing up late").toMatch(/late/i);
+      expect(t.values(id).coaching_details ?? "", "the policy is not listed on Details").toMatch(POLICY_LINE);
+      expect(reply.content, `the reply does not say the Date changed:\n${reply.content}`).toMatch(/Changed Date to/);
+      expect(reply.content, `the reply does not say the policy was listed:\n${reply.content}`).toMatch(/Listed the policy/i);
+    },
+  },
+  {
+    id: "nov8-step-b-date-said-policy-ask-no-patch",
+    title: "…\"please list the policy make the date for 10/14/26\" (the reader sets nothing, the policy is asked): the Date is written and the policy listed",
+    report: `${REPORT} (the empty patch: main's policy-only reply must not drop the date)`,
+    status: { open: "the reply is the policy sentence alone and the Date stays 2026-10-10" },
+    fixFlags: FIX,
+    async run(t) {
+      const said = "please list the policy make the date for 10/14/26";
+      const { id, reply } = await onDraft(t, { ...patch("this_form", []), policy_asked: true }, said);
+      expect(t.values(id).form_date, "the Date the manager said").toBe("2026-10-14");
+      expect(reply.content, `the reply does not say the Date changed:\n${reply.content}`).toMatch(/Changed Date to/);
+      // This draft's Details already cites the account's policy (the first draft lists it), so the policy ask is
+      // answered as such; either way the reply answers it.
+      expect(reply.content, `the reply does not answer the policy ask:\n${reply.content}`).toMatch(/Listed the policy|already lists the policy/i);
     },
   },
 ];

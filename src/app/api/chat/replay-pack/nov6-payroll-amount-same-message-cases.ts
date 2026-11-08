@@ -25,7 +25,8 @@ export const NOV6_PAYROLL_AMOUNT_SAME_MESSAGE_CASES: ReplayCase[] = [
     id: "nov6-payroll-amount-same-message",
     title: `"…the register was off $20. which will be payroll deducted… payroll deduct applies": the $20 is used, the amount is not asked`,
     report: "The sibling app's live chat, 5 Nov 2026 (relayed by QA, 6 Nov); reproduced here with the same words",
-    status: { open: "the amount question is asked; PAYROLL_AMOUNT_SAME_MESSAGE_ENABLED reads the $20" },
+    // Changed on purpose (8 Nov 2026): QA's flip 9 (00:59 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+    status: "fixed",
     fixFlags: ["PAYROLL_AMOUNT_SAME_MESSAGE_ENABLED"],
     async run(t) {
       vi.setSystemTime(new Date("2026-11-05T15:49:00Z"));

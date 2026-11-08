@@ -25,6 +25,9 @@ const NARRATIVE_KEY: Readonly<Record<string, string>> = {
   "follow-up-coaching": "follow_up_observation",
 };
 
+/** The forms whose account field carries the citation line (EDIT_POLICY_ASK_ENABLED, `forms/edit-policy-ask.ts`). */
+export const NARRATIVE_CITATION_TEMPLATES: readonly string[] = Object.keys(NARRATIVE_KEY);
+
 export function citationPage(chunk: ManualChunk, heading: string): number | null {
   const listed = chunk.sections?.find((section) => section.heading.toLowerCase() === heading.toLowerCase());
   if (listed && listed.page > 0) return listed.page;

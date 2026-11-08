@@ -85,7 +85,9 @@ export const NOV5_CODING3_SUNNY_CA_CASES: ReplayCase[] = [
     id: "nov5-coding3-prior-coaching-none-on-file",
     title: "\"… There's no prior coaching on file.\": the card's prior-coaching note never says prior coaching is on file",
     report: `${REPORT}: "I need to write up <name> with a written warning … There's no prior coaching on file." → "Prior coaching note: prior coaching on file. No finalized record was required."`,
-    status: { open: "the note quotes \"prior coaching on file\" without the manager's \"no\": \"Prior coaching note: prior coaching on file.\"" },
+    // Changed on purpose (8 Nov 2026): fixed in production by PRIOR_COACHING_DENIAL_ENABLED, QA round 4, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
+    fixFlags: ["PRIOR_COACHING_DENIAL_ENABLED"],
     async run(t: T) {
       /*
        * PRIOR_COACHING_OPTIONAL_ENABLED writes the note this case reports. QA

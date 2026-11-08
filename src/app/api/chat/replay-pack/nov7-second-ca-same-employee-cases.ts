@@ -127,4 +127,26 @@ export const NOV7_SECOND_CA_SAME_EMPLOYEE_CASES: ReplayCase[] = Object.entries(S
       },
     }),
   ),
+  // QA's Sunny round-3 gate (7 Nov 2026): with the flag on, ordinary single-request cards lost their Policy line. One
+  // request keeps its whole account, wherever it is said: before the request, or with a closing "create" after it.
+  ...[
+    { id: "account-first", turns: ["Remy Calder was rude to a guest at the front desk on 11/2 and raised his voice at her", "make a CA for Remy Calder"] },
+    { id: "closing-create", turns: ["create a corrective action for Remy Calder, he was rude to a guest at the front desk on 11/2 and raised his voice", "salon is kearney. create the corrective action"] },
+  ].map(
+    ({ id, turns }): ReplayCase => ({
+      id: `nov7-second-ca-single-request-keeps-policy-${id}`,
+      title: `one request ("${turns[0]!.slice(0, 40)}…" → "${turns[1]!}"): the card cites Standards of Conduct with the flag on too`,
+      report: "QA's Sunny round-3 gate (7 Nov 2026): SECOND_REQUEST_OWN_ACCOUNT made ordinary single-request cards lose their Policy line",
+      status: "fixed",
+      fixFlags: [FLAG],
+      async run(t) {
+        t.directory(STAFF);
+        t.as("salon_director", KEARNEY);
+        const thread = t.thread();
+        let reply: ReplayAnswer | null = null;
+        for (const turn of turns) reply = await thread.say(turn);
+        expect(line(reply!.content, "Policy"), `the card cites no Standards of Conduct:\n${reply!.content}`).toMatch(/standards of conduct/i);
+      },
+    }),
+  ),
 ]);

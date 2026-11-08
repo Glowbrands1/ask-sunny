@@ -70,10 +70,12 @@ import {
 import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import { buildFormInventory, publishedEntries } from "@/lib/forms/inventory";
 import { listTemplateSummaries, type TemplateSummary } from "@/lib/forms/repository";
-import { candidateNameWords, isFormRecordsQuestion, loadFormRecords } from "@/lib/forms/chat-form-records";
+import { isFormRecordsQuestion, loadFormRecords } from "@/lib/forms/chat-form-records";
+import { namesAPerson } from "@/lib/forms/names-a-person";
 import { withRosterOnlyNames } from "@/lib/forms/roster-only-names";
 import { priorFormsReadingForChat } from "@/lib/forms/prior-forms";
 import { applyOptionalPriorCoaching } from "./prior-coaching-optional";
+import { priorCoachingManagerText } from "./prior-coaching-denial";
 import { withMappedPolicy } from "./violation-policy";
 import { manualScopeFetchLimit, scopeToCurrentManual } from "@/lib/knowledge/current-manual-scope";
 import {
@@ -195,7 +197,7 @@ import { keepManagerActionPlan } from "./manager-action-plan-reply";
 import { withManagerNameGuard, withManagerNameRule } from "./manager-name-guard";
 import { withoutReportTurnsForForm } from "./report-turns";
 import { withReplyMatchesCard } from "./reply-matches-card";
-import { withTwoFormsOwnPerson } from "./two-forms-own-person";
+import { acceptedNextFormOffer, withEachPersonsForm, withTwoFormsOwnPerson } from "./two-forms-own-person";
 import { withTitleOfTheEmployee } from "./title-of-the-employee";
 import { withoutSourceMarkers, withoutSourceNotes } from "@/lib/ai/source-note";
 import { withUnderPerformanceExplained } from "./under-performance-explained";
@@ -295,6 +297,9 @@ export async function answerQuestion(
 ): Promise<AskResponse> {
   // REPORT_NAME_NOT_A_PERSON_ENABLED: a form is never built from a question about a report. See `report-turns.ts`.
   // CA_SALES_POLICY_ENABLED: "yes" to the Corrective Action offer is the request it offered (`ca-offer.ts`). Off, unchanged.
+  // TWO_FORMS_EACH_PERSON_ENABLED: "yes" to "Do you want a <form> for <B> next?" is that request (`ai/two-forms-own-person.ts`). Off, unchanged.
+  const nextForm = acceptedNextFormOffer({ question: asked.question, history: asked.history });
+  if (nextForm) asked = { ...asked, question: nextForm };
   const accepted = acceptedCaOffer({ question: asked.question, history: asked.history });
   /*
    * CA_OFFER_KEEPS_ACCOUNT_ENABLED: the accepted yes is first answered as the
@@ -348,6 +353,8 @@ export async function answerQuestion(
   }
   // TWO_FORMS_OWN_PERSON_ENABLED: two forms asked for in one message never put the other form's person on this card (`ai/two-forms-own-person.ts`); read on the manager's own message.
   answered = withTwoFormsOwnPerson(answered, original);
+  // TWO_FORMS_EACH_PERSON_ENABLED: the card is its own clause's person, answered again from that clause if need be, and each other request with its person is offered (`ai/two-forms-own-person.ts`).
+  answered = await withEachPersonsForm(answered, original, answer);
   /*
    * CA_SALES_POLICY_ENABLED: a reply about a policy and an employee the roster
    * recognises ends with ONE offer to start a Corrective Action citing that
@@ -593,7 +600,8 @@ async function answerQuestionUntraced(
   const pastFormsFirst =
     pastFormsBeforeLibraryEnabled() &&
     (libraryReading.kind !== "none" || (formReading.kind === "corrective_action" && !formReading.requestedCreation)) &&
-    (isFormRecordsQuestion(request.question) || candidateNameWords(request.question).length > 0);
+    // Only a message that names a person: a library question naming nobody keeps the library answer (`forms/names-a-person.ts`).
+    namesAPerson(request.question);
   const detected: InventoryQuestion = pastFormsFirst ? { kind: "none" } : libraryReading;
   const spokenIntent: ReturnType<typeof detectTemplateIntent> = pastFormsFirst ? { kind: "none" } : formReading;
 
@@ -701,7 +709,8 @@ async function answerQuestionUntraced(
       content = applyOptionalPriorCoaching(content, {
         enabled: true,
         records: [],
-        managerText: turns.join("\n"),
+        // PRIOR_COACHING_DENIAL_ENABLED: "There's no prior coaching on file." is not read as a note; off, as before.
+        managerText: priorCoachingManagerText(turns, request.context.todayIso),
       });
     }
     if (recallOn || (citeOn && response.formProposal)) {

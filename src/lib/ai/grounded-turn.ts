@@ -120,7 +120,9 @@ export async function deliverFormProposal(input: {
       })
     : {
         ...EMPTY_PREP,
-        question: stateOn ? prependFormState(input.question, saved) : input.question,
+        question: stateOn
+          ? prependFormState(input.question, saved, input.request.history.filter((turn) => turn.role === "user").map((turn) => turn.content))
+          : input.question,
         keptTypedName: saved?.keptTypedName ?? null,
       };
 

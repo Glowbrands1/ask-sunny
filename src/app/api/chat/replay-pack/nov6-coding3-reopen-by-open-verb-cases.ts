@@ -170,7 +170,8 @@ const LIST_WORDINGS: readonly (readonly [string, string])[] = [
  * "show" opened a draft before the flag, and the questions below are already
  * answered without the catalogue or a card. Kept as guards ("fixed").
  */
-const HOLDS_TODAY = new Set(["show-my-previous-coaching", "what-forms-does-she-have", "past-write-ups", "any-coachings", "what-coaching-forms", "past-coachings"]);
+// 8 Nov 2026: "any-coaching-and-cas" is fixed in production by PAST_FORMS_BEFORE_LIBRARY_ENABLED, QA round 4, 8 Nov 2026.
+const HOLDS_TODAY = new Set(["any-coaching-and-cas", "show-my-previous-coaching", "what-forms-does-she-have", "past-write-ups", "any-coachings", "what-coaching-forms", "past-coachings"]);
 
 export const NOV6_CODING3_REOPEN_PREVIOUS_FORMS_CASES: ReplayCase[] = [
   ...OPEN_WORDINGS.map(

@@ -65,6 +65,13 @@ export const NOV6_TWO_FORMS_OWN_PERSON_CASES: ReplayCase[] = SHAPES.map(({ key, 
     const employee = thread.proposal?.employeeName ?? null;
     expect(employee === null || /peregrine/i.test(employee), `the Coaching card is for ${employee}:\n${reply.content}`).toBe(true);
     if (employee === null) expect(reply.content, "an empty card does not ask who").toMatch(/who is this \*\*coaching form\*\* for/i);
-    expect(reply.content, "the Corrective Action request is not named back").toMatch(/you also asked for a \*\*corrective action form\*\* for \*\*tamsin/i);
+    /*
+     * Changed on purpose (coding 2, 8 Nov 2026; QA's round-4 gate): with TWO_FORMS_EACH_PERSON_ENABLED on (#646) the
+     * Corrective Action is offered next ("**Do you want a Corrective Action Form for Tamsin Wexley next?**") instead of
+     * named back as "you also asked for"; either way the request is not lost.
+     */
+    expect(reply.content, "the Corrective Action request is not named back").toMatch(
+      /you also asked for a \*\*corrective action form\*\* for \*\*tamsin|\*\*do you want a corrective action form for tamsin wexley next\?\*\*/i,
+    );
   },
 }));

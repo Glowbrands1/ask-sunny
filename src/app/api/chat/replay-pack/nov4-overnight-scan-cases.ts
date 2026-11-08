@@ -340,8 +340,9 @@ export const NOV4_OVERNIGHT_SCAN_CASES: readonly ReplayCase[] = [
    */
   ...(
     [
-      ["sf-s29-coaching-and-cas", "are there any coaching and ca's for Jovelle Kerrigan", { open: "answered from the forms library (\"Yes. **Corrective Action Form** — …\"), not from Jovelle Kerrigan's forms on file" }],
-      ["sf-s29-named-library-question", "do we have a coaching form for Jovelle Kerrigan?", { open: "answered from the forms library (\"Yes. **Coaching Form** — …\"), not from Jovelle Kerrigan's forms on file" }],
+      // Changed on purpose (8 Nov 2026): fixed in production by PAST_FORMS_BEFORE_LIBRARY_ENABLED, QA round 4, 8 Nov 2026; both rows now hold with production's flags.
+      ["sf-s29-coaching-and-cas", "are there any coaching and ca's for Jovelle Kerrigan", "fixed"],
+      ["sf-s29-named-library-question", "do we have a coaching form for Jovelle Kerrigan?", "fixed"],
     ] as const
   ).map(
     ([key, text, status]): ReplayCase => ({
