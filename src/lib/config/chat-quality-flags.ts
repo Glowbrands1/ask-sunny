@@ -3274,4 +3274,11 @@ export function requestParticipleLeadEnabled(): boolean {
  */
 export function priorStepDateListEnabled(): boolean {
   return envFlag("PRIOR_STEP_DATE_LIST_ENABLED");
+ * EXIT_DATE_LINE_AGREES_ENABLED (QA round 5, 8 Nov 2026; same flag in both apps; default off). "exit form for <name>,
+ * last day 11/05, gave no notice": the reply listed "Date: the day the draft is created" above a card dated 11/5/2026,
+ * and the form was created dated 11/5. On, with REPLY_MATCHES_CARD: an exit card's own date is the list's Date line
+ * (`ai/reply-matches-card.ts`). Off, as before.
+ */
+export function exitDateLineAgreesEnabled(): boolean {
+  return envFlag("EXIT_DATE_LINE_AGREES_ENABLED");
 }
