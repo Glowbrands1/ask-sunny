@@ -456,8 +456,6 @@ const LIVE_SINCE = [
   "HIDE_NO_POLICY_MATCH_NOTICE_ENABLED",
   "ANSWER_NOT_A_NAME_ENABLED",
   "POLICY_SPECIFIC_TOPICS_ENABLED",
-  // Live since QA's round 7b (9 Nov 2026).
-  "SECOND_REQUEST_OWN_ACCOUNT_ENABLED",
 ] as const;
 const GA = "GRAMMAR_ASK_NOT_ACCOUNT_ENABLED";
 const ASK = "can you clean up my grammar and capitalizing on proper nouns?";
@@ -508,7 +506,7 @@ describe(`${GA} on`, () => {
 describe(`${GA} off: as main`, () => {
   beforeEach(() => setProduction(false));
 
-  it("the request is left out of the Observation, unanswered, and stays in the draft's notes", async () => {
+  it("the request is in the Observation, unanswered, and in the draft's notes", async () => {
     const thread = new Thread();
     const out: string[] = [];
     for (const turn of LS_S9) out.push((await thread.say(turn)).content);
@@ -516,11 +514,7 @@ describe(`${GA} off: as main`, () => {
     state.draftPrompt = "";
     await thread.create();
     expect(state.draftPrompt.toLowerCase()).toContain("clean up my grammar");
-    // Changed on purpose (9 Nov 2026, QA round 7b): with SECOND_REQUEST_OWN_ACCOUNT_ENABLED live, a question to the app
-    // is never the offense account (`ai/remap-incident.ts` withoutQuestionsToTheApp), so "can you clean up my grammar …?"
-    // is no longer pasted into the Observation after the account; it stays in the draft's notes (above), unanswered.
-    expect(out[1]).toContain("the client is there in the first place");
-    expect(out[1]).not.toContain(ASK);
+    expect(out[1]).toContain(`the client is there in the first place ${ASK}`);
     expect(out[1]).not.toContain(GRAMMAR_ANSWER);
   });
 });
