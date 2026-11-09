@@ -493,6 +493,26 @@ function statedTermination(q: string): RegExpMatchArray | null {
   return null;
 }
 
+/** The one "effective <date>" in the sentence that states the termination, or null (none, or more than one). */
+function effectiveDate(text: string, tokens: readonly DateToken[], terminated: RegExpMatchArray): string | null {
+  const sentenceEnd = text.slice(terminated.index ?? 0).search(/[.!?\n]/);
+  const end = sentenceEnd < 0 ? text.length : (terminated.index ?? 0) + sentenceEnd;
+  const effective = tokens.filter(
+    (token) => token.iso && token.index >= (terminated.index ?? 0) && token.end <= end + 12 && EFFECTIVE_BEFORE.test(text.slice(Math.max(0, token.index - 24), token.index).toLowerCase()),
+  );
+  return effective.length === 1 ? effective[0]!.iso : null;
+}
+
+/**
+ * The date a stated termination takes effect: "your employment … is terminated, effective 11/08/2026" → "2026-11-08".
+ * Null when no termination is stated (or EXIT_TERMINATION_STATED is off), or its sentence has no single effective date.
+ */
+export function terminationEffectiveDate(rawText: string, today: string): string | null {
+  const text = normalize(rawText);
+  const terminated = statedTermination(text.toLowerCase());
+  return terminated ? effectiveDate(text, dateTokens(text, today), terminated) : null;
+}
+
 function completedInvoluntary(q: string): boolean {
   if (statedTermination(q)) return true;
   for (const pattern of COMPLETED_INVOLUNTARY) {
@@ -689,13 +709,9 @@ export function readExitFacts(rawText: string, today: string): ExitFacts {
   const terminationWins = exitLetterAddresseeEnabled() && Boolean(terminated);
   let fromTermination = false;
   if ((!resignationDate || terminationWins) && terminated) {
-    const sentenceEnd = text.slice(terminated.index ?? 0).search(/[.!?\n]/);
-    const end = sentenceEnd < 0 ? text.length : (terminated.index ?? 0) + sentenceEnd;
-    const effective = tokens.filter(
-      (token) => token.iso && token.index >= (terminated.index ?? 0) && token.end <= end + 12 && EFFECTIVE_BEFORE.test(text.slice(Math.max(0, token.index - 24), token.index).toLowerCase()),
-    );
-    if (effective.length === 1) {
-      resignationDate = effective[0]!.iso;
+    const effective = effectiveDate(text, tokens, terminated);
+    if (effective) {
+      resignationDate = effective;
       fromTermination = terminationWins;
     }
   }

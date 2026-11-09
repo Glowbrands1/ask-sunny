@@ -7,11 +7,15 @@ import {
   formPatchReaderFixesEnabled,
   stepBMakeItAboutAccountEnabled,
   madeAboutAllOrNothingEnabled,
+  madeAboutReaderAccountEnabled,
+  madeAboutUndatedTogetherEnabled,
+  madeAboutPolicyLineEnabled,
   stepBDateSaidEnabled,
   stepBDateWithAboutEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { madeAbout } from "@/lib/ai/make-it-about";
 import { saidFormDate } from "./form-date-said";
+import { splitAppCitationLine } from "./app-citation-line";
 import { endMadeAboutWrite, madeAboutDate, madeAboutTopic, noteMadeAboutWrite } from "./made-about-date";
 import { syncCorrectiveActionPlan } from "./ca-action-plan-sync";
 import { checkboxGroupsForVariant, fieldsForVariant, parseFormDocument } from "./document";
@@ -269,10 +273,39 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
      * path, whose revision rewrote Details alone: Other and the Date stayed. A made-about incident with its own date is
      * read here from the manager's words: the topic (Other, its box ticked) and, below, the Date and the account.
      */
-    if ((!("ok" in reading) || reading.turn !== "this_form") && madeAboutAllOrNothingEnabled()) {
+    if ((!("ok" in reading) || reading.turn !== "this_form") && (madeAboutAllOrNothingEnabled() || madeAboutUndatedTogetherEnabled())) {
       reading = madeAboutReading(input, before, writable, allGroups) ?? reading;
     }
     if (!("ok" in reading) || reading.turn !== "this_form") return handOff("none");
+    /*
+     * MADE_ABOUT_READER_ACCOUNT_ENABLED (ported from Ask Bubbles: QA's live round-9 test there, 9 Nov 2026; the person invented): "make it about
+     * leaving the front desk unattended on 11/6/26" on a saved Coaching draft about the missed meeting on 10/10/26 changed
+     * Other and Details, and the Date stayed 2026-10-10. The reader set Details itself ("add": the new incident under the
+     * old one), so the turn never took the made-about path that writes the Date: "Changed Details of Coaching … Changed
+     * Other …". A dated made-about incident is a new account: the reader's own edit of the account is set aside, and the
+     * account is rewritten by the old path's revision with the Date and the topic, all or nothing (below).
+     */
+    const readerSet = reading.patch.set;
+    if (
+      madeAboutReaderAccountEnabled() &&
+      madeAbout(input.question) !== null &&
+      madeAboutDate(input.question, input.today) !== null &&
+      "form_date" in before &&
+      ACCOUNT_KEYS.some((key) => key in readerSet)
+    ) {
+      const drop = new Set<string>(ACCOUNT_KEYS);
+      const keep = <T,>(record: Readonly<Record<string, T>> | undefined) =>
+        record ? Object.fromEntries(Object.entries(record).filter(([key]) => !drop.has(key))) : undefined;
+      reading = {
+        ...reading,
+        patch: {
+          ...reading.patch,
+          set: keep(reading.patch.set) ?? {},
+          ...(reading.patch.how ? { how: keep(reading.patch.how) } : {}),
+          ...(reading.patch.evidence ? { evidence: keep(reading.patch.evidence) } : {}),
+        },
+      };
+    }
     /*
      * STEP_B_MAKE_IT_ABOUT_ACCOUNT_ENABLED (QA's live draft test, 8 Nov 2026): "I need you to make it about showing up
      * late" was read as the Other topic alone, and Details of Coaching stayed about the missed meeting. A turn that
@@ -282,11 +315,12 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
     // STEP_B_DATE_SAID_ENABLED: the date the manager says the form takes (read before the make-it-about guard below).
     const saidDate = stepBDateSaidEnabled() ? saidFormDate(input.question, input.today) : null;
     let dateToWrite = saidDate !== null && "form_date" in before && before.form_date?.value !== saidDate ? saidDate : null;
+    const readSet = reading.patch.set;
     const aboutNotRewritten =
       stepBMakeItAboutAccountEnabled() &&
       madeAbout(input.question) !== null &&
       ACCOUNT_KEYS.some((key) => writable.has(key)) &&
-      !ACCOUNT_KEYS.some((key) => key in reading.patch.set);
+      !ACCOUNT_KEYS.some((key) => key in readSet);
     /*
      * STEP_B_DATE_WITH_ABOUT_ENABLED (the Bubbles round-5 gate, 8 Nov 2026; QA's ruling, option A): with both flags on,
      * "I need you to make it about showing up late and please list the policy make the date for 10/14/26" was handed to
@@ -304,8 +338,20 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
      * rewritten changes nothing (below).
      */
     const aboutDate = aboutNotRewritten && !keepsAccount ? madeAboutDate(input.question, input.today) : null;
-    const rewritesAccount = aboutDate !== null && "form_date" in before;
-    if (rewritesAccount && before.form_date?.value !== aboutDate) dateToWrite = aboutDate;
+    const datedAbout = aboutDate !== null && "form_date" in before;
+    if (datedAbout && before.form_date?.value !== aboutDate) dateToWrite = aboutDate;
+    /*
+     * MADE_ABOUT_UNDATED_TOGETHER_ENABLED (QA's round-11 gate, 9 Nov 2026): "I need you to make it about showing up late"
+     * (no date) rewrote Details of Coaching on the old path and left Other on the old topic ("Missed monthly meeting").
+     * An undated made-about turn stays here too: the account first, then the topic with it (the reader's, or read from
+     * the manager's words); not rewritten, neither. The Date stays, and the reply says so.
+     */
+    const undatedAbout = aboutNotRewritten && !keepsAccount && !datedAbout && madeAboutUndatedTogetherEnabled();
+    if (undatedAbout && !(OTHER_TOPIC_KEY in readSet)) {
+      const topic = madeAboutReading(input, before, writable, allGroups);
+      if (topic && "ok" in topic) reading = { ...reading, patch: { ...reading.patch, set: { ...reading.patch.set, ...topic.patch.set }, evidence: { ...reading.patch.evidence, ...topic.patch.evidence } } };
+    }
+    const rewritesAccount = datedAbout || undatedAbout;
     if (aboutNotRewritten && !keepsAccount && !rewritesAccount) {
       return handOff("none");
     }
@@ -353,11 +399,20 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
       }
       const revised = await loadInstance(input.instanceId);
       const rewritten = revised !== null && snapshotDiff(snapshotOf(loaded), snapshotOf(revised)).some((change) => change.key === keptAccountKey);
+      /*
+       * MADE_ABOUT_POLICY_LINE_ENABLED (QA's live round-11 test, 9 Nov 2026): the old account's "Policy reference: …" line
+       * went with it and none was written for the new one. The account rewritten, its reference is written again from
+       * the new account (`made-about-policy-line.ts`), only where the old account carried one.
+       */
+      const hadLine = typeof before[keptAccountKey]?.value === "string" && splitAppCitationLine(before[keptAccountKey]!.value as string).line !== null;
+      if (rewritten && hadLine && madeAboutPolicyLineEnabled()) {
+        await (await import("./made-about-policy-line")).rewriteMadeAboutPolicyLine({ instanceId: input.instanceId, actorId: actor.id, question: input.question, accountKey: keptAccountKey });
+      }
       if (!rewritten) {
         const label = labels[keptAccountKey] ?? keptAccountKey;
         const about = madeAbout(input.question);
         return {
-          content: `I haven't changed the **${loaded.instance.templateName}** for **${loaded.instance.employeeName}**: I couldn't rewrite **${label}** to be about ${about}, so the Date and the topic stay as they were too. What should **${label}** say about ${about}?`,
+          content: `I haven't changed the **${loaded.instance.templateName}** for **${loaded.instance.employeeName}**: I couldn't rewrite **${label}** to be about ${about}, so ${undatedAbout ? "the topic stays" : "the Date and the topic stay"} as they were too. What should **${label}** say about ${about}?`,
           citations: [],
           coverage: "not_applicable",
           recommendedVideoIds: [],
@@ -552,13 +607,19 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
     const changed = snapshotDiff(snapshotOf(loaded), snapshotOf(reloaded));
     /* FORM_PATCH_READER_FIXES_ENABLED: the reader's values are already on the form (the old writers' path). */
     if (readerFixes && changed.length === 0) return withKeptAccount(withPolicySentence(alreadyThere(Object.keys(reading.patch.set), labels), policyOutcome));
-    return withKeptAccount(withPolicySentence({
+    // MADE_ABOUT_UNDATED_TOGETHER_ENABLED: no date was said, so the form's Date stays; said, never left unsaid.
+    const dateStays = (response: AskResponse): AskResponse => {
+      const date = typeof before.form_date?.value === "string" ? before.form_date.value : null;
+      if (!undatedAbout || !date || !changed.some((change) => change.key === keptAccountKey)) return response;
+      return { ...response, content: `${response.content.trimEnd()}\n\nThe **${labels.form_date ?? "Date"}** stays ${date}; tell me if it should change.` };
+    };
+    return dateStays(withKeptAccount(withPolicySentence({
       content: replyFromDiff({ changed }, labels),
       citations: [],
       coverage: "not_applicable",
       recommendedVideoIds: [],
       ...(changed.length > 0 ? { formUpdate: { instanceId: input.instanceId, updated: changed.map((change) => change.key) } } : {}),
-    }, policyOutcome));
+    }, policyOutcome)));
   } catch {
     return null;
   }
@@ -575,7 +636,10 @@ function madeAboutReading(
   writable: ReadonlySet<string>,
   groups: readonly { readonly key: string; readonly options: readonly { readonly key: string }[] }[],
 ): FormPatchReading | null {
-  if (!stepBMakeItAboutAccountEnabled() || !madeAboutDate(input.question, input.today) || !("form_date" in before)) return null;
+  // MADE_ABOUT_UNDATED_TOGETHER_ENABLED: an undated made-about turn is read the same way (its Date stays).
+  const dated = madeAboutDate(input.question, input.today) !== null && "form_date" in before;
+  const undated = madeAboutUndatedTogetherEnabled() && madeAbout(input.question) !== null;
+  if (!stepBMakeItAboutAccountEnabled() || !(dated || undated)) return null;
   if (!ACCOUNT_KEYS.some((key) => writable.has(key))) return null;
   const topic = madeAboutTopic(input.question, input.today);
   const box = groups.find((group) => writable.has(group.key) && group.options.some((option) => option.key === "other"));
