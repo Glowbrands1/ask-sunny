@@ -2601,6 +2601,17 @@ export function exitLetterAddresseeEnabled(): boolean {
 export function missedShiftCitesAttendanceEnabled(): boolean {
   return envFlag("MISSED_SHIFT_CITES_ATTENDANCE_ENABLED");
 }
+/**
+ * EXIT_FORM_DATE_FROM_TERMINATION_ENABLED (QA, the live Sunny round 11, 9 Nov 2026; coding 5; same flag in both apps;
+ * default off). A termination letter "… is terminated, effective 11/08/2026 … no-call no-shows on 11/3, 11/5 and 11/7"
+ * gave the exit card the Date November 7 (the last no-show) beside Resignation Date November 8 (round 10 had November 8).
+ * On: an exit card whose manager states the termination's effective date is dated that day, in the card and in the
+ * reply's Date line (`forms/exit-form-date.ts`). Off, as before.
+ */
+export function exitFormDateFromTerminationEnabled(): boolean {
+  return envFlag("EXIT_FORM_DATE_FROM_TERMINATION_ENABLED");
+}
+
 // --- end coding 5 flags ---
 
 /**

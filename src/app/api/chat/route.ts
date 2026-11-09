@@ -24,6 +24,7 @@ import {
   formNameFromRosterEnabled,
   offRosterConfirmEnabled,
   exitLetterAddresseeEnabled,
+  exitFormDateFromTerminationEnabled,
   offRosterAskBeforeCardEnabled,
   metricGuardEnabled,
   refusalNoRepeatEnabled,
@@ -847,6 +848,14 @@ async function postChat(request: Request) {
           ...parsed.history.filter((turn) => turn.role === "user").map((turn) => turn.content),
           asked.question,
         ]);
+      }
+      // EXIT_FORM_DATE_FROM_TERMINATION_ENABLED: a stated "terminated, effective <date>" dates the exit card (`lib/forms/exit-form-date.ts`).
+      if (exitFormDateFromTerminationEnabled()) {
+        answer = (await import("@/lib/forms/exit-form-date")).withExitFormDateFromTermination(
+          answer,
+          [...parsed.history.filter((turn) => turn.role === "user").map((turn) => turn.content), asked.question],
+          businessToday(),
+        );
       }
       // PROPOSAL_NAME_CORRECTION_ENABLED: an off-roster "change her name to …" on the card is never kept silently; with the roster, the card stays for the one roster person it can only be, and a typo is never offered as a person.
       answer = withCorrectionNotDropped(answer, parsed);
