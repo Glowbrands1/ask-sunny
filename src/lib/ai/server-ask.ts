@@ -174,6 +174,7 @@ import { cardMetaTurn } from "./card-meta-turn";
 import { withFirstNameAsk } from "./first-name-ask";
 import { withUnknownNameAsk } from "./unknown-name-ask";
 import { withExitOtherPersonNotOffered } from "./exit-other-person";
+import { withoutLetterSigner } from "./letter-signer";
 import { withCarriedPersonNotice } from "./carried-person-notice";
 import { withFirstNameAnswerFor, withFirstNameSuggestFor } from "./first-name-suggest";
 import { withAmountUnknownAck } from "./amount-unknown-ack";
@@ -2152,7 +2153,8 @@ function questionForProposal(question: string, request: AskRequest): string {
   return augmentIntakeQuestion({
     slots: slotRetentionEnabled(),
     fields: fieldAccuracyEnabled(),
-    question,
+    // EXIT_LETTER_SIGNER_NOT_SUBJECT_ENABLED: a letter's "<C>, District Manager" sign-off is not proposed as the form's person (`ai/letter-signer.ts`).
+    question: withoutLetterSigner({ question }),
     history: request.history,
     today: request.context.todayIso,
   });
