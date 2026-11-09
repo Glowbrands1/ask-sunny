@@ -108,12 +108,47 @@ export function stateForTurn(
   state: ConversationFormState | null,
   question: string,
   earlier: readonly string[] = [],
+  ownPolicy: OwnPolicy | null = null,
 ): ConversationFormState | null {
   if (!state || !secondRequestOwnAccountEnabled() || (!state.policyHeading && !state.incidentType) || !startsFormRequest(question)) return state;
   if (!startsNewRequest(earlier, question)) return state;
+  // QA's live round 7b (9 Nov 2026): the answer to the app's own clarifying question continues the same request.
+  if (asksTheManager(readLastReply())) return state;
   // sf-s38 (QA's round-6 gate, 8 Nov 2026): the same request sent again is no new request; its policy stays.
   if (earlier.some((turn) => sameRequestAgain(turn, question))) return state;
-  return { ...state, policyHeading: null, policyPage: null, incidentType: null };
+  // QA's live round 7b: only the earlier request's policy goes; one the models read in this very request stays
+  // (sf-s38 turn 7, "make me CA for <first name> failing to complete shifts", read as Attendance).
+  return { ...state, policyHeading: ownPolicy?.policyHeading ?? null, policyPage: ownPolicy?.policyPage ?? null, incidentType: null };
+}
+
+/** The policy the models read in this turn's own request (`ai/intent-slots.ts`), which a new request keeps. */
+export interface OwnPolicy {
+  readonly policyHeading: string;
+  readonly policyPage: number | null;
+}
+
+/*
+ * THE ANSWER TO THE APP'S OWN QUESTION (SECOND_REQUEST_OWN_ACCOUNT_ENABLED; QA's live round 7b, 9 Nov 2026, Sunny rolled
+ * back). "make me CA for <first name> failing to complete shifts" was asked "Is this for **<Full Name>**?", and the
+ * answer "Make me a CA for <Full Name> not showing up to her shifts on 11/7 and 11/8" was read as a new request: the
+ * card lost its Policy line (Attendance p.14). When the app's reply before this turn opened by asking the manager
+ * something — who the form is for ("Is this for **<A>**?", "Who is this **<form>** for?", "Which of them is this …",
+ * "Did you mean **<A>**?") or which date — this turn answers it, and continues the same request. A card that also asks
+ * a question further down ("Is payroll deduct applicable?") is not such a reply: a request after it is read as before.
+ * The reply is entered by the chat route (`forms/last-reply-store.ts`); with none (a test, the browser), as before.
+ */
+const ASKS_THE_MANAGER =
+  /^(?:Is this for \*\*[^*\n]+\*\*\?|Who is this \*\*[^*\n]+\*\* for\?|Which of them is this \*\*|Did you mean \*\*[^*\n]+\*\*|Which (?:date|day)\b[^\n]*\?)/i;
+
+let readLastReply: () => string | undefined = () => undefined;
+
+/** The server installs the reader of the app's reply before this turn (`forms/last-reply-store.ts`). */
+export function installLastReply(read: () => string | undefined): void {
+  readLastReply = read;
+}
+
+function asksTheManager(reply: string | undefined): boolean {
+  return ASKS_THE_MANAGER.test((reply ?? "").trim());
 }
 
 /*
@@ -151,8 +186,13 @@ function sameRequestAgain(earlier: string, turn: string): boolean {
 }
 
 /** Sentences the proposal readers already accept, ahead of this turn's words. */
-export function prependFormState(question: string, given: ConversationFormState | null, earlier: readonly string[] = []): string {
-  const state = stateForTurn(given, question, earlier);
+export function prependFormState(
+  question: string,
+  given: ConversationFormState | null,
+  earlier: readonly string[] = [],
+  ownPolicy: OwnPolicy | null = null,
+): string {
+  const state = stateForTurn(given, question, earlier, ownPolicy);
   if (!state) return question;
   const lines = stateSentences(state).filter((line) => !question.includes(line));
   if (lines.length === 0) return question;

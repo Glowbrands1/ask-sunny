@@ -57,8 +57,7 @@ import {
   EMPTY_FORM_STATE,
   prependFormState,
   stateSentences,
-  type ConversationFormState,
-} from "./form-state";
+  type ConversationFormState, type OwnPolicy } from "./form-state";
 import type { GroundedPerson } from "./grounded-entities";
 import type { CheckedReading } from "./reader/check";
 import { mergeCheckedReading } from "./reader/merge";
@@ -466,7 +465,14 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
   });
 
   const asked = formTurn
-    ? questionWithState(input.question, state, input.templates, input.history.filter((turn) => turn.role === "user").map((turn) => turn.content))
+    ? questionWithState(
+        input.question,
+        state,
+        input.templates,
+        input.history.filter((turn) => turn.role === "user").map((turn) => turn.content),
+        // SECOND_REQUEST_OWN_ACCOUNT_ENABLED (QA's live round 7b): a new request keeps the policy read in it.
+        modelPolicy && state.policyHeading === modelPolicy ? { policyHeading: modelPolicy, policyPage: state.policyPage ?? null } : null,
+      )
     : typedEmployee && state.employeeName === typedEmployee && asksForAForm(input.question)
       ? `The employee is ${typedEmployee}.\n${input.question}`
       : input.question;
@@ -630,8 +636,9 @@ function questionWithState(
   state: ConversationFormState,
   templates: readonly TemplateRow[],
   earlier: readonly string[] = [],
+  ownPolicy: OwnPolicy | null = null,
 ): string {
-  const named = prependFormState(question, state, earlier);
+  const named = prependFormState(question, state, earlier, ownPolicy);
   const template = state.templateKey ? templates.find((item) => item.key === state.templateKey) : undefined;
   if (!template) return named;
   if (named.toLowerCase().includes(template.name.toLowerCase())) return named;
