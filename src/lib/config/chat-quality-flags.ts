@@ -3860,3 +3860,13 @@ export function madeAboutPolicyLineEnabled(): boolean {
 export function madeAboutReaderAccountEnabled(): boolean {
   return envFlag("MADE_ABOUT_READER_ACCOUNT_ENABLED");
 }
+
+/**
+ * CHAT_STAGE_TIMINGS_ENABLED (QA, 9 Nov 2026; default off; same flag in both apps). Each awaited step of a chat turn
+ * before the answering model (intent extraction, query rewrite, retrieval, the memory, example, context, data and
+ * grounding loads) is timed into `chat_traces.slots.stages`: names and milliseconds only (`ai/chat-stage-timings.ts`).
+ * Changes nothing the manager sees. Off, as before.
+ */
+export function chatStageTimingsEnabled(): boolean {
+  return envFlag("CHAT_STAGE_TIMINGS_ENABLED");
+}
