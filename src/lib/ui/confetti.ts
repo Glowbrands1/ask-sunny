@@ -1,7 +1,7 @@
 /**
  * A SHORT CONFETTI BURST, for a 5-star rating.
  *
- * No dependency: one full-screen canvas laid over the page for about three
+ * No dependency: one full-screen canvas laid over the page for about five
  * seconds, then removed. It never takes pointer events, so nothing under it
  * stops working while it falls.
  *
@@ -12,15 +12,15 @@
 
 /**
  * The Sunny palette, read from the design tokens rather than written here —
- * colours live in globals.css. Brand yellow twice, so the burst reads as
- * sunshine first.
+ * colours live in globals.css. Brand yellow and coral twice, so the burst
+ * reads as sunshine first. No white: it disappears on the cream canvas.
  */
 const COLOUR_TOKENS = [
   "--brand-yellow",
   "--brand-yellow",
   "--measure-goal",
   "--highlight",
-  "--surface",
+  "--highlight",
   "--topbar",
 ];
 
@@ -29,8 +29,10 @@ function palette(): string[] {
   return COLOUR_TOKENS.map((token) => style.getPropertyValue(token).trim()).filter(Boolean);
 }
 
-const DURATION_MS = 3200;
-const PIECES = 170;
+/** Long enough to watch it fall: about five seconds, the last one fading. */
+const DURATION_MS = 5200;
+const FADE_MS = 1000;
+const PIECES = 160;
 
 type Piece = {
   x: number;
@@ -41,6 +43,10 @@ type Piece = {
   colour: string;
   spin: number;
   angle: number;
+  /** Each piece sways on its own rhythm, like paper falling through air. */
+  swayPhase: number;
+  swaySpeed: number;
+  swayWidth: number;
   /** Round pieces read as little suns; strips read as confetti. */
   round: boolean;
 };
@@ -88,50 +94,53 @@ export function burstConfetti(): void {
   document.body.appendChild(canvas);
   ctx.scale(ratio, ratio);
 
-  // Two cannons from the lower corners, aimed up and inward, so the burst
-  // fills the screen rather than spraying from one point.
-  const pieces: Piece[] = Array.from({ length: PIECES }, (_, i) => {
-    const fromLeft = i % 2 === 0;
-    const angle = (fromLeft ? -60 : -120) + (Math.random() - 0.5) * 50;
-    const speed = 11 + Math.random() * 9;
-    const radians = (angle * Math.PI) / 180;
-    return {
-      x: fromLeft ? width * 0.08 : width * 0.92,
-      y: height * 0.9,
-      vx: Math.cos(radians) * speed,
-      vy: Math.sin(radians) * speed,
-      size: 6 + Math.random() * 7,
-      colour: colours[Math.floor(Math.random() * colours.length)],
-      spin: (Math.random() - 0.5) * 0.35,
-      angle: Math.random() * Math.PI,
-      round: Math.random() < 0.3,
-    };
-  });
+  // A RAIN FROM THE TOP, not a cannon. Pieces start just above the screen,
+  // spread across its width and staggered in height so they arrive over the
+  // first second or so, then drift down slowly enough to be seen as confetti.
+  const pieces: Piece[] = Array.from({ length: PIECES }, () => ({
+    x: Math.random() * width,
+    y: -20 - Math.random() * height * 0.6,
+    vx: (Math.random() - 0.5) * 1.2,
+    vy: 1.2 + Math.random() * 1.6,
+    size: 13 + Math.random() * 9,
+    colour: colours[Math.floor(Math.random() * colours.length)],
+    spin: (Math.random() - 0.5) * 0.12,
+    angle: Math.random() * Math.PI * 2,
+    round: Math.random() < 0.25,
+    swayPhase: Math.random() * Math.PI * 2,
+    swaySpeed: 0.8 + Math.random() * 1.2,
+    swayWidth: 0.6 + Math.random() * 1.2,
+  }));
 
   const start = performance.now();
+  let last = start;
   const frame = (now: number) => {
     const elapsed = now - start;
+    // TIME-BASED, in 60fps steps: on a 120Hz screen a per-frame step ran the
+    // whole animation at double speed. Capped so a stalled tab does not jump.
+    const step = Math.min(3, (now - last) / (1000 / 60));
+    last = now;
     ctx.clearRect(0, 0, width, height);
-    // Fade out over the last 600ms rather than vanishing mid-air.
-    ctx.globalAlpha = Math.min(1, Math.max(0, (DURATION_MS - elapsed) / 600));
+    ctx.globalAlpha = Math.min(1, Math.max(0, (DURATION_MS - elapsed) / FADE_MS));
     for (const p of pieces) {
-      p.vy += 0.32; // gravity
-      p.vx *= 0.985; // air
-      p.vy *= 0.985;
-      p.x += p.vx + Math.sin(elapsed / 220 + p.size) * 0.6; // a little flutter
-      p.y += p.vy;
-      p.angle += p.spin;
+      // Gentle gravity toward a slow terminal speed, so pieces float down.
+      p.vy = Math.min(p.vy + 0.035 * step, 3.2);
+      p.x += (p.vx + Math.sin(elapsed / 1000 * p.swaySpeed * Math.PI + p.swayPhase) * p.swayWidth) * step;
+      p.y += p.vy * step;
+      p.angle += p.spin * step;
       ctx.save();
       ctx.translate(p.x, p.y);
       ctx.rotate(p.angle);
       ctx.fillStyle = p.colour;
       if (p.round) {
         ctx.beginPath();
-        ctx.arc(0, 0, p.size / 2, 0, Math.PI * 2);
+        ctx.arc(0, 0, p.size / 2.6, 0, Math.PI * 2);
         ctx.fill();
       } else {
-        // Strips foreshorten as they spin, which is what makes them flutter.
-        ctx.fillRect(-p.size / 2, -p.size / 4, p.size, (p.size / 2) * Math.abs(Math.cos(p.angle)) + 1);
+        // A paper strip that tumbles: its height foreshortens as it turns,
+        // which is what makes it read as confetti rather than a dot.
+        const tumble = Math.abs(Math.cos(elapsed / 1000 * p.swaySpeed * 2 + p.swayPhase));
+        ctx.fillRect(-p.size / 2, -(p.size * 0.3 * tumble) - 1, p.size, p.size * 0.6 * tumble + 2);
       }
       ctx.restore();
     }
