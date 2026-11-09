@@ -3796,3 +3796,13 @@ export function stepBDateWithAboutEnabled(): boolean {
 export function madeAboutAllOrNothingEnabled(): boolean {
   return envFlag("MADE_ABOUT_ALL_OR_NOTHING_ENABLED");
 }
+
+/**
+ * MADE_ABOUT_UNDATED_TOGETHER_ENABLED (QA's round-11 gate, 9 Nov 2026; default off; same flag in both apps). "I need you to
+ * make it about showing up late" (no date) on a saved Coaching draft rewrote Details and left Other on the old topic. An
+ * undated made-about turn changes the account and the topic together, or neither; the Date stays, and the reply says so
+ * (`forms/form-patch-turn.ts`). Off, as before.
+ */
+export function madeAboutUndatedTogetherEnabled(): boolean {
+  return envFlag("MADE_ABOUT_UNDATED_TOGETHER_ENABLED");
+}
