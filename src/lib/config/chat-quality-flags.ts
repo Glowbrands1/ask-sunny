@@ -2550,6 +2550,16 @@ export function formPatchReaderFixesEnabled(): boolean {
 export function editPolicyAskEnabled(): boolean {
   return envFlag("EDIT_POLICY_ASK_ENABLED") && formPatchReducerEnabled();
 }
+/**
+ * EXIT_LETTER_SIGNER_NOT_SUBJECT_ENABLED (ported from the sibling app: QA's round-6 live test there, 9 Nov 2026; coding
+ * 5; same flag in both apps; default off). A termination letter signed "<C>, District Manager'" offered <C> and
+ * "District Manager'" as the exit form's person beside the one the manager named. On: when the turn names the form's
+ * person, the proposal reads it without a letter's closing "<Name>, <Title>" sign-off of another person
+ * (`ai/letter-signer.ts`). Off, as before.
+ */
+export function exitLetterSignerNotSubjectEnabled(): boolean {
+  return envFlag("EXIT_LETTER_SIGNER_NOT_SUBJECT_ENABLED");
+}
 // --- end coding 5 flags ---
 
 /**
