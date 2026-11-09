@@ -61,7 +61,8 @@ export const NOV9_MADE_ABOUT_POLICY_LINE_CASES: ReplayCase[] = [
     id: "nov9-made-about-policy-line-rewritten",
     title: "Details ending \"Policy reference: Attendance Policy … p.14\", \"make it about leaving the front desk unattended on 11/6/26\": the new Details carries the Standards of Conduct reference, p.13",
     report: REPORT,
-    status: { open: "the new Details carries no policy reference" },
+    // Changed on purpose (9 Nov 2026): fixed in production by MADE_ABOUT_POLICY_LINE_ENABLED, QA round 13, 9 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const { id, reply } = await onDraft(t, DETAILS);
@@ -76,7 +77,8 @@ export const NOV9_MADE_ABOUT_POLICY_LINE_CASES: ReplayCase[] = [
     title: "negative: \"make it about folding the towels wrong on 11/6/26\" (no section of the manual): the old Attendance reference never comes back",
     report: `${REPORT} (the condition: no section found, no reference rather than the old account's)`,
     // Open on main: with the chain off the old Details, and its Attendance reference, are kept whole.
-    status: { open: "the old Details and its Attendance reference stay (the chain off)" },
+    // Changed on purpose (9 Nov 2026): already holds with production's flags since MADE_ABOUT_ALL_OR_NOTHING went live (QA round 11); marked fixed in QA round 13.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const { id, reply } = await onDraft(t, DETAILS, "make it about folding the towels wrong on 11/6/26", TOWELS);

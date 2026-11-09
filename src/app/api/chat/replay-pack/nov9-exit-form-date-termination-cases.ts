@@ -20,7 +20,8 @@ export const NOV9_EXIT_FORM_DATE_TERMINATION_CASES: ReplayCase[] = [
     id: "nov9-exit-form-date-termination",
     title: "the letter, then \"I need an exit form with this information.\" + the letter: the form's Date and Resignation Date are both November 8, 2026",
     report: "QA, the live round 11 (9 Nov 2026): a termination letter \"terminated, effective 11/08/2026\" gave the exit form the Date November 7 (the last no-show)",
-    status: { open: "Date: November 7, 2026; Resignation Date: November 8, 2026" },
+    // Changed on purpose (9 Nov 2026): fixed in production by EXIT_FORM_DATE_FROM_TERMINATION_ENABLED, QA round 13, 9 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: ["EXIT_FORM_DATE_FROM_TERMINATION_ENABLED"],
     async run(t) {
       vi.setSystemTime(new Date("2026-11-08T18:00:00Z"));

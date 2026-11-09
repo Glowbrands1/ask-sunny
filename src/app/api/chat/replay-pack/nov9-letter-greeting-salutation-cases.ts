@@ -69,7 +69,8 @@ export const NOV9_LETTER_GREETING_SALUTATION_CASES: ReplayCase[] = [
     id: "nov9-letter-greeting-dear-off-roster",
     title: "\"Dear Marcus Tellefsen,\" (off the roster): the card is for Marcus Tellefsen, never \"Dear Marcus Tellefsen\"",
     report: REPORT,
-    status: { open: "Name: Dear Marcus Tellefsen" },
+    // Changed on purpose (9 Nov 2026): fixed in production by LETTER_GREETING_NOT_NAME_ENABLED, QA round 13, 9 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const { thread, content } = await card(t, "Dear Marcus Tellefsen", false);

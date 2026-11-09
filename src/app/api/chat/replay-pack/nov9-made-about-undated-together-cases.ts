@@ -62,7 +62,8 @@ export const NOV9_MADE_ABOUT_UNDATED_TOGETHER_CASES: ReplayCase[] = [
     id: "nov9-made-about-undated-topic",
     title: "\"I need you to make it about showing up late\", the reader reads the topic: Details and Other together, the Date stays and the reply says so",
     report: REPORT,
-    status: { open: "Other alone, or Details alone with Other \"Missed monthly meeting\"" },
+    // Changed on purpose (9 Nov 2026): fixed in production by MADE_ABOUT_UNDATED_TOGETHER_ENABLED, QA round 13, 9 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     run: together(TOPIC),
   },
@@ -70,7 +71,8 @@ export const NOV9_MADE_ABOUT_UNDATED_TOGETHER_CASES: ReplayCase[] = [
     id: "nov9-made-about-undated-no-reading",
     title: "the same, the reader reads nothing: the topic from the manager's words, with Details",
     report: REPORT,
-    status: { open: "Other alone, or Details alone with Other \"Missed monthly meeting\"" },
+    // Changed on purpose (9 Nov 2026): fixed in production by MADE_ABOUT_UNDATED_TOGETHER_ENABLED, QA round 13, 9 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     run: together(undefined),
   },
@@ -79,7 +81,8 @@ export const NOV9_MADE_ABOUT_UNDATED_TOGETHER_CASES: ReplayCase[] = [
     title: "the same, the reader reads the topic and the revision's account is refused: neither is saved, and the reply says so",
     report: `${REPORT} (the condition: Details and the topic together, or neither)`,
     // Open here (unlike the sibling app): with the chain off, the reader's topic is saved alone.
-    status: { open: "Other is saved alone (\"Changed Other to …\")" },
+    // Changed on purpose (9 Nov 2026): already holds with production's flags since MADE_ABOUT_ALL_OR_NOTHING went live (QA round 11); marked fixed in QA round 13.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const { id, reply, before } = await onDraft(t, TOPIC, "REWRITTEN");

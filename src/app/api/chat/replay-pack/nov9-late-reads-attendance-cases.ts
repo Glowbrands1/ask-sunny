@@ -29,7 +29,8 @@ export const NOV9_LATE_READS_ATTENDANCE_CASES: ReplayCase[] = [
     id: "nov9-late-reads-attendance",
     title: "\"create a CA for <P>, she was late on 11/6/26\", the model's heading Late Opening: the card cites Attendance",
     report: REPORT,
-    status: { open: "\"Policy: Late Opening — read from this request\"" },
+    // Changed on purpose (9 Nov 2026): fixed in production by LATE_READS_ATTENDANCE_ENABLED, QA round 13, 9 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const content = await card(t, "create a CA for Marnie Holloway, she was late on 11/6/26", "Late Opening");
