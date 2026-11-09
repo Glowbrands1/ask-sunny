@@ -27,6 +27,13 @@ When the latest message says what the form is about or for ("make it about …",
  */
 export const EDIT_POLICY_ASK_LINES = `policy_asked: true when the latest message asks for a policy to be listed, added, cited or included on this form, whether or not it names one; otherwise false. Do not write a policy for that ask yourself: the app adds the manual's own line.`;
 
+/**
+ * STEP_B_MAKE_IT_ABOUT_ACCOUNT_ENABLED (ported from Ask Bubbles; QA's live draft test there, 8 Nov 2026): a line ADDED
+ * after the approved system text and the reader lines (neither is edited). Live, "I need you to make it about showing up
+ * late" set only the Other topic. Sent only with the flag on.
+ */
+export const FORM_PATCH_ACCOUNT_LINE = `The field that gives the account is the form's narrative field (Details of Coaching, Observation of Offense), never a topic, type or "Other" field: "make it about …" always sets the narrative field, how "replace", keeping its headings (Observed:, Expectation:, Going Forward:) and writing what is under them about what the manager said; a topic field may be set as well.`;
+
 export interface FormPatchField {
   readonly key: string;
   readonly label: string;
