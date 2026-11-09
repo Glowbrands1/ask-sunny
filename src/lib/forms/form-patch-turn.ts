@@ -8,11 +8,13 @@ import {
   stepBMakeItAboutAccountEnabled,
   madeAboutAllOrNothingEnabled,
   madeAboutUndatedTogetherEnabled,
+  madeAboutPolicyLineEnabled,
   stepBDateSaidEnabled,
   stepBDateWithAboutEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { madeAbout } from "@/lib/ai/make-it-about";
 import { saidFormDate } from "./form-date-said";
+import { splitAppCitationLine } from "./app-citation-line";
 import { endMadeAboutWrite, madeAboutDate, madeAboutTopic, noteMadeAboutWrite } from "./made-about-date";
 import { syncCorrectiveActionPlan } from "./ca-action-plan-sync";
 import { checkboxGroupsForVariant, fieldsForVariant, parseFormDocument } from "./document";
@@ -367,6 +369,15 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
       }
       const revised = await loadInstance(input.instanceId);
       const rewritten = revised !== null && snapshotDiff(snapshotOf(loaded), snapshotOf(revised)).some((change) => change.key === keptAccountKey);
+      /*
+       * MADE_ABOUT_POLICY_LINE_ENABLED (QA's live round-11 test, 9 Nov 2026): the old account's "Policy reference: …" line
+       * went with it and none was written for the new one. The account rewritten, its reference is written again from
+       * the new account (`made-about-policy-line.ts`), only where the old account carried one.
+       */
+      const hadLine = typeof before[keptAccountKey]?.value === "string" && splitAppCitationLine(before[keptAccountKey]!.value as string).line !== null;
+      if (rewritten && hadLine && madeAboutPolicyLineEnabled()) {
+        await (await import("./made-about-policy-line")).rewriteMadeAboutPolicyLine({ instanceId: input.instanceId, actorId: actor.id, question: input.question, accountKey: keptAccountKey });
+      }
       if (!rewritten) {
         const label = labels[keptAccountKey] ?? keptAccountKey;
         const about = madeAbout(input.question);
