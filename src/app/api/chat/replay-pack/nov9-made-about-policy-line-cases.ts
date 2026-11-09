@@ -61,8 +61,8 @@ export const NOV9_MADE_ABOUT_POLICY_LINE_CASES: ReplayCase[] = [
     id: "nov9-made-about-policy-line-rewritten",
     title: "Details ending \"Policy reference: Attendance Policy … p.14\", \"make it about leaving the front desk unattended on 11/6/26\": the new Details carries the Standards of Conduct reference, p.13",
     report: REPORT,
-    // Changed on purpose (9 Nov 2026): fixed in production by MADE_ABOUT_POLICY_LINE_ENABLED, QA round 13, 9 Nov 2026; it now holds with production's flags.
-    status: "fixed",
+    // Changed on purpose (10 Nov 2026): back to open; its switch was turned off again after the round-13 live saved-draft test (rolled back, being fixed).
+    status: { open: "the new Details carries no policy reference" },
     fixFlags: FIX,
     async run(t) {
       const { id, reply } = await onDraft(t, DETAILS);
