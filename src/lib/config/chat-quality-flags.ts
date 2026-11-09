@@ -3700,4 +3700,11 @@ export function shiftAccountIsIncidentEnabled(): boolean {
  */
 export function modelPolicyDefersToTopicEnabled(): boolean {
   return envFlag("MODEL_POLICY_DEFERS_TO_TOPIC_ENABLED");
+ * WORK_AREA_ABSENCE_CITES_CONDUCT_ENABLED (Pau's decision, 9 Nov 2026, via QA; default off; same flag in both apps).
+ * "leaving the front desk unattended" (the desk, register, counter, work area or floor left unattended during the shift)
+ * cites the Standards of Conduct line "Unauthorized absence from the work area during the workday", never Attendance, and
+ * only it, whatever else the account says (`forms/specific-policy-topics.ts`). Off, as before.
+ */
+export function workAreaAbsenceCitesConductEnabled(): boolean {
+  return envFlag("WORK_AREA_ABSENCE_CITES_CONDUCT_ENABLED");
 }
