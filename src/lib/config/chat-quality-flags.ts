@@ -3711,3 +3711,13 @@ export function modelPolicyDefersToTopicEnabled(): boolean {
 export function workAreaAbsenceCitesConductEnabled(): boolean {
   return envFlag("WORK_AREA_ABSENCE_CITES_CONDUCT_ENABLED");
 }
+
+/**
+ * ONE_CARD_ONE_PAGE_ENABLED (QA, Sunny round 9 live, 9 Nov 2026; default off; same flag in both apps). A CA card read
+ * "**Policy:** … **Standards of Conduct** (page 13)" and "Standards of Conduct Policy, JBA Policy Manual p.12" under it.
+ * The card's citation line takes the page the card already gives that section, and a card whose Policy line names a section
+ * with its page gets the citation line (`ai/form-card-slots.ts`). Off, as before.
+ */
+export function oneCardOnePageEnabled(): boolean {
+  return envFlag("ONE_CARD_ONE_PAGE_ENABLED");
+}
