@@ -628,7 +628,10 @@ async function recorded(id: string, mode: string, run: () => Promise<void>) {
     throw thrown;
   } finally {
     if (process.env.REPLAY_RECORD) {
-      appendFileSync(process.env.REPLAY_RECORD, `${JSON.stringify({ id, mode, ok: error === null, error, ms: Math.round(performance.now() - at), turns: record.turns })}\n`);
+      // The rows the turn's writes left (QA, 9 Nov 2026: CHAT_PARALLEL_LOADS must write exactly as often as before).
+      const tables = store as unknown as Record<string, unknown[] | undefined>;
+      const rows = { user_memory: tables.user_memory?.length ?? 0, chat_context_summaries: tables.chat_context_summaries?.length ?? 0 };
+      appendFileSync(process.env.REPLAY_RECORD, `${JSON.stringify({ id, mode, ok: error === null, error, ms: Math.round(performance.now() - at), turns: record.turns, rows })}\n`);
     }
   }
 }

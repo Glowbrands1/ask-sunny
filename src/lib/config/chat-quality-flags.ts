@@ -3870,3 +3870,29 @@ export function madeAboutReaderAccountEnabled(): boolean {
 export function chatStageTimingsEnabled(): boolean {
   return envFlag("CHAT_STAGE_TIMINGS_ENABLED");
 }
+
+/**
+ * CHAT_PARALLEL_LOADS_ENABLED (QA, 9 Nov 2026; default off; same flag in both apps). The chat turn's reads that need
+ * nothing more of the turn (the few-shot examples, the cited-manual grounding, the Google-reviews block and the chat
+ * data block) start after the turn's last early return (the framework refusals), and the two loads that write
+ * (recalled memory, the long-context summary) start right before the system prompt is built (nothing between there and
+ * their awaits can throw), instead of each being awaited one after another before the answer. Each is awaited where
+ * it was with the same inputs, so the prompt and the reply are the same (`ai/server-ask.ts`). Off, as before.
+ */
+export function chatParallelLoadsEnabled(): boolean {
+  return envFlag("CHAT_PARALLEL_LOADS_ENABLED");
+}
+
+/**
+ * CHAT_PARALLEL_REWRITE_ENABLED (QA, 9 Nov 2026; default off; same flag in both apps). The message normalizer
+ * (`normalizeForChat`, a Haiku call) starts alongside intent extraction instead of after it, and is used only when
+ * extraction leaves the question and the history as they were; otherwise it runs again from the extracted turn, as
+ * before (`ai/server-ask.ts`). The same input, so the same reading. Cost: on a turn whose extraction changes the
+ * question, the early call is dropped and the normalizer runs again, one extra Haiku call that the turn's spend
+ * counts (it was paid for); with CHAT_STAGE_TIMINGS that step is named "query_normalize_rerun". And a turn that
+ * extraction answers with a clarifying question ("which salon?") returns before the normalizer: its early call was made
+ * and not used (one Haiku call; its rejection, if any, is held). Off, as before.
+ */
+export function chatParallelRewriteEnabled(): boolean {
+  return envFlag("CHAT_PARALLEL_REWRITE_ENABLED");
+}
