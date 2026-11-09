@@ -46,6 +46,7 @@ import {
   formEditNoopGuardEnabled,
   reopenByAnyOpenVerbEnabled,
   twoFormsCardNotAskedEnabled,
+  secondRequestOwnAccountEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { streamWhenSlow } from "@/lib/api/streamed-response";
 import { finalReplyWithoutMarkers } from "@/lib/ai/source-note";
@@ -257,6 +258,12 @@ async function postChat(request: Request) {
       if (formNameFromRosterEnabled()) (await import("@/lib/forms/request-message-store")).enterRequestMessage(asked.question);
       // METRIC_GUARD_ENABLED, FORM_NAME off: only the metric guards read the message (`request-slot.ts` metricMessage).
       else if (metricGuardEnabled()) (await import("@/lib/forms/request-message-store")).enterMetricMessage(asked.question);
+      // SECOND_REQUEST_OWN_ACCOUNT_ENABLED: the app's reply before this turn, so the answer to its own question continues
+      // the same request (`lib/ai/form-state.ts` stateForTurn). After the FORM_NAME / METRIC_GUARD pair, never between it.
+      if (secondRequestOwnAccountEnabled()) {
+        const reply = [...asked.history].reverse().find((turn) => turn.role === "assistant");
+        if (reply) (await import("@/lib/forms/last-reply-store")).enterLastReply(String(reply.content ?? ""));
+      }
       /*
        * PERSON_GUARD_ENABLED: the actor's roster, for the rule that somebody on
        * it is always a person. One directory read per turn, only with the flag
