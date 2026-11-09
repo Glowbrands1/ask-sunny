@@ -34,10 +34,10 @@ const FORM_FOR = new RegExp(String.raw`\b(?:form|ca|exit|termination|resignation
  * EXIT_LETTER_ADDRESSEE_ENABLED (QA, the live Sunny test of rounds 7c and 8, 9 Nov 2026; default off): "I need an exit
  * form with this information." and a letter "<A>, … your employment is terminated, effective 11/08/2026 … <C>, District
  * Manager" names nobody after "form for", so the sign-off was kept and the card's Job Title was "District Manager".
- * With this flag on, the letter's own salutation — "<A>," starting a line (or the letter, after a quote) and followed
+ * With this flag on, the letter's own salutation — "<A>," starting a line (or the letter, after a quote or a sentence) and followed
  * by the letter's words ("your", "this", "we", "you", a new line) — names the form's person when nothing else does.
  */
-const ADDRESSEE = new RegExp(String.raw`(?:^|\n|[:'"“‘]\s*)(${NAME})\s*,\s*(?=\n|(?:your|this|we|you|it|after|following|on)\b)`, "u");
+const ADDRESSEE = new RegExp(String.raw`(?:^|\n|[.!?]\s+|[:'"“‘]\s*)(${NAME})\s*,\s*(?=\n|(?:your|this|we|you|it|after|following|on)\b)`, "u");
 
 function samePersonWords(a: string, b: string): boolean {
   const first = (name: string) => name.trim().split(/\s+/)[0]!.toLowerCase();

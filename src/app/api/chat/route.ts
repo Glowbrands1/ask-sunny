@@ -22,6 +22,7 @@ import {
   possessivePlaceNotPersonEnabled,
   formNameFromRosterEnabled,
   offRosterConfirmEnabled,
+  exitLetterAddresseeEnabled,
   offRosterAskBeforeCardEnabled,
   metricGuardEnabled,
   refusalNoRepeatEnabled,
@@ -216,6 +217,20 @@ async function postChat(request: Request) {
     let answer;
     try {
       let asked = parseAskRequest(body);
+      /*
+       * EXIT_LETTER_ADDRESSEE_ENABLED (QA, the live test of rounds 7c and 8, 9 Nov 2026): a letter to the employee,
+       * signed "Sincerely,\n<C>\nDistrict Manager", is read without that sign-off in this turn and the manager's
+       * earlier ones, so no reader takes the signer as the form's person nor her title (`ai/letter-signer.ts`). The
+       * stored messages, and the draft, keep the whole letter.
+       */
+      if (exitLetterAddresseeEnabled()) {
+        const { withoutLetterSigner } = await import("@/lib/ai/letter-signer");
+        asked = {
+          ...asked,
+          question: withoutLetterSigner({ question: asked.question }),
+          history: asked.history.map((turn) => (turn.role === "user" && typeof turn.content === "string" ? { ...turn, content: withoutLetterSigner({ question: turn.content }) } : turn)),
+        };
+      }
       /*
        * OFF_ROSTER_CONFIRM_ENABLED: "use <name>" (or "yes") to the offer for a person not in Woven is read as the
        * manager's turn that typed the name, and the name is kept on the card as typed (`forms/off-roster-confirm.ts`).
