@@ -360,7 +360,7 @@ function anyRosterPersonClose(name: string, names: readonly string[]): boolean {
  * "QA Probe XZT One" are never offered; "zebulon marchbanks" is, said back in Title Case. Null: no offer; else the
  * name in Title Case.
  */
-function offRosterTyped(employee: string, message: string | undefined, names: readonly string[]): string | null {
+export function offRosterTyped(employee: string, message: string | undefined, names: readonly string[]): string | null {
   const typed = employee.trim();
   if (!NAME_SHAPE.test(typed) || rosterSpelling(typed, names) || anyRosterPersonClose(typed, names) || namesAForm(typed)) return null;
   if (normalizeTypedName(typed).split(/\s+/).includes(UNNAMED_PERSON_WORD)) return null;
