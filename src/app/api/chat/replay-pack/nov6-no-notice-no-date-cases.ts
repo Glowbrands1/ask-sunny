@@ -20,7 +20,16 @@ export const NOV6_NO_NOTICE_NO_DATE_CASES: ReplayCase[] = [
       vi.setSystemTime(new Date("2026-11-06T15:00:00Z"));
       t.directory(STAFF);
       t.as("salon_director", KEARNEY);
-      const reply = await t.thread().say("exit form for Peregrine Ashcombe, resigned 11-3-26 with no notice, not eligible for rehire");
+      const thread = t.thread();
+      let reply = await thread.say("exit form for Peregrine Ashcombe, resigned 11-3-26 with no notice, not eligible for rehire");
+      /*
+       * Changed on purpose (9 Nov 2026, the off-roster switch-on: OFF_ROSTER_CONFIRM + OFF_ROSTER_ASK_BEFORE_CARD, Pau's
+       * "on" via QA): Peregrine Ashcombe is on no roster here, so a salon manager is asked about the name first. The
+       * manager's "use <name>" makes the card, and every assertion below holds on that card turn, as it did on turn 1.
+       */
+      if (/I can't find \*\*Peregrine Ashcombe\*\* on your roster/.test(reply.content)) {
+        reply = await thread.say("use Peregrine Ashcombe");
+      }
       expect(reply.content, "a notice date the manager never gave").not.toMatch(/\*\*Date that notice was given:\*\*/i);
       expect(reply.content, "the resignation date is lost").toMatch(/Resignation Date:\*\* November 3, 2026/);
     },

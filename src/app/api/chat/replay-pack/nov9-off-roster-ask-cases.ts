@@ -32,7 +32,8 @@ export const NOV9_OFF_ROSTER_ASK_CASES: ReplayCase[] = [
     id: "nov9-off-roster-ask-before-card",
     title: "QA's \"create a coaching form for <full name not on the roster>\" (a salon manager): asked about before any card",
     report: REPORT,
-    status: { open: "a ready Coaching Form card for **Wrenna Pollard**, no question" },
+    // Changed on purpose (9 Nov 2026): OFF_ROSTER_CONFIRM and OFF_ROSTER_ASK_BEFORE_CARD are ON in production (Pau's "on" via QA); it holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const thread = start(t);
@@ -45,7 +46,8 @@ export const NOV9_OFF_ROSTER_ASK_CASES: ReplayCase[] = [
     id: "nov9-off-roster-ask-then-name",
     title: "after the question, the name typed again makes the card, marked not from Woven",
     report: REPORT,
-    status: { open: "no question: the first card is already for **Wrenna Pollard**" },
+    // Changed on purpose (9 Nov 2026): OFF_ROSTER_CONFIRM and OFF_ROSTER_ASK_BEFORE_CARD are ON in production (Pau's "on" via QA); it holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const thread = start(t);
@@ -60,7 +62,8 @@ export const NOV9_OFF_ROSTER_ASK_CASES: ReplayCase[] = [
     id: "nov9-off-roster-ask-then-use",
     title: "the question carries OFF_ROSTER_CONFIRM's offer, and \"use Wrenna Pollard\" makes the card, marked not from Woven",
     report: REPORT,
-    status: { open: "no question: the first card is already for **Wrenna Pollard**" },
+    // Changed on purpose (9 Nov 2026): OFF_ROSTER_CONFIRM and OFF_ROSTER_ASK_BEFORE_CARD are ON in production (Pau's "on" via QA); it holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const thread = start(t);
@@ -96,6 +99,22 @@ export const NOV9_OFF_ROSTER_ASK_CASES: ReplayCase[] = [
       const { content } = await thread.say("create a coaching form for Marnie Holloway");
       expect(content).not.toMatch(/I can't find/);
       expect(thread.proposal?.employeeName ?? null).toBe("Marnie Holloway");
+    },
+  },
+  {
+    id: "nov9-off-roster-ask-legal-name",
+    title: "must not change: a roster person with a preferred name, typed by the legal name (\"tamsin wexley\" for \"Tammy Wexley\"), gets the card, no question",
+    report: "The off-roster switch-on, 9 Nov 2026 (the sibling app's gate): the legal name of a roster person with a preferred name was asked about",
+    status: "fixed",
+    fixFlags: FIX,
+    async run(t) {
+      vi.setSystemTime(new Date("2026-11-07T16:00:00Z"));
+      t.directory([...STAFF, { id: "e-tamsin-wexley-legal", firstName: "Tamsin", lastName: "Wexley", preferredFirstName: "Tammy", employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" }]);
+      t.as("salon_director", KEARNEY);
+      const thread = t.thread();
+      const { content } = await thread.say("create a CA for tamsin wexley, verbal, she was late on 10-20-26");
+      expect(content, `a roster person is asked about:\n${content}`).not.toMatch(/I can't find/);
+      expect(thread.proposal?.employeeName ?? "", `no card for her:\n${content}`).toMatch(/Wexley/i);
     },
   },
 ];
