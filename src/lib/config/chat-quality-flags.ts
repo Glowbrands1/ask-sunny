@@ -2601,6 +2601,16 @@ export function exitLetterAddresseeEnabled(): boolean {
 export function missedShiftCitesAttendanceEnabled(): boolean {
   return envFlag("MISSED_SHIFT_CITES_ATTENDANCE_ENABLED");
 }
+/**
+ * LETTER_GREETING_NOT_NAME_ENABLED (QA, 9 Nov 2026; coding 5; same flag in both apps; default off). A letter opening
+ * "Dear <A>," gave the exit card the employee "Dear <A>", no Job Title and no salon, on the roster or off it. On: a
+ * letter's salutation word (Dear, Hi, Hello, Hey, To, Attn, Good morning, …) before the addressee is not part of the
+ * name; the proposal reads "<A>," (`ai/letter-signer.ts`). Off, as before.
+ */
+export function letterGreetingNotNameEnabled(): boolean {
+  return envFlag("LETTER_GREETING_NOT_NAME_ENABLED");
+}
+
 // --- end coding 5 flags ---
 
 /**
