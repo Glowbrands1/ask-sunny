@@ -476,23 +476,16 @@
   --ring: var(--approved-brand-yellow);
   --ring-glow: rgb(255 204 0 / 0.22);
 
-  /* GRADIENTS. Exactly two in the whole direction, both radial. The corner
-     glow is the only place the red-light red is allowed to appear. */
-  /* CLAY: QUIETER. At 0.4 over 150% the red mixed into the navy and read as
-     maroon. The band now sits on the clay mockup's navy-to-navy blend
-     (#2b2e3a to #1c1f29, both existing palette values) with the red kept to a
-     faint, tighter corner warmth. Same colours, less mud. */
-  --band-glow:
-    radial-gradient(70% 120% at 100% 0%, rgb(214 44 58 / 0.14) 0%, rgb(28 31 41 / 0) 60%),
-    linear-gradient(150deg, var(--approved-band-tile) 0%, var(--approved-topbar) 65%);
-  /* THE SAME GLOW, FOR THE SLIM BAND. The Reports artifact runs the report
-     band's corner glow a step quieter and taller than the Overview and Chat
-     hero band — 0.34 over 160% rather than 0.4 over 150% — because the strip is
-     a third of the height and the full-strength glow reads as a red wash on it
-     rather than as a corner. Same red, same single sanctioned use. */
-  --band-glow-slim:
-    radial-gradient(60% 140% at 100% 0%, rgb(214 44 58 / 0.12) 0%, rgb(28 31 41 / 0) 60%),
-    linear-gradient(150deg, var(--approved-band-tile) 0%, var(--approved-topbar) 65%);
+  /* GRADIENTS. The red-light red no longer appears in the bands at all (see
+     below); `--wellness-redlight` keeps the value for its token contract. */
+  /* CLAY: NO RED, LIT FROM ABOVE. Red laid thinly over navy does not read as
+     red — it mixes to a muddy maroon-brown, and turning it down only made it
+     browner. The band is now the two existing navies, the lighter band tile at
+     the top easing into the topbar navy below, so the gradient reads as light
+     on a clay pillow rather than as a second colour. */
+  --band-glow: linear-gradient(180deg, var(--approved-band-tile) 0%, var(--approved-topbar) 75%);
+  /* The slim band (report frame) uses the same light. */
+  --band-glow-slim: linear-gradient(180deg, var(--approved-band-tile) 0%, var(--approved-topbar) 75%);
   /* The dark callout's glow: the band's shape in YELLOW, for the two panels the
      artifacts draw on near-black inside the daylight half — the FAST capacity
      note and the period-integrity warning. */
@@ -1242,9 +1235,8 @@
   .clay-band {
     border-radius: 34px;
     background-color: var(--band);
-    /* The mockup's navy-to-navy blend. Bands that carry the corner glow set
-       `--band-glow` over this, which includes the same blend. */
-    background-image: linear-gradient(150deg, var(--band-tile) 0%, var(--band) 65%);
+    /* Top-lit navy: the band tile easing into the band navy. */
+    background-image: var(--band-glow);
     box-shadow:
       0 18px 28px -12px rgb(60 40 30 / 0.45),
       inset 0 4px 6px rgb(255 255 255 / 0.14),
