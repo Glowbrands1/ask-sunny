@@ -3640,3 +3640,24 @@ export function carriedPersonNoticeEnabled(): boolean {
 export function fieldLabelNotAQuestionEnabled(): boolean {
   return envFlag("FIELD_LABEL_NOT_A_QUESTION_ENABLED");
 }
+
+/**
+ * FIRST_NAME_ANSWER_KEEPS_ACCOUNT_ENABLED (QA, Sunny live test, 8 Nov 2026; default off; same flag in both apps).
+ * "make me CA for <first name> failing to complete shifts" → "Is this for **<full name>**?" → "make me CA for <full
+ * name> failing to complete shifts 11/7 and 11/8" (or "<full name> 11/7 and 11/8") lost the dates: an answer that
+ * named the person in full was read as the name alone. With this flag on, what the answer says besides the name is
+ * kept (`ai/first-name-suggest.ts`). Off, as before.
+ */
+export function firstNameAnswerKeepsAccountEnabled(): boolean {
+  return envFlag("FIRST_NAME_ANSWER_KEEPS_ACCOUNT_ENABLED");
+}
+
+/**
+ * SHIFT_ACCOUNT_IS_INCIDENT_ENABLED (QA, Sunny live test, 8 Nov 2026; default off; same flag in both apps). "make me CA
+ * for <name> not showing up to her shifts on 11/7 and 11/8" had no Observation: a shift not shown up to, not completed
+ * or missed, told with no subject and no "for", was read as the request alone. With this flag on it is an account
+ * (`forms/corrective-action-intake.ts` describesIncident). Off, as before.
+ */
+export function shiftAccountIsIncidentEnabled(): boolean {
+  return envFlag("SHIFT_ACCOUNT_IS_INCIDENT_ENABLED");
+}
