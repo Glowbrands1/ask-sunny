@@ -510,6 +510,8 @@ const NEW_FLAGS = [
   "DATE_QUESTION_KEPT_ENABLED",
   // coding 5: MISSED_SHIFT_NOT_LATENESS (default off): forced off with the others in the child run.
   "MISSED_SHIFT_NOT_LATENESS_ENABLED",
+  // coding 4: MODEL_POLICY_DEFERS_TO_TOPIC (QA, round 7c, 9 Nov 2026; default off): forced off with the others in the child run.
+  "MODEL_POLICY_DEFERS_TO_TOPIC_ENABLED",
   // coding 4: FIRST_NAME_ANSWER_KEEPS_ACCOUNT (default off): forced off with the others in the child run.
   "FIRST_NAME_ANSWER_KEEPS_ACCOUNT_ENABLED",
   "SHIFT_ACCOUNT_IS_INCIDENT_ENABLED",

@@ -3690,3 +3690,14 @@ export function firstNameAnswerKeepsAccountEnabled(): boolean {
 export function shiftAccountIsIncidentEnabled(): boolean {
   return envFlag("SHIFT_ACCOUNT_IS_INCIDENT_ENABLED");
 }
+
+/**
+ * MODEL_POLICY_DEFERS_TO_TOPIC_ENABLED (QA, round-7c live test, 9 Nov 2026; default off; same flag in both apps). "I need
+ * another corrective action for <P>, his cash drawer was short $20 on 11/3" cited theft and Handling Theft: the slot model's
+ * policy heading ("Handling Theft") was written in front of the turn and read as the manager's. Where the manager's own
+ * words name an incident the code reads, a model heading outside that incident's sections is not taken
+ * (`ai/intent-slots.ts`). Off, as before.
+ */
+export function modelPolicyDefersToTopicEnabled(): boolean {
+  return envFlag("MODEL_POLICY_DEFERS_TO_TOPIC_ENABLED");
+}
