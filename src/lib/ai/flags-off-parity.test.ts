@@ -510,6 +510,9 @@ const NEW_FLAGS = [
   "DATE_QUESTION_KEPT_ENABLED",
   // coding 5: MISSED_SHIFT_NOT_LATENESS (default off): forced off with the others in the child run.
   "MISSED_SHIFT_NOT_LATENESS_ENABLED",
+  // coding 4: FIRST_NAME_ANSWER_KEEPS_ACCOUNT (default off): forced off with the others in the child run.
+  "FIRST_NAME_ANSWER_KEEPS_ACCOUNT_ENABLED",
+  "SHIFT_ACCOUNT_IS_INCIDENT_ENABLED",
   // coding 5: UNDATED_ACCOUNT_BRIEF (default off): forced off with the others in the child run.
   "UNDATED_ACCOUNT_BRIEF_ENABLED",
   // coding 5: CORRECTED_DATE_KEPT (default off): forced off with the others in the child run.
