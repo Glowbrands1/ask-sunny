@@ -2559,6 +2559,13 @@ export function editPolicyAskEnabled(): boolean {
  */
 export function exitLetterSignerNotSubjectEnabled(): boolean {
   return envFlag("EXIT_LETTER_SIGNER_NOT_SUBJECT_ENABLED");
+ * POSSESSIVE_PLACE_NOT_PERSON_ENABLED (ported from the sibling app: QA's round-6 live test there, 9 Nov 2026; coding 5;
+ * same flag in both apps; default off). "create a CA for Hadley's Crossing Plaza, she was late on 10-20-26" made a card
+ * for Employee "Hadley". On: a card whose person is only ever the possessive of a place ("<Name>'s … Plaza") loses that
+ * name and asks who the form is for (`forms/possessive-place.ts`, after PERSON_GUARD in the chat route). Off, as before.
+ */
+export function possessivePlaceNotPersonEnabled(): boolean {
+  return envFlag("POSSESSIVE_PLACE_NOT_PERSON_ENABLED");
 }
 // --- end coding 5 flags ---
 
