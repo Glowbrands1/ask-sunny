@@ -19,6 +19,7 @@ import {
   policyChangeRestOfTurnEnabled,
   openFormNoSelectionEnabled,
   personGuardEnabled,
+  missedShiftCitesAttendanceEnabled,
   possessivePlaceNotPersonEnabled,
   formNameFromRosterEnabled,
   offRosterConfirmEnabled,
@@ -823,6 +824,8 @@ async function postChat(request: Request) {
       }
       // PERSON_GUARD_ENABLED: whichever reader named the card's employee, a name that is not a person never stays on it.
       if (personGuardEnabled()) answer = (await import("@/lib/forms/person-guard")).withPersonOnCard(answer);
+      // MISSED_SHIFT_CITES_ATTENDANCE_ENABLED: a card whose Policy line is the app's own reading has its Action Plan on that policy (`lib/forms/ca-policy.ts`).
+      if (missedShiftCitesAttendanceEnabled()) answer = (await import("@/lib/forms/ca-policy")).withPlanOnReadPolicy(answer);
       // POSSESSIVE_PLACE_NOT_PERSON_ENABLED: "<Name>'s … Plaza" never puts "<Name>" on the card (`lib/forms/possessive-place.ts`).
       if (possessivePlaceNotPersonEnabled()) {
         answer = (await import("@/lib/forms/possessive-place")).withPossessivePlaceNotPerson(answer, [

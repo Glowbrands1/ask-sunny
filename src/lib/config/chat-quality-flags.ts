@@ -2579,6 +2579,16 @@ export function possessivePlaceNotPersonEnabled(): boolean {
 export function offRosterAskBeforeCardEnabled(): boolean {
   return envFlag("OFF_ROSTER_ASK_BEFORE_CARD_ENABLED");
 }
+/**
+ * MISSED_SHIFT_CITES_ATTENDANCE_ENABLED (ported from the sibling app: QA's round-7 live test there, 9 Nov 2026; coding
+ * 5; same flag in both apps; default off). "create a CA for <A>, not showing up to her shifts on 11/7 and 11/8" read as
+ * no policy here too; the live card's Attendance line came only from the model's heading. On: an account that names no
+ * policy and says a shift was not shown up to, missed, skipped or not worked reads as Attendance, said on the card as
+ * "Attendance — read from this request" (`forms/ca-policy.ts`). Off, as before.
+ */
+export function missedShiftCitesAttendanceEnabled(): boolean {
+  return envFlag("MISSED_SHIFT_CITES_ATTENDANCE_ENABLED");
+}
 // --- end coding 5 flags ---
 
 /**
