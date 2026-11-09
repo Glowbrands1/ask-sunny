@@ -2590,6 +2590,15 @@ export function offRosterAskBeforeCardEnabled(): boolean {
 export function exitLetterAddresseeEnabled(): boolean {
   return envFlag("EXIT_LETTER_ADDRESSEE_ENABLED");
 }
+/**
+ * LATE_READS_ATTENDANCE_ENABLED (QA, the Sunny round-10 live test, 9 Nov 2026; coding 5; same flag in both apps; default
+ * off). "create a CA for <P>, she was late on 11/6/26" gave Late Opening in 1 of 6 runs (the model's heading). On: an
+ * account of an employee late or tardy with no "open" word reads as Attendance, whatever the heading
+ * (`forms/ca-policy.ts`); "late opening the salon" stays Late Opening. Off, as before.
+ */
+export function lateReadsAttendanceEnabled(): boolean {
+  return envFlag("LATE_READS_ATTENDANCE_ENABLED");
+}
 // --- end coding 5 flags ---
 
 /**
