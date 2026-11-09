@@ -1,4 +1,4 @@
-import { exitLetterAddresseeEnabled, exitLetterSignerNotSubjectEnabled } from "@/lib/config/chat-quality-flags";
+import { exitLetterAddresseeEnabled, exitLetterSignerNotSubjectEnabled, letterGreetingNotNameEnabled } from "@/lib/config/chat-quality-flags";
 
 import type { AskRequest } from "./types";
 
@@ -38,6 +38,25 @@ const FORM_FOR = new RegExp(String.raw`\b(?:form|ca|exit|termination|resignation
  * by the letter's words ("your", "this", "we", "you", a new line) — names the form's person when nothing else does.
  */
 const ADDRESSEE = new RegExp(String.raw`(?:^|\n|[.!?]\s+|[:'"“‘]\s*)(${NAME})\s*,\s*(?=\n|(?:your|this|we|you|it|after|following|on)\b)`, "u");
+
+/*
+ * LETTER_GREETING_NOT_NAME_ENABLED (QA, 9 Nov 2026; default off): "Dear <A>," opening a letter gave the employee
+ * "Dear <A>" — the salutation read as a first name — so the roster found nobody (no Job Title, no salon). With the flag
+ * on, the salutation word is dropped where the letter's addressee is read ("Dear <A>," → "<A>,"), at the start of a
+ * line, of the turn, after a quote or a colon, or after a sentence, and only when the addressee's comma is followed by
+ * the letter (a new line or "your", "this", …), as EXIT_LETTER_ADDRESSEE reads it.
+ */
+const SALUTATION = String.raw`(?:[Dd]ear|DEAR|[Hh]i|HI|[Hh]ello|HELLO|[Hh]ey|[Tt]o|[Aa]ttn|ATTN|[Aa]ttention|ATTENTION|[Gg]reetings|[Gg]ood\s+(?:[Mm]orning|[Aa]fternoon|[Ee]vening|[Dd]ay))\s*:?\s+`;
+const GREETING = new RegExp(
+  String.raw`(^|\n[ \t]*|[.!?]\s+|[:'"“‘]\s*)${SALUTATION}(${NAME})(\s*,\s*)(?=\n|(?:your|this|we|you|it|after|following|on)\b)`,
+  "gu",
+);
+
+/** The turn with a letter's salutation word left out before the addressee: "Dear <A>," is read as "<A>,". */
+export function withoutLetterGreeting(text: string): string {
+  if (!letterGreetingNotNameEnabled()) return text;
+  return text.replace(GREETING, (_match, lead: string, name: string, comma: string) => `${lead}${name}${comma}`);
+}
 
 function samePersonWords(a: string, b: string): boolean {
   const first = (name: string) => name.trim().split(/\s+/)[0]!.toLowerCase();
