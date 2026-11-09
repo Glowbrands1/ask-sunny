@@ -62,14 +62,14 @@ function together(reading: unknown) {
   };
 }
 
-const OPEN = { open: "nothing is saved, or Other alone with Details and the Date as before" };
 
 export const NOV9_MAKE_IT_ABOUT_CHAIN_CASES: ReplayCase[] = [
   {
     id: "nov9-make-it-about-chain-no-reading",
     title: "\"make it about leaving the front desk unattended on 11/6/26\", the reader reads nothing: Other, the Date and Details together",
     report: REPORT,
-    status: OPEN,
+    // Changed on purpose (9 Nov 2026): fixed in production by STEP_B_MAKE_IT_ABOUT_ACCOUNT, STEP_B_DATE_SAID, STEP_B_DATE_WITH_ABOUT and MADE_ABOUT_ALL_OR_NOTHING, QA round 11, 9 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     run: together(undefined),
   },
@@ -77,7 +77,8 @@ export const NOV9_MAKE_IT_ABOUT_CHAIN_CASES: ReplayCase[] = [
     id: "nov9-make-it-about-chain-other-form",
     title: "the same, the reader reads another form's turn: Other, the Date and Details together",
     report: REPORT,
-    status: OPEN,
+    // Changed on purpose (9 Nov 2026): fixed in production by STEP_B_MAKE_IT_ABOUT_ACCOUNT, STEP_B_DATE_SAID, STEP_B_DATE_WITH_ABOUT and MADE_ABOUT_ALL_OR_NOTHING, QA round 11, 9 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     run: together(patch("other", [])),
   },
@@ -85,7 +86,8 @@ export const NOV9_MAKE_IT_ABOUT_CHAIN_CASES: ReplayCase[] = [
     id: "nov9-make-it-about-chain-topic",
     title: "the same, the reader reads the topic: Other, the Date and Details together, never Other alone",
     report: REPORT,
-    status: OPEN,
+    // Changed on purpose (9 Nov 2026): fixed in production by STEP_B_MAKE_IT_ABOUT_ACCOUNT, STEP_B_DATE_SAID, STEP_B_DATE_WITH_ABOUT and MADE_ABOUT_ALL_OR_NOTHING, QA round 11, 9 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     run: together(TOPIC),
   },
@@ -93,7 +95,8 @@ export const NOV9_MAKE_IT_ABOUT_CHAIN_CASES: ReplayCase[] = [
     id: "nov9-make-it-about-chain-refused",
     title: "the same, the reader reads the topic and the revision's account is refused: nothing is saved, and the reply says so",
     report: `${REPORT} (the condition: one of them not written, none written)`,
-    status: { open: "Other is saved alone (\"Changed Other to …\")" },
+    // Changed on purpose (9 Nov 2026): fixed in production by STEP_B_MAKE_IT_ABOUT_ACCOUNT, STEP_B_DATE_SAID, STEP_B_DATE_WITH_ABOUT and MADE_ABOUT_ALL_OR_NOTHING, QA round 11, 9 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const { id, reply, before } = await onDraft(t, SAID, TOPIC, "REWRITTEN");
@@ -105,7 +108,8 @@ export const NOV9_MAKE_IT_ABOUT_CHAIN_CASES: ReplayCase[] = [
     id: "nov9-make-it-about-chain-undated",
     title: "\"I need you to make it about showing up late\" (no date), the reader reads the topic: Details is rewritten, never only Other",
     report: `${REPORT} (STEP_B_MAKE_IT_ABOUT_ACCOUNT, the sibling's live 8 Nov case)`,
-    status: { open: "Other is changed and Details stays about the meeting" },
+    // Changed on purpose (9 Nov 2026): fixed in production by STEP_B_MAKE_IT_ABOUT_ACCOUNT, STEP_B_DATE_SAID, STEP_B_DATE_WITH_ABOUT and MADE_ABOUT_ALL_OR_NOTHING, QA round 11, 9 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const said = "I need you to make it about showing up late";
@@ -127,7 +131,8 @@ export const NOV9_MAKE_IT_ABOUT_CHAIN_CASES: ReplayCase[] = [
     id: "nov9-make-it-about-chain-date-said",
     title: "\"I need you to make it about showing up late and please list the policy make the date for 10/14/26\": the Date is 10/14 and the reply says Details was kept",
     report: `${REPORT} (STEP_B_DATE_SAID + STEP_B_DATE_WITH_ABOUT, the sibling's round-5 gate)`,
-    status: { open: "the Date stays 2026-10-10" },
+    // Changed on purpose (9 Nov 2026): fixed in production by STEP_B_MAKE_IT_ABOUT_ACCOUNT, STEP_B_DATE_SAID, STEP_B_DATE_WITH_ABOUT and MADE_ABOUT_ALL_OR_NOTHING, QA round 11, 9 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const said = "I need you to make it about showing up late and please list the policy make the date for 10/14/26";

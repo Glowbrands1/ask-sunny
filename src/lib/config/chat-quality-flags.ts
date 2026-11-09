@@ -2589,6 +2589,9 @@ export function offRosterAskBeforeCardEnabled(): boolean {
  */
 export function exitLetterAddresseeEnabled(): boolean {
   return envFlag("EXIT_LETTER_ADDRESSEE_ENABLED");
+}
+
+/**
  * MISSED_SHIFT_CITES_ATTENDANCE_ENABLED (ported from the sibling app: QA's round-7 live test there, 9 Nov 2026; coding
  * 5; same flag in both apps; default off). "create a CA for <A>, not showing up to her shifts on 11/7 and 11/8" read as
  * no policy here too; the live card's Attendance line came only from the model's heading. On: an account that names no
@@ -3749,6 +3752,9 @@ export function oneCardOnePageEnabled(): boolean {
  */
 export function anotherRequestLeadEnabled(): boolean {
   return envFlag("ANOTHER_REQUEST_LEAD_ENABLED");
+}
+
+/**
  * STEP_B_MAKE_IT_ABOUT_ACCOUNT_ENABLED (ported from Ask Bubbles; QA's live draft test there, 8 Nov 2026; default off; same
  * flag in both apps). On a saved draft, "I need you to make it about showing up late" was read as the Other topic alone,
  * and the account stayed about the old incident. A turn that says what the form is about, whose patch does not set the

@@ -30,7 +30,8 @@ const reported = ([
   id: `nov9-missed-shift-cites-attendance-${key}`,
   title: `${what}: "… not showing up to her shifts on 11/7 and 11/8" cites Attendance`,
   report: REPORT,
-  status: { open: "no Policy line; the Action Plan on \"the applicable company policy\"" },
+  // Changed on purpose (9 Nov 2026): fixed in production by MISSED_SHIFT_CITES_ATTENDANCE_ENABLED, QA round 11, 9 Nov 2026; it now holds with production's flags.
+  status: "fixed",
   fixFlags: FIX,
   async run(t) {
     const thread = start(t);
