@@ -258,6 +258,80 @@ const ASKS_FOR_HELP = /^(?:i\s+)?(?:need|want|have|would\s+like)\s+to\s+(?:coach
 const TALKS_TO_THE_APP =
   /\b(?:you|your|sunny|generate|generated|this\s+conversation|the\s+information|information\s+given)\b/i;
 
+/*
+ * SECOND_REQUEST_OWN_ACCOUNT_ENABLED (QA's Sunny round-6 solo gate, 8 Nov 2026, nov8-kept-request-coaching-*): with
+ * the flag on, "Create a Coaching Form from this conversation." after a chat of policy questions keeps the earlier
+ * request's turns as its account, and the card's Observation pasted the manager's questions ("what does the manual say
+ * about reimbursing the company? how much is the late opening fee? and who pays for client restitution?"). A question
+ * to the app is never the account: a sentence that ended in "?", or one that opens as a question ("what / how much /
+ * who / does …"), asks about the manual, a policy, a fee or who pays, and says nothing of the employee. Nor is a sentence that only confirms the
+ * policy ("I have independently verified and the policy is correct"), nor one that only names a policy or its source
+ * (below), nor a closing "ok thanks".
+ */
+const ASKS_A_QUESTION = /^(?:(?:and|so|also|ok|okay|then)[,\s]+)*(?:what|how|who|whom|whose|which|where|when|why|is|are|does|do|did|can|could|should|would|will)\b/i;
+const ABOUT_THE_RULES = /\b(?:manual|handbook|polic(?:y|ies)|fee|fees|cost|costs|pays?|paid|reimburs\w*|restitution|allowed|supposed\s+to)\b/i;
+/** A sentence about the employee ("… with her but she broke the bed") is never read as a question to the app. */
+const ABOUT_THEM = /\b(?:she|he|they|her|him|them|hers|his|their)\b/i;
+/** "I have independently verified and the policy is correct": about the policy on the form, not what happened. */
+const CONFIRMS_THE_POLICY =
+  /\b(?:polic(?:y|ies)|manual|handbook|section)\b[^.!?]*\b(?:is|are)\s+(?:correct|right|accurate|fine|good)\b|\b(?:verified|confirmed|checked|double[- ]checked)\b[^.!?]*\b(?:polic(?:y|ies)|manual|handbook)\b/i;
+const ONLY_THANKS = /^(?:(?:ok(?:ay)?|great|perfect|cool|sounds\s+good|got\s+it)[,!\s]*)*(?:thanks?(?:\s+you)?|thank\s+you|thx|ty)[!.\s]*$/i;
+
+/*
+ * QA (8 Nov 2026, the same gate): "Late Opening from the policy manual." only points to a policy; it says nothing the
+ * employee did. A sentence that names a policy or its source ("<Policy> from the policy manual", "per the manual", "the
+ * policy is <X>") and, without those words, leaves at most a policy's name — no word about the employee, no verb of
+ * what happened — is never the account; the policy stays on the Policy line. "she opened late again, Late Opening
+ * policy" speaks of her, so it stays.
+ */
+const POLICY_SOURCE = /\b(?:(?:from|per|in|under|according\s+to)\s+(?:the\s+)?(?:jba\s+)?(?:policy\s+)?(?:manual|handbook)|the\s+polic(?:y|ies)\s+(?:is|are)|polic(?:y|ies)\s+manual|polic(?:y|ies)|manual|handbook)\b/gi;
+const SOMETHING_HAPPENED = /\b(?:was|were|did|didn['’]?t|has|had|have|been|is\s+late|came|went|left|called|showed|missed|refused|forgot)\b|\b\w{3,}ed\b/i;
+
+const POLICY_NAME_FILLER = new Set(["the", "a", "an", "of", "and", "for", "to", "on", "in", "from", "per", "jba"]);
+
+function onlyNamesAPolicy(sentence: string): boolean {
+  // The request's own words and its "for <name> for …" are not what it says ("create corrective action for <A> for Late
+  // Opening from the policy manual").
+  const said = withoutRequestWords(sentence)
+    .replace(/^\s*for\s+(?:\p{Lu}[\p{L}'’-]*\s+){1,3}(?=for\b)/u, "")
+    .replace(/^\s*(?:for|about|regarding|over)\s+/i, "");
+  if (!/\b(?:polic(?:y|ies)|manual|handbook)\b/i.test(said) || ABOUT_THEM.test(said) || SOMETHING_HAPPENED.test(said)) return false;
+  const rest = said
+    .replace(POLICY_SOURCE, " ")
+    .replace(/[^\p{L}\p{N}\s'’-]+/gu, " ")
+    .split(/\s+/)
+    .filter((word) => word && !POLICY_NAME_FILLER.has(word.toLowerCase()));
+  // What is left is a policy's name, as managers type one ("Late Opening", "Standards of Conduct"): a few capitalised
+  // words, no date or number ("violating attendance on 10-20-26" says what happened).
+  return rest.length <= 4 && rest.every((word) => /^\p{Lu}/u.test(word) && !/\d/.test(word));
+}
+
+/** SECOND_REQUEST_OWN_ACCOUNT_ENABLED: the turn's text without the sentences that ask the app something. */
+export function withoutQuestionsToTheApp(text: string): string {
+  if (!secondRequestOwnAccountEnabled()) return text;
+  // QA's round-7 gate (8 Nov 2026): the text is left as it is but for the sentences left out — its lines, and the app's
+  // own state lines ("Job title: … It happened at <place>. Policy reference: …"), which the app-line readers strip by
+  // shape, are never touched or rejoined.
+  let changed = false;
+  const kept = text.replace(/[^.!?;\n]+(?:[.!?;]+|(?=\n)|$)/g, (sentence) => {
+    const trimmed = sentence.trim();
+    if (!trimmed || STATE_LEAD.test(trimmed) || STATE_SENTENCE.test(trimmed)) return sentence;
+    if (!askOfTheApp(trimmed)) return sentence;
+    changed = true;
+    return "";
+  });
+  return changed ? kept.replace(/[^\S\n]{2,}/g, " ").replace(/^[^\S\n]+|[^\S\n]+$/gm, "") : text;
+}
+
+/** A question to the app, a confirmation of the policy, a sentence that only names a policy, or a closing thanks. */
+function askOfTheApp(sentence: string): boolean {
+  if (/\?\s*$/.test(sentence)) return true;
+  if (ASKS_A_QUESTION.test(sentence) && ABOUT_THE_RULES.test(sentence) && !ABOUT_THEM.test(sentence)) return true;
+  if (CONFIRMS_THE_POLICY.test(sentence)) return true;
+  if (onlyNamesAPolicy(sentence)) return true;
+  return ONLY_THANKS.test(sentence);
+}
+
 /** An edit or a command: it sets a field, shows the draft, or names the policy. It is not an account. */
 const EDIT_TURN = [
   /^(?:please\s+)?(?:change|update|edit|fix|correct|set|switch|replace)\b/i,
@@ -674,7 +748,7 @@ export function accountSentences(
   for (const turn of turns.slice(start)) {
     if (isEditTurn(turn)) continue;
     // PAYROLL_CLAUSE_NOT_ACCOUNT_ENABLED: "$20 payroll deduct applies" and "Payroll deduction amount: $20." are the payroll answer.
-    const text = withoutPayrollClauses(withoutPriorList(turn.replace(/\bThe account continues\.\s*/g, "")));
+    const text = withoutPayrollClauses(withoutPriorList(withoutQuestionsToTheApp(turn.replace(/\bThe account continues\.\s*/g, ""))));
     for (const sentence of text.split(/\n+|[.!?;]+(?=\s|$)/)) {
       const trimmed = sentence.trim();
       if (STATE_SENTENCE.test(trimmed) || isEditTurn(trimmed) || TALKS_TO_THE_APP.test(trimmed) || ASKS_FOR_HELP.test(trimmed)) continue;

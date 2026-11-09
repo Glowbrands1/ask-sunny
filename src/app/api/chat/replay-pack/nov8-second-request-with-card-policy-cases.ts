@@ -21,7 +21,8 @@ export const NOV8_SECOND_REQUEST_WITH_CARD_POLICY_CASES: ReplayCase[] = [
     id: "nov8-second-request-with-card-policy-second-card",
     title: "both flags on: after a late-opening CA, \"I need another corrective action for <A>, his cash drawer was short $20\" cites nothing of Late Opening",
     report: REPORT,
-    status: { open: "with production's flags (SECOND_REQUEST_OWN_ACCOUNT off) the second card cites Late Opening" },
+    // Changed on purpose (9 Nov 2026): fixed in production by SECOND_REQUEST_OWN_ACCOUNT_ENABLED, QA round 7b.
+    status: "fixed",
     fixFlags: BOTH,
     async run(t) {
       t.directory(STAFF);
@@ -61,7 +62,8 @@ export const NOV8_SECOND_REQUEST_LIVE_WORDING_CASES: ReplayCase[] = [
     id: "nov8-second-request-live-audit-wording",
     title: "the live audit's \"I need another corrective action for <A>, his cash drawer was short\" after <A>'s first CA is created: the second card cites nothing of Late Opening",
     report: "QA's live audit (7 Nov 2026), as QA asked for round 5: a second CA for the same employee carried the first request's policy",
-    status: { open: "with SECOND_REQUEST_OWN_ACCOUNT off the second card cites the first request's Late Opening" },
+    // Changed on purpose (9 Nov 2026): fixed in production by SECOND_REQUEST_OWN_ACCOUNT_ENABLED, QA round 7b.
+    status: "fixed",
     fixFlags: ["SECOND_REQUEST_OWN_ACCOUNT_ENABLED"],
     async run(t) {
       t.directory(STAFF);
