@@ -82,7 +82,7 @@
 }
 
 .title {
-  font-family: var(--font-fraunces), Georgia, "Times New Roman", serif;
+  font-family: var(--font-signin);
   font-size: 34px;
   line-height: 1.08;
   letter-spacing: -0.02em;
@@ -222,7 +222,7 @@
 }
 
 .headline {
-  font-family: var(--font-fraunces), Georgia, "Times New Roman", serif;
+  font-family: var(--font-signin);
   font-size: 44px;
   line-height: 1.1;
   letter-spacing: -0.022em;
