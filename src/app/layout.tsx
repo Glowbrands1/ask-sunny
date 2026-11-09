@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Jost, Lato, Manrope, Passion_One } from "next/font/google";
+import { Fraunces, Jost, Lato, Manrope, Passion_One } from "next/font/google";
 
 import { ACTIVE_BRAND, brandStyle } from "@/lib/brand";
 import { pageAuthorizationEnforced, pageIdentity } from "@/lib/auth/page";
@@ -54,6 +54,17 @@ const jost = Jost({
   display: "swap",
 });
 
+/**
+ * FRAUNCES CARRIES THE SIGN-IN SCREEN'S TWO HEADINGS ONLY — the "soft horizon"
+ * sign-in design sets them in a warm serif. Nothing else in the product uses it.
+ */
+const fraunces = Fraunces({
+  subsets: ["latin"],
+  weight: ["600", "700"],
+  variable: "--font-fraunces",
+  display: "swap",
+});
+
 const manrope = Manrope({
   subsets: ["latin"],
   variable: "--font-manrope",
@@ -101,7 +112,7 @@ export default async function RootLayout({
   return (
     <html
       lang="en"
-      className={`${lato.variable} ${passionOne.variable} ${jost.variable} ${manrope.variable}`}
+      className={`${lato.variable} ${passionOne.variable} ${jost.variable} ${manrope.variable} ${fraunces.variable}`}
       // Brand palette overrides are applied here, so a second brand instance
       // (Buff City Soap) is a BrandConfig swap rather than a restyle.
       style={brandStyle(ACTIVE_BRAND)}

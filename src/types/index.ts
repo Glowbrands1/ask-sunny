@@ -951,6 +951,8 @@ export interface BrandConfig {
     trail: string;
   };
   tagline: string;
+  /** The brand's own slogan, shown under the sign-in headline when set. */
+  slogan?: string;
   /**
    * Maps the semantic aliases in globals.css to this brand's raw values.
    * Applied at the app shell, so a second brand is a config swap.

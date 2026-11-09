@@ -1,0 +1,320 @@
+/*
+ * THE "SOFT HORIZON" SIGN-IN SCREEN.
+ *
+ * Scoped to the login screen on purpose: the warm cream-to-peach gradients, the
+ * rising sun and the larger 56px fields are this screen's look, not the app's.
+ * The inputs and buttons inside `.card` are the shared `Input` / `Button`
+ * components restyled from here, so `SignInForm` keeps one implementation.
+ */
+
+.page {
+  --sh-ink: #2a1f1a;
+  --sh-taupe: #7a6a5f;
+  --sh-gold: #f2b705;
+  --sh-gold-deep: #c98f00;
+  --sh-espresso: #2a1f1a;
+  --sh-border: #f0dfd0;
+
+  display: grid;
+  grid-template-columns: 1fr;
+  min-height: 100dvh;
+  color: var(--sh-ink);
+  background: #fff6ee;
+}
+
+@media (min-width: 861px) {
+  .page {
+    grid-template-columns: 1.08fr 1fr;
+  }
+}
+
+/* ---- Left: the sign-in card ------------------------------------------- */
+
+.left {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 20px;
+  background: linear-gradient(180deg, #fffaf3 0%, #fef1e6 60%, #fde9dd 100%);
+}
+
+@media (min-width: 640px) {
+  .left {
+    padding: 48px 32px;
+  }
+}
+
+.card {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 420px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 56px;
+}
+
+.brandMark {
+  width: 44px;
+  height: 44px;
+  flex: none;
+  filter: drop-shadow(0 2px 6px rgba(242, 169, 0, 0.45));
+  animation: spin 60s linear infinite;
+}
+
+.brandWord {
+  font-family: var(--font-wordmark);
+  font-size: 26px;
+  letter-spacing: 0.32em;
+  font-weight: 500;
+  color: var(--sh-taupe);
+  white-space: nowrap;
+}
+
+.brandWord b {
+  color: var(--sh-ink);
+  font-weight: 700;
+}
+
+.title {
+  font-family: var(--font-fraunces), Georgia, "Times New Roman", serif;
+  font-size: 34px;
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+  margin-bottom: 10px;
+  color: var(--sh-ink);
+}
+
+@media (min-width: 861px) {
+  .title {
+    font-size: 40px;
+  }
+}
+
+.sub {
+  color: var(--sh-taupe);
+  font-size: 16px;
+}
+
+/* The shared form controls, at this screen's size. */
+
+.card label {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--sh-ink);
+}
+
+.card input {
+  height: 56px;
+  padding: 0 18px;
+  font-size: 17px;
+  color: var(--sh-ink);
+  background: #fff;
+  border: 1.5px solid var(--sh-border);
+  border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(120, 80, 40, 0.05);
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
+}
+
+.card input:focus,
+.card input:focus-visible {
+  outline: none;
+  border-color: var(--sh-gold);
+  box-shadow: 0 0 0 4px rgba(242, 183, 5, 0.22);
+}
+
+.card input:disabled {
+  background: #fffdfb;
+}
+
+/* Room for the show-password toggle inside the field. */
+.card input[data-reveal] {
+  padding-right: 52px;
+}
+
+.card button[type="submit"],
+.card .primaryAction {
+  height: 58px;
+  border: 0;
+  border-radius: 14px;
+  font-size: 17px;
+  font-weight: 600;
+  color: #fff6ee;
+  background: var(--sh-espresso);
+  gap: 10px;
+  box-shadow: 0 8px 20px -8px rgba(42, 31, 26, 0.55);
+}
+
+.card button[type="submit"]:hover:not(:disabled),
+.card .primaryAction:hover:not(:disabled) {
+  background: #3d2e26;
+}
+
+.card button[type="submit"] svg,
+.card .primaryAction svg {
+  width: 20px;
+  height: 20px;
+}
+
+.card a {
+  font-size: 15px;
+  color: var(--sh-ink);
+}
+
+/* ---- Right: the sunrise panel ----------------------------------------- */
+
+.right {
+  position: relative;
+  overflow: hidden;
+  display: none;
+  align-items: center;
+  padding: 56px 72px;
+  border-left: 1px solid #ebd7c2;
+  background:
+    radial-gradient(760px 420px at 50% 100%, rgba(255, 214, 102, 0.55), rgba(255, 214, 102, 0) 70%),
+    linear-gradient(180deg, #fdede0 0%, #fbd9be 38%, #f8c0a4 72%, #f4ab93 100%);
+}
+
+@media (min-width: 861px) {
+  .right {
+    display: flex;
+  }
+}
+
+.sunrise {
+  position: absolute;
+  pointer-events: none;
+  overflow: visible;
+  left: 50%;
+  bottom: -340px;
+  width: 900px;
+  height: 600px;
+  margin-left: -450px;
+  animation: rise 1.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.halo {
+  transform-origin: 450px 300px;
+  animation: pulse 6s ease-in-out infinite;
+}
+
+.content {
+  position: relative;
+  z-index: 2;
+  max-width: 560px;
+}
+
+.eyebrow {
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  font-weight: 600;
+  color: var(--sh-gold-deep);
+  text-transform: uppercase;
+  margin-bottom: 22px;
+}
+
+.headline {
+  font-family: var(--font-fraunces), Georgia, "Times New Roman", serif;
+  font-size: 44px;
+  line-height: 1.1;
+  letter-spacing: -0.022em;
+  font-weight: 700;
+  margin-bottom: 12px;
+  color: var(--sh-ink);
+}
+
+.tag {
+  font-size: 17px;
+  color: var(--sh-taupe);
+  margin-bottom: 44px;
+}
+
+.feat {
+  display: flex;
+  gap: 18px;
+  margin-bottom: 30px;
+}
+
+.ico {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 253, 251, 0.85);
+  box-shadow:
+    0 2px 8px rgba(201, 143, 0, 0.18),
+    inset 0 0 0 1px rgba(242, 183, 5, 0.35);
+  color: var(--sh-gold-deep);
+}
+
+.ico svg {
+  width: 22px;
+  height: 22px;
+}
+
+.feat h3 {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: var(--sh-ink);
+}
+
+.feat p {
+  font-size: 16px;
+  line-height: 1.55;
+  color: var(--sh-taupe);
+}
+
+.previewNote {
+  margin-top: 16px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #5e4f46;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes rise {
+  from {
+    transform: translateY(60px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.85;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brandMark,
+  .sunrise,
+  .halo {
+    animation: none;
+  }
+}
