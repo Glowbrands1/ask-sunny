@@ -41,7 +41,8 @@ const cases = ([
   id: `nov9-exit-letter-signer-${key}`,
   title: `"create an exit form for <B>, … '<B>, your employment … <C>, District Manager'" (<B> ${key}): the card is for <B>; the signer is never offered nor her title used`,
   report: REPORT,
-  status: { open: today },
+  // Changed on purpose (9 Nov 2026): fixed in production by EXIT_LETTER_SIGNER_NOT_SUBJECT_ENABLED, QA round 8, 9 Nov 2026; it now holds with production's flags.
+  status: "fixed",
   fixFlags: FIX,
   // Changed on purpose (9 Nov 2026): coding 2's ai/server-ask.ts line landed, so the fix run holds (no fixStatus).
   async run(t) {

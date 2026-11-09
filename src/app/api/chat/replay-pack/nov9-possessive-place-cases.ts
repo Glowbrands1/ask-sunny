@@ -27,7 +27,8 @@ export const NOV9_POSSESSIVE_PLACE_CASES: ReplayCase[] = [
     id: "nov9-possessive-place",
     title: "\"create a CA for Hadley's Crossing Plaza, she was late on 10-20-26\": no Employee \"Hadley\"; it asks who the form is for",
     report: REPORT,
-    status: { open: "a Corrective Action card for **Hadley**" },
+    // Changed on purpose (9 Nov 2026): fixed in production by POSSESSIVE_PLACE_NOT_PERSON_ENABLED, QA round 8, 9 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const thread = start(t);
