@@ -515,6 +515,7 @@ const NEW_FLAGS = [
   "SHIFT_ACCOUNT_IS_INCIDENT_ENABLED",
   // coding 5: UNDATED_ACCOUNT_BRIEF (default off): forced off with the others in the child run.
   "UNDATED_ACCOUNT_BRIEF_ENABLED",
+  "POSSESSIVE_PLACE_NOT_PERSON_ENABLED",
   // coding 5: CORRECTED_DATE_KEPT (default off): forced off with the others in the child run.
   "CORRECTED_DATE_KEPT_ENABLED",
   "DATE_QUESTION_KEPT_ENABLED",
