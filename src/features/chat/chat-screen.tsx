@@ -1108,7 +1108,7 @@ export function ChatScreen() {
 
       {/* Context rail */}
       {contextOpen ? (
-        <aside className="hidden w-76 shrink-0 border-l border-border bg-background lg:block">
+        <aside className="hidden w-76 shrink-0 border-l border-border lg:block">
           <ContextPanel
             messages={messages}
             onCreateForm={mayCreateForms ? createFormFromConversation : undefined}

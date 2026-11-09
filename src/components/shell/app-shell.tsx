@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Menu, Search, X } from "lucide-react";
 
 import { BrandMark, ParentBrandLockup } from "@/components/brand-mark";
@@ -36,6 +37,10 @@ export function AppShell({
   showLeadershipHub?: boolean;
 }) {
   const { hydrated, signedIn, demoMode } = useSession();
+  const pathname = usePathname();
+  // Chat gets the clouds across the whole canvas; every other page has them
+  // fading out toward the bottom-right, away from page titles.
+  const backdrop = pathname?.startsWith("/chat") ? "chat" : "page";
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   // Read straight from the external store — no effect, no cascading render.
@@ -63,7 +68,13 @@ export function AppShell({
   if (!signedIn) return <LoginScreen />;
 
   return (
-    <div className="flex min-h-dvh flex-col bg-background">
+    <div className="isolate flex min-h-dvh flex-col bg-background">
+      {/*
+        THE CLAY CLOUDS, behind everything: fixed to the viewport and painted
+        under the shell's content (z-index -1 inside this isolated root), so
+        they show only in the gaps between cards. Decoration only.
+      */}
+      <div aria-hidden className="cloud-pattern" data-backdrop={backdrop} />
       {/*
         THE SHARED TOP BAR. Navy, full width, above BOTH the rail and the
         content — the approved storefront structure, and it belongs to the shell

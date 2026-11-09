@@ -1312,3 +1312,51 @@
     inset 0 2px 3px rgb(255 255 255 / 0.45),
     inset 0 -2px 4px rgb(0 0 0 / 0.12);
 }
+
+/* ============================================================================
+   THE CLAY CLOUD BACKGROUND — Ask Sunny's repeating canvas pattern.
+
+   The mechanism is Ask Bubbles' canvas pattern (one fixed, decorative layer
+   behind the whole shell, faded toward the bottom-right of the viewport on
+   ordinary pages and across the whole canvas on chat); the artwork is Ask
+   Sunny's own: puffy clay clouds, `public/brand/sunny-clouds.svg`.
+
+   Decoration only: aria-hidden, no pointer events, and painted UNDER every
+   card, table and field (z-index -1 inside the shell's isolated stacking
+   context), so it shows only in the gaps between them. It drifts very slowly
+   sideways, and holds still under `prefers-reduced-motion`.
+   ========================================================================== */
+:root {
+  --pattern-clouds: url("/brand/sunny-clouds.svg");
+  --pattern-clouds-opacity: 0.9;
+}
+
+@layer components {
+  .cloud-pattern {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background: var(--pattern-clouds) 0 0 / 560px 420px repeat;
+    opacity: var(--pattern-clouds-opacity);
+    -webkit-mask-image: radial-gradient(150% 125% at 100% 100%, #000 0, #000 40%, transparent 80%);
+    mask-image: radial-gradient(150% 125% at 100% 100%, #000 0, #000 40%, transparent 80%);
+  }
+  /* Chat: the clouds across the whole canvas, no fade. */
+  .cloud-pattern[data-backdrop="chat"] {
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+}
+
+@keyframes cloud-drift {
+  to {
+    background-position: 560px 0;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .cloud-pattern {
+    animation: cloud-drift 140s linear infinite;
+  }
+}
