@@ -2579,6 +2579,17 @@ export function possessivePlaceNotPersonEnabled(): boolean {
 export function offRosterAskBeforeCardEnabled(): boolean {
   return envFlag("OFF_ROSTER_ASK_BEFORE_CARD_ENABLED");
 }
+/**
+ * EXIT_LETTER_ADDRESSEE_ENABLED (QA, the live Sunny test of rounds 7c and 8, 9 Nov 2026; coding 5; same flag in both
+ * apps; default off; with EXIT_LETTER_SIGNER_NOT_SUBJECT_ENABLED). "I need an exit form with this information." and a
+ * termination letter to <A> signed "<C>, District Manager" gave the exit card the signer's title, and the first
+ * no-show date as the Resignation Date. On: the letter's salutation names the form's person when no "form for <X>"
+ * does, so the sign-off of another person is not read (`ai/letter-signer.ts`), and a stated "terminated, effective
+ * <date>" is the Resignation Date over the incident's dates. Off, as before.
+ */
+export function exitLetterAddresseeEnabled(): boolean {
+  return envFlag("EXIT_LETTER_ADDRESSEE_ENABLED");
+}
 // --- end coding 5 flags ---
 
 /**

@@ -1,5 +1,5 @@
 import { shiftDays, weekdayOf } from "@/lib/business-date";
-import { exitFulfilledIsLastDayEnabled, exitIntakeFixEnabled, exitShortcutWordsEnabled, exitStatedOnlyEnabled, exitTerminationStatedEnabled, noNoticeNoDateEnabled } from "@/lib/config/chat-quality-flags";
+import { exitFulfilledIsLastDayEnabled, exitLetterAddresseeEnabled, exitIntakeFixEnabled, exitShortcutWordsEnabled, exitStatedOnlyEnabled, exitTerminationStatedEnabled, noNoticeNoDateEnabled } from "@/lib/config/chat-quality-flags";
 
 import {
   EXIT_DATE_FIELDS,
@@ -680,15 +680,26 @@ export function readExitFacts(rawText: string, today: string): ExitFacts {
   let resignationDate = quitDate ?? noticeRead;
   // EXIT_TERMINATION_STATED_ENABLED: "… is terminated, effective 11/06/2026" — the date the separation took effect.
   const terminated = statedTermination(text.toLowerCase());
-  if (!resignationDate && terminated) {
+  /*
+   * EXIT_LETTER_ADDRESSEE_ENABLED (QA, the live Sunny test of rounds 7c and 8, 9 Nov 2026): a termination letter "…
+   * terminated, effective 11/08/2026 … no call no show on 11/3, 11/5 and 11/7" printed Resignation Date "November 3,
+   * 2026", an incident's date. With the flag, the stated effective date of the termination wins over the dates read
+   * as quitting or notice.
+   */
+  const terminationWins = exitLetterAddresseeEnabled() && Boolean(terminated);
+  let fromTermination = false;
+  if ((!resignationDate || terminationWins) && terminated) {
     const sentenceEnd = text.slice(terminated.index ?? 0).search(/[.!?\n]/);
     const end = sentenceEnd < 0 ? text.length : (terminated.index ?? 0) + sentenceEnd;
     const effective = tokens.filter(
       (token) => token.iso && token.index >= (terminated.index ?? 0) && token.end <= end + 12 && EFFECTIVE_BEFORE.test(text.slice(Math.max(0, token.index - 24), token.index).toLowerCase()),
     );
-    if (effective.length === 1) resignationDate = effective[0]!.iso;
+    if (effective.length === 1) {
+      resignationDate = effective[0]!.iso;
+      fromTermination = terminationWins;
+    }
   }
-  if (quitDate && noticeGiven && quitDate !== noticeGiven) {
+  if (quitDate && noticeGiven && quitDate !== noticeGiven && !fromTermination) {
     ambiguities.push({ kind: "date_conflict", role: "resigned", dates: [noticeGiven, quitDate].sort() });
     resignationDate = null;
   }
