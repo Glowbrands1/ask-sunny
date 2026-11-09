@@ -208,7 +208,10 @@
      direction its structure without the weight of a black bar running down
      the page. Rail text and labels are the two values that clear 4.5:1 on it;
      anything lighter on this rail does not. */
-  --sidebar: var(--rail);
+  /* THE CLAY RAIL: the rail is a floating white clay card, as in the clay
+     mockup, rather than a grey strip. The rail inks were chosen to clear 4.5:1
+     on the old grey, so they clear it on white by a wider margin. */
+  --sidebar: var(--approved-card);
   --sidebar-foreground: var(--approved-rail-ink);
   --sidebar-muted: var(--approved-rail-label);
   /* THE SELECTED RAIL ITEM IS THE YELLOW PILL.
@@ -475,21 +478,21 @@
 
   /* GRADIENTS. Exactly two in the whole direction, both radial. The corner
      glow is the only place the red-light red is allowed to appear. */
-  --band-glow: radial-gradient(
-    110% 150% at 100% 0%,
-    rgb(214 44 58 / 0.4) 0%,
-    rgb(28 31 41 / 0) 56%
-  );
+  /* CLAY: QUIETER. At 0.4 over 150% the red mixed into the navy and read as
+     maroon. The band now sits on the clay mockup's navy-to-navy blend
+     (#2b2e3a to #1c1f29, both existing palette values) with the red kept to a
+     faint, tighter corner warmth. Same colours, less mud. */
+  --band-glow:
+    radial-gradient(70% 120% at 100% 0%, rgb(214 44 58 / 0.14) 0%, rgb(28 31 41 / 0) 60%),
+    linear-gradient(150deg, var(--approved-band-tile) 0%, var(--approved-topbar) 65%);
   /* THE SAME GLOW, FOR THE SLIM BAND. The Reports artifact runs the report
      band's corner glow a step quieter and taller than the Overview and Chat
      hero band — 0.34 over 160% rather than 0.4 over 150% — because the strip is
      a third of the height and the full-strength glow reads as a red wash on it
      rather than as a corner. Same red, same single sanctioned use. */
-  --band-glow-slim: radial-gradient(
-    110% 160% at 100% 0%,
-    rgb(214 44 58 / 0.34) 0%,
-    rgb(28 31 41 / 0) 56%
-  );
+  --band-glow-slim:
+    radial-gradient(60% 140% at 100% 0%, rgb(214 44 58 / 0.12) 0%, rgb(28 31 41 / 0) 60%),
+    linear-gradient(150deg, var(--approved-band-tile) 0%, var(--approved-topbar) 65%);
   /* The dark callout's glow: the band's shape in YELLOW, for the two panels the
      artifacts draw on near-black inside the daylight half — the FAST capacity
      note and the period-integrity warning. */
@@ -524,6 +527,11 @@
   --shadow-dent:
     inset 0 4px 8px rgb(120 70 40 / 0.16),
     inset 0 -3px 6px rgb(255 255 255 / 0.9);
+  /* A small clay chip — badges, tags, toggles that are on. */
+  --shadow-chip:
+    0 3px 6px -3px rgb(120 70 40 / 0.3),
+    inset 0 1.5px 2px rgb(255 255 255 / 0.65),
+    inset 0 -2px 3px rgb(120 70 40 / 0.08);
   /* Coral-tinted, and ONLY for attention surfaces. */
   --shadow-attention:
     0 14px 24px -10px rgb(180 60 90 / 0.4),
@@ -535,8 +543,17 @@
     inset 0 3px 4px rgb(255 255 255 / 0.55),
     inset 0 -4px 8px rgb(120 80 0 / 0.18);
   /* The ask bar's hard yellow underline, and the glow it gains on focus. */
-  --shadow-ask: 0 4px 0 var(--approved-brand-yellow);
-  --shadow-ask-focus: 0 4px 0 var(--approved-brand-yellow), 0 0 0 4px var(--ring-glow);
+  /* CLAY: the ask bar is a puffy white pillow on the dark band rather than a
+     card with a hard yellow underline; focus adds the yellow glow. */
+  --shadow-ask:
+    0 14px 22px -10px rgb(0 0 0 / 0.5),
+    inset 0 3px 5px rgb(255 255 255 / 0.95),
+    inset 0 -6px 10px rgb(120 70 40 / 0.08);
+  --shadow-ask-focus:
+    0 14px 22px -10px rgb(0 0 0 / 0.5),
+    inset 0 3px 5px rgb(255 255 255 / 0.95),
+    inset 0 -6px 10px rgb(120 70 40 / 0.08),
+    0 0 0 4px var(--ring-glow);
   --halo-alarm-dot: 0 0 0 4px rgb(255 255 255 / 0.3);
 }
 
@@ -670,7 +687,7 @@
   --font-wordmark: var(--font-jost), ui-sans-serif, system-ui, sans-serif;
   /* The sign-in screen's two headings only — see the note in layout.tsx. */
   --font-signin: var(--font-fraunces), Georgia, "Times New Roman", serif;
-  --font-sans: var(--font-lato), var(--font-manrope), ui-sans-serif, system-ui, -apple-system,
+  --font-sans: var(--font-jakarta), var(--font-lato), var(--font-manrope), ui-sans-serif, system-ui, -apple-system,
     "Segoe UI", sans-serif;
 
   /* Clay corners: rounder at every step, so surfaces read as soft. */
@@ -684,6 +701,7 @@
   --shadow-raised: var(--shadow-raised);
   --shadow-float: var(--shadow-float);
   --shadow-dent: var(--shadow-dent);
+  --shadow-chip: var(--shadow-chip);
   --shadow-attention: var(--shadow-attention);
   --shadow-rail-active: var(--shadow-rail-active);
   --shadow-ask: var(--shadow-ask);
@@ -883,21 +901,22 @@
      rule would also uppercase every admin table caption and form label the
      artifact never shows, at sizes where this face stops being readable.
      ====================================================================== */
+  /* CLAY: the display treatment is the clay mockup's — Plus Jakarta Sans at
+     800, sentence case, tight tracking — instead of uppercase Passion One. */
   .display {
-    font-family: var(--font-display);
-    font-weight: 400;
-    letter-spacing: 0.014em;
-    line-height: 1;
-    text-transform: uppercase;
+    font-family: var(--font-sans);
+    font-weight: 800;
+    letter-spacing: -0.025em;
+    line-height: 1.08;
     text-wrap: balance;
   }
 
   /* A figure rather than a heading: same face, tighter leading, lining numerals
      that hold their column when the value changes. */
   .display-figure {
-    font-family: var(--font-display);
-    font-weight: 400;
-    letter-spacing: 0.012em;
+    font-family: var(--font-sans);
+    font-weight: 800;
+    letter-spacing: -0.02em;
     line-height: 0.9;
     font-variant-numeric: tabular-nums;
   }
@@ -962,6 +981,8 @@
     text-transform: uppercase;
     white-space: nowrap;
     line-height: 1;
+    /* Clay: a small raised chip. */
+    box-shadow: var(--shadow-chip);
   }
 
   /* ==========================================================================
@@ -1194,4 +1215,108 @@
   body {
     background: #ffffff;
   }
+}
+
+/* ============================================================================
+   CLAY SURFACES — from the approved "clay web" mockup.
+
+   Puffy objects: a soft drop below, a highlight along the top inner edge and a
+   shade along the bottom inner edge. The palette is unchanged; only the
+   material is.
+   ========================================================================== */
+@layer components {
+  /* The dark top bar: a floating rounded pill rather than a full-width strip. */
+  .clay-topbar {
+    border-radius: 999px;
+    /* Still the CHROME depth: the pill bottoms out at `--chrome`, one step
+       deeper than the band, and the top edge lifts toward the band tile. */
+    background: linear-gradient(180deg, var(--band-tile), var(--chrome));
+    box-shadow:
+      0 14px 22px -10px rgb(60 40 30 / 0.45),
+      inset 0 3px 5px rgb(255 255 255 / 0.12),
+      inset 0 -6px 10px rgb(0 0 0 / 0.3);
+  }
+
+  /* The dark hero band (Overview greeting, chat header): a big rounded
+     pillow. The red-light corner glow stays its one sanctioned use. */
+  .clay-band {
+    border-radius: 34px;
+    background-color: var(--band);
+    /* The mockup's navy-to-navy blend. Bands that carry the corner glow set
+       `--band-glow` over this, which includes the same blend. */
+    background-image: linear-gradient(150deg, var(--band-tile) 0%, var(--band) 65%);
+    box-shadow:
+      0 18px 28px -12px rgb(60 40 30 / 0.45),
+      inset 0 4px 6px rgb(255 255 255 / 0.14),
+      inset 0 -8px 14px rgb(0 0 0 / 0.3);
+  }
+
+  /* The rail: a floating white clay card. */
+  .clay-rail {
+    border-radius: 30px;
+    background: var(--sidebar);
+    box-shadow: var(--shadow-raised);
+    overflow: hidden;
+  }
+
+  /* Chat bubbles. The manager's is a yellow pillow, Sunny's is the warm
+     surface, puffed. */
+  .clay-bubble-user {
+    background: linear-gradient(180deg, #ffd21f, #f0b800);
+    color: var(--approved-yellow-ink);
+    box-shadow:
+      0 8px 12px -6px rgb(120 70 40 / 0.35),
+      inset 0 3px 4px rgb(255 255 255 / 0.5),
+      inset 0 -4px 8px rgb(120 80 0 / 0.12);
+  }
+  .clay-bubble-sunny {
+    background: var(--approved-surface-warm);
+    box-shadow: var(--shadow-raised);
+  }
+
+  /* A round yellow clay button (send). */
+  .clay-sun-button {
+    background: radial-gradient(circle at 35% 28%, #ffe566, var(--approved-brand-yellow) 70%);
+    box-shadow:
+      0 10px 14px -6px rgb(0 0 0 / 0.35),
+      inset 0 4px 6px rgb(255 255 255 / 0.55),
+      inset 0 -6px 10px rgb(0 0 0 / 0.14);
+  }
+
+  /* A section's yellow rule, as a little clay bar rather than a hairline. */
+  .clay-rule {
+    height: 7px;
+    border-radius: 999px;
+    background: linear-gradient(180deg, #ffd21f, #f0b800);
+    box-shadow:
+      0 3px 5px -2px rgb(120 70 40 / 0.35),
+      inset 0 1.5px 2px rgb(255 255 255 / 0.6);
+  }
+
+  /* The mascot's soft cast shadow, and its gentle float. */
+  .sunny-mascot {
+    filter: drop-shadow(0 10px 8px rgb(0 0 0 / 0.2));
+    overflow: visible;
+  }
+}
+
+@keyframes sunny-bob {
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .sunny-bob {
+    animation: sunny-bob 4s ease-in-out infinite;
+  }
+}
+
+/* A filled bar or an "on" segment: a highlight along its top edge. A utility
+   rather than a component class so it takes variants (`data-[state=on]:`). */
+@utility clay-fill {
+  box-shadow:
+    0 3px 6px -3px rgb(60 40 30 / 0.35),
+    inset 0 2px 3px rgb(255 255 255 / 0.45),
+    inset 0 -2px 4px rgb(0 0 0 / 0.12);
 }

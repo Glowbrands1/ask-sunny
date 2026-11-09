@@ -148,7 +148,8 @@ export function ReportBand({
   return (
     <div
       className={cn(
-        "border-b-4 border-brand-yellow bg-band bg-[image:var(--band-glow-slim)] px-5 pt-4 pb-5 sm:px-6",
+        /* CLAY: a rounded dark pillow inset from the canvas, like the Overview band. */
+        "clay-band mx-3 mt-2 bg-[image:var(--band-glow-slim)] px-5 pt-4 pb-5 sm:mx-4 sm:px-6",
         className,
       )}
     >

@@ -37,8 +37,12 @@
   display: grid;
   grid-template-columns: 1fr;
   min-height: 100dvh;
+  /* The sunrise's rays reach across into the left half; clip them at the
+     page, not at the right panel, or the clip itself draws the seam. */
+  overflow: hidden;
   color: var(--sh-ink);
   background:
+    radial-gradient(760px 420px at 76% 100%, rgba(255, 214, 102, 0.55), rgba(255, 214, 102, 0) 70%),
     linear-gradient(180deg, rgba(255, 250, 243, 0) 55%, rgba(253, 233, 221, 0.6) 100%),
     linear-gradient(105deg, #fffaf3 0%, #fef1e6 30%, #fde3d0 52%, #fbd2b6 72%, #f6b89e 100%);
 }
@@ -209,17 +213,11 @@
 
 .right {
   position: relative;
-  overflow: hidden;
   display: none;
   align-items: center;
   padding: 56px 72px;
-  /* Only the sun's glow: the gradient behind it is the page's, so there is
-     no edge where the two halves meet. */
-  background: radial-gradient(
-    760px 420px at 50% 100%,
-    rgba(255, 214, 102, 0.55),
-    rgba(255, 214, 102, 0) 70%
-  );
+  /* No background of its own: the gradient and the sun's glow are both the
+     page's, so nothing can draw an edge where the two halves meet. */
 }
 
 @media (min-width: 861px) {
@@ -240,6 +238,11 @@
   animation: rise 1.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
 
+.rays {
+  transform-origin: 450px 300px;
+  animation: sway 9s ease-in-out infinite alternate;
+}
+
 .halo {
   transform-origin: 450px 300px;
   animation: pulse 6s ease-in-out infinite;
@@ -249,6 +252,12 @@
   position: relative;
   z-index: 2;
   max-width: 560px;
+}
+
+.mascot {
+  display: block;
+  width: 150px;
+  margin-bottom: 18px;
 }
 
 .eyebrow {
@@ -339,6 +348,17 @@
   }
 }
 
+@keyframes sway {
+  from {
+    transform: rotate(-3deg);
+    opacity: 0.75;
+  }
+  to {
+    transform: rotate(3deg);
+    opacity: 1;
+  }
+}
+
 @keyframes pulse {
   0%,
   100% {
@@ -354,6 +374,7 @@
 @media (prefers-reduced-motion: reduce) {
   .brandMark,
   .sunrise,
+  .rays,
   .halo {
     animation: none;
   }

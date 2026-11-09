@@ -22,6 +22,7 @@ import { ROLE_DESCRIPTION, ROLE_LABEL } from "@/lib/permissions";
 import { useSession } from "@/lib/session/session-context";
 import { cn } from "@/lib/utils/cn";
 import type { Role } from "@/types";
+import { SunnyMascot } from "@/components/sunny-mascot";
 import { SignInForm } from "./sign-in-form";
 import styles from "./login-screen.module.css";
 
@@ -191,6 +192,8 @@ export function LoginScreen({
       <aside className={styles.right}>
         <SunriseBackdrop />
         <div className={styles.content}>
+          {/* Sunny, the clay mascot, bobbing above the pitch. */}
+          <SunnyMascot className={styles.mascot} />
           <p className={styles.eyebrow}>{ACTIVE_BRAND.tagline}</p>
           <h2 className={styles.headline}>
             Everything a manager needs to run their day, in one place.
@@ -330,6 +333,9 @@ function SunriseBackdrop() {
         </radialGradient>
       </defs>
       <circle className={styles.halo} cx="450" cy="300" r="420" fill={`url(#${halo})`} />
+      {/* The rays sway gently around the sun's centre (still under
+          reduced motion — see `.rays` in the stylesheet). */}
+      <g className={styles.rays}>
       {rays.map(({ opacity, ...ray }, i) => (
         <line
           key={i}
@@ -340,6 +346,7 @@ function SunriseBackdrop() {
           strokeLinecap="round"
         />
       ))}
+      </g>
       <circle cx="450" cy="300" r="170" fill={`url(#${disc})`} />
       <circle
         cx="450"

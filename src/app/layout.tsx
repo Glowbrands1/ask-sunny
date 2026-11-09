@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Fraunces, Jost, Lato, Manrope, Passion_One } from "next/font/google";
+import { Fraunces, Jost, Lato, Manrope, Passion_One, Plus_Jakarta_Sans } from "next/font/google";
 
 import { ACTIVE_BRAND, brandStyle } from "@/lib/brand";
 import { pageAuthorizationEnforced, pageIdentity } from "@/lib/auth/page";
@@ -65,6 +65,18 @@ const fraunces = Fraunces({
   display: "swap",
 });
 
+/**
+ * PLUS JAKARTA SANS IS THE CLAY DIRECTION'S FACE — body and headings alike,
+ * heavy and rounded, from the approved clay mockup. Lato stays behind it in
+ * the stack as the fallback.
+ */
+const jakarta = Plus_Jakarta_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
+  variable: "--font-jakarta",
+  display: "swap",
+});
+
 const manrope = Manrope({
   subsets: ["latin"],
   variable: "--font-manrope",
@@ -112,7 +124,7 @@ export default async function RootLayout({
   return (
     <html
       lang="en"
-      className={`${lato.variable} ${passionOne.variable} ${jost.variable} ${manrope.variable} ${fraunces.variable}`}
+      className={`${lato.variable} ${passionOne.variable} ${jost.variable} ${manrope.variable} ${fraunces.variable} ${jakarta.variable}`}
       // Brand palette overrides are applied here, so a second brand instance
       // (Buff City Soap) is a BrandConfig swap rather than a restyle.
       style={brandStyle(ACTIVE_BRAND)}
