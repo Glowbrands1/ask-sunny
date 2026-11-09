@@ -5,6 +5,7 @@ import {
   asYouSaidManagerWordsEnabled,
   caPerformanceReasonEnabled,
   missedShiftCitesAttendanceEnabled,
+  lateReadsAttendanceEnabled,
   msbPhraseSocEnabled,
   caSalesPolicyEnabled,
   cleaningOtherEveryWordingEnabled,
@@ -490,7 +491,25 @@ export function policiesNamedIn(sentence: string): { name: CaPolicyName; start: 
 export function readCaPolicy(rawText: string): CaPolicyReading {
   const said = managerWords(rawText);
   // Merge of main into #595: WOVEN_TRAINING_CONDUCT's reading (default off) before AS_YOU_SAID_APP_READ's fallback, on the manager's words.
-  return withMissedShift(withAppReading(withWovenWork(withCleaningOther(withSalesPolicy(readCaPolicyFromWords(said), said), said), said), rawText, said), said);
+  return withMissedShift(withLateIsAttendance(withAppReading(withWovenWork(withCleaningOther(withSalesPolicy(readCaPolicyFromWords(said), said), said), said), rawText, said), said), said);
+}
+
+/*
+ * LATE_READS_ATTENDANCE_ENABLED (QA, the Sunny round-10 live test, 9 Nov 2026): "create a CA for <P>, she was late on
+ * 11/6/26" gave "Policy: Late Opening — read from this request", Late Opening p.15, in 1 of 6 runs, and Attendance p.14
+ * in the others: the plain "late" policy came from the model's heading, which varies. With the flag, when the app's
+ * reading is Late Opening but the manager's words say an employee was late or tardy and never say "open" ("late
+ * opening", "open the salon", "opened late"), the reading is Attendance. "late opening the salon" keeps Late Opening.
+ * Off, the reading as it was.
+ */
+const LATE_ARRIVAL =
+  /\b(?:was|were|is|been|came\s+in|arrived|showed\s+up|clocked\s+in|running|being)\s+(?:\S+\s+){0,2}?late\b|\b(?:tardy|tardies|tardiness|lateness)\b|\blate\s+(?:to|for)\s+(?:her|his|their|a|the|work|shift)/i;
+const OPENING_WORD = /\bopen(?:s|ed|ing|er|ers)?\b/i;
+
+function withLateIsAttendance(reading: CaPolicyReading, said: string): CaPolicyReading {
+  if (!lateReadsAttendanceEnabled() || reading.readFromApp !== "late_opening") return reading;
+  if (!LATE_ARRIVAL.test(said) || OPENING_WORD.test(said)) return reading;
+  return { ...reading, readFromApp: "attendance" };
 }
 
 /*

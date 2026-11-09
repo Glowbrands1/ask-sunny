@@ -2601,6 +2601,37 @@ export function exitLetterAddresseeEnabled(): boolean {
 export function missedShiftCitesAttendanceEnabled(): boolean {
   return envFlag("MISSED_SHIFT_CITES_ATTENDANCE_ENABLED");
 }
+/**
+ * LETTER_GREETING_NOT_NAME_ENABLED (QA, 9 Nov 2026; coding 5; same flag in both apps; default off). A letter opening
+ * "Dear <A>," gave the exit card the employee "Dear <A>", no Job Title and no salon, on the roster or off it. On: a
+ * letter's salutation word (Dear, Hi, Hello, Hey, To, Attn, Good morning, …) before the addressee is not part of the
+ * name; the proposal reads "<A>," (`ai/letter-signer.ts`). Off, as before.
+ */
+export function letterGreetingNotNameEnabled(): boolean {
+  return envFlag("LETTER_GREETING_NOT_NAME_ENABLED");
+}
+
+/**
+ * LATE_READS_ATTENDANCE_ENABLED (QA, the Sunny round-10 live test, 9 Nov 2026; coding 5; same flag in both apps; default
+ * off). "create a CA for <P>, she was late on 11/6/26" gave Late Opening in 1 of 6 runs (the model's heading). On: an
+ * account of an employee late or tardy with no "open" word reads as Attendance, whatever the heading
+ * (`forms/ca-policy.ts`); "late opening the salon" stays Late Opening. Off, as before.
+ */
+export function lateReadsAttendanceEnabled(): boolean {
+  return envFlag("LATE_READS_ATTENDANCE_ENABLED");
+}
+
+/**
+ * EXIT_FORM_DATE_FROM_TERMINATION_ENABLED (QA, the live Sunny round 11, 9 Nov 2026; coding 5; same flag in both apps;
+ * default off). A termination letter "… is terminated, effective 11/08/2026 … no-call no-shows on 11/3, 11/5 and 11/7"
+ * gave the exit card the Date November 7 (the last no-show) beside Resignation Date November 8 (round 10 had November 8).
+ * On: an exit card whose manager states the termination's effective date is dated that day, in the card and in the
+ * reply's Date line (`forms/exit-form-date.ts`). Off, as before.
+ */
+export function exitFormDateFromTerminationEnabled(): boolean {
+  return envFlag("EXIT_FORM_DATE_FROM_TERMINATION_ENABLED");
+}
+
 // --- end coding 5 flags ---
 
 /**
@@ -3795,4 +3826,37 @@ export function stepBDateWithAboutEnabled(): boolean {
  */
 export function madeAboutAllOrNothingEnabled(): boolean {
   return envFlag("MADE_ABOUT_ALL_OR_NOTHING_ENABLED");
+}
+
+/**
+ * MADE_ABOUT_UNDATED_TOGETHER_ENABLED (QA's round-11 gate, 9 Nov 2026; default off; same flag in both apps). "I need you to
+ * make it about showing up late" (no date) on a saved Coaching draft rewrote Details and left Other on the old topic. An
+ * undated made-about turn changes the account and the topic together, or neither; the Date stays, and the reply says so
+ * (`forms/form-patch-turn.ts`). Off, as before.
+ */
+export function madeAboutUndatedTogetherEnabled(): boolean {
+  return envFlag("MADE_ABOUT_UNDATED_TOGETHER_ENABLED");
+}
+
+/**
+ * MADE_ABOUT_POLICY_LINE_ENABLED (QA's live round-11 test, 9 Nov 2026; default off; same flag in both apps). "make it
+ * about leaving the front desk unattended on 11/6/26" rewrote a Coaching draft's Details, and the old account's "Policy
+ * reference: Attendance Policy, JBA Policy Manual p.14" went with it: none was written for the new one. With the flag on,
+ * the rewritten account's reference is written again from the manual, as the card cites it (`forms/made-about-policy-line.ts`).
+ * Off, as before.
+ */
+export function madeAboutPolicyLineEnabled(): boolean {
+  return envFlag("MADE_ABOUT_POLICY_LINE_ENABLED");
+}
+
+/**
+ * MADE_ABOUT_READER_ACCOUNT_ENABLED (ported from Ask Bubbles; QA's live round-9 test there, 9 Nov 2026; default off; same
+ * flag in both apps). "make it about leaving the front desk unattended on 11/6/26" on a saved Coaching draft changed Other
+ * and Details and left the Date: the reader set Details itself (the new incident added under the old one), so the
+ * made-about path that writes the Date never ran. With the flag on, a dated made-about turn's own account edit from the
+ * reader is set aside, and the account is rewritten with the Date and the topic, all or nothing (`forms/form-patch-turn.ts`).
+ * Off, as before.
+ */
+export function madeAboutReaderAccountEnabled(): boolean {
+  return envFlag("MADE_ABOUT_READER_ACCOUNT_ENABLED");
 }
