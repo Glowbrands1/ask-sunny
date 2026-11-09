@@ -1,0 +1,73 @@
+/*
+ * The Sunny mascot's motion. Every animation is transform/opacity only, and all
+ * of them stop under prefers-reduced-motion (the mascot is then a still image).
+ */
+.root {
+  display: block;
+  overflow: visible;
+  filter: drop-shadow(0 10px 8px rgb(0 0 0 / 0.2));
+  animation: bob 4.2s ease-in-out infinite;
+}
+
+.rays {
+  transform-box: view-box;
+  transform-origin: 100px 88px;
+  animation: turn 48s linear infinite;
+}
+
+.cheek {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: blush 4.2s ease-in-out infinite;
+}
+
+.smile {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: grin 4.2s ease-in-out infinite;
+}
+
+.cloud {
+  animation: drift 6s ease-in-out infinite;
+}
+
+@keyframes bob {
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes blush {
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+
+@keyframes grin {
+  50% {
+    transform: scaleX(1.12);
+  }
+}
+
+@keyframes drift {
+  50% {
+    transform: translateX(5px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .root,
+  .rays,
+  .cheek,
+  .smile,
+  .cloud {
+    animation: none;
+  }
+}

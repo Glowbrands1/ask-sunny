@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { FieldGroup, Input, Select } from "@/components/ui/field";
 import { Notice } from "@/components/ui/feedback";
 import { Badge } from "@/components/ui/badge";
+import { SunnyMascot } from "@/components/sunny-mascot";
 import { DEMO_SWITCHABLE_ROLES } from "@/data/switchable-roles";
 import { ACTIVE_BRAND } from "@/lib/brand";
 import { supabasePublicConfigured } from "@/lib/config/runtime";
@@ -77,6 +78,7 @@ export function LoginScreen({
       {/* Left — the sign-in panel */}
       <section className={styles.left}>
         <div className={styles.card}>
+          <SunnyMascot className={styles.mobileSun} />
           <div className={styles.brand}>
             <SunriseMark className={styles.brandMark} />
             <span className={styles.brandWord}>
@@ -191,6 +193,9 @@ export function LoginScreen({
       <aside className={styles.right}>
         <SunriseBackdrop />
         <div className={styles.content}>
+          <div className={styles.sunWrap}>
+            <SunnyMascot className={styles.sun} />
+          </div>
           <p className={styles.eyebrow}>{ACTIVE_BRAND.tagline}</p>
           <h2 className={styles.headline}>
             Everything a manager needs to run their day, in one place.

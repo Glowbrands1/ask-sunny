@@ -1,8 +1,10 @@
 /*
- * THE "SOFT HORIZON" SIGN-IN SCREEN.
+ * THE SIGN-IN SCREEN, IN THE PUFFY CLAY LOOK.
  *
- * Scoped to the login screen on purpose: the warm cream-to-peach gradients, the
- * rising sun and the larger 56px fields are this screen's look, not the app's.
+ * Scoped to the login screen on purpose: the raised cream card, the sunken
+ * fields, the glossy yellow button and the charcoal panel with the animated
+ * Sunny mascot are this screen's look, not the app's. Colours are Ask Sunny's
+ * own: brand yellow (with its dark ink for text), the charcoal band, cream.
  * The inputs and buttons inside `.card` are the shared `Input` / `Button`
  * components restyled from here, so `SignInForm` keeps one implementation.
  */
@@ -14,6 +16,10 @@
   --sh-gold-deep: #c98f00;
   --sh-espresso: #2a1f1a;
   --sh-border: #f0dfd0;
+  --clay-shadow: rgb(120 70 40 / 0.28);
+  --clay-hi: rgb(255 255 255 / 0.95);
+  --clay-lo: rgb(0 0 0 / 0.06);
+  --clay-yellow-ink: var(--brand-yellow-foreground);
 
   display: grid;
   grid-template-columns: 1fr;
@@ -36,7 +42,7 @@
   align-items: center;
   justify-content: center;
   padding: 48px 20px;
-  background: linear-gradient(180deg, #fffaf3 0%, #fef1e6 60%, #fde9dd 100%);
+  background: linear-gradient(160deg, var(--background) 0%, #f3dccd 100%);
 }
 
 @media (min-width: 640px) {
@@ -49,14 +55,39 @@
   position: relative;
   z-index: 1;
   width: 100%;
-  max-width: 420px;
+  max-width: 440px;
+  padding: 36px 32px;
+  background: #fff;
+  border-radius: 32px;
+  box-shadow:
+    0 14px 22px -8px var(--clay-shadow),
+    inset 0 3px 5px var(--clay-hi),
+    inset 0 -7px 12px var(--clay-lo);
+}
+
+@media (min-width: 640px) {
+  .card {
+    padding: 44px 40px;
+  }
+}
+
+/* The mascot tops the card on small screens, where the right panel is hidden. */
+.mobileSun {
+  width: 120px;
+  margin: 0 auto 8px;
+}
+
+@media (min-width: 861px) {
+  .mobileSun {
+    display: none;
+  }
 }
 
 .brand {
   display: flex;
   align-items: center;
   gap: 14px;
-  margin-bottom: 56px;
+  margin-bottom: 40px;
 }
 
 .brandMark {
@@ -115,10 +146,12 @@
   padding: 0 18px;
   font-size: 17px;
   color: var(--sh-ink);
-  background: #fff;
-  border: 1.5px solid var(--sh-border);
-  border-radius: 14px;
-  box-shadow: 0 1px 2px rgba(120, 80, 40, 0.05);
+  background: var(--surface-muted);
+  border: 0;
+  border-radius: 20px;
+  box-shadow:
+    inset 0 5px 9px var(--clay-shadow),
+    inset 0 -3px 6px var(--clay-hi);
   transition:
     border-color 0.2s,
     box-shadow 0.2s;
@@ -127,12 +160,14 @@
 .card input:focus,
 .card input:focus-visible {
   outline: none;
-  border-color: var(--sh-gold);
-  box-shadow: 0 0 0 4px rgba(242, 183, 5, 0.22);
+  box-shadow:
+    inset 0 5px 9px var(--clay-shadow),
+    0 0 0 4px rgba(242, 183, 5, 0.45);
 }
 
 .card input:disabled {
-  background: #fffdfb;
+  background: var(--surface-muted);
+  opacity: 0.8;
 }
 
 /* Room for the show-password toggle inside the field. */
@@ -142,20 +177,33 @@
 
 .card button[type="submit"],
 .card .primaryAction {
-  height: 58px;
+  height: 60px;
   border: 0;
-  border-radius: 14px;
+  border-radius: 999px;
   font-size: 17px;
-  font-weight: 600;
-  color: #fff6ee;
-  background: var(--sh-espresso);
+  font-weight: 800;
+  color: var(--clay-yellow-ink);
+  background: linear-gradient(180deg, #ffd21f, #f0b800);
   gap: 10px;
-  box-shadow: 0 8px 20px -8px rgba(42, 31, 26, 0.55);
+  box-shadow:
+    0 14px 20px -8px var(--clay-shadow),
+    inset 0 4px 6px rgb(255 255 255 / 0.5),
+    inset 0 -6px 10px rgb(0 0 0 / 0.15);
+  transition: transform 0.15s;
 }
 
 .card button[type="submit"]:hover:not(:disabled),
 .card .primaryAction:hover:not(:disabled) {
-  background: #3d2e26;
+  background: linear-gradient(180deg, #ffd93d, #f5bd00);
+}
+
+.card button[type="submit"]:active:not(:disabled),
+.card .primaryAction:active:not(:disabled) {
+  transform: translateY(2px);
+}
+
+.card button[type="submit"]:disabled {
+  opacity: 0.55;
 }
 
 .card button[type="submit"] svg,
@@ -206,6 +254,16 @@
   animation: pulse 6s ease-in-out infinite;
 }
 
+.sunWrap {
+  position: relative;
+  z-index: 2;
+  margin-bottom: 20px;
+}
+
+.sun {
+  width: 190px;
+}
+
 .content {
   position: relative;
   z-index: 2;
@@ -250,10 +308,11 @@
   border-radius: 50%;
   display: grid;
   place-items: center;
-  background: rgba(255, 253, 251, 0.85);
+  background: #fffdfb;
   box-shadow:
-    0 2px 8px rgba(201, 143, 0, 0.18),
-    inset 0 0 0 1px rgba(242, 183, 5, 0.35);
+    0 8px 12px -6px rgba(160, 90, 30, 0.45),
+    inset 0 3px 4px rgba(255, 255, 255, 0.95),
+    inset 0 -4px 6px rgba(160, 90, 30, 0.1);
   color: var(--sh-gold-deep);
 }
 
@@ -316,5 +375,9 @@
   .sunrise,
   .halo {
     animation: none;
+  }
+  .card button[type="submit"],
+  .card .primaryAction {
+    transition: none;
   }
 }
