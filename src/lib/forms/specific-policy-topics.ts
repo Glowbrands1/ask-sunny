@@ -470,3 +470,14 @@ export function withoutPrimedTopic<T extends Record<string, string | undefined>>
 /** The draft prompt's line for an "other" write-in when the flag is on: no example topic to copy. */
 export const OTHER_WRITE_IN_INSTRUCTION =
   'When no listed option fits, tick "other" AND name the topic in the matching write-in field, in a few words of the manager\'s own — only what they described.';
+
+/**
+ * MODEL_POLICY_DEFERS_TO_TOPIC_ENABLED (QA, round-7c live test, 9 Nov 2026): the headings the incident the manager's words
+ * name is cited under — the Standards of Conduct for a listed line, the topic's own heading otherwise, and its further
+ * sections — or null when the words name none of the table's incidents.
+ */
+export function topicHeadings(text: string): string[] | null {
+  const topic = specificTopic(text);
+  if (!topic) return null;
+  return [topic.cite.kind === "heading" ? topic.cite.heading : CONDUCT_HEADING, ...topic.also];
+}
