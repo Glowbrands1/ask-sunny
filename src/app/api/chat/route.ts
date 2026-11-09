@@ -21,6 +21,7 @@ import {
   personGuardEnabled,
   formNameFromRosterEnabled,
   offRosterConfirmEnabled,
+  offRosterAskBeforeCardEnabled,
   metricGuardEnabled,
   refusalNoRepeatEnabled,
   titleNotSpeakersManagerEnabled,
@@ -850,6 +851,10 @@ async function postChat(request: Request) {
         const { formSelection: _dropped, ...rest } = answer;
         void _dropped;
         answer = { ...rest, content: rest.content.replace(/\n*Based on what you've described, I can prepare:\s*$/, "").trimEnd() };
+      }
+      // OFF_ROSTER_ASK_BEFORE_CARD_ENABLED: a salon manager's card for a full name not on their roster is asked about once, before the card (`lib/forms/off-roster-ask.ts`).
+      if (offRosterAskBeforeCardEnabled()) {
+        answer = (await import("@/lib/forms/off-roster-ask")).withOffRosterAskBeforeCard(answer, { scope: context.identity.scope, history: parsed.history, question: asked.question });
       }
       // SAME_FORM_COPY_NEW_PERSON_ENABLED: the named person's card carries the form to copy from.
       if (newPersonCopy) {

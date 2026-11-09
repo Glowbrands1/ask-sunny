@@ -2550,6 +2550,16 @@ export function formPatchReaderFixesEnabled(): boolean {
 export function editPolicyAskEnabled(): boolean {
   return envFlag("EDIT_POLICY_ASK_ENABLED") && formPatchReducerEnabled();
 }
+/**
+ * OFF_ROSTER_ASK_BEFORE_CARD_ENABLED (ported from the sibling app: QA's round-6 live test there, 9 Nov 2026; coding 5;
+ * same flag in both apps; default off). "create a coaching form for <full name not on the roster>" gave a ready card
+ * with no question. On: for a salon-scoped manager, such a card is held back once and the reply asks "I can't find
+ * <name> on your roster — is that the right name, or are they at another salon?", with OFF_ROSTER_CONFIRM's "reply use
+ * <name>" offer (`forms/off-roster-ask.ts`). District, region and global managers are never held up. Off, as before.
+ */
+export function offRosterAskBeforeCardEnabled(): boolean {
+  return envFlag("OFF_ROSTER_ASK_BEFORE_CARD_ENABLED");
+}
 // --- end coding 5 flags ---
 
 /**
