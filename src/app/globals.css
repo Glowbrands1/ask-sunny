@@ -642,6 +642,8 @@
   --font-display: var(--font-passion-one), ui-sans-serif, system-ui, sans-serif;
   /* Logotypes only — see the note in layout.tsx. */
   --font-wordmark: var(--font-jost), ui-sans-serif, system-ui, sans-serif;
+  /* The sign-in screen's two headings only — see the note in layout.tsx. */
+  --font-signin: var(--font-fraunces), Georgia, "Times New Roman", serif;
   --font-sans: var(--font-lato), var(--font-manrope), ui-sans-serif, system-ui, -apple-system,
     "Segoe UI", sans-serif;
 
