@@ -60,4 +60,34 @@ export const NOV8_FIELD_LABEL_NOT_A_QUESTION_CASES: ReplayCase[] = [
       void t;
     },
   },
+  {
+    id: "nov8-exit-field-label-keeps-no-notice",
+    title: "a six-turn exit chat whose turn 1 says \"no notice given\": turn 5 (field labels answered) leaves Date that notice was given blank and adds no \"You also asked\" line",
+    report: "QA, the sibling app's round-6 rollback, 9 Nov 2026 (its gate runner's replay of a district manager's chat; here in this app's salon words, the person and address invented): with FIELD_LABEL_NOT_A_QUESTION_ENABLED on, turn 5 filled \"Date that notice was given: October 26, 2026\" and added 'You also asked \"how employee resigned - …\" — ask that again on its own and I'll answer it.'",
+    // A guard here: checked on main 24a380e5 with production's flags (FIELD_LABEL_NOT_A_QUESTION live), it already holds.
+    // This app reads the exit card from the whole manager window, so turn 1's "no notice given" is never cut away.
+    status: "fixed",
+    fixFlags: ["FIELD_LABEL_NOT_A_QUESTION_ENABLED"],
+    async run(t) {
+      vi.setSystemTime(new Date("2026-11-08T15:00:00Z"));
+      t.directory(STAFF);
+      t.as("salon_director", TWO_SALONS);
+      const thread = t.thread();
+      const turns = [
+        "create an exit for marisol fenwick, assistant salon manager at kearney, ne. last day worked 10-26-26. salon items not returned and $25 will be payroll deducted for salon key. immediate voluntary term, no notice given. payroll deduct applies. drop wage and forfeit bonus. not eligible for rehire. marisol's address is 812 Larkmoor Court, kearney, NE. 68845",
+        "marisol told management on 10-26-26 that she quit effective immediately due to personal reasons.",
+        "exit is for marisol fenwick",
+        "create exit for marisol fenwick",
+        "resignation date 10-26-2026. how employee resigned - Marisol told management she quit effective immediately on 10-26-2026. Reason for resignation - Marisol quit due to personal family issues.",
+        "how employee resigned - told management",
+      ];
+      const replies: string[] = [];
+      for (const said of turns) replies.push((await thread.say(said)).content);
+      for (const turn of [4, 5]) {
+        const content = replies[turn]!;
+        expect(content, `turn ${turn + 1} fills the notice date although turn 1 said no notice:\n${content}`).not.toMatch(/Date that notice was given:\*\*\s*\S/);
+        expect(content, `turn ${turn + 1} has the stray "You also asked" line:\n${content}`).not.toContain("You also asked");
+      }
+    },
+  },
 ];
