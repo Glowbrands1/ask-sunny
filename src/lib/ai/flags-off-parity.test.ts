@@ -1065,12 +1065,21 @@ function chatHalf(half: 0 | 1): string[] {
   const middle = Math.ceil(all.length / 2);
   return half === 0 ? all.slice(0, middle) : all.slice(middle);
 }
-const CHILDREN: readonly { readonly name: string; readonly paths: () => readonly string[] }[] = [
+/*
+ * THE REPLAY PACK IN TWO HALVES (QA, 9 Nov 2026): its child timed out at 540 s on CI (ask-sunny#713, #717; ETIMEDOUT, no
+ * assertion failed) as the pack grew. Nearly all of its time is one file, `replay-pack-e2e.test.ts`, so it is halved by
+ * case, not by file: the first child runs the whole folder with the first half of the cases by id (`REPLAY_PACK_HALF`
+ * "0"; the pack's other test files run there, once), the second child that one file with the second half ("1"). Every
+ * case and every file still runs exactly once, with every new flag off.
+ */
+const REPLAY_PACK_E2E = `${REPLAY_PACK}/replay-pack-e2e.test.ts`;
+const CHILDREN: readonly { readonly name: string; readonly paths: () => readonly string[]; readonly env?: Readonly<Record<string, string>> }[] = [
   { name: "src/lib/ai, src/lib/forms", paths: () => ["src/lib/ai", "src/lib/forms"] },
   { name: `${CHAT} (without the replay pack), first half by name`, paths: () => chatHalf(0) },
   { name: `${CHAT} (without the replay pack), second half by name`, paths: () => chatHalf(1) },
   { name: "src/app/api/forms", paths: () => ["src/app/api/forms"] },
-  { name: REPLAY_PACK, paths: () => [REPLAY_PACK] },
+  { name: `${REPLAY_PACK}, first half of the cases by id`, paths: () => [REPLAY_PACK], env: { REPLAY_PACK_HALF: "0" } },
+  { name: `${REPLAY_PACK}, second half of the cases by id`, paths: () => [REPLAY_PACK_E2E], env: { REPLAY_PACK_HALF: "1" } },
 ];
 
 describe("existing chat and form suites with every new flag off", () => {
@@ -1078,7 +1087,7 @@ describe("existing chat and form suites with every new flag off", () => {
     it.skipIf(CHILD)(
       `passes the suites whose expectations are already on main: ${child.name}`,
       () => {
-        const env: NodeJS.ProcessEnv = { ...process.env, FLAGS_OFF_PARITY_CHILD: "1" };
+        const env: NodeJS.ProcessEnv = { ...process.env, FLAGS_OFF_PARITY_CHILD: "1", ...child.env };
         delete env.VITEST;
         delete env.VITEST_WORKER_ID;
         delete env.VITEST_POOL_ID;

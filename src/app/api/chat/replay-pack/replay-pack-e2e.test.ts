@@ -760,8 +760,18 @@ describe("src/config/production-flags.json", () => {
   });
 });
 
+/*
+ * REPLAY_PACK_HALF (CI only; QA, 9 Nov 2026): the flags-off parity run (`src/lib/ai/flags-off-parity.test.ts`) runs the
+ * pack as two children, each with one half of the cases by id ("0": the first half, "1": the second), so neither child
+ * passes its time budget as the pack grows. Unset, every case runs, as before.
+ */
+const HALF = process.env.REPLAY_PACK_HALF;
+const BY_ID = [...CASES].sort((a, b) => a.id.localeCompare(b.id));
+const MIDDLE = Math.ceil(BY_ID.length / 2);
+const RUN = HALF === "0" ? BY_ID.slice(0, MIDDLE) : HALF === "1" ? BY_ID.slice(MIDDLE) : CASES;
+
 describe("the replay pack", () => {
-  for (const replay of CASES) {
+  for (const replay of RUN) {
     const title = `${replay.id}: ${replay.title}`;
     if (replay.status === "fixed") {
       it(`${title} — holds with production's flags`, async () => {
