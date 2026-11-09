@@ -25,7 +25,7 @@ const MAVE: DirectoryRow = {
 };
 const FIX = ["WORK_AREA_ABSENCE_CITES_CONDUCT_ENABLED"];
 const REPORT = "Pau's decision via QA, 9 Nov 2026 (QA's live round-6 trace: \"Attendance Policy, JBA Policy Manual p.14\")";
-const OPEN = { open: "no section of the manual is cited: the card falls to the model's heading (live: Attendance p.14)" };
+// Changed on purpose (9 Nov 2026): the shared OPEN status was removed once every case using it was fixed (QA round 9).
 
 /*
  * The pack's manual (wording invented) words its Standards of Conduct line differently, and other suites pin that chunk
@@ -57,7 +57,8 @@ export const NOV9_WORK_AREA_ABSENCE_CITES_CONDUCT_CASES: ReplayCase[] = [
     id: "nov9-work-area-absence-ca",
     title: "a CA for \"left the front desk unattended on 11/6/26\": the card and the saved form cite the Standards of Conduct, never Attendance",
     report: REPORT,
-    status: OPEN,
+    // Changed on purpose (9 Nov 2026): fixed in production by WORK_AREA_ABSENCE_CITES_CONDUCT_ENABLED, QA round 9, 9 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const thread = start(t);
@@ -75,7 +76,8 @@ export const NOV9_WORK_AREA_ABSENCE_CITES_CONDUCT_CASES: ReplayCase[] = [
     id: "nov9-work-area-absence-left-the-building",
     title: "a CA for \"left the front desk unattended and went to her car\": the Standards of Conduct only (Pau, 9 Nov 2026)",
     report: REPORT,
-    status: OPEN,
+    // Changed on purpose (9 Nov 2026): fixed in production by WORK_AREA_ABSENCE_CITES_CONDUCT_ENABLED, QA round 9, 9 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const thread = start(t);
@@ -94,7 +96,8 @@ export const NOV9_WORK_AREA_ABSENCE_CITES_CONDUCT_CASES: ReplayCase[] = [
     id: "nov9-work-area-absence-coaching-card",
     title: "a Coaching card for \"left the front desk unattended on 11/6/26\": the Standards of Conduct by its printed page",
     report: REPORT,
-    status: OPEN,
+    // Changed on purpose (9 Nov 2026): fixed in production by WORK_AREA_ABSENCE_CITES_CONDUCT_ENABLED, QA round 9, 9 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const thread = start(t);
@@ -108,7 +111,8 @@ export const NOV9_WORK_AREA_ABSENCE_CITES_CONDUCT_CASES: ReplayCase[] = [
     id: "nov9-work-area-absence-coaching-made-about",
     title: "a Coaching card about a missed meeting, then \"make it about leaving the front desk unattended on 11/6/26\": the Standards of Conduct, not the meeting's Attendance",
     report: REPORT,
-    status: { open: "the card cites Attendance p.14, read from the missed meeting before the \"make it about\"" },
+    // Changed on purpose (9 Nov 2026): fixed in production by WORK_AREA_ABSENCE_CITES_CONDUCT_ENABLED, QA round 9, 9 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const thread = start(t);

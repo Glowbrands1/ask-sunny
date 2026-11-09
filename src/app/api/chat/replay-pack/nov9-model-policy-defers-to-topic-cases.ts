@@ -68,7 +68,8 @@ export const NOV9_MODEL_POLICY_DEFERS_TO_TOPIC_CASES: ReplayCase[] = [
     id: "nov9-model-policy-defers-3a",
     title: "3a: after a late-opening CA, \"I need another corrective action for <P>, his cash drawer was short $20 on 11/3\" (model: Handling Theft): the shortage, never theft",
     report: REPORT,
-    status: { open: "the card reads \"theft\" from the model's Handling Theft and cites it" },
+    // Changed on purpose (9 Nov 2026): fixed in production by MODEL_POLICY_DEFERS_TO_TOPIC_ENABLED, QA round 9, 9 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     run: shortage("I need another corrective action for Corwin Ashgrove, his cash drawer was short $20 on 11/3", /"cash drawer was short"/),
   },
@@ -76,7 +77,8 @@ export const NOV9_MODEL_POLICY_DEFERS_TO_TOPIC_CASES: ReplayCase[] = [
     id: "nov9-model-policy-defers-3a-for",
     title: "\"I need another corrective action for <P> for his cash drawer being short $20 on 11/3\" (model: Handling Theft): the shortage",
     report: REPORT,
-    status: { open: "the card reads \"theft\" from the model's Handling Theft and cites it" },
+    // Changed on purpose (9 Nov 2026): fixed in production by MODEL_POLICY_DEFERS_TO_TOPIC_ENABLED, QA round 9, 9 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       // As its own request: after T1 this wording is read as T1's request carried on (Late Opening), a separate item.
@@ -91,7 +93,8 @@ export const NOV9_MODEL_POLICY_DEFERS_TO_TOPIC_CASES: ReplayCase[] = [
     id: "nov9-model-policy-defers-3c",
     title: "3c: \"create a corrective action for <P>, his cash drawer was short $20 on 11/3\" (model: Handling Theft): the shortage",
     report: REPORT,
-    status: { open: "the card reads \"theft\" from the model's Handling Theft and cites it" },
+    // Changed on purpose (9 Nov 2026): fixed in production by MODEL_POLICY_DEFERS_TO_TOPIC_ENABLED, QA round 9, 9 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const thread = start(t);
