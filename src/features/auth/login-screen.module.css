@@ -240,7 +240,19 @@
 
 .rays {
   transform-origin: 450px 300px;
-  animation: sway 9s ease-in-out infinite alternate;
+  animation: turn 40s linear infinite;
+}
+
+/* The dashed ring turns the other way, so the dashes visibly travel. */
+.ring {
+  transform-origin: 450px 300px;
+  animation: turn 24s linear infinite reverse;
+}
+
+/* The sun breathes. */
+.disc {
+  transform-origin: 450px 300px;
+  animation: breathe 4s ease-in-out infinite;
 }
 
 .halo {
@@ -348,14 +360,15 @@
   }
 }
 
-@keyframes sway {
-  from {
-    transform: rotate(-3deg);
-    opacity: 0.75;
-  }
+@keyframes turn {
   to {
-    transform: rotate(3deg);
-    opacity: 1;
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes breathe {
+  50% {
+    transform: scale(1.05);
   }
 }
 
@@ -375,6 +388,8 @@
   .brandMark,
   .sunrise,
   .rays,
+  .ring,
+  .disc,
   .halo {
     animation: none;
   }

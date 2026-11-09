@@ -306,9 +306,10 @@ function SunriseBackdrop() {
   const id = useId();
   const halo = `${id}-halo`;
   const disc = `${id}-disc`;
-  // Nineteen rays fanning across the upper half, alternating in strength.
-  const rays = Array.from({ length: 19 }, (_, i) => {
-    const angle = Math.PI + (i + 1) * (Math.PI / 20);
+  // Thirty-six rays all the way round, alternating in strength, so the whole
+  // wheel can turn without a gap ever rising into view.
+  const rays = Array.from({ length: 36 }, (_, i) => {
+    const angle = i * (Math.PI / 18);
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
     return {
@@ -316,7 +317,7 @@ function SunriseBackdrop() {
       y1: round(300 + 190 * sin),
       x2: round(450 + 520 * cos),
       y2: round(300 + 520 * sin),
-      opacity: i % 2 === 0 ? 0.12 : 0.22,
+      opacity: i % 2 === 0 ? 0.28 : 0.5,
     };
   });
   return (
@@ -342,20 +343,21 @@ function SunriseBackdrop() {
           {...ray}
           stroke="#E0A400"
           strokeOpacity={opacity}
-          strokeWidth="2"
+          strokeWidth="3"
           strokeLinecap="round"
         />
       ))}
       </g>
-      <circle cx="450" cy="300" r="170" fill={`url(#${disc})`} />
+      <circle className={styles.disc} cx="450" cy="300" r="170" fill={`url(#${disc})`} />
       <circle
+        className={styles.ring}
         cx="450"
         cy="300"
         r="205"
         stroke="#E0A400"
-        strokeOpacity=".35"
-        strokeWidth="2"
-        strokeDasharray="4 12"
+        strokeOpacity=".6"
+        strokeWidth="3"
+        strokeDasharray="6 14"
         strokeLinecap="round"
       />
     </svg>

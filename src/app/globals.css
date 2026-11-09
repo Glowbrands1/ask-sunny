@@ -1292,15 +1292,23 @@
   }
 }
 
+/* Sunny bobs up and rocks a little — big enough to notice at a glance. */
 @keyframes sunny-bob {
+  25% {
+    transform: translateY(-6px) rotate(-4deg);
+  }
   50% {
-    transform: translateY(-5px);
+    transform: translateY(-12px) rotate(0deg);
+  }
+  75% {
+    transform: translateY(-6px) rotate(4deg);
   }
 }
 
 @media (prefers-reduced-motion: no-preference) {
   .sunny-bob {
-    animation: sunny-bob 4s ease-in-out infinite;
+    animation: sunny-bob 3.2s ease-in-out infinite;
+    transform-origin: 50% 60%;
   }
 }
 
