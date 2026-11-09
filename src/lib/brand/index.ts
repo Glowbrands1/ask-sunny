@@ -27,6 +27,7 @@ export const STC_BRAND: BrandConfig = {
   operatorName: "JB & Associates",
   wordmark: { lead: "ASK", trail: "SUNNY" },
   tagline: "One place to run your salon",
+  slogan: "Iconic Tanning. Modern Wellness.",
   knowledgeScopeId: "stc-core",
   vocabulary: {
     salonNoun: "salon",
