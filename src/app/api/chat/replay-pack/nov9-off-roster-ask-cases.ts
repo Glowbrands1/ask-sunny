@@ -13,7 +13,8 @@ import { KEARNEY, STAFF, type ReplayCase, type ReplayContext } from "./cases";
  * or are they at another salon?" first; OFF_ROSTER_CONFIRM's "use <name>" still makes the card; a district manager
  * is never held up. The name is invented and on no directory (Wrenna Pollard); the pack's Marnie Holloway is on it.
  */
-const FIX = ["OFF_ROSTER_ASK_BEFORE_CARD_ENABLED"];
+/** The question runs only beside OFF_ROSTER_CONFIRM (off in this app's production): QA flips the two together. */
+const FIX = ["OFF_ROSTER_ASK_BEFORE_CARD_ENABLED", "OFF_ROSTER_CONFIRM_ENABLED"];
 const REPORT = "QA's round-6 live test in the sibling app (9 Nov 2026): \"create a coaching form for <full name not on the roster>\" gave a card with no question";
 const REPORTED = "create a coaching form for Wrenna Pollard";
 const ASKS = /I can't find \*\*Wrenna Pollard\*\* on your roster — is that the right name, or are they at another salon\?/;
@@ -42,7 +43,7 @@ export const NOV9_OFF_ROSTER_ASK_CASES: ReplayCase[] = [
   },
   {
     id: "nov9-off-roster-ask-then-name",
-    title: "after the question, the name typed again makes the card (OFF_ROSTER_CONFIRM is off in this app's production, so no \"use <name>\" offer)",
+    title: "after the question, the name typed again makes the card, marked not from Woven",
     report: REPORT,
     status: { open: "no question: the first card is already for **Wrenna Pollard**" },
     fixFlags: FIX,
@@ -57,10 +58,10 @@ export const NOV9_OFF_ROSTER_ASK_CASES: ReplayCase[] = [
   },
   {
     id: "nov9-off-roster-ask-then-use",
-    title: "with OFF_ROSTER_CONFIRM on too, the question carries its offer and \"use Wrenna Pollard\" makes the card, marked not from Woven",
+    title: "the question carries OFF_ROSTER_CONFIRM's offer, and \"use Wrenna Pollard\" makes the card, marked not from Woven",
     report: REPORT,
     status: { open: "no question: the first card is already for **Wrenna Pollard**" },
-    fixFlags: [...FIX, "OFF_ROSTER_CONFIRM_ENABLED"],
+    fixFlags: FIX,
     async run(t) {
       const thread = start(t);
       const first = await thread.say(REPORTED);

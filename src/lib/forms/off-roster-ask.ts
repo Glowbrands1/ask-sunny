@@ -5,6 +5,7 @@ import { normalizeTypedName } from "./employee-match";
 import { isAcceptedOffRoster, offRosterCardNote, offRosterOffer, offRosterTakenLine } from "./off-roster-confirm";
 import { personRosterNames } from "./person-guard";
 import { offRosterTyped } from "./roster-only-names";
+import { editDistance } from "./typo-match";
 
 /*
  * ============================================================================
@@ -18,7 +19,7 @@ import { offRosterTyped } from "./roster-only-names";
  * With the flag on, for a salon-scoped manager (a district, region or global manager is never held up) a card whose
  * employee is a full name nobody on this manager's roster has is held back once: the reply asks "I can't find <name>
  * on your roster — is that the right name, or are they at another salon?", with OFF_ROSTER_CONFIRM's offer ("reply
- * use <name>") when that flag is on, so its flow is unchanged: "use <name>" / "yes" / the name again makes the card,
+ * use <name>"). It runs only beside OFF_ROSTER_CONFIRM, so that flow is unchanged: "use <name>" / "yes" / the name again makes the card,
  * marked not from Woven. The question is asked once per name; after it, the card comes as it does today. No roster
  * read this turn (PERSON_GUARD off, or the read timed out): nothing changes. Off, as before.
  */
@@ -30,7 +31,7 @@ interface CardLike {
   subject?: string;
   status: string;
   supportsInlineDraft?: boolean;
-  closeMatchNote?: string;
+  wovenCloseMatch?: string | null;
 }
 
 type Turn = { readonly role: string; readonly content: string };
@@ -52,18 +53,32 @@ function onRoster(name: string, roster: readonly string[]): boolean {
   });
 }
 
+/**
+ * A near miss of somebody on the roster: the same first name and a last word at most two edits away ("Odalys
+ * Vansikcle" beside "Odalys Prewett Vansickle", "Remy Caldor" beside "Remy Calder"). That is asked as them, never
+ * offered as a name not on the roster — the matcher answers "none" when two roster people are equally close.
+ */
+function nearSomeone(name: string, roster: readonly string[]): boolean {
+  const typed = words(name).split(" ");
+  return roster.some((person) => {
+    const own = words(person).split(" ");
+    return own[0] === typed[0] && editDistance(own[own.length - 1]!, typed[typed.length - 1]!) <= 2;
+  });
+}
+
 export function withOffRosterAskBeforeCard<T extends { content: string; formProposal?: CardLike | null }>(
   answer: T,
   input: { readonly scope: AccessScope | null | undefined; readonly history: readonly Turn[]; readonly question: string },
 ): T {
-  if (!offRosterAskBeforeCardEnabled() || input.scope?.level !== "salon") return answer;
+  // Only beside OFF_ROSTER_CONFIRM: its "use <name>" offer and taking it are how the manager answers this question.
+  if (!offRosterAskBeforeCardEnabled() || !offRosterConfirmEnabled() || input.scope?.level !== "salon") return answer;
   const card = answer.formProposal;
   const name = card?.employeeName?.trim();
   if (!card || !name || card.subject === "team" || words(name).split(" ").length < 2) return answer;
   const roster = personRosterNames();
-  if (!roster || roster.length === 0 || onRoster(name, roster)) return answer;
+  if (!roster || roster.length === 0 || onRoster(name, roster) || nearSomeone(name, roster)) return answer;
   // The card already says it is not from Woven (FORM_NAME_FROM_ROSTER's flow): as it is.
-  if (/Not in Woven/i.test(card.closeMatchNote ?? "")) return answer;
+  if (/Not in Woven/i.test(card.wovenCloseMatch ?? "")) return answer;
   /*
    * OFF_ROSTER_CONFIRM: the manager took the typed name ("use <name>", "yes", the name again). With the name flags off
    * nothing else says so; the card says it, in the reply and the card's note, as FORM_NAME's flow does.
@@ -72,7 +87,7 @@ export function withOffRosterAskBeforeCard<T extends { content: string; formProp
     return {
       ...answer,
       content: `${offRosterTakenLine(name)}\n\n${answer.content.trim()}`,
-      formProposal: { ...card, closeMatchNote: offRosterCardNote(name) },
+      formProposal: { ...card, wovenCloseMatch: offRosterCardNote(name) },
     };
   }
   /*
@@ -84,10 +99,9 @@ export function withOffRosterAskBeforeCard<T extends { content: string; formProp
   if (!typed) return answer;
   const question = offRosterQuestion(typed);
   if (input.history.some((turn) => turn.role === "assistant" && turn.content.includes(question))) return answer;
-  const offer = offRosterConfirmEnabled() ? ` ${offRosterOffer(typed)}` : "";
   return {
     ...answer,
-    content: `${question}${offer}`,
+    content: `${question} ${offRosterOffer(typed)}`,
     formProposal: { ...card, employeeName: null, employeeRole: null, status: "needs_employee", supportsInlineDraft: false },
   };
 }
