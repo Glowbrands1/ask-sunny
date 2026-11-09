@@ -513,6 +513,11 @@ const NEW_FLAGS = [
   // coding 4: ONE_CARD_ONE_PAGE (QA, Sunny round 9, 9 Nov 2026; default off): forced off with the others in the child run.
   "ONE_CARD_ONE_PAGE_ENABLED",
   "ANOTHER_REQUEST_LEAD_ENABLED",
+  // coding 4: the make-it-about chain, ported from the sibling app (9 Nov 2026; default off): forced off with the others.
+  "STEP_B_MAKE_IT_ABOUT_ACCOUNT_ENABLED",
+  "STEP_B_DATE_SAID_ENABLED",
+  "STEP_B_DATE_WITH_ABOUT_ENABLED",
+  "MADE_ABOUT_ALL_OR_NOTHING_ENABLED",
   // coding 4: MODEL_POLICY_DEFERS_TO_TOPIC (QA, round 7c, 9 Nov 2026; default off): forced off with the others in the child run.
   "MODEL_POLICY_DEFERS_TO_TOPIC_ENABLED",
   // coding 4: WORK_AREA_ABSENCE_CITES_CONDUCT (Pau's decision, 9 Nov 2026; default off): forced off with the others in the child run.
@@ -523,6 +528,7 @@ const NEW_FLAGS = [
   // coding 5: UNDATED_ACCOUNT_BRIEF (default off): forced off with the others in the child run.
   "UNDATED_ACCOUNT_BRIEF_ENABLED",
   "EXIT_LETTER_ADDRESSEE_ENABLED",
+  "MISSED_SHIFT_CITES_ATTENDANCE_ENABLED",
   "EXIT_LETTER_SIGNER_NOT_SUBJECT_ENABLED",
   "POSSESSIVE_PLACE_NOT_PERSON_ENABLED",
   "OFF_ROSTER_ASK_BEFORE_CARD_ENABLED",

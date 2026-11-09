@@ -1,9 +1,9 @@
 import { z } from "zod/v4";
 
-import { editPolicyAskEnabled, formPatchReaderFixesEnabled } from "@/lib/config/chat-quality-flags";
+import { editPolicyAskEnabled, formPatchReaderFixesEnabled, stepBMakeItAboutAccountEnabled } from "@/lib/config/chat-quality-flags";
 
 import { callFormPatchModel } from "./form-patch-call";
-import { buildFormPatchUserMessage, EDIT_POLICY_ASK_LINES, FORM_PATCH_READER_LINES, FORM_PATCH_SYSTEM_PROMPT, type FormPatchInput } from "./form-patch-prompt";
+import { buildFormPatchUserMessage, EDIT_POLICY_ASK_LINES, FORM_PATCH_ACCOUNT_LINE, FORM_PATCH_READER_LINES, FORM_PATCH_SYSTEM_PROMPT, type FormPatchInput } from "./form-patch-prompt";
 import { patchOutputSchema, toPatch, type PatchOutput } from "./form-patch-schema";
 import type { FormPatch } from "./form-reducer";
 
@@ -36,7 +36,14 @@ export async function readFormPatch(input: FormPatchInput): Promise<FormPatchRea
     fixes || policyAsk
       ? patchOutputSchema(keys as [string, ...string[]], { ...(fixes ? { reword: true } : {}), ...(policyAsk ? { policyAsked: true } : {}) })
       : patchOutputSchema(keys as [string, ...string[]]);
-  const system = [FORM_PATCH_SYSTEM_PROMPT, ...(fixes ? [FORM_PATCH_READER_LINES] : []), ...(policyAsk ? [EDIT_POLICY_ASK_LINES] : [])].join("\n");
+  // STEP_B_MAKE_IT_ABOUT_ACCOUNT_ENABLED: one more line after the reader lines (`form-patch-prompt.ts`).
+  const accountLine = fixes && stepBMakeItAboutAccountEnabled();
+  const system = [
+    FORM_PATCH_SYSTEM_PROMPT,
+    ...(fixes ? [FORM_PATCH_READER_LINES] : []),
+    ...(accountLine ? [FORM_PATCH_ACCOUNT_LINE] : []),
+    ...(policyAsk ? [EDIT_POLICY_ASK_LINES] : []),
+  ].join("\n");
   const called = await callFormPatchModel({
     system,
     prompt: buildFormPatchUserMessage(input),

@@ -2590,6 +2590,17 @@ export function offRosterAskBeforeCardEnabled(): boolean {
 export function exitLetterAddresseeEnabled(): boolean {
   return envFlag("EXIT_LETTER_ADDRESSEE_ENABLED");
 }
+
+/**
+ * MISSED_SHIFT_CITES_ATTENDANCE_ENABLED (ported from the sibling app: QA's round-7 live test there, 9 Nov 2026; coding
+ * 5; same flag in both apps; default off). "create a CA for <A>, not showing up to her shifts on 11/7 and 11/8" read as
+ * no policy here too; the live card's Attendance line came only from the model's heading. On: an account that names no
+ * policy and says a shift was not shown up to, missed, skipped or not worked reads as Attendance, said on the card as
+ * "Attendance — read from this request" (`forms/ca-policy.ts`). Off, as before.
+ */
+export function missedShiftCitesAttendanceEnabled(): boolean {
+  return envFlag("MISSED_SHIFT_CITES_ATTENDANCE_ENABLED");
+}
 // --- end coding 5 flags ---
 
 /**
@@ -3741,4 +3752,47 @@ export function oneCardOnePageEnabled(): boolean {
  */
 export function anotherRequestLeadEnabled(): boolean {
   return envFlag("ANOTHER_REQUEST_LEAD_ENABLED");
+}
+
+/**
+ * STEP_B_MAKE_IT_ABOUT_ACCOUNT_ENABLED (ported from Ask Bubbles; QA's live draft test there, 8 Nov 2026; default off; same
+ * flag in both apps). On a saved draft, "I need you to make it about showing up late" was read as the Other topic alone,
+ * and the account stayed about the old incident. A turn that says what the form is about, whose patch does not set the
+ * account, goes to the old path's revision, which rewrites it (`forms/form-patch-turn.ts`, `forms/form-patch-prompt.ts`).
+ * Off, as before.
+ */
+export function stepBMakeItAboutAccountEnabled(): boolean {
+  return envFlag("STEP_B_MAKE_IT_ABOUT_ACCOUNT_ENABLED");
+}
+
+/**
+ * STEP_B_DATE_SAID_ENABLED (ported from Ask Bubbles; QA's live test there, 8 Nov 2026; default off; same flag in both
+ * apps). "… make the date for 10/14/26" on a saved draft left the Date: the reader is never offered it. A date the manager
+ * says the form takes (`forms/form-date-said.ts`) is written as their own statement, and the reply says "Changed Date to
+ * …" (`forms/form-patch-turn.ts`). Off, as before.
+ */
+export function stepBDateSaidEnabled(): boolean {
+  return envFlag("STEP_B_DATE_SAID_ENABLED");
+}
+
+/**
+ * STEP_B_DATE_WITH_ABOUT_ENABLED (ported from Ask Bubbles; its round-5 gate, 8 Nov 2026; default off; same flag in both
+ * apps). With STEP_B_MAKE_IT_ABOUT_ACCOUNT and STEP_B_DATE_SAID on, "make it about showing up late … make the date for
+ * 10/14/26" was handed to the old path and the Date stayed. A turn that also says the form's date stays on Step B: the
+ * reader's edits and the date are written, and the reply says the account was kept (`forms/form-patch-turn.ts`). Off,
+ * as before.
+ */
+export function stepBDateWithAboutEnabled(): boolean {
+  return envFlag("STEP_B_DATE_WITH_ABOUT_ENABLED");
+}
+
+/**
+ * MADE_ABOUT_ALL_OR_NOTHING_ENABLED (ported from Ask Bubbles; QA's live round-7 test there, 9 Nov 2026; default off; same
+ * flag in both apps). "make it about leaving the front desk unattended on 11/6/26" on a saved Coaching draft must change
+ * the topic, the Date and the account together, or none: the old path's revision may drop the old date only while Step B
+ * writes the Date and the topic with it, and Step B reads the topic from the manager's words when the reader read none
+ * (`forms/form-patch-turn.ts`, `forms/form-write.ts`). Off, as before.
+ */
+export function madeAboutAllOrNothingEnabled(): boolean {
+  return envFlag("MADE_ABOUT_ALL_OR_NOTHING_ENABLED");
 }
