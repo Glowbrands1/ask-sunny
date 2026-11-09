@@ -53,7 +53,8 @@ export const NOV9_LETTER_TITLE_DATE_CASES: ReplayCase[] = [
     id: "nov9-letter-title-date-on-roster",
     title: "the letter, then \"I need an exit form with this information.\" + the letter (Marcus on the roster): no Job Title \"District Manager\", Resignation Date November 8, 2026",
     report: REPORT,
-    status: { open: "Job Title: District Manager; Resignation Date: November 3, 2026" },
+    // Changed on purpose (9 Nov 2026): fixed in production by EXIT_LETTER_ADDRESSEE_ENABLED, QA round 10, 9 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const { thread, content } = await card(t, true);
@@ -67,7 +68,8 @@ export const NOV9_LETTER_TITLE_DATE_CASES: ReplayCase[] = [
     id: "nov9-letter-title-date-off-roster",
     title: "the same, Marcus off the roster (the live chat): the signer is never offered, no Job Title \"District Manager\", Resignation Date November 8, 2026",
     report: REPORT,
-    status: { open: "\"Which of them is this Resignation/Exit Form for — Marcus Tellefsen or Dolores Whitcombe District Manager?\"" },
+    // Changed on purpose (9 Nov 2026): fixed in production by EXIT_LETTER_ADDRESSEE_ENABLED, QA round 10, 9 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const { thread, content } = await card(t, false);

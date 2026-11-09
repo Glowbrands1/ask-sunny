@@ -19,6 +19,9 @@ afterEach(() => vi.unstubAllEnvs());
 describe("ANOTHER_REQUEST_LEAD_ENABLED", () => {
   it("off: the whole request is the account (the live Observation)", () => {
     production();
+    // Changed on purpose (9 Nov 2026): ANOTHER_REQUEST_LEAD is ON in production (QA round 10), so this
+    // "off" row turns it off explicitly to keep pinning the behaviour without it.
+    vi.stubEnv("ANOTHER_REQUEST_LEAD_ENABLED", "false");
     const said = "I need another corrective action for Corwin Ashgrove, his cash drawer was short $20 on 11/3";
     expect(managerAccount(said, NAME)).toBe(said);
   });

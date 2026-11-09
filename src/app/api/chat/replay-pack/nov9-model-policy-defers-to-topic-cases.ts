@@ -123,7 +123,8 @@ export const NOV9_MODEL_POLICY_DEFERS_TO_TOPIC_CASES: ReplayCase[] = [
     report: `${REPORT} (an untested variant found while tracing: the live 3b, "now make a separate CA for <P> for …", read correctly)`,
     // Open on purpose (QA, 9 Nov 2026: record it, don't fix it here): "another … for <reason>" is not read as a new
     // request after T1, so T1's Late Opening is carried onto the cash request ("Late Opening — read from this request").
-    status: { open: "the card carries T1's Late Opening: \"another … for his cash drawer …\" is read as T1's request carried on" },
+    // Changed on purpose (9 Nov 2026): fixed in production by ANOTHER_REQUEST_LEAD_ENABLED, QA round 10, 9 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     // No fix flag yet: open with production's flags only.
     async run(t) {
       const thread = start(t);

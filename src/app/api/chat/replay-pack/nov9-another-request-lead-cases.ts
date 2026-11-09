@@ -35,7 +35,8 @@ export const NOV9_ANOTHER_REQUEST_LEAD_CASES: ReplayCase[] = [
       id: `nov9-another-request-lead-${id as string}`,
       title: `"${(turns as string[]).at(-1)}": the Observation is "${account as string}"`,
       report: REPORT,
-      status: { open: "the Observation is the whole request" },
+      // Changed on purpose (9 Nov 2026): fixed in production by ANOTHER_REQUEST_LEAD_ENABLED, QA round 10, 9 Nov 2026; it now holds with production's flags.
+      status: "fixed",
       fixFlags: FIX,
       async run(t) {
         vi.setSystemTime(new Date("2026-11-09T09:00:00Z"));
