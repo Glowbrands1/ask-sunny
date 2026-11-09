@@ -3721,3 +3721,13 @@ export function workAreaAbsenceCitesConductEnabled(): boolean {
 export function oneCardOnePageEnabled(): boolean {
   return envFlag("ONE_CARD_ONE_PAGE_ENABLED");
 }
+
+/**
+ * ANOTHER_REQUEST_LEAD_ENABLED (QA, Sunny round 7c and 9 live, 9 Nov 2026; default off; same flag in both apps). "I need
+ * another corrective action for <P>, his cash drawer was short $20 on 11/3" was the card's whole Observation: "another" was
+ * not read as the request's own word. With the flag on, "another", "one more" and "a second / separate / different / new"
+ * before the form are (`ai/remap-incident.ts` requestLead). Off, as before.
+ */
+export function anotherRequestLeadEnabled(): boolean {
+  return envFlag("ANOTHER_REQUEST_LEAD_ENABLED");
+}

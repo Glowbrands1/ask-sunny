@@ -512,6 +512,7 @@ const NEW_FLAGS = [
   "MISSED_SHIFT_NOT_LATENESS_ENABLED",
   // coding 4: ONE_CARD_ONE_PAGE (QA, Sunny round 9, 9 Nov 2026; default off): forced off with the others in the child run.
   "ONE_CARD_ONE_PAGE_ENABLED",
+  "ANOTHER_REQUEST_LEAD_ENABLED",
   // coding 4: MODEL_POLICY_DEFERS_TO_TOPIC (QA, round 7c, 9 Nov 2026; default off): forced off with the others in the child run.
   "MODEL_POLICY_DEFERS_TO_TOPIC_ENABLED",
   // coding 4: WORK_AREA_ABSENCE_CITES_CONDUCT (Pau's decision, 9 Nov 2026; default off): forced off with the others in the child run.
