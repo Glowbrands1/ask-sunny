@@ -3764,3 +3764,14 @@ export function madeAboutAllOrNothingEnabled(): boolean {
 export function madeAboutUndatedTogetherEnabled(): boolean {
   return envFlag("MADE_ABOUT_UNDATED_TOGETHER_ENABLED");
 }
+
+/**
+ * MADE_ABOUT_POLICY_LINE_ENABLED (QA's live round-11 test, 9 Nov 2026; default off; same flag in both apps). "make it
+ * about leaving the front desk unattended on 11/6/26" rewrote a Coaching draft's Details, and the old account's "Policy
+ * reference: Attendance Policy, JBA Policy Manual p.14" went with it: none was written for the new one. With the flag on,
+ * the rewritten account's reference is written again from the manual, as the card cites it (`forms/made-about-policy-line.ts`).
+ * Off, as before.
+ */
+export function madeAboutPolicyLineEnabled(): boolean {
+  return envFlag("MADE_ABOUT_POLICY_LINE_ENABLED");
+}
