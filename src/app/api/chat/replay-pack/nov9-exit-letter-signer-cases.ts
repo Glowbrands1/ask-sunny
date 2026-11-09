@@ -25,8 +25,6 @@ const CORVIN: DirectoryRow = {
 export const SIGNED =
   "create an exit form for Corvin Ashdale, tanning consultant at Kearney. Here is the termination letter: 'Corvin Ashdale, your employment is terminated effective 11-6-26 because you did not show up for your scheduled shifts on 10-30-26 and 11-1-26 and did not call. You are not eligible for rehire. Please return your salon key. Maren Tollefsen, District Manager'";
 const FIX = ["EXIT_LETTER_SIGNER_NOT_SUBJECT_ENABLED"];
-/** Until coding 2's `ai/server-ask.ts` line lands, the proposal still reads the sign-off (the fix run is expected to fail). */
-const ROUTE = { open: "the proposal reads withoutLetterSigner only once coding 2's ai/server-ask.ts line lands" };
 const REPORT = "QA's round-6 live test in the sibling app (9 Nov 2026): the letter's signer offered as the exit form's subject";
 
 function start(t: ReplayContext, onRoster: boolean) {
@@ -45,7 +43,7 @@ const cases = ([
   report: REPORT,
   status: { open: today },
   fixFlags: FIX,
-  fixStatus: ROUTE,
+  // Changed on purpose (9 Nov 2026): coding 2's ai/server-ask.ts line landed, so the fix run holds (no fixStatus).
   async run(t) {
     const thread = start(t, onRoster);
     const { content } = await thread.say(SIGNED);
