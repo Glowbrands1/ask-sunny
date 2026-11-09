@@ -8,6 +8,7 @@ import {
   priorSentenceFixEnabled,
   requestLeadFillerEnabled,
   requestParticipleLeadEnabled,
+  anotherRequestLeadEnabled,
   secondRequestOwnAccountEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { withoutPriorStepClauses, correctedDates } from "@/lib/forms/form-date-answer";
@@ -90,7 +91,21 @@ const REQUEST_LEAD_PARTICIPLE_FILLED = new RegExp(
   "i",
 );
 
+/*
+ * ANOTHER_REQUEST_LEAD_ENABLED (QA, Sunny round 7c and 9 live, 9 Nov 2026; the person invented): "I need another corrective
+ * action for <P>, his cash drawer was short $20 on 11/3" was the card's whole Observation, where "create a corrective
+ * action for <P>, his cash drawer …" gave "his cash drawer …": "another" was not read as the request's own word. With the
+ * flag on, "another", "one more", and "a second / separate / different / new" before the form are. Off, as before.
+ */
+const LEVEL_WORDS_ANOTHER = String.raw`(?:(?:a|an|the|another|one\s+more)\s+)?(?:(?:new|second|separate|different|other)\s+)?(?:(?:verbal|written|final)\s+(?:warning\s+)?)?`;
+const withAnotherLead = (pattern: RegExp): RegExp => new RegExp(pattern.source.split(LEVEL_WORDS).join(LEVEL_WORDS_ANOTHER), pattern.flags);
+
 function requestLead(): RegExp {
+  const lead = requestLeadBase();
+  return anotherRequestLeadEnabled() ? withAnotherLead(lead) : lead;
+}
+
+function requestLeadBase(): RegExp {
   if (requestParticipleLeadEnabled()) {
     return requestLeadFillerEnabled()
       ? new RegExp(`${REQUEST_LEAD_PARTICIPLE_FILLED.source}|${REQUEST_LEAD_PARTICIPLE.source}`, "i")

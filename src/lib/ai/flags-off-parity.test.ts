@@ -510,6 +510,9 @@ const NEW_FLAGS = [
   "DATE_QUESTION_KEPT_ENABLED",
   // coding 5: MISSED_SHIFT_NOT_LATENESS (default off): forced off with the others in the child run.
   "MISSED_SHIFT_NOT_LATENESS_ENABLED",
+  // coding 4: ONE_CARD_ONE_PAGE (QA, Sunny round 9, 9 Nov 2026; default off): forced off with the others in the child run.
+  "ONE_CARD_ONE_PAGE_ENABLED",
+  "ANOTHER_REQUEST_LEAD_ENABLED",
   // coding 4: MODEL_POLICY_DEFERS_TO_TOPIC (QA, round 7c, 9 Nov 2026; default off): forced off with the others in the child run.
   "MODEL_POLICY_DEFERS_TO_TOPIC_ENABLED",
   // coding 4: WORK_AREA_ABSENCE_CITES_CONDUCT (Pau's decision, 9 Nov 2026; default off): forced off with the others in the child run.
@@ -519,6 +522,7 @@ const NEW_FLAGS = [
   "SHIFT_ACCOUNT_IS_INCIDENT_ENABLED",
   // coding 5: UNDATED_ACCOUNT_BRIEF (default off): forced off with the others in the child run.
   "UNDATED_ACCOUNT_BRIEF_ENABLED",
+  "EXIT_LETTER_ADDRESSEE_ENABLED",
   "EXIT_LETTER_SIGNER_NOT_SUBJECT_ENABLED",
   "POSSESSIVE_PLACE_NOT_PERSON_ENABLED",
   "OFF_ROSTER_ASK_BEFORE_CARD_ENABLED",

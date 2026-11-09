@@ -4,6 +4,7 @@ import { PRODUCTION_SALONS } from "@/data/salons";
 import { datesInText, listIncidentDates, priorSteps } from "@/lib/forms/form-date-answer";
 import {
   managerWordsOnlyEnabled,
+  oneCardOnePageEnabled,
   titleKeepsLabelWordsEnabled,
   formChoiceStatedEnabled,
   payrollAmountFieldEnabled,
@@ -152,7 +153,7 @@ export function enrichFormCard(input: {
   // The salon question used to be the whole reply. Once the salon is known,
   // that line goes and the policy line that was under it stays.
   if (!content.trim() && (next.employeeName || next.locationId)) content = leadFor(next);
-  const lines = fieldLines({ proposal: next, followUps, policy, amount, statedTitle: title });
+  const lines = fieldLines({ proposal: next, followUps, policy: oneCardOnePageEnabled() ? policyAsShown(content, policy) : policy, amount, statedTitle: title });
   for (const line of lines) {
     if (!alreadySaid(content, line)) content = content ? `${content}\n\n${line}` : line;
   }
@@ -708,6 +709,46 @@ function cardPayrollAmount(
     proposal?.payrollDeductAmount ??
     null
   );
+}
+
+/*
+ * ONE_CARD_ONE_PAGE_ENABLED (QA, Sunny round 9 live, 9 Nov 2026; the person invented): "create a corrective action for <P>,
+ * he left the front desk unattended on 11/6/26" read "**Policy:** … **Standards of Conduct** (page 13)" and, under it,
+ * "Standards of Conduct Policy, JBA Policy Manual p.12": the Policy line cites the manual's line for the incident (printed
+ * p.13, Pau), the citation line the saved heading's own page. The Coaching card printed p.13 and p.12. One card cites one
+ * page: the citation line takes the page the card already gives that section, and a card whose Policy line names a section
+ * with its page and has no citation line gets one.
+ */
+const ESCAPE = /[.*+?^${}()|[\]\\]/g;
+
+/** The page this card already gives `heading`: its Policy line, or a citation line for it. Null when it gives none. */
+function pageOnCard(content: string, heading: string): number | null {
+  const name = heading.trim().replace(/\s+policy$/i, "").replace(ESCAPE, "\\$&");
+  const shown = [
+    new RegExp(`\\*\\*${name}(?: Policy)?\\*\\* \\(page (\\d+)\\)`, "i"),
+    new RegExp(`\\*\\*Policy:\\*\\*\\s*${name}(?: Policy)?,[^\\n]*?\\bon page (\\d+)`, "i"),
+    new RegExp(`^${name}(?: Policy)?, JBA Policy Manual p\\.(\\d+)`, "im"),
+  ];
+  for (const pattern of shown) {
+    const page = pattern.exec(content)?.[1];
+    if (page) return Number(page);
+  }
+  return null;
+}
+
+/** The section the card's Policy line names with its page, when it names one: "**Standards of Conduct** (page 13)". */
+function policyLineSection(content: string): { heading: string; page: number } | null {
+  const line = content.split("\n").find((item) => item.trim().startsWith("**Policy:**")) ?? "";
+  const bold = /\*\*([^*\n]+)\*\* \(page (\d+)\)/.exec(line) ?? /\*\*Policy:\*\*\s*([^,\n]+?),[^\n]*?\bon page (\d+)/.exec(line);
+  return bold ? { heading: bold[1]!.trim(), page: Number(bold[2]) } : null;
+}
+
+export function policyAsShown(content: string, policy: { heading: string; page: number | null } | null): { heading: string; page: number | null } | null {
+  if (policy) {
+    const page = pageOnCard(content, policy.heading);
+    return page !== null ? { ...policy, page } : policy;
+  }
+  return policyLineSection(content);
 }
 
 function fieldLines(input: {

@@ -2579,6 +2579,17 @@ export function possessivePlaceNotPersonEnabled(): boolean {
 export function offRosterAskBeforeCardEnabled(): boolean {
   return envFlag("OFF_ROSTER_ASK_BEFORE_CARD_ENABLED");
 }
+/**
+ * EXIT_LETTER_ADDRESSEE_ENABLED (QA, the live Sunny test of rounds 7c and 8, 9 Nov 2026; coding 5; same flag in both
+ * apps; default off; with EXIT_LETTER_SIGNER_NOT_SUBJECT_ENABLED). "I need an exit form with this information." and a
+ * termination letter to <A> signed "<C>, District Manager" gave the exit card the signer's title, and the first
+ * no-show date as the Resignation Date. On: the letter's salutation names the form's person when no "form for <X>"
+ * does, so the sign-off of another person is not read (`ai/letter-signer.ts`), and a stated "terminated, effective
+ * <date>" is the Resignation Date over the incident's dates. Off, as before.
+ */
+export function exitLetterAddresseeEnabled(): boolean {
+  return envFlag("EXIT_LETTER_ADDRESSEE_ENABLED");
+}
 // --- end coding 5 flags ---
 
 /**
@@ -3710,4 +3721,24 @@ export function modelPolicyDefersToTopicEnabled(): boolean {
  */
 export function workAreaAbsenceCitesConductEnabled(): boolean {
   return envFlag("WORK_AREA_ABSENCE_CITES_CONDUCT_ENABLED");
+}
+
+/**
+ * ONE_CARD_ONE_PAGE_ENABLED (QA, Sunny round 9 live, 9 Nov 2026; default off; same flag in both apps). A CA card read
+ * "**Policy:** … **Standards of Conduct** (page 13)" and "Standards of Conduct Policy, JBA Policy Manual p.12" under it.
+ * The card's citation line takes the page the card already gives that section, and a card whose Policy line names a section
+ * with its page gets the citation line (`ai/form-card-slots.ts`). Off, as before.
+ */
+export function oneCardOnePageEnabled(): boolean {
+  return envFlag("ONE_CARD_ONE_PAGE_ENABLED");
+}
+
+/**
+ * ANOTHER_REQUEST_LEAD_ENABLED (QA, Sunny round 7c and 9 live, 9 Nov 2026; default off; same flag in both apps). "I need
+ * another corrective action for <P>, his cash drawer was short $20 on 11/3" was the card's whole Observation: "another" was
+ * not read as the request's own word. With the flag on, "another", "one more" and "a second / separate / different / new"
+ * before the form are (`ai/remap-incident.ts` requestLead). Off, as before.
+ */
+export function anotherRequestLeadEnabled(): boolean {
+  return envFlag("ANOTHER_REQUEST_LEAD_ENABLED");
 }
