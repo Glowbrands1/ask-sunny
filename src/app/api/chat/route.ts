@@ -19,8 +19,10 @@ import {
   policyChangeRestOfTurnEnabled,
   openFormNoSelectionEnabled,
   personGuardEnabled,
+  possessivePlaceNotPersonEnabled,
   formNameFromRosterEnabled,
   offRosterConfirmEnabled,
+  offRosterAskBeforeCardEnabled,
   metricGuardEnabled,
   refusalNoRepeatEnabled,
   titleNotSpeakersManagerEnabled,
@@ -821,6 +823,13 @@ async function postChat(request: Request) {
       }
       // PERSON_GUARD_ENABLED: whichever reader named the card's employee, a name that is not a person never stays on it.
       if (personGuardEnabled()) answer = (await import("@/lib/forms/person-guard")).withPersonOnCard(answer);
+      // POSSESSIVE_PLACE_NOT_PERSON_ENABLED: "<Name>'s … Plaza" never puts "<Name>" on the card (`lib/forms/possessive-place.ts`).
+      if (possessivePlaceNotPersonEnabled()) {
+        answer = (await import("@/lib/forms/possessive-place")).withPossessivePlaceNotPerson(answer, [
+          ...parsed.history.filter((turn) => turn.role === "user").map((turn) => turn.content),
+          asked.question,
+        ]);
+      }
       // PROPOSAL_NAME_CORRECTION_ENABLED: an off-roster "change her name to …" on the card is never kept silently; with the roster, the card stays for the one roster person it can only be, and a typo is never offered as a person.
       answer = withCorrectionNotDropped(answer, parsed);
       // TWO_FORMS_CARD_NOT_ASKED_ENABLED: a card that names its employee is never asked "Which of them … — <that employee> or …?" (`lib/forms/card-not-asked.ts`).
@@ -857,6 +866,10 @@ async function postChat(request: Request) {
         const { formSelection: _dropped, ...rest } = answer;
         void _dropped;
         answer = { ...rest, content: rest.content.replace(/\n*Based on what you've described, I can prepare:\s*$/, "").trimEnd() };
+      }
+      // OFF_ROSTER_ASK_BEFORE_CARD_ENABLED: a salon manager's card for a full name not on their roster is asked about once, before the card (`lib/forms/off-roster-ask.ts`).
+      if (offRosterAskBeforeCardEnabled()) {
+        answer = (await import("@/lib/forms/off-roster-ask")).withOffRosterAskBeforeCard(answer, { scope: context.identity.scope, history: parsed.history, question: asked.question });
       }
       // SAME_FORM_COPY_NEW_PERSON_ENABLED: the named person's card carries the form to copy from.
       if (newPersonCopy) {

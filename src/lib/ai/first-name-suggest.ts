@@ -319,15 +319,19 @@ function withEarlierAnswers(request: AskRequest, aliases: Aliases): AskRequest {
   for (const { index, reply, options, chosen } of answeredQuestions(history)) {
     const first = firstNamePattern(options, chosen.name, aliases);
     const turns: ChatMessage[] = next ?? [...history];
+    let ownAccount = false;
     for (let at = index - 1; at >= 0; at -= 1) {
       const said = turns[at]!;
       if (said.role !== "user" || !first.test(said.content)) continue;
       if (said.content.toLowerCase().includes(chosen.name.toLowerCase())) break;
-      turns[at] = { ...said, content: replaceTyped(said.content, first, options, chosen.name) };
+      // FIRST_NAME_ANSWER_KEEPS_ACCOUNT_ENABLED: an answer that tells its own account replaces the request's, on later turns too.
+      const answered = withAnswersAccount(replaceTyped(said.content, first, options, chosen.name), chosen);
+      ownAccount = answered.replaced;
+      turns[at] = { ...said, content: ownAccount ? answered.request : replaceTyped(said.content, first, options, chosen.name) };
       break;
     }
     // The answer itself ("ashby", "the second", "yes") is that name, so no later reading takes "ashby" for one.
-    turns[index + 1] = { ...reply, content: `${chosen.name}${chosen.rest}` };
+    turns[index + 1] = { ...reply, content: ownAccount ? chosen.name : `${chosen.name}${chosen.rest}` };
     next = turns;
   }
   return next ? { ...request, history: next } : request;
@@ -379,7 +383,7 @@ function answeredNow(request: AskRequest, aliases: Aliases): AskRequest {
   if (answerIsTheRequest(reply, chosen.name)) return request;
   const first = firstNamePattern(options, chosen.name, aliases);
   const said = [...(request.history ?? [])].reverse().find((turn) => turn.role === "user" && first.test(turn.content));
-  const answered = said ? replaceTyped(said.content, first, options, chosen.name) + chosen.rest : chosen.name + chosen.rest;
+  const answered = said ? withAnswersAccount(replaceTyped(said.content, first, options, chosen.name), chosen).request : chosen.name + chosen.rest;
   return { ...request, question: withAskingTurn(answered, said, request) };
 }
 
@@ -400,10 +404,15 @@ function withAskingTurn(answered: string, said: ChatMessage | undefined, request
   return `${answered}\n${asking.content}`;
 }
 
-function chosenName(reply: string, options: readonly string[], single: boolean, typed: readonly string[] = []): { name: string; rest: string } | null {
+function chosenName(
+  reply: string,
+  options: readonly string[],
+  single: boolean,
+  typed: readonly string[] = [],
+): { name: string; rest: string; named?: boolean } | null {
   const text = reply.toLowerCase();
   const full = options.find((name) => text.includes(name.toLowerCase()));
-  if (full) return { name: full, rest: firstNameAnswerKeepsAccountEnabled() ? besidesTheName(reply, full) : "" };
+  if (full) return { name: full, rest: firstNameAnswerKeepsAccountEnabled() ? besidesTheName(reply, full) : "", named: true };
   if (single) {
     const yes = YES.exec(reply);
     if (yes && !/\b(?:no|not|nope|wrong)\b/i.test(reply)) {
@@ -441,6 +450,36 @@ function besidesTheName(reply: string, name: string): string {
   const at = reply.toLowerCase().indexOf(name.toLowerCase());
   const rest = `${reply.slice(0, at)} ${reply.slice(at + name.length)}`.replace(/\s+/g, " ").replace(/^[\s,.;:!-]+|[\s,;:-]+$/g, "");
   return /[\p{L}\d]/u.test(rest) ? ` ${rest}` : "";
+}
+
+/*
+ * QA's live test of round 7 (9 Nov 2026; the name invented): "make me CA for Rhea failing to complete shifts" → "Rhea
+ * Calloway failing to complete shifts 11/7 and 11/8" gave the Observation "… failing to complete shifts failing to
+ * complete shifts 11/7 and 11/8", and "Rhea Calloway not showing up to her shifts on 11/7 and 11/8" gave "… failing to
+ * complete shifts not showing up …": the answer's words followed the request's account. An answer that names the
+ * person and tells its own account is the account: it follows the request's words up to the name ("make me CA for Rhea
+ * Calloway"). Dates alone ("Rhea Calloway 11/7 and 11/8") still follow the request's account. A request that does not
+ * ask for the form before the name ("Rhea was late, write her up") keeps its account, as before.
+ */
+const A_DATE = /(?<![\d/.-])\d{1,2}[/.-]\d{1,2}(?:[/.-]\d{2,4})?(?![\d/.-])/g;
+const DATE_JOINERS = /\b(?:on|and|the|of|also|too|both|dates?|days?|nights?)\b/gi;
+
+function onlyDates(rest: string): boolean {
+  return !/\p{L}/u.test(rest.replace(A_DATE, " ").replace(DATE_JOINERS, " "));
+}
+
+/** The request's words up to the person's name, when they ask for the form ("make me CA for Rhea Calloway"), or null. */
+function requestHead(request: string, name: string): string | null {
+  const at = request.toLowerCase().indexOf(name.toLowerCase());
+  if (at < 0) return null;
+  const head = request.slice(0, at + name.length);
+  return ASKS_FOR_A_FORM.test(`${head} `) ? head : null;
+}
+
+/** The request answered with the name in full and, when it tells its own, the answer's account in place of the request's. */
+function withAnswersAccount(request: string, chosen: { name: string; rest: string; named?: boolean }): { request: string; replaced: boolean } {
+  const head = chosen.named && chosen.rest && !onlyDates(chosen.rest) ? requestHead(request, chosen.name) : null;
+  return head ? { request: `${head}${chosen.rest}`, replaced: true } : { request: `${request}${chosen.rest}`, replaced: false };
 }
 
 /** The answer names the person in full and asks for the form itself: it is the request (FIRST_NAME_ANSWER_KEEPS_ACCOUNT). */

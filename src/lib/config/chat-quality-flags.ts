@@ -2550,6 +2550,35 @@ export function formPatchReaderFixesEnabled(): boolean {
 export function editPolicyAskEnabled(): boolean {
   return envFlag("EDIT_POLICY_ASK_ENABLED") && formPatchReducerEnabled();
 }
+/**
+ * EXIT_LETTER_SIGNER_NOT_SUBJECT_ENABLED (ported from the sibling app: QA's round-6 live test there, 9 Nov 2026; coding
+ * 5; same flag in both apps; default off). A termination letter signed "<C>, District Manager'" offered <C> and
+ * "District Manager'" as the exit form's person beside the one the manager named. On: when the turn names the form's
+ * person, the proposal reads it without a letter's closing "<Name>, <Title>" sign-off of another person
+ * (`ai/letter-signer.ts`). Off, as before.
+ */
+export function exitLetterSignerNotSubjectEnabled(): boolean {
+  return envFlag("EXIT_LETTER_SIGNER_NOT_SUBJECT_ENABLED");
+}
+/**
+ * POSSESSIVE_PLACE_NOT_PERSON_ENABLED (ported from the sibling app: QA's round-6 live test there, 9 Nov 2026; coding 5;
+ * same flag in both apps; default off). "create a CA for Hadley's Crossing Plaza, she was late on 10-20-26" made a card
+ * for Employee "Hadley". On: a card whose person is only ever the possessive of a place ("<Name>'s … Plaza") loses that
+ * name and asks who the form is for (`forms/possessive-place.ts`, after PERSON_GUARD in the chat route). Off, as before.
+ */
+export function possessivePlaceNotPersonEnabled(): boolean {
+  return envFlag("POSSESSIVE_PLACE_NOT_PERSON_ENABLED");
+}
+/**
+ * OFF_ROSTER_ASK_BEFORE_CARD_ENABLED (ported from the sibling app: QA's round-6 live test there, 9 Nov 2026; coding 5;
+ * same flag in both apps; default off). "create a coaching form for <full name not on the roster>" gave a ready card
+ * with no question. On: for a salon-scoped manager, such a card is held back once and the reply asks "I can't find
+ * <name> on your roster — is that the right name, or are they at another salon?", with OFF_ROSTER_CONFIRM's "reply use
+ * <name>" offer (`forms/off-roster-ask.ts`). District, region and global managers are never held up. Off, as before.
+ */
+export function offRosterAskBeforeCardEnabled(): boolean {
+  return envFlag("OFF_ROSTER_ASK_BEFORE_CARD_ENABLED");
+}
 // --- end coding 5 flags ---
 
 /**

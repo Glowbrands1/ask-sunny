@@ -45,6 +45,17 @@ describe("FIRST_NAME_ANSWER_KEEPS_ACCOUNT_ENABLED", () => {
   });
 
   it.each([
+    // QA's live test of round 7 (9 Nov 2026): "… failing to complete shifts failing to complete shifts 11/7 and 11/8".
+    ["Rhea Calloway failing to complete shifts 11/7 and 11/8", "make me CA for Rhea Calloway failing to complete shifts 11/7 and 11/8"],
+    // QA's live test of round 7: "… failing to complete shifts not showing up to her shifts on 11/7 and 11/8".
+    ["Rhea Calloway not showing up to her shifts on 11/7 and 11/8", "make me CA for Rhea Calloway not showing up to her shifts on 11/7 and 11/8"],
+  ])("on: an answer that tells its own account replaces the request's (%s)", (reply, request) => {
+    vi.stubEnv("FIRST_NAME_SUGGEST_ENABLED", "true");
+    vi.stubEnv("FIRST_NAME_ANSWER_KEEPS_ACCOUNT_ENABLED", "true");
+    expect(answer(reply)).toBe(request);
+  });
+
+  it.each([
     "make me CA for Rhea Calloway failing to complete shifts 11/7 and 11/8",
     "make me CA for Rhea Calloway not showing up to her shifts on 11/7 and 11/8",
   ])("on: an answer that asks for the form itself is the request (%s)", (reply) => {
