@@ -47,8 +47,18 @@ const cases = ([
   // Changed on purpose (9 Nov 2026): coding 2's ai/server-ask.ts line landed, so the fix run holds (no fixStatus).
   async run(t) {
     const thread = start(t, onRoster);
-    const { content } = await thread.say(SIGNED);
+    let { content } = await thread.say(SIGNED);
     expect(content, `the signer is offered:\n${content}`).not.toMatch(/\*\*Maren Tollefsen\*\*|District Manager'/);
+    /*
+     * Changed on purpose (9 Nov 2026, the off-roster switch-on: OFF_ROSTER_CONFIRM + OFF_ROSTER_ASK_BEFORE_CARD, Pau's
+     * "on" via QA): off the roster, a salon manager is first asked about <B> — the ask names only the employee, never
+     * the signer — and "use <B>" makes the card. The card's assertions below hold on that turn, as on turn 1 before.
+     */
+    if (/I can't find \*\*Corvin Ashdale\*\* on your roster/.test(content)) {
+      expect(content, `the ask names the signer:\n${content}`).not.toMatch(/Maren Tollefsen|District Manager/);
+      ({ content } = await thread.say("use Corvin Ashdale"));
+      expect(content, `the signer is offered:\n${content}`).not.toMatch(/\*\*Maren Tollefsen\*\*|District Manager'/);
+    }
     expect(thread.proposal?.employeeName ?? null, `the card is not for the employee:\n${content}`).toBe("Corvin Ashdale");
     expect(thread.proposal?.employeeRole ?? null, `the card's Position:\n${content}`).toBe("Tanning Consultant");
   },
