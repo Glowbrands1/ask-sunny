@@ -47,9 +47,12 @@ export function asMadeAboutWording(text: string): string {
   return `${text.slice(0, at).replace(/\bfor\s+$/i, "about ")}${text.slice(at)}`;
 }
 
-/** <X> from one sentence or turn, or null when it does not say what the form is about. */
-export function madeAbout(text: string): string | null {
-  const found = MAKE_IT_ABOUT.exec(text ?? "") ?? (madeForIsMadeAboutEnabled() ? MAKE_IT_FOR.exec(text ?? "") : null);
+/**
+ * <X> from one sentence or turn, or null when it does not say what the form is about. `aboutOnly`: "make it about" alone
+ * (MADE_FOR_IS_MADE_ABOUT: where a "for" turn must keep its reader's own account, `forms/form-patch-turn.ts`).
+ */
+export function madeAbout(text: string, options: { readonly aboutOnly?: boolean } = {}): string | null {
+  const found = MAKE_IT_ABOUT.exec(text ?? "") ?? (madeForIsMadeAboutEnabled() && !options.aboutOnly ? MAKE_IT_FOR.exec(text ?? "") : null);
   if (!found) return null;
   const rest = text.slice(found.index + found[0].length);
   const end = ENDS.exec(rest);
