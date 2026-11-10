@@ -1,13 +1,16 @@
 import {
+  rosterCompoundSurnameEnabled,
   rosterNearMissEnabled,
+  firstNameAnswerKeepsAccountEnabled,
   firstNameSuggestEnabled,
   firstNameYesKeepsRequestEnabled,
   formNameFromRosterEnabled,
   partialSurnameAskEnabled,
   suggestAnswerReplacesTypedEnabled,
 } from "@/lib/config/chat-quality-flags";
-import { displayName, editDistance, type RosterEmployee } from "@/lib/forms/employee-match";
+import { compoundSurnameScore, displayName, editDistance, type RosterEmployee } from "@/lib/forms/employee-match";
 import { looseFits } from "@/lib/forms/loose-fit";
+import { acceptsNearMissWithDetails, nearMissTypedRest } from "@/lib/forms/near-miss-answer";
 import { typedWithOtherSurname } from "@/lib/forms/request-slot";
 
 import type { ChatActor } from "./form-proposal";
@@ -273,7 +276,11 @@ function replaceTyped(text: string, first: RegExp, options: readonly string[], n
   let end = found.index + found[0].length;
   const next = /^\s+([A-Za-z][A-Za-z'’-]*)/.exec(text.slice(end));
   const typed = found[0].toLowerCase();
-  if (
+  // NEAR_MISS_DETAILS_ACCEPT_ENABLED: "Corvina Ashdown Vellacot" is replaced whole by the name accepted.
+  const typedRest = nearMissTypedRest(text.slice(end), name);
+  if (typedRest > 0) {
+    end += typedRest;
+  } else if (
     next &&
     options.some((option) => {
       const surname = words(option).slice(1).join(" ");
@@ -284,6 +291,16 @@ function replaceTyped(text: string, first: RegExp, options: readonly string[], n
     })
   ) {
     end += next[0].length;
+  } else if (rosterCompoundSurnameEnabled()) {
+    // ROSTER_COMPOUND_SURNAME_ENABLED: the typed two-word surname ("Perwett Vansickle") is the one answered.
+    const surname = words(name).slice(1).join(" ");
+    const after = text.slice(end);
+    for (let count = words(surname).length; count >= 1; count -= 1) {
+      const typedWords = new RegExp(String.raw`^(?:\s+[A-Za-z][A-Za-z'’-]*){${count}}`).exec(after)?.[0];
+      if (!typedWords || compoundSurnameScore(typedWords.trim().split(/\s+/), surname) === null) continue;
+      end += typedWords.length;
+      break;
+    }
   }
   return text.slice(0, found.index) + name + text.slice(end);
 }
@@ -302,15 +319,19 @@ function withEarlierAnswers(request: AskRequest, aliases: Aliases): AskRequest {
   for (const { index, reply, options, chosen } of answeredQuestions(history)) {
     const first = firstNamePattern(options, chosen.name, aliases);
     const turns: ChatMessage[] = next ?? [...history];
+    let ownAccount = false;
     for (let at = index - 1; at >= 0; at -= 1) {
       const said = turns[at]!;
       if (said.role !== "user" || !first.test(said.content)) continue;
       if (said.content.toLowerCase().includes(chosen.name.toLowerCase())) break;
-      turns[at] = { ...said, content: replaceTyped(said.content, first, options, chosen.name) };
+      // FIRST_NAME_ANSWER_KEEPS_ACCOUNT_ENABLED: an answer that tells its own account replaces the request's, on later turns too.
+      const answered = withAnswersAccount(replaceTyped(said.content, first, options, chosen.name), chosen);
+      ownAccount = answered.replaced;
+      turns[at] = { ...said, content: ownAccount ? answered.request : replaceTyped(said.content, first, options, chosen.name) };
       break;
     }
     // The answer itself ("ashby", "the second", "yes") is that name, so no later reading takes "ashby" for one.
-    turns[index + 1] = { ...reply, content: `${chosen.name}${chosen.rest}` };
+    turns[index + 1] = { ...reply, content: ownAccount ? chosen.name : `${chosen.name}${chosen.rest}` };
     next = turns;
   }
   return next ? { ...request, history: next } : request;
@@ -326,7 +347,8 @@ function answeredQuestions<T extends { readonly role: string; readonly content: 
     const many = one ? null : MANY.exec(turn.content);
     if (!one && !many) return;
     const options = one ? [one[1]!] : [...many![1]!.matchAll(/\*\*([^*]+)\*\*/g)].map((match) => match[1]!.trim());
-    const chosen = chosenName(reply.content.trim(), options, Boolean(one));
+    const typed = conversation.slice(0, index).filter((said) => said.role === "user").map((said) => said.content);
+    const chosen = chosenName(reply.content.trim(), options, Boolean(one), typed);
     if (chosen) answered.push({ index, reply, options, chosen });
   });
   return answered;
@@ -355,11 +377,13 @@ function answeredNow(request: AskRequest, aliases: Aliases): AskRequest {
   const many = one ? null : MANY.exec(asked);
   if (!one && !many) return request;
   const options = one ? [one[1]!] : [...many![1]!.matchAll(/\*\*([^*]+)\*\*/g)].map((match) => match[1]!.trim());
-  const chosen = chosenName(reply, options, Boolean(one));
+  const typed = (request.history ?? []).filter((said) => said.role === "user").map((said) => said.content);
+  const chosen = chosenName(reply, options, Boolean(one), typed);
   if (!chosen) return request;
+  if (answerIsTheRequest(reply, chosen.name)) return request;
   const first = firstNamePattern(options, chosen.name, aliases);
   const said = [...(request.history ?? [])].reverse().find((turn) => turn.role === "user" && first.test(turn.content));
-  const answered = said ? replaceTyped(said.content, first, options, chosen.name) + chosen.rest : chosen.name + chosen.rest;
+  const answered = said ? withAnswersAccount(replaceTyped(said.content, first, options, chosen.name), chosen).request : chosen.name + chosen.rest;
   return { ...request, question: withAskingTurn(answered, said, request) };
 }
 
@@ -380,16 +404,23 @@ function withAskingTurn(answered: string, said: ChatMessage | undefined, request
   return `${answered}\n${asking.content}`;
 }
 
-function chosenName(reply: string, options: readonly string[], single: boolean): { name: string; rest: string } | null {
+function chosenName(
+  reply: string,
+  options: readonly string[],
+  single: boolean,
+  typed: readonly string[] = [],
+): { name: string; rest: string; named?: boolean } | null {
   const text = reply.toLowerCase();
   const full = options.find((name) => text.includes(name.toLowerCase()));
-  if (full) return { name: full, rest: "" };
+  if (full) return { name: full, rest: firstNameAnswerKeepsAccountEnabled() ? besidesTheName(reply, full) : "", named: true };
   if (single) {
     const yes = YES.exec(reply);
     if (yes && !/\b(?:no|not|nope|wrong)\b/i.test(reply)) {
       const rest = reply.slice(yes[0].length).trim();
       return { name: options[0]!, rest: rest ? ` ${rest}` : "" };
     }
+    // NEAR_MISS_DETAILS_ACCEPT_ENABLED: the manager went on with the form's details after a near-miss of a name they typed in full.
+    if (acceptsNearMissWithDetails(reply, options[0]!, typed)) return { name: options[0]!, rest: `\n${reply}` };
   } else {
     const byOrdinal = ORDINALS.findIndex((pattern) => pattern.test(reply));
     if (byOrdinal >= 0 && options[byOrdinal]) return { name: options[byOrdinal]!, rest: "" };
@@ -403,6 +434,57 @@ function chosenName(reply: string, options: readonly string[], single: boolean):
   const other = /^(?:no|nope|not\s+\w+)?[\s,.!-]*(?:it'?s|it\s+is|this\s+is\s+for|for)?\s*([A-Za-z][A-Za-z'’-]+\s+[A-Za-z][A-Za-z'’-]+)\s*[.!]?$/i.exec(reply);
   if (other && !/^(?:yes|yeah|yep)\b/i.test(other[1]!)) return { name: other[1]!, rest: "" };
   return null;
+}
+
+/**
+ * FIRST_NAME_ANSWER_KEEPS_ACCOUNT_ENABLED (QA, Sunny live test, 8 Nov 2026; the name invented): "make me CA for Rhea
+ * failing to complete shifts" → "Is this for **Rhea Calloway**?" → "Rhea Calloway 11/7 and 11/8" was read as the name
+ * alone, so the card's Observation was "failing to complete shifts" and the dates were lost. What the answer says
+ * besides the name follows the request it answers ("… failing to complete shifts 11/7 and 11/8"). An answer that asks
+ * for the form itself ("make me CA for Rhea Calloway not showing up to her shifts on 11/7 and 11/8") is the request
+ * (`answeredNow`). Nothing but the name and punctuation: "", as before.
+ */
+const ASKS_FOR_A_FORM = /\b(?:warning|write[- ]?up|corrective\s+action(?:\s+form)?|ca|c\/a|dpoa)\s+(?:for|about|over|regarding)\s/i;
+
+function besidesTheName(reply: string, name: string): string {
+  const at = reply.toLowerCase().indexOf(name.toLowerCase());
+  const rest = `${reply.slice(0, at)} ${reply.slice(at + name.length)}`.replace(/\s+/g, " ").replace(/^[\s,.;:!-]+|[\s,;:-]+$/g, "");
+  return /[\p{L}\d]/u.test(rest) ? ` ${rest}` : "";
+}
+
+/*
+ * QA's live test of round 7 (9 Nov 2026; the name invented): "make me CA for Rhea failing to complete shifts" → "Rhea
+ * Calloway failing to complete shifts 11/7 and 11/8" gave the Observation "… failing to complete shifts failing to
+ * complete shifts 11/7 and 11/8", and "Rhea Calloway not showing up to her shifts on 11/7 and 11/8" gave "… failing to
+ * complete shifts not showing up …": the answer's words followed the request's account. An answer that names the
+ * person and tells its own account is the account: it follows the request's words up to the name ("make me CA for Rhea
+ * Calloway"). Dates alone ("Rhea Calloway 11/7 and 11/8") still follow the request's account. A request that does not
+ * ask for the form before the name ("Rhea was late, write her up") keeps its account, as before.
+ */
+const A_DATE = /(?<![\d/.-])\d{1,2}[/.-]\d{1,2}(?:[/.-]\d{2,4})?(?![\d/.-])/g;
+const DATE_JOINERS = /\b(?:on|and|the|of|also|too|both|dates?|days?|nights?)\b/gi;
+
+function onlyDates(rest: string): boolean {
+  return !/\p{L}/u.test(rest.replace(A_DATE, " ").replace(DATE_JOINERS, " "));
+}
+
+/** The request's words up to the person's name, when they ask for the form ("make me CA for Rhea Calloway"), or null. */
+function requestHead(request: string, name: string): string | null {
+  const at = request.toLowerCase().indexOf(name.toLowerCase());
+  if (at < 0) return null;
+  const head = request.slice(0, at + name.length);
+  return ASKS_FOR_A_FORM.test(`${head} `) ? head : null;
+}
+
+/** The request answered with the name in full and, when it tells its own, the answer's account in place of the request's. */
+function withAnswersAccount(request: string, chosen: { name: string; rest: string; named?: boolean }): { request: string; replaced: boolean } {
+  const head = chosen.named && chosen.rest && !onlyDates(chosen.rest) ? requestHead(request, chosen.name) : null;
+  return head ? { request: `${head}${chosen.rest}`, replaced: true } : { request: `${request}${chosen.rest}`, replaced: false };
+}
+
+/** The answer names the person in full and asks for the form itself: it is the request (FIRST_NAME_ANSWER_KEEPS_ACCOUNT). */
+function answerIsTheRequest(reply: string, chosen: string): boolean {
+  return firstNameAnswerKeepsAccountEnabled() && reply.toLowerCase().includes(chosen.toLowerCase()) && ASKS_FOR_A_FORM.test(reply);
 }
 
 /**

@@ -1,4 +1,4 @@
-import { citationLineKeptOnRevisionEnabled } from "@/lib/config/chat-quality-flags";
+import { citationLineKeptOnRevisionEnabled, editMakeItAboutEnabled } from "@/lib/config/chat-quality-flags";
 
 import { splitAppCitationLine } from "./app-citation-line";
 
@@ -392,6 +392,10 @@ export interface RevisionScope {
 const ADDS_INFORMATION =
   /\b(?:add|include|insert|put|mention|note|append)\b|:\s*\S/i;
 
+/** EDIT_MAKE_IT_ABOUT_ENABLED (sf-s34): "make it about showing up late" rewrites the account — the form's Details / Observation. */
+const MAKE_IT_ABOUT = /\bmake\s+(?:it|this|the\s+(?:form|document|coaching|ca))\s+(?:be\s+)?about\b/i;
+const ACCOUNT_KEYS = ["coaching_details", "observation"] as const;
+
 export function scopeRevision(
   question: string,
   fields: readonly RevisableField[],
@@ -400,6 +404,9 @@ export function scopeRevision(
 ): RevisionScope {
   const { protectedKeys } = readFieldMentions(question, fields);
   const instructed = instructedFieldsIn(question, fields);
+  if (editMakeItAboutEnabled() && MAKE_IT_ABOUT.test(question ?? "")) {
+    for (const key of ACCOUNT_KEYS) if (fields.some((field) => field.key === key)) instructed.add(key);
+  }
   for (const key of protectedKeys) instructed.delete(key);
   if (instructed.size > 0) return { mode: "fields", keys: instructed, protectedKeys };
   if (followUpFindings.size > 0) return { mode: "findings", keys: followUpFindings, protectedKeys };

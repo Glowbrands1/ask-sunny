@@ -59,7 +59,8 @@ export const NOV5_METRIC_GUARD_CASES: ReplayCase[] = [
       title: `the smaller set: "${say(typed).slice(0, 60)}…": no metric is the card's employee or offered as a person`,
       report: `${REPORT}; typed "${typed}"`,
       // Here (unlike the sibling app's stand-ins) replay builds the live failure: with the smaller set the card is for **Club Close**.
-      status: { open: "with the smaller set the card's employee is **Club Close**" },
+      // Changed on purpose (7 Nov 2026): QA's flips of 5 and 6 Nov turned CA_SALES_POLICY, REPLY_MATCHES_CARD, TITLE_OF_THE_EMPLOYEE, METRIC_GUARD, TITLE_ENDS_AT_LINE, BARE_NOT_DENIAL and PLACE_FROM_CUE on in production (production-flags.json); both shapes now hold with production's flags.
+      status: "fixed",
       fixFlags: ["METRIC_GUARD_ENABLED"],
       async run(t) {
         const thread = start(t);
@@ -74,7 +75,8 @@ export const NOV5_METRIC_GUARD_CASES: ReplayCase[] = [
     id: "nov5-metric-guard-metrics-only",
     title: "the smaller set: \"CA for under performance on Club Close % and Spa %\" (no name): no card for \"under\" or \"Club Close\"; it asks who",
     report: `${REPORT}; the gate's twin (5 Nov 2026): nov4-pau-metrics-not-people-metrics-only and nov5-request-slot-metrics-only hold with production's flags and fail with the smaller set (a card for **under**)`,
-    status: { open: "with the smaller set the card is for **under** (\"I'll draft a **Corrective Action Form** for **under**\")" },
+    // Changed on purpose (7 Nov 2026): QA's flips of 5 and 6 Nov turned CA_SALES_POLICY, REPLY_MATCHES_CARD, TITLE_OF_THE_EMPLOYEE, METRIC_GUARD, TITLE_ENDS_AT_LINE, BARE_NOT_DENIAL and PLACE_FROM_CUE on in production (production-flags.json); this case now holds with production's flags.
+    status: "fixed",
     fixFlags: ["METRIC_GUARD_ENABLED"],
     async run(t) {
       const thread = start(t);

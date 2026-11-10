@@ -1,5 +1,5 @@
 import { isAppLine, withoutAppLines } from "@/lib/ai/app-sentences";
-import { dateAnswerAppliedEnabled, dateAnswerKeepsOpenEnabled, keepFormEmployeeEnabled, priorSentenceFixEnabled, stepDateNoQuestionEnabled } from "@/lib/config/chat-quality-flags";
+import { dateAnswerAppliedEnabled, dateAnswerKeepsOpenEnabled, formDateSaidSettlesEnabled, keepFormEmployeeEnabled, priorSentenceFixEnabled, stepDateNoQuestionEnabled } from "@/lib/config/chat-quality-flags";
 
 /** DATE_ANSWER_KEEPS_OPEN_ENABLED, on top of the live DATE_ANSWER_APPLIED_ENABLED. */
 const keepsOpen = () => dateAnswerAppliedEnabled() && dateAnswerKeepsOpenEnabled();
@@ -14,6 +14,7 @@ import {
   yearlessWrittenOut,
 } from "./form-date-answer";
 import { incidentOnly, incidentOnlyOn } from "./form-date-incident-only";
+import { saidFormDate } from "./form-date-said";
 import { priorSentenceFixFor } from "./prior-sentence-scope";
 import { stepSentenceDates } from "./step-sentence-dates";
 import { correctsTheEmployee } from "./proposal";
@@ -235,6 +236,9 @@ export function decideFormDate(input: {
   if (!DATED_TEMPLATES.has(input.templateKey)) return {};
   const explicit = explicitFormDate(input.text, input.today);
   if (explicit) return { formDate: explicit };
+  // FORM_DATE_SAID_SETTLES_ENABLED: "make the date for 10/14/26" is the form's Date; no question is asked (`form-date-said.ts`).
+  const said = formDateSaidSettlesEnabled() ? saidFormDate(input.text, input.today) : null;
+  if (said) return { formDate: said };
 
   let dates = incidentDates(input.text, input.today, COACHING_TEMPLATES.has(input.templateKey));
   if (COACHING_TEMPLATES.has(input.templateKey)) {

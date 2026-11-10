@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Menu, Search, X } from "lucide-react";
 
 import { BrandMark, ParentBrandLockup } from "@/components/brand-mark";
@@ -36,6 +37,10 @@ export function AppShell({
   showLeadershipHub?: boolean;
 }) {
   const { hydrated, signedIn, demoMode } = useSession();
+  const pathname = usePathname();
+  // Chat gets the clouds across the whole canvas; every other page has them
+  // fading out toward the bottom-right, away from page titles.
+  const backdrop = pathname?.startsWith("/chat") ? "chat" : "page";
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   // Read straight from the external store — no effect, no cascading render.
@@ -63,14 +68,26 @@ export function AppShell({
   if (!signedIn) return <LoginScreen />;
 
   return (
-    <div className="flex min-h-dvh flex-col bg-background">
+    <div className="isolate flex min-h-dvh flex-col bg-background">
+      {/*
+        THE CLAY CLOUDS, behind everything: fixed to the viewport and painted
+        under the shell's content (z-index -1 inside this isolated root), so
+        they show only in the gaps between cards. Decoration only.
+      */}
+      <div aria-hidden className="cloud-pattern" data-backdrop={backdrop} />
       {/*
         THE SHARED TOP BAR. Navy, full width, above BOTH the rail and the
         content — the approved storefront structure, and it belongs to the shell
         rather than to any one page. Putting it on the reporting page alone
         would have made reporting look like a different product.
       */}
-      <header className="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-3 bg-chrome px-4 sm:px-5">
+      {/*
+        CLAY: the bar floats as a rounded dark pill with the canvas around it,
+        as in the clay mockup. The wrapper is what sticks, so the gap above the
+        pill stays painted with the canvas as the page scrolls under it.
+      */}
+      <div className="sticky top-0 z-40 bg-background/80 px-3 pt-3 pb-1 backdrop-blur-sm">
+      <header className="clay-topbar flex h-16 shrink-0 items-center gap-3 px-4 sm:px-5">
         <Button
           variant="ghost"
           size="icon"
@@ -125,6 +142,7 @@ export function AppShell({
           <ParentBrandLockup className="hidden sm:inline-flex" />
         </div>
       </header>
+      </div>
 
       {/*
         THE SHORTCUTS LIVE IN THE CHROME. All six already exist in the left
@@ -139,10 +157,12 @@ export function AppShell({
       {/* Desktop sidebar */}
       <aside
         className={cn(
-          "sticky top-16 hidden h-[calc(100dvh-4rem)] shrink-0 border-r border-rail-border transition-[width] duration-200 lg:block",
-          collapsed ? "w-[68px]" : "w-64",
+          "sticky top-20 hidden h-[calc(100dvh-5rem)] shrink-0 p-3 pt-2 transition-[width] duration-200 lg:block",
+          collapsed ? "w-[92px]" : "w-[17.5rem]",
         )}
       >
+        {/* CLAY: the rail is a floating white card, not a grey strip. */}
+        <div className="clay-rail h-full">
         <SidebarNav
           collapsed={collapsed}
           onToggleCollapse={toggleCollapse}
@@ -150,6 +170,7 @@ export function AppShell({
           showAppSwitcher={showAppSwitcher}
           showLeadershipHub={showLeadershipHub}
         />
+        </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">

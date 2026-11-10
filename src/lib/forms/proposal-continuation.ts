@@ -193,3 +193,27 @@ export function activeFormInstanceFor(messages: ChatMessage[]): string | undefin
   }
   return undefined;
 }
+
+/**
+ * SAME_FORM_COPY_NEW_PERSON_ENABLED, in the browser: the copy an answer
+ * offered, remembered beside that answer's text. Sent with the next turn only
+ * — when the last answer in the thread is still that one — so any other answer
+ * in between drops it.
+ */
+export interface OfferedCopy {
+  fromInstanceId: string;
+  answer: string;
+}
+
+export function offeredCopyForTurn(
+  offered: OfferedCopy | undefined,
+  history: readonly Pick<ChatMessage, "role" | "content" | "error">[] | undefined,
+): string | undefined {
+  if (!offered || !history) return undefined;
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const message = history[index]!;
+    if (message.role !== "assistant") continue;
+    return !message.error && message.content === offered.answer ? offered.fromInstanceId : undefined;
+  }
+  return undefined;
+}

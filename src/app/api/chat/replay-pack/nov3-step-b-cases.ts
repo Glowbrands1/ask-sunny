@@ -83,7 +83,8 @@ export const NOV3_STEP_B_CASES: readonly ReplayCase[] = [
     title: "\"ok, create the draft, but include the details of the cleaning checklist.\" — the copied draft holds the checklist details she gave",
     report:
       'Ask Bubbles replay set b13, the mechanism here: "can you create the same draft that we did with <name> by changing the name and position?" → "ok, create the draft, but include the details of <the process>." — the new draft had none of the details',
-    status: { open: "the details she gave never reach Marnie's open draft, so the copy made from it has none: the revision path writes nothing" },
+    // Changed on purpose (7 Nov 2026): QA's flip 7 (21:29 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+    status: "fixed",
     fixFlags: STEP_B_FLAGS,
     async run(t) {
       t.directory(PEOPLE);
@@ -138,7 +139,8 @@ export const NOV3_STEP_B_CASES: readonly ReplayCase[] = [
     title: "\"make that update\" and \"I need to add that the room …\" reach the team draft's Details, and no reply says updated without a change",
     report:
       'Ask Bubbles replay set b15 (rated 3), the mechanism here: "i don\'t see the details updated in the draft card. Do i need to copy and paste it? or should it be automatically updating?" → "make that update" → … → "the changes weren\'t made in the details"',
-    status: { open: "the open team draft's Details of Coaching never receives the new room flow or the 10-minute rule; the revision path writes nothing" },
+    // Changed on purpose (7 Nov 2026): QA's flip 7 (21:29 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+    status: "fixed",
     fixFlags: STEP_B_FLAGS,
     async run(t) {
       t.directory(PEOPLE);
@@ -184,7 +186,8 @@ export const NOV3_STEP_B_CASES: readonly ReplayCase[] = [
     title: "\"yes, do that\" / \"write the observtion\" put what Rowan did on the draft, and no reply says updated without a change",
     report:
       'Ask Bubbles replay set b17 (rated 2), the mechanism here: "<name> marked <a thing> as <done> but <it wasn\'t>" → "yes, do that" → "it didnt edit in the card" → "the details we just discussed!!!" → "write the observtion"',
-    status: { open: "Rowan's Details of Coaching stays empty through \"yes, do that\" and \"write the observtion\"; the revision path writes nothing" },
+    // Changed on purpose (7 Nov 2026): QA's flip 7 (21:29 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+    status: "fixed",
     fixFlags: STEP_B_FLAGS,
     async run(t) {
       t.directory(PEOPLE);
@@ -295,7 +298,8 @@ export const NOV3_STEP_B_CASES: readonly ReplayCase[] = [
      * the flag on the model reads the turn as this form's and it is written.
      * With the flag off the order of the paths is unchanged.
      */
-    status: { open: "no form path takes the turn (the revision's roster name gate reads \"Juno\" as another person); the card intake offers a new card that says \"Added\", and the open form is unchanged" },
+    // Changed on purpose (7 Nov 2026): QA's flip 7 (21:29 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+    status: "fixed",
     fixFlags: STEP_B_FLAGS,
     async run(t) {
       t.directory(PEOPLE);
@@ -327,7 +331,8 @@ export const NOV3_STEP_B_CASES: readonly ReplayCase[] = [
      * of (the template's own layout: the line after the group, labelled like
      * one of its options).
      */
-    status: { open: "the drafting model's \"Tanning Consultant at Kearney\" is saved as the Other topic" },
+    // Changed on purpose (7 Nov 2026): QA's flip 7 (21:29 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+    status: "fixed",
     fixFlags: STEP_B_FLAGS,
     async run(t) {
       t.directory(PEOPLE);
@@ -353,7 +358,8 @@ export const NOV3_STEP_B_CASES: readonly ReplayCase[] = [
     title: "an \"add\" to a line the manager typed stays hers: a later redraft keeps both what she typed and what she added",
     report:
       "QA's ruling on Step B, 3 Nov 2026 (option A, both apps): text added in chat to a field the manager typed is written as hers, so a redraft cannot replace her words",
-    status: { open: "in production the chat \"add\" is not written at all, so the redrafted form lacks it" },
+    // Changed on purpose (7 Nov 2026): QA's flip 7 (21:29 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+    status: "fixed",
     fixFlags: STEP_B_FLAGS,
     async run(t) {
       t.directory(PEOPLE);
@@ -488,7 +494,8 @@ export const NOV3_STEP_B_CASES: readonly ReplayCase[] = [
     title: "a prior coaching \"signed May 2025\" added to the open Corrective Action reaches Prior Actions, or the reply says it did not",
     report:
       "the 2 Nov scan (s8): the manager gave the prior coaching and when it was signed; it was not on the form, and the reply said everything else was as it was",
-    status: { open: "Prior Actions stays empty and the reply says the form is \"as it was\" without saying the prior coaching was not placed" },
+    // Changed on purpose (7 Nov 2026): QA's flip 7 (21:29 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+    status: "fixed",
     fixFlags: STEP_B_FLAGS,
     async run(t) {
       t.directory(PEOPLE);

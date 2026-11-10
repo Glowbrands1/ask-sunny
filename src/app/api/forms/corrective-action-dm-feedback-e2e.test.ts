@@ -2093,3 +2093,51 @@ describe("CA_SALES_POLICY_ENABLED: the Corrective Action draft's added lines", (
     expect(system).toContain("under_performance is for results against a sales or performance target.");
   });
 });
+
+/*
+ * QA, 5 Nov 2026 (item 8, stale prompt lines): the Corrective Action draft's prompt still told the
+ * model to name Other's topic "in the matching write-in field" and that "under_performance is for
+ * results against a sales or performance target", although revision 7 has no write-in beside Other
+ * and no Under Performance box. STALE_PROMPT_LINES_OFF_ENABLED leaves each out when the version
+ * lacks it (read from its fields and options). Off, the prompt is byte-identical.
+ */
+describe("STALE_PROMPT_LINES_OFF_ENABLED: the draft's lines about boxes revision 7 does not have", () => {
+  afterEach(() => vi.unstubAllEnvs());
+  const WRITE_IN = "name the topic in the matching write-in field";
+  const UNDER_PERFORMANCE = "under_performance is for results against a sales or performance target.";
+  const CONDUCT = "Type of Offense: assigned work, a required deadline, or required Woven items or training not completed, and a manager's direction not followed, are standards_of_conduct.";
+
+  async function draftSystem(flags: { stale: boolean; sales?: boolean }): Promise<string> {
+    vi.stubEnv("STALE_PROMPT_LINES_OFF_ENABLED", flags.stale ? "true" : "");
+    vi.stubEnv("CA_SALES_POLICY_ENABLED", flags.sales ? "true" : "");
+    state.modelNotes = [];
+    const { create } = await conversation([A1]);
+    await create();
+    return state.modelNotes.at(-1) ?? "";
+  }
+
+  it("off: both lines are in the draft's prompt, as before", async () => {
+    const system = await draftSystem({ stale: false });
+    expect(system).toContain(WRITE_IN);
+    expect(system).toContain(UNDER_PERFORMANCE);
+  });
+
+  it("on: revision 7 has no Other write-in and no under_performance box, so neither line is written; the conduct sentence stays", async () => {
+    const system = await draftSystem({ stale: true });
+    expect(system).not.toContain(WRITE_IN);
+    expect(system).not.toContain(UNDER_PERFORMANCE);
+    expect(system).toContain(CONDUCT);
+  });
+
+  it("on: only those two lines go (the prompt with them put back is the prompt with the flag off)", async () => {
+    for (const sales of [false, true]) {
+      const off = await draftSystem({ stale: false, sales });
+      const on = await draftSystem({ stale: true, sales });
+      expect(on.length, `CA_SALES ${sales}`).toBeLessThan(off.length);
+      const dropped = off.split(/\\n/).filter((line) => !on.split(/\\n/).includes(line));
+      expect(dropped.length, `CA_SALES ${sales}: ${dropped.join(" | ")}`).toBe(2);
+      expect(dropped.some((line) => line.includes(WRITE_IN)), dropped.join(" | ")).toBe(true);
+      expect(dropped.some((line) => line.includes(UNDER_PERFORMANCE)), dropped.join(" | ")).toBe(true);
+    }
+  });
+});

@@ -114,6 +114,12 @@ export interface AskRequest {
    */
   activeFormInstanceId?: string;
   /**
+   * SAME_FORM_COPY_NEW_PERSON_ENABLED: the form the previous answer offered to
+   * copy for a person not named yet. ORCHESTRATION, NOT AUTHORITY: the server
+   * re-checks that this account created it and may still see it.
+   */
+  pendingCopyFromInstanceId?: string;
+  /**
    * FORM_TYPE_SWITCH_AFTER_CREATE_NOTE_ENABLED: set by the request reading when
    * the manager asked for the other form after this conversation's form was
    * created — the form they already have, for the reply's note. Never sent by
@@ -262,6 +268,11 @@ export interface AskResponse {
    * carried here. See `lib/forms/chat-correction.ts`.
    */
   formUpdate?: { instanceId: string; updated: string[] };
+  /**
+   * SAME_FORM_COPY_NEW_PERSON_ENABLED: this answer asked who the copy of the
+   * manager's own form (this id) is for. See `lib/forms/same-form-copy.ts`.
+   */
+  pendingCopy?: { fromInstanceId: string };
   /**
    * A form this turn put in front of the manager — an existing one they asked
    * to edit or see, or the new draft opened from a finalized one so it can be

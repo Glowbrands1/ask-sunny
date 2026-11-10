@@ -530,10 +530,10 @@ function FilterChip({
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        "flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-[13px] font-medium transition-colors",
+        "flex shrink-0 items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[13px] font-semibold transition-[color,box-shadow]",
         active
-          ? "border-primary bg-primary-soft text-primary-soft-foreground"
-          : "border-border bg-surface text-muted-foreground hover:border-border-strong hover:text-foreground",
+          ? "border-transparent bg-brand-yellow text-brand-yellow-foreground clay-fill"
+          : "border-transparent bg-surface text-muted-foreground shadow-chip hover:text-foreground",
       )}
     >
       {label}
