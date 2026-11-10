@@ -73,12 +73,24 @@ const storage = new AsyncLocalStorage<ChatTraceDraft>();
 /** When POST /api/chat received the request. Separate from the model-call clock. */
 const requestClock = new AsyncLocalStorage<number>();
 
+/**
+ * CHAT_STAGE_TIMINGS_ENABLED (QA, 10 Nov 2026: 1.7 s before trace_open on a live turn): the route's own steps, marked
+ * before the turn's trace is open. The trace takes them over when it opens (`markStage`). Per request, like the clock.
+ */
+const routeStages = new AsyncLocalStorage<ChatStageTiming[]>();
+
 export function enterChatRequestClock(at = Date.now()): void {
   requestClock.enterWith(at);
+  routeStages.enterWith([]);
 }
 
 export function runWithRequestClock<T>(fn: () => Promise<T>, at = Date.now()): Promise<T> {
-  return requestClock.run(at, fn);
+  return requestClock.run(at, () => routeStages.run([], fn));
+}
+
+/** CHAT_STAGE_TIMINGS_ENABLED: this request's marks made before its trace opened; undefined outside a request. */
+export function pendingRouteStages(): ChatStageTiming[] | undefined {
+  return routeStages.getStore();
 }
 
 /** Request receipt, then the trace start, then now. */
