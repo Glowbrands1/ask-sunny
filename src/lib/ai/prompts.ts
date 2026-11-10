@@ -918,14 +918,24 @@ export function openFormRule(form: OpenFormSummary): string {
     ? form.lines.map((line) => `    ${line.label}: ${JSON.stringify(line.value)}`).join("\n")
     : "    (nothing filled in yet)";
   const blank = form.blankPolicy ?? [];
+  /*
+   * POLICY_BLANK_HONEST_REPLY_ENABLED (QA's live round-24 test, 11 Nov 2026): asked "did you check the policy on this
+   * form?" over a draft whose Direct policy was blank, the answer said the section was "quoted on <A>'s draft". The
+   * empty field is said in plain words, with the policy the form only names.
+   */
+  const empty = form.emptyPolicy;
+  const emptyLine = empty
+    ? `The ${empty.labels.join(" and ")} field${empty.labels.length === 1 ? " on this draft is" : "s on this draft are"} EMPTY: nothing from the manual is quoted on it${empty.policyNamed ? `; the policy the form only names is ${empty.policyNamed}` : ""}. Never say a section is quoted on the draft, and never say the policy on it was checked or verified.`
+    : null;
   const policy = [
+    emptyLine,
     form.unverifiedPolicy.length > 0
       ? `Not yet checked against the official manual: ${form.unverifiedPolicy.join(", ")}.`
-      : blank.length > 0
+      : blank.length > 0 || empty
         ? null
         : "Its policy lines, where it has any, were quoted from the official manual.",
     // POLICY_GATE_NONBLOCKING_ENABLED: a blank policy line was neither quoted nor checked; never say it was verified.
-    blank.length > 0
+    blank.length > 0 && !empty
       ? `Blank, so nothing on it was checked against the official manual (never say it is verified): ${blank.join(", ")}.`
       : null,
   ]

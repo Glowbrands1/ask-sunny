@@ -2692,6 +2692,20 @@ export function addThatIsAccountEnabled(): boolean {
   return envFlag("ADD_THAT_IS_ACCOUNT_ENABLED");
 }
 
+/**
+ * POLICY_BLANK_HONEST_REPLY_ENABLED (QA's live round-24 test, 11 Nov 2026, conv_mwbbelez2wy6r5j; coding 5; same flag in
+ * both apps; default off). A Corrective Action draft named "Attendance Policy, JBA Policy Manual p.14" with its Direct
+ * policy field blank. "did you check the policy on this form?" got "Yes — … which I pulled from the current manual … That's
+ * the section quoted on <A>'s draft."; "is the policy verified?" got "**Nothing on the form has changed yet.** Say **make
+ * that update** …" (read as an edit). On: the open-form summary says the policy text field is EMPTY and names the policy
+ * the form only names; a question whether the policy was checked or verified is answered plainly from the form, never as
+ * an edit; any line claiming a section is quoted on the draft is replaced (`forms/policy-blank-honest.ts`). Off, as
+ * before.
+ */
+export function policyBlankHonestReplyEnabled(): boolean {
+  return envFlag("POLICY_BLANK_HONEST_REPLY_ENABLED");
+}
+
 // --- end coding 5 flags ---
 
 /**
