@@ -87,6 +87,11 @@ export const NOV5_CODING3_CHAT_EDITS_CASES: ReplayCase[] = [
     status: {
       open: "the Details stay empty: \"these details\" / \"the details we just discussed\" are read from the last reply (the card, then the bot's own no-change reply), never the earlier answer that held them",
     },
+    // DETAILS_FROM_EARLIER_ANSWER_ENABLED (coding 6, 10 Nov 2026) hands the revision the earlier answer's details
+    // (nov10-chat-edits-a-details-handed-to-the-revision); the pack's revision stand-in writes nothing, so what is SAVED
+    // stays open here even with the fix: the live model writes what it is handed.
+    fixFlags: ["DETAILS_FROM_EARLIER_ANSWER_ENABLED"],
+    fixStatus: { open: "the pack's revision stand-in writes nothing; the fix's effect is what the revision is handed (nov10-chat-edits-a-details-handed-to-the-revision)" },
     async run(t: T) {
       start(t);
       const thread = t.thread();
@@ -110,9 +115,10 @@ export const NOV5_CODING3_CHAT_EDITS_CASES: ReplayCase[] = [
     title: "the account she gave before \"Create a coaching form.\" — shown on the card as its Observation — is what the draft is written from",
     report:
       'Manager, production (relayed 5 Nov 2026, both apps), the b17 mechanism with the account given first: "<name> marked <a thing> as <done> but <it wasn\'t>" → "Create a coaching form." → … → "can you upate the draft with these details of coaching?"',
-    status: {
-      open: "the card shows her account as its Observation, but the drafting model is handed only \"Create a coaching form.\" and \"yes\" (the draft's turns start at the request)",
-    },
+    // Changed on purpose (10 Nov 2026): fixed in production by ACCOUNT_BEFORE_REQUEST_ENABLED, QA round 23.
+    status: "fixed",
+    // Fixed under ACCOUNT_BEFORE_REQUEST_ENABLED (coding 6, 10 Nov 2026): the account the card shows is cited, so Create hands it to the draft.
+    fixFlags: ["ACCOUNT_BEFORE_REQUEST_ENABLED"],
     async run(t: T) {
       start(t);
       const thread = t.thread();
@@ -173,3 +179,38 @@ export const NOV5_CODING3_CHAT_EDITS_CASES: ReplayCase[] = [
     },
   },
 ];
+
+/*
+ * DETAILS_FROM_EARLIER_ANSWER_ENABLED (coding 6, 10 Nov 2026): chat-edits (a) by what the revision model is HANDED. The
+ * stand-in revision writes nothing, and a scripted write is accepted whatever the turn asked, so the invariant is the
+ * request the revision gets: "the details we just discussed!!!" hands it the coaching details of the answer before the
+ * card — never the app's own card or "I haven't changed …".
+ */
+export const NOV10_CHAT_EDITS_A_CASES: ReplayCase[] = [
+  {
+    id: "nov10-chat-edits-a-details-handed-to-the-revision",
+    title: "(a) \"the details we just discussed!!!\" hands the revision the coaching details the app gave before the card, never its own card or no-change reply",
+    report:
+      'Manager, production (relayed 5 Nov 2026, both apps): "can you upate the draft with these details of coaching?" → "it didnt edit in the card" → "the details we just discussed!!!"',
+    // Changed on purpose (10 Nov 2026): fixed in production by DETAILS_FROM_EARLIER_ANSWER_ENABLED, QA round 23.
+    status: "fixed",
+    fixFlags: ["DETAILS_FROM_EARLIER_ANSWER_ENABLED"],
+    async run(t: T) {
+      start(t);
+      const thread = t.thread();
+      t.modelSays(HOW_TO_ANSWER);
+      await thread.say("how do i coach on the spray tan booth, when to press start session and when to press session complete?");
+      t.modelSays(null);
+      await thread.say("Create a coaching form for Rowan Kestrel");
+      const id = await thread.create();
+      for (const turn of ["can you upate the draft with these details of coaching?", "it didnt edit in the card"]) await onDraft(t, thread, id, turn);
+      const before = t.revisionPrompts!().length;
+      await onDraft(t, thread, id, "the details we just discussed!!!");
+      const asked = t.revisionPrompts!().slice(before).join("\n");
+      const change = /THE CHANGE THE MANAGER IS ASKING FOR NOW:([\s\S]*)/.exec(asked)?.[1] ?? "";
+      for (const step of IN_THE_ANSWER) expect(change, `the revision was not handed the details discussed before the card (${step}):\n${change.slice(0, 300)}`).toMatch(step);
+      expect(change, "the revision was handed the app's own reply").not.toMatch(BOTS_OWN_WORDS);
+    },
+  },
+];
+
