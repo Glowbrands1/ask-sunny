@@ -139,6 +139,20 @@ export function rosterOnlyNames(response: AskResponse, names: readonly string[],
       const named = titleCased(employee);
       proposal = { ...proposal, employeeName: named, wovenCloseMatch: offRosterCardNote(named) };
       content = `${offRosterTakenLine(named)}\n\n${content.trim().split(`**${employee}**`).join(`**${named}**`)}`;
+    } else if (
+      formNameOffRosterAskEnabled() &&
+      message &&
+      oneCloseRosterPerson(employee, names) &&
+      new RegExp(String.raw`(?<![\p{L}])${escape(oneCloseRosterPerson(employee, names)!)}(?![\p{L}'’-])`, "iu").test(message)
+    ) {
+      /*
+       * FORM_NAME_OFF_ROSTER_ASK_ENABLED (QA's roster-set gate, 10 Nov 2026; sf-s38 "make me an CA for <First Last>
+       * missing her … shifts"): a reader left only part of the name on the card ("<First>"), but this message types the
+       * one close roster person's whole name. That is them, in the roster's spelling, never asked "Is this for …?".
+       */
+      const named = oneCloseRosterPerson(employee, names)!;
+      proposal = { ...proposal, employeeName: named };
+      content = content.split(`**${employee}**`).join(`**${named}**`);
     } else {
       const close = oneCloseRosterPerson(employee, names);
       /*

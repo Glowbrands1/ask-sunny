@@ -8,6 +8,7 @@ import {
   partialSurnameAskEnabled,
   suggestAnswerReplacesTypedEnabled,
   nearMissQuestionRulesEnabled,
+  formNameOffRosterAskEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { compoundSurnameScore, displayName, editDistance, type RosterEmployee } from "@/lib/forms/employee-match";
 import { looseFits } from "@/lib/forms/loose-fit";
@@ -90,10 +91,20 @@ function statedFirstName(turns: readonly string[], roster: readonly RosterEmploy
   return said.size === 1 ? [...said][0]! : null;
 }
 
+/**
+ * FORM_NAME_OFF_ROSTER_ASK_ENABLED (QA's roster-set gate, 10 Nov 2026; sf-s38 "make me a CA for Ines Varga-Lund missing
+ * her shift"): the roster's surname read as the message is ("Varga-Lund" → "varga lund"), so a hyphenated surname typed
+ * in full is somebody named in full. Off, as before.
+ */
+function surnameAsTyped(lastName: string): string {
+  const own = lastName.trim().toLowerCase();
+  return formNameOffRosterAskEnabled() ? own.replace(/[^a-z' ]+/g, " ").replace(/\s+/g, " ").trim() : own;
+}
+
 function namesSomebodyInFull(turns: readonly string[], roster: readonly RosterEmployee[]): boolean {
   const text = ` ${turns.join(" ").toLowerCase().replace(/[^a-z' ]+/g, " ")} `;
   return roster.some((person) =>
-    firstNamesOf(person).some((first) => text.includes(` ${first} ${person.lastName.trim().toLowerCase()} `)),
+    firstNamesOf(person).some((first) => text.includes(` ${first} ${surnameAsTyped(person.lastName)} `)),
   );
 }
 
