@@ -105,6 +105,25 @@ describe("sameRequestForOtherPerson", () => {
     expect(sameRequestForOtherPerson({ question: "Now make one for Jovelle", history: [turn("m1", "user", "create a coaching document for Jovelle Kerrigan")], roster, continueTemplateKey: "coaching" })).toBeNull();
   });
 
+  it("QA's B21-4 \"now one for <B> for being late on 10-20-26\": <B>'s own request, from <B>'s turn only", () => {
+    const roster = [...ROSTER, person("e-7", "Test", "Employee"), person("e-8", "Test", "Employee Two")];
+    const read = sameRequestForOtherPerson({
+      question: "NOW ONE FOR TEST EMPLOYEE TWO AT LAWRENCE FOR BEING LATE ON 10-20-26",
+      history: [turn("m1", "user", "I need a corrective action for Test Employee, she was late opening the salon on Monday")],
+      roster,
+      continueTemplateKey: "dpoa",
+    });
+    expect(read).toMatchObject({ kind: "own", name: "Test Employee Two", historyBefore: 0, sourceIds: [] });
+    expect(read?.question).toBe("I need a corrective action for TEST EMPLOYEE TWO AT LAWRENCE FOR BEING LATE ON 10-20-26");
+  });
+
+  it("never the same-form copy's wording, a person ruled out, or a coworker in the account", () => {
+    expect(sameRequestKind("Do the same coaching form for remy calder")).toBeNull();
+    expect(sameRequestKind("can you create the same draft that we did with Liora Pellow by changing the name and position?")).toBeNull();
+    expect(sameRequestKind("do not make one for Mara Quell, she was not late on 10-20-26")).toBeNull();
+    expect(sameRequestKind("she was rude to Caspian Drummet when he reminded her")).toBeNull();
+  });
+
   it("nothing when no card or form is open, the turn names the card's own person, or nobody on the roster", () => {
     const history = [turn("m1", "user", MIREYA)];
     expect(sameRequestForOtherPerson({ question: SAME, history, roster: ROSTER })).toBeNull();

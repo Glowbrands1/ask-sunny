@@ -46,19 +46,45 @@ const ALSO_FOR = new RegExp(
   "i",
 );
 
+/**
+ * "now one for <B> for being late on 10-20-26", "also one for <B> …", "another one for <B> …" (QA's B21-4, 25 Oct 2026):
+ * a request for <B>'s own form with <B>'s own account after the name. Only with a lead that asks for one more form.
+ */
+const OWN_FOR = new RegExp(
+  String.raw`^\s*(?:(?:and|ok|okay)[\s,]+)?(?:(?:now|also|next|then)[\s,]+(?:(?:make|do|create|write|start|need|want)\s+(?:me\s+)?)?(?:one|another(?:\s+one)?|(?:a|an)\s+${FORM})|another(?:\s+one)?|one\s+more)(?:\s+form)?\s+for\s+\S+[^.?!\n]*?\b(?:for|because|she|he|they|was|were|is|did|didn'?t|on|who)\b\s+\S`,
+  "i",
+);
+/** "do not make one for <B>", "no need for one for <B>": the manager rules <B> out. */
+const RULED_OUT = /\b(?:do\s*n[o']?t|don'?t|never|no\s+need|not)\s+(?:\w+\s+){0,2}?(?:make|do|create|need|want|write)\b/i;
+
 /** An account of what happened: never a request for another person's form. */
 const INCIDENT = /\b(?:was|were|late|tardy|absent|no[- ]?(?:call|show)|yell(?:ed|ing)?|rude|left\s+early|clocked|yesterday|last\s+(?:week|night|shift)|did\s+the\s+same\s+thing)\b/i;
 
 const MAX_WORDS = 25;
 
-export type SameRequestKind = "same" | "also";
+export type SameRequestKind = "same" | "also" | "own";
+
+/**
+ * "Do the same coaching form for <B>", "the same draft …": the same-form copy's own wording (`forms/same-form-copy.ts`,
+ * SAME_FORM_COPY_ENABLED) — B's card with A's Details copied. Never this reader's, whether that flag is on or off.
+ */
+const SAME_FORM_OR_DRAFT = /\bthe\s+same\s+(?:(?:coaching|corrective\s+action|ca|follow[- ]?up(?:\s+coaching)?)\s+)?(?:form|draft)\b|\b(?:copy|duplicate)\s+(?:the|that|this|her|his|their|[a-z]+'s)\s+(?:(?:coaching|corrective\s+action|ca)\s+)?(?:form|draft)\b/i;
 
 export function sameRequestKind(question: string): SameRequestKind | null {
   const turn = question.trim();
-  if (turn.split(/\s+/).length > MAX_WORDS || INCIDENT.test(turn)) return null;
+  if (turn.split(/\s+/).length > MAX_WORDS || SAME_FORM_OR_DRAFT.test(turn) || RULED_OUT.test(turn)) return null;
+  // "now one for <B> for being late on 10-20-26": <B>'s own account, in this turn.
+  if (OWN_FOR.test(turn)) return "own";
+  if (INCIDENT.test(turn)) return null;
   if (SAME_FOR.test(turn)) return "same";
   if (ALSO_FOR.test(turn)) return "also";
   return null;
+}
+
+/** "now one for <B> for being late …" → "I need a corrective action for <B> for being late …": <B>'s turn, its lead named. */
+function ownRequest(turn: string, templateKey: string): string {
+  const lead = new RegExp(String.raw`^\s*(?:(?:and|ok|okay)[\s,]+)?(?:(?:now|also|next|then)[\s,]+(?:(?:make|do|create|write|start|need|want)\s+(?:me\s+)?)?(?:one|another(?:\s+one)?|(?:a|an)\s+${FORM})|another(?:\s+one)?|one\s+more)(?:\s+form)?\s+for\s+`, "i");
+  return turn.trim().replace(lead, `I need a ${templateKey === "coaching" ? "coaching form" : "corrective action"} for `);
 }
 
 const PRONOUN = /^(?:her|him|them|it|this|that|me|us|the|a|an|my|our|his|their|one|everyone|everybody|all|today|tomorrow|now)$/i;
@@ -70,7 +96,7 @@ const PRONOUN = /^(?:her|him|them|it|this|that|me|us|the|a|an|my|our|his|their|o
  */
 export function asksForAnotherPerson(turn: string): boolean {
   if (!sameRequestKind(turn)) return false;
-  const after = /\bfor\s+([A-Za-z][A-Za-z'’-]*)/g;
+  const after = /\bfor\s+([A-Za-z][A-Za-z'’-]*)/gi;
   for (let match = after.exec(turn); match; match = after.exec(turn)) {
     if (!PRONOUN.test(match[1]!)) return true;
   }
@@ -218,7 +244,7 @@ export function sameRequestForOtherPerson(input: {
   const others = input.roster.filter((person) => !sameName(displayName(person), subject.employeeName) && rosterNameNamedIn(input.question, [person]) !== null);
   // "Now make one for LYsandra": a lone first name, as typed, when it is one roster person's (never the card's) — the
   // name readers then ask "Is this for Lysandra Quade?" as for any first name (`lone`).
-  const lone = others.length === 0 ? loneFirstName(input.question, input.roster, subject.employeeName) : null;
+  const lone = others.length === 0 && kind === "also" ? loneFirstName(input.question, input.roster, subject.employeeName) : null;
   if (others.length !== 1 && !lone) return null;
   if (lone) {
     const templateKey = namedTemplate(input.question.replace(/\b(?:verbal|written)\b/gi, "")) ?? openKey;
@@ -226,6 +252,10 @@ export function sameRequestForOtherPerson(input: {
     return { kind, question: `create a ${formWords(templateKey, null)} for ${lone}`, carried: null, name: lone, from: subject.employeeName, historyBefore: subject.index, sourceIds: [] };
   }
   const name = displayName(others[0]!);
+  if (kind === "own") {
+    // <B>'s card is built from <B>'s turn only: the history before <A>'s request, never <A>'s turns.
+    return { kind, question: ownRequest(input.question, openKey), carried: null, name, from: subject.employeeName, historyBefore: subject.index, sourceIds: [] };
+  }
   const level = switchedLevel(input.question);
   const named = namedTemplate(input.question.replace(/\b(?:verbal|written)\b/gi, ""));
   const templateKey = kind === "also" ? (named ?? openKey) : named === "coaching" ? "coaching" : openKey;
@@ -256,6 +286,21 @@ export function sameRequestForOtherPerson(input: {
  */
 export function withSameRequestNote(answer: AskResponse, turn: SameRequestTurn): AskResponse {
   const card = answer.formProposal;
+  /*
+   * The turn named <B> exactly on the roster ("Test Employee Two"); a name reader that kept only its first words
+   * ("Test") is <B>, never somebody else: the card takes <B>'s roster name.
+   */
+  if (card?.employeeName && !sameName(card.employeeName, turn.name)) {
+    const typed = words(card.employeeName.toLowerCase());
+    const full = words(turn.name.toLowerCase());
+    if (typed.length < full.length && typed.every((word, index) => full[index] === word)) {
+      const named = new RegExp(`\\*\\*${escaped(card.employeeName)}\\*\\*`, "g");
+      return withSameRequestNote(
+        { ...answer, content: answer.content.replace(named, `**${turn.name}**`), formProposal: { ...card, employeeName: turn.name } },
+        turn,
+      );
+    }
+  }
   if (turn.kind !== "same" || !turn.carried || !card?.employeeName || !sameName(card.employeeName, turn.name)) return answer;
   const lead = new RegExp(`^\\s*${words(turn.name).map(escaped).join("\\s+")}\\s*[.,:;-]\\s*`, "i");
   const said = turn.carried.replace(lead, "").replace(/\s*\n+\s*/g, " ").trim();

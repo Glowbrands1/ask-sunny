@@ -289,10 +289,15 @@ async function postChat(request: Request) {
        * without <A>'s card, open form or request turns (`lib/forms/same-request-other-person.ts`).
        */
       let sameRequestOther: import("@/lib/forms/same-request-other-person").SameRequestTurn | null = null;
-      if (sameRequestOtherPersonEnabled() && !newPersonCopy) {
-        const { sameRequestForOtherPerson } = await import("@/lib/forms/same-request-other-person");
+      const sameRequest = sameRequestOtherPersonEnabled() && !newPersonCopy ? await import("@/lib/forms/same-request-other-person") : null;
+      // Only a turn of that shape reads the roster, and never for long (`sameRequestKind` leaves "the same coaching form for <B>" to the copy path).
+      if (sameRequest && sameRequest.sameRequestKind(asked.question)) {
+        const { sameRequestForOtherPerson } = sameRequest;
         const { loadScopedRoster } = await import("@/lib/forms/employee-roster");
-        const roster = await loadScopedRoster(context.identity.scope).catch(() => []);
+        const roster = await Promise.race([
+          loadScopedRoster(context.identity.scope).catch(() => []),
+          new Promise<[]>((resolve) => setTimeout(() => resolve([]), 1_500)),
+        ]);
         const other = sameRequestForOtherPerson({
           question: asked.question,
           history: asked.history,
