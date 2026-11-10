@@ -41,10 +41,12 @@ const FIRST = "create a corrective action for Rory Vance, she was late on 11/3/2
 const SAME = "Can you do the same thing for Mara Quell but make it a written";
 const REPORT = `QA, 10 Nov 2026 (Sunny r19, live): "create a corrective action for <A>, she was late on 11/3/26" → "Can you do the same thing for <B> but make it a written"`;
 
-async function both(t: T): Promise<{ thread: ReturnType<T["thread"]>; second: ReplayAnswer }> {
+async function both(t: T, offRoster = false): Promise<{ thread: ReturnType<T["thread"]>; second: ReplayAnswer }> {
   vi.setSystemTime(new Date("2026-11-10T09:00:00Z"));
-  t.directory([...STAFF, RORY, MARA]);
-  t.as("salon_director", KEARNEY);
+  // QA's round-23 live test (conv_mwb1xng82tz2tyr): both names invented, so neither is on the directory; an all-salon admin.
+  t.directory(offRoster ? [...STAFF] : [...STAFF, RORY, MARA]);
+  if (offRoster) t.as("admin", { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] });
+  else t.as("salon_director", KEARNEY);
   const thread = t.thread();
   await thread.say(FIRST);
   expect(thread.proposal, "no CA card for Rory Vance").toMatchObject({ templateKey: "dpoa", employeeName: "Rory Vance" });
@@ -82,6 +84,38 @@ export const NOV10_SAME_REQUEST_FOLLOW_UP_CASES: ReplayCase[] = [
       const id = await thread.createCard!("Rory Vance");
       expect(t.values(id).employee_name, "<A>'s form is not <A>'s").toBe("Rory Vance");
       // <B>'s card stays creatable too.
+      const mara = await thread.createCard!("Mara Quell");
+      expect(t.values(mara).employee_name).toBe("Mara Quell");
+    },
+  },
+  /*
+   * The same two checks as QA's round-23 live test ran them (10 Nov 2026, Sunny production main 227340dd): Rory Vance and
+   * Mara Quell are on no directory and the tester is an all-salon admin. Live: Mara's card had no Observation and Rory's
+   * read "Superseded — nothing created". SAME_REQUEST_OFF_ROSTER_ENABLED reads <A> from the card and <B> as typed.
+   */
+  {
+    id: "nov10-same-request-carries-account-off-roster",
+    title: `(a), off roster: "${SAME}" — <B>'s card's Observation is <A>'s account with <B>'s name`,
+    report: `QA's Sunny round-23 live test, conv_mwb1xng82tz2tyr (names off the directory): (a) <B>'s card had no Observation of Offense`,
+    status: { open: "with <A> and <B> off the directory the same request is never read: <B>'s turn goes to <A>'s card" },
+    fixFlags: ["SAME_REQUEST_OFF_ROSTER_ENABLED"],
+    async run(t) {
+      const { second } = await both(t, true);
+      expect(observation(second), `<B>'s card's Observation:\n${second.content}`).toBe("Mara Quell was late on 11/3/26");
+    },
+  },
+  {
+    id: "nov10-same-request-keeps-earlier-card-off-roster",
+    title: `(b), off roster: "${SAME}" — <A>'s card is not superseded, and both cards stay creatable`,
+    report: `QA's Sunny round-23 live test, conv_mwb1xng82tz2tyr (names off the directory): (b) <A>'s card read "Superseded — nothing created"`,
+    status: { open: "with <A> and <B> off the directory <A>'s card is superseded by <B>'s" },
+    fixFlags: ["SAME_REQUEST_OFF_ROSTER_ENABLED"],
+    async run(t) {
+      const { thread } = await both(t, true);
+      const rory = thread.conversation!.find((message) => message.formProposal?.employeeName === "Rory Vance")!.formProposal!;
+      expect(isProposalSuperseded(thread.conversation!, rory.proposalId), "<A>'s card is superseded by <B>'s").toBe(false);
+      const id = await thread.createCard!("Rory Vance");
+      expect(t.values(id).employee_name, "<A>'s form is not <A>'s").toBe("Rory Vance");
       const mara = await thread.createCard!("Mara Quell");
       expect(t.values(mara).employee_name).toBe("Mara Quell");
     },

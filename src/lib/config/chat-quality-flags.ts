@@ -4316,3 +4316,15 @@ export function sameRequestKeepsEarlierCardClientEnabled(): boolean {
 export function templateOutlineFieldsEnabled(): boolean {
   return envFlag("TEMPLATE_OUTLINE_FIELDS_ENABLED");
 }
+
+/**
+ * SAME_REQUEST_OFF_ROSTER_ENABLED (coding 6, 10 Nov 2026; default off; QA's Sunny round-23 live test,
+ * conv_mwb1xng82tz2tyr): "Can you do the same thing for <B> but make it a written" after "create a corrective action
+ * for <A>, she was late on 11/3/26", with <A> and <B> not on the directory, gave <B> a card with no Observation and
+ * left <A>'s card "Superseded — nothing created": SAME_REQUEST_OTHER_PERSON read <A> and <B> from the roster only, so
+ * SAME_REQUEST_CARRIES_ACCOUNT and SAME_REQUEST_KEEPS_EARLIER_CARD never ran. On, <A> is the latest card's employee
+ * and <B> the one person typed after "for" when nobody on the roster is named. Off, as before.
+ */
+export function sameRequestOffRosterEnabled(): boolean {
+  return envFlag("SAME_REQUEST_OFF_ROSTER_ENABLED");
+}
