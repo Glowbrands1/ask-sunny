@@ -1,5 +1,5 @@
 import { PRODUCTION_SALONS, salonById } from "@/data/salons";
-import { formEditDateRulesEnabled, primarySalonNotEditEnabled } from "@/lib/config/chat-quality-flags";
+import { formEditDateRulesEnabled, incidentDateSharedWithStepEnabled, primarySalonNotEditEnabled } from "@/lib/config/chat-quality-flags";
 import { datesInText, listIncidentDates, priorSteps } from "@/lib/forms/form-date-answer";
 import { withYearlessDatesWritten } from "@/lib/forms/late-open";
 import { PRIMARY_SALON_STATEMENT } from "@/lib/forms/primary-salon-statement";
@@ -232,6 +232,35 @@ export function followUpDatesByRules(text: string, today: string): string[] {
   return out;
 }
 
+/** "for being late", "because she was late": what the step was given for, right after its date. */
+const GIVEN_FOR_AFTER = /^\s*,?\s*(?:for|because)\b/i;
+
+/**
+ * INCIDENT_DATE_SHARED_WITH_STEP_ENABLED (QA's prod-env reading, 10 Nov 2026, D3): the dates an incident cue governs, in
+ * a turn with no earlier-step cue before them. "she was late on 10-21 and i gave her a verbal on 10-21": the first 10-21
+ * is an incident date the remap reads (not a step's). "gave her a verbal on 10-21 for being late": the step dated that
+ * day is given for the incident, so the day is the incident's too. "previous coaching 7/1 for being late" is history and
+ * governs nothing.
+ */
+function incidentGovernedDates(written: string, today: string): Set<string> {
+  const out = new Set<string>();
+  let offset = 0;
+  const incidentAt = new Set(listIncidentDates(written, today).map((found) => found.index));
+  for (const turn of written.split("\n")) {
+    const cue = PRIOR_CUE.exec(turn);
+    for (const found of datesInText(turn, today)) {
+      if (cue && found.index > cue.index) continue;
+      const before = turn.slice(Math.max(0, found.index - 40), found.index);
+      if (MANUAL_BEFORE.test(before)) continue;
+      const after = turn.slice(found.end);
+      const stepDated = COACHED_ON.test(before) || STEP_BEFORE.test(before);
+      if (stepDated ? GIVEN_FOR_AFTER.test(after) : incidentAt.has(offset + found.index)) out.add(found.iso);
+    }
+    offset += turn.length + 1;
+  }
+  return out;
+}
+
 const TODAY_WORD = /\btoday\b/i;
 const DATE_CHANGE = /\b(?:change|set|update|make|move|put)\b[^.\n]{0,30}?\bdate\b[^.\n]{0,20}?\bto\s+(?:be\s+)?([^\n]+)$|\b(?:form\s+)?date\s+(?:is|should\s+be|=|:)\s+([^\n]+)$/i;
 
@@ -262,8 +291,10 @@ export function formDateByRules(input: {
   const set = dateSetInTurn(input.question, input.today);
   if (set) return set === input.current ? undefined : set;
   const text = input.managerTurns.join("\n");
-  const prior = priorActionDates(text, input.today);
   const written = withYearlessDatesWritten(text, input.today);
+  const prior = priorActionDates(text, input.today);
+  // INCIDENT_DATE_SHARED_WITH_STEP_ENABLED: the day a step was given can also be the incident's day.
+  if (incidentDateSharedWithStepEnabled()) for (const iso of incidentGovernedDates(written, input.today)) prior.delete(iso);
   const incidents = [...new Set(listIncidentDates(written, input.today).map((found) => found.iso))].filter((iso) => !prior.has(iso));
   const fallback = incidents.length === 1 ? incidents[0]! : incidents.length === 0 && TODAY_WORD.test(text) ? input.today : null;
   if (input.current && !prior.has(input.current)) return undefined;

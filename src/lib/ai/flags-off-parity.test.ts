@@ -184,6 +184,8 @@ import { privateCreatorFormsEnabled, privateCreatorsActive } from "@/lib/forms/p
  */
 
 const NEW_FLAGS = [
+  // coding 4: INCIDENT_DATE_SHARED_WITH_STEP (ported from Ask Bubbles, D3, 10 Nov 2026; default off).
+  "INCIDENT_DATE_SHARED_WITH_STEP_ENABLED",
   "SLOT_RETENTION_ENABLED",
   "FIELD_ACCURACY_ENABLED",
   "DRAFT_DEDUPE_ENABLED",
