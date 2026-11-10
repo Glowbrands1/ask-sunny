@@ -35,6 +35,7 @@ import { enrichFormCard } from "./form-card-slots";
 import { holdFilledSlots } from "./keep-filled-slots";
 import { startsFormForAnotherPerson } from "./new-person-request";
 import { applyEditDateRules } from "./edit-date-rules";
+import { withoutFutureCardDate } from "@/lib/forms/future-card-date";
 import { withTypedEmployeeOnCard } from "./typed-employee-card";
 import { applyGroundedProposal, prepareGroundedQuestion, type GroundedPerson, type GroundedPrep } from "./grounded-entities";
 
@@ -87,7 +88,7 @@ export async function deliverFormProposal(input: {
         });
     // KEEP_FORM_EMPLOYEE_ENABLED: "for Test Employee" stays Test Employee on the card. See `withTypedEmployeeOnCard`.
     // ACCOUNT_BEFORE_REQUEST_ENABLED: the account the card shows, given before its request, is cited (`ai/account-turn-sources.ts`).
-    return withAccountTurnSources(withEditDateRules(
+    return futureCardDate(input, withAccountTurnSources(withEditDateRules(
       withTypedEmployeeOnCard(
         holdFilledSlots({
           response: enriched,
@@ -99,7 +100,7 @@ export async function deliverFormProposal(input: {
         input.request.question,
       ),
       input,
-    ), input.request.history);
+    ), input.request.history));
   }
 
   /*
@@ -155,7 +156,7 @@ export async function deliverFormProposal(input: {
 
   const settled = withVisibleSalon(enriched, input);
   // ACCOUNT_BEFORE_REQUEST_ENABLED: the account the card shows, given before its request, is cited (`ai/account-turn-sources.ts`).
-  const held = withAccountTurnSources(withEditDateRules(
+  const held = futureCardDate(input, withAccountTurnSources(withEditDateRules(
     withTypedEmployeeOnCard(
       holdFilledSlots({
         response: settled,
@@ -167,7 +168,7 @@ export async function deliverFormProposal(input: {
       input.request.question,
     ),
     input,
-  ), input.request.history);
+  ), input.request.history));
   const reopened = await reopenSameIncident(dedupe, input, held);
   if (reopened) {
     await writeSaved(keepState, input, saved, held, prep);
@@ -333,3 +334,12 @@ function heldHistory(request: { readonly history: readonly HistoryTurnLike[]; re
 }
 
 type HistoryTurnLike = { readonly role: string; readonly content: string };
+
+/** FUTURE_INCIDENT_DATE_ASK_ENABLED: the turn's card is never dated after today (`forms/future-card-date.ts`). */
+function futureCardDate(input: { request: AskRequest }, response: AskResponse): AskResponse {
+  return withoutFutureCardDate(response, {
+    question: input.request.question,
+    history: input.request.history,
+    today: input.request.context.todayIso,
+  });
+}

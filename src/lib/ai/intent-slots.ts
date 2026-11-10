@@ -49,6 +49,7 @@ import { typedEmployeeName } from "@/lib/forms/typed-employee-name";
 import { managerStatedWarningLevel, templateHasWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
 import { isDocumentName, isReportName, isRosterStateName } from "./not-a-person";
 import { reportNameNotAPersonEnabled } from "@/lib/config/chat-quality-flags";
+import { futureIncidentDateAskEnabled } from "@/lib/config/chat-quality-flags";
 import { readsAsStatedTitle, titleTextFromTurns } from "./title-words";
 import { titleInWords } from "./title-in-words";
 import { describedAttendanceKeys } from "@/lib/forms/ca-policy";
@@ -310,11 +311,22 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
   const groundedDate = statedNow
     ? { iso: statedNow, ambiguous: [] as readonly string[] }
     : groundDate(choice?.date ?? reading?.incidentDate ?? null, dateQuestion, dateText, input.today);
-  const date = merge.date(
+  const mergedDate = merge.date(
     codeSlotsEnabled()
       ? { iso: explicitIncidentIso(dateQuestion, input.today) ?? saved.formDate, ambiguous: [] as readonly string[] }
       : groundedDate,
   );
+  /*
+   * FUTURE_INCIDENT_DATE_ASK_ENABLED (S#285, B#207 BH5): a date after today is
+   * never what a form records happened. It is not kept as the incident date
+   * here, so the card is not dated by it; the proposal asks once what date it
+   * happened (`decideFormDate`) and dates the form the day it is created until
+   * the manager says.
+   */
+  const date =
+    futureIncidentDateAskEnabled() && mergedDate.iso && mergedDate.iso > input.today
+      ? { ...mergedDate, iso: null }
+      : mergedDate;
   const formType: { key: string | null; ambiguous: readonly TemplateRow[]; together?: boolean } = choiceStated
     ? groundStatedForm(
         choice?.form ?? null,
