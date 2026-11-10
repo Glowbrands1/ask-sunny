@@ -555,6 +555,9 @@ describe("\"also create a ca for …\" is the request, not the account (REQUEST_
 
     it(`off: "${said}" keeps the request in the Observation`, async () => {
       setUp(A, false);
+      // Changed on purpose (10 Nov 2026, QA's gate): a pin of production today, where OBSERVATION_OWN_PERSON_ONLY is off;
+      // with it on, the Observation drops the request's own words ("now create a ca for …"), which is that flag's fix.
+      vi.stubEnv("OBSERVATION_OWN_PERSON_ONLY_ENABLED", "");
       const thread = new Thread();
       const answer = await thread.say(said);
       expect(observation(answer.content)).toBe(said);

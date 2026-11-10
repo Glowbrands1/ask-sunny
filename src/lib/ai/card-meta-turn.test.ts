@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { PRESS_CREATE, WHAT_IS_OUT_OF_DATE, WHAT_IS_WRONG, cardMetaTurn, withoutCardMetaTurns } from "./card-meta-turn";
+import { PRESS_CREATE, WHAT_IS_OUT_OF_DATE, WHAT_IS_WRONG, cardMetaTurn, withPressCreateReply, withoutCardMetaTurns } from "./card-meta-turn";
 import type { AskResponse } from "./types";
 
 /** QA's sf-s38, 8 Nov 2026: CREATE_COMMAND_POINTS_TO_CARD_ENABLED and CARD_COMPLAINT_NOT_ACCOUNT_ENABLED. Invented person. */
@@ -94,14 +94,17 @@ describe("CREATE_FROM_CONVERSATION_POINTS_TO_CARD_ENABLED (QA's P6, Sunny live, 
   });
 
   it.each([P6, "create a form from our chat", "make a new draft from this conversation", "please create the form based on this", "create the draft with this information", "ok, make a form from what we discussed"])(
-    "on: %s → press Create draft, from T1",
+    "on: %s → answered as before (re-read), then the reply is press Create draft, the card as re-read",
     (question) => {
       bothOn();
       vi.stubEnv("CREATE_FROM_CONVERSATION_POINTS_TO_CARD_ENABLED", "true");
-      const turn = cardMetaTurn(onCard(question));
-      expect(turn?.from).toBe(T1);
-      const again = { content: "card", citations: [], formProposal: { templateKey: "dpoa", sourceMessageIds: ["m9"] } } as unknown as AskResponse;
-      expect(turn!.answer(again).content).toBe(PRESS_CREATE);
+      // Changed on purpose (10 Nov 2026, QA's CI eval s7/s8): the card is the turn's own re-read (its Date, its Policy),
+      // never the one in the history; only the reply changes, after the turn is answered.
+      expect(cardMetaTurn(onCard(question))).toBeNull();
+      const reread = { content: "card", citations: [], formProposal: { templateKey: "dpoa", formDate: "2026-09-20" } } as unknown as AskResponse;
+      const reply = withPressCreateReply(reread, onCard(question));
+      expect(reply.content).toBe(`${PRESS_CREATE}\n\ncard`);
+      expect(reply.formProposal).toEqual(reread.formProposal);
       expect(withoutCardMetaTurns(`${T1}\n${question}`)).toBe(T1);
     },
   );
