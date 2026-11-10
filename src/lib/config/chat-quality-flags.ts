@@ -4113,3 +4113,15 @@ export function payrollSplitWordsEnabled(): boolean {
 export function sameRequestOtherPersonEnabled(): boolean {
   return envFlag("SAME_REQUEST_OTHER_PERSON_ENABLED");
 }
+
+/**
+ * MAKE_THAT_UPDATE_ACCOUNT_ENABLED (coding 6, 10 Nov 2026; default off; a manager's production wording relayed 5 Nov
+ * 2026, no fix flag until QA's audit of 10 Nov): on the open coaching draft, after her account, "i don't see the
+ * details updated in the draft card. Do i need to copy and paste it? or should it be automatically updating?" and
+ * then "make that update" wrote nothing: the reply before it printed no Details. On, "make that update" after a
+ * reply that offered nothing writes her own latest account of the employee (`forms/form-content-turn.ts`). Off, as
+ * before.
+ */
+export function makeThatUpdateAccountEnabled(): boolean {
+  return envFlag("MAKE_THAT_UPDATE_ACCOUNT_ENABLED");
+}

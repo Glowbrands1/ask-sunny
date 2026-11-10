@@ -1,4 +1,4 @@
-import { claimGuardEnabled, copyPasteClaimHonestEnabled, formEditRefersBackEnabled } from "@/lib/config/chat-quality-flags";
+import { claimGuardEnabled, copyPasteClaimHonestEnabled, formEditRefersBackEnabled, makeThatUpdateAccountEnabled } from "@/lib/config/chat-quality-flags";
 import { extractEmployeeNames, samePerson } from "@/lib/forms/proposal";
 import type { ChatMessage } from "@/types";
 
@@ -129,6 +129,28 @@ function previousAnswer(history: readonly Pick<ChatMessage, "role" | "content">[
   return null;
 }
 
+/*
+ * MAKE_THAT_UPDATE_ACCOUNT_ENABLED (coding 6, 10 Nov 2026; the manager's production wording relayed 5 Nov 2026, QA's
+ * audit 10 Nov): on the open draft she gave her account ("rowan marked a session as complete …"), asked "Do i need
+ * to copy and paste it? or should it be automatically updating?", and then said "make that update" to the reply —
+ * which printed no Details, so nothing was written. The update she means is her own account: the latest of her
+ * recent turns that names the employee, asks nothing and reads as an account. Only "make that update" after a reply
+ * that offered nothing; never the app's words.
+ */
+const ACCOUNT_LOOKBACK = 6;
+function unwrittenAccount(history: readonly Pick<ChatMessage, "role" | "content">[], employeeName: string): string | null {
+  const first = employeeName.trim().split(/\s+/)[0] ?? "";
+  if (first.length < 2) return null;
+  const names = new RegExp(`\\b${first.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+  for (const turn of history.slice(-ACCOUNT_LOOKBACK).reverse()) {
+    if (turn.role !== "user") continue;
+    const text = (turn.content ?? "").trim();
+    if (!text || /\?/.test(text) || QUESTION_START.test(text) || ASKS_SOMETHING.test(text) || MAKE_THAT.test(text)) continue;
+    if (names.test(text) && PAST_ACCOUNT.test(text) && text.split(/\s+/).length >= 6) return text;
+  }
+  return null;
+}
+
 export function formContentQuestion(input: {
   question: string;
   history: readonly Pick<ChatMessage, "role" | "content">[];
@@ -183,7 +205,11 @@ export function formContentQuestion(input: {
      * previous answer whatever it was about.
      */
     const offered = earlier ? PRINTED_DETAILS.test(earlier) || earlier.split("\n").some((line) => CLAIM_LINE.test(line.trim().replace(/^[*_]+/, ""))) : false;
-    if (!WITH_THESE.test(question) && !offered) return null;
+    if (!WITH_THESE.test(question) && !offered) {
+      // MAKE_THAT_UPDATE_ACCOUNT_ENABLED: the update is the manager's own account the app did not write.
+      const account = makeThatUpdateAccountEnabled() ? unwrittenAccount(input.history, input.employeeName) : null;
+      return account ? `${into}: ${oneLine(account)}` : null;
+    }
     const content = earlier ? oneLine(contentOf(earlier)) : "";
     return content ? `${into}: ${content}` : null;
   }

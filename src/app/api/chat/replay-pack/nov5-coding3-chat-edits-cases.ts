@@ -146,6 +146,8 @@ export const NOV5_CODING3_CHAT_EDITS_CASES: ReplayCase[] = [
     status: {
       open: "the live answer \"It should update automatically — no copy-and-paste needed\" is sent unchanged with nothing written (the claim guard's phrase list misses it); past that, the \"make that update\" the honest reply invites writes nothing",
     },
+    // COPY_PASTE_CLAIM_HONEST_ENABLED answers (b) truthfully; MAKE_THAT_UPDATE_ACCOUNT_ENABLED writes her account on "make that update".
+    fixFlags: ["COPY_PASTE_CLAIM_HONEST_ENABLED", "MAKE_THAT_UPDATE_ACCOUNT_ENABLED"],
     async run(t: T) {
       start(t);
       const thread = t.thread();
