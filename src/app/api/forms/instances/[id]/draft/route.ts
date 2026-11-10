@@ -35,6 +35,7 @@ import {
   proposalMakeItAboutEnabled,
   proposalPolicySetAsideEnabled,
   sameRequestOtherPersonEnabled,
+  coachingObservedSavedEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { notesMadeAbout } from "@/lib/ai/make-it-about";
 import { withoutPolicyReferenceTurns } from "@/lib/ai/policy-reference-turn";
@@ -2445,6 +2446,16 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       ),
     };
     if (setAsideAnything(setAside)) draftedPayload.values = valuesWithPolicySetAside(draftedPayload.values, setAside);
+    // COACHING_OBSERVED_SAVED_ENABLED: the saved coaching Details always have an "Observed:" with the account (`lib/forms/coaching-observed-saved.ts`).
+    if (coachingObservedSavedEnabled()) {
+      draftedPayload.values = (await import("@/lib/forms/coaching-observed-saved")).withCoachingObservedSaved({
+        values: draftedPayload.values,
+        narrativeKeys: narrativeTargets,
+        coaching: isCoachingFamily,
+        notes,
+        employeeName: loaded.instance.employeeName,
+      }) as typeof draftedPayload.values;
+    }
     const kept = draftMergeEnabled()
       ? retainFilledFields({
           question: notes,

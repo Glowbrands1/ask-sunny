@@ -4067,3 +4067,16 @@ export function payrollSplitWordsEnabled(): boolean {
 export function sameRequestOtherPersonEnabled(): boolean {
   return envFlag("SAME_REQUEST_OTHER_PERSON_ENABLED");
 }
+
+/**
+ * COACHING_OBSERVED_SAVED_ENABLED (coding 6, 10 Nov 2026; default off; QA's
+ * P12, live in both apps). "make me a coaching form for <name> not hitting
+ * October numbers" → Create saved Details of Coaching with no "Observed:", or
+ * an empty one. On: a coaching narrative about to be saved with text but no
+ * heading gets "Observed:" over it; one with no Observed text gets
+ * "Observed:" first, with the manager's own words. An Observed with text is
+ * left as it is. See `forms/coaching-observed-saved.ts`. Off, as before.
+ */
+export function coachingObservedSavedEnabled(): boolean {
+  return envFlag("COACHING_OBSERVED_SAVED_ENABLED");
+}

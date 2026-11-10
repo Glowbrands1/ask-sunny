@@ -588,9 +588,13 @@ describe("FORM_EDIT_SINGLE_WRITER_ENABLED off: the same chats, byte for byte", (
     if (RECORDING) writeFileSync(FIXTURE, `${JSON.stringify(main, null, 1)}\n`);
     expect(existsSync(FIXTURE), `${FIXTURE} is missing`).toBe(true);
     const recorded = JSON.parse(readFileSync(FIXTURE, "utf8")) as typeof main;
-    expect(runs.a).toBe(recorded.a);
-    expect(runs.b).toBe(recorded.b);
-    expect(runs.noneA).toBe(recorded.noneA);
+    // Changed on purpose (QA's #755 gate, 10 Nov 2026): with COACHING_OBSERVED_SAVED_ENABLED on (the gate runs every flag
+    // on) the saved coaching Details start with "Observed:" — the only difference from main's run, so with that flag on
+    // the comparison drops the heading on both sides. Every other byte is still main's.
+    const heading = (text: string) => (process.env.COACHING_OBSERVED_SAVED_ENABLED === "true" ? text.replaceAll('"Observed:\\n', '"') : text);
+    expect(heading(runs.a)).toBe(heading(recorded.a));
+    expect(heading(runs.b)).toBe(heading(recorded.b));
+    expect(heading(runs.noneA)).toBe(heading(recorded.noneA));
   });
 
   it.skipIf(RECORDING)(
