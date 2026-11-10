@@ -13,7 +13,7 @@ variable, 0 mismatches). Origins are the oldest commit that adds the name (`git 
 deepened to full history to read them), given as the PR number when the squash or merge names one,
 else the short sha. Replay cases are those whose `fixFlags` hold the flag.
 
-**Counts (50):** (R) release candidate 11 · (X) retire 5 · (K) keep off on purpose 19 · (?) undecided 15.
+**Counts (50):** (R) release candidate 9 · (X) retire 5 · (K) keep off on purpose 23 · (?) undecided 13 (after QA's rulings of 10 Nov 2026: the two form-edit flags K, revisit after the queue; the two invite flags K, only one ever ships).
 
 Nothing is changed here: no flag is flipped, deleted or renamed, and no code is touched. The two
 `NEXT_PUBLIC_` client twins whose server flags are in `off` (REMAP_DRAFT_SOURCES, SEND_AFTER_HYDRATE)
@@ -25,8 +25,8 @@ belong in `off` beside them; the file is left for QA to update.
 | CREATE_FROM_CONVERSATION_POINTS_TO_CARD_ENABLED | "Create a form from this conversation" with a card open is a create command, not a repeat of the card | 32b65769 | R | QA's P6, live 10 Nov; replay `nov10-create-from-conversation-*` (open); on in the sibling's production (round 16b) |
 | FRAMEWORK_GENERAL_SECTIONS_ENABLED | Answer from the coaching framework's general sections when no section names the issue | #228 (orig. #212) | R | oct-pr-triage.md #212 class (a*): fixed on main only behind this flag; no replay case |
 | FULL_POSITION_TITLE_ENABLED | A title starting the line under the employee's name is the employee's ("… Weekends Only") | 4dbf6de3 (guard cases 209c62ca) | R | QA ruled the blank Job Title a regression of TITLE_ENDS_AT_LINE (ON); replay `nov6-coding3-full-position-title-negative` (open) |
-| INVITE_LINK_HOLD_ENABLED | Invite link holds the token on GET; verifies only on the Continue POST (mail-scanner safe) | #373 | R | Invited accounts stuck `invited` after a mail scanner opened the link (parity-log.md, 28 Oct); no replay case (auth path). Alternative to the next row: one may be enough |
-| NEXT_PUBLIC_INVITED_SIGNIN_ACCEPTS_ENABLED | A successful password sign-in also accepts a pending invitation | #372 | R | Same live problem as INVITE_LINK_HOLD; client-only, no server twin; no replay case (auth path) |
+| INVITE_LINK_HOLD_ENABLED | Invite link holds the token on GET; verifies only on the Continue POST (mail-scanner safe) | #373 | K | QA, 10 Nov 2026: K. Overlaps NEXT_PUBLIC_INVITED_SIGNIN_ACCEPTS (the same mail-scanner invite problem); only one of the two should ever ship. Needs the Supabase Invite template change. |
+| NEXT_PUBLIC_INVITED_SIGNIN_ACCEPTS_ENABLED | A successful password sign-in also accepts a pending invitation | #372 | K | QA, 10 Nov 2026: K. Overlaps INVITE_LINK_HOLD; only one of the two should ever ship. |
 | OBSERVATION_OWN_PERSON_ONLY_ENABLED | The Observation never keeps other people's names or the manager's command to the app | 3a5a30c1 | R | QA's P7, live 10 Nov; replay `nov10-observation-own-person-p7` (open) |
 | ONE_CARD_ONE_PAGE_ENABLED | The card's citation line takes the page the card already gives that section | 8a756174 (#717) | R | Two pages for one section on a live CA card (round 9); `_about`: "held for its own round"; replay `nov9-one-card-one-page-coaching` (open) |
 | REFORMAT_KEEPS_SOURCES_ENABLED | A reformat turn keeps the earlier answer's sources; marker removal leaves no dangling words | #228 (orig. #212) | R | oct-pr-triage.md #212 class (a*): `stripMarkers("[S6][S2]:")` still keeps "[S6]" with production flags; no replay case |
@@ -62,8 +62,8 @@ belong in `off` beside them; the file is left for QA to update.
 | CONVERSATION_DRAFT_REUSE_ENABLED | One draft per form per conversation | #179 | ? | Off in both apps; oct-pr-triage (#456) shows its path reuses an old draft for a new request; likely X (DRAFT_DEDUPE, DRAFT_REUSE_SAME_CHAT_ONLY ON) |
 | CONVERSATION_PROPOSAL_DEDUPE_ENABLED | A second create of the same proposal returns its draft | #160 | ? | Likely X: DRAFT_DEDUPE (ON) reopens a resent create; decide by a double-Create replay |
 | DRAFT_ACTIONS_ENABLED | "Delete that draft" and "same incident" answered in chat | #200 | ? | QA F8 (21–22 Oct); off in the sibling's production too; decide with a replay of QA's F8 wording on production flags |
-| FORM_EDIT_NOOP_GUARD_ENABLED | No false "Updated": a write that changes nothing is refused; reply from the saved diff | #511 | ? | Step 4; Sunny classification "to follow"; Step B (FORM_REPLY_FROM_DIFF, ON) is the live path; QA decides if Steps 3–4 still ship, else X |
-| FORM_EDIT_TOOL_IN_STREAM_ENABLED | `edit_form` tool offered in the main answering call | #504 | ? | Step 3; classification: 2 regressions, both fixed; same open question as NOOP_GUARD (needs it to act) |
+| FORM_EDIT_NOOP_GUARD_ENABLED | No false "Updated": a write that changes nothing is refused; reply from the saved diff | #511 | K | QA, 10 Nov 2026: K, revisit after the queue (Step B is live and stable; Steps 3–4 not scheduled). Step 4; flips with FORM_EDIT_TOOL_IN_STREAM. |
+| FORM_EDIT_TOOL_IN_STREAM_ENABLED | `edit_form` tool offered in the main answering call | #504 | K | QA, 10 Nov 2026: K, revisit after the queue (Step B is live and stable; Steps 3–4 not scheduled). Step 3; classification: 2 regressions, both fixed. |
 | MODEL_RETRY_ENABLED | 45 s model timeout, two retries, plain "busy" message | #160 | ? | 45 s × 3 can pass the 120 s route ceiling; decide with a latency check against CHAT_STAGE_TIMINGS |
 | NAMED_FORM_EXACT_ENABLED | A form the manager named is kept only as itself | #228 | ? | Sibling ships it unflagged; FORM_CHOICE_STATED, SWITCH_KEEPS_NAMED_FORM (ON) may cover it; likely R, decide with a replay of a named interview form |
 | NEXT_PUBLIC_CHAT_LONG_MESSAGE_ENABLED | Client twin of CHAT_LONG_MESSAGE (composer limit) | #228 | ? | Flips with CHAT_LONG_MESSAGE |
