@@ -2665,6 +2665,16 @@ export function policyTopicIntoFieldEnabled(): boolean {
   return envFlag("POLICY_TOPIC_INTO_FIELD_ENABLED");
 }
 
+/**
+ * OBSERVATION_NO_EARLIER_QUESTION_ENABLED (Pau via QA, sf-s25; coding 5; same flag in both apps; default off). The
+ * card's Observation of Offense opened with the manager's earlier question ("What policy would it be if …"). On: an
+ * Observation (and the card's issue) that begins with an earlier question turn starts after it
+ * (`forms/observation-no-earlier-question.ts`). Off, as before.
+ */
+export function observationNoEarlierQuestionEnabled(): boolean {
+  return envFlag("OBSERVATION_NO_EARLIER_QUESTION_ENABLED");
+}
+
 // --- end coding 5 flags ---
 
 /**
