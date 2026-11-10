@@ -59,3 +59,18 @@ export const TERMINATION_APPROVAL_LINE = "Termination needs your DM/HR approval 
 
 /** The Action Plan's closing on a termination (Pau's ruling, verbatim). */
 export const TERMINATION_PLAN_SENTENCE = "Effective immediately, employment is terminated following the progressive corrective action plan.";
+
+/** The closing for a future violation, as the Corrective Action plan builders end with it. */
+const FUTURE_VIOLATIONS = /\s*Future policy violations may (?:result in|be subject to) additional corrective action up to and including termination of employment\.?\s*$/i;
+
+/**
+ * TERMINATION_STATED_TICKS_ENABLED: a plan built for a form whose Type of Warning is Termination ends with the
+ * termination sentence instead of the closing for a future violation (Pau's ruling, 10 Nov 2026). Whichever builder
+ * wrote the plan; the write path keeps it closed (`required-closing.ts`, Pau's approval). Off, the plan as built.
+ */
+export function withTerminationPlan(plan: string, termination: boolean): string {
+  if (!termination || !terminationStatedTicksEnabled() || plan.trim() === "") return plan;
+  if (plan.trim().endsWith(TERMINATION_PLAN_SENTENCE)) return plan;
+  const body = plan.replace(FUTURE_VIOLATIONS, "").trim();
+  return body === "" ? TERMINATION_PLAN_SENTENCE : `${/[.!?]$/.test(body) ? body : `${body}.`} ${TERMINATION_PLAN_SENTENCE}`;
+}
