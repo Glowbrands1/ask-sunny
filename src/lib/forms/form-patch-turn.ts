@@ -8,6 +8,8 @@ import {
   stepBMakeItAboutAccountEnabled,
   madeAboutAllOrNothingEnabled,
   madeAboutReaderAccountEnabled,
+  madeAboutTopicEvidenceEnabled,
+  formDateSaidAloneEnabled,
   madeAboutUndatedTogetherEnabled,
   madeAboutPolicyLineEnabled,
   madeAboutRewriteFinishesEnabled,
@@ -281,6 +283,17 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
      */
     if ((!("ok" in reading) || reading.turn !== "this_form") && (madeAboutAllOrNothingEnabled() || madeAboutUndatedTogetherEnabled())) {
       reading = madeAboutReading(input, before, writable, allGroups) ?? reading;
+    }
+    /*
+     * FORM_DATE_SAID_ALONE_ENABLED (ported from Ask Bubbles: QA's live round 13 there, 9 Nov 2026): "make the date 11/7/26"
+     * as the first edit of a fresh draft answered "I haven't changed the Coaching Form …": the reader did not read the turn
+     * as this form's, so it went to the old path, whose revision does not write the Date. A turn that says the date the
+     * form takes (STEP_B_DATE_SAID's reading, `form-date-said.ts`) is this form's: read with nothing else to set, and the
+     * Date is written below as the manager's statement.
+     */
+    if ((!("ok" in reading) || reading.turn !== "this_form") && formDateSaidAloneEnabled() && stepBDateSaidEnabled() && "form_date" in before) {
+      const said = saidFormDate(input.question, input.today);
+      if (said !== null && before.form_date?.value !== said) reading = { ok: true, turn: "this_form", patch: { set: {}, clear: [], evidence: {} } };
     }
     if (!("ok" in reading) || reading.turn !== "this_form") return handOff("none");
     /*
@@ -742,8 +755,15 @@ function madeAboutReading(
   if (topic && box && writable.has(OTHER_TOPIC_KEY)) {
     set[OTHER_TOPIC_KEY] = topic;
     set[box.key] = ["other"];
-    evidence[OTHER_TOPIC_KEY] = topic.toLowerCase();
-    evidence[box.key] = topic.toLowerCase();
+    /*
+     * MADE_ABOUT_TOPIC_EVIDENCE_ENABLED (ported from Ask Bubbles: QA's live round 13 there, 9 Nov 2026): "make it about
+     * being late on 11/5/26" left Other on the old topic: the topic's evidence, "being late", is two words, under the
+     * reducer's floor for evidence (MIN_EVIDENCE_WORDS), so Other was refused. Its evidence is the whole made-about clause
+     * the manager wrote ("being late on 11/5/26"), which holds the topic's words.
+     */
+    const said = madeAboutTopicEvidenceEnabled() ? (madeAbout(input.question) ?? topic.toLowerCase()) : topic.toLowerCase();
+    evidence[OTHER_TOPIC_KEY] = said;
+    evidence[box.key] = said;
   }
   return { ok: true, turn: "this_form", patch: { set, clear: [], evidence } };
 }
