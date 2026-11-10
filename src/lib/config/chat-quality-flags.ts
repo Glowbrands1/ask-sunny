@@ -4134,3 +4134,17 @@ export function appInstructionsNotAccountEnabled(): boolean {
 export function draftWriteNeverSilentEnabled(): boolean {
   return envFlag("DRAFT_WRITE_NEVER_SILENT_ENABLED");
 }
+
+/**
+ * FAILURE_TO_OPEN_IS_LATE_OPENING_ENABLED (coding 6, 10 Nov 2026; default off;
+ * Pau's P16, Sunny production 9 Nov). "Can you make a CA for <name> for
+ * failure to open on time?" was answered "You haven't told me what happened
+ * yet": no reader took "failure to open" as an account ("open" is also the
+ * word for opening a form). On: "failure / failed to open", "did not open on
+ * time", "didn't open the salon" are the manual's Late Opening, as "opened
+ * late" is, and an account. "open the form / the drawer" is not. See
+ * `forms/late-open.ts`. Off, as before.
+ */
+export function failureToOpenIsLateOpeningEnabled(): boolean {
+  return envFlag("FAILURE_TO_OPEN_IS_LATE_OPENING_ENABLED");
+}

@@ -2,6 +2,7 @@ import { mentionsGlossaryTerm } from "@/lib/ai/chat-glossary";
 import { caSalesPolicyEnabled, caShortcutWordsEnabled, nameQuestionOnlyEnabled, shiftAccountIsIncidentEnabled } from "@/lib/config/chat-quality-flags";
 
 import { isSalesPolicyReading, readCaPolicy } from "./ca-policy";
+import { saysFailureToOpen } from "./late-open";
 import { statesMetricShortfall } from "./metric-shortfall";
 import {
   PAYROLL_DEDUCT_LABEL,
@@ -512,6 +513,8 @@ export function describesIncident(text: string): boolean {
   const normalized = normalize(text);
   if (any(normalized, INCIDENT_TOPIC) || any(normalized, OBSERVATIONAL_CLAUSE)) return true;
   if (shiftAccountIsIncidentEnabled() && SHIFT_ACCOUNT.test(normalized)) return true;
+  // FAILURE_TO_OPEN_IS_LATE_OPENING_ENABLED (Pau's P16): "for failure to open on time" says what she did. Off, false.
+  if (saysFailureToOpen(normalized)) return true;
   /*
    * WHATEVER THE POLICY READING RECOGNISES IS AN ACCOUNT TOO — a missed
    * deadline, unfinished work, a missed meeting, cash handling — so the two

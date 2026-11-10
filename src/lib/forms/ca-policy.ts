@@ -20,7 +20,7 @@ import {
 
 import { JOIN } from "./bounded-context";
 import { namesPerformance } from "./epp-policy";
-import { LATE_TO_OPEN, lateOpenOn } from "./late-open";
+import { FAILURE_TO_OPEN, LATE_TO_OPEN, failureToOpenOn, lateOpenOn } from "./late-open";
 import {
   findManualSection,
   isApprovedPolicyManualTitle,
@@ -402,6 +402,8 @@ const NAMED: { name: CaPolicyName; pattern: RegExp; alwaysAPolicy: boolean; enab
   },
   /* "late to open" is the same section (QA, 24 Oct 2026; LATE_OPEN_DATE_ENABLED). */
   { name: "late_opening", pattern: new RegExp(LATE_TO_OPEN.source), alwaysAPolicy: true, enabled: lateOpenOn },
+  /* "failure to open on time", "did not open the salon" (Pau's P16; FAILURE_TO_OPEN_IS_LATE_OPENING_ENABLED). */
+  { name: "late_opening", pattern: new RegExp(FAILURE_TO_OPEN.source), alwaysAPolicy: true, enabled: failureToOpenOn },
   { name: "attendance", pattern: /\b(?:attendance|tardiness|absenteeism)\b/, alwaysAPolicy: false },
   { name: "dress_code", pattern: /\bdress code\b/, alwaysAPolicy: false },
   /* "wore leggings" names the dress code when the manager does not say those words. */
