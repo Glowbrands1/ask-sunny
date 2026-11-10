@@ -3860,3 +3860,17 @@ export function madeAboutPolicyLineEnabled(): boolean {
 export function madeAboutReaderAccountEnabled(): boolean {
   return envFlag("MADE_ABOUT_READER_ACCOUNT_ENABLED");
 }
+
+/**
+ * QUESTION_TURNS_NOT_ACCOUNT_ENABLED (coding 6, 10 Nov 2026; default off;
+ * Pau, sf-s25). "closing policy" → "What policy would it be if a tanning
+ * consultant did not complete the closing correctly …" → "Write a CA for <A>
+ * …": the card's Observation began with the earlier question. On: when a
+ * turn asks for a form by name and no form card came before it, the earlier
+ * questions to the app (and their answers) are left out of the history the
+ * request is answered with. See `forms/question-turns-not-account.ts`. Off,
+ * as before.
+ */
+export function questionTurnsNotAccountEnabled(): boolean {
+  return envFlag("QUESTION_TURNS_NOT_ACCOUNT_ENABLED");
+}

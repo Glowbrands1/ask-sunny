@@ -35,6 +35,7 @@ import {
   questionNotFormEnabled,
   sameFormCopyEnabled,
   sameFormCopyNewPersonEnabled,
+  questionTurnsNotAccountEnabled,
   copyOwnSalonEnabled,
   secondFormEnabled,
   staffPickerBareAnswerEnabled,
@@ -281,6 +282,10 @@ async function postChat(request: Request) {
           activeFormInstanceId: undefined,
           continueProposalTemplateKey: newPersonCopy.source.templateKey,
         };
+      }
+      // QUESTION_TURNS_NOT_ACCOUNT_ENABLED: questions asked before a form request are not its account (`lib/forms/question-turns-not-account.ts`).
+      if (questionTurnsNotAccountEnabled()) {
+        asked = { ...asked, history: (await import("@/lib/forms/question-turns-not-account")).withoutQuestionsBeforeRequest(asked.question, asked.history) };
       }
       // FORM_NAME_FROM_ROSTER_ENABLED, part 2: every name reader of the turn reads this message's request slot (`lib/forms/request-slot.ts`).
       if (formNameFromRosterEnabled()) (await import("@/lib/forms/request-message-store")).enterRequestMessage(asked.question);
