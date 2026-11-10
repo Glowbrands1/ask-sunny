@@ -3873,3 +3873,16 @@ export function madeAboutRewriteFinishesEnabled(): boolean {
 export function madeAboutReaderAccountEnabled(): boolean {
   return envFlag("MADE_ABOUT_READER_ACCOUNT_ENABLED");
 }
+
+/**
+ * CLAIM_GUARD_AUTO_UPDATE_ENABLED (coding 6, 10 Nov 2026; default off;
+ * coding3's chat edits (b), 5 Nov 2026). "Do i need to copy and paste it? or
+ * should it be automatically updating?" was answered "It should update
+ * automatically — no copy-and-paste needed. The details are on the draft
+ * card." with nothing written. On: those lines are claims about the form,
+ * and the open-form honest reply replaces them ("Nothing on the form has
+ * changed yet."). See `forms/form-content-turn.ts`. Off, as before.
+ */
+export function claimGuardAutoUpdateEnabled(): boolean {
+  return envFlag("CLAIM_GUARD_AUTO_UPDATE_ENABLED");
+}
