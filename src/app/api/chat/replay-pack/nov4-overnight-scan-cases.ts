@@ -146,6 +146,8 @@ export const NOV4_OVERNIGHT_SCAN_CASES: readonly ReplayCase[] = [
     report: `${REPORT}, sf-s13: "I need to make a coaching form for the team at Kearney on selling Spray Tan Kits, not writing proper rainchecks which results in inventory not being correct." → "The employee needs to be left blank for now"`,
     // Run 4 Nov 2026 (production flags): fails as below.
     status: { open: "the product is taken as the employee: the coaching card is for \"Spray Tan Kits\" at both turns, \"I have the employee and the salon\", and turn 2's instruction \"The employee needs to be left blank for now\" is appended to the card's Observation" },
+    // Fixed under TEAM_CARD_NOT_PRODUCT_ENABLED (coding 6, 10 Nov 2026): the team card, the product is the topic; open on production flags until QA flips it.
+    fixFlags: ["TEAM_CARD_NOT_PRODUCT_ENABLED"],
     async run(t) {
       const thread = start(t);
       await thread.say(
