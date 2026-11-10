@@ -49,7 +49,8 @@ export function ReportTabs({ className }: { className?: string }) {
          * the strip, and the container is the only thing that scrolls — the
          * page itself never moves sideways.
          */
-        "scroll-slim flex items-center gap-1 overflow-x-auto border-b border-border-strong bg-background px-5 sm:px-6",
+        /* CLAY: a pressed-in pill bar, inset to line up with the clay band above. */
+        "scroll-slim mx-3 mt-3 flex items-center gap-1 overflow-x-auto rounded-full bg-surface-muted p-1.5 shadow-dent sm:mx-4",
         className,
       )}
     >
@@ -76,10 +77,12 @@ export function ReportTabs({ className }: { className?: string }) {
                * The underline sits on the element itself rather than on a
                * pseudo-element so it lines up with the container's border.
                */
-              "-mb-px shrink-0 border-b-[3px] px-3.5 py-3.5 text-[10px] font-black tracking-[0.1em] whitespace-nowrap uppercase transition-colors",
+              "shrink-0 rounded-full px-4 py-2.5 text-[10px] font-black tracking-[0.1em] whitespace-nowrap uppercase transition-[color,background-color,box-shadow]",
               current
-                ? "border-brand-yellow text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground",
+                /* CLAY: the active view is a raised yellow pill rather than a
+                   3px underline — still the one yellow "which level am I on". */
+                ? "bg-brand-yellow text-brand-yellow-foreground clay-fill"
+                : "text-muted-foreground hover:bg-surface hover:text-foreground",
             )}
           >
             {report.label}

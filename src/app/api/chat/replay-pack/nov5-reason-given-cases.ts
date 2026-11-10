@@ -60,12 +60,11 @@ const MESSAGES: readonly { readonly n: number; readonly say: string; readonly na
  * QA's 2-week audit wording #9, "can you write me a Ca for <name> for performance for october": with
  * production's flags AND with this branch's fix flags, the card says "You haven't told me what happened
  * yet". "for performance" alone is not read as an account (no negation, two words). Not fixed by this
- * branch; recorded OPEN for QA's call (5 Nov 2026).
+ * branch; recorded OPEN for QA's call (5 Nov 2026). Its fix is CA_PERFORMANCE_REASON_ENABLED (coding-3
+ * item 5): with it on as well, the fix-flag run holds; production lacks the flag, so it stays OPEN.
  */
-const NOT_FIXED_9 = "\"for performance for october\" is not read as an account: the card says \"You haven't told me what happened yet\", with production's flags and with CA_SALES + FORM_NAME + CA_ASKS on";
 
 /** Why #1, #2, #4–#7 and the live-models guard are OPEN in production (#555's flags correction). */
-const CA_SALES_OFF = "production (#555, = Vercel): CA_SALES_POLICY_ENABLED and FORM_NAME_FROM_ROSTER_ENABLED off — no card, or \"You haven't told me what happened yet\" after the reason";
 
 function start(t: T) {
   vi.setSystemTime(new Date("2026-11-04T23:30:00Z"));
@@ -90,14 +89,11 @@ export const NOV5_REASON_GIVEN_CASES: ReplayCase[] = [
      * reason-given requests therefore get no card or the "what happened" question (#1, #2, #4–#7 had held
      * only while the file read them as on); they are OPEN in production and hold with the fix flags.
      */
-    status:
-      n === 3 || n === 8
-        ? ({ open: "with production's flags as this file reads them (CA_SALES off) a metric-only request gets the progression's refusal, no card" } as const)
-        : n === 9
-          ? ({ open: NOT_FIXED_9 } as const)
-          : ({ open: CA_SALES_OFF } as const),
-    // #9 has no fix yet: its fix-flag run fails too, so it has none until one exists.
-    ...(n === 9 ? {} : { fixFlags: FLAGS }),
+    // Changed on purpose (7 Nov 2026): QA's flips of 5 and 6 Nov turned CA_SALES_POLICY, REPLY_MATCHES_CARD, TITLE_OF_THE_EMPLOYEE, METRIC_GUARD, TITLE_ENDS_AT_LINE, BARE_NOT_DENIAL and PLACE_FROM_CUE on in production (production-flags.json): #1–#8 now hold with production's flags; #9 is still open in production.
+    // Changed on purpose (8 Nov 2026): fixed in production by CA_PERFORMANCE_REASON_ENABLED (the sales triple), QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed" as const,
+    // #9 is fixed by CA_PERFORMANCE_REASON_ENABLED (default off, not in production): "for performance" in the request is the sales reading (`withSalesPolicy`, forms/ca-policy.ts).
+    fixFlags: n === 9 ? [...FLAGS, "CA_PERFORMANCE_REASON_ENABLED"] : FLAGS,
     async run(t: T) {
       const thread = start(t);
       const reply = await thread.say(say);
@@ -116,7 +112,8 @@ export const NOV5_REASON_GIVEN_CASES: ReplayCase[] = [
      * is the proof for the live path. Changed on purpose (5 Nov 2026): OPEN in production since #555
      * corrected production-flags.json (CA_SALES off); it holds with the fix flags.
      */
-    status: { open: CA_SALES_OFF },
+    // Changed on purpose (7 Nov 2026): QA's flips of 5 and 6 Nov turned CA_SALES_POLICY, REPLY_MATCHES_CARD, TITLE_OF_THE_EMPLOYEE, METRIC_GUARD, TITLE_ENDS_AT_LINE, BARE_NOT_DENIAL and PLACE_FROM_CUE on in production (production-flags.json); this case now holds with production's flags.
+    status: "fixed",
     fixFlags: FLAGS,
     async run(t) {
       const thread = start(t);

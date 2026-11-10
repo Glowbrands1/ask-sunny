@@ -3,6 +3,7 @@ import { noteSpendUser } from "@/lib/ai/spend-meter";
 import { withSpendMeter } from "@/lib/ai/spend-meter-run";
 
 import { withSwitchAfterCreate } from "@/lib/ai/form-type-switch";
+import { withCorrectionNotDropped, withProposalNameCorrection } from "@/lib/forms/proposal-name-correction";
 import { enterChatRequestClock } from "@/lib/ai/chat-trace-store";
 import { answerQuestion } from "@/lib/ai/server-ask";
 import { modelSpendGuard } from "@/lib/ai/spend-guard";
@@ -14,10 +15,18 @@ import {
   formEditHonestReplyEnabled,
   claimGuardEnabled,
   nameCorrectionWordsEnabled,
+  listPolicyIsEditEnabled,
   policyChangeRestOfTurnEnabled,
   openFormNoSelectionEnabled,
   personGuardEnabled,
+  missedShiftCitesAttendanceEnabled,
+  possessivePlaceNotPersonEnabled,
   formNameFromRosterEnabled,
+  offRosterConfirmEnabled,
+  exitLetterAddresseeEnabled,
+  letterGreetingNotNameEnabled,
+  exitFormDateFromTerminationEnabled,
+  offRosterAskBeforeCardEnabled,
   metricGuardEnabled,
   refusalNoRepeatEnabled,
   titleNotSpeakersManagerEnabled,
@@ -25,6 +34,8 @@ import {
   formEditPlainWordsEnabled,
   questionNotFormEnabled,
   sameFormCopyEnabled,
+  sameFormCopyNewPersonEnabled,
+  copyOwnSalonEnabled,
   secondFormEnabled,
   staffPickerBareAnswerEnabled,
   wholeTeamCoachingEnabled,
@@ -35,11 +46,16 @@ import {
   staffPickerEnabled,
   chatResponseStreamEnabled,
   formPatchReducerEnabled,
+  formPatchReaderFixesEnabled,
   formReplyFromDiffEnabled,
   formEditToolInStreamEnabled,
   formEditNoopGuardEnabled,
+  reopenByAnyOpenVerbEnabled,
+  twoFormsCardNotAskedEnabled,
+  secondRequestOwnAccountEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { streamWhenSlow } from "@/lib/api/streamed-response";
+import { finalReplyWithoutMarkers } from "@/lib/ai/source-note";
 import {
   assertLiveMode,
   assertNoConfigurationProblems,
@@ -66,7 +82,7 @@ import {
 } from "@/lib/analytics/taxonomy";
 import { activeKnowledgeCorpus } from "@/lib/knowledge/corpus";
 import { CONTINUATION_KEY_MAX } from "@/lib/forms/proposal-continuation";
-import { mayAskToReopen } from "@/lib/forms/reopen-cue";
+import { answersWhichFormOnFile, mayAskToReopen } from "@/lib/forms/reopen-cue";
 import { parseChatReportContext } from "@/lib/reporting/read/chat-report-context";
 import { businessToday } from "@/lib/business-date";
 import { isClientConversationId } from "@/lib/chat/client-ids";
@@ -198,16 +214,84 @@ async function postChat(request: Request) {
     const capped = await modelSpendGuard({ userId: context.identity.subject, role: context.identity.role });
     if (capped) {
       await closeTurn(turnId, { category: "unclassified", succeeded: true, latencyMs: Date.now() - askedAt });
-      return NextResponse.json({ ...capped, turnId });
+      return NextResponse.json({ ...finalReplyWithoutMarkers(capped), turnId });
     }
 
     let answer;
     try {
-      const asked = parseAskRequest(body);
+      let asked = parseAskRequest(body);
+      /*
+       * EXIT_LETTER_ADDRESSEE_ENABLED (QA, the live test of rounds 7c and 8, 9 Nov 2026): a letter to the employee,
+       * signed "Sincerely,\n<C>\nDistrict Manager", is read without that sign-off in this turn and the manager's
+       * earlier ones, so no reader takes the signer as the form's person nor her title (`ai/letter-signer.ts`). The
+       * stored messages, and the draft, keep the whole letter.
+       */
+      /*
+       * LETTER_GREETING_NOT_NAME_ENABLED: a letter's "Dear <A>," is read as "<A>," — the salutation is no part of the
+       * name (`ai/letter-signer.ts`), so the roster finds <A>. The stored messages, and the draft, keep the letter.
+       */
+      if (exitLetterAddresseeEnabled() || letterGreetingNotNameEnabled()) {
+        const { withoutLetterGreeting, withoutLetterSigner } = await import("@/lib/ai/letter-signer");
+        const read = (text: string) => {
+          const greeted = withoutLetterGreeting(text);
+          return exitLetterAddresseeEnabled() ? withoutLetterSigner({ question: greeted }) : greeted;
+        };
+        asked = {
+          ...asked,
+          question: read(asked.question),
+          history: asked.history.map((turn) => (turn.role === "user" && typeof turn.content === "string" ? { ...turn, content: read(turn.content) } : turn)),
+        };
+      }
+      /*
+       * OFF_ROSTER_CONFIRM_ENABLED: "use <name>" (or "yes") to the offer for a person not in Woven is read as the
+       * manager's turn that typed the name, and the name is kept on the card as typed (`forms/off-roster-confirm.ts`).
+       */
+      if (offRosterConfirmEnabled()) {
+        const taken = (await import("@/lib/forms/off-roster-confirm")).withOffRosterAnswer(asked);
+        if (taken) {
+          asked = taken.request;
+          (await import("@/lib/forms/off-roster-store")).enterAcceptedOffRoster(taken.accepted);
+        }
+      }
+      /*
+       * SAME_FORM_COPY_NEW_PERSON_ENABLED: "can you create the same draft that
+       * we did with <C> by changing the name and position?" with <C>'s own form
+       * open — asked who the new form is for, nothing written, no card. The
+       * turn after it that names one roster person is read as the request for
+       * that person's form, and the card carries the form to copy from. See
+       * `lib/forms/same-form-copy.ts`.
+       */
+      const newPersonCopy =
+        sameFormCopyEnabled() && sameFormCopyNewPersonEnabled()
+          ? await (await import("@/lib/forms/same-form-copy")).newPersonCopyTurn({
+              request,
+              question: asked.question,
+              activeInstanceId: asked.activeFormInstanceId,
+              pendingFromInstanceId: asked.pendingCopyFromInstanceId,
+            })
+          : null;
+      if (newPersonCopy && "answer" in newPersonCopy) {
+        await closeTurn(turnId, { category: "unclassified", succeeded: true, latencyMs: Date.now() - askedAt });
+        return NextResponse.json({ ...finalReplyWithoutMarkers(newPersonCopy.answer), turnId });
+      }
+      if (newPersonCopy) {
+        asked = {
+          ...asked,
+          question: newPersonCopy.question,
+          activeFormInstanceId: undefined,
+          continueProposalTemplateKey: newPersonCopy.source.templateKey,
+        };
+      }
       // FORM_NAME_FROM_ROSTER_ENABLED, part 2: every name reader of the turn reads this message's request slot (`lib/forms/request-slot.ts`).
       if (formNameFromRosterEnabled()) (await import("@/lib/forms/request-message-store")).enterRequestMessage(asked.question);
       // METRIC_GUARD_ENABLED, FORM_NAME off: only the metric guards read the message (`request-slot.ts` metricMessage).
       else if (metricGuardEnabled()) (await import("@/lib/forms/request-message-store")).enterMetricMessage(asked.question);
+      // SECOND_REQUEST_OWN_ACCOUNT_ENABLED: the app's reply before this turn, so the answer to its own question continues
+      // the same request (`lib/ai/form-state.ts` stateForTurn). After the FORM_NAME / METRIC_GUARD pair, never between it.
+      if (secondRequestOwnAccountEnabled()) {
+        const reply = [...asked.history].reverse().find((turn) => turn.role === "assistant");
+        if (reply) (await import("@/lib/forms/last-reply-store")).enterLastReply(String(reply.content ?? ""));
+      }
       /*
        * PERSON_GUARD_ENABLED: the actor's roster, for the rule that somebody on
        * it is always a person. One directory read per turn, only with the flag
@@ -225,7 +309,9 @@ async function postChat(request: Request) {
         ]);
         const names = roster.map((person) => `${person.preferredFirstName?.trim() || person.firstName} ${person.lastName}`);
         // FORM_NAME_FROM_ROSTER_ENABLED: a person with a preferred name is also known by the legal one.
-        if (formNameFromRosterEnabled()) {
+        // OFF_ROSTER_ASK_BEFORE_CARD_ENABLED too (the switch-on, 9 Nov 2026; found by the sibling app's gate): a roster
+        // person typed by the legal name was asked about as a name not on the roster (`lib/forms/off-roster-ask.ts`).
+        if (formNameFromRosterEnabled() || offRosterAskBeforeCardEnabled()) {
           for (const person of roster) {
             if (person.preferredFirstName?.trim() && person.preferredFirstName.trim() !== person.firstName.trim()) {
               names.push(`${person.firstName} ${person.lastName}`);
@@ -351,7 +437,8 @@ async function postChat(request: Request) {
                 ?.employeeName,
             })
           : false;
-      const parsed = withSwitchAfterCreate(
+      // PROPOSAL_NAME_CORRECTION_ENABLED: "fix her last name …" on a card not yet created. See `lib/forms/proposal-name-correction.ts`.
+      const parsed = withProposalNameCorrection(withSwitchAfterCreate(
         draftAction || staffPick || newRequestOpen
           ? {
               ...asked,
@@ -367,7 +454,7 @@ async function postChat(request: Request) {
                 continueProposalTemplateKey: undefined,
               }
             : asked,
-      );
+      ));
       /*
        * A CORRECTION TO A FORM THIS CONVERSATION ALREADY CREATED — "change her
        * new location to salon 24". Tried first, and only where the browser
@@ -382,7 +469,10 @@ async function postChat(request: Request) {
        * revision paths below; the answer still knows the form is open. See
        * `lib/ai/question-not-form.ts`. Behind QUESTION_NOT_FORM_ENABLED.
        */
-      const askedQuestion = questionNotFormEnabled() && isQuestionNotForm(parsed.question, parsed.history);
+      // LIST_POLICY_IS_EDIT_ENABLED: "please list the policy" with a form open is an edit (EDIT_POLICY_ASK), never a question.
+      const listPolicyEdit =
+        listPolicyIsEditEnabled() && (await import("@/lib/ai/list-policy-ask")).listPolicyIsEdit(parsed.question, Boolean(parsed.activeFormInstanceId));
+      const askedQuestion = !listPolicyEdit && questionNotFormEnabled() && isQuestionNotForm(parsed.question, parsed.history);
       /*
        * STEP B (FORM_PATCH_REDUCER_ENABLED + FORM_REPLY_FROM_DIFF_ENABLED): the
        * open form as saved before this turn, so the reply about it can come
@@ -401,6 +491,21 @@ async function postChat(request: Request) {
               return question && open ? { question, open } : null;
             })()
           : null;
+      /*
+       * FORM_PATCH_READER_FIXES_ENABLED (QA's latency ask, 7 Nov 2026): the Step B reading is started now, so
+       * its model call runs while the steps below do; the patch turn takes it only if its input is the same.
+       * A name correction the app's own reader recognised ("fix her last name, it is …") goes to the
+       * correction path without a reading (QA's re-run: those turns paid for both).
+       */
+      if (formPatchReaderFixesEnabled() && !formEditToolInStreamEnabled() && !askedQuestion && !nameFix && parsed.activeFormInstanceId) {
+        (await import("@/lib/forms/form-patch-turn")).startPatchReading({
+          request,
+          instanceId: parsed.activeFormInstanceId,
+          question: parsed.question,
+          history: parsed.history,
+          today: parsed.context.todayIso,
+        });
+      }
       const correction = parsed.activeFormInstanceId && !askedQuestion
         ? await (await import("@/lib/forms/chat-correction")).correctActiveForm({
             request,
@@ -518,7 +623,7 @@ async function postChat(request: Request) {
        * FORM_EDIT_TOOL_IN_STREAM_ENABLED: skipped; the tool reads the turn instead.
        */
       const patchTurn =
-        formPatchReducerEnabled() && !formEditToolInStreamEnabled() && !correction && !askedQuestion && !policyChange && parsed.activeFormInstanceId
+        formPatchReducerEnabled() && !formEditToolInStreamEnabled() && !correction && !askedQuestion && !policyChange && !(formPatchReaderFixesEnabled() && nameFix) && parsed.activeFormInstanceId
           ? await (await import("@/lib/forms/form-patch-turn")).patchActiveForm({
               request,
               instanceId: parsed.activeFormInstanceId,
@@ -645,7 +750,7 @@ async function postChat(request: Request) {
        * `lib/forms/chat-reopen.ts`.
        */
       const reopened =
-        !sameCopy && !draftAnswer && !correction && !policyChange && !redraft && !revision && mayAskToReopen(parsed.question)
+        !sameCopy && !draftAnswer && !correction && !policyChange && !redraft && !revision && (mayAskToReopen(parsed.question, reopenByAnyOpenVerbEnabled()) || (reopenByAnyOpenVerbEnabled() && answersWhichFormOnFile(parsed.history)))
           ? await (await import("@/lib/forms/chat-reopen")).reopenRequestedForm({
               request,
               question: parsed.question,
@@ -653,6 +758,8 @@ async function postChat(request: Request) {
               today: parsed.context.todayIso,
               activeInstanceId: parsed.activeFormInstanceId,
               continuingTemplateKey: parsed.continueProposalTemplateKey,
+              // REOPEN_NOT_OPEN_FORM_ENABLED: the form open when the turn arrived, read only by that flag.
+              openWhenAsked: asked.activeFormInstanceId,
             })
           : null;
       let toolNothing: Awaited<ReturnType<typeof answerQuestion>> | null = null;
@@ -744,6 +851,27 @@ async function postChat(request: Request) {
       }
       // PERSON_GUARD_ENABLED: whichever reader named the card's employee, a name that is not a person never stays on it.
       if (personGuardEnabled()) answer = (await import("@/lib/forms/person-guard")).withPersonOnCard(answer);
+      // MISSED_SHIFT_CITES_ATTENDANCE_ENABLED: a card whose Policy line is the app's own reading has its Action Plan on that policy (`lib/forms/ca-policy.ts`).
+      if (missedShiftCitesAttendanceEnabled()) answer = (await import("@/lib/forms/ca-policy")).withPlanOnReadPolicy(answer);
+      // POSSESSIVE_PLACE_NOT_PERSON_ENABLED: "<Name>'s … Plaza" never puts "<Name>" on the card (`lib/forms/possessive-place.ts`).
+      if (possessivePlaceNotPersonEnabled()) {
+        answer = (await import("@/lib/forms/possessive-place")).withPossessivePlaceNotPerson(answer, [
+          ...parsed.history.filter((turn) => turn.role === "user").map((turn) => turn.content),
+          asked.question,
+        ]);
+      }
+      // EXIT_FORM_DATE_FROM_TERMINATION_ENABLED: a stated "terminated, effective <date>" dates the exit card (`lib/forms/exit-form-date.ts`).
+      if (exitFormDateFromTerminationEnabled()) {
+        answer = (await import("@/lib/forms/exit-form-date")).withExitFormDateFromTermination(
+          answer,
+          [...parsed.history.filter((turn) => turn.role === "user").map((turn) => turn.content), asked.question],
+          businessToday(),
+        );
+      }
+      // PROPOSAL_NAME_CORRECTION_ENABLED: an off-roster "change her name to …" on the card is never kept silently; with the roster, the card stays for the one roster person it can only be, and a typo is never offered as a person.
+      answer = withCorrectionNotDropped(answer, parsed);
+      // TWO_FORMS_CARD_NOT_ASKED_ENABLED: a card that names its employee is never asked "Which of them … — <that employee> or …?" (`lib/forms/card-not-asked.ts`).
+      if (twoFormsCardNotAskedEnabled()) answer = (await import("@/lib/forms/card-not-asked")).withoutWhichAskOnSeatedCard(answer);
       // ADDRESS_NOT_PERSON_ENABLED: "coaching form for 123 Main Street" names an address, not a person (QA, 3 Nov 2026).
       if (addressNotPersonEnabled())
         answer = (await import("@/lib/forms/person-guard")).withAddressNotPerson(
@@ -777,6 +905,16 @@ async function postChat(request: Request) {
         void _dropped;
         answer = { ...rest, content: rest.content.replace(/\n*Based on what you've described, I can prepare:\s*$/, "").trimEnd() };
       }
+      // OFF_ROSTER_ASK_BEFORE_CARD_ENABLED: a salon manager's card for a full name not on their roster is asked about once, before the card (`lib/forms/off-roster-ask.ts`).
+      if (offRosterAskBeforeCardEnabled()) {
+        answer = (await import("@/lib/forms/off-roster-ask")).withOffRosterAskBeforeCard(answer, { scope: context.identity.scope, history: parsed.history, question: asked.question });
+      }
+      // SAME_FORM_COPY_NEW_PERSON_ENABLED: the named person's card carries the form to copy from.
+      if (newPersonCopy) {
+        answer = (await import("@/lib/forms/same-form-copy")).withCopyFrom(answer, newPersonCopy.source, newPersonCopy.name);
+      }
+      // COPY_OWN_SALON_ENABLED: a card that copies another person's form takes the new person's own salon.
+      if (copyOwnSalonEnabled()) answer = await (await import("@/lib/forms/same-form-copy")).withCopyOwnSalon(answer, request, asked.question);
     } catch (error) {
       /*
        * A FAILED ANSWER IS STILL A RECORDED TURN, closed as a failure. The row
@@ -823,7 +961,8 @@ async function postChat(request: Request) {
       logTurnEvent("turn.answer.missing_turn", { surface, where: "api/chat" });
     }
 
-    return NextResponse.json({ ...answer, turnId });
+    // FINAL_REPLY_MARKER_GUARD_ENABLED: no bare source tag reaches the manager, whatever path answered. See `ai/source-note.ts`.
+    return NextResponse.json({ ...finalReplyWithoutMarkers(answer), turnId });
   } catch (error) {
     return errorResponse(error, "POST /api/chat");
   }
@@ -858,6 +997,10 @@ function parseAskRequest(body: Partial<AskRequest>): AskRequest {
     // An id and nothing more; malformed ones are dropped rather than looked up.
     activeFormInstanceId: UUID.test(String(body.activeFormInstanceId ?? ""))
       ? String(body.activeFormInstanceId)
+      : undefined,
+    // SAME_FORM_COPY_NEW_PERSON_ENABLED: an id and nothing more, re-checked before it is used.
+    pendingCopyFromInstanceId: UUID.test(String(body.pendingCopyFromInstanceId ?? ""))
+      ? String(body.pendingCopyFromInstanceId)
       : undefined,
     // A `conv_*` id and nothing more; anything else is dropped. See `AskRequest`.
     conversationId: isClientConversationId(String(body.conversationId ?? ""))

@@ -1,7 +1,7 @@
-import { reopenVerbGuardEnabled } from "@/lib/config/chat-quality-flags";
+import { reopenByAnyOpenVerbEnabled, reopenVerbGuardEnabled } from "@/lib/config/chat-quality-flags";
 
-import { EDIT_VERB, SHOW_VERB } from "./reopen-cue";
-import { asksAboutForms, detectTemplateIntent, leadingFormRequest } from "./template-intent";
+import { EDIT_VERB, FIND_WORDS, OPEN_WORDS, SHOW_VERB } from "./reopen-cue";
+import { asksAboutForms, detectTemplateIntent, leadingFormRequest, type TemplateIntent } from "./template-intent";
 
 /**
  * ============================================================================
@@ -32,6 +32,17 @@ export interface ReopenRequest {
    * the notice date"), rather than only to open the form.
    */
   asksChange: boolean;
+  /**
+   * REOPEN_BY_ANY_OPEN_VERB_ENABLED: asked for with "bring up", "pull up" or
+   * "open". Opened to edit as "edit" opens it — a finalized form as a new
+   * draft of it — with no change read from the sentence.
+   */
+  opensToEdit?: boolean;
+  /**
+   * REOPEN_BY_ANY_OPEN_VERB_ENABLED: asked for with one of the verbs the flag
+   * adds ("find" shows, the others open). Only for a person named.
+   */
+  byAddedVerb?: boolean;
 }
 
 /*
@@ -67,14 +78,43 @@ const ASKS_FOR_A_DOCUMENT = new RegExp(
 const QUESTION_OPENING =
   /^\s*(?:how|what|why|when|where|which|who|is|are|does|do|did|should|would|will|can\s+(?:i|we|managers?|a\s+manager)|could\s+(?:i|we))\b/i;
 /** The leading request words, so the form's name is what the sentence then opens with. */
-const LEADING_REQUEST = new RegExp(
-  String.raw`^\s*(?:please\s+)?(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?)?(?:i\s+(?:need|want)\s+to\s+|let'?s\s+)?` +
-    String.raw`(?:edit|change|update|correct|fix|revise|redo|re-do|amend|modify|redraft|re-draft|reopen|re-open|unlock|duplicate|copy|show|see|view|display)` +
-    String.raw`(?:\s+me)?(?:\s+(?:the|a|an|her|his|their|my))?(?:\s+(?:draft|copy|version))?(?:\s+of)?(?:\s+(?:the|her|his|their))?\s+`,
+const REQUEST_OPENING = String.raw`^\s*(?:please\s+)?(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?)?(?:i\s+(?:need|want)\s+to\s+|let'?s\s+)?`;
+const REQUEST_VERBS = String.raw`edit|change|update|correct|fix|revise|redo|re-do|amend|modify|redraft|re-draft|reopen|re-open|unlock|duplicate|copy|show|see|view|display`;
+const REQUEST_OBJECT = String.raw`(?:\s+me)?(?:\s+(?:the|a|an|her|his|their|my))?(?:\s+(?:draft|copy|version))?(?:\s+of)?(?:\s+(?:the|her|his|their))?\s+`;
+const LEADING_REQUEST = new RegExp(`${REQUEST_OPENING}(?:${REQUEST_VERBS})${REQUEST_OBJECT}`, "i");
+/*
+ * REOPEN_BY_ANY_OPEN_VERB_ENABLED: the same leading request, with the open
+ * verbs of `reopen-cue.ts`. An open verb counts only here, as the request
+ * itself: "write her up, she didn't open the salon" is no reopen.
+ */
+const LEADING_REQUEST_ANY_OPEN = new RegExp(`${REQUEST_OPENING}(?:${REQUEST_VERBS}|${OPEN_WORDS}|${FIND_WORDS})${REQUEST_OBJECT}`, "i");
+const LEADS_WITH_AN_OPEN_VERB = new RegExp(`${REQUEST_OPENING}(?:${OPEN_WORDS})\\b`, "i");
+const LEADS_WITH_FIND = new RegExp(`${REQUEST_OPENING}(?:${FIND_WORDS})\\b`, "i");
+/*
+ * QA decision (c), 6 Nov 2026: "open a CA for <name>" STARTS a new one. After
+ * an added verb, an indefinite article before the form means a new form; a
+ * definite or possessive one ("the", "her", "my", "<name>'s") a form on file.
+ * An indefinite one followed by one of these words still points at a form on
+ * file ("bring up an old coaching form", "a previously edited corrective
+ * action"): the one small list of them.
+ */
+const EARLIER_WORDS = String.raw`old|older|previous|previously|last|earlier|existing`;
+const ADDED_VERB_THEN_A_NEW_ONE = new RegExp(
+  `${REQUEST_OPENING}(?:${OPEN_WORDS}|${FIND_WORDS})\\s+(?:me\\s+)?(?:a|an)\\s+(?!(?:${EARLIER_WORDS})\\b)`,
   "i",
 );
 /** Words that point at a form when none is named: "edit the form", "show the draft". */
 const POINTS_AT_A_FORM = /\b(?:form|draft|paperwork)\b/i;
+
+/**
+ * REOPEN_NOT_OPEN_FORM_ENABLED (QA's Sunny round-4 gate, 8 Nov 2026): the reopen verb is the request itself, at the start
+ * of the turn ("show me the draft", "open her CA", "edit the form"), never a word inside an edit instruction ("the
+ * Must see behaviors … Make it in the format …").
+ */
+export function leadsWithReopenRequest(question: string): boolean {
+  const text = (question ?? "").replace(/\s+/g, " ").trim();
+  return LEADING_REQUEST_ANY_OPEN.test(text) || LEADING_REQUEST.test(text) || LEADS_WITH_AN_OPEN_VERB.test(text);
+}
 
 export function readReopenRequest(question: string): ReopenRequest | null {
   const text = (question ?? "").replace(/\s+/g, " ").trim();
@@ -85,32 +125,54 @@ export function readReopenRequest(question: string): ReopenRequest | null {
   if (guarded && ASKS_FOR_A_DOCUMENT.test(text)) return null;
   const verbs = guarded ? text.replace(INCIDENT_WITH_A_VERB, " ") : text;
 
+  const anyOpenVerb = reopenByAnyOpenVerbEnabled();
   const edit = EDIT_VERB.test(verbs);
-  const show = !edit && SHOW_VERB.test(verbs);
-  if (!edit && !show) return null;
-  if (asksAboutForms(text) && !LEADING_REQUEST.test(text)) return null;
+  const finds = anyOpenVerb && !edit && !SHOW_VERB.test(verbs) && LEADS_WITH_FIND.test(text);
+  const show = !edit && (SHOW_VERB.test(verbs) || finds);
+  const opens = anyOpenVerb && !edit && !show && LEADS_WITH_AN_OPEN_VERB.test(text);
+  if (!edit && !show && !opens) return null;
+  if ((opens || finds) && ADDED_VERB_THEN_A_NEW_ONE.test(text)) return null;
+  const leading = anyOpenVerb ? LEADING_REQUEST_ANY_OPEN : LEADING_REQUEST;
+  if (asksAboutForms(text) && !leading.test(text)) return null;
 
-  const templateKey = templateNamed(text);
+  const templateKey = templateNamed(text, anyOpenVerb);
   if (!templateKey && !POINTS_AT_A_FORM.test(text)) return null;
 
   return {
     mode: edit ? "edit" : "show",
     templateKey,
     asksChange: edit && asksForAChange(text),
+    ...(opens ? { opensToEdit: true } : {}),
+    ...(opens || finds ? { byAddedVerb: true } : {}),
   };
 }
 
-/** The template a sentence names, read as the proposal flow reads one. */
-function templateNamed(text: string): string | null {
+/**
+ * The template a sentence names, read as the proposal flow reads one.
+ *
+ * `anyKind` (REOPEN_BY_ANY_OPEN_VERB_ENABLED): "Change <name> CA", "bring up
+ * <name>'s corrective action" name the Corrective Action Form too, though the
+ * intent reader calls them the progression (it cannot tell a form on file from
+ * the process); and "coach <name>" names the Coaching Form it would ask about.
+ */
+function templateNamed(text: string, anyKind = false): string | null {
   const direct = detectTemplateIntent(text);
   if (direct.kind === "explicit") return direct.templateKey;
-  const rest = text.replace(LEADING_REQUEST, "");
-  if (rest !== text) {
-    const stripped = detectTemplateIntent(rest);
+  const rest = text.replace(anyKind ? LEADING_REQUEST_ANY_OPEN : LEADING_REQUEST, "");
+  const stripped = rest !== text ? detectTemplateIntent(rest) : null;
+  if (stripped) {
     if (stripped.kind === "explicit") return stripped.templateKey;
     const leading = leadingFormRequest(rest);
     if (leading) return leading.templateKey;
   }
+  if (!anyKind) return null;
+  return templateOf(direct) ?? (stripped ? templateOf(stripped) : null);
+}
+
+/** The template a non-explicit reading still names: the Corrective Action Form for the progression, as the intake reads it. */
+function templateOf(intent: TemplateIntent): string | null {
+  if (intent.kind === "corrective_action") return "dpoa";
+  if (intent.kind === "clarify") return intent.templateKey;
   return null;
 }
 

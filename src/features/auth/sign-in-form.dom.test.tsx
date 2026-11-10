@@ -390,3 +390,20 @@ describe("a successful sign-in accepts a stuck invitation (NEXT_PUBLIC_INVITED_S
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+describe("the show-password toggle", () => {
+  it("reveals and re-hides the password without submitting the form", () => {
+    render(<SignInForm />);
+    const field = screen.getByLabelText(/^Password$/i) as HTMLInputElement;
+    fireEvent.change(field, { target: { value: PASSWORD } });
+    expect(field.type).toBe("password");
+
+    fireEvent.click(screen.getByRole("button", { name: /Show password/i }));
+    expect(field.type).toBe("text");
+    expect(field.value).toBe(PASSWORD);
+
+    fireEvent.click(screen.getByRole("button", { name: /Hide password/i }));
+    expect(field.type).toBe("password");
+    expect(supabase.signInWithPassword).not.toHaveBeenCalled();
+  });
+});

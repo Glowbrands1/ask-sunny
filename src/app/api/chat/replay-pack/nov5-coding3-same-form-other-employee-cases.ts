@@ -109,7 +109,9 @@ export const NOV5_CODING3_SAME_FORM_OTHER_EMPLOYEE_CASES: readonly ReplayCase[] 
     title: "(b) with Liora's own Coaching draft open, \"can you create the same draft that we did with Liora Pellow by changing the name and position?\" — never a card for Liora, her draft untouched",
     report: `${REPORT_B}; Liora's own draft open, the new person not named yet`,
     // Run 5 Nov 2026 (production flags): INTENT_EXTRACTION_ENABLED reads the turn as a Coaching request for Liora — a second card for her.
-    status: { open: "a second Coaching card for Liora Pellow (the form to copy FROM): the copy finds no source but the open draft's own person, and the intent reader makes the turn a new request for her" },
+    // Changed on purpose (8 Nov 2026): QA's flip 9 (00:59 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+    status: "fixed",
+    fixFlags: ["SAME_FORM_COPY_NEW_PERSON_ENABLED"],
     async run(t) {
       const thread = start(t);
       const liora = await lioraDraft(t, thread);
@@ -126,7 +128,9 @@ export const NOV5_CODING3_SAME_FORM_OTHER_EMPLOYEE_CASES: readonly ReplayCase[] 
     title: "(b) \"can you create the same draft that we did with Liora Pellow by changing the name and position?\" → \"Teodric Sabrin\" → Create: Teodric's draft carries Liora's Details, his name and his own position",
     report: `${REPORT_B}; then the new person's name, then Create`,
     // Run 5 Nov 2026 (production flags): Teodric's card comes, but Create drafts it from "Teodric Sabrin" alone — Liora's Details are not copied.
-    status: { open: "Teodric Sabrin's created draft has none of Liora Pellow's Details: Create copies only when the card's own request turn asks for \"the same draft\"" },
+    // Changed on purpose (8 Nov 2026): QA's flip 9 (00:59 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+    status: "fixed",
+    fixFlags: ["SAME_FORM_COPY_NEW_PERSON_ENABLED"],
     async run(t) {
       const thread = start(t);
       const liora = await lioraDraft(t, thread);

@@ -276,7 +276,37 @@ export function normalizePayrollWording(text: string): string {
  * typed. Read by `payrollDeductAmount` (Pau, 30 Oct 2026: "Ok amount line").
  */
 export function payrollAmountWording(text: string): string {
-  return caShortcutWordsOn() ? normalizePayrollWording(text) : text;
+  const said = payrollAmountSameMessageOn() ? joinReferredAmount(text) : text;
+  return caShortcutWordsOn() ? normalizePayrollWording(said) : said;
+}
+
+/**
+ * ============================================================================
+ * AN AMOUNT, THEN "WHICH WILL BE PAYROLL DEDUCTED"
+ * (PAYROLL_AMOUNT_SAME_MESSAGE_ENABLED, default off; the sibling app's live chat, 5 Nov 2026)
+ * ============================================================================
+ *
+ * "on 11-1-26 the register was off $20. which will be payroll deducted from
+ * <name>'s check. … payroll deduct applies" was asked "**Payroll deduction
+ * amount**?": a relative word ("which", "that", "this", "it") — and a stray
+ * full stop — stood between the figure and "will be payroll deducted", which
+ * the amount reader reads as "$20 will be payroll deducted". Nothing new is
+ * read as money: the words between are dropped, and the same reader decides
+ * whether the figure is an amount and the clause a deduction. Only when the
+ * clause reaches "deduct" within three words. Off, the text as typed.
+ */
+const REFERS_BACK =
+  /(\d(?:[\d,]*\d)?(?:\.\d{1,2})?(?:\s*(?:dollars?|bucks))?)\s*[.,;:–—-]?\s+(?:and\s+)?(?:which|that|this|it)\s+(?=(?:\S+\s+){0,3}?(?:payroll[- ]?\s*)?deduct)/gi;
+
+/** The text with each "<amount>. which will be … deducted" joined to "<amount> will be … deducted". */
+export function joinReferredAmount(text: string): string {
+  return (text ?? "").replace(REFERS_BACK, "$1 ");
+}
+
+/** PAYROLL_AMOUNT_SAME_MESSAGE_ENABLED, read here as CA_SHORTCUT_WORDS_ENABLED is: this file imports nothing. */
+function payrollAmountSameMessageOn(): boolean {
+  const raw = typeof process === "undefined" ? undefined : process.env.PAYROLL_AMOUNT_SAME_MESSAGE_ENABLED;
+  return typeof raw === "string" && ["1", "true", "on", "yes"].includes(raw.trim().toLowerCase());
 }
 
 export function payrollDeductUnclear(text: string): boolean {

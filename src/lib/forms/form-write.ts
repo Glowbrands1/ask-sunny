@@ -3,7 +3,7 @@ import "server-only";
 import type { AskResponse } from "@/lib/ai/types";
 import { payrollAmounts } from "@/lib/ai/intent-slots";
 import { businessToday } from "@/lib/business-date";
-import { formEditNoopGuardEnabled } from "@/lib/config/chat-quality-flags";
+import { formEditNoopGuardEnabled, formPatchReaderFixesEnabled, madeAboutAllOrNothingEnabled, stepBMakeItAboutAccountEnabled } from "@/lib/config/chat-quality-flags";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { isGlossaryTerm } from "@/lib/ai/chat-glossary";
 
@@ -11,6 +11,7 @@ import { syncCorrectiveActionPlan } from "./ca-action-plan-sync";
 import { checkboxGroupsForVariant, fieldsForVariant, parseFormDocument } from "./document";
 import { NOTHING_CHANGED } from "./form-diff-reply";
 import { datesInText } from "./form-date-answer";
+import { madeAboutDate, madeAboutWriteNoted } from "./made-about-date";
 import {
   applyPatch,
   sameValue,
@@ -24,7 +25,7 @@ import {
   type Refusal,
 } from "./form-reducer";
 import { MANAGER_STATED_KEYS, draftDates, statedDates, templateRules, writeInsOf } from "./form-reducer-draft";
-import { HEADER_KEYS, checkedClaim, snapshotDiff, snapshotOf, type FormSnapshot } from "./form-snapshot";
+import { HEADER_KEYS, checkedClaim, formLabels, snapshotDiff, snapshotOf, type FormSnapshot } from "./form-snapshot";
 import {
   applyAssistantDraft,
   applyAssistantRevision,
@@ -34,6 +35,7 @@ import {
   type LoadedInstance,
 } from "./instances";
 import { NO_PRIOR_ACTION, PRIOR_ACTIONS_KEY } from "./prior-actions";
+import { takeReaderFoundNothing } from "./reader-found-nothing";
 import { draftableCheckboxGroups, draftableFields, type DraftValues } from "./responsibility";
 import { copiedContent } from "./same-form-copy";
 
@@ -125,6 +127,8 @@ export interface FormEditOp {
   readonly by?: FormEditWriter;
   /** The words the value came from (the patch turn's model). Default: the latest message. */
   readonly evidence?: string;
+  /** FORM_PATCH_READER_FIXES_ENABLED: a "set" that rewords the field's text (the reducer's how "reword"). */
+  readonly reword?: boolean;
 }
 
 export interface FormEditRules {
@@ -163,6 +167,11 @@ export interface FormEditRules {
     readonly amountSentence?: boolean;
     readonly loaded?: LoadedInstance;
   };
+  /**
+   * FORM_PATCH_READER_FIXES_ENABLED (patch path): the form's own name and text count as said, and these
+   * keys take only words of the latest message (the reducer's `faithful` and `verbatimKeys`).
+   */
+  readonly readerFixes?: { readonly employeeName: string; readonly formText: string; readonly verbatimKeys: ReadonlySet<string> };
 }
 
 /** What the old writers returned, so a call site keeps its own reply code. */
@@ -254,7 +263,7 @@ const NOOP_GUARDED_PATHS: ReadonlySet<FormEditPath> = new Set(["tool", "patch", 
 
 /** The reducer's rules for the path. */
 export function presetRules(loaded: LoadedInstance, ops: readonly FormEditOp[], rules: FormEditRules): { patchRules: PatchRules; writable: ReadonlySet<string> } {
-  const preset = basePresetRules(loaded, ops, rules);
+  const preset = withReaderFoundNothing(loaded, rules, basePresetRules(loaded, ops, rules));
   if (!NOOP_GUARDED_PATHS.has(rules.path) || !formEditNoopGuardEnabled()) return preset;
   /*
    * A correction states facts its readers read, a restated one beside the
@@ -269,12 +278,54 @@ export function presetRules(loaded: LoadedInstance, ops: readonly FormEditOp[], 
   return { ...preset, patchRules: { ...preset.patchRules, refuseSameValue, copiesMessage: rules.latest ?? "" } };
 }
 
+/**
+ * FORM_PATCH_READER_FIXES_ENABLED (QA's live run, 7 Nov 2026): when Step B's reader found nothing to write in
+ * this message, the revision that runs next may not write text that adds nothing new (`nothingNewFrom`).
+ */
+function withReaderFoundNothing(
+  loaded: LoadedInstance,
+  rules: FormEditRules,
+  preset: { patchRules: PatchRules; writable: ReadonlySet<string> },
+): { patchRules: PatchRules; writable: ReadonlySet<string> } {
+  if (!formPatchReaderFixesEnabled()) return preset;
+  // QA's 2x run: what the field already says is never written again, on any path that writes her edit.
+  if (rules.path === "open_draft" || rules.path === "tool") return { ...preset, patchRules: { ...preset.patchRules, noRepeat: true } };
+  if (rules.path !== "revision" && rules.path !== "patch") return preset;
+  // The instruction written back as content is refused on both paths (QA's stability run: "Details about the towel.").
+  const echoOf = { latest: rules.latest ?? "", name: loaded.instance.employeeName ?? "", formWords: formWordsOf(loaded) };
+  const handedOff = rules.path === "revision" ? takeReaderFoundNothing(loaded.instance.id) : null;
+  return {
+    ...preset,
+    patchRules: {
+      ...preset.patchRules,
+      echoOf,
+      noRepeat: true,
+      ...(handedOff?.nothing ? { nothingNewFrom: rules.latest ?? "" } : {}),
+      ...(handedOff && Object.keys(handedOff.evidence).length > 0 ? { readerEvidence: handedOff.evidence } : {}),
+    },
+  };
+}
+
+/** Per key: the field's own label (FORM_PATCH_READER_FIXES_ENABLED's `echoOf` reads its head word). */
+export function formWordsOf(loaded: LoadedInstance): Record<string, string> {
+  return Object.fromEntries(Object.entries(formLabels(loaded)).map(([key, label]) => [key, label]));
+}
+
 function basePresetRules(loaded: LoadedInstance, ops: readonly FormEditOp[], rules: FormEditRules): { patchRules: PatchRules; writable: ReadonlySet<string> } {
   const today = rules.today ?? businessToday();
   const latest = rules.latest ?? "";
   // A draft is written from all of the manager's notes: on a draft path they are what names a value that may change.
   const drafts = !["correction", "reopen", "patch", "tool", "revision"].includes(rules.path);
-  const guard = protectedValuesFor(loaded, drafts ? [latest, rules.notes ?? ""].join("\n") : latest, today, rules.named);
+  const read = protectedValuesFor(loaded, drafts ? [latest, rules.notes ?? ""].join("\n") : latest, today, rules.named);
+  /*
+   * STEP_B_MAKE_IT_ABOUT_ACCOUNT_ENABLED (ported from Ask Bubbles; QA's live round-6 trace there, 9 Nov 2026): "make it
+   * about leaving the front desk unattended on 11/6/26" is a new account told with its own date. The revision's rewrite
+   * follows that date, so the old account's date (the form's Date) may go; the Date itself is written by Step B with the
+   * account. MADE_ABOUT_ALL_OR_NOTHING_ENABLED: only while Step B writes the Date and the topic with it.
+   */
+  const coordinatedWrite = !madeAboutAllOrNothingEnabled() || madeAboutWriteNoted(loaded.instance.id);
+  const aboutDate = rules.path === "revision" && stepBMakeItAboutAccountEnabled() && coordinatedWrite ? madeAboutDate(latest, today) : null;
+  const guard = aboutDate ? { ...read, formDate: aboutDate } : read;
   const writeIns = writeInsOf(loaded);
   const groups = groupsOf(loaded);
   const lists = new Set([PRIOR_ACTIONS_KEY]);
@@ -336,6 +387,12 @@ function basePresetRules(loaded: LoadedInstance, ops: readonly FormEditOp[], rul
           keepsUnnamedWords: true,
           writeIns,
           protectedValues: guard,
+          ...(rules.readerFixes
+            ? {
+                faithful: { employeeName: rules.readerFixes.employeeName, formText: rules.readerFixes.formText, latest },
+                verbatimKeys: rules.readerFixes.verbatimKeys,
+              }
+            : {}),
           sources: {
             manager: turns.join("\n"),
             managerTurns: turns,
@@ -447,7 +504,7 @@ export async function writeFormEdits(instanceId: string, ops: readonly FormEditO
   const derivedOps: FormEditOp[] = [];
   const set: Record<string, FieldValue> = {};
   const clear: string[] = [];
-  const how: Record<string, "add" | "replace"> = {};
+  const how: Record<string, "add" | "replace" | "reword"> = {};
   const evidence: Record<string, string> = {};
   for (const op of ops) {
     const passes = op.derived === true || (patchRules.mode === "draft" && !writable.has(op.field));
@@ -458,7 +515,7 @@ export async function writeFormEdits(instanceId: string, ops: readonly FormEditO
     if (op.op === "clear") clear.push(op.field);
     else {
       set[op.field] = op.value ?? "";
-      how[op.field] = op.op === "append" ? "add" : "replace";
+      how[op.field] = op.op === "append" ? "add" : op.reword ? "reword" : "replace";
     }
     evidence[op.field] = op.evidence ?? latest;
   }

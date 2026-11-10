@@ -50,7 +50,8 @@ export function ReviewsTabs({
          * two strips rather than one. The container scrolls; the page never
          * moves sideways.
          */
-        "scroll-slim flex items-center gap-1 overflow-x-auto border-b border-border-strong bg-background px-5 sm:px-6",
+        /* CLAY: a pressed-in pill bar, inset to line up with the clay band above. */
+        "scroll-slim mx-3 mt-3 flex items-center gap-1 overflow-x-auto rounded-full bg-surface-muted p-1.5 shadow-dent sm:mx-4",
         className,
       )}
     >
@@ -66,10 +67,12 @@ export function ReviewsTabs({
               /* The active view takes the 3px brand-yellow underline the
                  reports strip uses, so "which level of the page am I on" reads
                  the same way in both places. */
-              "-mb-px shrink-0 border-b-[3px] px-3.5 py-3.5 text-[10px] font-black tracking-[0.1em] whitespace-nowrap uppercase transition-colors",
+              "shrink-0 rounded-full px-4 py-2.5 text-[10px] font-black tracking-[0.1em] whitespace-nowrap uppercase transition-[color,background-color,box-shadow]",
               current
-                ? "border-brand-yellow text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground",
+                /* CLAY: the active view is a raised yellow pill rather than a
+                   3px underline — still the one yellow "which level am I on". */
+                ? "bg-brand-yellow text-brand-yellow-foreground clay-fill"
+                : "text-muted-foreground hover:bg-surface hover:text-foreground",
             )}
           >
             {tab.label}

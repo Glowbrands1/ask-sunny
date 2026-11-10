@@ -3,7 +3,8 @@ import "server-only";
 import { PRODUCTION_SALONS } from "@/data/salons";
 import type { AccessScope } from "@/types";
 
-import { ambiguousSalonNumbers, readSalonMentions, rosterSalonName } from "./salon-mention";
+import { placeMentions } from "./place-from-cue";
+import { ambiguousSalonNumbers, rosterSalonName } from "./salon-mention";
 
 /**
  * ============================================================================
@@ -287,7 +288,7 @@ export function proposeLocation(
  *                               substituted for the one they actually named.
  */
 function fromNamedSalons(allowed: readonly string[], managerText: string): LocationProposal | null {
-  const mentions = readSalonMentions(managerText);
+  const mentions = placeMentions(managerText);
   if (mentions.length === 0) return null;
 
   const named = [...new Set(mentions.flatMap((mention) => mention.salonIds))];

@@ -69,7 +69,8 @@ export const NOV4_CA_CLEANING_CASES: ReplayCase[] = [
     id: "nov4-cleaning-tanning-beds-not-conduct",
     title: "\"the tanning beds were left dirty at close\": the model's Standards of Conduct tick moves to Other, no Standards of Conduct citation",
     report: `${REPORT}: QA's live wording`,
-    status: { open: "with production's flags the model's Standards of Conduct tick stands and is cited (p.12)" },
+    // Changed on purpose (7 Nov 2026): QA's flips of 5 and 6 Nov turned CA_SALES_POLICY, REPLY_MATCHES_CARD, TITLE_OF_THE_EMPLOYEE, METRIC_GUARD, TITLE_ENDS_AT_LINE, BARE_NOT_DENIAL and PLACE_FROM_CUE on in production (production-flags.json); this case now holds with production's flags.
+    status: "fixed",
     fixFlags: [FLAG],
     async run(t) {
       const thread = start(t);
@@ -86,7 +87,8 @@ export const NOV4_CA_CLEANING_CASES: ReplayCase[] = [
     id: "nov4-cleaning-negative-no-basis",
     title: "no offense_basis from the model: cleaning left undone still moves the Standards of Conduct tick to Other (Pau's cleaning ruling; QA sf-s15, 5 Nov 2026)",
     report: `${REPORT}: no basis — changed on purpose by Pau's cleaning ruling`,
-    status: { open: "with production's flags (CA_SALES_POLICY_ENABLED off) the model's Standards of Conduct tick stands" },
+    // Changed on purpose (7 Nov 2026): QA's flips of 5 and 6 Nov turned CA_SALES_POLICY, REPLY_MATCHES_CARD, TITLE_OF_THE_EMPLOYEE, METRIC_GUARD, TITLE_ENDS_AT_LINE, BARE_NOT_DENIAL and PLACE_FROM_CUE on in production (production-flags.json); this case now holds with production's flags.
+    status: "fixed",
     fixFlags: [FLAG],
     async run(t) {
       const thread = start(t);
@@ -165,7 +167,8 @@ export const NOV4_CA_CLEANING_CASES: ReplayCase[] = [
     id: "nov4-cleaning-basis-upkeep-duties",
     title: "\"did not complete daily cleaning duties\" with the model's upkeep basis: Other",
     report: `${REPORT}: Pau's wording, with offense_basis`,
-    status: { open: "with production's flags the task reading ticks and cites the Standards of Conduct" },
+    // Changed on purpose (7 Nov 2026): QA's flips of 5 and 6 Nov turned CA_SALES_POLICY, REPLY_MATCHES_CARD, TITLE_OF_THE_EMPLOYEE, METRIC_GUARD, TITLE_ENDS_AT_LINE, BARE_NOT_DENIAL and PLACE_FROM_CUE on in production (production-flags.json); this case now holds with production's flags.
+    status: "fixed",
     // The fix-flag run holds with #558: the fill follows the ticked box.
     fixFlags: [FLAG],
     async run(t) {
