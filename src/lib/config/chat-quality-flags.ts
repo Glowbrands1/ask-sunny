@@ -3895,4 +3895,13 @@ export function levelAfterFormNameEnabled(): boolean {
  */
 export function teamCardNotProductEnabled(): boolean {
   return envFlag("TEAM_CARD_NOT_PRODUCT_ENABLED");
+ * PAYROLL_SPLIT_WORDS_ENABLED (coding 6, 10 Nov 2026; default off; sf-s23,
+ * Pau 5 Nov 2026). "not pay roll deductable" was not read as the payroll
+ * answer: the card asked again and put it in the Observation. On, the
+ * payroll reader reads "pay roll" as "payroll" and "deductable" /
+ * "deductible" as "deduct". Read in `forms/payroll-deduct-answer.ts` (which
+ * imports nothing). Off, as before.
+ */
+export function payrollSplitWordsEnabled(): boolean {
+  return envFlag("PAYROLL_SPLIT_WORDS_ENABLED");
 }
