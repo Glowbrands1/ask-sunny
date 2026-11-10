@@ -35,6 +35,7 @@ import {
   questionNotFormEnabled,
   sameFormCopyEnabled,
   sameFormCopyNewPersonEnabled,
+  addressOnlyAsksWhoEnabled,
   copyOwnSalonEnabled,
   secondFormEnabled,
   staffPickerBareAnswerEnabled,
@@ -905,6 +906,8 @@ async function postChat(request: Request) {
         void _dropped;
         answer = { ...rest, content: rest.content.replace(/\n*Based on what you've described, I can prepare:\s*$/, "").trimEnd() };
       }
+      // ADDRESS_ONLY_ASKS_WHO_ENABLED: "Corrective action for 123 Main Street" asks who, never a policy answer (`lib/forms/address-only-asks-who.ts`).
+      if (addressOnlyAsksWhoEnabled()) answer = (await import("@/lib/forms/address-only-asks-who")).withAddressOnlyAsksWho(answer, parsed.question);
       // OFF_ROSTER_ASK_BEFORE_CARD_ENABLED: a salon manager's card for a full name not on their roster is asked about once, before the card (`lib/forms/off-roster-ask.ts`).
       if (offRosterAskBeforeCardEnabled()) {
         answer = (await import("@/lib/forms/off-roster-ask")).withOffRosterAskBeforeCard(answer, { scope: context.identity.scope, history: parsed.history, question: asked.question });

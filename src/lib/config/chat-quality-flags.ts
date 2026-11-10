@@ -3860,3 +3860,16 @@ export function madeAboutPolicyLineEnabled(): boolean {
 export function madeAboutReaderAccountEnabled(): boolean {
   return envFlag("MADE_ABOUT_READER_ACCOUNT_ENABLED");
 }
+
+/**
+ * ADDRESS_ONLY_ASKS_WHO_ENABLED (coding 6, 10 Nov 2026; default off; QA, 4
+ * Nov 2026). "Corrective action for 123 Main Street" made no card (the
+ * street-address guards hold) but was answered as a policy question that
+ * never asked who the form is for. On: a request that is only a form's name
+ * and "for <house number> <street>", answered with no card, gets the address
+ * guard's question ("Who is this … for? "Main Street" reads as a street
+ * address …"). See `forms/address-only-asks-who.ts`. Off, as before.
+ */
+export function addressOnlyAsksWhoEnabled(): boolean {
+  return envFlag("ADDRESS_ONLY_ASKS_WHO_ENABLED");
+}
