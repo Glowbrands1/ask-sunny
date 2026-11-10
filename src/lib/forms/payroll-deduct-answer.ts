@@ -230,6 +230,21 @@ function caShortcutWordsOn(): boolean {
   return typeof raw === "string" && ["1", "true", "on", "yes"].includes(raw.trim().toLowerCase());
 }
 
+/**
+ * PAYROLL_SPLIT_WORDS_ENABLED (coding 6, 10 Nov 2026; QA's sf-s23, Pau 5 Nov 2026): "not pay roll deductable" answered
+ * the payroll question, and the card asked it again and put the answer in the Observation. "pay roll" is "payroll",
+ * and "deductable" / "deductible" is "deduct", so "not payroll deduct" is read as the No it is. Read here, as
+ * CA_SHORTCUT_WORDS is, because this module imports nothing. Off, as before.
+ */
+function payrollSplitWordsOn(): boolean {
+  const raw = typeof process === "undefined" ? undefined : process.env.PAYROLL_SPLIT_WORDS_ENABLED;
+  return typeof raw === "string" && ["1", "true", "on", "yes"].includes(raw.trim().toLowerCase());
+}
+
+function withPayrollSplitWords(text: string): string {
+  return text.replace(/\bpay\s+roll\b/g, "payroll").replace(/\bdeduct[ai]ble\b/g, "deduct");
+}
+
 /** Lower case, curly quotes straightened, "payroll-deduct" spaced — the text the patterns read. */
 export function normalizePayrollWording(text: string): string {
   const read = (text ?? "")
@@ -239,9 +254,9 @@ export function normalizePayrollWording(text: string): string {
     .replace(/[‐‑–—]/g, "-")
     .replace(/\bpayroll-deduct/g, "payroll deduct")
     .replace(/[^\S\n]+/g, " ");
-  if (!caShortcutWordsOn()) return read;
+  if (!caShortcutWordsOn()) return payrollSplitWordsOn() ? withPayrollSplitWords(read) : read;
   return (
-    read
+    (payrollSplitWordsOn() ? withPayrollSplitWords(read) : read)
       // CA_SHORTCUT_WORDS_ENABLED: "no PD", "PD applies", "pd yes", "PD $25" — the form's own abbreviation.
       .replace(/\bp\.?\s?d\.?(?=\s|:|=|-|,|;|\.|!|$)/g, "payroll deduct")
       // "deduct 25", "payroll deduct 25" — an amount with no dollar sign, not a time or a count.
