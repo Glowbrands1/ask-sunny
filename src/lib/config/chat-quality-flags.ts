@@ -2665,6 +2665,16 @@ export function policyTopicIntoFieldEnabled(): boolean {
   return envFlag("POLICY_TOPIC_INTO_FIELD_ENABLED");
 }
 
+/**
+ * EXIT_TYPO_WORDS_ENABLED (Pau's P17, Sunny production, 10 Nov 2026; coding 5; same flag in both apps; default off).
+ * "salon items will be returneded … they are eligiable for rehire" left Store Items Returned and Eligible for Rehire
+ * blank. On: the exit answer readers read a word one or two letters off "returned", "eligible", "rehire" and the like as
+ * that word (`forms/exit-details.ts`). Off, as before.
+ */
+export function exitTypoWordsEnabled(): boolean {
+  return envFlag("EXIT_TYPO_WORDS_ENABLED");
+}
+
 // --- end coding 5 flags ---
 
 /**
