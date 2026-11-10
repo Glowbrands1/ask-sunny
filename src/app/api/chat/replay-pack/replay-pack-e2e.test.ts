@@ -201,7 +201,7 @@ vi.mock("@/lib/auth/server", async () => {
       }
       return {
         identity: {
-          subject: "qa-manager",
+          subject: (state as { subject?: string }).subject ?? "qa-manager",
           email: "qa-manager@example.test",
           displayName: "QA Manager",
           role,
@@ -607,6 +607,20 @@ class Thread {
     this.instanceId = toUuid(result.reference.instanceId);
     return this.instanceId;
   }
+
+  /** Create from the latest card for this person, as pressing Create on that card does (an earlier card still on screen). */
+  async createCard(employeeName: string): Promise<string> {
+    const message = [...this.messages].reverse().find((entry) => entry.formProposal?.employeeName === employeeName);
+    expect(message?.formProposal, `no card for ${employeeName} to create from`).toBeTruthy();
+    const result = await createInlineForm({ proposal: message!.formProposal!, messages: this.messages, call, onCreated: () => {} });
+    this.instanceId = toUuid(result.reference.instanceId);
+    return this.instanceId;
+  }
+
+  /** The chat as the browser holds it (for the browser's own readers). */
+  get conversation() {
+    return this.messages;
+  }
 }
 
 
@@ -715,14 +729,19 @@ function setScope(scope: unknown) {
 function setRole(role: string | undefined) {
   (state as { role?: string }).role = role;
 }
+function setSubject(subject: string | undefined) {
+  (state as { subject?: string }).subject = subject;
+}
 afterEach(() => {
   setScope(undefined);
   setRole(undefined);
+  setSubject(undefined);
   said.answer = null;
   editTool.input = null;
   editTool.offered = 0;
   editTool.lastData = null;
   draftAsked.length = 0;
+  revisionAsked.length = 0;
   draftSystemAsked.length = 0;
   draftToolsAsked.length = 0;
 });
@@ -730,9 +749,10 @@ afterEach(() => {
 function context(): ReplayContext {
   return {
     thread: () => new Thread(),
-    as: (role, scope) => {
+    as: (role, scope, subject) => {
       setRole(role);
       setScope(scope);
+      setSubject(subject);
     },
     directory: (rows) => {
       state.directory = rows as never;
@@ -781,6 +801,7 @@ function context(): ReplayContext {
     calls: () => ({ chat: state.chatModelCalls, draft: state.draftCalls, revision: state.revisionCalls, tool: state.toolCalls, patch: patchScript.calls }),
     forms: () => store.form_instances as never,
     draftPrompts: () => [...draftAsked],
+    revisionPrompts: () => [...revisionAsked],
     draftSystems: () => [...draftSystemAsked],
     draftTools: () => [...draftToolsAsked],
     redraft: (instanceId, notes) =>

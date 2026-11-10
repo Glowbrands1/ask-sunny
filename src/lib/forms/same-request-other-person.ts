@@ -1,7 +1,8 @@
 import type { AskResponse } from "@/lib/ai/types";
 import type { ChatMessage } from "@/types";
-import { sameRequestOtherPersonEnabled } from "@/lib/config/chat-quality-flags";
+import { sameRequestCarriesAccountEnabled, sameRequestKeepsEarlierCardEnabled, sameRequestOtherPersonEnabled } from "@/lib/config/chat-quality-flags";
 import { displayName, rosterNameNamedIn, type RosterEmployee } from "@/lib/forms/employee-match";
+import { EARLIER_CARD_STAYS } from "@/lib/forms/proposal-continuation";
 
 /**
  * ============================================================================
@@ -307,14 +308,46 @@ export function withSameRequestNote(answer: AskResponse, turn: SameRequestTurn):
   const lead = new RegExp(`^\\s*${words(turn.name).map(escaped).join("\\s+")}\\s*[.,:;-]\\s*`, "i");
   const said = turn.carried.replace(lead, "").replace(/\s*\n+\s*/g, " ").trim();
   if (!said) return answer;
-  const note = `A new card for **${turn.name}**, from your earlier request: "${said}". The earlier card or form stays as it is.`;
+  const note = `A new card for **${turn.name}**, from your earlier request: "${said}". ${EARLIER_CARD_STAYS}`;
   // The draft is written from the earlier request's turns, read with <B>'s name (`notesForOtherPerson`), and this one.
   const sources = [...turn.sourceIds.filter((id) => !card.sourceMessageIds.includes(id)), ...card.sourceMessageIds];
+  const noted = answer.content.includes(note) ? answer.content : `${note}\n\n${answer.content}`;
   return {
     ...answer,
-    content: answer.content.includes(note) ? answer.content : `${note}\n\n${answer.content}`,
+    content: sameRequestCarriesAccountEnabled() ? withCarriedObservation(noted, carriedAccount(said, turn.name)) : noted,
     formProposal: { ...card, sourceMessageIds: sources },
   };
+}
+
+/*
+ * SAME_REQUEST_CARRIES_ACCOUNT_ENABLED (QA's Sunny r19 live check): <B>'s card shows <A>'s account with <B>'s name —
+ * "Mara Quell was late on 11/3/26" — never the request lead ("create a corrective action for Mara Quell,"), a pronoun
+ * for <B> ("she was late"), or the level line ("Written Warning.").
+ */
+const REQUEST_LEAD =
+  /^\s*(?:(?:can|could|would)\s+you\s+)?(?:please\s+)?(?:create|make|write|do|start|draft|i\s+need(?:\s+to\s+(?:make|create|write|do))?)\s+(?:me\s+)?(?:a\s+|an\s+)?(?:new\s+)?(?:(?:verbal|written)\s+)?(?:corrective\s+action(?:\s+form)?|ca|write[- ]?up|c(?:oa|ao)ching(?:\s+form)?)\s+(?:form\s+)?(?:for\s+)?/i;
+const LEVEL_LINE = /\s*\b(?:verbal|written)\s+warning\.?\s*$/i;
+const PRONOUN_LEAD = /^\s*(?:she|he|they)\b/i;
+
+export function carriedAccount(said: string, name: string): string | null {
+  const named = new RegExp(`^\\s*${words(name).map(escaped).join("\\s+")}\\b\\s*[,.:;-]?\\s*`, "i");
+  let account = said.replace(REQUEST_LEAD, "").replace(LEVEL_LINE, "").trim();
+  const hadName = named.test(account);
+  account = account.replace(named, "").trim();
+  if (!account) return null;
+  account = PRONOUN_LEAD.test(account) || hadName ? account.replace(PRONOUN_LEAD, "").trim() : account;
+  const sentence = `${name} ${account}`.replace(/\s+/g, " ").trim();
+  return /[.!?]$/.test(sentence) ? sentence.replace(/[.!?]$/, "") : sentence;
+}
+
+const OBSERVATION_LINE = /^\*\*Observation of Offense:\*\*[^\n]*$/m;
+
+function withCarriedObservation(content: string, account: string | null): string {
+  if (!account) return content;
+  const line = `**Observation of Offense:** ${account}`;
+  if (OBSERVATION_LINE.test(content)) return content.replace(OBSERVATION_LINE, line);
+  const plan = /^\*\*Action Plan:\*\*/m;
+  return plan.test(content) ? content.replace(plan, (found) => `${line}\n\n${found}`) : `${content.trimEnd()}\n\n${line}`;
 }
 
 /**
@@ -323,14 +356,30 @@ export function withSameRequestNote(answer: AskResponse, turn: SameRequestTurn):
  * make a … for <B>" on: the turns before it were <A>'s request, and the chat
  * answered this one without them. Nothing stored is changed. Off: as before.
  */
-export function sameRequestReadConversation<T extends { readonly role: string; readonly content: string }>(turns: T[]): T[] {
+export function sameRequestReadConversation<T extends { readonly role: string; readonly content: string }>(turns: T[], employeeName?: string | null): T[] {
   if (!sameRequestOtherPersonEnabled()) return turns;
   let at = -1;
   turns.forEach((turn, index) => {
     if (turn.role === "user" && typeof turn.content === "string" && asksForAnotherPerson(turn.content)) at = index;
   });
-  return at <= 0 ? turns : turns.slice(at);
+  if (at <= 0) return turns;
+  /*
+   * SAME_REQUEST_KEEPS_EARLIER_CARD_ENABLED (QA's r19 live check): <A>'s card, still on screen after "the same thing
+   * for <B>", is checked against the conversation as it stood before that turn — it was current then, and <B>'s card
+   * said it stays as it is.
+   */
+  if (sameRequestKeepsEarlierCardEnabled() && employeeName && !namesIn(turns.slice(at), employeeName) && namesIn(turns.slice(0, at), employeeName)) {
+    return turns.slice(0, at);
+  }
+  return turns.slice(at);
 }
+
+/** Whether a manager turn names this person (every word of the name, any case). */
+function namesIn(turns: readonly { readonly role: string; readonly content: string }[], employeeName: string): boolean {
+  const name = new RegExp(`\\b${words(employeeName).map(escaped).join("\\s+")}\\b`, "i");
+  return turns.some((turn) => turn.role === "user" && name.test(turn.content));
+}
+
 
 /**
  * <B>'s DRAFT NOTES, READ AS THE CHAT READ THEM. The card's turns are <A>'s
