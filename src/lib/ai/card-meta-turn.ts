@@ -61,6 +61,17 @@ function kindOf(question: string): "create" | "outdated" | "wrong" | null {
   return /^out\s+o[fd]\s+[dfs]ate$|outdated|^old$/i.test(complaint[1]!) ? "outdated" : "wrong";
 }
 
+/**
+ * CREATE_FROM_CONVERSATION_POINTS_TO_CARD_ENABLED (QA's CI eval, 10 Nov 2026): a wording only this flag reads ("Create a
+ * form from this conversation.") was answered from the card in the history, which lacks what the turn's own re-read
+ * fills — the exit card lost its Date (s8), the coaching card its Policy (s7). Such a turn is answered as before the
+ * flag, the whole conversation re-read, and only the reply becomes the press-Create line.
+ */
+function rereadsCard(question: string): boolean {
+  const text = squeezed(question);
+  return createFromConversationPointsToCardEnabled() && CREATE_FROM_CONVERSATION.test(text) && !CREATE_COMMAND.test(text);
+}
+
 export interface CardMetaTurn {
   /** The card on screen, as it was (the last assistant turn's, for this template): the reply carries it unchanged. */
   readonly card: AskResponse | null;
@@ -75,6 +86,8 @@ export function cardMetaTurn(
   request: Pick<AskRequest, "question" | "history" | "continueProposalTemplateKey" | "activeFormInstanceId" | "questionMessageId">,
 ): CardMetaTurn | null {
   if (!request.continueProposalTemplateKey || request.activeFormInstanceId) return null;
+  // CREATE_FROM_CONVERSATION_POINTS_TO_CARD_ENABLED: answered as before (the whole conversation re-read); the reply is set after (`withPressCreateReply`).
+  if (rereadsCard(request.question)) return null;
   const kind = kindOf(request.question);
   if (!kind) return null;
   const fromTurn = [...(request.history ?? [])]
@@ -83,6 +96,7 @@ export function cardMetaTurn(
   const from = fromTurn?.content;
   if (!from) return null;
   const line = kind === "create" ? PRESS_CREATE : kind === "outdated" ? WHAT_IS_OUT_OF_DATE : WHAT_IS_WRONG;
+
   /*
    * The card as it was: its own source turns, so Create drafts from the account, never from "create it" or the
    * complaint (proposing it again from `from` would point the card at this turn).
@@ -109,6 +123,22 @@ export function cardMetaTurn(
       return { ...again, content: line, formProposal: { ...again.formProposal, sourceMessageIds } };
     },
   };
+}
+
+/**
+ * CREATE_FROM_CONVERSATION_POINTS_TO_CARD_ENABLED, the last step of the turn: "Create a form from this conversation."
+ * with only a card open was answered as before — the whole conversation re-read, so the card keeps its Date and Policy
+ * (QA's CI eval s7, s8) — and its reply leads with the press-Create line, the card's read-back (fields, cited policy)
+ * kept under it. Off, or any other turn, as it was.
+ */
+export function withPressCreateReply<T extends { content: string; formProposal?: unknown }>(
+  answer: T,
+  request: Pick<AskRequest, "question" | "continueProposalTemplateKey" | "activeFormInstanceId">,
+): T {
+  if (!createCommandPointsToCardEnabled() || !request.continueProposalTemplateKey || request.activeFormInstanceId) return answer;
+  if (!rereadsCard(request.question) || !answer.formProposal || answer.content.startsWith(PRESS_CREATE)) return answer;
+  // The line leads; the card's own read-back (its fields, the policy it cites) stays under it, as the re-read wrote it.
+  return { ...answer, content: `${PRESS_CREATE}\n\n${answer.content.trim()}` };
 }
 
 /**

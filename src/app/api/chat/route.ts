@@ -28,6 +28,7 @@ import {
   exitFormDateFromTerminationEnabled,
   offRosterAskBeforeCardEnabled,
   didYouMeanStaysAskedEnabled,
+  createFromConversationPointsToCardEnabled,
   cardNamesEmployeeEnabled,
   metricGuardEnabled,
   refusalNoRepeatEnabled,
@@ -911,6 +912,8 @@ async function postChat(request: Request) {
       if (offRosterAskBeforeCardEnabled()) {
         answer = (await import("@/lib/forms/off-roster-ask")).withOffRosterAskBeforeCard(answer, { scope: context.identity.scope, history: parsed.history, question: asked.question });
       }
+      // CREATE_FROM_CONVERSATION_POINTS_TO_CARD_ENABLED: "Create a form from this conversation." keeps the re-read card; only the reply points to Create (`ai/card-meta-turn.ts`).
+      if (createFromConversationPointsToCardEnabled()) answer = (await import("@/lib/ai/card-meta-turn")).withPressCreateReply(answer, asked);
       // DID_YOU_MEAN_STAYS_ASKED_ENABLED / CARD_NAMES_EMPLOYEE_ENABLED: an unanswered "Did you mean …?" is asked again, and a card's reply names its employee (`ai/did-you-mean-stays.ts`).
       if (didYouMeanStaysAskedEnabled() || cardNamesEmployeeEnabled()) {
         const stays = await import("@/lib/ai/did-you-mean-stays");
