@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { assertLiveMode, errorResponse } from "@/lib/api/respond";
 import { authorizeRequest } from "@/lib/auth/server";
+import { wovenDocumentKeepOutEnabled } from "@/lib/config/chat-quality-flags";
 import { KnowledgeSyncStoreError } from "@/lib/knowledge-sync/store";
 import { readWovenKnowledgeContent } from "@/lib/knowledge-sync/woven/status";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
@@ -45,7 +46,9 @@ export async function GET(request: Request) {
   try {
     assertLiveMode();
     await authorizeRequest(request, "manage_integrations");
-    return NextResponse.json({ status: "ok", content: await readWovenKnowledgeContent({ documentTitles, supersededUploads }) }, { headers: NO_STORE });
+    const content = await readWovenKnowledgeContent({ documentTitles, supersededUploads });
+    // WOVEN_DOCUMENT_KEEP_OUT_ENABLED: the screen offers "Keep out of Ask Sunny" per document only when on.
+    return NextResponse.json({ status: "ok", content, ...(wovenDocumentKeepOutEnabled() ? { keepOut: true } : {}) }, { headers: NO_STORE });
   } catch (error) {
     if (error instanceof KnowledgeSyncStoreError) {
       return NextResponse.json({ status: "failed", code: error.code, reason: error.message }, { status: 503, headers: NO_STORE });

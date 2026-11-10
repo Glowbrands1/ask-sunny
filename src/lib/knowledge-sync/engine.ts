@@ -706,6 +706,16 @@ function tally(report: SyncReport, items: ManifestItem[], scanned: Set<string> |
           };
     report.attention.push(attention);
   }
+  // WOVEN_DUPLICATE_CONTENT_HOLD_ENABLED: each held duplicate, by name, for a person to resolve in Woven.
+  const duplicates = items.filter((i) => i.state === "ERROR" && i.errorCategory === "ingest_duplicate_content");
+  if (duplicates.length > 0) {
+    const named = duplicates.slice(0, 5).map((i) => `"${i.title}": ${(i.lastError ?? "same file as another document").replace(/; not indexed a second time\.$/, "")}`);
+    report.attention.push({
+      code: "duplicate_content",
+      message: `${duplicates.length} Woven document${duplicates.length === 1 ? " is" : "s are"} the same file as another live document and ${duplicates.length === 1 ? "was" : "were"} not added again (${named.join("; ")}${duplicates.length > 5 ? "; …" : ""}). Resolve in Woven, or keep one out on the Content tab.`,
+      count: duplicates.length,
+    });
+  }
   if (t.deferred > 0) {
     report.attention.push({
       code: "work_continues",
