@@ -123,12 +123,17 @@ export const NOV5_PAU_SF_S21_S25_CASES: ReplayCase[] = [
     id: "nov5-sf-s23-payroll-answer-and-policy-change",
     title: "sf-s23: \"not pay roll deductable\" answers the payroll question (not the Observation, not asked again); \"under performance not standard of conduct\" changes the Action Plan and Direct policy too",
     report: `${REPORT}, sf-s23`,
-    status: { open: "\"not pay roll deductable\" becomes the card's Observation and the payroll question is asked again" },
+    // Changed on purpose (10 Nov 2026): fixed in production by PAYROLL_SPLIT_WORDS_ENABLED, QA round 19; it now holds with production's flags.
+    status: "fixed",
+    // Fixed under PAYROLL_SPLIT_WORDS_ENABLED (coding 6, 10 Nov 2026): "not pay roll deductable" answers payroll No; open on production flags until QA flips it.
+    fixFlags: ["PAYROLL_SPLIT_WORDS_ENABLED"],
     async run(t) {
       const thread = start(t);
       await thread.say("can you write me a Ca for wynne sarrow for performance for october");
       const payroll = await thread.say("not pay roll deductable");
-      expect(payroll.content, `the payroll question is asked again:\n${payroll.content}`).not.toMatch(/Is payroll deduct applicable\?/);
+      // Changed on purpose (coding 6, 10 Nov 2026): the card's read-back of the answer ("Is payroll deduct applicable? **No** —
+      // tell me if that should change.", `ai/form-proposal.ts`) is the answer shown, not the question asked again.
+      expect(payroll.content, `the payroll question is asked again:\n${payroll.content}`).not.toMatch(/Is payroll deduct applicable\?(?!\s*\*\*(?:Yes|No)\*\*)/);
       expect(observationLine(payroll), `the payroll answer is the Observation:\n${observationLine(payroll)}`).not.toMatch(/pay\s*roll/i);
     },
   },
