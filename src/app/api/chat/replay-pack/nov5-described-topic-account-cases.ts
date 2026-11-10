@@ -47,7 +47,10 @@ export const NOV5_DESCRIBED_TOPIC_ACCOUNT_CASES: ReplayCase[] = [
     title: "\"he brought his new kitten to the salon on 10-22-26\": the card cites Animals in the Workplace and never says \"You haven't told me what happened yet\"",
     report: `${REPORT}: the same reply said "You haven't told me what happened yet" and cited Animals in the Workplace p.30 "from what you described"`,
     // Here the note comes only from CA_ASKS_WHAT_HAPPENED_ENABLED (off in production), whose account reader is the same: with it on alone, the card says the note beside the citation.
-    status: "fixed",
+    // Changed on purpose (10 Nov 2026, QA's open-PR audit): CA_ASKS_WHAT_HAPPENED_ENABLED is on in production now, so with
+    // production's flags the card does say "You haven't told me what happened yet" beside the citation: this report is
+    // OPEN until DESCRIBED_TOPIC_IS_ACCOUNT_ENABLED ships.
+    status: { open: "with production's flags the kitten card says \"You haven't told me what happened yet\" beside its citation" },
     fixFlags: ["CA_ASKS_WHAT_HAPPENED_ENABLED", "DESCRIBED_TOPIC_IS_ACCOUNT_ENABLED"],
     async run(t) {
       const thread = start(t);
