@@ -146,6 +146,11 @@ export const NOV5_CODING3_CHAT_EDITS_CASES: ReplayCase[] = [
     status: {
       open: "the live answer \"It should update automatically — no copy-and-paste needed\" is sent unchanged with nothing written (the claim guard's phrase list misses it); past that, the \"make that update\" the honest reply invites writes nothing",
     },
+    // CLAIM_GUARD_AUTO_UPDATE_ENABLED (coding 6, 10 Nov 2026) makes the reply to (b) truthful ("Nothing on the form has changed yet."),
+    // and with nothing drafted it no longer invites "make that update". Still open with it: her account on the open draft
+    // ("rowan marked a session as complete …") is not written, so no later turn has anything to write.
+    fixFlags: ["CLAIM_GUARD_AUTO_UPDATE_ENABLED"],
+    fixStatus: { open: "her account typed on the open draft is not written to the Details (the reply to (b) is truthful with the flag)" },
     async run(t: T) {
       start(t);
       const thread = t.thread();

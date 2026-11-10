@@ -1,4 +1,4 @@
-import { claimGuardEnabled, formEditRefersBackEnabled } from "@/lib/config/chat-quality-flags";
+import { claimGuardAutoUpdateEnabled, claimGuardEnabled, formEditRefersBackEnabled } from "@/lib/config/chat-quality-flags";
 import { extractEmployeeNames, samePerson } from "@/lib/forms/proposal";
 import type { ChatMessage } from "@/types";
 
@@ -309,7 +309,16 @@ const MORE_CLAIMS =
 const CHECK_CLAIMS =
   /\b(?:now\s+(?:reads|says|shows|lists)|(?:is|are)\s+now\b|confirmed\s+against|checked\s+against|verified\s+(?:against|with)|match(?:es|ing)\s+(?:woven|the\s+(?:directory|records?|roster))|(?:updated|changed|corrected|fixed)\s+(?:the|her|his|their)\b)/i;
 const ABOUT_THE_RECORD = /\b(?:name|employee|record|records|woven|directory|roster|field|line)\b/i;
+/*
+ * CLAIM_GUARD_AUTO_UPDATE_ENABLED (coding 6, 10 Nov 2026; coding3's chat edits (b), 5 Nov 2026). To "i don't see the
+ * details updated in the draft card. Do i need to copy and paste it? or should it be automatically updating?", the live
+ * model said "It should update automatically — no copy-and-paste needed. The details are on the draft card." with
+ * nothing written. "no copy-and-paste needed", "updates automatically", "the details are on the draft" are claims too.
+ */
+const AUTO_UPDATE_CLAIMS =
+  /\bno\s+(?:need\s+to\s+)?copy(?:[- ]?(?:and|&)[- ]?|[- ])?paste(?:\s+needed)?\b|\b(?:should|will|does|it)\s+update\s+automatically\b|\bupdates?\s+automatically\b|\bdetails\s+are\s+(?:now\s+|already\s+)?(?:on|in)\s+the\s+(?:draft|card|form)\b/i;
 const claims = (line: string) =>
+  (claimGuardAutoUpdateEnabled() && AUTO_UPDATE_CLAIMS.test(line)) ||
   ((CLAIM.test(line) || (formEditRefersBackEnabled() && MORE_CLAIMS.test(line))) &&
     (ABOUT_THE_FORM.test(line) || /no copy[- ]paste needed/i.test(line))) ||
   (claimGuardEnabled() &&
@@ -325,7 +334,8 @@ export function honestFormReply(content: string, canWrite: boolean): string | nu
     .join("\n")
     .replace(/^\s+/, "")
     .trimEnd();
-  const how = canWrite
+  // CLAIM_GUARD_AUTO_UPDATE_ENABLED: with nothing drafted left to write, "make that update" would write nothing.
+  const how = canWrite && !(claimGuardAutoUpdateEnabled() && kept === "")
     ? "Say **make that update** and I'll write it into the draft, or edit the card and press **Save changes**."
     : "Edit the card and press **Save changes**, or tell me the change — for example \"add that she was 20 minutes late\".";
   return [`**Nothing on the form has changed yet.**`, kept, how].filter(Boolean).join("\n\n");
