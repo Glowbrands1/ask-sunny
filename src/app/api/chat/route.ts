@@ -33,6 +33,7 @@ import {
   titleNotSpeakersManagerEnabled,
   newRequestOwnTurnsEnabled,
   formEditPlainWordsEnabled,
+  formsGuideEnabled,
   questionNotFormEnabled,
   sameFormCopyEnabled,
   sameFormCopyNewPersonEnabled,
@@ -512,7 +513,20 @@ async function postChat(request: Request) {
       // LIST_POLICY_IS_EDIT_ENABLED: "please list the policy" with a form open is an edit (EDIT_POLICY_ASK), never a question.
       const listPolicyEdit =
         listPolicyIsEditEnabled() && (await import("@/lib/ai/list-policy-ask")).listPolicyIsEdit(parsed.question, Boolean(parsed.activeFormInstanceId));
-      const askedQuestion = !listPolicyEdit && questionNotFormEnabled() && isQuestionNotForm(parsed.question, parsed.history);
+      /*
+       * FORMS_GUIDE_ENABLED (October triage #9; #262 rebuilt on main): "what is a ca?", "difference between coaching
+       * and ca", "which forms can i create here?" are answered from the published templates and the role matrix, and
+       * like any question never written into an open form. Null for every other sentence. See `lib/forms/forms-guide.ts`.
+       */
+      const formsGuide =
+        formsGuideEnabled() && !draftAnswer
+          ? await (await import("@/lib/forms/forms-guide-answer")).answerFormsGuide({
+              question: parsed.question,
+              role: context.identity.role,
+            })
+          : null;
+      const askedQuestion =
+        Boolean(formsGuide) || (!listPolicyEdit && questionNotFormEnabled() && isQuestionNotForm(parsed.question, parsed.history));
       /*
        * STEP B (FORM_PATCH_REDUCER_ENABLED + FORM_REPLY_FROM_DIFF_ENABLED): the
        * open form as saved before this turn, so the reply about it can come
@@ -790,7 +804,7 @@ async function postChat(request: Request) {
        * `lib/forms/chat-reopen.ts`.
        */
       const reopened =
-        !sameCopy && !draftAnswer && !correction && !policyChange && !redraft && !revision && (mayAskToReopen(parsed.question, reopenByAnyOpenVerbEnabled()) || (reopenByAnyOpenVerbEnabled() && answersWhichFormOnFile(parsed.history)))
+        !sameCopy && !draftAnswer && !formsGuide && !correction && !policyChange && !redraft && !revision && (mayAskToReopen(parsed.question, reopenByAnyOpenVerbEnabled()) || (reopenByAnyOpenVerbEnabled() && answersWhichFormOnFile(parsed.history)))
           ? await (await import("@/lib/forms/chat-reopen")).reopenRequestedForm({
               request,
               question: parsed.question,
@@ -805,6 +819,7 @@ async function postChat(request: Request) {
       let toolNothing: Awaited<ReturnType<typeof answerQuestion>> | null = null;
       answer =
         draftAnswer ??
+        formsGuide ??
         correction ??
         // A name correction this form does not take in chat: said plainly, never a model's "updated".
         (nameFix && !correction ? (await import("@/lib/forms/name-correction-words")).nameNotCorrectedReply(nameFix.open) : null) ??

@@ -4316,3 +4316,16 @@ export function sameRequestKeepsEarlierCardClientEnabled(): boolean {
 export function templateOutlineFieldsEnabled(): boolean {
   return envFlag("TEMPLATE_OUTLINE_FIELDS_ENABLED");
 }
+
+/**
+ * FORMS_GUIDE_ENABLED (coding 6, 10 Nov 2026, rebuilt on main from #262;
+ * default off; October triage #9, the owner's ask: "guide managers on the
+ * differences of each form … Read the forms and that should be the answer").
+ * "what is a ca?", "difference between coaching and ca", "which forms can i
+ * create here?" and "what form do i use for someone who quit" are answered
+ * from the published templates and the role matrix (`forms/forms-guide.ts`),
+ * never from model memory or a knowledge-base miss. Off, as before.
+ */
+export function formsGuideEnabled(): boolean {
+  return envFlag("FORMS_GUIDE_ENABLED");
+}
