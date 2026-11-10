@@ -233,7 +233,8 @@ function caShortcutWordsOn(): boolean {
 /**
  * PAYROLL_SPLIT_WORDS_ENABLED (coding 6, 10 Nov 2026; QA's sf-s23, Pau 5 Nov 2026): "not pay roll deductable" answered
  * the payroll question, and the card asked it again and put the answer in the Observation. "pay roll" is "payroll",
- * and "deductable" / "deductible" is "deduct", so "not payroll deduct" is read as the No it is. Read here, as
+ * and "deductable" (the misspelling) is "deduct", so "not payroll deduct" is read as the No it is; "non-/un-deductible"
+ * is left to NOT_DEDUCTIBLE_READ. Read here, as
  * CA_SHORTCUT_WORDS is, because this module imports nothing. Off, as before.
  */
 function payrollSplitWordsOn(): boolean {
@@ -242,7 +243,12 @@ function payrollSplitWordsOn(): boolean {
 }
 
 function withPayrollSplitWords(text: string): string {
-  return text.replace(/\bpay\s+roll\b/g, "payroll").replace(/\bdeduct[ai]ble\b/g, "deduct");
+  // "non-deductible" / "un-deductible" are NOT_DEDUCTIBLE_READ's (a No) and stay as they are; a misspelt
+  // "non-deductable" becomes that reader's "non-deductible". Only a bare "deductable" (the misspelling) is "deduct".
+  return text
+    .replace(/\bpay\s+roll\b/g, "payroll")
+    .replace(/\b(non|un)(-|\s)?deductable\b/g, "$1-deductible")
+    .replace(/(?<![\w-])deductable\b/g, "deduct");
 }
 
 /** Lower case, curly quotes straightened, "payroll-deduct" spaced — the text the patterns read. */

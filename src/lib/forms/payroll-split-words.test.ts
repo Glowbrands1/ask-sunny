@@ -15,7 +15,19 @@ describe("\"not pay roll deductable\"", () => {
     expect(statedPayrollDeduct("not pay roll deductable")).toBeNull();
     process.env.PAYROLL_SPLIT_WORDS_ENABLED = "true";
     expect(statedPayrollDeduct("not pay roll deductable")).toBe("no");
-    expect(statedPayrollDeduct("not payroll deductible")).toBe("no");
-    expect(statedPayrollDeduct("pay roll deductible: yes")).toBe("yes");
+    expect(statedPayrollDeduct("pay roll deductable: yes")).toBe("yes");
+  });
+
+  it("never changes how \"non-deductible\" or \"un-deductible\" is read (QA's gate on #745: NOT_DEDUCTIBLE_READ)", () => {
+    process.env.NOT_DEDUCTIBLE_READ_ENABLED = "true";
+    try {
+      const off = ["non-deductible", "un-deductible", "not payroll deductible", "Non-deductible"].map(statedPayrollDeduct);
+      expect(off[0]).toBe("no");
+      process.env.PAYROLL_SPLIT_WORDS_ENABLED = "true";
+      expect(["non-deductible", "un-deductible", "not payroll deductible", "Non-deductible"].map(statedPayrollDeduct)).toEqual(off);
+      expect(statedPayrollDeduct("non-deductable")).toBe("no");
+    } finally {
+      delete process.env.NOT_DEDUCTIBLE_READ_ENABLED;
+    }
   });
 });
