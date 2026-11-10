@@ -594,6 +594,8 @@ const NEW_FLAGS = [
   // coding 2: CREATE_COMMAND_POINTS_TO_CARD and CARD_COMPLAINT_NOT_ACCOUNT (default off): forced off with the others.
   "CREATE_COMMAND_POINTS_TO_CARD_ENABLED",
   "CARD_COMPLAINT_NOT_ACCOUNT_ENABLED",
+  // coding 2: SURNAME_PARTICLES (QA's audit item 17b, 10 Nov 2026; default off): forced off with the others.
+  "SURNAME_PARTICLES_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -716,6 +718,15 @@ const PROTECTED = [
  * Behind CA_SALES_POLICY_ENABLED, default off; off, every row is carried as
  * before. The filed form is never touched. Same hunk in both apps (Ask
  * Bubbles 66813d54); in Ask Sunny the Type of Offense change is revision 8.
+ *
+ * The user (Pau) approved on 10 Nov 2026, via QA ("ok surname particles"), in
+ * src/lib/forms/proposal.ts, both apps, exactly the lines of
+ * docs/patches/surname-particles.patch: the import of `particleSurname`
+ * ("./surname-particles"), and in readTypedName a particle surname after a
+ * first name ("de la vega") taken as one part, its extra words skipped and
+ * counted in the middle-name and whole-reply checks. Behind
+ * SURNAME_PARTICLES_ENABLED, default off; off, particleSurname is null and
+ * the reader is as before. proposal.ts is already excluded.
  */
 const APPROVED_PROTECTED_EDITS = [
   ":(exclude)src/lib/forms/proposal.ts",
