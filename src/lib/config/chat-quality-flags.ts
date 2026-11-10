@@ -2665,6 +2665,17 @@ export function policyTopicIntoFieldEnabled(): boolean {
   return envFlag("POLICY_TOPIC_INTO_FIELD_ENABLED");
 }
 
+/**
+ * WRITE_UP_LEAD_NOT_ACCOUNT_ENABLED (QA's October triage of #167, 10 Nov 2026; default off). "write up <employee> for
+ * cell phone use" gave the Corrective Action card the Observation of Offense "write up <employee> for cell phone use",
+ * the raw message: the request's verb and the employee's name stayed in. On: an Observation sentence that opens "write
+ * up <employee> for …" keeps only the account after "for" ("Cell phone use") (`ai/write-up-observation.ts`). Off, as
+ * before.
+ */
+export function writeUpLeadNotAccountEnabled(): boolean {
+  return envFlag("WRITE_UP_LEAD_NOT_ACCOUNT_ENABLED");
+}
+
 // --- end coding 5 flags ---
 
 /**
