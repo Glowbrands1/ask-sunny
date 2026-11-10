@@ -1,4 +1,4 @@
-import { formNameFromRosterEnabled } from "@/lib/config/chat-quality-flags";
+import { formNameFromRosterEnabled, metricAloneNotANameEnabled } from "@/lib/config/chat-quality-flags";
 
 import { isSalesPolicyReading, readCaPolicy } from "./ca-policy";
 import { editDistance, normalizeTypedName } from "./employee-match";
@@ -238,6 +238,29 @@ export function outsideRequestSlot(candidate: string, text: string | undefined =
  * sign ("Club Close %" in a list of two), and a word of a "for <offense>" phrase ("Under Performance"). Somebody's whole roster name, or a candidate the message does not contain, is
  * never ruled out. No message read this turn: false.
  */
+/**
+ * METRIC_ALONE_NOT_A_NAME_ENABLED (ported from Ask Bubbles: QA's prod-env reading there, 10 Nov 2026, D4): "Their Club Close is low. Create a corrective
+ * action." drafted a Corrective Action Form for "Club Close". The phrase is the thing the sentence says is low, down or
+ * under — a number, never the person. Any phrase the message writes that way ("<X> is low", "<X> are down", "<X> is at
+ * 42%") is a metric.
+ */
+const METRIC_STATE_AFTER =
+  /^\s+(?:is|are|was|were|has\s+been|have\s+been|keeps?|stays?)\s+(?:still\s+|really\s+|very\s+|way\s+|so\s+|too\s+)?(?:low|lower|down|under|below|behind|dropping|falling|slipping|poor|bad|off|short|at\s+\d|only\s+\d)/i;
+
+const METRIC_OWNER_BEFORE = /(?:^|[^\p{L}])(?:their|his|her|our|my|its|the|your|\p{L}+['’]s)\s+$/iu;
+
+function saidAsAMetric(candidate: string, text: string): boolean {
+  const spelled = candidate.trim().split(/\s+/).map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(String.raw`\s+`);
+  const found = new RegExp(String.raw`(?:^|[^\p{L}])(${spelled})(?![\p{L}])`, "giu");
+  for (const match of text.matchAll(found)) {
+    const before = text.slice(0, match.index! + match[0].length - match[1]!.length);
+    const after = text.slice(match.index! + match[0].length);
+    // Owned or determined, as a number is ("Their Lather Club", "the store's Lather Club"); a person typed bare is not read here.
+    if (METRIC_OWNER_BEFORE.test(before) && METRIC_STATE_AFTER.test(after)) return true;
+  }
+  return false;
+}
+
 export function namesAMetric(candidate: string, text: string | undefined = metricMessage()): boolean {
   if (!text || !candidate.trim() || isRosterName(candidate) || !containsWords(text, candidate)) return false;
   // A phrase the message writes with a percent sign ("Club Close %", "Spa %") is a metric, in a list of any length.
@@ -245,6 +268,8 @@ export function namesAMetric(candidate: string, text: string | undefined = metri
   if (new RegExp(String.raw`(?:^|[^\p{L}])${spelled}\s*%`, "iu").test(text)) return true;
   const typed = wordsOf(candidate);
   if (capitalisedListItems(text).some((item) => wordsOf(item).join(" ") === typed.join(" "))) return true;
+  // METRIC_ALONE_NOT_A_NAME_ENABLED: "Their Club Close is low" — the phrase the message says is low or down.
+  if (metricAloneNotANameEnabled() && saidAsAMetric(candidate, text)) return true;
   return offensePhrases(text).some((phrase) => {
     const named = new Set(wordsOf(phrase));
     return typed.every((word) => named.has(word));

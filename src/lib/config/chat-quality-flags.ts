@@ -4316,3 +4316,14 @@ export function sameRequestKeepsEarlierCardClientEnabled(): boolean {
 export function templateOutlineFieldsEnabled(): boolean {
   return envFlag("TEMPLATE_OUTLINE_FIELDS_ENABLED");
 }
+
+/**
+ * METRIC_ALONE_NOT_A_NAME_ENABLED (ported from Ask Bubbles: QA's prod-env reading there, 10 Nov 2026, D4; default off; same flag in both apps). With
+ * production's flags (CA_SALES_POLICY on, so a metric may ground a Corrective Action), "Their Club Close is low. Create a
+ * corrective action." drafted the form for an employee named "Club Close" and asked for Club Close's position: the metric
+ * guard (METRIC_GUARD) knew only a metric written with "%", a list item or an offense word. On: a phrase the message says
+ * is low, down, under or at a number ("<X> is low") is a metric too, so it is never the card's person. Off, as before.
+ */
+export function metricAloneNotANameEnabled(): boolean {
+  return envFlag("METRIC_ALONE_NOT_A_NAME_ENABLED");
+}
