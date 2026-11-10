@@ -579,6 +579,8 @@ const NEW_FLAGS = [
   // coding 2: CREATE_COMMAND_POINTS_TO_CARD and CARD_COMPLAINT_NOT_ACCOUNT (default off): forced off with the others.
   "CREATE_COMMAND_POINTS_TO_CARD_ENABLED",
   "CARD_COMPLAINT_NOT_ACCOUNT_ENABLED",
+  // coding 2: ROSTER_COMPOUND_FIRST_NEAR_MISS (QA, 10 Nov 2026, sf-b5; default off): forced off with the others.
+  "ROSTER_COMPOUND_FIRST_NEAR_MISS_ENABLED",
 ] as const;
 
 const PROTECTED = [

@@ -3121,6 +3121,17 @@ export function rosterCompoundSurnameEnabled(): boolean {
 }
 
 /**
+ * ROSTER_COMPOUND_FIRST_NEAR_MISS_ENABLED (QA, 10 Nov 2026, coding 6's B1 triage sf-b5; default off). A roster
+ * person whose first name is two words ("Delphine Marlowe" + "Ostrander") typed with a transposed letter in its
+ * second word ("Delphine Marlwoe Ostrander") matched nobody, even with every ROSTER_* flag on: the two-word first
+ * name had to be typed exactly. On: it is compared word by word, a typo of it is a near miss, asked with "Did you
+ * mean …", never filled (`forms/employee-match.ts`). Off, as before.
+ */
+export function rosterCompoundFirstNearMissEnabled(): boolean {
+  return envFlag("ROSTER_COMPOUND_FIRST_NEAR_MISS_ENABLED");
+}
+
+/**
  * ROSTER_NOT_FOUND_ANY_PHRASING_ENABLED (QA-A/QA-B, the re-flip's live testers, 5 Nov 2026; default off). With
  * FORM_NAME + ROSTER_NEAR_MISS on, an off-roster full name got no "I couldn't find **<name>** in the Woven roster"
  * note when the request did not put it straight after "for" with a comma or period ("i have an employee, <name>
