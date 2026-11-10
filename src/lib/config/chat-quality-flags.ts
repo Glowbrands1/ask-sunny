@@ -3904,4 +3904,14 @@ export function teamCardNotProductEnabled(): boolean {
  */
 export function payrollSplitWordsEnabled(): boolean {
   return envFlag("PAYROLL_SPLIT_WORDS_ENABLED");
+ * REOPEN_CLOSE_SPELLING_ENABLED (coding 6, 10 Nov 2026; default off; Pau via
+ * QA, sf-s26, 5 Nov 2026). "Edit Thesaly Brant CA" with Thessaly Brandt's CA
+ * on file was answered "Who is this form for?". On: when a reopen request
+ * names nobody it can find, the one employee on the forms the manager may
+ * open whose every name word it spells closely (same first letter, one or two
+ * letters off) is the one meant, and that form is opened. Nothing is created
+ * or written. See `forms/reopen-close-spelling.ts`. Off, as before.
+ */
+export function reopenCloseSpellingEnabled(): boolean {
+  return envFlag("REOPEN_CLOSE_SPELLING_ENABLED");
 }

@@ -68,6 +68,8 @@ export const NOV5_PAU_SF_S26_S28_CASES: ReplayCase[] = [
     title: "sf-s26: \"Edit Thesaly Brant CA\" (misspelled) opens Thessaly Brandt's existing Corrective Action; never \"Who is this form for?\"",
     report: "Pau via QA, 5 Nov 2026, sf-s26: \"Edit [misspelled Employee R] CA\" → the bot asked who the form is for",
     status: { open: "asks who the form is for instead of opening the existing Corrective Action" },
+    // Fixed under REOPEN_CLOSE_SPELLING_ENABLED (coding 6, 10 Nov 2026): the one form on file whose employee the request spells closely is opened; open on production flags until QA flips it.
+    fixFlags: ["REOPEN_CLOSE_SPELLING_ENABLED"],
     async run(t: T) {
       start(t);
       const id = await existingCa(t);
