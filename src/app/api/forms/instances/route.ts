@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { teamTopicReadConversation } from "@/lib/forms/team-card-not-product";
+import { sameRequestReadConversation } from "@/lib/forms/same-request-other-person";
 import { switchReadConversation } from "@/lib/ai/form-type-switch";
 import { typoReadingTurns } from "@/lib/ai/typo-reading-copy";
 import { protectedNameWords } from "@/lib/ai/typo-name-words";
@@ -225,7 +227,9 @@ export async function POST(request: Request) {
       const alsoCalled = await preferredNamesOf(actor.scope, body.employeeName);
       const currency = checkProposalIsCurrent({
         // FORM_TYPE_SWITCH_ENABLED: "change to coaching" is read as the chat read it, so the switched card is current.
-        conversation: switchReadConversation(parseHistory(body.conversation)),
+        // TEAM_CARD_NOT_PRODUCT_ENABLED: on the team card, "selling Spray Tan Kits" is the topic, as the chat read it.
+        // SAME_REQUEST_OTHER_PERSON_ENABLED: "the same thing for <B>" is read from that turn on, as the chat read it.
+        conversation: sameRequestReadConversation(teamTopicReadConversation(switchReadConversation(parseHistory(body.conversation)), body.employeeName)),
         templateKey: body.templateKey,
         employeeName: body.employeeName,
         alsoCalled,

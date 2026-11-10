@@ -34,10 +34,14 @@ import {
   secondRequestOwnAccountEnabled,
   proposalMakeItAboutEnabled,
   proposalPolicySetAsideEnabled,
+  sameRequestOtherPersonEnabled,
+  coachingObservedSavedEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { notesMadeAbout } from "@/lib/ai/make-it-about";
+import { withoutPolicyReferenceTurns } from "@/lib/ai/policy-reference-turn";
 import { NOTHING_SET_ASIDE, policiesSetAside, setAsideAnything, valuesWithPolicySetAside, withoutPolicyTakeOff } from "@/lib/forms/policy-set-aside";
 import { withoutAsksToTheApp } from "@/lib/ai/asks-to-the-app";
+import { withoutAppInstructions } from "@/lib/ai/app-instructions";
 import { AiError } from "@/lib/ai/errors";
 import {
   assertLiveMode,
@@ -378,8 +382,18 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
 
     const body = ((await request.json().catch(() => null)) ?? {}) as DraftBody;
     // GRAMMAR_ASK_NOT_ACCOUNT_ENABLED: "can you clean up my grammar …?" is no account (`ai/asks-to-the-app.ts`).
-    const typed = String(body.notes ?? "").trim().slice(0, 4000);
-    const asked = grammarAskNotAccountEnabled() ? withoutAsksToTheApp(typed).trim() : typed;
+    const sent = String(body.notes ?? "").trim().slice(0, 4000);
+    // SAME_REQUEST_OTHER_PERSON_ENABLED: "the same thing for <B>" is drafted from the earlier request, read with <B>'s name.
+    const typed = sameRequestOtherPersonEnabled()
+      ? (await import("@/lib/forms/same-request-other-person")).notesForOtherPerson({
+          notes: sent,
+          employeeName: loaded.instance.employeeName,
+          templateKey: loaded.instance.templateKey,
+          roster: await (await import("@/lib/forms/employee-roster")).loadScopedRoster(actor.scope).catch(() => []),
+        })
+      : sent;
+    // APP_INSTRUCTIONS_NOT_ACCOUNT_ENABLED: "Please word it in a professional way. I need the policy attached as well." is no account.
+    const asked = withoutAppInstructions(grammarAskNotAccountEnabled() ? withoutAsksToTheApp(typed).trim() : typed).trim();
     // CREATE_COMMAND_POINTS_TO_CARD_ENABLED / CARD_COMPLAINT_NOT_ACCOUNT_ENABLED: "create it" or "this proposal is out of
     // date" is no account (`ai/card-meta-turn.ts`).
     const asTyped = (await import("@/lib/ai/card-meta-turn")).withoutCardMetaTurns(asked);
@@ -1171,7 +1185,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       "",
       "WHAT THE MANAGER DESCRIBED:",
       // TEAM_CARD_WORDING_ENABLED: on a team card, "for the whole salon" is who it is for, not what happened (QA, 3 Nov 2026).
-      teamSubject && teamCardWordingEnabled() ? teamCardNotes(notes) : notes,
+      // POLICY_REFERENCE_NOT_ACCOUNT_ENABLED: "you can reference the standards of conduct for a policy" is no account.
+      withoutPolicyReferenceTurns(teamSubject && teamCardWordingEnabled() ? teamCardNotes(notes) : notes),
       progressionBlock,
       policyBlock,
       /*
@@ -2433,6 +2448,16 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       ),
     };
     if (setAsideAnything(setAside)) draftedPayload.values = valuesWithPolicySetAside(draftedPayload.values, setAside);
+    // COACHING_OBSERVED_SAVED_ENABLED: the saved coaching Details always have an "Observed:" with the account (`lib/forms/coaching-observed-saved.ts`).
+    if (coachingObservedSavedEnabled()) {
+      draftedPayload.values = (await import("@/lib/forms/coaching-observed-saved")).withCoachingObservedSaved({
+        values: draftedPayload.values,
+        narrativeKeys: narrativeTargets,
+        coaching: isCoachingFamily,
+        notes,
+        employeeName: loaded.instance.employeeName,
+      }) as typeof draftedPayload.values;
+    }
     const kept = draftMergeEnabled()
       ? retainFilledFields({
           question: notes,

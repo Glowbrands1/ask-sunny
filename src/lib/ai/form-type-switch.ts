@@ -1,4 +1,5 @@
-import { formTypeSwitchAfterCreateNoteEnabled, formTypeSwitchEnabled, switchKeepsNamedFormEnabled } from "@/lib/config/chat-quality-flags";
+import { formTypeSwitchAfterCreateNoteEnabled, formTypeSwitchEnabled, sameRequestOtherPersonEnabled, switchKeepsNamedFormEnabled } from "@/lib/config/chat-quality-flags";
+import { asksForAnotherPerson } from "@/lib/forms/same-request-other-person";
 import { detectTemplateIntent } from "@/lib/forms/template-intent";
 
 import type { AskRequest, AskResponse } from "./types";
@@ -47,6 +48,8 @@ function familyOf(templateKey: string | undefined): Family | null {
 export function requestedForm(turn: string): Family | null {
   const text = turn.trim().replace(/[.!?]+$/, "");
   if (!text || text.split(/\s+/).length > MAX_WORDS || !CUE.test(text)) return null;
+  // SAME_REQUEST_OTHER_PERSON_ENABLED: "also make a coaching form for <B>" is a form for <B>, never "change this to coaching".
+  if (sameRequestOtherPersonEnabled() && asksForAnotherPerson(text)) return null;
   const instead = /^(?:(?:a|an)\s+)?(.+?)\s+instead\s+of\s+/i.exec(text);
   const head = instead ? instead[1]! : text;
   const coaching = COACHING.test(head);

@@ -1,5 +1,5 @@
 import { STREAM_HEADER, unwrapStreamed } from "@/lib/api/streamed-response";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -49,6 +49,10 @@ const store: FakeStore = {
   chat_traces: [],
   chat_form_state: [],
   chat_form_incidents: [],
+  // The two tables a turn's memory writes (QA, 10 Nov 2026: CHAT_PARALLEL_LOADS must write exactly as often as before;
+  // without them every write failed silently and the record's row counts were always 0).
+  user_memory: [],
+  chat_context_summaries: [],
 } as unknown as FakeStore;
 
 // As production builds the role table when the ASD may create forms (NEXT_PUBLIC_, read once at load).
@@ -92,6 +96,7 @@ const state = vi.hoisted(() => ({
  * the evidence and date checks, the reducer, the writes and the reload are
  * the real ones.
  */
+const systemPrompts = vi.hoisted(() => ({ hashes: [] as string[] }));
 const patchScript = vi.hoisted(() => ({ outputs: [] as unknown[], calls: 0, byLatest: null as Record<string, unknown> | null }));
 vi.mock("@/lib/forms/form-patch-call", () => ({
   FORM_PATCH_DEFAULT_TIMEOUT_MS: 5_000,
@@ -121,6 +126,8 @@ vi.mock("@/lib/forms/form-patch-call", () => ({
  * failed database write would, so a case can make a turn throw part-way.
  */
 const faults = vi.hoisted(() => ({ field: null as string | null }));
+/** `t.summaryWrites`: what the long-context summary model returns; none by default (the summary call fails, as unscripted). */
+const summaries = vi.hoisted(() => ({ reply: null as string | null }));
 function withFaults<T>(client: T): T {
   return new Proxy(client as object, {
     get(target, prop, receiver) {
@@ -225,8 +232,11 @@ vi.mock("@/lib/ai/call-claude", () => ({
       usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 },
     };
   },
-  callClaude: async (input?: { formEditTool?: { data: string; onToolUse: (call: unknown) => void } | null }) => {
+  callClaude: async (input?: { system?: string; formEditTool?: { data: string; onToolUse: (call: unknown) => void } | null }) => {
     state.chatModelCalls += 1;
+    // REPLAY_RECORD (QA, 10 Nov 2026): the system prompt each answer was asked with, as a hash, so two versions of the
+    // prompt's assembly can be compared case by case (the stage-timing split of buildSystemPrompt's awaits).
+    if (process.env.REPLAY_RECORD) systemPrompts.hashes.push(createHash("sha256").update(String(input?.system ?? "")).digest("hex").slice(0, 16));
     if (input?.formEditTool) {
       editTool.offered += 1;
       editTool.lastData = input.formEditTool.data;
@@ -259,6 +269,7 @@ vi.mock("@/lib/ai/call-claude", () => ({
   },
   callClaudeTool: async (input: { tool?: { name?: string }; messages?: { content?: unknown }[] }) => {
     state.toolCalls += 1;
+    if (input.tool?.name === "store_summary") return summaries.reply === null ? null : { summary: summaries.reply };
     if (input.tool?.name === "extract_form_fields") {
       const text = JSON.stringify(input.messages ?? []);
       return {
@@ -612,6 +623,7 @@ beforeEach(async () => {
   patchScript.calls = 0;
   patchScript.byLatest = null;
   faults.field = null;
+  summaries.reply = null;
   state.directory = [
     { id: "e-1", firstName: "Quinn", lastName: "Marlowe", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-66"], positionName: null },
     { id: "e-2", firstName: "Dale", lastName: "Ferris", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-66"], positionName: null },
@@ -648,6 +660,7 @@ const CLASSIFY_ON = (process.env.FLAG_CLASSIFY_ON ?? "").split(",").map((name) =
 const record: { turns: { question: string; reply: string; updated: string[] | null }[] } = { turns: [] };
 async function recorded(id: string, mode: string, run: () => Promise<void>) {
   record.turns = [];
+  systemPrompts.hashes = [];
   const at = performance.now();
   let error: string | null = null;
   try {
@@ -657,7 +670,10 @@ async function recorded(id: string, mode: string, run: () => Promise<void>) {
     throw thrown;
   } finally {
     if (process.env.REPLAY_RECORD) {
-      appendFileSync(process.env.REPLAY_RECORD, `${JSON.stringify({ id, mode, ok: error === null, error, ms: Math.round(performance.now() - at), turns: record.turns })}\n`);
+      // The rows the turn's writes left (QA, 9 Nov 2026: CHAT_PARALLEL_LOADS must write exactly as often as before).
+      const tables = store as unknown as Record<string, unknown[] | undefined>;
+      const rows = { user_memory: tables.user_memory?.length ?? 0, chat_context_summaries: tables.chat_context_summaries?.length ?? 0 };
+      appendFileSync(process.env.REPLAY_RECORD, `${JSON.stringify({ id, mode, ok: error === null, error, ms: Math.round(performance.now() - at), turns: record.turns, rows, systems: systemPrompts.hashes })}\n`);
     }
   }
 }
@@ -736,6 +752,10 @@ function context(): ReplayContext {
     failSavesOf: (field) => {
       faults.field = field;
     },
+    summaryWrites: (summary) => {
+      summaries.reply = summary;
+    },
+    rows: (table) => [...(((store as unknown as Record<string, unknown[] | undefined>)[table] ?? []) as Record<string, unknown>[])],
     calls: () => ({ chat: state.chatModelCalls, draft: state.draftCalls, revision: state.revisionCalls, tool: state.toolCalls, patch: patchScript.calls }),
     forms: () => store.form_instances as never,
     draftPrompts: () => [...draftAsked],
