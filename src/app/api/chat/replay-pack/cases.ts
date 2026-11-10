@@ -71,6 +71,8 @@ export interface ReplayContext {
   summaryWrites?(summary: string): void;
   /** The rows a table holds now (`user_memory`, `chat_context_summaries`, …). */
   rows?(table: string): Record<string, unknown>[];
+  /** Fault injection (DRAFT_WRITE_NEVER_SILENT_ENABLED): the draft route's next one-writer write also carries this field, once; the real writer refuses it and, all or nothing, the whole write. */
+  draftWriteCarries?(field: string): void;
   calls(): { chat: number; draft: number; revision: number; tool: number; patch: number };
   forms(): Record<string, unknown>[];
   values(instanceId: string): Record<string, string>;
