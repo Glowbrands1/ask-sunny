@@ -2632,6 +2632,18 @@ export function exitFormDateFromTerminationEnabled(): boolean {
   return envFlag("EXIT_FORM_DATE_FROM_TERMINATION_ENABLED");
 }
 
+/**
+ * POLICY_TOPIC_INTO_FIELD_ENABLED (ported from the sibling app: QA, a manager's 1★ rating there, 10 Nov 2026; coding 5;
+ * same flag in both apps; default off). "In details of coaching inlude our woven policy on finding a cover for your
+ * shift" on a saved draft wrote a sentence telling the manager to refer to the policy manual. On: an edit asking for
+ * "our policy on <topic>" in a field writes the manual's section for that topic, quoted with its "Policy reference: …,
+ * JBA Policy Manual p.N" line, or says no section matches and asks; never a pointer to the manual
+ * (`forms/policy-topic-field.ts`). Off, as before.
+ */
+export function policyTopicIntoFieldEnabled(): boolean {
+  return envFlag("POLICY_TOPIC_INTO_FIELD_ENABLED");
+}
+
 // --- end coding 5 flags ---
 
 /**
