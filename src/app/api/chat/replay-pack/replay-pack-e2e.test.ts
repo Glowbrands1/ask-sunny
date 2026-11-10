@@ -116,7 +116,35 @@ vi.mock("@/lib/forms/form-patch-call", () => ({
   },
 }));
 
-vi.mock("@/lib/supabase/server", () => ({ getSupabaseAdmin: () => fakeSupabase(store) }));
+/*
+ * `t.failSavesOf` (QA, 9 Nov 2026): a save of the form's values that includes the named field returns an error, as a
+ * failed database write would, so a case can make a turn throw part-way.
+ */
+const faults = vi.hoisted(() => ({ field: null as string | null }));
+function withFaults<T>(client: T): T {
+  return new Proxy(client as object, {
+    get(target, prop, receiver) {
+      const value = Reflect.get(target, prop, receiver);
+      if (prop !== "from" || typeof value !== "function") return value;
+      return (table: string) => {
+        const builder = (value as (name: string) => Record<string, unknown>).call(target, table);
+        if (table !== "form_instance_values" || !faults.field) return builder;
+        const upsert = builder.upsert as ((rows: unknown, options?: unknown) => unknown) | undefined;
+        if (typeof upsert !== "function") return builder;
+        return new Proxy(builder, {
+          get(inner, key, innerReceiver) {
+            if (key !== "upsert") return Reflect.get(inner, key, innerReceiver);
+            return (rows: unknown, options?: unknown) =>
+              (Array.isArray(rows) ? rows : [rows]).some((row) => (row as { field_key?: string }).field_key === faults.field)
+                ? Promise.resolve({ data: null, error: { message: "replay fault" } })
+                : upsert.call(inner, rows, options);
+          },
+        });
+      };
+    },
+  }) as T;
+}
+vi.mock("@/lib/supabase/server", () => ({ getSupabaseAdmin: () => withFaults(fakeSupabase(store)) }));
 
 vi.mock("@/lib/api/respond", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/respond")>();
@@ -583,6 +611,7 @@ beforeEach(async () => {
   patchScript.outputs = [];
   patchScript.calls = 0;
   patchScript.byLatest = null;
+  faults.field = null;
   state.directory = [
     { id: "e-1", firstName: "Quinn", lastName: "Marlowe", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-66"], positionName: null },
     { id: "e-2", firstName: "Dale", lastName: "Ferris", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-66"], positionName: null },
@@ -706,6 +735,9 @@ function context(): ReplayContext {
       patchScript.outputs = [];
       patchScript.calls = 0;
       patchScript.byLatest = { ...byLatest };
+    },
+    failSavesOf: (field) => {
+      faults.field = field;
     },
     calls: () => ({ chat: state.chatModelCalls, draft: state.draftCalls, revision: state.revisionCalls, tool: state.toolCalls, patch: patchScript.calls }),
     forms: () => store.form_instances as never,

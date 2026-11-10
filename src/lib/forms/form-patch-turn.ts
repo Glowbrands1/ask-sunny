@@ -10,6 +10,7 @@ import {
   madeAboutReaderAccountEnabled,
   madeAboutUndatedTogetherEnabled,
   madeAboutPolicyLineEnabled,
+  madeAboutRewriteFinishesEnabled,
   stepBDateSaidEnabled,
   stepBDateWithAboutEnabled,
 } from "@/lib/config/chat-quality-flags";
@@ -238,6 +239,10 @@ async function readingFor(input: PatchTurnInput, modelInput: FormPatchInput): Pr
 export async function patchActiveForm(input: PatchTurnInput): Promise<AskResponse | null> {
   // FORM_PATCH_READER_FIXES_ENABLED: a previous turn's "found nothing" never reaches this one.
   if (formPatchReaderFixesEnabled()) (await import("./reader-found-nothing")).clearReaderFoundNothing(input.instanceId);
+  // MADE_ABOUT_REWRITE_FINISHES_ENABLED: the form as it was, once the made-about revision has rewritten its account.
+  let rewroteFrom: { readonly loaded: Parameters<typeof snapshotOf>[0]; readonly labels: Readonly<Record<string, string>> } | null = null;
+  // The fields this turn means to write after the rewrite (the reader's or the topic's, and the Date): said when not saved.
+  let intended: readonly string[] = [];
   try {
     let authorized: Awaited<ReturnType<typeof authorizeInstance>>;
     try {
@@ -258,6 +263,7 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
      * refused (the revision's new content there keeps it). A model fallback tells it nothing.
      */
     const handOff = async (found: "nothing" | "refused" | "none"): Promise<null> => {
+      noteMadeAboutExit(input, `handoff:${found}`, rewroteFrom !== null);
       const read = reading;
       if (readerFixes && found !== "none" && "ok" in read) {
         const evidence = Object.fromEntries(
@@ -289,8 +295,19 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
     if (
       madeAboutReaderAccountEnabled() &&
       madeAbout(input.question) !== null &&
-      madeAboutDate(input.question, input.today) !== null &&
-      "form_date" in before &&
+      /*
+       * MADE_ABOUT_REWRITE_FINISHES_ENABLED (QA's live round-13 test, turn 2: "make it about showing up late"): an undated
+       * made-about turn whose reader rewrote Details was refused for the old account's date and handed to the old path
+       * ("I haven't changed …"). With MADE_ABOUT_UNDATED_TOGETHER it is set aside the same way: the account and the topic
+       * are rewritten together, and the Date stays.
+       */
+      ((madeAboutDate(input.question, input.today) !== null && "form_date" in before) ||
+        /*
+         * QA's round-14 gate (9 Nov 2026): only a turn that says no date at all. "I need you to make it about showing up
+         * late and please list the policy make the date for 10/14/26" says the form's date apart from the topic: its
+         * reader's Details is that turn's account (STEP_B_DATE_WITH_ABOUT keeps it), never set aside as undated.
+         */
+        (madeAboutRewriteFinishesEnabled() && madeAboutUndatedTogetherEnabled() && saidFormDate(input.question, input.today) === null)) &&
       ACCOUNT_KEYS.some((key) => key in readerSet)
     ) {
       const drop = new Set<string>(ACCOUNT_KEYS);
@@ -347,7 +364,8 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
      * the manager's words); not rewritten, neither. The Date stays, and the reply says so.
      */
     const undatedAbout = aboutNotRewritten && !keepsAccount && !datedAbout && madeAboutUndatedTogetherEnabled();
-    if (undatedAbout && !(OTHER_TOPIC_KEY in readSet)) {
+    // MADE_ABOUT_REWRITE_FINISHES_ENABLED: a dated turn whose reader set no topic (its Details set aside) takes it from the manager's words too.
+    if ((undatedAbout || (datedAbout && madeAboutRewriteFinishesEnabled())) && !(OTHER_TOPIC_KEY in readSet)) {
       const topic = madeAboutReading(input, before, writable, allGroups);
       if (topic && "ok" in topic) reading = { ...reading, patch: { ...reading.patch, set: { ...reading.patch.set, ...topic.patch.set }, evidence: { ...reading.patch.evidence, ...topic.patch.evidence } } };
     }
@@ -405,8 +423,17 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
        * the new account (`made-about-policy-line.ts`), only where the old account carried one.
        */
       const hadLine = typeof before[keptAccountKey]?.value === "string" && splitAppCitationLine(before[keptAccountKey]!.value as string).line !== null;
+      const finishes = madeAboutRewriteFinishesEnabled();
+      if (rewritten && finishes) rewroteFrom = { loaded, labels };
       if (rewritten && hadLine && madeAboutPolicyLineEnabled()) {
-        await (await import("./made-about-policy-line")).rewriteMadeAboutPolicyLine({ instanceId: input.instanceId, actorId: actor.id, question: input.question, accountKey: keptAccountKey });
+        await (await import("./made-about-policy-line")).rewriteMadeAboutPolicyLine({
+          instanceId: input.instanceId,
+          actorId: actor.id,
+          question: input.question,
+          accountKey: keptAccountKey,
+          // MADE_ABOUT_REWRITE_FINISHES_ENABLED: the old account's line, kept by the revision, is replaced, never left on the new one.
+          ...(finishes ? { oldLine: splitAppCitationLine(before[keptAccountKey]!.value as string).line } : {}),
+        });
       }
       if (!rewritten) {
         const label = labels[keptAccountKey] ?? keptAccountKey;
@@ -510,6 +537,7 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
      * owner split below moved there. A patch with any refusal writes nothing
      * and the turn goes on (redraft, revision).
      */
+    if (rewroteFrom) intended = [...Object.keys(reading.patch.set), ...(dateToWrite !== null ? ["form_date"] : [])];
     const patchOps = Object.keys(reading.patch.set).length + reading.patch.clear.length;
     let policyOutcome: Awaited<ReturnType<typeof answerPolicy>> = null;
     if (formEditSingleWriterEnabled() && patchOps > 0) {
@@ -543,7 +571,40 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
         syncPlan: { after: [...stated], amountSentence: true, notes: input.question },
         ...(readerFixes ? { readerFixes } : {}),
       });
-      if (result.handoff === "refused") return handOff("refused");
+      /*
+       * MADE_ABOUT_REWRITE_FINISHES_ENABLED (QA's live round-13 test, 9 Nov 2026): the account is already rewritten, so
+       * handing off would run the old path's revision a second time and leave Other and the Date. The topic read from the
+       * manager's words is written instead (nothing, if that is refused too), and the turn goes on to the Date.
+       */
+      if (result.handoff === "refused" && rewroteFrom) {
+        noteMadeAboutExit(input, "reader_refused_after_rewrite", true);
+        const topic = madeAboutReading(input, before, writable, allGroups);
+        const topicSet = topic && "ok" in topic ? topic.patch.set : {};
+        if (Object.keys(topicSet).length > 0) {
+          await (await import("./form-write")).writeFormEdits(
+            input.instanceId,
+            Object.entries(topicSet).map(([field, value]) => ({
+              op: "set" as const,
+              field,
+              value,
+              ...(topic && "ok" in topic && topic.patch.evidence?.[field] !== undefined ? { evidence: topic.patch.evidence[field] } : {}),
+            })),
+            {
+              path: "patch",
+              actorId: actor.id,
+              latest: input.question,
+              managerTurns: managerTurns(input.history, input.question),
+              ...(offered !== undefined ? { offered } : {}),
+              acceptedOffer: false,
+              today: input.today,
+              loaded: (await loadInstance(input.instanceId)) ?? loaded,
+              writable,
+              statedKeys: stated,
+              ...(readerFixes ? { readerFixes } : {}),
+            },
+          );
+        }
+      } else if (result.handoff === "refused") return handOff("refused");
       /*
        * FORM_PATCH_READER_FIXES_ENABLED (QA's live run, 7 Nov 2026: "yes, do that" after the edit was saved went
        * to the old path, whose revision rewrote the form and said "Updated"): what the reader set is already on
@@ -620,9 +681,42 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
       recommendedVideoIds: [],
       ...(changed.length > 0 ? { formUpdate: { instanceId: input.instanceId, updated: changed.map((change) => change.key) } } : {}),
     }, policyOutcome)));
-  } catch {
+  } catch (error) {
+    noteMadeAboutExit(input, `error:${error instanceof Error ? error.name : typeof error}`, rewroteFrom !== null);
+    // MADE_ABOUT_REWRITE_FINISHES_ENABLED: after the rewrite, an error answers from what was saved, never with the old path.
+    if (rewroteFrom) return await replyFromSaved(input.instanceId, rewroteFrom, intended).catch(() => null);
     return null;
   }
+}
+
+/**
+ * MADE_ABOUT_REWRITE_FINISHES_ENABLED (QA, 9 Nov 2026): how a made-about turn left the patch path, in the server log, so
+ * the next live miss is visible (the reader's output is not stored). One JSON line; no form text, no names.
+ */
+function noteMadeAboutExit(input: PatchTurnInput, reason: string, afterRewrite: boolean): void {
+  if (!madeAboutRewriteFinishesEnabled() || madeAbout(input.question) === null) return;
+  console.info(JSON.stringify({ event: "form_patch.made_about.exit", instanceId: input.instanceId, reason, afterRewrite }));
+}
+
+/** MADE_ABOUT_REWRITE_FINISHES_ENABLED: the reply from the saved diff, after the made-about rewrite. */
+async function replyFromSaved(
+  instanceId: string,
+  from: { readonly loaded: Parameters<typeof snapshotOf>[0]; readonly labels: Readonly<Record<string, string>> },
+  intended: readonly string[],
+): Promise<AskResponse | null> {
+  const reloaded = await loadInstance(instanceId);
+  if (!reloaded) return null;
+  const changed = snapshotDiff(snapshotOf(from.loaded), snapshotOf(reloaded));
+  const done = new Set(changed.map((change) => change.key));
+  const notSaved = [...new Set(intended)].filter((key) => !done.has(key) && from.labels[key]).map((key) => `**${from.labels[key]}**`);
+  const unsaid = notSaved.length > 0 ? `\n\nI couldn't save the change to ${notSaved.join(", ")}: it is as it was. Tell me again and I'll try once more.` : "";
+  return {
+    content: `${replyFromDiff({ changed }, from.labels)}${unsaid}`,
+    citations: [],
+    coverage: "not_applicable",
+    recommendedVideoIds: [],
+    ...(changed.length > 0 ? { formUpdate: { instanceId, updated: changed.map((change) => change.key) } } : {}),
+  };
 }
 
 /**
