@@ -1,4 +1,4 @@
-import { policyGateNonblockingEnabled } from "@/lib/config/chat-quality-flags";
+import { policyGateNonblockingEnabled, revisionEditNeedsEditEnabled } from "@/lib/config/chat-quality-flags";
 
 import { fieldsForVariant, type FormDocument } from "./document";
 
@@ -146,11 +146,28 @@ export function policyWordingEdited(
   events: readonly PolicyEventRow[],
   isRevision = false,
 ): boolean {
+  /*
+   * REVISION_EDIT_NEEDS_EDIT_ENABLED (+NEXT_PUBLIC_; QA's Sunny round-5 live tester, 8 Nov 2026, item 1): a revision
+   * carries its original's values and provenance over, so a policy field the original never had verified ("typed by
+   * hand", or written without verified provenance) is unverified on a fresh revision too. Counting every such field as
+   * an edit made "Change <A> CA" open a new draft saying "You edited the policy wording … was changed by hand" when
+   * nobody had edited anything. On, a revision counts as edited only once it has an edit of its own; until then the
+   * carried field is reported as entered by hand and unchecked. Off, as before.
+   */
+  const revised = isRevision && (!revisionEditNeedsEditEnabled() || revisionWasEdited(events));
   return (
     fields.length > 0 &&
     fields.every(
-      (field) => field.filled && (isRevision || assistantWroteField(events, field.key)),
+      (field) => field.filled && (revised || assistantWroteField(events, field.key)),
     )
+  );
+}
+
+/** Whether this form has an edit of its own that changed a value or a box (the `edited` event's counts). */
+function revisionWasEdited(events: readonly PolicyEventRow[]): boolean {
+  return events.some(
+    (event) =>
+      event.kind === "edited" && (Number(event.detail?.fields ?? 0) > 0 || Number(event.detail?.groups ?? 0) > 0),
   );
 }
 

@@ -376,7 +376,7 @@ export function OverviewScreen({
           </CardHeader>
           <CardContent className="pt-0">
             {followUps.length === 0 ? (
-              <p className="rounded-[var(--radius-sm)] border border-dashed border-border px-3 py-6 text-center text-[13px] text-muted-foreground">
+              <p className="rounded-[var(--radius-md)] bg-surface-muted px-3 py-6 text-center text-[13px] text-muted-foreground shadow-dent">
                 {followUpData.failure
                   ? "Ask Sunny could not reach the Forms record."
                   : "No follow-ups are being tracked."}

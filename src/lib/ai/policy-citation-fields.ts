@@ -1,4 +1,4 @@
-import { followUpCitationFieldEnabled } from "@/lib/config/chat-quality-flags";
+import { caSalesPolicyEnabled, followUpCitationFieldEnabled } from "@/lib/config/chat-quality-flags";
 import { printedPageOf } from "@/lib/ingestion/extract/pdf-sections";
 import {
   approvedManualConfirmed,
@@ -24,6 +24,9 @@ const NARRATIVE_KEY: Readonly<Record<string, string>> = {
   coaching: "coaching_details",
   "follow-up-coaching": "follow_up_observation",
 };
+
+/** The forms whose account field carries the citation line (EDIT_POLICY_ASK_ENABLED, `forms/edit-policy-ask.ts`). */
+export const NARRATIVE_CITATION_TEMPLATES: readonly string[] = Object.keys(NARRATIVE_KEY);
 
 export function citationPage(chunk: ManualChunk, heading: string): number | null {
   const listed = chunk.sections?.find((section) => section.heading.toLowerCase() === heading.toLowerCase());
@@ -87,6 +90,8 @@ export function flaggedCitationWrite(input: {
   readonly notes: string;
   readonly chunks: readonly ManualChunk[];
   readonly manual?: FlaggedManualIdentity | null;
+  /** The Type of Offense boxes the draft ticks (CA_SALES_POLICY_ENABLED: the fill follows them). */
+  readonly ticked?: readonly string[];
 }): { values: Record<string, string>; provenance: Record<string, Record<string, unknown>> } {
   if (!input.enabled) return { values: input.values, provenance: {} };
   const found = linesFromChunks(input.notes, input.chunks);
@@ -109,7 +114,17 @@ export function flaggedCitationWrite(input: {
     return { values: { ...input.values, [narrative]: next }, provenance: {} };
   }
 
-  const paged = found.filter((item): item is CitedLine & { page: number } => item.page !== null && item.page > 0);
+  /*
+   * CA_SALES_POLICY_ENABLED (QA's production-flags bisect, 5 Nov 2026): the empty Direct policy is
+   * filled from the lines the notes point at, and cleaning moved to Other still had the Standards of
+   * Conduct written in. The fill follows the ticked box: no Standards of Conduct line unless that box
+   * is ticked when another box is. Off, or with nothing ticked, as before.
+   */
+  const conductUnticked = caSalesPolicyEnabled() && (input.ticked ?? []).length > 0 && !input.ticked!.includes("standards_of_conduct");
+  const paged = found.filter(
+    (item): item is CitedLine & { page: number } =>
+      item.page !== null && item.page > 0 && !(conductUnticked && /^standards of conduct\b/i.test(item.heading.trim())),
+  );
   if (
     (input.templateKey === "dpoa" || input.templateKey === "policy-review") &&
     !(input.values.policy_language ?? "").trim() &&

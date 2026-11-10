@@ -1,3 +1,7 @@
+import { citationLineKeptOnRevisionEnabled, editMakeItAboutEnabled } from "@/lib/config/chat-quality-flags";
+
+import { splitAppCitationLine } from "./app-citation-line";
+
 /**
  * ============================================================================
  * A REDRAFT CHANGES WHAT WAS ASKED FOR, AND NOTHING ELSE
@@ -388,6 +392,10 @@ export interface RevisionScope {
 const ADDS_INFORMATION =
   /\b(?:add|include|insert|put|mention|note|append)\b|:\s*\S/i;
 
+/** EDIT_MAKE_IT_ABOUT_ENABLED (sf-s34): "make it about showing up late" rewrites the account — the form's Details / Observation. */
+const MAKE_IT_ABOUT = /\bmake\s+(?:it|this|the\s+(?:form|document|coaching|ca))\s+(?:be\s+)?about\b/i;
+const ACCOUNT_KEYS = ["coaching_details", "observation"] as const;
+
 export function scopeRevision(
   question: string,
   fields: readonly RevisableField[],
@@ -396,6 +404,9 @@ export function scopeRevision(
 ): RevisionScope {
   const { protectedKeys } = readFieldMentions(question, fields);
   const instructed = instructedFieldsIn(question, fields);
+  if (editMakeItAboutEnabled() && MAKE_IT_ABOUT.test(question ?? "")) {
+    for (const key of ACCOUNT_KEYS) if (fields.some((field) => field.key === key)) instructed.add(key);
+  }
   for (const key of protectedKeys) instructed.delete(key);
   if (instructed.size > 0) return { mode: "fields", keys: instructed, protectedKeys };
   if (followUpFindings.size > 0) return { mode: "findings", keys: followUpFindings, protectedKeys };
@@ -470,6 +481,19 @@ const sameList = (a: readonly string[], b: readonly string[]) =>
   a.length === b.length && [...a].sort().join("|") === [...b].sort().join("|");
 
 /**
+ * CITATION_LINE_KEPT_ON_REVISION_ENABLED: a rewording or an addition that dropped the app's own
+ * trailing citation line ("Policy reference: …, JBA Policy Manual p.N") gets it back, so the
+ * line's page numbers never make keepsSubstance refuse the manager's edit. Only that line
+ * (`app-citation-line.ts`); only for those two modes. Off, the revision as the model wrote it.
+ */
+function withAppCitationLine(before: string, revised: string, mode: RevisionScope["mode"]): string {
+  if (!citationLineKeptOnRevisionEnabled() || (mode !== "wording" && mode !== "additive")) return revised;
+  const { line } = splitAppCitationLine(before);
+  if (!line || splitAppCitationLine(revised).line !== null) return revised;
+  return `${revised}\n\n${line}`;
+}
+
+/**
  * Turns what the model proposed into what may be written.
  *
  * `proposed` is the model's output; `current` is the stored form. Nothing that
@@ -514,12 +538,13 @@ export function planRevision(input: {
   for (const [key, raw] of Object.entries(input.proposed.values ?? {})) {
     if (typeof raw !== "string" || raw.trim() === "") continue;
     const before = (input.current.get(key)?.value ?? "").trim();
-    if (raw.trim() === before) continue;
-    if (!mayChangeText(key, raw.trim())) {
+    const revised = withAppCitationLine(before, raw.trim(), scope.mode);
+    if (revised === before) continue;
+    if (!mayChangeText(key, revised)) {
       if (known.has(key)) untouched.push(key);
       continue;
     }
-    values[key] = raw.trim();
+    values[key] = revised;
   }
 
   const checked: Record<string, string[]> = {};

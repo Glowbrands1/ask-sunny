@@ -245,7 +245,39 @@ vi.mock("@/lib/forms/prior-forms", async (importOriginal) => ({
 
 const FLAG = "FORM_EDIT_SINGLE_WRITER_ENABLED";
 const STEP_B = ["FORM_PATCH_REDUCER_ENABLED", "FORM_REPLY_FROM_DIFF_ENABLED"] as const;
-const PRODUCTION = [...PRODUCTION_FLAGS.on, ...PRODUCTION_FLAGS.assumedOn];
+/*
+ * Changed on purpose (7 Nov 2026): production-flags.json now lists QA's flips of 5 and 6 Nov as on. The recorded
+ * fixture is main's behaviour before this flag, under production's flags as they were then, so the base leaves those seven off,
+ * as it leaves this flag off. The fixture and every assertion are unchanged.
+ */
+const FLIPPED_AFTER_FIXTURE: readonly string[] = [
+  "CA_SALES_POLICY_ENABLED",
+  "REPLY_MATCHES_CARD_ENABLED",
+  "TITLE_OF_THE_EMPLOYEE_ENABLED",
+  "METRIC_GUARD_ENABLED",
+  "TITLE_ENDS_AT_LINE_ENABLED",
+  "BARE_NOT_DENIAL_ENABLED",
+  "PLACE_FROM_CUE_ENABLED",
+  // Changed on purpose (7 Nov 2026): QA's flip 7 turned these on in production; the fixture predates them.
+  "AS_YOU_SAID_MANAGER_WORDS_ENABLED",
+  "AS_YOU_SAID_APP_READ_ENABLED",
+  "CLEANING_OTHER_EVERY_WORDING_ENABLED",
+  "UNDER_PERFORMANCE_EXPLAINED_ENABLED",
+  "OWN_BRAND_ONLY_ENABLED",
+  "TWO_FORMS_OWN_PERSON_ENABLED",
+  "NO_NOTICE_NO_DATE_ENABLED",
+  "COACHING_OBSERVED_KEPT_ENABLED",
+  "POLITE_REQUEST_OWN_TURNS_ENABLED",
+  "MSB_PHRASE_SOC_ENABLED",
+  "PRIOR_STEP_PREVIOUSLY_ENABLED",
+  "REMOVE_POLICY_NOT_NAMED_ENABLED",
+  "FORM_PATCH_REDUCER_ENABLED",
+  "FORM_REPLY_FROM_DIFF_ENABLED",
+  "FORM_EDIT_SINGLE_WRITER_ENABLED",
+  "FORM_EDIT_SAID_REPLACEMENT_ENABLED",
+  "FORM_PATCH_READER_FIXES_ENABLED",
+];
+const PRODUCTION = [...PRODUCTION_FLAGS.on, ...PRODUCTION_FLAGS.assumedOn].filter((name) => !FLIPPED_AFTER_FIXTURE.includes(name));
 /*
  * FORM_EDIT_TOOL_IN_STREAM_ENABLED (Step 3) is pinned off here like the Step B
  * flags: this file is about the single writer alone, and the edit tool makes

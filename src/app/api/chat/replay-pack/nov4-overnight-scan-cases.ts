@@ -331,4 +331,45 @@ export const NOV4_OVERNIGHT_SCAN_CASES: readonly ReplayCase[] = [
       expect(values.policy_violated ?? "", "Policy Violated is not Standards of Conduct").toMatch(/standards of conduct/i);
     },
   },
+  /*
+   * Pau, 5 Nov 2026 (overnight scan sf-s29, PAST_FORMS_BEFORE_LIBRARY_ENABLED):
+   * "are there any coaching and ca's for <name>" was answered from the forms
+   * library ("Yes. **Corrective Action Form** — …"), not from that person's
+   * forms on file. With the flag, a message the forms library would answer
+   * that names a person or asks about forms already on file reads the forms
+   * on file; the library answer steps aside. Invented names.
+   */
+  ...(
+    [
+      // Changed on purpose (8 Nov 2026): fixed in production by PAST_FORMS_BEFORE_LIBRARY_ENABLED, QA round 4, 8 Nov 2026; both rows now hold with production's flags.
+      ["sf-s29-coaching-and-cas", "are there any coaching and ca's for Jovelle Kerrigan", "fixed"],
+      ["sf-s29-named-library-question", "do we have a coaching form for Jovelle Kerrigan?", "fixed"],
+    ] as const
+  ).map(
+    ([key, text, status]): ReplayCase => ({
+      id: `nov5-scan-${key}`,
+      title: `sf-s29: "${text}" — answered from the forms on file, never the forms-library answer`,
+      report: `Pau, 5 Nov 2026 (overnight scan sf-s29): "are there any coaching and ca's for <name>"`,
+      status,
+      fixFlags: ["PAST_FORMS_BEFORE_LIBRARY_ENABLED"],
+      async run(t) {
+        const thread = start(t);
+        const reply = await thread.say(text);
+        expect(thread.proposal, `a form card for a question about forms on file:\n${reply.content}`).toBeNull();
+        expect(reply.content, `the forms-library answer:\n${reply.content}`).not.toMatch(/I can create it here|is filed under|^Yes\. \*\*/);
+      },
+    }),
+  ),
+  {
+    id: "nov5-scan-sf-s29-control-library-question",
+    title: "negative control: \"do we have a coaching form?\" still gets the forms-library answer",
+    report: "Pau, 5 Nov 2026 (overnight scan sf-s29): the negative control",
+    status: "fixed",
+    fixFlags: ["PAST_FORMS_BEFORE_LIBRARY_ENABLED"],
+    async run(t) {
+      const thread = start(t);
+      const reply = await thread.say("do we have a coaching form?");
+      expect(reply.content, `not the forms-library answer:\n${reply.content}`).toMatch(/^Yes\. \*\*Coaching Form\*\*/);
+    },
+  },
 ];

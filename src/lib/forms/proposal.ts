@@ -19,6 +19,7 @@ import {
 } from "./team-subject";
 import { proposeLocation } from "./location-scope";
 import { isExitTerms, namesSomebody, notInStreetAddress } from "./answer-not-a-name";
+import { nameBeforeAccountVerb } from "./not-a-name";
 import { isMultiWordSalonName } from "./salon-mention";
 import { turnsFromThisPersonsRequest } from "./this-persons-turns";
 import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
@@ -1275,6 +1276,10 @@ function formRecipient(subjects: readonly string[], strong: readonly string[], w
 }
 
 function settle(strong: string[], weak: string[], text: string, subjects: readonly string[] = []): EmployeeMentions {
+  // ACCOUNT_VERB_NOT_A_NAME_ENABLED (sf-s38, Pau-approved): "rhea failing" / "Rhea Calloway failing" end at the verb.
+  const beforeVerb = (names: string[]) => names.map(nameBeforeAccountVerb).filter((name): name is string => Boolean(name));
+  strong = beforeVerb(strong);
+  weak = beforeVerb(weak);
   const negated = negatedNames(text);
   const correction = negated.length > 0 || CORRECTION_CUE.test(text);
   const given = correction ? [...strong, ...sentenceAnswers(text)] : strong;

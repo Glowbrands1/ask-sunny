@@ -71,10 +71,10 @@ export function CategoryOverview({
                   onClick={() => onSelect(selected ? "all" : entry.id)}
                   aria-pressed={selected}
                   className={cn(
-                    "w-full rounded-[var(--radius-md)] border px-3 py-2.5 text-left transition-colors",
+                    "w-full rounded-[var(--radius-md)] px-3.5 py-3 text-left transition-[background-color,box-shadow,transform]",
                     selected
-                      ? "border-selected bg-selected text-selected-foreground"
-                      : "border-border bg-surface hover:bg-hover-surface",
+                      ? "bg-selected text-selected-foreground clay-fill"
+                      : "bg-surface shadow-raised hover:-translate-y-px hover:shadow-float",
                   )}
                 >
                   <span className="block text-[13px] font-medium">{entry.label}</span>

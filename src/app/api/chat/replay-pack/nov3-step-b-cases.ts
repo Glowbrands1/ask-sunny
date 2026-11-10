@@ -83,7 +83,8 @@ export const NOV3_STEP_B_CASES: readonly ReplayCase[] = [
     title: "\"ok, create the draft, but include the details of the cleaning checklist.\" — the copied draft holds the checklist details she gave",
     report:
       'Ask Bubbles replay set b13, the mechanism here: "can you create the same draft that we did with <name> by changing the name and position?" → "ok, create the draft, but include the details of <the process>." — the new draft had none of the details',
-    status: { open: "the details she gave never reach Marnie's open draft, so the copy made from it has none: the revision path writes nothing" },
+    // Changed on purpose (7 Nov 2026): QA's flip 7 (21:29 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+    status: "fixed",
     fixFlags: STEP_B_FLAGS,
     async run(t) {
       t.directory(PEOPLE);
@@ -138,7 +139,8 @@ export const NOV3_STEP_B_CASES: readonly ReplayCase[] = [
     title: "\"make that update\" and \"I need to add that the room …\" reach the team draft's Details, and no reply says updated without a change",
     report:
       'Ask Bubbles replay set b15 (rated 3), the mechanism here: "i don\'t see the details updated in the draft card. Do i need to copy and paste it? or should it be automatically updating?" → "make that update" → … → "the changes weren\'t made in the details"',
-    status: { open: "the open team draft's Details of Coaching never receives the new room flow or the 10-minute rule; the revision path writes nothing" },
+    // Changed on purpose (7 Nov 2026): QA's flip 7 (21:29 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+    status: "fixed",
     fixFlags: STEP_B_FLAGS,
     async run(t) {
       t.directory(PEOPLE);
@@ -184,7 +186,8 @@ export const NOV3_STEP_B_CASES: readonly ReplayCase[] = [
     title: "\"yes, do that\" / \"write the observtion\" put what Rowan did on the draft, and no reply says updated without a change",
     report:
       'Ask Bubbles replay set b17 (rated 2), the mechanism here: "<name> marked <a thing> as <done> but <it wasn\'t>" → "yes, do that" → "it didnt edit in the card" → "the details we just discussed!!!" → "write the observtion"',
-    status: { open: "Rowan's Details of Coaching stays empty through \"yes, do that\" and \"write the observtion\"; the revision path writes nothing" },
+    // Changed on purpose (7 Nov 2026): QA's flip 7 (21:29 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+    status: "fixed",
     fixFlags: STEP_B_FLAGS,
     async run(t) {
       t.directory(PEOPLE);
@@ -295,7 +298,8 @@ export const NOV3_STEP_B_CASES: readonly ReplayCase[] = [
      * the flag on the model reads the turn as this form's and it is written.
      * With the flag off the order of the paths is unchanged.
      */
-    status: { open: "no form path takes the turn (the revision's roster name gate reads \"Juno\" as another person); the card intake offers a new card that says \"Added\", and the open form is unchanged" },
+    // Changed on purpose (7 Nov 2026): QA's flip 7 (21:29 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+    status: "fixed",
     fixFlags: STEP_B_FLAGS,
     async run(t) {
       t.directory(PEOPLE);
@@ -327,7 +331,8 @@ export const NOV3_STEP_B_CASES: readonly ReplayCase[] = [
      * of (the template's own layout: the line after the group, labelled like
      * one of its options).
      */
-    status: { open: "the drafting model's \"Tanning Consultant at Kearney\" is saved as the Other topic" },
+    // Changed on purpose (7 Nov 2026): QA's flip 7 (21:29 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+    status: "fixed",
     fixFlags: STEP_B_FLAGS,
     async run(t) {
       t.directory(PEOPLE);
@@ -353,7 +358,8 @@ export const NOV3_STEP_B_CASES: readonly ReplayCase[] = [
     title: "an \"add\" to a line the manager typed stays hers: a later redraft keeps both what she typed and what she added",
     report:
       "QA's ruling on Step B, 3 Nov 2026 (option A, both apps): text added in chat to a field the manager typed is written as hers, so a redraft cannot replace her words",
-    status: { open: "in production the chat \"add\" is not written at all, so the redrafted form lacks it" },
+    // Changed on purpose (7 Nov 2026): QA's flip 7 (21:29 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+    status: "fixed",
     fixFlags: STEP_B_FLAGS,
     async run(t) {
       t.directory(PEOPLE);
@@ -425,17 +431,16 @@ export const NOV3_STEP_B_CASES: readonly ReplayCase[] = [
   },
   {
     id: "nov3-stepb-payroll-as-given",
-    title: "\"payroll deduct applies and $3.25 will be deducted from check\" — Yes, $3.25 exactly in its own field, and the manager-only action plan does not gain it",
+    title: "\"payroll deduct applies and $3.25 will be deducted from check\" — Yes, $3.25 exactly in its own field, and the Action Plan the AI writes may carry the payroll sentence",
     report:
       'HR, 21 Oct 2026: "create ca form for pat rivera for a register shortage on 10-20-26. payroll deduct applies and $3.25 will be deducted from check."',
     /*
-     * BEHAVIOUR DIFFERENCE FROM ASK BUBBLES (docs/parity-log/2026-11-03-step-b-form-patch.md):
-     * here ACTION_PLAN_MANAGER_ONLY_ENABLED is on in production, so the Action
-     * Plan is the manager's alone and Step B never writes the deduction into
-     * it (`syncCorrectiveActionPlan` returns at once). The $3.25 goes to the
-     * Payroll deduction amount field, verbatim. That already holds with
-     * production's flags (replayed 3 Nov 2026), so the case is "fixed" here;
-     * it is open in Ask Bubbles, whose plan gains the sentence with Step B.
+     * EXPECTATION CHANGED ON PURPOSE — Pau 5 Nov 2026: the AI writes the Action Plan;
+     * ACTION_PLAN_MANAGER_ONLY off in production. This case used to assert a manager-only
+     * plan without the deduction, on the belief that ACTION_PLAN_MANAGER_ONLY_ENABLED was on
+     * here (QA's Vercel read, 5 Nov 2026: it is off in both apps). The plan the AI builds may
+     * carry PLAN_PAYROLL_SENTENCE's "<name> will be payroll deducted $3.25.", as in Ask
+     * Bubbles; the $3.25 still goes to the Payroll deduction amount field verbatim.
      */
     status: "fixed",
     fixFlags: STEP_B_FLAGS,
@@ -450,7 +455,8 @@ export const NOV3_STEP_B_CASES: readonly ReplayCase[] = [
       expect(t.checked(id).payroll_deduct, "payroll deduct is not saved as Yes").toEqual(["yes"]);
       const values = t.values(id);
       expect(values.payroll_deduct_amount, "the amount is not $3.25 as given").toBe("$3.25");
-      expect(values.action_plan ?? "", "the manager-only action plan was given the deduction").not.toMatch(/\$3\.25/);
+      // Pau 5 Nov 2026: the AI writes the Action Plan; ACTION_PLAN_MANAGER_ONLY off in production. Any $3.25 in it is PLAN_PAYROLL_SENTENCE's sentence.
+      for (const amount of (values.action_plan ?? "").match(/\$\d+(?:[.,]\d+)*/g) ?? []) expect(amount, "the Action Plan names an amount she did not give").toBe("$3.25");
       expect(JSON.stringify(values), "an amount she did not give is on the form").not.toMatch(/\$(?!3\.25\b)\d/);
     },
   },
@@ -488,7 +494,8 @@ export const NOV3_STEP_B_CASES: readonly ReplayCase[] = [
     title: "a prior coaching \"signed May 2025\" added to the open Corrective Action reaches Prior Actions, or the reply says it did not",
     report:
       "the 2 Nov scan (s8): the manager gave the prior coaching and when it was signed; it was not on the form, and the reply said everything else was as it was",
-    status: { open: "Prior Actions stays empty and the reply says the form is \"as it was\" without saying the prior coaching was not placed" },
+    // Changed on purpose (7 Nov 2026): QA's flip 7 (21:29 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+    status: "fixed",
     fixFlags: STEP_B_FLAGS,
     async run(t) {
       t.directory(PEOPLE);

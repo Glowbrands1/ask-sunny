@@ -19,7 +19,7 @@ export function Skeleton({
 
 export function SkeletonCard({ lines = 3 }: { lines?: number }) {
   return (
-    <div className="rounded-[var(--radius-lg)] border border-border bg-surface p-5 shadow-soft">
+    <div className="rounded-[var(--radius-lg)] bg-surface p-5 shadow-raised">
       <Skeleton className="h-3.5 w-28" />
       <Skeleton className="mt-4 h-7 w-20" />
       <div className="mt-4 space-y-2">
@@ -61,13 +61,14 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "flex flex-col items-center justify-center rounded-[var(--radius-lg)] border border-dashed border-border-strong bg-surface/60 text-center",
+        /* CLAY: an empty state is a soft pressed-in well, not a dashed outline. */
+        "flex flex-col items-center justify-center rounded-[var(--radius-lg)] bg-surface-muted text-center shadow-dent",
         compact ? "px-6 py-8" : "px-8 py-14",
         className,
       )}
     >
       {icon ? (
-        <div className="mb-3.5 flex size-11 items-center justify-center rounded-full bg-surface-muted text-muted-foreground [&_svg]:size-5">
+        <div className="mb-3.5 flex size-12 items-center justify-center rounded-full bg-surface text-gold-deep shadow-raised [&_svg]:size-5">
           {icon}
         </div>
       ) : null}
@@ -111,7 +112,7 @@ export function Notice({
   return (
     <div
       className={cn(
-        "flex flex-wrap items-start gap-3 rounded-[var(--radius-md)] border px-4 py-3",
+        "flex flex-wrap items-start gap-3 rounded-[var(--radius-lg)] border px-4 py-3.5 shadow-soft",
         toneClass,
         className,
       )}
