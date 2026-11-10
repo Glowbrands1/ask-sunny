@@ -22,7 +22,8 @@ export const NOV5_TWO_NAMES_ONE_REQUEST_CASES: ReplayCase[] = [
     id: "nov5-two-names-one-request-no-cross-match",
     title: "\"a coaching form for Marnie Holloway … and a CA for Remy Calder …\": never \"Which person did you mean for **Marnie Holloway**?\" offering Remy Calder",
     report: "QA, 5 Nov 2026: this app's reply to a two-form request for two people asks which person was meant for the first, listing the second",
-    status: { open: "the reply asks \"Which person did you mean for **Marnie Holloway**?\" and lists **Remy Calder** as a choice" },
+    // Changed on purpose (8 Nov 2026): fixed in production by TWO_FORMS_EACH_PERSON_ENABLED, QA round 4, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     async run(t) {
       t.directory(STAFF);
       t.as("salon_director", KEARNEY);

@@ -1,4 +1,12 @@
-import { futurePriorRowDropEnabled, priorActionsNoSignedEnabled, priorActionsParseEnabled, priorRowNotOnIncidentDateEnabled, priorStepPreviouslyEnabled, priorStepSentenceEnabled } from "@/lib/config/chat-quality-flags";
+import {
+  futurePriorRowDropEnabled,
+  priorActionsNoSignedEnabled,
+  priorActionsParseEnabled,
+  priorRowNotOnIncidentDateEnabled,
+  priorStepDateListEnabled,
+  priorStepPreviouslyEnabled,
+  priorStepSentenceEnabled,
+} from "@/lib/config/chat-quality-flags";
 
 import { statesFirstOccurrence } from "./corrective-action-intake";
 import { correctedDates, datesInText, managerDatesForDraft, priorSteps } from "./form-date-answer";
@@ -98,6 +106,28 @@ function namedStep(named: string): { start: number; end: number; label: string }
 }
 
 /**
+ * The first and the last step the manager's words name, by where they sit:
+ * the first is the one a sentence opens on, the last the one nearest its end
+ * (`namedStep`). Null when no step is named. Read by
+ * `ai/prior-coaching-denial.ts` to tell "no prior coaching" from "no prior
+ * coaching except a verbal in July".
+ */
+export function firstAndLastNamedStep(
+  named: string,
+): { first: { start: number; end: number; label: string }; last: { start: number; end: number; label: string } } | null {
+  const last = namedStep(named);
+  if (!last) return null;
+  let first = last;
+  for (const [pattern, label] of STEPS) {
+    for (const match of named.matchAll(new RegExp(pattern.source, "gi"))) {
+      const end = match.index + match[0].length;
+      if (match.index < first.start || (match.index === first.start && end > first.end)) first = { start: match.index, end, label };
+    }
+  }
+  return { first, last };
+}
+
+/**
  * What a step was for, as the manager said it beside the step: "coaching for
  * attendance on 9/1" → "for attendance". Nothing when the words after the step
  * are anything else.
@@ -182,7 +212,8 @@ function stepTopic(topic: string | undefined): string {
  * chat reads back before the form is created.
  */
 export function statedPriorActions(notes: string, today: string): string[] {
-  return stepsSaid(notes, today).map(managerStepLine);
+  const lines = stepsSaid(notes, today).map(managerStepLine);
+  return [...lines, ...undatedListSteps(notes, today, lines)];
 }
 
 /*
@@ -251,9 +282,72 @@ function sentenceSteps(notes: string, today: string): { iso: string; named: stri
 /** The steps the manager dated: `priorSteps`, and with PRIOR_STEP_SENTENCE_ENABLED a step told in a sentence. */
 function stepsSaid(notes: string, today: string): { iso: string; named: string; topic?: string; about?: string }[] {
   const steps = priorSteps(notes, today);
-  if (!priorStepSentenceEnabled()) return steps;
   const have = new Set(steps.map((step) => step.iso));
-  return [...steps, ...sentenceSteps(notes, today).filter((step) => !have.has(step.iso) && have.add(step.iso))];
+  const told = priorStepSentenceEnabled() ? [...steps, ...sentenceSteps(notes, today).filter((step) => !have.has(step.iso) && have.add(step.iso))] : steps;
+  // PRIOR_STEP_DATE_LIST_ENABLED: "coaching on 9/8/2026, 9/15/2026 and 9/25/2026" is a row per date.
+  if (!priorStepDateListEnabled()) return told;
+  return [...told, ...dateListSteps(notes, today).dated.filter((step) => !have.has(step.iso) && have.add(step.iso))];
+}
+
+/*
+ * PRIOR_STEP_DATE_LIST_ENABLED (QA round 5, 8 Nov 2026): "she already received a verbal warning and coaching on
+ * 9/8/2026, 9/15/2026 and 9/25/2026" listed only "Coaching — 09/08/2026": the step readers take the first date after a
+ * step, and the verbal warning named before it took none. With the flag on, a step a given-verb leads (with other steps
+ * joined by "and" or commas between) is a row for each date of the list after it ("9/8, 9/15 and 9/25"), and each step
+ * named before it is listed with no date: the manager tied none to it. Off, as before.
+ */
+const LIST_GLUE = /^\s*(?:,\s*(?:and\s+|&\s*)?|and\s+|&\s*)$/i;
+const STEP_JOIN = /^\s*(?:,\s*)?(?:and|&|,)\s*(?:an?\s+)?$/i;
+
+function dateListSteps(notes: string, today: string): { dated: { iso: string; named: string }[]; undated: string[] } {
+  const dated: { iso: string; named: string }[] = [];
+  const undated: string[] = [];
+  for (const sentence of (notes ?? "").split(/(?<=[!?\n])|(?<=\.)(?!\d)/)) {
+    const step = namedStep(sentence);
+    if (!step) continue;
+    // The dates right after the step, as one list: "on 9/8/2026, 9/15/2026 and 9/25/2026".
+    const after = sentence.slice(step.end);
+    const found = datesInText(after, today).sort((a, b) => a.index - b.index);
+    if (found.length < 2 || !/^\s*(?:on\s+)?$/i.test(after.slice(0, found[0]!.index))) continue;
+    const list = [found[0]!];
+    for (const next of found.slice(1)) {
+      if (!LIST_GLUE.test(after.slice(list[list.length - 1]!.end, next.index))) break;
+      list.push(next);
+    }
+    if (list.length < 2) continue;
+    // A given-verb before the step, with only other steps joined by "and" between: "received a verbal warning and coaching".
+    const before = sentence.slice(0, step.start);
+    const given = [...before.matchAll(STEP_GIVEN)].pop();
+    if (!given) continue;
+    const between = before.slice(given.index + given[0].length);
+    const others: string[] = [];
+    let rest = between;
+    while (rest.trim() !== "") {
+      const other = namedStep(rest);
+      if (!other || other.start !== rest.search(/\S/)) break;
+      const glue = rest.slice(other.end);
+      const joined = /^\s*(?:,\s*)?(?:and|&|,)\s*(?:an?\s+)?/i.exec(glue);
+      if (!joined) break;
+      others.push(other.label);
+      rest = glue.slice(joined[0].length);
+    }
+    if (rest.trim() !== "" && !STEP_JOIN.test(rest)) continue;
+    const named = sentence.slice(step.start, step.end);
+    for (const date of list) if (date.iso <= today) dated.push({ iso: date.iso, named });
+    undated.push(...others);
+  }
+  return { dated, undated };
+}
+
+/** PRIOR_STEP_DATE_LIST_ENABLED: the steps named without a date beside a dated list, as lines, unless already listed. */
+function undatedListSteps(notes: string, today: string, lines: readonly string[]): string[] {
+  if (!priorStepDateListEnabled()) return [];
+  const out: string[] = [];
+  for (const label of dateListSteps(notes, today).undated) {
+    const listed = [...lines, ...out].some((line) => namedStep(line)?.label === label);
+    if (!listed) out.push(label);
+  }
+  return out;
 }
 
 /**
@@ -408,6 +502,8 @@ export function groundPriorActions(input: {
     present.add(step.iso);
     added.push(managerStepLine(step));
   }
+  // PRIOR_STEP_DATE_LIST_ENABLED: "a verbal warning and coaching on 9/8, 9/15 and 9/25": the verbal warning, undated.
+  added.push(...undatedListSteps(input.notes, input.today, [...kept, ...added]));
   /*
    * What the manager said of a step comes first; the record fills in the rest.
    *

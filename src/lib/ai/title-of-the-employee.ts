@@ -1,4 +1,4 @@
-import { exitStatedOnlyEnabled, titleOfTheEmployeeEnabled } from "@/lib/config/chat-quality-flags";
+import { exitLetterAddresseeEnabled, exitStatedOnlyEnabled, titleOfTheEmployeeEnabled } from "@/lib/config/chat-quality-flags";
 import { EXIT_TEMPLATE_KEY } from "@/lib/forms/exit-library";
 import { titleNamesAnotherPerson } from "@/lib/forms/title-of-another-person";
 
@@ -34,14 +34,22 @@ export function withTitleOfTheEmployee(response: AskResponse, request: Pick<AskR
   // ("your Salon Director", "our Salon Directors") is that person's, never the employee's.
   const owned = exitOwned && card.templateKey === EXIT_TEMPLATE_KEY && onlyAsSomeonesTitle(said, role);
   if (!another && !owned) return response;
+  /*
+   * EXIT_LETTER_ADDRESSEE_ENABLED (QA, the live Sunny test of rounds 7c and 8, 9 Nov 2026): a termination letter signed
+   * "<C>, District Manager" left "- **Job Title:** District Manager" on the exit card's read-back: the card's role was
+   * cleared as another person's, but the line below looked for "**Job title:**" and never matched the read-back's
+   * "- **Job Title:**". With the flag, on an exit card the line goes as EXIT_STATED_ONLY's does, and the Job Title is
+   * left for the manager.
+   */
+  const lineOwned = owned || (another && exitLetterAddresseeEnabled() && card.templateKey === EXIT_TEMPLATE_KEY);
   const content = response.content
     .split("\n")
-    .filter((line) => !line.trim().startsWith(`**Job title:** ${role}`) && !(owned && new RegExp(String.raw`^(?:-\s*)?\*\*Job title:\*\*\s*${escape(role)}\s*$`, "i").test(line.trim())))
+    .filter((line) => !line.trim().startsWith(`**Job title:** ${role}`) && !(lineOwned && new RegExp(String.raw`^(?:-\s*)?\*\*Job title:\*\*\s*${escape(role)}\s*$`, "i").test(line.trim())))
     .join("\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim()
     // EXIT_STATED_ONLY_ENABLED: the title taken off an exit card is one for the manager to fill.
-    .replace(/(\*\*Left blank for you to review:\*\*\s*)(?!Job Title\b)/, (lead: string) => (owned ? `${lead}Job Title, ` : lead));
+    .replace(/(\*\*Left blank for you to review:\*\*\s*)(?!Job Title\b)/, (lead: string) => (lineOwned ? `${lead}Job Title, ` : lead));
   return { ...response, content, formProposal: { ...card, employeeRole: null } };
 }
 

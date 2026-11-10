@@ -1,6 +1,7 @@
 import "server-only";
 
-import { twoFormsOwnPersonEnabled } from "@/lib/config/chat-quality-flags";
+import { twoFormsEachPersonEnabled, twoFormsOwnPersonEnabled } from "@/lib/config/chat-quality-flags";
+import { AFFIRMATIVE } from "@/lib/forms/employee-match";
 import { readFormRequests, type FormRequest } from "@/lib/forms/form-requests";
 import { TEMPLATE_SEEDS } from "@/lib/forms/library";
 
@@ -97,4 +98,85 @@ function withoutOtherFormsPersonAsked(response: AskResponse, requests: readonly 
   const list = requests.map((entry) => `a **${formName(entry.templateKey)}**${entry.employeeName ? ` for **${entry.employeeName}**` : ""}`);
   const content = `You asked for ${requests.length === 2 ? "two" : String(requests.length)} forms: ${list.slice(0, -1).join(", ")} and ${list[list.length - 1]}. Ask for each one on its own, with the employee's full name, and I'll set it up.`;
   return { ...response, content };
+}
+
+/*
+ * ============================================================================
+ * EACH REQUEST WITH ITS OWN PERSON (TWO_FORMS_EACH_PERSON_ENABLED, default off; QA, Sunny live tester after flip 7,
+ * 7 Nov 2026)
+ * ============================================================================
+ *
+ * With TWO_FORMS_OWN_PERSON live, "Coaching form for <A>. Also a CA for <B>." gave ONE Coaching card with no
+ * employee ("Who is this for?") and "ask for <B>'s CA on its own": the person A typed in the card's own clause was
+ * dropped, and B's form was not offered. With this flag on: when the card is not its own clause's person and that
+ * clause names one, the card is answered again from that clause alone, so it is A's, checked against the roster
+ * as any card is; each other request that names its person is OFFERED, one line, and a plain "yes" to it is that
+ * request ("Create a <form> for <B>."). A request naming nobody is still named back as before. Off, as before.
+ */
+const NEXT_FORM_OFFER = /\*\*Do you want an? ([^*]+?) for ([^*?]+) next\?\*\* Say \*\*yes\*\* and I'll start it\./;
+const ALSO_ASKED_LINE = /^You also asked for an? \*\*[^*]+\*\*(?: for \*\*[^*]+\*\*)? — ask for it on its own[^\n]*$/;
+
+function article(name: string): string {
+  return /^[aeiou]/i.test(name) ? "an" : "a";
+}
+
+/*
+ * QA, 8 Nov 2026 (round-5 follow-up, same flag): "… a CA for rowan kestrel" was offered as "for rowan kestrel next?". A
+ * name typed all lower-case is shown with each word capitalised ("Rowan Kestrel", "Mary-Kate O'Neil"); a name with any
+ * capital is shown as typed. The display only: the "yes" reads whatever the offer says.
+ */
+function shownName(name: string): string {
+  return name === name.toLowerCase() ? name.replace(/(^|[\s'’-])(\p{Ll})/gu, (_, lead: string, letter: string) => `${lead}${letter.toUpperCase()}`) : name;
+}
+
+/** The other requests: an offer for each that names its person, the old line for one that does not. */
+function offersFor(others: readonly FormRequest[]): string[] {
+  return others.map((other) => {
+    const name = formName(other.templateKey);
+    return other.employeeName
+      ? `**Do you want ${article(name)} ${name} for ${shownName(other.employeeName)} next?** Say **yes** and I'll start it.`
+      : `You also asked for ${article(name)} **${name}** — ask for it on its own, with who it's for, and I'll set it up.`;
+  });
+}
+
+export async function withEachPersonsForm(
+  response: AskResponse,
+  request: AskRequest,
+  answer: (turn: AskRequest) => Promise<AskResponse>,
+): Promise<AskResponse> {
+  if (!twoFormsEachPersonEnabled()) return response;
+  const reading = readFormRequests(request.question);
+  if (!reading || reading.requests.length < 2) return response;
+  const card = response.formProposal;
+  const ownAt = card ? reading.requests.findIndex((entry) => entry.templateKey === card.templateKey) : 0;
+  if (ownAt < 0) return response;
+  const own = reading.requests[ownAt]!;
+  const others = reading.requests.filter((_, index) => index !== ownAt);
+  const employee = card?.employeeName?.trim() || null;
+  const ownPerson = employee !== null && namesIn(own.clause, employee);
+
+  let base = response;
+  if (!ownPerson && own.employeeName) {
+    const again = await answer({ ...request, question: own.clause });
+    const theirs = again.formProposal?.employeeName?.trim() || null;
+    if (!again.formProposal || theirs === null || !namesIn(own.clause, theirs)) return response;
+    base = again;
+  } else if (!ownPerson) {
+    return response;
+  }
+  const kept = base.content
+    .split("\n")
+    .filter((line) => !ALSO_ASKED_LINE.test(line.trim()))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return { ...base, content: [kept, ...offersFor(others)].join("\n\n") };
+}
+
+/** The manager's plain "yes" to the offer in the assistant's last message, as the request it offered. Off, null. */
+export function acceptedNextFormOffer(input: Pick<AskRequest, "question" | "history">): string | null {
+  if (!twoFormsEachPersonEnabled() || !AFFIRMATIVE.test(input.question)) return null;
+  const last = [...(input.history ?? [])].reverse().find((turn) => turn.role === "assistant");
+  const match = typeof last?.content === "string" ? NEXT_FORM_OFFER.exec(last.content) : null;
+  return match ? `Create ${article(match[1]!)} ${match[1]} for ${match[2]}.` : null;
 }

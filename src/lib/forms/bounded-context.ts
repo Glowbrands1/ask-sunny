@@ -36,7 +36,7 @@
  *      knowing it is partial.
  */
 
-import { requestKeptInWindowEnabled } from "@/lib/config/chat-quality-flags";
+import { keptRequestSameFormEnabled, requestKeptInWindowEnabled } from "@/lib/config/chat-quality-flags";
 
 import { detectTemplateIntent } from "./template-intent";
 
@@ -124,7 +124,11 @@ export function boundManagerTurns(
   if (requestKeptInWindowEnabled()) {
     const firstKept = prior.length - (retained.length - 1);
     // Oldest first, so the opening request (the one that carried the account) claims the budget first.
-    const outside = thisFormsRequests(prior).filter((index) => index < firstKept);
+    const requests = thisFormsRequests(prior);
+    // KEPT_REQUEST_SAME_FORM_ENABLED: a turn that asks for a different form keeps none of the earlier form's requests.
+    const askedNow = keptRequestSameFormEnabled() ? requestedForm(current.content) : null;
+    const otherForm = askedNow !== null && requests.length > 0 && requestedForm(prior[requests[requests.length - 1]!]!.content) !== askedNow;
+    const outside = otherForm ? [] : requests.filter((index) => index < firstKept);
     const kept: BoundedTurn[] = [];
     for (const index of outside) {
       const content = prior[index]!.content.trim();

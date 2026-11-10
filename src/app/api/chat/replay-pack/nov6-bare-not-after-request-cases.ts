@@ -46,7 +46,8 @@ export const NOV6_BARE_NOT_AFTER_REQUEST_CASES: ReplayCase[] = [
      * "ca for <A>" reads as an account and the card drafts "Policy: Attendance, as you said". The fix flags still draft
      * it while REPLY_MATCHES_CARD (live) is on: without it they hold. Reported to coding 2 and QA.
      */
-    status: { open: "production (BARE_NOT_AFTER_REQUEST off): \"not late\" reads as an account, and the card drafts \"Policy: Attendance, as you said\"" },
+    // Changed on purpose (8 Nov 2026): QA's flip 9 (00:59 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+    status: "fixed",
     fixFlags: ASKS_FIX,
     // fixStatus removed on purpose (7 Nov 2026): it was OPEN because the live REPLY_MATCHES_CARD dropped the ask
     // beside the card's "Observation of Offense: <A> not late"; BARE_NOT_AFTER_REQUEST's Observation half

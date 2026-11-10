@@ -413,6 +413,34 @@ const cleaningNegative = (name: string): LiveExpect => ({
     ),
 });
 
+/**
+ * LIVE_SCENARIOS=s35, for CA_REQUEST_NOT_PRIOR_COACHING_ENABLED (QA's live tester, 7 Nov 2026; s35 rolled back at
+ * 00:22): sf-s35's exact wording opened no card at all ("I can't write out the Corrective Action text here…"). The
+ * person is this file's invented roster.
+ */
+export const S35_SCENARIOS: readonly CheckedScenario[] = [
+  {
+    id: "s35-draw-me-up-ca-tester",
+    roster: FLAG_SET_ROSTER,
+    field: "observation",
+    steps: [{ say: "Can you draw me up a CA for Aurel Tregarthen for being late on 10/23/26. Aurel has signed a coaching document for being late on 10/14/26." }],
+    expect: {
+      says: "a Corrective Action card for Aurel Tregarthen (not a Coaching Form, not a refusal)",
+      check: (run) => all(noError(run), cardFor(run, "dpoa", "Aurel Tregarthen")),
+    },
+  },
+  {
+    id: "s35-draw-me-up-ca-pau",
+    roster: FLAG_SET_ROSTER,
+    field: "observation",
+    steps: [{ say: "Can you draw me up a CA for Aurel Tregarthen for being late on 10/23/26. Aurel has signed a coaching document for being late on 10/14/26. I need you to make sure the policy is on this CA." }],
+    expect: {
+      says: "a Corrective Action card for Aurel Tregarthen (not a Coaching Form)",
+      check: (run) => all(noError(run), cardFor(run, "dpoa", "Aurel Tregarthen")),
+    },
+  },
+];
+
 /** LIVE_SCENARIOS=ca-sales, for CA_SALES_POLICY_ENABLED: `nov4-ca-sales-policy-cases.ts`'s cases (this app's wordings), live. */
 export const CA_SALES_SCENARIOS: readonly CheckedScenario[] = [
   {

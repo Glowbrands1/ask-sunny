@@ -21,6 +21,19 @@ The employee's position is the field job_title when it is listed: set it only to
 A correction of a word ("fix her last name, it is …") changes every field whose text holds the old word: set each one, how "replace", with its whole text and only that word corrected.
 When the latest message says what the form is about or for ("make it about …", "make it for …"), that is new content, never a reword: how "replace" on the field that gives the account, written in the manager's own words for it, with those words as evidence. Never describe the form itself in a field.`;
 
+/**
+ * EDIT_POLICY_ASK_ENABLED (coding 5, 7 Nov 2026): a line ADDED after the approved system text (and after the
+ * reader-fix lines when those are on). Sent only with the flag on, with the `policy_asked` key in the schema.
+ */
+export const EDIT_POLICY_ASK_LINES = `policy_asked: true when the latest message asks for a policy to be listed, added, cited or included on this form, whether or not it names one; otherwise false. Do not write a policy for that ask yourself: the app adds the manual's own line.`;
+
+/**
+ * STEP_B_MAKE_IT_ABOUT_ACCOUNT_ENABLED (ported from Ask Bubbles; QA's live draft test there, 8 Nov 2026): a line ADDED
+ * after the approved system text and the reader lines (neither is edited). Live, "I need you to make it about showing up
+ * late" set only the Other topic. Sent only with the flag on.
+ */
+export const FORM_PATCH_ACCOUNT_LINE = `The field that gives the account is the form's narrative field (Details of Coaching, Observation of Offense), never a topic, type or "Other" field: "make it about …" always sets the narrative field, how "replace", keeping its headings (Observed:, Expectation:, Going Forward:) and writing what is under them about what the manager said; a topic field may be set as well.`;
+
 export interface FormPatchField {
   readonly key: string;
   readonly label: string;

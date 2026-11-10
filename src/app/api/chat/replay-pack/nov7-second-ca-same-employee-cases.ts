@@ -60,7 +60,8 @@ export const NOV7_SECOND_CA_SAME_EMPLOYEE_CASES: ReplayCase[] = Object.entries(S
     id: `nov7-second-ca-same-employee-${key}-card-policy`,
     title: `the same chat: the second card's Policy line and Action Plan, and the second form's Policy Violated, are not the first request's (Late Opening)`,
     report: REPORT,
-    status: { open: "the second card says \"Late Opening, as you said\", its Action Plan reviews Late Opening, and the second form's Policy Violated is Late Opening" },
+    // Changed on purpose (9 Nov 2026): fixed in production by SECOND_REQUEST_OWN_ACCOUNT_ENABLED, QA round 7c.
+    status: "fixed",
     fixFlags: [FLAG],
     // Changed on purpose (7 Nov 2026): holds with the flag since Pau approved the two ai/form-proposal.ts lines; the
     // card's citation step and the saved state's incident read this request too (ai/form-card-slots.ts, ai/form-state.ts).
@@ -79,7 +80,8 @@ export const NOV7_SECOND_CA_SAME_EMPLOYEE_CASES: ReplayCase[] = Object.entries(S
     ...(key === "create"
       ? { status: "fixed" as const }
       : {
-          status: { open: "the Observation reads both requests run together" },
+          // Changed on purpose (9 Nov 2026): fixed in production by SECOND_REQUEST_OWN_ACCOUNT_ENABLED, QA round 7c.
+          status: "fixed" as const,
           fixFlags: [FLAG],
           // Changed on purpose (7 Nov 2026): holds with the flag since ai/remap-incident.ts currentRequestStart reads a
           // form named anywhere in a later turn, with its own incident, as a new request.
@@ -124,6 +126,28 @@ export const NOV7_SECOND_CA_SAME_EMPLOYEE_CASES: ReplayCase[] = Object.entries(S
         await thread.say(FIRST);
         const reply = await thread.say(added);
         expect(line(reply.content, "Observation of Offense"), `the request's account is lost:\n${reply.content}`).toMatch(/late opening the salon/i);
+      },
+    }),
+  ),
+  // QA's Sunny round-3 gate (7 Nov 2026): with the flag on, ordinary single-request cards lost their Policy line. One
+  // request keeps its whole account, wherever it is said: before the request, or with a closing "create" after it.
+  ...[
+    { id: "account-first", turns: ["Remy Calder was rude to a guest at the front desk on 11/2 and raised his voice at her", "make a CA for Remy Calder"] },
+    { id: "closing-create", turns: ["create a corrective action for Remy Calder, he was rude to a guest at the front desk on 11/2 and raised his voice", "salon is kearney. create the corrective action"] },
+  ].map(
+    ({ id, turns }): ReplayCase => ({
+      id: `nov7-second-ca-single-request-keeps-policy-${id}`,
+      title: `one request ("${turns[0]!.slice(0, 40)}…" → "${turns[1]!}"): the card cites Standards of Conduct with the flag on too`,
+      report: "QA's Sunny round-3 gate (7 Nov 2026): SECOND_REQUEST_OWN_ACCOUNT made ordinary single-request cards lose their Policy line",
+      status: "fixed",
+      fixFlags: [FLAG],
+      async run(t) {
+        t.directory(STAFF);
+        t.as("salon_director", KEARNEY);
+        const thread = t.thread();
+        let reply: ReplayAnswer | null = null;
+        for (const turn of turns) reply = await thread.say(turn);
+        expect(line(reply!.content, "Policy"), `the card cites no Standards of Conduct:\n${reply!.content}`).toMatch(/standards of conduct/i);
       },
     }),
   ),

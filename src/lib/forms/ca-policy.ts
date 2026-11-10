@@ -4,6 +4,8 @@ import {
   asYouSaidAppReadEnabled,
   asYouSaidManagerWordsEnabled,
   caPerformanceReasonEnabled,
+  missedShiftCitesAttendanceEnabled,
+  lateReadsAttendanceEnabled,
   msbPhraseSocEnabled,
   caSalesPolicyEnabled,
   cleaningOtherEveryWordingEnabled,
@@ -13,6 +15,7 @@ import {
   salesObservationAccountEnabled,
   salesShortfallObjectEnabled,
   wovenTrainingConductEnabled,
+  conductIncidentCitesPageEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { JOIN } from "./bounded-context";
@@ -165,6 +168,14 @@ const FAILED = String.raw`(?:did ?n[o']?t|didn't|never|failed to|has ?n[o']?t|ha
 
 /** What an assigned piece of work is called. */
 const TASK_NOUN = String.raw`(?:tasks?|assignments?|assigned work|duties|duty|checklists?|training|trainings|modules?|courses?|items?|paperwork|cleaning|disinfect\w*|projects?|reports?|requirements?|woven)`;
+
+/*
+ * CONDUCT_INCIDENT_CITES_PAGE_ENABLED (QA's live tester, 8 Nov 2026, the managers' Woven wordings): "This would be a
+ * verbal due to not completing her woven courses by the deadline" read as no conduct topic at all: FAILED does not
+ * take a bare "not" ("not completing"). With the flag on, "not completing / not finishing <a task noun>" is unfinished
+ * assigned work too. Off, as before.
+ */
+const NOT_COMPLETING_TASK = new RegExp(String.raw`\b(?:not|never)\s+(?:complet|finish)\w*\s+(?:\S+\s+){0,3}?${TASK_NOUN}\b`);
 
 const CONDUCT_TOPICS: { topic: ConductTopic; pattern: RegExp }[] = [
   {
@@ -453,6 +464,22 @@ function statedIn(turn: string): CaPolicyName | null {
   return found?.name ?? null;
 }
 
+/**
+ * PROPOSAL_POLICY_SET_ASIDE_ENABLED (`forms/policy-set-aside.ts`): every policy this sentence names by name, where
+ * it is in the sentence. Read the same way `statedIn` reads a name, with no frame needed; the caller decides what the
+ * sentence does with it.
+ */
+export function policiesNamedIn(sentence: string): { name: CaPolicyName; start: number; end: number }[] {
+  const text = normalize(sentence);
+  const found: { name: CaPolicyName; start: number; end: number }[] = [];
+  for (const { name, pattern, enabled } of NAMED) {
+    if (enabled && !enabled()) continue;
+    const match = pattern.exec(text);
+    if (match && !found.some((seen) => seen.name === name)) found.push({ name, start: match.index, end: match.index + match[0].length });
+  }
+  return found;
+}
+
 /* ------------------------------------------------------------- reading -- */
 
 /**
@@ -464,8 +491,60 @@ function statedIn(turn: string): CaPolicyName | null {
 export function readCaPolicy(rawText: string): CaPolicyReading {
   const said = managerWords(rawText);
   // Merge of main into #595: WOVEN_TRAINING_CONDUCT's reading (default off) before AS_YOU_SAID_APP_READ's fallback, on the manager's words.
-  return withAppReading(withWovenWork(withCleaningOther(withSalesPolicy(readCaPolicyFromWords(said), said), said), said), rawText, said);
+  return withMissedShift(withLateIsAttendance(withAppReading(withWovenWork(withCleaningOther(withSalesPolicy(readCaPolicyFromWords(said), said), said), said), rawText, said), said), said);
 }
+
+/*
+ * LATE_READS_ATTENDANCE_ENABLED (QA, the Sunny round-10 live test, 9 Nov 2026): "create a CA for <P>, she was late on
+ * 11/6/26" gave "Policy: Late Opening — read from this request", Late Opening p.15, in 1 of 6 runs, and Attendance p.14
+ * in the others: the plain "late" policy came from the model's heading, which varies. With the flag, when the app's
+ * reading is Late Opening but the manager's words say an employee was late or tardy and never say "open" ("late
+ * opening", "open the salon", "opened late"), the reading is Attendance. "late opening the salon" keeps Late Opening.
+ * Off, the reading as it was.
+ */
+const LATE_ARRIVAL =
+  /\b(?:was|were|is|been|came\s+in|arrived|showed\s+up|clocked\s+in|running|being)\s+(?:\S+\s+){0,2}?late\b|\b(?:tardy|tardies|tardiness|lateness)\b|\blate\s+(?:to|for)\s+(?:her|his|their|a|the|work|shift)/i;
+const OPENING_WORD = /\bopen(?:s|ed|ing|er|ers)?\b/i;
+
+function withLateIsAttendance(reading: CaPolicyReading, said: string): CaPolicyReading {
+  if (!lateReadsAttendanceEnabled() || reading.readFromApp !== "late_opening") return reading;
+  if (!LATE_ARRIVAL.test(said) || OPENING_WORD.test(said)) return reading;
+  return { ...reading, readFromApp: "attendance" };
+}
+
+/*
+ * MISSED_SHIFT_CITES_ATTENDANCE_ENABLED (ported from the sibling app: QA's round-7 live test there, 9 Nov 2026): "create a CA for <A>, not
+ * showing up to her shifts on 11/7 and 11/8" (and the same after "make me CA for <first name> failing to complete
+ * shifts") made a card with no Policy line, its Action plan on "the applicable company policy". "late" and "no call no
+ * show" are read as Attendance from the manual's own words; a shift not shown up to, missed or not worked was not. Here the
+ * live card said "Policy: Attendance — read from this request" only when the model's heading did. With the flag on, an
+ * account that names no policy and says a shift was not shown up to, missed, skipped or not worked is that reading.
+ * Off, the reading as it was.
+ */
+const MISSED_SHIFT =
+  /\b(?:(?:not|never|didn['’]?t|did\s+not|failed\s+to|failing\s+to|fails\s+to|wasn['’]?t)\s+(?:show(?:ing)?\s+up|com(?:e|ing)\s+in|(?:work(?:ing)?|complet(?:e|ing)))\s+(?:(?:to|for)\s+)?(?:\S+\s+){0,3}?shifts?|(?:missed|missing|skipped|skipping|no[- ]show(?:ed)?\s+(?:for|to)?)\s+(?:\S+\s+){0,3}?shifts?)\b/i;
+
+/*
+ * The same flag, on the card: a Policy line that is the app's own reading ("**Policy:** Attendance — read from this
+ * request.") still had its Action Plan on "the applicable company policy" (the plan names only a policy read from the
+ * manual's words). With the flag, that plan reviews the policy the card says it read. Called by the chat route.
+ */
+const READ_POLICY_LINE = /^\*\*Policy:\*\*\s*(.+?)\s+—\s+read from this request\./m;
+const GENERIC_PLAN = /(\*\*Action plan:\*\*[^\n]*?Management will review )the applicable company policy( with)/i;
+
+export function withPlanOnReadPolicy<T extends { content: string; formProposal?: unknown }>(answer: T): T {
+  if (!missedShiftCitesAttendanceEnabled() || !answer.formProposal) return answer;
+  const read = READ_POLICY_LINE.exec(answer.content)?.[1]?.trim();
+  if (!read || !GENERIC_PLAN.test(answer.content)) return answer;
+  return { ...answer, content: answer.content.replace(GENERIC_PLAN, (_all, lead: string, tail: string) => `${lead}the ${read} policy${tail}`) };
+}
+
+function withMissedShift(reading: CaPolicyReading, said: string): CaPolicyReading {
+  if (!missedShiftCitesAttendanceEnabled()) return reading;
+  if (reading.stated !== null || reading.suggestion !== null || reading.ambiguous || reading.other || reading.missedEvent || reading.readFromApp) return reading;
+  return MISSED_SHIFT.test(said) ? { ...reading, readFromApp: "attendance" } : reading;
+}
+
 
 /**
  * ============================================================================
@@ -499,6 +578,15 @@ const NOT_DONE = new RegExp(
 );
 const WOVEN = /\bwoven\b/;
 const WOVEN_ASSIGNED = /\b(?:assigned|required|due)\b/;
+/*
+ * Narrowed (QA's Sunny round-3 gate, 7 Nov 2026): only the acknowledgement CA Pau ruled on — the sentence that
+ * names Woven also names the policies or their acknowledgement ("not signing the woven policies", "policy
+ * acknowledgements in Woven"). "missed the Woven deadline" or "her Woven training is overdue" alone keep the
+ * conduct reading they had (still the Standards of Conduct, as a deadline or a task), and a policy the manager
+ * named wins. Before, any Woven sentence with unfinished work or a deadline took this reading, which changed the
+ * conduct cases' kind, ticked the box over a named policy, and skipped the manual's fail-closed checks.
+ */
+const WOVEN_ACKNOWLEDGEMENT = /\b(?:acknowledg\w*|polic(?:y|ies))\b/;
 const WOVEN_TOPICS: readonly ConductTopic[] = ["task", "deadline"];
 
 function wovenWork(sentences: readonly string[]): string | null {
@@ -507,11 +595,11 @@ function wovenWork(sentences: readonly string[]): string | null {
       .map(({ pattern }) => pattern.exec(sentence))
       .find((match) => match !== null) ?? null;
   for (const sentence of sentences) {
-    if (!WOVEN.test(sentence)) continue;
+    if (!WOVEN.test(sentence) || !WOVEN_ACKNOWLEDGEMENT.test(sentence)) continue;
     const said = NOT_DONE.exec(sentence) ?? topicIn(sentence);
     if (said) return said[0].trim();
   }
-  if (!sentences.some((sentence) => WOVEN.test(sentence) && WOVEN_ASSIGNED.test(sentence))) return null;
+  if (!sentences.some((sentence) => WOVEN.test(sentence) && WOVEN_ASSIGNED.test(sentence) && WOVEN_ACKNOWLEDGEMENT.test(sentence))) return null;
   const deadline = CONDUCT_TOPICS.find(({ topic }) => topic === "deadline")!.pattern;
   for (const sentence of sentences) {
     const missed = deadline.exec(sentence);
@@ -523,11 +611,9 @@ function wovenWork(sentences: readonly string[]): string | null {
 function withWovenWork(reading: CaPolicyReading, rawText: string): CaPolicyReading {
   if (!wovenTrainingConductEnabled()) return reading;
   if (isSalesPolicyReading(reading)) return reading;
-  const wovenEvent = reading.missedEvent !== null && WOVEN.test(reading.missedEvent);
-  const readAsMissedEvent = reading.stated === "attendance" && reading.missedEvent !== null;
-  if (reading.stated !== null && reading.stated !== "under_performance" && !(readAsMissedEvent && wovenEvent)) return reading;
-  if (reading.missedEvent !== null && !wovenEvent) return reading;
-  const woven = wovenWork(statements(normalize(rawText))) ?? (wovenEvent ? missedEventPhrase(reading.missedEvent!) : null);
+  // Narrowed (QA's round-3 gate): any policy the manager named wins, and a missed event keeps its own reading.
+  if (reading.stated !== null || reading.missedEvent !== null) return reading;
+  const woven = wovenWork(statements(normalize(rawText)));
   if (!woven) return reading;
   return {
     ...reading,
@@ -724,7 +810,19 @@ function withSalesPolicy(reading: CaPolicyReading, rawText: string): CaPolicyRea
 function performanceIsTheRequest(reading: CaPolicyReading, sentences: string[]): boolean {
   if (!caPerformanceReasonEnabled()) return false;
   if (reading.stated !== null || reading.topics.length > 0 || reading.missedEvent !== null) return false;
-  return sentences.some((sentence) => namesPerformance.test(sentence) && asksForCorrectiveAction(sentence));
+  return sentences.some((sentence) => namesPerformance.test(sentence) && performanceEndsItsPhrase(sentence) && asksForCorrectiveAction(sentence));
+}
+
+/**
+ * "performance" ends its phrase wherever it stands (QA's round-4 gate, 8 Nov 2026): "for her performance review" and
+ * "for a performance improvement plan" name another thing, so they are no sales-performance account. "for sales
+ * performance" and "for performance for october" still are. A sentence without the word (another `namesPerformance`
+ * shape, "not meeting her goals") is unchanged.
+ */
+const PHRASE_END_AFTER = new RegExp(`^${PHRASE_ENDS}`);
+
+function performanceEndsItsPhrase(sentence: string): boolean {
+  return [...sentence.matchAll(/\bperformance\b/gi)].every((match) => PHRASE_END_AFTER.test(sentence.slice(match.index + match[0].length)));
 }
 
 function asksForCorrectiveAction(sentence: string): boolean {
@@ -763,6 +861,8 @@ function readCaPolicyFromWords(rawText: string): CaPolicyReading {
   let topics = CONDUCT_TOPICS.filter(({ pattern }) => sentences.some((s) => pattern.test(s))).map(
     ({ topic }) => topic,
   );
+  // CONDUCT_INCIDENT_CITES_PAGE_ENABLED: "not completing her woven courses by the deadline" is unfinished assigned work.
+  if (conductIncidentCitesPageEnabled() && !topics.includes("task") && sentences.some((s) => NOT_COMPLETING_TASK.test(s))) topics.push("task");
   if (policyCleaningIncidentEnabled()) {
     if (!topics.includes("task") && sentences.some((s) => UNDONE_DUTIES.test(s))) topics.push("task");
     // Cleaning left undone is Care and Cleaning, not the catch-all: the task reading gives way to that section.
@@ -1001,7 +1101,9 @@ function namedPolicyLine(named: NamedPolicyReading): string {
   }
   if (named.lookup === "missing") {
     // WOVEN_TRAINING_CONDUCT_ENABLED: the app says what it did not find; "Woven" is the product, not the one looking.
-    if (wovenTrainingConductEnabled()) {
+    // Narrowed (QA's round-3 gate): only for a phrase that is about Woven ("not signing the woven"), where "Woven
+    // does not see … for 'not signing the woven'" reads as the product looking. Every other phrase keeps the line.
+    if (wovenTrainingConductEnabled() && WOVEN.test(named.phrase.toLowerCase())) {
       return `**Policy:** I don't see a section of the current policy manual for "${named.phrase}" in the knowledge base, so I won't cite one. Tell me the policy as the manual names it, or tick Type of Offense and complete Direct policy on the form.`;
     }
     return `**Policy:** Woven does not see a section of the current policy manual for "${named.phrase}" in the knowledge base, so I won't cite one. Tell me the policy as the manual names it, or tick Type of Offense and complete Direct policy on the form.`;
@@ -1387,10 +1489,24 @@ export function observationAccount(sentence: string, employeeName: string | null
   let lead = 0;
   while (lead < words.length && own.has(words[lead]!.toLowerCase().replace(/[^\p{L}'’-]/gu, ""))) lead += 1;
   // The name goes only where the sentence is the request ("<name> on performance"); "<name> was rude to a guest" keeps it.
-  OBSERVATION_REASON.lastIndex = 0;
-  const reasonFollows = new RegExp(`^${OBSERVATION_REASON.source}`, "i").test(` ${words.slice(lead).join(" ")}`);
+  const reasonAtStart = new RegExp(`^${OBSERVATION_REASON.source}`, "i");
+  const reasonFollows = reasonAtStart.test(` ${words.slice(lead).join(" ")}`);
   if (lead > 0 && (wasRequest || reasonFollows)) words.splice(0, lead);
-  text = words.join(" ").replace(OBSERVATION_REASON, " ").replace(OBSERVATION_BARE_REASON, " ").replace(OBSERVATION_PAYROLL, " ");
-  text = text.replace(/\s{2,}/g, " ").replace(/^[\s,.;:-]+|[\s,;:-]+$/g, "").trim();
-  return /\p{L}{3,}/u.test(text) && text.split(/\s+/).length >= 2 ? text : "";
+  text = words.join(" ");
+  /*
+   * ONLY THE REQUEST CLAUSE IS CUT (QA's round-4 gate, 8 Nov 2026): the reason and a payroll answer were cut
+   * wherever they stood, so "This is for Under Performance on PPTA, …" became "This is on PPTA, …" and "…payroll
+   * deduct applies and $3.25 will be deducted" lost "payroll deduct". The reason goes only where it opens the request
+   * (after its head or the employee's name). A sentence that is nothing but a reason and a payroll answer
+   * ("performance for october not pay roll deductable") is the request's, and nothing is left. Every other word is the
+   * manager's and stays.
+   */
+  const clean = (value: string) => value.replace(/\s{2,}/g, " ").replace(/^[\s,.;:-]+|[\s,;:-]+$/g, "").trim();
+  const isAccount = (value: string) => /\p{L}{3,}/u.test(value) && value.split(/\s+/).length >= 2;
+  OBSERVATION_PAYROLL.lastIndex = 0;
+  const leftover = clean(` ${text}`.replace(reasonAtStart, " ").replace(OBSERVATION_BARE_REASON, " ").replace(OBSERVATION_PAYROLL, " "));
+  OBSERVATION_PAYROLL.lastIndex = 0;
+  if (!isAccount(leftover)) return "";
+  const account = clean(wasRequest || lead > 0 ? ` ${text}`.replace(reasonAtStart, " ") : text);
+  return isAccount(account) ? account : "";
 }
