@@ -96,7 +96,7 @@ const state = vi.hoisted(() => ({
  * the evidence and date checks, the reducer, the writes and the reload are
  * the real ones.
  */
-const systemPrompts = vi.hoisted(() => ({ hashes: [] as string[] }));
+const systemPrompts = vi.hoisted(() => ({ hashes: [] as string[], texts: [] as string[] }));
 const patchScript = vi.hoisted(() => ({ outputs: [] as unknown[], calls: 0, byLatest: null as Record<string, unknown> | null }));
 vi.mock("@/lib/forms/form-patch-call", () => ({
   FORM_PATCH_DEFAULT_TIMEOUT_MS: 5_000,
@@ -254,6 +254,7 @@ vi.mock("@/lib/ai/call-claude", () => ({
     state.chatModelCalls += 1;
     // REPLAY_RECORD (QA, 10 Nov 2026): the system prompt each answer was asked with, as a hash, so two versions of the
     // prompt's assembly can be compared case by case (the stage-timing split of buildSystemPrompt's awaits).
+    systemPrompts.texts.push(String(input?.system ?? ""));
     if (process.env.REPLAY_RECORD) systemPrompts.hashes.push(createHash("sha256").update(String(input?.system ?? "")).digest("hex").slice(0, 16));
     if (input?.formEditTool) {
       editTool.offered += 1;
@@ -694,6 +695,7 @@ const record: { turns: { question: string; reply: string; updated: string[] | nu
 async function recorded(id: string, mode: string, run: () => Promise<void>) {
   record.turns = [];
   systemPrompts.hashes = [];
+  systemPrompts.texts = [];
   const at = performance.now();
   let error: string | null = null;
   try {
@@ -803,6 +805,7 @@ function context(): ReplayContext {
     draftPrompts: () => [...draftAsked],
     revisionPrompts: () => [...revisionAsked],
     draftSystems: () => [...draftSystemAsked],
+    answerSystems: () => [...systemPrompts.texts],
     draftTools: () => [...draftToolsAsked],
     redraft: (instanceId, notes) =>
       call<Record<string, unknown>>(`/api/forms/instances/${instanceId}/draft`, {

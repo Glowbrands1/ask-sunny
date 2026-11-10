@@ -89,6 +89,8 @@ export interface ReplayContext {
   revisionPrompts?(): string[];
   /** The drafting model's system prompt, one entry per draft written. */
   draftSystems?(): string[];
+  /** The answering model's system prompt, one entry per answering call this case. */
+  answerSystems?(): string[];
   /** The draft call's tools as sent, one JSON string per call. */
   draftTools(): string[];
   /** The draft route's POST for this form, as a redraft sends it (`keepManagerValues`); the route's response. */
