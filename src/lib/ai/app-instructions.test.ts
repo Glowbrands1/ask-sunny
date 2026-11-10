@@ -29,4 +29,19 @@ describe("instructions to the app", () => {
       "Can you create me a coaching document for Brisa Talvenor for not hitting her numbers for the month of October.",
     );
   });
+
+  it("a team card's turn: the marker, the request lead and the Employee-field instruction are no account (QA, round 17)", () => {
+    const team = "make me a coaching form for the team at Pine Lake on selling lotion bottles";
+    const marked = `Coaching Form for the whole team at NE Lincoln Pine Lake: ${team}`;
+    expect(withoutAppInstructions(marked)).toBe(marked);
+    expect(withoutAppInstructions("the employee needs to be left blank")).toBe("the employee needs to be left blank");
+    process.env.APP_INSTRUCTIONS_NOT_ACCOUNT_ENABLED = "true";
+    expect(withoutAppInstructions(marked)).toBe("The team at Pine Lake on selling lotion bottles");
+    expect(withoutAppInstructions(team)).toBe("The team at Pine Lake on selling lotion bottles");
+    expect(withoutAppInstructions("the employee needs to be left blank").trim()).toBe("");
+    // One person's request keeps its lead: the account is read after the name, as before.
+    expect(withoutAppInstructions("make me a coaching form for Brisa Talvenor not hitting October numbers")).toBe(
+      "make me a coaching form for Brisa Talvenor not hitting October numbers",
+    );
+  });
 });
