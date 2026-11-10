@@ -36,6 +36,8 @@ import {
   sameFormCopyEnabled,
   sameFormCopyNewPersonEnabled,
   questionTurnsNotAccountEnabled,
+  noSelectionOnOpenCardEnabled,
+  addressOnlyAsksWhoEnabled,
   copyOwnSalonEnabled,
   secondFormEnabled,
   staffPickerBareAnswerEnabled,
@@ -910,6 +912,12 @@ async function postChat(request: Request) {
         void _dropped;
         answer = { ...rest, content: rest.content.replace(/\n*Based on what you've described, I can prepare:\s*$/, "").trimEnd() };
       }
+      // NO_SELECTION_ON_OPEN_CARD_ENABLED: the card on screen is the form; no "I can prepare:" choice offering it again.
+      if (noSelectionOnOpenCardEnabled()) {
+        answer = (await import("@/lib/forms/no-selection-on-open-card")).withoutSelectionOnOpenCard(answer, parsed.continueProposalTemplateKey);
+      }
+      // ADDRESS_ONLY_ASKS_WHO_ENABLED: "Corrective action for 123 Main Street" asks who, never a policy answer (`lib/forms/address-only-asks-who.ts`).
+      if (addressOnlyAsksWhoEnabled()) answer = (await import("@/lib/forms/address-only-asks-who")).withAddressOnlyAsksWho(answer, parsed.question);
       // OFF_ROSTER_ASK_BEFORE_CARD_ENABLED: a salon manager's card for a full name not on their roster is asked about once, before the card (`lib/forms/off-roster-ask.ts`).
       if (offRosterAskBeforeCardEnabled()) {
         answer = (await import("@/lib/forms/off-roster-ask")).withOffRosterAskBeforeCard(answer, { scope: context.identity.scope, history: parsed.history, question: asked.question });
