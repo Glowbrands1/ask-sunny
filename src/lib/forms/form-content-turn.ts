@@ -152,6 +152,45 @@ function referredAnswer(history: readonly Pick<ChatMessage, "role" | "content">[
   return detailsFromEarlierAnswerEnabled() ? earlierContentAnswer(history) : previousAnswer(history);
 }
 
+/*
+ * MAKE_THAT_UPDATE_ACCOUNT_ENABLED (coding 6, 10 Nov 2026; a manager's production wording relayed 5 Nov 2026, no fix
+ * flag until QA's audit of 10 Nov): on the open coaching draft she gave her account ("rowan marked a session as
+ * complete …"), asked "Do i need to copy and paste it? or should it be automatically updating?", then said "make that
+ * update" to a reply that printed nothing to add — so no reader had an update to make. The update she means is her own
+ * account: the latest of her recent turns that names the employee, asks nothing and reads as an account.
+ */
+const ACCOUNT_LOOKBACK = 6;
+function unwrittenAccount(history: readonly Pick<ChatMessage, "role" | "content">[], employeeName: string): string | null {
+  const first = employeeName.trim().split(/\s+/)[0] ?? "";
+  if (first.length < 2) return null;
+  const names = new RegExp(`\\b${first.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+  for (const turn of history.slice(-ACCOUNT_LOOKBACK).reverse()) {
+    if (turn.role !== "user") continue;
+    const text = (turn.content ?? "").trim();
+    if (!text || /\?/.test(text) || QUESTION_START.test(text) || ASKS_SOMETHING.test(text) || MAKE_THAT.test(text)) continue;
+    if (names.test(text) && PAST_ACCOUNT.test(text) && text.split(/\s+/).length >= 6) return text;
+  }
+  return null;
+}
+
+/**
+ * "make that update" after a reply that offered nothing to add, with her account named: the turn as every reader of the
+ * open draft reads it — "make that update: <her account>". Null for any other turn, or with no account to make.
+ */
+export function makeThatUpdateWithAccount(input: {
+  question: string;
+  history: readonly Pick<ChatMessage, "role" | "content">[];
+  employeeName: string;
+}): string | null {
+  const question = input.question.trim();
+  if (!MAKE_THAT.test(question)) return null;
+  const earlier = previousAnswer(input.history);
+  const offered = earlier ? PRINTED_DETAILS.test(earlier) || earlier.split("\n").some((line) => CLAIM_LINE.test(line.trim().replace(/^[*_]+/, ""))) : false;
+  if (offered) return null;
+  const account = unwrittenAccount(input.history, input.employeeName);
+  return account ? `${question.replace(/[.!]+$/, "")}: ${account}` : null;
+}
+
 export function formContentQuestion(input: {
   question: string;
   history: readonly Pick<ChatMessage, "role" | "content">[];
