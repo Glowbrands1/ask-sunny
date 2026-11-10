@@ -35,6 +35,7 @@ import {
   proposalMakeItAboutEnabled,
   proposalPolicySetAsideEnabled,
   sameRequestOtherPersonEnabled,
+  dateOnceEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { notesMadeAbout } from "@/lib/ai/make-it-about";
 import { withoutPolicyReferenceTurns } from "@/lib/ai/policy-reference-turn";
@@ -2445,6 +2446,10 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       ),
     };
     if (setAsideAnything(setAside)) draftedPayload.values = valuesWithPolicySetAside(draftedPayload.values, setAside);
+    // DATE_ONCE_ENABLED: the incident date is the Date field's; an account field does not say it again. See `lib/forms/date-once.ts`.
+    if (dateOnceEnabled()) {
+      draftedPayload.values = (await import("@/lib/forms/date-once")).withFormDateOnce(draftedPayload.values, loaded.instance.formDate, narrativeKeys);
+    }
     const kept = draftMergeEnabled()
       ? retainFilledFields({
           question: notes,

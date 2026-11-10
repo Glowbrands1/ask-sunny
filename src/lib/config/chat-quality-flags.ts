@@ -2665,6 +2665,52 @@ export function policyTopicIntoFieldEnabled(): boolean {
   return envFlag("POLICY_TOPIC_INTO_FIELD_ENABLED");
 }
 
+/**
+ * COPY_PASTE_CLAIM_HONEST_ENABLED (QA's backlog B3; same report; coding 5; same flag in both apps; default off). "It
+ * should update automatically — no copy-and-paste needed. The details are on the draft card." went out with nothing
+ * written. On: those are claims the honest reply drops (`forms/form-content-turn.ts`). Off, as before.
+ */
+export function copyPasteClaimHonestEnabled(): boolean {
+  return envFlag("COPY_PASTE_CLAIM_HONEST_ENABLED");
+}
+
+/**
+ * DATE_ONCE_ENABLED (QA's backlog B7; HR's report of 21 Oct 2026; coding 5; same flag in both apps; default off). The
+ * incident date was written twice: the Date field and again in the Observation ("… on 10-1-26"). On: a drafted account
+ * field drops the form's own date (`forms/date-once.ts`). Off, as before.
+ */
+export function dateOnceEnabled(): boolean {
+  return envFlag("DATE_ONCE_ENABLED");
+}
+
+/**
+ * ADDRESS_ASKS_WHO_ENABLED (QA's backlog B7; QA, 4 Nov 2026; coding 5; same flag in both apps; default off).
+ * "Corrective action for 123 Main Street" made no card (the address guards hold) and was answered as a policy question.
+ * On: it asks who the form is for (`forms/address-asks-who.ts`). Off, as before.
+ */
+export function addressAsksWhoEnabled(): boolean {
+  return envFlag("ADDRESS_ASKS_WHO_ENABLED");
+}
+
+/**
+ * LEAD_FULL_SENTENCE_ENABLED (QA's backlog B7; Pau via QA, 5 Nov 2026, sf-b6; coding 5; same flag in both apps; default
+ * off). A reply ended "Based on what you've described, I can prepare:" with nothing after it. On: the lead is a full
+ * sentence when form choices follow, and goes when none do (`forms/lead-full-sentence.ts`). Off, as before.
+ */
+export function leadFullSentenceEnabled(): boolean {
+  return envFlag("LEAD_FULL_SENTENCE_ENABLED");
+}
+
+/**
+ * NAME_LINE_COMMA_ENABLED (QA's backlog B7; QA's live CA chat, 4 Nov 2026; coding 5; same flag in both apps; default
+ * off). "fix her last name, it is Doe-Smith": the comma kept it from reading as a name correction. On: it reads as one,
+ * and a name the form does not take from the chat is named back as a question (`forms/name-correction-words.ts`).
+ * Off, as before.
+ */
+export function nameLineCommaEnabled(): boolean {
+  return envFlag("NAME_LINE_COMMA_ENABLED");
+}
+
 // --- end coding 5 flags ---
 
 /**

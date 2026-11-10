@@ -315,7 +315,8 @@ const QA_EXTRA_CASES: readonly ReplayCase[] = [
      * diagnosis (the comma in "name, it is" defeats both name readers) is not re-traced here.
      */
     status: { open: "the header Name stays \"Jane Doe\" with Jane Doe-Smith on the directory; the reply updates only the Observation and never asks to confirm the new name; step 5 (names via the tool + roster) is the target" },
-    fixFlags: [],
+    // QA's backlog B7 (10 Nov 2026): the fix — the comma no longer hides the correction (`forms/name-correction-words.ts`).
+    fixFlags: ["NAME_LINE_COMMA_ENABLED"],
     async run(t) {
       const roster = [...LIVE_ROSTER, at("r1-jane-doe-smith", "Jane", "Doe-Smith")];
       t.directory(roster);
@@ -342,7 +343,8 @@ const QA_EXTRA_CASES: readonly ReplayCase[] = [
      * question (the pack's stand-in answer) instead of asking who the form is for.
      */
     status: { open: "no card and no roster lookup of the address (the street-address guard holds), but no question either: it is answered as a policy question and never asks who the form is for" },
-    fixFlags: [],
+    // QA's backlog B7 (10 Nov 2026): the fix — the turn with no card asks who the form is for (`forms/address-asks-who.ts`).
+    fixFlags: ["ADDRESS_ASKS_WHO_ENABLED"],
     async run(t) {
       t.directory(LIVE_ROSTER);
       t.as("salon_director", KEARNEY);
