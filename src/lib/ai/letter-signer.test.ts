@@ -79,3 +79,28 @@ describe("withoutLetterGreeting (LETTER_GREETING_NOT_NAME_ENABLED)", () => {
     for (const text of plain) expect(withoutLetterGreeting(text)).toBe(text);
   });
 });
+
+describe("LETTER_GREETING_ANY_CASE_ENABLED", () => {
+  /** QA's tester in the sibling app (round 11, 9 Nov 2026): the letter on one line, "Your" capitalised. The people invented. */
+  const said =
+    "I need an exit form with this information. Dear Orla Penhallow, Your employment with the company is terminated, effective 11/08/2026. Sincerely, Thessaly Wrenfield, District Manager";
+  beforeEach(() => vi.stubEnv("LETTER_GREETING_NOT_NAME_ENABLED", "true"));
+
+  it("off: \"Dear <A>, Your …\" keeps the salutation (as main)", () => {
+    expect(withoutLetterGreeting(said)).toBe(said);
+  });
+
+  it("on: the salutation goes before a capitalised next word, and before \"I\"", () => {
+    vi.stubEnv("LETTER_GREETING_ANY_CASE_ENABLED", "true");
+    expect(withoutLetterGreeting(said)).toBe(said.replace("Dear Orla Penhallow,", "Orla Penhallow,"));
+    expect(withoutLetterGreeting("Dear Orla Penhallow, I am writing to confirm your termination.")).toBe(
+      "Orla Penhallow, I am writing to confirm your termination.",
+    );
+    expect(withoutLetterGreeting("Dear Orla Penhallow, THIS LETTER confirms it.")).toBe("Orla Penhallow, THIS LETTER confirms it.");
+  });
+
+  it("on: not a letter — a name followed by anything else keeps its words", () => {
+    vi.stubEnv("LETTER_GREETING_ANY_CASE_ENABLED", "true");
+    expect(withoutLetterGreeting("Hi Orla Penhallow, Thessaly and I talked.")).toBe("Hi Orla Penhallow, Thessaly and I talked.");
+  });
+});
