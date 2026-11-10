@@ -3,7 +3,14 @@ import "server-only";
 import type { AskResponse } from "@/lib/ai/types";
 import { payrollAmounts } from "@/lib/ai/intent-slots";
 import { businessToday } from "@/lib/business-date";
-import { formEditNoopGuardEnabled, formPatchReaderFixesEnabled, madeAboutAllOrNothingEnabled, stepBMakeItAboutAccountEnabled } from "@/lib/config/chat-quality-flags";
+import {
+  formEditNoopGuardEnabled,
+  formPatchReaderFixesEnabled,
+  madeAboutAllOrNothingEnabled,
+  madeAboutSaidDateEnabled,
+  stepBMakeItAboutAccountEnabled,
+} from "@/lib/config/chat-quality-flags";
+import { madeAbout } from "@/lib/ai/make-it-about";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { isGlossaryTerm } from "@/lib/ai/chat-glossary";
 
@@ -11,6 +18,7 @@ import { syncCorrectiveActionPlan } from "./ca-action-plan-sync";
 import { checkboxGroupsForVariant, fieldsForVariant, parseFormDocument } from "./document";
 import { NOTHING_CHANGED } from "./form-diff-reply";
 import { datesInText } from "./form-date-answer";
+import { saidFormDate } from "./form-date-said";
 import { madeAboutDate, madeAboutWriteNoted } from "./made-about-date";
 import {
   applyPatch,
@@ -324,8 +332,15 @@ function basePresetRules(loaded: LoadedInstance, ops: readonly FormEditOp[], rul
    * account. MADE_ABOUT_ALL_OR_NOTHING_ENABLED: only while Step B writes the Date and the topic with it.
    */
   const coordinatedWrite = !madeAboutAllOrNothingEnabled() || madeAboutWriteNoted(loaded.instance.id);
-  const aboutDate = rules.path === "revision" && stepBMakeItAboutAccountEnabled() && coordinatedWrite ? madeAboutDate(latest, today) : null;
-  const guard = aboutDate ? { ...read, formDate: aboutDate } : read;
+  // MADE_ABOUT_SAID_DATE_ENABLED (QA's live round 14, 10 Nov 2026): the date said apart from the topic is that turn's incident date.
+  const aboutDate =
+    rules.path === "revision" && stepBMakeItAboutAccountEnabled() && coordinatedWrite
+      ? (madeAboutDate(latest, today) ??
+        (madeAboutSaidDateEnabled() && madeAbout(latest) !== null ? saidFormDate(latest, today) : null))
+      : null;
+  const guard = aboutDate
+    ? { ...read, formDate: aboutDate, ...(madeAboutSaidDateEnabled() && madeAboutWriteNoted(loaded.instance.id) ? { oldIncidentDates: true } : {}) }
+    : read;
   const writeIns = writeInsOf(loaded);
   const groups = groupsOf(loaded);
   const lists = new Set([PRIOR_ACTIONS_KEY]);

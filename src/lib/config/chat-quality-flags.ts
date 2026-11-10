@@ -3918,6 +3918,32 @@ export function chatStageTimingsEnabled(): boolean {
 }
 
 /**
+ * CHAT_PARALLEL_LOADS_ENABLED (QA, 9 Nov 2026; default off; same flag in both apps). The chat turn's reads that need
+ * nothing more of the turn (the few-shot examples, the cited-manual grounding, the Google-reviews block and the chat
+ * data block) start after the turn's last early return (the framework refusals), and the two loads that write
+ * (recalled memory, the long-context summary) start right before the system prompt is built (nothing between there and
+ * their awaits can throw), instead of each being awaited one after another before the answer. Each is awaited where
+ * it was with the same inputs, so the prompt and the reply are the same (`ai/server-ask.ts`). Off, as before.
+ */
+export function chatParallelLoadsEnabled(): boolean {
+  return envFlag("CHAT_PARALLEL_LOADS_ENABLED");
+}
+
+/**
+ * CHAT_PARALLEL_REWRITE_ENABLED (QA, 9 Nov 2026; default off; same flag in both apps). The message normalizer
+ * (`normalizeForChat`, a Haiku call) starts alongside intent extraction instead of after it, and is used only when
+ * extraction leaves the question and the history as they were; otherwise it runs again from the extracted turn, as
+ * before (`ai/server-ask.ts`). The same input, so the same reading. Cost: on a turn whose extraction changes the
+ * question, the early call is dropped and the normalizer runs again, one extra Haiku call that the turn's spend
+ * counts (it was paid for); with CHAT_STAGE_TIMINGS that step is named "query_normalize_rerun". And a turn that
+ * extraction answers with a clarifying question ("which salon?") returns before the normalizer: its early call was made
+ * and not used (one Haiku call; its rejection, if any, is held). Off, as before.
+ */
+export function chatParallelRewriteEnabled(): boolean {
+  return envFlag("CHAT_PARALLEL_REWRITE_ENABLED");
+}
+
+/**
  * POLICY_REFERENCE_NOT_ACCOUNT_ENABLED (coding 6, 10 Nov 2026; default off;
  * QA's overnight scan sf-s16, sf-s17). "you can reference the standards of
  * conduct for a policy" and "In the past we have quoted the standards of
@@ -3970,6 +3996,143 @@ export function teamCardNotProductEnabled(): boolean {
  */
 export function reopenCloseSpellingEnabled(): boolean {
   return envFlag("REOPEN_CLOSE_SPELLING_ENABLED");
+}
+
+/**
+ * MADE_ABOUT_TOPIC_EVIDENCE_ENABLED (ported from Ask Bubbles: QA's live round 13 there, 9 Nov 2026; default off; same flag
+ * in both apps). "make it about being late on 11/5/26" left Other on the old topic: the topic read from the manager's
+ * words ("Being late") came with "being late" as its evidence, two words, under the reducer's floor, so it was refused.
+ * With the flag on, its evidence is the whole made-about clause the manager wrote (`forms/form-patch-turn.ts`). Off, as
+ * before.
+ */
+export function madeAboutTopicEvidenceEnabled(): boolean {
+  return envFlag("MADE_ABOUT_TOPIC_EVIDENCE_ENABLED");
+}
+
+/**
+ * FORM_DATE_SAID_ALONE_ENABLED (ported from Ask Bubbles: QA's live round 13 there, 9 Nov 2026; default off; same flag in
+ * both apps). "make the date 11/7/26" as the first edit of a fresh draft answered "I haven't changed …": the reader did
+ * not read the turn as this form's. With the flag on, a turn that says the date the form takes (STEP_B_DATE_SAID's
+ * reading) is this form's, and the Date is written (`forms/form-patch-turn.ts`). Off, as before.
+ */
+export function formDateSaidAloneEnabled(): boolean {
+  return envFlag("FORM_DATE_SAID_ALONE_ENABLED");
+}
+
+/**
+ * MADE_ABOUT_SAID_DATE_ENABLED (QA's live Sunny round 14, 10 Nov 2026; default off; same flag in both apps). "I need you to
+ * make it about showing up late and please list the policy make the date for 10/14/26" on a saved draft already about
+ * another incident answered "I haven't changed …": the reader wrote the policy into Details, its patch was refused whole,
+ * and the old path's revision would not drop the old account's date. With the flag on, such a refused patch (a made-about
+ * turn that says the form's date apart from the topic, whose reader edited the account) is retried by the made-about
+ * path: the account rewritten with the said date as the incident's, the reader's other edits written without it, then
+ * the Date and the policy (`forms/form-patch-turn.ts`, `forms/form-write.ts`). A turn whose patch is not refused is
+ * unchanged. Off, as before.
+ */
+export function madeAboutSaidDateEnabled(): boolean {
+  return envFlag("MADE_ABOUT_SAID_DATE_ENABLED");
+}
+
+/**
+ * MADE_ABOUT_POLICY_LINE_REPLACES_ENABLED (QA's live Sunny round 15, 10 Nov 2026; default off; same flag in both apps). Two
+ * made-about turns in a row: the second saved "Policy reference: Standards of Conduct Policy, JBA Policy Manual p.13;
+ * Attendance Policy, JBA Policy Manual p.14", the first turn's reference kept beside the new one. The revision kept the old
+ * line in a shape the splitter did not read (a trailing period, or not the last paragraph). With the flag on, every
+ * "Policy reference: …" line the rewritten account carries is taken off before its reference is read again from the new
+ * account's own words (`forms/made-about-policy-line.ts`). Off, as before.
+ */
+export function madeAboutPolicyLineReplacesEnabled(): boolean {
+  return envFlag("MADE_ABOUT_POLICY_LINE_REPLACES_ENABLED");
+}
+
+/**
+ * SECTION_BREAKS_KEPT_ENABLED (QA's live Sunny round 15, 10 Nov 2026; default off; same flag in both apps). The P9 save
+ * wrote Details of Coaching as one paragraph ("Observed: … Expectation: … Going Forward: …") over a field written in
+ * sections: the reader returned the new account on one line. With the flag on, each heading such a value runs inline
+ * starts its own paragraph again (`forms/section-breaks.ts`). Off, as before.
+ */
+export function sectionBreaksKeptEnabled(): boolean {
+  return envFlag("SECTION_BREAKS_KEPT_ENABLED");
+}
+
+/**
+ * ADD_NOT_REPEATED_ENABLED (ported from Ask Bubbles: QA's live round 15 there, 10 Nov 2026; default off; same flag in both
+ * apps). After "make it about being late on 11/5/26", "add that she was reminded of the policy" saved the whole
+ * Observed/Expectation/Going Forward block twice, then the new line: the reader returned the field's text (on one line)
+ * and the new sentence as an "add". With the flag on, an "add" that repeats the field's text word for word adds only what
+ * follows it (`forms/added-tail.ts`). Off, as before.
+ */
+export function addNotRepeatedEnabled(): boolean {
+  return envFlag("ADD_NOT_REPEATED_ENABLED");
+}
+
+/**
+ * PAYROLL_SPLIT_WORDS_ENABLED (coding 6, 10 Nov 2026; default off; sf-s23,
+ * Pau 5 Nov 2026). "not pay roll deductable" was not read as the payroll
+ * answer: the card asked again and put it in the Observation. On, the
+ * payroll reader reads "pay roll" as "payroll" and "deductable" /
+ * "deductible" as "deduct". Read in `forms/payroll-deduct-answer.ts` (which
+ * imports nothing). Off, as before.
+ */
+export function payrollSplitWordsEnabled(): boolean {
+  return envFlag("PAYROLL_SPLIT_WORDS_ENABLED");
+}
+
+/**
+ * SAME_REQUEST_OTHER_PERSON_ENABLED (coding 6, 10 Nov 2026; default off). With
+ * <A>'s card on screen or <A>'s form just created, "Can you do the same thing
+ * for <B> but switch it to a written" and "also make a coaching form for <B>"
+ * gave <A>'s card back (the request sentence in <A>'s Observation, or a
+ * Coaching card for <A>). On: a short turn of that shape naming one roster
+ * person other than the card's subject is answered as a new request for that
+ * person — <A>'s request with <A>'s name swapped for <B>'s and the level
+ * switched ("the same thing"), or a plain request for the named form ("also
+ * make") — without <A>'s card, open form or turns. <A>'s card and form are
+ * never written. See `forms/same-request-other-person.ts`. Off, as before.
+ */
+export function sameRequestOtherPersonEnabled(): boolean {
+  return envFlag("SAME_REQUEST_OTHER_PERSON_ENABLED");
+}
+
+/**
+ * COACHING_OBSERVED_SAVED_ENABLED (coding 6, 10 Nov 2026; default off; QA's
+ * P12, live in both apps). "make me a coaching form for <name> not hitting
+ * October numbers" → Create saved Details of Coaching with no "Observed:", or
+ * an empty one. On: a coaching narrative about to be saved with text but no
+ * heading gets "Observed:" over it; one with no Observed text gets
+ * "Observed:" first, with the manager's own words. An Observed with text is
+ * left as it is. See `forms/coaching-observed-saved.ts`. Off, as before.
+ */
+export function coachingObservedSavedEnabled(): boolean {
+  return envFlag("COACHING_OBSERVED_SAVED_ENABLED");
+}
+
+/**
+ * APP_INSTRUCTIONS_NOT_ACCOUNT_ENABLED (coding 6, 10 Nov 2026; default off;
+ * QA's P12 part 2, Sunny production 6 Nov). "… for not hitting her numbers
+ * for the month of October. Please word it in a professional way. I need the
+ * policy attached as well." — every card's Observation kept the last two
+ * sentences. On: a sentence that only asks for the wording or for the policy
+ * on the form is left out of the card's Observation and the draft's account.
+ * See `ai/app-instructions.ts`. Off, as before.
+ */
+export function appInstructionsNotAccountEnabled(): boolean {
+  return envFlag("APP_INSTRUCTIONS_NOT_ACCOUNT_ENABLED");
+}
+
+/**
+ * DRAFT_WRITE_NEVER_SILENT_ENABLED (coding 6, 10 Nov 2026; default off; QA's
+ * live finding, Sunny round 17). One Create in five saved only the Name and
+ * Date: the drafting model ran (chat_traces: forms_draft succeeded), the
+ * "left out <surname>" check saw filled Details, and the route answered 200 —
+ * but nothing was saved. The one writer is all or nothing: a single refused
+ * field drops every value. On: a draft write refused as a whole is retried
+ * once without the refused fields; if that saves nothing either, the notice
+ * says nothing was saved (and no "left out" line). Never a 200 with a silent
+ * empty draft. See `forms/draft-write-never-silent.ts`. Off, as before.
+ */
+export function draftWriteNeverSilentEnabled(): boolean {
+  return envFlag("DRAFT_WRITE_NEVER_SILENT_ENABLED");
 }
 
 /**

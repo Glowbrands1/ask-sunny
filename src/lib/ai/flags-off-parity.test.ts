@@ -360,6 +360,8 @@ const NEW_FLAGS = [
   "FORM_EDIT_REFERS_BACK_ENABLED",
   "SAME_FORM_COPY_ENABLED",
   "SAME_FORM_COPY_NEW_PERSON_ENABLED",
+  // coding 6: DRAFT_WRITE_NEVER_SILENT (default off): forced off with the others.
+  "DRAFT_WRITE_NEVER_SILENT_ENABLED",
   // coding 6: ACCOUNT_BEFORE_REQUEST (default off): forced off with the others.
   "ACCOUNT_BEFORE_REQUEST_ENABLED",
   // coding 6: POLICY_REFERENCE_NOT_ACCOUNT (default off): forced off with the others.
@@ -370,6 +372,14 @@ const NEW_FLAGS = [
   "TEAM_CARD_NOT_PRODUCT_ENABLED",
   // coding 6: REOPEN_CLOSE_SPELLING (default off): forced off with the others.
   "REOPEN_CLOSE_SPELLING_ENABLED",
+  // coding 6: PAYROLL_SPLIT_WORDS (default off): forced off with the others.
+  "PAYROLL_SPLIT_WORDS_ENABLED",
+  // coding 6: SAME_REQUEST_OTHER_PERSON (default off): forced off with the others.
+  "SAME_REQUEST_OTHER_PERSON_ENABLED",
+  // coding 6: COACHING_OBSERVED_SAVED (default off): forced off with the others.
+  "COACHING_OBSERVED_SAVED_ENABLED",
+  // coding 6: APP_INSTRUCTIONS_NOT_ACCOUNT (default off): forced off with the others.
+  "APP_INSTRUCTIONS_NOT_ACCOUNT_ENABLED",
   "STAFF_PICKER_ENABLED",
   "STAFF_PICKER_STORE_TITLES_ENABLED",
   "STAFF_PICKER_BARE_ANSWER_ENABLED",
@@ -534,6 +544,15 @@ const NEW_FLAGS = [
   "MADE_ABOUT_REWRITE_FINISHES_ENABLED",
   // coding 4: CHAT_STAGE_TIMINGS (QA, 9 Nov 2026; default off): forced off with the others in the child run.
   "CHAT_STAGE_TIMINGS_ENABLED",
+  "CHAT_PARALLEL_LOADS_ENABLED",
+  "CHAT_PARALLEL_REWRITE_ENABLED",
+  // coding 4: QA's live Bubbles round 13 (9 Nov 2026; default off): forced off with the others in the child run.
+  "MADE_ABOUT_TOPIC_EVIDENCE_ENABLED",
+  "FORM_DATE_SAID_ALONE_ENABLED",
+  "MADE_ABOUT_SAID_DATE_ENABLED",
+  "MADE_ABOUT_POLICY_LINE_REPLACES_ENABLED",
+  "SECTION_BREAKS_KEPT_ENABLED",
+  "ADD_NOT_REPEATED_ENABLED",
   // coding 4: MODEL_POLICY_DEFERS_TO_TOPIC (QA, round 7c, 9 Nov 2026; default off): forced off with the others in the child run.
   "MODEL_POLICY_DEFERS_TO_TOPIC_ENABLED",
   // coding 4: WORK_AREA_ABSENCE_CITES_CONDUCT (Pau's decision, 9 Nov 2026; default off): forced off with the others in the child run.

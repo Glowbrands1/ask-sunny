@@ -2,6 +2,8 @@ import "server-only";
 
 import {
   chatDataToolsEnabled,
+  chatParallelLoadsEnabled,
+  chatParallelRewriteEnabled,
   chatMemoryEnabled,
   chatStyleRulesEnabled,
   chatTraceEnabled,
@@ -48,6 +50,7 @@ import { MissingConfigurationError, liveReadiness } from "@/lib/config/server-en
 import { ACTIVE_BRAND } from "@/lib/brand";
 import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import { markStage } from "./chat-stage-timings";
+import { held, startedFor } from "./held-promise";
 import { proposeFormForTurn, suggestFormsForTurn, type ChatActor } from "./form-proposal";
 import { acceptedCaOffer, acceptedCaOfferTurn, caOfferLine, withCaOffer } from "./ca-offer";
 import { remapFormTurn, remapShouldRun, type FormRemapSlots } from "./form-full-remap";
@@ -518,6 +521,7 @@ async function answerQuestionUntraced(
   actor: ChatActor,
   memory: { memoryOwnerId?: string } = {},
 ): Promise<AskResponse> {
+  markStage("trace_open");
   const readiness = liveReadiness();
 
   // Missing variables first: that is the ordinary "not set up yet" case, and it
@@ -562,6 +566,15 @@ async function answerQuestionUntraced(
   const listPolicyCard = listPolicyOnCard(request);
   const askedQuestion = !listPolicyCard && questionNotFormEnabled() && isQuestionNotForm(request.question, request.history);
   let intentForm = false;
+  /*
+   * CHAT_PARALLEL_REWRITE_ENABLED (QA, 9 Nov 2026): the message normalizer (`normalizeForChat`, below) starts now, from
+   * the turn as it is, alongside intent extraction instead of after it. Used only when extraction leaves the question and
+   * the history as they were; otherwise it is called again from the extracted turn, as before.
+   */
+  const earlyHeard =
+    chatParallelRewriteEnabled() && queryRewriteEnabled() && intentExtractionEnabled() && !askedQuestion
+      ? startedFor(request, (turn) => normalizeForChat({ question: turn.question, history: turn.history }))
+      : null;
   if (intentExtractionEnabled() && !askedQuestion) {
     markStage("intent_extraction");
     const prepared = await applyIntentExtraction({ request, actor });
@@ -607,9 +620,18 @@ async function answerQuestionUntraced(
    * fetched once one of them has something to say — or, further down, in
    * parallel with retrieval when neither has.
    */
-  markStage("query_normalize");
+  /*
+   * CHAT_PARALLEL_LOADS_ENABLED (QA, 10 Nov 2026, live timings): the few-shot read needs only the question and the scope,
+   * both final here, and was the one slow read left before the answer (1.1–2.8 s, alone: the reads it was started with
+   * finish in 0–1 ms). It starts here, beside the normalizer and the query rewrite. A turn that returns before the answer
+   * (a form proposal, a form understood) has made two database reads it does not use; no model call. Its rejection is
+   * held until the await, as before.
+   */
+  const earlyFewShot =
+    chatParallelLoadsEnabled() && fewShotExamplesEnabled() ? held(fewShotBlock({ question: request.question, scopeId: request.scopeId })) : null;
+  markStage(earlyHeard?.reruns(request) ? "query_normalize_rerun" : "query_normalize");
   const heard = queryRewriteEnabled()
-    ? await normalizeForChat({ question: request.question, history: request.history })
+    ? await (earlyHeard?.take(request) ?? normalizeForChat({ question: request.question, history: request.history }))
     : null;
   const routingQuestion = heard?.routingText ?? request.question;
   updateChatTrace({
@@ -1605,6 +1627,17 @@ async function answerQuestionUntraced(
     };
   }
 
+  /*
+   * CHAT_PARALLEL_LOADS_ENABLED (QA, 9 Nov 2026): the reads below that need nothing more of the turn start here, after
+   * its last early return (the framework refusals above), so every read started is awaited on this turn and a turn
+   * that returns earlier makes none it would not have made. They run alongside the briefing, the summaries and the
+   * system prompt instead of one after another before the answer. Each is awaited where it was, with the same inputs,
+   * so the prompt is the same. The two that write (recalled memory, the long-context summary) start just before the
+   * system prompt is built (`turnWrites`).
+   */
+  const reads = chatParallelLoadsEnabled()
+    ? turnReads({ request, actor, knowledge, families, fullManual: fullManualBlock !== null, fewShot: earlyFewShot })
+    : null;
   const role = roleResult?.ok ? roleResult.grounding : null;
 
   /*
@@ -1747,7 +1780,7 @@ async function answerQuestionUntraced(
    */
   markStage("google_reviews");
   const reviewBlock = googleReviewsInChatEnabled()
-    ? await loadGoogleReviewsChatBlock({ question: request.question, role: actor.role, scope: actor.scope })
+    ? await (reads?.reviews ?? loadGoogleReviewsChatBlock({ question: request.question, role: actor.role, scope: actor.scope }))
     : null;
 
   /*
@@ -1789,6 +1822,17 @@ async function answerQuestionUntraced(
     ? buildFormInventoryBlock(buildFormInventory(settledSummaries.rows, actor))
     : null;
 
+  /*
+   * CHAT_PARALLEL_LOADS_ENABLED: the two loads that write start here, where nothing between their start and their
+   * awaits can throw, and after everything that reads the conversation's memory (`memoryPromise`, above).
+   */
+  const writes = reads ? turnWrites({ request, actor }) : null;
+  markStage("recalled_memory");
+  const recalledMemory = await (writes?.recalled ?? recalledMemoryBlock(request, actor));
+  markStage("few_shot");
+  const fewShot = fewShotExamplesEnabled()
+    ? await (reads?.fewShot ?? fewShotBlock({ question: request.question, scopeId: request.scopeId }))
+    : null;
   markStage("system_prompt");
   const builtSystem = buildSystemPrompt({
     assistantName: ACTIVE_BRAND.assistantName,
@@ -1849,33 +1893,33 @@ async function answerQuestionUntraced(
       hasPermission(DEFAULT_PERMISSION_MATRIX, actor.role, "view_reports"),
     styleRules: chatStyleRulesEnabled(),
     priorCoachingOptional: priorCoachingOptionalEnabled(),
-    recalledMemory: await recalledMemoryBlock(request, actor),
-    ...(fewShotExamplesEnabled()
-      ? { fewShot: await fewShotBlock({ question: request.question, scopeId: request.scopeId }) }
-      : {}),
+    recalledMemory,
+    ...(fewShot !== null ? { fewShot } : {}),
   });
   // MANAGER_NAME_NOT_EMPLOYEE_ENABLED: the manager's name is only for addressing them. See `manager-name-guard.ts`.
   const system = withManagerNameRule(builtSystem);
 
   markStage("long_context");
   const longContext = longContextEnabled()
-    ? await prepareLongContext({
-        history: request.history,
-        userId: actor.subject ?? null,
-        conversationId: request.conversationId ?? null,
-      })
+    ? await (writes?.longContext ??
+        prepareLongContext({
+          history: request.history,
+          userId: actor.subject ?? null,
+          conversationId: request.conversationId ?? null,
+        }))
     : null;
   markStage("chat_data");
-  const dataAddition = await loadChatDataBlock({
-    enabled: chatDataToolsEnabled(),
-    question: request.question,
-    role: actor.role,
-    scope: actor.scope,
-    briefedFamilies: families,
-    reviewsHandled: reviewBlock !== null,
-  });
+  const dataAddition = await (reads?.data ??
+    loadChatDataBlock({
+      enabled: chatDataToolsEnabled(),
+      question: request.question,
+      role: actor.role,
+      scope: actor.scope,
+      briefedFamilies: families,
+      reviewsHandled: reviewBlock !== null,
+    }));
   markStage("cited_grounding");
-  const pinnedPolicy = fullManualBlock ? null : await citedManualGrounding(request, knowledge);
+  const pinnedPolicy = fullManualBlock ? null : await (reads?.cited ?? citedManualGrounding(request, knowledge));
   /*
    * Retrieved rows are [S#] sources. With the manual loaded, those markers
    * are not the policy citation, and a manager manual that retrieval pinned
@@ -1961,6 +2005,7 @@ async function answerQuestionUntraced(
     formEdit?.failed();
     throw error;
   }
+  markStage("after_answer");
   if (formEdit) {
     formEdit.sent();
     const called = toolInput as { readonly input: unknown } | null;
@@ -2127,6 +2172,59 @@ async function recalledMemoryBlock(request: AskRequest, actor: ChatActor): Promi
   } catch {
     return null;
   }
+}
+
+/**
+ * CHAT_PARALLEL_LOADS_ENABLED: the turn's reads that need nothing more of the turn, started together. The same calls,
+ * with the same inputs, as where they are awaited (`answerQuestionUntraced`); a rejection is held until that await.
+ */
+function turnReads(input: {
+  readonly request: AskRequest;
+  readonly actor: ChatActor;
+  readonly knowledge: Parameters<typeof citedManualGrounding>[1];
+  readonly families: readonly ReportFamilyId[];
+  readonly fullManual: boolean;
+  /** Started before the query rewrite (`earlyFewShot`): non-null exactly when loads and few-shot are both on. */
+  readonly fewShot: ReturnType<typeof fewShotBlock> | null;
+}) {
+  const { request, actor } = input;
+  const reviews = googleReviewsInChatEnabled()
+    ? held(loadGoogleReviewsChatBlock({ question: request.question, role: actor.role, scope: actor.scope }))
+    : Promise.resolve(null);
+  return {
+    reviews,
+    fewShot: input.fewShot,
+    data: held(
+      reviews.then((reviewBlock) =>
+        loadChatDataBlock({
+          enabled: chatDataToolsEnabled(),
+          question: request.question,
+          role: actor.role,
+          scope: actor.scope,
+          briefedFamilies: input.families,
+          reviewsHandled: reviewBlock !== null,
+        }),
+      ),
+    ),
+    cited: input.fullManual ? null : held(citedManualGrounding(request, input.knowledge)),
+  };
+}
+
+/** CHAT_PARALLEL_LOADS_ENABLED: the two loads that write (recalled memory, the long-context summary), started just before the system prompt. */
+function turnWrites(input: { readonly request: AskRequest; readonly actor: ChatActor }) {
+  const { request, actor } = input;
+  return {
+    recalled: held(recalledMemoryBlock(request, actor)),
+    longContext: longContextEnabled()
+      ? held(
+          prepareLongContext({
+            history: request.history,
+            userId: actor.subject ?? null,
+            conversationId: request.conversationId ?? null,
+          }),
+        )
+      : null,
+  };
 }
 
 async function citedManualGrounding(
