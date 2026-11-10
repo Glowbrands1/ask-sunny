@@ -38,6 +38,7 @@ import {
 import { notesMadeAbout } from "@/lib/ai/make-it-about";
 import { NOTHING_SET_ASIDE, policiesSetAside, setAsideAnything, valuesWithPolicySetAside, withoutPolicyTakeOff } from "@/lib/forms/policy-set-aside";
 import { withoutAsksToTheApp } from "@/lib/ai/asks-to-the-app";
+import { withoutAppInstructions } from "@/lib/ai/app-instructions";
 import { AiError } from "@/lib/ai/errors";
 import {
   assertLiveMode,
@@ -379,7 +380,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     const body = ((await request.json().catch(() => null)) ?? {}) as DraftBody;
     // GRAMMAR_ASK_NOT_ACCOUNT_ENABLED: "can you clean up my grammar …?" is no account (`ai/asks-to-the-app.ts`).
     const typed = String(body.notes ?? "").trim().slice(0, 4000);
-    const asked = grammarAskNotAccountEnabled() ? withoutAsksToTheApp(typed).trim() : typed;
+    // APP_INSTRUCTIONS_NOT_ACCOUNT_ENABLED: "Please word it in a professional way. I need the policy attached as well." is no account.
+    const asked = withoutAppInstructions(grammarAskNotAccountEnabled() ? withoutAsksToTheApp(typed).trim() : typed).trim();
     // CREATE_COMMAND_POINTS_TO_CARD_ENABLED / CARD_COMPLAINT_NOT_ACCOUNT_ENABLED: "create it" or "this proposal is out of
     // date" is no account (`ai/card-meta-turn.ts`).
     const asTyped = (await import("@/lib/ai/card-meta-turn")).withoutCardMetaTurns(asked);

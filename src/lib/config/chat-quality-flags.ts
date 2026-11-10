@@ -3873,3 +3873,16 @@ export function madeAboutRewriteFinishesEnabled(): boolean {
 export function madeAboutReaderAccountEnabled(): boolean {
   return envFlag("MADE_ABOUT_READER_ACCOUNT_ENABLED");
 }
+
+/**
+ * APP_INSTRUCTIONS_NOT_ACCOUNT_ENABLED (coding 6, 10 Nov 2026; default off;
+ * QA's P12 part 2, Sunny production 6 Nov). "… for not hitting her numbers
+ * for the month of October. Please word it in a professional way. I need the
+ * policy attached as well." — every card's Observation kept the last two
+ * sentences. On: a sentence that only asks for the wording or for the policy
+ * on the form is left out of the card's Observation and the draft's account.
+ * See `ai/app-instructions.ts`. Off, as before.
+ */
+export function appInstructionsNotAccountEnabled(): boolean {
+  return envFlag("APP_INSTRUCTIONS_NOT_ACCOUNT_ENABLED");
+}
