@@ -1,6 +1,6 @@
 import { expect, vi } from "vitest";
 
-import { KEARNEY, STAFF, type ReplayCase } from "./cases";
+import { KEARNEY, STAFF, type DirectoryRow, type ReplayCase } from "./cases";
 
 /**
  * ============================================================================
@@ -23,6 +23,21 @@ const EXIT_ASK = "Can you create an exit form for me?";
 const typed = (title: string) =>
   `Isaura Corvadine\n${title} \nNE Kearney\nGave notice - fulfilled notice\nGave notice 10/20/26 - date notice fulfilled 11/3/26\nResigning to pursue other career options\nSalon items returned payroll deduction does not apply eligible for rehire`;
 
+/*
+ * Changed on purpose (10 Nov 2026, QA's open-PR audit): since 9 Nov OFF_ROSTER_ASK_BEFORE_CARD (production) holds a salon
+ * manager's card for a name not on the roster and asks about it first, so the exit card never came. She is on the
+ * roster here, with no position of her own, so the card's Job Title is still only what the manager typed.
+ */
+const ISAURA: DirectoryRow = {
+  id: "e-isaura-corvadine",
+  firstName: "Isaura",
+  lastName: "Corvadine",
+  preferredFirstName: null,
+  employmentStatus: "active",
+  salonIds: ["loc-0309"],
+  positionName: null,
+};
+
 function exitCase(id: string, typedTitle: string, position: string, title: string): ReplayCase {
   return {
     id,
@@ -31,7 +46,7 @@ function exitCase(id: string, typedTitle: string, position: string, title: strin
     status: "fixed",
     async run(t) {
       vi.setSystemTime(new Date("2026-11-06T02:00:00Z"));
-      t.directory(STAFF);
+      t.directory([...STAFF, ISAURA]);
       t.as("salon_director", KEARNEY);
       const thread = t.thread();
       await thread.say(EXIT_ASK);
