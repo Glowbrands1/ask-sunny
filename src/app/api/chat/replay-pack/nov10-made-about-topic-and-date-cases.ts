@@ -202,7 +202,9 @@ export const NOV10_MADE_ABOUT_TOPIC_AND_DATE_CASES: ReplayCase[] = [
     id: "nov10-made-about-said-date-saved-draft-live",
     title: "QA's live Sunny round 14 (P9): on a saved draft already about the front desk on 11/6/26, \"I need you to make it about showing up late and please list the policy make the date for 10/14/26\", the reader's patch refused and the revision writing Details without a date: Date, Details, Other and the policy line are saved",
     report: "QA's live Sunny round 14 (10 Nov 2026, 01:43Z, P9 from 7 Nov): \"I haven't changed the Coaching Form …\", nothing saved",
-    status: { open: "the reader's patch is refused whole and handed to the old path, whose revision will not drop 11/6/26" },
+    // Changed on purpose (10 Nov 2026): holds with production's flags since QA's round 15 (main ed18d1fc: the four MADE_ABOUT
+    // switches on, UNDATED_TOGETHER among them), as QA's live P9 save at 03:07:44Z showed. Kept as fixed, with the fix flags too.
+    status: "fixed",
     fixFlags: SAID_DATE_FIX,
     run: p9({ saved: true }),
   },
