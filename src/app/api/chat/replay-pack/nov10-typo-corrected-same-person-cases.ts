@@ -8,7 +8,7 @@ import { STAFF, type DirectoryRow, type ReplayCase } from "./cases";
  * that request lost the date given earlier (`turnsAboutThisForm` reads the misspelled turn as another person). Here the
  * stored form state carries the date, so it holds with production's flags: a guard, so a change to that state does not
  * bring the loss here. TYPO_CORRECTED_SAME_PERSON_ENABLED (default off) is the sibling's fix; its protected
- * ai/form-proposal.ts lines wait on Pau (docs/patches/typo-corrected-same-person.patch). Invented person.
+ * ai/form-proposal.ts lines are in (Pau, "Ok typo same person", 10 Nov 2026). Invented person.
  */
 const GLOBAL = { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] };
 const ROZLYN: DirectoryRow = {
