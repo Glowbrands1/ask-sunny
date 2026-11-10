@@ -270,6 +270,8 @@ export const NOV4_OVERNIGHT_SCAN_CASES: readonly ReplayCase[] = [
     report: `${REPORT}, sf-s19: "I need a corrective action verbal for Odalys Frewen. This is for Under Performance on PPTA, LPSVA, Club Average, Club Close %, and Spa %." → "Corrective Action"`,
     // Run 4 Nov 2026 (production flags): fails as below.
     status: { open: "turn 1 refuses (\"I won't open formal corrective action off a metric\" and the progression list), and turn 2 \"Corrective Action\" gets \"That's the same answer as my last reply\" with no card: it never proceeds with the Verbal CA she chose" },
+    // Fixed under LEVEL_AFTER_FORM_NAME_ENABLED (coding 6, 10 Nov 2026): "a corrective action verbal" is the Verbal she chose; open on production flags until QA flips it.
+    fixFlags: ["LEVEL_AFTER_FORM_NAME_ENABLED"],
     async run(t) {
       const thread = start(t);
       const first = await thread.say("I need a corrective action verbal for Odalys Frewen. This is for Under Performance on PPTA, LPSVA, Club Average, Club Close %, and Spa %.");
