@@ -2,6 +2,7 @@ import "server-only";
 
 import type { AskResponse } from "@/lib/ai/types";
 import {
+  accountWipeGuardEnabled,
   editPolicyAskEnabled,
   formEditSingleWriterEnabled,
   formPatchReaderFixesEnabled,
@@ -277,6 +278,20 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
       reading = madeAboutReading(input, before, writable, allGroups) ?? reading;
     }
     if (!("ok" in reading) || reading.turn !== "this_form") return handOff("none");
+    /*
+     * ACCOUNT_WIPE_GUARD_ENABLED (ported from the sibling app: QA, a manager's 1★ rating there, 5–6 Nov 2026): "this is a verbal warning. previous
+     * coaching policy manual 10-15-26" on a reopened Coaching Form wiped Details of Coaching. A clear or full replace of
+     * an account field that holds text is written only when the latest message names that field or asks to remove or
+     * rewrite it (`account-wipe-guard.ts`); adds and other fields are as before.
+     */
+    if (accountWipeGuardEnabled()) {
+      const guarded = (await import("./account-wipe-guard")).withoutUnaskedAccountWipes(reading.patch, {
+        latest: input.question,
+        labels,
+        current: Object.fromEntries(Object.entries(before).map(([key, field]) => [key, field.value])),
+      });
+      if (guarded.kept.length > 0) reading = { ...reading, patch: guarded.patch };
+    }
     /*
      * MADE_ABOUT_READER_ACCOUNT_ENABLED (ported from Ask Bubbles: QA's live round-9 test there, 9 Nov 2026; the person invented): "make it about
      * leaving the front desk unattended on 11/6/26" on a saved Coaching draft about the missed meeting on 10/10/26 changed
