@@ -2632,6 +2632,16 @@ export function exitFormDateFromTerminationEnabled(): boolean {
   return envFlag("EXIT_FORM_DATE_FROM_TERMINATION_ENABLED");
 }
 
+/**
+ * CREATE_FROM_CONVERSATION_POINTS_TO_CARD_ENABLED (QA's P6, Sunny live, 10 Nov 2026; coding 5; same flag in both apps;
+ * default off; with CREATE_COMMAND_POINTS_TO_CARD_ENABLED). "Create a form from this conversation." with a card open
+ * repeated the card's reply word for word. On: that wording, and "make a new draft from our chat", "create the form
+ * based on this" and the like, are a create command, answered as "create it" is (`ai/card-meta-turn.ts`). Off, as before.
+ */
+export function createFromConversationPointsToCardEnabled(): boolean {
+  return envFlag("CREATE_FROM_CONVERSATION_POINTS_TO_CARD_ENABLED");
+}
+
 // --- end coding 5 flags ---
 
 /**
