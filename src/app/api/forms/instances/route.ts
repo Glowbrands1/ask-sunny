@@ -324,32 +324,32 @@ export async function POST(request: Request) {
        * means nothing written; it is never defaulted. The draft leaves it as it
        * is. See `statedWarningLevel` in `lib/forms/corrective-action-intake.ts`.
        */
-      if (isStatedWarningLevel(card.warningLevel)) {
+      /*
+       * TERMINATION_STATED_TICKS_ENABLED (Pau's P15 ruling "A", 10 Nov 2026): with no verbal or written stated, a
+       * termination the manager STATED for this form in chat ("I need a term CA for …") is ticked as their statement,
+       * through the same write as a stated level; the card has said it needs DM/HR approval before it is finalized.
+       * Read from the manager's own turns; a hedge ("she might be terminated if this continues") states nothing. Off,
+       * `statesTermination` is false.
+       */
+      const statedLevel = isStatedWarningLevel(card.warningLevel)
+        ? card.warningLevel
+        : card.templateKey === "dpoa" &&
+            Array.isArray(card.conversation) &&
+            statesTermination(
+              (await readingTurns(parseHistory(card.conversation)))
+                .filter((turn) => turn.role === "user")
+                .map((turn) => String(turn.content))
+                .join("\n"),
+            )
+          ? TERMINATION_OPTION
+          : null;
+      if (statedLevel) {
         await applyStatedFacts(
           instanceId,
-          { values: {}, checked: { [WARNING_TYPE_KEY]: [card.warningLevel] } },
+          { values: {}, checked: { [WARNING_TYPE_KEY]: [statedLevel] } },
           actor.id,
           WARNING_LEVEL_STATED_KEYS,
         );
-      }
-
-      /*
-       * TERMINATION_STATED_TICKS_ENABLED (Pau's P15 ruling "A", 10 Nov 2026): a termination the manager STATED for this
-       * form in chat ("I need a term CA for …") is ticked as their statement, the same path as a stated verbal or
-       * written; the card has said it needs DM/HR approval before it is finalized. Read from the manager's own turns;
-       * a hedge ("she might be terminated if this continues") states nothing. Off, `statesTermination` is false.
-       */
-      if (!isStatedWarningLevel(card.warningLevel) && card.templateKey === "dpoa" && Array.isArray(card.conversation)) {
-        const turns = await readingTurns(parseHistory(card.conversation));
-        const said = turns.filter((turn) => turn.role === "user").map((turn) => String(turn.content)).join("\n");
-        if (statesTermination(said)) {
-          await applyStatedFacts(
-            instanceId,
-            { values: {}, checked: { [WARNING_TYPE_KEY]: [TERMINATION_OPTION] } },
-            actor.id,
-            WARNING_LEVEL_STATED_KEYS,
-          );
-        }
       }
     }
 
