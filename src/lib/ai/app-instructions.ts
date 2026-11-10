@@ -1,4 +1,4 @@
-import { appInstructionsNotAccountEnabled } from "@/lib/config/chat-quality-flags";
+import { appInstructionsNotAccountEnabled, cardNeverSilentEnabled } from "@/lib/config/chat-quality-flags";
 import { readsAsTeamSubject } from "@/lib/forms/team-subject";
 
 /*
@@ -33,10 +33,21 @@ const POLICY_ON_FORM =
 const BLANK_EMPLOYEE =
   /\b(?:employee(?:'s)?(?:\s+name)?|name)\b[^.!?\n]{0,30}\b(?:left\s+blank|leave\s+(?:it\s+)?blank|blank|empty|no\s+one|nobody)\b|\bleave\s+(?:the\s+)?(?:employee|name)(?:\s+name)?\s+(?:field\s+)?blank\b/i;
 
+/*
+ * CARD_NEVER_SILENT_ENABLED (October rebuild 6, 10 Nov 2026; conv_mvoenhk42lu3cxo): on a card, "i verified everythign i
+ * jsut need to finalize it" and "i need to edit this can you make it to where i can edit" were added to the card's
+ * Observation of Offense. They ask the app to finalize or edit the form; they say nothing that happened. Only the
+ * manager's own ask ("I … need/want to finalize/edit/submit", "make it where I can edit"), never another person's
+ * act ("she didn't finalize the closing checklist").
+ */
+const FORM_STEP_ASK =
+  /\b(?:i|we)\s+(?:\w+\s+){0,2}?(?:need|want|have|got)\s+to\s+(?:finali[sz]e|edit|submit|sign|change)\b|\bmake\s+it\s+(?:to\s+|so\s+)?(?:where|that)\s+(?:i|we)\s+can\s+(?:edit|change|finali[sz]e)\b/i;
+
 /** Whether a sentence only tells the app how to word the form or to put the policy on it. */
 export function isAppInstruction(sentence: string): boolean {
   const said = sentence.trim();
   if (said === "" || said.split(/\s+/).length > 16) return false;
+  if (cardNeverSilentEnabled() && FORM_STEP_ASK.test(said)) return true;
   return WORDING.test(said) || POLICY_ON_FORM.test(said) || BLANK_EMPLOYEE.test(said);
 }
 

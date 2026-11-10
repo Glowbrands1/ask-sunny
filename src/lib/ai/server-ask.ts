@@ -1,5 +1,6 @@
 import "server-only";
 
+import { withCardNeverSilent } from "./card-never-silent";
 import {
   chatDataToolsEnabled,
   chatParallelLoadsEnabled,
@@ -361,7 +362,7 @@ export async function answerQuestion(
   // SOURCE_NOTE_GUARD_ENABLED: no bare source marker ("[S1]", "[S12, S14]") reaches the reply on any path (`ai/source-note.ts`).
   const answer = async (turn: AskRequest) => {
     const explained = withUnderPerformanceExplained(
-      withTitleOfTheEmployee(withoutSensitiveDefaults(await answerQuestionChecked(turn, actor, memory), turn.question), turn),
+      withTitleOfTheEmployee(withoutSensitiveDefaults(withCardNeverSilent(await answerQuestionChecked(turn, actor, memory), turn), turn.question), turn),
       turn,
     );
     return { ...explained, content: withoutSourceMarkers(explained.content) };
