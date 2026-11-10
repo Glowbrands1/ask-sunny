@@ -49,6 +49,10 @@ const store: FakeStore = {
   chat_traces: [],
   chat_form_state: [],
   chat_form_incidents: [],
+  // The two tables a turn's memory writes (QA, 10 Nov 2026: CHAT_PARALLEL_LOADS must write exactly as often as before;
+  // without them every write failed silently and the record's row counts were always 0).
+  user_memory: [],
+  chat_context_summaries: [],
 } as unknown as FakeStore;
 
 // As production builds the role table when the ASD may create forms (NEXT_PUBLIC_, read once at load).
@@ -122,6 +126,8 @@ vi.mock("@/lib/forms/form-patch-call", () => ({
  * failed database write would, so a case can make a turn throw part-way.
  */
 const faults = vi.hoisted(() => ({ field: null as string | null }));
+/** `t.summaryWrites`: what the long-context summary model returns; none by default (the summary call fails, as unscripted). */
+const summaries = vi.hoisted(() => ({ reply: null as string | null }));
 function withFaults<T>(client: T): T {
   return new Proxy(client as object, {
     get(target, prop, receiver) {
@@ -263,6 +269,7 @@ vi.mock("@/lib/ai/call-claude", () => ({
   },
   callClaudeTool: async (input: { tool?: { name?: string }; messages?: { content?: unknown }[] }) => {
     state.toolCalls += 1;
+    if (input.tool?.name === "store_summary") return summaries.reply === null ? null : { summary: summaries.reply };
     if (input.tool?.name === "extract_form_fields") {
       const text = JSON.stringify(input.messages ?? []);
       return {
@@ -616,6 +623,7 @@ beforeEach(async () => {
   patchScript.calls = 0;
   patchScript.byLatest = null;
   faults.field = null;
+  summaries.reply = null;
   state.directory = [
     { id: "e-1", firstName: "Quinn", lastName: "Marlowe", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-66"], positionName: null },
     { id: "e-2", firstName: "Dale", lastName: "Ferris", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-66"], positionName: null },
@@ -744,6 +752,10 @@ function context(): ReplayContext {
     failSavesOf: (field) => {
       faults.field = field;
     },
+    summaryWrites: (summary) => {
+      summaries.reply = summary;
+    },
+    rows: (table) => [...(((store as unknown as Record<string, unknown[] | undefined>)[table] ?? []) as Record<string, unknown>[])],
     calls: () => ({ chat: state.chatModelCalls, draft: state.draftCalls, revision: state.revisionCalls, tool: state.toolCalls, patch: patchScript.calls }),
     forms: () => store.form_instances as never,
     draftPrompts: () => [...draftAsked],
