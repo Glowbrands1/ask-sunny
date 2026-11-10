@@ -429,7 +429,8 @@ function nameCase(wording: NameWording, onRoster: boolean, mode: Mode): ReplayCa
     title: `"${wording.text}" — ${onRoster ? "on roster: the card is for Corin Bellweather" : "off roster: asks who, invents no one"} (${mode === "code" ? "code only" : "models read the name"})`,
     report: `QA's exact name matrix, 4 Nov 2026: "${wording.text}"`,
     status: open ? { open } : "fixed",
-    fixFlags: [],
+    // CAPS_PREPOSITION_NOT_NAME_ENABLED (10 Nov 2026): "… BY CORIN BELLWEATHER" in capitals is read without "BY".
+    fixFlags: open ? ["CAPS_PREPOSITION_NOT_NAME_ENABLED"] : [],
     async run(t) {
       t.directory(nameRoster(onRoster));
       t.as("salon_director", KEARNEY);

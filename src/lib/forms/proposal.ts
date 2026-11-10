@@ -4,7 +4,7 @@ import { businessToday } from "@/lib/business-date";
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { storeNameKey } from "@/lib/reporting/store-identity";
 
-import { groundedEntitiesEnabled, intentExtractionEnabled, thisPersonsTurnsEnabled, typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
+import { capsPrepositionNotNameEnabled, groundedEntitiesEnabled, intentExtractionEnabled, thisPersonsTurnsEnabled, typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
 import { isDocumentName, isRosterStateName } from "@/lib/ai/not-a-person";
 
 import { extractFormDate } from "./form-date-answer";
@@ -434,6 +434,17 @@ export interface EmployeeMentions {
   negated: string[];
 }
 
+/**
+ * CAPS_PREPOSITION_NOT_NAME_ENABLED (coding 6, 10 Nov 2026; default off; QA's name matrix, 4 Nov 2026):
+ * "… ON MONDAY 10/05/2026 BY CORIN BELLWEATHER" — in capitals, the preposition before the name is a capitalised word
+ * too, so the run was "BY CORIN BELLWEATHER" and the card's employee was nobody. A run of three or more words led by
+ * a preposition is read without it. Off, as before.
+ */
+const CAPS_LEAD_PREPOSITION = /^(?:by|from|to|of|on|with)\s+(?=\S+\s+\S)/i;
+function withoutCapsPreposition(run: string): string {
+  return capsPrepositionNotNameEnabled() ? run.replace(CAPS_LEAD_PREPOSITION, "") : run;
+}
+
 export function readEmployeeMentions(typed: string): EmployeeMentions {
   // "pls", "u", "frm" are never names and never end one; read them as words.
   // "general training", "team-wide", "everyone at the salon" describe the team,
@@ -697,7 +708,7 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
 
   const FULL = new RegExp(`\\b(${NAME}(?:\\s+${PART})+)`, "g");
   for (const match of text.matchAll(FULL)) {
-    const run = nameBeforeRole(beforePossessive(match[1]!.trim()));
+    const run = withoutCapsPreposition(nameBeforeRole(beforePossessive(match[1]!.trim())));
     if (!run.includes(" ")) continue;
     if (places.has(run)) continue;
     /*
