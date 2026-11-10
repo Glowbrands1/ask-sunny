@@ -4,6 +4,7 @@ import { PRODUCTION_SALONS } from "@/data/salons";
 import { datesInText, listIncidentDates, priorSteps } from "@/lib/forms/form-date-answer";
 import {
   managerWordsOnlyEnabled,
+  citationPageAgreesEnabled,
   oneCardOnePageEnabled,
   titleKeepsLabelWordsEnabled,
   formChoiceStatedEnabled,
@@ -24,7 +25,7 @@ import { inlineCloseMatch } from "@/lib/forms/typed-name-proceeds";
 import { supportsInlineDraft } from "@/lib/forms/inline-draft";
 import { isFieldLabelWord, nameAfterNameLabel, NOT_A_TYPED_NAME, stripFieldLabels } from "@/lib/forms/name-words";
 import { describedManualSection } from "@/lib/forms/named-policy-section";
-import { withConductLinePage } from "@/lib/forms/specific-policy-topics";
+import { specificTopic, withConductLinePage } from "@/lib/forms/specific-policy-topics";
 import {
   findManualSection,
   headingKey,
@@ -153,7 +154,10 @@ export function enrichFormCard(input: {
   // The salon question used to be the whole reply. Once the salon is known,
   // that line goes and the policy line that was under it stays.
   if (!content.trim() && (next.employeeName || next.locationId)) content = leadFor(next);
-  const lines = fieldLines({ proposal: next, followUps, policy: oneCardOnePageEnabled() ? policyAsShown(content, policy) : policy, amount, statedTitle: title });
+  const shownPolicy = oneCardOnePageEnabled()
+    ? policyAsShown(content, policy)
+    : shortagePolicyPage(content, policy, next, blob);
+  const lines = fieldLines({ proposal: next, followUps, policy: shownPolicy, amount, statedTitle: title });
   for (const line of lines) {
     if (!alreadySaid(content, line)) content = content ? `${content}\n\n${line}` : line;
   }
@@ -749,6 +753,28 @@ export function policyAsShown(content: string, policy: { heading: string; page: 
     return page !== null ? { ...policy, page } : policy;
   }
   return policyLineSection(content);
+}
+
+/*
+ * CITATION_PAGE_AGREES_ENABLED (QA's ruling (b), 10 Nov 2026; Pau left the pick to QA): "create a corrective action for <P>,
+ * his cash drawer was short $20 on 11/3" read "**Standards of Conduct** (page 13)" on the Policy line and "Standards of
+ * Conduct Policy, JBA Policy Manual p.12" under it. The rule sits on p.13 (Register / Bank shortages, as Pau's 9 Nov ruling
+ * cites); the Coaching card and the saved form already say p.13. On a Corrective Action card for a cash-drawer or register
+ * shortage only, the citation line takes the page the card's own Policy line gives that section. Sales / MSB cards (no
+ * shortage) keep p.12. Narrower than ONE_CARD_ONE_PAGE, which this leaves as it is.
+ */
+export function shortagePolicyPage(
+  content: string,
+  policy: { heading: string; page: number | null } | null,
+  proposal: ChatFormProposal,
+  account: string,
+): { heading: string; page: number | null } | null {
+  if (!policy || !citationPageAgreesEnabled()) return policy;
+  if (!(proposal.templateKey === "dpoa" || /corrective action/i.test(proposal.templateName ?? ""))) return policy;
+  if (specificTopic(account)?.id !== "cash") return policy;
+  const name = policy.heading.trim().replace(/\s+policy$/i, "").replace(ESCAPE, "\\$&");
+  const page = new RegExp(`\\*\\*${name}(?: Policy)?\\*\\* \\(page (\\d+)\\)`, "i").exec(content)?.[1];
+  return page ? { ...policy, page: Number(page) } : policy;
 }
 
 function fieldLines(input: {

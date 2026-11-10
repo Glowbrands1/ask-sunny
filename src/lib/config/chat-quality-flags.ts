@@ -3869,6 +3869,16 @@ export function oneCardOnePageEnabled(): boolean {
 }
 
 /**
+ * CITATION_PAGE_AGREES_ENABLED (QA's ruling (b), 10 Nov 2026; default off; same flag in both apps). A Corrective Action card
+ * for a cash-drawer or register shortage read "**Standards of Conduct** (page 13)" on its Policy line and "Standards of
+ * Conduct Policy, JBA Policy Manual p.12" under it. Its citation line takes the Policy line's page (p.13), as the Coaching
+ * card and the saved form already do; Sales / MSB cards keep p.12 (`ai/form-card-slots.ts`). Off, as before.
+ */
+export function citationPageAgreesEnabled(): boolean {
+  return envFlag("CITATION_PAGE_AGREES_ENABLED");
+}
+
+/**
  * ANOTHER_REQUEST_LEAD_ENABLED (QA, Sunny round 7c and 9 live, 9 Nov 2026; default off; same flag in both apps). "I need
  * another corrective action for <P>, his cash drawer was short $20 on 11/3" was the card's whole Observation: "another" was
  * not read as the request's own word. With the flag on, "another", "one more" and "a second / separate / different / new"
