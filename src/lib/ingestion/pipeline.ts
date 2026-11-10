@@ -2,6 +2,7 @@ import "server-only";
 
 import { createHash, randomUUID } from "node:crypto";
 
+import { ingestFailureKeepsLastGoodEnabled } from "@/lib/config/chat-quality-flags";
 import { EMBEDDING_DIMENSIONS } from "@/lib/config/models";
 import { MissingConfigurationError } from "@/lib/config/server-env";
 import { getEmbeddingProvider } from "@/lib/embeddings";
@@ -121,7 +122,15 @@ export async function ingestDocument(input: IngestInput): Promise<IngestResult> 
       409,
     );
   }
-  const version = existing ? existing.version + 1 : 1;
+  /*
+   * INGEST_FAILURE_KEEPS_LAST_GOOD_ENABLED: a row put back on its last good version (below) still has the later
+   * versions in its history, and their stored files exist; the next version is past all of them, never a reused path.
+   */
+  const version = existing
+    ? (ingestFailureKeepsLastGoodEnabled()
+        ? Math.max(existing.version, ...(existing.previous_versions ?? []).map((entry) => Number(entry.version) || 0))
+        : existing.version) + 1
+    : 1;
   const previousVersions = existing
     ? [
         ...(existing.previous_versions ?? []),
@@ -346,7 +355,9 @@ export async function ingestDocument(input: IngestInput): Promise<IngestResult> 
     // manager can act on. Re-uploading re-runs the pipeline from the top.
     const reason =
       error instanceof IngestionError ? error.message : "Processing failed unexpectedly.";
-    await setStatus(documentId, "failed", reason);
+    // INGEST_FAILURE_KEEPS_LAST_GOOD_ENABLED: a document that answered before keeps answering from that version.
+    const kept = ingestFailureKeepsLastGoodEnabled() && existing ? await keepLastGoodVersion(existing, version, reason) : false;
+    if (!kept) await setStatus(documentId, "failed", reason);
     throw error instanceof IngestionError
       ? error
       : new IngestionError("extraction_failed", reason, 500);
@@ -354,6 +365,51 @@ export async function ingestDocument(input: IngestInput): Promise<IngestResult> 
 }
 
 /* ------------------------------------------------------------- helpers --- */
+
+/**
+ * ============================================================================
+ * A FAILED NEW VERSION NEVER HIDES THE LAST GOOD ONE (INGEST_FAILURE_KEEPS_LAST_GOOD_ENABLED)
+ * ============================================================================
+ *
+ * Ported from the sibling app (QA, 10 Nov 2026): a searchable Woven document there (indexed 6 Oct 2026) was served as a
+ * newer file that is a scan over the OCR page cap; the re-ingest failed and marked the whole document "failed", so its
+ * good sections dropped out of search although they were still stored. This app runs the same pipeline.
+ *
+ * With the flag on, when a new version of a document that was indexed before fails, and chunks of an earlier version
+ * are still stored, the row is put back on that version: status "indexed", its version, stored file and size, and the
+ * failure kept as the reason (the sync still reports the item's error and retries it). Retrieval reads
+ * `c.version = d.version`, so the old chunks answer again. Nothing stored is deleted. A document with no earlier
+ * chunks (a first ingest) fails as before. Returns false when there was nothing to keep.
+ */
+async function keepLastGoodVersion(existing: KnowledgeDocumentRow, failedVersion: number, reason: string): Promise<boolean> {
+  if (!existing.indexed_at) return false;
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("knowledge_chunks")
+    .select("version")
+    .eq("document_id", existing.id)
+    .neq("version", failedVersion)
+    .order("version", { ascending: false })
+    .limit(1);
+  const good = !error && Array.isArray(data) ? Number((data[0] as { version?: unknown } | undefined)?.version) : NaN;
+  if (!Number.isInteger(good) || good < 1) return false;
+  const earlier = (existing.previous_versions ?? []).find((entry) => Number(entry.version) === good);
+  const same = existing.version === good;
+  const { error: updateError } = await supabase
+    .from("knowledge_documents")
+    .update({
+      status: "indexed",
+      indexed: true,
+      version: good,
+      storage_path: same
+        ? existing.storage_path
+        : buildStoragePath({ scopeId: existing.knowledge_scope_id, documentId: existing.id, version: good, fileName: existing.original_filename }),
+      size_bytes: same ? existing.size_bytes : Number(earlier?.sizeBytes ?? existing.size_bytes),
+      failure_reason: `The newer file could not be read, so the last good version (v${good}) is still in use. ${reason}`.slice(0, 500),
+    })
+    .eq("id", existing.id);
+  return !updateError;
+}
 
 async function findByTitle(
   scopeId: string,
