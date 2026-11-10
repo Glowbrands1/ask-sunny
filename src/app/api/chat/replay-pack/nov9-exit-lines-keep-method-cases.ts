@@ -34,6 +34,8 @@ export const NOV9_EXIT_LINES_KEEP_METHOD_CASES: ReplayCase[] = [{
     const thread = t.thread();
     const replies: string[] = [];
     for (const turn of TURNS) replies.push((await thread.say(turn)).content);
+    // The sibling app's roster-set gate R16A (10 Nov 2026), seen here too: with FORM_NAME_FROM_ROSTER on the exit card read "- **Name:** The employee".
+    for (const said of replies) expect(said, `the card's Name is "The employee":\n${said}`).not.toMatch(/\*\*Name:\*\*\s*The employee/i);
     for (const at of [2, 3, 4]) {
       expect(replies[at], `turn ${at + 1}: How Employee Resigned is blank:\n${replies[at]}`).toMatch(METHOD);
       expect(replies[at], `turn ${at + 1}: How Employee Resigned is left blank:\n${replies[at]}`).not.toMatch(/Left blank for you to review:\*\*[^\n]*How Employee Resigned/);

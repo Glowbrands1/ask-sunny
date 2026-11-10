@@ -1,7 +1,8 @@
-import { formNameFromRosterEnabled } from "@/lib/config/chat-quality-flags";
+import { formNameFromRosterEnabled, formNameOffRosterAskEnabled } from "@/lib/config/chat-quality-flags";
 
 import { isSalesPolicyReading, readCaPolicy } from "./ca-policy";
 import { editDistance, normalizeTypedName } from "./employee-match";
+import { nameBeforeAccountVerb } from "./not-a-name";
 import { detectTemplateIntent, namesAForm } from "./template-intent";
 
 /**
@@ -220,6 +221,17 @@ export function outsideRequestSlot(candidate: string, text: string | undefined =
    * capitalised words, so it held "Odalys" and the full name was outside it).
    */
   if (isRosterName(candidate)) return false;
+  /*
+   * FORM_NAME_OFF_ROSTER_ASK_ENABLED (the sibling app's roster-set gate R16A, 10 Nov 2026: "make me CA for Rhea Calloway
+   * failing to complete shifts" made the card for "Rhea", Issue "Calloway failing …" there): the account verb after a name
+   * is cut later (`not-a-name.ts` nameBeforeAccountVerb, in the name reader). A candidate whose words before that verb
+   * are somebody's whole roster name is that person, never ruled out here. This app's card was already right; the rule
+   * is kept the same in both apps.
+   */
+  if (formNameOffRosterAskEnabled()) {
+    const cut = nameBeforeAccountVerb(candidate);
+    if (cut && cut !== candidate.trim() && isRosterName(cut)) return false;
+  }
   /*
    * The message rules out only candidates it contains (the flip check, 5 Nov
    * 2026, in the sibling app): a name read from another turn of the

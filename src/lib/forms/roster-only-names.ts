@@ -13,6 +13,7 @@ import { metricMessage, namesAMetric, requestMessage, cardOnScreen } from "./req
 import { namesAForm } from "./template-intent";
 import { onlyAsPossessivePlace, POSSESSIVE_PLACE_QUESTION_LINE, possessivePlaceQuestion } from "./possessive-place";
 import { rosterScopeLevel, rosterScopeTurns } from "./roster-scope";
+import { teamCardProduct } from "./team-card-not-product";
 
 /**
  * ============================================================================
@@ -122,6 +123,16 @@ export function rosterOnlyNames(response: AskResponse, names: readonly string[],
       content: `${offRosterTakenLine(named)}\n\n${content.trim()}`.split(ASK_WHO).join("").replace(/\n{3,}/g, "\n\n").trim(),
       formProposal: { ...proposal, employeeName: named, wovenCloseMatch: offRosterCardNote(named), status: proposal.status === "needs_employee" ? "ready" : proposal.status },
     };
+  }
+  // FORM_NAME_OFF_ROSTER_ASK_ENABLED with TEAM_CARD_NOT_PRODUCT_ENABLED (QA's #741 gate, sf-s13): a team card's product is
+  // left for the team step, which makes it the team card; it is nobody to take off the card or to ask about.
+  if (
+    proposal &&
+    formNameOffRosterAskEnabled() &&
+    !rosterSpelling(employee, names) &&
+    teamCardProduct(proposal, [...rosterScopeTurns(), message ?? ""])
+  ) {
+    return response;
   }
   if (proposal && employee && proposal.subject !== "team") {
     const spelled = rosterSpelling(employee, names);
@@ -391,7 +402,9 @@ export function withoutUnseatedName(
   };
   return content
     .split("\n")
-    .filter((line) => !/^\s*\**\s*Name\s*:/i.test(line))
+    // FORM_NAME_OFF_ROSTER_ASK_ENABLED (the sibling app's roster-set gate R16A, 10 Nov 2026): the exit read-back's
+    // "- **Name:** <name>" line goes too, never "- **Name:** The employee".
+    .filter((line) => !/^\s*\**\s*Name\s*:/i.test(line) && !(formNameOffRosterAskEnabled() && /^\s*[-*•]\s+\**\s*Name\s*:/i.test(line)))
     .map((line) => {
       if (/I couldn['’]t find \*\*/.test(line) || ASKS_A_CHOICE.test(line)) return line;
       // FORM_NAME_OFF_ROSTER_ASK_ENABLED (QA's #741 gate, 10 Nov 2026): the possessive-place question quotes the place's
