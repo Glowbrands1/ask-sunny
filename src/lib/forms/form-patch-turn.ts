@@ -21,7 +21,7 @@ import {
   stepBDateSaidEnabled,
   stepBDateWithAboutEnabled,
 } from "@/lib/config/chat-quality-flags";
-import { madeAbout } from "@/lib/ai/make-it-about";
+import { asMadeAboutWording, madeAbout } from "@/lib/ai/make-it-about";
 import { saidFormDate } from "./form-date-said";
 import { withSectionBreaks } from "./section-breaks";
 import { addedTail } from "./added-tail";
@@ -495,7 +495,8 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
       if (coordinate) noteMadeAboutWrite(input.instanceId);
       try {
         await (await import("./chat-revision"))
-          .reviseActiveForm({ request: input.request, instanceId: input.instanceId, question: input.question, history: input.history, today: input.today })
+          // MADE_FOR_IS_MADE_ABOUT_ENABLED: "make it for <X>" as the revision reads a made-about ("make it about <X>").
+          .reviseActiveForm({ request: input.request, instanceId: input.instanceId, question: asMadeAboutWording(input.question), history: input.history, today: input.today })
           .catch(() => null);
       } finally {
         if (coordinate) endMadeAboutWrite(input.instanceId);

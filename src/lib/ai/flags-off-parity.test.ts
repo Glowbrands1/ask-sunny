@@ -547,6 +547,7 @@ const NEW_FLAGS = [
   "MADE_ABOUT_POLICY_LINE_REPLACES_ENABLED",
   "SECTION_BREAKS_KEPT_ENABLED",
   "ADD_NOT_REPEATED_ENABLED",
+  "MADE_FOR_IS_MADE_ABOUT_ENABLED",
   // coding 4: MODEL_POLICY_DEFERS_TO_TOPIC (QA, round 7c, 9 Nov 2026; default off): forced off with the others in the child run.
   "MODEL_POLICY_DEFERS_TO_TOPIC_ENABLED",
   // coding 4: WORK_AREA_ABSENCE_CITES_CONDUCT (Pau's decision, 9 Nov 2026; default off): forced off with the others in the child run.

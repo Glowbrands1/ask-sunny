@@ -4041,6 +4041,16 @@ export function addNotRepeatedEnabled(): boolean {
 }
 
 /**
+ * MADE_FOR_IS_MADE_ABOUT_ENABLED (QA's live Sunny r20, 10 Nov 2026; default off; same flag in both apps). "can you make it
+ * for missing out monthly meeting" on a saved Coaching draft was refused ("I haven't changed …"): only "make it about
+ * <topic>" was read as a made-about. With the flag on, "make it for <what happened, an -ing account>" is read the same way
+ * (`ai/make-it-about.ts`, `madeAbout`). Off, as before.
+ */
+export function madeForIsMadeAboutEnabled(): boolean {
+  return envFlag("MADE_FOR_IS_MADE_ABOUT_ENABLED");
+}
+
+/**
  * PAYROLL_SPLIT_WORDS_ENABLED (coding 6, 10 Nov 2026; default off; sf-s23,
  * Pau 5 Nov 2026). "not pay roll deductable" was not read as the payroll
  * answer: the card asked again and put it in the Observation. On, the
