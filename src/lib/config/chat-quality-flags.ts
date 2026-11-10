@@ -2665,6 +2665,17 @@ export function policyTopicIntoFieldEnabled(): boolean {
   return envFlag("POLICY_TOPIC_INTO_FIELD_ENABLED");
 }
 
+/**
+ * TITLE_NOT_IN_OBSERVATION_ENABLED (QA's October triage of #207, 10 Nov 2026; default off). "create a coaching form for
+ * <employee> at Kearney, she is an HR assistant, for being late on 10-20-26" gave the card the Observation of Offense
+ * "she is an HR assistant, being late on 10-20-26". On: a clause of the request that only states the employee's job
+ * title ("she is an HR assistant", "he's a shift lead") is not the account, so the Observation is "being late on
+ * 10-20-26" (`ai/title-not-in-observation.ts`). The title line itself is not changed. Off, as before.
+ */
+export function titleNotInObservationEnabled(): boolean {
+  return envFlag("TITLE_NOT_IN_OBSERVATION_ENABLED");
+}
+
 // --- end coding 5 flags ---
 
 /**
