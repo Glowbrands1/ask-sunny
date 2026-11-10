@@ -3869,6 +3869,16 @@ export function oneCardOnePageEnabled(): boolean {
 }
 
 /**
+ * SURNAME_PARTICLES_ENABLED (QA's audit item 17b, 10 Nov 2026; default off). "create a ca for marisol de la vega, she
+ * was late on 11/3" put "Marisol De" on the card: the typed-name reader stopped at the particle. On, a first name
+ * followed by particles ("de la", "van der", "von", …) and a surname word reads the whole surname
+ * (`forms/surname-particles.ts`, used by the protected `forms/proposal.ts` reader). Off, as before.
+ */
+export function surnameParticlesEnabled(): boolean {
+  return envFlag("SURNAME_PARTICLES_ENABLED");
+}
+
+/**
  * ANOTHER_REQUEST_LEAD_ENABLED (QA, Sunny round 7c and 9 live, 9 Nov 2026; default off; same flag in both apps). "I need
  * another corrective action for <P>, his cash drawer was short $20 on 11/3" was the card's whole Observation: "another" was
  * not read as the request's own word. With the flag on, "another", "one more" and "a second / separate / different / new"
