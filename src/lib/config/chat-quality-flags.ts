@@ -2665,6 +2665,17 @@ export function policyTopicIntoFieldEnabled(): boolean {
   return envFlag("POLICY_TOPIC_INTO_FIELD_ENABLED");
 }
 
+/**
+ * ADD_THAT_IS_ACCOUNT_ENABLED (ported from the sibling app: QA's live test there on a saved Corrective Action draft,
+ * 10 Nov 2026; coding 5; same flag in both apps; default off). "add that she was reminded of the policy" was read as a
+ * policy to add ("I couldn't find a section called …") and nothing reached the Observation. On: an add that introduces a
+ * clause ("add that she …", "note that he was told …") is the account, never a policy change (`forms/policy-change.ts`).
+ * Off, as before.
+ */
+export function addThatIsAccountEnabled(): boolean {
+  return envFlag("ADD_THAT_IS_ACCOUNT_ENABLED");
+}
+
 // --- end coding 5 flags ---
 
 /**
