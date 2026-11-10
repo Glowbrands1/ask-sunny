@@ -4107,6 +4107,19 @@ export function secondPersonAccountWordsEnabled(): boolean {
 }
 
 /**
+ * CROSS_PERSON_OWN_TURNS_ENABLED (coding 6, 10 Nov 2026; default off; ask-sunny#236 and Ask-bubbles#166 rebuilt):
+ * <B>'s card never takes <A>'s facts. After <A>'s coaching card for an incident on 10-16-26, "create a coaching
+ * document for <B>" was dated 10/16/2026 and asked which of <A>'s dates goes on <B>'s form; after <A>'s Corrective
+ * Action and "no payroll deduct", <B>'s card said payroll No. On: a form request naming one person reads the intent
+ * read's earlier facts (`ai/intake-augment.ts`) from the last turn that mentions them, and a form other than a
+ * Corrective Action (whose turns are already scoped) is dated from its own person's turns when an earlier turn named
+ * somebody else (`ai/form-proposal.ts`). Off, as before.
+ */
+export function crossPersonOwnTurnsEnabled(): boolean {
+  return envFlag("CROSS_PERSON_OWN_TURNS_ENABLED");
+}
+
+/**
  * COACHING_OBSERVED_SAVED_ENABLED (coding 6, 10 Nov 2026; default off; QA's
  * P12, live in both apps). "make me a coaching form for <name> not hitting
  * October numbers" → Create saved Details of Coaching with no "Observed:", or

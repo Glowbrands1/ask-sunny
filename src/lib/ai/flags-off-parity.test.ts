@@ -376,6 +376,8 @@ const NEW_FLAGS = [
   "SAME_REQUEST_OTHER_PERSON_ENABLED",
   // coding 6: SECOND_PERSON_ACCOUNT_WORDS (default off; QA B22-2, #233 rebuilt): forced off with the others.
   "SECOND_PERSON_ACCOUNT_WORDS_ENABLED",
+  // coding 6: CROSS_PERSON_OWN_TURNS (default off; #236 and #166 rebuilt): forced off with the others.
+  "CROSS_PERSON_OWN_TURNS_ENABLED",
   // coding 6: COACHING_OBSERVED_SAVED (default off): forced off with the others.
   "COACHING_OBSERVED_SAVED_ENABLED",
   // coding 6: APP_INSTRUCTIONS_NOT_ACCOUNT (default off): forced off with the others.

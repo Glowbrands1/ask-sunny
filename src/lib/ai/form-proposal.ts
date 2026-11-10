@@ -119,6 +119,7 @@ import {
   storedSlotsNotARequestEnabled,
   typedNameProceedsEnabled,
   secondRequestOwnAccountEnabled,
+  crossPersonOwnTurnsEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { currentFormRequestText } from "@/lib/forms/current-request";
 import { managerWords } from "./edit-date-rules";
@@ -858,9 +859,27 @@ async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Pro
    * typed first. As Ask Bubbles does; see `decideFormDate`.
    */
   let dateQuestion: string | undefined;
+  /*
+   * CROSS_PERSON_OWN_TURNS_ENABLED (#236, rebuilt 10 Nov 2026): a Coaching Form (any form but a Corrective
+   * Action, whose turns are already scoped above) for a new person is dated from that person's turns only. After
+   * <A>'s card dated 10-16-26, "create a coaching document for <B>" was dated 10/16/2026 and asked which of <A>'s
+   * dates to use. Only when an earlier turn in the window named somebody else; a chat about one person is unchanged.
+   */
+  const ownDateTurns =
+    !changeKind && !correctiveAction && proposal.employeeName !== null && crossPersonOwnTurnsEnabled()
+      ? turnsAboutThisForm(context, match.key, proposal.employeeName, {
+          answers: dateAnswerTurns([...input.history, { role: "user", content: input.question }]),
+        })
+      : null;
+  // The manager's own words: the app's reminder lines on the turn ("It happened on …") are <A>'s card's slots.
+  const dateScope =
+    ownDateTurns && ownDateTurns.messages.length < context.messages.length
+      ? { ...ownDateTurns, text: ownDateTurns.messages.map((message) => managerWords(message.content)).join("\n\n") }
+      : null;
+  if (dateScope) proposal.formDate = extractFormDate(dateScope.text, input.today ?? businessToday());
   if (!changeKind && proposal.employeeName !== null) {
     const decided = decideFormDate({
-      text: (correctiveAction ? scoped : context).text,
+      text: (correctiveAction ? scoped : (dateScope ?? context)).text,
       templateKey: match.key,
       history: input.history,
       conversation: [...input.history, { role: "user", content: input.question }],

@@ -1,5 +1,5 @@
 import { PRODUCTION_SALONS } from "@/data/salons";
-import { payrollAmountFieldEnabled, priorActionsParseEnabled } from "@/lib/config/chat-quality-flags";
+import { crossPersonOwnTurnsEnabled, payrollAmountFieldEnabled, priorActionsParseEnabled } from "@/lib/config/chat-quality-flags";
 import { priorSentenceFixFor } from "@/lib/forms/prior-sentence-scope";
 import { blankYearlessStepDates, extractFormDate, statedIncidentDates } from "@/lib/forms/form-date-answer";
 import { lateOpenOn, yearlessCuedDates } from "@/lib/forms/late-open";
@@ -10,6 +10,7 @@ import {
   statedPayrollDeduct,
 } from "@/lib/forms/payroll-deduct";
 import { extractJobTitle, readEmployeeMentions } from "@/lib/forms/proposal";
+import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
 import { placeText } from "@/lib/forms/place-from-cue";
 import { statedWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
@@ -38,14 +39,33 @@ export function augmentIntakeQuestion(input: {
   const additions: string[] = [];
   if (input.slots) additions.push(...slotLines(input.question, input.history));
   if (input.fields) {
-    const earlier = input.history
-      .filter((turn) => turn.role === "user")
-      .map((turn) => turn.content)
-      .join("\n");
+    const said = input.history.filter((turn) => turn.role === "user").map((turn) => turn.content);
+    const earlier = (crossPersonOwnTurnsEnabled() ? turnsSinceNamed(input.question, said) : said).join("\n");
     additions.push(...fieldLines(input.question, input.today, earlier));
   }
   if (additions.length === 0) return input.question;
   return `${input.question.trim()}\n${additions.join(" ")}`;
+}
+
+/**
+ * CROSS_PERSON_OWN_TURNS_ENABLED (#236, rebuilt 10 Nov 2026): a turn that names one person reads the earlier
+ * facts from the last earlier turn that mentions them; a person no earlier turn mentions is a new request, read alone.
+ * After <A>'s coaching card for 10-16-26, "create a coaching document for <B>" was given "It happened on 10/16/2026."
+ * A turn that is no form request, or names nobody or several people, keeps every earlier turn, as before.
+ */
+function turnsSinceNamed(question: string, earlier: readonly string[]): readonly string[] {
+  // Only a request for a form ("create a … form for <B>"): "Job title: Shift Lead." on an open card names no new person.
+  const intent = detectTemplateIntent(question);
+  if (!(intent.kind === "explicit" || (intent.kind === "corrective_action" && intent.requestedCreation))) return earlier;
+  const names = readEmployeeMentions(question).names;
+  if (names.length !== 1) return earlier;
+  const first = names[0]!.trim().split(/\s+/)[0]!.toLowerCase();
+  if (first.length < 2) return earlier;
+  const mentions = new RegExp(`\\b${first.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+  for (let index = earlier.length - 1; index >= 0; index -= 1) {
+    if (mentions.test(earlier[index]!)) return earlier.slice(index);
+  }
+  return [];
 }
 
 function slotLines(question: string, history: readonly IntakeTurn[]): string[] {
