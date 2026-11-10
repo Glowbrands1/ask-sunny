@@ -4134,3 +4134,17 @@ export function appInstructionsNotAccountEnabled(): boolean {
 export function draftWriteNeverSilentEnabled(): boolean {
   return envFlag("DRAFT_WRITE_NEVER_SILENT_ENABLED");
 }
+
+/**
+ * SAME_REQUEST_TITLE_ACCOUNT_ENABLED (coding 6, 10 Nov 2026; default off; the
+ * October triage's #2, QA's B22-2 / #233). After <A>'s CA, "now one for Test
+ * Employee Two, tanning consultant, late today" gave no card for <B>: the
+ * same-request reader needs a connecting word after the name ("for", "was",
+ * "on"), and "<B>, <title>, late today" has none. On: "<lead> for <name>,
+ * <title>, <what happened>" is <B>'s own request. Needs
+ * SAME_REQUEST_OTHER_PERSON_ENABLED (on). See
+ * `forms/same-request-other-person.ts`. Off, as before.
+ */
+export function sameRequestTitleAccountEnabled(): boolean {
+  return envFlag("SAME_REQUEST_TITLE_ACCOUNT_ENABLED");
+}

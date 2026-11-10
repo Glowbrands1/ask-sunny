@@ -1,6 +1,6 @@
 import type { AskResponse } from "@/lib/ai/types";
 import type { ChatMessage } from "@/types";
-import { sameRequestOtherPersonEnabled } from "@/lib/config/chat-quality-flags";
+import { sameRequestOtherPersonEnabled, sameRequestTitleAccountEnabled } from "@/lib/config/chat-quality-flags";
 import { displayName, rosterNameNamedIn, type RosterEmployee } from "@/lib/forms/employee-match";
 
 /**
@@ -70,11 +70,25 @@ export type SameRequestKind = "same" | "also" | "own";
  */
 const SAME_FORM_OR_DRAFT = /\bthe\s+same\s+(?:(?:coaching|corrective\s+action|ca|follow[- ]?up(?:\s+coaching)?)\s+)?(?:form|draft)\b|\b(?:copy|duplicate)\s+(?:the|that|this|her|his|their|[a-z]+'s)\s+(?:(?:coaching|corrective\s+action|ca)\s+)?(?:form|draft)\b/i;
 
+/*
+ * SAME_REQUEST_TITLE_ACCOUNT_ENABLED (QA's B22-2, 25 Oct 2026, #233; still live, the October triage, 10 Nov 2026):
+ * "now one for Test Employee Two, tanning consultant, late today" — <B>, her title, then what happened, set off by
+ * commas — gave no card for <B>: OWN_FOR needs a word like "for", "was" or "on" after the name, and "late today" has
+ * none. With the flag on, "<lead> for <name>, <title>, <account>" is <B>'s own request when the account says what
+ * happened (INCIDENT). Off, as before.
+ */
+const OWN_FOR_TITLE = new RegExp(
+  String.raw`^\s*(?:(?:and|ok|okay)[\s,]+)?(?:(?:now|also|next|then)[\s,]+(?:(?:make|do|create|write|start|need|want)\s+(?:me\s+)?)?(?:one|another(?:\s+one)?|(?:a|an)\s+${FORM})|another(?:\s+one)?|one\s+more)(?:\s+form)?\s+for\s+([^,.?!\n]+),\s*[^,.?!\n]{2,40},\s*(?=[^.?!\n]*${INCIDENT.source})`,
+  "i",
+);
+
 export function sameRequestKind(question: string): SameRequestKind | null {
   const turn = question.trim();
   if (turn.split(/\s+/).length > MAX_WORDS || SAME_FORM_OR_DRAFT.test(turn) || RULED_OUT.test(turn)) return null;
   // "now one for <B> for being late on 10-20-26": <B>'s own account, in this turn.
   if (OWN_FOR.test(turn)) return "own";
+  // SAME_REQUEST_TITLE_ACCOUNT_ENABLED: "now one for <B>, <title>, late today".
+  if (sameRequestTitleAccountEnabled() && OWN_FOR_TITLE.test(turn)) return "own";
   if (INCIDENT.test(turn)) return null;
   if (SAME_FOR.test(turn)) return "same";
   if (ALSO_FOR.test(turn)) return "also";
@@ -83,6 +97,13 @@ export function sameRequestKind(question: string): SameRequestKind | null {
 
 /** "now one for <B> for being late …" → "I need a corrective action for <B> for being late …": <B>'s turn, its lead named. */
 function ownRequest(turn: string, templateKey: string): string {
+  // SAME_REQUEST_TITLE_ACCOUNT_ENABLED: "now one for <B>, <title>, late today" → "I need a … for <B>. late today" — the
+  // title (the roster's) is never the account, and the name ends at its comma.
+  const titled = sameRequestTitleAccountEnabled() && !OWN_FOR.test(turn) ? OWN_FOR_TITLE.exec(turn.trim()) : null;
+  if (titled) {
+    const form = templateKey === "coaching" ? "coaching form" : "corrective action";
+    return `I need a ${form} for ${titled[1]!.trim()}. ${turn.trim().slice(titled[0].length).trim()}`;
+  }
   const lead = new RegExp(String.raw`^\s*(?:(?:and|ok|okay)[\s,]+)?(?:(?:now|also|next|then)[\s,]+(?:(?:make|do|create|write|start|need|want)\s+(?:me\s+)?)?(?:one|another(?:\s+one)?|(?:a|an)\s+${FORM})|another(?:\s+one)?|one\s+more)(?:\s+form)?\s+for\s+`, "i");
   return turn.trim().replace(lead, `I need a ${templateKey === "coaching" ? "coaching form" : "corrective action"} for `);
 }
