@@ -1,6 +1,7 @@
-import { caShortcutWordsEnabled, stepDateNotIncidentEnabled } from "@/lib/config/chat-quality-flags";
+import { caShortcutWordsEnabled, incidentDateSharedWithStepEnabled, stepDateNotIncidentEnabled } from "@/lib/config/chat-quality-flags";
 
 import { datesInText } from "./form-date-answer";
+import { withYearlessDatesWritten } from "./late-open";
 
 /**
  * STEP_DATE_NOT_INCIDENT_ENABLED (QA SF4, 27 Oct 2026): "create a
@@ -31,7 +32,47 @@ export function stepSentenceDates(text: string, today: string): Set<string> {
     // CA_SHORTCUT_WORDS_ENABLED: "verbal on 10/1", "verbal 10/1" — the shorthand of "a verbal was given on 10/1".
     const shorthand = caShortcutWordsEnabled() && STEP_SHORTHAND.test(sentence) && !ASKS_FOR_THE_FORM.test(sentence);
     if (!shorthand && (!STEP_WORD.test(sentence) || !GIVEN.test(sentence))) continue;
-    for (const found of datesInText(sentence, today)) out.add(found.iso);
+    // INCIDENT_DATE_SHARED_WITH_STEP_ENABLED (D3): a day that is also the incident's stays an incident date.
+    const incident = incidentDateSharedWithStepEnabled() ? incidentGoverned(sentence, today) : new Set<string>();
+    for (const found of datesInText(sentence, today)) if (!incident.has(found.iso)) out.add(found.iso);
+  }
+  return out;
+}
+
+/*
+ * INCIDENT_DATE_SHARED_WITH_STEP_ENABLED (QA's prod-env reading, 10 Nov 2026, D3): "ca for <name>, she was late on 10-21
+ * and i gave her a verbal on 10-21" and "… gave her a verbal on 10-21 for being late on 10-21" dated the form today:
+ * the sentence says a step was given, so every date in it was set aside, though 10-21 is also the incident's day. A date
+ * an incident cue governs stays the incident's: an incident word right before it ("late on 10-21"), or the step it dates
+ * given for the incident ("a verbal on 10-21 for being late"). Not after an earlier-step cue ("previous coaching on
+ * 10-21 for being late" is history).
+ */
+const STEP_BEFORE_DATE =
+  /\b(?:verbal|written|final|coaching|coached|ca|c\/a|corrective(?:\s+action)?|warning|write-?up|issued|given|signed|received)\b[^.!?\n\d]{0,12}?(?:\bon\s+|\bdated\s+)?\(?\s*$/i;
+const INCIDENT_BEFORE_DATE =
+  /\b(?:late|tardy|absent|no[\s-]*call|no[\s-]*show|missed|left\s+early|walked\s+(?:off|out)|happened|occurred|incident)\b[^.!?\n\d]{0,20}?(?:\bon\s+)?\s*$/i;
+const GIVEN_FOR_AFTER = /^\s*,?\s*(?:for|because)\b/i;
+const EARLIER_STEP = /\b(?:previous(?:ly)?|prior|past|earlier|already)\b/i;
+
+/** INCIDENT_DATE_SHARED_WITH_STEP_ENABLED: every date an incident cue governs, sentence by sentence (the caller checks the flag). */
+export function incidentGovernedDates(text: string, today: string): Set<string> {
+  const out = new Set<string>();
+  // "10-21" is read with its year written out, as the incident dates are (`withYearlessDatesWritten`).
+  const written = withYearlessDatesWritten(text ?? "", today);
+  for (const sentence of written.split(/(?<=[!?\n])|(?<=\.)(?!\d)/)) for (const iso of incidentGoverned(sentence, today)) out.add(iso);
+  return out;
+}
+
+function incidentGoverned(sentence: string, today: string): Set<string> {
+  const out = new Set<string>();
+  for (const found of datesInText(sentence, today)) {
+    const before = sentence.slice(0, found.index);
+    if (EARLIER_STEP.test(before)) continue;
+    const near = before.slice(-40);
+    const governed = STEP_BEFORE_DATE.test(near)
+      ? GIVEN_FOR_AFTER.test(sentence.slice(found.end))
+      : INCIDENT_BEFORE_DATE.test(near);
+    if (governed) out.add(found.iso);
   }
   return out;
 }

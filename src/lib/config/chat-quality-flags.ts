@@ -4316,3 +4316,14 @@ export function sameRequestKeepsEarlierCardClientEnabled(): boolean {
 export function templateOutlineFieldsEnabled(): boolean {
   return envFlag("TEMPLATE_OUTLINE_FIELDS_ENABLED");
 }
+
+/**
+ * INCIDENT_DATE_SHARED_WITH_STEP_ENABLED (ported from Ask Bubbles: QA's prod-env reading there, 10 Nov 2026, D3; default off; same flag in both apps).
+ * With production's flags, "verbal for <name>, gave her a verbal on 10-21 for being late on 10-21" and "ca for <name>, she
+ * was late on 10-21 and i gave her a verbal on 10-21" dated the form today: FORM_EDIT_DATE_RULES drops every date that is
+ * also a step's, even when the same day is the incident's. On: a step's date is set aside only when no incident cue also
+ * governs that date ("late on 10-21", or the step given that day "for being late"). Off, as before.
+ */
+export function incidentDateSharedWithStepEnabled(): boolean {
+  return envFlag("INCIDENT_DATE_SHARED_WITH_STEP_ENABLED");
+}

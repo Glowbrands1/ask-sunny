@@ -1,5 +1,5 @@
 import { isAppLine, withoutAppLines } from "@/lib/ai/app-sentences";
-import { dateAnswerAppliedEnabled, dateAnswerKeepsOpenEnabled, formDateSaidSettlesEnabled, keepFormEmployeeEnabled, priorSentenceFixEnabled, stepDateNoQuestionEnabled } from "@/lib/config/chat-quality-flags";
+import { dateAnswerAppliedEnabled, dateAnswerKeepsOpenEnabled, formDateSaidSettlesEnabled, incidentDateSharedWithStepEnabled, keepFormEmployeeEnabled, priorSentenceFixEnabled, stepDateNoQuestionEnabled } from "@/lib/config/chat-quality-flags";
 
 /** DATE_ANSWER_KEEPS_OPEN_ENABLED, on top of the live DATE_ANSWER_APPLIED_ENABLED. */
 const keepsOpen = () => dateAnswerAppliedEnabled() && dateAnswerKeepsOpenEnabled();
@@ -10,13 +10,15 @@ import {
   heldCoachingDates,
   listFormDates,
   listIncidentDates,
+  priorSteps,
   statedIncidentDates,
   yearlessWrittenOut,
 } from "./form-date-answer";
 import { incidentOnly, incidentOnlyOn } from "./form-date-incident-only";
 import { saidFormDate } from "./form-date-said";
 import { priorSentenceFixFor } from "./prior-sentence-scope";
-import { stepSentenceDates } from "./step-sentence-dates";
+import { incidentGovernedDates, stepSentenceDates } from "./step-sentence-dates";
+import { withYearlessDatesWritten } from "./late-open";
 import { correctsTheEmployee } from "./proposal";
 
 /**
@@ -241,6 +243,21 @@ export function decideFormDate(input: {
   if (said) return { formDate: said };
 
   let dates = incidentDates(input.text, input.today, COACHING_TEMPLATES.has(input.templateKey));
+  /*
+   * INCIDENT_DATE_SHARED_WITH_STEP_ENABLED (ported from Ask Bubbles: QA's prod-env reading there, 10 Nov 2026, D3): "ca
+   * for <name>, she was late on 10-21 and i gave her a verbal on 10-21" and "write up <name>, i gave her a verbal on
+   * 10-21 for being late" left the card with no Date: 10-21 is the verbal's date, so it was read as a prior step's only.
+   * A prior step's day that an incident cue also governs ("late on 10-21", a step given that day "for being late") is the
+   * incident's as well (`incidentGovernedDates`); a plain incident date is read as before.
+   */
+  const sharedWithStep = new Set<string>();
+  if (incidentDateSharedWithStepEnabled()) {
+    const stepDays = new Set(
+      [input.text, withYearlessDatesWritten(input.text, input.today)].flatMap((text) => priorSteps(text, input.today).map((step) => step.iso)),
+    );
+    for (const iso of incidentGovernedDates(input.text, input.today)) if (stepDays.has(iso)) sharedWithStep.add(iso);
+  }
+  if (sharedWithStep.size > 0) dates = [...new Set([...dates, ...sharedWithStep])].sort();
   if (COACHING_TEMPLATES.has(input.templateKey)) {
     const latestIncident = dates[dates.length - 1] ?? "";
     const held = heldCoachingDates(input.text, input.today).filter((iso) => iso >= latestIncident);
@@ -257,6 +274,8 @@ export function decideFormDate(input: {
     const first = listIncidentDates(input.text, input.today)[0];
     if (first && incidentOnly(input.text, input.today, [first]).length === 0) return { formDate: dates[0] ?? null };
   }
+  // INCIDENT_DATE_SHARED_WITH_STEP_ENABLED: the card's own reading skips a step's date, so the shared day is set here.
+  if (dates.length === 1 && sharedWithStep.has(dates[0]!)) return { formDate: dates[0]! };
   if (dates.length <= 1) return {};
   if (input.correctedTo && dates.includes(input.correctedTo)) return { formDate: input.correctedTo };
 
