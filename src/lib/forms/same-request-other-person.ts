@@ -1,6 +1,6 @@
 import type { AskResponse } from "@/lib/ai/types";
 import type { ChatMessage } from "@/types";
-import { sameRequestOtherPersonEnabled } from "@/lib/config/chat-quality-flags";
+import { sameRequestOtherPersonEnabled, secondPersonAccountWordsEnabled } from "@/lib/config/chat-quality-flags";
 import { displayName, rosterNameNamedIn, type RosterEmployee } from "@/lib/forms/employee-match";
 
 /**
@@ -60,6 +60,15 @@ const RULED_OUT = /\b(?:do\s*n[o']?t|don'?t|never|no\s+need|not)\s+(?:\w+\s+){0,
 /** An account of what happened: never a request for another person's form. */
 const INCIDENT = /\b(?:was|were|late|tardy|absent|no[- ]?(?:call|show)|yell(?:ed|ing)?|rude|left\s+early|clocked|yesterday|last\s+(?:week|night|shift)|did\s+the\s+same\s+thing)\b/i;
 
+/**
+ * SECOND_PERSON_ACCOUNT_WORDS_ENABLED (QA B22-2): "now one for Test Employee Two, tanning consultant, late today" —
+ * <B>'s own account read by its words (late, absent, …), with a title or salon between the name and the account.
+ */
+const OWN_FOR_ACCOUNT_WORDS = new RegExp(
+  String.raw`^\s*(?:(?:and|ok|okay)[\s,]+)?(?:(?:now|also|next|then)[\s,]+(?:(?:make|do|create|write|start|need|want)\s+(?:me\s+)?)?(?:one|another(?:\s+one)?|(?:a|an)\s+${FORM})|another(?:\s+one)?|one\s+more)(?:\s+form)?\s+for\s+\S+[^.?!\n]*?\b(?:late|tardy|absent|no[- ]?(?:call|show)(?:ed)?|yell(?:ed|ing)?|rude|left\s+early|clocked|yesterday|last\s+(?:week|night|shift))\b`,
+  "i",
+);
+
 const MAX_WORDS = 25;
 
 export type SameRequestKind = "same" | "also" | "own";
@@ -75,6 +84,7 @@ export function sameRequestKind(question: string): SameRequestKind | null {
   if (turn.split(/\s+/).length > MAX_WORDS || SAME_FORM_OR_DRAFT.test(turn) || RULED_OUT.test(turn)) return null;
   // "now one for <B> for being late on 10-20-26": <B>'s own account, in this turn.
   if (OWN_FOR.test(turn)) return "own";
+  if (secondPersonAccountWordsEnabled() && OWN_FOR_ACCOUNT_WORDS.test(turn)) return "own";
   if (INCIDENT.test(turn)) return null;
   if (SAME_FOR.test(turn)) return "same";
   if (ALSO_FOR.test(turn)) return "also";
