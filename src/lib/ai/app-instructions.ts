@@ -1,4 +1,4 @@
-import { appInstructionsNotAccountEnabled } from "@/lib/config/chat-quality-flags";
+import { adviceAskNotAccountEnabled, appInstructionsNotAccountEnabled } from "@/lib/config/chat-quality-flags";
 import { readsAsTeamSubject } from "@/lib/forms/team-subject";
 
 /*
@@ -54,15 +54,33 @@ function teamTurnAccount(text: string): string {
   return words ? `${words.charAt(0).toUpperCase()}${words.slice(1)}` : "";
 }
 
+/*
+ * ADVICE_ASK_NOT_ACCOUNT_ENABLED (Pau's P14(b), Sunny production, 9 Nov 2026): "… not update their info. how i do about
+ * her frusteration" and "tell me how what to say back. send a messageto me" — the manager asking the app what to do or
+ * say, with no "?". A sentence that opens with such an ask ("how do I", "how i do", "what should I say", "what to say",
+ * "tell me how / what", "send me a message", "help me word / respond", "any advice") is no account. "How she spoke to
+ * the guest was rude" is not an ask (no "I", no "me"). Short sentences only: a long one is the manager's account.
+ */
+const ADVICE_ASK =
+  /^\s*(?:(?:so|and|but|ok(?:ay)?|also|please)\s*,?\s+)*(?:how\s+(?:(?:do|should|can|could|would|will|shall|to)\s+)?(?:i|we)\b|how\s+(?:do|should|can|could|would)\s+(?:i|we)\b|how\s+to\s+(?:handle|deal|respond|talk|approach|say)\b|what\s+(?:do|should|can|could|would|shall)\s+(?:i|we)\s+(?:say|do|tell|write|respond)\b|what\s+to\s+(?:say|do|tell)\b|tell\s+me\s+(?:how|what)\b|send\s+(?:me\s+)?(?:a\s+|the\s+)?(?:message|text|script)|(?:can|could|would|will)\s+you\s+(?:help|tell|send|write|give)\s+me\b|help\s+me\s+(?:with|say|word|respond|reply|figure|handle)\b|give\s+me\s+(?:a\s+|some\s+)?(?:script|message|wording|words|advice|tips)\b|any\s+(?:advice|tips|suggestions)\b)/i;
+
+/** ADVICE_ASK_NOT_ACCOUNT_ENABLED: whether a sentence only asks the app for advice or a message. Off, false. */
+export function isAdviceAsk(sentence: string): boolean {
+  if (!adviceAskNotAccountEnabled()) return false;
+  const said = sentence.trim();
+  return said !== "" && said.split(/\s+/).length <= 16 && ADVICE_ASK.test(said);
+}
+
 /** The text without its instructions to the app; line breaks kept. Off: as it is. */
 export function withoutAppInstructions(text: string): string {
-  if (!appInstructionsNotAccountEnabled()) return text;
+  const instructions = appInstructionsNotAccountEnabled();
+  if (!instructions && !adviceAskNotAccountEnabled()) return text;
   return text
     .split("\n")
     .map((line) =>
-      teamTurnAccount(line)
+      (instructions ? teamTurnAccount(line) : line)
         .split(/(?<=[.!?])\s+/)
-        .filter((sentence) => !isAppInstruction(sentence))
+        .filter((sentence) => !(instructions && isAppInstruction(sentence)) && !isAdviceAsk(sentence))
         .join(" "),
     )
     .join("\n");
