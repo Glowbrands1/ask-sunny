@@ -32,7 +32,9 @@ export const NOV6_CA_REASON_DUE_TO_CASES: ReplayCase[] = [
     id: "nov6-ca-reason-due-to-draft-observation",
     title: "\"CA for <name> due to under performance in salon metrics\": the drafted Observation is the reason, not the request",
     report: `${REPORT} (#3)`,
-    status: { open: "with production's flags (CA_SALES_POLICY off) the Observation is the request as the model copied it" },
+    // Changed on purpose (10 Nov 2026, the group-4 gate on main ed18d1fc): it holds with production's flags now that
+    // CA_SALES_POLICY is on here; the at-salon row below is still open without CA_REASON_DUE_TO.
+    status: "fixed",
     fixFlags: FLAG,
     async run(t) {
       const thread = start(t);
