@@ -34,6 +34,7 @@ import {
   secondRequestOwnAccountEnabled,
   proposalMakeItAboutEnabled,
   proposalPolicySetAsideEnabled,
+  incidentDateOnceEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { notesMadeAbout } from "@/lib/ai/make-it-about";
 import { NOTHING_SET_ASIDE, policiesSetAside, setAsideAnything, valuesWithPolicySetAside, withoutPolicyTakeOff } from "@/lib/forms/policy-set-aside";
@@ -2433,6 +2434,11 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       ),
     };
     if (setAsideAnything(setAside)) draftedPayload.values = valuesWithPolicySetAside(draftedPayload.values, setAside);
+    // INCIDENT_DATE_ONCE_ENABLED: the form's Date is not said again in the Observation (`lib/forms/incident-date-once.ts`).
+    if (incidentDateOnceEnabled()) {
+      const formDate = String(draftedPayload.values.form_date ?? (loaded.values ?? []).find((row) => row.fieldKey === "form_date")?.value ?? "");
+      draftedPayload.values = (await import("@/lib/forms/incident-date-once")).withIncidentDateOnce(draftedPayload.values, formDate, businessToday()) as typeof draftedPayload.values;
+    }
     const kept = draftMergeEnabled()
       ? retainFilledFields({
           question: notes,
