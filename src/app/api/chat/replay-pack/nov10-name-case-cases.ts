@@ -16,7 +16,6 @@ import { KEARNEY, STAFF, type ReplayCase, type ReplayContext } from "./cases";
  */
 const FLAG = "NAME_CASE_INSENSITIVE_ENABLED";
 const REPORT = "#270 / the sibling's #202 (QA's October triage, 10 Nov 2026, a name not in the directory)";
-const WIRING = "NAME_CASE_INSENSITIVE's read and card steps are wired in server-ask.ts by its sole writer (coding 2); until then the flag reaches no turn";
 
 function start(t: ReplayContext) {
   vi.setSystemTime(new Date("2026-10-26T15:00:00Z"));
@@ -37,7 +36,7 @@ export const NOV10_NAME_CASE_CASES: ReplayCase[] = [
     report: `${REPORT}: "${text}" got "Who is this Corrective Action Form for?" with no employee`,
     status: { open: "a lowercase or capitals name is not read: \"Who is this Corrective Action Form for?\" and no employee" },
     fixFlags: [FLAG],
-    fixStatus: { open: WIRING },
+    // The read and card steps are wired in server-ask.ts (coding 2): they hold with the fix flag, so the fixStatus goes.
     async run(t: ReplayContext) {
       const thread = start(t);
       const sentence = await thread.say("Write up Devon Harlan for opening the salon late today");
