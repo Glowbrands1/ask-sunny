@@ -13,6 +13,7 @@ import {
   madeAboutSaidDateEnabled,
   madeAboutPolicyLineReplacesEnabled,
   sectionBreaksKeptEnabled,
+  addNotRepeatedEnabled,
   formDateSaidAloneEnabled,
   madeAboutUndatedTogetherEnabled,
   madeAboutPolicyLineEnabled,
@@ -23,6 +24,7 @@ import {
 import { madeAbout } from "@/lib/ai/make-it-about";
 import { saidFormDate } from "./form-date-said";
 import { withSectionBreaks } from "./section-breaks";
+import { addedTail } from "./added-tail";
 import { splitAppCitationLine } from "./app-citation-line";
 import { endMadeAboutWrite, madeAboutDate, madeAboutTopic, noteMadeAboutWrite } from "./made-about-date";
 import { syncCorrectiveActionPlan } from "./ca-action-plan-sync";
@@ -102,6 +104,12 @@ function lastAssistant(history: readonly Pick<ChatMessage, "role" | "content" | 
  * (`buildFormPatchUserMessage`); a value the model returns in that shape, for a field that holds lines, gets its
  * lines back.
  */
+/** ADD_NOT_REPEATED_ENABLED (ported from Ask Bubbles' live round 15): an "add" that repeats the field's text adds only what follows it. */
+function notRepeated(how: string | undefined, value: FieldValue, current: FieldValue | undefined): FieldValue {
+  if (!addNotRepeatedEnabled() || how !== "add" || typeof value !== "string" || typeof current !== "string") return value;
+  return addedTail(current, value) ?? value;
+}
+
 /** SECTION_BREAKS_KEPT_ENABLED (QA's live round 15): the reader's account, run onto one line, keeps the field's sections. */
 function keptSections(field: string, value: FieldValue, current: FieldValue | undefined): FieldValue {
   if (!sectionBreaksKeptEnabled() || !(ACCOUNT_KEYS as readonly string[]).includes(field) || typeof value !== "string") return value;
@@ -628,7 +636,11 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
         ...Object.entries(reading.patch.set).map(([field, value]) => ({
           op: reading.patch.how?.[field] === "add" ? ("append" as const) : ("set" as const),
           field,
-          value: keptSections(field, readerFixes ? relined(value, before[field]?.value) : value, before[field]?.value),
+          value: notRepeated(
+            reading.patch.how?.[field],
+            keptSections(field, readerFixes ? relined(value, before[field]?.value) : value, before[field]?.value),
+            before[field]?.value,
+          ),
           ...(reading.patch.evidence?.[field] !== undefined ? { evidence: reading.patch.evidence[field] } : {}),
           // FORM_PATCH_READER_FIXES_ENABLED: a reword, and the Job Title as the manager's own edit.
           ...(readerFixes && reading.patch.how?.[field] === "reword" ? { reword: true } : {}),

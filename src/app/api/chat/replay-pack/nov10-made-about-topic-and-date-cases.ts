@@ -277,5 +277,39 @@ export const NOV10_MADE_ABOUT_TOPIC_AND_DATE_CASES: ReplayCase[] = [
       expect(details, `the sections were run into one paragraph:\n${details}`).toMatch(/^Observed:\n[^\n]+\n\nExpectation:\n[^\n]+/);
     },
   },
+  {
+    id: "nov10-add-not-repeated-after-made-about",
+    title: "Ported from Ask Bubbles' live round 15: \"make it about being late on 11/5/26\", then \"add that she was reminded of the policy\" with the reader returning the whole field (on one line) and the new sentence as an add: Details hold ONE copy of the account plus the new line",
+    report: "Ported from Ask Bubbles: QA's live round 15 there (10 Nov 2026, 04:53Z): the whole Observed/Expectation/Going Forward block saved twice, then the new line",
+    status: { open: "the reader's add repeats the field's text on one line, so it does not read as the field's own text and is added whole" },
+    fixFlags: ["MADE_ABOUT_TOPIC_EVIDENCE_ENABLED", "FORM_DATE_SAID_ALONE_ENABLED", "ADD_NOT_REPEATED_ENABLED"],
+    async run(t) {
+      vi.setSystemTime(new Date("2026-11-10T04:52:00Z"));
+      t.directory(REFUSAL_ROSTER);
+      t.as("salon_director", KEARNEY);
+      const late =
+        "Observed:\nMarnie Holloway was late on 11/5/26.\n\nExpectation:\nMarnie is expected to arrive on time for all scheduled shifts.\n\nGoing Forward:\nMarnie will arrive on time for every shift.";
+      const add = "add that she was reminded of the policy";
+      const line = "Marnie was reminded of the policy.";
+      const thread = t.thread();
+      await thread.say("create a coaching form for Marnie Holloway, missed the monthly meeting on 10/10/26");
+      t.draftWrites({ coaching_details: DETAILS, other_topic: "Missed monthly meeting" }, { coaching_topics: ["other"] });
+      const id = await thread.create();
+      t.revisionWrites({ coaching_details: late });
+      await thread.say("make it about being late on 11/5/26");
+      // This app's MADE_ABOUT_POLICY_LINE may add the new account's reference after it.
+      const made = t.values(id).coaching_details ?? "";
+      expect(made.startsWith(late), `the made-about turn:\n${made}`).toBe(true);
+      // The reader echoes the field as saved (here with its reference line), run onto one line, then the new sentence.
+      t.patchReads!({
+        [add]: patch("this_form", [{ field: "coaching_details", value: `${made.replace(/\n+/g, " ")} ${line}`, how: "add", evidence: "she was reminded of the policy" }]) as never,
+      });
+      const reply = await thread.say(add);
+      const details = t.values(id).coaching_details ?? "";
+      expect(details.match(/Observed:/g) ?? [], `the account was saved twice:\n${details}`).toHaveLength(1);
+      expect(details.match(/Going Forward:/g) ?? [], `the account was saved twice:\n${details}`).toHaveLength(1);
+      expect(details, `the new line:\n${reply.content}`).toMatch(/reminded of the policy/);
+      expect(details.startsWith(made), `the account changed:\n${details}`).toBe(true);
+    },
+  },
 ];
-

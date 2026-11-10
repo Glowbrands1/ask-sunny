@@ -3942,3 +3942,14 @@ export function madeAboutPolicyLineReplacesEnabled(): boolean {
 export function sectionBreaksKeptEnabled(): boolean {
   return envFlag("SECTION_BREAKS_KEPT_ENABLED");
 }
+
+/**
+ * ADD_NOT_REPEATED_ENABLED (ported from Ask Bubbles: QA's live round 15 there, 10 Nov 2026; default off; same flag in both
+ * apps). After "make it about being late on 11/5/26", "add that she was reminded of the policy" saved the whole
+ * Observed/Expectation/Going Forward block twice, then the new line: the reader returned the field's text (on one line)
+ * and the new sentence as an "add". With the flag on, an "add" that repeats the field's text word for word adds only what
+ * follows it (`forms/added-tail.ts`). Off, as before.
+ */
+export function addNotRepeatedEnabled(): boolean {
+  return envFlag("ADD_NOT_REPEATED_ENABLED");
+}
