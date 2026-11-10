@@ -3860,3 +3860,15 @@ export function madeAboutPolicyLineEnabled(): boolean {
 export function madeAboutReaderAccountEnabled(): boolean {
   return envFlag("MADE_ABOUT_READER_ACCOUNT_ENABLED");
 }
+
+/**
+ * INCIDENT_DATE_ONCE_ENABLED (coding 6, 10 Nov 2026; default off; HR, 21 Oct
+ * 2026, replay nov3-stepb-date-as-given). The form "repeated the date of the
+ * offense": the Date said 10/1/2026 and the Observation said "on 10-1-26"
+ * again. On: a narrative field whose only date is the form's Date loses that
+ * date phrase; a field naming any other date is left as it is. See
+ * `forms/incident-date-once.ts`. Off, as before.
+ */
+export function incidentDateOnceEnabled(): boolean {
+  return envFlag("INCIDENT_DATE_ONCE_ENABLED");
+}
