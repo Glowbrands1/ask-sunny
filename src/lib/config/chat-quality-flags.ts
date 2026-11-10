@@ -2622,6 +2622,17 @@ export function lateReadsAttendanceEnabled(): boolean {
 }
 
 /**
+ * LATE_SLOT_READS_ATTENDANCE_ENABLED (QA, live Sunny after #784, 10 Nov 2026; default off; same flag in both apps). "create a
+ * corrective action for <T>, she was late on 11/3/26": the Policy line said Attendance (LATE_READS_ATTENDANCE) but the
+ * card's Action Plan and Sources said Late Opening p.15, from the model's heading kept in the slots. On: that heading is
+ * Attendance too when the manager's words say an employee was late and never say "open" (`ai/late-slot-attendance.ts`,
+ * read in `ai/intent-slots.ts`). Off, as before.
+ */
+export function lateSlotReadsAttendanceEnabled(): boolean {
+  return envFlag("LATE_SLOT_READS_ATTENDANCE_ENABLED");
+}
+
+/**
  * EXIT_FORM_DATE_FROM_TERMINATION_ENABLED (QA, the live Sunny round 11, 9 Nov 2026; coding 5; same flag in both apps;
  * default off). A termination letter "… is terminated, effective 11/08/2026 … no-call no-shows on 11/3, 11/5 and 11/7"
  * gave the exit card the Date November 7 (the last no-show) beside Resignation Date November 8 (round 10 had November 8).
