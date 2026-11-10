@@ -1,4 +1,4 @@
-import { expect, vi } from "vitest";
+import { expect } from "vitest";
 
 import { KEARNEY, STAFF, type DirectoryRow, type ReplayCase, type ReplayContext } from "./cases";
 
@@ -85,12 +85,21 @@ export const NOV10_ONE_FORM_EACH_PERSON_CASES: ReplayCase[] = [
     // are turned on inside the case, so it fails the same way with production's flags and has no fix flags yet.
     status: { open: "a card for Tamsin Rookwood, never chosen" },
     async run(t) {
-      for (const flag of FIX) vi.stubEnv(flag, "true");
-      const thread = start(t);
-      for (const said of [T1, "Tamsin Ashby", "yes", "yes"]) await thread.say(said);
-      expect(thread.proposal?.employeeName ?? null, "the chain did not end on Ione's card").toBe("Ione Marchetti");
-      const reply = await thread.say("yes");
-      expect(thread.proposal?.employeeName ?? null, `a card for a person nobody chose:\n${reply.content}`).not.toBe("Tamsin Rookwood");
+      // The flags are set for this case only and put back as they were, so no other case runs with them.
+      const saved = FIX.map((flag) => [flag, process.env[flag]] as const);
+      for (const flag of FIX) process.env[flag] = "true";
+      try {
+        const thread = start(t);
+        for (const said of [T1, "Tamsin Ashby", "yes", "yes"]) await thread.say(said);
+        expect(thread.proposal?.employeeName ?? null, "the chain did not end on Ione's card").toBe("Ione Marchetti");
+        const reply = await thread.say("yes");
+        expect(thread.proposal?.employeeName ?? null, `a card for a person nobody chose:\n${reply.content}`).not.toBe("Tamsin Rookwood");
+      } finally {
+        for (const [flag, value] of saved) {
+          if (value === undefined) delete process.env[flag];
+          else process.env[flag] = value;
+        }
+      }
     },
   },
 ];
