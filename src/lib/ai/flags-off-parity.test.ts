@@ -362,6 +362,8 @@ const NEW_FLAGS = [
   "SAME_FORM_COPY_NEW_PERSON_ENABLED",
   // coding 6: DRAFT_WRITE_NEVER_SILENT (default off): forced off with the others.
   "DRAFT_WRITE_NEVER_SILENT_ENABLED",
+  // coding 6: CA_PROCEDURE_BASIS (default off; rebuilt from old S544): forced off with the others.
+  "CA_PROCEDURE_BASIS_ENABLED",
   // coding 6: POLICY_REFERENCE_NOT_ACCOUNT (default off): forced off with the others.
   "POLICY_REFERENCE_NOT_ACCOUNT_ENABLED",
   // coding 6: LEVEL_AFTER_FORM_NAME (default off): forced off with the others.
