@@ -71,6 +71,7 @@ import { isAppLine, withoutAppLines } from "./app-sentences";
 import { withoutAsksToTheApp } from "./asks-to-the-app";
 import { withoutAppInstructions } from "./app-instructions";
 import { GRAMMAR_ANSWER, managerWords, observationByRules, readSentenceEdit } from "./edit-date-rules";
+import { observationTurns } from "./observation-turns";
 import { titleTextFromQuestion, titleTextFromTurns } from "./title-words";
 import type { GroundedPerson } from "./grounded-entities";
 import {
@@ -298,7 +299,9 @@ export function holdFilledSlots(input: {
       // conduct for …", are policy asks, never account (`forms/policy-set-aside.ts`).
       const setAside = proposalPolicySetAsideEnabled() ? withoutPolicyAsks(about) : about;
       // APP_INSTRUCTIONS_NOT_ACCOUNT_ENABLED: "Please word it in a professional way. I need the policy attached as well." is no account.
-      const said = setAside.map(withoutAppInstructions).filter((turn) => turn.trim() !== "");
+      const instructed = setAside.map(withoutAppInstructions).filter((turn) => turn.trim() !== "");
+      // INCIDENT_SPLIT_FIX_ENABLED: once the request gave the account, a pasted policy paragraph or a "not X, Y" correction is no account (`ai/observation-turns.ts`).
+      const said = observationTurns(instructed, next.employeeName);
       // FORM_EDIT_DATE_RULES_ENABLED: an edit replaces, adds to, or never touches the Observation.
       if (formEditDateRulesEnabled()) content = observationByRules(content, said, build);
       else if (grammarAskNotAccountEnabled()) content = withGrammarAnswered(build(content, said.map(withoutAsksToTheApp)), turns);
