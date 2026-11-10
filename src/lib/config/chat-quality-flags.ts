@@ -2653,6 +2653,33 @@ export function observationOwnPersonOnlyEnabled(): boolean {
   return envFlag("OBSERVATION_OWN_PERSON_ONLY_ENABLED");
 }
 
+/**
+ * ONE_FORM_EACH_PERSON_ENABLED (QA's P7, Sunny live, 10 Nov 2026; coding 5; default off). "Make me a coaching form for
+ * <A>, <B>, and <C> for not closing duties correctly" handled only <A>. On: one form each — the first person's card (or
+ * the question which <A>), then a "Next:" line; "yes" starts the next person's form with the same reason
+ * (`ai/two-forms-own-person.ts`). Off, as before.
+ */
+export function oneFormEachPersonEnabled(): boolean {
+  return envFlag("ONE_FORM_EACH_PERSON_ENABLED");
+}
+
+/**
+ * DID_YOU_MEAN_STAYS_ASKED_ENABLED (QA's P7, Sunny live, 10 Nov 2026; coding 5; default off). After "Did you mean <A>
+ * <s1> or <A> <s2>?", a turn that picks neither got a card for one of them. On: such a card has no employee and the
+ * question is asked again (`ai/did-you-mean-stays.ts`). Off, as before.
+ */
+export function didYouMeanStaysAskedEnabled(): boolean {
+  return envFlag("DID_YOU_MEAN_STAYS_ASKED_ENABLED");
+}
+
+/**
+ * CARD_NAMES_EMPLOYEE_ENABLED (QA's P7, Sunny live, 10 Nov 2026; coding 5; default off). A card's reply said "I have the
+ * employee" without naming them. On: "I have **<name>**" (`ai/did-you-mean-stays.ts`). Off, as before.
+ */
+export function cardNamesEmployeeEnabled(): boolean {
+  return envFlag("CARD_NAMES_EMPLOYEE_ENABLED");
+}
+
 // --- end coding 5 flags ---
 
 /**
