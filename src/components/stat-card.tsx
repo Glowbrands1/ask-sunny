@@ -40,10 +40,10 @@ export function StatCard({
   return (
     <div
       className={cn(
-        "rounded-[var(--radius-lg)] border p-5 shadow-soft",
+        "rounded-[var(--radius-lg)] border p-5 shadow-raised",
         emphasis
           ? "border-[color-mix(in_srgb,var(--primary)_24%,transparent)] bg-primary-soft"
-          : "border-border bg-surface",
+          : "border-transparent bg-surface",
         className,
       )}
     >

@@ -187,7 +187,8 @@ const STEP_B_CASES: readonly ReplayCase[] = [
     report:
       `${REPORT}: the sibling app's root cause, confirmed by QA — live, the form-patch model sent how:"replace" on the Observation with its own sentence (the new surname, no first name); the reducer checks the evidence, not what the new text removes (form-reducer.ts setOne, a replace on an assistant-owned field). The tester here, flags off, saw the first name kept ("Jane Doe-Smith"); this is the step-B-on variant with a scripted live-shaped patch`,
     // Run 4 Nov 2026: this app has Step B's reducer on main (#494–#496) and it fails here exactly as in the sibling app.
-    status: { open: "with Step B on, the replace is accepted on its evidence and the Observation becomes \"Doe-Smith was late to open on 10-20-26.\": \"Jane\" is dropped (and the Expectation with it); nothing checks what a replace removes" },
+    // Changed on purpose (7 Nov 2026): QA's flip 7 (21:29 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+    status: "fixed",
     fixFlags: [],
     async run(t) {
       await withStepB(async () => {
@@ -283,8 +284,8 @@ async function coachingChat(t: T, upTo: number): Promise<void> {
 
 /** Today's status of each prefix (production flags). */
 const COACHING_OPEN: Readonly<Record<number, string>> = {
-  // fails with production's real flags (QA Vercel read 5 Nov); tracked: POLICY_CITATION_ENABLED (on in production) — "fix her last name, it is Laine" no longer reaches the Details.
-  1: "fails with production's real flags (QA Vercel read 5 Nov); tracked: POLICY_CITATION_ENABLED (on in production) — \"fix her last name, it is Laine\" no longer reaches the Details",
+  // Changed on purpose (8 Nov 2026): C1 failed with production's real flags (QA Vercel read 5 Nov; POLICY_CITATION_ENABLED on); QA's flip 9
+  // (00:59 PHT) turned its fix flag CITATION_LINE_KEPT_ON_REVISION on in production, so it now holds with production's flags.
 };
 
 const COACHING_CASES: readonly ReplayCase[] = COACHING_CHAIN.map((said, index): ReplayCase => {
@@ -295,7 +296,7 @@ const COACHING_CASES: readonly ReplayCase[] = COACHING_CHAIN.map((said, index): 
     title: `coaching chat C${turn} "${said}" — the old path`,
     report: `${REPORT} (coaching): C${turn} "${said}"`,
     status: open ? { open } : "fixed",
-    // C1 is open with production's real flags (POLICY_CITATION); CITATION_LINE_KEPT_ON_REVISION_ENABLED fixes it.
+    // C1 was open with production's real flags (POLICY_CITATION); CITATION_LINE_KEPT_ON_REVISION_ENABLED fixes it (in production since flip 9).
     fixFlags: turn === 1 ? ["CITATION_LINE_KEPT_ON_REVISION_ENABLED"] : [],
     run: (t) => coachingChat(t, turn),
   };
@@ -412,8 +413,9 @@ type Mode = "code" | "models";
  * `nov4-live-regressions-scenarios.ts` and their misses here.
  */
 const BY_MISS = "the non-person \"BY CORIN BELLWEATHER\" is taken as the name (\"I'll draft a Corrective Action Form for **BY CORIN BELLWEATHER**\"), and the card has no employee";
+// Changed on purpose (7 Nov 2026): QA's flips of 5 and 6 Nov turned CA_SALES_POLICY, REPLY_MATCHES_CARD, TITLE_OF_THE_EMPLOYEE, METRIC_GUARD, TITLE_ENDS_AT_LINE, BARE_NOT_DENIAL and PLACE_FROM_CUE on in production (production-flags.json): the off-roster BY-line cases now hold with production's flags; the on-roster ones stay open.
 const NAME_OPEN: Readonly<Record<string, string>> = Object.fromEntries(
-  (["on", "off"] as const).flatMap((roster) => (["code", "models"] as const).map((mode) => [`last-date-caps-${roster}-${mode}`, BY_MISS])),
+  (["on"] as const).flatMap((roster) => (["code", "models"] as const).map((mode) => [`last-date-caps-${roster}-${mode}`, BY_MISS])),
 );
 
 const ASKED_WHO = /who is this\b[^?\n]*\bfor\?/i;

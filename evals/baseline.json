@@ -13,13 +13,16 @@
     },
     {
       "id": "s9",
-      "pass": true,
-      "misses": [],
+      "pass": false,
+      "misses": [
+        "employee",
+        "blocking question"
+      ],
       "card": {
-        "employee": "Ima",
+        "employee": null,
         "salon": "loc-0462",
         "date": "2026-09-28",
-        "status": "ready"
+        "status": "needs_employee"
       }
     },
     {

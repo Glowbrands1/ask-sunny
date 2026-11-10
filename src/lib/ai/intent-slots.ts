@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import {
   caTemplateMapEnabled,
+  modelPolicyDefersToTopicEnabled,
   codeSlotsEnabled,
   slotNameOnFormRequestEnabled,
   formChoiceStatedEnabled,
@@ -25,6 +26,7 @@ import { payrollDeductAmount, payrollDeductFromConversation, type PayrollDeductA
 import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
 import { lateOpenOn, newestStatedDate, withYearlessDatesWritten } from "@/lib/forms/late-open";
 import { printedPageForPolicy } from "@/lib/forms/printed-policy-pages";
+import { topicHeadings } from "@/lib/forms/specific-policy-topics";
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { stripFieldLabels } from "@/lib/forms/name-words";
 import { isNotAName, maskNotANameText, saidInReply } from "@/lib/forms/not-a-name";
@@ -57,8 +59,7 @@ import {
   EMPTY_FORM_STATE,
   prependFormState,
   stateSentences,
-  type ConversationFormState,
-} from "./form-state";
+  type ConversationFormState, type OwnPolicy } from "./form-state";
 import type { GroundedPerson } from "./grounded-entities";
 import type { CheckedReading } from "./reader/check";
 import { mergeCheckedReading } from "./reader/merge";
@@ -361,7 +362,7 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
   const namedFormExact = namedFormExactEnabled();
   const naming = namedFormExact && !choice?.form ? managerFormNaming(input) : null;
   const groundedPolicy = groundPolicy(reading?.policyHeading ?? null, input.headings);
-  const modelPolicy = choiceStated && isDisciplineProcedure(groundedPolicy) ? null : groundedPolicy;
+  const modelPolicy = deferToTopic(choiceStated && isDisciplineProcedure(groundedPolicy) ? null : groundedPolicy, input.question);
   /*
    * THE MANAGER'S LEVEL ONLY (WARNING_LEVEL_MANAGER_ONLY_ENABLED). Live
    * replays, 24 Oct 2026: the blob holds Ask Sunny's own "You'll set the
@@ -466,7 +467,14 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
   });
 
   const asked = formTurn
-    ? questionWithState(input.question, state, input.templates)
+    ? questionWithState(
+        input.question,
+        state,
+        input.templates,
+        input.history.filter((turn) => turn.role === "user").map((turn) => turn.content),
+        // SECOND_REQUEST_OWN_ACCOUNT_ENABLED (QA's live round 7b): a new request keeps the policy read in it.
+        modelPolicy && state.policyHeading === modelPolicy ? { policyHeading: modelPolicy, policyPage: state.policyPage ?? null } : null,
+      )
     : typedEmployee && state.employeeName === typedEmployee && asksForAForm(input.question)
       ? `The employee is ${typedEmployee}.\n${input.question}`
       : input.question;
@@ -629,8 +637,10 @@ function questionWithState(
   question: string,
   state: ConversationFormState,
   templates: readonly TemplateRow[],
+  earlier: readonly string[] = [],
+  ownPolicy: OwnPolicy | null = null,
 ): string {
-  const named = prependFormState(question, state);
+  const named = prependFormState(question, state, earlier, ownPolicy);
   const template = state.templateKey ? templates.find((item) => item.key === state.templateKey) : undefined;
   if (!template) return named;
   if (named.toLowerCase().includes(template.name.toLowerCase())) return named;
@@ -1670,4 +1680,20 @@ function slashDate(iso: string): string {
 function blank(value: string | null | undefined): string | null {
   const text = value?.trim() ?? "";
   return text ? text : null;
+}
+
+/**
+ * MODEL_POLICY_DEFERS_TO_TOPIC_ENABLED (QA, round-7c live test, 9 Nov 2026; the people invented): "I need another corrective
+ * action for <P>, his cash drawer was short $20 on 11/3" was read by the slot model as "Handling Theft". That heading was
+ * kept as this request's own (`form-state.ts` stateForTurn), written in front of the turn as "Policy reference: Handling
+ * Theft …", and the card read "theft" from it: "'theft' reads as … Standards of Conduct", Handling Theft p.30, a theft
+ * plan. Where the manager's own words in this turn name an incident the code reads (`forms/specific-policy-topics.ts`), a
+ * model heading that is not one of that incident's sections is not taken. No incident read: the model's heading, as before.
+ */
+function deferToTopic(modelPolicy: string | null, question: string): string | null {
+  if (!modelPolicy || !modelPolicyDefersToTopicEnabled()) return modelPolicy;
+  const headings = topicHeadings(question);
+  if (!headings) return modelPolicy;
+  const key = (heading: string) => heading.trim().toLowerCase().replace(/\s+policy$/, "");
+  return headings.some((heading) => key(heading) === key(modelPolicy)) ? modelPolicy : null;
 }

@@ -3,6 +3,9 @@
  * a stack trace, a route or a code; the code itself stays under Advanced.
  */
 const REASONS: [RegExp, string][] = [
+  [/ocr_too_many_pages$/, "This scanned file has more pages than Ask Sunny reads automatically; a searchable PDF (or a text version) in Woven would fix it."],
+  [/ocr_budget_spent$/, "This scanned file will be read on a later sync."],
+  [/ocr_failed$/, "Reading this scanned file failed this time; the next sync tries again."],
   [/no_text$/, "No text could be read from this file — it looks like a scanned image. A searchable PDF (or a text version) in Woven would fix it."],
   [/not_a_file$/, "Woven sent back a page instead of the file."],
   [/not_found$/, "Woven no longer has the file for this item."],
