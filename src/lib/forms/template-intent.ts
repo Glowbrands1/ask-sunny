@@ -26,6 +26,7 @@
 import {
   caRequestNotPriorCoachingEnabled,
   caSalesPolicyEnabled,
+  becauseNotANameEnabled,
   caShortcutWordsEnabled,
   formChoiceStatedEnabled,
   formNameFromRosterEnabled,
@@ -545,10 +546,20 @@ const COURTESY_SHORTHAND: [RegExp, string][] = [
   [/\b(?:frms|froms|fomrs)\b/gi, "forms"],
 ];
 
+/*
+ * "BC" IS "BECAUSE", NEVER A NAME (BECAUSE_NOT_A_NAME_ENABLED; October triage
+ * #15, Sunny #250). "for <first> <last> bc she didnt …" kept "bc" as a third
+ * name word, because "she" after it plainly ends a name. Read as "because",
+ * it is a stop word and the name ends before it. "cuz" is left alone: it is a
+ * nickname as often as it is shorthand.
+ */
+const BECAUSE_SHORTHAND = /\b(?:bc|b\/c|bcuz|bcoz|bcz)\b/gi;
+
 /** Shorthand and near-miss spellings of the form's own words; everything else unchanged. */
 export function canonicalShorthand(text: string): string {
   let out = text;
   for (const [pattern, replacement] of COURTESY_SHORTHAND) out = out.replace(pattern, replacement);
+  if (becauseNotANameEnabled()) out = out.replace(BECAUSE_SHORTHAND, "because");
   return out.replace(/\bc[a-z]{5,9}\b/gi, (word) => {
     const lower = word.toLowerCase();
     if (lower === "coaching" || lower === "couching") return word;

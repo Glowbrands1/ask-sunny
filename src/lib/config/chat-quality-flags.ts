@@ -4134,3 +4134,15 @@ export function appInstructionsNotAccountEnabled(): boolean {
 export function draftWriteNeverSilentEnabled(): boolean {
   return envFlag("DRAFT_WRITE_NEVER_SILENT_ENABLED");
 }
+
+/**
+ * BECAUSE_NOT_A_NAME_ENABLED (coding 6, 10 Nov 2026; default off; October
+ * triage #15, Sunny #250). "crete a ca for <first> <last> bc she didnt do the
+ * deep clean …" made the employee "<First> <Last> Bc": "bc" was read as a
+ * third name word because "she" after it ends a name. On: "bc", "b/c",
+ * "bcuz", "bcoz" and "bcz" are read as "because" before any reader runs, so
+ * the name stops there. See `forms/template-intent.ts`. Off, as before.
+ */
+export function becauseNotANameEnabled(): boolean {
+  return envFlag("BECAUSE_NOT_A_NAME_ENABLED");
+}
