@@ -1,0 +1,4 @@
+# sn-anr-full (summary: last lines and FAIL lines; full log not kept)
+      Tests  20945 passed | 86 expected fail | 134 skipped (21165)
+ Test Files  962 passed | 12 skipped (974)
+exit 0

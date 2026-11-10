@@ -1,0 +1,29 @@
+import { describe, expect, it } from "vitest";
+
+import { accountManualSections } from "@/lib/ai/account-manual-sections";
+
+const DRESS_CODE = {
+  chunkIndex: 35,
+  chunkId: "jba-35",
+  locator: "Page 15 — Dress Code for The Company",
+  page: 15,
+  content:
+    "Dress Code for The Company\nThe Company Employees are to keep a neat, clean, professional appearance at all times. Anyone\nviolating their Brand's Dress code policy will be sent home to change into proper work attire and\nmay be subject to disciplinary action, up to and potentially including termination.",
+  section: "Dress Code for The Company",
+  printedPage: 15,
+  sections: [{ heading: "Dress Code for The Company", page: 15 }],
+};
+const ACCOUNT = "Observed:\nThe person did not follow the dress code on 10/14/26.\n\nExpectation:\nThe person is expected to follow the dress code on every shift.";
+describe("probe", () => {
+  for (const notes of [
+    `${ACCOUNT}\nmake it about not following the dress code`,
+    "make it about not following the dress code",
+    "Observed:\nThe person was out of dress code on 10/14/26.\nmake it about not following the dress code",
+    "Observed:\nThe person violated the dress code on 10/14/26.",
+  ]) {
+    it(notes.replace(/\n/g, " | "), () => {
+      require("node:fs").appendFileSync(process.env.PROBE_OUT!, "PROBE " + JSON.stringify(notes) + " " + JSON.stringify(accountManualSections(notes, [DRESS_CODE] as never).map((s) => s.heading)) + "\n");
+      expect(true).toBe(true);
+    });
+  }
+});

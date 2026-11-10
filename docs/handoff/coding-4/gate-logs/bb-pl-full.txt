@@ -1,0 +1,4 @@
+# bb-pl-full (summary: last lines and FAIL lines; full log not kept)
+      Tests  18009 passed | 91 expected fail | 62 skipped (18162)
+ Test Files  844 passed | 6 skipped (850)
+exit 0

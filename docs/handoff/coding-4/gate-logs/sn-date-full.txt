@@ -1,0 +1,4 @@
+# sn-date-full (summary: last lines and FAIL lines; full log not kept)
+      Tests  20787 passed | 85 expected fail | 134 skipped (21006)
+ Test Files  951 passed | 12 skipped (963)
+exit 0

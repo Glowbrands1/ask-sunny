@@ -1,0 +1,1 @@
+# sn-ab-full (summary: last lines and FAIL lines; full log not kept)

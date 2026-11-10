@@ -1,0 +1,4 @@
+# sn-sales-full (summary: last lines and FAIL lines; full log not kept)
+      Tests  20001 passed | 128 expected fail | 134 skipped (20263)
+ Test Files  900 passed | 12 skipped (912)
+exit=0

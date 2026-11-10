@@ -1,0 +1,8 @@
+import { it } from "vitest";
+import { saidFormDate } from "@/lib/forms/form-date-said";
+import { madeAboutDate, madeAboutTopic } from "@/lib/forms/made-about-date";
+import { madeAbout } from "@/lib/ai/make-it-about";
+it("x", () => {
+  const q = "make it about leaving the front desk unattended on 11/6/26";
+  require("node:fs").writeFileSync("/tmp/claude-0/-home-user/8434bb36-e5b0-5e70-a507-3dc0859d7025/scratchpad/said.txt", JSON.stringify(["SAID", saidFormDate(q, "2026-11-09"), "ABOUTDATE", madeAboutDate(q, "2026-11-09"), "TOPIC", madeAboutTopic(q, "2026-11-09"), "ABOUT", madeAbout(q)]));
+});

@@ -1,0 +1,4 @@
+# sn-s35-full (summary: last lines and FAIL lines; full log not kept)
+      Tests  20046 passed | 135 expected fail | 134 skipped (20315)
+ Test Files  906 passed | 12 skipped (918)
+exit=0

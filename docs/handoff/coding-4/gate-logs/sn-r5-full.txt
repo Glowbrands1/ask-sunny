@@ -1,0 +1,4 @@
+# sn-r5-full (summary: last lines and FAIL lines; full log not kept)
+      Tests  19973 passed | 143 expected fail | 134 skipped (20250)
+ Test Files  900 passed | 12 skipped (912)
+exit=0

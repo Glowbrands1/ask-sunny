@@ -1,0 +1,4 @@
+# sn-s38-full (summary: last lines and FAIL lines; full log not kept)
+      Tests  20080 passed | 139 expected fail | 134 skipped (20353)
+ Test Files  907 passed | 12 skipped (919)
+exit=0

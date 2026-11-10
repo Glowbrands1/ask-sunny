@@ -1,0 +1,4 @@
+# sn-sb3-full2 (summary: last lines and FAIL lines; full log not kept)
+      Tests  21000 passed | 74 expected fail | 134 skipped (21208)
+ Test Files  969 passed | 12 skipped (981)
+exit 0

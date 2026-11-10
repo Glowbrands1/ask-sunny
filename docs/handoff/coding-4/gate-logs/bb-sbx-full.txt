@@ -1,0 +1,4 @@
+# bb-sbx-full (summary: last lines and FAIL lines; full log not kept)
+      Tests  18066 passed | 95 expected fail | 62 skipped (18223)
+ Test Files  847 passed | 6 skipped (853)
+exit 0

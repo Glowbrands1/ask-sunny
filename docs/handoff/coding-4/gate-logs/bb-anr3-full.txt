@@ -1,0 +1,23 @@
+# bb-anr3-full (summary: last lines and FAIL lines; full log not kept)
+      Tests  13 failed | 18073 passed | 91 expected fail | 62 skipped (18239)
+ FAIL  src/app/api/chat/turn-lifecycle.test.ts > the exact production failure cannot happen again > a slow turn write still yields a rateable answer
+ FAIL  src/app/api/forms/form-monitoring-store-access.test.ts > the list API: who sees which stores' forms > a regular employee sees only their home store
+ FAIL  src/app/api/forms/state-code-not-a-person-e2e.test.ts > STATE_CODE_NOT_A_PERSON_ENABLED on: a state after the store's city is never a second person > creates the card for "Create a CA for Odalys Merriweather at Dodge, NE. She did not clock in on 10/22."
+ FAIL  src/lib/ai/flags-off-parity.test.ts > existing chat and form suites with every new flag off > passes the suites whose expectations are already on main: src/app/api/chat (without the replay pack), second half by name
+ FAIL  src/lib/ai/flags-off-parity.test.ts > existing chat and form suites with every new flag off > passes the suites whose expectations are already on main: src/app/api/forms
+ FAIL  src/lib/google-reviews/migration.db.test.ts > rollback > removes only this migration's objects, leaves every earlier object untouched, and can be re-applied
+ FAIL  src/lib/google-reviews/migration.db.test.ts > searching reviews > filters by store, rating, reply state and date range, newest first, with an exact total
+ FAIL  src/lib/google-reviews/migration.db.test.ts > searching reviews > pages with the total unchanged, caps the page size at 100, and rejects bad filters
+ FAIL  src/lib/google-reviews/migration.db.test.ts > storing reviews > MASS-REMOVAL GUARD: a complete read that would remove more than 25% (min 5) is refused and changes nothing
+ FAIL  src/lib/google-reviews/migration.db.test.ts > storing reviews > marks reviews removed ONLY after a complete read; an incomplete read changes nothing; a returning review is restored
+ FAIL  src/lib/google-reviews/migration.db.test.ts > storing reviews > the stats view counts only live reviews and reports average, unanswered and rating buckets
+ FAIL  src/lib/google-reviews/migration.db.test.ts > the run lock, the connection and the audit trail > a dry-run claim cannot apply reviews
+ FAIL  src/lib/google-reviews/migration.db.test.ts > the run lock, the connection and the audit trail > allows one running sync at a time, releases on finish, and abandons a stale run
+ FAIL  src/lib/google-reviews/migration.db.test.ts > the run lock, the connection and the audit trail > denies the browser roles every table, view and function
+ FAIL  src/lib/google-reviews/migration.db.test.ts > the run lock, the connection and the audit trail > keeps exactly one ACTIVE connection and refuses a plaintext token
+ FAIL  src/lib/google-reviews/migration.db.test.ts > the run lock, the connection and the audit trail > the audit trail is append-only
+ Test Files  2 failed | 846 passed | 6 skipped (854)
+exit 1
+⎯⎯⎯⎯⎯⎯ Failed Tests 13 ⎯⎯⎯⎯⎯⎯⎯
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯

@@ -1,0 +1,4 @@
+# sn-own-full (summary: last lines and FAIL lines; full log not kept)
+      Tests  20650 passed | 73 expected fail | 134 skipped (20857)
+ Test Files  941 passed | 12 skipped (953)
+exit 0

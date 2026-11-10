@@ -1,0 +1,4 @@
+# bb-own-full (summary: last lines and FAIL lines; full log not kept)
+      Tests  17594 passed | 107 expected fail | 62 skipped (17763)
+ Test Files  815 passed | 6 skipped (821)
+exit 0

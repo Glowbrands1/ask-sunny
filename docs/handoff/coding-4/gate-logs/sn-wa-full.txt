@@ -1,0 +1,4 @@
+# sn-wa-full (summary: last lines and FAIL lines; full log not kept)
+      Tests  20682 passed | 77 expected fail | 134 skipped (20893)
+ Test Files  944 passed | 12 skipped (956)
+exit 0

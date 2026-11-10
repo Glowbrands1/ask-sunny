@@ -1,0 +1,8 @@
+# sn-r15-full (summary: last lines and FAIL lines; full log not kept)
+      Tests  2 failed | 20923 passed | 82 expected fail | 134 skipped (21141)
+ FAIL  |flags-off-parity| src/lib/ai/flags-off-parity.test.ts > existing chat and form suites with every new flag off > passes the suites whose expectations are already on main: src/app/api/chat/replay-pack, first half of the cases by id
+ FAIL  |unit| src/app/api/chat/replay-pack/replay-pack-e2e.test.ts > the replay pack > nov10-made-about-said-date-saved-draft-live: QA's live Sunny round 14 (P9): on a saved draft already about the front desk on 11/6/26, "I need you to make it about showing up late and please list the policy make the date for 10/14/26", the reader's patch refused and the revision writing Details without a date: Date, Details, Other and the policy line are saved — OPEN in production (the reader's patch is refused whole and handed to the old path, whose revision will not drop 11/6/26)
+ Test Files  2 failed | 958 passed | 12 skipped (972)
+exit 1
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
