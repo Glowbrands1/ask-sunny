@@ -256,6 +256,7 @@ const NEW_FLAGS = [
   "REMOVE_POLICY_NOT_NAMED_ENABLED",
   "FOLLOWUP_NEW_TOPIC_RETRIEVAL_ENABLED",
   "DRAFT_REUSE_SAME_CHAT_ONLY_ENABLED",
+  "DRAFT_REUSE_OWN_ONLY_ENABLED",
   "RESIGN_METHOD_FOLLOWUP_ENABLED",
   "CHAT_LONG_MESSAGE_ENABLED",
   "NEXT_PUBLIC_CHAT_LONG_MESSAGE_ENABLED",
@@ -362,6 +363,19 @@ const NEW_FLAGS = [
   "SAME_FORM_COPY_NEW_PERSON_ENABLED",
   // coding 6: DRAFT_WRITE_NEVER_SILENT (default off): forced off with the others.
   "DRAFT_WRITE_NEVER_SILENT_ENABLED",
+  // coding 6: CA_PROCEDURE_BASIS (default off; rebuilt from old S544): forced off with the others.
+  "CA_PROCEDURE_BASIS_ENABLED",
+  // coding 6: REGISTER_ACCURACY_CONDUCT (default off): forced off with the others.
+  "REGISTER_ACCURACY_CONDUCT_ENABLED",
+  // coding 6: DETAILS_FROM_EARLIER_ANSWER (default off): forced off with the others.
+  "DETAILS_FROM_EARLIER_ANSWER_ENABLED",
+  // coding 6: ACCOUNT_BEFORE_REQUEST (default off): forced off with the others.
+  "ACCOUNT_BEFORE_REQUEST_ENABLED",
+  // coding 6: SAME_REQUEST_CARRIES_ACCOUNT and SAME_REQUEST_KEEPS_EARLIER_CARD (default off): forced off with the others.
+  "SAME_REQUEST_CARRIES_ACCOUNT_ENABLED",
+  "SAME_REQUEST_KEEPS_EARLIER_CARD_ENABLED",
+  // coding 6: TEMPLATE_OUTLINE_FIELDS (default off): forced off with the others.
+  "TEMPLATE_OUTLINE_FIELDS_ENABLED",
   // coding 6: POLICY_REFERENCE_NOT_ACCOUNT (default off): forced off with the others.
   "POLICY_REFERENCE_NOT_ACCOUNT_ENABLED",
   // coding 6: LEVEL_AFTER_FORM_NAME (default off): forced off with the others.
@@ -490,6 +504,7 @@ const NEW_FLAGS = [
   "METRIC_CHOICE_ONE_QUESTION_ENABLED",
   // The second Sunny gate's fix flags (6 Nov 2026): forced off with the others in the child run.
   "TITLE_ENDS_AT_LINE_ENABLED",
+  "FULL_POSITION_TITLE_ENABLED",
   "BARE_NOT_DENIAL_ENABLED",
   "PLACE_FROM_CUE_ENABLED",
   // Port of the sibling app's flip-3 fix (6 Nov 2026): forced off with the others in the child run.
@@ -560,6 +575,8 @@ const NEW_FLAGS = [
   "SHIFT_ACCOUNT_IS_INCIDENT_ENABLED",
   // coding 5: UNDATED_ACCOUNT_BRIEF (default off): forced off with the others in the child run.
   "UNDATED_ACCOUNT_BRIEF_ENABLED",
+  "ADD_THAT_IS_ACCOUNT_ENABLED",
+  "WHAT_HAPPENED_NO_CREATE_ENABLED",
   "CREATE_FROM_CONVERSATION_POINTS_TO_CARD_ENABLED",
   "OBSERVATION_OWN_PERSON_ONLY_ENABLED",
   "POLICY_TOPIC_INTO_FIELD_ENABLED",

@@ -28,6 +28,10 @@ export interface ReplayThread {
   /** `reading`: what the stand-in form-reading model returns this turn (e.g. `{ employeeName }`); none by default. */
   say(text: string, reading?: Record<string, unknown>): Promise<ReplayAnswer>;
   create(): Promise<string>;
+  /** Create from the latest card for this person (an earlier card still on screen). */
+  createCard?(employeeName: string): Promise<string>;
+  /** The chat as the browser holds it. */
+  readonly conversation?: readonly import("@/types").ChatMessage[];
   /** The card on screen also reads this line — what the live model put on it that the stand-in cannot. */
   cardReads(line: string): void;
   readonly proposal: ReplayAnswer["formProposal"] | null;
@@ -36,7 +40,8 @@ export interface ReplayThread {
 
 export interface ReplayContext {
   thread(): ReplayThread;
-  as(role: string, scope: unknown): void;
+  /** `subject`: who is signed in (default "qa-manager"), for a case with two managers. */
+  as(role: string, scope: unknown, subject?: string): void;
   directory(rows: readonly DirectoryRow[]): void;
   /** What the drafting model writes at Create. */
   /** `extra`: other fields of the draft tool's input, e.g. `{ offense_basis: "sales" }` (CA_SALES_POLICY_ENABLED). */
@@ -80,6 +85,8 @@ export interface ReplayContext {
   checked(instanceId: string): Record<string, string[]>;
   /** What the drafting model was given, one entry per draft written. */
   draftPrompts(): string[];
+  /** What the revision model was given (its messages, as JSON), one entry per revision call. */
+  revisionPrompts?(): string[];
   /** The drafting model's system prompt, one entry per draft written. */
   draftSystems?(): string[];
   /** The draft call's tools as sent, one JSON string per call. */
