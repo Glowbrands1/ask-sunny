@@ -161,6 +161,9 @@ export const NOV4_CA_SALES_POLICY_CASES: ReplayCase[] = [
      * 4 Nov 2026.
      */
     status: { open: "the card cites no policy for a register-accuracy corrective action" },
+    // Fixed under REGISTER_ACCURACY_CONDUCT_ENABLED (coding 6, 10 Nov 2026): a NARROW default-off word list in ca-policy.ts, as QA
+    // allowed (no model call at card time). Open on production flags until QA flips it.
+    fixFlags: ["REGISTER_ACCURACY_CONDUCT_ENABLED"],
     async run(t) {
       const thread = start(t);
       const reply = await thread.say("create a corrective action for Ilsabet Harrowgate for ringing up the wrong items on a guest's sale");
