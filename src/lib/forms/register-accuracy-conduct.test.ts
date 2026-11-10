@@ -4,7 +4,7 @@ import { isSalesPolicyReading, readCaPolicy } from "./ca-policy";
 
 /*
  * REGISTER_ACCURACY_CONDUCT_ENABLED. QA's CA sales batch, case (c) (4 Nov 2026), the request verbatim; the person is
- * invented (Ilsabet Harrowgate). The replay case `nov4-ca-sales-wrong-items-card` runs the chat. CA_SALES_POLICY_ENABLED
+ * invented (Pell Arrowmere). The replay case `nov4-ca-sales-wrong-items-card` runs the chat. CA_SALES_POLICY_ENABLED
  * is on in production.
  */
 beforeEach(() => {
@@ -15,7 +15,7 @@ afterEach(() => {
   delete process.env.REGISTER_ACCURACY_CONDUCT_ENABLED;
 });
 
-const SAID = "create a corrective action for Ilsabet Harrowgate for ringing up the wrong items on a guest's sale";
+const SAID = "create a corrective action for Pell Arrowmere for ringing up the wrong items on a guest's sale";
 
 describe("a sale rung up inaccurately", () => {
   it("reads as the Standards of Conduct with the flag on; as before off", () => {
@@ -33,7 +33,7 @@ describe("a sale rung up inaccurately", () => {
     "she mis-rang a package",
   ])("reads %s", (said) => {
     process.env.REGISTER_ACCURACY_CONDUCT_ENABLED = "true";
-    expect(readCaPolicy(`write a CA for Ilsabet Harrowgate, ${said}`).source).toBe("register");
+    expect(readCaPolicy(`write a CA for Pell Arrowmere, ${said}`).source).toBe("register");
   });
 
   it.each([
@@ -42,6 +42,6 @@ describe("a sale rung up inaccurately", () => {
     "she gave the wrong answer to a guest's question",
   ])("leaves %s alone", (said) => {
     process.env.REGISTER_ACCURACY_CONDUCT_ENABLED = "true";
-    expect(readCaPolicy(`write a CA for Ilsabet Harrowgate, ${said}`).source).not.toBe("register");
+    expect(readCaPolicy(`write a CA for Pell Arrowmere, ${said}`).source).not.toBe("register");
   });
 });
