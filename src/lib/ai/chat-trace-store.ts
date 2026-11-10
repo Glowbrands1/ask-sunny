@@ -43,6 +43,13 @@ export interface ChatTraceDraft {
    */
   draftCheck?: Record<string, unknown>;
   /**
+   * CHAT_STAGE_TIMINGS_ENABLED: how long each awaited step of the turn took, written to `slots.stages`. Names and
+   * milliseconds only (from the request's receipt), never content. Absent when the flag is off.
+   */
+  stages?: ChatStageTiming[];
+  /** CHAT_STAGE_TIMINGS_ENABLED: the request's receipt, which `stages` count from. */
+  stagesFrom?: number;
+  /**
    * The form extraction for this turn, when FORM_FULL_REMAP_ENABLED is on.
    * `slots` is the same record the card was filled from.
    */
@@ -52,6 +59,13 @@ export interface ChatTraceDraft {
     outputTokens: number | null;
     slots: Record<string, unknown>;
   } | null;
+}
+
+/** CHAT_STAGE_TIMINGS_ENABLED: one awaited step — its name, when it started and how long it took (-1 while open), in ms from the request's receipt. */
+export interface ChatStageTiming {
+  readonly name: string;
+  readonly startMs: number;
+  readonly ms: number;
 }
 
 const storage = new AsyncLocalStorage<ChatTraceDraft>();

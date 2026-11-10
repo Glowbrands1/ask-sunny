@@ -47,6 +47,7 @@ import { approvedManualConfirmed, manualDisplayTitle } from "@/lib/forms/officia
 import { MissingConfigurationError, liveReadiness } from "@/lib/config/server-env";
 import { ACTIVE_BRAND } from "@/lib/brand";
 import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
+import { markStage } from "./chat-stage-timings";
 import { proposeFormForTurn, suggestFormsForTurn, type ChatActor } from "./form-proposal";
 import { acceptedCaOffer, acceptedCaOfferTurn, caOfferLine, withCaOffer } from "./ca-offer";
 import { remapFormTurn, remapShouldRun, type FormRemapSlots } from "./form-full-remap";
@@ -562,6 +563,7 @@ async function answerQuestionUntraced(
   const askedQuestion = !listPolicyCard && questionNotFormEnabled() && isQuestionNotForm(request.question, request.history);
   let intentForm = false;
   if (intentExtractionEnabled() && !askedQuestion) {
+    markStage("intent_extraction");
     const prepared = await applyIntentExtraction({ request, actor });
     // A numbered choice (two people, two salons) still asks. The "I still
     // need …" list does not: it replaced the proposal card on every live
@@ -605,6 +607,7 @@ async function answerQuestionUntraced(
    * fetched once one of them has something to say — or, further down, in
    * parallel with retrieval when neither has.
    */
+  markStage("query_normalize");
   const heard = queryRewriteEnabled()
     ? await normalizeForChat({ question: request.question, history: request.history })
     : null;
@@ -910,6 +913,7 @@ async function answerQuestionUntraced(
 
     let manualRead: ReturnType<typeof knowledge.fetchOfficialPolicyManual> | null = null;
     const readManual = () => (manualRead ??= knowledge.fetchOfficialPolicyManual(ACTIVE_BRAND.knowledgeScopeId));
+    markStage("form_proposal");
     const proposal = askedQuestion ? null : await deliverFormProposal({
       request: remapIncidentFixEnabled() ? { ...request, history: formHistory() } : request,
       actor,
@@ -1015,6 +1019,7 @@ async function answerQuestionUntraced(
    */
   if (formToolsEnabled() && !formsTurn) {
     // A question is answered, never read as a form command (`question-not-form.ts`).
+    markStage("form_understand");
     const understood = askedQuestion ? null : await understandFormTurn({
       question: request.question,
       history: request.history,
@@ -1415,6 +1420,7 @@ async function answerQuestionUntraced(
    * `slot-only-turn.ts`); the rewrite would read the turn's own words again.
    */
   const slotTopic = slotOnlyRetrievalTopic(request.question, request.history);
+  markStage("query_rewrite");
   const rewritten = queryRewriteEnabled() && !slotTopic
     ? await rewriteToManualTerms({
         question: request.question,
@@ -1454,6 +1460,7 @@ async function answerQuestionUntraced(
   const scopeManual = currentManualScopeEnabled() || manualSectionDedupeEnabled();
   const fetchLimit = manualScopeFetchLimit(matchLimit, scopeManual);
   if (fullManualPromise) {
+    markStage("full_manual");
     const loadedManual = await fullManualPromise;
     if (loadedManual.ok) {
       fullManualBlock = loadedManual.block;
@@ -1500,6 +1507,7 @@ async function answerQuestionUntraced(
              */
             limit: fetchLimit,
           });
+      markStage("retrieval");
       rows = await search(searched);
       /*
        * A REFORMAT TURN KEEPS THE SOURCES OF THE ANSWER IT REFORMATS
@@ -1548,6 +1556,7 @@ async function answerQuestionUntraced(
     });
   }
 
+  markStage("parallel_reads");
   const roleResult = await rolePromise;
   const dailyStatsResult = await dailyStatsPromise;
   const performanceManagementResult = await performanceManagementPromise;
@@ -1729,12 +1738,14 @@ async function answerQuestionUntraced(
    * wrong answer this pipeline can produce. `loadReportBriefing` never rejects,
    * so this cannot fail the answer.
    */
+  markStage("briefing");
   const briefing = await briefingPromise;
   /*
    * GOOGLE_REVIEWS_IN_CHAT_ENABLED: the Google Reviews page's month to date,
    * goal and pace for the caller's salons, read only on a Google review
    * question and only with View Google reviews. Null otherwise.
    */
+  markStage("google_reviews");
   const reviewBlock = googleReviewsInChatEnabled()
     ? await loadGoogleReviewsChatBlock({ question: request.question, role: actor.role, scope: actor.scope })
     : null;
@@ -1771,12 +1782,14 @@ async function answerQuestionUntraced(
    * non-forms turn this query has been running alongside retrieval, the
    * framework reads and the report briefing, so it costs no serial time.
    */
+  markStage("summaries_memory");
   const settledSummaries = await summariesPromise;
   const personMemory = await memoryPromise;
   const formInventoryBlock = settledSummaries.ok
     ? buildFormInventoryBlock(buildFormInventory(settledSummaries.rows, actor))
     : null;
 
+  markStage("system_prompt");
   const builtSystem = buildSystemPrompt({
     assistantName: ACTIVE_BRAND.assistantName,
     brandName: ACTIVE_BRAND.brandName,
@@ -1844,6 +1857,7 @@ async function answerQuestionUntraced(
   // MANAGER_NAME_NOT_EMPLOYEE_ENABLED: the manager's name is only for addressing them. See `manager-name-guard.ts`.
   const system = withManagerNameRule(builtSystem);
 
+  markStage("long_context");
   const longContext = longContextEnabled()
     ? await prepareLongContext({
         history: request.history,
@@ -1851,6 +1865,7 @@ async function answerQuestionUntraced(
         conversationId: request.conversationId ?? null,
       })
     : null;
+  markStage("chat_data");
   const dataAddition = await loadChatDataBlock({
     enabled: chatDataToolsEnabled(),
     question: request.question,
@@ -1859,6 +1874,7 @@ async function answerQuestionUntraced(
     briefedFamilies: families,
     reviewsHandled: reviewBlock !== null,
   });
+  markStage("cited_grounding");
   const pinnedPolicy = fullManualBlock ? null : await citedManualGrounding(request, knowledge);
   /*
    * Retrieved rows are [S#] sources. With the manual loaded, those markers
@@ -1898,6 +1914,7 @@ async function answerQuestionUntraced(
    */
   let written: string;
   try {
+    markStage("answer_model");
     written = await callClaude({
       system,
       grounding: dataAddition.help ? `${groundingText}\n\n${dataAddition.help}` : groundingText,

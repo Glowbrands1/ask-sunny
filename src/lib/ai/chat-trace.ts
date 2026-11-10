@@ -2,6 +2,7 @@ import "server-only";
 
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
+import { closeStages } from "./chat-stage-timings";
 import { chatTraceDraft, runChatTrace, type ChatTraceDraft } from "./chat-trace-store";
 import type { TokenUsage } from "./model-prices";
 import { activeSpendMeter, takeSpend, type SpendSource } from "./spend-meter";
@@ -96,7 +97,7 @@ async function persistChatTrace(draft: ChatTraceDraft): Promise<void> {
       error_class: draft.errorClass,
       error_status: draft.errorStatus,
       form_in_progress: draft.formInProgress,
-      slots: withDraftCheck(withFormEdit(metered ? { ...(draft.slots ?? {}), ...metered } : (draft.slots ?? {}), draft.formEdit), draft.draftCheck),
+      slots: withStages(withDraftCheck(withFormEdit(metered ? { ...(draft.slots ?? {}), ...metered } : (draft.slots ?? {}), draft.formEdit), draft.draftCheck), draft.stages, draft.stagesFrom ?? draft.startedAt),
       retryable: model?.retryable ?? false,
       retried: false,
       succeeded: draft.succeeded === true,
@@ -108,6 +109,12 @@ async function persistChatTrace(draft: ChatTraceDraft): Promise<void> {
     // migration used to drop the row with no log.
     console.warn(traceInsertWarning(error));
   }
+}
+
+/** CHAT_STAGE_TIMINGS_ENABLED: `stages` beside the other slots, in start order; absent, the slots as before. */
+function withStages(slots: Record<string, unknown>, stages: ChatTraceDraft["stages"], receivedAt: number): Record<string, unknown> {
+  const closed = closeStages(stages, receivedAt);
+  return closed && closed.length > 0 ? { ...slots, stages: closed } : slots;
 }
 
 /** FORM_EDIT_SINGLE_WRITER_ENABLED: the post-draft check's keys, when it ran; otherwise the slots as they were. */
