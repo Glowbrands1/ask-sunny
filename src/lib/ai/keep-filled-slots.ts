@@ -69,6 +69,7 @@ import type { ChatFormProposal, SourceCitation } from "@/types";
 import { withoutLevelAndStepClauses } from "./account-clauses";
 import { isAppLine, withoutAppLines } from "./app-sentences";
 import { withoutAsksToTheApp } from "./asks-to-the-app";
+import { withoutAppInstructions } from "./app-instructions";
 import { GRAMMAR_ANSWER, managerWords, observationByRules, readSentenceEdit } from "./edit-date-rules";
 import { titleTextFromQuestion, titleTextFromTurns } from "./title-words";
 import type { GroundedPerson } from "./grounded-entities";
@@ -295,7 +296,9 @@ export function holdFilledSlots(input: {
       const about = proposalMakeItAboutEnabled() ? turnsMadeAbout(own) : own;
       // PROPOSAL_POLICY_SET_ASIDE_ENABLED: "take the attendance policy off the form", and "we have quoted the standards of
       // conduct for …", are policy asks, never account (`forms/policy-set-aside.ts`).
-      const said = proposalPolicySetAsideEnabled() ? withoutPolicyAsks(about) : about;
+      const setAside = proposalPolicySetAsideEnabled() ? withoutPolicyAsks(about) : about;
+      // APP_INSTRUCTIONS_NOT_ACCOUNT_ENABLED: "Please word it in a professional way. I need the policy attached as well." is no account.
+      const said = setAside.map(withoutAppInstructions).filter((turn) => turn.trim() !== "");
       // FORM_EDIT_DATE_RULES_ENABLED: an edit replaces, adds to, or never touches the Observation.
       if (formEditDateRulesEnabled()) content = observationByRules(content, said, build);
       else if (grammarAskNotAccountEnabled()) content = withGrammarAnswered(build(content, said.map(withoutAsksToTheApp)), turns);
