@@ -36,6 +36,11 @@ export const NOV9_EXIT_LINES_KEEP_METHOD_CASES: ReplayCase[] = [{
     for (const turn of TURNS) replies.push((await thread.say(turn)).content);
     // The sibling app's roster-set gate R16A (10 Nov 2026), seen here too: with FORM_NAME_FROM_ROSTER on the exit card read "- **Name:** The employee".
     for (const said of replies) expect(said, `the card's Name is "The employee":\n${said}`).not.toMatch(/\*\*Name:\*\*\s*The employee/i);
+    // QA's #741 gate (10 Nov 2026): after the one ask, the typed name stays on the card ("Exit Form for **marisol fenwick**"),
+    // never "for the employee" and the not-found note again.
+    for (const said of replies.slice(1)) {
+      expect(said, `the typed name was dropped after the ask:\n${said}`).not.toMatch(/Exit Form\*\* for the employee|couldn't find \*\*Marisol Fenwick\*\*/i);
+    }
     for (const at of [2, 3, 4]) {
       expect(replies[at], `turn ${at + 1}: How Employee Resigned is blank:\n${replies[at]}`).toMatch(METHOD);
       expect(replies[at], `turn ${at + 1}: How Employee Resigned is left blank:\n${replies[at]}`).not.toMatch(/Left blank for you to review:\*\*[^\n]*How Employee Resigned/);

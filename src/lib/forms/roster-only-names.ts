@@ -150,6 +150,16 @@ export function rosterOnlyNames(response: AskResponse, names: readonly string[],
       const named = titleCased(employee);
       proposal = { ...proposal, employeeName: named, wovenCloseMatch: offRosterCardNote(named) };
       content = `${offRosterTakenLine(named)}\n\n${content.trim().split(`**${employee}**`).join(`**${named}**`)}`;
+    } else if (formNameOffRosterAskEnabled() && message && typedWholeRosterName(employee, message, names)) {
+      /*
+       * FORM_NAME_OFF_ROSTER_ASK_ENABLED (QA's #741 gate, 10 Nov 2026, nov6-diffemp-qa-*: "now one for Test Employee Two …",
+       * with "Test Employee" and "Test Employee Two" both on the roster): the reader left "Test" on the card, the first
+       * name of two roster people, so no one close person was found and the card was emptied. The message types one of
+       * them whole: the longest roster name it types that begins with the card's words is that person.
+       */
+      const named = typedWholeRosterName(employee, message, names)!;
+      proposal = { ...proposal, employeeName: named };
+      content = content.split(`**${employee}**`).join(`**${named}**`);
     } else if (
       formNameOffRosterAskEnabled() &&
       message &&
@@ -205,6 +215,13 @@ export function rosterOnlyNames(response: AskResponse, names: readonly string[],
        */
       const level = formNameOffRosterAskEnabled() && offRosterAskBeforeCardEnabled() && offRosterConfirmEnabled() ? rosterScopeLevel() : undefined;
       if (!close && level && level !== "salon" && (offRosterTyped(employee, message, names) || keptOffRoster(employee, message, names))) return response;
+      /*
+       * FORM_NAME_OFF_ROSTER_ASK_ENABLED (QA's #741 gate, 10 Nov 2026, nov9-exit-lines-keep-method): a salon manager is asked
+       * about a typed name on nobody's roster once (OFF_ROSTER_ASK_BEFORE_CARD, the turn that types it); on the turns after,
+       * the card keeps it as production does ("… Exit Form for marisol fenwick"), never "for the employee" and the
+       * not-found note again.
+       */
+      if (!close && level === "salon" && offRosterAskBeforeCardEnabled() && keptOffRoster(employee, undefined, names, { earlierOnly: true })) return response;
       proposal = { ...proposal, employeeName: null, status: "needs_employee" };
       // The reply never drafts for a name that is not on the card.
       content = content.replace(new RegExp(String.raw`\s+for\s+\*\*${escape(employee)}\*\*`, "g"), "").split(`**${employee}**`).join("the employee");
@@ -455,14 +472,31 @@ function anyRosterPersonClose(name: string, names: readonly string[]): boolean {
  * Sarah Test", then "she was out of dress code"). Never a placeholder ("… employee"), a form,
  * a company position or the company itself.
  */
-function keptOffRoster(employee: string, message: string | undefined, names: readonly string[]): boolean {
+function keptOffRoster(employee: string, message: string | undefined, names: readonly string[], options: { readonly earlierOnly?: boolean } = {}): boolean {
   const typed = employee.trim();
   if (!NAME_SHAPE.test(typed) || typed.split(/\s+/).length < 2) return false;
   if (rosterSpelling(typed, names) || anyRosterPersonClose(typed, names) || namesAForm(typed)) return false;
   if (normalizeTypedName(typed).split(/\s+/).includes(UNNAMED_PERSON_WORD)) return false;
   if (namesCompanyPositionTitle(typed) || namesThisCompany(typed)) return false;
   const said = new RegExp(String.raw`(?<![\p{L}])${escape(typed)}(?![\p{L}])`, "iu");
-  return [message ?? "", ...rosterScopeTurns()].some((turn) => said.test(turn));
+  // earlierOnly: the manager's turns before this one (the last is this turn's message).
+  const turns = options.earlierOnly ? rosterScopeTurns().slice(0, -1) : [message ?? "", ...rosterScopeTurns()];
+  return turns.some((turn) => said.test(turn));
+}
+
+/** The longest roster name the message types whole (any case) that begins with every word of `partial`; null with none. */
+function typedWholeRosterName(partial: string, message: string, names: readonly string[]): string | null {
+  const head = normalizeTypedName(partial).split(/\s+/).filter(Boolean);
+  if (head.length === 0) return null;
+  const typed = names.filter((name) => {
+    const words = normalizeTypedName(name).split(/\s+/);
+    if (words.length <= head.length || head.some((word, index) => words[index] !== word)) return false;
+    return new RegExp(String.raw`(?<![\p{L}])${escape(name)}(?![\p{L}'’-])`, "iu").test(message);
+  });
+  if (typed.length === 0) return null;
+  const longest = Math.max(...typed.map((name) => name.length));
+  const best = typed.filter((name) => name.length === longest);
+  return best.length === 1 ? best[0]!.trim() : null;
 }
 
 export function offRosterTyped(employee: string, message: string | undefined, names: readonly string[]): string | null {
