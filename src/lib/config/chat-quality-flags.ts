@@ -2847,6 +2847,16 @@ export function coachingAsksWhatHappenedEnabled(): boolean {
 }
 
 /**
+ * An animal alone cites Animals in the Workplace only; Visitors in the
+ * Workplace is cited beside it only when the animal is a customer's, guest's,
+ * visitor's, friend's or family member's (Pau, 5 Nov 2026). Off, every
+ * animal account also cites Visitors in the Workplace, as before.
+ */
+export function animalVisitorsOnlyWhenVisitorEnabled(): boolean {
+  return envFlag("ANIMAL_VISITORS_ONLY_WHEN_VISITOR_ENABLED");
+}
+
+/**
  * The turn that asked for the form stays in the bounded manager window when
  * later turns push it out (the coordinator's replays R6/R7, 5 Nov 2026; see
  * `forms/bounded-context.ts`). The window is computed on the server (the

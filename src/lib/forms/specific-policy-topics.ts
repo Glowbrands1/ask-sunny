@@ -1,4 +1,4 @@
-import { animalAnywhereEnabled, policySpecificTopicsEnabled, workAreaAbsenceCitesConductEnabled } from "@/lib/config/chat-quality-flags";
+import { animalAnywhereEnabled, animalVisitorsOnlyWhenVisitorEnabled, policySpecificTopicsEnabled, workAreaAbsenceCitesConductEnabled } from "@/lib/config/chat-quality-flags";
 
 import {
   findManualSection,
@@ -67,10 +67,15 @@ interface TopicRule {
   readonly cite: Cite;
   /** The words ARE the incident when negated ("no wet floor sign"): not read as a denial. */
   readonly negationIsTheIncident?: boolean;
-  /** Further sections the same incident is cited under, in order. */
-  readonly also?: readonly { readonly heading: string; readonly when?: RegExp }[];
-  /** A rule behind its own flag: read only when this says so. */
+  /** When given and off, the rule is not read at all (a flagged rule). */
   readonly enabled?: () => boolean;
+  /** Further sections the same incident is cited under, in order. */
+  readonly also?: readonly {
+    readonly heading: string;
+    readonly when?: RegExp;
+    /** When given and off, `when` is not read and the section is cited as before (a flagged condition). */
+    readonly whenEnabled?: () => boolean;
+  }[];
 }
 
 /*
@@ -98,6 +103,38 @@ const ANIMAL_AT_WORK = new RegExp(
  * guinea pig) still hold. Off, as before.
  */
 const ANIMAL_ALONE = new RegExp(String.raw`\b${ANIMAL}\b`);
+/*
+ * ANIMAL_VISITORS_ONLY_WHEN_VISITOR_ENABLED (Pau, 5 Nov 2026: "I choose 1";
+ * her OK for this one word list): an animal alone is Animals in the
+ * Workplace only. Visitors in the Workplace is cited beside it when the
+ * animal is a customer's, guest's, visitor's, friend's or family member's:
+ * "a customer brought her dog in", "her friend's dog", "a guest's puppy".
+ * Limited to this rule.
+ */
+const VISITOR_PERSON = String.raw`(?:customers?|clients?|guests?|visitors?|friends?|family(?:\s+members?)?)`;
+const VISITORS_ANIMAL = new RegExp(
+  String.raw`\b${VISITOR_PERSON}(?:['’]s?)?\s+(?:\S+\s+){0,2}?${ANIMAL}\b|\b${VISITOR_PERSON}\s+(?:\S+\s+){0,3}?(?:brought|brings|bringing|came in with|come in with|walked in with|showed up with|had|has)\s+(?:\S+\s+){0,3}?${ANIMAL}\b|\b${ANIMAL}\s+(?:that\s+)?(?:belong(?:s|ed|ing)?\s+to|of)\s+(?:a|an|the|her|his|their|my|our)?\s*${VISITOR_PERSON}\b`,
+  "i",
+);
+/*
+ * ANIMAL_VISITORS_ONLY_WHEN_VISITOR_ENABLED, case (c) (Pau, 5 Nov 2026, "Ok,
+ * A", relayed by QA; only these words): a visitor described with no animal is
+ * Visitors in the Workplace. A person who does not work here and, in the same
+ * sentence, where at work they were.
+ */
+const PRESENT_PERSON = String.raw`(?:visitors?|guests?|friends?|boyfriend|girlfriend|partner|husband|wife|family\s+members?|relatives?|kids?|child(?:ren)?|someone\s+who\s+(?:doesn['’]?t|does\s+not)\s+work\s+here|non-?employees?)`;
+/*
+ * QA's ruling on the same day (option b, no new words): a time context
+ * ("during … shift", "on the clock") counts only together with a place
+ * context, so a person and a place in one sentence is the reading. "her
+ * friend called during her shift" (no one there) cites nothing, and so does
+ * "his girlfriend hung out with him during his shift" (an open miss: it needs
+ * a place word; Pau can widen this later).
+ */
+const AT_WORK_PLACE = String.raw`(?:back\s?room|behind\s+the\s+counter|in\s+the\s+salon)`;
+const VISITOR_AT_WORK = new RegExp(
+  String.raw`\b${PRESENT_PERSON}\b[^.!?\n]*?\b${AT_WORK_PLACE}\b|\b${AT_WORK_PLACE}\b[^.!?\n]*?\b${PRESENT_PERSON}\b`,
+);
 const AT_WORK =
   /\b(?:store|salon|location|shop|lobby|building|work|shift|team|coworkers?|co-workers?|clients?|customers?|guests?|counter|front desk|back room|break ?room)\b/;
 
@@ -133,7 +170,7 @@ const TOPICS: readonly TopicRule[] = [
     words: [ANIMAL_AT_WORK],
     not: /\b(?:service animal|hot ?dogs?|guinea pig)\b/,
     cite: { kind: "heading", heading: "Animals in the Workplace" },
-    also: [{ heading: "Visitors in the Workplace" }],
+    also: [{ heading: "Visitors in the Workplace", when: VISITORS_ANIMAL, whenEnabled: animalVisitorsOnlyWhenVisitorEnabled }],
   },
   {
     id: "theft",
@@ -245,6 +282,13 @@ const TOPICS: readonly TopicRule[] = [
     ],
     cite: { kind: "heading", heading: CONDUCT_HEADING },
   },
+  {
+    /* Last: an account that is any incident above is that incident, a visitor or not. */
+    id: "visitors",
+    words: [VISITOR_AT_WORK],
+    enabled: animalVisitorsOnlyWhenVisitorEnabled,
+    cite: { kind: "heading", heading: "Visitors in the Workplace" },
+  },
 ];
 
 /* ------------------------------------------------------------- reading -- */
@@ -318,7 +362,9 @@ export function specificTopic(text: string): SpecificTopic | null {
       for (const pattern of [...rule.words, ...anywhere]) {
         const match = positiveMatch(pattern, sentence, rule);
         if (!match) continue;
-        const also = (rule.also ?? []).filter((entry) => entry.when === undefined || sentences.some((s) => entry.when!.test(s))).map((entry) => entry.heading);
+        const also = (rule.also ?? [])
+          .filter((entry) => entry.when === undefined || (entry.whenEnabled !== undefined && !entry.whenEnabled()) || sentences.some((s) => entry.when!.test(s)))
+          .map((entry) => entry.heading);
         return { id: rule.id, phrase: match[0].trim(), cite: rule.cite, also };
       }
     }
