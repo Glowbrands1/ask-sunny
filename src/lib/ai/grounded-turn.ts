@@ -1,5 +1,6 @@
 import "server-only";
 
+import { withFreshPersonFacts } from "./cross-person-facts";
 import {
   draftDedupeEnabled,
   draftReuseSameChatOnlyEnabled,
@@ -85,7 +86,8 @@ export async function deliverFormProposal(input: {
           wovenNoteShown: input.request.history.some((turn) => /Woven has \*\*/.test(turn.content)),
         });
     // KEEP_FORM_EMPLOYEE_ENABLED: "for Test Employee" stays Test Employee on the card. See `withTypedEmployeeOnCard`.
-    return withEditDateRules(
+    // CROSS_PERSON_FRESH_FACTS_ENABLED: another person's date and payroll answer never ride onto this card.
+    return withFreshPersonFacts(withEditDateRules(
       withTypedEmployeeOnCard(
         holdFilledSlots({
           response: enriched,
@@ -97,7 +99,7 @@ export async function deliverFormProposal(input: {
         input.request.question,
       ),
       input,
-    );
+    ), input.request);
   }
 
   /*
@@ -152,7 +154,8 @@ export async function deliverFormProposal(input: {
     : applied;
 
   const settled = withVisibleSalon(enriched, input);
-  const held = withEditDateRules(
+  // CROSS_PERSON_FRESH_FACTS_ENABLED: another person's date and payroll answer never ride onto this card.
+  const held = withFreshPersonFacts(withEditDateRules(
     withTypedEmployeeOnCard(
       holdFilledSlots({
         response: settled,
@@ -164,7 +167,7 @@ export async function deliverFormProposal(input: {
       input.request.question,
     ),
     input,
-  );
+  ), input.request, people);
   const reopened = await reopenSameIncident(dedupe, input, held);
   if (reopened) {
     await writeSaved(keepState, input, saved, held, prep);

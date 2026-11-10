@@ -4134,3 +4134,16 @@ export function appInstructionsNotAccountEnabled(): boolean {
 export function draftWriteNeverSilentEnabled(): boolean {
   return envFlag("DRAFT_WRITE_NEVER_SILENT_ENABLED");
 }
+
+/**
+ * CROSS_PERSON_FRESH_FACTS_ENABLED (coding 6, 10 Nov 2026; default off; the
+ * October triage's #2, #236 / Ask Bubbles #166). After <A>'s card, a card for
+ * <B> kept <A>'s Date (and, in the sibling app, <A>'s payroll answer): the
+ * stored form state went ahead of <B>'s turn unchanged. On: when the turn's
+ * employee is a different person, the stored date, payroll answer and
+ * amount, warning level, policy and incident are kept only when the turn
+ * states them. See `ai/cross-person-facts.ts`. Off, as before.
+ */
+export function crossPersonFreshFactsEnabled(): boolean {
+  return envFlag("CROSS_PERSON_FRESH_FACTS_ENABLED");
+}
