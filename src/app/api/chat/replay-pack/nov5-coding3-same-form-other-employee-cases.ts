@@ -99,7 +99,8 @@ export const NOV5_CODING3_SAME_FORM_OTHER_EMPLOYEE_CASES: readonly ReplayCase[] 
     title: "(a) with Mireya's Verbal CA card on screen (not created), \"Can you do the same thing for Caspian Drummet but switch it to a written\" — a Written CA card for Caspian with the late opening, nothing of Mireya on it",
     report: `${REPORT_A}; the same words before Create`,
     // Run 5 Nov 2026 (production flags): the card stays Mireya Vantrell, Verbal, and the request sentence is added to its Observation of Offense.
-    status: { open: "the card stays Mireya Vantrell's Verbal CA and the request sentence is added to its Observation of Offense; no card for Caspian Drummet" },
+    // Changed on purpose (10 Nov 2026): fixed in production by SAME_REQUEST_OTHER_PERSON_ENABLED, QA round 19; it now holds with production's flags.
+    status: "fixed",
     // Fixed under SAME_REQUEST_OTHER_PERSON_ENABLED (coding 6, 10 Nov 2026): a new request for the other person; open on production flags until QA flips it.
     fixFlags: ["SAME_REQUEST_OTHER_PERSON_ENABLED"],
     async run(t) {
@@ -183,7 +184,8 @@ export const NOV5_CODING3_SAME_FORM_OTHER_EMPLOYEE_CASES: readonly ReplayCase[] 
     title: "(c) with Mireya's CA card on screen (not created), \"also make a coaching form for Caspian Drummet\" — a Coaching card for Caspian, never for Mireya",
     report: `${REPORT_C}; the card not created yet`,
     // Was "fixed" on 5 Nov 2026 with the old flag file; FORM_TYPE_SWITCH_ENABLED is on in production since #555's reading (as in the sibling app), so it is OPEN here too.
-    status: { open: "the Coaching card is Mireya Vantrell's: the form-type switch reads the turn as \"change this to coaching\" and drops Caspian Drummet" },
+    // Changed on purpose (10 Nov 2026): fixed in production by SAME_REQUEST_OTHER_PERSON_ENABLED, QA round 19; it now holds with production's flags.
+    status: "fixed",
     // Fixed under SAME_REQUEST_OTHER_PERSON_ENABLED (coding 6, 10 Nov 2026): a new request for the other person; open on production flags until QA flips it.
     fixFlags: ["SAME_REQUEST_OTHER_PERSON_ENABLED"],
     async run(t) {
@@ -204,7 +206,8 @@ export const NOV5_CODING3_SAME_FORM_OTHER_EMPLOYEE_CASES: readonly ReplayCase[] 
     title: "(c) with Mireya's CA created and open, \"also make a coaching form for Caspian Drummet\" — a Coaching card for Caspian; Mireya's CA untouched",
     report: `${REPORT_C}; after Create`,
     // Was "fixed" on 5 Nov 2026 with the old flag file; FORM_TYPE_SWITCH_AFTER_CREATE_NOTE_ENABLED is on in production since #555's reading (as in the sibling app), so it is OPEN here too.
-    status: { open: "the Coaching card is Mireya Vantrell's: the switch-after-create note swaps in her opening request and drops Caspian Drummet" },
+    // Changed on purpose (10 Nov 2026): fixed in production by SAME_REQUEST_OTHER_PERSON_ENABLED, QA round 19; it now holds with production's flags.
+    status: "fixed",
     // Fixed under SAME_REQUEST_OTHER_PERSON_ENABLED (coding 6, 10 Nov 2026): a new request for the other person; open on production flags until QA flips it.
     fixFlags: ["SAME_REQUEST_OTHER_PERSON_ENABLED"],
     async run(t) {

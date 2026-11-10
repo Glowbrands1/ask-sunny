@@ -56,8 +56,6 @@ const CASPIAN = person("e-diffemp-caspian-drummet", "Caspian", "Drummet");
  */
 const FLAG = "SAME_REQUEST_OTHER_PERSON_ENABLED";
 const REPORT = 'QA live B21-4, 25 Oct 2026 (#224; the old-PR audit, 6 Nov 2026, 24/24 failing with production\'s flags): "now one for Test Employee Two at Lawrence for being late on 10-20-26"';
-const OPEN_CARD = "the card stays <A>'s and <B>'s turn joins <A>'s card sources — <B>'s incident would go onto <A>'s form";
-const OPEN_AFTER = "no card for <B>: \"I haven't changed the Corrective Action Form for <A>\"";
 
 function start(t: T) {
   vi.setSystemTime(new Date("2026-10-26T15:00:00Z"));
@@ -135,7 +133,8 @@ for (const wording of WORDINGS) {
         id: `nov6-diffemp-${wording.key}-${created ? "after-create" : "card-on-screen"}-${casing}`,
         title: `${created ? `with ${wording.a}'s CA created and open` : `with ${wording.a}'s CA card on screen`}, "${text}" — ${wording.b}'s own card from that turn only; ${wording.a}'s ${created ? "form" : "card"} unchanged`,
         report: `${REPORT}; ${wording.key}, ${casing}, ${created ? "after Create" : "card on screen"}`,
-        status: { open: created ? OPEN_AFTER : OPEN_CARD },
+        // Changed on purpose (10 Nov 2026): fixed in production by SAME_REQUEST_OTHER_PERSON_ENABLED, QA round 19; it now holds with production's flags.
+        status: "fixed",
         fixFlags: [FLAG],
         async run(t) {
           const thread = start(t);
@@ -210,7 +209,8 @@ for (const created of [false, true]) {
       id: `nov6-diffemp-guard-no-account-stays-same-form-${state}`,
       title: `guard: ${created ? "with Rory's CA created" : "with Rory's CA card on screen"}, "Can you do the same thing for Mara Quell but switch it to a written" (no account) — coding 3's copy of Rory's, never a card from the request sentence alone`,
       report: `${REPORT}; a turn naming <B> with no account is a copy of <A>'s request (never-break)`,
-      status: { open: "no card for Mara Quell: the card stays Rory's (nov5-coding3-sfo-a, open on production flags)" },
+      // Changed on purpose (10 Nov 2026): fixed in production by SAME_REQUEST_OTHER_PERSON_ENABLED, QA round 19; it now holds with production's flags.
+      status: "fixed",
       fixFlags: [FLAG],
       async run(t) {
         const thread = start(t);

@@ -123,7 +123,8 @@ export const NOV5_PAU_SF_S21_S25_CASES: ReplayCase[] = [
     id: "nov5-sf-s23-payroll-answer-and-policy-change",
     title: "sf-s23: \"not pay roll deductable\" answers the payroll question (not the Observation, not asked again); \"under performance not standard of conduct\" changes the Action Plan and Direct policy too",
     report: `${REPORT}, sf-s23`,
-    status: { open: "\"not pay roll deductable\" becomes the card's Observation and the payroll question is asked again" },
+    // Changed on purpose (10 Nov 2026): fixed in production by PAYROLL_SPLIT_WORDS_ENABLED, QA round 19; it now holds with production's flags.
+    status: "fixed",
     // Fixed under PAYROLL_SPLIT_WORDS_ENABLED (coding 6, 10 Nov 2026): "not pay roll deductable" answers payroll No; open on production flags until QA flips it.
     fixFlags: ["PAYROLL_SPLIT_WORDS_ENABLED"],
     async run(t) {

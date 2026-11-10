@@ -99,7 +99,8 @@ export const NOV5_PAU_SF_S26_S28_CASES: ReplayCase[] = [
     id: "nov5-sf-s27-coaching-name-only-asks-what-happened",
     title: "sf-s27: \"Create a coaching form.\" → \"Thessaly Brandt\": asks what happened; never \"Everything I need is here\"",
     report: "Pau via QA, 5 Nov 2026, sf-s27: \"Create a coaching form.\" → \"Employee R\" → \"Everything I need is here … I have the employee and the salon.\" with no incident",
-    status: { open: "says \"Everything I need is here … I have the employee and the salon.\" with no incident" },
+    // Changed on purpose (10 Nov 2026): fixed in production by COACHING_ASKS_WHAT_HAPPENED_ENABLED, QA round 19; it now holds with production's flags.
+    status: "fixed",
     fixFlags: ["COACHING_ASKS_WHAT_HAPPENED_ENABLED"],
     async run(t: T) {
       start(t);
