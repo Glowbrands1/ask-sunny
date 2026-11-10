@@ -342,7 +342,8 @@ const QA_EXTRA_CASES: readonly ReplayCase[] = [
      * question (the pack's stand-in answer) instead of asking who the form is for.
      */
     status: { open: "no card and no roster lookup of the address (the street-address guard holds), but no question either: it is answered as a policy question and never asks who the form is for" },
-    fixFlags: [],
+    // Fixed under ADDRESS_ONLY_ASKS_WHO_ENABLED (coding 6, 10 Nov 2026): asks who; open on production flags until QA flips it.
+    fixFlags: ["ADDRESS_ONLY_ASKS_WHO_ENABLED"],
     async run(t) {
       t.directory(LIVE_ROSTER);
       t.as("salon_director", KEARNEY);
