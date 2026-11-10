@@ -118,6 +118,8 @@ export const NOV5_CODING3_CHAT_EDITS_CASES: ReplayCase[] = [
     status: {
       open: "the card shows her account as its Observation, but the drafting model is handed only \"Create a coaching form.\" and \"yes\" (the draft's turns start at the request)",
     },
+    // Fixed under ACCOUNT_BEFORE_REQUEST_ENABLED (coding 6, 10 Nov 2026): the account the card shows is cited, so Create hands it to the draft.
+    fixFlags: ["ACCOUNT_BEFORE_REQUEST_ENABLED"],
     async run(t: T) {
       start(t);
       const thread = t.thread();

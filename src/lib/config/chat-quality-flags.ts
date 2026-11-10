@@ -4225,3 +4225,18 @@ export function registerAccuracyConductEnabled(): boolean {
 export function detailsFromEarlierAnswerEnabled(): boolean {
   return envFlag("DETAILS_FROM_EARLIER_ANSWER_ENABLED");
 }
+
+/**
+ * ACCOUNT_BEFORE_REQUEST_ENABLED (coding 6, 10 Nov 2026; default off; a
+ * manager's production chat relayed by coding 3, 5 Nov 2026, both apps).
+ * "<name> marked a session as complete but the guest hadn't been sprayed
+ * yet" → "Create a coaching form." → "yes": the card showed her account as
+ * its Observation, but it cited only the request and "yes", and Create sends
+ * the cited turns as the draft's notes, so the drafting model was never
+ * handed the account. On: a manager turn before the card's first cited turn
+ * whose words the card's Observation shows is cited too. See
+ * `ai/account-turn-sources.ts`. Off, as before.
+ */
+export function accountBeforeRequestEnabled(): boolean {
+  return envFlag("ACCOUNT_BEFORE_REQUEST_ENABLED");
+}

@@ -369,6 +369,8 @@ const NEW_FLAGS = [
   "REGISTER_ACCURACY_CONDUCT_ENABLED",
   // coding 6: DETAILS_FROM_EARLIER_ANSWER (default off): forced off with the others.
   "DETAILS_FROM_EARLIER_ANSWER_ENABLED",
+  // coding 6: ACCOUNT_BEFORE_REQUEST (default off): forced off with the others.
+  "ACCOUNT_BEFORE_REQUEST_ENABLED",
   // coding 6: POLICY_REFERENCE_NOT_ACCOUNT (default off): forced off with the others.
   "POLICY_REFERENCE_NOT_ACCOUNT_ENABLED",
   // coding 6: LEVEL_AFTER_FORM_NAME (default off): forced off with the others.
