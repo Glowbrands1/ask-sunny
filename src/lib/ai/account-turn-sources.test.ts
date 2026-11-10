@@ -33,6 +33,16 @@ describe("the account a card shows, given before its request", () => {
     expect(withAccountTurnSources(answer(["m3"]), HISTORY).formProposal!.sourceMessageIds).toEqual(["m1", "m3"]);
   });
 
+  it("a card saved before sourceMessageIds existed is left as it is, flag on or off (QA's round-23 gate)", () => {
+    const old = { content: CARD, formProposal: { templateKey: "coaching" } as unknown as import("@/types").ChatFormProposal };
+    expect(withAccountTurnSources(old, HISTORY)).toBe(old);
+    process.env.ACCOUNT_BEFORE_REQUEST_ENABLED = "true";
+    expect(() => withAccountTurnSources(old, HISTORY)).not.toThrow();
+    expect(withAccountTurnSources(old, HISTORY)).toBe(old);
+    const notAnArray = { content: CARD, formProposal: { templateKey: "coaching", sourceMessageIds: null } as unknown as import("@/types").ChatFormProposal };
+    expect(withAccountTurnSources(notAnArray, HISTORY)).toBe(notAnArray);
+  });
+
   it("is only a turn the Observation shows in full", () => {
     expect(observationShows(CARD, ACCOUNT)).toBe(true);
     expect(observationShows(CARD, "she was late to opening on 10/12 and left the door unlocked")).toBe(false);

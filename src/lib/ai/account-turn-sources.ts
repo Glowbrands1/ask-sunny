@@ -40,10 +40,12 @@ export function withAccountTurnSources<T extends { content: string; formProposal
   history: readonly { id?: string; role: string; content: string }[],
 ): T {
   const card = answer.formProposal;
-  if (!accountBeforeRequestEnabled() || !card || card.sourceMessageIds.length === 0) return answer;
+  // A card saved before sourceMessageIds existed has none: it is left as it is (QA's round-23 gate, 10 Nov 2026).
+  const sources = Array.isArray(card?.sourceMessageIds) ? card.sourceMessageIds : [];
+  if (!accountBeforeRequestEnabled() || !card || sources.length === 0) return answer;
   const observation = OBSERVATION_LINE.exec(answer.content)?.[1] ?? "";
   if (!observation) return answer;
-  const cited = new Set(card.sourceMessageIds);
+  const cited = new Set(sources);
   // The first cited turn in the history; none there, the card cites only this turn, and every earlier turn is before it.
   const index = history.findIndex((turn) => turn.id !== undefined && cited.has(turn.id));
   const first = index < 0 ? history.length : index;
@@ -53,5 +55,5 @@ export function withAccountTurnSources<T extends { content: string; formProposal
     .filter((turn) => turn.role === "user" && turn.id !== undefined && !cited.has(turn.id) && observationShows(observation, turn.content))
     .map((turn) => turn.id!);
   if (added.length === 0) return answer;
-  return { ...answer, formProposal: { ...card, sourceMessageIds: [...added, ...card.sourceMessageIds] } };
+  return { ...answer, formProposal: { ...card, sourceMessageIds: [...added, ...sources] } };
 }
