@@ -1,3 +1,4 @@
+import { terminationStatedTicksEnabled } from "@/lib/config/chat-quality-flags";
 import {
   TERMINATION_APPROVAL_LINE,
   TERMINATION_PLAN_SENTENCE,
@@ -20,6 +21,7 @@ const LEVEL_ASKED = /You'll set the verbal\/written warning level on the form â€
 const TYPE_LINE = "**Type of Warning:** Termination, as you said â€” I'll tick it on the form. Tell me if that should change.";
 
 export function withTerminationStated(response: AskResponse, request: AskRequest): AskResponse {
+  if (!terminationStatedTicksEnabled()) return response;
   const proposal = response.formProposal;
   if (!proposal || !(proposal.templateKey === "dpoa" || CORRECTIVE.test(proposal.templateName ?? ""))) return response;
   if (proposal.warningLevel || response.content.includes(TERMINATION_APPROVAL_LINE)) return response;

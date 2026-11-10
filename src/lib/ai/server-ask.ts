@@ -187,6 +187,7 @@ import { withOwnPlace } from "./keeps-own-place";
 import { withFormTypeSwitch, withSwitchNote, withSwitchSources } from "./form-type-switch";
 import { withUnreadDateAsk } from "./unread-date-ask";
 import { withStatedAmount } from "./amount-answer-saved";
+import { withTerminationStated } from "./termination-stated";
 import { withWarningLevelFromClause } from "./warning-level-clause";
 import { recallMemory, rememberFact } from "./chat-memory-store";
 import { normalizeForChat } from "./message-normalize-claude";
@@ -450,7 +451,8 @@ async function answerQuestionChecked(
             // UNKNOWN_NAME_ASK_ENABLED: a typed name not on the directory is named back, never asked again in the same words.
             withUnknownNameAsk(
               withFirstNameAsk(
-                withWarningLevelFromClause(withSpelledOutTitle(withJobTitleReadBackCase(withJobTitleCase(withJobTitleFromWords(withCoachingWhatHappened(withoutNoAccountAppPolicy(withCaWhatHappened(await applyQuietQuality(response), request)), request), request)))), request),
+                // TERMINATION_STATED_TICKS_ENABLED: a termination the manager stated is the card's level, with the approval line.
+                withTerminationStated(withWarningLevelFromClause(withSpelledOutTitle(withJobTitleReadBackCase(withJobTitleCase(withJobTitleFromWords(withCoachingWhatHappened(withoutNoAccountAppPolicy(withCaWhatHappened(await applyQuietQuality(response), request)), request), request)))), request), request),
                 request,
               ),
               request,
