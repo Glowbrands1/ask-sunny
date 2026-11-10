@@ -11,8 +11,10 @@ import type { FormPatch } from "./form-reducer";
  * warning.", the writer takes it ("Cleared Details of Coaching.") — nothing in the manager's words asks for either.
  *
  * With the flag on, a clear or a full replace of an account field that already holds text (Details of Coaching,
- * Observation of Offense, Follow-Up Observation) is dropped from the patch unless the latest message names that field or
- * asks to remove or rewrite it. Adds, and any other field, are as before. Pure.
+ * Observation of Offense, Follow-Up Observation) is dropped from the patch unless the latest message names that field,
+ * asks to remove or rewrite it, makes the form about something ("make it about …"), or corrects it ("fix her last name,
+ * it is …"). A replace that keeps the old account (a word corrected inside it) is never dropped. Adds, and any other
+ * field, are as before. Pure.
  */
 
 export const ACCOUNT_KEYS: ReadonlySet<string> = new Set(["coaching_details", "observation", "follow_up_observation"]);
@@ -42,6 +44,32 @@ export function wipeAsked(latest: string): boolean {
   return WIPE_ASKED.test(latest);
 }
 
+/*
+ * QA's gate (10 Nov 2026): the guard refused edits the manager did ask for — "make it about showing up late …", "can you
+ * make it for missing out monthly meeting" (the account rewritten on purpose), "fix her last name, it is Pembrooke" (a
+ * correction that rewrites the account), and a replace that keeps the account with one name corrected. Those go through.
+ */
+/** "make it about …", "make it for …", "make this be about …": the account is rewritten on purpose. */
+const MADE_ABOUT = /\bmake\s+(?:it|this|that|the\s+(?:form|document|coaching(?:\s+(?:form|document))?|ca|corrective\s+action(?:\s+form)?|write-?up))\s+(?:be\s+)?(?:about|for)\b/i;
+/** "fix her last name, it is …", "it's spelled …", "should be …", "correct the …", "actually …": a correction. */
+const CORRECTION = /\b(?:fix|correct(?:ion)?|it\s+is|it's|its\s+spelled|spelled|should\s+be|actually|typo|misspelled|wrong)\b/i;
+
+export function rewriteAsked(latest: string): boolean {
+  return MADE_ABOUT.test(latest) || CORRECTION.test(latest);
+}
+
+function contentWords(text: string): string[] {
+  return [...new Set(text.toLowerCase().match(/[\p{L}\d][\p{L}\d'’-]{3,}/gu) ?? [])];
+}
+
+/** The new text keeps the old account (at least half its words): a correction inside it, never an account dropped. */
+export function keepsAccount(before: string, after: string): boolean {
+  const old = contentWords(before);
+  if (old.length === 0) return true;
+  const kept = new Set(contentWords(after));
+  return old.filter((word) => kept.has(word)).length / old.length >= 0.5;
+}
+
 /**
  * The patch without the clears and full replaces of account fields the manager did not ask for. `current` is what each
  * field holds now: a field with no text loses nothing, so it is never guarded.
@@ -55,7 +83,11 @@ export function withoutUnaskedAccountWipes(
     return typeof value === "string" ? value.trim() !== "" : Array.isArray(value) && value.length > 0;
   };
   const guarded = (key: string) =>
-    ACCOUNT_KEYS.has(key) && holdsText(key) && !wipeAsked(input.latest) && !namesField(input.latest, key, input.labels[key]);
+    ACCOUNT_KEYS.has(key) &&
+    holdsText(key) &&
+    !wipeAsked(input.latest) &&
+    !rewriteAsked(input.latest) &&
+    !namesField(input.latest, key, input.labels[key]);
   const kept: string[] = [];
   const clear = patch.clear.filter((key) => {
     if (!guarded(key)) return true;
@@ -65,6 +97,9 @@ export function withoutUnaskedAccountWipes(
   const set = Object.fromEntries(
     Object.entries(patch.set).filter(([key]) => {
       if (patch.how?.[key] !== "replace" || !guarded(key)) return true;
+      const before = input.current[key];
+      const value = patch.set[key];
+      if (typeof before === "string" && typeof value === "string" && keepsAccount(before, value)) return true;
       kept.push(key);
       return false;
     }),

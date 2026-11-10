@@ -35,3 +35,17 @@ describe("withoutUnaskedAccountWipes", () => {
     expect(guard(clear("observation"), "clear the observation").patch.clear).toEqual(["observation"]);
   });
 });
+
+describe("what the guard lets through (QA's gate, 10 Nov 2026)", () => {
+  it("a made-about turn, a correction, or a replace that keeps the account", () => {
+    expect(guard(replace("coaching_details", "Thaddeus showed up late."), "I need you to make it about showing up late and please list the policy make the date for 10/14/26.").patch.set).toEqual({ coaching_details: "Thaddeus showed up late." });
+    expect(guard(replace("coaching_details", "Perrin missed the monthly meeting."), "can you make it for missing out monthly meeting").patch.set).toEqual({ coaching_details: "Perrin missed the monthly meeting." });
+    expect(guard(replace("coaching_details", "Odalys Pembrooke left the register drawer open on 10/15/26."), "fix her last name, it is Pembrooke").patch.set).toEqual({ coaching_details: "Odalys Pembrooke left the register drawer open on 10/15/26." });
+    expect(guard(replace("coaching_details", "Odalys Penwarden-Hale left the register drawer open on 10/15/26."), "she goes by Penwarden-Hale now").patch.set).toEqual({ coaching_details: "Odalys Penwarden-Hale left the register drawer open on 10/15/26." });
+  });
+
+  it("the manager's turn still never clears, or replaces with words that drop the account", () => {
+    expect(guard(clear("coaching_details")).patch.clear).toEqual([]);
+    expect(guard(replace("coaching_details", "This is a verbal warning.")).patch.set).toEqual({});
+  });
+});
