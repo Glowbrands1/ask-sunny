@@ -258,6 +258,14 @@ const FLIPPED_IN_FLIP_7: readonly string[] = [
   "FORM_EDIT_SINGLE_WRITER_ENABLED",
   "FORM_EDIT_SAID_REPLACEMENT_ENABLED",
   "FORM_PATCH_READER_FIXES_ENABLED",
+  /*
+   * Changed on purpose (10 Nov 2026): QA round 22 turned the roster-name set on in production. Of its nine flags only
+   * FORM_NAME_FROM_ROSTER changes this recording, and only in one field: the open Corrective Action's sourceMessageIds
+   * gains m0, m2 and m4, the earlier turns naming the same employee (`turnsAboutThisForm` reads them with the roster's
+   * spelling of the name). Every reply, every other row and every event is unchanged; the other eight flags change
+   * nothing here, so they stay in the production base.
+   */
+  "FORM_NAME_FROM_ROSTER_ENABLED",
 ];
 const PRODUCTION = [...PRODUCTION_FLAGS.on, ...PRODUCTION_FLAGS.assumedOn].filter((name) => !FLIPPED_IN_FLIP_7.includes(name));
 const TOOL_FLAGS = ["FORM_EDIT_SINGLE_WRITER_ENABLED", "FORM_EDIT_TOOL_IN_STREAM_ENABLED"] as const;

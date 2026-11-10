@@ -1,13 +1,7 @@
 {
-  "_comment": "on: the step's own flag(s), on only in the flags-on column. Today's production flags come from src/config/production-flags.json (on + assumedOn); a step flag already in production is not listed here. Step 4's flag needs the single writer (Step 2a) and is measured on the edit tool's path (Step 3), so all three are on. FORM_EDIT_SINGLE_WRITER_ENABLED left this list on 7 Nov 2026: flip 7 put it in production, so the production column already has it. 10 Nov 2026 (QA, #741): the roster-name set's flags that are not in production (OFF_ROSTER_CONFIRM_ENABLED already is), so CI's eval checks the set.",
+  "_comment": "on: the step's own flag(s), on only in the flags-on column. Today's production flags come from src/config/production-flags.json (on + assumedOn); a step flag already in production is not listed here. Step 4's flag needs the single writer (Step 2a) and is measured on the edit tool's path (Step 3), so all three are on. FORM_EDIT_SINGLE_WRITER_ENABLED left this list on 7 Nov 2026: flip 7 put it in production, so the production column already has it. 10 Nov 2026 (QA, #741): the roster-name set's flags that are not in production (OFF_ROSTER_CONFIRM_ENABLED already is), so CI's eval checks the set. 10 Nov 2026 (QA round 22): the roster-name set is in production now, so it leaves this list; the step flags it replaced (FORM_EDIT_TOOL_IN_STREAM, FORM_EDIT_NOOP_GUARD, not in production) are back.",
   "on": [
-    "FORM_NAME_FROM_ROSTER_ENABLED",
-    "FORM_NAME_OFF_ROSTER_ASK_ENABLED",
-    "NEAR_MISS_DETAILS_ACCEPT_ENABLED",
-    "NEAR_MISS_QUESTION_RULES_ENABLED",
-    "ROSTER_COMPOUND_SURNAME_ENABLED",
-    "ROSTER_NAME_IN_CANDIDATE_ENABLED",
-    "ROSTER_NEAR_MISS_ENABLED",
-    "ROSTER_NOT_FOUND_ANY_PHRASING_ENABLED"
+    "FORM_EDIT_TOOL_IN_STREAM_ENABLED",
+    "FORM_EDIT_NOOP_GUARD_ENABLED"
   ]
 }

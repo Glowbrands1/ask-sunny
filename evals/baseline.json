@@ -40,13 +40,14 @@
       "id": "s5",
       "pass": false,
       "misses": [
-        "employee"
+        "employee",
+        "blocking question"
       ],
       "card": {
-        "employee": "Nadia",
+        "employee": null,
         "salon": "loc-0468",
         "date": "2026-10-23",
-        "status": "ready"
+        "status": "needs_employee"
       }
     },
     {
@@ -126,12 +127,10 @@
     },
     {
       "id": "s25",
-      "pass": false,
-      "misses": [
-        "employee"
-      ],
+      "pass": true,
+      "misses": [],
       "card": {
-        "employee": "Dasiley Veklo",
+        "employee": "Daisley Veklo",
         "salon": "loc-0313",
         "date": null,
         "status": "ready"
@@ -172,16 +171,13 @@
     },
     {
       "id": "b9",
-      "pass": false,
-      "misses": [
-        "employee",
-        "reply lacks \"Who is this form for?\""
-      ],
+      "pass": true,
+      "misses": [],
       "card": {
-        "employee": "Test Employee",
+        "employee": null,
         "salon": null,
         "date": "2026-10-15",
-        "status": "ready"
+        "status": "needs_employee"
       }
     },
     {
@@ -219,16 +215,13 @@
     },
     {
       "id": "n1",
-      "pass": false,
-      "misses": [
-        "employee",
-        "reply lacks \"Who is this form for?\""
-      ],
+      "pass": true,
+      "misses": [],
       "card": {
-        "employee": "Test Employee",
+        "employee": null,
         "salon": "loc-0462",
         "date": null,
-        "status": "ready"
+        "status": "needs_employee"
       }
     },
     {
@@ -249,16 +242,13 @@
     },
     {
       "id": "n3",
-      "pass": false,
-      "misses": [
-        "employee",
-        "reply lacks \"Who is this form for?\""
-      ],
+      "pass": true,
+      "misses": [],
       "card": {
-        "employee": "Tt",
+        "employee": null,
         "salon": null,
         "date": "2026-10-23",
-        "status": "ready"
+        "status": "needs_employee"
       }
     },
     {
@@ -331,13 +321,14 @@
       "id": "g7",
       "pass": false,
       "misses": [
-        "employee"
+        "employee",
+        "blocking question"
       ],
       "card": {
-        "employee": "Dodge",
+        "employee": null,
         "salon": null,
         "date": null,
-        "status": "ready"
+        "status": "needs_employee"
       }
     },
     {

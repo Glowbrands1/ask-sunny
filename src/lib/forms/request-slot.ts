@@ -252,7 +252,26 @@ export function outsideRequestSlot(candidate: string, text: string | undefined =
     return words.every((word) => named.has(word));
   })) return true;
   const slot = requestSlotNames(text);
-  return slot !== null && !inSlot(candidate, slot);
+  if (slot === null || inSlot(candidate, slot)) return false;
+  return !typedOnAfterSlotName(candidate, slot, text);
+}
+
+/*
+ * QA's round-22 eval check (10 Nov 2026, sf-s4): "make me a CA for Odalys merriwether for being late …" — the slot reads
+ * capitalised words, so it held "Odalys", and "Odalys Merriwether" was ruled out unless somebody on the roster has that
+ * whole name; a person who is not on the roster (or a roster read that fails) lost the surname. A slot name followed,
+ * right after the request's "for", by ONE more word typed in lower case is that person's full name, when the word is no
+ * account verb ("for Rhea Calloway failing …" is still cut to Rhea Calloway).
+ */
+function typedOnAfterSlotName(candidate: string, slot: readonly string[], text: string): boolean {
+  const words = candidate.trim().split(/\s+/);
+  if (words.length < 2 || nameBeforeAccountVerb(candidate) !== candidate.trim()) return false;
+  const head = wordsOf(words.slice(0, -1).join(" ")).join(" ");
+  if (!slot.some((name) => wordsOf(name).join(" ") === head)) return false;
+  const spelled = words.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(String.raw`\s+`);
+  const last = words.at(-1)!;
+  return new RegExp(String.raw`\bfor\s+${spelled}(?![\p{L}'’-])`, "iu").test(text) &&
+    new RegExp(String.raw`(?:^|[^\p{L}'’-])${last.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\p{L}'’-])`, "u").test(text);
 }
 
 /**
