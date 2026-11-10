@@ -52,6 +52,68 @@ function lateAllThree(reading?: unknown) {
 
 const TOPIC_FIX = ["MADE_ABOUT_REWRITE_FINISHES_ENABLED", "MADE_ABOUT_TOPIC_EVIDENCE_ENABLED"];
 
+const P9 = "I need you to make it about showing up late and please list the policy make the date for 10/14/26";
+const SAID_DATE_FIX = [
+  "MADE_ABOUT_READER_ACCOUNT_ENABLED",
+  "MADE_ABOUT_POLICY_LINE_ENABLED",
+  "MADE_ABOUT_REWRITE_FINISHES_ENABLED",
+  "EDIT_POLICY_ASK_ENABLED",
+  "MADE_ABOUT_SAID_DATE_ENABLED",
+];
+const VAGUE = "Observed:\nNo specific incident or coaching discussion was described.\n\nExpectation:\nMarnie is expected to meet the standards of the role.";
+
+/**
+ * P9's combined sentence. The reader (as gate runner 2's probe) replaces Other and Details and says the policy was asked
+ * for; the revision writes Details about showing up late WITHOUT the date (the live revision need not repeat it). Saved:
+ * after "make it about leaving the front desk unattended on 11/6/26". Vague: the first edit of a draft with no incident.
+ */
+function p9(shape: { readonly saved: boolean }) {
+  return async (t: ReplayContext) => {
+    vi.setSystemTime(new Date("2026-11-10T01:41:00Z"));
+    t.directory(REFUSAL_ROSTER);
+    t.as("salon_director", KEARNEY);
+    const FIRST = "make it about leaving the front desk unattended on 11/6/26";
+    const desk = "Observed:\nMarnie Holloway left the front desk unattended on 11/6/26.\n\nExpectation:\nMarnie is expected to remain at the front desk.";
+    const late = "Observed:\nMarnie Holloway showed up late.\n\nExpectation:\nMarnie is expected to arrive on time.";
+    t.patchReads!({
+      [FIRST]: patch("this_form", [
+        { field: "other_topic", value: "Leaving the front desk unattended", how: "replace", evidence: "leaving the front desk unattended" },
+        { field: "coaching_details", value: desk, how: "replace", evidence: "leaving the front desk unattended on 11/6/26" },
+      ]) as never,
+      [P9]: {
+        ...patch("this_form", [
+          { field: "other_topic", value: "Showing up late", how: "replace", evidence: "showing up late" },
+          { field: "coaching_details", value: late, how: "replace", evidence: "showing up late" },
+        ]),
+        policy_asked: true,
+      } as never,
+    });
+    const thread = t.thread();
+    if (shape.saved) {
+      await thread.say("create a coaching form for Marnie Holloway, she missed the monthly meeting on 10/10/26");
+      t.draftWrites({ coaching_details: DETAILS, other_topic: "Missed monthly meeting" }, { coaching_topics: ["other"] });
+    } else {
+      await thread.say("create a coaching form for Marnie Holloway");
+      t.draftWrites({ coaching_details: VAGUE });
+    }
+    const id = await thread.create();
+    if (shape.saved) {
+      t.revisionWrites({ coaching_details: desk });
+      await thread.say(FIRST);
+      expect(t.values(id).form_date, "the first edit set the Date").toBe("2026-11-06");
+    }
+    t.revisionWrites({ coaching_details: late });
+    const reply = await thread.say(P9);
+    const saved = t.values(id);
+    expect(reply.content, `nothing was saved:\n${reply.content}`).not.toMatch(/everything on it is as it was/);
+    expect(saved.form_date, `the Date:\n${reply.content}`).toBe("2026-10-14");
+    expect(saved.coaching_details ?? "", `Details:\n${reply.content}`).toMatch(/showed up late/);
+    expect(saved.coaching_details ?? "", "Details still about the old account").not.toMatch(/front desk|No specific incident/);
+    expect(saved.other_topic ?? "", `Other:\n${reply.content}`).toMatch(/late/i);
+    expect(saved.coaching_details ?? "", `the policy line:\n${saved.coaching_details}`).toMatch(/Policy reference: .*JBA Policy Manual p\.\d+/);
+  };
+}
+
 export const NOV10_MADE_ABOUT_TOPIC_AND_DATE_CASES: ReplayCase[] = [
   {
     id: "nov10-made-about-short-topic-reader-other",
@@ -94,46 +156,18 @@ export const NOV10_MADE_ABOUT_TOPIC_AND_DATE_CASES: ReplayCase[] = [
   },
   {
     id: "nov10-made-about-said-date-saved-draft-live",
-    title: "QA's live Sunny round 14: on a saved draft already about the front desk on 11/6/26, \"I need you to make it about showing up late and please list the policy make the date for 10/14/26\" with the reader writing the policy into Details: Details, Other and the Date are written",
-    report: "QA's live Sunny round 14 (10 Nov 2026, 01:43Z): \"I haven't changed the Coaching Form …\", nothing saved",
-    status: { open: "the reader's patch (policy words in Details) is refused whole and handed to the old path, whose revision will not drop 11/6/26" },
-    fixFlags: [
-      "MADE_ABOUT_READER_ACCOUNT_ENABLED",
-      "MADE_ABOUT_POLICY_LINE_ENABLED",
-      "MADE_ABOUT_REWRITE_FINISHES_ENABLED",
-      "EDIT_POLICY_ASK_ENABLED",
-      "MADE_ABOUT_SAID_DATE_ENABLED",
-    ],
-    async run(t) {
-      vi.setSystemTime(new Date("2026-11-10T01:41:00Z"));
-      t.directory(REFUSAL_ROSTER);
-      t.as("salon_director", KEARNEY);
-      const FIRST = "make it about leaving the front desk unattended on 11/6/26";
-      const P9 = "I need you to make it about showing up late and please list the policy make the date for 10/14/26";
-      const late = "Observed:\nMarnie Holloway showed up late.\n\nExpectation:\nMarnie is expected to arrive on time.";
-      t.patchReads!({
-        [FIRST]: patch("this_form", [{ field: "other_topic", value: "Leaving the front desk unattended", how: "replace", evidence: "leaving the front desk unattended" }]) as never,
-        // The live reader, asked to list the policy, wrote it into Details: words the manager did not say.
-        [P9]: patch("this_form", [
-          { field: "other_topic", value: "Showing up late", how: "replace", evidence: "showing up late" },
-          { field: "coaching_details", value: `${late}\n\nPolicy reference: Attendance Policy, JBA Policy Manual p.14`, how: "replace", evidence: "make it about showing up late" },
-        ]) as never,
-      });
-      const thread = t.thread();
-      await thread.say("create a coaching form for Marnie Holloway, she missed the monthly meeting on 10/10/26");
-      t.draftWrites({ coaching_details: DETAILS, other_topic: "Missed monthly meeting" }, { coaching_topics: ["other"] });
-      const id = await thread.create();
-      t.revisionWrites({ coaching_details: "Observed:\nMarnie Holloway left the front desk unattended on 11/6/26.\n\nExpectation:\nMarnie is expected to remain at the front desk." });
-      await thread.say(FIRST);
-      expect(t.values(id).form_date, "the first edit set the Date").toBe("2026-11-06");
-      t.revisionWrites({ coaching_details: "Observed:\nMarnie Holloway showed up late on 10/14/26.\n\nExpectation:\nMarnie is expected to arrive on time." });
-      const reply = await thread.say(P9);
-      const saved = t.values(id);
-      expect(reply.content, `nothing was saved:\n${reply.content}`).not.toMatch(/I haven't changed/);
-      expect(saved.form_date, `the Date:\n${reply.content}`).toBe("2026-10-14");
-      expect(saved.coaching_details ?? "", `Details:\n${reply.content}`).toMatch(/showed up late/);
-      expect(saved.coaching_details ?? "", "Details still about the front desk").not.toMatch(/front desk/);
-      expect(saved.other_topic ?? "", `Other:\n${reply.content}`).toMatch(/late/i);
-    },
+    title: "QA's live Sunny round 14 (P9): on a saved draft already about the front desk on 11/6/26, \"I need you to make it about showing up late and please list the policy make the date for 10/14/26\", the reader's patch refused and the revision writing Details without a date: Date, Details, Other and the policy line are saved",
+    report: "QA's live Sunny round 14 (10 Nov 2026, 01:43Z, P9 from 7 Nov): \"I haven't changed the Coaching Form …\", nothing saved",
+    status: { open: "the reader's patch is refused whole and handed to the old path, whose revision will not drop 11/6/26" },
+    fixFlags: SAID_DATE_FIX,
+    run: p9({ saved: true }),
+  },
+  {
+    id: "nov10-made-about-said-date-vague-draft-live",
+    title: "QA's live Sunny round 14 (P9, its original shape): the sentence as the FIRST edit of a draft whose Details say \"No specific incident…\" and with no Other: Date, Details, Other and the policy line are saved",
+    report: "QA's live Sunny round 14 (10 Nov 2026, 01:47Z, conv_mwa14fdh2cds42a): \"I haven't changed …\", nothing saved",
+    status: { open: "the reader's Details is refused (not the manager's words) and its Other has no box ticked: the patch is refused whole" },
+    fixFlags: SAID_DATE_FIX,
+    run: p9({ saved: false }),
   },
 ];

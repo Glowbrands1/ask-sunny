@@ -338,7 +338,9 @@ function basePresetRules(loaded: LoadedInstance, ops: readonly FormEditOp[], rul
       ? (madeAboutDate(latest, today) ??
         (madeAboutSaidDateEnabled() && madeAbout(latest) !== null ? saidFormDate(latest, today) : null))
       : null;
-  const guard = aboutDate ? { ...read, formDate: aboutDate } : read;
+  const guard = aboutDate
+    ? { ...read, formDate: aboutDate, ...(madeAboutSaidDateEnabled() && madeAboutWriteNoted(loaded.instance.id) ? { oldIncidentDates: true } : {}) }
+    : read;
   const writeIns = writeInsOf(loaded);
   const groups = groupsOf(loaded);
   const lists = new Set([PRIOR_ACTIONS_KEY]);
