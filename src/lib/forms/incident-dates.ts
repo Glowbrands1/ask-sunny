@@ -1,5 +1,5 @@
 import { isAppLine, withoutAppLines } from "@/lib/ai/app-sentences";
-import { dateAnswerAppliedEnabled, dateAnswerKeepsOpenEnabled, formDateSaidSettlesEnabled, keepFormEmployeeEnabled, priorSentenceFixEnabled, stepDateNoQuestionEnabled } from "@/lib/config/chat-quality-flags";
+import { dateAnswerAppliedEnabled, dateAnswerKeepsOpenEnabled, formDateSaidSettlesEnabled, futureIncidentDateAskEnabled, keepFormEmployeeEnabled, priorSentenceFixEnabled, stepDateNoQuestionEnabled } from "@/lib/config/chat-quality-flags";
 
 /** DATE_ANSWER_KEEPS_OPEN_ENABLED, on top of the live DATE_ANSWER_APPLIED_ENABLED. */
 const keepsOpen = () => dateAnswerAppliedEnabled() && dateAnswerKeepsOpenEnabled();
@@ -210,6 +210,40 @@ export function answersDateQuestion(history: readonly Turn[], question: string, 
 const DATED_TEMPLATES: ReadonlySet<string> = new Set(["coaching", "follow-up-coaching", "dpoa", "policy-review"]);
 const COACHING_TEMPLATES: ReadonlySet<string> = new Set(["coaching", "follow-up-coaching"]);
 
+/*
+ * FUTURE_INCIDENT_DATE_ASK_ENABLED (October triage #11; Sunny #285, the sibling app's #207 BH5). Written on 10/25,
+ * "write up <employee>, written warning, for not attending the monthly meeting on 12-20-26" gave a card dated
+ * 12/20/2026 and asked nothing. A form records what already happened, so with the flag on an incident date after
+ * today, with no past incident date beside it, is asked about once and never dates the form. A deadline ("the 11/1
+ * woven deadline", "the 12-20-26 due date") or a date things are due "by" is not an incident and is not asked about;
+ * neither is a date the manager gave the form ("dated …"). Off, as before.
+ */
+export const FUTURE_DATE_TAG = "is after today";
+const DEADLINE_NEAR_AFTER = /^\s*(?:\S+\s+){0,2}?(?:deadline|due\s+date)\b/i;
+const DUE_BEFORE = /\b(?:by|due|until|till|before|deadline(?:\s+is)?|follow[- ]?up(?:\s+on)?|next|starting|starts?|effective)\s+(?:on\s+)?(?:the\s+)?$/i;
+
+export function futureIncidentDate(typed: string, today: string): string | null {
+  // The manager's own words: the app's state lines ("It happened on 11/1/2026.") repeat what was read, deadline or not.
+  const text = withoutAppLines(typed);
+  for (const found of listIncidentDates(text, today)) {
+    if (found.iso <= today) continue;
+    const before = text.slice(Math.max(0, found.index - 30), found.index);
+    const after = text.slice(found.index).replace(/^\S+/, "");
+    if (DUE_BEFORE.test(before) || DEADLINE_NEAR_AFTER.test(after)) continue;
+    return found.iso;
+  }
+  return null;
+}
+
+function usDate(iso: string): string {
+  const [year, month, day] = iso.split("-");
+  return `${month}/${day}/${year}`;
+}
+
+export function futureDateQuestion(iso: string, today: string): string {
+  return `The date you gave, **${usDate(iso)}**, ${FUTURE_DATE_TAG} (**${usDate(today)}**). A form records what already happened — what date did it happen?`;
+}
+
 export interface FormDateDecision {
   /** Set when this module decides the date; `null` means "the day it is created". Absent: leave it as read. */
   readonly formDate?: string | null;
@@ -256,6 +290,16 @@ export function decideFormDate(input: {
   if (incidentOnlyOn() && dates.length <= 1) {
     const first = listIncidentDates(input.text, input.today)[0];
     if (first && incidentOnly(input.text, input.today, [first]).length === 0) return { formDate: dates[0] ?? null };
+  }
+  // FUTURE_INCIDENT_DATE_ASK_ENABLED: no past incident date, and one after today — asked once, never the form's Date.
+  if (futureIncidentDateAskEnabled() && dates.length === 0) {
+    const future = futureIncidentDate(input.text, input.today);
+    if (future) {
+      return {
+        formDate: null,
+        ...(input.history.some((turn) => turn.role === "assistant" && turn.content.includes(FUTURE_DATE_TAG)) ? {} : { question: futureDateQuestion(future, input.today) }),
+      };
+    }
   }
   if (dates.length <= 1) return {};
   if (input.correctedTo && dates.includes(input.correctedTo)) return { formDate: input.correctedTo };

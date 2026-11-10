@@ -4316,3 +4316,16 @@ export function sameRequestKeepsEarlierCardClientEnabled(): boolean {
 export function templateOutlineFieldsEnabled(): boolean {
   return envFlag("TEMPLATE_OUTLINE_FIELDS_ENABLED");
 }
+
+/**
+ * FUTURE_INCIDENT_DATE_ASK_ENABLED (coding 6, 10 Nov 2026; default off;
+ * October triage #11, Sunny #285 / the sibling app's #207 BH5). Written on
+ * 10/25, "… for not attending the monthly meeting on 12-20-26" gave a card
+ * dated 12/20/2026 and asked nothing. On: an incident date after today, with
+ * no past incident date beside it, is asked about once and never dates the
+ * form; a deadline or a "by"/"due" date is not asked about. See
+ * `forms/incident-dates.ts`. Off, as before.
+ */
+export function futureIncidentDateAskEnabled(): boolean {
+  return envFlag("FUTURE_INCIDENT_DATE_ASK_ENABLED");
+}

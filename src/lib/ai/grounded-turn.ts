@@ -15,6 +15,7 @@ import {
 } from "@/lib/config/chat-quality-flags";
 import type { AskResponse } from "@/lib/ai/types";
 import { withAccountTurnSources } from "@/lib/ai/account-turn-sources";
+import { withFutureDateQuestion } from "@/lib/ai/future-incident-date";
 import { conversationKeyOf } from "@/lib/forms/conversation-key";
 import { formOpenedFor, openingLine } from "@/lib/forms/editable-draft";
 import { withKeptTypedNames } from "@/lib/forms/kept-typed-names";
@@ -87,7 +88,8 @@ export async function deliverFormProposal(input: {
         });
     // KEEP_FORM_EMPLOYEE_ENABLED: "for Test Employee" stays Test Employee on the card. See `withTypedEmployeeOnCard`.
     // ACCOUNT_BEFORE_REQUEST_ENABLED: the account the card shows, given before its request, is cited (`ai/account-turn-sources.ts`).
-    return withAccountTurnSources(withEditDateRules(
+    // FUTURE_INCIDENT_DATE_ASK_ENABLED: a card dated after today by the account's own date is asked about (`ai/future-incident-date.ts`).
+    return withFutureDateQuestion(withAccountTurnSources(withEditDateRules(
       withTypedEmployeeOnCard(
         holdFilledSlots({
           response: enriched,
@@ -99,7 +101,7 @@ export async function deliverFormProposal(input: {
         input.request.question,
       ),
       input,
-    ), input.request.history);
+    ), input.request.history), input.request);
   }
 
   /*
@@ -155,7 +157,8 @@ export async function deliverFormProposal(input: {
 
   const settled = withVisibleSalon(enriched, input);
   // ACCOUNT_BEFORE_REQUEST_ENABLED: the account the card shows, given before its request, is cited (`ai/account-turn-sources.ts`).
-  const held = withAccountTurnSources(withEditDateRules(
+  // FUTURE_INCIDENT_DATE_ASK_ENABLED: a card dated after today by the account's own date is asked about (`ai/future-incident-date.ts`).
+  const held = withFutureDateQuestion(withAccountTurnSources(withEditDateRules(
     withTypedEmployeeOnCard(
       holdFilledSlots({
         response: settled,
@@ -167,7 +170,7 @@ export async function deliverFormProposal(input: {
       input.request.question,
     ),
     input,
-  ), input.request.history);
+  ), input.request.history), input.request);
   const reopened = await reopenSameIncident(dedupe, input, held);
   if (reopened) {
     await writeSaved(keepState, input, saved, held, prep);
