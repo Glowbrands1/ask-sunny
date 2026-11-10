@@ -3002,6 +3002,17 @@ export function metricGuardEnabled(): boolean {
 }
 
 /**
+ * CA_REASON_DUE_TO_ENABLED (ported from the sibling app, QA, live, 4 Nov 2026; default off). "CA for <name> due
+ * to …" reads the reason after the person whatever CA_SALES_POLICY says, and a drafted Observation the model
+ * began with the request ("CA for <name> due to …", or "create a ca for <name> at <salon>, she was late …")
+ * begins with the request's reason or the account after its comma (`forms/request-observation.ts`). Off, as
+ * before.
+ */
+export function caReasonDueToEnabled(): boolean {
+  return envFlag("CA_REASON_DUE_TO_ENABLED");
+}
+
+/**
  * METRIC_CHOICE_ONE_QUESTION_ENABLED (QA, 7 Nov 2026; default off). The same doubled ask as the sibling app's FORM_NAME
  * re-flip gate regression, under METRIC_GUARD_ENABLED: a choice question with its own "Tell me and I'll …" after it,
  * every choice a metric, became "Who is this form for? Tell me the employee's full name. Tell me and I'll fill in …".
