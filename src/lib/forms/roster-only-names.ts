@@ -11,7 +11,7 @@ import { namesThisCompany } from "./company-name";
 import { namesCompanyPositionTitle } from "./staff-picker";
 import { metricMessage, namesAMetric, requestMessage, cardOnScreen } from "./request-slot";
 import { namesAForm } from "./template-intent";
-import { onlyAsPossessivePlace, possessivePlaceQuestion } from "./possessive-place";
+import { onlyAsPossessivePlace, POSSESSIVE_PLACE_QUESTION_LINE, possessivePlaceQuestion } from "./possessive-place";
 import { rosterScopeLevel } from "./roster-scope";
 
 /**
@@ -394,6 +394,9 @@ export function withoutUnseatedName(
     .filter((line) => !/^\s*\**\s*Name\s*:/i.test(line))
     .map((line) => {
       if (/I couldn['’]t find \*\*/.test(line) || ASKS_A_CHOICE.test(line)) return line;
+      // FORM_NAME_OFF_ROSTER_ASK_ENABLED (QA's #741 gate, 10 Nov 2026): the possessive-place question quotes the place's
+      // word ("Hadley's"), never "the employee". Off, the line is scrubbed as before.
+      if (formNameOffRosterAskEnabled() && POSSESSIVE_PLACE_QUESTION_LINE.test(line)) return line;
       // A roster person's name in the line is somebody else's: kept as written.
       const kept: string[] = [];
       let next = line;

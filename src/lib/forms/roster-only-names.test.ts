@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AskResponse } from "@/lib/ai/types";
 import type { ChatFormProposal } from "@/types";
 
-import { ASK_WHO, rosterOnlyNames, rosterSpelling } from "./roster-only-names";
+import { possessivePlaceQuestion } from "./possessive-place";
+import { ASK_WHO, rosterOnlyNames, rosterSpelling, withoutUnseatedName } from "./roster-only-names";
 
 /**
  * Pau, 5 Nov 2026 (FORM_NAME_FROM_ROSTER_ENABLED): only roster people are ever
@@ -51,7 +52,9 @@ describe("the card's employee", () => {
 
   it("a first name that is one roster person's is asked about, never put on the card", () => {
     const out = rosterOnlyNames(reply("I'll draft a **Corrective Action Form** for **Perpetua** from what you've described.", "Perpetua"), ROSTER);
-    expect(out.formProposal?.employeeName).toBeNull();
+    // Changed on purpose (QA's #741 gate, 10 Nov 2026): with ROSTER_NEAR_MISS on the card waits for the answer (no
+    // proposal at all), which is "never put on the card" too.
+    expect(out.formProposal?.employeeName ?? null).toBeNull();
     expect(out.content).toContain("Is this for **Perpetua Thornquist**?");
   });
 
@@ -147,5 +150,25 @@ describe("the gate's regressions: nothing in the reply speaks for a removed empl
     // A choice still asked keeps its tail.
     const two = "Which of them is this **Resignation/Exit Form** for — **Dana Lane** or **Perpetua Thornquist**? Tell me and I'll fill in what you've already described.";
     expect(rosterOnlyNames(reply(two, null), ROSTER).content).toBe(two);
+  });
+});
+
+/*
+ * FORM_NAME_OFF_ROSTER_ASK_ENABLED (QA's #741 gate, 10 Nov 2026): with the roster-name set on, "create a CA for
+ * Hadley's Crossing Plaza, she was late on 10-20-26" asked 'Who is this Corrective Action Form for? "the employee" is
+ * part of a place's name …': the unseated-name scrub took the place's word for the typed name.
+ */
+describe("the possessive-place question keeps the place's word (FORM_NAME_OFF_ROSTER_ASK_ENABLED)", () => {
+  const question = possessivePlaceQuestion("Corrective Action Form", "Hadley");
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("on: \"Hadley's\" stays quoted", () => {
+    vi.stubEnv("FORM_NAME_OFF_ROSTER_ASK_ENABLED", "true");
+    expect(withoutUnseatedName(question, ["Hadley"], ["Remy Calder"])).toBe(question);
+  });
+
+  it("off: scrubbed as before", () => {
+    vi.stubEnv("FORM_NAME_OFF_ROSTER_ASK_ENABLED", "false");
+    expect(withoutUnseatedName(question, ["Hadley"], ["Remy Calder"])).not.toContain("Hadley");
   });
 });
