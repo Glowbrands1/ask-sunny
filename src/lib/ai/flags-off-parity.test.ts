@@ -718,6 +718,15 @@ const PROTECTED = [
  * Behind CA_SALES_POLICY_ENABLED, default off; off, every row is carried as
  * before. The filed form is never touched. Same hunk in both apps (Ask
  * Bubbles 66813d54); in Ask Sunny the Type of Offense change is revision 8.
+ *
+ * The user (Pau) approved on 10 Nov 2026, via QA ("ok revision archived"), in
+ * src/lib/forms/instances.ts, both apps, exactly the lines of
+ * docs/patches/revision-archived-not-open.patch: the import
+ * `revisionArchivedNotOpenEnabled` beside `caSalesPolicyEnabled`, and in
+ * findOpenRevision the draft query split so that, behind
+ * REVISION_ARCHIVED_NOT_OPEN_ENABLED (default off), `.is("archived_at", null)`
+ * leaves archived drafts out. Off, the same query as before. instances.ts is
+ * already excluded; the narrowed index migration is applied in both DBs.
  */
 const APPROVED_PROTECTED_EDITS = [
   ":(exclude)src/lib/forms/proposal.ts",
