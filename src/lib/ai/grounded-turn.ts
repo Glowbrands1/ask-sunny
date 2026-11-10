@@ -11,6 +11,7 @@ import {
   secondFormEnabled,
   slotRetentionEnabled,
   wholeTeamCoachingEnabled,
+  secondRequestOwnAccountEnabled,
 } from "@/lib/config/chat-quality-flags";
 import type { AskResponse } from "@/lib/ai/types";
 import { conversationKeyOf } from "@/lib/forms/conversation-key";
@@ -18,6 +19,7 @@ import { formOpenedFor, openingLine } from "@/lib/forms/editable-draft";
 import { withKeptTypedNames } from "@/lib/forms/kept-typed-names";
 import { withRosterAnchor } from "@/lib/forms/roster-anchor-store";
 import { loadScopedRoster, readDirectoryFacts, withRosterLimit, type DirectoryFact } from "@/lib/forms/employee-roster";
+import { reopenIncidentText } from "@/lib/forms/current-request";
 import { findResentDraft } from "@/lib/forms/draft-reopen";
 import { historyWantsSeparateDocument } from "@/lib/ai/second-form";
 import type { ChatActor } from "./form-proposal";
@@ -118,7 +120,9 @@ export async function deliverFormProposal(input: {
       })
     : {
         ...EMPTY_PREP,
-        question: stateOn ? prependFormState(input.question, saved) : input.question,
+        question: stateOn
+          ? prependFormState(input.question, saved, input.request.history.filter((turn) => turn.role === "user").map((turn) => turn.content))
+          : input.question,
         keptTypedName: saved?.keptTypedName ?? null,
       };
 
@@ -272,10 +276,14 @@ async function reopenSameIncident(
   if (historyWantsSeparateDocument([...input.request.history, { role: "user", content: input.request.question }])) {
     return null;
   }
-  const incident = [...input.request.history.filter((turn) => turn.role === "user").map((turn) => turn.content), input.request.question]
-    .join("\n")
-    .trim()
-    .slice(0, 2000);
+  const said = [...input.request.history.filter((turn) => turn.role === "user").map((turn) => turn.content), input.request.question];
+  /*
+   * SECOND_REQUEST_OWN_ACCOUNT_ENABLED (QA's audit, 7 Nov 2026): the incident is the request now being written, never
+   * the whole chat. Joined, "a CA for <A>, late opening" and "another CA for <A>, cash drawer short" matched the first
+   * draft (its narrative's words were all in the chat), so the first draft was reopened and no second form was made.
+   * A resend of the same request is still the same incident.
+   */
+  const incident = reopenIncidentText(said, secondRequestOwnAccountEnabled());
   try {
     const resent = await findResentDraft({
       templateKey: proposal.templateKey,

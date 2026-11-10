@@ -43,7 +43,7 @@ export function SectionRule({
       <h2 className="display shrink-0 text-[16px] tracking-[0.035em] text-foreground">
         {label}
       </h2>
-      <span aria-hidden className="h-[3px] min-w-6 flex-1 rounded-sm bg-brand-yellow" />
+      <span aria-hidden className="clay-rule min-w-6 flex-1" />
       {action ? (
         <Link
           href={action.href}

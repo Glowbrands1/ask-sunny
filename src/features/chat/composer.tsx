@@ -172,7 +172,7 @@ export function Composer({
         value, and it is one of the two filled blocks the direction allows a
         screen.
       */
-      className="grid size-[38px] shrink-0 place-items-center rounded-full bg-brand-yellow text-brand-yellow-foreground transition-opacity disabled:opacity-40"
+      className="clay-sun-button grid size-11 shrink-0 place-items-center rounded-full text-brand-yellow-foreground transition-opacity disabled:opacity-40"
     >
       <ArrowUp className="size-[15px]" strokeWidth={2.5} />
     </button>
@@ -184,8 +184,8 @@ export function Composer({
       bookended in dark chrome and the conversation between them reads as a
       document on paper.
     */
-    <div className="shrink-0 border-t-4 border-brand-yellow bg-band px-4 pt-4 pb-3.5 sm:px-6">
-      <div className="flex items-center gap-3.5 rounded-[var(--radius-lg)] bg-surface py-3 pr-3.5 pl-4.5 shadow-ask focus-within:shadow-ask-focus">
+    <div className="clay-band mx-3 mb-3 shrink-0 px-4 pt-4 pb-3.5 sm:px-6">
+      <div className="flex items-center gap-3.5 rounded-full bg-surface py-2.5 pr-2.5 pl-5 shadow-ask focus-within:shadow-ask-focus">
         <SunMark className="size-[26px] shrink-0" onDark />
         <div className="flex min-w-0 flex-1 items-center">{field}</div>
         {sendButton}

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { salesResultsOffenseLine, withCaChosenRule } from "@/lib/ai/ca-sales-prompt-lines";
 import { noteSpendUser } from "@/lib/ai/spend-meter";
 import { withSpendMeter } from "@/lib/ai/spend-meter-run";
 
@@ -21,6 +22,7 @@ import {
   policySpecificTopicsEnabled,
   grammarAskNotAccountEnabled,
   sameFormCopyEnabled,
+  sameFormCopyNewPersonEnabled,
   typoReadingRoutesEnabled,
   cardPolicyToDraftEnabled,
   formPatchReducerEnabled,
@@ -28,7 +30,13 @@ import {
   teamCardWordingEnabled,
   cardPolicyLabelEnabled,
   caSalesPolicyEnabled,
+  priorActionsNoSignedEnabled,
+  secondRequestOwnAccountEnabled,
+  proposalMakeItAboutEnabled,
+  proposalPolicySetAsideEnabled,
 } from "@/lib/config/chat-quality-flags";
+import { notesMadeAbout } from "@/lib/ai/make-it-about";
+import { NOTHING_SET_ASIDE, policiesSetAside, setAsideAnything, valuesWithPolicySetAside, withoutPolicyTakeOff } from "@/lib/forms/policy-set-aside";
 import { withoutAsksToTheApp } from "@/lib/ai/asks-to-the-app";
 import { AiError } from "@/lib/ai/errors";
 import {
@@ -39,6 +47,7 @@ import {
 } from "@/lib/api/respond";
 import { ACTIVE_BRAND } from "@/lib/brand";
 import { CLAUDE_MAX_TOKENS, CLAUDE_MODEL } from "@/lib/config/models";
+import { currentFormRequestText } from "@/lib/forms/current-request";
 import { authorizeInstance, InstanceNotVisibleError } from "@/lib/forms/instance-scope";
 import { readPriorFormsOnFile } from "@/lib/forms/prior-forms";
 import {
@@ -213,6 +222,7 @@ import {
 } from "@/lib/forms/coaching-framing";
 import { OFFENSE_BASIS_PROPERTY, readOffenseBasis, withoutUnreasonedConduct, type OffenseBasis } from "@/lib/forms/ca-conduct-reason";
 import { guardOtherWriteIn } from "@/lib/forms/other-write-in";
+import { withoutRequestInObservation } from "@/lib/forms/request-observation";
 import {
   MANAGER_FOLLOW_UP_RULES,
   guardManagerFollowUp,
@@ -237,6 +247,7 @@ const PREVIOUS_ACTION_DATE_KEY = LEGACY_PREVIOUS_ACTION_DATE_KEY;
 import { exitDetailValues, exitStatedKeys, readExitDetails } from "@/lib/forms/exit-details";
 import { businessToday } from "@/lib/business-date";
 import { updateChatTrace } from "@/lib/ai/chat-trace-store";
+import { conductLineWithoutUnderPerformance, leaveOutOtherWriteInLine, leaveOutUnderPerformanceLine } from "@/lib/ai/stale-prompt-lines";
 import {
   correctDraftedDates,
   draftBriefDates,
@@ -289,6 +300,13 @@ interface DraftBody {
    * pinned manual has that heading. See `lib/forms/card-policy.ts`.
    */
   cardPolicy?: string;
+  /**
+   * SAME_FORM_COPY_NEW_PERSON_ENABLED: the form the card was asked to copy
+   * ("the same draft that we did with <name>"). Re-checked: this account's
+   * own form of this template, still visible to it. See
+   * `lib/forms/same-form-copy.ts`.
+   */
+  copyFromInstanceId?: string;
 }
 
 function fieldBrief(field: FormField, variantLabel: string | null): string {
@@ -361,9 +379,17 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     const body = ((await request.json().catch(() => null)) ?? {}) as DraftBody;
     // GRAMMAR_ASK_NOT_ACCOUNT_ENABLED: "can you clean up my grammar …?" is no account (`ai/asks-to-the-app.ts`).
     const typed = String(body.notes ?? "").trim().slice(0, 4000);
-    const asTyped = grammarAskNotAccountEnabled() ? withoutAsksToTheApp(typed).trim() : typed;
+    const asked = grammarAskNotAccountEnabled() ? withoutAsksToTheApp(typed).trim() : typed;
+    // CREATE_COMMAND_POINTS_TO_CARD_ENABLED / CARD_COMPLAINT_NOT_ACCOUNT_ENABLED: "create it" or "this proposal is out of
+    // date" is no account (`ai/card-meta-turn.ts`).
+    const asTyped = (await import("@/lib/ai/card-meta-turn")).withoutCardMetaTurns(asked);
     // TYPO_READING_ROUTES_ENABLED: the readers below see "coahed", "notcie", "amont" as the words they can only be.
-    const notes = typoReadingRoutesEnabled() ? typoReadingText(asTyped, await protectedNameWords()) : asTyped;
+    const read = typoReadingRoutesEnabled() ? typoReadingText(asTyped, await protectedNameWords()) : asTyped;
+    // PROPOSAL_MAKE_IT_ABOUT_ENABLED: "make it about showing up late …" makes "Showing up late." the account from that turn on (`ai/make-it-about.ts`).
+    const about = proposalMakeItAboutEnabled() ? notesMadeAbout(read) : read;
+    // PROPOSAL_POLICY_SET_ASIDE_ENABLED: a policy the manager took off stays off the draft, and the take-off sentence is no account (`forms/policy-set-aside.ts`).
+    const setAside = proposalPolicySetAsideEnabled() ? policiesSetAside(about.split(/\n{2,}/)) : NOTHING_SET_ASIDE;
+    const notes = setAsideAnything(setAside) ? withoutPolicyTakeOff(about.split(/\n{2,}/)).join("\n\n") : about;
     if (notes.length < 10) {
       throw new AiError(
         "bad_request",
@@ -453,6 +479,33 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       return NextResponse.json({ values: {}, checked: {}, withheld: [], notice: null, statedFacts });
     }
 
+    /*
+     * SAME_FORM_COPY_NEW_PERSON_ENABLED: the card names the form it copies
+     * (asked for before this person was named), so the copy comes from that
+     * form, never from re-reading the card's wording.
+     */
+    if (sameFormCopyEnabled() && sameFormCopyNewPersonEnabled() && typeof body.copyFromInstanceId === "string") {
+      const copy = await import("@/lib/forms/same-form-copy");
+      const source = await copy.ownCopySourceById({
+        actor,
+        instanceId: body.copyFromInstanceId,
+        templateKey: loaded.instance.templateKey,
+        targetInstanceId: id,
+        targetEmployeeName: loaded.instance.employeeName,
+      });
+      if (source) {
+        const copied = await copy.copyFormContent({ source, target: loaded, actorId: actor.id, notes });
+        if (Object.keys(copied.values).length > 0 || Object.keys(copied.checked).length > 0) {
+          return NextResponse.json({
+            values: copied.values,
+            checked: copied.checked,
+            withheld: [],
+            notice: copy.copiedNotice(source.instance),
+            statedFacts,
+          });
+        }
+      }
+    }
     /*
      * "DO THE SAME COACHING FORM FOR <ANOTHER PERSON>" (SAME_FORM_COPY_ENABLED).
      * The content of the manager's own earlier form of this template, name
@@ -671,13 +724,20 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      * would turn a coaching document into a policy review, and the value is
      * derived by this route rather than written by the model either way.
      */
+    /*
+     * SECOND_REQUEST_OWN_ACCOUNT_ENABLED (QA's audit, 7 Nov 2026): the policy is read from the request this form is
+     * for, never the whole chat. A second Corrective Action for the same person ("I need another corrective action
+     * for <A>, his cash drawer was short") was drafted with the first request's policy (Late Opening) as its Policy
+     * Violated. Only the policy reads below use it; payroll, exit and every other reader keep the notes as sent.
+     */
+    const policyNotes = secondRequestOwnAccountEnabled() ? currentFormRequestText(notes) : notes;
     const wantsEppPolicy = fields.some((field) => field.key === EPP_POLICY_REFERENCE_KEY);
     const needsPolicy = fields.some(
       (field) => field.policyGrounded && field.key !== EPP_POLICY_REFERENCE_KEY,
     );
     const grounding = needsPolicy
       ? // ACCOUNT_ONLY_POLICY_QUERY_ENABLED: "yes payroll deduct" and "$25" do not choose the policy.
-        await groundPolicy(`${body.topic ?? ""} ${policyQueryNotes(notes)}`.trim())
+        await groundPolicy(`${body.topic ?? ""} ${policyQueryNotes(policyNotes)}`.trim())
       : { passages: [], sources: [], unverified: false, reason: null };
 
     /*
@@ -718,7 +778,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         (group) =>
           group.key === "offense_type" && group.options.some((option) => option.key === STANDARDS_OF_CONDUCT),
       );
-    const caPolicy = offersConductPolicy ? readCaPolicy(notes) : null;
+    const caPolicy = offersConductPolicy ? readCaPolicy(policyNotes) : null;
     /*
      * A POLICY THE MANAGER NAMED BY THE MANUAL'S OWN HEADING — "violating
      * visitors at work policy" is the manual's Visitors in the Workplace
@@ -739,12 +799,12 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         : null;
     // Only where it ticks the box the manager's own words tick, or they tick none: a card's generic
     // "Attendance" never turns a missed meeting (Absenteeism) into Tardiness.
-    const ownKeys = cardHeading && caPolicy ? statedOffenseKeys(caPolicy, notes) : null;
+    const ownKeys = cardHeading && caPolicy ? statedOffenseKeys(caPolicy, policyNotes) : null;
     const cardSection = cardHeading && (!ownKeys || ownKeys.includes(cardHeading.offenseKey)) ? cardHeading : null;
     const namedSection =
       cardSection ??
       (caPolicy && caPolicy.stated === null && manual.ok
-        ? namedManualSection({ text: notes, chunks: manual.chunks })
+        ? namedManualSection({ text: policyNotes, chunks: manual.chunks })
         : null);
     /*
      * NO POLICY NAMED, BUT ONE DESCRIBED — "talking on her cell phone" is the
@@ -757,7 +817,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      */
     const describedSection =
       caPolicy && caPolicy.stated === null && !namedSection && manual.ok
-        ? describedManualSection({ text: notes, chunks: manual.chunks })
+        ? describedManualSection({ text: policyNotes, chunks: manual.chunks })
         : null;
     /*
      * A MEETING NOT ATTENDED, WHERE THE MANUAL SAYS WHAT THAT IS — its
@@ -783,7 +843,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      */
     const describedChoices =
       caPolicy && caPolicy.stated === null && !namedSection && !describedSection && !eventSection && manual.ok
-        ? describedManualChoices({ text: notes, chunks: manual.chunks })
+        ? describedManualChoices({ text: policyNotes, chunks: manual.chunks })
         : null;
 
     /*
@@ -880,7 +940,19 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      */
     const hasPriorActions = fields.some((field) => field.key === PRIOR_ACTIONS_KEY);
     const PRIOR_ACTIONS_RULES = [
-      `The field ${PRIOR_ACTIONS_KEY} lists every coaching or corrective action the employee PREVIOUSLY received, as the manager described it — one per line, each written as "<what it was> — signed <MM/DD/YYYY>".`,
+      /*
+       * PRIOR_ACTIONS_NO_SIGNED_ENABLED (QA, a location manager's chat in the sibling app, 5 Nov 2026): the line
+       * format asked for "signed", so the model wrote it for steps nobody signed. On, the format has the plain
+       * date and "signed" is written only where the manager said so. Off, as before.
+       */
+      ...(priorActionsNoSignedEnabled()
+        ? [
+            `The field ${PRIOR_ACTIONS_KEY} lists every coaching or corrective action the employee PREVIOUSLY received, as the manager described it — one per line, each written as "<what it was> — <MM/DD/YYYY>".`,
+            'Never write "signed" on this list unless the manager said that step was signed; then write "<what it was> — signed <MM/DD/YYYY>".',
+          ]
+        : [
+            `The field ${PRIOR_ACTIONS_KEY} lists every coaching or corrective action the employee PREVIOUSLY received, as the manager described it — one per line, each written as "<what it was> — signed <MM/DD/YYYY>".`,
+          ]),
       "List only steps and dates the manager actually gave. Never invent a prior step or a date; a step whose date the manager did not give is listed without one.",
       `If the manager said this is the first occurrence, write "${NO_PRIOR_ACTION}". If they said nothing about history, leave it empty.`,
       "A behaviour that happened again is not a prior coaching or corrective action.",
@@ -967,7 +1039,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         ? [
             unreadDay
               ? unreadDayBrief(resolvedFormDate, unreadDay)
-              : formDateBrief(resolvedFormDate, draftBriefDates(notes, businessToday())),
+              : formDateBrief(resolvedFormDate, draftBriefDates(notes, businessToday()), notes),
           ]
         : []),
       /*
@@ -1056,7 +1128,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
             "Each plan you do write is one or two sentences, tied to what the manager described and to the objective printed beside the category. No dates, no disciplinary step, no quoted policy wording.",
           ]
         : []),
-      ...(governance.governed ? PERFORMANCE_MANAGEMENT_DRAFT_RULES : []),
+      // CA_SALES_POLICY_ENABLED (Pau, 5 Nov 2026): one added rule after the lowest-rung rule. Off, the rules are as before.
+      ...withCaChosenRule(governance.governed ? PERFORMANCE_MANAGEMENT_DRAFT_RULES : []),
       /*
        * THE EPP'S OWN RULES, on the versions that have the appendix field.
        * They say what a performance plan IS — coaching, not a warning — and
@@ -1135,12 +1208,16 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
        * things on the document, and ticking one without filling the other
        * prints a ticked box with no label beside it.
        */
-      promptGroups.some((group) => group.options.some((option) => option.key === "other"))
+      // STALE_PROMPT_LINES_OFF_ENABLED: left out when this version has no write-in beside Other (`stale-prompt-lines.ts`). Off, as before.
+      promptGroups.some((group) => group.options.some((option) => option.key === "other")) && !leaveOutOtherWriteInLine(fields)
         ? policySpecificTopicsEnabled()
           ? OTHER_WRITE_IN_INSTRUCTION
           : 'When no listed option fits, tick "other" AND name the topic in the matching write-in field — for lateness that write-in is "Punctuality".'
         : "",
-      offersConductPolicy
+      // STALE_PROMPT_LINES_OFF_ENABLED: with no under_performance box, the line's first sentence alone. Off, as before.
+      offersConductPolicy && leaveOutUnderPerformanceLine(offenseOffered)
+        ? conductLineWithoutUnderPerformance(STANDARDS_OF_CONDUCT)
+        : offersConductPolicy
         ? `Type of Offense: assigned work, a required deadline, or required Woven items or training not completed, and a manager's direction not followed, are ${STANDARDS_OF_CONDUCT}. under_performance is for results against a sales or performance target.`
         : "",
       // CA_SALES_POLICY_ENABLED: one added line after the one above, which stays as it is. Off, nothing is added.
@@ -1149,6 +1226,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       offersConductPolicy && offenseOffered.includes(ATTENDANCE_POLICY) && !offenseOffered.includes("under_performance")
         ? CA_REVISION_8_OFFENSE_RULE
         : "",
+      // CA_SALES_POLICY_ENABLED (Pau, 5 Nov 2026): a form with no under_performance box reads sales results as standards_of_conduct. Off, nothing is added.
+      offersConductPolicy ? salesResultsOffenseLine(offenseOffered) : "",
     ]
       .filter(Boolean)
       .join("\n");
@@ -1704,9 +1783,18 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       return base;
     })();
 
+    /*
+     * CA_SALES_POLICY_ENABLED (QA, live, 4 Nov 2026): an Observation the
+     * model began with the manager's request ("CA for <name> due to …") begins
+     * with the request's reason instead. Off, null. See `request-observation.ts`.
+     */
+    const observationNotRequest =
+      (loaded.instance.layoutFamily === "corrective"
+        ? withoutRequestInObservation(draftedValues, narrativeTargets[0], loaded.instance.employeeName ?? null)
+        : null) ?? draftedValues;
     const enforced = enforceResponsibilities(document, variantKey, {
       values: withoutPrimedTopic(
-        priorDate ? { ...draftedValues, [PREVIOUS_ACTION_DATE_KEY]: priorDate } : draftedValues,
+        priorDate ? { ...observationNotRequest, [PREVIOUS_ACTION_DATE_KEY]: priorDate } : observationNotRequest,
         `${body.topic ?? ""} ${notes}`,
       ),
       /*
@@ -1741,7 +1829,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         : null);
     const statedKeys = caPolicy
       ? ((cardSection ? [cardSection.offenseKey] : null) ??
-        statedOffenseKeys(caPolicy, notes) ??
+        statedOffenseKeys(caPolicy, policyNotes) ??
         (policySection ? [policySection.offenseKey] : null))
       : null;
     const statedOffense = statedKeys
@@ -2281,6 +2369,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
           templateKey: loaded.instance.templateKey,
           values: planned.values,
           notes,
+          // CA_SALES_POLICY_ENABLED: the Direct policy fill follows the ticked Type of Offense.
+          ticked: validated.checked.offense_type ?? [],
           chunks: manual.ok ? manual.chunks : [],
           manual: manual.ok
             ? {
@@ -2308,19 +2398,20 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
             sections: cardSection && cardPolicyLabelEnabled() && manualSections.some((section) => section.page > 0)
               ? manualSections
               : (() => {
-              const reading = readCaPolicy(notes);
-              const keys = statedOffenseKeys(reading, notes) ?? describedAttendanceKeys(notes) ?? [];
-              const resolved = manualSectionsFor({ chunks: manual.chunks, offenseKeys: keys, notes });
+              // SECOND_REQUEST_OWN_ACCOUNT_ENABLED: this line cites the request this form is for (policyNotes).
+              const reading = readCaPolicy(policyNotes);
+              const keys = statedOffenseKeys(reading, policyNotes) ?? describedAttendanceKeys(policyNotes) ?? [];
+              const resolved = manualSectionsFor({ chunks: manual.chunks, offenseKeys: keys, notes: policyNotes });
               const withAttendance = citeAttendanceForTardiness({
                 enabled: attendanceOn,
-                notes,
+                notes: policyNotes,
                 chunks: manual.chunks,
                 sections: resolved,
               });
               if (!pageOn) return withAttendance;
               const required = sectionsWithNameAndPage({
                 enabled: true,
-                notes,
+                notes: policyNotes,
                 chunks: manual.chunks,
                 offenseKeys: keys,
               });
@@ -2341,6 +2432,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         ),
       ),
     };
+    if (setAsideAnything(setAside)) draftedPayload.values = valuesWithPolicySetAside(draftedPayload.values, setAside);
     const kept = draftMergeEnabled()
       ? retainFilledFields({
           question: notes,

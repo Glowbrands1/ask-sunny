@@ -62,7 +62,9 @@ export const NOV5_DESCRIBED_TOPIC_ACCOUNT_CASES: ReplayCase[] = [
     title: "negative control: with CA_ASKS_WHAT_HAPPENED_ENABLED, a Corrective Action asked for on a name alone still says \"You haven't told me what happened yet\"",
     report: `${REPORT}, negative control`,
     // With production's flags this app's card asks no account question at all (CA_ASKS_WHAT_HAPPENED_ENABLED is off).
-    status: { open: "with production's flags the name-alone card says \"from what you've described\" and no note (CA_ASKS_WHAT_HAPPENED_ENABLED off)" },
+    // Changed on purpose (10 Nov 2026, QA's open-PR audit): CA_ASKS_WHAT_HAPPENED_ENABLED is on in production since this
+    // case was written, so the name-alone card's note holds with production's flags.
+    status: "fixed",
     fixFlags: ["CA_ASKS_WHAT_HAPPENED_ENABLED", "DESCRIBED_TOPIC_IS_ACCOUNT_ENABLED"],
     async run(t) {
       const thread = start(t);

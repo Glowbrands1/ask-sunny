@@ -38,6 +38,9 @@ import {
   googleReviewsInChatEnabled,
   typoReadingCopyEnabled,
   caSalesPolicyEnabled,
+  cardPolicyOwnRequestEnabled,
+  pastFormsBeforeLibraryEnabled,
+  outOfDateIsTheProposalEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
 import { approvedManualConfirmed, manualDisplayTitle } from "@/lib/forms/official-policy-manual";
@@ -45,8 +48,9 @@ import { MissingConfigurationError, liveReadiness } from "@/lib/config/server-en
 import { ACTIVE_BRAND } from "@/lib/brand";
 import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import { proposeFormForTurn, suggestFormsForTurn, type ChatActor } from "./form-proposal";
-import { acceptedCaOffer, caOfferLine, withCaOffer } from "./ca-offer";
+import { acceptedCaOffer, acceptedCaOfferTurn, caOfferLine, withCaOffer } from "./ca-offer";
 import { remapFormTurn, remapShouldRun, type FormRemapSlots } from "./form-full-remap";
+import { cardPolicyTurns } from "./card-policy-request";
 import { priorShorthand, requestScopedHistory } from "./remap-incident";
 import { historyForRemap } from "./form-remap-scope";
 import { withRemapDraftSources } from "./remap-draft-sources";
@@ -70,9 +74,11 @@ import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import { buildFormInventory, publishedEntries } from "@/lib/forms/inventory";
 import { listTemplateSummaries, type TemplateSummary } from "@/lib/forms/repository";
 import { isFormRecordsQuestion, loadFormRecords } from "@/lib/forms/chat-form-records";
+import { namesAPerson } from "@/lib/forms/names-a-person";
 import { withRosterOnlyNames } from "@/lib/forms/roster-only-names";
 import { priorFormsReadingForChat } from "@/lib/forms/prior-forms";
 import { applyOptionalPriorCoaching } from "./prior-coaching-optional";
+import { priorCoachingManagerText } from "./prior-coaching-denial";
 import { withMappedPolicy } from "./violation-policy";
 import { manualScopeFetchLimit, scopeToCurrentManual } from "@/lib/knowledge/current-manual-scope";
 import {
@@ -161,7 +167,15 @@ import { deliverFormProposal } from "./grounded-turn";
 import { withJobTitleCase, withJobTitleFromWords, withJobTitleReadBackCase, withSpelledOutTitle } from "./job-title-from-words";
 import { withTerseSlots } from "./terse-slots";
 import { withCaWhatHappened, withCoachingWhatHappened } from "./ca-what-happened";
+import { withCardPolicyPlanOnly } from "./card-policy-plan-only";
+import { cardRequestTurn, listPolicyOnCard, withPolicyListedAtCreate } from "./list-policy-ask";
+import { withoutNoAccountAppPolicy } from "./no-account-policy-line";
+import { cardMetaTurn } from "./card-meta-turn";
 import { withFirstNameAsk } from "./first-name-ask";
+import { withUnknownNameAsk } from "./unknown-name-ask";
+import { withExitOtherPersonNotOffered } from "./exit-other-person";
+import { withoutLetterSigner } from "./letter-signer";
+import { withCarriedPersonNotice } from "./carried-person-notice";
 import { withFirstNameAnswerFor, withFirstNameSuggestFor } from "./first-name-suggest";
 import { withAmountUnknownAck } from "./amount-unknown-ack";
 import { withOutOfScopePlace } from "./out-of-scope-place";
@@ -193,6 +207,12 @@ import type { AskRequest, AskResponse } from "./types";
 import { keepManagerActionPlan } from "./manager-action-plan-reply";
 import { withManagerNameGuard, withManagerNameRule } from "./manager-name-guard";
 import { withoutReportTurnsForForm } from "./report-turns";
+import { withReplyMatchesCard } from "./reply-matches-card";
+import { acceptedNextFormOffer, withEachPersonsForm, withTwoFormsOwnPerson } from "./two-forms-own-person";
+import { withTitleOfTheEmployee } from "./title-of-the-employee";
+import { withoutSourceMarkers, withoutSourceNotes } from "@/lib/ai/source-note";
+import { asksWhatOutOfDateMeans, cardTurn, outOfDateAnswer } from "@/lib/ai/out-of-date-is-the-proposal";
+import { withUnderPerformanceExplained } from "./under-performance-explained";
 
 /**
  * THE GROUNDED ANSWER PATH — server-side, and only server-side.
@@ -287,10 +307,40 @@ export async function answerQuestion(
   actor: ChatActor,
   memory: { memoryOwnerId?: string } = {},
 ): Promise<AskResponse> {
+  // OUT_OF_DATE_IS_THE_PROPOSAL_ENABLED: "what does out of date mean" in a form chat is about the card (ai/out-of-date-is-the-proposal.ts).
+  const outOfDateTurn = outOfDateIsTheProposalEnabled() && asksWhatOutOfDateMeans(asked) ? cardTurn(asked) : null;
+  if (outOfDateTurn) return outOfDateAnswer(await answerQuestion(outOfDateTurn, actor, memory));
+  // CREATE_COMMAND_POINTS_TO_CARD_ENABLED / CARD_COMPLAINT_NOT_ACCOUNT_ENABLED: "create it" or "this proposal is out of
+  // date" with only a card open is about the card: kept as it was, answered in one line (`ai/card-meta-turn.ts`).
+  const aboutTheCard = cardMetaTurn(asked);
+  if (aboutTheCard) return aboutTheCard.card ?? aboutTheCard.answer(await answerQuestion({ ...asked, question: aboutTheCard.from }, actor, memory));
   // REPORT_NAME_NOT_A_PERSON_ENABLED: a form is never built from a question about a report. See `report-turns.ts`.
   // CA_SALES_POLICY_ENABLED: "yes" to the Corrective Action offer is the request it offered (`ca-offer.ts`). Off, unchanged.
+  // TWO_FORMS_EACH_PERSON_ENABLED: "yes" to "Do you want a <form> for <B> next?" is that request (`ai/two-forms-own-person.ts`). Off, unchanged.
+  const nextForm = acceptedNextFormOffer({ question: asked.question, history: asked.history });
+  if (nextForm) asked = { ...asked, question: nextForm };
   const accepted = acceptedCaOffer({ question: asked.question, history: asked.history });
-  const request = withoutReportTurnsForForm(accepted ? { ...asked, question: accepted } : asked);
+  /*
+   * CA_OFFER_KEEPS_ACCOUNT_ENABLED: the accepted yes is first answered as the
+   * turn the offer answered — her own words, asked for as a Corrective Action
+   * Form — so the card's account is never the rewritten request sentence
+   * (QA's MSB case M5). When her turn alone makes no card (the offer followed
+   * words with no account), the yes is the employee the offer named, as the
+   * answer to a Corrective Action Form: still no sentence of the app's, so
+   * the card asks for what happened or shows only her words (and only if that
+   * makes no card either, the request as before). Off, the request as before.
+   */
+  const kept = accepted ? acceptedCaOfferTurn({ question: asked.question, history: asked.history }) : null;
+  const plain = withoutReportTurnsForForm(accepted ? { ...asked, question: accepted } : asked);
+  let request = kept
+    ? withoutReportTurnsForForm({
+        ...asked,
+        question: kept.account.content,
+        questionMessageId: kept.account.id ?? asked.questionMessageId,
+        history: kept.history,
+        continueProposalTemplateKey: kept.templateKey,
+      })
+    : plain;
   /*
    * APP_PASSWORD_HELP_ENABLED: "I forgot my password" is answered about this
    * app's own sign-in, the "Forgot your password?" link (QA and Pau, 25 Oct
@@ -302,7 +352,30 @@ export async function answerQuestion(
   if (passwordHelp) {
     return { content: passwordHelp, citations: [], coverage: "grounded", recommendedVideoIds: [] };
   }
-  const answered = withoutSensitiveDefaults(await answerQuestionChecked(request, actor, memory), request.question);
+  // TITLE_OF_THE_EMPLOYEE_ENABLED: a title the manager attached to another named person is never the card's (`ai/title-of-the-employee.ts`).
+  // UNDER_PERFORMANCE_EXPLAINED_ENABLED: Under Performance asked for, the Standards of Conduct cited: the reply says why (`ai/under-performance-explained.ts`).
+  // SOURCE_NOTE_GUARD_ENABLED: no bare source marker ("[S1]", "[S12, S14]") reaches the reply on any path (`ai/source-note.ts`).
+  const answer = async (turn: AskRequest) => {
+    const explained = withUnderPerformanceExplained(
+      withTitleOfTheEmployee(withoutSensitiveDefaults(await answerQuestionChecked(turn, actor, memory), turn.question), turn),
+      turn,
+    );
+    return { ...explained, content: withoutSourceMarkers(explained.content) };
+  };
+  const original = request;
+  let answered = await answer(request);
+  const fallbacks = kept ? [withoutReportTurnsForForm({ ...asked, question: kept.employee, continueProposalTemplateKey: kept.templateKey }), plain] : [];
+  for (const next of fallbacks) {
+    if (madeCard(answered)) break;
+    request = next;
+    answered = await answer(request);
+  }
+  // TWO_FORMS_OWN_PERSON_ENABLED: two forms asked for in one message never put the other form's person on this card (`ai/two-forms-own-person.ts`); read on the manager's own message.
+  answered = withTwoFormsOwnPerson(answered, original);
+  // TWO_FORMS_EACH_PERSON_ENABLED: the card is its own clause's person, answered again from that clause if need be, and each other request with its person is offered (`ai/two-forms-own-person.ts`).
+  answered = await withEachPersonsForm(answered, original, answer);
+  // CARRIED_PERSON_NOTICE_ENABLED: a card whose person the manager last named before their last six turns says so (`ai/carried-person-notice.ts`).
+  answered = withCarriedPersonNotice(answered, original);
   /*
    * CA_SALES_POLICY_ENABLED: a reply about a policy and an employee the roster
    * recognises ends with ONE offer to start a Corrective Action citing that
@@ -311,7 +384,10 @@ export async function answerQuestion(
    * 4 Nov 2026; QA's live traces). Off, nothing is read or added.
    */
   // FORM_NAME_FROM_ROSTER_ENABLED, last on every return: only roster people are the employee or a choice (`forms/roster-only-names.ts`).
-  if (!caSalesPolicyEnabled()) return withRosterOnlyNames(answered);
+  // REPLY_MATCHES_CARD_ENABLED, the very last step on both returns: the reply agrees with the finished card (`ai/reply-matches-card.ts`).
+  // EXIT_OTHER_PERSON_NOT_SUBJECT_ENABLED: the letter's other person ("your Salon Director, <B>") is never offered as the exit form's subject (`ai/exit-other-person.ts`).
+  answered = withExitOtherPersonNotOffered(answered, original);
+  if (!caSalesPolicyEnabled()) return withReplyMatchesCard(withRosterOnlyNames(answered));
   let roster: Awaited<ReturnType<typeof loadScopedRoster>> = [];
   try {
     roster = await loadScopedRoster(actor.scope);
@@ -324,7 +400,12 @@ export async function answerQuestion(
     questionMessageId: request.questionMessageId,
     roster,
   });
-  return withRosterOnlyNames(withCaOffer(answered, offer));
+  return withReplyMatchesCard(withRosterOnlyNames(withCaOffer(answered, offer)));
+}
+
+/** A reply that made, changed or opened a form: the accepted offer's card (CA_OFFER_KEEPS_ACCOUNT_ENABLED). */
+function madeCard(response: AskResponse): boolean {
+  return Boolean(response.formProposal || response.formUpdate || response.formOpened);
 }
 
 async function answerQuestionChecked(
@@ -343,6 +424,7 @@ async function answerQuestionChecked(
     noteTraceOutcome(response);
     // Last on every path, after the reply check too: the Action Plan is the manager's or none.
     // CA_ASKS_WHAT_HAPPENED_ENABLED: a Corrective Action card with no account asks what happened.
+    // NO_ACCOUNT_NO_APP_POLICY_ENABLED: that card cites no policy (no Policy line read from the request, no citation, no named plan).
     // COACHING_ASKS_WHAT_HAPPENED_ENABLED: a Coaching Form card with no account asks what happened, never "Everything I need is here" (sf-s27).
     // JOB_TITLE_FROM_WORDS_ENABLED: an empty Job Title takes the title the manager typed; JOB_TITLE_CASE_ENABLED: in title case.
     // WARNING_LEVEL_AND_CLAUSE_ENABLED: "this should be a written and note a verbal ca was given …" states written.
@@ -354,14 +436,19 @@ async function answerQuestionChecked(
     // FORM_TYPE_SWITCH_AFTER_CREATE_NOTE_ENABLED: the form already created is said to stay as it is.
     // FIRST_NAME_SUGGEST_ENABLED: a first name alone is asked about from the manager's own roster.
     // MANAGER_NAME_NOT_EMPLOYEE_ENABLED: last — the manager's own name is never the employee.
-    return withManagerNameGuard(keepManagerActionPlan(await withFirstNameSuggestFor(
+    // CARD_POLICY_PLAN_ONLY_ENABLED: outermost — the Action Plan and the sources name only the card's policy.
+    return withCardPolicyPlanOnly(withManagerNameGuard(keepManagerActionPlan(await withFirstNameSuggestFor(
       // OUT_OF_SCOPE_PLACE_KEEPS_OWN_ENABLED: the card goes back to the manager's own salon, or asks which.
       // FORM_TYPE_SWITCH: the switched card is drafted from the account, never from the switch turn.
       withSwitchSources(withSwitchNote(withOutOfScopePlace(withOwnPlace(withAmountUnknownAck(
         withUnreadDateAsk(
           withStatedAmount(
-            withFirstNameAsk(
-              withWarningLevelFromClause(withSpelledOutTitle(withJobTitleReadBackCase(withJobTitleCase(withJobTitleFromWords(withCoachingWhatHappened(withCaWhatHappened(await applyQuietQuality(response), request), request), request)))), request),
+            // UNKNOWN_NAME_ASK_ENABLED: a typed name not on the directory is named back, never asked again in the same words.
+            withUnknownNameAsk(
+              withFirstNameAsk(
+                withWarningLevelFromClause(withSpelledOutTitle(withJobTitleReadBackCase(withJobTitleCase(withJobTitleFromWords(withCoachingWhatHappened(withoutNoAccountAppPolicy(withCaWhatHappened(await applyQuietQuality(response), request)), request), request)))), request),
+                request,
+              ),
               request,
             ),
             request,
@@ -372,7 +459,7 @@ async function answerQuestionChecked(
       ), request, actor), request, actor), request, "Form Monitoring"), request),
       request,
       actor,
-    ), request), request);
+    ), request), request));
   };
   // MANAGER_NAME_NOT_EMPLOYEE_ENABLED: last on every path — the manager's own name is never the employee.
   if (!chatTraceEnabled()) {
@@ -470,7 +557,9 @@ async function answerQuestionUntraced(
    * phrased, is not a question. See `question-not-form.ts`. Behind
    * QUESTION_NOT_FORM_ENABLED; off, every turn is routed as before.
    */
-  const askedQuestion = questionNotFormEnabled() && isQuestionNotForm(request.question, request.history);
+  // LIST_POLICY_IS_EDIT_ENABLED: "please list the policy" with only a card open is a card turn, never a question.
+  const listPolicyCard = listPolicyOnCard(request);
+  const askedQuestion = !listPolicyCard && questionNotFormEnabled() && isQuestionNotForm(request.question, request.history);
   let intentForm = false;
   if (intentExtractionEnabled() && !askedQuestion) {
     const prepared = await applyIntentExtraction({ request, actor });
@@ -528,8 +617,24 @@ async function answerQuestionUntraced(
       request.continueProposalTemplateKey || request.openForm || request.activeFormInstanceId,
     ),
   });
-  const detected = detectInventoryQuestion(routingQuestion);
-  const spokenIntent = detectTemplateIntent(routingQuestion);
+  const libraryReading = detectInventoryQuestion(routingQuestion);
+  const formReading = detectTemplateIntent(routingQuestion);
+  /*
+   * PAST_FORMS_BEFORE_LIBRARY_ENABLED (Pau, 5 Nov 2026, sf-s29): a message
+   * the forms library would answer — a question about the library, or a form
+   * named without asking to make one ("are there any coaching and ca's for
+   * <name>" reads as the Corrective Action, not requested) — that names a
+   * person or asks about forms already on file is answered from the forms on
+   * file: the past-forms lookup below runs for it, and the library answer
+   * steps aside. A request to make a form is never one of these.
+   */
+  const pastFormsFirst =
+    pastFormsBeforeLibraryEnabled() &&
+    (libraryReading.kind !== "none" || (formReading.kind === "corrective_action" && !formReading.requestedCreation)) &&
+    // Only a message that names a person: a library question naming nobody keeps the library answer (`forms/names-a-person.ts`).
+    namesAPerson(request.question);
+  const detected: InventoryQuestion = pastFormsFirst ? { kind: "none" } : libraryReading;
+  const spokenIntent: ReturnType<typeof detectTemplateIntent> = pastFormsFirst ? { kind: "none" } : formReading;
 
   /*
    * "I NEED TO FIND THOSE DOCUMENTS" IS ABOUT WHICHEVER REGISTER THE LAST TURN
@@ -635,7 +740,8 @@ async function answerQuestionUntraced(
       content = applyOptionalPriorCoaching(content, {
         enabled: true,
         records: [],
-        managerText: turns.join("\n"),
+        // PRIOR_COACHING_DENIAL_ENABLED: "There's no prior coaching on file." is not read as a note; off, as before.
+        managerText: priorCoachingManagerText(turns, request.context.todayIso),
       });
     }
     if (recallOn || (citeOn && response.formProposal)) {
@@ -643,11 +749,13 @@ async function answerQuestionUntraced(
         const manual = await knowledge.fetchOfficialPolicyManual(ACTIVE_BRAND.knowledgeScopeId);
         if (manual.ok && recallOn) content = withMappedPolicy(content, turns, manual.chunks, true);
         if (manual.ok && citeOn && response.formProposal) {
-          const notes = turns.join("\n");
+          // CARD_POLICY_OWN_REQUEST_ENABLED: a card for <B> is not cited from <A>'s earlier request.
+          const notes = (cardPolicyOwnRequestEnabled() ? cardPolicyTurns(turns, response.formProposal.employeeName) : turns).join("\n");
           const attached = attachFormTurnSources({
             content,
             citations,
             notes,
+            turns,
             chunks: manual.chunks,
             documentId: manual.documentId,
             documentTitle: manual.documentTitle,
@@ -808,12 +916,14 @@ async function answerQuestionUntraced(
       question: withPriorShorthand(
         prepareProposalQuestion(
           questionForProposal(
-            proposalQuestion(separateLead, heard ? routingQuestion : request.question, managerQuestion),
+            // LIST_POLICY_IS_EDIT_ENABLED: the card is proposed again from the manager's last turn.
+            proposalQuestion(separateLead, listPolicyCard ? cardRequestTurn(request) : heard ? routingQuestion : request.question, managerQuestion),
             remapIncidentFixEnabled() ? { ...request, history: formHistory() } : request,
           ),
         ),
       ),
-      decorate: decorateFormAnswer,
+      // LIST_POLICY_IS_EDIT_ENABLED: the card shows its policy line, or says the policy is listed on the draft at Create.
+      decorate: listPolicyCard ? async (response) => withPolicyListedAtCreate(await decorateFormAnswer(response)) : decorateFormAnswer,
       propose: (question) => proposeFormForTurn({
       history: withPriorShorthandTurns(formHistory()),
       question,
@@ -1269,8 +1379,9 @@ async function answerQuestionUntraced(
    * coaching jba manual 11-1-26"), and each row says who created it.
    */
   const readsFormRecords =
-    isFormRecordsQuestion(request.question) &&
-    (!crossChatGuard || asksAboutRecords(request.question) || refersBack(request.question, request.history));
+    pastFormsFirst ||
+    (isFormRecordsQuestion(request.question) &&
+      (!crossChatGuard || asksAboutRecords(request.question) || refersBack(request.question, request.history)));
   const formRecordsPromise = readsFormRecords
     ? loadFormRecords({
         actor,
@@ -1907,7 +2018,8 @@ async function answerQuestionUntraced(
     attachedDocumentIds: request.attachedDocumentIds,
   }).content;
 
-  const content = suggested ? `${prose}\n\n${suggested.lead}` : prose;
+  // SOURCE_NOTE_GUARD_ENABLED: a bracketed note about a source ("[S1 doesn't actually cover …]") is removed (`source-note.ts`). Off, as before.
+  const content = withoutSourceNotes(suggested ? `${prose}\n\n${suggested.lead}` : prose);
   // CA_SALES_POLICY_ENABLED: the Corrective Action offer is added at the turn's one exit (`answerQuestion`, `withCaOffer`).
   return {
     content,
@@ -2041,7 +2153,8 @@ function questionForProposal(question: string, request: AskRequest): string {
   return augmentIntakeQuestion({
     slots: slotRetentionEnabled(),
     fields: fieldAccuracyEnabled(),
-    question,
+    // EXIT_LETTER_SIGNER_NOT_SUBJECT_ENABLED: a letter's "<C>, District Manager" sign-off is not proposed as the form's person (`ai/letter-signer.ts`).
+    question: withoutLetterSigner({ question }),
     history: request.history,
     today: request.context.todayIso,
   });
