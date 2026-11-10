@@ -1,4 +1,4 @@
-import { animalAnywhereEnabled, policySpecificTopicsEnabled } from "@/lib/config/chat-quality-flags";
+import { animalAnywhereEnabled, policySpecificTopicsEnabled, workAreaAbsenceCitesConductEnabled } from "@/lib/config/chat-quality-flags";
 
 import {
   findManualSection,
@@ -69,7 +69,17 @@ interface TopicRule {
   readonly negationIsTheIncident?: boolean;
   /** Further sections the same incident is cited under, in order. */
   readonly also?: readonly { readonly heading: string; readonly when?: RegExp }[];
+  /** A rule behind its own flag: read only when this says so. */
+  readonly enabled?: () => boolean;
 }
+
+/*
+ * WORK_AREA_ABSENCE_CITES_CONDUCT_ENABLED (Pau's decision, 9 Nov 2026, via QA): "leaving the front desk unattended", and
+ * the same said another way (the desk, register, counter, work area or floor left unattended during the shift), is the
+ * Standards of Conduct's own line "Unauthorized absence from the work area during the workday", not Attendance. Pau, the
+ * same day: the Standards of Conduct only, whatever else the account says (leaving the building, going to the car).
+ */const WORK_AREA = String.raw`(?:front\s+desk|desk|register|counter|cash\s+wrap|work\s*area|work\s*station|station|sales\s+floor|floor|post)`;
+const WORK_AREA_LEFT = String.raw`(?:left|leaving|leave|leaves|abandon(?:ed|ing|s)?|walk(?:ed|ing|s)?\s+away\s+from)\s+(?:the\s+|her\s+|his\s+|their\s+)?${WORK_AREA}`;
 
 /* ------------------------------------------------------------ the words -- */
 
@@ -187,6 +197,18 @@ const TOPICS: readonly TopicRule[] = [
     cite: { kind: "heading", heading: "Meal and Rest Policy" },
   },
   {
+    id: "work_area_absence",
+    enabled: workAreaAbsenceCitesConductEnabled,
+    words: [
+      new RegExp(String.raw`\b${WORK_AREA_LEFT}\s+(?:\S+\s+){0,3}?(?:unattended|unmanned|uncovered|empty|alone)\b`),
+      new RegExp(String.raw`\b${WORK_AREA_LEFT}\s+(?:\S+\s+){0,3}?during\s+(?:her|his|their|the|a)\s+(?:shift|work\s*day)\b`),
+      new RegExp(String.raw`\b${WORK_AREA}\s+(?:was\s+|is\s+|were\s+)?(?:left\s+)?(?:unattended|unmanned|uncovered)\b`),
+      new RegExp(String.raw`\b(?:unauthorized|unapproved)\s+absence\s+from\s+(?:the\s+|her\s+|his\s+|their\s+)?${WORK_AREA}\b`),
+    ],
+    not: /\b(?:late|tardy|no[- ]?call|no[- ]?show|call(?:ed)?\s*(?:out|off))\b/,
+    cite: { kind: "conduct_line", anchor: /absence\s+from\s+the\s+work\s+area/i },
+  },
+  {
     id: "insubordination",
     words: [
       /\binsubordinat\w*/,
@@ -289,6 +311,7 @@ export function specificTopic(text: string): SpecificTopic | null {
   if (!policySpecificTopicsEnabled()) return null;
   const sentences = sentencesOf(text);
   for (const rule of TOPICS) {
+    if (rule.enabled && !rule.enabled()) continue;
     for (const sentence of sentences) {
       if (rule.not?.test(sentence) && !rule.unless?.test(sentence)) continue;
       const anywhere = rule.id === "animals" && animalAnywhereEnabled() && AT_WORK.test(sentence) ? [ANIMAL_ALONE] : [];
@@ -470,3 +493,14 @@ export function withoutPrimedTopic<T extends Record<string, string | undefined>>
 /** The draft prompt's line for an "other" write-in when the flag is on: no example topic to copy. */
 export const OTHER_WRITE_IN_INSTRUCTION =
   'When no listed option fits, tick "other" AND name the topic in the matching write-in field, in a few words of the manager\'s own — only what they described.';
+
+/**
+ * MODEL_POLICY_DEFERS_TO_TOPIC_ENABLED (QA, round-7c live test, 9 Nov 2026): the headings the incident the manager's words
+ * name is cited under — the Standards of Conduct for a listed line, the topic's own heading otherwise, and its further
+ * sections — or null when the words name none of the table's incidents.
+ */
+export function topicHeadings(text: string): string[] | null {
+  const topic = specificTopic(text);
+  if (!topic) return null;
+  return [topic.cite.kind === "heading" ? topic.cite.heading : CONDUCT_HEADING, ...topic.also];
+}

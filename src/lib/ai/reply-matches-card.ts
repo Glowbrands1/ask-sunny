@@ -1,6 +1,10 @@
-import { replyMatchesCardEnabled } from "@/lib/config/chat-quality-flags";
-import { removedOffenseLabels } from "@/lib/forms/ca-policy";
+import { bareNotDenialEnabled, cleaningOtherEveryWordingEnabled, conductIncidentCitesPageEnabled, exitDateLineAgreesEnabled, replyMatchesCardEnabled } from "@/lib/config/chat-quality-flags";
+import { offeredOffRosterName } from "@/lib/forms/off-roster-confirm";
+import { deniesAFault, deniesAFaultWithBareNot } from "@/lib/forms/draft-never-blank";
+import { caPolicyProposalLine, readCaPolicy, removedOffenseLabels } from "@/lib/forms/ca-policy";
 import { cardPolicyHeading } from "@/lib/forms/card-policy";
+import { EXIT_TEMPLATE_KEY } from "@/lib/forms/exit-library";
+import { exitDateInWords } from "@/lib/forms/exit-intake";
 import { personRosterNames } from "@/lib/forms/person-guard";
 import { requestMessage } from "@/lib/forms/request-slot";
 import {
@@ -15,6 +19,7 @@ import {
 } from "@/lib/forms/roster-only-names";
 
 import { HAS_EMPLOYEE_AND_PLACE, SAYS_READY } from "./ca-what-happened";
+import { withOwnBrandOnly } from "./own-brand-only";
 import type { AskResponse } from "./types";
 
 /**
@@ -77,8 +82,11 @@ function withNobodyNamed(content: string, names: readonly string[], message: str
     .split("\n")
     .filter((line) => !SAYS_READY.test(line.trim()))
     .join("\n");
-  next = withoutUnseatedName(next, [slotName(message, names)], names, draftedFor(next));
-  if (!ASKS_WHO.test(next) && !ASKS_A_CHOICE.test(next) && !ASKS_FOR_THE_NAME.test(next)) next = `${next.trim()}\n\n${ASK_WHO}`;
+  // The app's own words stay: one word of the name alone at a sentence start, or in another case (`ownWords`).
+  next = withoutUnseatedName(next, [slotName(message, names)], names, draftedFor(next), { ownWords: true });
+  // OFF_ROSTER_CONFIRM_ENABLED (the sibling app's finding C, 6 Nov 2026): the off-roster offer ("reply **use <name>**") is the question.
+  const offers = offeredOffRosterName(next) !== null;
+  if (!offers && !ASKS_WHO.test(next) && !ASKS_A_CHOICE.test(next) && !ASKS_FOR_THE_NAME.test(next)) next = `${next.trim()}\n\n${ASK_WHO}`;
   return next;
 }
 
@@ -100,7 +108,15 @@ function withTheCardsEmployee(content: string, employee: string): string {
 /** Rule 3: one policy, the card's. */
 function withOnePolicy(content: string): string {
   // The card's policy is its **Policy:** line; a card without one (a Coaching Form) cites it on its first manual line.
-  const heading = cardPolicyHeading(content) ?? content.split("\n").map((line) => MANUAL_LINE.exec(line)?.[1]).find(Boolean) ?? null;
+  const read = cardPolicyHeading(content) ?? content.split("\n").map((line) => MANUAL_LINE.exec(line)?.[1]).find(Boolean) ?? null;
+  /*
+   * CONDUCT_INCIDENT_CITES_PAGE_ENABLED (QA's live tester, 8 Nov 2026): "**Policy:** this reads as **Standards of
+   * Conduct** — a required deadline that was missed …" was read as the heading "this reads as Standards of Conduct",
+   * so the card's own "Standards of Conduct Policy, JBA Policy Manual p.12" line was taken as another policy and
+   * dropped: the card named the policy with no page. With the flag on, the policy such a line reads as is the one in
+   * bold. Off, as before.
+   */
+  const heading = read && conductIncidentCitesPageEnabled() ? (/^this reads as \*\*([^*]+)\*\*/i.exec(read)?.[1] ?? read) : read;
   if (!heading) return content;
   const card = normalHeading(heading);
   return content
@@ -126,14 +142,74 @@ function withoutRemovedOffense(content: string): string {
   return next;
 }
 
+/*
+ * BARE_NOT_DENIAL_ENABLED (QA's second Sunny gate, 6 Nov 2026): "not late", "she was never late"
+ * deny a fault; an Issue or Observation that says only that is no account, so rule 5 keeps the ask.
+ * Each clause must deny: "not late but left the bed dirty" says what happened and stays an account.
+ */
+function onlyDeniesAFault(text: string): boolean {
+  const clauses = text.split(/[.;,]+|\s+(?:but|and|also)\s+/i).map((clause) => clause.trim()).filter(Boolean);
+  return clauses.length > 0 && clauses.every((clause) => deniesAFault(clause) || deniesAFaultWithBareNot(clause));
+}
+
+/** The "What happened" / "Observation of Offense" lines' text, for the denial check above. */
+function accountLineTexts(content: string): string[] {
+  return [...content.matchAll(/^\s*\*\*(?:Issue|What happened|Observation of Offense):\*\*[ \t]*(\S[^\n]*)$/gm)].map((match) => match[1]!.trim());
+}
+
 /** Rule 5: an account on the card is never "not told". */
 function withoutNotToldWhenTold(content: string, issue: string | null | undefined): string {
-  const told = Boolean(issue?.trim()) || ACCOUNT_LINE.test(content) || FROM_DESCRIBED.test(content);
+  const told = bareNotDenialEnabled()
+    ? (Boolean(issue?.trim()) && !onlyDeniesAFault(issue!)) ||
+      accountLineTexts(content).some((text) => !onlyDeniesAFault(text)) ||
+      FROM_DESCRIBED.test(content)
+    : Boolean(issue?.trim()) || ACCOUNT_LINE.test(content) || FROM_DESCRIBED.test(content);
   if (!told || !NO_ACCOUNT.test(content)) return content;
   return content
     .split("\n")
     .filter((line) => !NO_ACCOUNT.test(line))
     .join("\n");
+}
+
+/**
+ * CLEANING_OTHER_EVERY_WORDING_ENABLED (QA's live eval, 6 Nov 2026: the live model's reply said the Standards of
+ * Conduct for "he did not complete daily cleaning duties"). On a Corrective Action card whose account reads as
+ * cleaning left undone (`readCaPolicy`'s `other`, from the manager's message and the card's Issue), the
+ * **Policy:** line is the Other line, and a Standards of Conduct citation line goes. Pau: cleaning is Other.
+ */
+const CORRECTIVE_ACTION_KEY = "dpoa";
+const SOC_CITATION = /^\s*(?:[-*]\s*)?\**Standards of Conduct\**(?:\s+Policy)?,\s*JBA Policy Manual\b/i;
+
+export function withCleaningOtherPolicy(response: AskResponse, message?: string): AskResponse {
+  const card = response.formProposal;
+  if (!cleaningOtherEveryWordingEnabled() || !card || card.templateKey !== CORRECTIVE_ACTION_KEY) return response;
+  const reading = readCaPolicy([message ?? "", card.issue ?? ""].filter(Boolean).join("\n"));
+  if (reading.other !== "cleaning") return response;
+  const other = caPolicyProposalLine(reading);
+  if (!other) return response;
+  let placed = false;
+  const lines = response.content.split("\n").flatMap((line) => {
+    if (SOC_CITATION.test(line)) return [];
+    if (!/\*\*Policy:?\*\*/.test(line)) return [line];
+    if (placed) return [];
+    placed = true;
+    return [other];
+  });
+  const content = tidy(lines.join("\n"));
+  return content === response.content ? response : { ...response, content };
+}
+
+/*
+ * EXIT_DATE_LINE_AGREES_ENABLED (QA round 5, 8 Nov 2026; same flag in both apps; default off). "exit form for <name>,
+ * last day 11/05, gave no notice": the reply's list said "- **Date:** the day the draft is created" while the card
+ * under it said "**Date:** 11/5/2026", and the form was created dated 11/5. On: an exit card that carries a date has
+ * that date on the list's Date line. A card with no date keeps "the day the draft is created". Off, as before.
+ */
+const EXIT_DATE_BULLET = /^- \*\*Date:\*\* the day the draft is created$/m;
+
+function withTheCardsExitDate(content: string, card: NonNullable<AskResponse["formProposal"]>): string {
+  if (!exitDateLineAgreesEnabled() || card.templateKey !== EXIT_TEMPLATE_KEY || !card.formDate) return content;
+  return content.replace(EXIT_DATE_BULLET, `- **Date:** ${exitDateInWords(card.formDate)}`);
 }
 
 /** The reply made to agree with its card. Pure; see `withReplyMatchesCard`. */
@@ -146,12 +222,16 @@ export function replyMatchesCard(response: AskResponse, names: readonly string[]
     content = employee ? withTheCardsEmployee(content, employee) : withNobodyNamed(content, names, message);
   }
   content = withoutNotToldWhenTold(withoutRemovedOffense(withOnePolicy(content)), card.issue);
+  content = withTheCardsExitDate(content, card);
   content = tidy(content);
   return content === response.content ? response : { ...response, content };
 }
 
 /** REPLY_MATCHES_CARD_ENABLED, the last step of the turn: `replyMatchesCard` with the actor's roster read this turn. Off: as built. */
 export function withReplyMatchesCard(response: AskResponse): AskResponse {
-  if (!replyMatchesCardEnabled()) return response;
-  return replyMatchesCard(response, personRosterNames() ?? [], requestMessage());
+  const cleaned = withCleaningOtherPolicy(response, requestMessage());
+  // OWN_BRAND_ONLY_ENABLED, gated on its own: only this company's brand is named (`ai/own-brand-only.ts`).
+  const branded = withOwnBrandOnly(cleaned);
+  if (!replyMatchesCardEnabled()) return branded;
+  return replyMatchesCard(branded, personRosterNames() ?? [], requestMessage());
 }

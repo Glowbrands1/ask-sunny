@@ -28,11 +28,11 @@ export function SourceCard({
     <Link
       href={`/knowledge?document=${citation.documentId}`}
       className={cn(
-        "group flex gap-3 rounded-[var(--radius-md)] border border-border bg-surface p-3 text-left shadow-soft transition-[border-color,box-shadow] hover:border-border-strong hover:shadow-raised",
+        "group flex gap-3 rounded-[var(--radius-md)] bg-surface p-3 text-left shadow-raised transition-[box-shadow,transform] hover:-translate-y-px hover:shadow-float",
         className,
       )}
     >
-      <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-[var(--radius-xs)] bg-primary-soft text-primary-soft-foreground">
+      <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-primary-soft text-primary-soft-foreground shadow-chip">
         {typeof index === "number" ? (
           <span className="text-[11px] font-semibold">{index + 1}</span>
         ) : (

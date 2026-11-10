@@ -1,6 +1,6 @@
-import { animalAnywhereEnabled } from "@/lib/config/chat-quality-flags";
+import { animalAnywhereEnabled, wovenTrainingConductEnabled } from "@/lib/config/chat-quality-flags";
 
-import { cleaningIncidentPhrase, readCaPolicy } from "./ca-policy";
+import { cleaningIncidentPhrase, groundConductPolicy, isWovenWorkReading, readCaPolicy, STANDARDS_OF_CONDUCT } from "./ca-policy";
 import {
   OFFENSE_MANUAL_SECTIONS,
   findManualSection,
@@ -156,6 +156,18 @@ function citedName(phrase: string): string {
 }
 
 export function namedPolicies(text: string): NamedPolicy[] {
+  const found = namedPolicyPhrases(text);
+  /*
+   * WOVEN_TRAINING_CONDUCT_ENABLED: "for not signing the woven policies" names the policies kept IN Woven, not
+   * a policy called "the woven" (live chat, 5 Nov 2026). Where the account reads as Woven work not done, a
+   * phrase with Woven in it names no policy. Off, as before.
+   */
+  if (!wovenTrainingConductEnabled() || !found.some((named) => /\bwoven\b/i.test(named.phrase))) return found;
+  if (!isWovenWorkReading(readCaPolicy(text))) return found;
+  return found.filter((named) => !/\bwoven\b/i.test(named.phrase));
+}
+
+function namedPolicyPhrases(text: string): NamedPolicy[] {
   const found: NamedPolicy[] = [];
   for (const sentence of (text ?? "").matchAll(/[^.!?\n]+[.!?]*/g)) {
     if (/\?\s*$/.test(sentence[0])) continue;
@@ -423,10 +435,25 @@ export function mayDescribeSection(text: string): boolean {
  */
 const describedResultCache = new WeakMap<readonly ManualChunk[], Map<string, NamedManualSection | null>>();
 
+/**
+ * WOVEN_TRAINING_CONDUCT_ENABLED (Pau, 6 Nov 2026): Woven acknowledgements or training not completed is the
+ * manual's Standards of Conduct section — found the way a ticked box finds it (`groundConductPolicy`), so the
+ * card names its heading and page and the Action Plan names it. No manual, or no such section: null, as before.
+ */
+function wovenWorkSection(text: string, chunks: readonly ManualChunk[] | null): NamedManualSection | null {
+  if (!wovenTrainingConductEnabled()) return null;
+  const reading = readCaPolicy(text);
+  if (!isWovenWorkReading(reading)) return null;
+  const grounded = groundConductPolicy({ reading, chunks });
+  return grounded.ok ? { phrase: reading.woven ?? "", section: grounded.section, offenseKey: STANDARDS_OF_CONDUCT } : null;
+}
+
 export function describedManualSection(input: {
   readonly text: string;
   readonly chunks: readonly ManualChunk[] | null;
 }): NamedManualSection | null {
+  const woven = wovenWorkSection(input.text ?? "", input.chunks);
+  if (woven) return woven;
   const chunks = input.chunks;
   if (!chunks || chunks.length === 0) return null;
   const cleaning = cleaningSection(input.text ?? "", chunks);

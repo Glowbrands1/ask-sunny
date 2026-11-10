@@ -59,7 +59,7 @@ export function JumpToRow() {
   return (
     <nav
       aria-label="Shortcuts"
-      className="hidden shrink-0 flex-wrap items-center gap-1.5 border-b border-chrome-border bg-chrome px-5 py-2.5 lg:flex"
+      className="hidden shrink-0 flex-wrap items-center gap-2 px-4 pt-1 pb-1 lg:flex"
     >
       {/*
         THE PRODUCTION TILES, PLUS ANY THE DEMO BUILD ADDS.
@@ -80,11 +80,11 @@ export function JumpToRow() {
         .map((action) => {
         const Icon = QUICK_ACTION_ICONS[action.iconKey] ?? Sparkles;
         const className =
-          "inline-flex items-center gap-2 rounded-full border border-brand-yellow px-3 py-1.5 text-[10.5px] font-bold text-band-chip-foreground transition-colors hover:text-brand-yellow";
+          "inline-flex items-center gap-2 rounded-full bg-surface px-3.5 py-1.5 text-[11.5px] font-bold text-foreground shadow-soft transition-[transform,box-shadow] hover:-translate-y-px hover:shadow-raised";
 
         const content = (
           <>
-            <Icon className="size-3 shrink-0 text-brand-yellow" aria-hidden />
+            <Icon className="size-3.5 shrink-0 text-gold-deep" aria-hidden />
             {action.label}
           </>
         );

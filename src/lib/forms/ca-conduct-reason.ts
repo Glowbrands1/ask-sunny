@@ -1,6 +1,6 @@
 import { caSalesPolicyEnabled } from "@/lib/config/chat-quality-flags";
 
-import { isSalesPolicyReading, STANDARDS_OF_CONDUCT, type CaPolicyReading } from "./ca-policy";
+import { cleaningUndonePhrase, isSalesPolicyReading, STANDARDS_OF_CONDUCT, type CaPolicyReading } from "./ca-policy";
 import { managerIssueWords } from "./other-write-in";
 
 /**
@@ -31,7 +31,10 @@ import { managerIssueWords } from "./other-write-in";
  *     followed, a deadline, cash, an acknowledgement — `readCaPolicy`).
  * With no basis the model's tick stands, as before the flag: no reader tells
  * a cleaning duty from Woven training past due, or a guest treated rudely
- * from no reason at all. The prompt is unchanged. Off, or on a version with
+ * from no reason at all.
+ * One exception (Pau's cleaning ruling, QA sf-s15, 5 Nov 2026): the cleaning
+ * reader (`cleaningUndonePhrase`) does tell a cleaning duty apart, so when the
+ * model sends no basis, cleaning in the manager's words is the upkeep basis. The prompt is unchanged. Off, or on a version with
  * no Other box, nothing changes.
  */
 
@@ -101,7 +104,12 @@ export function withoutUnreasonedConduct<T extends { values: Record<string, stri
   if (!caSalesPolicyEnabled() || !input.reading) return null;
   const ticked = input.draft.checked.offense_type ?? [];
   if (!ticked.includes(STANDARDS_OF_CONDUCT) || !input.offered.includes(OTHER)) return null;
-  if (input.specific || conductHasReason(input.reading, input.stated, input.basis ?? null)) return null;
+  /*
+   * Pau's cleaning ruling (QA sf-s15, 5 Nov 2026): when the drafting model sends no basis, cleaning
+   * left undone in the manager's words (`cleaningUndonePhrase`, the existing reader) is the upkeep basis.
+   */
+  const basis = input.basis ?? (cleaningUndonePhrase(input.notes) !== null ? "upkeep_or_task" : null);
+  if (input.specific || conductHasReason(input.reading, input.stated, basis)) return null;
   const rest = ticked.filter((key) => key !== STANDARDS_OF_CONDUCT);
   const words = managerIssueWords(input.notes);
   const written = !input.writeInOffered || (input.draft.values[OTHER_WRITE_IN] ?? "").trim() !== "";

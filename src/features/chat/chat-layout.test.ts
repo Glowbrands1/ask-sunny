@@ -53,10 +53,17 @@ describe("the workspace is the viewport minus the shell header", () => {
     // caught the workspace calc still subtracting the old height.
     expect(code(SHELL)).toMatch(/<header[^>]*className="[^"]*\bh-16\b/);
     expect(code(SHELL)).toMatch(/<header[^>]*className="[^"]*\bshrink-0\b/);
+    /*
+     * CLAY: THE BAR FLOATS, so the sticky band it sits in is 4rem of bar plus
+     * 0.75rem of canvas above (pt-3) and 0.25rem below (pb-1) — 5rem in all.
+     * Pinned here because the workspace calc below depends on that sum.
+     */
+    expect(code(SHELL)).toMatch(/className="sticky top-0 z-40 [^"]*\bpt-3\b[^"]*\bpb-1\b/);
   });
 
   it("subtracts exactly that header height", () => {
-    expect(SCREEN_CODE).toContain("h-[calc(100dvh-4rem)]");
+    // 5rem: the 4rem bar plus the 1rem of canvas the floating clay bar sits in.
+    expect(SCREEN_CODE).toContain("h-[calc(100dvh-5rem)]");
   });
 
   it("never claims the whole viewport at any breakpoint", () => {
@@ -76,7 +83,7 @@ describe("the workspace is the viewport minus the shell header", () => {
 
 describe("the conversation is the flexible region and the composer is not", () => {
   it("carries min-h-0 on the root, so its children can scroll inside it", () => {
-    const root = SCREEN_CODE.slice(SCREEN_CODE.indexOf("h-[calc(100dvh-4rem)]"));
+    const root = SCREEN_CODE.slice(SCREEN_CODE.indexOf("h-[calc(100dvh-5rem)]"));
     expect(root.slice(0, 120)).toContain("min-h-0");
   });
 
@@ -105,7 +112,11 @@ describe("the conversation is the flexible region and the composer is not", () =
     // on near-black behind a 4px yellow top edge — so the old string described a
     // hairline that is deliberately gone. The layout guarantee is `shrink-0`,
     // which is what this test is for and what is checked.
-    expect(COMPOSER_CODE).toMatch(/className="shrink-0 border-t-4 border-brand-yellow/);
+    //
+    // CLAY: the dock is now a rounded clay pillow (`clay-band`) inset from the
+    // canvas rather than a full-width strip with a yellow top edge, so the
+    // class list it is anchored to changed; `shrink-0` is still asserted.
+    expect(COMPOSER_CODE).toMatch(/className="clay-band mx-3 mb-3 shrink-0\b/);
     /*
      * `flex-1` IS PERMITTED INSIDE THE DOCK, on the disclaimer that shares a
      * row with the mode control — it is not on the dock's own container, which
@@ -114,7 +125,7 @@ describe("the conversation is the flexible region and the composer is not", () =
      * reason.
      */
     const container = COMPOSER_CODE.slice(
-      COMPOSER_CODE.indexOf('className="shrink-0 border-t-4'),
+      COMPOSER_CODE.indexOf('className="clay-band mx-3 mb-3 shrink-0'),
     ).slice(0, 200);
     expect(container).not.toMatch(/\bflex-1\b/);
   });

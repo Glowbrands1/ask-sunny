@@ -1,3 +1,7 @@
+import { coachingObservedKeptEnabled } from "@/lib/config/chat-quality-flags";
+
+import { statesMetricShortfall } from "./metric-shortfall";
+
 /**
  * ============================================================================
  * COACHING IS NOT ALWAYS ABOUT A PROBLEM
@@ -88,7 +92,8 @@ const UNDERPERFORMANCE = "underperformance";
 const FRAMED_TEXT_KEYS: ReadonlySet<string> = new Set(["coaching_details", "other_topic"]);
 
 export function notesDescribeShortfall(notes: string): boolean {
-  return describesShortfall(notes);
+  // COACHING_OBSERVED_KEPT_ENABLED: a metric named and judged ("not hitting her numbers") is a shortfall too.
+  return describesShortfall(notes) || (coachingObservedKeptEnabled() && statesMetricShortfall(notes));
 }
 
 function splitSentences(line: string): string[] {

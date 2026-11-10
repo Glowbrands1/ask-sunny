@@ -1,6 +1,8 @@
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { formNameFromRosterEnabled, typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
 import { readCaPolicy } from "@/lib/forms/ca-policy";
+import { namesThisCompany } from "@/lib/forms/company-name";
+import { namesCompanyPositionTitle } from "@/lib/forms/staff-picker";
 import {
   displayName,
   matchEmployeeName,
@@ -57,7 +59,7 @@ export function prepareGroundedQuestion(input: {
 }): GroundedPrep {
   const people = input.people;
   const roster = people as readonly RosterEmployee[];
-  let question = prependFormState(input.question, input.saved);
+  let question = prependFormState(input.question, input.saved, managerTurns(input.history));
   const kept = new Set<string>();
   if (input.saved?.keptTypedName) kept.add(input.saved.keptTypedName);
 
@@ -274,6 +276,10 @@ function gateMentions(
       continue;
     }
     if (isSalonPhrase(name)) continue;
+    // B1 (the sibling app's flip-3 tester, 6 Nov 2026), FORM_NAME_FROM_ROSTER_ENABLED: a company position title is never a person missing from the roster.
+    if (formNameFromRosterEnabled() && namesCompanyPositionTitle(name)) continue;
+    // QA, 7 Nov 2026, FORM_NAME_FROM_ROSTER_ENABLED: the company's own name or initials are never a person missing from the roster.
+    if (formNameFromRosterEnabled() && namesThisCompany(name)) continue;
     // FORM_NAME_FROM_ROSTER_ENABLED: beside a roster name, "Club Close", "Under" (Pau, 4 Nov 2026) are shaped like nobody on the roster; not unmatched people.
     if (anchored && !rosterShaped(name, roster)) continue;
     // The typed name stays in the question. The reply says Woven does not have it.
@@ -431,4 +437,9 @@ function asPerson(employee: RosterEmployee): GroundedPerson {
 function replacePhrase(text: string, phrase: string, replacement: string): string {
   const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return text.replace(new RegExp(`\\b${escaped}\\b`, "i"), replacement);
+}
+
+/** The manager's earlier turns (SECOND_REQUEST_OWN_ACCOUNT_ENABLED: `form-state.ts` stateForTurn). */
+function managerTurns(history: readonly { role: string; content: string }[]): string[] {
+  return history.filter((turn) => turn.role === "user").map((turn) => turn.content);
 }

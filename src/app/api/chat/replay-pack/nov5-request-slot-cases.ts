@@ -82,7 +82,8 @@ export const NOV5_REQUEST_SLOT_CASES: ReplayCase[] = [
     id: "nov5-request-slot-off-roster-name",
     title: "Pau's message 1 for \"Remy Fenn\", not on the roster (Remy Calder is): no metric named as a person, no \"Which of them\", never Remy Calder",
     report: `${REPORT}: "Which of them is this Corrective Action Form for — Remy Fenn, Club Close or Under?"`,
-    status: { open: "production answers the message as metric-only (CA_SALES_POLICY_ENABLED off); with the sales policy on, \"Remy Fenn\" was offered as \"Is this for **Remy Calder**?\"" },
+    // Changed on purpose (7 Nov 2026): QA's flips of 5 and 6 Nov turned CA_SALES_POLICY, REPLY_MATCHES_CARD, TITLE_OF_THE_EMPLOYEE, METRIC_GUARD, TITLE_ENDS_AT_LINE, BARE_NOT_DENIAL and PLACE_FROM_CUE on in production (production-flags.json); this case now holds with production's flags.
+    status: "fixed",
     fixFlags: [FLAG, SALES, GLOSSARY],
     async run(t) {
       const thread = start(t);
@@ -93,7 +94,8 @@ export const NOV5_REQUEST_SLOT_CASES: ReplayCase[] = [
       expect(thread.proposal?.employeeName ?? "", "the card is for Remy Calder").not.toMatch(/Calder/);
       // This app never says "I couldn't find … in the Woven roster"; a card for the name as typed is acceptable here (QA, 5 Nov 2026).
       const card = thread.proposal?.employeeName === "Remy Fenn";
-      const asks = !thread.proposal?.employeeName && /Who is this (?:\*\*[^*]+\*\* |form )?for\?|Employee's full name/.test(reply.content);
+      // Changed on purpose (QA, 7 Nov 2026; as the sibling app's #516, finding C): with OFF_ROSTER_CONFIRM the off-roster offer ("reply **use Remy Fenn**", the typed name only) is the question about the person, instead of "Who is this form for?".
+      const asks = !thread.proposal?.employeeName && /Who is this (?:\*\*[^*]+\*\* |form )?for\?|Employee's full name|reply \*\*use Remy Fenn\*\* and I'll put that name on the form/.test(reply.content);
       expect(card || asks, `neither a card for Remy Fenn nor the question who the form is for:\n${reply.content}`).toBe(true);
     },
   },
@@ -101,7 +103,8 @@ export const NOV5_REQUEST_SLOT_CASES: ReplayCase[] = [
     id: "nov5-request-slot-off-roster-name-models",
     title: "the same, with the reading models reading \"Remy Fenn\" as typed (the live path): no metric offered, no \"Which of them\", never Remy Calder",
     report: `${REPORT}: the AI reader's path`,
-    status: { open: "production answers the message as metric-only (CA_SALES_POLICY_ENABLED off)" },
+    // Changed on purpose (7 Nov 2026): QA's flips of 5 and 6 Nov turned CA_SALES_POLICY, REPLY_MATCHES_CARD, TITLE_OF_THE_EMPLOYEE, METRIC_GUARD, TITLE_ENDS_AT_LINE, BARE_NOT_DENIAL and PLACE_FROM_CUE on in production (production-flags.json); this case now holds with production's flags.
+    status: "fixed",
     fixFlags: [FLAG, SALES, GLOSSARY],
     async run(t) {
       const thread = start(t);
@@ -112,7 +115,8 @@ export const NOV5_REQUEST_SLOT_CASES: ReplayCase[] = [
       expect(thread.proposal?.employeeName ?? "", "the card is for Remy Calder").not.toMatch(/Calder/);
       // This app never says "I couldn't find … in the Woven roster"; a card for the name as typed is acceptable here (QA, 5 Nov 2026).
       const card = thread.proposal?.employeeName === "Remy Fenn";
-      const asks = !thread.proposal?.employeeName && /Who is this (?:\*\*[^*]+\*\* |form )?for\?|Employee's full name/.test(reply.content);
+      // Changed on purpose (QA, 7 Nov 2026; as the sibling app's #516, finding C): with OFF_ROSTER_CONFIRM the off-roster offer ("reply **use Remy Fenn**", the typed name only) is the question about the person, instead of "Who is this form for?".
+      const asks = !thread.proposal?.employeeName && /Who is this (?:\*\*[^*]+\*\* |form )?for\?|Employee's full name|reply \*\*use Remy Fenn\*\* and I'll put that name on the form/.test(reply.content);
       expect(card || asks, `neither a card for Remy Fenn nor the question who the form is for:\n${reply.content}`).toBe(true);
     },
   },
@@ -120,7 +124,8 @@ export const NOV5_REQUEST_SLOT_CASES: ReplayCase[] = [
     id: "nov5-request-slot-on-roster-name",
     title: "the same message for Remy Fenn ON the roster: the card is for Remy Fenn and cites the Standards of Conduct",
     report: `${REPORT}: control, the person on the roster`,
-    status: { open: "production answers the message as metric-only (CA_SALES_POLICY_ENABLED off)" },
+    // Changed on purpose (7 Nov 2026): QA's flips of 5 and 6 Nov turned CA_SALES_POLICY, REPLY_MATCHES_CARD, TITLE_OF_THE_EMPLOYEE, METRIC_GUARD, TITLE_ENDS_AT_LINE, BARE_NOT_DENIAL and PLACE_FROM_CUE on in production (production-flags.json); this case now holds with production's flags.
+    status: "fixed",
     fixFlags: [FLAG, SALES, GLOSSARY],
     async run(t) {
       const thread = start(t, [...ROSTER, REMY_FENN]);
@@ -164,7 +169,8 @@ export const NOV5_REQUEST_SLOT_CASES: ReplayCase[] = [
     id: "nov5-request-slot-no-name-verbal",
     title: "QA review: \"I need a corrective action verbal. This is for Under Performance on …\" names nobody: it asks who; never \"Under Performance\" or \"Under\"",
     report: `${REPORT}: QA review of the request slot, edge case 1`,
-    status: { open: "production answers the message as metric-only (CA_SALES_POLICY_ENABLED off); with the three flags on (before the QA review fix), the card was made for **Under**" },
+    // Changed on purpose (7 Nov 2026): QA's flips of 5 and 6 Nov turned CA_SALES_POLICY, REPLY_MATCHES_CARD, TITLE_OF_THE_EMPLOYEE, METRIC_GUARD, TITLE_ENDS_AT_LINE, BARE_NOT_DENIAL and PLACE_FROM_CUE on in production (production-flags.json); this case now holds with production's flags.
+    status: "fixed",
     fixFlags: [FLAG, SALES, GLOSSARY],
     async run(t) {
       const thread = start(t);
@@ -176,7 +182,8 @@ export const NOV5_REQUEST_SLOT_CASES: ReplayCase[] = [
     id: "nov5-request-slot-ca-for-under-performance",
     title: "QA review: \"I need a CA for Under Performance on …\": the slot is an offense, not a name; it asks who",
     report: `${REPORT}: QA review of the request slot, edge case 2`,
-    status: { open: "production answers the message as metric-only (CA_SALES_POLICY_ENABLED off); with the three flags on (before the QA review fix), the card was made for **Under**" },
+    // Changed on purpose (7 Nov 2026): QA's flips of 5 and 6 Nov turned CA_SALES_POLICY, REPLY_MATCHES_CARD, TITLE_OF_THE_EMPLOYEE, METRIC_GUARD, TITLE_ENDS_AT_LINE, BARE_NOT_DENIAL and PLACE_FROM_CUE on in production (production-flags.json); this case now holds with production's flags.
+    status: "fixed",
     fixFlags: [FLAG, SALES, GLOSSARY],
     async run(t) {
       const thread = start(t);
@@ -230,7 +237,8 @@ export const NOV5_REQUEST_SLOT_CASES: ReplayCase[] = [
         key: "ima-on-roster",
         text: "create a CA form for ima employee, for opening salon late on 9-28-26",
         roster: [...ROSTER, person("e-ima-employee", "Ima", "Employee")],
-        status: { open: "the reply drafts \"for **ima**\", not the roster's spelling" },
+        // Changed on purpose (7 Nov 2026): QA's flips of 5 and 6 Nov turned CA_SALES_POLICY, REPLY_MATCHES_CARD, TITLE_OF_THE_EMPLOYEE, METRIC_GUARD, TITLE_ENDS_AT_LINE, BARE_NOT_DENIAL and PLACE_FROM_CUE on in production (production-flags.json); now holds with production's flags.
+        status: "fixed",
         check: (card: string | null, reply: string) => {
           expect(card, "not the roster's spelling").toBe("Ima Employee");
           expect(reply, "the reply drafts for the typed name").not.toContain("**ima**");
@@ -240,7 +248,8 @@ export const NOV5_REQUEST_SLOT_CASES: ReplayCase[] = [
         key: "ima-off-roster",
         text: "create a CA form for ima employee, for opening salon late on 9-28-26",
         roster: ROSTER,
-        status: { open: "the card is for \"Ima\", a name on no roster" },
+        // Changed on purpose (7 Nov 2026): QA's flips of 5 and 6 Nov turned CA_SALES_POLICY, REPLY_MATCHES_CARD, TITLE_OF_THE_EMPLOYEE, METRIC_GUARD, TITLE_ENDS_AT_LINE, BARE_NOT_DENIAL and PLACE_FROM_CUE on in production (production-flags.json); now holds with production's flags.
+        status: "fixed",
         check: (card: string | null, reply: string) => {
           expect(card, "a name on no roster is the employee").toBeNull();
           expect(reply, "it does not ask who").toMatch(/Who is this (?:\*\*[^*]+\*\* |form )?for\?/);
@@ -270,7 +279,8 @@ export const NOV5_REQUEST_SLOT_CASES: ReplayCase[] = [
         key: "coaching-form",
         text: "CA for Coaching Form",
         roster: ROSTER,
-        status: { open: "a Coaching Form card" },
+        // Changed on purpose (8 Nov 2026): fixed in production by CA_REQUEST_NOT_PRIOR_COACHING_ENABLED, QA round 4, 8 Nov 2026; it now holds with production's flags.
+        status: "fixed",
         check: (card: string | null, reply: string, templateKey?: string | null) => {
           expect(templateKey, "not a Corrective Action").toBe("dpoa");
           expect(card, "a form's name is the employee").toBeNull();

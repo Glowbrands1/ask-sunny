@@ -96,11 +96,11 @@ export function GoalProgressBar({
       <span
         role="img"
         aria-label={`${location.qualifyingMonthToDate} of ${goal.target} qualifying reviews, ${progress.percent}%`}
-        className="relative block h-[12px] min-w-[80px] flex-1 rounded-[4px] bg-measure-data-track"
+        className="relative block h-[14px] min-w-[80px] flex-1 rounded-full bg-measure-data-track shadow-dent"
       >
         <span
           className={cn(
-            "absolute inset-y-0 left-0 rounded-[4px] transition-[width] duration-300 motion-reduce:transition-none",
+            "clay-fill absolute inset-y-0 left-0 rounded-full transition-[width] duration-300 motion-reduce:transition-none",
             met ? "bg-status-outperforming" : "bg-measure-data",
           )}
           style={{ width: `${progress.barPercent}%` }}

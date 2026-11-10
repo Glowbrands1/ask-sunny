@@ -1734,6 +1734,37 @@ describe("the policy-verification notice", () => {
     expect(notice).toMatch(/entered by hand/);
   });
 
+  /*
+   * QA's Sunny round-5 live tester (8 Nov 2026), item 1: "Change <A> CA" opened a new draft of the finalized form;
+   * nobody edited it, but its banner said the Direct policy "was changed by hand". REVISION_EDIT_NEEDS_EDIT_ENABLED.
+   */
+  it("REVISION_EDIT_NEEDS_EDIT: a fresh revision nobody edited is not called an edit; with an edit of its own it is", () => {
+    vi.stubEnv("NEXT_PUBLIC_REVISION_EDIT_NEEDS_EDIT_ENABLED", "true");
+    try {
+      const verified = { grounded: true, verified: true, sources: [{ documentId: "d1" }] };
+      const loaded = correctiveInstance([
+        { fieldKey: "policy_violated", value: "Attendance Policy", provenance: verified },
+        { fieldKey: "policy_language", value: "Each employee knows their schedule and arrives on time." },
+      ]);
+      const revision = {
+        ...loaded,
+        instance: { ...loaded.instance, revisesInstanceId: "inst-76" },
+        events: [{ kind: "created", actor: "user-1", createdAt: "2026-11-08T08:00:00Z" }],
+      };
+      const fresh = policyVerificationNoticeFor(revision as never, false);
+      expect(fresh).not.toMatch(/You edited the policy wording/);
+      expect(fresh).toMatch(/entered by hand/);
+
+      const edited = {
+        ...revision,
+        events: [...revision.events, { kind: "edited", actor: "user-1", createdAt: "2026-11-08T08:01:00Z", detail: { fields: 1, groups: 0 } }],
+      };
+      expect(policyVerificationNoticeFor(edited as never, false)).toMatch(/^You edited the policy wording/);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("treats provenance that is present but unverified as unverified", () => {
     const notice = policyVerificationNoticeFor(
       correctiveInstance([

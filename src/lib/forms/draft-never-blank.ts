@@ -1,5 +1,5 @@
 import { businessToday } from "@/lib/business-date";
-import { jobTitleNotIncidentEnabled, levelRequestDateEnabled, requestLineAccountEnabled } from "@/lib/config/chat-quality-flags";
+import { caSalesPolicyEnabled, jobTitleNotIncidentEnabled, levelRequestDateEnabled, requestLineAccountEnabled } from "@/lib/config/chat-quality-flags";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 import { JOIN } from "./bounded-context";
@@ -107,7 +107,9 @@ function issueFromRequest(text: string, employeeName: string | null): string | n
       // "a CA for <name> for cash handling", "… <name> - cash handling": the person, then the issue.
       const words = [...nameWords(employeeName)].map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
       if (words) {
-        const after = new RegExp(`^(?:(?:${words})\\s*)+(?:\\s+(?:for|about|over|regarding)\\s+|\\s*[-—–:,]\\s*)(.+)$`, "i").exec(raw.trim());
+        // CA_SALES_POLICY_ENABLED (QA, live, 4 Nov 2026): "CA for <name> due to under performance in salon metrics" — "due to" and "because (of)" join the reason too. Off, as before.
+        const joins = caSalesPolicyEnabled() ? "for|about|over|regarding|due\\s+to|because(?:\\s+of)?" : "for|about|over|regarding";
+        const after = new RegExp(`^(?:(?:${words})\\s*)+(?:\\s+(?:${joins})\\s+|\\s*[-—–:,]\\s*)(.+)$`, "i").exec(raw.trim());
         if (after) raw = after[1]!;
       }
       const issue = raw.split(CUT)[0]!.trim().replace(/[\s"'”’)]+$/, "");
@@ -121,6 +123,11 @@ function issueFromRequest(text: string, employeeName: string | null): string | n
     if (found) return found;
   }
   return null;
+}
+
+/** The issue the manager's request names ("CA for <name> for cash handling" → "cash handling"), or null. */
+export function requestIssueClause(text: string, employeeName: string | null): string | null {
+  return issueFromRequest(text, employeeName);
 }
 
 export interface DraftedCall {
@@ -269,7 +276,7 @@ const ASKS_FOR_THE_FORM =
 const LEVEL_REQUEST_DATED_ASK =
   /\b(?:create|make|start|open|do|file|write|draft)\s+(?:a\s+|an\s+)?(?:verbal|written|final)(?:\s+warning)?\s+(?:on\s+)?(?<![\d/-])\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?(?![\d/-])\s+for\s/i;
 
-function asksForTheForm(sentence: string): boolean {
+export function asksForTheForm(sentence: string): boolean {
   return ASKS_FOR_THE_FORM.test(sentence) || (levelRequestDateEnabled() && LEVEL_REQUEST_DATED_ASK.test(sentence));
 }
 const NOT_THE_INCIDENT =
@@ -280,6 +287,16 @@ const EXONERATING =
 /** A negation that denies a fault ("she was never late", "didn't do anything wrong"), not one that names a failure ("not completing her Woven courses"). */
 export function deniesAFault(sentence: string): boolean {
   return EXONERATING.test(sentence);
+}
+/*
+ * BARE_NOT_DENIAL_ENABLED (QA's gate, 6 Nov 2026): "not late" is the same denial with a bare "not"
+ * at the start of the clause; the fault words are EXONERATING's own. "not meeting sales
+ * requirements" names no fault word, so it stays an account.
+ */
+const BARE_NOT_FAULT = new RegExp(String.raw`^\s*not\b(?:\s+[\w']+){0,2}?\s+` + EXONERATING.source.slice(EXONERATING.source.lastIndexOf("(?:late")), "i");
+/** "not late", "not absent": a clause that starts with a bare "not" before a fault. */
+export function deniesAFaultWithBareNot(clause: string): boolean {
+  return BARE_NOT_FAULT.test(clause);
 }
 /* Talk about the conversation, not about the employee. */
 const CONVERSATIONAL =

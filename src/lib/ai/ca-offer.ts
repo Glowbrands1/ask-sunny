@@ -1,4 +1,4 @@
-import { caSalesPolicyEnabled } from "@/lib/config/chat-quality-flags";
+import { caOfferKeepsAccountEnabled, caSalesPolicyEnabled } from "@/lib/config/chat-quality-flags";
 import { CA_POLICY_LABEL, isSalesPolicyReading, readCaPolicy } from "@/lib/forms/ca-policy";
 import { AFFIRMATIVE, type RosterEmployee } from "@/lib/forms/employee-match";
 import { managerContext, resolveEmployee } from "@/lib/forms/proposal";
@@ -96,6 +96,49 @@ export function acceptedCaOffer(input: {
   const match = typeof last?.content === "string" ? OFFER.exec(last.content) : null;
   if (!match) return null;
   return `Create a Corrective Action Form for ${match[1]}. The policy is ${match[2]}.`;
+}
+
+/**
+ * ============================================================================
+ * "YES" KEEPS THE ACCOUNT THE OFFER ANSWERED
+ * (CA_OFFER_KEEPS_ACCOUNT_ENABLED, default off; QA's MSB case M5, 5 Nov 2026)
+ * ============================================================================
+ *
+ * "<name> did not follow must see behaviors which violates standards of
+ * conduct policy" → the offer → "yes": the card read "What happened: The
+ * policy is Standards of Conduct". `acceptedCaOffer`'s request is the app's
+ * sentence, not the manager's, and every reader of the card's account read it
+ * as hers.
+ *
+ * With the flag on, the accepted yes is the manager turn the offer answered —
+ * her own words, unchanged — asked for as a Corrective Action Form (the
+ * template key the offer names; the continuation the card readers already
+ * take), with the conversation as it stood when she said it. The offer and
+ * the "yes" are dropped from that turn's history, so nothing the app wrote is
+ * read as her account. The employee and the policy are read from her words by
+ * the same readers that made the offer. `employee` is the name the offer
+ * named, for the caller's fallback when her turn makes no card (it held no
+ * account). Null with either flag off, with no accepted offer, or with no
+ * manager turn before the offer.
+ *
+ * By structure (which turn is read), never by matching words.
+ */
+export function acceptedCaOfferTurn<Turn extends { readonly role: string; readonly content: unknown; readonly id?: string }>(input: {
+  readonly question: string;
+  readonly history: readonly Turn[];
+}): { readonly account: Turn & { readonly content: string }; readonly history: Turn[]; readonly templateKey: string; readonly employee: string } | null {
+  if (!caOfferKeepsAccountEnabled() || !acceptedCaOffer(input)) return null;
+  const offerAt = input.history.findLastIndex((turn) => turn.role === "assistant");
+  const offered = input.history[offerAt]!.content as string;
+  const accountAt = input.history.findLastIndex((turn, index) => index < offerAt && turn.role === "user");
+  const account = accountAt < 0 ? null : input.history[accountAt]!;
+  if (!account || typeof account.content !== "string" || account.content.trim() === "") return null;
+  return {
+    account: account as Turn & { readonly content: string },
+    history: input.history.slice(0, accountAt),
+    templateKey: CORRECTIVE_ACTION_KEY,
+    employee: OFFER.exec(offered)![1]!,
+  };
 }
 
 /**

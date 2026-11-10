@@ -21,7 +21,7 @@ export interface ReplayAnswer {
   content: string;
   /** FORM_EDIT_SOURCE_TURN_ENABLED: the reply was about the open form; `unwritten` is the manager's turn it did not write. */
   formReply?: { instanceId: string; unwritten?: string };
-  formProposal?: { templateKey?: string; employeeName?: string | null; employeeRole?: string | null; status?: string; subject?: string; locationId?: string | null };
+  formProposal?: { templateKey?: string; employeeName?: string | null; employeeRole?: string | null; status?: string; subject?: string; locationId?: string | null; wovenCloseMatch?: string | null; formDate?: string | null };
   formUpdate?: { instanceId: string; updated: string[] };
   formOpened?: { instanceId: string };
 }
@@ -43,6 +43,8 @@ export interface ReplayContext {
   /** What the drafting model writes at Create. */
   /** `extra`: other fields of the draft tool's input, e.g. `{ offense_basis: "sales" }` (CA_SALES_POLICY_ENABLED). */
   draftWrites(values: Record<string, string>, checked?: Record<string, string[]>, extra?: Record<string, unknown>): void;
+  /** The pinned policy manual also has these chunks this case (as `fetchOfficialPolicyManual` returns them); none by default. */
+  manualAlsoHas?(chunks: readonly Record<string, unknown>[]): void;
   /** What the revision model writes on the next revision. */
   revisionWrites(values: Record<string, string>): void;
   /** What the answering model says on its next turns (null: the default answer). */
@@ -57,11 +59,16 @@ export interface ReplayContext {
   editToolOffers?(): { offered: number; lastData: string | null };
   /**
    * What the slot model reads on the next turns (record_intent_slots), and the employee the AI reader quotes
-   * (checked against the roster, as in production), as a production trace shows them.
+   * (checked against the roster, as in production), as a production trace shows them. `onlyIfSaid`: the slot
+   * model reads the scripted employee only on a call whose messages contain that name, as the live model would.
    */
-  slotsRead(slots: Record<string, unknown>, readerEmployee?: string | null): void;
+  slotsRead(slots: Record<string, unknown>, readerEmployee?: string | null, options?: { onlyIfSaid?: boolean }): void;
   /** Step B's form-patch model: its raw outputs, one per call in order (null: the call falls back). Unscripted calls fall back. */
   patchWrites(outputs: readonly unknown[]): void;
+  /** Step B's form-patch model, by the manager's latest message (exact text): its raw output for that turn; a message not listed falls back. */
+  patchReads?(byLatest: Readonly<Record<string, unknown>>): void;
+  /** Fault injection (QA, 9 Nov 2026): from now on, a save of the form's values that includes this field fails (the save throws). */
+  failSavesOf?(field: string): void;
   calls(): { chat: number; draft: number; revision: number; tool: number; patch: number };
   forms(): Record<string, unknown>[];
   values(instanceId: string): Record<string, string>;
