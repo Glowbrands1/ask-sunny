@@ -1,3 +1,4 @@
+import { STREAM_HEADER, unwrapStreamed } from "@/lib/api/streamed-response";
 import { randomUUID } from "node:crypto";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -6,7 +7,7 @@ import { appendFileSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 import PRODUCTION_FLAGS from "@/config/production-flags.json";
-import { continuationFor } from "@/lib/forms/proposal-continuation";
+import { continuationFor, offeredCopyForTurn, type OfferedCopy } from "@/lib/forms/proposal-continuation";
 import { createId } from "@/lib/utils/id";
 import { fakeSupabase, type FakeStore } from "@/test/fake-supabase";
 import { JBA_MANUAL_CA_CHUNKS } from "@/test/fixtures/jba-manual-ca-sections";
@@ -58,14 +59,19 @@ vi.hoisted(() => {
 const revisionAsked = vi.hoisted(() => [] as string[]);
 /** What the drafting model was given, per Create. */
 const draftAsked = vi.hoisted(() => [] as string[]);
+/** The drafting model's system prompt, per Create, as text (CA_SALES_POLICY_ENABLED prompt lines). */
+const draftSystemAsked = vi.hoisted(() => [] as string[]);
 /** The draft call's tools, as sent (CA_SALES_POLICY_ENABLED adds an optional property). */
 const draftToolsAsked = vi.hoisted(() => [] as string[]);
 const state = vi.hoisted(() => ({
   slotReading: "none" as "none" | "ca" | "copy",
+  /** Chunks the pinned manual also has, when a case sets them (`manualAlsoHas`); none by default. */
+  manualExtra: [] as Record<string, unknown>[],
   /** What the slot model (record_intent_slots) reads this turn, when a case sets it — as a production trace shows. */
   slotsRead: {} as Record<string, unknown>,
   /** The employee the AI reader quotes this turn, when a case sets it (it is checked against the roster as in production). */
   readerEmployee: null as string | null,
+  slotsOnlyIfSaid: false,
   remapObservation: null as string | null,
   /** What the form-reading model returns for this turn (extract_form_fields). */
   reading: {} as Record<string, unknown>,
@@ -86,18 +92,59 @@ const state = vi.hoisted(() => ({
  * the evidence and date checks, the reducer, the writes and the reload are
  * the real ones.
  */
-const patchScript = vi.hoisted(() => ({ outputs: [] as unknown[], calls: 0 }));
+const patchScript = vi.hoisted(() => ({ outputs: [] as unknown[], calls: 0, byLatest: null as Record<string, unknown> | null }));
 vi.mock("@/lib/forms/form-patch-call", () => ({
   FORM_PATCH_DEFAULT_TIMEOUT_MS: 5_000,
   formPatchTimeoutMs: () => 5_000,
-  callFormPatchModel: async () => {
+  callFormPatchModel: async (input?: { prompt?: string }) => {
+    /*
+     * `t.patchReads` (coding 5, 7 Nov 2026): the reading is picked by the
+     * manager's latest message, so a turn another path answers first (a
+     * correction, a policy change) never shifts the script.
+     */
+    if (patchScript.byLatest) {
+      patchScript.calls += 1;
+      const marker = "LATEST MESSAGE FROM THE MANAGER: ";
+      const prompt = input?.prompt ?? "";
+      const latest = prompt.slice(prompt.lastIndexOf(marker) + marker.length).trim();
+      const output = patchScript.byLatest[latest];
+      return output === undefined || output === null ? { fallback: "error" } : { ok: true, output };
+    }
     const output = patchScript.outputs[patchScript.calls];
     patchScript.calls += 1;
     return output === undefined || output === null ? { fallback: "error" } : { ok: true, output };
   },
 }));
 
-vi.mock("@/lib/supabase/server", () => ({ getSupabaseAdmin: () => fakeSupabase(store) }));
+/*
+ * `t.failSavesOf` (QA, 9 Nov 2026): a save of the form's values that includes the named field returns an error, as a
+ * failed database write would, so a case can make a turn throw part-way.
+ */
+const faults = vi.hoisted(() => ({ field: null as string | null }));
+function withFaults<T>(client: T): T {
+  return new Proxy(client as object, {
+    get(target, prop, receiver) {
+      const value = Reflect.get(target, prop, receiver);
+      if (prop !== "from" || typeof value !== "function") return value;
+      return (table: string) => {
+        const builder = (value as (name: string) => Record<string, unknown>).call(target, table);
+        if (table !== "form_instance_values" || !faults.field) return builder;
+        const upsert = builder.upsert as ((rows: unknown, options?: unknown) => unknown) | undefined;
+        if (typeof upsert !== "function") return builder;
+        return new Proxy(builder, {
+          get(inner, key, innerReceiver) {
+            if (key !== "upsert") return Reflect.get(inner, key, innerReceiver);
+            return (rows: unknown, options?: unknown) =>
+              (Array.isArray(rows) ? rows : [rows]).some((row) => (row as { field_key?: string }).field_key === faults.field)
+                ? Promise.resolve({ data: null, error: { message: "replay fault" } })
+                : upsert.call(inner, rows, options);
+          },
+        });
+      };
+    },
+  }) as T;
+}
+vi.mock("@/lib/supabase/server", () => ({ getSupabaseAdmin: () => withFaults(fakeSupabase(store)) }));
 
 vi.mock("@/lib/api/respond", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/respond")>();
@@ -254,6 +301,12 @@ vi.mock("@/lib/ai/call-claude", () => ({
       formTurn: state.slotReading === "ca",
       policyHeading: null,
       ...state.slotsRead,
+      // slotsRead(…, { onlyIfSaid: true }): a call that was never shown the scripted employee does not read them.
+      ...(state.slotsOnlyIfSaid &&
+      typeof state.slotsRead.employee === "string" &&
+      !JSON.stringify(input.messages ?? []).toLowerCase().includes(String(state.slotsRead.employee).toLowerCase())
+        ? { employee: null }
+        : {}),
     };
   },
 }));
@@ -266,6 +319,14 @@ vi.mock("@/lib/ai/anthropic", () => ({
         if (!revising) {
           state.draftCalls += 1;
           draftAsked.push(JSON.stringify((request as { messages?: unknown; system?: unknown }).messages ?? []));
+          const system = (request as { system?: unknown }).system;
+          draftSystemAsked.push(
+            typeof system === "string"
+              ? system
+              : Array.isArray(system)
+                ? system.map((block) => (block as { text?: string }).text ?? "").join("\n")
+                : "",
+          );
           draftToolsAsked.push(JSON.stringify((request as { tools?: unknown }).tools ?? []));
         }
         if (revising) {
@@ -331,7 +392,7 @@ vi.mock("@/lib/knowledge/providers/supabase", () => ({
         documentTitle: "2025 JBA Policy Manual - Edited 5-2025",
         documentCategory: "policies_compliance",
         matchedBy: "tag",
-        chunks: JBA_MANUAL_CA_CHUNKS,
+        chunks: [...JBA_MANUAL_CA_CHUNKS, ...state.manualExtra],
       };
     }
   },
@@ -433,6 +494,7 @@ type Answer = {
   formSelection?: unknown;
   formOpened?: { instanceId: string; revisesInstanceId?: string | null };
   formUpdate?: { instanceId: string; updated: string[] };
+  pendingCopy?: { fromInstanceId: string };
 };
 
 /** The thread as the browser holds it: a card the answer carried stays open. */
@@ -441,6 +503,7 @@ class Thread {
   proposal: ChatFormProposal | null = null;
   instanceId: string | null = null;
   private sequence = 0;
+  private offeredCopy: OfferedCopy | undefined;
   // A well-formed client id, so the route keeps the intake state between turns (`isClientConversationId`).
   private readonly conversationId = createId("conv");
 
@@ -448,6 +511,8 @@ class Thread {
     state.reading = reading;
     const history = this.messages.map(({ id, role, content, formProposal }) => ({ id, role, content, ...(formProposal ? { formProposal } : {}) }));
     const id = `m${(this.sequence += 1)}`;
+    const pendingCopy = offeredCopyForTurn(this.offeredCopy, this.messages);
+    this.offeredCopy = undefined;
     const response = await chatRoute.POST(
       new Request("https://app.test/api/chat", {
         method: "POST",
@@ -461,11 +526,20 @@ class Thread {
           // As the browser does: the card on screen, or the intake still asking (`continuationFor`).
           ...(!this.instanceId && continuationFor(this.messages) ? { continueProposalTemplateKey: continuationFor(this.messages)!.templateKey } : {}),
           ...(this.instanceId ? { activeFormInstanceId: this.instanceId } : {}),
+          // As the browser does (`ClaudeProvider`): the copy the last answer offered (SAME_FORM_COPY_NEW_PERSON_ENABLED).
+          ...(pendingCopy ? { pendingCopyFromInstanceId: pendingCopy } : {}),
         }),
       }),
     );
-    const payload = (await response.json()) as Answer & { error?: string };
-    expect(response.status, JSON.stringify(payload)).toBe(200);
+    /*
+     * CHAT_RESPONSE_STREAM_ENABLED: an answer slower than START_AFTER_MS comes as one streamed envelope
+     * {"status", "body"}; the browser (`ai/claude-provider.ts`) unwraps it, and so does the pack (ported from
+     * the sibling app, 5 Nov 2026: a slow redraft was recorded there as an empty reply because the envelope
+     * was read as the answer).
+     */
+    const streamed = response.headers.get(STREAM_HEADER) === "1" ? unwrapStreamed(await response.text()) : null;
+    const payload = (streamed ? streamed.body : await response.json()) as Answer & { error?: string };
+    expect(streamed?.status ?? response.status, JSON.stringify(payload)).toBe(200);
     // EVERY REPLY (QA, 3 Nov 2026): "I still need …" is never said unless the reply asks who, which location or which date.
     if (/^I still need\b/m.test(payload.content ?? "")) {
       expect(stillAsks(payload.content), `"I still need" without a question:\n${payload.content}`).not.toBeNull();
@@ -480,6 +554,7 @@ class Thread {
         ...(payload.formProposal ? { formProposal: payload.formProposal } : {}),
       } as ChatMessage,
     );
+    if (payload.pendingCopy) this.offeredCopy = { fromInstanceId: payload.pendingCopy.fromInstanceId, answer: payload.content };
     if (payload.formProposal) this.proposal = payload.formProposal;
     if (payload.formOpened) this.instanceId = toUuid(payload.formOpened.instanceId);
     record.turns.push({ question, reply: payload.content ?? "", updated: payload.formUpdate?.updated ?? null });
@@ -526,13 +601,17 @@ beforeEach(async () => {
   store.form_instances = new JoiningRows() as never;
   state.slotReading = "none";
   state.slotsRead = {};
+  state.manualExtra = [];
   state.readerEmployee = null;
+  state.slotsOnlyIfSaid = false;
   state.remapObservation = null;
   state.reading = {};
   state.draft = { values: {} };
   state.revision = { values: {} };
   patchScript.outputs = [];
   patchScript.calls = 0;
+  patchScript.byLatest = null;
+  faults.field = null;
   state.directory = [
     { id: "e-1", firstName: "Quinn", lastName: "Marlowe", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-66"], positionName: null },
     { id: "e-2", firstName: "Dale", lastName: "Ferris", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-66"], positionName: null },
@@ -609,6 +688,7 @@ afterEach(() => {
   editTool.offered = 0;
   editTool.lastData = null;
   draftAsked.length = 0;
+  draftSystemAsked.length = 0;
   draftToolsAsked.length = 0;
 });
 
@@ -622,6 +702,9 @@ function context(): ReplayContext {
     directory: (rows) => {
       state.directory = rows as never;
     },
+    manualAlsoHas: (chunks) => {
+      state.manualExtra = [...chunks];
+    },
     draftWrites: (values, checked, extra) => {
       state.draft = { values, ...(checked ? { checked } : {}), ...(extra ?? {}) };
     },
@@ -631,9 +714,10 @@ function context(): ReplayContext {
     modelSays: (text) => {
       said.answer = text;
     },
-    slotsRead: (slots, readerEmployee = null) => {
+    slotsRead: (slots, readerEmployee = null, options = {}) => {
       state.slotsRead = slots;
       state.readerEmployee = readerEmployee;
+      state.slotsOnlyIfSaid = options.onlyIfSaid === true;
     },
     modelCallsEditTool: (input) => {
       editTool.input = input;
@@ -642,10 +726,20 @@ function context(): ReplayContext {
     patchWrites: (outputs) => {
       patchScript.outputs = [...outputs];
       patchScript.calls = 0;
+      patchScript.byLatest = null;
+    },
+    patchReads: (byLatest) => {
+      patchScript.outputs = [];
+      patchScript.calls = 0;
+      patchScript.byLatest = { ...byLatest };
+    },
+    failSavesOf: (field) => {
+      faults.field = field;
     },
     calls: () => ({ chat: state.chatModelCalls, draft: state.draftCalls, revision: state.revisionCalls, tool: state.toolCalls, patch: patchScript.calls }),
     forms: () => store.form_instances as never,
     draftPrompts: () => [...draftAsked],
+    draftSystems: () => [...draftSystemAsked],
     draftTools: () => [...draftToolsAsked],
     redraft: (instanceId, notes) =>
       call<Record<string, unknown>>(`/api/forms/instances/${instanceId}/draft`, {
@@ -698,8 +792,18 @@ describe("src/config/production-flags.json", () => {
   });
 });
 
+/*
+ * REPLAY_PACK_HALF (CI only; QA, 9 Nov 2026): the flags-off parity run (`src/lib/ai/flags-off-parity.test.ts`) runs the
+ * pack as two children, each with one half of the cases by id ("0": the first half, "1": the second), so neither child
+ * passes its time budget as the pack grows. Unset, every case runs, as before.
+ */
+const HALF = process.env.REPLAY_PACK_HALF;
+const BY_ID = [...CASES].sort((a, b) => a.id.localeCompare(b.id));
+const MIDDLE = Math.ceil(BY_ID.length / 2);
+const RUN = HALF === "0" ? BY_ID.slice(0, MIDDLE) : HALF === "1" ? BY_ID.slice(MIDDLE) : CASES;
+
 describe("the replay pack", () => {
-  for (const replay of CASES) {
+  for (const replay of RUN) {
     const title = `${replay.id}: ${replay.title}`;
     if (replay.status === "fixed") {
       it(`${title} — holds with production's flags`, async () => {
@@ -713,7 +817,13 @@ describe("the replay pack", () => {
         await recorded(replay.id, "open", () => replay.run(context()));
       });
     }
-    if (replay.fixFlags?.length) {
+    if (replay.fixFlags?.length && replay.fixStatus) {
+      // A fix-flag run that fails today (`fixStatus`): expected to fail. The day it passes, drop fixStatus.
+      it.fails(`${title} — OPEN with ${replay.fixFlags.join(", ")} on (${replay.fixStatus.open})`, async () => {
+        production(replay.fixFlags);
+        await recorded(replay.id, `fix-open:${replay.fixFlags!.join(",")}`, () => replay.run(context()));
+      });
+    } else if (replay.fixFlags?.length) {
       it(`${title} — holds with ${replay.fixFlags.join(", ")} on`, async () => {
         production(replay.fixFlags);
         await recorded(replay.id, `fix:${replay.fixFlags!.join(",")}`, () => replay.run(context()));

@@ -98,3 +98,54 @@ describe("no roster read this turn", () => {
     expect(rosterSpelling("ima employee", ROSTER)).toBe("Ima Employee");
   });
 });
+
+/*
+ * THE SALES-FLIP GATE (ask-sunny#530, 5 Nov 2026): the employee is taken off
+ * after the reply is built, so the rest of the reply must not speak for them.
+ * The replies are the gate's rows, verbatim (replay records, flags on).
+ */
+describe("the gate's regressions: nothing in the reply speaks for a removed employee", () => {
+  const STREET_TURN_2 =
+    "Here is what I would put on a **Coaching Form**.\n\nEverything I need is here, drawn from your messages above.\n\nI have the employee and the salon. Create the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.\n\nPrior coaching is optional. No finalized record is in this app and no note was given, so the line stays blank. The draft can still be created.\n\nAttendance Policy, JBA Policy Manual p.14\n\n**Date:** 10/26/2026\n\n**Observation of Offense:** <name>, she was late today";
+  const IMA =
+    "Who is this **Corrective Action Form** for? Give me their name and I'll draft it from what you've told me — you can set the warning level and anything else on the form itself.\n\nLate Opening Policy, JBA Policy Manual p.15\n\n**Date:** 9/28/2026\n\n**Observation of Offense:** ima employee, opening salon late on 9-28-26";
+
+  it("nov3-street-then-placeholder: the removed employee's \"Everything I need is here … I have the employee and the salon\" goes", () => {
+    const coaching = { ...reply(STREET_TURN_2, "Main Street"), formProposal: { ...card("Main Street"), templateKey: "coaching", templateName: "Coaching Form" } };
+    const out = rosterOnlyNames(coaching, ["Dana Lane"], "make a coaching form for <name>, she was late today");
+    expect(out.formProposal?.employeeName).toBeNull();
+    expect(out.content).not.toMatch(/Everything I need is here|I have the employee/);
+    expect(out.content).not.toMatch(/Create the draft here when you're ready/);
+    expect(out.content).toContain(ASK_WHO);
+    expect(out.content).toContain("**Observation of Offense:** she was late today");
+  });
+
+  it("nov5-roster-only-ima-off-roster: the request's \"for ima employee,\" never opens the Observation", () => {
+    const out = rosterOnlyNames(reply(IMA, null), ["Dana Lane"], "create a CA form for ima employee, for opening salon late on 9-28-26");
+    expect(out.content).toContain("**Observation of Offense:** opening salon late on 9-28-26");
+    expect(out.content).not.toMatch(/\bima\b/);
+  });
+
+  it("a card's roster person, a name later in the account, or no message: the Observation stays as built", () => {
+    const onCard = "I'll draft a **Corrective Action Form** for **Dana Lane**.\n\n**Observation of Offense:** Dana Lane, opened late on 9-28-26";
+    expect(rosterOnlyNames(reply(onCard, "Dana Lane"), ["Dana Lane"], "create a CA for Dana Lane, opened late on 9-28-26").content).toBe(onCard);
+    const later = IMA.replace("ima employee, opening salon late", "opening salon late, ima employee said");
+    expect(rosterOnlyNames(reply(later, null), ["Dana Lane"], "create a CA form for ima employee, for opening salon late on 9-28-26").content).toContain("opening salon late, ima employee said");
+    expect(rosterOnlyNames(reply(IMA, null), ["Dana Lane"]).content).toContain("ima employee, opening salon late");
+  });
+
+  it("a roster person who opens the account is the account's, even with no card name", () => {
+    const text = IMA.replace("ima employee, opening", "Dana Lane, opening");
+    expect(rosterOnlyNames(reply(text, null), ["Dana Lane"], "create a CA form for Dana Lane, for opening salon late on 9-28-26").content).toContain("Dana Lane, opening");
+  });
+
+  it("the sibling app's FORM_NAME re-flip gate (7 Nov 2026): a who-choice of nobody on the roster is asked once, its \"Tell me and I'll …\" tail goes with it", () => {
+    const asked = "Which of them is this **Resignation/Exit Form** for — **Philippa** or **Dorran**? Tell me and I'll fill in what you've already described.\n\n**Job title:** Tanning Consultant";
+    const out = rosterOnlyNames(reply(asked, null), ROSTER).content;
+    expect(out).toContain(ASK_WHO);
+    expect(out).not.toMatch(/full name\.\s*Tell me and I/);
+    // A choice still asked keeps its tail.
+    const two = "Which of them is this **Resignation/Exit Form** for — **Dana Lane** or **Perpetua Thornquist**? Tell me and I'll fill in what you've already described.";
+    expect(rosterOnlyNames(reply(two, null), ROSTER).content).toBe(two);
+  });
+});

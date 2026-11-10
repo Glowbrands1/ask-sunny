@@ -1,6 +1,9 @@
 import "server-only";
 
+import { wovenPdfOcrEnabled } from "@/lib/config/chat-quality-flags";
+
 import { IngestionError } from "../errors";
+import { OCR_MODEL, ocrPdfPages, type OcrBudget } from "./pdf-ocr";
 import { pdfSegments } from "./pdf-sections";
 import { summarize, type ExtractedDocument } from "./types";
 
@@ -22,7 +25,7 @@ import { summarize, type ExtractedDocument } from "./types";
  * That surfaces as a "no_text" error the manager can act on (run OCR, upload a
  * text version) rather than a document that silently indexes to zero chunks.
  */
-export async function extractPdf(buffer: Uint8Array): Promise<ExtractedDocument> {
+export async function extractPdf(buffer: Uint8Array, options: { ocr?: OcrBudget } = {}): Promise<ExtractedDocument> {
   const { extractText, getDocumentProxy } = await import("unpdf");
 
   let pages: string[];
@@ -47,6 +50,15 @@ export async function extractPdf(buffer: Uint8Array): Promise<ExtractedDocument>
   const extracted = summarize(pdfSegments(pages), totalPages);
 
   if (extracted.characterCount === 0) {
+    /*
+     * WOVEN_PDF_OCR_ENABLED: a Woven sync (the only caller that passes a budget)
+     * has the scan's pages read, through the same segmenting as any PDF. Nothing
+     * read means today's answer. Off, as before.
+     */
+    if (options.ocr && wovenPdfOcrEnabled()) {
+      const read = summarize(pdfSegments(await ocrPdfPages(buffer, totalPages, options.ocr)), totalPages);
+      if (read.characterCount > 0) return { ...read, ocr: { model: OCR_MODEL } };
+    }
     throw new IngestionError(
       "no_text",
       "No text could be extracted from this PDF. If it is a scan, run OCR on it first or upload a text version.",

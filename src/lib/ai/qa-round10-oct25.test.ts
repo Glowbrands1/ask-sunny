@@ -5,7 +5,7 @@ import type { DirectoryFact } from "@/lib/forms/employee-roster";
 import { continuationFor } from "@/lib/forms/proposal-continuation";
 import type { AccessScope, ChatMessage } from "@/types";
 
-import { keepFormEmployeeEnabled, titleWholeWordEnabled } from "@/lib/config/chat-quality-flags";
+import { createCommandPointsToCardEnabled, keepFormEmployeeEnabled, titleWholeWordEnabled } from "@/lib/config/chat-quality-flags";
 import { dateAnswerTurns } from "@/lib/forms/incident-dates";
 
 import { titleInWords } from "./title-in-words";
@@ -353,7 +353,13 @@ describe("QA round 10 replays (fixes on)", { timeout: 120_000 }, () => {
       const named = draftedFor(turn.content);
       if (named) expect(named.toLowerCase(), `${where} — drafted for`).toBe("test employee");
     }
-    expect(draftedFor(turns[3]!.content)?.toLowerCase()).toBe("test employee");
+    /*
+     * Changed on purpose (8 Nov 2026, ask-sunny#676 CREATE_COMMAND_POINTS_TO_CARD_ENABLED): with only the card open,
+     * "create the ca" keeps the card (still test employee's, checked above) and says to press **Create draft** on it,
+     * so its reply names nobody. Off, it is the card's "I'll draft … for **test employee**" as before.
+     */
+    if (createCommandPointsToCardEnabled()) expect(turns[3]!.content).toMatch(/press \*\*Create draft\*\* on the card/);
+    else expect(draftedFor(turns[3]!.content)?.toLowerCase()).toBe("test employee");
   });
 
   it('L17 conv_mvnjo8k22hy75ii: "throught the rest" is not the HR title; no title is on the card', async () => {

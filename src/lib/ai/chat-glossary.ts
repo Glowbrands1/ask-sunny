@@ -1,4 +1,4 @@
-import { chatGlossaryEnabled } from "@/lib/config/chat-quality-flags";
+import { chatGlossaryEnabled, salesShortfallObjectEnabled } from "@/lib/config/chat-quality-flags";
 
 /**
  * ============================================================================
@@ -62,7 +62,31 @@ export function mentionsGlossaryTerm(text: string | null | undefined): boolean {
   return text.split(/[^A-Za-z0-9.]+/).some((word) => foldsToGlossaryTerm(word.replace(/^\.+|\.+$/g, "")));
 }
 
+/**
+ * SALES_SHORTFALL_OBJECT_ENABLED (Pau, 6 Nov 2026; QA's tester batch 2, H18:
+ * "<name> 131 tans verbal"). Pau's approved line, byte for byte; this app
+ * only (the sibling app has no count metric). It is sent after the table, in
+ * the same block, only with both flags on; `CHAT_GLOSSARY` above is unchanged.
+ * Its terms come from the line itself ("**Tans**: …"), never a second list.
+ */
+export const SALES_COUNT_GLOSSARY = `**Tans**: tanning sessions. A tan count ("131 tans") is a sales number, and a CA that names one is about sales performance (Standards of Conduct).`;
+
+/** The count terms, folded: the bold word that opens each line of `SALES_COUNT_GLOSSARY`. */
+const SALES_COUNT_TERMS: ReadonlySet<string> = new Set(
+  SALES_COUNT_GLOSSARY.split("\n")
+    .map((line) => /^\*\*([^*]+)\*\*:/.exec(line)?.[1])
+    .filter((term): term is string => Boolean(term))
+    .map(fold),
+);
+
+/** With SALES_SHORTFALL_OBJECT_ENABLED on, whether the word is a sales count term ("tans"). Off, always false. */
+export function isSalesCountTerm(word: string | null | undefined): boolean {
+  if (!salesShortfallObjectEnabled() || !word?.trim()) return false;
+  return SALES_COUNT_TERMS.has(fold(word));
+}
+
 /** The block for a model call, or null with the flag off. */
 export function glossaryBlock(): string | null {
-  return chatGlossaryEnabled() ? CHAT_GLOSSARY : null;
+  if (!chatGlossaryEnabled()) return null;
+  return salesShortfallObjectEnabled() ? `${CHAT_GLOSSARY}\n${SALES_COUNT_GLOSSARY}` : CHAT_GLOSSARY;
 }

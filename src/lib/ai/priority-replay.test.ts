@@ -737,6 +737,12 @@ const CASES: readonly ReplayCase[] = [
       "create ca for elin haskett, salon director. the offense is: change observation of offense to: Elin completed onboarding with new hire Tavaeh Quarles on 9-28-26. As of 10-16-26 Tavaeh had not acknowledged onboarding policies in Woven that should have been completed during onboarding. the policy violated is standards of conduct.",
       "elin",
     ],
+    /*
+     * Changed on purpose (8 Nov 2026, ask-sunny#676 CREATE_COMMAND_POINTS_TO_CARD_ENABLED, in the quality flags this
+     * run turns on): turn 4 "create the ca" with only the card open keeps the card and says to press **Create draft**
+     * on it, so that reply quotes no policy. Every other turn still checks the policy; the card itself (employee,
+     * salon, form, title, no re-ask) is still checked on turn 4.
+     */
     on: [
       {
         from: 1,
@@ -746,10 +752,10 @@ const CASES: readonly ReplayCase[] = [
         locationId: "loc-0313",
         templateKey: "dpoa",
         role: "Salon Director",
-        policyHeading: "Standards of Conduct",
-        policyPage: 12,
         noReask: true,
       },
+      ...[1, 2, 3].map((turn) => ({ from: turn, only: true, policyHeading: "Standards of Conduct", policyPage: 12 })),
+      { from: 5, policyHeading: "Standards of Conduct", policyPage: 12 },
     ],
     off: [],
   },

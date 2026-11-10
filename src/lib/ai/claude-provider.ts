@@ -2,6 +2,7 @@ import { truncate } from "@/lib/utils/format";
 import { AiError } from "./errors";
 import type { AIProvider, ClientAskRequest, AskResponse } from "./types";
 import { STREAM_HEADER, unwrapStreamed } from "@/lib/api/streamed-response";
+import { offeredCopyForTurn, type OfferedCopy } from "@/lib/forms/proposal-continuation";
 
 /**
  * ClaudeProvider — the AIProvider the chat UI uses in live mode.
@@ -19,8 +20,26 @@ export class ClaudeProvider implements AIProvider {
   readonly name = "Claude (Anthropic)";
   readonly connected = true;
 
+  /**
+   * SAME_FORM_COPY_NEW_PERSON_ENABLED: the copy the last answer offered ("Who
+   * is the new Coaching Form for?"), per conversation. Sent back with the next
+   * turn only, then forgotten; an id the server re-checks. Lost on reload,
+   * like any half-asked question.
+   */
+  private readonly offeredCopies = new Map<string, OfferedCopy>();
+
   async ask(request: ClientAskRequest): Promise<AskResponse> {
-    return post<AskResponse>("/api/chat", request);
+    const key = request.conversationId ?? "";
+    const pendingCopyFromInstanceId = offeredCopyForTurn(this.offeredCopies.get(key), request.history);
+    this.offeredCopies.delete(key);
+    const response = await post<AskResponse>(
+      "/api/chat",
+      pendingCopyFromInstanceId ? { ...request, pendingCopyFromInstanceId } : request,
+    );
+    if (response.pendingCopy?.fromInstanceId) {
+      this.offeredCopies.set(key, { fromInstanceId: response.pendingCopy.fromInstanceId, answer: response.content });
+    }
+    return response;
   }
 
   titleForConversation(firstMessage: string): string {

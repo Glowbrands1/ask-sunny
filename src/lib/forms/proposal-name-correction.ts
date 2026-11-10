@@ -1,0 +1,224 @@
+import type { AskRequest, AskResponse } from "@/lib/ai/types";
+import { proposalNameCorrectionEnabled } from "@/lib/config/chat-quality-flags";
+
+import { nameCorrectionQuestion } from "./name-correction-words";
+import { editDistance } from "./employee-match";
+import { personRosterNames } from "./person-guard";
+import { oneCloseRosterPerson, rosterSpelling } from "./roster-only-names";
+
+/**
+ * ============================================================================
+ * "FIX HER LAST NAME …" ON A CARD NOT YET CREATED
+ * ============================================================================
+ *
+ * PROPOSAL_NAME_CORRECTION_ENABLED (QA, round 5, 8 Nov 2026; ported from Ask Bubbles, the 2 Nov chat behind
+ * NAME_CORRECTION_WORDS; here "it's spelled <surname>" also put "Spelled <surname>" on the card as the employee). The
+ * manager typed the employee's surname wrong, and on the card (before Create) wrote "fix her last name <surname>".
+ * NAME_CORRECTION_WORDS reads that only for an open draft, so the card was proposed again with the old name and the
+ * reply said "Nothing on the form has changed yet". A whole name ("change her name to <first> <last>") already
+ * re-proposes the card for that person.
+ *
+ * With the flag on, when no form is open and the reply before this turn drafted a card, the turn is read the way an
+ * open draft's is (`name-correction-words.ts`), against the card's employee — plus "her last name is <X>", "it's
+ * spelled <X>" and "fix her last name, it is <X>" — and the proposal path is handed "change her name to <the name>".
+ * The roster then decides as for any typed name: a roster person is seated; an off-roster spelling gets the
+ * existing off-roster confirm. Nothing else on the card is read from this turn. Only the turn the readers see
+ * changes; the manager's message is stored as typed. Off, the request as it is.
+ */
+
+const LAST_NAME_IS = /^\s*(?:and\s+|ok(?:ay)?[,\s]+)?(?:her|his|their)\s+last\s+name\s+(?:is|should\s+be)\s+(.+?)\s*[.!]?\s*$/i;
+const SPELLED = /^\s*(?:ok(?:ay)?[,\s]+)?(?:it'?s|it\s+is|that'?s|her\s+name\s+is|(?:her|his|their)\s+(?:last\s+)?name'?s)\s+spelled\s+(.+?)\s*[.!]?\s*$/i;
+/** "fix her last name, it is Fenwick": a comma and "it is / it's" between the ask and the surname. */
+const LAST_NAME_COMMA = /^(\s*(?:please\s+)?(?:fix|change|correct|update)\s+(?:her|his|their)\s+last\s+name)\s*,\s*(?:it\s+is|it'?s)\s+/i;
+
+function lastNameQuestion(typed: string, currentName: string): string | null {
+  const surname = typed.replace(/^["'“‘]+|["'”’]+$/g, "").trim();
+  if (!surname || surname.split(/\s+/).length > 3) return null;
+  return `change her name to ${[...currentName.trim().split(/\s+/).slice(0, -1), surname].join(" ")}`;
+}
+
+const CHANGE_TO = "change her name to ";
+
+/**
+ * A name typed all in lower case ("fix her last name penhallow", "… supposed to be odessa lark penhallow") is
+ * capitalised word by word, so the name readers take it as a name; one the manager capitalised is kept as typed.
+ */
+function asTypedName(rewritten: string | null): string | null {
+  if (!rewritten?.startsWith(CHANGE_TO)) return rewritten;
+  const name = rewritten.slice(CHANGE_TO.length);
+  const words = name.split(/\s+/);
+  const fixed = words.map((word) => (word === word.toLowerCase() ? word.replace(/(^|[-'’])(\p{L})/gu, (_, lead: string, letter: string) => lead + letter.toUpperCase()) : word));
+  return CHANGE_TO + fixed.join(" ");
+}
+
+/** The turn as the proposal path should read it, or null when it is not a name correction of the card's employee. */
+export function proposalNameCorrection(question: string, currentName: string): string | null {
+  return asTypedName(readCorrection(question, currentName));
+}
+
+function readCorrection(question: string, currentName: string): string | null {
+  const read = nameCorrectionQuestion(question.replace(LAST_NAME_COMMA, "$1 "), currentName);
+  if (read) return read;
+  const last = LAST_NAME_IS.exec(question);
+  if (last) return lastNameQuestion(last[1]!, currentName);
+  const spelled = SPELLED.exec(question);
+  if (!spelled) return null;
+  const typed = spelled[1]!.trim();
+  if (typed.split(/\s+/).length === 1) return lastNameQuestion(typed, currentName);
+  return nameCorrectionQuestion(`the correct spelling is ${typed}`, currentName);
+}
+
+/** The card's own first line: "I'll draft a **Corrective Action Form** for **<name>** …". */
+const CARD_LEAD = /^I'll draft an? \*\*[^*\n]+\*\* for \*\*([^*\n]+)\*\*/m;
+
+/**
+ * The employee on the card on screen: the one the reply before this turn drafted, when no form is open. The request
+ * carries no card (the route keeps only the turns' words), so it is read from that reply's own first line. Whatever
+ * it says, the rewrite only gives the proposal path a name to check against the roster, as a typed name is.
+ */
+function cardEmployee(request: Pick<AskRequest, "history" | "activeFormInstanceId">): string | null {
+  if (request.activeFormInstanceId) return null;
+  const last = [...request.history].reverse().find((turn) => turn.role === "assistant");
+  return (last && CARD_LEAD.exec(String(last.content ?? ""))?.[1]?.trim()) || null;
+}
+
+export function withProposalNameCorrection<T extends AskRequest>(request: T): T {
+  if (!proposalNameCorrectionEnabled()) return request;
+  const employee = cardEmployee(request);
+  if (!employee) return request;
+  const question = proposalNameCorrection(request.question, employee);
+  // QA, round 6: a spelling on nobody's roster that can only be one roster person is read as that person (below).
+  const wanted = changedTo(question ?? request.question);
+  const person = wanted ? rosterPersonFor(wanted, employee) : null;
+  if (wanted && person) {
+    const rewritten = { ...request, question: `${CHANGE_TO}${person}` };
+    TYPED_SPELLING.set(rewritten, wanted);
+    return rewritten;
+  }
+  return question ? { ...request, question } : request;
+}
+
+/*
+ * AN OFF-ROSTER CORRECTION IS NEVER DROPPED (QA, round 5, 8 Nov 2026; the same flag). In Ask Sunny, "change her name
+ * to <a spelling not on the roster>" on the card — typed, or read from "fix her last name …" above — kept the card's
+ * old name and said nothing of the spelling; Ask Bubbles asks "Which of them is this <form> for — <old> or <new>?"
+ * with no employee on the card. That is the reference: when the turn corrects the card's employee (a name sharing her
+ * first or last name) and the reply's card still shows the old name, the card waits for the manager's choice.
+ */
+const CHANGE_NAME = /^\s*(?:please\s+)?change\s+(?:her|his|their|the\s+employee'?s?)\s+name\s+to\s+(.+?)\s*[.!]?\s*$/i;
+
+/** The name a "change her name to <name>" turn asks for, or null. */
+function changedTo(question: string): string | null {
+  return CHANGE_NAME.exec(question)?.[1]?.replace(/^["'“‘]+|["'”’]+$/g, "").trim() || null;
+}
+
+/** The spelling the manager typed, for the request `withProposalNameCorrection` rewrote to a roster person. */
+const TYPED_SPELLING = new WeakMap<object, string>();
+
+/**
+ * QA, round 6 (8 Nov 2026): the one roster person a corrected spelling on nobody's roster can only be (a roster
+ * reader's close match, or one roster name every word of it is at most an edit from), sharing the card employee's
+ * first or last name, and the card's own employee when she is on the roster. Null with no roster, a roster spelling,
+ * a tie or no one close (the turn is read as typed).
+ */
+function rosterPersonFor(wanted: string, onCard: string): string | null {
+  const names = personRosterNames();
+  if (!names || names.length === 0 || rosterSpelling(wanted, names)) return null;
+  const said = nameWords(wanted);
+  const had = nameWords(onCard);
+  if (said.length < 2 || !(said[0] === had[0] || said.at(-1) === had.at(-1))) return null;
+  const meant = oneCloseRosterPerson(wanted, names) ?? oneMistypedRosterName(wanted, names);
+  if (!meant) return null;
+  const cardPerson = rosterSpelling(onCard, names);
+  return cardPerson && cardPerson !== meant ? null : meant;
+}
+
+function nameWords(name: string): string[] {
+  return name.toLowerCase().split(/[^\p{L}'’-]+/u).filter(Boolean);
+}
+
+/** `request` as the readers saw it (after `withProposalNameCorrection`). */
+export function withCorrectionNotDropped(answer: AskResponse, request: Pick<AskRequest, "question" | "history" | "activeFormInstanceId">): AskResponse {
+  if (!proposalNameCorrectionEnabled()) return answer;
+  const card = answer.formProposal;
+  const old = cardEmployee(request);
+  const wanted = CHANGE_NAME.exec(request.question)?.[1]?.replace(/^["'“‘]+|["'”’]+$/g, "").trim();
+  if (!card || !old || !wanted || card.subject === "team") return answer;
+  const typed = TYPED_SPELLING.get(request);
+  if (typed && (card.employeeName ?? "").trim() === wanted) {
+    const note = `"${typed}" isn't a name on the roster, so the card is for **${wanted}**. Tell me if it's someone else.`;
+    return answer.content.includes(note) ? answer : { ...answer, content: `${note}\n\n${answer.content}` };
+  }
+  if (wanted.toLowerCase() === old.toLowerCase()) return answer;
+  const said = nameWords(wanted);
+  const had = nameWords(old);
+  if (said.length < 2 || !(said[0] === had[0] || said.at(-1) === had.at(-1))) return answer;
+  const kept = cardKeptOnRoster(answer, card, old, wanted);
+  if (kept) return kept;
+  if ((card.employeeName ?? "").trim().toLowerCase() !== old.toLowerCase()) return answer;
+  return {
+    ...answer,
+    content: `Which of them is this **${card.templateName}** for — **${old}** or **${wanted}**? Tell me and I'll draft it from what you've already described.`,
+    formProposal: { ...card, employeeName: null, status: "needs_employee", supportsInlineDraft: false },
+  };
+}
+
+/*
+ * AN OFF-ROSTER OR MISTYPED CORRECTION KEEPS THE CARD (QA, round 6, 8 Nov 2026; the same flag). The sibling app's
+ * R6 replay (nov5-r6-policy-kept-across-turns): with the card for the roster's <A>, "under the employee line the
+ * name is supposed to be <A, two letters swapped>" asked "Which of them … — **<A>** or **<the typo>**?", and "make
+ * that change to <A, one letter wrong>" either asked the same or put the typo on the card. A spelling that is on
+ * nobody's roster is never offered as a person and never seated: when one roster person is close to it — the one on
+ * the card, or the one the manager meant ("fix her last name <near miss>" on a card typed off the roster) — the card
+ * is for them, and the reply says so once. With no roster (a test, the browser) or no one close, as before.
+ */
+function cardKeptOnRoster(
+  answer: AskResponse,
+  card: NonNullable<AskResponse["formProposal"]>,
+  old: string,
+  wanted: string,
+): AskResponse | null {
+  const names = personRosterNames();
+  if (!names || names.length === 0 || rosterSpelling(wanted, names)) return null;
+  const meant = oneCloseRosterPerson(wanted, names) ?? oneMistypedRosterName(wanted, names);
+  const person = rosterSpelling(old, names) ?? meant;
+  if (meant && person && meant !== person) return null;
+  if (!person) {
+    // Neither spelling is anyone's, and no one is close: the card stays as the manager first typed it, never "A or B".
+    const unchanged = `"${wanted}" isn't a name on the roster either, so the card is unchanged. Tell me the name as it is on the roster.`;
+    if ((card.employeeName ?? "").trim().toLowerCase() !== old.toLowerCase()) return null;
+    return { ...answer, content: answer.content.includes(unchanged) ? answer.content : `${unchanged}\n\n${answer.content}` };
+  }
+  const onCard = (card.employeeName ?? "").trim();
+  // A card with no one on it is a question (this app's own "Which of them …"): never a note on top of it.
+  if (!onCard) return null;
+  const content = onCard !== person ? answer.content.split(`**${onCard}**`).join(`**${person}**`) : answer.content;
+  const note = `"${wanted}" isn't a name on the roster, so the card is for **${person}**. Tell me if it's someone else.`;
+  return {
+    ...answer,
+    content: content.includes(note) ? content : `${note}\n\n${content}`,
+    formProposal: { ...card, employeeName: person },
+  };
+}
+
+/**
+ * The one roster name this whole name is a mistyping of: the same number of words, each the same or one edit away
+ * (two for a word of 9 letters or more), two edits in all at most. "Marisol Otrega Valdez", "Odessa Lark Penhalloe".
+ * Two roster people that close is a tie, never guessed.
+ */
+function oneMistypedRosterName(name: string, names: readonly string[]): string | null {
+  const typed = nameWords(name);
+  const close = names.filter((roster) => {
+    const words = nameWords(roster);
+    if (words.length !== typed.length) return false;
+    let total = 0;
+    for (let i = 0; i < words.length; i += 1) {
+      const edits = editDistance(typed[i]!, words[i]!);
+      if (edits > (words[i]!.length >= 9 ? 2 : 1)) return false;
+      total += edits;
+    }
+    return total > 0 && total <= 2;
+  });
+  const people = [...new Set(close.map((roster) => roster.trim()))];
+  return people.length === 1 ? people[0]! : null;
+}
