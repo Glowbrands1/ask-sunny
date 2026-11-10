@@ -3850,6 +3850,19 @@ export function madeAboutPolicyLineEnabled(): boolean {
 }
 
 /**
+ * MADE_ABOUT_REWRITE_FINISHES_ENABLED (QA's live round-13 test, 9 Nov 2026; default off). On a saved Coaching draft,
+ * "make it about leaving the front desk unattended on 11/6/26" ran the made-about revision (Details rewritten), then the
+ * turn left the patch path with nothing more written, and the old path's revision ran a second time: "Updated … Details
+ * of Coaching", Other and the Date stayed. With the flag on, once the account is rewritten the turn always finishes
+ * there: a refused reader patch falls back to the topic read from the manager's words, the Date is still written, and
+ * an error after the rewrite answers from what was saved. The old account's policy reference kept by the revision is
+ * replaced from the new account (`forms/made-about-policy-line.ts`). Off, as before.
+ */
+export function madeAboutRewriteFinishesEnabled(): boolean {
+  return envFlag("MADE_ABOUT_REWRITE_FINISHES_ENABLED");
+}
+
+/**
  * MADE_ABOUT_READER_ACCOUNT_ENABLED (ported from Ask Bubbles; QA's live round-9 test there, 9 Nov 2026; default off; same
  * flag in both apps). "make it about leaving the front desk unattended on 11/6/26" on a saved Coaching draft changed Other
  * and Details and left the Date: the reader set Details itself (the new incident added under the old one), so the

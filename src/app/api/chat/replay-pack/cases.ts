@@ -65,6 +65,8 @@ export interface ReplayContext {
   patchWrites(outputs: readonly unknown[]): void;
   /** Step B's form-patch model, by the manager's latest message (exact text): its raw output for that turn; a message not listed falls back. */
   patchReads?(byLatest: Readonly<Record<string, unknown>>): void;
+  /** Fault injection (QA, 9 Nov 2026): from now on, a save of the form's values that includes this field fails (the save throws). */
+  failSavesOf?(field: string): void;
   calls(): { chat: number; draft: number; revision: number; tool: number; patch: number };
   forms(): Record<string, unknown>[];
   values(instanceId: string): Record<string, string>;
