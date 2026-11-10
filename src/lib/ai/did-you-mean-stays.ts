@@ -1,4 +1,7 @@
-import { cardNamesEmployeeEnabled, didYouMeanStaysAskedEnabled } from "@/lib/config/chat-quality-flags";
+import { cardNamesEmployeeEnabled, didYouMeanStaysAskedEnabled, observationOwnPersonOnlyEnabled, oneFormEachPersonEnabled } from "@/lib/config/chat-quality-flags";
+import { TEMPLATE_SEEDS } from "@/lib/forms/library";
+
+import { peopleRequest } from "./two-forms-own-person";
 
 /*
  * ============================================================================
@@ -69,4 +72,31 @@ export function withCardNamingEmployee<T extends { content: string; formProposal
   const employee = answer.formProposal?.employeeName?.trim();
   if (!employee || !/\bI have the employee\b/.test(answer.content)) return answer;
   return { ...answer, content: answer.content.replace(/\bI have the employee\b/g, `I have **${employee}**`) };
+}
+
+/*
+ * OBSERVATION_OWN_PERSON_ONLY_ENABLED, with ONE_FORM_EACH_PERSON off (QA's gate, 10 Nov 2026): "CA for <A> and <B> for
+ * being late" made a card for <A> and asked nothing — today too; the case asking "which of the two" held only because
+ * both names stayed in the card's Observation, which this flag cleans. So a request that lists two or more people for
+ * one form never puts one of them on the card unasked: the card has no employee and the reply asks which of them.
+ * With ONE_FORM_EACH_PERSON on, the request is one form each instead. Off, as before.
+ */
+export function withSeveralPeopleAsked<T extends { content: string; formProposal?: (CardLike & { templateKey?: string }) | null }>(
+  answer: T,
+  question: string,
+): T {
+  if (!observationOwnPersonOnlyEnabled() || oneFormEachPersonEnabled()) return answer;
+  const card = answer.formProposal;
+  const employee = card?.employeeName?.trim();
+  const asked = peopleRequest(question);
+  if (!card || !employee || !asked) return answer;
+  const first = fold(employee).split(" ")[0] ?? "";
+  if (!asked.people.some((person) => fold(person) === fold(employee) || fold(person).split(" ")[0] === first)) return answer;
+  const form = TEMPLATE_SEEDS.find((seed) => seed.key === (card.templateKey ?? asked.templateKey))?.name ?? "form";
+  const names = asked.people.map((person) => `**${person}**`);
+  return {
+    ...answer,
+    content: `Which of them is this **${form}** for — ${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}? One form is for one person; tell me who, and ask for the next one after.`,
+    formProposal: { ...card, employeeName: null, employeeRole: null, status: "needs_employee", supportsInlineDraft: false },
+  };
 }

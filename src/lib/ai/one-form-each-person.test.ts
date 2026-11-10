@@ -4,7 +4,7 @@ vi.mock("server-only", () => ({}));
 
 import { installPersonRoster } from "@/lib/forms/person-guard";
 
-import { withCardNamingEmployee, withDidYouMeanStillAsked } from "./did-you-mean-stays";
+import { withCardNamingEmployee, withDidYouMeanStillAsked, withSeveralPeopleAsked } from "./did-you-mean-stays";
 import { acceptedNextFormOffer, peopleRequest, withOneFormEachPerson } from "./two-forms-own-person";
 import type { AskRequest, AskResponse } from "./types";
 
@@ -90,5 +90,27 @@ describe("withCardNamingEmployee (CARD_NAMES_EMPLOYEE_ENABLED)", () => {
     vi.stubEnv("CARD_NAMES_EMPLOYEE_ENABLED", "true");
     expect(withCardNamingEmployee(card("Tamsin Ashby")).content).toContain("I have **Tamsin Ashby** and the salon.");
     expect(withCardNamingEmployee(card(null)).content).toContain("I have the employee");
+  });
+});
+
+describe("withSeveralPeopleAsked (OBSERVATION_OWN_PERSON_ONLY_ENABLED, ONE_FORM_EACH_PERSON off)", () => {
+  const Q = "CA for Wilhelmina Corvina and Peregrine Varnholt for being late";
+  const ca = { ...card("Wilhelmina Corvina"), formProposal: { templateKey: "dpoa", employeeName: "Wilhelmina Corvina", status: "ready" } } as unknown as AskResponse;
+
+  it("off: the card as it was", () => {
+    expect(withSeveralPeopleAsked(ca, Q).formProposal?.employeeName).toBe("Wilhelmina Corvina");
+  });
+
+  it("on: QA's control asks which of the two, the card has no employee", () => {
+    vi.stubEnv("OBSERVATION_OWN_PERSON_ONLY_ENABLED", "true");
+    const reply = withSeveralPeopleAsked(ca, Q);
+    expect(reply.formProposal?.employeeName).toBeNull();
+    expect(reply.content).toMatch(/Which of them is this \*\*Corrective Action Form\*\* for — \*\*Wilhelmina Corvina\*\* or \*\*Peregrine Varnholt\*\*\?/);
+  });
+
+  it("on, with ONE_FORM_EACH_PERSON: one form each instead, the card as it was", () => {
+    vi.stubEnv("OBSERVATION_OWN_PERSON_ONLY_ENABLED", "true");
+    vi.stubEnv("ONE_FORM_EACH_PERSON_ENABLED", "true");
+    expect(withSeveralPeopleAsked(ca, Q).formProposal?.employeeName).toBe("Wilhelmina Corvina");
   });
 });

@@ -28,6 +28,7 @@ import {
   exitFormDateFromTerminationEnabled,
   offRosterAskBeforeCardEnabled,
   didYouMeanStaysAskedEnabled,
+  observationOwnPersonOnlyEnabled,
   createFromConversationPointsToCardEnabled,
   cardNamesEmployeeEnabled,
   metricGuardEnabled,
@@ -918,6 +919,10 @@ async function postChat(request: Request) {
       if (didYouMeanStaysAskedEnabled() || cardNamesEmployeeEnabled()) {
         const stays = await import("@/lib/ai/did-you-mean-stays");
         answer = stays.withCardNamingEmployee(stays.withDidYouMeanStillAsked(answer, { question: asked.question, history: parsed.history }));
+      }
+      // OBSERVATION_OWN_PERSON_ONLY_ENABLED (ONE_FORM_EACH_PERSON off): a request for several people asks which of them (`ai/did-you-mean-stays.ts`).
+      if (observationOwnPersonOnlyEnabled()) {
+        answer = (await import("@/lib/ai/did-you-mean-stays")).withSeveralPeopleAsked(answer, asked.question);
       }
       // SAME_FORM_COPY_NEW_PERSON_ENABLED: the named person's card carries the form to copy from.
       if (newPersonCopy) {

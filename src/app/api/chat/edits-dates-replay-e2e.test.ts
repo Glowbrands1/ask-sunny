@@ -747,6 +747,11 @@ describe("the full remap path (FORM_FULL_REMAP_ENABLED): the same rules", () => 
 describe("flag off: production today", () => {
   it("S22's edit is appended after the request, as live", async () => {
     delete process.env[FLAG];
+    // Changed on purpose (10 Nov 2026, QA's gate): a pin of production today, where OBSERVATION_OWN_PERSON_ONLY is off;
+    // with it on, the Observation drops the request's own words ("create a CA for …"), which is that flag's fix.
+    const ownPerson = process.env.OBSERVATION_OWN_PERSON_ONLY_ENABLED;
+    delete process.env.OBSERVATION_OWN_PERSON_ONLY_ENABLED;
+    try {
     const thread = new Thread();
     const reading = { employee: "Test Employee", title: "Salon Director", formType: "Corrective Action Form" };
     await thread.say("create a CA for salon director, test employee for violating the standards of conduct", reading);
@@ -755,5 +760,9 @@ describe("flag off: production today", () => {
       reading,
     );
     expect(observation(changed)).toMatch(/^create a CA for salon director.*change observation of offense to:/);
+    } finally {
+      if (ownPerson === undefined) delete process.env.OBSERVATION_OWN_PERSON_ONLY_ENABLED;
+      else process.env.OBSERVATION_OWN_PERSON_ONLY_ENABLED = ownPerson;
+    }
   });
 });
