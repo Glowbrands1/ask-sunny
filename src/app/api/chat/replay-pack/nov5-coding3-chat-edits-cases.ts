@@ -115,9 +115,8 @@ export const NOV5_CODING3_CHAT_EDITS_CASES: ReplayCase[] = [
     title: "the account she gave before \"Create a coaching form.\" — shown on the card as its Observation — is what the draft is written from",
     report:
       'Manager, production (relayed 5 Nov 2026, both apps), the b17 mechanism with the account given first: "<name> marked <a thing> as <done> but <it wasn\'t>" → "Create a coaching form." → … → "can you upate the draft with these details of coaching?"',
-    status: {
-      open: "the card shows her account as its Observation, but the drafting model is handed only \"Create a coaching form.\" and \"yes\" (the draft's turns start at the request)",
-    },
+    // Changed on purpose (10 Nov 2026): fixed in production by ACCOUNT_BEFORE_REQUEST_ENABLED, QA round 23.
+    status: "fixed",
     // Fixed under ACCOUNT_BEFORE_REQUEST_ENABLED (coding 6, 10 Nov 2026): the account the card shows is cited, so Create hands it to the draft.
     fixFlags: ["ACCOUNT_BEFORE_REQUEST_ENABLED"],
     async run(t: T) {
