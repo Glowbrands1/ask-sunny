@@ -74,6 +74,8 @@ export interface ReplayContext {
   checked(instanceId: string): Record<string, string[]>;
   /** What the drafting model was given, one entry per draft written. */
   draftPrompts(): string[];
+  /** What the revision model was given (its messages, as JSON), one entry per revision call. */
+  revisionPrompts?(): string[];
   /** The drafting model's system prompt, one entry per draft written. */
   draftSystems?(): string[];
   /** The draft call's tools as sent, one JSON string per call. */
