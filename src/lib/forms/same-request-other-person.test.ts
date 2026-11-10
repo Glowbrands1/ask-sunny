@@ -159,3 +159,34 @@ describe("the card, Create and the draft", () => {
     );
   });
 });
+
+/*
+ * SECOND_PERSON_ACCOUNT_WORDS_ENABLED (QA B22-2, 25 Oct 2026; ask-sunny#233 rebuilt on main, 10 Nov 2026). QA's words,
+ * verbatim: "now one for Test Employee Two, tanning consultant, late today". With a title between the name and the
+ * account, the turn was no request at all (`INCIDENT`), so <B> got no card.
+ */
+describe("SECOND_PERSON_ACCOUNT_WORDS_ENABLED: an account word after <B>'s title is <B>'s own request", () => {
+  const QA = "now one for Test Employee Two, tanning consultant, late today";
+  const registers = [QA, QA[0]!.toUpperCase() + QA.slice(1), QA.toUpperCase()];
+  afterEach(() => {
+    delete process.env.SECOND_PERSON_ACCOUNT_WORDS_ENABLED;
+  });
+
+  it("off: as before, no request (the account is read as an incident)", () => {
+    process.env.SECOND_PERSON_ACCOUNT_WORDS_ENABLED = "false";
+    for (const text of registers) expect(sameRequestKind(text), text).toBeNull();
+  });
+
+  it("on: <B>'s own request, in every register", () => {
+    process.env.SECOND_PERSON_ACCOUNT_WORDS_ENABLED = "true";
+    for (const text of registers) expect(sameRequestKind(text), text).toBe("own");
+    expect(sameRequestKind("also one for Caspian Drummet at Kearney, absent yesterday")).toBe("own");
+  });
+
+  it("on: never a request without a lead asking for one more form, or when ruled out", () => {
+    process.env.SECOND_PERSON_ACCOUNT_WORDS_ENABLED = "true";
+    expect(sameRequestKind("She did the same thing for Caspian yesterday")).toBeNull();
+    expect(sameRequestKind("Test Employee Two, tanning consultant, was late today")).toBeNull();
+    expect(sameRequestKind("now don't make one for Test Employee Two, tanning consultant, late today")).toBeNull();
+  });
+});

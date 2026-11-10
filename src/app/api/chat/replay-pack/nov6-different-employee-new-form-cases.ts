@@ -91,6 +91,11 @@ interface Wording {
   readonly text: string;
   /** What the stand-in reading returns for B's turn (QA's live reading named B). */
   readonly reading?: Record<string, unknown>;
+  /** B's own account, as handed to the drafting model (default: the date QA typed). */
+  readonly account?: RegExp;
+  /** A wording still open with production's flags, and the flags that fix it (default: fixed by FLAG). */
+  readonly status?: ReplayCase["status"];
+  readonly fixFlags?: string[];
 }
 
 const WORDINGS: readonly Wording[] = [
@@ -123,6 +128,18 @@ const WORDINGS: readonly Wording[] = [
     text: "now one for Caspian Drummet for being late on 10-20-26",
     reading: { employeeName: "Caspian Drummet" },
   },
+  {
+    // QA B22-2 (#233, 25 Oct 2026), verbatim; the triage of 10 Nov 2026 found it still failing on main with production's
+    // flags: a title between <B>'s name and the account left the turn to <A>'s card.
+    key: "qa-title",
+    first: "I need a corrective action for Test Employee, she was late opening the salon on Monday",
+    a: "Test Employee",
+    b: "Test Employee Two",
+    text: "now one for Test Employee Two, tanning consultant, late today",
+    account: /late today/i,
+    status: { open: "SECOND_PERSON_ACCOUNT_WORDS_ENABLED is off in production: <B>'s turn is read into <A>'s card, and <B> gets no card" },
+    fixFlags: [FLAG, "SECOND_PERSON_ACCOUNT_WORDS_ENABLED"],
+  },
 ];
 
 const OTHER_EMPLOYEE: ReplayCase[] = [];
@@ -133,9 +150,9 @@ for (const wording of WORDINGS) {
         id: `nov6-diffemp-${wording.key}-${created ? "after-create" : "card-on-screen"}-${casing}`,
         title: `${created ? `with ${wording.a}'s CA created and open` : `with ${wording.a}'s CA card on screen`}, "${text}" — ${wording.b}'s own card from that turn only; ${wording.a}'s ${created ? "form" : "card"} unchanged`,
         report: `${REPORT}; ${wording.key}, ${casing}, ${created ? "after Create" : "card on screen"}`,
-        // Changed on purpose (10 Nov 2026): fixed in production by SAME_REQUEST_OTHER_PERSON_ENABLED, QA round 19; it now holds with production's flags.
-        status: "fixed",
-        fixFlags: [FLAG],
+        // Changed on purpose (10 Nov 2026): fixed in production by SAME_REQUEST_OTHER_PERSON_ENABLED, QA round 19; it now holds with production's flags (except "qa-title": open until SECOND_PERSON_ACCOUNT_WORDS_ENABLED).
+        status: wording.status ?? "fixed",
+        fixFlags: wording.fixFlags ?? [FLAG],
         async run(t) {
           const thread = start(t);
           await thread.say(wording.first);
@@ -169,7 +186,7 @@ for (const wording of WORDINGS) {
           expect(t.values(second).employee_name ?? "", `${wording.b}'s form names the wrong person`).toBe(wording.b);
           const described = lastDescribed(t);
           expect(described, `${wording.a}'s Monday late opening was handed to the drafting model for ${wording.b}`).not.toMatch(/opening the salon on monday/i);
-          expect(described, `${wording.b}'s own account is not in the drafting notes`).toMatch(/10-20-26/);
+          expect(described, `${wording.b}'s own account is not in the drafting notes`).toMatch(wording.account ?? /10-20-26/);
           if (first) expect(JSON.stringify({ values: t.values(first), checked: t.checked(first) }), `${wording.a}'s form changed at ${wording.b}'s Create`).toBe(before);
         },
       });
