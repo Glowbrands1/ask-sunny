@@ -9,6 +9,7 @@ import {
   madeAboutAllOrNothingEnabled,
   madeAboutReaderAccountEnabled,
   madeAboutTopicEvidenceEnabled,
+  madeAboutSaidDateEnabled,
   formDateSaidAloneEnabled,
   madeAboutUndatedTogetherEnabled,
   madeAboutPolicyLineEnabled,
@@ -418,7 +419,12 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
      * not rewritten writes nothing, and the reply asks what the account should say. Rewritten, the Date and the
      * reader's edits are written below.
      */
-    if (rewritesAccount && keptAccountKey) {
+    /*
+     * The account rewritten by the old path's revision, with the made-about note set, and its policy reference written again
+     * (MADE_ABOUT_POLICY_LINE). True when the account changed. Used by the made-about path below and, with
+     * MADE_ABOUT_SAID_DATE_ENABLED, when a reader's account edit was refused on a turn that says the form's date.
+     */
+    const rewriteAccountByRevision = async (accountKey: string): Promise<boolean> => {
       const coordinate = madeAboutAllOrNothingEnabled();
       if (coordinate) noteMadeAboutWrite(input.instanceId);
       try {
@@ -429,25 +435,29 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
         if (coordinate) endMadeAboutWrite(input.instanceId);
       }
       const revised = await loadInstance(input.instanceId);
-      const rewritten = revised !== null && snapshotDiff(snapshotOf(loaded), snapshotOf(revised)).some((change) => change.key === keptAccountKey);
+      const changed = revised !== null && snapshotDiff(snapshotOf(loaded), snapshotOf(revised)).some((change) => change.key === accountKey);
       /*
        * MADE_ABOUT_POLICY_LINE_ENABLED (QA's live round-11 test, 9 Nov 2026): the old account's "Policy reference: …" line
        * went with it and none was written for the new one. The account rewritten, its reference is written again from
        * the new account (`made-about-policy-line.ts`), only where the old account carried one.
        */
-      const hadLine = typeof before[keptAccountKey]?.value === "string" && splitAppCitationLine(before[keptAccountKey]!.value as string).line !== null;
+      const hadLine = typeof before[accountKey]?.value === "string" && splitAppCitationLine(before[accountKey]!.value as string).line !== null;
       const finishes = madeAboutRewriteFinishesEnabled();
-      if (rewritten && finishes) rewroteFrom = { loaded, labels };
-      if (rewritten && hadLine && madeAboutPolicyLineEnabled()) {
+      if (changed && finishes) rewroteFrom = { loaded, labels };
+      if (changed && hadLine && madeAboutPolicyLineEnabled()) {
         await (await import("./made-about-policy-line")).rewriteMadeAboutPolicyLine({
           instanceId: input.instanceId,
           actorId: actor.id,
           question: input.question,
-          accountKey: keptAccountKey,
+          accountKey,
           // MADE_ABOUT_REWRITE_FINISHES_ENABLED: the old account's line, kept by the revision, is replaced, never left on the new one.
-          ...(finishes ? { oldLine: splitAppCitationLine(before[keptAccountKey]!.value as string).line } : {}),
+          ...(finishes ? { oldLine: splitAppCitationLine(before[accountKey]!.value as string).line } : {}),
         });
       }
+      return changed;
+    };
+    if (rewritesAccount && keptAccountKey) {
+      const rewritten = await rewriteAccountByRevision(keptAccountKey);
       if (!rewritten) {
         const label = labels[keptAccountKey] ?? keptAccountKey;
         const about = madeAbout(input.question);
@@ -617,6 +627,57 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
             },
           );
         }
+      } else if (result.handoff === "refused" && saidDateRetry(input, before, reading, keptAccountKey, rewroteFrom !== null)) {
+        /*
+         * MADE_ABOUT_SAID_DATE_ENABLED (QA's live Sunny round 14, 10 Nov 2026): on a saved draft already about the front desk
+         * on 11/6/26, "I need you to make it about showing up late and please list the policy make the date for 10/14/26"
+         * answered "I haven't changed the Coaching Form …". Asked to list the policy, the reader wrote it into Details,
+         * words the manager did not say: its patch was refused whole and handed to the old path, whose revision would not
+         * drop 11/6/26. The account is rewritten here instead (the made-about path's revision, the said date as the
+         * incident's), the reader's other edits written without it (or the topic read from the manager's words), and the
+         * turn goes on to the Date and the policy.
+         */
+        noteMadeAboutExit(input, "reader_refused_said_date", false);
+        const accountKey = keptAccountKey!;
+        if (!(await rewriteAccountByRevision(accountKey))) {
+          const label = labels[accountKey] ?? accountKey;
+          const about = madeAbout(input.question);
+          return {
+            content: `I haven't changed the **${loaded.instance.templateName}** for **${loaded.instance.employeeName}**: I couldn't rewrite **${label}** to be about ${about}, so the Date and the topic stay as they were too. What should **${label}** say about ${about}?`,
+            citations: [],
+            coverage: "not_applicable",
+            recommendedVideoIds: [],
+          };
+        }
+        const rest = ops.filter((op) => !(ACCOUNT_KEYS as readonly string[]).includes(op.field));
+        const topic = madeAboutReading(input, before, writable, allGroups, { dated: true });
+        const topicSet = topic && "ok" in topic ? topic.patch.set : {};
+        const sets = rest.length > 0 ? [rest] : [];
+        if (Object.keys(topicSet).length > 0)
+          sets.push(
+            Object.entries(topicSet).map(([field, value]) => ({
+              op: "set" as const,
+              field,
+              value,
+              ...(topic && "ok" in topic && topic.patch.evidence?.[field] !== undefined ? { evidence: topic.patch.evidence[field] } : {}),
+            })),
+          );
+        for (const attempt of sets) {
+          const written = await (await import("./form-write")).writeFormEdits(input.instanceId, attempt, {
+            path: "patch",
+            actorId: actor.id,
+            latest: input.question,
+            managerTurns: managerTurns(input.history, input.question),
+            ...(offered !== undefined ? { offered } : {}),
+            acceptedOffer: false,
+            today: input.today,
+            loaded: (await loadInstance(input.instanceId)) ?? loaded,
+            writable,
+            statedKeys: stated,
+            ...(readerFixes ? { readerFixes } : {}),
+          });
+          if (written.handoff !== "refused") break;
+        }
       } else if (result.handoff === "refused") return handOff("refused");
       /*
        * FORM_PATCH_READER_FIXES_ENABLED (QA's live run, 7 Nov 2026: "yes, do that" after the edit was saved went
@@ -737,14 +798,34 @@ async function replyFromSaved(
  * topic only (the form's "other" box and its Other line, where the draft has both), from the manager's own words; the
  * Date and the account follow (`patchActiveForm`). Null when the turn is not one, or the draft has no Date or account.
  */
+/**
+ * MADE_ABOUT_SAID_DATE_ENABLED (QA's live Sunny round 14, 10 Nov 2026): a refused reader patch on this turn is retried by
+ * the made-about path, not handed to the old path, when the turn makes the form about something new, says the form's
+ * date apart from the topic, the reader edited the account, and the account is not already rewritten.
+ */
+function saidDateRetry(
+  input: PatchTurnInput,
+  before: Readonly<Record<string, { readonly value: unknown }>>,
+  reading: FormPatchReading,
+  accountKey: string | undefined,
+  rewritten: boolean,
+): boolean {
+  if (!madeAboutSaidDateEnabled() || rewritten || !accountKey || !("form_date" in before)) return false;
+  if (!("ok" in reading) || !(accountKey in reading.patch.set)) return false;
+  if (madeAbout(input.question) === null || madeAboutDate(input.question, input.today) !== null) return false;
+  return saidFormDate(input.question, input.today) !== null;
+}
+
 function madeAboutReading(
   input: PatchTurnInput,
   before: Readonly<Record<string, { readonly value: unknown }>>,
   writable: ReadonlySet<string>,
   groups: readonly { readonly key: string; readonly options: readonly { readonly key: string }[] }[],
+  // MADE_ABOUT_SAID_DATE_ENABLED: the turn says the form's date apart from the topic, so it is read as dated.
+  options: { readonly dated?: boolean } = {},
 ): FormPatchReading | null {
   // MADE_ABOUT_UNDATED_TOGETHER_ENABLED: an undated made-about turn is read the same way (its Date stays).
-  const dated = madeAboutDate(input.question, input.today) !== null && "form_date" in before;
+  const dated = (options.dated === true || madeAboutDate(input.question, input.today) !== null) && "form_date" in before;
   const undated = madeAboutUndatedTogetherEnabled() && madeAbout(input.question) !== null;
   if (!stepBMakeItAboutAccountEnabled() || !(dated || undated)) return null;
   if (!ACCOUNT_KEYS.some((key) => writable.has(key))) return null;
