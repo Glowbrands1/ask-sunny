@@ -371,6 +371,9 @@ const NEW_FLAGS = [
   "DETAILS_FROM_EARLIER_ANSWER_ENABLED",
   // coding 6: ACCOUNT_BEFORE_REQUEST (default off): forced off with the others.
   "ACCOUNT_BEFORE_REQUEST_ENABLED",
+  // coding 6: SAME_REQUEST_CARRIES_ACCOUNT and SAME_REQUEST_KEEPS_EARLIER_CARD (default off): forced off with the others.
+  "SAME_REQUEST_CARRIES_ACCOUNT_ENABLED",
+  "SAME_REQUEST_KEEPS_EARLIER_CARD_ENABLED",
   // coding 6: POLICY_REFERENCE_NOT_ACCOUNT (default off): forced off with the others.
   "POLICY_REFERENCE_NOT_ACCOUNT_ENABLED",
   // coding 6: LEVEL_AFTER_FORM_NAME (default off): forced off with the others.

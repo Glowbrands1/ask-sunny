@@ -607,6 +607,20 @@ class Thread {
     this.instanceId = toUuid(result.reference.instanceId);
     return this.instanceId;
   }
+
+  /** Create from the latest card for this person, as pressing Create on that card does (an earlier card still on screen). */
+  async createCard(employeeName: string): Promise<string> {
+    const message = [...this.messages].reverse().find((entry) => entry.formProposal?.employeeName === employeeName);
+    expect(message?.formProposal, `no card for ${employeeName} to create from`).toBeTruthy();
+    const result = await createInlineForm({ proposal: message!.formProposal!, messages: this.messages, call, onCreated: () => {} });
+    this.instanceId = toUuid(result.reference.instanceId);
+    return this.instanceId;
+  }
+
+  /** The chat as the browser holds it (for the browser's own readers). */
+  get conversation() {
+    return this.messages;
+  }
 }
 
 

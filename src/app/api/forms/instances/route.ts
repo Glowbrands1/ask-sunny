@@ -230,7 +230,8 @@ export async function POST(request: Request) {
         // FORM_TYPE_SWITCH_ENABLED: "change to coaching" is read as the chat read it, so the switched card is current.
         // TEAM_CARD_NOT_PRODUCT_ENABLED: on the team card, "selling Spray Tan Kits" is the topic, as the chat read it.
         // SAME_REQUEST_OTHER_PERSON_ENABLED: "the same thing for <B>" is read from that turn on, as the chat read it.
-        conversation: sameRequestReadConversation(teamTopicReadConversation(switchReadConversation(parseHistory(body.conversation)), body.employeeName)),
+        // SAME_REQUEST_KEEPS_EARLIER_CARD_ENABLED: <A>'s card is read as it stood before "the same thing for <B>".
+        conversation: sameRequestReadConversation(teamTopicReadConversation(switchReadConversation(parseHistory(body.conversation)), body.employeeName), body.employeeName),
         templateKey: body.templateKey,
         employeeName: body.employeeName,
         alsoCalled,
