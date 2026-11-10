@@ -254,7 +254,9 @@ export function sameRequestForOtherPerson(input: {
   const name = displayName(others[0]!);
   if (kind === "own") {
     // <B>'s card is built from <B>'s turn only: the history before <A>'s request, never <A>'s turns.
-    return { kind, question: ownRequest(input.question, openKey), carried: null, name, from: subject.employeeName, historyBefore: subject.index, sourceIds: [] };
+    // The form the turn names ("now create a coaching form for <B>, …") before the card's.
+    const own = namedTemplate(input.question.replace(/\b(?:verbal|written)\b/gi, "")) ?? openKey;
+    return { kind, question: ownRequest(input.question, own), carried: null, name, from: subject.employeeName, historyBefore: subject.index, sourceIds: [] };
   }
   const level = switchedLevel(input.question);
   const named = namedTemplate(input.question.replace(/\b(?:verbal|written)\b/gi, ""));
