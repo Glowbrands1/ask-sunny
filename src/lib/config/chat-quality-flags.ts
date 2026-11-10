@@ -3860,3 +3860,15 @@ export function madeAboutPolicyLineEnabled(): boolean {
 export function madeAboutReaderAccountEnabled(): boolean {
   return envFlag("MADE_ABOUT_READER_ACCOUNT_ENABLED");
 }
+
+/**
+ * NO_SELECTION_ON_OPEN_CARD_ENABLED (coding 6, 10 Nov 2026; default off;
+ * Pau's sf-b6, twin). With a Corrective Action card on screen, a turn adding
+ * a detail ended "Based on what you've described, I can prepare:" above a
+ * choice offering the same form again. On: when the card on screen's form is
+ * among the choices, the choice and its lead are left off. See
+ * `forms/no-selection-on-open-card.ts`. Off, as before.
+ */
+export function noSelectionOnOpenCardEnabled(): boolean {
+  return envFlag("NO_SELECTION_ON_OPEN_CARD_ENABLED");
+}

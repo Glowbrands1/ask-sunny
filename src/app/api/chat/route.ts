@@ -35,6 +35,7 @@ import {
   questionNotFormEnabled,
   sameFormCopyEnabled,
   sameFormCopyNewPersonEnabled,
+  noSelectionOnOpenCardEnabled,
   copyOwnSalonEnabled,
   secondFormEnabled,
   staffPickerBareAnswerEnabled,
@@ -904,6 +905,10 @@ async function postChat(request: Request) {
         const { formSelection: _dropped, ...rest } = answer;
         void _dropped;
         answer = { ...rest, content: rest.content.replace(/\n*Based on what you've described, I can prepare:\s*$/, "").trimEnd() };
+      }
+      // NO_SELECTION_ON_OPEN_CARD_ENABLED: the card on screen is the form; no "I can prepare:" choice offering it again.
+      if (noSelectionOnOpenCardEnabled()) {
+        answer = (await import("@/lib/forms/no-selection-on-open-card")).withoutSelectionOnOpenCard(answer, parsed.continueProposalTemplateKey);
       }
       // OFF_ROSTER_ASK_BEFORE_CARD_ENABLED: a salon manager's card for a full name not on their roster is asked about once, before the card (`lib/forms/off-roster-ask.ts`).
       if (offRosterAskBeforeCardEnabled()) {
