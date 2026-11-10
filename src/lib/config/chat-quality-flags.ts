@@ -3118,6 +3118,17 @@ export function titleEndsAtLineEnabled(): boolean {
 }
 
 /**
+ * FULL_POSITION_TITLE_ENABLED (QA, 10 Nov 2026; default off; same flag in both apps). An exit form typed as lines,
+ * "<name>\nTanning Consultant Weekends Only\n<salon>…", for an employee with no position of her own on the roster, left
+ * the Job Title blank: with TITLE_ENDS_AT_LINE the words after the title on its line ("Weekends Only") were read as a
+ * person, so the title was taken off the card as theirs. With the flag on, a title that begins the line right under the
+ * employee's name line is the employee's (`forms/title-of-another-person.ts`). Off, as before.
+ */
+export function fullPositionTitleEnabled(): boolean {
+  return envFlag("FULL_POSITION_TITLE_ENABLED");
+}
+
+/**
 
  * ROSTER_COMPOUND_SURNAME_ENABLED (the re-flip's rollback, 5 Nov 2026; default
  * off). The flip's live testers (R3/R5/R7): a real employee's surname is two
