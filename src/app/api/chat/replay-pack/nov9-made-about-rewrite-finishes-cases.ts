@@ -131,7 +131,8 @@ export const NOV9_MADE_ABOUT_REWRITE_FINISHES_CASES: ReplayCase[] = [
     id: "nov9-made-about-rewrite-finishes-undated-reader-details",
     title: "QA's live turn 2, \"make it about showing up late\" (no date), the reader rewrites Details: Details and Other together, the Date stays and the reply says so",
     report: `${REPORT} (turn 2: "make it about showing up late" answered "I haven't changed …")`,
-    status: { open: "an undated made-about turn whose reader rewrote Details is refused and handed to the old path" },
+    // Changed on purpose (10 Nov 2026): fixed in production by MADE_ABOUT_UNDATED_TOGETHER, QA round 15.
+    status: "fixed",
     fixFlags: UNDATED_FIX,
     async run(t) {
       vi.setSystemTime(new Date("2026-11-09T22:01:00Z"));
