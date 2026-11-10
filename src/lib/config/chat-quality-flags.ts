@@ -3948,6 +3948,32 @@ export function chatStageTimingsEnabled(): boolean {
 }
 
 /**
+ * CHAT_PARALLEL_LOADS_ENABLED (QA, 9 Nov 2026; default off; same flag in both apps). The chat turn's reads that need
+ * nothing more of the turn (the few-shot examples, the cited-manual grounding, the Google-reviews block and the chat
+ * data block) start after the turn's last early return (the framework refusals), and the two loads that write
+ * (recalled memory, the long-context summary) start right before the system prompt is built (nothing between there and
+ * their awaits can throw), instead of each being awaited one after another before the answer. Each is awaited where
+ * it was with the same inputs, so the prompt and the reply are the same (`ai/server-ask.ts`). Off, as before.
+ */
+export function chatParallelLoadsEnabled(): boolean {
+  return envFlag("CHAT_PARALLEL_LOADS_ENABLED");
+}
+
+/**
+ * CHAT_PARALLEL_REWRITE_ENABLED (QA, 9 Nov 2026; default off; same flag in both apps). The message normalizer
+ * (`normalizeForChat`, a Haiku call) starts alongside intent extraction instead of after it, and is used only when
+ * extraction leaves the question and the history as they were; otherwise it runs again from the extracted turn, as
+ * before (`ai/server-ask.ts`). The same input, so the same reading. Cost: on a turn whose extraction changes the
+ * question, the early call is dropped and the normalizer runs again, one extra Haiku call that the turn's spend
+ * counts (it was paid for); with CHAT_STAGE_TIMINGS that step is named "query_normalize_rerun". And a turn that
+ * extraction answers with a clarifying question ("which salon?") returns before the normalizer: its early call was made
+ * and not used (one Haiku call; its rejection, if any, is held). Off, as before.
+ */
+export function chatParallelRewriteEnabled(): boolean {
+  return envFlag("CHAT_PARALLEL_REWRITE_ENABLED");
+}
+
+/**
  * POLICY_REFERENCE_NOT_ACCOUNT_ENABLED (coding 6, 10 Nov 2026; default off;
  * QA's overnight scan sf-s16, sf-s17). "you can reference the standards of
  * conduct for a policy" and "In the past we have quoted the standards of
@@ -4068,4 +4094,58 @@ export function sectionBreaksKeptEnabled(): boolean {
  */
 export function addNotRepeatedEnabled(): boolean {
   return envFlag("ADD_NOT_REPEATED_ENABLED");
+}
+
+/**
+ * PAYROLL_SPLIT_WORDS_ENABLED (coding 6, 10 Nov 2026; default off; sf-s23,
+ * Pau 5 Nov 2026). "not pay roll deductable" was not read as the payroll
+ * answer: the card asked again and put it in the Observation. On, the
+ * payroll reader reads "pay roll" as "payroll" and "deductable" /
+ * "deductible" as "deduct". Read in `forms/payroll-deduct-answer.ts` (which
+ * imports nothing). Off, as before.
+ */
+export function payrollSplitWordsEnabled(): boolean {
+  return envFlag("PAYROLL_SPLIT_WORDS_ENABLED");
+}
+
+/**
+ * SAME_REQUEST_OTHER_PERSON_ENABLED (coding 6, 10 Nov 2026; default off). With
+ * <A>'s card on screen or <A>'s form just created, "Can you do the same thing
+ * for <B> but switch it to a written" and "also make a coaching form for <B>"
+ * gave <A>'s card back (the request sentence in <A>'s Observation, or a
+ * Coaching card for <A>). On: a short turn of that shape naming one roster
+ * person other than the card's subject is answered as a new request for that
+ * person — <A>'s request with <A>'s name swapped for <B>'s and the level
+ * switched ("the same thing"), or a plain request for the named form ("also
+ * make") — without <A>'s card, open form or turns. <A>'s card and form are
+ * never written. See `forms/same-request-other-person.ts`. Off, as before.
+ */
+export function sameRequestOtherPersonEnabled(): boolean {
+  return envFlag("SAME_REQUEST_OTHER_PERSON_ENABLED");
+}
+
+/**
+ * COACHING_OBSERVED_SAVED_ENABLED (coding 6, 10 Nov 2026; default off; QA's
+ * P12, live in both apps). "make me a coaching form for <name> not hitting
+ * October numbers" → Create saved Details of Coaching with no "Observed:", or
+ * an empty one. On: a coaching narrative about to be saved with text but no
+ * heading gets "Observed:" over it; one with no Observed text gets
+ * "Observed:" first, with the manager's own words. An Observed with text is
+ * left as it is. See `forms/coaching-observed-saved.ts`. Off, as before.
+ */
+export function coachingObservedSavedEnabled(): boolean {
+  return envFlag("COACHING_OBSERVED_SAVED_ENABLED");
+}
+
+/**
+ * APP_INSTRUCTIONS_NOT_ACCOUNT_ENABLED (coding 6, 10 Nov 2026; default off;
+ * QA's P12 part 2, Sunny production 6 Nov). "… for not hitting her numbers
+ * for the month of October. Please word it in a professional way. I need the
+ * policy attached as well." — every card's Observation kept the last two
+ * sentences. On: a sentence that only asks for the wording or for the policy
+ * on the form is left out of the card's Observation and the draft's account.
+ * See `ai/app-instructions.ts`. Off, as before.
+ */
+export function appInstructionsNotAccountEnabled(): boolean {
+  return envFlag("APP_INSTRUCTIONS_NOT_ACCOUNT_ENABLED");
 }

@@ -372,6 +372,14 @@ const NEW_FLAGS = [
   "TEAM_CARD_NOT_PRODUCT_ENABLED",
   // coding 6: REOPEN_CLOSE_SPELLING (default off): forced off with the others.
   "REOPEN_CLOSE_SPELLING_ENABLED",
+  // coding 6: PAYROLL_SPLIT_WORDS (default off): forced off with the others.
+  "PAYROLL_SPLIT_WORDS_ENABLED",
+  // coding 6: SAME_REQUEST_OTHER_PERSON (default off): forced off with the others.
+  "SAME_REQUEST_OTHER_PERSON_ENABLED",
+  // coding 6: COACHING_OBSERVED_SAVED (default off): forced off with the others.
+  "COACHING_OBSERVED_SAVED_ENABLED",
+  // coding 6: APP_INSTRUCTIONS_NOT_ACCOUNT (default off): forced off with the others.
+  "APP_INSTRUCTIONS_NOT_ACCOUNT_ENABLED",
   "STAFF_PICKER_ENABLED",
   "STAFF_PICKER_STORE_TITLES_ENABLED",
   "STAFF_PICKER_BARE_ANSWER_ENABLED",
@@ -536,6 +544,8 @@ const NEW_FLAGS = [
   "MADE_ABOUT_REWRITE_FINISHES_ENABLED",
   // coding 4: CHAT_STAGE_TIMINGS (QA, 9 Nov 2026; default off): forced off with the others in the child run.
   "CHAT_STAGE_TIMINGS_ENABLED",
+  "CHAT_PARALLEL_LOADS_ENABLED",
+  "CHAT_PARALLEL_REWRITE_ENABLED",
   // coding 4: QA's live Bubbles round 13 (9 Nov 2026; default off): forced off with the others in the child run.
   "MADE_ABOUT_TOPIC_EVIDENCE_ENABLED",
   "FORM_DATE_SAID_ALONE_ENABLED",

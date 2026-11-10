@@ -99,7 +99,10 @@ export const NOV4_OVERNIGHT_SCAN_CASES: readonly ReplayCase[] = [
     title: "\"Can you do the same thing for Perrin Haldane but switch it to a written\" — a NEW Written CA for Perrin, Under Performance, with nothing of Odalys on it and the request never in the Observation",
     report: `${REPORT}, sf-s11: "what information do you need for a corrective action for an employee" → "Odalys Frewen. Verbal Warning. Under Performance." → "Can you do the same thing for Perrin Haldane but switch it to a written"`,
     // Run 4 Nov 2026 (production flags): fails as below.
-    status: { open: "turn 3 is read as an edit of Odalys Frewen's card: the card stays Odalys Frewen, Verbal, and its Observation of Offense becomes the request sentence \"Can you do the same thing for Perrin Haldane but switch it to a written\"; no card for Perrin Haldane" },
+    // Changed on purpose (10 Nov 2026): fixed in production by SAME_REQUEST_OTHER_PERSON_ENABLED, QA round 19; it now holds with production's flags.
+    status: "fixed",
+    // Fixed under SAME_REQUEST_OTHER_PERSON_ENABLED (coding 6, 10 Nov 2026): a new request for the other person; open on production flags until QA flips it.
+    fixFlags: ["SAME_REQUEST_OTHER_PERSON_ENABLED"],
     async run(t) {
       const thread = start(t);
       await thread.say("what information do you need for a corrective action for an employee");
@@ -303,7 +306,10 @@ export const NOV4_OVERNIGHT_SCAN_CASES: readonly ReplayCase[] = [
     title: "\"Now make one for LYsandra\" after a coaching form for Jovelle Kerrigan — confirm \"Lysandra Quade?\" or make her card; never \"I have the employee\" without naming her",
     report: `${REPORT}, sf-s20: "create a coaching document for Jovelle Kerrigan" → "Now make one for LYsandra"`,
     // Run 4 Nov 2026 (production flags): fails as below.
-    status: { open: "turn 2 \"Now make one for LYsandra\" keeps the card on Jovelle Kerrigan and says \"I have the employee and the salon\" without naming Lysandra Quade or asking" },
+    // Changed on purpose (10 Nov 2026): fixed in production by SAME_REQUEST_OTHER_PERSON_ENABLED, QA round 19; it now holds with production's flags.
+    status: "fixed",
+    // Fixed under SAME_REQUEST_OTHER_PERSON_ENABLED (coding 6, 10 Nov 2026): "Now make one for <first name>" asks "Is this for <full name>?"; open on production flags until QA flips it.
+    fixFlags: ["SAME_REQUEST_OTHER_PERSON_ENABLED"],
     async run(t) {
       const thread = start(t);
       await thread.say("create a coaching document for Jovelle Kerrigan");
