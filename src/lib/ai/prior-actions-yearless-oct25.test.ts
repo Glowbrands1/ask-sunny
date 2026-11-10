@@ -385,6 +385,9 @@ describe("the readers", () => {
     vi.stubEnv("PRIOR_ACTIONS_PARSE_ENABLED", "1");
     // Pinned off: the flag-off reading below is PRIOR_SENTENCE_FIX_ENABLED's too (twin below).
     vi.stubEnv("PRIOR_SENTENCE_FIX_ENABLED", "");
+    // Pinned off (10 Nov 2026): PRIOR_ACTIONS_NO_COMMA_ENABLED lists "I coached her on 10-16" as an earlier step on
+    // purpose (#255 / October rebuild 4); this test is the reading without it.
+    vi.stubEnv("PRIOR_ACTIONS_NO_COMMA_ENABLED", "");
     const range = "CA for Test Employee, she was 10-15 minutes late on 10-20";
     expect(blankYearlessStepDates(range, TODAY)).toBe(range);
     expect(fieldLines(range, TODAY)).toEqual(["It happened on 10/20/2026."]);
@@ -401,6 +404,8 @@ describe("the readers", () => {
   it("with PRIOR_SENTENCE_FIX_ENABLED the field line is the incident's 10/20; a range and a held coaching are read as before", () => {
     vi.stubEnv("PRIOR_SENTENCE_FIX_ENABLED", "1");
     vi.stubEnv("PRIOR_ACTIONS_PARSE_ENABLED", "1");
+    // Pinned off (10 Nov 2026): PRIOR_ACTIONS_NO_COMMA_ENABLED lists the held coaching on purpose (#255); not this twin's.
+    vi.stubEnv("PRIOR_ACTIONS_NO_COMMA_ENABLED", "");
     const range = "CA for Test Employee, she was 10-15 minutes late on 10-20";
     expect(fieldLines(range, TODAY)).toEqual(["It happened on 10/20/2026."]);
     const held = "I coached her on 10-16 about her cell phone";
