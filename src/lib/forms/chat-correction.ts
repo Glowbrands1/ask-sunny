@@ -21,7 +21,7 @@ import { resolveFormDate, withDateMoved } from "./form-date-grounding";
 import { authorizeInstance } from "./instance-scope";
 import { caNameFromChat } from "./ca-name-from-chat";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
-import { formEditSingleWriterEnabled, payrollAmountFieldEnabled, priorActionsNoSignedEnabled } from "@/lib/config/chat-quality-flags";
+import { correctionPlanKeepsAmountEnabled, formEditSingleWriterEnabled, payrollAmountFieldEnabled, priorActionsNoSignedEnabled } from "@/lib/config/chat-quality-flags";
 
 import { syncCorrectiveActionPlan } from "./ca-action-plan-sync";
 import {
@@ -43,7 +43,7 @@ import { extractEmployeeNames } from "./proposal";
 import { describesIncident, statedWarningLevel, WARNING_TYPE_KEY } from "./corrective-action-intake";
 import { NO_PRIOR_ACTION, priorLineDate, statedPriorActions } from "./prior-actions";
 import { detectTemplateIntent } from "./template-intent";
-import { applyAssistantDraft, saveInstanceValues } from "./instances";
+import { applyAssistantDraft, loadInstance, saveInstanceValues } from "./instances";
 import { correctCaFromChat } from "./ca-chat-corrections";
 
 /** The header line a Corrective Action may take from chat under CA_NAME_FROM_CHAT_ENABLED. */
@@ -416,8 +416,12 @@ export async function correctActiveForm(input: {
         employeeColumn: caNewName,
         syncPlan: {
           after: PAYROLL_DEDUCT_KEY in accepted.checked ? [PAYROLL_DEDUCT_KEY, PAYROLL_AMOUNT_KEY] : [],
+          /*
+           * CORRECTION_PLAN_KEEPS_AMOUNT_ENABLED (ported from Ask Bubbles): the plan states the amount, as every other edit
+           * path writes it, read from the form as saved by this turn (the form as it was would state the old amount).
+           */
+          ...(correctionPlanKeepsAmountEnabled() ? { amountSentence: true } : { loaded }),
           notes: input.question,
-          loaded,
           checked: accepted.checked,
         },
       })
@@ -434,6 +438,7 @@ export async function correctActiveForm(input: {
     const planMoved =
       formEditSingleWriterEnabled() && PAYROLL_DEDUCT_KEY in accepted.checked
         ? await (await import("./form-write")).syncPlan(input.instanceId, actor.id, {
+            ...(correctionPlanKeepsAmountEnabled() ? { amountSentence: true } : {}),
             notes: input.question,
             loaded,
             checked: accepted.checked,
@@ -441,7 +446,13 @@ export async function correctActiveForm(input: {
         : [];
     if (planMoved.length > 0) {
       return {
-        ...reply(payroll === "yes" ? "The Action Plan now states the payroll deduction." : "The Action Plan no longer states a payroll deduction."),
+        ...reply(
+          payroll === "yes"
+            ? (await planStatesDeduction(input.instanceId))
+              ? "The Action Plan now states the payroll deduction."
+              : "The Action Plan was updated."
+            : "The Action Plan no longer states a payroll deduction.",
+        ),
         formUpdate: { instanceId: input.instanceId, updated: planMoved },
       };
     }
@@ -526,7 +537,11 @@ export async function correctActiveForm(input: {
     written.push(...planKeys);
     lines.push(
       "",
-      payroll === "yes" ? "The Action Plan now states the payroll deduction." : "The Action Plan no longer states a payroll deduction.",
+      payroll === "yes"
+        ? (await planStatesDeduction(input.instanceId))
+          ? "The Action Plan now states the payroll deduction."
+          : "The Action Plan was updated."
+        : "The Action Plan no longer states a payroll deduction.",
     );
   }
   /*
@@ -816,4 +831,16 @@ function describe(
   const options = (submitted.checked[key] ?? []).map(label).join(", ");
   // The separation boxes have no question of their own; the ticked box says it all.
   return group?.label ? `${group.label} → ${options}` : `Ticked ${options}`;
+}
+
+/**
+ * CORRECTION_PLAN_KEEPS_AMOUNT_ENABLED (ported from Ask Bubbles: QA's prod-env reading there, 10 Nov 2026, D1): "The Action
+ * Plan now states the payroll deduction" was said while the saved plan named none. With the flag on, it is said only when
+ * the saved Action Plan states a deduction (a dollar amount and a deduct word); off, always, as before.
+ */
+async function planStatesDeduction(instanceId: string): Promise<boolean> {
+  if (!correctionPlanKeepsAmountEnabled()) return true;
+  const loaded = await loadInstance(instanceId);
+  const plan = loaded?.values.find((row) => row.fieldKey === "action_plan")?.value;
+  return typeof plan === "string" && /\$\s?\d/.test(plan) && /deduct/i.test(plan);
 }

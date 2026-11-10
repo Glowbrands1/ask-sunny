@@ -4134,3 +4134,14 @@ export function appInstructionsNotAccountEnabled(): boolean {
 export function draftWriteNeverSilentEnabled(): boolean {
   return envFlag("DRAFT_WRITE_NEVER_SILENT_ENABLED");
 }
+
+/**
+ * CORRECTION_PLAN_KEEPS_AMOUNT_ENABLED (ported from Ask Bubbles: QA's prod-env reading there, 10 Nov 2026, D1; default off;
+ * same flag in both apps). After Create, "change the payroll deduction to $5.00" replied "The Action Plan now states the
+ * payroll deduction." and the saved plan named no deduction (the earlier one was gone too): `forms/chat-correction.ts`
+ * synced the plan without its amount sentence. On: it writes the amount sentence as every other edit path does, and says
+ * "now states" only when the saved plan does. Off, as before.
+ */
+export function correctionPlanKeepsAmountEnabled(): boolean {
+  return envFlag("CORRECTION_PLAN_KEEPS_AMOUNT_ENABLED");
+}
