@@ -55,6 +55,7 @@ import {
   reopenByAnyOpenVerbEnabled,
   twoFormsCardNotAskedEnabled,
   secondRequestOwnAccountEnabled,
+  lateOpeningNeedsOpeningEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { streamWhenSlow } from "@/lib/api/streamed-response";
 import { finalReplyWithoutMarkers } from "@/lib/ai/source-note";
@@ -950,6 +951,14 @@ async function postChat(request: Request) {
         const { formSelection: _dropped, ...rest } = answer;
         void _dropped;
         answer = { ...rest, content: rest.content.replace(/\n*Based on what you've described, I can prepare:\s*$/, "").trimEnd() };
+      }
+      // LATE_OPENING_NEEDS_OPENING_ENABLED: a closing account is never cited as Late Opening (`lib/forms/late-opening-needs-opening.ts`).
+      if (lateOpeningNeedsOpeningEnabled() && answer.formProposal) {
+        const cited = new Set(answer.formProposal.sourceMessageIds);
+        answer = (await import("@/lib/forms/late-opening-needs-opening")).withLateOpeningNeedsOpening(answer, [
+          ...parsed.history.filter((turn) => turn.role === "user" && turn.id && cited.has(turn.id)).map((turn) => String(turn.content)),
+          asked.question,
+        ]);
       }
       // OFF_ROSTER_ASK_BEFORE_CARD_ENABLED: a salon manager's card for a full name not on their roster is asked about once, before the card (`lib/forms/off-roster-ask.ts`).
       if (offRosterAskBeforeCardEnabled()) {
