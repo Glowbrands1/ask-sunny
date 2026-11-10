@@ -1,0 +1,38 @@
+diff --git a/src/lib/ai/form-proposal.ts b/src/lib/ai/form-proposal.ts
+index c108ffeb..af24c0ea 100644
+--- a/src/lib/ai/form-proposal.ts
++++ b/src/lib/ai/form-proposal.ts
+@@ -114,12 +114,14 @@ import {
+ } from "@/lib/forms/employee-match";
+ import { loadScopedRoster } from "@/lib/forms/employee-roster";
+ import {
++  typoCorrectedSamePersonEnabled,
+   nameQuestionOnlyEnabled,
+   payrollAmountFieldEnabled,
+   storedSlotsNotARequestEnabled,
+   typedNameProceedsEnabled,
+   secondRequestOwnAccountEnabled,
+ } from "@/lib/config/chat-quality-flags";
++import { editDistance } from "@/lib/forms/employee-match";
+ import { currentFormRequestText } from "@/lib/forms/current-request";
+ import { managerWords } from "./edit-date-rules";
+ import { inlineCloseMatch } from "@/lib/forms/typed-name-proceeds";
+@@ -1674,7 +1676,17 @@ function turnsAboutThisForm(
+       a.length < b.length &&
+       b.slice(b.length - a.length).join(" ") === a.join(" ") &&
+       b.slice(0, b.length - a.length).every((word) => isFormVocabulary(word));
+-    return a.join(" ") === b.join(" ") || a[0] === b[0] || trimmedLead;
++    if (a.join(" ") === b.join(" ") || a[0] === b[0] || trimmedLead) return true;
++    // TYPO_CORRECTED_SAME_PERSON_ENABLED (QA, 10 Nov 2026, the sibling app's s14 path 2): "rozline quellmar", corrected
++    // to Rozlyn Quellmar, is the same person on every later turn — the same surname, a first name at most two letters off.
++    return (
++      typoCorrectedSamePersonEnabled() &&
++      a.length === b.length &&
++      a.length > 1 &&
++      a[a.length - 1] === b[b.length - 1] &&
++      Math.min(a[0]!.length, b[0]!.length) >= 4 &&
++      editDistance(a[0]!, b[0]!) <= 2
++    );
+   };
+   let start = 0;
+   /* The latest request for this form, for this employee, inside the turns kept so far. */
