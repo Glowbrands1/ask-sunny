@@ -1,4 +1,5 @@
 import { payrollAmounts } from "@/lib/ai/intent-slots";
+import { firstNameEnoughEnabled } from "@/lib/config/chat-quality-flags";
 
 import { datesInText } from "./form-date-answer";
 import { fold, wordsOf } from "./form-reducer";
@@ -60,11 +61,26 @@ export function draftFacts(input: { employeeName: string | null; notes: string; 
   return facts;
 }
 
+/** FIRST_NAME_ENOUGH_ENABLED: the narrative fields where a first name is the name (the Coaching Form's Details). */
+const FIRST_NAME_FIELDS = new Set(["coaching_details"]);
+
 /** The facts no narrative field holds (all narrative fields read together). */
 export function missingFacts(values: Readonly<Record<string, string>>, narrativeKeys: readonly string[], facts: readonly DraftFact[]): DraftFact[] {
   const text = narrativeKeys.map((key) => values[key] ?? "").join("\n");
   if (fold(text) === "") return [];
-  return facts.filter((fact) => !fact.in(text));
+  const missing = facts.filter((fact) => !fact.in(text));
+  /*
+   * FIRST_NAME_ENOUGH_ENABLED (QA's live Bubbles round 17b, 10 Nov 2026): "The draft left out <surname> in Details of
+   * Coaching" while Details named the employee by first name. A name the account already uses, by any word of it, is
+   * not reported missing. Only for the Coaching Form's Details (QA's report): a Corrective Action's Observation still
+   * reports a dropped surname ("Marnie was late", the single-writer spec, `pm-draft-route.single-writer.test.ts`).
+   * Off, every word of the name is checked, as before.
+   */
+  const coachingOnly = narrativeKeys.length > 0 && narrativeKeys.every((key) => FIRST_NAME_FIELDS.has(key));
+  if (firstNameEnoughEnabled() && coachingOnly && facts.some((fact) => fact.kind === "name" && fact.in(text))) {
+    return missing.filter((fact) => fact.kind !== "name");
+  }
+  return missing;
 }
 
 function listed(items: readonly string[]): string {
