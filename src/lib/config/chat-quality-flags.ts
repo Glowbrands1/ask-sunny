@@ -4148,3 +4148,14 @@ export function draftWriteNeverSilentEnabled(): boolean {
 export function failureToOpenIsLateOpeningEnabled(): boolean {
   return envFlag("FAILURE_TO_OPEN_IS_LATE_OPENING_ENABLED");
 }
+
+/**
+ * REQUEST_ISSUE_KEPT_ENABLED (ported from Ask Bubbles; QA's live round 17b, 10 Nov 2026, P16): "Can you make a CA for
+ * <name> for failure to open on time?" carded with no Observation of Offense. The edit rules read the whole question
+ * as an instruction to the app, so its account ("failure to open on time") was dropped. With the flag on, the
+ * account is kept when the manager's turns hold no replace or add edit and it is no instruction itself
+ * (`ai/form-full-remap.ts`). Off, as before. Same flag in both apps.
+ */
+export function requestIssueKeptEnabled(): boolean {
+  return envFlag("REQUEST_ISSUE_KEPT_ENABLED");
+}
