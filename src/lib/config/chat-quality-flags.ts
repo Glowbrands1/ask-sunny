@@ -3873,3 +3873,17 @@ export function madeAboutRewriteFinishesEnabled(): boolean {
 export function madeAboutReaderAccountEnabled(): boolean {
   return envFlag("MADE_ABOUT_READER_ACCOUNT_ENABLED");
 }
+
+/**
+ * POLICY_REFERENCE_NOT_ACCOUNT_ENABLED (coding 6, 10 Nov 2026; default off;
+ * QA's overnight scan sf-s16, sf-s17). "you can reference the standards of
+ * conduct for a policy" and "In the past we have quoted the standards of
+ * conduct for creating a ca due to underperformance", after the CA card,
+ * were handed to the drafting model as part of what happened. On: a turn
+ * that only says which policy to quote, cite or reference is left out of the
+ * account the draft is written from; the policy readers still read it. See
+ * `ai/policy-reference-turn.ts`. Off, as before.
+ */
+export function policyReferenceNotAccountEnabled(): boolean {
+  return envFlag("POLICY_REFERENCE_NOT_ACCOUNT_ENABLED");
+}
