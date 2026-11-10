@@ -218,6 +218,13 @@ const FLIPPED_AFTER_FIXTURE: readonly string[] = [
   "TITLE_ENDS_AT_LINE_ENABLED",
   "BARE_NOT_DENIAL_ENABLED",
   "PLACE_FROM_CUE_ENABLED",
+  /*
+   * Changed on purpose (10 Nov 2026): QA round 22 turned the roster-name set on in production. Of its nine flags only
+   * FORM_NAME_FROM_ROSTER changes this recording: "msb" (the glossary's "must see behavior") is no longer the card's
+   * employee, so the reply reads "I can create a **Corrective Action Form**." (was "… for **msb**.") and the stored
+   * slot lines are put ahead of the turn in another order. The other eight change nothing here.
+   */
+  "FORM_NAME_FROM_ROSTER_ENABLED",
 ];
 const PRODUCTION = [...PRODUCTION_FLAGS.on, ...PRODUCTION_FLAGS.assumedOn].filter((name) => name !== FLAG && !FLIPPED_AFTER_FIXTURE.includes(name));
 const TOUCHED = [...new Set([FLAG, "FORM_EDIT_SINGLE_WRITER_ENABLED", "FORM_EDIT_TOOL_IN_STREAM_ENABLED", ...PRODUCTION, ...PRODUCTION_FLAGS.off])];
