@@ -25,7 +25,8 @@ export const NOV10_P12_TEAM_CARD_INSTRUCTIONS_CASES: ReplayCase[] = [
     id: "nov10-p12-team-card-no-request-lead-or-blank-employee",
     title: `P12 part 2 (team card): "${TURNS[0]}" → "${TURNS[1]}": the Observation is the team's account, never the request lead or the instruction`,
     report: `QA, 10 Nov 2026 (Sunny round 17, live): "${TURNS[0]}" → Observation "the whole team: make me a coaching form for the team on selling lotion bottles"; "${TURNS[1]}" → "the team on selling lotion bottles the employee needs to be left blank"`,
-    status: { open: "the team card's Observation carries \"make me a coaching form for\" and \"the employee needs to be left blank\"" },
+    // Changed on purpose (10 Nov 2026): fixed in production by APP_INSTRUCTIONS_NOT_ACCOUNT_ENABLED, QA round 20; it now holds with production's flags.
+    status: "fixed",
     fixFlags: ["APP_INSTRUCTIONS_NOT_ACCOUNT_ENABLED"],
     async run(t) {
       vi.setSystemTime(new Date("2026-11-10T06:30:00Z"));

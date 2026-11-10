@@ -66,7 +66,8 @@ export const NOV10_P12_COACHING_OBSERVED_SAVED_CASES: ReplayCase[] = MODEL_OUTPU
   id: `nov10-p12-coaching-observed-saved-${key}`,
   title: `P12 (${key}): "${SAID}" → Create: the saved Details have "Observed:" with the October account under it`,
   report: REPORT,
-  status: { open: "the saved Details have no \"Observed:\", or an empty one" },
+  // Changed on purpose (10 Nov 2026): fixed in production by COACHING_OBSERVED_SAVED_ENABLED, QA round 20; it now holds with production's flags.
+  status: "fixed",
   fixFlags: [FIX],
   async run(t: T) {
     observedWithAccount(await saved(t, model));

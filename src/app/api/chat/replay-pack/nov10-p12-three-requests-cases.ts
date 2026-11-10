@@ -54,7 +54,8 @@ export const NOV10_P12_THREE_REQUESTS_CASES: ReplayCase[] = [0, 1, 2].map(
     id: `nov10-p12-three-requests-t${index + 1}`,
     title: `P12 part 2, T${index + 1} of three back-to-back requests: ${NAMES[index]}'s card and saved Details are her own account only, without the instructions to the app`,
     report: REPORT,
-    status: { open: index === 1 ? "T2's Observation carries T1's request and the instructions" : "the Observation keeps \"Please word it in a professional way. I need the policy attached as well.\"" },
+    // Changed on purpose (10 Nov 2026): fixed in production by APP_INSTRUCTIONS_NOT_ACCOUNT_ENABLED, QA round 20; it now holds with production's flags.
+    status: "fixed",
     fixFlags: [P12_THREE_FIX],
     async run(t: T) {
       vi.setSystemTime(new Date("2026-11-06T18:01:00Z"));
