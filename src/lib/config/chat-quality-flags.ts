@@ -3971,3 +3971,19 @@ export function teamCardNotProductEnabled(): boolean {
 export function reopenCloseSpellingEnabled(): boolean {
   return envFlag("REOPEN_CLOSE_SPELLING_ENABLED");
 }
+
+/**
+ * PASTED_REVIEW_NOT_ACCOUNT_ENABLED (coding 6, 10 Nov 2026; default off; Pau via
+ * QA, sf-s22, 5 Nov 2026). "Use this to make it: Please make the following
+ * edits and resubmit: 1. **Kit Coaching Document:** … signed by <C> …" — a
+ * reviewer's notes on another employee's form, pasted to show the format —
+ * turned the Corrective Action card into a Coaching Form, put <C>'s notes in
+ * the Observation and their signing date on the card. On: a pasted review
+ * ("Please make the following edits …", or a numbered list of "**Heading:**"
+ * items) is read only for the manager's own words before it, in this turn and
+ * the earlier ones, and the draft's account leaves it out. The stored
+ * messages keep it. See `ai/pasted-review.ts`. Off, as before.
+ */
+export function pastedReviewNotAccountEnabled(): boolean {
+  return envFlag("PASTED_REVIEW_NOT_ACCOUNT_ENABLED");
+}

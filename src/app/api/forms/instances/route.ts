@@ -17,6 +17,7 @@ import {
   payrollAmountFieldEnabled,
   typoReadingRoutesEnabled,
 } from "@/lib/config/chat-quality-flags";
+import { turnsWithoutPastedReview } from "@/lib/ai/pasted-review";
 import { parseHistory } from "@/lib/api/validation";
 import { authorizeForms } from "@/lib/forms/access";
 import {
@@ -227,7 +228,8 @@ export async function POST(request: Request) {
       const currency = checkProposalIsCurrent({
         // FORM_TYPE_SWITCH_ENABLED: "change to coaching" is read as the chat read it, so the switched card is current.
         // TEAM_CARD_NOT_PRODUCT_ENABLED: on the team card, "selling Spray Tan Kits" is the topic, as the chat read it.
-        conversation: teamTopicReadConversation(switchReadConversation(parseHistory(body.conversation)), body.employeeName),
+        // PASTED_REVIEW_NOT_ACCOUNT_ENABLED: a pasted reviewer's notes are read as the chat read them (`ai/pasted-review.ts`).
+        conversation: teamTopicReadConversation(switchReadConversation(turnsWithoutPastedReview(parseHistory(body.conversation))), body.employeeName),
         templateKey: body.templateKey,
         employeeName: body.employeeName,
         alsoCalled,
@@ -405,7 +407,7 @@ export async function POST(request: Request) {
      * (`newIncident`, above).
      */
     if (body.source === "ask_sunny" && !newIncident && !historyWantsSeparateDocument(body.conversation)) {
-      const turns = Array.isArray(body.conversation) ? parseHistory(body.conversation) : [];
+      const turns = Array.isArray(body.conversation) ? turnsWithoutPastedReview(parseHistory(body.conversation)) : [];
       const incidentText = turns
         .filter((turn) => turn.role === "user")
         .map((turn) => turn.content)
@@ -476,7 +478,7 @@ export async function POST(request: Request) {
       !newIncident &&
       !historyWantsSeparateDocument(body.conversation)
     ) {
-      const turns = Array.isArray(body.conversation) ? parseHistory(body.conversation) : [];
+      const turns = Array.isArray(body.conversation) ? turnsWithoutPastedReview(parseHistory(body.conversation)) : [];
       const incidentText = turns
         .filter((turn) => turn.role === "user")
         .map((turn) => turn.content)
