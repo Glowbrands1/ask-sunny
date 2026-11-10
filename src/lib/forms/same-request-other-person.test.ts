@@ -93,6 +93,18 @@ describe("sameRequestForOtherPerson", () => {
     expect(read).toMatchObject({ kind: "also", question: "create a coaching form for Caspian Drummet", sourceIds: [] });
   });
 
+  it("sf-s20: \"Now make one for LYsandra\" — a request for the lone first name as typed, one roster person's", () => {
+    const roster = [...ROSTER, person("e-5", "Jovelle", "Kerrigan"), person("e-6", "Lysandra", "Quade")];
+    const read = sameRequestForOtherPerson({
+      question: "Now make one for LYsandra",
+      history: [turn("m1", "user", "create a coaching document for Jovelle Kerrigan"), turn("a1", "assistant", "Here is what I would put on a **Coaching Form**.")],
+      roster,
+      continueTemplateKey: "coaching",
+    });
+    expect(read).toMatchObject({ kind: "also", question: "create a coaching form for LYsandra" });
+    expect(sameRequestForOtherPerson({ question: "Now make one for Jovelle", history: [turn("m1", "user", "create a coaching document for Jovelle Kerrigan")], roster, continueTemplateKey: "coaching" })).toBeNull();
+  });
+
   it("nothing when no card or form is open, the turn names the card's own person, or nobody on the roster", () => {
     const history = [turn("m1", "user", MIREYA)];
     expect(sameRequestForOtherPerson({ question: SAME, history, roster: ROSTER })).toBeNull();

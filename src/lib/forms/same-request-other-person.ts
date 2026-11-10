@@ -40,9 +40,9 @@ const SAME_FOR = new RegExp(
   String.raw`\b(?:do|make|create|start|draft|write|need|want|same)\b[^.?!\n]{0,30}?\bthe\s+same\s+(?:thing|one|form|draft|${FORM})?\s*(?:for|with)\b|\bsame\s+(?:thing|one)\s+for\b`,
   "i",
 );
-/** "also make a coaching form for …", "make one for … too" */
+/** "also make a coaching form for …", "Now make one for …", "make one for … too" */
 const ALSO_FOR = new RegExp(
-  String.raw`\balso\s+(?:make|do|create|start|draft|write\s+up|need|want)\s+(?:a|an|one)?\s*${FORM}?\s*(?:form\s+)?for\b|\b(?:make|do|create|start|draft)\s+(?:a|an|one)\s+${FORM}?\s*(?:form\s+)?for\b[^.?!\n]{1,40}\b(?:too|as\s+well|also)\b`,
+  String.raw`\b(?:also|now)\s+(?:make|do|create|start|draft|write\s+up|need|want)\s+(?:a|an|one)?\s*${FORM}?\s*(?:form\s+)?for\b|\b(?:make|do|create|start|draft)\s+(?:a|an|one)\s+${FORM}?\s*(?:form\s+)?for\b[^.?!\n]{1,40}\b(?:too|as\s+well|also)\b`,
   "i",
 );
 
@@ -75,6 +75,18 @@ export function asksForAnotherPerson(turn: string): boolean {
     if (!PRONOUN.test(match[1]!)) return true;
   }
   return false;
+}
+
+/** The word after "for" when it is, in any case, the first name of exactly one roster person other than the card's. */
+function loneFirstName(question: string, roster: readonly RosterEmployee[], subjectName: string): string | null {
+  const typed = /\bfor\s+([A-Za-z][A-Za-z'’-]+)\s*[.!?]?\s*$/.exec(question.trim())?.[1];
+  if (!typed || PRONOUN.test(typed)) return null;
+  const matches = roster.filter(
+    (person) =>
+      !sameName(displayName(person), subjectName) &&
+      [person.firstName, person.preferredFirstName ?? ""].some((first) => first.trim().toLowerCase() === typed.toLowerCase()),
+  );
+  return matches.length === 1 ? typed : null;
 }
 
 /** The warning level the turn switches to ("but switch it to a written", "make it verbal"). */
@@ -204,7 +216,15 @@ export function sameRequestForOtherPerson(input: {
   const subject = lastNamed(input.history, input.roster);
   if (!subject) return null;
   const others = input.roster.filter((person) => !sameName(displayName(person), subject.employeeName) && rosterNameNamedIn(input.question, [person]) !== null);
-  if (others.length !== 1) return null;
+  // "Now make one for LYsandra": a lone first name, as typed, when it is one roster person's (never the card's) — the
+  // name readers then ask "Is this for Lysandra Quade?" as for any first name (`lone`).
+  const lone = others.length === 0 ? loneFirstName(input.question, input.roster, subject.employeeName) : null;
+  if (others.length !== 1 && !lone) return null;
+  if (lone) {
+    const templateKey = namedTemplate(input.question.replace(/\b(?:verbal|written)\b/gi, "")) ?? openKey;
+    if (kind !== "also") return null;
+    return { kind, question: `create a ${formWords(templateKey, null)} for ${lone}`, carried: null, name: lone, from: subject.employeeName, historyBefore: subject.index, sourceIds: [] };
+  }
   const name = displayName(others[0]!);
   const level = switchedLevel(input.question);
   const named = namedTemplate(input.question.replace(/\b(?:verbal|written)\b/gi, ""));

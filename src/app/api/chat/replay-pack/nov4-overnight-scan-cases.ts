@@ -292,6 +292,8 @@ export const NOV4_OVERNIGHT_SCAN_CASES: readonly ReplayCase[] = [
     report: `${REPORT}, sf-s20: "create a coaching document for Jovelle Kerrigan" → "Now make one for LYsandra"`,
     // Run 4 Nov 2026 (production flags): fails as below.
     status: { open: "turn 2 \"Now make one for LYsandra\" keeps the card on Jovelle Kerrigan and says \"I have the employee and the salon\" without naming Lysandra Quade or asking" },
+    // Fixed under SAME_REQUEST_OTHER_PERSON_ENABLED (coding 6, 10 Nov 2026): "Now make one for <first name>" asks "Is this for <full name>?"; open on production flags until QA flips it.
+    fixFlags: ["SAME_REQUEST_OTHER_PERSON_ENABLED"],
     async run(t) {
       const thread = start(t);
       await thread.say("create a coaching document for Jovelle Kerrigan");
