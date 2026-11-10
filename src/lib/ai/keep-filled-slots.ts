@@ -1,6 +1,7 @@
 import { PRODUCTION_SALONS, salonById } from "@/data/salons";
 import { isPolicyCorrection } from "./policy-correction-turn";
 import { observationAccount } from "@/lib/forms/ca-policy";
+import { ownPersonAccount } from "./observation-own-person";
 import { withoutPayrollClauses } from "./payroll-clause-not-account";
 import { onlyDeniesForObservation } from "./ca-what-happened";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
@@ -53,6 +54,7 @@ import {
   proposalPolicySetAsideEnabled,
   dateQuestionKeptEnabled,
   secondRequestOwnAccountEnabled,
+  observationOwnPersonOnlyEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { turnsMadeAbout, withObservationMadeAbout } from "./make-it-about";
 import { NOTHING_SET_ASIDE, citationSetAside, policiesSetAside, setAsideAnything, withPolicySetAside, withoutPolicyAsks } from "@/lib/forms/policy-set-aside";
@@ -783,7 +785,9 @@ function withObservation(content: string, turns: readonly string[], employeeName
       // MANAGER_WORDS_ONLY_ENABLED: without the clauses that only request the
       // form, name the employee or give their place (QA, 25 Oct 2026).
       // SALES_OBSERVATION_ACCOUNT_ENABLED: the account only, never the request's words, the name or a payroll answer (`forms/ca-policy.ts`).
-      const sentence = observationAccount(managerOnly ? managerAccount(said, employeeName) ?? "" : said, employeeName);
+      const read = observationAccount(managerOnly ? managerAccount(said, employeeName) ?? "" : said, employeeName);
+      // OBSERVATION_OWN_PERSON_ONLY_ENABLED (QA's P7): never the request's other people, nor "create draft for …".
+      const sentence = read && observationOwnPersonOnlyEnabled() ? ownPersonAccount(read) : read;
       if (!sentence) continue;
       // BARE_NOT_AFTER_REQUEST_ENABLED: "ca for <A> not late" says only what did not happen, so it is no Observation.
       if (onlyDeniesForObservation(said, employeeName) || onlyDeniesForObservation(sentence, employeeName)) continue;

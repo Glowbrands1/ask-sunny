@@ -2644,6 +2644,27 @@ export function accountWipeGuardEnabled(): boolean {
   return envFlag("ACCOUNT_WIPE_GUARD_ENABLED");
 }
 
+/**
+ * CREATE_FROM_CONVERSATION_POINTS_TO_CARD_ENABLED (QA's P6, Sunny live, 10 Nov 2026; coding 5; same flag in both apps;
+ * default off; with CREATE_COMMAND_POINTS_TO_CARD_ENABLED). "Create a form from this conversation." with a card open
+ * repeated the card's reply word for word. On: that wording, and "make a new draft from our chat", "create the form
+ * based on this" and the like, are a create command, answered as "create it" is (`ai/card-meta-turn.ts`). Off, as before.
+ */
+export function createFromConversationPointsToCardEnabled(): boolean {
+  return envFlag("CREATE_FROM_CONVERSATION_POINTS_TO_CARD_ENABLED");
+}
+
+/**
+ * OBSERVATION_OWN_PERSON_ONLY_ENABLED (QA's P7, Sunny live, 10 Nov 2026; coding 5; same flag in both apps; default off).
+ * "Make me a coaching form for <A>, <B>, and <C> for not closing duties correctly" → "create draft for failure to do
+ * closing duties and staying over hours" gave the Observation "<B>, and <C> for not closing duties correctly create draft
+ * for …". On: the Observation line never keeps a lead of other people's names or of the manager's command to the app;
+ * the reason after it is kept (`ai/observation-own-person.ts`). Off, as before.
+ */
+export function observationOwnPersonOnlyEnabled(): boolean {
+  return envFlag("OBSERVATION_OWN_PERSON_ONLY_ENABLED");
+}
+
 // --- end coding 5 flags ---
 
 /**
@@ -3862,6 +3883,19 @@ export function madeAboutPolicyLineEnabled(): boolean {
 }
 
 /**
+ * MADE_ABOUT_REWRITE_FINISHES_ENABLED (QA's live round-13 test, 9 Nov 2026; default off). On a saved Coaching draft,
+ * "make it about leaving the front desk unattended on 11/6/26" ran the made-about revision (Details rewritten), then the
+ * turn left the patch path with nothing more written, and the old path's revision ran a second time: "Updated … Details
+ * of Coaching", Other and the Date stayed. With the flag on, once the account is rewritten the turn always finishes
+ * there: a refused reader patch falls back to the topic read from the manager's words, the Date is still written, and
+ * an error after the rewrite answers from what was saved. The old account's policy reference kept by the revision is
+ * replaced from the new account (`forms/made-about-policy-line.ts`). Off, as before.
+ */
+export function madeAboutRewriteFinishesEnabled(): boolean {
+  return envFlag("MADE_ABOUT_REWRITE_FINISHES_ENABLED");
+}
+
+/**
  * MADE_ABOUT_READER_ACCOUNT_ENABLED (ported from Ask Bubbles; QA's live round-9 test there, 9 Nov 2026; default off; same
  * flag in both apps). "make it about leaving the front desk unattended on 11/6/26" on a saved Coaching draft changed Other
  * and Details and left the Date: the reader set Details itself (the new incident added under the old one), so the
@@ -3871,4 +3905,14 @@ export function madeAboutPolicyLineEnabled(): boolean {
  */
 export function madeAboutReaderAccountEnabled(): boolean {
   return envFlag("MADE_ABOUT_READER_ACCOUNT_ENABLED");
+}
+
+/**
+ * CHAT_STAGE_TIMINGS_ENABLED (QA, 9 Nov 2026; default off; same flag in both apps). Each awaited step of a chat turn
+ * before the answering model (intent extraction, query rewrite, retrieval, the memory, example, context, data and
+ * grounding loads) is timed into `chat_traces.slots.stages`: names and milliseconds only (`ai/chat-stage-timings.ts`).
+ * Changes nothing the manager sees. Off, as before.
+ */
+export function chatStageTimingsEnabled(): boolean {
+  return envFlag("CHAT_STAGE_TIMINGS_ENABLED");
 }
