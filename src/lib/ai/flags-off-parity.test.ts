@@ -366,6 +366,8 @@ const NEW_FLAGS = [
   "LEVEL_AFTER_FORM_NAME_ENABLED",
   // coding 6: TEAM_CARD_NOT_PRODUCT (default off): forced off with the others.
   "TEAM_CARD_NOT_PRODUCT_ENABLED",
+  // coding 6: REOPEN_CLOSE_SPELLING (default off): forced off with the others.
+  "REOPEN_CLOSE_SPELLING_ENABLED",
   "STAFF_PICKER_ENABLED",
   "STAFF_PICKER_STORE_TITLES_ENABLED",
   "STAFF_PICKER_BARE_ANSWER_ENABLED",
