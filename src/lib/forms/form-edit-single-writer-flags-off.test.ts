@@ -276,6 +276,9 @@ const FLIPPED_AFTER_FIXTURE: readonly string[] = [
   "FORM_EDIT_SINGLE_WRITER_ENABLED",
   "FORM_EDIT_SAID_REPLACEMENT_ENABLED",
   "FORM_PATCH_READER_FIXES_ENABLED",
+  // Changed on purpose (10 Nov 2026): QA round 19 turned this on in production. The script's "Create a coaching form." -> name -> yes
+  // now asks what happened (sf-s27), so the fixture, which predates it, is compared with it off.
+  "COACHING_ASKS_WHAT_HAPPENED_ENABLED",
 ];
 const PRODUCTION = [...PRODUCTION_FLAGS.on, ...PRODUCTION_FLAGS.assumedOn].filter((name) => !FLIPPED_AFTER_FIXTURE.includes(name));
 /*
