@@ -4134,3 +4134,15 @@ export function appInstructionsNotAccountEnabled(): boolean {
 export function draftWriteNeverSilentEnabled(): boolean {
   return envFlag("DRAFT_WRITE_NEVER_SILENT_ENABLED");
 }
+
+/**
+ * PAYROLL_BARE_SENTENCE_ENABLED (coding 6, 10 Nov 2026; default off; Pau's
+ * P15, Sunny production 9 Nov). "I need a term CA for <name>. Didn't show up
+ * for her opening shift. Payroll deduction." — the card still asked "Is
+ * payroll deduct applicable?" and left the box blank. On, a sentence that is
+ * only "Payroll deduction." is a Yes. Read in
+ * `forms/payroll-deduct-answer.ts` (which imports nothing). Off, as before.
+ */
+export function payrollBareSentenceEnabled(): boolean {
+  return envFlag("PAYROLL_BARE_SENTENCE_ENABLED");
+}
