@@ -1,4 +1,4 @@
-import { expect } from "vitest";
+import { expect, vi } from "vitest";
 
 import { KEARNEY, STAFF, type DirectoryRow, type ReplayCase, type ReplayContext } from "./cases";
 
@@ -74,6 +74,23 @@ export const NOV10_ONE_FORM_EACH_PERSON_CASES: ReplayCase[] = [
         if (next) expect(reply.content, `"${said}": ${next} is not offered next:\n${reply.content}`).toMatch(new RegExp(`\\*\\*Next:\\*\\* a Coaching Form each for \\*\\*${next}\\*\\*`));
         else expect(reply.content, `"${said}": a Next line after the last person:\n${reply.content}`).not.toMatch(/\*\*Next:\*\*/);
       }
+    },
+  },
+  {
+    id: "nov10-p7-extra-yes-after-the-chain",
+    title: "after the chain is done (Ione's card, no Next line), one more bare \"yes\" never makes a card for a person nobody chose",
+    report: `${REPORT}; QA, 10 Nov 2026: the extra "yes" recorded so it does not fall off the list`,
+    // OPEN, recorded on purpose (QA, 10 Nov 2026), not fixed in this PR: with nothing on offer, a bare "yes" is read
+    // against the whole chat, and the card is for Tamsin Rookwood — the Tamsin the manager did not choose. The P7 flags
+    // are turned on inside the case, so it fails the same way with production's flags and has no fix flags yet.
+    status: { open: "a card for Tamsin Rookwood, never chosen" },
+    async run(t) {
+      for (const flag of FIX) vi.stubEnv(flag, "true");
+      const thread = start(t);
+      for (const said of [T1, "Tamsin Ashby", "yes", "yes"]) await thread.say(said);
+      expect(thread.proposal?.employeeName ?? null, "the chain did not end on Ione's card").toBe("Ione Marchetti");
+      const reply = await thread.say("yes");
+      expect(thread.proposal?.employeeName ?? null, `a card for a person nobody chose:\n${reply.content}`).not.toBe("Tamsin Rookwood");
     },
   },
 ];
