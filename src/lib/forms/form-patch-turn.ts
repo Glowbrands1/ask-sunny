@@ -8,13 +8,23 @@ import {
   stepBMakeItAboutAccountEnabled,
   madeAboutAllOrNothingEnabled,
   madeAboutReaderAccountEnabled,
+  policyTopicIntoFieldEnabled,
+  madeAboutTopicEvidenceEnabled,
+  madeAboutSaidDateEnabled,
+  madeAboutPolicyLineReplacesEnabled,
+  sectionBreaksKeptEnabled,
+  addNotRepeatedEnabled,
+  formDateSaidAloneEnabled,
   madeAboutUndatedTogetherEnabled,
   madeAboutPolicyLineEnabled,
+  madeAboutRewriteFinishesEnabled,
   stepBDateSaidEnabled,
   stepBDateWithAboutEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { madeAbout } from "@/lib/ai/make-it-about";
 import { saidFormDate } from "./form-date-said";
+import { withSectionBreaks } from "./section-breaks";
+import { addedTail } from "./added-tail";
 import { splitAppCitationLine } from "./app-citation-line";
 import { endMadeAboutWrite, madeAboutDate, madeAboutTopic, noteMadeAboutWrite } from "./made-about-date";
 import { syncCorrectiveActionPlan } from "./ca-action-plan-sync";
@@ -94,6 +104,18 @@ function lastAssistant(history: readonly Pick<ChatMessage, "role" | "content" | 
  * (`buildFormPatchUserMessage`); a value the model returns in that shape, for a field that holds lines, gets its
  * lines back.
  */
+/** ADD_NOT_REPEATED_ENABLED (ported from Ask Bubbles' live round 15): an "add" that repeats the field's text adds only what follows it. */
+function notRepeated(how: string | undefined, value: FieldValue, current: FieldValue | undefined): FieldValue {
+  if (!addNotRepeatedEnabled() || how !== "add" || typeof value !== "string" || typeof current !== "string") return value;
+  return addedTail(current, value) ?? value;
+}
+
+/** SECTION_BREAKS_KEPT_ENABLED (QA's live round 15): the reader's account, run onto one line, keeps the field's sections. */
+function keptSections(field: string, value: FieldValue, current: FieldValue | undefined): FieldValue {
+  if (!sectionBreaksKeptEnabled() || !(ACCOUNT_KEYS as readonly string[]).includes(field) || typeof value !== "string") return value;
+  return withSectionBreaks(typeof current === "string" ? current : undefined, value);
+}
+
 function relined(value: FieldValue, current: FieldValue | undefined): FieldValue {
   if (typeof value !== "string" || typeof current !== "string" || !current.includes("\n") || !value.includes(" / ")) return value;
   return value.split(" / ").join("\n");
@@ -238,6 +260,10 @@ async function readingFor(input: PatchTurnInput, modelInput: FormPatchInput): Pr
 export async function patchActiveForm(input: PatchTurnInput): Promise<AskResponse | null> {
   // FORM_PATCH_READER_FIXES_ENABLED: a previous turn's "found nothing" never reaches this one.
   if (formPatchReaderFixesEnabled()) (await import("./reader-found-nothing")).clearReaderFoundNothing(input.instanceId);
+  // MADE_ABOUT_REWRITE_FINISHES_ENABLED: the form as it was, once the made-about revision has rewritten its account.
+  let rewroteFrom: { readonly loaded: Parameters<typeof snapshotOf>[0]; readonly labels: Readonly<Record<string, string>> } | null = null;
+  // The fields this turn means to write after the rewrite (the reader's or the topic's, and the Date): said when not saved.
+  let intended: readonly string[] = [];
   try {
     let authorized: Awaited<ReturnType<typeof authorizeInstance>>;
     try {
@@ -258,6 +284,7 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
      * refused (the revision's new content there keeps it). A model fallback tells it nothing.
      */
     const handOff = async (found: "nothing" | "refused" | "none"): Promise<null> => {
+      noteMadeAboutExit(input, `handoff:${found}`, rewroteFrom !== null);
       const read = reading;
       if (readerFixes && found !== "none" && "ok" in read) {
         const evidence = Object.fromEntries(
@@ -276,6 +303,65 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
     if ((!("ok" in reading) || reading.turn !== "this_form") && (madeAboutAllOrNothingEnabled() || madeAboutUndatedTogetherEnabled())) {
       reading = madeAboutReading(input, before, writable, allGroups) ?? reading;
     }
+    /*
+     * POLICY_TOPIC_INTO_FIELD_ENABLED (ported from the sibling app: QA, a manager's 1★ rating there, 10 Nov 2026): "In details of coaching inlude our woven
+     * policy on finding a cover for your shift" wrote a sentence telling the manager to refer to the policy manual. The
+     * policy asked for is written from the manual here (`policy-topic-write.ts`), before any hand-off: the reader's own
+     * text for that field, and any line that only points at the manual, are not written, and the old path's revision
+     * never runs for this turn. Anything else the message asks is written as before, and the reply says what happened
+     * to the policy.
+     */
+    let topicOutcome: { readonly sentence: string; readonly written: string | null } | null = null;
+    // The turn's reply when the policy is its answer: what was said about it, and whatever changed on the form.
+    const topicReply = async (sentence: string): Promise<AskResponse> => {
+      const reloadedTopic = await loadInstance(input.instanceId);
+      const changedTopic = reloadedTopic ? snapshotDiff(snapshotOf(loaded), snapshotOf(reloadedTopic)) : [];
+      return {
+        content: sentence,
+        citations: [],
+        coverage: "not_applicable",
+        recommendedVideoIds: [],
+        ...(changedTopic.length > 0 ? { formUpdate: { instanceId: input.instanceId, updated: changedTopic.map((change) => change.key) } } : {}),
+      };
+    };
+    if (policyTopicIntoFieldEnabled()) {
+      const topicField = await import("./policy-topic-field");
+      const topic = topicField.policyTopicAsked(input.question);
+      if (topic) {
+        const read = "ok" in reading && reading.turn === "this_form" ? reading : null;
+        const readKeys = read ? Object.keys(read.patch.set) : [];
+        const readerField =
+          readKeys.find((key) => topicField.pointsAtManual(String(read!.patch.set[key]))) ?? (readKeys.length === 1 ? readKeys[0]! : null);
+        topicOutcome = await (await import("./policy-topic-write")).writePolicyTopic({
+          instanceId: input.instanceId,
+          actorId: actor.id,
+          question: input.question,
+          topic,
+          readerField,
+        });
+        if (topicOutcome) {
+          const field = topicOutcome.written ?? topicField.fieldNamedIn(input.question, labels) ?? readerField;
+          const kept = read
+            ? Object.fromEntries(
+                Object.entries(read.patch.set).filter(([key, value]) => key !== field && !topicField.pointsAtManual(String(value))),
+              )
+            : {};
+          if (read) reading = { ...read, patch: { ...read.patch, set: kept } };
+          if (!read || Object.keys(kept).length + read.patch.clear.length === 0) return topicReply(topicOutcome.sentence);
+        }
+      }
+    }
+    /*
+     * FORM_DATE_SAID_ALONE_ENABLED (ported from Ask Bubbles: QA's live round 13 there, 9 Nov 2026): "make the date 11/7/26"
+     * as the first edit of a fresh draft answered "I haven't changed the Coaching Form …": the reader did not read the turn
+     * as this form's, so it went to the old path, whose revision does not write the Date. A turn that says the date the
+     * form takes (STEP_B_DATE_SAID's reading, `form-date-said.ts`) is this form's: read with nothing else to set, and the
+     * Date is written below as the manager's statement.
+     */
+    if ((!("ok" in reading) || reading.turn !== "this_form") && formDateSaidAloneEnabled() && stepBDateSaidEnabled() && "form_date" in before) {
+      const said = saidFormDate(input.question, input.today);
+      if (said !== null && before.form_date?.value !== said) reading = { ok: true, turn: "this_form", patch: { set: {}, clear: [], evidence: {} } };
+    }
     if (!("ok" in reading) || reading.turn !== "this_form") return handOff("none");
     /*
      * MADE_ABOUT_READER_ACCOUNT_ENABLED (ported from Ask Bubbles: QA's live round-9 test there, 9 Nov 2026; the person invented): "make it about
@@ -289,8 +375,19 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
     if (
       madeAboutReaderAccountEnabled() &&
       madeAbout(input.question) !== null &&
-      madeAboutDate(input.question, input.today) !== null &&
-      "form_date" in before &&
+      /*
+       * MADE_ABOUT_REWRITE_FINISHES_ENABLED (QA's live round-13 test, turn 2: "make it about showing up late"): an undated
+       * made-about turn whose reader rewrote Details was refused for the old account's date and handed to the old path
+       * ("I haven't changed …"). With MADE_ABOUT_UNDATED_TOGETHER it is set aside the same way: the account and the topic
+       * are rewritten together, and the Date stays.
+       */
+      ((madeAboutDate(input.question, input.today) !== null && "form_date" in before) ||
+        /*
+         * QA's round-14 gate (9 Nov 2026): only a turn that says no date at all. "I need you to make it about showing up
+         * late and please list the policy make the date for 10/14/26" says the form's date apart from the topic: its
+         * reader's Details is that turn's account (STEP_B_DATE_WITH_ABOUT keeps it), never set aside as undated.
+         */
+        (madeAboutRewriteFinishesEnabled() && madeAboutUndatedTogetherEnabled() && saidFormDate(input.question, input.today) === null)) &&
       ACCOUNT_KEYS.some((key) => key in readerSet)
     ) {
       const drop = new Set<string>(ACCOUNT_KEYS);
@@ -347,7 +444,8 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
      * the manager's words); not rewritten, neither. The Date stays, and the reply says so.
      */
     const undatedAbout = aboutNotRewritten && !keepsAccount && !datedAbout && madeAboutUndatedTogetherEnabled();
-    if (undatedAbout && !(OTHER_TOPIC_KEY in readSet)) {
+    // MADE_ABOUT_REWRITE_FINISHES_ENABLED: a dated turn whose reader set no topic (its Details set aside) takes it from the manager's words too.
+    if ((undatedAbout || (datedAbout && madeAboutRewriteFinishesEnabled())) && !(OTHER_TOPIC_KEY in readSet)) {
       const topic = madeAboutReading(input, before, writable, allGroups);
       if (topic && "ok" in topic) reading = { ...reading, patch: { ...reading.patch, set: { ...reading.patch.set, ...topic.patch.set }, evidence: { ...reading.patch.evidence, ...topic.patch.evidence } } };
     }
@@ -387,7 +485,12 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
      * not rewritten writes nothing, and the reply asks what the account should say. Rewritten, the Date and the
      * reader's edits are written below.
      */
-    if (rewritesAccount && keptAccountKey) {
+    /*
+     * The account rewritten by the old path's revision, with the made-about note set, and its policy reference written again
+     * (MADE_ABOUT_POLICY_LINE). True when the account changed. Used by the made-about path below and, with
+     * MADE_ABOUT_SAID_DATE_ENABLED, when a reader's account edit was refused on a turn that says the form's date.
+     */
+    const rewriteAccountByRevision = async (accountKey: string): Promise<boolean> => {
       const coordinate = madeAboutAllOrNothingEnabled();
       if (coordinate) noteMadeAboutWrite(input.instanceId);
       try {
@@ -398,16 +501,31 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
         if (coordinate) endMadeAboutWrite(input.instanceId);
       }
       const revised = await loadInstance(input.instanceId);
-      const rewritten = revised !== null && snapshotDiff(snapshotOf(loaded), snapshotOf(revised)).some((change) => change.key === keptAccountKey);
+      const changed = revised !== null && snapshotDiff(snapshotOf(loaded), snapshotOf(revised)).some((change) => change.key === accountKey);
       /*
        * MADE_ABOUT_POLICY_LINE_ENABLED (QA's live round-11 test, 9 Nov 2026): the old account's "Policy reference: …" line
        * went with it and none was written for the new one. The account rewritten, its reference is written again from
        * the new account (`made-about-policy-line.ts`), only where the old account carried one.
        */
-      const hadLine = typeof before[keptAccountKey]?.value === "string" && splitAppCitationLine(before[keptAccountKey]!.value as string).line !== null;
-      if (rewritten && hadLine && madeAboutPolicyLineEnabled()) {
-        await (await import("./made-about-policy-line")).rewriteMadeAboutPolicyLine({ instanceId: input.instanceId, actorId: actor.id, question: input.question, accountKey: keptAccountKey });
+      const hadLine = typeof before[accountKey]?.value === "string" && splitAppCitationLine(before[accountKey]!.value as string).line !== null;
+      const finishes = madeAboutRewriteFinishesEnabled();
+      if (changed && finishes) rewroteFrom = { loaded, labels };
+      if (changed && hadLine && madeAboutPolicyLineEnabled()) {
+        await (await import("./made-about-policy-line")).rewriteMadeAboutPolicyLine({
+          instanceId: input.instanceId,
+          actorId: actor.id,
+          question: input.question,
+          accountKey,
+          // MADE_ABOUT_REWRITE_FINISHES_ENABLED: the old account's line, kept by the revision, is replaced, never left on the new one.
+          ...(finishes ? { oldLine: splitAppCitationLine(before[accountKey]!.value as string).line } : {}),
+          // MADE_ABOUT_POLICY_LINE_REPLACES_ENABLED: the old account's line, in whatever shape the revision kept it, never stays.
+          ...(madeAboutPolicyLineReplacesEnabled() ? { replaceAnywhere: true } : {}),
+        });
       }
+      return changed;
+    };
+    if (rewritesAccount && keptAccountKey) {
+      const rewritten = await rewriteAccountByRevision(keptAccountKey);
       if (!rewritten) {
         const label = labels[keptAccountKey] ?? keptAccountKey;
         const about = madeAbout(input.question);
@@ -425,7 +543,7 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
      * the policy"), it is this turn's whole answer.
      */
     const policyAsk =
-      editPolicyAskEnabled() && reading.policyAsked === true && (await import("./edit-policy-ask")).policyAskApplies(loaded.instance.templateKey);
+      topicOutcome === null && editPolicyAskEnabled() && reading.policyAsked === true && (await import("./edit-policy-ask")).policyAskApplies(loaded.instance.templateKey);
     const answerPolicy = async () =>
       policyAsk ? (await import("./edit-policy-ask")).answerPolicyAsk({ instanceId: input.instanceId, actorId: actor.id, question: input.question }) : null;
     /*
@@ -510,6 +628,7 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
      * owner split below moved there. A patch with any refusal writes nothing
      * and the turn goes on (redraft, revision).
      */
+    if (rewroteFrom) intended = [...Object.keys(reading.patch.set), ...(dateToWrite !== null ? ["form_date"] : [])];
     const patchOps = Object.keys(reading.patch.set).length + reading.patch.clear.length;
     let policyOutcome: Awaited<ReturnType<typeof answerPolicy>> = null;
     if (formEditSingleWriterEnabled() && patchOps > 0) {
@@ -517,7 +636,11 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
         ...Object.entries(reading.patch.set).map(([field, value]) => ({
           op: reading.patch.how?.[field] === "add" ? ("append" as const) : ("set" as const),
           field,
-          value: readerFixes ? relined(value, before[field]?.value) : value,
+          value: notRepeated(
+            reading.patch.how?.[field],
+            keptSections(field, readerFixes ? relined(value, before[field]?.value) : value, before[field]?.value),
+            before[field]?.value,
+          ),
           ...(reading.patch.evidence?.[field] !== undefined ? { evidence: reading.patch.evidence[field] } : {}),
           // FORM_PATCH_READER_FIXES_ENABLED: a reword, and the Job Title as the manager's own edit.
           ...(readerFixes && reading.patch.how?.[field] === "reword" ? { reword: true } : {}),
@@ -543,7 +666,94 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
         syncPlan: { after: [...stated], amountSentence: true, notes: input.question },
         ...(readerFixes ? { readerFixes } : {}),
       });
-      if (result.handoff === "refused") return handOff("refused");
+      /*
+       * MADE_ABOUT_REWRITE_FINISHES_ENABLED (QA's live round-13 test, 9 Nov 2026): the account is already rewritten, so
+       * handing off would run the old path's revision a second time and leave Other and the Date. The topic read from the
+       * manager's words is written instead (nothing, if that is refused too), and the turn goes on to the Date.
+       */
+      if (result.handoff === "refused" && rewroteFrom) {
+        noteMadeAboutExit(input, "reader_refused_after_rewrite", true);
+        const topic = madeAboutReading(input, before, writable, allGroups);
+        const topicSet = topic && "ok" in topic ? topic.patch.set : {};
+        if (Object.keys(topicSet).length > 0) {
+          await (await import("./form-write")).writeFormEdits(
+            input.instanceId,
+            Object.entries(topicSet).map(([field, value]) => ({
+              op: "set" as const,
+              field,
+              value,
+              ...(topic && "ok" in topic && topic.patch.evidence?.[field] !== undefined ? { evidence: topic.patch.evidence[field] } : {}),
+            })),
+            {
+              path: "patch",
+              actorId: actor.id,
+              latest: input.question,
+              managerTurns: managerTurns(input.history, input.question),
+              ...(offered !== undefined ? { offered } : {}),
+              acceptedOffer: false,
+              today: input.today,
+              loaded: (await loadInstance(input.instanceId)) ?? loaded,
+              writable,
+              statedKeys: stated,
+              ...(readerFixes ? { readerFixes } : {}),
+            },
+          );
+        }
+      } else if (result.handoff === "refused" && saidDateRetry(input, before, reading, keptAccountKey, rewroteFrom !== null)) {
+        /*
+         * MADE_ABOUT_SAID_DATE_ENABLED (QA's live Sunny round 14, 10 Nov 2026): on a saved draft already about the front desk
+         * on 11/6/26, "I need you to make it about showing up late and please list the policy make the date for 10/14/26"
+         * answered "I haven't changed the Coaching Form …". Asked to list the policy, the reader wrote it into Details,
+         * words the manager did not say: its patch was refused whole and handed to the old path, whose revision would not
+         * drop 11/6/26. The account is rewritten here instead (the made-about path's revision, the said date as the
+         * incident's), the reader's other edits written without it (or the topic read from the manager's words), and the
+         * turn goes on to the Date and the policy.
+         */
+        noteMadeAboutExit(input, "reader_refused_said_date", false);
+        const accountKey = keptAccountKey!;
+        if (!(await rewriteAccountByRevision(accountKey))) {
+          const label = labels[accountKey] ?? accountKey;
+          const about = madeAbout(input.question);
+          return {
+            content: `I haven't changed the **${loaded.instance.templateName}** for **${loaded.instance.employeeName}**: I couldn't rewrite **${label}** to be about ${about}, so the Date and the topic stay as they were too. What should **${label}** say about ${about}?`,
+            citations: [],
+            coverage: "not_applicable",
+            recommendedVideoIds: [],
+          };
+        }
+        const rest = ops.filter((op) => !(ACCOUNT_KEYS as readonly string[]).includes(op.field));
+        const topic = madeAboutReading(input, before, writable, allGroups, { dated: true });
+        const topicSet = topic && "ok" in topic ? topic.patch.set : {};
+        const sets = rest.length > 0 ? [rest] : [];
+        if (Object.keys(topicSet).length > 0)
+          sets.push(
+            Object.entries(topicSet).map(([field, value]) => ({
+              op: "set" as const,
+              field,
+              value,
+              ...(topic && "ok" in topic && topic.patch.evidence?.[field] !== undefined ? { evidence: topic.patch.evidence[field] } : {}),
+            })),
+          );
+        for (const attempt of sets) {
+          const written = await (await import("./form-write")).writeFormEdits(input.instanceId, attempt, {
+            path: "patch",
+            actorId: actor.id,
+            latest: input.question,
+            managerTurns: managerTurns(input.history, input.question),
+            ...(offered !== undefined ? { offered } : {}),
+            acceptedOffer: false,
+            today: input.today,
+            loaded: (await loadInstance(input.instanceId)) ?? loaded,
+            writable,
+            statedKeys: stated,
+            ...(readerFixes ? { readerFixes } : {}),
+          });
+          if (written.handoff !== "refused") break;
+        }
+      } else if (result.handoff === "refused") {
+        // POLICY_TOPIC_INTO_FIELD_ENABLED: the policy was answered; the old path's revision never runs for this turn.
+        return topicOutcome ? topicReply(topicOutcome.sentence) : handOff("refused");
+      }
       /*
        * FORM_PATCH_READER_FIXES_ENABLED (QA's live run, 7 Nov 2026: "yes, do that" after the edit was saved went
        * to the old path, whose revision rewrote the form and said "Updated"): what the reader set is already on
@@ -552,7 +762,7 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
       // With a date still to write, the turn goes on: the date is written below, and the policy after it.
       if (readerFixes && result.handoff === "noop" && dateToWrite === null) {
         const outcome = await answerPolicy();
-        if (!outcome?.written) return withPolicySentence(alreadyThere(Object.keys(reading.patch.set), labels), outcome);
+        if (!outcome?.written) return withPolicySentence(withPolicySentence(alreadyThere(Object.keys(reading.patch.set), labels), outcome), topicOutcome);
         policyOutcome = outcome;
       }
     } else if (patchOps > 0) {
@@ -606,23 +816,57 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
     if (!reloaded) return null;
     const changed = snapshotDiff(snapshotOf(loaded), snapshotOf(reloaded));
     /* FORM_PATCH_READER_FIXES_ENABLED: the reader's values are already on the form (the old writers' path). */
-    if (readerFixes && changed.length === 0) return withKeptAccount(withPolicySentence(alreadyThere(Object.keys(reading.patch.set), labels), policyOutcome));
+    if (readerFixes && changed.length === 0)
+      return withKeptAccount(withPolicySentence(withPolicySentence(alreadyThere(Object.keys(reading.patch.set), labels), policyOutcome), topicOutcome));
     // MADE_ABOUT_UNDATED_TOGETHER_ENABLED: no date was said, so the form's Date stays; said, never left unsaid.
     const dateStays = (response: AskResponse): AskResponse => {
       const date = typeof before.form_date?.value === "string" ? before.form_date.value : null;
       if (!undatedAbout || !date || !changed.some((change) => change.key === keptAccountKey)) return response;
       return { ...response, content: `${response.content.trimEnd()}\n\nThe **${labels.form_date ?? "Date"}** stays ${date}; tell me if it should change.` };
     };
-    return dateStays(withKeptAccount(withPolicySentence({
+    return dateStays(withKeptAccount(withPolicySentence(withPolicySentence({
       content: replyFromDiff({ changed }, labels),
       citations: [],
       coverage: "not_applicable",
       recommendedVideoIds: [],
       ...(changed.length > 0 ? { formUpdate: { instanceId: input.instanceId, updated: changed.map((change) => change.key) } } : {}),
-    }, policyOutcome)));
-  } catch {
+    }, policyOutcome), topicOutcome)));
+  } catch (error) {
+    noteMadeAboutExit(input, `error:${error instanceof Error ? error.name : typeof error}`, rewroteFrom !== null);
+    // MADE_ABOUT_REWRITE_FINISHES_ENABLED: after the rewrite, an error answers from what was saved, never with the old path.
+    if (rewroteFrom) return await replyFromSaved(input.instanceId, rewroteFrom, intended).catch(() => null);
     return null;
   }
+}
+
+/**
+ * MADE_ABOUT_REWRITE_FINISHES_ENABLED (QA, 9 Nov 2026): how a made-about turn left the patch path, in the server log, so
+ * the next live miss is visible (the reader's output is not stored). One JSON line; no form text, no names.
+ */
+function noteMadeAboutExit(input: PatchTurnInput, reason: string, afterRewrite: boolean): void {
+  if (!madeAboutRewriteFinishesEnabled() || madeAbout(input.question) === null) return;
+  console.info(JSON.stringify({ event: "form_patch.made_about.exit", instanceId: input.instanceId, reason, afterRewrite }));
+}
+
+/** MADE_ABOUT_REWRITE_FINISHES_ENABLED: the reply from the saved diff, after the made-about rewrite. */
+async function replyFromSaved(
+  instanceId: string,
+  from: { readonly loaded: Parameters<typeof snapshotOf>[0]; readonly labels: Readonly<Record<string, string>> },
+  intended: readonly string[],
+): Promise<AskResponse | null> {
+  const reloaded = await loadInstance(instanceId);
+  if (!reloaded) return null;
+  const changed = snapshotDiff(snapshotOf(from.loaded), snapshotOf(reloaded));
+  const done = new Set(changed.map((change) => change.key));
+  const notSaved = [...new Set(intended)].filter((key) => !done.has(key) && from.labels[key]).map((key) => `**${from.labels[key]}**`);
+  const unsaid = notSaved.length > 0 ? `\n\nI couldn't save the change to ${notSaved.join(", ")}: it is as it was. Tell me again and I'll try once more.` : "";
+  return {
+    content: `${replyFromDiff({ changed }, from.labels)}${unsaid}`,
+    citations: [],
+    coverage: "not_applicable",
+    recommendedVideoIds: [],
+    ...(changed.length > 0 ? { formUpdate: { instanceId, updated: changed.map((change) => change.key) } } : {}),
+  };
 }
 
 /**
@@ -630,14 +874,34 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
  * topic only (the form's "other" box and its Other line, where the draft has both), from the manager's own words; the
  * Date and the account follow (`patchActiveForm`). Null when the turn is not one, or the draft has no Date or account.
  */
+/**
+ * MADE_ABOUT_SAID_DATE_ENABLED (QA's live Sunny round 14, 10 Nov 2026): a refused reader patch on this turn is retried by
+ * the made-about path, not handed to the old path, when the turn makes the form about something new, says the form's
+ * date apart from the topic, the reader edited the account, and the account is not already rewritten.
+ */
+function saidDateRetry(
+  input: PatchTurnInput,
+  before: Readonly<Record<string, { readonly value: unknown }>>,
+  reading: FormPatchReading,
+  accountKey: string | undefined,
+  rewritten: boolean,
+): boolean {
+  if (!madeAboutSaidDateEnabled() || rewritten || !accountKey || !("form_date" in before)) return false;
+  if (!("ok" in reading) || !(accountKey in reading.patch.set)) return false;
+  if (madeAbout(input.question) === null || madeAboutDate(input.question, input.today) !== null) return false;
+  return saidFormDate(input.question, input.today) !== null;
+}
+
 function madeAboutReading(
   input: PatchTurnInput,
   before: Readonly<Record<string, { readonly value: unknown }>>,
   writable: ReadonlySet<string>,
   groups: readonly { readonly key: string; readonly options: readonly { readonly key: string }[] }[],
+  // MADE_ABOUT_SAID_DATE_ENABLED: the turn says the form's date apart from the topic, so it is read as dated.
+  options: { readonly dated?: boolean } = {},
 ): FormPatchReading | null {
   // MADE_ABOUT_UNDATED_TOGETHER_ENABLED: an undated made-about turn is read the same way (its Date stays).
-  const dated = madeAboutDate(input.question, input.today) !== null && "form_date" in before;
+  const dated = (options.dated === true || madeAboutDate(input.question, input.today) !== null) && "form_date" in before;
   const undated = madeAboutUndatedTogetherEnabled() && madeAbout(input.question) !== null;
   if (!stepBMakeItAboutAccountEnabled() || !(dated || undated)) return null;
   if (!ACCOUNT_KEYS.some((key) => writable.has(key))) return null;
@@ -648,8 +912,15 @@ function madeAboutReading(
   if (topic && box && writable.has(OTHER_TOPIC_KEY)) {
     set[OTHER_TOPIC_KEY] = topic;
     set[box.key] = ["other"];
-    evidence[OTHER_TOPIC_KEY] = topic.toLowerCase();
-    evidence[box.key] = topic.toLowerCase();
+    /*
+     * MADE_ABOUT_TOPIC_EVIDENCE_ENABLED (ported from Ask Bubbles: QA's live round 13 there, 9 Nov 2026): "make it about
+     * being late on 11/5/26" left Other on the old topic: the topic's evidence, "being late", is two words, under the
+     * reducer's floor for evidence (MIN_EVIDENCE_WORDS), so Other was refused. Its evidence is the whole made-about clause
+     * the manager wrote ("being late on 11/5/26"), which holds the topic's words.
+     */
+    const said = madeAboutTopicEvidenceEnabled() ? (madeAbout(input.question) ?? topic.toLowerCase()) : topic.toLowerCase();
+    evidence[OTHER_TOPIC_KEY] = said;
+    evidence[box.key] = said;
   }
   return { ok: true, turn: "this_form", patch: { set, clear: [], evidence } };
 }

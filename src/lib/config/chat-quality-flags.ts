@@ -2632,6 +2632,39 @@ export function exitFormDateFromTerminationEnabled(): boolean {
   return envFlag("EXIT_FORM_DATE_FROM_TERMINATION_ENABLED");
 }
 
+/**
+ * CREATE_FROM_CONVERSATION_POINTS_TO_CARD_ENABLED (QA's P6, Sunny live, 10 Nov 2026; coding 5; same flag in both apps;
+ * default off; with CREATE_COMMAND_POINTS_TO_CARD_ENABLED). "Create a form from this conversation." with a card open
+ * repeated the card's reply word for word. On: that wording, and "make a new draft from our chat", "create the form
+ * based on this" and the like, are a create command, answered as "create it" is (`ai/card-meta-turn.ts`). Off, as before.
+ */
+export function createFromConversationPointsToCardEnabled(): boolean {
+  return envFlag("CREATE_FROM_CONVERSATION_POINTS_TO_CARD_ENABLED");
+}
+
+/**
+ * OBSERVATION_OWN_PERSON_ONLY_ENABLED (QA's P7, Sunny live, 10 Nov 2026; coding 5; same flag in both apps; default off).
+ * "Make me a coaching form for <A>, <B>, and <C> for not closing duties correctly" → "create draft for failure to do
+ * closing duties and staying over hours" gave the Observation "<B>, and <C> for not closing duties correctly create draft
+ * for …". On: the Observation line never keeps a lead of other people's names or of the manager's command to the app;
+ * the reason after it is kept (`ai/observation-own-person.ts`). Off, as before.
+ */
+export function observationOwnPersonOnlyEnabled(): boolean {
+  return envFlag("OBSERVATION_OWN_PERSON_ONLY_ENABLED");
+}
+
+/**
+ * POLICY_TOPIC_INTO_FIELD_ENABLED (ported from the sibling app: QA, a manager's 1★ rating there, 10 Nov 2026; coding 5;
+ * same flag in both apps; default off). "In details of coaching inlude our woven policy on finding a cover for your
+ * shift" on a saved draft wrote a sentence telling the manager to refer to the policy manual. On: an edit asking for
+ * "our policy on <topic>" in a field writes the manual's section for that topic, quoted with its "Policy reference: …,
+ * JBA Policy Manual p.N" line, or says no section matches and asks; never a pointer to the manual
+ * (`forms/policy-topic-field.ts`). Off, as before.
+ */
+export function policyTopicIntoFieldEnabled(): boolean {
+  return envFlag("POLICY_TOPIC_INTO_FIELD_ENABLED");
+}
+
 // --- end coding 5 flags ---
 
 /**
@@ -3850,6 +3883,19 @@ export function madeAboutPolicyLineEnabled(): boolean {
 }
 
 /**
+ * MADE_ABOUT_REWRITE_FINISHES_ENABLED (QA's live round-13 test, 9 Nov 2026; default off). On a saved Coaching draft,
+ * "make it about leaving the front desk unattended on 11/6/26" ran the made-about revision (Details rewritten), then the
+ * turn left the patch path with nothing more written, and the old path's revision ran a second time: "Updated … Details
+ * of Coaching", Other and the Date stayed. With the flag on, once the account is rewritten the turn always finishes
+ * there: a refused reader patch falls back to the topic read from the manager's words, the Date is still written, and
+ * an error after the rewrite answers from what was saved. The old account's policy reference kept by the revision is
+ * replaced from the new account (`forms/made-about-policy-line.ts`). Off, as before.
+ */
+export function madeAboutRewriteFinishesEnabled(): boolean {
+  return envFlag("MADE_ABOUT_REWRITE_FINISHES_ENABLED");
+}
+
+/**
  * MADE_ABOUT_READER_ACCOUNT_ENABLED (ported from Ask Bubbles; QA's live round-9 test there, 9 Nov 2026; default off; same
  * flag in both apps). "make it about leaving the front desk unattended on 11/6/26" on a saved Coaching draft changed Other
  * and Details and left the Date: the reader set Details itself (the new incident added under the old one), so the
@@ -3889,4 +3935,137 @@ export function nearMissQuestionRulesEnabled(): boolean {
  */
 export function formNameOffRosterAskEnabled(): boolean {
   return envFlag("FORM_NAME_OFF_ROSTER_ASK_ENABLED");
+}
+
+/**
+ * CHAT_STAGE_TIMINGS_ENABLED (QA, 9 Nov 2026; default off; same flag in both apps). Each awaited step of a chat turn
+ * before the answering model (intent extraction, query rewrite, retrieval, the memory, example, context, data and
+ * grounding loads) is timed into `chat_traces.slots.stages`: names and milliseconds only (`ai/chat-stage-timings.ts`).
+ * Changes nothing the manager sees. Off, as before.
+ */
+export function chatStageTimingsEnabled(): boolean {
+  return envFlag("CHAT_STAGE_TIMINGS_ENABLED");
+}
+
+/**
+ * POLICY_REFERENCE_NOT_ACCOUNT_ENABLED (coding 6, 10 Nov 2026; default off;
+ * QA's overnight scan sf-s16, sf-s17). "you can reference the standards of
+ * conduct for a policy" and "In the past we have quoted the standards of
+ * conduct for creating a ca due to underperformance", after the CA card,
+ * were handed to the drafting model as part of what happened. On: a turn
+ * that only says which policy to quote, cite or reference is left out of the
+ * account the draft is written from; the policy readers still read it. See
+ * `ai/policy-reference-turn.ts`. Off, as before.
+ */
+export function policyReferenceNotAccountEnabled(): boolean {
+  return envFlag("POLICY_REFERENCE_NOT_ACCOUNT_ENABLED");
+}
+
+/**
+ * LEVEL_AFTER_FORM_NAME_ENABLED (coding 6, 10 Nov 2026; default off; QA's
+ * overnight scan sf-s19). "I need a corrective action verbal for <A>" named
+ * the level after the form and the card left it unset; "Corrective Action"
+ * on the next turn still made no Verbal card. On: "corrective action
+ * verbal", "ca written", "c/a verbal" are the form's level unless the
+ * sentence says it is a step already taken. Read in `forms/warning-level.ts`
+ * (which imports no flags; this function is for callers and the parity
+ * list). Off, as before.
+ */
+export function levelAfterFormNameEnabled(): boolean {
+  return envFlag("LEVEL_AFTER_FORM_NAME_ENABLED");
+}
+
+/**
+ * TEAM_CARD_NOT_PRODUCT_ENABLED (coding 6, 10 Nov 2026; default off; QA's
+ * overnight scan sf-s13). "a coaching form for the team at Kearney on selling
+ * Spray Tan Kits …" made a card for "Spray Tan Kits", and "The employee needs
+ * to be left blank for now" went into its Observation. On: a coaching card
+ * whose name is nobody on the roster and was only written as the topic
+ * ("selling …", "on …"), in a request for the team (or one that leaves the
+ * employee blank), is the team card, and the blank-employee turn is no
+ * account. See `forms/team-card-not-product.ts`. Off, as before.
+ */
+export function teamCardNotProductEnabled(): boolean {
+  return envFlag("TEAM_CARD_NOT_PRODUCT_ENABLED");
+}
+
+/**
+ * REOPEN_CLOSE_SPELLING_ENABLED (coding 6, 10 Nov 2026; default off; Pau via
+ * QA, sf-s26, 5 Nov 2026). "Edit Thesaly Brant CA" with Thessaly Brandt's CA
+ * on file was answered "Who is this form for?". On: when a reopen request
+ * names nobody it can find, the one employee on the forms the manager may
+ * open whose every name word it spells closely (same first letter, one or two
+ * letters off) is the one meant, and that form is opened. Nothing is created
+ * or written. See `forms/reopen-close-spelling.ts`. Off, as before.
+ */
+export function reopenCloseSpellingEnabled(): boolean {
+  return envFlag("REOPEN_CLOSE_SPELLING_ENABLED");
+}
+
+/**
+ * MADE_ABOUT_TOPIC_EVIDENCE_ENABLED (ported from Ask Bubbles: QA's live round 13 there, 9 Nov 2026; default off; same flag
+ * in both apps). "make it about being late on 11/5/26" left Other on the old topic: the topic read from the manager's
+ * words ("Being late") came with "being late" as its evidence, two words, under the reducer's floor, so it was refused.
+ * With the flag on, its evidence is the whole made-about clause the manager wrote (`forms/form-patch-turn.ts`). Off, as
+ * before.
+ */
+export function madeAboutTopicEvidenceEnabled(): boolean {
+  return envFlag("MADE_ABOUT_TOPIC_EVIDENCE_ENABLED");
+}
+
+/**
+ * FORM_DATE_SAID_ALONE_ENABLED (ported from Ask Bubbles: QA's live round 13 there, 9 Nov 2026; default off; same flag in
+ * both apps). "make the date 11/7/26" as the first edit of a fresh draft answered "I haven't changed …": the reader did
+ * not read the turn as this form's. With the flag on, a turn that says the date the form takes (STEP_B_DATE_SAID's
+ * reading) is this form's, and the Date is written (`forms/form-patch-turn.ts`). Off, as before.
+ */
+export function formDateSaidAloneEnabled(): boolean {
+  return envFlag("FORM_DATE_SAID_ALONE_ENABLED");
+}
+
+/**
+ * MADE_ABOUT_SAID_DATE_ENABLED (QA's live Sunny round 14, 10 Nov 2026; default off; same flag in both apps). "I need you to
+ * make it about showing up late and please list the policy make the date for 10/14/26" on a saved draft already about
+ * another incident answered "I haven't changed …": the reader wrote the policy into Details, its patch was refused whole,
+ * and the old path's revision would not drop the old account's date. With the flag on, such a refused patch (a made-about
+ * turn that says the form's date apart from the topic, whose reader edited the account) is retried by the made-about
+ * path: the account rewritten with the said date as the incident's, the reader's other edits written without it, then
+ * the Date and the policy (`forms/form-patch-turn.ts`, `forms/form-write.ts`). A turn whose patch is not refused is
+ * unchanged. Off, as before.
+ */
+export function madeAboutSaidDateEnabled(): boolean {
+  return envFlag("MADE_ABOUT_SAID_DATE_ENABLED");
+}
+
+/**
+ * MADE_ABOUT_POLICY_LINE_REPLACES_ENABLED (QA's live Sunny round 15, 10 Nov 2026; default off; same flag in both apps). Two
+ * made-about turns in a row: the second saved "Policy reference: Standards of Conduct Policy, JBA Policy Manual p.13;
+ * Attendance Policy, JBA Policy Manual p.14", the first turn's reference kept beside the new one. The revision kept the old
+ * line in a shape the splitter did not read (a trailing period, or not the last paragraph). With the flag on, every
+ * "Policy reference: …" line the rewritten account carries is taken off before its reference is read again from the new
+ * account's own words (`forms/made-about-policy-line.ts`). Off, as before.
+ */
+export function madeAboutPolicyLineReplacesEnabled(): boolean {
+  return envFlag("MADE_ABOUT_POLICY_LINE_REPLACES_ENABLED");
+}
+
+/**
+ * SECTION_BREAKS_KEPT_ENABLED (QA's live Sunny round 15, 10 Nov 2026; default off; same flag in both apps). The P9 save
+ * wrote Details of Coaching as one paragraph ("Observed: … Expectation: … Going Forward: …") over a field written in
+ * sections: the reader returned the new account on one line. With the flag on, each heading such a value runs inline
+ * starts its own paragraph again (`forms/section-breaks.ts`). Off, as before.
+ */
+export function sectionBreaksKeptEnabled(): boolean {
+  return envFlag("SECTION_BREAKS_KEPT_ENABLED");
+}
+
+/**
+ * ADD_NOT_REPEATED_ENABLED (ported from Ask Bubbles: QA's live round 15 there, 10 Nov 2026; default off; same flag in both
+ * apps). After "make it about being late on 11/5/26", "add that she was reminded of the policy" saved the whole
+ * Observed/Expectation/Going Forward block twice, then the new line: the reader returned the field's text (on one line)
+ * and the new sentence as an "add". With the flag on, an "add" that repeats the field's text word for word adds only what
+ * follows it (`forms/added-tail.ts`). Off, as before.
+ */
+export function addNotRepeatedEnabled(): boolean {
+  return envFlag("ADD_NOT_REPEATED_ENABLED");
 }
