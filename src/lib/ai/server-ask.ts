@@ -1,5 +1,6 @@
 import "server-only";
 
+import { besideManualGrounding, besideManualRows, fullManualKeepsRetrieval } from "./full-manual-keeps-retrieval";
 import {
   chatDataToolsEnabled,
   chatParallelLoadsEnabled,
@@ -1489,7 +1490,9 @@ async function answerQuestionUntraced(
       fullManuals = loadedManual.manuals;
     }
   }
-  if (fullManualBlock) {
+  // FULL_MANUAL_KEEPS_RETRIEVAL_ENABLED: the other documents are still searched (`full-manual-keeps-retrieval.ts`).
+  const keepsRetrieval = fullManualKeepsRetrieval(fullManualBlock);
+  if (fullManualBlock && !keepsRetrieval) {
     /*
      * The whole manual is in the prompt. Retrieved excerpts are not the
      * policy source. A missing or oversized manual leaves fullManualBlock
@@ -1567,6 +1570,7 @@ async function answerQuestionUntraced(
       request.question,
       isCaOrPolicyQuestion(request.question) ? matchLimit : rows.length,
     );
+    if (keepsRetrieval) rows = besideManualRows(rows);
     updateChatTrace({
       retrievalCount: rows.length,
       retrieved: rows.slice(0, 20).map((row) => ({
@@ -1925,7 +1929,13 @@ async function answerQuestionUntraced(
    * are not the policy citation, and a manager manual that retrieval pinned
    * must not be described as the only company document.
    */
-  const knowledgeGrounding = fullManualBlock
+  const knowledgeGrounding = keepsRetrieval
+    ? besideManualGrounding({
+        aside: frameworkAside(grounding.slice(0, assembled.mandatoryCount)),
+        // SENSITIVE_DEFAULTS_REDACT_ENABLED, as below.
+        beside: grounding.slice(assembled.mandatoryCount).map((chunk) => ({ ...chunk, content: redactSensitiveDefaults(chunk.content) })),
+      })
+    : fullManualBlock
     ? [FULL_MANUAL_GROUNDING_NOTE, frameworkAside(grounding)].filter((part) => part.length > 0).join("\n\n")
     : // SENSITIVE_DEFAULTS_REDACT_ENABLED: a default password format or SSN digits are never shown to the model.
       buildGroundingBlock(grounding.map((chunk) => ({ ...chunk, content: redactSensitiveDefaults(chunk.content) })));
@@ -2036,7 +2046,7 @@ async function answerQuestionUntraced(
   // resolves to the row at that position — retrieved data, not model output.
   const checked =
     policyAnswer && fullManuals.length > 0
-      ? applyFullManualAnswer({ content: answer, manuals: fullManuals, sourceCount: 0 })
+      ? applyFullManualAnswer({ content: answer, manuals: fullManuals, sourceCount: keepsRetrieval ? grounding.length : 0 })
       : null;
   const spoken = checked?.content ?? answer;
   const markers = extractUsedMarkers(spoken, grounding.map((chunk) => chunk.marker));
@@ -2086,7 +2096,7 @@ async function answerQuestionUntraced(
   return {
     content,
     formSelection: suggested?.selection,
-    citations: checked ? [...checked.citations] : retrievedCitations,
+    citations: checked ? [...checked.citations, ...(keepsRetrieval ? retrievedCitations : [])] : retrievedCitations,
     /*
      * Coverage is decided by what retrieval returned, not by reading the
      * answer: the server knows whether any chunk cleared the relevance
