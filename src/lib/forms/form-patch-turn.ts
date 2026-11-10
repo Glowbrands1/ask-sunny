@@ -16,12 +16,13 @@ import {
   addNotRepeatedEnabled,
   formDateSaidAloneEnabled,
   madeAboutUndatedTogetherEnabled,
+  madeForIsMadeAboutEnabled,
   madeAboutPolicyLineEnabled,
   madeAboutRewriteFinishesEnabled,
   stepBDateSaidEnabled,
   stepBDateWithAboutEnabled,
 } from "@/lib/config/chat-quality-flags";
-import { madeAbout } from "@/lib/ai/make-it-about";
+import { asMadeAboutWording, madeAbout } from "@/lib/ai/make-it-about";
 import { saidFormDate } from "./form-date-said";
 import { withSectionBreaks } from "./section-breaks";
 import { addedTail } from "./added-tail";
@@ -374,7 +375,12 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
     const readerSet = reading.patch.set;
     if (
       madeAboutReaderAccountEnabled() &&
-      madeAbout(input.question) !== null &&
+      /*
+       * MADE_FOR_IS_MADE_ABOUT_ENABLED: a "make it for <X>" turn keeps its reader's own account: set aside, the account
+       * would hang on the old path's revision alone (nov7-refusal-sun-monthly-meeting: the reader wrote "Perrin missed the
+       * monthly meeting", the revision wrote text about the form, and the turn was refused).
+       */
+      madeAbout(input.question, { aboutOnly: true }) !== null &&
       /*
        * MADE_ABOUT_REWRITE_FINISHES_ENABLED (QA's live round-13 test, turn 2: "make it about showing up late"): an undated
        * made-about turn whose reader rewrote Details was refused for the old account's date and handed to the old path
@@ -495,7 +501,8 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
       if (coordinate) noteMadeAboutWrite(input.instanceId);
       try {
         await (await import("./chat-revision"))
-          .reviseActiveForm({ request: input.request, instanceId: input.instanceId, question: input.question, history: input.history, today: input.today })
+          // MADE_FOR_IS_MADE_ABOUT_ENABLED: "make it for <X>" as the revision reads a made-about ("make it about <X>").
+          .reviseActiveForm({ request: input.request, instanceId: input.instanceId, question: asMadeAboutWording(input.question), history: input.history, today: input.today })
           .catch(() => null);
       } finally {
         if (coordinate) endMadeAboutWrite(input.instanceId);
@@ -698,6 +705,62 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
               ...(readerFixes ? { readerFixes } : {}),
             },
           );
+        }
+      } else if (
+        result.handoff === "refused" &&
+        madeForIsMadeAboutEnabled() &&
+        rewroteFrom === null &&
+        keptAccountKey !== undefined &&
+        keptAccountKey in reading.patch.set &&
+        madeAbout(input.question) !== null &&
+        madeAbout(input.question, { aboutOnly: true }) === null
+      ) {
+        /*
+         * MADE_FOR_IS_MADE_ABOUT_ENABLED (QA's live Sunny r20, 10 Nov 2026): "can you make it for missing out monthly
+         * meeting" on a saved Coaching draft in sections. The reader's own account was kept for a "for" turn (above), and
+         * refused here (words the manager did not say: an Expectation and a Going Forward of its own). Handed to the old
+         * path, the revision would read "make it for …" as a rewording and refuse the new account. The account is
+         * rewritten here instead, as "make it about …" (the made-about path's revision), then the topic with it.
+         */
+        noteMadeAboutExit(input, "reader_refused_made_for", false);
+        if (!(await rewriteAccountByRevision(keptAccountKey))) {
+          const label = labels[keptAccountKey] ?? keptAccountKey;
+          const about = madeAbout(input.question);
+          return {
+            content: `I haven't changed the **${loaded.instance.templateName}** for **${loaded.instance.employeeName}**: I couldn't rewrite **${label}** to be about ${about}, so the topic stays as it was too. What should **${label}** say about ${about}?`,
+            citations: [],
+            coverage: "not_applicable",
+            recommendedVideoIds: [],
+          };
+        }
+        const rest = ops.filter((op) => !(ACCOUNT_KEYS as readonly string[]).includes(op.field));
+        const topic = madeAboutReading(input, before, writable, allGroups);
+        const topicSet = topic && "ok" in topic ? topic.patch.set : {};
+        const sets = rest.length > 0 ? [rest] : [];
+        if (Object.keys(topicSet).length > 0)
+          sets.push(
+            Object.entries(topicSet).map(([field, value]) => ({
+              op: "set" as const,
+              field,
+              value,
+              ...(topic && "ok" in topic && topic.patch.evidence?.[field] !== undefined ? { evidence: topic.patch.evidence[field] } : {}),
+            })),
+          );
+        for (const attempt of sets) {
+          const written = await (await import("./form-write")).writeFormEdits(input.instanceId, attempt, {
+            path: "patch",
+            actorId: actor.id,
+            latest: input.question,
+            managerTurns: managerTurns(input.history, input.question),
+            ...(offered !== undefined ? { offered } : {}),
+            acceptedOffer: false,
+            today: input.today,
+            loaded: (await loadInstance(input.instanceId)) ?? loaded,
+            writable,
+            statedKeys: stated,
+            ...(readerFixes ? { readerFixes } : {}),
+          });
+          if (written.handoff !== "refused") break;
         }
       } else if (result.handoff === "refused" && saidDateRetry(input, before, reading, keptAccountKey, rewroteFrom !== null)) {
         /*
