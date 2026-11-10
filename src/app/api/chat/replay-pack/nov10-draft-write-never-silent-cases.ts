@@ -23,7 +23,8 @@ export const NOV10_DRAFT_WRITE_NEVER_SILENT_CASES: ReplayCase[] = [
     id: "nov10-draft-write-refused-field-never-drops-the-draft",
     title: `"${SAID}" → Create, one field of the draft refused: the rest of the draft is SAVED (Details non-empty)`,
     report: `QA, 10 Nov 2026 (Sunny round 17, live, intermittent): "${SAID.replace("Ottoline Ormsworth", "<invented First Last>")}" → Create saved only employee_name and form_date`,
-    status: { open: "one refused field drops the whole draft: Details, Job Title and Location are not saved" },
+    // Changed on purpose (10 Nov 2026): fixed in production by DRAFT_WRITE_NEVER_SILENT_ENABLED, QA round 21; it now holds with production's flags.
+    status: "fixed",
     fixFlags: [FIX],
     async run(t) {
       vi.setSystemTime(new Date("2026-11-10T06:30:00Z"));
