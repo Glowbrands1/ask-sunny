@@ -1,4 +1,4 @@
-import { widerDateReaderEnabled } from "@/lib/config/chat-quality-flags";
+import { widerDateReaderEnabled, relativeBesideTypedDateEnabled } from "@/lib/config/chat-quality-flags";
 
 import { relativeDates } from "./relative-dates";
 
@@ -69,7 +69,20 @@ export function withWiderDates<T extends FoundDate>(text: string, today: string,
   if (!text) return found;
   // RELATIVE_DATE_READER_ENABLED: "last tuesday", "yesterday", "today" — see `relative-dates.ts`.
   const read = [...(widerDateReaderEnabled() ? wider(text, today) : []), ...relativeDates(text, today)];
-  const extra = read.filter((date) => !found.some((have) => date.index < have.end && have.index < date.end));
+  /*
+   * RELATIVE_BESIDE_TYPED_DATE_ENABLED (coding 4's production-flag reading via QA, 10 Nov 2026): "<name> missed our
+   * team meeting yesterday 10/21/26 …" read two dates — "yesterday" as the day before today, and 10/21/26 — so the card
+   * had none. A relative day word right beside a date the manager typed ("yesterday 10/21/26", "10/21/26 (yesterday)",
+   * "yesterday, on 10/21") names that date: the typed one is the date. Off, as before.
+   */
+  const relatives = new Set(relativeBesideTypedDateEnabled() ? relativeDates(text, today).map((date) => date.index) : []);
+  const besideTyped = (date: FoundDate) =>
+    relatives.has(date.index) &&
+    found.some((have) => {
+      const between = have.index >= date.end ? text.slice(date.end, have.index) : have.end <= date.index ? text.slice(have.end, date.index) : "x";
+      return /^[\s,()\-–—:]*(?:on\s+|was\s+|,\s*)?[\s(]*$/i.test(between);
+    });
+  const extra = read.filter((date) => !besideTyped(date) && !found.some((have) => date.index < have.end && have.index < date.end));
   if (extra.length === 0) return found;
   return [...found, ...(extra as T[])].sort((a, b) => a.index - b.index);
 }

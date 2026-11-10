@@ -2665,6 +2665,16 @@ export function policyTopicIntoFieldEnabled(): boolean {
   return envFlag("POLICY_TOPIC_INTO_FIELD_ENABLED");
 }
 
+/**
+ * RELATIVE_BESIDE_TYPED_DATE_ENABLED (coding 4's production-flag reading via QA, 10 Nov 2026; coding 5; same flag in
+ * both apps; default off). With RELATIVE_DATE_READER on, "missed our team meeting yesterday 10/21/26" read two dates and
+ * the card had none. On: a relative day word right beside a typed date names that date (`forms/wider-dates.ts`). Off, as
+ * before.
+ */
+export function relativeBesideTypedDateEnabled(): boolean {
+  return envFlag("RELATIVE_BESIDE_TYPED_DATE_ENABLED");
+}
+
 // --- end coding 5 flags ---
 
 /**
