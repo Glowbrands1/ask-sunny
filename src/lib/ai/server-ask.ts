@@ -521,6 +521,7 @@ async function answerQuestionUntraced(
   actor: ChatActor,
   memory: { memoryOwnerId?: string } = {},
 ): Promise<AskResponse> {
+  markStage("trace_open");
   const readiness = liveReadiness();
 
   // Missing variables first: that is the ordinary "not set up yet" case, and it
@@ -1815,6 +1816,12 @@ async function answerQuestionUntraced(
    * awaits can throw, and after everything that reads the conversation's memory (`memoryPromise`, above).
    */
   const writes = reads ? turnWrites({ request, actor }) : null;
+  markStage("recalled_memory");
+  const recalledMemory = await (writes?.recalled ?? recalledMemoryBlock(request, actor));
+  markStage("few_shot");
+  const fewShot = fewShotExamplesEnabled()
+    ? await (reads?.fewShot ?? fewShotBlock({ question: request.question, scopeId: request.scopeId }))
+    : null;
   markStage("system_prompt");
   const builtSystem = buildSystemPrompt({
     assistantName: ACTIVE_BRAND.assistantName,
@@ -1875,10 +1882,8 @@ async function answerQuestionUntraced(
       hasPermission(DEFAULT_PERMISSION_MATRIX, actor.role, "view_reports"),
     styleRules: chatStyleRulesEnabled(),
     priorCoachingOptional: priorCoachingOptionalEnabled(),
-    recalledMemory: await (writes?.recalled ?? recalledMemoryBlock(request, actor)),
-    ...(fewShotExamplesEnabled()
-      ? { fewShot: await (reads?.fewShot ?? fewShotBlock({ question: request.question, scopeId: request.scopeId })) }
-      : {}),
+    recalledMemory,
+    ...(fewShot !== null ? { fewShot } : {}),
   });
   // MANAGER_NAME_NOT_EMPLOYEE_ENABLED: the manager's name is only for addressing them. See `manager-name-guard.ts`.
   const system = withManagerNameRule(builtSystem);
@@ -1989,6 +1994,7 @@ async function answerQuestionUntraced(
     formEdit?.failed();
     throw error;
   }
+  markStage("after_answer");
   if (formEdit) {
     formEdit.sent();
     const called = toolInput as { readonly input: unknown } | null;

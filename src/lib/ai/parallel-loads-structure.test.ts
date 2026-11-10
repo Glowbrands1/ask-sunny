@@ -34,8 +34,8 @@ describe("CHAT_PARALLEL_LOADS: what starts early is awaited on the same turn", (
     expect(SOURCE.indexOf("const personMemory = await memoryPromise;")).toBeLessThan(SOURCE.indexOf("const writes = reads ? turnWrites("));
     const span = between("const writes = reads ? turnWrites(", "writes?.longContext ??");
     expect(span).not.toMatch(/\breturn\b/);
-    // Only the system prompt's build lies between: the recalled memory is awaited inside it.
-    expect(span).toMatch(/recalledMemory: await \(writes\?\.recalled \?\? recalledMemoryBlock\(request, actor\)\)/);
+    // Only the recalled memory's own await lies between (CHAT_STAGE_TIMINGS marks it on its own).
+    expect(span).toMatch(/const recalledMemory = await \(writes\?\.recalled \?\? recalledMemoryBlock\(request, actor\)\)/);
   });
 
   it("each early load's await falls back to the same call: never both", () => {
