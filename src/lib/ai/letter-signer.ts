@@ -1,4 +1,4 @@
-import { exitLetterAddresseeEnabled, exitLetterSignerNotSubjectEnabled, letterGreetingNotNameEnabled } from "@/lib/config/chat-quality-flags";
+import { exitLetterAddresseeEnabled, exitLetterSignerNotSubjectEnabled, letterGreetingAnyCaseEnabled, letterGreetingNotNameEnabled } from "@/lib/config/chat-quality-flags";
 
 import type { AskRequest } from "./types";
 
@@ -52,10 +52,31 @@ const GREETING = new RegExp(
   "gu",
 );
 
+/*
+ * LETTER_GREETING_ANY_CASE_ENABLED (ported from the sibling app: QA's tester there, round 11 live, 9 Nov 2026; default off): "I need an exit form
+ * with this information. Dear <A>, Your employment with … is terminated …" — the letter on one line, its next word
+ * capitalised — kept "Dear <A>", because the words that show the letter has begun after the addressee's comma ("your",
+ * "this", …) were read in lower case only. Intermittently the card's Name was "Dear <A>": the reading model sometimes
+ * quoted the salutation too. With this flag on, those words are read in any case ("Your", "This", "YOUR"), and "I"
+ * ("Dear <A>, I am writing …") is one of them, both here and where EXIT_LETTER_ADDRESSEE reads the addressee. Off, as
+ * before.
+ */
+const LETTER_BEGINS_ANY_CASE = String.raw`(?=\n|(?:[Yy][Oo][Uu][Rr]|[Tt][Hh][Ii][Ss]|[Ww][Ee]|[Yy][Oo][Uu]|[Ii][Tt]|[Aa][Ff][Tt][Ee][Rr]|[Ff][Oo][Ll][Ll][Oo][Ww][Ii][Nn][Gg]|[Oo][Nn]|I)\b)`;
+const GREETING_ANY_CASE = new RegExp(
+  String.raw`(^|\n[ \t]*|[.!?]\s+|[:'"“‘]\s*)${SALUTATION}(${NAME})(\s*,\s*)${LETTER_BEGINS_ANY_CASE}`,
+  "gu",
+);
+const ADDRESSEE_ANY_CASE = new RegExp(String.raw`(?:^|\n|[.!?]\s+|[:'"“‘]\s*)(${NAME})\s*,\s*${LETTER_BEGINS_ANY_CASE}`, "u");
+
+/** The letter's addressee, as EXIT_LETTER_ADDRESSEE reads it; with LETTER_GREETING_ANY_CASE, after any-case words. */
+function addresseeIn(question: string): string | undefined {
+  return (letterGreetingAnyCaseEnabled() ? ADDRESSEE_ANY_CASE : ADDRESSEE).exec(question)?.[1];
+}
+
 /** The turn with a letter's salutation word left out before the addressee: "Dear <A>," is read as "<A>,". */
 export function withoutLetterGreeting(text: string): string {
   if (!letterGreetingNotNameEnabled()) return text;
-  return text.replace(GREETING, (_match, lead: string, name: string, comma: string) => `${lead}${name}${comma}`);
+  return text.replace(letterGreetingAnyCaseEnabled() ? GREETING_ANY_CASE : GREETING, (_match, lead: string, name: string, comma: string) => `${lead}${name}${comma}`);
 }
 
 function samePersonWords(a: string, b: string): boolean {
@@ -67,7 +88,7 @@ function samePersonWords(a: string, b: string): boolean {
 export function withoutLetterSigner(request: Pick<AskRequest, "question">): string {
   const question = request.question;
   if (!exitLetterSignerNotSubjectEnabled()) return question;
-  const subject = FORM_FOR.exec(question)?.[1] ?? (exitLetterAddresseeEnabled() ? ADDRESSEE.exec(question)?.[1] : undefined);
+  const subject = FORM_FOR.exec(question)?.[1] ?? (exitLetterAddresseeEnabled() ? addresseeIn(question) : undefined);
   const end = question.trimEnd();
   const signOff = SIGN_OFF.exec(end);
   if (signOff) {
