@@ -540,6 +540,8 @@ const NEW_FLAGS = [
   "MADE_ABOUT_REWRITE_FINISHES_ENABLED",
   // coding 4: CHAT_STAGE_TIMINGS (QA, 9 Nov 2026; default off): forced off with the others in the child run.
   "CHAT_STAGE_TIMINGS_ENABLED",
+  "CHAT_PARALLEL_LOADS_ENABLED",
+  "CHAT_PARALLEL_REWRITE_ENABLED",
   // coding 4: QA's live Bubbles round 13 (9 Nov 2026; default off): forced off with the others in the child run.
   "MADE_ABOUT_TOPIC_EVIDENCE_ENABLED",
   "FORM_DATE_SAID_ALONE_ENABLED",
