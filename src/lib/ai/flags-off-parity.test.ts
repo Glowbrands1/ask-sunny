@@ -388,6 +388,8 @@ const NEW_FLAGS = [
   "PAYROLL_SPLIT_WORDS_ENABLED",
   // coding 6: SAME_REQUEST_OTHER_PERSON (default off): forced off with the others.
   "SAME_REQUEST_OTHER_PERSON_ENABLED",
+  // coding 6: PASTED_OUTLINE_TO_OPEN_DRAFT (default off; QA's r23 live test of sf-s21): forced off with the others.
+  "PASTED_OUTLINE_TO_OPEN_DRAFT_ENABLED",
   // coding 6: COACHING_OBSERVED_SAVED (default off): forced off with the others.
   "COACHING_OBSERVED_SAVED_ENABLED",
   // coding 6: APP_INSTRUCTIONS_NOT_ACCOUNT (default off): forced off with the others.
