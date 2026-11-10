@@ -3873,4 +3873,15 @@ export function madeAboutReaderAccountEnabled(): boolean {
  */
 export function policyReferenceNotAccountEnabled(): boolean {
   return envFlag("POLICY_REFERENCE_NOT_ACCOUNT_ENABLED");
+ * LEVEL_AFTER_FORM_NAME_ENABLED (coding 6, 10 Nov 2026; default off; QA's
+ * overnight scan sf-s19). "I need a corrective action verbal for <A>" named
+ * the level after the form and the card left it unset; "Corrective Action"
+ * on the next turn still made no Verbal card. On: "corrective action
+ * verbal", "ca written", "c/a verbal" are the form's level unless the
+ * sentence says it is a step already taken. Read in `forms/warning-level.ts`
+ * (which imports no flags; this function is for callers and the parity
+ * list). Off, as before.
+ */
+export function levelAfterFormNameEnabled(): boolean {
+  return envFlag("LEVEL_AFTER_FORM_NAME_ENABLED");
 }
