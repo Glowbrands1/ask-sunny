@@ -31,16 +31,17 @@ const state = vi.hoisted(() => ({
   fullManualBlock: undefined as string | null | undefined,
   reply: "",
   matched: 0,
+  /** How many searches had started when the normalizer answered (QA's option C: the search overlaps it). */
+  matchedWhenNormalized: -1,
   rows: [] as unknown[],
 }));
 
 vi.mock("./message-normalize-claude", () => ({
-  normalizeForChat: async (input: { question: string }) => ({
-    answerText: input.question,
-    routingText: input.question,
-    modelQuery: null,
-    intent: "policy",
-  }),
+  normalizeForChat: async (input: { question: string }) => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    state.matchedWhenNormalized = state.matched;
+    return { answerText: input.question, routingText: input.question, modelQuery: null, intent: "policy" };
+  },
 }));
 vi.mock("./query-rewrite-claude", () => ({
   rewriteToManualTerms: async (input: { question: string }) => input.question,
@@ -146,6 +147,7 @@ beforeEach(() => {
   state.grounding = "";
   state.fullManualBlock = undefined;
   state.matched = 0;
+  state.matchedWhenNormalized = -1;
   state.rows = [
     row("tc-cleaning", TC_TITLE, "Spray Tan Cleaning Instructions", TC_STEP, 0.87),
     row("jba-care", "JBA Policy Manual Edited 5.2025", "Care and Cleaning of Equipment and Facilities", "Keep the equipment clean.", 0.86),
@@ -183,6 +185,19 @@ describe("FULL_MANUAL_KEEPS_RETRIEVAL: a 'policy'-labelled how-to question still
       expect(response.citations.map((citation) => citation.documentTitle)).toContain(TC_TITLE);
     });
   }
+
+  it("flag on: the search starts with the normalizer (before it answers) and runs once", async () => {
+    process.env.FULL_MANUAL_KEEPS_RETRIEVAL_ENABLED = "1";
+    await ask(QUESTIONS[0]);
+    expect(state.matchedWhenNormalized).toBe(1);
+    expect(state.matched).toBe(1);
+    expect(state.grounding).toContain(TC_STEP);
+  });
+
+  it("flag off: no search starts early", async () => {
+    await ask(QUESTIONS[0]);
+    expect(state.matchedWhenNormalized).toBe(0);
+  });
 
   it("flag off: the grounding is byte-for-byte what it was before the flag existed", async () => {
     const unset = await ask(QUESTIONS[0]);

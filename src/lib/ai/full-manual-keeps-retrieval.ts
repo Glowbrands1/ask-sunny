@@ -1,5 +1,19 @@
-import { fullManualKeepsRetrievalEnabled } from "@/lib/config/chat-quality-flags";
+import {
+  fullManualContextEnabled,
+  fullManualKeepsRetrievalEnabled,
+  hybridSearchEnabled,
+  queryRewriteEnabled,
+  retrievalRecallEnabled,
+} from "@/lib/config/chat-quality-flags";
+import { RETRIEVAL } from "@/lib/config/models";
+import { matchHybridKnowledge } from "@/lib/knowledge/hybrid-match";
+import { expandPolicyQuery } from "@/lib/knowledge/policy-retrieval";
+import type { MatchedChunkRow } from "@/lib/knowledge/mappers";
+import { matchRecallKnowledge } from "@/lib/knowledge/recall-match";
 
+import { expandGlossaryQuery } from "./glossary";
+import { held } from "./held-promise";
+import { retrievalQueryFor } from "./retrieval-query";
 import { EXCLUDED_BRAND, FULL_MANUAL_GROUNDING_NOTE, isPolicyManualTitle } from "./full-manual-context";
 import type { GroundingChunk } from "./prompts";
 
@@ -51,4 +65,33 @@ export function besideManualGrounding(input: { readonly aside: string; readonly 
       ? `${FULL_MANUAL_BESIDE_NOTE}\n\nValid markers are ${input.beside.map((chunk) => `[S${chunk.marker}]`).join(", ")}.\n\n${excerpts}`
       : FULL_MANUAL_GROUNDING_NOTE;
   return [note, input.aside].filter((part) => part.length > 0).join("\n\n");
+}
+
+/**
+ * QA, 10 Nov 2026 (option C): the search for the rows beside the manual starts with the message normalizer, not after the
+ * query rewrite, so it overlaps the normalizer and the rewrite (p50 2.15 s live) instead of adding a whole retrieval stage
+ * (p50 3.43 s) after them. Whether the turn takes the full-manual path is not known yet (the normalizer's label decides
+ * it), so it starts on every turn that could: the flag and FULL_MANUAL_CONTEXT on, and no form in progress. It searches
+ * the manager's own words (the glossary added, as the search is written when the rewrite is on), with the same search
+ * the turn would use, at the ordinary limit. Null when it does not start; its rejection is held until it is awaited.
+ */
+export function startBesideSearch(input: {
+  readonly question: string;
+  readonly history: Parameters<typeof retrievalQueryFor>[0]["history"];
+  readonly openForm: Parameters<typeof retrievalQueryFor>[0]["openForm"];
+  readonly scopeId: string;
+  readonly formInProgress: boolean;
+  readonly match: (query: { query: string; scopeId: string; limit: number }) => Promise<MatchedChunkRow[]>;
+}): Promise<MatchedChunkRow[]> | null {
+  if (!fullManualKeepsRetrievalEnabled() || !fullManualContextEnabled() || input.formInProgress) return null;
+  const ownWords = retrievalQueryFor({ question: input.question, history: input.history, openForm: input.openForm });
+  const query = expandPolicyQuery(queryRewriteEnabled() ? expandGlossaryQuery(ownWords) : ownWords);
+  const limit = RETRIEVAL.topK;
+  const search = (): Promise<MatchedChunkRow[]> =>
+    retrievalRecallEnabled()
+      ? matchRecallKnowledge({ query, scopeId: input.scopeId, limit, question: input.question })
+      : hybridSearchEnabled()
+        ? matchHybridKnowledge({ query, scopeId: input.scopeId, limit })
+        : input.match({ query, scopeId: input.scopeId, limit });
+  return held(Promise.resolve().then(search));
 }
