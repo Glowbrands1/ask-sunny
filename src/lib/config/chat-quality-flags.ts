@@ -3920,3 +3920,13 @@ export function madeAboutSaidDateEnabled(): boolean {
 export function madeAboutPolicyLineReplacesEnabled(): boolean {
   return envFlag("MADE_ABOUT_POLICY_LINE_REPLACES_ENABLED");
 }
+
+/**
+ * SECTION_BREAKS_KEPT_ENABLED (QA's live Sunny round 15, 10 Nov 2026; default off; same flag in both apps). The P9 save
+ * wrote Details of Coaching as one paragraph ("Observed: … Expectation: … Going Forward: …") over a field written in
+ * sections: the reader returned the new account on one line. With the flag on, each heading such a value runs inline
+ * starts its own paragraph again (`forms/section-breaks.ts`). Off, as before.
+ */
+export function sectionBreaksKeptEnabled(): boolean {
+  return envFlag("SECTION_BREAKS_KEPT_ENABLED");
+}

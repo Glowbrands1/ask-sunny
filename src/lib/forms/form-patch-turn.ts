@@ -11,6 +11,7 @@ import {
   madeAboutTopicEvidenceEnabled,
   madeAboutSaidDateEnabled,
   madeAboutPolicyLineReplacesEnabled,
+  sectionBreaksKeptEnabled,
   formDateSaidAloneEnabled,
   madeAboutUndatedTogetherEnabled,
   madeAboutPolicyLineEnabled,
@@ -20,6 +21,7 @@ import {
 } from "@/lib/config/chat-quality-flags";
 import { madeAbout } from "@/lib/ai/make-it-about";
 import { saidFormDate } from "./form-date-said";
+import { withSectionBreaks } from "./section-breaks";
 import { splitAppCitationLine } from "./app-citation-line";
 import { endMadeAboutWrite, madeAboutDate, madeAboutTopic, noteMadeAboutWrite } from "./made-about-date";
 import { syncCorrectiveActionPlan } from "./ca-action-plan-sync";
@@ -99,6 +101,12 @@ function lastAssistant(history: readonly Pick<ChatMessage, "role" | "content" | 
  * (`buildFormPatchUserMessage`); a value the model returns in that shape, for a field that holds lines, gets its
  * lines back.
  */
+/** SECTION_BREAKS_KEPT_ENABLED (QA's live round 15): the reader's account, run onto one line, keeps the field's sections. */
+function keptSections(field: string, value: FieldValue, current: FieldValue | undefined): FieldValue {
+  if (!sectionBreaksKeptEnabled() || !(ACCOUNT_KEYS as readonly string[]).includes(field) || typeof value !== "string") return value;
+  return withSectionBreaks(typeof current === "string" ? current : undefined, value);
+}
+
 function relined(value: FieldValue, current: FieldValue | undefined): FieldValue {
   if (typeof value !== "string" || typeof current !== "string" || !current.includes("\n") || !value.includes(" / ")) return value;
   return value.split(" / ").join("\n");
@@ -571,7 +579,7 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
         ...Object.entries(reading.patch.set).map(([field, value]) => ({
           op: reading.patch.how?.[field] === "add" ? ("append" as const) : ("set" as const),
           field,
-          value: readerFixes ? relined(value, before[field]?.value) : value,
+          value: keptSections(field, readerFixes ? relined(value, before[field]?.value) : value, before[field]?.value),
           ...(reading.patch.evidence?.[field] !== undefined ? { evidence: reading.patch.evidence[field] } : {}),
           // FORM_PATCH_READER_FIXES_ENABLED: a reword, and the Job Title as the manager's own edit.
           ...(readerFixes && reading.patch.how?.[field] === "reword" ? { reword: true } : {}),

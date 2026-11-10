@@ -230,4 +230,50 @@ export const NOV10_MADE_ABOUT_TOPIC_AND_DATE_CASES: ReplayCase[] = [
       run: chainedLine(kept),
     }),
   ),
+  {
+    id: "nov10-section-breaks-kept-p9-one-line",
+    title: "QA's live Sunny round 15 (03:07:44Z): P9's sentence saved, but the reader returned Details on ONE line (\"Observed: … Expectation: …\"): the saved Details keep their sections",
+    report: "QA's live Sunny round 15 (10 Nov 2026, 03:07:44Z): Details of Coaching saved as one paragraph",
+    status: { open: "the reader's one-line account is written as it came, over a field written in sections" },
+    fixFlags: [
+      "MADE_ABOUT_READER_ACCOUNT_ENABLED",
+      "MADE_ABOUT_UNDATED_TOGETHER_ENABLED",
+      "MADE_ABOUT_POLICY_LINE_ENABLED",
+      "MADE_ABOUT_REWRITE_FINISHES_ENABLED",
+      "EDIT_POLICY_ASK_ENABLED",
+      "SECTION_BREAKS_KEPT_ENABLED",
+    ],
+    async run(t) {
+      vi.setSystemTime(new Date("2026-11-10T03:04:00Z"));
+      t.directory(REFUSAL_ROSTER);
+      t.as("salon_director", KEARNEY);
+      // The draft's own sections (Observed, Expectation), run onto one line by the reader.
+      const flat = "Observed: Marnie Holloway showed up late on 10/14/26. Expectation: Marnie is expected to be on time at all times.";
+      t.patchReads!({
+        [P9]: {
+          ...patch("this_form", [
+            { field: "other_topic", value: "Showing up late", how: "replace", evidence: "showing up late" },
+            { field: "coaching_details", value: flat, how: "replace", evidence: "make it about showing up late" },
+          ]),
+          policy_asked: true,
+        } as never,
+      });
+      const thread = t.thread();
+      await thread.say("create a coaching form for Marnie Holloway, she missed the monthly meeting on 10/10/26");
+      t.draftWrites({ coaching_details: DETAILS, other_topic: "Missed monthly meeting" }, { coaching_topics: ["other"] });
+      const id = await thread.create();
+      // The live chain on that draft: undated "showing up late", then the front desk on 11/6/26, then P9.
+      t.manualAlsoHas?.([WORK_AREA_LINE]);
+      t.revisionWrites({ coaching_details: "Observed:\nMarnie Holloway showed up late on 10/10/26.\n\nExpectation:\nMarnie is expected to arrive on time for scheduled shifts." });
+      await thread.say("I need you to make it about showing up late");
+      t.revisionWrites({ coaching_details: "Observed:\nMarnie Holloway left the front desk unattended on 11/6/26.\n\nExpectation:\nMarnie is expected to keep the front desk covered at all times." });
+      await thread.say("make it about leaving the front desk unattended on 11/6/26");
+      expect(t.values(id).coaching_details ?? "", "the chain's second turn").toMatch(/front desk unattended on 11\/6\/26/);
+      const reply = await thread.say(P9);
+      const details = t.values(id).coaching_details ?? "";
+      expect(details, `Details:\n${reply.content}`).toMatch(/showed up late on 10\/14\/26/);
+      expect(details, `the sections were run into one paragraph:\n${details}`).toMatch(/^Observed:\n[^\n]+\n\nExpectation:\n[^\n]+/);
+    },
+  },
 ];
+
