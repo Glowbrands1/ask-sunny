@@ -2665,6 +2665,19 @@ export function policyTopicIntoFieldEnabled(): boolean {
   return envFlag("POLICY_TOPIC_INTO_FIELD_ENABLED");
 }
 
+/**
+ * EXCERPT_BRAND_FILTER_ENABLED (ported from the sibling app, where it is on main; QA's October triage of #232, 10 Nov
+ * 2026; coding 5; default off). The JBA Policy Manual covers every brand, and a retrieved chunk's text was shown whole
+ * as its source excerpt, so the p.42 PTO excerpt under a Sun Tan City answer showed "o Buff City Soap – November 1 and
+ * December 31". On: a line, bullet, sentence or labelled block of a JBA Policy Manual excerpt that names a brand in
+ * `EXCERPT_HIDDEN_BRANDS` (`lib/brand/knowledge.ts`) is left out; what is kept is verbatim
+ * (`lib/knowledge/excerpt-brand-filter.ts`; `mappers.ts`, the card and remap citations). Retrieval, ranking, the
+ * prompt, pages and titles are unchanged. Off, as before.
+ */
+export function excerptBrandFilterEnabled(): boolean {
+  return envFlag("EXCERPT_BRAND_FILTER_ENABLED");
+}
+
 // --- end coding 5 flags ---
 
 /**
