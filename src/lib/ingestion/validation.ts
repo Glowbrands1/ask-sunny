@@ -73,6 +73,8 @@ export interface UploadCandidate {
   fileName: string;
   mimeType: string;
   sizeBytes: number;
+  /** WOVEN_LARGER_FILES_ENABLED: a synced file's own cap; the upload cap when absent. */
+  maxBytes?: number;
 }
 
 /**
@@ -127,8 +129,10 @@ export function validateUpload(candidate: UploadCandidate): ValidatedUpload {
     );
   }
 
-  if (candidate.sizeBytes > UPLOAD_LIMITS.maxBytes) {
-    const limitMb = Math.round(UPLOAD_LIMITS.maxBytes / (1024 * 1024));
+  // WOVEN_LARGER_FILES_ENABLED: a synced file may have its own, larger cap (`synced-file-limit.ts`).
+  const maxBytes = candidate.maxBytes ?? UPLOAD_LIMITS.maxBytes;
+  if (candidate.sizeBytes > maxBytes) {
+    const limitMb = Math.round(maxBytes / (1024 * 1024));
     throw new IngestionError(
       "too_large",
       `"${candidate.fileName}" is larger than the ${limitMb} MB limit.`,

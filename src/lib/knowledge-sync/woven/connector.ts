@@ -1,6 +1,6 @@
 import "server-only";
 
-import { UPLOAD_LIMITS } from "@/lib/config/models";
+import { syncedFileMaxBytes } from "@/lib/ingestion/synced-file-limit";
 import { SUPPORTED_KINDS, extensionOf, normalizeMimeType } from "@/lib/ingestion/validation";
 import {
   PartFetchError,
@@ -326,7 +326,8 @@ export class WovenKnowledgeConnector implements KnowledgeSourceConnector {
   }
 
   private maxBytes(): number {
-    return this.options.maxBytes ?? UPLOAD_LIMITS.maxBytes;
+    // WOVEN_LARGER_FILES_ENABLED: the sync's own cap (`ingestion/synced-file-limit.ts`); the upload cap when off.
+    return this.options.maxBytes ?? syncedFileMaxBytes();
   }
 
   /**

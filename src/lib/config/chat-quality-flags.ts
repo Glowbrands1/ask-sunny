@@ -2692,6 +2692,18 @@ export function addThatIsAccountEnabled(): boolean {
   return envFlag("ADD_THAT_IS_ACCOUNT_ENABLED");
 }
 
+/**
+ * WOVEN_LARGER_FILES_ENABLED (ported from the sibling app: QA, 10 Nov 2026, two Woven PDFs there stop every sync as
+ * larger than the 50 MB upload limit; coding 5; same flag in both apps; default off). On: a file the sync downloads may
+ * be up to 200 MB (a manager's upload keeps 50 MB), a file still over the cap is reported with its size (the item's stored
+ * error), and OCR refuses a scan too big for one request before sending it (`ingestion/synced-file-limit.ts`,
+ * `knowledge-sync/woven/http.ts`, `ingestion/extract/pdf.ts`). The storage bucket's file_size_limit must be raised to
+ * 200 MB first (QA's release step). Off, as before.
+ */
+export function wovenLargerFilesEnabled(): boolean {
+  return envFlag("WOVEN_LARGER_FILES_ENABLED");
+}
+
 // --- end coding 5 flags ---
 
 /**

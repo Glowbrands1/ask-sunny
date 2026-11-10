@@ -1,5 +1,8 @@
 import "server-only";
 
+import { wovenLargerFilesEnabled } from "@/lib/config/chat-quality-flags";
+import { megabytes } from "@/lib/ingestion/synced-file-limit";
+
 import { WOVEN_TEAM_TRANSPORT } from "./config";
 import {
   ANTIFORGERY_ERROR_MARKER,
@@ -254,7 +257,7 @@ export class WovenTeamClient {
     const declared = Number(response.headers.get("content-length") ?? "0");
     if (declared > maxBytes) {
       await discard(response);
-      throw new WovenTeamError("too_large", "The file is larger than Ask Sunny's upload limit.", { path: where });
+      throw new WovenTeamError("too_large", tooLargeMessage(declared, maxBytes), { path: where });
     }
     const bytes = await readCapped(response, maxBytes, where);
     return { bytes, contentType: response.headers.get("content-type") ?? "application/octet-stream" };
@@ -330,7 +333,7 @@ export class WovenTeamClient {
       const declared = Number(response.headers.get("content-length") ?? "0");
       if (declared > maxBytes) {
         await discard(response);
-        throw new WovenTeamError("too_large", "The file is larger than Ask Sunny's upload limit.", { path: where });
+        throw new WovenTeamError("too_large", tooLargeMessage(declared, maxBytes), { path: where });
       }
       const contentType = response.headers.get("content-type") ?? "application/octet-stream";
       const bytes = await readCapped(response, maxBytes, where);
@@ -554,6 +557,16 @@ async function discard(response: Response): Promise<void> {
   }
 }
 
+/**
+ * WOVEN_LARGER_FILES_ENABLED: the too-large message says the file's declared size and the limit, so a sync reports what
+ * it found ("The file is 73.4 MB; Ask Sunny' limit for synced files is 200 MB."). Off: the message as before.
+ */
+function tooLargeMessage(declared: number | null, maxBytes: number): string {
+  if (!wovenLargerFilesEnabled()) return "The file is larger than Ask Sunny' upload limit.";
+  const size = declared && declared > 0 ? `${megabytes(declared)} MB` : `over ${megabytes(maxBytes)} MB`;
+  return `The file is ${size}; Ask Sunny' limit for synced files is ${megabytes(maxBytes)} MB.`;
+}
+
 async function readCapped(response: Response, maxBytes: number, path: string): Promise<Uint8Array> {
   if (!response.body) return new Uint8Array(await response.arrayBuffer());
   const reader = response.body.getReader();
@@ -565,7 +578,7 @@ async function readCapped(response: Response, maxBytes: number, path: string): P
     total += value.byteLength;
     if (total > maxBytes) {
       await reader.cancel();
-      throw new WovenTeamError("too_large", "The file is larger than Ask Sunny's upload limit.", { path });
+      throw new WovenTeamError("too_large", tooLargeMessage(null, maxBytes), { path });
     }
     chunks.push(value);
   }
