@@ -53,6 +53,7 @@ import { historySaysDifferentIncident } from "@/lib/forms/draft-actions";
 import { findOpenIncidentDraft, findResentDraft } from "@/lib/forms/draft-reopen";
 import type { SameChat } from "@/lib/forms/draft-same-chat";
 import { authorizeLocation } from "@/lib/forms/location-scope";
+import { TERMINATION_OPTION, statesTermination } from "@/lib/forms/termination-stated";
 import { checkProposalIsCurrent } from "@/lib/forms/proposal-currency";
 import { preferredNamesOf } from "@/lib/forms/preferred-name-current";
 import { looseRosterFor } from "@/lib/forms/loose-name";
@@ -330,6 +331,25 @@ export async function POST(request: Request) {
           actor.id,
           WARNING_LEVEL_STATED_KEYS,
         );
+      }
+
+      /*
+       * TERMINATION_STATED_TICKS_ENABLED (Pau's P15 ruling "A", 10 Nov 2026): a termination the manager STATED for this
+       * form in chat ("I need a term CA for …") is ticked as their statement, the same path as a stated verbal or
+       * written; the card has said it needs DM/HR approval before it is finalized. Read from the manager's own turns;
+       * a hedge ("she might be terminated if this continues") states nothing. Off, `statesTermination` is false.
+       */
+      if (!isStatedWarningLevel(card.warningLevel) && card.templateKey === "dpoa" && Array.isArray(card.conversation)) {
+        const turns = await readingTurns(parseHistory(card.conversation));
+        const said = turns.filter((turn) => turn.role === "user").map((turn) => String(turn.content)).join("\n");
+        if (statesTermination(said)) {
+          await applyStatedFacts(
+            instanceId,
+            { values: {}, checked: { [WARNING_TYPE_KEY]: [TERMINATION_OPTION] } },
+            actor.id,
+            WARNING_LEVEL_STATED_KEYS,
+          );
+        }
       }
     }
 
