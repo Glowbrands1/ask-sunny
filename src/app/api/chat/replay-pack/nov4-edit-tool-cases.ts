@@ -1,3 +1,4 @@
+import { stepBAddUnderObservedEnabled, stepBReplyKeepsLinesEnabled } from "@/lib/config/chat-quality-flags";
 import { expect } from "vitest";
 
 import { KEARNEY, noClaimWithoutUpdate, replyMatchesDiff, savedForm, type ReplayCase, type ReplayContext } from "./cases";
@@ -102,9 +103,15 @@ export const NOV4_EDIT_TOOL_CASES: readonly ReplayCase[] = [
         const reply = await thread.say(CA_CHAIN[5]);
         replyMatchesDiff(t, id, before, reply, CA_CHAIN[5]);
         expect(reply.formUpdate?.updated).toEqual(["observation"]);
-        expect(t.values(id).observation ?? "").toMatch(/she Must Practice the sanitizing checklist every shift\.$/);
+        // Changed on purpose (10 Nov 2026, as in the sibling app's off-flag audit): with STEP_B_ADD_UNDER_OBSERVED the add goes
+        // at the end of the "Observed:" part, before "Expectation:", instead of after it.
+        expect(t.values(id).observation ?? "").toMatch(
+          stepBAddUnderObservedEnabled() ? /^Observed:\n[^]*she Must Practice the sanitizing checklist every shift\.\n\nExpectation:/ : /she Must Practice the sanitizing checklist every shift\.$/,
+        );
         expect(t.values(id).observation ?? "", "the first name was dropped").toMatch(/\bJane Doe\b/);
-        expect(reply.content).toMatch(/^Changed Observation of Offense to "/);
+        // Changed on purpose (10 Nov 2026): STEP_B_REPLY_KEEPS_LINES quotes a multi-line field line by line
+        // ("Changed Observation of Offense to:" then "> …" lines) instead of one quoted line joined with "; ".
+        expect(reply.content).toMatch(stepBReplyKeepsLinesEnabled() ? /^Changed Observation of Offense to:\n>/ : /^Changed Observation of Offense to "/);
         expect(reply.content, "the tool's text was shown").not.toContain("I added that");
         // One model call: the main one; no revision, no draft.
         expect(t.calls().chat - calls.chat).toBe(1);

@@ -1,3 +1,4 @@
+import { stepBAddUnderObservedEnabled } from "@/lib/config/chat-quality-flags";
 import { expect } from "vitest";
 
 import { KEARNEY, claimsFormChange, noClaimWithoutUpdate, replyMatchesDiff, savedForm, type ReplayAnswer, type ReplayCase, type ReplayContext, type ReplayThread } from "./cases";
@@ -254,7 +255,15 @@ const STEP_B_CASES: readonly ReplayCase[] = [
         t.patchWrites([null, null, null, null, { turn: "this_form", set: [{ field: "observation", value: "she Must Practice the sanitizing checklist every shift.", how: "add", evidence: CA_CHAIN[5] }], clear: [] }]);
         await caChat(t, 6);
         const observation = t.values(t.forms()[0]!.id as string).observation ?? "";
-        expect(observation, "the add never reached the Observation").toMatch(/practice the sanitizing checklist every shift\.?$/i);
+        /*
+         * Changed on purpose (10 Nov 2026, as in the sibling app's off-flag audit): with STEP_B_ADD_UNDER_OBSERVED the add
+         * goes at the end of the "Observed:" part, before "Expectation:", instead of after it.
+         */
+        if (stepBAddUnderObservedEnabled()) {
+          expect(observation, "the add is not in the Observed part").toMatch(/^Observed:\n[^]*practice the sanitizing checklist every shift\.?\n\nExpectation:/i);
+        } else {
+          expect(observation, "the add never reached the Observation").toMatch(/practice the sanitizing checklist every shift\.?$/i);
+        }
       });
     },
   },
