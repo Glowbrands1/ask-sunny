@@ -4316,3 +4316,14 @@ export function sameRequestKeepsEarlierCardClientEnabled(): boolean {
 export function templateOutlineFieldsEnabled(): boolean {
   return envFlag("TEMPLATE_OUTLINE_FIELDS_ENABLED");
 }
+
+/**
+ * "What is a ca?", "difference between coaching and ca", "which forms can I
+ * create here?" are answered from the app's own published form templates and
+ * role matrix (`lib/forms/forms-guide.ts`), never from model memory or a
+ * knowledge-base miss. Off (the default), those turns are answered exactly as
+ * before.
+ */
+export function formsGuideEnabled(): boolean {
+  return envFlag("FORMS_GUIDE_ENABLED");
+}
