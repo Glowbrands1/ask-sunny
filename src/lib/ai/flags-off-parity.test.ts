@@ -388,6 +388,8 @@ const NEW_FLAGS = [
   "PAYROLL_SPLIT_WORDS_ENABLED",
   // coding 6: SAME_REQUEST_OTHER_PERSON (default off): forced off with the others.
   "SAME_REQUEST_OTHER_PERSON_ENABLED",
+  // coding 6: BC_NOT_A_NAME (default off; October rebuild 2): forced off with the others.
+  "BC_NOT_A_NAME_ENABLED",
   // coding 6: COACHING_OBSERVED_SAVED (default off): forced off with the others.
   "COACHING_OBSERVED_SAVED_ENABLED",
   // coding 6: APP_INSTRUCTIONS_NOT_ACCOUNT (default off): forced off with the others.
