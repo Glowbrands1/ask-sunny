@@ -24,6 +24,14 @@ function words(text: string): string[] {
 function afterKnownSentences(old: string, value: string): string | null {
   const known = ` ${words(old).join(" ")} `;
   const found = [...value.matchAll(WORD)];
+  /*
+   * QA's gate (10 Nov 2026, nov7-refusal-bub-phone-trace; this app's #768): the reader returned the WHOLE field with the new line inserted
+   * inside it ("Observed: … deadline. / Also observed: … / Expectation: / …"). That is the field as it should read, and the
+   * path without this rule saves it so. Dropping only its leading sentences added the rest, the old Expectation with it, a
+   * second time. An add that holds every word of the field, in order, around one insertion is left as it is.
+   */
+  if (holdsFieldAroundInsertion(words(old), found.map((match) => match[0].toLowerCase()))) return null;
+
   let start = 0;
   let kept = -1;
   let sentence = false;
@@ -43,6 +51,16 @@ function afterKnownSentences(old: string, value: string): string | null {
   const last = found[kept]!;
   const tail = value.slice(last.index! + last[0].length).replace(/^[\s.,;:!?)\]"'’]+/u, "").trim();
   return tail === "" ? null : tail;
+}
+
+/** The value is the field's words in order, with new words inserted at one place (not at its end). */
+function holdsFieldAroundInsertion(before: readonly string[], after: readonly string[]): boolean {
+  if (after.length <= before.length) return false;
+  let prefix = 0;
+  while (prefix < before.length && before[prefix] === after[prefix]) prefix += 1;
+  let suffix = 0;
+  while (suffix < before.length - prefix && before[before.length - 1 - suffix] === after[after.length - 1 - suffix]) suffix += 1;
+  return prefix + suffix === before.length && suffix > 0;
 }
 
 export function addedTail(old: string, value: string, options: { readonly sentences?: boolean } = {}): string | null {

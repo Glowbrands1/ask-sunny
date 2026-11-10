@@ -44,4 +44,9 @@ describe("addedTail (ADD_NOT_REPEATED, QA's live round 15 in Ask Bubbles)", () =
       expect(addedTail("Observed:\nWrenna was late on 10/23/26 at 9.30 am.", "Wrenna was late on 10/23/26 at 9.30 am. She was on her phone.", ON)).toBe("She was on her phone.");
     });
   });
+  it("QA's gate: the whole field with the new line inside it is left as it is (no Expectation saved twice)", () => {
+    const old = "Observed:\nWrenna Thistlecombe missed the October 15, 2026 Woven deadline.\nExpectation:\nWoven deadlines are met on time.";
+    const value = "Observed:\nWrenna Thistlecombe missed the October 15, 2026 Woven deadline.\nAlso observed: Wrenna was on her phone.\nExpectation:\nWoven deadlines are met on time.";
+    expect(addedTail(old, value, { sentences: true })).toBeNull();
+  });
 });
