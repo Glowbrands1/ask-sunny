@@ -76,3 +76,48 @@ export function withSectionSpacing(old: string, next: string): string {
   }
   return out.join("\n");
 }
+
+/*
+ * ADD_OUT_OF_OTHER_SECTIONS_ENABLED (QA's Bubbles round-16b live test, 10 Nov 2026): "can you add that she was reminded
+ * of the policy" came back as the whole text with the new sentence glued onto the end of the Expectation paragraph
+ * ("…unable to attend. <name> was reminded of the policy."). A whole-text write that is the old text with every section
+ * in place, the same except for words added to the end of ONE section other than Observed: those words are an add,
+ * and go under Observed. Anything else (a section reworded, two sections changed, Observed changed) is left as written.
+ */
+interface Section {
+  readonly heading: string;
+  readonly body: string;
+}
+
+function sectionsOf(text: string): Section[] | null {
+  const out: { heading: string; body: string[] }[] = [];
+  for (const line of lines(text)) {
+    if (HEADING.test(line)) {
+      const colon = line.indexOf(":");
+      out.push({ heading: line.slice(0, colon + 1).trim().toLowerCase(), body: [line.slice(colon + 1)] });
+    } else if (out.length > 0) out[out.length - 1]!.body.push(line);
+    else if (line.trim() !== "") return null;
+  }
+  return out.length > 1 ? out.map((section) => ({ heading: section.heading, body: section.body.join("\n").trim() })) : null;
+}
+
+/** The words a whole-text write added to the end of one non-Observed section, or null. */
+export function insertedInOtherSection(old: string, next: string): string | null {
+  if (!hasSections(old)) return null;
+  const was = sectionsOf(old);
+  const now = sectionsOf(next);
+  if (!was || !now || was.length !== now.length) return null;
+  let extra: string | null = null;
+  for (const [index, section] of was.entries()) {
+    const other = now[index]!;
+    if (other.heading !== section.heading) return null;
+    const before = squash(section.body);
+    const after = squash(other.body);
+    if (before === after) continue;
+    if (OBSERVED.test(`${section.heading}`) || extra !== null || !after.startsWith(`${before} `)) return null;
+    const words = other.body.split(/\s+/).filter(Boolean);
+    const kept = section.body.split(/\s+/).filter(Boolean).length;
+    extra = words.slice(kept).join(" ").trim();
+  }
+  return extra && /[\p{L}]/u.test(extra) ? extra : null;
+}

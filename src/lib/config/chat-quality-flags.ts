@@ -2693,6 +2693,16 @@ export function stepBSectionSpacingEnabled(): boolean {
 export function stepBReplyKeepsLinesEnabled(): boolean {
   return envFlag("STEP_B_REPLY_KEEPS_LINES_ENABLED");
 }
+/**
+ * ADD_OUT_OF_OTHER_SECTIONS_ENABLED (QA's Bubbles round-16b live test, 10 Nov 2026; coding 5; same flag in both apps;
+ * default off; works with STEP_B_ADD_UNDER_OBSERVED_ENABLED). "can you add that she was reminded of the policy" was
+ * written glued onto the Expectation paragraph. On: a whole-text write that only adds words to the end of one section
+ * other than Observed puts them under Observed instead (`forms/outline-sections.ts`). Off, as before.
+ */
+export function addOutOfOtherSectionsEnabled(): boolean {
+  return envFlag("ADD_OUT_OF_OTHER_SECTIONS_ENABLED");
+}
+
 // --- end coding 5 flags ---
 
 /**

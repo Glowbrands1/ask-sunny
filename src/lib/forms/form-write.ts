@@ -11,9 +11,10 @@ import {
   stepBAddUnderObservedEnabled,
   stepBMakeItAboutAccountEnabled,
   stepBSectionSpacingEnabled,
+  addOutOfOtherSectionsEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { madeAbout } from "@/lib/ai/make-it-about";
-import { addUnderObserved, hasSections, tailAfterLastSection, withSectionSpacing } from "./outline-sections";
+import { addUnderObserved, hasSections, insertedInOtherSection, tailAfterLastSection, withSectionSpacing } from "./outline-sections";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { isGlossaryTerm } from "@/lib/ai/chat-glossary";
 
@@ -556,6 +557,11 @@ export async function writeFormEdits(instanceId: string, ops: readonly FormEditO
       } else if (underObserved && how[key] === "replace") {
         const tail = tailAfterLastSection(current, value);
         if (tail !== null) written = addUnderObserved(current, tail);
+        // ADD_OUT_OF_OTHER_SECTIONS_ENABLED: a sentence glued onto Expectation / Going Forward goes under Observed.
+        else if (addOutOfOtherSectionsEnabled()) {
+          const inserted = insertedInOtherSection(current, value);
+          if (inserted !== null) written = addUnderObserved(current, inserted);
+        }
       }
       if (spacing && how[key] !== "add") written = withSectionSpacing(current, written);
       set[key] = written;
