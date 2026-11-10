@@ -28,6 +28,11 @@ const NARRATIVE_KEY: Readonly<Record<string, string>> = {
 /** The forms whose account field carries the citation line (EDIT_POLICY_ASK_ENABLED, `forms/edit-policy-ask.ts`). */
 export const NARRATIVE_CITATION_TEMPLATES: readonly string[] = Object.keys(NARRATIVE_KEY);
 
+/** The account field a form's citation line goes in (POLICY_TOPIC_INTO_FIELD_ENABLED), or null. */
+export function narrativeFieldOf(templateKey: string): string | null {
+  return NARRATIVE_KEY[templateKey] ?? null;
+}
+
 export function citationPage(chunk: ManualChunk, heading: string): number | null {
   const listed = chunk.sections?.find((section) => section.heading.toLowerCase() === heading.toLowerCase());
   if (listed && listed.page > 0) return listed.page;
