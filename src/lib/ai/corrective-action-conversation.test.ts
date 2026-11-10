@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { relativeDateReaderEnabled } from "@/lib/config/chat-quality-flags";
 
 import { TEMPLATE_SEEDS } from "@/lib/forms/library";
 
@@ -1529,7 +1530,9 @@ describe("the form date, from the request or from a follow-up answer", () => {
   it("carries no date when the manager said only \"today\", so the form keeps its default", async () => {
     const answer = await ask("Create a Corrective Action form for Sarah Test. She wore slippers today.");
 
-    expect(answer.formProposal!.formDate).toBeNull();
+    // Changed on purpose (QA, 10 Nov 2026): with RELATIVE_DATE_READER_ENABLED on, a manager's "today" means that day, so
+    // the form carries the context's date (2026-09-09); off, no date is read and the form keeps its default.
+    expect(answer.formProposal!.formDate).toBe(relativeDateReaderEnabled() ? "2026-09-09" : null);
   });
 });
 
@@ -1844,7 +1847,9 @@ describe("a form's name leading the message, across the library", () => {
     expect(answer.formProposal?.templateKey).toBe("dpoa");
     expect(answer.formProposal?.employeeName).toBe(displayTypedName("rosalyn co"));
     expect(answer.formProposal?.status).toBe("ready");
-    expect(answer.formProposal?.formDate ?? null).toBeNull();
+    // Changed on purpose (QA, 10 Nov 2026): with RELATIVE_DATE_READER_ENABLED on, a manager's "today" means that day, so
+    // the form carries the context's date (2026-09-09); off, no date is read and the form keeps its default.
+    expect(answer.formProposal?.formDate ?? null).toBe(relativeDateReaderEnabled() ? "2026-09-09" : null);
     expect(answer.formSelection).toBeUndefined();
     expect(answer.content).not.toMatch(/who is this/i);
     expect(answer.content).toMatch(/I'll draft a \*\*Corrective Action Form\*\* for \*\*rosalyn co\*\*/);
