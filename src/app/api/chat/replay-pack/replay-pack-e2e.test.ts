@@ -727,6 +727,7 @@ afterEach(() => {
   editTool.offered = 0;
   editTool.lastData = null;
   draftAsked.length = 0;
+  revisionAsked.length = 0;
   draftSystemAsked.length = 0;
   draftToolsAsked.length = 0;
 });
@@ -786,6 +787,7 @@ function context(): ReplayContext {
     calls: () => ({ chat: state.chatModelCalls, draft: state.draftCalls, revision: state.revisionCalls, tool: state.toolCalls, patch: patchScript.calls }),
     forms: () => store.form_instances as never,
     draftPrompts: () => [...draftAsked],
+    revisionPrompts: () => [...revisionAsked],
     draftSystems: () => [...draftSystemAsked],
     draftTools: () => [...draftToolsAsked],
     redraft: (instanceId, notes) =>

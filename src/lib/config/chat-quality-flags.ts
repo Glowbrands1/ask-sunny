@@ -4210,3 +4210,18 @@ export function caProcedureBasisEnabled(): boolean {
 export function registerAccuracyConductEnabled(): boolean {
   return envFlag("REGISTER_ACCURACY_CONDUCT_ENABLED");
 }
+
+/**
+ * DETAILS_FROM_EARLIER_ANSWER_ENABLED (coding 6, 10 Nov 2026; default off; a
+ * manager's production chat relayed by coding 3, 5 Nov 2026, both apps:
+ * chat-edits (a)). The coaching details were in the app's own answer BEFORE
+ * the card; then "can you upate the draft with these details of coaching?" →
+ * "it didnt edit in the card" → "the details we just discussed!!!" left the
+ * Details empty: "these details" and "the details we just discussed" were
+ * read from the last reply only — the card, then the app's own "I haven't
+ * changed …". On: they are read from the latest answer that is not the app's
+ * own card or edit reply (`forms/form-content-turn.ts`). Off, as before.
+ */
+export function detailsFromEarlierAnswerEnabled(): boolean {
+  return envFlag("DETAILS_FROM_EARLIER_ANSWER_ENABLED");
+}
