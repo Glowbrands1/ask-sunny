@@ -99,7 +99,10 @@ export const NOV4_OVERNIGHT_SCAN_CASES: readonly ReplayCase[] = [
     title: "\"Can you do the same thing for Perrin Haldane but switch it to a written\" — a NEW Written CA for Perrin, Under Performance, with nothing of Odalys on it and the request never in the Observation",
     report: `${REPORT}, sf-s11: "what information do you need for a corrective action for an employee" → "Odalys Frewen. Verbal Warning. Under Performance." → "Can you do the same thing for Perrin Haldane but switch it to a written"`,
     // Run 4 Nov 2026 (production flags): fails as below.
-    status: { open: "turn 3 is read as an edit of Odalys Frewen's card: the card stays Odalys Frewen, Verbal, and its Observation of Offense becomes the request sentence \"Can you do the same thing for Perrin Haldane but switch it to a written\"; no card for Perrin Haldane" },
+    // Changed on purpose (10 Nov 2026): fixed in production by SAME_REQUEST_OTHER_PERSON_ENABLED, QA round 19; it now holds with production's flags.
+    status: "fixed",
+    // Fixed under SAME_REQUEST_OTHER_PERSON_ENABLED (coding 6, 10 Nov 2026): a new request for the other person; open on production flags until QA flips it.
+    fixFlags: ["SAME_REQUEST_OTHER_PERSON_ENABLED"],
     async run(t) {
       const thread = start(t);
       await thread.say("what information do you need for a corrective action for an employee");
@@ -145,7 +148,10 @@ export const NOV4_OVERNIGHT_SCAN_CASES: readonly ReplayCase[] = [
     title: "a team Coaching Form at Kearney on selling Spray Tan Kits and rainchecks, employee left blank — no product name or instruction in a field",
     report: `${REPORT}, sf-s13: "I need to make a coaching form for the team at Kearney on selling Spray Tan Kits, not writing proper rainchecks which results in inventory not being correct." → "The employee needs to be left blank for now"`,
     // Run 4 Nov 2026 (production flags): fails as below.
-    status: { open: "the product is taken as the employee: the coaching card is for \"Spray Tan Kits\" at both turns, \"I have the employee and the salon\", and turn 2's instruction \"The employee needs to be left blank for now\" is appended to the card's Observation" },
+    // Changed on purpose (10 Nov 2026): fixed in production by its fix flag, QA round 17.
+    status: "fixed",
+    // Fixed under TEAM_CARD_NOT_PRODUCT_ENABLED (coding 6, 10 Nov 2026): the team card, the product is the topic; open on production flags until QA flips it.
+    fixFlags: ["TEAM_CARD_NOT_PRODUCT_ENABLED"],
     async run(t) {
       const thread = start(t);
       await thread.say(
@@ -209,7 +215,10 @@ export const NOV4_OVERNIGHT_SCAN_CASES: readonly ReplayCase[] = [
     title: "\"In the past we have quoted the standards of conduct …\" switches the policy to Standards of Conduct (p.12); the Observation stays the underperformance",
     report: `${REPORT}, sf-s16: "put together a corrective action for Calista Venn due to under performance in salon metrics for the month of october" → "In the past we have quoted the standards of conduct for creating a ca due to underperformance"`,
     // Run 4 Nov 2026 (production flags): fails as below.
-    status: { open: "turn 2 does switch the card to Standards of Conduct p.12, but the card's Observation of Offense becomes the account plus the instruction \"In the past we have quoted the standards of conduct for creating a ca due to underperformance\"" },
+    // Changed on purpose (10 Nov 2026): fixed in production by its fix flag, QA round 17.
+    status: "fixed",
+    // Fixed under POLICY_REFERENCE_NOT_ACCOUNT_ENABLED (coding 6, 10 Nov 2026): the policy instruction is no account; open on production flags until QA flips it.
+    fixFlags: ["POLICY_REFERENCE_NOT_ACCOUNT_ENABLED"],
     async run(t) {
       const thread = start(t);
       await thread.say("put together a corrective action for Calista Venn due to under performance in salon metrics for the month of october");
@@ -232,7 +241,10 @@ export const NOV4_OVERNIGHT_SCAN_CASES: readonly ReplayCase[] = [
     title: "a written CA for not completing Woven courses by Oct 31 — the incident is taken as given; turn 2 cites Standards of Conduct; the Observation stays the courses",
     report: `${REPORT}, sf-s17: "put together a written CA for Marit Sollano for not compelting her woven courses by the deadline of october 31st" → "you can reference the standards of conduct for a policy"`,
     // Run 4 Nov 2026 (production flags): fails as below.
-    status: { open: "turn 1 takes the incident as given and is Written, and turn 2 cites Standards of Conduct, but the card's Observation of Offense becomes the account plus \"you can reference the standards of conduct for a policy\"" },
+    // Changed on purpose (10 Nov 2026): fixed in production by its fix flag, QA round 17.
+    status: "fixed",
+    // Fixed under POLICY_REFERENCE_NOT_ACCOUNT_ENABLED (coding 6, 10 Nov 2026): the policy instruction is no account; open on production flags until QA flips it.
+    fixFlags: ["POLICY_REFERENCE_NOT_ACCOUNT_ENABLED"],
     async run(t) {
       const thread = start(t);
       const first = await thread.say("put together a written CA for Marit Sollano for not compelting her woven courses by the deadline of october 31st");
@@ -269,7 +281,10 @@ export const NOV4_OVERNIGHT_SCAN_CASES: readonly ReplayCase[] = [
     title: "\"Corrective Action\" after a verbal CA request for Odalys Frewen — proceed with the Verbal CA, or say once what is needed; never the same refusal word for word",
     report: `${REPORT}, sf-s19: "I need a corrective action verbal for Odalys Frewen. This is for Under Performance on PPTA, LPSVA, Club Average, Club Close %, and Spa %." → "Corrective Action"`,
     // Run 4 Nov 2026 (production flags): fails as below.
-    status: { open: "turn 1 refuses (\"I won't open formal corrective action off a metric\" and the progression list), and turn 2 \"Corrective Action\" gets \"That's the same answer as my last reply\" with no card: it never proceeds with the Verbal CA she chose" },
+    // Changed on purpose (10 Nov 2026): fixed in production by its fix flag, QA round 17.
+    status: "fixed",
+    // Fixed under LEVEL_AFTER_FORM_NAME_ENABLED (coding 6, 10 Nov 2026): "a corrective action verbal" is the Verbal she chose; open on production flags until QA flips it.
+    fixFlags: ["LEVEL_AFTER_FORM_NAME_ENABLED"],
     async run(t) {
       const thread = start(t);
       const first = await thread.say("I need a corrective action verbal for Odalys Frewen. This is for Under Performance on PPTA, LPSVA, Club Average, Club Close %, and Spa %.");
@@ -289,7 +304,10 @@ export const NOV4_OVERNIGHT_SCAN_CASES: readonly ReplayCase[] = [
     title: "\"Now make one for LYsandra\" after a coaching form for Jovelle Kerrigan — confirm \"Lysandra Quade?\" or make her card; never \"I have the employee\" without naming her",
     report: `${REPORT}, sf-s20: "create a coaching document for Jovelle Kerrigan" → "Now make one for LYsandra"`,
     // Run 4 Nov 2026 (production flags): fails as below.
-    status: { open: "turn 2 \"Now make one for LYsandra\" keeps the card on Jovelle Kerrigan and says \"I have the employee and the salon\" without naming Lysandra Quade or asking" },
+    // Changed on purpose (10 Nov 2026): fixed in production by SAME_REQUEST_OTHER_PERSON_ENABLED, QA round 19; it now holds with production's flags.
+    status: "fixed",
+    // Fixed under SAME_REQUEST_OTHER_PERSON_ENABLED (coding 6, 10 Nov 2026): "Now make one for <first name>" asks "Is this for <full name>?"; open on production flags until QA flips it.
+    fixFlags: ["SAME_REQUEST_OTHER_PERSON_ENABLED"],
     async run(t) {
       const thread = start(t);
       await thread.say("create a coaching document for Jovelle Kerrigan");
@@ -340,8 +358,9 @@ export const NOV4_OVERNIGHT_SCAN_CASES: readonly ReplayCase[] = [
    */
   ...(
     [
-      ["sf-s29-coaching-and-cas", "are there any coaching and ca's for Jovelle Kerrigan", { open: "answered from the forms library (\"Yes. **Corrective Action Form** — …\"), not from Jovelle Kerrigan's forms on file" }],
-      ["sf-s29-named-library-question", "do we have a coaching form for Jovelle Kerrigan?", { open: "answered from the forms library (\"Yes. **Coaching Form** — …\"), not from Jovelle Kerrigan's forms on file" }],
+      // Changed on purpose (8 Nov 2026): fixed in production by PAST_FORMS_BEFORE_LIBRARY_ENABLED, QA round 4, 8 Nov 2026; both rows now hold with production's flags.
+      ["sf-s29-coaching-and-cas", "are there any coaching and ca's for Jovelle Kerrigan", "fixed"],
+      ["sf-s29-named-library-question", "do we have a coaching form for Jovelle Kerrigan?", "fixed"],
     ] as const
   ).map(
     ([key, text, status]): ReplayCase => ({

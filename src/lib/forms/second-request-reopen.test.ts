@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/supabase/server", () => ({ getSupabaseAdmin: () => ({}) }));
@@ -46,6 +46,11 @@ const lookUp = (turns: readonly string[], ownRequest: boolean, narrative: string
   });
 
 describe("the reopen lookup's incident (SECOND_REQUEST_OWN_ACCOUNT_ENABLED)", () => {
+  // Changed on purpose (QA's Sunny round-3 gate, 7 Nov 2026): `ownRequest` is passed only with the flag on, and the
+  // request start (`ai/remap-incident.ts` currentRequestStart) reads "another / separate <form>" behind the same flag.
+  beforeEach(() => vi.stubEnv("SECOND_REQUEST_OWN_ACCOUNT_ENABLED", "true"));
+  afterEach(() => vi.unstubAllEnvs());
+
   it("off (as before): the whole chat matches the first draft, so a second request reopens it unless both dates differ", () => {
     expect(lookUp([FIRST, SECONDS[0]!], false, NARRATIVES[0]!, [null, null])).toBe("first-draft");
   });

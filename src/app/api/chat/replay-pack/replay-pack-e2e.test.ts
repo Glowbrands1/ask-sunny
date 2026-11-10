@@ -1,5 +1,5 @@
 import { STREAM_HEADER, unwrapStreamed } from "@/lib/api/streamed-response";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -49,6 +49,10 @@ const store: FakeStore = {
   chat_traces: [],
   chat_form_state: [],
   chat_form_incidents: [],
+  // The two tables a turn's memory writes (QA, 10 Nov 2026: CHAT_PARALLEL_LOADS must write exactly as often as before;
+  // without them every write failed silently and the record's row counts were always 0).
+  user_memory: [],
+  chat_context_summaries: [],
 } as unknown as FakeStore;
 
 // As production builds the role table when the ASD may create forms (NEXT_PUBLIC_, read once at load).
@@ -65,10 +69,13 @@ const draftSystemAsked = vi.hoisted(() => [] as string[]);
 const draftToolsAsked = vi.hoisted(() => [] as string[]);
 const state = vi.hoisted(() => ({
   slotReading: "none" as "none" | "ca" | "copy",
+  /** Chunks the pinned manual also has, when a case sets them (`manualAlsoHas`); none by default. */
+  manualExtra: [] as Record<string, unknown>[],
   /** What the slot model (record_intent_slots) reads this turn, when a case sets it — as a production trace shows. */
   slotsRead: {} as Record<string, unknown>,
   /** The employee the AI reader quotes this turn, when a case sets it (it is checked against the roster as in production). */
   readerEmployee: null as string | null,
+  slotsOnlyIfSaid: false,
   remapObservation: null as string | null,
   /** What the form-reading model returns for this turn (extract_form_fields). */
   reading: {} as Record<string, unknown>,
@@ -89,6 +96,7 @@ const state = vi.hoisted(() => ({
  * the evidence and date checks, the reducer, the writes and the reload are
  * the real ones.
  */
+const systemPrompts = vi.hoisted(() => ({ hashes: [] as string[] }));
 const patchScript = vi.hoisted(() => ({ outputs: [] as unknown[], calls: 0, byLatest: null as Record<string, unknown> | null }));
 vi.mock("@/lib/forms/form-patch-call", () => ({
   FORM_PATCH_DEFAULT_TIMEOUT_MS: 5_000,
@@ -113,7 +121,55 @@ vi.mock("@/lib/forms/form-patch-call", () => ({
   },
 }));
 
-vi.mock("@/lib/supabase/server", () => ({ getSupabaseAdmin: () => fakeSupabase(store) }));
+/*
+ * `t.failSavesOf` (QA, 9 Nov 2026): a save of the form's values that includes the named field returns an error, as a
+ * failed database write would, so a case can make a turn throw part-way.
+ */
+const faults = vi.hoisted(() => ({ field: null as string | null, strayDraftField: null as string | null }));
+/** `t.summaryWrites`: what the long-context summary model returns; none by default (the summary call fails, as unscripted). */
+const summaries = vi.hoisted(() => ({ reply: null as string | null }));
+
+/*
+ * `t.draftWriteCarries` (coding 6, 10 Nov 2026; DRAFT_WRITE_NEVER_SILENT_ENABLED): the draft route's next write through
+ * the one writer also carries this field, once, as a stray value would; the REAL writer then refuses it, and with it
+ * the whole write (all or nothing). Every other call is the real `draftWrite`.
+ */
+vi.mock("@/lib/forms/form-write", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/forms/form-write")>();
+  return {
+    ...actual,
+    draftWrite: ((instanceId, draft, ...rest) => {
+      const stray = faults.strayDraftField;
+      faults.strayDraftField = null;
+      const carried = stray ? { ...draft, values: { ...(draft.values ?? {}), [stray]: "stray" } } : draft;
+      return actual.draftWrite(instanceId, carried, ...rest);
+    }) as typeof actual.draftWrite,
+  };
+});
+function withFaults<T>(client: T): T {
+  return new Proxy(client as object, {
+    get(target, prop, receiver) {
+      const value = Reflect.get(target, prop, receiver);
+      if (prop !== "from" || typeof value !== "function") return value;
+      return (table: string) => {
+        const builder = (value as (name: string) => Record<string, unknown>).call(target, table);
+        if (table !== "form_instance_values" || !faults.field) return builder;
+        const upsert = builder.upsert as ((rows: unknown, options?: unknown) => unknown) | undefined;
+        if (typeof upsert !== "function") return builder;
+        return new Proxy(builder, {
+          get(inner, key, innerReceiver) {
+            if (key !== "upsert") return Reflect.get(inner, key, innerReceiver);
+            return (rows: unknown, options?: unknown) =>
+              (Array.isArray(rows) ? rows : [rows]).some((row) => (row as { field_key?: string }).field_key === faults.field)
+                ? Promise.resolve({ data: null, error: { message: "replay fault" } })
+                : upsert.call(inner, rows, options);
+          },
+        });
+      };
+    },
+  }) as T;
+}
+vi.mock("@/lib/supabase/server", () => ({ getSupabaseAdmin: () => withFaults(fakeSupabase(store)) }));
 
 vi.mock("@/lib/api/respond", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/respond")>();
@@ -194,8 +250,11 @@ vi.mock("@/lib/ai/call-claude", () => ({
       usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 },
     };
   },
-  callClaude: async (input?: { formEditTool?: { data: string; onToolUse: (call: unknown) => void } | null }) => {
+  callClaude: async (input?: { system?: string; formEditTool?: { data: string; onToolUse: (call: unknown) => void } | null }) => {
     state.chatModelCalls += 1;
+    // REPLAY_RECORD (QA, 10 Nov 2026): the system prompt each answer was asked with, as a hash, so two versions of the
+    // prompt's assembly can be compared case by case (the stage-timing split of buildSystemPrompt's awaits).
+    if (process.env.REPLAY_RECORD) systemPrompts.hashes.push(createHash("sha256").update(String(input?.system ?? "")).digest("hex").slice(0, 16));
     if (input?.formEditTool) {
       editTool.offered += 1;
       editTool.lastData = input.formEditTool.data;
@@ -228,6 +287,7 @@ vi.mock("@/lib/ai/call-claude", () => ({
   },
   callClaudeTool: async (input: { tool?: { name?: string }; messages?: { content?: unknown }[] }) => {
     state.toolCalls += 1;
+    if (input.tool?.name === "store_summary") return summaries.reply === null ? null : { summary: summaries.reply };
     if (input.tool?.name === "extract_form_fields") {
       const text = JSON.stringify(input.messages ?? []);
       return {
@@ -270,6 +330,12 @@ vi.mock("@/lib/ai/call-claude", () => ({
       formTurn: state.slotReading === "ca",
       policyHeading: null,
       ...state.slotsRead,
+      // slotsRead(…, { onlyIfSaid: true }): a call that was never shown the scripted employee does not read them.
+      ...(state.slotsOnlyIfSaid &&
+      typeof state.slotsRead.employee === "string" &&
+      !JSON.stringify(input.messages ?? []).toLowerCase().includes(String(state.slotsRead.employee).toLowerCase())
+        ? { employee: null }
+        : {}),
     };
   },
 }));
@@ -355,7 +421,7 @@ vi.mock("@/lib/knowledge/providers/supabase", () => ({
         documentTitle: "2025 JBA Policy Manual - Edited 5-2025",
         documentCategory: "policies_compliance",
         matchedBy: "tag",
-        chunks: JBA_MANUAL_CA_CHUNKS,
+        chunks: [...JBA_MANUAL_CA_CHUNKS, ...state.manualExtra],
       };
     }
   },
@@ -564,7 +630,9 @@ beforeEach(async () => {
   store.form_instances = new JoiningRows() as never;
   state.slotReading = "none";
   state.slotsRead = {};
+  state.manualExtra = [];
   state.readerEmployee = null;
+  state.slotsOnlyIfSaid = false;
   state.remapObservation = null;
   state.reading = {};
   state.draft = { values: {} };
@@ -572,6 +640,9 @@ beforeEach(async () => {
   patchScript.outputs = [];
   patchScript.calls = 0;
   patchScript.byLatest = null;
+  faults.field = null;
+  summaries.reply = null;
+  faults.strayDraftField = null;
   state.directory = [
     { id: "e-1", firstName: "Quinn", lastName: "Marlowe", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-66"], positionName: null },
     { id: "e-2", firstName: "Dale", lastName: "Ferris", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-66"], positionName: null },
@@ -608,6 +679,7 @@ const CLASSIFY_ON = (process.env.FLAG_CLASSIFY_ON ?? "").split(",").map((name) =
 const record: { turns: { question: string; reply: string; updated: string[] | null }[] } = { turns: [] };
 async function recorded(id: string, mode: string, run: () => Promise<void>) {
   record.turns = [];
+  systemPrompts.hashes = [];
   const at = performance.now();
   let error: string | null = null;
   try {
@@ -617,7 +689,10 @@ async function recorded(id: string, mode: string, run: () => Promise<void>) {
     throw thrown;
   } finally {
     if (process.env.REPLAY_RECORD) {
-      appendFileSync(process.env.REPLAY_RECORD, `${JSON.stringify({ id, mode, ok: error === null, error, ms: Math.round(performance.now() - at), turns: record.turns })}\n`);
+      // The rows the turn's writes left (QA, 9 Nov 2026: CHAT_PARALLEL_LOADS must write exactly as often as before).
+      const tables = store as unknown as Record<string, unknown[] | undefined>;
+      const rows = { user_memory: tables.user_memory?.length ?? 0, chat_context_summaries: tables.chat_context_summaries?.length ?? 0 };
+      appendFileSync(process.env.REPLAY_RECORD, `${JSON.stringify({ id, mode, ok: error === null, error, ms: Math.round(performance.now() - at), turns: record.turns, rows, systems: systemPrompts.hashes })}\n`);
     }
   }
 }
@@ -662,6 +737,9 @@ function context(): ReplayContext {
     directory: (rows) => {
       state.directory = rows as never;
     },
+    manualAlsoHas: (chunks) => {
+      state.manualExtra = [...chunks];
+    },
     draftWrites: (values, checked, extra) => {
       state.draft = { values, ...(checked ? { checked } : {}), ...(extra ?? {}) };
     },
@@ -671,9 +749,10 @@ function context(): ReplayContext {
     modelSays: (text) => {
       said.answer = text;
     },
-    slotsRead: (slots, readerEmployee = null) => {
+    slotsRead: (slots, readerEmployee = null, options = {}) => {
       state.slotsRead = slots;
       state.readerEmployee = readerEmployee;
+      state.slotsOnlyIfSaid = options.onlyIfSaid === true;
     },
     modelCallsEditTool: (input) => {
       editTool.input = input;
@@ -688,6 +767,16 @@ function context(): ReplayContext {
       patchScript.outputs = [];
       patchScript.calls = 0;
       patchScript.byLatest = { ...byLatest };
+    },
+    failSavesOf: (field) => {
+      faults.field = field;
+    },
+    summaryWrites: (summary) => {
+      summaries.reply = summary;
+    },
+    rows: (table) => [...(((store as unknown as Record<string, unknown[] | undefined>)[table] ?? []) as Record<string, unknown>[])],
+    draftWriteCarries: (field) => {
+      faults.strayDraftField = field;
     },
     calls: () => ({ chat: state.chatModelCalls, draft: state.draftCalls, revision: state.revisionCalls, tool: state.toolCalls, patch: patchScript.calls }),
     forms: () => store.form_instances as never,
@@ -745,8 +834,18 @@ describe("src/config/production-flags.json", () => {
   });
 });
 
+/*
+ * REPLAY_PACK_HALF (CI only; QA, 9 Nov 2026): the flags-off parity run (`src/lib/ai/flags-off-parity.test.ts`) runs the
+ * pack as two children, each with one half of the cases by id ("0": the first half, "1": the second), so neither child
+ * passes its time budget as the pack grows. Unset, every case runs, as before.
+ */
+const HALF = process.env.REPLAY_PACK_HALF;
+const BY_ID = [...CASES].sort((a, b) => a.id.localeCompare(b.id));
+const MIDDLE = Math.ceil(BY_ID.length / 2);
+const RUN = HALF === "0" ? BY_ID.slice(0, MIDDLE) : HALF === "1" ? BY_ID.slice(MIDDLE) : CASES;
+
 describe("the replay pack", () => {
-  for (const replay of CASES) {
+  for (const replay of RUN) {
     const title = `${replay.id}: ${replay.title}`;
     if (replay.status === "fixed") {
       it(`${title} — holds with production's flags`, async () => {

@@ -66,7 +66,8 @@ export const NOV7_SALES_OBSERVATION_ACCOUNT_CASES: ReplayCase[] = [
     title: "sf-s23: \"…for performance for october\" then \"not pay roll deductable\": neither is the Observation",
     report: `${REPORT} (sf-s23 turn 2)`,
     // The payroll answer in the Observation is open with production's flags too (Pau's sf-s23, nov5-pau-sf-s21-s25-cases).
-    status: { open: "\"not pay roll deductable\" is part of the card's Observation" },
+    // Changed on purpose (8 Nov 2026): fixed in production by the sales triple (SALES_SHORTFALL_OBJECT_ENABLED, SALES_OBSERVATION_ACCOUNT_ENABLED, CA_PERFORMANCE_REASON_ENABLED), QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const thread = await start(t);

@@ -35,6 +35,13 @@ describe("SALES_OBSERVATION_ACCOUNT_ENABLED", () => {
     expect(observationAccount(sentence, NAME)).toBe(account);
   });
 
+  it("on, negative: a payroll answer inside the account stays (the round-4 gate, 8 Nov 2026; coding 2 asked it pinned)", () => {
+    on();
+    expect(observationAccount("a register shortage on 10-20-26. payroll deduct applies and $3.25 will be deducted from check.", NAME)).toBe(
+      "a register shortage on 10-20-26. payroll deduct applies and $3.25 will be deducted from check.",
+    );
+  });
+
   it("on, negative: an account that names her keeps her name", () => {
     on();
     expect(observationAccount("Remy Calder was rude to a guest at the front desk", NAME)).toBe("Remy Calder was rude to a guest at the front desk");

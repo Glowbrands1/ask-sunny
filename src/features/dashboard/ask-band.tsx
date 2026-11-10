@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { ArrowUp, X } from "lucide-react";
 
+import { SunnyMascot } from "@/components/sunny-mascot";
 import { SunMark } from "@/components/brand-mark";
 import { quickQuestionsFor } from "@/lib/ai/quick-questions";
 import { useSession } from "@/lib/session/session-context";
@@ -173,21 +174,27 @@ export function AskBand({
   return (
     <section
       aria-label="Ask Sunny"
-      className={cn("shrink-0 border-b-4 border-brand-yellow bg-band", className)}
+      /* CLAY: a rounded dark pillow inset from the canvas, as in the mockup. */
+      className={cn("clay-band mx-3 mt-2 shrink-0 overflow-hidden sm:mx-4", className)}
       /* The corner glow: the one sanctioned appearance of the red-light red. */
       style={{ backgroundImage: "var(--band-glow)" }}
     >
       <div className="px-5 pt-6 pb-7 sm:px-6">
         {/* ---------------------------------------------------- band head -- */}
         <div className="mb-4 flex flex-col gap-3 sm:mb-[18px] sm:flex-row sm:items-end sm:gap-4">
-          <div className="min-w-0">
-            <h1 className="display text-[26px] text-band-foreground sm:text-[30px]">
+          <div className="flex min-w-0 items-center gap-4">
+            {/* Sunny, bobbing beside the greeting. Brand, so it gives way to
+                the greeting on a phone. */}
+            <SunnyMascot className="hidden w-[96px] shrink-0 sm:block" />
+            <div className="min-w-0">
+            <h1 className="display text-[26px] text-band-foreground sm:text-[32px]">
               {greeting},{" "}
               <span className="text-brand-yellow">{greetingName}</span>
             </h1>
             <p className="mt-1.5 text-xs text-band-muted-foreground">
               {formatLongDate(businessToday())}
             </p>
+            </div>
           </div>
 
           {/*
@@ -419,7 +426,7 @@ function AskCard({
   return (
     <div
       className={cn(
-        "flex gap-4 rounded-[18px] bg-surface transition-shadow duration-200",
+        "flex gap-4 rounded-[28px] bg-surface transition-shadow duration-200",
         /*
          * The controls align to the LINE BEING TYPED ON, not to the middle of
          * the card. Whenever the suggestion chips are showing, the card is tall
@@ -518,7 +525,7 @@ function AskCard({
                   event.preventDefault();
                   onPrompt(prompt);
                 }}
-                className="rounded-full border border-border-strong bg-background px-3.5 py-1.5 text-[11.5px] font-bold text-foreground transition-colors hover:border-brand-yellow disabled:opacity-50"
+                className="rounded-full bg-surface-muted px-3.5 py-1.5 text-[11.5px] font-bold text-foreground shadow-dent transition-colors hover:bg-brand-yellow-soft disabled:opacity-50"
               >
                 {prompt}
               </button>
@@ -544,7 +551,7 @@ function AskCard({
         disabled={busy || value.trim().length === 0}
         aria-label="Ask Sunny"
         className={cn(
-          "grid size-11 shrink-0 place-items-center rounded-full bg-brand-yellow text-brand-yellow-foreground transition-opacity disabled:opacity-45",
+          "clay-sun-button grid size-12 shrink-0 place-items-center rounded-full text-brand-yellow-foreground transition-opacity disabled:opacity-45",
           showPlaceholderBlock && "mt-0.5",
         )}
       >

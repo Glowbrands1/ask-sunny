@@ -15,11 +15,11 @@ import { authorizeInstance, instanceListFilterFor, visibleInstances } from "./in
 import { applyAssistantDraft, listInstances, loadInstance, type InstanceRow } from "./instances";
 import { privateAwareLimit } from "./private-creators";
 import { extractEmployeeNames, samePerson } from "./proposal";
-import { draftMergeEnabled, formEditDateRulesEnabled, formEditSingleWriterEnabled, reopenByAnyOpenVerbEnabled } from "@/lib/config/chat-quality-flags";
+import { draftMergeEnabled, formEditDateRulesEnabled, formEditSingleWriterEnabled, possessiveNoApostropheEnabled, reopenByAnyOpenVerbEnabled, reopenCloseSpellingEnabled, reopenNotOpenFormEnabled } from "@/lib/config/chat-quality-flags";
 
 import { fieldsToRestore, showDraftWithEdits } from "./draft-merge";
 import { EDIT_VERB, SHOW_OR_OPEN_VERB, WHICH_FORM_ON_FILE } from "./reopen-cue";
-import { readReopenRequest } from "./reopen-request";
+import { leadsWithReopenRequest, readReopenRequest } from "./reopen-request";
 import { getTemplateByKey } from "./repository";
 
 /**
@@ -58,6 +58,11 @@ export async function reopenRequestedForm(input: {
   activeInstanceId?: string;
   /** The template of a proposal still waiting to be created, if any. */
   continuingTemplateKey?: string;
+  /**
+   * REOPEN_NOT_OPEN_FORM_ENABLED: the form open when the turn arrived, even when this turn set it aside as a new
+   * request (NEW_REQUEST_OPEN_DRAFT clears `activeInstanceId`). Read only by that flag.
+   */
+  openWhenAsked?: string;
 }): Promise<AskResponse | null> {
   /*
    * REOPEN_BY_ANY_OPEN_VERB_ENABLED (QA, 6 Nov 2026): the answer to "Which one
@@ -107,7 +112,17 @@ export async function reopenRequestedForm(input: {
     names = names.map((name) => name.replace(LEADING_VERB_IN_NAME, "")).filter(Boolean);
     const firstNames = names.length === 0 ? (input.activeInstanceId ? [] : candidateNameWords(question)) : names.filter((name) => !/\s/.test(name.trim()));
     if (firstNames.length > 0) {
-      const people = await rosterPeopleByFirstName(input.request, firstNames);
+      let people = await rosterPeopleByFirstName(input.request, firstNames);
+      /*
+       * POSSESSIVE_NO_APOSTROPHE_ENABLED (QA, 8 Nov 2026, ported from the sibling app's live tester with round 5): "bring up <first name>s
+       * corrective action" — a possessive typed without the apostrophe. Only when no roster person has the word as it
+       * was typed, the word without its final "s" ("ss" never) is tried, by the same one-person rule.
+       */
+      if (people.length === 0 && possessiveNoApostropheEnabled()) {
+        const unpossessed = firstNames.map((word) => word.trim()).filter((word) => /^\p{L}{3,}s$/u.test(word) && !/ss$/i.test(word)).map((word) => word.slice(0, -1));
+        if (unpossessed.length > 0) people = await rosterPeopleByFirstName(input.request, unpossessed);
+        if (people.length === 1) names = names.filter((name) => !unpossessed.some((word) => `${word}s`.toLowerCase() === name.trim().toLowerCase()));
+      }
       if (people.length > 1) return reply(whichPersonReply(people, await templateLabel(templateKey)));
       if (people.length === 1) names = [...names.filter((name) => /\s/.test(name.trim())), people[0]!];
     }
@@ -156,11 +171,25 @@ export async function reopenRequestedForm(input: {
     } catch {
       return null;
     }
-    const candidates = visible
+    const onFile = visible
       .filter((row) => (templateKey === null || row.templateKey === templateKey) && row.status !== "revised")
-      .filter((row) => !finalizedMeant || row.status === "finalized")
+      .filter((row) => !finalizedMeant || row.status === "finalized");
+    let candidates = onFile
       .filter((row) => named(row.employeeName))
       .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));
+    /*
+     * REOPEN_CLOSE_SPELLING_ENABLED (sf-s26, 5 Nov 2026): "Edit Thesaly Brant CA" — nobody named exactly; the one
+     * person on these forms whose name the request spells closely (`forms/reopen-close-spelling.ts`).
+     */
+    if (candidates.length === 0 && reopenCloseSpellingEnabled()) {
+      const meant = (await import("./reopen-close-spelling")).closelySpelledEmployee(question, onFile.map((row) => row.employeeName));
+      if (meant) {
+        names = [meant];
+        candidates = onFile
+          .filter((row) => samePerson(meant, row.employeeName))
+          .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));
+      }
+    }
     /*
      * REOPEN_BY_ANY_OPEN_VERB_ENABLED (QA/Pau, 6 Nov 2026): several forms on
      * file for the person named — listed, and the manager asked which. One
@@ -185,6 +214,18 @@ export async function reopenRequestedForm(input: {
     );
   }
   if (!target) return null;
+  /*
+   * REOPEN_NOT_OPEN_FORM_ENABLED (QA's Sunny round-4 gate, 8 Nov 2026, nov7-refusal-sun-msb-format): "I need the CA for
+   * the Must see behaviors … Make it in the format that I explained above in the first chat for <first name>." with that
+   * CA open read "see" as a show verb and "the CA" as the form, found the open CA (here or by the name), and answered
+   * "The Corrective Action Form for <A> is still a draft, so it's open to edit." with no edit. When the form found is the
+   * one already open and the verb is no request of its own at the start of the turn, the reopen steps aside and the
+   * turn goes on as it does without REOPEN_BY_ANY_OPEN_VERB. "show me the draft" still opens it. Off, as before.
+   */
+  const openForm = input.activeInstanceId ?? input.openWhenAsked;
+  if (reopenNotOpenFormEnabled() && openForm && target.id === openForm && !leadsWithReopenRequest(question)) {
+    return null;
+  }
 
   let draft: Awaited<ReturnType<typeof openEditableDraft>>;
   try {

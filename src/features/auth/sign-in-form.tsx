@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Loader2, Lock } from "lucide-react";
+import { Eye, EyeOff, Loader2, Lock } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { FieldGroup, Input } from "@/components/ui/field";
@@ -52,6 +52,7 @@ export function SignInForm({ redirectTo = "/" }: { redirectTo?: string }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   /*
    * Messages this screen may have been SENT here with, rather than ones it
@@ -157,7 +158,7 @@ export function SignInForm({ redirectTo = "/" }: { redirectTo?: string }) {
   }
 
   return (
-    <form className="mt-8 space-y-4" onSubmit={handleSubmit}>
+    <form className="mt-8 space-y-5" onSubmit={handleSubmit}>
       {signedOut ? (
         <Notice tone="neutral">You have been signed out.</Notice>
       ) : null}
@@ -184,16 +185,31 @@ export function SignInForm({ redirectTo = "/" }: { redirectTo?: string }) {
       </FieldGroup>
 
       <FieldGroup label="Password" htmlFor="login-password">
-        <Input
-          id="login-password"
-          name="password"
-          type="password"
-          autoComplete="current-password"
-          required
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          disabled={busy}
-        />
+        <div className="relative">
+          <Input
+            id="login-password"
+            name="password"
+            type={showPassword ? "text" : "password"}
+            autoComplete="current-password"
+            required
+            data-reveal=""
+            className="pr-11"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            disabled={busy}
+          />
+          {/* Show/hide only changes how the field renders; the value never
+              leaves component state either way. */}
+          <button
+            type="button"
+            onClick={() => setShowPassword((shown) => !shown)}
+            aria-label={showPassword ? "Hide password" : "Show password"}
+            aria-pressed={showPassword}
+            className="absolute top-1/2 right-3 flex size-8 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
+          >
+            {showPassword ? <EyeOff className="size-5" aria-hidden /> : <Eye className="size-5" aria-hidden />}
+          </button>
+        </div>
       </FieldGroup>
 
       <Button type="submit" className="w-full" disabled={busy || !email || !password}>
@@ -201,10 +217,10 @@ export function SignInForm({ redirectTo = "/" }: { redirectTo?: string }) {
         {busy ? "Signing in…" : "Sign in"}
       </Button>
 
-      <p className="text-center text-xs">
+      <p className="text-center text-sm">
         <Link
           href="/forgot-password"
-          className="font-medium text-primary underline-offset-2 hover:underline"
+          className="font-medium text-foreground underline-offset-2 hover:underline"
         >
           Forgot your password?
         </Link>

@@ -242,6 +242,16 @@ const NEW_FLAGS = [
   "NEWEST_PLACE_TURN_ENABLED",
   "QUESTION_NOT_FORM_ENABLED",
   "FORM_EDIT_DATE_RULES_ENABLED",
+  // coding 2: CARD_POLICY_PLAN_ONLY (default off): forced off with the others in the child run.
+  "CARD_POLICY_PLAN_ONLY_ENABLED",
+  // coding 2: LIST_POLICY_IS_EDIT (default off): forced off with the others in the child run.
+  "LIST_POLICY_IS_EDIT_ENABLED",
+  // coding 2: NO_ACCOUNT_NO_APP_POLICY (default off): forced off with the others in the child run.
+  "NO_ACCOUNT_NO_APP_POLICY_ENABLED",
+  // coding 2: AMOUNT_BEFORE_PAYROLL_DEDUCT (default off): forced off with the others in the child run.
+  "AMOUNT_BEFORE_PAYROLL_DEDUCT_ENABLED",
+  // coding 2: COPY_OWN_SALON (default off): forced off with the others in the child run.
+  "COPY_OWN_SALON_ENABLED",
   // coding 2: REMOVE_POLICY_NOT_NAMED (A1; default off): forced off with the others in the child run.
   "REMOVE_POLICY_NOT_NAMED_ENABLED",
   "FOLLOWUP_NEW_TOPIC_RETRIEVAL_ENABLED",
@@ -256,6 +266,8 @@ const NEW_FLAGS = [
   "FORM_DATE_INCIDENT_ONLY_ENABLED",
   "REOPEN_VERB_GUARD_ENABLED",
   "REOPEN_BY_ANY_OPEN_VERB_ENABLED",
+  // coding 2: REOPEN_NOT_OPEN_FORM (default off): forced off with the others in the child run.
+  "REOPEN_NOT_OPEN_FORM_ENABLED",
   "FORM_REVISIONS_ENABLED",
   "NEXT_PUBLIC_FORM_REVISIONS_ENABLED",
   "SENSITIVE_DEFAULTS_REDACT_ENABLED",
@@ -334,6 +346,10 @@ const NEW_FLAGS = [
   "FORM_EDIT_HONEST_REPLY_ENABLED",
   "CLAIM_GUARD_ENABLED",
   "NAME_CORRECTION_WORDS_ENABLED",
+  // Coding: FINAL_REPLY_MARKER_GUARD (round 5, 8 Nov 2026; default off).
+  "FINAL_REPLY_MARKER_GUARD_ENABLED",
+  // Coding: PROPOSAL_NAME_CORRECTION (round 5, 8 Nov 2026; port from Ask Bubbles; default off).
+  "PROPOSAL_NAME_CORRECTION_ENABLED",
   "POLICY_CHANGE_REST_OF_TURN_ENABLED",
   "OPEN_FORM_NO_SELECTION_ENABLED",
   "PERSON_GUARD_ENABLED",
@@ -344,6 +360,24 @@ const NEW_FLAGS = [
   "FORM_EDIT_REFERS_BACK_ENABLED",
   "SAME_FORM_COPY_ENABLED",
   "SAME_FORM_COPY_NEW_PERSON_ENABLED",
+  // coding 6: DRAFT_WRITE_NEVER_SILENT (default off): forced off with the others.
+  "DRAFT_WRITE_NEVER_SILENT_ENABLED",
+  // coding 6: POLICY_REFERENCE_NOT_ACCOUNT (default off): forced off with the others.
+  "POLICY_REFERENCE_NOT_ACCOUNT_ENABLED",
+  // coding 6: LEVEL_AFTER_FORM_NAME (default off): forced off with the others.
+  "LEVEL_AFTER_FORM_NAME_ENABLED",
+  // coding 6: TEAM_CARD_NOT_PRODUCT (default off): forced off with the others.
+  "TEAM_CARD_NOT_PRODUCT_ENABLED",
+  // coding 6: REOPEN_CLOSE_SPELLING (default off): forced off with the others.
+  "REOPEN_CLOSE_SPELLING_ENABLED",
+  // coding 6: PAYROLL_SPLIT_WORDS (default off): forced off with the others.
+  "PAYROLL_SPLIT_WORDS_ENABLED",
+  // coding 6: SAME_REQUEST_OTHER_PERSON (default off): forced off with the others.
+  "SAME_REQUEST_OTHER_PERSON_ENABLED",
+  // coding 6: COACHING_OBSERVED_SAVED (default off): forced off with the others.
+  "COACHING_OBSERVED_SAVED_ENABLED",
+  // coding 6: APP_INSTRUCTIONS_NOT_ACCOUNT (default off): forced off with the others.
+  "APP_INSTRUCTIONS_NOT_ACCOUNT_ENABLED",
   "STAFF_PICKER_ENABLED",
   "STAFF_PICKER_STORE_TITLES_ENABLED",
   "STAFF_PICKER_BARE_ANSWER_ENABLED",
@@ -355,11 +389,14 @@ const NEW_FLAGS = [
   "FIRST_NAME_YES_KEEPS_REQUEST_ENABLED",
   "FORM_PATCH_REDUCER_ENABLED",
   "FORM_REPLY_FROM_DIFF_ENABLED",
+  // coding 5, 7 Nov 2026 (default off; only with FORM_PATCH_REDUCER).
+  "EDIT_POLICY_ASK_ENABLED",
   "CARD_OBSERVATION_OWN_REQUEST_ENABLED",
   "CA_NAME_FROM_CHAT_ENABLED",
   "NEW_REQUEST_OPEN_DRAFT_ENABLED",
   "PRIOR_ACTIONS_POLICY_ENABLED",
   "PRIOR_ACTIONS_NO_SIGNED_ENABLED",
+  "PRIOR_COACHING_DENIAL_ENABLED",
   "NEXT_PUBLIC_CARD_POLICY_TO_DRAFT_ENABLED",
   "TEAM_CARD_WORDING_ENABLED",
   "OBSERVATION_NOT_POLICY_NAME_ENABLED",
@@ -371,6 +408,26 @@ const NEW_FLAGS = [
   // Missing from this list since its PR (QA, 7 Nov 2026): forced off with the others in the child run.
   "REQUEST_KEPT_IN_WINDOW_ENABLED",
   "NEXT_PUBLIC_REQUEST_KEPT_IN_WINDOW_ENABLED",
+  // coding 2: POLICY_CORRECTION_NOT_ACCOUNT (default off): forced off with the others.
+  "POLICY_CORRECTION_NOT_ACCOUNT_ENABLED",
+  // coding 2: REVISION_EDIT_NEEDS_EDIT (default off): forced off with the others.
+  "REVISION_EDIT_NEEDS_EDIT_ENABLED",
+  "NEXT_PUBLIC_REVISION_EDIT_NEEDS_EDIT_ENABLED",
+  // coding 2: PAYROLL_CLAUSE_NOT_ACCOUNT (default off): forced off with the others.
+  "PAYROLL_CLAUSE_NOT_ACCOUNT_ENABLED",
+  // coding 2: EXIT_TERMINATION_STATED (default off): forced off with the others.
+  "EXIT_TERMINATION_STATED_ENABLED",
+  // coding 2: EXIT_OTHER_PERSON_NOT_SUBJECT (default off): forced off with the others.
+  "EXIT_OTHER_PERSON_NOT_SUBJECT_ENABLED",
+  // coding 2: POSSESSIVE_NO_APOSTROPHE (default off): forced off with the others.
+  "POSSESSIVE_NO_APOSTROPHE_ENABLED",
+  // coding 2: KEPT_REQUEST_SAME_FORM (default off): forced off with the others.
+  "KEPT_REQUEST_SAME_FORM_ENABLED",
+  "NEXT_PUBLIC_KEPT_REQUEST_SAME_FORM_ENABLED",
+  // coding 2: CARRIED_PERSON_NOTICE (default off): forced off with the others.
+  "CARRIED_PERSON_NOTICE_ENABLED",
+  // coding 2: FIELD_LABEL_NOT_A_QUESTION (default off): forced off with the others.
+  "FIELD_LABEL_NOT_A_QUESTION_ENABLED",
   "AM_PRIOR_WARNINGS_ENABLED",
   "TRUNCATION_RETRY_ENABLED",
   "CHAT_RESPONSE_STREAM_ENABLED",
@@ -453,9 +510,73 @@ const NEW_FLAGS = [
   // After the Sunny flip (6 Nov 2026): forced off with the others in the child run.
   "SALES_SHORTFALL_OBJECT_ENABLED",
   "SALES_OBSERVATION_ACCOUNT_ENABLED",
+  // Coding: REQUEST_PARTICIPLE_LEAD (round-5, 8 Nov 2026; default off).
+  "REQUEST_PARTICIPLE_LEAD_ENABLED",
   "UNDER_PERFORMANCE_EXPLAINED_ENABLED",
   // After the Sunny flip (6 Nov 2026, row 6): forced off with the others in the child run.
   "TWO_FORMS_OWN_PERSON_ENABLED",
+  // coding 2: TWO_FORMS_EACH_PERSON (default off): forced off with the others in the child run.
+  "TWO_FORMS_EACH_PERSON_ENABLED",
+  "TWO_FORMS_CARD_NOT_ASKED_ENABLED",
+  // coding 2: CREATE_COMMAND_POINTS_TO_CARD and CARD_COMPLAINT_NOT_ACCOUNT (default off): forced off with the others.
+  "CREATE_COMMAND_POINTS_TO_CARD_ENABLED",
+  "CARD_COMPLAINT_NOT_ACCOUNT_ENABLED",
+  // coding 5: UNKNOWN_NAME_ASK (port of the sibling app's flag, default off): forced off with the others in the child run.
+  "UNKNOWN_NAME_ASK_ENABLED",
+  // coding 5: CORRECTED_DATE_KEPT (default off): forced off with the others in the child run.
+  "CORRECTED_DATE_KEPT_ENABLED",
+  "DATE_QUESTION_KEPT_ENABLED",
+  // coding 5: MISSED_SHIFT_NOT_LATENESS (default off): forced off with the others in the child run.
+  "MISSED_SHIFT_NOT_LATENESS_ENABLED",
+  // coding 4: ONE_CARD_ONE_PAGE (QA, Sunny round 9, 9 Nov 2026; default off): forced off with the others in the child run.
+  "ONE_CARD_ONE_PAGE_ENABLED",
+  "ANOTHER_REQUEST_LEAD_ENABLED",
+  // coding 4: the make-it-about chain, ported from the sibling app (9 Nov 2026; default off): forced off with the others.
+  "STEP_B_MAKE_IT_ABOUT_ACCOUNT_ENABLED",
+  "STEP_B_DATE_SAID_ENABLED",
+  "STEP_B_DATE_WITH_ABOUT_ENABLED",
+  "MADE_ABOUT_ALL_OR_NOTHING_ENABLED",
+  "MADE_ABOUT_UNDATED_TOGETHER_ENABLED",
+  "MADE_ABOUT_POLICY_LINE_ENABLED",
+  "MADE_ABOUT_READER_ACCOUNT_ENABLED",
+  "MADE_ABOUT_REWRITE_FINISHES_ENABLED",
+  // coding 4: CHAT_STAGE_TIMINGS (QA, 9 Nov 2026; default off): forced off with the others in the child run.
+  "CHAT_STAGE_TIMINGS_ENABLED",
+  "CHAT_PARALLEL_LOADS_ENABLED",
+  "CHAT_PARALLEL_REWRITE_ENABLED",
+  // coding 4: QA's live Bubbles round 13 (9 Nov 2026; default off): forced off with the others in the child run.
+  "MADE_ABOUT_TOPIC_EVIDENCE_ENABLED",
+  "FORM_DATE_SAID_ALONE_ENABLED",
+  "MADE_ABOUT_SAID_DATE_ENABLED",
+  "MADE_ABOUT_POLICY_LINE_REPLACES_ENABLED",
+  "SECTION_BREAKS_KEPT_ENABLED",
+  "ADD_NOT_REPEATED_ENABLED",
+  // coding 4: MODEL_POLICY_DEFERS_TO_TOPIC (QA, round 7c, 9 Nov 2026; default off): forced off with the others in the child run.
+  "MODEL_POLICY_DEFERS_TO_TOPIC_ENABLED",
+  // coding 4: WORK_AREA_ABSENCE_CITES_CONDUCT (Pau's decision, 9 Nov 2026; default off): forced off with the others in the child run.
+  "WORK_AREA_ABSENCE_CITES_CONDUCT_ENABLED",
+  // coding 4: FIRST_NAME_ANSWER_KEEPS_ACCOUNT (default off): forced off with the others in the child run.
+  "FIRST_NAME_ANSWER_KEEPS_ACCOUNT_ENABLED",
+  "SHIFT_ACCOUNT_IS_INCIDENT_ENABLED",
+  // coding 5: UNDATED_ACCOUNT_BRIEF (default off): forced off with the others in the child run.
+  "UNDATED_ACCOUNT_BRIEF_ENABLED",
+  "CREATE_FROM_CONVERSATION_POINTS_TO_CARD_ENABLED",
+  "OBSERVATION_OWN_PERSON_ONLY_ENABLED",
+  "POLICY_TOPIC_INTO_FIELD_ENABLED",
+  "LETTER_GREETING_NOT_NAME_ENABLED",
+  "LATE_READS_ATTENDANCE_ENABLED",
+  "EXIT_FORM_DATE_FROM_TERMINATION_ENABLED",
+  "EXIT_LETTER_ADDRESSEE_ENABLED",
+  "MISSED_SHIFT_CITES_ATTENDANCE_ENABLED",
+  "EXIT_LETTER_SIGNER_NOT_SUBJECT_ENABLED",
+  "POSSESSIVE_PLACE_NOT_PERSON_ENABLED",
+  "OFF_ROSTER_ASK_BEFORE_CARD_ENABLED",
+  // coding 5: CORRECTED_DATE_KEPT (default off): forced off with the others in the child run.
+  "CORRECTED_DATE_KEPT_ENABLED",
+  "DATE_QUESTION_KEPT_ENABLED",
+  // coding 2: CREATE_COMMAND_POINTS_TO_CARD and CARD_COMPLAINT_NOT_ACCOUNT (default off): forced off with the others.
+  "CREATE_COMMAND_POINTS_TO_CARD_ENABLED",
+  "CARD_COMPLAINT_NOT_ACCOUNT_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -933,6 +1054,43 @@ describe("new flags default off and wrappers are inert", () => {
           ":(exclude)src/components/shell/sidebar.tsx",
           ":(exclude)src/components/shell/app-switcher.tsx",
           `:(exclude)${SIGN_IN_FORM}`,
+          // THE CLAY RESTYLE (requested by Paulyne, 9 Nov 2026, from the approved
+          // "Ask Sunny Clay Web" mockup; QA to confirm before merge). Unlike the
+          // entries above it is NOT behind a flag: it is a deliberate visual change
+          // to styles and markup only — clay shadows, radii, the Sunny mascot, the
+          // floating rail and top bar, the cloud background and the login
+          // gradient. No data, permission or chat behaviour changes. The shell,
+          // chat and Overview files it touches are already listed above.
+          ":(exclude)src/app/globals.css",
+          ":(exclude)src/features/auth/login-screen.module.css",
+          ":(exclude)src/features/auth/login-screen.tsx",
+          ":(exclude)src/components/sunny-mascot.tsx",
+          ":(exclude)src/components/shell/jump-to-row.tsx",
+          ":(exclude)src/components/source-card.tsx",
+          ":(exclude)src/components/stat-card.tsx",
+          ":(exclude)src/components/video-card.tsx",
+          ":(exclude)src/components/ui/badge.tsx",
+          ":(exclude)src/components/ui/button.tsx",
+          ":(exclude)src/components/ui/card.tsx",
+          ":(exclude)src/components/ui/controls.tsx",
+          ":(exclude)src/components/ui/feedback.tsx",
+          ":(exclude)src/components/ui/field.tsx",
+          ":(exclude)src/components/ui/layout.tsx",
+          ":(exclude)src/components/ui/marquee.tsx",
+          ":(exclude)src/features/dashboard/ask-band.tsx",
+          ":(exclude)src/features/reports/report-frame.tsx",
+          ":(exclude)src/features/videos/category-overview.tsx",
+          ":(exclude)src/features/videos/videos-screen.tsx",
+          ":(exclude)src/features/reports/report-tabs.tsx",
+          ":(exclude)src/features/reviews/reviews-tabs.tsx",
+          ":(exclude)src/features/reviews/review-goal-parts.tsx",
+          ":(exclude)src/features/reports/salon-performance/kpi-cards.tsx",
+          ":(exclude)src/features/reports/salon-performance/salon-kpi-cards.tsx",
+          ":(exclude)src/features/reports/detail-section.tsx",
+          ":(exclude)src/features/dashboard/performance-overview.tsx",
+          // Confetti on a 5-star rating (requested by Paulyne, 9 Nov 2026): the
+          // one mount line after a rating saves; `lib/ui/confetti.ts` does the rest.
+          ":(exclude)src/features/chat/conversation-rating.tsx",
         ]),
       ).toBe("");
       expect(changedLines(diff(uiBase, [MONITORING_TABLE])).filter((line) => !MONITORING_MOUNT.includes(line))).toEqual([]);
@@ -989,12 +1147,21 @@ function chatHalf(half: 0 | 1): string[] {
   const middle = Math.ceil(all.length / 2);
   return half === 0 ? all.slice(0, middle) : all.slice(middle);
 }
-const CHILDREN: readonly { readonly name: string; readonly paths: () => readonly string[] }[] = [
+/*
+ * THE REPLAY PACK IN TWO HALVES (QA, 9 Nov 2026): its child timed out at 540 s on CI (ask-sunny#713, #717; ETIMEDOUT, no
+ * assertion failed) as the pack grew. Nearly all of its time is one file, `replay-pack-e2e.test.ts`, so it is halved by
+ * case, not by file: the first child runs the whole folder with the first half of the cases by id (`REPLAY_PACK_HALF`
+ * "0"; the pack's other test files run there, once), the second child that one file with the second half ("1"). Every
+ * case and every file still runs exactly once, with every new flag off.
+ */
+const REPLAY_PACK_E2E = `${REPLAY_PACK}/replay-pack-e2e.test.ts`;
+const CHILDREN: readonly { readonly name: string; readonly paths: () => readonly string[]; readonly env?: Readonly<Record<string, string>> }[] = [
   { name: "src/lib/ai, src/lib/forms", paths: () => ["src/lib/ai", "src/lib/forms"] },
   { name: `${CHAT} (without the replay pack), first half by name`, paths: () => chatHalf(0) },
   { name: `${CHAT} (without the replay pack), second half by name`, paths: () => chatHalf(1) },
   { name: "src/app/api/forms", paths: () => ["src/app/api/forms"] },
-  { name: REPLAY_PACK, paths: () => [REPLAY_PACK] },
+  { name: `${REPLAY_PACK}, first half of the cases by id`, paths: () => [REPLAY_PACK], env: { REPLAY_PACK_HALF: "0" } },
+  { name: `${REPLAY_PACK}, second half of the cases by id`, paths: () => [REPLAY_PACK_E2E], env: { REPLAY_PACK_HALF: "1" } },
 ];
 
 describe("existing chat and form suites with every new flag off", () => {
@@ -1002,7 +1169,7 @@ describe("existing chat and form suites with every new flag off", () => {
     it.skipIf(CHILD)(
       `passes the suites whose expectations are already on main: ${child.name}`,
       () => {
-        const env: NodeJS.ProcessEnv = { ...process.env, FLAGS_OFF_PARITY_CHILD: "1" };
+        const env: NodeJS.ProcessEnv = { ...process.env, FLAGS_OFF_PARITY_CHILD: "1", ...child.env };
         delete env.VITEST;
         delete env.VITEST_WORKER_ID;
         delete env.VITEST_POOL_ID;

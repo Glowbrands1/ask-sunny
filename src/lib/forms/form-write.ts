@@ -3,7 +3,16 @@ import "server-only";
 import type { AskResponse } from "@/lib/ai/types";
 import { payrollAmounts } from "@/lib/ai/intent-slots";
 import { businessToday } from "@/lib/business-date";
-import { formEditNoopGuardEnabled, formPatchReaderFixesEnabled, stepBAddUnderObservedEnabled, stepBSectionSpacingEnabled } from "@/lib/config/chat-quality-flags";
+import {
+  formEditNoopGuardEnabled,
+  formPatchReaderFixesEnabled,
+  madeAboutAllOrNothingEnabled,
+  madeAboutSaidDateEnabled,
+  stepBAddUnderObservedEnabled,
+  stepBMakeItAboutAccountEnabled,
+  stepBSectionSpacingEnabled,
+} from "@/lib/config/chat-quality-flags";
+import { madeAbout } from "@/lib/ai/make-it-about";
 import { addUnderObserved, hasSections, tailAfterLastSection, withSectionSpacing } from "./outline-sections";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { isGlossaryTerm } from "@/lib/ai/chat-glossary";
@@ -12,6 +21,8 @@ import { syncCorrectiveActionPlan } from "./ca-action-plan-sync";
 import { checkboxGroupsForVariant, fieldsForVariant, parseFormDocument } from "./document";
 import { NOTHING_CHANGED } from "./form-diff-reply";
 import { datesInText } from "./form-date-answer";
+import { saidFormDate } from "./form-date-said";
+import { madeAboutDate, madeAboutWriteNoted } from "./made-about-date";
 import {
   applyPatch,
   sameValue,
@@ -316,7 +327,23 @@ function basePresetRules(loaded: LoadedInstance, ops: readonly FormEditOp[], rul
   const latest = rules.latest ?? "";
   // A draft is written from all of the manager's notes: on a draft path they are what names a value that may change.
   const drafts = !["correction", "reopen", "patch", "tool", "revision"].includes(rules.path);
-  const guard = protectedValuesFor(loaded, drafts ? [latest, rules.notes ?? ""].join("\n") : latest, today, rules.named);
+  const read = protectedValuesFor(loaded, drafts ? [latest, rules.notes ?? ""].join("\n") : latest, today, rules.named);
+  /*
+   * STEP_B_MAKE_IT_ABOUT_ACCOUNT_ENABLED (ported from Ask Bubbles; QA's live round-6 trace there, 9 Nov 2026): "make it
+   * about leaving the front desk unattended on 11/6/26" is a new account told with its own date. The revision's rewrite
+   * follows that date, so the old account's date (the form's Date) may go; the Date itself is written by Step B with the
+   * account. MADE_ABOUT_ALL_OR_NOTHING_ENABLED: only while Step B writes the Date and the topic with it.
+   */
+  const coordinatedWrite = !madeAboutAllOrNothingEnabled() || madeAboutWriteNoted(loaded.instance.id);
+  // MADE_ABOUT_SAID_DATE_ENABLED (QA's live round 14, 10 Nov 2026): the date said apart from the topic is that turn's incident date.
+  const aboutDate =
+    rules.path === "revision" && stepBMakeItAboutAccountEnabled() && coordinatedWrite
+      ? (madeAboutDate(latest, today) ??
+        (madeAboutSaidDateEnabled() && madeAbout(latest) !== null ? saidFormDate(latest, today) : null))
+      : null;
+  const guard = aboutDate
+    ? { ...read, formDate: aboutDate, ...(madeAboutSaidDateEnabled() && madeAboutWriteNoted(loaded.instance.id) ? { oldIncidentDates: true } : {}) }
+    : read;
   const writeIns = writeInsOf(loaded);
   const groups = groupsOf(loaded);
   const lists = new Set([PRIOR_ACTIONS_KEY]);

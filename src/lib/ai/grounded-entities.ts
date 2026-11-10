@@ -59,7 +59,7 @@ export function prepareGroundedQuestion(input: {
 }): GroundedPrep {
   const people = input.people;
   const roster = people as readonly RosterEmployee[];
-  let question = prependFormState(input.question, input.saved);
+  let question = prependFormState(input.question, input.saved, managerTurns(input.history));
   const kept = new Set<string>();
   if (input.saved?.keptTypedName) kept.add(input.saved.keptTypedName);
 
@@ -437,4 +437,9 @@ function asPerson(employee: RosterEmployee): GroundedPerson {
 function replacePhrase(text: string, phrase: string, replacement: string): string {
   const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return text.replace(new RegExp(`\\b${escaped}\\b`, "i"), replacement);
+}
+
+/** The manager's earlier turns (SECOND_REQUEST_OWN_ACCOUNT_ENABLED: `form-state.ts` stateForTurn). */
+function managerTurns(history: readonly { role: string; content: string }[]): string[] {
+  return history.filter((turn) => turn.role === "user").map((turn) => turn.content);
 }

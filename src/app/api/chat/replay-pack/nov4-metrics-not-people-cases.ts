@@ -252,7 +252,8 @@ export const NOV4_METRICS_NOT_PEOPLE_CASES: ReplayCase[] = [
     id: "nov4-qa-roster-name-with-one",
     title: "QA 4 Nov: Pau's message 1 for a roster person whose name ends in \"One\": the card's employee is the name the reply drafts for",
     report: `QA, 4 Nov 2026: "I need a corrective action verbal for <QA test account>. This is for Under Performance on PPTA, LPSVA, Club Average, Club Close %, and Spa %." → "I'll draft … for <name>", card Employee empty`,
-    status: { open: "the reply drafts for the name and the card's employee is empty (or, with CA_SALES_POLICY_ENABLED off, no card)" },
+    // Changed on purpose (10 Nov 2026): fixed in production by KEEP_ROSTER_EXACT_NAME_ENABLED (gate runner 2 solo GO), QA P11a release; it now holds with production's flags.
+    status: "fixed",
     fixFlags: ["KEEP_ROSTER_EXACT_NAME_ENABLED", SALES, GLOSSARY],
     async run(t) {
       vi.setSystemTime(new Date("2026-11-04T15:30:00Z"));
@@ -388,12 +389,8 @@ export const NOV4_METRICS_NOT_PEOPLE_CASES: ReplayCase[] = [
         id: `nov4-qa-form-name-as-person-${key}${suffix}`,
         title: `QA 4 Nov (CA_SALES off): "${text.slice(0, 60)}…": a Corrective Action, never a Coaching Form; no metric is the employee; a card with no employee asks who`,
         report: `QA, 4 Nov 2026, production with CA_SALES off: "${text}"`,
-        status: {
-          open:
-            key === "a"
-              ? "a Coaching Form card (with no employee; it asks who)"
-              : "a Coaching Form card for \"Club Close\": \"I have the employee and the salon\"",
-        },
+        // Changed on purpose (8 Nov 2026): fixed in production by CA_REQUEST_NOT_PRIOR_COACHING_ENABLED, QA round 4, 8 Nov 2026; it now holds with production's flags.
+        status: "fixed",
         fixFlags: [...flags],
         async run(t) {
           const thread = start(t);

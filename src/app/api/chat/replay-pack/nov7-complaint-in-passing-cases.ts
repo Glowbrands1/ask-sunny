@@ -25,7 +25,8 @@ export const NOV7_COMPLAINT_IN_PASSING_CASES: ReplayCase[] = [
     id: "nov7-complaint-in-passing-account",
     title: "\"create a ca form for <name>\", then \"verbal warning The date she complained was Oct 31st . The customer said …\": the card's account is what the customer said happened, not the date line",
     report: "QA's audit (7 Nov 2026), the sibling app's real manager chat: \"Complaint mentioned in passing not used as the account\"",
-    status: { open: "the Observation opens \"verbal warning The date she complained was Oct 31st.\"" },
+    // Changed on purpose (8 Nov 2026): QA's flip 9 (00:59 PHT) turned this case's flags on in production (production-flags.json); it now holds with production's flags.
+    status: "fixed",
     fixFlags: ["COMPLAINT_ACCOUNT_ENABLED"],
     async run(t) {
       t.directory(STAFF);

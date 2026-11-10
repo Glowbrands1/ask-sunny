@@ -6,6 +6,7 @@ import rows from "@/test/fixtures/jba-manual-production-151.json";
 import { accountManualSections } from "@/lib/ai/account-manual-sections";
 import { formTurnCitations } from "@/lib/ai/form-card-slots";
 import { manualChunkFromRow, type ChunkRow } from "@/lib/ai/full-manual-load";
+import { wovenTrainingConductEnabled } from "@/lib/config/chat-quality-flags";
 
 import { describedManualSection } from "./named-policy-section";
 import type { ManualChunk } from "./official-policy-manual";
@@ -284,7 +285,12 @@ describe("flag on: a conduct incident the reading points at cites the Standards 
 
   it.each(CONDUCT.flatMap(([incident, cite]) => registers(incident).map((text) => [text, cite] as const)))("%s", (incident, cite) => {
     const before = cited(ask(incident));
-    expect(before).not.toContain(cite);
+    /*
+     * Changed on purpose (QA's Sunny round-3 gate, 7 Nov 2026): with WOVEN_TRAINING_CONDUCT_ENABLED on (Pau's ruling,
+     * 6 Nov 2026), the Woven policy acknowledgement CA cites the Standards of Conduct with or without this flag, so
+     * its "not cited before" half does not apply. Every other row, and the "cited after" half, are unchanged.
+     */
+    if (!(wovenTrainingConductEnabled() && /woven policy acknowledgements/i.test(incident))) expect(before).not.toContain(cite);
     on();
     expect(cited(ask(incident))).toEqual([cite]);
   });
