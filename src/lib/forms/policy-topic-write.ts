@@ -9,7 +9,7 @@ import { draftFromRows } from "./form-reducer";
 import { formLabels } from "./form-snapshot";
 import { applyAssistantRevision, loadInstance, saveInstanceValues } from "./instances";
 import type { ManualChunk } from "./official-policy-manual";
-import { fieldNamedIn, policyFieldText, sectionForTopic } from "./policy-topic-field";
+import { fieldNamedIn, policyFieldText, policyNamed, sectionForTopic } from "./policy-topic-field";
 
 /**
  * POLICY_TOPIC_INTO_FIELD_ENABLED: the write of `policy-topic-field.ts` on a saved draft — the manual read, the section
@@ -56,7 +56,7 @@ export async function writePolicyTopic(input: {
     const current = typeof before[key]?.value === "string" ? (before[key]!.value as string).trim() : "";
     const cited = formatManualCitation(section.heading, section.page);
     if (current.includes(block.split("\nPolicy reference:")[0]!)) {
-      return { sentence: `${label} already has our ${section.heading.trim()} policy (${cited}).`, written: null };
+      return { sentence: `${label} already has our ${policyNamed(section.heading)} (${cited}).`, written: null };
     }
     const next = current ? `${current}\n\n${block}` : block;
     const typed = before[key]?.owner === "manager";
@@ -75,7 +75,7 @@ export async function writePolicyTopic(input: {
         if (!(key in result.accepted.values)) return { sentence: couldNotWrite(input.topic, label), written: null };
       }
     }
-    return { sentence: `Added our ${section.heading.trim()} policy to ${label}, from the manual (${cited}).`, written: key };
+    return { sentence: `Added our ${policyNamed(section.heading)} to ${label}, from the manual (${cited}).`, written: key };
   } catch {
     return { sentence: couldNotRead(input.topic), written: null };
   }

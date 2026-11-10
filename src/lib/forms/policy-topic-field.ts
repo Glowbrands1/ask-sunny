@@ -144,6 +144,12 @@ export function policyFieldText(section: ManualSection, chunks: readonly ManualC
   return `${section.heading.trim()}: ${body}\nPolicy reference: ${formatManualCitation(section.heading, section.page)}`;
 }
 
+/** "our <heading> policy" in a reply: "Shift Replacement policy", never "Cell Phone/Smart Watch Policy policy". */
+export function policyNamed(heading: string): string {
+  const name = heading.trim();
+  return /\bpolic(?:y|ies)$/i.test(name) ? name : `${name} policy`;
+}
+
 /** A sentence that only points at the manual ("refer to the policy manual …"), never the policy itself. */
 export function pointsAtManual(value: string): boolean {
   return /\b(?:refer|referring|see|consult|check|review|look)\b[^.\n]{0,40}\b(?:policy\s+manual|manual|handbook|woven\s+polic)/i.test(value);

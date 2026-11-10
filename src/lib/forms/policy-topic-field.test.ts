@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { JBA_MANUAL_CA_CHUNKS } from "@/test/fixtures/jba-manual-ca-sections";
 
-import { fieldNamedIn, pointsAtManual, policyFieldText, policyTopicAsked, sectionForTopic } from "./policy-topic-field";
+import { fieldNamedIn, pointsAtManual, policyFieldText, policyNamed, policyTopicAsked, sectionForTopic } from "./policy-topic-field";
 
 /**
  * POLICY_TOPIC_INTO_FIELD_ENABLED. Ported from the sibling app (QA, a manager's 1★ rating there, 10 Nov 2026): "I asked it to write a coaching form on our
@@ -78,5 +78,13 @@ describe("a salon policy topic", () => {
     const topic = policyTopicAsked(edit)!;
     expect(topic).toBe("cell phone use on the salon floor");
     expect(sectionForTopic(topic, JBA_MANUAL_CA_CHUNKS)).toMatchObject({ heading: "Cell Phone/Smart Watch Policy", page: 19 });
+  });
+});
+
+describe("policyNamed", () => {
+  it("a heading without \"Policy\" gets it; one that ends in it is not doubled (QA, gate round 14)", () => {
+    expect(policyNamed("Shift Replacement")).toBe("Shift Replacement policy");
+    expect(policyNamed("Cell Phone/Smart Watch Policy")).toBe("Cell Phone/Smart Watch Policy");
+    expect(policyNamed("Social Media policy ")).toBe("Social Media policy");
   });
 });

@@ -102,6 +102,8 @@ export const NOV10_POLICY_TOPIC_IN_FIELD_CASES: ReplayCase[] = [
       expect(details, `the Details point at the manual:\n${details}`).not.toMatch(/\brefer to\b|\bsee the\b.*\bmanual\b/i);
       expect(details, `the Details do not hold the cell phone section:\n${details}`).toMatch(/Phones stay on silent/i);
       expect(details, `the Details do not cite the section and page:\n${details}`).toMatch(/Cell Phone\/Smart Watch Policy, JBA Policy Manual p\.19/);
+      expect(reply.content, `the reply says "Policy policy":\n${reply.content}`).not.toMatch(/\bPolicy policy\b/i);
+      expect(reply.content, `the reply does not name the section:\n${reply.content}`).toMatch(/Added our Cell Phone\/Smart Watch Policy to Details of Coaching/);
     },
   },
 ];
