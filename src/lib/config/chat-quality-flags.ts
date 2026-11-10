@@ -2633,6 +2633,18 @@ export function exitFormDateFromTerminationEnabled(): boolean {
 }
 
 /**
+ * ACCOUNT_WIPE_GUARD_ENABLED (ported from the sibling app: QA, a manager's 1★ rating there, 5–6 Nov 2026; coding 5; same
+ * flag in both apps; default off). "this is a verbal warning. previous coaching policy manual 10-15-26" on a reopened
+ * Coaching Form wiped Details of Coaching: the form-patch reader's clear (or full replace) was written though nothing
+ * asked for it. On: a clear or full replace of an account field that holds text (Details of Coaching, Observation of
+ * Offense, Follow-Up Observation) is written only when the latest message names that field or asks to remove or rewrite
+ * it (`forms/account-wipe-guard.ts`). Off, as before.
+ */
+export function accountWipeGuardEnabled(): boolean {
+  return envFlag("ACCOUNT_WIPE_GUARD_ENABLED");
+}
+
+/**
  * CREATE_FROM_CONVERSATION_POINTS_TO_CARD_ENABLED (QA's P6, Sunny live, 10 Nov 2026; coding 5; same flag in both apps;
  * default off; with CREATE_COMMAND_POINTS_TO_CARD_ENABLED). "Create a form from this conversation." with a card open
  * repeated the card's reply word for word. On: that wording, and "make a new draft from our chat", "create the form
