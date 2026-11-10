@@ -23,6 +23,22 @@ function normalize(text: string): string {
     : read;
 }
 
+/** LEVEL_AFTER_FORM_NAME_ENABLED, read here for the same reason. */
+function levelAfterFormNameOn(): boolean {
+  const raw = typeof process === "undefined" ? undefined : process.env.LEVEL_AFTER_FORM_NAME_ENABLED;
+  return typeof raw === "string" && ["1", "true", "on", "yes"].includes(raw.trim().toLowerCase());
+}
+
+/*
+ * LEVEL_AFTER_FORM_NAME_ENABLED (coding 6, 10 Nov 2026; QA's overnight scan sf-s19): "I need a corrective action
+ * verbal for <A>" names the level after the form, and the card said "You'll set the verbal/written warning level";
+ * the manager's next turn ("Corrective Action") still made no Verbal card. With the flag on, "corrective action
+ * verbal", "ca written", "c/a verbal" followed by "for", "on", a stop or the end, are this form's level, unless
+ * the sentence says it is a step already taken (the same history checks as `LEVEL_NAMED`). Off, as before.
+ */
+const LEVEL_AFTER_FORM =
+  /\b(?:corrective\s+action|ca|c\/a)\s+(verbal|written)\b(?=\s*(?:$|[.,;:!—–-]|warning\b|form\b|for\b|on\b|about\b|because|regarding|due\b|please|today))/g;
+
 /** CA_SHORTCUT_WORDS_ENABLED, read here because this module imports only the payroll reader. */
 function caShortcutWordsOn(): boolean {
   const raw = typeof process === "undefined" ? undefined : process.env.CA_SHORTCUT_WORDS_ENABLED;
@@ -224,7 +240,8 @@ export function statedWarningLevel(
     for (const match of body.matchAll(LEVEL_LABELLED)) levels.add(match[1] as StatedWarningLevel);
     for (const match of body.matchAll(LEVEL_AS_DOCUMENT)) levels.add((match[1] ?? match[2]) as StatedWarningLevel);
 
-    for (const match of body.matchAll(LEVEL_NAMED)) {
+    const named = levelAfterFormNameOn() ? [...body.matchAll(LEVEL_NAMED), ...body.matchAll(LEVEL_AFTER_FORM)] : body.matchAll(LEVEL_NAMED);
+    for (const match of named) {
       const before = body.slice(0, match.index);
       const after = body.slice(match.index + match[0].length);
       if (

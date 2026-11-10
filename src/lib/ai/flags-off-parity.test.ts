@@ -360,6 +360,14 @@ const NEW_FLAGS = [
   "FORM_EDIT_REFERS_BACK_ENABLED",
   "SAME_FORM_COPY_ENABLED",
   "SAME_FORM_COPY_NEW_PERSON_ENABLED",
+  // coding 6: POLICY_REFERENCE_NOT_ACCOUNT (default off): forced off with the others.
+  "POLICY_REFERENCE_NOT_ACCOUNT_ENABLED",
+  // coding 6: LEVEL_AFTER_FORM_NAME (default off): forced off with the others.
+  "LEVEL_AFTER_FORM_NAME_ENABLED",
+  // coding 6: TEAM_CARD_NOT_PRODUCT (default off): forced off with the others.
+  "TEAM_CARD_NOT_PRODUCT_ENABLED",
+  // coding 6: REOPEN_CLOSE_SPELLING (default off): forced off with the others.
+  "REOPEN_CLOSE_SPELLING_ENABLED",
   "STAFF_PICKER_ENABLED",
   "STAFF_PICKER_STORE_TITLES_ENABLED",
   "STAFF_PICKER_BARE_ANSWER_ENABLED",
@@ -521,6 +529,9 @@ const NEW_FLAGS = [
   "MADE_ABOUT_UNDATED_TOGETHER_ENABLED",
   "MADE_ABOUT_POLICY_LINE_ENABLED",
   "MADE_ABOUT_READER_ACCOUNT_ENABLED",
+  "MADE_ABOUT_REWRITE_FINISHES_ENABLED",
+  // coding 4: CHAT_STAGE_TIMINGS (QA, 9 Nov 2026; default off): forced off with the others in the child run.
+  "CHAT_STAGE_TIMINGS_ENABLED",
   // coding 4: MODEL_POLICY_DEFERS_TO_TOPIC (QA, round 7c, 9 Nov 2026; default off): forced off with the others in the child run.
   "MODEL_POLICY_DEFERS_TO_TOPIC_ENABLED",
   // coding 4: WORK_AREA_ABSENCE_CITES_CONDUCT (Pau's decision, 9 Nov 2026; default off): forced off with the others in the child run.
@@ -535,6 +546,7 @@ const NEW_FLAGS = [
   "ONE_FORM_EACH_PERSON_ENABLED",
   "DID_YOU_MEAN_STAYS_ASKED_ENABLED",
   "CARD_NAMES_EMPLOYEE_ENABLED",
+  "POLICY_TOPIC_INTO_FIELD_ENABLED",
   "LETTER_GREETING_NOT_NAME_ENABLED",
   "LATE_READS_ATTENDANCE_ENABLED",
   "EXIT_FORM_DATE_FROM_TERMINATION_ENABLED",

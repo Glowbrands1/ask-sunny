@@ -2680,6 +2680,18 @@ export function cardNamesEmployeeEnabled(): boolean {
   return envFlag("CARD_NAMES_EMPLOYEE_ENABLED");
 }
 
+/**
+ * POLICY_TOPIC_INTO_FIELD_ENABLED (ported from the sibling app: QA, a manager's 1★ rating there, 10 Nov 2026; coding 5;
+ * same flag in both apps; default off). "In details of coaching inlude our woven policy on finding a cover for your
+ * shift" on a saved draft wrote a sentence telling the manager to refer to the policy manual. On: an edit asking for
+ * "our policy on <topic>" in a field writes the manual's section for that topic, quoted with its "Policy reference: …,
+ * JBA Policy Manual p.N" line, or says no section matches and asks; never a pointer to the manual
+ * (`forms/policy-topic-field.ts`). Off, as before.
+ */
+export function policyTopicIntoFieldEnabled(): boolean {
+  return envFlag("POLICY_TOPIC_INTO_FIELD_ENABLED");
+}
+
 // --- end coding 5 flags ---
 
 /**
@@ -3898,6 +3910,19 @@ export function madeAboutPolicyLineEnabled(): boolean {
 }
 
 /**
+ * MADE_ABOUT_REWRITE_FINISHES_ENABLED (QA's live round-13 test, 9 Nov 2026; default off). On a saved Coaching draft,
+ * "make it about leaving the front desk unattended on 11/6/26" ran the made-about revision (Details rewritten), then the
+ * turn left the patch path with nothing more written, and the old path's revision ran a second time: "Updated … Details
+ * of Coaching", Other and the Date stayed. With the flag on, once the account is rewritten the turn always finishes
+ * there: a refused reader patch falls back to the topic read from the manager's words, the Date is still written, and
+ * an error after the rewrite answers from what was saved. The old account's policy reference kept by the revision is
+ * replaced from the new account (`forms/made-about-policy-line.ts`). Off, as before.
+ */
+export function madeAboutRewriteFinishesEnabled(): boolean {
+  return envFlag("MADE_ABOUT_REWRITE_FINISHES_ENABLED");
+}
+
+/**
  * MADE_ABOUT_READER_ACCOUNT_ENABLED (ported from Ask Bubbles; QA's live round-9 test there, 9 Nov 2026; default off; same
  * flag in both apps). "make it about leaving the front desk unattended on 11/6/26" on a saved Coaching draft changed Other
  * and Details and left the Date: the reader set Details itself (the new incident added under the old one), so the
@@ -3907,4 +3932,69 @@ export function madeAboutPolicyLineEnabled(): boolean {
  */
 export function madeAboutReaderAccountEnabled(): boolean {
   return envFlag("MADE_ABOUT_READER_ACCOUNT_ENABLED");
+}
+
+/**
+ * CHAT_STAGE_TIMINGS_ENABLED (QA, 9 Nov 2026; default off; same flag in both apps). Each awaited step of a chat turn
+ * before the answering model (intent extraction, query rewrite, retrieval, the memory, example, context, data and
+ * grounding loads) is timed into `chat_traces.slots.stages`: names and milliseconds only (`ai/chat-stage-timings.ts`).
+ * Changes nothing the manager sees. Off, as before.
+ */
+export function chatStageTimingsEnabled(): boolean {
+  return envFlag("CHAT_STAGE_TIMINGS_ENABLED");
+}
+
+/**
+ * POLICY_REFERENCE_NOT_ACCOUNT_ENABLED (coding 6, 10 Nov 2026; default off;
+ * QA's overnight scan sf-s16, sf-s17). "you can reference the standards of
+ * conduct for a policy" and "In the past we have quoted the standards of
+ * conduct for creating a ca due to underperformance", after the CA card,
+ * were handed to the drafting model as part of what happened. On: a turn
+ * that only says which policy to quote, cite or reference is left out of the
+ * account the draft is written from; the policy readers still read it. See
+ * `ai/policy-reference-turn.ts`. Off, as before.
+ */
+export function policyReferenceNotAccountEnabled(): boolean {
+  return envFlag("POLICY_REFERENCE_NOT_ACCOUNT_ENABLED");
+}
+
+/**
+ * LEVEL_AFTER_FORM_NAME_ENABLED (coding 6, 10 Nov 2026; default off; QA's
+ * overnight scan sf-s19). "I need a corrective action verbal for <A>" named
+ * the level after the form and the card left it unset; "Corrective Action"
+ * on the next turn still made no Verbal card. On: "corrective action
+ * verbal", "ca written", "c/a verbal" are the form's level unless the
+ * sentence says it is a step already taken. Read in `forms/warning-level.ts`
+ * (which imports no flags; this function is for callers and the parity
+ * list). Off, as before.
+ */
+export function levelAfterFormNameEnabled(): boolean {
+  return envFlag("LEVEL_AFTER_FORM_NAME_ENABLED");
+}
+
+/**
+ * TEAM_CARD_NOT_PRODUCT_ENABLED (coding 6, 10 Nov 2026; default off; QA's
+ * overnight scan sf-s13). "a coaching form for the team at Kearney on selling
+ * Spray Tan Kits …" made a card for "Spray Tan Kits", and "The employee needs
+ * to be left blank for now" went into its Observation. On: a coaching card
+ * whose name is nobody on the roster and was only written as the topic
+ * ("selling …", "on …"), in a request for the team (or one that leaves the
+ * employee blank), is the team card, and the blank-employee turn is no
+ * account. See `forms/team-card-not-product.ts`. Off, as before.
+ */
+export function teamCardNotProductEnabled(): boolean {
+  return envFlag("TEAM_CARD_NOT_PRODUCT_ENABLED");
+}
+
+/**
+ * REOPEN_CLOSE_SPELLING_ENABLED (coding 6, 10 Nov 2026; default off; Pau via
+ * QA, sf-s26, 5 Nov 2026). "Edit Thesaly Brant CA" with Thessaly Brandt's CA
+ * on file was answered "Who is this form for?". On: when a reopen request
+ * names nobody it can find, the one employee on the forms the manager may
+ * open whose every name word it spells closely (same first letter, one or two
+ * letters off) is the one meant, and that form is opened. Nothing is created
+ * or written. See `forms/reopen-close-spelling.ts`. Off, as before.
+ */
+export function reopenCloseSpellingEnabled(): boolean {
+  return envFlag("REOPEN_CLOSE_SPELLING_ENABLED");
 }
