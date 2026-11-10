@@ -374,6 +374,8 @@ const NEW_FLAGS = [
   // coding 6: SAME_REQUEST_CARRIES_ACCOUNT and SAME_REQUEST_KEEPS_EARLIER_CARD (default off): forced off with the others.
   "SAME_REQUEST_CARRIES_ACCOUNT_ENABLED",
   "SAME_REQUEST_KEEPS_EARLIER_CARD_ENABLED",
+  // coding 6: TEMPLATE_OUTLINE_FIELDS (default off): forced off with the others.
+  "TEMPLATE_OUTLINE_FIELDS_ENABLED",
   // coding 6: POLICY_REFERENCE_NOT_ACCOUNT (default off): forced off with the others.
   "POLICY_REFERENCE_NOT_ACCOUNT_ENABLED",
   // coding 6: LEVEL_AFTER_FORM_NAME (default off): forced off with the others.

@@ -73,6 +73,13 @@ const S22_T1 =
   "create a ca for must see behaviors for performace  this should be for wynne sarrow  - verbal\n146 tans \nBelow in PPTA, LPSVA, Average Club, CC%, Spa%  but i need it to be in the format of Tamsyn ca  it needs to look exactally the same as tamsyns but wtih all of this information";
 const TEMPLATE =
   "Observation of Offense:  During the month of September 2026, Tamsyn completed 237 tanning transactions. Throughout these transactions, Tamsyn failed to follow their Must See Behaviors resulting in a performance below Sun Tan City averages in the following areas UPTA, Average Club, CC%, and Spa %.  \n\nAt Sun Tan City, we strive to provide the ultimate tanning experience for every client. In order to ensure the best results for our clients, every employee is expected to follow their Client Service Must See Behaviors and Engagement Must See Behaviors with every client interaction.\t\n\nAction Plan:  The Leadership Team will coach Tamsyn on Must See Behaviors to make sure these are not only understood but also put into practice. Tamsyn is expected to follow these Must See Behaviors with every client interaction. Failure to consistenly meet expectations may result in additional corrective action up to and including termination of employment.";
+/** The template's outline with Wynne's own facts, as the revision model writes it (the stand-in). */
+const TEMPLATE_WITH_WYNNE = {
+  observation:
+    "During the month of October 2026, Wynne completed 146 tanning transactions. Throughout these transactions, Wynne failed to follow their Must See Behaviors resulting in a performance below Sun Tan City averages in the following areas PPTA, LPSVA, Average Club, CC%, and Spa%.\n\nAt Sun Tan City, we strive to provide the ultimate tanning experience for every client. In order to ensure the best results for our clients, every employee is expected to follow their Client Service Must See Behaviors and Engagement Must See Behaviors with every client interaction.",
+  action_plan:
+    "The Leadership Team will coach Wynne on Must See Behaviors to make sure these are not only understood but also put into practice. Wynne is expected to follow these Must See Behaviors with every client interaction. Failure to consistently meet expectations may result in additional corrective action up to and including termination of employment.",
+};
 const REVIEWER_NOTES =
   "Please make the following edits and resubmit:\n\n1. **Kit Coaching Document:** This was signed on 10/16/2026. I do not see a date showing that Spa/EFT was signed by Corwen. Please make sure all coaching documents are signed and dated (mm/dd/yyyy format) before uploading.\n\n2. **Details – Observed:** Please reword this section to:\n   \n   For the month of October 2026, Corwen completed 24 tans and was below expectations in PPTA, LPSVA, Avg Club, CC%, and Spa%.\n\n3. **Policy Violated:** Please change this from **Under Performance** to **Standards of Conduct**, as the second bullet under that policy is lack of sales performance. You may need to manually add this bullet.";
 
@@ -82,6 +89,9 @@ export const NOV5_PAU_SF_S21_S25_CASES: ReplayCase[] = [
     title: "sf-s21: \"create a ca for must see behaviors …\": no \"Standards of Conduct, as you said\"; the template's outline is applied with Wynne's own facts, never \"I haven't changed the form\"",
     report: `${REPORT}, sf-s21`,
     status: { open: "\"**Policy:** Standards of Conduct, as you said\" on turn 1 (the intent read's heading, as in the live trace), and the template turns are answered \"I haven't changed the Corrective Action Form\"" },
+    // Fixed under TEMPLATE_OUTLINE_FIELDS_ENABLED (coding 6, 10 Nov 2026): the template's outline writes its fields; "not the standard of
+    // conduct" is answered with why Standards of Conduct stays (QA's ruling). Open on production flags until QA flips it.
+    fixFlags: ["TEMPLATE_OUTLINE_FIELDS_ENABLED"],
     async run(t) {
       const thread = start(t);
       const said: string[] = [S21_T1];
@@ -95,6 +105,9 @@ export const NOV5_PAU_SF_S21_S25_CASES: ReplayCase[] = [
       await thread.create();
       for (const turn of [TEMPLATE, "No this should be the same out line but with wynnes info i told you in the first chat", "I need the CA for the Must see behaviors and not the standard of conduct. Make it in the format that I explained above in the first chat for Wynne."]) {
         said.push(turn);
+        // Changed on purpose (coding 6, 10 Nov 2026): the revision model's stand-in writes the template's outline with Wynne's facts,
+        // as the live model was asked to (it is shown the template and her facts). Unscripted, it wrote nothing, and no fix could hold.
+        t.revisionWrites(TEMPLATE_WITH_WYNNE);
         const reply = await thread.say(turn);
         expect(reply.content, `a requested change answered as nothing changed:\n${reply.content}`).not.toMatch(/I haven'?t changed the \*\*Corrective Action Form\*\*/);
       }
@@ -223,3 +236,38 @@ export const NOV8_SECOND_REQUEST_ONE_REQUEST_PASTED_CASES: ReplayCase[] = [
     },
   },
 ];
+
+/*
+ * TEMPLATE_OUTLINE_FIELDS_ENABLED (coding 6, 10 Nov 2026): sf-s21 with what is SAVED. "the same out line" writes the
+ * template's Observation AND Action Plan with Wynne's facts; "the Must see behaviors and not the standard of conduct"
+ * keeps Standards of Conduct (the manual has no Must See Behaviors section) and says why (QA's ruling).
+ */
+export const NOV10_TEMPLATE_OUTLINE_CASES: ReplayCase[] = [
+  {
+    id: "nov10-sf-s21-template-outline-saved",
+    title: "sf-s21: \"the same out line but with wynnes info\" saves the template's Observation and Action Plan; \"not the standard of conduct\" says why it stays",
+    report: `${REPORT}, sf-s21`,
+    status: { open: "the template's Action Plan is never saved (only the Observation is revised), and the last ask is answered \"I haven't changed the Corrective Action Form\"" },
+    fixFlags: ["TEMPLATE_OUTLINE_FIELDS_ENABLED"],
+    async run(t) {
+      const thread = start(t);
+      await thread.say(S21_T1);
+      t.draftWrites({ observation: "Observed:\nIn October 2026, Wynne completed 146 tanning transactions and was below average in PPTA, LPSVA, Average Club, CC%, and Spa%." });
+      const id = await thread.create();
+      t.revisionWrites(TEMPLATE_WITH_WYNNE);
+      await thread.say(TEMPLATE);
+      t.revisionWrites(TEMPLATE_WITH_WYNNE);
+      const outline = await thread.say("No this should be the same out line but with wynnes info i told you in the first chat");
+      const saved = t.values(id);
+      expect(saved.observation ?? "", `the template's Observation was not saved:\n${outline.content}`).toMatch(/Wynne completed 146 tanning transactions/);
+      expect(saved.action_plan ?? "", `the template's Action Plan was not saved:\n${outline.content}`).toMatch(/Leadership Team will coach Wynne on Must See Behaviors/);
+      expect(JSON.stringify(saved), "the template's employee is on Wynne's form").not.toMatch(/Tamsyn/);
+      t.revisionWrites(TEMPLATE_WITH_WYNNE);
+      const last = await thread.say("I need the CA for the Must see behaviors and not the standard of conduct. Make it in the format that I explained above in the first chat for Wynne.");
+      expect(last.content, "the last ask is answered as nothing changed").not.toMatch(/I haven'?t changed|I didn'?t change anything/);
+      expect(last.content, `the reply does not say why Standards of Conduct stays:\n${last.content}`).toMatch(/Must See Behaviors is part of the Standards of Conduct policy/);
+      expect(t.values(id).policy_violated, "the policy left Standards of Conduct").toBe("Standards of Conduct");
+    },
+  },
+];
+
