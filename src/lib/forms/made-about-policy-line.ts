@@ -27,6 +27,8 @@ export async function rewriteMadeAboutPolicyLine(input: {
    * account's reference: it is taken off and the reference is read again.
    */
   readonly oldLine?: string | null;
+  /** MADE_ABOUT_POLICY_LINE_REPLACES_ENABLED: every policy line the rewritten account carries is taken off, wherever it sits. */
+  readonly replaceAnywhere?: boolean;
 }): Promise<string | null> {
   try {
     const loaded = await loadInstance(input.instanceId);
@@ -34,8 +36,19 @@ export async function rewriteMadeAboutPolicyLine(input: {
     const before = draftFromRows(loaded.values);
     const saved = typeof before[input.accountKey]?.value === "string" ? (before[input.accountKey]!.value as string) : "";
     const split = splitAppCitationLine(saved);
-    const keptOld = input.oldLine != null && split.line !== null && split.line === input.oldLine;
-    const account = keptOld ? split.body : saved;
+    /*
+     * MADE_ABOUT_POLICY_LINE_REPLACES_ENABLED (QA's live Sunny round 15, 10 Nov 2026): after "I need you to make it about
+     * showing up late" wrote "Policy reference: Attendance Policy, JBA Policy Manual p.14", "make it about leaving the front
+     * desk unattended on 11/6/26" saved "Policy reference: Standards of Conduct Policy, JBA Policy Manual p.13; Attendance
+     * Policy, JBA Policy Manual p.14": the revision kept the old line in a shape the splitter does not read as the app's own
+     * (a trailing period, or not the last paragraph), so it stayed in the account and the new reference was read from it
+     * too. Every "Policy reference: …" line the rewritten account carries is the old account's: all are taken off, wherever
+     * they sit, and the reference is read again from the new account's own words alone.
+     */
+    const stripped = input.replaceAnywhere ? withoutPolicyLines(saved) : null;
+    const anywhere = stripped !== null && stripped !== saved.trim();
+    const keptOld = anywhere || (input.oldLine != null && split.line !== null && split.line === input.oldLine);
+    const account = anywhere ? stripped : keptOld ? split.body : saved;
     if (!account.trim() || (!keptOld && split.line !== null)) return null;
     const manual = await new SupabaseKnowledgeProvider().fetchOfficialPolicyManual(ACTIVE_BRAND.knowledgeScopeId);
     if (!manual.ok) return null;
@@ -65,4 +78,14 @@ export async function rewriteMadeAboutPolicyLine(input: {
   } catch {
     return null;
   }
+}
+
+/** MADE_ABOUT_POLICY_LINE_REPLACES_ENABLED: the text without any "Policy reference: …" line, wherever it sits. */
+export function withoutPolicyLines(text: string): string {
+  return text
+    .split("\n")
+    .filter((line) => !/^\s*Policy reference:/i.test(line))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }

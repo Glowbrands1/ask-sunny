@@ -10,6 +10,7 @@ import {
   madeAboutReaderAccountEnabled,
   madeAboutTopicEvidenceEnabled,
   madeAboutSaidDateEnabled,
+  madeAboutPolicyLineReplacesEnabled,
   formDateSaidAloneEnabled,
   madeAboutUndatedTogetherEnabled,
   madeAboutPolicyLineEnabled,
@@ -452,6 +453,8 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
           accountKey,
           // MADE_ABOUT_REWRITE_FINISHES_ENABLED: the old account's line, kept by the revision, is replaced, never left on the new one.
           ...(finishes ? { oldLine: splitAppCitationLine(before[accountKey]!.value as string).line } : {}),
+          // MADE_ABOUT_POLICY_LINE_REPLACES_ENABLED: the old account's line, in whatever shape the revision kept it, never stays.
+          ...(madeAboutPolicyLineReplacesEnabled() ? { replaceAnywhere: true } : {}),
         });
       }
       return changed;

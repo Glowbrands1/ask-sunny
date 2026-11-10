@@ -3908,3 +3908,15 @@ export function formDateSaidAloneEnabled(): boolean {
 export function madeAboutSaidDateEnabled(): boolean {
   return envFlag("MADE_ABOUT_SAID_DATE_ENABLED");
 }
+
+/**
+ * MADE_ABOUT_POLICY_LINE_REPLACES_ENABLED (QA's live Sunny round 15, 10 Nov 2026; default off; same flag in both apps). Two
+ * made-about turns in a row: the second saved "Policy reference: Standards of Conduct Policy, JBA Policy Manual p.13;
+ * Attendance Policy, JBA Policy Manual p.14", the first turn's reference kept beside the new one. The revision kept the old
+ * line in a shape the splitter did not read (a trailing period, or not the last paragraph). With the flag on, every
+ * "Policy reference: …" line the rewritten account carries is taken off before its reference is read again from the new
+ * account's own words (`forms/made-about-policy-line.ts`). Off, as before.
+ */
+export function madeAboutPolicyLineReplacesEnabled(): boolean {
+  return envFlag("MADE_ABOUT_POLICY_LINE_REPLACES_ENABLED");
+}

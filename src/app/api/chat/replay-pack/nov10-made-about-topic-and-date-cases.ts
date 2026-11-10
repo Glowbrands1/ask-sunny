@@ -114,6 +114,50 @@ function p9(shape: { readonly saved: boolean }) {
   };
 }
 
+const ATTENDANCE_LINE = "Policy reference: Attendance Policy, JBA Policy Manual p.14";
+const WORK_AREA_LINE = {
+  chunkIndex: 39.5,
+  chunkId: "jba-39-5",
+  locator: "Page 13 — Standards of Conduct",
+  page: 14,
+  content: "o Unapproved absence from the work area during a shift",
+  section: "Standards of Conduct",
+  printedPage: 13,
+  sections: [],
+};
+
+/**
+ * QA's live Sunny round 15 (10 Nov 2026, 03:05–03:06Z): two made-about turns in a row. "I need you to make it about showing
+ * up late" wrote the Attendance reference; "make it about leaving the front desk unattended on 11/6/26" then saved
+ * "Policy reference: Standards of Conduct Policy, JBA Policy Manual p.13; Attendance Policy, JBA Policy Manual p.14". The
+ * second revision kept the first turn's line in a shape the splitter does not read as the app's own: with a trailing
+ * period (the live result: both sections), or not as the last paragraph (the old reference kept, none for the new one).
+ */
+function chainedLine(kept: "period" | "middle") {
+  return async (t: ReplayContext) => {
+    vi.setSystemTime(new Date("2026-11-10T03:04:00Z"));
+    t.directory(REFUSAL_ROSTER);
+    t.as("salon_director", KEARNEY);
+    t.manualAlsoHas?.([WORK_AREA_LINE]);
+    const thread = t.thread();
+    await thread.say("create a coaching form for Marnie Holloway, she missed the monthly meeting on 10/10/26");
+    t.draftWrites({ coaching_details: DETAILS, other_topic: "Missed monthly meeting" }, { coaching_topics: ["other"] });
+    const id = await thread.create();
+    t.revisionWrites({ coaching_details: "Observed:\nMarnie Holloway showed up late on 10/10/26.\n\nExpectation:\nMarnie is expected to arrive on time for scheduled shifts." });
+    await thread.say("I need you to make it about showing up late");
+    expect(t.values(id).coaching_details ?? "", "the first turn's reference").toMatch(new RegExp(`${ATTENDANCE_LINE.replace(/[.]/g, "\\.")}$`));
+    const observed = "Observed:\nMarnie Holloway left the front desk unattended on 11/6/26.";
+    const expectation = "Expectation:\nMarnie is expected to ensure the front desk remains attended at all times during scheduled shifts.";
+    t.revisionWrites({
+      coaching_details: kept === "period" ? `${observed}\n\n${expectation}\n\n${ATTENDANCE_LINE}.` : `${observed}\n\n${ATTENDANCE_LINE}\n\n${expectation}`,
+    });
+    const reply = await thread.say("make it about leaving the front desk unattended on 11/6/26");
+    const details = t.values(id).coaching_details ?? "";
+    expect(details, `Details:\n${reply.content}`).toMatch(/front desk unattended on 11\/6\/26/);
+    expect(details.match(/Policy reference:[^\n]*/g) ?? [], `the policy lines:\n${details}`).toEqual(["Policy reference: Standards of Conduct Policy, JBA Policy Manual p.13"]);
+  };
+}
+
 export const NOV10_MADE_ABOUT_TOPIC_AND_DATE_CASES: ReplayCase[] = [
   {
     id: "nov10-made-about-short-topic-reader-other",
@@ -170,4 +214,20 @@ export const NOV10_MADE_ABOUT_TOPIC_AND_DATE_CASES: ReplayCase[] = [
     fixFlags: SAID_DATE_FIX,
     run: p9({ saved: false }),
   },
+  ...(["period", "middle"] as const).map(
+    (kept): ReplayCase => ({
+      id: `nov10-made-about-policy-line-chained-${kept}`,
+      title: `QA's live Sunny round 15: two made-about turns in a row, the revision keeping the first turn's Attendance line ${kept === "period" ? "with a trailing period" : "mid-text"}: the new Details carries the Standards of Conduct reference alone`,
+      report: "QA's live Sunny round 15 (10 Nov 2026, 03:06Z): \"Policy reference: Standards of Conduct Policy, JBA Policy Manual p.13; Attendance Policy, JBA Policy Manual p.14\"",
+      status: { open: "the first turn's line, kept by the revision in a shape the splitter does not read, stays and is read into the new reference" },
+      fixFlags: [
+        "MADE_ABOUT_READER_ACCOUNT_ENABLED",
+        "MADE_ABOUT_UNDATED_TOGETHER_ENABLED",
+        "MADE_ABOUT_POLICY_LINE_ENABLED",
+        "MADE_ABOUT_REWRITE_FINISHES_ENABLED",
+        "MADE_ABOUT_POLICY_LINE_REPLACES_ENABLED",
+      ],
+      run: chainedLine(kept),
+    }),
+  ),
 ];
