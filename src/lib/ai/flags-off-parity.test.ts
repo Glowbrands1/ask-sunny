@@ -360,16 +360,16 @@ const NEW_FLAGS = [
   "FORM_EDIT_REFERS_BACK_ENABLED",
   "SAME_FORM_COPY_ENABLED",
   "SAME_FORM_COPY_NEW_PERSON_ENABLED",
-  // coding 6: POLICY_REFERENCE_NOT_ACCOUNT (default off): forced off with the others.
-  "POLICY_REFERENCE_NOT_ACCOUNT_ENABLED",
-  // coding 6: LEVEL_AFTER_FORM_NAME (default off): forced off with the others.
-  "LEVEL_AFTER_FORM_NAME_ENABLED",
-  // coding 6: TEAM_CARD_NOT_PRODUCT (default off): forced off with the others.
-  "TEAM_CARD_NOT_PRODUCT_ENABLED",
-  // coding 6: PAYROLL_SPLIT_WORDS (default off): forced off with the others.
-  "PAYROLL_SPLIT_WORDS_ENABLED",
   // coding 6: REOPEN_CLOSE_SPELLING (default off): forced off with the others.
   "REOPEN_CLOSE_SPELLING_ENABLED",
+  // coding 6: PAYROLL_SPLIT_WORDS (default off): forced off with the others.
+  "PAYROLL_SPLIT_WORDS_ENABLED",
+  // coding 6: TEAM_CARD_NOT_PRODUCT (default off): forced off with the others.
+  "TEAM_CARD_NOT_PRODUCT_ENABLED",
+  // coding 6: LEVEL_AFTER_FORM_NAME (default off): forced off with the others.
+  "LEVEL_AFTER_FORM_NAME_ENABLED",
+  // coding 6: POLICY_REFERENCE_NOT_ACCOUNT (default off): forced off with the others.
+  "POLICY_REFERENCE_NOT_ACCOUNT_ENABLED",
   "STAFF_PICKER_ENABLED",
   "STAFF_PICKER_STORE_TITLES_ENABLED",
   "STAFF_PICKER_BARE_ANSWER_ENABLED",

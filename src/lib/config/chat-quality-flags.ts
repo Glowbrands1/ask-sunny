@@ -3873,6 +3873,9 @@ export function madeAboutReaderAccountEnabled(): boolean {
  */
 export function policyReferenceNotAccountEnabled(): boolean {
   return envFlag("POLICY_REFERENCE_NOT_ACCOUNT_ENABLED");
+}
+
+/**
  * LEVEL_AFTER_FORM_NAME_ENABLED (coding 6, 10 Nov 2026; default off; QA's
  * overnight scan sf-s19). "I need a corrective action verbal for <A>" named
  * the level after the form and the card left it unset; "Corrective Action"
@@ -3884,6 +3887,9 @@ export function policyReferenceNotAccountEnabled(): boolean {
  */
 export function levelAfterFormNameEnabled(): boolean {
   return envFlag("LEVEL_AFTER_FORM_NAME_ENABLED");
+}
+
+/**
  * TEAM_CARD_NOT_PRODUCT_ENABLED (coding 6, 10 Nov 2026; default off; QA's
  * overnight scan sf-s13). "a coaching form for the team at Kearney on selling
  * Spray Tan Kits …" made a card for "Spray Tan Kits", and "The employee needs
@@ -3895,6 +3901,9 @@ export function levelAfterFormNameEnabled(): boolean {
  */
 export function teamCardNotProductEnabled(): boolean {
   return envFlag("TEAM_CARD_NOT_PRODUCT_ENABLED");
+}
+
+/**
  * PAYROLL_SPLIT_WORDS_ENABLED (coding 6, 10 Nov 2026; default off; sf-s23,
  * Pau 5 Nov 2026). "not pay roll deductable" was not read as the payroll
  * answer: the card asked again and put it in the Observation. On, the
@@ -3904,6 +3913,9 @@ export function teamCardNotProductEnabled(): boolean {
  */
 export function payrollSplitWordsEnabled(): boolean {
   return envFlag("PAYROLL_SPLIT_WORDS_ENABLED");
+}
+
+/**
  * REOPEN_CLOSE_SPELLING_ENABLED (coding 6, 10 Nov 2026; default off; Pau via
  * QA, sf-s26, 5 Nov 2026). "Edit Thesaly Brant CA" with Thessaly Brandt's CA
  * on file was answered "Who is this form for?". On: when a reopen request
