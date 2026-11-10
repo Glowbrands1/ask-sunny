@@ -1,6 +1,6 @@
 import { chatStageTimingsEnabled } from "@/lib/config/chat-quality-flags";
 
-import { chatRequestReceivedAt, chatTraceDraft } from "./chat-trace-store";
+import { chatRequestReceivedAt, chatTraceDraft, pendingRouteStages, type ChatStageTiming } from "./chat-trace-store";
 
 /**
  * CHAT_STAGE_TIMINGS_ENABLED (QA, 9 Nov 2026; default off): the slow first reply to a pasted termination letter (18–23 s
@@ -19,11 +19,26 @@ import { chatRequestReceivedAt, chatTraceDraft } from "./chat-trace-store";
  */
 export function markStage(name: string): void {
   try {
-    const draft = chatStageTimingsEnabled() ? chatTraceDraft() : undefined;
-    if (!draft) return;
-    draft.stagesFrom ??= chatRequestReceivedAt();
-    const at = Date.now() - draft.stagesFrom;
-    const stages = (draft.stages ??= []);
+    if (!chatStageTimingsEnabled()) return;
+    const draft = chatTraceDraft();
+    /*
+     * QA (10 Nov 2026): the route's steps before the trace opens (auth, the body, the turn's row, the form routing) are
+     * held for the request, and the trace takes them over at its first mark, so its stages start at the request's
+     * receipt. With no request (a test, a background job) and no trace, a mark does nothing.
+     */
+    const pending = pendingRouteStages();
+    let stages: ChatStageTiming[];
+    let from: number;
+    if (draft) {
+      from = draft.stagesFrom ??= chatRequestReceivedAt();
+      stages = draft.stages ??= pending ? pending.splice(0) : [];
+    } else if (pending) {
+      from = chatRequestReceivedAt();
+      stages = pending;
+    } else {
+      return;
+    }
+    const at = Date.now() - from;
     const open = stages[stages.length - 1];
     if (open && open.ms < 0) stages[stages.length - 1] = { ...open, ms: at - open.startMs };
     stages.push({ name, startMs: at, ms: -1 });

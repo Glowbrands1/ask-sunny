@@ -4,6 +4,7 @@ import { withSpendMeter } from "@/lib/ai/spend-meter-run";
 
 import { withSwitchAfterCreate } from "@/lib/ai/form-type-switch";
 import { withCorrectionNotDropped, withProposalNameCorrection } from "@/lib/forms/proposal-name-correction";
+import { markStage } from "@/lib/ai/chat-stage-timings";
 import { enterChatRequestClock } from "@/lib/ai/chat-trace-store";
 import { answerQuestion } from "@/lib/ai/server-ask";
 import { modelSpendGuard } from "@/lib/ai/spend-guard";
@@ -133,10 +134,13 @@ async function postChat(request: Request) {
   try {
     assertLiveMode();
     assertNoConfigurationProblems();
+    // CHAT_STAGE_TIMINGS_ENABLED (QA, 10 Nov 2026: 1.7 s before trace_open on a live turn): the route's own steps, marks only.
+    markStage("route_auth");
     const context = await authorizeRequest(request, "ask_questions");
     noteSpendUser(context.identity.subject);
     assertWithinRateLimit(request, "chat");
 
+    markStage("route_body");
     const body = await parseJsonBody<AskRequest>(request);
 
     const askedAt = Date.now();
@@ -181,6 +185,7 @@ async function postChat(request: Request) {
      */
     const surface = isActivitySurface(body.surface) ? body.surface : null;
 
+    markStage("route_open_turn");
     const turnId = await openTurn({
       feature: "chat",
       category: classifyChatTurn({
@@ -213,12 +218,14 @@ async function postChat(request: Request) {
      * limit, one plain sentence and no model call. Before every step below,
      * since each of them can call the model. See `ai/spend-guard.ts`.
      */
+    markStage("route_spend_guard");
     const capped = await modelSpendGuard({ userId: context.identity.subject, role: context.identity.role });
     if (capped) {
       await closeTurn(turnId, { category: "unclassified", succeeded: true, latencyMs: Date.now() - askedAt });
       return NextResponse.json({ ...finalReplyWithoutMarkers(capped), turnId });
     }
 
+    markStage("route_intake");
     let answer;
     try {
       let asked = parseAskRequest(body);
@@ -374,6 +381,7 @@ async function postChat(request: Request) {
        * else, and off unless DRAFT_ACTIONS_ENABLED. See
        * `lib/forms/chat-draft-actions.ts`.
        */
+      markStage("route_draft_action");
       const draftAction = draftActionsEnabled()
         ? await (await import("@/lib/forms/chat-draft-actions")).draftActionForTurn({
             request,
@@ -505,6 +513,7 @@ async function postChat(request: Request) {
        * `lib/ai/question-not-form.ts`. Behind QUESTION_NOT_FORM_ENABLED.
        */
       // LIST_POLICY_IS_EDIT_ENABLED: "please list the policy" with a form open is an edit (EDIT_POLICY_ASK), never a question.
+      markStage("route_form_read");
       const listPolicyEdit =
         listPolicyIsEditEnabled() && (await import("@/lib/ai/list-policy-ask")).listPolicyIsEdit(parsed.question, Boolean(parsed.activeFormInstanceId));
       const askedQuestion = !listPolicyEdit && questionNotFormEnabled() && isQuestionNotForm(parsed.question, parsed.history);
@@ -541,6 +550,7 @@ async function postChat(request: Request) {
           today: parsed.context.todayIso,
         });
       }
+      markStage("route_form_correction");
       const correction = parsed.activeFormInstanceId && !askedQuestion
         ? await (await import("@/lib/forms/chat-correction")).correctActiveForm({
             request,
@@ -603,6 +613,7 @@ async function postChat(request: Request) {
         subject: context.identity.subject,
         verified: context.identity.verified,
       };
+      markStage("route_form_edit_tool");
       const formEditTool =
         formEditToolInStreamEnabled() && !correction && !nameFix && !policyChange && parsed.activeFormInstanceId
           ? await (await import("@/lib/forms/form-edit-tool")).prepareFormEditTool({
@@ -635,6 +646,7 @@ async function postChat(request: Request) {
        * paths below answer the turn as with the flag off, and the last
        * fallback makes its own call (classification fix, 4 Nov 2026).
        */
+      markStage("route_form_paths");
       const toolMain = formEditTool?.turn.offer
         ? await answerQuestion(
             {
