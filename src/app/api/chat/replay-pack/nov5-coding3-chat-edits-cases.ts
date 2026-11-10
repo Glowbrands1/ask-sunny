@@ -235,9 +235,9 @@ export const NOV5_CODING3_CHAT_EDITS_CASES: ReplayCase[] = [
      * of Conduct". With CA_SALES_POLICY_ENABLED alone the Observation holds
      * her shortfall. No fixFlags: FORM_EDIT_SOURCE_TURN_ENABLED does not touch it.
      */
-    status: {
-      open: "with production's flags \"yes\" makes no card (no Corrective Action is offered: CA_SALES_POLICY_ENABLED is off); with the offer and the full remap on (the tester's card), What happened is the offer's own request, \"Create a Corrective Action Form for policy is Standards of Conduct\"",
-    },
+    // Changed on purpose (10 Nov 2026, the group-4 gate on main ed18d1fc): it holds with production's flags now (the offer,
+    // CA_SALES_POLICY, is on here, and the card's What happened is her shortfall), so it is "fixed".
+    status: "fixed",
     async run(t: T) {
       t.directory([...STAFF, SELA]);
       t.as("salon_director", KEARNEY);
