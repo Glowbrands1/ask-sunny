@@ -1,4 +1,5 @@
-import { cardComplaintNotAccountEnabled, createCommandPointsToCardEnabled, createFromConversationPointsToCardEnabled } from "@/lib/config/chat-quality-flags";
+import { cardComplaintNotAccountEnabled, createCommandPointsToCardEnabled, createFromConversationPointsToCardEnabled, createReplyPlainEnabled } from "@/lib/config/chat-quality-flags";
+import { detectTemplateIntent } from "@/lib/forms/template-intent";
 
 import type { AskRequest, AskResponse } from "./types";
 
@@ -67,9 +68,33 @@ function kindOf(question: string): "create" | "outdated" | "wrong" | null {
  * fills — the exit card lost its Date (s8), the coaching card its Policy (s7). Such a turn is answered as before the
  * flag, the whole conversation re-read, and only the reply becomes the press-Create line.
  */
-function rereadsCard(question: string): boolean {
+function rereadsCard(question: string, cardKey?: string): boolean {
   const text = squeezed(question);
-  return createFromConversationPointsToCardEnabled() && CREATE_FROM_CONVERSATION.test(text) && !CREATE_COMMAND.test(text);
+  if (!createFromConversationPointsToCardEnabled() || CREATE_COMMAND.test(text)) return false;
+  if (CREATE_FROM_CONVERSATION.test(text)) return true;
+  return createReplyPlainEnabled() && namesTheCardsForm(text, cardKey);
+}
+
+/*
+ * CREATE_REPLY_PLAIN_ENABLED (QA's Bubbles round-16b live test, 10 Nov 2026): "Create a Coaching Form from this
+ * conversation." with a Coaching card on screen got the card's whole read-back again. With the flag on, a create
+ * command that names the card's OWN form ("a Coaching Form", "a CA") followed by "from this conversation" and the like
+ * points to the card too; another form named stays a request.
+ */
+const FORM_NAME = /\b(?:coaching|coach|corrective\s+action|c\.?\s?a\.?|c\/a|dpoa|write[- ]?up)(?:\s+(?:form|document))?\b/i;
+
+function namesTheCardsForm(text: string, cardKey: string | undefined): boolean {
+  if (!cardKey || !FORM_NAME.test(text)) return false;
+  if (!CREATE_FROM_CONVERSATION.test(text.replace(FORM_NAME, "form"))) return false;
+  const intent = detectTemplateIntent(text);
+  const key = intent.kind === "explicit" ? intent.templateKey : intent.kind === "corrective_action" ? "dpoa" : null;
+  return key === cardKey;
+}
+
+/** CREATE_REPLY_PLAIN_ENABLED: the reply says the card above is ready, and nothing else — never its read-back again. */
+export function plainCreateLine(templateName: string | undefined): string {
+  const form = templateName ? `**${templateName}** card` : "card";
+  return `The ${form} above is ready — press **Create draft** on it to make the draft. Nothing is saved to anyone's file until you press it.`;
 }
 
 export interface CardMetaTurn {
@@ -87,7 +112,7 @@ export function cardMetaTurn(
 ): CardMetaTurn | null {
   if (!request.continueProposalTemplateKey || request.activeFormInstanceId) return null;
   // CREATE_FROM_CONVERSATION_POINTS_TO_CARD_ENABLED: answered as before (the whole conversation re-read); the reply is set after (`withPressCreateReply`).
-  if (rereadsCard(request.question)) return null;
+  if (rereadsCard(request.question, request.continueProposalTemplateKey)) return null;
   const kind = kindOf(request.question);
   if (!kind) return null;
   const fromTurn = [...(request.history ?? [])]
@@ -136,7 +161,12 @@ export function withPressCreateReply<T extends { content: string; formProposal?:
   request: Pick<AskRequest, "question" | "continueProposalTemplateKey" | "activeFormInstanceId">,
 ): T {
   if (!createCommandPointsToCardEnabled() || !request.continueProposalTemplateKey || request.activeFormInstanceId) return answer;
-  if (!rereadsCard(request.question) || !answer.formProposal || answer.content.startsWith(PRESS_CREATE)) return answer;
+  if (!rereadsCard(request.question, request.continueProposalTemplateKey) || !answer.formProposal || answer.content.startsWith(PRESS_CREATE)) return answer;
+  // CREATE_REPLY_PLAIN_ENABLED: one plain line; the card (its fields, as the re-read built them) is attached, not repeated.
+  if (createReplyPlainEnabled()) {
+    const name = (answer.formProposal as { templateName?: string }).templateName;
+    return { ...answer, content: plainCreateLine(name) };
+  }
   // The line leads; the card's own read-back (its fields, the policy it cites) stays under it, as the re-read wrote it.
   return { ...answer, content: `${PRESS_CREATE}\n\n${answer.content.trim()}` };
 }
