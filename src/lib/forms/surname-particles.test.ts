@@ -5,18 +5,16 @@ import { extractEmployeeNames } from "./proposal";
 /*
  * SURNAME_PARTICLES_ENABLED (QA's audit item 17b, 10 Nov 2026): a typed surname that opens with a particle was cut
  * at it ("maria de la cruz" → "maria de"). The people here are invented. The reader's own lines are in the protected
- * forms/proposal.ts (docs/patches/surname-particles.patch).
+ * forms/proposal.ts (Pau, "ok surname particles", 10 Nov 2026; docs/patches/surname-particles.patch).
  */
 describe("SURNAME_PARTICLES_ENABLED", () => {
   afterEach(() => vi.unstubAllEnvs());
   const on = (value: boolean) => vi.stubEnv("SURNAME_PARTICLES_ENABLED", value ? "true" : "");
 
-  it.fails.each([
+  it.each([
     ["create a ca for marisol de la vega, she was late on 11/3", "marisol de la vega"],
     ["I need a CA for marisol de la vega", "marisol de la vega"],
     ["create a coaching form for marisol van der vega, she was late", "marisol van der vega"],
-    // Fail until Pau's forms/proposal.ts lines land (docs/patches/surname-particles.patch); with the patch applied
-    // they pass, and these become `it.each(`.
   ])("on: %s → %s", (said, name) => {
     on(true);
     expect(extractEmployeeNames(said)).toEqual([name]);

@@ -6,8 +6,8 @@ import { KEARNEY, STAFF, type ReplayCase } from "./cases";
  * SURNAME_PARTICLES (QA's audit item 17b, 10 Nov 2026): a typed surname that opens with a particle was cut at it —
  * "maria de la cruz" became "maria de". With production's flags, "create a ca for marisol de la vega, she was late on
  * 11/3" (someone not on the roster) put **Marisol De** on the card. SURNAME_PARTICLES_ENABLED (default off) reads the
- * whole surname; its reader lines are in the protected forms/proposal.ts and wait on Pau
- * (docs/patches/surname-particles.patch). Invented person.
+ * whole surname; its reader lines are in the protected forms/proposal.ts (Pau, "ok surname particles", 10 Nov 2026).
+ * Invented person.
  */
 const FIX = ["SURNAME_PARTICLES_ENABLED"];
 
@@ -21,8 +21,8 @@ export const NOV10_SURNAME_PARTICLES_CASES: ReplayCase[] = [
     report: "QA's audit item 17b (10 Nov 2026): \"maria de la cruz\" → \"maria de\"",
     status: { open: "the card's employee stops at the particle (\"Marisol De\", \"Marisol Van\")" },
     fixFlags: FIX,
-    // Open with the flag too until Pau's forms/proposal.ts lines land (docs/patches/surname-particles.patch).
-    fixStatus: { open: "the protected reader lines are not applied yet" },
+    // Pau's forms/proposal.ts lines are in ("ok surname particles", 10 Nov 2026): it holds with the fix flag, so the
+    // fixStatus goes.
     async run(t) {
       vi.setSystemTime(new Date("2026-11-09T09:00:00Z"));
       t.directory([...STAFF]);
