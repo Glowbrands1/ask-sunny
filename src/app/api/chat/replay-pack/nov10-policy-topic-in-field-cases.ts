@@ -26,7 +26,8 @@ export const NOV10_POLICY_TOPIC_IN_FIELD_CASES: ReplayCase[] = [
     title: "a saved whole-team Coaching draft, \"In details of coaching inlude our woven policy on finding a cover for your shift\": the Details hold the Shift Replacement section and its citation, never a pointer",
     report:
       "QA, a manager's 1★ rating (10 Nov 2026): \"I asked it to write a coaching form on our policy for finding a cover and the sentence it gave me was to refer to the woven policy manual for finding a cover.\"",
-    status: { open: "Details of Coaching: \"Refer to the Woven policy manual for finding a cover for your shift.\"" },
+    // Changed on purpose (10 Nov 2026): fixed in production by its fix flag, QA round 17.
+    status: "fixed",
     fixFlags: ["POLICY_TOPIC_INTO_FIELD_ENABLED"],
     async run(t) {
       t.directory(STAFF);
@@ -54,7 +55,8 @@ export const NOV10_POLICY_TOPIC_IN_FIELD_CASES: ReplayCase[] = [
     title: "the same draft, a policy the manual has no section on: nothing is written, never a pointer, and the reply asks which policy",
     report:
       "QA, a manager's 1★ rating (10 Nov 2026): the policy asked for is never a sentence telling the manager to refer to the manual; with no section, say so and ask",
-    status: { open: "Details of Coaching: \"Refer to the Woven policy manual for pet insurance.\"" },
+    // Changed on purpose (10 Nov 2026): fixed in production by its fix flag, QA round 17.
+    status: "fixed",
     fixFlags: ["POLICY_TOPIC_INTO_FIELD_ENABLED"],
     async run(t) {
       t.directory(STAFF);
@@ -81,7 +83,8 @@ export const NOV10_POLICY_TOPIC_IN_FIELD_CASES: ReplayCase[] = [
     title: "the same draft, a salon policy topic: \"In details of coaching include our policy on cell phone use on the salon floor\" holds the Cell Phone/Smart Watch Policy and its citation, never a pointer",
     report:
       "QA (10 Nov 2026): check the sibling app's report here with a salon policy topic — the policy asked for is the manual's section, never a pointer to the manual",
-    status: { open: "Details of Coaching: \"Refer to the policy manual for cell phone use on the salon floor.\"" },
+    // Changed on purpose (10 Nov 2026): fixed in production by its fix flag, QA round 17.
+    status: "fixed",
     fixFlags: ["POLICY_TOPIC_INTO_FIELD_ENABLED"],
     async run(t) {
       t.directory(STAFF);
