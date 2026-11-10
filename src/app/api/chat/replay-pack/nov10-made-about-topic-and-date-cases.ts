@@ -319,6 +319,14 @@ export const NOV10_MADE_ABOUT_TOPIC_AND_DATE_CASES: ReplayCase[] = [
             const observation = String(run.saved.observation ?? "");
             if (!/Woven deadline/.test(observation)) return `lost the Woven deadline: ${JSON.stringify(observation)}`;
             if (!/Also observed: Wrenna was on her phone\./.test(observation)) return `"Also observed:" was split: ${JSON.stringify(observation)}`;
+            /*
+             * Changed on purpose (QA's gate, 10 Nov 2026): the saved field is checked whole. With ADD_NOT_REPEATED_SENTENCES
+             * (#768) the add was appended after the Expectation and the Expectation saved twice. One Expectation, and the
+             * phone under Observed, before it.
+             */
+            const expectations = observation.match(/Expectation:/g) ?? [];
+            if (expectations.length !== 1) return `${expectations.length} Expectation blocks: ${JSON.stringify(observation)}`;
+            if (observation.search(/on her phone/i) > observation.indexOf("Expectation:")) return `the phone line is after the Expectation: ${JSON.stringify(observation)}`;
             return null;
           },
         },
