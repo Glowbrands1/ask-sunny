@@ -328,7 +328,11 @@ async function postChat(request: Request) {
         }
         enterPersonRoster(names);
         // FORM_NAME_OFF_ROSTER_ASK_ENABLED: the scope's level, so a name not on the roster is held for a salon manager only (`lib/forms/roster-scope.ts`).
-        if (formNameOffRosterAskEnabled()) (await import("@/lib/forms/person-roster-store")).enterRosterScope(context.identity.scope?.level ?? "");
+        // The manager's own turns too, so a full name typed on an earlier turn is still the manager's (QA's #741 eval, g1–g6).
+        if (formNameOffRosterAskEnabled()) {
+          const managerTurns = [...asked.history.filter((turn) => turn.role === "user").map((turn) => String(turn.content ?? "")), asked.question];
+          (await import("@/lib/forms/person-roster-store")).enterRosterScope(context.identity.scope?.level ?? "", managerTurns);
+        }
         /*
          * FORM_NAME_FROM_ROSTER_ENABLED: does this message name somebody on the
          * roster (exact or close, or a roster first name typed in lowercase)?

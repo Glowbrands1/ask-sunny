@@ -3,7 +3,7 @@ import "server-only";
 import { AsyncLocalStorage } from "node:async_hooks";
 
 import { installPersonRoster } from "./person-guard";
-import { installRosterScope } from "./roster-scope";
+import { installRosterScope, type RosterScope } from "./roster-scope";
 
 /**
  * The actor's roster names for this request, for `person-guard.ts`'s rule that
@@ -20,10 +20,10 @@ export function enterPersonRoster(names: readonly string[]): void {
 }
 
 /** FORM_NAME_OFF_ROSTER_ASK_ENABLED: the level of the actor's scope this turn (`roster-scope.ts`). */
-const rosterScope = new AsyncLocalStorage<string>();
+const rosterScope = new AsyncLocalStorage<RosterScope>();
 
 installRosterScope(() => rosterScope.getStore());
 
-export function enterRosterScope(level: string): void {
-  rosterScope.enterWith(level);
+export function enterRosterScope(level: string, managerTurns: readonly string[] = []): void {
+  rosterScope.enterWith({ level, managerTurns });
 }

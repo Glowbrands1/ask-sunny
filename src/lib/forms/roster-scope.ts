@@ -4,12 +4,23 @@
  * OFF_ROSTER_ASK_BEFORE_CARD rule — a salon manager is asked about a name not on the roster, anyone else keeps it as
  * typed. Undefined with none (a test, the browser, the flag off).
  */
-let read: () => string | undefined = () => undefined;
+export interface RosterScope {
+  readonly level: string;
+  /** The manager's own turns in this chat, the latest last (QA's #741 eval: a name typed on an earlier turn is kept). */
+  readonly managerTurns: readonly string[];
+}
 
-export function installRosterScope(reader: () => string | undefined): void {
+let read: () => RosterScope | undefined = () => undefined;
+
+export function installRosterScope(reader: () => RosterScope | undefined): void {
   read = reader;
 }
 
 export function rosterScopeLevel(): string | undefined {
-  return read();
+  return read()?.level;
+}
+
+/** The manager's turns this chat, as the route entered them; empty with none. */
+export function rosterScopeTurns(): readonly string[] {
+  return read()?.managerTurns ?? [];
 }

@@ -1,9 +1,10 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AskResponse } from "@/lib/ai/types";
 import type { ChatFormProposal } from "@/types";
 
 import { possessivePlaceQuestion } from "./possessive-place";
+import { installRosterScope } from "./roster-scope";
 import { ASK_WHO, rosterOnlyNames, rosterSpelling, withoutUnseatedName } from "./roster-only-names";
 
 /**
@@ -171,4 +172,43 @@ describe("the possessive-place question keeps the place's word (FORM_NAME_OFF_RO
     vi.stubEnv("FORM_NAME_OFF_ROSTER_ASK_ENABLED", "false");
     expect(withoutUnseatedName(question, ["Hadley"], ["Remy Calder"])).not.toContain("Hadley");
   });
+});
+
+/*
+ * FORM_NAME_OFF_ROSTER_ASK_ENABLED (QA's #741 eval, 10 Nov 2026, g1–g6, s4, s8): a manager who is not salon-scoped keeps a
+ * full name on nobody's roster as typed — on the turn after it too ("create a coaching form for Sarah Test", then "she was
+ * out of dress code"), and typed in lower case ("evangeline pembury, tanning consultant at shawnee"). A salon manager is
+ * still asked. A placeholder ("Test Employee") is never kept.
+ */
+describe("a non-salon manager's typed off-roster name stays (FORM_NAME_OFF_ROSTER_ASK_ENABLED)", () => {
+  const card = (name: string) => reply(`Here is what I would put on a **Coaching Form** for **${name}**.`, name);
+  const scope = (level: string, turns: string[]) => installRosterScope(() => ({ level, managerTurns: turns }));
+  beforeEach(() => {
+    for (const flag of ["FORM_NAME_FROM_ROSTER_ENABLED", "FORM_NAME_OFF_ROSTER_ASK_ENABLED", "OFF_ROSTER_ASK_BEFORE_CARD_ENABLED", "OFF_ROSTER_CONFIRM_ENABLED", "ROSTER_NOT_FOUND_ANY_PHRASING_ENABLED", "ROSTER_NEAR_MISS_ENABLED"]) vi.stubEnv(flag, "true");
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    installRosterScope(() => undefined);
+  });
+
+  it("the turn after the name was typed", () => {
+    scope("global", ["create a coaching form for Sarah Test", "she was out of dress code"]);
+    expect(rosterOnlyNames(card("Sarah Test"), ROSTER, "she was out of dress code").formProposal?.employeeName).toBe("Sarah Test");
+  });
+
+  it("typed in lower case", () => {
+    scope("global", ["evangeline pembury, tanning consultant at shawnee"]);
+    expect(rosterOnlyNames(card("Evangeline Pembury"), ROSTER, "evangeline pembury, tanning consultant at shawnee").formProposal?.employeeName).toBe("Evangeline Pembury");
+  });
+
+  it("a salon manager is still asked", () => {
+    scope("salon", ["create a coaching form for Sarah Test", "she was out of dress code"]);
+    expect(rosterOnlyNames(card("Sarah Test"), ROSTER, "she was out of dress code").formProposal?.employeeName ?? null).toBeNull();
+  });
+
+  it("a placeholder is never kept", () => {
+    scope("global", ["create a coaching form for Test Employee"]);
+    expect(rosterOnlyNames(card("Test Employee"), ROSTER, "create a coaching form for Test Employee").formProposal?.employeeName ?? null).toBeNull();
+  });
+
 });

@@ -12,7 +12,7 @@ import { namesCompanyPositionTitle } from "./staff-picker";
 import { metricMessage, namesAMetric, requestMessage, cardOnScreen } from "./request-slot";
 import { namesAForm } from "./template-intent";
 import { onlyAsPossessivePlace, POSSESSIVE_PLACE_QUESTION_LINE, possessivePlaceQuestion } from "./possessive-place";
-import { rosterScopeLevel } from "./roster-scope";
+import { rosterScopeLevel, rosterScopeTurns } from "./roster-scope";
 
 /**
  * ============================================================================
@@ -193,7 +193,7 @@ export function rosterOnlyNames(response: AskResponse, names: readonly string[],
        * roster on the card as typed, as that flow does; a salon manager is asked (`off-roster-ask.ts`).
        */
       const level = formNameOffRosterAskEnabled() && offRosterAskBeforeCardEnabled() && offRosterConfirmEnabled() ? rosterScopeLevel() : undefined;
-      if (!close && level && level !== "salon" && offRosterTyped(employee, message, names)) return response;
+      if (!close && level && level !== "salon" && (offRosterTyped(employee, message, names) || keptOffRoster(employee, message, names))) return response;
       proposal = { ...proposal, employeeName: null, status: "needs_employee" };
       // The reply never drafts for a name that is not on the card.
       content = content.replace(new RegExp(String.raw`\s+for\s+\*\*${escape(employee)}\*\*`, "g"), "").split(`**${employee}**`).join("the employee");
@@ -435,6 +435,23 @@ function anyRosterPersonClose(name: string, names: readonly string[]): boolean {
  * "QA Probe XZT One" are never offered; "zebulon marchbanks" is, said back in Title Case. Null: no offer; else the
  * name in Title Case.
  */
+/**
+ * FORM_NAME_OFF_ROSTER_ASK_ENABLED (QA's #741 eval, 10 Nov 2026: g1–g6, s4, s8): a manager who is not salon-scoped keeps a
+ * full name on nobody's roster as typed (round 12's rule), on every turn: the manager typed it, in any case, in this
+ * message or an earlier one of theirs ("evangeline pembury, tanning consultant at shawnee"; "create a coaching form for
+ * Sarah Test", then "she was out of dress code"). Never a placeholder ("… employee"), a form,
+ * a company position or the company itself.
+ */
+function keptOffRoster(employee: string, message: string | undefined, names: readonly string[]): boolean {
+  const typed = employee.trim();
+  if (!NAME_SHAPE.test(typed) || typed.split(/\s+/).length < 2) return false;
+  if (rosterSpelling(typed, names) || anyRosterPersonClose(typed, names) || namesAForm(typed)) return false;
+  if (normalizeTypedName(typed).split(/\s+/).includes(UNNAMED_PERSON_WORD)) return false;
+  if (namesCompanyPositionTitle(typed) || namesThisCompany(typed)) return false;
+  const said = new RegExp(String.raw`(?<![\p{L}])${escape(typed)}(?![\p{L}])`, "iu");
+  return [message ?? "", ...rosterScopeTurns()].some((turn) => said.test(turn));
+}
+
 export function offRosterTyped(employee: string, message: string | undefined, names: readonly string[]): string | null {
   const typed = employee.trim();
   if (!NAME_SHAPE.test(typed) || rosterSpelling(typed, names) || anyRosterPersonClose(typed, names) || namesAForm(typed)) return null;
