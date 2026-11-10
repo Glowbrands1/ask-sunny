@@ -128,7 +128,11 @@ describe("sameRequestForOtherPerson", () => {
     const history = [turn("m1", "user", MIREYA)];
     expect(sameRequestForOtherPerson({ question: SAME, history, roster: ROSTER })).toBeNull();
     expect(sameRequestForOtherPerson({ question: "do the same thing for Mireya Vantrell", history, roster: ROSTER, continueTemplateKey: "dpoa" })).toBeNull();
+    // Off roster: no request with SAME_REQUEST_OFF_ROSTER_ENABLED off (production today). With it on, an off-roster <B> is
+    // read as typed on purpose (QA's r23 live test; its own tests are below), so this line pins the flag off.
+    process.env.SAME_REQUEST_OFF_ROSTER_ENABLED = "false";
     expect(sameRequestForOtherPerson({ question: "do the same thing for Zelda Nobody", history, roster: ROSTER, continueTemplateKey: "dpoa" })).toBeNull();
+    delete process.env.SAME_REQUEST_OFF_ROSTER_ENABLED;
   });
 });
 

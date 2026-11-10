@@ -209,7 +209,10 @@ function cardSubject(history: readonly ChatMessage[]): { employeeName: string; i
 
 /** <B> as typed after "for": one person, never <A>, never a pronoun. */
 function typedOtherPerson(question: string, subjectName: string): string | null {
-  const names = readEmployeeMentions(question).names.filter((name) => !sameName(name, subjectName) && !PRONOUN.test(name.trim()));
+  // <A> by any part of their name ("one for Jovelle" with Jovelle Kerrigan's card) is never <B>.
+  const subjectWords = new Set(words(subjectName).map((word) => word.toLowerCase()));
+  const isSubject = (name: string) => sameName(name, subjectName) || words(name).every((word) => subjectWords.has(word.toLowerCase()));
+  const names = readEmployeeMentions(question).names.filter((name) => !isSubject(name) && !PRONOUN.test(name.trim()));
   if (names.length !== 1) return null;
   const name = names[0]!.trim();
   return new RegExp(`\\bfor\\s+${words(name).map(escaped).join("\\s+")}\\b`, "i").test(question) ? name : null;
