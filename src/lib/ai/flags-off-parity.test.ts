@@ -378,6 +378,8 @@ const NEW_FLAGS = [
   "COACHING_OBSERVED_SAVED_ENABLED",
   // coding 6: APP_INSTRUCTIONS_NOT_ACCOUNT (default off): forced off with the others.
   "APP_INSTRUCTIONS_NOT_ACCOUNT_ENABLED",
+  // coding 6: TERMINATION_STATED_TICKS (default off): forced off with the others.
+  "TERMINATION_STATED_TICKS_ENABLED",
   // coding 6: PAYROLL_BARE_SENTENCE (default off): forced off with the others.
   "PAYROLL_BARE_SENTENCE_ENABLED",
   "STAFF_PICKER_ENABLED",
