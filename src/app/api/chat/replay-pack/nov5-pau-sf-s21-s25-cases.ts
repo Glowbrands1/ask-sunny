@@ -155,6 +155,8 @@ export const NOV5_PAU_SF_S21_S25_CASES: ReplayCase[] = [
     title: "sf-s25: a closing account is never \"Late Opening, as you said\"; the Observation is the incident, not the earlier question",
     report: `${REPORT}, sf-s25`,
     status: { open: "the card's Observation begins with the earlier question (\"What policy would it be …\")" },
+    // Fixed under QUESTION_TURNS_NOT_ACCOUNT_ENABLED (coding 6, 10 Nov 2026): the policy questions before the request are not its account; open on production flags until QA flips it.
+    fixFlags: ["QUESTION_TURNS_NOT_ACCOUNT_ENABLED"],
     // The live "Late Opening, as you said" is asserted too (the trace's heading is read); here the Observation fails first.
     async run(t) {
       const thread = start(t);
