@@ -2902,6 +2902,17 @@ export function titleOfTheEmployeeEnabled(): boolean {
  * with no employee on the card, no reply text names the person who is not on
  * it. Off, as before.
  */
+/**
+ * TYPO_CORRECTED_SAME_PERSON_ENABLED (QA, 10 Nov 2026, found in the sibling app's s14 path 2; default off). A name typed
+ * with a slip and then corrected ("rozline quellmar" → Rozlyn Quellmar) is read as ANOTHER person on every later turn by
+ * `turnsAboutThisForm` (ai/form-proposal.ts), so a later request for her builds its card from that turn alone. On: the
+ * same surname and a first name at most two letters off (four letters or more) is the same person. Off, as before.
+ * The ai/form-proposal.ts lines are protected: they wait on Pau (docs/patches/typo-corrected-same-person.patch).
+ */
+export function typoCorrectedSamePersonEnabled(): boolean {
+  return envFlag("TYPO_CORRECTED_SAME_PERSON_ENABLED");
+}
+
 export function rosterNearMissEnabled(): boolean {
   return envFlag("ROSTER_NEAR_MISS_ENABLED");
 }
