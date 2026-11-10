@@ -27,6 +27,17 @@ import { OBSERVED_LABEL } from "@/lib/forms/narrative-draft";
 const HEADING = /^\s*(Observed|Expectation|Going Forward):/im;
 const OBSERVED = /(^|\n)\s*Observed:[ \t]*\n?([\s\S]*?)(?=\n\s*(?:Expectation|Going Forward):|$)/i;
 
+const POLICY_LINE = /^\s*Policy reference:[^\n]*$/i;
+
+/** The field split into its own text and the app's "Policy reference: …" lines. */
+function withoutPolicyLines(text: string): { body: string; policy: string } {
+  const lines = text.split("\n");
+  return {
+    body: lines.filter((line) => !POLICY_LINE.test(line)).join("\n").replace(/\n{3,}/g, "\n\n").trim(),
+    policy: lines.filter((line) => POLICY_LINE.test(line)).map((line) => line.trim()).join("\n"),
+  };
+}
+
 function escaped(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -80,11 +91,15 @@ export function withCoachingObservedSaved(input: {
   const current = typeof input.values[key] === "string" ? (input.values[key] as string) : "";
   const observed = OBSERVED.exec(current);
   if (observed && observed[2]!.trim() !== "") return input.values;
-  if (current.trim() !== "" && !HEADING.test(current)) {
-    return { ...input.values, [key]: `${OBSERVED_LABEL}\n${current.trim()}` };
+  // The policy set-aside line ("Policy reference: …") is the app's, never the account: it stays after, and is never put
+  // under "Observed:" (QA's #755 NO-GO: that made it the manager's protected account, and the later edit was refused).
+  const { body, policy } = withoutPolicyLines(current);
+  const after = (text: string) => [text, policy].filter(Boolean).join("\n\n");
+  if (body !== "" && !HEADING.test(body)) {
+    return { ...input.values, [key]: after(`${OBSERVED_LABEL}\n${body}`) };
   }
   const account = managerAccount(input.notes, input.employeeName);
   if (!account) return input.values;
-  const rest = current.replace(/(^|\n)\s*Observed:[ \t]*\n?(?=\s*(?:\n|$|Expectation:|Going Forward:))/i, "$1").trim();
-  return { ...input.values, [key]: `${OBSERVED_LABEL}\n${account}${rest ? `\n\n${rest}` : ""}` };
+  const rest = body.replace(/(^|\n)\s*Observed:[ \t]*\n?(?=\s*(?:\n|$|Expectation:|Going Forward:))/i, "$1").trim();
+  return { ...input.values, [key]: after(`${OBSERVED_LABEL}\n${account}${rest ? `\n\n${rest}` : ""}`) };
 }
