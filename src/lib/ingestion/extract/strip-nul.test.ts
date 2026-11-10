@@ -18,6 +18,7 @@ afterEach(() => vi.unstubAllEnvs());
 
 describe("extracted text keeps no NUL character", () => {
   it("off (production today): the NUL characters reach the chunks (the bug)", async () => {
+    vi.stubEnv(FLAG, "");
     const read = await extractDocument("txt", bytes(MANUAL));
     expect(read.segments.map((segment) => segment.text).join("")).toContain("\u0000");
   });

@@ -43,6 +43,7 @@ afterEach(() => vi.unstubAllEnvs());
 describe("a scanned PDF that found no text is retried once OCR can read it", () => {
   it("off (production today): \"no_text\" is permanent, so its retries are used up at once (the bug)", async () => {
     vi.stubEnv("WOVEN_PDF_OCR_ENABLED", "true");
+    vi.stubEnv(FLAG, "");
     const error = await ingestError();
     expect(error).toMatchObject({ category: "ingest_no_text", retryable: false });
   });
@@ -55,6 +56,7 @@ describe("a scanned PDF that found no text is retried once OCR can read it", () 
 
   it("on, with WOVEN_PDF_OCR off: still permanent (nothing could read it)", async () => {
     vi.stubEnv(FLAG, "true");
+    vi.stubEnv("WOVEN_PDF_OCR_ENABLED", "");
     expect(await ingestError()).toMatchObject({ retryable: false });
   });
 });
