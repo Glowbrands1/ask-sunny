@@ -134,6 +134,11 @@ export interface CaPolicyReading {
    * none (AS_YOU_SAID_MANAGER_WORDS_ENABLED reads only the manager's). Said as a reading, never "as you said".
    */
   readFromApp?: CaPolicyName;
+  /**
+   * FAILURE_TO_OPEN_IS_LATE_OPENING_ENABLED (QA's ruling, 10 Nov 2026): Late Opening was read from "failure to open on
+   * time" alone; the manager never said "late opening", so the card says it as read from the account, never "as you said".
+   */
+  lateOpeningDescribed?: true;
 }
 
 /* ------------------------------------------------------------ the words -- */
@@ -493,7 +498,22 @@ export function policiesNamedIn(sentence: string): { name: CaPolicyName; start: 
 export function readCaPolicy(rawText: string): CaPolicyReading {
   const said = managerWords(rawText);
   // Merge of main into #595: WOVEN_TRAINING_CONDUCT's reading (default off) before AS_YOU_SAID_APP_READ's fallback, on the manager's words.
-  return withMissedShift(withLateIsAttendance(withAppReading(withWovenWork(withCleaningOther(withSalesPolicy(readCaPolicyFromWords(said), said), said), said), rawText, said), said), said);
+  return withLateOpeningDescribed(withMissedShift(withLateIsAttendance(withAppReading(withWovenWork(withCleaningOther(withSalesPolicy(readCaPolicyFromWords(said), said), said), said), rawText, said), said), said), said);
+}
+
+/*
+ * FAILURE_TO_OPEN_IS_LATE_OPENING_ENABLED (QA's ruling on #786, 10 Nov 2026): "a CA for <name> for failure to open on
+ * time" is Late Opening (Pau's P16), but the card said "Policy: Late Opening, as you said" though the manager never said
+ * "late opening". When Late Opening was read only from the failure-to-open wording, it is marked as described, and the
+ * card says "from what you described" (the app-read wording). Off, the reading is returned untouched.
+ */
+const LATE_OPENING_SAID = /\blate[- ]open(?:ing|ed|er)?\b|\bopen(?:ed|ing)\s+late\b/;
+
+function withLateOpeningDescribed(reading: CaPolicyReading, said: string): CaPolicyReading {
+  if (!failureToOpenOn() || reading.stated !== "late_opening") return reading;
+  const text = normalize(said);
+  if (LATE_OPENING_SAID.test(text) || (lateOpenOn() && LATE_TO_OPEN.test(text))) return reading;
+  return FAILURE_TO_OPEN.test(text) ? { ...reading, lateOpeningDescribed: true } : reading;
 }
 
 /*
@@ -1182,6 +1202,10 @@ export function caPolicyProposalLine(reading: CaPolicyReading, named: NamedPolic
   }
   if (reading.suggestion && reading.source === "stated") {
     return "**Policy:** Standards of Conduct, as you said. I'll quote that section from the current policy manual on the draft.";
+  }
+  // FAILURE_TO_OPEN_IS_LATE_OPENING_ENABLED: Late Opening read from "failure to open on time" is not "as you said".
+  if (reading.lateOpeningDescribed) {
+    return `**Policy:** ${CA_POLICY_LABEL.late_opening}, from what you described. I'll quote that section from the current policy manual on the draft; tell me if a different policy applies.`;
   }
   if (reading.stated === "attendance" || reading.stated === "dress_code" || reading.stated === "late_opening") {
     return `**Policy:** ${CA_POLICY_LABEL[reading.stated]}, as you said. I'll quote that section from the current policy manual on the draft.`;
