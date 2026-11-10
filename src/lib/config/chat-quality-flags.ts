@@ -1512,6 +1512,19 @@ export function accountOnlyPolicyQueryEnabled(): boolean {
 }
 
 /**
+ * EXPECTATION_POLICY_LINE_KEPT_ENABLED (ported from Ask Bubbles: QA's audit there, 10 Nov 2026; default off; same flag in
+ * both apps). With ACCOUNT_ONLY_POLICY_QUERY on (production), `withoutInventedDetail` drops an Expectation such as "An
+ * employee scheduled to open is expected to arrive on time and have the salon ready to open.": "scheduled to" and "open"
+ * are details of what happened when said of the employee, but this sentence states the policy's expectation of every
+ * employee, which the drafting rules ask for. On: in the Expectation and Going Forward sections, a sentence about
+ * employees in general ("An employee …", "Employees …", "All team members …") that states what is expected is kept. A
+ * sentence about the employee themself is still read as before. Off, as before.
+ */
+export function expectationPolicyLineKeptEnabled(): boolean {
+  return envFlag("EXPECTATION_POLICY_LINE_KEPT_ENABLED");
+}
+
+/**
  * The date reader also reads "last tuesday", "this past monday", "on tuesday",
  * "yesterday" and "today" from the business date (QA, 27 Oct 2026; same flag
  * in both apps). See `forms/relative-dates.ts`. Off, as before.
