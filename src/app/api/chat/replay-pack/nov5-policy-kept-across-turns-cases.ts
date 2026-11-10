@@ -118,7 +118,16 @@ export const NOV8_NEAR_MISS_CARD_KEPT_CASES: ReplayCase[] = [
       let seventh = await thread.say(TURNS[0]!);
       for (const turn of TURNS.slice(1, 7)) seventh = await thread.say(turn);
       expect(TURNS[6], "turn 7 is not the near-miss correction").toBe("make that change to Marisol Prtega Valdez");
-      expect(seventh.content, `the card was replaced by the bare question:\n${seventh.content}`).toMatch(/^I'll draft a \*\*Corrective Action Form\*\* for \*\*Marisol Ortega Valdez\*\*/);
+      /*
+       * Changed on purpose (10 Nov 2026, QA's roster-set gate): since this case was written, PROPOSAL_NAME_CORRECTION
+       * (production, round 6) opens the reply with '"Marisol Prtega Valdez" isn't a name on the roster, so the card is
+       * for **Marisol Ortega Valdez**.' — the card is still there, for her. Its own line, then the card's, never the bare
+       * question.
+       */
+      expect(seventh.content, `the card was replaced by the bare question:\n${seventh.content}`).toMatch(
+        /^(?:"Marisol Prtega Valdez" isn't a name on the roster, so the card is for \*\*Marisol Ortega Valdez\*\*\.[^\n]*\n+)?I'll draft a \*\*Corrective Action Form\*\* for \*\*Marisol Ortega Valdez\*\*/,
+      );
+      expect(seventh.content, `the card was replaced by the bare question:\n${seventh.content}`).not.toMatch(/^Is this for \*\*/);
       expect(seventh.formProposal?.employeeName ?? null).toBe("Marisol Ortega Valdez");
     },
   },

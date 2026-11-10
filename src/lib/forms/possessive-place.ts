@@ -31,6 +31,11 @@ export function onlyAsPossessivePlace(name: string, said: string): boolean {
   return mentions.every((mention) => place.test(said.slice((mention.index ?? 0) + word.length)));
 }
 
+/** The question for a card whose only "person" is a place's possessive ("Hadley's Crossing Plaza"). */
+export function possessivePlaceQuestion(form: string, word: string): string {
+  return `Who is this **${form}** for? "${word}'s" is part of a place's name, not a person — tell me the employee's full name, and I'll fill in what you've already described.`;
+}
+
 interface CardLike {
   employeeName: string | null;
   employeeRole?: string | null;
@@ -48,10 +53,9 @@ export function withPossessivePlaceNotPerson<T extends { content: string; formPr
   const card = answer.formProposal;
   if (!card?.employeeName || card.subject === "team") return answer;
   if (!onlyAsPossessivePlace(card.employeeName, managerTurns.join("\n"))) return answer;
-  const form = card.templateName ?? "form";
   return {
     ...answer,
-    content: `Who is this **${form}** for? "${card.employeeName}'s" is part of a place's name, not a person — tell me the employee's full name, and I'll fill in what you've already described.`,
+    content: possessivePlaceQuestion(card.templateName ?? "form", card.employeeName),
     formProposal: { ...card, employeeName: null, employeeRole: null, status: "needs_employee", supportsInlineDraft: false },
   };
 }

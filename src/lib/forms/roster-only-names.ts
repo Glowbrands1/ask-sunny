@@ -1,16 +1,18 @@
-import { addressNotPersonEnabled, formNameFromRosterEnabled, metricChoiceOneQuestionEnabled, metricGuardEnabled, offRosterConfirmEnabled, rosterNearMissEnabled, rosterNotFoundAnyPhrasingEnabled, nearMissQuestionRulesEnabled } from "@/lib/config/chat-quality-flags";
+import { addressNotPersonEnabled, formNameFromRosterEnabled, metricChoiceOneQuestionEnabled, metricGuardEnabled, offRosterConfirmEnabled, rosterNearMissEnabled, rosterNotFoundAnyPhrasingEnabled, nearMissQuestionRulesEnabled, formNameOffRosterAskEnabled, offRosterAskBeforeCardEnabled } from "@/lib/config/chat-quality-flags";
 import { isGlossaryTerm } from "@/lib/ai/chat-glossary";
 import type { AskResponse } from "@/lib/ai/types";
 
 import { HAS_EMPLOYEE_AND_PLACE, SAYS_READY } from "@/lib/ai/ca-what-happened";
 
 import { matchEmployeeName, normalizeTypedName, type RosterEmployee } from "./employee-match";
-import { isAcceptedOffRoster, offRosterCardNote, offRosterOffer, offRosterTakenLine } from "./off-roster-confirm";
+import { acceptedOffRoster, isAcceptedOffRoster, offRosterCardNote, offRosterOffer, offRosterTakenLine } from "./off-roster-confirm";
 import { addressNotPersonAsk, followsHouseNumber, personRosterNames } from "./person-guard";
 import { namesThisCompany } from "./company-name";
 import { namesCompanyPositionTitle } from "./staff-picker";
 import { metricMessage, namesAMetric, requestMessage, cardOnScreen } from "./request-slot";
 import { namesAForm } from "./template-intent";
+import { onlyAsPossessivePlace, possessivePlaceQuestion } from "./possessive-place";
+import { rosterScopeLevel } from "./roster-scope";
 
 /**
  * ============================================================================
@@ -103,6 +105,24 @@ export function rosterOnlyNames(response: AskResponse, names: readonly string[],
   let offerMade = false;
 
   const employee = proposal?.employeeName?.trim() ?? "";
+  /*
+   * FORM_NAME_OFF_ROSTER_ASK_ENABLED (QA, 10 Nov 2026, sf-s36 with an off-roster name): the manager took the offer
+   * ("yes", "use <name>"), but the card came back with no one on it — the request's "for <name> TC." was read with the
+   * position's initials, so its name was set aside before this ran (or another reader put words like "Quit Without"
+   * there instead). The name the manager took, typed in a person's
+   * place in the request and on nobody's roster, goes on the card as OFF_ROSTER_CONFIRM puts it there.
+   */
+  const taken = formNameOffRosterAskEnabled() && proposal && proposal.subject !== "team" ? acceptedOffRoster() : undefined;
+  // Whatever else a reader put on the card instead ("Quit Without", from "Quit without notice") is nobody on the roster.
+  const unseated = !employee || (!rosterSpelling(employee, names) && !oneCloseRosterPerson(employee, names) && !isAcceptedOffRoster(employee));
+  if (proposal && taken && unseated && offRosterTyped(taken, message, names)) {
+    const named = titleCased(taken.trim());
+    return {
+      ...response,
+      content: `${offRosterTakenLine(named)}\n\n${content.trim()}`.split(ASK_WHO).join("").replace(/\n{3,}/g, "\n\n").trim(),
+      formProposal: { ...proposal, employeeName: named, wovenCloseMatch: offRosterCardNote(named), status: proposal.status === "needs_employee" ? "ready" : proposal.status },
+    };
+  }
   if (proposal && employee && proposal.subject !== "team") {
     const spelled = rosterSpelling(employee, names);
     if (spelled) {
@@ -140,6 +160,26 @@ export function rosterOnlyNames(response: AskResponse, names: readonly string[],
       if (rosterNearMissEnabled() && close && !onScreen) {
         return { ...response, content: `Is this for **${close}**? Tell me if that should change.`, formProposal: undefined };
       }
+      /*
+       * FORM_NAME_OFF_ROSTER_ASK_ENABLED (QA, 10 Nov 2026; nov9-possessive-place): "create a CA for Hadley's Crossing
+       * Plaza, …" — the card's "person" is only ever a place's possessive, so it is asked as POSSESSIVE_PLACE asks it,
+       * never said back as a name not found.
+       */
+      const possessive = employee.replace(/['’]s\b[\s\S]*$/u, "").trim();
+      if (formNameOffRosterAskEnabled() && !close && message && onlyAsPossessivePlace(possessive, message)) {
+        return {
+          ...response,
+          content: possessivePlaceQuestion(proposal.templateName ?? "form", possessive),
+          formProposal: { ...proposal, employeeName: null, employeeRole: null, status: "needs_employee", supportsInlineDraft: false },
+        };
+      }
+      /*
+       * FORM_NAME_OFF_ROSTER_ASK_ENABLED (QA's ruling, 10 Nov 2026: round 12's live behaviour wins): with
+       * OFF_ROSTER_ASK_BEFORE_CARD, a manager who is not salon-scoped keeps a full name typed as a person and on nobody's
+       * roster on the card as typed, as that flow does; a salon manager is asked (`off-roster-ask.ts`).
+       */
+      const level = formNameOffRosterAskEnabled() && offRosterAskBeforeCardEnabled() && offRosterConfirmEnabled() ? rosterScopeLevel() : undefined;
+      if (!close && level && level !== "salon" && offRosterTyped(employee, message, names)) return response;
       proposal = { ...proposal, employeeName: null, status: "needs_employee" };
       // The reply never drafts for a name that is not on the card.
       content = content.replace(new RegExp(String.raw`\s+for\s+\*\*${escape(employee)}\*\*`, "g"), "").split(`**${employee}**`).join("the employee");
@@ -172,6 +212,8 @@ export function rosterOnlyNames(response: AskResponse, names: readonly string[],
     content = withoutSlotNameInObservation(content, message, names);
     // QA, 5 Nov 2026: "Create the draft here when you're ready" beside "Who is this form for?" contradicts it.
     content = content.replace(CREATE_WHEN_READY, "");
+    // FORM_NAME_OFF_ROSTER_ASK_ENABLED (QA, 10 Nov 2026): "I have the employee." (the district / all-salon wording) over a card with none.
+    if (formNameOffRosterAskEnabled()) content = content.replace(/\bI have the employee\.[ \t]*/g, "");
     if (rosterNearMissEnabled()) {
       // ROSTER_NEAR_MISS_ENABLED: an empty card never says it has the employee, never names them, and asks who.
       content = withoutUnseatedName(
@@ -184,8 +226,15 @@ export function rosterOnlyNames(response: AskResponse, names: readonly string[],
       );
       if (!ask && !ASKS_WHO.test(content) && !ASKS_A_CHOICE.test(content) && !ASKS_FOR_THE_NAME.test(content)) ask = ASK_WHO;
       // OFF_ROSTER_CONFIRM_ENABLED: the cleared name, however it was typed (alone on its own line too), is said back and offered.
-      const offered = offRosterConfirmEnabled() && employee ? offRosterTyped(employee, message, names) : null;
-      content = withNotFoundNote(content, notFoundName(message, names) ?? offered, names);
+      const noted = notFoundName(message, names);
+      /*
+       * FORM_NAME_OFF_ROSTER_ASK_ENABLED (QA, 10 Nov 2026, sf-s36 with an off-roster name): when no card ever held the
+       * name, the request's own "for <name> …" — the not-found note's name — is offered as typed, by the same rules.
+       */
+      const offered = offRosterConfirmEnabled()
+        ? (employee ? offRosterTyped(employee, message, names) : null) ?? (formNameOffRosterAskEnabled() && noted ? offRosterTyped(noted, message, names) : null)
+        : null;
+      content = withNotFoundNote(content, noted ?? offered, names);
       if (offered) {
         content = withOffRosterOffer(content, offered);
         offerMade = true;
@@ -429,6 +478,19 @@ function personPlaces(name: string): RegExp[] {
     // is <name>", "it's <name>", "the employee is <name>".
     new RegExp(String.raw`(?:^|[\s,.])(?:(?:her|his|their)\s+)?name\s+is\s+${spelled}${end}`, "iu"),
     new RegExp(String.raw`(?:^|[\s,.])(?:it['’]?s|it\s+is|the\s+employee\s+is|this\s+is\s+for)\s+${spelled}${end}`, "iu"),
+    /*
+     * FORM_NAME_OFF_ROSTER_ASK_ENABLED (QA, 10 Nov 2026): a termination letter's own person — "Dear <name>," and a
+     * letter that opens "<name>, your employment …" / "<name>, this letter …" at the start of a line, a sentence or a
+     * quote — and sf-s36's "for <name> TC." (a position's initials after the name).
+     */
+    ...(formNameOffRosterAskEnabled()
+      ? [
+          new RegExp(String.raw`(?:^|[\s'"‘“])dear\s+${spelled}${end}\s*,`, "imu"),
+          new RegExp(String.raw`(?:^|[.!?:]\s+|['"‘“]\s*)${spelled}${end}\s*,\s+(?:your|this|we|you)\b`, "imu"),
+          // sf-s36's own wording: "for <name> TC." — the person, then the position's initials (two to four capitals).
+          new RegExp(String.raw`\bfor\s+${spelled}${end}\s+\p{Lu}{2,4}\s*[,.]`, "u"),
+        ]
+      : []),
   ];
 }
 
@@ -492,8 +554,10 @@ export function draftedFor(content: string): string[] {
 /** The name the request put straight after "for" ("create a CA for <Name>, …"), when it is nobody's roster spelling; or null. */
 export function slotName(message: string | undefined, names: readonly string[]): string | null {
   const named = message ? /\bfor\s+(\p{Lu}[\p{L}'’-]+(?:\s+\p{Lu}[\p{L}'’-]+){0,2})\s*[,.]/u.exec(message)?.[1] : undefined;
+  // FORM_NAME_OFF_ROSTER_ASK_ENABLED (sf-s36, "for <name> TC."): the position's initials after the name are not the name.
+  const trimmed = named && formNameOffRosterAskEnabled() ? named.replace(/\s+\p{Lu}{2,4}$/u, "") : named;
   // A form's name is never the person: "a corrective action for Coaching Form." (the sibling app's pre-check, 5 Nov 2026).
-  return named && !rosterSpelling(named, names) && !namesAForm(named) ? named : null;
+  return trimmed && !rosterSpelling(trimmed, names) && !namesAForm(trimmed) ? trimmed : null;
 }
 
 /** FORM_NAME_FROM_ROSTER_ENABLED: `rosterOnlyNames` with the actor's roster read this turn. Off, or no roster: as built. */
