@@ -11,7 +11,9 @@ import {
 import type { FormsActor } from "@/lib/forms/access";
 import { actorMaySeeInstance, authorizeInstance } from "@/lib/forms/instance-scope";
 import type { AskResponse } from "@/lib/ai/types";
-import { formEditSingleWriterEnabled } from "@/lib/config/chat-quality-flags";
+import { copyOwnSalonEnabled, formEditSingleWriterEnabled } from "@/lib/config/chat-quality-flags";
+import { displayName, rosterNameNamedIn, type RosterEmployee } from "@/lib/forms/employee-match";
+import { isBareNameTurn } from "@/lib/chat/cross-chat-guard";
 import {
   draftableCheckboxGroups,
   draftableFields,
@@ -433,4 +435,300 @@ export async function copyIntoOpenForm(input: {
     recommendedVideoIds: [],
     formUpdate: { instanceId: loaded.instance.id, updated },
   };
+}
+
+/*
+ * ============================================================================
+ * "THE SAME DRAFT THAT WE DID WITH <C>" — THE NEW PERSON NOT NAMED YET
+ * ============================================================================
+ *
+ * SAME_FORM_COPY_NEW_PERSON_ENABLED (coding3, 5 Nov 2026; same flag in both
+ * apps). A location manager, with <C>'s own Coaching draft open: "can you
+ * create the same draft that we did with <C> by changing the name and
+ * position?" The copy above looks for a source other than the open draft's
+ * own person, so it found none and the turn went on — to a second card for
+ * <C>, or to the answering model; the name typed next started a card whose
+ * Create copied nothing, because Create re-read only that card's own last turn.
+ *
+ * Now: the named form IS the open one (or, with nothing open, the manager's
+ * own form for <C>), so the reply asks who the new form is for, writes nothing
+ * and makes no card. The reply carries the form's id (`pendingCopy`); the
+ * browser sends it back with the next turn only. That turn, if it is a roster
+ * person's full name and nothing else, is read as the request for that
+ * person's form of the same template, and the card carries
+ * `copyFromInstanceId`. Create copies that form (creator and visibility
+ * re-checked here, as `findOwnCopySource` checks them) instead of re-reading
+ * the wording. Who, where, position and signature are the new person's. Any
+ * other turn drops the pending copy.
+ */
+
+/** The form a pending copy names: enough to ask, and to check the card it lands on. */
+export interface PendingCopySource {
+  id: string;
+  templateKey: string;
+  templateName: string;
+  employeeName: string;
+}
+
+/**
+ * The manager's own form by id: created by this account, of this template
+ * (when given), not archived, not the target, for somebody other than the
+ * target's employee, still visible to this account, with content to copy.
+ * Read with the creator in the query, as `findOwnCopySource` reads, so no other
+ * account's form is ever loaded.
+ */
+export async function ownCopySourceById(input: {
+  actor: FormsActor;
+  instanceId: string;
+  templateKey?: string;
+  targetInstanceId?: string;
+  targetEmployeeName?: string;
+}): Promise<LoadedInstance | null> {
+  const loaded = await ownFormById(input);
+  return loaded && hasContent(loaded) ? loaded : null;
+}
+
+async function ownFormById(input: {
+  actor: FormsActor;
+  instanceId: string;
+  templateKey?: string;
+  targetInstanceId?: string;
+  targetEmployeeName?: string;
+}): Promise<LoadedInstance | null> {
+  if (input.targetInstanceId && input.instanceId === input.targetInstanceId) return null;
+  let query = getSupabaseAdmin()
+    .from("form_instance_overview")
+    .select("id, employee_name, created_by, template_key, created_at, archived_at")
+    .eq("id", input.instanceId)
+    .eq("created_by", input.actor.id)
+    .is("archived_at", null);
+  if (input.templateKey) query = query.eq("template_key", input.templateKey);
+  const { data, error } = await query.limit(1);
+  if (error || !data) return null;
+  const row = (data as { id: string; employee_name: string | null; created_by: string; template_key: string }[])[0];
+  if (!row || row.id !== input.instanceId || row.created_by !== input.actor.id || !row.employee_name) return null;
+  if (input.templateKey && row.template_key !== input.templateKey) return null;
+  if (input.targetEmployeeName && sameName(row.employee_name, input.targetEmployeeName)) return null;
+  const loaded = await loadInstance(row.id);
+  if (!loaded || loaded.instance.createdBy !== input.actor.id) return null;
+  if (!actorMaySeeInstance(input.actor, loaded.instance)) return null;
+  return loaded;
+}
+
+/** A roster person's display name and the names they go by. */
+function rosterNames(person: RosterEmployee): string[] {
+  return [person.firstName, person.preferredFirstName ?? ""]
+    .map((first) => first.trim())
+    .filter(Boolean)
+    .map((first) => `${first} ${person.lastName.trim()}`);
+}
+
+/**
+ * Does this turn ask for a copy of <source>'s form for somebody not named yet?
+ * An explicit copy request (`asksForSameForm`) that names <source> as the form
+ * to copy (never "the same form for <source>"), adds nothing to a form, and
+ * names nobody else on the roster.
+ */
+export function asksCopyForNewPerson(question: string, sourceEmployeeName: string, roster: readonly RosterEmployee[]): boolean {
+  if (ADDS.test(question) || !asksForSameForm(question)) return false;
+  if (!names(question, sourceEmployeeName) || namedAsTarget(question, sourceEmployeeName)) return false;
+  return !roster.some(
+    (person) => !rosterNames(person).some((name) => sameName(name, sourceEmployeeName)) && rosterNameNamedIn(question, [person]) !== null,
+  );
+}
+
+/**
+ * The person a turn after the ask names: one roster person other than the
+ * source, by full name, and nothing else in the turn. Null — the pending copy
+ * is dropped — for any other turn.
+ */
+export function pendingCopyName(turn: string, sourceEmployeeName: string, roster: readonly RosterEmployee[]): string | null {
+  if (turn.trim().split(/\s+/).length < 2) return null;
+  const found = roster.filter((person) => {
+    const own = rosterNames(person);
+    if (own.some((name) => sameName(name, sourceEmployeeName))) return false;
+    return rosterNameNamedIn(turn, [person]) !== null && own.some((name) => isBareNameTurn(turn, name));
+  });
+  return found.length === 1 ? displayName(found[0]!) : null;
+}
+
+/** The question the next turn is read as: a request for the named person's form of the same template. */
+export function copyRequestFor(source: PendingCopySource, name: string): string {
+  return `create a ${source.templateName.toLowerCase()} for ${name}`;
+}
+
+/**
+ * The card for the named person carries the form to copy from. Only a card of
+ * the source's template, for that person; any other answer is left as it is.
+ */
+export function withCopyFrom(answer: AskResponse, source: PendingCopySource, name: string): AskResponse {
+  const card = answer.formProposal;
+  if (!card || card.templateKey !== source.templateKey || !card.employeeName) return answer;
+  if (sameName(card.employeeName, source.employeeName) || !sameName(card.employeeName, name)) return answer;
+  return { ...answer, formProposal: { ...card, copyFromInstanceId: source.id } };
+}
+
+function askWhoReply(source: LoadedInstance): AskResponse {
+  const { employeeName, templateName } = source.instance;
+  return {
+    content: `Who is the new ${templateName} for? Tell me their name and I'll start their draft from **${employeeName}**'s ${templateName}, with the name changed. Their own position and location go on it, not ${firstName(employeeName)}'s, and ${firstName(employeeName)}'s form stays as it is.`,
+    citations: [],
+    coverage: "not_applicable",
+    recommendedVideoIds: [],
+    pendingCopy: { fromInstanceId: source.instance.id },
+  };
+}
+
+function nothingToCopyReply(source: LoadedInstance): AskResponse {
+  const { employeeName, templateName } = source.instance;
+  return {
+    content: `**${employeeName}**'s ${templateName} has no details yet, so there is nothing to copy. Add ${firstName(employeeName)}'s details first and ask again, or tell me who the new form is for and what happened.`,
+    citations: [],
+    coverage: "not_applicable",
+    recommendedVideoIds: [],
+  };
+}
+
+function pendingSource(loaded: LoadedInstance): PendingCopySource {
+  return {
+    id: loaded.instance.id,
+    templateKey: loaded.instance.templateKey,
+    templateName: loaded.instance.templateName,
+    employeeName: loaded.instance.employeeName,
+  };
+}
+
+/**
+ * One chat turn under SAME_FORM_COPY_NEW_PERSON_ENABLED. Either the ask (an
+ * `answer` to return as it is), or the turn after it naming the new person
+ * (the `question` to read it as, and the `source` the card is to carry), or
+ * null — every other turn is answered as before.
+ */
+export async function newPersonCopyTurn(input: {
+  request: Request;
+  question: string;
+  activeInstanceId?: string;
+  pendingFromInstanceId?: string;
+}): Promise<{ answer: AskResponse } | { question: string; source: PendingCopySource; name: string } | null> {
+  if (!asksForSameForm(input.question) && !input.pendingFromInstanceId) return null;
+  const { authorizeForms } = await import("./access");
+  let actor: FormsActor;
+  try {
+    actor = await authorizeForms(input.request, "ask_questions");
+  } catch {
+    return null;
+  }
+  const { loadScopedRoster } = await import("./employee-roster");
+  const roster = await loadScopedRoster(actor.scope).catch(() => [] as RosterEmployee[]);
+
+  if (asksForSameForm(input.question)) {
+    const named = await namedOwnForm(input, actor);
+    if (named && asksCopyForNewPerson(input.question, named.instance.employeeName, roster)) {
+      return { answer: hasContent(named) ? askWhoReply(named) : nothingToCopyReply(named) };
+    }
+  }
+
+  if (!input.pendingFromInstanceId) return null;
+  let viewed: Awaited<ReturnType<typeof authorizeInstance>>;
+  try {
+    viewed = await authorizeInstance(input.request, input.pendingFromInstanceId, "view");
+  } catch {
+    return null;
+  }
+  const source = await ownCopySourceById({ actor: viewed.actor, instanceId: viewed.loaded.instance.id });
+  if (!source) return null;
+  const name = pendingCopyName(input.question, source.instance.employeeName, roster);
+  if (!name) return null;
+  const pending = pendingSource(source);
+  return { question: copyRequestFor(pending, name), source: pending, name };
+}
+
+/**
+ * The form the copy request names, when it is the manager's own: the open
+ * form itself, when the request names its employee; with nothing open, the
+ * newest form of this account whose employee the request names.
+ */
+async function namedOwnForm(
+  input: { request: Request; question: string; activeInstanceId?: string },
+  actor: FormsActor,
+): Promise<LoadedInstance | null> {
+  if (input.activeInstanceId) {
+    let viewed: Awaited<ReturnType<typeof authorizeInstance>>;
+    try {
+      viewed = await authorizeInstance(input.request, input.activeInstanceId, "view");
+    } catch {
+      return null;
+    }
+    if (!names(input.question, viewed.loaded.instance.employeeName)) return null;
+    return ownFormById({ actor: viewed.actor, instanceId: viewed.loaded.instance.id });
+  }
+  const { data, error } = await getSupabaseAdmin()
+    .from("form_instance_overview")
+    .select("id, employee_name, created_by, created_at, archived_at")
+    .eq("created_by", actor.id)
+    .is("archived_at", null)
+    .order("created_at", { ascending: false })
+    .limit(20);
+  if (error || !data) return null;
+  const row = (data as { id: string; employee_name: string | null; created_by: string }[]).find(
+    (entry) => entry.created_by === actor.id && entry.employee_name && names(input.question, entry.employee_name),
+  );
+  if (!row) return null;
+  try {
+    await authorizeInstance(input.request, row.id, "view");
+  } catch {
+    return null;
+  }
+  return ownFormById({ actor, instanceId: row.id });
+}
+
+/**
+ * ============================================================================
+ * THE COPY GOES TO THE NEW PERSON'S OWN SALON
+ * (COPY_OWN_SALON_ENABLED, default off; QA's Sunny flip-9 live tester, 8 Nov 2026)
+ * ============================================================================
+ *
+ * "copy this form for <B>", or the ask above then "<B>": B's card carried the salon the conversation named for A,
+ * and Create put A's salon on B's form, though the ask says "Their own position and location go on it". With the
+ * flag on, a card that copies another person's form (it carries `copyFromInstanceId`, or its turn asks for the same
+ * form) for one roster person whose salons in the manager's scope are exactly one takes that salon. Several, none,
+ * or a person not on the roster: the card is left as it was. Nothing else on the card changes.
+ */
+export function copyOwnSalon(
+  answer: AskResponse,
+  question: string,
+  roster: readonly RosterEmployee[],
+  inScope: readonly string[],
+): AskResponse {
+  const card = answer.formProposal;
+  if (!card || !card.employeeName) return answer;
+  if (!card.copyFromInstanceId && !asksForSameForm(question)) return answer;
+  const people = roster.filter((person) => rosterNames(person).some((name) => sameName(name, card.employeeName!)));
+  if (people.length !== 1) return answer;
+  const own = people[0]!.salonIds.filter((id) => inScope.length === 0 || inScope.includes(id));
+  if (own.length !== 1 || own[0] === card.locationId) return answer;
+  return { ...answer, formProposal: { ...card, locationId: own[0]!, locationName: null, locationResolution: "resolved" } };
+}
+
+/** COPY_OWN_SALON_ENABLED, on the chat route: the roster and scope read here, once, only for a copy card. */
+export async function withCopyOwnSalon(answer: AskResponse, request: Request, question: string): Promise<AskResponse> {
+  if (!copyOwnSalonEnabled()) return answer;
+  const card = answer.formProposal;
+  if (!card || !card.employeeName || (!card.copyFromInstanceId && !asksForSameForm(question))) return answer;
+  const { authorizeForms } = await import("./access");
+  let actor: FormsActor;
+  try {
+    actor = await authorizeForms(request, "ask_questions");
+  } catch {
+    return answer;
+  }
+  const { loadScopedRoster } = await import("./employee-roster");
+  let roster: RosterEmployee[];
+  try {
+    roster = await loadScopedRoster(actor.scope);
+  } catch {
+    return answer;
+  }
+  const { authorizedSalonIds } = await import("./location-scope");
+  return copyOwnSalon(answer, question, roster, actor.scope ? authorizedSalonIds(actor.scope) : []);
 }

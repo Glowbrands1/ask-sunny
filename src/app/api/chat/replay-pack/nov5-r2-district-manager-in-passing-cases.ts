@@ -107,7 +107,8 @@ export const NOV5_R2_DISTRICT_MANAGER_IN_PASSING_CASES: ReplayCase[] = [
     id: "nov5-r2-dm-in-passing-position",
     title: "R2 (1): one employee's story naming their district manager in passing: the card's Job title is never \"District Manager\"",
     report: `${REPORT}: Job title "District Manager", taken from the other person`,
-    status: { open: "the card's Job title is \"District Manager\", the other person's" },
+    // Changed on purpose (7 Nov 2026): QA's flips of 5 and 6 Nov turned CA_SALES_POLICY, REPLY_MATCHES_CARD, TITLE_OF_THE_EMPLOYEE, METRIC_GUARD, TITLE_ENDS_AT_LINE, BARE_NOT_DENIAL and PLACE_FROM_CUE on in production (production-flags.json); this case now holds with production's flags.
+    status: "fixed",
     fixFlags: [TITLE],
     run: position,
   },

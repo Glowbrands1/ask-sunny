@@ -1,4 +1,8 @@
 import { PRODUCTION_SALONS, salonById } from "@/data/salons";
+import { isPolicyCorrection } from "./policy-correction-turn";
+import { observationAccount } from "@/lib/forms/ca-policy";
+import { withoutPayrollClauses } from "./payroll-clause-not-account";
+import { onlyDeniesForObservation } from "./ca-what-happened";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
 import { listIncidentDates, withoutPriorStepClauses } from "@/lib/forms/form-date-answer";
 import { lateOpenOn, withYearlessDatesWritten } from "@/lib/forms/late-open";
@@ -9,7 +13,7 @@ import { readExitDetails } from "@/lib/forms/exit-details";
 import { readExitFacts } from "@/lib/forms/exit-facts";
 import { statedPayrollDeduct } from "@/lib/forms/payroll-deduct";
 import { withoutAmountAnswers } from "@/lib/forms/amount-answer";
-import { managerStatedWarningLevel, templateHasWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
+import { managerStatedWarningLevel, statedWarningLevel, templateHasWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
 import { describesIncident, describesMoreThanTheRequest } from "@/lib/forms/corrective-action-intake";
 import { twoSentenceActionPlan } from "@/lib/forms/action-plan-sentences";
 import { replyWithManagerActionPlan } from "@/lib/forms/manager-action-plan";
@@ -43,10 +47,19 @@ import {
   keepRosterExactNameEnabled,
   caSalesPolicyEnabled,
   formNameFromRosterEnabled,
+  complaintAccountEnabled,
+  requestParticipleLeadEnabled,
+  proposalMakeItAboutEnabled,
+  proposalPolicySetAsideEnabled,
+  dateQuestionKeptEnabled,
+  secondRequestOwnAccountEnabled,
 } from "@/lib/config/chat-quality-flags";
+import { turnsMadeAbout, withObservationMadeAbout } from "./make-it-about";
+import { NOTHING_SET_ASIDE, citationSetAside, policiesSetAside, setAsideAnything, withPolicySetAside, withoutPolicyAsks } from "@/lib/forms/policy-set-aside";
 import { namesOnlyAPolicy } from "@/lib/forms/person-guard";
 import { foldsToGlossaryTerm } from "./chat-glossary";
 import { statedFormDate } from "@/lib/forms/incident-dates";
+import { correctedIncidentDate } from "@/lib/forms/corrected-incident-date";
 import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
 import { cleanPersonName, employeeNamedOnPurpose } from "@/lib/forms/roster-validated-name";
 import type { ChatFormProposal, SourceCitation } from "@/types";
@@ -54,10 +67,18 @@ import type { ChatFormProposal, SourceCitation } from "@/types";
 import { withoutLevelAndStepClauses } from "./account-clauses";
 import { isAppLine, withoutAppLines } from "./app-sentences";
 import { withoutAsksToTheApp } from "./asks-to-the-app";
-import { GRAMMAR_ANSWER, observationByRules, readSentenceEdit } from "./edit-date-rules";
+import { GRAMMAR_ANSWER, managerWords, observationByRules, readSentenceEdit } from "./edit-date-rules";
 import { titleTextFromQuestion, titleTextFromTurns } from "./title-words";
 import type { GroundedPerson } from "./grounded-entities";
-import { accountSentences, currentRequestTurns, managerAccount, priorShorthand, withoutPriorList, withoutStateCodes, withoutStateLead } from "./remap-incident";
+import {
+  accountSentences,
+  currentRequestTurns,
+  isRequestReasonOnly,
+  managerAccount,
+  priorShorthand,
+  withoutPriorList,
+  withoutStateCodes,
+  withoutStateLead, withoutQuestionsToTheApp } from "./remap-incident";
 import { statedPriorActions } from "@/lib/forms/prior-actions";
 import { displayTypedName, repairSpeaksAsValidator, scrubRosterBlock } from "./roster-reply";
 import { PRIMARY_SALON_STATEMENT } from "@/lib/forms/primary-salon-statement";
@@ -204,7 +225,7 @@ export function holdFilledSlots(input: {
    * about, and the form is dated the day it is created until they answer —
    * over the intent read's "It happened on …" line, which took one of them.
    */
-  const stated = priorSentenceFixEnabled() && next.templateKey === "dpoa"
+  const read = priorSentenceFixEnabled() && next.templateKey === "dpoa"
     ? statedFormDate(
         // NEW_REQUEST_OWN_DATE_ENABLED: a new create request with its own date is read alone.
         newRequestWithOwnDate(withoutStateLead(input.question), input.today)
@@ -213,6 +234,16 @@ export function holdFilledSlots(input: {
         input.today,
       )
     : null;
+  // CORRECTED_DATE_KEPT_ENABLED: among several dates, the incident date the manager corrected to is the card's date.
+  const corrected =
+    read && read.iso === null && read.candidates.length > 1
+      ? correctedIncidentDate(
+          [...input.history.filter((turn) => turn.role === "user").map((turn) => withoutStateLead(turn.content)), withoutStateLead(input.question)],
+          read.candidates,
+          input.today,
+        )
+      : null;
+  const stated = read && corrected ? { ...read, iso: corrected, candidates: [], question: null } : read;
   if (stated && (stated.iso ?? null) !== (next.formDate ?? null)) next = { ...next, formDate: stated.iso };
   if (payrollDeduct && payrollDeduct !== next.payrollDeduct) next = { ...next, payrollDeduct };
   if (warningLevel && warningLevel !== next.warningLevel) next = { ...next, warningLevel };
@@ -234,6 +265,10 @@ export function holdFilledSlots(input: {
   }
   content = dropWarningLines(content);
   if (stated) content = withDateLine(content, stated.iso);
+  // DATE_QUESTION_KEPT_ENABLED: the date this step leaves open is asked about, never dropped in silence.
+  if (dateQuestionKeptEnabled() && stated && stated.iso === null && stated.question && !/Which date goes on the form\?/i.test(content)) {
+    content = `${content.trimEnd()}\n\n${stated.question}`;
+  }
   if (next.templateKey === "stc-exit" && next.employeeName) {
     content = exitContent(content, next, turns.join("\n"), input.today);
   }
@@ -251,11 +286,19 @@ export function holdFilledSlots(input: {
       // AMOUNT_ANSWER_NOT_ACCOUNT_ENABLED: "i dont know the amount" says nothing that happened.
       // CARD_OBSERVATION_OWN_REQUEST_ENABLED (QA live check, 3 Nov 2026): a new request's card reads back only
       // that request's turns, never the earlier incident ("…rugs untl 12;30pm <name> for being late to opening").
-      const said = withoutAmountAnswers(cardObservationOwnRequestEnabled() ? currentRequestTurns(turns, next.employeeName) : turns);
+      const scoped = withoutAmountAnswers(cardObservationOwnRequestEnabled() ? currentRequestTurns(turns, next.employeeName) : turns);
+      // SECOND_REQUEST_OWN_ACCOUNT_ENABLED (QA's Sunny round-6 solo gate, 8 Nov 2026): a question to the app is never the account.
+      const own = secondRequestOwnAccountEnabled() ? scoped.map(withoutQuestionsToTheApp).filter((turn) => turn.trim() !== "") : scoped;
+      // PROPOSAL_MAKE_IT_ABOUT_ENABLED: "make it about showing up late …" is the account from that turn on, never the instruction (`ai/make-it-about.ts`).
+      const about = proposalMakeItAboutEnabled() ? turnsMadeAbout(own) : own;
+      // PROPOSAL_POLICY_SET_ASIDE_ENABLED: "take the attendance policy off the form", and "we have quoted the standards of
+      // conduct for …", are policy asks, never account (`forms/policy-set-aside.ts`).
+      const said = proposalPolicySetAsideEnabled() ? withoutPolicyAsks(about) : about;
       // FORM_EDIT_DATE_RULES_ENABLED: an edit replaces, adds to, or never touches the Observation.
       if (formEditDateRulesEnabled()) content = observationByRules(content, said, build);
       else if (grammarAskNotAccountEnabled()) content = withGrammarAnswered(build(content, said.map(withoutAsksToTheApp)), turns);
       else content = build(content, said);
+      if (proposalMakeItAboutEnabled()) content = withObservationMadeAbout(content, own);
     }
     if (fixed && next.templateKey === "dpoa") {
       content = withPriorActions(content, currentRequestTurns(turns, next.employeeName), input.today);
@@ -270,7 +313,11 @@ export function holdFilledSlots(input: {
     }
   }
 
-  const citations = (input.response.citations ?? []).filter((citation) => !isWarningCitation(citation));
+  // PROPOSAL_POLICY_SET_ASIDE_ENABLED: a policy the manager took off is not cited on the card; read from the manager's words, never the app's state lines (`forms/policy-set-aside.ts`).
+  const setAside = proposalPolicySetAsideEnabled() ? policiesSetAside(turns.map(managerWords)) : NOTHING_SET_ASIDE;
+  const citations = (input.response.citations ?? []).filter(
+    (citation) => !isWarningCitation(citation) && !citationSetAside(citation, setAside),
+  );
   if (actionPlanManagerOnlyEnabled() && next.templateKey === "dpoa") {
     // The manager's plan, word for word, or none. Never the two sentences.
     content = replyWithManagerActionPlan(content, turns, "Action Plan");
@@ -290,6 +337,7 @@ export function holdFilledSlots(input: {
   if ((keepRosterExactNameEnabled() || formNameFromRosterEnabled()) && proposal.employeeName && !next.employeeName) {
     content = withDroppedNameAsked(content, proposal.employeeName);
   }
+  if (setAsideAnything(setAside)) content = withPolicySetAside(content, setAside);
   const same =
     content === input.response.content &&
     next === proposal &&
@@ -712,6 +760,7 @@ function withObservation(content: string, turns: readonly string[], employeeName
   const ignore = employeeName ? [employeeName] : [];
   const managerOnly = managerWordsOnlyEnabled();
   const sentences: string[] = [];
+  const reasons = new Set<string>();
   const conversation = turns.join("\n");
   for (const turn of managerOnly ? turns.map(withoutAppLines) : turns) {
     // PRIOR_SENTENCE_FIX_ENABLED (QA, 26 Oct 2026): "…she was late on 10-5 and 10-15. i coached her on
@@ -721,8 +770,11 @@ function withObservation(content: string, turns: readonly string[], employeeName
     const read = today === undefined ? { text: turn, dropped: false } : withoutPriorStepClauses(turn, today, conversation);
     for (const part of read.text.split(/\n+|(?<=[.!?])\s+/)) {
       // LEVEL_STEP_NOT_ACCOUNT_ENABLED: "this should be a written and note a verbal ca was given on 9-1-26" says nothing that happened.
-      const said = (levelStepNotAccountEnabled() ? withoutLevelAndStepClauses(part) : part).trim();
+      // PAYROLL_CLAUSE_NOT_ACCOUNT_ENABLED: "$20 payroll deduct applies" and "Payroll deduction amount: $20." are the payroll answer.
+      const said = withoutPayrollClauses((levelStepNotAccountEnabled() ? withoutLevelAndStepClauses(part) : part).trim());
       if (said.length < 12) continue;
+      // POLICY_CORRECTION_NOT_ACCOUNT_ENABLED: "it should be under performance not standard of conduct" is about the form.
+      if (isPolicyCorrection(said)) continue;
       // PRIOR_SENTENCE_FIX_ENABLED (coordinator, 26 Oct 2026): "she was late on 10-5" is the account
       // however few words it has beyond the request, with a prior clause beside it or not.
       const incident = today !== undefined && priorSentenceFixEnabled() && !isAppLine(said) && describesIncident(said);
@@ -730,19 +782,29 @@ function withObservation(content: string, turns: readonly string[], employeeName
       if (managerOnly && onlySaysWhereTheyWork(said, ignore)) continue;
       // MANAGER_WORDS_ONLY_ENABLED: without the clauses that only request the
       // form, name the employee or give their place (QA, 25 Oct 2026).
-      const sentence = managerOnly ? managerAccount(said, employeeName) : said;
+      // SALES_OBSERVATION_ACCOUNT_ENABLED: the account only, never the request's words, the name or a payroll answer (`forms/ca-policy.ts`).
+      const sentence = observationAccount(managerOnly ? managerAccount(said, employeeName) ?? "" : said, employeeName);
       if (!sentence) continue;
+      // BARE_NOT_AFTER_REQUEST_ENABLED: "ca for <A> not late" says only what did not happen, so it is no Observation.
+      if (onlyDeniesForObservation(said, employeeName) || onlyDeniesForObservation(sentence, employeeName)) continue;
       // CA_SALES_POLICY_ENABLED (QA, live, 4 Nov 2026): "a corrective action for msb" left "msb"; a glossary term is the reason, not an account.
       if (onlyAGlossaryTerm(sentence)) continue;
       // OBSERVATION_NOT_POLICY_NAME_ENABLED: "must see behaviors" names the policy, not what happened.
       if (observationNotPolicyNameEnabled() && namesOnlyAPolicy(sentence)) continue;
       if (content.toLowerCase().includes(sentence.toLowerCase())) continue;
       if (sentences.some((kept) => kept.toLowerCase() === sentence.toLowerCase())) continue;
+      // REQUEST_PARTICIPLE_LEAD_ENABLED: "I need a corrective action made for under performance." is the reason.
+      if (requestParticipleLeadEnabled() && isRequestReasonOnly(said, sentence)) reasons.add(sentence);
       sentences.push(sentence);
     }
   }
   if (sentences.length === 0) return content;
-  return `${content}\n\n**Observation of Offense:** ${sentences.join(" ")}`.trim();
+  // REQUEST_PARTICIPLE_LEAD_ENABLED (QA's round-5 live Sunny check, 8 Nov 2026): with the account in another sentence,
+  // the request's reason is left out, so the Observation starts at the account. Alone, it stays.
+  const account = sentences.some((sentence) => !reasons.has(sentence)) ? sentences.filter((sentence) => !reasons.has(sentence)) : sentences;
+  // COMPLAINT_ACCOUNT_ENABLED: the warning level is the form's Type of Warning, never the account.
+  const told = complaintAccountEnabled() ? account.map(withoutLevelLead) : account;
+  return `${content}\n\n**Observation of Offense:** ${told.join(" ")}`.trim();
 }
 
 /**
@@ -803,15 +865,35 @@ function stateCodeTitle(text: string, role: string): boolean {
  * 24 Oct 2026: "create a corrective action form for" was What happened).
  */
 function withAccount(content: string, turns: readonly string[], employeeName: string | null): string {
-  const sentences = accountSentences(turns, employeeName, { managerOnly: managerWordsOnlyEnabled() }).filter(
+  // SALES_OBSERVATION_ACCOUNT_ENABLED: the account only, never the request's words, the name or a payroll answer (`forms/ca-policy.ts`).
+  const sentences = accountSentences(turns, employeeName, { managerOnly: managerWordsOnlyEnabled() }).map((sentence) => observationAccount(sentence, employeeName)).filter(
+    (sentence) => sentence !== "",
+  ).filter(
     (sentence) =>
       !onlyAGlossaryTerm(sentence) &&
+      // BARE_NOT_AFTER_REQUEST_ENABLED: a sentence that only says what did not happen is no Observation.
+      !onlyDeniesForObservation(sentence, employeeName) &&
       !content.toLowerCase().includes(sentence.toLowerCase()) &&
       // OBSERVATION_NOT_POLICY_NAME_ENABLED: "must see behaviors" names the policy, not what happened.
       !(observationNotPolicyNameEnabled() && namesOnlyAPolicy(sentence)),
   );
   if (sentences.length === 0) return content;
-  return `${content}\n\n**Observation of Offense:** ${sentences.join(". ")}`.trim();
+  const told = complaintAccountEnabled() ? sentences.map(withoutLevelLead) : sentences;
+  return `${content}\n\n**Observation of Offense:** ${told.join(". ")}`.trim();
+}
+
+/**
+ * COMPLAINT_ACCOUNT_ENABLED (QA's audit, 7 Nov 2026): "verbal warning The date she complained was Oct 31st" — the
+ * level the app reads as this form's Type of Warning is not the account. Its words come off the front of a sentence
+ * that runs on: "<level> warning" before three or more words, or the level alone before a new sentence (a capital).
+ * "written up twice already for being late" keeps its words; a sentence that is only the level is left as it was.
+ */
+export function withoutLevelLead(sentence: string): string {
+  const lead = /^(\S+)(\s+warning)?\s+(?=\S)/i.exec(sentence);
+  if (!lead || statedWarningLevel(lead[0].trim()) === null) return sentence;
+  const rest = sentence.slice(lead[0].length);
+  if (rest.split(/\s+/).length < 3) return sentence;
+  return lead[2] || /^\p{Lu}/u.test(rest) ? rest : sentence;
 }
 
 /** The global salon question is once per conversation. A later turn does not ask it again. */

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Check, Star } from "lucide-react";
 
 import { submitFeedback } from "@/lib/feedback/client";
+import { burstConfetti } from "@/lib/ui/confetti";
 import { logTurnEvent } from "@/lib/analytics/telemetry";
 import {
   COMMENT_MAX_LENGTH,
@@ -203,6 +204,11 @@ export function ConversationRating({
       });
       onSaved(feedback);
       setOpen(false);
+      /*
+       * A 5-STAR RATING GETS CONFETTI — only once it has actually saved, so a
+       * failed save never celebrates. Skipped under reduced motion.
+       */
+      if (feedback.rating === 5) burstConfetti();
     } catch (error) {
       /*
        * THE FAILURE IS SHOWN WHERE THE VALIDATION IS, and the form stays open

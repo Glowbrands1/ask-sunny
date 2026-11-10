@@ -1,4 +1,4 @@
-import { ordinalDateInDraftEnabled, relativeDateReaderEnabled } from "@/lib/config/chat-quality-flags";
+import { ordinalDateInDraftEnabled, relativeDateReaderEnabled, undatedAccountBriefEnabled } from "@/lib/config/chat-quality-flags";
 
 import { priorSentenceFixFor } from "./prior-sentence-scope";
 import { isRelativeDateWord } from "./relative-dates";
@@ -141,7 +141,21 @@ export function resolveFormDate(iso: string): ResolvedFormDate | null {
  * It says what the date IS and forbids any other, which is the cheapest of the
  * three fixes and the one that prevents rather than repairs.
  */
-export function formDateBrief(resolved: ResolvedFormDate, givenDates: readonly string[] = []): string {
+/*
+ * UNDATED_ACCOUNT_BRIEF_ENABLED (QA's live Create test sf-s38, 8 Nov 2026: "… missing her
+ * saturday and sunday shifts …", no date given): the saved Observation said "missed both the Saturday and Sunday
+ * scheduled shifts on November 8, 2026", the day the form was created. The brief below told the drafting model the
+ * form's date was the incident's. When the manager stated no date, the
+ * model is told the form is dated the day it is created and that no date goes into the account. A stated "today"
+ * is a date: it keeps the line as it was. A weekday alone ("her saturday and sunday shifts") is no date.
+ */
+/** "today" — the one day word that IS the form's date. ("yesterday", a weekday with no date: the date is not known.) */
+const TODAY_WORD = /\b(?:today|tonight|this\s+(?:morning|afternoon|evening))\b/i;
+
+export function formDateBrief(resolved: ResolvedFormDate, givenDates: readonly string[] = [], notes?: string): string {
+  if (undatedAccountBriefEnabled() && notes !== undefined && givenDates.length === 0 && !TODAY_WORD.test(notes)) {
+    return `FORM DATE: ${resolved.long} (${resolved.weekday}). This is the day the form is created, not the date of the incident: the manager gave no date for what happened. Write no date in the account, and never "${resolved.long}" as the day anything happened.`;
+  }
   /*
    * ==========================================================================
    * THE FORM'S DATE IS NOT ALWAYS THE INCIDENT'S

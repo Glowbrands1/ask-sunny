@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { dateQuestionKeptEnabled } from "@/lib/config/chat-quality-flags";
 import { fakeSupabase, type FakeStore } from "@/test/fake-supabase";
 import { JBA_MANUAL_CA_CHUNKS } from "@/test/fixtures/jba-manual-ca-sections";
 import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
@@ -569,11 +570,12 @@ describe(`${KEEPS_OPEN} on: BT4`, () => {
       asked.push(/Which date goes on the form\?/.test(last.content));
     }
     /*
-     * Here the intent reader writes the first date onto each later turn ("It
-     * happened on 10/5/2026."), so the middle cards do not ask again; that is
-     * the stored-slot date (D3), not this flag. The answer still dates it.
+     * Changed on purpose (DATE_QUESTION_KEPT, QA's Sunny round-6 gate, 8 Nov 2026): the middle cards ("verbal", "no
+     * payroll deduct") are dated null, open between 10-5 and 10-15, and without the flag they dropped "Which date goes
+     * on the form?" (BT4's own report: the question vanished after the first answer). With DATE_QUESTION_KEPT_ENABLED
+     * the question stays until the date is answered: [true, true, true, false]. Off, as before. The answer still dates it.
      */
-    expect(asked).toEqual([true, false, false, false]);
+    expect(asked).toEqual(dateQuestionKeptEnabled() ? [true, true, true, false] : [true, false, false, false]);
     expect(last!.formProposal?.formDate).toBe("2026-10-15");
     expect(last!.formProposal?.employeeName).toBe("Rory Vance");
     expect(await createdDate(thread, "Observed: Rory Vance arrived late on October 5, 2026, and again on October 15, 2026.")).toBe("2026-10-15");

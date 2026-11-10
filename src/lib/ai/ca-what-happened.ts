@@ -1,5 +1,5 @@
-import { caAsksWhatHappenedEnabled, caSalesPolicyEnabled, coachingAsksWhatHappenedEnabled, omissionIsAccountEnabled } from "@/lib/config/chat-quality-flags";
-import { deniesAFault } from "@/lib/forms/draft-never-blank";
+import { bareNotAfterRequestEnabled, bareNotDenialEnabled, caAsksWhatHappenedEnabled, caSalesPolicyEnabled, coachingAsksWhatHappenedEnabled, omissionIsAccountEnabled } from "@/lib/config/chat-quality-flags";
+import { deniesAFault, deniesAFaultWithBareNot } from "@/lib/forms/draft-never-blank";
 import {
   NO_INCIDENT_NOTE,
   answeredWhatHappened,
@@ -107,7 +107,55 @@ const NOTHING_HAPPENED = /\bnothing\b|\bno\s+(?:incident|issue|problems?|concern
 function onlyWhatDidNotHappen(clause: string): boolean {
   // Off: OMISSION_IS_ACCOUNT's reading alone (as main). On: a clause is only what did not happen when both readings say so, so an account either reading finds is one.
   if (!caSalesPolicyEnabled()) return omissionReading(clause);
-  return omissionReading(clause) && (deniesAFault(clause) || NOTHING_HAPPENED.test(clause));
+  // BARE_NOT_DENIAL_ENABLED (QA's gate, 6 Nov 2026): "not late" is a denial too. Off, as before.
+  const denies = deniesAFault(clause) || (bareNotDenialEnabled() && deniesAFaultWithBareNot(clause));
+  return omissionReading(clause) && (denies || NOTHING_HAPPENED.test(clause));
+}
+
+/*
+ * BARE_NOT_AFTER_REQUEST_ENABLED (QA's live Sunny re-check, 6 Nov 2026, (b)): "ca for <A> not late" is one
+ * clause, so BARE_NOT_DENIAL (a "not" that starts the clause) never saw "not late", and "late" read as an
+ * account: no ask. With the flag on, the clause is also read without its request head ("ca / corrective
+ * action / write-up / warning … for") and the card's employee-name words; what is left ("not late") is read
+ * by the same test. A clause with nothing left is not passed over. Off, as before.
+ */
+const REQUEST_HEAD = /^.*?\b(?:corrective\s+action(?:\s+form)?|ca|c\/a|write[- ]?up|warning|dpoa)\s+(?:for|to)\s+/i;
+
+/*
+ * BARE_NOT_AFTER_REQUEST_ENABLED reads only a DENIAL as no account (the Sunny gate, 7 Nov 2026): with the flag
+ * alone, `onlyWhatDidNotHappen` reads any negation, so "did not complete her closing checklist", "cleaning
+ * duties not being completed" and "missed the monthly meeting" lost their account. An omission is an account;
+ * only a denied fault ("not late", "never late", "no problems") or "nothing happened" is not, whatever the other
+ * flags say.
+ */
+function onlyADenial(text: string): boolean {
+  return deniesAFault(text) || deniesAFaultWithBareNot(text) || NOTHING_HAPPENED.test(text);
+}
+
+function onlyWhatDidNotHappenAfterRequest(clause: string, name: string): boolean {
+  if (!REQUEST_HEAD.test(clause)) return false;
+  const own = new Set(name.toLowerCase().split(/\s+/).filter(Boolean));
+  const words = clause.replace(REQUEST_HEAD, "").split(/\s+/).filter(Boolean);
+  while (words.length > 0 && own.has(words[0]!.toLowerCase().replace(/[^\p{L}'’-]/gu, ""))) words.shift();
+  const rest = words.join(" ").trim();
+  return rest !== "" && onlyADenial(rest);
+}
+
+/**
+ * BARE_NOT_AFTER_REQUEST_ENABLED, its second half (Coding's bisect, 7 Nov 2026): with the live
+ * REPLY_MATCHES_CARD a card with an Observation line never asks what happened, and "ca for <A> not late" put
+ * "<A> not late" there. A sentence that, without its request head and the employee's name, only says what did
+ * not happen is no Observation either. Off, false.
+ */
+export function onlyDeniesForObservation(sentence: string, name: string | null): boolean {
+  if (!bareNotAfterRequestEnabled()) return false;
+  const own = new Set((name ?? "").toLowerCase().split(/\s+/).filter(Boolean));
+  const words = sentence.trim().replace(REQUEST_HEAD, "").split(/\s+/).filter(Boolean);
+  while (words.length > 0 && own.has(words[0]!.toLowerCase().replace(/[^\p{L}'’-]/gu, ""))) words.shift();
+  const rest = words.join(" ").replace(/[.!?]+$/, "").trim();
+  // Every part must deny: "not late but left the bed dirty" says what happened.
+  const parts = rest.split(/\s*[,;]\s*|\s+(?:but|and)\s+/i).map((part) => part.trim()).filter(Boolean);
+  return parts.length > 0 && parts.every((part) => onlyADenial(part));
 }
 
 /** A clause that says what this employee did. */
@@ -119,6 +167,7 @@ function hasAccount(said: string, name: string, ignore: readonly string[]): bool
     .some(
       (clause) =>
         !onlyWhatDidNotHappen(clause) &&
+        !(bareNotAfterRequestEnabled() && onlyWhatDidNotHappenAfterRequest(clause, name)) &&
         !aboutSomebodyElse(clause, name) &&
         (describesIncident(clause) || describesMoreThanTheRequest(clause, { ignore })),
     );

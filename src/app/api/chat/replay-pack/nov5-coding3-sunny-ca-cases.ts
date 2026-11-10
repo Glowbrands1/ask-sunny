@@ -85,7 +85,9 @@ export const NOV5_CODING3_SUNNY_CA_CASES: ReplayCase[] = [
     id: "nov5-coding3-prior-coaching-none-on-file",
     title: "\"… There's no prior coaching on file.\": the card's prior-coaching note never says prior coaching is on file",
     report: `${REPORT}: "I need to write up <name> with a written warning … There's no prior coaching on file." → "Prior coaching note: prior coaching on file. No finalized record was required."`,
-    status: { open: "the note quotes \"prior coaching on file\" without the manager's \"no\": \"Prior coaching note: prior coaching on file.\"" },
+    // Changed on purpose (8 Nov 2026): fixed in production by PRIOR_COACHING_DENIAL_ENABLED, QA round 4, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
+    fixFlags: ["PRIOR_COACHING_DENIAL_ENABLED"],
     async run(t: T) {
       /*
        * PRIOR_COACHING_OPTIONAL_ENABLED writes the note this case reports. QA
@@ -110,7 +112,10 @@ export const NOV5_CODING3_SUNNY_CA_CASES: ReplayCase[] = [
     id: "nov5-coding3-ca-for-performance-is-an-account",
     title: "\"can you write me a Ca for <name> for performance for october\": with CA_SALES_POLICY_ENABLED the card cites the Standards of Conduct; never \"You haven't told me what happened yet\"",
     report: `${REPORT}: "can you write me a Ca for <name> for performance for october" → "You haven't told me what happened yet"`,
-    status: { open: "\"for performance\" is no account and no sales reading: \"You haven't told me what happened yet\", no policy cited" },
+    // Changed on purpose (8 Nov 2026): fixed in production by the sales triple (SALES_SHORTFALL_OBJECT_ENABLED, SALES_OBSERVATION_ACCOUNT_ENABLED, CA_PERFORMANCE_REASON_ENABLED), QA round 5, 8 Nov 2026; it now holds with production's flags.
+    status: "fixed",
+    // CA_PERFORMANCE_REASON_ENABLED (default off, not in production): "for performance" in the sentence that asks for the form is the sales reading (`withSalesPolicy`, ca-policy.ts).
+    fixFlags: ["CA_SALES_POLICY_ENABLED", "CA_PERFORMANCE_REASON_ENABLED"],
     async run(t: T) {
       /*
        * CA_ASKS_WHAT_HAPPENED_ENABLED is on in production (QA, 5 Nov 2026; as

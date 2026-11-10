@@ -93,7 +93,7 @@ export function SalonKpiCards({
     /* One panel on hairlines, matching the all-salons row above it. */
     <div
       className={cn(
-        "grid grid-cols-1 rounded-2xl border border-border bg-surface py-4 shadow-raised sm:grid-cols-2 xl:grid-cols-4",
+        "grid grid-cols-1 rounded-2xl bg-surface py-4 shadow-raised sm:grid-cols-2 xl:grid-cols-4",
         className,
       )}
     >

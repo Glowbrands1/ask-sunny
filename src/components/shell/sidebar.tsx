@@ -132,8 +132,8 @@ export function SidebarNav({
                     onClick={onNavigate}
                     aria-current={active ? "page" : undefined}
                     className={cn(
-                      "group relative flex items-center gap-2.5 rounded-[var(--radius-sm)] text-[13px] font-medium transition-colors",
-                      isCollapsed ? "justify-center px-0 py-2.5" : "px-2.5 py-2",
+                      "group relative flex items-center gap-2.5 rounded-full text-[13.5px] font-semibold transition-colors",
+                      isCollapsed ? "justify-center px-0 py-2.5" : "px-3.5 py-2.5",
                       /*
                        * SELECTED AND HOVERED BOTH LAND ON THE CANVAS, which is
                        * what the approved mockup shows: a pale pill on the grey

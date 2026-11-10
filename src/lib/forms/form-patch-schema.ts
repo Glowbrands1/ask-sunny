@@ -8,9 +8,14 @@ import type { FieldValue, FormPatch } from "./form-reducer";
  * extra key anywhere is a failed parse, and the turn falls back to the old
  * path. See `form-patch-model.ts`.
  */
-export function patchOutputSchema(keys: readonly [string, ...string[]]) {
+export function patchOutputSchema(keys: readonly [string, ...string[]], options: { reword?: boolean; policyAsked?: boolean } = {}) {
+  // FORM_PATCH_READER_FIXES_ENABLED: "reword" is one more `how`. Off, the schema is as before.
+  const how = options.reword ? z.enum(["add", "replace", "reword"]) : z.enum(["add", "replace"]);
+  // EDIT_POLICY_ASK_ENABLED: whether the latest message asks for the policy. Off, no such key.
+  const policyAsked = options.policyAsked ? { policy_asked: z.boolean().optional() } : {};
   return z
     .object({
+      ...policyAsked,
       turn: z.enum(["this_form", "question", "other"]),
       set: z
         .array(
@@ -19,7 +24,7 @@ export function patchOutputSchema(keys: readonly [string, ...string[]]) {
               field: z.enum(keys),
               value: z.string().max(4000).optional(),
               options: z.array(z.string()).max(10).optional(),
-              how: z.enum(["add", "replace"]),
+              how,
               evidence: z.string().min(1).max(1500),
             })
             .strict(),
@@ -38,7 +43,7 @@ export type PatchOutput = z.infer<ReturnType<typeof patchOutputSchema>>;
  */
 export function toPatch(output: PatchOutput): FormPatch {
   const set: Record<string, FieldValue> = {};
-  const how: Record<string, "add" | "replace"> = {};
+  const how: Record<string, "add" | "replace" | "reword"> = {};
   const evidence: Record<string, string> = {};
   for (const entry of output.set) {
     set[entry.field] = entry.options !== undefined ? [...entry.options] : (entry.value ?? "");

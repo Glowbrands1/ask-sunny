@@ -174,7 +174,7 @@ function KpiGrid({ kpis }: { kpis: readonly OverviewKpi[] }) {
       it, and the hairline rules live in one shared class rather than being
       re-derived per caller.
     */
-    <div className="grid grid-cols-1 rounded-2xl border border-border bg-surface py-4 shadow-raised sm:grid-cols-2 xl:grid-cols-4">
+    <div className="grid grid-cols-1 rounded-2xl bg-surface py-4 shadow-raised sm:grid-cols-2 xl:grid-cols-4">
       {kpis.map((kpi) => (
         <KpiTile key={kpi.key} kpi={kpi} />
       ))}
@@ -186,7 +186,7 @@ function KpiGrid({ kpis }: { kpis: readonly OverviewKpi[] }) {
 export function PerformanceOverviewSkeleton() {
   return (
     <OverviewFrame caption="Loading the latest reporting snapshot…">
-      <div className="grid grid-cols-1 rounded-2xl border border-border bg-surface py-4 shadow-raised sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 rounded-2xl bg-surface py-4 shadow-raised sm:grid-cols-2 xl:grid-cols-4">
         {[0, 1, 2, 3].map((index) => (
           <div key={index} className="stat-cell">
             <Skeleton className="h-2 w-20" />
@@ -216,7 +216,7 @@ export function PerformanceOverviewCard({
   if (overview.status === "no_data") {
     return (
       <OverviewFrame caption="Your salons">
-        <p className="rounded-2xl border border-border bg-surface px-5 py-4 text-[13px] leading-relaxed text-muted-foreground">
+        <p className="rounded-[var(--radius-lg)] bg-surface-muted px-5 py-4 shadow-dent text-[13px] leading-relaxed text-muted-foreground">
           Reporting data is not available yet. {overview.reason}
         </p>
       </OverviewFrame>
@@ -231,7 +231,7 @@ export function PerformanceOverviewCard({
      */
     return (
       <OverviewFrame caption="Your salons">
-        <p className="rounded-2xl border border-border bg-surface px-5 py-4 text-[13px] leading-relaxed text-muted-foreground">
+        <p className="rounded-[var(--radius-lg)] bg-surface-muted px-5 py-4 shadow-dent text-[13px] leading-relaxed text-muted-foreground">
           {overview.message} No figures are shown rather than figures that might
           be wrong. Reports &amp; Analytics has the detail once it is reachable.
         </p>

@@ -118,7 +118,9 @@ import {
   payrollAmountFieldEnabled,
   storedSlotsNotARequestEnabled,
   typedNameProceedsEnabled,
+  secondRequestOwnAccountEnabled,
 } from "@/lib/config/chat-quality-flags";
+import { currentFormRequestText } from "@/lib/forms/current-request";
 import { managerWords } from "./edit-date-rules";
 import { inlineCloseMatch } from "@/lib/forms/typed-name-proceeds";
 import { allowsTeamSubject } from "@/lib/forms/team-subject";
@@ -1972,10 +1974,10 @@ function choice(summary: TemplateSummary): ChatFormChoice {
  * the draft, as before.
  */
 async function namedPolicyFor(text: string, input: ProposalTurn): Promise<NamedPolicyReading | null> {
-  const policyReading = readCaPolicy(text);
+  const policyReading = readCaPolicy(secondRequestOwnAccountEnabled() ? currentFormRequestText(text) : text);
   // A missed meeting reads as Attendance; the manual still says where (see `groundMissedEvent` below).
   if (policyReading.stated !== null && !(policyReading.stated === "attendance" && policyReading.missedEvent)) return null;
-  const named = namedPolicies(text);
+  const named = namedPolicies(secondRequestOwnAccountEnabled() ? currentFormRequestText(text) : text);
   const chunksOf = async (): Promise<readonly ManualChunk[] | null> => {
     try {
       return (await input.policyManual?.()) ?? null;
@@ -2241,7 +2243,7 @@ function proposalContent(
         proposal,
         intake,
         asksPayrollDeduct(match),
-        readCaPolicy(context.text),
+        readCaPolicy(secondRequestOwnAccountEnabled() ? currentFormRequestText(context.text) : context.text),
         statedPriorActions(context.text, today),
         extra.namedPolicy ?? null,
         extra.priorOnFile ?? NO_PRIOR_FORMS,
