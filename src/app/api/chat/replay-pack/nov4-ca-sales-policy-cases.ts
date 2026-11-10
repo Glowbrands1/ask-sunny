@@ -160,7 +160,8 @@ export const NOV4_CA_SALES_POLICY_CASES: ReplayCase[] = [
      * model reading) or a word list, which the request rules out. Asked via QA,
      * 4 Nov 2026.
      */
-    status: { open: "the card cites no policy for a register-accuracy corrective action" },
+    // Changed on purpose (10 Nov 2026): fixed in production by REGISTER_ACCURACY_CONDUCT_ENABLED, QA round 23.
+    status: "fixed",
     // Fixed under REGISTER_ACCURACY_CONDUCT_ENABLED (coding 6, 10 Nov 2026): a NARROW default-off word list in ca-policy.ts, as QA
     // allowed (no model call at card time). Open on production flags until QA flips it.
     fixFlags: ["REGISTER_ACCURACY_CONDUCT_ENABLED"],

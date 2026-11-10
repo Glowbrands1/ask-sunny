@@ -193,7 +193,8 @@ export const NOV10_CHAT_EDITS_A_CASES: ReplayCase[] = [
     title: "(a) \"the details we just discussed!!!\" hands the revision the coaching details the app gave before the card, never its own card or no-change reply",
     report:
       'Manager, production (relayed 5 Nov 2026, both apps): "can you upate the draft with these details of coaching?" → "it didnt edit in the card" → "the details we just discussed!!!"',
-    status: { open: "the revision is handed the last reply (the app's own \"I haven't changed …\"), never the answer that held the details" },
+    // Changed on purpose (10 Nov 2026): fixed in production by DETAILS_FROM_EARLIER_ANSWER_ENABLED, QA round 23.
+    status: "fixed",
     fixFlags: ["DETAILS_FROM_EARLIER_ANSWER_ENABLED"],
     async run(t: T) {
       start(t);

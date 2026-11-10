@@ -50,7 +50,8 @@ export const NOV5_DESCRIBED_TOPIC_ACCOUNT_CASES: ReplayCase[] = [
     // Changed on purpose (10 Nov 2026, QA's open-PR audit): CA_ASKS_WHAT_HAPPENED_ENABLED is on in production now, so with
     // production's flags the card does say "You haven't told me what happened yet" beside the citation: this report is
     // OPEN until DESCRIBED_TOPIC_IS_ACCOUNT_ENABLED ships.
-    status: { open: "with production's flags the kitten card says \"You haven't told me what happened yet\" beside its citation" },
+    // Changed on purpose (10 Nov 2026): fixed in production by DESCRIBED_TOPIC_IS_ACCOUNT_ENABLED, QA round 23.
+    status: "fixed",
     fixFlags: ["CA_ASKS_WHAT_HAPPENED_ENABLED", "DESCRIBED_TOPIC_IS_ACCOUNT_ENABLED"],
     async run(t) {
       const thread = start(t);

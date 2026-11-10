@@ -88,7 +88,8 @@ export const NOV5_PAU_SF_S21_S25_CASES: ReplayCase[] = [
     id: "nov5-sf-s21-must-see-behaviors-template",
     title: "sf-s21: \"create a ca for must see behaviors …\": no \"Standards of Conduct, as you said\"; the template's outline is applied with Wynne's own facts, never \"I haven't changed the form\"",
     report: `${REPORT}, sf-s21`,
-    status: { open: "\"**Policy:** Standards of Conduct, as you said\" on turn 1 (the intent read's heading, as in the live trace), and the template turns are answered \"I haven't changed the Corrective Action Form\"" },
+    // Changed on purpose (10 Nov 2026): fixed in production by TEMPLATE_OUTLINE_FIELDS_ENABLED, QA round 23.
+    status: "fixed",
     // Fixed under TEMPLATE_OUTLINE_FIELDS_ENABLED (coding 6, 10 Nov 2026): the template's outline writes its fields; "not the standard of
     // conduct" is answered with why Standards of Conduct stays (QA's ruling). Open on production flags until QA flips it.
     fixFlags: ["TEMPLATE_OUTLINE_FIELDS_ENABLED"],
@@ -247,7 +248,8 @@ export const NOV10_TEMPLATE_OUTLINE_CASES: ReplayCase[] = [
     id: "nov10-sf-s21-template-outline-saved",
     title: "sf-s21: \"the same out line but with wynnes info\" saves the template's Observation and Action Plan; \"not the standard of conduct\" says why it stays",
     report: `${REPORT}, sf-s21`,
-    status: { open: "the template's Action Plan is never saved (only the Observation is revised), and the last ask is answered \"I haven't changed the Corrective Action Form\"" },
+    // Changed on purpose (10 Nov 2026): fixed in production by TEMPLATE_OUTLINE_FIELDS_ENABLED, QA round 23.
+    status: "fixed",
     fixFlags: ["TEMPLATE_OUTLINE_FIELDS_ENABLED"],
     async run(t) {
       const thread = start(t);

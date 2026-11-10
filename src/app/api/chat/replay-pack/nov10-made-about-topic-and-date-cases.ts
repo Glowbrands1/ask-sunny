@@ -242,7 +242,8 @@ export const NOV10_MADE_ABOUT_TOPIC_AND_DATE_CASES: ReplayCase[] = [
     id: "nov10-section-breaks-kept-p9-one-line",
     title: "QA's live Sunny round 15 (03:07:44Z): P9's sentence saved, but the reader returned Details on ONE line (\"Observed: … Expectation: …\"): the saved Details keep their sections",
     report: "QA's live Sunny round 15 (10 Nov 2026, 03:07:44Z): Details of Coaching saved as one paragraph",
-    status: { open: "the reader's one-line account is written as it came, over a field written in sections" },
+    // Changed on purpose (10 Nov 2026): fixed in production by SECTION_BREAKS_KEPT_ENABLED, QA round 23.
+    status: "fixed",
     fixFlags: [
       "MADE_ABOUT_READER_ACCOUNT_ENABLED",
       "MADE_ABOUT_UNDATED_TOGETHER_ENABLED",

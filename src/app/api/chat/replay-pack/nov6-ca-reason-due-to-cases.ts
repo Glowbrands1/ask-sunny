@@ -50,7 +50,8 @@ export const NOV6_CA_REASON_DUE_TO_CASES: ReplayCase[] = [
     id: "nov6-ca-reason-at-salon-then-account",
     title: "\"create a ca for <name> at <salon>, she was late on 10-5 and 10-15 …\": the drafted Observation is the account, not the request",
     report: "audit of the sibling app's #237 (live, 26 Oct 2026): the request words led the account",
-    status: { open: "with production's flags the Observation is the request as the model copied it" },
+    // Changed on purpose (10 Nov 2026): fixed in production by CA_REASON_DUE_TO_ENABLED, QA round 23.
+    status: "fixed",
     fixFlags: FLAG,
     async run(t) {
       vi.setSystemTime(new Date("2026-10-26T15:30:00Z"));

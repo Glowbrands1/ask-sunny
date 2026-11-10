@@ -76,7 +76,8 @@ export const NOV6_DRAFT_REUSE_OWN_ONLY_CASES: ReplayCase[] = TURNS.flatMap(([reg
     id: `nov6-own-only-cross-manager-${register}`,
     title: `two managers, same salon, same CA ("${said.slice(0, 40)}…"): B gets a new draft`,
     report: REPORT,
-    status: { open: "the same chat key (the pack's chats both start at m1) lets A's draft through the same-chat filter; DRAFT_REUSE_OWN_ONLY_ENABLED fixes it" },
+    // Changed on purpose (10 Nov 2026): fixed in production by DRAFT_REUSE_OWN_ONLY_ENABLED, QA round 23.
+    status: "fixed",
     fixFlags: [FIX],
     run: (t) => twoManagers(t, said),
   },
@@ -84,7 +85,8 @@ export const NOV6_DRAFT_REUSE_OWN_ONLY_CASES: ReplayCase[] = TURNS.flatMap(([reg
     id: `nov6-own-only-one-flag-away-${register}`,
     title: `two managers, same-chat-only off ("${said.slice(0, 40)}…"): B gets a new draft`,
     report: `${REPORT}; production is one flag away (DRAFT_REUSE_SAME_CHAT_ONLY off)`,
-    status: { open: "with DRAFT_REUSE_SAME_CHAT_ONLY off, B is handed A's draft; DRAFT_REUSE_OWN_ONLY_ENABLED fixes it" },
+    // Changed on purpose (10 Nov 2026): fixed in production by DRAFT_REUSE_OWN_ONLY_ENABLED, QA round 23.
+    status: "fixed",
     fixFlags: [FIX],
     run: async (t) => {
       // Restored after the case with every production flag.

@@ -60,7 +60,8 @@ export const NOV10_SAME_REQUEST_FOLLOW_UP_CASES: ReplayCase[] = [
     id: "nov10-same-request-carries-account",
     title: `(a) "${SAME}": <B>'s card's Observation is <A>'s account with <B>'s name — "Mara Quell was late on 11/3/26"`,
     report: `${REPORT}: (a) <B>'s card had no Observation of Offense`,
-    status: { open: "<B>'s card's Observation is not \"Mara Quell was late on 11/3/26\" (live: none; here \"she was late on 11/3/26 Written Warning.\")" },
+    // Changed on purpose (10 Nov 2026): fixed in production by SAME_REQUEST_CARRIES_ACCOUNT_ENABLED, QA round 23.
+    status: "fixed",
     fixFlags: ["SAME_REQUEST_CARRIES_ACCOUNT_ENABLED"],
     async run(t) {
       const { second } = await both(t);
@@ -71,7 +72,8 @@ export const NOV10_SAME_REQUEST_FOLLOW_UP_CASES: ReplayCase[] = [
     id: "nov10-same-request-keeps-earlier-card",
     title: `(b) "${SAME}": <A>'s card is not superseded, and <A>'s form is still created from it, for <A>`,
     report: `${REPORT}: (b) <A>'s card read "Superseded — nothing created"`,
-    status: { open: "<A>'s card is superseded by <B>'s, so <A> can no longer be created from this chat" },
+    // Changed on purpose (10 Nov 2026): fixed in production by SAME_REQUEST_KEEPS_EARLIER_CARD_ENABLED, QA round 23.
+    status: "fixed",
     fixFlags: ["SAME_REQUEST_KEEPS_EARLIER_CARD_ENABLED", "NEXT_PUBLIC_SAME_REQUEST_KEEPS_EARLIER_CARD_ENABLED"],
     async run(t) {
       const { thread } = await both(t);

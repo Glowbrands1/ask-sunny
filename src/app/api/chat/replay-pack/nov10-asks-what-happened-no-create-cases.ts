@@ -19,7 +19,8 @@ export const NOV10_ASKS_WHAT_HAPPENED_NO_CREATE_CASES: ReplayCase[] = [
     id: "nov10-asks-what-happened-no-create",
     title: "\"create a coaching form for <name>\" asks what happened, and the card offers no Create until the account arrives",
     report: 'QA, live r19 (10 Nov 2026): "create a coaching form for <T>" — the ask shows, and so does an active "Create draft"',
-    status: { open: "the reply asks what happened while the card offers an active Create draft (supportsInlineDraft true)" },
+    // Changed on purpose (10 Nov 2026): fixed in production by WHAT_HAPPENED_NO_CREATE_ENABLED, QA round 23.
+    status: "fixed",
     fixFlags: ["COACHING_ASKS_WHAT_HAPPENED_ENABLED", "WHAT_HAPPENED_NO_CREATE_ENABLED"],
     async run(t) {
       t.directory(STAFF);

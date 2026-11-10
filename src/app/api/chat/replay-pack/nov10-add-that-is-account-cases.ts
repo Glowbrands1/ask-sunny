@@ -20,7 +20,8 @@ export const NOV10_ADD_THAT_IS_ACCOUNT_CASES: ReplayCase[] = [
     id: "nov10-add-that-she-was-reminded-of-the-policy",
     title: `a saved Corrective Action draft, "${SAID}": the line is added to the Observation, never read as a policy section`,
     report: `QA's live test in the sibling app (10 Nov 2026): on a saved CA draft, "${SAID}" was answered as a policy question`,
-    status: { open: "\"I couldn't find a section called \\\"she was reminded of the\\\" in the JBA Policy Manual …\"" },
+    // Changed on purpose (10 Nov 2026): fixed in production by ADD_THAT_IS_ACCOUNT_ENABLED, QA round 23.
+    status: "fixed",
     fixFlags: ["ADD_THAT_IS_ACCOUNT_ENABLED"],
     async run(t) {
       vi.setSystemTime(new Date("2026-11-10T15:00:00Z"));

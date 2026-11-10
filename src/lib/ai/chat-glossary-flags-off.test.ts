@@ -218,6 +218,9 @@ const FLIPPED_AFTER_FIXTURE: readonly string[] = [
   "TITLE_ENDS_AT_LINE_ENABLED",
   "BARE_NOT_DENIAL_ENABLED",
   "PLACE_FROM_CUE_ENABLED",
+  // Changed on purpose (10 Nov 2026): QA round 23 turned this on in production. A name-only coaching ask no longer offers Create
+  // beside "what happened" (the card's text changes); the fixture predates it, so it is compared with it off.
+  "WHAT_HAPPENED_NO_CREATE_ENABLED",
 ];
 const PRODUCTION = [...PRODUCTION_FLAGS.on, ...PRODUCTION_FLAGS.assumedOn].filter((name) => name !== FLAG && !FLIPPED_AFTER_FIXTURE.includes(name));
 const TOUCHED = [...new Set([FLAG, "FORM_EDIT_SINGLE_WRITER_ENABLED", "FORM_EDIT_TOOL_IN_STREAM_ENABLED", ...PRODUCTION, ...PRODUCTION_FLAGS.off])];
