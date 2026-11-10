@@ -22,8 +22,7 @@ export const NOV10_CREATE_FROM_CONVERSATION_CASES: ReplayCase[] = ([["payroll-as
     id: `nov10-create-from-conversation-${key}`,
     title: `the CA card${before.length ? ", \"No\" to payroll," : ""} then "${CREATE}": points to Create draft, never the same reply again`,
     report: REPORT,
-    // Changed on purpose (10 Nov 2026): fixed in production by CREATE_FROM_CONVERSATION_POINTS_TO_CARD, QA round 16.
-    status: "fixed",
+    status: { open: "the same reply word for word" },
     fixFlags: ["CREATE_FROM_CONVERSATION_POINTS_TO_CARD_ENABLED"],
     async run(t) {
       t.directory([...STAFF, BRISA]);
