@@ -87,7 +87,8 @@ export const NOV9_MADE_ABOUT_REWRITE_FINISHES_CASES: ReplayCase[] = [
     id: "nov9-made-about-rewrite-finishes-reader-refused",
     title: "the live shape: Details rewritten, then the reader's own edit refused — Other, the Date and the new reference still written, one revision",
     report: REPORT,
-    status: { open: "QA round 13 rolled back: the refused reader edit hands the turn to the old path after the rewrite" },
+    // Changed on purpose (10 Nov 2026): fixed in production by MADE_ABOUT_REWRITE_FINISHES + READER_ACCOUNT + POLICY_LINE, QA round 14 (UNDATED_TOGETHER stays off).
+    status: "fixed",
     fixFlags: FIX,
     run: allThree(patch("this_form", [{ ...OTHER, value: "" }, DET])),
   },
@@ -95,7 +96,8 @@ export const NOV9_MADE_ABOUT_REWRITE_FINISHES_CASES: ReplayCase[] = [
     id: "nov9-made-about-rewrite-finishes-old-line-kept",
     title: "the revision keeps the old \"Attendance … p.14\" line on the new account: it is replaced by the new account's reference",
     report: `${REPORT} (the old account's reference left on the new one)`,
-    status: { open: "MADE_ABOUT_POLICY_LINE skips an account that already carries a line, even the old account's" },
+    // Changed on purpose (10 Nov 2026): fixed in production by MADE_ABOUT_REWRITE_FINISHES + READER_ACCOUNT + POLICY_LINE, QA round 14 (UNDATED_TOGETHER stays off).
+    status: "fixed",
     fixFlags: FIX,
     run: allThree(patch("this_form", [OTHER, DET]), `${DESK}\n\n${ATTENDANCE_LINE}`),
   },
@@ -103,7 +105,8 @@ export const NOV9_MADE_ABOUT_REWRITE_FINISHES_CASES: ReplayCase[] = [
     id: "nov9-made-about-rewrite-finishes-details-only",
     title: "the reader sets Details only (set aside): Other is read from the manager's words, with the Date and the new reference",
     report: `${REPORT} (the reader's Details-only shape)`,
-    status: { open: "a dated made-about turn whose reader set only Details leaves Other on the old topic" },
+    // Changed on purpose (10 Nov 2026): fixed in production by MADE_ABOUT_REWRITE_FINISHES + READER_ACCOUNT + POLICY_LINE, QA round 14 (UNDATED_TOGETHER stays off).
+    status: "fixed",
     fixFlags: FIX,
     run: allThree(patch("this_form", [DET])),
   },
@@ -111,7 +114,8 @@ export const NOV9_MADE_ABOUT_REWRITE_FINISHES_CASES: ReplayCase[] = [
     id: "nov9-made-about-rewrite-finishes-error-after-rewrite",
     title: "a save fails after Details is rewritten: the old path never runs again, and the reply says Other and the Date were not saved",
     report: `${REPORT} (the catch-all after the rewrite)`,
-    status: { open: "an error after the rewrite returns null: the old path's revision runs again and the reply is its own" },
+    // Changed on purpose (10 Nov 2026): fixed in production by MADE_ABOUT_REWRITE_FINISHES + READER_ACCOUNT + POLICY_LINE, QA round 14 (UNDATED_TOGETHER stays off).
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const { id, reply, revisions } = await onDraft(t, patch("this_form", [OTHER, DET]), DESK, (ctx) => ctx.failSavesOf!("other_topic"));
@@ -127,7 +131,8 @@ export const NOV9_MADE_ABOUT_REWRITE_FINISHES_CASES: ReplayCase[] = [
     id: "nov9-made-about-rewrite-finishes-undated-reader-details",
     title: "QA's live turn 2, \"make it about showing up late\" (no date), the reader rewrites Details: Details and Other together, the Date stays and the reply says so",
     report: `${REPORT} (turn 2: "make it about showing up late" answered "I haven't changed …")`,
-    status: { open: "an undated made-about turn whose reader rewrote Details is refused and handed to the old path" },
+    // Changed on purpose (10 Nov 2026): fixed in production by MADE_ABOUT_UNDATED_TOGETHER, QA round 15.
+    status: "fixed",
     fixFlags: UNDATED_FIX,
     async run(t) {
       vi.setSystemTime(new Date("2026-11-09T22:01:00Z"));
