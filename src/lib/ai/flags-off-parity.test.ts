@@ -364,6 +364,8 @@ const NEW_FLAGS = [
   "POLICY_REFERENCE_NOT_ACCOUNT_ENABLED",
   // coding 6: LEVEL_AFTER_FORM_NAME (default off): forced off with the others.
   "LEVEL_AFTER_FORM_NAME_ENABLED",
+  // coding 6: TEAM_CARD_NOT_PRODUCT (default off): forced off with the others.
+  "TEAM_CARD_NOT_PRODUCT_ENABLED",
   "STAFF_PICKER_ENABLED",
   "STAFF_PICKER_STORE_TITLES_ENABLED",
   "STAFF_PICKER_BARE_ANSWER_ENABLED",
