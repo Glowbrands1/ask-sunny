@@ -484,6 +484,8 @@ const NEW_FLAGS = [
   "METRIC_CHOICE_ONE_QUESTION_ENABLED",
   // The second Sunny gate's fix flags (6 Nov 2026): forced off with the others in the child run.
   "TITLE_ENDS_AT_LINE_ENABLED",
+  // QA, 10 Nov 2026 (default off): "not following the dress code" names the policy as broken.
+  "NOT_FOLLOWING_IS_VIOLATION_ENABLED",
   "BARE_NOT_DENIAL_ENABLED",
   "PLACE_FROM_CUE_ENABLED",
   // Port of the sibling app's flip-3 fix (6 Nov 2026): forced off with the others in the child run.
