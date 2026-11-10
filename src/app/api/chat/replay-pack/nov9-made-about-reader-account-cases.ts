@@ -73,8 +73,8 @@ export const NOV9_MADE_ABOUT_READER_ACCOUNT_CASES: ReplayCase[] = [
     id: "nov9-made-about-reader-account-added",
     title: "the reader adds the new incident to Details and sets Other (the live shape): Other, the Date and Details together",
     report: REPORT,
-    // Changed on purpose (10 Nov 2026): back to open; its switch was turned off again after the round-13 live saved-draft test (rolled back, being fixed).
-    status: { open: "Other and Details (the new incident added under the old) change; the Date stays 2026-10-10" },
+    // Changed on purpose (10 Nov 2026): fixed in production by MADE_ABOUT_REWRITE_FINISHES + READER_ACCOUNT + POLICY_LINE, QA round 14 (UNDATED_TOGETHER stays off).
+    status: "fixed",
     fixFlags: FIX,
     run: together(ADDED),
   },
@@ -82,8 +82,8 @@ export const NOV9_MADE_ABOUT_READER_ACCOUNT_CASES: ReplayCase[] = [
     id: "nov9-made-about-reader-account-replaced",
     title: "the reader replaces Details and sets Other: Other, the Date and Details together, never refused for the old date",
     report: `${REPORT} (the reader's replace shape)`,
-    // Changed on purpose (10 Nov 2026): back to open; its switch was turned off again after the round-13 live saved-draft test (rolled back, being fixed).
-    status: { open: "nothing is saved: the reader's Details drops 10/10/26 and the write is refused" },
+    // Changed on purpose (10 Nov 2026): fixed in production by MADE_ABOUT_REWRITE_FINISHES + READER_ACCOUNT + POLICY_LINE, QA round 14 (UNDATED_TOGETHER stays off).
+    status: "fixed",
     fixFlags: FIX,
     run: together(REPLACED),
   },
@@ -91,8 +91,8 @@ export const NOV9_MADE_ABOUT_READER_ACCOUNT_CASES: ReplayCase[] = [
     id: "nov9-made-about-reader-account-replaced-live",
     title: "the live shape (QA's read of the saved draft): the reader replaces Details and sets Other on an account with no date the app reads — the Date is written too",
     report: `${REPORT} (QA's live read: Details fully rewritten, Other changed, the Date stayed)`,
-    // Changed on purpose (10 Nov 2026): back to open; its switch was turned off again after the round-13 live saved-draft test (rolled back, being fixed).
-    status: { open: "Other and Details change; the Date stays 2026-10-10" },
+    // Changed on purpose (10 Nov 2026): fixed in production by MADE_ABOUT_REWRITE_FINISHES + READER_ACCOUNT + POLICY_LINE, QA round 14 (UNDATED_TOGETHER stays off).
+    status: "fixed",
     fixFlags: FIX,
     run: together(REPLACED, UNDATED_DETAILS),
   },
@@ -100,8 +100,8 @@ export const NOV9_MADE_ABOUT_READER_ACCOUNT_CASES: ReplayCase[] = [
     id: "nov9-made-about-reader-account-refused",
     title: "the reader adds to Details and the revision's account is refused: nothing is saved, and the reply says so",
     report: `${REPORT} (the condition: all three, or none)`,
-    // Changed on purpose (10 Nov 2026): back to open; its switch was turned off again after the round-13 live saved-draft test (rolled back, being fixed).
-    status: { open: "Other and the added sentence are saved, the Date stays" },
+    // Changed on purpose (10 Nov 2026): fixed in production by MADE_ABOUT_REWRITE_FINISHES + READER_ACCOUNT + POLICY_LINE, QA round 14 (UNDATED_TOGETHER stays off).
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const { id, reply, before } = await onDraft(t, ADDED, "REWRITTEN");
