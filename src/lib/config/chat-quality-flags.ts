@@ -2665,6 +2665,16 @@ export function policyTopicIntoFieldEnabled(): boolean {
   return envFlag("POLICY_TOPIC_INTO_FIELD_ENABLED");
 }
 
+/**
+ * BRAND_REPLY_GUARD_ENABLED (ported from the sibling app: QA's October triage of its #198, 10 Nov 2026; coding 5;
+ * default off). With OWN_BRAND_ONLY on, a reply still kept "(<this brand>, JB & Associates office)" and "SALON/STORE",
+ * and dropped whole an availability reply naming this brand's system beside the others'. On: those are rewritten
+ * before the own-brand step (`ai/brand-reply-rest.ts`), so the rule stays and names only this company. Off, as before.
+ */
+export function brandReplyGuardEnabled(): boolean {
+  return envFlag("BRAND_REPLY_GUARD_ENABLED");
+}
+
 // --- end coding 5 flags ---
 
 /**

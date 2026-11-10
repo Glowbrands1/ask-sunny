@@ -3,6 +3,7 @@ import { ACTIVE_BRAND } from "@/lib/brand";
 
 import { EXCLUDED_BRAND } from "./full-manual-context";
 
+import { withBrandReplyRest } from "./brand-reply-rest";
 import type { AskResponse } from "./types";
 
 /**
@@ -136,6 +137,7 @@ function withinLine(line: string, p: ReturnType<typeof patterns>): string {
 /** OWN_BRAND_ONLY_ENABLED: the finished reply with only this company's brand named. Off: as built. */
 export function withOwnBrandOnly(response: AskResponse): AskResponse {
   if (!ownBrandOnlyEnabled()) return response;
-  const content = ownBrandOnly(response.content);
+  // BRAND_REPLY_GUARD_ENABLED: what this step would leave or drop with its rule is rewritten first (`brand-reply-rest.ts`).
+  const content = ownBrandOnly(withBrandReplyRest(response.content));
   return content === response.content ? response : { ...response, content };
 }
