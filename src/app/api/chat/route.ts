@@ -25,6 +25,7 @@ import {
   offRosterConfirmEnabled,
   exitLetterAddresseeEnabled,
   letterGreetingNotNameEnabled,
+  templateOutlineFieldsEnabled,
   exitFormDateFromTerminationEnabled,
   offRosterAskBeforeCardEnabled,
   metricGuardEnabled,
@@ -973,6 +974,22 @@ async function postChat(request: Request) {
       logTurnEvent("turn.answer.missing_turn", { surface, where: "api/chat" });
     }
 
+    /*
+     * TEMPLATE_OUTLINE_FIELDS_ENABLED (Pau's sf-s21, QA's ruling): "the Must see behaviors and not the standard of
+     * conduct" on a form that still cites Standards of Conduct is answered with why (`lib/forms/template-outline.ts`).
+     */
+    if (templateOutlineFieldsEnabled() && body.activeFormInstanceId && typeof body.question === "string") {
+      const outline = await import("@/lib/forms/template-outline");
+      const loaded = await (await import("@/lib/forms/instance-scope"))
+        .authorizeInstance(request, body.activeFormInstanceId, "view")
+        .then((authorized) => authorized.loaded)
+        .catch(() => null);
+      const value = (key: string) => loaded?.values.find((row) => row.fieldKey === key)?.value ?? "";
+      const note = loaded
+        ? outline.policyKeptNote({ question: body.question, policyViolated: value("policy_violated"), policyLanguage: value("policy_language") })
+        : null;
+      if (note) answer = { ...answer, content: outline.withPolicyKeptNote(answer.content, note) };
+    }
     // FINAL_REPLY_MARKER_GUARD_ENABLED: no bare source tag reaches the manager, whatever path answered. See `ai/source-note.ts`.
     return NextResponse.json({ ...finalReplyWithoutMarkers(answer), turnId });
   } catch (error) {

@@ -1,6 +1,6 @@
 import type { AskResponse } from "@/lib/ai/types";
 import { isQuestionNotForm } from "@/lib/ai/question-not-form";
-import { formEditSingleWriterEnabled, openDraftKeepsTurnsEnabled } from "@/lib/config/chat-quality-flags";
+import { formEditSingleWriterEnabled, openDraftKeepsTurnsEnabled, templateOutlineFieldsEnabled } from "@/lib/config/chat-quality-flags";
 import { extractEmployeeNames, samePerson } from "@/lib/forms/proposal";
 import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import type { ChatMessage } from "@/types";
@@ -51,7 +51,8 @@ export async function openDraftTurn(input: {
   const revised = await (await import("@/lib/forms/chat-revision")).reviseActiveForm({
     request: input.request,
     instanceId: input.instanceId,
-    question: `Add this to the ${open.templateName}: ${question}`,
+    // TEMPLATE_OUTLINE_FIELDS_ENABLED (Pau's sf-s21): "the same out line" as a pasted template names the template's fields.
+    question: (templateOutlineFieldsEnabled() ? await outlineQuestion(input) : null) ?? `Add this to the ${open.templateName}: ${question}`,
     history: [...input.history],
     today: input.today,
   });
@@ -68,4 +69,22 @@ export async function openDraftTurn(input: {
     coverage: "not_applicable",
     recommendedVideoIds: [],
   };
+}
+
+/** TEMPLATE_OUTLINE_FIELDS_ENABLED: the request naming a pasted template's fields, or null (`lib/forms/template-outline.ts`). */
+async function outlineQuestion(input: { request: Request; instanceId: string; question: string; history: readonly ChatMessage[] }): Promise<string | null> {
+  const outline = await import("./template-outline");
+  if (!outline.asksForOutline(input.question)) return null;
+  const loaded = await (await import("./instance-scope"))
+    .authorizeInstance(input.request, input.instanceId, "view")
+    .then((authorized) => authorized.loaded)
+    .catch(() => null);
+  if (!loaded) return null;
+  const { fieldsForVariant, interpolate, parseFormDocument } = await import("./document");
+  const fields = fieldsForVariant(parseFormDocument(loaded.version.document), loaded.instance.variantKey).map((field) => ({
+    key: field.key,
+    label: interpolate(field.label, null),
+  }));
+  const named = outline.withTemplateFieldsNamed({ question: input.question.trim(), history: input.history, fields });
+  return named === input.question.trim() ? null : named;
 }

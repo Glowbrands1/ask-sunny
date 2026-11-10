@@ -360,6 +360,8 @@ const NEW_FLAGS = [
   "FORM_EDIT_REFERS_BACK_ENABLED",
   "SAME_FORM_COPY_ENABLED",
   "SAME_FORM_COPY_NEW_PERSON_ENABLED",
+  // coding 6: TEMPLATE_OUTLINE_FIELDS (default off): forced off with the others.
+  "TEMPLATE_OUTLINE_FIELDS_ENABLED",
   // coding 6: POLICY_REFERENCE_NOT_ACCOUNT (default off): forced off with the others.
   "POLICY_REFERENCE_NOT_ACCOUNT_ENABLED",
   // coding 6: LEVEL_AFTER_FORM_NAME (default off): forced off with the others.
