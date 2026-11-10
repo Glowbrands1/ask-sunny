@@ -1,5 +1,6 @@
 import {
   futurePriorRowDropEnabled,
+  priorActionsNoCommaEnabled,
   priorActionsNoSignedEnabled,
   priorActionsParseEnabled,
   priorRowNotOnIncidentDateEnabled,
@@ -211,7 +212,28 @@ function stepTopic(topic: string | undefined): string {
  * — what `groundPriorActions` adds when the draft left one out, and what the
  * chat reads back before the form is created.
  */
-export function statedPriorActions(notes: string, today: string): string[] {
+/*
+ * PRIOR_ACTIONS_NO_COMMA_ENABLED (October triage #5; Sunny #255, the sibling app's #187). Typed with no commas,
+ * "prior coaching verbal 6/25 written 7/28 no deduct" listed "Written warning — verbal 6/25 — 07/28/2026", and
+ * "prior coachings 9/8 9/15 9/25" listed "Coaching — 9/8 — 09/15/2026" and "Coaching — 9/8 9/15 — 09/25/2026":
+ * the step reader splits a list on commas. With the flag on, a date followed by another step gets the comma it was
+ * typed without, and a step followed by a run of bare dates is that step once per date. Off, as before.
+ */
+const BARE_DATE = String.raw`\d{1,2}[/-]\d{1,2}(?:[/-](?:\d{4}|\d{2}))?`;
+const STEP_WORD = String.raw`(?:final\s+written|written(?!\s+up)|verbal|coach(?:ing|ings)?|cas?|c\/a|write[- ]?ups?|warnings?|corrective\s+actions?)`;
+const DATE_THEN_STEP = new RegExp(String.raw`(?<![\d/-])(${BARE_DATE})(?![\d/-])\s+(?=${STEP_WORD}\b)`, "gi");
+const STEP_THEN_DATES = new RegExp(String.raw`\b(${STEP_WORD})\s+(${BARE_DATE}(?:\s+${BARE_DATE})+)(?![\d/-])`, "gi");
+
+export function priorStepsWithCommas(notes: string): string {
+  return (notes ?? "")
+    .replace(STEP_THEN_DATES, (_whole, step: string, dates: string) =>
+      dates.trim().split(/\s+/).map((date) => `${step} ${date}`).join(", "),
+    )
+    .replace(DATE_THEN_STEP, "$1, ");
+}
+
+export function statedPriorActions(typed: string, today: string): string[] {
+  const notes = priorActionsNoCommaEnabled() ? priorStepsWithCommas(typed) : typed;
   const lines = stepsSaid(notes, today).map(managerStepLine);
   return [...lines, ...undatedListSteps(notes, today, lines)];
 }

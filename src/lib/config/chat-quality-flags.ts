@@ -4134,3 +4134,16 @@ export function appInstructionsNotAccountEnabled(): boolean {
 export function draftWriteNeverSilentEnabled(): boolean {
   return envFlag("DRAFT_WRITE_NEVER_SILENT_ENABLED");
 }
+
+/**
+ * PRIOR_ACTIONS_NO_COMMA_ENABLED (coding 6, 10 Nov 2026; default off; October
+ * triage #5, Sunny #255 / the sibling app's #187). "prior coaching verbal 6/25
+ * written 7/28 no deduct" listed "Written warning — verbal 6/25 — 07/28/2026";
+ * "prior coachings 9/8 9/15 9/25" listed garbled Coaching rows. On: a date
+ * followed by another step gets the comma it was typed without, and a step
+ * followed by a run of bare dates is that step once per date. See
+ * `forms/prior-actions.ts`. Off, as before.
+ */
+export function priorActionsNoCommaEnabled(): boolean {
+  return envFlag("PRIOR_ACTIONS_NO_COMMA_ENABLED");
+}
