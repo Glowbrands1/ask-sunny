@@ -350,6 +350,10 @@ const NEW_FLAGS = [
   "FINAL_REPLY_MARKER_GUARD_ENABLED",
   // Coding: PROPOSAL_NAME_CORRECTION (round 5, 8 Nov 2026; port from Ask Bubbles; default off).
   "PROPOSAL_NAME_CORRECTION_ENABLED",
+  // Coding: NEAR_MISS_QUESTION_RULES (round 5, 8 Nov 2026; default off; ships with the name set).
+  "NEAR_MISS_QUESTION_RULES_ENABLED",
+  // Coding: FORM_NAME_OFF_ROSTER_ASK (QA, 10 Nov 2026; default off; ships with the name set).
+  "FORM_NAME_OFF_ROSTER_ASK_ENABLED",
   "POLICY_CHANGE_REST_OF_TURN_ENABLED",
   "OPEN_FORM_NO_SELECTION_ENABLED",
   "PERSON_GUARD_ENABLED",

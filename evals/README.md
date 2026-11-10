@@ -50,6 +50,15 @@ and the pull request says why.
 
 ### Baseline changes
 
+- **10 Nov 2026, s25, b9, n1, n3: criteria follow Pau's 5 Nov 2026 rulings (changed on purpose; QA, the roster-name
+  set ask-sunny #741).** `flags.json` lists the set's flags that are not yet in production, so the flags-on column is the
+  set. s25 ("create a corrective action form for Dasiley Veklo", then "Yes"): the card takes the roster's spelling,
+  **"Daisley Veklo"**, not the typo. b9 and n1 ("Test Employee", a name with "employee" in it) and n3 ("name is TT …",
+  bare initials): no employee on the card, and the reply asks **"Who is this form for?"** (`replyIncludes`; the
+  question is expected, so `noBlockingQuestion` is false). With production's flags (the flags-off column) all four now
+  fail, which is what `baseline.json` records; with the set on all four pass. Their 23–25 Oct criteria are superseded by
+  those rulings. The priority replay fixture (`src/lib/ai/__fixtures__/replay_set.json`) keeps the old criteria: it
+  measures production's flags (`judge.eval.ts` lists the four as ruled). Every other case is as it was.
 - **7 Nov 2026, s9: card employee null, "employee" and "blocking question" misses (changed on purpose; judge
   unchanged).** QA's flips of 5 and 6 Nov are now in `production-flags.json` (ask-sunny #609), and
   METRIC_GUARD_ENABLED (#570) runs the lowercase-nobody guard (`forms/answer-not-a-name.ts`) with FORM_NAME off too.

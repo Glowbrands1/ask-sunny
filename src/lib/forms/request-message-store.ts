@@ -2,7 +2,7 @@ import "server-only";
 
 import { AsyncLocalStorage } from "node:async_hooks";
 
-import { installMetricMessage, installRequestMessage } from "./request-slot";
+import { installCardOnScreen, installMetricMessage, installRequestMessage } from "./request-slot";
 
 /**
  * FORM_NAME_FROM_ROSTER_ENABLED (step 5, part 2): the manager's message for
@@ -29,4 +29,14 @@ installMetricMessage(() => metricOnly.getStore());
 /** From here to the end of this request, the metric guards read this message. */
 export function enterMetricMessage(text: string): void {
   metricOnly.enterWith(text);
+}
+
+/** NEAR_MISS_QUESTION_RULES_ENABLED: the card on screen's employee, for `roster-only-names.ts` (`request-slot.ts` cardOnScreen). */
+const card = new AsyncLocalStorage<string>();
+
+installCardOnScreen(() => card.getStore());
+
+/** From here to the end of this request, the card on screen is for this employee. */
+export function enterCardOnScreen(employee: string): void {
+  card.enterWith(employee);
 }

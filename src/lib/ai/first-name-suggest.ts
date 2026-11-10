@@ -7,11 +7,13 @@ import {
   formNameFromRosterEnabled,
   partialSurnameAskEnabled,
   suggestAnswerReplacesTypedEnabled,
+  nearMissQuestionRulesEnabled,
+  formNameOffRosterAskEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { compoundSurnameScore, displayName, editDistance, type RosterEmployee } from "@/lib/forms/employee-match";
 import { looseFits } from "@/lib/forms/loose-fit";
 import { acceptsNearMissWithDetails, nearMissTypedRest } from "@/lib/forms/near-miss-answer";
-import { typedWithOtherSurname } from "@/lib/forms/request-slot";
+import { typedWithOtherSurname, cardOnScreen } from "@/lib/forms/request-slot";
 
 import type { ChatActor } from "./form-proposal";
 import type { AskRequest, AskResponse } from "./types";
@@ -89,10 +91,20 @@ function statedFirstName(turns: readonly string[], roster: readonly RosterEmploy
   return said.size === 1 ? [...said][0]! : null;
 }
 
+/**
+ * FORM_NAME_OFF_ROSTER_ASK_ENABLED (QA's roster-set gate, 10 Nov 2026; sf-s38 "make me a CA for Ines Varga-Lund missing
+ * her shift"): the roster's surname read as the message is ("Varga-Lund" → "varga lund"), so a hyphenated surname typed
+ * in full is somebody named in full. Off, as before.
+ */
+function surnameAsTyped(lastName: string): string {
+  const own = lastName.trim().toLowerCase();
+  return formNameOffRosterAskEnabled() ? own.replace(/[^a-z' ]+/g, " ").replace(/\s+/g, " ").trim() : own;
+}
+
 function namesSomebodyInFull(turns: readonly string[], roster: readonly RosterEmployee[]): boolean {
   const text = ` ${turns.join(" ").toLowerCase().replace(/[^a-z' ]+/g, " ")} `;
   return roster.some((person) =>
-    firstNamesOf(person).some((first) => text.includes(` ${first} ${person.lastName.trim().toLowerCase()} `)),
+    firstNamesOf(person).some((first) => text.includes(` ${first} ${surnameAsTyped(person.lastName)} `)),
   );
 }
 
@@ -192,7 +204,7 @@ export function withFirstNameSuggest(
   const oneWordCard = Boolean(card?.employeeName && !/\s/.test(card.employeeName.trim()));
   const partial = oneWordCard ? [] : partialSurnamePeople(card?.employeeName, request, roster);
   if (partial.length > 0 && !partial.some((person) => alreadyConfirmed(displayName(person), request))) {
-    return { ...response, content: suggestion([...new Set(partial.map(displayName))]), formProposal: undefined };
+    return suggested(response, [...new Set(partial.map(displayName))]);
   }
   // The card's full name was filled from a first name the manager typed alone ("katherine was late …").
   const filledFirst = oneWordCard ? null : filledFromFirstName(card?.employeeName, request, roster);
@@ -207,7 +219,26 @@ export function withFirstNameSuggest(
   const people = roster.filter((person) => firstNamesOf(person).includes(first) && !typedWithOtherSurname(first, person.lastName, turns));
   if (people.length === 0) return response;
   // Only the question: the card waits for the answer.
-  return { ...response, content: suggestion([...new Set(people.map(displayName))]), formProposal: undefined };
+  return suggested(response, [...new Set(people.map(displayName))]);
+}
+
+/**
+ * Only the question: the card waits for the answer. NEAR_MISS_QUESTION_RULES_ENABLED (QA's round-4 gate, 8 Nov 2026,
+ * sun-msb-format turn 3): a card already on screen is never replaced by it. The question about the card's own employee
+ * is not asked again (the card stays); one about anyone else is asked under the card, which waits for the employee.
+ */
+function suggested(response: AskResponse, names: readonly string[]): AskResponse {
+  const onScreen = nearMissQuestionRulesEnabled() ? cardOnScreen() : undefined;
+  const card = response.formProposal;
+  if (!onScreen || !card) return { ...response, content: suggestion(names), formProposal: undefined };
+  if (names.length === 1 && names[0]!.toLowerCase() === onScreen.toLowerCase()) {
+    return card.employeeName === names[0] ? response : { ...response, formProposal: { ...card, employeeName: names[0]! } };
+  }
+  return {
+    ...response,
+    content: `${response.content.trim()}\n\n${suggestion(names)}`,
+    formProposal: { ...card, employeeName: null, status: "needs_employee", supportsInlineDraft: false },
+  };
 }
 
 function suggestion(names: readonly string[]): string {

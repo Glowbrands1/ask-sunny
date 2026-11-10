@@ -126,8 +126,10 @@
     },
     {
       "id": "s25",
-      "pass": true,
-      "misses": [],
+      "pass": false,
+      "misses": [
+        "employee"
+      ],
       "card": {
         "employee": "Dasiley Veklo",
         "salon": "loc-0313",
@@ -170,8 +172,11 @@
     },
     {
       "id": "b9",
-      "pass": true,
-      "misses": [],
+      "pass": false,
+      "misses": [
+        "employee",
+        "reply lacks \"Who is this form for?\""
+      ],
       "card": {
         "employee": "Test Employee",
         "salon": null,
@@ -214,8 +219,11 @@
     },
     {
       "id": "n1",
-      "pass": true,
-      "misses": [],
+      "pass": false,
+      "misses": [
+        "employee",
+        "reply lacks \"Who is this form for?\""
+      ],
       "card": {
         "employee": "Test Employee",
         "salon": "loc-0462",
@@ -241,8 +249,11 @@
     },
     {
       "id": "n3",
-      "pass": true,
-      "misses": [],
+      "pass": false,
+      "misses": [
+        "employee",
+        "reply lacks \"Who is this form for?\""
+      ],
       "card": {
         "employee": "Tt",
         "salon": null,
