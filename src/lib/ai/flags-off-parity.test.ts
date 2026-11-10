@@ -184,6 +184,8 @@ import { privateCreatorFormsEnabled, privateCreatorsActive } from "@/lib/forms/p
  */
 
 const NEW_FLAGS = [
+  // coding 4: EXPECTATION_POLICY_LINE_KEPT (ported from Ask Bubbles, QA audit, 10 Nov 2026; default off).
+  "EXPECTATION_POLICY_LINE_KEPT_ENABLED",
   "SLOT_RETENTION_ENABLED",
   "FIELD_ACCURACY_ENABLED",
   "DRAFT_DEDUPE_ENABLED",

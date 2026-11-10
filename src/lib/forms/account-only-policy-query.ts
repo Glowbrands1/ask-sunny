@@ -1,4 +1,4 @@
-import { accountOnlyPolicyQueryEnabled } from "@/lib/config/chat-quality-flags";
+import { accountOnlyPolicyQueryEnabled, expectationPolicyLineKeptEnabled } from "@/lib/config/chat-quality-flags";
 
 import { EXPECTATION_LABEL, GOING_FORWARD_LABEL, OBSERVED_LABEL } from "./narrative-draft";
 
@@ -97,7 +97,15 @@ export interface InventedDetailContext {
   readonly datesIn: (text: string) => readonly { index: number; end: number }[];
 }
 
+/**
+ * EXPECTATION_POLICY_LINE_KEPT_ENABLED: "An employee scheduled to open is expected to arrive on time …" — the policy's
+ * expectation of every employee, not a fact about what this one did.
+ */
+const GENERAL_EXPECTATION =
+  /^\s*(?:an?\s+|every\s+|each\s+|all\s+)?(?:employees?|team\s+members?|associates?|staff(?:\s+members?)?)\b[^.!?]*\b(?:(?:is|are)\s+(?:expected|required)|must|should|need\s+to|needs\s+to)\b/i;
+
 function invented(sentence: string, notes: string, observed: boolean): boolean {
+  if (!observed && expectationPolicyLineKeptEnabled() && GENERAL_EXPECTATION.test(sentence)) return false;
   const patterns = observed ? [...ANY_SECTION, ...OBSERVED_ONLY] : ANY_SECTION;
   return patterns.some((pattern) => pattern.test(sentence) && !pattern.test(notes));
 }
