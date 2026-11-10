@@ -33,9 +33,40 @@ const state = vi.hoisted(() => ({
   scope: null as unknown,
   details: "" as string,
   modelCalls: 0,
+  /* Which one-open-revision index the database has: 20261025233000's, or 20261110200000's (archived drafts left out). */
+  indexSkipsArchived: false,
 }));
 
-vi.mock("@/lib/supabase/server", () => ({ getSupabaseAdmin: () => fakeSupabase(store) }));
+/*
+ * THE ONE-OPEN-REVISION INDEX, which the fake does not model (it enforces the primary key only):
+ * `form_instances_one_open_revision` refuses a second draft revising the same form (23505). As built by
+ * 20261025233000 it counts archived drafts too; 20261110200000 leaves them out (`state.indexSkipsArchived`).
+ */
+vi.mock("@/lib/supabase/server", () => ({
+  getSupabaseAdmin: () => {
+    const client = fakeSupabase(store);
+    return {
+      ...client,
+      from: (table: string) => {
+        const query = client.from(table) as unknown as { insert: (payload: Record<string, unknown>) => unknown };
+        if (table !== "form_instances") return query;
+        const insert = query.insert.bind(query);
+        query.insert = (payload: Record<string, unknown>) => {
+          const open = (row: Record<string, unknown>) =>
+            row.status === "draft" && row.revises_instance_id != null && (!state.indexSkipsArchived || row.archived_at == null);
+          const taken =
+            !Array.isArray(payload) &&
+            open(payload) &&
+            store.form_instances.some((row) => open(row) && row.revises_instance_id === payload.revises_instance_id);
+          if (!taken) return insert(payload);
+          const refused = { data: null, error: { code: "23505", message: 'duplicate key value violates unique constraint "form_instances_one_open_revision"' } };
+          return { select: () => ({ single: async () => refused }) };
+        };
+        return query;
+      },
+    };
+  },
+}));
 
 vi.mock("@/lib/api/respond", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/respond")>();
@@ -353,5 +384,51 @@ describe("a finalized exit form, edited as a new draft", () => {
     const next = (await act(original, { action: "revise" })).id;
     expect(next).not.toBe(draft);
     expect(statusOf(next)).toBe("draft");
+  });
+
+  /*
+   * QA's audit item 17a (10 Nov 2026): `findOpenRevision` handed back a revision draft an administrator had archived,
+   * so "Edit as new draft" reopened the draft somebody had put away. REVISION_ARCHIVED_NOT_OPEN_ENABLED (default off).
+   */
+  async function archivedRevisionDraft() {
+    const original = await finalizedExit();
+    const draft = (await act(original, { action: "revise" })).id;
+    // Archiving is `manage_form_records`, an administrator's permission.
+    state.role = "admin";
+    state.scope = { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] };
+    joinOverview();
+    const archived = await instanceRoute.PUT(
+      new Request(`https://app.test/api/forms/instances/${draft}`, { method: "PUT", body: JSON.stringify({ archived: true }) }),
+      { params: Promise.resolve({ id: draft }) },
+    );
+    expect(archived.status).toBe(200);
+    expect(store.form_instances.find((row) => row.id === draft)?.archived_at).toBeTruthy();
+    return { original, draft };
+  }
+
+  it("flag off (production today): the archived revision draft is still the one reopened", async () => {
+    vi.stubEnv("REVISION_ARCHIVED_NOT_OPEN_ENABLED", "");
+    const { original, draft } = await archivedRevisionDraft();
+    expect((await act(original, { action: "revise" })).id).toBe(draft);
+    vi.unstubAllEnvs();
+  });
+
+  // Fails until Pau's forms/instances.ts lines land (docs/patches/revision-archived-not-open.patch): `findOpenRevision`
+  // still returns the archived draft. With the patch applied it passes; then this becomes `it(`.
+  it.fails("REVISION_ARCHIVED_NOT_OPEN_ENABLED with the narrowed index: an archived draft is not reused; asking again opens a new revision", async () => {
+    vi.stubEnv("REVISION_ARCHIVED_NOT_OPEN_ENABLED", "true");
+    state.indexSkipsArchived = true;
+    try {
+      const { original, draft } = await archivedRevisionDraft();
+      const next = (await act(original, { action: "revise" })).id;
+      expect(next).not.toBe(draft);
+      expect(statusOf(next)).toBe("draft");
+      expect(store.form_instances.find((row) => row.id === next)?.revises_instance_id).toBe(original);
+      // Asked again while the new one is open: the new one back, not the archived one.
+      expect((await act(original, { action: "revise" })).id).toBe(next);
+    } finally {
+      state.indexSkipsArchived = false;
+      vi.unstubAllEnvs();
+    }
   });
 });
