@@ -35,6 +35,7 @@ import {
   questionNotFormEnabled,
   sameFormCopyEnabled,
   sameFormCopyNewPersonEnabled,
+  sameRequestOtherPersonEnabled,
   copyOwnSalonEnabled,
   secondFormEnabled,
   staffPickerBareAnswerEnabled,
@@ -281,6 +282,34 @@ async function postChat(request: Request) {
           activeFormInstanceId: undefined,
           continueProposalTemplateKey: newPersonCopy.source.templateKey,
         };
+      }
+      /*
+       * SAME_REQUEST_OTHER_PERSON_ENABLED: "do the same thing for <B> but switch it to a written" / "also make a
+       * coaching form for <B>" with <A>'s card on screen or <A>'s form open — answered as a new request for <B>,
+       * without <A>'s card, open form or request turns (`lib/forms/same-request-other-person.ts`).
+       */
+      let sameRequestOther: import("@/lib/forms/same-request-other-person").SameRequestTurn | null = null;
+      if (sameRequestOtherPersonEnabled() && !newPersonCopy) {
+        const { sameRequestForOtherPerson } = await import("@/lib/forms/same-request-other-person");
+        const { loadScopedRoster } = await import("@/lib/forms/employee-roster");
+        const roster = await loadScopedRoster(context.identity.scope).catch(() => []);
+        const other = sameRequestForOtherPerson({
+          question: asked.question,
+          history: asked.history,
+          roster,
+          continueTemplateKey: asked.continueProposalTemplateKey,
+          formOpen: Boolean(asked.activeFormInstanceId),
+        });
+        if (other) {
+          sameRequestOther = other;
+          asked = {
+            ...asked,
+            question: other.question,
+            history: asked.history.slice(0, other.historyBefore),
+            activeFormInstanceId: undefined,
+            continueProposalTemplateKey: undefined,
+          };
+        }
       }
       // FORM_NAME_FROM_ROSTER_ENABLED, part 2: every name reader of the turn reads this message's request slot (`lib/forms/request-slot.ts`).
       if (formNameFromRosterEnabled()) (await import("@/lib/forms/request-message-store")).enterRequestMessage(asked.question);
@@ -915,6 +944,8 @@ async function postChat(request: Request) {
       }
       // COPY_OWN_SALON_ENABLED: a card that copies another person's form takes the new person's own salon.
       if (copyOwnSalonEnabled()) answer = await (await import("@/lib/forms/same-form-copy")).withCopyOwnSalon(answer, request, asked.question);
+      // SAME_REQUEST_OTHER_PERSON_ENABLED: <B>'s card says what of the earlier request it carries.
+      if (sameRequestOther) answer = (await import("@/lib/forms/same-request-other-person")).withSameRequestNote(answer, sameRequestOther);
     } catch (error) {
       /*
        * A FAILED ANSWER IS STILL A RECORDED TURN, closed as a failure. The row
