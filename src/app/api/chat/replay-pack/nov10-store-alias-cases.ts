@@ -15,7 +15,6 @@ import { STAFF, type ReplayCase, type ReplayContext } from "./cases";
 const FLAG = "STORE_ALIAS_ENABLED";
 const REPORTED = "test testy, location o st, today's date, on 9-20-26 test was 10 minutes late clocking in, this is a verbal, test is a tc";
 const REPORT = "conv_mvoehonm2pfrkng (25 Oct 2026, #254; the October triage, 10 Nov 2026)";
-const WIRING = "STORE_ALIAS's read step is wired in server-ask.ts by its sole writer (coding 2); until then the flag reaches no turn";
 
 function start(t: ReplayContext) {
   vi.setSystemTime(new Date("2026-10-25T15:00:00Z"));
@@ -56,7 +55,7 @@ export const NOV10_STORE_ALIAS_CASES: ReplayCase[] = [
     report: `QA, 26 Oct 2026 (#254): a bare "${bare}" after the request`,
     status: { open: `a bare "${bare}" names no salon` },
     fixFlags: [FLAG],
-    fixStatus: { open: WIRING },
+    // The read step is wired in server-ask.ts (coding 2): it holds with the fix flag, so the fixStatus goes.
     async run(t: ReplayContext) {
       const thread = start(t);
       await thread.say(FIRST);
