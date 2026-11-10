@@ -16,7 +16,6 @@ import { KEARNEY, STAFF, type ReplayCase, type ReplayContext } from "./cases";
  */
 const FLAG = "CARD_NEVER_SILENT_ENABLED";
 const REPORT = "conv_mvoenhk42lu3cxo (25 Oct 2026, #240; the October triage, 10 Nov 2026)";
-const WIRING = "CARD_NEVER_SILENT's reply step is wired in server-ask.ts by its sole writer (coding 2); until then a repeated reply stays as it is";
 const REQUEST = "create a ca for rowan kestrel, she was late on 10-20-26";
 
 const observation = (content: string) => /\*\*Observation of Offense:\*\*\s*([^\n]*)/.exec(content)?.[1]?.trim() ?? "";
@@ -41,7 +40,7 @@ export const NOV10_CARD_NEVER_SILENT_CASES: ReplayCase[] = TURNS.map((turn) => (
   report: `${REPORT}: "${turn.text}"`,
   status: { open: "the turn gets the previous card reply word for word, or is added to the card's Observation of Offense" },
   fixFlags: [FLAG],
-  fixStatus: { open: WIRING },
+  // The server-ask.ts wiring is in (coding 2): it holds with the fix flag, so the fixStatus goes.
   async run(t: ReplayContext) {
     const thread = start(t);
     const card = await thread.say(REQUEST);
