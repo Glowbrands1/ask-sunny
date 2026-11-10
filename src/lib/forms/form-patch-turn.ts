@@ -302,7 +302,12 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
        * are rewritten together, and the Date stays.
        */
       ((madeAboutDate(input.question, input.today) !== null && "form_date" in before) ||
-        (madeAboutRewriteFinishesEnabled() && madeAboutUndatedTogetherEnabled())) &&
+        /*
+         * QA's round-14 gate (9 Nov 2026): only a turn that says no date at all. "I need you to make it about showing up
+         * late and please list the policy make the date for 10/14/26" says the form's date apart from the topic: its
+         * reader's Details is that turn's account (STEP_B_DATE_WITH_ABOUT keeps it), never set aside as undated.
+         */
+        (madeAboutRewriteFinishesEnabled() && madeAboutUndatedTogetherEnabled() && saidFormDate(input.question, input.today) === null)) &&
       ACCOUNT_KEYS.some((key) => key in readerSet)
     ) {
       const drop = new Set<string>(ACCOUNT_KEYS);
