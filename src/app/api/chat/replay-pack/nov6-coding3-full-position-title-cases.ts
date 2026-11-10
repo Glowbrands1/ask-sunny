@@ -38,12 +38,12 @@ const ISAURA: DirectoryRow = {
   positionName: null,
 };
 
-function exitCase(id: string, typedTitle: string, position: string, title: string): ReplayCase {
+function exitCase(id: string, typedTitle: string, position: string, title: string, open?: string): ReplayCase {
   return {
     id,
     title,
     report: "QA task A, 6 Nov 2026: the sibling app's exit card cut a typed position to the shorter title inside it; checked here",
-    status: "fixed",
+    ...(open ? { status: { open }, fixFlags: ["FULL_POSITION_TITLE_ENABLED"] } : { status: "fixed" as const }),
     async run(t) {
       vi.setSystemTime(new Date("2026-11-06T02:00:00Z"));
       t.directory([...STAFF, ISAURA]);
@@ -53,11 +53,43 @@ function exitCase(id: string, typedTitle: string, position: string, title: strin
       const reply = await thread.say(typed(typedTitle));
       expect(thread.proposal, `no exit card:\n${reply.content}`).toMatchObject({ employeeName: "Isaura Corvadine" });
       expect(thread.proposal?.employeeRole ?? null, `the card's Position:\n${reply.content}`).toBe(position);
+      expect(reply.content, `the read-back's Job Title:\n${reply.content}`).toContain(`- **Job Title:** ${position}`);
+      expect(reply.content, `the Job Title is left blank:\n${reply.content}`).not.toMatch(/Left blank for you to review:\*\*[^\n]*Job Title/);
+      const id = await thread.create();
+      expect(t.values(id).job_title ?? null, "the saved form's Job Title").toBe(position);
     },
   };
 }
 
+/*
+ * QA's ruling (a), 6 Nov 2026, kept under FULL_POSITION_TITLE (QA, 10 Nov 2026): "District Manager <name>" on the line
+ * under the employee's name is the district manager's title, never the employee's; the Job Title is left for the manager.
+ */
+const DM_CASE: ReplayCase = {
+  id: "nov6-coding3-full-position-title-dm-line",
+  title: "Guard: \"District Manager Thessaly Brookhart\" on the line under the employee's name is hers: the employee's Job Title is left blank, and the read-back says so",
+  report: "QA's ruling (a), 6 Nov 2026, kept by the FULL_POSITION_TITLE fix (QA, 10 Nov 2026)",
+  status: "fixed",
+  fixFlags: ["FULL_POSITION_TITLE_ENABLED"],
+  async run(t) {
+    vi.setSystemTime(new Date("2026-11-06T02:00:00Z"));
+    t.directory([...STAFF, ISAURA]);
+    t.as("salon_director", KEARNEY);
+    const thread = t.thread();
+    await thread.say(EXIT_ASK);
+    const reply = await thread.say(typed("District Manager Thessaly Brookhart"));
+    expect(thread.proposal, `no exit card:\n${reply.content}`).toMatchObject({ employeeName: "Isaura Corvadine" });
+    expect(thread.proposal?.employeeRole ?? null, `the card's Position:\n${reply.content}`).toBeNull();
+    expect(reply.content, `the read-back claims a Job Title:\n${reply.content}`).not.toMatch(/\*\*Job Title:\*\*/i);
+    expect(reply.content, `a blank line inside the read-back:\n${reply.content}`).not.toMatch(/^- \*\*Name:\*\* [^\n]*\n\n- \*\*/m);
+    expect(reply.content, `the read-back says a title is on the form:\n${reply.content}`).not.toMatch(/the title on the form is the one you gave/i);
+    const id = await thread.create();
+    expect(t.values(id).job_title ?? null, "the saved form's Job Title").toBeNull();
+  },
+};
+
 export const NOV6_CODING3_FULL_POSITION_TITLE_CASES: ReplayCase[] = [
+  DM_CASE,
   exitCase(
     "nov6-coding3-full-position-title-asd-exit",
     "Assistant Salon Director",
@@ -74,6 +106,9 @@ export const NOV6_CODING3_FULL_POSITION_TITLE_CASES: ReplayCase[] = [
     "nov6-coding3-full-position-title-negative",
     "Tanning Consultant Weekends Only",
     "Tanning Consultant",
-    "Negative: \"Tanning Consultant Weekends Only\" is not one of the company's positions; the card's Position stays \"Tanning Consultant\" as today",
+    "Negative: \"Tanning Consultant Weekends Only\" is not one of the company's positions; the card's Position is \"Tanning Consultant\"",
+    // Changed on purpose (QA, 10 Nov 2026): since TITLE_ENDS_AT_LINE (on) "Weekends Only" is read as the title's owner, and
+    // the Job Title is left blank for an employee with no roster position. QA ruled that a regression: FULL_POSITION_TITLE.
+    "with production's flags the Job Title is left blank: \"Weekends Only\" is read as the title's owner",
   ),
 ];
