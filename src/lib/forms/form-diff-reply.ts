@@ -1,3 +1,5 @@
+import { stepBReplyKeepsLinesEnabled } from "@/lib/config/chat-quality-flags";
+
 import type { FieldValue, FormDiff } from "./form-reducer";
 
 /**
@@ -24,11 +26,37 @@ function shown(value: FieldValue): string {
   return `${(space > REPLY_VALUE_MAX / 2 ? cut.slice(0, space) : cut).trimEnd()}…`;
 }
 
+/*
+ * STEP_B_REPLY_KEEPS_LINES_ENABLED (QA's live draft test, 8 Nov 2026): a field written on several lines (Observed: …
+ * / Expectation: … / Going Forward: …) was quoted on one line joined with "; " ("Observed:; Ottoline missed …;
+ * Expectation:; …"). With the flag on it is quoted line by line, as the form shows it: at most QUOTED_LINES_MAX lines,
+ * each cut at a word. Off, as before.
+ */
+export const QUOTED_LINES_MAX = 8;
+
+function quotedLines(value: FieldValue): string[] | null {
+  if (typeof value !== "string") return null;
+  const lines = value.split("\n").map((line) => line.trim()).filter((line) => line !== "");
+  if (lines.length < 2) return null;
+  const cut = (line: string) => {
+    if (line.length <= REPLY_VALUE_MAX) return line;
+    const room = line.slice(0, REPLY_VALUE_MAX);
+    const space = room.lastIndexOf(" ");
+    return `${(space > REPLY_VALUE_MAX / 2 ? room.slice(0, space) : room).trimEnd()}…`;
+  };
+  const shownLines = lines.slice(0, QUOTED_LINES_MAX).map(cut);
+  if (lines.length > QUOTED_LINES_MAX) shownLines.push("…");
+  return shownLines;
+}
+
 export function replyFromDiff(diff: Pick<FormDiff, "changed">, labels: Readonly<Record<string, string>>): string {
   if (diff.changed.length === 0) return NOTHING_CHANGED;
+  const keepsLines = stepBReplyKeepsLinesEnabled();
   return diff.changed
     .map((change) => {
       const label = labels[change.key] ?? change.key;
+      const quoted = keepsLines ? quotedLines(change.after) : null;
+      if (quoted) return `Changed ${label} to:\n${quoted.map((line) => `> ${line}`).join("\n")}`;
       const value = shown(change.after);
       return value === "" ? `Cleared ${label}.` : `Changed ${label} to "${value}".`;
     })

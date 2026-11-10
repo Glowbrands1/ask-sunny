@@ -8,9 +8,13 @@ import {
   formPatchReaderFixesEnabled,
   madeAboutAllOrNothingEnabled,
   madeAboutSaidDateEnabled,
+  stepBAddUnderObservedEnabled,
   stepBMakeItAboutAccountEnabled,
+  stepBSectionSpacingEnabled,
+  addOutOfOtherSectionsEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { madeAbout } from "@/lib/ai/make-it-about";
+import { addUnderObserved, hasSections, insertedInOtherSection, tailAfterLastSection, withSectionSpacing } from "./outline-sections";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { isGlossaryTerm } from "@/lib/ai/chat-glossary";
 
@@ -533,6 +537,35 @@ export async function writeFormEdits(instanceId: string, ops: readonly FormEditO
       how[op.field] = op.op === "append" ? "add" : op.reword ? "reword" : "replace";
     }
     evidence[op.field] = op.evidence ?? latest;
+  }
+  /*
+   * STEP_B_ADD_UNDER_OBSERVED_ENABLED / STEP_B_SECTION_SPACING_ENABLED (QA's live draft test, 8 Nov 2026): a field
+   * written in sections (Observed / Expectation / Going Forward) keeps them. Added text goes at the end of Observed,
+   * never after the last section; the blank line before each heading stays. See `outline-sections.ts`.
+   */
+  const underObserved = stepBAddUnderObservedEnabled();
+  const spacing = stepBSectionSpacingEnabled();
+  if (underObserved || spacing) {
+    for (const key of Object.keys(set)) {
+      const value = set[key];
+      const current = before[key]?.value;
+      if (typeof value !== "string" || typeof current !== "string" || current.trim() === "") continue;
+      let written = value;
+      if (underObserved && how[key] === "add" && hasSections(current)) {
+        written = addUnderObserved(current, value);
+        how[key] = "replace";
+      } else if (underObserved && how[key] === "replace") {
+        const tail = tailAfterLastSection(current, value);
+        if (tail !== null) written = addUnderObserved(current, tail);
+        // ADD_OUT_OF_OTHER_SECTIONS_ENABLED: a sentence glued onto Expectation / Going Forward goes under Observed.
+        else if (addOutOfOtherSectionsEnabled()) {
+          const inserted = insertedInOtherSection(current, value);
+          if (inserted !== null) written = addUnderObserved(current, inserted);
+        }
+      }
+      if (spacing && how[key] !== "add") written = withSectionSpacing(current, written);
+      set[key] = written;
+    }
   }
   const patch: FormPatch = { set, clear, how, evidence };
 
