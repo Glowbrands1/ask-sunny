@@ -1,4 +1,4 @@
-import { readCaPolicy, statedOffenseKeys } from "./ca-policy";
+import { isWovenWorkReading, readCaPolicy, statedOffenseKeys } from "./ca-policy";
 import {
   boxSectionNames,
   findManualSection,
@@ -201,7 +201,14 @@ export function sectionsNamedIn(input: {
   if (found.length > 0) return found;
 
   const reading = readCaPolicy(input.text);
-  const offenseKeys = statedOffenseKeys(reading, input.text) ?? [];
+  /*
+   * WOVEN_TRAINING_CONDUCT_ENABLED (narrowed after QA's Sunny round-3 gate, 7 Nov 2026): an account that reads as
+   * Woven acknowledgements not done names no policy; the first draft cites the Standards of Conduct for it from the
+   * account (`describedManualSection`), not here. Read as a name, an earlier turn "did not acknowledge woven
+   * policies …" answered "include THAT wren signed the jba policy manual" with "Updated Direct policy … Attendance
+   * and Standards of Conduct". Off, the reading has no such source and this is as before.
+   */
+  const offenseKeys = isWovenWorkReading(reading) ? [] : (statedOffenseKeys(reading, input.text) ?? []);
   for (const wanted of sectionHeadingsFor({ offenseKeys, jobTitle: input.jobTitle })) {
     keep(findManualSection(input.chunks, wanted));
   }

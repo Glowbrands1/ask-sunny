@@ -71,3 +71,30 @@ describe("controls, on: only what did not happen still asks", () => {
     expect(ask(first)).toContain(NO_INCIDENT_NOTE);
   });
 });
+
+/*
+ * QA's Sunny gate, 6 Nov 2026: with CA_SALES_POLICY_ENABLED on, the bare "not late" control was read
+ * as the account (a Corrective Action drafted, no "You haven't told me what happened"). The denial
+ * reader knew "never late" / "wasn't late", not a clause that starts with "not". With
+ * BARE_NOT_DENIAL_ENABLED on, "not <fault>" at the start of a clause is a denial too; "not meeting
+ * sales requirements" (no fault word) is still the account.
+ */
+describe("BARE_NOT_DENIAL_ENABLED: with CA_SALES on, a bare \"not late\" still asks", () => {
+  const on = (bare: boolean) => {
+    vi.stubEnv(FLAG, "true");
+    vi.stubEnv("CA_SALES_POLICY_ENABLED", "true");
+    vi.stubEnv("BARE_NOT_DENIAL_ENABLED", bare ? "true" : "");
+  };
+  it("off: \"not late\" is read as the account (the gate's finding)", () => {
+    on(false);
+    expect(ask("not late")).not.toContain(NO_INCIDENT_NOTE);
+  });
+  it.each(["not late", "not tardy", "not absent", "Not late."])("on: %s still asks what happened", (first) => {
+    on(true);
+    expect(ask(first)).toContain(NO_INCIDENT_NOTE);
+  });
+  it.each(["not meeting sales requirements", "not completing her woven courses by the deadline"])("on: %s is still the account", (first) => {
+    on(true);
+    expect(ask(first)).not.toContain(NO_INCIDENT_NOTE);
+  });
+});

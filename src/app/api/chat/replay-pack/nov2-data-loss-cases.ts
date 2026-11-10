@@ -80,3 +80,33 @@ export const NOV2_DATA_LOSS_CASES: readonly ReplayCase[] = [
     },
   },
 ];
+
+/*
+ * SECOND_REQUEST_OWN_ACCOUNT_ENABLED (QA's Sunny round-4 gate, 8 Nov 2026: nov2-p2 t5, nov2-p4 t2,
+ * nov3-card-observation-own-request t3, nov3-open-draft-new-request t3): the later request no longer carries the earlier
+ * one's saved policy, and its card lost "**Policy:** Attendance — read from this request." while still citing
+ * Attendance p.14. The card says the section this request reads as. The person is the pack's invented Rowan Kestrel.
+ */
+export const NOV8_SECOND_REQUEST_POLICY_LINE_CASES: ReplayCase[] = [
+  {
+    id: "nov8-second-request-later-request-policy-line",
+    title: "after a first request, \"make me a CA for <A> for being late to opening this morning\": the card says the policy this request reads as, with SECOND_REQUEST_OWN_ACCOUNT on too",
+    report: "QA's Sunny round-4 gate (8 Nov 2026): SECOND_REQUEST_OWN_ACCOUNT lost the later request's \"Policy: Attendance — read from this request\"",
+    status: "fixed",
+    fixFlags: ["SECOND_REQUEST_OWN_ACCOUNT_ENABLED"],
+    async run(t) {
+      t.directory(STAFF);
+      t.as("salon_director", KEARNEY);
+      const thread = t.thread();
+      await thread.say("What does our policy say about attendance?");
+      await thread.say("i need another for failure to complete opening duties");
+      await thread.say("a CA");
+      await thread.say("Rowan Kestrel failed to take trash out and put rugs out untl 12;30pm");
+      t.draftWrites({ observation: "Rowan did not take the trash out or put the rugs out until 12:30pm." });
+      await thread.create();
+      const reply = await thread.say("make me a CA for Rowan Kestrel for being late to opening this morning");
+      expect(reply.content, `the card's Policy line is gone:\n${reply.content}`).toMatch(/^\*\*Policy:\*\* Attendance — read from this request\./m);
+      expect(reply.content, `the card no longer cites the section:\n${reply.content}`).toMatch(/Attendance Policy, JBA Policy Manual p\.14/);
+    },
+  },
+];

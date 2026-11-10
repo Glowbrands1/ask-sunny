@@ -53,7 +53,7 @@ export function ReportDetailSection({
     <details
       open={defaultOpen}
       className={cn(
-        "group rounded-[var(--radius-lg)] border border-border bg-surface",
+        "group rounded-[var(--radius-lg)] bg-surface shadow-raised",
         className,
       )}
     >

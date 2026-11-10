@@ -1,3 +1,5 @@
+import { caRequestNotPriorCoachingEnabled, fieldLabelNotAQuestionEnabled } from "@/lib/config/chat-quality-flags";
+
 /**
  * ============================================================================
  * A QUESTION IS ANSWERED. IT IS NEVER A FORM TURN.
@@ -116,8 +118,17 @@ const REQUEST_READINGS = [
   ["ANY_CREATE", ANY_CREATE],
 ] as const;
 
+/*
+ * CA_REQUEST_NOT_PRIOR_COACHING_ENABLED (QA's live tester, 7 Nov 2026, sf-s35's exact wording): "Can you draw me up a
+ * CA for <name> …" asks for the form. "draw" is in none of the readings above, so its "Can" read as a question and the
+ * turn never reached the forms path. Only "draw (me / us) up", leading the clause or after "can / could / would / will
+ * you": "draw up a plan with her" is still not a form by itself (the form reader decides that). Off, as before.
+ */
+const DRAWS_UP = /^(?:(?:can|could|would|will)\s+(?:you|u|ya)\s+)?(?:please\s+|pls\s+|just\s+)*draw\s+(?:(?:me|us)\s+)?up\b/i;
+
 function requestReading(clause: string): string | null {
   for (const [name, reading] of REQUEST_READINGS) if (reading.test(clause)) return name;
+  if (caRequestNotPriorCoachingEnabled() && DRAWS_UP.test(clause)) return "DRAWS_UP";
   return null;
 }
 
@@ -126,7 +137,24 @@ function isRequest(clause: string): boolean {
   return requestReading(clause) !== null;
 }
 
+/*
+ * FIELD_LABEL_NOT_A_QUESTION_ENABLED (QA, 8 Nov 2026, from the sibling app's live tester; the same here): on an open exit card, "resignation
+ * date 10-26-2026. how employee resigned - <C> told management she quit …" and "how employee resigned - told
+ * management" were answered "A grounded answer from the policy manual." with no card — "how" read as a question. A
+ * clause that opens with one of the exit form's own field labels and then gives its value (after "-", ":" or the value
+ * itself) is the manager filling that field. With "?" it is still a question.
+ */
+const FIELD_LABEL = new RegExp(
+  String.raw`^\s*(?:how\s+(?:the\s+)?employee\s+resigned|reason\s+for\s+(?:the\s+)?(?:resignation|leaving)|resignation\s+date|last\s+day\s+(?:worked|of\s+work)|date\s+(?:that\s+)?notice\s+was\s+(?:given|fulfilled)|permanent\s+address|(?:store|salon)\s+items?\s+returned|(?:store|salon)\s+keys?\s+returned|eligible\s+for\s+re-?hire)\s*(?:[-–—:=]|is\b|was\b|\d)`,
+  "i",
+);
+
+function fillsAField(clause: string): boolean {
+  return fieldLabelNotAQuestionEnabled() && FIELD_LABEL.test(clause) && !/\?\s*$/.test(clause);
+}
+
 function asks(clause: string): boolean {
+  if (fillsAField(clause)) return false;
   if (ACCOUNT.test(clause) && !/\?\s*$/.test(clause)) return false;
   if (WH.test(clause) || AUX.test(clause) || DO_ASKS.test(clause)) return true;
   return WH_NEEDS_MARK.test(clause) && /\?\s*$/.test(clause);

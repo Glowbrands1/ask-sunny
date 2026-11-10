@@ -82,3 +82,32 @@ describe("METRIC_GUARD_ENABLED on, FORM_NAME off: no metric is ever a choice", (
     expect(withoutMetricChoices(reply(text), "create a coaching form", ROSTER).content).toBe(text);
   });
 });
+
+/**
+ * METRIC_CHOICE_ONE_QUESTION_ENABLED (QA, 7 Nov 2026; default off). The same tail as the FORM_NAME re-flip gate's
+ * regression: a choice question with its own "Tell me and I'll …" after it (the exit intake's), every choice a metric.
+ * withoutMetricChoices replaced the question with ASK_WHO and left the tail: "… full name. Tell me and I'll fill in …".
+ */
+describe("METRIC_CHOICE_ONE_QUESTION_ENABLED: the choice question's own tail goes with it", () => {
+  const TAIL = " Tell me and I'll fill in what you've already described.";
+  const ALL_METRICS = `Which of them is this **Resignation/Exit Form** for — **Club Close** or **Under**?${TAIL}`;
+  const ONE_PERSON = `Which of them is this **Resignation/Exit Form** for — **Club Close**, **Perpetua** or **Under**?${TAIL}`;
+
+  it("off: as before, the tail stays after the who-question", () => {
+    vi.stubEnv("METRIC_GUARD_ENABLED", "true");
+    expect(withoutMetricChoices(reply(ALL_METRICS), MESSAGE, ROSTER).content).toBe(`Who is this form for? Tell me the employee's full name.${TAIL}`);
+  });
+
+  it("on: every choice a metric asks who once", () => {
+    vi.stubEnv("METRIC_GUARD_ENABLED", "true");
+    vi.stubEnv("METRIC_CHOICE_ONE_QUESTION_ENABLED", "true");
+    expect(withoutMetricChoices(reply(ALL_METRICS), MESSAGE, ROSTER).content).toBe("Who is this form for? Tell me the employee's full name.");
+  });
+
+  it("on: a choice still asked keeps its tail", () => {
+    vi.stubEnv("METRIC_GUARD_ENABLED", "true");
+    vi.stubEnv("METRIC_CHOICE_ONE_QUESTION_ENABLED", "true");
+    expect(withoutMetricChoices(reply(ONE_PERSON), MESSAGE, ROSTER).content).toBe(`Is this for **Perpetua Thornquist**?${TAIL}`);
+  });
+});
+
