@@ -163,7 +163,8 @@ export const NOV10_MADE_ABOUT_TOPIC_AND_DATE_CASES: ReplayCase[] = [
     id: "nov10-made-about-short-topic-reader-other",
     title: "\"make it about being late on 11/5/26\", the reader sets Other \"Being late\": Other, the Date and Details together",
     report: `${REPORT}: Date and Details saved, Other stayed "Missed monthly meeting"`,
-    status: { open: "Other \"Being late\" is refused: its evidence, \"being late\", is under the reducer's floor" },
+    // Changed on purpose (10 Nov 2026): fixed in production, QA round 18
+    status: "fixed",
     fixFlags: TOPIC_FIX,
     run: lateAllThree(patch("this_form", [{ field: "other_topic", value: "Being late", how: "replace", evidence: "being late" }])),
   },
@@ -171,7 +172,8 @@ export const NOV10_MADE_ABOUT_TOPIC_AND_DATE_CASES: ReplayCase[] = [
     id: "nov10-made-about-short-topic-no-reading",
     title: "\"make it about being late on 11/5/26\", no reading of this form: Other, the Date and Details together",
     report: `${REPORT}: Date and Details saved, Other stayed "Missed monthly meeting" (the reader's fallback shape)`,
-    status: { open: "the topic read from the manager's words is refused: \"being late\" is under the reducer's floor" },
+    // Changed on purpose (10 Nov 2026): fixed in production, QA round 18
+    status: "fixed",
     fixFlags: TOPIC_FIX,
     run: lateAllThree(),
   },
@@ -179,7 +181,8 @@ export const NOV10_MADE_ABOUT_TOPIC_AND_DATE_CASES: ReplayCase[] = [
     id: "nov10-form-date-said-alone-first-edit",
     title: "\"make the date 11/7/26\" as the first edit, the reader does not read it as this form's: the Date is written",
     report: `${REPORT}: "I haven't changed the Coaching Form …" on the first edit`,
-    status: { open: "a turn the reader reads as not this form's goes to the old path, which does not write the Date" },
+    // Changed on purpose (10 Nov 2026): fixed in production, QA round 18
+    status: "fixed",
     fixFlags: ["FORM_DATE_SAID_ALONE_ENABLED"],
     async run(t) {
       const { id, reply } = await onFreshDraft(t, DATE_SAID, patch("question", []));
@@ -212,7 +215,8 @@ export const NOV10_MADE_ABOUT_TOPIC_AND_DATE_CASES: ReplayCase[] = [
     id: "nov10-made-about-said-date-vague-draft-live",
     title: "QA's live Sunny round 14 (P9, its original shape): the sentence as the FIRST edit of a draft whose Details say \"No specific incident…\" and with no Other: Date, Details, Other and the policy line are saved",
     report: "QA's live Sunny round 14 (10 Nov 2026, 01:47Z, conv_mwa14fdh2cds42a): \"I haven't changed …\", nothing saved",
-    status: { open: "the reader's Details is refused (not the manager's words) and its Other has no box ticked: the patch is refused whole" },
+    // Changed on purpose (10 Nov 2026): fixed in production, QA round 18
+    status: "fixed",
     fixFlags: SAID_DATE_FIX,
     run: p9({ saved: false }),
   },
@@ -221,7 +225,8 @@ export const NOV10_MADE_ABOUT_TOPIC_AND_DATE_CASES: ReplayCase[] = [
       id: `nov10-made-about-policy-line-chained-${kept}`,
       title: `QA's live Sunny round 15: two made-about turns in a row, the revision keeping the first turn's Attendance line ${kept === "period" ? "with a trailing period" : "mid-text"}: the new Details carries the Standards of Conduct reference alone`,
       report: "QA's live Sunny round 15 (10 Nov 2026, 03:06Z): \"Policy reference: Standards of Conduct Policy, JBA Policy Manual p.13; Attendance Policy, JBA Policy Manual p.14\"",
-      status: { open: "the first turn's line, kept by the revision in a shape the splitter does not read, stays and is read into the new reference" },
+      // Changed on purpose (10 Nov 2026): fixed in production, QA round 18
+      status: "fixed",
       fixFlags: [
         "MADE_ABOUT_READER_ACCOUNT_ENABLED",
         "MADE_ABOUT_UNDATED_TOGETHER_ENABLED",
@@ -281,7 +286,8 @@ export const NOV10_MADE_ABOUT_TOPIC_AND_DATE_CASES: ReplayCase[] = [
     id: "nov10-add-not-repeated-after-made-about",
     title: "Ported from Ask Bubbles' live round 15: \"make it about being late on 11/5/26\", then \"add that she was reminded of the policy\" with the reader returning the whole field (on one line) and the new sentence as an add: Details hold ONE copy of the account plus the new line",
     report: "Ported from Ask Bubbles: QA's live round 15 there (10 Nov 2026, 04:53Z): the whole Observed/Expectation/Going Forward block saved twice, then the new line",
-    status: { open: "the reader's add repeats the field's text on one line, so it does not read as the field's own text and is added whole" },
+    // Changed on purpose (10 Nov 2026): fixed in production, QA round 18
+    status: "fixed",
     fixFlags: ["MADE_ABOUT_TOPIC_EVIDENCE_ENABLED", "FORM_DATE_SAID_ALONE_ENABLED", "ADD_NOT_REPEATED_ENABLED"],
     async run(t) {
       vi.setSystemTime(new Date("2026-11-10T04:52:00Z"));
