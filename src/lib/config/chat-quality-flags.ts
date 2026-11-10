@@ -2642,6 +2642,17 @@ export function createFromConversationPointsToCardEnabled(): boolean {
   return envFlag("CREATE_FROM_CONVERSATION_POINTS_TO_CARD_ENABLED");
 }
 
+/**
+ * OBSERVATION_OWN_PERSON_ONLY_ENABLED (QA's P7, Sunny live, 10 Nov 2026; coding 5; same flag in both apps; default off).
+ * "Make me a coaching form for <A>, <B>, and <C> for not closing duties correctly" → "create draft for failure to do
+ * closing duties and staying over hours" gave the Observation "<B>, and <C> for not closing duties correctly create draft
+ * for …". On: the Observation line never keeps a lead of other people's names or of the manager's command to the app;
+ * the reason after it is kept (`ai/observation-own-person.ts`). Off, as before.
+ */
+export function observationOwnPersonOnlyEnabled(): boolean {
+  return envFlag("OBSERVATION_OWN_PERSON_ONLY_ENABLED");
+}
+
 // --- end coding 5 flags ---
 
 /**
