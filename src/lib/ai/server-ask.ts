@@ -1,5 +1,6 @@
 import "server-only";
 
+import { withStoreAliases } from "./store-alias";
 import {
   chatDataToolsEnabled,
   chatParallelLoadsEnabled,
@@ -419,12 +420,13 @@ async function answerQuestionChecked(
 ): Promise<AskResponse> {
   const produce = async () => {
     // TERSE_SLOT_READ_ENABLED: a terse "ca …" line is read as the long form.
+    // STORE_ALIAS_ENABLED: a salon named the managers' way ("o st") is read as its roster name.
     // NAME_BEFORE_TITLE_ENABLED: a two-word name right before a job title is the name.
     // TYPO_READING_COPY_ENABLED: "coahed", "amont", "Manger" are read as the words they can only be; names never.
     const names = typoReadingCopyEnabled() ? await protectedNameWords() : new Set<string>();
     // FORM_TYPE_SWITCH_ENABLED: "change to coaching" with the card open switches it to the other form.
     // FIRST_NAME_SUGGEST_ENABLED: "yes" to "Is this for **Quinn Marlowe**?" is read as that name.
-    const response = await answerQuestionUntraced(withFormTypeSwitch(withTerseSlots(withNameBeforeTitle(withTypoReadingCopy(await withFirstNameAnswerFor(request, actor), names)))), actor, memory);
+    const response = await answerQuestionUntraced(withFormTypeSwitch(withStoreAliases(withTerseSlots(withNameBeforeTitle(withTypoReadingCopy(await withFirstNameAnswerFor(request, actor), names))))), actor, memory);
     noteTraceOutcome(response);
     // Last on every path, after the reply check too: the Action Plan is the manager's or none.
     // CA_ASKS_WHAT_HAPPENED_ENABLED: a Corrective Action card with no account asks what happened.
