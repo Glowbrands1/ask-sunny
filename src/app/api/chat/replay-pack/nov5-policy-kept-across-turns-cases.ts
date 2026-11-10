@@ -92,3 +92,34 @@ export const NOV5_POLICY_KEPT_ACROSS_TURNS_CASES: ReplayCase[] = [
     },
   },
 ];
+
+/*
+ * NEAR_MISS_QUESTION_RULES_ENABLED (QA's Sunny round-4 gate, 8 Nov 2026): with the name set on, turn 7 of nov5-r6 ("make
+ * that change to Marisol Prtega Valdez", a typo of the card's own employee) replaced the card with the bare "Is this for
+ * **Marisol Ortega Valdez**?". A card on screen is never replaced by the question: a near-miss of its own employee is
+ * her. The person is the pack's invented Marisol Ortega Valdez.
+ */
+export const NOV8_NEAR_MISS_CARD_KEPT_CASES: ReplayCase[] = [
+  {
+    id: "nov8-near-miss-card-kept-r6-t7",
+    title: "nov5-r6 with the name set on: \"make that change to Marisol Prtega Valdez\" keeps the card, for Marisol Ortega Valdez, never the bare question",
+    report: "QA's Sunny round-4 gate (8 Nov 2026): a card that already exists was replaced by a bare \"Is this for X?\"",
+    status: "fixed",
+    fixFlags: [
+      "FORM_NAME_FROM_ROSTER_ENABLED",
+      "ROSTER_NEAR_MISS_ENABLED",
+      "ROSTER_COMPOUND_SURNAME_ENABLED",
+      "NEAR_MISS_DETAILS_ACCEPT_ENABLED",
+      "NEAR_MISS_QUESTION_RULES_ENABLED",
+    ],
+    async run(t) {
+      const thread = start(t);
+      // Turn 7 of the chat (TURNS, word for word).
+      let seventh = await thread.say(TURNS[0]!);
+      for (const turn of TURNS.slice(1, 7)) seventh = await thread.say(turn);
+      expect(TURNS[6], "turn 7 is not the near-miss correction").toBe("make that change to Marisol Prtega Valdez");
+      expect(seventh.content, `the card was replaced by the bare question:\n${seventh.content}`).toMatch(/^I'll draft a \*\*Corrective Action Form\*\* for \*\*Marisol Ortega Valdez\*\*/);
+      expect(seventh.formProposal?.employeeName ?? null).toBe("Marisol Ortega Valdez");
+    },
+  },
+];

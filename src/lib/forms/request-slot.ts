@@ -54,6 +54,18 @@ export function requestMessage(): string | undefined {
   return readMessage();
 }
 
+let readCardOnScreen: () => string | undefined = () => undefined;
+
+/** NEAR_MISS_QUESTION_RULES_ENABLED: the server installs the reader of the card on screen's employee (`request-message-store.ts`). */
+export function installCardOnScreen(read: () => string | undefined): void {
+  readCardOnScreen = read;
+}
+
+/** The employee of the card the reply before this turn drafted, when no form is open; undefined with none. */
+export function cardOnScreen(): string | undefined {
+  return readCardOnScreen();
+}
+
 let readMetricMessage: () => string | undefined = () => undefined;
 
 /** METRIC_GUARD_ENABLED: the server installs the metric guards' own message reader (`request-message-store.ts`). */
