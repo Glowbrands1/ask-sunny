@@ -31,7 +31,8 @@ export const NOV10_SF_S36_OFF_ROSTER_EXIT_CASES: ReplayCase[] = [
     id: "nov10-sf-s36-off-roster-exit",
     title: "sf-s36's wording with an off-roster name near nobody: the typed name is offered (\"use <name>\"), and \"yes\" puts it on the card",
     report: "QA, 10 Nov 2026, on main e9b3f32d: sf-s36 with production's flags drops the typed name; an off-roster employee would loop on \"Who is this form for?\"",
-    status: { open: "with production's flags (the name set off) the typed name is dropped and the reply asks \"Who is this form for?\"" },
+    // Changed on purpose (10 Nov 2026): fixed in production by the roster-name set (FORM_NAME_FROM_ROSTER and companions), QA round 22; it now holds with production's flags.
+    status: "fixed",
     fixFlags: NAME_SET,
     async run(t) {
       t.directory(STAFF);
