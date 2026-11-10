@@ -522,6 +522,8 @@ const NEW_FLAGS = [
   "MADE_ABOUT_POLICY_LINE_ENABLED",
   "MADE_ABOUT_READER_ACCOUNT_ENABLED",
   "MADE_ABOUT_REWRITE_FINISHES_ENABLED",
+  // coding 4: CHAT_STAGE_TIMINGS (QA, 9 Nov 2026; default off): forced off with the others in the child run.
+  "CHAT_STAGE_TIMINGS_ENABLED",
   // coding 4: MODEL_POLICY_DEFERS_TO_TOPIC (QA, round 7c, 9 Nov 2026; default off): forced off with the others in the child run.
   "MODEL_POLICY_DEFERS_TO_TOPIC_ENABLED",
   // coding 4: WORK_AREA_ABSENCE_CITES_CONDUCT (Pau's decision, 9 Nov 2026; default off): forced off with the others in the child run.
@@ -531,6 +533,8 @@ const NEW_FLAGS = [
   "SHIFT_ACCOUNT_IS_INCIDENT_ENABLED",
   // coding 5: UNDATED_ACCOUNT_BRIEF (default off): forced off with the others in the child run.
   "UNDATED_ACCOUNT_BRIEF_ENABLED",
+  "CREATE_FROM_CONVERSATION_POINTS_TO_CARD_ENABLED",
+  "OBSERVATION_OWN_PERSON_ONLY_ENABLED",
   "LETTER_GREETING_NOT_NAME_ENABLED",
   "LATE_READS_ATTENDANCE_ENABLED",
   "EXIT_FORM_DATE_FROM_TERMINATION_ENABLED",

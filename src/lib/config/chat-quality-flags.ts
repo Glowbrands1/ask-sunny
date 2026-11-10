@@ -2632,6 +2632,27 @@ export function exitFormDateFromTerminationEnabled(): boolean {
   return envFlag("EXIT_FORM_DATE_FROM_TERMINATION_ENABLED");
 }
 
+/**
+ * CREATE_FROM_CONVERSATION_POINTS_TO_CARD_ENABLED (QA's P6, Sunny live, 10 Nov 2026; coding 5; same flag in both apps;
+ * default off; with CREATE_COMMAND_POINTS_TO_CARD_ENABLED). "Create a form from this conversation." with a card open
+ * repeated the card's reply word for word. On: that wording, and "make a new draft from our chat", "create the form
+ * based on this" and the like, are a create command, answered as "create it" is (`ai/card-meta-turn.ts`). Off, as before.
+ */
+export function createFromConversationPointsToCardEnabled(): boolean {
+  return envFlag("CREATE_FROM_CONVERSATION_POINTS_TO_CARD_ENABLED");
+}
+
+/**
+ * OBSERVATION_OWN_PERSON_ONLY_ENABLED (QA's P7, Sunny live, 10 Nov 2026; coding 5; same flag in both apps; default off).
+ * "Make me a coaching form for <A>, <B>, and <C> for not closing duties correctly" → "create draft for failure to do
+ * closing duties and staying over hours" gave the Observation "<B>, and <C> for not closing duties correctly create draft
+ * for …". On: the Observation line never keeps a lead of other people's names or of the manager's command to the app;
+ * the reason after it is kept (`ai/observation-own-person.ts`). Off, as before.
+ */
+export function observationOwnPersonOnlyEnabled(): boolean {
+  return envFlag("OBSERVATION_OWN_PERSON_ONLY_ENABLED");
+}
+
 // --- end coding 5 flags ---
 
 /**
@@ -3872,4 +3893,14 @@ export function madeAboutRewriteFinishesEnabled(): boolean {
  */
 export function madeAboutReaderAccountEnabled(): boolean {
   return envFlag("MADE_ABOUT_READER_ACCOUNT_ENABLED");
+}
+
+/**
+ * CHAT_STAGE_TIMINGS_ENABLED (QA, 9 Nov 2026; default off; same flag in both apps). Each awaited step of a chat turn
+ * before the answering model (intent extraction, query rewrite, retrieval, the memory, example, context, data and
+ * grounding loads) is timed into `chat_traces.slots.stages`: names and milliseconds only (`ai/chat-stage-timings.ts`).
+ * Changes nothing the manager sees. Off, as before.
+ */
+export function chatStageTimingsEnabled(): boolean {
+  return envFlag("CHAT_STAGE_TIMINGS_ENABLED");
 }
