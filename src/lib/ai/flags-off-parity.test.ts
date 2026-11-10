@@ -1022,6 +1022,43 @@ describe("new flags default off and wrappers are inert", () => {
           ":(exclude)src/components/shell/sidebar.tsx",
           ":(exclude)src/components/shell/app-switcher.tsx",
           `:(exclude)${SIGN_IN_FORM}`,
+          // THE CLAY RESTYLE (requested by Paulyne, 9 Nov 2026, from the approved
+          // "Ask Sunny Clay Web" mockup; QA to confirm before merge). Unlike the
+          // entries above it is NOT behind a flag: it is a deliberate visual change
+          // to styles and markup only — clay shadows, radii, the Sunny mascot, the
+          // floating rail and top bar, the cloud background and the login
+          // gradient. No data, permission or chat behaviour changes. The shell,
+          // chat and Overview files it touches are already listed above.
+          ":(exclude)src/app/globals.css",
+          ":(exclude)src/features/auth/login-screen.module.css",
+          ":(exclude)src/features/auth/login-screen.tsx",
+          ":(exclude)src/components/sunny-mascot.tsx",
+          ":(exclude)src/components/shell/jump-to-row.tsx",
+          ":(exclude)src/components/source-card.tsx",
+          ":(exclude)src/components/stat-card.tsx",
+          ":(exclude)src/components/video-card.tsx",
+          ":(exclude)src/components/ui/badge.tsx",
+          ":(exclude)src/components/ui/button.tsx",
+          ":(exclude)src/components/ui/card.tsx",
+          ":(exclude)src/components/ui/controls.tsx",
+          ":(exclude)src/components/ui/feedback.tsx",
+          ":(exclude)src/components/ui/field.tsx",
+          ":(exclude)src/components/ui/layout.tsx",
+          ":(exclude)src/components/ui/marquee.tsx",
+          ":(exclude)src/features/dashboard/ask-band.tsx",
+          ":(exclude)src/features/reports/report-frame.tsx",
+          ":(exclude)src/features/videos/category-overview.tsx",
+          ":(exclude)src/features/videos/videos-screen.tsx",
+          ":(exclude)src/features/reports/report-tabs.tsx",
+          ":(exclude)src/features/reviews/reviews-tabs.tsx",
+          ":(exclude)src/features/reviews/review-goal-parts.tsx",
+          ":(exclude)src/features/reports/salon-performance/kpi-cards.tsx",
+          ":(exclude)src/features/reports/salon-performance/salon-kpi-cards.tsx",
+          ":(exclude)src/features/reports/detail-section.tsx",
+          ":(exclude)src/features/dashboard/performance-overview.tsx",
+          // Confetti on a 5-star rating (requested by Paulyne, 9 Nov 2026): the
+          // one mount line after a rating saves; `lib/ui/confetti.ts` does the rest.
+          ":(exclude)src/features/chat/conversation-rating.tsx",
         ]),
       ).toBe("");
       expect(changedLines(diff(uiBase, [MONITORING_TABLE])).filter((line) => !MONITORING_MOUNT.includes(line))).toEqual([]);

@@ -62,8 +62,8 @@ export const NOV9_MADE_ABOUT_UNDATED_TOGETHER_CASES: ReplayCase[] = [
     id: "nov9-made-about-undated-topic",
     title: "\"I need you to make it about showing up late\", the reader reads the topic: Details and Other together, the Date stays and the reply says so",
     report: REPORT,
-    // Changed on purpose (9 Nov 2026): fixed in production by MADE_ABOUT_UNDATED_TOGETHER_ENABLED, QA round 13, 9 Nov 2026; it now holds with production's flags.
-    status: "fixed",
+    // Changed on purpose (10 Nov 2026): back to open; its switch was turned off again after the round-13 live saved-draft test (rolled back, being fixed).
+    status: { open: "Other alone, or Details alone with Other \"Missed monthly meeting\"" },
     fixFlags: FIX,
     run: together(TOPIC),
   },
@@ -71,8 +71,8 @@ export const NOV9_MADE_ABOUT_UNDATED_TOGETHER_CASES: ReplayCase[] = [
     id: "nov9-made-about-undated-no-reading",
     title: "the same, the reader reads nothing: the topic from the manager's words, with Details",
     report: REPORT,
-    // Changed on purpose (9 Nov 2026): fixed in production by MADE_ABOUT_UNDATED_TOGETHER_ENABLED, QA round 13, 9 Nov 2026; it now holds with production's flags.
-    status: "fixed",
+    // Changed on purpose (10 Nov 2026): back to open; its switch was turned off again after the round-13 live saved-draft test (rolled back, being fixed).
+    status: { open: "Other alone, or Details alone with Other \"Missed monthly meeting\"" },
     fixFlags: FIX,
     run: together(undefined),
   },

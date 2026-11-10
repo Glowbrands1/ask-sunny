@@ -5,6 +5,15 @@
  * rising sun and the larger 56px fields are this screen's look, not the app's.
  * The inputs and buttons inside `.card` are the shared `Input` / `Button`
  * components restyled from here, so `SignInForm` keeps one implementation.
+ *
+ * ONE CONTINUOUS GRADIENT, NOT TWO PANELS. The page used to paint each half
+ * its own background with a 1px rule between them, which read as a seam down
+ * the middle. Now `.page` carries a single cream-to-peach sweep and the right
+ * half adds only the sun's glow, which fades to transparent — so the two halves
+ * blend with no line. The colours are the same ones the two halves used.
+ *
+ * CLAY. The form sits on a puffy card, the fields are pressed in and the
+ * button and feature icons are raised — the same clay language as the app.
  */
 
 .page {
@@ -14,12 +23,28 @@
   --sh-gold-deep: #c98f00;
   --sh-espresso: #2a1f1a;
   --sh-border: #f0dfd0;
+  /* Clay: a warm lifted shadow with a top highlight and a soft underside. */
+  --sh-puff:
+    0 22px 40px -18px rgba(150, 90, 50, 0.38),
+    0 6px 14px -8px rgba(150, 90, 50, 0.18),
+    inset 0 3px 6px rgba(255, 255, 255, 0.95),
+    inset 0 -8px 14px rgba(170, 110, 70, 0.08);
+  /* Clay, pressed in: for the fields. */
+  --sh-dent:
+    inset 0 4px 8px rgba(150, 90, 50, 0.16),
+    inset 0 -3px 6px rgba(255, 255, 255, 0.9);
 
   display: grid;
   grid-template-columns: 1fr;
   min-height: 100dvh;
+  /* The sunrise's rays reach across into the left half; clip them at the
+     page, not at the right panel, or the clip itself draws the seam. */
+  overflow: hidden;
   color: var(--sh-ink);
-  background: #fff6ee;
+  background:
+    radial-gradient(760px 420px at 76% 100%, rgba(255, 214, 102, 0.55), rgba(255, 214, 102, 0) 70%),
+    linear-gradient(180deg, rgba(255, 250, 243, 0) 55%, rgba(253, 233, 221, 0.6) 100%),
+    linear-gradient(105deg, #fffaf3 0%, #fef1e6 30%, #fde3d0 52%, #fbd2b6 72%, #f6b89e 100%);
 }
 
 @media (min-width: 861px) {
@@ -36,7 +61,6 @@
   align-items: center;
   justify-content: center;
   padding: 48px 20px;
-  background: linear-gradient(180deg, #fffaf3 0%, #fef1e6 60%, #fde9dd 100%);
 }
 
 @media (min-width: 640px) {
@@ -49,14 +73,24 @@
   position: relative;
   z-index: 1;
   width: 100%;
-  max-width: 420px;
+  max-width: 480px;
+  padding: 36px 28px;
+  border-radius: 36px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 249, 243, 0.86));
+  box-shadow: var(--sh-puff);
+}
+
+@media (min-width: 640px) {
+  .card {
+    padding: 44px 40px;
+  }
 }
 
 .brand {
   display: flex;
   align-items: center;
   gap: 14px;
-  margin-bottom: 56px;
+  margin-bottom: 40px;
 }
 
 .brandMark {
@@ -115,10 +149,10 @@
   padding: 0 18px;
   font-size: 17px;
   color: var(--sh-ink);
-  background: #fff;
-  border: 1.5px solid var(--sh-border);
-  border-radius: 14px;
-  box-shadow: 0 1px 2px rgba(120, 80, 40, 0.05);
+  background: #fbf1e8;
+  border: 1.5px solid transparent;
+  border-radius: 20px;
+  box-shadow: var(--sh-dent);
   transition:
     border-color 0.2s,
     box-shadow 0.2s;
@@ -128,11 +162,13 @@
 .card input:focus-visible {
   outline: none;
   border-color: var(--sh-gold);
-  box-shadow: 0 0 0 4px rgba(242, 183, 5, 0.22);
+  box-shadow:
+    var(--sh-dent),
+    0 0 0 4px rgba(242, 183, 5, 0.22);
 }
 
 .card input:disabled {
-  background: #fffdfb;
+  background: #fbf3ec;
 }
 
 /* Room for the show-password toggle inside the field. */
@@ -144,18 +180,22 @@
 .card .primaryAction {
   height: 58px;
   border: 0;
-  border-radius: 14px;
+  border-radius: 999px;
   font-size: 17px;
   font-weight: 600;
   color: #fff6ee;
   background: var(--sh-espresso);
   gap: 10px;
-  box-shadow: 0 8px 20px -8px rgba(42, 31, 26, 0.55);
+  background: linear-gradient(180deg, #4a382e, var(--sh-espresso));
+  box-shadow:
+    0 14px 22px -10px rgba(42, 31, 26, 0.6),
+    inset 0 3px 5px rgba(255, 255, 255, 0.22),
+    inset 0 -6px 10px rgba(0, 0, 0, 0.25);
 }
 
 .card button[type="submit"]:hover:not(:disabled),
 .card .primaryAction:hover:not(:disabled) {
-  background: #3d2e26;
+  background: linear-gradient(180deg, #5a463a, #3d2e26);
 }
 
 .card button[type="submit"] svg,
@@ -173,14 +213,11 @@
 
 .right {
   position: relative;
-  overflow: hidden;
   display: none;
   align-items: center;
   padding: 56px 72px;
-  border-left: 1px solid #ebd7c2;
-  background:
-    radial-gradient(760px 420px at 50% 100%, rgba(255, 214, 102, 0.55), rgba(255, 214, 102, 0) 70%),
-    linear-gradient(180deg, #fdede0 0%, #fbd9be 38%, #f8c0a4 72%, #f4ab93 100%);
+  /* No background of its own: the gradient and the sun's glow are both the
+     page's, so nothing can draw an edge where the two halves meet. */
 }
 
 @media (min-width: 861px) {
@@ -201,6 +238,23 @@
   animation: rise 1.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
 
+.rays {
+  transform-origin: 450px 300px;
+  animation: turn 40s linear infinite;
+}
+
+/* The dashed ring turns the other way, so the dashes visibly travel. */
+.ring {
+  transform-origin: 450px 300px;
+  animation: turn 24s linear infinite reverse;
+}
+
+/* The sun breathes. */
+.disc {
+  transform-origin: 450px 300px;
+  animation: breathe 4s ease-in-out infinite;
+}
+
 .halo {
   transform-origin: 450px 300px;
   animation: pulse 6s ease-in-out infinite;
@@ -210,6 +264,12 @@
   position: relative;
   z-index: 2;
   max-width: 560px;
+}
+
+.mascot {
+  display: block;
+  width: 150px;
+  margin-bottom: 18px;
 }
 
 .eyebrow {
@@ -245,15 +305,16 @@
 
 .ico {
   flex: none;
-  width: 44px;
-  height: 44px;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
   display: grid;
   place-items: center;
-  background: rgba(255, 253, 251, 0.85);
+  background: radial-gradient(circle at 35% 28%, #ffffff, #fff4e6 75%);
   box-shadow:
-    0 2px 8px rgba(201, 143, 0, 0.18),
-    inset 0 0 0 1px rgba(242, 183, 5, 0.35);
+    0 10px 18px -8px rgba(201, 120, 40, 0.45),
+    inset 0 3px 4px rgba(255, 255, 255, 1),
+    inset 0 -5px 8px rgba(201, 143, 0, 0.14);
   color: var(--sh-gold-deep);
 }
 
@@ -299,6 +360,18 @@
   }
 }
 
+@keyframes turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes breathe {
+  50% {
+    transform: scale(1.05);
+  }
+}
+
 @keyframes pulse {
   0%,
   100% {
@@ -314,6 +387,9 @@
 @media (prefers-reduced-motion: reduce) {
   .brandMark,
   .sunrise,
+  .rays,
+  .ring,
+  .disc,
   .halo {
     animation: none;
   }
