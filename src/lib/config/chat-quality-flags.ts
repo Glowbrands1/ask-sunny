@@ -4119,3 +4119,18 @@ export function coachingObservedSavedEnabled(): boolean {
 export function appInstructionsNotAccountEnabled(): boolean {
   return envFlag("APP_INSTRUCTIONS_NOT_ACCOUNT_ENABLED");
 }
+
+/**
+ * DRAFT_WRITE_NEVER_SILENT_ENABLED (coding 6, 10 Nov 2026; default off; QA's
+ * live finding, Sunny round 17). One Create in five saved only the Name and
+ * Date: the drafting model ran (chat_traces: forms_draft succeeded), the
+ * "left out <surname>" check saw filled Details, and the route answered 200 —
+ * but nothing was saved. The one writer is all or nothing: a single refused
+ * field drops every value. On: a draft write refused as a whole is retried
+ * once without the refused fields; if that saves nothing either, the notice
+ * says nothing was saved (and no "left out" line). Never a 200 with a silent
+ * empty draft. See `forms/draft-write-never-silent.ts`. Off, as before.
+ */
+export function draftWriteNeverSilentEnabled(): boolean {
+  return envFlag("DRAFT_WRITE_NEVER_SILENT_ENABLED");
+}

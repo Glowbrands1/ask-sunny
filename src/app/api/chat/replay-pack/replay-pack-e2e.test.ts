@@ -125,9 +125,27 @@ vi.mock("@/lib/forms/form-patch-call", () => ({
  * `t.failSavesOf` (QA, 9 Nov 2026): a save of the form's values that includes the named field returns an error, as a
  * failed database write would, so a case can make a turn throw part-way.
  */
-const faults = vi.hoisted(() => ({ field: null as string | null }));
+const faults = vi.hoisted(() => ({ field: null as string | null, strayDraftField: null as string | null }));
 /** `t.summaryWrites`: what the long-context summary model returns; none by default (the summary call fails, as unscripted). */
 const summaries = vi.hoisted(() => ({ reply: null as string | null }));
+
+/*
+ * `t.draftWriteCarries` (coding 6, 10 Nov 2026; DRAFT_WRITE_NEVER_SILENT_ENABLED): the draft route's next write through
+ * the one writer also carries this field, once, as a stray value would; the REAL writer then refuses it, and with it
+ * the whole write (all or nothing). Every other call is the real `draftWrite`.
+ */
+vi.mock("@/lib/forms/form-write", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/forms/form-write")>();
+  return {
+    ...actual,
+    draftWrite: ((instanceId, draft, ...rest) => {
+      const stray = faults.strayDraftField;
+      faults.strayDraftField = null;
+      const carried = stray ? { ...draft, values: { ...(draft.values ?? {}), [stray]: "stray" } } : draft;
+      return actual.draftWrite(instanceId, carried, ...rest);
+    }) as typeof actual.draftWrite,
+  };
+});
 function withFaults<T>(client: T): T {
   return new Proxy(client as object, {
     get(target, prop, receiver) {
@@ -624,6 +642,7 @@ beforeEach(async () => {
   patchScript.byLatest = null;
   faults.field = null;
   summaries.reply = null;
+  faults.strayDraftField = null;
   state.directory = [
     { id: "e-1", firstName: "Quinn", lastName: "Marlowe", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-66"], positionName: null },
     { id: "e-2", firstName: "Dale", lastName: "Ferris", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-66"], positionName: null },
@@ -756,6 +775,9 @@ function context(): ReplayContext {
       summaries.reply = summary;
     },
     rows: (table) => [...(((store as unknown as Record<string, unknown[] | undefined>)[table] ?? []) as Record<string, unknown>[])],
+    draftWriteCarries: (field) => {
+      faults.strayDraftField = field;
+    },
     calls: () => ({ chat: state.chatModelCalls, draft: state.draftCalls, revision: state.revisionCalls, tool: state.toolCalls, patch: patchScript.calls }),
     forms: () => store.form_instances as never,
     draftPrompts: () => [...draftAsked],
