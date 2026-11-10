@@ -164,6 +164,18 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: null }> {
     this.filters.push((row) => row[column] !== undefined && row[column] !== null && String(row[column]) >= String(value));
     return this;
   }
+  /**
+   * An exact, case-insensitive match (no `%` or `_`): what `findOpenIncidentDraft` sends for
+   * the employee's name. OFF unless a test turns it on (`modelExactIlike`): until 6 Nov 2026 the
+   * fake had no `ilike`, the call threw, and suites written since rely on that lookup finding
+   * nothing. Anything with a wildcard fails loudly rather than match by accident.
+   */
+  ilike(column: string, pattern: string) {
+    if (!exactIlike.on) throw new Error("fake-supabase: ilike unsupported (see modelExactIlike)");
+    if (/[%_]/.test(pattern)) throw new Error(`fake-supabase: ilike(${pattern}) unsupported`);
+    this.filters.push((row) => String(row[column] ?? "").toLowerCase() === pattern.toLowerCase());
+    return this;
+  }
 
   in(column: string, values: unknown[]) {
     this.filters.push((row) => values.includes(row[column]));
@@ -297,4 +309,19 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: null }> {
 
 export function fakeSupabase(store: FakeStore) {
   return { from: (table: string) => new FakeQuery(store, table) };
+}
+
+const exactIlike = { on: false };
+
+/**
+ * Lets `.ilike(column, exact)` match, case-insensitively, for the duration of `run`
+ * (DRAFT_REUSE_OWN_ONLY_ENABLED replay cases, 6 Nov 2026). Off by default: see `ilike`.
+ */
+export async function modelExactIlike<T>(run: () => Promise<T>): Promise<T> {
+  exactIlike.on = true;
+  try {
+    return await run();
+  } finally {
+    exactIlike.on = false;
+  }
 }

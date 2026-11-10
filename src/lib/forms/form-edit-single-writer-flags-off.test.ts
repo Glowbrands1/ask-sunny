@@ -279,6 +279,9 @@ const FLIPPED_AFTER_FIXTURE: readonly string[] = [
   // Changed on purpose (10 Nov 2026): QA round 19 turned this on in production. The script's "Create a coaching form." -> name -> yes
   // now asks what happened (sf-s27), so the fixture, which predates it, is compared with it off.
   "COACHING_ASKS_WHAT_HAPPENED_ENABLED",
+  // Changed on purpose (10 Nov 2026): QA round 23 turned this on in production. A name-only coaching ask no longer offers Create
+  // beside "what happened" (the card's text changes); the fixture predates it, so it is compared with it off.
+  "WHAT_HAPPENED_NO_CREATE_ENABLED",
 ];
 const PRODUCTION = [...PRODUCTION_FLAGS.on, ...PRODUCTION_FLAGS.assumedOn].filter((name) => !FLIPPED_AFTER_FIXTURE.includes(name));
 /*
