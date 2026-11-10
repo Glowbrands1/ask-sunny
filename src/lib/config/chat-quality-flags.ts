@@ -4067,3 +4067,29 @@ export function payrollSplitWordsEnabled(): boolean {
 export function sameRequestOtherPersonEnabled(): boolean {
   return envFlag("SAME_REQUEST_OTHER_PERSON_ENABLED");
 }
+
+/**
+ * COACHING_OBSERVED_SAVED_ENABLED (coding 6, 10 Nov 2026; default off; QA's
+ * P12, live in both apps). "make me a coaching form for <name> not hitting
+ * October numbers" → Create saved Details of Coaching with no "Observed:", or
+ * an empty one. On: a coaching narrative about to be saved with text but no
+ * heading gets "Observed:" over it; one with no Observed text gets
+ * "Observed:" first, with the manager's own words. An Observed with text is
+ * left as it is. See `forms/coaching-observed-saved.ts`. Off, as before.
+ */
+export function coachingObservedSavedEnabled(): boolean {
+  return envFlag("COACHING_OBSERVED_SAVED_ENABLED");
+}
+
+/**
+ * APP_INSTRUCTIONS_NOT_ACCOUNT_ENABLED (coding 6, 10 Nov 2026; default off;
+ * QA's P12 part 2, Sunny production 6 Nov). "… for not hitting her numbers
+ * for the month of October. Please word it in a professional way. I need the
+ * policy attached as well." — every card's Observation kept the last two
+ * sentences. On: a sentence that only asks for the wording or for the policy
+ * on the form is left out of the card's Observation and the draft's account.
+ * See `ai/app-instructions.ts`. Off, as before.
+ */
+export function appInstructionsNotAccountEnabled(): boolean {
+  return envFlag("APP_INSTRUCTIONS_NOT_ACCOUNT_ENABLED");
+}

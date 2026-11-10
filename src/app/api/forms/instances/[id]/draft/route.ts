@@ -35,11 +35,13 @@ import {
   proposalMakeItAboutEnabled,
   proposalPolicySetAsideEnabled,
   sameRequestOtherPersonEnabled,
+  coachingObservedSavedEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { notesMadeAbout } from "@/lib/ai/make-it-about";
 import { withoutPolicyReferenceTurns } from "@/lib/ai/policy-reference-turn";
 import { NOTHING_SET_ASIDE, policiesSetAside, setAsideAnything, valuesWithPolicySetAside, withoutPolicyTakeOff } from "@/lib/forms/policy-set-aside";
 import { withoutAsksToTheApp } from "@/lib/ai/asks-to-the-app";
+import { withoutAppInstructions } from "@/lib/ai/app-instructions";
 import { AiError } from "@/lib/ai/errors";
 import {
   assertLiveMode,
@@ -390,7 +392,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
           roster: await (await import("@/lib/forms/employee-roster")).loadScopedRoster(actor.scope).catch(() => []),
         })
       : sent;
-    const asked = grammarAskNotAccountEnabled() ? withoutAsksToTheApp(typed).trim() : typed;
+    // APP_INSTRUCTIONS_NOT_ACCOUNT_ENABLED: "Please word it in a professional way. I need the policy attached as well." is no account.
+    const asked = withoutAppInstructions(grammarAskNotAccountEnabled() ? withoutAsksToTheApp(typed).trim() : typed).trim();
     // CREATE_COMMAND_POINTS_TO_CARD_ENABLED / CARD_COMPLAINT_NOT_ACCOUNT_ENABLED: "create it" or "this proposal is out of
     // date" is no account (`ai/card-meta-turn.ts`).
     const asTyped = (await import("@/lib/ai/card-meta-turn")).withoutCardMetaTurns(asked);
@@ -2445,6 +2448,16 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       ),
     };
     if (setAsideAnything(setAside)) draftedPayload.values = valuesWithPolicySetAside(draftedPayload.values, setAside);
+    // COACHING_OBSERVED_SAVED_ENABLED: the saved coaching Details always have an "Observed:" with the account (`lib/forms/coaching-observed-saved.ts`).
+    if (coachingObservedSavedEnabled()) {
+      draftedPayload.values = (await import("@/lib/forms/coaching-observed-saved")).withCoachingObservedSaved({
+        values: draftedPayload.values,
+        narrativeKeys: narrativeTargets,
+        coaching: isCoachingFamily,
+        notes,
+        employeeName: loaded.instance.employeeName,
+      }) as typeof draftedPayload.values;
+    }
     const kept = draftMergeEnabled()
       ? retainFilledFields({
           question: notes,
