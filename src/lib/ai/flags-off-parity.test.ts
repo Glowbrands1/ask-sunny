@@ -360,6 +360,14 @@ const NEW_FLAGS = [
   "FORM_EDIT_REFERS_BACK_ENABLED",
   "SAME_FORM_COPY_ENABLED",
   "SAME_FORM_COPY_NEW_PERSON_ENABLED",
+  // coding 6: CLAIM_GUARD_AUTO_UPDATE (default off): forced off with the others.
+  "CLAIM_GUARD_AUTO_UPDATE_ENABLED",
+  // coding 6: INCIDENT_DATE_ONCE (default off): forced off with the others.
+  "INCIDENT_DATE_ONCE_ENABLED",
+  // coding 6: ADDRESS_ONLY_ASKS_WHO (default off): forced off with the others.
+  "ADDRESS_ONLY_ASKS_WHO_ENABLED",
+  // coding 6: NO_SELECTION_ON_OPEN_CARD (default off): forced off with the others.
+  "NO_SELECTION_ON_OPEN_CARD_ENABLED",
   // coding 6: QUESTION_TURNS_NOT_ACCOUNT (default off): forced off with the others.
   "QUESTION_TURNS_NOT_ACCOUNT_ENABLED",
   "STAFF_PICKER_ENABLED",
