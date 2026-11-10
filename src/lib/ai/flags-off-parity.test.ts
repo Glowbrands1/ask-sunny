@@ -480,6 +480,8 @@ const NEW_FLAGS = [
   "METRIC_CHOICE_ONE_QUESTION_ENABLED",
   // The second Sunny gate's fix flags (6 Nov 2026): forced off with the others in the child run.
   "TITLE_ENDS_AT_LINE_ENABLED",
+  // QA, 10 Nov 2026 (default off): no "The card is ready" over a card with no employee.
+  "CARD_READY_NEEDS_EMPLOYEE_ENABLED",
   "BARE_NOT_DENIAL_ENABLED",
   "PLACE_FROM_CUE_ENABLED",
   // Port of the sibling app's flip-3 fix (6 Nov 2026): forced off with the others in the child run.

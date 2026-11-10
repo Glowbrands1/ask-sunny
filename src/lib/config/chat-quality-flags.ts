@@ -3971,3 +3971,14 @@ export function teamCardNotProductEnabled(): boolean {
 export function reopenCloseSpellingEnabled(): boolean {
   return envFlag("REOPEN_CLOSE_SPELLING_ENABLED");
 }
+
+/**
+ * CARD_READY_NEEDS_EMPLOYEE_ENABLED (QA, 10 Nov 2026; the roster-name set's eval, n3 "name is TT and use todays date to
+ * create coaching form"; default off). A global manager's salon question ("Which salon is this about? The card is ready —
+ * …", `forms/global-salon-ask.ts`) is written while the card still holds the typed name; when the roster check then
+ * empties the card, the reply still said the card is ready under "Who is this form for?". With the flag on, a card with
+ * no employee drops "The card is ready" from that question (`forms/roster-only-names.ts`). Off, as before.
+ */
+export function cardReadyNeedsEmployeeEnabled(): boolean {
+  return envFlag("CARD_READY_NEEDS_EMPLOYEE_ENABLED");
+}

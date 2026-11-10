@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AskResponse } from "@/lib/ai/types";
 import type { ChatFormProposal } from "@/types";
 
+import { GLOBAL_SALON_ASK } from "./global-salon-ask";
 import { ASK_WHO, rosterOnlyNames, rosterSpelling } from "./roster-only-names";
 
 /**
@@ -147,5 +148,35 @@ describe("the gate's regressions: nothing in the reply speaks for a removed empl
     // A choice still asked keeps its tail.
     const two = "Which of them is this **Resignation/Exit Form** for — **Dana Lane** or **Perpetua Thornquist**? Tell me and I'll fill in what you've already described.";
     expect(rosterOnlyNames(reply(two, null), ROSTER).content).toBe(two);
+  });
+});
+
+/*
+ * CARD_READY_NEEDS_EMPLOYEE_ENABLED (QA, 10 Nov 2026; the roster-name set's eval, n3: "name is TT and use todays date to
+ * create coaching form"): the global salon question said "The card is ready" over a card the roster check had emptied.
+ */
+describe("no \"The card is ready\" over a card with no employee (CARD_READY_NEEDS_EMPLOYEE_ENABLED)", () => {
+  const said = "name is TT and use todays date to create coaching form";
+  const asked = () => reply(`Here is what I would put on a **Coaching Form**.\n\nI have the employee. ${GLOBAL_SALON_ASK}`, "Tt");
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("on: the salon is still asked, the card is not called ready", () => {
+    vi.stubEnv("CARD_READY_NEEDS_EMPLOYEE_ENABLED", "true");
+    const out = rosterOnlyNames(asked(), ROSTER, said);
+    expect(out.formProposal?.employeeName ?? null).toBeNull();
+    expect(out.content).toContain("Which salon is this about?");
+    expect(out.content).not.toMatch(/the card is ready/i);
+    expect(out.content).not.toMatch(/I have the employee/);
+  });
+
+  it("off: as before", () => {
+    vi.stubEnv("CARD_READY_NEEDS_EMPLOYEE_ENABLED", "false");
+    expect(rosterOnlyNames(asked(), ROSTER, said).content).toMatch(/The card is ready/);
+  });
+
+  it("on: a card that keeps its roster employee is still ready", () => {
+    vi.stubEnv("CARD_READY_NEEDS_EMPLOYEE_ENABLED", "true");
+    const out = rosterOnlyNames(reply(`Here is what I would put on a **Coaching Form**.\n\n${GLOBAL_SALON_ASK}`, "Dana Lane"), ROSTER, "coaching form for Dana Lane");
+    expect(out.content).toMatch(/The card is ready/);
   });
 });

@@ -1,4 +1,4 @@
-import { addressNotPersonEnabled, formNameFromRosterEnabled, metricChoiceOneQuestionEnabled, metricGuardEnabled, offRosterConfirmEnabled, rosterNearMissEnabled, rosterNotFoundAnyPhrasingEnabled } from "@/lib/config/chat-quality-flags";
+import { addressNotPersonEnabled, cardReadyNeedsEmployeeEnabled, formNameFromRosterEnabled, metricChoiceOneQuestionEnabled, metricGuardEnabled, offRosterConfirmEnabled, rosterNearMissEnabled, rosterNotFoundAnyPhrasingEnabled } from "@/lib/config/chat-quality-flags";
 import { isGlossaryTerm } from "@/lib/ai/chat-glossary";
 import type { AskResponse } from "@/lib/ai/types";
 
@@ -94,6 +94,9 @@ function said(names: readonly string[]): string {
 }
 
 /** The reply and card with only roster people as the employee and as choices. Pure; see `withRosterOnlyNames`. */
+/** The global salon question's claim (`global-salon-ask.ts` GLOBAL_SALON_ASK), false over a card with no employee. */
+const CARD_IS_READY = /The card is ready — choose the salon before you create the draft, so it is not filed with no salon\./g;
+
 export function rosterOnlyNames(response: AskResponse, names: readonly string[], message?: string): AskResponse {
   if (names.length === 0) return response;
   let content = response.content;
@@ -163,6 +166,13 @@ export function rosterOnlyNames(response: AskResponse, names: readonly string[],
     content = withoutSlotNameInObservation(content, message, names);
     // QA, 5 Nov 2026: "Create the draft here when you're ready" beside "Who is this form for?" contradicts it.
     content = content.replace(CREATE_WHEN_READY, "");
+    // CARD_READY_NEEDS_EMPLOYEE_ENABLED (QA, 10 Nov 2026): what was written over the card before it was emptied never says
+    // it is ready, or that it has the employee, while it has none.
+    if (cardReadyNeedsEmployeeEnabled()) {
+      content = content
+        .replace(CARD_IS_READY, "Choose it before you create the draft, so it is not filed with no salon.")
+        .replace(/\bI have the employee\.[ \t]*/g, "");
+    }
     if (rosterNearMissEnabled()) {
       // ROSTER_NEAR_MISS_ENABLED: an empty card never says it has the employee, never names them, and asks who.
       content = withoutUnseatedName(
