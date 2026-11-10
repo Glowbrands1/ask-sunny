@@ -4316,3 +4316,14 @@ export function sameRequestKeepsEarlierCardClientEnabled(): boolean {
 export function templateOutlineFieldsEnabled(): boolean {
   return envFlag("TEMPLATE_OUTLINE_FIELDS_ENABLED");
 }
+
+/**
+ * FIRST_NAME_ENOUGH_ENABLED (ported from Ask Bubbles; QA's live round 17b, 10 Nov 2026; DRAFT_WRITE_NEVER_SILENT's
+ * note): "The draft left out <surname> in Details of Coaching" while Details named the employee by first name. With
+ * the flag on, the name is reported missing only when no word of it is in the Coaching Form's Details
+ * (`forms/draft-consistency.ts`); a Corrective Action's Observation still reports a dropped surname. Off, as before.
+ * Same flag in both apps.
+ */
+export function firstNameEnoughEnabled(): boolean {
+  return envFlag("FIRST_NAME_ENOUGH_ENABLED");
+}
