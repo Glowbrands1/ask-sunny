@@ -40,7 +40,8 @@ export const NOV10_P17_EXIT_TYPO_WORDS_CASES: ReplayCase[] = [
     id: "nov10-p17-exit-items-and-rehire-misspelled",
     title: "an exit form, \"salon items will be returneded … they are eligiable for rehire\": Store Items Returned and Eligible for Rehire are read, never left blank",
     report: "Pau's P17, Sunny production, 10 Nov 2026",
-    status: { open: "Store Items Returned and Eligible for Rehire are listed under \"Left blank\"" },
+    // Changed on purpose (12 Nov 2026): fixed in production by EXIT_TYPO_WORDS, QA round 31. Was OPEN.
+    status: "fixed",
     fixFlags: ["EXIT_TYPO_WORDS_ENABLED"],
     async run(t) {
       vi.setSystemTime(new Date("2026-11-10T15:00:00Z"));

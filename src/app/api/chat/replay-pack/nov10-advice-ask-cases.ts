@@ -33,7 +33,8 @@ export const NOV10_ADVICE_ASK_CASES: ReplayCase[] = [
     id: "nov10-p14b-advice-asks-not-on-the-card",
     title: "P14(b): the Coaching card's Observation keeps her account, never \"how i do about her frusteration\" or \"tell me how what to say back\"",
     report: 'Pau via QA, 10 Nov 2026 (P14, conv 9 Nov ~16:05Z): the proposal pasted the manager\'s messages into Observation word for word',
-    status: { open: "the card's Observation carries \"how i do about her frusteration\" and \"tell me how what to say back. send a messageto me\"" },
+    // Changed on purpose (12 Nov 2026): fixed in production by ADVICE_ASK_NOT_ACCOUNT, QA round 31. Was OPEN.
+    status: "fixed",
     fixFlags: ["ADVICE_ASK_NOT_ACCOUNT_ENABLED"],
     async run(t) {
       vi.setSystemTime(new Date("2026-11-09T16:05:00Z"));
