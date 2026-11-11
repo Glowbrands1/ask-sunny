@@ -80,10 +80,11 @@ export function withoutTurnedDownName(answer: AskResponse, request: Pick<AskRequ
 /*
  * NEAR_MISS_TURNED_DOWN_EVERYWHERE_ENABLED (QA, 10 Nov 2026): the name turned down also leaves the Action Plan line
  * ("Management will review … with Corvina." → "… with the employee."), which names the person by first name, and the
- * "no," that turned it down is not the account ("**Observation of Offense:** no, verbal warning …"). "not" stays: "not
- * following the dress code" is an account.
+ * "no," that turned it down is not the account ("**Observation of Offense:** no, verbal warning …"). Only inside
+ * withoutTurnedDownName, so only right after the near-miss question, and only "no" with its own punctuation: "no call
+ * no show" is an account and is never touched. "not" stays: "not following the dress code" is an account.
  */
-const ACCOUNT_LEAD = /^(\*\*(?:Observation of Offense|Issue|What happened):\*\*[ \t]*)(?:no|nope|wrong)\b[,.;:!]?[ \t]*/gim;
+const ACCOUNT_LEAD = /^(\*\*(?:Observation of Offense|Issue|What happened):\*\*[ \t]*)(?:no|nope|wrong)[,.;:!][ \t]*/gim;
 
 function withoutTurnDownLead(content: string): string {
   return content.replace(ACCOUNT_LEAD, (_line, label: string) => label);

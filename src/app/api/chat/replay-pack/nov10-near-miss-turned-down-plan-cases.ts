@@ -60,3 +60,44 @@ export const NOV10_NEAR_MISS_TURNED_DOWN_PLAN_CASES: ReplayCase[] = CHATS.map(({
     );
   },
 }));
+
+/*
+ * QA's guard (11 Nov 2026): only the "no," that turns the asked name down leaves the account. "no call no show" is an
+ * account, after the near-miss question or on a fresh request, and is never touched.
+ */
+const NO_CALL = "no call no show on 11/3, verbal warning";
+export const NOV10_NEAR_MISS_NO_CALL_NO_SHOW_CASES: ReplayCase[] = [
+  {
+    id: "nov10-near-miss-turned-down-plan-no-call-no-show-after-question",
+    title: `after "Is this for **Corvina Vellacott**?", "${NO_CALL}": the account keeps "no call no show"`,
+    report: "QA's guard on NEAR_MISS_TURNED_DOWN_EVERYWHERE (11 Nov 2026)",
+    status: "fixed",
+    fixFlags: ON,
+    async run(t) {
+      vi.setSystemTime(new Date("2026-11-04T15:30:00Z"));
+      t.directory([...STAFF, CORVINA, DELPHINE]);
+      t.as("salon_director", KEARNEY);
+      const thread = t.thread();
+      await thread.say(CHATS[0].turns[0]);
+      const reply = await thread.say(NO_CALL);
+      const account = reply.content.split("\n").find((line) => /^\*\*(?:Observation of Offense|Issue|What happened):\*\*/.test(line));
+      if (account) expect(account, reply.content).toMatch(/no call no show/i);
+      expect(reply.content, reply.content).not.toMatch(/^\*\*(?:Observation of Offense|Issue|What happened):\*\*\s*call no show/im);
+    },
+  },
+  {
+    id: "nov10-near-miss-turned-down-plan-no-call-no-show-fresh",
+    title: `"create a ca for Corvina Vellacott, ${NO_CALL}": the account keeps "no call no show"`,
+    report: "QA's guard on NEAR_MISS_TURNED_DOWN_EVERYWHERE (11 Nov 2026)",
+    status: "fixed",
+    fixFlags: ON,
+    async run(t) {
+      vi.setSystemTime(new Date("2026-11-04T15:30:00Z"));
+      t.directory([...STAFF, CORVINA, DELPHINE]);
+      t.as("salon_director", KEARNEY);
+      const reply = await t.thread().say(`create a ca for Corvina Vellacott, ${NO_CALL}`);
+      expect(reply.content, reply.content).not.toMatch(/^\*\*(?:Observation of Offense|Issue|What happened):\*\*\s*call no show/im);
+      expect(reply.content, reply.content).toMatch(/no call no show/i);
+    },
+  },
+];
