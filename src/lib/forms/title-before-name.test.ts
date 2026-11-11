@@ -38,3 +38,13 @@ describe("TITLE_BEFORE_NAME: a job title before the name", () => {
     expect(leadingFormRequest("Corrective action for Tanning Consultant Wren Tallis")).toBeNull();
   });
 });
+
+describe("TITLE_BEFORE_NAME reads every job title this app prints", () => {
+  it("each JOB_TITLES title, and each written short, is a leading title", async () => {
+    process.env[FLAG] = "true";
+    const { JOB_TITLES } = await import("./proposal");
+    for (const said of ["SDIT", "TSD", "DMIT", "FTTC", "ASD", "TC", "SD", "DM", ...JOB_TITLES.map((entry) => entry.title)]) {
+      expect(leadingTitleLength([...said.split(" "), "Wren", "Tallis"]), said).toBe(said.split(" ").length);
+    }
+  });
+});

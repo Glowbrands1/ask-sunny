@@ -1,8 +1,6 @@
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { titleBeforeNameEnabled } from "@/lib/config/chat-quality-flags";
 
-import { JOB_TITLES } from "./proposal";
-
 /**
  * ============================================================================
  * A JOB TITLE BEFORE THE NAME IS NOT PART OF IT (TITLE_BEFORE_NAME_ENABLED; ported from Ask Bubbles, 11 Nov 2026)
@@ -16,10 +14,26 @@ import { JOB_TITLES } from "./proposal";
  */
 const STATE_CODES = new Set(PRODUCTION_SALONS.map((salon) => salon.state.toLowerCase()));
 
+/*
+ * This app's job titles, in full and short, as `JOB_TITLES` in `forms/proposal.ts` reads them. Kept here because
+ * `proposal.ts` imports `template-intent.ts`, which reads this file: importing it back made an import cycle that left
+ * the roster readers uninitialised. `title-before-name.test.ts` checks every `JOB_TITLES` title is read here.
+ */
+const TITLES: readonly RegExp[] = [
+  /^(?:sdits?|salon directors? in training)$/i,
+  /^(?:tsds?|training salon directors?)$/i,
+  /^(?:dmits?|district managers? in training)$/i,
+  /^(?:fttcs?|full[- ]time tanning consultants?)$/i,
+  /^(?:asds?|assistant salon directors?)$/i,
+  /^(?:tcs?|tanning consultants?)$/i,
+  /^(?:sds?|salon directors?)$/i,
+  /^(?:dms?|district managers?)$/i,
+];
+
 function isWholeTitle(phrase: string): boolean {
   const bare = phrase.replace(/[.,;:]+$/, "").trim();
   if (bare === "" || STATE_CODES.has(bare.toLowerCase())) return false;
-  return JOB_TITLES.some((entry) => bare.replace(new RegExp(entry.pattern.source, "gi"), "").trim() === "");
+  return TITLES.some((title) => title.test(bare.replace(/\s+/g, " ")));
 }
 
 /** How many of the leading words are a job title (0 when none, or the flag off, or no word follows it). */
