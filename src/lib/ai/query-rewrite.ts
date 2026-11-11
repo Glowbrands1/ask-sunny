@@ -174,3 +174,32 @@ export function followUpOwnQuery(input: {
   const kept = new Set(namedWords(input.rewritten));
   return fresh.some((word) => kept.has(word)) ? input.rewritten : input.ownWords;
 }
+
+/*
+ * ============================================================================
+ * AN OPERATIONAL HOW-TO KEEPS THE MANAGER'S OWN NOUNS (QUERY_REWRITE_KEEPS_NOUNS_ENABLED)
+ * ============================================================================
+ *
+ * QA, 11 Nov 2026 (conv_mwb2hmb62lroh57): "how do I reset the spray tan equipment after cleaning it, so I can coach my
+ * team on it?" was searched as the policy manual's heading "Care and Cleaning of Equipment and Facilities", which found
+ * the Tanning Consultant Manual's contents page instead of its "Spray Tan Cleaning Instructions". A question asking how
+ * to do something with the salon's equipment is about the procedure, which lives in the training manuals: it is never
+ * turned into a policy heading, and its search keeps the manager's equipment and action words.
+ */
+const HOW_TO = /\b(?:how\s+(?:do|does|to|should|can|would)|what\s+do\s+(?:i|we|you)\s+do|steps?\b|instructions?\b|procedures?\b|process\s+for)\b/i;
+const OPERATIONAL = /\b(?:booths?|beds?|spray(?:\s*tan)?|sunless|lamps?|bulbs?|timers?|reset(?:ting)?|control\s*panel|controllers?|tablet|computer|register|pos|machines?|units?|equipment|solution|nozzles?|filters?|fans?|acrylic|canopy|clean(?:ing|ed)?|sanitiz\w*|wipe|wiped|calibrat\w*|restart|power)\b/gi;
+
+/** A how-to question about the salon's equipment or an operating step. */
+export function operationalHowTo(question: string): boolean {
+  OPERATIONAL.lastIndex = 0;
+  return HOW_TO.test(question) && OPERATIONAL.test(question);
+}
+
+/** `query`, with any of the manager's equipment and action words it lacks added at the end (each once). */
+export function withOwnNouns(question: string, query: string): string {
+  const have = query.toLowerCase();
+  const missing = [...new Set((question.match(OPERATIONAL) ?? []).map((word) => word.toLowerCase().replace(/\s+/g, " ")))].filter(
+    (word) => !have.includes(word),
+  );
+  return missing.length > 0 ? `${query.trim()} ${missing.join(" ")}` : query;
+}

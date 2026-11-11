@@ -594,6 +594,8 @@ const NEW_FLAGS = [
   // coding 2: CREATE_COMMAND_POINTS_TO_CARD and CARD_COMPLAINT_NOT_ACCOUNT (default off): forced off with the others.
   "CREATE_COMMAND_POINTS_TO_CARD_ENABLED",
   "CARD_COMPLAINT_NOT_ACCOUNT_ENABLED",
+  // coding 2: QUERY_REWRITE_KEEPS_NOUNS (QA, 11 Nov 2026; default off): forced off with the others.
+  "QUERY_REWRITE_KEEPS_NOUNS_ENABLED",
 ] as const;
 
 const PROTECTED = [

@@ -29,6 +29,18 @@ export function hybridSearchEnabled(): boolean {
   return envFlag("HYBRID_SEARCH_ENABLED");
 }
 
+/**
+ * QUERY_REWRITE_KEEPS_NOUNS_ENABLED (QA, 11 Nov 2026; Coding-4's follow-up on conv_mwb2hmb62lroh57; default off; same flag
+ * in both apps). With QUERY_REWRITE on, an operational how-to ("how do I reset the spray tan equipment after cleaning it")
+ * was searched as the policy manual's heading "Care and Cleaning of Equipment and Facilities", which found the Tanning
+ * Consultant Manual's contents page, not its cleaning section. On, such a question is never swapped for a manual
+ * heading: the search keeps the manager's own words and nouns (booth, bed, spray, timer, reset, …)
+ * (`ai/query-rewrite.ts`, `operationalHowTo`). Off, as before.
+ */
+export function queryRewriteKeepsNounsEnabled(): boolean {
+  return envFlag("QUERY_REWRITE_KEEPS_NOUNS_ENABLED");
+}
+
 /** Haiku reading of any manager message before routing and retrieval. */
 export function queryRewriteEnabled(): boolean {
   return envFlag("QUERY_REWRITE_ENABLED");
