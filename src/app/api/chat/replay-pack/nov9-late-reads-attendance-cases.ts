@@ -55,7 +55,8 @@ export const NOV9_LATE_READS_ATTENDANCE_CASES: ReplayCase[] = [
     id: "nov9-late-reads-attendance-plan-and-sources",
     title: "\"create a CA for <P>, she was late on 11/6/26\", the model's heading Late Opening: the Action Plan and the Sources are Attendance too",
     report: `${REPORT}; Gate-Sunny, 11 Nov 2026: the Policy line alone passed while the plan and Sources said Late Opening`,
-    status: { open: "the Policy line reads Attendance, but the Action Plan reviews the Late Opening policy and the Sources are Late Opening p.15" },
+    // Changed on purpose (11 Nov 2026): fixed in production by LATE_SLOT_READS_ATTENDANCE, QA round 29. Was OPEN.
+    status: "fixed",
     fixFlags: [...FIX, "LATE_SLOT_READS_ATTENDANCE_ENABLED"],
     async run(t) {
       const answer = await reply(t, "create a CA for Marnie Holloway, she was late on 11/6/26", "Late Opening");
