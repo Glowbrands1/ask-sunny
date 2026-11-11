@@ -32,7 +32,8 @@ export const NOV10_LATE_SLOT_READS_ATTENDANCE_CASES: ReplayCase[] = [
     id: "nov10-late-slot-reads-attendance",
     title: "\"create a corrective action for <T>, she was late on 11/3/26\", the model's heading Late Opening: the Policy line, the Action Plan and the Sources all say Attendance",
     report: REPORT,
-    status: { open: "the Action Plan and the Sources follow the model's heading, Late Opening, while the Policy line says Attendance" },
+    // Changed on purpose (11 Nov 2026): fixed in production by LATE_SLOT_READS_ATTENDANCE, QA round 29. Was OPEN.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const content = await card(t, "create a corrective action for Marnie Holloway, she was late on 11/3/26", "Late Opening");
