@@ -4370,3 +4370,14 @@ export function sameRequestOffRosterEnabled(): boolean {
 export function pastedOutlineToOpenDraftEnabled(): boolean {
   return envFlag("PASTED_OUTLINE_TO_OPEN_DRAFT_ENABLED");
 }
+
+/**
+ * CA_JOB_TITLE_FROM_ROSTER_ENABLED (coding 6, 11 Nov 2026; default off; QA, found on sf-b5, audit item 15.10). A
+ * Corrective Action for a roster person whose account names another person's title ("spoke with District manager
+ * <name>") was created with Job Title blank: TITLE_OF_THE_EMPLOYEE takes the other person's title off the card and
+ * nothing puts the employee's back. On: a Corrective Action card for one roster person, with no title of its own,
+ * takes that person's roster position (`forms/ca-job-title-from-roster.ts`). Off, as before.
+ */
+export function caJobTitleFromRosterEnabled(): boolean {
+  return envFlag("CA_JOB_TITLE_FROM_ROSTER_ENABLED");
+}
