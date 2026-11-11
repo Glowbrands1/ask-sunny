@@ -724,6 +724,14 @@ const PROTECTED = [
  * Behind CA_SALES_POLICY_ENABLED, default off; off, every row is carried as
  * before. The filed form is never touched. Same hunk in both apps (Ask
  * Bubbles 66813d54); in Ask Sunny the Type of Offense change is revision 8.
+ *
+ * The user (Pau) approved, under Pau's standing approval via QA, 11 Nov 2026, in
+ * src/lib/forms/ca-action-plan.ts, exactly the lines of
+ * docs/patches/other-not-a-policy-name.patch: the import
+ * `otherNotAPolicyNameEnabled`, and in policyNamesFromViolated the one guarded
+ * line `if (otherNotAPolicyNameEnabled() && /^other$/i.test(text)) return "";`
+ * (a bare "Other" is never a policy name: no "review the Other policy").
+ * Behind OTHER_NOT_A_POLICY_NAME_ENABLED, default off; off, as before.
  */
 const APPROVED_PROTECTED_EDITS = [
   ":(exclude)src/lib/forms/proposal.ts",
@@ -732,6 +740,7 @@ const APPROVED_PROTECTED_EDITS = [
   ":(exclude)src/lib/forms/payroll-deduct.ts",
   ":(exclude)src/lib/forms/form-date-answer.ts",
   ":(exclude)src/lib/ai/form-proposal.ts",
+  ":(exclude)src/lib/forms/ca-action-plan.ts",
 ];
 
 const UI_PATHS = ["src/app/**/*.tsx", "src/components/**", "src/features/**/*.tsx", "**/*.css"];

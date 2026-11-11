@@ -1,4 +1,5 @@
 import {
+  otherNotAPolicyNameEnabled,
   actionPlanSentencesEnabled,
   managerPayrollAmountOnlyEnabled,
   payrollAmountFieldEnabled,
@@ -105,6 +106,8 @@ export function policyNamesFromViolated(value: string | null | undefined): strin
       const section = /^.+?\s+[—–]\s+(.+)$/.exec(text) ?? /^violation of company polic(?:y|ies)\s*-\s*(.+)$/i.exec(text);
       if (section) return section[1]!.trim();
       if (/^violation of company polic(?:y|ies)$/i.test(text)) return "";
+      // OTHER_NOT_A_POLICY_NAME_ENABLED: "Other" is a box, never a policy ("review the Other policy").
+      if (otherNotAPolicyNameEnabled() && /^other$/i.test(text)) return "";
       return text.replace(/\s+violations?$/i, "").trim();
     })
     .filter((name, index, all) => name !== "" && all.findIndex((other) => other.toLowerCase() === name.toLowerCase()) === index);

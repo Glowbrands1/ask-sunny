@@ -70,8 +70,7 @@ export const NOV11_SANITATION_OTHER_CASES: ReplayCase[] = [
     report: REPORT,
     status: { open: "the Action Plan names Care and Cleaning (card) or \"the Other policy\" (draft)" },
     fixFlags: ["OTHER_POLICY_AGREES_ENABLED", "OTHER_NOT_A_POLICY_NAME_ENABLED"],
-    // Open with the flags too until the protected forms/ca-action-plan.ts lines land (docs/patches/other-not-a-policy-name.patch).
-    fixStatus: { open: "the protected ca-action-plan.ts lines are not applied yet" },
+    // The protected forms/ca-action-plan.ts lines are in (Pau's standing approval via QA, 11 Nov 2026): it holds with both flags.
     async run(t) {
       const { card, saved } = await cardAndDraft(t);
       expect(card, card).not.toMatch(/review the (?:Care and Cleaning|Other) /i);
@@ -92,4 +91,25 @@ export const NOV11_SANITATION_OTHER_CASES: ReplayCase[] = [
       expect(card, card).toMatch(/^\*\*Observation of Offense:\*\* not doing the 10-minute sanitation$/m);
     },
   },
+  // QA's controls (11 Nov 2026): a cleaning account the reader already read keeps today's Other card; a non-cleaning CA is unchanged.
+  ...[
+    ["beds", "please make a ca for Brisa Talmadge, she didn't clean the beds"],
+    ["late", "please make a ca for Brisa Talmadge, she was 20 minutes late for her shift on 11/9"],
+  ].map(
+    ([id, said]): ReplayCase => ({
+      id: `nov11-sanitation-other-control-${id as string}`,
+      title: `control: "${said as string}" reads the same with OTHER_POLICY_AGREES and OTHER_NOT_A_POLICY_NAME on`,
+      report: `${REPORT} (QA's controls)`,
+      status: "fixed",
+      fixFlags: ["OTHER_POLICY_AGREES_ENABLED", "OTHER_NOT_A_POLICY_NAME_ENABLED"],
+      async run(t) {
+        vi.setSystemTime(new Date("2026-11-10T18:49:00Z"));
+        t.directory([...STAFF, BRISA]);
+        t.as("salon_director", KEARNEY);
+        const card = (await t.thread().say(said as string)).content;
+        if (id === "beds") expect(card, card).toMatch(/\*\*Policy:\*\* Other — cleaning duties left undone/);
+        else expect(card, card).not.toMatch(/\*\*Policy:\*\* Other\b/);
+      },
+    }),
+  ),
 ];
