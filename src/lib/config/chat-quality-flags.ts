@@ -4440,6 +4440,18 @@ export function addNotRepeatedSentencesEnabled(): boolean {
 }
 
 /**
+ * PAYROLL_BARE_SENTENCE_ENABLED (coding 6, 10 Nov 2026; default off; Pau's
+ * P15, Sunny production 9 Nov). "I need a term CA for <name>. Didn't show up
+ * for her opening shift. Payroll deduction." — the card still asked "Is
+ * payroll deduct applicable?" and left the box blank. On, a sentence that is
+ * only "Payroll deduction." is a Yes. Read in
+ * `forms/payroll-deduct-answer.ts` (which imports nothing). Off, as before.
+ */
+export function payrollBareSentenceEnabled(): boolean {
+  return envFlag("PAYROLL_BARE_SENTENCE_ENABLED");
+}
+
+/**
  * TITLE_BEFORE_NAME_ENABLED (ported from Ask Bubbles, 11 Nov 2026; QA's Bubbles 17h live test; same flag in both apps;
  * default off). "Corrective action for Team Member <name>" gave no card there; here "Corrective action for Tanning
  * Consultant <name>" (or Salon Director …) does the same: the form's name then "for <words>" is a request only when the
