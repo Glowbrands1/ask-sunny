@@ -1,4 +1,4 @@
-import { rosterCompoundSurnameEnabled, sharedLoginNotStaffEnabled } from "@/lib/config/chat-quality-flags";
+import { rosterCompoundSurnameEnabled, sharedLoginNotStaffEnabled, typoFullNameToRosterEnabled } from "@/lib/config/chat-quality-flags";
 
 /**
  * ============================================================================
@@ -245,6 +245,24 @@ export function compoundSurnameScore(typed: readonly string[], lastName: string)
   return scores.length > 0 ? Math.max(1, Math.min(...scores)) : null;
 }
 
+/**
+ * TYPO_FULL_NAME_TO_ROSTER_ENABLED: the typed words are this person's whole name — their own first name, then every
+ * word of their surname in order, each exact or a typo of it, at least one surname word longer than three letters
+ * mistyped at most once (twice for eight letters or more). A first name alone, an initial or a missing word is never it.
+ */
+function typoOfFullName(words: readonly string[], employee: RosterEmployee): boolean {
+  if (!firstNames(employee).includes(words[0] ?? "")) return false;
+  const parts = normalize(employee.lastName).split(/[\s-]+/).filter(Boolean);
+  const rest = words.slice(1);
+  if (rest.length === 0 || rest.length !== parts.length) return false;
+  return rest.every((word, index) => {
+    const part = parts[index]!;
+    if (word === part) return true;
+    if (word.length <= 3 || part.length <= 3) return false;
+    return editDistance(word, part) <= (Math.min(word.length, part.length) >= 8 ? 2 : 1);
+  });
+}
+
 function firstNames(employee: RosterEmployee): string[] {
   return [employee.firstName, employee.preferredFirstName ?? ""]
     .map(normalize)
@@ -352,6 +370,11 @@ export function matchEmployeeName(typed: string, roster: readonly RosterEmployee
     }
   }
 
+  // TYPO_FULL_NAME_TO_ROSTER_ENABLED: "Delphine Marlwoe Ostrander" is the roster's one Delphine Marlowe Ostrander.
+  if (typoFullNameToRosterEnabled() && exact.length === 0 && typedLast !== null && !readKeptTypedNames()?.has(normalize(typed))) {
+    const typos = roster.filter((employee) => typoOfFullName(words, employee));
+    if (typos.length === 1) return { kind: "exact", employee: typos[0]!, name: displayName(typos[0]!) };
+  }
   if (exact.length === 1 && typedLast !== null && typedLast.length > 1) {
     return { kind: "exact", employee: exact[0]!, name: displayName(exact[0]!) };
   }
