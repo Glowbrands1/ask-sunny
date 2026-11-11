@@ -48,8 +48,8 @@ import { newestManagerTurnSalon } from "@/lib/forms/newest-place-turn";
 import { typedEmployeeName } from "@/lib/forms/typed-employee-name";
 import { managerStatedWarningLevel, templateHasWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
 import { isDocumentName, isReportName, isRosterStateName } from "./not-a-person";
-import { reportNameNotAPersonEnabled } from "@/lib/config/chat-quality-flags";
-import { readsAsStatedTitle, titleTextFromTurns } from "./title-words";
+import { formNameNotATitleEnabled, reportNameNotAPersonEnabled } from "@/lib/config/chat-quality-flags";
+import { readsAsStatedTitle, saidOnlyAsFormName, titleTextFromTurns } from "./title-words";
 import { titleInWords } from "./title-in-words";
 import { describedAttendanceKeys } from "@/lib/forms/ca-policy";
 import { headingKey, sectionHeadingsFor } from "@/lib/forms/official-policy-manual";
@@ -1125,7 +1125,9 @@ function groundTitle(
   // turns carry it (see `titleInWords`).
   const wholeWord = titleWholeWordEnabled();
   const inWords = (title: string) => !wholeWord || titleInWords(title, blob);
-  const probe = typed?.trim() && inWords(typed.trim()) ? typed.trim() : null;
+  // FORM_NAME_NOT_A_TITLE_ENABLED: "SDIT" read from "Create an SDIT EPP for …" is the form's name, not a title.
+  const formName = (title: string) => formNameNotATitleEnabled() && saidOnlyAsFormName(title, blob);
+  const probe = typed?.trim() && inWords(typed.trim()) && !formName(typed.trim()) ? typed.trim() : null;
   if (probe) {
     const hit = titles.find((title) => title.toLowerCase() === probe.toLowerCase() && inWords(title));
     if (hit) return hit;

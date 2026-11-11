@@ -45,3 +45,50 @@ export const NOV11_FORM_NAME_NOT_A_TITLE_CASES: ReplayCase[] = (
     expect(role, `the form's name became the position:\n${reply.content}`).not.toMatch(/director in training|training salon director|\bsdit\b|\btsd\b/i);
   },
 }));
+
+/**
+ * QA's follow-up (11 Nov 2026, D5 off-roster): on main 7b1411ab with D5 live, "Create an SDIT EPP for <name> at IA
+ * Altoona" for a person NOT on the roster, signed in as an all-salon admin, still showed "Job title: Salon Director in
+ * Training". The second reader is the model's slot reading (`groundTitle` in `ai/intent-slots.ts`): the live model gives
+ * "SDIT" as the title, and for an off-roster person a title the manager typed was kept. `t.slotsRead` stands in for that
+ * reading. The person is invented and not on the replay roster.
+ */
+const OFF_ROSTER = "Wren Tallis";
+const OFF_ROSTER_REPORT = "QA's follow-up (11 Nov 2026, D5 off-roster): the slot model's \"SDIT\" became an off-roster employee's job title";
+
+function offRoster(t: ReplayContext, words: string) {
+  vi.setSystemTime(new Date("2026-11-11T15:00:00Z"));
+  t.directory(STAFF);
+  t.as("admin", EVERY_SALON);
+  t.slotsRead({ employee: OFF_ROSTER, title: "SDIT", formType: "SDIT EPP", formTurn: true, salon: "IA Altoona" });
+  const thread = t.thread();
+  return thread.say(words).then((reply) => ({ reply, proposal: thread.proposal }));
+}
+
+NOV11_FORM_NAME_NOT_A_TITLE_CASES.push(
+  {
+    id: "nov11-form-name-not-a-title-off-roster-slot-title",
+    title: `"Create an SDIT EPP for ${OFF_ROSTER} at IA Altoona" (off the roster): the model's "SDIT" is not the card's position`,
+    report: OFF_ROSTER_REPORT,
+    // Failed on main 7b1411ab with production's flags (FORM_NAME_NOT_A_TITLE on): role "Salon Director in Training".
+    status: "fixed",
+    fixFlags: FIX,
+    async run(t: ReplayContext) {
+      const { reply, proposal } = await offRoster(t, `Create an SDIT EPP for ${OFF_ROSTER} at IA Altoona`);
+      const role = proposal?.employeeRole ?? "";
+      expect(role, `the form's name became the position:\n${reply.content}`).not.toMatch(/director in training|\bsdit\b/i);
+      expect(reply.content).not.toMatch(/job title:\*{0,2}\s*salon director in training/i);
+    },
+  },
+  {
+    id: "nov11-form-name-not-a-title-off-roster-said-title-kept",
+    title: `NEVER-BREAK: "… for ${OFF_ROSTER} at IA Altoona, she is an SDIT": the title she was given stays`,
+    report: OFF_ROSTER_REPORT,
+    status: "fixed",
+    fixFlags: FIX,
+    async run(t: ReplayContext) {
+      const { reply, proposal } = await offRoster(t, `Create an SDIT EPP for ${OFF_ROSTER} at IA Altoona, she is an SDIT`);
+      expect(proposal?.employeeRole ?? "", reply.content).toMatch(/director in training|\bsdit\b/i);
+    },
+  },
+);
