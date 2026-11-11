@@ -4316,3 +4316,13 @@ export function sameRequestKeepsEarlierCardClientEnabled(): boolean {
 export function templateOutlineFieldsEnabled(): boolean {
   return envFlag("TEMPLATE_OUTLINE_FIELDS_ENABLED");
 }
+
+/**
+ * FORM_NAME_NOT_A_TITLE_ENABLED (QA's prod-env reading, 10 Nov 2026, D5; default off; same flag in both apps). "Create an
+ * SDIT EPP for <name> at <salon>" put "Salon Director in Training" on the card as the employee's position: the form's own
+ * name ("SDIT EPP", "TSD EPP") was read as a job title (`forms/proposal.ts` extractJobTitle). On: a title word straight
+ * before "EPP" is the requested form's name, never the employee's title. Off, as before.
+ */
+export function formNameNotATitleEnabled(): boolean {
+  return envFlag("FORM_NAME_NOT_A_TITLE_ENABLED");
+}
