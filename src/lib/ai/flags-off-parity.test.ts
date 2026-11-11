@@ -186,6 +186,8 @@ import { privateCreatorFormsEnabled, privateCreatorsActive } from "@/lib/forms/p
 const NEW_FLAGS = [
   // coding 4: FULL_MANUAL_KEEPS_RETRIEVAL (QA, 10 Nov 2026; default off).
   "FULL_MANUAL_KEEPS_RETRIEVAL_ENABLED",
+  // coding 4: FORM_NAME_NOT_A_TITLE (QA's prod-env reading, D5, 11 Nov 2026; default off).
+  "FORM_NAME_NOT_A_TITLE_ENABLED",
   "SLOT_RETENTION_ENABLED",
   "FIELD_ACCURACY_ENABLED",
   "DRAFT_DEDUPE_ENABLED",
@@ -578,6 +580,7 @@ const NEW_FLAGS = [
   "MADE_ABOUT_POLICY_LINE_REPLACES_ENABLED",
   "SECTION_BREAKS_KEPT_ENABLED",
   "ADD_NOT_REPEATED_ENABLED",
+  "ADD_NOT_REPEATED_SENTENCES_ENABLED",
   // coding 4: MODEL_POLICY_DEFERS_TO_TOPIC (QA, round 7c, 9 Nov 2026; default off): forced off with the others in the child run.
   "MODEL_POLICY_DEFERS_TO_TOPIC_ENABLED",
   // coding 4: WORK_AREA_ABSENCE_CITES_CONDUCT (Pau's decision, 9 Nov 2026; default off): forced off with the others in the child run.
@@ -730,6 +733,14 @@ const PROTECTED = [
  * Behind CA_SALES_POLICY_ENABLED, default off; off, every row is carried as
  * before. The filed form is never touched. Same hunk in both apps (Ask
  * Bubbles 66813d54); in Ask Sunny the Type of Offense change is revision 8.
+ *
+ * The user (Pau) approved on 11 Nov 2026, via QA (Pau's standing approval for
+ * fixes, recorded by QA), in src/lib/forms/proposal.ts, exactly the hunks in
+ * docs/patches/form-name-not-a-title.patch: the import
+ * `formNameNotATitleEnabled`, `FORM_NAME_AFTER` and `titleSaidLater`, and in
+ * extractJobTitle a title word straight before "EPP" is skipped as the form's
+ * name unless the title is said again later. Behind
+ * FORM_NAME_NOT_A_TITLE_ENABLED, default off; off, every title is read as before.
  */
 const APPROVED_PROTECTED_EDITS = [
   ":(exclude)src/lib/forms/proposal.ts",
