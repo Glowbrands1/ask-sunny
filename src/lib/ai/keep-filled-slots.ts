@@ -57,6 +57,7 @@ import {
   observationOwnPersonOnlyEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { requestIssueKeptEnabled } from "@/lib/config/chat-quality-flags";
+import { withoutPlaceAfterName } from "./unknown-place-not-account";
 import { turnsMadeAbout, withObservationMadeAbout } from "./make-it-about";
 import { NOTHING_SET_ASIDE, citationSetAside, policiesSetAside, setAsideAnything, withPolicySetAside, withoutPolicyAsks } from "@/lib/forms/policy-set-aside";
 import { namesOnlyAPolicy } from "@/lib/forms/person-guard";
@@ -777,7 +778,9 @@ function withObservation(content: string, turns: readonly string[], employeeName
     for (const part of read.text.split(/\n+|(?<=[.!?])\s+/)) {
       // LEVEL_STEP_NOT_ACCOUNT_ENABLED: "this should be a written and note a verbal ca was given on 9-1-26" says nothing that happened.
       // PAYROLL_CLAUSE_NOT_ACCOUNT_ENABLED: "$20 payroll deduct applies" and "Payroll deduction amount: $20." are the payroll answer.
-      const said = withoutPayrollClauses((levelStepNotAccountEnabled() ? withoutLevelAndStepClauses(part) : part).trim());
+      const unplaced = withoutPayrollClauses((levelStepNotAccountEnabled() ? withoutLevelAndStepClauses(part) : part).trim());
+      // UNKNOWN_PLACE_NOT_ACCOUNT_ENABLED: "… for <name> at IA Altoona" (not a salon) says where, not what happened.
+      const said = withoutPlaceAfterName(unplaced, employeeName);
       if (said.length < 12) continue;
       // POLICY_CORRECTION_NOT_ACCOUNT_ENABLED: "it should be under performance not standard of conduct" is about the form.
       if (isPolicyCorrection(said)) continue;
@@ -875,7 +878,7 @@ function stateCodeTitle(text: string, role: string): boolean {
  */
 function withAccount(content: string, turns: readonly string[], employeeName: string | null): string {
   // SALES_OBSERVATION_ACCOUNT_ENABLED: the account only, never the request's words, the name or a payroll answer (`forms/ca-policy.ts`).
-  const sentences = accountSentences(turns, employeeName, { managerOnly: managerWordsOnlyEnabled() }).map((sentence) => observationAccount(sentence, employeeName)).filter(
+  const sentences = accountSentences(turns, employeeName, { managerOnly: managerWordsOnlyEnabled() }).map((sentence) => observationAccount(withoutPlaceAfterName(sentence, employeeName), employeeName)).filter(
     (sentence) => sentence !== "",
   ).filter(
     (sentence) =>

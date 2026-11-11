@@ -4427,3 +4427,14 @@ export function formNameNotATitleEnabled(): boolean {
 export function addNotRepeatedSentencesEnabled(): boolean {
   return envFlag("ADD_NOT_REPEATED_SENTENCES_ENABLED");
 }
+
+/**
+ * UNKNOWN_PLACE_NOT_ACCOUNT_ENABLED (QA's D5 follow-up, 11 Nov 2026; default off): "Create an SDIT EPP for <name> at IA
+ * Altoona" put the whole request on the card as the Observation of Offense, and "Create a coaching form for <name> at IA
+ * Altoona" put "<name> at IA Altoona" there. A place that is not one of the salons was read as part of an account. With
+ * the flag on, "at <Place>" straight after the employee's name is where, not what happened (`ai/unknown-place-not-account.ts`).
+ * Off, as before.
+ */
+export function unknownPlaceNotAccountEnabled(): boolean {
+  return envFlag("UNKNOWN_PLACE_NOT_ACCOUNT_ENABLED");
+}
