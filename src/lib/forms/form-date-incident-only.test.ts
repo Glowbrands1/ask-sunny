@@ -207,6 +207,8 @@ describe.each(REGISTERS)(
  * own year-less dates.
  */
 const explicitIncidentIsoOrNull = explicitIncidentIso;
+/** PRIOR_SENTENCE_FIX_ENABLED as the run set it, put back after the DATE_READER_WIDE twin pins it off. */
+const PSF_BEFORE = process.env.PRIOR_SENTENCE_FIX_ENABLED;
 
 const LATE_TWICE = "create a coaching form for test employee at test salon, she was late on 10-5 and 10-15, i coached her on 10-16.";
 const PRIORS_TODAY = "Write up Ava Pellmore, Team Member, Dodge, NE, no call no show today. I coached her on 10-16 and gave a verbal on 10-21.";
@@ -239,6 +241,8 @@ describe.each(REGISTERS)("live tester findings, 26 Oct 2026 (%s)", (_register, a
   afterEach(() => {
     delete process.env.LATE_OPEN_DATE_ENABLED;
     delete process.env.DATE_READER_WIDE_ENABLED;
+    if (PSF_BEFORE === undefined) delete process.env.PRIOR_SENTENCE_FIX_ENABLED;
+    else process.env.PRIOR_SENTENCE_FIX_ENABLED = PSF_BEFORE;
   });
 
   it("off: the first late date stands alone, and the prior verbal dates the remap (the reported failures)", () => {
@@ -258,6 +262,8 @@ describe.each(REGISTERS)("live tester findings, 26 Oct 2026 (%s)", (_register, a
   it("off, DATE_READER_WIDE_ENABLED on: both late dates are read, so the first never stands alone", () => {
     withFlag(false);
     process.env.DATE_READER_WIDE_ENABLED = "true";
+    // The wider reader alone: with PRIOR_SENTENCE_FIX_ENABLED too, the remap's prior date is 10/16 instead (still this file's fix).
+    process.env.PRIOR_SENTENCE_FIX_ENABLED = "";
     expect(newestStatedDate(as(LATE_TWICE), TODAY, explicitIncidentIsoOrNull)).toBeNull();
     expect(remapDate(as(PRIORS_TODAY))).toBe("2026-10-21");
   });
