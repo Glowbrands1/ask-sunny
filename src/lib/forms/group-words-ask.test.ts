@@ -38,6 +38,21 @@ describe("GROUP_WORDS_NOT_A_NAME_ENABLED", () => {
     expect(formTopic([T1, T3])).toBe("accountability");
   });
 
+  it("Gate-Bubbles-2 (11 Nov 2026), flag on: a group word that leads another noun is never a group; the topic is kept", () => {
+    vi.stubEnv("GROUP_WORDS_NOT_A_NAME_ENABLED", "true");
+    for (const turn of ["create a coaching form about the team meeting", "make a CA for my team lead", "coaching form for the staff room cleanup"]) {
+      expect(groupNamed(turn), turn).toBeNull();
+      expect(withGroupWordsAsk(askWho, [turn]), turn).toBe(askWho);
+    }
+    expect(groupNamed("I want the same form for multiple employees")).toBe("multiple employees");
+    expect(groupNamed("create a coaching form for my employees")).toBe("my employees");
+    expect(groupNamed("create a coaching form for all staff about accountability")).toBe("all staff");
+    expect(groupNamed("the same form for my team please")).toBe("my team");
+    expect(withGroupWordsAsk(askWho, ["create a coaching form for all staff about accountability"]).content).toBe(
+      "Which employees? Tell me their full names, and I'll make the **Coaching Form** about accountability for each of them, one at a time.",
+    );
+  });
+
   it("asks which employees, keeping the Coaching Form and its topic", () => {
     vi.stubEnv("GROUP_WORDS_NOT_A_NAME_ENABLED", "false");
     expect(withGroupWordsAsk(askWho, [T1, T3])).toBe(askWho);
