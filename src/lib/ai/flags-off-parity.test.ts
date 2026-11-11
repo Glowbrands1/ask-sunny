@@ -184,6 +184,8 @@ import { privateCreatorFormsEnabled, privateCreatorsActive } from "@/lib/forms/p
  */
 
 const NEW_FLAGS = [
+  // coding 4: ATTENDANCE_PLAN_NEEDS_LATENESS (ported from Ask Bubbles, QA ruling, 11 Nov 2026; default off).
+  "ATTENDANCE_PLAN_NEEDS_LATENESS_ENABLED",
   "SLOT_RETENTION_ENABLED",
   "FIELD_ACCURACY_ENABLED",
   "DRAFT_DEDUPE_ENABLED",

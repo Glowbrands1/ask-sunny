@@ -1,4 +1,4 @@
-import { meetingNotLatenessPlanEnabled, missedShiftNotLatenessEnabled } from "@/lib/config/chat-quality-flags";
+import { attendancePlanNeedsLatenessEnabled, meetingNotLatenessPlanEnabled, missedShiftNotLatenessEnabled } from "@/lib/config/chat-quality-flags";
 
 import { employeeFirstName } from "./employee-reference";
 import { policyNamesFromViolated, type ActionPlanInput } from "./ca-action-plan";
@@ -44,8 +44,15 @@ const LATENESS = /\b(?:late|lateness|tard(?:y|iness)|on\s+time|clock(?:ed)?\s+in
 const MISSED_SHIFT =
   /\b(?:miss(?:ed|es|ing)?|skip(?:ped|s)?|did\s*n[o']?t\s+(?:work|show\s+(?:up\s+)?(?:to|for)|come\s+(?:in|to))|not\s+(?:showing|coming)\s+(?:up\s+)?(?:to|for)|walk(?:ed|s)?\s+out\s+(?:on|of)|absent\s+(?:from|for))\b[^.!?\n]{0,40}?\b(?:shifts?|work|days?)\b|\bno[- ]?call[,\s/-]*no[- ]?show\b|\bno[- ]show(?:ed)?\b|\bcall(?:ed|s)?[- ]?(?:out|off)\b/i;
 
+/*
+ * ATTENDANCE_PLAN_NEEDS_LATENESS_ENABLED (ported from Ask Bubbles: QA's prod-env reading and ruling, 11 Nov 2026; both
+ * apps): "create ca form for <name> for violating attendance policy on 10-20-26. verbal. …" saved "<name> is expected to
+ * arrive on time … Continued lateness will result …", a lateness the manager never described. As with a missed meeting
+ * or shift, an Attendance account that never states lateness keeps the general plan; one that does keeps Pau's plan.
+ */
 export function missedMeetingNotLateness(account: string): boolean {
   if (LATENESS.test(account)) return false;
+  if (attendancePlanNeedsLatenessEnabled()) return true;
   return (meetingNotLatenessPlanEnabled() && MISSED_MEETING.test(account)) || (missedShiftNotLatenessEnabled() && MISSED_SHIFT.test(account));
 }
 

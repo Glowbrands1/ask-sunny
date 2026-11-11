@@ -4370,3 +4370,15 @@ export function sameRequestOffRosterEnabled(): boolean {
 export function pastedOutlineToOpenDraftEnabled(): boolean {
   return envFlag("PASTED_OUTLINE_TO_OPEN_DRAFT_ENABLED");
 }
+
+/**
+ * ATTENDANCE_PLAN_NEEDS_LATENESS_ENABLED (ported from Ask Bubbles: QA's prod-env reading and ruling, 11 Nov 2026; default off;
+ * same flag in both apps). With ATTENDANCE_ACTION_PLAN on (production), "create ca form for <name> for violating attendance policy on
+ * 10-20-26. verbal. …" saved Pau's lateness plan ("expected to arrive on time … Continued lateness …") though no lateness
+ * was described. On: an Attendance account that never states lateness (late, tardy, on time, clocked in, arrived) keeps
+ * the general plan, as a missed meeting or shift already does (`forms/attendance-action-plan.ts`); an account that states
+ * lateness keeps Pau's plan. Off, as before.
+ */
+export function attendancePlanNeedsLatenessEnabled(): boolean {
+  return envFlag("ATTENDANCE_PLAN_NEEDS_LATENESS_ENABLED");
+}
