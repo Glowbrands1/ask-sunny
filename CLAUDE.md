@@ -14,8 +14,9 @@ citation, access/auth, knowledge sync or Woven:
 1. Check whether Ask Bubbles has the same bug. Ask for `Glowbrands1/Ask-bubbles`
    to be added to the session if it is not attached.
 2. Either port the fix there in the same session (one commit per fix,
-   `Port from Ask Sunny (<sha>): …`), or add a line to
-   `docs/parity-log.md` saying why it stays Sunny-only.
+   `Port from Ask Sunny (<sha>): …`), or add an entry saying why it stays
+   Sunny-only: one new file in `docs/parity-log/` (see its README; older
+   entries are in `docs/parity-log.md`).
 3. The pull request description says which: **Sibling app: ported in <PR> /
    not needed because …**.
 
@@ -32,6 +33,19 @@ When a manager, HR or QA reports a chat or form problem, add a regression test
 that uses **their exact wording** (see `src/app/api/forms/hr-feedback-oct21-e2e.test.ts`
 and `src/lib/ai/form-intake-qa-*.test.ts`). Prove it fails before the fix and
 passes after.
+
+Also add the report as a case in the replay pack
+(`src/app/api/chat/replay-pack/`): it runs the real chat route with
+production's flags (`src/config/production-flags.json`) and asserts
+invariants, so a fix that misses the path production takes fails CI. When QA
+flips a production flag, update that file in the same pull request.
+
+Keep their wording, not their people. The repository is public: before
+committing, swap every real employee or manager named in a production chat or
+form (with typo, nickname and first-name-only variants) for an invented name,
+used the same way in the test and every fixture it reads, and check the
+invented name is not on the directory. `src/lib/security/no-real-people.test.ts`
+says how to check a change against a local roster export.
 
 ## 3. Before pushing
 

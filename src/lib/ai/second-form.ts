@@ -7,7 +7,7 @@ import { detectTemplateIntent } from "@/lib/forms/template-intent";
  * Follow-up coaching is its own template. "Another" and "second" are too.
  * A redraft of the open form is not. A form word that leads, with the
  * person's name later in the sentence, is a new document too: "coaching for
- * cell phone use … for Colene Schildt" is a coaching form, and a finalized
+ * cell phone use … for Corena Schardt" is a coaching form, and a finalized
  * corrective action already on the thread does not answer it. Off, callers
  * ignore this and keep the revision path.
  */

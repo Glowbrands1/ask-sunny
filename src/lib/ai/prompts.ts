@@ -1,11 +1,17 @@
 import { REPORTS } from "@/features/reports/reports-routes";
 import { promptCacheEnabled } from "@/lib/config/chat-quality-flags";
+import { withSalesException } from "./ca-sales-prompt-lines";
 import { displayLocator } from "@/lib/knowledge/locator";
 import type { AnswerMode } from "@/types";
+import { CROSS_CHAT_REPLY_RULE } from "@/lib/chat/cross-chat-guard";
 import { CHAT_STYLE_RULES } from "./chat-style-rules";
 import { buildLastKnownGoodSystemPrompt } from "./prompts-last-known-good";
 import { PRIOR_COACHING_OPTIONAL_RULES } from "./prior-coaching-optional";
+import { RETRIEVED_NOT_SHARED_NOTE, RETRIEVED_NOT_SHARED_RULE } from "./sources-not-shared";
 import type { AskContext, OpenFormSummary } from "./types";
+
+/** The rule the retrieved-sources rule follows in the flag-off template. */
+const NEVER_CLAIM_RULE = "- Never claim you have read, checked, searched or reviewed anything beyond the provided sources.";
 
 /**
  * SUNNY'S PRODUCTION SYSTEM INSTRUCTION AND GROUNDING FORMAT.
@@ -469,6 +475,12 @@ export function buildSystemPrompt(input: {
    */
   hasPersonMemory?: boolean;
   /**
+   * CROSS_CHAT_REPLY_GUARD_ENABLED. Adds the rule that nothing from another
+   * conversation is the manager's to have said in this one, and words the
+   * person-memory rules as records rather than "last time you mentioned".
+   */
+  crossChatGuard?: boolean;
+  /**
    * Whether a FORMS ON FILE block — forms already created, read from Form
    * Monitoring under this user's forms visibility — is attached to this turn.
    *
@@ -525,6 +537,18 @@ export function buildSystemPrompt(input: {
    * UNIFIED_AUTHORITY_ORDER_ENABLED is on.
    */
   unifiedAuthority?: boolean;
+  /**
+   * The whole JBA Policy Manual is in the prompt. Omitted or false leaves
+   * the [S#] citation rule unchanged. Set only when FULL_MANUAL_CONTEXT_ENABLED
+   * is on and that manual loaded.
+   */
+  citeManualPages?: boolean;
+  /**
+   * The coaching framework is among this turn's sources and
+   * FRAMEWORK_GENERAL_SECTIONS_ENABLED is on. Omitted or false leaves the
+   * prompt byte-for-byte unchanged.
+   */
+  frameworkGeneralSections?: boolean;
 }): string {
   if (revision === "last-known-good") return buildLastKnownGoodSystemPrompt(input);
   const { assistantName, brandName, salonNoun, context, mode, hasContext } = input;
@@ -536,6 +560,7 @@ export function buildSystemPrompt(input: {
   const hasMissingReports = input.hasMissingReports ?? false;
   const hasFormsLibrary = input.hasFormsLibrary ?? false;
   const hasPersonMemory = input.hasPersonMemory ?? false;
+  const crossChatGuard = input.crossChatGuard ?? false;
   const hasFormRecords = input.hasFormRecords ?? false;
 
   /*
@@ -560,8 +585,15 @@ export function buildSystemPrompt(input: {
    *
    * So the kinds are numbered from the blocks present: 2, 3 or 4.
    */
+  const citeManualPages = input.citeManualPages === true;
+  const companyKnowledge = citeManualPages
+    ? "Company knowledge — anything drawn from the JBA Policy Manual for Sun Tan City in the prompt. Mark every policy statement with the printed page already on that text, like [p.19]. Put the marker at the end of the sentence it supports."
+    : "Company knowledge — anything drawn from the provided sources. Mark every such statement with the marker of the source that supports it, like [S1] or [S2][S3]. Put the marker at the end of the sentence it supports.";
+  const markerRule = citeManualPages
+    ? "- Mark a policy with the printed page from that manual, like [p.19]. Use only a page printed in the manual. Do not use an [S#] marker. Do not cite a DM manual, a Salon Director manual, Buff City Soap, or Crunch."
+    : "- Never use a marker for a source that is not listed below. Only the markers listed are valid.";
   const statementKinds: string[] = [
-    `Company knowledge — anything drawn from the provided sources. Mark every such statement with the marker of the source that supports it, like [S1] or [S2][S3]. Put the marker at the end of the sentence it supports.`,
+    companyKnowledge,
     `General management guidance — your own judgement about how to handle a conversation, structure a plan, or approach a person. Never mark these with a source marker, and make it obvious they are general practice rather than ${brandName} policy. A phrase like "as a general approach" is enough.`,
   ];
 
@@ -585,7 +617,9 @@ export function buildSystemPrompt(input: {
 
   if (hasPersonMemory) {
     statementKinds.push(
-      `Earlier conversations — anything drawn from the ${MEMORY_SECTION} section below. These are the manager's own words from earlier Ask Sunny conversations, and the forms they created, about people named here. Never mark them with a source marker. Say where they came from in plain words — for example "Last time you mentioned that…" or "On October 3 you told me…".`,
+      crossChatGuard
+        ? `Earlier conversations — anything drawn from the ${MEMORY_SECTION} section below. These are records from other Ask Sunny conversations, and the forms the manager created, about people named here. Never mark them with a source marker. A form is a record on file — say "On file: …". Mention an earlier conversation only because the manager referred back to it in this one, and never say the manager raised or sent this before otherwise.`
+        : `Earlier conversations — anything drawn from the ${MEMORY_SECTION} section below. These are the manager's own words from earlier Ask Sunny conversations, and the forms they created, about people named here. Never mark them with a source marker. Say where they came from in plain words — for example "Last time you mentioned that…" or "On October 3 you told me…".`,
     );
   }
 
@@ -601,7 +635,7 @@ export function buildSystemPrompt(input: {
     .join("\n");
 
   const employeeSection = hasFrameworkGrounding
-    ? `\n\n${withUnifiedAuthority(EMPLOYEE_PERFORMANCE_RULES, input.unifiedAuthority === true).replaceAll("{{BRAND}}", brandName)}\n\n${
+    ? `\n\n${withSalesException(withUnifiedAuthority(EMPLOYEE_PERFORMANCE_RULES, input.unifiedAuthority === true)).replaceAll("{{BRAND}}", brandName)}\n\n${
         hasEmployeeFactsBlock ? EMPLOYEE_FACTS_ATTACHED_RULES : NO_INGESTED_DATASET_RULES
       }`
     : "";
@@ -664,7 +698,7 @@ export function buildSystemPrompt(input: {
 - Where a form is: a manager creates one by asking Ask Sunny, here in the conversation. Forms already created are in Forms → Form Monitoring. A form already created CAN be changed, here in the conversation: the manager asks for it by form and employee — for example "edit the exit form for Lacey Morrow" — and the form comes back into the conversation to edit; a finalized one opens as a new draft with everything carried over, and the finalized original stays on file. A finalized form's card also has an Edit as new draft button. Never say a created or finalized form cannot be edited, copied or drafted again. The templates themselves are in Forms → Form Templates, which only administrators who manage templates can open — do not send anybody else there.`
     : "";
 
-  const personMemorySection = hasPersonMemory
+  const plainPersonMemorySection = hasPersonMemory
     ? `\n\nWHAT THE MANAGER TOLD YOU BEFORE
 
 - The ${MEMORY_SECTION} section is the manager's own earlier account of the people named in this conversation. Use it so they do not have to repeat themselves: connect what they ask now to what they told you before, and notice patterns across conversations — a second late arrival, a follow-up that was due.
@@ -674,6 +708,19 @@ export function buildSystemPrompt(input: {
 - A form is only on record if the section lists it under forms the manager created. An earlier conversation that discussed a coaching or corrective action is not proof one was filed.
 - Use what is relevant to the question and leave the rest. Do not recite the history back unprompted.`
     : "";
+  /*
+   * CROSS_CHAT_REPLY_GUARD_ENABLED. QA: "You raised this same situation with me
+   * on October 23" about a chat the manager never mentioned. The rule travels
+   * with every answer while the flag is on, memory or not.
+   */
+  const crossChatSection = crossChatGuard ? `\n\nOTHER CONVERSATIONS\n\n${CROSS_CHAT_REPLY_RULE}` : "";
+  const personMemorySection =
+    (crossChatGuard
+      ? plainPersonMemorySection.replace(
+          /^- The [^\n]*notice patterns across conversations[^\n]*$/m,
+          `- The ${MEMORY_SECTION} section holds records from other conversations and the forms the manager created, about people named here. An earlier conversation is in it only because the manager referred back to one in this conversation; a form is there as a record on file.`,
+        )
+      : plainPersonMemorySection) + crossChatSection;
 
   /*
    * FORMS ON FILE. Sunny used to answer "does Wren have previous coachings?"
@@ -712,7 +759,7 @@ export function buildSystemPrompt(input: {
    */
   if (!promptCacheEnabled()) {
     // MAIN_PROMPT_RETURN
-    return `You are ${assistantName}, the internal assistant for ${brandName} managers. You are talking to ${context.userName}, who runs ${context.locationName}. Today is ${context.todayIso}.
+    const body = `You are ${assistantName}, the internal assistant for ${brandName} managers. You are talking to ${context.userName}, who runs ${context.locationName}. Today is ${context.todayIso}.
 
 Your job is to help a manager run their ${salonNoun}: company policy, operations, coaching conversations, training, and performance.
 
@@ -741,6 +788,20 @@ Direct, warm, practical. Write the way a good regional manager talks: plain sent
 
 ${SUNNY_VOICE}`;
     // END_MAIN_PROMPT_RETURN
+    /*
+     * The retrieved-sources rule joins the template after it, so the frozen
+     * template above stays byte-identical. See `sources-not-shared.ts`.
+     */
+    const ruled = body.replace(NEVER_CLAIM_RULE, `${NEVER_CLAIM_RULE}\n${RETRIEVED_NOT_SHARED_RULE}`);
+    return withFrameworkGeneralSections(
+      citeManualPages
+        ? ruled.replace(
+            "- Never use a marker for a source that is not listed below. Only the markers listed are valid.",
+            markerRule,
+          )
+        : ruled,
+      input.frameworkGeneralSections === true,
+    );
   }
 
   const reportBullet = hasReportData
@@ -778,7 +839,7 @@ ${SUNNY_VOICE}`;
     .filter((part) => part.length > 0)
     .join("\n\n");
 
-  return `You are ${assistantName}, the internal assistant for ${brandName} managers.
+  return withFrameworkGeneralSections(`You are ${assistantName}, the internal assistant for ${brandName} managers.
 
 Your job is to help a manager run their ${salonNoun}: company policy, operations, coaching conversations, training, and performance.
 
@@ -791,9 +852,10 @@ ${taxonomy}
 RULES YOU DO NOT BREAK
 
 - Never state a ${brandName} policy, number, deadline, threshold or entitlement that is not in the provided sources. If a manager needs a specific figure and it is not there, say so.
-- Never use a marker for a source that is not listed below. Only the markers listed are valid.
+${markerRule}
 - Never invent a document title, a page number, a section name or a policy name. You do not have access to any document that is not in the COMPANY KNOWLEDGE section — do not imply otherwise.
 - Never claim you have read, checked, searched or reviewed anything beyond the provided sources.
+${RETRIEVED_NOT_SHARED_RULE}
 - If the sources do not cover the question, say plainly that the knowledge base does not have it, say what you would need, and stop. Do not fill the gap with plausible-sounding policy. An honest "I do not have that" is the correct answer, not a failure.
 - Signature lines, corrective-action decisions and anything with legal weight stay with the manager. Point them at the policy language; do not decide for them.
 - NEVER WRITE A FACSIMILE OF A COMPANY FORM. Do not produce a "Coaching Record", a "Coaching Form", a corrective action write-up or any other document with fill-in blanks, signature lines or field labels, and never tell a manager to paste your text into an official form. ${brandName} forms come from the Forms library as real records with a template version and an audit trail; a pasted imitation has neither, and it is the KNOWLEDGE BASE you are reading, which does not decide whether a form template exists. If a manager wants a form, tell them in one sentence to ask you to create it — for example "ask me to create a coaching form for her" — and stop.
@@ -806,7 +868,34 @@ ${SUNNY_VOICE}
 
 ---DYNAMIC---
 
-${tail}`;
+${tail}`, input.frameworkGeneralSections === true);
+}
+
+const UNCOVERED_RULE =
+  '- If the sources do not cover the question, say plainly that the knowledge base does not have it, say what you would need, and stop. Do not fill the gap with plausible-sounding policy. An honest "I do not have that" is the correct answer, not a failure.';
+
+/**
+ * THE COACHING FRAMEWORK COVERS AN ISSUE IT DOES NOT NAME
+ * (FRAMEWORK_GENERAL_SECTIONS_ENABLED).
+ *
+ * "Struggling to complete production timely … complains every shift" was
+ * answered "the knowledge base doesn't have a section that matches" with the
+ * framework's root-cause, performance-vs-behavior and conversation sections in
+ * the sources (QA, sibling app conv_mvb28ztb85z53mc). The rule above read "no
+ * section names it" as "not covered". Added after that rule only when the
+ * framework is a source and the flag is on; otherwise the prompt is unchanged.
+ */
+export const FRAMEWORK_GENERAL_SECTIONS_RULE =
+  "- WHEN THE COACHING FRAMEWORK IS AMONG THE SOURCES, A PEOPLE ISSUE IT DOES NOT NAME IS STILL COVERED BY ITS GENERAL SECTIONS: root cause identification, the difference between performance issues and behavior issues, and the coaching conversation structure. Answer from those sections and cite them by their markers. Say only that no section names this exact issue; do not say the knowledge base does not have it.";
+
+function withFrameworkGeneralSections(prompt: string, on: boolean): string {
+  if (!on || !prompt.includes(UNCOVERED_RULE)) return prompt;
+  return prompt.split(UNCOVERED_RULE).join(`${UNCOVERED_RULE}\n${FRAMEWORK_GENERAL_SECTIONS_RULE}`);
+}
+
+/** The coaching framework, read from a source's title. */
+export function isCoachingFrameworkTitle(title: string): boolean {
+  return /\bperformance management framework\b/i.test(title);
 }
 
 /**
@@ -828,10 +917,20 @@ export function openFormRule(form: OpenFormSummary): string {
   const lines = form.lines.length
     ? form.lines.map((line) => `    ${line.label}: ${JSON.stringify(line.value)}`).join("\n")
     : "    (nothing filled in yet)";
-  const policy =
+  const blank = form.blankPolicy ?? [];
+  const policy = [
     form.unverifiedPolicy.length > 0
       ? `Not yet checked against the official manual: ${form.unverifiedPolicy.join(", ")}.`
-      : "Its policy lines, where it has any, were quoted from the official manual.";
+      : blank.length > 0
+        ? null
+        : "Its policy lines, where it has any, were quoted from the official manual.",
+    // POLICY_GATE_NONBLOCKING_ENABLED: a blank policy line was neither quoted nor checked; never say it was verified.
+    blank.length > 0
+      ? `Blank, so nothing on it was checked against the official manual (never say it is verified): ${blank.join(", ")}.`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
   return `- A FORM IS OPEN IN THIS CONVERSATION: the ${form.templateName} for ${form.employeeName}, ${form.status === "draft" ? "a draft the manager can still edit" : "finalized"}. It is on screen as a card above. NEVER say no form has been created, never say there is no draft card, and never ask the manager to create this form again. ${policy} What it says now:
 ${lines}
 - The form's text is the record, not a company source: never cite it with a marker.
@@ -860,6 +959,8 @@ export function buildGroundingBlock(chunks: GroundingChunk[]): string {
     .join("\n\n---\n\n");
 
   return `COMPANY KNOWLEDGE
+
+${RETRIEVED_NOT_SHARED_NOTE}
 
 The following excerpts are the only company documents available for this question. Valid markers are ${chunks
     .map((chunk) => `[S${chunk.marker}]`)
@@ -891,9 +992,43 @@ export function extractUsedMarkers(answer: string, validMarkers: number[]): numb
  * the existing UI renders them. Markers out of range are removed too, so a
  * model slip never reaches the manager as a dangling "[S9]".
  */
-export function stripMarkers(answer: string): string {
+export function stripMarkers(answer: string, options: { readonly tidy?: boolean } = {}): string {
+  if (options.tidy) return stripMarkersTidily(answer);
   return answer
     .replace(/\s*\[S\d{1,2}\](?=[\s.,;:!?)]|$)/g, "")
+    .replace(/[^\S\n]{2,}/g, " ")
+    .trim();
+}
+
+/*
+ * REMOVING A MARKER NEVER LEAVES ITS GRAMMAR BEHIND (REFORMAT_KEEPS_SOURCES_ENABLED).
+ *
+ * "I cited two markers, [S6] and [S7], that are not valid sources" became
+ * "I cited two markers, and, that are not valid sources" (QA,
+ * conv_mufp73ez8pl7992). A run of markers joined by commas, "and", "or" or
+ * "&" is one group and goes as one; a group between two commas takes the
+ * commas, a group in brackets takes the brackets, and the word it was read
+ * through ("see [S2]", "per [S1]") goes with it. "[S2][S3]" goes whole. A
+ * list item left with nothing but its bullet is dropped.
+ */
+const MARKER = String.raw`\[S\d{1,2}\]`;
+const MARKER_GROUP = String.raw`${MARKER}(?:[^\S\n]*(?:,[^\S\n]*(?:and|or)[^\S\n]+|,|;|&|and[^\S\n]+|or[^\S\n]+)?[^\S\n]*${MARKER})*`;
+const AFTER_GROUP = String.raw`(?=[\s.,;:!?)]|$)`;
+
+function stripMarkersTidily(answer: string): string {
+  const group = (pattern: string) => new RegExp(pattern, "gi");
+  return answer
+    .replace(group(String.raw`[^\S\n]*\([^\S\n]*(?:(?:see|per|from|in)[^\S\n]+)?${MARKER_GROUP}[^\S\n]*\)`), "")
+    .replace(group(String.raw`[^\S\n]*,[^\S\n]*${MARKER_GROUP}[^\S\n]*,`), "")
+    .replace(group(String.raw`[^\S\n]+(?:at|see|on|in|per|from|under)[^\S\n]+${MARKER_GROUP}${AFTER_GROUP}`), "")
+    .replace(group(String.raw`[^\S\n]*${MARKER_GROUP}${AFTER_GROUP}`), "")
+    .replace(/[^\S\n]+([,.;:!?)])/g, "$1")
+    .replace(/,(?=[.;:!?])/g, "")
+    .replace(/,{2,}/g, ",")
+    .replace(/\([^\S\n]*\)/g, "")
+    .split("\n")
+    .filter((line) => !/^[^\S\n]*(?:[-*•]|\d{1,2}[.)])[^\S\n]*[.,;:]?[^\S\n]*$/.test(line))
+    .join("\n")
     .replace(/[^\S\n]{2,}/g, " ")
     .trim();
 }

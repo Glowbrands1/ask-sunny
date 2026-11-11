@@ -1,0 +1,3028 @@
+{
+  "note": "JBA Policy Manual, all 151 knowledge_chunks rows (version 1), md5-verified against both production DBs on 24 Oct 2026. Rows are byte-identical in Ask Bubbles (document 81622d77-ee6c-55f6-904d-dee057907a13) and Ask Sunny (document ce6b00f1-ff30-565f-b446-53fd268a1695): md5 of the ordered per-row content md5s = 202067015389cd47c65eaec1cc056ea8; of metadata|locator|page|section = ee5bf01d0c5d998681d4c70db4715087. Columns are the ones full-manual-load.ts selects. Chunks 17 and 18 (the Reference List) are redacted: the four people's names and personal work addresses are replaced with invented ones (titles kept, metadata.charCount updated). Every other row is verbatim. Content md5 aggregate after redaction: 892f25bada4a1dc27f4e20e40f2775f4; the other 149 rows: 6fc5fe7807ecf5c78b32a6692f50ed9c.",
+  "document_ids": {
+    "ask-bubbles": "81622d77-ee6c-55f6-904d-dee057907a13",
+    "ask-sunny": "ce6b00f1-ff30-565f-b446-53fd268a1695"
+  },
+  "title": "JBA Policy Manual Edited 5.2025",
+  "chunks": [
+    {
+      "chunk_index": 0,
+      "locator": "Page 1",
+      "page": 1,
+      "section": null,
+      "content": "2025\n\nJB & Associates\n\nEmployment Policy\n\nManual\n\nREVISED MAY 2025\n\nINCLUDES ALL BRANDS OPERATED BY JB & ASSOCIATES, INC, HERIN\n\nREFFERRED TO AS “THE COMPANY\"\n\nThe Company Employment Policy Manual\nThis manual is designed to acquaint and provide employees with information about working conditions,\nEmployee benefits, and the policies affecting employment.\nEmployees must read, understand, and comply with all provisions of the Employment Policy Manual\nNo Employee manual can anticipate every circumstance or question about policy. As The Company\ncontinues to grow, the need may arise, and The Company reserves the right to revise, supplement, or\nrescind any policies or portion of the manual from time to time as it deems appropriate, in its sole and\nabsolute discretion. These provisions supersede all existing policies and practices and may not be\namended or added to without the express written approval of the official legal representative(s) of The\nCompany.\nThe only exception to any changes is our employment-at-will policy permitting employees or The\nCompany to end our relationship for any reason at any time. Employees will be notified of changes to the\nmanual as they occur.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 1,
+            "heading": "JB & Associates"
+          },
+          {
+            "page": 1,
+            "heading": "Employment Policy"
+          },
+          {
+            "page": 1,
+            "heading": "Manual"
+          },
+          {
+            "page": 1,
+            "heading": "REVISED MAY 2025"
+          },
+          {
+            "page": 1,
+            "heading": "INCLUDES ALL BRANDS OPERATED BY JB & ASSOCIATES, INC, HERIN"
+          },
+          {
+            "page": 1,
+            "heading": "REFFERRED TO AS “THE COMPANY\""
+          },
+          {
+            "page": 1,
+            "heading": "The Company Employment Policy Manual"
+          }
+        ],
+        "charCount": 1184,
+        "printedPage": null,
+        "tokenEstimate": 296
+      }
+    },
+    {
+      "chunk_index": 1,
+      "locator": "Page 1 — Disclaimer",
+      "page": 2,
+      "section": "Disclaimer",
+      "content": "Disclaimer\nThis Manual has been reviewed for legal compliance. There may be federal, state, or local laws,\nregulations or ordinances that are inconsistent with parts of this Manual because of changes to the\nlegal landscape or inadvertent oversight. Any such inconsistencies should be brought to the attention of\nHuman Resources. Federal, state, or local law, regulations and ordinances will govern where\ninconsistent with the Policy Manual.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 1,
+            "heading": "Disclaimer"
+          }
+        ],
+        "charCount": 440,
+        "printedPage": 1,
+        "tokenEstimate": 110
+      }
+    },
+    {
+      "chunk_index": 17,
+      "locator": "Page 6 — Reference List",
+      "page": 7,
+      "section": "Reference List",
+      "content": "Reference List\n\nLincoln Support Center Telephone: 402-488-8261\n\nLeadership Team\nCeleste Ostrander Owner celeste.ostrander@glowbrands.com\nRosalyn Calloway Executive VP of People and Operations rosalyn.calloway@glowbrands.com\n\nSupport Center\nMarketing jbamarketing@Glowbrands.com\nAccounting accountingjba@Glowbrands.com\nPayroll jbapayroll@Glowbrands.com\nHuman Resources jbahr@Glowbrands.com\nProducts & Supplies jbasupplychain@glowbrands.com",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 6,
+            "heading": "Reference List"
+          },
+          {
+            "page": 6,
+            "heading": "Lincoln Support Center Telephone: 402-488-8261"
+          },
+          {
+            "page": 6,
+            "heading": "Leadership Team"
+          },
+          {
+            "page": 6,
+            "heading": "Support Center"
+          }
+        ],
+        "charCount": 438,
+        "printedPage": 6,
+        "tokenEstimate": 105
+      }
+    },
+    {
+      "chunk_index": 18,
+      "locator": "Pages 6–7 — Maintenance Team",
+      "page": 7,
+      "section": "Maintenance Team",
+      "content": "Maintenance Team\nOwen Tremaine Maintenance Technician owen.tremaine@suntancity.com\nHarper Lyle Maintenance Technician harper.lyle@suntancity.com\n\nCore Values\n\nNothing’s Impossible\n• The answers are out there, it’s up to us to find it.\n\nWork Hard, Have Fun\n• If you make work fun, it wont feel like hardwork.\n\nWe Speak Up\n• When we need help, when something’s not right, when we have a question, when we can\nimprove.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 6,
+            "heading": "Maintenance Team"
+          },
+          {
+            "page": 7,
+            "heading": "Core Values"
+          },
+          {
+            "page": 7,
+            "heading": "Nothing’s Impossible"
+          },
+          {
+            "page": 7,
+            "heading": "Work Hard, Have Fun"
+          },
+          {
+            "page": 7,
+            "heading": "We Speak Up"
+          }
+        ],
+        "charCount": 415,
+        "printedPage": 6,
+        "tokenEstimate": 106
+      }
+    },
+    {
+      "chunk_index": 19,
+      "locator": "Page 7 — Own the Outcome",
+      "page": 8,
+      "section": "Own the Outcome",
+      "content": "Own the Outcome\n• Be accountable to your results.\n\nWin Together\n• We share success and support each other along the way.\n\nOur Culture\nThe Company's brand of culture is a direct reflection of The Company's identity and image, and\nour deeply held core values of integrity, respect, trust, teamwork, and excellence. Employees\nwill notice our culture emerging in the way we treat our Employees, customers, and the\ncommunity.\nWe believe that the collective experience of all Employees is far superior to the individual\nknowledge of any one person. The result is a company where Employees depend on each other\nto be successful. We focus on teamwork, a hallmark of our culture that extends beyond our own\nEmployees to our customers, suppliers, and vendors around the country.\nWe expect our Employees to act with honesty and integrity with themselves and with one\nanother. As part of this emphasis, we promote an atmosphere where feedback is encouraged\nand happens often. Brand building and culture are linked at The Company’s core values. With\nour unique culture, we speak to The Brand's enduring values and relevance — creating and\ncultivating a greater presence for The Company. Please reference the Integrity Guide for\nadditional policies and behaviors that would impact employment",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 7,
+            "heading": "Own the Outcome"
+          },
+          {
+            "page": 7,
+            "heading": "Win Together"
+          },
+          {
+            "page": 7,
+            "heading": "Our Culture"
+          }
+        ],
+        "charCount": 1277,
+        "printedPage": 7,
+        "tokenEstimate": 320
+      }
+    },
+    {
+      "chunk_index": 20,
+      "locator": "Pages 7–8 — Work Policies & Regulations",
+      "page": 8,
+      "section": "Work Policies & Regulations",
+      "content": "Work Policies & Regulations\n\nAt-Will Employment\nEmployment with The Company is voluntarily entered into, and the Employee is free to resign at\nwill any time, with or without cause. The Company may terminate the employment relationship\n\nat will at any time, with or without notice or cause, so long as there is no violation of applicable\nfederal or state law.\nPolicies set forth in this manual are not intended to create a contract, nor are they to be\nconstrued to constitute contractual obligations of any kind or a contract of employment\nbetween The Company and any of its Employees. Employment contracts must be in writing,\nlimited to a specified period of time and can only be created by the approved legal\nrepresentative(s) of The Company.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 7,
+            "heading": "Work Policies & Regulations"
+          },
+          {
+            "page": 7,
+            "heading": "At-Will Employment"
+          }
+        ],
+        "charCount": 743,
+        "printedPage": 7,
+        "tokenEstimate": 186
+      }
+    },
+    {
+      "chunk_index": 21,
+      "locator": "Page 8 — Equal Employment Opportunity",
+      "page": 9,
+      "section": "Equal Employment Opportunity",
+      "content": "Equal Employment Opportunity\nThe Company is committed to equal employment opportunity and implements a policy of\nnondiscrimination and affirmative action. The Company will recruit, interview, hire, classify,\nselect for training, promote, demote, discipline, transfer, adjust rates of pay and terminate on\nthe basis of merit and qualification without regard to race, religion, creed, color, nationality,\nphysical disability, sex, sexual orientation, age, veteran’s status or any other characteristic\ncovered by law.\nAny Employee determined to have violated this policy in any respect will be subject to\nimmediate discipline, up to and including termination. The Company complies with applicable\nstate, local and federal laws governing nondiscrimination in employment. Equal employment\nopportunity notices are posted in appropriate areas required by law.\nAnyone who believes this policy has been violated may report this violation to the Human\nResources Department.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 8,
+            "heading": "Equal Employment Opportunity"
+          }
+        ],
+        "charCount": 963,
+        "printedPage": 8,
+        "tokenEstimate": 241
+      }
+    },
+    {
+      "chunk_index": 22,
+      "locator": "Page 8 — Open Door Policy",
+      "page": 9,
+      "section": "Open Door Policy",
+      "content": "Open Door Policy\nEvery Employee is encouraged to open up to their managers about their ideas, perspectives or\nfeedback. In return, the managers are expected to not only make themselves available but also\nfoster an environment where Employees’ ideas are welcomed, and their issues are resolved\nquickly. Both Parties are expected to foster an environment of trust and mutual respect to\nenhance individual performance, team collaboration, and success.\nThe policy also extends to Human Resources. Employees should contact HR if they have any\nquestions or concerns about their workplace. There will be no adverse effects based on\ncomments or concerns that are raised.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 8,
+            "heading": "Open Door Policy"
+          }
+        ],
+        "charCount": 662,
+        "printedPage": 8,
+        "tokenEstimate": 166
+      }
+    },
+    {
+      "chunk_index": 23,
+      "locator": "Page 8 — Immigration Law Compliance",
+      "page": 9,
+      "section": "Immigration Law Compliance",
+      "content": "Immigration Law Compliance\nThe Company is committed to employing only United States citizens and aliens who are\nauthorized to work in the United States and does not unlawfully discriminate on the basis of\ncitizenship or national origin.\nIn compliance with the Immigration Reform and Control Act of 1986, each newly hired or\nrehired Employee, as a condition of employment, must complete the Employment Eligibility\nVerification Form I-9 and present documentation establishing identity and employment\neligibility.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 8,
+            "heading": "Immigration Law Compliance"
+          }
+        ],
+        "charCount": 510,
+        "printedPage": 8,
+        "tokenEstimate": 128
+      }
+    },
+    {
+      "chunk_index": 24,
+      "locator": "Page 9 — Immigration Law Compliance",
+      "page": 10,
+      "section": "Immigration Law Compliance",
+      "content": "Employees with questions or seeking more information on immigration law issues are\nencouraged to contact Human Resources. Employees may raise questions or complaints about\nimmigration law compliance without fear of reprisal.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 9,
+            "heading": "Disability Accommodation-Americans with Disability Act"
+          }
+        ],
+        "charCount": 224,
+        "printedPage": 9,
+        "tokenEstimate": 56
+      }
+    },
+    {
+      "chunk_index": 25,
+      "locator": "Page 9 — Immigration Law Compliance",
+      "page": 10,
+      "section": "Immigration Law Compliance",
+      "content": "Employees may raise questions or complaints about\nimmigration law compliance without fear of reprisal.\n\nDisability Accommodation-Americans with Disability Act\nThe Company is committed to complying fully with the Americans with Disabilities Act (ADA) and\nensuring equal opportunity in employment for all qualified persons with disabilities. All\nemployment practices and activities are conducted on a non-discriminatory basis. Reasonable accommodation is available to all disabled employees, where their disability affects\nthe performance of job functions. All employment decisions are based on the merits of the\nsituation in accordance with defined criteria, not the disability of the individual. The Act and\nfinal regulations offer protection to individuals who previously had not been considered to be\ndisabled. Under the ADA, an Employee is disabled if they can establish one of three criteria, he\nor she:\no Has a physical or mental impairment that substantially limits one or more of the major life\nactivities of such an individual. o Has a record of such impairment; or\no is regarded as having such impairment. The final regulation greatly expands the meaning of, (but provide only guidelines for)\n“substantially limits” and “major life activities”. An employee can have an impairment that is\ncompletely controlled through medication and not actually have any limitation on life activities. However, the employee may still be deemed disabled under ADA. Additionally, impairments\nmay now be of short duration, intermittent, or episodic and still qualify for disability\nIt is the employee’s responsibility to inform HR (please see reference list) of any need for an\naccommodation.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 9,
+            "heading": "Disability Accommodation-Americans with Disability Act"
+          }
+        ],
+        "charCount": 1682,
+        "printedPage": 9,
+        "tokenEstimate": 421
+      }
+    },
+    {
+      "chunk_index": 26,
+      "locator": "Page 9 — Immigration Law Compliance",
+      "page": 10,
+      "section": "Immigration Law Compliance",
+      "content": "Additionally, impairments\nmay now be of short duration, intermittent, or episodic and still qualify for disability\nIt is the employee’s responsibility to inform HR (please see reference list) of any need for an\naccommodation.\n\nUpon doing so, The Company may ask for input or the type of accommodation\nbelieved may be necessary, or the function limitations caused by a medical condition. When\nappropriate, The Company may need permission to obtain additional information from a\nphysician or other medial or rehabilitation professionals.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 9,
+            "heading": "Disability Accommodation-Americans with Disability Act"
+          }
+        ],
+        "charCount": 535,
+        "printedPage": 9,
+        "tokenEstimate": 134
+      }
+    },
+    {
+      "chunk_index": 27,
+      "locator": "Page 9 — Sexual and Other Forms of Harassment",
+      "page": 10,
+      "section": "Sexual and Other Forms of Harassment",
+      "content": "Sexual and Other Forms of Harassment\nThe Company prohibits dissimilar and unfair treatment of any Employee or individual because of\nhis/her race, color, religion, sex, age, national origin, mental or physical disability, marital status,\nveteran status, sexual orientation, family relations, injured worker status or any other status\nprohibited by law. This includes harassment and intimidation. Harassment is behavior perceived\nby the receiver as unwelcome and includes, but not limited to; the use of verbal or practical\njokes, unwelcome touching, offensive remarks or put-downs, displays of objects, or other\nmaterials which create an offensive work environment.\nHarassment may take many forms, including, but not limited to:",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 9,
+            "heading": "Sexual and Other Forms of Harassment"
+          }
+        ],
+        "charCount": 727,
+        "printedPage": 9,
+        "tokenEstimate": 182
+      }
+    },
+    {
+      "chunk_index": 28,
+      "locator": "Page 10 — Sexual and Other Forms of Harassment",
+      "page": 11,
+      "section": "Sexual and Other Forms of Harassment",
+      "content": "o VERBAL HARASSMENT: including sexual innuendoes, suggestive comments, jokes of a sexual\nnature, sexual propositions, and threats. o NON-VERBAL HARASSMENT: including sexually suggestive objects or pictures, graphics,\ncommentaries, suggestive or insulting sounds, leering, whistling and obscene gestures\n(electronically or otherwise). o PHYSICAL HARASSMENT: unwanted physical contact, including touching, pinching, brushing\nthe body, neck, or back rubs, coerced sexual contact or assault. o HOSTILE WORK ENVIRONMENT: A hostile environment can result from the unwelcome\nconduct of Supervisors, co-workers, customers, contractors, or anyone else with whom the\nvictim interacts on the job, and the unwelcome conduct renders the workplace atmosphere\nintimidating, hostile, or offensive. Examples of behaviors that may contribute to an unlawful\nhostile environment include:\n▪ Discussing sexual activities. ▪ Telling off-color jokes concerning race, sex, disability, or other protected bases. ▪ Unnecessary touching. ▪ Commenting on physical attributes. ▪ Displaying sexually suggestive or racially insensitive pictures. ▪ Using demeaning or inappropriate terms or epithets. ▪ Using indecent gestures. ▪ Using crude language. ▪ Sabotaging the victim's work. ▪ Engaging in hostile physical conduct. The above items can be violated either in person or through social media. Employees may reserve the\nright to notify local authorities if they feel threatened and if they are of the belief that laws have been\nviolated.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [],
+        "charCount": 1508,
+        "printedPage": 10,
+        "tokenEstimate": 377
+      }
+    },
+    {
+      "chunk_index": 29,
+      "locator": "Page 10 — Sexual and Other Forms of Harassment",
+      "page": 11,
+      "section": "Sexual and Other Forms of Harassment",
+      "content": "Employees may reserve the\nright to notify local authorities if they feel threatened and if they are of the belief that laws have been\nviolated.\n\nEx: Terroristic threatening, threats of physical harm, threats of or damage to personal property,\nstalking, etc. The HR department (please see reference list) MUST BE NOTIFIED in conjunction with\ncriminal charges. Incident reports, statements, screenshots/photos, or other evidence relevant to the\noffense must be provided in conjunction with the incident report and statements. Such conduct may result in disciplinary action up to and including dismissal or other action as\nappropriate. (See Sexual Harassment Policy located in the Employee Policy Manual). The\nCompany has a policy against retaliation. No employee shall be retaliated against for raising a\ncomplaint of harassment or discrimination. Any harassment claim or offense must be reported\nimmediately upon discovery. It is the employees responsibility to report the harassment to The\nCompany senior management team. The Company harassment and nondiscrimination policy applies to all conduct on The Company\npremises and to all conduct off The Company premises that has an effect upon an employee’s\nwork environment. Harassment does not refer to behavior or occasional compliments of a\nsocially acceptable nature. It refers to behavior that is not welcome, offensive, fails to respect\nthe rights of others, lowers morale, and interferes with work effectiveness. Harassment or\ndiscrimination can create an intimidating, hostile or offensive working environment and it can\nadversely affect an individual’s employment, evaluation, wages, advancement, assigned duties,\nshifts or any other condition of employment or career development.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [],
+        "charCount": 1735,
+        "printedPage": 10,
+        "tokenEstimate": 434
+      }
+    },
+    {
+      "chunk_index": 30,
+      "locator": "Page 11 — Drug, Alcohol and Smoking Policy",
+      "page": 12,
+      "section": "Drug, Alcohol and Smoking Policy",
+      "content": "Drug, Alcohol and Smoking Policy\nIn compliance with the Drug-Free Workplace Act of 1988, The Company has a longstanding\ncommitment to provide a safe, quality-oriented, and productive work environment. Alcohol and\ndrug abuse pose a threat to the health and safety of Company Employees and to the security of\nThe Company's equipment and facilities. For these reasons, The Company is committed to the\nelimination of drug and alcohol use and abuse in the workplace. The possession, use, sale, manufacture or distribution of alcohol, illegal drugs or controlled\nsubstances on company time or on company premises is strictly prohibited. Reporting to work at\nany time under the influence of alcohol, illegal drugs or controlled substances is strictly\nprohibited. With this goal in mind, we are establishing the following policy for all Employees of The\nCompany. The Company explicitly prohibits:\no The use, possession, solicitation for, or sale of narcotics or other illegal drugs, alcohol, or\nprescription medication without a prescription on Company premises or while performing a\nwork-related assignment. o Being impaired or under the influence of illegal drugs or alcohol on Company premises or on\na work-related assignment. o Possession, use, manufacture, solicitation for, or sale of illegal drugs or alcohol on Company\npremises or on a work-related assignment. o The presence of any detectable number of prohibited substances in the Employee's system\nwhile at work or while on Company premises.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 11,
+            "heading": "Drug, Alcohol and Smoking Policy"
+          }
+        ],
+        "charCount": 1494,
+        "printedPage": 11,
+        "tokenEstimate": 374
+      }
+    },
+    {
+      "chunk_index": 31,
+      "locator": "Page 11 — Drug, Alcohol and Smoking Policy",
+      "page": 12,
+      "section": "Drug, Alcohol and Smoking Policy",
+      "content": "o The presence of any detectable number of prohibited substances in the Employee's system\nwhile at work or while on Company premises.\n\n\"Prohibited substances\" include illegal drugs,\nalcohol, or prescription drugs not taken in accordance with a prescription given to the\nEmployee. o The giving or sale of prescription medication to any other person at any time. o Giving, providing, purchasing, or distributing alcohol or any other regulated substance to\nany person(s) under the required legal age at any time.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 11,
+            "heading": "Drug, Alcohol and Smoking Policy"
+          }
+        ],
+        "charCount": 509,
+        "printedPage": 11,
+        "tokenEstimate": 128
+      }
+    },
+    {
+      "chunk_index": 32,
+      "locator": "Page 11 — Prescribed Medications",
+      "page": 12,
+      "section": "Prescribed Medications",
+      "content": "Prescribed Medications\no Employees must report to work fit for duty and free of any adverse effects of prescribed\nmedications.\no This policy does not prohibit Employees from the lawful use and possession of prescribed\nmedications; however, Employees must consult with their doctors about the medications'\neffect on their fitness for duty and ability to work safely, and they must promptly disclose\nany work restrictions to the Human Resources Department.\no The Company will not allow Employees to perform their duties while taking prescribed drugs\nthat are adversely affecting their ability to perform their job duties safely and effectively.\no Employees taking a prescribed medication(s) that may affect their ability to safely and\neffectively perform their job duties must carry it in a container labeled by a licensed\npharmacist or be prepared to produce the container if asked.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 11,
+            "heading": "Prescribed Medications"
+          }
+        ],
+        "charCount": 881,
+        "printedPage": 11,
+        "tokenEstimate": 221
+      }
+    },
+    {
+      "chunk_index": 33,
+      "locator": "Page 12 — Prescribed Medications",
+      "page": 13,
+      "section": "Prescribed Medications",
+      "content": "o Any medications that inhibit an Employee’s ability to perform their job duties safely and\neffectively must be reported to the Human Resource Department prior to their next working\nday for further review and possible job duty modifications (if applicable).",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 12,
+            "heading": "Smoking/Vaping"
+          }
+        ],
+        "charCount": 257,
+        "printedPage": 12,
+        "tokenEstimate": 65
+      }
+    },
+    {
+      "chunk_index": 34,
+      "locator": "Page 12 — Prescribed Medications",
+      "page": 13,
+      "section": "Prescribed Medications",
+      "content": "Smoking/Vaping\no Our business is focused on health, and we have several policies affecting the possession and\nuse of all tobacco products and nicotine products, including but not limited to cigarettes,\nvapor cigarettes, and chewing tobacco while working, or while on the premises. o The Company adheres to all federal, state, local rules regarding smoking in the workplace. Smoking or use of “vapor” products are not permitted in any of the locations. All locations,\nincluding but not limited to all facilities and parking areas and company owned or leased\nvehicles are smoke and vapor free. Employees who smoke or use “vapor” products shall do\nso off the premises, including the parking lots. The Company reserves the right to undertake monitored drug and/or alcohol testing as follows:\no RANDOM TESTING: Employees may be selected at random for drug and/or alcohol testing at\nany interval determined by The Company. This test may be monitored/observed when\nadministered. o FOR-CAUSE TESTING: The Company may ask an Employee to submit to a drug and/or alcohol\ntest at any time it has reason to believe that the Employee may be under the influence of\ndrugs or alcohol, including, but not limited to, the following circumstances: evidence of\ndrugs or alcohol on or about the Employee's person or in the Employee's vicinity; unusual\nconduct on the Employee's part that suggests impairment or influence of drugs or alcohol;\nnegative performance patterns; or excessive and unexplained absenteeism or tardiness. This\ntest may be monitored/observed when administered.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 12,
+            "heading": "Smoking/Vaping"
+          }
+        ],
+        "charCount": 1560,
+        "printedPage": 12,
+        "tokenEstimate": 390
+      }
+    },
+    {
+      "chunk_index": 35,
+      "locator": "Page 12 — Prescribed Medications",
+      "page": 13,
+      "section": "Prescribed Medications",
+      "content": "This\ntest may be monitored/observed when administered.\n\no POST-ACCIDENT TESTING: Any Employee involved in an on-the-job accident or injury under\ncircumstances that suggest possible use or influence of drugs or alcohol in the accident or\ninjury event will be asked to submit to a drug and/or alcohol test. \"Involved in an on-the-job\naccident or injury\" means not only the one who was or could have been injured, but also\nany Employee who potentially contributed to the accident or injury event in any way. This\ntest may be monitored/observed when administered. If an Employee is tested for drugs or alcohol and the results indicate a violation of this policy, or\nif an Employee refuses a request to submit to testing under this policy, the Employee will be\nsubject to immediate termination.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 12,
+            "heading": "Smoking/Vaping"
+          }
+        ],
+        "charCount": 789,
+        "printedPage": 12,
+        "tokenEstimate": 198
+      }
+    },
+    {
+      "chunk_index": 36,
+      "locator": "Page 12 — Standards of Conduct",
+      "page": 13,
+      "section": "Standards of Conduct",
+      "content": "Standards of Conduct\nThe Company expects Employees to follow rules of conduct that will protect the interests and\nsafety of all customers, Employees, and The Company.\nThe following are examples (non-inclusive list) of infractions that may result in disciplinary\naction, up to and including transfer, suspension with or without pay, demotion, or immediate\ntermination of employment, as well as potential civil or criminal prosecution depending on the\nseverity and circumstances involved:\no Failing to follow the policies and procedures of The Company",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 12,
+            "heading": "Standards of Conduct"
+          }
+        ],
+        "charCount": 549,
+        "printedPage": 12,
+        "tokenEstimate": 138
+      }
+    },
+    {
+      "chunk_index": 37,
+      "locator": "Page 13 — Standards of Conduct",
+      "page": 14,
+      "section": "Standards of Conduct",
+      "content": "o Lack of sales performance\no Indecent or immoral behavior\no Conduct that requires investigation due to its negative impact on The Company’s public\nreputation or perception, regardless of whether it occurred on or off company premises, on\nor off the clock, and regardless of whether the conduct resulted in criminal charges of any\nkind. o Theft, inappropriate removal, destruction, vandalism, unauthorized possession, or\nfraudulent use of The Company’s, another Employee’s, or a customer’s property. o Giving unauthorized discounts\no Register / Bank shortages\no Falsification of timekeeping records\no Misrepresentation of facts during the hiring & training process or at any other time during\nany other process. o Falsification or unauthorized destruction of any Company document or record. o Working under the influence of alcohol or illegal drugs\no Possession, manufacture, distribution, sale, transfer, or use of alcohol, illegal drugs, or\ncontrolled substances for which the person has no prescription in the workplace, while on\nduty, or while operating employer-owned vehicles or equipment. o Fighting or threatening violence in the workplace\no Boisterous or disruptive activity in the workplace\no Threatened or actual injury of another Employee or customer\no Negligence or improper conduct leading to damage of employer-owned, Employee-owned,\nor customer-owned property\no Insubordination -the refusal to follow the directions of the manager.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [],
+        "charCount": 1447,
+        "printedPage": 13,
+        "tokenEstimate": 362
+      }
+    },
+    {
+      "chunk_index": 38,
+      "locator": "Page 13 — Standards of Conduct",
+      "page": 14,
+      "section": "Standards of Conduct",
+      "content": "o Fighting or threatening violence in the workplace\no Boisterous or disruptive activity in the workplace\no Threatened or actual injury of another Employee or customer\no Negligence or improper conduct leading to damage of employer-owned, Employee-owned,\nor customer-owned property\no Insubordination -the refusal to follow the directions of the manager.\n\no Behavior that demonstrates disrespect for a manager or other Employees, or indifference to\nThe Company’s interests (i.e., any written or verbal statement that may call into question\nthe employee’s credibility, integrity, judgment, or commitment to The Company’s\nemployment or business policies or mission. Statements include, but not limited to, postings\non web logs, chat rooms, message boards, and discussion groups or speeches, lectures,\ninterviews with the media, etc....)\no Violation of safety or health rules\no Smoking in prohibited areas\no Violation of The Company’s Sexual and Other forms of Harassment policy\no Retaliation in any form and at any level\no Possession of illegal, improper, dangerous, or unauthorized materials in the workplace\no Excessive absenteeism or any absence without notice\no Unauthorized absence from the work area during the workday\no Unauthorized use of telephones, computer systems, mail system, or other employer- owned\nequipment\no Misuse of computer resources or other Company property\no Unauthorized disclosure of business strategies or confidential Company, Employee, or\ncustomer information",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [],
+        "charCount": 1484,
+        "printedPage": 13,
+        "tokenEstimate": 371
+      }
+    },
+    {
+      "chunk_index": 39,
+      "locator": "Page 14 — Standards of Conduct",
+      "page": 15,
+      "section": "Standards of Conduct",
+      "content": "o Undisclosed and/or unauthorized photography, video recording, or sound recording of oral,\nor telephone communication, in which a customer, Employee, agent or other person doing\nbusiness with The Company is a participant.\no Violation of personnel policies\no Unsatisfactory job performance or conduct\nEmployment with The Company is at the mutual consent of The Company and the employee,\nand either party may terminate that relationship at any time, with or without cause.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [],
+        "charCount": 471,
+        "printedPage": 14,
+        "tokenEstimate": 118
+      }
+    },
+    {
+      "chunk_index": 40,
+      "locator": "Page 14 — Disciplinary Action",
+      "page": 15,
+      "section": "Disciplinary Action",
+      "content": "Disciplinary Action\nThe Company maintains a procedure to ensure a fair method of appropriate disciplinary action.\nDisciplinary Action is a system intended to give employees advance notice, whenever possible,\nor concerns with employee conduct or performance. This provides employees an opportunity to\ncorrect any problems that may arise.\nThe Company typically operates under the system of three write-ups equal termination,\nconsisting of verbal warning (documented and put in employee file), written warning, final\nwritten warning, and termination. Management has the authority to suspend employee\ndiscounts or privileges as an alternative form of disciplinary action, or in conjunction with any\npreviously mentioned step of disciplinary action. Management may also forego the\naforementioned steps and skip to written warning or final written warning. Serious offenses\nmay result in immediate termination. Employment with The Company is based on mutual\nconsent and both the employee, and The Company have the right to terminate employment as\nwill, with or without cause or advance notice. The Company may use progressive discipline at its\ndiscretion.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 14,
+            "heading": "Disciplinary Action"
+          }
+        ],
+        "charCount": 1149,
+        "printedPage": 14,
+        "tokenEstimate": 288
+      }
+    },
+    {
+      "chunk_index": 41,
+      "locator": "Page 14 — Attendance",
+      "page": 15,
+      "section": "Attendance",
+      "content": "Attendance\nIt is the responsibility of each employee to know his or her work schedule and to always be on\ntime. Lack of punctuality or absenteeism has a negative impact on everyone’s schedule and\ncreates a lack of service for the client. It is the employee’s responsibility to find a co-worker as a\nreplacement for a scheduled shift if the employee is not able to work that shift (See Shift\nReplacement). If an employee is absent from work for more than two days, a doctor’s note is\nrequired upon return to work. Excessive absenteeism will result in termination. No call or no\nshow for a scheduled shift may result in immediate termination.\no If an employee is going to be tardy or absent, it is mandatory that the employee call and\nspeak to their direct manager on duty and notify them of the occurrence at least 2 hours\nbefore their scheduled shift unless it is an instance that it is not possible for them to do so.\n(Accident, etc.), Employees must contact their Supervisor via direct phone call immediately.\nIf an employee is unable to reach their Supervisor, the employee should keep calling up the\nchain of command until someone answers.\no Texting a manager is not allowed when calling in. Employees must speak with their\nmanager directly.\no Seminars/Meetings/ Training sessions are considered scheduled shifts. (See\nSeminar/Webinar Attendance section)",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 14,
+            "heading": "Attendance"
+          }
+        ],
+        "charCount": 1358,
+        "printedPage": 14,
+        "tokenEstimate": 340
+      }
+    },
+    {
+      "chunk_index": 42,
+      "locator": "Page 15 — Late Opening",
+      "page": 16,
+      "section": "Late Opening",
+      "content": "Late Opening\nWhen an employee assigned to open a location is unable to open the location at the proper\ntime, the employee must notify the manager as soon as possible. The manager of the salon will\nbe required to open the salon and work until the person originally assigned arrives, or a\nreplacement is found. The employee who failed to open will then be required to reimburse The\nCompany $25.00 via payroll deduction (when applicable and following all state and local\nguidelines), for all expenses incurred. Managers or District Managers will be responsible for\noffering restitution to affected clients, as well as giving the payroll deduct total to Payroll. *",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 15,
+            "heading": "Late Opening"
+          }
+        ],
+        "charCount": 660,
+        "printedPage": 15,
+        "tokenEstimate": 165
+      }
+    },
+    {
+      "chunk_index": 43,
+      "locator": "Page 15 — Texting as General Work communications",
+      "page": 16,
+      "section": "Texting as General Work communications",
+      "content": "Texting as General Work communications\nTexting is NOT an acceptable form of communication for official work communications such as;\nschedule changes, calling off, shift changes, request offs, availability changes, giving two weeks'\nnotice, complaints, conversations regarding disciplinary or corrective actions, or for any other\ntopics that may cause a hardship to the business, etc.. These instances require direct\ncommunication either in person or via phone call(s). Texting may be acceptable for other\nreasons but check with direct Supervisor(s) regarding when texting may be acceptable.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 15,
+            "heading": "Texting as General Work communications"
+          }
+        ],
+        "charCount": 590,
+        "printedPage": 15,
+        "tokenEstimate": 148
+      }
+    },
+    {
+      "chunk_index": 44,
+      "locator": "Page 15 — Dress Code for The Company",
+      "page": 16,
+      "section": "Dress Code for The Company",
+      "content": "Dress Code for The Company\nThe Company Employees are to keep a neat, clean, professional appearance at all times. Anyone\nviolating their Brand’s Dress code policy will be sent home to change into proper work attire and\nmay be subject to disciplinary action, up to and potentially including termination.\n\nAll Locations Dress Code:\nName tags\no Name tags are to be worn and visible at all times while working.\no Each Employee will receive one name tag.\no Additional or replacement tags can be ordered through a manager at the Employee’s\nexpense.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 15,
+            "heading": "Dress Code for The Company"
+          },
+          {
+            "page": 15,
+            "heading": "All Locations Dress Code"
+          }
+        ],
+        "charCount": 542,
+        "printedPage": 15,
+        "tokenEstimate": 136
+      }
+    },
+    {
+      "chunk_index": 45,
+      "locator": "Page 15 — Shoes",
+      "page": 16,
+      "section": "Shoes",
+      "content": "Shoes\no Tennis shoes or other full coverage closed toe shoes are to be worn.\no No sandals, crocks, flip-flops, or other open toe shoes are allowed.\no Shoes must be tied at all times and must be clean with no holes.\n\nBelts\no Belts are to be dark brown or black.\no Belts are not to hang down or have objects (cell phones, pagers, chains, keys, etc.) hanging\nfrom them.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 15,
+            "heading": "Shoes"
+          },
+          {
+            "page": 15,
+            "heading": "Belts"
+          }
+        ],
+        "charCount": 366,
+        "printedPage": 15,
+        "tokenEstimate": 92
+      }
+    },
+    {
+      "chunk_index": 46,
+      "locator": "Pages 15–16 — Hair",
+      "page": 16,
+      "section": "Hair",
+      "content": "Hair\no Hair of all lengths and colors are acceptable as long as it is clean, groomed, and kept out of\nemployee’s face and eyes.\n\nFacial Hair\no Facial hair is acceptable as long as it is clean, well-groomed, and trimmed.\n\nMake-up\no Due to the nature of working in the Beauty Industry, reasonable and natural make-up is\nacceptable and encouraged.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 15,
+            "heading": "Hair"
+          },
+          {
+            "page": 16,
+            "heading": "Facial Hair"
+          },
+          {
+            "page": 16,
+            "heading": "Make-up"
+          }
+        ],
+        "charCount": 344,
+        "printedPage": 15,
+        "tokenEstimate": 86
+      }
+    },
+    {
+      "chunk_index": 47,
+      "locator": "Page 16 — Jewelry/Accessories",
+      "page": 17,
+      "section": "Jewelry/Accessories",
+      "content": "Jewelry/Accessories\no Jewelry that does not interfere with work is acceptable.\no No dangling earrings or chains, and no pins or buttons allowed on the shirt unless approved\nby Management.\n\nTattoos\no Large, inappropriate, or offensive tattoos must be covered. All other tattoos are acceptable\nas long as they are not discriminatory or offensive in nature.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 16,
+            "heading": "Jewelry/Accessories"
+          },
+          {
+            "page": 16,
+            "heading": "Tattoos"
+          }
+        ],
+        "charCount": 354,
+        "printedPage": 16,
+        "tokenEstimate": 89
+      }
+    },
+    {
+      "chunk_index": 48,
+      "locator": "Page 16 — Crunch Fitness Specific Dress Code",
+      "page": 17,
+      "section": "Crunch Fitness Specific Dress Code",
+      "content": "Crunch Fitness Specific Dress Code:\n\nShirts\no Two uniform shirts will be provided to all Employees upon hire.\no Full-time Employees will receive an additional 1-2 shirts.\no Employee may also wear a plain black, white, or gray long sleeve shirt underneath their\nbranded shirt when cold.\no Group Fitness Instructors (Crunch Fitness) teaching classes that are not proprietary to\nCrunch Fitness, i.e., Zumba, Pound, etc. may wear fitness style apparel or branding related\nto class style.\no Shirts should not be shorter than the beltline, exposing the stomach area or low cut to\nexpose the chest area.\no Shirts must be clean and free of wrinkles.\no No patches, rips, or holes are to be noticeable on the shirt.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 16,
+            "heading": "Crunch Fitness Specific Dress Code"
+          },
+          {
+            "page": 16,
+            "heading": "Shirts"
+          }
+        ],
+        "charCount": 705,
+        "printedPage": 16,
+        "tokenEstimate": 177
+      }
+    },
+    {
+      "chunk_index": 49,
+      "locator": "Page 16 — Pants",
+      "page": 17,
+      "section": "Pants",
+      "content": "Pants\no Yoga pants, joggers, or sweats are approved for Instructors ONLY (preferably solid black).\no Front Desk and Management’s pants must be solid khaki or black in color.\no Pants must be full length and free of holes or frayed edges.\n\nBuff City Soap:\n\nShirts\no Any BCS Employee can wear any plain black, white, or gray t-shirt or long-sleeved shirt to\nwear under their branded apron.\no Employees can also wear any Branded top.\no Shirts should not be shorter than the beltline, exposing the stomach area or low cut to\nexpose the chest area.\no Shirts must be clean and free from wrinkles.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 16,
+            "heading": "Pants"
+          },
+          {
+            "page": 16,
+            "heading": "Buff City Soap"
+          },
+          {
+            "page": 16,
+            "heading": "Shirts"
+          }
+        ],
+        "charCount": 589,
+        "printedPage": 16,
+        "tokenEstimate": 148
+      }
+    },
+    {
+      "chunk_index": 50,
+      "locator": "Page 17 — Shirts",
+      "page": 18,
+      "section": "Shirts",
+      "content": "o No patches, rips, or holes are to be noticeable on the shirt.\n\nPants\no Full length black or blue jean-colored pants are acceptable.\no Yoga pants, joggers or sweats are never to be worn while at work.\n\nSun Tan City:\n\nShirts\no Any STC Employee can wear any Branded top or black collared or black t-shirt.\no ASD and above can wear any colored collared shirt.\no Any STC Employee can wear any gray, black or white plain jacket.\no Shirts should not be shorter than the beltline, exposing the stomach area or low cut to\nexpose the chest area.\no Shirts must be clean and free from wrinkles.\no No patches, rips, or holes are to be noticeable on the shirt",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 17,
+            "heading": "Pants"
+          },
+          {
+            "page": 17,
+            "heading": "Sun Tan City"
+          },
+          {
+            "page": 17,
+            "heading": "Shirts"
+          }
+        ],
+        "charCount": 647,
+        "printedPage": 17,
+        "tokenEstimate": 162
+      }
+    },
+    {
+      "chunk_index": 51,
+      "locator": "Page 17 — Pants",
+      "page": 18,
+      "section": "Pants",
+      "content": "Pants\no Full length khaki/black pants or jeans (no holes, rips or patches) are acceptable.\no Yoga pants, joggers or sweats are never to be worn while at work.\no Shorts that sit at or below the knee are acceptable: i.e., Bermuda shorts or Capris.\n\nTanning\no Employees are expected to maintain a consistent tanning schedule in accordance with\ncompany appearance standards.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 17,
+            "heading": "Pants"
+          },
+          {
+            "page": 17,
+            "heading": "Tanning"
+          }
+        ],
+        "charCount": 370,
+        "printedPage": 17,
+        "tokenEstimate": 93
+      }
+    },
+    {
+      "chunk_index": 52,
+      "locator": "Page 17 — JB & Associates Office",
+      "page": 18,
+      "section": "JB & Associates Office",
+      "content": "JB & Associates Office:\n\nShirts\no Any JBA franchise Branded top\no Fitted blouse or collared shirts\no Sundresses\no Shirts should not be shorter than the beltline, exposing the stomach area or low cut to\nexpose the chest area.\no Shirts must be clean and free from wrinkles.\no No patches, rips, or holes are to be noticeable on the shirt.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 17,
+            "heading": "JB & Associates Office"
+          },
+          {
+            "page": 17,
+            "heading": "Shirts"
+          }
+        ],
+        "charCount": 335,
+        "printedPage": 17,
+        "tokenEstimate": 84
+      }
+    },
+    {
+      "chunk_index": 53,
+      "locator": "Page 17 — Pants",
+      "page": 18,
+      "section": "Pants",
+      "content": "Pants\no Full length khaki or black pants are acceptable.\no Full length black or blue jean-colored pants are acceptable as long as they are free of tears\nor excessive distressing.\no Shorts that sit at or below the knee are acceptable: i.e., Bermuda shorts or Capris.\no Skirts that sit at or below the knee.\nAll aspects of the dress code are at The Company’s discretion, if an employee has a question, please\ncheck with management prior to wearing.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 17,
+            "heading": "Pants"
+          }
+        ],
+        "charCount": 446,
+        "printedPage": 17,
+        "tokenEstimate": 112
+      }
+    },
+    {
+      "chunk_index": 54,
+      "locator": "Page 18 — Personal Items",
+      "page": 19,
+      "section": "Personal Items",
+      "content": "Personal Items:\nPersonal items (books, laptops, other electronics, etc.) do not belong inside The Company,\nunless necessary. Employees are expected to tend to company business while at work, not their\nown business. The Company assumes no risk or liability for any theft or damage that may occur\nto Employee property while it is on company property.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 18,
+            "heading": "Personal Items"
+          }
+        ],
+        "charCount": 348,
+        "printedPage": 18,
+        "tokenEstimate": 87
+      }
+    },
+    {
+      "chunk_index": 55,
+      "locator": "Page 18 — Employee Parking",
+      "page": 19,
+      "section": "Employee Parking",
+      "content": "Employee Parking\nEmployees are not allowed to park directly in front of the location. Parking spaces closest to the\nfront of the location are to be reserved for customers. The Company assumes no risk or liability\nfor any theft or damage that may occur to Employee vehicles or the contents of Employee\nvehicles while they are on company property.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 18,
+            "heading": "Employee Parking"
+          }
+        ],
+        "charCount": 345,
+        "printedPage": 18,
+        "tokenEstimate": 87
+      }
+    },
+    {
+      "chunk_index": 56,
+      "locator": "Page 18 — Lost and Found",
+      "page": 19,
+      "section": "Lost and Found",
+      "content": "Lost and Found\nAll Employees are responsible for securing lost and found items.\no Follow these instructions when an employee locates lost and found items:\n▪ Place the item in an envelope with the Lost and Found Tracker form stapled to the\noutside OR place the item in a clear Ziploc bag with this form inside.\n▪ Fill out the Lost and Found Tracker form and follow up properly until the customer\nhas picked up the item.\n▪ All items worth 50 dollars or more should be kept in the drop safe (this includes;\njewelry, cellphones, etc.) All items worth less than 50 dollars should be kept in a box\n(socks, hats, shirts, eyewear, etc.)\n▪ Notify managers if a customer has not picked up the item within 60 days.\no If an item is found by an Employee, it is their legal responsibility to return it to the rightful\nowner. Deviations from this policy will not be tolerated. Items found must be returned to\nthe customer or criminal suits may follow.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 18,
+            "heading": "Lost and Found"
+          }
+        ],
+        "charCount": 936,
+        "printedPage": 18,
+        "tokenEstimate": 234
+      }
+    },
+    {
+      "chunk_index": 57,
+      "locator": "Page 18 — Facility Repair/Service Vendors",
+      "page": 19,
+      "section": "Facility Repair/Service Vendors",
+      "content": "Facility Repair/Service Vendors\nWhenever a contracted repair/service vendor enters the workplace to fix a facility issue or\nprovide services other than the normal monthly scheduled work such as rug replacement,\nwindow cleaning, etc., the employee must immediately contact the location manager on duty\nPRIOR to letting them complete any work or access any facilities or systems. If there are no\nmembers of Management present, call up the chain of command until one is reached.\nTo protect company Employees, customers, our data and facilities, employees must receive the\napproval of a member of Management, who should confirm the repair was requested and\nexpected, before employees allow the repair vendor to do any work or to access any of our\nfacilities or systems. Failure to get approval/access permission prior to allowing a repair or\nservice vendor to access our systems or facilities may result in disciplinary action, up to and\nincluding immediate termination as allowing potential unauthorized access puts our entire\ncompany, Employees, and customers at risk.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 18,
+            "heading": "Facility Repair/Service Vendors"
+          }
+        ],
+        "charCount": 1066,
+        "printedPage": 18,
+        "tokenEstimate": 267
+      }
+    },
+    {
+      "chunk_index": 58,
+      "locator": "Pages 18–19 — Purchasing Authorizations",
+      "page": 19,
+      "section": "Purchasing Authorizations",
+      "content": "Purchasing Authorizations\nEmployees do not have authority to verbally represent or sign anything, other than acceptance\nof normal business deliveries and regularly scheduled routine services, on behalf of The\n\nCompany, unless given prior approval in writing by Upper Management, official company\ndirective, or the legal department. Employees are prohibited from signing any contracts or legal\nagreements on behalf of The Company, without specific approval of the Owner. Employees are\nprohibited from purchasing any products, supplies, or services for use at any company location\nwithout express written approval from Upper Management, regardless of whether or not the\nEmployee expects to receive reimbursement for the expense.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 18,
+            "heading": "Purchasing Authorizations"
+          }
+        ],
+        "charCount": 726,
+        "printedPage": 18,
+        "tokenEstimate": 182
+      }
+    },
+    {
+      "chunk_index": 59,
+      "locator": "Page 19 — Discounting",
+      "page": 20,
+      "section": "Discounting",
+      "content": "Discounting\nThe only discounting allowed by The Company is in conjunction with a pre-approved\npromotional offer. A coupon must accompany the applied discount unless specified otherwise\nby Management or company communications regarding approved discount offers.\nThe only use of the manual discount/price override function by non-Management personnel\nshould be for Employee purchases. Only members of Management are allowed to give manual\ndiscounts/price overrides for transactions other than Employee purchases. Employee purchases\nmust be processed on the Employee’s account. Any deviation from this policy will result in\nimmediate termination.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 19,
+            "heading": "Discounting"
+          }
+        ],
+        "charCount": 643,
+        "printedPage": 19,
+        "tokenEstimate": 161
+      }
+    },
+    {
+      "chunk_index": 60,
+      "locator": "Page 19 — Coupon Collection",
+      "page": 20,
+      "section": "Coupon Collection",
+      "content": "Coupon Collection\nAnytime employees collect a promotional coupon from a customer, the following steps must be\ntaken:\no Printed Coupons – Collect the coupon from the customer.\no Non-Printed Coupons – For example: Coupons shown from a cell phone -\n▪ Print the receipt after the transaction is processed. Write the promotional offer the\ncustomer has shown using their phone on a receipt. The receipt in turn becomes\ntheir coupon.\no Write employee name, the customer's name, the customer number, the date, and “VOID”\nacross the coupon.\no Include all coupons with nightly deposit at the end of the shift.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 19,
+            "heading": "Coupon Collection"
+          }
+        ],
+        "charCount": 599,
+        "printedPage": 19,
+        "tokenEstimate": 150
+      }
+    },
+    {
+      "chunk_index": 61,
+      "locator": "Page 19 — Cell Phone/Smart Watch Policy",
+      "page": 20,
+      "section": "Cell Phone/Smart Watch Policy",
+      "content": "Cell Phone/Smart Watch Policy\nPersonal Employee cell phones are permitted in the workplace but must be kept out of sight. It\nis the Employee’s personal responsibility to protect the customer’s experience and doing things\nsuch as texting, making phone calls or using social media jeopardizes the customer’s experience.\nEmployees should keep cell phones on silent and not on their person (this means not in back\npockets, charging in the break room, or sitting on top of a drawer till). The only time that a cell\nphone should be accessed while clocked in is in emergency situations.\nSmart Watches are allowed as long as they are not being used for social media or texting/phone\ncalls. We reserve the right to ask Employees to remove any smart watch if it starts to interfere\nwith the customer's experience.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 19,
+            "heading": "Cell Phone/Smart Watch Policy"
+          }
+        ],
+        "charCount": 803,
+        "printedPage": 19,
+        "tokenEstimate": 201
+      }
+    },
+    {
+      "chunk_index": 62,
+      "locator": "Pages 19–20 — Company Email Account",
+      "page": 20,
+      "section": "Company Email Account",
+      "content": "Company Email Account\nOnly authorized Employees may access their company email and may not use their company\nemail for personal use.\n\nPoint of Sale and Alarm Passwords\nEmployees must always use their own personal passwords and alarm codes. Do NOT share\nalarm codes or passwords. Using the password or alarm code of another Employee or giving\nanother Employee individual passwords or alarm codes, for any reason, is a violation of policy\nand may result in disciplinary action up to and including termination.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 19,
+            "heading": "Company Email Account"
+          },
+          {
+            "page": 20,
+            "heading": "Point of Sale and Alarm Passwords"
+          }
+        ],
+        "charCount": 507,
+        "printedPage": 19,
+        "tokenEstimate": 127
+      }
+    },
+    {
+      "chunk_index": 63,
+      "locator": "Page 20 — Employment Verification",
+      "page": 21,
+      "section": "Employment Verification",
+      "content": "Employment Verification\nEmployment verification, both current and previous, is to be handled by the Corporate Office. If\nemployees are asked to verify or comment on any aspect of an Employee’s current or past\nhistory with The Company, employees are to refer the inquiry to the Corporate Office with\nHuman Resources.\n\nOutside Employment\nThe Company requires that any outside employment not compromise the company’s interests,\nadversely affect the employee’s job performance and ability to fulfill all responsibilities to the\ncompany or create a liability for the company. Working for a direct competitor is strictly\nprohibited.\nManagers are strictly prohibited from working another job. It is the manager's responsibility to\nbe available at all times to tend to the business of the location. Managers are allowed to attend\nschool; however, all class schedules must be approved in advance by the District Manager and\nare expected to not interfere with the Manager’s availability.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 20,
+            "heading": "Employment Verification"
+          },
+          {
+            "page": 20,
+            "heading": "Outside Employment"
+          }
+        ],
+        "charCount": 977,
+        "printedPage": 20,
+        "tokenEstimate": 245
+      }
+    },
+    {
+      "chunk_index": 64,
+      "locator": "Page 20 — Fraternization Policy",
+      "page": 21,
+      "section": "Fraternization Policy",
+      "content": "Fraternization Policy\nAll Employees are strongly discouraged from dating other Employees. Anyone in a Supervisory\nposition is prohibited from dating a subordinate, without Management Team approval. Personal\nrelationships between Employees should not unfavorably impact either Employee’s morale or\nthe effectiveness of company operations. Employees who are considering possibly engaging in a\npersonal relationship that would result in potential violations of this policy must contact Human\nResources. Deviation from this policy will result in immediate termination.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 20,
+            "heading": "Fraternization Policy"
+          }
+        ],
+        "charCount": 564,
+        "printedPage": 20,
+        "tokenEstimate": 141
+      }
+    },
+    {
+      "chunk_index": 65,
+      "locator": "Page 20 — Employment and Supervision of Relatives",
+      "page": 21,
+      "section": "Employment and Supervision of Relatives",
+      "content": "Employment and Supervision of Relatives\nThe Company discourages the employment or transfer of relatives to any position where a\nfamily member supervises (or acts in a supervisory capacity to) another family member.\nSelection, assignment, and review of every employee should be as objective as possible. When\nfamily is involved, it is difficult to be objective and almost impossible to appear objective. All\nfamilial relationships within locations must have prior approval by Human Resources.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 20,
+            "heading": "Employment and Supervision of Relatives"
+          }
+        ],
+        "charCount": 491,
+        "printedPage": 20,
+        "tokenEstimate": 123
+      }
+    },
+    {
+      "chunk_index": 66,
+      "locator": "Page 20 — Solicitation",
+      "page": 21,
+      "section": "Solicitation",
+      "content": "Solicitation\nPersons not employed by The Company may not solicit or distribute literature in the workplace\nat any time. Employees may not solicit or distribute literature concerning activities during\nworking time. (Working time does not include lunch periods, work breaks, or any other periods\nin which Employees are not on duty). Posting of written solicitations on The Company bulletin\nboards is restricted. These bulletin boards display important information, and Employees should\nconsult the bulletin boards frequently. If Employees have a message of interest to the",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 20,
+            "heading": "Solicitation"
+          }
+        ],
+        "charCount": 570,
+        "printedPage": 20,
+        "tokenEstimate": 143
+      }
+    },
+    {
+      "chunk_index": 67,
+      "locator": "Page 21 — Solicitation",
+      "page": 22,
+      "section": "Solicitation",
+      "content": "workplace, they must submit it to Management for approval. The Manager will post all\napproved messages.\n\nCare and Cleaning of Equipment and Facilities\nAll Employees must do their best to keep the equipment and the workplace clean at all times. It\nis the responsibility of every employee to ensure completion of appropriate checklists are\ncompleted each shift.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 21,
+            "heading": "Care and Cleaning of Equipment and Facilities"
+          }
+        ],
+        "charCount": 359,
+        "printedPage": 21,
+        "tokenEstimate": 90
+      }
+    },
+    {
+      "chunk_index": 68,
+      "locator": "Page 21 — No Public Restrooms",
+      "page": 22,
+      "section": "No Public Restrooms",
+      "content": "No Public Restrooms\nThe Company restrooms are for paying customers and Employees only. The Company does not\nprovide public restrooms.\n\nLocation Closing Times\nThe Company accepts customers until the posted closing time. Failure to accept customers up\nto the posted closing time will result in immediate disciplinary action.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 21,
+            "heading": "No Public Restrooms"
+          },
+          {
+            "page": 21,
+            "heading": "Location Closing Times"
+          }
+        ],
+        "charCount": 322,
+        "printedPage": 21,
+        "tokenEstimate": 81
+      }
+    },
+    {
+      "chunk_index": 69,
+      "locator": "Page 21 — Background Checks",
+      "page": 22,
+      "section": "Background Checks",
+      "content": "Background Checks\nEmployees are subject to background checks for certain positions and promotions. The\nbackground check form will be completed and submitted to Human Resources.\n\nBusiness Ethics\nThe Company strives to maintain a reputation for honesty and integrity in the marketplace. All\nCompany Employees will conduct themselves with the utmost integrity in all dealings with\ncustomers, vendors, and fellow Employees.\nPlease reference the JB & Associates Integrity Guide for more helpful guidance and information\non this topic.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 21,
+            "heading": "Background Checks"
+          },
+          {
+            "page": 21,
+            "heading": "Business Ethics"
+          }
+        ],
+        "charCount": 529,
+        "printedPage": 21,
+        "tokenEstimate": 133
+      }
+    },
+    {
+      "chunk_index": 70,
+      "locator": "Page 21 — Communication and Confidentiality Policies",
+      "page": 22,
+      "section": "Communication and Confidentiality Policies",
+      "content": "Communication and Confidentiality Policies\n\nConfidential Information Policy\nAll Company data and information is the property of The Company and is intended for company\nuse only. This data and information include, but is not limited to:\no Any and all financial information\no Employee and customer data\no Marketing strategies\no Vendors\no Pending legal matters\nAll departments have information that must be kept confidential at all times. Employees are\nresponsible for monitoring and protecting all confidential information. Each department\nEmployee must follow all guidelines to ensure confidential information is handled properly. All\nEmployees are required to utilize encrypted passwords for all company related logins.\no An encrypted password is more secure than password protection. It makes passwords\nunreadable and/or unusable by hackers.\no Requirements:",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 21,
+            "heading": "Communication and Confidentiality Policies"
+          },
+          {
+            "page": 21,
+            "heading": "Confidential Information Policy"
+          }
+        ],
+        "charCount": 858,
+        "printedPage": 21,
+        "tokenEstimate": 215
+      }
+    },
+    {
+      "chunk_index": 71,
+      "locator": "Page 22 — Confidential Information Policy",
+      "page": 23,
+      "section": "Confidential Information Policy",
+      "content": "▪ Do not use a word or phrase of special importance to you, i.e., birthday, place, or\nvehicle.\n▪ Do not use default passwords, i.e., password123.\n▪ The password should be 8-10 characters long.\n▪ Include numbers.\n▪ Include special characters, i.e., */&$#@.\n▪ Include at least one capital letter and one lower case letter.\nExamples of ways to keep information confidential can include, but are not limited to:\no Shredding of financial documents\no Using screen saver passwords\nTo protect employee privacy, no aspect of employment outside of what is required to complete\nlegal employment verifications and to process required aspects such as; processing payroll,\nmanaging employment benefits, etc. will be discussed with any outside parties without\nemployee consent.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [],
+        "charCount": 762,
+        "printedPage": 22,
+        "tokenEstimate": 191
+      }
+    },
+    {
+      "chunk_index": 72,
+      "locator": "Page 22 — Nondisclosure Agreement Policy",
+      "page": 23,
+      "section": "Nondisclosure Agreement Policy",
+      "content": "Nondisclosure Agreement Policy\nA nondisclosure agreement is a legally enforceable contract that creates a confidential\nrelationship to protect sensitive information. By signing a nondisclosure agreement, participants\npromise to not divulge, or release information shared with them by the other people involved.\nIf the information is leaked, the injured person can claim breach of contract.\nIf an employee of The Company, is asked to sign a nondisclosure agreement by a customer or an\noutside vendor, do not sign anything and immediately contact a direct Supervisor.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 22,
+            "heading": "Nondisclosure Agreement Policy"
+          }
+        ],
+        "charCount": 565,
+        "printedPage": 22,
+        "tokenEstimate": 142
+      }
+    },
+    {
+      "chunk_index": 73,
+      "locator": "Page 22 — Talking to the Media/Press",
+      "page": 23,
+      "section": "Talking to the Media/Press",
+      "content": "Talking to the Media/Press\nAny conversation with the media or press, including television stations, radio stations,\nnewspapers, etc., is strictly prohibited. Please direct any and all media inquiries to the\nCorporate Office.\n\nSocial Media Policy\nThe Company understands that social media can be a fun and rewarding way to share an\nemployee’s life and opinions with family, friends, and co-workers around the world. Social\nmedia includes all means of communicating, posting information, or content of any sort on the\ninternet. This may come from; employee’s own or someone else’s web log or blog, journal or\ndiary, personal website, social networking or affinity website, web bulletin board or a chat\nroom, as well as many other forms of electronic communication whether it is associated with\nThe Company or not.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 22,
+            "heading": "Talking to the Media/Press"
+          },
+          {
+            "page": 22,
+            "heading": "Social Media Policy"
+          }
+        ],
+        "charCount": 811,
+        "printedPage": 22,
+        "tokenEstimate": 203
+      }
+    },
+    {
+      "chunk_index": 74,
+      "locator": "Page 22 — Guidelines",
+      "page": 23,
+      "section": "Guidelines",
+      "content": "Guidelines\nInappropriate postings that may include discriminatory remarks, harassment, and threats of\nviolence, or similar inappropriate or unlawful conduct, will not be tolerated and may subject an\nemployee to disciplinary action up to and including termination. Employees should avoid using\nstatements, photographs, video, or audio that reasonably could be viewed as malicious,\nobscene, threatening or intimidating, that disparage customers, Employees or suppliers, or that\nmight constitute harassment or bullying (see the section on Harassment).",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 22,
+            "heading": "Guidelines"
+          }
+        ],
+        "charCount": 548,
+        "printedPage": 22,
+        "tokenEstimate": 137
+      }
+    },
+    {
+      "chunk_index": 75,
+      "locator": "Page 23 — Guidelines",
+      "page": 24,
+      "section": "Guidelines",
+      "content": "Employees should be honest and accurate when posting information or news, if an employee\nmake a mistake, correct it quickly. Maintain the confidentiality of The Company’s trade secrets\nand private or confidential information. Do not post internal reports, policies, procedures, or\nother internal business-related confidential communications. Do not create a link to an\nemployee blog, website, or other social networking/media site to The Company website without\nidentifying yourself as a company Employee.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [],
+        "charCount": 505,
+        "printedPage": 23,
+        "tokenEstimate": 127
+      }
+    },
+    {
+      "chunk_index": 76,
+      "locator": "Page 23 — Using Social Media at Work",
+      "page": 24,
+      "section": "Using Social Media at Work",
+      "content": "Using Social Media at Work\nAvoid using social media while on work time or on equipment we provide unless it is work-\nrelated as authorized by your supervisor or consistent with Company policy. Do not use\nCompany email addresses to register on social networks, blogs or other online tools utilized for\npersonal use.\n\nRetaliation is Prohibited\nThe Company prohibits taking negative action against any Employee for reporting a possible\ndeviation from any policy or for cooperating in an investigation. Any Employee who retaliates\nagainst another Employee for reporting a possible deviation from any policy or for cooperating\nin an investigation will be subject to disciplinary action, up to and including termination. If\nemployees have a question or need further guidance, please contact Human Resources.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 23,
+            "heading": "Using Social Media at Work"
+          },
+          {
+            "page": 23,
+            "heading": "Retaliation is Prohibited"
+          }
+        ],
+        "charCount": 801,
+        "printedPage": 23,
+        "tokenEstimate": 201
+      }
+    },
+    {
+      "chunk_index": 77,
+      "locator": "Page 23 — Information Security and IT Overview Policy",
+      "page": 24,
+      "section": "Information Security and IT Overview Policy",
+      "content": "Information Security and IT Overview Policy\nCompany assets include anything owned or leased by The Company for operational and business\nuse, to include (but is not limited to) systems, data, computers, personal devices, applications,\nfacilities, connections, individuals, documentation, and electronic media, whether located on\nThe Company’s premise or off-site, and all Company locations where cardholder data is present. All users are required to follow the Information Security Policy at all times, unless a prior\nexception request has been reviewed and approved by a member of The Company’s Senior\nManagement Team. This policy is distributed to all users granted access to any Company asset, to include Company\nEmployees, third-parties, service providers, contractors, temporary Employees, and/or other\nstaff members. Managers, Employees, and technical personnel must modify system\nconfigurations and procedures, if necessary to comply with the terms of this policy as promptly\nas possible, with the goal of doing so within ten (10) business days following adoption or\namendment. o Disclaimer of Liability: The Company is not responsible for material viewed or downloaded\nby users from the internet. Users are cautioned that many of these pages include offensive,\nsexually explicit, and inappropriate material. Even innocuous search requests may lead to\nsites with highly offensive content. In addition, having an email address on the internet may\nlead to the receipt of unsolicited emails containing offensive content. Users accessing the\ninternet do so at their own risk.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 23,
+            "heading": "Information Security and IT Overview Policy"
+          }
+        ],
+        "charCount": 1577,
+        "printedPage": 23,
+        "tokenEstimate": 395
+      }
+    },
+    {
+      "chunk_index": 78,
+      "locator": "Page 23 — Information Security and IT Overview Policy",
+      "page": 24,
+      "section": "Information Security and IT Overview Policy",
+      "content": "In addition, having an email address on the internet may\nlead to the receipt of unsolicited emails containing offensive content. Users accessing the\ninternet do so at their own risk.\n\no No Expectation of Privacy: The computers and computer accounts given to Employees are\nto assist you in the performance of your jobs. Employees should not have an expectation of\nprivacy in anything they create, store, send, or receive on The Company's computer systems",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 23,
+            "heading": "Information Security and IT Overview Policy"
+          }
+        ],
+        "charCount": 453,
+        "printedPage": 23,
+        "tokenEstimate": 114
+      }
+    },
+    {
+      "chunk_index": 79,
+      "locator": "Page 24 — Information Security and IT Overview Policy",
+      "page": 25,
+      "section": "Information Security and IT Overview Policy",
+      "content": "or servers. The computer systems and servers belong to The Company and may only be\nused for business purposes.\no Monitoring of Computer Usage: The Company has the right, not the duty, to monitor any\nand all aspects of its computer systems or servers, including, but not limited to, monitoring\nsites visited by Employees on the internet, monitoring instant messaging, social networking\nsites, chat groups and newsgroups, reviewing material downloaded or uploaded by users to\nthe internet, and reviewing email sent and received by users.\no Prohibited Activities: Material that is fraudulent, harassing, embarrassing, obscene, sexually\nexplicit, profane, intimidating, defamatory, or otherwise unlawful or inappropriate may not\nbe sent by email or other forms of electronic communication (bulletin boards, chat groups,\ninstant messaging, social networking sites, etc.), downloaded from the internet, or displayed\nor stored in The Company’s computers. Any Employee who encounters or receives this kind\nof material should immediately report it to Human Resources.\nViolators of this policy will be subject to appropriate disciplinary action, up to and including\ntermination of employment. Any known or suspected violations of this policy should be\nreported immediately to Human Resources.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [],
+        "charCount": 1282,
+        "printedPage": 24,
+        "tokenEstimate": 321
+      }
+    },
+    {
+      "chunk_index": 80,
+      "locator": "Page 24 — Communications Systems Policy",
+      "page": 25,
+      "section": "Communications Systems Policy",
+      "content": "Communications Systems Policy\nTelephones, mail systems, computers, internet access, email, and etc. provided by The Company\nare company property and may be accessed by The Company in the ordinary course of business.\nEmployees should have no expectation of privacy in the information contained in voicemail or\ncomputers. Employees have no proprietary interest in any voicemail or email and The Company\nreserves the right to monitor, listen to, view, copy, disclose or delete any telephone\nconversations, voicemails or emails, including blogging, at any time.\nInstallation of either unauthorized software or hardware on any of our computer systems is\nstrictly prohibited. It is expected that there will be times when it is necessary to either make or\nreceive personal telephone calls. Personal use of The Company-provided telephone for long-\ndistance and toll calls is not permitted. You may be required to reimburse The Company for any\ncharges resulting from personal use of the telephone or if you incur additional fee services\ncharges.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 24,
+            "heading": "Communications Systems Policy"
+          }
+        ],
+        "charCount": 1036,
+        "printedPage": 24,
+        "tokenEstimate": 259
+      }
+    },
+    {
+      "chunk_index": 81,
+      "locator": "Page 24 — Information Technology Support",
+      "page": 25,
+      "section": "Information Technology Support",
+      "content": "Information Technology Support\nTechnology use at The Company continues to grow rapidly. A variety of hardware and software\nis being used by a diverse group of people to achieve a variety of goals. The Information\nTechnology (IT) Department is charged with supporting those endeavors to the best of their\nabilities.\n\nSun Tan City:\no Phone: (877) 597-1582\no Email: HelpDesk@SunTanCity.com or InformationSystems@SunTanCity.com",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 24,
+            "heading": "Information Technology Support"
+          },
+          {
+            "page": 24,
+            "heading": "Sun Tan City"
+          }
+        ],
+        "charCount": 423,
+        "printedPage": 24,
+        "tokenEstimate": 106
+      }
+    },
+    {
+      "chunk_index": 82,
+      "locator": "Pages 24–25 — Buff City Soap",
+      "page": 25,
+      "section": "Buff City Soap",
+      "content": "Buff City Soap:\no Phone: (833) 244-4848\n\no All other: HelpDesk@buffcitysoap.com\n\nCrunch Fitness:\no Phone: 1-888-622-6290\no Email: myabcid@abcfinancial.com\no Woven Support Email: support@woven.com\n\nSafety in the Workplace\n\nSecurity Policy\nThe Company is committed to the safety and security of our customers, Employees, and other\ncompany assets. To that end, all staff must remain vigilant for any type of situation(s),\nperson(s), or device(s) that could pose a threat of any type in any way and should report any\nconcerns immediately as appropriate. All Employees must also complete all required actions\nregarding safety and safety checks as stipulated in your brand’s training and operations\nmanuals.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 24,
+            "heading": "Buff City Soap"
+          },
+          {
+            "page": 25,
+            "heading": "Crunch Fitness"
+          },
+          {
+            "page": 25,
+            "heading": "Safety in the Workplace"
+          },
+          {
+            "page": 25,
+            "heading": "Security Policy"
+          }
+        ],
+        "charCount": 701,
+        "printedPage": 24,
+        "tokenEstimate": 176
+      }
+    },
+    {
+      "chunk_index": 83,
+      "locator": "Page 25 — Statement of Safety in the Workplace Policy",
+      "page": 26,
+      "section": "Statement of Safety in the Workplace Policy",
+      "content": "Statement of Safety in the Workplace Policy\nOur Employees are our most valuable assets. It is our policy that every person is entitled to a\nsafe and have a healthful place in which to work. Establishment and maintenance of a safe\nenvironment is the shared responsibility between the employer and Employees at all levels of\nThe Company. To this end, every reasonable effort will be made in achieving the goal of\naccident prevention and health preservation. Our philosophy is oriented toward affirmative control and minimization of risk to the greatest\nextent possible. We have a basic responsibility to make the safety of Employees a part of our\nconcern. We will be counting on you to do your part in making our program an effective one. The success of The Company will depend not only on production and sales, but also how safely\neach job is performed. There is neither a job so important nor any service so urgent that we\ncannot take time to work safely. The Company will aggressively pursue a plan to minimize pain and suffering of an injured worker\nand return him/her to active work duties as soon as possible. We consider the safety of our\npersonnel to be of prime importance, and we expect your full cooperation in our program\neffective. Employee Notice: All Employees must promptly report any occupational injury or illness to their\nSupervisor. If a Supervisor is not present, the report must be made to any on-site member of\nManagement.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 25,
+            "heading": "Statement of Safety in the Workplace Policy"
+          }
+        ],
+        "charCount": 1443,
+        "printedPage": 25,
+        "tokenEstimate": 361
+      }
+    },
+    {
+      "chunk_index": 84,
+      "locator": "Page 25 — Statement of Safety in the Workplace Policy",
+      "page": 26,
+      "section": "Statement of Safety in the Workplace Policy",
+      "content": "If a Supervisor is not present, the report must be made to any on-site member of\nManagement.\n\nIf the injury is severe and requires immediate medical attention, follow the\nprocedures listed in the Emergency Situation Notification Requirement section below. Upon receiving a report of an injury or illness, the Human Resource Department will ensure that\nthe Employee obtains or receives prompt medical attention as needed. The Supervisor will document the incident as required by state and federal safety regulations,\nand Upper Management will initiate an investigation as to the cause of the incident. Employees,\nformer Employees, and their authorized personal representatives are entitled to request access",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 25,
+            "heading": "Statement of Safety in the Workplace Policy"
+          }
+        ],
+        "charCount": 706,
+        "printedPage": 25,
+        "tokenEstimate": 177
+      }
+    },
+    {
+      "chunk_index": 85,
+      "locator": "Page 26 — Statement of Safety in the Workplace Policy",
+      "page": 27,
+      "section": "Statement of Safety in the Workplace Policy",
+      "content": "to company records of work-related injuries and illnesses, subject to certain limitations imposed\nby 29 CFR 1904.35(b)(2).\nTo report a work-related injury or illness or to request copies of occupational injury and illness\nrecord, please contact: Your Supervisor or a member of Management in your chain of\ncommand. You may also contact Human Resources.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [],
+        "charCount": 351,
+        "printedPage": 26,
+        "tokenEstimate": 88
+      }
+    },
+    {
+      "chunk_index": 86,
+      "locator": "Page 26 — Emergency Situation Notification Requirement",
+      "page": 27,
+      "section": "Emergency Situation Notification Requirement",
+      "content": "Emergency Situation Notification Requirement\nAnytime emergency personnel are called (other than for false alarms), or an injury requiring\nmedical treatment occurs, employees are required to call their Supervisor immediately.\nEmployees must leave a voicemail if the call is not answered, then continue calling up the chain\nof command until someone is reached. They will provide you with additional instructions\nand/or directions. For severe events, the District Manager/Regional Manager or similar upper-\nlevel Manager, and Human Resources should be notified.\nEmergencies such as severe weather, power failures, etc., can disrupt company operations. In\nextreme cases, these circumstances may require the closing of a brand location or office. The\nCorporate Office Personnel will advise the Supervisors if a brand location or office will be closing\nor should remain closed. When operations are officially closed due to emergency conditions, per\nFLSA requirements, time off from scheduled work will be paid for all salary exempt Employees\nregardless of the duration of the closing, however hourly non-exempt Employees will not be\npaid for any scheduled work hours during the closed time frame. With Supervisory approval,\nhourly non-exempt Employees may use available paid leave time (PTO) to be compensated for\nscheduled work time that will be unpaid due to emergency closings.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 26,
+            "heading": "Emergency Situation Notification Requirement"
+          }
+        ],
+        "charCount": 1374,
+        "printedPage": 26,
+        "tokenEstimate": 344
+      }
+    },
+    {
+      "chunk_index": 87,
+      "locator": "Page 26 — Incident Reporting",
+      "page": 27,
+      "section": "Incident Reporting",
+      "content": "Incident Reporting\nAny incident including theft, burglary, property damage, robbery, suspicious/inappropriate\nbehavior, severe weather event resulting in any type of business interruption, late-opening,\nunplanned closing, or injury must be documented in an incident report. Details of the incident\nmust be submitted to employee’s Supervisor immediately for any situation that requires\nimmediate emergency response or medical attention. Once all details are obtained, the\nSupervisor, depending on brand/department’s specified operational procedures will create a\ncomputer-generated incident report.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 26,
+            "heading": "Incident Reporting"
+          }
+        ],
+        "charCount": 597,
+        "printedPage": 26,
+        "tokenEstimate": 150
+      }
+    },
+    {
+      "chunk_index": 88,
+      "locator": "Page 26 — Post Investigation Consequences",
+      "page": 27,
+      "section": "Post Investigation Consequences",
+      "content": "Post Investigation Consequences:\nWhen incidents requiring an investigation occur, if the investigation findings determine that the\ncause of the incident was due to specific Employee(s) carelessness, willful disregard of safety\nprotocols, negligence, or other conduct prohibited per the Standards of Conduct policy, the\nEmployee(s) found to be at fault will be held accountable and may receive disciplinary action up\nto and possibly including transfer, suspension with or without pay, demotion, or immediate\ntermination of employment, as well as potential civil or criminal prosecution depending on the\nseverity and details of the circumstances involved.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 26,
+            "heading": "Post Investigation Consequences"
+          }
+        ],
+        "charCount": 653,
+        "printedPage": 26,
+        "tokenEstimate": 164
+      }
+    },
+    {
+      "chunk_index": 89,
+      "locator": "Pages 26–27 — Employee Injury/Illness in the Workplace & Related Accommodations",
+      "page": 27,
+      "section": "Employee Injury/Illness in the Workplace & Related Accommodations",
+      "content": "Employee Injury/Illness in the Workplace & Related Accommodations:\n\nFollowing any work-related injury or illness, regardless of severity, it is the Employee’s\nresponsibility to report the injury/illness immediately to their Supervisor so they can provide\nprompt and trained evaluation and obtain medical attention if necessary and for completion of\nan incident report. If the condition reasonably precludes immediate notice, the injury should be\nreported as soon as possible. No Employee will perform First Aid on a co-worker unless they\nhave been trained to do so. If you are unable to perform First Aid on your own injury, notify\nyour Supervisor. They will direct you to where to seek medical treatment.\nEmployees are personally responsible for returning their medical reports, restrictions, or any\nrequired time off of work to their direct Supervisor within 24 hours of their medical review.\nOnce medical documentation is obtained, The Company will work to get the Employee back to\nwork as quickly and as safely as possible.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 26,
+            "heading": "Employee Injury/Illness in the Workplace & Related Accommodations"
+          }
+        ],
+        "charCount": 1027,
+        "printedPage": 26,
+        "tokenEstimate": 257
+      }
+    },
+    {
+      "chunk_index": 90,
+      "locator": "Page 27 — Employee Non-Work-Related Injury/Illness Accommodations",
+      "page": 28,
+      "section": "Employee Non-Work-Related Injury/Illness Accommodations",
+      "content": "Employee Non-Work-Related Injury/Illness Accommodations\nWhen a potential new hire or current Employee is stating they have work restrictions or when\nThe Company determines that the Employee is unable to fulfill their work duties in an\nacceptable manner due to a non-work-related injury or illness, the Employee must provide\nmedical documentation from their physician stating the specific restrictions based on the Job\nFunction Evaluation form provided by their Supervisor. Once this documentation is obtained, it\nshould be immediately submitted to the Corporate Office/Human Resources who will review the\ndocuments and determine if reasonable accommodations can be made for the Employee.\nIf reasonable accommodations are not possible, the Employee must follow the standard\nFMLA/STD procedure to see if they qualify. If reasonable accommodations can be made, a\n“Reasonable Accommodation Agreement” document will be sent for both the Employee and\nSupervisor to sign, indicating their agreement to follow and abide by the accommodations as\nlisted.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 27,
+            "heading": "Employee Non-Work-Related Injury/Illness Accommodations"
+          }
+        ],
+        "charCount": 1044,
+        "printedPage": 27,
+        "tokenEstimate": 261
+      }
+    },
+    {
+      "chunk_index": 91,
+      "locator": "Page 27 — Problem Resolution",
+      "page": 28,
+      "section": "Problem Resolution",
+      "content": "Problem Resolution\nThe Company encourages an open and honest atmosphere in which any problem, complaint,\nsuggestion, or question receives a timely response from The Company Supervisors and\nManagement. Supervisors, location managers, and Employees are expected to treat each other\nwith mutual respect. Employees are encouraged to offer positive and constructive feedback. If\nEmployees disagree with established rules of conduct, policies, or practices, they can express\ntheir concern through the problem resolution procedure. No Employee will be penalized for\nvoicing a complaint with The Company in a reasonable, businesslike manner, or for using the\nproblem resolution procedure.\nIf a situation occurs in which Employees believe that a condition of employment or a decision\naffecting them is unjust or inequitable, they are encouraged to make use of the following steps.\nThe Employee may discontinue the procedure at any step.\no An Employee presents a problem to their immediate Supervisor within 7 calendar days, or\nas soon as reasonably possible after an incident occurs. If a Supervisor is unavailable or the\nEmployee believes it would be inappropriate to contact that person, the Employee may\npresent the problem to the next member of Management above their Supervisor in the\nchain of command.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 27,
+            "heading": "Problem Resolution"
+          }
+        ],
+        "charCount": 1298,
+        "printedPage": 27,
+        "tokenEstimate": 325
+      }
+    },
+    {
+      "chunk_index": 92,
+      "locator": "Page 28 — Problem Resolution",
+      "page": 29,
+      "section": "Problem Resolution",
+      "content": "o The Supervisor responds to the problem during a discussion or within 7 calendar days, or as\nsoon as reasonably possible after consulting with appropriate Management members, when\nnecessary. The Supervisor documents the discussion.\no If the problem is unresolved, the Employee will present the problem to the next member of\nManagement above their Supervisor in the chain of command within 7 calendar days, or as\nsoon as reasonably possible.\no That manager will review and consider the problem and inform the Employee of a decision\nwithin 7 calendar days, or as soon as reasonably possible.\no If the problem is unresolved, the Employee will present the problem to Human Resources\nwithin 7 calendar days, or as soon as reasonably possible.\no Human Resources has full authority to make any adjustments deemed appropriate to\nresolve the problem.\nNot every problem can be resolved to everyone's total satisfaction, but only through\nunderstanding and discussion of mutual problems can Employees and Management develop\nconfidence in each other.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [],
+        "charCount": 1038,
+        "printedPage": 28,
+        "tokenEstimate": 260
+      }
+    },
+    {
+      "chunk_index": 93,
+      "locator": "Page 28 — Workplace Violence Prevention",
+      "page": 29,
+      "section": "Workplace Violence Prevention",
+      "content": "Workplace Violence Prevention\nThe Company has adopted the following guidelines to deal with intimidation, harassment, or\nother threats of (or actual) violence that may occur during business hours or on its premises. All Employees, including Supervisors and temporary Employees, should be treated with courtesy\nand respect at all times. Employees are expected to refrain from fighting, “horseplay”, or other\nconduct that may be dangerous to others. Firearms, weapons, and other dangerous or\nhazardous devices or substances are prohibited from the premises of The Company without\nproper authorization. Conduct that threatens, intimidates, or coerces another Employee, a customer of the public at\nany time, including off-duty periods, will not be tolerated. This prohibition includes all acts of\nharassment, including harassment that is based on an individual’s race, religion, creed, color,\nnationality, physical disability, sex, age, veteran’s status, or any other characteristic covered by\nlaw. All threats of (or actual) violence, both direct and indirect, should be reported as soon as\npossible to your immediate Supervisor or any other member of Management. This includes\nthreats by Employees, as well as threats by customers, vendors, solicitors, or other members of\nthe public. When reporting a threat of violence, you should be as specific and detailed as\npossible. All suspicious individuals or activities should also be reported as soon as possible to a\nSupervisor. Do not place yourself in a dangerous situation.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 28,
+            "heading": "Workplace Violence Prevention"
+          }
+        ],
+        "charCount": 1521,
+        "printedPage": 28,
+        "tokenEstimate": 381
+      }
+    },
+    {
+      "chunk_index": 94,
+      "locator": "Page 28 — Workplace Violence Prevention",
+      "page": 29,
+      "section": "Workplace Violence Prevention",
+      "content": "All suspicious individuals or activities should also be reported as soon as possible to a\nSupervisor. Do not place yourself in a dangerous situation.\n\nIf you see or hear a commotion or\ndisturbance near your workstation, do not try to intercede. The Company will promptly and thoroughly investigate all reports of threats of (or actual)\nviolence and of suspicious individuals or activities. The identity of the individual making the\nreport will be protected as much as it is practical. To maintain workplace safety and the\nintegrity of its investigation, The Company may suspend Employees, either with or without pay,\npending investigation.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 28,
+            "heading": "Workplace Violence Prevention"
+          }
+        ],
+        "charCount": 639,
+        "printedPage": 28,
+        "tokenEstimate": 160
+      }
+    },
+    {
+      "chunk_index": 95,
+      "locator": "Page 29 — Workplace Violence Prevention",
+      "page": 30,
+      "section": "Workplace Violence Prevention",
+      "content": "Anyone determined to be responsible for threats of (or actual) violence or other conduct that is\nin violation of these guidelines will be subject to prompt disciplinary action up to and including\nimmediate termination.\nThe Company encourages Employees to bring their disputes or differences with other\nEmployees to the attention of their Supervisors before the situation escalates into potential\nviolence. The Company will not discipline Employees for raising such concerns.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [],
+        "charCount": 474,
+        "printedPage": 29,
+        "tokenEstimate": 119
+      }
+    },
+    {
+      "chunk_index": 96,
+      "locator": "Page 29 — Visitors in the Workplace",
+      "page": 30,
+      "section": "Visitors in the Workplace",
+      "content": "Visitors in the Workplace\nThis policy applies to The Company. Visitors include all persons who are granted access to\nCompany premises, including, but not limited to, Employees, contractors, customers, and\nEmployees’ acquaintances, friends and family members, regardless of whether the purpose of\nthe visit is for business reasons. For personal visitors, Employees must obtain approval from direct Supervisors each time they\ninvite a visitor into the workplace. The Supervisor has responsibility for enforcing this policy and\nensuring that visitors (regardless of whether or not they are JB & Associates Employees) stay for\nonly limited and non-disruptive periods of time. If a visitor does not have approval and/or is\nunannounced, the Supervisor will verify with the Employee that the visitor is “welcome”. If the\nvisitor is welcome, the Employee will be asked to meet the visitor at the front\nentrance/reception area. If the Employee is uncomfortable with allowing the visitor into the\nworkplace, the Supervisor or manager on duty must refuse to allow the visitor into the\nworkplace. Violent domestic issues, including Restraining Orders, PPO-Personal Protection Orders, and\nintense domestic concerns should be communicated promptly to Human Resources and the\ndirect Supervisor to promote a safe and secure workplace. Employees who have invited guests are responsible for escorting non-Employee visitors to their\ndestinations and always accompanying them. Employees are responsible for the conduct of their\nvisitors.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 29,
+            "heading": "Visitors in the Workplace"
+          }
+        ],
+        "charCount": 1517,
+        "printedPage": 29,
+        "tokenEstimate": 380
+      }
+    },
+    {
+      "chunk_index": 97,
+      "locator": "Page 29 — Visitors in the Workplace",
+      "page": 30,
+      "section": "Visitors in the Workplace",
+      "content": "Employees are responsible for the conduct of their\nvisitors.\n\nUpon observing an unescorted non-Employee visitor or a visitor (Employee or non-\nEmployee) acting inappropriately on Company premises, Employees must immediately notify\nManagement. Visitors should be aware that unauthorized animals are not permitted in areas\nwithin the workplace, including parking lots. Employees who are not scheduled to be working should not be in the workplace unless they are\nshopping or receiving services from the workplace. Employees must promptly report to a Supervisor, suspicious vehicles, individual, threatening\ncalls, situations of workplace violence, or even domestic violence if that might impact this or any\ncompany properties. Such reports are kept strictly confidential, and there will be no adverse\neffects based on you are an Employee’s reported comments or concerns. Do not place yourself\nin a dangerous situation. If you see or hear a commotion or disturbance near your workstation,\ncontact your Supervisor. Do not try to intercede. The Company will promptly and thoroughly\ninvestigate all reports of threats of (or actual) violence and of suspicious individuals or activities. ONLY employees are allowed behind the front counter/cash register area, in kitchen areas, or\nother back-room production areas used for storage if they are working their current shift.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 29,
+            "heading": "Visitors in the Workplace"
+          }
+        ],
+        "charCount": 1363,
+        "printedPage": 29,
+        "tokenEstimate": 341
+      }
+    },
+    {
+      "chunk_index": 98,
+      "locator": "Page 30 — Animals in the Workplace",
+      "page": 31,
+      "section": "Animals in the Workplace",
+      "content": "Animals in the Workplace\nThe Company is responsible for assuring the health and safety of all Employees in the\nworkplace. While we understand that people dearly love their pets and like to take them\neverywhere, the fact is that animals may:\no Pose a threat of infection\no Cause allergic reactions in other Employees/customers\no Cause some Employees/customers to feel threatened or to be distracted by the\npresence of animals\no “Have accidents” or damage to company property\nTherefore, in consideration of all Employees and to ensure safety, please do not bring pets into\nthe workplace. An Employee who requires the help of a service animal (defined by 28 CFR\n36.104 as “any dog that is individually trained to do work or perform tasks for the benefit of an\nindividual with a disability”) will be permitted to bring a service animal to the office, provided\nthat the animal’s presence does not create a danger to others and does not impose an undue\nhardship upon The Company.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 30,
+            "heading": "Animals in the Workplace"
+          }
+        ],
+        "charCount": 973,
+        "printedPage": 30,
+        "tokenEstimate": 244
+      }
+    },
+    {
+      "chunk_index": 99,
+      "locator": "Page 30 — Robberies",
+      "page": 31,
+      "section": "Robberies",
+      "content": "Robberies\nRobberies are rare situations that may occur. Robberies involve a person or persons forcing an\nEmployee to give him or her cash, merchandise, etc. It is best practice to be proactive before\nthese situations occur. By following all safety policies, we can minimize the opportunity for the\ncrime. Robberies can occur inside or outside any company location, etc. In the case of a robbery,\ngive any robber whatever items/cash they demand. Do not in anyway attempt to foil the\nrobbery, negotiate, or battle wits with a potential robber(s).\nThe safety of our Employees, outside vendors, guests, and reputation cannot be risked for any\nmonetary value. Immediately contact the local authorities and your immediate Supervisor and\nfollow Emergency Situation Notification Requirement policy if this situation occurs. An Incident\nForm must be completed and submitted. Your Supervisor will instruct you on how to complete\nthis form. (See also Incident Reporting).",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 30,
+            "heading": "Robberies"
+          }
+        ],
+        "charCount": 960,
+        "printedPage": 30,
+        "tokenEstimate": 240
+      }
+    },
+    {
+      "chunk_index": 100,
+      "locator": "Page 30 — Handling Theft",
+      "page": 31,
+      "section": "Handling Theft",
+      "content": "Handling Theft\nThe Company Employees who have witnessed or suspect an act of dishonesty or business\nabuses should report it to the manager on duty, District Manager, or other Upper Management.\no It is paramount that employees do not discuss suspicions to anyone else in The Company, or\noutside of work.\nEmployees should not act on their own to resolve the theft issue. Communicate concerns as\noutlined above. We must prevent theft at all times to secure the success of our company. Theft\nis a loss that can be prevented. Following the correct procedures above will ensure that theft is\navoided and handled lawfully and ethically when it does occur.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 30,
+            "heading": "Handling Theft"
+          }
+        ],
+        "charCount": 648,
+        "printedPage": 30,
+        "tokenEstimate": 162
+      }
+    },
+    {
+      "chunk_index": 101,
+      "locator": "Page 31 — Proper Use of General Operating Equipment",
+      "page": 32,
+      "section": "Proper Use of General Operating Equipment",
+      "content": "Proper Use of General Operating Equipment\nEmployees will be required to use items such as ladders, carts, stools, etc. to perform daily tasks\nsuch as cleaning and restocking shelves as well as performing maintenance. See OSHA training\nat your location for general operation equipment.\nIt is the Employee’s responsibility to ensure that all equipment is used only as intended by the\nmanufacturer and OSHA.The Company intends to comply with all applicable OSHA standards.\nAny known or suspected violations of any OSHA standard should be reported immediately to\nHuman Resources.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 31,
+            "heading": "Proper Use of General Operating Equipment"
+          }
+        ],
+        "charCount": 575,
+        "printedPage": 31,
+        "tokenEstimate": 144
+      }
+    },
+    {
+      "chunk_index": 102,
+      "locator": "Page 31 — Wet Floor Sign",
+      "page": 32,
+      "section": "Wet Floor Sign",
+      "content": "Wet Floor Sign\nEmployees should use the wet floor sign when mopping and anytime the floor is damp/wet for\nany reason regardless of the substance causing it to be wet. (Rain, water off customer’s shoes,\nany type of chemical being used in the facility, etc…). Use any additional items available when\napplicable, rugs, etc.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 31,
+            "heading": "Wet Floor Sign"
+          }
+        ],
+        "charCount": 320,
+        "printedPage": 31,
+        "tokenEstimate": 80
+      }
+    },
+    {
+      "chunk_index": 103,
+      "locator": "Page 31 — Portable Fire Extinguisher & Fire Prevention Plan",
+      "page": 32,
+      "section": "Portable Fire Extinguisher & Fire Prevention Plan",
+      "content": "Portable Fire Extinguisher & Fire Prevention Plan\nOnly trained Employees should use fire extinguishers in the facility, so long as they are not in\ndanger. Employees who receive training are authorized to use fire extinguishers.\no They will become familiar with the hazards involved with early-stage firefighting.\no Training will also be repeated annually.\nEmployees who are not trained to use fire extinguishers are advised that their only duties in a\nfire are responsible for notification and evacuation.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 31,
+            "heading": "Portable Fire Extinguisher & Fire Prevention Plan"
+          }
+        ],
+        "charCount": 505,
+        "printedPage": 31,
+        "tokenEstimate": 127
+      }
+    },
+    {
+      "chunk_index": 104,
+      "locator": "Page 31 — Vehicle Fleet Usage Policy and Guidelines",
+      "page": 32,
+      "section": "Vehicle Fleet Usage Policy and Guidelines",
+      "content": "Vehicle Fleet Usage Policy and Guidelines\nThe purpose of this policy is to promote the safety of those individuals who drive company\nvehicles or who drive personal vehicles for business use, and to provide guidance on the proper\nuse of vehicles for company business. It is the driver’s responsibility to operate the vehicle in a\nsafe manner and to drive defensively to prevent injuries and property damage. As such, The\nCompany endorses and requires your compliance with all applicable state motor vehicle\nregulations relating to driver responsibility. In addition, The Company expects each driver to\ndrive in a safe and courteous manner pursuant to the following safety rules:\nCompany vehicles are to be driven by authorized Employees only, except in case of repair\ntesting by a mechanic. Employees must have a valid and current Driver’s License to operate a\ncompany vehicle, or a personal vehicle with current auto insurance while on company business.\nAny Employee who has a Driver’s License revoked or suspended shall immediately notify Human\nResources by 9 a.m. central time the next business day, and immediately discontinue operation\nof The Company vehicle. Failure to do so may result in disciplinary action, up to and including\ntermination of employment.\nAll accidents that occur involving company vehicles, or personal vehicles while being driven for\ncompany business, and involving personal injury, regardless of severity, must be reported to the\npolice and to Human Resources. Drivers must report all ticketed traffic violations received",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 31,
+            "heading": "Vehicle Fleet Usage Policy and Guidelines"
+          }
+        ],
+        "charCount": 1548,
+        "printedPage": 31,
+        "tokenEstimate": 387
+      }
+    },
+    {
+      "chunk_index": 105,
+      "locator": "Page 32 — Vehicle Fleet Usage Policy and Guidelines",
+      "page": 33,
+      "section": "Vehicle Fleet Usage Policy and Guidelines",
+      "content": "during the operation of a company vehicle, or while driving a personal vehicle on company\nbusiness, within 72 hours to Human Resources.\nA driving record that fails to meet criteria stated in this policy, or that is considered to be in\nviolation of the intent of this policy, will result in a loss of the privilege of driving a company\nvehicle.\nCriteria that may indicate an unacceptable record include, but are not limited to:\no Three or more moving violations in a year.\no Three or more chargeable accidents within a year. Chargeable means that they driver is\ndetermined to be the primary cause of the accident through speeding, inattention, etc.\nContributing factors, such as weather or mechanical problems, will be taken into\nconsideration.\no Violations include any ticket, charge, or other law enforcement proceeding relating to these,\nas well as independent evidence of violations deemed credible and relevant by The\nCompany.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [],
+        "charCount": 930,
+        "printedPage": 32,
+        "tokenEstimate": 233
+      }
+    },
+    {
+      "chunk_index": 106,
+      "locator": "Page 32 — Driver Safety Rules",
+      "page": 33,
+      "section": "Driver Safety Rules",
+      "content": "Driver Safety Rules\nThe use of a company vehicle, or driving a personal vehicle for company business, while under\nthe influence of intoxicants and other drugs (which could impair driving ability) is forbidden and\nis sufficient cause for discipline, up to and including termination of employment.\nThe Company does not allow or require cell phone use while driving and Employees are\nexpressly forbidden from texting, responding to email or any other actions that may distract the\nEmployee from safe driving. Cell phone use while driving should be kept to a minimum and\nwhen done shall only be done in a manner that does not distract the driver.\nDrivers are responsible for the security of company vehicles assigned to them. The vehicle\nengine must be shut off, ignition keys removed, and vehicle doors locked whenever the vehicle\nis left unattended. All State and Local laws must be obeyed.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 32,
+            "heading": "Driver Safety Rules"
+          }
+        ],
+        "charCount": 888,
+        "printedPage": 32,
+        "tokenEstimate": 222
+      }
+    },
+    {
+      "chunk_index": 107,
+      "locator": "Page 32 — Accident Procedures",
+      "page": 33,
+      "section": "Accident Procedures",
+      "content": "Accident Procedures\nEmployees should call for medical aid if necessary. Call the police. All accidents, regardless of\nseverity, must be reported to the police. If the driver cannot get to a phone, he/she should\nwrite a note giving location to a reliable appearing motorist and ask them to notify the police.\nRecord names and addresses of driver, witnesses, and occupants of the other vehicles and any\nmedical personnel who may arrive at the scene. Pertinent information to obtain includes license\nnumber of other drivers; insurance company names and policy numbers of other vehicles; make,\nmodel, and year of other vehicles; date and time of accident; and overall road and weather\nconditions.\nDo not discuss the accident with anyone at the scene except the police. Do not accept any\nresponsibility for the accident. Do not argue with anyone. Provide the other party with\nemployee name, address, Driver’s License number, and insurance information.\nImmediately report the accident to Human Resources. Provide a copy of the accident report\nand/or your written description of the accident to Human Resources ASAP. There will be a",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 32,
+            "heading": "Accident Procedures"
+          }
+        ],
+        "charCount": 1125,
+        "printedPage": 32,
+        "tokenEstimate": 282
+      }
+    },
+    {
+      "chunk_index": 108,
+      "locator": "Page 33 — Accident Procedures",
+      "page": 34,
+      "section": "Accident Procedures",
+      "content": "formal accident review conducted on each accident to determine cause and how the accident\ncould have been prevented.\n\nEmployment Status & Records",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 33,
+            "heading": "Employment Status & Records"
+          },
+          {
+            "page": 33,
+            "heading": "Employee Classifications"
+          }
+        ],
+        "charCount": 145,
+        "printedPage": 33,
+        "tokenEstimate": 37
+      }
+    },
+    {
+      "chunk_index": 109,
+      "locator": "Page 33 — Accident Procedures",
+      "page": 34,
+      "section": "Accident Procedures",
+      "content": "Employee Classifications\nCompany policies apply to all classifications of Employees; however, Employees are divided into\nthe following classifications:\no Full-time – Employees hired full time (30 hours per week or more) on a full workweek basis\nfor a continuous and indefinite period of time.\no The following hours are required per position:\no AMM/ASD/AGM – 30-35 hours per week\no Hourly Office Personnel - 40 hours per week\no MM/SD/GM/TSD/DM – 40-45 hours per week\no Part-time – Employees whose work schedule is less than full time (less than 30 hours per\nweek) on a full workweek basis for a continuous and indefinite period of time.\no Temporary/Seasonal – Employees hired as temporary workers for short periods of time\nsuch as holidays, peak seasonal periods, and vacations. Upon completion of the temporary\nassignment, temporary/seasonal Employees should be terminated or reclassified as part-\ntime or full-time.\no Nonexempt – All nonexempt Employees are paid bi-weekly on an hourly basis and are\nexpected to confine their work to the scheduled workday and workweek unless their\nsupervisor authorizes overtime in advance. Hourly paid Employees will be paid overtime for\nall hours worked in excess of 40 hours within a workweek. Workweek is defined as opening\nbusiness Monday through close of business Sunday.\no Exempt – All exempt Employees are paid on a bi-weekly salary basis. Hours worked by\nsalaried Employees can be irregular. Salaried Employees are exempt from the overtime\nprovisions of the Federal Wage and Hour Law and do not receive overtime pay.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 33,
+            "heading": "Employment Status & Records"
+          },
+          {
+            "page": 33,
+            "heading": "Employee Classifications"
+          }
+        ],
+        "charCount": 1560,
+        "printedPage": 33,
+        "tokenEstimate": 390
+      }
+    },
+    {
+      "chunk_index": 110,
+      "locator": "Page 33 — Orientation",
+      "page": 34,
+      "section": "Orientation",
+      "content": "Orientation\nThe Supervisor will discuss job duties and responsibilities with the new Employee once\nemployment commences. A copy of the Employment Policy Manual will be available in each\nlocation physically or digitally for all Employees to review at any time. The manual is not to be\nremoved from the salon. Employees are expected to read the manual thoroughly and address\nany questions with their supervisor. An Acknowledgement of Receipt and Understanding is\nprovided in the New Hire Paperwork, which the employee is required to sign. This signed copy\nwill become part of the employee’s personnel file. Additionally, all employees must present on\ntheir start date, a voided check or a direct deposit form from their bank, along with the\nnecessary copies of their identification (according to the I-9). If these items are not presented on\nthe start date, all training will cease until the employee can present the proper documentation.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 33,
+            "heading": "Orientation"
+          }
+        ],
+        "charCount": 936,
+        "printedPage": 33,
+        "tokenEstimate": 234
+      }
+    },
+    {
+      "chunk_index": 111,
+      "locator": "Pages 33–34 — Introductory Period (Probationary Period)",
+      "page": 34,
+      "section": "Introductory Period (Probationary Period)",
+      "content": "Introductory Period (Probationary Period)\nThe introductory period is intended to give new Employees the opportunity to demonstrate\ntheir ability to achieve a satisfactory level of performance and to determine whether the new\nposition meets their expectations. The Company uses this period to evaluate Employee\n\ncapabilities, work habits, and overall performance. Either the Employee or The Company may\nend the employment relationship at will, at any time, during or after the introductory period,\nwith or without cause or advance notice.\nAll new and rehired Employees work on an introductory basis for the first 90 calendar days after\ntheir date of hire. Employees who are promoted or transferred within The Company must\ncomplete a secondary introductory period of the same length with each reassignment to a new\nposition. Any significant absence will automatically extend an introductory period by the length\nof the absence. If The Company determines that the designated introductory period does not\nallow sufficient time to thoroughly evaluate the Employee’s performance, the introductory\nperiod may be extended for a specified period.\nIn cases of promotions or transfers within The Company, an Employee who, in the sole\njudgement of Management, is not successful in the new position can be removed from that\nposition at any time during the secondary introductory period. If this occurs, the Employee may\nbe allowed to return to his or her former job or to a comparable job or the Employee is\nqualified, depending on the availability of such positions and The Company’s needs.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 33,
+            "heading": "Introductory Period (Probationary Period)"
+          }
+        ],
+        "charCount": 1578,
+        "printedPage": 33,
+        "tokenEstimate": 395
+      }
+    },
+    {
+      "chunk_index": 112,
+      "locator": "Page 34 — Evaluations and Raises",
+      "page": 35,
+      "section": "Evaluations and Raises",
+      "content": "Evaluations and Raises\nEmployees are entitled to a review and potential raises at least annually. The Company cannot\npromise or guarantee that raises will occur as raises are based upon several factors including but\nnot limited to: Employee performance, location performance, and overall company\nperformance.\n\nPromotions\nThe Company is eager to promote from within and values employee growth and development.\nQualified Employees are encouraged to apply for internal job postings. When we have an\nEmployee who is fully qualified and willing to perform the duties of the available position, which\nmay include relocating. Promotions will be based on quality of work, prior job performance,\nexperience and willingness to relocate. Questions regarding job openings and the internal\napplication process should be directed to Human Resources.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 34,
+            "heading": "Evaluations and Raises"
+          },
+          {
+            "page": 34,
+            "heading": "Promotions"
+          }
+        ],
+        "charCount": 835,
+        "printedPage": 34,
+        "tokenEstimate": 209
+      }
+    },
+    {
+      "chunk_index": 113,
+      "locator": "Page 34 — What to Expect When Terminated",
+      "page": 35,
+      "section": "What to Expect When Terminated",
+      "content": "What to Expect When Terminated\n\nEmployment Termination\nBelow are examples of some most common circumstances which employment is terminated:\no Resignation – voluntary employment termination initiated by an Employee. The Company\nrequests that you discuss a notice period with your immediate Supervisor(s). If an Employee\ndoes not provide advance notice, the Employee will be ineligible for rehire.\no Discharge – involuntary employment termination initiated by The Company.\no Layoff – involuntary employment termination initiated by The Company for non-disciplinary\nreasons.\no Retirement – voluntary employment termination initiated by the Employee meeting age,\nlength of service, and any other criteria for retirement from The Company.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 34,
+            "heading": "What to Expect When Terminated"
+          },
+          {
+            "page": 34,
+            "heading": "Employment Termination"
+          }
+        ],
+        "charCount": 733,
+        "printedPage": 34,
+        "tokenEstimate": 184
+      }
+    },
+    {
+      "chunk_index": 114,
+      "locator": "Page 35 — Return of Property",
+      "page": 36,
+      "section": "Return of Property",
+      "content": "Return of Property\nEmployees must return all company property immediately upon request and no later than 5 pm\nthe following business day upon termination of employment. Ex: laptops/tablets, cellphones,\nuniforms, company vehicle, keys, key fobs, company credit cards and all corresponding receipts\nor invoices, company paperwork, expense reports and receipts, tools, equipment, company\nmanuals, company training items/devices, and any other company issued property or assets,\netc..\nWhen permitted by applicable law, The Company may also take all legal action deemed\nappropriate to recover or protect its property and its return including criminal and civil charges.\nEmployees may be held financially responsible for damaged or unreturned property and The\nCompany reserves the right to withhold the cost of repairing or replacing such property from\nthe Employee’s paycheck(s) where allowed by law.\nAs an Employee you have the right to request a receipt from your Supervisor showing items you\nreturned (typically through email).",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 35,
+            "heading": "Return of Property"
+          }
+        ],
+        "charCount": 1025,
+        "printedPage": 35,
+        "tokenEstimate": 257
+      }
+    },
+    {
+      "chunk_index": 115,
+      "locator": "Page 35 — Pay on Separation of Employment",
+      "page": 36,
+      "section": "Pay on Separation of Employment",
+      "content": "Pay on Separation of Employment\nUpon separation of employment, Employees will be paid for time worked, less deductions, on\nthe next regular pay day. In most instances, the final paycheck will be mailed or direct deposited\nto the Employee from the Corporate Office.\nA two (2) week notice is required for all full time and part-time Employees, and a thirty (30) day\nnotice is required for all Management positions. If employees do not fulfill the required notice,\nhourly Employees will be reduced to minimum wage and lose all bonus potential, within the\nrules and regulations of the Fair Labor Standard Act.\nYou must fulfill your notice to receive any bonuses that have not yet been paid out. No bonuses\nwill be paid upon involuntary termination of employment. All Employee discounts for items and\nservices will cease immediately upon separation of employment.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 35,
+            "heading": "Pay on Separation of Employment"
+          }
+        ],
+        "charCount": 858,
+        "printedPage": 35,
+        "tokenEstimate": 215
+      }
+    },
+    {
+      "chunk_index": 116,
+      "locator": "Page 35 — Employee Records",
+      "page": 36,
+      "section": "Employee Records",
+      "content": "Employee Records\nThe Company will maintain a file on each Employee. Personnel files are the property of The\nCompany and will be treated as any other confidential information. All personnel files are kept\nin the Personnel Platform Systems via the systems below or at the Corporate Office:\no Sun Tan City – MyGlow\no Buff City Soap – MyGlow\no Crunch Fitness – Woven\nIt is the responsibility of each employee to promptly notify The Company of any changes in\npersonnel data. Personal mailing addresses, telephone numbers, number and names of\ndependents, individuals to be contacted in the event of an emergency, educational\naccomplishment, and other such statues reports should be accurate and current at all times.\nDocuments that are considered confidential or that contain sensitive data will not be sent\nelectronically. If such documents are required, the employee may incur fees for the documents\nbeing sent.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 35,
+            "heading": "Employee Records"
+          }
+        ],
+        "charCount": 907,
+        "printedPage": 35,
+        "tokenEstimate": 227
+      }
+    },
+    {
+      "chunk_index": 117,
+      "locator": "Page 36 — Employee Records",
+      "page": 37,
+      "section": "Employee Records",
+      "content": "Changes must be communicated/updated within 30 days of the information change taking\neffect. Former Employees do not have access to their files other than documents that must be\nprovided per written request based on state and federal law.\n\nLiquidating 401K\nIf you leave your employer before retirement age, in most cases you will be able to transfer your\naccount balance out of your employer’s plan. If an Employee was employed for less than the\ntime required for the 401K to fully vest or had only recently begun making contributions to their\n401K account prior to their termination, additional liquidation options may exist.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 36,
+            "heading": "Liquidating 401K"
+          }
+        ],
+        "charCount": 626,
+        "printedPage": 36,
+        "tokenEstimate": 157
+      }
+    },
+    {
+      "chunk_index": 118,
+      "locator": "Page 36 — Warning",
+      "page": 37,
+      "section": "Warning",
+      "content": "Warning:\no You may owe current income taxes – and possibly tax penalties – on your distribution if you\ntake money out before your legal retirement age unless you transfer it to an IRA or another\ntax-qualified retirement plan.\no Taking all or a portion of your funds out of your account before retirement age will mean\nyou have less in retirement benefits.\nPlease see the plan administrator and your personal financial and legal advisor(s) for assistance\nwith handling your account.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 36,
+            "heading": "Warning"
+          }
+        ],
+        "charCount": 481,
+        "printedPage": 36,
+        "tokenEstimate": 121
+      }
+    },
+    {
+      "chunk_index": 119,
+      "locator": "Page 36 — Accessing W-2’s",
+      "page": 37,
+      "section": "Accessing W-2’s",
+      "content": "Accessing W-2’s\nTo access your W-2’s at any time after they have been produced each year, utilize the following\nsteps:\no Log into www.Paycor.com with your username and password.\no If you forgot your login credentials, you can always click the “Forgot Username” or “Forgot\nPassword” for assistance in remembering or resetting your credentials.\no Print your W-2’s directly from the Paycor system.\no If you Change your address you need to notify your payroll department.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 36,
+            "heading": "Accessing W-2’s"
+          }
+        ],
+        "charCount": 467,
+        "printedPage": 36,
+        "tokenEstimate": 117
+      }
+    },
+    {
+      "chunk_index": 120,
+      "locator": "Page 36 — Timekeeping & Payroll",
+      "page": 37,
+      "section": "Timekeeping & Payroll",
+      "content": "Timekeeping & Payroll\n\nTime Records\nPlease see your direct Supervisor for details regarding what methods you should be using to\nrecord and report your work times as these vary based on your brand and position.\nEmployees are required to clock in when they report to work and clock out when they leave.\nEmployees must clock in no earlier than five (5) minutes prior to the start of their scheduled\nshift and clock out no later than fifteen (15) minutes after the end of their scheduled shift unless\napproved by Management. Employees who are the scheduled openers for their location must\narrive for their shift in time to ensure all opening duties are performed properly prior to the\nlocations opening time. This ensures that the brand standards are able to be upheld for all\ncustomers.\nDirect Supervisors must verify the daily and weekly hours worked by all their Employees and\nreport and those to Payroll as required. Please meet with your direct Supervisor for additional\ndetails regarding these deadlines. Hourly Employees must review their daily and weekly hours",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 36,
+            "heading": "Timekeeping & Payroll"
+          },
+          {
+            "page": 36,
+            "heading": "Time Records"
+          }
+        ],
+        "charCount": 1064,
+        "printedPage": 36,
+        "tokenEstimate": 266
+      }
+    },
+    {
+      "chunk_index": 121,
+      "locator": "Page 37 — Time Records",
+      "page": 38,
+      "section": "Time Records",
+      "content": "worked as reported to Payroll by their direct Supervisor and sign off to confirm their accuracy.\nAny discrepancies should be reported to your direct Supervisor immediately. Please see your\nSupervisor for details regarding how this verification process is handled for your brand and\nposition.\n\nSchedule Requests/General availability Changes\nManagement will make its best effort to accommodate schedule requests turned in with enough\nadvanced notice on a first come first served basis, provided the request can be accomplished\nwithout adversely affecting business operations or teaming.\nGeneral availability changes should be submitted at least two (2) weeks in advance or as soon as\nthe employee is aware that changes are needed. Management will make its best effort to\naccommodate general availability changes provided the change can be accomplished without\nadversely affecting business operations or teaming needs. Schedule requests and general\navailability changes after the work schedule has been determined will not be honored.\nEmployees must submit all schedule requests and changes to general availability in the\nemployee Personnel Platform System.\no Sun Tan City – MyGlow\no Buff City Soap – MyGlow\no Crunch Fitness – Woven\nSchedule requests and general availability changes that fundamentally alter when employees\nare available to work may result in dismissal from their position if the changes cannot be\naccommodated due to business needs.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 37,
+            "heading": "Schedule Requests/General availability Changes"
+          }
+        ],
+        "charCount": 1447,
+        "printedPage": 37,
+        "tokenEstimate": 362
+      }
+    },
+    {
+      "chunk_index": 122,
+      "locator": "Page 37 — Shift Replacement",
+      "page": 38,
+      "section": "Shift Replacement",
+      "content": "Shift Replacement\nShift trading between employees disrupts company operations and is generally discouraged.\nHowever, in emergency situations, employees may trade shifts with prior approval from\nmanagement. It is the responsibility of the employee to find a replacement for their shift. If an\nemployee is unable to work due to illness, emergency, or unforeseen circumstances, they must\nimmediately call and speak directly with their supervisor to notify them of the situation.\nEmployees should provide at least two hours’ notice when calling in as a courtesy to colleagues.\nIn the event of an emergency where two hours’ notice is not possible the employee must\ncontact their supervisor directly by phone immediately. Texting is NOT an acceptable method of\ncommunication a phone call is required.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 37,
+            "heading": "Shift Replacement"
+          }
+        ],
+        "charCount": 794,
+        "printedPage": 37,
+        "tokenEstimate": 199
+      }
+    },
+    {
+      "chunk_index": 123,
+      "locator": "Page 37 — Seminar/Webinar Attendance",
+      "page": 38,
+      "section": "Seminar/Webinar Attendance",
+      "content": "Seminar/Webinar Attendance\nIf you are enrolled in a seminar/webinar and do not attend the seminar without notifying your\nSupervisor, it is considered a no call no show to a scheduled shift. If you cannot attend a\nseminar/webinar you are scheduled for, you must notify your Supervisor via a personal phone\ncall. Notice of a call-in should not occur “last minute” and should be completed at least two (2)\nhours in advance out of courtesy to fellow Employees. In cases of emergency where two (2)\nhours advance notice is not possible (accident, etc.), you must contact your Supervisor via direct\nphone call immediately.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 37,
+            "heading": "Seminar/Webinar Attendance"
+          }
+        ],
+        "charCount": 615,
+        "printedPage": 37,
+        "tokenEstimate": 154
+      }
+    },
+    {
+      "chunk_index": 124,
+      "locator": "Page 38 — Meal and Rest Policy",
+      "page": 39,
+      "section": "Meal and Rest Policy",
+      "content": "Meal and Rest Policy\nDuring your employment with The Company, you will be expected to take meal and rest period\nbreaks in accordance with this policy. The Company recognizes that meal and rest periods are\nan important part of the workday. By allowing nourishment and rest, they help foster Employee\nwellness and contribute to productivity and safety in the workplace.\nDue to the nature of the work environment at The Company, breaks are not scheduled.\nEmployees are allowed to take an informal break as deemed necessary, without clocking out, so\nlong as a team member is in the building. Anytime an Employee leaves the premises, they are\nrequired to clock out, unless they are conducting company business.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 38,
+            "heading": "Meal and Rest Policy"
+          }
+        ],
+        "charCount": 705,
+        "printedPage": 38,
+        "tokenEstimate": 177
+      }
+    },
+    {
+      "chunk_index": 125,
+      "locator": "Page 38 — Overtime",
+      "page": 39,
+      "section": "Overtime",
+      "content": "Overtime\nEmployees may be scheduled to work overtime hours when necessary. When possible, advance\nnotification of these mandatory assignments will be provided. All overtime work must receive\nthe Supervisor’s prior authorization. Overtime assignments will be distributed as equitably as\npractical to all qualified employees to perform the required work. Failure to work scheduled\novertime or overtime worked without prior authorization from the Supervisor may result in\ndisciplinary action, up to and including termination of employment.\nOvertime compensation is paid to all non-exempt Employees (1.5x regular hourly pay) after\nforty (40) hours worked within a single week. This is in accordance with federal and state wage\nand hour restrictions. Overtime pay is based on actual hours worked. Time off on vacation leave,\nholidays, or any leave of absence will not be considered hours worked for purposes of\nperforming overtime calculations. Exempt Employees will not receive overtime pay unless\nrequired by law.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 38,
+            "heading": "Overtime"
+          }
+        ],
+        "charCount": 1010,
+        "printedPage": 38,
+        "tokenEstimate": 253
+      }
+    },
+    {
+      "chunk_index": 126,
+      "locator": "Page 38 — Pay Periods",
+      "page": 39,
+      "section": "Pay Periods",
+      "content": "Pay Periods\nEmployees are paid on a bi-weekly basis. Payroll is processed on Wednesday of the payroll week\nfor the previous pay period. Employees are paid all wages due per federal and state laws on a bi-\nweekly basis. Employees are required to use the direct deposit payment option available. All\nEmployees can access paystubs electronically through Paycor. Please see your Supervisor for\nassistance with gaining access to your Paycor record.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 38,
+            "heading": "Pay Periods"
+          }
+        ],
+        "charCount": 443,
+        "printedPage": 38,
+        "tokenEstimate": 111
+      }
+    },
+    {
+      "chunk_index": 127,
+      "locator": "Page 38 — Bonus Policy",
+      "page": 39,
+      "section": "Bonus Policy",
+      "content": "Bonus Policy\nBonuses are performance-based and contingent on meeting or exceeding pre-defined goals and\nminimums. Bonuses are paid at the discretion of The Company and are not “commissions”. Any\nEmployee working at multiple locations will be paid bonus based on their performance average\nfrom all locations.\nBonuses are paid on the last paycheck of the following month. Payment of bonuses requires\n100% job attendance and successful completion of all assigned tasks. Any Employee dishonestly\nhandling transactions or promotions will be denied any bonuses that have not yet been paid and\nwill be subject to disciplinary action, up to and including termination of employment.\nIf an employee decides to end employment, the employee must complete the required notice to\nreceive any bonuses that have not yet been paid out. All bonus plans are subject to change with",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 38,
+            "heading": "Bonus Policy"
+          }
+        ],
+        "charCount": 861,
+        "printedPage": 38,
+        "tokenEstimate": 216
+      }
+    },
+    {
+      "chunk_index": 128,
+      "locator": "Page 39 — Bonus Policy",
+      "page": 40,
+      "section": "Bonus Policy",
+      "content": "one day’s notice. Please see your Supervisor regarding brand’s bonus policies and incentive pay\nprograms to find those that apply to your specific position.\n\nPayroll Deductions\nThe Company withholds all federal, state, and local taxes as required by law and IRS guidelines.\nAll bonuses, special pay, and prizes employees receive are taxable. Employee premium\npayments for their elected insurance benefits are also collected via payroll deductions unless\nthe Employee is on leave during which other payment arrangements will be made. (See also\nEmployee Insurance Benefits section for more details).",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 39,
+            "heading": "Payroll Deductions"
+          }
+        ],
+        "charCount": 597,
+        "printedPage": 39,
+        "tokenEstimate": 150
+      }
+    },
+    {
+      "chunk_index": 129,
+      "locator": "Page 39 — Garnishment of Employee Wages",
+      "page": 40,
+      "section": "Garnishment of Employee Wages",
+      "content": "Garnishment of Employee Wages\nThe Company will comply with all federal and state laws regarding the garnishment of Employee\nwages.\nTravel time/cost reimbursements (for travel NOT requiring overnight stays)\nTravel time/mileage reimbursements vary depending on employee job type, position,\ndepartment, reason for travel, the distance of travel required, and whether or not the travel was\nvoluntary or required. All travel time/mileage reimbursements require approval from your direct\nSupervisor.\nPRIOR to each date of travel, Employees must meet with their direct Supervisor for details and\ninstructions regarding how their specific travel time/costs reimbursements will be handled. All\nreimbursements are paid in accordance with all federal and state law requirements.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 39,
+            "heading": "Garnishment of Employee Wages"
+          }
+        ],
+        "charCount": 767,
+        "printedPage": 39,
+        "tokenEstimate": 192
+      }
+    },
+    {
+      "chunk_index": 130,
+      "locator": "Page 39 — Overnight Travel Reimbursement",
+      "page": 40,
+      "section": "Overnight Travel Reimbursement",
+      "content": "Overnight Travel Reimbursement\nTravel time/expense reimbursements for work requiring overnight stays away from your home\ncommunity include:\no Reimbursements for meals during the time away from your home community. (Limited to\nThe Company approved per day max).\no Reimbursements for travel costs and related travel expenses such as parking/luggage fees,\nas approved by your direct Supervisor.\nPRIOR to each date of travel, Employees must meet with their direct Supervisor for details and\ninstructions regarding how their specific travel time/costs reimbursements will be handled. All\nreimbursements are paid in accordance with all federal and state law requirements. Meal\nallowances are set at $35 per day. Snacks purchased between meals, including hot and cold\ndrinks, as well as alcohol, are not reimbursable.\nDocumentation: All meal expenses must be accompanied by a cash register or credit card\nitemized voucher with the detail. Restaurant guest check and tear-tabs are not acceptable.\nDocumentation of meals and entertainment expenses must include the following:\no Date and name of restaurant.\no Name of attendees and business relationship (including company name).\no Business purpose. All guests and Employee names must be listed on the expense report;\n“Staff” is not acceptable. The cost of meals and entertainment attended by an Employee’s",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 39,
+            "heading": "Overnight Travel Reimbursement"
+          }
+        ],
+        "charCount": 1346,
+        "printedPage": 39,
+        "tokenEstimate": 337
+      }
+    },
+    {
+      "chunk_index": 131,
+      "locator": "Page 40 — Overnight Travel Reimbursement",
+      "page": 41,
+      "section": "Overnight Travel Reimbursement",
+      "content": "spouse or companion(s) is considered personal and no portion of the expense is\nreimbursable, including the Employee’s portion.\n\nError in Pay\nAll Employees should review their paystubs for accuracy each pay period. If an Employee notices\nan error in their pay, they must notify their Supervisor immediately. The Company will make\nevery attempt to adjust no later than the next pay period.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 40,
+            "heading": "Error in Pay"
+          }
+        ],
+        "charCount": 387,
+        "printedPage": 40,
+        "tokenEstimate": 97
+      }
+    },
+    {
+      "chunk_index": 132,
+      "locator": "Page 40 — Fair Labor Standard Act (FSLA) – Safe Harbor Policy",
+      "page": 41,
+      "section": "Fair Labor Standard Act (FSLA) – Safe Harbor Policy",
+      "content": "Fair Labor Standard Act (FSLA) – Safe Harbor Policy\nThe Company intends to comply with all federal regulations with respect to the Fair Standards\nAct (FSLA). In this regard, the FSLA provides an exemption from both minimum wage and\novertime payment for Employees employed in bona fide executive, administrative, professional,\ncomputer, and outside sales positions. To qualify for an overtime exemption, an Employee\ngenerally must be paid no less than $35,568 a year or $684 per week on a salary basis.\nBeing paid on a “salary basis” refers to an Employee who regularly receives a predetermined\namount of compensation each pay period on a weekly or less frequent basis which cannot be\nreduced because of variations in the quality or quantity of work.\nSubject to the exceptions listed below, an exempt (salaried) Employee must receive his or her\nfull salary for any workweek in which the Employee performs any work, regardless of the\nnumber of days or hours worked.\no Exempt (salaried) Employees do not need to be paid for any work week in which they\nperform no work and will not be paid unless appropriate accrued paid leave is utilized.\no If the Employee is ready, willing, and able to work, deductions may not be made for time\nwhen work is not available.\nDeductions from pay are permissible when an exempt (salaried) Employee is:\no Absent from work for one or more full days, or partial days for personal reasons, illness, or\ndisability.\no On an unpaid disciplinary suspension for one or more full days, imposed in good faith for\nworkplace conduct rule infractions or infractions of safety rules of major significance.\no In the initial or final week of employment.\no Taking unpaid leave under the Family and Medical Leave Act.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 40,
+            "heading": "Fair Labor Standard Act (FSLA) – Safe Harbor Policy"
+          }
+        ],
+        "charCount": 1727,
+        "printedPage": 40,
+        "tokenEstimate": 432
+      }
+    },
+    {
+      "chunk_index": 133,
+      "locator": "Page 40 — Important Notes",
+      "page": 41,
+      "section": "Important Notes",
+      "content": "Important Notes:\no Exempt (salaried) Employees must use their accrued PTO, as instructed (See the Paid Time\nOff (PTO) section), to receive pay for days where they are absent from work for personal\nreasons, illness, or disability, and to ensure they have enough hours reported combining\ntheir actual hours worked and their PTO hours to retain their full-time Employee status.\no PTO may not be utilized when an Employee is placed on unpaid suspension. (See the Paid\nTime Off (PTO) section).\no Finally, as a public sector employer, The Company operates under principles of public\naccountability, which permit deductions from the pay of an exempt (salaried) Employee for",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 40,
+            "heading": "Important Notes"
+          }
+        ],
+        "charCount": 666,
+        "printedPage": 40,
+        "tokenEstimate": 167
+      }
+    },
+    {
+      "chunk_index": 134,
+      "locator": "Page 41 — Important Notes",
+      "page": 42,
+      "section": "Important Notes",
+      "content": "partial-day or full-day absences due to illness, injury, or personal reasons when accrued paid\nleave is not used by an Employee because:\no The Employee has not yet qualified to receive PTO.\no Permission for PTO use has not been sought or has been sought and denied.\no Accrued PTO has been exhausted (See the Paid Time Off (PTO) section).\no For all full-time Employees, time off without pay that would result in the total hours worked\nby the Employee in any workweek dropping below thirty (30) hours is not permitted without\nprior written approval from your Supervisor and the Human Resources department.\no The Company has classified those positions which are considered to be “exempt”.\no It is the policy of The Company to comply with the “salary basis” requirements of the FLSA\nregarding exempt Employees.\no If you believe that an improper deduction has been made to your salary, you should\nimmediately report this information to Human Resources.\no Reports of an improper deduction from wages will be promptly investigated. If it is\ndetermined that an improper deduction has occurred, you will be promptly reimbursed\n(typically on the next regular pay date) for any improper deduction.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [],
+        "charCount": 1186,
+        "printedPage": 41,
+        "tokenEstimate": 297
+      }
+    },
+    {
+      "chunk_index": 135,
+      "locator": "Page 41 — Salary Administration",
+      "page": 42,
+      "section": "Salary Administration",
+      "content": "Salary Administration\nThe salary administration program at The Company was created to achieve consistent pay\npractices, comply with federal and state laws, mirror our commitment to Equal Employment\nOpportunity, and offer competitive salaries within our labor market.\nCompensation for every position is determined by several factors which includes job analysis\nand evaluation, essential job duties, and responsibilities of the job. Merit-based pay adjustments\nmay be awardee in conjunction with superior employee performance during the annual\nperformance evaluation process.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 41,
+            "heading": "Salary Administration"
+          }
+        ],
+        "charCount": 573,
+        "printedPage": 41,
+        "tokenEstimate": 144
+      }
+    },
+    {
+      "chunk_index": 136,
+      "locator": "Page 41 — Employee Benefits",
+      "page": 42,
+      "section": "Employee Benefits",
+      "content": "Employee Benefits\n\nPaid time Off (PTO)\nPaid Time Off (PTO) hours are hours issued to eligible employees that can be used for paid time\naway from work for vacation, personal time, personal illness, or time off to care for dependents.\nThe PTO policy replaces sick, absence, personal, and vacation time. All state and local guidelines\nregarding mandated additional sick time will be followed.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 41,
+            "heading": "Employee Benefits"
+          },
+          {
+            "page": 41,
+            "heading": "Paid time Off (PTO)"
+          }
+        ],
+        "charCount": 389,
+        "printedPage": 41,
+        "tokenEstimate": 98
+      }
+    },
+    {
+      "chunk_index": 137,
+      "locator": "Page 41 — Eligibility",
+      "page": 42,
+      "section": "Eligibility",
+      "content": "Eligibility\nAll salaried managers, full-time corporate office personnel, and full-time Assistant Salon\nDirectors/Assistant Makery Managers begin accruing PTO after 90 days of employment in that\nposition. PTO is not issued to temporary or contract employees.\n\nProvisions\nFor qualifying full-time Employees, PTO accrues as follows:\no 90 days – 4 years of service in a full-time position – 2 weeks (80 hours), with a maximum\naccrual cap of 120 hours.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 41,
+            "heading": "Eligibility"
+          },
+          {
+            "page": 41,
+            "heading": "Provisions"
+          }
+        ],
+        "charCount": 447,
+        "printedPage": 41,
+        "tokenEstimate": 112
+      }
+    },
+    {
+      "chunk_index": 138,
+      "locator": "Page 42 — Provisions",
+      "page": 43,
+      "section": "Provisions",
+      "content": "o 5-9 years of service in a full-time position – 3 weeks (120 hours), with a maximum accrual\ncap of 160 hours.\no 10+ years of service in a full-time position – 4 weeks (160 hours), with a maximum accrual\ncap of 200 hours\nUnused PTO is carried over from one calendar year to the next; however, employees may not\nexceed the accrual cap for their respective tier. Once the cap is reached, no further PTO accrual\nwill occur until PTO is used and the balance drops below the cap.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [],
+        "charCount": 474,
+        "printedPage": 42,
+        "tokenEstimate": 119
+      }
+    },
+    {
+      "chunk_index": 139,
+      "locator": "Page 42 — Usage",
+      "page": 43,
+      "section": "Usage",
+      "content": "Usage\nQualified salaried Employees must schedule PTO in half day (4 hours), or full day (8 hours)\nincrements only. No PTO is permitted during peak business seasons as listed below:\no Sun Tan City – February 1 and June 1\no Buff City Soap – November 1 and December 31\no Crunch – January 1 and February 28\nPTO should be requested in the Personnel System at least two weeks in advance. In unforeseen\ncircumstances where advance notice is not possible, employees must notify their supervisor\ndirectly via phone immediately and enter the PTO request into the Personnel System as soon as\npossible.\nPTO must be approved by the immediate Supervisor. PTO will be granted so long as it does not\nplace undue hardship on the business. Only one team member from a location/department will\nbe approved to take PTWO at the same time unless otherwise approved by the supervisor.\nAll State and Federal guidelines will be followed regarding paying out accrued PTO upon\ntermination of employment.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 42,
+            "heading": "Usage"
+          }
+        ],
+        "charCount": 976,
+        "printedPage": 42,
+        "tokenEstimate": 244
+      }
+    },
+    {
+      "chunk_index": 140,
+      "locator": "Page 42 — Holiday Benefits",
+      "page": 43,
+      "section": "Holiday Benefits",
+      "content": "Holiday Benefits\nEach FT salaried manager and FT corporate staff member will receive 8 hours of pay for each\nholiday.\n\nCorporate Office:\nThe Corporate Office is closed on the below listed holidays. These holidays are paid holidays for\nsalaried managers and full-time staff:\no New Years Day\no Thanksgiving Day\no Christmas Day\no Memorial Day\no Independence Day\no Labor Day",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 42,
+            "heading": "Holiday Benefits"
+          },
+          {
+            "page": 42,
+            "heading": "Corporate Office"
+          }
+        ],
+        "charCount": 370,
+        "printedPage": 42,
+        "tokenEstimate": 93
+      }
+    },
+    {
+      "chunk_index": 141,
+      "locator": "Pages 42–43 — Sun Tan City",
+      "page": 43,
+      "section": "Sun Tan City",
+      "content": "Sun Tan City:\nSun Tan City is closed on the below listed holidays. These holidays are paid holidays for salaried\nmanagers and full-time staff:\n\no New Years Day\no Independence Day\no Thanksgiving Day\no Christmas Day\no Easter\nThe salons will be open on Memorial Day.\n\nCrunch Fitness:\nCrunch Fitness is closed on the below listed holidays. These holidays are paid holidays for\nsalaried managers and full-time staff:\no Thanksgiving Day\no Christmas Day",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 42,
+            "heading": "Sun Tan City"
+          },
+          {
+            "page": 43,
+            "heading": "Crunch Fitness"
+          }
+        ],
+        "charCount": 446,
+        "printedPage": 42,
+        "tokenEstimate": 112
+      }
+    },
+    {
+      "chunk_index": 142,
+      "locator": "Page 43 — Buff City Soap",
+      "page": 44,
+      "section": "Buff City Soap",
+      "content": "Buff City Soap:\nBuff City Soap is closed on the below listed holidays. These holidays are paid holidays for\nsalaried managers and full-time staff:\no Independence Day\no Thanksgiving Day\no Christmas Day\no New Years Day\no Easter\nAdditionally, the locations that are open for business on Memorial Day, Independence Day and\nLabor Day, hourly Employees will be paid 1.5 times their regular wage for hours worked on this\nday. While FT salaried managers, DM and RDO will receive holiday pay. Holiday pay can be\nbanked into PTO in increments of 4 hours for individuals who work regular hours on holiday\nweeks. Overtime pay is based on actual hours worked. Holiday hours will not be considered\nhours worked for purposes of performing overtime calculations.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 43,
+            "heading": "Buff City Soap"
+          }
+        ],
+        "charCount": 746,
+        "printedPage": 43,
+        "tokenEstimate": 187
+      }
+    },
+    {
+      "chunk_index": 143,
+      "locator": "Page 43 — Employee Discounts for Company Products and Services",
+      "page": 44,
+      "section": "Employee Discounts for Company Products and Services",
+      "content": "Employee Discounts for Company Products and Services\nThe Company offers discounts on products and services to Employees hired through Sun Tan\nCity, Crunch Fitness, and Buff City Soap. The following is a list of what Employees are eligible for\nat each location:\no Sun Tan City: Unlimited all access tanning, 50% off tanning products and 25% off non-\ntanning.\no Buff City Soap: 50% off products, 25% off bath bomb parties.\no Crunch Fitness: 50% off an all access gym membership, 50% off products.\nPlease keep in mind that The Company preaches tanning in moderation and all employees are\nexpected to adhere to this philosophy. Also, please keep in mind that paying clients come first. It\nis best to avoid peak times of the day.\nThe following rules apply to all employee tanning privileges at Sun Tan City.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 43,
+            "heading": "Employee Discounts for Company Products and Services"
+          }
+        ],
+        "charCount": 802,
+        "printedPage": 43,
+        "tokenEstimate": 201
+      }
+    },
+    {
+      "chunk_index": 144,
+      "locator": "Page 44 — Employee Discounts for Company Products and Services",
+      "page": 45,
+      "section": "Employee Discounts for Company Products and Services",
+      "content": "o No tanning while on the clock.\no Another employee is required to process each employee tanning session; employees will not\nbe able to tan without another employee present to process the tan.\no Employees may tan before or after their scheduled shift so long as they are clocked out,\nanother employee is present and no hardship is placed on the business due to their tanning\nsession.\no Between February 1 and May 31, employees cannot use any tanning equipment between\n4 PM – 8 PM Monday through Friday.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [],
+        "charCount": 502,
+        "printedPage": 44,
+        "tokenEstimate": 126
+      }
+    },
+    {
+      "chunk_index": 145,
+      "locator": "Page 44 — Buddy Passes (Sun Tan City Employees ONLY)",
+      "page": 45,
+      "section": "Buddy Passes (Sun Tan City Employees ONLY)",
+      "content": "Buddy Passes (Sun Tan City Employees ONLY)\nAll employees are given 5 Buddy Passes once they’ve fully completed their training modules,\nquizzes and workbooks. Buddy Passes are to be checked out by a member of Management using\nthe Buddy Pass Tracker, located in the Loss Prevention Binder. These passes can be given to\nanyone the employee chooses. The buddy passes allow for a discounted rate for all Club Sun\nmemberships. Any deviation from the proper distribution of the buddy passes may result in\ndisciplinary action up to termination. Any employee who is involuntarily terminated or who does\nnot leave in good standing, will be required to relinquish all unused Buddy Passes to their Salon\nDirector.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 44,
+            "heading": "Buddy Passes (Sun Tan City Employees ONLY)"
+          }
+        ],
+        "charCount": 701,
+        "printedPage": 44,
+        "tokenEstimate": 176
+      }
+    },
+    {
+      "chunk_index": 146,
+      "locator": "Page 44 — Employee Insurance Benefits",
+      "page": 45,
+      "section": "Employee Insurance Benefits",
+      "content": "Employee Insurance Benefits\nIn addition to the benefits mentioned in the sections above, The Company offers the following\ninsurance benefits to all Employees who meet the prescribed eligibility and waiting period\nrequirements:\n\nHealth Insurance Vision Insurance\n\nDental Insurance Employer Paid Life and AD&D Insurance\no Note: the descriptions given in this manual are for convenience only. If by oversight, the\nlanguage of the manual is inconsistent with the plan documents, the applicable plan\ndocuments govern the administration of Employee benefits.\no Eligible Employee Classification:\no Full-time Employees\no Waiting Period:\no Eligible Employees’ selected insurance coverages will take effect on the first of the\nmonth following 60 consecutive days of service in a full-time position.\no Premium Payments:\no Employee insurance premiums will be payroll deducted bi-weekly.\no Employee insurance premium deductions will begin one pay period before the\nmonth of coverage to ensure premiums are paid to providers on time.\n▪ Health Insurance – The Company will pay a designated amount towards the\nmonthly premium and the Employee covers the remaining premium\namount.\n▪ Dental, Vision – The Employee covers the full premium amount(s).",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 44,
+            "heading": "Employee Insurance Benefits"
+          },
+          {
+            "page": 44,
+            "heading": "Health Insurance Vision Insurance"
+          },
+          {
+            "page": 44,
+            "heading": "Dental Insurance Employer Paid Life and AD&D Insurance"
+          }
+        ],
+        "charCount": 1230,
+        "printedPage": 44,
+        "tokenEstimate": 308
+      }
+    },
+    {
+      "chunk_index": 147,
+      "locator": "Page 45 — Dental Insurance Employer Paid Life and AD&D Insurance",
+      "page": 46,
+      "section": "Dental Insurance Employer Paid Life and AD&D Insurance",
+      "content": "▪ Employer Paid Life – The Company provides full-time Employees with\n$20,000 of group life insurance.\no Plan Details:\no Eligible Employees may find all plan details in the yearly Benefits Guide.\nFor Health Insurance quotes or questions, employees are directed to contact the home office at\n402-488-8261.\n\nHIPAA\nThe Health Insurance Portability and Accountability Act of 1996 (HIPAA), assures that\nemployees’ health information is properly protected while allowing the flow of health\ninformation needed to provide and promote high quality healthcare and to protect the public’s\nhealth and well-being. Employees with any questions concerning The Company’s HIPAA policy\nshould contact Human Resources.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 45,
+            "heading": "HIPAA"
+          }
+        ],
+        "charCount": 698,
+        "printedPage": 45,
+        "tokenEstimate": 175
+      }
+    },
+    {
+      "chunk_index": 148,
+      "locator": "Page 45 — Group Health Plan Continuation Coverage Under COBRA",
+      "page": 46,
+      "section": "Group Health Plan Continuation Coverage Under COBRA",
+      "content": "Group Health Plan Continuation Coverage Under COBRA\nThe Federal Consolidated Ominous Budget Reconciliation Act (COBRA) requires continuation\ncoverage to be offered to covered employees, their spouses, their former spouses, and their\ndependent children when group health coverage would otherwise be lost due to certain specific\nevents. Under COBRA, group health coverage is an arrangement that provides medical care.\nThis does not include life and disability benefits.\nThose events include the death of a covered Employee, termination or reduction in the hours of\na covered Employee’s employment for reasons other than gross misconduct, divorce, or legal\nseparation from a covered Employee, and a child’s loss of dependent status (and therefore\ncoverage) under the plan. COBRA continuation coverage only lasts for a limited period of time.\nThe Company provides each covered Employee and spouse (if any) with written notice\nexplaining COBRA continuation coverage, when it may become available to you and your family,\nand what you need to do to protect your right to get it.\n401K Benefit\nThe Company provides a 401K retirement account to Employees who have met ALL of the\nfollowing requirements:\no Completed one year of service\no Reached the age of 21\no Worked 1,000 hours\nThe Company will make a matching contribution on your behalf, based on your contribution\nlevel. Open enrollment is on the first of each plan quarter coincident with or next following the\ntime you meet the eligibility criteria specified above.\nFor Health Insurance quotes, Employees are directed to contact their Payroll Department.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 45,
+            "heading": "Group Health Plan Continuation Coverage Under COBRA"
+          }
+        ],
+        "charCount": 1601,
+        "printedPage": 45,
+        "tokenEstimate": 401
+      }
+    },
+    {
+      "chunk_index": 149,
+      "locator": "Page 46 — Leave Requests",
+      "page": 47,
+      "section": "Leave Requests",
+      "content": "Leave Requests\n\nFamily Medical Leave\nThe Company provides family leaves of absence without pay to eligible Employees who wish to\ntake time off from work duties to fulfill family obligations relating directly to childbirth,\nadoption, or placement of a foster child; or to care for a child, spouse, or parent with a serious\nhealth condition. A serious health condition means an illness, injury, impairment, or physical or\nmental condition that involves inpatient care in a hospital, hospice, or residential medical care\nfacility, or continuing treatment by a health care provider. Eligible Employees may request\nfamily leave only after having completed one year of service and worked at least 1250 hours. Eligible Employees should make requests for family leave to their Supervisors at least 30 days in\nadvance of foreseeable events and as soon as possible for unforeseeable events. Employees\nrequesting family leave related to the serious health condition of a child, spouse, or parent may\nbe required to submit a health care provider’s statement verifying the need for a family leave to\nprovide care, its beginning and expected ending dates, and the estimated time required. Eligible\nEmployees may request up to a maximum of 12 weeks of family leave within any 12-month\nperiod. Any combination of family leave and medical leave may not exceed this maximum limit. If this initial period of absence proves insufficient, consideration will be given to a written\nrequest for a single extension of no more than 30 calendar days.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 46,
+            "heading": "Leave Requests"
+          },
+          {
+            "page": 46,
+            "heading": "Family Medical Leave"
+          }
+        ],
+        "charCount": 1523,
+        "printedPage": 46,
+        "tokenEstimate": 381
+      }
+    },
+    {
+      "chunk_index": 150,
+      "locator": "Page 46 — Leave Requests",
+      "page": 47,
+      "section": "Leave Requests",
+      "content": "If this initial period of absence proves insufficient, consideration will be given to a written\nrequest for a single extension of no more than 30 calendar days.\n\nEmployees will be required to\nfirst use any accrued paid leave time before taking unpaid family leave. Married Employee\ncouples may be restricted to a combined total of 12 weeks leave within any 12-month period for\nchildbirth, adoption, or placement of a foster child; or to care for a parent with a serious health\ncondition.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 46,
+            "heading": "Leave Requests"
+          },
+          {
+            "page": 46,
+            "heading": "Family Medical Leave"
+          }
+        ],
+        "charCount": 487,
+        "printedPage": 46,
+        "tokenEstimate": 122
+      }
+    },
+    {
+      "chunk_index": 151,
+      "locator": "Page 46 — Bereavement Leave",
+      "page": 47,
+      "section": "Bereavement Leave",
+      "content": "Bereavement Leave\nEmployees who wish to take time off due to the death of an immediate family member should\nnotify their Supervisor and payroll immediately. Up to 3 consecutive days of paid Bereavement\nLeave will be provided to all Employees provided the leave is approved and the days requested\nare days the Employee was already scheduled to work. If the Employee was not scheduled to\nwork during the requested days, they would not receive pay as no bereavement time would be\nrequired. The 3 consecutive days requested should include the day of the funeral and 2 days\neither immediately prior to or immediately following the day of the funeral.\nFor the purposes of the Bereavement Policy, The Company defines “immediate family” as the\nEmployee’s spouse, parent, child, sibling; the Employee’s spouse’s parent, child, or sibling; the\nEmployee’s spouse’s grandparents or grandchildren. Special consideration will also be given to\nany person whose association with the Employee was similar to any of the above relationships.\nThe Company reserves the right to request documentation, such as an obituary or funeral\nprogram, or a prayer card from the Employee. These should be submitted at the time of\nrequest or upon return from leave. As an alternative to this documentation, you may provide\nthe name of the deceased, date of death, city of death, and relationship to the deceased within\nthe request.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 46,
+            "heading": "Bereavement Leave"
+          }
+        ],
+        "charCount": 1397,
+        "printedPage": 46,
+        "tokenEstimate": 350
+      }
+    },
+    {
+      "chunk_index": 152,
+      "locator": "Page 47 — Bereavement Leave",
+      "page": 48,
+      "section": "Bereavement Leave",
+      "content": "After receiving the approved request, the Human Resources Department will submit the\nBereavement days in your personnel profile under the PTO section. This will not deduct from\nyour PTO balance.\no Sun Tan City – MyGlow\no Buff City Soap – MyGlow\no Crunch Fitness – Woven\n\nMilitary Leave\nA military leave of absence will be granted to Employees who are absent from work because of\nservice in the U.S. uniformed services in accordance with the Uniformed Services Employment\nand Reemployment Rights Act (USERRA). Advance notice of military service is required, unless\nmilitary necessity prevents such notice, or it is otherwise impossible or unreasonable. The leave\nwill be unpaid. Employees may use available PTO for the absence. Benefit accruals will be\nsuspended during the leave and will resume once returned to active employment. Contact\nHuman Resources for information or questions about military leave.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 47,
+            "heading": "Military Leave"
+          }
+        ],
+        "charCount": 905,
+        "printedPage": 47,
+        "tokenEstimate": 227
+      }
+    },
+    {
+      "chunk_index": 153,
+      "locator": "Page 47 — Time Off to Vote or Serve as an Election Officer",
+      "page": 48,
+      "section": "Time Off to Vote or Serve as an Election Officer",
+      "content": "Time Off to Vote or Serve as an Election Officer\nThe Company encourages Employees to fulfill their civic responsibilities by participating in\nelections. Generally, Employees are able to find time to vote either before or after their regular\nwork schedule. Employees should request time off to vote from their Supervisor at least two\nworking days prior to the Election Day. Advance notice is required so that the necessary time off\ncan be scheduled at the beginning or end of the work shift, whichever provides the least\ndisruption to the normal work schedule.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 47,
+            "heading": "Time Off to Vote or Serve as an Election Officer"
+          }
+        ],
+        "charCount": 559,
+        "printedPage": 47,
+        "tokenEstimate": 140
+      }
+    },
+    {
+      "chunk_index": 154,
+      "locator": "Page 47 — Jury Duty",
+      "page": 48,
+      "section": "Jury Duty",
+      "content": "Jury Duty\nThe Company will ensure that Employees who need time off for jury duty are granted the\naccommodations afforded them as dictated in the laws for their area. Employees must show the\njury duty summons to their supervisor as soon as possible so that the supervisor may make\narrangements to schedules to accommodate their absence. Supervisors who receive a jury duty\naccommodation request and summons must reach out to the Human Resources department for\nguidance on handling jury duty related requests.\nEmployees are expected to report for work whenever the court schedule permits or if they are\ndismissed from jury duty.\nThe Company will provide paid leave when an Employee must serve on a jury. You will be paid\nyour normal salary or hourly compensation for up to 15 days. You can use PTO after the 15 days\nor receive unpaid leave of absence if you decide. You will be expected to sign over to The\nCompany any paycheck you receive from the courts for the first 15 days you serve on a jury, to\noffset The Company paying you for those days.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 47,
+            "heading": "Jury Duty"
+          }
+        ],
+        "charCount": 1045,
+        "printedPage": 47,
+        "tokenEstimate": 262
+      }
+    },
+    {
+      "chunk_index": 155,
+      "locator": "Page 47 — Witness Duty",
+      "page": 48,
+      "section": "Witness Duty",
+      "content": "Witness Duty\nIf Employees have been subpoenaed or requested to testify as witnesses by The Company, they\nwill receive paid time off for the entire period of witness duty. Employees will be granted unpaid\ntime off to appear in court as a witness when requested by a party other than The Company.\nEmployees can use available PTO to receive compensation for the period of this absence.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 47,
+            "heading": "Witness Duty"
+          }
+        ],
+        "charCount": 382,
+        "printedPage": 47,
+        "tokenEstimate": 96
+      }
+    },
+    {
+      "chunk_index": 156,
+      "locator": "Page 48 — Witness Duty",
+      "page": 49,
+      "section": "Witness Duty",
+      "content": "Employees must show the witness duty summons to their Supervisor as soon as possible so the\nSupervisor may make arrangements to schedules to accommodate their absence. Employees are\nexpected to report for work whenever the court schedule permits.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 48,
+            "heading": "Maternity Leave"
+          }
+        ],
+        "charCount": 246,
+        "printedPage": 48,
+        "tokenEstimate": 62
+      }
+    },
+    {
+      "chunk_index": 157,
+      "locator": "Page 48 — Witness Duty",
+      "page": 49,
+      "section": "Witness Duty",
+      "content": "Employees are\nexpected to report for work whenever the court schedule permits.\n\nMaternity Leave\nThe Company does not offer paid maternity leave however; Employees are encouraged to use\nany accrued PTO during this time. Additionally, under the Family and Medical Leave Act (FMLA),\nan Employee that has worked at least 1250 hours in the past 12 months is entitled to 12 weeks\nof unpaid job-protected leave. While the time off cannot be taken into consideration for future\npromotions, there is nothing that requires an Employee’s benefits, such as vacation time or\nseniority, to accrue while they are on FMLA leave. Bonuses and other incentive pay (for sales,\netc.) do not have to be paid if they are not earned. The leave can be taken intermittently if the\nEmployee chooses to return to work on a part-time basis.\nHealth insurance will be maintained, but the Employee is responsible for maintaining their own\ngroup health benefit premiums. If the employer opts to pay, they are allowed to recover the\nfees when the Employee returns to work. The FMLA protection ends after the 12 weeks. The\ntime frame and conditions of the leave should be in writing. The Department of Labor website\nis: http://www.dol.gov/esa/regs/statutes/whd/fmla.htm#content\nIf an employee wishes to take any leave, a Leave Request Form must be filled out and turned in\nto the District Manager. The Leave Request Form provides documentation for any leave taken,\nPaid Time Off taken, and is kept in the employee’s confidential employee folder.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 48,
+            "heading": "Maternity Leave"
+          }
+        ],
+        "charCount": 1510,
+        "printedPage": 48,
+        "tokenEstimate": 378
+      }
+    },
+    {
+      "chunk_index": 158,
+      "locator": "Page 48 — Client Tanning Policies and Regulations (STC & Crunch ONLY)",
+      "page": 49,
+      "section": "Client Tanning Policies and Regulations (STC & Crunch ONLY)",
+      "content": "Client Tanning Policies and Regulations (STC & Crunch ONLY)\n\nProtecting the Client from Overexposing\nIt is important to understand how the tanning equipment works and it is the employee’s\nresponsibility to prevent clients from overexposure. As a guide to understanding tanning\nequipment and accurately recommend tan times, please refer to the Tan Time Chart located at\neach workstation.\nIt is up to the employee to determine the time of clients’ tanning sessions and follow up with\nclients’ tan times on each visit based on their skin type and tanning history.\nIf a client disagrees with the employee’s judgement and demands a longer visit, follow these\nsteps:\no Provide an explanation for the recommended tan time and educate the client in a friendly\nmanner.\no If the client is using upgrade points and/or paying for an additional service to tan on that\nvisit, offer a Courtesy Tan in exchange for taking your recommendation.\no If the client still insists on going against the recommended time, allow the client to tan for\nthe desired time and place a detailed comment on the client’s insisted tan time.\nClients may tan only one time per day in the UV bed, and one time per day in the VersaSpa ®.\nOur system will notify you if the person has already tanned for the day at one of the Sun Tan\nCity or Crunch Fitness’s locations. Never let a client coerce the employee into allowing two visits",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 48,
+            "heading": "Client Tanning Policies and Regulations (STC & Crunch ONLY)"
+          },
+          {
+            "page": 48,
+            "heading": "Protecting the Client from Overexposing"
+          }
+        ],
+        "charCount": 1391,
+        "printedPage": 48,
+        "tokenEstimate": 348
+      }
+    },
+    {
+      "chunk_index": 159,
+      "locator": "Page 49 — Protecting the Client from Overexposing",
+      "page": 50,
+      "section": "Protecting the Client from Overexposing",
+      "content": "in one day. Likewise, if a client tells you that he/she has tanned elsewhere the same day or been\nin the sun all day; you may not tan them.\n\nConsent Forms (New Client Release Forms)\nEvery client must complete and sign a Sun Tan City consent form (New Client Release Form)\nfound in our system. Every client must also fill out the skin typing chart provided at the front\ncounter. There are no exceptions. All new clients must present a photo ID (If the client is a\nminor, the parent or guardian must show a photo ID).",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 49,
+            "heading": "Consent Forms (New Client Release Forms)"
+          }
+        ],
+        "charCount": 515,
+        "printedPage": 49,
+        "tokenEstimate": 129
+      }
+    },
+    {
+      "chunk_index": 160,
+      "locator": "Page 49 — Eye Protection",
+      "page": 50,
+      "section": "Eye Protection",
+      "content": "Eye Protection\nAll clients using a tanning bed must use some form of FDA approved eye protection. Closing the\neyes, wearing sunglasses or placing a towel over the face is not FDA approved eye protection.\nThe Company does not provide eyewear free of charge for sanitary reasons. We do provide\neyewear for clients to purchase. If the client does not have their own eyewear, they will need to\npurchase a pair. It is your responsibility to make sure they have eyewear before allowing them\nto tan. Simply ask: “May I please see your eyewear?” If they refuse to show the employee, the\nemployee may not put them in a bed.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 49,
+            "heading": "Eye Protection"
+          }
+        ],
+        "charCount": 614,
+        "printedPage": 49,
+        "tokenEstimate": 154
+      }
+    },
+    {
+      "chunk_index": 161,
+      "locator": "Page 49 — VersaSpa® Recommendations",
+      "page": 50,
+      "section": "VersaSpa® Recommendations",
+      "content": "VersaSpa® Recommendations\nThe FDA recommends the use of protective eyewear, lip balm, and nose filters during sunless\nvisits. It is not required that clients use the FDA recommended protection during their sunless\nsessions; however, we want to educate the client’s on the items they have available to use.\n\nTanning While Pregnant\nIt is recommended that pregnant women consult their doctor before using the VersaSpa® an/or\ntanning in the UV equipment. It is not at the discretion of the employee to turn away or provide\npersonal opinions to pregnant women wanting to use The Company’s services.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 49,
+            "heading": "VersaSpa® Recommendations"
+          },
+          {
+            "page": 49,
+            "heading": "Tanning While Pregnant"
+          }
+        ],
+        "charCount": 593,
+        "printedPage": 49,
+        "tokenEstimate": 149
+      }
+    },
+    {
+      "chunk_index": 162,
+      "locator": "Page 49 — Tanning with Skin Cancer",
+      "page": 50,
+      "section": "Tanning with Skin Cancer",
+      "content": "Tanning with Skin Cancer\nIt is The Company’s policy not to tan someone who we know has (or has had) skin cancer\nwithout a written statement from the client’s doctor giving approval or stating that the risks\nhave been fully explained by their doctor.\n\nMinors\nThe Company complies with all State and Federal laws regarding minors and tanning. Those\nclients who are under the age of 18 must have the signed permission of a parent to be able to\ntan at Sun Tan City. The parent must sign the consent form in our presence and must remain in\nthe salon while the minor is tanning. Check State Regulations module for further instruction on\nminor tanning restrictions. No one under the age of 14 will be allowed to UV tan at any Sun Tan\nCity location however, clients at any age may use the VersaSpa®.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 49,
+            "heading": "Tanning with Skin Cancer"
+          },
+          {
+            "page": 49,
+            "heading": "Minors"
+          }
+        ],
+        "charCount": 791,
+        "printedPage": 49,
+        "tokenEstimate": 198
+      }
+    },
+    {
+      "chunk_index": 163,
+      "locator": "Pages 49–50 — Children Left Unattended",
+      "page": 50,
+      "section": "Children Left Unattended",
+      "content": "Children Left Unattended\nNo children under the age of 12 will be allowed to be left unattended on the premises of The\nCompany at any time.\n\nOne Tanner per Room\nThere is only one client allowed per tanning room. Equipment should not be activated if there is\nmore than one person in the tanning room. Exceptions include:\no Minors who are using the VersaSpa® are allowed to have a parent or legal guardian assist\nthem in the equipment room only.\no Service Animals are allowed in the tanning room with a client.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 49,
+            "heading": "Children Left Unattended"
+          },
+          {
+            "page": 50,
+            "heading": "One Tanner per Room"
+          }
+        ],
+        "charCount": 507,
+        "printedPage": 49,
+        "tokenEstimate": 127
+      }
+    },
+    {
+      "chunk_index": 164,
+      "locator": "Page 50 — Employee Acknowledgement",
+      "page": 51,
+      "section": "Employee Acknowledgement",
+      "content": "Employee Acknowledgement\nThe employee policy manual describes important information about our company, and I understand\nthat I should consult my supervisor regarding any questions not answered in the handbook. I have entered into my employment relationship voluntarily and acknowledge that there is no specified\nlength of employment. Accordingly, either I or the company can terminate the relationship at will, with\nor without cause, at any time, so long as there is no violation of applicable federal or state law. Since the information, policies, and benefits described here are necessarily subject to change, I\nacknowledge that revisions to the handbook may occur, except to the policy of employment-at-will. All\nsuch changes will be communicated through official notices, and I understand that revised information\nmay supersede, modify, or eliminate existing policies in this handbook. I will not reveal the contents of\nthis manual to anybody outside the company without express permission of the President. I understand\nthat if I request a copy of this employee manual, it will be provided to me. Otherwise, a copy is available\nfor my review at my work location. Furthermore, I acknowledge that this handbook is neither a contract of employment nor a legal\ndocument. I acknowledge that employment contracts must be in writing, limited to a specified period of\ntime and can only be created by the President of the company.",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 50,
+            "heading": "Employee Acknowledgement"
+          }
+        ],
+        "charCount": 1426,
+        "printedPage": 50,
+        "tokenEstimate": 357
+      }
+    },
+    {
+      "chunk_index": 165,
+      "locator": "Page 50 — Employee Acknowledgement",
+      "page": 51,
+      "section": "Employee Acknowledgement",
+      "content": "I acknowledge that employment contracts must be in writing, limited to a specified period of\ntime and can only be created by the President of the company.\n\nI have received the handbook, and I\nunderstand that it is my responsibility to read and comply with the policies contained in this handbook\nand any revisions made to it. Employee Signature: _____________________________________________\nDate:__________________________________________________________\nLocation:_______________________________________________________\nAuthorized Witness:______________________________________________",
+      "metadata": {
+        "fileType": "pdf",
+        "sections": [
+          {
+            "page": 50,
+            "heading": "Employee Acknowledgement"
+          }
+        ],
+        "charCount": 586,
+        "printedPage": 50,
+        "tokenEstimate": 147
+      }
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "src/app/api/chat/form-edit-noop-guard-flags-off.test.ts :: FORM_EDIT_NOOP_GUARD_ENABLED off: the same chats, byte for byte (a) the tool flags on, (b) production's flags, (c) the guard alone — equal to main before the flag": {
+    "category": "INTENDED",
+    "twin": "itself with the flag off (CI default)",
+    "reason": "A flags-off byte-identity test against main's script: with FORM_NAME_FROM_ROSTER_ENABLED forced on in every child test, Pau's metrics wordings and the \"for Coaching Form\" wordings read differently by design (no metric or form name is a person). It passes with the flag off, the state it pins."
+  },
+  "src/app/api/chat/replay-pack/replay-pack-e2e.test.ts :: the replay pack nov4-qa-form-name-as-person-b: QA 4 Nov (CA_SALES off): \"I need a corrective action for Coaching Form. This is for Un…\": no metric is the employee; a card with no employee asks who — OPEN in production (a Coaching Form card for \"Club Close\": \"I have the employee and the salon\")": {
+    "category": "INTENDED",
+    "twin": "itself with the flag off (CI default); request-slot.test.ts (flag off: as on main) and form-name-from-roster.test.ts (\"works without CA_SALES_POLICY_ENABLED\")",
+    "reason": "QA, 4 Nov 2026, production with CA_SALES off: \"… for Coaching Form. This is for Under Performance on … Club Close % …\" made a Coaching Form card for \"Club Close\". With the flag (which no longer needs CA_SALES) no metric is a candidate; with the sales policy off the message gets the metric-only answer. OPEN in production, holds with the flag."
+  },
+  "src/app/api/chat/replay-pack/replay-pack-e2e.test.ts :: the replay pack nov4-qa-form-name-as-person-p1: QA 4 Nov (CA_SALES off): \"I need a corrective action verbal for Coaching Form. This is…\": no metric is the employee; a card with no employee asks who — OPEN in production (a Coaching Form card for \"Club Close\": \"I have the employee and the salon\")": {
+    "category": "INTENDED",
+    "twin": "itself with the flag off (CI default); request-slot.test.ts (flag off: as on main) and form-name-from-roster.test.ts (\"works without CA_SALES_POLICY_ENABLED\")",
+    "reason": "QA, 4 Nov 2026, production with CA_SALES off: \"… for Coaching Form. This is for Under Performance on … Club Close % …\" made a Coaching Form card for \"Club Close\". With the flag (which no longer needs CA_SALES) no metric is a candidate; with the sales policy off the message gets the metric-only answer. OPEN in production, holds with the flag."
+  },
+  "src/lib/ai/chat-glossary-flags-off.test.ts :: CHAT_GLOSSARY_ENABLED off: the model requests and replies, byte for byte production's flags and no flags: equal to main": {
+    "category": "INTENDED",
+    "twin": "itself with the flag off (CI default)",
+    "reason": "A flags-off byte-identity test against main's script: with FORM_NAME_FROM_ROSTER_ENABLED forced on in every child test, Pau's metrics wordings and the \"for Coaching Form\" wordings read differently by design (no metric or form name is a person). It passes with the flag off, the state it pins."
+  },
+  "src/lib/ai/flags-off-parity.test.ts :: existing chat and form suites with every new flag off passes the suites whose expectations are already on main: src/app/api/chat, src/app/api/forms": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the 2 replay rows below",
+    "reason": "The child run keeps FLAG_CLASSIFY_ON from the classifier, so the replay pack inside it forces FORM_NAME_FROM_ROSTER_ENABLED on in production mode; its failures are exactly the open replay cases that hold with the flag (classified below). With the flag off it passes."
+  },
+  "replay: nov4-qa-form-name-as-person-b [open]": {
+    "category": "INTENDED",
+    "twin": "itself with the flag off (CI default); request-slot.test.ts (flag off: as on main) and form-name-from-roster.test.ts (\"works without CA_SALES_POLICY_ENABLED\")",
+    "reason": "QA, 4 Nov 2026, production with CA_SALES off: \"… for Coaching Form. This is for Under Performance on … Club Close % …\" made a Coaching Form card for \"Club Close\". With the flag (which no longer needs CA_SALES) no metric is a candidate; with the sales policy off the message gets the metric-only answer. OPEN in production, holds with the flag."
+  },
+  "replay: nov4-qa-form-name-as-person-p1 [open]": {
+    "category": "INTENDED",
+    "twin": "itself with the flag off (CI default); request-slot.test.ts (flag off: as on main) and form-name-from-roster.test.ts (\"works without CA_SALES_POLICY_ENABLED\")",
+    "reason": "QA, 4 Nov 2026, production with CA_SALES off: \"… for Coaching Form. This is for Under Performance on … Club Close % …\" made a Coaching Form card for \"Club Close\". With the flag (which no longer needs CA_SALES) no metric is a candidate; with the sales policy off the message gets the metric-only answer. OPEN in production, holds with the flag."
+  }
+}

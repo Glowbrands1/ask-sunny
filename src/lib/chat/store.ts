@@ -1,6 +1,7 @@
 import "server-only";
 
 import { getSupabaseAdmin } from "@/lib/supabase/server";
+import { chatHistoryStateChunkedEnabled, chatImportOwnOnlyEnabled, chatImportProvenOwnEnabled } from "@/lib/config/chat-quality-flags";
 import { AuthError } from "@/lib/auth/types";
 import type { ChatConversation, ChatMessage } from "@/types";
 import { CONVERSATION_REFUSED, ChatStoreError } from "./errors";
@@ -56,6 +57,9 @@ export const MAX_CONVERSATIONS = 50;
 
 /** A hard ceiling on one read, so a pathological history cannot exhaust memory. */
 const MAX_MESSAGES_PER_READ = 5_000;
+
+/** Conversation ids per history-state read, so one request URL stays short. */
+const HISTORY_STATE_BATCH = 100;
 
 interface ConversationRow {
   id: string;
@@ -324,20 +328,32 @@ export async function ownHistoryState(userId: string): Promise<OwnHistoryState> 
    */
   const counts = new Map<string, number>();
   if (live.length > 0) {
-    const { data: messageRows, error: messageError } = await supabase
-      .from("chat_messages")
-      .select("conversation_id")
-      .eq("user_id", userId)
-      .in(
-        "conversation_id",
-        live.map((row) => row.id),
-      )
-      .limit(MAX_MESSAGES_PER_READ);
+    /*
+     * CHAT_HISTORY_STATE_CHUNKED_ENABLED: in batches. One `in` over every live
+     * conversation put up to 1,500 ids in one request URL; for an account with
+     * thousands of chats the read failed, this answered 503, and a freshly
+     * signed-in browser showed "No conversations yet" (QA, 31 Oct 2026). Off,
+     * the single read as before.
+     */
+    const ids = live.map((row) => row.id);
+    const batches = chatHistoryStateChunkedEnabled()
+      ? Array.from({ length: Math.ceil(ids.length / HISTORY_STATE_BATCH) }, (_, index) =>
+          ids.slice(index * HISTORY_STATE_BATCH, (index + 1) * HISTORY_STATE_BATCH),
+        )
+      : [ids];
+    for (const batch of batches) {
+      const { data: messageRows, error: messageError } = await supabase
+        .from("chat_messages")
+        .select("conversation_id")
+        .eq("user_id", userId)
+        .in("conversation_id", batch)
+        .limit(MAX_MESSAGES_PER_READ);
 
-    if (messageError) unavailable("check your history");
+      if (messageError) unavailable("check your history");
 
-    for (const row of (messageRows ?? []) as { conversation_id: string }[]) {
-      counts.set(row.conversation_id, (counts.get(row.conversation_id) ?? 0) + 1);
+      for (const row of (messageRows ?? []) as { conversation_id: string }[]) {
+        counts.set(row.conversation_id, (counts.get(row.conversation_id) ?? 0) + 1);
+      }
     }
   }
 
@@ -403,7 +419,13 @@ export type SaveOutcome =
    * carry on with the rest, exactly as it does for a seeded demo thread. A
    * thrown error could only serve one of them.
    */
-  | "suppressed";
+  | "suppressed"
+  /**
+   * Refused because another account wrote it (CHAT_IMPORT_OWN_ONLY_ENABLED): a
+   * browser's store is not keyed by account, so a chat one person had on a
+   * shared browser was offered to the next person who signed in there.
+   */
+  | "another_account";
 
 export async function saveOwnConversation(
   userId: string,
@@ -433,6 +455,17 @@ export async function saveOwnConversation(
    * the delete.
    */
   if (row?.deleted_at) return "suppressed";
+
+  // CHAT_IMPORT_OWN_ONLY_ENABLED: another account's chat is not stored on this one.
+  if (chatImportOwnOnlyEnabled() && (await writtenByAnotherAccount(userId, payload))) return "another_account";
+  /*
+   * CHAT_IMPORT_PROVEN_OWN_ENABLED: an IMPORT of a chat this account does not
+   * hold yet must prove it is this account's — every answered turn recorded
+   * for this account. No turn on record (no turn id, a turn with no activity
+   * row, a turn with no actor) is not proof; it is declined (independent
+   * review, 31 Oct 2026: the check above passed such a chat).
+   */
+  if (options.imported && !row && chatImportProvenOwnEnabled() && !(await provenOwn(userId, payload))) return "another_account";
 
   /*
    * AND NOTHING FROM BEFORE A CLEAR COMES BACK EITHER. Clear History removes
@@ -714,6 +747,57 @@ async function clearBoundaryFor(userId: string): Promise<string | null> {
  * forged turn id belonging to somebody else matches nothing — this can neither
  * read another person's activity nor be used to probe whose a turn is.
  */
+/**
+ * Whether another account wrote this conversation: one of its answered turns
+ * was answered for someone else. `activity_events.actor_user_id` is set by the
+ * server, never by the browser. (Not by looking for its id in another
+ * account's chats: no chat table is ever read across accounts.)
+ */
+function turnIdsOf(payload: ConversationPayload): string[] {
+  return [
+    ...new Set(
+      payload.messages
+        .map((message) => message.turnId)
+        .filter((turnId): turnId is string => typeof turnId === "string"),
+    ),
+  ];
+}
+
+/** Turn ids per activity read, so one request URL stays short (CHAT_IMPORT_PROVEN_OWN_ENABLED). */
+const TURN_ID_BATCH = 100;
+
+/** The activity rows behind these turns: one read, or batches with CHAT_IMPORT_PROVEN_OWN_ENABLED. */
+async function turnActors(turnIds: string[]): Promise<{ id?: string; actor_user_id: string | null }[]> {
+  const supabase = getSupabaseAdmin();
+  const batches = chatImportProvenOwnEnabled()
+    ? Array.from({ length: Math.ceil(turnIds.length / TURN_ID_BATCH) }, (_, index) =>
+        turnIds.slice(index * TURN_ID_BATCH, (index + 1) * TURN_ID_BATCH),
+      )
+    : [turnIds];
+  const rows: { id?: string; actor_user_id: string | null }[] = [];
+  for (const batch of batches) {
+    const { data, error } = await supabase.from("activity_events").select("id, actor_user_id").in("id", batch);
+    if (error) unavailable("save that conversation");
+    rows.push(...((data ?? []) as { id?: string; actor_user_id: string | null }[]));
+  }
+  return rows;
+}
+
+async function writtenByAnotherAccount(userId: string, payload: ConversationPayload): Promise<boolean> {
+  const turnIds = turnIdsOf(payload);
+  if (turnIds.length === 0) return false;
+  return (await turnActors(turnIds)).some((turn) => turn.actor_user_id !== null && turn.actor_user_id !== userId);
+}
+
+/** Every answered turn of this chat is on record as this account's. */
+async function provenOwn(userId: string, payload: ConversationPayload): Promise<boolean> {
+  const turnIds = turnIdsOf(payload);
+  if (turnIds.length === 0) return false;
+  const rows = await turnActors(turnIds);
+  const mine = new Set(rows.filter((row) => row.actor_user_id === userId).map((row) => row.id));
+  return turnIds.every((id) => mine.has(id));
+}
+
 async function hasTurnAtOrBefore(
   userId: string,
   payload: ConversationPayload,

@@ -44,7 +44,7 @@ export function VideoThumbnail({
         <circle cx="98" cy="14" r="26" fill="currentColor" opacity="0.28" />
         <circle cx="18" cy="58" r="18" fill="currentColor" opacity="0.2" />
       </svg>
-      <span className="relative flex size-9 items-center justify-center rounded-full bg-surface/85 shadow-soft">
+      <span className="clay-sun-button relative flex size-10 items-center justify-center rounded-full text-brand-yellow-foreground">
         <Play className="size-3.5 translate-x-px fill-current" />
       </span>
     </div>
@@ -87,7 +87,7 @@ export function VideoCard({
   return (
     <div
       className={cn(
-        "group relative flex h-full flex-col overflow-hidden rounded-[var(--radius-lg)] border border-border bg-surface shadow-soft transition-[box-shadow,border-color,transform] duration-200 hover:-translate-y-0.5 hover:border-border-strong hover:shadow-raised",
+        "group relative flex h-full flex-col overflow-hidden rounded-[var(--radius-lg)] bg-surface shadow-raised transition-[box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:shadow-float",
         className,
       )}
     >
@@ -136,7 +136,7 @@ export function VideoSuggestionCard({
     <Link
       href={`/videos?video=${video.id}`}
       className={cn(
-        "group flex items-center gap-3 rounded-[var(--radius-md)] border border-border bg-surface p-2.5 shadow-soft transition-[border-color,box-shadow] hover:border-border-strong hover:shadow-raised",
+        "group flex items-center gap-3 rounded-[var(--radius-md)] bg-surface p-2.5 shadow-raised transition-[box-shadow,transform] hover:-translate-y-px hover:shadow-float",
         className,
       )}
     >

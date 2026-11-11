@@ -1,0 +1,30 @@
+{
+  "key": "c2c29c3def586fcf64b653f496b9af2af6dc32f3ba7e45538291481ae7c27032",
+  "model": "claude-haiku-5-5",
+  "reply": {
+    "employee": {
+      "value": "Ferris, Dale",
+      "evidence": "create coaching form for Ferris, Dale"
+    },
+    "location": null,
+    "jobTitle": null,
+    "incident": null,
+    "incidentDate": null,
+    "warningLevel": {
+      "value": "verbal",
+      "evidence": "create coaching form for Ferris, Dale"
+    },
+    "payroll": null,
+    "payrollAmount": null,
+    "policyHeading": null,
+    "priorSteps": [],
+    "otherDates": []
+  },
+  "usage": {
+    "inputTokens": 4586,
+    "outputTokens": 341,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 1532
+}

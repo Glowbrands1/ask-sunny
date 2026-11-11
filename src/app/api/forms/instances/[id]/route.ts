@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 
+import { cardChangePlanRebuildEnabled } from "@/lib/config/chat-quality-flags";
+import { syncCorrectiveActionPlan } from "@/lib/forms/ca-action-plan-sync";
+import { PAYROLL_AMOUNT_KEY } from "@/lib/forms/payroll-amount-field";
 import { errorResponse } from "@/lib/api/respond";
 import { POLICY_ACKNOWLEDGEMENT_REQUIRED } from "@/lib/forms/policy-verification";
 import {
@@ -13,9 +16,9 @@ import {
   UnverifiedPolicyError,
   InstanceProtectedError,
   loadInstance,
-  reviseInstance,
   saveInstanceValues,
 } from "@/lib/forms/instances";
+import { reviseFinalizedForm, RevisionReasonRequiredError } from "@/lib/forms/revision-chain";
 
 /**
  * One form.
@@ -52,7 +55,8 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   try {
     const { id } = await context.params;
     const { loaded } = await authorizeInstance(request, id, "view");
-    return NextResponse.json(loaded);
+    // CARD_CHANGE_PLAN_REBUILD_ENABLED: the Change something panel offers the Payroll deduction amount.
+    return NextResponse.json(cardChangePlanRebuildEnabled() ? { ...loaded, cardChangeAmount: true } : loaded);
   } catch (error) {
     if (error instanceof InstanceNotVisibleError) {
       return NextResponse.json({ error: error.message }, { status: 404 });
@@ -68,6 +72,8 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     const body = (await request.json().catch(() => null)) as {
       values?: Record<string, string>;
       checked?: Record<string, string[]>;
+      /** "card-change": the finalized form's Change something panel (`finalized-change-panel.tsx`). */
+      source?: unknown;
     } | null;
 
     const result = await saveInstanceValues(
@@ -75,8 +81,28 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       { values: body?.values ?? {}, checked: body?.checked ?? {} },
       actor.id,
     );
+    /*
+     * CARD_CHANGE_PLAN_REBUILD_ENABLED (Pau, 28 Oct 2026): payroll deduct
+     * changed from the Change something panel rebuilds the Corrective Action
+     * Form's Action Plan on this draft, the way a payroll answer in chat does
+     * (`syncCorrectiveActionPlan`; only a plan the app built is touched). The
+     * draft only: a finalized form is never written here.
+     */
+    /*
+     * The panel's Payroll deduction amount (same flag): the rebuilt plan says
+     * "<first name> will be payroll deducted <amount>.", and an amount changed
+     * on its own rebuilds it too.
+     */
+    const saved = (key: string) => !result.rejected.some((item) => item.key === key);
+    const planRebuilt =
+      cardChangePlanRebuildEnabled() &&
+      body?.source === "card-change" &&
+      ((Array.isArray(body.checked?.payroll_deduct) && saved("payroll_deduct")) ||
+        (typeof body.values?.[PAYROLL_AMOUNT_KEY] === "string" && saved(PAYROLL_AMOUNT_KEY)))
+        ? (await syncCorrectiveActionPlan(id, actor.id, { amountSentence: true })).length > 0
+        : false;
     const loaded = await loadInstance(id);
-    return NextResponse.json({ ...loaded, rejected: result.rejected });
+    return NextResponse.json({ ...loaded, rejected: result.rejected, ...(planRebuilt ? { actionPlanRebuilt: true } : {}) });
   } catch (error) {
     if (error instanceof InstanceNotVisibleError) {
       return NextResponse.json({ error: error.message }, { status: 404 });
@@ -98,6 +124,12 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
        * cannot obtain it any other way, and the server never defaults it.
        */
       acknowledgeUnverifiedPolicy?: boolean;
+      /**
+       * Why a finalized form is being edited. Required with
+       * `FORM_REVISIONS_ENABLED` on, recorded on the revision's `created`
+       * event; ignored with it off. See `reviseFinalizedForm`.
+       */
+      reason?: string;
     } | null;
 
     if (body?.action === "finalize") {
@@ -107,10 +139,11 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       return NextResponse.json({ instance });
     }
     if (body?.action === "revise" || body?.action === "reevaluate") {
-      const instance = await reviseInstance(
+      const instance = await reviseFinalizedForm(
         id,
         actor.id,
         body.action === "reevaluate" ? "reevaluated" : "revised",
+        body.reason,
       );
       return NextResponse.json({ instance });
     }
@@ -126,6 +159,14 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      * message is for a person, and a client that matched on prose would break
      * the first time the wording improved.
      */
+    /*
+     * 400 WITH A CODE: the edit needs a reason (`FORM_REVISIONS_ENABLED`).
+     * The message tells the manager why, and that the new printout is signed
+     * again; the code is what the reason dialog keys off.
+     */
+    if (error instanceof RevisionReasonRequiredError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: 400 });
+    }
     if (error instanceof UnverifiedPolicyError) {
       return NextResponse.json(
         {

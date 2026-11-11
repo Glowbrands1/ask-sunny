@@ -393,12 +393,16 @@ describe("the approved direction is frozen", () => {
       expect(GLOBALS, `${rule} is missing`).toContain(rule);
     }
 
-    // The display face is uppercase with POSITIVE tracking and leading at or
-    // under 1 — the thing that lets a figure out-rank a larger heading.
+    // CHANGED ON PURPOSE FOR THE CLAY DIRECTION. The display face was
+    // uppercase Passion One with positive tracking; the approved clay mockup
+    // sets headings in Plus Jakarta Sans at 800, sentence case, with tight
+    // NEGATIVE tracking and leading just above 1. What is pinned now is that
+    // treatment: heavy, not shouting, tightly set.
     const display = /\.display \{([^}]+)\}/.exec(GLOBALS)?.[1] ?? "";
-    expect(display).toContain("text-transform: uppercase");
-    expect(display).toMatch(/letter-spacing:\s*0\.0\d+em/);
-    expect(display).toMatch(/line-height:\s*(1|0\.\d+)/);
+    expect(display).not.toContain("text-transform: uppercase");
+    expect(display).toContain("font-weight: 800");
+    expect(display).toMatch(/letter-spacing:\s*-0\.0\d+em/);
+    expect(display).toMatch(/line-height:\s*(1|1\.\d+)\b/);
 
     // Figures hold their column when the value changes.
     const figure = /\.display-figure \{([^}]+)\}/.exec(GLOBALS)?.[1] ?? "";
@@ -576,8 +580,14 @@ describe("the Ask Sunny brand", () => {
      * and the bar above it sits one step deeper at #12141c — so the shell's bar
      * is `bg-chrome` and `--topbar` no longer paints it.
      */
-    expect(APP_SHELL).toContain("bg-chrome");
+    /*
+     * CLAY: the bar is now a floating rounded pill, painted by `.clay-topbar`
+     * rather than a flat `bg-chrome`. It is still the chrome depth — the class
+     * bottoms out at `--chrome` — so that is what is checked.
+     */
+    expect(APP_SHELL).toContain("clay-topbar");
     expect(APP_SHELL).toContain("<header");
+    expect(GLOBALS).toMatch(/\.clay-topbar\s*\{[^}]*var\(--chrome\)/);
 
     const reportingPages = sourceFiles(join(SOURCE_DIR, "app")).filter((path) =>
       path.includes("reports"),

@@ -26,13 +26,17 @@ import type { Permission, Role } from "@/types";
 
 const APP_DIR = "src/app/(app)";
 
-/** Every page.tsx under the authenticated app segment. */
+/**
+ * Every page under the authenticated app segment: page.tsx, and page.ts — a
+ * route module that renders a shared screen with `createElement` (the form
+ * page, `forms/monitoring/[id]/page.ts`) is a page all the same.
+ */
 function appPages(dir = APP_DIR): string[] {
   const found: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const path = join(dir, entry.name);
     if (entry.isDirectory()) found.push(...appPages(path));
-    else if (entry.name === "page.tsx") found.push(path);
+    else if (entry.name === "page.tsx" || entry.name === "page.ts") found.push(path);
   }
   return found.sort();
 }

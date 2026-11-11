@@ -1,0 +1,42 @@
+{
+  "key": "f9107eada21128dcfce2ba7c76698547c766da8bfe209d604bee3b1b23362e7f",
+  "model": "claude-haiku-5-5",
+  "reply": {
+    "employee": {
+      "value": "quinn marlowe",
+      "evidence": "My  employee  quinn  marlowe  has  was  10  minutes  late"
+    },
+    "incident": {
+      "value": "Late to shift (10 minutes)",
+      "evidence": "was  10  minutes  late  on  her  last  two  shifts"
+    },
+    "incidentDate": {
+      "value": "2026-10-15",
+      "evidence": "She  was  late  on  10/5  and  10/15"
+    },
+    "warningLevel": null,
+    "payroll": null,
+    "payrollAmount": null,
+    "policyHeading": {
+      "value": "Attendance",
+      "evidence": "Please create a CA form so I can document."
+    },
+    "priorSteps": [
+      {
+        "kind": "verbal",
+        "date": "2026-10-05",
+        "evidence": "She  was  late  on  10/5  and  10/15"
+      }
+    ],
+    "otherDates": [],
+    "location": null,
+    "jobTitle": null
+  },
+  "usage": {
+    "inputTokens": 4695,
+    "outputTokens": 477,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 2048
+}

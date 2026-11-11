@@ -1,5 +1,6 @@
 import "server-only";
 
+import { formRecordsNoJudgementEnabled } from "@/lib/config/chat-quality-flags";
 import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import { businessToday } from "@/lib/business-date";
 import type { AccessScope, Role } from "@/types";
@@ -9,6 +10,7 @@ import { FOLLOW_UP_LABEL, followUpState } from "./follow-up";
 import { resolveFormsVisibility } from "./forms-visibility";
 import { instanceListFilterFor, visibleInstances } from "./instance-scope";
 import { listInstances, type InstanceRow } from "./instances";
+import { privateAwareLimit } from "./private-creators";
 
 /**
  * ============================================================================
@@ -153,7 +155,21 @@ const STATUS_LABEL: Record<InstanceRow["status"], string> = {
   revised: "revised — replaced by a newer version",
 };
 
-function describeRow(row: InstanceRow, today: string): string {
+/*
+ * CROSS_CHAT_REPLY_GUARD_ENABLED: each row says whether the person asking
+ * created it. The register lists every form this user may SEE, and a reply
+ * called another manager's draft "the written one you created today"
+ * (conv_mvmznap42vcw0dl). Without a viewer the line is unchanged.
+ */
+const CREATED_BY_RULE =
+  'Each row says who created it. Say the manager created a form only when its row says "created by: this user"; a form created by another user was not created by them.';
+
+function createdByPart(row: InstanceRow, viewerId: string | null | undefined): string[] {
+  if (!viewerId) return [];
+  return [row.createdBy === viewerId ? "created by: this user" : "created by: another user"];
+}
+
+function describeRow(row: InstanceRow, today: string, viewerId?: string | null): string {
   const state = followUpState(row, today);
   const parts = [
     `${row.formDate} — ${row.templateName}`,
@@ -164,6 +180,7 @@ function describeRow(row: InstanceRow, today: string): string {
   if (row.followUpDate) parts.push(`follow-up date: ${row.followUpDate}`);
   if (state !== "drafted" && state !== "untracked") parts.push(`follow-up: ${FOLLOW_UP_LABEL[state]}`);
   if (row.archivedAt) parts.push("archived");
+  parts.push(...createdByPart(row, viewerId));
   return `- ${parts.join("; ")}`;
 }
 
@@ -187,9 +204,41 @@ function draftRows(rows: readonly InstanceRow[]): InstanceRow[] {
   return rows.filter((row) => row.status === "draft");
 }
 
-function notOnFileSection(rows: readonly InstanceRow[], today: string): string | null {
+function notOnFileSection(rows: readonly InstanceRow[], today: string, viewerId: string | null): string | null {
   if (rows.length === 0) return null;
-  return `${NOT_ON_FILE}\n${rows.map((row) => describeRow(row, today)).join("\n")}`;
+  return `${NOT_ON_FILE}\n${rows.map((row) => describeRow(row, today, viewerId)).join("\n")}`;
+}
+
+/*
+ * FORM_RECORDS_NO_JUDGEMENT_ENABLED (port from the sibling app: QA's live test there, 8 Nov 2026; PAST_FORMS_BEFORE_LIBRARY on): "are there
+ * any coaching forms or corrective actions for <A>?" listed the forms, and added a judgement nobody asked for: "a notable
+ * number of Corrective Actions in under two weeks for one person", "worth reviewing … before deciding what comes next".
+ * A list of someone's forms is the forms, their dates and their status; never an assessment of the person's record.
+ */
+export const RECORDS_NO_JUDGEMENT_RULE =
+  "List each form with its date and status only. Never assess the person's record: do not call the number of forms notable, high, a pattern or a concern, do not compare their dates, and do not suggest reviewing them or what to do next, unless the manager asks for that assessment in this message.";
+
+/** A sentence that judges the person's record or advises on it, rather than listing a form. */
+const JUDGEMENT = /\b(?:notable|significant|concerning|a lot of|quite a few|several .{0,30}in (?:under|less than|just)|in (?:under|less than|just) (?:a|one|two|three|\d+) (?:days?|weeks?|months?)|a pattern|patterns? of|worth (?:reviewing|looking|discussing|noting|considering)|before deciding|what comes next|next step|escalat\w*|consider(?:ing)? (?:a|the) (?:next|further)|may (?:want|wish) to review)\b/i;
+
+/**
+ * The reply without its sentences of judgement about the person's record (`RECORDS_NO_JUDGEMENT_RULE`): a line that
+ * lists a form is never touched; a sentence that judges or advises is dropped. Pure; the caller decides when the flag
+ * applies and that the reply is a records answer.
+ */
+export function withoutRecordJudgement(reply: string): string {
+  return (reply ?? "")
+    .split("\n")
+    .map((line) => {
+      if (/^\s*(?:[-*•]|\d+[.)])\s/.test(line)) return line;
+      return line
+        .split(/(?<=[.!?])\s+/)
+        .filter((sentence) => !JUDGEMENT.test(sentence))
+        .join(" ");
+    })
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 export function renderFormRecordsBlock(input: {
@@ -199,11 +248,14 @@ export function renderFormRecordsBlock(input: {
   matches: NameMatches | null;
   recent: readonly InstanceRow[];
   today: string;
+  /** CROSS_CHAT_REPLY_GUARD_ENABLED: the asking user's id, to mark who created each row. */
+  viewerId?: string | null;
 }): string {
+  const viewerId = input.viewerId ?? null;
   const { words, matches, recent, today } = input;
   const sections: string[] = [
     FORM_RECORDS_HEADING,
-    `${RECORDS_RULES} ${scopeSentence(input.visibility)}`,
+    `${RECORDS_RULES} ${scopeSentence(input.visibility)}${viewerId ? ` ${CREATED_BY_RULE}` : ""}${formRecordsNoJudgementEnabled() ? ` ${RECORDS_NO_JUDGEMENT_RULE}` : ""}`,
   ];
 
   if (matches) {
@@ -213,7 +265,7 @@ export function renderFormRecordsBlock(input: {
     const drafts = draftRows([...matches.named, ...matches.possible]);
     if (named.length > 0) {
       sections.push(
-        `Forms naming the person in the question (${named.length}), newest first:\n${named.map((row) => describeRow(row, today)).join("\n")}`,
+        `Forms naming the person in the question (${named.length}), newest first:\n${named.map((row) => describeRow(row, today, viewerId)).join("\n")}`,
       );
     } else {
       sections.push(
@@ -222,20 +274,20 @@ export function renderFormRecordsBlock(input: {
     }
     if (possible.length > 0) {
       sections.push(
-        `Possible matches — part of the name matches, so they may be somebody else. Ask before treating them as the same person:\n${possible.map((row) => describeRow(row, today)).join("\n")}`,
+        `Possible matches — part of the name matches, so they may be somebody else. Ask before treating them as the same person:\n${possible.map((row) => describeRow(row, today, viewerId)).join("\n")}`,
       );
     }
-    const draftsBlock = notOnFileSection(drafts, today);
+    const draftsBlock = notOnFileSection(drafts, today, viewerId);
     if (draftsBlock) sections.push(draftsBlock);
   } else if (recent.length > 0) {
     const filed = onFileRows(recent);
     const drafts = draftRows(recent);
     if (filed.length > 0) {
       sections.push(
-        `The question names nobody. The ${filed.length} most recent forms this user can see, newest first:\n${filed.map((row) => describeRow(row, today)).join("\n")}`,
+        `The question names nobody. The ${filed.length} most recent forms this user can see, newest first:\n${filed.map((row) => describeRow(row, today, viewerId)).join("\n")}`,
       );
     }
-    const draftsBlock = notOnFileSection(drafts, today);
+    const draftsBlock = notOnFileSection(drafts, today, viewerId);
     if (draftsBlock) sections.push(draftsBlock);
     if (filed.length === 0 && !draftsBlock) {
       sections.push("No forms are on file at the salons this user can see.");
@@ -295,6 +347,8 @@ export async function loadFormRecords(input: {
   question: string;
   previousQuestion?: string | null;
   today?: string;
+  /** CROSS_CHAT_REPLY_GUARD_ENABLED: mark which rows the asking user created. */
+  markCreator?: boolean;
 }): Promise<{ block: string } | null> {
   const { actor } = input;
   // Fails closed: no verified identity, no read. Chat is live-only, so this is
@@ -303,6 +357,7 @@ export async function loadFormRecords(input: {
   if (!hasPermission(DEFAULT_PERMISSION_MATRIX, actor.role, "view_form_monitoring")) return null;
 
   const today = input.today ?? businessToday();
+  const viewerId = input.markCreator ? actor.subject : null;
   try {
     const formsActor = (await chatFormsActor(actor))!;
     const visibility = formsActor.visibility!;
@@ -316,17 +371,18 @@ export async function loadFormRecords(input: {
     }
 
     if (words.length > 0) {
+      // PRIVATE_CREATOR_FORMS: over-read, then trim to the page; off, the page itself.
       const rows = visibleInstances(
         formsActor,
-        await listInstances("all", MATCH_LIMIT, { ...filter, employeeNameWords: words }),
-      );
+        await listInstances("all", privateAwareLimit(MATCH_LIMIT), { ...filter, employeeNameWords: words }),
+      ).slice(0, MATCH_LIMIT);
       const matches = matchRowsToQuestion(rows, words);
       if (matches.named.length > 0 || matches.possible.length > 0) {
-        return { block: renderFormRecordsBlock({ visibility, words, matches, recent: [], today }) };
+        return { block: renderFormRecordsBlock({ visibility, words, matches, recent: [], today, viewerId }) };
       }
     }
 
-    const recent = visibleInstances(formsActor, await listInstances("active", RECENT_LIMIT, filter));
+    const recent = visibleInstances(formsActor, await listInstances("active", privateAwareLimit(RECENT_LIMIT), filter)).slice(0, RECENT_LIMIT);
     /*
      * A question that names somebody nobody on file matches is reported as
      * "no form names them" — with the recent list left out, so the model
@@ -335,6 +391,7 @@ export async function loadFormRecords(input: {
     const named = words.length > 0 && looksLikeItNamesSomebody(nameSource);
     return {
       block: renderFormRecordsBlock({
+        viewerId,
         visibility,
         words,
         matches: named ? { named: [], possible: [] } : null,

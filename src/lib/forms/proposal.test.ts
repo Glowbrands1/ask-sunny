@@ -948,24 +948,24 @@ describe("the employee named with the form, across the library", () => {
 /* ======================================== a month is never a person == */
 
 describe("a month named beside the employee is a date, not a second person", () => {
-  it("reads only Betty Sue from the production message (October 2026)", () => {
+  it("reads only Dora Lee from the production message (October 2026)", () => {
     const text =
-      "Betty Sue today under performance for September 270 tans below in PPTA, UPTA, LPSVA, CC% and Spa% verbal warning received Open Ended Questions Coaching 9/8/2026, Focus Item Coaching 9/15/2026, New Product Coaching 9/25/2026 not payroll deductible Tanning Consultant";
-    expect(extractEmployeeNames(text)).toEqual(["Betty Sue"]);
+      "Dora Lee today under performance for September 270 tans below in PPTA, UPTA, LPSVA, CC% and Spa% verbal warning received Open Ended Questions Coaching 9/8/2026, Focus Item Coaching 9/15/2026, New Product Coaching 9/25/2026 not payroll deductible Tanning Consultant";
+    expect(extractEmployeeNames(text)).toEqual(["Dora Lee"]);
     const resolution = resolveEmployee(managerContext([], { id: "msg-current", content: text }));
-    expect(resolution).toEqual({ kind: "resolved", employeeName: "Betty Sue" });
+    expect(resolution).toEqual({ kind: "resolved", employeeName: "Dora Lee" });
   });
 
   it.each([
-    "CA for Betty Sue, under performance for October",
-    "CA for Betty Sue for November numbers",
-    "Coaching for Betty Sue December 3",
-    "Betty Sue missed goal in March and Sept.",
-    "CA for Betty Sue, below goal for June 2026",
-    "CA for Betty Sue, below goal since August",
-    "CA for Betty Sue, under performance for May 270 tans below",
-  ])("%s → Betty Sue", (text) => {
-    expect(extractEmployeeNames(text)).toEqual(["Betty Sue"]);
+    "CA for Dora Lee, under performance for October",
+    "CA for Dora Lee for November numbers",
+    "Coaching for Dora Lee December 3",
+    "Dora Lee missed goal in March and Sept.",
+    "CA for Dora Lee, below goal for June 2026",
+    "CA for Dora Lee, below goal since August",
+    "CA for Dora Lee, under performance for May 270 tans below",
+  ])("%s → Dora Lee", (text) => {
+    expect(extractEmployeeNames(text)).toEqual(["Dora Lee"]);
   });
 
   it("still reads a first name that is also a month where it is used as a name", () => {

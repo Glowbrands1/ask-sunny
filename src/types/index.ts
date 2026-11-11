@@ -662,6 +662,21 @@ export interface ChatFormProposal {
    * `lib/forms/corrective-action-intake.ts`.
    */
   warningLevel?: "verbal" | "written" | null;
+  /**
+   * The Corrective Action Form's prior-actions line, in the manager's words
+   * ("prior = manual ack 9/01"). Optional so older proposals still read.
+   */
+  priorActions?: string | null;
+  /**
+   * A time the manager labelled ("time 10:20"). A bare "10-20" is 20 October,
+   * not a time.
+   */
+  incidentTime?: string | null;
+  /**
+   * What happened, in the manager's words. Optional so older proposals still
+   * read. The create path can file it on the observation when that field exists.
+   */
+  issue?: string | null;
   /** Null unless the authenticated scope proves exactly one salon. */
   locationId: string | null;
   /**
@@ -718,6 +733,14 @@ export interface ChatFormProposal {
    * proposal stored before this existed. See `lib/forms/team-subject.ts`.
    */
   subject?: "team";
+  /**
+   * SAME_FORM_COPY_NEW_PERSON_ENABLED: the manager's own form this card's
+   * draft is copied from ("the same draft that we did with <name>"), set by the
+   * chat on the card of the person named after it was asked. An id, never
+   * values: the drafting route re-checks that this account created it and may
+   * still see it, and copies only its content fields.
+   */
+  copyFromInstanceId?: string;
 }
 
 export interface FormHandoff {
@@ -928,6 +951,8 @@ export interface BrandConfig {
     trail: string;
   };
   tagline: string;
+  /** The brand's own slogan, shown under the sign-in headline when set. */
+  slogan?: string;
   /**
    * Maps the semantic aliases in globals.css to this brand's raw values.
    * Applied at the app shell, so a second brand is a config swap.

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { AiError } from "@/lib/ai/errors";
+import { LEGACY_MESSAGE_LIMIT, messageTooLongNotice } from "@/lib/chat/message-limit";
 
 /**
  * CENTRALIZED REQUEST VALIDATION.
@@ -23,7 +24,7 @@ const UUID =
 const PROTOTYPE_ID = /^[a-z]{2,6}_[a-z0-9]{4,32}$/i;
 
 export const LIMITS = {
-  question: 4000,
+  question: LEGACY_MESSAGE_LIMIT,
   searchQuery: 2000,
   title: 300,
   description: 2000,
@@ -60,6 +61,23 @@ export function requireString(
   const trimmed = value.trim();
   if (trimmed.length > maxLength) {
     reject(`${field} is too long. The limit is ${maxLength} characters.`);
+  }
+  return trimmed;
+}
+
+/**
+ * The chat question with CHAT_LONG_MESSAGE_ENABLED on. Same required check
+ * as `requireString`; over `limit` the 400 says how long the message is and
+ * that nothing was cut, in the words the composer shows before sending. The
+ * text is never shortened here or anywhere after.
+ */
+export function requireChatQuestion(value: unknown, limit: number): string {
+  if (typeof value !== "string" || !value.trim()) {
+    reject("A question is required.");
+  }
+  const trimmed = value.trim();
+  if (trimmed.length > limit) {
+    reject(messageTooLongNotice(trimmed.length, limit));
   }
   return trimmed;
 }

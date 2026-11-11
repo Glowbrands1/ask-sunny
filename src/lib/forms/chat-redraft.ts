@@ -1,6 +1,7 @@
 import "server-only";
 
 import { PRODUCTION_SALONS } from "@/data/salons";
+import { formEditSingleWriterEnabled } from "@/lib/config/chat-quality-flags";
 import type { AskResponse } from "@/lib/ai/types";
 import type { ChatMessage } from "@/types";
 
@@ -104,6 +105,7 @@ export async function redraftActiveForm(input: {
     values?: Record<string, string>;
     checked?: Record<string, string[]>;
     policyDerived?: string[];
+    formDiff?: { changed: { key: string; before: string | string[]; after: string | string[] }[] } | null;
   };
 
   const who = `**${instance.templateName}** for **${instance.employeeName}**`;
@@ -113,14 +115,25 @@ export async function redraftActiveForm(input: {
     );
   }
 
-  const updated = [...Object.keys(result.values ?? {}), ...Object.keys(result.checked ?? {})];
   const cited = (result.policyDerived ?? []).includes("policy_language");
+  const uncited =
+    "I couldn't match what you described to a section of the policy manual, so the policy line is still yours to confirm against the official manual.";
+  /*
+   * FORM_EDIT_SINGLE_WRITER_ENABLED: the claim is what the draft route's one
+   * writer really changed (its realized `formDiff`, #410's wrapper); nothing
+   * changed, and the reply says so. See `lib/forms/form-write.ts`.
+   */
+  const realized = formEditSingleWriterEnabled()
+    ? (await import("./form-write")).redraftOutcome(result, cited ? null : uncited)
+    : null;
+  if (realized?.reply) return realized.reply;
+  const updated = realized?.updated ?? [...Object.keys(result.values ?? {}), ...Object.keys(result.checked ?? {})];
   const lines = [
     `Redrafted the ${who} from what you described.`,
     "",
     cited
       ? "**Direct policy from official manual** now quotes the manual and cites its section and page."
-      : "I couldn't match what you described to a section of the policy manual, so the policy line is still yours to confirm against the official manual.",
+      : uncited,
     ...(loaded.values.some((row) => row.filledBy === "manager" && (row.value ?? "").trim() !== "")
       ? [
           "",

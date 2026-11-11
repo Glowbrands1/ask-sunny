@@ -161,10 +161,23 @@ function deniedNearby(clause: string, at: number, end: number): boolean {
 /** Yes, No, nothing about the deduction (null), or something about it that cannot safely be read. */
 export type ClauseReading = PayrollDeductAnswer | "unclear" | null;
 
+/*
+ * NOT_DEDUCTIBLE_READ_ENABLED (manager, 26 Oct 2026: "… verbal warning received
+ * … not payroll deductible Tanning Consultant"): "not payroll deductible",
+ * "non-deductible" said No, but no pattern read it, and the payroll question
+ * was asked on every turn. With the flag on it is a No. Read from the
+ * environment here because this module imports nothing (see the top).
+ */
+const NOT_DEDUCTIBLE = /\b(?:not|isn't|isnt|is not|non)[\s-]+(?:payroll\s+)?deductible\b/;
+function notDeductibleRead(): boolean {
+  const raw = typeof process === "undefined" ? undefined : process.env.NOT_DEDUCTIBLE_READ_ENABLED;
+  return typeof raw === "string" && ["1", "true", "yes", "on"].includes(raw.trim().toLowerCase());
+}
+
 function readClause(clause: string): ClauseReading {
   if (UNDECIDED.test(clause) && ABOUT_DEDUCTION.test(clause)) return "unclear";
   if (DENIED_WAIVER.test(clause) && ABOUT_DEDUCTION.test(clause)) return "unclear";
-  const negative = NEGATIVE.find((pattern) => pattern.test(clause));
+  const negative = NEGATIVE.find((pattern) => pattern.test(clause)) ?? (notDeductibleRead() && NOT_DEDUCTIBLE.test(clause) ? NOT_DEDUCTIBLE : undefined);
   if (negative) {
     /*
      * BOTH IN ONE CLAUSE IS NO ANSWER (F-01). With the negative's own words
@@ -207,15 +220,57 @@ export function readPayrollDeduct(text: string): ClauseReading {
   return answer;
 }
 
+/**
+ * CA_SHORTCUT_WORDS_ENABLED (Pau, 29 Oct 2026: "recognize all form wording …
+ * so when manager type shortcuts, it can understand it"). Read here, not
+ * through `chat-quality-flags`, because this module imports nothing.
+ */
+function caShortcutWordsOn(): boolean {
+  const raw = typeof process === "undefined" ? undefined : process.env.CA_SHORTCUT_WORDS_ENABLED;
+  return typeof raw === "string" && ["1", "true", "on", "yes"].includes(raw.trim().toLowerCase());
+}
+
+/**
+ * PAYROLL_SPLIT_WORDS_ENABLED (coding 6, 10 Nov 2026; QA's sf-s23, Pau 5 Nov 2026): "not pay roll deductable" answered
+ * the payroll question, and the card asked it again and put the answer in the Observation. "pay roll" is "payroll",
+ * and "deductable" (the misspelling) is "deduct", so "not payroll deduct" is read as the No it is; "non-/un-deductible"
+ * is left to NOT_DEDUCTIBLE_READ. Read here, as
+ * CA_SHORTCUT_WORDS is, because this module imports nothing. Off, as before.
+ */
+function payrollSplitWordsOn(): boolean {
+  const raw = typeof process === "undefined" ? undefined : process.env.PAYROLL_SPLIT_WORDS_ENABLED;
+  return typeof raw === "string" && ["1", "true", "on", "yes"].includes(raw.trim().toLowerCase());
+}
+
+function withPayrollSplitWords(text: string): string {
+  // "non-deductible" / "un-deductible" are NOT_DEDUCTIBLE_READ's (a No) and stay as they are; a misspelt
+  // "non-deductable" becomes that reader's "non-deductible". Only a bare "deductable" (the misspelling) is "deduct".
+  return text
+    .replace(/\bpay\s+roll\b/g, "payroll")
+    .replace(/\b(non|un)(-|\s)?deductable\b/g, "$1-deductible")
+    .replace(/(?<![\w-])deductable\b/g, "deduct");
+}
+
 /** Lower case, curly quotes straightened, "payroll-deduct" spaced — the text the patterns read. */
 export function normalizePayrollWording(text: string): string {
-  return (text ?? "")
+  const read = (text ?? "")
     .toLowerCase()
     .replace(/[’‘]/g, "'")
     // "payroll-deduct", "payroll‑deduction"
     .replace(/[‐‑–—]/g, "-")
     .replace(/\bpayroll-deduct/g, "payroll deduct")
     .replace(/[^\S\n]+/g, " ");
+  if (!caShortcutWordsOn()) return payrollSplitWordsOn() ? withPayrollSplitWords(read) : read;
+  return (
+    (payrollSplitWordsOn() ? withPayrollSplitWords(read) : read)
+      // CA_SHORTCUT_WORDS_ENABLED: "no PD", "PD applies", "pd yes", "PD $25" — the form's own abbreviation.
+      .replace(/\bp\.?\s?d\.?(?=\s|:|=|-|,|;|\.|!|$)/g, "payroll deduct")
+      // "deduct 25", "payroll deduct 25" — an amount with no dollar sign, not a time or a count.
+      .replace(
+        /\b(payroll deduct(?:ion)?|deduct(?:ion)?)\s+(\d{1,4}(?:\.\d{2})?)\b(?!\s*(?:%|min|mins|minutes|hrs?|hours?|days?|weeks?|times|x\b|am\b|pm\b))/g,
+        "$1 $$$2",
+      )
+  );
 }
 
 /**
@@ -236,6 +291,45 @@ export function normalizePayrollWording(text: string): string {
  * turn still belongs to the open Corrective Action Form: it withdraws an
  * earlier answer, and the card asks again (QA, 22 Oct 2026).
  */
+/**
+ * The text the deducted amount is read from. With CA_SHORTCUT_WORDS_ENABLED,
+ * the shortcuts' wording ("deduct 25", "PD 25" → "$25"); off, the text as
+ * typed. Read by `payrollDeductAmount` (Pau, 30 Oct 2026: "Ok amount line").
+ */
+export function payrollAmountWording(text: string): string {
+  const said = payrollAmountSameMessageOn() ? joinReferredAmount(text) : text;
+  return caShortcutWordsOn() ? normalizePayrollWording(said) : said;
+}
+
+/**
+ * ============================================================================
+ * AN AMOUNT, THEN "WHICH WILL BE PAYROLL DEDUCTED"
+ * (PAYROLL_AMOUNT_SAME_MESSAGE_ENABLED, default off; the sibling app's live chat, 5 Nov 2026)
+ * ============================================================================
+ *
+ * "on 11-1-26 the register was off $20. which will be payroll deducted from
+ * <name>'s check. … payroll deduct applies" was asked "**Payroll deduction
+ * amount**?": a relative word ("which", "that", "this", "it") — and a stray
+ * full stop — stood between the figure and "will be payroll deducted", which
+ * the amount reader reads as "$20 will be payroll deducted". Nothing new is
+ * read as money: the words between are dropped, and the same reader decides
+ * whether the figure is an amount and the clause a deduction. Only when the
+ * clause reaches "deduct" within three words. Off, the text as typed.
+ */
+const REFERS_BACK =
+  /(\d(?:[\d,]*\d)?(?:\.\d{1,2})?(?:\s*(?:dollars?|bucks))?)\s*[.,;:–—-]?\s+(?:and\s+)?(?:which|that|this|it)\s+(?=(?:\S+\s+){0,3}?(?:payroll[- ]?\s*)?deduct)/gi;
+
+/** The text with each "<amount>. which will be … deducted" joined to "<amount> will be … deducted". */
+export function joinReferredAmount(text: string): string {
+  return (text ?? "").replace(REFERS_BACK, "$1 ");
+}
+
+/** PAYROLL_AMOUNT_SAME_MESSAGE_ENABLED, read here as CA_SHORTCUT_WORDS_ENABLED is: this file imports nothing. */
+function payrollAmountSameMessageOn(): boolean {
+  const raw = typeof process === "undefined" ? undefined : process.env.PAYROLL_AMOUNT_SAME_MESSAGE_ENABLED;
+  return typeof raw === "string" && ["1", "true", "on", "yes"].includes(raw.trim().toLowerCase());
+}
+
 export function payrollDeductUnclear(text: string): boolean {
   return readPayrollDeduct(text) === "unclear";
 }

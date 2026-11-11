@@ -1,0 +1,50 @@
+{
+  "key": "6c5bb16282d924f19b1d9ceddffc0f14ca292e011be133704b55344a5cdc9987",
+  "model": "claude-haiku-5-5",
+  "reply": {
+    "employee": {
+      "value": "quinn marlowe",
+      "evidence": "do verbal for quinn marlowe at kearney"
+    },
+    "location": {
+      "value": "kearney",
+      "evidence": "do verbal for quinn marlowe at kearney"
+    },
+    "jobTitle": null,
+    "incident": {
+      "value": "Came into the salon while not scheduled to work to show her team her new puppy, stayed 45 minutes",
+      "evidence": "on 10-22-26 quinn was not scheduled to work and came into the salon to show her team her new puppy. quinn was in the salon 45 min"
+    },
+    "incidentDate": {
+      "value": "2026-10-22",
+      "evidence": "on 10-22-26 quinn was not scheduled to work and came into the salon to show her team her new puppy"
+    },
+    "warningLevel": {
+      "value": "verbal",
+      "evidence": "do verbal for quinn marlowe at kearney"
+    },
+    "payroll": {
+      "value": "no",
+      "evidence": "payroll deduct does not apply"
+    },
+    "payrollAmount": null,
+    "policyHeading": {
+      "value": "Visitors in the Workplace",
+      "evidence": "jba manual 11-1-26"
+    },
+    "priorSteps": [
+      {
+        "kind": "other",
+        "date": "2026-11-01",
+        "evidence": "previous coaching jba manual 11-1-26"
+      }
+    ]
+  },
+  "usage": {
+    "inputTokens": 4678,
+    "outputTokens": 600,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 2068
+}

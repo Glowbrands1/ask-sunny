@@ -1,13 +1,23 @@
 import { NextResponse } from "next/server";
 
+import { teamTopicReadConversation } from "@/lib/forms/team-card-not-product";
+import { sameRequestReadConversation } from "@/lib/forms/same-request-other-person";
+import { switchReadConversation } from "@/lib/ai/form-type-switch";
+import { typoReadingTurns } from "@/lib/ai/typo-reading-copy";
+import { protectedNameWords } from "@/lib/ai/typo-name-words";
 import { salonById } from "@/data/salons";
 
 import { historyWantsSeparateDocument } from "@/lib/ai/second-form";
 import { errorResponse } from "@/lib/api/respond";
 import {
+  conversationDraftReuseEnabled,
+  draftReuseSameChatOnlyEnabled,
+  draftReuseOwnOnlyEnabled,
   conversationProposalDedupeEnabled,
+  draftActionsEnabled,
   draftDedupeEnabled,
   payrollAmountFieldEnabled,
+  typoReadingRoutesEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { parseHistory } from "@/lib/api/validation";
 import { authorizeForms } from "@/lib/forms/access";
@@ -18,12 +28,20 @@ import {
 } from "@/lib/forms/corrective-action-intake";
 import { isIsoCalendarDate } from "@/lib/forms/form-date-answer";
 import { conversationKeyOf } from "@/lib/forms/conversation-key";
+import {
+  applyTurnsSinceDraft,
+  findConversationDraft,
+  lastManagerTurnId,
+  noteConversationDraft,
+} from "@/lib/forms/conversation-draft";
+import { businessToday } from "@/lib/business-date";
 import { findConversationProposalDraft } from "@/lib/forms/conversation-proposal-draft";
 import { isProposalId } from "@/lib/forms/proposal-id";
 import {
   applyStatedFacts,
   createInstance,
   findRecentAssistantDraft,
+  loadInstance,
   deleteDemoInstances,
   findDemoInstances,
   InstanceProtectedError,
@@ -31,9 +49,15 @@ import {
   type InstanceView,
 } from "@/lib/forms/instances";
 import { instanceListFilterFor, visibleInstances } from "@/lib/forms/instance-scope";
+import { privateAwareLimit, privateCreatorsActive } from "@/lib/forms/private-creators";
+import { historySaysDifferentIncident } from "@/lib/forms/draft-actions";
 import { findOpenIncidentDraft, findResentDraft } from "@/lib/forms/draft-reopen";
+import type { SameChat } from "@/lib/forms/draft-same-chat";
 import { authorizeLocation } from "@/lib/forms/location-scope";
 import { checkProposalIsCurrent } from "@/lib/forms/proposal-currency";
+import { preferredNamesOf } from "@/lib/forms/preferred-name-current";
+import { looseRosterFor } from "@/lib/forms/loose-name";
+import { rosterNamesFor } from "@/lib/forms/roster-names";
 import { allowsTeamSubject, isTeamSubject } from "@/lib/forms/team-subject";
 import { isDemoMode } from "@/lib/config/runtime";
 import { getTemplateByKey } from "@/lib/forms/repository";
@@ -102,10 +126,11 @@ export async function GET(request: Request) {
      * predicate re-checks what is returned, and the predicate is the one that
      * fails closed if they ever drift.
      */
+    // PRIVATE_CREATOR_FORMS: over-read, then trim to the default page of 200; off, as before.
     const instances = visibleInstances(
       actor,
-      await listInstances(view, undefined, instanceListFilterFor(actor)),
-    );
+      await listInstances(view, privateCreatorsActive() ? privateAwareLimit(200) : undefined, instanceListFilterFor(actor)),
+    ).slice(0, 200);
 
     // The sweep's shape is returned alongside so the screen can say "Delete 5
     // demo forms" with a real number rather than counting what it happens to
@@ -199,10 +224,21 @@ export async function POST(request: Request) {
      * `lib/forms/proposal-currency.ts`.
      */
     if (body.source === "ask_sunny" && Array.isArray(body.conversation)) {
+      // PREFERRED_NAME_CARD_CURRENT_ENABLED: "kit dovetail" is the card's Katrin Dovetail when the manager's roster says Kit is her preferred name. Off: none, and no roster read.
+      const alsoCalled = await preferredNamesOf(actor.scope, body.employeeName);
       const currency = checkProposalIsCurrent({
-        conversation: parseHistory(body.conversation),
+        // FORM_TYPE_SWITCH_ENABLED: "change to coaching" is read as the chat read it, so the switched card is current.
+        // TEAM_CARD_NOT_PRODUCT_ENABLED: on the team card, "selling Spray Tan Kits" is the topic, as the chat read it.
+        // SAME_REQUEST_OTHER_PERSON_ENABLED: "the same thing for <B>" is read from that turn on, as the chat read it.
+        // SAME_REQUEST_KEEPS_EARLIER_CARD_ENABLED: <A>'s card is read as it stood before "the same thing for <B>".
+        conversation: sameRequestReadConversation(teamTopicReadConversation(switchReadConversation(parseHistory(body.conversation)), body.employeeName), body.employeeName),
         templateKey: body.templateKey,
         employeeName: body.employeeName,
+        alsoCalled,
+        // PARTIAL_NAME_LOOSE_MATCH_ENABLED: "marisol co" is the card's Marisol Camarillo when nobody else on the roster fits. Off: undefined, no roster read.
+        looseRoster: await looseRosterFor(actor.scope),
+        // STALE_NEEDS_ROSTER_PERSON_ENABLED: "drop wage" and "forfeit bonus" are not more people. Off: undefined, and no roster read.
+        rosterNames: await rosterNamesFor(actor.scope),
       });
       if (!currency.current) {
         return NextResponse.json({ error: currency.reason, code: "proposal_superseded" }, { status: 409 });
@@ -234,11 +270,156 @@ export async function POST(request: Request) {
     const locationId = location.kind === "authorized" ? location.locationId : null;
 
     /*
+     * THE ANSWERS THIS CARD CARRIES, as the manager's own statements. On a new
+     * draft they fill it; on a reused one (`applyStatedFacts` fills only what
+     * is blank) they never replace a value already there.
+     */
+    const card = body;
+    async function applyCardFacts(instanceId: string): Promise<void> {
+      /*
+       * "IS PAYROLL DEDUCT APPLICABLE?", AS THE MANAGER ANSWERED IT IN CHAT.
+       *
+       * Written as the manager's own statement — the path the employment change
+       * forms use for their stated facts — and only where the pinned version
+       * has the group: `applyStatedFacts` validates the key and the option
+       * against it, and a version without the question (or any other template)
+       * gets nothing. No answer sent means nothing written; it is never
+       * defaulted. See `lib/forms/payroll-deduct.ts`.
+       */
+      if (isPayrollDeductAnswer(card.payrollDeduct)) {
+        await applyStatedFacts(
+          instanceId,
+          { values: {}, checked: payrollDeductChecked(card.payrollDeduct) },
+          actor.id,
+          PAYROLL_DEDUCT_STATED_KEYS,
+        );
+      }
+
+      /*
+       * PAYROLL DEDUCTION AMOUNT, FROM THE MANAGER'S OWN WORDS.
+       *
+       * Written only when the amount field is on, payroll is Yes, and the
+       * conversation states a figure. The body may carry the same figure; it is
+       * not the source. A policy quotation is not a figure. No figure means the
+       * line stays blank, and the form is still created.
+       */
+      if (payrollAmountFieldEnabled() && card.payrollDeduct === "yes" && Array.isArray(card.conversation)) {
+        // TYPO_READING_ROUTES_ENABLED: the reader sees "amont" as amount; the stored conversation stays as typed.
+        const turns = await readingTurns(parseHistory(card.conversation));
+        const amount = payrollAmountFromConversation(turns, { payrollAnswer: "yes" });
+        if (amount) {
+          await applyStatedFacts(
+            instanceId,
+            { values: { [PAYROLL_AMOUNT_KEY]: amount }, checked: {} },
+            actor.id,
+            PAYROLL_AMOUNT_STATED_KEYS,
+          );
+        }
+      }
+
+      /*
+       * THE TYPE OF WARNING, AS THE MANAGER STATED IT FOR THIS FORM IN CHAT —
+       * "create verbal CA for …". The same path as the payroll answer: their own
+       * statement, only a verbal or written level, and only where the pinned
+       * version offers it (`applyStatedFacts` validates the option). Nothing sent
+       * means nothing written; it is never defaulted. The draft leaves it as it
+       * is. See `statedWarningLevel` in `lib/forms/corrective-action-intake.ts`.
+       */
+      if (isStatedWarningLevel(card.warningLevel)) {
+        await applyStatedFacts(
+          instanceId,
+          { values: {}, checked: { [WARNING_TYPE_KEY]: [card.warningLevel] } },
+          actor.id,
+          WARNING_LEVEL_STATED_KEYS,
+        );
+      }
+    }
+
+    /*
+     * ONE DRAFT PER FORM IN THIS CHAT (CONVERSATION_DRAFT_REUSE_ENABLED). A new
+     * card for the same form and employee opens the draft this chat already
+     * made, unless the manager asked for another document since. Before the
+     * any-chat check below, which one earlier "another" switches off for the
+     * rest of the chat. See `conversation-draft.ts`.
+     */
+    /*
+     * "DIFFERENT INCIDENT", answering whether this is the same incident as the
+     * form on file (QA F8): a new form, so no open draft is reopened in its
+     * place. DRAFT_ACTIONS_ENABLED only. Read before the chat's own draft too,
+     * so "different incident" is not folded into the draft this chat already
+     * made when both flags are on.
+     */
+    const newIncident = draftActionsEnabled() && historySaysDifferentIncident(body.conversation);
+    /*
+     * DRAFT_REUSE_SAME_CHAT_ONLY_ENABLED. Every lookup below that hands back
+     * an existing draft keeps only a draft this chat made (`sameChat`), the
+     * chat's own draft is not reused for a card dated differently, every new
+     * chat draft records its chat, and a reuse tells the card the draft's
+     * date (`reused`, below). See `draft-same-chat.ts`.
+     */
+    const sameChatOnly = body.source === "ask_sunny" && draftReuseSameChatOnlyEnabled();
+    const chatKey = sameChatOnly
+      ? conversationKeyOf({ conversationId: body.conversationId, conversation: body.conversation })
+      : null;
+    const sameChat: SameChat | undefined = sameChatOnly ? { conversationKey: chatKey } : undefined;
+    const cardDate = isIsoCalendarDate(body.formDate) ? body.formDate : null;
+    /*
+     * DRAFT_REUSE_OWN_ONLY_ENABLED (QA, 25 Oct 2026). On, no lookup below
+     * hands this manager a draft another manager made: the finders read only
+     * this manager's drafts, and each draft found is checked here again
+     * (`mine`). No acting user reuses nothing. Off, `mine` is always true.
+     * Opening or editing a named draft through the chat, and DRAFT_MERGE, are
+     * not a reuse and are not changed by this.
+     */
+    const ownOnly = draftReuseOwnOnlyEnabled();
+    const mine = (instance: { createdBy?: string | null }) => !ownOnly || (Boolean(actor.id) && instance.createdBy === actor.id);
+    const reused = (instance: { formDate?: string | null }) =>
+      NextResponse.json({
+        instance,
+        reused: true,
+        ...(sameChatOnly && instance.formDate ? { reusedFrom: instance.formDate } : {}),
+      });
+    const draftChat =
+      body.source === "ask_sunny" && conversationDraftReuseEnabled() && !newIncident
+        ? conversationKeyOf({ conversationId: body.conversationId, conversation: body.conversation })
+        : null;
+    const chatTurns = draftChat ? parseHistory(body.conversation) : [];
+    if (draftChat) {
+      // A guard that cannot read is no guard: the create goes ahead as before.
+      const same = await findConversationDraft({
+        createdBy: actor.id,
+        templateKey: body.templateKey,
+        employeeName: body.employeeName.trim().slice(0, 120),
+        conversationKey: draftChat,
+        turns: chatTurns,
+        ...(sameChatOnly && cardDate ? { formDate: cardDate } : {}),
+      }).catch(() => null);
+      if (same && mine(same.instance)) {
+        /*
+         * The facts said since that draft was made, then this card's own
+         * stated answers where the draft is still blank — never over a value.
+         */
+        await applyTurnsSinceDraft({
+          request,
+          instanceId: String(same.instance.id),
+          turns: chatTurns,
+          lastTurnId: same.lastTurnId,
+          today: businessToday(),
+        }).catch(() => undefined);
+        await applyCardFacts(String(same.instance.id)).catch(() => undefined);
+        const updated = await loadInstance(String(same.instance.id)).catch(() => null);
+        return reused(updated?.instance ?? same.instance);
+      }
+    }
+
+    /*
      * SAME EMPLOYEE, SAME TEMPLATE, SAME INCIDENT, ANY CHAT. An open draft is
      * reopened instead of filing another one. A different date or a different
-     * account of what happened still creates.
+     * account of what happened still creates. Not after "different incident"
+     * (`newIncident`, above). With DRAFT_REUSE_OWN_ONLY_ENABLED on, only a
+     * draft this manager made is reopened; off, any manager's counts.
      */
-    if (body.source === "ask_sunny" && !historyWantsSeparateDocument(body.conversation)) {
+    if (body.source === "ask_sunny" && !newIncident && !historyWantsSeparateDocument(body.conversation)) {
       const turns = Array.isArray(body.conversation) ? parseHistory(body.conversation) : [];
       const incidentText = turns
         .filter((turn) => turn.role === "user")
@@ -253,8 +434,9 @@ export async function POST(request: Request) {
         locationId,
         formDate: isIsoCalendarDate(body.formDate) ? body.formDate : null,
         incident: incidentText || null,
+        ...(sameChat ? { sameChat } : {}),
       }).catch(() => null);
-      if (open) return NextResponse.json({ instance: open, reused: true });
+      if (open && mine(open)) return reused(open);
     }
 
     /*
@@ -285,7 +467,7 @@ export async function POST(request: Request) {
         proposalId,
         conversationKey,
       }).catch(() => null);
-      if (existing) return NextResponse.json({ instance: existing, reused: true });
+      if (existing && mine(existing)) return reused(existing);
     } else if (proposalId) {
       // A guard that cannot read is no guard: the create goes ahead as before.
       const existing = await findRecentAssistantDraft({
@@ -295,7 +477,7 @@ export async function POST(request: Request) {
         locationId,
         proposalId,
       }).catch(() => null);
-      if (existing) return NextResponse.json({ instance: existing, reused: true });
+      if (existing && mine(existing)) return reused(existing);
     }
 
     /*
@@ -306,6 +488,7 @@ export async function POST(request: Request) {
     if (
       draftDedupeEnabled() &&
       body.source === "ask_sunny" &&
+      !newIncident &&
       !historyWantsSeparateDocument(body.conversation)
     ) {
       const turns = Array.isArray(body.conversation) ? parseHistory(body.conversation) : [];
@@ -323,8 +506,9 @@ export async function POST(request: Request) {
         ...(incidentText
           ? { incident: incidentText, formDate: isIsoCalendarDate(body.formDate) ? body.formDate : null }
           : {}),
+        ...(sameChat ? { sameChat } : {}),
       }).catch(() => null);
-      if (resent) return NextResponse.json({ instance: resent, reused: true });
+      if (resent && mine(resent)) return reused(resent);
     }
 
     const instance = await createInstance({
@@ -343,64 +527,16 @@ export async function POST(request: Request) {
       ...(conversationKey ? { conversationKey } : {}),
     });
     /* A concurrent press of the same card: its row, as it already is. See `cardInstanceId`. */
-    if (instance.reused) return NextResponse.json({ instance, reused: true });
-
-    /*
-     * "IS PAYROLL DEDUCT APPLICABLE?", AS THE MANAGER ANSWERED IT IN CHAT.
-     *
-     * Written as the manager's own statement — the path the employment change
-     * forms use for their stated facts — and only where the pinned version
-     * has the group: `applyStatedFacts` validates the key and the option
-     * against it, and a version without the question (or any other template)
-     * gets nothing. No answer sent means nothing written; it is never
-     * defaulted. See `lib/forms/payroll-deduct.ts`.
-     */
-    if (isPayrollDeductAnswer(body.payrollDeduct)) {
-      await applyStatedFacts(
-        String(instance.id),
-        { values: {}, checked: payrollDeductChecked(body.payrollDeduct) },
-        actor.id,
-        PAYROLL_DEDUCT_STATED_KEYS,
-      );
+    if (instance.reused) return reused(instance);
+    if (draftChat) {
+      await noteConversationDraft(String(instance.id), draftChat, lastManagerTurnId(chatTurns)).catch(() => undefined);
+    } else if (chatKey) {
+      // Same chat only: the draft records its chat even with CONVERSATION_DRAFT_REUSE_ENABLED off.
+      const turns = Array.isArray(body.conversation) ? parseHistory(body.conversation) : [];
+      await noteConversationDraft(String(instance.id), chatKey, lastManagerTurnId(turns)).catch(() => undefined);
     }
 
-    /*
-     * PAYROLL DEDUCTION AMOUNT, FROM THE MANAGER'S OWN WORDS.
-     *
-     * Written only when the amount field is on, payroll is Yes, and the
-     * conversation states a figure. The body may carry the same figure; it is
-     * not the source. A policy quotation is not a figure. No figure means the
-     * line stays blank, and the form is still created.
-     */
-    if (payrollAmountFieldEnabled() && body.payrollDeduct === "yes" && Array.isArray(body.conversation)) {
-      const turns = parseHistory(body.conversation);
-      const amount = payrollAmountFromConversation(turns, { payrollAnswer: "yes" });
-      if (amount) {
-        await applyStatedFacts(
-          String(instance.id),
-          { values: { [PAYROLL_AMOUNT_KEY]: amount }, checked: {} },
-          actor.id,
-          PAYROLL_AMOUNT_STATED_KEYS,
-        );
-      }
-    }
-
-    /*
-     * THE TYPE OF WARNING, AS THE MANAGER STATED IT FOR THIS FORM IN CHAT —
-     * "create verbal CA for …". The same path as the payroll answer: their own
-     * statement, only a verbal or written level, and only where the pinned
-     * version offers it (`applyStatedFacts` validates the option). Nothing sent
-     * means nothing written; it is never defaulted. The draft leaves it as it
-     * is. See `statedWarningLevel` in `lib/forms/corrective-action-intake.ts`.
-     */
-    if (isStatedWarningLevel(body.warningLevel)) {
-      await applyStatedFacts(
-        String(instance.id),
-        { values: {}, checked: { [WARNING_TYPE_KEY]: [body.warningLevel] } },
-        actor.id,
-        WARNING_LEVEL_STATED_KEYS,
-      );
-    }
+    await applyCardFacts(String(instance.id));
 
     return NextResponse.json({ instance });
   } catch (error) {
@@ -490,4 +626,16 @@ function resolveLocationName(
   const rostered = salonById(locationId)?.name ?? null;
   if (!isDemoMode()) return rostered;
   return requested ?? rostered;
+}
+
+/**
+ * TYPO_READING_ROUTES_ENABLED: the manager's turns as the payroll-amount reader
+ * above sees them, each typo read as the one known word it can only be
+ * (`ai/typo-reading-copy.ts`). Only that reader gets it; the conversation
+ * stored and compared elsewhere in this route is the raw one. Off, the turns
+ * as given.
+ */
+async function readingTurns<T extends { role: string; content: string }>(turns: T[]): Promise<T[]> {
+  if (!typoReadingRoutesEnabled()) return turns;
+  return typoReadingTurns(turns, await protectedNameWords());
 }

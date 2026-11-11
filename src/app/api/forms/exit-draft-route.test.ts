@@ -92,7 +92,16 @@ vi.mock("@/lib/knowledge", () => ({
   },
 }));
 
-vi.mock("@/lib/forms/instances", () => ({
+/*
+ * FORM_EDIT_SINGLE_WRITER_ENABLED (step 2b, ported from Ask Bubbles): the one
+ * writer (`form-write.ts`) reads the form before and after it writes, so this
+ * mock also has a `loadInstance` that returns the form as the writers below
+ * saved it (`src/test/forms/saved-form-instances.ts`). Flag off, the writers
+ * behave exactly as before.
+ */
+vi.mock("@/lib/forms/instances", async () =>
+  (await import("@/test/forms/saved-form-instances")).savedFormInstances(
+    {
   applyStatedFacts: async (
     _id: string,
     stated: { values: Record<string, string>; checked: Record<string, string[]> },
@@ -113,7 +122,12 @@ vi.mock("@/lib/forms/instances", () => ({
       policyRefused: [],
     };
   },
-}));
+    },
+    async (id) =>
+      (await (await import("@/lib/forms/instance-scope")).authorizeInstance(new Request("http://localhost/api/forms"), id, "view")).loaded,
+  ),
+);
+beforeEach(async () => (await import("@/test/forms/saved-form-instances")).resetSavedForms());
 
 vi.mock("@/lib/ai/anthropic", () => ({
   getAnthropicClient: () => ({
@@ -362,9 +376,36 @@ describe("what is stored", () => {
     expect(keys?.has("written_notice_attached")).toBe(false);
   });
 
+  it("EXIT_INTAKE_FIX_ENABLED: the Permanent Address the manager typed is filled; one the model wrote never is", async () => {
+    const previous = process.env.EXIT_INTAKE_FIX_ENABLED;
+    process.env.EXIT_INTAKE_FIX_ENABLED = "true";
+    try {
+      state.toolInput = { values: { details: "Sarah did not call in.", permanent_address: "1 Invented Road" } };
+      await post(
+        "create an exit form for Sarah Jones, permanent address 12 Invented Rd, Lawrence, KS 66044. She did not call in for her last two shifts. Last day worked 10-20-26",
+      );
+      const { values, keys } = state.stated[0]!;
+      expect(values.permanent_address).toBe("12 Invented Rd, Lawrence, KS 66044");
+      expect(keys?.has("permanent_address")).toBe(true);
+      expect(stored().values.permanent_address ?? null).not.toBe("1 Invented Road");
+    } finally {
+      if (previous === undefined) delete process.env.EXIT_INTAKE_FIX_ENABLED;
+      else process.env.EXIT_INTAKE_FIX_ENABLED = previous;
+    }
+  });
+
   it("fills nothing the manager did not say", async () => {
     state.toolInput = { values: { details: "Sarah's last day was 9/15." } };
     await post("Exit form for Sarah Jones. Last day 9/15.");
+    /*
+     * FORM_EDIT_SINGLE_WRITER_ENABLED (step 2b): with nothing stated, the one
+     * writer calls no writer at all, so there is no statement to read; nothing
+     * is written either way. Flag off: today's empty statement, unchanged.
+     */
+    if (process.env.FORM_EDIT_SINGLE_WRITER_ENABLED === "true") {
+      expect(state.stated).toEqual([]);
+      return;
+    }
     expect(state.stated[0]!.values).toEqual({});
     expect(state.stated[0]!.checked).toEqual({});
   });

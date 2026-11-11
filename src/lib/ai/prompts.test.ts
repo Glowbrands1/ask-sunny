@@ -164,6 +164,40 @@ describe("buildSystemPrompt", () => {
     }
   });
 
+  it("keeps the [S#] citation rule unless the full manual is in the prompt", () => {
+    const base = {
+      assistantName: "Sunny",
+      brandName: "Sun Tan City",
+      salonNoun: "salon",
+      context: CONTEXT,
+      mode: "standard" as const,
+      hasContext: true,
+    };
+    const off = buildSystemPrompt(base);
+    expect(buildSystemPrompt({ ...base, citeManualPages: false })).toBe(off);
+    expect(off).toContain("like [S1] or [S2][S3]");
+    expect(off).toContain(
+      "Never use a marker for a source that is not listed below. Only the markers listed are valid.",
+    );
+    expect(off).not.toContain("like [p.19]");
+
+    for (const enabled of [undefined, "1"]) {
+      const previous = process.env.PROMPT_CACHE_ENABLED;
+      if (enabled === undefined) delete process.env.PROMPT_CACHE_ENABLED;
+      else process.env.PROMPT_CACHE_ENABLED = enabled;
+      try {
+        const prompt = buildSystemPrompt({ ...base, citeManualPages: true });
+        expect(prompt).toContain("like [p.19]");
+        expect(prompt).toContain("Do not use an [S#] marker");
+        expect(prompt).toContain("Do not cite a DM manual");
+        expect(prompt).not.toContain("like [S1] or [S2][S3]");
+      } finally {
+        if (previous === undefined) delete process.env.PROMPT_CACHE_ENABLED;
+        else process.env.PROMPT_CACHE_ENABLED = previous;
+      }
+    }
+  });
+
   it("forbids fabricating policy, documents and citations", () => {
     const prompt = buildSystemPrompt({
       assistantName: "Sunny",

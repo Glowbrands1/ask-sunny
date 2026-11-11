@@ -320,15 +320,38 @@ describe("4. time off, sick days, W-2 and direct deposit pin the manual when the
     expect(lines[0]).toContain("Page 37 — Schedule Requests/General availability Changes");
     expect(lines.some((line) => line.includes("Page 41 — Salary Administration"))).toBe(true);
     expect(lines.at(-1)).toContain("Sun Tan City Salon Coaching Guide");
-    expect(system()).not.toContain("SECTIONS READ FOR THIS QUESTION");
+    /*
+     * The pin used to stop at the rows. The standing refusal still says to
+     * answer "I don't have that" unless a note says these sections were
+     * read. W-2 was in the sources and was refused for that reason, so a
+     * pinned topic now gets the same note a named-manual question gets.
+     */
+    expect(system()).toContain("SECTIONS READ FOR THIS QUESTION");
+    expect(system()).toContain("Schedule Requests/General availability Changes (page 37)");
+    expect(system()).toContain("Do not say the manual as a whole is silent");
     expect(state.manualCalls).toBe(1);
   });
 
-  it("pins the W-2 chunk for How do I get my W-2?", async () => {
+  it("pins the W-2 chunk for How do I get my W-2? and says the manual is not silent", async () => {
     await ask("How do I get my W-2?");
 
     expect(sourceLines()[0]).toContain("Page 36 — Liquidating 401K");
     expect(sourceLines().some((line) => line.includes("Sun Tan City Salon Coaching Guide"))).toBe(true);
+    expect(system()).toContain("Accessing W-2");
+    expect(system()).toContain("page 36");
+    expect(system()).toContain("Do not say the manual as a whole is silent");
+  });
+
+  it("does not pin Pay Periods for a corrective action that mentions paycheck", async () => {
+    state.retrieved = [
+      coachingGuideHit("guide-pay", "Page 4", "Paycheck fraud is a conduct issue.", 0.9),
+    ];
+
+    await ask("Create a verbal corrective action for Jordan Lee for paycheck fraud.");
+
+    expect(state.manualCalls).toBe(0);
+    expect(sourceLines().join("\n")).not.toContain("Pay Periods");
+    expect(system()).not.toContain("SECTIONS READ FOR THIS QUESTION");
   });
 
   it("pins Pay Periods for How do I update my direct deposit?", async () => {

@@ -17,7 +17,7 @@ import { blocksOnNameQuestion, inlineCloseMatch, wovenNoteAlreadyShown } from "@
 
 const PLAN = {
   citedPolicies: ["Attendance"],
-  employeeName: "Colene Shildt",
+  employeeName: "Corena Shardt",
   payroll: { answer: "yes" as const, amount: "$25" },
 };
 
@@ -34,8 +34,8 @@ const PROMPT = {
 
 describe("an unverified name is used as typed", () => {
   it("offers one close roster match without making it a gate", () => {
-    const note = inlineCloseMatch("Colene Shildt", ["Colene Schildt"]);
-    expect(note).toBe("Woven has Colene Schildt");
+    const note = inlineCloseMatch("Corena Shardt", ["Corena Schardt"]);
+    expect(note).toBe("Woven has Corena Schardt");
     expect(blocksOnNameQuestion(note)).toBe(false);
     expect(note).not.toMatch(/did you mean|I'll keep|\?/);
     expect(inlineCloseMatch("Jane Doe", [])).toBe("");
@@ -57,7 +57,7 @@ describe("an unverified name is used as typed", () => {
   it("still recognises the question that holds the card", () => {
     expect(
       blocksOnNameQuestion(
-        "Did you mean **Colene Schildt**? I want to be sure before it goes on the form.",
+        "Did you mean **Corena Schardt**? I want to be sure before it goes on the form.",
       ),
     ).toBe(true);
     expect(blocksOnNameQuestion("Who is this **Coaching Form** for?")).toBe(true);
@@ -149,7 +149,7 @@ describe("a payroll yes stays two sentences", () => {
   it("builds the review and the closing, and keeps the deduction off the plan", () => {
     const plan = twoSentenceActionPlan(PLAN);
     expect(actionPlanSentenceCount(plan)).toBe(2);
-    expect(plan).toMatch(/^Management will review the Attendance policy with Colene\./);
+    expect(plan).toMatch(/^Management will review the Attendance policy with Corena\./);
     expect(plan).toMatch(/Future policy violations may result in/);
     expect(plan).not.toMatch(/payroll deduction|deducted|\$25/i);
   });

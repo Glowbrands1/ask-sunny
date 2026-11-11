@@ -1,3 +1,4 @@
+import { isNewHire, type NewHireRule } from "./new-hire";
 import type { Role } from "@/types";
 
 import { observedStatus } from "../status-evidence";
@@ -144,7 +145,7 @@ export function planAccess(input: PlannerInput): PlannedRow[] {
   const rows: PlannedRow[] = [];
 
   for (const employee of [...input.employees].sort((a, b) => a.externalEmployeeId.localeCompare(b.externalEmployeeId))) {
-    const row = planEmployee(employee, { positions, locations, byLinkedEmployee, byEmail, emailHolders, authOnly });
+    const row = planEmployee(employee, { positions, locations, byLinkedEmployee, byEmail, emailHolders, authOnly, newHire: input.newHire ?? null });
     if (row.account) covered.add(row.account.appUserId);
     rows.push(row);
   }
@@ -194,6 +195,8 @@ interface Context {
   emailHolders: Map<string, number>;
   /** email → the EmployeeID stamped on a profile-less auth user (null: not ours). */
   authOnly: Map<string, string | null> | undefined;
+  /** NEW_HIRE_INVITES_ENABLED: a new hire may be given an account for these roles too. */
+  newHire: NewHireRule | null;
 }
 
 function planEmployee(employee: PlannerEmployee, ctx: Context): PlannedRow {
@@ -216,6 +219,7 @@ function planEmployee(employee: PlannerEmployee, ctx: Context): PlannedRow {
     wovenPosition: employee.positionName,
     wovenPrimaryLocation: employee.primaryLocationName,
     wovenAdditionalLocations: employee.additionalLocationNames,
+    ...(ctx.newHire ? { hireDate: employee.hireDate ?? null } : {}),
     account,
     proposedRole: role,
     proposedPrimaryAreaId: location.areaId,
@@ -452,7 +456,8 @@ function planWithoutAccount(
     reasons.push(employee.positionId ? "woven_position_not_confirmed" : "woven_position_missing");
     return row();
   }
-  if (!AUTO_PROVISION_ROLES.includes(role)) {
+  const newHireRole = Boolean(ctx.newHire?.extraRoles.includes(role) && isNewHire(employee.hireDate, ctx.newHire));
+  if (!AUTO_PROVISION_ROLES.includes(role) && !newHireRole) {
     reasons.push("position_not_auto_provisioned");
     return row();
   }

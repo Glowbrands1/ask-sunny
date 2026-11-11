@@ -15,10 +15,10 @@ const ATTENDANCE: ManualChunk = {
   sections: [{ heading: "Attendance", page: 14 }],
 };
 
-const erin = {
-  id: "erin",
-  firstName: "Erin",
-  lastName: "Nelson",
+const elin = {
+  id: "elin",
+  firstName: "Elin",
+  lastName: "Haskett",
   preferredFirstName: null,
   salonIds: ["loc-0313"],
   title: "Salon Director",
@@ -33,7 +33,7 @@ function turn(question: string, saved = EMPTY_FORM_STATE) {
     today: "2026-10-23",
     saved,
     raw: { employee: "Job title", salon: null, title: null, incidentType: null, incidentDate: null, payrollAmount: null, warningLevel: null, formType: "corrective action", formTurn: true, policyHeading: null },
-    people: [erin],
+    people: [elin],
     salons: [{ id: "loc-0313", name: "NE Omaha 132nd and Maple" }],
     headings: ["Standards of Conduct", "Late Opening"],
     headingPages: { "Late Opening": 15 },
@@ -49,11 +49,11 @@ describe("code slots", () => {
 
   it("does not let the model write Employee, and a bare Yes keeps the typed name", () => {
     process.env.CODE_SLOTS_ENABLED = "1";
-    const first = decideIntentTurn(turn("create a corrective action form for Pasiley Peklo"));
-    expect(first.state.employeeName).toBe("Pasiley Peklo");
+    const first = decideIntentTurn(turn("create a corrective action form for Dasiley Veklo"));
+    expect(first.state.employeeName).toBe("Dasiley Veklo");
     expect(first.clarification).toBeNull();
     const yes = decideIntentTurn(turn("Yes", { ...first.state, templateKey: "dpoa" }));
-    expect(yes.state.employeeName).toBe("Pasiley Peklo");
+    expect(yes.state.employeeName).toBe("Dasiley Veklo");
     expect(yes.state.salonId).toBe(first.state.salonId);
   });
 
@@ -62,14 +62,14 @@ describe("code slots", () => {
     const saved = {
       ...EMPTY_FORM_STATE,
       templateKey: "dpoa",
-      employeeName: "Pasiley Peklo",
-      pendingConfirmation: { typed: "Pasiley Peklo", candidate: "Paisley Peklo" },
+      employeeName: "Dasiley Veklo",
+      pendingConfirmation: { typed: "Dasiley Veklo", candidate: "Daisley Veklo" },
     };
     const yes = decideIntentTurn(turn("Yes", saved));
-    expect(yes.state.employeeName).toBe("Paisley Peklo");
+    expect(yes.state.employeeName).toBe("Daisley Veklo");
     expect(yes.state.pendingConfirmation).toBeNull();
     const no = decideIntentTurn(turn("No", saved));
-    expect(no.state.employeeName).toBe("Pasiley Peklo");
+    expect(no.state.employeeName).toBe("Dasiley Veklo");
   });
 
   it("s8 verbatim never stores Job title as the employee", () => {
@@ -77,19 +77,19 @@ describe("code slots", () => {
     const turns = [
       "what does policy say about pets in salon",
       "assist with creating an exit form",
-      "christiana headley, tanning consultant at shawnee",
+      "evangeline pembury, tanning consultant at shawnee",
       "last day worked was 9-20-26. management called her with no response on 9-27-26",
       "its a no call no show",
       "create exit form",
       "Create a form from this conversation.",
-      "create exit: Christiana Headley, Tanning Consultant, KS Shawnee Mission Pkwy\nLast day worked 9/20/26\nNo call/no show; management attempted phone contact 9/27/26, no response",
+      "create exit: Evangeline Pembury, Tanning Consultant, KS Shawnee Mission Pkwy\nLast day worked 9/20/26\nNo call/no show; management attempted phone contact 9/27/26, no response",
       "Create a form from this conversation.",
       "Create a form from this conversation.",
     ];
-    const christiana = {
-      id: "christiana",
-      firstName: "Christiana",
-      lastName: "Headley",
+    const evangeline = {
+      id: "evangeline",
+      firstName: "Evangeline",
+      lastName: "Pembury",
       preferredFirstName: null,
       salonIds: ["loc-0463"],
       title: "Tanning Consultant",
@@ -100,7 +100,7 @@ describe("code slots", () => {
     for (const question of turns) {
       const decision = decideIntentTurn({
         ...turn(question, saved),
-        people: [christiana],
+        people: [evangeline],
         raw: {
           employee: "Job title",
           salon: null,
@@ -118,16 +118,16 @@ describe("code slots", () => {
       expect(decision.state.employeeName ?? "").not.toMatch(/\bjob\b/i);
       saved = decision.state;
     }
-    expect(saved.employeeName).toBe("Christiana Headley");
+    expect(saved.employeeName).toBe("Evangeline Pembury");
     expect(saved.title).toBe("Tanning Consultant");
   });
 
-  it("s17 verbatim keeps Betty Sue and does not keep Job on the name", () => {
+  it("s17 verbatim keeps Dora Lee and does not keep Job on the name", () => {
     process.env.CODE_SLOTS_ENABLED = "1";
     const turns = [
       "Can you create me a performance CA?",
-      "Betty Sue today under performance for September 270 tans below in PPTA, UPTA, LPSVA, CC% and Spa% verbal warning received Open Ended Questions Coaching 9/8/2026, Focus Item Coaching 9/15/2026, New Product Coaching 9/25/2026 not payroll deductible Tanning Consultant",
-      "Betty Sue",
+      "Dora Lee today under performance for September 270 tans below in PPTA, UPTA, LPSVA, CC% and Spa% verbal warning received Open Ended Questions Coaching 9/8/2026, Focus Item Coaching 9/15/2026, New Product Coaching 9/25/2026 not payroll deductible Tanning Consultant",
+      "Dora Lee",
     ];
     let saved = EMPTY_FORM_STATE;
     for (const question of turns) {
@@ -135,7 +135,7 @@ describe("code slots", () => {
         ...turn(question, saved),
         people: [],
         raw: {
-          employee: "Marissa Lempka Job",
+          employee: "Larissa Venko Job",
           salon: null,
           title: "Job title",
           incidentType: null,
@@ -148,11 +148,11 @@ describe("code slots", () => {
         },
       });
       expect(decision.state.employeeName ?? "").not.toBe("Job title");
-      expect(decision.state.employeeName ?? "").not.toBe("Marissa Lempka Job");
+      expect(decision.state.employeeName ?? "").not.toBe("Larissa Venko Job");
       expect(decision.state.employeeName ?? "").not.toMatch(/\bjob\b/i);
       saved = decision.state;
     }
-    expect(saved.employeeName).toBe("Betty Sue");
+    expect(saved.employeeName).toBe("Dora Lee");
     expect(saved.title).toBe("Tanning Consultant");
   });
 

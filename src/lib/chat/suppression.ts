@@ -93,6 +93,11 @@ export interface HistoryState {
   deleted: string[];
   /** When they last cleared everything, or null if they never have. */
   clearedAt: string | null;
+  /**
+   * NEXT_PUBLIC_CHAT_LOCAL_OWNER_ENABLED: this account's opaque key for the
+   * chats this browser holds. Absent with the flag off. See `local-owner.ts`.
+   */
+  ownerKey?: string | null;
 }
 
 /** What a browser knows before it has managed to ask. Suppresses nothing. */

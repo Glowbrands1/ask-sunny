@@ -3,7 +3,9 @@ import "server-only";
 import type { AskResponse } from "@/lib/ai/types";
 
 import { authorizeInstance } from "./instance-scope";
-import { findOpenRevision, reviseInstance, type LoadedInstance } from "./instances";
+import { findOpenRevision, type LoadedInstance } from "./instances";
+import { reviseFinalizedForm, RevisionReasonRequiredError } from "./revision-chain";
+import { REVISION_RESIGN_NOTICE } from "./revision-history";
 
 /**
  * ============================================================================
@@ -56,7 +58,13 @@ export interface EditableDraft {
 export async function openEditableDraft(
   request: Request,
   instanceId: string,
-  options: { revise: boolean } = { revise: true },
+  /**
+   * `reason`: why the finalized form is being edited. With
+   * `FORM_REVISIONS_ENABLED` on, opening a new revision without one throws
+   * `RevisionReasonRequiredError` (see `reviseFinalizedForm`); chat passes
+   * none, so chat sends the manager to the card's reason dialog.
+   */
+  options: { revise: boolean; reason?: string } = { revise: true },
 ): Promise<EditableDraft> {
   let id = instanceId;
   for (let hop = 0; hop < MAX_HOPS; hop += 1) {
@@ -80,7 +88,7 @@ export async function openEditableDraft(
         continue;
       }
       if (!options.revise) return found;
-      const revision = await reviseInstance(instance.id, actor.id, "revised");
+      const revision = await reviseFinalizedForm(instance.id, actor.id, "revised", options.reason);
       return {
         instanceId: revision.id,
         templateName: revision.templateName || instance.templateName,
@@ -133,6 +141,7 @@ export async function changeOnEditableDraft(
   try {
     draft = await openEditableDraft(request, instanceId);
   } catch (error) {
+    if (error instanceof RevisionReasonRequiredError) return reasonRequiredReply(request, instanceId);
     return reply(
       `That form is finalized, and I couldn't open a new draft of it: ${(error as Error).message} You can try again from the form card's **Edit as new draft** button.`,
     );
@@ -147,6 +156,33 @@ export async function changeOnEditableDraft(
     ),
     ...(applied?.formUpdate ? { formUpdate: applied.formUpdate } : {}),
     formOpened: formOpenedFor(draft),
+  };
+}
+
+/**
+ * ============================================================================
+ * A CHAT EDIT OF A FINALIZED FORM, WITH NO REASON GIVEN
+ * ============================================================================
+ *
+ * `FORM_REVISIONS_ENABLED`: every edit of a finalized form says why, and a
+ * chat turn carries no reason field. So the change is not made; the reply
+ * says why, and puts the finalized form's card in the thread, where Edit as
+ * new draft asks for the reason. Once that draft is open, the same request in
+ * chat lands on it (an open revision needs no second reason).
+ */
+export async function reasonRequiredReply(request: Request, instanceId: string): Promise<AskResponse> {
+  let found: EditableDraft | null = null;
+  try {
+    found = await openEditableDraft(request, instanceId, { revise: false });
+  } catch {
+    found = null;
+  }
+  const who = found ? `The **${found.templateName}** for **${found.employeeName}**` : "That form";
+  return {
+    ...reply(
+      `${who} is finalized, and editing a finalized form needs a reason, which is kept on the form's history. Press **Edit as new draft** on the form, say why it's being changed, then tell me the change again and I'll make it on the new draft. ${REVISION_RESIGN_NOTICE}`,
+    ),
+    ...(found ? { formOpened: formOpenedFor(found) } : {}),
   };
 }
 

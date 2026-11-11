@@ -3,8 +3,20 @@ import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 import { trigramSimilarity } from "@/lib/ai/intake-augment";
+import { draftReuseOwnOnlyEnabled } from "@/lib/config/chat-quality-flags";
 
+import { keepSameChat, type SameChat } from "./draft-same-chat";
 import { DUPLICATE_DRAFT_WINDOW_HOURS, loadInstance, type InstanceRow } from "./instances";
+
+/**
+ * DRAFT_REUSE_OWN_ONLY_ENABLED: whether a draft read back from the database
+ * may be handed to `createdBy`. Off, always (as before). On, only a draft
+ * that manager made; no acting user reuses nothing.
+ */
+function ownedBy(instance: InstanceRow, createdBy: string | null | undefined): boolean {
+  if (!draftReuseOwnOnlyEnabled()) return true;
+  return Boolean(createdBy) && instance.createdBy === createdBy;
+}
 
 /**
  * A resent create for the same person and form.
@@ -23,6 +35,8 @@ export interface ResentDraftWanted {
   /** When set, a draft is the same one only if its narrative is this incident. */
   readonly incident?: string | null;
   readonly formDate?: string | null;
+  /** DRAFT_REUSE_SAME_CHAT_ONLY_ENABLED: only a draft this chat made. See `draft-same-chat.ts`. */
+  readonly sameChat?: SameChat;
 }
 
 export interface ResentDraftRow {
@@ -79,6 +93,8 @@ export function pickResentDraft(rows: readonly ResentDraftRow[], wanted: ResentD
 const NARRATIVE_FIELD = /coaching_details|follow_up_observation|what_happened|incident|description|narrative|details/i;
 
 export async function findResentDraft(input: ResentDraftWanted): Promise<InstanceRow | null> {
+  // DRAFT_REUSE_OWN_ONLY_ENABLED: the query reads only `created_by`'s drafts already; no manager reuses nothing.
+  if (draftReuseOwnOnlyEnabled() && !input.createdBy) return null;
   const supabase = getSupabaseAdmin();
   const { data: template, error: templateError } = await supabase
     .from("form_templates")
@@ -109,6 +125,7 @@ export async function findResentDraft(input: ResentDraftWanted): Promise<Instanc
     createdAt: String(row.created_at ?? ""),
     formDate: typeof row.form_date === "string" ? row.form_date : null,
   }));
+  rows = await keepSameChat(rows, input.sameChat);
 
   if (input.incident != null) {
     const ids = rows.map((row) => row.id);
@@ -132,7 +149,7 @@ export async function findResentDraft(input: ResentDraftWanted): Promise<Instanc
   const id = pickResentDraft(rows, input);
   if (!id) return null;
   const loaded = await loadInstance(id);
-  return loaded?.instance.status === "draft" ? loaded.instance : null;
+  return loaded?.instance.status === "draft" && ownedBy(loaded.instance, input.createdBy) ? loaded.instance : null;
 }
 
 /**
@@ -140,8 +157,15 @@ export async function findResentDraft(input: ResentDraftWanted): Promise<Instanc
  *
  * A new conversation used to file another draft. This returns the open one
  * so the create route can reopen it. A different form date, or a narrative
- * that is a different incident, stays a new draft. Another manager's draft
- * counts: the edit check still decides whether this caller may change it.
+ * that is a different incident, stays a new draft.
+ *
+ * WHOSE DRAFT (DRAFT_REUSE_OWN_ONLY_ENABLED, QA 25 Oct 2026). Off, another
+ * manager's draft counts, as before: the edit check still decides whether
+ * this caller may change it. On, `findOpenIncidentDraft` reads only drafts
+ * `createdBy` made (`created_by` in the query, not after it), checks the
+ * loaded draft again, and finds nothing with no `createdBy`. So one manager's
+ * create is never handed another manager's draft, whatever chat key the
+ * browser sends and whatever DRAFT_REUSE_SAME_CHAT_ONLY_ENABLED says.
  */
 export function pickOpenIncidentDraft(rows: readonly ResentDraftRow[], wanted: ResentDraftWanted): string | null {
   const matches = rows.filter((row) => {
@@ -159,6 +183,8 @@ export function pickOpenIncidentDraft(rows: readonly ResentDraftRow[], wanted: R
 }
 
 export async function findOpenIncidentDraft(input: ResentDraftWanted): Promise<InstanceRow | null> {
+  const ownOnly = draftReuseOwnOnlyEnabled();
+  if (ownOnly && !input.createdBy) return null;
   const supabase = getSupabaseAdmin();
   const { data: template, error: templateError } = await supabase
     .from("form_templates")
@@ -175,6 +201,7 @@ export async function findOpenIncidentDraft(input: ResentDraftWanted): Promise<I
     .ilike("employee_name", input.employeeName.trim())
     .order("created_at", { ascending: false })
     .limit(20);
+  if (ownOnly) query = query.eq("created_by", input.createdBy);
   if (input.formDate) query = query.eq("form_date", input.formDate);
   const { data, error } = await query;
   if (error || !Array.isArray(data)) return null;
@@ -188,6 +215,7 @@ export async function findOpenIncidentDraft(input: ResentDraftWanted): Promise<I
     createdAt: String(row.created_at ?? ""),
     formDate: typeof row.form_date === "string" ? row.form_date : null,
   }));
+  rows = await keepSameChat(rows, input.sameChat);
 
   if (input.incident) {
     const ids = rows.map((row) => row.id);
@@ -211,5 +239,5 @@ export async function findOpenIncidentDraft(input: ResentDraftWanted): Promise<I
   const id = pickOpenIncidentDraft(rows, input);
   if (!id) return null;
   const loaded = await loadInstance(id);
-  return loaded?.instance.status === "draft" ? loaded.instance : null;
+  return loaded?.instance.status === "draft" && ownedBy(loaded.instance, input.createdBy) ? loaded.instance : null;
 }

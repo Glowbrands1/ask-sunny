@@ -1,0 +1,424 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+import { describe, expect, it } from "vitest";
+
+import rows from "@/test/fixtures/jba-manual-production-151.json";
+import { manualChunkFromRow, type ChunkRow } from "@/lib/ai/full-manual-load";
+
+import { applyFullManualAnswer, choosePolicyManuals, type FullManualDocument } from "./full-manual-context";
+
+/**
+ * The whole production JBA Policy Manual (151 rows, identical in both apps'
+ * databases) read through the loader's own row mapping, and replies
+ * production saved on 24 Oct 2026.
+ *
+ * Printed pages are the uploaded PDF's (2025-JBA-Policy-Manual-Edited-5-2025,
+ * printed page = PDF sheet - 1), which the manual's contents page and footers
+ * agree with: Name tags, Shoes, Belts and Hair 15; Facial Hair, Make-up,
+ * Jewelry and Tattoos 16; Sun Tan City shirts, pants and tanning 17; Cell
+ * Phone and Company Email 19; Point of Sale and Alarm Passwords 20; Important
+ * Notes 40; Paid time Off, Eligibility and Provisions 41; the rest of
+ * Provisions and Usage 42; Bereavement Leave 46.
+ */
+
+function manual(): FullManualDocument {
+  return {
+    id: rows.document_ids["ask-sunny"],
+    title: rows.title,
+    category: "policies_compliance",
+    chunks: (rows.chunks as ChunkRow[]).map(manualChunkFromRow),
+  };
+}
+
+function assembled() {
+  const assembly = choosePolicyManuals("What is the dress code?", [manual()]);
+  if (!assembly.ok) throw new Error("manual did not assemble");
+  return assembly;
+}
+
+function cite(content: string) {
+  return applyFullManualAnswer({ content, manuals: assembled().manuals, sourceCount: 0 });
+}
+
+function liveReply(conversationId: string): string {
+  return readFileSync(join(__dirname, "__fixtures__", "live-answers", `${conversationId}.txt`), "utf8").replace(
+    /\n$/,
+    "",
+  );
+}
+
+function markerBefore(text: string, snippet: string): number | null {
+  const at = text.indexOf(snippet);
+  expect(at, snippet).toBeGreaterThan(-1);
+  const markers = [...text.slice(0, at).matchAll(/\[p\.(\d{1,3})\]/g)];
+  const last = markers[markers.length - 1];
+  return last ? Number(last[1]) : null;
+}
+
+/** Words in order, without [p.N] / [S#] markers and without the page digits of a "…Manual p.N" label. */
+function wordsInOrder(text: string): string[] {
+  return text
+    .replace(/\[(?:p\.\d{1,3}|S\d{1,2})\]/g, " ")
+    .replace(/(\bManual\s+p\.)\d{1,3}/g, "$1")
+    .split(/\s+/)
+    .map((word) => word.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, ""))
+    .filter(Boolean);
+}
+
+function pagesIn(text: string): Set<number> {
+  return new Set([...text.matchAll(/\[p\.(\d{1,3})\]/g)].map((match) => Number(match[1])));
+}
+
+function lineWith(text: string, snippet: string): string {
+  const line = text.split("\n").find((part) => part.includes(snippet));
+  expect(line, snippet).toBeTruthy();
+  return line!;
+}
+
+/** Every "…JBA Policy Manual p.N" label followed by a marker names the same page as that marker. */
+function expectLabelsMatchMarkers(text: string) {
+  for (const match of text.matchAll(/JBA Policy Manual p\.(\d{1,3})\s*\[p\.(\d{1,3})\]/g)) {
+    expect(match[2], match[0]).toBe(match[1]);
+  }
+}
+
+function expectSameWordsAndLines(input: string, output: string) {
+  expect(wordsInOrder(output)).toEqual(wordsInOrder(input));
+  expect(output.split("\n").length).toBe(input.split("\n").length);
+}
+
+describe("production manual rows", () => {
+  it("carry the per-heading pages ingestion recorded", () => {
+    const chunk = (index: number) => manual().chunks.find((item) => item.chunkIndex === index)!;
+    expect(chunk(46).sections).toEqual([
+      { heading: "Hair", page: 15 },
+      { heading: "Facial Hair", page: 16 },
+      { heading: "Make-up", page: 16 },
+    ]);
+    expect(chunk(62).sections).toEqual([
+      { heading: "Company Email Account", page: 19 },
+      { heading: "Point of Sale and Alarm Passwords", page: 20 },
+    ]);
+  });
+
+  it("marks every Sun Tan City and shared section on the page the PDF prints it", () => {
+    const text = assembled().block;
+    expect(markerBefore(text, "Dress Code for The Company")).toBe(15);
+    expect(markerBefore(text, "## Hair")).toBe(15);
+    expect(markerBefore(text, "## Facial Hair")).toBe(16);
+    expect(markerBefore(text, "## Make-up")).toBe(16);
+    expect(markerBefore(text, "## Jewelry/Accessories")).toBe(16);
+    expect(markerBefore(text, "## Tattoos")).toBe(16);
+    expect(markerBefore(text, "Any STC Employee can wear any Branded top")).toBe(17);
+    expect(markerBefore(text, "## Cell Phone/Smart Watch Policy")).toBe(19);
+    expect(markerBefore(text, "## Company Email Account")).toBe(19);
+    expect(markerBefore(text, "## Point of Sale and Alarm Passwords")).toBe(20);
+    expect(markerBefore(text, "## Paid time Off (PTO)")).toBe(41);
+    expect(markerBefore(text, "## Eligibility")).toBe(41);
+    expect(markerBefore(text, "o 5-9 years of service")).toBe(42);
+    expect(markerBefore(text, "## Usage")).toBe(42);
+    expect(text).not.toContain("Any BCS Employee");
+    expect(text).not.toContain("Two uniform shirts");
+  });
+});
+
+describe("live replies from 24 Oct 2026", () => {
+  it("conv_mvmnwgmq2y3usjb keeps every word in order and puts each label on its printed page", () => {
+    const raw = liveReply("conv_mvmnwgmq2y3usjb");
+    const out = cite(raw);
+    expectSameWordsAndLines(raw, out.content);
+    expectLabelsMatchMarkers(out.content);
+    expect(pagesIn(out.content).has(1)).toBe(false);
+    for (const page of pagesIn(out.content)) expect([15, 16, 17]).toContain(page);
+    for (const label of ["All Locations Dress Code", "Shoes", "Belts", "Hair"]) {
+      expect(out.content).toContain(`${label}, JBA Policy Manual p.15 [p.15]`);
+    }
+    for (const label of ["Facial Hair", "Make-up", "Jewelry/Accessories", "Tattoos"]) {
+      expect(out.content).toContain(`${label}, JBA Policy Manual p.16 [p.16]`);
+    }
+    for (const label of ["Shirts", "Pants", "Tanning"]) {
+      expect(out.content).toContain(`${label}, JBA Policy Manual p.17 [p.17]`);
+    }
+    for (const citation of out.citations) {
+      expect(pagesIn(out.content).has(Number(citation.locator.replace("Page ", "")))).toBe(true);
+    }
+  });
+
+  it("conv_mvmnvara2iixygm keeps every word in order, cites PTO on its pages, and drops 1 and 22", () => {
+    const raw = liveReply("conv_mvmnvara2iixygm");
+    const out = cite(raw);
+    expectSameWordsAndLines(raw, out.content);
+    expectLabelsMatchMarkers(out.content);
+    for (const page of [1, 22]) {
+      expect(pagesIn(out.content).has(page)).toBe(false);
+      expect(out.citations.some((citation) => citation.locator === `Page ${page}`)).toBe(false);
+    }
+    expect(pagesIn(lineWith(out.content, "PTO is paid time away from work"))).toEqual(new Set([41]));
+    expect(pagesIn(lineWith(out.content, "half-day (4 hour) or full-day"))).toEqual(new Set([42]));
+    expect(pagesIn(lineWith(out.content, "10+ years"))).toEqual(new Set([42]));
+    expect(lineWith(out.content, "Payout of accrued PTO")).not.toMatch(/\[p\.22\]/);
+    // "This will not deduct from your PTO balance" is chunk 152, the top of
+    // sheet 48 (printed 47, with Military Leave), so the model's p.47 for
+    // that sentence is the page it is printed on.
+    expect(pagesIn(lineWith(out.content, "do **not** deduct from the PTO balance"))).toEqual(new Set([47]));
+  });
+
+  it("conv_mvmtp0qe2pc7mzf (retrieval path reply) keeps every word and cites the dress code on 15-17", () => {
+    const raw = liveReply("conv_mvmtp0qe2pc7mzf");
+    const out = cite(raw);
+    expectSameWordsAndLines(raw, out.content);
+    expect(out.content).not.toMatch(/\[S\d/);
+    for (const page of pagesIn(out.content)) expect([15, 16, 17]).toContain(page);
+    expect(pagesIn(lineWith(out.content, "Tennis shoes or other full-coverage"))).toEqual(new Set([15]));
+    expect(pagesIn(lineWith(out.content, "Dark brown or black"))).toEqual(new Set([15]));
+    expect(out.citations.some((citation) => citation.locator === "Page 6")).toBe(false);
+  });
+});
+
+describe("labels", () => {
+  it("keeps the words before a label and puts it on the printed page (QA, 24 Oct 2026)", () => {
+    const raw =
+      "- Jewelry that does not interfere with work is acceptable; no dangling earrings or chains, and no pins or buttons, Jewelry/Accessories, JBA Policy Manual p.15 [p.15].\n" +
+      "- Belts are dark brown or black, with no cell phones, pagers, chains, or keys hanging from them, Belts, JBA Policy Manual p.16 [p.16].";
+    const out = cite(raw);
+    expect(out.content).toContain(
+      "no dangling earrings or chains, and no pins or buttons, Jewelry/Accessories, JBA Policy Manual p.16 [p.16].",
+    );
+    expect(out.content).toContain("with no cell phones, pagers, chains, or keys hanging from them, Belts, JBA Policy Manual p.15 [p.15].");
+    expectSameWordsAndLines(raw, out.content);
+  });
+
+  it("moves a Sun Tan City shirts label to 17 and leaves a Buff City Soap or Crunch one as written", () => {
+    const stc = cite("Any STC employee can wear any branded top or black collared or black t-shirt, Shirts, JBA Policy Manual p.16.");
+    expect(stc.content).toContain("Shirts, JBA Policy Manual p.17 [p.17].");
+    const bcs = cite("Buff City Soap employees can wear any plain black, white, or gray t-shirt, Shirts, JBA Policy Manual p.16.");
+    expect(bcs.content).toBe("Buff City Soap employees can wear any plain black, white, or gray t-shirt, Shirts, JBA Policy Manual p.16.");
+    const crunch = cite("Crunch Fitness gives two uniform shirts at hire, Shirts, JBA Policy Manual p.16.");
+    expect(crunch.content).toBe("Crunch Fitness gives two uniform shirts at hire, Shirts, JBA Policy Manual p.16.");
+  });
+
+  it("does not change a page outside a JBA label or in another manual's label", () => {
+    const raw = "See page 99 for more. Cell phones stay off the floor, see the DM manual p.6.";
+    const out = cite(raw);
+    expect(out.content).toContain("See page 99 for more.");
+    expect(out.content).toContain("see the DM manual p.6.");
+    expect(pagesIn(out.content).has(99)).toBe(false);
+    expect(pagesIn(out.content).has(6)).toBe(false);
+  });
+});
+
+/**
+ * QA, 24 Oct 2026: against the whole manual, each reply cites only the pages
+ * that print what it says, in the text and in Sources. PTO is 41 and 42,
+ * with 40 (unpaid suspension) and 33 (the 30-hour rule) where the reply
+ * restates them, and 47 for the bereavement-days sentence.
+ */
+describe("live replies against the whole manual", () => {
+  const cases = [
+    ["conv_mvmnwgmq2y3usjb", [15, 16, 17]],
+    ["conv_mvmnvara2iixygm", [33, 40, 41, 42, 47]],
+    ["conv_mvmtp0qe2pc7mzf", [15, 16, 17]],
+  ] as const;
+
+  it.each(cases)("%s cites only pages %j, in the text and in Sources", (conversationId, allowed) => {
+    const out = cite(liveReply(conversationId));
+    for (const page of pagesIn(out.content)) expect(allowed).toContain(page);
+    for (const citation of out.citations) expect(allowed).toContain(Number(citation.locator.replace("Page ", "")));
+    expect(pagesIn(out.content).size).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * QA P0, 24 Oct 2026 (live, Ask Bubbles conv_mvmzil682z73liv; the same
+ * mechanism runs here): "the employee's responsibility to" is printed on
+ * pages 9, 10, 14, 26, 31 and 48, so a cell-phone sentence sharing it was
+ * cited on all of them while page 19, whose words it restates, lost on
+ * length. A phrase printed on three or more pages says nothing about which
+ * page a sentence restates; "it's" is "it is".
+ */
+describe("boilerplate phrases cite no page (QA P0)", () => {
+  const SENTENCE =
+    "It's the employee's responsibility to protect the guest experience — texting, phone calls, or social media use while working jeopardizes that.";
+
+  it("the cell-phone sentence cites page 19 only", () => {
+    const out = cite(SENTENCE);
+    expect(pagesIn(out.content)).toEqual(new Set([19]));
+    for (const citation of out.citations) expect(citation.locator).toMatch(/^Page 19\b/);
+  }, 20_000);
+
+  it.each([
+    ["conv_mvmyowur2sni6l6", [15, 19]],
+    ["conv_mvmzywuv2sytdlj", [19]],
+  ] as const)("Sunny's live cell-phone reply %s (22:20 / 22:55, flag on) keeps pages %j, words and lines", (conversationId, pages) => {
+    const raw = liveReply(conversationId);
+    const out = cite(raw);
+    expectSameWordsAndLines(raw, out.content);
+    expect(pagesIn(out.content)).toEqual(new Set(pages));
+    expectLabelsMatchMarkers(out.content);
+  }, 20_000);
+});
+
+/**
+ * QA B-list, 25 Oct 2026 (found live in the sibling app; the same code runs
+ * here): a range marker kept beside the restated page, a sentence's first
+ * word used as the heading, a manager's note matched to a page on ordinary
+ * words, and shortened month names that matched nothing.
+ */
+describe("QA B-list: ranges, heading fragments, loose model pages, month names", () => {
+  it("a range marker is a marker: the page is written once and the range is gone", () => {
+    const raw = "- Name tags are worn and visible at all times while working [p.15-16] [p.15].";
+    const out = cite(raw);
+    expect(out.content).not.toMatch(/\[p\.\d+-\d+\]/);
+    expect(out.content.match(/\[p\.15\]/g)).toHaveLength(1);
+    expect(pagesIn(out.content)).toEqual(new Set([15]));
+  }, 20_000);
+
+  it('"Anyone violating…" cites p.15 with a real heading, never "Anyone"', () => {
+    const out = cite(
+      "Anyone violating the brand's dress code is to be sent home to change into proper attire and may be subject to disciplinary action, up to and including termination [p.15].",
+    );
+    expect(pagesIn(out.content)).toEqual(new Set([15]));
+    for (const citation of out.citations) expect(citation.excerpt).not.toBe("Anyone");
+  }, 20_000);
+
+  it("a manager's prior-coaching note keeps no page", () => {
+    const out = cite(
+      'Once you confirm the salon, just say something like "create a corrective action form for Test Employee at [salon]" and the draft card will come up for you to fill in with the 10-22-26 details, the "not scheduled but came in for 45 minutes" observation, no payroll deduct, and the prior coaching reference [p.36].',
+    );
+    expect(pagesIn(out.content).has(36)).toBe(false);
+    expect(out.citations.map((citation) => citation.locator)).not.toContain("Page 36");
+  }, 20_000);
+
+  it('"Sun Tan City Feb 1 and June 1" is the manual\'s "February 1 and June 1": the peak-season bullet cites p.42', () => {
+    const out = cite("- No PTO during each brand's peak season: Sun Tan City Feb 1 and June 1");
+    expect(pagesIn(out.content)).toEqual(new Set([42]));
+  }, 20_000);
+});
+
+/**
+ * QA B3, 25 Oct 2026 (ported from the sibling app, live on its P0 change):
+ * two reworded sentences still carried three pages. The sentences, verbatim.
+ */
+describe("QA B3: a page that says clearly more wins", () => {
+  it("the reworded cell-phone sentence cites p.19 only (not Using Social Media p.23 or Employee Injury p.26)", () => {
+    const out = cite(
+      "Employees are personally responsible for protecting the customer experience — texting, making calls, or using social media while on duty jeopardizes that experience.",
+    );
+    expect(pagesIn(out.content)).toEqual(new Set([19]));
+  }, 20_000);
+
+  it("the dress-code discipline sentence cites p.15 only (not Retaliation p.23 or Bonus Policy p.38)", () => {
+    const out = cite(
+      "Anyone violating their brand's dress code policy may be sent home to change and may be subject to disciplinary action, up to and including termination.",
+    );
+    expect(pagesIn(out.content)).toEqual(new Set([15]));
+  }, 20_000);
+});
+
+/**
+ * QA, 25 Oct 2026: a page must restate what the sentence says on every path.
+ * The sibling app's retrieval re-ask kept "[p.36]" and an [S#] for a manual
+ * page as written. Here every answer with the manual loaded goes through this
+ * one pass, which takes off every [S#] and keeps only restated pages; this is
+ * the guard for the path.
+ */
+describe("QA: every manual page kept is one the sentence restates", () => {
+  it("an [S#] and an unrestated [p.N] are taken off; a restated page stays", () => {
+    const out = cite(
+      "Bring the 10-22-26 details and the prior coaching reference [S2] [p.36]. Employees are personally responsible for protecting the customer experience — texting, making calls, or using social media while on duty jeopardizes that experience [p.19].",
+    );
+    expect(out.content).not.toMatch(/\[S\d/);
+    expect(pagesIn(out.content)).toEqual(new Set([19]));
+    expect(out.citations.map((citation) => citation.locator)).not.toContain("Page 36");
+  }, 20_000);
+});
+
+/**
+ * Live, 25 Oct 2026 (ported from the sibling app's B4 round): the discipline
+ * clause is printed word for word only on Retaliation (23) and the Bonus
+ * Policy (38); the Dress Code page (15) says "up to and potentially including
+ * termination" but is the page the rest of the sentence restates.
+ */
+describe("live B4: the page that says clearly more", () => {
+  it("dress-code discipline cites the Dress Code page (15), not Retaliation (23) or the Bonus Policy (38)", () => {
+    const out = cite(
+      "- Dress code violations can lead to being sent home to change and are subject to disciplinary action, up to and including termination [p.23] [p.38].",
+    );
+    expect(pagesIn(out.content)).toEqual(new Set([15]));
+  }, 20_000);
+
+  it("the customer-experience line cites Cell Phone (19), not Employee Injury (26)", () => {
+    const out = cite(
+      "- Employees are personally responsible for protecting the customer experience — texting, making calls, or using social media on the clock jeopardizes that [p.19] [p.26].",
+    );
+    expect(pagesIn(out.content)).toEqual(new Set([19]));
+  }, 20_000);
+
+  it('"Payout on termination follows state and federal guidelines" does not move to the smoking page (12)', () => {
+    const out = cite("- Payout on termination follows state and federal guidelines [p.42].");
+    expect(pagesIn(out.content).has(12)).toBe(false);
+  }, 20_000);
+});
+
+/**
+ * Live, 25 Oct 2026 (ported from the sibling app's B6 round): a PTO answer's
+ * last bullet, "Payout on termination follows all applicable state and
+ * federal law [p.12]", kept Smoking/Vaping. It ties on "state and federal
+ * law" with two unrelated pages, and the smoking page says more by its words
+ * ("as follows", "applicable"); the PTO page the rest of the answer restates
+ * says it: "all state and federal guidelines will be followed regarding
+ * paying out accrued PTO upon termination".
+ */
+describe("live B6: a word match prefers the answer's own page", () => {
+  const PTO_ANSWER = [
+    "PTO covers vacation, personal time, personal illness, or time off to care for dependents [p.41].",
+    "",
+    "**Using it**",
+    "- No PTO during Sun Tan City's peak season: Feb 1 and June 1 [p.42].",
+    "- Request it in the Personnel System at least two weeks ahead; if something unforeseen comes up, call your supervisor directly and log the request as soon as possible [p.42].",
+    "- Supervisor approval required — granted as long as it doesn't create undue hardship on the business [p.42].",
+    "- Payout on termination follows all applicable state and federal law [p.12].",
+  ].join("\n");
+
+  it("the payout line cites PTO (42), not Smoking/Vaping (12)", () => {
+    const out = cite(PTO_ANSWER);
+    expect(pagesIn(lineWith(out.content, "Payout on termination"))).toEqual(new Set([42]));
+    expect(out.citations.map((citation) => citation.locator).join(" ")).not.toMatch(/Page 12\b/);
+  }, 20_000);
+
+  it("the dress-code discipline line keeps the Dress Code page (15) beside a progression line (14)", () => {
+    const out = cite(
+      [
+        "- Dress code violations can lead to being sent home to change and are subject to disciplinary action, up to and including termination [p.23] [p.38].",
+        "- The standard progression is verbal warning (documented), written warning, final written warning, then termination — three write-ups equals termination [p.14].",
+      ].join("\n"),
+    );
+    expect(pagesIn(lineWith(out.content, "Dress code violations"))).toEqual(new Set([15]));
+  }, 20_000);
+});
+
+/**
+ * Live, 25 Oct 2026 (ported from the sibling app's B8 round): a sentence
+ * quoting two policies cited only the first. A quote cites the page it is
+ * printed on. Both payout wordings cite PTO (42).
+ */
+describe("live B8: a quote cites the page it is printed on", () => {
+  it('"please do not bring pets into the workplace" cites Animals in the Workplace (30) beside Visitors (29)', () => {
+    const out = cite(
+      'On the underlying situation: the manual does address being in the salon while off-schedule and pets — "Employees who are not scheduled to be working should not be in the workplace unless they are shopping or receiving services from the workplace", and the animals policy says "please do not bring pets into the workplace" [p.29].',
+    );
+    expect(pagesIn(out.content)).toEqual(new Set([29, 30]));
+  }, 20_000);
+
+  it('both payout wordings cite PTO (42)', () => {
+    const intro = "- Request it in the Personnel System at least two weeks ahead; if something unforeseen comes up, call your supervisor directly and log the request as soon as possible [p.42].";
+    for (const payout of [
+      "- Payout on termination follows all applicable state and federal law [p.12].",
+      "- Payout on termination follows state and federal guidelines [p.42].",
+    ]) {
+      const out = cite(`${intro}\n${payout}`);
+      expect(pagesIn(out.content.split("\n")[1] ?? "")).toEqual(new Set([42]));
+    }
+  }, 20_000);
+});

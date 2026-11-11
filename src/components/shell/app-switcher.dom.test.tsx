@@ -14,8 +14,8 @@ import { AppSwitcher } from "./app-switcher";
 
 afterEach(cleanup);
 
-async function open() {
-  render(<AppSwitcher />);
+async function open(props: React.ComponentProps<typeof AppSwitcher> = {}) {
+  render(<AppSwitcher {...props} />);
   await userEvent.click(screen.getByRole("button", { name: /switch app/i }));
 }
 
@@ -42,5 +42,36 @@ describe("the app switcher", () => {
     expect(other.tagName).toBe("A");
     expect(other.getAttribute("href")).toBe("https://askbubbles.vercel.app");
     expect(other.getAttribute("aria-current")).toBeNull();
+  });
+
+  it("renders three tabs: Ask Sunny, Ask Bubbles and Leadership Hub", async () => {
+    await open({ showLeadershipHub: true });
+    const items = screen.getAllByRole("menuitem");
+    expect(items.map((i) => i.textContent)).toEqual([
+      expect.stringContaining("Ask Sunny"),
+      expect.stringContaining("Ask Bubbles"),
+      expect.stringContaining("Leadership Hub"),
+    ]);
+  });
+
+  it("links Leadership Hub to its production URL as a plain same-tab anchor", async () => {
+    await open({ showLeadershipHub: true });
+    const hub = screen.getByRole("menuitem", { name: /Leadership Hub/ });
+    expect(hub.tagName).toBe("A");
+    expect(hub.getAttribute("href")).toBe("https://leadership-hub-beta.vercel.app");
+    expect(hub.getAttribute("target")).toBeNull();
+    expect(hub.getAttribute("aria-current")).toBeNull();
+  });
+
+  it("hides the Leadership Hub tab when the server said no", async () => {
+    await open({ showLeadershipHub: false });
+    const menu = within(screen.getByRole("menu"));
+    expect(menu.queryByText("Leadership Hub")).toBeNull();
+    expect(menu.getByText("Ask Bubbles")).toBeTruthy();
+  });
+
+  it("hides the Leadership Hub tab when nothing is said (fails closed)", async () => {
+    await open();
+    expect(within(screen.getByRole("menu")).queryByText("Leadership Hub")).toBeNull();
   });
 });

@@ -167,6 +167,15 @@ const ROWS: Row[] = [
     c: "Visitors in the Workplace\nVisitors are anyone allowed onto Company premises, including friends and family. Employees get a\nSupervisor's approval before inviting a personal visitor, keep visits short, and stay with their\nvisitors. Safety concerns about a visitor go to Human Resources and the Supervisor.",
   },
   {
+    i: 98,
+    l: "Page 30 — Animals in the Workplace",
+    p: 31,
+    s: "Animals in the Workplace",
+    printedPage: 30,
+    sections: [{ page: 30, heading: "Animals in the Workplace" }],
+    c: "Animals in the Workplace\nPets and other animals are not brought into the workplace, for the health and safety of employees\nand clients. Service animals are the exception the law requires.",
+  },
+  {
     i: 100,
     l: "Page 30 — Handling Theft",
     p: 31,
@@ -192,6 +201,17 @@ const ROWS: Row[] = [
     printedPage: 37,
     sections: [{ page: 37, heading: "Seminar/Webinar Attendance" }],
     c: "Seminar/Webinar Attendance\nMissing a seminar/webinar you are enrolled in without telling your Supervisor counts as a no call\nno show to a scheduled shift. If you cannot attend, call your Supervisor personally at least two\n(2) hours before it starts; in an emergency, call as soon as you can.",
+  },
+  {
+    // The manual's benefits sheet headed "Warning" (the 401k distribution warning), on its printed page 36 (QA, 5 Nov 2026:
+    // a revision cited it on a Corrective Action Form in the sibling app). Wording invented, heading and page as printed.
+    i: 118,
+    l: "Page 36 — Warning",
+    p: 37,
+    s: "Warning",
+    printedPage: 36,
+    sections: [{ page: 36, heading: "Warning" }],
+    c: "Warning:\no You may owe current income taxes – and possibly tax penalties – on your distribution if you\ntake money out before your legal retirement age unless you transfer it to an IRA.",
   },
   {
     i: 128,

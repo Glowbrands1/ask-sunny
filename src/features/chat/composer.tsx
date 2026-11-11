@@ -14,6 +14,8 @@ import {
   MANAGER_NOTE_SHORT,
 } from "@/data/answer-modes";
 import { cn } from "@/lib/utils/cn";
+import { LONG_MESSAGE_LIMIT, messageLengthStatus } from "@/lib/chat/message-limit";
+import { chatLongMessageClientEnabled } from "@/lib/config/chat-quality-flags";
 import type { AnswerMode } from "@/types";
 
 const MODES: AnswerMode[] = ["quick", "standard", "detailed"];
@@ -117,8 +119,18 @@ export function Composer({
     node.style.height = `${Math.min(200, node.scrollHeight)}px`;
   }, [value]);
 
+  /*
+   * CHAT_LONG_MESSAGE_ENABLED (QA approved, 25 Oct 2026): the limit is
+   * 12,000 characters. From 90% of it a line under the field says how many
+   * are left; over it, the line says how long the message is and send is
+   * disabled. The text is never cut. Off, `length` is null and the composer
+   * renders and sends exactly as before.
+   */
+  const length = chatLongMessageClientEnabled() ? messageLengthStatus(value, LONG_MESSAGE_LIMIT) : null;
+  const overLimit = length !== null && !length.canSend;
+
   const submit = () => {
-    if (!value.trim() || busy) return;
+    if (!value.trim() || busy || overLimit) return;
     onSubmit();
   };
 
@@ -135,6 +147,7 @@ export function Composer({
         value={value}
         disabled={busy}
         autoFocus={autoFocus}
+        aria-describedby={length?.notice ? "chat-input-length" : undefined}
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={(event) => {
           if (event.key === "Enter" && !event.shiftKey) {
@@ -152,14 +165,14 @@ export function Composer({
     <button
       type="button"
       onClick={submit}
-      disabled={!value.trim() || busy}
+      disabled={!value.trim() || busy || overLimit}
       aria-label="Send message"
       /*
         THE ROUND YELLOW SEND. Yellow is a fill here rather than an encoded
         value, and it is one of the two filled blocks the direction allows a
         screen.
       */
-      className="grid size-[38px] shrink-0 place-items-center rounded-full bg-brand-yellow text-brand-yellow-foreground transition-opacity disabled:opacity-40"
+      className="clay-sun-button grid size-11 shrink-0 place-items-center rounded-full text-brand-yellow-foreground transition-opacity disabled:opacity-40"
     >
       <ArrowUp className="size-[15px]" strokeWidth={2.5} />
     </button>
@@ -171,12 +184,23 @@ export function Composer({
       bookended in dark chrome and the conversation between them reads as a
       document on paper.
     */
-    <div className="shrink-0 border-t-4 border-brand-yellow bg-band px-4 pt-4 pb-3.5 sm:px-6">
-      <div className="flex items-center gap-3.5 rounded-[var(--radius-lg)] bg-surface py-3 pr-3.5 pl-4.5 shadow-ask focus-within:shadow-ask-focus">
+    <div className="clay-band mx-3 mb-3 shrink-0 px-4 pt-4 pb-3.5 sm:px-6">
+      <div className="flex items-center gap-3.5 rounded-full bg-surface py-2.5 pr-2.5 pl-5 shadow-ask focus-within:shadow-ask-focus">
         <SunMark className="size-[26px] shrink-0" onDark />
         <div className="flex min-w-0 flex-1 items-center">{field}</div>
         {sendButton}
       </div>
+
+      {length?.notice ? (
+        <p
+          id="chat-input-length"
+          role={length.state === "over" ? "alert" : "status"}
+          data-state={length.state}
+          className={cn("mt-2 text-[11.5px] leading-snug", length.state === "over" ? "font-semibold text-brand-yellow" : "text-band-label")}
+        >
+          {length.notice}
+        </p>
+      ) : null}
 
       {/*
         THE `.under` ROW: the mode control and one line of disclaimer, side by

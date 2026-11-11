@@ -7,10 +7,12 @@ import {
   type OfficialPolicyManualResult,
 } from "@/lib/knowledge/providers/supabase";
 import type { ChatMessage } from "@/types";
+import { formEditSingleWriterEnabled, policyChangeRelevantEnabled } from "@/lib/config/chat-quality-flags";
 
 import { policyPhrase } from "./ca-action-plan";
 import { syncCorrectiveActionPlan } from "./ca-action-plan-sync";
 import { CA_POLICY_QUESTION, readCaPolicy, statedOffenseKeys } from "./ca-policy";
+import { offeredOffenseKeys } from "./offense-keys";
 import { checkboxGroupsForVariant, fieldsForVariant, parseFormDocument } from "./document";
 import { employeeFirstName } from "./employee-reference";
 import { changeOnEditableDraft } from "./editable-draft";
@@ -22,6 +24,7 @@ import {
   findManualSection,
   approvedManualConfirmed,
   headingKey,
+  manualSectionHeadings,
   manualDisplayTitle,
   officialManualProvenance,
   offenseKeyForManualHeading,
@@ -55,6 +58,46 @@ const NEW_FORM = /\b(?:create|start|pull up|new|another|need an?|draft an?)\b/i;
 /** "Add THAT policy", "the one you quoted" — the policy is in an earlier turn. */
 const REFERS_BACK =
   /\b(?:that|this|the same|those|above|it|you (?:just\s+)?(?:quoted|found|mentioned|showed|cited|shared|pulled))\b/i;
+
+/**
+ * POLICY_CHANGE_RELEVANT_ENABLED (QA, 5 Nov 2026, severe): a reference back to a POLICY — "that policy", "the
+ * section you quoted" — never a bare "that" ("include THAT <name> signed …", a conjunction).
+ */
+const REFERS_BACK_TO_A_POLICY =
+  /\b(?:that|this|the same|those|above|it)\s+(?:[a-z'’-]+\s+){0,2}?(?:polic(?:y|ies)|sections?|rules?)\b|\byou (?:just\s+)?(?:quoted|found|mentioned|showed|cited|shared|pulled)\b/i;
+
+/** The words that call a section a section — the same ones `REFERS_BACK_TO_A_POLICY` reads. */
+const POLICY_WORD = /\b(?:polic(?:y|ies)|sections?|rules?)\b/gi;
+
+/**
+ * POLICY_CHANGE_RELEVANT_ENABLED: a message whose only "policy" is the manual's own name ("signed the jba policy
+ * manual on 10-15-26", "the employee policy manual") asks for no change to the cited policy.
+ */
+function namesOnlyTheManual(question: string): boolean {
+  const rest = question.replace(/\b(?:[\p{L}&'’-]+\s+){0,3}polic(?:y|ies)\s+(?:manual|handbook|book)\b/giu, " ");
+  return rest !== question && !/\bpolic(?:y|ies)\b/i.test(rest);
+}
+
+/**
+ * POLICY_CHANGE_RELEVANT_ENABLED: an earlier turn names a policy only where it names it AS one — a bold span that
+ * is a manual heading whole ("**Late Opening** (page 15)"), or plain words. A bold span that is no heading is the
+ * app's own wording and never names a section by a word inside it: the manual's 401k sheet is headed "Warning",
+ * and "Is this new corrective action a **Verbal Warning** or a **Written Warning**?" is not that sheet.
+ */
+function turnPolicyText(content: string, headingKeys: readonly string[]): string {
+  return content.replace(/\*\*([^*]+)\*\*/g, (whole, span: string) => (headingKeys.includes(headingKey(span.replace(/:$/, ""))) ? whole : " "));
+}
+
+/**
+ * POLICY_CHANGE_RELEVANT_ENABLED: the form's own words that hold a manual heading without being one — "Verbal
+ * Warning", "Written Warning", "Type of Warning" hold the 401k sheet's heading "Warning" — are the form's field or
+ * option, never that section. Taken out of the text before any heading is read in it.
+ */
+function withoutFormWords(text: string, formWords: readonly string[]): string {
+  let next = text;
+  for (const words of formWords) next = next.replace(new RegExp(String.raw`\b${words.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, String.raw`\s+`)}\b`, "gi"), " ");
+  return next;
+}
 
 /** How far back "that policy" may reach. */
 const LOOKBACK_TURNS = 6;
@@ -129,16 +172,33 @@ export async function changeActiveFormPolicy(input: {
   }
 
   const jobTitle = instance.employeeRole;
-  let wanted = sectionsNamedIn({ text: input.question, chunks: manual.chunks, jobTitle });
+  const relevant = policyChangeRelevantEnabled();
+  const headingKeysAll = manualSectionHeadings(manual.chunks).map(headingKey);
+  const formWords = relevant
+    ? [...new Set([...fieldsForVariant(document, instance.variantKey).map((entry) => entry.label), ...checkboxGroupsForVariant(document, instance.variantKey).flatMap((group) => [group.label, ...group.options.map((option) => option.label)])])]
+        .filter((label) => {
+          const key = ` ${headingKey(label)} `;
+          // A label that is a heading once its "policy" / "section" / "rule" word is off ("Attendance Policy") names
+          // that section: the manager's "take the attendance policy off" means it (the sibling app's flip-3 gate, 6 Nov 2026).
+          const named = headingKey(label.replace(POLICY_WORD, " "));
+          return !headingKeysAll.includes(headingKey(label)) && !headingKeysAll.includes(named) && headingKeysAll.some((heading) => heading && key.includes(` ${heading} `));
+        })
+        .sort((a, b) => b.length - a.length)
+    : [];
+  const readable = (text: string) => (relevant ? withoutFormWords(text, formWords) : text);
+  let wanted = sectionsNamedIn({ text: readable(input.question), chunks: manual.chunks, jobTitle });
+  // POLICY_CHANGE_RELEVANT_ENABLED: "… signed the jba policy manual …" is no change to the cited policy; the turn goes on.
+  if (relevant && wanted.length === 0 && namesOnlyTheManual(input.question)) return null;
   /*
    * "ADD THAT POLICY TO THE FORM" — the policy was named a turn or two ago,
    * most often in Sunny's own answer quoting it. The nearest turn that names
    * a manual heading answers, and nothing older.
    */
-  if (wanted.length === 0 && REFERS_BACK.test(input.question)) {
+  if (wanted.length === 0 && (relevant ? REFERS_BACK_TO_A_POLICY : REFERS_BACK).test(input.question)) {
     const recent = input.history.filter((turn) => !turn.error && typeof turn.content === "string").slice(-LOOKBACK_TURNS);
     for (const turn of [...recent].reverse()) {
-      wanted = sectionsNamedIn({ text: turn.content, chunks: manual.chunks, jobTitle });
+      const text = relevant ? readable(turnPolicyText(turn.content, headingKeysAll)) : turn.content;
+      wanted = sectionsNamedIn({ text, chunks: manual.chunks, jobTitle });
       if (wanted.length > 0) break;
     }
   }
@@ -170,10 +230,21 @@ export async function changeActiveFormPolicy(input: {
       return reply(`${names(wanted)} isn't cited on the ${who}, so I haven't changed anything.`);
     }
     if (next.length === 0) {
-      await applyAssistantRevision(input.instanceId, {}, [POLICY_KEY], actor.id);
+      /*
+       * FORM_EDIT_SINGLE_WRITER_ENABLED: every write of a policy change goes
+       * through the one writer (`lib/forms/form-write.ts`, path "policy"): the
+       * remove-all a clear, refused on a line the manager typed.
+       */
+      if (formEditSingleWriterEnabled()) {
+        await (await import("./form-write")).clearWrite(input.instanceId, [POLICY_KEY], actor.id, { path: "policy", latest: input.question });
+      } else {
+        await applyAssistantRevision(input.instanceId, {}, [POLICY_KEY], actor.id);
+      }
       const violated = await followOffense(input.instanceId, actor.id, loaded, document, []);
       /* The Action Plan names the policy Direct policy cites — so it follows the line. See `ca-action-plan.ts`. */
-      const plan = await syncCorrectiveActionPlan(input.instanceId, actor.id);
+      const plan = formEditSingleWriterEnabled()
+        ? await (await import("./form-write")).syncPlan(input.instanceId, actor.id)
+        : await syncCorrectiveActionPlan(input.instanceId, actor.id);
       return {
         ...reply(
           `Removed ${names(wanted)} from ${field.label} on the ${who}. That line is now blank — tell me which policy applies and I'll add it from the manual.${plan.length > 0 ? " The Action Plan has been updated to match." : ""} Everything else on the form is as it was.`,
@@ -191,24 +262,32 @@ export async function changeActiveFormPolicy(input: {
   const value = policyFieldValue(policies);
   if (!value) return null;
 
-  const saved = await applyAssistantDraft(
-    input.instanceId,
-    { values: { [POLICY_KEY]: value }, checked: {} },
-    actor.id,
-    {
-      [POLICY_KEY]: {
-        ...officialManualProvenance({
-          documentId: manual.documentId,
-          documentTitle: manual.documentTitle,
-          matchedBy: manual.matchedBy,
-          ownerConfirmed: approvedManualConfirmed(manual),
-          sections: next,
-        }),
-        citation: policies,
-        via: "chat_policy_change",
-      },
+  const policyProvenance = {
+    [POLICY_KEY]: {
+      ...officialManualProvenance({
+        documentId: manual.documentId,
+        documentTitle: manual.documentTitle,
+        matchedBy: manual.matchedBy,
+        ownerConfirmed: approvedManualConfirmed(manual),
+        sections: next,
+      }),
+      citation: policies,
+      via: "chat_policy_change",
     },
-  );
+  };
+  // FORM_EDIT_SINGLE_WRITER_ENABLED: the manual's line through the one writer; it may replace a typed line (typedExempt).
+  const saved = formEditSingleWriterEnabled()
+    ? await (await import("./form-write")).draftWrite(input.instanceId, { values: { [POLICY_KEY]: value }, checked: {} }, actor.id, policyProvenance, {
+        path: "policy",
+        latest: input.question,
+        typedExempt: new Set([POLICY_KEY]),
+      })
+    : await applyAssistantDraft(
+        input.instanceId,
+        { values: { [POLICY_KEY]: value }, checked: {} },
+        actor.id,
+        policyProvenance,
+      );
   if (!(POLICY_KEY in saved.accepted.values)) {
     return reply(`I couldn't save ${field.label} on the ${who}, so it is as it was. Type the policy into that line on the form instead.`);
   }
@@ -219,7 +298,9 @@ export async function changeActiveFormPolicy(input: {
   /* Policy Violated names the section now cited beside its box, as a first draft does. */
   const violated = await followOffense(input.instanceId, actor.id, loaded, document, next, moved);
   /* The Action Plan names the policy Direct policy cites — so it follows the line. See `ca-action-plan.ts`. */
-  const plan = await syncCorrectiveActionPlan(input.instanceId, actor.id);
+  const plan = formEditSingleWriterEnabled()
+    ? await (await import("./form-write")).syncPlan(input.instanceId, actor.id)
+    : await syncCorrectiveActionPlan(input.instanceId, actor.id);
 
   const added = mode === "remove" ? [] : wanted;
   const lines: string[] = [];
@@ -316,12 +397,17 @@ async function followOffense(
     sectionNames,
   });
   if (!derived || derived === (violated?.value ?? "").trim()) return [];
-  const saved = await applyAssistantDraft(
-    instanceId,
-    { values: { [VIOLATED_KEY]: derived }, checked: {} },
-    actorId,
-    formDerivedProvenance([VIOLATED_KEY]),
-  );
+  // FORM_EDIT_SINGLE_WRITER_ENABLED: the derived line through the one writer (path "policy").
+  const saved = formEditSingleWriterEnabled()
+    ? await (await import("./form-write")).draftWrite(instanceId, { values: { [VIOLATED_KEY]: derived }, checked: {} }, actorId, formDerivedProvenance([VIOLATED_KEY]), {
+        path: "policy",
+      })
+    : await applyAssistantDraft(
+        instanceId,
+        { values: { [VIOLATED_KEY]: derived }, checked: {} },
+        actorId,
+        formDerivedProvenance([VIOLATED_KEY]),
+      );
   return VIOLATED_KEY in saved.accepted.values ? [VIOLATED_KEY] : [];
 }
 
@@ -386,12 +472,14 @@ async function followReplacedBox(
   ].join("\n\n");
   const stated = statedOffenseKeys(readCaPolicy(question), account);
   const offered = group.options.map((option) => option.key);
-  const keys = [...new Set(stated ?? cited.map((section) => offenseKeyForManualHeading(section.heading)))].filter((key) =>
-    offered.includes(key),
-  );
+  // Revision 8: a removed box is the box that replaced it, where this version offers only that (`offense-keys.ts`).
+  const keys = offeredOffenseKeys([...new Set(stated ?? cited.map((section) => offenseKeyForManualHeading(section.heading)))], offered);
   if (keys.length === 0 || (keys.length === current.length && keys.every((key) => current.includes(key)))) return null;
 
-  const saved = await applyAssistantDraft(instanceId, { values: {}, checked: { [OFFENSE_KEY]: keys } }, actorId);
+  // FORM_EDIT_SINGLE_WRITER_ENABLED: the box through the one writer (path "policy").
+  const saved = formEditSingleWriterEnabled()
+    ? await (await import("./form-write")).draftWrite(instanceId, { values: {}, checked: { [OFFENSE_KEY]: keys } }, actorId, {}, { path: "policy", latest: question })
+    : await applyAssistantDraft(instanceId, { values: {}, checked: { [OFFENSE_KEY]: keys } }, actorId);
   if (!(OFFENSE_KEY in saved.accepted.checked)) return null;
   return {
     keys,

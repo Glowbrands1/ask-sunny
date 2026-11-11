@@ -1,0 +1,3414 @@
+[
+  {
+    "id": "s4",
+    "source": "src/lib/ai/__fixtures__/replay_set.json (turns and criteria verbatim); roster: the test-only people in src/lib/ai/priority-replay.test.ts",
+    "turns": [
+      "an employee opened the salon 15 min late and needs CA",
+      "write ca",
+      "name is test testy who is an assistant salon manager. open late on 9-20-26. employee did not call or notify anyone she was late. apply $25 payroll deduction",
+      "employee name is Test Testy, assistant salon director at manhattan",
+      "no prior ca on file for employee",
+      "Create a form from this conversation.",
+      "Create a Corrective Action Form from this conversation.",
+      "employee name is test testy, assistant salon director at manhattan",
+      "Create a form from this conversation.",
+      "Create a form from this conversation.",
+      "Create a Corrective Action Form from this conversation."
+    ],
+    "criteria": {
+      "employee": "Test Testy",
+      "salon": "loc-0462",
+      "date": "2026-09-20",
+      "policy": "Late Opening p.15",
+      "noBlockingQuestion": true,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-10-23",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "roster": [
+      {
+        "id": "elin",
+        "firstName": "Elin",
+        "lastName": "Haskett",
+        "positionName": "Salon Director",
+        "locationIds": [
+          "loc-0313",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "tavaeh",
+        "firstName": "Tavaeh",
+        "lastName": "Styles",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "sloane",
+        "firstName": "Sloane",
+        "lastName": "Wexford",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0314",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "daisley",
+        "firstName": "Daisley",
+        "lastName": "Veklo",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "corena",
+        "firstName": "Corena",
+        "lastName": "Schardt",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0462",
+          "loc-0468"
+        ]
+      },
+      {
+        "id": "marnie",
+        "firstName": "Marnie",
+        "lastName": "Kettering",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0309"
+        ]
+      },
+      {
+        "id": "odette",
+        "firstName": "Odette",
+        "lastName": "Brannock",
+        "positionName": "Team Member Part Time",
+        "locationIds": [
+          "loc-0901",
+          "loc-0902"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "s9",
+    "source": "src/lib/ai/__fixtures__/replay_set.json (turns and criteria verbatim); roster: the test-only people in src/lib/ai/priority-replay.test.ts",
+    "turns": [
+      "create a CA form for ima employee, tan consultant at manhattan, for opening salon late on 9-28-26",
+      "this should be a written and note a verbal ca was given on 9-1-26",
+      "When an employee assigned to open a location is unable to open the location at the proper\ntime, the employee must notify the manager as soon as possible. The manager of the salon will\nbe required to open the salon and work until the person originally assigned arrives, or a\nreplacement is found. The employee who failed to open will then be required to reimburse The\nCompany $25.00 via payroll deduction (when applicable and following all state and local\nguidelines), for all expenses incurred. Managers or District Managers will be responsible for\noffering restitution to affected clients, as well as giving the payroll deduct total to Payroll. *",
+      "Create a form from this conversation.",
+      "ima is a tanning consultant not a district manager. the policy violated is late opening, not attendance"
+    ],
+    "criteria": {
+      "employee": "Ima",
+      "salon": "loc-0462",
+      "date": "2026-09-28",
+      "policy": "Late Opening p.15",
+      "noBlockingQuestion": true,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-10-23",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "roster": [
+      {
+        "id": "elin",
+        "firstName": "Elin",
+        "lastName": "Haskett",
+        "positionName": "Salon Director",
+        "locationIds": [
+          "loc-0313",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "tavaeh",
+        "firstName": "Tavaeh",
+        "lastName": "Styles",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "sloane",
+        "firstName": "Sloane",
+        "lastName": "Wexford",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0314",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "daisley",
+        "firstName": "Daisley",
+        "lastName": "Veklo",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "corena",
+        "firstName": "Corena",
+        "lastName": "Schardt",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0462",
+          "loc-0468"
+        ]
+      },
+      {
+        "id": "marnie",
+        "firstName": "Marnie",
+        "lastName": "Kettering",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0309"
+        ]
+      },
+      {
+        "id": "odette",
+        "firstName": "Odette",
+        "lastName": "Brannock",
+        "positionName": "Team Member Part Time",
+        "locationIds": [
+          "loc-0901",
+          "loc-0902"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "s11",
+    "source": "src/lib/ai/__fixtures__/replay_set.json (turns and criteria verbatim); roster: the test-only people in src/lib/ai/priority-replay.test.ts",
+    "turns": [
+      "create coaching form for employee test testy who is a tanning consultant at manhattan. on 9-29-26 test was out of dress code",
+      "employee name is corena schardt",
+      "create coaching form for corena schardt",
+      "sunny created a coaching form for an employee who was not in dress code and reflected it as underperformance and should be retraining",
+      "create a coaching form for lawrence location tanning consultant, corena schardt, who was talking on her cell phone for 25 minutes on 9-29-26 when customers were waiting to check in",
+      "salon location is lawrence, ks",
+      "Create a Coaching Form from this conversation."
+    ],
+    "criteria": {
+      "employee": "Corena Schardt",
+      "salon": "loc-0468",
+      "date": "2026-09-29",
+      "policy": "Cell Phone/Smart Watch Policy p.19",
+      "noBlockingQuestion": true,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-10-23",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "roster": [
+      {
+        "id": "elin",
+        "firstName": "Elin",
+        "lastName": "Haskett",
+        "positionName": "Salon Director",
+        "locationIds": [
+          "loc-0313",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "tavaeh",
+        "firstName": "Tavaeh",
+        "lastName": "Styles",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "sloane",
+        "firstName": "Sloane",
+        "lastName": "Wexford",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0314",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "daisley",
+        "firstName": "Daisley",
+        "lastName": "Veklo",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "corena",
+        "firstName": "Corena",
+        "lastName": "Schardt",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0462",
+          "loc-0468"
+        ]
+      },
+      {
+        "id": "marnie",
+        "firstName": "Marnie",
+        "lastName": "Kettering",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0309"
+        ]
+      },
+      {
+        "id": "odette",
+        "firstName": "Odette",
+        "lastName": "Brannock",
+        "positionName": "Team Member Part Time",
+        "locationIds": [
+          "loc-0901",
+          "loc-0902"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "s5",
+    "source": "src/lib/ai/__fixtures__/replay_set.json (turns and criteria verbatim); roster: the test-only people in src/lib/ai/priority-replay.test.ts",
+    "turns": [
+      "an employee (Nadia)  is talking negatively about co workers and customers. another employee, kira, complained to salon director about Nadia",
+      "an employee (nadia)  is talking negatively about co workers and customers. another employee, kira, complained to salon director about nadia",
+      "create coaching form for nadia, works at lawrence as a tanning consultant. use todays date",
+      "nadia brook, tanning consultant at lawrence. use todays date",
+      "Create a form from this conversation."
+    ],
+    "criteria": {
+      "employee": "Nadia Brook",
+      "salon": "loc-0468",
+      "date": "2026-10-23",
+      "policy": null,
+      "noBlockingQuestion": true,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-10-23",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "roster": [
+      {
+        "id": "elin",
+        "firstName": "Elin",
+        "lastName": "Haskett",
+        "positionName": "Salon Director",
+        "locationIds": [
+          "loc-0313",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "tavaeh",
+        "firstName": "Tavaeh",
+        "lastName": "Styles",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "sloane",
+        "firstName": "Sloane",
+        "lastName": "Wexford",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0314",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "daisley",
+        "firstName": "Daisley",
+        "lastName": "Veklo",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "corena",
+        "firstName": "Corena",
+        "lastName": "Schardt",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0462",
+          "loc-0468"
+        ]
+      },
+      {
+        "id": "marnie",
+        "firstName": "Marnie",
+        "lastName": "Kettering",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0309"
+        ]
+      },
+      {
+        "id": "odette",
+        "firstName": "Odette",
+        "lastName": "Brannock",
+        "positionName": "Team Member Part Time",
+        "locationIds": [
+          "loc-0901",
+          "loc-0902"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "s27",
+    "source": "src/lib/ai/__fixtures__/replay_set.json (turns and criteria verbatim); roster: the test-only people in src/lib/ai/priority-replay.test.ts",
+    "turns": [
+      "create a CA for salon director, elin haskett for violating the standards of conduct",
+      "Elin Haskett, Salon Director",
+      "change observation of offense to: Elin completed onboarding with new hire Tavaeh Quarles on 9-28-26. As of 10-16-26 Tavaeh had not acknowledged onboarding policies in Woven that should have been completed during onboarding.",
+      "create the ca",
+      "create ca for elin haskett, salon director. the offense is: change observation of offense to: Elin completed onboarding with new hire Tavaeh Quarles on 9-28-26. As of 10-16-26 Tavaeh had not acknowledged onboarding policies in Woven that should have been completed during onboarding. the policy violated is standards of conduct.",
+      "create ca for elin haskett, salon director. the offense is: change observation of offense to: Elin completed onboarding with new hire Tavaeh Quarles on 9-28-26. As of 10-16-26 Tavaeh had not acknowledged onboarding policies in Woven that should have been completed during onboarding. the policy violated is standards of conduct.",
+      "elin"
+    ],
+    "criteria": {
+      "employee": "Elin Haskett",
+      "salon": "loc-0313",
+      "date": null,
+      "policy": "Standards of Conduct p.12",
+      "noBlockingQuestion": true,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-10-23",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "roster": [
+      {
+        "id": "elin",
+        "firstName": "Elin",
+        "lastName": "Haskett",
+        "positionName": "Salon Director",
+        "locationIds": [
+          "loc-0313",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "tavaeh",
+        "firstName": "Tavaeh",
+        "lastName": "Styles",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "sloane",
+        "firstName": "Sloane",
+        "lastName": "Wexford",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0314",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "daisley",
+        "firstName": "Daisley",
+        "lastName": "Veklo",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "corena",
+        "firstName": "Corena",
+        "lastName": "Schardt",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0462",
+          "loc-0468"
+        ]
+      },
+      {
+        "id": "marnie",
+        "firstName": "Marnie",
+        "lastName": "Kettering",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0309"
+        ]
+      },
+      {
+        "id": "odette",
+        "firstName": "Odette",
+        "lastName": "Brannock",
+        "positionName": "Team Member Part Time",
+        "locationIds": [
+          "loc-0901",
+          "loc-0902"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "s28",
+    "source": "src/lib/ai/__fixtures__/replay_set.json (turns and criteria verbatim); roster: the test-only people in src/lib/ai/priority-replay.test.ts",
+    "turns": [
+      "create ca for Elin Haskett, Salon Director for violating standards of conduct. Elin failed to have Taveah Quarles complete required policy acknowledgements in woven during Taveah's onboarding on 9-28-26 as reflected on the woven policy acknowledgement report run on 10-16-26.",
+      "for Elin Haskett"
+    ],
+    "criteria": {
+      "employee": "Elin Haskett",
+      "salon": "loc-0313",
+      "date": null,
+      "policy": "Standards of Conduct p.12",
+      "noBlockingQuestion": true,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-10-23",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "roster": [
+      {
+        "id": "elin",
+        "firstName": "Elin",
+        "lastName": "Haskett",
+        "positionName": "Salon Director",
+        "locationIds": [
+          "loc-0313",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "tavaeh",
+        "firstName": "Tavaeh",
+        "lastName": "Styles",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "sloane",
+        "firstName": "Sloane",
+        "lastName": "Wexford",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0314",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "daisley",
+        "firstName": "Daisley",
+        "lastName": "Veklo",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "corena",
+        "firstName": "Corena",
+        "lastName": "Schardt",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0462",
+          "loc-0468"
+        ]
+      },
+      {
+        "id": "marnie",
+        "firstName": "Marnie",
+        "lastName": "Kettering",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0309"
+        ]
+      },
+      {
+        "id": "odette",
+        "firstName": "Odette",
+        "lastName": "Brannock",
+        "positionName": "Team Member Part Time",
+        "locationIds": [
+          "loc-0901",
+          "loc-0902"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "s29",
+    "source": "src/lib/ai/__fixtures__/replay_set.json (turns and criteria verbatim); roster: the test-only people in src/lib/ai/priority-replay.test.ts",
+    "turns": [
+      "create corrective action form for Elin Haskett, Salon Director"
+    ],
+    "criteria": {
+      "employee": "Elin Haskett",
+      "salon": "loc-0313",
+      "date": null,
+      "policy": null,
+      "noBlockingQuestion": true,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-10-23",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "roster": [
+      {
+        "id": "elin",
+        "firstName": "Elin",
+        "lastName": "Haskett",
+        "positionName": "Salon Director",
+        "locationIds": [
+          "loc-0313",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "tavaeh",
+        "firstName": "Tavaeh",
+        "lastName": "Styles",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "sloane",
+        "firstName": "Sloane",
+        "lastName": "Wexford",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0314",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "daisley",
+        "firstName": "Daisley",
+        "lastName": "Veklo",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "corena",
+        "firstName": "Corena",
+        "lastName": "Schardt",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0462",
+          "loc-0468"
+        ]
+      },
+      {
+        "id": "marnie",
+        "firstName": "Marnie",
+        "lastName": "Kettering",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0309"
+        ]
+      },
+      {
+        "id": "odette",
+        "firstName": "Odette",
+        "lastName": "Brannock",
+        "positionName": "Team Member Part Time",
+        "locationIds": [
+          "loc-0901",
+          "loc-0902"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "s17",
+    "source": "src/lib/ai/__fixtures__/replay_set.json (turns and criteria verbatim); roster: the test-only people in src/lib/ai/priority-replay.test.ts",
+    "turns": [
+      "Can you create me a performance CA?",
+      "Dora Lee today under performance for September 270 tans below in PPTA, UPTA, LPSVA, CC% and Spa% verbal warning received Open Ended Questions Coaching 9/8/2026, Focus Item Coaching 9/15/2026, New Product Coaching 9/25/2026 not payroll deductible Tanning Consultant",
+      "Dora Lee"
+    ],
+    "criteria": {
+      "employee": "Dora Lee",
+      "salon": null,
+      "date": "2026-10-23",
+      "policy": null,
+      "noBlockingQuestion": true,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-10-23",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "roster": [
+      {
+        "id": "elin",
+        "firstName": "Elin",
+        "lastName": "Haskett",
+        "positionName": "Salon Director",
+        "locationIds": [
+          "loc-0313",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "tavaeh",
+        "firstName": "Tavaeh",
+        "lastName": "Styles",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "sloane",
+        "firstName": "Sloane",
+        "lastName": "Wexford",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0314",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "daisley",
+        "firstName": "Daisley",
+        "lastName": "Veklo",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "corena",
+        "firstName": "Corena",
+        "lastName": "Schardt",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0462",
+          "loc-0468"
+        ]
+      },
+      {
+        "id": "marnie",
+        "firstName": "Marnie",
+        "lastName": "Kettering",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0309"
+        ]
+      },
+      {
+        "id": "odette",
+        "firstName": "Odette",
+        "lastName": "Brannock",
+        "positionName": "Team Member Part Time",
+        "locationIds": [
+          "loc-0901",
+          "loc-0902"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "s20",
+    "source": "src/lib/ai/__fixtures__/replay_set.json (turns and criteria verbatim); roster: the test-only people in src/lib/ai/priority-replay.test.ts",
+    "turns": [
+      "generate me a coaching worksheet for team memebers about getting checking accounts put onto client profiles",
+      "coacing form based on uniform",
+      "creat an exit plan for me",
+      "exit form"
+    ],
+    "criteria": {
+      "employee": null,
+      "salon": null,
+      "date": null,
+      "policy": null,
+      "noBlockingQuestion": true,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-10-23",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "roster": [
+      {
+        "id": "elin",
+        "firstName": "Elin",
+        "lastName": "Haskett",
+        "positionName": "Salon Director",
+        "locationIds": [
+          "loc-0313",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "tavaeh",
+        "firstName": "Tavaeh",
+        "lastName": "Styles",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "sloane",
+        "firstName": "Sloane",
+        "lastName": "Wexford",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0314",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "daisley",
+        "firstName": "Daisley",
+        "lastName": "Veklo",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "corena",
+        "firstName": "Corena",
+        "lastName": "Schardt",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0462",
+          "loc-0468"
+        ]
+      },
+      {
+        "id": "marnie",
+        "firstName": "Marnie",
+        "lastName": "Kettering",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0309"
+        ]
+      },
+      {
+        "id": "odette",
+        "firstName": "Odette",
+        "lastName": "Brannock",
+        "positionName": "Team Member Part Time",
+        "locationIds": [
+          "loc-0901",
+          "loc-0902"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "s21",
+    "source": "src/lib/ai/__fixtures__/replay_set.json (turns and criteria verbatim); roster: the test-only people in src/lib/ai/priority-replay.test.ts",
+    "turns": [
+      "Put together a written CA for Sloane Wexford, primary salon is Omaha Center. But on Monday 10/05/2026 Sloane was working a shift at Omaha Pacific and did not complete the 10 minute disenfect",
+      "Sloane Wexford",
+      "Create a form from this conversation.",
+      "Create a Corrective Action Form from this conversation."
+    ],
+    "criteria": {
+      "employee": "Sloane Wexford",
+      "salon": "loc-0410",
+      "date": "2026-10-05",
+      "policy": null,
+      "noBlockingQuestion": true,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-10-23",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "roster": [
+      {
+        "id": "elin",
+        "firstName": "Elin",
+        "lastName": "Haskett",
+        "positionName": "Salon Director",
+        "locationIds": [
+          "loc-0313",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "tavaeh",
+        "firstName": "Tavaeh",
+        "lastName": "Styles",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "sloane",
+        "firstName": "Sloane",
+        "lastName": "Wexford",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0314",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "daisley",
+        "firstName": "Daisley",
+        "lastName": "Veklo",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "corena",
+        "firstName": "Corena",
+        "lastName": "Schardt",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0462",
+          "loc-0468"
+        ]
+      },
+      {
+        "id": "marnie",
+        "firstName": "Marnie",
+        "lastName": "Kettering",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0309"
+        ]
+      },
+      {
+        "id": "odette",
+        "firstName": "Odette",
+        "lastName": "Brannock",
+        "positionName": "Team Member Part Time",
+        "locationIds": [
+          "loc-0901",
+          "loc-0902"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "s25",
+    "source": "src/lib/ai/__fixtures__/replay_set.json (turns and criteria verbatim); roster: the test-only people in src/lib/ai/priority-replay.test.ts",
+    "turns": [
+      "create a corrective action form for Dasiley Veklo",
+      "Yes"
+    ],
+    "criteria": {
+      "employee": "Dasiley Veklo",
+      "salon": "loc-0313",
+      "date": null,
+      "policy": null,
+      "noBlockingQuestion": true,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-10-23",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "roster": [
+      {
+        "id": "elin",
+        "firstName": "Elin",
+        "lastName": "Haskett",
+        "positionName": "Salon Director",
+        "locationIds": [
+          "loc-0313",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "tavaeh",
+        "firstName": "Tavaeh",
+        "lastName": "Styles",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "sloane",
+        "firstName": "Sloane",
+        "lastName": "Wexford",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0314",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "daisley",
+        "firstName": "Daisley",
+        "lastName": "Veklo",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "corena",
+        "firstName": "Corena",
+        "lastName": "Schardt",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0462",
+          "loc-0468"
+        ]
+      },
+      {
+        "id": "marnie",
+        "firstName": "Marnie",
+        "lastName": "Kettering",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0309"
+        ]
+      },
+      {
+        "id": "odette",
+        "firstName": "Odette",
+        "lastName": "Brannock",
+        "positionName": "Team Member Part Time",
+        "locationIds": [
+          "loc-0901",
+          "loc-0902"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "s8",
+    "source": "src/lib/ai/__fixtures__/replay_set.json (turns and criteria verbatim); roster: the test-only people in src/lib/ai/priority-replay.test.ts",
+    "turns": [
+      "what does policy say about pets in salon",
+      "assist with creating an exit form",
+      "evangeline pembury, tanning consultant at shawnee",
+      "last day worked was 9-20-26. management called her with no response on 9-27-26",
+      "its a no call no show",
+      "create exit form",
+      "Create a form from this conversation.",
+      "create exit: Evangeline Pembury, Tanning Consultant, KS Shawnee Mission Pkwy\nLast day worked 9/20/26\nNo call/no show; management attempted phone contact 9/27/26, no response",
+      "Create a form from this conversation.",
+      "Create a form from this conversation."
+    ],
+    "criteria": {
+      "employee": "Evangeline Pembury",
+      "salon": "loc-0463",
+      "date": null,
+      "policy": null,
+      "noBlockingQuestion": true,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-10-23",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "roster": [
+      {
+        "id": "elin",
+        "firstName": "Elin",
+        "lastName": "Haskett",
+        "positionName": "Salon Director",
+        "locationIds": [
+          "loc-0313",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "tavaeh",
+        "firstName": "Tavaeh",
+        "lastName": "Styles",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "sloane",
+        "firstName": "Sloane",
+        "lastName": "Wexford",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0314",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "daisley",
+        "firstName": "Daisley",
+        "lastName": "Veklo",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "corena",
+        "firstName": "Corena",
+        "lastName": "Schardt",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0462",
+          "loc-0468"
+        ]
+      },
+      {
+        "id": "marnie",
+        "firstName": "Marnie",
+        "lastName": "Kettering",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0309"
+        ]
+      },
+      {
+        "id": "odette",
+        "firstName": "Odette",
+        "lastName": "Brannock",
+        "positionName": "Team Member Part Time",
+        "locationIds": [
+          "loc-0901",
+          "loc-0902"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "s12",
+    "source": "src/lib/ai/__fixtures__/replay_set.json (turns and criteria verbatim); roster: the test-only people in src/lib/ai/priority-replay.test.ts",
+    "turns": [
+      "create an exit form. employee name is corena schardt. corena was a tanning consultant at manhattan location. on 9-15-26 corena provided her resignation to management and her last day worked was 9-28-26",
+      "corena gave and worked 2 week notice. corena messaged management her resignation via woven. all salon items were returned and she is eligible for rehire"
+    ],
+    "criteria": {
+      "employee": "Corena Schardt",
+      "salon": "loc-0462",
+      "date": null,
+      "policy": null,
+      "noBlockingQuestion": true,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-10-23",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "roster": [
+      {
+        "id": "elin",
+        "firstName": "Elin",
+        "lastName": "Haskett",
+        "positionName": "Salon Director",
+        "locationIds": [
+          "loc-0313",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "tavaeh",
+        "firstName": "Tavaeh",
+        "lastName": "Styles",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "sloane",
+        "firstName": "Sloane",
+        "lastName": "Wexford",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0314",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "daisley",
+        "firstName": "Daisley",
+        "lastName": "Veklo",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "corena",
+        "firstName": "Corena",
+        "lastName": "Schardt",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0462",
+          "loc-0468"
+        ]
+      },
+      {
+        "id": "marnie",
+        "firstName": "Marnie",
+        "lastName": "Kettering",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0309"
+        ]
+      },
+      {
+        "id": "odette",
+        "firstName": "Odette",
+        "lastName": "Brannock",
+        "positionName": "Team Member Part Time",
+        "locationIds": [
+          "loc-0901",
+          "loc-0902"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "s16",
+    "source": "src/lib/ai/__fixtures__/replay_set.json (turns and criteria verbatim); roster: the test-only people in src/lib/ai/priority-replay.test.ts",
+    "turns": [
+      "Can you create an exit form for me?",
+      "Marnie Kettering\nTanning Consultant \nNE Kearney\nGave notice - fulfilled notice\nGave notice 9/25/26 - date notice fulfilled 10/9/26\nResigning to pursue other career options\nStore items returned payroll deduction does not apply eligible for rehire"
+    ],
+    "criteria": {
+      "employee": "Marnie Kettering",
+      "salon": "loc-0309",
+      "date": null,
+      "policy": null,
+      "noBlockingQuestion": true,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-10-23",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "roster": [
+      {
+        "id": "elin",
+        "firstName": "Elin",
+        "lastName": "Haskett",
+        "positionName": "Salon Director",
+        "locationIds": [
+          "loc-0313",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "tavaeh",
+        "firstName": "Tavaeh",
+        "lastName": "Styles",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "sloane",
+        "firstName": "Sloane",
+        "lastName": "Wexford",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0314",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "daisley",
+        "firstName": "Daisley",
+        "lastName": "Veklo",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "corena",
+        "firstName": "Corena",
+        "lastName": "Schardt",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0462",
+          "loc-0468"
+        ]
+      },
+      {
+        "id": "marnie",
+        "firstName": "Marnie",
+        "lastName": "Kettering",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0309"
+        ]
+      },
+      {
+        "id": "odette",
+        "firstName": "Odette",
+        "lastName": "Brannock",
+        "positionName": "Team Member Part Time",
+        "locationIds": [
+          "loc-0901",
+          "loc-0902"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "b9",
+    "source": "src/lib/ai/__fixtures__/replay_set.json (turns and criteria verbatim); roster: the test-only people in src/lib/ai/priority-replay.test.ts",
+    "turns": [
+      "create a written corrective action for Team Member, Test Employee. Test was assigned to complete policy acknowledgements in woven by 10-15-26 and failed to meet the deadline. Previous coaching was a Verbal CA 10-1-26. Payroll deduct is not applicable.",
+      "name is Test Employee",
+      "this is a violation under Standards of Conduct"
+    ],
+    "criteria": {
+      "employee": "Test Employee",
+      "salon": null,
+      "date": "2026-10-15",
+      "policy": "Standards of Conduct p.12",
+      "noBlockingQuestion": true,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-10-23",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "roster": [
+      {
+        "id": "elin",
+        "firstName": "Elin",
+        "lastName": "Haskett",
+        "positionName": "Salon Director",
+        "locationIds": [
+          "loc-0313",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "tavaeh",
+        "firstName": "Tavaeh",
+        "lastName": "Styles",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "sloane",
+        "firstName": "Sloane",
+        "lastName": "Wexford",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0314",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "daisley",
+        "firstName": "Daisley",
+        "lastName": "Veklo",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "corena",
+        "firstName": "Corena",
+        "lastName": "Schardt",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0462",
+          "loc-0468"
+        ]
+      },
+      {
+        "id": "marnie",
+        "firstName": "Marnie",
+        "lastName": "Kettering",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0309"
+        ]
+      },
+      {
+        "id": "odette",
+        "firstName": "Odette",
+        "lastName": "Brannock",
+        "positionName": "Team Member Part Time",
+        "locationIds": [
+          "loc-0901",
+          "loc-0902"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "b10",
+    "source": "src/lib/ai/__fixtures__/replay_set.json (turns and criteria verbatim); roster: the test-only people in src/lib/ai/priority-replay.test.ts",
+    "turns": [
+      "create a verbal CA for team member Testy Testerson at Dodge, NE. location. On 10-16-26 Testy was not properly measuring and weighing product. payroll deduct is not applicable",
+      "employee name is Testy Testerson",
+      "cite standards of conduct as policy violated",
+      "show draft",
+      "violation is that on 10-16-26 Testy was not measuring and weighing product",
+      "show draft with edits"
+    ],
+    "criteria": {
+      "employee": "Testy Testerson",
+      "salon": "loc-0903",
+      "date": "2026-10-16",
+      "policy": "Standards of Conduct p.12",
+      "noBlockingQuestion": true,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-10-23",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "roster": [
+      {
+        "id": "elin",
+        "firstName": "Elin",
+        "lastName": "Haskett",
+        "positionName": "Salon Director",
+        "locationIds": [
+          "loc-0313",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "tavaeh",
+        "firstName": "Tavaeh",
+        "lastName": "Styles",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "sloane",
+        "firstName": "Sloane",
+        "lastName": "Wexford",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0314",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "daisley",
+        "firstName": "Daisley",
+        "lastName": "Veklo",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "corena",
+        "firstName": "Corena",
+        "lastName": "Schardt",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0462",
+          "loc-0468"
+        ]
+      },
+      {
+        "id": "marnie",
+        "firstName": "Marnie",
+        "lastName": "Kettering",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0309"
+        ]
+      },
+      {
+        "id": "odette",
+        "firstName": "Odette",
+        "lastName": "Brannock",
+        "positionName": "Team Member Part Time",
+        "locationIds": [
+          "loc-0901",
+          "loc-0902"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "b11",
+    "source": "src/lib/ai/__fixtures__/replay_set.json (turns and criteria verbatim); roster: the test-only people in src/lib/ai/priority-replay.test.ts",
+    "turns": [
+      "write a verbal CA for Team Member, Testy Testerson at Dodge, NE. On 10-20-26 Testy was late for shift and did not call supervisor as outlined in attendance policy. payroll deduct is not applicable. previous coaching is JBA Manual 1-1-25"
+    ],
+    "criteria": {
+      "employee": "Testy Testerson",
+      "salon": "loc-0903",
+      "date": "2026-10-20",
+      "policy": "Attendance p.14",
+      "noBlockingQuestion": true,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-10-23",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "roster": [
+      {
+        "id": "elin",
+        "firstName": "Elin",
+        "lastName": "Haskett",
+        "positionName": "Salon Director",
+        "locationIds": [
+          "loc-0313",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "tavaeh",
+        "firstName": "Tavaeh",
+        "lastName": "Styles",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "sloane",
+        "firstName": "Sloane",
+        "lastName": "Wexford",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0314",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "daisley",
+        "firstName": "Daisley",
+        "lastName": "Veklo",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "corena",
+        "firstName": "Corena",
+        "lastName": "Schardt",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0462",
+          "loc-0468"
+        ]
+      },
+      {
+        "id": "marnie",
+        "firstName": "Marnie",
+        "lastName": "Kettering",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0309"
+        ]
+      },
+      {
+        "id": "odette",
+        "firstName": "Odette",
+        "lastName": "Brannock",
+        "positionName": "Team Member Part Time",
+        "locationIds": [
+          "loc-0901",
+          "loc-0902"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "b12",
+    "source": "src/lib/ai/__fixtures__/replay_set.json (turns and criteria verbatim); roster: the test-only people in src/lib/ai/priority-replay.test.ts",
+    "turns": [
+      "do verbal for team member odette brannock at empire, sd. payroll deduct does not apply. previous coaching jba manual 11-1-26. on 10-22-26 odette was not scheduled to work and came into the store to show her team her new puppy. Odette was in the store 45 min",
+      "jba manual 11-1-25",
+      "cite pets in workplace",
+      "cite animals in the workplace policy",
+      "store location is empire, sd. create corrective action"
+    ],
+    "criteria": {
+      "employee": "Odette Brannock",
+      "salon": null,
+      "date": "2026-10-22",
+      "policy": "Animals in the Workplace p.30",
+      "noBlockingQuestion": true,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-10-23",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "roster": [
+      {
+        "id": "elin",
+        "firstName": "Elin",
+        "lastName": "Haskett",
+        "positionName": "Salon Director",
+        "locationIds": [
+          "loc-0313",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "tavaeh",
+        "firstName": "Tavaeh",
+        "lastName": "Styles",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "sloane",
+        "firstName": "Sloane",
+        "lastName": "Wexford",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0314",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "daisley",
+        "firstName": "Daisley",
+        "lastName": "Veklo",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "corena",
+        "firstName": "Corena",
+        "lastName": "Schardt",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0462",
+          "loc-0468"
+        ]
+      },
+      {
+        "id": "marnie",
+        "firstName": "Marnie",
+        "lastName": "Kettering",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0309"
+        ]
+      },
+      {
+        "id": "odette",
+        "firstName": "Odette",
+        "lastName": "Brannock",
+        "positionName": "Team Member Part Time",
+        "locationIds": [
+          "loc-0901",
+          "loc-0902"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "n1",
+    "source": "src/lib/ai/__fixtures__/replay_set.json (turns and criteria verbatim); roster: the test-only people in src/lib/ai/priority-replay.test.ts",
+    "turns": [
+      "create a coaching form for Test Employee, Tanning Consultant at Manhattan",
+      "name is Test Employee, Tanning Consultant at Manhattan",
+      "Create a form from this conversation."
+    ],
+    "criteria": {
+      "employee": "Test Employee",
+      "salon": "loc-0462",
+      "date": null,
+      "policy": null,
+      "noBlockingQuestion": true,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-10-23",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "roster": [
+      {
+        "id": "elin",
+        "firstName": "Elin",
+        "lastName": "Haskett",
+        "positionName": "Salon Director",
+        "locationIds": [
+          "loc-0313",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "tavaeh",
+        "firstName": "Tavaeh",
+        "lastName": "Styles",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "sloane",
+        "firstName": "Sloane",
+        "lastName": "Wexford",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0314",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "daisley",
+        "firstName": "Daisley",
+        "lastName": "Veklo",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "corena",
+        "firstName": "Corena",
+        "lastName": "Schardt",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0462",
+          "loc-0468"
+        ]
+      },
+      {
+        "id": "marnie",
+        "firstName": "Marnie",
+        "lastName": "Kettering",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0309"
+        ]
+      },
+      {
+        "id": "odette",
+        "firstName": "Odette",
+        "lastName": "Brannock",
+        "positionName": "Team Member Part Time",
+        "locationIds": [
+          "loc-0901",
+          "loc-0902"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "n2",
+    "source": "src/lib/ai/__fixtures__/replay_set.json (turns and criteria verbatim); roster: the test-only people in src/lib/ai/priority-replay.test.ts",
+    "turns": [
+      "create a corrective action for Corena Shardt, tanning consultant at manhattan. she was late for her shift on 9-29-26. payroll deduct yes $25"
+    ],
+    "criteria": {
+      "employee": "Corena Shardt",
+      "salon": "loc-0462",
+      "date": "2026-09-29",
+      "policy": "Attendance p.14",
+      "noBlockingQuestion": true,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-10-23",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "roster": [
+      {
+        "id": "elin",
+        "firstName": "Elin",
+        "lastName": "Haskett",
+        "positionName": "Salon Director",
+        "locationIds": [
+          "loc-0313",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "tavaeh",
+        "firstName": "Tavaeh",
+        "lastName": "Styles",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "sloane",
+        "firstName": "Sloane",
+        "lastName": "Wexford",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0314",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "daisley",
+        "firstName": "Daisley",
+        "lastName": "Veklo",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "corena",
+        "firstName": "Corena",
+        "lastName": "Schardt",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0462",
+          "loc-0468"
+        ]
+      },
+      {
+        "id": "marnie",
+        "firstName": "Marnie",
+        "lastName": "Kettering",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0309"
+        ]
+      },
+      {
+        "id": "odette",
+        "firstName": "Odette",
+        "lastName": "Brannock",
+        "positionName": "Team Member Part Time",
+        "locationIds": [
+          "loc-0901",
+          "loc-0902"
+        ]
+      }
+    ],
+    "note": "KNOWN OPEN with production's flags (3 Nov 2026): FIRST_NAME_SUGGEST_ENABLED is on in Sunny production (Pau checked Vercel), so the close misspelling \"Corena Shardt\" is asked about (\"Is this for …?\") instead of making the card as typed. That is the n2 rule (24 Oct: a close spelling stays as typed) meeting FIRST_NAME_SUGGEST; which should win is Pau's decision. Recorded as failing in baseline.json; no code changed to hide it."
+  },
+  {
+    "id": "n3",
+    "source": "src/lib/ai/__fixtures__/replay_set.json (turns and criteria verbatim); roster: the test-only people in src/lib/ai/priority-replay.test.ts",
+    "turns": [
+      "name is TT and use todays date to create coaching form"
+    ],
+    "criteria": {
+      "employee": "TT",
+      "salon": null,
+      "date": "2026-10-23",
+      "policy": null,
+      "noBlockingQuestion": true,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-10-23",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "roster": [
+      {
+        "id": "elin",
+        "firstName": "Elin",
+        "lastName": "Haskett",
+        "positionName": "Salon Director",
+        "locationIds": [
+          "loc-0313",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "tavaeh",
+        "firstName": "Tavaeh",
+        "lastName": "Styles",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "sloane",
+        "firstName": "Sloane",
+        "lastName": "Wexford",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0314",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "daisley",
+        "firstName": "Daisley",
+        "lastName": "Veklo",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "corena",
+        "firstName": "Corena",
+        "lastName": "Schardt",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0462",
+          "loc-0468"
+        ]
+      },
+      {
+        "id": "marnie",
+        "firstName": "Marnie",
+        "lastName": "Kettering",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0309"
+        ]
+      },
+      {
+        "id": "odette",
+        "firstName": "Odette",
+        "lastName": "Brannock",
+        "positionName": "Team Member Part Time",
+        "locationIds": [
+          "loc-0901",
+          "loc-0902"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "g1",
+    "source": "src/lib/ai/__fixtures__/replay_set.json (turns and criteria verbatim); roster: the test-only people in src/lib/ai/priority-replay.test.ts",
+    "turns": [
+      "create a coaching form for Sarah Test at manhattan",
+      "she was out of dress code"
+    ],
+    "criteria": {
+      "employee": "Sarah Test",
+      "salon": "loc-0462",
+      "date": null,
+      "policy": null,
+      "noBlockingQuestion": true,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-10-23",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "roster": [
+      {
+        "id": "elin",
+        "firstName": "Elin",
+        "lastName": "Haskett",
+        "positionName": "Salon Director",
+        "locationIds": [
+          "loc-0313",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "tavaeh",
+        "firstName": "Tavaeh",
+        "lastName": "Styles",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "sloane",
+        "firstName": "Sloane",
+        "lastName": "Wexford",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0314",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "daisley",
+        "firstName": "Daisley",
+        "lastName": "Veklo",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "corena",
+        "firstName": "Corena",
+        "lastName": "Schardt",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0462",
+          "loc-0468"
+        ]
+      },
+      {
+        "id": "marnie",
+        "firstName": "Marnie",
+        "lastName": "Kettering",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0309"
+        ]
+      },
+      {
+        "id": "odette",
+        "firstName": "Odette",
+        "lastName": "Brannock",
+        "positionName": "Team Member Part Time",
+        "locationIds": [
+          "loc-0901",
+          "loc-0902"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "g2",
+    "source": "src/lib/ai/__fixtures__/replay_set.json (turns and criteria verbatim); roster: the test-only people in src/lib/ai/priority-replay.test.ts",
+    "turns": [
+      "Sarah Test works at manhattan",
+      "create a coaching form for Sarah Test",
+      "she was out of dress code"
+    ],
+    "criteria": {
+      "employee": "Sarah Test",
+      "salon": "loc-0462",
+      "date": null,
+      "policy": null,
+      "noBlockingQuestion": true,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-10-23",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "roster": [
+      {
+        "id": "elin",
+        "firstName": "Elin",
+        "lastName": "Haskett",
+        "positionName": "Salon Director",
+        "locationIds": [
+          "loc-0313",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "tavaeh",
+        "firstName": "Tavaeh",
+        "lastName": "Styles",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "sloane",
+        "firstName": "Sloane",
+        "lastName": "Wexford",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0314",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "daisley",
+        "firstName": "Daisley",
+        "lastName": "Veklo",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "corena",
+        "firstName": "Corena",
+        "lastName": "Schardt",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0462",
+          "loc-0468"
+        ]
+      },
+      {
+        "id": "marnie",
+        "firstName": "Marnie",
+        "lastName": "Kettering",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0309"
+        ]
+      },
+      {
+        "id": "odette",
+        "firstName": "Odette",
+        "lastName": "Brannock",
+        "positionName": "Team Member Part Time",
+        "locationIds": [
+          "loc-0901",
+          "loc-0902"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "g3",
+    "source": "src/lib/ai/__fixtures__/replay_set.json (turns and criteria verbatim); roster: the test-only people in src/lib/ai/priority-replay.test.ts",
+    "turns": [
+      "create a coaching form for Sarah Test at Dodge",
+      "she was out of dress code"
+    ],
+    "criteria": {
+      "employee": "Sarah Test",
+      "salon": "loc-0903",
+      "date": null,
+      "policy": null,
+      "noBlockingQuestion": true,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-10-23",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "roster": [
+      {
+        "id": "elin",
+        "firstName": "Elin",
+        "lastName": "Haskett",
+        "positionName": "Salon Director",
+        "locationIds": [
+          "loc-0313",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "tavaeh",
+        "firstName": "Tavaeh",
+        "lastName": "Styles",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "sloane",
+        "firstName": "Sloane",
+        "lastName": "Wexford",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0314",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "daisley",
+        "firstName": "Daisley",
+        "lastName": "Veklo",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "corena",
+        "firstName": "Corena",
+        "lastName": "Schardt",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0462",
+          "loc-0468"
+        ]
+      },
+      {
+        "id": "marnie",
+        "firstName": "Marnie",
+        "lastName": "Kettering",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0309"
+        ]
+      },
+      {
+        "id": "odette",
+        "firstName": "Odette",
+        "lastName": "Brannock",
+        "positionName": "Team Member Part Time",
+        "locationIds": [
+          "loc-0901",
+          "loc-0902"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "g4",
+    "source": "src/lib/ai/__fixtures__/replay_set.json (turns and criteria verbatim); roster: the test-only people in src/lib/ai/priority-replay.test.ts",
+    "turns": [
+      "create a coaching form for Sarah Test at manhatten",
+      "she was out of dress code"
+    ],
+    "criteria": {
+      "employee": "Sarah Test",
+      "salon": "loc-0462",
+      "date": null,
+      "policy": null,
+      "noBlockingQuestion": true,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-10-23",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "roster": [
+      {
+        "id": "elin",
+        "firstName": "Elin",
+        "lastName": "Haskett",
+        "positionName": "Salon Director",
+        "locationIds": [
+          "loc-0313",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "tavaeh",
+        "firstName": "Tavaeh",
+        "lastName": "Styles",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "sloane",
+        "firstName": "Sloane",
+        "lastName": "Wexford",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0314",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "daisley",
+        "firstName": "Daisley",
+        "lastName": "Veklo",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "corena",
+        "firstName": "Corena",
+        "lastName": "Schardt",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0462",
+          "loc-0468"
+        ]
+      },
+      {
+        "id": "marnie",
+        "firstName": "Marnie",
+        "lastName": "Kettering",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0309"
+        ]
+      },
+      {
+        "id": "odette",
+        "firstName": "Odette",
+        "lastName": "Brannock",
+        "positionName": "Team Member Part Time",
+        "locationIds": [
+          "loc-0901",
+          "loc-0902"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "g5",
+    "source": "src/lib/ai/__fixtures__/replay_set.json (turns and criteria verbatim); roster: the test-only people in src/lib/ai/priority-replay.test.ts",
+    "turns": [
+      "create a coaching form for Sarah Test",
+      "ok",
+      "she was out of dress code"
+    ],
+    "criteria": {
+      "employee": "Sarah Test",
+      "salon": null,
+      "date": null,
+      "policy": null,
+      "noBlockingQuestion": true,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-10-23",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "roster": [
+      {
+        "id": "elin",
+        "firstName": "Elin",
+        "lastName": "Haskett",
+        "positionName": "Salon Director",
+        "locationIds": [
+          "loc-0313",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "tavaeh",
+        "firstName": "Tavaeh",
+        "lastName": "Styles",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "sloane",
+        "firstName": "Sloane",
+        "lastName": "Wexford",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0314",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "daisley",
+        "firstName": "Daisley",
+        "lastName": "Veklo",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "corena",
+        "firstName": "Corena",
+        "lastName": "Schardt",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0462",
+          "loc-0468"
+        ]
+      },
+      {
+        "id": "marnie",
+        "firstName": "Marnie",
+        "lastName": "Kettering",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0309"
+        ]
+      },
+      {
+        "id": "odette",
+        "firstName": "Odette",
+        "lastName": "Brannock",
+        "positionName": "Team Member Part Time",
+        "locationIds": [
+          "loc-0901",
+          "loc-0902"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "g6",
+    "source": "src/lib/ai/__fixtures__/replay_set.json (turns and criteria verbatim); roster: the test-only people in src/lib/ai/priority-replay.test.ts",
+    "turns": [
+      "create a coaching form for Sarah Test",
+      "she was out of dress code"
+    ],
+    "criteria": {
+      "employee": "Sarah Test",
+      "salon": null,
+      "date": null,
+      "policy": null,
+      "noBlockingQuestion": true,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-10-23",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "roster": [
+      {
+        "id": "elin",
+        "firstName": "Elin",
+        "lastName": "Haskett",
+        "positionName": "Salon Director",
+        "locationIds": [
+          "loc-0313",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "tavaeh",
+        "firstName": "Tavaeh",
+        "lastName": "Styles",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "sloane",
+        "firstName": "Sloane",
+        "lastName": "Wexford",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0314",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "daisley",
+        "firstName": "Daisley",
+        "lastName": "Veklo",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "corena",
+        "firstName": "Corena",
+        "lastName": "Schardt",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0462",
+          "loc-0468"
+        ]
+      },
+      {
+        "id": "marnie",
+        "firstName": "Marnie",
+        "lastName": "Kettering",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0309"
+        ]
+      },
+      {
+        "id": "odette",
+        "firstName": "Odette",
+        "lastName": "Brannock",
+        "positionName": "Team Member Part Time",
+        "locationIds": [
+          "loc-0901",
+          "loc-0902"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "g7",
+    "source": "src/lib/ai/__fixtures__/replay_set.json (turns and criteria verbatim); roster: the test-only people in src/lib/ai/priority-replay.test.ts",
+    "turns": [
+      "create a coaching form for Sarah Test",
+      "Dodge"
+    ],
+    "criteria": {
+      "employee": "Sarah Test",
+      "salon": "loc-0903",
+      "date": null,
+      "policy": null,
+      "noBlockingQuestion": true,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-10-23",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "roster": [
+      {
+        "id": "elin",
+        "firstName": "Elin",
+        "lastName": "Haskett",
+        "positionName": "Salon Director",
+        "locationIds": [
+          "loc-0313",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "tavaeh",
+        "firstName": "Tavaeh",
+        "lastName": "Styles",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "sloane",
+        "firstName": "Sloane",
+        "lastName": "Wexford",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0314",
+          "loc-0410"
+        ]
+      },
+      {
+        "id": "daisley",
+        "firstName": "Daisley",
+        "lastName": "Veklo",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0313"
+        ]
+      },
+      {
+        "id": "corena",
+        "firstName": "Corena",
+        "lastName": "Schardt",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0462",
+          "loc-0468"
+        ]
+      },
+      {
+        "id": "marnie",
+        "firstName": "Marnie",
+        "lastName": "Kettering",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0309"
+        ]
+      },
+      {
+        "id": "odette",
+        "firstName": "Odette",
+        "lastName": "Brannock",
+        "positionName": "Team Member Part Time",
+        "locationIds": [
+          "loc-0901",
+          "loc-0902"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "r1",
+    "source": "Master plan step 1 (3 Nov 2026): the whole-staff list at one salon; asked for a Corrective Action Form (a Coaching Form for the whole staff is the team card in production: WHOLE_TEAM_COACHING). Invented people.",
+    "turns": [
+      "can you create a corrective action form for my whole staff?"
+    ],
+    "criteria": {
+      "employee": null,
+      "salon": null,
+      "date": null,
+      "policy": null,
+      "noBlockingQuestion": false,
+      "noLeakedInternalText": true,
+      "replyIncludes": [
+        "Dana Hollisworth",
+        "Eli Brackwater"
+      ],
+      "replyExcludes": [
+        "Fern Ostrander",
+        "Hale Wintermoor",
+        "Gus Penhallow"
+      ]
+    },
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "salon",
+        "primaryAreaId": "loc-0462",
+        "alsoCoversAreaIds": []
+      }
+    },
+    "flags": [
+      "STAFF_PICKER_ENABLED"
+    ],
+    "roster": [
+      {
+        "id": "r-dana",
+        "firstName": "Dana",
+        "lastName": "Hollisworth",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0462"
+        ]
+      },
+      {
+        "id": "r-eli",
+        "firstName": "Eli",
+        "lastName": "Brackwater",
+        "positionName": "Salon Director",
+        "locationIds": [
+          "loc-0462"
+        ]
+      },
+      {
+        "id": "r-fern",
+        "firstName": "Fern",
+        "lastName": "Ostrander",
+        "positionName": "Tanning Consultant",
+        "employmentStatus": "terminated",
+        "locationIds": [
+          "loc-0462"
+        ]
+      },
+      {
+        "id": "r-hale",
+        "firstName": "Hale",
+        "lastName": "Wintermoor",
+        "positionName": "Tanning Consultant",
+        "employmentStatus": "unknown",
+        "locationIds": [
+          "loc-0462"
+        ]
+      },
+      {
+        "id": "r-gus",
+        "firstName": "Gus",
+        "lastName": "Penhallow",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0309"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "s2",
+    "source": "replay_set 2026-10-24, Ask Sunny feedback 2026-09-23, rating 1; no real names in the turns",
+    "turns": [
+      "create a ca form for test testy because she didnt do deep clean assigned by 9-15-26",
+      "deep clean assigned 9-1-26 of room 1 and due by 9-15-26. no previous coaching or ca on file",
+      "employee acknowledged the jba policy manual so do a ca form.",
+      "Create a form from this conversation.",
+      "Create a Corrective Action Form from this conversation.",
+      "name is test testy",
+      "Create a form from this conversation.",
+      "employee name is test testy and salon is wornall",
+      "Create a Corrective Action Form from this conversation.",
+      "name is test testyone, location st joe, today's date, employee did not properly sanitize room 12 after guest. this is written. employee had verbal ca 9-1-26. employee is a tc-tanning consultant"
+    ],
+    "criteria": {
+      "employee": null,
+      "salon": null,
+      "date": null,
+      "policy": null,
+      "noBlockingQuestion": true,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-09-23",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "expected": "Create CA once name+salon given; keep deep-clean dates 9-1-26 / 9-15-26; accept JBA acknowledgment as prior notice; do not re-ask name after \"name is test testy\"."
+  },
+  {
+    "id": "s6",
+    "source": "replay_set 2026-10-24, Ask Sunny feedback 2026-09-25, rating 1; no real names in the turns",
+    "turns": [
+      "Create a form from this conversation.",
+      "Create a Corrective Action Form from this conversation.",
+      "test testy, tc at manhattan did not complete the 10 min sanitize clean when opening salon on 9-23-26",
+      "this is a verbal",
+      "test has been an employee for 7 months, create the ca",
+      "do a ca and cite the standards of conduct as the policy violated",
+      "Create a Policy Review from this conversation."
+    ],
+    "criteria": {
+      "employee": null,
+      "salon": null,
+      "date": null,
+      "policy": null,
+      "noBlockingQuestion": true,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-09-25",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "expected": "Respect manager choice of CA (JBA manual acknowledged); cite Standards of Conduct / Disinfection policy with page; carry details into a later Policy Review without re-asking."
+  },
+  {
+    "id": "s7",
+    "source": "replay_set 2026-10-24, Ask Sunny feedback 2026-09-28, rating 1; no real names in the turns",
+    "turns": [
+      "Create a coaching form for a performance concern.",
+      "name is test testy, todays date, shawnee location, test was late opening salon",
+      "create coaching form. test testy is ass't salon director. test did not call anyone about opening late",
+      "name is test testy and use todays date to create coaching form",
+      "Create a form from this conversation."
+    ],
+    "criteria": {
+      "employee": "Test Testy",
+      "salon": "loc-0463",
+      "date": "2026-09-28",
+      "policy": "Late Opening p.15",
+      "noBlockingQuestion": false,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-09-28",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "expected": "Create coaching form: Test Testy, Asst Salon Director, Shawnee, today, late opening (Late Opening p.15)."
+  },
+  {
+    "id": "s10",
+    "source": "replay_set 2026-10-24, Ask Sunny feedback 2026-09-29, rating 1; no real names in the turns",
+    "turns": [
+      "create a coaching for employee, test testy, who tanned on the clock on 9-28-26",
+      "Create a form from this conversation.",
+      "Create a Coaching Form from this conversation.",
+      "name is test testy, title is tanning consultant",
+      "Create a form from this conversation.",
+      "employee name is test testy. on 9-28-26 test tanned while on the clock",
+      "Create a form from this conversation."
+    ],
+    "criteria": {
+      "employee": "Test Testy",
+      "salon": null,
+      "date": "2026-09-28",
+      "policy": null,
+      "noBlockingQuestion": false,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-09-29",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "expected": "Create coaching form after \"name is test testy, title is tanning consultant\"; incident 9-28-26 tanning on the clock."
+  },
+  {
+    "id": "s13",
+    "source": "replay_set 2026-10-24, Ask Sunny feedback 2026-09-30, rating 4; names invented",
+    "turns": [
+      "whats the difference between corrective action and coaching form",
+      "write a corrective action for corena schardt, tanning consultant at manhattan, for not meeting the woven 9-30-26 deadline. this is a verbal warning.",
+      "payroll deduct is not applicable",
+      "the policy violated is the standards of conduct",
+      "Create a Coaching Form from this conversation.",
+      "create a corrective action for this",
+      "Create a Coaching Form from this conversation."
+    ],
+    "criteria": {
+      "employee": null,
+      "salon": null,
+      "date": null,
+      "policy": null,
+      "noBlockingQuestion": false,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-09-30",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "expected": "Cite Standards of Conduct (page) without being told; verbal CA, payroll N/A; allow coaching form + CA for same employee."
+  },
+  {
+    "id": "s14",
+    "source": "replay_set 2026-10-24, Ask Sunny feedback 2026-10-01, rating 3; names invented",
+    "turns": [
+      "help me create a coaching form",
+      "1.  Can I keep this field blank to use this coaching form with multiple staff?\n2. October 1st\n3. it's for october promotions, can i upload the pdf to read off of?\n4. tanning consultant",
+      "1. employee name is blank\n2. knowledge on october promotions",
+      "Timeline: October 1 \u2013 October 31\nOffers: \n\u2022 $5 Red Light Visits\n\u2022 Eight Red Light Visits for $35\n\u2022 Wellness Product Bundle: KIT Restored Red Light for $79.99 ($64.98 Savings + $6 Bonus)\n\u27a2 BOT Restored Prep Spray\n\u27a2 BOT Restored Post Cream\n\u27a2 BOT Restored Target Serum\n\u27a2 Five Wellness Visits\nTimeline: October 1 \u2013 October 31\nOffers: \n\u2022 $5 Red Light Visits\n\u2022 Eight Red Light Visits for $35\n\u2022 Wellness Product Bundle: KIT Restored Red Light for $79.99 ($64.98 Savings + $6 Bonus)\n\u27a2 BOT Restored Prep Spray\n\u27a2 BOT Restored Post Cream\n\u27a2 BOT Restored Target Serum\n\u27a2 Five Wellness Visits\nTimeline: October 1 \u2013 October 31\nOffers: \n\u2022 $5 Red Light Visits\n\u2022 Eight Red Light Visits for $35\n\u2022 Wellness Product Bundle: KIT Restored Red Light for $79.99 ($64.98 Savings + $6 Bonus)\n\u27a2 BOT Restored Prep Spray\n\u27a2 BOT Restored Post Cream\n\u27a2 BOT Restored Target Serum\n\u27a2 Five Wellness Visits\nTimeline: October 1 \u2013 October 31\nOffers: \n\u2022 $5 Red Light Visits\n\u2022 Eight Red Light Visits for $35\n\u2022 Wellness Product Bundle: KIT Restored Red Light for $79.99 ($64.98 Savings + $6 Bonus)\n\u27a2 BOT Restored Prep Spray\n\u27a2 BOT Restored Post Cream\n\u27a2 BOT Restored Target Serum\n\u27a2 Five Wellness Visits\nTimeline: October 1 \u2013 October 31\nOffers: \n\u2022 ",
+      "for rozlin quellmar.  all of it if possible",
+      "oh lets create a follow-up coaching form instead then",
+      "red light visits and mentioning them on every client check-in.",
+      "ok, create a follow-up coaching form for rozline quellmar.  for a must see behavior.  i trained her on the promotions, specificslly the $5 red light therapy promo, and  i roleplayed a couple objections with her. the follow-up is that i'll listen in on her with client engagment, tie the mention of redlight into the reason the client is there in the first place",
+      "Oops, it's Rozlyn quellmar",
+      "create a follow-up coaching form for rozlyn quellmar",
+      "can you clean up my grammar and capitalizing on proper nouns?",
+      "ok, make the grammatical changes mentioned that CAN be made.  i will listen to at least 10 check-ins on the next shift we overlap.",
+      "create a follow-up coaching form for Rozlyn Quellmar",
+      "can you carry over the other details from the other draft into any missing fields  here?",
+      "This draft is missing 'follow-up observation, 'progress level', and 'specific evidence' that was filled in the draft before that."
+    ],
+    "criteria": {
+      "employee": "Rozlyn Quellmar",
+      "salon": null,
+      "date": null,
+      "policy": null,
+      "noBlockingQuestion": false,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-10-01",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "roster": [
+      {
+        "id": "rozlyn",
+        "firstName": "Rozlyn",
+        "lastName": "Quellmar",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0462"
+        ]
+      }
+    ],
+    "expected": "Suggest \"Did you mean Rozlyn Quellmar?\"; keep fields across redrafts; auto clean grammar; support generic/team coaching."
+  },
+  {
+    "id": "s15",
+    "source": "replay_set 2026-10-24, Ask Sunny feedback 2026-10-02, rating 3; no real names in the turns",
+    "turns": [
+      "Help me prepare for a coaching conversation.",
+      "I have an employee that is not verifying documents are signed",
+      "The NCR and Fitzpatrick Skin Type Chart, EFT Agreements",
+      "Can you create a coaching form and a policy review? I'd like to see both",
+      "Can you make it generic so if the problem occurs elsewhere it can be used for any employee?"
+    ],
+    "criteria": {
+      "employee": null,
+      "salon": null,
+      "date": null,
+      "policy": null,
+      "noBlockingQuestion": false,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-10-02",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "expected": "Explain generic templates are not supported, offer coaching + policy review for named employee (NCR, Fitzpatrick, EFT docs)."
+  },
+  {
+    "id": "s18",
+    "source": "replay_set 2026-10-24, Ask Sunny feedback 2026-10-06, rating 3; names invented",
+    "turns": [
+      "Please make me a coaching form for romy vandersloot at the lincoln pine lake location Romy did not complete closing duties. Trash was not taken out of the bathrooms, there was no\ntoilet paper in the women's bathroom, and there were no spray towels in the rooms also all the cleaning duties were signed off in the binder and not alll were completed and the way she signed off on the checklist was incorrect she signed one box with a arrown throught the rest each box needs an initial",
+      "Can you make coaching work sheets for the team ? on closing duties at night ?"
+    ],
+    "criteria": {
+      "employee": null,
+      "salon": null,
+      "date": null,
+      "policy": null,
+      "noBlockingQuestion": false,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-10-06",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "expected": "Resolve NE Lincoln Pine Lake properly or explain access; team worksheet on closing duties."
+  },
+  {
+    "id": "s22",
+    "source": "replay_set 2026-10-24, Ask Sunny feedback 2026-10-07, rating 1; no real names in the turns",
+    "turns": [
+      "How can I change my password",
+      "How can I change the password on this platform"
+    ],
+    "criteria": {
+      "employee": null,
+      "salon": null,
+      "date": null,
+      "policy": null,
+      "noBlockingQuestion": false,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-10-07",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "expected": "Explain how to change Ask Sunny password (or point to admin/reset link)."
+  },
+  {
+    "id": "s23",
+    "source": "replay_set 2026-10-24, Ask Sunny feedback 2026-10-14, rating 1; no real names in the turns",
+    "turns": [
+      "How many google reviews do we have this far"
+    ],
+    "criteria": {
+      "employee": null,
+      "salon": null,
+      "date": null,
+      "policy": null,
+      "noBlockingQuestion": false,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-10-14",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "expected": "Read google_reviews and answer review count for KS Manhattan this period."
+  },
+  {
+    "id": "s24",
+    "source": "replay_set 2026-10-24, Ask Sunny feedback 2026-10-19, rating 1; no real names in the turns",
+    "turns": [
+      "Can you create a coaching form for EFT's and spa",
+      "Can you make a weekly coaching for how to get efts"
+    ],
+    "criteria": {
+      "employee": null,
+      "salon": null,
+      "date": null,
+      "policy": null,
+      "noBlockingQuestion": false,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-10-19",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "expected": "\"EFT's and spa\" is a topic, not an employee; ask who, or offer team coaching plan."
+  },
+  {
+    "id": "s26",
+    "source": "replay_set 2026-10-24, Ask Sunny feedback 2026-10-20, rating 2; names invented",
+    "turns": [
+      "create ca for Juno Haverkamp"
+    ],
+    "criteria": {
+      "employee": null,
+      "salon": null,
+      "date": null,
+      "policy": null,
+      "noBlockingQuestion": false,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-10-20",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "expected": "Allow editing/revision path for a finalized document (or explain clearly)."
+  },
+  {
+    "id": "sf-s1",
+    "source": "replay_set 2026-10-24, Ask Sunny silent-failure scan 2026-10-31; no real names in the turns",
+    "turns": [
+      "Show me the most recent Daily Stats and what I need to focus on today."
+    ],
+    "criteria": {
+      "employee": null,
+      "salon": null,
+      "date": null,
+      "policy": null,
+      "noBlockingQuestion": false,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-10-31",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "expected": "Full answer that finishes every priority (no cut-off). No form slots set from a stats question; 'Daily Stats' is never an employee name."
+  },
+  {
+    "id": "sf-s2",
+    "source": "replay_set 2026-10-24, Ask Sunny silent-failure scan 2026-10-31; no real names in the turns",
+    "turns": [
+      "step by step take an employee off myglow"
+    ],
+    "criteria": {
+      "employee": null,
+      "salon": null,
+      "date": null,
+      "policy": null,
+      "noBlockingQuestion": false,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-10-31",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "expected": "Give the myGlow termination steps; don't name any employee unless the manager named one."
+  },
+  {
+    "id": "sf-s3",
+    "source": "replay_set 2026-10-24, Ask Sunny silent-failure scan 2026-11-02; names invented",
+    "turns": [
+      "MAKE ME a CA for odalys. she was tardy this morning",
+      "yes",
+      "what policy was violayted",
+      "what do i put in policy violated",
+      "what exatly do i put in the policy tab",
+      "what is direct policy from manual"
+    ],
+    "criteria": {
+      "employee": null,
+      "salon": null,
+      "date": null,
+      "policy": "Attendance p.14",
+      "noBlockingQuestion": false,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-11-02",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "expected": "Answer the policy question (Attendance, p.14, with what goes in Policy Violated and Direct policy). Never append questions to Observation. The saved draft gets the quoted policy text the card promised."
+  },
+  {
+    "id": "sf-s4",
+    "source": "replay_set 2026-10-24, Ask Sunny silent-failure scan 2026-11-02; names invented",
+    "turns": [
+      "What does our policy say about attendance?",
+      "i need another for failure to complete opening duties",
+      "a CA",
+      "Odalys merriwether failed to take trash out and put rugs out untl 12;30pm",
+      "make me a CA for Odalys merriwether for being late to opening this morning"
+    ],
+    "criteria": {
+      "employee": null,
+      "salon": null,
+      "date": null,
+      "policy": null,
+      "noBlockingQuestion": false,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-11-02",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "expected": "Policy on the card matches the saved form. Observation holds only the incident. A new request for a new incident drafts that incident. Each prior form listed once."
+  },
+  {
+    "id": "sf-s5",
+    "source": "replay_set 2026-10-24, Ask Sunny silent-failure scan 2026-11-02; names invented",
+    "turns": [
+      "can you create a CA for must see behaviors",
+      "Linnea Ostrowe was below the company average last month in the following categories; PPTA, LPSVA, Club Close%, and spa %",
+      "can you make a verbal warning Ca",
+      "yes",
+      "my DM told me she gets one this month",
+      "we have already done coaching"
+    ],
+    "criteria": {
+      "employee": null,
+      "salon": null,
+      "date": null,
+      "policy": null,
+      "noBlockingQuestion": false,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-11-02",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "roster": [
+      {
+        "id": "linnea",
+        "firstName": "Linnea",
+        "lastName": "Ostrowe",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0462"
+        ]
+      }
+    ],
+    "expected": "'Must see behaviors' is a policy topic, never a name. Explain the progression once, then accept the manager's statement that coaching was done. Correct job title from Woven."
+  },
+  {
+    "id": "sf-s6",
+    "source": "replay_set 2026-10-24, Ask Sunny silent-failure scan 2026-11-02; names invented",
+    "turns": [
+      "Can you make a written CA for maren kloster on performance",
+      "She had 24 tans and was below in Below in PPTA, LPSVA, Avg Club, CC%, and Spa%",
+      "the policy would be must see behaviors on woven"
+    ],
+    "criteria": {
+      "employee": null,
+      "salon": null,
+      "date": null,
+      "policy": null,
+      "noBlockingQuestion": false,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-11-02",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "expected": "Naming the policy updates the policy fields only; the observation keeps the 24 tans / below-average details. Each prior form listed once."
+  },
+  {
+    "id": "sf-s7",
+    "source": "replay_set 2026-10-24, Ask Sunny silent-failure scan 2026-11-02; names invented",
+    "turns": [
+      "I need to create a verbal corrective action form",
+      "Hollis dunworth",
+      "underperformance for the month of october"
+    ],
+    "criteria": {
+      "employee": null,
+      "salon": null,
+      "date": null,
+      "policy": null,
+      "noBlockingQuestion": false,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-11-02",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "expected": "Update the existing draft instead of opening a new one, and never drop fields the manager typed on the card."
+  },
+  {
+    "id": "sf-s8",
+    "source": "replay_set 2026-10-24, Ask Sunny silent-failure scan 2026-11-02; names invented",
+    "turns": [
+      "MSB CA for Nerys Feldhaus for underperformance in the month of October",
+      "MSB CA for Nerys Feldhaus for underperformance in the month of October with \"Bonus Policy\" from the Policy Manual",
+      "MSB CA for Nerys Feldhaus for underperformance in the month of October with \"Bonus Policy\" from the Policy Manual. Previous Coaching is when she signed the Policy manual May 2025"
+    ],
+    "criteria": {
+      "employee": null,
+      "salon": null,
+      "date": null,
+      "policy": null,
+      "noBlockingQuestion": false,
+      "noLeakedInternalText": true,
+      "replyIncludes": [
+        "May 2025"
+      ]
+    },
+    "today": "2026-11-02",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "expected": "Prior Actions gets 'JBA Policy Manual \u2014 signed May 2025' and the reply says so."
+  },
+  {
+    "id": "sf-s9",
+    "source": "replay_set 2026-10-24, Ask Sunny silent-failure scan 2026-11-02; names invented",
+    "turns": [
+      "Create a coaching form.",
+      "can you create a CA for calling in for a shift less than 2 hours before the shift started",
+      "Thea Wolcroft",
+      "what is the newest proposal"
+    ],
+    "criteria": {
+      "employee": null,
+      "salon": null,
+      "date": null,
+      "policy": null,
+      "noBlockingQuestion": false,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-11-02",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "expected": "Answer the question; Observation stays the incident only."
+  },
+  {
+    "id": "sf-s10",
+    "source": "replay_set 2026-10-24, Ask Sunny silent-failure scan 2026-11-02; no real names in the turns",
+    "turns": [
+      "Give me a mock coaching form for practice"
+    ],
+    "criteria": {
+      "employee": null,
+      "salon": null,
+      "date": null,
+      "policy": null,
+      "noBlockingQuestion": false,
+      "noLeakedInternalText": true
+    },
+    "today": "2026-11-02",
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "global",
+        "primaryAreaId": null,
+        "alsoCoversAreaIds": []
+      }
+    },
+    "expected": "Never save 'Practice' as an employee name; ask whether to use a sample name or make a clearly-labelled example."
+  }
+]

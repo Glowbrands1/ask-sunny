@@ -2,7 +2,10 @@ import "server-only";
 
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
+import { closeStages } from "./chat-stage-timings";
 import { chatTraceDraft, runChatTrace, type ChatTraceDraft } from "./chat-trace-store";
+import type { TokenUsage } from "./model-prices";
+import { activeSpendMeter, takeSpend, type SpendSource } from "./spend-meter";
 
 /**
  * Write one chat_traces row after the turn, without blocking or failing it.
@@ -64,6 +67,8 @@ export function scheduleChatTrace(draft: ChatTraceDraft): void {
 }
 
 async function persistChatTrace(draft: ChatTraceDraft): Promise<void> {
+  // SPEND_GUARD_ALL_CALLS_ENABLED: every call this turn made so far goes on its row (`spend-meter.ts`).
+  const metered = activeSpendMeter() ? { metered: true, spend: takeSpend() } : null;
   try {
     const model = draft.modelCall;
     const admin = getSupabaseAdmin();
@@ -86,12 +91,13 @@ async function persistChatTrace(draft: ChatTraceDraft): Promise<void> {
       cache_creation_input_tokens: model?.cacheCreationInputTokens ?? null,
       cache_read_input_tokens: model?.cacheReadInputTokens ?? null,
       first_token_ms: model?.firstTokenMs ?? null,
+      e2e_latency_ms: model?.e2eLatencyMs ?? null,
       latency_ms: model?.latencyMs ?? Date.now() - draft.startedAt,
       error_subtype: draft.errorSubtype,
       error_class: draft.errorClass,
       error_status: draft.errorStatus,
       form_in_progress: draft.formInProgress,
-      slots: draft.slots ?? {},
+      slots: withStages(withDraftCheck(withFormEdit(metered ? { ...(draft.slots ?? {}), ...metered } : (draft.slots ?? {}), draft.formEdit), draft.draftCheck), draft.stages, draft.stagesFrom ?? draft.startedAt),
       retryable: model?.retryable ?? false,
       retried: false,
       succeeded: draft.succeeded === true,
@@ -105,6 +111,52 @@ async function persistChatTrace(draft: ChatTraceDraft): Promise<void> {
   }
 }
 
+/** CHAT_STAGE_TIMINGS_ENABLED: `stages` beside the other slots, in start order; absent, the slots as before. */
+function withStages(slots: Record<string, unknown>, stages: ChatTraceDraft["stages"], receivedAt: number): Record<string, unknown> {
+  const closed = closeStages(stages, receivedAt);
+  return closed && closed.length > 0 ? { ...slots, stages: closed } : slots;
+}
+
+/** FORM_EDIT_SINGLE_WRITER_ENABLED: the post-draft check's keys, when it ran; otherwise the slots as they were. */
+function withDraftCheck(slots: Record<string, unknown>, check: Record<string, unknown> | undefined): Record<string, unknown> {
+  return check ? { ...slots, draft_check: check } : slots;
+}
+
+/** FORM_EDIT_TOOL_IN_STREAM_ENABLED: `form_edit` beside the other slots; absent, the slots as before. */
+function withFormEdit(slots: Record<string, unknown>, formEdit: Record<string, unknown> | undefined): Record<string, unknown> {
+  return formEdit ? { ...slots, form_edit: { ...formEdit } } : slots;
+}
+
+/**
+ * SPEND_GUARD_ALL_CALLS_ENABLED: the Claude calls of a request that no chat
+ * trace row carries — a turn answered before `answerQuestion` (a correction, a
+ * revision), the Create card's draft, Sales Totals, template ingest. No
+ * conversation, so no turn's slots are read from it (`form-remap-scope.ts`);
+ * no model, so the daily cap does not count it. Never blocks or fails the request.
+ */
+export async function persistSpendRow(input: {
+  readonly source: SpendSource;
+  readonly userId: string | null;
+  readonly calls: readonly TokenUsage[];
+}): Promise<void> {
+  try {
+    const inserted = await getSupabaseAdmin().from("chat_traces").insert({
+      conversation_id: null,
+      message_id: null,
+      user_id: input.userId,
+      original_query: `[spend] ${input.source}`,
+      intent: "spend",
+      model: null,
+      slots: { spend_source: input.source, spend: input.calls },
+      succeeded: true,
+    });
+    const error = inserted && typeof inserted === "object" && "error" in inserted ? inserted.error : null;
+    if (error) throw error;
+  } catch (error) {
+    console.warn(traceInsertWarning(error));
+  }
+}
+
 /** What to log when a chat_traces insert does not land. */
 export function traceInsertWarning(error: unknown): string {
   const message =
@@ -113,6 +165,9 @@ export function traceInsertWarning(error: unknown): string {
       : error && typeof error === "object" && "message" in error && typeof error.message === "string"
         ? error.message
         : String(error);
+  if (/e2e_latency_ms/i.test(message)) {
+    return `chat_traces insert skipped: the end-to-end latency column is missing. Apply supabase/migrations/20261024160000_chat_traces_e2e_latency.sql before CHAT_TRACE_ENABLED. ${message}`;
+  }
   const missingCacheColumns = /cache_creation_input_tokens|cache_read_input_tokens|first_token_ms/i.test(message);
   if (missingCacheColumns) {
     return `chat_traces insert skipped: the cache columns are missing. Apply supabase/migrations/20261024020000_chat_traces_cache.sql before CHAT_TRACE_ENABLED. ${message}`;

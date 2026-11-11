@@ -503,7 +503,7 @@ export function liveRatingOnlyFeed() {
       cards: [
         liveReviewCard({
           lid: "FIXTURE-LIVE-146-1",
-          reviewer: "Hailey Werne",
+          reviewer: "Ottilie Pellar",
           rating: 4,
           relativeDate: "3 hours ago",
         }),

@@ -1,18 +1,21 @@
 import "server-only";
 
 import { PRODUCTION_SALONS } from "@/data/salons";
-import { CLAUDE_HAIKU_MODEL } from "@/lib/config/models";
-import { intentExtractionEnabled } from "@/lib/config/chat-quality-flags";
+import { CLAUDE_HAIKU_MODEL, CLAUDE_READER_MODEL } from "@/lib/config/models";
+import { aiReadsCodeChecksEnabled, intentExtractionEnabled, lastFirstNameReadEnabled, remapIncidentFixEnabled } from "@/lib/config/chat-quality-flags";
 import { readDirectoryFacts, loadScopedRoster, type DirectoryFact } from "@/lib/forms/employee-roster";
 import { listTemplateSummaries } from "@/lib/forms/repository";
+import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import { findManualSection, manualSectionHeadings } from "@/lib/forms/official-policy-manual";
 import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
 
 import { callClaudeTool } from "./call-claude";
+import { glossaryBlock } from "./chat-glossary";
 import type { ChatActor } from "./form-proposal";
 import { loadFormState, saveFormState } from "./form-state-store";
 import { updateChatTrace } from "./chat-trace-store";
 import { stateSentences } from "./form-state";
+import { isTeamCardTurn } from "@/lib/forms/whole-team-coaching";
 import type { GroundedPerson } from "./grounded-entities";
 import {
   decideIntentTurn,
@@ -20,6 +23,10 @@ import {
   INTENT_TOOL_INPUT_SCHEMA,
   INTENT_TOOL_NAME,
 } from "./intent-slots";
+import { lastFirstReading } from "./reader/last-first";
+import { readFormRequest, type ReaderResult } from "./reader/read";
+import { priorShorthand, requestScopedHistory, startsNewForm } from "./remap-incident";
+import { startsFormForAnotherPerson } from "./new-person-request";
 import type { AskRequest, AskResponse } from "./types";
 
 /**
@@ -44,14 +51,34 @@ export async function applyIntentExtraction(input: {
   readonly actor: ChatActor;
 }): Promise<{ request: AskRequest; clarification: AskResponse | null; formTurn: boolean }> {
   if (!intentExtractionEnabled()) return { request: input.request, clarification: null, formTurn: false };
+  // WHOLE_TEAM_COACHING_ENABLED: the team card is the intake's; the stored slots of a person are not its subject.
+  if (isTeamCardTurn(input.request)) return { request: input.request, clarification: null, formTurn: false };
   try {
-    const saved = await readSaved(input.actor.subject, input.request.conversationId);
+    // REMAP_INCIDENT_FIX_ENABLED: a later create request with its own incident
+    // is a new form, so the old form's stored slots are not carried onto it.
+    // NEW_PERSON_REQUEST_ENABLED: "also create a ca for <another> …" is a new form for that person too.
+    const anotherPerson = startsFormForAnotherPerson(input.request.history, input.request.question);
+    const newForm = (remapIncidentFixEnabled() && startsNewForm(input.request.history, input.request.question)) || anotherPerson;
+    const saved = newForm ? null : await readSaved(input.actor.subject, input.request.conversationId);
     const [people, manual, templates] = await Promise.all([
       loadPeople(input.actor),
       loadManualIndex(input.request.scopeId),
       loadTemplates(),
     ]);
     const salons = PRODUCTION_SALONS.map((salon) => ({ id: salon.id, name: salon.name }));
+    const turns = anotherPerson ? [] : requestScopedHistory(input.request.history, input.request.question);
+    const checkContext = {
+      managerTurns: [...turns.filter((turn) => turn.role === "user").map((turn) => turn.content), input.request.question],
+      people,
+      locations: salons,
+      headings: manual.headings,
+      today: input.request.context.todayIso,
+    };
+    const readsForm = readsAForm(input.request, saved);
+    // AI_READS_CODE_CHECKS_ENABLED: the reader runs beside the slot call, on a form turn only.
+    const reading = aiReadsCodeChecksEnabled() && readsForm
+      ? readFormRequest({ turns: [...turns, { role: "user", content: input.request.question }], context: checkContext })
+      : null;
     const raw = await callClaudeTool({
       model: CLAUDE_HAIKU_MODEL,
       system: SYSTEM,
@@ -68,10 +95,26 @@ export async function applyIntentExtraction(input: {
         },
       ],
     }).catch(() => null);
+    // LAST_FIRST_NAME_READ_ENABLED: with no AI reader, "Marlowe, Quinn" is read by the reader's own checks, no model.
+    const lastFirst = !reading && readsForm && lastFirstNameReadEnabled() ? lastFirstReading(checkContext) : null;
+    const read: ReaderResult | { readonly fallback: string } | null = reading
+      ? await reading
+      : lastFirst
+        ? { checked: lastFirst, usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }, ms: 0 }
+        : null;
+    const checked = read && "checked" in read ? read.checked : null;
 
+    // REMAP_INCIDENT_FIX_ENABLED: "prior = manual ack 9/01" is a prior step, not the incident date.
+    const fixed = remapIncidentFixEnabled();
     const decision = decideIntentTurn({
-      question: input.request.question,
-      history: input.request.history,
+      question: fixed ? priorShorthand(input.request.question) : input.request.question,
+      history: anotherPerson
+        ? []
+        : fixed
+        ? requestScopedHistory(input.request.history, input.request.question).map((turn) =>
+            turn.role === "user" ? { ...turn, content: priorShorthand(turn.content) } : turn,
+          )
+        : input.request.history,
       today: input.request.context.todayIso,
       saved,
       raw,
@@ -86,6 +129,7 @@ export async function applyIntentExtraction(input: {
           input.request.openForm ||
           input.request.activeFormInstanceId,
       ),
+      checked,
     });
     await writeSaved(input.actor.subject, input.request.conversationId, decision.state);
     updateChatTrace({
@@ -98,6 +142,7 @@ export async function applyIntentExtraction(input: {
         policyPage: decision.state.policyPage,
         templateKey: decision.state.templateKey,
         pendingConfirmation: decision.state.pendingConfirmation ?? null,
+        ...(read ? { reader: readerTrace(read, decision.reader) } : {}),
       },
     });
     // A form turn keeps its card. A date, a salon, or a warning question used
@@ -123,6 +168,29 @@ export async function applyIntentExtraction(input: {
   }
 }
 
+/** A turn that files a form, or answers about one already open. */
+function readsAForm(request: AskRequest, saved: { templateKey?: string | null } | null): boolean {
+  if (saved?.templateKey || request.continueProposalTemplateKey || request.openForm || request.activeFormInstanceId) return true;
+  return detectTemplateIntent(request.question).kind !== "none";
+}
+
+/** AI_READS_CODE_CHECKS_ENABLED: kept in the chat trace, so cost, fallbacks and disagreements can be counted. */
+function readerTrace(
+  read: ReaderResult | { readonly fallback: string },
+  merged: { readonly filled: readonly string[]; readonly disputed: readonly string[] } | undefined,
+): Record<string, unknown> {
+  if ("fallback" in read) return { fallback: read.fallback };
+  return {
+    // The spend guard prices the reader's usage at this model (ai/spend-guard-reader.ts).
+    ...(read.ms > 0 ? { model: CLAUDE_READER_MODEL } : { source: "last_first" }),
+    ms: read.ms,
+    usage: read.usage,
+    rejected: read.checked.rejected,
+    filled: merged?.filled ?? [],
+    disputed: merged?.disputed ?? [],
+  };
+}
+
 function userBlock(request: AskRequest, saved: string, headings: readonly string[]): string {
   const turns = [...request.history, { role: "user", content: request.question }]
     .filter((turn) => turn.content.trim() !== "")
@@ -130,7 +198,9 @@ function userBlock(request: AskRequest, saved: string, headings: readonly string
     .map((turn) => `${turn.role === "assistant" ? "Assistant" : "Manager"}: ${turn.content.trim().slice(0, 1500)}`);
   const state = saved ? `Stored form state:\n${saved}\n\n` : "";
   const manual = headings.length > 0 ? `Manual headings:\n${headings.map((heading) => `- ${heading}`).join("\n")}\n\n` : "";
-  return `${state}${manual}Today is ${request.context.todayIso}.\n\n${turns.join("\n\n")}`;
+  // CHAT_GLOSSARY_ENABLED: the abbreviation table first, as one more context block. Off, nothing is added.
+  const glossary = glossaryBlock();
+  return `${glossary ? `${glossary}\n\n` : ""}${state}${manual}Today is ${request.context.todayIso}.\n\n${turns.join("\n\n")}`;
 }
 
 async function readSaved(userId: string | undefined, conversationId: string | undefined) {

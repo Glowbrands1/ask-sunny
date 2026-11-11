@@ -130,16 +130,16 @@ describe("few-shot examples stay in this company", () => {
     const prompt = fewShotPrompt(
       [
         {
-          id: "lisa",
+          id: "nadia",
           rating: 5,
           scopeId: "stc-core",
-          question: "coaching for Lisa Smith at Lawrence today",
-          answer: "You mentioned Lisa Smith earlier today.",
+          question: "coaching for Nadia Brook at Lawrence today",
+          answer: "You mentioned Nadia Brook earlier today.",
         },
       ],
-      ["Lisa Smith"],
+      ["Nadia Brook"],
     );
-    expect(prompt).not.toContain("Lisa Smith");
+    expect(prompt).not.toContain("Nadia Brook");
     expect(prompt).toContain("[employee 1]");
     expect(prompt).toContain("Do not tell the manager they mentioned");
   });

@@ -238,8 +238,8 @@ describe("replay citations come from the chunk, and the JBA manual is not re-con
 
 const LAWRENCE: GroundedPerson = {
   id: "m-lawrence",
-  firstName: "Marissa",
-  lastName: "Lempka",
+  firstName: "Larissa",
+  lastName: "Venko",
   salonIds: ["loc-0468"],
   title: "Salon Director",
   primaryLocationName: "KS Lawrence",
@@ -247,8 +247,8 @@ const LAWRENCE: GroundedPerson = {
 
 const JOSEPH: GroundedPerson = {
   id: "m-joseph",
-  firstName: "Marissa",
-  lastName: "Lempka",
+  firstName: "Larissa",
+  lastName: "Venko",
   salonIds: ["loc-0495"],
   title: "Shift Lead",
   primaryLocationName: "MO St Joseph",
@@ -322,22 +322,22 @@ describe("replay names resolve against the roster, and a document is not an empl
 
   it("two people with the same name are told apart by salon and title", () => {
     const labeled = labelDuplicateQuestion(
-      "Did you mean **Marissa Lempka** or **Marissa Lempka**?",
+      "Did you mean **Larissa Venko** or **Larissa Venko**?",
       [LAWRENCE, JOSEPH],
-      "Marissa Lempka",
+      "Larissa Venko",
     );
     expect(labeled).toContain("KS Lawrence");
     expect(labeled).toContain("Salon Director");
     expect(labeled).toContain("MO St Joseph");
     expect(labeled).toContain("Shift Lead");
-    expect(labeled).toContain("a close match for **Marissa Lempka**");
+    expect(labeled).toContain("a close match for **Larissa Venko**");
   });
 
-  it.each(["the first one", "1", "keep marissa"])("the choice %s is remembered on the next question", (reply) => {
+  it.each(["the first one", "1", "keep larissa"])("the choice %s is remembered on the next question", (reply) => {
     const asked = labelDuplicateQuestion(
-      "Did you mean **Marissa Lempka** or **Marissa Lempka**?",
+      "Did you mean **Larissa Venko** or **Larissa Venko**?",
       [LAWRENCE, JOSEPH],
-      "Marissa Lempka",
+      "Larissa Venko",
     );
     const prep = prepareGroundedQuestion({
       question: reply,
@@ -347,7 +347,7 @@ describe("replay names resolve against the roster, and a document is not an empl
     });
     expect(prep.question.startsWith("The employee is ")).toBe(true);
     expect(prep.question.toLowerCase()).not.toContain("the employee is keep");
-    if (reply === "keep marissa") expect(prep.keptTypedName).toBe("Marissa Lempka");
+    if (reply === "keep larissa") expect(prep.keptTypedName).toBe("Larissa Venko");
     else expect(prep.employeeId).toBe(LAWRENCE.id);
   });
 
@@ -383,7 +383,7 @@ describe("replay state, dedupe, reviews, and the two-sentence plan", () => {
   it("a saved warning, payroll answer, and salon are already on the next question", () => {
     const next = prependFormState("anything else?", {
       employeeId: LAWRENCE.id,
-      employeeName: "Marissa Lempka",
+      employeeName: "Larissa Venko",
       keptTypedName: null,
       salonId: "loc-0495",
       title: "Shift Lead",
@@ -398,7 +398,7 @@ describe("replay state, dedupe, reviews, and the two-sentence plan", () => {
       payrollAmount: null,
       payrollDeductAmount: null,
     });
-    expect(next).toContain("The employee is Marissa Lempka.");
+    expect(next).toContain("The employee is Larissa Venko.");
     expect(next).toContain("Warning level: verbal.");
     expect(next).toContain("No payroll deduction.");
     expect(next).toContain("It happened at MO St Joseph.");
@@ -409,7 +409,7 @@ describe("replay state, dedupe, reviews, and the two-sentence plan", () => {
     const rows = [
       {
         id: "old",
-        employeeName: "Marissa Lempka",
+        employeeName: "Larissa Venko",
         locationId: "loc-0468",
         createdAt: "2026-10-23T12:00:00Z",
         narrative: "She was late opening the salon on October 1.",
@@ -418,7 +418,7 @@ describe("replay state, dedupe, reviews, and the two-sentence plan", () => {
     ];
     const same = {
       templateKey: "dpoa",
-      employeeName: "marissa lempka",
+      employeeName: "larissa venko",
       createdBy: "manager",
       locationId: "loc-0468",
     };
@@ -437,7 +437,7 @@ describe("replay state, dedupe, reviews, and the two-sentence plan", () => {
   it("employee memory from another chat stays out, and a salon fact stays", () => {
     const visible = factsVisibleInConversation(
       [
-        { kind: "employee", key: "employee", value: "Marissa Lempka", sourceConversationId: "other" },
+        { kind: "employee", key: "employee", value: "Larissa Venko", sourceConversationId: "other" },
         { kind: "salon", key: "salon", value: "KS Lawrence", sourceConversationId: "other" },
       ],
       "this-chat",
@@ -457,7 +457,7 @@ describe("replay state, dedupe, reviews, and the two-sentence plan", () => {
     expect(showDraftWithEdits("SHOW the DRAFT WITH EDITS")).toBe(true);
     const existing = [
       { fieldKey: "offense_type", value: null, checked: ["tardiness"] },
-      { fieldKey: "action_plan", value: "Management will review Attendance with Marissa.", checked: [] },
+      { fieldKey: "action_plan", value: "Management will review Attendance with Larissa.", checked: [] },
     ];
     const kept = retainFilledFields({
       question: "show draft with edits",
@@ -491,7 +491,7 @@ describe("replay state, dedupe, reviews, and the two-sentence plan", () => {
     const input = {
       citedPolicies: ["Standards of Conduct"],
       policyViolated: null,
-      employeeName: "Marissa Lempka",
+      employeeName: "Larissa Venko",
       payroll: { answer: "yes" as const, amount: "$25.00" },
     };
     const two = twoSentenceActionPlan(input);

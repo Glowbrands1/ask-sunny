@@ -24,9 +24,13 @@ import { isProposalSuperseded } from "@/lib/forms/proposal-continuation";
 import type { ChatFormInstanceRef, ChatFormProposal, ChatMessage } from "@/types";
 import { chatErrorTitle } from "./chat-error";
 import { FormPicker } from "./form-picker";
+import { CardChangePanel } from "./card-change-panel";
 import { logTurnEvent } from "@/lib/analytics/telemetry";
+import { reusedDraftNotice } from "@/lib/forms/reused-draft-notice";
+
 import { DRAFT_FAILED_WARNING, createInlineForm } from "./create-inline-form";
 import { InlineForm, type PrefillState } from "./inline-form";
+import { FormRevisionsMount } from "@/form-revisions/form-revisions-mount";
 
 export function MessageBubble({
   message,
@@ -98,11 +102,12 @@ export function MessageBubble({
      */
     return (
       <div className="flex items-start justify-end gap-3">
-        <div className="max-w-[44ch] rounded-[var(--radius-lg)] border border-border bg-surface px-4 py-3 shadow-soft">
-          <p className="text-[13.5px] leading-relaxed whitespace-pre-wrap text-foreground">
+        {/* CLAY: the manager's question is a yellow pillow, as in the mockup. */}
+        <div className="clay-bubble-user max-w-[44ch] rounded-[26px] px-[18px] py-3.5">
+          <p className="text-[14px] leading-relaxed font-semibold whitespace-pre-wrap">
             {message.content}
           </p>
-          <p className="mt-1.5 text-[9.5px] text-muted-foreground">
+          <p className="mt-1.5 text-[9.5px] text-gold-deep">
             {formatChatTime(message.createdAt)}
           </p>
         </div>
@@ -153,7 +158,8 @@ export function MessageBubble({
       <span className="mt-0.5 grid size-[30px] shrink-0 place-items-center rounded-full bg-brand-yellow">
         <SunMark className="size-[19px]" onBrand />
       </span>
-      <div className="min-w-0 max-w-[78ch] flex-1">
+      {/* CLAY: Sunny's answer sits on a puffy warm card, as in the mockup. */}
+      <div className="clay-bubble-sunny min-w-0 max-w-[78ch] flex-1 rounded-[26px] px-5 py-4">
         <div>
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <span className="display text-[16px] text-foreground">Sunny</span>
@@ -197,13 +203,19 @@ export function MessageBubble({
               proposal: the form existed before this answer. The card is the
               same live editor a created form gets.
             */
-            <InlineForm
+            <FormRevisionsMount
               reference={message.formInstanceRef}
-              prefill={OPENED_PREFILL}
               onReplaced={(reference) => onFormCreated?.(message.id, reference)}
-              onStartAnother={onStartAnother}
-            />
+            >
+              <InlineForm
+                reference={message.formInstanceRef}
+                prefill={OPENED_PREFILL}
+                onReplaced={(reference) => onFormCreated?.(message.id, reference)}
+                onStartAnother={onStartAnother}
+              />
+            </FormRevisionsMount>
           ) : null}
+          <CardChangePanel proposal={message.formProposal} created={Boolean(message.formInstanceRef)} conversation={conversation ?? []} placeLabel="Salon" onSend={onSuggestion} />
 
           {/*
             A CONVERSATION FROM BEFORE PHASE 2.
@@ -290,7 +302,7 @@ export function MessageBubble({
                   type="button"
                   onClick={() => onSuggestion(suggestion)}
                   className={cn(
-                    "rounded-[22px] border bg-surface px-3.5 py-[7px] text-left text-[11.5px] font-bold transition-colors",
+                    "rounded-[22px] border bg-surface px-3.5 py-[7px] text-left text-[11.5px] font-bold shadow-chip transition-[color,background-color,transform] hover:-translate-y-px",
                     buildsForm
                       ? "border-measure-data text-measure-flagged-foreground hover:bg-followup-attention-soft"
                       : "border-border-strong text-foreground hover:border-brand-yellow",
@@ -384,6 +396,12 @@ function FormProposalCard({
    * is still the conversation's; this one just closes the window between them.
    */
   const [created, setCreated] = React.useState<ChatFormInstanceRef | null>(null);
+  /*
+   * CREATE REOPENED THIS CHAT'S OPEN DRAFT (DRAFT_REUSE_SAME_CHAT_ONLY_ENABLED):
+   * its date, said on the card so the manager knows no new draft was filed.
+   * The server sends it only with the flag on.
+   */
+  const [reusedFrom, setReusedFrom] = React.useState<string | null>(null);
   /*
    * WHICH SALON, WHEN THE ACTOR COVERS SEVERAL.
    *
@@ -511,6 +529,7 @@ function FormProposalCard({
        * what appears is what the server stored rather than what the drafting
        * response happened to return.
        */
+      if (result.reusedFrom) setReusedFrom(result.reusedFrom);
       if (result.draftWarning) {
         /*
          * THE ROW EXISTS AND THE PREFILL DID NOT. Said on the card, and said in
@@ -571,24 +590,34 @@ function FormProposalCard({
     </p>
   ) : null;
 
+  const reusedNote = reusedFrom ? (
+    <p data-testid="reused-draft-note" className="mt-2 text-xs leading-relaxed text-muted-foreground">
+      {reusedDraftNotice(reusedFrom)}
+    </p>
+  ) : null;
+
   const reference = instanceRef ?? created;
+  const replaced = (next: ChatFormInstanceRef) => {
+    setCreated(next);
+    onCreated(next);
+  };
   if (reference) {
     return (
       <>
-        <InlineForm
-          reference={reference}
-          prefill={prefill}
-          onStartAnother={onStartAnother}
-          /*
-            "Edit as new draft" on a finalized form: the card now points at the
-            new draft, persisted on this message the same way the created form
-            was, so a refresh reopens the draft rather than the frozen original.
-          */
-          onReplaced={(next) => {
-            setCreated(next);
-            onCreated(next);
-          }}
-        />
+        {reusedNote}
+        <FormRevisionsMount reference={reference} onReplaced={replaced}>
+          <InlineForm
+            reference={reference}
+            prefill={prefill}
+            onStartAnother={onStartAnother}
+            /*
+              "Edit as new draft" on a finalized form: the card now points at the
+              new draft, persisted on this message the same way the created form
+              was, so a refresh reopens the draft rather than the frozen original.
+            */
+            onReplaced={replaced}
+          />
+        </FormRevisionsMount>
         {closeMatchNote}
       </>
     );
@@ -647,6 +676,22 @@ function FormProposalCard({
             </Missing>
           )}
         </ProposalRow>
+        {proposal.formDate ? <ProposalRow label="Date">{proposal.formDate}</ProposalRow> : null}
+        {proposal.incidentTime ? <ProposalRow label="Time">{proposal.incidentTime}</ProposalRow> : null}
+        {proposal.warningLevel ? (
+          <ProposalRow label="Type of warning">
+            {proposal.warningLevel === "verbal" ? "Verbal Warning" : "Written Warning"}
+          </ProposalRow>
+        ) : null}
+        {proposal.priorActions ? (
+          <ProposalRow label="Prior action">
+            <span className="whitespace-pre-line">{proposal.priorActions}</span>
+          </ProposalRow>
+        ) : null}
+        {proposal.payrollDeduct ? (
+          <ProposalRow label="Payroll deduct">{proposal.payrollDeduct === "yes" ? "Yes" : "No"}</ProposalRow>
+        ) : null}
+        {proposal.issue ? <ProposalRow label="What happened">{proposal.issue}</ProposalRow> : null}
       </dl>
 
       {/*

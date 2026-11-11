@@ -4,9 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { FileStack, History, PanelRightClose, PanelRightOpen, Plus, X } from "lucide-react";
 
+import { SunnyMascot } from "@/components/sunny-mascot";
 import { Button } from "@/components/ui/button";
 import { SOURCE_PROMISE } from "@/data/answer-modes";
 import { aiProviderStatus, getAIProvider } from "@/lib/ai";
+import { sendAfterHydrateEnabled } from "@/lib/config/chat-quality-flags";
 import { quickQuestionsFor } from "@/lib/ai/quick-questions";
 import { FORM_CREATION_PERMISSIONS } from "@/lib/permissions";
 import { useSession } from "@/lib/session/session-context";
@@ -95,6 +97,12 @@ export function ChatScreen() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const seededQuery = useRef(false);
   const adoptedConversation = useRef(false);
+  /*
+   * A typed send that arrived before hydration finished. Fired once the store
+   * is ready, the same way the ?q= effect below fires. The composer is left
+   * alone while it waits: disabling the field would be a visible change.
+   */
+  const queuedSend = useRef<{ text: string; fromPicker?: boolean } | null>(null);
 
   /**
    * ==========================================================================
@@ -216,6 +224,17 @@ export function ChatScreen() {
        * flight" as the same outcome — see `chooseSuggestedForm`.
        */
       if (!text || busy) return false;
+
+      /*
+       * NOT BEFORE THE STORED HISTORY HAS LOADED. The ?q= effect already
+       * waits. A typed send did not, so a question asked while documents
+       * were still loading was created and then erased. Off, this is
+       * skipped and the turn goes out exactly as it does today.
+       */
+      if (sendAfterHydrateEnabled() && !storeReady) {
+        queuedSend.current = { text, fromPicker: options.fromPicker };
+        return true;
+      }
 
       /*
        * NOTHING IS CHECKED HERE BUT THE TEXT AND THE IN-FLIGHT TURN.
@@ -415,8 +434,26 @@ export function ChatScreen() {
       addConversation,
       appendConversationMessages,
       reportContext,
+      storeReady,
     ],
   );
+
+  /*
+   * The queued typed send, once hydration has finished. Scheduled rather
+   * than called inline, for the same reason as the ?q= effect: the first
+   * update happens in a callback, not in the effect body.
+   */
+  useEffect(() => {
+    if (!sendAfterHydrateEnabled()) return;
+    if (!storeReady) return;
+    const queued = queuedSend.current;
+    if (!queued) return;
+    const timer = window.setTimeout(() => {
+      queuedSend.current = null;
+      void send(queued.text, { fromPicker: queued.fromPicker });
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [storeReady, send]);
 
   /**
    * Accept ?c= — a conversation that was STARTED INLINE on the Overview, or the
@@ -672,7 +709,7 @@ export function ChatScreen() {
      * `overflow-y-auto` on the message list never engages and the composer is
      * pushed off-screen by a long answer.
      */
-    <div className="flex h-[calc(100dvh-4rem)] min-h-0">
+    <div className="flex h-[calc(100dvh-5rem)] min-h-0">
       {/*
         ==================================================================
         CHAT HISTORY IS CLOSED UNTIL SOMEBODY ASKS FOR IT
@@ -761,7 +798,7 @@ export function ChatScreen() {
         */}
         <div
           className={cn(
-            "flex shrink-0 flex-wrap items-center justify-between gap-3 border-b-4 border-brand-yellow bg-band px-4 sm:px-6",
+            "clay-band mx-3 mt-2 flex shrink-0 flex-wrap items-center justify-between gap-3 px-4 sm:px-6",
             isEmpty ? "py-5" : "py-3.5",
           )}
           style={isEmpty ? { backgroundImage: "var(--band-glow)" } : undefined}
@@ -778,6 +815,9 @@ export function ChatScreen() {
               historyOpen={historyOpen}
             />
             {isEmpty ? (
+              <div className="flex min-w-0 items-center gap-4">
+              {/* Sunny, bobbing beside the headline, as in the clay mockup. */}
+              <SunnyMascot className="hidden w-[84px] shrink-0 sm:block" />
               <div className="min-w-0">
                 {/*
                   THE ONLY HEADLINE ON THE SCREEN, so it can carry the weight
@@ -800,6 +840,7 @@ export function ChatScreen() {
                     ? managerDisplayName
                     : `${primaryLocationName} · ${managerDisplayName}`}
                 </p>
+              </div>
               </div>
             ) : (
               <p className="display hidden truncate text-[19px] text-band-foreground xl:block">
@@ -895,7 +936,7 @@ export function ChatScreen() {
         */}
         <div
           ref={scrollRef}
-          className="scroll-slim min-h-0 flex-1 overflow-y-auto bg-background"
+          className="scroll-slim min-h-0 flex-1 overflow-y-auto"
         >
           {/*
             ==================================================================
@@ -964,7 +1005,7 @@ export function ChatScreen() {
                       key={prompt}
                       type="button"
                       onClick={() => void send(prompt)}
-                      className="rounded-[22px] border border-border-strong bg-surface px-3.5 py-2 text-left text-[12px] font-bold text-foreground shadow-soft transition-colors hover:border-brand-yellow"
+                      className="rounded-[22px] bg-surface px-4 py-2.5 text-left text-[12.5px] font-bold text-foreground shadow-raised transition-[transform,box-shadow] hover:-translate-y-px hover:shadow-float"
                     >
                       {prompt}
                     </button>
@@ -1067,7 +1108,7 @@ export function ChatScreen() {
 
       {/* Context rail */}
       {contextOpen ? (
-        <aside className="hidden w-76 shrink-0 border-l border-border bg-background lg:block">
+        <aside className="hidden w-76 shrink-0 border-l border-border lg:block">
           <ContextPanel
             messages={messages}
             onCreateForm={mayCreateForms ? createFormFromConversation : undefined}

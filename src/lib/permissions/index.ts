@@ -1,3 +1,4 @@
+import { ASSISTANT_MANAGER_CREATES, assistantManagerCreateEnabled } from "./assistant-manager-create";
 import type { Permission, PermissionMatrix, Role } from "@/types";
 
 /**
@@ -258,13 +259,36 @@ const DISTRICT_MANAGER_PERMISSIONS: Permission[] = [
 
 const FULL_ACCESS: Permission[] = [...PERMISSIONS];
 
+/**
+ * ASD_NO_FORM_MONITORING (Pau, 26 Oct 2026, a manager's request; this app
+ * only): an Assistant Salon Director no longer sees Form Monitoring — the
+ * list, other people's forms and the counts. They still create coaching forms
+ * and open the ones they created (`authorizeInstance`). READ AT BUILD TIME: a
+ * literal `process.env.NEXT_PUBLIC_…` that Next inlines into the browser and
+ * the server bundles alike, so the navigation and the server can never
+ * disagree; it takes effect with the next deployment. Off, as before.
+ */
+export function asdNoFormMonitoringEnabled(): boolean {
+  const raw = process.env.NEXT_PUBLIC_ASD_NO_FORM_MONITORING_ENABLED;
+  return typeof raw === "string" && ["1", "true", "yes", "on"].includes(raw.trim().toLowerCase());
+}
+
 export const DEFAULT_PERMISSION_MATRIX: PermissionMatrix = {
   employee: EMPLOYEE_PERMISSIONS,
   assistant_salon_director: [
     "ask_questions",
     "create_coaching",
     "view_daily_stats",
-    "view_form_monitoring",
+    /*
+     * NEXT_PUBLIC_ASSISTANT_MANAGER_CREATE_ENABLED (Pau, 30 Oct 2026): the Salon
+     * Director's forms to create, and Form Monitoring back even with the ASD
+     * flag on, limited to their own forms (`private-creators.ts`).
+     */
+    ...(assistantManagerCreateEnabled()
+      ? (["view_form_monitoring", ...ASSISTANT_MANAGER_CREATES] as Permission[])
+      : asdNoFormMonitoringEnabled()
+        ? []
+        : (["view_form_monitoring"] as Permission[])),
     "view_videos",
     "view_google_reviews",
     // Previously reachable, so still reachable — see SALON_DIRECTOR_PERMISSIONS.

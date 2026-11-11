@@ -1,0 +1,23 @@
+{
+  "key": "167bd9084553370ed4b0333af2e10d0caecd3b08fb84410475f57b801ba3816e",
+  "model": "claude-haiku-4-5",
+  "reply": {
+    "employee": "Ferris, Dale",
+    "salon": null,
+    "title": null,
+    "incidentType": "violating attendance policy",
+    "incidentDate": "10-20-26",
+    "payrollAmount": null,
+    "warningLevel": "verbal",
+    "formType": "ca form",
+    "formTurn": true,
+    "policyHeading": "Attendance"
+  },
+  "usage": {
+    "inputTokens": 2506,
+    "outputTokens": 213,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 0
+}

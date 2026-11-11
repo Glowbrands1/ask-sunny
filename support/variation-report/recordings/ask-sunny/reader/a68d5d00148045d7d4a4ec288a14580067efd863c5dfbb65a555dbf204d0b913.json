@@ -1,0 +1,57 @@
+{
+  "key": "a68d5d00148045d7d4a4ec288a14580067efd863c5dfbb65a555dbf204d0b913",
+  "model": "claude-haiku-4-5",
+  "reply": {
+    "employee": {
+      "value": "QUINN MARLOWE",
+      "evidence": "QUINN MARLOWE WAS LATE ON 10/20 AND THE SALON WAS OPENED LATE"
+    },
+    "location": {
+      "value": "KEARNEY",
+      "evidence": "KEARNEY"
+    },
+    "jobTitle": {
+      "value": null,
+      "evidence": null
+    },
+    "incident": {
+      "value": "was late, salon opened late",
+      "evidence": "QUINN MARLOWE WAS LATE ON 10/20 AND THE SALON WAS OPENED LATE"
+    },
+    "incidentDate": {
+      "value": "2026-10-20",
+      "evidence": "QUINN MARLOWE WAS LATE ON 10/20 AND THE SALON WAS OPENED LATE"
+    },
+    "warningLevel": {
+      "value": "written",
+      "evidence": "I NEED TO ISSUE A CA FOR SOMEONE BEING LATE"
+    },
+    "payroll": {
+      "value": "yes",
+      "evidence": "YES PAYROL LDEDUCT"
+    },
+    "payrollAmount": {
+      "value": null,
+      "evidence": null
+    },
+    "policyHeading": {
+      "value": "Late Opening",
+      "evidence": "QUINN MARLOWE WAS LATE ON 10/20 AND THE SALON WAS OPENED LATE"
+    },
+    "priorSteps": [
+      {
+        "kind": "verbal",
+        "date": "2026-10-01",
+        "evidence": "SHE WAS ISSUED A VERBAL CA ON 10.1 FOR THIS SAME THING"
+      }
+    ],
+    "otherDates": []
+  },
+  "usage": {
+    "inputTokens": 3573,
+    "outputTokens": 497,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 0
+}

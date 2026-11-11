@@ -142,7 +142,12 @@ const CARRIES_ON =
    * form is about, who it concerns, what is needed. None of these continues a
    * place's name the way "High", "South" or "time" does.
    */
-  "about|regarding|concerning|re|who|that|then|every|her|his|their|need|needs";
+  "about|regarding|concerning|re|who|that|then|every|her|his|their|need|needs|" +
+  /*
+   * "at Grand Island out of dress code" often has no comma. "out" ends the
+   * place the way "on" and "about" do. "outlet" is a different word.
+   */
+  "out";
 
 // Not "for": "a coaching form for Lawrence" is a person. Not "from": where
 // somebody came from is not where the form is filed.

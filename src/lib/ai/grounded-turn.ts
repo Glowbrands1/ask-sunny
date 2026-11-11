@@ -2,6 +2,7 @@ import "server-only";
 
 import {
   draftDedupeEnabled,
+  draftReuseSameChatOnlyEnabled,
   fieldAccuracyEnabled,
   formStateEnabled,
   groundedEntitiesEnabled,
@@ -9,15 +10,22 @@ import {
   policyCitationEnabled,
   secondFormEnabled,
   slotRetentionEnabled,
+  wholeTeamCoachingEnabled,
+  secondRequestOwnAccountEnabled,
 } from "@/lib/config/chat-quality-flags";
 import type { AskResponse } from "@/lib/ai/types";
+import { withAccountTurnSources } from "@/lib/ai/account-turn-sources";
+import { conversationKeyOf } from "@/lib/forms/conversation-key";
 import { formOpenedFor, openingLine } from "@/lib/forms/editable-draft";
 import { withKeptTypedNames } from "@/lib/forms/kept-typed-names";
+import { withRosterAnchor } from "@/lib/forms/roster-anchor-store";
 import { loadScopedRoster, readDirectoryFacts, withRosterLimit, type DirectoryFact } from "@/lib/forms/employee-roster";
+import { reopenIncidentText } from "@/lib/forms/current-request";
 import { findResentDraft } from "@/lib/forms/draft-reopen";
 import { historyWantsSeparateDocument } from "@/lib/ai/second-form";
 import type { ChatActor } from "./form-proposal";
 import type { AskRequest } from "./types";
+import { isTeamCardTurn } from "@/lib/forms/whole-team-coaching";
 
 import { captureFormState, prependFormState, type ConversationFormState } from "./form-state";
 import { oneSalonVisibleIn } from "./proposal-question";
@@ -25,6 +33,9 @@ import { managerContext } from "@/lib/forms/proposal";
 import { loadFormState, saveFormState } from "./form-state-store";
 import { enrichFormCard } from "./form-card-slots";
 import { holdFilledSlots } from "./keep-filled-slots";
+import { startsFormForAnotherPerson } from "./new-person-request";
+import { applyEditDateRules } from "./edit-date-rules";
+import { withTypedEmployeeOnCard } from "./typed-employee-card";
 import { applyGroundedProposal, prepareGroundedQuestion, type GroundedPerson, type GroundedPrep } from "./grounded-entities";
 
 /**
@@ -74,32 +85,51 @@ export async function deliverFormProposal(input: {
           saved: null,
           wovenNoteShown: input.request.history.some((turn) => /Woven has \*\*/.test(turn.content)),
         });
-    return holdFilledSlots({
-      response: enriched,
-      question: input.question,
-      history: input.request.history,
-      today: input.request.context.todayIso,
-      people: [],
-    });
+    // KEEP_FORM_EMPLOYEE_ENABLED: "for Test Employee" stays Test Employee on the card. See `withTypedEmployeeOnCard`.
+    // ACCOUNT_BEFORE_REQUEST_ENABLED: the account the card shows, given before its request, is cited (`ai/account-turn-sources.ts`).
+    return withAccountTurnSources(withEditDateRules(
+      withTypedEmployeeOnCard(
+        holdFilledSlots({
+          response: enriched,
+          question: input.question,
+          history: heldHistory(input.request),
+          today: input.request.context.todayIso,
+          people: [],
+        }),
+        input.request.question,
+      ),
+      input,
+    ), input.request.history);
   }
 
-  const saved = await readSaved(stateOn, input.actor.subject, input.request.conversationId);
+  /*
+   * WHOLE_TEAM_COACHING_ENABLED (ported from Ask Bubbles, 3 Nov 2026): the
+   * team card's subject is the team, not the person this conversation's saved
+   * form state remembers ("The employee is …" was put back in front of
+   * "Coaching Form for the whole team"). While the team card is being made or
+   * is the card on screen, the saved state is neither read nor written.
+   */
+  const team = wholeTeamCoachingEnabled() && (isTeamCardTurn(input.request) || isTeamCardTurn({ ...input.request, question: input.question }));
+  const keepState = stateOn && !team;
+  const saved = await readSaved(keepState, input.actor.subject, input.request.conversationId);
   const people = entities ? await loadPeople(input.actor) : [];
   const prep = entities
     ? prepareGroundedQuestion({
         question: input.question,
-        history: input.request.history,
+        history: heldHistory(input.request),
         people,
         saved,
       })
     : {
         ...EMPTY_PREP,
-        question: stateOn ? prependFormState(input.question, saved) : input.question,
+        question: stateOn
+          ? prependFormState(input.question, saved, input.request.history.filter((turn) => turn.role === "user").map((turn) => turn.content))
+          : input.question,
         keptTypedName: saved?.keptTypedName ?? null,
       };
 
   const proposed = await withRosterLimit(prep.rosterIds, () =>
-    withKeptTypedNames(prep.keptTypedNames, () => input.propose(prep.question)),
+    withKeptTypedNames(prep.keptTypedNames, () => withRosterAnchor(prep.rosterAnchored === true, () => input.propose(prep.question))),
   );
   if (!proposed) return null;
   const decorated = await input.decorate(proposed);
@@ -124,20 +154,36 @@ export async function deliverFormProposal(input: {
     : applied;
 
   const settled = withVisibleSalon(enriched, input);
-  const held = holdFilledSlots({
-    response: settled,
-    question: input.question,
-    history: input.request.history,
-    today: input.request.context.todayIso,
-    people,
-  });
+  // ACCOUNT_BEFORE_REQUEST_ENABLED: the account the card shows, given before its request, is cited (`ai/account-turn-sources.ts`).
+  const held = withAccountTurnSources(withEditDateRules(
+    withTypedEmployeeOnCard(
+      holdFilledSlots({
+        response: settled,
+        question: input.question,
+        history: heldHistory(input.request),
+        today: input.request.context.todayIso,
+        people,
+      }),
+      input.request.question,
+    ),
+    input,
+  ), input.request.history);
   const reopened = await reopenSameIncident(dedupe, input, held);
   if (reopened) {
-    await writeSaved(stateOn, input, saved, held, prep);
+    await writeSaved(keepState, input, saved, held, prep);
     return reopened;
   }
-  await writeSaved(stateOn, input, saved, held, prep);
+  await writeSaved(keepState, input, saved, held, prep);
   return held;
+}
+
+/** FORM_EDIT_DATE_RULES_ENABLED: read from the manager's own turns, not the state sentences. See `edit-date-rules.ts`. */
+function withEditDateRules(response: AskResponse, input: { readonly request: AskRequest }): AskResponse {
+  return applyEditDateRules(response, {
+    question: input.request.question,
+    history: input.request.history,
+    today: input.request.context.todayIso,
+  });
 }
 
 function withVisibleSalon(
@@ -233,10 +279,14 @@ async function reopenSameIncident(
   if (historyWantsSeparateDocument([...input.request.history, { role: "user", content: input.request.question }])) {
     return null;
   }
-  const incident = [...input.request.history.filter((turn) => turn.role === "user").map((turn) => turn.content), input.request.question]
-    .join("\n")
-    .trim()
-    .slice(0, 2000);
+  const said = [...input.request.history.filter((turn) => turn.role === "user").map((turn) => turn.content), input.request.question];
+  /*
+   * SECOND_REQUEST_OWN_ACCOUNT_ENABLED (QA's audit, 7 Nov 2026): the incident is the request now being written, never
+   * the whole chat. Joined, "a CA for <A>, late opening" and "another CA for <A>, cash drawer short" matched the first
+   * draft (its narrative's words were all in the chat), so the first draft was reopened and no second form was made.
+   * A resend of the same request is still the same incident.
+   */
+  const incident = reopenIncidentText(said, secondRequestOwnAccountEnabled());
   try {
     const resent = await findResentDraft({
       templateKey: proposal.templateKey,
@@ -244,6 +294,15 @@ async function reopenSameIncident(
       createdBy: input.actor.subject,
       locationId: proposal.locationId,
       ...(incident ? { incident, formDate: proposal.formDate ?? null } : {}),
+      /*
+       * DRAFT_REUSE_SAME_CHAT_ONLY_ENABLED: only a draft this chat made, as
+       * the create route already keeps (QA B22, 25 Oct 2026: a new chat's
+       * no-call-no-show reopened another chat's tardiness draft through this
+       * lookup). No chat id keeps nothing. See `draft-same-chat.ts`.
+       */
+      ...(draftReuseSameChatOnlyEnabled()
+        ? { sameChat: { conversationKey: conversationKeyOf({ conversationId: input.request.conversationId }) } }
+        : {}),
     });
     if (!resent) return null;
     const draft = {
@@ -261,3 +320,16 @@ async function reopenSameIncident(
     return null;
   }
 }
+
+/**
+ * NEW_PERSON_REQUEST_ENABLED (QA, live, 30 Oct 2026): "also create a ca for
+ * <another> …" kept the first employee's sentence in the new card's
+ * Observation of Offense ("<first>. she was late on 10/20. also create a ca
+ * for <another> …"). A turn that starts another person's form holds nothing
+ * from the turns before it.
+ */
+function heldHistory(request: { readonly history: readonly HistoryTurnLike[]; readonly question: string }): readonly HistoryTurnLike[] {
+  return startsFormForAnotherPerson(request.history, request.question) ? [] : request.history;
+}
+
+type HistoryTurnLike = { readonly role: string; readonly content: string };

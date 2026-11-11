@@ -7,8 +7,11 @@
  * reader (`template-intent.ts`), which both have to decide whether the words
  * after a form's name are a person. One list, so the two can never disagree
  * about whether "coaching tips" or "exit process" names somebody. Pure and
- * browser-safe; it imports nothing.
+ * browser-safe; its one import (`not-a-name.ts`, NOT_A_NAME_GUARD_ENABLED)
+ * reads only the salon roster and the report catalogues.
  */
+
+import { isNotAName, maskNotANameText } from "./not-a-name";
 
 export const NOT_A_NAME = new Set([
   /*
@@ -27,9 +30,9 @@ export const NOT_A_NAME = new Set([
   "friday", "saturday", "sunday",
   /*
    * THE MONTHS THAT ARE NEVER ANYBODY'S FIRST NAME. Production feedback,
-   * October 2026: "Betty Sue … under performance for September 270 tans
+   * October 2026: "Dora Lee … under performance for September 270 tans
    * below …" read "for September" as a second person, and Ask Sunny asked
-   * whether the form was for Betty Sue or September. April, May, June, July
+   * whether the form was for Dora Lee or September. April, May, June, July
    * and August are real first names, so they are not here — `lowercaseMonths`
    * below takes them out of a name position only where the sentence uses
    * them as a date.
@@ -178,7 +181,7 @@ export const NOT_A_TYPED_NAME = new Set([
  * The employee readers take a capital letter as the evidence of a name, so a
  * month written as managers write it — capitalised — reached the same
  * positions a person does: "for September", or the tail of a capitalised run
- * ("Betty Sue September"). Writing the month in lower case takes it out of
+ * ("Dora Lee September"). Writing the month in lower case takes it out of
  * every capital-based reading while the date readers, which match months in
  * any case, still see it.
  *
@@ -198,7 +201,9 @@ const MONTH_AS_DATE = new RegExp(
 );
 
 export function lowercaseMonths(text: string): string {
-  return text
+  // The last pass before a name is read. NOT_A_NAME_GUARD_ENABLED also takes
+  // the app's own lines, bulleted lists and priced runs out here.
+  return maskNotANameText(text)
     .replace(MONTH_ALWAYS, (month) => month.toLowerCase())
     .replace(MONTH_AS_DATE, (match, lead: string | undefined, led: string | undefined, dated: string | undefined) =>
       lead && led ? `${lead}${led.toLowerCase()}` : (dated ?? match).toLowerCase(),
@@ -211,7 +216,7 @@ export const TYPED_NAME_WORD = /^[A-Za-z][A-Za-z'’-]*$/;
 /**
  * Form-field labels. A candidate that is only these words is not a person.
  *
- * "Job title" was read as the employee (s8). "Marissa Lempka Job" kept the
+ * "Job title" was read as the employee (s8). "Larissa Venko Job" kept the
  * label on a name that was already complete (s17). A trailing "Job" or
  * "Title" comes off only after a full name — first and last — so a surname
  * that is also one of these words can still be the name. The value after
@@ -245,7 +250,7 @@ function readNameFieldValue(text: string): string | null {
 
 /**
  * The name after a "Name:" label.
- * "Name: Christiana Headley, job title tanning consultant" is Christiana Headley.
+ * "Name: Evangeline Pembury, job title tanning consultant" is Evangeline Pembury.
  */
 export function nameAfterNameLabel(text: string): string | null {
   const value = readNameFieldValue(text);
@@ -267,12 +272,12 @@ function wordKey(word: string): string {
 
 /**
  * A trailing Job or Title is the field label when a full name already
- * precedes it ("Marissa Lempka Job"). One given name plus Job is still a
- * full name ("Marissa Job"), so the trailing word stays.
+ * precedes it ("Larissa Venko Job"). One given name plus Job is still a
+ * full name ("Larissa Job"), so the trailing word stays.
  */
 /**
  * A leading label in front of a real name is the field, not the person.
- * "Location Colene Schildt" is Colene Schildt. "Jane Store" is unchanged:
+ * "Location Corena Schardt" is Corena Schardt. "Jane Store" is unchanged:
  * Store is the surname, not a label in front of the name.
  */
 function withoutLeadingLabels(words: readonly string[]): string[] {
@@ -311,5 +316,7 @@ export function stripFieldLabels(name: string): string | null {
   const source = readNameFieldValue(name) ?? name;
   const words = withoutTrailingJobOrTitle(withoutLeadingLabels(nameWords(source)));
   if (words.length === 0 || words.every((word) => isFieldLabelWord(word))) return null;
+  // NOT_A_NAME_GUARD_ENABLED: "blank", "require practice", "spa", "lawrence".
+  if (isNotAName(words.join(" "))) return null;
   return words.join(" ");
 }

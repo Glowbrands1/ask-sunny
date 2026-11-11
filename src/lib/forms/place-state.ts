@@ -1,4 +1,5 @@
 import { PRODUCTION_SALONS, type ProductionSalon } from "@/data/salons";
+import { placeSpanGuardEnabled } from "@/lib/config/chat-quality-flags";
 
 /**
  * "Dodge, NE" and "at empire, sd" — a place, then a roster state.
@@ -19,7 +20,7 @@ export function readPlaceState(text: string): PlaceStateRead {
     String.raw`\b(?:at|in|location\s+is)\s+([A-Za-z][A-Za-z'’.-]*(?:\s+[A-Za-z][A-Za-z'’.-]*){0,4}?)\s*,\s*(${states.join("|")})\b`,
     "gi",
   );
-  const matches = [...text.matchAll(pattern)];
+  const matches = placeSpanGuardEnabled() ? guardedMatches(text, pattern) : [...text.matchAll(pattern)];
   if (matches.length === 0) return { kind: "none" };
   const match = matches[matches.length - 1]!;
   const place = match[1]!.replace(/\s+location$/i, "").trim();
@@ -36,4 +37,47 @@ function uniqueSalon(place: string, state: string): ProductionSalon | null {
     return words.every((word) => new RegExp(String.raw`\b${word}\b`, "i").test(salon.name));
   });
   return hits.length === 1 ? hits[0]! : null;
+}
+
+/*
+ * ============================================================================
+ * A POLICY IS NOT A PLACE (PLACE_SPAN_GUARD_ENABLED)
+ * ============================================================================
+ *
+ * "in the workplace policy", "in the dress code section", "in the handbook":
+ * the manager is pointing at a document. No salon name carries one of these
+ * words. Ported from Ask Bubbles (conv_mvmcetjw2i4vtwz, 24 Oct 2026), where
+ * "cite animals in the workplace policy" followed by "store location is …"
+ * was read as a typed store called "workplace policy".
+ */
+const DOCUMENT_WORDS = /\b(?:polic(?:y|ies)|manuals?|handbooks?|sections?|procedures?|guidelines?|sops?|rules?|forms?)\b/i;
+
+/** Whether a span names a document rather than a place. */
+export function isDocumentPhrase(span: string): boolean {
+  return DOCUMENT_WORDS.test(span);
+}
+
+/*
+ * The turns arrive joined by line breaks, and the place words may run across
+ * them: "cite animals in the workplace policy" then "at Kearney, NE" read as
+ * "in the workplace policy at Kearney, NE", a place no salon answers to, which
+ * blanked the salon the manager named. With the guard each turn is read on
+ * its own, and a span that names a document is skipped; the search then
+ * resumes one character on, so "… policy at Kearney, NE" in one message still
+ * finds "at Kearney, NE".
+ */
+function guardedMatches(text: string, pattern: RegExp): RegExpExecArray[] {
+  const found: RegExpExecArray[] = [];
+  for (const turn of text.split(/\r?\n/)) {
+    const scan = new RegExp(pattern.source, pattern.flags);
+    let match: RegExpExecArray | null;
+    while ((match = scan.exec(turn)) !== null) {
+      if (isDocumentPhrase(match[1]!)) {
+        scan.lastIndex = match.index + 1;
+        continue;
+      }
+      found.push(match);
+    }
+  }
+  return found;
 }

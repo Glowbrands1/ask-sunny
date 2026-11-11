@@ -1,6 +1,8 @@
 import { truncate } from "@/lib/utils/format";
 import { AiError } from "./errors";
 import type { AIProvider, ClientAskRequest, AskResponse } from "./types";
+import { STREAM_HEADER, unwrapStreamed } from "@/lib/api/streamed-response";
+import { offeredCopyForTurn, type OfferedCopy } from "@/lib/forms/proposal-continuation";
 
 /**
  * ClaudeProvider — the AIProvider the chat UI uses in live mode.
@@ -18,8 +20,26 @@ export class ClaudeProvider implements AIProvider {
   readonly name = "Claude (Anthropic)";
   readonly connected = true;
 
+  /**
+   * SAME_FORM_COPY_NEW_PERSON_ENABLED: the copy the last answer offered ("Who
+   * is the new Coaching Form for?"), per conversation. Sent back with the next
+   * turn only, then forgotten; an id the server re-checks. Lost on reload,
+   * like any half-asked question.
+   */
+  private readonly offeredCopies = new Map<string, OfferedCopy>();
+
   async ask(request: ClientAskRequest): Promise<AskResponse> {
-    return post<AskResponse>("/api/chat", request);
+    const key = request.conversationId ?? "";
+    const pendingCopyFromInstanceId = offeredCopyForTurn(this.offeredCopies.get(key), request.history);
+    this.offeredCopies.delete(key);
+    const response = await post<AskResponse>(
+      "/api/chat",
+      pendingCopyFromInstanceId ? { ...request, pendingCopyFromInstanceId } : request,
+    );
+    if (response.pendingCopy?.fromInstanceId) {
+      this.offeredCopies.set(key, { fromInstanceId: response.pendingCopy.fromInstanceId, answer: response.content });
+    }
+    return response;
   }
 
   titleForConversation(firstMessage: string): string {
@@ -46,17 +66,41 @@ async function post<T>(url: string, body: unknown): Promise<T> {
     );
   }
 
-  const payload = (await response.json().catch(() => ({}))) as Partial<T> & {
-    error?: string;
-    code?: string;
-    missing?: string[];
-  };
+  /*
+   * CHAT_RESPONSE_STREAM_ENABLED: a slow answer arrives as a 200 stream —
+   * keep-alive whitespace, then {status, body} — and is read to the end and
+   * unwrapped, so the rest of this function sees exactly what a plain
+   * response carries. See `api/streamed-response.ts`. A plain response (the
+   * flag off, or a fast answer) is read as before.
+   */
+  let status = response.status;
+  let payload: Partial<T> & { error?: string; code?: string; missing?: string[] };
+  // Read defensively: a fetch stand-in without `headers` (as several chat
+  // screen tests use) is a plain response, exactly as before this flag.
+  if (response.headers?.get?.(STREAM_HEADER) === "1") {
+    let text: string;
+    try {
+      text = await response.text();
+    } catch {
+      throw new AiError("model_failed", "Ask Sunny could not be reached. Check your connection and try again.", 503, []);
+    }
+    let unwrapped: { status: number; body: unknown };
+    try {
+      unwrapped = unwrapStreamed(text);
+    } catch {
+      unwrapped = { status: 502, body: {} };
+    }
+    status = unwrapped.status;
+    payload = (unwrapped.body ?? {}) as typeof payload;
+  } else {
+    payload = (await response.json().catch(() => ({}))) as typeof payload;
+  }
 
-  if (!response.ok) {
+  if (status < 200 || status > 299) {
     throw new AiError(
       (payload.code as AiError["code"]) ?? "model_failed",
       payload.error ?? "Ask Sunny could not answer that right now.",
-      response.status,
+      status,
       payload.missing ?? [],
     );
   }

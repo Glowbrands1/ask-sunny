@@ -18,6 +18,14 @@ import {
 
 const TARDINESS_BOX = /tardiness(?:\s*\/\s*leaving early)?/i;
 
+/**
+ * The box that replaced Tardiness/Leaving Early (and Absenteeism) on Corrective
+ * Action revision 8 (template approved 4 Nov 2026): Policy Violated printed
+ * from it is cited by section and page the same way. Only Policy Violated
+ * reads it; a manual heading is never matched by it.
+ */
+const ATTENDANCE_POLICY_BOX = /^attendance policy\b/i;
+
 export function formatPolicyCitation(heading: string, page: number): string {
   const name = /policy/i.test(heading) ? heading.trim() : `${heading.trim()} Policy`;
   return `${name}, JBA Policy Manual p.${page}`;
@@ -81,7 +89,7 @@ export function policyFieldsWithCitation(input: {
   const line = paged.map((section) => formatPolicyCitation(section.heading, section.page)).join("; ");
   const values = { ...input.values };
   const violated = values.policy_violated ?? "";
-  if (input.attendance && TARDINESS_BOX.test(violated) && paged.some((section) => /^attendance$/i.test(section.heading))) {
+  if (input.attendance && (TARDINESS_BOX.test(violated) || ATTENDANCE_POLICY_BOX.test(violated)) && paged.some((section) => /^attendance$/i.test(section.heading))) {
     values.policy_violated = line;
   }
   if (input.pageRequired) {

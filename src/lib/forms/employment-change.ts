@@ -1,7 +1,10 @@
+import { placeSpanGuardEnabled } from "@/lib/config/chat-quality-flags";
+
 import { extractFormDate, listFormDates } from "./form-date-answer";
 import { JOB_TITLES, extractJobTitle } from "./proposal";
 import { SALON_PHRASE, resolveSalonText, tidyWords } from "./salon-text";
 import type { FormDocument } from "./document";
+import { isDocumentPhrase } from "./place-state";
 import { enforcePersonEdit } from "./responsibility";
 import {
   DEMOTION_TEMPLATE_KEY,
@@ -361,6 +364,13 @@ function readSentence(sentence: string, facts: EmploymentChangeFacts, today: str
         side,
         pattern: new RegExp(String.raw`${lead}\s+(?:location|salon|store)${LINK}(.+?)${END}`, "gi"),
         apply: (target, value) => {
+          /*
+           * PLACE_SPAN_GUARD_ENABLED. "per the new salon policy" and "current
+           * location is the workplace policy" name a document, not a salon:
+           * the value is kept as typed, so it printed "Policy" over the salon
+           * the manager had just named.
+           */
+          if (placeSpanGuardEnabled() && isDocumentPhrase(value)) return;
           const location = resolveSalonText(value.replace(/^(?:at|in)\s+/i, ""));
           if (location && value.split(/\s+/).length <= 6) target.location = location;
         },

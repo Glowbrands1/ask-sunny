@@ -1,7 +1,23 @@
+import {
+  exitIntakeFixEnabled,
+  exitShortcutWordsEnabled,
+  exitStatedOnlyEnabled,
+  exitTerminationStatedEnabled,
+  resignMethodFollowupEnabled,
+  fieldLabelNotAQuestionEnabled,
+} from "@/lib/config/chat-quality-flags";
+
 import { JOIN } from "./bounded-context";
 import { isQuestion } from "./employment-change";
 import { EXIT_DETAIL_FIELDS, EXIT_NOTICE_GROUP, EXIT_TYPE_GROUP } from "./exit-library";
-import { EXIT_DERIVED_KEYS, exitFactValues, readExitFacts, type ExitFacts } from "./exit-facts";
+import {
+  EXIT_DERIVED_KEYS,
+  exitFactValues,
+  JOB_ABANDONED,
+  NO_CALL_FOR_SHIFT,
+  readExitFacts,
+  type ExitFacts,
+} from "./exit-facts";
 
 /**
  * ============================================================================
@@ -61,6 +77,11 @@ export interface ExitDetails {
   resignationMethod: string | null;
   /** The manager's words for why, or "No reason given." when they said so. */
   resignationReason: string | null;
+  /**
+   * The Permanent Address as the manager typed it ("123 Main St, Lawrence, KS
+   * 66044"). Read only with EXIT_INTAKE_FIX_ENABLED; null otherwise.
+   */
+  permanentAddress?: string | null;
   answers: Partial<Record<ExitAnswerKey, YesNo>>;
   ambiguities: ExitDetailAmbiguity[];
 }
@@ -75,6 +96,19 @@ export const EXIT_STATED_KEYS: ReadonlySet<string> = new Set([
   EXIT_DETAIL_FIELDS.resignationReason,
   ...EXIT_ANSWER_KEYS,
 ]);
+
+/** The form's Permanent Address line (`exit-library.ts`), a `manager` field. */
+export const EXIT_PERMANENT_ADDRESS_KEY = "permanent_address";
+
+/**
+ * The keys a manager's stated facts may fill on a created exit draft. With
+ * EXIT_INTAKE_FIX_ENABLED, also the Permanent Address the manager typed
+ * (`readPermanentAddress`) — still never one the model wrote, which the
+ * drafting route drops whatever this says. Off, `EXIT_STATED_KEYS`.
+ */
+export function exitStatedKeys(): ReadonlySet<string> {
+  return exitIntakeFixEnabled() ? new Set([...EXIT_STATED_KEYS, EXIT_PERMANENT_ADDRESS_KEY]) : EXIT_STATED_KEYS;
+}
 
 /* ------------------------------------------------------------ the words -- */
 
@@ -162,6 +196,19 @@ interface Returns {
 }
 
 /**
+ * EXIT_STATED_ONLY_ENABLED (QA, 5 Nov 2026, a termination letter pasted for an exit form): a return verb states a
+ * key or an item came back only when it says it HAPPENED. Not after a modal or "to" ("you would turn in your keys",
+ * "will return", "needs to return"), not after "please", and not as a base-form verb opening its clause ("Return
+ * your salon keys … today") — an instruction or a condition. "Returned her key" and "dropped off her key" still do.
+ */
+function returnHappened(clause: string, match: RegExpMatchArray): boolean {
+  const before = clause.slice(0, match.index ?? 0);
+  if (/\b(?:would|will|wo|should|shall|must|can|could|might|may|to|please|gonna)\s+(?:not\s+|also\s+|still\s+)?$/i.test(before)) return false;
+  const base = /^(?:return|turn in|bring back|give back|hand in|hand back|drop off)$/i.test(match[0]);
+  return !(base && /^\s*(?:and\s+|also\s+|then\s+)?$/i.test(before));
+}
+
+/**
  * What a clause says came back, and what did not.
  *
  *   verb … object        "returned her key and shirts", "didn't turn in her key"
@@ -174,8 +221,9 @@ function returnsIn(clause: string): Returns {
   let items: Reading;
   let key: Reading;
 
-  const objects = (verb: RegExp, polarity: (at: number) => YesNo) => {
+  const objects = (verb: RegExp, polarity: (at: number) => YesNo, done?: (match: RegExpMatchArray) => boolean) => {
     for (const match of clause.matchAll(verb)) {
+      if (done && !done(match)) continue;
       const at = match.index ?? 0;
       let object = clause.slice(at + match[0].length, at + match[0].length + 80);
       const exception = EXCEPT.exec(object);
@@ -188,8 +236,14 @@ function returnsIn(clause: string): Returns {
       if (all && KEY.test(excepted)) key = add(key, flip(answer));
     }
   };
-  objects(RETURN_VERB, (at) => (negatedAt(clause, at) ? "no" : "yes"));
+  objects(RETURN_VERB, (at) => (negatedAt(clause, at) ? "no" : "yes"), exitStatedOnlyEnabled() ? (match) => returnHappened(clause, match) : undefined);
   objects(KEPT_VERB, () => "no");
+
+  // EXIT_SHORTCUT_WORDS_ENABLED: "$25 will be payroll deducted for salon key" — a key is deducted for only when it did not come back.
+  if (exitShortcutWordsEnabled()) {
+    const deducted = /\bdeduct(?:ed|ing|ion|ions)?\b[^.;!?\n]{0,40}?\bfor\s+(?:the\s+|her\s+|his\s+|their\s+)?(?:store\s+|salon\s+)?keys?\b/.exec(clause);
+    if (deducted && !negatedAt(clause, deducted.index)) key = add(key, "no");
+  }
 
   const passive =
     /\b(store items?|items?|uniforms?|shirts?|polos?|name ?tags?|badges?|aprons?|keys?)\b(?:\s+\w+){0,2}?\s+(?:(?:was|were|has been|have been|got|is|are|been|wasn't|weren't|hasn't been|haven't been|isn't|aren't)\s+)?(?:all\s+|also\s+)?(not\s+|never\s+)?(?:returned|turned in|brought back|given back|handed in|dropped off)\b/g;
@@ -277,6 +331,11 @@ function minimumWage(clause: string): Reading {
   const labelled = labelledAnswer(clause, /\bmin(?:imum|\.)?\s*wage/);
   if (labelled) return labelled;
   const match = /\bmin(?:imum|\.)?\s*wage\b/.exec(clause);
+  // EXIT_SHORTCUT_WORDS_ENABLED: "drop wage", "dropped her pay" — the form's shortcut for dropping to minimum wage.
+  if (!match && exitShortcutWordsEnabled()) {
+    const dropped = /\b(?:drop|dropped|dropping|drops|reduce|reduced|reduces|lower|lowered)\s+(?:her\s+|his\s+|their\s+|the\s+)?(?:wage|wages|pay|rate)\b/.exec(clause);
+    if (dropped) return negatedAt(clause, dropped.index) ? "no" : "yes";
+  }
   if (!match) return undefined;
   const before = clause.slice(0, match.index);
   // "drop her to minimum wage", "dropped to min wage", "paid minimum wage"
@@ -387,6 +446,23 @@ const METHODS: { label: string; pattern: RegExp }[] = [
 function methodsIn(turn: string): string[] {
   const found: string[] = [];
   for (const sentence of statements(turn)) {
+    // EXIT_INTAKE_FIX_ENABLED: "she did not call in for her last two shifts" (`NO_CALL_FOR_SHIFT`).
+    if (exitIntakeFixEnabled() && NO_CALL_FOR_SHIFT.test(sentence) && !found.includes("No call/no show")) {
+      found.push("No call/no show");
+    }
+    // EXIT_SHORTCUT_WORDS_ENABLED: "abandoned job", "job abandonment" — No call/no show, as Pau decided (29 Oct 2026).
+    if (exitShortcutWordsEnabled() && JOB_ABANDONED.test(sentence) && !negatedAt(sentence, sentence.search(JOB_ABANDONED)) && !found.includes("No call/no show")) {
+      found.push("No call/no show");
+    }
+    // EXIT_SHORTCUT_WORDS_ENABLED: "called to quit", "called me and quit" — the phone was the channel.
+    if (
+      exitShortcutWordsEnabled() &&
+      /\bcalled\s+(?:me\s+|us\s+|in\s+)?(?:to|and)\s+(?:quit|resign(?:ed)?|said (?:she|he|they) (?:quit|was quitting|is quitting))\b/.test(sentence) &&
+      !/\bsick\b/.test(sentence) &&
+      !found.includes("Phone call")
+    ) {
+      found.push("Phone call");
+    }
     for (const method of METHODS) {
       for (const match of sentence.matchAll(method.pattern)) {
         if (negatedAt(sentence, match.index ?? 0)) continue;
@@ -396,9 +472,36 @@ function methodsIn(turn: string): string[] {
       }
     }
   }
+  if (resignMethodFollowupEnabled()) addVerbal(turn, found);
   // "Emailed her resignation letter" is one email, not an email and a letter.
   if (found.includes("Email")) return found.filter((label) => label !== "Written letter");
   return found;
+}
+
+/*
+ * ============================================================================
+ * "SHE TOLD ME VERBALLY" — RESIGN_METHOD_FOLLOWUP_ENABLED
+ * ============================================================================
+ *
+ * Pau's decision (25 Oct 2026): How Employee Resigned is filled only when the
+ * manager's words name the method, and a follow-up in chat fills the open
+ * form's line. "By text", "via email" and "texted me" were already read;
+ * "verbally" and "verbal notice / resignation" were not, and the line stayed
+ * blank. Read only as the resignation's channel: "verbal warning" is a
+ * Corrective Action level, never a method. A more exact spoken channel the
+ * manager also named ("in person", "phone call") is kept instead of "Verbal".
+ */
+const VERBAL = /\bverbally\b|\bverbal\s+(?:resignation|notice|two weeks)\b/g;
+
+function addVerbal(turn: string, found: string[]): void {
+  if (found.includes("Verbal") || found.includes("In person") || found.includes("Phone call")) return;
+  for (const sentence of statements(turn)) {
+    for (const match of sentence.matchAll(VERBAL)) {
+      if (negatedAt(sentence, match.index ?? 0)) continue;
+      found.push("Verbal");
+      return;
+    }
+  }
 }
 
 /** "Text message and phone call", "Email, text message and phone call". */
@@ -442,6 +545,23 @@ const REASON_START: { pattern: RegExp; keep: boolean }[] = [
   { pattern: /\bpersonal reasons\b/, keep: true },
 ];
 
+/*
+ * ============================================================================
+ * "EDIT THE REASON FOR RESIGNATION TO: GOING BACK TO SCHOOL"
+ * ============================================================================
+ *
+ * Sibling app's live QA (25 Oct 2026): the open exit card came back with the old reason.
+ * "Reason … is / was / :" was read; "reason … to: …", "reason should be …"
+ * and "reason is now …" — how a manager asks for the line to be changed —
+ * were not, so the earlier turn's reason stood. The later turn wins once it
+ * is read. Only with EXIT_INTAKE_FIX_ENABLED.
+ */
+const REASON_EDIT: { pattern: RegExp; keep: boolean } = {
+  pattern:
+    /\breason(?:\s+for\s+(?:(?:her|his|their|the)\s+)?(?:leaving|quitting|resigning|resignation))?\s+(?:to(?:\s+(?:be|say|read))?|should\s+(?:be|say|read)|is\s+now|now(?:\s+is)?)\s*(?:[:=\-–—]\s*)?/,
+  keep: false,
+};
+
 function reasonIn(turn: string): string | null {
   /*
    * LINE BREAKS ARE KEPT. A manager who types one fact per line — "Resigning
@@ -452,7 +572,7 @@ function reasonIn(turn: string): string | null {
   const text = turn.replace(/[^\S\n]+/g, " ");
   const lower = text.toLowerCase();
   if (NO_REASON.test(lower)) return "No reason given.";
-  for (const { pattern, keep } of REASON_START) {
+  for (const { pattern, keep } of exitIntakeFixEnabled() ? [REASON_EDIT, ...REASON_START] : REASON_START) {
     const match = pattern.exec(lower);
     if (!match) continue;
     const from = keep ? match.index : match.index + match[0].length;
@@ -480,6 +600,131 @@ function sentence(text: string): string {
   const trimmed = text.trim().slice(0, 200);
   const capital = trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
   return /[.!]$/.test(capital) ? capital : `${capital}.`;
+}
+
+/* ---------------------------------------------------- the address -- */
+
+/*
+ * ============================================================================
+ * "PERMANENT ADDRESS 123 MAIN ST, LAWRENCE, KS 66044"
+ * ============================================================================
+ *
+ * Sibling app's live QA (25 Oct 2026): the manager typed the address and the card listed
+ * Permanent Address as blank. Read only after the words "permanent address"
+ * (or "home / mailing address", or "address" alone with "is" or a colon), and
+ * only when it starts with a street number: through a ZIP code where there
+ * is one, else to the end of the sentence. Never guessed from anything else.
+ * Only with EXIT_INTAKE_FIX_ENABLED.
+ */
+const ADDRESS_LABEL =
+  /\b(?:(?:permanent|home|mailing|current)\s+address(?:\s+is|\s*[:=\-–—])?|address\s*(?:is|[:=\-–—]))\s*/gi;
+const ADDRESS_THROUGH_ZIP = /^\d{1,6}[A-Za-z]?\s+[^\n]{2,100}?\b\d{5}(?:-\d{4})?\b/;
+const ADDRESS_TO_END = /^\d{1,6}[A-Za-z]?\s+[^\n.;!?]{2,100}?(?=\s*(?:[.;!?\n]|,\s*(?:she|he|they|her|his|last|and)\b|$))/i;
+
+function addressIn(turn: string): string | null {
+  for (const match of turn.matchAll(ADDRESS_LABEL)) {
+    const rest = turn.slice((match.index ?? 0) + match[0].length);
+    const found = ADDRESS_THROUGH_ZIP.exec(rest) ?? ADDRESS_TO_END.exec(rest);
+    if (found) return found[0].replace(/[\s,]+$/g, "").replace(/\s+/g, " ");
+  }
+  return null;
+}
+
+/** The Permanent Address the manager typed, the later turn winning, or null. */
+export function readPermanentAddress(rawText: string): string | null {
+  if (!exitIntakeFixEnabled()) return null;
+  let address: string | null = null;
+  for (const turn of (rawText ?? "").split(JOIN)) address = addressIn(turn) ?? address;
+  return address;
+}
+
+/**
+ * Whether `candidate` sits inside the Permanent Address the manager typed in
+ * `text` ("Main St" in "permanent address 123 Main St, …"): a street, not a
+ * person. Only with EXIT_INTAKE_FIX_ENABLED.
+ */
+export function inStatedPermanentAddress(candidate: string | null | undefined, text: string): boolean {
+  const phrase = candidate?.trim().toLowerCase();
+  if (!phrase || !exitIntakeFixEnabled()) return false;
+  const address = readPermanentAddress(normalize(text));
+  return address !== null && address.toLowerCase().includes(phrase);
+}
+
+/** EXIT_STATED_ONLY_ENABLED: the manager's words say the employee was let go ("your employment … is terminated"). */
+const TERMINATED = /\b(?:terminated|termination|terminating|fired|let (?:him|her|them)? ?go|dismissed|dismissal)\b/i;
+
+/*
+ * EXIT_TERMINATION_STATED_ENABLED (QA's Sunny round-5 live tester, 8 Nov 2026, item 4): the reason a termination
+ * letter states — "This decision follows the text message you sent …", "terminated due to …", "the reason for the
+ * termination is …" — in the manager's words, ended where the reason's sentence ends.
+ */
+const TERMINATION_REASON = [
+  /\bthis decision (?:follows|is based on|is due to|comes after)\s+/i,
+  /\b(?:terminated|termination|let go|dismissed)\b[^.;!?\n]{0,40}?\b(?:because of|because|due to|following|for)\s+(?=\S)/i,
+  /\breason for (?:the |your |(?:her|his|their) )?(?:termination|separation|dismissal)\s*(?:is|was|:|-|–|—)\s*/i,
+];
+
+function terminationReason(text: string): string | null {
+  for (const pattern of TERMINATION_REASON) {
+    const match = pattern.exec(text);
+    if (!match) continue;
+    const from = (match.index ?? 0) + match[0].length;
+    const close = /[.!?\n]/.exec(text.slice(from));
+    if (close && text[from + close.index] === "?") continue;
+    const raw = text.slice(from, close ? from + close.index : text.length).replace(/[,\s]+$/g, "").trim();
+    if (raw.split(/\s+/).length < 3) continue;
+    return sentence(aboutTheEmployee(raw));
+  }
+  return null;
+}
+
+/**
+ * FIELD_LABEL_NOT_A_QUESTION_ENABLED (QA, 8 Nov 2026, from the sibling app's live tester; the same here): "how employee resigned - told
+ * management" fills the How Employee Resigned line by its own label. A known channel in it ("by text") is read as
+ * before; otherwise the manager's words after the label are the line, ended where the sentence ends.
+ */
+const METHOD_LABEL = /\bhow\s+(?:the\s+)?employee\s+resigned\s*(?:[-–—:=]|\bis\b|\bwas\b)\s*/i;
+
+function labelledMethod(turn: string): string | null {
+  if (!fieldLabelNotAQuestionEnabled()) return null;
+  const match = METHOD_LABEL.exec(turn);
+  if (!match) return null;
+  const from = (match.index ?? 0) + match[0].length;
+  const end = /[.;!?\n]/.exec(turn.slice(from));
+  const raw = turn.slice(from, end ? from + end.index : turn.length).trim();
+  if (raw.split(/\s+/).length < 2) return null;
+  return sentence(raw);
+}
+
+/*
+ * The letter speaks to the employee ("the text message you sent to your Salon Director … you would turn in your
+ * keys"); the form speaks about them (QA's round-6 follow-up, 8 Nov 2026): the first "you"/"your" is "the employee"
+ * ("the employee's"), every later one "they"/"them"/"their", and "yourself" is "themselves".
+ */
+const OBJECT_BEFORE = /\b(?:to|for|with|about|of|at|by|from|told|asked|gave|give|sent|informed|warned|reminded|thank|thanked|let|see|saw|called|contacted|met)\s+$/i;
+const AGREES: Record<string, string> = { were: "was", are: "is", have: "has", do: "does", "'re": " is", "'ve": " has", "’re": " is", "’ve": " has" };
+
+function aboutTheEmployee(reason: string): string {
+  let named = false;
+  return reason.replace(
+    /\b(yourself|yours|your|you)\b(['’](?:re|ve|d|ll))?(\s+(?:were|are|have|do)\b)?/gi,
+    (match: string, word: string, contraction: string | undefined, verb: string | undefined, index: number) => {
+      const lower = word.toLowerCase();
+      const first = !named;
+      named = true;
+      const capital = index === 0 || /[.!?]\s*$/.test(reason.slice(0, index));
+      const cap = (out: string) => (capital ? out.charAt(0).toUpperCase() + out.slice(1) : out);
+      if (lower === "yourself") return cap("themselves");
+      if (lower === "yours") return cap(first ? "the employee's" : "theirs");
+      if (lower === "your") return cap(first ? "the employee's" : "their");
+      const object = !contraction && !verb && OBJECT_BEFORE.test(reason.slice(0, index));
+      if (object) return cap(first ? "the employee" : "them");
+      if (!first) return cap(`they${contraction ?? ""}${verb ?? ""}`);
+      const agreed = contraction ? (AGREES[contraction.toLowerCase()] ?? contraction) : "";
+      const verbAgreed = verb ? verb.replace(/\S+$/, (v) => AGREES[v.toLowerCase()] ?? v) : "";
+      return cap(`the employee${agreed}${verbAgreed}`);
+    },
+  );
 }
 
 /* ------------------------------------------------------------ reading -- */
@@ -535,7 +780,8 @@ export function readExitDetails(rawText: string, today: string, facts?: ExitFact
     for (const [key, reading] of Object.entries(readAnswers(turn)) as [ExitAnswerKey, Reading][]) {
       if (reading !== undefined) settled[key] = reading;
     }
-    method = joinMethods(methodsIn(turn)) ?? method;
+    // FIELD_LABEL_NOT_A_QUESTION_ENABLED: "how employee resigned - told management" is the manager's own answer for that line.
+    method = joinMethods(methodsIn(turn)) ?? labelledMethod(turn) ?? method;
     reason = reasonIn(turn) ?? reason;
   }
   for (const key of EXIT_ANSWER_KEYS) {
@@ -544,10 +790,18 @@ export function readExitDetails(rawText: string, today: string, facts?: ExitFact
     else if (reading) answers[key] = reading;
   }
 
+  // EXIT_STATED_ONLY_ENABLED: a termination is not a resignation — how and why they "resigned" are never read from it.
+  if (exitStatedOnlyEnabled() && TERMINATED.test(text)) {
+    method = null;
+    // EXIT_TERMINATION_STATED_ENABLED: the reason the manager stated for the termination ("This decision follows …").
+    reason = exitTerminationStatedEnabled() ? terminationReason(text) : null;
+  }
+  const permanentAddress = readPermanentAddress(text);
   return {
     resignationDate: exitFacts.resignationDate,
     resignationMethod: method,
     resignationReason: reason,
+    ...(permanentAddress ? { permanentAddress } : {}),
     answers,
     ambiguities,
   };
@@ -559,6 +813,7 @@ export function exitDetailValues(details: ExitDetails): {
   checked: Record<string, string[]>;
 } {
   const values: Record<string, string> = {};
+  if (details.permanentAddress) values[EXIT_PERMANENT_ADDRESS_KEY] = details.permanentAddress;
   if (details.resignationDate) values[EXIT_DETAIL_FIELDS.resignationDate] = details.resignationDate;
   if (details.resignationMethod) values[EXIT_DETAIL_FIELDS.resignationMethod] = details.resignationMethod;
   if (details.resignationReason) values[EXIT_DETAIL_FIELDS.resignationReason] = details.resignationReason;
@@ -574,6 +829,7 @@ export function exitDetailsSupplied(details: ExitDetails): boolean {
   return (
     details.resignationMethod !== null ||
     details.resignationReason !== null ||
+    Boolean(details.permanentAddress) ||
     Object.keys(details.answers).length > 0 ||
     details.ambiguities.length > 0
   );

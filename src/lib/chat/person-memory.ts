@@ -1,6 +1,7 @@
 import "server-only";
 
 import { MEMORY_SECTION } from "@/lib/ai/prompts";
+import { CROSS_CHAT_RECORDS_NOTE, isBareNameTurn } from "@/lib/chat/cross-chat-guard";
 import { businessToday } from "@/lib/business-date";
 import { NOT_A_NAME, NOT_A_TYPED_NAME, TYPED_NAME_WORD } from "@/lib/forms/name-words";
 import { readEmployeeMentions, samePerson } from "@/lib/forms/proposal";
@@ -63,6 +64,12 @@ export const MAX_FORMS_PER_PERSON = 5;
 export interface PersonCandidate {
   readonly name: string;
   readonly confirmed: boolean;
+  /**
+   * Set only with CROSS_CHAT_REPLY_GUARD_ENABLED: every turn this name was read
+   * from is nothing but the name ("asdasd"), so the roster has to say it is a
+   * person before anything is recalled for it.
+   */
+  readonly bareTurnOnly?: boolean;
 }
 
 /** One of the manager's own earlier turns. */
@@ -162,37 +169,47 @@ export function namesToRecall(input: {
   question: string;
   history: readonly { role: string; content: string }[];
   userName?: string | null;
+  /** CROSS_CHAT_REPLY_GUARD_ENABLED: mark names read only from a bare turn. */
+  crossChatGuard?: boolean;
 }): PersonCandidate[] {
   const candidates: PersonCandidate[] = [];
   const self = input.userName && input.userName !== "Manager" ? input.userName : null;
+  const guard = input.crossChatGuard === true;
 
-  const add = (name: string, confirmed: boolean) => {
+  const add = (name: string, confirmed: boolean, from?: string) => {
     const clean = name.trim();
     if (!clean || !TYPED_NAME_WORD.test(firstWordOf(clean))) return;
     if (self && samePerson(self, clean)) return;
+    const bareTurn = guard && from !== undefined && isBareNameTurn(from, clean);
     const index = candidates.findIndex((existing) => samePerson(existing.name, clean));
     if (index === -1) {
-      candidates.push({ name: clean, confirmed });
+      candidates.push(guard ? { name: clean, confirmed, bareTurnOnly: bareTurn } : { name: clean, confirmed });
       return;
     }
     const existing = candidates[index]!;
     // Keep the fuller spelling and the stronger reading of the two.
     const fuller = clean.split(/\s+/).length > existing.name.split(/\s+/).length ? clean : existing.name;
-    candidates[index] = { name: fuller, confirmed: existing.confirmed || confirmed };
+    candidates[index] = guard
+      ? {
+          name: fuller,
+          confirmed: existing.confirmed || confirmed,
+          bareTurnOnly: Boolean(existing.bareTurnOnly) && bareTurn,
+        }
+      : { name: fuller, confirmed: existing.confirmed || confirmed };
   };
 
-  for (const name of readEmployeeMentions(input.question).names) add(name, true);
+  for (const name of readEmployeeMentions(input.question).names) add(name, true, input.question);
   for (const name of loneCapitalisedNames(input.question)) {
     // "Avery" in "Jordan Avery" is the surname of somebody already found.
     const partOfAName = candidates.some((existing) =>
       wordsOf(existing.name).includes(name.toLowerCase()),
     );
-    if (!partOfAName) add(name, false);
+    if (!partOfAName) add(name, false, input.question);
   }
 
   const earlierTurns = input.history.filter((turn) => turn.role === "user").reverse();
   for (const turn of earlierTurns) {
-    for (const name of readEmployeeMentions(turn.content).names) add(name, true);
+    for (const name of readEmployeeMentions(turn.content).names) add(name, true, turn.content);
   }
 
   return candidates.slice(0, MAX_PEOPLE);
@@ -271,6 +288,7 @@ const STATUS_WORDS: Record<string, string> = {
 export function renderMemoryBlock(
   recollections: readonly PersonRecollection[],
   userName: string,
+  options: { crossChatGuard?: boolean } = {},
 ): string | null {
   const people = recollections.filter(
     (person) => person.conversations.length > 0 || person.forms.length > 0,
@@ -300,7 +318,8 @@ export function renderMemoryBlock(
     return lines.join("\n");
   });
 
-  return `${MEMORY_SECTION}
+  const recordsNote = options.crossChatGuard ? `\n\n${CROSS_CHAT_RECORDS_NOTE}` : "";
+  return `${MEMORY_SECTION}${recordsNote}
 
 From ${userName}'s own earlier Ask Sunny conversations, and the forms they created, about people named in this conversation. This is what the manager said at the time: their account, not a verified record and not company policy. Nobody else's history is included.
 

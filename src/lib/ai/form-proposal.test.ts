@@ -1544,7 +1544,7 @@ describe("HIDE. the hiring forms are not offered as choices", () => {
  * A MANAGER WHO ASKED FOR A CORRECTIVE ACTION IS OFFERED ONE FIRST
  * ============================================================================
  *
- * October 2026 (ported from Ask Bubbles 4cbb84c): "write a CA for Paisley" —
+ * October 2026 (ported from Ask Bubbles 4cbb84c): "write a CA for Daisley" —
  * and the cards under the next answer led with the Coaching Form. The
  * manager's own turns, read through the same detector the explicit path uses,
  * now put the Corrective Action Form first; nobody else's order changes.

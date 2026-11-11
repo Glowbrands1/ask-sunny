@@ -1,3 +1,4 @@
+import { slotOnlyRetrievalTopic } from "./slot-only-turn";
 import type { OpenFormSummary } from "./types";
 
 /**
@@ -47,6 +48,13 @@ export function retrievalQueryFor(input: {
   readonly openForm?: OpenFormSummary | null;
 }): string {
   const question = (input.question ?? "").trim();
+  /*
+   * A TURN THAT ONLY FILLS IN A DETAIL — "She works at Lawrence", "It happened
+   * on 10-21" — is searched with the conversation's topic instead of its own
+   * words. See `slot-only-turn.ts`.
+   */
+  const topic = slotOnlyRetrievalTopic(question, input.history);
+  if (topic) return topic;
   const words = question.split(/\s+/).filter(Boolean).length;
   if (words === 0 || words > FOLLOW_UP_MAX_WORDS || !POINTS_BACK.test(question)) return question;
 

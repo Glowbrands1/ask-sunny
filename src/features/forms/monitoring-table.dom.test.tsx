@@ -6,6 +6,7 @@ import { cleanup, render, screen, waitFor, within } from "@testing-library/react
 import userEvent from "@testing-library/user-event";
 
 import { MonitoringTable, type MonitoredForm } from "./monitoring-table";
+import type { Permission, Role } from "@/types";
 
 /**
  * WHAT THE TABLE OFFERS, AND WHAT IT SAYS ABOUT EACH ROW.
@@ -519,5 +520,128 @@ describe("small row controls are big enough to tap", () => {
   it("Mark followed up", () => {
     table([form({ employeeName: "Late One", followUpDate: "2026-09-01" })]);
     expect(sized(rowFor("Late One").ui.getByRole("button", { name: /mark followed up/i }))).toBe(true);
+  });
+});
+
+/* ------------------------------------------- form revisions: Edit / History --- */
+
+describe("Edit and History on a row (NEXT_PUBLIC_FORM_REVISIONS_ENABLED)", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("off: the row has no Edit or History, exactly as before", () => {
+    table([form()]);
+    const { ui } = rowFor(form().employeeName);
+    expect(ui.queryByText("Edit")).toBeNull();
+    expect(ui.queryByText("History")).toBeNull();
+    expect(ui.getByText("PDF")).toBeTruthy();
+  });
+
+  /*
+   * Edit only for a role the server lets edit that template
+   * (`authorizeInstance(..., "edit")` needs the template's create
+   * permission). The roles here are read from the real permission matrix.
+   */
+  const signedInAs = async (role: string) => {
+    const { DEFAULT_PERMISSION_MATRIX, hasPermission } = await import("@/lib/permissions");
+    mockSession.value = {
+      role,
+      user: { name: "QA" },
+      can: (permission: Permission) => hasPermission(DEFAULT_PERMISSION_MATRIX, role as Role, permission),
+      demoMode: false,
+    };
+  };
+
+  it("on: an owner sees Edit and History", async () => {
+    vi.stubEnv("NEXT_PUBLIC_FORM_REVISIONS_ENABLED", "true");
+    await signedInAs("owner");
+    table([form()]);
+    const { ui } = rowFor(form().employeeName);
+    expect(ui.getByText("Edit")).toBeTruthy();
+    expect(ui.getByText("History")).toBeTruthy();
+  });
+
+  it("on: an assistant salon director, who may view but not edit, sees History and no Edit", async () => {
+    vi.stubEnv("NEXT_PUBLIC_FORM_REVISIONS_ENABLED", "true");
+    await signedInAs("assistant_salon_director");
+    table([form(), form({ id: "form-2", employeeName: "Tessaly Brone", status: "draft", finalizedAt: null })]);
+    for (const name of [form().employeeName, "Tessaly Brone"]) {
+      const { ui } = rowFor(name);
+      expect(ui.queryByText("Edit")).toBeNull();
+      expect(ui.getByText("History")).toBeTruthy();
+    }
+  });
+
+  it("off: an assistant salon director sees neither", async () => {
+    await signedInAs("assistant_salon_director");
+    table([form()]);
+    const { ui } = rowFor(form().employeeName);
+    expect(ui.queryByText("Edit")).toBeNull();
+    expect(ui.queryByText("History")).toBeNull();
+  });
+
+  it("on: a finalized row offers Edit and History", () => {
+    vi.stubEnv("NEXT_PUBLIC_FORM_REVISIONS_ENABLED", "true");
+    table([form()]);
+    const { ui } = rowFor(form().employeeName);
+    expect(ui.getByText("Edit")).toBeTruthy();
+    expect(ui.getByText("History")).toBeTruthy();
+  });
+});
+
+/* ------------------------------------------------------- the row menu "…" --- */
+
+/*
+ * Pau, 29 Oct 2026: "for bubbles in form i cant click the ... wanted to delete
+ * some form but the ... is not showing when clicked". A role that may track
+ * follow-ups but not manage records got a "…" whose menu had no item: an
+ * empty box that looks like nothing opened. The "…" now shows only when the
+ * menu has something in it.
+ */
+describe("the row menu \"…\" opens with something in it", () => {
+  const trackOnly = () => {
+    mockSession.value = {
+      role: "location_manager",
+      user: { name: "QA" },
+      can: (permission: Permission) => permission === "create_coaching_form",
+      demoMode: false,
+    };
+  };
+  const admin = () => {
+    mockSession.value = { role: "admin", user: { name: "QA" }, can: () => true, demoMode: false };
+  };
+
+  it("for bubbles in form i cant click the ... wanted to delete some form: an admin gets Delete on a draft", async () => {
+    admin();
+    table([form({ employeeName: "Draft One", status: "draft", finalizedAt: null })]);
+    await userEvent.click(rowFor("Draft One").ui.getByRole("button", { name: "More actions for Draft One" }));
+    expect(await screen.findByRole("menuitem", { name: /delete/i })).toBeTruthy();
+  });
+
+  it("an admin gets Archive on a finalized form", async () => {
+    admin();
+    table([form({ employeeName: "Filed One" })]);
+    await userEvent.click(rowFor("Filed One").ui.getByRole("button", { name: "More actions for Filed One" }));
+    expect(await screen.findByRole("menuitem", { name: /archive/i })).toBeTruthy();
+  });
+
+  it("the ... is not showing when clicked: a role that cannot manage gets no empty \"…\" on a draft", () => {
+    trackOnly();
+    table([form({ employeeName: "Draft One", status: "draft", finalizedAt: null })]);
+    expect(rowFor("Draft One").ui.queryByRole("button", { name: "More actions for Draft One" })).toBeNull();
+  });
+
+  it("that role still gets Reopen follow-up on a followed-up row", async () => {
+    trackOnly();
+    table([
+      form({
+        employeeName: "Done One",
+        followUpDate: "2026-09-01",
+        followedUpAt: "2026-09-02T12:00:00Z",
+        followedUpBy: "QA",
+      }),
+    ]);
+    await userEvent.click(rowFor("Done One").ui.getByRole("button", { name: "More actions for Done One" }));
+    const items = await screen.findAllByRole("menuitem");
+    expect(items.map((item) => item.textContent)).toEqual(["Reopen follow-up"]);
   });
 });

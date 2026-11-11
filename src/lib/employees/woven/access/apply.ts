@@ -76,6 +76,12 @@ export interface ApplyRequest {
   redirectTo: string | null;
   config: WovenAccessConfig;
   now?: Date;
+  /**
+   * NEW_HIRE_INVITES_ENABLED: the hourly new-hire run sends the invitations,
+   * one or two an hour (`new-hire-invites.ts`); this run creates the accounts
+   * and sends none, so nobody is invited in a batch.
+   */
+  holdInvites?: boolean;
 }
 
 export type ActionResult = "applied" | "failed" | "skipped" | "planned";
@@ -216,7 +222,7 @@ export async function applyAccessLifecycle(request: ApplyRequest, deps: ApplyDep
 
       const outcome =
         primary === "CREATE_USER"
-          ? await createUser(row, request, deps, setBy, enabled.has("SEND_INVITE"))
+          ? await createUser(row, request, deps, setBy, enabled.has("SEND_INVITE") && !request.holdInvites)
           : primary === "LINK_EXISTING"
             ? await linkExisting(row, deps, setBy)
             : await disableTerminated(row, deps, setBy);
@@ -227,7 +233,7 @@ export async function applyAccessLifecycle(request: ApplyRequest, deps: ApplyDep
     }
 
     /* 5. invitations that did not go out — only when the invitation email itself is switched on */
-    if (enabled.has("SEND_INVITE")) {
+    if (enabled.has("SEND_INVITE") && !request.holdInvites) {
       for (const row of rows) {
         const account = row.account;
         const invite = account?.invite;
@@ -367,7 +373,7 @@ async function createUser(row: PlannedRow, request: ApplyRequest, deps: ApplyDep
  * never passes through this process. A confirmed or banned credential is not
  * invited.
  */
-async function sendInviteEmail(
+export async function sendInviteEmail(
   appUserId: string,
   email: string,
   redirectTo: string | null,

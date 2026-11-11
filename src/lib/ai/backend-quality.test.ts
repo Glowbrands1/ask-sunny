@@ -114,7 +114,12 @@ describe("prompt caching stays off the request until PROMPT_CACHE_ENABLED", () =
     expect(calls[0]?.cache_read_input_tokens).toBe(0);
     expect(calls[1]?.cache_creation_input_tokens).toBe(0);
     expect(calls[1]?.cache_read_input_tokens).toBeGreaterThan(0);
-    const latency = firstTokenLatencyMs(system.repeat(40));
+    // The cached prefix is everything before the marker. Repeating the whole
+    // prompt leaves that prefix one line long and puts the rest in the tail,
+    // so the two scans are the same size and the clock can go either way.
+    const latency = firstTokenLatencyMs(
+      `${"You are Sunny.\n".repeat(40)}---DYNAMIC---\n\nYou are talking to Dana Reyes, who runs MO Wornall. Today is 2026-10-24.`,
+    );
     expect(latency.newMs).toBeLessThan(latency.oldMs);
   });
 });

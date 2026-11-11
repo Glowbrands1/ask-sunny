@@ -16,7 +16,7 @@ describe("QA F-04: writing ABOUT corrective action is not a request for the form
   it.each([
     "can you write a summary of the corrective action policy",
     "write a note explaining the corrective action steps",
-    "write an email to Paisley about her CA",
+    "write an email to Daisley about her CA",
     "write a letter to HR about the corrective action process",
     "write an explanation of the CA steps for my new SD",
   ])("%s", (text) => {
@@ -35,8 +35,8 @@ describe("QA F-04: writing ABOUT corrective action is not a request for the form
 
 describe("QA F-04: writing THE FORM is still a request", () => {
   it.each([
-    "write a CA for Paisley",
-    "Write a CA for paisley, she was late today",
+    "write a CA for Daisley",
+    "Write a CA for daisley, she was late today",
     "write a corrective action for Dana Moss",
     "write up a CA for Dana Moss",
   ])("%s", (text) => {

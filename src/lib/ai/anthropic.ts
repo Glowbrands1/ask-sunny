@@ -4,6 +4,8 @@ import Anthropic from "@anthropic-ai/sdk";
 
 import { requireEnv } from "@/lib/config/server-env";
 
+import { meteredClient } from "./spend-meter";
+
 /**
  * The Anthropic client. Server-only, constructed once.
  *
@@ -14,7 +16,8 @@ let client: Anthropic | null = null;
 
 export function getAnthropicClient(): Anthropic {
   client ??= new Anthropic({ apiKey: requireEnv("ANTHROPIC_API_KEY") });
-  return client;
+  // SPEND_GUARD_ALL_CALLS_ENABLED: every call's usage into the request's meter. Off, the client itself.
+  return meteredClient(client);
 }
 
 /** Test seam. */

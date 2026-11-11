@@ -1,5 +1,7 @@
-import { payrollAmountFieldEnabled } from "@/lib/config/chat-quality-flags";
+import { payrollAmountFieldEnabled, secondRequestOwnAccountEnabled } from "@/lib/config/chat-quality-flags";
+import { startsFormRequest, startsNewRequest } from "@/lib/forms/current-request";
 import { rosterSalonName } from "@/lib/forms/salon-mention";
+import { editDistance } from "@/lib/forms/typo-match";
 import type { ChatFormProposal } from "@/types";
 
 /**
@@ -93,8 +95,104 @@ export function stateSentences(state: ConversationFormState): string[] {
   return lines;
 }
 
+/**
+ * The saved state as this turn may use it: without the earlier request's policy and incident when this turn starts a
+ * new one. Both are written in front of the turn ("Policy reference: Late Opening … Incident: Late Opening.") and read
+ * as the manager's own words, so a cash-drawer request said "Late Opening, as you said".
+ *
+ * Only when this turn starts a request of its own after earlier ones (`earlier`, the manager's turns before this one;
+ * `forms/current-request.ts` startsNewRequest; QA's Sunny round-3 gate, 7 Nov 2026): the first request's own state ("CA for <name>, she was rude to <name> …" → Standards of Conduct) is this request's,
+ * and dropping it left single-request cards with no Policy line. No earlier turns given: kept, as before the flag.
+ */
+export function stateForTurn(
+  state: ConversationFormState | null,
+  question: string,
+  earlier: readonly string[] = [],
+  ownPolicy: OwnPolicy | null = null,
+): ConversationFormState | null {
+  if (!state || !secondRequestOwnAccountEnabled() || (!state.policyHeading && !state.incidentType) || !startsFormRequest(question)) return state;
+  if (!startsNewRequest(earlier, question)) return state;
+  // QA's live round 7b (9 Nov 2026): the answer to the app's own clarifying question continues the same request.
+  if (asksTheManager(readLastReply())) return state;
+  // sf-s38 (QA's round-6 gate, 8 Nov 2026): the same request sent again is no new request; its policy stays.
+  if (earlier.some((turn) => sameRequestAgain(turn, question))) return state;
+  // QA's live round 7b: only the earlier request's policy goes; one the models read in this very request stays
+  // (sf-s38 turn 7, "make me CA for <first name> failing to complete shifts", read as Attendance).
+  return { ...state, policyHeading: ownPolicy?.policyHeading ?? null, policyPage: ownPolicy?.policyPage ?? null, incidentType: null };
+}
+
+/** The policy the models read in this turn's own request (`ai/intent-slots.ts`), which a new request keeps. */
+export interface OwnPolicy {
+  readonly policyHeading: string;
+  readonly policyPage: number | null;
+}
+
+/*
+ * THE ANSWER TO THE APP'S OWN QUESTION (SECOND_REQUEST_OWN_ACCOUNT_ENABLED; QA's live round 7b, 9 Nov 2026, Sunny rolled
+ * back). "make me CA for <first name> failing to complete shifts" was asked "Is this for **<Full Name>**?", and the
+ * answer "Make me a CA for <Full Name> not showing up to her shifts on 11/7 and 11/8" was read as a new request: the
+ * card lost its Policy line (Attendance p.14). When the app's reply before this turn opened by asking the manager
+ * something — who the form is for ("Is this for **<A>**?", "Who is this **<form>** for?", "Which of them is this …",
+ * "Did you mean **<A>**?") or which date — this turn answers it, and continues the same request. A card that also asks
+ * a question further down ("Is payroll deduct applicable?") is not such a reply: a request after it is read as before.
+ * The reply is entered by the chat route (`forms/last-reply-store.ts`); with none (a test, the browser), as before.
+ */
+const ASKS_THE_MANAGER =
+  /^(?:Is this for \*\*[^*\n]+\*\*\?|Who is this \*\*[^*\n]+\*\* for\?|Which of them is this \*\*|Did you mean \*\*[^*\n]+\*\*|Which (?:date|day)\b[^\n]*\?)/i;
+
+let readLastReply: () => string | undefined = () => undefined;
+
+/** The server installs the reader of the app's reply before this turn (`forms/last-reply-store.ts`). */
+export function installLastReply(read: () => string | undefined): void {
+  readLastReply = read;
+}
+
+function asksTheManager(reply: string | undefined): boolean {
+  return ASKS_THE_MANAGER.test((reply ?? "").trim());
+}
+
+/*
+ * THE SAME REQUEST SENT AGAIN (SECOND_REQUEST_OWN_ACCOUNT_ENABLED; QA's round-6 gate, 8 Nov 2026, sf-s38). The manager
+ * sent "make me an CA for <A> missing her saturday and sunday shifts …" twice; the second was read as a new request,
+ * so the card lost its Policy line and its Action Plan fell back to "the applicable company policy". A turn is the
+ * same request as an earlier one when their words are the same, read without case, punctuation or extra spaces and
+ * without a closing "please" / "thanks" — or when one word differs only as a typo fix: at most a third of the longer
+ * spelling's letters, words of 4 letters or more ("proporley" → "properly"). Another day ("saturday" → "sunday"),
+ * another person or anything added or taken away is a request of its own, as before.
+ */
+const COURTESY = new Set(["please", "pls", "plz", "thanks", "thank", "you", "thx"]);
+
+function requestWords(text: string): string[] {
+  const words = text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s'’-]+/gu, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  while (words.length > 0 && COURTESY.has(words.at(-1)!)) words.pop();
+  while (words.length > 0 && COURTESY.has(words[0]!)) words.shift();
+  return words;
+}
+
+function sameRequestAgain(earlier: string, turn: string): boolean {
+  const a = requestWords(earlier);
+  const b = requestWords(turn);
+  if (a.length === 0 || a.length !== b.length) return false;
+  const differing = a.flatMap((word, index) => (word === b[index] ? [] : [index]));
+  if (differing.length === 0) return true;
+  if (differing.length > 1) return false;
+  const [x, y] = [a[differing[0]!]!, b[differing[0]!]!];
+  const longer = Math.max(x.length, y.length);
+  return Math.min(x.length, y.length) >= 4 && editDistance(x, y) <= Math.floor(longer / 3);
+}
+
 /** Sentences the proposal readers already accept, ahead of this turn's words. */
-export function prependFormState(question: string, state: ConversationFormState | null): string {
+export function prependFormState(
+  question: string,
+  given: ConversationFormState | null,
+  earlier: readonly string[] = [],
+  ownPolicy: OwnPolicy | null = null,
+): string {
+  const state = stateForTurn(given, question, earlier, ownPolicy);
   if (!state) return question;
   const lines = stateSentences(state).filter((line) => !question.includes(line));
   if (lines.length === 0) return question;

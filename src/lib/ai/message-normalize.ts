@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { detectTemplateIntent } from "@/lib/forms/template-intent";
+
 import {
   expandGlossaryQuery,
   glossaryIntent,
@@ -33,10 +35,26 @@ export interface NormalizedMessage {
 export function glossaryReading(question: string): NormalizedMessage {
   return {
     answerText: question,
-    routingText: expandGlossaryQuery(question),
+    routingText: routingText(question),
     modelQuery: null,
     intent: glossaryIntent(question),
   };
+}
+
+/**
+ * The glossary expansion, unless it would change the form the manager named.
+ * "Create the separation paperwork for …" names the Resignation/Exit Form, but
+ * the bare "paperwork" shorthand added "corrective action form" and the turn
+ * became a Corrective Action Form with "Is payroll deduct applicable?"
+ * (25 Oct 2026). A form named in the manager's own words stays that form.
+ */
+function routingText(question: string): string {
+  const expanded = expandGlossaryQuery(question);
+  if (expanded === question) return expanded;
+  const named = detectTemplateIntent(question);
+  if (named.kind !== "explicit") return expanded;
+  const routed = detectTemplateIntent(expanded);
+  return routed.kind === "explicit" && routed.templateKey === named.templateKey ? expanded : question;
 }
 
 export function glossaryForPrompt(): string {

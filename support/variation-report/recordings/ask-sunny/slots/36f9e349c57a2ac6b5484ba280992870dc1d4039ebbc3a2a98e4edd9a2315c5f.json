@@ -1,0 +1,23 @@
+{
+  "key": "36f9e349c57a2ac6b5484ba280992870dc1d4039ebbc3a2a98e4edd9a2315c5f",
+  "model": "claude-haiku-4-5",
+  "reply": {
+    "employee": "quinn",
+    "salon": null,
+    "title": null,
+    "incidentType": "late",
+    "incidentDate": "10/20",
+    "payrollAmount": null,
+    "warningLevel": null,
+    "formType": "ca",
+    "formTurn": true,
+    "policyHeading": "Attendance"
+  },
+  "usage": {
+    "inputTokens": 2599,
+    "outputTokens": 203,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 0
+}

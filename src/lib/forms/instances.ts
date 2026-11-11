@@ -19,6 +19,7 @@ import {
   POLICY_ACKNOWLEDGEMENT_MESSAGE,
   policyAcknowledgementWording,
   unverifiedPolicyFields,
+  blankPolicyFields,
 } from "./policy-verification";
 import {
   draftableCheckboxGroups,
@@ -36,6 +37,8 @@ import {
   legacyPriorActions,
 } from "./prior-actions";
 import { applyRequiredClosings } from "./required-closing";
+import { offeredOffenseKeys } from "./offense-keys";
+import { caSalesPolicyEnabled } from "@/lib/config/chat-quality-flags";
 import { collapseToTwoSentences } from "./action-plan-sentences";
 import { isIsoCalendarDate } from "./form-date-answer";
 import { refreshedActionPlan } from "./ca-action-plan";
@@ -988,6 +991,10 @@ export async function finalizeInstance(
     before.values,
   );
   const unverified = unverifiedFields.map((field) => field.key);
+  // POLICY_GATE_NONBLOCKING_ENABLED: a blank policy field is not held for, but the record says it was blank (empty when off).
+  const blankPolicy = blankPolicyFields(parseFormDocument(before.version.document), before.instance.variantKey, before.values).map(
+    (field) => field.key,
+  );
 
   if (unverified.length > 0 && options.acknowledgeUnverifiedPolicy !== true) {
     throw new UnverifiedPolicyError(unverified, policyAcknowledgementWording(unverifiedFields, before.events, Boolean(before.instance.revisesInstanceId))
@@ -1037,6 +1044,8 @@ export async function finalizeInstance(
     ...(unverified.length > 0
       ? { unverifiedPolicy: unverified, policyVerificationOverride: true }
       : {}),
+    /* POLICY_GATE_NONBLOCKING_ENABLED: the audit trail of a policy left blank at approval (never set with the flag off). */
+    ...(blankPolicy.length > 0 ? { policyBlankAtFinalize: true, blankPolicy } : {}),
   });
   // A revision, finalized, replaces the form it revises — see `reviseInstance`.
   await supersedeRevised(loaded, actor);
@@ -1051,6 +1060,12 @@ export async function markExported(instanceId: string, actor: string): Promise<v
     .eq("id", instanceId);
   if (error) throw new Error(`Could not record the export: ${error.message}`);
   await recordEvent(instanceId, "exported", actor);
+}
+
+/** The manager's reason and the revision's number, recorded on the revision's `created` event. */
+export interface ReviseOptions {
+  readonly reason?: string;
+  readonly revisionNumber?: number;
 }
 
 /**
@@ -1073,11 +1088,17 @@ export async function markExported(instanceId: string, actor: string): Promise<v
  *
  * ONE OPEN REVISION AT A TIME. Asking again while a revision is still a draft
  * returns that draft rather than forking a second one.
+ *
+ * WHY, AND WHICH REVISION (`FORM_REVISIONS_ENABLED`). The caller may pass the
+ * manager's reason for the edit and the revision's number in its chain; both
+ * go on the revision's `created` event. Neither is passed with the flag off,
+ * and the event is then exactly what it always was.
  */
 export async function reviseInstance(
   instanceId: string,
   actor: string,
   kind: "revised" | "reevaluated",
+  options: ReviseOptions = {},
 ): Promise<InstanceRow> {
   const supabase = getSupabaseAdmin();
   const loaded = await loadInstance(instanceId);
@@ -1119,6 +1140,16 @@ export async function reviseInstance(
     })
     .select("id")
     .single();
+  /*
+   * TWO PRESSES AT ONCE. Both can pass the open-revision check above before
+   * either inserts. The partial unique index on `revises_instance_id` (open
+   * drafts only) refuses the second insert; that press gets the revision the
+   * first one opened.
+   */
+  if (error?.code === UNIQUE_VIOLATION) {
+    const raced = await findOpenRevision(instanceId);
+    if (raced) return raced;
+  }
   if (error || !data) throw new Error(`Could not open the revision: ${error?.message}`);
 
   const carried = loaded.values.filter((value) => value.filledBy !== "signature");
@@ -1155,6 +1186,39 @@ export async function reviseInstance(
       fieldsForVariant(target, loaded.instance.variantKey).map((field) => field.key),
     );
     const byKey = new Map(rows.map((row) => [row.field_key, row]));
+    /*
+     * A TYPE OF OFFENSE TICK ON A BOX THE NEWER VERSION REPLACED (Corrective
+     * Action revision 7; Pau, 4 Nov 2026, option A). Only "Edit as new draft"
+     * onto a NEWER version: Tardiness/Leaving Early and Absenteeism become
+     * Attendance Policy, Under Performance and Violation of Company Policies
+     * the Standards of Conduct, and an old Other write-in ticks Other. The
+     * original is not touched. Behind CA_SALES_POLICY_ENABLED; off, the rows
+     * are carried exactly as before. See `offense-keys.ts`.
+     */
+    if (caSalesPolicyEnabled() && version.id !== loaded.instance.templateVersionId) {
+      const offered =
+        checkboxGroupsForVariant(target, loaded.instance.variantKey)
+          .find((group) => group.key === "offense_type")
+          ?.options.map((option) => option.key) ?? [];
+      const offense = byKey.get("offense_type");
+      const other = byKey.get("other_offense");
+      const wanted = [
+        ...(offense?.checked ?? []),
+        ...((other?.value ?? "").trim() !== "" && !targetKeys.has("other_offense") ? ["other"] : []),
+      ];
+      const mapped = offered.length > 0 ? offeredOffenseKeys(wanted, offered) : wanted;
+      if (offense) offense.checked = mapped;
+      else if (other && mapped.length > 0) {
+        rows.push({
+          instance_id: data.id,
+          field_key: "offense_type",
+          value: null,
+          checked: mapped,
+          filled_by: other.filled_by,
+          provenance: { source: "carried_from_previous_version", fromKeys: ["other_offense"] } as Record<string, unknown>,
+        });
+      }
+    }
     if (targetKeys.has(PRIOR_ACTIONS_KEY) && !(byKey.get(PRIOR_ACTIONS_KEY)?.value ?? "").trim()) {
       const legacyAction = byKey.get(LEGACY_PREVIOUS_ACTION_KEY);
       const legacyDate = byKey.get(LEGACY_PREVIOUS_ACTION_DATE_KEY);
@@ -1231,7 +1295,12 @@ export async function reviseInstance(
    * marked `revised`, with that event, when this is finalized. The revision's
    * own `created` event says what it was opened from.
    */
-  await recordEvent(String(data.id), "created", actor, { revisionOf: instanceId, kind });
+  await recordEvent(String(data.id), "created", actor, {
+    revisionOf: instanceId,
+    kind,
+    ...(options.reason ? { reason: options.reason } : {}),
+    ...(options.revisionNumber ? { revisionNumber: options.revisionNumber } : {}),
+  });
 
   const revision = await loadInstance(String(data.id));
   if (!revision) throw new Error("The revision could not be read back.");

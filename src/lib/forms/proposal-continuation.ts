@@ -1,4 +1,8 @@
+import { sameRequestKeepsEarlierCardClientEnabled } from "@/lib/config/chat-quality-flags";
 import type { ChatMessage } from "@/types";
+
+/** The sentence <B>'s card carries (`same-request-other-person.ts` withSameRequestNote): the earlier card stays as it is. */
+export const EARLIER_CARD_STAYS = "The earlier card or form stays as it is.";
 
 /**
  * ============================================================================
@@ -165,9 +169,29 @@ export function isProposalSuperseded(messages: readonly ChatMessage[], proposalI
   const index = messages.findIndex((message) => message.formProposal?.proposalId === proposalId);
   if (index < 0) return false;
   if (messages[index]!.formInstanceRef) return false;
+  const own = messages[index]!.formProposal!;
   return messages
     .slice(index + 1)
-    .some((message) => message.role === "assistant" && !message.error && message.formProposal && message.formProposal.proposalId !== proposalId);
+    .some(
+      (message) =>
+        message.role === "assistant" &&
+        !message.error &&
+        message.formProposal &&
+        message.formProposal.proposalId !== proposalId &&
+        !keepsEarlierCard(message, own.employeeName ?? null),
+    );
+}
+
+/*
+ * SAME_REQUEST_KEEPS_EARLIER_CARD_ENABLED (QA's r19 live check): <B>'s card from "the same thing for <B>" says the
+ * earlier card stays as it is, and does not supersede <A>'s card — another person's — so both stay creatable. A card
+ * for the same person, or one that does not say so, supersedes as before.
+ */
+function keepsEarlierCard(later: ChatMessage, earlierEmployee: string | null): boolean {
+  if (!sameRequestKeepsEarlierCardClientEnabled() || !earlierEmployee) return false;
+  const laterEmployee = later.formProposal?.employeeName ?? null;
+  if (!laterEmployee || laterEmployee.trim().toLowerCase() === earlierEmployee.trim().toLowerCase()) return false;
+  return typeof later.content === "string" && later.content.includes(EARLIER_CARD_STAYS);
 }
 
 /**
@@ -190,6 +214,30 @@ export function activeFormInstanceFor(messages: ChatMessage[]): string | undefin
     if (message.role !== "assistant" || message.error) continue;
     if (message.formInstanceRef) return message.formInstanceRef.instanceId;
     if (message.formProposal) return undefined;
+  }
+  return undefined;
+}
+
+/**
+ * SAME_FORM_COPY_NEW_PERSON_ENABLED, in the browser: the copy an answer
+ * offered, remembered beside that answer's text. Sent with the next turn only
+ * — when the last answer in the thread is still that one — so any other answer
+ * in between drops it.
+ */
+export interface OfferedCopy {
+  fromInstanceId: string;
+  answer: string;
+}
+
+export function offeredCopyForTurn(
+  offered: OfferedCopy | undefined,
+  history: readonly Pick<ChatMessage, "role" | "content" | "error">[] | undefined,
+): string | undefined {
+  if (!offered || !history) return undefined;
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const message = history[index]!;
+    if (message.role !== "assistant") continue;
+    return !message.error && message.content === offered.answer ? offered.fromInstanceId : undefined;
   }
   return undefined;
 }
