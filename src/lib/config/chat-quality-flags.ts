@@ -4406,3 +4406,15 @@ export function failureToOpenIsLateOpeningEnabled(): boolean {
 export function requestIssueKeptEnabled(): boolean {
   return envFlag("REQUEST_ISSUE_KEPT_ENABLED");
 }
+
+/**
+ * REMAP_APP_LINES_NOT_ACCOUNT_ENABLED (coding 6, 11 Nov 2026; default off; QA's S1 from the open-cases audit,
+ * nov5-coding3-ca-offer-yes-no-account-remap). On the full remap with REMAP_INCIDENT_FIX off, the account reader read
+ * the app's own lines ("The employee is <name>. Job title: …. It happened at <salon>.") with the manager's; with the
+ * name and salon taken out, a no-account Corrective Action card's What happened was "The employee is . Job title:
+ * Tanning Consultant. It happened". On: those lines are left out before the account is read (`ai/form-full-remap.ts`).
+ * Off, as before.
+ */
+export function remapAppLinesNotAccountEnabled(): boolean {
+  return envFlag("REMAP_APP_LINES_NOT_ACCOUNT_ENABLED");
+}

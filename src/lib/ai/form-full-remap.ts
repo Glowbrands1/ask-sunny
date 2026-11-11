@@ -13,6 +13,7 @@ import {
   formEditDateRulesEnabled,
   formDateIncidentOnlyEnabled,
   priorSentenceFixEnabled,
+  remapAppLinesNotAccountEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { managerTypedActionPlan } from "@/lib/forms/manager-action-plan";
 import { CA_POLICY_LABEL, readCaPolicy } from "@/lib/forms/ca-policy";
@@ -210,8 +211,17 @@ export function groundFormSlots(input: {
       (isRequestLeftover(raw.observation, employeeName) || hasCutDate(raw.observation, said)
         ? null
         : acceptSummary(raw.observation, scoped)))
-    : (statedIncident(sentenceFix ? withoutPriorStepClauses(said, input.today, said).text : said, employeeName) ??
-      acceptSummary(raw.observation, said));
+    : (statedIncident(
+        // REMAP_APP_LINES_NOT_ACCOUNT_ENABLED (QA's S1, 11 Nov 2026): the app's own lines ("The employee is <name>. Job
+        // title: …. It happened at <salon>.") are no account; read with them, the name and salon taken out left "What
+        // happened: The employee is . Job title: Tanning Consultant. It happened".
+        remapAppLinesNotAccountEnabled()
+          ? withoutAppLines(sentenceFix ? withoutPriorStepClauses(said, input.today, said).text : said)
+          : sentenceFix
+            ? withoutPriorStepClauses(said, input.today, said).text
+            : said,
+        employeeName,
+      ) ?? acceptSummary(raw.observation, said));
   // A stray quote or other punctuation alone is never What happened (sibling app conv_mvnu3j932gpohx4).
   const observation = incidentRead && HAS_WORD.test(incidentRead) ? incidentRead : null;
   // Both readers contribute, each behind its own flag: the "previous coaching: …"
