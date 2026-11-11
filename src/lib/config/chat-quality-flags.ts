@@ -3905,7 +3905,8 @@ export function accountTyposFixedEnabled(): boolean {
  * REVISION_REPLY_SHOWS_FIELDS_ENABLED (QA, the Sunny sanitation report, 10 Nov 2026 18:49Z; default off). A chat edit of a
  * created draft replied "Updated …: Observation of Offense." with no card; the change showed only in the open draft. On,
  * the reply shows each changed text field as it now reads (`forms/revision-shown-fields.ts`, called from the protected
- * `forms/chat-revision.ts`: docs/patches/revision-reply-shows-fields.patch). Off, as before.
+ * `forms/chat-revision.ts`; the approved lines are in flags-off-parity.test.ts's APPROVED_PROTECTED_EDITS note). Off,
+ * as before.
  */
 export function revisionReplyShowsFieldsEnabled(): boolean {
   return envFlag("REVISION_REPLY_SHOWS_FIELDS_ENABLED");
