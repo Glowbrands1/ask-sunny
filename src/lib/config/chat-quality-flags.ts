@@ -4394,6 +4394,16 @@ export function pastedOutlineToOpenDraftEnabled(): boolean {
 }
 
 /**
+ * NO_NAME_REPLY_WORDING_ENABLED (QA, Sunny round 22 live test, 11 Nov 2026; default off). "create a CA for ima employee"
+ * made no card, but the reply said "for the the employee" twice and "You can create it now" with no Create button. On,
+ * the name's stand-in is never re-replaced and a card with no employee says it can be created once the name is given
+ * (`forms/no-name-reply-wording.ts`). Off, as before.
+ */
+export function noNameReplyWordingEnabled(): boolean {
+  return envFlag("NO_NAME_REPLY_WORDING_ENABLED");
+}
+
+/**
  * FAILURE_TO_OPEN_IS_LATE_OPENING_ENABLED (coding 6, 10 Nov 2026; default off;
  * Pau's P16, Sunny production 9 Nov). "Can you make a CA for <name> for
  * failure to open on time?" was answered "You haven't told me what happened
