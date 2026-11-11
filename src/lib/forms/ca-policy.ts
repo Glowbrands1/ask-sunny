@@ -390,7 +390,7 @@ function missedEventIn(sentences: readonly string[]): string | null {
  */
 /**
  * "out of uniform" ending its phrase: then the end, punctuation, a date or a connecting word ("with a hoodie", "wearing
- * a hoodie", "in a hoodie" — Gate-Bubbles, 11 Nov 2026) — never a noun ("uniform shirts").
+ * a hoodie", "in a hoodie" — the sibling app's gate, 11 Nov 2026) — never a noun ("uniform shirts").
  */
 const OUT_OF_UNIFORM =
   /\bout\s+of\s+uniform\b(?=\s*(?:$|[.,;:!?)\n—-]|\d|(?:on|at|for|again|today|yesterday|tonight|during|while|and|or|but|when|in|with|wearing|this|last|twice|all|every|since|after|before|until|so|because|as|which|that|despite)\b))/;
@@ -416,7 +416,7 @@ const NAMED: { name: CaPolicyName; pattern: RegExp; alwaysAPolicy: boolean; enab
   { name: "dress_code", pattern: /\bwore\s+leggings\b/, alwaysAPolicy: true },
   /*
    * NOT_FOLLOWING_IS_VIOLATION_ENABLED (QA, 10 Nov 2026): "out of uniform" is the dress code broken, as "out of dress code"
-   * is — only when "uniform" ends the phrase (port from Ask Bubbles: QA's gate, 11 Nov 2026: "we ran out of uniform shirts
+   * is — only when "uniform" ends the phrase (port from the sibling app: QA's gate, 11 Nov 2026: "we ran out of uniform shirts
    * so she wore her own" is a store out of stock, not a person out of uniform). A noun after it is not a match.
    */
   { name: "dress_code", pattern: OUT_OF_UNIFORM, alwaysAPolicy: true, enabled: notFollowingIsViolationEnabled },
