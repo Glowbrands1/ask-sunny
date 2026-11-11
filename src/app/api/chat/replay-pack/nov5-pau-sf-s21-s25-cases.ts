@@ -29,7 +29,7 @@ const person = (id: string, firstName: string, lastName: string): DirectoryRow =
   positionName: "Tanning Consultant",
 });
 
-const PEOPLE: readonly DirectoryRow[] = [
+export const PEOPLE: readonly DirectoryRow[] = [
   person("e-wynne-sarrow", "Wynne", "Sarrow"),
   person("e-tamsyn-fairlow", "Tamsyn", "Fairlow"),
   person("e-corwen-pell", "Corwen", "Pell"),
@@ -68,10 +68,10 @@ function claimsUnsaid(reply: ReplayAnswer, said: readonly string[]): string | nu
   return said.some((turn) => turn.toLowerCase().includes(policy)) ? null : claim[1]!.trim();
 }
 
-const S21_T1 = "create a ca for must see behaviors for performace  this should be for wynne sarrow  - verbal\n146 tans \nBelow in PPTA, LPSVA, Average Club, CC%, Spa%";
+export const S21_T1 = "create a ca for must see behaviors for performace  this should be for wynne sarrow  - verbal\n146 tans \nBelow in PPTA, LPSVA, Average Club, CC%, Spa%";
 const S22_T1 =
   "create a ca for must see behaviors for performace  this should be for wynne sarrow  - verbal\n146 tans \nBelow in PPTA, LPSVA, Average Club, CC%, Spa%  but i need it to be in the format of Tamsyn ca  it needs to look exactally the same as tamsyns but wtih all of this information";
-const TEMPLATE =
+export const TEMPLATE =
   "Observation of Offense:  During the month of September 2026, Tamsyn completed 237 tanning transactions. Throughout these transactions, Tamsyn failed to follow their Must See Behaviors resulting in a performance below Sun Tan City averages in the following areas UPTA, Average Club, CC%, and Spa %.  \n\nAt Sun Tan City, we strive to provide the ultimate tanning experience for every client. In order to ensure the best results for our clients, every employee is expected to follow their Client Service Must See Behaviors and Engagement Must See Behaviors with every client interaction.\t\n\nAction Plan:  The Leadership Team will coach Tamsyn on Must See Behaviors to make sure these are not only understood but also put into practice. Tamsyn is expected to follow these Must See Behaviors with every client interaction. Failure to consistenly meet expectations may result in additional corrective action up to and including termination of employment.";
 /** The template's outline with Wynne's own facts, as the revision model writes it (the stand-in). */
 const TEMPLATE_WITH_WYNNE = {

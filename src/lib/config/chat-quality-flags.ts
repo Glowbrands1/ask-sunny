@@ -4340,3 +4340,15 @@ export function sameRequestOffRosterEnabled(): boolean {
 export function pastedOutlineToOpenDraftEnabled(): boolean {
   return envFlag("PASTED_OUTLINE_TO_OPEN_DRAFT_ENABLED");
 }
+
+/**
+ * PASTED_TEMPLATE_FIELDS_TO_OPEN_DRAFT_ENABLED (coding 6, 11 Nov 2026; default off; QA's Sunny round-25 live test of
+ * sf-s21, dpl_E584Q17G): with <A>'s Corrective Action draft open, a pasted labelled template of <B>'s CA ("Observation
+ * of Offense: … Action Plan: …") stayed on the draft (PASTED_OUTLINE_TO_OPEN_DRAFT) but nothing was saved ("Nothing on
+ * the form has changed yet. I couldn't place that …"). On, when the revision writes nothing, each labelled section goes
+ * into the draft's field of that label, with the template's person written as the draft's employee, never a person
+ * switch (`forms/pasted-template-fields.ts`). Off, as before.
+ */
+export function pastedTemplateFieldsToOpenDraftEnabled(): boolean {
+  return envFlag("PASTED_TEMPLATE_FIELDS_TO_OPEN_DRAFT_ENABLED");
+}

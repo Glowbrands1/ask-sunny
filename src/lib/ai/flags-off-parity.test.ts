@@ -598,6 +598,8 @@ const NEW_FLAGS = [
   // coding 2: CREATE_COMMAND_POINTS_TO_CARD and CARD_COMPLAINT_NOT_ACCOUNT (default off): forced off with the others.
   "CREATE_COMMAND_POINTS_TO_CARD_ENABLED",
   "CARD_COMPLAINT_NOT_ACCOUNT_ENABLED",
+  // coding 6: PASTED_TEMPLATE_FIELDS_TO_OPEN_DRAFT (default off; QA's round-25 live test of sf-s21): forced off with the others.
+  "PASTED_TEMPLATE_FIELDS_TO_OPEN_DRAFT_ENABLED",
 ] as const;
 
 const PROTECTED = [
