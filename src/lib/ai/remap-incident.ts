@@ -10,6 +10,7 @@ import {
   requestParticipleLeadEnabled,
   anotherRequestLeadEnabled,
   secondRequestOwnAccountEnabled,
+  titleNotInObservationEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { withoutPriorStepClauses, correctedDates } from "@/lib/forms/form-date-answer";
 import {
@@ -36,6 +37,7 @@ import type { KnowledgeCategory, SourceCitation } from "@/types";
 import { accountManualSections } from "./account-manual-sections";
 import { withoutAppLines } from "./app-sentences";
 import { isPolicyCorrection } from "./policy-correction-turn";
+import { onlyStatesJobTitle } from "./title-not-in-observation";
 import { withoutPayrollClauses } from "./payroll-clause-not-account";
 import { formatManualCitation } from "./policy-citation-fields";
 
@@ -910,6 +912,8 @@ export function managerAccount(sentence: string, employeeName: string | null): s
     let text = clause.trim();
     if (!text) continue;
     if (observationNoLevelLeadEnabled() && ONLY_A_LEVEL.test(text)) continue;
+    // TITLE_NOT_IN_OBSERVATION_ENABLED (QA's October triage of #207): "she is an HR assistant" is the Job title, not what happened.
+    if (titleNotInObservationEnabled() && onlyStatesJobTitle(text, employeeName)) continue;
     /*
      * CA_SALES_POLICY_ENABLED (QA, live, 4 Nov 2026): "MSB CA for <name> for
      * underperformance in the month of October" was the card's whole
