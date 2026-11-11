@@ -37,6 +37,8 @@ describe("METRIC_GUARD_ENABLED on, FORM_NAME off: no metric is ever a choice", (
 
   it("through the step the chat runs (`withRosterOnlyNames`), with FORM_NAME off", () => {
     vi.stubEnv("METRIC_GUARD_ENABLED", "true");
+    // Changed on purpose (the roster-set gate R16A, 10 Nov 2026): the flag is pinned off here, so the set's env (FORM_NAME and companions on) does not leak in.
+    vi.stubEnv("FORM_NAME_FROM_ROSTER_ENABLED", "");
     installRequestMessage(() => MESSAGE);
     expect(withRosterOnlyNames(reply(LIVE)).content).not.toMatch(/\*\*(?:Club Close|Under)\*\*/);
   });

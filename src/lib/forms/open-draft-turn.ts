@@ -1,6 +1,6 @@
 import type { AskResponse } from "@/lib/ai/types";
 import { isQuestionNotForm } from "@/lib/ai/question-not-form";
-import { formEditSingleWriterEnabled, openDraftKeepsTurnsEnabled, templateOutlineFieldsEnabled } from "@/lib/config/chat-quality-flags";
+import { formEditSingleWriterEnabled, openDraftKeepsTurnsEnabled, pastedOutlineToOpenDraftEnabled, templateOutlineFieldsEnabled } from "@/lib/config/chat-quality-flags";
 import { extractEmployeeNames, samePerson } from "@/lib/forms/proposal";
 import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import type { ChatMessage } from "@/types";
@@ -34,11 +34,21 @@ export async function openDraftTurn(input: {
 }): Promise<AskResponse | null> {
   if (!openDraftKeepsTurnsEnabled()) return null;
   const question = input.question.trim();
-  if (!question || /\?\s*$/.test(question) || isQuestionNotForm(question, input.history)) return null;
-  if (detectTemplateIntent(question).kind !== "none") return null;
+  /*
+   * PASTED_OUTLINE_TO_OPEN_DRAFT_ENABLED (QA's Sunny round-23 live test of sf-s21, conv_mwb21a4z2rxf5y1): with <A>'s
+   * Corrective Action draft open, the manager pasted <B>'s CA as a template ("Observation of Offense: … <B> completed
+   * 237 tanning transactions … Action Plan: The Leadership Team will coach <B> …"). It names <B>, so it was read as a
+   * new request ("Is this for <B>?") and a new card covered the draft; the outline never reached it. A pasted turn
+   * with two or more of the open form's own field labels as headings is that draft's outline, with its own facts.
+   */
+  const pasted = pastedOutlineToOpenDraftEnabled() && question ? await pastedOutline({ ...input, question }) : null;
+  if (!pasted) {
+    if (!question || /\?\s*$/.test(question) || isQuestionNotForm(question, input.history)) return null;
+    if (detectTemplateIntent(question).kind !== "none") return null;
+  }
   const open = await (await import("@/lib/forms/open-form-summary")).describeOpenForm(input.request, input.instanceId);
   if (!open || open.status !== "draft") return null;
-  if (extractEmployeeNames(question).some((name) => !samePerson(name, open.employeeName))) return null;
+  if (!pasted && extractEmployeeNames(question).some((name) => !samePerson(name, open.employeeName))) return null;
   /*
    * FORM_EDIT_SINGLE_WRITER_ENABLED: the draft before the turn, and the
    * revision's claim checked against what was saved (`lib/forms/form-write.ts`).
@@ -52,7 +62,7 @@ export async function openDraftTurn(input: {
     request: input.request,
     instanceId: input.instanceId,
     // TEMPLATE_OUTLINE_FIELDS_ENABLED (Pau's sf-s21): "the same out line" as a pasted template names the template's fields.
-    question: (templateOutlineFieldsEnabled() ? await outlineQuestion(input) : null) ?? `Add this to the ${open.templateName}: ${question}`,
+    question: pasted ?? (templateOutlineFieldsEnabled() ? await outlineQuestion(input) : null) ?? `Add this to the ${open.templateName}: ${question}`,
     history: [...input.history],
     today: input.today,
   });
@@ -87,4 +97,32 @@ async function outlineQuestion(input: { request: Request; instanceId: string; qu
   }));
   const named = outline.withTemplateFieldsNamed({ question: input.question.trim(), history: input.history, fields });
   return named === input.question.trim() ? null : named;
+}
+
+/** The open form's fields, with their labels as printed. */
+async function openFormFields(input: { request: Request; instanceId: string }): Promise<{ key: string; label: string }[] | null> {
+  const loaded = await (await import("./instance-scope"))
+    .authorizeInstance(input.request, input.instanceId, "view")
+    .then((authorized) => authorized.loaded)
+    .catch(() => null);
+  if (!loaded) return null;
+  const { fieldsForVariant, interpolate, parseFormDocument } = await import("./document");
+  return fieldsForVariant(parseFormDocument(loaded.version.document), loaded.instance.variantKey).map((field) => ({
+    key: field.key,
+    label: interpolate(field.label, null),
+  }));
+}
+
+/**
+ * PASTED_OUTLINE_TO_OPEN_DRAFT_ENABLED: a turn that IS a pasted outline of the open form — two or more of its field
+ * labels as headings — read as the request to rewrite those fields in that outline with the draft's own facts
+ * (`template-outline.ts` withTemplateFieldsNamed). Null for any other turn.
+ */
+async function pastedOutline(input: { request: Request; instanceId: string; question: string; history: readonly ChatMessage[] }): Promise<string | null> {
+  const outline = await import("./template-outline");
+  const fields = await openFormFields(input);
+  if (!fields || outline.headedFields(input.question, fields).length < 2) return null;
+  const asked = `${input.question}\n\nThe same outline, with this form's own facts.`;
+  const named = outline.withTemplateFieldsNamed({ question: asked, history: input.history, fields });
+  return named === asked ? null : named;
 }

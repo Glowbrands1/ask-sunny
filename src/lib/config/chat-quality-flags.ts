@@ -402,6 +402,17 @@ export function fullManualContextEnabled(): boolean {
 }
 
 /**
+ * FULL_MANUAL_KEEPS_RETRIEVAL_ENABLED (QA, 10 Nov 2026; default off). With FULL_MANUAL_CONTEXT on (production), a turn the
+ * normalizer labels "policy" put only the JBA Policy Manual in the prompt and skipped retrieval, so "how do i coach on the
+ * spray tan booth reset step after cleaning?" was answered "I don't have a Tanning Consultant Manual"
+ * (conv_mwb2gsx52k6reh7, conv_mwb2iugw2fxzr9z). On: retrieval still runs on that path, and the rows from documents other
+ * than the policy manual are given beside it as [S#] sources (Ask Bubbles' shape). Off, as before.
+ */
+export function fullManualKeepsRetrievalEnabled(): boolean {
+  return envFlag("FULL_MANUAL_KEEPS_RETRIEVAL_ENABLED");
+}
+
+/**
  * One read of the whole conversation fills the form. A field is kept only
  * when this chat stated it. A later turn replaces that field. A blank read
  * does not erase one. Off, the card is filled exactly as it is today.
@@ -2638,6 +2649,17 @@ export function lateReadsAttendanceEnabled(): boolean {
 }
 
 /**
+ * LATE_SLOT_READS_ATTENDANCE_ENABLED (QA, live Sunny after #784, 10 Nov 2026; default off; same flag in both apps). "create a
+ * corrective action for <T>, she was late on 11/3/26": the Policy line said Attendance (LATE_READS_ATTENDANCE) but the
+ * card's Action Plan and Sources said Late Opening p.15, from the model's heading kept in the slots. On: that heading is
+ * Attendance too when the manager's words say an employee was late and never say "open" (`ai/late-slot-attendance.ts`,
+ * read in `ai/intent-slots.ts`). Off, as before.
+ */
+export function lateSlotReadsAttendanceEnabled(): boolean {
+  return envFlag("LATE_SLOT_READS_ATTENDANCE_ENABLED");
+}
+
+/**
  * EXIT_FORM_DATE_FROM_TERMINATION_ENABLED (QA, the live Sunny round 11, 9 Nov 2026; coding 5; same flag in both apps;
  * default off). A termination letter "… is terminated, effective 11/08/2026 … no-call no-shows on 11/3, 11/5 and 11/7"
  * gave the exit card the Date November 7 (the last no-show) beside Resignation Date November 8 (round 10 had November 8).
@@ -3993,6 +4015,36 @@ export function madeAboutReaderAccountEnabled(): boolean {
 }
 
 /**
+ * NEAR_MISS_QUESTION_RULES_ENABLED (QA's Sunny round-4 gate, 8 Nov 2026; default off; ships with the name set,
+ * FORM_NAME_FROM_ROSTER and ROSTER_NEAR_MISS). Two rules for "Is this for **<roster name>**? Tell me if that should
+ * change.": (a) a reply that turns it down ("no, verbal warning, …") never gets a card for that name, whichever reader
+ * would seat it (`forms/near-miss-question-rules.ts`); (b) a card already on screen is never replaced by the bare
+ * question: a near-miss of the card's own employee keeps the card in the roster's spelling, another name keeps the
+ * card's details with the question under it (`forms/roster-only-names.ts`). Off, as before.
+ */
+export function nearMissQuestionRulesEnabled(): boolean {
+  return envFlag("NEAR_MISS_QUESTION_RULES_ENABLED");
+}
+
+// coding 2: FORM_NAME_OFF_ROSTER_ASK
+/**
+ * FORM_NAME_OFF_ROSTER_ASK_ENABLED (QA, 10 Nov 2026, the Sunny roster-set gate; default off; ships with the name set, the
+ * eighth FORM_NAME companion). With FORM_NAME on, three replies the off-roster flow should own went another way:
+ * (a) a termination letter's own person ("Dear <name>,", a letter that opens "<name>,") was never offered as typed
+ * ("reply **use <name>**"), only asked who; (b) for a salon manager, a full name not on the roster got "I couldn't find
+ * **<name>** in the Woven roster, so that name is not on the form." under an empty card, never OFF_ROSTER_ASK_BEFORE_CARD's
+ * "I can't find **<name>** on your roster — is that the right name, or are they at another salon?" with the card held;
+ * (c) "create a CA for <Name>'s Crossing Plaza, …" said the place back as a name not found, never POSSESSIVE_PLACE's
+ * question. On: (a) those letter places count as a person's (`forms/roster-only-names.ts` personPlaces); (b) the
+ * not-found note and offer are OFF_ROSTER_ASK's question and offer, once per name, the card held (`forms/off-roster-
+ * ask.ts`), salon managers only, as OFF_ROSTER_ASK; (c) a possessive place is asked as POSSESSIVE_PLACE asks it. Off, as
+ * before.
+ */
+export function formNameOffRosterAskEnabled(): boolean {
+  return envFlag("FORM_NAME_OFF_ROSTER_ASK_ENABLED");
+}
+
+/**
  * CHAT_STAGE_TIMINGS_ENABLED (QA, 9 Nov 2026; default off; same flag in both apps). Each awaited step of a chat turn
  * before the answering model (intent extraction, query rewrite, retrieval, the memory, example, context, data and
  * grounding loads) is timed into `chat_traces.slots.stages`: names and milliseconds only (`ai/chat-stage-timings.ts`).
@@ -4340,4 +4392,86 @@ export function sameRequestKeepsEarlierCardClientEnabled(): boolean {
  */
 export function templateOutlineFieldsEnabled(): boolean {
   return envFlag("TEMPLATE_OUTLINE_FIELDS_ENABLED");
+}
+
+/**
+ * SAME_REQUEST_OFF_ROSTER_ENABLED (coding 6, 10 Nov 2026; default off; QA's Sunny round-23 live test,
+ * conv_mwb1xng82tz2tyr): "Can you do the same thing for <B> but make it a written" after "create a corrective action
+ * for <A>, she was late on 11/3/26", with <A> and <B> not on the directory, gave <B> a card with no Observation and
+ * left <A>'s card "Superseded — nothing created": SAME_REQUEST_OTHER_PERSON read <A> and <B> from the roster only, so
+ * SAME_REQUEST_CARRIES_ACCOUNT and SAME_REQUEST_KEEPS_EARLIER_CARD never ran. On, <A> is the latest card's employee
+ * and <B> the one person typed after "for" when nobody on the roster is named. Off, as before.
+ */
+export function sameRequestOffRosterEnabled(): boolean {
+  return envFlag("SAME_REQUEST_OFF_ROSTER_ENABLED");
+}
+
+/**
+ * PASTED_OUTLINE_TO_OPEN_DRAFT_ENABLED (coding 6, 10 Nov 2026; default off; QA's Sunny round-23 live test of Pau's
+ * sf-s21, conv_mwb21a4z2rxf5y1): with <A>'s Corrective Action draft open, a pasted Corrective Action of <B>
+ * ("Observation of Offense: … Action Plan: …") was read as a new request for <B> ("Is this for <B>?"), so a new card
+ * covered the draft and the outline was never saved on it (TEMPLATE_OUTLINE_FIELDS only reads the open draft). On, a
+ * turn with two or more of the open draft's field labels as headings goes to that draft as its outline, with the
+ * draft's own facts (`forms/open-draft-turn.ts`). Off, as before.
+ */
+export function pastedOutlineToOpenDraftEnabled(): boolean {
+  return envFlag("PASTED_OUTLINE_TO_OPEN_DRAFT_ENABLED");
+}
+
+/**
+ * FAILURE_TO_OPEN_IS_LATE_OPENING_ENABLED (coding 6, 10 Nov 2026; default off;
+ * Pau's P16, Sunny production 9 Nov). "Can you make a CA for <name> for
+ * failure to open on time?" was answered "You haven't told me what happened
+ * yet": no reader took "failure to open" as an account ("open" is also the
+ * word for opening a form). On: "failure / failed to open", "did not open on
+ * time", "didn't open the salon" are the manual's Late Opening, as "opened
+ * late" is, and an account. "open the form / the drawer" is not. See
+ * `forms/late-open.ts`. Off, as before.
+ */
+export function failureToOpenIsLateOpeningEnabled(): boolean {
+  return envFlag("FAILURE_TO_OPEN_IS_LATE_OPENING_ENABLED");
+}
+
+/**
+ * REQUEST_ISSUE_KEPT_ENABLED (ported from Ask Bubbles; QA's live round 17b, 10 Nov 2026, P16): "Can you make a CA for
+ * <name> for failure to open on time?" carded with no Observation of Offense. The edit rules read the whole question
+ * as an instruction to the app, so its account ("failure to open on time") was dropped. With the flag on, the
+ * account is kept when the manager's turns hold no replace or add edit and it is no instruction itself
+ * (`ai/form-full-remap.ts`). Off, as before. Same flag in both apps.
+ */
+export function requestIssueKeptEnabled(): boolean {
+  return envFlag("REQUEST_ISSUE_KEPT_ENABLED");
+}
+
+/**
+ * FORM_NAME_NOT_A_TITLE_ENABLED (QA's prod-env reading, 10 Nov 2026, D5; default off; same flag in both apps). "Create an
+ * SDIT EPP for <name> at <salon>" put "Salon Director in Training" on the card as the employee's position: the form's own
+ * name ("SDIT EPP", "TSD EPP") was read as a job title (`forms/proposal.ts` extractJobTitle). On: a title word straight
+ * before "EPP" is the requested form's name, never the employee's title. Off, as before.
+ */
+export function formNameNotATitleEnabled(): boolean {
+  return envFlag("FORM_NAME_NOT_A_TITLE_ENABLED");
+}
+
+/**
+ * ADD_NOT_REPEATED_SENTENCES_ENABLED (ported from Ask Bubbles: QA's live r15b there, 10 Nov 2026; default off; same flag in
+ * both apps). With ADD_NOT_REPEATED on, "add that she was also on her phone" on a sectioned CA Observation saved the late
+ * sentence twice: the reader's add repeated the field's FIRST sentence and heading, not the whole field. With this flag on
+ * too, an add's leading sentences the field already holds word for word are dropped as well (`forms/added-tail.ts`). Off,
+ * as before.
+ */
+export function addNotRepeatedSentencesEnabled(): boolean {
+  return envFlag("ADD_NOT_REPEATED_SENTENCES_ENABLED");
+}
+
+/**
+ * PAYROLL_BARE_SENTENCE_ENABLED (coding 6, 10 Nov 2026; default off; Pau's
+ * P15, Sunny production 9 Nov). "I need a term CA for <name>. Didn't show up
+ * for her opening shift. Payroll deduction." — the card still asked "Is
+ * payroll deduct applicable?" and left the box blank. On, a sentence that is
+ * only "Payroll deduction." is a Yes. Read in
+ * `forms/payroll-deduct-answer.ts` (which imports nothing). Off, as before.
+ */
+export function payrollBareSentenceEnabled(): boolean {
+  return envFlag("PAYROLL_BARE_SENTENCE_ENABLED");
 }

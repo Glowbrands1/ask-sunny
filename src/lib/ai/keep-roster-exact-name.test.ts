@@ -61,6 +61,8 @@ afterEach(() => {
 
 describe("a roster name with a not-a-name word in it", () => {
   it("off: the keeper takes it off the card, and the reply still drafts for it (the live report)", () => {
+    // Changed on purpose (QA's #741 gate R16A, 10 Nov 2026): the flag is pinned off here, so the set's env does not leak in.
+    vi.stubEnv("FORM_NAME_FROM_ROSTER_ENABLED", "");
     const held = hold([ENTRY]);
     expect(held.formProposal?.employeeName ?? null).toBeNull();
     expect(held.content).toContain(`**${NAME}**`);

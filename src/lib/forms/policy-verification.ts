@@ -93,6 +93,25 @@ export function unverifiedPolicyFields(
 }
 
 /**
+ * POLICY_GATE_NONBLOCKING_ENABLED (Gate's review, 10 Nov 2026): the policy-grounded fields left BLANK, which the gate no
+ * longer holds for. The finalized event records them (`policyBlankAtFinalize`), and the open-form summary says they are
+ * blank and were not checked against the manual. Empty with the flag off, so nothing else changes.
+ */
+export function blankPolicyFields(
+  document: FormDocument,
+  variantKey: string | null,
+  values: readonly PolicyValueRow[],
+): UnverifiedPolicyField[] {
+  if (!policyGateNonblockingEnabled()) return [];
+  const rows = new Map(values.map((row) => [row.fieldKey, row]));
+  return fieldsForVariant(document, variantKey)
+    .filter((field) => field.policyGrounded)
+    .filter((field) => rows.get(field.key)?.provenance?.verified !== true)
+    .filter((field) => (rows.get(field.key)?.value ?? "").trim() === "")
+    .map((field) => ({ key: field.key, label: field.label, filled: false }));
+}
+
+/**
  * The refusal a finalize gets when nobody has verified the policy.
  *
  * IT IS NOT A REFUSAL TO FILE. The manager may have checked the manual

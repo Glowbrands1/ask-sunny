@@ -71,6 +71,12 @@ const state = vi.hoisted(() => ({
   slotReading: "none" as "none" | "ca" | "copy",
   /** Chunks the pinned manual also has, when a case sets them (`manualAlsoHas`); none by default. */
   manualExtra: [] as Record<string, unknown>[],
+  /** FULL_MANUAL_KEEPS_RETRIEVAL: what the knowledge search returns (`knowledgeHas`), the normalizer's label, the full manual. */
+  knowledgeRows: [] as Record<string, unknown>[],
+  normalizerIntent: null as string | null,
+  fullManualLoads: false,
+  /** The grounding block the answering model was last given (`lastGrounding`). */
+  lastGrounding: "",
   /** What the slot model (record_intent_slots) reads this turn, when a case sets it — as a production trace shows. */
   slotsRead: {} as Record<string, unknown>,
   /** The employee the AI reader quotes this turn, when a case sets it (it is checked against the roster as in production). */
@@ -96,7 +102,7 @@ const state = vi.hoisted(() => ({
  * the evidence and date checks, the reducer, the writes and the reload are
  * the real ones.
  */
-const systemPrompts = vi.hoisted(() => ({ hashes: [] as string[] }));
+const systemPrompts = vi.hoisted(() => ({ hashes: [] as string[], texts: [] as string[] }));
 const patchScript = vi.hoisted(() => ({ outputs: [] as unknown[], calls: 0, byLatest: null as Record<string, unknown> | null }));
 vi.mock("@/lib/forms/form-patch-call", () => ({
   FORM_PATCH_DEFAULT_TIMEOUT_MS: 5_000,
@@ -250,10 +256,12 @@ vi.mock("@/lib/ai/call-claude", () => ({
       usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 },
     };
   },
-  callClaude: async (input?: { system?: string; formEditTool?: { data: string; onToolUse: (call: unknown) => void } | null }) => {
+  callClaude: async (input?: { system?: string; grounding?: string; formEditTool?: { data: string; onToolUse: (call: unknown) => void } | null }) => {
     state.chatModelCalls += 1;
+    state.lastGrounding = String(input?.grounding ?? "");
     // REPLAY_RECORD (QA, 10 Nov 2026): the system prompt each answer was asked with, as a hash, so two versions of the
     // prompt's assembly can be compared case by case (the stage-timing split of buildSystemPrompt's awaits).
+    systemPrompts.texts.push(String(input?.system ?? ""));
     if (process.env.REPLAY_RECORD) systemPrompts.hashes.push(createHash("sha256").update(String(input?.system ?? "")).digest("hex").slice(0, 16));
     if (input?.formEditTool) {
       editTool.offered += 1;
@@ -297,6 +305,12 @@ vi.mock("@/lib/ai/call-claude", () => ({
         actionPlan: null,
         ...state.reading,
       };
+    }
+    if (input.tool?.name === "normalize_message") {
+      if (state.normalizerIntent === null) return null;
+      const text = JSON.stringify(input.messages ?? []);
+      const latest = (text.split("Latest message:\\n").pop() ?? "").replace(/"\}.*$/, "").replace(/\\"/g, '"');
+      return { query: latest, intent: state.normalizerIntent };
     }
     if (input.tool?.name !== "record_intent_slots") return null;
     if (state.slotReading === "copy") {
@@ -387,7 +401,7 @@ vi.mock("@/lib/knowledge/providers/supabase", () => ({
       return [];
     }
     async match() {
-      return [];
+      return state.knowledgeRows;
     }
     async fetchRoleGrounding(role: { id: string }) {
       return {
@@ -430,8 +444,29 @@ vi.mock("@/lib/knowledge/providers/supabase", () => ({
 /** A question that is not a form request searches the manual; nothing to embed offline. */
 vi.mock("@/lib/knowledge/recall-match", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/knowledge/recall-match")>()),
-  matchRecallKnowledge: async () => [],
+  matchRecallKnowledge: async () => state.knowledgeRows,
 }));
+
+/* FULL_MANUAL_KEEPS_RETRIEVAL: the whole JBA Policy Manual (the production rows), when a case says it loads. */
+vi.mock("@/lib/ai/full-manual-load", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/lib/ai/full-manual-load")>();
+  const { choosePolicyManuals } = await import("@/lib/ai/full-manual-context");
+  const fixture = (await import("@/test/fixtures/jba-manual-production-151.json")).default;
+  return {
+    ...original,
+    loadFullManualContext: async (input: { scopeId: string; question: string }) =>
+      state.fullManualLoads
+        ? choosePolicyManuals(input.question, [
+            {
+              id: fixture.document_ids["ask-sunny"],
+              title: fixture.title,
+              category: "policies_compliance",
+              chunks: (fixture.chunks as import("@/lib/ai/full-manual-load").ChunkRow[]).map(original.manualChunkFromRow),
+            },
+          ])
+        : original.loadFullManualContext(input),
+  };
+});
 
 vi.mock("@/lib/knowledge", () => ({
   getKnowledgeProvider: () => {
@@ -524,6 +559,7 @@ type Answer = {
   formOpened?: { instanceId: string; revisesInstanceId?: string | null };
   formUpdate?: { instanceId: string; updated: string[] };
   pendingCopy?: { fromInstanceId: string };
+  citations?: { documentTitle?: string }[];
 };
 
 /** The thread as the browser holds it: a card the answer carried stays open. */
@@ -645,6 +681,10 @@ beforeEach(async () => {
   state.slotReading = "none";
   state.slotsRead = {};
   state.manualExtra = [];
+  state.knowledgeRows = [];
+  state.normalizerIntent = null;
+  state.fullManualLoads = false;
+  state.lastGrounding = "";
   state.readerEmployee = null;
   state.slotsOnlyIfSaid = false;
   state.remapObservation = null;
@@ -694,6 +734,7 @@ const record: { turns: { question: string; reply: string; updated: string[] | nu
 async function recorded(id: string, mode: string, run: () => Promise<void>) {
   record.turns = [];
   systemPrompts.hashes = [];
+  systemPrompts.texts = [];
   const at = performance.now();
   let error: string | null = null;
   try {
@@ -757,6 +798,16 @@ function context(): ReplayContext {
     directory: (rows) => {
       state.directory = rows as never;
     },
+    knowledgeHas: (rows) => {
+      state.knowledgeRows = [...rows];
+    },
+    normalizerReads: (intent) => {
+      state.normalizerIntent = intent;
+    },
+    fullManualLoads: () => {
+      state.fullManualLoads = true;
+    },
+    lastGrounding: () => state.lastGrounding,
     manualAlsoHas: (chunks) => {
       state.manualExtra = [...chunks];
     },
@@ -803,6 +854,7 @@ function context(): ReplayContext {
     draftPrompts: () => [...draftAsked],
     revisionPrompts: () => [...revisionAsked],
     draftSystems: () => [...draftSystemAsked],
+    answerSystems: () => [...systemPrompts.texts],
     draftTools: () => [...draftToolsAsked],
     redraft: (instanceId, notes) =>
       call<Record<string, unknown>>(`/api/forms/instances/${instanceId}/draft`, {

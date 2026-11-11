@@ -1,6 +1,7 @@
 import type { AskResponse } from "@/lib/ai/types";
 import type { ChatMessage } from "@/types";
-import { sameRequestCarriesAccountEnabled, sameRequestKeepsEarlierCardEnabled, sameRequestOtherPersonEnabled } from "@/lib/config/chat-quality-flags";
+import { sameRequestCarriesAccountEnabled, sameRequestKeepsEarlierCardEnabled, sameRequestOffRosterEnabled, sameRequestOtherPersonEnabled } from "@/lib/config/chat-quality-flags";
+import { readEmployeeMentions } from "@/lib/forms/proposal";
 import { displayName, rosterNameNamedIn, type RosterEmployee } from "@/lib/forms/employee-match";
 import { EARLIER_CARD_STAYS } from "@/lib/forms/proposal-continuation";
 
@@ -175,6 +176,53 @@ export function lastNamed(history: readonly ChatMessage[], roster: readonly Rost
   return null;
 }
 
+/*
+ * SAME_REQUEST_OFF_ROSTER_ENABLED (coding 6, 10 Nov 2026; QA's round-23 live test, conv_mwb1xng82tz2tyr, people not
+ * on the directory): "Can you do the same thing for <B> but make it a written" after <A>'s card was no same request at
+ * all — <A> and <B> were read from the roster only — so <B>'s card had no account and <A>'s was superseded.
+ */
+/** <A>: the employee on the latest card in the chat, and the last manager turn naming them. */
+function cardSubject(history: readonly ChatMessage[]): { employeeName: string; index: number } | null {
+  let employeeName: string | null = null;
+  let cardAt = -1;
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    // The route keeps only each turn's words: the card's reply names its employee ("… Form** for **<A>**").
+    const turn = history[index]!;
+    const named =
+      turn.role === "assistant" && typeof turn.content === "string"
+        ? (turn.formProposal?.employeeName?.trim() || /\*\*(?:Corrective Action|Coaching)(?: Form)?\*\*\s+for\s+\*\*([^*\n]{2,60})\*\*/i.exec(turn.content)?.[1]?.trim())
+        : undefined;
+    if (named) {
+      employeeName = named;
+      cardAt = index;
+      break;
+    }
+  }
+  if (!employeeName) return null;
+  const first = new RegExp(`\\b${escaped(words(employeeName)[0] ?? employeeName)}\\b`, "i");
+  for (let index = cardAt; index >= 0; index -= 1) {
+    const turn = history[index]!;
+    if (turn.role === "user" && typeof turn.content === "string" && first.test(turn.content)) return { employeeName, index };
+  }
+  return null;
+}
+
+/** <B> as typed after "for": one person, never <A>, never a pronoun. */
+function typedOtherPerson(question: string, subjectName: string): string | null {
+  // <A> by any part of their name ("one for Jovelle" with Jovelle Kerrigan's card) is never <B>.
+  const subjectWords = new Set(words(subjectName).map((word) => word.toLowerCase()));
+  const isSubject = (name: string) => sameName(name, subjectName) || words(name).every((word) => subjectWords.has(word.toLowerCase()));
+  const names = readEmployeeMentions(question).names.filter((name) => !isSubject(name) && !PRONOUN.test(name.trim()));
+  if (names.length !== 1) return null;
+  const name = names[0]!.trim();
+  return new RegExp(`\\bfor\\s+${words(name).map(escaped).join("\\s+")}\\b`, "i").test(question) ? name : null;
+}
+
+function typedPerson(name: string): RosterEmployee {
+  const [firstName, ...rest] = name.split(/\s+/);
+  return { id: `typed:${name.toLowerCase()}`, firstName: firstName ?? name, lastName: rest.join(" "), preferredFirstName: null } as unknown as RosterEmployee;
+}
+
 /** The form the chat has open: the browser's continuation key, else the last form the replies named. */
 export function openTemplate(history: readonly ChatMessage[], continueKey: string | undefined): string | null {
   if (continueKey) return continueKey;
@@ -240,9 +288,13 @@ export function sameRequestForOtherPerson(input: {
   if (!kind) return null;
   const openKey = openTemplate(input.history, input.continueTemplateKey);
   if (!openKey || (!input.continueTemplateKey && !input.formOpen)) return null;
-  const subject = lastNamed(input.history, input.roster);
+  const offRoster = sameRequestOffRosterEnabled();
+  const subject = lastNamed(input.history, input.roster) ?? (offRoster ? cardSubject(input.history) : null);
   if (!subject) return null;
-  const others = input.roster.filter((person) => !sameName(displayName(person), subject.employeeName) && rosterNameNamedIn(input.question, [person]) !== null);
+  const onRoster = input.roster.filter((person) => !sameName(displayName(person), subject.employeeName) && rosterNameNamedIn(input.question, [person]) !== null);
+  // SAME_REQUEST_OFF_ROSTER_ENABLED: <B> as typed when nobody on the roster is named (TYPED_NAME_PROCEEDS reads a first request so).
+  const typed = onRoster.length === 0 && offRoster ? typedOtherPerson(input.question, subject.employeeName) : null;
+  const others: RosterEmployee[] = typed ? [typedPerson(typed)] : onRoster;
   // "Now make one for LYsandra": a lone first name, as typed, when it is one roster person's (never the card's) — the
   // name readers then ask "Is this for Lysandra Quade?" as for any first name (`lone`).
   const lone = others.length === 0 && kind === "also" ? loneFirstName(input.question, input.roster, subject.employeeName) : null;

@@ -1,5 +1,7 @@
 import { expect, vi } from "vitest";
 
+import { formNameFromRosterEnabled } from "@/lib/config/chat-quality-flags";
+
 import { KEARNEY, STAFF, type DirectoryRow, type ReplayAnswer, type ReplayCase, type ReplayContext } from "./cases";
 import { policyKeptPeople } from "./nov5-policy-kept-across-turns-cases";
 
@@ -46,7 +48,13 @@ async function cardAfter(t: ReplayContext, correction: string): Promise<{ before
   const thread = t.thread();
   await thread.say(OPENING[0]!);
   const before = (await thread.say(OPENING[1]!)).formProposal!;
-  expect(before?.employeeName, "the opening card does not carry the typed name").toBe("Odessa Lark Penhallwo");
+  /*
+   * Changed on purpose (10 Nov 2026, QA's roster-set gate): with the name set on (FORM_NAME_FROM_ROSTER and its
+   * companions), the first turn asks "Is this for **Odessa Lark Penhallow**?" and the details turn seats the roster's
+   * spelling (NEAR_MISS_DETAILS_ACCEPT), so the opening card is already hers; the correction must still keep it so.
+   */
+  const opening = formNameFromRosterEnabled() ? "Odessa Lark Penhallow" : "Odessa Lark Penhallwo";
+  expect(before?.employeeName, "the opening card does not carry the typed name").toBe(opening);
   return { before, after: await thread.say(correction) };
 }
 
