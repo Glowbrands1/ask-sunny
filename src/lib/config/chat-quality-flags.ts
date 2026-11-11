@@ -402,6 +402,17 @@ export function fullManualContextEnabled(): boolean {
 }
 
 /**
+ * FULL_MANUAL_KEEPS_RETRIEVAL_ENABLED (QA, 10 Nov 2026; default off). With FULL_MANUAL_CONTEXT on (production), a turn the
+ * normalizer labels "policy" put only the JBA Policy Manual in the prompt and skipped retrieval, so "how do i coach on the
+ * spray tan booth reset step after cleaning?" was answered "I don't have a Tanning Consultant Manual"
+ * (conv_mwb2gsx52k6reh7, conv_mwb2iugw2fxzr9z). On: retrieval still runs on that path, and the rows from documents other
+ * than the policy manual are given beside it as [S#] sources (Ask Bubbles' shape). Off, as before.
+ */
+export function fullManualKeepsRetrievalEnabled(): boolean {
+  return envFlag("FULL_MANUAL_KEEPS_RETRIEVAL_ENABLED");
+}
+
+/**
  * One read of the whole conversation fills the form. A field is kept only
  * when this chat stated it. A later turn replaces that field. A blank read
  * does not erase one. Off, the card is filled exactly as it is today.
