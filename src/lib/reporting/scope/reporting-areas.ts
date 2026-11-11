@@ -1,6 +1,6 @@
 import "server-only";
 
-import { reportingReadClient } from "@/lib/reporting/demo/client";
+import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { districtIdOf, regionIdOf } from "./area-ids";
 
 /**
@@ -70,7 +70,7 @@ interface AttributeRow {
  * the district a salon has LEFT, which is the exposure this module closes.
  */
 async function currentSalonAreas(): Promise<SalonArea[]> {
-  const { data, error } = await reportingReadClient()
+  const { data, error } = await getSupabaseAdmin()
     .from("salon_period_attributes")
     .select("period_id, district_label, region_label, salons!inner(salon_number)")
     .is("superseded_by_ingestion_id", null)
