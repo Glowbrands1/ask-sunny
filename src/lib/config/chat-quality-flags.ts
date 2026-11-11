@@ -4416,3 +4416,14 @@ export function requestIssueKeptEnabled(): boolean {
 export function formNameNotATitleEnabled(): boolean {
   return envFlag("FORM_NAME_NOT_A_TITLE_ENABLED");
 }
+
+/**
+ * ADD_NOT_REPEATED_SENTENCES_ENABLED (ported from Ask Bubbles: QA's live r15b there, 10 Nov 2026; default off; same flag in
+ * both apps). With ADD_NOT_REPEATED on, "add that she was also on her phone" on a sectioned CA Observation saved the late
+ * sentence twice: the reader's add repeated the field's FIRST sentence and heading, not the whole field. With this flag on
+ * too, an add's leading sentences the field already holds word for word are dropped as well (`forms/added-tail.ts`). Off,
+ * as before.
+ */
+export function addNotRepeatedSentencesEnabled(): boolean {
+  return envFlag("ADD_NOT_REPEATED_SENTENCES_ENABLED");
+}

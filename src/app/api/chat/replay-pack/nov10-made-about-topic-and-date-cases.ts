@@ -319,6 +319,14 @@ export const NOV10_MADE_ABOUT_TOPIC_AND_DATE_CASES: ReplayCase[] = [
             const observation = String(run.saved.observation ?? "");
             if (!/Woven deadline/.test(observation)) return `lost the Woven deadline: ${JSON.stringify(observation)}`;
             if (!/Also observed: Wrenna was on her phone\./.test(observation)) return `"Also observed:" was split: ${JSON.stringify(observation)}`;
+            /*
+             * Changed on purpose (QA's gate, 10 Nov 2026): the saved field is checked whole. With ADD_NOT_REPEATED_SENTENCES
+             * (#768) the add was appended after the Expectation and the Expectation saved twice. One Expectation, and the
+             * phone under Observed, before it.
+             */
+            const expectations = observation.match(/Expectation:/g) ?? [];
+            if (expectations.length !== 1) return `${expectations.length} Expectation blocks: ${JSON.stringify(observation)}`;
+            if (observation.search(/on her phone/i) > observation.indexOf("Expectation:")) return `the phone line is after the Expectation: ${JSON.stringify(observation)}`;
             return null;
           },
         },
@@ -359,5 +367,52 @@ export const NOV10_MADE_ABOUT_TOPIC_AND_DATE_CASES: ReplayCase[] = [
       expect(details, `the new line:\n${reply.content}`).toMatch(/reminded of the policy/);
       expect(details.startsWith(made), `the account changed:\n${details}`).toBe(true);
     },
+  },
+  /*
+   * Ported from Ask Bubbles: QA's live r15b there (10 Nov 2026, 08:36Z, step 5; the person invented): a CA whose Observation was "Observed: … was
+   * late to work on October 23, 2026. / Expectation: … / Going Forward: …"; "add that she was also on her phone" saved the
+   * whole block and then "Observed: … was late to work on October 23, 2026. … was also on her phone.": the late sentence
+   * twice. The reader's add repeated the field's FIRST sentence (with its heading), not the whole field, so
+   * ADD_NOT_REPEATED did not read it as a repeat; with the flag off the same add is saved the same way.
+   */
+  {
+    id: "nov10-add-not-repeated-leading-sentence",
+    title: "QA's live Bubbles r15b: \"add that she was also on her phone\" on a sectioned CA Observation, the reader's add repeating the Observed sentence: the late sentence is saved once, and the phone",
+    report: "Ported from Ask Bubbles: QA's live r15b (10 Nov 2026, 08:36:43Z): the Observed sentence saved twice after the add",
+    status: { open: "the reader's add repeats the field's first sentence, not the whole field, so it is added whole" },
+    fixFlags: [...STEP_B_READER_FLAGS, "ADD_NOT_REPEATED_ENABLED", "ADD_NOT_REPEATED_SENTENCES_ENABLED"],
+    run: (t) =>
+      play(t, {
+        ...STEP_B_REFUSAL_SCENARIOS.find((scenario) => scenario.id === "bub-phone")!,
+        id: "add-not-repeated-leading-sentence",
+        steps: [{ say: "create a written CA for Wrenna Thistlecombe at West Dodge Rd, she was late on 10/23/26" }, { create: true }, { say: BUB_PHONE }],
+        script: {
+          draft: {
+            observation:
+              "Observed:\nWrenna Thistlecombe was late to work on October 23, 2026.\n\nExpectation:\nWrenna is expected to arrive on time for every scheduled shift.\n\nGoing Forward:\nWrenna will arrive on time.",
+          },
+          patch: {
+            [BUB_PHONE]: patch("this_form", [
+              {
+                field: "observation",
+                value: "Observed: Wrenna Thistlecombe was late to work on October 23, 2026. Wrenna was also on her phone.",
+                how: "add",
+                evidence: "she was also on her phone",
+              },
+            ]),
+          },
+        },
+        expect: {
+          says: "the Observation says once that she was late on October 23, 2026, and adds that she was also on her phone",
+          check: (run) => {
+            const observation = String(run.saved.observation ?? "");
+            if (!/also on her phone/.test(observation)) return `no phone line: ${JSON.stringify(observation)}`;
+            const late = observation.match(/late to work on October 23, 2026/g) ?? [];
+            if (late.length !== 1) return `the late sentence ${late.length} times: ${JSON.stringify(observation)}`;
+            if ((observation.match(/Observed:/g) ?? []).length !== 1) return `"Observed:" twice: ${JSON.stringify(observation)}`;
+            return null;
+          },
+        },
+      }),
   },
 ];
