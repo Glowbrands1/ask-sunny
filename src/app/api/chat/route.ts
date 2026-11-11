@@ -21,6 +21,7 @@ import {
   personGuardEnabled,
   missedShiftCitesAttendanceEnabled,
   possessivePlaceNotPersonEnabled,
+  outlineOnOpenProposalEnabled,
   formNameFromRosterEnabled,
   offRosterConfirmEnabled,
   exitLetterAddresseeEnabled,
@@ -250,6 +251,15 @@ async function postChat(request: Request) {
           question: read(asked.question),
           history: asked.history.map((turn) => (turn.role === "user" && typeof turn.content === "string" ? { ...turn, content: read(turn.content) } : turn)),
         };
+      }
+      // OUTLINE_ON_OPEN_PROPOSAL_ENABLED: a pasted outline on an open proposal is no account (`lib/forms/outline-on-proposal.ts`).
+      let outlineOnProposal = false;
+      if (outlineOnOpenProposalEnabled()) {
+        const read = (await import("@/lib/forms/outline-on-proposal")).withoutOutlineTurns(asked);
+        if (read) {
+          asked = read.asked;
+          outlineOnProposal = read.outline;
+        }
       }
       /*
        * OFF_ROSTER_CONFIRM_ENABLED: "use <name>" (or "yes") to the offer for a person not in Woven is read as the
@@ -935,6 +945,8 @@ async function postChat(request: Request) {
       }
       // PROPOSAL_NAME_CORRECTION_ENABLED: an off-roster "change her name to …" on the card is never kept silently; with the roster, the card stays for the one roster person it can only be, and a typo is never offered as a person.
       answer = withCorrectionNotDropped(answer, parsed);
+      // OUTLINE_ON_OPEN_PROPOSAL_ENABLED: the outline turn's reply says the outline is kept as her form's layout.
+      if (outlineOnProposal) answer = (await import("@/lib/forms/outline-on-proposal")).withOutlineKeptNote(answer);
       // TWO_FORMS_CARD_NOT_ASKED_ENABLED: a card that names its employee is never asked "Which of them … — <that employee> or …?" (`lib/forms/card-not-asked.ts`).
       if (twoFormsCardNotAskedEnabled()) answer = (await import("@/lib/forms/card-not-asked")).withoutWhichAskOnSeatedCard(answer);
       // NEAR_MISS_QUESTION_RULES_ENABLED: "no, …" to "Is this for <name>?" never gets a card for that name.
