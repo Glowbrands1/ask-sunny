@@ -624,6 +624,21 @@ export function notANameGuardEnabled(): boolean {
 }
 
 /**
+ * NOT_A_NAME_TEST_EMPLOYEE_ENABLED (QA, 11 Nov 2026; default off; #227). Read
+ * only with NOT_A_NAME_GUARD_ENABLED on, which is live: #227's readers were
+ * written behind that flag, so QA moved them behind this one so they do not
+ * go live on merge. On: QA's placeholder "Test Employee" goes on a Corrective
+ * Action or coaching card whatever its case and wherever it stands ("for
+ * Tanning Consultant, Test Employee at …", "Okay let's restart. Test
+ * Employee, …", "test employee"), from this turn or an earlier one; and a
+ * salon's state code ("… at Kearney, NE") is never the person. Off, the
+ * typed-name reader, the card and the not-a-name guard read as on main.
+ */
+export function notANameTestEmployeeEnabled(): boolean {
+  return notANameGuardEnabled() && envFlag("NOT_A_NAME_TEST_EMPLOYEE_ENABLED");
+}
+
+/**
  * The exit form's intake reads what the manager typed (ported from the
  * sibling app's live QA, 25 Oct 2026). A Details answer ("items returned") or
  * the Permanent Address the manager typed is never taken for the employee;

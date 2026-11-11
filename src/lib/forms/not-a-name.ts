@@ -1,5 +1,5 @@
 import { PRODUCTION_SALONS } from "@/data/salons";
-import { accountVerbNotANameEnabled, notANameGuardEnabled } from "@/lib/config/chat-quality-flags";
+import { accountVerbNotANameEnabled, notANameGuardEnabled, notANameTestEmployeeEnabled } from "@/lib/config/chat-quality-flags";
 import { BED_LEVELS } from "@/lib/reporting/bed-usage/metric-map";
 import { COMP_SALES_METRICS } from "@/lib/reporting/comp-sales/metric-catalogue";
 import { SPA_ENGAGEMENT_MEASURES } from "@/lib/reporting/spa-engagement/metric-map";
@@ -181,6 +181,21 @@ function isThingRun(words: readonly string[]): boolean {
   return words.length >= 2 && DOCUMENT_TAIL.has(words[words.length - 1]!);
 }
 
+/**
+ * The state codes of this business's salons ("NE Kearney" → NE). Ported from
+ * Ask Bubbles (QA B8, conv_mvl9l6fkymv3c7p there): "Test Employee at Dodge,
+ * NE." offered "NE" as the person — the name reader could not read "Test
+ * Employee", and the state was the capitalised word left. Here, with
+ * CA_TEMPLATE_MAP / FORM_CHOICE_STATED on, "… at Kearney, NE." put "Ne" on the card.
+ * Read with NOT_A_NAME_TEST_EMPLOYEE_ENABLED only (QA, 11 Nov 2026).
+ */
+const STATE_CODES: ReadonlySet<string> = new Set(
+  PRODUCTION_SALONS.map((salon) => String(salon.state ?? "").toUpperCase()).filter((state) => /^[A-Z]{2}$/.test(state)),
+);
+
+/** "Kearney, NE", "at Lincoln, NE" — the state after a place, read in lower case so no name reader takes it. */
+const STATE_AFTER_PLACE = new RegExp(`(,\\s*)(${[...STATE_CODES].join("|") || "(?!)"})\\b`, "g");
+
 /** True when the guard is on and the candidate is not somebody's name. */
 export function isNotAName(candidate: string | null | undefined): boolean {
   if (!notANameGuardEnabled() || !candidate?.trim()) return false;
@@ -190,6 +205,8 @@ export function isNotAName(candidate: string | null | undefined): boolean {
   if (words.some((word) => NEVER_IN_A_NAME.has(word))) return true;
   if (words.every((word) => NOBODY_IN_PARTICULAR.has(word))) return true;
   if (words.length >= 2 && LEADING_VERB.has(words[0]!)) return true;
+  // NOT_A_NAME_TEST_EMPLOYEE_ENABLED: "NE", "ne": a state code of a salon, given alone, is a place.
+  if (notANameTestEmployeeEnabled() && words.length === 1 && candidate.trim().length === 2 && STATE_CODES.has(candidate.trim().toUpperCase())) return true;
   return PLACE_KEYS.has(storeNameKey(candidate));
 }
 
@@ -233,6 +250,7 @@ export function maskNotANameText(text: string): string {
   if (!notANameGuardEnabled() || !text) return text;
   let masked = text;
   for (const line of APP_LINES) masked = masked.replace(line, " ");
+  if (notANameTestEmployeeEnabled()) masked = masked.replace(STATE_AFTER_PLACE, (_match, lead: string, state: string) => `${lead}${state.toLowerCase()}`);
   const lines = masked.split("\n");
   if (lines.filter((line) => BULLET.test(line)).length >= 2) {
     masked = lines.map((line) => (BULLET.test(line) ? "" : line)).join("\n");
