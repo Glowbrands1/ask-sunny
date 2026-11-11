@@ -57,7 +57,7 @@ import {
   observationOwnPersonOnlyEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { requestIssueKeptEnabled } from "@/lib/config/chat-quality-flags";
-import { withoutPlaceAfterName } from "./unknown-place-not-account";
+import { withUnknownPlaceSaid, withoutPlaceAfterName } from "./unknown-place-not-account";
 import { turnsMadeAbout, withObservationMadeAbout } from "./make-it-about";
 import { NOTHING_SET_ASIDE, citationSetAside, policiesSetAside, setAsideAnything, withPolicySetAside, withoutPolicyAsks } from "@/lib/forms/policy-set-aside";
 import { namesOnlyAPolicy } from "@/lib/forms/person-guard";
@@ -279,6 +279,8 @@ export function holdFilledSlots(input: {
   }
   content = dropBlockedQuestions(content, next);
   content = keepPolicyLines(content, previousContent(input.history, proposal.templateKey));
+  // UNKNOWN_PLACE_SAID_ENABLED: "… at IA Altoona" (not a salon) is said back, not passed over as "covers every salon".
+  content = withUnknownPlaceSaid({ content, turns, employeeName: next.employeeName, locationResolution: next.locationResolution });
   if (slotsOn) {
     /*
      * The Resignation/Exit Form has no Observation of Offense; its Additional

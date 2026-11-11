@@ -57,3 +57,40 @@ export const NOV11_UNKNOWN_PLACE_NOT_ACCOUNT_CASES: ReplayCase[] = [
     },
   },
 ];
+
+/**
+ * UNKNOWN_PLACE_SAID_ENABLED (QA's D5 follow-up, 11 Nov 2026): the same admin's card said "Your account covers every
+ * salon, so this form won't name one" for "… at IA Altoona", as though no place was named. With the flag, it says IA
+ * Altoona is not one of the salons. A salon the reader knows ("at Kearney") is filled in as before.
+ */
+const SAID_FIX = ["UNKNOWN_PLACE_SAID_ENABLED"];
+const SAID_REPORT = "QA's D5 follow-up (11 Nov 2026): a named place that is not a salon was passed over in silence";
+
+NOV11_UNKNOWN_PLACE_NOT_ACCOUNT_CASES.push(
+  ...([
+    ["sdit-epp", `Create an SDIT EPP for ${NAME} at IA Altoona`],
+    ["coaching", `Create a coaching form for ${NAME} at IA Altoona`],
+  ] as const).map(([key, words]) => ({
+    id: `nov11-unknown-place-said-${key}`,
+    title: `"${words}": the card says IA Altoona is not one of the salons`,
+    report: SAID_REPORT,
+    status: { open: "the card says only that the account covers every salon" } as const,
+    fixFlags: SAID_FIX,
+    async run(t: ReplayContext) {
+      const { reply } = await card(t, words);
+      expect(reply.content).toContain("IA Altoona isn't one of our salons, so this form won't name one.");
+      expect(reply.content).not.toMatch(/covers every salon/);
+    },
+  })),
+  {
+    id: "nov11-unknown-place-said-salon-kept",
+    title: `NEVER-BREAK: "Create an SDIT EPP for ${NAME} at Kearney": no "isn't one of our salons" line`,
+    report: SAID_REPORT,
+    status: "fixed",
+    fixFlags: SAID_FIX,
+    async run(t: ReplayContext) {
+      const { reply } = await card(t, `Create an SDIT EPP for ${NAME} at Kearney`);
+      expect(reply.content).not.toMatch(/isn't one of our salons/);
+    },
+  },
+);

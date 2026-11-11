@@ -4438,3 +4438,13 @@ export function addNotRepeatedSentencesEnabled(): boolean {
 export function unknownPlaceNotAccountEnabled(): boolean {
   return envFlag("UNKNOWN_PLACE_NOT_ACCOUNT_ENABLED");
 }
+
+/**
+ * UNKNOWN_PLACE_SAID_ENABLED (QA's D5 follow-up, 11 Nov 2026; default off): an all-salon admin's "Create an SDIT EPP for
+ * <name> at IA Altoona" (not one of the salons) got "Your account covers every salon, so this form won't name one", as
+ * though no place was named. With the flag on, the card says so plainly: "IA Altoona isn't one of our salons, so this
+ * form won't name one" (`ai/unknown-place-not-account.ts`). Off, as before.
+ */
+export function unknownPlaceSaidEnabled(): boolean {
+  return envFlag("UNKNOWN_PLACE_SAID_ENABLED");
+}
