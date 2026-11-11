@@ -1073,6 +1073,9 @@ describe("new flags default off and wrappers are inert", () => {
           ":(exclude)src/components/shell/sidebar.tsx",
           ":(exclude)src/components/shell/app-switcher.tsx",
           `:(exclude)${SIGN_IN_FORM}`,
+          // WOVEN_DOCUMENT_KEEP_OUT_ENABLED (QA, 10 Nov 2026): the admin Content tab's per-document "Keep out" button,
+          // rendered only when the content route says the flag is on. Off, the tab renders exactly as before.
+          ":(exclude)src/features/admin/woven-knowledge/woven-knowledge-content.tsx",
           // THE CLAY RESTYLE (requested by Paulyne, 9 Nov 2026, from the approved
           // "Ask Sunny Clay Web" mockup; QA to confirm before merge). Unlike the
           // entries above it is NOT behind a flag: it is a deliberate visual change
