@@ -2704,6 +2704,16 @@ export function policyTopicIntoFieldEnabled(): boolean {
 }
 
 /**
+ * BRAND_REPLY_GUARD_ENABLED (ported from the sibling app: QA's October triage of its #198, 10 Nov 2026; coding 5;
+ * default off). With OWN_BRAND_ONLY on, a reply still kept "(<this brand>, JB & Associates office)" and "SALON/STORE",
+ * and dropped whole an availability reply naming this brand's system beside the others'. On: those are rewritten
+ * before the own-brand step (`ai/brand-reply-rest.ts`), so the rule stays and names only this company. Off, as before.
+ */
+export function brandReplyGuardEnabled(): boolean {
+  return envFlag("BRAND_REPLY_GUARD_ENABLED");
+}
+
+/**
  * ADD_THAT_IS_ACCOUNT_ENABLED (ported from the sibling app: QA's live test there on a saved Corrective Action draft,
  * 10 Nov 2026; coding 5; same flag in both apps; default off). "add that she was reminded of the policy" was read as a
  * policy to add ("I couldn't find a section called …") and nothing reached the Observation. On: an add that introduces a
