@@ -620,6 +620,15 @@ async function answerQuestionUntraced(
    * fetched once one of them has something to say — or, further down, in
    * parallel with retrieval when neither has.
    */
+  /*
+   * CHAT_PARALLEL_LOADS_ENABLED (QA, 10 Nov 2026, live timings): the few-shot read needs only the question and the scope,
+   * both final here, and was the one slow read left before the answer (1.1–2.8 s, alone: the reads it was started with
+   * finish in 0–1 ms). It starts here, beside the normalizer and the query rewrite. A turn that returns before the answer
+   * (a form proposal, a form understood) has made two database reads it does not use; no model call. Its rejection is
+   * held until the await, as before.
+   */
+  const earlyFewShot =
+    chatParallelLoadsEnabled() && fewShotExamplesEnabled() ? held(fewShotBlock({ question: request.question, scopeId: request.scopeId })) : null;
   markStage(earlyHeard?.reruns(request) ? "query_normalize_rerun" : "query_normalize");
   const heard = queryRewriteEnabled()
     ? await (earlyHeard?.take(request) ?? normalizeForChat({ question: request.question, history: request.history }))
@@ -1626,7 +1635,9 @@ async function answerQuestionUntraced(
    * so the prompt is the same. The two that write (recalled memory, the long-context summary) start just before the
    * system prompt is built (`turnWrites`).
    */
-  const reads = chatParallelLoadsEnabled() ? turnReads({ request, actor, knowledge, families, fullManual: fullManualBlock !== null }) : null;
+  const reads = chatParallelLoadsEnabled()
+    ? turnReads({ request, actor, knowledge, families, fullManual: fullManualBlock !== null, fewShot: earlyFewShot })
+    : null;
   const role = roleResult?.ok ? roleResult.grounding : null;
 
   /*
@@ -2173,6 +2184,8 @@ function turnReads(input: {
   readonly knowledge: Parameters<typeof citedManualGrounding>[1];
   readonly families: readonly ReportFamilyId[];
   readonly fullManual: boolean;
+  /** Started before the query rewrite (`earlyFewShot`): non-null exactly when loads and few-shot are both on. */
+  readonly fewShot: ReturnType<typeof fewShotBlock> | null;
 }) {
   const { request, actor } = input;
   const reviews = googleReviewsInChatEnabled()
@@ -2180,7 +2193,7 @@ function turnReads(input: {
     : Promise.resolve(null);
   return {
     reviews,
-    fewShot: fewShotExamplesEnabled() ? held(fewShotBlock({ question: request.question, scopeId: request.scopeId })) : null,
+    fewShot: input.fewShot,
     data: held(
       reviews.then((reviewBlock) =>
         loadChatDataBlock({

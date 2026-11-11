@@ -225,6 +225,9 @@ const FLIPPED_AFTER_FIXTURE: readonly string[] = [
    * slot lines are put ahead of the turn in another order. The other eight change nothing here.
    */
   "FORM_NAME_FROM_ROSTER_ENABLED",
+  // Changed on purpose (10 Nov 2026): QA round 23 turned this on in production. A name-only coaching ask no longer offers Create
+  // beside "what happened" (the card's text changes); the fixture predates it, so it is compared with it off.
+  "WHAT_HAPPENED_NO_CREATE_ENABLED",
 ];
 const PRODUCTION = [...PRODUCTION_FLAGS.on, ...PRODUCTION_FLAGS.assumedOn].filter((name) => name !== FLAG && !FLIPPED_AFTER_FIXTURE.includes(name));
 const TOUCHED = [...new Set([FLAG, "FORM_EDIT_SINGLE_WRITER_ENABLED", "FORM_EDIT_TOOL_IN_STREAM_ENABLED", ...PRODUCTION, ...PRODUCTION_FLAGS.off])];
