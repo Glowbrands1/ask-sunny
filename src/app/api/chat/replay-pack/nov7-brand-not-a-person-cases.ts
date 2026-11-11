@@ -46,6 +46,9 @@ const NAME_SET = [
   "ROSTER_COMPOUND_SURNAME_ENABLED",
   "ROSTER_NOT_FOUND_ANY_PHRASING_ENABLED",
   "OFF_ROSTER_CONFIRM_ENABLED",
+  // Changed on purpose (the roster-set gate R16A, 10 Nov 2026): the set ships with FORM_NAME_OFF_ROSTER_ASK, whose rule keeps
+  // "- **Name:** The employee" off an emptied exit card.
+  "FORM_NAME_OFF_ROSTER_ASK_ENABLED",
 ];
 
 /** The company's own name, or its initials, said back or offered as a person. */
@@ -72,6 +75,8 @@ export const NOV7_BRAND_NOT_A_PERSON_CASES: ReplayCase[] = [
       for (const turn of [LETTER, `I need an exit form with this information. ${LETTER}`]) {
         const reply = await thread.say(turn);
         expect(namesTheCompany(reply.content), `the company is said back as a person:\n${reply.content}`).toBeNull();
+        // The sibling app's roster-set gate R16A (10 Nov 2026), seen here too: with FORM_NAME_FROM_ROSTER on the exit card read "- **Name:** The employee".
+        expect(reply.content, `the card's Name is "The employee":\n${reply.content}`).not.toMatch(/\*\*Name:\*\*\s*The employee/i);
       }
     },
   },

@@ -161,6 +161,8 @@ export const NOV4_OVERNIGHT_SCAN_CASES: readonly ReplayCase[] = [
       const card = thread.proposal;
       expect(card, `no coaching card:\n${reply.content}`).toMatchObject({ templateKey: "coaching" });
       expect(card?.employeeName ?? "", "a product or the instruction is the employee").not.toMatch(/spray|tan kits|kits|left blank|employee needs/i);
+      // QA's #741 gate (10 Nov 2026): with the roster-name set on, the team card was lost ("Who is this form for?"). It is the team card.
+      expect(card, `not the team card:\n${reply.content}`).toMatchObject({ subject: "team", employeeName: "All team members" });
       expect(card?.locationId ?? KEARNEY_SALON, "the card is not at Kearney").toBe(KEARNEY_SALON);
       t.draftWrites({ coaching_details: "Observed:\nThe team is not selling kits and is not writing proper rainchecks, so inventory is not correct.\nExpectation:\nEvery raincheck is written in full." });
       const id = await thread.create();
