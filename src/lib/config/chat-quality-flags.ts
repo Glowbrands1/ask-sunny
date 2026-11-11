@@ -2692,6 +2692,19 @@ export function addThatIsAccountEnabled(): boolean {
   return envFlag("ADD_THAT_IS_ACCOUNT_ENABLED");
 }
 
+/**
+ * INCIDENT_CLAUSE_SPLIT_ENABLED (QA's October triage of #260, 10 Nov 2026; rebuilt on current main; default off). What
+ * happened was a fragment of the turn: "…she works at our kearney, ne salon as a tan consultant and was late today"
+ * gave the Observation "ne salon as a tan consultant and was late today" (cut at the comma of "kearney, ne"); employee
+ * facts ("employee for 7 months"), slot commands ("no deduct", "date 10/14", "change it to written") and pasted policy
+ * text rode along. On: the incident readers get the turn without employee facts, commands and policy text, and a place
+ * with its state stays whole (`ai/incident-clauses.ts`, in `remap-incident.ts` and `keep-filled-slots.ts`). Off, as
+ * before.
+ */
+export function incidentClauseSplitEnabled(): boolean {
+  return envFlag("INCIDENT_CLAUSE_SPLIT_ENABLED");
+}
+
 // --- end coding 5 flags ---
 
 /**
