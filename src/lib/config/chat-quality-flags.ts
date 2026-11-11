@@ -3869,6 +3869,29 @@ export function oneCardOnePageEnabled(): boolean {
 }
 
 /**
+ * OTHER_POLICY_AGREES_ENABLED (QA's ruling on the Sunny sanitation report, 10 Nov 2026 18:49Z; default off; Pau's rule
+ * stands: cleaning or sanitation left undone is Other, the account its reason). "please make a ca for <name> for not
+ * doing th e10 minute sanitaion": the card cited "Care and Cleaning of Equipment and Facilities Policy, JBA Policy Manual
+ * p.21"; Create saved Other with the EMERGENCY passage as Direct policy. On: (1) sanitation reads as cleaning left undone
+ * (`forms/ca-policy.ts`); (2) the card shows Other with the account and cites no section for it
+ * (`ai/form-card-slots.ts`); (3) with Other ticked and no pinned section, Direct policy is blank, never an unrelated
+ * retrieved passage (`forms/policy-fields.ts`). Off, as before.
+ */
+export function otherPolicyAgreesEnabled(): boolean {
+  return envFlag("OTHER_POLICY_AGREES_ENABLED");
+}
+
+/**
+ * OTHER_NOT_A_POLICY_NAME_ENABLED (QA's ruling on the Sunny sanitation report, 11 Nov 2026; default off). A Corrective Action
+ * saved with Policy Violated "Other" got the Action Plan "Management will review the Other policy with <first>.": "Other" is
+ * a box, not a policy. On, a bare "Other" is never a policy name (`forms/ca-action-plan.ts`, protected:
+ * docs/patches/other-not-a-policy-name.patch) and the plan reads "the applicable company policy". Off, as before.
+ */
+export function otherNotAPolicyNameEnabled(): boolean {
+  return envFlag("OTHER_NOT_A_POLICY_NAME_ENABLED");
+}
+
+/**
  * ANOTHER_REQUEST_LEAD_ENABLED (QA, Sunny round 7c and 9 live, 9 Nov 2026; default off; same flag in both apps). "I need
  * another corrective action for <P>, his cash drawer was short $20 on 11/3" was the card's whole Observation: "another" was
  * not read as the request's own word. With the flag on, "another", "one more" and "a second / separate / different / new"

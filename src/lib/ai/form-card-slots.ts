@@ -5,6 +5,7 @@ import { datesInText, listIncidentDates, priorSteps } from "@/lib/forms/form-dat
 import {
   managerWordsOnlyEnabled,
   oneCardOnePageEnabled,
+  otherPolicyAgreesEnabled,
   titleKeepsLabelWordsEnabled,
   formChoiceStatedEnabled,
   payrollAmountFieldEnabled,
@@ -176,6 +177,12 @@ export function formTurnCitations(input: {
   readonly documentCategory?: string | null;
   readonly modelHeading?: string | null;
 }): SourceCitation[] {
+  /*
+   * OTHER_POLICY_AGREES_ENABLED (QA's ruling, 11 Nov 2026; Pau's rule): cleaning or sanitation left undone is Other, the
+   * account its reason, so the card cites no manual section for it — never "Care and Cleaning of Equipment and Facilities
+   * … p.21" above a draft that saves Other. Off, as before.
+   */
+  if (otherPolicyAgreesEnabled() && readCaPolicy(input.notes).other === "cleaning") return [];
   const sections = violatedSections(sectionsFor(input.notes, input.chunks, input.modelHeading ?? null));
   const category = categoryOf(input.documentCategory);
   const citations: SourceCitation[] = [];
