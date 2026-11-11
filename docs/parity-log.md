@@ -17,6 +17,11 @@ no merge.
   the question just asked (warning, date, or payroll) or it is left off the
   title. A numbered intake that also lists the title is not a title question.
   A real title ("TC", words after a job-title label that name one) stays.
+- 11 Nov 2026 (QA): the hunks in Pau's protected modules
+  (`src/lib/ai/form-field-state.ts`, `src/lib/ai/form-proposal.ts`,
+  `src/lib/forms/proposal.ts`) were dropped. The flag reads only in
+  `intent-slots.ts` and `form-card-slots.ts`; the proposal's own date reader
+  and the field-state corroboration read as on main.
 
 ## 26 Oct 2026: FOLLOW_UP_NOT_PRIOR_ENABLED — Sunny-only
 
