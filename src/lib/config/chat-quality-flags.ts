@@ -4450,3 +4450,18 @@ export function addNotRepeatedSentencesEnabled(): boolean {
 export function payrollBareSentenceEnabled(): boolean {
   return envFlag("PAYROLL_BARE_SENTENCE_ENABLED");
 }
+
+/**
+ * ADVICE_ASK_NOT_ACCOUNT_ENABLED (coding 6, 10 Nov 2026; default off; Pau's
+ * P14(b), Sunny production 9 Nov). The manager described an employee's
+ * pushback, asked "how i do about her frusteration", then "tell me how what to
+ * say back. send a messageto me"; the Coaching card's Observation pasted all of
+ * it, the questions to the app included. On: a sentence that only asks the
+ * app for advice or a message ("how do I …", "what should I say", "tell me
+ * how / what …", "send me a message", "help me word …") is left out of the
+ * card's Observation and the draft's account, with or without a "?". See
+ * `ai/app-instructions.ts`. Off, as before.
+ */
+export function adviceAskNotAccountEnabled(): boolean {
+  return envFlag("ADVICE_ASK_NOT_ACCOUNT_ENABLED");
+}
