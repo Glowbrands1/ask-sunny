@@ -96,7 +96,7 @@ const state = vi.hoisted(() => ({
  * the evidence and date checks, the reducer, the writes and the reload are
  * the real ones.
  */
-const systemPrompts = vi.hoisted(() => ({ hashes: [] as string[] }));
+const systemPrompts = vi.hoisted(() => ({ hashes: [] as string[], texts: [] as string[] }));
 const patchScript = vi.hoisted(() => ({ outputs: [] as unknown[], calls: 0, byLatest: null as Record<string, unknown> | null }));
 vi.mock("@/lib/forms/form-patch-call", () => ({
   FORM_PATCH_DEFAULT_TIMEOUT_MS: 5_000,
@@ -201,7 +201,7 @@ vi.mock("@/lib/auth/server", async () => {
       }
       return {
         identity: {
-          subject: "qa-manager",
+          subject: (state as { subject?: string }).subject ?? "qa-manager",
           email: "qa-manager@example.test",
           displayName: "QA Manager",
           role,
@@ -254,6 +254,7 @@ vi.mock("@/lib/ai/call-claude", () => ({
     state.chatModelCalls += 1;
     // REPLAY_RECORD (QA, 10 Nov 2026): the system prompt each answer was asked with, as a hash, so two versions of the
     // prompt's assembly can be compared case by case (the stage-timing split of buildSystemPrompt's awaits).
+    systemPrompts.texts.push(String(input?.system ?? ""));
     if (process.env.REPLAY_RECORD) systemPrompts.hashes.push(createHash("sha256").update(String(input?.system ?? "")).digest("hex").slice(0, 16));
     if (input?.formEditTool) {
       editTool.offered += 1;
@@ -607,6 +608,20 @@ class Thread {
     this.instanceId = toUuid(result.reference.instanceId);
     return this.instanceId;
   }
+
+  /** Create from the latest card for this person, as pressing Create on that card does (an earlier card still on screen). */
+  async createCard(employeeName: string): Promise<string> {
+    const message = [...this.messages].reverse().find((entry) => entry.formProposal?.employeeName === employeeName);
+    expect(message?.formProposal, `no card for ${employeeName} to create from`).toBeTruthy();
+    const result = await createInlineForm({ proposal: message!.formProposal!, messages: this.messages, call, onCreated: () => {} });
+    this.instanceId = toUuid(result.reference.instanceId);
+    return this.instanceId;
+  }
+
+  /** The chat as the browser holds it (for the browser's own readers). */
+  get conversation() {
+    return this.messages;
+  }
 }
 
 
@@ -680,6 +695,7 @@ const record: { turns: { question: string; reply: string; updated: string[] | nu
 async function recorded(id: string, mode: string, run: () => Promise<void>) {
   record.turns = [];
   systemPrompts.hashes = [];
+  systemPrompts.texts = [];
   const at = performance.now();
   let error: string | null = null;
   try {
@@ -715,14 +731,19 @@ function setScope(scope: unknown) {
 function setRole(role: string | undefined) {
   (state as { role?: string }).role = role;
 }
+function setSubject(subject: string | undefined) {
+  (state as { subject?: string }).subject = subject;
+}
 afterEach(() => {
   setScope(undefined);
   setRole(undefined);
+  setSubject(undefined);
   said.answer = null;
   editTool.input = null;
   editTool.offered = 0;
   editTool.lastData = null;
   draftAsked.length = 0;
+  revisionAsked.length = 0;
   draftSystemAsked.length = 0;
   draftToolsAsked.length = 0;
 });
@@ -730,9 +751,10 @@ afterEach(() => {
 function context(): ReplayContext {
   return {
     thread: () => new Thread(),
-    as: (role, scope) => {
+    as: (role, scope, subject) => {
       setRole(role);
       setScope(scope);
+      setSubject(subject);
     },
     directory: (rows) => {
       state.directory = rows as never;
@@ -781,7 +803,9 @@ function context(): ReplayContext {
     calls: () => ({ chat: state.chatModelCalls, draft: state.draftCalls, revision: state.revisionCalls, tool: state.toolCalls, patch: patchScript.calls }),
     forms: () => store.form_instances as never,
     draftPrompts: () => [...draftAsked],
+    revisionPrompts: () => [...revisionAsked],
     draftSystems: () => [...draftSystemAsked],
+    answerSystems: () => [...systemPrompts.texts],
     draftTools: () => [...draftToolsAsked],
     redraft: (instanceId, notes) =>
       call<Record<string, unknown>>(`/api/forms/instances/${instanceId}/draft`, {
