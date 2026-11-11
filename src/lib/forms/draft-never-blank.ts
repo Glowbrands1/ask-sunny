@@ -1,5 +1,5 @@
 import { businessToday } from "@/lib/business-date";
-import { caSalesPolicyEnabled, jobTitleNotIncidentEnabled, levelRequestDateEnabled, requestLineAccountEnabled } from "@/lib/config/chat-quality-flags";
+import { caReasonDueToEnabled, caSalesPolicyEnabled, jobTitleNotIncidentEnabled, levelRequestDateEnabled, requestLineAccountEnabled } from "@/lib/config/chat-quality-flags";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 import { JOIN } from "./bounded-context";
@@ -108,7 +108,8 @@ function issueFromRequest(text: string, employeeName: string | null): string | n
       const words = [...nameWords(employeeName)].map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
       if (words) {
         // CA_SALES_POLICY_ENABLED (QA, live, 4 Nov 2026): "CA for <name> due to under performance in salon metrics" — "due to" and "because (of)" join the reason too. Off, as before.
-        const joins = caSalesPolicyEnabled() ? "for|about|over|regarding|due\\s+to|because(?:\\s+of)?" : "for|about|over|regarding";
+        // CA_REASON_DUE_TO_ENABLED (ported from the sibling app): the same joins, whatever CA_SALES_POLICY says. Off, as before.
+        const joins = caSalesPolicyEnabled() || caReasonDueToEnabled() ? "for|about|over|regarding|due\\s+to|because(?:\\s+of)?" : "for|about|over|regarding";
         const after = new RegExp(`^(?:(?:${words})\\s*)+(?:\\s+(?:${joins})\\s+|\\s*[-—–:,]\\s*)(.+)$`, "i").exec(raw.trim());
         if (after) raw = after[1]!;
       }
@@ -275,6 +276,20 @@ const ASKS_FOR_THE_FORM =
 /** LEVEL_REQUEST_DATED_ASK: "create a written on 10/20 for …" asks for the form too (LEVEL_REQUEST_DATE_ENABLED). */
 const LEVEL_REQUEST_DATED_ASK =
   /\b(?:create|make|start|open|do|file|write|draft)\s+(?:a\s+|an\s+)?(?:verbal|written|final)(?:\s+warning)?\s+(?:on\s+)?(?<![\d/-])\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?(?![\d/-])\s+for\s/i;
+
+/*
+ * CA_REASON_DUE_TO_ENABLED (ported from the sibling app; the #237 audit, live
+ * 26 Oct 2026): "create a ca for <name> at <salon>, she was late on 10-5 and
+ * 10-15" names only the person and the salon before its comma, so the request
+ * gives no reason; what follows the comma is the account.
+ */
+const FORM_REQUEST_LEAD =
+  /^\s*(?:please\s+)?(?:(?:create|make|start|open|do|file|write|draft|need|i\s+need)\s+)?(?:a\s+|an\s+)?(?:corrective\s+action(?:\s+form)?|ca|c\/a|dpoa|write[- ]?up|warning)\s+for\b[^,]*,\s*(?=\S)/i;
+
+/** "create a ca for <name> at <salon>, she was late …" → "she was late …"; unchanged when nothing follows the comma. */
+export function withoutFormRequestLead(sentence: string): string {
+  return sentence.replace(FORM_REQUEST_LEAD, "");
+}
 
 export function asksForTheForm(sentence: string): boolean {
   return ASKS_FOR_THE_FORM.test(sentence) || (levelRequestDateEnabled() && LEVEL_REQUEST_DATED_ASK.test(sentence));

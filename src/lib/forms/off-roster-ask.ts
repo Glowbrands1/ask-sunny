@@ -1,4 +1,4 @@
-import { offRosterAskBeforeCardEnabled, offRosterConfirmEnabled } from "@/lib/config/chat-quality-flags";
+import { formNameOffRosterAskEnabled, offRosterAskBeforeCardEnabled, offRosterConfirmEnabled } from "@/lib/config/chat-quality-flags";
 import type { AccessScope } from "@/types";
 
 import { normalizeTypedName } from "./employee-match";
@@ -74,6 +74,24 @@ export function withOffRosterAskBeforeCard<T extends { content: string; formProp
   if (!offRosterAskBeforeCardEnabled() || !offRosterConfirmEnabled() || input.scope?.level !== "salon") return answer;
   const card = answer.formProposal;
   const name = card?.employeeName?.trim();
+  /*
+   * FORM_NAME_OFF_ROSTER_ASK_ENABLED (QA, 10 Nov 2026, the Sunny roster-set gate): with FORM_NAME on, the name has
+   * already left the card, and the reply says "I couldn't find **<name>** in the Woven roster, so that name is not on
+   * the form." with OFF_ROSTER_CONFIRM's offer, under the empty card. It is asked as this flow asks it: the question
+   * and the offer, the card held, once per name.
+   */
+  if (formNameOffRosterAskEnabled() && card && !name && card.subject !== "team") {
+    const noted = /I couldn['’]t find \*\*([^*]+)\*\* in the Woven roster, so that name is not on the form\./.exec(answer.content)?.[1];
+    if (noted && answer.content.includes(offRosterOffer(noted))) {
+      const question = offRosterQuestion(noted);
+      if (input.history.some((turn) => turn.role === "assistant" && turn.content.includes(question))) return answer;
+      return {
+        ...answer,
+        content: `${question} ${offRosterOffer(noted)}`,
+        formProposal: { ...card, employeeName: null, employeeRole: null, status: "needs_employee", supportsInlineDraft: false },
+      };
+    }
+  }
   if (!card || !name || card.subject === "team" || words(name).split(" ").length < 2) return answer;
   const roster = personRosterNames();
   if (!roster || roster.length === 0 || onRoster(name, roster) || nearSomeone(name, roster)) return answer;

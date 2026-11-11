@@ -57,7 +57,8 @@ function agrees(reply: ReplayAnswer, employee: string | null, typed: readonly st
     expect(reply.content, `an empty card's reply does not ask who:\n${reply.content}`).toMatch(new RegExp(`${ASKS.source}|reply \\*\\*use [^*]+\\*\\* and I'll put that name on the form`, ASKS.flags));
     const said = reply.content
       .split("\n")
-      .filter((line) => !/I couldn['’]t find \*\*|Is this for \*\*|Did you mean|Which of them/.test(line))
+      // Changed on purpose (10 Nov 2026, QA's roster-set ruling): with the name set on, a salon manager's not-found line is OFF_ROSTER_ASK's "I can't find **<name>** on your roster — …" (round 12's live wording), not "I couldn't find **<name>** in the Woven roster".
+      .filter((line) => !/I couldn['’]t find \*\*|I can['’]t find \*\*[^*]+\*\* on your roster|Is this for \*\*|Did you mean|Which of them/.test(line))
       .join("\n");
     for (const word of typed) expect(said, `an empty card's reply names "${word}":\n${reply.content}`).not.toMatch(new RegExp(`\\b${word}\\b`, "i"));
   } else {

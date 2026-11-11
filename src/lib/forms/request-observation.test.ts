@@ -48,3 +48,40 @@ describe("the request is not the Observation (CA_SALES_POLICY_ENABLED)", () => {
     expect(withoutRequestInObservation({ observation: COPIED }, "observation", NAME)).toBeNull();
   });
 });
+
+/*
+ * CA_REASON_DUE_TO_ENABLED (ported from the sibling app): the same mechanism
+ * whatever CA_SALES_POLICY says, and "create a ca for <name> at <salon>, she
+ * was late on 10-5 and 10-15" (the #237 audit's wording) reads the account
+ * after the comma. People invented.
+ */
+describe("the request is not the Observation (CA_REASON_DUE_TO_ENABLED)", () => {
+  const AT_SALON = "Observed:\ncreate a ca for Remy Calder at kearney, she was late on 10-5 and 10-15.";
+  function reason(on: boolean) {
+    vi.stubEnv("CA_SALES_POLICY_ENABLED", "false");
+    vi.stubEnv("CA_REASON_DUE_TO_ENABLED", on ? "true" : "false");
+  }
+
+  it("QA's live wording, with CA_SALES_POLICY off", () => {
+    reason(true);
+    expect(withoutRequestInObservation({ observation: COPIED }, "observation", NAME)?.observation).toBe("Observed:\nUnder performance in salon metrics.");
+  });
+
+  it("\"create a ca for <name> at <salon>, she was late …\": the account after the comma", () => {
+    reason(true);
+    expect(withoutRequestInObservation({ observation: AT_SALON }, "observation", "Remy Calder")?.observation).toBe("Observed:\nShe was late on 10-5 and 10-15.");
+    expect(withoutRequestInObservation({ observation: "Observed:\ncreate a ca for Remy Calder at kearney." }, "observation", "Remy Calder")).toBeNull();
+  });
+
+  it("CA_SALES_POLICY alone: the at-salon request is left as it is, as before", () => {
+    vi.stubEnv("CA_SALES_POLICY_ENABLED", "true");
+    vi.stubEnv("CA_REASON_DUE_TO_ENABLED", "false");
+    expect(withoutRequestInObservation({ observation: AT_SALON }, "observation", "Remy Calder")).toBeNull();
+  });
+
+  it("off: unchanged", () => {
+    reason(false);
+    expect(withoutRequestInObservation({ observation: COPIED }, "observation", NAME)).toBeNull();
+    expect(withoutRequestInObservation({ observation: AT_SALON }, "observation", "Remy Calder")).toBeNull();
+  });
+});

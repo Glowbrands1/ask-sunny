@@ -59,7 +59,8 @@ const typo = (id: string, typed: string, what: string): ReplayCase => ({
   id,
   title: `${what}: "create a ca form for ${typed}" (roster: Odalys Prewett Vansickle): the card is hers, or the reply asks "Is this for **Odalys Prewett Vansickle**?"`,
   report: `${REPORT}; ${what}`,
-  status: { open: "with production's flags (FORM_NAME off) the card keeps the typed spelling" },
+  // Changed on purpose (10 Nov 2026): fixed in production by the roster-name set (FORM_NAME_FROM_ROSTER and companions), QA round 22; it now holds with production's flags.
+  status: "fixed",
   fixFlags: FIX,
   async run(t) {
     const { reply, employee } = await said(t, [ODALYS], `create a ca form for ${typed}`);
@@ -77,7 +78,8 @@ export const NOV5_COMPOUND_SURNAME_CASES: ReplayCase[] = [
     id: "nov5-compound-surname-word2-rotated-earlier-turn",
     title: "R7: the R3 spelling \"Odalys Prewett Vancsikle\" only in turn 2; the CA request comes later with no name: the card is hers, or the reply asks \"Is this for **Odalys Prewett Vansickle**?\"",
     report: `${REPORT}; R7, the name in an earlier turn`,
-    status: { open: "with production's flags (FORM_NAME off) the card keeps the typed spelling" },
+    // Changed on purpose (10 Nov 2026): fixed in production by the roster-name set (FORM_NAME_FROM_ROSTER and companions), QA round 22; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const { reply, employee } = await said(
@@ -94,7 +96,8 @@ export const NOV5_COMPOUND_SURNAME_CASES: ReplayCase[] = [
     id: "nov5-compound-surname-word1-typo-yes",
     title: "\"create a ca form for Odalys Perwett Vansickle\", then \"yes\" to \"Is this for **Odalys Prewett Vansickle**?\": the card is hers, in the roster's spelling",
     report: `${REPORT}; the answer`,
-    status: { open: "with production's flags (FORM_NAME off) the card keeps the typed spelling" },
+    // Changed on purpose (10 Nov 2026): fixed in production by the roster-name set (FORM_NAME_FROM_ROSTER and companions), QA round 22; it now holds with production's flags.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const { reply, employee } = await said(t, [ODALYS], "create a ca form for Odalys Perwett Vansickle, she was late opening the salon on 11/2", "yes");
