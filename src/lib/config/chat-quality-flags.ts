@@ -4381,3 +4381,28 @@ export function sameRequestOffRosterEnabled(): boolean {
 export function pastedOutlineToOpenDraftEnabled(): boolean {
   return envFlag("PASTED_OUTLINE_TO_OPEN_DRAFT_ENABLED");
 }
+
+/**
+ * FAILURE_TO_OPEN_IS_LATE_OPENING_ENABLED (coding 6, 10 Nov 2026; default off;
+ * Pau's P16, Sunny production 9 Nov). "Can you make a CA for <name> for
+ * failure to open on time?" was answered "You haven't told me what happened
+ * yet": no reader took "failure to open" as an account ("open" is also the
+ * word for opening a form). On: "failure / failed to open", "did not open on
+ * time", "didn't open the salon" are the manual's Late Opening, as "opened
+ * late" is, and an account. "open the form / the drawer" is not. See
+ * `forms/late-open.ts`. Off, as before.
+ */
+export function failureToOpenIsLateOpeningEnabled(): boolean {
+  return envFlag("FAILURE_TO_OPEN_IS_LATE_OPENING_ENABLED");
+}
+
+/**
+ * REQUEST_ISSUE_KEPT_ENABLED (ported from Ask Bubbles; QA's live round 17b, 10 Nov 2026, P16): "Can you make a CA for
+ * <name> for failure to open on time?" carded with no Observation of Offense. The edit rules read the whole question
+ * as an instruction to the app, so its account ("failure to open on time") was dropped. With the flag on, the
+ * account is kept when the manager's turns hold no replace or add edit and it is no instruction itself
+ * (`ai/form-full-remap.ts`). Off, as before. Same flag in both apps.
+ */
+export function requestIssueKeptEnabled(): boolean {
+  return envFlag("REQUEST_ISSUE_KEPT_ENABLED");
+}
