@@ -613,6 +613,8 @@ const NEW_FLAGS = [
   "REQUEST_ISSUE_KEPT_ENABLED",
   // coding 4: UNKNOWN_PLACE_NOT_ACCOUNT (QA's D5 follow-up, 11 Nov 2026; default off).
   "UNKNOWN_PLACE_NOT_ACCOUNT_ENABLED",
+  // coding 4: UNKNOWN_PLACE_SAID (QA's D5 follow-up, 11 Nov 2026; default off).
+  "UNKNOWN_PLACE_SAID_ENABLED",
 ] as const;
 
 const PROTECTED = [
