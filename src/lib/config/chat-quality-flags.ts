@@ -3902,6 +3902,16 @@ export function accountTyposFixedEnabled(): boolean {
 }
 
 /**
+ * REVISION_REPLY_SHOWS_FIELDS_ENABLED (QA, the Sunny sanitation report, 10 Nov 2026 18:49Z; default off). A chat edit of a
+ * created draft replied "Updated …: Observation of Offense." with no card; the change showed only in the open draft. On,
+ * the reply shows each changed text field as it now reads (`forms/revision-shown-fields.ts`, called from the protected
+ * `forms/chat-revision.ts`: docs/patches/revision-reply-shows-fields.patch). Off, as before.
+ */
+export function revisionReplyShowsFieldsEnabled(): boolean {
+  return envFlag("REVISION_REPLY_SHOWS_FIELDS_ENABLED");
+}
+
+/**
  * ANOTHER_REQUEST_LEAD_ENABLED (QA, Sunny round 7c and 9 live, 9 Nov 2026; default off; same flag in both apps). "I need
  * another corrective action for <P>, his cash drawer was short $20 on 11/3" was the card's whole Observation: "another" was
  * not read as the request's own word. With the flag on, "another", "one more" and "a second / separate / different / new"

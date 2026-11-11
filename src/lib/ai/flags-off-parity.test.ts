@@ -732,6 +732,15 @@ const PROTECTED = [
  * line `if (otherNotAPolicyNameEnabled() && /^other$/i.test(text)) return "";`
  * (a bare "Other" is never a policy name: no "review the Other policy").
  * Behind OTHER_NOT_A_POLICY_NAME_ENABLED, default off; off, as before.
+ *
+ * The user (Pau) approved, under Pau's standing approval via QA, 11 Nov 2026, in
+ * src/lib/forms/chat-revision.ts, exactly: the import
+ * `import { shownFieldLines, updatedKeysShown } from "./revision-shown-fields";`
+ * and, after the "Updated the …" line, the comment and
+ * `lines.push(...shownFieldLines(updatedKeysShown(written, saved.cleared), saved.accepted.values, labelOf));`
+ * (each changed text field as it now reads, capped at 600 characters).
+ * Behind REVISION_REPLY_SHOWS_FIELDS_ENABLED, default off; off, shownFieldLines
+ * returns [] and the reply is as before.
  */
 const APPROVED_PROTECTED_EDITS = [
   ":(exclude)src/lib/forms/proposal.ts",
