@@ -108,6 +108,7 @@ import {
 } from "@/lib/knowledge/role-grounding";
 import { isFrameworkAvailable } from "@/lib/knowledge/framework-availability";
 import { rowToCitation, type MatchedChunkRow } from "@/lib/knowledge/mappers";
+import { shownCitations } from "@/lib/knowledge/empty-card-drop";
 import { loadEmployeeFacts } from "@/lib/reporting/read/employee-facts";
 import { recallPeople } from "@/lib/chat/person-memory-store";
 import {
@@ -2040,10 +2041,13 @@ async function answerQuestionUntraced(
       : null;
   const spoken = checked?.content ?? answer;
   const markers = extractUsedMarkers(spoken, grounding.map((chunk) => chunk.marker));
-  const retrievedCitations: SourceCitation[] = markers
-    .map((marker) => used[marker - 1])
-    .filter((row): row is MatchedChunkRow => Boolean(row))
-    .map(rowToCitation);
+  // EXCERPT_EMPTY_CARD_DROP_ENABLED: no empty card, none labelled with the sibling company (`empty-card-drop.ts`).
+  const retrievedCitations: SourceCitation[] = shownCitations(
+    markers
+      .map((marker) => used[marker - 1])
+      .filter((row): row is MatchedChunkRow => Boolean(row))
+      .map(rowToCitation),
+  );
 
   /*
    * ==========================================================================

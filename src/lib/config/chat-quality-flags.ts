@@ -2678,6 +2678,16 @@ export function excerptBrandFilterEnabled(): boolean {
   return envFlag("EXCERPT_BRAND_FILTER_ENABLED");
 }
 
+/**
+ * EXCERPT_EMPTY_CARD_DROP_ENABLED (QA via Coding-5, 11 Nov 2026; default off; ships with EXCERPT_BRAND_FILTER). With the
+ * brand filter on, a manual block that is all the sibling company (p.43 "Buff City Soap:" holidays) became a source card
+ * with an empty excerpt, labelled "Page 43 — Buff City Soap". On, such a card is not shown and a hidden brand never labels
+ * a card (`knowledge/empty-card-drop.ts`). Off, as before.
+ */
+export function excerptEmptyCardDropEnabled(): boolean {
+  return envFlag("EXCERPT_EMPTY_CARD_DROP_ENABLED");
+}
+
 // --- end coding 5 flags ---
 
 /**
