@@ -17,9 +17,20 @@ const MARISOL: DirectoryRow = {
   positionName: "Tanning Consultant",
 };
 
+/** QA's R713 sentence is about "he"; an invented person. */
+const DORIAN: DirectoryRow = {
+  id: "e-dorian-vallow",
+  firstName: "Dorian",
+  lastName: "Vallow",
+  preferredFirstName: null,
+  employmentStatus: "active",
+  salonIds: ["loc-0309"],
+  positionName: "Tanning Consultant",
+};
+
 /** A function, not an array: the registry reads exported arrays as cases. */
 export function p17ExitPeople(): readonly DirectoryRow[] {
-  return [MARISOL];
+  return [MARISOL, DORIAN];
 }
 
 const LEFT_BLANK = (content: string) => /\*\*Left blank[^:]*:\*\*\s*([^\n]+)/i.exec(content)?.[1] ?? "";
@@ -42,6 +53,24 @@ export const NOV10_P17_EXIT_TYPO_WORDS_CASES: ReplayCase[] = [
       );
       expect(thread.proposal, `no exit card for Marisol Quenby:\n${reply.content}`).toMatchObject({ employeeName: "Marisol Quenby" });
       expect(LEFT_BLANK(reply.content), `the answers she gave are left blank:\n${reply.content}`).not.toMatch(/items returned|rehire/i);
+    },
+  },
+  {
+    id: "nov11-r713-not-required-back",
+    title: "an exit form, \"he is not required back\": never read as \"not rehired\" (Eligible for Rehire stays blank)",
+    report: "QA, R713 (Gate-Bubbles, 11 Nov 2026; the same word list here): \"he is not required back\" gave eligible_for_rehire: no with EXIT_TYPO_WORDS on",
+    status: "fixed",
+    fixFlags: ["EXIT_TYPO_WORDS_ENABLED"],
+    async run(t) {
+      vi.setSystemTime(new Date("2026-11-11T15:00:00Z"));
+      t.directory([...STAFF, DORIAN]);
+      t.as("salon_director", KEARNEY);
+      const thread = t.thread();
+      await thread.say("I need an exit form for Dorian Vallow");
+      const reply = await thread.say("he quit on 11/8/26. he is not required back. payroll not deducted");
+      expect(thread.proposal, `no exit card for Dorian Vallow:\n${reply.content}`).toMatchObject({ employeeName: "Dorian Vallow" });
+      expect(reply.content, `"not required back" was read as "not rehired":\n${reply.content}`).not.toMatch(/not eligible for rehire/i);
+      expect(LEFT_BLANK(reply.content), `Eligible for Rehire is filled:\n${reply.content}`).toMatch(/Eligible for Rehire/);
     },
   },
 ];

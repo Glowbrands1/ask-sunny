@@ -28,3 +28,34 @@ describe("EXIT_TYPO_WORDS_ENABLED", () => {
     expect(withExitWordsSpelled("not elegible for rehre")).toBe("not eligible for rehire");
   });
 });
+
+// QA, R713 (Gate-Bubbles, 11 Nov 2026): real words missing from REAL_WORDS were "corrected" into the readers' words —
+// required, repaired, revived and rewired became "rehired"; detected and defected "deducted"; forested "forfeited".
+describe("EXIT_TYPO_WORDS_ENABLED: real words stay as written (QA, R713)", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  const QA_SAID = "he quit on 11/8/26. he is not required back. payroll not deducted";
+
+  it("\"he is not required back\" is not read as \"not rehired\": Eligible for Rehire is read the same as with the flag off", () => {
+    const off = answers(QA_SAID);
+    vi.stubEnv("EXIT_TYPO_WORDS_ENABLED", "true");
+    const on = answers(QA_SAID);
+    expect(on.rehire).not.toBe("no");
+    expect(on).toEqual(off);
+    expect(on.payroll).toBe("no");
+  });
+
+  it.each([
+    "require", "requires", "requiring", "required",
+    "repair", "repairs", "repairing", "repaired",
+    "revive", "revives", "reviving", "revived",
+    "rewire", "rewires", "rewiring", "rewired",
+    "detect", "detects", "detecting", "detected",
+    "defect", "defects", "defecting", "defected",
+    "forest", "forests", "foresting", "forested",
+    // The same check over an English word list found these too (one or two letters from a reader's word).
+    "maximum", "dedicated", "retaining", "revised", "retried", "resized", "depicted", "dejected", "recited", "refined",
+  ])("%s is never changed", (word) => {
+    expect(withExitWordsSpelled(`he ${word} it`)).toBe(`he ${word} it`);
+  });
+});
