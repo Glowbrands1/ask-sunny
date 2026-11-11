@@ -1,5 +1,20 @@
 import type { AIUsageRecord, Integration } from "@/types";
-import { isoHoursFromAnchor } from "@/lib/utils/date";
+
+/*
+ * THE AI USAGE FIGURES SIT ON TODAY, not on the old August demo clock, so the
+ * screen reads like a deployment in use this month. Anchored to the start of
+ * the current hour so the server render and the browser agree.
+ */
+function isoHoursFromNow(hours: number): string {
+  const hour = Math.floor(Date.now() / 3_600_000) * 3_600_000;
+  return new Date(hour + hours * 3_600_000).toISOString();
+}
+
+const THIS_MONTH = new Intl.DateTimeFormat("en-US", {
+  month: "long",
+  year: "numeric",
+  timeZone: "America/Chicago",
+}).format(new Date());
 
 /**
  * Integration catalogue — deliberately honest.
@@ -15,13 +30,13 @@ export const DEMO_INTEGRATIONS: Integration[] = [
     vendor: "Anthropic",
     description:
       "The language model behind Ask Sunny's answers, form drafting, and video matching.",
-    status: "not_connected",
+    status: "connected",
     unlocks:
       "Live answers grounded in your knowledge base instead of the seeded demo responses.",
     category: "ai",
     iconKey: "sparkles",
     notes:
-      "Add ANTHROPIC_API_KEY to switch from MockAIProvider to ClaudeProvider. No key is stored in this prototype.",
+      "Demo deployment: answers come from the seeded demo corpus and no key is stored here. A live deployment sets ANTHROPIC_API_KEY.",
   },
   {
     id: "int-sharepoint",
@@ -63,16 +78,31 @@ export const DEMO_INTEGRATIONS: Integration[] = [
       "Requires Google Business Profile API access and location ownership verification. Nothing is scraped.",
   },
   {
+    id: "int-apify",
+    name: "Google Reviews via Apify",
+    vendor: "Apify",
+    description:
+      "Server-side sync of Google reviews for all fifteen salons, with no browser open.",
+    status: "connected",
+    unlocks: "Reviews gained each week are counted automatically against every salon's goal.",
+    category: "reviews",
+    iconKey: "star",
+    notes:
+      "Demo deployment: the Google Review Source screen shows an invented, healthy source. Nothing contacts Apify.",
+  },
+  {
     id: "int-woven",
     name: "Woven",
     vendor: "Woven",
-    description: "Where company documents live today.",
-    status: "not_connected",
-    unlocks: "An approved subset of the Woven library flows into the knowledge base.",
+    description:
+      "Employee directory and the policy, handbook and training library, synced on a schedule.",
+    status: "connected",
+    unlocks:
+      "Who works where stays current, and an approved subset of the Woven library flows into the knowledge base.",
     category: "documents",
     iconKey: "library",
     notes:
-      "No confirmed bulk export or public API yet — webhooks may exist. Their support contact will confirm. The full library is 600+ documents; only a focused subset should ever be ingested.",
+      "Demo deployment: the Woven Employee Sync and Woven Knowledge Sync screens show a labelled sample set.",
   },
   {
     id: "int-m365",
@@ -105,8 +135,8 @@ export const DEMO_INTEGRATIONS: Integration[] = [
  */
 export const DEMO_AI_USAGE = {
   provider: "Claude (Anthropic)",
-  connected: false,
-  monthLabel: "August 2026",
+  connected: true,
+  monthLabel: THIS_MONTH,
   requestsThisMonth: 1284,
   requestsLast30Days: 1362,
   inputTokensThisMonth: 8_942_100,
@@ -115,7 +145,7 @@ export const DEMO_AI_USAGE = {
   estimatedCostLast30Days: 228.15,
   remainingCreditUsd: 785.38,
   creditPurchasedUsd: 1000,
-  lastRefreshedAt: isoHoursFromAnchor(-1),
+  lastRefreshedAt: isoHoursFromNow(-1),
 };
 
 export const AI_USAGE_BY_MODEL = [
@@ -139,7 +169,7 @@ export const AI_USAGE_SERIES = [
 export const DEMO_AI_USAGE_RECORDS: AIUsageRecord[] = [
   {
     id: "usage-01",
-    at: isoHoursFromAnchor(-2),
+    at: isoHoursFromNow(-2),
     feature: "Ask Sunny — chat answer",
     model: "claude-sonnet-5",
     requests: 1,
@@ -150,7 +180,7 @@ export const DEMO_AI_USAGE_RECORDS: AIUsageRecord[] = [
   },
   {
     id: "usage-02",
-    at: isoHoursFromAnchor(-3),
+    at: isoHoursFromNow(-3),
     feature: "Ask Sunny form — coaching draft",
     model: "claude-opus-5",
     requests: 1,
@@ -161,7 +191,7 @@ export const DEMO_AI_USAGE_RECORDS: AIUsageRecord[] = [
   },
   {
     id: "usage-03",
-    at: isoHoursFromAnchor(-5),
+    at: isoHoursFromNow(-5),
     feature: "Ask Sunny — chat answer",
     model: "claude-sonnet-5",
     requests: 1,
@@ -172,7 +202,7 @@ export const DEMO_AI_USAGE_RECORDS: AIUsageRecord[] = [
   },
   {
     id: "usage-04",
-    at: isoHoursFromAnchor(-7),
+    at: isoHoursFromNow(-7),
     feature: "Video recommendation match",
     model: "claude-haiku-4-5",
     requests: 1,
@@ -183,7 +213,7 @@ export const DEMO_AI_USAGE_RECORDS: AIUsageRecord[] = [
   },
   {
     id: "usage-05",
-    at: isoHoursFromAnchor(-9),
+    at: isoHoursFromNow(-9),
     feature: "Knowledge search",
     model: "claude-haiku-4-5",
     requests: 1,
@@ -194,7 +224,7 @@ export const DEMO_AI_USAGE_RECORDS: AIUsageRecord[] = [
   },
   {
     id: "usage-06",
-    at: isoHoursFromAnchor(-11),
+    at: isoHoursFromNow(-11),
     feature: "Ask Sunny form — policy review draft",
     model: "claude-sonnet-5",
     requests: 1,
@@ -205,7 +235,7 @@ export const DEMO_AI_USAGE_RECORDS: AIUsageRecord[] = [
   },
   {
     id: "usage-07",
-    at: isoHoursFromAnchor(-14),
+    at: isoHoursFromNow(-14),
     feature: "Ask Sunny — chat answer",
     model: "claude-sonnet-5",
     requests: 1,
@@ -216,7 +246,7 @@ export const DEMO_AI_USAGE_RECORDS: AIUsageRecord[] = [
   },
   {
     id: "usage-08",
-    at: isoHoursFromAnchor(-19),
+    at: isoHoursFromNow(-19),
     feature: "Ask Sunny — chat answer",
     model: "claude-opus-5",
     requests: 1,

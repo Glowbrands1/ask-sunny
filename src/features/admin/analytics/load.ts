@@ -8,6 +8,12 @@ import {
 } from "@/lib/analytics/feedback-queries";
 import { parseFeedbackFilters } from "@/lib/analytics/feedback-filters";
 import { businessToday } from "@/lib/business-date";
+import { isDemoMode } from "@/lib/config/runtime";
+import {
+  demoAnalyticsSnapshot,
+  demoFeedbackPage,
+  demoFeedbackSnapshot,
+} from "@/lib/demo/analytics-fixtures";
 import type { AnalyticsView } from "./analytics-screen";
 
 /**
@@ -29,6 +35,31 @@ export async function loadAnalyticsPage(
 ) {
   const filters = parseFilters(searchParams);
   const queueFilters = parseFeedbackFilters(searchParams);
+
+  /*
+   * DEMO: an invented event log, counted the way the SQL counts it. A demo
+   * deployment never holds the Supabase key, so the live reads below threw
+   * `MissingConfigurationError` and the whole page crashed. Same shape, so the
+   * live screen draws it unchanged. See `lib/demo/analytics-fixtures.ts`.
+   */
+  if (isDemoMode()) {
+    const window = resolveWindow(filters, businessToday());
+    const previous = demoAnalyticsSnapshot({
+      ...filters,
+      from: window.previousFrom.slice(0, 10),
+      to: isoDayBefore(window.previousTo),
+    });
+    return {
+      view,
+      filters,
+      snapshot: demoAnalyticsSnapshot(filters),
+      previousCategories: previous.byCategory,
+      feedback: demoFeedbackSnapshot(filters),
+      queueFilters,
+      feedbackPage: view === "feedback" ? demoFeedbackPage(filters, queueFilters) : null,
+      demo: true as const,
+    };
+  }
 
   /*
    * THE TWO SNAPSHOTS GO TOGETHER, not one after the other. They share the
@@ -77,6 +108,7 @@ export async function loadAnalyticsPage(
     feedback,
     queueFilters,
     feedbackPage,
+    demo: false as const,
   };
 }
 

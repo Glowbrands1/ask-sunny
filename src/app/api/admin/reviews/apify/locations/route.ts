@@ -1,4 +1,8 @@
 import { NextResponse } from "next/server";
+import { isDemoMode } from "@/lib/config/runtime";
+import {
+  DEMO_LOCATION_REFUSAL,
+} from "@/lib/demo/reviews-admin-fixtures";
 
 import { AiError } from "@/lib/ai/errors";
 import {
@@ -123,6 +127,10 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    /* DEMO: the mappings are fixed. See `lib/demo/reviews-admin-fixtures.ts`. */
+    if (isDemoMode()) {
+      return NextResponse.json({ error: DEMO_LOCATION_REFUSAL, demo: true }, { status: 409 });
+    }
     assertLiveMode();
     assertNoConfigurationProblems();
     const context = await authorizeRequest(request, "manage_integrations");
@@ -268,6 +276,10 @@ export async function POST(request: Request) {
  */
 export async function PUT(request: Request) {
   try {
+    /* DEMO: the mappings are fixed. See `lib/demo/reviews-admin-fixtures.ts`. */
+    if (isDemoMode()) {
+      return NextResponse.json({ error: DEMO_LOCATION_REFUSAL, demo: true }, { status: 409 });
+    }
     assertLiveMode();
     assertNoConfigurationProblems();
     const context = await authorizeRequest(request, "manage_integrations");

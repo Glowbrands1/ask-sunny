@@ -1,4 +1,8 @@
 import { NextResponse } from "next/server";
+import { isDemoMode } from "@/lib/config/runtime";
+import {
+  DEMO_SYNC_MESSAGE,
+} from "@/lib/demo/reviews-admin-fixtures";
 
 import { AiError } from "@/lib/ai/errors";
 import {
@@ -64,6 +68,21 @@ export const maxDuration = 60;
 
 export async function POST(request: Request) {
   try {
+    /* DEMO: nothing is started and nothing is charged. See `lib/demo/reviews-admin-fixtures.ts`. */
+    if (isDemoMode()) {
+      return NextResponse.json({
+        run: {
+          status: "started",
+          runId: null,
+          apifyRunId: null,
+          kind: "incremental",
+          locationsRequested: 15,
+          reviewsLimitPerLocation: 25,
+          message: DEMO_SYNC_MESSAGE,
+        },
+        demo: true,
+      });
+    }
     assertLiveMode();
     assertNoConfigurationProblems();
     /*
@@ -154,6 +173,12 @@ export async function GET(request: Request) {
  */
 export async function PATCH(request: Request) {
   try {
+    if (isDemoMode()) {
+      return NextResponse.json({
+        result: { message: "Demo deployment: there is no run in flight to check. Nothing was changed." },
+        demo: true,
+      });
+    }
     assertLiveMode();
     assertNoConfigurationProblems();
     await authorizeRequest(request, "manage_integrations");

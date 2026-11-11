@@ -1,4 +1,10 @@
 import { NextResponse } from "next/server";
+import { isDemoMode } from "@/lib/config/runtime";
+import {
+  demoDiscardDraft,
+  demoOpenDraft,
+  demoSaveDraft,
+} from "@/lib/demo/forms-fixtures";
 
 import { errorResponse } from "@/lib/api/respond";
 import { authorizeForms } from "@/lib/forms/access";
@@ -35,6 +41,12 @@ export async function POST(request: Request, context: { params: Promise<{ key: s
   try {
     const actor = await authorizeForms(request, "manage_form_templates");
     const { key } = await context.params;
+    /* DEMO: the draft is held in memory. See `lib/demo/forms-fixtures.ts`. */
+    if (isDemoMode()) {
+      const opened = demoOpenDraft(key);
+      if (!opened) return NextResponse.json({ error: "No such form template." }, { status: 404 });
+      return NextResponse.json({ ...opened, demo: true });
+    }
     const template = await resolve(key);
     const result = await openDraft(template.id, actor.id);
     return NextResponse.json(result);
@@ -47,6 +59,23 @@ export async function PUT(request: Request, context: { params: Promise<{ key: st
   try {
     await authorizeForms(request, "manage_form_templates");
     const { key } = await context.params;
+    if (isDemoMode()) {
+      const body = (await request.json().catch(() => null)) as {
+        document?: unknown;
+        variants?: unknown;
+        notes?: string;
+      } | null;
+      if (!body?.document) {
+        return NextResponse.json({ error: "A draft and a document are required." }, { status: 400 });
+      }
+      const saved = demoSaveDraft(key, {
+        document: parseFormDocument(body.document),
+        variants: parseFormVariants(body.variants ?? []),
+        notes: body.notes ?? "",
+      });
+      if (!saved) return NextResponse.json({ error: "Open a draft first." }, { status: 409 });
+      return NextResponse.json({ draft: saved, demo: true });
+    }
     await resolve(key);
 
     const body = (await request.json().catch(() => null)) as {
@@ -76,6 +105,10 @@ export async function DELETE(request: Request, context: { params: Promise<{ key:
   try {
     await authorizeForms(request, "manage_form_templates");
     const { key } = await context.params;
+    if (isDemoMode()) {
+      demoDiscardDraft(key);
+      return NextResponse.json({ discarded: true, demo: true });
+    }
     await resolve(key);
 
     const { searchParams } = new URL(request.url);

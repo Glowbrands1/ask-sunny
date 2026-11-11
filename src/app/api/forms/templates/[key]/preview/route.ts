@@ -1,4 +1,8 @@
 import { errorResponse } from "@/lib/api/respond";
+import { isDemoMode } from "@/lib/config/runtime";
+import {
+  demoTemplateByKey,
+} from "@/lib/demo/forms-fixtures";
 import { authorizeForms } from "@/lib/forms/access";
 import { fieldsForVariant } from "@/lib/forms/document";
 import { renderFormPdf } from "@/lib/forms/pdf-render";
@@ -22,7 +26,9 @@ export async function GET(request: Request, context: { params: Promise<{ key: st
   try {
     await authorizeForms(request, "manage_form_templates");
     const { key } = await context.params;
-    const template = await getTemplateByKey(key);
+    /* DEMO: the real library's own document, from code. See `lib/demo/forms-fixtures.ts`. */
+    const demo = isDemoMode() ? demoTemplateByKey(key) : null;
+    const template = isDemoMode() ? (demo?.row ?? null) : await getTemplateByKey(key);
     if (!template) {
       return new Response(JSON.stringify({ error: "No such template." }), {
         status: 404,
@@ -30,9 +36,13 @@ export async function GET(request: Request, context: { params: Promise<{ key: st
       });
     }
 
-    const versions = await listVersions(template.id);
+    const versions = demo ? demo.versions : await listVersions(template.id);
     const draft = versions.find((version) => version.status === "draft");
-    const version = draft ?? (await getCurrentVersion(template.id));
+    const version =
+      draft ??
+      (demo
+        ? (demo.versions.find((entry) => entry.status === "published") ?? null)
+        : await getCurrentVersion(template.id));
     if (!version) {
       return new Response(JSON.stringify({ error: "Nothing to preview yet." }), {
         status: 409,

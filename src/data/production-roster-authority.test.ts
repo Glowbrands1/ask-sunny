@@ -257,6 +257,14 @@ describe("no production path imports demo data", () => {
        */
       "features/reviews/reviews-demo-screen.tsx",
       "data/demo/reviews.ts",
+      /*
+       * Added on the demo branch, on purpose: the Review Baselines and Google
+       * Review Source screens in a DEMO deployment read the same seeded
+       * figures as the seeded reviews screen above, so the three agree. Its
+       * loaders reach it only when `isDemoMode()` is true; no authorization,
+       * reporting or search path imports it.
+       */
+      "lib/demo/reviews-admin-fixtures.ts",
     ];
 
     const offenders = sourceFiles(SRC)

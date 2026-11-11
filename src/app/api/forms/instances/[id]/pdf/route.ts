@@ -1,4 +1,7 @@
 import { errorResponse } from "@/lib/api/respond";
+import { isDemoMode } from "@/lib/config/runtime";
+import { authorizeForms } from "@/lib/forms/access";
+import { demoFormById, demoFormVersion, isDemoFormId } from "@/lib/demo/forms-fixtures";
 import { authorizeInstance, InstanceNotVisibleError } from "@/lib/forms/instance-scope";
 import { markExported } from "@/lib/forms/instances";
 import { parseFormVariants } from "@/lib/forms/document";
@@ -28,6 +31,41 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
      * manager role holds — so a guessed UUID returned another salon's finalized
      * disciplinary document as a downloadable file.
      */
+    /*
+     * DEMO: the seeded form printed from the real template it names — the
+     * blank official layout under the record's own header. Nothing is marked
+     * exported, because nothing is written. See `lib/demo/forms-fixtures.ts`.
+     */
+    if (isDemoMode() && isDemoFormId(id)) {
+      await authorizeForms(request, "view_form_monitoring");
+      const form = demoFormById(id);
+      const version = form ? demoFormVersion(form) : null;
+      if (form && version) {
+        const variants = parseFormVariants(version.variants);
+        const meta = {
+          templateName: form.templateName,
+          templateVersion: form.templateVersion,
+          employeeName: form.employeeName,
+          formDate: form.formDate,
+          locationName: form.locationName,
+          reference: form.id.slice(-8),
+          status: form.status,
+        };
+        const bytes = renderFormPdf(
+          version.document,
+          variants.find((entry) => entry.key === form.variantKey) ?? null,
+          { values: {}, checked: {} },
+          meta,
+        );
+        return new Response(bytes as BodyInit, {
+          headers: {
+            "content-type": "application/pdf",
+            "content-disposition": `attachment; filename="${pdfFileName(meta)}"`,
+            "cache-control": "no-store, private",
+          },
+        });
+      }
+    }
     const { actor, loaded } = await authorizeInstance(request, id, "view");
 
     const variants = parseFormVariants(loaded.version.variants);

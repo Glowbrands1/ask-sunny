@@ -1,4 +1,11 @@
 import { NextResponse } from "next/server";
+import { isDemoMode } from "@/lib/config/runtime";
+import { authorizeForms } from "@/lib/forms/access";
+import {
+  demoArchiveForm,
+  demoDeleteForm,
+  isDemoFormId,
+} from "@/lib/demo/forms-fixtures";
 
 import { cardChangePlanRebuildEnabled } from "@/lib/config/chat-quality-flags";
 import { syncCorrectiveActionPlan } from "@/lib/forms/ca-action-plan-sync";
@@ -192,6 +199,12 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await context.params;
+    /* DEMO: a seeded form, changed in memory. See `lib/demo/forms-fixtures.ts`. */
+    if (isDemoMode() && isDemoFormId(id)) {
+      await authorizeForms(request, "view_form_monitoring");
+      const body = (await request.json().catch(() => null)) as { archived?: boolean } | null;
+      return NextResponse.json({ instance: demoArchiveForm(id, body?.archived !== false), demo: true });
+    }
     const { actor } = await authorizeInstance(request, id, "manage");
     const body = (await request.json().catch(() => null)) as { archived?: boolean } | null;
 
@@ -220,6 +233,19 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
 export async function DELETE(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await context.params;
+    if (isDemoMode() && isDemoFormId(id)) {
+      await authorizeForms(request, "view_form_monitoring");
+      const outcome = demoDeleteForm(id);
+      if (outcome && "refused" in outcome) {
+        return NextResponse.json({ error: outcome.refused }, { status: 409 });
+      }
+      if (outcome) {
+        return NextResponse.json({
+          deleted: { id: outcome.deleted.id, employeeName: outcome.deleted.employeeName },
+          demo: true,
+        });
+      }
+    }
     await authorizeInstance(request, id, "manage");
     const deleted = await deleteInstance(id);
     return NextResponse.json({

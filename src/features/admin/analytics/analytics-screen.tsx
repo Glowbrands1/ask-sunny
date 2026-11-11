@@ -89,6 +89,7 @@ export function AnalyticsScreen({
   feedback,
   queueFilters,
   feedbackPage,
+  demo = false,
 }: {
   view: AnalyticsView;
   filters: AnalyticsFilters;
@@ -105,6 +106,8 @@ export function AnalyticsScreen({
    * complaints.
    */
   feedbackPage: FeedbackPage | null;
+  /** Demo deployment: the figures are an invented event log. See `lib/demo/analytics-fixtures.ts`. */
+  demo?: boolean;
 }) {
   const { totals, previous, window } = snapshot;
 
@@ -140,6 +143,14 @@ export function AnalyticsScreen({
         title="Analytics"
         description="Who is using Ask Sunny, from which salon, how often, and what for."
       />
+
+      {demo ? (
+        <Notice tone="attention" title="Showing seeded content, not real usage">
+          This is a demo deployment, and demo deployments never read the activity
+          database. The page below is the live Analytics screen; every leader, figure
+          and comment on it is invented demo content.
+        </Notice>
+      ) : null}
 
       <div className="space-y-4">
         <AnalyticsFilterBar

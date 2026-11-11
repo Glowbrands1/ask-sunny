@@ -7,6 +7,12 @@ import {
 } from "@/lib/api/respond";
 import { parseJsonBody } from "@/lib/api/validation";
 import { authorizeRequest } from "@/lib/auth/server";
+import { isDemoMode } from "@/lib/config/runtime";
+import {
+  demoDeleteFeedback,
+  demoModerateFeedback,
+  isDemoFeedbackId,
+} from "@/lib/demo/analytics-fixtures";
 import { AiError } from "@/lib/ai/errors";
 import { deleteFeedback, moderateFeedback } from "@/lib/feedback/store";
 import {
@@ -74,6 +80,28 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    /* DEMO: the seeded queue is moderated in memory. See `lib/demo/analytics-fixtures.ts`. */
+    if (isDemoMode()) {
+      const { id } = await params;
+      const body = (await request.json().catch(() => ({}))) as {
+        status?: unknown;
+        resolutionNote?: unknown;
+        hidden?: unknown;
+      };
+      if (!isDemoFeedbackId(id)) {
+        throw new AiError("bad_request", "That is not a feedback id.", 400);
+      }
+      demoModerateFeedback(id, {
+        status: isFeedbackStatus(body.status) ? body.status : undefined,
+        hidden: typeof body.hidden === "boolean" ? body.hidden : undefined,
+        resolutionNote:
+          typeof body.resolutionNote === "string" || body.resolutionNote === null
+            ? (body.resolutionNote as string | null)
+            : undefined,
+      });
+      return NextResponse.json({ ok: true, demo: true });
+    }
+
     assertLiveMode();
     assertNoConfigurationProblems();
     const context = await authorizeRequest(request, "view_analytics");
@@ -169,6 +197,15 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    if (isDemoMode()) {
+      const { id } = await params;
+      if (!isDemoFeedbackId(id)) {
+        throw new AiError("bad_request", "That is not a feedback id.", 400);
+      }
+      demoDeleteFeedback(id);
+      return NextResponse.json({ ok: true, deleted: id, demo: true });
+    }
+
     assertLiveMode();
     assertNoConfigurationProblems();
     await authorizeRequest(request, "view_analytics");
