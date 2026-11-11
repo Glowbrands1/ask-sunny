@@ -402,6 +402,8 @@ const NEW_FLAGS = [
   "COACHING_OBSERVED_SAVED_ENABLED",
   // coding 6: APP_INSTRUCTIONS_NOT_ACCOUNT (default off): forced off with the others.
   "APP_INSTRUCTIONS_NOT_ACCOUNT_ENABLED",
+  // coding 5: EXIT_NOTICE_VERB_TYPOS (default off; QA's October triage, "she submited her notice on 9/29/26"): forced off with the others.
+  "EXIT_NOTICE_VERB_TYPOS_ENABLED",
   "STAFF_PICKER_ENABLED",
   "STAFF_PICKER_STORE_TITLES_ENABLED",
   "STAFF_PICKER_BARE_ANSWER_ENABLED",

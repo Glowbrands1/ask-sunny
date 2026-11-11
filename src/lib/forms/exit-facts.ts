@@ -1,5 +1,5 @@
 import { shiftDays, weekdayOf } from "@/lib/business-date";
-import { exitFulfilledIsLastDayEnabled, exitLetterAddresseeEnabled, exitIntakeFixEnabled, exitShortcutWordsEnabled, exitStatedOnlyEnabled, exitTerminationStatedEnabled, noNoticeNoDateEnabled } from "@/lib/config/chat-quality-flags";
+import { exitFulfilledIsLastDayEnabled, exitLetterAddresseeEnabled, exitIntakeFixEnabled, exitNoticeVerbTyposEnabled, exitShortcutWordsEnabled, exitStatedOnlyEnabled, exitTerminationStatedEnabled, noNoticeNoDateEnabled } from "@/lib/config/chat-quality-flags";
 
 import {
   EXIT_DATE_FIELDS,
@@ -168,6 +168,35 @@ const BEFORE_CUES: { role: ExitDateRole; pattern: RegExp }[] = [
       /\b(?:last|final)\s+(?:day|shift|date)(?:\s+(?:worked|of work|of employment|on the schedule))?\b|\blast\s+worked\b|\bworked\s+(?:through|thru|until|till)\b/g,
   },
 ];
+
+/*
+ * EXIT_NOTICE_VERB_TYPOS_ENABLED (QA's October triage, 10 Nov 2026: "she
+ * submited her notice on 9/29/26" left the notice date blank). The way
+ * managers misspell "submitted", read as "submitted" is above, before the
+ * date and after it. Off, these cues are not read.
+ */
+const SUBMITTED_TYPO = String.raw`(?:submited|submittted|sumbitted|sumbited|subbmitted|submittd|submtted)`;
+const NOTICE_VERB_TYPO_BEFORE: { role: ExitDateRole; pattern: RegExp } = {
+  role: "noticeGiven",
+  pattern: new RegExp(
+    String.raw`\b${SUBMITTED_TYPO}\b[^.;!?\n]{0,30}?\b${NOTICE_NOUN}|\bnotice\s+(?:was\s+)?${SUBMITTED_TYPO}\b`,
+    "g",
+  ),
+};
+const NOTICE_VERB_TYPO_AFTER: { role: ExitDateRole; pattern: RegExp } = {
+  role: "noticeGiven",
+  pattern: new RegExp(
+    String.raw`^\s*,?\s*(?!(?:we|i|management|the manager|my manager|the company)\b)(?:she|he|they|[a-z][a-z'-]*(?:\s+[a-z][a-z'-]*)?)\s+${SUBMITTED_TYPO}\s+(?:her|his|their|a|an|the)?\s*(?:written\s+)?${NOTICE_NOUN}`,
+  ),
+};
+
+function beforeCues(): readonly { role: ExitDateRole; pattern: RegExp }[] {
+  return exitNoticeVerbTyposEnabled() ? [...BEFORE_CUES, NOTICE_VERB_TYPO_BEFORE] : BEFORE_CUES;
+}
+
+function afterCues(): readonly { role: ExitDateRole; pattern: RegExp }[] {
+  return exitNoticeVerbTyposEnabled() ? [...AFTER_CUES, NOTICE_VERB_TYPO_AFTER] : AFTER_CUES;
+}
 
 /**
  * THE RESIGNATION DATE'S CUE, read alongside the three above. A date is the
@@ -385,8 +414,8 @@ function roleFor(
   text: string,
   tokens: DateToken[],
   position: number,
-  cues: readonly { role: ExitDateRole; pattern: RegExp }[] = BEFORE_CUES,
-  afterCues: readonly { role: ExitDateRole; pattern: RegExp }[] = AFTER_CUES,
+  cues: readonly { role: ExitDateRole; pattern: RegExp }[] = beforeCues(),
+  afterList: readonly { role: ExitDateRole; pattern: RegExp }[] = afterCues(),
 ): ExitDateRole | null {
   const token = tokens[position]!;
   const previousEnd = position > 0 ? tokens[position - 1]!.end : 0;
@@ -407,7 +436,7 @@ function roleFor(
 
   // AFTER: only an anchored phrase, only up to the next date.
   const after = text.slice(token.end, nextStart).toLowerCase();
-  for (const cue of afterCues) {
+  for (const cue of afterList) {
     if (cue.pattern.test(after)) return cue.role;
   }
   return null;
@@ -660,8 +689,8 @@ export function readExitFacts(rawText: string, today: string): ExitFacts {
      * three lines above: "her last day was when she quit on 9/15" is still a
      * last day, and is ALSO the day she quit.
      */
-    const resigned = roleFor(text, tokens, position, [...BEFORE_CUES, RESIGNED_CUE], [
-      ...AFTER_CUES,
+    const resigned = roleFor(text, tokens, position, [...beforeCues(), RESIGNED_CUE], [
+      ...afterCues(),
       RESIGNED_AFTER,
     ]);
     if (resigned === "resigned") place(resigned, token);

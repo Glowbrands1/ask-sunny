@@ -4381,3 +4381,12 @@ export function sameRequestOffRosterEnabled(): boolean {
 export function pastedOutlineToOpenDraftEnabled(): boolean {
   return envFlag("PASTED_OUTLINE_TO_OPEN_DRAFT_ENABLED");
 }
+
+/**
+ * A misspelled "submitted" before the notice ("she submited her notice on
+ * 9/29/26", QA's October triage, 10 Nov 2026) names the notice date, as
+ * "submitted" does. Without it the notice date stayed blank. Off, as before.
+ */
+export function exitNoticeVerbTyposEnabled(): boolean {
+  return envFlag("EXIT_NOTICE_VERB_TYPOS_ENABLED");
+}
