@@ -50,7 +50,8 @@ export const NOV10_FULL_MANUAL_KEEPS_RETRIEVAL_CASES: ReplayCase[] = QUESTIONS.m
   id: `nov10-full-manual-keeps-retrieval-${key}`,
   title: `"${question}": the TC Tanning Consultant Manual reaches the answer beside the policy manual`,
   report: REPORT,
-  status: { open: "only the policy manual is in the prompt; the TC manual is never searched" },
+  // Changed on purpose (11 Nov 2026): fixed in production by FULL_MANUAL_KEEPS_RETRIEVAL_ENABLED, QA. Was OPEN ("only the policy manual is in the prompt; the TC manual is never searched").
+  status: "fixed",
   fixFlags: FIX,
   async run(t: ReplayContext) {
     const thread = start(t);
