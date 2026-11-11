@@ -14,6 +14,7 @@ import { useRouter } from "next/navigation";
 import { PRODUCTION_SALONS, areaLabel } from "@/data/salons";
 import { isDemoMode } from "@/lib/config/runtime";
 import { demoRuntime } from "@/lib/demo/runtime";
+import { DEMO_ROLE_COOKIE } from "@/lib/demo/role-cookie";
 import { ACTIVE_BRAND } from "@/lib/brand";
 import {
   DEFAULT_PERMISSION_MATRIX,
@@ -175,6 +176,24 @@ export function SessionProvider({
   const signedIn = productionAuth ? session !== null : signedInRaw === "1";
   const demoRole: Role = isRole(roleRaw) ? roleRaw : DEFAULT_ROLE;
   const role: Role = session ? session.role : demoRole;
+
+  /*
+   * DEMO ONLY: mirror the previewed role into a cookie so server-rendered
+   * screens that scope by reach (the demo reports) can see which role is being
+   * previewed. Nothing reads it outside demo mode, and it proves nothing.
+   */
+  useEffect(() => {
+    if (productionAuth || !isDemoMode() || !hydratedFromClient) return;
+    const value = signedIn ? demoRole : "";
+    const current = document.cookie
+      .split("; ")
+      .find((entry) => entry.startsWith(`${DEMO_ROLE_COOKIE}=`))
+      ?.slice(DEMO_ROLE_COOKIE.length + 1);
+    if (current === value) return;
+    document.cookie = `${DEMO_ROLE_COOKIE}=${value}; path=/; SameSite=Lax`;
+    // Re-render server screens that were drawn for the previous role.
+    router.refresh();
+  }, [productionAuth, hydratedFromClient, signedIn, demoRole, router]);
 
   /*
    * BOTH THROW IN REAL MODE, and deliberately rather than returning quietly.

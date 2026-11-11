@@ -1,14 +1,12 @@
 import type { Metadata } from "next";
+import { reportingReadsConfigured } from "@/lib/reporting/demo/client";
 import Link from "next/link";
 
 import { PermissionGate } from "@/components/permission-gate";
 import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState, Notice } from "@/components/ui/feedback";
 import { PageHeader, PageShell, SectionHeader } from "@/components/ui/layout";
-import {
-  SUPABASE_URL_ENV,
-  supabaseSecretKeyConfigured,
-} from "@/lib/config/server-env";
+import { SUPABASE_URL_ENV } from "@/lib/config/server-env";
 import {
   buildSalonKpis,
   buildSalonMetricRows,
@@ -107,7 +105,7 @@ export default async function SalonDetailPage({
   const { salon: rawSalon } = await params;
   const search = await searchParams;
 
-  if (!process.env[SUPABASE_URL_ENV] || !supabaseSecretKeyConfigured()) {
+  if (!reportingReadsConfigured()) {
     return (
       <Frame>
         <Notice tone="attention" title="Supabase is not configured in this runtime">

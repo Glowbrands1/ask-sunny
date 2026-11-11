@@ -1,13 +1,10 @@
 import type { Metadata } from "next";
+import { reportingReadsConfigured } from "@/lib/reporting/demo/client";
 
 import { PermissionGate } from "@/components/permission-gate";
 import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState, Notice } from "@/components/ui/feedback";
 import { SectionHeader } from "@/components/ui/layout";
-import {
-  SUPABASE_URL_ENV,
-  supabaseSecretKeyConfigured,
-} from "@/lib/config/server-env";
 import {
   formatReportDate,
   listSalesTotalsDates,
@@ -105,7 +102,7 @@ export default async function SalesTotalsPage({
 }) {
   await requirePagePermission("view_reports");
 
-  if (!process.env[SUPABASE_URL_ENV] || !supabaseSecretKeyConfigured()) {
+  if (!reportingReadsConfigured()) {
     return (
       <ReportFrame report={REPORT}>
         <Notice tone="attention" title="Supabase is not configured in this runtime">

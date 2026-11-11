@@ -9,6 +9,13 @@ import {
   type ReportingScope,
 } from "./authorized-salons";
 import { areaSalonNumbersFromReporting } from "./reporting-areas";
+import { cookies } from "next/headers";
+
+import { isDemoMode } from "@/lib/config/runtime";
+import { demoRuntime } from "@/lib/demo/runtime";
+import { DEMO_ROLE_COOKIE } from "@/lib/demo/role-cookie";
+import type { Role } from "@/types";
+import { demoAreaLabel, demoSalonNumbersForArea } from "../demo/fixtures";
 
 /**
  * THE CALLER'S REPORTING REACH, RESOLVED ON THE SERVER.
@@ -31,6 +38,18 @@ import { areaSalonNumbersFromReporting } from "./reporting-areas";
  * `forms/location-scope.ts`, which made the same call for the same reason.
  */
 export async function resolveReportingScope(): Promise<ReportingScope> {
+  if (isDemoMode()) {
+    /*
+     * DEMO ONLY: the previewed role's scope narrows the demo reports, so a
+     * presenter switching to a District Manager or a salon account sees that
+     * reach. The role is the one the client mirrors into a cookie (a page
+     * navigation carries no demo-role header); with none, the demo stays
+     * unrestricted exactly as before. Live mode never reaches here.
+     */
+    const role = (await cookies()).get(DEMO_ROLE_COOKIE)?.value as Role | undefined;
+    const user = role ? await demoRuntime.userForRole(role).catch(() => null) : null;
+    return user ? demoScopeFor(user.scope) : reportingScopeOf(null);
+  }
   const identity = await pageIdentity();
   if (!identity || !identity.verified) return reportingScopeOf(null);
   return resolveScopeFor(identity.scope);
@@ -112,6 +131,35 @@ export async function resolveScopeFor(
     unrestricted: false,
     salonNumbers: [...new Set([...fromAreas, ...explicitSalons])].sort(),
     areaLabel: scopeAreaLabel(scope ?? null),
+  };
+}
+
+/**
+ * The demo's reach for a previewed role, against the demo reporting fixture.
+ *
+ * Demo district and region ids (`dist-1`, `reg-a`) name the demo's invented
+ * areas, which the fixture files salons under; a salon scope resolves from its
+ * id exactly as it does live.
+ */
+function demoScopeFor(scope: AccessScope | null | undefined): ReportingScope {
+  const level = scope?.level;
+  if (level !== "district" && level !== "region") return reportingScopeOf(scope ?? null);
+
+  const ids = [scope?.primaryAreaId, ...(scope?.alsoCoversAreaIds ?? [])].filter(
+    (id): id is string => typeof id === "string" && id.length > 0,
+  );
+  const numbers = new Set<string>();
+  for (const id of ids) {
+    const salon = salonNumberOf(id);
+    if (salon) numbers.add(salon);
+    else for (const number of demoSalonNumbersForArea(id)) numbers.add(number);
+  }
+  const labels = ids.map(demoAreaLabel).filter((label): label is string => label !== null);
+  return {
+    level,
+    unrestricted: false,
+    salonNumbers: [...numbers].sort(),
+    areaLabel: labels.length > 0 ? labels.join(" and ") : null,
   };
 }
 

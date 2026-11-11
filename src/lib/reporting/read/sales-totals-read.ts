@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getSupabaseAdmin } from "@/lib/supabase/server";
+import { reportingReadClient } from "@/lib/reporting/demo/client";
 import {
   SALES_TOTALS_WINDOWS,
   type SalesTotalsWindow,
@@ -128,7 +128,7 @@ function toNumber(value: string | number | null): number | null {
  * second, and Sep 2 is still what this returns first.
  */
 export async function listSalesTotalsDates(): Promise<SalesTotalsDateOption[]> {
-  const supabase = getSupabaseAdmin();
+  const supabase = reportingReadClient();
   const { data, error } = await supabase
     .from("sales_totals_snapshots")
     .select("report_date, report_date_raw, month_start, created_at, superseded_by_ingestion_id")
@@ -189,7 +189,7 @@ export async function loadSalesTotals(options: {
    */
   readonly authorizedSalonNumbers?: readonly string[] | null;
 }): Promise<SalesTotalsSnapshot | null> {
-  const supabase = getSupabaseAdmin();
+  const supabase = reportingReadClient();
   const allowlist = options.authorizedSalonNumbers ?? null;
 
   let query = supabase
