@@ -13,7 +13,11 @@ export interface PriorFormOnFile {
   readonly templateKey: string;
   /** `YYYY-MM-DD`, the date on the form. */
   readonly formDate: string;
-  /** As it goes on the list: "Verbal corrective action — signed 09/21/2026". */
+  /**
+   * As it goes on the list: "Verbal corrective action — signed 09/21/2026"; with
+   * PRIOR_ACTIONS_NO_SIGNED_ENABLED "Verbal corrective action — finalized 09/21/2026" (only a
+   * finalized form is on file, and nothing records that it was signed).
+   */
   readonly line: string;
   /** Where the form was filed, so a possible match can say which salon it is from. */
   readonly locationId: string | null;
@@ -68,6 +72,12 @@ export function priorFormsFromRows(input: {
   before?: string;
   /** The `warning_type` ticks of each Corrective Action, by instance id. */
   warningLevels: ReadonlyMap<string, readonly string[]>;
+  /**
+   * PRIOR_ACTIONS_POLICY_ENABLED: each Corrective Action's "Policy violated",
+   * by instance id, named on its line — "Verbal corrective action
+   * (Attendance) — signed 11/02/2026" (Pau, 3 Nov 2026). Absent, as before.
+   */
+  policies?: ReadonlyMap<string, string>;
 }): PriorFormOnFile[] {
   const who = nameKey(input.employeeName);
   if (who === "") return [];
@@ -95,15 +105,26 @@ export function priorFormsFromRows(input: {
       const level = (input.warningLevels.get(row.id) ?? []).find((key) => key in CORRECTIVE_STEP);
       const step =
         row.templateKey === "coaching" ? "Coaching" : level ? CORRECTIVE_STEP[level]! : "Corrective action";
+      const policy = row.templateKey === "coaching" ? "" : shortPolicy(input.policies?.get(row.id));
       return {
         instanceId: row.id,
         templateKey: row.templateKey,
         formDate: row.formDate,
-        line: priorActionLine(step, row.formDate),
+        line: priorActionLine(policy ? `${step} (${policy})` : step, row.formDate, "", "", "on_file"),
         locationId: row.locationId ?? null,
         locationName: row.locationName ?? null,
       };
     });
+}
+
+/**
+ * The policy as it goes in brackets on a history line: the first line of what
+ * the form says was violated, without brackets of its own, and short. A
+ * longer value is a sentence, not a policy name, and is left off.
+ */
+function shortPolicy(value: string | undefined): string {
+  const first = (value ?? "").split(/\r?\n/)[0]!.replace(/[()[\]]/g, "").replace(/\s+/g, " ").trim();
+  return first.length > 0 && first.length <= 60 ? first : "";
 }
 
 /*

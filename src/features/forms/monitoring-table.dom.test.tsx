@@ -587,3 +587,61 @@ describe("Edit and History on a row (NEXT_PUBLIC_FORM_REVISIONS_ENABLED)", () =>
     expect(ui.getByText("History")).toBeTruthy();
   });
 });
+
+/* ------------------------------------------------------- the row menu "…" --- */
+
+/*
+ * Pau, 29 Oct 2026: "for bubbles in form i cant click the ... wanted to delete
+ * some form but the ... is not showing when clicked". A role that may track
+ * follow-ups but not manage records got a "…" whose menu had no item: an
+ * empty box that looks like nothing opened. The "…" now shows only when the
+ * menu has something in it.
+ */
+describe("the row menu \"…\" opens with something in it", () => {
+  const trackOnly = () => {
+    mockSession.value = {
+      role: "location_manager",
+      user: { name: "QA" },
+      can: (permission: Permission) => permission === "create_coaching_form",
+      demoMode: false,
+    };
+  };
+  const admin = () => {
+    mockSession.value = { role: "admin", user: { name: "QA" }, can: () => true, demoMode: false };
+  };
+
+  it("for bubbles in form i cant click the ... wanted to delete some form: an admin gets Delete on a draft", async () => {
+    admin();
+    table([form({ employeeName: "Draft One", status: "draft", finalizedAt: null })]);
+    await userEvent.click(rowFor("Draft One").ui.getByRole("button", { name: "More actions for Draft One" }));
+    expect(await screen.findByRole("menuitem", { name: /delete/i })).toBeTruthy();
+  });
+
+  it("an admin gets Archive on a finalized form", async () => {
+    admin();
+    table([form({ employeeName: "Filed One" })]);
+    await userEvent.click(rowFor("Filed One").ui.getByRole("button", { name: "More actions for Filed One" }));
+    expect(await screen.findByRole("menuitem", { name: /archive/i })).toBeTruthy();
+  });
+
+  it("the ... is not showing when clicked: a role that cannot manage gets no empty \"…\" on a draft", () => {
+    trackOnly();
+    table([form({ employeeName: "Draft One", status: "draft", finalizedAt: null })]);
+    expect(rowFor("Draft One").ui.queryByRole("button", { name: "More actions for Draft One" })).toBeNull();
+  });
+
+  it("that role still gets Reopen follow-up on a followed-up row", async () => {
+    trackOnly();
+    table([
+      form({
+        employeeName: "Done One",
+        followUpDate: "2026-09-01",
+        followedUpAt: "2026-09-02T12:00:00Z",
+        followedUpBy: "QA",
+      }),
+    ]);
+    await userEvent.click(rowFor("Done One").ui.getByRole("button", { name: "More actions for Done One" }));
+    const items = await screen.findAllByRole("menuitem");
+    expect(items.map((item) => item.textContent)).toEqual(["Reopen follow-up"]);
+  });
+});

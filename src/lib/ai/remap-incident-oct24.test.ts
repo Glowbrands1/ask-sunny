@@ -1,5 +1,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { formDateIncidentOnlyEnabled } from "@/lib/config/chat-quality-flags";
+
 import { correctiveActionDocument } from "@/lib/forms/library";
 import type { AccessScope, ChatMessage } from "@/types";
 
@@ -721,7 +723,13 @@ for (const path of ["intent", "remap"] as const) {
       expect(response.content).not.toMatch(B5_MANGLED);
       expect(response.content).toMatch(/Written Warning, as you said/);
       if (path === "remap") {
-        expect(response.formProposal?.formDate).toBe("2026-10-15");
+        /*
+         * FORM_DATE_INCIDENT_ONLY_ENABLED (D3, changed on purpose; QA ruled D3 wins over
+     * "dated 10/15", 26 Oct 2026): a date written as the deadline ("the 10-15-26
+     * woven deadline", "by 10-15-26") never dates the form, so with the flag on
+     * the card is dated the day it is created (null). Flag off keeps 10-15.
+         */
+        expect(response.formProposal?.formDate ?? null).toBe(formDateIncidentOnlyEnabled() ? null : "2026-10-15");
         expect(response.content).not.toMatch(/Action plan/i);
       }
     });

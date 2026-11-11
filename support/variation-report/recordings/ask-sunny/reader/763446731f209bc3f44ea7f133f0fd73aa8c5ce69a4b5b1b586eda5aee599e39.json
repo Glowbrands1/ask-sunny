@@ -1,0 +1,57 @@
+{
+  "key": "763446731f209bc3f44ea7f133f0fd73aa8c5ce69a4b5b1b586eda5aee599e39",
+  "model": "claude-haiku-4-5",
+  "reply": {
+    "employee": {
+      "value": "Ivy Hollis",
+      "evidence": "EMPLOYEE NAME IS IVY HOLLIS"
+    },
+    "location": {
+      "value": "Manhattan",
+      "evidence": "IVY WAS A TANNING CONSULTANT AT MANHATTAN LOCATION"
+    },
+    "jobTitle": {
+      "value": "Tanning Consultant",
+      "evidence": "IVY WAS A TANNING CONSULTANT AT MANHATTAN LOCATION"
+    },
+    "incident": {
+      "value": null,
+      "evidence": null
+    },
+    "incidentDate": {
+      "value": "2026-09-28",
+      "evidence": "HER LAST DAY WORKED WAS 9-28-26"
+    },
+    "warningLevel": {
+      "value": null,
+      "evidence": null
+    },
+    "payroll": {
+      "value": null,
+      "evidence": null
+    },
+    "payrollAmount": {
+      "value": null,
+      "evidence": null
+    },
+    "policyHeading": {
+      "value": "Employment Termination",
+      "evidence": null
+    },
+    "priorSteps": [],
+    "otherDates": [
+      {
+        "kind": "notice",
+        "date": "2026-09-15",
+        "evidence": "ON 9-15-26 IVY PROVIDED HER RESIGNATION TO MANAGEMENT"
+      }
+    ]
+  },
+  "usage": {
+    "inputTokens": 3602,
+    "outputTokens": 417,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 0
+}

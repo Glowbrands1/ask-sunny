@@ -175,7 +175,8 @@ describe("2. what the data addresses, unchanged", () => {
         // Revision 5: a NEW key for the list, so revision-4 values keep their meaning.
         "prior_actions",
         "offense_type",
-        "other_offense",
+        // Revision 8 (4 Nov 2026, template approved): the "Other" write-in line is gone; Other is a box in offense_type.
+        // Forms filed on revision 6 or 7 keep their version, where other_offense still addresses their value.
         "observation",
         "policy_violated",
         "policy_language",

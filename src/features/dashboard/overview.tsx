@@ -29,6 +29,7 @@ import { demoRuntime } from "@/lib/demo/runtime";
 import type { AttentionSummary } from "@/lib/forms/follow-up";
 import { relativeBusinessDay } from "@/lib/forms/follow-up";
 import { useSession } from "@/lib/session/session-context";
+import { asdNoFormMonitoringEnabled } from "@/lib/permissions";
 import { useAppStore } from "@/lib/store/app-store";
 import { cn } from "@/lib/utils/cn";
 import {
@@ -254,6 +255,14 @@ export function OverviewScreen({
       */}
       {can("view_daily_stats") ? performanceOverview : null}
 
+      {/*
+        ASD_NO_FORM_MONITORING: the follow-ups are Form Monitoring's records and
+        link into it, so a reader without it (an Assistant Salon Director with the
+        flag on) gets no block and no dead link. Everyone else who reaches the
+        Overview holds the permission; with the flag off this never hides it.
+      */}
+      {!asdNoFormMonitoringEnabled() || can("view_form_monitoring") ? (
+      <>
       {/* ============================ FOLLOW-UPS ============================= */}
       {/*
         NO ACTION ON THE RULE. "Open Form Monitoring" appeared three times inside
@@ -367,7 +376,7 @@ export function OverviewScreen({
           </CardHeader>
           <CardContent className="pt-0">
             {followUps.length === 0 ? (
-              <p className="rounded-[var(--radius-sm)] border border-dashed border-border px-3 py-6 text-center text-[13px] text-muted-foreground">
+              <p className="rounded-[var(--radius-md)] bg-surface-muted px-3 py-6 text-center text-[13px] text-muted-foreground shadow-dent">
                 {followUpData.failure
                   ? "Ask Sunny could not reach the Forms record."
                   : "No follow-ups are being tracked."}
@@ -538,6 +547,8 @@ export function OverviewScreen({
           </CardContent>
         </Card>
       </div>
+      </>
+      ) : null}
 
       {/* =========================== GOOGLE REVIEWS =========================== */}
       {/*

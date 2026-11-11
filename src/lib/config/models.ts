@@ -33,6 +33,13 @@ export const CLAUDE_EFFORT = (process.env.ANTHROPIC_EFFORT ||
  */
 export const CLAUDE_HAIKU_MODEL = process.env.ANTHROPIC_HAIKU_MODEL || "claude-haiku-4-5";
 
+/**
+ * The model of the AI form reader (AI_READS_CODE_CHECKS_ENABLED). Claude Haiku
+ * 5.5 answered in a median 2.0 s against 3.2 s for Haiku 4.5 on the same
+ * reads (QA, 27 Oct 2026). Override with ANTHROPIC_READER_MODEL.
+ */
+export const CLAUDE_READER_MODEL = process.env.ANTHROPIC_READER_MODEL || "claude-haiku-5-5";
+
 /** Output ceiling per answer mode. Detailed answers need the most room. */
 export const CLAUDE_MAX_TOKENS: Record<"quick" | "standard" | "detailed", number> = {
   quick: 1024,

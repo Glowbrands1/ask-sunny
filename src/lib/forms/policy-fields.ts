@@ -1,3 +1,4 @@
+import { OFFENSE_KEY_SUCCESSORS } from "./offense-keys";
 import { checkboxGroupsForVariant, type FormDocument } from "./document";
 import { manualDisplayTitle } from "./official-policy-manual";
 import { locatorParts, passageWording, policyFieldValue } from "./policy-citation";
@@ -74,11 +75,22 @@ export function offenseCategoryValue(input: {
     .map((key) => {
       if (key === "other") {
         const written = (input.values.other_offense ?? "").trim();
-        return written === "" ? null : written;
+        if (written !== "") return written;
+        /*
+         * REVISION 8: Other is a box of its own, with no write-in line, and
+         * prints as "Other" (Pau, 4 Nov 2026). Revision 7 and earlier offer no
+         * "other" box in this group, so nothing they print changes.
+         */
+        return group.options.find((option) => option.key === "other")?.label ?? null;
       }
       const label = group.options.find((option) => option.key === key)?.label ?? null;
       // "Tardiness/Leaving Early — Late Opening": the section cited under this box, where it is not the box's own.
-      const section = input.sectionNames?.[key]?.trim();
+      const named = input.sectionNames?.[key]?.trim();
+      // A section named beside a box that replaced another ticked here too (revision 7 and earlier) is the old box's alone.
+      const section =
+        named && ticked.some((other) => OFFENSE_KEY_SUCCESSORS[other] === key && input.sectionNames?.[other]?.trim() === named)
+          ? undefined
+          : named;
       return label && section ? `${label} — ${section}` : label;
     })
     .filter((label): label is string => label !== null && label !== "");

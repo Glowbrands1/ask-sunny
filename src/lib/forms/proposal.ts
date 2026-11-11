@@ -4,7 +4,7 @@ import { businessToday } from "@/lib/business-date";
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { storeNameKey } from "@/lib/reporting/store-identity";
 
-import { groundedEntitiesEnabled, intentExtractionEnabled, typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
+import { groundedEntitiesEnabled, intentExtractionEnabled, thisPersonsTurnsEnabled, typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
 import { isDocumentName, isRosterStateName } from "@/lib/ai/not-a-person";
 
 import { extractFormDate } from "./form-date-answer";
@@ -18,7 +18,10 @@ import {
   TEAM_SUBJECT_LABEL,
 } from "./team-subject";
 import { proposeLocation } from "./location-scope";
+import { isExitTerms, namesSomebody, notInStreetAddress } from "./answer-not-a-name";
+import { nameBeforeAccountVerb } from "./not-a-name";
 import { isMultiWordSalonName } from "./salon-mention";
+import { turnsFromThisPersonsRequest } from "./this-persons-turns";
 import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
 
 /**
@@ -979,7 +982,8 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
     if (candidate && !opensWithRosterState(candidate) && !isPlaceReply(candidate)) strong.push(candidate);
   }
 
-  return settle(strong, found, text, subjects);
+  // ANSWER_NOT_A_NAME_ENABLED: "yes payrol ldeduct" and "most recent" answer questions; they name nobody.
+  return settle(strong.filter(namesSomebody), found.filter(namesSomebody), text, subjects);
 }
 
 /*
@@ -1272,6 +1276,10 @@ function formRecipient(subjects: readonly string[], strong: readonly string[], w
 }
 
 function settle(strong: string[], weak: string[], text: string, subjects: readonly string[] = []): EmployeeMentions {
+  // ACCOUNT_VERB_NOT_A_NAME_ENABLED (sf-s38, Pau-approved): "rhea failing" / "Rhea Calloway failing" end at the verb.
+  const beforeVerb = (names: string[]) => names.map(nameBeforeAccountVerb).filter((name): name is string => Boolean(name));
+  strong = beforeVerb(strong);
+  weak = beforeVerb(weak);
   const negated = negatedNames(text);
   const correction = negated.length > 0 || CORRECTION_CUE.test(text);
   const given = correction ? [...strong, ...sentenceAnswers(text)] : strong;
@@ -1566,7 +1574,7 @@ export function employeeState(context: ManagerContext): EmployeeState {
       }
     }
     const names = peopleNamed(
-      reading.names.filter((name) => !excluded.some((not) => samePerson(not, name))),
+      reading.names.filter((name) => !excluded.some((not) => samePerson(not, name)) && !isExitTerms(name) && notInStreetAddress(message.content)(name)),
     );
     if (names.length === 0) continue;
 
@@ -1921,7 +1929,9 @@ export function buildProposal(input: ProposalInput): ChatFormProposal {
       ? { namedLocationOutOfScope: location.outOfScopeName }
       : {}),
     status,
-    sourceMessageIds: input.context.ids,
+    sourceMessageIds: thisPersonsTurnsEnabled()
+      ? turnsFromThisPersonsRequest(input.context, employeeName, { names: extractEmployeeNames, same: samePerson })
+      : input.context.ids,
     ...(team ? { subject: "team" as const } : {}),
   };
 }

@@ -1,5 +1,25 @@
 import { salonById } from "@/data/salons";
-import { CA_POLICY_LABEL, readCaPolicy, STANDARDS_OF_CONDUCT, type CaPolicyName } from "@/lib/forms/ca-policy";
+import {
+  caSalesPolicyEnabled,
+  levelRequestDateEnabled,
+  observationNoLevelLeadEnabled,
+  observationWithoutAskEnabled,
+  politeRequestOwnTurnsEnabled,
+  priorSentenceFixEnabled,
+  requestLeadFillerEnabled,
+  requestParticipleLeadEnabled,
+  anotherRequestLeadEnabled,
+  secondRequestOwnAccountEnabled,
+} from "@/lib/config/chat-quality-flags";
+import { withoutPriorStepClauses, correctedDates } from "@/lib/forms/form-date-answer";
+import {
+  CA_POLICY_LABEL,
+  isSalesPolicyReading,
+  readCaPolicy,
+  STANDARDS_OF_CONDUCT,
+  type CaPolicyName,
+} from "@/lib/forms/ca-policy";
+import { businessToday } from "@/lib/business-date";
 import {
   findManualSection,
   headingKey,
@@ -9,9 +29,14 @@ import {
 } from "@/lib/forms/official-policy-manual";
 import { extractJobTitle, titleAfterJobTitleLabel } from "@/lib/forms/proposal";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
+import { US_STATE_CODE } from "@/lib/forms/state-code-place";
+import { detectTemplateIntent, withoutLeadingGlossaryTerm } from "@/lib/forms/template-intent";
 import type { KnowledgeCategory, SourceCitation } from "@/types";
 
 import { accountManualSections } from "./account-manual-sections";
+import { withoutAppLines } from "./app-sentences";
+import { isPolicyCorrection } from "./policy-correction-turn";
+import { withoutPayrollClauses } from "./payroll-clause-not-account";
 import { formatManualCitation } from "./policy-citation-fields";
 
 /**
@@ -42,6 +67,52 @@ const REQUEST_LEAD = new RegExp(
   String.raw`^\s*(?:please\s+)?(?:(?:can|could)\s+you\s+)?(?:(?:i\s+)?(?:need|want)\s+(?:to\s+)?)?(?:(?:create|make|start|open|do|file|write|draft|fill\s+out|put\s+together)\s+(?:me\s+)?)?${LEVEL_WORDS}${FORM_WORDS}\b\s*(?:for\s+)?`,
   "i",
 );
+
+/**
+ * REQUEST_LEAD_FILLER_ENABLED (QA, live, 30 Oct 2026): "also create a ca for
+ * <name>, he was late on 10/20" (and "now", "and", "then" in front) was not
+ * read as the request, so the whole sentence was the card's Observation.
+ */
+const REQUEST_LEAD_FILLED = new RegExp(String.raw`^\s*(?:also|now|and|then)\s+(?:${REQUEST_LEAD.source.replace(/^\^\\s\*/, "")})`, "i");
+
+/*
+ * REQUEST_PARTICIPLE_LEAD_ENABLED (QA's round-5 live Sunny check, 8 Nov 2026): "I need a corrective action made for
+ * under performance. <A> was below on PPTA, …" made the card's Observation of Offense "made for under performance.
+ * <A> was below …": a past participle between the form and "for" ("made / done / written up for") was not read as
+ * part of the request. With the flag on it is, only when "for" follows it. Off, as before.
+ */
+const REQUEST_PARTICIPLE = String.raw`(?:made|done|created|drawn\s+up|written(?:\s+up)?|filled\s+out|put\s+together|prepared|started|completed)`;
+const REQUEST_LEAD_PARTICIPLE = new RegExp(
+  String.raw`^\s*(?:please\s+)?(?:(?:can|could)\s+you\s+)?(?:(?:i\s+)?(?:need|want)\s+(?:to\s+)?)?(?:(?:create|make|start|open|do|file|write|draft|fill\s+out|put\s+together)\s+(?:me\s+)?)?${LEVEL_WORDS}${FORM_WORDS}\b\s*(?:${REQUEST_PARTICIPLE}\s+for\s+|for\s+)?`,
+  "i",
+);
+const REQUEST_LEAD_PARTICIPLE_FILLED = new RegExp(
+  String.raw`^\s*(?:also|now|and|then)\s+(?:${REQUEST_LEAD_PARTICIPLE.source.replace(/^\^\\s\*/, "")})`,
+  "i",
+);
+
+/*
+ * ANOTHER_REQUEST_LEAD_ENABLED (QA, Sunny round 7c and 9 live, 9 Nov 2026; the person invented): "I need another corrective
+ * action for <P>, his cash drawer was short $20 on 11/3" was the card's whole Observation, where "create a corrective
+ * action for <P>, his cash drawer …" gave "his cash drawer …": "another" was not read as the request's own word. With the
+ * flag on, "another", "one more", and "a second / separate / different / new" before the form are. Off, as before.
+ */
+const LEVEL_WORDS_ANOTHER = String.raw`(?:(?:a|an|the|another|one\s+more)\s+)?(?:(?:new|second|separate|different|other)\s+)?(?:(?:verbal|written|final)\s+(?:warning\s+)?)?`;
+const withAnotherLead = (pattern: RegExp): RegExp => new RegExp(pattern.source.split(LEVEL_WORDS).join(LEVEL_WORDS_ANOTHER), pattern.flags);
+
+function requestLead(): RegExp {
+  const lead = requestLeadBase();
+  return anotherRequestLeadEnabled() ? withAnotherLead(lead) : lead;
+}
+
+function requestLeadBase(): RegExp {
+  if (requestParticipleLeadEnabled()) {
+    return requestLeadFillerEnabled()
+      ? new RegExp(`${REQUEST_LEAD_PARTICIPLE_FILLED.source}|${REQUEST_LEAD_PARTICIPLE.source}`, "i")
+      : REQUEST_LEAD_PARTICIPLE;
+  }
+  return requestLeadFillerEnabled() ? new RegExp(`${REQUEST_LEAD_FILLED.source}|${REQUEST_LEAD.source}`, "i") : REQUEST_LEAD;
+}
 
 /** A whole date: 10-15-26, 10/11, 1/1/2026. Never part of one ("10-1" of "10-15-26"). */
 const DATE = String.raw`(?<![\d/-])\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?(?![\d/-])`;
@@ -121,14 +192,27 @@ export function requestIncident(input: {
   readonly text: string;
   readonly employeeName: string | null;
   readonly slotClause: (clause: string) => boolean;
+  /**
+   * PRIOR_SENTENCE_FIX_ENABLED, passed by its callers only with the flag on:
+   * each clause holding only earlier steps' dates ("coached her 10-16",
+   * "written warning on 10-20") is taken out first, and an incident clause
+   * keeps every date it holds ("late on 10-5 and 10-15", "from 10-5 to 10-9").
+   */
+  readonly today?: string;
 }): string | null {
   let found: string | null = null;
+  // The app's own lines ("The employee is …. Warning level: written.") are no account either.
+  const text =
+    input.today !== undefined && priorSentenceFixEnabled()
+      ? withoutPriorStepClauses(withoutAppLines(input.text), input.today, input.text).text
+      : input.text;
+  const keepDates = input.today !== undefined && priorSentenceFixEnabled();
   // One turn at a time. An edit or a command ("change the date to 10-22",
   // "name is …", "show draft", "cite standards of conduct …") changes its own
   // field and never What happened; the newest turn that describes an
   // incident is the incident.
-  for (const turn of input.text.split("\n")) {
-    const offense = turnIncident(turn, input.employeeName, input.slotClause);
+  for (const turn of text.split("\n")) {
+    const offense = turnIncident(turn, input.employeeName, input.slotClause, keepDates);
     if (offense) found = offense;
   }
   return found;
@@ -138,6 +222,7 @@ function turnIncident(
   turn: string,
   employeeName: string | null,
   slotClause: (clause: string) => boolean,
+  keepDates = false,
 ): string | null {
   if (isEditTurn(turn)) return null;
   let found: string | null = null;
@@ -145,13 +230,13 @@ function turnIncident(
   for (const raw of withoutPriorList(turn).split(/[.!?;]+(?=\s|$)/)) {
     const sentence = raw.trim();
     if (!sentence || isEditTurn(sentence) || TALKS_TO_THE_APP.test(sentence) || ASKS_FOR_HELP.test(sentence)) continue;
-    const requested = REQUEST_LEAD.test(sentence) || LEVEL_REQUEST.test(sentence);
+    const requested = requestLead().test(sentence) || levelRequest().test(sentence);
     let kept = false;
-    for (const clause of sentence.split(",")) {
+    for (const clause of keepDates ? withDateListsJoined(sentence.split(",")) : sentence.split(",")) {
       const text = clause.trim();
       if (!text || slotClause(text) || STORE_CLAUSE.test(text) || PAYROLL_STATEMENT.test(text) || POLICY_ASK.test(text)) continue;
       kept = true;
-      const offense = clauseOffense(text, employeeName);
+      const offense = clauseOffense(text, employeeName, keepDates);
       if (offense) found = offense;
     }
     if (kept && !requested && sentence.split(/\s+/).length >= 3) story.push(sentence);
@@ -167,12 +252,100 @@ function turnIncident(
 const LEVEL_REQUEST =
   /^\s*(?:please\s+)?(?:create|make|start|open|do|file|write|draft)\s+(?:a\s+|an\s+)?(?:verbal|written|final)(?:\s+warning)?\s+for\b/i;
 
+/**
+ * LEVEL_REQUEST_DATE_ENABLED (QA, live, 30 Oct 2026): "create a written on
+ * 10/20 for <name> …" — a date between the level and "for" is still the
+ * request, so the Observation is not "create a written on 10/20 …".
+ */
+const LEVEL_REQUEST_DATED = new RegExp(
+  String.raw`^\s*(?:please\s+)?(?:create|make|start|open|do|file|write|draft)\s+(?:a\s+|an\s+)?(?:verbal|written|final)(?:\s+warning)?\s+(?:on\s+)?${DATE}\s+for\b`,
+  "i",
+);
+
+function levelRequest(): RegExp {
+  return levelRequestDateEnabled() ? new RegExp(`${LEVEL_REQUEST_DATED.source}|${LEVEL_REQUEST.source}`, "i") : LEVEL_REQUEST;
+}
+
 /** "I need to coach an employee": the manager asking for help, not the account. */
 const ASKS_FOR_HELP = /^(?:i\s+)?(?:need|want|have|would\s+like)\s+to\s+(?:coach|write\s+up|discipline|document|create|make|do)\b/i;
 
 /** A sentence to the app, not about the employee: "it still would not generate the coaching form". */
 const TALKS_TO_THE_APP =
   /\b(?:you|your|sunny|generate|generated|this\s+conversation|the\s+information|information\s+given)\b/i;
+
+/*
+ * SECOND_REQUEST_OWN_ACCOUNT_ENABLED (QA's Sunny round-6 solo gate, 8 Nov 2026, nov8-kept-request-coaching-*): with
+ * the flag on, "Create a Coaching Form from this conversation." after a chat of policy questions keeps the earlier
+ * request's turns as its account, and the card's Observation pasted the manager's questions ("what does the manual say
+ * about reimbursing the company? how much is the late opening fee? and who pays for client restitution?"). A question
+ * to the app is never the account: a sentence that ended in "?", or one that opens as a question ("what / how much /
+ * who / does …"), asks about the manual, a policy, a fee or who pays, and says nothing of the employee. Nor is a sentence that only confirms the
+ * policy ("I have independently verified and the policy is correct"), nor one that only names a policy or its source
+ * (below), nor a closing "ok thanks".
+ */
+const ASKS_A_QUESTION = /^(?:(?:and|so|also|ok|okay|then)[,\s]+)*(?:what|how|who|whom|whose|which|where|when|why|is|are|does|do|did|can|could|should|would|will)\b/i;
+const ABOUT_THE_RULES = /\b(?:manual|handbook|polic(?:y|ies)|fee|fees|cost|costs|pays?|paid|reimburs\w*|restitution|allowed|supposed\s+to)\b/i;
+/** A sentence about the employee ("… with her but she broke the bed") is never read as a question to the app. */
+const ABOUT_THEM = /\b(?:she|he|they|her|him|them|hers|his|their)\b/i;
+/** "I have independently verified and the policy is correct": about the policy on the form, not what happened. */
+const CONFIRMS_THE_POLICY =
+  /\b(?:polic(?:y|ies)|manual|handbook|section)\b[^.!?]*\b(?:is|are)\s+(?:correct|right|accurate|fine|good)\b|\b(?:verified|confirmed|checked|double[- ]checked)\b[^.!?]*\b(?:polic(?:y|ies)|manual|handbook)\b/i;
+const ONLY_THANKS = /^(?:(?:ok(?:ay)?|great|perfect|cool|sounds\s+good|got\s+it)[,!\s]*)*(?:thanks?(?:\s+you)?|thank\s+you|thx|ty)[!.\s]*$/i;
+
+/*
+ * QA (8 Nov 2026, the same gate): "Late Opening from the policy manual." only points to a policy; it says nothing the
+ * employee did. A sentence that names a policy or its source ("<Policy> from the policy manual", "per the manual", "the
+ * policy is <X>") and, without those words, leaves at most a policy's name — no word about the employee, no verb of
+ * what happened — is never the account; the policy stays on the Policy line. "she opened late again, Late Opening
+ * policy" speaks of her, so it stays.
+ */
+const POLICY_SOURCE = /\b(?:(?:from|per|in|under|according\s+to)\s+(?:the\s+)?(?:jba\s+)?(?:policy\s+)?(?:manual|handbook)|the\s+polic(?:y|ies)\s+(?:is|are)|polic(?:y|ies)\s+manual|polic(?:y|ies)|manual|handbook)\b/gi;
+const SOMETHING_HAPPENED = /\b(?:was|were|did|didn['’]?t|has|had|have|been|is\s+late|came|went|left|called|showed|missed|refused|forgot)\b|\b\w{3,}ed\b/i;
+
+const POLICY_NAME_FILLER = new Set(["the", "a", "an", "of", "and", "for", "to", "on", "in", "from", "per", "jba"]);
+
+function onlyNamesAPolicy(sentence: string): boolean {
+  // The request's own words and its "for <name> for …" are not what it says ("create corrective action for <A> for Late
+  // Opening from the policy manual").
+  const said = withoutRequestWords(sentence)
+    .replace(/^\s*for\s+(?:\p{Lu}[\p{L}'’-]*\s+){1,3}(?=for\b)/u, "")
+    .replace(/^\s*(?:for|about|regarding|over)\s+/i, "");
+  if (!/\b(?:polic(?:y|ies)|manual|handbook)\b/i.test(said) || ABOUT_THEM.test(said) || SOMETHING_HAPPENED.test(said)) return false;
+  const rest = said
+    .replace(POLICY_SOURCE, " ")
+    .replace(/[^\p{L}\p{N}\s'’-]+/gu, " ")
+    .split(/\s+/)
+    .filter((word) => word && !POLICY_NAME_FILLER.has(word.toLowerCase()));
+  // What is left is a policy's name, as managers type one ("Late Opening", "Standards of Conduct"): a few capitalised
+  // words, no date or number ("violating attendance on 10-20-26" says what happened).
+  return rest.length <= 4 && rest.every((word) => /^\p{Lu}/u.test(word) && !/\d/.test(word));
+}
+
+/** SECOND_REQUEST_OWN_ACCOUNT_ENABLED: the turn's text without the sentences that ask the app something. */
+export function withoutQuestionsToTheApp(text: string): string {
+  if (!secondRequestOwnAccountEnabled()) return text;
+  // QA's round-7 gate (8 Nov 2026): the text is left as it is but for the sentences left out — its lines, and the app's
+  // own state lines ("Job title: … It happened at <place>. Policy reference: …"), which the app-line readers strip by
+  // shape, are never touched or rejoined.
+  let changed = false;
+  const kept = text.replace(/[^.!?;\n]+(?:[.!?;]+|(?=\n)|$)/g, (sentence) => {
+    const trimmed = sentence.trim();
+    if (!trimmed || STATE_LEAD.test(trimmed) || STATE_SENTENCE.test(trimmed)) return sentence;
+    if (!askOfTheApp(trimmed)) return sentence;
+    changed = true;
+    return "";
+  });
+  return changed ? kept.replace(/[^\S\n]{2,}/g, " ").replace(/^[^\S\n]+|[^\S\n]+$/gm, "") : text;
+}
+
+/** A question to the app, a confirmation of the policy, a sentence that only names a policy, or a closing thanks. */
+function askOfTheApp(sentence: string): boolean {
+  if (/\?\s*$/.test(sentence)) return true;
+  if (ASKS_A_QUESTION.test(sentence) && ABOUT_THE_RULES.test(sentence) && !ABOUT_THEM.test(sentence)) return true;
+  if (CONFIRMS_THE_POLICY.test(sentence)) return true;
+  if (onlyNamesAPolicy(sentence)) return true;
+  return ONLY_THANKS.test(sentence);
+}
 
 /** An edit or a command: it sets a field, shows the draft, or names the policy. It is not an account. */
 const EDIT_TURN = [
@@ -207,16 +380,99 @@ export function currentRequestStart(input: {
   let start = 0;
   for (const [index, raw] of input.turns.entries()) {
     const turn = raw.replace(STATE_LEAD, "");
-    if (!REQUEST_TURN.test(turn.trim())) continue;
+    // POLITE_REQUEST_OWN_TURNS_ENABLED: "Can you create me a coaching document for …" is a request too.
+    const asked = politeRequestOwnTurnsEnabled() ? turn.trim().replace(POLITE_LEAD, "") : turn.trim();
+    // SECOND_REQUEST_OWN_ACCOUNT_ENABLED (QA's audit, 7 Nov 2026): after a request, a turn that names a form anywhere
+    // ("I need another corrective action for <A>, …", "now make a separate CA for <A> …") is a request too; it starts a
+    // new one only with its own incident, below.
+    // QA's Sunny round-4 gate (8 Nov 2026, sf-s21 / sf-s22): only in the turn's own first line — a pasted document
+    // after it ("Use this to make it: … 1. **Kit Coaching Document** …") names a form without asking for one.
+    // QA's Sunny round-5 gate (8 Nov 2026, Q6): "sorry, the verbal ca was on 9-2-26 not 9-1-26" corrects a prior step's
+    // date; the "ca" in it is that step, never a second request.
+    const isRequest =
+      REQUEST_TURN.test(asked) ||
+      (secondRequestOwnAccountEnabled() && requests >= 1 && FORM_WORD_ANYWHERE.test(firstLine(turn)) && !onlyAboutAPriorStep(turn));
+    if (!isRequest) continue;
     requests += 1;
-    if (requests > 1 && turnIncident(turn, input.employeeName, input.slotClause)) start = index;
+    // SECOND_REQUEST_OWN_ACCOUNT_ENABLED (QA's Sunny round-3 gate, 7 Nov 2026): the turn's incident must also stand
+    // without the request words, a few words at least, so "ok create the CA now" ("now") or "create a CA for <A>" ("for <A>")
+    // after an account is never a new request with nothing in it.
+    // QA's Sunny round-4 gate (8 Nov 2026, sf-s22 t3): "It needs to be a CA, not a coaching form" chooses the form; a
+    // form named in what is left (", not a coaching form") is no account, so it is not counted.
+    // The state lines the intent read appends after the turn ("Warning level: verbal.") are no account either.
+    const own = withoutRequestWords(withoutStateLines(turn)).replace(FORM_WORDS_EVERYWHERE, " ");
+    const tells =
+      !secondRequestOwnAccountEnabled() ||
+      (own.split(/\s+/).filter(Boolean).length >= OWN_ACCOUNT_WORDS && turnIncident(own, input.employeeName, input.slotClause) !== null);
+    if (requests > 1 && tells && turnIncident(turn, input.employeeName, input.slotClause)) start = index;
   }
   return start;
+}
+
+/*
+ * SECOND_REQUEST_OWN_ACCOUNT_ENABLED (QA's Sunny round-5 gate, 8 Nov 2026, corrective-action-conversation-qa Q6): a turn
+ * that corrects a date ("… on 9-2-26 not 9-1-26") or only states an earlier step ("the verbal ca was on 9-2-26"), and
+ * asks for nothing, is that step's history. The form it names is the step, not a new request.
+ */
+const ASKS_FOR_A_FORM = /\b(?:create|make\s+(?:a|an|it|another|me)|start|draft|new|another|need\s+(?:a|an)|open|write\s+(?:up|her|him|them))\b/i;
+
+function onlyAboutAPriorStep(turn: string): boolean {
+  if (ASKS_FOR_A_FORM.test(turn)) return false;
+  const today = businessToday();
+  if (correctedDates(turn, today).size > 0) return true;
+  const { text, dropped } = withoutPriorStepClauses(turn, today, turn);
+  return dropped && !FORM_WORD_ANYWHERE.test(firstLine(text));
 }
 
 /** The state sentences the intent read puts in front of a question ("The employee is …."). */
 const STATE_LEAD =
   /^\s*(?:(?:The form is the|The employee is|Job title:|It happened at|It happened on|Warning level:|Payroll amount:|Policy reference:|Incident:|The account continues)[^\n]*?\.(?=\s|$)\s*|(?:Payroll deduct applies|No payroll deduction)\.\s*)+/i;
+
+/*
+ * POLITE_REQUEST_OWN_TURNS_ENABLED (Pau's scan, sf-s37, 7 Nov 2026): three requests in one chat, each "Can you create
+ * me a coaching document for <name> for …", were never read as requests, so the second card's Observation read back
+ * the first employee's request too. A polite lead before the request words is not part of them: "can / could /
+ * would / will you (please)". Off, as before.
+ */
+const POLITE_LEAD = /^(?:hey,?\s+|hi,?\s+)?(?:can|could|would|will)\s+(?:you|u)\s+(?:please\s+)?/i;
+
+/** SECOND_REQUEST_OWN_ACCOUNT_ENABLED: a form named anywhere in the turn, not only at its start. */
+const FORM_WORD_ANYWHERE = new RegExp(String.raw`\b${FORM_WORDS}\b`, "i");
+
+/**
+ * SECOND_REQUEST_OWN_ACCOUNT_ENABLED: the turn without its request words. Each sentence that names a form keeps only
+ * what follows the form ("I need another corrective action for <A>, his cash drawer was short $20" → "for <A>, his
+ * cash drawer was short $20"; "ok create the CA now" → "now"); the other sentences stay as they are.
+ */
+/** SECOND_REQUEST_OWN_ACCOUNT_ENABLED: an incident of its own is more than "now" or "for <first> <last>". */
+const OWN_ACCOUNT_WORDS = 4;
+
+/** Every form named in a text, for leaving them out of a turn's own account. */
+const FORM_WORDS_EVERYWHERE = new RegExp(String.raw`\b${FORM_WORDS}\b`, "gi");
+
+/** Each line without the state sentences the intent read puts in front of it or appends ("Warning level: verbal."). */
+function withoutStateLines(turn: string): string {
+  return turn
+    .split("\n")
+    .map((line) => line.replace(STATE_LEAD, ""))
+    .join("\n");
+}
+
+/** The turn's first non-empty line: where a request is asked, before anything pasted under it. */
+function firstLine(turn: string): string {
+  return turn.split("\n").find((line) => line.trim() !== "") ?? "";
+}
+
+function withoutRequestWords(turn: string): string {
+  return turn
+    .split(/(?<=[.!?;])\s+|\n+/)
+    .map((sentence) => {
+      const form = FORM_WORD_ANYWHERE.exec(sentence);
+      return form ? sentence.slice(form.index + form[0].length).trim() : sentence;
+    })
+    .filter(Boolean)
+    .join(" ");
+}
 
 const REQUEST_TURN = new RegExp(
   String.raw`^\s*(?:please\s+)?(?:(?:create|make|start|open|do|file|write|draft)\s+(?:me\s+)?)?${LEVEL_WORDS}${FORM_WORDS}\b`,
@@ -273,8 +529,20 @@ export function placeSpans(text: string): string[] {
 /** A letter or a digit: anything else on its own is punctuation, not words. */
 export const HAS_WORD = /[\p{L}\p{N}]/u;
 
-function clauseOffense(clause: string, employeeName: string | null): string | null {
-  let text = clause.replace(REQUEST_LEAD, " ").replace(LEVEL_REQUEST, " ");
+/** PRIOR_SENTENCE_FIX_ENABLED: "late 10/5", " 10/15 and 10/16" — a clause that is only more dates belongs to the one before it. */
+const DATES_ONLY = new RegExp(String.raw`^\s*(?:and\s+|&\s+)?${DATE}(?:\s*(?:,|and|&)\s*${DATE})*\s*$`, "i");
+
+function withDateListsJoined(clauses: readonly string[]): string[] {
+  const joined: string[] = [];
+  for (const clause of clauses) {
+    if (joined.length > 0 && DATES_ONLY.test(clause)) joined[joined.length - 1] += `,${clause}`;
+    else joined.push(clause);
+  }
+  return joined;
+}
+
+function clauseOffense(clause: string, employeeName: string | null, keepDates = false): string | null {
+  let text = clause.replace(requestLead(), " ").replace(levelRequest(), " ");
   // "violation is that on 10-16-26 Testy was not measuring and weighing product"
   text = text.replace(/^\s*(?:the\s+)?(?:violation|incident|issue|offen[cs]e|what\s+happened|reason)\s+(?:is|was)(?:\s+that)?\s*[:-]?\s*/i, "");
   // "She was on her cell phone for 30+ minutes at the front desk"
@@ -293,7 +561,9 @@ function clauseOffense(clause: string, employeeName: string | null): string | nu
   text = text.replace(/\bno payroll\b/gi, " ");
   text = text.replace(/\s+/g, " ").trim();
   text = text.replace(new RegExp(String.raw`^(?:on\s+)?${DATE}\s*,?\s*`, "i"), "");
-  text = text.replace(new RegExp(String.raw`\s*,?\s*(?:on|at|dated)?\s*${DATE}$`, "i"), "");
+  // PRIOR_SENTENCE_FIX_ENABLED: the end date of "late on 10-5 and 10-15" or "from 10-5 to 10-9" is not the clause's own date.
+  const trailing = text.replace(new RegExp(String.raw`\s*,?\s*(?:on|at|dated)?\s*${DATE}$`, "i"), "");
+  if (!keepDates || !new RegExp(DATE).test(trailing)) text = trailing;
   text = text.replace(/^(?:for|about|regarding|re:?)\s+/i, "");
   // "regarding On 10-16-26 Test Employee did not …": the date the lead-in left.
   text = text.replace(new RegExp(String.raw`^(?:on\s+)?${DATE}\s*,?\s*`, "i"), "");
@@ -309,7 +579,7 @@ function clauseOffense(clause: string, employeeName: string | null): string | nu
   if (/^(?:for|a|an|the|form|location|store|draft)$/i.test(text)) return null;
   // "create a coaching document for Test Employee": a repeat request names the
   // person, it is no new incident (QA, 25 Oct 2026, conv_mvnt95q52gmu047).
-  if ((REQUEST_LEAD.test(clause) || LEVEL_REQUEST.test(clause)) && /^[A-Z][\w'-]*(?:\s+[A-Z][\w'-]*){0,2}$/.test(text)) return null;
+  if ((requestLead().test(clause) || levelRequest().test(clause)) && /^[A-Z][\w'-]*(?:\s+[A-Z][\w'-]*){0,2}$/.test(text)) return null;
   // "jba manual 11-1-25" answers the prior-coaching question.
   if (/^(?:the\s+)?(?:jba\s+)?(?:policy\s+)?manual(?:\s+ack\w*)?$/i.test(text)) return null;
   if (/\b(?:she|he|they|i|we)\b/i.test(text)) return null;
@@ -349,7 +619,7 @@ export function isRequestLeftover(summary: string | null | undefined, employeeNa
     return true;
   }
   if (STRIPPED_REQUEST.test(text)) return true;
-  return clauseOffense(text, employeeName) === null && REQUEST_LEAD.test(text);
+  return clauseOffense(text, employeeName) === null && requestLead().test(text);
 }
 
 /**
@@ -465,8 +735,8 @@ export function remapCitations(manual: RemapManual, sections: readonly ManualSec
   return citations;
 }
 
-const STATE_CODES =
-  /^(?:A[LKZR]|C[AOT]|DE|FL|GA|HI|I[ADLN]|K[SY]|LA|M[ADEINOST]|N[CDEHJMVY]|O[HKR]|PA|RI|S[CD]|T[NX]|UT|V[AT]|W[AIVY])$/i;
+// Every US state's code; one list, shared with the create route's re-read.
+const STATE_CODES = US_STATE_CODE;
 
 /** "empire, sd" and "Kearney, NE": a state after a place is not Salon Director (SD). */
 export function withoutStateCodes(text: string): string {
@@ -486,16 +756,20 @@ export function accountSentences(
   options: { readonly managerOnly?: boolean } = {},
 ): string[] {
   const kept: string[] = [];
+  const reasonOnly = new Set<string>();
   // A later create request with its own incident is a new form; an edit or a
   // command turn ("change the date to 10-22", "show draft") is not an account.
   const start = currentRequestStart({ turns, employeeName, slotClause: accountSlot });
   for (const turn of turns.slice(start)) {
     if (isEditTurn(turn)) continue;
-    const text = withoutPriorList(turn.replace(/\bThe account continues\.\s*/g, ""));
+    // PAYROLL_CLAUSE_NOT_ACCOUNT_ENABLED: "$20 payroll deduct applies" and "Payroll deduction amount: $20." are the payroll answer.
+    const text = withoutPayrollClauses(withoutPriorList(withoutQuestionsToTheApp(turn.replace(/\bThe account continues\.\s*/g, ""))));
     for (const sentence of text.split(/\n+|[.!?;]+(?=\s|$)/)) {
       const trimmed = sentence.trim();
       if (STATE_SENTENCE.test(trimmed) || isEditTurn(trimmed) || TALKS_TO_THE_APP.test(trimmed) || ASKS_FOR_HELP.test(trimmed)) continue;
       if (/^it\s+happened\b/i.test(trimmed)) continue;
+      // POLICY_CORRECTION_NOT_ACCOUNT_ENABLED: "it should be under performance not standard of conduct" is about the form.
+      if (isPolicyCorrection(trimmed)) continue;
       const parts = sentence
         .split(",")
         .map((part) => part.trim())
@@ -507,17 +781,30 @@ export function accountSentences(
         .filter((part) => !isPriorStep(part))
         // A clause that only names or places them is never the account (QA, 25
         // Oct 2026; with MANAGER_WORDS_ONLY_ENABLED or without it).
-        .filter((part) => !onlyWhoOrWhere(part.replace(REQUEST_LEAD, " ").replace(LEVEL_REQUEST, " ").trim(), employeeName))
+        .filter((part) => !onlyWhoOrWhere(part.replace(requestLead(), " ").replace(levelRequest(), " ").trim(), employeeName))
         .map((part) => (options.managerOnly ? withoutPlace(part) : part))
         .map((part) => accountPart(part, employeeName))
         .filter((part): part is string => part !== null);
       const joined = parts.join(", ").trim();
       if (joined.length < 8) continue;
       if (kept.some((seen) => seen.toLowerCase() === joined.toLowerCase())) continue;
+      if (requestParticipleLeadEnabled() && isRequestReasonOnly(trimmed, joined)) reasonOnly.add(joined);
       kept.push(joined);
     }
   }
+  // REQUEST_PARTICIPLE_LEAD_ENABLED: "I need a corrective action (made) for under performance." gives the request's
+  // reason, not the account; with the account in another sentence ("<A> was below on PPTA, …") it is left out, so the
+  // Observation starts at the account. Alone, it stays: the manager's only words about what happened.
+  if (reasonOnly.size > 0 && kept.some((sentence) => !reasonOnly.has(sentence))) return kept.filter((sentence) => !reasonOnly.has(sentence));
   return kept;
+}
+
+/** REQUEST_PARTICIPLE_LEAD_ENABLED: the sentence is a request whose rest is only a sales reason ("under performance"). */
+export function isRequestReasonOnly(sentence: string, rest: string): boolean {
+  const words = rest.replace(/[.!?]+$/, "").trim();
+  if (!requestLead().test(sentence.trim()) || !words || words.split(/\s+/).length > 5) return false;
+  const reading = readCaPolicy(words);
+  return reading.stated === null && isSalesPolicyReading(reading);
 }
 
 const STATE_SENTENCE =
@@ -536,8 +823,8 @@ function accountSlot(part: string): boolean {
 }
 
 function accountPart(part: string, employeeName: string | null): string | null {
-  const requested = REQUEST_LEAD.test(part) || LEVEL_REQUEST.test(part);
-  let text = part.replace(REQUEST_LEAD, " ").replace(LEVEL_REQUEST, " ");
+  const requested = requestLead().test(part) || levelRequest().test(part);
+  let text = part.replace(requestLead(), " ").replace(levelRequest(), " ");
   // "Please create a CA form so I can document": the rest of a request is not the account.
   if (requested && /^\s*(?:so|to|with|from|because|now)\b/i.test(text)) return null;
   if (employeeName) text = text.replace(new RegExp(escape(employeeName), "ig"), " ");
@@ -594,6 +881,26 @@ export function currentRequestTurns(turns: readonly string[], employeeName: stri
  * opening salon late on 9-28-26" is "opening salon late on 9-28-26". Empty
  * when nothing is left.
  */
+/** "<name> for …" / "<name> due to …" after a request: the reason, without the name. */
+function withoutRequestedEmployee(text: string, employeeName: string | null): string {
+  if (!employeeName) return text;
+  const names = [employeeName, employeeName.split(/\s+/)[0] ?? ""].filter((name) => name.length > 1);
+  for (const name of names) {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
+    const match = new RegExp(`^${escaped}\\s+(?:for|due\\s+to|because(?:\\s+of)?)\\s+`, "i").exec(text);
+    if (match) return text.slice(match[0].length);
+  }
+  return text;
+}
+
+/*
+ * OBSERVATION_NO_LEVEL_LEAD_ENABLED (the flip-3 tester's D, in this app; QA 6–7 Nov 2026): "create a CA for
+ * <name>, verbal, she was late on 10-20-26" made the card's Observation of Offense "verbal, she was late on
+ * 10-20-26". A clause that is only a warning level ("verbal", "written warning", "final written") is the Type
+ * of Warning, not the account. Off, as before.
+ */
+const ONLY_A_LEVEL = /^(?:a\s+|an\s+)?(?:verbal|written|final(?:\s+written)?)(?:\s+(?:warning|ca|c\/a|corrective\s+action|write[- ]?up))?$/i;
+
 export function managerAccount(sentence: string, employeeName: string | null): string {
   const end = /[.!?]+$/.exec(sentence.trim())?.[0] ?? "";
   const body = sentence.trim().slice(0, sentence.trim().length - end.length);
@@ -602,15 +909,49 @@ export function managerAccount(sentence: string, employeeName: string | null): s
   for (const clause of body.split(",")) {
     let text = clause.trim();
     if (!text) continue;
-    if (REQUEST_LEAD.test(text) || LEVEL_REQUEST.test(text)) {
+    if (observationNoLevelLeadEnabled() && ONLY_A_LEVEL.test(text)) continue;
+    /*
+     * CA_SALES_POLICY_ENABLED (QA, live, 4 Nov 2026): "MSB CA for <name> for
+     * underperformance in the month of October" was the card's whole
+     * Observation: the glossary term in front hid the request. A leading
+     * glossary term followed by a request is the reason, read from the
+     * manager's words by the policy reader; the account is what follows the
+     * request. The same reader `detectTemplateIntent` uses; off, unchanged.
+     */
+    const afterTerm = withoutLeadingGlossaryTerm(text);
+    if (afterTerm !== text && requestLead().test(afterTerm)) text = afterTerm;
+    if (requestLead().test(text) || levelRequest().test(text)) {
       requested = true;
-      text = text.replace(REQUEST_LEAD, " ").replace(LEVEL_REQUEST, " ").replace(/\s+/g, " ").trim();
+      text = text.replace(requestLead(), " ").replace(levelRequest(), " ").replace(/\s+/g, " ").trim();
       // "create a CA form so I can document": the rest of a request is not the account.
       if (!text || /^(?:so|to|with|from|because|now)\b/i.test(text)) continue;
       if (onlyNamesThem(text, employeeName) || /^[A-Z][\w'-]*(?:\s+[A-Z][\w'-]*){0,2}$/.test(text)) continue;
     }
+    /*
+     * OBSERVATION_WITHOUT_ASK_ENABLED (Pau, sf-s28, 5 Nov 2026): "can i give a
+     * ca for not signing off on the cleaning check list" was the card's whole
+     * Observation; the request lead above reads only "can you …". A clause
+     * the intent reader takes as a Corrective Action asked for or asked about
+     * is the ask up to its "for"; what follows is the account. Off, unchanged.
+     */
+    if (!requested && observationWithoutAskEnabled()) {
+      const read = detectTemplateIntent(text);
+      const forAt = text.search(/\bfor\s/i);
+      if ((read.kind === "corrective_action" || (read.kind === "explicit" && read.templateKey === "dpoa")) && forAt > 0) {
+        requested = true;
+        text = text.slice(forAt).trim();
+        if (onlyNamesThem(text.replace(/^for\s+/i, ""), employeeName)) continue;
+      }
+    }
     if (onlyWhoOrWhere(text, employeeName)) continue;
     text = withoutPlace(text);
+    /*
+     * CA_SALES_POLICY_ENABLED (QA, live, 4 Nov 2026): "CA for <name> due to
+     * under performance in salon metrics" kept "<name> due to …" as the
+     * account. The employee the request named, before the word that joins the
+     * reason, is the request's, not the account. Off, unchanged.
+     */
+    if (requested && caSalesPolicyEnabled()) text = withoutRequestedEmployee(text, employeeName);
     // The "for" the dropped request left: "… for opening salon late".
     if (requested) text = text.replace(/^(?:for|about|regarding)\s+/i, "");
     if (text) kept.push(text);

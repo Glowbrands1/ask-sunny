@@ -2,9 +2,11 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { extractText, getDocumentProxy } from "unpdf";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { fakeSupabase, type FakeStore } from "@/test/fake-supabase";
+import REVISION_6 from "@/test/fixtures/forms/corrective-action-revision-6.json";
+import REVISION_7 from "@/test/fixtures/forms/corrective-action-revision-7.json";
 import type { AccessScope, ChatMessage } from "@/types";
 
 /**
@@ -668,5 +670,287 @@ describe("a Corrective Action filed on revision 5, edited as a new draft", () =>
     const revision = await revise(id);
     expect(await valueOf(revision, "action_plan")).toBe(`Jessica will arrive early. ${CLOSING}`);
     expect(await valueOf(id, "action_plan")).toBe(`Jessica will arrive early. ${CLOSING_5}`);
+  });
+});
+
+describe.each([
+  [6, REVISION_6],
+  [7, REVISION_7],
+] as const)("a Corrective Action filed on revision %i, revised after revision 8 (Type of Offense, 4 Nov 2026)", (revisionNumber, OLD) => {
+  /*
+   * PATH 1 OF THE TEMPLATE CHANGE (Pau, 4 Nov 2026: option A). "Edit as new
+   * draft" (`reviseInstance`) opens the revision on the CURRENT version. With
+   * CA_SALES_POLICY_ENABLED on, a tick on a box revision 8 replaced is carried
+   * as the box that replaced it; off, every row is carried as before. The
+   * FILED form — its version, its rows, and so its PDF — is never touched.
+   * Checked from both documents old forms can be on: revision 6 (published)
+   * and revision 7 (the live library's).
+   */
+  const FLAG = "CA_SALES_POLICY_ENABLED";
+  const saved = process.env[FLAG];
+  afterEach(() => {
+    if (saved === undefined) delete process.env[FLAG];
+    else process.env[FLAG] = saved;
+  });
+  const OLD_ID = `dpoa-revision-${revisionNumber}`;
+
+  /** A finalized form on the old revision's document, with these ticks and an optional Other write-in. */
+  async function filed(ticks: string[], options: { other?: string; onCurrent?: boolean } = {}) {
+    const { result } = await conversation([OPENING]);
+    const id = result.reference.instanceId;
+    const instance = store.form_instances.find((entry) => entry.id === id)!;
+    if (!options.onCurrent) {
+      const current = store.form_template_versions.find((row) => row.id === instance.template_version_id)!;
+      const old = { ...current, id: OLD_ID, version: 0, status: "archived", seed_revision: revisionNumber, document: OLD };
+      if (!store.form_template_versions.some((row) => row.id === old.id)) store.form_template_versions.push(old);
+      instance.template_version_id = old.id;
+    }
+    instance.status = "finalized";
+    instance.finalized_at = "2026-10-29T15:00:00Z";
+    const set = (key: string, row: Record<string, unknown>) => {
+      const existing = store.form_instance_values.find((entry) => entry.instance_id === id && entry.field_key === key);
+      if (existing) Object.assign(existing, row);
+      else store.form_instance_values.push({ instance_id: id, field_key: key, value: null, checked: [], filled_by: "assistant", provenance: {}, ...row } as never);
+    };
+    set("offense_type", { checked: ticks });
+    if (options.other) set("other_offense", { value: options.other });
+    return id;
+  }
+
+  async function revise(id: string) {
+    joinOverview();
+    const response = await instanceRoute.POST(
+      new Request(`https://app.test/api/forms/instances/${id}`, { method: "POST", body: JSON.stringify({ action: "revise" }) }),
+      { params: Promise.resolve({ id }) },
+    );
+    expect(response.status).toBe(200);
+    joinOverview();
+    return ((await response.json()) as { instance: { id: string } }).instance.id;
+  }
+
+  const rowsOf = (id: string) => JSON.stringify(store.form_instance_values.filter((entry) => entry.instance_id === id));
+  const ticks = (id: string) => store.form_instance_values.find((entry) => entry.instance_id === id && entry.field_key === "offense_type")?.checked ?? [];
+
+  it.each([
+    [["tardiness"], ["attendance_policy"]],
+    [["absenteeism"], ["attendance_policy"]],
+    [["tardiness", "absenteeism"], ["attendance_policy"]],
+    [["under_performance"], ["standards_of_conduct"]],
+    [["company_policies"], ["standards_of_conduct"]],
+    [["dress_code", "under_performance"], ["dress_code", "standards_of_conduct"]],
+  ])("flag on: an old %j tick is carried as %j on the revision; the filed form is untouched", async (old, expected) => {
+    process.env[FLAG] = "true";
+    const id = await filed(old);
+    const before = rowsOf(id);
+    const revision = await revise(id);
+    expect(ticks(revision)).toEqual(expected);
+    expect(store.form_instances.find((entry) => entry.id === id)!.template_version_id).toBe(OLD_ID);
+    expect(rowsOf(id), "the filed form's rows changed").toBe(before);
+  });
+
+  it("flag on: an old Other write-in ticks Other on the revision; the filed write-in stays", async () => {
+    process.env[FLAG] = "true";
+    const id = await filed([], { other: "Supply count left unfinished" });
+    const before = rowsOf(id);
+    const revision = await revise(id);
+    expect(ticks(revision)).toEqual(["other"]);
+    expect(rowsOf(id)).toBe(before);
+  });
+
+  it("flag off: every row is carried as before (the Tardiness tick, unchanged)", async () => {
+    delete process.env[FLAG];
+    const id = await filed(["tardiness"]);
+    const revision = await revise(id);
+    expect(ticks(revision)).toEqual(["tardiness"]);
+  });
+
+  it("negative control: a form already on the new template is copied exactly, flag on", async () => {
+    process.env[FLAG] = "true";
+    const id = await filed(["attendance_policy", "other"], { onCurrent: true });
+    const revision = await revise(id);
+    expect(ticks(revision)).toEqual(["attendance_policy", "other"]);
+  });
+});
+
+/*
+ * ============================================================================
+ * EVIDENCE FOR PAU (4 Nov 2026): OLD CORRECTIVE ACTIONS OPEN AND PRINT AS FILED
+ * ============================================================================
+ *
+ * A form filed on revision 6 (the published one) and a form on revision 7 (the
+ * live library's, with Payroll deduction amount) are opened (GET .../[id]) and
+ * downloaded (GET .../pdf) through the real routes, with
+ * PAYROLL_AMOUNT_FIELD_ENABLED off and on (production: on). What they show is
+ * compared, field for field and PDF text byte for byte, with a snapshot
+ * recorded from `main` BEFORE revision 8
+ * (`src/test/fixtures/forms/corrective-action-old-forms-main.json`). Revision 8
+ * must change none of it. Record it again only from that commit, with
+ * CA_OLD_FORMS_SNAPSHOT_OUT set to the file to write.
+ */
+describe("old Corrective Actions (revision 6 and 7) open and print exactly as on main before revision 8", () => {
+  const OLD_FORM_VALUES: Record<string, { value?: string; checked?: string[] }> = {
+    employee_name: { value: "Orla Penhallow" },
+    form_date: { value: "2026-10-28" },
+    job_title: { value: "Salon Consultant" },
+    location: { value: "Invented Salon Alpha" },
+    warning_type: { checked: ["written"] },
+    prior_actions: { value: "Verbal warning — signed 09/30/2026" },
+    offense_type: { checked: ["tardiness", "company_policies"] },
+    other_offense: { value: "Supply count left unfinished" },
+    observation: { value: "Observed:\nOrla opened the salon 25 minutes late on October 28, 2026." },
+    policy_violated: { value: "Tardiness/Leaving Early, Violation of Company Policies" },
+    policy_language: { value: "It is the responsibility of each employee to know his or her work schedule.\n\nSource: JBA Policy Manual — Attendance, p. 14" },
+    action_plan: { value: `Management will review the Attendance policy with Orla. Payroll will be deducted $25.00. ${CLOSING}` },
+    payroll_deduct: { checked: ["yes"] },
+  };
+
+  async function filedOld(revisionNumber: 6 | 7, document: unknown) {
+    const { result } = await conversation([OPENING]);
+    const id = result.reference.instanceId;
+    const instance = store.form_instances.find((entry) => entry.id === id)!;
+    const current = store.form_template_versions.find((row) => row.id === instance.template_version_id)!;
+    const old = { ...current, id: `dpoa-old-${revisionNumber}`, version: revisionNumber - 5, status: "archived", seed_revision: revisionNumber, document };
+    store.form_template_versions.push(old);
+    instance.template_version_id = old.id;
+    instance.status = "finalized";
+    instance.finalized_at = "2026-10-29T15:00:00Z";
+    instance.employee_name = "Orla Penhallow";
+    instance.form_date = "2026-10-28";
+    store.form_instance_values = store.form_instance_values.filter((entry) => entry.instance_id !== id);
+    const rows: Record<string, { value?: string; checked?: string[] }> = {
+      ...OLD_FORM_VALUES,
+      ...(revisionNumber === 7 ? { payroll_deduct_amount: { value: "$25.00" } } : {}),
+    };
+    for (const [key, row] of Object.entries(rows)) {
+      store.form_instance_values.push({ instance_id: id, field_key: key, value: row.value ?? null, checked: row.checked ?? [], filled_by: "manager", provenance: {} } as never);
+    }
+    return id;
+  }
+
+  async function shown(id: string) {
+    const opened = (await review(id)) as unknown as {
+      version: { document: { blocks: { kind: string; key?: string; label?: string; field?: { key: string; label: string }; fields?: { key: string; label: string }[]; options?: { key: string; label: string }[] }[] } };
+      values: { fieldKey: string; value: string | null; checked: string[] }[];
+    };
+    const fields = opened.version.document.blocks.flatMap((block) =>
+      block.kind === "field"
+        ? [`${block.field!.key}: ${block.field!.label}`]
+        : block.kind === "field_row"
+          ? block.fields!.map((field) => `${field.key}: ${field.label}`)
+          : block.kind === "checkbox_group"
+            ? [`${block.key}: ${block.options!.map((option) => `${option.key}=${option.label}`).join(" | ")}`]
+            : [],
+    );
+    const values = opened.values
+      .map((row) => `${row.fieldKey}=${JSON.stringify(row.value)} ${JSON.stringify(row.checked)}`)
+      .sort();
+    const { text } = await download(id, `old-form-${id}`);
+    return { fields, values, pdf: text.split(id.slice(0, 8)).join("<reference>") };
+  }
+
+  it("revision 6 and 7, PAYROLL_AMOUNT_FIELD_ENABLED off and on (production: on)", async () => {
+    const { default: REVISION_6 } = await import("@/test/fixtures/forms/corrective-action-revision-6.json");
+    const { default: REVISION_7 } = await import("@/test/fixtures/forms/corrective-action-revision-7.json");
+    const out: Record<string, unknown> = {};
+    for (const flag of ["off", "on"] as const) {
+      vi.stubEnv("PAYROLL_AMOUNT_FIELD_ENABLED", flag === "on" ? "true" : "");
+      for (const [revisionNumber, document] of [[6, REVISION_6], [7, REVISION_7]] as const) {
+        const id = await filedOld(revisionNumber, document);
+        out[`revision ${revisionNumber}, PAYROLL_AMOUNT_FIELD_ENABLED ${flag}`] = await shown(id);
+      }
+    }
+    vi.unstubAllEnvs();
+    const record = process.env.CA_OLD_FORMS_SNAPSHOT_OUT;
+    if (record) {
+      writeFileSync(record, `${JSON.stringify(out, null, 2)}\n`);
+      return;
+    }
+    const { default: MAIN } = await import("@/test/fixtures/forms/corrective-action-old-forms-main.json");
+    for (const name of Object.keys(MAIN)) expect(out[name], name).toEqual((MAIN as Record<string, unknown>)[name]);
+    expect(Object.keys(out)).toEqual(Object.keys(MAIN));
+  });
+});
+
+/*
+ * ============================================================================
+ * EVIDENCE FOR PAU (4 Nov 2026): A NEW CORRECTIVE ACTION ON REVISION 8
+ * ============================================================================
+ *
+ * Revision 8 is published WITH the Payroll deduction amount line ("Publish
+ * Sunny revision 8 WITH the 'Payroll deduction amount' line from unreleased
+ * revision 7"). A form created from chat against the library as installed:
+ * the line is on it once, right after "Is payroll deduct applicable?", flag
+ * on (production) or off; a stated amount is saved and printed; payroll No
+ * leaves it blank; the policy's own figure is never taken. The same cases as
+ * Ask Bubbles' `payroll-deduct-amount.test.ts`, through the real routes.
+ */
+describe("a new Corrective Action on revision 8: Payroll deduction amount", () => {
+  const AMOUNT = "Payroll deduction amount";
+  const YES_40 =
+    "Create a CA for Jessica Moss. She was 30 minutes late today, verbal warning. She was coached on 9/2 and got a verbal warning on 9/21. Payroll deduct yes, $40.";
+
+  const keysOf = (document: { blocks: { kind: string; key?: string; field?: { key: string }; fields?: { key: string }[] }[] }) =>
+    document.blocks.flatMap((block) =>
+      block.kind === "field" ? [block.field!.key] : block.kind === "field_row" ? block.fields!.map((field) => field.key) : block.key ? [block.key] : [],
+    );
+
+  async function opened(id: string) {
+    return (await review(id)) as unknown as {
+      instance: Record<string, unknown>;
+      version: { document: Parameters<typeof keysOf>[0] };
+      values: { fieldKey: string; value: string | null; checked: string[] }[];
+    };
+  }
+
+  it.each(["on", "off"] as const)(
+    "PAYROLL_AMOUNT_FIELD_ENABLED %s: the line is on the form once, right after the Yes / No",
+    async (flag) => {
+      vi.stubEnv("PAYROLL_AMOUNT_FIELD_ENABLED", flag === "on" ? "true" : "");
+      const { result } = await conversation([OPENING]);
+      const form = await opened(result.reference.instanceId);
+      const keys = keysOf(form.version.document);
+      expect(keys.filter((key) => key === "payroll_deduct_amount")).toHaveLength(1);
+      expect(keys[keys.indexOf("payroll_deduct") + 1]).toBe("payroll_deduct_amount");
+      expect(keys).toContain("offense_type");
+      expect(keys).not.toContain("other_offense");
+      const { text } = await download(result.reference.instanceId, `rev8-amount-line-${flag}`);
+      expect(text.split(AMOUNT)).toHaveLength(2);
+      vi.unstubAllEnvs();
+    },
+  );
+
+  it("production (flag on): a stated amount is saved on the line and printed beside its label", async () => {
+    vi.stubEnv("PAYROLL_AMOUNT_FIELD_ENABLED", "true");
+    const { result } = await conversation([YES_40]);
+    const id = result.reference.instanceId;
+    const form = await opened(id);
+    expect(form.values.find((row) => row.fieldKey === "payroll_deduct")?.checked).toEqual(["yes"]);
+    expect(form.values.find((row) => row.fieldKey === "payroll_deduct_amount")?.value).toBe("$40");
+    const { text } = await download(id, "rev8-amount-40");
+    expect(text).toMatch(/Payroll deduction amount\s+\$40/);
+    expect(text.split(AMOUNT)).toHaveLength(2);
+    vi.unstubAllEnvs();
+  });
+
+  it("production (flag on): payroll No leaves the line blank", async () => {
+    vi.stubEnv("PAYROLL_AMOUNT_FIELD_ENABLED", "true");
+    const { result } = await conversation([OPENING]);
+    const id = result.reference.instanceId;
+    const form = await opened(id);
+    expect(form.values.find((row) => row.fieldKey === "payroll_deduct")?.checked).toEqual(["no"]);
+    expect(form.values.find((row) => row.fieldKey === "payroll_deduct_amount")?.value ?? "").toBe("");
+    const { text } = await download(id, "rev8-amount-no");
+    expect(text).not.toMatch(/Payroll deduction amount\s+\$/);
+    vi.unstubAllEnvs();
+  });
+
+  it("production (flag on): the policy's own $25 is never put on the line", async () => {
+    vi.stubEnv("PAYROLL_AMOUNT_FIELD_ENABLED", "true");
+    const { result } = await conversation([
+      "Create a CA for Jessica Moss. She opened the salon 30 minutes late today, verbal warning. The policy says the employee will reimburse The Company $25.00 via payroll deduction. Payroll deduct yes.",
+    ]);
+    const form = await opened(result.reference.instanceId);
+    expect(form.values.find((row) => row.fieldKey === "payroll_deduct_amount")?.value ?? "").not.toContain("25");
+    vi.unstubAllEnvs();
   });
 });

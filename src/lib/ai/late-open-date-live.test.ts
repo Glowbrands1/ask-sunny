@@ -361,9 +361,25 @@ describe("S1: conv_mvn007ti21c35au, word for word", () => {
 
   it("with the flag off it stays 10/20, as live", async () => {
     vi.stubEnv("LATE_OPEN_DATE_ENABLED", "");
+    // Pinned off: PRIOR_SENTENCE_FIX_ENABLED reads "change the date to 10-21" too (twin below).
+    vi.stubEnv("PRIOR_SENTENCE_FIX_ENABLED", "");
     intentModel.reading = copiesTheManager;
     const answers = await chat(S1, "conv-s1-off");
     expect(answers[3]!.formProposal?.formDate).toBe("2026-10-20");
+  });
+
+  /*
+   * Flag-on twin (PRIOR_SENTENCE_FIX_ENABLED, coordinator's ruling, 26 Oct
+   * 2026: a later "change the date to …" still sets the date): with
+   * LATE_OPEN_DATE_ENABLED off, the card moves to 10/21 all the same.
+   */
+  it("with PRIOR_SENTENCE_FIX_ENABLED (and LATE_OPEN_DATE off) \"change the date to 10-21\" dates it 10/21", async () => {
+    vi.stubEnv("LATE_OPEN_DATE_ENABLED", "");
+    vi.stubEnv("PRIOR_SENTENCE_FIX_ENABLED", "1");
+    intentModel.reading = copiesTheManager;
+    const answers = await chat(S1, "conv-s1-psf");
+    expect(answers[1]!.formProposal?.formDate).toBe("2026-10-20");
+    expect(answers[3]!.formProposal?.formDate).toBe("2026-10-21");
   });
 });
 

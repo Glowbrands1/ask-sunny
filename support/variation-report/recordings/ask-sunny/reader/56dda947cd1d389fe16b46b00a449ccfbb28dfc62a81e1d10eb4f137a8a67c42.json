@@ -1,0 +1,54 @@
+{
+  "key": "56dda947cd1d389fe16b46b00a449ccfbb28dfc62a81e1d10eb4f137a8a67c42",
+  "model": "claude-haiku-5-5",
+  "reply": {
+    "employee": {
+      "value": "quinn marlowe",
+      "evidence": "My emplyee quinn marlowe has was 10 minutes late"
+    },
+    "location": null,
+    "jobTitle": {
+      "value": null,
+      "evidence": null
+    },
+    "incident": {
+      "value": "Late to shift by 10 minutes",
+      "evidence": "She was late on 10/5 and 10/15"
+    },
+    "incidentDate": {
+      "value": "2026-10-15",
+      "evidence": "She was late on 10/5 and 10/15"
+    },
+    "warningLevel": {
+      "value": null,
+      "evidence": null
+    },
+    "payroll": {
+      "value": null,
+      "evidence": null
+    },
+    "payrollAmount": {
+      "value": null,
+      "evidence": null
+    },
+    "policyHeading": {
+      "value": "Attendance",
+      "evidence": "She was late on 10/5 and 10/15"
+    },
+    "priorSteps": [
+      {
+        "kind": "verbal",
+        "date": "2026-10-05",
+        "evidence": "She was late on 10/5 and 10/15"
+      }
+    ],
+    "otherDates": []
+  },
+  "usage": {
+    "inputTokens": 4655,
+    "outputTokens": 511,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 1859
+}

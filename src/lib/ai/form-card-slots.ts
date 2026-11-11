@@ -4,19 +4,27 @@ import { PRODUCTION_SALONS } from "@/data/salons";
 import { datesInText, listIncidentDates, priorSteps } from "@/lib/forms/form-date-answer";
 import {
   managerWordsOnlyEnabled,
+  oneCardOnePageEnabled,
+  titleKeepsLabelWordsEnabled,
   formChoiceStatedEnabled,
   payrollAmountFieldEnabled,
   remapIncidentFixEnabled,
   typedNameProceedsEnabled,
   warningLevelManagerOnlyEnabled,
   followUpNotPriorEnabled,
+  followUpReadbackCueEnabled,
+  correctedEmployeeSlotEnabled,
+  secondRequestOwnAccountEnabled,
 } from "@/lib/config/chat-quality-flags";
+import { currentFormRequestTurns } from "@/lib/forms/current-request";
 import { templateHasWarningLevel } from "@/lib/forms/warning-level";
+import { followUpDatesByRules } from "./edit-date-rules";
 import { matchEmployeeName, rosterNameNamedIn } from "@/lib/forms/employee-match";
 import { inlineCloseMatch } from "@/lib/forms/typed-name-proceeds";
 import { supportsInlineDraft } from "@/lib/forms/inline-draft";
 import { isFieldLabelWord, nameAfterNameLabel, NOT_A_TYPED_NAME, stripFieldLabels } from "@/lib/forms/name-words";
 import { describedManualSection } from "@/lib/forms/named-policy-section";
+import { withConductLinePage } from "@/lib/forms/specific-policy-topics";
 import {
   findManualSection,
   headingKey,
@@ -45,7 +53,7 @@ import {
 import { accountManualSections } from "./account-manual-sections";
 import { appSentencesOnePerLine } from "./app-sentences";
 import { titleTextFromQuestion } from "./title-words";
-import type { ConversationFormState } from "./form-state";
+import { stateForTurn, type ConversationFormState } from "./form-state";
 import type { GroundedPerson } from "./grounded-entities";
 import { formatManualCitation } from "./policy-citation-fields";
 import { remapCitations, remapManualSections, withoutStateCodes } from "./remap-incident";
@@ -96,7 +104,8 @@ export function enrichFormCard(input: {
   const proposed = proposal.employeeName ? stripFieldLabels(proposal.employeeName) : null;
   const savedName = input.saved?.employeeName ? stripFieldLabels(input.saved.employeeName) : null;
   const statedName = statedEmployee(said) ?? savedName;
-  const employeeName = preferRosterName(proposed ?? statedName, said, input.people);
+  // CORRECTED_EMPLOYEE_SLOT_ENABLED: a name the proposal settled is matched to the roster from this turn, not from the first person in the conversation.
+  const employeeName = preferRosterName(proposed ?? statedName, correctedEmployeeSlotEnabled() && proposed ? withoutStateSentences(input.question) : said, input.people);
   // REMAP_INCIDENT_FIX_ENABLED: "empire, sd" is a place and its state, not Salon Director.
   const fixed = remapIncidentFixEnabled();
   const titleBlob = fixed ? withoutStateCodes(blob) : blob;
@@ -138,12 +147,13 @@ export function enrichFormCard(input: {
   else if (next.employeeName && next.locationId && next.status !== "ready") next = settleLocation(next, next.locationId);
 
   const followUps = followUpDates(blob, input.today, next.formDate ?? null);
-  const policy = statedPolicy(blob, input.saved);
+  // SECOND_REQUEST_OWN_ACCOUNT_ENABLED: a new form request never falls back to the earlier request's policy.
+  const policy = statedPolicy(blob, stateForTurn(input.saved, input.question, earlierTurns(input.said, input.question)));
   let content = withoutBlocking(input.response.content, next);
   // The salon question used to be the whole reply. Once the salon is known,
   // that line goes and the policy line that was under it stays.
   if (!content.trim() && (next.employeeName || next.locationId)) content = leadFor(next);
-  const lines = fieldLines({ proposal: next, followUps, policy, amount, statedTitle: title });
+  const lines = fieldLines({ proposal: next, followUps, policy: oneCardOnePageEnabled() ? policyAsShown(content, policy) : policy, amount, statedTitle: title });
   for (const line of lines) {
     if (!alreadySaid(content, line)) content = content ? `${content}\n\n${line}` : line;
   }
@@ -196,8 +206,21 @@ export function attachFormTurnSources(given: {
   readonly modelHeading?: string | null;
   readonly attendanceCitation?: boolean;
   readonly pageRequired?: boolean;
+  /**
+   * The manager's turns, oldest first, when the caller has them. SECOND_REQUEST_OWN_ACCOUNT_ENABLED cuts the request
+   * now being written by turn; `notes` joins them by line, and a turn of several lines (a pasted document, "… in the
+   * format of <name>'s ca …") was cut in the middle (QA's Sunny round-4 gate, 8 Nov 2026, sf-s22 t1).
+   */
+  readonly turns?: readonly string[];
 }): { content: string; citations: SourceCitation[] } {
-  const input = formChoiceStatedEnabled() ? { ...given, modelHeading: headingForCard(given) } : given;
+  /*
+   * SECOND_REQUEST_OWN_ACCOUNT_ENABLED (QA's audit, 7 Nov 2026): the card's citation and policy line read the request
+   * now being written. The notes are every manager turn joined line by line, so the request starts at the last line
+   * that asks for a form; a cash-drawer CA after a late-opening one was cited "Late Opening Policy … p.15".
+   */
+  const own = secondRequestOwnAccountEnabled() ? currentFormRequestTurns(turnsOfNotes(given)) : null;
+  const scoped = own ? { ...given, notes: own.join("\n") } : given;
+  const input = formChoiceStatedEnabled() ? { ...scoped, modelHeading: headingForCard(scoped) } : scoped;
   const found = formTurnCitations(input);
   let citations = lateOpeningCitations(input.citations.length > 0 ? [...input.citations] : found, input.notes);
   let content = input.content;
@@ -247,7 +270,39 @@ export function attachFormTurnSources(given: {
     content,
     input.attendanceCitation === true && sections.some((section) => /^attendance$/i.test(section.heading)),
   );
+  if (own && own.length < turnsOfNotes(given).length) content = withOwnRequestPolicyLine(content, sections);
   return { content, citations };
+}
+
+/**
+ * The turns `notes` was joined from: the last of the caller's turns that make up exactly those notes (a caller may
+ * pass only some, as CARD_POLICY_OWN_REQUEST_ENABLED's `cardPolicyTurns` does, so the cut reads the same turns as the
+ * notes); the notes' lines when no such turns are given (QA, round 5, 8 Nov 2026).
+ */
+function turnsOfNotes(given: { readonly notes: string; readonly turns?: readonly string[] }): readonly string[] {
+  const turns = given.turns ?? [];
+  for (let from = 0; from < turns.length; from += 1) {
+    if (turns.slice(from).join("\n") === given.notes) return turns.slice(from);
+  }
+  return given.notes.split("\n");
+}
+
+/*
+ * SECOND_REQUEST_OWN_ACCOUNT_ENABLED (QA's Sunny round-4 gate, 8 Nov 2026: nov2-p2 t5, nov2-p4 t2,
+ * nov3-card-observation-own-request t3, nov3-open-draft-new-request t3). A later request ("make me a CA for <A> for
+ * being late to opening this morning") no longer carries the earlier request's saved policy, so its card lost the
+ * "**Policy:** Attendance — read from this request." paragraph it had (said from that saved policy) while still citing
+ * the section this request reads as. With the request cut to its own turns and exactly one section cited for it, a
+ * Corrective Action card without a Policy paragraph says that section the same way.
+ */
+const CA_CARD_LEAD = /^I'll draft an? \*\*Corrective Action Form\*\* for \*\*[^*\n]+\*\*[^\n]*$/m;
+
+function withOwnRequestPolicyLine(content: string, sections: readonly { heading: string }[]): string {
+  if (sections.length !== 1 || /^\*\*Policy:\*\*/m.test(content) || !CA_CARD_LEAD.test(content)) return content;
+  const label = sections[0]!.heading.replace(/\s+policy$/i, "").trim();
+  if (!label) return content;
+  const line = `**Policy:** ${label} — read from this request. I'll quote that section from the current policy manual on the draft; tell me if a different policy applies.`;
+  return content.replace(CA_CARD_LEAD, (lead) => `${lead}\n\n${line}`);
 }
 
 /**
@@ -316,7 +371,7 @@ function sectionsFor(notes: string, chunks: readonly ManualChunk[], modelHeading
   const heading = modelHeading ?? statedManualHeading(notes);
   if (!heading) return [];
   const section = findManualSection(chunks, [heading]);
-  return section ? citedPolicies([section]) : [];
+  return section ? citedPolicies(withConductLinePage([section], notes, chunks)) : [];
 }
 
 /** A sheet the manual does not title as a policy — the retirement "Warning" — is not cited. */
@@ -387,11 +442,31 @@ function statedEmployee(text: string): string | null {
   return around ? stripFieldLabels(around) : null;
 }
 
+/** The last word names a job: "assistant salon manager", not "assistant salon". */
+const TITLE_ENDS_IN_A_JOB =
+  /\b(?:manager|director|consultant|associate|lead|supervisor|keyholder|specialist|assistant|coordinator|trainee|stylist|technician|attendant|cashier|clerk|representative|trainer)$/i;
+
 function statedTitle(said: string, saved: string | null): string | null {
   const text = managerWordsOnlyEnabled() ? titleTextFromQuestion(said) : said;
   const labelled = managerWordsOnlyEnabled() ? labelledTitleByLine(text) : titleAfterJobTitleLabel(text);
-  if (labelled) return extractJobTitle(labelled) ?? labelled;
   const marked = /Job title:\s*([^.\n]+)\./i.exec(text)?.[1]?.trim();
+  /*
+   * TITLE_KEEPS_LABEL_WORDS_ENABLED (QA, Sunny live, 30 Oct 2026): "Job title:
+   * assistant salon manager." was read as "assistant" — the label reader
+   * stops at a word that is also a field label ("salon"). When what it read
+   * is only the start of the whole line, and the line ends in a job word, the
+   * line is the title.
+   */
+  if (
+    labelled &&
+    titleKeepsLabelWordsEnabled() &&
+    marked &&
+    marked.toLowerCase().startsWith(`${labelled.toLowerCase()} `) &&
+    TITLE_ENDS_IN_A_JOB.test(marked)
+  ) {
+    return extractJobTitle(marked) ?? marked;
+  }
+  if (labelled) return extractJobTitle(labelled) ?? labelled;
   if (marked && !isFieldLabelWord(marked)) return marked;
   if (saved && text.toLowerCase().includes(saved.toLowerCase())) return saved;
   return extractJobTitle(text);
@@ -482,7 +557,17 @@ function followUpDates(text: string, today: string, incident: string | null): st
   if (incident) incidents.add(incident);
   // FOLLOW_UP_NOT_PRIOR_ENABLED: an earlier step's date ("a verbal on 06/25/2026") is a prior action, not a follow-up.
   if (followUpNotPriorEnabled()) for (const step of priorSteps(text, today)) incidents.add(step.iso);
-  return [...new Set(datesInText(text, today).map((item) => item.iso))].filter((iso) => !incidents.has(iso));
+  /*
+   * FOLLOW_UP_READBACK_CUE_ENABLED (QA SF9, 27 Oct 2026): "jba manual
+   * 11-1-25", correcting a prior coaching's date, was read back as
+   * "Follow-up: 11/1/2025" though the draft has none. A follow-up is a date
+   * the manager put a follow-up word to ("review on", "follow up", "check
+   * in"), the same rule the draft's follow-up reading uses.
+   */
+  const dates = followUpReadbackCueEnabled()
+    ? followUpDatesByRules(text, today)
+    : [...new Set(datesInText(text, today).map((item) => item.iso))];
+  return dates.filter((iso) => !incidents.has(iso));
 }
 
 function salonIdsIn(text: string): string[] {
@@ -626,6 +711,46 @@ function cardPayrollAmount(
   );
 }
 
+/*
+ * ONE_CARD_ONE_PAGE_ENABLED (QA, Sunny round 9 live, 9 Nov 2026; the person invented): "create a corrective action for <P>,
+ * he left the front desk unattended on 11/6/26" read "**Policy:** … **Standards of Conduct** (page 13)" and, under it,
+ * "Standards of Conduct Policy, JBA Policy Manual p.12": the Policy line cites the manual's line for the incident (printed
+ * p.13, Pau), the citation line the saved heading's own page. The Coaching card printed p.13 and p.12. One card cites one
+ * page: the citation line takes the page the card already gives that section, and a card whose Policy line names a section
+ * with its page and has no citation line gets one.
+ */
+const ESCAPE = /[.*+?^${}()|[\]\\]/g;
+
+/** The page this card already gives `heading`: its Policy line, or a citation line for it. Null when it gives none. */
+function pageOnCard(content: string, heading: string): number | null {
+  const name = heading.trim().replace(/\s+policy$/i, "").replace(ESCAPE, "\\$&");
+  const shown = [
+    new RegExp(`\\*\\*${name}(?: Policy)?\\*\\* \\(page (\\d+)\\)`, "i"),
+    new RegExp(`\\*\\*Policy:\\*\\*\\s*${name}(?: Policy)?,[^\\n]*?\\bon page (\\d+)`, "i"),
+    new RegExp(`^${name}(?: Policy)?, JBA Policy Manual p\\.(\\d+)`, "im"),
+  ];
+  for (const pattern of shown) {
+    const page = pattern.exec(content)?.[1];
+    if (page) return Number(page);
+  }
+  return null;
+}
+
+/** The section the card's Policy line names with its page, when it names one: "**Standards of Conduct** (page 13)". */
+function policyLineSection(content: string): { heading: string; page: number } | null {
+  const line = content.split("\n").find((item) => item.trim().startsWith("**Policy:**")) ?? "";
+  const bold = /\*\*([^*\n]+)\*\* \(page (\d+)\)/.exec(line) ?? /\*\*Policy:\*\*\s*([^,\n]+?),[^\n]*?\bon page (\d+)/.exec(line);
+  return bold ? { heading: bold[1]!.trim(), page: Number(bold[2]) } : null;
+}
+
+export function policyAsShown(content: string, policy: { heading: string; page: number | null } | null): { heading: string; page: number | null } | null {
+  if (policy) {
+    const page = pageOnCard(content, policy.heading);
+    return page !== null ? { ...policy, page } : policy;
+  }
+  return policyLineSection(content);
+}
+
 function fieldLines(input: {
   proposal: ChatFormProposal;
   followUps: readonly string[];
@@ -677,4 +802,11 @@ function slash(iso: string): string {
   const [year, month, day] = iso.split("-");
   if (!year || !month || !day) return iso;
   return `${Number(month)}/${Number(day)}/${year}`;
+}
+
+/** `said` (every manager turn, this one last, joined by line) without this turn: the manager's earlier lines. */
+function earlierTurns(said: string | undefined, question: string): string[] {
+  if (!said) return [];
+  const before = said.endsWith(question) ? said.slice(0, said.length - question.length) : said;
+  return before.split("\n").filter((line) => line.trim() !== "");
 }

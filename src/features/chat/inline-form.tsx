@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/field";
 import { Notice } from "@/components/ui/feedback";
 import { Dialog, DialogActions, DialogContent } from "@/components/ui/overlays";
+import { FinalizedChangePanel } from "./finalized-change-panel";
 import { downloadFormPdf, formsFetch, FormsFetchError } from "@/features/forms/forms-fetch";
 import { onFormUpdate } from "./form-update-events";
 import {
@@ -16,6 +17,7 @@ import {
   type ResponsiveFormValues,
 } from "@/features/forms/document/responsive-form";
 import { useSession } from "@/lib/session/session-context";
+import { asdNoFormMonitoringEnabled } from "@/lib/permissions";
 import { checkboxGroupsForVariant, fieldsForVariant } from "@/lib/forms/document";
 import { planSummary } from "@/lib/forms/plan-summary";
 import { manualStandingNotice } from "@/lib/forms/standing-notices";
@@ -144,6 +146,8 @@ interface LoadedInstance {
   values: LoadedValueRow[];
   /** The form's own audit trail. Used to answer the `unknown` case honestly. */
   events: { kind: string; actor: string; createdAt: string; detail?: Record<string, unknown> }[];
+  /** CARD_CHANGE_PLAN_REBUILD_ENABLED: the Change something panel offers the Payroll deduction amount. */
+  cardChangeAmount?: boolean;
 }
 
 type SaveState =
@@ -214,7 +218,7 @@ export function InlineForm({
    */
   onReplaced?: (reference: ChatFormInstanceRef) => void;
 }) {
-  const { role, user } = useSession();
+  const { role, user, can } = useSession();
   /*
    * ==========================================================================
    * THE RECORD THIS CARD SHOWS, WHICH A REVISION MOVES
@@ -893,6 +897,7 @@ export function InlineForm({
                   Open newer version
                 </Button>
               ) : null}
+              {!revised ? <FinalizedChangePanel instanceId={instanceId} templateName={loaded.instance.templateName} employeeName={loaded.instance.employeeName} current={edits} call={call} onOpened={showRecord} amountBox={loaded.cardChangeAmount === true && fieldsForVariant(loaded.version.document, loaded.instance.variantKey).some((field) => field.key === "payroll_deduct_amount")} /> : null}
               <Button size="sm" onClick={() => void downloadPdf()} disabled={action.kind === "busy"}>
                 {action.kind === "busy" && action.what === "pdf" ? (
                   <Loader2 className="animate-spin" />
@@ -901,12 +906,15 @@ export function InlineForm({
                 )}
                 Download PDF
               </Button>
+              {/* ASD_NO_FORM_MONITORING: no link into a page the reader cannot open. */}
+              {!asdNoFormMonitoringEnabled() || can("view_form_monitoring") ? (
               <Button variant="secondary" size="sm" asChild>
                 <Link href="/forms/monitoring">
                   <ExternalLink />
                   View in Form Monitoring
                 </Link>
               </Button>
+              ) : null}
               {onStartAnother ? (
                 <Button variant="ghost" size="sm" onClick={onStartAnother}>
                   <Plus />

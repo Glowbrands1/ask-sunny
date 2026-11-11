@@ -13,6 +13,8 @@
     "test": "vitest run",
     "export:feedback-replay": "node --experimental-strip-types --no-warnings=ExperimentalWarning scripts/export-feedback-replay.mts",
     "test:watch": "vitest",
+    "eval": "vitest run --config vitest.eval.config.mts",
+    "variation-report": "VARIATION_APP=ask-sunny vitest run --config vitest.variation.config.mts",
     "dry-run:comp-sales": "vitest run src/lib/reporting/real-workbook.dry-run.test.ts --disableConsoleIntercept",
     "bootstrap:admin": "node scripts/bootstrap-admin.mjs",
     "dry-run:bed-spa": "vitest run src/lib/reporting/bed-spa.dry-run.test.ts --disableConsoleIntercept",
@@ -26,6 +28,7 @@
     "test:local-stack": "bash -c 'set -a && . ${LOCAL_STACK_DIR:-/tmp/ask-sunny-local-stack}/env && set +a && vitest run --no-file-parallelism src/lib/auth/revocation.local-stack.test.ts src/lib/employees/woven/access/access.local-stack.test.ts src/lib/admin/adoption.local-stack.test.ts src/lib/reviews/month-to-date.local-stack.test.ts src/lib/reviews/posted-date.local-stack.test.ts src/lib/employees/woven/access/lifecycle.local-stack.test.ts'"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "3.0.138",
     "@anthropic-ai/sdk": "^0.122.0",
     "@radix-ui/react-accordion": "^1.2.20",
     "@radix-ui/react-avatar": "^1.2.6",
@@ -44,6 +47,7 @@
     "@radix-ui/react-tooltip": "^1.2.16",
     "@supabase/ssr": "^0.12.6",
     "@supabase/supabase-js": "^2.112.4",
+    "ai": "6.0.322",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "exceljs": "^4.4.0",

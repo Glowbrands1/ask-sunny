@@ -24,6 +24,7 @@ import { isProposalSuperseded } from "@/lib/forms/proposal-continuation";
 import type { ChatFormInstanceRef, ChatFormProposal, ChatMessage } from "@/types";
 import { chatErrorTitle } from "./chat-error";
 import { FormPicker } from "./form-picker";
+import { CardChangePanel } from "./card-change-panel";
 import { logTurnEvent } from "@/lib/analytics/telemetry";
 import { reusedDraftNotice } from "@/lib/forms/reused-draft-notice";
 
@@ -101,11 +102,12 @@ export function MessageBubble({
      */
     return (
       <div className="flex items-start justify-end gap-3">
-        <div className="max-w-[44ch] rounded-[var(--radius-lg)] border border-border bg-surface px-4 py-3 shadow-soft">
-          <p className="text-[13.5px] leading-relaxed whitespace-pre-wrap text-foreground">
+        {/* CLAY: the manager's question is a yellow pillow, as in the mockup. */}
+        <div className="clay-bubble-user max-w-[44ch] rounded-[26px] px-[18px] py-3.5">
+          <p className="text-[14px] leading-relaxed font-semibold whitespace-pre-wrap">
             {message.content}
           </p>
-          <p className="mt-1.5 text-[9.5px] text-muted-foreground">
+          <p className="mt-1.5 text-[9.5px] text-gold-deep">
             {formatChatTime(message.createdAt)}
           </p>
         </div>
@@ -156,7 +158,8 @@ export function MessageBubble({
       <span className="mt-0.5 grid size-[30px] shrink-0 place-items-center rounded-full bg-brand-yellow">
         <SunMark className="size-[19px]" onBrand />
       </span>
-      <div className="min-w-0 max-w-[78ch] flex-1">
+      {/* CLAY: Sunny's answer sits on a puffy warm card, as in the mockup. */}
+      <div className="clay-bubble-sunny min-w-0 max-w-[78ch] flex-1 rounded-[26px] px-5 py-4">
         <div>
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <span className="display text-[16px] text-foreground">Sunny</span>
@@ -212,6 +215,7 @@ export function MessageBubble({
               />
             </FormRevisionsMount>
           ) : null}
+          <CardChangePanel proposal={message.formProposal} created={Boolean(message.formInstanceRef)} conversation={conversation ?? []} placeLabel="Salon" onSend={onSuggestion} />
 
           {/*
             A CONVERSATION FROM BEFORE PHASE 2.
@@ -298,7 +302,7 @@ export function MessageBubble({
                   type="button"
                   onClick={() => onSuggestion(suggestion)}
                   className={cn(
-                    "rounded-[22px] border bg-surface px-3.5 py-[7px] text-left text-[11.5px] font-bold transition-colors",
+                    "rounded-[22px] border bg-surface px-3.5 py-[7px] text-left text-[11.5px] font-bold shadow-chip transition-[color,background-color,transform] hover:-translate-y-px",
                     buildsForm
                       ? "border-measure-data text-measure-flagged-foreground hover:bg-followup-attention-soft"
                       : "border-border-strong text-foreground hover:border-brand-yellow",

@@ -1,16 +1,49 @@
 import { NextResponse } from "next/server";
+import { salesResultsOffenseLine, withCaChosenRule } from "@/lib/ai/ca-sales-prompt-lines";
+import { noteSpendUser } from "@/lib/ai/spend-meter";
+import { withSpendMeter } from "@/lib/ai/spend-meter-run";
 
+import { typoReadingText } from "@/lib/ai/typo-reading-copy";
+import { protectedNameWords } from "@/lib/ai/typo-name-words";
+import { accountOnlyRules, policyQueryNotes, withoutInventedDetail } from "@/lib/forms/account-only-policy-query";
 import { getAnthropicClient } from "@/lib/ai/anthropic";
 import { flaggedCitationWrite } from "@/lib/ai/policy-citation-fields";
 import {
   actionPlanManagerOnlyEnabled,
   actionPlanSentencesEnabled,
+  attendanceActionPlanEnabled,
+  hideNoPolicyMatchNoticeEnabled,
   attendancePolicyCitationEnabled,
   draftMergeEnabled,
+  draftNeverBlankEnabled,
   payrollAmountFieldEnabled,
   policyCitationEnabled,
   policyPageRequiredEnabled,
+  policySpecificTopicsEnabled,
+  grammarAskNotAccountEnabled,
+  sameFormCopyEnabled,
+  sameFormCopyNewPersonEnabled,
+  typoReadingRoutesEnabled,
+  cardPolicyToDraftEnabled,
+  formPatchReducerEnabled,
+  draftWriteNeverSilentEnabled,
+  formEditSingleWriterEnabled,
+  teamCardWordingEnabled,
+  cardPolicyLabelEnabled,
+  caProcedureBasisEnabled,
+  caSalesPolicyEnabled,
+  priorActionsNoSignedEnabled,
+  secondRequestOwnAccountEnabled,
+  proposalMakeItAboutEnabled,
+  proposalPolicySetAsideEnabled,
+  sameRequestOtherPersonEnabled,
+  coachingObservedSavedEnabled,
 } from "@/lib/config/chat-quality-flags";
+import { notesMadeAbout } from "@/lib/ai/make-it-about";
+import { withoutPolicyReferenceTurns } from "@/lib/ai/policy-reference-turn";
+import { NOTHING_SET_ASIDE, policiesSetAside, setAsideAnything, valuesWithPolicySetAside, withoutPolicyTakeOff } from "@/lib/forms/policy-set-aside";
+import { withoutAsksToTheApp } from "@/lib/ai/asks-to-the-app";
+import { withoutAppInstructions } from "@/lib/ai/app-instructions";
 import { AiError } from "@/lib/ai/errors";
 import {
   assertLiveMode,
@@ -20,6 +53,7 @@ import {
 } from "@/lib/api/respond";
 import { ACTIVE_BRAND } from "@/lib/brand";
 import { CLAUDE_MAX_TOKENS, CLAUDE_MODEL } from "@/lib/config/models";
+import { currentFormRequestText } from "@/lib/forms/current-request";
 import { authorizeInstance, InstanceNotVisibleError } from "@/lib/forms/instance-scope";
 import { readPriorFormsOnFile } from "@/lib/forms/prior-forms";
 import {
@@ -92,12 +126,17 @@ import {
 import {
   approvedManualConfirmed,
   boxSectionNames,
+  headingKey as manualHeadingKey,
+  OFFENSE_MANUAL_SECTIONS,
+  sectionHeadingsFor,
   isApprovedPolicyManualTitle,
   manualSectionsFor,
   officialManualProvenance,
+  type ManualSection,
   unconfirmedManualNotice,
 } from "@/lib/forms/official-policy-manual";
 import { manualGroundedPolicies, policyFieldValue } from "@/lib/forms/policy-citation";
+import { cardPolicyPhrase } from "@/lib/forms/card-policy";
 import {
   EPP_POLICY_REFERENCE_KEY,
   EPP_POLICY_RULES,
@@ -130,13 +169,16 @@ import {
   withConductOffense,
   withStatedOffense,
 } from "@/lib/forms/ca-policy";
-import { listFormDates, priorStepDate } from "@/lib/forms/form-date-answer";
+import { CA_SALES_POLICY_RULE, withSalesOffense } from "@/lib/forms/ca-sales-policy";
+import { ATTENDANCE_POLICY, CA_REVISION_8_OFFENSE_RULE, offeredOffenseKey, withOfferedOffense } from "@/lib/forms/offense-keys";
+import { datesInText, priorStepDate } from "@/lib/forms/form-date-answer";
 import {
   SPECIFIC_SECTION_BOXES,
   describedManualChoices,
   describedManualSection,
   namedManualSection,
 } from "@/lib/forms/named-policy-section";
+import { OTHER_WRITE_IN_INSTRUCTION, specificTopic, withConductLinePage, withConductLineWording, withoutPrimedTopic } from "@/lib/forms/specific-policy-topics";
 import {
   PAYROLL_AMOUNT_KEY,
   PAYROLL_AMOUNT_STATED_KEYS,
@@ -155,6 +197,8 @@ import {
   type ActionPlanInput,
 } from "@/lib/forms/ca-action-plan";
 import { twoSentenceActionPlan } from "@/lib/forms/action-plan-sentences";
+import { attendanceActionPlan, isAttendancePlan, missedMeetingNotLateness } from "@/lib/forms/attendance-action-plan";
+import { withPayrollSentence } from "@/lib/forms/plan-payroll-sentence";
 import { managerTypedActionPlan } from "@/lib/forms/manager-action-plan";
 import {
   citeAttendanceForTardiness,
@@ -162,18 +206,36 @@ import {
   sectionsWithNameAndPage,
 } from "@/lib/forms/required-policy-citation";
 import { retainFilledFields } from "@/lib/forms/draft-merge";
+import {
+  DRAFT_RETRY_BACKOFF_MS,
+  withinDraftBudget,
+  callSaidAnything,
+  emptyCallReason,
+  holdsNarrative,
+  managerWordsObservation,
+  modelFailureReason,
+  notesHoldAccount,
+  pauseBeforeRetry,
+  readDraftedCall,
+  recordDraftOutcome,
+  type DraftedCall,
+} from "@/lib/forms/draft-never-blank";
 import { WARNING_TYPE_KEY } from "@/lib/forms/corrective-action-intake";
 import {
   COACHING_CONTEXT_RULES,
   LANGUAGE_CLEANUP_RULES,
   guardCoachingFraming,
 } from "@/lib/forms/coaching-framing";
+import { offenseBasisProperty, readOffenseBasis, withoutUnreasonedConduct, type OffenseBasis } from "@/lib/forms/ca-conduct-reason";
+import { guardOtherWriteIn } from "@/lib/forms/other-write-in";
+import { withoutRequestInObservation } from "@/lib/forms/request-observation";
 import {
   MANAGER_FOLLOW_UP_RULES,
   guardManagerFollowUp,
   hasManagerFollowUpKeys,
 } from "@/lib/forms/follow-up-observation";
 import { TEAM_SUBJECT_RULES, isTeamSubject } from "@/lib/forms/team-subject";
+import { teamCardNotes } from "@/lib/forms/whole-team-coaching";
 import { applyEmployeeName, employeeNameRules } from "@/lib/forms/employee-reference";
 import {
   LEGACY_PREVIOUS_ACTION_DATE_KEY,
@@ -190,12 +252,16 @@ import {
 const PREVIOUS_ACTION_DATE_KEY = LEGACY_PREVIOUS_ACTION_DATE_KEY;
 import { exitDetailValues, exitStatedKeys, readExitDetails } from "@/lib/forms/exit-details";
 import { businessToday } from "@/lib/business-date";
+import { updateChatTrace } from "@/lib/ai/chat-trace-store";
+import { conductLineWithoutUnderPerformance, leaveOutOtherWriteInLine, leaveOutUnderPerformanceLine } from "@/lib/ai/stale-prompt-lines";
 import {
   correctDraftedDates,
+  draftBriefDates,
   formDateBrief,
   groundedSourceWithFormDate,
   resolveFormDate,
 } from "@/lib/forms/form-date-grounding";
+import { unreadDayBrief, unreadDayNotice, unreadIncidentDay } from "@/lib/forms/unread-day-date";
 
 /**
  * POST /api/forms/instances/[id]/draft
@@ -234,6 +300,19 @@ interface DraftBody {
    * `lib/forms/chat-redraft.ts`.
    */
   keepManagerValues?: boolean;
+  /**
+   * NEXT_PUBLIC_CARD_POLICY_TO_DRAFT_ENABLED: the policy heading the card the
+   * manager pressed Create on cited ("Late Opening"). Used only where the
+   * pinned manual has that heading. See `lib/forms/card-policy.ts`.
+   */
+  cardPolicy?: string;
+  /**
+   * SAME_FORM_COPY_NEW_PERSON_ENABLED: the form the card was asked to copy
+   * ("the same draft that we did with <name>"). Re-checked: this account's
+   * own form of this template, still visible to it. See
+   * `lib/forms/same-form-copy.ts`.
+   */
+  copyFromInstanceId?: string;
 }
 
 function fieldBrief(field: FormField, variantLabel: string | null): string {
@@ -274,8 +353,15 @@ async function readOfficialPolicyManual(
   }
 }
 
+/** SPEND_GUARD_ALL_CALLS_ENABLED: this route's Claude calls are counted (`ai/spend-meter.ts`). Off, as before. */
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
+  return withSpendMeter("forms_draft", () => postFormsDraft(request, context));
+}
+
+async function postFormsDraft(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
+    /* When this request began: DRAFT_NEVER_BLANK_ENABLED stops retrying past its budget. */
+    const startedAt = Date.now();
     assertLiveMode();
     assertNoConfigurationProblems();
     const { id } = await context.params;
@@ -286,6 +372,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      * Action — at any salon, on a guessed UUID.
      */
     const { actor, loaded } = await authorizeInstance(request, id, "edit");
+    noteSpendUser(actor.id);
     assertWithinRateLimit(request, "chat");
 
     if (loaded.instance.status !== "draft") {
@@ -296,7 +383,29 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     }
 
     const body = ((await request.json().catch(() => null)) ?? {}) as DraftBody;
-    const notes = String(body.notes ?? "").trim().slice(0, 4000);
+    // GRAMMAR_ASK_NOT_ACCOUNT_ENABLED: "can you clean up my grammar …?" is no account (`ai/asks-to-the-app.ts`).
+    const sent = String(body.notes ?? "").trim().slice(0, 4000);
+    // SAME_REQUEST_OTHER_PERSON_ENABLED: "the same thing for <B>" is drafted from the earlier request, read with <B>'s name.
+    const typed = sameRequestOtherPersonEnabled()
+      ? (await import("@/lib/forms/same-request-other-person")).notesForOtherPerson({
+          notes: sent,
+          employeeName: loaded.instance.employeeName,
+          templateKey: loaded.instance.templateKey,
+          roster: await (await import("@/lib/forms/employee-roster")).loadScopedRoster(actor.scope).catch(() => []),
+        })
+      : sent;
+    // APP_INSTRUCTIONS_NOT_ACCOUNT_ENABLED: "Please word it in a professional way. I need the policy attached as well." is no account.
+    const asked = withoutAppInstructions(grammarAskNotAccountEnabled() ? withoutAsksToTheApp(typed).trim() : typed).trim();
+    // CREATE_COMMAND_POINTS_TO_CARD_ENABLED / CARD_COMPLAINT_NOT_ACCOUNT_ENABLED: "create it" or "this proposal is out of
+    // date" is no account (`ai/card-meta-turn.ts`).
+    const asTyped = (await import("@/lib/ai/card-meta-turn")).withoutCardMetaTurns(asked);
+    // TYPO_READING_ROUTES_ENABLED: the readers below see "coahed", "notcie", "amont" as the words they can only be.
+    const read = typoReadingRoutesEnabled() ? typoReadingText(asTyped, await protectedNameWords()) : asTyped;
+    // PROPOSAL_MAKE_IT_ABOUT_ENABLED: "make it about showing up late …" makes "Showing up late." the account from that turn on (`ai/make-it-about.ts`).
+    const about = proposalMakeItAboutEnabled() ? notesMadeAbout(read) : read;
+    // PROPOSAL_POLICY_SET_ASIDE_ENABLED: a policy the manager took off stays off the draft, and the take-off sentence is no account (`forms/policy-set-aside.ts`).
+    const setAside = proposalPolicySetAsideEnabled() ? policiesSetAside(about.split(/\n{2,}/)) : NOTHING_SET_ASIDE;
+    const notes = setAsideAnything(setAside) ? withoutPolicyTakeOff(about.split(/\n{2,}/)).join("\n\n") : about;
     if (notes.length < 10) {
       throw new AiError(
         "bad_request",
@@ -332,7 +441,16 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       const amount = payrollAmountFromConversation([{ role: "user", content: notes }], {
         payrollAnswer,
       });
-      if (amount) {
+      // FORM_EDIT_SINGLE_WRITER_ENABLED: each stated-facts write through the one writer (`lib/forms/form-write.ts`).
+      if (amount && formEditSingleWriterEnabled()) {
+        await (await import("@/lib/forms/form-write")).statedWrite(
+          id,
+          { values: { [PAYROLL_AMOUNT_KEY]: amount }, checked: {} },
+          actor.id,
+          PAYROLL_AMOUNT_STATED_KEYS,
+          { notes },
+        );
+      } else if (amount) {
         await applyStatedFacts(
           id,
           { values: { [PAYROLL_AMOUNT_KEY]: amount }, checked: {} },
@@ -342,11 +460,19 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       }
     }
     const statedFacts = changeKind
-      ? await applyStatedFacts(
-          id,
-          statedFactValues(readEmploymentChange([notes], businessToday())),
-          actor.id,
-        )
+      ? formEditSingleWriterEnabled()
+        ? await (await import("@/lib/forms/form-write")).statedWrite(
+            id,
+            statedFactValues(readEmploymentChange([notes], businessToday())),
+            actor.id,
+            undefined,
+            { notes },
+          )
+        : await applyStatedFacts(
+            id,
+            statedFactValues(readEmploymentChange([notes], businessToday())),
+            actor.id,
+          )
       : [];
 
     const document = loaded.version.document;
@@ -367,6 +493,70 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     );
     if (fields.length === 0 && groups.length === 0 && lists.length === 0) {
       return NextResponse.json({ values: {}, checked: {}, withheld: [], notice: null, statedFacts });
+    }
+
+    /*
+     * SAME_FORM_COPY_NEW_PERSON_ENABLED: the card names the form it copies
+     * (asked for before this person was named), so the copy comes from that
+     * form, never from re-reading the card's wording.
+     */
+    if (sameFormCopyEnabled() && sameFormCopyNewPersonEnabled() && typeof body.copyFromInstanceId === "string") {
+      const copy = await import("@/lib/forms/same-form-copy");
+      const source = await copy.ownCopySourceById({
+        actor,
+        instanceId: body.copyFromInstanceId,
+        templateKey: loaded.instance.templateKey,
+        targetInstanceId: id,
+        targetEmployeeName: loaded.instance.employeeName,
+      });
+      if (source) {
+        const copied = await copy.copyFormContent({ source, target: loaded, actorId: actor.id, notes });
+        if (Object.keys(copied.values).length > 0 || Object.keys(copied.checked).length > 0) {
+          return NextResponse.json({
+            values: copied.values,
+            checked: copied.checked,
+            withheld: [],
+            notice: copy.copiedNotice(source.instance),
+            statedFacts,
+          });
+        }
+      }
+    }
+    /*
+     * "DO THE SAME COACHING FORM FOR <ANOTHER PERSON>" (SAME_FORM_COPY_ENABLED).
+     * The content of the manager's own earlier form of this template, name
+     * swapped, instead of a draft from a conversation that never held it. No
+     * model call. See `lib/forms/same-form-copy.ts`.
+     */
+    if (sameFormCopyEnabled()) {
+      const copy = await import("@/lib/forms/same-form-copy");
+      /*
+       * Only the card's own request asks for a copy — the last turn of the
+       * notes (live check B2, 31 Oct 2026: "create a coaching form for remy
+       * calder" after an earlier "Do the same coaching form for remy calder"
+       * in the same chat was copied too).
+       */
+      if (copy.asksForSameForm(copy.requestTurn(notes))) {
+        const source = await copy.findOwnCopySource({
+          actor,
+          templateKey: loaded.instance.templateKey,
+          targetInstanceId: id,
+          targetEmployeeName: loaded.instance.employeeName,
+          text: notes,
+        });
+        if (source) {
+          const copied = await copy.copyFormContent({ source, target: loaded, actorId: actor.id, notes });
+          if (Object.keys(copied.values).length > 0 || Object.keys(copied.checked).length > 0) {
+            return NextResponse.json({
+              values: copied.values,
+              checked: copied.checked,
+              withheld: [],
+              notice: copy.copiedNotice(source.instance),
+              statedFacts,
+            });
+          }
+        }
+      }
     }
 
     /*
@@ -408,13 +598,21 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      * lines. Anything the manager did not say stays blank.
      */
     const exitStatedFacts = isExitForm
-      ? await applyStatedFacts(
-          id,
-          exitDetailValues(readExitDetails(notes, businessToday())),
-          actor.id,
-          // EXIT_INTAKE_FIX_ENABLED adds the Permanent Address the manager typed.
-          exitStatedKeys(),
-        )
+      ? formEditSingleWriterEnabled()
+        ? await (await import("@/lib/forms/form-write")).statedWrite(
+            id,
+            exitDetailValues(readExitDetails(notes, businessToday())),
+            actor.id,
+            exitStatedKeys(),
+            { notes },
+          )
+        : await applyStatedFacts(
+            id,
+            exitDetailValues(readExitDetails(notes, businessToday())),
+            actor.id,
+            // EXIT_INTAKE_FIX_ENABLED adds the Permanent Address the manager typed.
+            exitStatedKeys(),
+          )
       : [];
 
     /*
@@ -438,14 +636,33 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       variantKey,
     });
 
-    const progression = governance.governed
-      ? await new SupabaseKnowledgeProvider()
-          .fetchRoleGrounding(
-            PERFORMANCE_MANAGEMENT_FRAMEWORK,
-            ACTIVE_BRAND.knowledgeScopeId,
-          )
-          .catch(() => null)
+    const readFramework = () =>
+      new SupabaseKnowledgeProvider()
+        .fetchRoleGrounding(
+          PERFORMANCE_MANAGEMENT_FRAMEWORK,
+          ACTIVE_BRAND.knowledgeScopeId,
+        )
+        .catch(() => null);
+    let progression = governance.governed
+      ? await readFramework()
       : null;
+    /*
+     * DRAFT_NEVER_BLANK_ENABLED: a framework read that failed (a timeout or a
+     * dropped connection under load reads as `null` here) is tried again,
+     * after 1 s and then 3 s, before the draft is withheld for want of it.
+     */
+    let frameworkReads = 1;
+    while (
+      draftNeverBlankEnabled() &&
+      governance.governed &&
+      (progression === null || !progression.ok) &&
+      frameworkReads <= DRAFT_RETRY_BACKOFF_MS.length &&
+      withinDraftBudget(startedAt)
+    ) {
+      await pauseBeforeRetry(DRAFT_RETRY_BACKOFF_MS[frameworkReads - 1]!);
+      frameworkReads += 1;
+      progression = await readFramework();
+    }
 
     /*
      * FAILS CLOSED, AND THE FORM STAYS USABLE.
@@ -459,6 +676,18 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      * unavailable state rather than a 500, so this branch covers both.
      */
     if (governance.governed && (progression === null || !progression.ok)) {
+      /* Not silent either (DRAFT_NEVER_BLANK_ENABLED): why nothing was drafted. */
+      if (draftNeverBlankEnabled()) {
+        await recordDraftOutcome(id, actor.id, {
+          attempts: frameworkReads,
+          reasons: [
+            progression === null ? "framework_read_failed" : "framework_unavailable",
+            ...(frameworkReads <= DRAFT_RETRY_BACKOFF_MS.length && !withinDraftBudget(startedAt)
+              ? ["time_budget_exceeded"]
+              : []),
+          ],
+        });
+      }
       return NextResponse.json({
         values: {},
         checked: {},
@@ -511,12 +740,20 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      * would turn a coaching document into a policy review, and the value is
      * derived by this route rather than written by the model either way.
      */
+    /*
+     * SECOND_REQUEST_OWN_ACCOUNT_ENABLED (QA's audit, 7 Nov 2026): the policy is read from the request this form is
+     * for, never the whole chat. A second Corrective Action for the same person ("I need another corrective action
+     * for <A>, his cash drawer was short") was drafted with the first request's policy (Late Opening) as its Policy
+     * Violated. Only the policy reads below use it; payroll, exit and every other reader keep the notes as sent.
+     */
+    const policyNotes = secondRequestOwnAccountEnabled() ? currentFormRequestText(notes) : notes;
     const wantsEppPolicy = fields.some((field) => field.key === EPP_POLICY_REFERENCE_KEY);
     const needsPolicy = fields.some(
       (field) => field.policyGrounded && field.key !== EPP_POLICY_REFERENCE_KEY,
     );
     const grounding = needsPolicy
-      ? await groundPolicy(`${body.topic ?? ""} ${notes}`.trim())
+      ? // ACCOUNT_ONLY_POLICY_QUERY_ENABLED: "yes payroll deduct" and "$25" do not choose the policy.
+        await groundPolicy(`${body.topic ?? ""} ${policyQueryNotes(policyNotes)}`.trim())
       : { passages: [], sources: [], unverified: false, reason: null };
 
     /*
@@ -549,13 +786,15 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      * version whose Type of Offense offers the box and that has the policy
      * field. See `ca-policy.ts`.
      */
+    /* The version's own Type of Offense keys (revision 8 replaced several; see `offense-keys.ts`). */
+    const offenseOffered = groups.find((group) => group.key === "offense_type")?.options.map((option) => option.key) ?? [];
     const offersConductPolicy =
       fields.some((field) => field.key === "policy_language") &&
       groups.some(
         (group) =>
           group.key === "offense_type" && group.options.some((option) => option.key === STANDARDS_OF_CONDUCT),
       );
-    const caPolicy = offersConductPolicy ? readCaPolicy(notes) : null;
+    const caPolicy = offersConductPolicy ? readCaPolicy(policyNotes) : null;
     /*
      * A POLICY THE MANAGER NAMED BY THE MANUAL'S OWN HEADING — "violating
      * visitors at work policy" is the manual's Visitors in the Workplace
@@ -564,10 +803,25 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      * under the box that section is cited under. Only when no policy
      * `ca-policy.ts` knows by name was stated. See `named-policy-section.ts`.
      */
-    const namedSection =
-      caPolicy && caPolicy.stated === null && manual.ok
-        ? namedManualSection({ text: notes, chunks: manual.chunks })
+    /*
+     * THE POLICY THE CARD CITED (NEXT_PUBLIC_CARD_POLICY_TO_DRAFT_ENABLED, QA
+     * live check, 3 Nov 2026): the card read "Late Opening p.15" and the draft
+     * made from it "Attendance p.14". Where the pinned manual has the card's
+     * heading, it is the policy named — over the account's own reading.
+     */
+    const cardHeading =
+      caPolicy && manual.ok && cardPolicyToDraftEnabled() && typeof body.cardPolicy === "string" && body.cardPolicy.trim()
+        ? namedManualSection({ text: cardPolicyPhrase(body.cardPolicy), chunks: manual.chunks })
         : null;
+    // Only where it ticks the box the manager's own words tick, or they tick none: a card's generic
+    // "Attendance" never turns a missed meeting (Absenteeism) into Tardiness.
+    const ownKeys = cardHeading && caPolicy ? statedOffenseKeys(caPolicy, policyNotes) : null;
+    const cardSection = cardHeading && (!ownKeys || ownKeys.includes(cardHeading.offenseKey)) ? cardHeading : null;
+    const namedSection =
+      cardSection ??
+      (caPolicy && caPolicy.stated === null && manual.ok
+        ? namedManualSection({ text: policyNotes, chunks: manual.chunks })
+        : null);
     /*
      * NO POLICY NAMED, BUT ONE DESCRIBED — "talking on her cell phone" is the
      * manual's Cell Phone/Smart Watch Policy (District Manager feedback, 21
@@ -579,7 +833,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      */
     const describedSection =
       caPolicy && caPolicy.stated === null && !namedSection && manual.ok
-        ? describedManualSection({ text: notes, chunks: manual.chunks })
+        ? describedManualSection({ text: policyNotes, chunks: manual.chunks })
         : null;
     /*
      * A MEETING NOT ATTENDED, WHERE THE MANUAL SAYS WHAT THAT IS — its
@@ -605,7 +859,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      */
     const describedChoices =
       caPolicy && caPolicy.stated === null && !namedSection && !describedSection && !eventSection && manual.ok
-        ? describedManualChoices({ text: notes, chunks: manual.chunks })
+        ? describedManualChoices({ text: policyNotes, chunks: manual.chunks })
         : null;
 
     /*
@@ -655,6 +909,20 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       loaded.instance.layoutFamily === "corrective"
         ? resolveFormDate(loaded.instance.formDate)
         : null;
+    /*
+     * UNREAD_DAY_NOT_INCIDENT_DATE_ENABLED: "she was late last week", no date
+     * read, the form left at today — today is not the incident's date, and is
+     * not treated as one the manager gave. See `unread-day-date.ts`.
+     */
+    const unreadDay = resolvedFormDate
+      ? unreadIncidentDay({
+          notes,
+          incidentDates: draftBriefDates(notes, businessToday()),
+          formDate: loaded.instance.formDate,
+          today: businessToday(),
+        })
+      : null;
+    const narrativeFormDate = unreadDay ? null : resolvedFormDate;
 
     /*
      * The narrative fields, named once: the date correction runs on exactly
@@ -670,7 +938,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      * spellings travel with the notes — and a correctly-written date can no
      * longer cost the sentence around it.
      */
-    const groundingSource = groundedSourceWithFormDate(notes, resolvedFormDate);
+    const groundingSource = groundedSourceWithFormDate(notes, narrativeFormDate);
 
     /*
      * THE PLAN-OF-ACTION CONTRACT IS CONDITIONAL, and the condition is the
@@ -688,7 +956,19 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      */
     const hasPriorActions = fields.some((field) => field.key === PRIOR_ACTIONS_KEY);
     const PRIOR_ACTIONS_RULES = [
-      `The field ${PRIOR_ACTIONS_KEY} lists every coaching or corrective action the employee PREVIOUSLY received, as the manager described it — one per line, each written as "<what it was> — signed <MM/DD/YYYY>".`,
+      /*
+       * PRIOR_ACTIONS_NO_SIGNED_ENABLED (QA, a location manager's chat in the sibling app, 5 Nov 2026): the line
+       * format asked for "signed", so the model wrote it for steps nobody signed. On, the format has the plain
+       * date and "signed" is written only where the manager said so. Off, as before.
+       */
+      ...(priorActionsNoSignedEnabled()
+        ? [
+            `The field ${PRIOR_ACTIONS_KEY} lists every coaching or corrective action the employee PREVIOUSLY received, as the manager described it — one per line, each written as "<what it was> — <MM/DD/YYYY>".`,
+            'Never write "signed" on this list unless the manager said that step was signed; then write "<what it was> — signed <MM/DD/YYYY>".',
+          ]
+        : [
+            `The field ${PRIOR_ACTIONS_KEY} lists every coaching or corrective action the employee PREVIOUSLY received, as the manager described it — one per line, each written as "<what it was> — signed <MM/DD/YYYY>".`,
+          ]),
       "List only steps and dates the manager actually gave. Never invent a prior step or a date; a step whose date the manager did not give is listed without one.",
       `If the manager said this is the first occurrence, write "${NO_PRIOR_ACTION}". If they said nothing about history, leave it empty.`,
       "A behaviour that happened again is not a prior coaching or corrective action.",
@@ -760,6 +1040,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
        * text being written in the first place.
        */
       ...(needsPolicy ? POLICY_SEPARATION_RULES : []),
+      // ACCOUNT_ONLY_POLICY_QUERY_ENABLED: no role, shift or opening the manager did not write.
+      ...accountOnlyRules(),
       /*
        * THE CHEAPEST OF THE THREE DATE FIXES, and the only one that prevents
        * rather than repairs: a model told the date does not invent one.
@@ -770,7 +1052,11 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
        * and the model was told the form's date was the only one to write.
        */
       ...(resolvedFormDate
-        ? [formDateBrief(resolvedFormDate, listFormDates(notes, businessToday()).map((found) => found.iso))]
+        ? [
+            unreadDay
+              ? unreadDayBrief(resolvedFormDate, unreadDay)
+              : formDateBrief(resolvedFormDate, draftBriefDates(notes, businessToday()), notes),
+          ]
         : []),
       /*
        * THE PLAN OF ACTION — three beats, in order, and nothing else.
@@ -858,7 +1144,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
             "Each plan you do write is one or two sentences, tied to what the manager described and to the objective printed beside the category. No dates, no disciplinary step, no quoted policy wording.",
           ]
         : []),
-      ...(governance.governed ? PERFORMANCE_MANAGEMENT_DRAFT_RULES : []),
+      // CA_SALES_POLICY_ENABLED (Pau, 5 Nov 2026): one added rule after the lowest-rung rule. Off, the rules are as before.
+      ...withCaChosenRule(governance.governed ? PERFORMANCE_MANAGEMENT_DRAFT_RULES : []),
       /*
        * THE EPP'S OWN RULES, on the versions that have the appendix field.
        * They say what a performance plan IS — coaching, not a warning — and
@@ -899,7 +1186,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       loaded.instance.locationName ? `LOCATION: ${loaded.instance.locationName}` : "",
       "",
       "WHAT THE MANAGER DESCRIBED:",
-      notes,
+      // TEAM_CARD_WORDING_ENABLED: on a team card, "for the whole salon" is who it is for, not what happened (QA, 3 Nov 2026).
+      // POLICY_REFERENCE_NOT_ACCOUNT_ENABLED: "you can reference the standards of conduct for a policy" is no account.
+      withoutPolicyReferenceTurns(teamSubject && teamCardWordingEnabled() ? teamCardNotes(notes) : notes),
       progressionBlock,
       policyBlock,
       /*
@@ -936,18 +1225,36 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
        * things on the document, and ticking one without filling the other
        * prints a ticked box with no label beside it.
        */
-      promptGroups.some((group) => group.options.some((option) => option.key === "other"))
-        ? 'When no listed option fits, tick "other" AND name the topic in the matching write-in field — for lateness that write-in is "Punctuality".'
+      // STALE_PROMPT_LINES_OFF_ENABLED: left out when this version has no write-in beside Other (`stale-prompt-lines.ts`). Off, as before.
+      promptGroups.some((group) => group.options.some((option) => option.key === "other")) && !leaveOutOtherWriteInLine(fields)
+        ? policySpecificTopicsEnabled()
+          ? OTHER_WRITE_IN_INSTRUCTION
+          : 'When no listed option fits, tick "other" AND name the topic in the matching write-in field — for lateness that write-in is "Punctuality".'
         : "",
-      offersConductPolicy
+      // STALE_PROMPT_LINES_OFF_ENABLED: with no under_performance box, the line's first sentence alone. Off, as before.
+      offersConductPolicy && leaveOutUnderPerformanceLine(offenseOffered)
+        ? conductLineWithoutUnderPerformance(STANDARDS_OF_CONDUCT)
+        : offersConductPolicy
         ? `Type of Offense: assigned work, a required deadline, or required Woven items or training not completed, and a manager's direction not followed, are ${STANDARDS_OF_CONDUCT}. under_performance is for results against a sales or performance target.`
         : "",
+      // CA_SALES_POLICY_ENABLED: one added line after the one above, which stays as it is. Off, nothing is added.
+      offersConductPolicy && caSalesPolicyEnabled() ? CA_SALES_POLICY_RULE : "",
+      // Revision 8 (the line above is unchanged): this form has no under_performance, tardiness or absenteeism box.
+      offersConductPolicy && offenseOffered.includes(ATTENDANCE_POLICY) && !offenseOffered.includes("under_performance")
+        ? CA_REVISION_8_OFFENSE_RULE
+        : "",
+      // CA_SALES_POLICY_ENABLED (Pau, 5 Nov 2026): a form with no under_performance box reads sales results as standards_of_conduct. Off, nothing is added.
+      offersConductPolicy ? salesResultsOffenseLine(offenseOffered) : "",
     ]
       .filter(Boolean)
       .join("\n");
 
     const client = getAnthropicClient();
-    const response = await client.messages.create({
+    /* CA_SALES_POLICY_ENABLED: the tool's optional offense_basis, and what the last call said (`ca-conduct-reason.ts`). */
+    // CA_PROCEDURE_BASIS_ENABLED (sf-b6): the basis is asked with that flag too.
+    const basisAsked = (caSalesPolicyEnabled() || caProcedureBasisEnabled()) && offersConductPolicy && offenseOffered.includes("other");
+    let offenseBasis: OffenseBasis | null = null;
+    const draftCall = () => client.messages.create({
       model: CLAUDE_MODEL,
       max_tokens: CLAUDE_MAX_TOKENS.detailed,
       system,
@@ -969,6 +1276,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
                 additionalProperties: { type: "array", items: { type: "string" } },
                 description: "Checkbox group key to the option keys that apply.",
               },
+              // CA_SALES_POLICY_ENABLED only, on a form offering Other: added, optional (`ca-conduct-reason.ts`). Off, absent.
+              ...(basisAsked ? { offense_basis: offenseBasisProperty() } : {}),
             },
             required: ["values"],
           },
@@ -976,14 +1285,56 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       ],
       tool_choice: { type: "tool", name: "write_form_fields" },
     });
+    type DraftReply = Awaited<ReturnType<typeof draftCall>>;
+    const toolCall = (reply: DraftReply) =>
+      reply.content.find(
+        (block): block is Extract<typeof block, { type: "tool_use" }> => block.type === "tool_use",
+      );
 
-    const call = response.content.find(
-      (block): block is Extract<typeof block, { type: "tool_use" }> => block.type === "tool_use",
-    );
-    const drafted = (call?.input ?? {}) as {
-      values?: Record<string, string>;
-      checked?: Record<string, string[]>;
+    /*
+     * DRAFT_NEVER_BLANK_ENABLED: the tool call read as the text and ticks it
+     * carries, whatever shape they came back in, and a model error (429, 529,
+     * overloaded) answered as a failed attempt rather than a failed draft —
+     * see `draft-never-blank.ts`. Off, exactly what the call held, and an
+     * error throws as before.
+     */
+    const neverBlank = draftNeverBlankEnabled();
+    const readCall = (input: unknown): DraftedCall =>
+      neverBlank
+        ? readDraftedCall(input, { fields: promptFields, groups: promptGroups })
+        : ((input ?? {}) as DraftedCall);
+    /* Why each attempt that wrote nothing wrote nothing, for the drafted event. */
+    const reasons: string[] = [];
+    let lastError: unknown = null;
+    const ask = async (): Promise<{ drafted: DraftedCall; failed: boolean }> => {
+      let reply: DraftReply;
+      try {
+        reply = await draftCall();
+      } catch (error) {
+        if (!neverBlank) throw error;
+        lastError = error;
+        reasons.push(modelFailureReason(error));
+        return { drafted: {}, failed: true };
+      }
+      const call = toolCall(reply);
+      const read = readCall(call?.input);
+      if (basisAsked) offenseBasis = readOffenseBasis(call?.input);
+      if (neverBlank) {
+        const empty = emptyCallReason(call?.input, read, reply.stop_reason ?? null);
+        if (empty) reasons.push(empty);
+      }
+      return { drafted: read, failed: false };
     };
+    const first = await ask();
+    let drafted = first.drafted;
+
+    /*
+     * THE PROSE GUARDS, in order, over one tool call. A function only so a
+     * retried call (DRAFT_NEVER_BLANK_ENABLED) runs through exactly the same
+     * guards; the first call's path is unchanged. The body keeps its original
+     * indentation, so the guards read (and diff) as they always have.
+     */
+    const guardDraft = (drafted: DraftedCall) => {
 
     /*
      * UNRESOLVED PLACEHOLDERS GO BEFORE ANYTHING IS STORED.
@@ -1000,6 +1351,18 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      */
     // The Corrective Action Form's Action Plan is built below, never taken from the model.
     if (fixedPlan && drafted.values) delete drafted.values[fixedPlan.key];
+    // FORM_EDIT_SINGLE_WRITER_ENABLED: the header's Employee Name is written only through the one writer, never by the drafting model.
+    if (formEditSingleWriterEnabled() && drafted.values) delete drafted.values.employee_name;
+    // ACCOUNT_ONLY_POLICY_QUERY_ENABLED: "scheduled to open" nobody wrote is the manager's words, dated.
+    if (drafted.values) {
+      drafted.values = withoutInventedDetail(drafted.values, narrativeKeys, {
+        notes,
+        managerWords: () => managerWordsObservation(notes, loaded.instance.employeeName),
+        formDate: narrativeFormDate?.long ?? null,
+        employeeName: loaded.instance.employeeName,
+        datesIn: (text) => datesInText(text, businessToday()),
+      });
+    }
     const cleaned = stripPlaceholdersFromDraft(drafted.values ?? {});
 
     /*
@@ -1027,7 +1390,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       cleaned.values,
       narrativeKeys,
       notes,
-      resolvedFormDate,
+      narrativeFormDate,
+      businessToday(),
     );
 
     const narrated = guardNarrativeDraft(dated.values, fields, groundingSource);
@@ -1055,9 +1419,11 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       { values: timeframe.values, checked: drafted.checked ?? {} },
       notes,
     );
-    const framing = isCoachingFamily
+    const framed = isCoachingFamily
       ? guardCoachingFraming({ values: followUp.values, checked: followUp.checked }, notes)
       : { values: followUp.values, checked: followUp.checked, adjusted: [] as string[], underperformanceRefused: false };
+    // OTHER_WRITE_IN_GUARD_ENABLED: a ticked "Other" gets its write-in in the manager's words, or is unticked.
+    const framing = guardOtherWriteIn(framed, notes, new Set(fields.map((field) => field.key)));
 
     /*
      * ========================================================================
@@ -1197,6 +1563,100 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
           eppPassages.map((passage) => passage.text).join(" "),
         )
       : { values: requirements.values, adjusted: [] as string[], emptied: [] as string[] };
+
+    return { cleaned, dated, narrated, timeframe, followUp, framing, groundedKeys, claims, absence, requirements, attributions };
+    };
+
+    let prose = guardDraft(drafted);
+
+    /*
+     * ========================================================================
+     * A CORRECTIVE ACTION OR COACHING DRAFT IS NEVER FILED BLANK
+     * ========================================================================
+     *
+     * DRAFT_NEVER_BLANK_ENABLED (found in the sibling app, 26 Oct 2026:
+     * `drafted` with no fields and nothing rejected). A model call that threw,
+     * answered without a tool call, or left no narrative although the notes
+     * hold an account is tried again up to twice, after 1 s and 3 s; if it is
+     * still empty, the narrative is the manager's own incident clause through
+     * the same guards; every reason is recorded. See `draft-never-blank.ts`.
+     * Off, nothing here runs.
+     */
+    const narrativeTargets = promptFields
+      .filter((field) => field.narrative === OBSERVED_EXPECTATION)
+      .map((field) => field.key);
+    const blankable =
+      (loaded.instance.layoutFamily === "corrective" || isCoachingFamily) &&
+      narrativeTargets.length > 0 &&
+      notesHoldAccount(notes, loaded.instance.employeeName);
+    const blank = (current: typeof prose) => blankable && !holdsNarrative(current.attributions.values, narrativeTargets);
+    if (blank(prose) && neverBlank && !first.failed) reasons.push("no_narrative_after_guards");
+    let attempts = 1;
+    let succeeded = !first.failed;
+    let lastFailed = first.failed;
+    while (
+      neverBlank &&
+      (lastFailed || blank(prose)) &&
+      attempts <= DRAFT_RETRY_BACKOFF_MS.length &&
+      withinDraftBudget(startedAt)
+    ) {
+      await pauseBeforeRetry(DRAFT_RETRY_BACKOFF_MS[attempts - 1]!);
+      attempts += 1;
+      const next = await ask();
+      lastFailed = next.failed;
+      if (next.failed) continue;
+      succeeded = true;
+      const nextProse = guardDraft(next.drafted);
+      if (!blank(nextProse) || !callSaidAnything(drafted)) {
+        drafted = next.drafted;
+        prose = nextProse;
+      }
+      if (blank(prose)) reasons.push("no_narrative_after_guards");
+    }
+    /* Out of time with retries left: say so, and go straight to what is in hand. */
+    if (neverBlank && (lastFailed || blank(prose)) && attempts <= DRAFT_RETRY_BACKOFF_MS.length && !withinDraftBudget(startedAt)) {
+      reasons.push("time_budget_exceeded");
+    }
+    const retried = attempts > 1;
+    let fallback: "manager_words" | null = null;
+    if (neverBlank && blank(prose)) {
+      const words = managerWordsObservation(notes, loaded.instance.employeeName);
+      if (words) {
+        const withWords: DraftedCall = { ...drafted, values: { ...(drafted.values ?? {}), [narrativeTargets[0]!]: words } };
+        const wordsProse = guardDraft(withWords);
+        if (holdsNarrative(wordsProse.attributions.values, narrativeTargets)) {
+          drafted = withWords;
+          prose = wordsProse;
+          fallback = "manager_words";
+        }
+      }
+    }
+    /*
+     * Every attempt failed and nothing could be written from the manager's
+     * words: the draft fails as it always has, and the client says so.
+     */
+    if (neverBlank && !succeeded && !fallback) throw lastError;
+
+    /*
+     * FORM_EDIT_SINGLE_WRITER_ENABLED (step 2b, ported from Ask Bubbles): THE
+     * DRAFT KEEPS THE FACTS THE MANAGER GAVE. The guarded account is read
+     * against the header's name (as the notes name her) and every date and
+     * amount the notes state — known form facts, no phrases
+     * (`lib/forms/draft-consistency.ts`). On a miss the draft is saved and the
+     * reply says what it left out: no model call, no retry. The trace gets
+     * kinds only, never the values.
+     */
+    let leftOut: string | null = null;
+    if (formEditSingleWriterEnabled() && narrativeTargets.length > 0) {
+      const consistency = await import("@/lib/forms/draft-consistency");
+      const facts = consistency.draftFacts({ employeeName: loaded.instance.employeeName, notes, today: businessToday() });
+      const labels = narrativeTargets.map((key) => promptFields.find((field) => field.key === key)?.label ?? key);
+      const missing = consistency.missingFacts(prose.attributions.values, narrativeTargets, facts);
+      if (missing.length > 0) leftOut = consistency.leftOutLine(missing, labels);
+      updateChatTrace({ draftCheck: { checked: true, missing_keys: [...new Set(missing.map((fact) => fact.kind))] } });
+    }
+    const { cleaned, dated, narrated, timeframe, followUp, framing, claims, absence, requirements, attributions } =
+      prose;
 
     /*
      * ========================================================================
@@ -1341,9 +1801,27 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       return base;
     })();
 
+    /*
+     * CA_SALES_POLICY_ENABLED (QA, live, 4 Nov 2026): an Observation the
+     * model began with the manager's request ("CA for <name> due to …") begins
+     * with the request's reason instead. Off, null. See `request-observation.ts`.
+     */
+    const observationNotRequest =
+      (loaded.instance.layoutFamily === "corrective"
+        ? withoutRequestInObservation(draftedValues, narrativeTargets[0], loaded.instance.employeeName ?? null)
+        : null) ?? draftedValues;
     const enforced = enforceResponsibilities(document, variantKey, {
-      values: priorDate ? { ...draftedValues, [PREVIOUS_ACTION_DATE_KEY]: priorDate } : draftedValues,
-      checked: exit?.checked ?? sensitive.checked,
+      values: withoutPrimedTopic(
+        priorDate ? { ...observationNotRequest, [PREVIOUS_ACTION_DATE_KEY]: priorDate } : observationNotRequest,
+        `${body.topic ?? ""} ${notes}`,
+      ),
+      /*
+       * A REMOVED BOX THE MODEL STILL NAMES (revision 8, 4 Nov 2026): "tardiness"
+       * on a form that offers Attendance Policy is ticked as Attendance Policy,
+       * rather than dropped as an unknown key. A version that offers the old
+       * box is untouched. See `offense-keys.ts`.
+       */
+      checked: withOfferedOffense(exit?.checked ?? sensitive.checked, offenseOffered),
     });
 
     /*
@@ -1368,7 +1846,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         ? describedSection
         : null);
     const statedKeys = caPolicy
-      ? (statedOffenseKeys(caPolicy, notes) ??
+      ? ((cardSection ? [cardSection.offenseKey] : null) ??
+        statedOffenseKeys(caPolicy, policyNotes) ??
         (policySection ? [policySection.offenseKey] : null))
       : null;
     const statedOffense = statedKeys
@@ -1391,7 +1870,20 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const conductOffense = conduct?.ok
       ? withConductOffense({ checked: enforced.checked, values: enforced.values })
       : null;
-    const offenseChange = statedOffense ?? conductOffense;
+    /*
+     * CA_SALES_POLICY_ENABLED: an Under Performance tick is the Standards of
+     * Conduct (client request, 4 Nov 2026), where nothing above settled the
+     * box. Off, null. See `ca-sales-policy.ts`.
+     */
+    const salesOffense =
+      caPolicy && !statedOffense && !conductOffense && caSalesPolicyEnabled()
+        ? withSalesOffense({
+            checked: enforced.checked,
+            values: enforced.values,
+            offered: groups.find((group) => group.key === "offense_type")?.options.map((option) => option.key) ?? [],
+          })
+        : null;
+    const offenseChange = statedOffense ?? conductOffense ?? salesOffense;
     const offenseChosen = offenseChange
       ? { ...enforced, values: offenseChange.values, checked: offenseChange.checked }
       : enforced;
@@ -1441,6 +1933,22 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
             },
           }
         : offenseStated;
+    /*
+     * CA_SALES_POLICY_ENABLED (Pau, 4 Nov 2026): a Standards of Conduct tick
+     * with no reason in the manager's words (a cleaning CA) moves to Other,
+     * with their words beside it. Off, null. See `ca-conduct-reason.ts`.
+     */
+    const conductReasoned =
+      withoutUnreasonedConduct({
+        draft: offenseApplied,
+        reading: caPolicy,
+        stated: statedKeys !== null,
+        offered: offenseOffered,
+        notes,
+        basis: offenseBasis,
+        specific: specificTopic(notes) !== null,
+        writeInOffered: fields.some((field) => field.key === "other_offense"),
+      }) ?? offenseApplied;
     const policyLeftForManager =
       describedChoices !== null && !(offenseApplied.checked.offense_type ?? []).some((key) => SPECIFIC_SECTION_BOXES.has(key));
 
@@ -1458,8 +1966,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const managerKeys = new Set(managerRows.map((row) => row.fieldKey));
     const managerOffense = managerRows.find((row) => row.fieldKey === "offense_type" && row.checked.length > 0);
     const validated = managerOffense
-      ? { ...offenseApplied, checked: { ...offenseApplied.checked, offense_type: [...managerOffense.checked] } }
-      : offenseApplied;
+      ? { ...conductReasoned, checked: { ...conductReasoned.checked, offense_type: [...managerOffense.checked] } }
+      : conductReasoned;
 
     /*
      * ========================================================================
@@ -1539,7 +2047,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      */
     /* The section the manager named or described, first, while the box it is cited under is still ticked. */
     const namedManual =
-      policySection && (validated.checked.offense_type ?? []).includes(policySection.offenseKey)
+      policySection &&
+      (validated.checked.offense_type ?? []).includes(offeredOffenseKey(policySection.offenseKey, offenseOffered) ?? policySection.offenseKey)
         ? policySection.section
         : null;
     const tickedSections = manual.ok
@@ -1561,9 +2070,43 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
           notes: `${body.topic ?? ""} ${notes}`,
         })
       : [];
-    const manualSections = namedManual
-      ? [namedManual, ...tickedSections.filter((section) => section.heading !== namedManual.heading)]
-      : tickedSections;
+    /*
+     * A SECTION FILED UNDER THE BOX THAT REPLACED ITS OWN (revision 8): the
+     * Cell Phone or Visitors section, once cited under Violation of Company
+     * Policies (a box with no section of its own), is now ticked under the
+     * Standards of Conduct — and is still cited ALONE, never with the
+     * Standards of Conduct's own section beside it (District Manager feedback,
+     * 21 Oct 2026). A form whose version offers the old box is untouched.
+     * Only a box with no section of its own: Late Opening, once under
+     * Tardiness (whose own section is Attendance), keeps Attendance beside it
+     * under Attendance Policy, as before (Ask Sunny: the card's Late Opening).
+     */
+    const namedUnderReplacement =
+      namedManual !== null &&
+      policySection !== null &&
+      !OFFENSE_MANUAL_SECTIONS[policySection.offenseKey] &&
+      (offeredOffenseKey(policySection.offenseKey, offenseOffered) ?? policySection.offenseKey) !== policySection.offenseKey;
+    const replacedBoxSections = namedUnderReplacement
+      ? sectionHeadingsFor({ offenseKeys: [offeredOffenseKey(policySection!.offenseKey, offenseOffered)!] }).flat()
+      : [];
+    const tickedSectionsShown = tickedSections.filter(
+      (section) => !replacedBoxSections.some((heading) => manualHeadingKey(heading) === manualHeadingKey(section.heading)),
+    );
+    /* POLICY_SPECIFIC_TOPICS_ENABLED: the further sections the same incident is cited under (Animals, then Visitors). */
+    const alsoManual: readonly ManualSection[] = namedManual && policySection && "also" in policySection ? (policySection.also ?? []) : [];
+    const manualSections = withConductLinePage(
+      namedManual
+        ? [
+            namedManual,
+            ...alsoManual.filter((section) => section.heading !== namedManual.heading),
+            ...tickedSectionsShown.filter(
+              (section) => section.heading !== namedManual.heading && !alsoManual.some((also) => also.heading === section.heading),
+            ),
+          ]
+        : tickedSections,
+      `${body.topic ?? ""} ${notes}`,
+      manual.ok ? manual.chunks : [],
+    );
 
     const derivedPolicy = applyDerivedPolicyFields({
       document,
@@ -1577,7 +2120,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
        * "Tardiness/Leaving Early — Late Opening": the section Direct policy
        * cites under a box, where it is not the box's own.
        */
-      sectionNames: boxSectionNames(manualSections.map((section) => section.heading)),
+      sectionNames: boxSectionNames(
+        manualSections.map((section) => section.heading),
+        offenseOffered.includes(ATTENDANCE_POLICY) ? offenseOffered : undefined,
+      ),
       /*
        * THE MANUAL'S OWN WORDING FOR EACH TICKED SECTION, THEN ITS SOURCE —
        * "Source: JBA Policy Manual — Dress Code for The Company, p. 15" — every
@@ -1585,7 +2131,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
        */
       manualReference:
         manual.ok && manualSections.length > 0
-          ? policyFieldValue(manualGroundedPolicies(manual, manualSections))
+          ? policyFieldValue(
+              withConductLineWording(manualGroundedPolicies(manual, manualSections), `${body.topic ?? ""} ${notes}`, manual.chunks),
+            )
           : null,
       manualAmbiguous: !manual.ok && manual.problem === "ambiguous",
       /*
@@ -1795,7 +2343,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const managerOnlyPlan = fixedPlan !== null && actionPlanManagerOnlyEnabled();
     if (managerOnlyPlan && !keeps(fixedPlan.key)) {
       const typed = managerTypedActionPlan(notes);
-      if (typed) {
+      if (typed && formEditSingleWriterEnabled()) {
+        await (await import("@/lib/forms/form-write")).statedWrite(id, { values: { [fixedPlan.key]: typed }, checked: {} }, actor.id, new Set([fixedPlan.key]), { notes });
+      } else if (typed) {
         await applyStatedFacts(id, { values: { [fixedPlan.key]: typed }, checked: {} }, actor.id, new Set([fixedPlan.key]));
       }
     }
@@ -1804,9 +2354,16 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         ? {
             values: {
               ...named.values,
-              [fixedPlan.key]: actionPlanSentencesEnabled()
-                ? twoSentenceActionPlan(planInput)
-                : correctiveActionPlan(planInput),
+              // PLAN_PAYROLL_SENTENCE_ENABLED: the deduction the manager stated is said in the plan.
+              [fixedPlan.key]: withPayrollSentence(
+                // MEETING_NOT_LATENESS_PLAN_ENABLED: a missed meeting keeps the general plan.
+                attendanceActionPlanEnabled() && isAttendancePlan(planInput) && !missedMeetingNotLateness(notes)
+                  ? attendanceActionPlan(planInput)
+                  : actionPlanSentencesEnabled()
+                    ? twoSentenceActionPlan(planInput)
+                    : correctiveActionPlan(planInput),
+                { answer: planInput.payroll.answer, amount: payrollDeductAmount(notes), employeeName: loaded.instance.employeeName },
+              ),
             },
             provenance: { ...provenance, [fixedPlan.key]: actionPlanProvenance(planInput) },
           }
@@ -1830,6 +2387,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
           templateKey: loaded.instance.templateKey,
           values: planned.values,
           notes,
+          // CA_SALES_POLICY_ENABLED: the Direct policy fill follows the ticked Type of Offense.
+          ticked: validated.checked.offense_type ?? [],
           chunks: manual.ok ? manual.chunks : [],
           manual: manual.ok
             ? {
@@ -1848,20 +2407,29 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
             attendance: attendanceOn,
             pageRequired: pageOn,
             values: cited.values,
-            sections: (() => {
-              const reading = readCaPolicy(notes);
-              const keys = statedOffenseKeys(reading, notes) ?? describedAttendanceKeys(notes) ?? [];
-              const resolved = manualSectionsFor({ chunks: manual.chunks, offenseKeys: keys, notes });
+            /*
+             * CARD_POLICY_LABEL_ENABLED (QA live check, 3 Nov 2026): with the card's
+             * section in force, Direct policy quoted Late Opening p.15 and this line
+             * still read "Attendance Policy, JBA Policy Manual p.14". The line now
+             * cites the sections the quote cites, the card's first.
+             */
+            sections: cardSection && cardPolicyLabelEnabled() && manualSections.some((section) => section.page > 0)
+              ? manualSections
+              : (() => {
+              // SECOND_REQUEST_OWN_ACCOUNT_ENABLED: this line cites the request this form is for (policyNotes).
+              const reading = readCaPolicy(policyNotes);
+              const keys = statedOffenseKeys(reading, policyNotes) ?? describedAttendanceKeys(policyNotes) ?? [];
+              const resolved = manualSectionsFor({ chunks: manual.chunks, offenseKeys: keys, notes: policyNotes });
               const withAttendance = citeAttendanceForTardiness({
                 enabled: attendanceOn,
-                notes,
+                notes: policyNotes,
                 chunks: manual.chunks,
                 sections: resolved,
               });
               if (!pageOn) return withAttendance;
               const required = sectionsWithNameAndPage({
                 enabled: true,
-                notes,
+                notes: policyNotes,
                 chunks: manual.chunks,
                 offenseKeys: keys,
               });
@@ -1882,6 +2450,17 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         ),
       ),
     };
+    if (setAsideAnything(setAside)) draftedPayload.values = valuesWithPolicySetAside(draftedPayload.values, setAside);
+    // COACHING_OBSERVED_SAVED_ENABLED: the saved coaching Details always have an "Observed:" with the account (`lib/forms/coaching-observed-saved.ts`).
+    if (coachingObservedSavedEnabled()) {
+      draftedPayload.values = (await import("@/lib/forms/coaching-observed-saved")).withCoachingObservedSaved({
+        values: draftedPayload.values,
+        narrativeKeys: narrativeTargets,
+        coaching: isCoachingFamily,
+        notes,
+        employeeName: loaded.instance.employeeName,
+      }) as typeof draftedPayload.values;
+    }
     const kept = draftMergeEnabled()
       ? retainFilledFields({
           question: notes,
@@ -1890,12 +2469,72 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
           checked: draftedPayload.checked,
         })
       : draftedPayload;
-    const guarded = await applyAssistantDraft(
-      id,
-      kept,
-      actor.id,
-      { ...planned.provenance, ...cited.provenance },
-    );
+    const writtenProvenance: Record<string, Record<string, unknown>> = { ...planned.provenance, ...cited.provenance };
+    /*
+     * FORM_PATCH_REDUCER_ENABLED: the same draft, merged by the reducer — only
+     * what changes is written, a typed line is kept, Prior Actions are united.
+     * See `lib/forms/form-reducer-draft.ts`.
+     */
+    // FORM_EDIT_SINGLE_WRITER_ENABLED reduces the same draft (the one writer's redraft preset).
+    const reduced = formPatchReducerEnabled() || formEditSingleWriterEnabled()
+      ? await (await import("@/lib/forms/form-reducer-draft")).reduceDraftWrite({
+          id,
+          values: kept.values,
+          checked: kept.checked,
+          typedExempt: new Set(derivedPolicy.derived.filter((key) => DERIVED_POLICY_FIELD_KEYS.has(key))),
+          notes,
+          actorId: actor.id,
+        })
+      : null;
+    const draftProvenanceWritten = fallback
+      ? {
+          ...writtenProvenance,
+          [narrativeTargets[0]!]: { ...(writtenProvenance[narrativeTargets[0]!] ?? {}), fallback },
+        }
+      : writtenProvenance;
+    /*
+     * FORM_EDIT_SINGLE_WRITER_ENABLED: the reduced draft through the one writer
+     * (`lib/forms/form-write.ts`, path "redraft") — all or nothing, a whole-text
+     * rewrite keeps the form's protected values.
+     */
+    const redraftContext = {
+      path: "redraft" as const,
+      notes,
+      typedExempt: new Set(derivedPolicy.derived.filter((key) => DERIVED_POLICY_FIELD_KEYS.has(key))),
+    };
+    const singleWriter = formEditSingleWriterEnabled() && reduced ? await import("@/lib/forms/form-write") : null;
+    let written = singleWriter && reduced ? await singleWriter.draftWrite(id, reduced.write, actor.id, draftProvenanceWritten, redraftContext) : null;
+    /*
+     * DRAFT_WRITE_NEVER_SILENT_ENABLED (QA's live finding, round 17): the one writer refuses a write as a whole when
+     * one field is refused. Retried once without the refused fields; nothing saved is said, never a silent 200
+     * (`lib/forms/draft-write-never-silent.ts`).
+     */
+    let draftNothingSaved = false;
+    if (draftWriteNeverSilentEnabled() && singleWriter && reduced && written?.result.handoff === "refused") {
+      const silent = await import("@/lib/forms/draft-write-never-silent");
+      const rest = silent.withoutRefused(reduced.write, written.result.refused.map((refusal) => refusal.key));
+      if (silent.fieldCount(rest) > 0) written = await singleWriter.draftWrite(id, rest, actor.id, draftProvenanceWritten, redraftContext);
+      // Refused again, or nothing written; a retry that changed nothing (the form already says it) is not "nothing saved".
+      draftNothingSaved = written.result.handoff === "refused" || (silent.fieldCount(written.accepted) === 0 && written.result.handoff !== "noop");
+    }
+    // The old writer only in the single writer's flag-off branch (form-write-one-writer.test.ts reads this shape).
+    const guarded = formEditSingleWriterEnabled() && written ? written : await applyAssistantDraft(id, reduced ? reduced.write : kept, actor.id, draftProvenanceWritten);
+    /*
+     * NEVER A SILENT BLANK (DRAFT_NEVER_BLANK_ENABLED). Whenever an attempt
+     * failed or wrote nothing, or the write itself holds no field, the reason
+     * goes on a drafted event of its own (the write's event is
+     * `applyAssistantDraft`'s, and stays as it is).
+     */
+    if (
+      neverBlank &&
+      (retried || fallback || reasons.length > 0 || Object.keys(guarded.accepted.values).length === 0)
+    ) {
+      await recordDraftOutcome(id, actor.id, {
+        ...(fallback && guarded.accepted.values[narrativeTargets[0]!] ? { fallback, field: narrativeTargets[0]! } : {}),
+        attempts,
+        reasons: reasons.length > 0 ? reasons : ["nothing_to_write"],
+      });
+    }
 
     /*
      * A redraft writes the assistant's fields and leaves every other key. The
@@ -1911,7 +2550,15 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         payrollAnswer: "yes",
       });
       const keep = statedNow ?? held;
-      if (keep) {
+      if (keep && formEditSingleWriterEnabled()) {
+        await (await import("@/lib/forms/form-write")).statedWrite(
+          id,
+          { values: { [PAYROLL_AMOUNT_KEY]: keep }, checked: {} },
+          actor.id,
+          PAYROLL_AMOUNT_STATED_KEYS,
+          { notes },
+        );
+      } else if (keep) {
         await applyStatedFacts(
           id,
           { values: { [PAYROLL_AMOUNT_KEY]: keep }, checked: {} },
@@ -1921,7 +2568,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       }
     }
 
+    // FORM_PATCH_REDUCER_ENABLED: the plan's payroll sentence (none while the plan is manager-only), then what the write really changed.
+    const formDiff = reduced ? await reduced.settle() : null;
     return NextResponse.json({
+      ...(reduced ? { formDiff } : {}),
       values: guarded.accepted.values,
       checked: guarded.accepted.checked,
       /*
@@ -1994,7 +2644,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
        * which is the opposite of what happened.
        */
       notice: [
-        groundingNotice(grounding),
+        // HIDE_NO_POLICY_MATCH_NOTICE_ENABLED (Pau, 26 Oct 2026): "Woven does not see a matching policy…" is not shown.
+        hideNoPolicyMatchNoticeEnabled() && (grounding.reason === null || /^Woven does not see\b/.test(grounding.reason))
+          ? null
+          : groundingNotice(grounding),
         /*
          * SAID OUT LOUD. A silently shortened observation is a change to an HR
          * record nobody signed off, and the manager may well be right that a
@@ -2021,11 +2674,16 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
           ? POLICY_ATTRIBUTION_REMOVED_NOTICE
           : null,
         sensitive.anyRefused ? SENSITIVE_ACTION_NOTICE : null,
+        // UNREAD_DAY_NOT_INCIDENT_DATE_ENABLED: only when no date was read and the form kept today's.
+        unreadDay ? unreadDayNotice(unreadDay) : null,
         exit && exit.detailsRemoved.length > 0 ? EXIT_DETAILS_TRIMMED_NOTICE : null,
         caPolicy && !eventSection ? caPolicyAmbiguousNotice(caPolicy) : null,
         policyLeftForManager && !managerOffense
           ? describedPolicyChoiceNotice(describedChoices!.map((choice) => choice.section))
           : null,
+        // FORM_EDIT_SINGLE_WRITER_ENABLED: what the draft left out of the account (detected, never retried).
+        // DRAFT_WRITE_NEVER_SILENT_ENABLED: nothing saved is said instead — there is no account to have left anything out of.
+        draftNothingSaved ? (await import("@/lib/forms/draft-write-never-silent")).DRAFT_NOTHING_SAVED_NOTICE : leftOut,
       ]
         .filter((line): line is string => Boolean(line))
         .join(" ") || null,
@@ -2077,6 +2735,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
             exitHeaderRestated: exit.headerRestated,
           }
         : {}),
+      /* DRAFT_NEVER_BLANK_ENABLED only: the model was asked again; the narrative is the manager's words. */
+      ...(retried ? { retried: true } : {}),
+      ...(fallback ? { fallback } : {}),
       sources: grounding.sources,
       /** Fields filled from the manager's own statements, not by the model. */
       statedFacts: [...statedFacts, ...exitStatedFacts],

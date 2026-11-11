@@ -48,6 +48,31 @@ export interface OpenFormSummary {
   lines: { label: string; value: string }[];
   /** Policy lines no approved source has verified, by label. */
   unverifiedPolicy: string[];
+  /**
+   * POLICY_GATE_NONBLOCKING_ENABLED: policy lines left blank, by label (absent when there are none or the flag is off).
+   * The answer says they are blank and were not checked against the manual, never that they were quoted from it.
+   */
+  blankPolicy?: string[];
+}
+
+/**
+ * FORM_EDIT_TOOL_IN_STREAM_ENABLED: one turn's `edit_form` offer, built by
+ * `lib/forms/form-edit-tool.ts` and read by the answering path.
+ */
+export interface FormEditToolTurn {
+  /** The tool and its DATA block (the open form as JSON, and the scoped staff). Null: not offered this turn. */
+  readonly offer: {
+    readonly tool: { readonly name: string; readonly description: string; readonly input_schema: { readonly type: "object" } & Record<string, unknown> };
+    readonly data: string;
+  } | null;
+  /** `slots.form_edit` on the chat trace: keys and reasons only, never form text. */
+  readonly trace: Record<string, unknown>;
+  /** The main call sent the tool. */
+  readonly sent: () => void;
+  /** The tool's input, applied through the one writer (once, inside the turn's trace). */
+  readonly apply: (input: unknown) => Promise<void>;
+  /** The main call failed: nothing was offered, and the turn goes to the old chain (`handoff: "error"`). */
+  readonly failed: () => void;
 }
 
 export interface AskRequest {
@@ -94,6 +119,19 @@ export interface AskRequest {
    */
   activeFormInstanceId?: string;
   /**
+   * SAME_FORM_COPY_NEW_PERSON_ENABLED: the form the previous answer offered to
+   * copy for a person not named yet. ORCHESTRATION, NOT AUTHORITY: the server
+   * re-checks that this account created it and may still see it.
+   */
+  pendingCopyFromInstanceId?: string;
+  /**
+   * FORM_TYPE_SWITCH_AFTER_CREATE_NOTE_ENABLED: set by the request reading when
+   * the manager asked for the other form after this conversation's form was
+   * created — the form they already have, for the reply's note. Never sent by
+   * the browser.
+   */
+  switchedFromForm?: "coaching" | "ca";
+  /**
    * What the form named by `activeFormInstanceId` says now, for an answer that
    * no correction or revision handled.
    *
@@ -103,6 +141,15 @@ export interface AskRequest {
    * denying a form that is on screen. See `lib/forms/open-form-summary.ts`.
    */
   openForm?: OpenFormSummary | null;
+  /**
+   * FORM_EDIT_TOOL_IN_STREAM_ENABLED (Step 3): the `edit_form` tool the main
+   * answering call is offered this turn, or only its trace when it is not.
+   *
+   * SET BY THE SERVER ONLY: the chat route builds it from the re-authorized
+   * open draft. `parseAskRequest` never copies it from the body. See
+   * `lib/forms/form-edit-tool.ts`.
+   */
+  formEditTool?: FormEditToolTurn | null;
   /**
    * The browser's `conv_*` id for the conversation this question belongs to.
    *
@@ -153,7 +200,7 @@ export interface AskRequest {
  * authority-looking value is an invitation for a future server edit to start
  * trusting it again.
  */
-export type ClientAskRequest = Omit<AskRequest, "scopeId" | "context"> & {
+export type ClientAskRequest = Omit<AskRequest, "scopeId" | "context" | "formEditTool"> & {
   context: ClientAskContext;
 };
 
@@ -226,6 +273,11 @@ export interface AskResponse {
    * carried here. See `lib/forms/chat-correction.ts`.
    */
   formUpdate?: { instanceId: string; updated: string[] };
+  /**
+   * SAME_FORM_COPY_NEW_PERSON_ENABLED: this answer asked who the copy of the
+   * manager's own form (this id) is for. See `lib/forms/same-form-copy.ts`.
+   */
+  pendingCopy?: { fromInstanceId: string };
   /**
    * A form this turn put in front of the manager — an existing one they asked
    * to edit or see, or the new draft opened from a finalized one so it can be

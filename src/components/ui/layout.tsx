@@ -96,7 +96,7 @@ export function SectionHeader({
           {description ? null : (
             <span
               aria-hidden
-              className="h-[3px] min-w-6 flex-1 rounded-sm bg-brand-yellow"
+              className="clay-rule min-w-6 flex-1"
             />
           )}
         </div>
@@ -162,7 +162,7 @@ export function ScrollTable({
          * `min-w-0` is the other half: without it a flex or grid parent sizes
          * to the table's minimum and the overflow never engages at all.
          */
-        "scroll-slim relative w-full min-w-0 overflow-x-auto rounded-[var(--radius-lg)] border border-border bg-surface shadow-soft",
+        "scroll-slim relative w-full min-w-0 overflow-x-auto rounded-[var(--radius-lg)] bg-surface shadow-raised",
         className,
       )}
     >

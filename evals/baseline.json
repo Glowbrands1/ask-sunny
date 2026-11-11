@@ -1,0 +1,588 @@
+{
+  "cases": [
+    {
+      "id": "s4",
+      "pass": true,
+      "misses": [],
+      "card": {
+        "employee": "Test Testy",
+        "salon": "loc-0462",
+        "date": "2026-09-20",
+        "status": "ready"
+      }
+    },
+    {
+      "id": "s9",
+      "pass": false,
+      "misses": [
+        "employee",
+        "blocking question"
+      ],
+      "card": {
+        "employee": null,
+        "salon": "loc-0462",
+        "date": "2026-09-28",
+        "status": "needs_employee"
+      }
+    },
+    {
+      "id": "s11",
+      "pass": true,
+      "misses": [],
+      "card": {
+        "employee": "Corena Schardt",
+        "salon": "loc-0468",
+        "date": "2026-09-29",
+        "status": "ready"
+      }
+    },
+    {
+      "id": "s5",
+      "pass": false,
+      "misses": [
+        "employee"
+      ],
+      "card": {
+        "employee": "Nadia",
+        "salon": "loc-0468",
+        "date": "2026-10-23",
+        "status": "ready"
+      }
+    },
+    {
+      "id": "s27",
+      "pass": false,
+      "misses": [
+        "salon"
+      ],
+      "card": {
+        "employee": "Elin Haskett",
+        "salon": null,
+        "date": null,
+        "status": "needs_location"
+      }
+    },
+    {
+      "id": "s28",
+      "pass": false,
+      "misses": [
+        "salon",
+        "blocking question"
+      ],
+      "card": {
+        "employee": "Elin Haskett",
+        "salon": null,
+        "date": null,
+        "status": "needs_location"
+      }
+    },
+    {
+      "id": "s29",
+      "pass": false,
+      "misses": [
+        "salon"
+      ],
+      "card": {
+        "employee": "Elin Haskett",
+        "salon": null,
+        "date": null,
+        "status": "needs_location"
+      }
+    },
+    {
+      "id": "s17",
+      "pass": true,
+      "misses": [],
+      "card": {
+        "employee": "Dora Lee",
+        "salon": null,
+        "date": "2026-10-23",
+        "status": "ready"
+      }
+    },
+    {
+      "id": "s20",
+      "pass": false,
+      "misses": [
+        "blocking question"
+      ],
+      "card": {
+        "employee": null,
+        "salon": null,
+        "date": null,
+        "status": "needs_employee"
+      }
+    },
+    {
+      "id": "s21",
+      "pass": true,
+      "misses": [],
+      "card": {
+        "employee": "Sloane Wexford",
+        "salon": "loc-0410",
+        "date": "2026-10-05",
+        "status": "ready"
+      }
+    },
+    {
+      "id": "s25",
+      "pass": true,
+      "misses": [],
+      "card": {
+        "employee": "Dasiley Veklo",
+        "salon": "loc-0313",
+        "date": null,
+        "status": "ready"
+      }
+    },
+    {
+      "id": "s8",
+      "pass": true,
+      "misses": [],
+      "card": {
+        "employee": "Evangeline Pembury",
+        "salon": "loc-0463",
+        "date": "2026-09-20",
+        "status": "ready"
+      }
+    },
+    {
+      "id": "s12",
+      "pass": true,
+      "misses": [],
+      "card": {
+        "employee": "Corena Schardt",
+        "salon": "loc-0462",
+        "date": "2026-09-15",
+        "status": "ready"
+      }
+    },
+    {
+      "id": "s16",
+      "pass": true,
+      "misses": [],
+      "card": {
+        "employee": "Marnie Kettering",
+        "salon": "loc-0309",
+        "date": null,
+        "status": "ready"
+      }
+    },
+    {
+      "id": "b9",
+      "pass": true,
+      "misses": [],
+      "card": {
+        "employee": "Test Employee",
+        "salon": null,
+        "date": "2026-10-15",
+        "status": "ready"
+      }
+    },
+    {
+      "id": "b10",
+      "pass": true,
+      "misses": [],
+      "card": {
+        "employee": "Testy Testerson",
+        "salon": null,
+        "date": "2026-10-16",
+        "status": "needs_location"
+      }
+    },
+    {
+      "id": "b11",
+      "pass": true,
+      "misses": [],
+      "card": {
+        "employee": "Testy Testerson",
+        "salon": null,
+        "date": "2026-10-20",
+        "status": "needs_location"
+      }
+    },
+    {
+      "id": "b12",
+      "pass": true,
+      "misses": [],
+      "card": {
+        "employee": "Odette Brannock",
+        "salon": null,
+        "date": "2026-10-22",
+        "status": "needs_location"
+      }
+    },
+    {
+      "id": "n1",
+      "pass": true,
+      "misses": [],
+      "card": {
+        "employee": "Test Employee",
+        "salon": "loc-0462",
+        "date": null,
+        "status": "ready"
+      }
+    },
+    {
+      "id": "n2",
+      "pass": false,
+      "misses": [
+        "employee",
+        "salon",
+        "date",
+        "policy"
+      ],
+      "card": {
+        "employee": null,
+        "salon": null,
+        "date": null,
+        "status": null
+      }
+    },
+    {
+      "id": "n3",
+      "pass": true,
+      "misses": [],
+      "card": {
+        "employee": "Tt",
+        "salon": null,
+        "date": "2026-10-23",
+        "status": "ready"
+      }
+    },
+    {
+      "id": "g1",
+      "pass": true,
+      "misses": [],
+      "card": {
+        "employee": "Sarah Test",
+        "salon": "loc-0462",
+        "date": null,
+        "status": "ready"
+      }
+    },
+    {
+      "id": "g2",
+      "pass": true,
+      "misses": [],
+      "card": {
+        "employee": "Sarah Test",
+        "salon": "loc-0462",
+        "date": null,
+        "status": "ready"
+      }
+    },
+    {
+      "id": "g3",
+      "pass": true,
+      "misses": [],
+      "card": {
+        "employee": "Sarah Test",
+        "salon": null,
+        "date": null,
+        "status": "ready"
+      }
+    },
+    {
+      "id": "g4",
+      "pass": true,
+      "misses": [],
+      "card": {
+        "employee": "Sarah Test",
+        "salon": "loc-0462",
+        "date": null,
+        "status": "ready"
+      }
+    },
+    {
+      "id": "g5",
+      "pass": true,
+      "misses": [],
+      "card": {
+        "employee": "Sarah Test",
+        "salon": null,
+        "date": null,
+        "status": "ready"
+      }
+    },
+    {
+      "id": "g6",
+      "pass": true,
+      "misses": [],
+      "card": {
+        "employee": "Sarah Test",
+        "salon": null,
+        "date": null,
+        "status": "ready"
+      }
+    },
+    {
+      "id": "g7",
+      "pass": false,
+      "misses": [
+        "employee"
+      ],
+      "card": {
+        "employee": "Dodge",
+        "salon": null,
+        "date": null,
+        "status": "ready"
+      }
+    },
+    {
+      "id": "r1",
+      "pass": true,
+      "misses": [],
+      "card": {
+        "employee": null,
+        "salon": null,
+        "date": null,
+        "status": null
+      }
+    },
+    {
+      "id": "s2",
+      "pass": true,
+      "misses": [],
+      "card": {
+        "employee": "Test Testyone",
+        "salon": "loc-0306",
+        "date": "2026-09-23",
+        "status": "ready"
+      }
+    },
+    {
+      "id": "s6",
+      "pass": true,
+      "misses": [],
+      "card": {
+        "employee": "Test Testy",
+        "salon": "loc-0462",
+        "date": "2026-09-23",
+        "status": "ready"
+      }
+    },
+    {
+      "id": "s7",
+      "pass": true,
+      "misses": [],
+      "card": {
+        "employee": "Test Testy",
+        "salon": "loc-0463",
+        "date": "2026-09-28",
+        "status": "ready"
+      }
+    },
+    {
+      "id": "s10",
+      "pass": true,
+      "misses": [],
+      "card": {
+        "employee": "Test Testy",
+        "salon": null,
+        "date": "2026-09-28",
+        "status": "ready"
+      }
+    },
+    {
+      "id": "s13",
+      "pass": true,
+      "misses": [],
+      "card": {
+        "employee": "Corena Schardt",
+        "salon": "loc-0462",
+        "date": null,
+        "status": "ready"
+      }
+    },
+    {
+      "id": "s14",
+      "pass": true,
+      "misses": [],
+      "card": {
+        "employee": "Rozlyn Quellmar",
+        "salon": "loc-0462",
+        "date": "2026-10-01",
+        "status": "ready"
+      }
+    },
+    {
+      "id": "s15",
+      "pass": true,
+      "misses": [],
+      "card": {
+        "employee": null,
+        "salon": null,
+        "date": null,
+        "status": null
+      }
+    },
+    {
+      "id": "s18",
+      "pass": true,
+      "misses": [],
+      "card": {
+        "employee": "All team members",
+        "salon": "loc-0312",
+        "date": null,
+        "status": "ready"
+      }
+    },
+    {
+      "id": "s22",
+      "pass": true,
+      "misses": [],
+      "card": {
+        "employee": null,
+        "salon": null,
+        "date": null,
+        "status": null
+      }
+    },
+    {
+      "id": "s23",
+      "pass": true,
+      "misses": [],
+      "card": {
+        "employee": null,
+        "salon": null,
+        "date": null,
+        "status": null
+      }
+    },
+    {
+      "id": "s24",
+      "pass": true,
+      "misses": [],
+      "card": {
+        "employee": null,
+        "salon": null,
+        "date": null,
+        "status": "needs_employee"
+      }
+    },
+    {
+      "id": "s26",
+      "pass": true,
+      "misses": [],
+      "card": {
+        "employee": "Juno Haverkamp",
+        "salon": null,
+        "date": null,
+        "status": "ready"
+      }
+    },
+    {
+      "id": "sf-s1",
+      "pass": true,
+      "misses": [],
+      "card": {
+        "employee": null,
+        "salon": null,
+        "date": null,
+        "status": null
+      }
+    },
+    {
+      "id": "sf-s2",
+      "pass": true,
+      "misses": [],
+      "card": {
+        "employee": null,
+        "salon": null,
+        "date": null,
+        "status": null
+      }
+    },
+    {
+      "id": "sf-s3",
+      "pass": false,
+      "misses": [
+        "policy"
+      ],
+      "card": {
+        "employee": "Odalys",
+        "salon": null,
+        "date": null,
+        "status": "ready"
+      }
+    },
+    {
+      "id": "sf-s4",
+      "pass": true,
+      "misses": [],
+      "card": {
+        "employee": "Odalys Merriwether",
+        "salon": null,
+        "date": null,
+        "status": "ready"
+      }
+    },
+    {
+      "id": "sf-s5",
+      "pass": true,
+      "misses": [],
+      "card": {
+        "employee": "Linnea Ostrowe",
+        "salon": "loc-0462",
+        "date": null,
+        "status": "ready"
+      }
+    },
+    {
+      "id": "sf-s6",
+      "pass": true,
+      "misses": [],
+      "card": {
+        "employee": "Maren Kloster",
+        "salon": null,
+        "date": null,
+        "status": "ready"
+      }
+    },
+    {
+      "id": "sf-s7",
+      "pass": true,
+      "misses": [],
+      "card": {
+        "employee": "Hollis Dunworth",
+        "salon": null,
+        "date": null,
+        "status": "ready"
+      }
+    },
+    {
+      "id": "sf-s8",
+      "pass": true,
+      "misses": [],
+      "card": {
+        "employee": "Nerys Feldhaus",
+        "salon": null,
+        "date": null,
+        "status": "ready"
+      }
+    },
+    {
+      "id": "sf-s9",
+      "pass": true,
+      "misses": [],
+      "card": {
+        "employee": "Thea Wolcroft",
+        "salon": null,
+        "date": null,
+        "status": "ready"
+      }
+    },
+    {
+      "id": "sf-s10",
+      "pass": true,
+      "misses": [],
+      "card": {
+        "employee": null,
+        "salon": null,
+        "date": null,
+        "status": "needs_employee"
+      }
+    }
+  ]
+}

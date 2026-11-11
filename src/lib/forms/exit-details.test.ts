@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { JOIN } from "./bounded-context";
 import {
@@ -23,6 +23,9 @@ import {
 const TODAY = "2026-09-28";
 const read = (text: string) => readExitDetails(text, TODAY);
 const answers = (text: string) => read(text).answers;
+
+
+afterEach(() => vi.unstubAllEnvs());
 
 describe("returned items and the salon key", () => {
   it.each([
@@ -66,6 +69,8 @@ describe("payroll deduction, minimum wage and the bonus", () => {
   });
 
   it("the key's $25 deduction never answers the general payroll deduction question", () => {
+    // Written before EXIT_SHORTCUT_WORDS (on by default since 3 Nov 2026, "(E) batch 1"): its "off" behaviour, as before.
+    vi.stubEnv("EXIT_SHORTCUT_WORDS_ENABLED", "false");
     expect(answers("She didn't return her key so she'll be deducted $25.")).toEqual({ salon_key_returned: "no" });
     expect(answers("She still has the key, deduct $25 from her check for it.")).toEqual({ salon_key_returned: "no" });
     expect(answers("Payroll deduct her $25 for the key.")).toEqual({});

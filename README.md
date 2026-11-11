@@ -444,6 +444,13 @@ ANTHROPIC_API_KEY=
 
 # Server-only, and normally unset. See "Authentication architecture".
 # ALLOW_UNAUTHENTICATED_LIVE_ACCESS=
+
+# App switcher. LEADERSHIP_HUB_TAB_EMAILS is server-only (never NEXT_PUBLIC_):
+# comma-separated emails, case-insensitive. Unset or empty: nobody sees the tab.
+LEADERSHIP_HUB_TAB_EMAILS=
+# Optional build-time overrides of the switcher's links (defaults in code).
+NEXT_PUBLIC_ASK_BUBBLES_URL=
+NEXT_PUBLIC_LEADERSHIP_HUB_URL=
 ```
 
 ### Supabase keys

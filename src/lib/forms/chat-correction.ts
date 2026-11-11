@@ -19,7 +19,9 @@ import { isExitDocumentKeys } from "./exit-draft";
 import { formDateChange, formDateChangeUnclear, formDateReply } from "./form-date-answer";
 import { resolveFormDate, withDateMoved } from "./form-date-grounding";
 import { authorizeInstance } from "./instance-scope";
-import { payrollAmountFieldEnabled } from "@/lib/config/chat-quality-flags";
+import { caNameFromChat } from "./ca-name-from-chat";
+import { getSupabaseAdmin } from "@/lib/supabase/server";
+import { formEditSingleWriterEnabled, payrollAmountFieldEnabled, priorActionsNoSignedEnabled } from "@/lib/config/chat-quality-flags";
 
 import { syncCorrectiveActionPlan } from "./ca-action-plan-sync";
 import {
@@ -39,10 +41,13 @@ import {
 } from "./payroll-deduct";
 import { extractEmployeeNames } from "./proposal";
 import { describesIncident, statedWarningLevel, WARNING_TYPE_KEY } from "./corrective-action-intake";
-import { NO_PRIOR_ACTION, statedPriorActions } from "./prior-actions";
+import { NO_PRIOR_ACTION, priorLineDate, statedPriorActions } from "./prior-actions";
 import { detectTemplateIntent } from "./template-intent";
 import { applyAssistantDraft, saveInstanceValues } from "./instances";
 import { correctCaFromChat } from "./ca-chat-corrections";
+
+/** The header line a Corrective Action may take from chat under CA_NAME_FROM_CHAT_ENABLED. */
+const EMPLOYEE_NAME_KEY = "employee_name";
 import { enforcePersonEdit } from "./responsibility";
 
 /** The form's own Date line. */
@@ -168,8 +173,10 @@ export async function correctActiveForm(input: {
     FORM_DATE_IS_INCIDENT_DATE.has(loaded.instance.templateKey) &&
     fieldsForVariant(document, variantKey).some((field) => field.key === FORM_DATE_KEY);
   const correctsDate = datesTheIncident && newFormDate !== null;
+  // CA_NAME_FROM_CHAT_ENABLED (Pau, 3 Nov 2026): "change her name to …" on a Corrective Action, roster-confirmed.
+  const caNewName = !kind && !isExit && asksPayroll ? caNameFromChat(input.question, loaded.instance.employeeName) : null;
   const whichDate = datesTheIncident && dateUnclear ? whichDateQuestion(loaded.instance, dateUnclear.offered) : null;
-  const correctsOtherwise = kind || isExit || (asksPayroll && (payroll || payrollUnclear)) || correctsDate;
+  const correctsOtherwise = kind || isExit || (asksPayroll && (payroll || payrollUnclear)) || correctsDate || caNewName !== null;
   if (!correctsOtherwise && !whichDate) return null;
   /*
    * ==========================================================================
@@ -222,7 +229,10 @@ export async function correctActiveForm(input: {
     : isExit
       ? exitValues
       : {
-          values: correctsDate ? { [FORM_DATE_KEY]: newFormDate! } : {},
+          values: {
+            ...(correctsDate ? { [FORM_DATE_KEY]: newFormDate! } : {}),
+            ...(caNewName ? { [EMPLOYEE_NAME_KEY]: caNewName } : {}),
+          },
           checked: asksPayroll
             ? payrollUnclear
               ? { [PAYROLL_DEDUCT_KEY]: [] }
@@ -250,6 +260,7 @@ export async function correctActiveForm(input: {
       : new Set([
           PAYROLL_DEDUCT_KEY,
           FORM_DATE_KEY,
+          ...(caNewName ? [EMPLOYEE_NAME_KEY] : []),
           ...(payrollAmountFieldEnabled() ? [PAYROLL_AMOUNT_KEY] : []),
         ]);
   const restrict = <T,>(entries: Record<string, T>) =>
@@ -367,11 +378,85 @@ export async function correctActiveForm(input: {
     values: { ...accepted.values, ...(syncedKey ? { [syncedKey]: sync!.text } : {}) },
     checked: accepted.checked,
   };
-  const saved = await saveInstanceValues(input.instanceId, toSave, actor.id);
+  const existingAmount = (loaded.values.find((row) => row.fieldKey === PAYROLL_AMOUNT_KEY)?.value ?? "").trim();
+  const amountQuestion = payrollAmountPrompt({
+    payroll,
+    amount: statedAmount ?? (existingAmount || null),
+    alreadyAsked: payrollAmountAlreadyAsked(input.history ?? []),
+    onForm: fieldsForVariant(document, variantKey).some((field) => field.key === PAYROLL_AMOUNT_KEY),
+  });
+  /*
+   * FORM_EDIT_SINGLE_WRITER_ENABLED: the whole correction — the stated values,
+   * the paragraph that follows them, the moved date, the subject column and the
+   * Action Plan — through the one writer (`lib/forms/form-write.ts`), all or
+   * nothing. A key that already held its value is not claimed.
+   */
+  const movedFollows = correctsDate && updated.includes(FORM_DATE_KEY) && Object.keys(movedDate).length > 0;
+  const writer = formEditSingleWriterEnabled()
+    ? await (await import("./form-write")).correctionWrite({
+        instanceId: input.instanceId,
+        loaded,
+        stated: accepted,
+        passThrough: { values: syncedKey ? { [syncedKey]: sync!.text } : {} },
+        ...(movedFollows
+          ? {
+              assistant: {
+                values: movedDate,
+                provenance: Object.fromEntries(
+                  Object.keys(movedDate).map((key) => [key, loaded.values.find((row) => row.fieldKey === key)?.provenance ?? {}]),
+                ),
+              },
+            }
+          : {}),
+        actorId: actor.id,
+        said: input.question,
+        today: input.today,
+        // The form readers' own reading of her words (the amount included).
+        readerValues: Object.values(values).filter((value): value is string => typeof value === "string"),
+        employeeColumn: caNewName,
+        syncPlan: {
+          after: PAYROLL_DEDUCT_KEY in accepted.checked ? [PAYROLL_DEDUCT_KEY, PAYROLL_AMOUNT_KEY] : [],
+          notes: input.question,
+          loaded,
+          checked: accepted.checked,
+        },
+      })
+    : null;
+  const saved = formEditSingleWriterEnabled() && writer ? writer : await saveInstanceValues(input.instanceId, toSave, actor.id);
   // The reply reports only what the save itself accepted.
   const refusedOnSave = new Set(saved.rejected.map((entry) => entry.key));
   const written = updated.filter((key) => !refusedOnSave.has(key));
-  if (written.length === 0) return null;
+  if (written.length === 0) {
+    // FORM_EDIT_SINGLE_WRITER_ENABLED: every value was already on the form — said so, never "Updated".
+    const unchanged = writer?.nothingChanged;
+    if (!unchanged) return null;
+    // The same Yes or No, said again: the Action Plan still follows what was said.
+    const planMoved =
+      formEditSingleWriterEnabled() && PAYROLL_DEDUCT_KEY in accepted.checked
+        ? await (await import("./form-write")).syncPlan(input.instanceId, actor.id, {
+            notes: input.question,
+            loaded,
+            checked: accepted.checked,
+          })
+        : [];
+    if (planMoved.length > 0) {
+      return {
+        ...reply(payroll === "yes" ? "The Action Plan now states the payroll deduction." : "The Action Plan no longer states a payroll deduction."),
+        formUpdate: { instanceId: input.instanceId, updated: planMoved },
+      };
+    }
+    return reply([unchanged, ...(whichDate ? ["", whichDate] : []), ...(amountQuestion ? ["", amountQuestion] : [])].join("\n"));
+  }
+  /*
+   * CA_NAME_FROM_CHAT_ENABLED: the form's subject line moves with its Employee
+   * Name line — the card, Form Monitoring and the printed form read
+   * `form_instances.employee_name`. Only after the line itself was saved.
+   * (FORM_EDIT_SINGLE_WRITER_ENABLED: the one writer moved it.)
+   */
+  if (!formEditSingleWriterEnabled() && caNewName && written.includes(EMPLOYEE_NAME_KEY)) {
+    const { error } = await getSupabaseAdmin().from("form_instances").update({ employee_name: caNewName }).eq("id", input.instanceId);
+    if (error) throw new Error(`Could not save the form's employee name: ${error.message}`);
+  }
   const rewritten = syncedKey && !refusedOnSave.has(syncedKey) ? syncedKey : null;
   /*
    * THE ACTION PLAN STATES THE DEDUCTION ONLY ON YES, so a corrected payroll
@@ -379,13 +464,16 @@ export async function correctActiveForm(input: {
    * amount is read from this message, else kept from the plan. See
    * `ca-action-plan.ts`.
    */
-  const planKeys = written.includes(PAYROLL_DEDUCT_KEY)
-    ? await syncCorrectiveActionPlan(input.instanceId, actor.id, {
-        notes: input.question,
-        loaded,
-        checked: accepted.checked,
-      })
-    : [];
+  const planKeys =
+    formEditSingleWriterEnabled() && writer
+      ? writer.planKeys
+      : written.includes(PAYROLL_DEDUCT_KEY)
+        ? await syncCorrectiveActionPlan(input.instanceId, actor.id, {
+            notes: input.question,
+            loaded,
+            checked: accepted.checked,
+          })
+        : [];
 
   const before = Object.fromEntries(loaded.values.map((row) => [row.fieldKey, row.checked]));
   const after = { ...before, ...submitted.checked };
@@ -410,7 +498,9 @@ export async function correctActiveForm(input: {
     lines.push("", `The ${paragraph} was written before this change — give it a quick read to make sure it still matches.`);
   }
   const movedKeys =
-    Object.keys(movedDate).length > 0 && written.includes(FORM_DATE_KEY)
+    formEditSingleWriterEnabled() && writer
+      ? writer.assistantKeys
+      : Object.keys(movedDate).length > 0 && written.includes(FORM_DATE_KEY)
       ? Object.keys(
           (
             await applyAssistantDraft(
@@ -455,13 +545,6 @@ export async function correctActiveForm(input: {
     );
   }
   if (whichDate) lines.push("", whichDate);
-  const existingAmount = (loaded.values.find((row) => row.fieldKey === PAYROLL_AMOUNT_KEY)?.value ?? "").trim();
-  const amountQuestion = payrollAmountPrompt({
-    payroll,
-    amount: statedAmount ?? (existingAmount || null),
-    alreadyAsked: payrollAmountAlreadyAsked(input.history ?? []),
-    onForm: fieldsForVariant(document, variantKey).some((field) => field.key === PAYROLL_AMOUNT_KEY),
-  });
   if (amountQuestion) lines.push("", amountQuestion);
 
   return { ...reply(lines.join("\n")), formUpdate: { instanceId: input.instanceId, updated: written } };
@@ -515,7 +598,8 @@ const WARNING_LEVEL_OPTIONS: ReadonlySet<string> = new Set(["verbal", "written"]
 /** The step and the signed date a Prior Actions line names, for telling a repeat. */
 function priorLineKey(line: string): string {
   const step = line.split(" — ")[0]!.trim().toLowerCase();
-  const date = /signed\s+(\d{2}\/\d{2}\/\d{4})/i.exec(line)?.[1] ?? "";
+  // PRIOR_ACTIONS_NO_SIGNED_ENABLED: the date of "— signed <date>", "— finalized <date>" or "— <date>".
+  const date = priorActionsNoSignedEnabled() ? priorLineDate(line) : (/signed\s+(\d{2}\/\d{2}\/\d{4})/i.exec(line)?.[1] ?? "");
   return `${step}|${date}`;
 }
 
@@ -588,10 +672,30 @@ async function correctCorrectiveActionFacts(input: {
   const submitted = { values, checked };
   const accepted = enforcePersonEdit(document, variantKey, submitted);
   const refused = new Set(accepted.rejected.map((entry) => entry.key));
-  const saved = await saveInstanceValues(input.instanceId, { values: accepted.values, checked: accepted.checked }, actor.id);
+  // FORM_EDIT_SINGLE_WRITER_ENABLED: through the one writer, Prior Actions united line by line (`lib/forms/form-write.ts`).
+  const writer = formEditSingleWriterEnabled()
+    ? await (await import("./form-write")).correctionWrite({
+        instanceId: input.instanceId,
+        loaded,
+        stated: { values: accepted.values, checked: accepted.checked },
+        actorId: actor.id,
+        said: text,
+        today: input.today,
+        // The prior-action reader's own lines.
+        readerValues: priorLines,
+      })
+    : null;
+  const saved =
+    formEditSingleWriterEnabled() && writer
+      ? writer
+      : await saveInstanceValues(input.instanceId, { values: accepted.values, checked: accepted.checked }, actor.id);
   const refusedOnSave = new Set(saved.rejected.map((entry) => entry.key));
   const written = [...Object.keys(values), ...Object.keys(checked)].filter((key) => !refused.has(key) && !refusedOnSave.has(key));
-  if (written.length === 0) return null;
+  if (written.length === 0) {
+    const unchanged = writer?.nothingChanged;
+    if (!unchanged) return null;
+    return reply([unchanged, ...notes.map((note) => `\n${note}`)].join("\n"));
+  }
 
   const who = `**${loaded.instance.templateName}** for **${loaded.instance.employeeName}**`;
   const field = (key: string) => fields.find((entry) => entry.key === key);
@@ -627,6 +731,7 @@ async function writeStatedPayrollAmount(
     request: Request;
     instanceId: string;
     question: string;
+    today: string;
   },
   amount: string,
 ): Promise<AskResponse | null> {
@@ -645,12 +750,30 @@ async function writeStatedPayrollAmount(
   );
   if (payroll !== "yes") return null;
   if (!fieldsForVariant(document, variantKey).some((field) => field.key === PAYROLL_AMOUNT_KEY)) return null;
-  const saved = await saveInstanceValues(
-    input.instanceId,
-    { values: { [PAYROLL_AMOUNT_KEY]: amount }, checked: {} },
-    actor.id,
-  );
-  if (saved.rejected.some((entry) => entry.key === PAYROLL_AMOUNT_KEY)) return null;
+  // FORM_EDIT_SINGLE_WRITER_ENABLED: the amount through the one writer (`lib/forms/form-write.ts`), as the manager's.
+  const writer = formEditSingleWriterEnabled()
+    ? await (await import("./form-write")).correctionWrite({
+        instanceId: input.instanceId,
+        loaded,
+        stated: { values: { [PAYROLL_AMOUNT_KEY]: amount }, checked: {} },
+        actorId: actor.id,
+        said: input.question,
+        today: input.today,
+        // The amount reader's own reading of her words.
+        readerValues: [amount],
+      })
+    : null;
+  const saved =
+    formEditSingleWriterEnabled() && writer
+      ? writer
+      : await saveInstanceValues(
+          input.instanceId,
+          { values: { [PAYROLL_AMOUNT_KEY]: amount }, checked: {} },
+          actor.id,
+        );
+  if (saved.rejected.some((entry) => entry.key === PAYROLL_AMOUNT_KEY)) {
+    return writer?.nothingChanged ? reply(writer.nothingChanged) : null;
+  }
   const who = `**${loaded.instance.templateName}** for **${loaded.instance.employeeName}**`;
   return {
     ...reply(`Updated the ${who}: ${PAYROLL_AMOUNT_LABEL} → ${amount}.`),

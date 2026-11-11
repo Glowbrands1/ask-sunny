@@ -2,6 +2,7 @@
 import * as React from "react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import {
   DEFAULT_PERMISSION_MATRIX,
@@ -250,6 +251,18 @@ describe("the app switcher on the rail", () => {
     mocked.value = session("owner", false);
     render(<SidebarNav variant={variant} showAppSwitcher />);
     expect(switcher()).not.toBeNull();
+  });
+
+  it.each(["desktop", "drawer"] as const)("shows Leadership Hub on the %s rail only when the server says so", async (variant) => {
+    mocked.value = session("owner", false);
+    const { unmount } = render(<SidebarNav variant={variant} showAppSwitcher />);
+    await userEvent.click(switcher()!);
+    expect(screen.queryByRole("menuitem", { name: /Leadership Hub/ })).toBeNull();
+    unmount();
+    cleanup();
+    render(<SidebarNav variant={variant} showAppSwitcher showLeadershipHub />);
+    await userEvent.click(switcher()!);
+    expect(screen.getByRole("menuitem", { name: /Leadership Hub/ })).not.toBeNull();
   });
 
   it.each(["desktop", "drawer"] as const)("sits directly below the profile card, last on the %s rail", (variant) => {

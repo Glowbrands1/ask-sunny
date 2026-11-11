@@ -692,7 +692,7 @@ export function MonitoringTable({
                               {downloading === form.id ? "Preparing…" : "PDF"}
                             </button>
 
-                            {mayManage || mayTrack ? (
+                            {mayManage || (form.followedUpAt && mayTrack) ? (
                               <DropdownMenu>
                                 <DropdownMenuTrigger
                                   aria-label={`More actions for ${form.employeeName}`}

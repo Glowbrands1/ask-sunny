@@ -269,7 +269,7 @@ describe("a policy named in the conversation goes onto the open form", () => {
     expect(answer?.content).not.toMatch(/no form has been created/i);
     expect(answer?.formUpdate).toEqual({ instanceId: id, updated: ["policy_language", "policy_violated", "action_plan"] });
     /* Policy Violated names the section beside its box, as a first draft does (District Manager feedback, 21 Oct 2026). */
-    expect((await row(id, "policy_violated"))?.value).toBe("Tardiness/Leaving Early — Late Opening");
+    expect((await row(id, "policy_violated"))?.value).toBe("Attendance Policy — Late Opening"); // CHANGED ON PURPOSE, Corrective Action revision 8 (client request, template approved 4 Nov 2026)
     /* The Action Plan follows Direct policy: both sections, in the order cited. */
     expect(answer?.content).toContain("The Action Plan now says management will review the Attendance and Late Opening policies with Wren.");
     expect((await row(id, "action_plan"))?.value).toBe(
@@ -312,6 +312,23 @@ describe("a policy named in the conversation goes onto the open form", () => {
     expect(swapped?.content).toMatch(/Type of Offense now reads \*\*Dress Code Violation\*\*/);
   });
 
+  // The sibling app's flip-3 gate (6 Nov 2026): with POLICY_CHANGE_RELEVANT_ENABLED on, the form's option "Attendance
+  // Policy" was taken out of the manager's words as a form word, so "the attendance policy" found no section.
+  it("adds and removes the attendance policy with POLICY_CHANGE_RELEVANT_ENABLED on (the form's option names it)", async () => {
+    vi.stubEnv("POLICY_CHANGE_RELEVANT_ENABLED", "true");
+    try {
+      const { id, history } = await createdForm();
+      const added = await changeActiveFormPolicy({ request: chat(), instanceId: id, question: "use the attendance policy instead", history });
+      expect(added?.content).not.toMatch(/couldn't find a section/);
+      expect((await row(id, "policy_language"))?.value ?? "").toMatch(/Attendance/);
+      const answer = await changeActiveFormPolicy({ request: chat(), instanceId: id, question: "take the attendance policy off the form", history });
+      expect(answer?.content).toMatch(/Removed \*\*Attendance\*\* \(page 14\)/);
+      expect((await row(id, "policy_language"))?.value ?? "").toBe("");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("removes a section the manager takes off, and blanks the line when it was the only one", async () => {
     const { id, history } = await createdForm();
     await changeActiveFormPolicy({ request: chat(), instanceId: id, question: "use the late opening policy instead", history });
@@ -326,10 +343,11 @@ describe("a policy named in the conversation goes onto the open form", () => {
     expect((await row(id, "policy_language"))?.value ?? "").toBe("");
     /* With no section cited, Policy Violated is the box alone, and the built plan names it. */
     expect(answer?.formUpdate?.updated).toEqual(["policy_language", "policy_violated", "action_plan"]);
-    expect((await row(id, "policy_violated"))?.value).toBe("Tardiness/Leaving Early");
+    // CHANGED ON PURPOSE, Corrective Action revision 8 (client request, template approved 4 Nov 2026): the box is Attendance Policy, and the plan names the Attendance policy.
+    expect((await row(id, "policy_violated"))?.value).toBe("Attendance Policy");
     expect(answer?.content).toContain("The Action Plan has been updated to match.");
     expect((await row(id, "action_plan"))?.value).toBe(
-      `Management will review the Tardiness/Leaving Early policy with Wren. ${CLOSING}`,
+      `Management will review the Attendance policy with Wren. ${CLOSING}`,
     );
   });
 
@@ -401,8 +419,13 @@ describe("any other change to the open Corrective Action Form is made in place",
 
     expect(answer?.content).toMatch(/Updated the \*\*Corrective Action Form\*\*/);
     expect((await row(id, "warning_type"))?.checked).toEqual(["written"]);
-    expect((await row(id, "offense_type"))?.checked).toEqual(["absenteeism"]);
-    expect((await row(id, "policy_violated"))?.value).toBe("Absenteeism");
+    /*
+     * CHANGED ON PURPOSE, Corrective Action revision 8 (client request,
+     * template approved 4 Nov 2026): Absenteeism is the Attendance Policy box
+     * this form already ticks, so the offense does not move.
+     */
+    expect((await row(id, "offense_type"))?.checked).toEqual(["attendance_policy"]);
+    expect((await row(id, "policy_violated"))?.value).toBe("Attendance Policy");
     expect((await row(id, "policy_language"))?.value).toBe(before);
     /* The Action Plan is built, not drafted: a revision that did not name it keeps the built plan. */
     expect((await row(id, "action_plan"))?.value).toBe(plan);
@@ -430,41 +453,53 @@ describe("any other change to the open Corrective Action Form is made in place",
   it("an offense changed in chat keeps the section Direct policy cites beside its box on Policy Violated", async () => {
     const { id, history } = await createdForm();
     await changeActiveFormPolicy({ request: chat(), instanceId: id, question: "add the late opening policy", history });
-    expect((await row(id, "policy_violated"))?.value).toBe("Tardiness/Leaving Early — Late Opening");
+    /*
+     * CHANGED ON PURPOSE, Corrective Action revision 8 (client request,
+     * template approved 4 Nov 2026): Tardiness and Absenteeism are one box,
+     * Attendance Policy, so the second box the offense changes to is Dress
+     * Code Violation (was "tardiness and absenteeism").
+     */
+    expect((await row(id, "policy_violated"))?.value).toBe("Attendance Policy — Late Opening");
     state.toolValues = {};
-    state.toolChecked = { offense_type: ["tardiness", "absenteeism"] };
+    state.toolChecked = { offense_type: ["attendance_policy", "dress_code"] };
 
     const answer = await reviseActiveForm({
       request: chat(),
       instanceId: id,
-      question: "change the offense to tardiness and absenteeism",
+      question: "change the offense to attendance and dress code",
       history,
       today: "2026-10-20",
     });
     expect(answer?.formUpdate?.updated).toEqual(expect.arrayContaining(["offense_type", "policy_violated"]));
     /* District Manager feedback, 21 Oct 2026: the section is named beside its box, as on a first draft. */
-    expect((await row(id, "policy_violated"))?.value).toBe("Tardiness/Leaving Early — Late Opening, Absenteeism");
+    expect((await row(id, "policy_violated"))?.value).toBe("Attendance Policy — Late Opening, Dress Code Violation");
   });
 
   it("rebuilds a built plan from Policy Violated when the offense changes and no section is cited", async () => {
     const { id, history } = await createdForm();
     await changeActiveFormPolicy({ request: chat(), instanceId: id, question: "use the late opening policy instead", history });
     await changeActiveFormPolicy({ request: chat(), instanceId: id, question: "take the late opening policy off the form", history });
+    /*
+     * CHANGED ON PURPOSE, Corrective Action revision 8 (client request,
+     * template approved 4 Nov 2026): the box is Attendance Policy, and
+     * Absenteeism is that same box, so the offense changes to Dress Code
+     * Violation (was "absenteeism").
+     */
     expect((await row(id, "action_plan"))?.value).toBe(
-      `Management will review the Tardiness/Leaving Early policy with Wren. ${CLOSING}`,
+      `Management will review the Attendance policy with Wren. ${CLOSING}`,
     );
     state.toolValues = {};
-    state.toolChecked = { offense_type: ["absenteeism"] };
+    state.toolChecked = { offense_type: ["dress_code"] };
 
     const answer = await reviseActiveForm({
       request: chat(),
       instanceId: id,
-      question: "change the offense to absenteeism",
+      question: "change the offense to dress code",
       history,
       today: "2026-10-20",
     });
     expect(answer?.formUpdate?.updated).toEqual(expect.arrayContaining(["offense_type", "policy_violated", "action_plan"]));
-    expect((await row(id, "action_plan"))?.value).toBe(`Management will review the Absenteeism policy with Wren. ${CLOSING}`);
+    expect((await row(id, "action_plan"))?.value).toBe(`Management will review the Dress Code policy with Wren. ${CLOSING}`);
   });
 
   it("changes the Action Plan only when the manager names it, and then leaves their wording alone", async () => {

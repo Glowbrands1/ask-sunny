@@ -1,0 +1,23 @@
+{
+  "key": "2e3736a32df660cd971c6d3531537c8ac291b27d6158ce4ea83ae20ef5773612",
+  "model": "claude-haiku-4-5",
+  "reply": {
+    "employee": "quinn marlowe",
+    "salon": "opeed late",
+    "title": null,
+    "incidentType": "was late",
+    "incidentDate": "10/20",
+    "payrollAmount": null,
+    "warningLevel": null,
+    "formType": "ca",
+    "formTurn": true,
+    "policyHeading": "Attendance"
+  },
+  "usage": {
+    "inputTokens": 2604,
+    "outputTokens": 208,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 0
+}

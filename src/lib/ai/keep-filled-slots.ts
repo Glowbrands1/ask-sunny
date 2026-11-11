@@ -1,48 +1,90 @@
 import { PRODUCTION_SALONS, salonById } from "@/data/salons";
+import { isPolicyCorrection } from "./policy-correction-turn";
+import { observationAccount } from "@/lib/forms/ca-policy";
+import { ownPersonAccount } from "./observation-own-person";
+import { withoutPayrollClauses } from "./payroll-clause-not-account";
+import { onlyDeniesForObservation } from "./ca-what-happened";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
-import { listIncidentDates } from "@/lib/forms/form-date-answer";
+import { listIncidentDates, withoutPriorStepClauses } from "@/lib/forms/form-date-answer";
 import { lateOpenOn, withYearlessDatesWritten } from "@/lib/forms/late-open";
-import { matchEmployeeName } from "@/lib/forms/employee-match";
+import { matchEmployeeName, normalizeTypedName } from "@/lib/forms/employee-match";
 import { extractEmployeeNames, extractJobTitle } from "@/lib/forms/proposal";
 import { exitDateInWords, exitReady } from "@/lib/forms/exit-intake";
 import { readExitDetails } from "@/lib/forms/exit-details";
 import { readExitFacts } from "@/lib/forms/exit-facts";
 import { statedPayrollDeduct } from "@/lib/forms/payroll-deduct";
-import { managerStatedWarningLevel, templateHasWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
-import { describesMoreThanTheRequest } from "@/lib/forms/corrective-action-intake";
+import { withoutAmountAnswers } from "@/lib/forms/amount-answer";
+import { managerStatedWarningLevel, statedWarningLevel, templateHasWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
+import { describesIncident, describesMoreThanTheRequest } from "@/lib/forms/corrective-action-intake";
 import { twoSentenceActionPlan } from "@/lib/forms/action-plan-sentences";
 import { replyWithManagerActionPlan } from "@/lib/forms/manager-action-plan";
 import { readPlaceState } from "@/lib/forms/place-state";
 import { labelledSalonIds } from "@/lib/forms/salon-cue";
 import { newestManagerTurnSalon } from "@/lib/forms/newest-place-turn";
 import { NOT_A_NAME, NOT_A_TYPED_NAME } from "@/lib/forms/name-words";
+import { newRequestWithOwnDate } from "./new-request-own-date";
 import { isNotAName, maskNotANameText, saidInReply } from "@/lib/forms/not-a-name";
 import {
   actionPlanManagerOnlyEnabled,
   actionPlanSentencesEnabled,
   codeSlotsEnabled,
+  wholeTeamCoachingEnabled,
   globalSalonAskEnabled,
   groundedEntitiesEnabled,
   intentExtractionEnabled,
   warningLevelManagerOnlyEnabled,
   managerWordsOnlyEnabled,
+  spokenTitleWholeEnabled,
   remapIncidentFixEnabled,
   placeSpanGuardEnabled,
   notANameGuardEnabled,
   newestPlaceTurnEnabled,
   formEditDateRulesEnabled,
+  levelStepNotAccountEnabled,
+  grammarAskNotAccountEnabled,
+  priorSentenceFixEnabled,
+  cardObservationOwnRequestEnabled,
+  observationNotPolicyNameEnabled,
+  keepRosterExactNameEnabled,
+  caSalesPolicyEnabled,
+  formNameFromRosterEnabled,
+  complaintAccountEnabled,
+  requestParticipleLeadEnabled,
+  proposalMakeItAboutEnabled,
+  proposalPolicySetAsideEnabled,
+  dateQuestionKeptEnabled,
+  secondRequestOwnAccountEnabled,
+  observationOwnPersonOnlyEnabled,
 } from "@/lib/config/chat-quality-flags";
+import { turnsMadeAbout, withObservationMadeAbout } from "./make-it-about";
+import { NOTHING_SET_ASIDE, citationSetAside, policiesSetAside, setAsideAnything, withPolicySetAside, withoutPolicyAsks } from "@/lib/forms/policy-set-aside";
+import { namesOnlyAPolicy } from "@/lib/forms/person-guard";
+import { foldsToGlossaryTerm } from "./chat-glossary";
+import { statedFormDate } from "@/lib/forms/incident-dates";
+import { correctedIncidentDate } from "@/lib/forms/corrected-incident-date";
 import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
 import { cleanPersonName, employeeNamedOnPurpose } from "@/lib/forms/roster-validated-name";
 import type { ChatFormProposal, SourceCitation } from "@/types";
 
-import { withoutAppLines } from "./app-sentences";
-import { observationByRules } from "./edit-date-rules";
+import { withoutLevelAndStepClauses } from "./account-clauses";
+import { isAppLine, withoutAppLines } from "./app-sentences";
+import { withoutAsksToTheApp } from "./asks-to-the-app";
+import { withoutAppInstructions } from "./app-instructions";
+import { GRAMMAR_ANSWER, managerWords, observationByRules, readSentenceEdit } from "./edit-date-rules";
 import { titleTextFromQuestion, titleTextFromTurns } from "./title-words";
 import type { GroundedPerson } from "./grounded-entities";
-import { accountSentences, currentRequestTurns, managerAccount, priorShorthand, withoutPriorList, withoutStateCodes, withoutStateLead } from "./remap-incident";
+import {
+  accountSentences,
+  currentRequestTurns,
+  isRequestReasonOnly,
+  managerAccount,
+  priorShorthand,
+  withoutPriorList,
+  withoutStateCodes,
+  withoutStateLead, withoutQuestionsToTheApp } from "./remap-incident";
 import { statedPriorActions } from "@/lib/forms/prior-actions";
 import { displayTypedName, repairSpeaksAsValidator, scrubRosterBlock } from "./roster-reply";
+import { PRIMARY_SALON_STATEMENT } from "@/lib/forms/primary-salon-statement";
 
 /**
  * Slots the conversation already filled, put back on this turn's proposal.
@@ -94,6 +136,14 @@ export function holdFilledSlots(input: {
     }
     employeeName = named;
   }
+  /*
+   * WHOLE_TEAM_COACHING_ENABLED (ported from Ask Bubbles, 3 Nov 2026): the
+   * team Coaching card's subject is the label "All team members", which no
+   * turn names as a person — so the name readers above dropped it and the card
+   * could never be created ("A form type and an employee are required."). A
+   * team card keeps its label.
+   */
+  if (wholeTeamCoachingEnabled() && proposal.subject === "team") employeeName = proposal.employeeName;
   const slotsOn = intentExtractionEnabled() || groundedEntitiesEnabled();
   const spokenRole = slotsOn ? spokenDirectoryTitle(turns.join("\n"), input.people, employeeName) : null;
   const managerOnly = managerWordsOnlyEnabled();
@@ -172,6 +222,32 @@ export function holdFilledSlots(input: {
     };
   }
   if (formDate && formDate !== next.formDate) next = { ...next, formDate };
+  /*
+   * PRIOR_SENTENCE_FIX_ENABLED (coordinator's ruling, 26 Oct 2026): the date
+   * the manager's incident dates settle (`statedFormDate`) — two are asked
+   * about, and the form is dated the day it is created until they answer —
+   * over the intent read's "It happened on …" line, which took one of them.
+   */
+  const read = priorSentenceFixEnabled() && next.templateKey === "dpoa"
+    ? statedFormDate(
+        // NEW_REQUEST_OWN_DATE_ENABLED: a new create request with its own date is read alone.
+        newRequestWithOwnDate(withoutStateLead(input.question), input.today)
+          ? [{ role: "user", content: input.question }]
+          : [...input.history, { role: "user", content: input.question }],
+        input.today,
+      )
+    : null;
+  // CORRECTED_DATE_KEPT_ENABLED: among several dates, the incident date the manager corrected to is the card's date.
+  const corrected =
+    read && read.iso === null && read.candidates.length > 1
+      ? correctedIncidentDate(
+          [...input.history.filter((turn) => turn.role === "user").map((turn) => withoutStateLead(turn.content)), withoutStateLead(input.question)],
+          read.candidates,
+          input.today,
+        )
+      : null;
+  const stated = read && corrected ? { ...read, iso: corrected, candidates: [], question: null } : read;
+  if (stated && (stated.iso ?? null) !== (next.formDate ?? null)) next = { ...next, formDate: stated.iso };
   if (payrollDeduct && payrollDeduct !== next.payrollDeduct) next = { ...next, payrollDeduct };
   if (warningLevel && warningLevel !== next.warningLevel) next = { ...next, warningLevel };
   if (warningLevelManagerOnlyEnabled() && !warningLevel && next.warningLevel) next = { ...next, warningLevel: null };
@@ -191,6 +267,11 @@ export function holdFilledSlots(input: {
     if (prior.trim()) content = prior;
   }
   content = dropWarningLines(content);
+  if (stated) content = withDateLine(content, stated.iso);
+  // DATE_QUESTION_KEPT_ENABLED: the date this step leaves open is asked about, never dropped in silence.
+  if (dateQuestionKeptEnabled() && stated && stated.iso === null && stated.question && !/Which date goes on the form\?/i.test(content)) {
+    content = `${content.trimEnd()}\n\n${stated.question}`;
+  }
   if (next.templateKey === "stc-exit" && next.employeeName) {
     content = exitContent(content, next, turns.join("\n"), input.today);
   }
@@ -204,9 +285,25 @@ export function holdFilledSlots(input: {
      */
     if (next.templateKey !== "stc-exit") {
       const build = (given: string, account: readonly string[]) =>
-        fixed ? withAccount(given, account, next.employeeName) : withObservation(given, account, next.employeeName);
+        fixed ? withAccount(given, account, next.employeeName) : withObservation(given, account, next.employeeName, next.templateKey === "dpoa" ? input.today : undefined);
+      // AMOUNT_ANSWER_NOT_ACCOUNT_ENABLED: "i dont know the amount" says nothing that happened.
+      // CARD_OBSERVATION_OWN_REQUEST_ENABLED (QA live check, 3 Nov 2026): a new request's card reads back only
+      // that request's turns, never the earlier incident ("…rugs untl 12;30pm <name> for being late to opening").
+      const scoped = withoutAmountAnswers(cardObservationOwnRequestEnabled() ? currentRequestTurns(turns, next.employeeName) : turns);
+      // SECOND_REQUEST_OWN_ACCOUNT_ENABLED (QA's Sunny round-6 solo gate, 8 Nov 2026): a question to the app is never the account.
+      const own = secondRequestOwnAccountEnabled() ? scoped.map(withoutQuestionsToTheApp).filter((turn) => turn.trim() !== "") : scoped;
+      // PROPOSAL_MAKE_IT_ABOUT_ENABLED: "make it about showing up late …" is the account from that turn on, never the instruction (`ai/make-it-about.ts`).
+      const about = proposalMakeItAboutEnabled() ? turnsMadeAbout(own) : own;
+      // PROPOSAL_POLICY_SET_ASIDE_ENABLED: "take the attendance policy off the form", and "we have quoted the standards of
+      // conduct for …", are policy asks, never account (`forms/policy-set-aside.ts`).
+      const setAside = proposalPolicySetAsideEnabled() ? withoutPolicyAsks(about) : about;
+      // APP_INSTRUCTIONS_NOT_ACCOUNT_ENABLED: "Please word it in a professional way. I need the policy attached as well." is no account.
+      const said = setAside.map(withoutAppInstructions).filter((turn) => turn.trim() !== "");
       // FORM_EDIT_DATE_RULES_ENABLED: an edit replaces, adds to, or never touches the Observation.
-      content = formEditDateRulesEnabled() ? observationByRules(content, turns, build) : build(content, turns);
+      if (formEditDateRulesEnabled()) content = observationByRules(content, said, build);
+      else if (grammarAskNotAccountEnabled()) content = withGrammarAnswered(build(content, said.map(withoutAsksToTheApp)), turns);
+      else content = build(content, said);
+      if (proposalMakeItAboutEnabled()) content = withObservationMadeAbout(content, own);
     }
     if (fixed && next.templateKey === "dpoa") {
       content = withPriorActions(content, currentRequestTurns(turns, next.employeeName), input.today);
@@ -221,7 +318,11 @@ export function holdFilledSlots(input: {
     }
   }
 
-  const citations = (input.response.citations ?? []).filter((citation) => !isWarningCitation(citation));
+  // PROPOSAL_POLICY_SET_ASIDE_ENABLED: a policy the manager took off is not cited on the card; read from the manager's words, never the app's state lines (`forms/policy-set-aside.ts`).
+  const setAside = proposalPolicySetAsideEnabled() ? policiesSetAside(turns.map(managerWords)) : NOTHING_SET_ASIDE;
+  const citations = (input.response.citations ?? []).filter(
+    (citation) => !isWarningCitation(citation) && !citationSetAside(citation, setAside),
+  );
   if (actionPlanManagerOnlyEnabled() && next.templateKey === "dpoa") {
     // The manager's plan, word for word, or none. Never the two sentences.
     content = replyWithManagerActionPlan(content, turns, "Action Plan");
@@ -233,11 +334,37 @@ export function holdFilledSlots(input: {
       if (!content.includes(line)) content = content ? `${content}\n\n${line}` : line;
     }
   }
+  /*
+   * KEEP_ROSTER_EXACT_NAME_ENABLED: a name the keeper took off the card is not drafted for in the reply; it asks who.
+   * FORM_NAME_FROM_ROSTER_ENABLED too (4 Nov 2026): its request slot makes a card for a typed name on no roster, and
+   * one with a not-a-name word in it ("… One") is then taken off by the keeper — the reply must not draft for it.
+   */
+  if ((keepRosterExactNameEnabled() || formNameFromRosterEnabled()) && proposal.employeeName && !next.employeeName) {
+    content = withDroppedNameAsked(content, proposal.employeeName);
+  }
+  if (setAsideAnything(setAside)) content = withPolicySetAside(content, setAside);
   const same =
     content === input.response.content &&
     next === proposal &&
     citations.length === (input.response.citations ?? []).length;
   return same ? input.response : { ...input.response, content, formProposal: next, citations };
+}
+
+const ASK_WHO = "Who is this form for? Tell me the employee's full name.";
+
+/**
+ * KEEP_ROSTER_EXACT_NAME_ENABLED (QA, 4 Nov 2026): the reply was written from
+ * the name the keeper then took off the card ("I'll draft a Corrective Action
+ * Form for **<name>**" over an empty Employee). The reply no longer says it
+ * drafts for that name, and asks who the form is for, once.
+ */
+function withDroppedNameAsked(content: string, name: string): string {
+  const bold = `**${name.trim()}**`;
+  if (!content.includes(bold)) return content;
+  const escaped = bold.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  let out = content.replace(new RegExp(String.raw`\s+for ${escaped}`, "g"), "").split(bold).join("the employee");
+  if (!/Who is this (?:\*\*[^*]+\*\* |form )?for\?/i.test(out)) out = `${out.trim()}\n\n${ASK_WHO}`;
+  return out;
 }
 
 function emptySlotQuestions(proposal: ChatFormProposal): string[] {
@@ -275,6 +402,9 @@ function keptName(
   people: readonly GroundedPerson[],
   replies: readonly string[] = [],
 ): string | null {
+  // KEEP_ROSTER_EXACT_NAME_ENABLED: an exact roster name is never a fragment (a roster name ending in "One").
+  const exact = (name: string | null | undefined): string | null => (keepRosterExactNameEnabled() ? rosterSpelling(name, people) : null);
+  const fragment = (name: string | null | undefined): boolean => isFragment(name) && exact(name) === null;
   const question = turns[turns.length - 1] ?? "";
   // NOT_A_NAME_GUARD_ENABLED: the previous card's name does not carry forward
   // when it came from a reply — a reply in the window says it other than as
@@ -285,17 +415,17 @@ function keptName(
   }
   const stated = newestName(turns);
   let picked: string | null = null;
-  if (previous && !isFragment(previous)) {
+  if (previous && !fragment(previous)) {
     const longer = longerName(question, previous);
     picked = longer ?? (renamesEmployee(question, previous) ? stated ?? current : previous);
-  } else if (!isFragment(current)) {
+  } else if (!fragment(current)) {
     const longer = stated && extendsName(stated, current!) ? stated : null;
     picked = longer ?? current;
   } else {
     picked = stated;
   }
-  if (!picked || isFragment(picked)) return !isFragment(current) ? spell(current, people) : null;
-  return spell(picked, people);
+  if (!picked || fragment(picked)) return !fragment(current) ? (exact(current) ?? spell(current, people)) : null;
+  return exact(picked) ?? spell(picked, people);
 }
 
 /** The name is in the manager's words, outside a bulleted or priced offer list. */
@@ -364,6 +494,23 @@ function newestName(turns: readonly string[]): string | null {
   return null;
 }
 
+/**
+ * KEEP_ROSTER_EXACT_NAME_ENABLED: the roster's spelling when the name is
+ * somebody's whole roster name (first or preferred, then last), else null.
+ * Whole names, not word by word: a first name of two words ("QA Probe") is one
+ * roster first name, which `matchEmployeeName` does not read as exact.
+ */
+function rosterSpelling(name: string | null | undefined, people: readonly GroundedPerson[]): string | null {
+  const typed = normalizeTypedName(name ?? "");
+  if (!typed) return null;
+  for (const person of people) {
+    for (const first of [person.firstName, person.preferredFirstName]) {
+      if (first?.trim() && normalizeTypedName(`${first} ${person.lastName}`) === typed) return `${first.trim()} ${person.lastName.trim()}`;
+    }
+  }
+  return null;
+}
+
 function isFragment(name: string | null | undefined): boolean {
   if (!name?.trim()) return true;
   const text = name.trim();
@@ -400,7 +547,7 @@ function keptSalon(
 ): string | null {
   for (let index = turns.length - 1; index >= 0; index -= 1) {
     const turn = turns[index]!;
-    const stripped = turn.replace(/\bprimary\s+salon\s+is\s+[^.\n]+/gi, " ");
+    const stripped = turn.replace(PRIMARY_SALON_STATEMENT, " ");
     const ids = salonIds(stripped);
     if (ids.length === 1) return ids[0]!;
     if (stripped !== turn && ids.length === 0) {
@@ -517,6 +664,24 @@ function keepPolicyLines(content: string, previous: string): string {
  * title. The person's own title is used whole when it starts with those
  * words. Someone who is not on the roster keeps only the words they said.
  */
+/*
+ * SPOKEN_TITLE_WHOLE_ENABLED (QA, Sunny live conv_mvubbfs32obszty, 30 Oct
+ * 2026): "assistant salon manager at kearney" for somebody not on the roster
+ * read back Job Title "Assistant Salon" — the first two words of the
+ * directory's "Assistant Salon Director". When the words after the typed
+ * start name another job ("manager"), the manager typed a different title.
+ */
+const ANOTHER_JOB =
+  /^\s+(?:manager|director|consultant|associate|lead|supervisor|keyholder|specialist|assistant|coordinator|trainee|stylist|technician|attendant|cashier|clerk|representative|trainer)\b/i;
+
+function endsInAnotherJob(text: string, prefix: string): boolean {
+  const at = new RegExp(`\\b${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "gi");
+  for (const match of text.matchAll(at)) {
+    if (!ANOTHER_JOB.test(text.slice(match.index! + match[0].length))) return false;
+  }
+  return true;
+}
+
 function spokenDirectoryTitle(
   text: string,
   people: readonly GroundedPerson[],
@@ -533,6 +698,8 @@ function spokenDirectoryTitle(
       const prefix = words.slice(0, length).join(" ");
       const pattern = new RegExp(`\\b${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
       if (!pattern.test(text)) continue;
+      // SPOKEN_TITLE_WHOLE_ENABLED: "assistant salon manager" is not the start of "Assistant Salon Director".
+      if (spokenTitleWholeEnabled() && length < words.length && endsInAnotherJob(text, prefix)) continue;
       if (!best || length > best.words) best = { prefix, words: length };
       break;
     }
@@ -556,28 +723,95 @@ function directorySalonIds(name: string | null, people: readonly GroundedPerson[
   return person ? [...person.salonIds] : [];
 }
 
+/** PRIOR_SENTENCE_FIX_ENABLED: the reply's "**Date:**" line says the settled date, or is gone while it is asked. */
+function withDateLine(content: string, iso: string | null): string {
+  const line = iso ? `**Date:** ${Number(iso.slice(5, 7))}/${Number(iso.slice(8, 10))}/${iso.slice(0, 4)}` : null;
+  const lines = content.split("\n");
+  const at = lines.findIndex((entry) => entry.startsWith("**Date:**"));
+  if (at < 0) return content;
+  if (line) lines[at] = line;
+  else lines.splice(at, lines[at + 1] === "" && lines[at - 1] === "" ? 2 : 1);
+  return lines.join("\n");
+}
+
+/*
+ * GRAMMAR_ASK_NOT_ACCOUNT_ENABLED (QA P5 replay LS-S9, 27 Oct 2026): "can you
+ * clean up my grammar and capitalizing on proper nouns?" was added to the
+ * card's Observation, word for word, and never answered — on the Coaching and
+ * Follow-Up Coaching cards, where FORM_EDIT_DATE_RULES (which reads such a
+ * sentence) is not live. With the flag on, a grammar request, or an
+ * instruction asked as a question, is no account (here and in the draft's
+ * notes, `forms/instances/[id]/draft/route.ts`), and a grammar request gets
+ * the same answer the edit rules give.
+ */
+function withGrammarAnswered(content: string, turns: readonly string[]): string {
+  const last = turns[turns.length - 1] ?? "";
+  const asked = last.split(/\n+|(?<=[.!?])\s+/).some((sentence) => readSentenceEdit(sentence)?.kind === "grammar");
+  return asked && !content.includes(GRAMMAR_ANSWER) ? `${content}\n\n${GRAMMAR_ANSWER}` : content;
+}
+
+/**
+ * CA_SALES_POLICY_ENABLED (QA, live, 4 Nov 2026; conv_mw2ds90h2wk2bgz): "I
+ * need to make a corrective action for msb" put "msb" on the card as the
+ * Observation of Offense. A sentence that is only a glossary term names the
+ * reason (MSB), not what happened. Off, false.
+ */
+function onlyAGlossaryTerm(sentence: string): boolean {
+  return caSalesPolicyEnabled() && foldsToGlossaryTerm(sentence.replace(/[.!?]+$/, ""));
+}
+
 /** The account already given, copied onto the card so the offense is not asked again. */
-function withObservation(content: string, turns: readonly string[], employeeName: string | null): string {
+function withObservation(content: string, turns: readonly string[], employeeName: string | null, today?: string): string {
   const ignore = employeeName ? [employeeName] : [];
   const managerOnly = managerWordsOnlyEnabled();
   const sentences: string[] = [];
+  const reasons = new Set<string>();
+  const conversation = turns.join("\n");
   for (const turn of managerOnly ? turns.map(withoutAppLines) : turns) {
-    for (const part of turn.split(/\n+|(?<=[.!?])\s+/)) {
-      const said = part.trim();
+    // PRIOR_SENTENCE_FIX_ENABLED (QA, 26 Oct 2026): "…she was late on 10-5 and 10-15. i coached her on
+    // 10-16 about being late" put only the coaching here — the short incident sentence failed
+    // `describesMoreThanTheRequest`. A prior step's clause is no account, and a manager sentence
+    // left beside it that describes an incident is kept however short.
+    const read = today === undefined ? { text: turn, dropped: false } : withoutPriorStepClauses(turn, today, conversation);
+    for (const part of read.text.split(/\n+|(?<=[.!?])\s+/)) {
+      // LEVEL_STEP_NOT_ACCOUNT_ENABLED: "this should be a written and note a verbal ca was given on 9-1-26" says nothing that happened.
+      // PAYROLL_CLAUSE_NOT_ACCOUNT_ENABLED: "$20 payroll deduct applies" and "Payroll deduction amount: $20." are the payroll answer.
+      const said = withoutPayrollClauses((levelStepNotAccountEnabled() ? withoutLevelAndStepClauses(part) : part).trim());
       if (said.length < 12) continue;
-      if (!describesMoreThanTheRequest(said, { ignore })) continue;
+      // POLICY_CORRECTION_NOT_ACCOUNT_ENABLED: "it should be under performance not standard of conduct" is about the form.
+      if (isPolicyCorrection(said)) continue;
+      // PRIOR_SENTENCE_FIX_ENABLED (coordinator, 26 Oct 2026): "she was late on 10-5" is the account
+      // however few words it has beyond the request, with a prior clause beside it or not.
+      const incident = today !== undefined && priorSentenceFixEnabled() && !isAppLine(said) && describesIncident(said);
+      if (!incident && !describesMoreThanTheRequest(said, { ignore })) continue;
       if (managerOnly && onlySaysWhereTheyWork(said, ignore)) continue;
       // MANAGER_WORDS_ONLY_ENABLED: without the clauses that only request the
       // form, name the employee or give their place (QA, 25 Oct 2026).
-      const sentence = managerOnly ? managerAccount(said, employeeName) : said;
+      // SALES_OBSERVATION_ACCOUNT_ENABLED: the account only, never the request's words, the name or a payroll answer (`forms/ca-policy.ts`).
+      const read = observationAccount(managerOnly ? managerAccount(said, employeeName) ?? "" : said, employeeName);
+      // OBSERVATION_OWN_PERSON_ONLY_ENABLED (QA's P7): never the request's other people, nor "create draft for …".
+      const sentence = read && observationOwnPersonOnlyEnabled() ? ownPersonAccount(read) : read;
       if (!sentence) continue;
+      // BARE_NOT_AFTER_REQUEST_ENABLED: "ca for <A> not late" says only what did not happen, so it is no Observation.
+      if (onlyDeniesForObservation(said, employeeName) || onlyDeniesForObservation(sentence, employeeName)) continue;
+      // CA_SALES_POLICY_ENABLED (QA, live, 4 Nov 2026): "a corrective action for msb" left "msb"; a glossary term is the reason, not an account.
+      if (onlyAGlossaryTerm(sentence)) continue;
+      // OBSERVATION_NOT_POLICY_NAME_ENABLED: "must see behaviors" names the policy, not what happened.
+      if (observationNotPolicyNameEnabled() && namesOnlyAPolicy(sentence)) continue;
       if (content.toLowerCase().includes(sentence.toLowerCase())) continue;
       if (sentences.some((kept) => kept.toLowerCase() === sentence.toLowerCase())) continue;
+      // REQUEST_PARTICIPLE_LEAD_ENABLED: "I need a corrective action made for under performance." is the reason.
+      if (requestParticipleLeadEnabled() && isRequestReasonOnly(said, sentence)) reasons.add(sentence);
       sentences.push(sentence);
     }
   }
   if (sentences.length === 0) return content;
-  return `${content}\n\n**Observation of Offense:** ${sentences.join(" ")}`.trim();
+  // REQUEST_PARTICIPLE_LEAD_ENABLED (QA's round-5 live Sunny check, 8 Nov 2026): with the account in another sentence,
+  // the request's reason is left out, so the Observation starts at the account. Alone, it stays.
+  const account = sentences.some((sentence) => !reasons.has(sentence)) ? sentences.filter((sentence) => !reasons.has(sentence)) : sentences;
+  // COMPLAINT_ACCOUNT_ENABLED: the warning level is the form's Type of Warning, never the account.
+  const told = complaintAccountEnabled() ? account.map(withoutLevelLead) : account;
+  return `${content}\n\n**Observation of Offense:** ${told.join(" ")}`.trim();
 }
 
 /**
@@ -638,11 +872,35 @@ function stateCodeTitle(text: string, role: string): boolean {
  * 24 Oct 2026: "create a corrective action form for" was What happened).
  */
 function withAccount(content: string, turns: readonly string[], employeeName: string | null): string {
-  const sentences = accountSentences(turns, employeeName, { managerOnly: managerWordsOnlyEnabled() }).filter(
-    (sentence) => !content.toLowerCase().includes(sentence.toLowerCase()),
+  // SALES_OBSERVATION_ACCOUNT_ENABLED: the account only, never the request's words, the name or a payroll answer (`forms/ca-policy.ts`).
+  const sentences = accountSentences(turns, employeeName, { managerOnly: managerWordsOnlyEnabled() }).map((sentence) => observationAccount(sentence, employeeName)).filter(
+    (sentence) => sentence !== "",
+  ).filter(
+    (sentence) =>
+      !onlyAGlossaryTerm(sentence) &&
+      // BARE_NOT_AFTER_REQUEST_ENABLED: a sentence that only says what did not happen is no Observation.
+      !onlyDeniesForObservation(sentence, employeeName) &&
+      !content.toLowerCase().includes(sentence.toLowerCase()) &&
+      // OBSERVATION_NOT_POLICY_NAME_ENABLED: "must see behaviors" names the policy, not what happened.
+      !(observationNotPolicyNameEnabled() && namesOnlyAPolicy(sentence)),
   );
   if (sentences.length === 0) return content;
-  return `${content}\n\n**Observation of Offense:** ${sentences.join(". ")}`.trim();
+  const told = complaintAccountEnabled() ? sentences.map(withoutLevelLead) : sentences;
+  return `${content}\n\n**Observation of Offense:** ${told.join(". ")}`.trim();
+}
+
+/**
+ * COMPLAINT_ACCOUNT_ENABLED (QA's audit, 7 Nov 2026): "verbal warning The date she complained was Oct 31st" — the
+ * level the app reads as this form's Type of Warning is not the account. Its words come off the front of a sentence
+ * that runs on: "<level> warning" before three or more words, or the level alone before a new sentence (a capital).
+ * "written up twice already for being late" keeps its words; a sentence that is only the level is left as it was.
+ */
+export function withoutLevelLead(sentence: string): string {
+  const lead = /^(\S+)(\s+warning)?\s+(?=\S)/i.exec(sentence);
+  if (!lead || statedWarningLevel(lead[0].trim()) === null) return sentence;
+  const rest = sentence.slice(lead[0].length);
+  if (rest.split(/\s+/).length < 3) return sentence;
+  return lead[2] || /^\p{Lu}/u.test(rest) ? rest : sentence;
 }
 
 /** The global salon question is once per conversation. A later turn does not ask it again. */

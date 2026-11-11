@@ -1,6 +1,7 @@
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { payrollAmountFieldEnabled, priorActionsParseEnabled } from "@/lib/config/chat-quality-flags";
-import { blankYearlessStepDates, extractFormDate } from "@/lib/forms/form-date-answer";
+import { priorSentenceFixFor } from "@/lib/forms/prior-sentence-scope";
+import { blankYearlessStepDates, extractFormDate, statedIncidentDates } from "@/lib/forms/form-date-answer";
 import { lateOpenOn, yearlessCuedDates } from "@/lib/forms/late-open";
 import {
   payrollAmountFromConversation,
@@ -10,6 +11,7 @@ import {
 } from "@/lib/forms/payroll-deduct";
 import { extractJobTitle, readEmployeeMentions } from "@/lib/forms/proposal";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
+import { placeText } from "@/lib/forms/place-from-cue";
 import { statedWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
 
 /**
@@ -62,7 +64,8 @@ function slotLines(question: string, history: readonly IntakeTurn[]): string[] {
 
   const joined = [...earlier, question].join("\n");
   const salon = singleSalon([...earlier, question]) ?? fuzzySalon(joined) ?? uniqueRosterSalon(joined);
-  if (salon && readSalonMentions(question).length === 0) {
+  // PLACE_FROM_CUE_ENABLED: "… for <name> from <salon>" already names one (`forms/place-from-cue.ts`).
+  if (salon && readSalonMentions(placeText(question)).length === 0) {
     lines.push(`It happened at ${salon}.`);
   }
   return lines;
@@ -167,7 +170,16 @@ function rankSalons(phrase: string): { name: string; score: number } | null {
 export function fieldLines(question: string, today: string, earlier = ""): string[] {
   const lines: string[] = [];
   const corpus = earlier.trim() ? `${earlier}\n${question}` : question;
-  if (!extractFormDate(question, today)) {
+  // PRIOR_SENTENCE_FIX_ENABLED, on a Corrective Action: one incident date is written out; two or more
+  // are asked about ("Which date goes on the form?"), never picked here; an earlier step's date never
+  // is one. With none, the line below reads as before (earlier steps' dates blanked).
+  const stated =
+    !extractFormDate(question, today) && priorSentenceFixFor(corpus)
+      ? [...new Set(statedIncidentDates(corpus, today).map((found) => found.iso))]
+      : [];
+  if (stated.length === 1) {
+    lines.push(`It happened on ${slashDate(stated[0]!)}.`);
+  } else if (stated.length === 0 && !extractFormDate(question, today)) {
     const known = extractFormDate(corpus, today);
     // "she was coached on 9-15": an earlier step's yearless date is not the incident (PRIOR_ACTIONS_PARSE_ENABLED).
     const slash = lastUnyearDated(priorActionsParseEnabled() ? blankYearlessStepDates(corpus, today) : corpus, today);

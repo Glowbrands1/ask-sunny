@@ -23,7 +23,14 @@
  * Here, that sentence is AMBIGUOUS and the answer is a question.
  */
 
-import { formChoiceStatedEnabled } from "@/lib/config/chat-quality-flags";
+import {
+  caRequestNotPriorCoachingEnabled,
+  caSalesPolicyEnabled,
+  caShortcutWordsEnabled,
+  formChoiceStatedEnabled,
+  formNameFromRosterEnabled,
+} from "@/lib/config/chat-quality-flags";
+import { foldsToGlossaryTerm } from "@/lib/ai/chat-glossary";
 
 import { NOT_A_NAME, NOT_A_TYPED_NAME, TYPED_NAME_WORD } from "./name-words";
 import { asksForTeamCoaching } from "./team-subject";
@@ -657,8 +664,18 @@ function leadsWithTheForm(q: string, original: string): boolean {
 const WRITES_THE_FORM =
   /\bwrite\s+(?:up\s+)?(?:a|an|the|another|one|her|his|their)\s+(?:(?:new|formal|first|second|third|final|verbal|written|official)\s+){0,2}(?:c\.?\s?a\.?|c\/a|corrective[\s-]+actions?|warning|write[\s-]?up|dpoa|disciplinary(?:\s+action)?)\b/;
 
+/*
+ * CA_SALES_POLICY_ENABLED (QA, 4 Nov 2026: "Can you write me a performace ca
+ * for an employee who … <name> - verbal" made no card): "write me a …" and
+ * one or two plain words before the form ("a performance CA", "a quick CA")
+ * still write the form. The object must still BE the form: "write a summary
+ * of the CA policy" does not match. Off, as before.
+ */
+const WRITES_THE_FORM_LOOSE =
+  /\bwrite\s+(?:up\s+)?(?:me\s+|us\s+)?(?:a|an|the|another|one|her|his|their)\s+(?:[a-z'’-]+\s+){0,2}?(?:c\.?\s?a\.?|c\/a|corrective[\s-]+actions?|warning|write[\s-]?up|dpoa|disciplinary(?:\s+action)?)\b/;
+
 function writesTheForm(q: string): boolean {
-  return WRITES_THE_FORM.test(q);
+  return WRITES_THE_FORM.test(q) || (caSalesPolicyEnabled() && WRITES_THE_FORM_LOOSE.test(q));
 }
 
 /**
@@ -1162,6 +1179,28 @@ function mentionsUnnegated(haystack: string, phrase: string): boolean {
 }
 
 /**
+ * FORM_NAME_FROM_ROSTER_ENABLED (Pau, via QA, 4 Nov 2026): the CORRECTIVE
+ * ACTION WINS. "I need a corrective action for Coaching Form. This is for
+ * Under Performance on …" — another form's name where the person goes — made
+ * a Coaching Form card, and its employee "Club Close". A form from the
+ * registry (`TEMPLATE_INTENT`) named as the object of "for", after a request
+ * for a corrective action, is not the form asked for: the request reads as a
+ * Corrective Action, and the form's name is never its employee
+ * (`request-slot.ts`). Off, as before.
+ */
+function caForAnotherForm(key: string, before: string): boolean {
+  if (!formNameFromRosterEnabled() || key === "dpoa" || !/\bfor\s+$/.test(before)) return false;
+  return CORRECTIVE_ACTION_REQUEST.some((phrase) => mentionsUnnegated(before, phrase));
+}
+
+/** FORM_NAME_FROM_ROSTER_ENABLED: the phrase is a form's name from the registry ("Coaching Form"), whole. */
+export function namesAForm(phrase: string): boolean {
+  const q = canonicalFormWording(normalize(phrase)).trim();
+  if (!q) return false;
+  return TEMPLATE_INTENT.some((entry) => entry.matchers.includes(q));
+}
+
+/**
  * ============================================================================
  * WHICH FORM WAS ASKED FOR, AND WHICH ONE IS ONLY WHAT IT IS ABOUT
  * ============================================================================
@@ -1191,6 +1230,27 @@ function mentionsUnnegated(haystack: string, phrase: string): boolean {
  * "Policy Review for Avery Testperson" names one form in a request position,
  * so it is still the standalone Policy Review.
  */
+/**
+ * CA_REQUEST_NOT_PRIOR_COACHING_ENABLED (Pau's scan, sf-s35, 7 Nov 2026): "Can you draw me up a CA for <name> for
+ * being late on 10/23/26. <first> has signed a coaching document for being late on 10/14/26. …" opened a Coaching
+ * Form: the coaching named as history was the only form named. A form named AFTER a Corrective Action request in
+ * the same message is a detail of that request — read by this function itself on the words before it — unless the
+ * manager switches to it ("…, actually make it a coaching form"; `SWITCH_BEFORE`). Off, as before.
+ */
+/*
+ * ONE READING, NOT ONE PER NAMING (QA's gate runner, 7 Nov 2026). Reading the words before each naming with
+ * detectTemplateIntent re-read every shorter prefix, which read its own namings the same way: the work doubled with
+ * each naming, and a ~40-naming coaching intake never finished. The answer is the same for every naming after the
+ * first: if the words before the FIRST form named (other than the CA itself) are a Corrective Action request, every
+ * form named after it is a detail of that request; if they are not, the first form named is the one asked for. So
+ * `requestedNaming` reads that one prefix, once, lazily — it names no other form, so nothing recurses.
+ */
+function detailOfAnEarlierCaRequest(key: string, before: string, leadIsCaRequest: () => boolean): boolean {
+  if (!caRequestNotPriorCoachingEnabled() || key === "dpoa" || before.trim() === "") return false;
+  if (SWITCH_BEFORE.test(before)) return false;
+  return leadIsCaRequest();
+}
+
 function requestedNaming(q: string, original: string): { key: string; phrase: string } | null {
   type Naming = { key: string; phrase: string; start: number; end: number; order: number };
   const found: Naming[] = [];
@@ -1208,10 +1268,25 @@ function requestedNaming(q: string, original: string): { key: string; phrase: st
       !all.slice(0, index).some((kept) => kept.order < naming.order && kept.start < naming.end && naming.start < kept.end),
     );
 
+  /* CA_REQUEST_NOT_PRIOR_COACHING_ENABLED: the words before the first non-CA naming, read once and only if asked. */
+  let caLead: boolean | undefined;
+  const leadIsCaRequest = (): boolean => {
+    if (caLead === undefined) {
+      const first = Math.min(...spans.filter((naming) => naming.key !== "dpoa").map((naming) => naming.start));
+      caLead = Number.isFinite(first) && first > 0 && detectTemplateIntent(q.slice(0, first)).kind === "corrective_action";
+    }
+    return caLead;
+  };
+
   // 2 and 3. Not wanted, and only the topic.
   const wanted = spans.filter((naming) => {
     const before = q.slice(0, naming.start);
-    return !NEGATED_BEFORE.test(before) && !TOPIC_BEFORE.test(before);
+    return (
+      !NEGATED_BEFORE.test(before) &&
+      !TOPIC_BEFORE.test(before) &&
+      !caForAnotherForm(naming.key, before) &&
+      !detailOfAnEarlierCaRequest(naming.key, before, leadIsCaRequest)
+    );
   });
   if (wanted.length === 0) return null;
 
@@ -1452,14 +1527,37 @@ const POLITE_REQUEST =
  */
 /* A level followed by its noun ("a written CA") is read by the corrective-action rules, not here. */
 const LEVEL_FOLLOW = String.raw`(?=\s*(?:$|[.,;:!—–-]|for\b|on\b|about\b|because|regarding|over\b|this\b|today|please|pls|and\b|since|due|after|then\b|is\s+(?:fine|enough|ok)))`;
+/**
+ * CA_SHORTCUT_WORDS_ENABLED: "create a written on 10/20 for katrin dovetail",
+ * "make her a verbal" — asking to create the level is asking for the
+ * Corrective Action form. A question about one is not (`informational`).
+ */
+const CREATE_LEVEL = new RegExp(
+  String.raw`\b(?:create|make|draft|prepare|write)\s+(?:her\s+|him\s+|them\s+)?an?\s+(?:verbal|written)\b(?:\s+(?:warning|one))?${LEVEL_FOLLOW}`,
+);
+
 const LEVEL_AS_DOCUMENT = new RegExp(
   String.raw`\b(?:(?:issue|issuing|give|giving)\s+(?:[a-z'’-]+\s+){0,2}?|(?:put\s+(?:[a-z'’-]+\s+){1,3}?on|start|do|need|needs|want|document|doc|file|log|(?:i|we)'?d\s+like|(?:i|we)\s+would\s+like|write\s+(?:her|him|them)\s+up\s+with)\s+(?:her\s+|him\s+|them\s+)?)(?:an?\s+)?(?:final\s+)?(?:verbal|written)\b${LEVEL_FOLLOW}|\b(?:just|only)\s+(?:a\s+)?(?:verbal|written)\b${LEVEL_FOLLOW}`,
 );
 
 const EXISTENCE_QUESTION = /^(?:so\s+|and\s+)?(?:(?:do|does|did)\s+(?:we|you|i|they|ask sunny)\s+(?:have|offer|keep|use)|(?:is|are)\s+there|have\s+(?:we|you)\s+got|(?:can|could)\s+(?:i|we)\s+(?:find|get))\b/;
 
+/**
+ * A LEADING GLOSSARY TERM IS THE REASON, NOT PART OF THE REQUEST
+ * (CA_SALES_POLICY_ENABLED; Pau, 4 Nov 2026): "MSB CA for <name> for …" is the
+ * request "CA for <name> for …" whose reason is MSB (Must See Behaviors). The
+ * term is read from the approved glossary (`ai/chat-glossary.ts`), never a list
+ * here; the policy reading still sees it in the manager's own words. Off,
+ * the question is unchanged.
+ */
+export function withoutLeadingGlossaryTerm(question: string): string {
+  if (!caSalesPolicyEnabled()) return question;
+  const match = /^\s*([a-z0-9.&-]+)\s+(?=\S)/i.exec(question);
+  return match && foldsToGlossaryTerm(match[1]!) ? question.slice(match[0].length) : question;
+}
+
 export function detectTemplateIntent(rawQuestion: string): TemplateIntent {
-  const question = formChoiceStatedEnabled() ? withoutPolicyReference(rawQuestion) : rawQuestion;
+  const question = withoutLeadingGlossaryTerm(formChoiceStatedEnabled() ? withoutPolicyReference(rawQuestion) : rawQuestion);
   const q = canonicalFormWording(normalize(question));
   /* A question about forms — compared, explained, or when to use one — is answered, never opened. */
   /*
@@ -1530,6 +1628,8 @@ export function detectTemplateIntent(rawQuestion: string): TemplateIntent {
 
   /* "issue a verbal", "put tess varga on a written" — see `LEVEL_AS_DOCUMENT`. */
   if (!informational && LEVEL_AS_DOCUMENT.test(q)) return { kind: "explicit", templateKey: "dpoa" };
+  // CA_SHORTCUT_WORDS_ENABLED: "create a written on 10/20 for …", "make her a verbal" — the level names the form.
+  if (caShortcutWordsEnabled() && !informational && CREATE_LEVEL.test(q)) return { kind: "explicit", templateKey: "dpoa" };
 
   /*
    * THE NAME OF THE PROGRESSION, with no document named alongside it — and not
@@ -1544,6 +1644,12 @@ export function detectTemplateIntent(rawQuestion: string): TemplateIntent {
       requestedCreation:
         !informational &&
         (CREATION_VERBS.some((verb) => mentions(q, verb)) ||
+          /*
+           * CA_REQUEST_NOT_PRIOR_COACHING_ENABLED (QA's live tester, 7 Nov 2026, sf-s35's exact wording): "Can you
+           * draw me up a CA for <name> …" asks for the form. With the coaching document set aside as history, nothing
+           * else in the message asked for one, so no card opened.
+           */
+          (caRequestNotPriorCoachingEnabled() && /\bdraw\s+(?:(?:me|us)\s+)?up\b/.test(q)) ||
           writesTheForm(q) ||
           leadsWithTheForm(q, question) ||
           /*

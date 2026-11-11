@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { noteSpendUser } from "@/lib/ai/spend-meter";
+import { withSpendMeter } from "@/lib/ai/spend-meter-run";
 
 import { assertWithinRateLimit, errorResponse } from "@/lib/api/respond";
 import { authorizeForms } from "@/lib/forms/access";
@@ -39,9 +41,15 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
+/** SPEND_GUARD_ALL_CALLS_ENABLED: this route's Claude calls are counted (`ai/spend-meter.ts`). Off, as before. */
 export async function POST(request: Request, context: { params: Promise<{ key: string }> }) {
+  return withSpendMeter("form_ingest", () => postFormIngest(request, context));
+}
+
+async function postFormIngest(request: Request, context: { params: Promise<{ key: string }> }) {
   try {
     const actor = await authorizeForms(request, "manage_form_templates");
+    noteSpendUser(actor.id);
     assertWithinRateLimit(request, "upload");
     const { key } = await context.params;
 

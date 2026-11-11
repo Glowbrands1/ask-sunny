@@ -467,8 +467,20 @@ describe("FORM_CHOICE_STATED_ENABLED: the form the manager named wins", () => {
     });
 
     it("conv_mvmyqvkq2zwzrln cited page 14, Disciplinary Action", async () => {
+      vi.stubEnv("POLICY_SPECIFIC_TOPICS_ENABLED", "");
       const out = await live({ history: [], question: WOVEN_DEADLINE, saved: null, raw: WOVEN_RAW });
       expect(out.sources?.citations.map((citation) => citation.locator)).toEqual(["Page 14"]);
+    });
+
+    /*
+     * POLICY_SPECIFIC_TOPICS_ENABLED adds the Standards of Conduct (Page 12) to
+     * the card for a missed Woven deadline, on purpose (QA, 26 Oct 2026: the
+     * card carries the policy a Corrective Action does). Page 14 stays.
+     */
+    it("POLICY_SPECIFIC_TOPICS_ENABLED on: the same chat cites page 12, Standards of Conduct, then page 14", async () => {
+      vi.stubEnv("POLICY_SPECIFIC_TOPICS_ENABLED", "true");
+      const out = await live({ history: [], question: WOVEN_DEADLINE, saved: null, raw: WOVEN_RAW });
+      expect(out.sources?.citations.map((citation) => citation.locator)).toEqual(["Page 12", "Page 14"]);
     });
   });
 

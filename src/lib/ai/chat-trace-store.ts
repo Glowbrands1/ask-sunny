@@ -33,6 +33,22 @@ export interface ChatTraceDraft {
   succeeded: boolean | null;
   /** Slots after this turn. Absent when the turn did not settle a form. */
   slots?: Record<string, unknown> | null;
+  /** FORM_EDIT_TOOL_IN_STREAM_ENABLED: `slots.form_edit` — keys and reasons only. Absent when the flag is off. */
+  formEdit?: Record<string, unknown>;
+  /**
+   * FORM_EDIT_SINGLE_WRITER_ENABLED: the post-draft consistency check, written
+   * to `slots.draft_check` — `{ checked, missing_keys }`, the kinds of fact
+   * left out ("name", "date", "amount"), never their values. Absent when the
+   * check did not run.
+   */
+  draftCheck?: Record<string, unknown>;
+  /**
+   * CHAT_STAGE_TIMINGS_ENABLED: how long each awaited step of the turn took, written to `slots.stages`. Names and
+   * milliseconds only (from the request's receipt), never content. Absent when the flag is off.
+   */
+  stages?: ChatStageTiming[];
+  /** CHAT_STAGE_TIMINGS_ENABLED: the request's receipt, which `stages` count from. */
+  stagesFrom?: number;
   /**
    * The form extraction for this turn, when FORM_FULL_REMAP_ENABLED is on.
    * `slots` is the same record the card was filled from.
@@ -43,6 +59,13 @@ export interface ChatTraceDraft {
     outputTokens: number | null;
     slots: Record<string, unknown>;
   } | null;
+}
+
+/** CHAT_STAGE_TIMINGS_ENABLED: one awaited step — its name, when it started and how long it took (-1 while open), in ms from the request's receipt. */
+export interface ChatStageTiming {
+  readonly name: string;
+  readonly startMs: number;
+  readonly ms: number;
 }
 
 const storage = new AsyncLocalStorage<ChatTraceDraft>();

@@ -1,0 +1,23 @@
+{
+  "key": "b23625afd27b90924f248c893e348592de6faf4ef62601f412f8f7fbe3f672de",
+  "model": "claude-haiku-4-5",
+  "reply": {
+    "employee": "quinn",
+    "salon": "Kearney",
+    "title": "<UNKNOWN>",
+    "incidentType": "10 minutes late on her last two shifts",
+    "incidentDate": "10/15",
+    "payrollAmount": "<UNKNOWN>",
+    "warningLevel": "verbal",
+    "formType": "CA form",
+    "formTurn": true,
+    "policyHeading": "Attendance"
+  },
+  "usage": {
+    "inputTokens": 3208,
+    "outputTokens": 217,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 0
+}

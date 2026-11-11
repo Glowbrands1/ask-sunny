@@ -1,3 +1,5 @@
+import { rosterCompoundSurnameEnabled, sharedLoginNotStaffEnabled } from "@/lib/config/chat-quality-flags";
+
 /**
  * ============================================================================
  * IS THE NAME THE MANAGER TYPED SOMEBODY ON THEIR TEAM?
@@ -75,7 +77,23 @@ const SERVICE_NAME_WORDS = new Set([
 /** Whether a directory row's name is a department, role or system rather than a person. */
 export function isServiceAccountName(firstName: string, lastName: string): boolean {
   const words = `${firstName} ${lastName}`.toLowerCase().split(/[^a-z]+/).filter(Boolean);
-  return words.length > 0 && words.every((word) => SERVICE_NAME_WORDS.has(word));
+  if (words.length > 0 && words.every((word) => SERVICE_NAME_WORDS.has(word))) return true;
+  return sharedLoginNotStaffEnabled() && isSharedLogin(lastName);
+}
+
+/*
+ * SHARED_LOGIN_NOT_STAFF_ENABLED (ported from Ask Bubbles: a Location Manager,
+ * 2 Nov 2026): a location's shared login, kept on the directory as
+ * "<Location> Account" with a staff title, was listed as a team member — the
+ * rule above keeps it because the place's name is not a department word. A
+ * row whose LAST name is only a word for a login — Account, Accounts, Login,
+ * Logins, Shared, Generic, Store, Salon (QA, 3 Nov) — is a login, whatever
+ * its first name. Nothing is written to the directory.
+ */
+const LOGIN_SURNAMES = new Set(["account", "accounts", "login", "logins", "shared", "generic", "store", "salon"]);
+
+function isSharedLogin(lastName: string): boolean {
+  return LOGIN_SURNAMES.has(lastName.trim().toLowerCase());
 }
 
 /**
@@ -197,6 +215,36 @@ function closeWord(typed: string, actual: string): boolean {
   return editDistance(typed, actual) <= limit;
 }
 
+/**
+ * ROSTER_COMPOUND_SURNAME_ENABLED (the re-flip's rollback, 5 Nov 2026): a two-word (or longer) roster surname
+ * against the typed surname words, word by word. Every typed word must be the roster word in its place, or a
+ * typo of it — the full surname in order, or one of its words alone. A word of three letters or fewer counts
+ * only exactly ("Ask" is not "Ash"). The summed edits, or null when the typed words are not this surname.
+ */
+export function compoundSurnameScore(typed: readonly string[], lastName: string): number | null {
+  const parts = normalize(lastName).split(/[\s-]+/).filter(Boolean);
+  const words = typed.map(normalize).filter(Boolean);
+  if (parts.length < 2 || words.length === 0 || words.length > parts.length) return null;
+  const pair = (word: string, part: string): number | null => {
+    if (word === part) return 0;
+    if (word.length <= 3 || part.length <= 3) return null;
+    return closeWord(word, part) ? editDistance(word, part) : null;
+  };
+  if (words.length === parts.length) {
+    let sum = 0;
+    for (const [index, word] of words.entries()) {
+      const score = pair(word, parts[index]!);
+      if (score === null) return null;
+      sum += score;
+    }
+    return sum;
+  }
+  if (words.length !== 1) return null;
+  const scores = parts.map((part) => pair(words[0]!, part)).filter((score): score is number => score !== null);
+  // One word of the surname alone is never the whole name: at least one edit, so it is asked, not filled.
+  return scores.length > 0 ? Math.max(1, Math.min(...scores)) : null;
+}
+
 function firstNames(employee: RosterEmployee): string[] {
   return [employee.firstName, employee.preferredFirstName ?? ""]
     .map(normalize)
@@ -231,6 +279,31 @@ export function matchEmployeeName(typed: string, roster: readonly RosterEmployee
     const last = normalize(employee.lastName);
     if (firsts.length === 0) continue;
 
+    /*
+     * ROSTER_COMPOUND_SURNAME_ENABLED, compound names first or last (QA's roster shapes, 6 Nov 2026): a two-word
+     * first name ("Rosa Lind") is the first TWO typed words, and the rest is the surname — exact when it is the
+     * surname, asked when it is an initial of it or close to it. "Rosa Lind T" emptied the card: "rosa" alone was
+     * compared with "rosa lind".
+     */
+    const multiFirst = rosterCompoundSurnameEnabled()
+      ? firsts.find((first) => first.includes(" ") && words.slice(0, first.split(" ").length).join(" ") === first)
+      : undefined;
+    if (multiFirst) {
+      const rest = words.slice(multiFirst.split(" ").length);
+      const restText = rest.join(" ");
+      if (rest.length === 0) close.push({ employee, score: 0 });
+      else if (restText === last) exact.push(employee);
+      else if (rest.length === 1 && rest[0]!.length === 1) {
+        if (last.split(/[\s-]+/).some((word) => word.startsWith(rest[0]!))) close.push({ employee, score: 1 });
+      } else if (closeWord(restText, last)) close.push({ employee, score: editDistance(restText, last) });
+      else {
+        const compound = compoundSurnameScore(rest, employee.lastName);
+        if (compound !== null) close.push({ employee, score: Math.max(1, compound) });
+      }
+      continue;
+    }
+
+
     if (typedLast === null) {
       if (firsts.includes(typedFirst)) close.push({ employee, score: 0 });
       else if (firsts.some((first) => closeWord(typedFirst, first))) {
@@ -248,12 +321,33 @@ export function matchEmployeeName(typed: string, roster: readonly RosterEmployee
       exact.push(employee);
       continue;
     }
+    // ROSTER_COMPOUND_SURNAME_ENABLED: an initial may start any word of a two-word surname ("Severin F" for Ashdown
+    // Ferrant) — asked, never filled (QA's roster shapes, 6 Nov 2026: it emptied the card).
+    if (
+      rosterCompoundSurnameEnabled() &&
+      typedLast.length === 1 &&
+      !lastMatches &&
+      firsts.includes(typedFirst) &&
+      last.split(/[\s-]+/).filter(Boolean).length > 1 &&
+      last.split(/[\s-]+/).some((word) => word.startsWith(typedLast))
+    ) {
+      // With the initial-of-the-whole-surname matches, never instead of them: "Crystal R" offers both people whose
+      // surname has a word starting with R (the real-roster check, 6 Nov 2026). An initial is never filled.
+      exact.push(employee);
+      continue;
+    }
     const firstClose = firsts.some((first) => closeWord(typedFirst, first));
     const lastClose = typedLast.length > 1 && closeWord(typedLast, last);
-    if (firstClose && (lastMatches || lastClose)) {
+    // ROSTER_COMPOUND_SURNAME_ENABLED: a two-word surname compared word by word.
+    const compound = !lastMatches && !lastClose && rosterCompoundSurnameEnabled() ? compoundSurnameScore(words.slice(1), employee.lastName) : null;
+    if (compound === 0 && firsts.includes(typedFirst) && words.length - 1 === normalize(employee.lastName).split(/[\s-]+/).filter(Boolean).length) {
+      exact.push(employee);
+      continue;
+    }
+    if (firstClose && (lastMatches || lastClose || compound !== null)) {
       const score =
         Math.min(...firsts.map((first) => editDistance(typedFirst, first))) +
-        (typedLast.length > 1 ? editDistance(typedLast, last) : 0);
+        (compound !== null ? compound : typedLast.length > 1 ? editDistance(typedLast, last) : 0);
       close.push({ employee, score });
     }
   }
@@ -294,7 +388,7 @@ export function nameConfirmationQuestion(typed: string, candidates: readonly str
 
 const ASKED = /^Did you mean ((?:\*\*[^*]+\*\*(?:, | or )?)+)\?/;
 
-const AFFIRMATIVE =
+export const AFFIRMATIVE =
   /^\s*(?:yes|yeah|yep|yup|correct|right|that'?s (?:right|correct|her|him|them|the one)|exactly|y|sure|please do|use (?:that|it))\b[\s.!,]*(?:please|thanks?|thank you)?[\s.!]*$/i;
 const NEGATIVE =
   /^\s*(?:no|nope|nah|n|keep (?:it|that|the name)?(?: as (?:i )?typed| as is)?|keep\s+.+|leave it|as typed|that'?s (?:wrong|not (?:her|him|them|it|right)))\b/i;

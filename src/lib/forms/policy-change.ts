@@ -1,4 +1,6 @@
-import { readCaPolicy, statedOffenseKeys } from "./ca-policy";
+import { addThatIsAccountEnabled } from "@/lib/config/chat-quality-flags";
+
+import { isWovenWorkReading, readCaPolicy, statedOffenseKeys } from "./ca-policy";
 import {
   boxSectionNames,
   findManualSection,
@@ -69,9 +71,24 @@ const ANSWER_CUE = /\b(?:actually|should|use|make|change|switch|go with|instead|
  * `policyAsked`: Ask Bubbles' last turn asked which policy applies, so a bare
  * policy name is the answer.
  */
+/*
+ * ADD_THAT_IS_ACCOUNT_ENABLED (ported from the sibling app: QA's live test there on a saved Corrective Action draft, 10 Nov 2026; the person invented): "add
+ * that she was reminded of the policy" was read as a policy to add — "I couldn't find a section called "she was
+ * reminded of the" …" — and nothing reached the Observation. An add that introduces a clause ("add that she …", "note
+ * that he was told …", "include in the observation that …") says what happened; the policy in it is part of the
+ * account. "add that policy too" and "add that section" still name a policy.
+ */
+const ADDS_A_CLAUSE = /\b(?:add|include|note|mention|put|write|say|state)\b(?:\s+(?:in|to|on|into)\s+(?:the\s+)?(?:observation|details?|form|notes?|account|write-?up)(?:\s+of\s+offense)?)?\s+that\s+(?!(?:policy|policies|section|one|manual|part|line|too|also|as\s+well)\b)/i;
+
+export function addsAccountClause(question: string): boolean {
+  return ADDS_A_CLAUSE.test(question ?? "");
+}
+
 export function readPolicyChange(question: string, options: { readonly policyAsked?: boolean } = {}): PolicyChangeMode | null {
   const text = (question ?? "").trim();
   if (text === "" || ASKS_ABOUT.test(text)) return null;
+  // ADD_THAT_IS_ACCOUNT_ENABLED: "add that she was reminded of the policy" is the account, not a policy to add.
+  if (addThatIsAccountEnabled() && addsAccountClause(text)) return null;
   if (!NAMES_A_POLICY.test(text)) {
     return POLICY_ANSWER.test(text) && (options.policyAsked || ANSWER_CUE.test(text)) ? "replace" : null;
   }
@@ -201,7 +218,14 @@ export function sectionsNamedIn(input: {
   if (found.length > 0) return found;
 
   const reading = readCaPolicy(input.text);
-  const offenseKeys = statedOffenseKeys(reading, input.text) ?? [];
+  /*
+   * WOVEN_TRAINING_CONDUCT_ENABLED (narrowed after QA's Sunny round-3 gate, 7 Nov 2026): an account that reads as
+   * Woven acknowledgements not done names no policy; the first draft cites the Standards of Conduct for it from the
+   * account (`describedManualSection`), not here. Read as a name, an earlier turn "did not acknowledge woven
+   * policies …" answered "include THAT wren signed the jba policy manual" with "Updated Direct policy … Attendance
+   * and Standards of Conduct". Off, the reading has no such source and this is as before.
+   */
+  const offenseKeys = isWovenWorkReading(reading) ? [] : (statedOffenseKeys(reading, input.text) ?? []);
   for (const wanted of sectionHeadingsFor({ offenseKeys, jobTitle: input.jobTitle })) {
     keep(findManualSection(input.chunks, wanted));
   }

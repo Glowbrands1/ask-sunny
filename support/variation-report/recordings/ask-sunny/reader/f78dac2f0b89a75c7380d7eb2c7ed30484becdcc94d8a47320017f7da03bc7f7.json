@@ -1,0 +1,45 @@
+{
+  "key": "f78dac2f0b89a75c7380d7eb2c7ed30484becdcc94d8a47320017f7da03bc7f7",
+  "model": "claude-haiku-5-5",
+  "reply": {
+    "employee": {
+      "value": null,
+      "evidence": null
+    },
+    "location": null,
+    "jobTitle": null,
+    "incident": {
+      "value": "Late for work",
+      "evidence": "someone being late"
+    },
+    "incidentDate": {
+      "value": null,
+      "evidence": null
+    },
+    "warningLevel": {
+      "value": null,
+      "evidence": null
+    },
+    "payroll": {
+      "value": null,
+      "evidence": null
+    },
+    "payrollAmount": {
+      "value": null,
+      "evidence": null
+    },
+    "policyHeading": {
+      "value": "Attendance",
+      "evidence": "someone being late"
+    },
+    "priorSteps": [],
+    "otherDates": []
+  },
+  "usage": {
+    "inputTokens": 4585,
+    "outputTokens": 378,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 2284
+}

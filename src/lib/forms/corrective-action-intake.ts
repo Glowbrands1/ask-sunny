@@ -1,4 +1,9 @@
-import { readCaPolicy } from "./ca-policy";
+import { mentionsGlossaryTerm } from "@/lib/ai/chat-glossary";
+import { caSalesPolicyEnabled, caShortcutWordsEnabled, describedTopicIsAccountEnabled, nameQuestionOnlyEnabled, shiftAccountIsIncidentEnabled } from "@/lib/config/chat-quality-flags";
+
+import { isSalesPolicyReading, readCaPolicy } from "./ca-policy";
+import { statesMetricShortfall } from "./metric-shortfall";
+import { specificTopic } from "./specific-policy-topics";
 import {
   PAYROLL_DEDUCT_LABEL,
   statedPayrollDeduct,
@@ -76,6 +81,12 @@ export interface IntakeItem {
   readonly prompt: string;
   /** An optional item is reported as missing but never blocks the form. */
   readonly optional: boolean;
+  /**
+   * CHAT_GLOSSARY_ENABLED, the employee item only: the manager's words use a
+   * glossary term ("… for msb") and name nobody, so the opening ask is the one
+   * question "Who is this form for?". Absent with the flag off.
+   */
+  readonly askWhichEmployee?: true;
 }
 
 /**
@@ -450,7 +461,10 @@ export function readCorrectiveActionIntake(input: {
     form_date: any(text, DATE_GIVEN),
     what_happened: any(text, INCIDENT_TOPIC) || any(text, OBSERVATIONAL_CLAUSE),
     /* "verbal CA" and a bare "verbal." too — see `statedWarningLevel`. */
-    warning_level: any(text, WARNING_LEVEL_GIVEN) || statedWarningLevel(input.text) !== null,
+    // CA_SHORTCUT_WORDS_ENABLED: "final warning" is no level the form prints — the level is asked, not left silent.
+    warning_level:
+      any(caShortcutWordsEnabled() ? text.replace(/\bfinal(?:\s+written)?\s+warning\b/g, " ") : text, WARNING_LEVEL_GIVEN) ||
+      statedWarningLevel(input.text) !== null,
     /*
      * A STATED ABSENCE ("first time") or a STATED HISTORY ("already warned
      * her last week"). A repeated incident is neither — see
@@ -465,7 +479,10 @@ export function readCorrectiveActionIntake(input: {
     (item) => item.key !== "payroll_deduct" || input.asksPayrollDeduct !== false,
   );
   const supplied = items.filter((item) => answered[item.key]).map((item) => item.key);
-  const missing = items.filter((item) => !answered[item.key]);
+  const glossaryAsk = !input.employeeKnown && mentionsGlossaryTerm(input.text);
+  const missing = items
+    .filter((item) => !answered[item.key])
+    .map((item) => (glossaryAsk && item.key === "employee_name" ? { ...item, askWhichEmployee: true as const } : item));
   const missingRequired = missing.filter((item) => !item.optional);
 
   return {
@@ -483,16 +500,36 @@ export function readCorrectiveActionIntake(input: {
  * The same reading the intake's "what happened" item uses, exported so the
  * other chat forms do not ask for an account the manager has already given.
  */
+/**
+ * SHIFT_ACCOUNT_IS_INCIDENT_ENABLED (QA, Sunny live test, 8 Nov 2026; the name invented): "make me CA for Rhea Calloway
+ * not showing up to her shifts on 11/7 and 11/8" had no Observation: the clause has no subject, no "for" before it and
+ * too few words beside the request's, so it was read as the request alone. A shift not shown up to, not completed or
+ * missed is an account, whoever it is told about. Off, as before.
+ */
+const SHIFT_ACCOUNT =
+  /\b(?:(?:not|never)\s+(?:showing|show|coming|turning)\s+up|no[- ]?show(?:ing|ed)?|(?:failing|failed|fails)\s+to\s+(?:complete|finish|work|show\s+up\s+(?:to|for))|not\s+(?:completing|finishing|working)|missing|missed|skipping|skipped)\s+(?:(?:to|for)\s+)?(?:(?:her|his|their|the|a|my|all|both|two|scheduled)\s+)*shifts?\b/;
+
 export function describesIncident(text: string): boolean {
   const normalized = normalize(text);
   if (any(normalized, INCIDENT_TOPIC) || any(normalized, OBSERVATIONAL_CLAUSE)) return true;
+  if (shiftAccountIsIncidentEnabled() && SHIFT_ACCOUNT.test(normalized)) return true;
   /*
    * WHATEVER THE POLICY READING RECOGNISES IS AN ACCOUNT TOO — a missed
    * deadline, unfinished work, a missed meeting, cash handling — so the two
    * readings can never disagree about whether something happened.
    */
   const policy = readCaPolicy(text);
-  return policy.topics.length > 0 || policy.missedEvent !== null;
+  // CA_SALES_POLICY_ENABLED: a stated sales shortfall or MSB (the glossary) is the reason given (Pau, 4 Nov 2026). Off, never a sales reading.
+  if (policy.topics.length > 0 || policy.missedEvent !== null || isSalesPolicyReading(policy)) return true;
+  /*
+   * DESCRIBED_TOPIC_IS_ACCOUNT_ENABLED (coordinator via QA, production, 5 Nov
+   * 2026): "he brought his new kitten to the store on 10-22-26" (the sibling app) was cited as
+   * Animals in the Workplace "from what you described" in the same reply that
+   * said "You haven't told me what happened yet". The incident the policy
+   * reading's specific topics find in the manager's words (`specificTopic`,
+   * the reader the card's citation uses) is an account too. Off, as before.
+   */
+  return describedTopicIsAccountEnabled() && specificTopic(text) !== null;
 }
 
 /**
@@ -664,28 +701,6 @@ export function asksToBeGuided(text: string): boolean {
  */
 export type CorrectiveActionBasis = "metric_only" | "conduct" | "unstated";
 
-const METRIC_NAMED: readonly RegExp[] = [
-  /\bclub close\b/,
-  /\b(?:close|closing) rate\b/,
-  /\bconversion(?:s| rate)?\b/,
-  /\bupgrade(?:s| rate|%| percentage)?\b/,
-  /\befts?\b/,
-  /\bmembership (?:%|percentage|rate|sales)\b/,
-  /\bsales per hour\b/,
-  /\b(?:sph|atv|kpis?)\b/,
-  /\baverage ticket\b/,
-  /\bred (?:%|percentage)\b/,
-  /\b(?:her|his|their|the) (?:numbers|stats|metrics|scorecard|percentages)\b/,
-  /\bdaily stats\b/,
-  /\b(?:sales|revenue|units|packages) (?:are|is|have been|has been)\b/,
-];
-
-const METRIC_JUDGED: readonly RegExp[] = [
-  /\b(?:low|lowest|down|below|behind|weak|weakest|poor|under|dropping|declining|slipping|worst|bottom|last)\b/,
-  /\b(?:not hitting|missing|misses|failing to hit|under target|off target|below target|not meeting)\b/,
-  /\bneeds? (?:to )?improve\b/,
-];
-
 /**
  * Anything that is about a PERSON'S CONDUCT rather than about a number.
  *
@@ -706,7 +721,15 @@ const CONDUCT_SIGNAL: readonly RegExp[] = [
 export function correctiveActionBasis(text: string): CorrectiveActionBasis {
   const normalized = normalize(text);
   if (any(normalized, CONDUCT_SIGNAL)) return "conduct";
-  if (any(normalized, METRIC_NAMED) && any(normalized, METRIC_JUDGED)) {
+  if (statesMetricShortfall(text)) {
+    /*
+     * CA_SALES_POLICY_ENABLED (client request; Pau, 4 Nov 2026; ported from
+     * Ask Bubbles #426): a stated sales shortfall — a metric named and judged,
+     * read by the lists in `metric-shortfall.ts` (moved there unchanged), no
+     * new words — goes to the Corrective Action Form, which cites the
+     * Standards of Conduct. Off, the progression answers it as before.
+     */
+    if (caSalesPolicyEnabled()) return "conduct";
     return "metric_only";
   }
   return "unstated";
@@ -748,6 +771,12 @@ export function correctiveActionIntakeRequest(input: {
    */
   readonly today?: string | null;
 }): string {
+  // NAME_QUESTION_ONLY_ENABLED (Pau, 26 Oct 2026): with no name yet, one plain question, never the list.
+  // CHAT_GLOSSARY_ENABLED: "corrective action for msb" names nobody — the same one question, asked once.
+  const askWhichEmployee = input.items.some((item) => item.key === "employee_name" && item.askWhichEmployee);
+  if ((nameQuestionOnlyEnabled() || askWhichEmployee) && input.items.some((item) => item.key === "employee_name")) {
+    return "Who is this form for? Tell me the employee's full name.";
+  }
   const numbered = input.items
     .map((item, index) => `${index + 1}. ${promptFor(item, input.today ?? null)}`)
     .join("\n");

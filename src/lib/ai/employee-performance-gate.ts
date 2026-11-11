@@ -539,7 +539,7 @@ export const PREDICATE_TERMS: readonly string[] = [
  * list of capitals that would otherwise be mistaken for people: the brand, the
  * product, the metric acronyms, days, months, and the salon vocabulary.
  */
-const NOT_A_NAME = new Set(
+export const NOT_A_NAME = new Set(
   [
     "I",
     "Sun",

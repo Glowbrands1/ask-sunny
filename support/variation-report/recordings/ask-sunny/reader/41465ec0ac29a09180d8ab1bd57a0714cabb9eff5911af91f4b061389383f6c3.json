@@ -1,0 +1,49 @@
+{
+  "key": "41465ec0ac29a09180d8ab1bd57a0714cabb9eff5911af91f4b061389383f6c3",
+  "model": "claude-haiku-5-5",
+  "reply": {
+    "employee": {
+      "value": "quinn",
+      "evidence": "do verbal for quinn at kearney"
+    },
+    "location": {
+      "value": "kearney",
+      "evidence": "do verbal for quinn at kearney"
+    },
+    "jobTitle": {
+      "value": null,
+      "evidence": null
+    },
+    "incident": {
+      "value": "Came into the salon while not scheduled to work to show her team her new puppy and stayed 45 minutes",
+      "evidence": "on 10-22-26 quinn was not scheduled to work and came into the salon to show her team her new puppy. quinn was in the salon 45 min"
+    },
+    "incidentDate": {
+      "value": "2026-10-22",
+      "evidence": "on 10-22-26 quinn was not scheduled to work and came into the salon to show her team her new puppy"
+    },
+    "warningLevel": {
+      "value": "verbal",
+      "evidence": "do verbal for quinn at kearney"
+    },
+    "payroll": {
+      "value": "no",
+      "evidence": "payroll deduct does not apply"
+    },
+    "payrollAmount": {
+      "value": null,
+      "evidence": null
+    },
+    "policyHeading": {
+      "value": "Animals in the Workplace",
+      "evidence": "came into the salon to show her team her new puppy"
+    }
+  },
+  "usage": {
+    "inputTokens": 4674,
+    "outputTokens": 600,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 2308
+}

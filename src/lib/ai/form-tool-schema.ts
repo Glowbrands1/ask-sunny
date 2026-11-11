@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { z as z4 } from "zod/v4";
 
 /**
  * What a form-understanding tool call must return.
@@ -146,3 +147,58 @@ export const FORM_TOOL_INPUT_SCHEMA = {
 
 export const FORM_TOOL_DESCRIPTION =
   "Record the manager's form intent and any fields they have actually stated in the conversation. Do not invent names, dates, amounts, or deadlines.";
+
+/* ------------------------------------------------------------ edit_form -- */
+
+/**
+ * FORM_EDIT_TOOL_IN_STREAM_ENABLED (Step 3, 4 Nov 2026; ported from Ask
+ * Bubbles): the one tool the main answering call is offered while a draft form
+ * is open. Additive: the tools above are unchanged. Built with zod v4, as the
+ * form-patch schema is, so it is sent as `z.toJSONSchema`.
+ */
+export const EDIT_FORM_TOOL_NAME = "edit_form";
+
+/** The owner's approved wording (Pau, 4 Nov 2026), verbatim — the same in both apps. */
+export const EDIT_FORM_TOOL_DESCRIPTION =
+  'Edit the HR form that is open in this chat. Use this tool only when the manager\'s latest message asks to add to, change or remove something on that form. Each op names one field key from the open form provided with this message. Use "append" to add the manager\'s own words to a text field, "set" only to replace a value the manager asked to change, and "clear" only when the manager asked to remove a value. Never touch a field the manager did not mention. Never invent names, dates, amounts or details; copy them as the manager gave them. If the message asks a question instead of asking for a change, do not use this tool.';
+
+/** At most this many ops in one call. */
+export const EDIT_FORM_MAX_OPS = 20;
+
+/**
+ * The tool's input: `{ ops: [...] }`, each op `set`, `clear` or `append` on
+ * one of the open form's writable keys. A checkbox field's value is its
+ * option keys; a text field's, the text. Strict: an extra key is a failed
+ * parse, and the turn goes on as if the tool had not been called.
+ */
+export function editFormSchema(keys: readonly [string, ...string[]]) {
+  const field = z4.enum(keys);
+  const value = z4.union([z4.string().max(4000), z4.array(z4.string().max(200)).max(20)]);
+  return z4
+    .object({
+      ops: z4
+        .array(
+          z4.union([
+            z4.object({ op: z4.literal("set"), field, value }).strict(),
+            z4.object({ op: z4.literal("append"), field, value: z4.string().min(1).max(4000) }).strict(),
+            z4.object({ op: z4.literal("clear"), field }).strict(),
+          ]),
+        )
+        .min(1)
+        .max(EDIT_FORM_MAX_OPS),
+    })
+    .strict();
+}
+
+export type EditFormInput = z4.infer<ReturnType<typeof editFormSchema>>;
+
+/** The tool as the Messages API takes it: the schema sent as `z.toJSONSchema`. */
+export function editFormTool(keys: readonly [string, ...string[]]): {
+  readonly name: string;
+  readonly description: string;
+  readonly input_schema: { readonly type: "object" } & Record<string, unknown>;
+} {
+  const { $schema: _dropped, ...schema } = z4.toJSONSchema(editFormSchema(keys)) as Record<string, unknown>;
+  void _dropped;
+  return { name: EDIT_FORM_TOOL_NAME, description: EDIT_FORM_TOOL_DESCRIPTION, input_schema: { ...schema, type: "object" } };
+}

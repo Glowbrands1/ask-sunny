@@ -1,0 +1,23 @@
+{
+  "key": "abb635d7ce2692f88d9df49aef465207b3ee6d49745205db3db42e020b1bd64e",
+  "model": "claude-haiku-4-5",
+  "reply": {
+    "employee": null,
+    "salon": null,
+    "title": null,
+    "incidentType": null,
+    "incidentDate": null,
+    "payrollAmount": null,
+    "warningLevel": null,
+    "formType": null,
+    "formTurn": false,
+    "policyHeading": null
+  },
+  "usage": {
+    "inputTokens": 2464,
+    "outputTokens": 200,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 0
+}

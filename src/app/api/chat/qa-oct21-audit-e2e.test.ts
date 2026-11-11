@@ -587,7 +587,7 @@ describe("Issue 2: a request answered with one word drafts the whole form", () =
     state.draft = MEETING_MODEL;
     const { id } = await thread.create();
     const f = await form(id);
-    expect(f.ticks("offense_type")).toEqual(["absenteeism"]);
+    expect(f.ticks("offense_type")).toEqual(["attendance_policy"]); // CHANGED ON PURPOSE, Corrective Action revision 8 (client request, template approved 4 Nov 2026): Absenteeism is Attendance Policy.
     expect(f.text("policy_violated")).toMatch(/Attendance|Absenteeism/);
     expect(f.text("policy_violated")).not.toMatch(/Standards of Conduct/);
     expect(f.text("policy_language")).toMatch(/Attendance/);
@@ -674,8 +674,9 @@ describe("Issue 3: personal phone use cites the Cell Phone/Smart Watch Policy, p
 
     expect(f.ticks("warning_type")).toEqual(["verbal"]);
     expect(f.text("policy_violated")).toMatch(/Cell Phone\/Smart Watch/);
-    expect(f.text("policy_violated")).not.toMatch(/Standards of Conduct/);
-    expect(f.ticks("offense_type")).not.toContain("standards_of_conduct");
+    expect(f.text("policy_violated")).toBe("Standards of Conduct — Cell Phone/Smart Watch Policy"); // CHANGED ON PURPOSE, Corrective Action revision 8 (client request, template approved 4 Nov 2026): the section a removed box (Violation of Company Policies) cited is under the Standards of Conduct box; Direct policy still cites it alone.
+    expect(f.text("policy_language")).not.toMatch(/Standards of Conduct/);
+    expect(f.ticks("offense_type")).toEqual(["standards_of_conduct"]); // revision 8: the box the Cell Phone section is cited under
     expect(f.text("policy_language")).toMatch(/Cell Phone\/Smart Watch Policy/);
     expect(f.text("policy_language")).toMatch(/p(?:age|\.)\s*19\b/i);
     expect(f.text("policy_language")).not.toMatch(/Standards of Conduct/);
@@ -715,7 +716,7 @@ describe("Issue 3: personal phone use cites the Cell Phone/Smart Watch Policy, p
     const { id } = await thread.create();
     const f = await form(id);
     expect(f.text("policy_language")).toMatch(/Cell Phone\/Smart Watch Policy/);
-    expect(f.text("policy_violated")).not.toMatch(/Standards of Conduct/);
+    expect(f.text("policy_language")).not.toMatch(/Standards of Conduct/); // CHANGED ON PURPOSE, Corrective Action revision 8 (client request, template approved 4 Nov 2026): Policy Violated names the Standards of Conduct box; Direct policy cites the Cell Phone section alone.
   });
 
   /*
@@ -775,7 +776,7 @@ describe("Issue 3: personal phone use cites the Cell Phone/Smart Watch Policy, p
     expect(card.content).not.toMatch(/Which policy applies/);
     state.draft = { values: { observation: "Observed:\nOn October 20, 2026, Marlo arrived 20 minutes late." }, checked: { offense_type: ["tardiness"] } };
     const { id } = await thread.create();
-    expect((await form(id)).ticks("offense_type")).toContain("tardiness");
+    expect((await form(id)).ticks("offense_type")).toContain("attendance_policy"); // CHANGED ON PURPOSE, Corrective Action revision 8 (client request, template approved 4 Nov 2026): Tardiness is Attendance Policy.
   });
 
   it("a phone call that is NOT personal use (calling in late) is not cited as the Cell Phone policy", async () => {
@@ -790,7 +791,7 @@ describe("Issue 3: personal phone use cites the Cell Phone/Smart Watch Policy, p
     const { id } = await thread.create();
     const f = await form(id);
     expect(f.text("policy_language") ?? "").not.toMatch(/Cell Phone\/Smart Watch/);
-    expect(f.ticks("offense_type")).toContain("tardiness");
+    expect(f.ticks("offense_type")).toContain("attendance_policy"); // CHANGED ON PURPOSE, Corrective Action revision 8 (client request, template approved 4 Nov 2026): Tardiness is Attendance Policy.
   });
 });
 
@@ -1039,9 +1040,14 @@ describe("Issue 6: no invented Other, the deadline stays the deadline, a two-sen
     state.draft = ISSUE_6_MODEL;
     const { id } = await thread.create();
     expect((await form(id)).text("other_offense") ?? "").toBe("");
-    /* What browser form history put in the box, saved by the card, is recorded as the manager's. */
+    /*
+     * CHANGED ON PURPOSE, Corrective Action revision 8 (client request,
+     * template approved 4 Nov 2026): the form has no Other write-in line, so a
+     * save of one is not stored at all — nothing can bring an Other back.
+     * (Before: it was stored as the manager's.)
+     */
     await save(id, { other_offense: "Typed by the manager" });
-    expect((await form(id)).rows.other_offense?.filledBy).toBe("manager");
+    expect((await form(id)).rows.other_offense).toBeUndefined();
   });
 });
 
@@ -1202,7 +1208,7 @@ describe("workflow: corrections change only what was asked; finalized forms are 
     const { id } = await thread.create();
     const f = await form(id);
     expect(f.text("policy_language")).toMatch(/Cell Phone\/Smart Watch Policy/);
-    expect(f.text("policy_violated")).not.toMatch(/Standards of Conduct/);
+    expect(f.text("policy_language")).not.toMatch(/Standards of Conduct/); // CHANGED ON PURPOSE, Corrective Action revision 8 (client request, template approved 4 Nov 2026): Policy Violated names the Standards of Conduct box; Direct policy cites the Cell Phone section alone.
   });
 });
 

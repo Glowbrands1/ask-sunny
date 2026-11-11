@@ -2,6 +2,8 @@ import "server-only";
 
 import {
   chatDataToolsEnabled,
+  chatParallelLoadsEnabled,
+  chatParallelRewriteEnabled,
   chatMemoryEnabled,
   chatStyleRulesEnabled,
   chatTraceEnabled,
@@ -35,14 +37,24 @@ import {
   manualNegatedListNoteEnabled,
   remapIncidentFixEnabled,
   questionNotFormEnabled,
+  googleReviewsInChatEnabled,
+  typoReadingCopyEnabled,
+  caSalesPolicyEnabled,
+  cardPolicyOwnRequestEnabled,
+  pastFormsBeforeLibraryEnabled,
+  outOfDateIsTheProposalEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
 import { approvedManualConfirmed, manualDisplayTitle } from "@/lib/forms/official-policy-manual";
 import { MissingConfigurationError, liveReadiness } from "@/lib/config/server-env";
 import { ACTIVE_BRAND } from "@/lib/brand";
 import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
+import { markStage } from "./chat-stage-timings";
+import { held, startedFor } from "./held-promise";
 import { proposeFormForTurn, suggestFormsForTurn, type ChatActor } from "./form-proposal";
+import { acceptedCaOffer, acceptedCaOfferTurn, caOfferLine, withCaOffer } from "./ca-offer";
 import { remapFormTurn, remapShouldRun, type FormRemapSlots } from "./form-full-remap";
+import { cardPolicyTurns } from "./card-policy-request";
 import { priorShorthand, requestScopedHistory } from "./remap-incident";
 import { historyForRemap } from "./form-remap-scope";
 import { withRemapDraftSources } from "./remap-draft-sources";
@@ -66,8 +78,11 @@ import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import { buildFormInventory, publishedEntries } from "@/lib/forms/inventory";
 import { listTemplateSummaries, type TemplateSummary } from "@/lib/forms/repository";
 import { isFormRecordsQuestion, loadFormRecords } from "@/lib/forms/chat-form-records";
+import { namesAPerson } from "@/lib/forms/names-a-person";
+import { withRosterOnlyNames } from "@/lib/forms/roster-only-names";
 import { priorFormsReadingForChat } from "@/lib/forms/prior-forms";
 import { applyOptionalPriorCoaching } from "./prior-coaching-optional";
+import { priorCoachingManagerText } from "./prior-coaching-denial";
 import { withMappedPolicy } from "./violation-policy";
 import { manualScopeFetchLimit, scopeToCurrentManual } from "@/lib/knowledge/current-manual-scope";
 import {
@@ -118,6 +133,7 @@ import type { ReportFamilyId } from "@/lib/reporting/read/report-families";
 import type { SourceCitation } from "@/types";
 import { callClaude } from "./call-claude";
 import { loadChatDataBlock } from "./chat-data-tools";
+import { loadGoogleReviewsChatBlock } from "./google-reviews-chat-read";
 import { prepareLongContext } from "./long-context-claude";
 import { formCommandBypassesSearch, routeUnderstoodFormTurn } from "./form-tool-route";
 import { understandFormTurn } from "./form-tool-understand";
@@ -144,6 +160,7 @@ import { applyQuietQuality } from "./quiet-quality";
 import { noteTraceOutcome } from "./trace-outcome";
 import { chatTraceDraft, updateChatTrace } from "./chat-trace-store";
 import { expandGlossaryQuery } from "./glossary";
+import { glossaryBlock } from "./chat-glossary";
 import { followUpOwnQuery } from "./query-rewrite";
 import { augmentIntakeQuestion } from "./intake-augment";
 import { factsVisibleInConversation, formatRecalledMemory, memoryCue } from "./chat-memory";
@@ -151,7 +168,26 @@ import { describedAttendanceKeys } from "@/lib/forms/ca-policy";
 import { mayDescribeSection } from "@/lib/forms/named-policy-section";
 import { pinnedManualBlock } from "./policy-citation-fields";
 import { deliverFormProposal } from "./grounded-turn";
+import { withJobTitleCase, withJobTitleFromWords, withJobTitleReadBackCase, withSpelledOutTitle } from "./job-title-from-words";
 import { withTerseSlots } from "./terse-slots";
+import { withCaWhatHappened, withCoachingWhatHappened } from "./ca-what-happened";
+import { withCardPolicyPlanOnly } from "./card-policy-plan-only";
+import { cardRequestTurn, listPolicyOnCard, withPolicyListedAtCreate } from "./list-policy-ask";
+import { withoutNoAccountAppPolicy } from "./no-account-policy-line";
+import { cardMetaTurn } from "./card-meta-turn";
+import { withFirstNameAsk } from "./first-name-ask";
+import { withUnknownNameAsk } from "./unknown-name-ask";
+import { withExitOtherPersonNotOffered } from "./exit-other-person";
+import { withoutLetterSigner } from "./letter-signer";
+import { withCarriedPersonNotice } from "./carried-person-notice";
+import { withFirstNameAnswerFor, withFirstNameSuggestFor } from "./first-name-suggest";
+import { withAmountUnknownAck } from "./amount-unknown-ack";
+import { withOutOfScopePlace } from "./out-of-scope-place";
+import { withOwnPlace } from "./keeps-own-place";
+import { withFormTypeSwitch, withSwitchNote, withSwitchSources } from "./form-type-switch";
+import { withUnreadDateAsk } from "./unread-date-ask";
+import { withStatedAmount } from "./amount-answer-saved";
+import { withWarningLevelFromClause } from "./warning-level-clause";
 import { recallMemory, rememberFact } from "./chat-memory-store";
 import { normalizeForChat } from "./message-normalize-claude";
 import { AiError } from "./errors";
@@ -168,8 +204,19 @@ import { slotOnlyRetrievalTopic } from "./slot-only-turn";
 import { appPasswordHelpFor } from "./app-password-help";
 import { redactSensitiveDefaults, withoutSensitiveDefaults } from "./sensitive-defaults";
 import { withoutSharedSourceClaims } from "./sources-not-shared";
+import { withNameBeforeTitle } from "./name-before-title";
+import { withTypoReadingCopy } from "./typo-reading-copy";
+import { protectedNameWords } from "./typo-name-words";
 import type { AskRequest, AskResponse } from "./types";
 import { keepManagerActionPlan } from "./manager-action-plan-reply";
+import { withManagerNameGuard, withManagerNameRule } from "./manager-name-guard";
+import { withoutReportTurnsForForm } from "./report-turns";
+import { withReplyMatchesCard } from "./reply-matches-card";
+import { acceptedNextFormOffer, withEachPersonsForm, withTwoFormsOwnPerson } from "./two-forms-own-person";
+import { withTitleOfTheEmployee } from "./title-of-the-employee";
+import { withoutSourceMarkers, withoutSourceNotes } from "@/lib/ai/source-note";
+import { asksWhatOutOfDateMeans, cardTurn, outOfDateAnswer } from "@/lib/ai/out-of-date-is-the-proposal";
+import { withUnderPerformanceExplained } from "./under-performance-explained";
 
 /**
  * THE GROUNDED ANSWER PATH — server-side, and only server-side.
@@ -260,10 +307,44 @@ import { keepManagerActionPlan } from "./manager-action-plan-reply";
  *   session's subject, from the route. Omitted, nothing is recalled.
  */
 export async function answerQuestion(
-  request: AskRequest,
+  asked: AskRequest,
   actor: ChatActor,
   memory: { memoryOwnerId?: string } = {},
 ): Promise<AskResponse> {
+  // OUT_OF_DATE_IS_THE_PROPOSAL_ENABLED: "what does out of date mean" in a form chat is about the card (ai/out-of-date-is-the-proposal.ts).
+  const outOfDateTurn = outOfDateIsTheProposalEnabled() && asksWhatOutOfDateMeans(asked) ? cardTurn(asked) : null;
+  if (outOfDateTurn) return outOfDateAnswer(await answerQuestion(outOfDateTurn, actor, memory));
+  // CREATE_COMMAND_POINTS_TO_CARD_ENABLED / CARD_COMPLAINT_NOT_ACCOUNT_ENABLED: "create it" or "this proposal is out of
+  // date" with only a card open is about the card: kept as it was, answered in one line (`ai/card-meta-turn.ts`).
+  const aboutTheCard = cardMetaTurn(asked);
+  if (aboutTheCard) return aboutTheCard.card ?? aboutTheCard.answer(await answerQuestion({ ...asked, question: aboutTheCard.from }, actor, memory));
+  // REPORT_NAME_NOT_A_PERSON_ENABLED: a form is never built from a question about a report. See `report-turns.ts`.
+  // CA_SALES_POLICY_ENABLED: "yes" to the Corrective Action offer is the request it offered (`ca-offer.ts`). Off, unchanged.
+  // TWO_FORMS_EACH_PERSON_ENABLED: "yes" to "Do you want a <form> for <B> next?" is that request (`ai/two-forms-own-person.ts`). Off, unchanged.
+  const nextForm = acceptedNextFormOffer({ question: asked.question, history: asked.history });
+  if (nextForm) asked = { ...asked, question: nextForm };
+  const accepted = acceptedCaOffer({ question: asked.question, history: asked.history });
+  /*
+   * CA_OFFER_KEEPS_ACCOUNT_ENABLED: the accepted yes is first answered as the
+   * turn the offer answered — her own words, asked for as a Corrective Action
+   * Form — so the card's account is never the rewritten request sentence
+   * (QA's MSB case M5). When her turn alone makes no card (the offer followed
+   * words with no account), the yes is the employee the offer named, as the
+   * answer to a Corrective Action Form: still no sentence of the app's, so
+   * the card asks for what happened or shows only her words (and only if that
+   * makes no card either, the request as before). Off, the request as before.
+   */
+  const kept = accepted ? acceptedCaOfferTurn({ question: asked.question, history: asked.history }) : null;
+  const plain = withoutReportTurnsForForm(accepted ? { ...asked, question: accepted } : asked);
+  let request = kept
+    ? withoutReportTurnsForForm({
+        ...asked,
+        question: kept.account.content,
+        questionMessageId: kept.account.id ?? asked.questionMessageId,
+        history: kept.history,
+        continueProposalTemplateKey: kept.templateKey,
+      })
+    : plain;
   /*
    * APP_PASSWORD_HELP_ENABLED: "I forgot my password" is answered about this
    * app's own sign-in, the "Forgot your password?" link (QA and Pau, 25 Oct
@@ -275,7 +356,60 @@ export async function answerQuestion(
   if (passwordHelp) {
     return { content: passwordHelp, citations: [], coverage: "grounded", recommendedVideoIds: [] };
   }
-  return withoutSensitiveDefaults(await answerQuestionChecked(request, actor, memory));
+  // TITLE_OF_THE_EMPLOYEE_ENABLED: a title the manager attached to another named person is never the card's (`ai/title-of-the-employee.ts`).
+  // UNDER_PERFORMANCE_EXPLAINED_ENABLED: Under Performance asked for, the Standards of Conduct cited: the reply says why (`ai/under-performance-explained.ts`).
+  // SOURCE_NOTE_GUARD_ENABLED: no bare source marker ("[S1]", "[S12, S14]") reaches the reply on any path (`ai/source-note.ts`).
+  const answer = async (turn: AskRequest) => {
+    const explained = withUnderPerformanceExplained(
+      withTitleOfTheEmployee(withoutSensitiveDefaults(await answerQuestionChecked(turn, actor, memory), turn.question), turn),
+      turn,
+    );
+    return { ...explained, content: withoutSourceMarkers(explained.content) };
+  };
+  const original = request;
+  let answered = await answer(request);
+  const fallbacks = kept ? [withoutReportTurnsForForm({ ...asked, question: kept.employee, continueProposalTemplateKey: kept.templateKey }), plain] : [];
+  for (const next of fallbacks) {
+    if (madeCard(answered)) break;
+    request = next;
+    answered = await answer(request);
+  }
+  // TWO_FORMS_OWN_PERSON_ENABLED: two forms asked for in one message never put the other form's person on this card (`ai/two-forms-own-person.ts`); read on the manager's own message.
+  answered = withTwoFormsOwnPerson(answered, original);
+  // TWO_FORMS_EACH_PERSON_ENABLED: the card is its own clause's person, answered again from that clause if need be, and each other request with its person is offered (`ai/two-forms-own-person.ts`).
+  answered = await withEachPersonsForm(answered, original, answer);
+  // CARRIED_PERSON_NOTICE_ENABLED: a card whose person the manager last named before their last six turns says so (`ai/carried-person-notice.ts`).
+  answered = withCarriedPersonNotice(answered, original);
+  /*
+   * CA_SALES_POLICY_ENABLED: a reply about a policy and an employee the roster
+   * recognises ends with ONE offer to start a Corrective Action citing that
+   * policy, on whichever path answered; a menu offering the Corrective Action
+   * Form is replaced by it. Nothing is made until the manager says yes (Pau,
+   * 4 Nov 2026; QA's live traces). Off, nothing is read or added.
+   */
+  // FORM_NAME_FROM_ROSTER_ENABLED, last on every return: only roster people are the employee or a choice (`forms/roster-only-names.ts`).
+  // REPLY_MATCHES_CARD_ENABLED, the very last step on both returns: the reply agrees with the finished card (`ai/reply-matches-card.ts`).
+  // EXIT_OTHER_PERSON_NOT_SUBJECT_ENABLED: the letter's other person ("your Salon Director, <B>") is never offered as the exit form's subject (`ai/exit-other-person.ts`).
+  answered = withExitOtherPersonNotOffered(answered, original);
+  if (!caSalesPolicyEnabled()) return withReplyMatchesCard(withRosterOnlyNames(answered));
+  let roster: Awaited<ReturnType<typeof loadScopedRoster>> = [];
+  try {
+    roster = await loadScopedRoster(actor.scope);
+  } catch {
+    roster = [];
+  }
+  const offer = caOfferLine({
+    history: request.history,
+    question: request.question,
+    questionMessageId: request.questionMessageId,
+    roster,
+  });
+  return withReplyMatchesCard(withRosterOnlyNames(withCaOffer(answered, offer)));
+}
+
+/** A reply that made, changed or opened a form: the accepted offer's card (CA_OFFER_KEEPS_ACCOUNT_ENABLED). */
+function madeCard(response: AskResponse): boolean {
+  return Boolean(response.formProposal || response.formUpdate || response.formOpened);
 }
 
 async function answerQuestionChecked(
@@ -285,14 +419,56 @@ async function answerQuestionChecked(
 ): Promise<AskResponse> {
   const produce = async () => {
     // TERSE_SLOT_READ_ENABLED: a terse "ca …" line is read as the long form.
-    const response = await answerQuestionUntraced(withTerseSlots(request), actor, memory);
+    // NAME_BEFORE_TITLE_ENABLED: a two-word name right before a job title is the name.
+    // TYPO_READING_COPY_ENABLED: "coahed", "amont", "Manger" are read as the words they can only be; names never.
+    const names = typoReadingCopyEnabled() ? await protectedNameWords() : new Set<string>();
+    // FORM_TYPE_SWITCH_ENABLED: "change to coaching" with the card open switches it to the other form.
+    // FIRST_NAME_SUGGEST_ENABLED: "yes" to "Is this for **Quinn Marlowe**?" is read as that name.
+    const response = await answerQuestionUntraced(withFormTypeSwitch(withTerseSlots(withNameBeforeTitle(withTypoReadingCopy(await withFirstNameAnswerFor(request, actor), names)))), actor, memory);
     noteTraceOutcome(response);
     // Last on every path, after the reply check too: the Action Plan is the manager's or none.
-    return keepManagerActionPlan(await applyQuietQuality(response), request);
+    // CA_ASKS_WHAT_HAPPENED_ENABLED: a Corrective Action card with no account asks what happened.
+    // NO_ACCOUNT_NO_APP_POLICY_ENABLED: that card cites no policy (no Policy line read from the request, no citation, no named plan).
+    // COACHING_ASKS_WHAT_HAPPENED_ENABLED: a Coaching Form card with no account asks what happened, never "Everything I need is here" (sf-s27).
+    // JOB_TITLE_FROM_WORDS_ENABLED: an empty Job Title takes the title the manager typed; JOB_TITLE_CASE_ENABLED: in title case.
+    // WARNING_LEVEL_AND_CLAUSE_ENABLED: "this should be a written and note a verbal ca was given …" states written.
+    // FIRST_NAME_ASK_ENABLED: "Is this for ivy? Tell me her full name.", never the same question twice.
+    // UNREAD_DATE_ASK_ENABLED: "last tuesday" the reader could not read is asked about, never dated today in silence.
+    // AMOUNT_ANSWER_SAVED_ENABLED: "$25" after the amount question is the amount.
+    // AMOUNT_UNKNOWN_ACK_ENABLED: "i dont know the amount" is answered, not met with the card alone.
+    // OUT_OF_SCOPE_PLACE_SAID_ENABLED: "Salon: KS Lawrence." from a manager not assigned there is told so.
+    // FORM_TYPE_SWITCH_AFTER_CREATE_NOTE_ENABLED: the form already created is said to stay as it is.
+    // FIRST_NAME_SUGGEST_ENABLED: a first name alone is asked about from the manager's own roster.
+    // MANAGER_NAME_NOT_EMPLOYEE_ENABLED: last — the manager's own name is never the employee.
+    // CARD_POLICY_PLAN_ONLY_ENABLED: outermost — the Action Plan and the sources name only the card's policy.
+    return withCardPolicyPlanOnly(withManagerNameGuard(keepManagerActionPlan(await withFirstNameSuggestFor(
+      // OUT_OF_SCOPE_PLACE_KEEPS_OWN_ENABLED: the card goes back to the manager's own salon, or asks which.
+      // FORM_TYPE_SWITCH: the switched card is drafted from the account, never from the switch turn.
+      withSwitchSources(withSwitchNote(withOutOfScopePlace(withOwnPlace(withAmountUnknownAck(
+        withUnreadDateAsk(
+          withStatedAmount(
+            // UNKNOWN_NAME_ASK_ENABLED: a typed name not on the directory is named back, never asked again in the same words.
+            withUnknownNameAsk(
+              withFirstNameAsk(
+                withWarningLevelFromClause(withSpelledOutTitle(withJobTitleReadBackCase(withJobTitleCase(withJobTitleFromWords(withCoachingWhatHappened(withoutNoAccountAppPolicy(withCaWhatHappened(await applyQuietQuality(response), request)), request), request)))), request),
+                request,
+              ),
+              request,
+            ),
+            request,
+          ),
+          request,
+        ),
+        request,
+      ), request, actor), request, actor), request, "Form Monitoring"), request),
+      request,
+      actor,
+    ), request), request));
   };
+  // MANAGER_NAME_NOT_EMPLOYEE_ENABLED: last on every path — the manager's own name is never the employee.
   if (!chatTraceEnabled()) {
     if (!selfCheckEnabled()) return produce();
-    return keepManagerActionPlan(await guardReply(await produce(), { request, actor }), request);
+    return withManagerNameGuard(keepManagerActionPlan(await guardReply(await produce(), { request, actor }), request), request);
   }
   const draft = openChatTrace({
     conversationId: request.conversationId,
@@ -303,9 +479,23 @@ async function answerQuestionChecked(
       request.continueProposalTemplateKey || request.openForm || request.activeFormInstanceId,
     ),
   });
+  // FORM_EDIT_TOOL_IN_STREAM_ENABLED: slots.form_edit, keys and reasons only.
+  if (request.formEditTool) draft.formEdit = request.formEditTool.trace;
   const response = await finishChatTrace(draft, produce);
   if (!selfCheckEnabled()) return response;
-  return keepManagerActionPlan(await guardReply(response, { request, actor }), request);
+  return withManagerNameGuard(keepManagerActionPlan(await guardReply(response, { request, actor }), request), request);
+}
+
+/**
+ * The card is the form already open again (FORM_EDIT_TOOL_IN_STREAM_ENABLED):
+ * its template, for the open form's employee or for nobody yet ("Who is this
+ * form for?"). A card that names another person is a new request and stands.
+ */
+function reproposesOpenForm(answer: AskResponse, open: AskRequest["openForm"]): boolean {
+  const card = answer.formProposal;
+  if (!card || !open) return false;
+  const fold = (value: string | null | undefined) => (value ?? "").trim().toLowerCase();
+  return fold(card.templateName) === fold(open.templateName) && (fold(card.employeeName) === "" || fold(card.employeeName) === fold(open.employeeName));
 }
 
 /** A manager manual or another brand. Not a Sun Tan City policy source. */
@@ -331,6 +521,7 @@ async function answerQuestionUntraced(
   actor: ChatActor,
   memory: { memoryOwnerId?: string } = {},
 ): Promise<AskResponse> {
+  markStage("trace_open");
   const readiness = liveReadiness();
 
   // Missing variables first: that is the ordinary "not set up yet" case, and it
@@ -371,9 +562,21 @@ async function answerQuestionUntraced(
    * phrased, is not a question. See `question-not-form.ts`. Behind
    * QUESTION_NOT_FORM_ENABLED; off, every turn is routed as before.
    */
-  const askedQuestion = questionNotFormEnabled() && isQuestionNotForm(request.question, request.history);
+  // LIST_POLICY_IS_EDIT_ENABLED: "please list the policy" with only a card open is a card turn, never a question.
+  const listPolicyCard = listPolicyOnCard(request);
+  const askedQuestion = !listPolicyCard && questionNotFormEnabled() && isQuestionNotForm(request.question, request.history);
   let intentForm = false;
+  /*
+   * CHAT_PARALLEL_REWRITE_ENABLED (QA, 9 Nov 2026): the message normalizer (`normalizeForChat`, below) starts now, from
+   * the turn as it is, alongside intent extraction instead of after it. Used only when extraction leaves the question and
+   * the history as they were; otherwise it is called again from the extracted turn, as before.
+   */
+  const earlyHeard =
+    chatParallelRewriteEnabled() && queryRewriteEnabled() && intentExtractionEnabled() && !askedQuestion
+      ? startedFor(request, (turn) => normalizeForChat({ question: turn.question, history: turn.history }))
+      : null;
   if (intentExtractionEnabled() && !askedQuestion) {
+    markStage("intent_extraction");
     const prepared = await applyIntentExtraction({ request, actor });
     // A numbered choice (two people, two salons) still asks. The "I still
     // need …" list does not: it replaced the proposal card on every live
@@ -417,8 +620,18 @@ async function answerQuestionUntraced(
    * fetched once one of them has something to say — or, further down, in
    * parallel with retrieval when neither has.
    */
+  /*
+   * CHAT_PARALLEL_LOADS_ENABLED (QA, 10 Nov 2026, live timings): the few-shot read needs only the question and the scope,
+   * both final here, and was the one slow read left before the answer (1.1–2.8 s, alone: the reads it was started with
+   * finish in 0–1 ms). It starts here, beside the normalizer and the query rewrite. A turn that returns before the answer
+   * (a form proposal, a form understood) has made two database reads it does not use; no model call. Its rejection is
+   * held until the await, as before.
+   */
+  const earlyFewShot =
+    chatParallelLoadsEnabled() && fewShotExamplesEnabled() ? held(fewShotBlock({ question: request.question, scopeId: request.scopeId })) : null;
+  markStage(earlyHeard?.reruns(request) ? "query_normalize_rerun" : "query_normalize");
   const heard = queryRewriteEnabled()
-    ? await normalizeForChat({ question: request.question, history: request.history })
+    ? await (earlyHeard?.take(request) ?? normalizeForChat({ question: request.question, history: request.history }))
     : null;
   const routingQuestion = heard?.routingText ?? request.question;
   updateChatTrace({
@@ -429,8 +642,24 @@ async function answerQuestionUntraced(
       request.continueProposalTemplateKey || request.openForm || request.activeFormInstanceId,
     ),
   });
-  const detected = detectInventoryQuestion(routingQuestion);
-  const spokenIntent = detectTemplateIntent(routingQuestion);
+  const libraryReading = detectInventoryQuestion(routingQuestion);
+  const formReading = detectTemplateIntent(routingQuestion);
+  /*
+   * PAST_FORMS_BEFORE_LIBRARY_ENABLED (Pau, 5 Nov 2026, sf-s29): a message
+   * the forms library would answer — a question about the library, or a form
+   * named without asking to make one ("are there any coaching and ca's for
+   * <name>" reads as the Corrective Action, not requested) — that names a
+   * person or asks about forms already on file is answered from the forms on
+   * file: the past-forms lookup below runs for it, and the library answer
+   * steps aside. A request to make a form is never one of these.
+   */
+  const pastFormsFirst =
+    pastFormsBeforeLibraryEnabled() &&
+    (libraryReading.kind !== "none" || (formReading.kind === "corrective_action" && !formReading.requestedCreation)) &&
+    // Only a message that names a person: a library question naming nobody keeps the library answer (`forms/names-a-person.ts`).
+    namesAPerson(request.question);
+  const detected: InventoryQuestion = pastFormsFirst ? { kind: "none" } : libraryReading;
+  const spokenIntent: ReturnType<typeof detectTemplateIntent> = pastFormsFirst ? { kind: "none" } : formReading;
 
   /*
    * "I NEED TO FIND THOSE DOCUMENTS" IS ABOUT WHICHEVER REGISTER THE LAST TURN
@@ -536,7 +765,8 @@ async function answerQuestionUntraced(
       content = applyOptionalPriorCoaching(content, {
         enabled: true,
         records: [],
-        managerText: turns.join("\n"),
+        // PRIOR_COACHING_DENIAL_ENABLED: "There's no prior coaching on file." is not read as a note; off, as before.
+        managerText: priorCoachingManagerText(turns, request.context.todayIso),
       });
     }
     if (recallOn || (citeOn && response.formProposal)) {
@@ -544,11 +774,13 @@ async function answerQuestionUntraced(
         const manual = await knowledge.fetchOfficialPolicyManual(ACTIVE_BRAND.knowledgeScopeId);
         if (manual.ok && recallOn) content = withMappedPolicy(content, turns, manual.chunks, true);
         if (manual.ok && citeOn && response.formProposal) {
-          const notes = turns.join("\n");
+          // CARD_POLICY_OWN_REQUEST_ENABLED: a card for <B> is not cited from <A>'s earlier request.
+          const notes = (cardPolicyOwnRequestEnabled() ? cardPolicyTurns(turns, response.formProposal.employeeName) : turns).join("\n");
           const attached = attachFormTurnSources({
             content,
             citations,
             notes,
+            turns,
             chunks: manual.chunks,
             documentId: manual.documentId,
             documentTitle: manual.documentTitle,
@@ -703,18 +935,21 @@ async function answerQuestionUntraced(
 
     let manualRead: ReturnType<typeof knowledge.fetchOfficialPolicyManual> | null = null;
     const readManual = () => (manualRead ??= knowledge.fetchOfficialPolicyManual(ACTIVE_BRAND.knowledgeScopeId));
+    markStage("form_proposal");
     const proposal = askedQuestion ? null : await deliverFormProposal({
       request: remapIncidentFixEnabled() ? { ...request, history: formHistory() } : request,
       actor,
       question: withPriorShorthand(
         prepareProposalQuestion(
           questionForProposal(
-            proposalQuestion(separateLead, heard ? routingQuestion : request.question, managerQuestion),
+            // LIST_POLICY_IS_EDIT_ENABLED: the card is proposed again from the manager's last turn.
+            proposalQuestion(separateLead, listPolicyCard ? cardRequestTurn(request) : heard ? routingQuestion : request.question, managerQuestion),
             remapIncidentFixEnabled() ? { ...request, history: formHistory() } : request,
           ),
         ),
       ),
-      decorate: decorateFormAnswer,
+      // LIST_POLICY_IS_EDIT_ENABLED: the card shows its policy line, or says the policy is listed on the draft at Create.
+      decorate: listPolicyCard ? async (response) => withPolicyListedAtCreate(await decorateFormAnswer(response)) : decorateFormAnswer,
       propose: (question) => proposeFormForTurn({
       history: withPriorShorthandTurns(formHistory()),
       question,
@@ -787,7 +1022,16 @@ async function answerQuestionUntraced(
     }),
     });
     // if (proposal) return proposal;
-    if (proposal) return proposal;
+    /*
+     * FORM_EDIT_TOOL_IN_STREAM_ENABLED (this app's half of Step 3): with
+     * `edit_form` offered, a card for the form that is already open — the same
+     * template, for the same employee or for nobody yet — is not this turn's
+     * answer. The turn is
+     * an edit of that draft (the chat route decided: a draft open, not a
+     * question, a correction or a policy change), so it goes on to the main
+     * call, which carries the tool. Without the offer, unchanged.
+     */
+    if (proposal && !(request.formEditTool?.offer && reproposesOpenForm(proposal, request.openForm))) return proposal;
   }
 
   /*
@@ -797,6 +1041,7 @@ async function answerQuestionUntraced(
    */
   if (formToolsEnabled() && !formsTurn) {
     // A question is answered, never read as a form command (`question-not-form.ts`).
+    markStage("form_understand");
     const understood = askedQuestion ? null : await understandFormTurn({
       question: request.question,
       history: request.history,
@@ -1161,8 +1406,9 @@ async function answerQuestionUntraced(
    * coaching jba manual 11-1-26"), and each row says who created it.
    */
   const readsFormRecords =
-    isFormRecordsQuestion(request.question) &&
-    (!crossChatGuard || asksAboutRecords(request.question) || refersBack(request.question, request.history));
+    pastFormsFirst ||
+    (isFormRecordsQuestion(request.question) &&
+      (!crossChatGuard || asksAboutRecords(request.question) || refersBack(request.question, request.history)));
   const formRecordsPromise = readsFormRecords
     ? loadFormRecords({
         actor,
@@ -1196,6 +1442,7 @@ async function answerQuestionUntraced(
    * `slot-only-turn.ts`); the rewrite would read the turn's own words again.
    */
   const slotTopic = slotOnlyRetrievalTopic(request.question, request.history);
+  markStage("query_rewrite");
   const rewritten = queryRewriteEnabled() && !slotTopic
     ? await rewriteToManualTerms({
         question: request.question,
@@ -1235,6 +1482,7 @@ async function answerQuestionUntraced(
   const scopeManual = currentManualScopeEnabled() || manualSectionDedupeEnabled();
   const fetchLimit = manualScopeFetchLimit(matchLimit, scopeManual);
   if (fullManualPromise) {
+    markStage("full_manual");
     const loadedManual = await fullManualPromise;
     if (loadedManual.ok) {
       fullManualBlock = loadedManual.block;
@@ -1281,6 +1529,7 @@ async function answerQuestionUntraced(
              */
             limit: fetchLimit,
           });
+      markStage("retrieval");
       rows = await search(searched);
       /*
        * A REFORMAT TURN KEEPS THE SOURCES OF THE ANSWER IT REFORMATS
@@ -1329,6 +1578,7 @@ async function answerQuestionUntraced(
     });
   }
 
+  markStage("parallel_reads");
   const roleResult = await rolePromise;
   const dailyStatsResult = await dailyStatsPromise;
   const performanceManagementResult = await performanceManagementPromise;
@@ -1377,6 +1627,17 @@ async function answerQuestionUntraced(
     };
   }
 
+  /*
+   * CHAT_PARALLEL_LOADS_ENABLED (QA, 9 Nov 2026): the reads below that need nothing more of the turn start here, after
+   * its last early return (the framework refusals above), so every read started is awaited on this turn and a turn
+   * that returns earlier makes none it would not have made. They run alongside the briefing, the summaries and the
+   * system prompt instead of one after another before the answer. Each is awaited where it was, with the same inputs,
+   * so the prompt is the same. The two that write (recalled memory, the long-context summary) start just before the
+   * system prompt is built (`turnWrites`).
+   */
+  const reads = chatParallelLoadsEnabled()
+    ? turnReads({ request, actor, knowledge, families, fullManual: fullManualBlock !== null, fewShot: earlyFewShot })
+    : null;
   const role = roleResult?.ok ? roleResult.grounding : null;
 
   /*
@@ -1510,7 +1771,17 @@ async function answerQuestionUntraced(
    * wrong answer this pipeline can produce. `loadReportBriefing` never rejects,
    * so this cannot fail the answer.
    */
+  markStage("briefing");
   const briefing = await briefingPromise;
+  /*
+   * GOOGLE_REVIEWS_IN_CHAT_ENABLED: the Google Reviews page's month to date,
+   * goal and pace for the caller's salons, read only on a Google review
+   * question and only with View Google reviews. Null otherwise.
+   */
+  markStage("google_reviews");
+  const reviewBlock = googleReviewsInChatEnabled()
+    ? await (reads?.reviews ?? loadGoogleReviewsChatBlock({ question: request.question, role: actor.role, scope: actor.scope }))
+    : null;
 
   /*
    * WHICH FRAMEWORK ACTUALLY CONTRIBUTED, decided from the assembled rows
@@ -1544,20 +1815,33 @@ async function answerQuestionUntraced(
    * non-forms turn this query has been running alongside retrieval, the
    * framework reads and the report briefing, so it costs no serial time.
    */
+  markStage("summaries_memory");
   const settledSummaries = await summariesPromise;
   const personMemory = await memoryPromise;
   const formInventoryBlock = settledSummaries.ok
     ? buildFormInventoryBlock(buildFormInventory(settledSummaries.rows, actor))
     : null;
 
-  const system = buildSystemPrompt({
+  /*
+   * CHAT_PARALLEL_LOADS_ENABLED: the two loads that write start here, where nothing between their start and their
+   * awaits can throw, and after everything that reads the conversation's memory (`memoryPromise`, above).
+   */
+  const writes = reads ? turnWrites({ request, actor }) : null;
+  markStage("recalled_memory");
+  const recalledMemory = await (writes?.recalled ?? recalledMemoryBlock(request, actor));
+  markStage("few_shot");
+  const fewShot = fewShotExamplesEnabled()
+    ? await (reads?.fewShot ?? fewShotBlock({ question: request.question, scopeId: request.scopeId }))
+    : null;
+  markStage("system_prompt");
+  const builtSystem = buildSystemPrompt({
     assistantName: ACTIVE_BRAND.assistantName,
     brandName: ACTIVE_BRAND.brandName,
     salonNoun: ACTIVE_BRAND.vocabulary.salonNoun,
     context: request.context,
     mode: request.mode,
     hasContext: grounding.length > 0 || fullManualBlock !== null,
-    hasReportData: (briefing?.present.length ?? 0) > 0,
+    hasReportData: (briefing?.present.length ?? 0) > 0 || reviewBlock?.figures === true,
     hasFrameworkGrounding: employeeFrameworkIncluded,
     unifiedAuthority: unifiedAuthorityOrderEnabled(),
     hasEmployeeFactsBlock: Boolean(employeeFacts?.block),
@@ -1609,27 +1893,33 @@ async function answerQuestionUntraced(
       hasPermission(DEFAULT_PERMISSION_MATRIX, actor.role, "view_reports"),
     styleRules: chatStyleRulesEnabled(),
     priorCoachingOptional: priorCoachingOptionalEnabled(),
-    recalledMemory: await recalledMemoryBlock(request, actor),
-    ...(fewShotExamplesEnabled()
-      ? { fewShot: await fewShotBlock({ question: request.question, scopeId: request.scopeId }) }
-      : {}),
+    recalledMemory,
+    ...(fewShot !== null ? { fewShot } : {}),
   });
+  // MANAGER_NAME_NOT_EMPLOYEE_ENABLED: the manager's name is only for addressing them. See `manager-name-guard.ts`.
+  const system = withManagerNameRule(builtSystem);
 
+  markStage("long_context");
   const longContext = longContextEnabled()
-    ? await prepareLongContext({
-        history: request.history,
-        userId: actor.subject ?? null,
-        conversationId: request.conversationId ?? null,
-      })
+    ? await (writes?.longContext ??
+        prepareLongContext({
+          history: request.history,
+          userId: actor.subject ?? null,
+          conversationId: request.conversationId ?? null,
+        }))
     : null;
-  const dataAddition = await loadChatDataBlock({
-    enabled: chatDataToolsEnabled(),
-    question: request.question,
-    role: actor.role,
-    scope: actor.scope,
-    briefedFamilies: families,
-  });
-  const pinnedPolicy = fullManualBlock ? null : await citedManualGrounding(request, knowledge);
+  markStage("chat_data");
+  const dataAddition = await (reads?.data ??
+    loadChatDataBlock({
+      enabled: chatDataToolsEnabled(),
+      question: request.question,
+      role: actor.role,
+      scope: actor.scope,
+      briefedFamilies: families,
+      reviewsHandled: reviewBlock !== null,
+    }));
+  markStage("cited_grounding");
+  const pinnedPolicy = fullManualBlock ? null : await (reads?.cited ?? citedManualGrounding(request, knowledge));
   /*
    * Retrieved rows are [S#] sources. With the manual loaded, those markers
    * are not the policy citation, and a manager manual that retrieval pinned
@@ -1652,33 +1942,78 @@ async function answerQuestionUntraced(
     : uncachedGrounding;
   const reportText = briefing?.text ?? null;
   updateChatTrace({ prompt: redactTraceText(system) });
-  const written = await callClaude({
-    system,
-    grounding: dataAddition.help ? `${groundingText}\n\n${dataAddition.help}` : groundingText,
-    reportData: dataAddition.data
-      ? [reportText, dataAddition.data].filter((part) => part && part.length > 0).join("\n\n")
-      : reportText,
-    /*
-     * THE EMPLOYEE FACTS BLOCK, WIRED THROUGH RATHER THAN COUNTED.
-     *
-     * `employeeFacts.available` used to be read as a boolean and the block
-     * itself was never passed anywhere — so the day a real dataset landed, its
-     * figures would have flipped a prompt flag and then been dropped on the
-     * floor. The block travels to the model as its own section now.
-     */
-    employeeData: employeeFacts?.block ?? null,
-    formsLibrary: formInventoryBlock,
-    formRecords: formRecords?.block ?? null,
-    personMemory,
-    history: request.history,
-    ...(longContext
-      ? { historyPolicy: "budget" as const, priorSummary: longContext.summary }
-      : {}),
-    question: request.question,
-    maxTokens: CLAUDE_MAX_TOKENS[request.mode],
-    manualBlock,
-    fullManualBlock,
-  });
+  /*
+   * FORM_EDIT_TOOL_IN_STREAM_ENABLED (Step 3): with a draft open, this call is
+   * offered `edit_form` and the open form as JSON. A tool call is applied
+   * through the one writer and the turn ends here — no second call, and the
+   * model's text is not shown; the chat route answers from the saved diff or
+   * hands the turn to the old chain. Absent, the call is as before.
+   */
+  const formEdit = request.formEditTool?.offer ? request.formEditTool : null;
+  let toolInput: { readonly input: unknown } | null = null;
+  /*
+   * FORM_EDIT_TOOL_IN_STREAM_ENABLED: a failed main call is recorded on the
+   * trace (the chat route hands the turn to the old chain) and rethrown —
+   * never fail-open.
+   */
+  let written: string;
+  try {
+    markStage("answer_model");
+    written = await callClaude({
+      system,
+      grounding: dataAddition.help ? `${groundingText}\n\n${dataAddition.help}` : groundingText,
+      reportData: reviewBlock
+        ? [reportText, reviewBlock.text, dataAddition.data].filter((part) => part && part.length > 0).join("\n\n")
+        : dataAddition.data
+          ? [reportText, dataAddition.data].filter((part) => part && part.length > 0).join("\n\n")
+          : reportText,
+      /*
+       * THE EMPLOYEE FACTS BLOCK, WIRED THROUGH RATHER THAN COUNTED.
+       *
+       * `employeeFacts.available` used to be read as a boolean and the block
+       * itself was never passed anywhere — so the day a real dataset landed, its
+       * figures would have flipped a prompt flag and then been dropped on the
+       * floor. The block travels to the model as its own section now.
+       */
+      employeeData: employeeFacts?.block ?? null,
+      formsLibrary: formInventoryBlock,
+      formRecords: formRecords?.block ?? null,
+      personMemory,
+      history: request.history,
+      ...(longContext
+        ? { historyPolicy: "budget" as const, priorSummary: longContext.summary }
+        : {}),
+      question: request.question,
+      maxTokens: CLAUDE_MAX_TOKENS[request.mode],
+      manualBlock,
+      fullManualBlock,
+      // CHAT_GLOSSARY_ENABLED: the abbreviation table as one more context block. Off, no key at all.
+      ...(glossaryBlock() ? { glossary: glossaryBlock() } : {}),
+      ...(formEdit && formEdit.offer
+        ? {
+            formEditTool: {
+              tool: formEdit.offer.tool,
+              data: formEdit.offer.data,
+              onToolUse: (input: unknown) => {
+                toolInput ??= { input };
+              },
+            },
+          }
+        : {}),
+    });
+  } catch (error) {
+    formEdit?.failed();
+    throw error;
+  }
+  markStage("after_answer");
+  if (formEdit) {
+    formEdit.sent();
+    const called = toolInput as { readonly input: unknown } | null;
+    if (called) {
+      await formEdit.apply(called.input);
+      return { content: "", citations: [], coverage: "not_applicable", recommendedVideoIds: [] };
+    }
+  }
   /*
    * THE BACKSTOP to the labelled block above: with the guard on and no refer-back
    * in this conversation, a sentence saying the manager raised or sent
@@ -1745,8 +2080,11 @@ async function answerQuestionUntraced(
     attachedDocumentIds: request.attachedDocumentIds,
   }).content;
 
+  // SOURCE_NOTE_GUARD_ENABLED: a bracketed note about a source ("[S1 doesn't actually cover …]") is removed (`source-note.ts`). Off, as before.
+  const content = withoutSourceNotes(suggested ? `${prose}\n\n${suggested.lead}` : prose);
+  // CA_SALES_POLICY_ENABLED: the Corrective Action offer is added at the turn's one exit (`answerQuestion`, `withCaOffer`).
   return {
-    content: suggested ? `${prose}\n\n${suggested.lead}` : prose,
+    content,
     formSelection: suggested?.selection,
     citations: checked ? [...checked.citations] : retrievedCitations,
     /*
@@ -1769,7 +2107,11 @@ async function answerQuestionUntraced(
        * `grounded` would put a confident banner over an answer whose whole
        * content is "I do not have that delivery".
        */
-      grounding.length === 0 && !fullManualBlock && (briefing?.present.length ?? 0) === 0 && formRecords === null
+      grounding.length === 0 &&
+      !fullManualBlock &&
+      (briefing?.present.length ?? 0) === 0 &&
+      formRecords === null &&
+      reviewBlock?.figures !== true
         ? "insufficient"
         : "grounded",
     // Video matching is a separate concern and still runs on the client's
@@ -1832,6 +2174,59 @@ async function recalledMemoryBlock(request: AskRequest, actor: ChatActor): Promi
   }
 }
 
+/**
+ * CHAT_PARALLEL_LOADS_ENABLED: the turn's reads that need nothing more of the turn, started together. The same calls,
+ * with the same inputs, as where they are awaited (`answerQuestionUntraced`); a rejection is held until that await.
+ */
+function turnReads(input: {
+  readonly request: AskRequest;
+  readonly actor: ChatActor;
+  readonly knowledge: Parameters<typeof citedManualGrounding>[1];
+  readonly families: readonly ReportFamilyId[];
+  readonly fullManual: boolean;
+  /** Started before the query rewrite (`earlyFewShot`): non-null exactly when loads and few-shot are both on. */
+  readonly fewShot: ReturnType<typeof fewShotBlock> | null;
+}) {
+  const { request, actor } = input;
+  const reviews = googleReviewsInChatEnabled()
+    ? held(loadGoogleReviewsChatBlock({ question: request.question, role: actor.role, scope: actor.scope }))
+    : Promise.resolve(null);
+  return {
+    reviews,
+    fewShot: input.fewShot,
+    data: held(
+      reviews.then((reviewBlock) =>
+        loadChatDataBlock({
+          enabled: chatDataToolsEnabled(),
+          question: request.question,
+          role: actor.role,
+          scope: actor.scope,
+          briefedFamilies: input.families,
+          reviewsHandled: reviewBlock !== null,
+        }),
+      ),
+    ),
+    cited: input.fullManual ? null : held(citedManualGrounding(request, input.knowledge)),
+  };
+}
+
+/** CHAT_PARALLEL_LOADS_ENABLED: the two loads that write (recalled memory, the long-context summary), started just before the system prompt. */
+function turnWrites(input: { readonly request: AskRequest; readonly actor: ChatActor }) {
+  const { request, actor } = input;
+  return {
+    recalled: held(recalledMemoryBlock(request, actor)),
+    longContext: longContextEnabled()
+      ? held(
+          prepareLongContext({
+            history: request.history,
+            userId: actor.subject ?? null,
+            conversationId: request.conversationId ?? null,
+          }),
+        )
+      : null,
+  };
+}
+
 async function citedManualGrounding(
   request: AskRequest,
   knowledge: { fetchOfficialPolicyManual(scopeId: string): Promise<{ ok: true; chunks: readonly import("@/lib/forms/official-policy-manual").ManualChunk[] } | { ok: false }> },
@@ -1873,7 +2268,8 @@ function questionForProposal(question: string, request: AskRequest): string {
   return augmentIntakeQuestion({
     slots: slotRetentionEnabled(),
     fields: fieldAccuracyEnabled(),
-    question,
+    // EXIT_LETTER_SIGNER_NOT_SUBJECT_ENABLED: a letter's "<C>, District Manager" sign-off is not proposed as the form's person (`ai/letter-signer.ts`).
+    question: withoutLetterSigner({ question }),
     history: request.history,
     today: request.context.todayIso,
   });

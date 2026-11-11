@@ -6,6 +6,8 @@ import type { FormsActor } from "./access";
 import { chatFormsActor, type FormRecordsActor } from "./chat-form-records";
 import { instanceListFilterFor, visibleInstances } from "./instance-scope";
 import { listInstances } from "./instances";
+import { privateAwareLimit } from "./private-creators";
+import { amPriorWarningsEnabled, priorActionsPolicyEnabled } from "@/lib/config/chat-quality-flags";
 import {
   classifyPriorForms,
   priorFormsFromRows,
@@ -84,11 +86,25 @@ async function readOnFile(input: {
   if (words.length === 0) return null;
 
   try {
-    const read = await listInstances("all", READ_LIMIT, {
+    // PRIVATE_CREATOR_FORMS: over-read, then trim to the page; off, READ_LIMIT itself.
+    const read = await listInstances("all", privateAwareLimit(READ_LIMIT), {
       ...instanceListFilterFor(input.actor),
       employeeNameWords: words,
     });
-    const rows = visibleInstances(input.actor, read);
+    /*
+     * AM_PRIOR_WARNINGS_ENABLED (Pau, 31 Oct 2026, "Yes option A"): an
+     * Assistant Salon Director sees only their own forms, so their Corrective
+     * Action counted only the warnings they had filed and could be drafted as a
+     * first warning. The history is read without that one rule — salon scope
+     * and every other privacy rule still apply — and a form they could not
+     * open shows only its level and date: no salon, nothing else of it.
+     */
+    const ownOnly = visibleInstances(input.actor, read);
+    const visible = amPriorWarningsEnabled() ? visibleInstances(input.actor, read, { assistantOwnFormsRule: false }) : ownOnly;
+    const theirs = new Set(ownOnly.map((row) => row.id));
+    const rows = visible
+      .slice(0, READ_LIMIT)
+      .map((row) => (theirs.has(row.id) ? row : { ...row, locationName: null }));
 
     const correctiveIds = rows
       .filter((row) => row.templateKey === "dpoa" && row.status === "finalized")
@@ -109,19 +125,46 @@ async function readOnFile(input: {
       }
     }
 
+    /*
+     * PRIOR_ACTIONS_POLICY_ENABLED (Pau, 3 Nov 2026): each Corrective Action's
+     * "Policy violated" is named on its line. Read only with the flag on; a
+     * failed read names no policy and the lines read as before.
+     */
+    const policies = new Map<string, string>();
+    if (priorActionsPolicyEnabled() && correctiveIds.length > 0) {
+      const { data, error } = await getSupabaseAdmin()
+        .from("form_instance_values")
+        .select("instance_id, value")
+        .eq("field_key", "policy_violated")
+        .in("instance_id", correctiveIds);
+      if (!error) {
+        for (const row of data ?? []) {
+          if (typeof row.value === "string" && row.value.trim()) policies.set(String(row.instance_id), row.value);
+        }
+      }
+    }
+
     const forms = priorFormsFromRows({
       rows,
       employeeName: input.employeeName,
       excludeInstanceId: input.excludeInstanceId,
       before: input.before,
       warningLevels,
+      policies,
     });
     return {
       forms,
       sameNameLocations: rows
         .filter((row) => row.id !== input.excludeInstanceId && sameName(row.employeeName, input.employeeName))
         .map((row) => row.locationId ?? null),
-      complete: read.length < READ_LIMIT,
+      /*
+       * Complete only when every visible row was used (independent review, 31
+       * Oct 2026, item 15b): with the private-creator over-read (4× while the
+       * Assistant Manager rule is on) 201–799 matching rows read "complete"
+       * though only the newest 200 were used. Off, the read is the page, so
+       * this is the same test as before.
+       */
+      complete: visible.length <= READ_LIMIT && read.length < privateAwareLimit(READ_LIMIT),
     };
   } catch {
     return null;

@@ -27,7 +27,9 @@ import {
   importLocalHistory,
   type ImportSummary,
 } from "@/lib/chat/local-import";
+import { chatLocalOwnerEnabled, partitionByOwner, stampOwner } from "@/lib/chat/local-owner";
 import { mergeConversations } from "@/lib/chat/merge";
+import { chatHistoryTolerantEnabled } from "@/lib/config/chat-quality-flags";
 import {
   isSuppressed,
   suppressDeleted,
@@ -198,6 +200,8 @@ const CLEAR_BOUNDARY_KEY = "chat-history-clear-boundary";
  * inside a render would invite a hydration mismatch for no benefit.
  */
 const DEMO_MODE = isDemoMode();
+/** NEXT_PUBLIC_CHAT_LOCAL_OWNER_ENABLED: another account's chats in this browser are held back. See `chat/local-owner.ts`. */
+const LOCAL_OWNER = !DEMO_MODE && chatLocalOwnerEnabled();
 
 /**
  * A cheap fingerprint of a conversation's current state.
@@ -342,6 +346,16 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
    * machine in `lib/chat/suppression.ts`.
    */
   const [historyState, setHistoryState] = useState<HistoryState | null>(null);
+  /*
+   * NEXT_PUBLIC_CHAT_LOCAL_OWNER_ENABLED: chats in this browser that are not
+   * this account's — or not known to be, until the account answers. Never in
+   * state, so never shown, offered for Import or synced; written back to
+   * IndexedDB beside state, so nothing is deleted. See `chat/local-owner.ts`.
+   */
+  const heldBack = useRef<ChatConversation[]>([]);
+  const ownerKey = useRef<string | null>(null);
+  /** Legacy unstamped chats this account does not hold: shown, never stamped as its own. */
+  const unclaimed = useRef<Set<string>>(new Set());
 
   /**
    * CONVERSATIONS THAT WERE ALREADY IN THIS BROWSER WHEN THE PAGE LOADED.
@@ -587,7 +601,9 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
        * stays primed from `liveConversations` only, so the new conversation
        * still syncs.
        */
-      if (liveConversations.length > 0) {
+      if (LOCAL_OWNER) {
+        heldBack.current = liveConversations;
+      } else if (liveConversations.length > 0) {
         if (sendAfterHydrateEnabled()) {
           setConversations((current) => mergeConversations(liveConversations, current));
         } else {
@@ -649,11 +665,35 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       setAppliedBoundary(alreadyApplied);
 
       try {
-        const [serverConversations, state] = await Promise.all([
-          fetchOwnConversations(),
-          fetchHistoryState(),
-        ]);
+        /*
+         * NEXT_PUBLIC_CHAT_HISTORY_TOLERANT_ENABLED: the two reads are settled
+         * separately. When only the history state fails (QA, 31 Oct 2026: a 503
+         * on every fresh load for a heavy account), the account's own list is
+         * still merged — it is this person's own chats, read under their own
+         * id — and nothing is suppressed, offered for Import or released from
+         * this browser. Off, either failure leaves local chats only, as before.
+         */
+        let reads: [ChatConversation[], HistoryState];
+        if (chatHistoryTolerantEnabled()) {
+          const [listed, stated] = await Promise.allSettled([fetchOwnConversations(), fetchHistoryState()]);
+          if (cancelled) return;
+          if (listed.status === "fulfilled" && stated.status === "rejected") {
+            const serverConversations = listed.value;
+            for (const conversation of serverConversations) {
+              historicalIds.current.delete(conversation.id);
+              syncedSignatures.current.set(conversation.id, signatureOf(conversation));
+            }
+            setHistoryState(null);
+            setConversations((current) => mergeConversations(current, serverConversations));
+            return;
+          }
+          if (listed.status === "rejected" || stated.status === "rejected") throw new Error("history unavailable");
+          reads = [listed.value, stated.value];
+        } else {
+          reads = await Promise.all([fetchOwnConversations(), fetchHistoryState()]);
+        }
         if (cancelled) return;
+        const [serverConversations, state] = reads;
 
         /*
          * A conversation the account already holds is not historical: it is
@@ -677,6 +717,20 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         }
 
         setHistoryState(state);
+        /*
+         * NEXT_PUBLIC_CHAT_LOCAL_OWNER_ENABLED: this account's own chats come
+         * out of the held-back set; everybody else's stay in it. Without a
+         * key (an older server), all of them stay.
+         */
+        const key = LOCAL_OWNER ? (state.ownerKey ?? null) : null;
+        let released: ChatConversation[] = [];
+        if (LOCAL_OWNER) {
+          const split = partitionByOwner(heldBack.current, key, new Set(state.stored.map((entry) => entry.id)));
+          heldBack.current = split.others;
+          released = [...split.mine, ...split.unclaimed];
+          unclaimed.current = new Set(split.unclaimed.map((entry) => entry.id));
+          ownerKey.current = key;
+        }
         setConversations((current) => {
           /*
            * ==============================================================
@@ -697,11 +751,12 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
            * difference between keeping a local copy for OUR rollback and
            * keeping one against somebody's own decision to delete.
            */
-          return suppressDeleted(mergeConversations(current, serverConversations), {
+          const merged = suppressDeleted(mergeConversations([...current, ...released], serverConversations), {
             state,
             preExisting: new Set(liveConversations.map((entry) => entry.id)),
             appliedBoundary: alreadyApplied,
           });
+          return LOCAL_OWNER ? stampOwner(merged, key, unclaimed.current) : merged;
         });
 
         /*
@@ -793,7 +848,13 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
    */
   useEffect(() => {
     if (!ready) return;
-    void storage.replace("chat_conversations", conversations);
+    /*
+     * NEXT_PUBLIC_CHAT_LOCAL_OWNER_ENABLED: this account's chats carry its
+     * key, and the held-back chats are written back untouched beside them.
+     */
+    // Every chat this account starts is stamped at its first write; a legacy unclaimed one never is.
+    const owned = LOCAL_OWNER ? [...stampOwner(conversations, ownerKey.current, unclaimed.current), ...heldBack.current] : conversations;
+    void storage.replace("chat_conversations", owned);
   }, [ready, storage, conversations]);
 
   /**

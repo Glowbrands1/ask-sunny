@@ -3,9 +3,11 @@ import "server-only";
 import { revokeAuthAccess } from "@/lib/auth/revocation";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
-import { applyAccessLifecycle, type ApplyDeps, type ApplyOutcome } from "./apply";
+import { applyAccessLifecycle, sendInviteEmail, type ApplyDeps, type ApplyOutcome } from "./apply";
 import { readWovenAccessConfig } from "./config";
 import { loadAccessPlan } from "./load";
+import { readNewHireConfig } from "./new-hire";
+import { sendNewHireInvites, type NewHireInviteOutcome } from "./new-hire-invites";
 
 /**
  * The account lifecycle with the real services: the plan from the database,
@@ -31,8 +33,29 @@ export async function runAccessLifecycle(requestedBy: string, redirectTo: string
   const config = readWovenAccessConfig();
   if (config.mode !== "apply") return { status: "off" };
   try {
-    return await applyAccessLifecycle({ requestedBy, redirectTo, config, now }, realApplyDeps());
+    // NEW_HIRE_INVITES_ENABLED: invitations wait for the hourly new-hire run. Off: as before.
+    const holdInvites = readNewHireConfig(process.env, now).enabled;
+    return await applyAccessLifecycle({ requestedBy, redirectTo, config, now, ...(holdInvites ? { holdInvites } : {}) }, realApplyDeps());
   } catch {
     return { status: "failed", code: "apply_failed", accessRunId: null };
+  }
+}
+
+/**
+ * NEW_HIRE_INVITES_ENABLED: the hourly run (`new-hire-invites.ts`) with the
+ * real services. Off: `{ status: "off" }`, and nothing is read.
+ */
+export async function runNewHireInvites(requestedBy: string, redirectTo: string | null, now: Date = new Date()): Promise<NewHireInviteOutcome> {
+  const config = readNewHireConfig(process.env, now);
+  if (!config.enabled) return { status: "off", code: config.problem ? "misconfigured" : "new_hire_invites_off" };
+  const deps = realApplyDeps();
+  const setBy = `woven-new-hire-invites:${requestedBy}`.slice(0, 120);
+  try {
+    return await sendNewHireInvites(
+      { config, access: readWovenAccessConfig(), now },
+      { loadPlan: deps.loadPlan, send: (appUserId, email) => sendInviteEmail(appUserId, email, redirectTo, deps, setBy) },
+    );
+  } catch {
+    return { status: "off", code: "new_hire_invites_failed" };
   }
 }
