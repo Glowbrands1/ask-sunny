@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { statedPayrollDeduct } from "./payroll-deduct-answer";
 
@@ -6,8 +6,16 @@ import { statedPayrollDeduct } from "./payroll-deduct-answer";
 const P15 = "I need a term CA for Delphine Marrow. Didn't show up for her opening shift. Payroll deduction.";
 
 describe("PAYROLL_BARE_SENTENCE_ENABLED", () => {
-  afterEach(() => {
+  // QA (11 Nov 2026, before the flip): each test starts with the flag unset, whatever the env says, and the env's own
+  // value is put back after, so "off" still holds in a flags-on run.
+  let saved: string | undefined;
+  beforeEach(() => {
+    saved = process.env.PAYROLL_BARE_SENTENCE_ENABLED;
     delete process.env.PAYROLL_BARE_SENTENCE_ENABLED;
+  });
+  afterEach(() => {
+    if (saved === undefined) delete process.env.PAYROLL_BARE_SENTENCE_ENABLED;
+    else process.env.PAYROLL_BARE_SENTENCE_ENABLED = saved;
   });
 
   it("off: P15's last sentence states nothing (as production)", () => {
