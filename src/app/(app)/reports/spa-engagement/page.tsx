@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { reportingReadsConfigured } from "@/lib/reporting/demo/client";
 
 import { PermissionGate } from "@/components/permission-gate";
 import { requirePagePermission } from "@/lib/auth/page";
@@ -7,7 +8,6 @@ import { resolveReportingScope } from "@/lib/reporting/scope/server";
 import { scopeNoticeSentence } from "@/lib/reporting/scope/authorized-salons";
 
 import { EmptyState, Notice } from "@/components/ui/feedback";
-import { SUPABASE_URL_ENV, supabaseSecretKeyConfigured } from "@/lib/config/server-env";
 import { SPA_ENGAGEMENT_MEASURES_BY_CODE } from "@/lib/reporting/spa-engagement/metric-map";
 import { rankSalons, summarizeSalons } from "@/lib/reporting/read/bed-spa/bed-usage-analytics";
 import {
@@ -145,7 +145,7 @@ export default async function SpaEngagementPage({
    */
   await requirePagePermission("view_reports");
 
-  if (!process.env[SUPABASE_URL_ENV] || !supabaseSecretKeyConfigured()) {
+  if (!reportingReadsConfigured()) {
     return (
       <ReportFrame report={REPORT}>
         <Notice tone="attention" title="Supabase is not configured in this runtime">

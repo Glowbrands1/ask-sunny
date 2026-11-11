@@ -2,7 +2,7 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { getSupabaseAdmin } from "@/lib/supabase/server";
+import { reportingReadClient } from "@/lib/reporting/demo/client";
 import type { ReportPeriodGrain } from "../types";
 import type { ReportFilters } from "./filters";
 import type { FactRow } from "./dashboard";
@@ -132,7 +132,7 @@ function toScope(row: ScopeRow): ReportScope {
 export class ReportingReadRepository {
   private readonly client: SupabaseClient;
 
-  constructor(client: SupabaseClient = getSupabaseAdmin()) {
+  constructor(client: SupabaseClient = reportingReadClient()) {
     this.client = client;
   }
 

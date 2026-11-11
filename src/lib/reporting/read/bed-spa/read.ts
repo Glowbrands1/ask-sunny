@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getSupabaseAdmin } from "@/lib/supabase/server";
+import { reportingReadClient } from "@/lib/reporting/demo/client";
 import { AUTHORIZED_COMPANY } from "../../store-identity";
 import {
   periodLabel,
@@ -145,7 +145,7 @@ export async function listBedUsagePeriods(
    * that resolves to nothing — which reads as a broken report rather than as a
    * boundary.
    */
-  let query = getSupabaseAdmin()
+  let query = reportingReadClient()
     .from("bed_usage_current_salon_facts")
     .select("period_id, grain, period_start, period_end, period_label, ingested_at, salon_number")
     .eq("company", company);
@@ -230,7 +230,7 @@ export async function loadBedUsage(
   company: string = AUTHORIZED_COMPANY,
   authorizedSalonNumbers: SalonAllowlist = null,
 ): Promise<BedUsageRead | null> {
-  const client = getSupabaseAdmin();
+  const client = reportingReadClient();
 
   let salonQuery = client
     .from("bed_usage_current_salon_facts")
@@ -341,7 +341,7 @@ export async function listSpaWellnessPeriods(
    * that resolves to nothing — which reads as a broken report rather than as a
    * boundary.
    */
-  let query = getSupabaseAdmin()
+  let query = reportingReadClient()
     .from("spa_wellness_current_salon_facts")
     .select("period_id, grain, period_start, period_end, period_label, ingested_at, salon_number")
     .eq("company", company);
@@ -357,7 +357,7 @@ export async function loadSpaWellness(
   company: string = AUTHORIZED_COMPANY,
   authorizedSalonNumbers: SalonAllowlist = null,
 ): Promise<SpaWellnessRead | null> {
-  const client = getSupabaseAdmin();
+  const client = reportingReadClient();
 
   let salonQuery = client
     .from("spa_wellness_current_salon_facts")
@@ -488,7 +488,7 @@ export async function listSpaEngagementPeriods(
    * that resolves to nothing — which reads as a broken report rather than as a
    * boundary.
    */
-  let query = getSupabaseAdmin()
+  let query = reportingReadClient()
     .from("spa_engagement_current_salon_facts")
     .select("period_id, grain, period_start, period_end, period_label, ingested_at, salon_number")
     .eq("company", company);
@@ -507,7 +507,7 @@ export async function loadSpaEngagement(
   company: string = AUTHORIZED_COMPANY,
   authorizedSalonNumbers: SalonAllowlist = null,
 ): Promise<SpaEngagementRead | null> {
-  let query = getSupabaseAdmin()
+  let query = reportingReadClient()
     .from("spa_engagement_current_salon_facts")
     .select(
       "period_id, grain, period_start, period_end, period_label, source_period_label, rank_population, rank_weights, source_salon_count, salon_number, store_name, district_label, region_label, ownership, spa_sessions, total_unique_tanners, unique_spa_tanners, spa_beds, reported_ranks, reported_overall_rank, ingested_at, parser_key, parser_version, original_filename",

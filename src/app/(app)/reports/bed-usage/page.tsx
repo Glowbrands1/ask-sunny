@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { reportingReadsConfigured } from "@/lib/reporting/demo/client";
 
 import { PermissionGate } from "@/components/permission-gate";
 import { requirePagePermission } from "@/lib/auth/page";
@@ -9,7 +10,6 @@ import { scopeNoticeSentence } from "@/lib/reporting/scope/authorized-salons";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState, Notice } from "@/components/ui/feedback";
 
-import { SUPABASE_URL_ENV, supabaseSecretKeyConfigured } from "@/lib/config/server-env";
 import {
   BED_LEVELS,
   BED_USAGE_MEASURES_BY_CODE,
@@ -125,7 +125,7 @@ export default async function BedUsagePage({
    */
   await requirePagePermission("view_reports");
 
-  if (!process.env[SUPABASE_URL_ENV] || !supabaseSecretKeyConfigured()) {
+  if (!reportingReadsConfigured()) {
     return (
       <ReportFrame report={REPORT}>
         <Notice tone="attention" title="Supabase is not configured in this runtime">

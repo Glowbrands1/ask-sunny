@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+import { Notice } from "@/components/ui/feedback";
+import { isDemoMode } from "@/lib/config/runtime";
 import { cn } from "@/lib/utils/cn";
 import { ReportTabs } from "./report-tabs";
 import type { ReportRoute } from "./reports-routes";
@@ -108,6 +110,14 @@ export function ReportFrame({
         </div>
       ) : null}
       <div className="flex min-w-0 flex-col gap-5 px-5 py-5 pb-7 sm:px-6 sm:py-5.5">
+        {/* DEMO ONLY: the report below is the live screen over invented rows. */}
+        {isDemoMode() ? (
+          <Notice tone="attention" title="Showing seeded figures, not real reporting">
+            This is a demo deployment, and demo deployments never read the reporting
+            database. The report below is the live screen; every salon figure on it is
+            invented demo content.
+          </Notice>
+        ) : null}
         {children}
       </div>
     </div>
