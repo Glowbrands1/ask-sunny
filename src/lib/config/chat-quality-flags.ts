@@ -4340,3 +4340,14 @@ export function sameRequestOffRosterEnabled(): boolean {
 export function pastedOutlineToOpenDraftEnabled(): boolean {
   return envFlag("PASTED_OUTLINE_TO_OPEN_DRAFT_ENABLED");
 }
+
+/**
+ * GROUP_WORDS_NOT_A_NAME_ENABLED (coding 6, 11 Nov 2026; default off; ported from the sibling app's Problem 19, its
+ * production, 10 Nov 2026; reproduced here by the replay case): "I want the same form for multiple employees" put
+ * "multiple employees" on the coaching card as the employee. On, a group of people ("multiple employees", "my
+ * employees", "the team", "everyone") is never a person's name (`forms/not-a-name.ts` isGroupOfPeople, with
+ * NOT_A_NAME_GUARD), and the bot asks which employees, with the form and its topic kept. Off, as before.
+ */
+export function groupWordsNotANameEnabled(): boolean {
+  return envFlag("GROUP_WORDS_NOT_A_NAME_ENABLED");
+}

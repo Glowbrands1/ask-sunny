@@ -1,5 +1,5 @@
 import { PRODUCTION_SALONS } from "@/data/salons";
-import { accountVerbNotANameEnabled, notANameGuardEnabled } from "@/lib/config/chat-quality-flags";
+import { accountVerbNotANameEnabled, groupWordsNotANameEnabled, notANameGuardEnabled } from "@/lib/config/chat-quality-flags";
 import { BED_LEVELS } from "@/lib/reporting/bed-usage/metric-map";
 import { COMP_SALES_METRICS } from "@/lib/reporting/comp-sales/metric-catalogue";
 import { SPA_ENGAGEMENT_MEASURES } from "@/lib/reporting/spa-engagement/metric-map";
@@ -181,9 +181,26 @@ function isThingRun(words: readonly string[]): boolean {
   return words.length >= 2 && DOCUMENT_TAIL.has(words[words.length - 1]!);
 }
 
+/*
+ * GROUP_WORDS_NOT_A_NAME_ENABLED (ported from the sibling app's Problem 19, 10 Nov 2026): "I want the same form for
+ * multiple employees" put "**multiple employees**" on the card as the employee, with "Everything I need is here".
+ * A group of people ("multiple employees", "my employees", "several team members", "the team", "everyone") is
+ * nobody's name: the bot asks who they are.
+ */
+const GROUP_QUANTIFIER = /^(?:multiple|several|many|some|all|both|these|those|my|our|the|a\s+few|few|two|three|four|five|other|more)$/;
+const GROUP_NOUN = /^(?:employees|staff|people|team|teams|members|associates|workers|crew|everyone|everybody|employes|employess|emplyees)$/;
+export function isGroupOfPeople(candidate: string): boolean {
+  const words = candidate.trim().toLowerCase().replace(/[^a-z\s]/g, " ").split(/\s+/).filter(Boolean);
+  if (words.length === 0) return false;
+  if (words.length === 1) return /^(?:everyone|everybody|team|staff|employees)$/.test(words[0]!);
+  const last = words[words.length - 1]!;
+  return GROUP_NOUN.test(last) && words.slice(0, -1).every((word) => GROUP_QUANTIFIER.test(word) || /^(?:team|staff)$/.test(word));
+}
+
 /** True when the guard is on and the candidate is not somebody's name. */
 export function isNotAName(candidate: string | null | undefined): boolean {
   if (!notANameGuardEnabled() || !candidate?.trim()) return false;
+  if (groupWordsNotANameEnabled() && isGroupOfPeople(candidate)) return true;
   const words = wordsOf(candidate);
   if (words.length === 0) return false;
   if (isThingRun(words)) return true;
