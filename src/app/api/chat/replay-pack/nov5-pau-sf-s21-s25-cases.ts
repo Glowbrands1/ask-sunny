@@ -289,7 +289,8 @@ export const NOV10_R23_SF_S21_LIVE_CASES: ReplayCase[] = [
     id: "nov10-r23-sf-s21-pasted-outline-to-open-draft",
     title: "sf-s21 as QA's r23 live test ran it: with Wynne's CA draft open, the pasted Tamsyn CA is that draft's outline — no new card, no \"Is this for Tamsyn?\", and the revision is handed the outline with the draft's own facts",
     report: `QA's Sunny round-23 live test, conv_mwb21a4z2rxf5y1: 5b "Is this for Tamsyn?" and a new card over Wynne's draft; the outline never saved`,
-    status: { open: "the pasted outline names Tamsyn, so it is read as a new request: a new card covers Wynne's draft and the outline never reaches it" },
+    // Changed on purpose (11 Nov 2026): fixed in production by PASTED_OUTLINE_TO_OPEN_DRAFT_ENABLED, QA round 25. Was OPEN ("the pasted outline names Tamsyn, so it is read as a new request: a new card covers Wynne's draft and the outline never reaches it").
+    status: "fixed",
     fixFlags: ["PASTED_OUTLINE_TO_OPEN_DRAFT_ENABLED"],
     async run(t) {
       vi.setSystemTime(new Date("2026-11-10T19:00:00Z"));
