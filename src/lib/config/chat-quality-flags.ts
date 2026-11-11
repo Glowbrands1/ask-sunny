@@ -4340,3 +4340,13 @@ export function sameRequestOffRosterEnabled(): boolean {
 export function pastedOutlineToOpenDraftEnabled(): boolean {
   return envFlag("PASTED_OUTLINE_TO_OPEN_DRAFT_ENABLED");
 }
+
+/**
+ * STORE_CHOICES_NAMED_ENABLED (ported from Ask Bubbles: Problem 20, production there, 10 Nov 2026; default off; same flag
+ * in both apps). A card waiting for its salon asked "Which salon is this about?" with no salon named, and a request sent
+ * again got the same question back. On: the question names the manager's salons (`forms/store-choices-named.ts`). Off,
+ * as before.
+ */
+export function storeChoicesNamedEnabled(): boolean {
+  return envFlag("STORE_CHOICES_NAMED_ENABLED");
+}

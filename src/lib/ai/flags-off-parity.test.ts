@@ -184,6 +184,8 @@ import { privateCreatorFormsEnabled, privateCreatorsActive } from "@/lib/forms/p
  */
 
 const NEW_FLAGS = [
+  // coding 4: STORE_CHOICES_NAMED (ported from Ask Bubbles, Problem 20, 11 Nov 2026; default off).
+  "STORE_CHOICES_NAMED_ENABLED",
   "SLOT_RETENTION_ENABLED",
   "FIELD_ACCURACY_ENABLED",
   "DRAFT_DEDUPE_ENABLED",

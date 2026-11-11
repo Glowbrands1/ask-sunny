@@ -44,6 +44,7 @@ import {
   wholeTeamCoachingEnabled,
   addressNotPersonEnabled,
   sameAskNoRepeatEnabled,
+  storeChoicesNamedEnabled,
   newRequestOpenDraftEnabled,
   coachingForEveryoneEnabled,
   staffPickerEnabled,
@@ -879,6 +880,8 @@ async function postChat(request: Request) {
         ]);
       }
       // SAME_ASK_NO_REPEAT_ENABLED: a card still waiting never repeats the last reply word for word (`lib/forms/reply-guards.ts`).
+      // STORE_CHOICES_NAMED_ENABLED: a card waiting for its salon names the choices, before the repeat check (`lib/forms/store-choices-named.ts`).
+      if (storeChoicesNamedEnabled()) answer = (await import("@/lib/forms/store-choices-named")).withStoreChoicesNamed(answer);
       if (sameAskNoRepeatEnabled()) answer = (await import("@/lib/forms/reply-guards")).withoutRepeatedAsk(answer, asked.history);
       // REFUSAL_NO_REPEAT_ENABLED, TITLE_NOT_SPEAKERS_MANAGER_ENABLED: see `lib/forms/reply-guards.ts`.
       if (refusalNoRepeatEnabled() || titleNotSpeakersManagerEnabled()) {
