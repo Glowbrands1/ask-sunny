@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import { leadingFormRequest } from "./template-intent";
-import { leadingTitleLength, withoutLeadingTitle } from "./title-before-name";
+import { leadingTitleLength, nameAfterTitle, withoutLeadingTitle } from "./title-before-name";
 
 /** TITLE_BEFORE_NAME_ENABLED (ported from Ask Bubbles, 11 Nov 2026): this app's titles; the person is invented. */
 const FLAG = "TITLE_BEFORE_NAME_ENABLED";
@@ -46,5 +46,24 @@ describe("TITLE_BEFORE_NAME reads every job title this app prints", () => {
     for (const said of ["SDIT", "TSD", "DMIT", "FTTC", "ASD", "TC", "SD", "DM", ...JOB_TITLES.map((entry) => entry.title)]) {
       expect(leadingTitleLength([...said.split(" "), "Wren", "Tallis"]), said).toBe(said.split(" ").length);
     }
+  });
+});
+
+describe("nameAfterTitle (QA's ruling, 11 Nov 2026): the name a request gives after \"for <title>\"", () => {
+  it("flag on: \"Corrective action for Salon Director Wren Tallis\" gives Wren Tallis", () => {
+    process.env[FLAG] = "true";
+    expect(nameAfterTitle("Corrective action for Salon Director Wren Tallis")).toBe("Wren Tallis");
+    expect(nameAfterTitle("Create a CA for TC Wren Tallis, she was late")).toBe("Wren Tallis");
+  });
+
+  it("flag on: no title, lower-case words, or a title alone give nothing", () => {
+    process.env[FLAG] = "true";
+    expect(nameAfterTitle("Corrective action for Wren Tallis")).toBeNull();
+    expect(nameAfterTitle("Corrective action for Salon Director being late")).toBeNull();
+    expect(nameAfterTitle("Corrective action for Salon Directors")).toBeNull();
+  });
+
+  it("flag off: nothing", () => {
+    expect(nameAfterTitle("Corrective action for Salon Director Wren Tallis")).toBeNull();
   });
 });

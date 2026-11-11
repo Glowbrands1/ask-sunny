@@ -33,6 +33,8 @@ export const NOV11_TITLE_BEFORE_NAME_CASES: ReplayCase[] = [
       ["tanning-consultant", `Corrective action for Tanning Consultant ${NAME}`, "the card has no employee"],
       ["sdit", `Corrective action for SDIT ${NAME}`, `the card's employee is "Sdit ${NAME}"`],
       ["create-tc", `Create a corrective action for TC ${NAME}`, `the card's employee is "Tc ${NAME}"`],
+      // QA's ruling (11 Nov 2026): the protected reader reads "Director <name>" here and the card loses it.
+      ["salon-director", `Corrective action for Salon Director ${NAME}`, "the card has no employee"],
     ] as const
   ).map(([key, words, open]) => ({
     id: `nov11-title-before-name-admin-${key}`,
@@ -58,6 +60,18 @@ export const NOV11_TITLE_BEFORE_NAME_CASES: ReplayCase[] = [
       const { reply } = await ask(t, "salon_director", `Corrective action for Tanning Consultant ${NAME}`);
       expect(reply.content, reply.content).toContain(`I can't find **${NAME}** on your roster`);
       expect(reply.content, reply.content).not.toMatch(/Tanning Consultant Wren Tallis/);
+    },
+  },
+  {
+    id: "nov11-title-before-name-salon-director-scoped-salon-director",
+    title: `"Corrective action for Salon Director ${NAME}" (salon director): asked about ${NAME} as the plain name is`,
+    report: REPORT,
+    status: { open: "no question about the name: the card opens with nobody on it" },
+    fixFlags: FIX,
+    async run(t: ReplayContext) {
+      const { reply } = await ask(t, "salon_director", `Corrective action for Salon Director ${NAME}`);
+      expect(reply.content, reply.content).toContain(`I can't find **${NAME}** on your roster`);
+      expect(reply.content, reply.content).not.toMatch(/Director Wren Tallis/);
     },
   },
   {

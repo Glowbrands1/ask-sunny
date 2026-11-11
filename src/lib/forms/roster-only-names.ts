@@ -1,6 +1,6 @@
 import { addressNotPersonEnabled, formNameFromRosterEnabled, metricChoiceOneQuestionEnabled, metricGuardEnabled, offRosterConfirmEnabled, rosterNearMissEnabled, rosterNotFoundAnyPhrasingEnabled, nearMissQuestionRulesEnabled, formNameOffRosterAskEnabled, offRosterAskBeforeCardEnabled, titleBeforeNameEnabled } from "@/lib/config/chat-quality-flags";
 import { isGlossaryTerm } from "@/lib/ai/chat-glossary";
-import { withoutLeadingTitle } from "./title-before-name";
+import { nameAfterTitle, withoutLeadingTitle } from "./title-before-name";
 import type { AskResponse } from "@/lib/ai/types";
 
 import { HAS_EMPLOYEE_AND_PLACE, SAYS_READY } from "@/lib/ai/ca-what-happened";
@@ -103,8 +103,25 @@ function said(names: readonly string[]): string {
  * "Tanning Consultant <name>" on the card, so the roster readers found nobody. The title in front is taken off the
  * card's name, and off the reply's bold name, before the roster is read.
  */
-function withoutLeadingTitleOnCard(response: AskResponse): AskResponse {
+function withoutLeadingTitleOnCard(response: AskResponse, message?: string): AskResponse {
   const typed = response.formProposal?.employeeName?.trim() ?? "";
+  /*
+   * QA's ruling (11 Nov 2026): "Corrective action for Salon Director <name>" came with no name on the card (the
+   * protected reader read "Director <name>" and set it aside). The name after the title in the request is the card's
+   * employee; the roster rules below then treat it as they treat any typed name.
+   */
+  const card = response.formProposal;
+  if (!typed && card && card.subject !== "team") {
+    const named = nameAfterTitle(message);
+    if (named) {
+      const lead = new RegExp(String.raw`(\bI can create an? \*\*${escape(card.templateName ?? "")}\*\*)(?=\.)`);
+      return {
+        ...response,
+        content: response.content.replace(lead, `$1 for **${named}**`),
+        formProposal: { ...card, employeeName: named, status: card.status === "needs_employee" ? "ready" : card.status },
+      };
+    }
+  }
   const name = withoutLeadingTitle(typed);
   if (!typed || name === typed) return response;
   return {
@@ -116,7 +133,7 @@ function withoutLeadingTitleOnCard(response: AskResponse): AskResponse {
 
 export function rosterOnlyNames(input: AskResponse, names: readonly string[], message?: string): AskResponse {
   if (names.length === 0) return input;
-  const response = withoutLeadingTitleOnCard(input);
+  const response = withoutLeadingTitleOnCard(input, message);
   let content = response.content;
   let proposal = response.formProposal;
   let ask: string | null = null;

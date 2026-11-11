@@ -51,3 +51,22 @@ export function withoutLeadingTitle(name: string): string {
   const skip = leadingTitleLength(words);
   return skip === 0 ? name : words.slice(skip).join(" ");
 }
+
+const NAME_WORD = /^\p{Lu}[\p{L}'’-]*$/u;
+
+/**
+ * QA's ruling (11 Nov 2026): "Corrective action for Salon Director <name>" reached the roster step with no name: the
+ * protected reader took "Salon" as a place and read "Director <name>", and that was set aside. The name the request
+ * gives after "for <title>", one to three capitalised words up to the end of the sentence, or null.
+ */
+export function nameAfterTitle(message: string | undefined): string | null {
+  if (!titleBeforeNameEnabled() || !message) return null;
+  for (const match of message.matchAll(/\bfor\s+([^.,;:!?\n]+)/giu)) {
+    const words = match[1]!.trim().split(/\s+/);
+    const skip = leadingTitleLength(words);
+    if (skip === 0) continue;
+    const name = words.slice(skip);
+    if (name.length >= 1 && name.length <= 3 && name.every((word) => NAME_WORD.test(word))) return name.join(" ");
+  }
+  return null;
+}
