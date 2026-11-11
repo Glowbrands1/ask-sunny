@@ -1,5 +1,6 @@
-import { addressNotPersonEnabled, formNameFromRosterEnabled, metricChoiceOneQuestionEnabled, metricGuardEnabled, offRosterConfirmEnabled, rosterNearMissEnabled, rosterNotFoundAnyPhrasingEnabled, nearMissQuestionRulesEnabled, formNameOffRosterAskEnabled, offRosterAskBeforeCardEnabled } from "@/lib/config/chat-quality-flags";
+import { addressNotPersonEnabled, formNameFromRosterEnabled, metricChoiceOneQuestionEnabled, metricGuardEnabled, offRosterConfirmEnabled, rosterNearMissEnabled, rosterNotFoundAnyPhrasingEnabled, nearMissQuestionRulesEnabled, formNameOffRosterAskEnabled, offRosterAskBeforeCardEnabled, titleBeforeNameEnabled } from "@/lib/config/chat-quality-flags";
 import { isGlossaryTerm } from "@/lib/ai/chat-glossary";
+import { nameAfterTitle, withoutLeadingTitle } from "./title-before-name";
 import type { AskResponse } from "@/lib/ai/types";
 
 import { HAS_EMPLOYEE_AND_PLACE, SAYS_READY } from "@/lib/ai/ca-what-happened";
@@ -97,8 +98,42 @@ function said(names: readonly string[]): string {
 }
 
 /** The reply and card with only roster people as the employee and as choices. Pure; see `withRosterOnlyNames`. */
-export function rosterOnlyNames(response: AskResponse, names: readonly string[], message?: string): AskResponse {
-  if (names.length === 0) return response;
+/**
+ * TITLE_BEFORE_NAME_ENABLED (ported from Ask Bubbles, 11 Nov 2026): "Corrective action for Tanning Consultant <name>" put
+ * "Tanning Consultant <name>" on the card, so the roster readers found nobody. The title in front is taken off the
+ * card's name, and off the reply's bold name, before the roster is read.
+ */
+function withoutLeadingTitleOnCard(response: AskResponse, message?: string): AskResponse {
+  const typed = response.formProposal?.employeeName?.trim() ?? "";
+  /*
+   * QA's ruling (11 Nov 2026): "Corrective action for Salon Director <name>" came with no name on the card (the
+   * protected reader read "Director <name>" and set it aside). The name after the title in the request is the card's
+   * employee; the roster rules below then treat it as they treat any typed name.
+   */
+  const card = response.formProposal;
+  if (!typed && card && card.subject !== "team") {
+    const named = nameAfterTitle(message);
+    if (named) {
+      const lead = new RegExp(String.raw`(\bI can create an? \*\*${escape(card.templateName ?? "")}\*\*)(?=\.)`);
+      return {
+        ...response,
+        content: response.content.replace(lead, `$1 for **${named}**`),
+        formProposal: { ...card, employeeName: named, status: card.status === "needs_employee" ? "ready" : card.status },
+      };
+    }
+  }
+  const name = withoutLeadingTitle(typed);
+  if (!typed || name === typed) return response;
+  return {
+    ...response,
+    content: response.content.split(`**${typed}**`).join(`**${name}**`).split(`**Name:** ${typed}`).join(`**Name:** ${name}`),
+    formProposal: { ...response.formProposal!, employeeName: name },
+  };
+}
+
+export function rosterOnlyNames(input: AskResponse, names: readonly string[], message?: string): AskResponse {
+  if (names.length === 0) return input;
+  const response = withoutLeadingTitleOnCard(input, message);
   let content = response.content;
   let proposal = response.formProposal;
   let ask: string | null = null;
@@ -544,7 +579,9 @@ const NAME_SHAPE = new RegExp(String.raw`^${NAME_RUN}$`, "u");
  */
 function afterCompanyTitle(name: string, text: string): boolean {
   const spelled = name.trim().split(/\s+/).map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(String.raw`\s+`);
-  const found = new RegExp(String.raw`\bfor\s+([\p{L}][\p{L} ]{1,40}?),\s*${spelled}(?![\p{L}'’-])`, "iu").exec(text);
+  // TITLE_BEFORE_NAME_ENABLED: "for Tanning Consultant <name>", without the comma, is the same place.
+  const comma = titleBeforeNameEnabled() ? String.raw`,?\s+` : String.raw`,\s*`;
+  const found = new RegExp(String.raw`\bfor\s+([\p{L}][\p{L} ]{1,40}?)${comma}${spelled}(?![\p{L}'’-])`, "iu").exec(text);
   return Boolean(found && namesCompanyPositionTitle(found[1]!));
 }
 
