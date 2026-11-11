@@ -8,8 +8,9 @@ import { STAFF, type ReplayCase } from "./cases";
  * ============================================================================
  *
  * (1) "create a CA for <full name on nobody's roster>, he was late on 11/3/26" made a card for the typed name with no
- *     confirm and no "use <name>" offer. Cause: the off-roster ask holds back a salon-scoped manager only (round 12's
- *     rule, kept by QA's ruling of 10 Nov 2026, `off-roster-ask.ts`, `roster-only-names.ts`). OPEN pending QA's ruling.
+ *     confirm and no "use <name>" offer. That is the rule: the off-roster ask holds back a salon-scoped manager only
+ *     (round 12's rule, kept by QA's ruling of 10 Nov 2026, `off-roster-ask.ts`, `roster-only-names.ts`). QA, 11 Nov 2026:
+ *     the ruling stands — the live item assumed a salon-scoped account. A GUARD pinning today's behaviour.
  * (2) "create a CA for ima employee" rightly made no card, but the reply said "for the the employee" twice and "You can
  *     create it now" with no Create button. The slot model reads the employee as "ima employee" (as live). Fixed by
  *     NO_NAME_REPLY_WORDING_ENABLED. The off-roster person is invented.
@@ -21,17 +22,20 @@ const IMA = "create a CA for ima employee";
 
 export const NOV11_R22_LIVE_NO_NAME_CASES: ReplayCase[] = [
   {
-    id: "nov11-r22-live-off-roster-every-salon-asked",
-    title: `"${LATE}" (every salon): asked about the name, never a silent card for it`,
-    report: `${REPORT} (1)`,
-    status: { open: "a manager who is not salon-scoped keeps the typed name on the card (round 12's rule; QA ruling pending)" },
+    id: "nov11-r22-live-off-roster-every-salon-kept",
+    title: `guard: "${LATE}" (every salon) keeps the typed name on the card, unasked (QA's ruling of 10 Nov 2026)`,
+    report: `${REPORT} (1); QA, 11 Nov 2026: the 10 Nov ruling stands`,
+    status: "fixed",
     async run(t) {
+      // QA's ruling (10 Nov 2026, upheld 11 Nov): a manager who is not salon-scoped keeps a typed full name on nobody's
+      // roster on the card as typed; only a salon manager is asked. This pins that.
       t.directory(STAFF);
       t.as("admin", EVERY_SALON as never);
       const thread = t.thread();
       const reply = await thread.say(LATE);
-      expect(reply.content, reply.content).not.toMatch(/I'll draft a \*\*Corrective Action Form\*\* for \*\*Thaddeus Wrenfield\*\*/);
-      expect(reply.content, reply.content).toMatch(/use Thaddeus Wrenfield/i);
+      expect(thread.proposal?.employeeName ?? null, reply.content).toBe("Thaddeus Wrenfield");
+      expect(reply.content, reply.content).toMatch(/I'll draft a \*\*Corrective Action Form\*\* for \*\*Thaddeus Wrenfield\*\*/);
+      expect(reply.content, reply.content).not.toMatch(/I can't find \*\*Thaddeus Wrenfield\*\* on your roster/);
     },
   },
   {
