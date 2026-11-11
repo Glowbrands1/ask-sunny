@@ -87,6 +87,8 @@ export interface ContentPart {
   previewable: boolean;
   /** The searchable Ask Sunny document for this part, when there is one: the existing document preview. */
   askSunnyDocumentId: string | null;
+  /** WOVEN_DOCUMENT_KEEP_OUT_ENABLED: an administrator kept this one document out of Ask Sunny (undoable). */
+  keptOut?: boolean;
 }
 
 export interface ContentRow {
@@ -113,6 +115,21 @@ export interface ContentRow {
 
 /* The manifest identity, inline: this module is imported by the screen, so it must not pull in node:crypto via reconcile. */
 const partIdentity = (item: Pick<InventoryItem, "contentType" | "entityId" | "partKey">) => `${item.contentType}\u0000${item.entityId}\u0000${item.partKey}`;
+
+/**
+ * WOVEN_DOCUMENT_KEEP_OUT_ENABLED (QA, 10 Nov 2026): an administrator's "keep this one document out of Ask Sunny",
+ * stored beside the audience decisions under this key (no new table; removing the row undoes it). The part's opaque
+ * reference, so the key carries no title or file name.
+ */
+export const KEEP_OUT_PREFIX = "document:";
+export function keepOutKey(item: Pick<InventoryItem, "contentType" | "entityId" | "partKey">): string {
+  return `${KEEP_OUT_PREFIX}${partRef(item)}`;
+}
+
+/** True when an administrator kept this part out of Ask Sunny. */
+export function keptOut(item: Pick<InventoryItem, "contentType" | "entityId" | "partKey">, decisions: ReadonlyMap<string, AudienceDecision>): boolean {
+  return decisions.get(keepOutKey(item))?.decision === "excluded";
+}
 
 /**
  * An opaque, stable reference to a part: two 32-bit FNV-1a hashes of its
@@ -188,6 +205,8 @@ export function effectiveInventory(manifest: InventoryItem[], preview: Inventory
 
 /** The plain state of one part, under the audience choices as they stand now. */
 export function partSyncState(item: InventoryItem, decisions: ReadonlyMap<string, AudienceDecision>): ContentSyncState {
+  // WOVEN_DOCUMENT_KEEP_OUT_ENABLED: kept out by an administrator, whatever Woven says (`keptOut`, the decision).
+  if (item.reason === "kept_out" || keptOut(item, decisions)) return "kept_out";
   if (item.state === "ERROR") return "error";
   if (item.state === "REMOVED") return "retired";
   if (item.state === "BLOCKED") return item.inAskSunny ? "up_to_date" : "not_supported";
@@ -301,6 +320,7 @@ export function contentRows(
           ref: partRef(p),
           previewable: p.state !== "BLOCKED" && p.reason !== "unsupported_format" && p.state !== "REMOVED",
           askSunnyDocumentId: p.inAskSunny ? p.knowledgeDocumentId : null,
+          ...(keptOut(p, decisions) ? { keptOut: true } : {}),
         })),
         /* Informational: the row's own state is its Woven parts'. */
         ...parts

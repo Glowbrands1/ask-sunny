@@ -98,19 +98,37 @@ export function ContentTab({ active, focus }: { active: boolean; focus?: Content
   const [decision, setDecision] = useState<DecisionFilter>("all");
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [shown, setShown] = useState(PAGE);
+  /* WOVEN_DOCUMENT_KEEP_OUT_ENABLED: the server says whether "Keep out of Ask Sunny" is offered per document. */
+  const [keepOutOffered, setKeepOutOffered] = useState(false);
+
+  const load = () =>
+    fetch("/api/admin/knowledge-sync/woven/content", { headers: { "Content-Type": "application/json" } })
+      .then(async (response) => {
+        const body = (await response.json().catch(() => null)) as { content?: WovenKnowledgeContent; keepOut?: boolean; reason?: string } | null;
+        if (!response.ok || !body?.content) throw new Error(body?.reason ?? "The content list could not be loaded.");
+        setContent(body.content);
+        setKeepOutOffered(body.keepOut === true);
+      })
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : "The content list could not be loaded."));
 
   /* Loaded the first time the tab is opened, once. */
   useEffect(() => {
     if (!active || requested.current) return;
     requested.current = true;
-    fetch("/api/admin/knowledge-sync/woven/content", { headers: { "Content-Type": "application/json" } })
-      .then(async (response) => {
-        const body = (await response.json().catch(() => null)) as { content?: WovenKnowledgeContent; reason?: string } | null;
-        if (!response.ok || !body?.content) throw new Error(body?.reason ?? "The content list could not be loaded.");
-        setContent(body.content);
-      })
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : "The content list could not be loaded."));
+    void load();
   }, [active]);
+
+  /* WOVEN_DOCUMENT_KEEP_OUT_ENABLED: keep one document out, or undo; the list is read again so its state shows. */
+  const setKeptOut = async (ref: string, keepOut: boolean) => {
+    const response = await fetch("/api/admin/knowledge-sync/woven/documents", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ref, keepOut }),
+    });
+    const body = (await response.json().catch(() => null)) as { reason?: string } | null;
+    if (!response.ok) throw new Error(body?.reason ?? "The choice could not be saved.");
+    await load();
+  };
   const loading = active && content === null && error === null;
 
   const rows = useMemo(() => {
@@ -225,7 +243,7 @@ export function ContentTab({ active, focus }: { active: boolean; focus?: Content
             {rows.slice(0, shown).map((row) => {
               const expanded = open.has(row.key);
               return (
-                <ContentRowView key={row.key} row={row} expanded={expanded} onToggle={() => toggle(row.key)} />
+                <ContentRowView key={row.key} row={row} expanded={expanded} onToggle={() => toggle(row.key)} keepOut={keepOutOffered ? setKeptOut : null} />
               );
             })}
           </tbody>
@@ -240,7 +258,40 @@ export function ContentTab({ active, focus }: { active: boolean; focus?: Content
   );
 }
 
-function ContentRowView({ row, expanded, onToggle }: { row: ContentRow; expanded: boolean; onToggle: () => void }) {
+type SetKeptOut = (ref: string, keepOut: boolean) => Promise<void>;
+
+/**
+ * WOVEN_DOCUMENT_KEEP_OUT_ENABLED: "Keep out of Ask Sunny" for one document, or "Undo keep out". Takes effect on the
+ * next sync, which retires it if live and never ingests it again while the choice stands.
+ */
+function KeepOutButton({ part, onSet }: { part: ContentRow["parts"][number]; onSet: SetKeptOut }) {
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  if (part.kind === "superseded_copy") return null;
+  const keptOut = part.keptOut === true;
+  return (
+    <span className="inline-flex items-center gap-1">
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={busy}
+        onClick={() => {
+          setBusy(true);
+          setFailed(null);
+          onSet(part.ref, !keptOut)
+            .catch((e: unknown) => setFailed(e instanceof Error ? e.message : "The choice could not be saved."))
+            .finally(() => setBusy(false));
+        }}
+      >
+        {keptOut ? "Undo keep out" : "Keep out of Ask Sunny"}
+      </Button>
+      {keptOut ? <span className="text-[12px] text-muted-foreground">Applies on the next sync</span> : null}
+      {failed ? <span className="text-[12px] text-destructive">{failed}</span> : null}
+    </span>
+  );
+}
+
+function ContentRowView({ row, expanded, onToggle, keepOut }: { row: ContentRow; expanded: boolean; onToggle: () => void; keepOut: SetKeptOut | null }) {
   const multi = row.parts.length > 1;
   return (
     <>
@@ -258,6 +309,7 @@ function ContentRowView({ row, expanded, onToggle }: { row: ContentRow; expanded
           {!multi && row.parts[0] ? (
             <span className="block">
               <PartPreviewButton part={row.parts[0]} />
+              {keepOut ? <KeepOutButton part={row.parts[0]} onSet={keepOut} /> : null}
             </span>
           ) : null}
         </td>
@@ -311,6 +363,7 @@ function ContentRowView({ row, expanded, onToggle }: { row: ContentRow; expanded
                   )}
                   <Badge tone={SYNC_STATE_TONE[part.syncState]}>{CONTENT_SYNC_STATE_LABEL[part.syncState]}</Badge>
                   <PartPreviewButton part={part} />
+                  {keepOut ? <KeepOutButton part={part} onSet={keepOut} /> : null}
                 </li>
               ))}
             </ul>

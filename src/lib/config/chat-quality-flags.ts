@@ -2714,6 +2714,30 @@ export function addThatIsAccountEnabled(): boolean {
   return envFlag("ADD_THAT_IS_ACCOUNT_ENABLED");
 }
 
+/**
+ * WOVEN_DOCUMENT_KEEP_OUT_ENABLED (QA, 10 Nov 2026; Pau: "hide the duplicates"; coding 5; same flag in both apps;
+ * default off). An administrator could keep out only a whole Woven audience, not one document: "14K Gold Rush" held the
+ * Nothing But Bronze sheet, and three titles were one wiring schematic. On: the Content view offers "Keep out of Ask
+ * Sunny" per document, stored beside the audience decisions (`document:<ref>`); every sync retires it if live and
+ * never ingests it while the choice stands; "Undo" removes the choice (`knowledge-sync/reconcile.ts`,
+ * `/api/admin/knowledge-sync/woven/documents`). Off, as before (a stored choice is ignored).
+ */
+export function wovenDocumentKeepOutEnabled(): boolean {
+  return envFlag("WOVEN_DOCUMENT_KEEP_OUT_ENABLED");
+}
+
+/**
+ * WOVEN_DUPLICATE_CONTENT_HOLD_ENABLED (QA, 10 Nov 2026; Pau: the sync must never create duplicate live sources;
+ * coding 5; same flag in both apps; default off). Different Woven titles with identical text were all indexed ("14K Gold
+ * Rush" = "Nothing But Bronze"; three schematics, 411 chunks three times over). On: a Woven file whose extracted text
+ * matches another live document with a different title is not indexed; it fails with "Same file as <title>" and the
+ * sync lists it under Needs attention, not retried (`ingestion/pipeline.ts`, `knowledge-sync/sink.ts`, `engine.ts`).
+ * The first one indexed stays. Off, as before.
+ */
+export function wovenDuplicateContentHoldEnabled(): boolean {
+  return envFlag("WOVEN_DUPLICATE_CONTENT_HOLD_ENABLED");
+}
+
 // --- end coding 5 flags ---
 
 /**

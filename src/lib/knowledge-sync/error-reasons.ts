@@ -7,6 +7,8 @@ const REASONS: [RegExp, string][] = [
   [/ocr_budget_spent$/, "This scanned file will be read on a later sync."],
   [/ocr_failed$/, "Reading this scanned file failed this time; the next sync tries again."],
   [/no_text$/, "No text could be read from this file — it looks like a scanned image. A searchable PDF (or a text version) in Woven would fix it."],
+  /* WOVEN_DUPLICATE_CONTENT_HOLD_ENABLED: held because another live document has the same text. */
+  [/duplicate_content$/, "This file has the same text as another document already in Ask Sunny, so it was not added twice. Resolve it in Woven, or keep one of them out."],
   [/not_a_file$/, "Woven sent back a page instead of the file."],
   [/not_found$/, "Woven no longer has the file for this item."],
   [/forbidden$/, "The Woven integration account is not allowed to download this file."],

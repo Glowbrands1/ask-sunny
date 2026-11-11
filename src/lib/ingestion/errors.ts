@@ -12,7 +12,9 @@ export type IngestionErrorCode =
   /* WOVEN_PDF_OCR_ENABLED: a scanned PDF over a cap, or the transcription request failed (`extract/pdf-ocr.ts`). */
   | "ocr_too_many_pages"
   | "ocr_budget_spent"
-  | "ocr_failed";
+  | "ocr_failed"
+  /* WOVEN_DUPLICATE_CONTENT_HOLD_ENABLED: a Woven file with the same text as another live document of a different title. */
+  | "duplicate_content";
 
 export class IngestionError extends Error {
   readonly code: IngestionErrorCode;

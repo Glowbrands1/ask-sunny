@@ -592,6 +592,8 @@ const NEW_FLAGS = [
   "SHIFT_ACCOUNT_IS_INCIDENT_ENABLED",
   // coding 5: UNDATED_ACCOUNT_BRIEF (default off): forced off with the others in the child run.
   "UNDATED_ACCOUNT_BRIEF_ENABLED",
+  "WOVEN_DOCUMENT_KEEP_OUT_ENABLED",
+  "WOVEN_DUPLICATE_CONTENT_HOLD_ENABLED",
   "ADD_THAT_IS_ACCOUNT_ENABLED",
   "WHAT_HAPPENED_NO_CREATE_ENABLED",
   "CREATE_FROM_CONVERSATION_POINTS_TO_CARD_ENABLED",
@@ -1099,6 +1101,9 @@ describe("new flags default off and wrappers are inert", () => {
           ":(exclude)src/components/shell/sidebar.tsx",
           ":(exclude)src/components/shell/app-switcher.tsx",
           `:(exclude)${SIGN_IN_FORM}`,
+          // WOVEN_DOCUMENT_KEEP_OUT_ENABLED (QA, 10 Nov 2026): the admin Content tab's per-document "Keep out" button,
+          // rendered only when the content route says the flag is on. Off, the tab renders exactly as before.
+          ":(exclude)src/features/admin/woven-knowledge/woven-knowledge-content.tsx",
           // THE CLAY RESTYLE (requested by Paulyne, 9 Nov 2026, from the approved
           // "Ask Sunny Clay Web" mockup; QA to confirm before merge). Unlike the
           // entries above it is NOT behind a flag: it is a deliberate visual change
