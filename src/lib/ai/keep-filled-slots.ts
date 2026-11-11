@@ -2,6 +2,7 @@ import { PRODUCTION_SALONS, salonById } from "@/data/salons";
 import { isPolicyCorrection } from "./policy-correction-turn";
 import { observationAccount } from "@/lib/forms/ca-policy";
 import { ownPersonAccount } from "./observation-own-person";
+import { incidentTurn, statesAnAct } from "./incident-clauses";
 import { withoutPayrollClauses } from "./payroll-clause-not-account";
 import { onlyDeniesForObservation } from "./ca-what-happened";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
@@ -55,6 +56,7 @@ import {
   dateQuestionKeptEnabled,
   secondRequestOwnAccountEnabled,
   observationOwnPersonOnlyEnabled,
+  incidentClauseSplitEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { turnsMadeAbout, withObservationMadeAbout } from "./make-it-about";
 import { NOTHING_SET_ASIDE, citationSetAside, policiesSetAside, setAsideAnything, withPolicySetAside, withoutPolicyAsks } from "@/lib/forms/policy-set-aside";
@@ -767,7 +769,9 @@ function withObservation(content: string, turns: readonly string[], employeeName
   const sentences: string[] = [];
   const reasons = new Set<string>();
   const conversation = turns.join("\n");
-  for (const turn of managerOnly ? turns.map(withoutAppLines) : turns) {
+  const split = incidentClauseSplitEnabled();
+  // INCIDENT_CLAUSE_SPLIT_ENABLED: without the employee facts, commands and policy text.
+  for (const turn of (managerOnly ? turns.map(withoutAppLines) : turns).map((said) => incidentTurn(said, employeeName))) {
     // PRIOR_SENTENCE_FIX_ENABLED (QA, 26 Oct 2026): "…she was late on 10-5 and 10-15. i coached her on
     // 10-16 about being late" put only the coaching here — the short incident sentence failed
     // `describesMoreThanTheRequest`. A prior step's clause is no account, and a manager sentence
@@ -777,18 +781,20 @@ function withObservation(content: string, turns: readonly string[], employeeName
       // LEVEL_STEP_NOT_ACCOUNT_ENABLED: "this should be a written and note a verbal ca was given on 9-1-26" says nothing that happened.
       // PAYROLL_CLAUSE_NOT_ACCOUNT_ENABLED: "$20 payroll deduct applies" and "Payroll deduction amount: $20." are the payroll answer.
       const said = withoutPayrollClauses((levelStepNotAccountEnabled() ? withoutLevelAndStepClauses(part) : part).trim());
-      if (said.length < 12) continue;
+      // INCIDENT_CLAUSE_SPLIT_ENABLED: a short act ("was late today") is an account too, without the request words.
+      const act = split && statesAnAct(managerAccount(said, employeeName) ?? "");
+      if (said.length < 12 && !act) continue;
       // POLICY_CORRECTION_NOT_ACCOUNT_ENABLED: "it should be under performance not standard of conduct" is about the form.
       if (isPolicyCorrection(said)) continue;
       // PRIOR_SENTENCE_FIX_ENABLED (coordinator, 26 Oct 2026): "she was late on 10-5" is the account
       // however few words it has beyond the request, with a prior clause beside it or not.
       const incident = today !== undefined && priorSentenceFixEnabled() && !isAppLine(said) && describesIncident(said);
-      if (!incident && !describesMoreThanTheRequest(said, { ignore })) continue;
+      if (!incident && !act && !describesMoreThanTheRequest(said, { ignore })) continue;
       if (managerOnly && onlySaysWhereTheyWork(said, ignore)) continue;
       // MANAGER_WORDS_ONLY_ENABLED: without the clauses that only request the
       // form, name the employee or give their place (QA, 25 Oct 2026).
       // SALES_OBSERVATION_ACCOUNT_ENABLED: the account only, never the request's words, the name or a payroll answer (`forms/ca-policy.ts`).
-      const read = observationAccount(managerOnly ? managerAccount(said, employeeName) ?? "" : said, employeeName);
+      const read = observationAccount(managerOnly || act ? managerAccount(said, employeeName) ?? "" : said, employeeName);
       // OBSERVATION_OWN_PERSON_ONLY_ENABLED (QA's P7): never the request's other people, nor "create draft for …".
       const sentence = read && observationOwnPersonOnlyEnabled() ? ownPersonAccount(read) : read;
       if (!sentence) continue;

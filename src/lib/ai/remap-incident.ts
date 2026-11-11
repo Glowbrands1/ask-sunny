@@ -10,6 +10,7 @@ import {
   requestParticipleLeadEnabled,
   anotherRequestLeadEnabled,
   secondRequestOwnAccountEnabled,
+  incidentClauseSplitEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { withoutPriorStepClauses, correctedDates } from "@/lib/forms/form-date-answer";
 import {
@@ -34,6 +35,7 @@ import { detectTemplateIntent, withoutLeadingGlossaryTerm } from "@/lib/forms/te
 import type { KnowledgeCategory, SourceCitation } from "@/types";
 
 import { accountManualSections } from "./account-manual-sections";
+import { incidentTurn } from "./incident-clauses";
 import { withoutAppLines } from "./app-sentences";
 import { isPolicyCorrection } from "./policy-correction-turn";
 import { withoutPayrollClauses } from "./payroll-clause-not-account";
@@ -227,7 +229,8 @@ function turnIncident(
   if (isEditTurn(turn)) return null;
   let found: string | null = null;
   const story: string[] = [];
-  for (const raw of withoutPriorList(turn).split(/[.!?;]+(?=\s|$)/)) {
+  // INCIDENT_CLAUSE_SPLIT_ENABLED: without the employee facts and policy text, "dodge, ne" kept whole.
+  for (const raw of withoutPriorList(incidentTurn(turn, employeeName, { subjectless: true })).split(/[.!?;]+(?=\s|$)/)) {
     const sentence = raw.trim();
     if (!sentence || isEditTurn(sentence) || TALKS_TO_THE_APP.test(sentence) || ASKS_FOR_HELP.test(sentence)) continue;
     const requested = requestLead().test(sentence) || levelRequest().test(sentence);
@@ -587,7 +590,8 @@ function clauseOffense(clause: string, employeeName: string | null, keepDates = 
   if (title && title.toLowerCase() === text.toLowerCase()) return null;
   if (/^team members?$/i.test(text)) return null;
   const onDuration = /\bfor\b/i.test(text) ? null : /^on\s+(.+?)\s+(\d+\+?\s*(?:min|mins|minutes|hrs|hours))\b/i.exec(text);
-  if (onDuration) {
+  // INCIDENT_CLAUSE_SPLIT_ENABLED: words after the duration ("… 25 min customers waiting") keep the manager's own wording.
+  if (onDuration && !(incidentClauseSplitEnabled() && text.slice(onDuration[0].length).trim())) {
     const thing = onDuration[1]!.replace(/\s+/g, " ").trim();
     const spaced = onDuration[2]!.replace(/\s+/g, "").replace(/(\d\+?)(?=[a-z])/i, "$1 ");
     return /\buse\b/i.test(thing) ? `${thing} ${spaced}` : `${thing} use ${spaced}`;
@@ -763,7 +767,8 @@ export function accountSentences(
   for (const turn of turns.slice(start)) {
     if (isEditTurn(turn)) continue;
     // PAYROLL_CLAUSE_NOT_ACCOUNT_ENABLED: "$20 payroll deduct applies" and "Payroll deduction amount: $20." are the payroll answer.
-    const text = withoutPayrollClauses(withoutPriorList(withoutQuestionsToTheApp(turn.replace(/\bThe account continues\.\s*/g, ""))));
+    // INCIDENT_CLAUSE_SPLIT_ENABLED: without the employee facts and policy text, "dodge, ne" kept whole.
+    const text = withoutPayrollClauses(withoutPriorList(withoutQuestionsToTheApp(incidentTurn(turn.replace(/\bThe account continues\.\s*/g, ""), employeeName))));
     for (const sentence of text.split(/\n+|[.!?;]+(?=\s|$)/)) {
       const trimmed = sentence.trim();
       if (STATE_SENTENCE.test(trimmed) || isEditTurn(trimmed) || TALKS_TO_THE_APP.test(trimmed) || ASKS_FOR_HELP.test(trimmed)) continue;
