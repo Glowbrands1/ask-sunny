@@ -10,6 +10,8 @@ import {
 } from "@/lib/forms/repository";
 import { TemplateEditorScreen } from "@/features/forms/template-editor-screen";
 import { requirePagePermission } from "@/lib/auth/page";
+import { isDemoMode } from "@/lib/config/runtime";
+import { demoTemplateByKey } from "@/lib/demo/forms-fixtures";
 
 export const metadata: Metadata = { title: "Edit template" };
 export const dynamic = "force-dynamic";
@@ -29,14 +31,22 @@ export default async function EditTemplatePage({
   await requirePagePermission("manage_form_templates");
 
   const { key } = await params;
-  const template = await getTemplateByKey(key);
+  /* DEMO: the real library from code, with its version history. See `lib/demo/forms-fixtures.ts`. */
+  const demo = isDemoMode() ? demoTemplateByKey(key) : null;
+  const template = isDemoMode() ? (demo?.row ?? null) : await getTemplateByKey(key);
   if (!template) notFound();
 
-  const [versions, current, assets] = await Promise.all([
-    listVersions(template.id),
-    getCurrentVersion(template.id),
-    listAssets(template.id),
-  ]);
+  const [versions, current, assets] = demo
+    ? [
+        demo.versions,
+        demo.versions.find((version) => version.status === "published") ?? null,
+        demo.assets,
+      ]
+    : await Promise.all([
+        listVersions(template.id),
+        getCurrentVersion(template.id),
+        listAssets(template.id),
+      ]);
 
   return (
     <TemplateEditorScreen

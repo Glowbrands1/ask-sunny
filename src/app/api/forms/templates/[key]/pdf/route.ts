@@ -1,4 +1,8 @@
 import { NextResponse } from "next/server";
+import { isDemoMode } from "@/lib/config/runtime";
+import {
+  DEMO_UPLOAD_REFUSAL,
+} from "@/lib/demo/forms-fixtures";
 import { noteSpendUser } from "@/lib/ai/spend-meter";
 import { withSpendMeter } from "@/lib/ai/spend-meter-run";
 
@@ -95,6 +99,10 @@ async function postFormIngest(request: Request, context: { params: Promise<{ key
   try {
     const actor = await authorizeForms(request, "manage_form_templates");
     noteSpendUser(actor.id);
+    /* DEMO: nothing is stored or read by a model. See `lib/demo/forms-fixtures.ts`. */
+    if (isDemoMode()) {
+      return NextResponse.json({ accepted: false, reason: DEMO_UPLOAD_REFUSAL, demo: true }, { status: 409 });
+    }
     assertWithinRateLimit(request, "upload");
     const { key } = await context.params;
 
@@ -260,6 +268,9 @@ export async function PUT(request: Request, context: { params: Promise<{ key: st
   try {
     await authorizeForms(request, "manage_form_templates");
     const { key } = await context.params;
+    if (isDemoMode()) {
+      return NextResponse.json({ error: DEMO_UPLOAD_REFUSAL, demo: true }, { status: 409 });
+    }
 
     const template = await getTemplateByKey(key);
     if (!template) {

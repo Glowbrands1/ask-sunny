@@ -16,6 +16,8 @@ import { proposalNeedsAttention } from "@/lib/forms/ingest/proposal";
 import { requirePagePermission } from "@/lib/auth/page";
 import { describeError } from "@/lib/api/redact";
 import { TemplateSyncReport } from "@/features/forms/template-sync-report";
+import { isDemoMode } from "@/lib/config/runtime";
+import { demoTemplateSummaries, demoTemplateSyncResult } from "@/lib/demo/forms-fixtures";
 
 /**
  * FORM TEMPLATES — the authorized administration screen.
@@ -90,10 +92,15 @@ export default async function FormTemplatesPage() {
   let syncResult: Awaited<ReturnType<typeof ensureTemplateLibrary>> | null = null;
 
   try {
-    const sync = await ensureTemplateLibrary("system");
+    /*
+     * DEMO: the real library from code, as a synced deployment holds it, and the
+     * sync report such a visit shows. Nothing is read or installed. See
+     * `lib/demo/forms-fixtures.ts`.
+     */
+    const sync = isDemoMode() ? demoTemplateSyncResult() : await ensureTemplateLibrary("system");
     syncSkipped = sync.skipped?.reason ?? null;
     syncResult = sync;
-    const summaries = await listTemplateSummaries();
+    const summaries = isDemoMode() ? demoTemplateSummaries() : await listTemplateSummaries();
     templates = summaries.map((summary) => {
       const version = summary.currentVersion ?? summary.draftVersion;
       const variantKey = version?.variants[0]?.key ?? null;

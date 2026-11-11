@@ -27,6 +27,9 @@ import {
 } from "@/lib/forms/instance-scope";
 import { pageFormsAccess } from "@/lib/forms/page-scope";
 import type { Permission } from "@/types";
+import { isDemoMode } from "@/lib/config/runtime";
+import { demoListForms, demoOutstandingFollowUps } from "@/lib/demo/forms-fixtures";
+import { DemoScopedMonitoringTable } from "@/features/forms/demo-scoped-monitoring-table";
 
 export const metadata: Metadata = { title: "Form Monitoring" };
 export const dynamic = "force-dynamic";
@@ -86,7 +89,46 @@ export default async function FormMonitoringPage({
   const mayRead = (instance: Parameters<typeof actorMaySeeInstance>[1]) =>
     actorMaySeeInstance(access.actor, instance);
 
-  if (!access.noSalon) try {
+  /*
+   * DEMO: an invented form history, filtered by the same exit-form rule. A
+   * demo deployment never holds the Supabase key, so the reads below could only
+   * fail. The rows are narrowed to the previewed role in the browser, which is
+   * the only place that knows it. See `lib/demo/forms-fixtures.ts`.
+   */
+  const demoMode = isDemoMode();
+  let demoRows: { form: MonitoredForm; locationId: string | null }[] = [];
+  let demoOutstanding: ReturnType<typeof demoOutstandingFollowUps> = [];
+  if (demoMode) {
+    const readsExit = await pageCan("create_exit_form");
+    const holds = (permission: Permission) => (permission === "create_exit_form" ? readsExit : false);
+    demoRows = withoutUnreadable(demoListForms(view), holds).map((instance) => ({
+      locationId: instance.locationId,
+      form: {
+        id: instance.id,
+        templateName: instance.templateName,
+        templateShortName: instance.templateShortName,
+        templateVersion: instance.templateVersion,
+        variantKey: instance.variantKey,
+        employeeName: instance.employeeName,
+        locationName: instance.locationName,
+        createdBy: instance.createdBy,
+        createdByRole: instance.createdByRole,
+        source: instance.source,
+        status: instance.status,
+        formDate: instance.formDate,
+        followUpDate: instance.followUpDate,
+        followedUpAt: instance.followedUpAt,
+        followedUpBy: instance.followedUpBy,
+        finalizedAt: instance.finalizedAt,
+        exportedAt: instance.exportedAt,
+        revisesInstanceId: instance.revisesInstanceId,
+        archivedAt: instance.archivedAt,
+        isDemo: false,
+        updatedAt: instance.updatedAt,
+      },
+    }));
+    demoOutstanding = withoutUnreadable(demoOutstandingFollowUps(), holds);
+  } else if (!access.noSalon) try {
     /*
      * EXIT FORMS ONLY FOR THOSE WHO MAY CREATE THEM. The Resignation/Exit Form
      * carries payroll, bonus, minimum-wage and rehire answers, so a reader
@@ -164,7 +206,7 @@ export default async function FormMonitoringPage({
 
         <FormsAccessNotice permission="view_form_monitoring" />
 
-        {access.noSalon ? (
+        {access.noSalon && !demoMode ? (
           <Notice tone="attention" title="No home salon assigned">
             Form Monitoring shows the forms for your own salon, and your account has no salon assigned yet. An administrator can set it in User Management.
           </Notice>
@@ -173,6 +215,26 @@ export default async function FormMonitoringPage({
             {failure}
           </Notice>
         ) : (
+          <>
+          {demoMode ? (
+            <div className="mb-4">
+              <Notice tone="attention" title="Showing seeded content, not real forms">
+                This is a demo deployment, and demo deployments never read the forms
+                database. The page below is the live Form Monitoring screen; every
+                employee and form on it is invented demo content.
+              </Notice>
+            </div>
+          ) : null}
+          {demoMode ? (
+            <DemoScopedMonitoringTable
+              rows={demoRows}
+              outstanding={demoOutstanding}
+              view={view}
+              followUp={followUp}
+              today={today}
+              notice={formsIdentityIsUnverified() ? SYNTHETIC_DATA_NOTICE : null}
+            />
+          ) : (
           <MonitoringTable
             forms={forms}
             notice={formsIdentityIsUnverified() ? SYNTHETIC_DATA_NOTICE : null}
@@ -182,6 +244,8 @@ export default async function FormMonitoringPage({
             attention={attention}
             demo={demo}
           />
+          )}
+          </>
         )}
       </PageShell>
     </>

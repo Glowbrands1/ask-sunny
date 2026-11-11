@@ -1,4 +1,8 @@
 import { NextResponse } from "next/server";
+import { isDemoMode } from "@/lib/config/runtime";
+import {
+  DEMO_PUBLISH_REFUSAL,
+} from "@/lib/demo/forms-fixtures";
 
 import { errorResponse } from "@/lib/api/respond";
 import { authorizeForms } from "@/lib/forms/access";
@@ -21,6 +25,10 @@ export async function POST(request: Request, context: { params: Promise<{ key: s
   try {
     const actor = await authorizeForms(request, "manage_form_templates");
     const { key } = await context.params;
+    /* DEMO: refused in words, never written. See `lib/demo/forms-fixtures.ts`. */
+    if (isDemoMode()) {
+      return NextResponse.json({ error: DEMO_PUBLISH_REFUSAL, demo: true }, { status: 409 });
+    }
 
     const template = await getTemplateByKey(key);
     if (!template) {

@@ -1,4 +1,14 @@
 import { NextResponse } from "next/server";
+import { isDemoMode } from "@/lib/config/runtime";
+import { authorizeForms } from "@/lib/forms/access";
+import {
+  demoArchiveForm,
+  demoDeleteForm,
+  demoMarkFollowedUp,
+  demoReopenFollowUp,
+  demoSetFollowUpDate,
+  isDemoFormId,
+} from "@/lib/demo/forms-fixtures";
 
 import { errorResponse } from "@/lib/api/respond";
 import { authorizeInstance, InstanceNotVisibleError } from "@/lib/forms/instance-scope";
@@ -38,6 +48,15 @@ export const dynamic = "force-dynamic";
 export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await context.params;
+    /* DEMO: a seeded form, changed in memory. See `lib/demo/forms-fixtures.ts`. */
+    if (isDemoMode() && isDemoFormId(id)) {
+      await authorizeForms(request, "view_form_monitoring");
+      const body = (await request.json().catch(() => null)) as { date?: string } | null;
+      if (!body?.date || !/^\d{4}-\d{2}-\d{2}$/.test(body.date)) {
+        return NextResponse.json({ error: "A follow-up date is required." }, { status: 400 });
+      }
+      return NextResponse.json({ instance: demoSetFollowUpDate(id, body.date), demo: true });
+    }
     const { actor } = await authorizeInstance(request, id, "edit");
     const body = (await request.json().catch(() => null)) as { date?: string } | null;
 
@@ -63,6 +82,18 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await context.params;
+    if (isDemoMode() && isDemoFormId(id)) {
+      const demoActor = await authorizeForms(request, "view_form_monitoring");
+      const body = (await request.json().catch(() => null)) as { action?: string } | null;
+      if (body?.action === "complete") {
+        const name = demoActor.id.split(":").slice(2).join(":") || "Demo user";
+        return NextResponse.json({ instance: demoMarkFollowedUp(id, name), demo: true });
+      }
+      if (body?.action === "reopen") {
+        return NextResponse.json({ instance: demoReopenFollowUp(id), demo: true });
+      }
+      return NextResponse.json({ error: "Unknown follow-up action." }, { status: 400 });
+    }
     const { actor } = await authorizeInstance(request, id, "edit");
     const body = (await request.json().catch(() => null)) as {
       action?: "complete" | "reopen";
