@@ -189,8 +189,22 @@ async function ocrInPageRanges(buffer: Uint8Array, totalPages: number): Promise<
   const pages = Array.from({ length: totalPages }, () => "");
   transcripts.forEach((transcript, index) => {
     const { first, last } = ranges[index]!;
-    const read = parseOcrPages(transcript, totalPages);
-    for (let page = first; page <= last; page += 1) pages[page - 1] = read[page - 1]!;
+    for (const [offset, text] of rangePages(transcript, first, last, totalPages).entries()) pages[first - 1 + offset] = text;
   });
   return pages;
+}
+
+/**
+ * One range's pages, in order (QA, 11 Nov 2026: a model that numbers its range from 1 must not leave pages 21–100 empty
+ * in silence). Read with whole-file numbers first; when that gives the range no text, read the same reply with the
+ * range's own numbers (=== PAGE 1 === is the range's first page). When neither gives any text, the read FAILS (a
+ * retryable `ocr_failed`, so the document keeps its last good version and the next sync tries again).
+ */
+export function rangePages(transcript: string, first: number, last: number, totalPages: number): string[] {
+  const count = last - first + 1;
+  const whole = parseOcrPages(transcript, totalPages).slice(first - 1, last);
+  if (whole.some((text) => text.trim() !== "")) return whole;
+  const own = parseOcrPages(transcript, count);
+  if (own.some((text) => text.trim() !== "")) return own;
+  throw new IngestionError("ocr_failed", `Pages ${first}–${last} of this scanned PDF could not be read this time.`, 502);
 }

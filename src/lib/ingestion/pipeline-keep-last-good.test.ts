@@ -130,6 +130,7 @@ afterEach(() => {
 
 describe("a failed newer file never hides the document's last good version", () => {
   it("off (production today): the row becomes failed and leaves search (the bug)", async () => {
+    process.env[FLAG] = "";
     const { ops, ingestDocument } = await load();
     await expect(ingestDocument(sync())).rejects.toMatchObject({ code: "ocr_too_many_pages" });
     expect(verdict(ops)).toMatchObject({ status: "failed", indexed: false, failure_reason: TOO_MANY });

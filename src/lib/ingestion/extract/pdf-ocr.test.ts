@@ -85,6 +85,8 @@ describe("ocrPdfPages", () => {
   });
 
   it("refuses a file over the per-document cap before any request", async () => {
+    // WOVEN_OCR_PAGE_BATCHES_ENABLED reads larger scans in ranges; this pins the cap with it off.
+    vi.stubEnv("WOVEN_OCR_PAGE_BATCHES_ENABLED", "");
     await expect(ocrPdfPages(new Uint8Array(), OCR_MAX_PAGES_PER_DOCUMENT + 1, new OcrBudget())).rejects.toMatchObject({ code: "ocr_too_many_pages" });
     expect(calls).toHaveLength(0);
   });
