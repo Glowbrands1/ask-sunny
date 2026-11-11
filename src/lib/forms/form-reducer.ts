@@ -274,6 +274,12 @@ export interface ProtectedValues {
    * may drop another one: the form's date moved, and the text follows it.
    */
   readonly formDate?: string | null;
+  /**
+   * MADE_ABOUT_SAID_DATE_ENABLED (QA's live Sunny round 14, 10 Nov 2026): the text is a made-about rewrite of the account,
+   * written with the Date as one incident. The old account's dates belong to the old incident and may go even when the new
+   * text does not repeat the new date (the Date line carries it). Only with `formDate` (the incident's date) set.
+   */
+  readonly oldIncidentDates?: boolean;
 }
 
 /* ------------------------------------------------------------- text ---- */
@@ -729,7 +735,8 @@ function keepsProtected(key: string, old: string, next: string, rules: PatchRule
   }
   const nextDates = new Set(guard.datesIn(next));
   const latestDates = new Set(guard.datesIn(guard.latest));
-  const followsFormDate = Boolean(guard.formDate) && nextDates.has(guard.formDate!);
+  // MADE_ABOUT_SAID_DATE_ENABLED: a made-about rewrite replaces the incident; its old dates go with it (`oldIncidentDates`).
+  const followsFormDate = Boolean(guard.formDate) && (nextDates.has(guard.formDate!) || guard.oldIncidentDates === true);
   for (const date of guard.datesIn(old)) {
     if (nextDates.has(date) || latestDates.has(date)) continue;
     // The text moved to the form's current Date line (the form's date changed): the old day may go.

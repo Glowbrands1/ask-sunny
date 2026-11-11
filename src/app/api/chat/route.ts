@@ -25,6 +25,7 @@ import {
   offRosterConfirmEnabled,
   exitLetterAddresseeEnabled,
   letterGreetingNotNameEnabled,
+  templateOutlineFieldsEnabled,
   exitFormDateFromTerminationEnabled,
   offRosterAskBeforeCardEnabled,
   metricGuardEnabled,
@@ -35,6 +36,8 @@ import {
   questionNotFormEnabled,
   sameFormCopyEnabled,
   sameFormCopyNewPersonEnabled,
+  teamCardNotProductEnabled,
+  sameRequestOtherPersonEnabled,
   copyOwnSalonEnabled,
   secondFormEnabled,
   staffPickerBareAnswerEnabled,
@@ -53,6 +56,7 @@ import {
   reopenByAnyOpenVerbEnabled,
   twoFormsCardNotAskedEnabled,
   secondRequestOwnAccountEnabled,
+  whatHappenedNoCreateEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { streamWhenSlow } from "@/lib/api/streamed-response";
 import { finalReplyWithoutMarkers } from "@/lib/ai/source-note";
@@ -218,8 +222,11 @@ async function postChat(request: Request) {
     }
 
     let answer;
+    // TEMPLATE_OUTLINE_FIELDS_ENABLED: the parsed turn the closing note reads (never the raw body's question).
+    let outlineTurn: { question: string; instanceId: string } | null = null;
     try {
       let asked = parseAskRequest(body);
+      if (asked.activeFormInstanceId) outlineTurn = { question: asked.question, instanceId: asked.activeFormInstanceId };
       /*
        * EXIT_LETTER_ADDRESSEE_ENABLED (QA, the live test of rounds 7c and 8, 9 Nov 2026): a letter to the employee,
        * signed "Sincerely,\n<C>\nDistrict Manager", is read without that sign-off in this turn and the manager's
@@ -281,6 +288,39 @@ async function postChat(request: Request) {
           activeFormInstanceId: undefined,
           continueProposalTemplateKey: newPersonCopy.source.templateKey,
         };
+      }
+      /*
+       * SAME_REQUEST_OTHER_PERSON_ENABLED: "do the same thing for <B> but switch it to a written" / "also make a
+       * coaching form for <B>" with <A>'s card on screen or <A>'s form open — answered as a new request for <B>,
+       * without <A>'s card, open form or request turns (`lib/forms/same-request-other-person.ts`).
+       */
+      let sameRequestOther: import("@/lib/forms/same-request-other-person").SameRequestTurn | null = null;
+      const sameRequest = sameRequestOtherPersonEnabled() && !newPersonCopy ? await import("@/lib/forms/same-request-other-person") : null;
+      // Only a turn of that shape reads the roster, and never for long (`sameRequestKind` leaves "the same coaching form for <B>" to the copy path).
+      if (sameRequest && sameRequest.sameRequestKind(asked.question)) {
+        const { sameRequestForOtherPerson } = sameRequest;
+        const { loadScopedRoster } = await import("@/lib/forms/employee-roster");
+        const roster = await Promise.race([
+          loadScopedRoster(context.identity.scope).catch(() => []),
+          new Promise<[]>((resolve) => setTimeout(() => resolve([]), 1_500)),
+        ]);
+        const other = sameRequestForOtherPerson({
+          question: asked.question,
+          history: asked.history,
+          roster,
+          continueTemplateKey: asked.continueProposalTemplateKey,
+          formOpen: Boolean(asked.activeFormInstanceId),
+        });
+        if (other) {
+          sameRequestOther = other;
+          asked = {
+            ...asked,
+            question: other.question,
+            history: asked.history.slice(0, other.historyBefore),
+            activeFormInstanceId: undefined,
+            continueProposalTemplateKey: undefined,
+          };
+        }
       }
       // FORM_NAME_FROM_ROSTER_ENABLED, part 2: every name reader of the turn reads this message's request slot (`lib/forms/request-slot.ts`).
       if (formNameFromRosterEnabled()) (await import("@/lib/forms/request-message-store")).enterRequestMessage(asked.question);
@@ -850,6 +890,17 @@ async function postChat(request: Request) {
         ]);
       }
       // PERSON_GUARD_ENABLED: whichever reader named the card's employee, a name that is not a person never stays on it.
+      // TEAM_CARD_NOT_PRODUCT_ENABLED: a team coaching card's "Spray Tan Kits" is the topic, not a person (`lib/forms/team-card-not-product.ts`).
+      if (teamCardNotProductEnabled() && answer.formProposal?.employeeName) {
+        const { loadScopedRoster } = await import("@/lib/forms/employee-roster");
+        answer = (await import("@/lib/forms/team-card-not-product")).withTeamCardNotProduct(answer, {
+          turns: [
+            ...parsed.history.filter((turn) => turn.role === "user").map((turn) => ({ id: turn.id, content: String(turn.content ?? "") })),
+            { id: parsed.questionMessageId, content: parsed.question },
+          ],
+          roster: await loadScopedRoster(context.identity.scope).catch(() => []),
+        });
+      }
       if (personGuardEnabled()) answer = (await import("@/lib/forms/person-guard")).withPersonOnCard(answer);
       // MISSED_SHIFT_CITES_ATTENDANCE_ENABLED: a card whose Policy line is the app's own reading has its Action Plan on that policy (`lib/forms/ca-policy.ts`).
       if (missedShiftCitesAttendanceEnabled()) answer = (await import("@/lib/forms/ca-policy")).withPlanOnReadPolicy(answer);
@@ -905,6 +956,8 @@ async function postChat(request: Request) {
         void _dropped;
         answer = { ...rest, content: rest.content.replace(/\n*Based on what you've described, I can prepare:\s*$/, "").trimEnd() };
       }
+      // WHAT_HAPPENED_NO_CREATE_ENABLED: while the reply asks what happened, the card offers no Create (`lib/forms/what-happened-no-create.ts`).
+      if (whatHappenedNoCreateEnabled()) answer = (await import("@/lib/forms/what-happened-no-create")).withNoCreateWhileAsking(answer);
       // OFF_ROSTER_ASK_BEFORE_CARD_ENABLED: a salon manager's card for a full name not on their roster is asked about once, before the card (`lib/forms/off-roster-ask.ts`).
       if (offRosterAskBeforeCardEnabled()) {
         answer = (await import("@/lib/forms/off-roster-ask")).withOffRosterAskBeforeCard(answer, { scope: context.identity.scope, history: parsed.history, question: asked.question });
@@ -915,6 +968,8 @@ async function postChat(request: Request) {
       }
       // COPY_OWN_SALON_ENABLED: a card that copies another person's form takes the new person's own salon.
       if (copyOwnSalonEnabled()) answer = await (await import("@/lib/forms/same-form-copy")).withCopyOwnSalon(answer, request, asked.question);
+      // SAME_REQUEST_OTHER_PERSON_ENABLED: <B>'s card says what of the earlier request it carries.
+      if (sameRequestOther) answer = (await import("@/lib/forms/same-request-other-person")).withSameRequestNote(answer, sameRequestOther);
     } catch (error) {
       /*
        * A FAILED ANSWER IS STILL A RECORDED TURN, closed as a failure. The row
@@ -961,6 +1016,23 @@ async function postChat(request: Request) {
       logTurnEvent("turn.answer.missing_turn", { surface, where: "api/chat" });
     }
 
+    /*
+     * TEMPLATE_OUTLINE_FIELDS_ENABLED (Pau's sf-s21, QA's ruling): "the Must see behaviors and not the standard of
+     * conduct" on a form that still cites Standards of Conduct is answered with why (`lib/forms/template-outline.ts`).
+     */
+    if (templateOutlineFieldsEnabled() && outlineTurn) {
+      const { question: outlineQuestion, instanceId: outlineInstanceId } = outlineTurn;
+      const outline = await import("@/lib/forms/template-outline");
+      const loaded = await (await import("@/lib/forms/instance-scope"))
+        .authorizeInstance(request, outlineInstanceId, "view")
+        .then((authorized) => authorized.loaded)
+        .catch(() => null);
+      const value = (key: string) => loaded?.values.find((row) => row.fieldKey === key)?.value ?? "";
+      const note = loaded
+        ? outline.policyKeptNote({ question: outlineQuestion, policyViolated: value("policy_violated"), policyLanguage: value("policy_language") })
+        : null;
+      if (note) answer = { ...answer, content: outline.withPolicyKeptNote(answer.content, note) };
+    }
     // FINAL_REPLY_MARKER_GUARD_ENABLED: no bare source tag reaches the manager, whatever path answered. See `ai/source-note.ts`.
     return NextResponse.json({ ...finalReplyWithoutMarkers(answer), turnId });
   } catch (error) {

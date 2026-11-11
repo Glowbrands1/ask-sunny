@@ -390,7 +390,20 @@ describe("FORM_EDIT_NOOP_GUARD_ENABLED: a tool op that changes nothing", () => {
   });
 });
 
+/*
+ * Changed on purpose (11 Nov 2026, QA round 25): SAME_REQUEST_OFF_ROSTER is on in production, and it reads sf-s11's
+ * "Can you do the same thing for Perrin Haldane …" (Perrin on no directory) as the same request for another person,
+ * so the turn never reaches the open-form guard these tests cover. Putting Perrin on the directory does not keep it
+ * there either: SAME_REQUEST_OTHER_PERSON (on) then reads it the same way. These three tests turn that one flag off,
+ * so the guard path they pin stays covered; the same-request reading is covered by its own replay cases.
+ */
+const GUARD_PATH_OFF = ["SAME_REQUEST_OFF_ROSTER_ENABLED"] as const;
+function onTheGuardPath() {
+  for (const name of GUARD_PATH_OFF) delete process.env[name];
+}
+
 describe(`FORM_EDIT_NOOP_GUARD_ENABLED: the overnight scan's sf-s11, "${SF_S11_REQUEST}"`, () => {
+  beforeEach(onTheGuardPath);
   it("the request appended to the Observation is refused as copies_message; nothing written; never Updated", async () => {
     const thread = await janeDraft();
     const before = JSON.stringify(values(thread.id));
@@ -529,6 +542,7 @@ describe("FORM_EDIT_NOOP_GUARD_ENABLED: the reply after an edit is the saved dif
 describe("FORM_EDIT_NOOP_GUARD_ENABLED needs FORM_EDIT_SINGLE_WRITER_ENABLED", () => {
   it("with the tool flags but not the guard, the old replies (pinned in the flags-off fixture)", async () => {
     setFlags(TOOL_FLAGS);
+    onTheGuardPath();
     const thread = await janeDraft();
     model.next = { text: "Updated the form.", tool: { ops: [{ op: "append", field: "observation", value: SF_S11_REQUEST }] } };
     const reply = await thread.say(SF_S11_REQUEST);

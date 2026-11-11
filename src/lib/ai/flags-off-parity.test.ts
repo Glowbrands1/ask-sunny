@@ -256,6 +256,7 @@ const NEW_FLAGS = [
   "REMOVE_POLICY_NOT_NAMED_ENABLED",
   "FOLLOWUP_NEW_TOPIC_RETRIEVAL_ENABLED",
   "DRAFT_REUSE_SAME_CHAT_ONLY_ENABLED",
+  "DRAFT_REUSE_OWN_ONLY_ENABLED",
   "RESIGN_METHOD_FOLLOWUP_ENABLED",
   "CHAT_LONG_MESSAGE_ENABLED",
   "NEXT_PUBLIC_CHAT_LONG_MESSAGE_ENABLED",
@@ -360,6 +361,41 @@ const NEW_FLAGS = [
   "FORM_EDIT_REFERS_BACK_ENABLED",
   "SAME_FORM_COPY_ENABLED",
   "SAME_FORM_COPY_NEW_PERSON_ENABLED",
+  // coding 6: DRAFT_WRITE_NEVER_SILENT (default off): forced off with the others.
+  "DRAFT_WRITE_NEVER_SILENT_ENABLED",
+  // coding 6: CA_PROCEDURE_BASIS (default off; rebuilt from old S544): forced off with the others.
+  "CA_PROCEDURE_BASIS_ENABLED",
+  // coding 6: REGISTER_ACCURACY_CONDUCT (default off): forced off with the others.
+  "REGISTER_ACCURACY_CONDUCT_ENABLED",
+  // coding 6: DETAILS_FROM_EARLIER_ANSWER (default off): forced off with the others.
+  "DETAILS_FROM_EARLIER_ANSWER_ENABLED",
+  // coding 6: ACCOUNT_BEFORE_REQUEST (default off): forced off with the others.
+  "ACCOUNT_BEFORE_REQUEST_ENABLED",
+  // coding 6: SAME_REQUEST_CARRIES_ACCOUNT and SAME_REQUEST_KEEPS_EARLIER_CARD (default off): forced off with the others.
+  "SAME_REQUEST_CARRIES_ACCOUNT_ENABLED",
+  "SAME_REQUEST_KEEPS_EARLIER_CARD_ENABLED",
+  // coding 6: TEMPLATE_OUTLINE_FIELDS (default off): forced off with the others.
+  "TEMPLATE_OUTLINE_FIELDS_ENABLED",
+  // coding 6: POLICY_REFERENCE_NOT_ACCOUNT (default off): forced off with the others.
+  "POLICY_REFERENCE_NOT_ACCOUNT_ENABLED",
+  // coding 6: LEVEL_AFTER_FORM_NAME (default off): forced off with the others.
+  "LEVEL_AFTER_FORM_NAME_ENABLED",
+  // coding 6: TEAM_CARD_NOT_PRODUCT (default off): forced off with the others.
+  "TEAM_CARD_NOT_PRODUCT_ENABLED",
+  // coding 6: REOPEN_CLOSE_SPELLING (default off): forced off with the others.
+  "REOPEN_CLOSE_SPELLING_ENABLED",
+  // coding 6: PAYROLL_SPLIT_WORDS (default off): forced off with the others.
+  "PAYROLL_SPLIT_WORDS_ENABLED",
+  // coding 6: SAME_REQUEST_OTHER_PERSON (default off): forced off with the others.
+  "SAME_REQUEST_OTHER_PERSON_ENABLED",
+  // coding 6: SAME_REQUEST_OFF_ROSTER (default off; QA's r23 live test, #779 off roster): forced off with the others.
+  "SAME_REQUEST_OFF_ROSTER_ENABLED",
+  // coding 6: PASTED_OUTLINE_TO_OPEN_DRAFT (default off; QA's r23 live test of sf-s21): forced off with the others.
+  "PASTED_OUTLINE_TO_OPEN_DRAFT_ENABLED",
+  // coding 6: COACHING_OBSERVED_SAVED (default off): forced off with the others.
+  "COACHING_OBSERVED_SAVED_ENABLED",
+  // coding 6: APP_INSTRUCTIONS_NOT_ACCOUNT (default off): forced off with the others.
+  "APP_INSTRUCTIONS_NOT_ACCOUNT_ENABLED",
   "STAFF_PICKER_ENABLED",
   "STAFF_PICKER_STORE_TITLES_ENABLED",
   "STAFF_PICKER_BARE_ANSWER_ENABLED",
@@ -472,6 +508,7 @@ const NEW_FLAGS = [
   "METRIC_CHOICE_ONE_QUESTION_ENABLED",
   // The second Sunny gate's fix flags (6 Nov 2026): forced off with the others in the child run.
   "TITLE_ENDS_AT_LINE_ENABLED",
+  "FULL_POSITION_TITLE_ENABLED",
   "BARE_NOT_DENIAL_ENABLED",
   "PLACE_FROM_CUE_ENABLED",
   // Port of the sibling app's flip-3 fix (6 Nov 2026): forced off with the others in the child run.
@@ -522,6 +559,17 @@ const NEW_FLAGS = [
   "MADE_ABOUT_POLICY_LINE_ENABLED",
   "MADE_ABOUT_READER_ACCOUNT_ENABLED",
   "MADE_ABOUT_REWRITE_FINISHES_ENABLED",
+  // coding 4: CHAT_STAGE_TIMINGS (QA, 9 Nov 2026; default off): forced off with the others in the child run.
+  "CHAT_STAGE_TIMINGS_ENABLED",
+  "CHAT_PARALLEL_LOADS_ENABLED",
+  "CHAT_PARALLEL_REWRITE_ENABLED",
+  // coding 4: QA's live Bubbles round 13 (9 Nov 2026; default off): forced off with the others in the child run.
+  "MADE_ABOUT_TOPIC_EVIDENCE_ENABLED",
+  "FORM_DATE_SAID_ALONE_ENABLED",
+  "MADE_ABOUT_SAID_DATE_ENABLED",
+  "MADE_ABOUT_POLICY_LINE_REPLACES_ENABLED",
+  "SECTION_BREAKS_KEPT_ENABLED",
+  "ADD_NOT_REPEATED_ENABLED",
   // coding 4: MODEL_POLICY_DEFERS_TO_TOPIC (QA, round 7c, 9 Nov 2026; default off): forced off with the others in the child run.
   "MODEL_POLICY_DEFERS_TO_TOPIC_ENABLED",
   // coding 4: WORK_AREA_ABSENCE_CITES_CONDUCT (Pau's decision, 9 Nov 2026; default off): forced off with the others in the child run.
@@ -531,6 +579,11 @@ const NEW_FLAGS = [
   "SHIFT_ACCOUNT_IS_INCIDENT_ENABLED",
   // coding 5: UNDATED_ACCOUNT_BRIEF (default off): forced off with the others in the child run.
   "UNDATED_ACCOUNT_BRIEF_ENABLED",
+  "ADD_THAT_IS_ACCOUNT_ENABLED",
+  "WHAT_HAPPENED_NO_CREATE_ENABLED",
+  "CREATE_FROM_CONVERSATION_POINTS_TO_CARD_ENABLED",
+  "OBSERVATION_OWN_PERSON_ONLY_ENABLED",
+  "POLICY_TOPIC_INTO_FIELD_ENABLED",
   "LETTER_GREETING_NOT_NAME_ENABLED",
   "LATE_READS_ATTENDANCE_ENABLED",
   "EXIT_FORM_DATE_FROM_TERMINATION_ENABLED",

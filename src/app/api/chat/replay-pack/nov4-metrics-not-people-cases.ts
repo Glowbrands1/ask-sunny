@@ -252,7 +252,8 @@ export const NOV4_METRICS_NOT_PEOPLE_CASES: ReplayCase[] = [
     id: "nov4-qa-roster-name-with-one",
     title: "QA 4 Nov: Pau's message 1 for a roster person whose name ends in \"One\": the card's employee is the name the reply drafts for",
     report: `QA, 4 Nov 2026: "I need a corrective action verbal for <QA test account>. This is for Under Performance on PPTA, LPSVA, Club Average, Club Close %, and Spa %." → "I'll draft … for <name>", card Employee empty`,
-    status: { open: "the reply drafts for the name and the card's employee is empty (or, with CA_SALES_POLICY_ENABLED off, no card)" },
+    // Changed on purpose (10 Nov 2026): fixed in production by KEEP_ROSTER_EXACT_NAME_ENABLED (gate runner 2 solo GO), QA P11a release; it now holds with production's flags.
+    status: "fixed",
     fixFlags: ["KEEP_ROSTER_EXACT_NAME_ENABLED", SALES, GLOSSARY],
     async run(t) {
       vi.setSystemTime(new Date("2026-11-04T15:30:00Z"));
