@@ -34,6 +34,7 @@ import { foldsToGlossaryTerm } from "@/lib/ai/chat-glossary";
 
 import { NOT_A_NAME, NOT_A_TYPED_NAME, TYPED_NAME_WORD } from "./name-words";
 import { asksForTeamCoaching } from "./team-subject";
+import { leadingTitleLength } from "./title-before-name";
 // From its own module: importing it from the intake closed a cycle that broke a production build (see `warning-level.ts`).
 import { statedWarningLevel } from "./warning-level";
 
@@ -1034,7 +1035,9 @@ export function leadingFormRequest(text: string): LeadingFormRequest | null {
 
   const introduced = /^(?:for|about|regarding)\s+(.+)$/i.exec(rest);
   if (introduced) {
-    const words = introduced[1]!.split(" ");
+    const all = introduced[1]!.split(" ");
+    // TITLE_BEFORE_NAME_ENABLED: "for Tanning Consultant <name>" — the title says who, the name follows it.
+    const words = all.slice(leadingTitleLength(all));
     return couldBeName(words[0]) ? found(words) : null;
   }
 

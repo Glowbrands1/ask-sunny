@@ -4438,3 +4438,15 @@ export function formNameNotATitleEnabled(): boolean {
 export function addNotRepeatedSentencesEnabled(): boolean {
   return envFlag("ADD_NOT_REPEATED_SENTENCES_ENABLED");
 }
+
+/**
+ * TITLE_BEFORE_NAME_ENABLED (ported from Ask Bubbles, 11 Nov 2026; QA's Bubbles 17h live test; same flag in both apps;
+ * default off). "Corrective action for Team Member <name>" gave no card there; here "Corrective action for Tanning
+ * Consultant <name>" (or Salon Director …) does the same: the form's name then "for <words>" is a request only when the
+ * first word could be a name, so the message was read as a question about corrective action. On: a job title (or its
+ * short form, never a state code) straight after "for" and before a name is not part of the name
+ * (`forms/title-before-name.ts`). Off, as before.
+ */
+export function titleBeforeNameEnabled(): boolean {
+  return envFlag("TITLE_BEFORE_NAME_ENABLED");
+}
