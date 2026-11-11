@@ -45,7 +45,7 @@ export function switchableApps(
       emoji: "☀️",
       name: "Ask Sunny",
       company: "Sun Tan City",
-      url: "https://ask-sunny.vercel.app",
+      url: urlOr(process.env.NEXT_PUBLIC_ASK_SUNNY_URL, "https://ask-sunny.vercel.app"),
     },
     {
       id: "ask-bubbles",

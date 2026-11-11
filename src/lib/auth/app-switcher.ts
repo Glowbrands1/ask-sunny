@@ -1,5 +1,6 @@
 import "server-only";
 
+import { isDemoMode } from "@/lib/config/runtime";
 import { canAccessAdminConsole } from "@/lib/permissions";
 import { pageAuthorizationEnforced, pageIdentity } from "./page";
 
@@ -36,6 +37,8 @@ export const APP_SWITCHER_USER_IDS: readonly string[] = [
  * that app's own sign-in and permissions decide what happens on arrival.
  */
 export async function pageShowsAppSwitcher(): Promise<boolean> {
+  // Client demo: every demo role sees the full app switcher (all three demo apps).
+  if (isDemoMode()) return true;
   try {
     if (!pageAuthorizationEnforced()) return false;
     const identity = await pageIdentity();
@@ -72,6 +75,8 @@ export function emailOnLeadershipHubList(email: string | undefined | null): bool
  * only — the Leadership Hub's own sign-in decides what happens on arrival.
  */
 export async function pageShowsLeadershipHub(): Promise<boolean> {
+  // Client demo: every demo role sees the full app switcher (all three demo apps).
+  if (isDemoMode()) return true;
   try {
     if (!pageAuthorizationEnforced()) return false;
     const identity = await pageIdentity();
