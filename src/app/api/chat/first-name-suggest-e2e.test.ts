@@ -1113,8 +1113,16 @@ describe("a first name and a surname prefix are asked about from the roster, wit
   // Off here, the card falls back to the person first asked about (the card's name is matched from the whole
   // conversation); with only CORRECTED_EMPLOYEE_SLOT_ENABLED on it is "jordan testperson co", as in the sibling app.
   it("off: the card does not become jordan testperson", async () => {
-    const card = await answered(false, "no, jordan testperson");
-    expect(card.formProposal?.employeeName?.toLowerCase()).toBe("marisol corvane");
+    // Changed on purpose (QA's #741 gate R16A, 10 Nov 2026): the flag is pinned off here, so the set's env does not leak in.
+    const rules = process.env.NEAR_MISS_QUESTION_RULES_ENABLED;
+    process.env.NEAR_MISS_QUESTION_RULES_ENABLED = "false";
+    try {
+      const card = await answered(false, "no, jordan testperson");
+      expect(card.formProposal?.employeeName?.toLowerCase()).toBe("marisol corvane");
+    } finally {
+      if (rules === undefined) delete process.env.NEAR_MISS_QUESTION_RULES_ENABLED;
+      else process.env.NEAR_MISS_QUESTION_RULES_ENABLED = rules;
+    }
   });
 
   it('nobody fits ("marisol zz"): as before, no question', async () => {

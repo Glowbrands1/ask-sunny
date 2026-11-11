@@ -36,7 +36,8 @@ function typoCase(id: string): ReplayCase {
     id,
     title: `sf-s36: "I need a exit for for <roster name, one letter wrong> TC. Quit without notice. …" (the reading model returns the name as typed): the card is the roster person's, or the reply asks "Is this for **<roster name>**?"`,
     report: "Pau's scan sf-s36 (real manager, 6 Nov 2026 23:14 PHT; QA, 7 Nov 2026): a one-letter surname typo on an exit form asked who, with no offer of the roster spelling",
-    status: { open: "with production's flags (the name set off) the reply asks \"Who is this form for?\" with no offer of the roster spelling" },
+    // Changed on purpose (10 Nov 2026): fixed in production by KEEP_ROSTER_EXACT_NAME_ENABLED (gate runner 2 solo GO), QA P11a release; it now holds with production's flags.
+    status: "fixed",
     fixFlags: NAME_SET,
     async run(t) {
       t.directory(STAFF);

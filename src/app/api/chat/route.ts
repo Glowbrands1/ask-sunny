@@ -25,6 +25,7 @@ import {
   offRosterConfirmEnabled,
   exitLetterAddresseeEnabled,
   letterGreetingNotNameEnabled,
+  templateOutlineFieldsEnabled,
   exitFormDateFromTerminationEnabled,
   offRosterAskBeforeCardEnabled,
   metricGuardEnabled,
@@ -36,6 +37,7 @@ import {
   sameFormCopyEnabled,
   sameFormCopyNewPersonEnabled,
   teamCardNotProductEnabled,
+  sameRequestOtherPersonEnabled,
   copyOwnSalonEnabled,
   secondFormEnabled,
   staffPickerBareAnswerEnabled,
@@ -54,6 +56,9 @@ import {
   reopenByAnyOpenVerbEnabled,
   twoFormsCardNotAskedEnabled,
   secondRequestOwnAccountEnabled,
+  nearMissQuestionRulesEnabled,
+  formNameOffRosterAskEnabled,
+  whatHappenedNoCreateEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { streamWhenSlow } from "@/lib/api/streamed-response";
 import { finalReplyWithoutMarkers } from "@/lib/ai/source-note";
@@ -219,8 +224,11 @@ async function postChat(request: Request) {
     }
 
     let answer;
+    // TEMPLATE_OUTLINE_FIELDS_ENABLED: the parsed turn the closing note reads (never the raw body's question).
+    let outlineTurn: { question: string; instanceId: string } | null = null;
     try {
       let asked = parseAskRequest(body);
+      if (asked.activeFormInstanceId) outlineTurn = { question: asked.question, instanceId: asked.activeFormInstanceId };
       /*
        * EXIT_LETTER_ADDRESSEE_ENABLED (QA, the live test of rounds 7c and 8, 9 Nov 2026): a letter to the employee,
        * signed "Sincerely,\n<C>\nDistrict Manager", is read without that sign-off in this turn and the manager's
@@ -283,6 +291,39 @@ async function postChat(request: Request) {
           continueProposalTemplateKey: newPersonCopy.source.templateKey,
         };
       }
+      /*
+       * SAME_REQUEST_OTHER_PERSON_ENABLED: "do the same thing for <B> but switch it to a written" / "also make a
+       * coaching form for <B>" with <A>'s card on screen or <A>'s form open — answered as a new request for <B>,
+       * without <A>'s card, open form or request turns (`lib/forms/same-request-other-person.ts`).
+       */
+      let sameRequestOther: import("@/lib/forms/same-request-other-person").SameRequestTurn | null = null;
+      const sameRequest = sameRequestOtherPersonEnabled() && !newPersonCopy ? await import("@/lib/forms/same-request-other-person") : null;
+      // Only a turn of that shape reads the roster, and never for long (`sameRequestKind` leaves "the same coaching form for <B>" to the copy path).
+      if (sameRequest && sameRequest.sameRequestKind(asked.question)) {
+        const { sameRequestForOtherPerson } = sameRequest;
+        const { loadScopedRoster } = await import("@/lib/forms/employee-roster");
+        const roster = await Promise.race([
+          loadScopedRoster(context.identity.scope).catch(() => []),
+          new Promise<[]>((resolve) => setTimeout(() => resolve([]), 1_500)),
+        ]);
+        const other = sameRequestForOtherPerson({
+          question: asked.question,
+          history: asked.history,
+          roster,
+          continueTemplateKey: asked.continueProposalTemplateKey,
+          formOpen: Boolean(asked.activeFormInstanceId),
+        });
+        if (other) {
+          sameRequestOther = other;
+          asked = {
+            ...asked,
+            question: other.question,
+            history: asked.history.slice(0, other.historyBefore),
+            activeFormInstanceId: undefined,
+            continueProposalTemplateKey: undefined,
+          };
+        }
+      }
       // FORM_NAME_FROM_ROSTER_ENABLED, part 2: every name reader of the turn reads this message's request slot (`lib/forms/request-slot.ts`).
       if (formNameFromRosterEnabled()) (await import("@/lib/forms/request-message-store")).enterRequestMessage(asked.question);
       // METRIC_GUARD_ENABLED, FORM_NAME off: only the metric guards read the message (`request-slot.ts` metricMessage).
@@ -292,6 +333,12 @@ async function postChat(request: Request) {
       if (secondRequestOwnAccountEnabled()) {
         const reply = [...asked.history].reverse().find((turn) => turn.role === "assistant");
         if (reply) (await import("@/lib/forms/last-reply-store")).enterLastReply(String(reply.content ?? ""));
+      }
+      // NEAR_MISS_QUESTION_RULES_ENABLED (after the FORM_NAME / METRIC_GUARD pair above, never between them — the sibling
+      // app's round-6 gate, 8 Nov 2026: there it took that `else` and the metric guards stopped reading the message): the card on screen, so a near-miss never replaces it (`lib/forms/near-miss-question-rules.ts`).
+      if (nearMissQuestionRulesEnabled()) {
+        const onScreen = (await import("@/lib/forms/near-miss-question-rules")).cardEmployee(asked);
+        if (onScreen) (await import("@/lib/forms/request-message-store")).enterCardOnScreen(onScreen);
       }
       /*
        * PERSON_GUARD_ENABLED: the actor's roster, for the rule that somebody on
@@ -320,6 +367,12 @@ async function postChat(request: Request) {
           }
         }
         enterPersonRoster(names);
+        // FORM_NAME_OFF_ROSTER_ASK_ENABLED: the scope's level, so a name not on the roster is held for a salon manager only (`lib/forms/roster-scope.ts`).
+        // The manager's own turns too, so a full name typed on an earlier turn is still the manager's (QA's #741 eval, g1–g6).
+        if (formNameOffRosterAskEnabled()) {
+          const managerTurns = [...asked.history.filter((turn) => turn.role === "user").map((turn) => String(turn.content ?? "")), asked.question];
+          (await import("@/lib/forms/person-roster-store")).enterRosterScope(context.identity.scope?.level ?? "", managerTurns);
+        }
         /*
          * FORM_NAME_FROM_ROSTER_ENABLED: does this message name somebody on the
          * roster (exact or close, or a roster first name typed in lowercase)?
@@ -884,6 +937,8 @@ async function postChat(request: Request) {
       answer = withCorrectionNotDropped(answer, parsed);
       // TWO_FORMS_CARD_NOT_ASKED_ENABLED: a card that names its employee is never asked "Which of them … — <that employee> or …?" (`lib/forms/card-not-asked.ts`).
       if (twoFormsCardNotAskedEnabled()) answer = (await import("@/lib/forms/card-not-asked")).withoutWhichAskOnSeatedCard(answer);
+      // NEAR_MISS_QUESTION_RULES_ENABLED: "no, …" to "Is this for <name>?" never gets a card for that name.
+      if (nearMissQuestionRulesEnabled()) answer = (await import("@/lib/forms/near-miss-question-rules")).withoutTurnedDownName(answer, asked);
       // ADDRESS_NOT_PERSON_ENABLED: "coaching form for 123 Main Street" names an address, not a person (QA, 3 Nov 2026).
       if (addressNotPersonEnabled())
         answer = (await import("@/lib/forms/person-guard")).withAddressNotPerson(
@@ -917,6 +972,8 @@ async function postChat(request: Request) {
         void _dropped;
         answer = { ...rest, content: rest.content.replace(/\n*Based on what you've described, I can prepare:\s*$/, "").trimEnd() };
       }
+      // WHAT_HAPPENED_NO_CREATE_ENABLED: while the reply asks what happened, the card offers no Create (`lib/forms/what-happened-no-create.ts`).
+      if (whatHappenedNoCreateEnabled()) answer = (await import("@/lib/forms/what-happened-no-create")).withNoCreateWhileAsking(answer);
       // OFF_ROSTER_ASK_BEFORE_CARD_ENABLED: a salon manager's card for a full name not on their roster is asked about once, before the card (`lib/forms/off-roster-ask.ts`).
       if (offRosterAskBeforeCardEnabled()) {
         answer = (await import("@/lib/forms/off-roster-ask")).withOffRosterAskBeforeCard(answer, { scope: context.identity.scope, history: parsed.history, question: asked.question });
@@ -927,6 +984,8 @@ async function postChat(request: Request) {
       }
       // COPY_OWN_SALON_ENABLED: a card that copies another person's form takes the new person's own salon.
       if (copyOwnSalonEnabled()) answer = await (await import("@/lib/forms/same-form-copy")).withCopyOwnSalon(answer, request, asked.question);
+      // SAME_REQUEST_OTHER_PERSON_ENABLED: <B>'s card says what of the earlier request it carries.
+      if (sameRequestOther) answer = (await import("@/lib/forms/same-request-other-person")).withSameRequestNote(answer, sameRequestOther);
     } catch (error) {
       /*
        * A FAILED ANSWER IS STILL A RECORDED TURN, closed as a failure. The row
@@ -973,6 +1032,23 @@ async function postChat(request: Request) {
       logTurnEvent("turn.answer.missing_turn", { surface, where: "api/chat" });
     }
 
+    /*
+     * TEMPLATE_OUTLINE_FIELDS_ENABLED (Pau's sf-s21, QA's ruling): "the Must see behaviors and not the standard of
+     * conduct" on a form that still cites Standards of Conduct is answered with why (`lib/forms/template-outline.ts`).
+     */
+    if (templateOutlineFieldsEnabled() && outlineTurn) {
+      const { question: outlineQuestion, instanceId: outlineInstanceId } = outlineTurn;
+      const outline = await import("@/lib/forms/template-outline");
+      const loaded = await (await import("@/lib/forms/instance-scope"))
+        .authorizeInstance(request, outlineInstanceId, "view")
+        .then((authorized) => authorized.loaded)
+        .catch(() => null);
+      const value = (key: string) => loaded?.values.find((row) => row.fieldKey === key)?.value ?? "";
+      const note = loaded
+        ? outline.policyKeptNote({ question: outlineQuestion, policyViolated: value("policy_violated"), policyLanguage: value("policy_language") })
+        : null;
+      if (note) answer = { ...answer, content: outline.withPolicyKeptNote(answer.content, note) };
+    }
     // FINAL_REPLY_MARKER_GUARD_ENABLED: no bare source tag reaches the manager, whatever path answered. See `ai/source-note.ts`.
     return NextResponse.json({ ...finalReplyWithoutMarkers(answer), turnId });
   } catch (error) {

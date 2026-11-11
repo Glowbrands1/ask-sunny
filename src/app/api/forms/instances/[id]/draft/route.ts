@@ -26,19 +26,24 @@ import {
   typoReadingRoutesEnabled,
   cardPolicyToDraftEnabled,
   formPatchReducerEnabled,
+  draftWriteNeverSilentEnabled,
   formEditSingleWriterEnabled,
   teamCardWordingEnabled,
   cardPolicyLabelEnabled,
+  caProcedureBasisEnabled,
   caSalesPolicyEnabled,
   priorActionsNoSignedEnabled,
   secondRequestOwnAccountEnabled,
   proposalMakeItAboutEnabled,
   proposalPolicySetAsideEnabled,
+  sameRequestOtherPersonEnabled,
+  coachingObservedSavedEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { notesMadeAbout } from "@/lib/ai/make-it-about";
 import { withoutPolicyReferenceTurns } from "@/lib/ai/policy-reference-turn";
 import { NOTHING_SET_ASIDE, policiesSetAside, setAsideAnything, valuesWithPolicySetAside, withoutPolicyTakeOff } from "@/lib/forms/policy-set-aside";
 import { withoutAsksToTheApp } from "@/lib/ai/asks-to-the-app";
+import { withoutAppInstructions } from "@/lib/ai/app-instructions";
 import { AiError } from "@/lib/ai/errors";
 import {
   assertLiveMode,
@@ -221,7 +226,7 @@ import {
   LANGUAGE_CLEANUP_RULES,
   guardCoachingFraming,
 } from "@/lib/forms/coaching-framing";
-import { OFFENSE_BASIS_PROPERTY, readOffenseBasis, withoutUnreasonedConduct, type OffenseBasis } from "@/lib/forms/ca-conduct-reason";
+import { offenseBasisProperty, readOffenseBasis, withoutUnreasonedConduct, type OffenseBasis } from "@/lib/forms/ca-conduct-reason";
 import { guardOtherWriteIn } from "@/lib/forms/other-write-in";
 import { withoutRequestInObservation } from "@/lib/forms/request-observation";
 import {
@@ -379,8 +384,18 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
 
     const body = ((await request.json().catch(() => null)) ?? {}) as DraftBody;
     // GRAMMAR_ASK_NOT_ACCOUNT_ENABLED: "can you clean up my grammar …?" is no account (`ai/asks-to-the-app.ts`).
-    const typed = String(body.notes ?? "").trim().slice(0, 4000);
-    const asked = grammarAskNotAccountEnabled() ? withoutAsksToTheApp(typed).trim() : typed;
+    const sent = String(body.notes ?? "").trim().slice(0, 4000);
+    // SAME_REQUEST_OTHER_PERSON_ENABLED: "the same thing for <B>" is drafted from the earlier request, read with <B>'s name.
+    const typed = sameRequestOtherPersonEnabled()
+      ? (await import("@/lib/forms/same-request-other-person")).notesForOtherPerson({
+          notes: sent,
+          employeeName: loaded.instance.employeeName,
+          templateKey: loaded.instance.templateKey,
+          roster: await (await import("@/lib/forms/employee-roster")).loadScopedRoster(actor.scope).catch(() => []),
+        })
+      : sent;
+    // APP_INSTRUCTIONS_NOT_ACCOUNT_ENABLED: "Please word it in a professional way. I need the policy attached as well." is no account.
+    const asked = withoutAppInstructions(grammarAskNotAccountEnabled() ? withoutAsksToTheApp(typed).trim() : typed).trim();
     // CREATE_COMMAND_POINTS_TO_CARD_ENABLED / CARD_COMPLAINT_NOT_ACCOUNT_ENABLED: "create it" or "this proposal is out of
     // date" is no account (`ai/card-meta-turn.ts`).
     const asTyped = (await import("@/lib/ai/card-meta-turn")).withoutCardMetaTurns(asked);
@@ -1236,7 +1251,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
 
     const client = getAnthropicClient();
     /* CA_SALES_POLICY_ENABLED: the tool's optional offense_basis, and what the last call said (`ca-conduct-reason.ts`). */
-    const basisAsked = caSalesPolicyEnabled() && offersConductPolicy && offenseOffered.includes("other");
+    // CA_PROCEDURE_BASIS_ENABLED (sf-b6): the basis is asked with that flag too.
+    const basisAsked = (caSalesPolicyEnabled() || caProcedureBasisEnabled()) && offersConductPolicy && offenseOffered.includes("other");
     let offenseBasis: OffenseBasis | null = null;
     const draftCall = () => client.messages.create({
       model: CLAUDE_MODEL,
@@ -1261,7 +1277,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
                 description: "Checkbox group key to the option keys that apply.",
               },
               // CA_SALES_POLICY_ENABLED only, on a form offering Other: added, optional (`ca-conduct-reason.ts`). Off, absent.
-              ...(basisAsked ? { offense_basis: OFFENSE_BASIS_PROPERTY } : {}),
+              ...(basisAsked ? { offense_basis: offenseBasisProperty() } : {}),
             },
             required: ["values"],
           },
@@ -2435,6 +2451,16 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       ),
     };
     if (setAsideAnything(setAside)) draftedPayload.values = valuesWithPolicySetAside(draftedPayload.values, setAside);
+    // COACHING_OBSERVED_SAVED_ENABLED: the saved coaching Details always have an "Observed:" with the account (`lib/forms/coaching-observed-saved.ts`).
+    if (coachingObservedSavedEnabled()) {
+      draftedPayload.values = (await import("@/lib/forms/coaching-observed-saved")).withCoachingObservedSaved({
+        values: draftedPayload.values,
+        narrativeKeys: narrativeTargets,
+        coaching: isCoachingFamily,
+        notes,
+        employeeName: loaded.instance.employeeName,
+      }) as typeof draftedPayload.values;
+    }
     const kept = draftMergeEnabled()
       ? retainFilledFields({
           question: notes,
@@ -2471,13 +2497,28 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      * (`lib/forms/form-write.ts`, path "redraft") — all or nothing, a whole-text
      * rewrite keeps the form's protected values.
      */
-    const guarded = formEditSingleWriterEnabled() && reduced
-      ? await (await import("@/lib/forms/form-write")).draftWrite(id, reduced.write, actor.id, draftProvenanceWritten, {
-          path: "redraft",
-          notes,
-          typedExempt: new Set(derivedPolicy.derived.filter((key) => DERIVED_POLICY_FIELD_KEYS.has(key))),
-        })
-      : await applyAssistantDraft(id, reduced ? reduced.write : kept, actor.id, draftProvenanceWritten);
+    const redraftContext = {
+      path: "redraft" as const,
+      notes,
+      typedExempt: new Set(derivedPolicy.derived.filter((key) => DERIVED_POLICY_FIELD_KEYS.has(key))),
+    };
+    const singleWriter = formEditSingleWriterEnabled() && reduced ? await import("@/lib/forms/form-write") : null;
+    let written = singleWriter && reduced ? await singleWriter.draftWrite(id, reduced.write, actor.id, draftProvenanceWritten, redraftContext) : null;
+    /*
+     * DRAFT_WRITE_NEVER_SILENT_ENABLED (QA's live finding, round 17): the one writer refuses a write as a whole when
+     * one field is refused. Retried once without the refused fields; nothing saved is said, never a silent 200
+     * (`lib/forms/draft-write-never-silent.ts`).
+     */
+    let draftNothingSaved = false;
+    if (draftWriteNeverSilentEnabled() && singleWriter && reduced && written?.result.handoff === "refused") {
+      const silent = await import("@/lib/forms/draft-write-never-silent");
+      const rest = silent.withoutRefused(reduced.write, written.result.refused.map((refusal) => refusal.key));
+      if (silent.fieldCount(rest) > 0) written = await singleWriter.draftWrite(id, rest, actor.id, draftProvenanceWritten, redraftContext);
+      // Refused again, or nothing written; a retry that changed nothing (the form already says it) is not "nothing saved".
+      draftNothingSaved = written.result.handoff === "refused" || (silent.fieldCount(written.accepted) === 0 && written.result.handoff !== "noop");
+    }
+    // The old writer only in the single writer's flag-off branch (form-write-one-writer.test.ts reads this shape).
+    const guarded = formEditSingleWriterEnabled() && written ? written : await applyAssistantDraft(id, reduced ? reduced.write : kept, actor.id, draftProvenanceWritten);
     /*
      * NEVER A SILENT BLANK (DRAFT_NEVER_BLANK_ENABLED). Whenever an attempt
      * failed or wrote nothing, or the write itself holds no field, the reason
@@ -2641,7 +2682,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
           ? describedPolicyChoiceNotice(describedChoices!.map((choice) => choice.section))
           : null,
         // FORM_EDIT_SINGLE_WRITER_ENABLED: what the draft left out of the account (detected, never retried).
-        leftOut,
+        // DRAFT_WRITE_NEVER_SILENT_ENABLED: nothing saved is said instead — there is no account to have left anything out of.
+        draftNothingSaved ? (await import("@/lib/forms/draft-write-never-silent")).DRAFT_NOTHING_SAVED_NOTICE : leftOut,
       ]
         .filter((line): line is string => Boolean(line))
         .join(" ") || null,

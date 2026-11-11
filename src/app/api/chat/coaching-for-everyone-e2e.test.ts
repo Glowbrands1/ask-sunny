@@ -660,7 +660,10 @@ describe("COACHING_FOR_EVERYONE_ENABLED", () => {
     expect(made.map((row) => row.employee_name).sort()).toEqual(["Juno Paxton", "Marnie Holloway"]);
     for (const row of made) {
       expect(row).toMatchObject({ status: "draft", location_id: "loc-0309" });
-      expect(details(String(row.id))).toBe(WORDING.replace("Remy Calder", String(row.employee_name)));
+      // Changed on purpose (QA's #755 gate, 10 Nov 2026): with COACHING_OBSERVED_SAVED_ENABLED on the saved Details start
+      // with "Observed:" (the copies keep the first draft's Details); the wording under it is the same.
+      const observed = process.env.COACHING_OBSERVED_SAVED_ENABLED === "true" ? "Observed:\n" : "";
+      expect(details(String(row.id))).toBe(`${observed}${WORDING.replace("Remy Calder", String(row.employee_name))}`);
     }
     expect(made.find((row) => row.employee_name === "Juno Paxton")?.employee_role).toBe("Assistant Salon Director");
   });
