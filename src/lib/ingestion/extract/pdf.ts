@@ -1,9 +1,16 @@
 import "server-only";
 
-import { wovenPdfOcrEnabled } from "@/lib/config/chat-quality-flags";
+import { wovenLargerFilesEnabled, wovenPdfOcrEnabled } from "@/lib/config/chat-quality-flags";
 
 import { IngestionError } from "../errors";
+import { megabytes } from "../synced-file-limit";
 import { OCR_MODEL, ocrPdfPages, type OcrBudget } from "./pdf-ocr";
+
+/**
+ * WOVEN_LARGER_FILES_ENABLED: the largest scan OCR can send. The transcription request carries the PDF as base64 (4/3
+ * of its size) inside the API's 32 MB request limit, so a larger scan is refused before any request.
+ */
+export const OCR_MAX_BYTES = 23 * 1024 * 1024;
 import { pdfSegments } from "./pdf-sections";
 import { summarize, type ExtractedDocument } from "./types";
 
@@ -56,6 +63,13 @@ export async function extractPdf(buffer: Uint8Array, options: { ocr?: OcrBudget 
      * read means today's answer. Off, as before.
      */
     if (options.ocr && wovenPdfOcrEnabled()) {
+      if (wovenLargerFilesEnabled() && buffer.byteLength > OCR_MAX_BYTES) {
+        throw new IngestionError(
+          "too_large",
+          `This scanned PDF is ${megabytes(buffer.byteLength)} MB; a scan can be read automatically up to ${megabytes(OCR_MAX_BYTES)} MB.`,
+          422,
+        );
+      }
       const read = summarize(pdfSegments(await ocrPdfPages(buffer, totalPages, options.ocr)), totalPages);
       if (read.characterCount > 0) return { ...read, ocr: { model: OCR_MODEL } };
     }
