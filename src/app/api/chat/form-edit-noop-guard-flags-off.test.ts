@@ -258,6 +258,10 @@ const FLIPPED_IN_FLIP_7: readonly string[] = [
   "FORM_EDIT_SINGLE_WRITER_ENABLED",
   "FORM_EDIT_SAID_REPLACEMENT_ENABLED",
   "FORM_PATCH_READER_FIXES_ENABLED",
+  // Changed on purpose (11 Nov 2026): QA round 25 turned SAME_REQUEST_OFF_ROSTER on in production. sf-s11's "Can you do
+  // the same thing for Perrin Haldane …" (Perrin on no directory) is then the same request for another person, not an
+  // edit of the open draft; the recording predates it, so it is compared with it off.
+  "SAME_REQUEST_OFF_ROSTER_ENABLED",
 ];
 const PRODUCTION = [...PRODUCTION_FLAGS.on, ...PRODUCTION_FLAGS.assumedOn].filter((name) => !FLIPPED_IN_FLIP_7.includes(name));
 const TOOL_FLAGS = ["FORM_EDIT_SINGLE_WRITER_ENABLED", "FORM_EDIT_TOOL_IN_STREAM_ENABLED"] as const;
