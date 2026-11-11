@@ -13,11 +13,13 @@ afterEach(() => vi.unstubAllEnvs());
 
 describe("GROUP_WORDS_NOT_A_NAME_ENABLED", () => {
   it("reads group words as a group of people, never a name", () => {
-    for (const words of ["multiple employees", "Multiple Employees", "my employees", "several employees", "several team members", "all staff", "my staff"]) {
+    for (const words of ["multiple employees", "Multiple Employees", "my employees", "several employees", "several team members", "my staff"]) {
       expect(isGroupOfPeople(words), words).toBe(true);
     }
     // Changed on purpose (Gate-Bubbles-2, 11 Nov 2026): "the team" and "everyone" alone are left to whole-team coaching.
     for (const name of ["Marlo Teague", "Jo", "Team Lead", "the team", "everyone", "my team"]) expect(isGroupOfPeople(name), name).toBe(false);
+    // A whole-team card's own name ("All team members", "All staff") is never turned down (the sibling app's team cards, 11 Nov 2026).
+    for (const name of ["All team members", "All staff", "all employees"]) expect(isGroupOfPeople(name), name).toBe(false);
   });
 
   it("off, 'multiple employees' is not turned down; on, it is", () => {

@@ -1,6 +1,5 @@
 import { groupWordsNotANameEnabled } from "@/lib/config/chat-quality-flags";
 
-import { isGroupOfPeople } from "./not-a-name";
 
 /*
  * ============================================================================
@@ -31,9 +30,8 @@ const TEAM_GROUP = new RegExp(String.raw`\b(?:for|to|with)\s+((?:my|our|the)\s+(
  * another noun ("about the team meeting").
  */
 export function groupNamed(text: string): string | null {
-  for (const match of text.matchAll(PEOPLE_GROUP)) {
-    if (isGroupOfPeople(match[1]!)) return match[1]!.replace(/\s+/g, " ").trim();
-  }
+  // The pattern itself is the test here: "all staff" asks which employees, though a whole-team card's "All staff" is a name.
+  for (const match of text.matchAll(PEOPLE_GROUP)) return match[1]!.replace(/\s+/g, " ").trim();
   if (REPEATS_A_FORM.test(text)) {
     for (const match of text.matchAll(TEAM_GROUP)) return match[1]!.replace(/\s+/g, " ").trim();
   }

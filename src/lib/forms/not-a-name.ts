@@ -200,7 +200,8 @@ export function isGroupOfPeople(candidate: string): boolean {
   const last = words[words.length - 1]!;
   if (!GROUP_NOUN.test(last)) return false;
   const lead = words.slice(0, -1).join(" ").replace(/\b(?:team|staff)$/, "").trim();
-  return lead !== "" && GROUP_QUANTIFIER.test(lead);
+  // "All team members", "All staff" name a whole-team card (`subject: "team"`); they are left to that card.
+  return lead !== "" && lead !== "all" && GROUP_QUANTIFIER.test(lead);
 }
 
 /** True when the guard is on and the candidate is not somebody's name. */
