@@ -15,6 +15,7 @@ import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
 
 import type { ReplayContext } from "./cases";
 import { CASES } from "./index";
+import { forgetManualIndexForTests } from "@/lib/ai/intent-extraction";
 
 /**
  * ============================================================================
@@ -645,6 +646,8 @@ beforeEach(async () => {
   store.form_instances = new JoiningRows() as never;
   state.slotReading = "none";
   state.slotsRead = {};
+  // A case that pinned extra manual passages leaves the heading index with them; the next case starts without.
+  if (state.manualExtra.length > 0) forgetManualIndexForTests();
   state.manualExtra = [];
   state.readerEmployee = null;
   state.slotsOnlyIfSaid = false;
@@ -761,6 +764,8 @@ function context(): ReplayContext {
     },
     manualAlsoHas: (chunks) => {
       state.manualExtra = [...chunks];
+      // The slot reader's heading index is cached per scope: an earlier case's index would not have these passages.
+      forgetManualIndexForTests();
     },
     draftWrites: (values, checked, extra) => {
       state.draft = { values, ...(checked ? { checked } : {}), ...(extra ?? {}) };
