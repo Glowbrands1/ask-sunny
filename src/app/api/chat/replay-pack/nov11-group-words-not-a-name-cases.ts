@@ -46,3 +46,27 @@ export const NOV11_GROUP_WORDS_NOT_A_NAME_CASES: ReplayCase[] = ([
     expect(card?.templateKey ?? "", `the form is not kept:\n${reply.content}`).toMatch(/coaching/i);
   },
 }));
+
+/*
+ * Gate-Bubbles-2's NO-GO (11 Nov 2026): sf-s13's T1, a whole-team coaching request (WHOLE_TEAM_COACHING and
+ * COACHING_FOR_EVERYONE are on in production), became "Which employees? …" with the flag, dropping the topic and the
+ * store. With the flag on it stays the team's coaching card, as on production flags.
+ */
+const S13_T1 = "I need to make a coaching form for the team at Kearney on selling Spray Tan Kits, not writing proper rainchecks which results in inventory not being correct.";
+
+export const NOV11_GROUP_WORDS_WHOLE_TEAM_CASES: ReplayCase[] = [
+  {
+    id: "nov11-p19-group-words-never-whole-team-s13",
+    title: "negative: sf-s13's whole-team coaching request is never \"Which employees?\"",
+    report: "Gate-Bubbles-2, 11 Nov 2026 (NO-GO on the first build): sf-s13 T1",
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t: ReplayContext) {
+      const thread = start(t);
+      const reply = await thread.say(S13_T1);
+      expect(reply.content, `a whole-team request asks which employees:\n${reply.content}`).not.toMatch(/Which employees\?/);
+      expect(thread.proposal, `no coaching card:\n${reply.content}`).toMatchObject({ templateKey: "coaching" });
+      expect((thread.proposal as { subject?: string } | null)?.subject, `not the team's card:\n${reply.content}`).toBe("team");
+    },
+  },
+];

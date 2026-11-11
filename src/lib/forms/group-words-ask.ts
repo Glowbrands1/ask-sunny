@@ -13,15 +13,29 @@ import { isGroupOfPeople } from "./not-a-name";
  * employees? Tell me their full names", with the form and its topic kept, one form at a time. Pure.
  */
 
-const QUANTIFIED_GROUP = /\b(?:for|to|with|about)\s+((?:(?:multiple|several|many|some|all|both|these|those|my|our|the|a\s+few|few|two|three|four|five|other|more|team|staff)\s+){0,3}(?:employees|staff|people|team|teams|members|associates|workers|crew|everyone|everybody|employes|employess|emplyees))(?=\s*(?:$|[.,;:!?)]|(?:for|about|who|that|on|in|at|because|regarding|and|with|to|today|yesterday|this|next|last|please)\b))/gi;
+/* What may follow a group: the end, punctuation, or a word that starts the rest of the sentence — never another noun. */
+const GROUP_END = String.raw`(?=\s*(?:$|[.,;:!?)]|(?:for|about|who|that|on|in|because|regarding|and|with|to|today|yesterday|this|next|last|please)\b))`;
+/* "multiple employees", "several team members", "all staff", "my employees" (plural-people quantifier + plural noun). */
+const PEOPLE_GROUP = new RegExp(
+  String.raw`\b(?:for|to|with|about)\s+((?:multiple|several|many|some|all|both|these|those|my|our|a\s+few|few|two|three|four|five|other|more)\s+(?:(?:team|staff)\s+)?(?:employees|people|members|associates|workers|staff|employes|employess|emplyees))` + GROUP_END,
+  "gi",
+);
+/* "the same form for my team": team words count only when the turn repeats a form. */
+const REPEATS_A_FORM = /\b(?:the\s+same|this|that)\s+(?:form|one|card|coaching(?:\s+form)?|ca|write[- ]?up)\b/i;
+const TEAM_GROUP = new RegExp(String.raw`\b(?:for|to|with)\s+((?:my|our|the)\s+(?:whole\s+|entire\s+)?team|everyone|everybody)` + GROUP_END, "gi");
 
 /**
- * The group of people a manager's turn names ("multiple employees", "my team"), or null when it names none. A group
- * word that leads another noun is not a group: "about the team meeting" names a meeting (Gate-Bubbles-2, 11 Nov 2026).
+ * The group of people a manager's turn names, or null when it names none (Gate-Bubbles-2, 11 Nov 2026): a plural-people
+ * quantifier ("multiple employees", "all staff"), or team words in a turn that repeats a form ("I want the same form
+ * for my team"). Never "the team at <store>" or another whole-team coaching request, and never a group word that leads
+ * another noun ("about the team meeting").
  */
 export function groupNamed(text: string): string | null {
-  for (const match of text.matchAll(QUANTIFIED_GROUP)) {
+  for (const match of text.matchAll(PEOPLE_GROUP)) {
     if (isGroupOfPeople(match[1]!)) return match[1]!.replace(/\s+/g, " ").trim();
+  }
+  if (REPEATS_A_FORM.test(text)) {
+    for (const match of text.matchAll(TEAM_GROUP)) return match[1]!.replace(/\s+/g, " ").trim();
   }
   return null;
 }
@@ -41,6 +55,7 @@ interface CardLike {
   employeeName: string | null;
   templateName?: string;
   status: string;
+  subject?: string;
 }
 
 /** On the ask-who card for a turn that names a group, the question asks which employees, keeping the form's topic. */
@@ -50,7 +65,7 @@ export function withGroupWordsAsk<T extends { content: string; formProposal?: Ca
 ): T {
   if (!groupWordsNotANameEnabled()) return answer;
   const card = answer.formProposal;
-  if (!card || card.employeeName || card.status !== "needs_employee") return answer;
+  if (!card || card.employeeName || card.status !== "needs_employee" || card.subject === "team") return answer;
   const latest = managerTurns[managerTurns.length - 1] ?? "";
   if (!groupNamed(latest)) return answer;
   const form = card.templateName ?? "form";

@@ -187,14 +187,20 @@ function isThingRun(words: readonly string[]): boolean {
  * A group of people ("multiple employees", "my employees", "several team members", "the team", "everyone") is
  * nobody's name: the bot asks who they are.
  */
-const GROUP_QUANTIFIER = /^(?:multiple|several|many|some|all|both|these|those|my|our|the|a\s+few|few|two|three|four|five|other|more)$/;
-const GROUP_NOUN = /^(?:employees|staff|people|team|teams|members|associates|workers|crew|everyone|everybody|employes|employess|emplyees)$/;
+/*
+ * Gate-Bubbles-2 (11 Nov 2026): only a plural-people quantifier with a plural people noun is a group ("multiple
+ * employees", "several team members", "all staff"). "The team", "my team" and "everyone" are left alone: a whole-team
+ * coaching request ("a coaching form for the team at <store> on …") is read by WHOLE_TEAM_COACHING, not here.
+ */
+const GROUP_QUANTIFIER = /^(?:multiple|several|many|some|all|both|these|those|my|our|a few|few|two|three|four|five|other|more)$/;
+const GROUP_NOUN = /^(?:employees|people|members|associates|workers|staff|employes|employess|emplyees)$/;
 export function isGroupOfPeople(candidate: string): boolean {
   const words = candidate.trim().toLowerCase().replace(/[^a-z\s]/g, " ").split(/\s+/).filter(Boolean);
-  if (words.length === 0) return false;
-  if (words.length === 1) return /^(?:everyone|everybody|team|staff|employees)$/.test(words[0]!);
+  if (words.length < 2) return false;
   const last = words[words.length - 1]!;
-  return GROUP_NOUN.test(last) && words.slice(0, -1).every((word) => GROUP_QUANTIFIER.test(word) || /^(?:team|staff)$/.test(word));
+  if (!GROUP_NOUN.test(last)) return false;
+  const lead = words.slice(0, -1).join(" ").replace(/\b(?:team|staff)$/, "").trim();
+  return lead !== "" && GROUP_QUANTIFIER.test(lead);
 }
 
 /** True when the guard is on and the candidate is not somebody's name. */

@@ -13,10 +13,11 @@ afterEach(() => vi.unstubAllEnvs());
 
 describe("GROUP_WORDS_NOT_A_NAME_ENABLED", () => {
   it("reads group words as a group of people, never a name", () => {
-    for (const words of ["multiple employees", "Multiple Employees", "my employees", "several employees", "the team", "everyone", "my staff"]) {
+    for (const words of ["multiple employees", "Multiple Employees", "my employees", "several employees", "several team members", "all staff", "my staff"]) {
       expect(isGroupOfPeople(words), words).toBe(true);
     }
-    for (const name of ["Marlo Teague", "Jo", "Team Lead"]) expect(isGroupOfPeople(name), name).toBe(false);
+    // Changed on purpose (Gate-Bubbles-2, 11 Nov 2026): "the team" and "everyone" alone are left to whole-team coaching.
+    for (const name of ["Marlo Teague", "Jo", "Team Lead", "the team", "everyone", "my team"]) expect(isGroupOfPeople(name), name).toBe(false);
   });
 
   it("off, 'multiple employees' is not turned down; on, it is", () => {
@@ -51,6 +52,21 @@ describe("GROUP_WORDS_NOT_A_NAME_ENABLED", () => {
     expect(withGroupWordsAsk(askWho, ["create a coaching form for all staff about accountability"]).content).toBe(
       "Which employees? Tell me their full names, and I'll make the **Coaching Form** about accountability for each of them, one at a time.",
     );
+  });
+
+  it("Gate-Bubbles-2 (11 Nov 2026), flag on: a whole-team coaching request is never \"Which employees?\" (sf-s13's T1)", () => {
+    vi.stubEnv("GROUP_WORDS_NOT_A_NAME_ENABLED", "true");
+    const S13 =
+      "I need to make a coaching form for the team at West Dodge Rd on selling Bath Bomb Kits, not writing proper rainchecks which results in inventory not being correct.";
+    expect(groupNamed(S13)).toBeNull();
+    for (const turn of [S13, "create a coaching form for my team on closing duties", "coaching form for everyone about the new raincheck rule"]) {
+      expect(withGroupWordsAsk(askWho, [turn]), turn).toBe(askWho);
+    }
+    // A team card is never rewritten, whatever the turn says.
+    const team = { ...askWho, formProposal: { ...askWho.formProposal, subject: "team" } };
+    expect(withGroupWordsAsk(team, ["I want the same form for multiple employees"])).toBe(team);
+    // Team words count when the turn repeats a form.
+    expect(groupNamed("I want the same form for my team")).toBe("my team");
   });
 
   it("asks which employees, keeping the Coaching Form and its topic", () => {
