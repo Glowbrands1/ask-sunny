@@ -1,5 +1,5 @@
 import type { AskRequest, AskResponse } from "@/lib/ai/types";
-import { nearMissQuestionRulesEnabled } from "@/lib/config/chat-quality-flags";
+import { nearMissQuestionRulesEnabled, nearMissTurnedDownEverywhereEnabled } from "@/lib/config/chat-quality-flags";
 
 import { statedPayrollDeduct } from "./payroll-deduct-answer";
 import { ASK_WHO } from "./roster-only-names";
@@ -69,11 +69,32 @@ export function withoutTurnedDownName(answer: AskResponse, request: Pick<AskRequ
     .replace(/^Create the draft here when you're ready[^\n]*$/m, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+  const cleared = nearMissTurnedDownEverywhereEnabled() ? withoutNameInPlan(withoutTurnDownLead(content), name) : content;
   return {
     ...answer,
-    content: content.includes(ASK_WHO) ? content : `${content}\n\n${ASK_WHO}`,
+    content: cleared.includes(ASK_WHO) ? cleared : `${cleared}\n\n${ASK_WHO}`,
     formProposal: { ...card, employeeName: null, status: "needs_employee", supportsInlineDraft: false },
   };
+}
+
+/*
+ * NEAR_MISS_TURNED_DOWN_EVERYWHERE_ENABLED (QA, 10 Nov 2026): the name turned down also leaves the Action Plan line
+ * ("Management will review … with Corvina." → "… with the employee."), which names the person by first name, and the
+ * "no," that turned it down is not the account ("**Observation of Offense:** no, verbal warning …"). "not" stays: "not
+ * following the dress code" is an account.
+ */
+const ACCOUNT_LEAD = /^(\*\*(?:Observation of Offense|Issue|What happened):\*\*[ \t]*)(?:no|nope|wrong)\b[,.;:!]?[ \t]*/gim;
+
+function withoutTurnDownLead(content: string): string {
+  return content.replace(ACCOUNT_LEAD, (_line, label: string) => label);
+}
+
+function withoutNameInPlan(content: string, name: string): string {
+  const first = name.split(/\s+/)[0] ?? name;
+  const who = new RegExp(String.raw`\b(?:${escape(name)}|${escape(first)})\b`, "g");
+  return content.replace(/^\*\*Action Plan:\*\*[^\n]*$/gim, (line) =>
+    line.replace(who, (_match, at: number, whole: string) => (/(?:^|[.!?]\s+|:\*\*\s*)$/.test(whole.slice(0, at)) ? "The employee" : "the employee")),
+  );
 }
 
 function escape(text: string): string {
