@@ -184,6 +184,8 @@ import { privateCreatorFormsEnabled, privateCreatorsActive } from "@/lib/forms/p
  */
 
 const NEW_FLAGS = [
+  // coding 4: STEP_SHORTHAND_OWN_DATE (ported from Ask Bubbles, D2, 11 Nov 2026; default off).
+  "STEP_SHORTHAND_OWN_DATE_ENABLED",
   "SLOT_RETENTION_ENABLED",
   "FIELD_ACCURACY_ENABLED",
   "DRAFT_DEDUPE_ENABLED",

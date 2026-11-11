@@ -1,4 +1,4 @@
-import { caShortcutWordsEnabled, stepDateNotIncidentEnabled } from "@/lib/config/chat-quality-flags";
+import { caShortcutWordsEnabled, stepDateNotIncidentEnabled, stepShorthandOwnDateEnabled } from "@/lib/config/chat-quality-flags";
 
 import { datesInText } from "./form-date-answer";
 
@@ -30,7 +30,19 @@ export function stepSentenceDates(text: string, today: string): Set<string> {
   for (const sentence of (text ?? "").split(/(?<=[!?\n])|(?<=\.)(?!\d)/)) {
     // CA_SHORTCUT_WORDS_ENABLED: "verbal on 10/1", "verbal 10/1" — the shorthand of "a verbal was given on 10/1".
     const shorthand = caShortcutWordsEnabled() && STEP_SHORTHAND.test(sentence) && !ASKS_FOR_THE_FORM.test(sentence);
-    if (!shorthand && (!STEP_WORD.test(sentence) || !GIVEN.test(sentence))) continue;
+    const given = STEP_WORD.test(sentence) && GIVEN.test(sentence);
+    if (!shorthand && !given) continue;
+    /*
+     * STEP_SHORTHAND_OWN_DATE_ENABLED (D2): "… meeting 10/13/26 - payroll deduction no - prior coaching 7/1/26" is one
+     * sentence; the shorthand names 7/1 only, so 10/13 is not set aside with it.
+     */
+    if (shorthand && !given && stepShorthandOwnDateEnabled()) {
+      const spans = [...sentence.matchAll(new RegExp(STEP_SHORTHAND.source, "gi"))].map((match) => [match.index!, match.index! + match[0].length]);
+      for (const found of datesInText(sentence, today)) {
+        if (spans.some(([start, end]) => found.index >= start! && found.index < end!)) out.add(found.iso);
+      }
+      continue;
+    }
     for (const found of datesInText(sentence, today)) out.add(found.iso);
   }
   return out;
