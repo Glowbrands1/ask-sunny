@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { isAdviceAsk, withoutAppInstructions } from "./app-instructions";
 
@@ -8,9 +8,24 @@ const TURN_1 =
 const TURN_3 = "tell me how what to say back. send a messageto me";
 
 describe("ADVICE_ASK_NOT_ACCOUNT_ENABLED", () => {
+  /*
+   * QA (11 Nov 2026, before the flip): each test starts with both flags unset, whatever the env says, and the env's own
+   * values go back after. APP_INSTRUCTIONS_NOT_ACCOUNT is on in production: restored, never deleted.
+   */
+  const FLAGS = ["ADVICE_ASK_NOT_ACCOUNT_ENABLED", "APP_INSTRUCTIONS_NOT_ACCOUNT_ENABLED"] as const;
+  const saved = new Map<string, string | undefined>();
+  beforeEach(() => {
+    for (const name of FLAGS) {
+      saved.set(name, process.env[name]);
+      delete process.env[name];
+    }
+  });
   afterEach(() => {
-    delete process.env.ADVICE_ASK_NOT_ACCOUNT_ENABLED;
-    delete process.env.APP_INSTRUCTIONS_NOT_ACCOUNT_ENABLED;
+    for (const name of FLAGS) {
+      const value = saved.get(name);
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
   });
 
   it("off: the turns are as they are", () => {
