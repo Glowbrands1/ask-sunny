@@ -379,7 +379,8 @@ export const NOV10_MADE_ABOUT_TOPIC_AND_DATE_CASES: ReplayCase[] = [
     id: "nov10-add-not-repeated-leading-sentence",
     title: "QA's live Bubbles r15b: \"add that she was also on her phone\" on a sectioned CA Observation, the reader's add repeating the Observed sentence: the late sentence is saved once, and the phone",
     report: "Ported from Ask Bubbles: QA's live r15b (10 Nov 2026, 08:36:43Z): the Observed sentence saved twice after the add",
-    status: { open: "the reader's add repeats the field's first sentence, not the whole field, so it is added whole" },
+    // Changed on purpose (11 Nov 2026): fixed in production by ADD_NOT_REPEATED_SENTENCES, QA round 28. Was OPEN.
+    status: "fixed",
     fixFlags: [...STEP_B_READER_FLAGS, "ADD_NOT_REPEATED_ENABLED", "ADD_NOT_REPEATED_SENTENCES_ENABLED"],
     run: (t) =>
       play(t, {

@@ -33,7 +33,8 @@ export const NOV11_FORM_NAME_NOT_A_TITLE_CASES: ReplayCase[] = (
   id: `nov11-form-name-not-a-title-${key}`,
   title: `"${words}": the card's position is not the form's name`,
   report: REPORT,
-  status: { open: "the card's position is the form's program title, not the employee's" },
+  // Changed on purpose (11 Nov 2026): fixed in production by FORM_NAME_NOT_A_TITLE, QA round 28. Was OPEN.
+  status: "fixed",
   fixFlags: FIX,
   async run(t: ReplayContext) {
     const thread = start(t);
