@@ -4,6 +4,7 @@ import {
   jobTitleCaseEnabled,
   jobTitleFromWordsEnabled,
   jobTitleReadbackCaseEnabled,
+  titleInitialismCaseEnabled,
   titleSpelledOutEnabled,
 } from "@/lib/config/chat-quality-flags";
 
@@ -34,10 +35,17 @@ const APPOSITION = (who: string) =>
 const LABELED = /\b(?:job\s+title|position|title|role)\s*(?:is|was|:|-)\s*(?:an?\s+|the\s+)?((?:[a-z][a-z'’-]*\s+){0,3}[a-z][a-z'’-]*)/gi;
 const STOP_AFTER = /\s+(?:at|in|for|from|on|and|who|that|with|since)\b.*$/i;
 
+/**
+ * TITLE_INITIALISM_CASE_ENABLED (QA, #207): an initialism in a typed title reads the same however it was typed, so
+ * "an hr assistant" and "an HR assistant" are both "HR Assistant". Off, every word is Capitalized ("Hr Assistant").
+ */
+const TITLE_INITIALISM = /^(?:hr|it|dm|gm)$/i;
+
 function titleCase(phrase: string): string {
+  const initialisms = titleInitialismCaseEnabled();
   return phrase
     .split(/\s+/)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .map((word) => (initialisms && TITLE_INITIALISM.test(word) ? word.toUpperCase() : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()))
     .join(" ");
 }
 

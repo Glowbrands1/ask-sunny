@@ -4406,3 +4406,14 @@ export function failureToOpenIsLateOpeningEnabled(): boolean {
 export function requestIssueKeptEnabled(): boolean {
   return envFlag("REQUEST_ISSUE_KEPT_ENABLED");
 }
+
+/**
+ * A job title the manager typed keeps an initialism upper case: "she is an HR
+ * assistant" (or "an hr assistant") is "HR Assistant" on the card, never "Hr
+ * Assistant" (QA, #207; the title casing of `job-title-from-words.ts`). Only
+ * HR, IT, DM and GM; every other word is Capitalized as before. Off, as
+ * before.
+ */
+export function titleInitialismCaseEnabled(): boolean {
+  return envFlag("TITLE_INITIALISM_CASE_ENABLED");
+}

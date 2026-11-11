@@ -402,6 +402,8 @@ const NEW_FLAGS = [
   "COACHING_OBSERVED_SAVED_ENABLED",
   // coding 6: APP_INSTRUCTIONS_NOT_ACCOUNT (default off): forced off with the others.
   "APP_INSTRUCTIONS_NOT_ACCOUNT_ENABLED",
+  // coding 5: TITLE_INITIALISM_CASE (default off; QA, #207 "she is an HR assistant" read as "Hr Assistant"): forced off with the others.
+  "TITLE_INITIALISM_CASE_ENABLED",
   // coding 6: FAILURE_TO_OPEN_IS_LATE_OPENING (default off): forced off with the others.
   "FAILURE_TO_OPEN_IS_LATE_OPENING_ENABLED",
   "STAFF_PICKER_ENABLED",
