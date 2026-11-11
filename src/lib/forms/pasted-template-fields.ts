@@ -106,3 +106,15 @@ export function pastedTemplateValues(input: {
     Object.entries(sections).map(([key, body]) => [key, person ? asTheDraftsEmployee(body, person, input.employeeName) : body]),
   );
 }
+
+/** Two or more "<Label>:" lines: the shape of a pasted labelled template, read before the open form's fields are loaded. */
+const LABEL_LINE = /(?:^|\n)[ \t]*[A-Z][A-Za-z /&'’-]{3,40}[ \t]*:/g;
+export function looksLikePastedTemplate(text: string): boolean {
+  return (text.match(LABEL_LINE) ?? []).length >= 2;
+}
+
+/** The revision's "nothing changed" reply ("I haven't changed the **<form>** … — everything on it is as it was."). */
+const NOTHING_CHANGED = /^\s*(?:I didn't change anything on the form\.|I haven'?t changed the \*\*[^*]+\*\*[^.\n]*?—\s*everything on it is as it was\.)/;
+export function revisionChangedNothing(content: string): boolean {
+  return NOTHING_CHANGED.test(content);
+}

@@ -64,6 +64,8 @@ export async function openDraftTurn(input: {
   const before = formEditSingleWriterEnabled()
     ? await (await import("@/lib/forms/form-write")).editSnapshot(input.instanceId, "open_draft")
     : null;
+  // PASTED_TEMPLATE_FIELDS_TO_OPEN_DRAFT_ENABLED: the draft's words before the revision, to see whether it placed the paste.
+  const wordsBefore = pasted && pastedTemplateFieldsToOpenDraftEnabled() ? await draftWords(input.instanceId) : null;
   const revised = await (await import("@/lib/forms/chat-revision")).reviseActiveForm({
     request: input.request,
     instanceId: input.instanceId,
@@ -72,19 +74,20 @@ export async function openDraftTurn(input: {
     history: [...input.history],
     today: input.today,
   });
+  /*
+   * PASTED_TEMPLATE_FIELDS_TO_OPEN_DRAFT_ENABLED (QA's round-25 live test of sf-s21, 11 Nov 2026): the pasted template
+   * reached the open draft, but the revision placed none of it ("Nothing on the form has changed yet. I couldn't place
+   * that …", or "I haven't changed the Corrective Action Form …"). Its labelled sections go into the draft's fields of
+   * those labels, in the draft's employee's name.
+   */
+  if (wordsBefore && JSON.stringify(await draftWords(input.instanceId)) === JSON.stringify(wordsBefore)) {
+    const placed = await placePastedTemplate({ ...input, question, employeeName: open.employeeName });
+    if (placed) return placed;
+  }
   if (revised && formEditSingleWriterEnabled() && before) {
     return (await import("@/lib/forms/form-write")).realizedClaim(revised, input.instanceId, before);
   }
   if (revised) return revised;
-  /*
-   * PASTED_TEMPLATE_FIELDS_TO_OPEN_DRAFT_ENABLED (QA's Sunny round-25 live test of sf-s21, 11 Nov 2026): the pasted
-   * template reached the open draft, but the revision wrote nothing ("Nothing on the form has changed yet. I couldn't
-   * place that …"). Its labelled sections go into the draft's fields of those labels, in the draft's employee's name.
-   */
-  if (pasted && pastedTemplateFieldsToOpenDraftEnabled()) {
-    const placed = await placePastedTemplate({ ...input, question, employeeName: open.employeeName });
-    if (placed) return placed;
-  }
   return {
     content: [
       `**Nothing on the form has changed yet.** I couldn't place that on the open ${open.templateName} for ${open.employeeName}.`,
@@ -195,4 +198,11 @@ async function placePastedTemplate(input: {
     recommendedVideoIds: [],
     formUpdate: { instanceId: input.instanceId, updated: written },
   };
+}
+
+/** PASTED_TEMPLATE_FIELDS_TO_OPEN_DRAFT_ENABLED: the open draft's text values, to see whether a turn changed them. */
+async function draftWords(instanceId: string): Promise<Record<string, string> | null> {
+  const loaded = await (await import("./instances")).loadInstance(instanceId).catch(() => null);
+  if (!loaded) return null;
+  return Object.fromEntries(loaded.values.map((row) => [row.fieldKey, String(row.value ?? "")]));
 }
