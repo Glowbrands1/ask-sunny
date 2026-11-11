@@ -4316,3 +4316,13 @@ export function sameRequestKeepsEarlierCardClientEnabled(): boolean {
 export function templateOutlineFieldsEnabled(): boolean {
   return envFlag("TEMPLATE_OUTLINE_FIELDS_ENABLED");
 }
+
+/**
+ * FORM_INPUT_FIDELITY_ENABLED (live replays, 24 Oct 2026; #166; default off).
+ * A typed incident date stays on the form, and a one-word follow-up stays
+ * off Job Title. Off, a relative day is still not a calendar date, and a
+ * short reply the model copied into the title slot is still kept.
+ */
+export function formInputFidelityEnabled(): boolean {
+  return envFlag("FORM_INPUT_FIDELITY_ENABLED");
+}

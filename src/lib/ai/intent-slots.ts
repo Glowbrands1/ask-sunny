@@ -6,6 +6,7 @@ import {
   codeSlotsEnabled,
   slotNameOnFormRequestEnabled,
   formChoiceStatedEnabled,
+  formInputFidelityEnabled,
   intentPayrollManagerOnlyEnabled,
   keepFormEmployeeEnabled,
   latePayrollFromFormEnabled,
@@ -22,7 +23,14 @@ import {
   checkedReadingEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { withCorrectedEmployee } from "./corrected-employee";
-import { payrollDeductAmount, payrollDeductFromConversation, type PayrollDeductAnswer } from "@/lib/forms/payroll-deduct";
+import { payrollDeductAmount, payrollDeductFromConversation, payrollDeductReply, type PayrollDeductAnswer } from "@/lib/forms/payroll-deduct";
+import {
+  askedForIncidentDate,
+  askedOnlyForJobTitle,
+  isBareWeekdayReply,
+  isNonTitleFollowUp,
+  resolveStatedFormDate,
+} from "@/lib/forms/form-input-fidelity";
 import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
 import { lateOpenOn, newestStatedDate, withYearlessDatesWritten } from "@/lib/forms/late-open";
 import { printedPageForPolicy } from "@/lib/forms/printed-policy-pages";
@@ -294,7 +302,7 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
     : userText;
   // REMAP_INCIDENT_FIX_ENABLED: "empire, sd" is a place and its state, not Salon Director.
   const titleText = remapIncidentFixEnabled() ? withoutStateCodes(managerTitleText) : managerTitleText;
-  const title = merge.title(groundTitle(reading?.title ?? null, titleText, input.people, employee.person, employee.name ?? employee.typed));
+  let title = merge.title(groundTitle(reading?.title ?? null, titleText, input.people, employee.person, employee.name ?? employee.typed));
   const groundedIncident = groundIncident(reading?.incidentType ?? null, blob, input.headings);
   const incidentType = choiceStated && isDisciplineProcedure(groundedIncident) ? null : groundedIncident;
   /*
@@ -310,11 +318,26 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
   const groundedDate = statedNow
     ? { iso: statedNow, ambiguous: [] as readonly string[] }
     : groundDate(choice?.date ?? reading?.incidentDate ?? null, dateQuestion, dateText, input.today);
-  const date = merge.date(
+  let date = merge.date(
     codeSlotsEnabled()
       ? { iso: explicitIncidentIso(dateQuestion, input.today) ?? saved.formDate, ambiguous: [] as readonly string[] }
       : groundedDate,
   );
+  if (formInputFidelityEnabled() && !codeSlotsEnabled()) {
+    const assistant = [...input.history].reverse().find((turn) => turn.role === "assistant")?.content ?? "";
+    // The model copies a one-word reply into title because that word is the
+    // message. It belongs on the question just asked, or on no field.
+    if (title && isNonTitleFollowUp(title) && !askedOnlyForJobTitle(assistant)) {
+      title = extractJobTitle(userText);
+    }
+    if (date.iso === null && date.ambiguous.length === 0) {
+      const resolved = resolveStatedFormDate(input.question, input.today);
+      const bareDay = isBareWeekdayReply(input.question);
+      if (resolved && (!bareDay || askedForIncidentDate(assistant)) && !askedOnlyForJobTitle(assistant)) {
+        date = { iso: resolved, ambiguous: [] };
+      }
+    }
+  }
   const formType: { key: string | null; ambiguous: readonly TemplateRow[]; together?: boolean } = choiceStated
     ? groundStatedForm(
         choice?.form ?? null,
@@ -448,6 +471,11 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
     const named = employeeNamedOnPurpose(input.question, prior, input.people, salonNames);
     const employeeName = named ?? prior ?? cleanPersonName(state.employeeName, salonNames);
     if (employeeName !== state.employeeName) state = { ...state, employeeName };
+  }
+  if (formInputFidelityEnabled() && !codeSlotsEnabled()) {
+    const assistant = [...input.history].reverse().find((turn) => turn.role === "assistant")?.content ?? "";
+    const payroll = payrollDeductReply(input.question, assistant);
+    if (payroll) state = { ...state, payrollDeduct: payroll };
   }
 
   const clarification = clarificationFor({
