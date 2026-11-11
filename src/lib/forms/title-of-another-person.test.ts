@@ -67,3 +67,39 @@ describe("TITLE_ENDS_AT_LINE_ENABLED: a title line ends where a person's name be
     expect(titleNamesAnotherPerson("Marnie Kettering\nTanning Consultant\nNE Kearney\nGave notice", "Tanning Consultant", "Marnie Kettering")).toBe(false);
   });
 });
+
+/*
+ * FULL_POSITION_TITLE_ENABLED (QA, 10 Nov 2026): an exit form typed as lines, "<name>\nTanning Consultant Weekends Only\n<place>",
+ * for an employee with no roster position, left the Job Title blank: "Weekends Only" on the title's line was read as
+ * the title's owner. Schedule and status words after the title are no person; a name after it still is (ruling (a)).
+ */
+describe("schedule and status words after a title are no person (FULL_POSITION_TITLE_ENABLED)", () => {
+  const typed = (line: string) => `Isaura Corvadine\n${line} \nNE Kearney\nGave notice - fulfilled notice`;
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("off: \"Weekends Only\" is read as the title's owner, as before (TITLE_ENDS_AT_LINE on)", () => {
+    vi.stubEnv("TITLE_ENDS_AT_LINE_ENABLED", "true");
+    vi.stubEnv("FULL_POSITION_TITLE_ENABLED", "");
+    expect(titleNamesAnotherPerson(typed("Tanning Consultant Weekends Only"), "Tanning Consultant", "Isaura Corvadine")).toBe(true);
+  });
+
+  for (const line of ["Tanning Consultant Weekends Only", "Tanning Consultant Part-Time", "Tanning Consultant - On Call", "Tanning Consultant Nights", "Tanning Consultant (Seasonal)", "Tanning Consultant Closing Shift Only"]) {
+    it(`on: "${line}" is the employee's`, () => {
+      vi.stubEnv("TITLE_ENDS_AT_LINE_ENABLED", "true");
+      vi.stubEnv("FULL_POSITION_TITLE_ENABLED", "true");
+      expect(titleNamesAnotherPerson(typed(line), "Tanning Consultant", "Isaura Corvadine")).toBe(false);
+    });
+  }
+
+  it("on: ruling (a) is kept, \"District Manager Thessaly Brookhart\" is hers", () => {
+    vi.stubEnv("TITLE_ENDS_AT_LINE_ENABLED", "true");
+    vi.stubEnv("FULL_POSITION_TITLE_ENABLED", "true");
+    expect(titleNamesAnotherPerson(typed("District Manager Thessaly Brookhart"), "District Manager", "Isaura Corvadine")).toBe(true);
+  });
+
+  it("on: a qualifier word inside a name line is still a name (\"Tanning Consultant Only Vance\")", () => {
+    vi.stubEnv("TITLE_ENDS_AT_LINE_ENABLED", "true");
+    vi.stubEnv("FULL_POSITION_TITLE_ENABLED", "true");
+    expect(titleNamesAnotherPerson(typed("Tanning Consultant Only Vance"), "Tanning Consultant", "Isaura Corvadine")).toBe(true);
+  });
+});
