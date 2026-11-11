@@ -1,6 +1,7 @@
 import "server-only";
 
 import { PRODUCTION_SALONS } from "@/data/salons";
+import { demoStateMap } from "./demo-state";
 import { BUSINESS_TIMEZONE, businessToday } from "@/lib/business-date";
 import type {
   ExtractionRow,
@@ -423,10 +424,9 @@ function demoLog(today: string): DemoLog {
  * and the counts above it move when somebody works the queue. Nothing is
  * written anywhere; a restart puts the seeded queue back.
  */
-const moderation = new Map<
-  string,
+const moderation = demoStateMap<
   { status?: FeedbackStatus; hidden?: boolean; resolutionNote?: string | null; deleted?: boolean }
->();
+>("analytics.feedback-moderation");
 
 function feedbackAt(log: DemoLog, index: number): DemoFeedback | null {
   const item = log.feedback[index];

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { PRODUCTION_SALONS } from "@/data/salons";
+import { demoStateMap } from "./demo-state";
 import { businessToday, shiftDays } from "@/lib/business-date";
 import type { InstanceRow, InstanceView } from "@/lib/forms/instances";
 import { TEMPLATE_SEEDS } from "@/lib/forms/library";
@@ -207,7 +208,7 @@ export function demoTemplateByKey(key: string): DemoTemplate | null {
  * Publishing is refused with a sentence saying why — a demo must not appear to
  * change the form every manager fills.
  */
-const drafts = new Map<string, TemplateVersionRow>();
+const drafts = demoStateMap<TemplateVersionRow>("forms.template-drafts");
 
 export const DEMO_PUBLISH_REFUSAL =
   "This is a demo deployment, so publishing is switched off. The draft is kept for this session and can still be previewed; nothing about the live library changes.";
@@ -392,7 +393,7 @@ type Change = Partial<Pick<InstanceRow, "followUpDate" | "followedUpAt" | "follo
   deleted?: boolean;
 };
 
-const changes = new Map<string, Change>();
+const changes = demoStateMap<Change>("forms.instance-changes");
 
 function forms(today: string = businessToday()): InstanceRow[] {
   return buildForms(today).flatMap((form) => {
