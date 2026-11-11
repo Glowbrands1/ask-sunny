@@ -4147,3 +4147,14 @@ export function draftWriteNeverSilentEnabled(): boolean {
 export function draftWroteNothingNoticeEnabled(): boolean {
   return envFlag("DRAFT_WROTE_NOTHING_NOTICE_ENABLED");
 }
+
+/**
+ * ONE_DRAFT_NOTICE_ENABLED (coding 6, 11 Nov 2026; default off; ported from the sibling app, QA). A refused draft
+ * write with no account said "Nothing was saved on this draft" though Name, Date, Job Title and Location were saved,
+ * and never asked what happened (the sibling app showed that and DRAFT_WROTE_NOTHING_NOTICE's notice both). On, with
+ * DRAFT_WROTE_NOTHING_NOTICE: one notice names the field not saved and asks what happened once
+ * (`forms/one-draft-notice.ts`). Off, as before.
+ */
+export function oneDraftNoticeEnabled(): boolean {
+  return envFlag("ONE_DRAFT_NOTICE_ENABLED");
+}
