@@ -507,6 +507,16 @@ const LATE_ARRIVAL =
   /\b(?:was|were|is|been|came\s+in|arrived|showed\s+up|clocked\s+in|running|being)\s+(?:\S+\s+){0,2}?late\b|\b(?:tardy|tardies|tardiness|lateness)\b|\blate\s+(?:to|for)\s+(?:her|his|their|a|the|work|shift)/i;
 const OPENING_WORD = /\bopen(?:s|ed|ing|er|ers)?\b/i;
 
+/**
+ * LATE_CARD_AGREES_ENABLED (QA, Sunny live r22 + r26, 11 Nov 2026): the manager's words say an employee was late or tardy
+ * and never say "open" — the plain "late" LATE_READS_ATTENDANCE reads as Attendance. The card's citation and plan use
+ * the same test (`ai/form-card-slots.ts`), so the reply, the card and the plan name one policy.
+ */
+export function plainLateIsAttendance(rawText: string): boolean {
+  const said = managerWords(rawText);
+  return LATE_ARRIVAL.test(said) && !OPENING_WORD.test(said);
+}
+
 function withLateIsAttendance(reading: CaPolicyReading, said: string): CaPolicyReading {
   if (!lateReadsAttendanceEnabled() || reading.readFromApp !== "late_opening") return reading;
   if (!LATE_ARRIVAL.test(said) || OPENING_WORD.test(said)) return reading;

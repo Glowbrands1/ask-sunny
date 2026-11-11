@@ -15,6 +15,7 @@ import {
   followUpReadbackCueEnabled,
   correctedEmployeeSlotEnabled,
   secondRequestOwnAccountEnabled,
+  lateCardAgreesEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { currentFormRequestTurns } from "@/lib/forms/current-request";
 import { templateHasWarningLevel } from "@/lib/forms/warning-level";
@@ -42,7 +43,7 @@ import { extractJobTitle, titleAfterJobTitleLabel } from "@/lib/forms/proposal";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
 import type { ChatFormProposal, KnowledgeCategory, SourceCitation } from "@/types";
 
-import { describedAttendanceKeys, readCaPolicy, statedOffenseKeys } from "@/lib/forms/ca-policy";
+import { describedAttendanceKeys, plainLateIsAttendance, readCaPolicy, statedOffenseKeys } from "@/lib/forms/ca-policy";
 import {
   citeAttendanceForTardiness,
   formatPolicyCitation,
@@ -194,6 +195,9 @@ export function formTurnCitations(input: {
   return citations;
 }
 
+/** LATE_CARD_AGREES_ENABLED: the app's own "Policy reference: Late Opening, JBA Policy Manual p.15." line in the notes. */
+export const LATE_OPENING_REFERENCE = /\bPolicy reference:\s*Late Opening\b(?:[^\n]*?JBA Policy Manual(?:\s*p\.\s?\d+)?\.|[^.\n]*\.)/gi;
+
 /** Citations plus the policy line, for a form answer. Existing citations stay. */
 export function attachFormTurnSources(given: {
   readonly content: string;
@@ -219,7 +223,18 @@ export function attachFormTurnSources(given: {
    * that asks for a form; a cash-drawer CA after a late-opening one was cited "Late Opening Policy … p.15".
    */
   const own = secondRequestOwnAccountEnabled() ? currentFormRequestTurns(turnsOfNotes(given)) : null;
-  const scoped = own ? { ...given, notes: own.join("\n") } : given;
+  const ownScoped = own ? { ...given, notes: own.join("\n") } : given;
+  /*
+   * LATE_CARD_AGREES_ENABLED: a plain "late" (the manager's words, no "open" word) is Attendance on the card as in the
+   * reply, whatever the model's heading: the heading and the app's own "Policy reference: Late Opening …" line in the
+   * notes (which would cite Late Opening and drop Attendance as a late opening) give way to Attendance.
+   */
+  const scoped =
+    lateCardAgreesEnabled() &&
+    /^late opening(?: policy)?$/i.test(ownScoped.modelHeading?.trim() ?? "") &&
+    plainLateIsAttendance(withoutStateSentences(ownScoped.notes))
+      ? { ...ownScoped, modelHeading: "Attendance", notes: ownScoped.notes.replace(LATE_OPENING_REFERENCE, " ") }
+      : ownScoped;
   const input = formChoiceStatedEnabled() ? { ...scoped, modelHeading: headingForCard(scoped) } : scoped;
   const found = formTurnCitations(input);
   let citations = lateOpeningCitations(input.citations.length > 0 ? [...input.citations] : found, input.notes);

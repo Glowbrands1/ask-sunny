@@ -4381,3 +4381,14 @@ export function sameRequestOffRosterEnabled(): boolean {
 export function pastedOutlineToOpenDraftEnabled(): boolean {
   return envFlag("PASTED_OUTLINE_TO_OPEN_DRAFT_ENABLED");
 }
+
+/**
+ * LATE_CARD_AGREES_ENABLED (QA, Sunny live r22 + r26, dpl_7Uakw6iR, 11 Nov 2026; default off). "create a CA for <roster
+ * person>, she was late on 11/3/26" once replied "Policy: Attendance — read from this request." (LATE_READS_ATTENDANCE)
+ * while the card cited Late Opening p.15 and planned to review the Late Opening policy: the card took the slot model's
+ * heading, which varies. On, a plain "late" (no "open" word) is Attendance on the card and plan too
+ * (`forms/ca-policy.ts` plainLateIsAttendance, `ai/form-card-slots.ts`). Late openings and no-shows unchanged. Off, as before.
+ */
+export function lateCardAgreesEnabled(): boolean {
+  return envFlag("LATE_CARD_AGREES_ENABLED");
+}
