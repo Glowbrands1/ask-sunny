@@ -3,6 +3,8 @@ import { ACTIVE_BRAND } from "@/lib/brand";
 
 import { EXCLUDED_BRAND } from "./full-manual-context";
 
+import { brandReplyGuardEnabled } from "@/lib/config/chat-quality-flags";
+
 import { withBrandReplyRest } from "./brand-reply-rest";
 import type { AskResponse } from "./types";
 
@@ -134,10 +136,19 @@ function withinLine(line: string, p: ReturnType<typeof patterns>): string {
   return kept ? `${lead}${kept}` : "";
 }
 
+/** BRAND_REPLY_GUARD_ENABLED: said instead of an empty reply when every sentence named only other brands. */
+export const EMPTIED_REPLY =
+  "The part of the manual that answers this is written for the other brands under JB & Associates, so I can't quote it here. Ask your manager, or ask me about this company's own steps.";
+
 /** OWN_BRAND_ONLY_ENABLED: the finished reply with only this company's brand named. Off: as built. */
 export function withOwnBrandOnly(response: AskResponse): AskResponse {
   if (!ownBrandOnlyEnabled()) return response;
   // BRAND_REPLY_GUARD_ENABLED: what this step would leave or drop with its rule is rewritten first (`brand-reply-rest.ts`).
-  const content = ownBrandOnly(withBrandReplyRest(response.content));
+  const kept = ownBrandOnly(withBrandReplyRest(response.content));
+  /*
+   * BRAND_REPLY_GUARD_ENABLED (QA's October triage of #266, 11 Nov 2026): a reply this step would empty whole is never
+   * sent empty; it says the manual's passage is written for other brands, and how to ask again.
+   */
+  const content = brandReplyGuardEnabled() && kept.trim() === "" && response.content.trim() !== "" ? EMPTIED_REPLY : kept;
   return content === response.content ? response : { ...response, content };
 }

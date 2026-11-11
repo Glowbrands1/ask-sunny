@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { withOwnBrandOnly } from "./own-brand-only";
+import { EMPTIED_REPLY, ownBrandOnly, withOwnBrandOnly } from "./own-brand-only";
 import type { AskResponse } from "./types";
 
 /**
@@ -45,6 +45,23 @@ describe("on: only this company, every rule kept", () => {
     vi.stubEnv("OWN_BRAND_ONLY_ENABLED", "true");
     vi.stubEnv("BRAND_REPLY_GUARD_ENABLED", "true");
     expect(reply(REPLIES.availability)).toBe("Submit availability changes two weeks ahead in MyGlow for Sun Tan City [p.37].");
+  });
+
+  it('QA\'s #266 leftover: "MyGlow for Sun Tan City, or MyGlow for Buff City Soap [p.37]" keeps this company\'s clause, never an empty reply', () => {
+    const said = "Submit availability changes in MyGlow for Sun Tan City, or MyGlow for Buff City Soap [p.37].";
+    vi.stubEnv("OWN_BRAND_ONLY_ENABLED", "true");
+    // Off (main, production's flags): the own-brand step blanks the whole sentence.
+    expect(ownBrandOnly(said)).toBe("");
+    vi.stubEnv("BRAND_REPLY_GUARD_ENABLED", "true");
+    expect(reply(said)).toBe("Submit availability changes in MyGlow for Sun Tan City [p.37].");
+  });
+
+  it("on: a reply the own-brand step would empty whole is never sent empty", () => {
+    const said = "Crunch Fitness members check in with the Crunch app at the front desk [p.40].";
+    vi.stubEnv("OWN_BRAND_ONLY_ENABLED", "true");
+    expect(reply(said)).toBe("");
+    vi.stubEnv("BRAND_REPLY_GUARD_ENABLED", "true");
+    expect(reply(said)).toBe(EMPTIED_REPLY);
   });
 
   it('late opening: "SALON/STORE" is "SALON", in the case it was written in', () => {
