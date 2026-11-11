@@ -46,9 +46,17 @@ export function cardEmployee(request: Pick<AskRequest, "history" | "activeFormIn
 }
 
 /** (a) The name the reply before this turn asked about, when this turn turns it down; null otherwise. */
+/*
+ * NEAR_MISS_TURNED_DOWN_EVERYWHERE_ENABLED (QA, 11 Nov 2026): "no call no show on 11/3, verbal warning" answering "Is this
+ * for **<name>**?" is an account that keeps the name, not a "no". With the flag, "no"/"nope" turn the name down only on
+ * their own or with their own punctuation ("no", "no,", "no."); "wrong" and "not" read as before.
+ */
+const NO_THEN_WORDS = /^\s*(?:no|nope)\b(?![,.;:!]|\s*$)/i;
+
 export function turnedDownName(request: Pick<AskRequest, "history" | "question">): string | null {
   const asked = ASKED.exec(lastReply(request))?.[1]?.trim();
   if (!asked || !TURNS_DOWN.test(request.question)) return null;
+  if (nearMissTurnedDownEverywhereEnabled() && NO_THEN_WORDS.test(request.question)) return null;
   const opening = request.question.trim().split(/[,.;!\n]/)[0] ?? "";
   return statedPayrollDeduct(opening) === null ? asked : null;
 }

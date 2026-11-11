@@ -71,7 +71,7 @@ export const NOV10_NEAR_MISS_NO_CALL_NO_SHOW_CASES: ReplayCase[] = [
     id: "nov10-near-miss-turned-down-plan-no-call-no-show-after-question",
     title: `after "Is this for **Corvina Vellacott**?", "${NO_CALL}": the account keeps "no call no show"`,
     report: "QA's guard on NEAR_MISS_TURNED_DOWN_EVERYWHERE (11 Nov 2026)",
-    status: "fixed",
+    status: { open: "after the near-miss question, \"no call no show …\" is read as turning the name down" },
     fixFlags: ON,
     async run(t) {
       vi.setSystemTime(new Date("2026-11-04T15:30:00Z"));
@@ -82,6 +82,8 @@ export const NOV10_NEAR_MISS_NO_CALL_NO_SHOW_CASES: ReplayCase[] = [
       const reply = await thread.say(NO_CALL);
       const account = reply.content.split("\n").find((line) => /^\*\*(?:Observation of Offense|Issue|What happened):\*\*/.test(line));
       if (account) expect(account, reply.content).toMatch(/no call no show/i);
+      // QA (11 Nov 2026): "no call no show …" is an account, not a "no": the asked name is kept.
+      expect(thread.proposal?.employeeName ?? null, `the asked name was taken off:\n${reply.content}`).toBe("Corvina Vellacott");
       expect(reply.content, reply.content).not.toMatch(/^\*\*(?:Observation of Offense|Issue|What happened):\*\*\s*call no show/im);
     },
   },
