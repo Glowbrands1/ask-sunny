@@ -2,6 +2,7 @@ import { PRODUCTION_SALONS, salonById } from "@/data/salons";
 import { isPolicyCorrection } from "./policy-correction-turn";
 import { observationAccount } from "@/lib/forms/ca-policy";
 import { ownPersonAccount } from "./observation-own-person";
+import { withoutWriteUpLead } from "./write-up-observation";
 import { withoutPayrollClauses } from "./payroll-clause-not-account";
 import { onlyDeniesForObservation } from "./ca-what-happened";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
@@ -55,6 +56,7 @@ import {
   dateQuestionKeptEnabled,
   secondRequestOwnAccountEnabled,
   observationOwnPersonOnlyEnabled,
+  writeUpLeadNotAccountEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { turnsMadeAbout, withObservationMadeAbout } from "./make-it-about";
 import { NOTHING_SET_ASIDE, citationSetAside, policiesSetAside, setAsideAnything, withPolicySetAside, withoutPolicyAsks } from "@/lib/forms/policy-set-aside";
@@ -788,7 +790,9 @@ function withObservation(content: string, turns: readonly string[], employeeName
       // MANAGER_WORDS_ONLY_ENABLED: without the clauses that only request the
       // form, name the employee or give their place (QA, 25 Oct 2026).
       // SALES_OBSERVATION_ACCOUNT_ENABLED: the account only, never the request's words, the name or a payroll answer (`forms/ca-policy.ts`).
-      const read = observationAccount(managerOnly ? managerAccount(said, employeeName) ?? "" : said, employeeName);
+      const accountRead = observationAccount(managerOnly ? managerAccount(said, employeeName) ?? "" : said, employeeName);
+      // WRITE_UP_LEAD_NOT_ACCOUNT_ENABLED (QA's October triage of #167): "write up <employee> for cell phone use" is the request; the account follows "for".
+      const read = accountRead && writeUpLeadNotAccountEnabled() ? withoutWriteUpLead(accountRead, employeeName) : accountRead;
       // OBSERVATION_OWN_PERSON_ONLY_ENABLED (QA's P7): never the request's other people, nor "create draft for …".
       const sentence = read && observationOwnPersonOnlyEnabled() ? ownPersonAccount(read) : read;
       if (!sentence) continue;
@@ -873,7 +877,10 @@ function stateCodeTitle(text: string, role: string): boolean {
  */
 function withAccount(content: string, turns: readonly string[], employeeName: string | null): string {
   // SALES_OBSERVATION_ACCOUNT_ENABLED: the account only, never the request's words, the name or a payroll answer (`forms/ca-policy.ts`).
-  const sentences = accountSentences(turns, employeeName, { managerOnly: managerWordsOnlyEnabled() }).map((sentence) => observationAccount(sentence, employeeName)).filter(
+  const sentences = accountSentences(turns, employeeName, { managerOnly: managerWordsOnlyEnabled() }).map((sentence) => observationAccount(sentence, employeeName)).map(
+    // WRITE_UP_LEAD_NOT_ACCOUNT_ENABLED (QA's October triage of #167): "write up <employee> for …" keeps only the account.
+    (sentence) => (sentence && writeUpLeadNotAccountEnabled() ? withoutWriteUpLead(sentence, employeeName) ?? "" : sentence),
+  ).filter(
     (sentence) => sentence !== "",
   ).filter(
     (sentence) =>
