@@ -4,9 +4,6 @@ import { authorizeForms } from "@/lib/forms/access";
 import {
   demoArchiveForm,
   demoDeleteForm,
-  demoMarkFollowedUp,
-  demoReopenFollowUp,
-  demoSetFollowUpDate,
   isDemoFormId,
 } from "@/lib/demo/forms-fixtures";
 

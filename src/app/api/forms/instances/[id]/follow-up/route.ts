@@ -2,8 +2,6 @@ import { NextResponse } from "next/server";
 import { isDemoMode } from "@/lib/config/runtime";
 import { authorizeForms } from "@/lib/forms/access";
 import {
-  demoArchiveForm,
-  demoDeleteForm,
   demoMarkFollowedUp,
   demoReopenFollowUp,
   demoSetFollowUpDate,
