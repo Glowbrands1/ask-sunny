@@ -1,7 +1,7 @@
 import { PRODUCTION_SALONS } from "@/data/salons";
-import { formInputFidelityEnabled, payrollAmountFieldEnabled, priorCoachingOptionalEnabled } from "@/lib/config/chat-quality-flags";
+import { payrollAmountFieldEnabled, priorCoachingOptionalEnabled } from "@/lib/config/chat-quality-flags";
 import { readCorrectiveActionIntake, describesIncident, type IntakeItem } from "@/lib/forms/corrective-action-intake";
-import { isNonTitleFollowUp, resolveStatedFormDate } from "@/lib/forms/form-input-fidelity";
+import { extractFormDate } from "@/lib/forms/form-date-answer";
 import { payrollAmountFromConversation, payrollAnswerForAmount, payrollDeductAmount } from "@/lib/forms/payroll-deduct";
 import { statedPayrollDeduct } from "@/lib/forms/payroll-deduct-answer";
 import { extractEmployeeNames } from "@/lib/forms/proposal";
@@ -125,7 +125,7 @@ export function fieldsFromManagerText(text: string, today: string): ConfirmedFor
     salonSettled: false,
   });
   const names = extractEmployeeNames(text).filter((name) => !isSalonName(name));
-  const date = resolveStatedFormDate(text, today);
+  const date = extractFormDate(text, today);
   const useToday = date === null && intake.supplied.includes("form_date");
   return {
     employeeName: names.length === 1 ? names[0]! : null,
@@ -164,11 +164,7 @@ export function corroborateModelFields(
 
   let jobTitle = base.jobTitle;
   if (model.jobTitle && appears(text, model.jobTitle) && !isSalonName(model.jobTitle)) {
-    // A bare "verbal" / "yes" / "Monday" is the whole reply, so it "appears".
-    // That is not the job title. Flag off keeps the probe.
-    if (!formInputFidelityEnabled() || !isNonTitleFollowUp(model.jobTitle)) {
-      jobTitle = asWritten(text, model.jobTitle);
-    }
+    jobTitle = asWritten(text, model.jobTitle);
   }
 
   let salon = base.salon;
@@ -179,7 +175,7 @@ export function corroborateModelFields(
 
   let incidentDateIso = base.incidentDateIso;
   let useToday = base.useToday;
-  const extracted = resolveStatedFormDate(text, today);
+  const extracted = extractFormDate(text, today);
   if (extracted) {
     incidentDateIso = extracted;
     useToday = false;

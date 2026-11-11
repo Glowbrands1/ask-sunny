@@ -52,25 +52,8 @@ describe("typed incident dates", () => {
     expect(resolveStatedFormDate("today", TODAY)).toBeNull();
     expect(resolveStatedFormDate("She wore slippers.", TODAY)).toBeNull();
     expect(resolveStatedFormDate("got a verbal warning yesterday", TODAY)).toBeNull();
-
-    for (const [typed, iso] of [
-      ["Oct 20", "2026-10-20"],
-      ["10/20", "2026-10-20"],
-      ["yesterday", "2026-10-23"],
-      ["last Tuesday", "2026-10-20"],
-    ] as const) {
-      const fields = fieldsFromManagerText(`Date of Occurrence: ${typed}`, TODAY);
-      expect(fields.useToday, typed).toBe(false);
-      expect(fields.incidentDateIso, typed).toBe(iso);
-      expect(draftLine(iso), typed).toContain(
-        iso === "2026-10-23" ? "October 23, 2026" : "October 20, 2026",
-      );
-      expect(draftLine(iso), typed).not.toContain("October 24, 2026");
-    }
-
-    const today = fieldsFromManagerText("Use today's date", TODAY);
-    expect(today.useToday).toBe(true);
-    expect(today.incidentDateIso).toBe(TODAY);
+    // QA, 11 Nov 2026: the form-field-state.ts hunk (fieldsFromManagerText reading a relative day) was dropped
+    // from #166 (Pau's protected module), so its assertions here went with it.
   });
 });
 
@@ -101,19 +84,9 @@ describe("bare follow-ups are not job titles", () => {
     },
   );
 
-  it.each(["verbal", "written", "yes", "Monday"])(
-    "flag on leaves %s off the job title",
-    (reply) => {
-      process.env.FORM_INPUT_FIDELITY_ENABLED = "1";
-      const fields = corroborateModelFields(
-        fieldsFromManagerText(reply, TODAY),
-        { ...model, jobTitle: reply },
-        reply,
-        TODAY,
-      );
-      expect(fields.jobTitle).toBeNull();
-    },
-  );
+  // QA, 11 Nov 2026: "flag on leaves <reply> off the job title" covered corroborateModelFields' hunk in
+  // form-field-state.ts (Pau's protected module), dropped from #166; the title fix stays in intent-slots.ts and
+  // form-card-slots.ts (src/lib/ai/form-input-fidelity.test.ts).
 
   it("still keeps a title the manager stated", () => {
     process.env.FORM_INPUT_FIDELITY_ENABLED = "1";
