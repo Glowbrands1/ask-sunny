@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { isOutlineTurn, withOutlineKeptNote, withoutOutlineTurns } from "./outline-on-proposal";
+import { isOutlineTurn, notesWithoutOutline, withOutlineKeptNote, withoutOutlineTurns } from "./outline-on-proposal";
 
 /* OUTLINE_ON_OPEN_PROPOSAL_ENABLED (ported from the sibling app: QA's Bubbles 17i live test, 11 Nov 2026). The tester's turns; invented people. */
 const A = "create a corrective action for Ilsa Varnholt, she was late on 11/3/26";
@@ -42,5 +42,12 @@ describe("OUTLINE_ON_OPEN_PROPOSAL_ENABLED", () => {
   it("the outline turn's reply says the outline is kept for her form", () => {
     const out = withOutlineKeptNote({ content: "card", formProposal: { employeeName: "Ilsa Varnholt", templateName: "Corrective Action Form" } });
     expect(out.content).toMatch(/^I've kept your outline as the layout for \*\*Ilsa Varnholt\*\*'s Corrective Action Form, with Ilsa's own details/);
+  });
+
+  it("the draft's notes leave the outline turns out; off, as sent", () => {
+    const notes = [A, OUTLINE, C].join("\n\n");
+    expect(notesWithoutOutline(notes)).toBe(notes);
+    vi.stubEnv("OUTLINE_ON_OPEN_PROPOSAL_ENABLED", "true");
+    expect(notesWithoutOutline(notes)).toBe(A);
   });
 });

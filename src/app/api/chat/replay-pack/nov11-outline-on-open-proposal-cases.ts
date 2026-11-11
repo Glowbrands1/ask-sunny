@@ -50,6 +50,14 @@ export const NOV11_OUTLINE_ON_OPEN_PROPOSAL_CASES: ReplayCase[] = [
       keepsStepA(b, thread.proposal as Record<string, unknown> | null, "b", first);
       const c = await thread.say(C);
       keepsStepA(c, thread.proposal as Record<string, unknown> | null, "c", first);
+      // QA (11 Nov 2026): Create after the three turns — the outline's person, date and events never reach the draft.
+      t.draftWrites({ observation: "Observed:\nIlsa Varnholt was late on 11/3/26." });
+      const id = await thread.create();
+      const described = t.draftPrompts().map((prompt) => prompt.split("WHAT THE MANAGER DESCRIBED:")[1] ?? "").join("\n");
+      expect(described, `the outline reached the drafting model:\n${described}`).not.toMatch(/Corisande|10\/12\/26|did not call the manager/i);
+      expect(described, `step (a)'s account did not reach the drafting model:\n${described}`).toMatch(/late on 11\/3\/26/);
+      const saved = Object.values(t.values(id)).join("\n");
+      expect(saved, `the outline's person or date is on the draft:\n${saved}`).not.toMatch(/Corisande|10\/12\/26/);
     },
   },
 ];
