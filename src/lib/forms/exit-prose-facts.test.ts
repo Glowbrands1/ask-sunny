@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { ChatFormProposal } from "@/types";
@@ -198,5 +200,40 @@ describe.each(REGISTERS)("EXIT_PROSE_FACTS_ENABLED in the managers' register: %s
   it("flag off, the prose is main's", () => {
     withFlag(false);
     expect(prose(as(BARE_NAME))).toContain("a short account drafted from what you've described");
+  });
+});
+
+/*
+ * QA's October triage of #263 (10 Nov 2026): still failing on main with production's flags. guardExitDetails keeps
+ * "Ava gave notice and worked through it." beside notes that say "did not call in", and after a bare name exitReady
+ * still says "a short account drafted…". Pinned with those flags, so the fix is checked on the path production takes.
+ */
+describe("with production's flags (QA's October triage of #263)", () => {
+  const stubbed: string[] = [];
+  function production(on: boolean): void {
+    const flags = (JSON.parse(readFileSync("src/config/production-flags.json", "utf8")) as { on: string[] }).on;
+    for (const name of flags) {
+      if (process.env[name] === undefined) stubbed.push(name);
+      process.env[name] = "true";
+    }
+    withFlag(on);
+  }
+  afterEach(() => {
+    for (const name of stubbed.splice(0)) delete process.env[name];
+  });
+  const notes = "ava pellmore did not call in for her last two shifts";
+  const drafted = "Ava gave notice and worked through it. Ava did not call in for the last two shifts.";
+
+  it("off: \"worked through it\" stays beside \"did not call in\", and a bare name promises a drafted account (the bug)", () => {
+    production(false);
+    expect(guardExitDetails(drafted, notes, TODAY).value).toBe(drafted);
+    expect(prose(BARE_NAME)).toContain("a short account drafted");
+  });
+
+  it("on: \"worked through it\" is dropped, and a bare name leaves Additional Details blank", () => {
+    production(true);
+    expect(guardExitDetails(drafted, notes, TODAY).value).toBe("Ava did not call in for the last two shifts.");
+    expect(prose(BARE_NAME)).not.toContain("a short account drafted");
+    expect(prose(BARE_NAME)).toMatch(/\*\*Left blank for you to review:\*\*[^\n]*Additional Details/);
   });
 });
