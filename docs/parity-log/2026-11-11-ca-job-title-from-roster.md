@@ -1,0 +1,5 @@
+## 11 Nov 2026: a Corrective Action's Job Title is the roster person's position — Ask Sunny only (CA_JOB_TITLE_FROM_ROSTER_ENABLED, default off)
+
+QA, 11 Nov 2026, found on sf-b5 (audit item 15.10). In this app, a Corrective Action for a roster person was created with Job Title blank when the account names another person's title ("When <employee> spoke with District manager <name> …"). TITLE_OF_THE_EMPLOYEE takes "District Manager" off the card, and nothing puts the employee's own position back. With the flag on, the chat route gives a Corrective Action card for one roster person, with no title of its own, that person's roster position (`lib/forms/ca-job-title-from-roster.ts`). A title the manager stated is never replaced. No protected file is touched.
+
+Not needed in Ask Bubbles. There, the card-building step sets the Job Title from Woven's verified title wherever Woven verified the employee (`ai/form-proposal.ts`, "WOVEN'S TITLE WINS"). The same chat holds there: replay `nov11-sf-b5-typo-name-and-title` asserts the created form's Job Title is the roster's position, with the "District manager" sentence in the account.

@@ -21,6 +21,7 @@ import {
   personGuardEnabled,
   missedShiftCitesAttendanceEnabled,
   possessivePlaceNotPersonEnabled,
+  caJobTitleFromRosterEnabled,
   formNameFromRosterEnabled,
   offRosterConfirmEnabled,
   exitLetterAddresseeEnabled,
@@ -935,6 +936,10 @@ async function postChat(request: Request) {
       }
       // PROPOSAL_NAME_CORRECTION_ENABLED: an off-roster "change her name to …" on the card is never kept silently; with the roster, the card stays for the one roster person it can only be, and a typo is never offered as a person.
       answer = withCorrectionNotDropped(answer, parsed);
+      // CA_JOB_TITLE_FROM_ROSTER_ENABLED: a CA card for one roster person with no title takes their roster position (`lib/forms/ca-job-title-from-roster.ts`).
+      if (caJobTitleFromRosterEnabled()) {
+        answer = await (await import("@/lib/forms/ca-job-title-from-roster")).withCaJobTitleFromRoster(answer, context.identity.scope);
+      }
       // TWO_FORMS_CARD_NOT_ASKED_ENABLED: a card that names its employee is never asked "Which of them … — <that employee> or …?" (`lib/forms/card-not-asked.ts`).
       if (twoFormsCardNotAskedEnabled()) answer = (await import("@/lib/forms/card-not-asked")).withoutWhichAskOnSeatedCard(answer);
       // NEAR_MISS_QUESTION_RULES_ENABLED: "no, …" to "Is this for <name>?" never gets a card for that name.
