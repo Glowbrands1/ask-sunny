@@ -1,8 +1,10 @@
 import { mentionsGlossaryTerm } from "@/lib/ai/chat-glossary";
-import { caSalesPolicyEnabled, caShortcutWordsEnabled, nameQuestionOnlyEnabled, shiftAccountIsIncidentEnabled } from "@/lib/config/chat-quality-flags";
+import { caSalesPolicyEnabled, caShortcutWordsEnabled, describedTopicIsAccountEnabled, nameQuestionOnlyEnabled, shiftAccountIsIncidentEnabled } from "@/lib/config/chat-quality-flags";
 
 import { isSalesPolicyReading, readCaPolicy } from "./ca-policy";
+import { saysFailureToOpen } from "./late-open";
 import { statesMetricShortfall } from "./metric-shortfall";
+import { specificTopic } from "./specific-policy-topics";
 import {
   PAYROLL_DEDUCT_LABEL,
   statedPayrollDeduct,
@@ -512,6 +514,8 @@ export function describesIncident(text: string): boolean {
   const normalized = normalize(text);
   if (any(normalized, INCIDENT_TOPIC) || any(normalized, OBSERVATIONAL_CLAUSE)) return true;
   if (shiftAccountIsIncidentEnabled() && SHIFT_ACCOUNT.test(normalized)) return true;
+  // FAILURE_TO_OPEN_IS_LATE_OPENING_ENABLED (Pau's P16): "for failure to open on time" says what she did. Off, false.
+  if (saysFailureToOpen(normalized)) return true;
   /*
    * WHATEVER THE POLICY READING RECOGNISES IS AN ACCOUNT TOO — a missed
    * deadline, unfinished work, a missed meeting, cash handling — so the two
@@ -519,7 +523,16 @@ export function describesIncident(text: string): boolean {
    */
   const policy = readCaPolicy(text);
   // CA_SALES_POLICY_ENABLED: a stated sales shortfall or MSB (the glossary) is the reason given (Pau, 4 Nov 2026). Off, never a sales reading.
-  return policy.topics.length > 0 || policy.missedEvent !== null || isSalesPolicyReading(policy);
+  if (policy.topics.length > 0 || policy.missedEvent !== null || isSalesPolicyReading(policy)) return true;
+  /*
+   * DESCRIBED_TOPIC_IS_ACCOUNT_ENABLED (coordinator via QA, production, 5 Nov
+   * 2026): "he brought his new kitten to the store on 10-22-26" (the sibling app) was cited as
+   * Animals in the Workplace "from what you described" in the same reply that
+   * said "You haven't told me what happened yet". The incident the policy
+   * reading's specific topics find in the manager's words (`specificTopic`,
+   * the reader the card's citation uses) is an account too. Off, as before.
+   */
+  return describedTopicIsAccountEnabled() && specificTopic(text) !== null;
 }
 
 /**

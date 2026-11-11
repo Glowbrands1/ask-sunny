@@ -60,7 +60,9 @@ export const NOV8_EXIT_OTHER_PERSON_CASES: ReplayCase[] = [
       const { content } = await thread.say(`I need an exit form with this information. ${LETTER}`);
       expect(content, `the letter's other person is offered:\n${content}`).not.toMatch(/\*\*Philippa\*\*/);
       expect(content, `her title is echoed as the employee's:\n${content}`).not.toMatch(/\*\*Job title:\*\*\s*Salon Director/i);
-      expect(content, `the form's person is not asked for:\n${content}`).toMatch(/Who is this \*\*Resignation\/Exit Form\*\* for\?|\*\*Dorran/);
+      // Changed on purpose (10 Nov 2026, QA's roster-set gate): with the name set on, the question is FORM_NAME's own
+      // wording, "Who is this form for? Tell me the employee's full name." — still asked, never Philippa.
+      expect(content, `the form's person is not asked for:\n${content}`).toMatch(/Who is this \*\*Resignation\/Exit Form\*\* for\?|Who is this form for\? Tell me the employee's full name\.|\*\*Dorran/);
       const reply = await thread.say("For Dorran Ashby");
       expect(thread.proposal?.employeeName, `the card is for someone else:\n${reply.content}`).toBe("Dorran Ashby");
     },

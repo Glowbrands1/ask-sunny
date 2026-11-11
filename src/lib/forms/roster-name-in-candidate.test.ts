@@ -17,6 +17,8 @@ afterEach(() => {
 
 describe("ROSTER_NAME_IN_CANDIDATE_ENABLED: a candidate ending in a roster person's name could be them", () => {
   it("off: \"When Odalys\" is shaped like nobody (as before)", () => {
+    // Changed on purpose (QA's #741 gate R16A, 10 Nov 2026): the flag is pinned off here, so the set's env does not leak in.
+    vi.stubEnv("ROSTER_NAME_IN_CANDIDATE_ENABLED", "");
     expect(couldBeOnRoster("When Odalys", ROSTER)).toBe(false);
   });
 
