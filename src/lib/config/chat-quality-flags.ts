@@ -3892,6 +3892,16 @@ export function otherNotAPolicyNameEnabled(): boolean {
 }
 
 /**
+ * ACCOUNT_TYPOS_FIXED_ENABLED (QA, the Sunny sanitation report, 10 Nov 2026 18:49Z; default off). "not doing th e10 minute
+ * sanitaion" went onto the card word for word. On, the card's account keeps the manager's words with obvious slips mended
+ * ("the 10-minute sanitation"; `forms/account-spelling.ts`). The stored messages and the record keep what was typed. Off,
+ * as before.
+ */
+export function accountTyposFixedEnabled(): boolean {
+  return envFlag("ACCOUNT_TYPOS_FIXED_ENABLED");
+}
+
+/**
  * ANOTHER_REQUEST_LEAD_ENABLED (QA, Sunny round 7c and 9 live, 9 Nov 2026; default off; same flag in both apps). "I need
  * another corrective action for <P>, his cash drawer was short $20 on 11/3" was the card's whole Observation: "another" was
  * not read as the request's own word. With the flag on, "another", "one more" and "a second / separate / different / new"

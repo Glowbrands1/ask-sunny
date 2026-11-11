@@ -601,6 +601,7 @@ const NEW_FLAGS = [
   // coding 2: OTHER_POLICY_AGREES and OTHER_NOT_A_POLICY_NAME (QA, 11 Nov 2026; default off): forced off with the others.
   "OTHER_POLICY_AGREES_ENABLED",
   "OTHER_NOT_A_POLICY_NAME_ENABLED",
+  "ACCOUNT_TYPOS_FIXED_ENABLED",
 ] as const;
 
 const PROTECTED = [

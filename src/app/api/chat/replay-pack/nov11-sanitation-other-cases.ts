@@ -78,4 +78,18 @@ export const NOV11_SANITATION_OTHER_CASES: ReplayCase[] = [
       expect(saved.action_plan ?? "", JSON.stringify(saved)).not.toMatch(/\bthe Other polic/i);
     },
   },
+  {
+    id: "nov11-sanitation-account-typos-mended",
+    title: `"${SAID}": the card's Observation reads "not doing the 10-minute sanitation" (the manager's words, slips mended)`,
+    report: `${REPORT} (C: typos on the card)`,
+    status: { open: "the card's Observation is \"not doing th e10 minute sanitaion\"" },
+    fixFlags: ["ACCOUNT_TYPOS_FIXED_ENABLED"],
+    async run(t) {
+      vi.setSystemTime(new Date("2026-11-10T18:49:00Z"));
+      t.directory([...STAFF, BRISA]);
+      t.as("salon_director", KEARNEY);
+      const card = (await t.thread().say(SAID)).content;
+      expect(card, card).toMatch(/^\*\*Observation of Offense:\*\* not doing the 10-minute sanitation$/m);
+    },
+  },
 ];
