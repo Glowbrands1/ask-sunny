@@ -13,6 +13,7 @@ import {
   chatLongMessageEnabled,
   draftActionsEnabled,
   formEditHonestReplyEnabled,
+  policyBlankHonestReplyEnabled,
   claimGuardEnabled,
   nameCorrectionWordsEnabled,
   listPolicyIsEditEnabled,
@@ -947,11 +948,23 @@ async function postChat(request: Request) {
           asked.context.todayIso,
         );
       /*
+       * POLICY_BLANK_HONEST_REPLY_ENABLED (QA's live round-24 test, 11 Nov 2026): with the open draft's policy text EMPTY,
+       * "did you check the policy?" / "is the policy verified?" is answered plainly from the form, and no line says a
+       * section is quoted on it. A question it answered is no edit, so the honest-edit step below leaves it alone.
+       */
+      let policyQuestionAnswered = false;
+      if (policyBlankHonestReplyEnabled() && openForm && !draftAnswer && !correction && !policyChange && !redraft && !revision && !reopened && !answer.formUpdate) {
+        const honestPolicy = (await import("@/lib/forms/policy-blank-honest")).withBlankPolicyHonesty(answer, openForm, parsed.question);
+        answer = honestPolicy.answer;
+        policyQuestionAnswered = honestPolicy.handled;
+      }
+      /*
        * FORM_EDIT_HONEST_REPLY_ENABLED: the ordinary answer, with a form open,
        * changed nothing — so it never says it updated the form. See
        * `honestFormReply` in `lib/forms/form-content-turn.ts`.
        */
       if (
+        !policyQuestionAnswered &&
         (formEditHonestReplyEnabled() || claimGuardEnabled()) &&
         parsed.activeFormInstanceId &&
         !draftAnswer && !correction && !policyChange && !redraft && !revision && !reopened &&
