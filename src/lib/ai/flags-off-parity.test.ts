@@ -184,6 +184,8 @@ import { privateCreatorFormsEnabled, privateCreatorsActive } from "@/lib/forms/p
  */
 
 const NEW_FLAGS = [
+  // coding 4: METRIC_ALONE_NOT_A_NAME (ported from Ask Bubbles, D4, 10 Nov 2026; default off).
+  "METRIC_ALONE_NOT_A_NAME_ENABLED",
   "SLOT_RETENTION_ENABLED",
   "FIELD_ACCURACY_ENABLED",
   "DRAFT_DEDUPE_ENABLED",
