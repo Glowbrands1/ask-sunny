@@ -92,6 +92,17 @@ vi.mock("@/lib/knowledge/providers/supabase", () => ({
     }
   },
 }));
+/*
+ * Production has RETRIEVAL_RECALL_ENABLED on, so the search beside the manual goes through matchRecallKnowledge, not the
+ * provider. The same double answers both, so these tests hold under production's env as under the defaults (QA, 11 Nov 2026).
+ */
+vi.mock("@/lib/knowledge/recall-match", () => ({
+  matchRecallKnowledge: async () => {
+    state.matched += 1;
+    if (state.matchThrows) throw new Error("recall RPC failed");
+    return state.rows;
+  },
+}));
 vi.mock("@/lib/reporting/read/report-briefing", () => ({ loadReportBriefing: async () => null }));
 vi.mock("@/lib/reporting/read/employee-facts", () => ({
   loadEmployeeFacts: async () => ({ available: false, block: null, reason: "no dataset" }),
