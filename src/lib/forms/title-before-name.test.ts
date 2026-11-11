@@ -21,9 +21,10 @@ describe("TITLE_BEFORE_NAME: a job title before the name", () => {
     expect(withoutLeadingTitle(typed)).toBe(name);
   });
 
-  it("flag on: a state code is never a title (\"SD Sioux Falls\" is a place), and a title alone names nobody", () => {
+  it("flag on: a roster state is never a title (\"NE Kearney\" is a place), and a title alone names nobody", () => {
     process.env[FLAG] = "true";
-    expect(leadingTitleLength(["SD", "Sioux", "Falls"])).toBe(0);
+    // No roster salon is in South Dakota, so "SD" here is Salon Director, as `extractJobTitle` reads it.
+    expect(leadingTitleLength(["NE", "Kearney"])).toBe(0);
     expect(leadingTitleLength(["Tanning", "Consultants"])).toBe(0);
   });
 
