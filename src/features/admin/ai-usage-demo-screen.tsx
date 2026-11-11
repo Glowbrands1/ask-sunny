@@ -97,20 +97,19 @@ export function AIUsageDemoScreen() {
               <h2 className="text-[15px] font-semibold text-foreground">
                 {DEMO_AI_USAGE.provider}
               </h2>
-              <Badge tone="neutral" size="sm">
+              <Badge tone={DEMO_AI_USAGE.connected ? "ready" : "neutral"} size="sm">
                 <StatusDot />
-                Not connected
+                {DEMO_AI_USAGE.connected ? "Connected" : "Not connected"}
               </Badge>
             </div>
             <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
-              Ask Sunny will run on Claude. No API key is configured in this
-              prototype, so every answer comes from the seeded demo provider and
-              the figures below are illustrative.
+              Ask Sunny runs on Claude. This is a demo deployment, so answers come
+              from the seeded demo provider and every figure below is illustrative.
             </p>
           </div>
           <Button asChild variant="secondary" className="shrink-0">
             <Link href="/admin/integrations">
-              Connect
+              {DEMO_AI_USAGE.connected ? "Integrations" : "Connect"}
               <ArrowUpRight />
             </Link>
           </Button>

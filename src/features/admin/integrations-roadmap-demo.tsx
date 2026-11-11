@@ -36,16 +36,29 @@ export function IntegrationsRoadmapDemo({
 }: {
   onOpen: (integration: Integration) => void;
 }) {
+  /* Browser storage has its own measured card in the parent. */
+  const connected = DEMO_INTEGRATIONS.filter(
+    (integration) => integration.status === "connected" && integration.id !== "int-local-storage",
+  );
   const pending = DEMO_INTEGRATIONS.filter(
     (integration) => integration.status !== "connected",
   );
 
   return (
     <>
+      <SectionHeader
+        title="Connected in this demo"
+        description="Shown as a live deployment runs them. In this demo every figure behind them is seeded."
+      />
+      <div className="mb-8 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {connected.map((integration) => (
+          <IntegrationCard key={integration.id} integration={integration} onOpen={onOpen} />
+        ))}
+      </div>
+
       <Notice tone="neutral" icon={<Info />} className="mb-6">
-        The list below is the integration roadmap. Exactly one item is connected
-        today: the browser storage that makes uploads and saved forms survive a
-        refresh. Everything else honestly reports &ldquo;Not connected&rdquo;.
+        The list below is the integration roadmap: tools Ask Sunny can connect to once
+        the business provides access. Each one honestly reports &ldquo;Not connected&rdquo;.
       </Notice>
 
       <SectionHeader

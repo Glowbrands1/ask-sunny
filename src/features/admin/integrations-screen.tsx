@@ -72,7 +72,11 @@ export function IntegrationsScreen() {
       <PageHeader
         eyebrow="Admin"
         title="Integrations"
-        description="What Ask Sunny connects to, and what it will connect to. Nothing on this page is faked — one integration is genuinely live."
+        description={
+          live
+            ? "What Ask Sunny connects to, and what it will connect to. Nothing on this page is faked — one integration is genuinely live."
+            : "What Ask Sunny connects to, and what it will connect to. This is a demo deployment: the connected services below are shown with seeded data."
+        }
       />
 
       {/* Live configuration first: it is the section an administrator actually
