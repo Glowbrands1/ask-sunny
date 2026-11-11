@@ -718,6 +718,14 @@ const PROTECTED = [
  * Behind CA_SALES_POLICY_ENABLED, default off; off, every row is carried as
  * before. The filed form is never touched. Same hunk in both apps (Ask
  * Bubbles 66813d54); in Ask Sunny the Type of Offense change is revision 8.
+ *
+ * The user (Pau) approved on 11 Nov 2026, via QA (Pau's standing approval for
+ * fixes, recorded by QA), in src/lib/forms/proposal.ts, exactly the hunks in
+ * docs/patches/form-name-not-a-title.patch: the import
+ * `formNameNotATitleEnabled`, `FORM_NAME_AFTER` and `titleSaidLater`, and in
+ * extractJobTitle a title word straight before "EPP" is skipped as the form's
+ * name unless the title is said again later. Behind
+ * FORM_NAME_NOT_A_TITLE_ENABLED, default off; off, every title is read as before.
  */
 const APPROVED_PROTECTED_EDITS = [
   ":(exclude)src/lib/forms/proposal.ts",
