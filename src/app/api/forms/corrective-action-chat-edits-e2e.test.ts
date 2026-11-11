@@ -531,6 +531,35 @@ describe("any other change to the open Corrective Action Form is made in place",
     expect((await row(id, "action_plan"))?.value).toBe(`Wren will retake the attendance training this week. ${CLOSING}`);
   });
 
+  it("REVISION_REPLY_SHOWS_FIELDS_ENABLED: the reply shows the changed field as it now reads; off, as before", async () => {
+    /*
+     * QA, the Sunny sanitation report (D, 10 Nov 2026 18:49Z): after Create, the manager's follow-up got "Updated the
+     * **Corrective Action Form** for <name>: Observation of Offense. Everything else on the form is as it was." and no
+     * refreshed card. With the flag, the changed field is printed under that line (`forms/revision-shown-fields.ts`).
+     */
+    for (const on of [true, false]) {
+      vi.stubEnv("REVISION_REPLY_SHOWS_FIELDS_ENABLED", on ? "true" : "");
+      try {
+        const { id, history } = await createdForm();
+        state.toolValues = { action_plan: "Wren will retake the attendance training this week." };
+        state.toolChecked = {};
+        const answer = await reviseActiveForm({
+          request: chat(),
+          instanceId: id,
+          question: "change the action plan to say Wren will retake the attendance training this week",
+          history,
+          today: "2026-10-20",
+        });
+        const shown = `**Action Plan:** Wren will retake the attendance training this week. ${CLOSING}`;
+        expect(answer?.content).toMatch(/Everything else on the form is as it was\./);
+        if (on) expect(answer?.content).toContain(shown);
+        else expect(answer?.content).not.toContain("**Action Plan:**");
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    }
+  });
+
   it("leaves a plan the manager typed on the form when the policy or payroll changes in chat", async () => {
     const { id, history } = await createdForm();
     await saveInstanceValues(id, { values: { action_plan: "Wren and I agreed she will set two alarms." }, checked: {} }, "user-1");

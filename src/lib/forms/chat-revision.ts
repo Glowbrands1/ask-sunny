@@ -1,5 +1,6 @@
 import "server-only";
 
+import { shownFieldLines, updatedKeysShown } from "./revision-shown-fields";
 import { getAnthropicClient } from "@/lib/ai/anthropic";
 import type { AskResponse } from "@/lib/ai/types";
 import { ACTIVE_BRAND } from "@/lib/brand";
@@ -611,6 +612,8 @@ export async function reviseActiveForm(input: {
     ...(dateLines.length ? [""] : []),
     `Updated the ${who}${updated.length ? `: ${updated.join(", ")}` : ""}.${saved.cleared.length ? ` Removed ${saved.cleared.map(labelOf).join(", ")}.` : ""} Everything else on the form is as it was.`,
   ];
+  // REVISION_REPLY_SHOWS_FIELDS_ENABLED: each changed text field as it now reads (`revision-shown-fields.ts`).
+  lines.push(...shownFieldLines(updatedKeysShown(written, saved.cleared), saved.accepted.values, labelOf));
   if (refusedFindings.length > 0) lines.push("", followUpNote(refusedFindings, labelled));
   if (sensitive.anyRefused) {
     lines.push("", "I didn't tick a termination, demotion or suspension — that decision stays with leadership.");
