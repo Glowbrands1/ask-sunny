@@ -1,4 +1,4 @@
-import { titleEndsAtLineEnabled } from "@/lib/config/chat-quality-flags";
+import { fullPositionTitleEnabled, titleEndsAtLineEnabled } from "@/lib/config/chat-quality-flags";
 
 import { isCompanyPositionTitle } from "./staff-picker";
 
@@ -31,13 +31,32 @@ export function titleNamesAnotherPerson(text: string, title: string, employeeNam
     seen += 1;
     const at = match.index ?? 0;
     // TITLE_ENDS_AT_LINE_ENABLED (Sunny gate, 6 Nov 2026, s16): the name after a title is on the title's line; the next line ("NE Kearney") is not its owner.
-    const after = titleEndsAtLineEnabled() && titleLine(text, at, match[0].length) ? null : nameAt(text.slice(at + match[0].length), "after", titleEndsAtLineEnabled());
+    const after =
+      (titleEndsAtLineEnabled() && titleLine(text, at, match[0].length)) || qualifiedTitle(text, at + match[0].length)
+        ? null
+        : nameAt(text.slice(at + match[0].length), "after", titleEndsAtLineEnabled());
     const before = nameAt(text.slice(0, at), "before");
     const beside = [after, before].filter((name): name is string[] => name !== null);
     const other = beside.some((name) => name.every((word) => !employee.has(word.toLowerCase())));
     if (!other) return false;
   }
   return seen > 0;
+}
+
+/*
+ * FULL_POSITION_TITLE_ENABLED (QA, 10 Nov 2026): "<name>\nTeam Member Weekends Only\n<place>" for an employee with no
+ * roster position left the Job Title blank: "Weekends Only" was read as the title's owner. Words after the title on its
+ * line that only say when or how the employee works (QA's list) are no person; the title is the employee's. Anything
+ * else ("District Manager Brenna Kowaldane") is read as before. Off, as before.
+ */
+const QUALIFIER = String.raw`(?:weekends?|weekdays?|part[\s-]?time|full[\s-]?time|pt|ft|seasonal|temp|temporary|nights?|evenings?|mornings?|closing|opening|shifts?|only|on[\s-]?call|trainee|in\s+training)`;
+const QUALIFIERS_ONLY = new RegExp(String.raw`^[^\S\n]*(?:\(?${QUALIFIER}\)?[^\S\n]*[,/&+-]?[^\S\n]*)+[.!]?[^\S\n]*(?:\n|$)`, "i");
+
+/** FULL_POSITION_TITLE_ENABLED: the rest of the title's line, from `end`, is only schedule or status words. */
+function qualifiedTitle(text: string, end: number): boolean {
+  if (!fullPositionTitleEnabled()) return false;
+  const rest = text.slice(end);
+  return /^[^\S\n]+\S/.test(rest) && QUALIFIERS_ONLY.test(rest);
 }
 
 const NAME_WORD = /^\p{Lu}[\p{L}'’-]+$/u;

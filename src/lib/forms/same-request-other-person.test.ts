@@ -128,7 +128,11 @@ describe("sameRequestForOtherPerson", () => {
     const history = [turn("m1", "user", MIREYA)];
     expect(sameRequestForOtherPerson({ question: SAME, history, roster: ROSTER })).toBeNull();
     expect(sameRequestForOtherPerson({ question: "do the same thing for Mireya Vantrell", history, roster: ROSTER, continueTemplateKey: "dpoa" })).toBeNull();
+    // Off roster: no request with SAME_REQUEST_OFF_ROSTER_ENABLED off (production today). With it on, an off-roster <B> is
+    // read as typed on purpose (QA's r23 live test; its own tests are below), so this line pins the flag off.
+    process.env.SAME_REQUEST_OFF_ROSTER_ENABLED = "false";
     expect(sameRequestForOtherPerson({ question: "do the same thing for Zelda Nobody", history, roster: ROSTER, continueTemplateKey: "dpoa" })).toBeNull();
+    delete process.env.SAME_REQUEST_OFF_ROSTER_ENABLED;
   });
 });
 
@@ -157,5 +161,42 @@ describe("the card, Create and the draft", () => {
     expect(notesForOtherPerson({ notes: `${MIREYA}\n\n${SAME}`, employeeName: "Caspian Drummet", templateKey: "dpoa", roster: ROSTER })).toBe(
       "I need a written corrective action for Caspian Drummet, she was late opening the salon on Monday",
     );
+  });
+});
+
+/*
+ * SAME_REQUEST_OFF_ROSTER_ENABLED (QA's Sunny round-23 live test, conv_mwb1xng82tz2tyr, 10 Nov 2026): the live turns,
+ * with <A> and <B> on no roster. The route hands the history as words only, so <A> is read from the card's reply.
+ */
+describe("SAME_REQUEST_OFF_ROSTER_ENABLED: <A> and <B> off the roster", () => {
+  const SAME_THING = "Can you do the same thing for Mara Quell but make it a written";
+  const history = [
+    turn("u1", "user", "create a corrective action for Rory Vance, she was late on 11/3/26"),
+    turn("a1", "assistant", "I'll draft a **Corrective Action Form** for **Rory Vance** from what you've described."),
+  ];
+  afterEach(() => {
+    delete process.env.SAME_REQUEST_OFF_ROSTER_ENABLED;
+  });
+
+  it("off: as before, no same request", () => {
+    process.env.SAME_REQUEST_OTHER_PERSON_ENABLED = "true";
+    process.env.SAME_REQUEST_OFF_ROSTER_ENABLED = "false";
+    expect(sameRequestForOtherPerson({ question: SAME_THING, history, roster: ROSTER, continueTemplateKey: "dpoa" })).toBeNull();
+  });
+
+  it("on: <B>'s request carries <A>'s account, with the written level", () => {
+    process.env.SAME_REQUEST_OTHER_PERSON_ENABLED = "true";
+    process.env.SAME_REQUEST_OFF_ROSTER_ENABLED = "true";
+    const read = sameRequestForOtherPerson({ question: SAME_THING, history, roster: ROSTER, continueTemplateKey: "dpoa" });
+    expect(read).toMatchObject({ kind: "same", name: "Mara Quell", from: "Rory Vance" });
+    expect(read!.question).toMatch(/Mara Quell, she was late on 11\/3\/26/);
+    expect(read!.question).toMatch(/Written Warning/);
+  });
+
+  it("on: <A> again, or a pronoun, is no other person", () => {
+    process.env.SAME_REQUEST_OTHER_PERSON_ENABLED = "true";
+    process.env.SAME_REQUEST_OFF_ROSTER_ENABLED = "true";
+    expect(sameRequestForOtherPerson({ question: "Can you do the same thing for Rory Vance but make it a written", history, roster: ROSTER, continueTemplateKey: "dpoa" })).toBeNull();
+    expect(sameRequestForOtherPerson({ question: "Can you do the same thing for her but make it a written", history, roster: ROSTER, continueTemplateKey: "dpoa" })).toBeNull();
   });
 });

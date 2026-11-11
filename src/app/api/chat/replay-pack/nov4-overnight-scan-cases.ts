@@ -173,27 +173,37 @@ export const NOV4_OVERNIGHT_SCAN_CASES: readonly ReplayCase[] = [
   {
     /* Coverage (QA): NOT COVERED (location/scope resolution). */
     id: "nov4-scan-sf-s14-team-coaching-other-salon",
-    title: "a team coaching form at a salon outside the manager's scope (Grand Island) — confirm the salon or say she cannot file for it; never switch silently to Kearney",
+    title: "a team coaching form at a salon outside the manager's scope (Grand Island) — never a card for Grand Island; the reply says she cannot file for it and the card keeps her own salon (Pau's ruling)",
     report: `${REPORT}, sf-s14: "can you make me a coahcing form for my entire team at Grand Island for selling kits and not writing raing checks"`,
-    // Run 4 Nov 2026 (production flags): fails as below.
-    status: { open: "a team coaching card is made for Grand Island (loc-0307), outside the Kearney salon director's scope, with no question and no word that she cannot file for it" },
+    /*
+     * Changed on purpose (10 Nov 2026): superseded by Pau's ruling (28 Oct 2026, OUT_OF_SCOPE_PLACE_KEEPS_OWN_ENABLED and
+     * OUT_OF_SCOPE_PLACE_SAID_ENABLED, both on in production): a card never holds a salon the manager is not assigned to —
+     * it goes back to the manager's own, and the reply says she cannot file for the salon she named. QA (10 Nov): Pau's
+     * later ruling wins. The scan's "never switch silently" is kept as "the reply names Grand Island and says she cannot".
+     */
+    status: "fixed",
     async run(t) {
       const thread = start(t);
       const reply = await thread.say("can you make me a coahcing form for my entire team at Grand Island for selling kits and not writing raing checks");
-      expect(reply.formProposal?.locationId ?? null, "the card switched silently to the manager's own salon").not.toBe(KEARNEY_SALON);
-      const confirms = /grand island/i.test(reply.content) && /\?/.test(reply.content);
-      const cannot = /grand island/i.test(reply.content) && /(?:can'?t|cannot|not able to|don'?t have access|outside (?:your|the) )/i.test(reply.content);
-      expect(confirms || cannot, `neither asks to confirm Grand Island nor says she cannot file for it:\n${reply.content}`).toBe(true);
       expect(reply.formProposal?.locationId ?? null, "a card was made for a salon she does not cover").not.toBe(GRAND_ISLAND);
+      const cannot = /grand island/i.test(reply.content) && /(?:can'?t|cannot|not able to|don'?t have access|isn'?t a salon on your assignment|outside (?:your|the) )/i.test(reply.content);
+      expect(cannot, `the reply does not say she cannot file for Grand Island:\n${reply.content}`).toBe(true);
+      expect([KEARNEY_SALON, null], "the card holds a salon other than her own").toContain(reply.formProposal?.locationId ?? null);
     },
   },
   {
     /* Coverage (QA): step 7, but the "as you said" attribution is NOT COVERED. */
     id: "nov4-scan-sf-s15-opening-duties-cleaning",
-    title: "a CA for not completing opening/cleaning duties on 11/2/2026 — Care and Cleaning of Equipment and Facilities (p.21), not Late Opening or Attendance, and no \"as you said\"",
+    title: "a CA for not completing opening/cleaning duties on 11/2/2026 — Other (Pau's ruling), never Late Opening or Attendance, and no \"as you said\"",
     report: `${REPORT}, sf-s15: "Write me a CA for Isolde Brannock for failing to complete opening duties. Isolde did not complete daily cleaning duties. on november 2, 2026"`,
-    // Run 4 Nov 2026 (production flags): fails as below.
-    status: { open: "the card reads \"this reads as **Standards of Conduct** — assigned work that wasn't completed\", not Care and Cleaning of Equipment and Facilities (no Late Opening/Attendance and no \"as you said\" in the pack; the live \"as you said\" comes from the answering model)" },
+    /*
+     * Changed on purpose (10 Nov 2026): superseded by Pau's ruling (5 Nov 2026; `nov5-cleaning-other-cases.ts`,
+     * CLEANING_OTHER_EVERY_WORDING_ENABLED on in production): cleaning duties left undone are Other on the Corrective
+     * Action Form, with no Standards of Conduct citation. The scan's Care and Cleaning p.21 expectation is replaced; the
+     * rest of the scan's case (no Late Opening, no Attendance, no "as you said", the Date) is kept. QA (10 Nov): Pau's
+     * later ruling wins.
+     */
+    status: "fixed",
     async run(t) {
       const thread = start(t);
       const reply = await thread.say("Write me a CA for Isolde Brannock for failing to complete opening duties. Isolde did not complete daily cleaning duties. on november 2, 2026");
@@ -201,7 +211,7 @@ export const NOV4_OVERNIGHT_SCAN_CASES: readonly ReplayCase[] = [
       expect(reply.content, "the card says \"as you said\" about a policy she never named").not.toMatch(/as you said/i);
       const policy = policyLine(reply);
       expect(policy, `the card cites Late Opening or Attendance:\n${reply.content}`).not.toMatch(/late opening|attendance/i);
-      expect(policy, `the card does not cite Care and Cleaning:\n${reply.content}`).toMatch(/care and cleaning of equipment and facilities/i);
+      expect(policy, `the card's Policy is not Other:\n${reply.content}`).toMatch(/\bOther\b/);
       t.draftWrites({ observation: "Observed:\nIsolde Brannock did not complete the daily cleaning duties at opening on November 2, 2026." });
       const id = await thread.create();
       const values = t.values(id);
