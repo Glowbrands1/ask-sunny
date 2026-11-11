@@ -857,25 +857,6 @@ export function readExitFacts(rawText: string, today: string): ExitFacts {
     lastDayWorked = noticeFulfilled;
   }
   /*
-   * EXIT_NOTICE_FULFILLED_ENABLED (QA, 25 Oct 2026; conv_mvodv9bh26p0jf4,
-   * conv_mvofngxg2xy7l11): the other way round. A notice the manager says was
-   * worked, with a last day worked, was fulfilled on that last day. No last
-   * day, no date: nothing is invented.
-   */
-  let fulfilledOn = noticeFulfilled;
-  if (
-    exitNoticeFulfilledEnabled() &&
-    fulfilled &&
-    !fulfilledOn &&
-    lastDayWorked &&
-    !lastDayUnclear &&
-    !separationUnclear &&
-    !ambiguities.some((entry) => entry.kind !== "separation_conflict" && entry.role === "noticeFulfilled")
-  ) {
-    fulfilledOn = lastDayWorked;
-  }
-
-  /*
    * EXIT_FULFILLED_IS_LAST_DAY_ENABLED (manager, 26 Oct 2026: "her last day
    * worked was 9-28-26" / "gave and worked 2 week notice"): the notice worked
    * to the end was fulfilled on the last day worked, and that line stayed
@@ -892,6 +873,25 @@ export function readExitFacts(rawText: string, today: string): ExitFacts {
     !ambiguities.some((entry) => entry.kind !== "separation_conflict" && entry.role === "noticeFulfilled")
   ) {
     noticeFulfilled = lastDayWorked;
+  }
+
+  /*
+   * EXIT_NOTICE_FULFILLED_ENABLED (QA, 25 Oct 2026; conv_mvodv9bh26p0jf4,
+   * conv_mvofngxg2xy7l11): the other way round. A notice the manager says was
+   * worked, with a last day worked, was fulfilled on that last day. No last
+   * day, no date: nothing is invented.
+   */
+  let fulfilledOn = noticeFulfilled;
+  if (
+    exitNoticeFulfilledEnabled() &&
+    fulfilled &&
+    !fulfilledOn &&
+    lastDayWorked &&
+    !lastDayUnclear &&
+    !separationUnclear &&
+    !ambiguities.some((entry) => entry.kind !== "separation_conflict" && entry.role === "noticeFulfilled")
+  ) {
+    fulfilledOn = lastDayWorked;
   }
 
   return {

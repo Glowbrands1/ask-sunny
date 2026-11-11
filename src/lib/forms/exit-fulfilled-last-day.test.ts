@@ -17,9 +17,11 @@ const sentence = (turn: string) => turn.replace(/^([a-z])/, (letter) => letter.t
 const FLAG = "EXIT_FULFILLED_IS_LAST_DAY_ENABLED";
 const saved = new Map<string, string | undefined>();
 beforeEach(() => {
-  for (const name of [FLAG, "EXIT_INTAKE_FIX_ENABLED"]) saved.set(name, process.env[name]);
+  for (const name of [FLAG, "EXIT_INTAKE_FIX_ENABLED", "EXIT_NOTICE_FULFILLED_ENABLED"]) saved.set(name, process.env[name]);
   process.env.EXIT_INTAKE_FIX_ENABLED = "true";
   delete process.env[FLAG];
+  // EXIT_NOTICE_FULFILLED_ENABLED also fills this line from a worked notice; stubbed off so "off: as main" is main.
+  process.env.EXIT_NOTICE_FULFILLED_ENABLED = "";
 });
 afterEach(() => {
   for (const [name, value] of saved) {

@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { afterEach, describe, expect, it } from "vitest";
 
 import { readExitFacts } from "./exit-facts";
@@ -360,5 +362,45 @@ describe.each([
   it("on, a negated worked notice stays unticked", () => {
     withFlag(true);
     expect(readExitFacts(as("exit for ava pellmore no 2 wk notice worked"), TODAY).noticeOptions).toEqual([]);
+  });
+});
+
+/*
+ * QA's October triage of #245 (10 Nov 2026): still failing on main with production's flags ("9/25 gave notice worked
+ * it til 10/9" puts 10/9 on the notice line and leaves Last Day blank; "gave notice 9/25 fulfilled 10/9" leaves
+ * Submitted & Fulfilled Notice unticked). Pinned with those flags, so the fix is checked on the path production takes.
+ */
+describe("with production's flags (QA's October triage of #245)", () => {
+  const stubbed: string[] = [];
+  function production(on: boolean): void {
+    const flags = (JSON.parse(readFileSync("src/config/production-flags.json", "utf8")) as { on: string[] }).on;
+    for (const name of flags) {
+      if (process.env[name] === undefined) stubbed.push(name);
+      process.env[name] = "true";
+    }
+    withFlag(on);
+  }
+  afterEach(() => {
+    for (const name of stubbed.splice(0)) delete process.env[name];
+  });
+
+  it("off: 10/9 is the notice date with no last day, and the run-on leaves the box unticked (the bug)", () => {
+    production(false);
+    expect(readExitFacts(WORKED_IT_TIL, TODAY)).toMatchObject({ noticeGiven: "2026-10-09", lastDayWorked: null });
+    expect(readExitFacts(FULFILLED_RUN_ON, TODAY).noticeOptions ?? []).not.toContain("submitted_fulfilled_notice");
+  });
+
+  it("on: notice 9/25, last day 10/9, and the run-on ticks Submitted & Fulfilled Notice", () => {
+    production(true);
+    expect(readExitFacts(WORKED_IT_TIL, TODAY)).toMatchObject({
+      noticeGiven: "2026-09-25",
+      lastDayWorked: "2026-10-09",
+      noticeOptions: ["submitted_fulfilled_notice"],
+    });
+    expect(readExitFacts(FULFILLED_RUN_ON, TODAY)).toMatchObject({
+      noticeGiven: "2026-09-25",
+      noticeFulfilled: "2026-10-09",
+      noticeOptions: ["submitted_fulfilled_notice"],
+    });
   });
 });
