@@ -27,6 +27,10 @@ const BROKEN = [
   "she was out of uniform on 10/14/26",
   "she was out of uniform again today",
   "she showed up out of uniform.",
+  // Gate-Bubbles (11 Nov 2026): what she wore instead follows "uniform".
+  "showing up out of uniform with a hoodie",
+  "she was out of uniform wearing a hoodie on 10/14/26",
+  "she came in out of uniform in a hoodie on 10/14/26",
 ];
 
 afterEach(() => vi.unstubAllEnvs());
