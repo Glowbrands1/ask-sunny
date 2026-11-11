@@ -2,13 +2,14 @@ import "server-only";
 
 import { z } from "zod";
 
+import { queryRewriteKeepsNounsEnabled } from "@/lib/config/chat-quality-flags";
 import { CLAUDE_HAIKU_MODEL } from "@/lib/config/models";
 
 import { manualSectionHeadings } from "@/lib/forms/official-policy-manual";
 import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
 
 import { callClaudeTool } from "./call-claude";
-import { manualTermsQuery, queryAfterRewrite, shouldRewriteFollowUp } from "./query-rewrite";
+import { manualTermsQuery, operationalHowTo, queryAfterRewrite, shouldRewriteFollowUp, withOwnNouns } from "./query-rewrite";
 
 /**
  * Rewrite a short follow-up into a standalone search query.
@@ -81,6 +82,8 @@ export async function rewriteToManualTerms(input: {
   readonly loadHeadings?: () => Promise<readonly string[]>;
   readonly callModel?: (headings: readonly string[]) => Promise<unknown>;
 }): Promise<string> {
+  // QUERY_REWRITE_KEEPS_NOUNS_ENABLED: an operational how-to is never a policy heading; its search keeps the manager's nouns.
+  if (queryRewriteKeepsNounsEnabled() && operationalHowTo(input.question)) return withOwnNouns(input.question, input.fallback);
   try {
     const headings = input.loadHeadings ? await input.loadHeadings() : await defaultHeadings(input.scopeId);
     const known = manualTermsQuery({ question: input.question, headings, modelHeading: null });
