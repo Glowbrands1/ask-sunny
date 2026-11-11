@@ -3,6 +3,8 @@ import {
   draftNotesFromCard,
   draftNotesFromConversation,
 } from "@/lib/forms/draft-notes";
+import { cardPolicyToDraftEnabled } from "@/lib/config/chat-quality-flags";
+import { cardPolicyFor } from "@/lib/forms/card-policy";
 import { remapDraftSourcesClientEnabled } from "@/lib/config/chat-quality-flags";
 import type { ChatFormInstanceRef, ChatFormProposal, ChatMessage } from "@/types";
 
@@ -223,7 +225,13 @@ export async function createInlineForm({
     const drafted = await call<{ notice?: unknown }>(`/api/forms/instances/${reference.instanceId}/draft`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ notes: notes.text }),
+      body: JSON.stringify({
+        notes: notes.text,
+        // NEXT_PUBLIC_CARD_POLICY_TO_DRAFT_ENABLED: the policy the card cited (QA live check, 3 Nov 2026).
+        ...(cardPolicyToDraftEnabled() && cardPolicyFor(proposal, messages) ? { cardPolicy: cardPolicyFor(proposal, messages) } : {}),
+        // SAME_FORM_COPY_NEW_PERSON_ENABLED: the form this card copies; re-checked by the route.
+        ...(proposal.copyFromInstanceId ? { copyFromInstanceId: proposal.copyFromInstanceId } : {}),
+      }),
     });
     const notice = typeof drafted?.notice === "string" && drafted.notice.trim() !== "" ? drafted.notice : null;
     return { reference, draftWarning: null, draftNotice: notice };

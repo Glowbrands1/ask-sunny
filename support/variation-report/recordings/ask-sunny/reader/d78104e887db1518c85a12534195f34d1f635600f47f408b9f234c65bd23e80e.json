@@ -1,0 +1,40 @@
+{
+  "key": "d78104e887db1518c85a12534195f34d1f635600f47f408b9f234c65bd23e80e",
+  "model": "claude-haiku-5-5",
+  "reply": {
+    "employee": {
+      "value": "Quinn Marlowe",
+      "evidence": "Quinn Marlowe today under performance"
+    },
+    "location": null,
+    "jobTitle": {
+      "value": "Tanning Consultant",
+      "evidence": "Tanning Consultant"
+    },
+    "incident": {
+      "value": "Under performance: 270 tans below in PPTA, UPTA, LPSVA, CC% and Spa% for September",
+      "evidence": "today under performance for September 270 tans below in PPTA, UPTA, LPSVA, CC% and Spa%"
+    },
+    "incidentDate": {
+      "value": "2026-09-30",
+      "evidence": "for September"
+    },
+    "warningLevel": {
+      "value": "verbal",
+      "evidence": "verbal warning received"
+    },
+    "payroll": {
+      "value": "no",
+      "evidence": "not payroll deductible"
+    },
+    "payrollAmount": null,
+    "policyHeading": null
+  },
+  "usage": {
+    "inputTokens": 4707,
+    "outputTokens": 600,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 2442
+}

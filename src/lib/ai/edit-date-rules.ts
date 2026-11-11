@@ -1,10 +1,12 @@
 import { PRODUCTION_SALONS, salonById } from "@/data/salons";
-import { formEditDateRulesEnabled } from "@/lib/config/chat-quality-flags";
+import { formEditDateRulesEnabled, primarySalonNotEditEnabled } from "@/lib/config/chat-quality-flags";
 import { datesInText, listIncidentDates, priorSteps } from "@/lib/forms/form-date-answer";
 import { withYearlessDatesWritten } from "@/lib/forms/late-open";
+import { PRIMARY_SALON_STATEMENT } from "@/lib/forms/primary-salon-statement";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
 import type { ChatFormProposal, SourceCitation } from "@/types";
 
+import { newRequestWithOwnDate } from "./new-request-own-date";
 import type { AskResponse } from "./types";
 
 /**
@@ -315,8 +317,18 @@ const SALON_EDIT =
 const SMALL_WORDS = new Set(["the", "and", "salon", "location", "store", "ne", "ks", "mo", "ia", "sd"]);
 
 /** The salon "change salon location to omaha center" names, by its words. */
+/**
+ * PRIMARY_SALON_NOT_EDIT_ENABLED (replay set s21, 3 Nov 2026; same flag in
+ * both apps): "primary salon is Omaha Center. But on Monday … working a shift
+ * at Omaha Pacific" states where the employee usually works, not a change of
+ * the form's salon — `keptSalon` (`ai/keep-filled-slots.ts`) already reads it
+ * so (the same pattern, `PRIMARY_SALON_STATEMENT`). The salon the incident
+ * happened at stands. Off, as before.
+ */
+
 export function salonSetInTurn(turn: string): string | null {
-  const match = SALON_EDIT.exec(turn ?? "");
+  const read = primarySalonNotEditEnabled() ? (turn ?? "").replace(PRIMARY_SALON_STATEMENT, " ") : turn;
+  const match = SALON_EDIT.exec(read ?? "");
   const named = (match?.[1] ?? match?.[2])?.trim().replace(/\s+(?:location|salon)$/i, "");
   if (!named) return null;
   const ids = [...new Set(readSalonMentions(`at ${named}`).flatMap((mention) => mention.salonIds))];
@@ -435,7 +447,9 @@ export function applyEditDateRules(
   if (DATED_BY_INCIDENT.has(proposal.templateKey)) {
     const prior = priorActionDates(text, input.today);
     content = withoutPriorDateQuestion(content, prior);
-    const date = formDateByRules({ managerTurns: turns, question, today: input.today, current: proposal.formDate ?? null });
+    // NEW_REQUEST_OWN_DATE_ENABLED: a new create request with its own date is dated by itself, not by the form before it.
+    const dateTurns = newRequestWithOwnDate(question, input.today) ? [question] : turns;
+    const date = formDateByRules({ managerTurns: dateTurns, question, today: input.today, current: proposal.formDate ?? null });
     if (date !== undefined && date !== proposal.formDate) next = { ...next, formDate: date };
     content = withoutLines(content, (line) => line.startsWith("**Date:**"));
     if (next.formDate) content = insertLine(content, `**Date:** ${slash(next.formDate)}`, FIELD_ORDER);

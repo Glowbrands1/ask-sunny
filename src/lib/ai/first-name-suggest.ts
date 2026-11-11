@@ -1,0 +1,508 @@
+import {
+  rosterCompoundSurnameEnabled,
+  rosterNearMissEnabled,
+  firstNameAnswerKeepsAccountEnabled,
+  firstNameSuggestEnabled,
+  firstNameYesKeepsRequestEnabled,
+  formNameFromRosterEnabled,
+  partialSurnameAskEnabled,
+  suggestAnswerReplacesTypedEnabled,
+} from "@/lib/config/chat-quality-flags";
+import { compoundSurnameScore, displayName, editDistance, type RosterEmployee } from "@/lib/forms/employee-match";
+import { looseFits } from "@/lib/forms/loose-fit";
+import { acceptsNearMissWithDetails, nearMissTypedRest } from "@/lib/forms/near-miss-answer";
+import { typedWithOtherSurname } from "@/lib/forms/request-slot";
+
+import type { ChatActor } from "./form-proposal";
+import type { AskRequest, AskResponse } from "./types";
+import type { ChatMessage } from "@/types";
+
+/**
+ * ============================================================================
+ * A FIRST NAME ALONE: THE MANAGER IS ASKED WHO, FROM THEIR OWN ROSTER
+ * ============================================================================
+ *
+ * FIRST_NAME_SUGGEST_ENABLED (QA and Pau, 28 Oct 2026; same flag in both
+ * apps). "quinn was late on 10/20, write her up" and "I have an employee quinn
+ * who …" lost the quinn ("Who is this … for?"), and "create a ca for quinn …"
+ * went ahead with a card for the bare first name. With the flag on, a reply
+ * that asks who the form is for, or a card whose employee is one word, is
+ * replaced by a question about the people on the manager's own roster (the
+ * scoped roster — additional salons included, nobody outside it) whose first
+ * name that is:
+ *
+ *   two or more   "Did you mean **Quinn Marlowe** or **Quinn Ashby**? Tell me
+ *                 which, or give the full name."
+ *   one           "Is this for **Quinn Marlowe**? Tell me if that should change."
+ *   none          the reply as it was
+ *
+ * Only the question: no card until the manager answers, and never accepted
+ * for them. Asked once — the next turn is read as the answer
+ * (`withFirstNameAnswer`), and a reply after that is left as it is. Not when
+ * the turn is a question, a confirm question is already showing, the
+ * manager's turns name somebody in full, or the name is the manager's own.
+ */
+
+const ONE = /^Is this for \*\*([^*]+)\*\*\? Tell me if that should change\./;
+const MANY = /^Did you mean (.+?)\? Tell me which, or give the full name\./;
+
+/** Words that are names on some rosters and ordinary words in a manager's sentence. */
+const ORDINARY = new Set([
+  "will", "may", "can", "mark", "bill", "grant", "june", "april", "august", "art", "rich", "hope", "joy", "faith",
+  "dawn", "summer", "chase", "pat", "ray", "rose", "jean", "sue", "miles", "max", "page", "drew", "lane", "price",
+  "young", "king", "long", "major", "frank", "earl", "sunny", "star", "storm", "honey", "amber", "ruby", "jade",
+  "sky", "autumn", "winter", "reed", "rob", "don", "guy", "jack", "nick", "sterling", "carol", "penny", "victory",
+]);
+
+const ASKS_WHO =
+  /\bWho is this (?:\*\*[^*]+\*\* |form )?for\?|\bIs this for [^?]+\? Tell me (?:her|his|their) full name\.|\bI still need [^.]+ full name\b/;
+
+/*
+ * FORM_NAME_FROM_ROSTER_ENABLED (QA, 4 Nov 2026): "I need a corrective action
+ * verbal for perpetua. This is for Under Performance on …" is answered with the
+ * intake list, whose first item asks for the employee ("1. Employee's full
+ * name"). That asks who the form is for as plainly as "Who is this form for?",
+ * so a first name the manager typed is offered the same way. Off, as before.
+ */
+const ASKS_WHO_IN_LIST = /^\s*1\. Employee's full name\b/m;
+
+function asksWho(content: string): boolean {
+  return ASKS_WHO.test(content) || (formNameFromRosterEnabled() && ASKS_WHO_IN_LIST.test(content));
+}
+
+function words(text: string): string[] {
+  return text.toLowerCase().match(/[a-z][a-z'’-]*/g) ?? [];
+}
+
+const firstNamesOf = (person: RosterEmployee): string[] =>
+  [person.firstName, person.preferredFirstName ?? ""].map((name) => name.trim().toLowerCase()).filter(Boolean);
+
+function managerTurns(request: AskRequest): string[] {
+  const earlier = (request.history ?? []).filter((turn) => turn.role === "user").map((turn) => turn.content);
+  return [...earlier.slice(-3), request.question];
+}
+
+/** The one first name the manager's turns give, on this roster, or null. */
+function statedFirstName(turns: readonly string[], roster: readonly RosterEmployee[], own: string | null): string | null {
+  const known = new Set(roster.flatMap(firstNamesOf));
+  const said = new Set(turns.flatMap(words).filter((word) => known.has(word) && !ORDINARY.has(word) && word !== own));
+  return said.size === 1 ? [...said][0]! : null;
+}
+
+function namesSomebodyInFull(turns: readonly string[], roster: readonly RosterEmployee[]): boolean {
+  const text = ` ${turns.join(" ").toLowerCase().replace(/[^a-z' ]+/g, " ")} `;
+  return roster.some((person) =>
+    firstNamesOf(person).some((first) => text.includes(` ${first} ${person.lastName.trim().toLowerCase()} `)),
+  );
+}
+
+function bold(names: readonly string[]): string {
+  const marked = names.map((name) => `**${name}**`);
+  return marked.length <= 2 ? marked.join(" or ") : `${marked.slice(0, -1).join(", ")} or ${marked.at(-1)}`;
+}
+
+function lastAssistant(request: AskRequest): string {
+  return [...(request.history ?? [])].reverse().find((turn) => turn.role === "assistant")?.content ?? "";
+}
+
+/** Every word the manager has typed in this conversation. */
+function everythingSaid(request: AskRequest): Set<string> {
+  const said = [...(request.history ?? []).filter((turn) => turn.role === "user").map((turn) => turn.content), request.question];
+  return new Set(said.flatMap(words));
+}
+
+/**
+ * QA, 28 Oct 2026 (live): "katherine was late on 10/20, write her up" with
+ * one Katherine on the roster gave a card for her full name at once — a
+ * reader found the one roster person the first name fits and filled the
+ * card, so the manager was never asked. A card whose employee is a roster
+ * person whose last name the manager has never typed, and whose first (or
+ * preferred) name they did type, was filled from that first name alone: it
+ * is asked about like a one-word card. The first name, or null.
+ */
+function filledFromFirstName(name: string | null | undefined, request: AskRequest, roster: readonly RosterEmployee[]): string | null {
+  if (!name || !/\s/.test(name.trim())) return null;
+  const person = roster.find((entry) => displayName(entry).toLowerCase() === name.trim().toLowerCase());
+  if (!person) return null;
+  if (alreadyConfirmed(displayName(person), request)) return null;
+  const said = everythingSaid(request);
+  if (words(person.lastName).some((word) => said.has(word))) return null;
+  return firstNamesOf(person).find((first) => said.has(first) && !ORDINARY.has(first)) ?? null;
+}
+
+/*
+ * QA review, 28 Oct 2026: after "yes" the card held the name, but every later
+ * turn ("make it a written warning", "create it") still showed a last name the
+ * manager never typed, and the question replaced the card again. The person
+ * is confirmed for the whole conversation once any earlier reply named them
+ * in bold (this question, or a numbered "Did you mean"), any earlier card was
+ * for them, or a form is already open.
+ */
+function alreadyConfirmed(fullName: string, request: AskRequest): boolean {
+  if (request.activeFormInstanceId) return true;
+  const target = fullName.trim().toLowerCase();
+  return (request.history ?? []).some(
+    (turn) =>
+      turn.role === "assistant" &&
+      (turn.content.toLowerCase().includes(`**${target}**`) || turn.formProposal?.employeeName?.trim().toLowerCase() === target),
+  );
+}
+
+/**
+ * PARTIAL_SURNAME_ASK_ENABLED. QA live, 29 Oct 2026 (Pau's wording, the name
+ * invented here): "pls create a coaching form for marisol co" asked "Is this
+ * for **Marisol Corvane**?" only when the AI reader happened to read
+ * "marisol"; when it read "marisol co" its name was rejected and the card
+ * kept the raw "marisol co", which Create then saved. The card's name as
+ * typed — a first or preferred name and the start of a surname — is matched
+ * against the manager's roster here, in code: the people it fits, or none.
+ */
+function partialSurnamePeople(name: string | null | undefined, request: AskRequest, roster: readonly RosterEmployee[]): RosterEmployee[] {
+  if (!partialSurnameAskEnabled()) return [];
+  const parts = words(name ?? "");
+  if (parts.length < 2 || !typedInFull(parts, request)) return [];
+  if (roster.some((person) => displayName(person).toLowerCase() === parts.join(" "))) return [];
+  // "cam", "camach" begin Camacho; "co" has its letters in order (`loose-fit.ts`).
+  return roster.filter((person) =>
+    looseFits(parts.join(" "), { name: displayName(person), preferred: person.preferredFirstName?.trim() || null }),
+  );
+}
+
+function typedInFull(parts: readonly string[], request: AskRequest): boolean {
+  const said = everythingSaid(request);
+  return parts.every((part) => said.has(part));
+}
+
+/** Cheap first look, before the roster is read: a card name whose last word the manager never typed. */
+function cardNameNotTypedInFull(name: string | null | undefined, request: AskRequest): boolean {
+  const parts = words(name ?? "");
+  return parts.length > 1 && !everythingSaid(request).has(parts.at(-1)!);
+}
+
+export function withFirstNameSuggest(
+  response: AskResponse,
+  request: AskRequest,
+  roster: readonly RosterEmployee[],
+): AskResponse {
+  if (!firstNameSuggestEnabled() || roster.length === 0) return response;
+  if (request.question.trim().endsWith("?") || response.content.includes("Did you mean")) return response;
+  const asked = lastAssistant(request);
+  if (ONE.test(asked) || MANY.test(asked)) return response;
+  const card = response.formProposal;
+  const oneWordCard = Boolean(card?.employeeName && !/\s/.test(card.employeeName.trim()));
+  const partial = oneWordCard ? [] : partialSurnamePeople(card?.employeeName, request, roster);
+  if (partial.length > 0 && !partial.some((person) => alreadyConfirmed(displayName(person), request))) {
+    return { ...response, content: suggestion([...new Set(partial.map(displayName))]), formProposal: undefined };
+  }
+  // The card's full name was filled from a first name the manager typed alone ("katherine was late …").
+  const filledFirst = oneWordCard ? null : filledFromFirstName(card?.employeeName, request, roster);
+  if (!oneWordCard && !filledFirst && !(asksWho(response.content) && !card?.employeeName)) return response;
+
+  const turns = managerTurns(request);
+  if (!filledFirst && namesSomebodyInFull(turns, roster)) return response;
+  const own = words(request.context?.userName ?? "")[0] ?? null;
+  const first = oneWordCard ? card!.employeeName!.trim().toLowerCase() : (filledFirst ?? statedFirstName(turns, roster, own));
+  if (!first || first === own) return response;
+  // FORM_NAME_FROM_ROSTER_ENABLED, part 2: "Remy Fenn" typed in full is never offered as Remy Calder.
+  const people = roster.filter((person) => firstNamesOf(person).includes(first) && !typedWithOtherSurname(first, person.lastName, turns));
+  if (people.length === 0) return response;
+  // Only the question: the card waits for the answer.
+  return { ...response, content: suggestion([...new Set(people.map(displayName))]), formProposal: undefined };
+}
+
+function suggestion(names: readonly string[]): string {
+  return names.length === 1
+    ? `Is this for **${names[0]}**? Tell me if that should change.`
+    : `Did you mean ${bold(names)}? Tell me which, or give the full name.`;
+}
+
+const YES =
+  /^\s*(?:yes|yeah|yep|yup|yea|correct|right|sure|ok(?:ay)?|that'?s (?:right|correct|her|him|them|it|the one)|it is|yes it is)\b[\s,.!]*/i;
+const ORDINALS: readonly RegExp[] = [/\b(?:first|1st|one)\b|^\s*1\b/i, /\b(?:second|2nd|two)\b|^\s*2\b/i, /\b(?:third|3rd|three)\b|^\s*3\b/i];
+
+/**
+ * The manager's answer to that question, read as the name: "yes" is the one
+ * person asked about; "the second" or "ashby" is the one option it names;
+ * "no, Quinn Ashby" or a full name is that name. The turn is then the
+ * manager's own request again with the name in full ("create a ca for Quinn
+ * Marlowe. she was late …"), since no card holds it. Anything else is read as
+ * it is.
+ */
+export function withFirstNameAnswer(request: AskRequest, aliases: Aliases = () => []): AskRequest {
+  if (!firstNameSuggestEnabled()) return request;
+  return answeredNow(withEarlierAnswers(request, aliases), aliases);
+}
+
+/** The first and preferred names of the roster person with this full name. */
+type Aliases = (fullName: string) => readonly string[];
+
+/**
+ * QA / Pau, 29 Oct 2026: "pls create a coaching form for kit dov" (Kit is
+ * Katrin Dovetail's preferred name) → "Is this for **Katrin Dovetail**?" →
+ * "yes" lost the request: the turn that gave the name was found by "Katrin",
+ * which the manager never typed. When the conversation has asked this
+ * question, the roster is read so the preferred name finds that turn too.
+ */
+export async function withFirstNameAnswerFor(request: AskRequest, actor: ChatActor): Promise<AskRequest> {
+  if (!firstNameSuggestEnabled()) return request;
+  const asked = (request.history ?? []).some((turn) => turn.role === "assistant" && (ONE.test(turn.content) || MANY.test(turn.content)));
+  if (!asked) return withFirstNameAnswer(request);
+  const { loadScopedRoster } = await import("@/lib/forms/employee-roster");
+  const roster = await loadScopedRoster(actor.scope);
+  return withFirstNameAnswer(request, (fullName) =>
+    roster.filter((person) => displayName(person).toLowerCase() === fullName.trim().toLowerCase()).flatMap(firstNamesOf),
+  );
+}
+
+/** The first name the question was asked about, or the chosen person's own first or preferred name. */
+function firstNamePattern(options: readonly string[], chosen: string, aliases: Aliases): RegExp {
+  const names = [...new Set([words(options[0]!)[0]!, ...aliases(chosen)])].map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return new RegExp(`\\b(?:${names.join("|")})\\b`, "i");
+}
+
+/**
+ * SUGGEST_ANSWER_REPLACES_TYPED_ENABLED. QA live, 29 Oct 2026 (invented here):
+ * "pls create a coaching form for marisol co" → "Is this for …?" → "no,
+ * jordan testperson" gave a card for "jordan testperson co": only the first
+ * name was replaced, and the surname piece typed after it stayed. The typed
+ * name is the first name and a following word that begins, or has in order,
+ * a surname of the people asked about; the whole of it is replaced. Off:
+ * the first name alone, as before.
+ */
+function replaceTyped(text: string, first: RegExp, options: readonly string[], name: string): string {
+  if (!suggestAnswerReplacesTypedEnabled()) return text.replace(first, name);
+  const found = first.exec(text);
+  if (!found) return text;
+  let end = found.index + found[0].length;
+  const next = /^\s+([A-Za-z][A-Za-z'’-]*)/.exec(text.slice(end));
+  const typed = found[0].toLowerCase();
+  // NEAR_MISS_DETAILS_ACCEPT_ENABLED: "Corvina Ashdown Vellacot" is replaced whole by the name accepted.
+  const typedRest = nearMissTypedRest(text.slice(end), name);
+  if (typedRest > 0) {
+    end += typedRest;
+  } else if (
+    next &&
+    options.some((option) => {
+      const surname = words(option).slice(1).join(" ");
+      if (surname === "") return false;
+      if (looseFits(`${typed} ${next[1]}`, { name: `${typed} ${surname}`, preferred: null })) return true;
+      // ROSTER_NEAR_MISS_ENABLED (QA's testers, 5 Nov 2026, R3): "Wexlarby" for Wexlerby — the surname typed with one letter wrong is the one answered.
+      return rosterNearMissEnabled() && !/\s/.test(surname) && surname.length >= 4 && editDistance(next[1]!.toLowerCase(), surname.toLowerCase()) === 1;
+    })
+  ) {
+    end += next[0].length;
+  } else if (rosterCompoundSurnameEnabled()) {
+    // ROSTER_COMPOUND_SURNAME_ENABLED: the typed two-word surname ("Perwett Vansickle") is the one answered.
+    const surname = words(name).slice(1).join(" ");
+    const after = text.slice(end);
+    for (let count = words(surname).length; count >= 1; count -= 1) {
+      const typedWords = new RegExp(String.raw`^(?:\s+[A-Za-z][A-Za-z'’-]*){${count}}`).exec(after)?.[0];
+      if (!typedWords || compoundSurnameScore(typedWords.trim().split(/\s+/), surname) === null) continue;
+      end += typedWords.length;
+      break;
+    }
+  }
+  return text.slice(0, found.index) + name + text.slice(end);
+}
+
+/**
+ * QA review, 28 Oct 2026: the answer only rewrote ITS turn, so the turns
+ * after it ("make it a written warning", "create it") read the raw history
+ * again — the first name alone, "yes" — lost the person, and the question was
+ * asked again in place of the card. Every question of this kind earlier in
+ * the conversation that the manager answered puts the chosen name, in full,
+ * into the manager's turn that gave the first name, as the answer itself did.
+ */
+function withEarlierAnswers(request: AskRequest, aliases: Aliases): AskRequest {
+  const history = request.history ?? [];
+  let next: ChatMessage[] | null = null;
+  for (const { index, reply, options, chosen } of answeredQuestions(history)) {
+    const first = firstNamePattern(options, chosen.name, aliases);
+    const turns: ChatMessage[] = next ?? [...history];
+    let ownAccount = false;
+    for (let at = index - 1; at >= 0; at -= 1) {
+      const said = turns[at]!;
+      if (said.role !== "user" || !first.test(said.content)) continue;
+      if (said.content.toLowerCase().includes(chosen.name.toLowerCase())) break;
+      // FIRST_NAME_ANSWER_KEEPS_ACCOUNT_ENABLED: an answer that tells its own account replaces the request's, on later turns too.
+      const answered = withAnswersAccount(replaceTyped(said.content, first, options, chosen.name), chosen);
+      ownAccount = answered.replaced;
+      turns[at] = { ...said, content: ownAccount ? answered.request : replaceTyped(said.content, first, options, chosen.name) };
+      break;
+    }
+    // The answer itself ("ashby", "the second", "yes") is that name, so no later reading takes "ashby" for one.
+    turns[index + 1] = { ...reply, content: ownAccount ? chosen.name : `${chosen.name}${chosen.rest}` };
+    next = turns;
+  }
+  return next ? { ...request, history: next } : request;
+}
+
+/** Every question of this kind in the conversation that the manager's next turn answered, with the name chosen. */
+function answeredQuestions<T extends { readonly role: string; readonly content: string }>(conversation: readonly T[]) {
+  const answered: { index: number; reply: T; options: string[]; chosen: { name: string; rest: string } }[] = [];
+  conversation.forEach((turn, index) => {
+    const reply = conversation[index + 1];
+    if (turn.role !== "assistant" || reply?.role !== "user") return;
+    const one = ONE.exec(turn.content);
+    const many = one ? null : MANY.exec(turn.content);
+    if (!one && !many) return;
+    const options = one ? [one[1]!] : [...many![1]!.matchAll(/\*\*([^*]+)\*\*/g)].map((match) => match[1]!.trim());
+    const typed = conversation.slice(0, index).filter((said) => said.role === "user").map((said) => said.content);
+    const chosen = chosenName(reply.content.trim(), options, Boolean(one), typed);
+    if (chosen) answered.push({ index, reply, options, chosen });
+  });
+  return answered;
+}
+
+/**
+ * The names the manager accepted from this question in the conversation —
+ * "yes" to "Is this for **Katrin Dovetail**?", "ashby" or "the second" from
+ * "Did you mean …", or a full name typed in answer. Pau, live, 29 Oct 2026
+ * (her wording, the name invented): "pls create a coaching form for katrin
+ * dov" → "yes" → Create refused the card as "out of date: the conversation
+ * now says the form is for katrin dov", because the creation check (`proposal-currency.ts`) counted only the
+ * older close-match questions as accepted. Off: none.
+ */
+export function firstNameSuggestAccepted(
+  conversation: readonly { readonly role: string; readonly content: string }[],
+): { name: string; answeredAt: number }[] {
+  if (!firstNameSuggestEnabled()) return [];
+  return answeredQuestions(conversation).map(({ index, chosen }) => ({ name: chosen.name, answeredAt: index + 1 }));
+}
+
+function answeredNow(request: AskRequest, aliases: Aliases): AskRequest {
+  const asked = lastAssistant(request);
+  const reply = request.question.trim();
+  const one = ONE.exec(asked);
+  const many = one ? null : MANY.exec(asked);
+  if (!one && !many) return request;
+  const options = one ? [one[1]!] : [...many![1]!.matchAll(/\*\*([^*]+)\*\*/g)].map((match) => match[1]!.trim());
+  const typed = (request.history ?? []).filter((said) => said.role === "user").map((said) => said.content);
+  const chosen = chosenName(reply, options, Boolean(one), typed);
+  if (!chosen) return request;
+  if (answerIsTheRequest(reply, chosen.name)) return request;
+  const first = firstNamePattern(options, chosen.name, aliases);
+  const said = [...(request.history ?? [])].reverse().find((turn) => turn.role === "user" && first.test(turn.content));
+  const answered = said ? withAnswersAccount(replaceTyped(said.content, first, options, chosen.name), chosen).request : chosen.name + chosen.rest;
+  return { ...request, question: withAskingTurn(answered, said, request) };
+}
+
+/**
+ * FIRST_NAME_YES_KEEPS_REQUEST_ENABLED (ported from Ask Bubbles, replay set
+ * b2, 3 Nov 2026; same flag in both apps): the first name was given in an
+ * account and the form asked for in a LATER turn, which is the turn the
+ * question answered. "Yes" became the account alone, so the request was lost.
+ * With the flag, that later turn follows the account, so the answer is the
+ * account and the request together. Off, the account alone, as before.
+ */
+function withAskingTurn(answered: string, said: ChatMessage | undefined, request: AskRequest): string {
+  if (!firstNameYesKeepsRequestEnabled() || !said) return answered;
+  const history = request.history ?? [];
+  const askedAt = history.map((turn) => turn.role).lastIndexOf("assistant");
+  const asking = askedAt > 0 ? history[askedAt - 1] : undefined;
+  if (!asking || asking.role !== "user" || asking === said || !asking.content.trim()) return answered;
+  return `${answered}\n${asking.content}`;
+}
+
+function chosenName(
+  reply: string,
+  options: readonly string[],
+  single: boolean,
+  typed: readonly string[] = [],
+): { name: string; rest: string; named?: boolean } | null {
+  const text = reply.toLowerCase();
+  const full = options.find((name) => text.includes(name.toLowerCase()));
+  if (full) return { name: full, rest: firstNameAnswerKeepsAccountEnabled() ? besidesTheName(reply, full) : "", named: true };
+  if (single) {
+    const yes = YES.exec(reply);
+    if (yes && !/\b(?:no|not|nope|wrong)\b/i.test(reply)) {
+      const rest = reply.slice(yes[0].length).trim();
+      return { name: options[0]!, rest: rest ? ` ${rest}` : "" };
+    }
+    // NEAR_MISS_DETAILS_ACCEPT_ENABLED: the manager went on with the form's details after a near-miss of a name they typed in full.
+    if (acceptsNearMissWithDetails(reply, options[0]!, typed)) return { name: options[0]!, rest: `\n${reply}` };
+  } else {
+    const byOrdinal = ORDINALS.findIndex((pattern) => pattern.test(reply));
+    if (byOrdinal >= 0 && options[byOrdinal]) return { name: options[byOrdinal]!, rest: "" };
+    const named = options.filter((name) => {
+      const shared = new Set(options.flatMap((other) => (other === name ? [] : words(other))));
+      return words(name).some((word) => !shared.has(word) && words(reply).includes(word));
+    });
+    if (named.length === 1) return { name: named[0]!, rest: "" };
+  }
+  // "no, Quinn Ashby", "it's Quinn Ashby": another full name, as typed.
+  const other = /^(?:no|nope|not\s+\w+)?[\s,.!-]*(?:it'?s|it\s+is|this\s+is\s+for|for)?\s*([A-Za-z][A-Za-z'’-]+\s+[A-Za-z][A-Za-z'’-]+)\s*[.!]?$/i.exec(reply);
+  if (other && !/^(?:yes|yeah|yep)\b/i.test(other[1]!)) return { name: other[1]!, rest: "" };
+  return null;
+}
+
+/**
+ * FIRST_NAME_ANSWER_KEEPS_ACCOUNT_ENABLED (QA, Sunny live test, 8 Nov 2026; the name invented): "make me CA for Rhea
+ * failing to complete shifts" → "Is this for **Rhea Calloway**?" → "Rhea Calloway 11/7 and 11/8" was read as the name
+ * alone, so the card's Observation was "failing to complete shifts" and the dates were lost. What the answer says
+ * besides the name follows the request it answers ("… failing to complete shifts 11/7 and 11/8"). An answer that asks
+ * for the form itself ("make me CA for Rhea Calloway not showing up to her shifts on 11/7 and 11/8") is the request
+ * (`answeredNow`). Nothing but the name and punctuation: "", as before.
+ */
+const ASKS_FOR_A_FORM = /\b(?:warning|write[- ]?up|corrective\s+action(?:\s+form)?|ca|c\/a|dpoa)\s+(?:for|about|over|regarding)\s/i;
+
+function besidesTheName(reply: string, name: string): string {
+  const at = reply.toLowerCase().indexOf(name.toLowerCase());
+  const rest = `${reply.slice(0, at)} ${reply.slice(at + name.length)}`.replace(/\s+/g, " ").replace(/^[\s,.;:!-]+|[\s,;:-]+$/g, "");
+  return /[\p{L}\d]/u.test(rest) ? ` ${rest}` : "";
+}
+
+/*
+ * QA's live test of round 7 (9 Nov 2026; the name invented): "make me CA for Rhea failing to complete shifts" → "Rhea
+ * Calloway failing to complete shifts 11/7 and 11/8" gave the Observation "… failing to complete shifts failing to
+ * complete shifts 11/7 and 11/8", and "Rhea Calloway not showing up to her shifts on 11/7 and 11/8" gave "… failing to
+ * complete shifts not showing up …": the answer's words followed the request's account. An answer that names the
+ * person and tells its own account is the account: it follows the request's words up to the name ("make me CA for Rhea
+ * Calloway"). Dates alone ("Rhea Calloway 11/7 and 11/8") still follow the request's account. A request that does not
+ * ask for the form before the name ("Rhea was late, write her up") keeps its account, as before.
+ */
+const A_DATE = /(?<![\d/.-])\d{1,2}[/.-]\d{1,2}(?:[/.-]\d{2,4})?(?![\d/.-])/g;
+const DATE_JOINERS = /\b(?:on|and|the|of|also|too|both|dates?|days?|nights?)\b/gi;
+
+function onlyDates(rest: string): boolean {
+  return !/\p{L}/u.test(rest.replace(A_DATE, " ").replace(DATE_JOINERS, " "));
+}
+
+/** The request's words up to the person's name, when they ask for the form ("make me CA for Rhea Calloway"), or null. */
+function requestHead(request: string, name: string): string | null {
+  const at = request.toLowerCase().indexOf(name.toLowerCase());
+  if (at < 0) return null;
+  const head = request.slice(0, at + name.length);
+  return ASKS_FOR_A_FORM.test(`${head} `) ? head : null;
+}
+
+/** The request answered with the name in full and, when it tells its own, the answer's account in place of the request's. */
+function withAnswersAccount(request: string, chosen: { name: string; rest: string; named?: boolean }): { request: string; replaced: boolean } {
+  const head = chosen.named && chosen.rest && !onlyDates(chosen.rest) ? requestHead(request, chosen.name) : null;
+  return head ? { request: `${head}${chosen.rest}`, replaced: true } : { request: `${request}${chosen.rest}`, replaced: false };
+}
+
+/** The answer names the person in full and asks for the form itself: it is the request (FIRST_NAME_ANSWER_KEEPS_ACCOUNT). */
+function answerIsTheRequest(reply: string, chosen: string): boolean {
+  return firstNameAnswerKeepsAccountEnabled() && reply.toLowerCase().includes(chosen.toLowerCase()) && ASKS_FOR_A_FORM.test(reply);
+}
+
+/**
+ * The step in the answer chain: the roster is read only for a reply this could
+ * replace. Off, the response as it was and nothing is read.
+ */
+export async function withFirstNameSuggestFor(
+  response: AskResponse,
+  request: AskRequest,
+  actor: ChatActor,
+): Promise<AskResponse> {
+  if (!firstNameSuggestEnabled()) return response;
+  const card = response.formProposal;
+  const oneWordCard = Boolean(card?.employeeName && !/\s/.test(card.employeeName.trim()));
+  const maybeFilled = cardNameNotTypedInFull(card?.employeeName, request);
+  // PARTIAL_SURNAME_ASK_ENABLED: "marisol co" as typed may be the start of a roster name.
+  const maybePartial = partialSurnameAskEnabled() && words(card?.employeeName ?? "").length > 1 && !maybeFilled;
+  if (!oneWordCard && !maybeFilled && !maybePartial && !(asksWho(response.content) && !card?.employeeName)) return response;
+  const { loadScopedRoster } = await import("@/lib/forms/employee-roster");
+  return withFirstNameSuggest(response, request, await loadScopedRoster(actor.scope));
+}

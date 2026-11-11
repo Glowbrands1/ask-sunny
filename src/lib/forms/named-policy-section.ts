@@ -1,4 +1,6 @@
-import { readCaPolicy } from "./ca-policy";
+import { animalAnywhereEnabled, wovenTrainingConductEnabled } from "@/lib/config/chat-quality-flags";
+
+import { cleaningIncidentPhrase, groundConductPolicy, isWovenWorkReading, readCaPolicy, STANDARDS_OF_CONDUCT } from "./ca-policy";
 import {
   OFFENSE_MANUAL_SECTIONS,
   findManualSection,
@@ -7,6 +9,7 @@ import {
   type ManualChunk,
   type ManualSection,
 } from "./official-policy-manual";
+import { specificTopicSection } from "./specific-policy-topics";
 
 /**
  * ============================================================================
@@ -140,14 +143,38 @@ const POLICY_LINE = /^\s*(?:the\s+|our\s+)?((?:[a-z][a-z'&/-]*\s+){1,5}?)polic(?
 const NOT_A_NAME =
   /\b(?:she|he|they|i|we|you|her|his|their|him|them|it|was|were|is|are|has|had|have|knows?|knew|signed|read|reviewed|reminded|told|understands?|acknowledged|got|received|explained|about|of|with|by|to)\b/i;
 
+/*
+ * ANIMAL_ANYWHERE_ENABLED (QA SX5 / the sibling app's LS-B11, 27 Oct 2026): the manager typed "cite
+ * animals in the workplace policy", and the line was read as a policy called
+ * "cite animals in the workplace", which no heading answers, so the form kept
+ * Standards of Conduct. With the flag on the instruction word is not part of
+ * the name. Off, as before.
+ */
+function citedName(phrase: string): string {
+  if (!animalAnywhereEnabled()) return phrase;
+  return phrase.replace(/^(?:please\s+)?(?:cite|use|quote|reference|apply|put)\s+(?:the\s+|our\s+)?/i, "").trim() || phrase;
+}
+
 export function namedPolicies(text: string): NamedPolicy[] {
+  const found = namedPolicyPhrases(text);
+  /*
+   * WOVEN_TRAINING_CONDUCT_ENABLED: "for not signing the woven policies" names the policies kept IN Woven, not
+   * a policy called "the woven" (live chat, 5 Nov 2026). Where the account reads as Woven work not done, a
+   * phrase with Woven in it names no policy. Off, as before.
+   */
+  if (!wovenTrainingConductEnabled() || !found.some((named) => /\bwoven\b/i.test(named.phrase))) return found;
+  if (!isWovenWorkReading(readCaPolicy(text))) return found;
+  return found.filter((named) => !/\bwoven\b/i.test(named.phrase));
+}
+
+function namedPolicyPhrases(text: string): NamedPolicy[] {
   const found: NamedPolicy[] = [];
   for (const sentence of (text ?? "").matchAll(/[^.!?\n]+[.!?]*/g)) {
     if (/\?\s*$/.test(sentence[0])) continue;
     // A line that is only the name — not "violation of company policy", which names none.
     const line = /\b(?:violat|breach|broke|against|follow)/i.test(sentence[0]) ? null : POLICY_LINE.exec(sentence[0]);
     if (line && words(line[1]!).length > 0 && !NOT_A_NAME.test(line[1]!)) {
-      found.push({ phrase: line[1]!.trim(), index: sentence.index });
+      found.push({ phrase: citedName(line[1]!.trim()), index: sentence.index });
     }
     for (const match of sentence[0].matchAll(NAMED_POLICY)) {
       const phrase = match[1]!.trim();
@@ -165,6 +192,8 @@ export interface NamedManualSection {
   readonly section: ManualSection;
   /** The offense box that section is cited under: its own box where it has one, otherwise Violation of Company Policies. */
   readonly offenseKey: string;
+  /** Further sections the same incident is cited under (POLICY_SPECIFIC_TOPICS_ENABLED): Animals, then Visitors. */
+  readonly also?: readonly ManualSection[];
 }
 
 /**
@@ -406,12 +435,36 @@ export function mayDescribeSection(text: string): boolean {
  */
 const describedResultCache = new WeakMap<readonly ManualChunk[], Map<string, NamedManualSection | null>>();
 
+/**
+ * WOVEN_TRAINING_CONDUCT_ENABLED (Pau, 6 Nov 2026): Woven acknowledgements or training not completed is the
+ * manual's Standards of Conduct section — found the way a ticked box finds it (`groundConductPolicy`), so the
+ * card names its heading and page and the Action Plan names it. No manual, or no such section: null, as before.
+ */
+function wovenWorkSection(text: string, chunks: readonly ManualChunk[] | null): NamedManualSection | null {
+  if (!wovenTrainingConductEnabled()) return null;
+  const reading = readCaPolicy(text);
+  if (!isWovenWorkReading(reading)) return null;
+  const grounded = groundConductPolicy({ reading, chunks });
+  return grounded.ok ? { phrase: reading.woven ?? "", section: grounded.section, offenseKey: STANDARDS_OF_CONDUCT } : null;
+}
+
 export function describedManualSection(input: {
   readonly text: string;
   readonly chunks: readonly ManualChunk[] | null;
 }): NamedManualSection | null {
+  const woven = wovenWorkSection(input.text ?? "", input.chunks);
+  if (woven) return woven;
   const chunks = input.chunks;
   if (!chunks || chunks.length === 0) return null;
+  const cleaning = cleaningSection(input.text ?? "", chunks);
+  const specific = specificSection(input.text ?? "", chunks);
+  /* Two incidents in one account: cleaning leads, and the other is offered beside it, never dropped. */
+  if (cleaning) {
+    return specific && specific.section.heading !== cleaning.section.heading
+      ? { ...cleaning, also: [specific.section, ...(specific.also ?? [])] }
+      : cleaning;
+  }
+  if (specific) return specific;
   let byText = describedResultCache.get(chunks);
   if (!byText) {
     byText = new Map();
@@ -430,6 +483,41 @@ export function describedManualSection(input: {
   const section = citable(chunks, heading, phrase);
   byText.set(text, section);
   return section;
+}
+
+/**
+ * POLICY_CLEANING_INCIDENT_ENABLED: cleaning left undone ("the cleaning
+ * duties weren't done", "left the beds dirty") is the manual's Care and
+ * Cleaning of Equipment and Facilities section, found by its own heading on
+ * the pinned manual, and only where exactly one heading answers. Nothing
+ * else must decide the policy first: a policy the manager named wins.
+ * Off (`cleaningIncidentPhrase` reads nothing), this returns null.
+ */
+/** "she was not late, but she left the beds dirty": a lateness the manager denies decides nothing here. */
+const DENIED_LATENESS = /\b(?:not|never|was ?n[o']?t|wasn't|is ?n[o']?t|isn't)\s+(?:\S+\s+){0,1}?late\b/gi;
+
+function cleaningSection(text: string, chunks: readonly ManualChunk[]): NamedManualSection | null {
+  const phrase = cleaningIncidentPhrase(text);
+  if (!phrase || !mayDescribeSection(text.replace(DENIED_LATENESS, " "))) return null;
+  const headings = [...new Set(manualSectionHeadings(chunks).filter((heading) => /^care and cleaning\b/i.test(heading.trim())))];
+  if (headings.length !== 1) return null;
+  const section = findManualSection(chunks, headings);
+  return section ? { phrase, section, offenseKey: offenseKeyForManualHeading(section.heading) } : null;
+}
+
+/**
+ * POLICY_SPECIFIC_TOPICS_ENABLED: the incident the manager's words name — no
+ * wet floor sign, a long break, a social media post, sexual comments, a pet,
+ * theft, a shortage, insubordination, talking badly about coworkers — is the
+ * section of the pinned manual `specific-policy-topics.ts` finds for it, and
+ * not the model's catch-all. Nothing else must decide the policy first: a
+ * policy the manager named wins, and so do attendance, a late opening and
+ * dress code. Off, `specificTopicSection` reads nothing and this returns null.
+ */
+function specificSection(text: string, chunks: readonly ManualChunk[]): NamedManualSection | null {
+  const found = specificTopicSection({ text, chunks });
+  if (!found || !mayDescribeSection(text)) return null;
+  return { phrase: found.phrase, section: found.section, offenseKey: found.offenseKey, also: found.also };
 }
 
 const candidateCache = new WeakMap<readonly string[], Candidate[]>();

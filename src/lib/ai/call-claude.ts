@@ -8,6 +8,8 @@ import { selectLongContext } from "./long-context";
 import { noteModelCall } from "./model-failure";
 import { modelRequestOptions, modelUnavailable } from "./model-retry";
 import { cachedSystem, cachedUserContent, systemWithCachedManual } from "./prompt-cache";
+import { withTruncationRetry } from "./truncation";
+import { truncationRetryEnabled } from "@/lib/config/chat-quality-flags";
 
 /**
  * ============================================================================
@@ -114,6 +116,31 @@ export interface CallClaudeInput {
    * the system prompt is exactly what `cachedSystem` already returns.
    */
   readonly fullManualBlock?: string | null;
+  /**
+   * FORM_EDIT_TOOL_IN_STREAM_ENABLED (Step 3): the one tool this call is
+   * offered while a draft form is open (`tool_choice: auto`), and its DATA
+   * block — the open form as JSON and the scoped staff — sent just before the
+   * question. A tool call is handed to `onToolUse` once; the call is not
+   * continued (no tool result goes back), and its text may then be empty.
+   * Absent, the request is exactly as before.
+   */
+  readonly formEditTool?: {
+    readonly tool: { readonly name: string; readonly description: string; readonly input_schema: { readonly type: "object" } & Record<string, unknown> };
+    readonly data: string;
+    readonly onToolUse: (input: unknown) => void;
+  } | null;
+  /**
+   * CHAT_GLOSSARY_ENABLED: the approved abbreviation table (`ai/chat-glossary.ts`),
+   * one more context block just before the question. Absent, the request is
+   * exactly as before.
+   */
+  readonly glossary?: string | null;
+}
+
+/** A `tool_use` block of the reply: its name, and its input (the block's own, or its streamed input_json_delta). */
+export interface CollectedToolUse {
+  readonly name: string;
+  readonly input: unknown;
 }
 
 export interface CollectedModelResult {
@@ -122,6 +149,11 @@ export interface CollectedModelResult {
   readonly usage: unknown;
   /** Null when the SDK returned a finished message instead of a text stream. */
   readonly firstTokenMs: number | null;
+  /**
+   * FORM_EDIT_TOOL_IN_STREAM_ENABLED: the reply's `tool_use` blocks, in order.
+   * Absent when the reply has none, so a text reply's result is as before.
+   */
+  readonly toolUses?: readonly CollectedToolUse[];
 }
 
 function isAsyncIterable(value: unknown): value is AsyncIterable<unknown> {
@@ -167,14 +199,19 @@ export async function collectModelResult(response: unknown, started: number): Pr
   if (!isAsyncIterable(response) && typeof response === "object" && response !== null && "content" in response) {
     const message = response as {
       stop_reason?: string | null;
-      content?: readonly { type?: string; text?: string }[];
+      content?: readonly { type?: string; text?: string; name?: unknown; input?: unknown }[];
       usage?: unknown;
     };
+    // FORM_EDIT_TOOL_IN_STREAM_ENABLED: a finished message carries a tool call's input whole.
+    const toolUses = (message.content ?? [])
+      .filter((block) => block.type === "tool_use" && typeof block.name === "string")
+      .map((block) => ({ name: block.name as string, input: block.input ?? null }));
     return {
       stopReason: message.stop_reason ?? null,
       text: textFromContent(message.content ?? []),
       usage: message.usage ?? null,
       firstTokenMs: null,
+      ...(toolUses.length > 0 ? { toolUses } : {}),
     };
   }
 
@@ -186,16 +223,25 @@ export async function collectModelResult(response: unknown, started: number): Pr
   let stopReason: string | null = null;
   let usage: unknown = null;
   let firstTokenMs: number | null = null;
+  /* FORM_EDIT_TOOL_IN_STREAM_ENABLED: a tool call's block opens with its name; its input arrives as input_json_delta. */
+  const tools = new Map<number, { name: string; json: string }>();
   for await (const event of response) {
     if (typeof event !== "object" || event === null || !("type" in event)) continue;
     const typed = event as {
       type?: string;
+      index?: number;
       message?: { usage?: unknown };
-      delta?: { type?: string; text?: string; stop_reason?: string | null };
+      content_block?: { type?: string; name?: unknown };
+      delta?: { type?: string; text?: string; partial_json?: string; stop_reason?: string | null };
       usage?: unknown;
     };
     if (typed.type === "message_start") {
       usage = mergeUsage(usage, typed.message?.usage);
+    } else if (typed.type === "content_block_start" && typed.content_block?.type === "tool_use" && typeof typed.content_block.name === "string") {
+      tools.set(typed.index ?? tools.size, { name: typed.content_block.name, json: "" });
+    } else if (typed.type === "content_block_delta" && typed.delta?.type === "input_json_delta") {
+      const tool = tools.get(typed.index ?? -1);
+      if (tool) tool.json += typed.delta.partial_json ?? "";
     } else if (typed.type === "content_block_delta" && typed.delta?.type === "text_delta") {
       const delta = typed.delta.text ?? "";
       if (delta.length > 0 && firstTokenMs === null) firstTokenMs = Date.now() - started;
@@ -205,7 +251,20 @@ export async function collectModelResult(response: unknown, started: number): Pr
       usage = mergeUsage(usage, typed.usage);
     }
   }
-  return { stopReason, text: text.trim(), usage, firstTokenMs };
+  const toolUses = [...tools.entries()]
+    .sort(([left], [right]) => left - right)
+    .map(([, tool]) => ({ name: tool.name, input: parseToolJson(tool.json) }));
+  return { stopReason, text: text.trim(), usage, firstTokenMs, ...(toolUses.length > 0 ? { toolUses } : {}) };
+}
+
+/** A streamed tool input: its concatenated input_json_delta, parsed. Empty is `{}`; unparseable is null. */
+function parseToolJson(json: string): unknown {
+  if (json.trim() === "") return {};
+  try {
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
 }
 
 export async function callClaude(input: CallClaudeInput): Promise<string> {
@@ -241,6 +300,8 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
     ...(input.personMemory ? [input.personMemory] : []),
     ...(input.formsLibrary ? [input.formsLibrary] : []),
     ...(input.formRecords ? [input.formRecords] : []),
+    ...(input.formEditTool ? [input.formEditTool.data] : []),
+    ...(input.glossary ? [input.glossary] : []),
     `QUESTION\n\n${input.question}`,
   ].join("\n\n");
   const params = {
@@ -262,16 +323,42 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
         content: cachedUserContent(userText, input.manualBlock),
       },
     ],
+    ...(input.formEditTool
+      ? {
+          tools: [{ ...input.formEditTool.tool, input_schema: { ...input.formEditTool.tool.input_schema } }],
+          tool_choice: { type: "auto" as const },
+        }
+      : {}),
   };
   try {
     const options = modelRequestOptions();
     // Stream so the first text delta can be timed. A caller that returns a
     // finished message is still accepted, with first_token_ms left empty.
-    const streamed = { ...params, stream: true as const };
-    const created = options
-      ? await client.messages.create(streamed, options)
-      : await client.messages.create(streamed);
-    const response = await collectModelResult(created, started);
+    const attempt = async (maxTokens: number) => {
+      /*
+       * FIRST TOKEN IS TIMED PER ATTEMPT (QA, 1 Nov 2026): timed from the start
+       * of the whole call, a retried answer's first token included the entire
+       * cut-off first attempt (~30 s) and read as 31–43 s. Ask Bubbles already
+       * times each attempt. Trace-only: nothing about the answer changes.
+       */
+      const attemptStarted = Date.now();
+      const streamed = { ...params, max_tokens: maxTokens, stream: true as const };
+      const created = options
+        ? await client.messages.create(streamed, options)
+        : await client.messages.create(streamed);
+      return collectModelResult(created, attemptStarted);
+    };
+    /*
+     * TRUNCATION_RETRY_ENABLED: an answer cut off at max_tokens is asked once
+     * more with a larger budget, and never shown cut off. See `truncation.ts`.
+     */
+    const response = truncationRetryEnabled()
+      ? await withTruncationRetry(
+          input.maxTokens,
+          attempt,
+          "Sunny ran out of room before finishing that answer, so it was not shown. Try asking for less at once, or split the question into parts.",
+        )
+      : await attempt(input.maxTokens);
 
     const noted = {
       model: CLAUDE_MODEL,
@@ -288,6 +375,13 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
         "Sunny could not answer that question. Try rephrasing it, or ask a manager directly.",
         422,
       );
+    }
+
+    /* FORM_EDIT_TOOL_IN_STREAM_ENABLED: the offered tool's call, if the model made one. Its text may be empty. */
+    const toolCalled = input.formEditTool ? handToolUse(response, input.formEditTool) : false;
+    if (toolCalled) {
+      noteModelCall(noted);
+      return response.text;
     }
 
     if (!response.text) {
@@ -316,6 +410,17 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
     });
     throw modelUnavailable(error);
   }
+}
+
+/**
+ * The offered tool's first `tool_use` block (as `collectModelResult` read it,
+ * finished or streamed), handed to `onToolUse`. True when a call was handed over.
+ */
+function handToolUse(response: CollectedModelResult, offered: NonNullable<CallClaudeInput["formEditTool"]>): boolean {
+  const use = (response.toolUses ?? []).find((block) => block.name === offered.tool.name);
+  if (!use) return false;
+  offered.onToolUse(use.input);
+  return true;
 }
 
 /**
@@ -383,4 +488,68 @@ export async function callClaudeTool(input: {
     if (error instanceof MissingConfigurationError) throw error;
     throw modelUnavailable(error);
   }
+}
+
+/**
+ * AI_READS_CODE_CHECKS_ENABLED: `callClaudeTool` with a hard time limit and
+ * the token usage, for a caller that falls back to its own readers when the
+ * model is slow. No retry: a retry would outlive the limit. Same error
+ * contract — nothing from the SDK escapes.
+ */
+export async function callClaudeToolTimed(input: Parameters<typeof callClaudeTool>[0] & { readonly timeoutMs: number }): Promise<{
+  readonly input: unknown;
+  readonly usage: { readonly inputTokens: number; readonly outputTokens: number; readonly cacheReadTokens: number; readonly cacheWriteTokens: number };
+}> {
+  const client = getAnthropicClient();
+  const messages = input.messages.filter((message) => message.content.trim() !== "");
+  try {
+    const response = await client.messages.create(
+      {
+        model: input.model,
+        max_tokens: input.maxTokens,
+        system: cachedSystem(input.system),
+        tools: [
+          {
+            name: input.tool.name,
+            description: input.tool.description,
+            input_schema: {
+              type: "object" as const,
+              properties: input.tool.input_schema.properties ?? {},
+              required: input.tool.input_schema.required ? [...input.tool.input_schema.required] : undefined,
+              additionalProperties: input.tool.input_schema.additionalProperties,
+            },
+          },
+        ],
+        tool_choice: { type: "tool" as const, name: input.tool.name },
+        messages: messages.map((message) => ({ role: message.role, content: message.content })),
+      },
+      { timeout: input.timeoutMs, maxRetries: 0 },
+    );
+    const block = response.content.find((item) => item.type === "tool_use");
+    if (!block || block.type !== "tool_use") {
+      throw new AiError("model_failed", "Sunny could not reach the language model. No answer was generated.", 502);
+    }
+    const usage = response.usage;
+    return {
+      input: block.input,
+      usage: {
+        inputTokens: usage?.input_tokens ?? 0,
+        outputTokens: usage?.output_tokens ?? 0,
+        cacheReadTokens: usage?.cache_read_input_tokens ?? 0,
+        cacheWriteTokens: usage?.cache_creation_input_tokens ?? 0,
+      },
+    };
+  } catch (error) {
+    if (error instanceof AiError) throw error;
+    if (error instanceof MissingConfigurationError) throw error;
+    // The reader falls back to today's readers; this says why (status and type only, never the request).
+    console.warn(`ai.reader: the model call failed (${describeCallError(error)}); the turn runs on today's readers`);
+    throw modelUnavailable(error);
+  }
+}
+
+function describeCallError(error: unknown): string {
+  const record = (error && typeof error === "object" ? error : {}) as { status?: unknown; name?: unknown; error?: { type?: unknown } };
+  const parts = [typeof record.status === "number" ? `HTTP ${record.status}` : null, typeof record.error?.type === "string" ? record.error.type : typeof record.name === "string" ? record.name : null];
+  return parts.filter(Boolean).join(" ") || "unknown error";
 }

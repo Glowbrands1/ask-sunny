@@ -1,0 +1,139 @@
+{
+  "revision 6, PAYROLL_AMOUNT_FIELD_ENABLED off": {
+    "fields": [
+      "employee_name: Employee Name",
+      "form_date: Date",
+      "job_title: Job Title",
+      "location: Location",
+      "warning_type: verbal=Verbal Warning | written=Written Warning | termination=Termination | demotion=Demotion",
+      "prior_actions: List previously received coaching and/or corrective action with date signed",
+      "offense_type: tardiness=Tardiness/Leaving Early | absenteeism=Absenteeism | standards_of_conduct=Standards of Conduct | under_performance=Under Performance | dress_code=Dress Code Violation | company_policies=Violation of Company Policies",
+      "other_offense: Other",
+      "observation: Observation of Offense",
+      "policy_violated: Policy Violated",
+      "policy_language: Direct policy from official manual",
+      "action_plan: Action Plan",
+      "payroll_deduct: yes=Yes | no=No"
+    ],
+    "values": [
+      "action_plan=\"Management will review the Attendance policy with Orla. Payroll will be deducted $25.00. Future policy violations may result in additional corrective action up to and including termination of employment.\" []",
+      "employee_name=\"Orla Penhallow\" []",
+      "form_date=\"2026-10-28\" []",
+      "job_title=\"Salon Consultant\" []",
+      "location=\"Invented Salon Alpha\" []",
+      "observation=\"Observed:\\nOrla opened the salon 25 minutes late on October 28, 2026.\" []",
+      "offense_type=null [\"tardiness\",\"company_policies\"]",
+      "other_offense=\"Supply count left unfinished\" []",
+      "payroll_deduct=null [\"yes\"]",
+      "policy_language=\"It is the responsibility of each employee to know his or her work schedule.\\n\\nSource: JBA Policy Manual — Attendance, p. 14\" []",
+      "policy_violated=\"Tardiness/Leaving Early, Violation of Company Policies\" []",
+      "prior_actions=\"Verbal warning — signed 09/30/2026\" []",
+      "warning_type=null [\"written\"]"
+    ],
+    "pdf": "SUN TAN CITY Corrective Action Form\nEmployee Information\nEmployee Name Orla Penhallow Date 2026-10-28\nJob Title Salon Consultant Location Invented Salon Alpha\nType of Warning\nVerbal Warning Written Warning\nTermination Demotion\nList previously received coaching and/or corrective action with date signed\nVerbal warning - signed 09/30/2026\nType of Offense\nTardiness/Leaving Early Absenteeism\nStandards of Conduct Under Performance\nDress Code Violation Violation of Company Policies\nOther Supply count left unfinished\nDetails\nObservation of Offense\nObserved:\nOrla opened the salon 25 minutes late on October 28, 2026.\nPolicy Violated Tardiness/Leaving Early, Violation of Company Policies\nDirect policy from official manual\nIt is the responsibility of each employee to know his or her work schedule.\nSource: JBA Policy Manual - Attendance, p. 14\nAction Plan\nManagement will review the Attendance policy with Orla. Payroll will be deducted $25.00. Future policy\nviolations may result in additional corrective action up to and including termination of employment.\nIs payroll deduct applicable? Yes No\nAcknowledgement of Receipt of Warning\nEmployee and supervisor discussed the warning and plan for improvement. Further violations may result in\nadditional action.\nEmployee Signature Date\nSupervisor Signature Date\nCorrective Action Form | Orla Penhallow | 2026-10-28 Template v1 | <reference> | Page 1 of 1"
+  },
+  "revision 7, PAYROLL_AMOUNT_FIELD_ENABLED off": {
+    "fields": [
+      "employee_name: Employee Name",
+      "form_date: Date",
+      "job_title: Job Title",
+      "location: Location",
+      "warning_type: verbal=Verbal Warning | written=Written Warning | termination=Termination | demotion=Demotion",
+      "prior_actions: List previously received coaching and/or corrective action with date signed",
+      "offense_type: tardiness=Tardiness/Leaving Early | absenteeism=Absenteeism | standards_of_conduct=Standards of Conduct | under_performance=Under Performance | dress_code=Dress Code Violation | company_policies=Violation of Company Policies",
+      "other_offense: Other",
+      "observation: Observation of Offense",
+      "policy_violated: Policy Violated",
+      "policy_language: Direct policy from official manual",
+      "action_plan: Action Plan",
+      "payroll_deduct: yes=Yes | no=No",
+      "payroll_deduct_amount: Payroll deduction amount"
+    ],
+    "values": [
+      "action_plan=\"Management will review the Attendance policy with Orla. Payroll will be deducted $25.00. Future policy violations may result in additional corrective action up to and including termination of employment.\" []",
+      "employee_name=\"Orla Penhallow\" []",
+      "form_date=\"2026-10-28\" []",
+      "job_title=\"Salon Consultant\" []",
+      "location=\"Invented Salon Alpha\" []",
+      "observation=\"Observed:\\nOrla opened the salon 25 minutes late on October 28, 2026.\" []",
+      "offense_type=null [\"tardiness\",\"company_policies\"]",
+      "other_offense=\"Supply count left unfinished\" []",
+      "payroll_deduct=null [\"yes\"]",
+      "payroll_deduct_amount=\"$25.00\" []",
+      "policy_language=\"It is the responsibility of each employee to know his or her work schedule.\\n\\nSource: JBA Policy Manual — Attendance, p. 14\" []",
+      "policy_violated=\"Tardiness/Leaving Early, Violation of Company Policies\" []",
+      "prior_actions=\"Verbal warning — signed 09/30/2026\" []",
+      "warning_type=null [\"written\"]"
+    ],
+    "pdf": "SUN TAN CITY Corrective Action Form\nEmployee Information\nEmployee Name Orla Penhallow Date 2026-10-28\nJob Title Salon Consultant Location Invented Salon Alpha\nType of Warning\nVerbal Warning Written Warning\nTermination Demotion\nList previously received coaching and/or corrective action with date signed\nVerbal warning - signed 09/30/2026\nType of Offense\nTardiness/Leaving Early Absenteeism\nStandards of Conduct Under Performance\nDress Code Violation Violation of Company Policies\nOther Supply count left unfinished\nDetails\nObservation of Offense\nObserved:\nOrla opened the salon 25 minutes late on October 28, 2026.\nPolicy Violated Tardiness/Leaving Early, Violation of Company Policies\nDirect policy from official manual\nIt is the responsibility of each employee to know his or her work schedule.\nSource: JBA Policy Manual - Attendance, p. 14\nAction Plan\nManagement will review the Attendance policy with Orla. Payroll will be deducted $25.00. Future policy\nviolations may result in additional corrective action up to and including termination of employment.\nIs payroll deduct applicable? Yes No\nPayroll deduction amount $25.00\nAcknowledgement of Receipt of Warning\nEmployee and supervisor discussed the warning and plan for improvement. Further violations may result in\nadditional action.\nEmployee Signature Date\nSupervisor Signature Date\nCorrective Action Form | Orla Penhallow | 2026-10-28 Template v2 | <reference> | Page 1 of 1"
+  },
+  "revision 6, PAYROLL_AMOUNT_FIELD_ENABLED on": {
+    "fields": [
+      "employee_name: Employee Name",
+      "form_date: Date",
+      "job_title: Job Title",
+      "location: Location",
+      "warning_type: verbal=Verbal Warning | written=Written Warning | termination=Termination | demotion=Demotion",
+      "prior_actions: List previously received coaching and/or corrective action with date signed",
+      "offense_type: tardiness=Tardiness/Leaving Early | absenteeism=Absenteeism | standards_of_conduct=Standards of Conduct | under_performance=Under Performance | dress_code=Dress Code Violation | company_policies=Violation of Company Policies",
+      "other_offense: Other",
+      "observation: Observation of Offense",
+      "policy_violated: Policy Violated",
+      "policy_language: Direct policy from official manual",
+      "action_plan: Action Plan",
+      "payroll_deduct: yes=Yes | no=No",
+      "payroll_deduct_amount: Payroll deduction amount"
+    ],
+    "values": [
+      "action_plan=\"Management will review the Attendance policy with Orla. Payroll will be deducted $25.00. Future policy violations may result in additional corrective action up to and including termination of employment.\" []",
+      "employee_name=\"Orla Penhallow\" []",
+      "form_date=\"2026-10-28\" []",
+      "job_title=\"Salon Consultant\" []",
+      "location=\"Invented Salon Alpha\" []",
+      "observation=\"Observed:\\nOrla opened the salon 25 minutes late on October 28, 2026.\" []",
+      "offense_type=null [\"tardiness\",\"company_policies\"]",
+      "other_offense=\"Supply count left unfinished\" []",
+      "payroll_deduct=null [\"yes\"]",
+      "policy_language=\"It is the responsibility of each employee to know his or her work schedule.\\n\\nSource: JBA Policy Manual — Attendance, p. 14\" []",
+      "policy_violated=\"Tardiness/Leaving Early, Violation of Company Policies\" []",
+      "prior_actions=\"Verbal warning — signed 09/30/2026\" []",
+      "warning_type=null [\"written\"]"
+    ],
+    "pdf": "SUN TAN CITY Corrective Action Form\nEmployee Information\nEmployee Name Orla Penhallow Date 2026-10-28\nJob Title Salon Consultant Location Invented Salon Alpha\nType of Warning\nVerbal Warning Written Warning\nTermination Demotion\nList previously received coaching and/or corrective action with date signed\nVerbal warning - signed 09/30/2026\nType of Offense\nTardiness/Leaving Early Absenteeism\nStandards of Conduct Under Performance\nDress Code Violation Violation of Company Policies\nOther Supply count left unfinished\nDetails\nObservation of Offense\nObserved:\nOrla opened the salon 25 minutes late on October 28, 2026.\nPolicy Violated Tardiness/Leaving Early, Violation of Company Policies\nDirect policy from official manual\nIt is the responsibility of each employee to know his or her work schedule.\nSource: JBA Policy Manual - Attendance, p. 14\nAction Plan\nManagement will review the Attendance policy with Orla. Payroll will be deducted $25.00. Future policy\nviolations may result in additional corrective action up to and including termination of employment.\nIs payroll deduct applicable? Yes No\nPayroll deduction amount\nAcknowledgement of Receipt of Warning\nEmployee and supervisor discussed the warning and plan for improvement. Further violations may result in\nadditional action.\nEmployee Signature Date\nSupervisor Signature Date\nCorrective Action Form | Orla Penhallow | 2026-10-28 Template v1 | <reference> | Page 1 of 1"
+  },
+  "revision 7, PAYROLL_AMOUNT_FIELD_ENABLED on": {
+    "fields": [
+      "employee_name: Employee Name",
+      "form_date: Date",
+      "job_title: Job Title",
+      "location: Location",
+      "warning_type: verbal=Verbal Warning | written=Written Warning | termination=Termination | demotion=Demotion",
+      "prior_actions: List previously received coaching and/or corrective action with date signed",
+      "offense_type: tardiness=Tardiness/Leaving Early | absenteeism=Absenteeism | standards_of_conduct=Standards of Conduct | under_performance=Under Performance | dress_code=Dress Code Violation | company_policies=Violation of Company Policies",
+      "other_offense: Other",
+      "observation: Observation of Offense",
+      "policy_violated: Policy Violated",
+      "policy_language: Direct policy from official manual",
+      "action_plan: Action Plan",
+      "payroll_deduct: yes=Yes | no=No",
+      "payroll_deduct_amount: Payroll deduction amount"
+    ],
+    "values": [
+      "action_plan=\"Management will review the Attendance policy with Orla. Payroll will be deducted $25.00. Future policy violations may result in additional corrective action up to and including termination of employment.\" []",
+      "employee_name=\"Orla Penhallow\" []",
+      "form_date=\"2026-10-28\" []",
+      "job_title=\"Salon Consultant\" []",
+      "location=\"Invented Salon Alpha\" []",
+      "observation=\"Observed:\\nOrla opened the salon 25 minutes late on October 28, 2026.\" []",
+      "offense_type=null [\"tardiness\",\"company_policies\"]",
+      "other_offense=\"Supply count left unfinished\" []",
+      "payroll_deduct=null [\"yes\"]",
+      "payroll_deduct_amount=\"$25.00\" []",
+      "policy_language=\"It is the responsibility of each employee to know his or her work schedule.\\n\\nSource: JBA Policy Manual — Attendance, p. 14\" []",
+      "policy_violated=\"Tardiness/Leaving Early, Violation of Company Policies\" []",
+      "prior_actions=\"Verbal warning — signed 09/30/2026\" []",
+      "warning_type=null [\"written\"]"
+    ],
+    "pdf": "SUN TAN CITY Corrective Action Form\nEmployee Information\nEmployee Name Orla Penhallow Date 2026-10-28\nJob Title Salon Consultant Location Invented Salon Alpha\nType of Warning\nVerbal Warning Written Warning\nTermination Demotion\nList previously received coaching and/or corrective action with date signed\nVerbal warning - signed 09/30/2026\nType of Offense\nTardiness/Leaving Early Absenteeism\nStandards of Conduct Under Performance\nDress Code Violation Violation of Company Policies\nOther Supply count left unfinished\nDetails\nObservation of Offense\nObserved:\nOrla opened the salon 25 minutes late on October 28, 2026.\nPolicy Violated Tardiness/Leaving Early, Violation of Company Policies\nDirect policy from official manual\nIt is the responsibility of each employee to know his or her work schedule.\nSource: JBA Policy Manual - Attendance, p. 14\nAction Plan\nManagement will review the Attendance policy with Orla. Payroll will be deducted $25.00. Future policy\nviolations may result in additional corrective action up to and including termination of employment.\nIs payroll deduct applicable? Yes No\nPayroll deduction amount $25.00\nAcknowledgement of Receipt of Warning\nEmployee and supervisor discussed the warning and plan for improvement. Further violations may result in\nadditional action.\nEmployee Signature Date\nSupervisor Signature Date\nCorrective Action Form | Orla Penhallow | 2026-10-28 Template v2 | <reference> | Page 1 of 1"
+  }
+}

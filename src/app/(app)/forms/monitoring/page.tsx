@@ -13,6 +13,7 @@ import {
   listOutstandingFollowUps,
   type InstanceView,
 } from "@/lib/forms/instances";
+import { privateAwareLimit, privateCreatorsActive } from "@/lib/forms/private-creators";
 import {
   MonitoringTable,
   type MonitoredForm,
@@ -95,9 +96,10 @@ export default async function FormMonitoringPage({
     const readsExit = await pageCan("create_exit_form");
     const holds = (permission: Permission) => (permission === "create_exit_form" ? readsExit : false);
     const instances = withoutUnreadable(
-      await listInstances(view satisfies InstanceView, undefined, instanceListFilterFor(access.actor)),
+      // PRIVATE_CREATOR_FORMS: over-read, then trim to the default page of 200; off, as before.
+      await listInstances(view satisfies InstanceView, privateCreatorsActive() ? privateAwareLimit(200) : undefined, instanceListFilterFor(access.actor)),
       holds,
-    ).filter(mayRead);
+    ).filter(mayRead).slice(0, 200);
     forms = instances.map((instance) => ({
       id: instance.id,
       templateName: instance.templateName,
@@ -133,7 +135,7 @@ export default async function FormMonitoringPage({
      * manager looking at Followed up still needs to be told what is overdue.
      */
     attention = attentionSummary(
-      withoutUnreadable(await listOutstandingFollowUps(50, access.locationIds, access.ownCreatedBy), holds).filter(mayRead),
+      withoutUnreadable(await listOutstandingFollowUps(privateAwareLimit(50), access.locationIds, access.ownCreatedBy), holds).filter(mayRead).slice(0, 50),
       today,
     );
 

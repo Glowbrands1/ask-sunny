@@ -1,0 +1,23 @@
+{
+  "key": "abe699040b6bdcab7a085bc1133fe4d4372ea23c4200d2d01def2c22473a81b5",
+  "model": "claude-haiku-4-5",
+  "reply": {
+    "employee": "Dale Ferris",
+    "salon": null,
+    "title": null,
+    "incidentType": "register shortage of $3.25",
+    "incidentDate": "10-20-26",
+    "payrollAmount": "$3.25",
+    "warningLevel": "verbal",
+    "formType": "Corrective Action Form",
+    "formTurn": true,
+    "policyHeading": "Standards of Conduct"
+  },
+  "usage": {
+    "inputTokens": 3067,
+    "outputTokens": 223,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 0
+}

@@ -237,7 +237,7 @@ describe("the Coaching Form matches 01. Coaching Form.docx", () => {
      * the live library and adds Payroll deduction amount. That revision is
      * not published until Pau approves it.
      */
-    expect(TEMPLATE_SEEDS.find((seed) => seed.key === "dpoa")?.revision).toBe(7);
+    expect(TEMPLATE_SEEDS.find((seed) => seed.key === "dpoa")?.revision).toBe(8); // Revision 8 (4 Nov 2026, client request, template approved): Type of Offense is four boxes.
   });
 });
 

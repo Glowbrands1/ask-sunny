@@ -1,0 +1,57 @@
+{
+  "key": "c36b276d652ddb8399641e4b58098da768e4ea6b21ece6fdcbee882517cc2b49",
+  "model": "claude-haiku-4-5",
+  "reply": {
+    "employee": {
+      "value": "Ferris, Dale",
+      "evidence": "Ferris, Dale"
+    },
+    "location": {
+      "value": null,
+      "evidence": null
+    },
+    "jobTitle": {
+      "value": null,
+      "evidence": null
+    },
+    "incident": {
+      "value": "violating attendance policy",
+      "evidence": "violating attendance policy"
+    },
+    "incidentDate": {
+      "value": "2026-10-20",
+      "evidence": "10-20-26"
+    },
+    "warningLevel": {
+      "value": "verbal",
+      "evidence": "verbal"
+    },
+    "payroll": {
+      "value": "no",
+      "evidence": "no payroll deduct"
+    },
+    "payrollAmount": {
+      "value": null,
+      "evidence": null
+    },
+    "policyHeading": {
+      "value": "Attendance",
+      "evidence": "violating attendance policy"
+    },
+    "priorSteps": [
+      {
+        "kind": "coaching",
+        "date": "2026-01-01",
+        "evidence": "jba manual 1-1-26 for previous coaching"
+      }
+    ],
+    "otherDates": []
+  },
+  "usage": {
+    "inputTokens": 3522,
+    "outputTokens": 377,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 0
+}

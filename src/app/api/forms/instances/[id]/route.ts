@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 
+import { cardChangePlanRebuildEnabled } from "@/lib/config/chat-quality-flags";
+import { syncCorrectiveActionPlan } from "@/lib/forms/ca-action-plan-sync";
+import { PAYROLL_AMOUNT_KEY } from "@/lib/forms/payroll-amount-field";
 import { errorResponse } from "@/lib/api/respond";
 import { POLICY_ACKNOWLEDGEMENT_REQUIRED } from "@/lib/forms/policy-verification";
 import {
@@ -52,7 +55,8 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   try {
     const { id } = await context.params;
     const { loaded } = await authorizeInstance(request, id, "view");
-    return NextResponse.json(loaded);
+    // CARD_CHANGE_PLAN_REBUILD_ENABLED: the Change something panel offers the Payroll deduction amount.
+    return NextResponse.json(cardChangePlanRebuildEnabled() ? { ...loaded, cardChangeAmount: true } : loaded);
   } catch (error) {
     if (error instanceof InstanceNotVisibleError) {
       return NextResponse.json({ error: error.message }, { status: 404 });
@@ -68,6 +72,8 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     const body = (await request.json().catch(() => null)) as {
       values?: Record<string, string>;
       checked?: Record<string, string[]>;
+      /** "card-change": the finalized form's Change something panel (`finalized-change-panel.tsx`). */
+      source?: unknown;
     } | null;
 
     const result = await saveInstanceValues(
@@ -75,8 +81,28 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       { values: body?.values ?? {}, checked: body?.checked ?? {} },
       actor.id,
     );
+    /*
+     * CARD_CHANGE_PLAN_REBUILD_ENABLED (Pau, 28 Oct 2026): payroll deduct
+     * changed from the Change something panel rebuilds the Corrective Action
+     * Form's Action Plan on this draft, the way a payroll answer in chat does
+     * (`syncCorrectiveActionPlan`; only a plan the app built is touched). The
+     * draft only: a finalized form is never written here.
+     */
+    /*
+     * The panel's Payroll deduction amount (same flag): the rebuilt plan says
+     * "<first name> will be payroll deducted <amount>.", and an amount changed
+     * on its own rebuilds it too.
+     */
+    const saved = (key: string) => !result.rejected.some((item) => item.key === key);
+    const planRebuilt =
+      cardChangePlanRebuildEnabled() &&
+      body?.source === "card-change" &&
+      ((Array.isArray(body.checked?.payroll_deduct) && saved("payroll_deduct")) ||
+        (typeof body.values?.[PAYROLL_AMOUNT_KEY] === "string" && saved(PAYROLL_AMOUNT_KEY)))
+        ? (await syncCorrectiveActionPlan(id, actor.id, { amountSentence: true })).length > 0
+        : false;
     const loaded = await loadInstance(id);
-    return NextResponse.json({ ...loaded, rejected: result.rejected });
+    return NextResponse.json({ ...loaded, rejected: result.rejected, ...(planRebuilt ? { actionPlanRebuilt: true } : {}) });
   } catch (error) {
     if (error instanceof InstanceNotVisibleError) {
       return NextResponse.json({ error: error.message }, { status: 404 });

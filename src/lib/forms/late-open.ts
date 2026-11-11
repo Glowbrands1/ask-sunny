@@ -1,6 +1,7 @@
-import { lateOpenDateEnabled } from "@/lib/config/chat-quality-flags";
+import { formDateIncidentOnlyEnabled, lateOpenDateEnabled } from "@/lib/config/chat-quality-flags";
 
 import { listIncidentDates } from "./form-date-answer";
+import { incidentOnly } from "./form-date-incident-only";
 
 /**
  * ============================================================================
@@ -82,7 +83,18 @@ export function yearlessCuedDates(text: string, today: string): YearlessDate[] {
   for (const match of source.matchAll(YEARLESS_DASHED)) {
     const index = match.index ?? 0;
     const end = index + match[0].length;
-    if (!DATE_CUE_BEFORE.test(source.slice(Math.max(0, index - 60), index))) continue;
+    /*
+     * FORM_DATE_INCIDENT_ONLY_ENABLED (QA, 26 Oct 2026, conv_mvolz9vk2cwijs1):
+     * "late on 10-5 and 10-15" — the second date continues the cued list and
+     * is a date too, or the form took the first one alone.
+     */
+    const previous = found[found.length - 1];
+    const continuesList =
+      formDateIncidentOnlyEnabled() &&
+      previous !== undefined &&
+      index - previous.end <= 8 &&
+      /^\s*(?:,|and|&|or|,\s*and)\s*$/i.test(source.slice(previous.end, index));
+    if (!continuesList && !DATE_CUE_BEFORE.test(source.slice(Math.max(0, index - 60), index))) continue;
     if (RANGE_AFTER.test(source.slice(end, end + 12))) continue;
     const iso = mostRecent(Number(match[1]), Number(match[2]), today);
     if (iso) found.push({ iso, index, end });
@@ -123,7 +135,7 @@ export function newestStatedDate(
 }
 
 function singleIncidentDate(text: string, today: string): string | null {
-  const dates = [...new Set(listIncidentDates(text, today).map((found) => found.iso))];
+  const dates = [...new Set(incidentOnly(text, today, listIncidentDates(text, today)).map((found) => found.iso))];
   return dates.length === 1 ? dates[0]! : null;
 }
 

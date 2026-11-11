@@ -1,0 +1,23 @@
+{
+  "key": "536e57772534a77284800307c720037c1006aa89d9f77c9d1e25d4d7de70e882",
+  "model": "claude-haiku-4-5",
+  "reply": {
+    "employee": "Dale Ferris",
+    "salon": null,
+    "title": null,
+    "incidentType": "not attending the monthly meeting",
+    "incidentDate": "10-20-26",
+    "payrollAmount": null,
+    "warningLevel": "written",
+    "formType": "CA",
+    "formTurn": true,
+    "policyHeading": "Attendance"
+  },
+  "usage": {
+    "inputTokens": 2515,
+    "outputTokens": 212,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 0
+}

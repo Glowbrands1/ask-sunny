@@ -89,6 +89,20 @@ export const RECOVERY_START_PATH = "/auth/recovery-start";
 /** The page with the Continue button. No token in its URL, ever. */
 export const RECOVERY_CONTINUE_PATH = "/auth/recovery-continue";
 
+/**
+ * THE SCANNER-SAFE INVITATION LANDING (INVITE_LINK_HOLD_ENABLED, default off).
+ * The recovery pair above, for the Invite user email: a GET only holds the
+ * token; the Continue POST verifies it and goes on to `SET_PASSWORD_PATH`,
+ * which accepts the invitation once the password is set. Nothing links here
+ * until the Supabase Invite template is changed to
+ * `docs/supabase-invite-template.html`; with the flag off both routes are
+ * inert. See `lib/auth/invite-token.ts`.
+ */
+export const INVITE_START_PATH = "/auth/invite-start";
+
+/** The invitation's Continue page. No token in its URL, ever. */
+export const INVITE_CONTINUE_PATH = "/auth/invite-continue";
+
 /** Builds the absolute recovery target for a given origin. */
 export function recoveryUrlFor(origin: string): string {
   return `${origin.replace(/\/$/, "")}${RECOVERY_PATH}`;

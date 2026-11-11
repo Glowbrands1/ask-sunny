@@ -3,6 +3,7 @@ import "server-only";
 import { getAnthropicClient } from "@/lib/ai/anthropic";
 import type { AskResponse } from "@/lib/ai/types";
 import { ACTIVE_BRAND } from "@/lib/brand";
+import { formEditSingleWriterEnabled, revisionSameValueEnabled } from "@/lib/config/chat-quality-flags";
 import { CLAUDE_MAX_TOKENS, CLAUDE_MODEL } from "@/lib/config/models";
 import type { ChatMessage } from "@/types";
 
@@ -39,6 +40,7 @@ import {
   guardNarrativeDraft,
 } from "./narrative-draft";
 import { extractEmployeeNames, managerContext, samePerson } from "./proposal";
+import { namesOnRoster } from "./roster-name-gate";
 import { draftableCheckboxGroups, draftableFields } from "./responsibility";
 import {
   REVISABLE_LAYOUT_FAMILIES,
@@ -151,10 +153,13 @@ export async function reviseActiveForm(input: {
      * edit was treated as being about somebody else and dropped.
      */
     const formWords = formVocabulary(parseFormDocument(loaded.version.document), instance.variantKey);
-    const named = extractEmployeeNames(input.question).filter(
-      (name) =>
-        !formWords.has(name.toLowerCase()) &&
-        !new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s+\\d{1,2}\\b`).test(input.question),
+    const named = await namesOnRoster(
+      extractEmployeeNames(input.question).filter(
+        (name) =>
+          !formWords.has(name.toLowerCase()) &&
+          !new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s+\\d{1,2}\\b`).test(input.question),
+      ),
+      actor.scope,
     );
     if (named.length > 0 && !named.some((name) => samePerson(name, instance.employeeName))) return null;
   }
@@ -506,6 +511,17 @@ export async function reviseActiveForm(input: {
         knownWords: [ACTIVE_BRAND.brandName, ...(instance.locationName ? [instance.locationName] : [])],
       });
 
+  /*
+   * REVISION_SAME_VALUE_ENABLED (Sunny live check A3, 31 Oct 2026): a value
+   * equal to the field's current text — only a placeholder was dropped — is
+   * not a change, so the reply never says "Updated" for it.
+   */
+  if (revisionSameValueEnabled()) {
+    for (const key of Object.keys(byName.values)) {
+      if ((current.get(key)?.value ?? "").trim() === String(byName.values[key] ?? "").trim()) delete byName.values[key];
+    }
+  }
+
   const changed = Object.keys(byName.values).length + Object.keys(sensitive.checked).length;
   /*
    * FINDINGS THE MODEL OFFERED THAT CANNOT GO ON YET — emptied by the guard,
@@ -532,12 +548,9 @@ export async function reviseActiveForm(input: {
     return dateChanged ? { ...reply(lines.join("\n")), formUpdate: { instanceId: input.instanceId, updated: [FOLLOW_UP_DATE_KEY] } } : reply(lines.join("\n"));
   }
 
-  const saved = await applyAssistantRevision(
-    input.instanceId,
-    { values: byName.values, checked: sensitive.checked },
-    plan.cleared,
-    actor.id,
-  );
+  const saved = formEditSingleWriterEnabled()
+    ? await (await import("./form-write")).writeRevisionEdits(input.instanceId, { values: byName.values, checked: sensitive.checked }, plan.cleared, { actorId: actor.id, latest: input.question, notes })
+    : await applyAssistantRevision(input.instanceId, { values: byName.values, checked: sensitive.checked }, plan.cleared, actor.id);
   const written = [
     ...Object.keys(saved.accepted.values),
     ...Object.keys(saved.accepted.checked),

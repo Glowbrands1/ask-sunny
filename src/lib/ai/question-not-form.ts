@@ -1,3 +1,5 @@
+import { caRequestNotPriorCoachingEnabled, fieldLabelNotAQuestionEnabled } from "@/lib/config/chat-quality-flags";
+
 /**
  * ============================================================================
  * A QUESTION IS ANSWERED. IT IS NEVER A FORM TURN.
@@ -105,20 +107,54 @@ function clauses(text: string): string[] {
     .filter((part) => part !== "");
 }
 
+/** Which reading a clause takes, first that holds; null when none. */
+const REQUEST_READINGS = [
+  ["IMPERATIVE", IMPERATIVE],
+  ["DO_REQUEST", DO_REQUEST],
+  ["ASKED_TO_ACT", ASKED_TO_ACT],
+  ["ASKS_TO_GET", ASKS_TO_GET],
+  ["WANTS", WANTS],
+  ["SUGGESTS", SUGGESTS],
+  ["ANY_CREATE", ANY_CREATE],
+] as const;
+
+/*
+ * CA_REQUEST_NOT_PRIOR_COACHING_ENABLED (QA's live tester, 7 Nov 2026, sf-s35's exact wording): "Can you draw me up a
+ * CA for <name> …" asks for the form. "draw" is in none of the readings above, so its "Can" read as a question and the
+ * turn never reached the forms path. Only "draw (me / us) up", leading the clause or after "can / could / would / will
+ * you": "draw up a plan with her" is still not a form by itself (the form reader decides that). Off, as before.
+ */
+const DRAWS_UP = /^(?:(?:can|could|would|will)\s+(?:you|u|ya)\s+)?(?:please\s+|pls\s+|just\s+)*draw\s+(?:(?:me|us)\s+)?up\b/i;
+
+function requestReading(clause: string): string | null {
+  for (const [name, reading] of REQUEST_READINGS) if (reading.test(clause)) return name;
+  if (caRequestNotPriorCoachingEnabled() && DRAWS_UP.test(clause)) return "DRAWS_UP";
+  return null;
+}
+
 /** A clause that asks for something to be created, changed or filled. */
 function isRequest(clause: string): boolean {
-  return (
-    IMPERATIVE.test(clause) ||
-    DO_REQUEST.test(clause) ||
-    ASKED_TO_ACT.test(clause) ||
-    ASKS_TO_GET.test(clause) ||
-    WANTS.test(clause) ||
-    SUGGESTS.test(clause) ||
-    ANY_CREATE.test(clause)
-  );
+  return requestReading(clause) !== null;
+}
+
+/*
+ * FIELD_LABEL_NOT_A_QUESTION_ENABLED (QA, 8 Nov 2026, from the sibling app's live tester; the same here): on an open exit card, "resignation
+ * date 10-26-2026. how employee resigned - <C> told management she quit …" and "how employee resigned - told
+ * management" were answered "A grounded answer from the policy manual." with no card — "how" read as a question. A
+ * clause that opens with one of the exit form's own field labels and then gives its value (after "-", ":" or the value
+ * itself) is the manager filling that field. With "?" it is still a question.
+ */
+const FIELD_LABEL = new RegExp(
+  String.raw`^\s*(?:how\s+(?:the\s+)?employee\s+resigned|reason\s+for\s+(?:the\s+)?(?:resignation|leaving)|resignation\s+date|last\s+day\s+(?:worked|of\s+work)|date\s+(?:that\s+)?notice\s+was\s+(?:given|fulfilled)|permanent\s+address|(?:store|salon)\s+items?\s+returned|(?:store|salon)\s+keys?\s+returned|eligible\s+for\s+re-?hire)\s*(?:[-–—:=]|is\b|was\b|\d)`,
+  "i",
+);
+
+function fillsAField(clause: string): boolean {
+  return fieldLabelNotAQuestionEnabled() && FIELD_LABEL.test(clause) && !/\?\s*$/.test(clause);
 }
 
 function asks(clause: string): boolean {
+  if (fillsAField(clause)) return false;
   if (ACCOUNT.test(clause) && !/\?\s*$/.test(clause)) return false;
   if (WH.test(clause) || AUX.test(clause) || DO_ASKS.test(clause)) return true;
   return WH_NEEDS_MARK.test(clause) && /\?\s*$/.test(clause);
@@ -167,4 +203,24 @@ export function isQuestionNotForm(question: string, history: readonly Turn[] = [
   if (parts.some(isRequest)) return false;
   if (parts.some(asks)) return true;
   return parts.length === 1 && looksUp(parts[0]!) && !answeringAQuestion(history);
+}
+
+/**
+ * `isQuestionNotForm` with the branch that decided it: a request reading
+ * (`ASKED_TO_ACT`, `IMPERATIVE`, …), an asking clause (`ASKS`), a short lookup
+ * (`LOOKS_UP`), or none (`STATEMENT`). Its `question` is `isQuestionNotForm`
+ * exactly. The edit tool records the branch in its trace for information only:
+ * since Pau's ruling A3 (4 Nov 2026) it no longer decides whether `edit_form`
+ * is offered.
+ */
+export function readQuestion(question: string, history: readonly Turn[] = []): { readonly question: boolean; readonly branch: string } {
+  const parts = clauses(question);
+  if (parts.length === 0) return { question: false, branch: "EMPTY" };
+  for (const part of parts) {
+    const reading = requestReading(part);
+    if (reading) return { question: false, branch: reading };
+  }
+  if (parts.some(asks)) return { question: true, branch: "ASKS" };
+  if (parts.length === 1 && looksUp(parts[0]!) && !answeringAQuestion(history)) return { question: true, branch: "LOOKS_UP" };
+  return { question: false, branch: "STATEMENT" };
 }

@@ -1,0 +1,23 @@
+{
+  "key": "97ce16d59008924f816bab2ae672f6788e248931be936257931b3b98417306c3",
+  "model": "claude-haiku-4-5",
+  "reply": {
+    "employee": "Ivy Hollis",
+    "salon": "Manhattan Location",
+    "title": "Tanning Consultant",
+    "incidentType": "Resignation",
+    "incidentDate": "9-15-26",
+    "payrollAmount": null,
+    "warningLevel": null,
+    "formType": "EXIT FORM",
+    "formTurn": true,
+    "policyHeading": "Employment Termination"
+  },
+  "usage": {
+    "inputTokens": 2533,
+    "outputTokens": 219,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 0
+}

@@ -1,0 +1,50 @@
+{
+  "key": "7f0f36f5b59c7cdf3c19a438c746b9255b8476d8e71d06ec0ae7f4b29caa6805",
+  "model": "claude-haiku-5-5",
+  "reply": {
+    "employee": {
+      "value": "dale",
+      "evidence": "create a written CA for dale for not attending the monthly meeting on 10-20-26"
+    },
+    "location": null,
+    "jobTitle": null,
+    "incident": {
+      "value": "Not attending the monthly meeting",
+      "evidence": "for not attending the monthly meeting on 10-20-26"
+    },
+    "incidentDate": {
+      "value": "2026-10-20",
+      "evidence": "for not attending the monthly meeting on 10-20-26"
+    },
+    "warningLevel": {
+      "value": "written",
+      "evidence": "Manager: written"
+    },
+    "payroll": {
+      "value": "no",
+      "evidence": "payroll deduct not applicable"
+    },
+    "payrollAmount": null,
+    "policyHeading": null,
+    "priorSteps": [
+      {
+        "kind": "coaching",
+        "date": "2026-01-01",
+        "evidence": "jba policy manual 1-1-26"
+      },
+      {
+        "kind": "verbal",
+        "date": "2026-09-01",
+        "evidence": "verbal ca 9-1-26"
+      }
+    ],
+    "otherDates": []
+  },
+  "usage": {
+    "inputTokens": 4646,
+    "outputTokens": 521,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 2317
+}

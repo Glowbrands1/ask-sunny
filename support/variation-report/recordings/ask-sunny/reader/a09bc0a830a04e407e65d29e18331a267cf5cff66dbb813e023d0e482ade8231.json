@@ -1,0 +1,62 @@
+{
+  "key": "a09bc0a830a04e407e65d29e18331a267cf5cff66dbb813e023d0e482ade8231",
+  "model": "claude-haiku-4-5",
+  "reply": {
+    "employee": {
+      "value": "ivy hollis",
+      "evidence": "emplyee name is ivy hollis"
+    },
+    "location": {
+      "value": "manhattan location",
+      "evidence": "at manhattan location"
+    },
+    "jobTitle": {
+      "value": "tanning consultant",
+      "evidence": "ivy was a tanning consultant"
+    },
+    "incident": {
+      "value": null,
+      "evidence": null
+    },
+    "incidentDate": {
+      "value": null,
+      "evidence": null
+    },
+    "warningLevel": {
+      "value": null,
+      "evidence": null
+    },
+    "payroll": {
+      "value": null,
+      "evidence": null
+    },
+    "payrollAmount": {
+      "value": null,
+      "evidence": null
+    },
+    "policyHeading": {
+      "value": null,
+      "evidence": null
+    },
+    "priorSteps": [],
+    "otherDates": [
+      {
+        "kind": "other",
+        "date": "2026-09-15",
+        "evidence": "on 9-15-26 ivy provided her resignation"
+      },
+      {
+        "kind": "other",
+        "date": "2026-09-28",
+        "evidence": "her last day worked was 9-28-26"
+      }
+    ]
+  },
+  "usage": {
+    "inputTokens": 3525,
+    "outputTokens": 389,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 0
+}

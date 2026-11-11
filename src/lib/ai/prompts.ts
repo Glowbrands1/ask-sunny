@@ -1,5 +1,6 @@
 import { REPORTS } from "@/features/reports/reports-routes";
 import { promptCacheEnabled } from "@/lib/config/chat-quality-flags";
+import { withSalesException } from "./ca-sales-prompt-lines";
 import { displayLocator } from "@/lib/knowledge/locator";
 import type { AnswerMode } from "@/types";
 import { CROSS_CHAT_REPLY_RULE } from "@/lib/chat/cross-chat-guard";
@@ -634,7 +635,7 @@ export function buildSystemPrompt(input: {
     .join("\n");
 
   const employeeSection = hasFrameworkGrounding
-    ? `\n\n${withUnifiedAuthority(EMPLOYEE_PERFORMANCE_RULES, input.unifiedAuthority === true).replaceAll("{{BRAND}}", brandName)}\n\n${
+    ? `\n\n${withSalesException(withUnifiedAuthority(EMPLOYEE_PERFORMANCE_RULES, input.unifiedAuthority === true)).replaceAll("{{BRAND}}", brandName)}\n\n${
         hasEmployeeFactsBlock ? EMPLOYEE_FACTS_ATTACHED_RULES : NO_INGESTED_DATASET_RULES
       }`
     : "";
@@ -916,10 +917,20 @@ export function openFormRule(form: OpenFormSummary): string {
   const lines = form.lines.length
     ? form.lines.map((line) => `    ${line.label}: ${JSON.stringify(line.value)}`).join("\n")
     : "    (nothing filled in yet)";
-  const policy =
+  const blank = form.blankPolicy ?? [];
+  const policy = [
     form.unverifiedPolicy.length > 0
       ? `Not yet checked against the official manual: ${form.unverifiedPolicy.join(", ")}.`
-      : "Its policy lines, where it has any, were quoted from the official manual.";
+      : blank.length > 0
+        ? null
+        : "Its policy lines, where it has any, were quoted from the official manual.",
+    // POLICY_GATE_NONBLOCKING_ENABLED: a blank policy line was neither quoted nor checked; never say it was verified.
+    blank.length > 0
+      ? `Blank, so nothing on it was checked against the official manual (never say it is verified): ${blank.join(", ")}.`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
   return `- A FORM IS OPEN IN THIS CONVERSATION: the ${form.templateName} for ${form.employeeName}, ${form.status === "draft" ? "a draft the manager can still edit" : "finalized"}. It is on screen as a card above. NEVER say no form has been created, never say there is no draft card, and never ask the manager to create this form again. ${policy} What it says now:
 ${lines}
 - The form's text is the record, not a company source: never cite it with a marker.

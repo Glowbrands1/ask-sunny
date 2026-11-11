@@ -1,0 +1,57 @@
+{
+  "key": "dc92237da2ae2e40591e32c4065a74a468abcd445f6c357a4d457ef28fa85ff1",
+  "model": "claude-haiku-4-5",
+  "reply": {
+    "employee": {
+      "value": "quinn marlowe",
+      "evidence": "quinn marlowe was late on 10/20"
+    },
+    "location": {
+      "value": null,
+      "evidence": null
+    },
+    "jobTitle": {
+      "value": null,
+      "evidence": null
+    },
+    "incident": {
+      "value": "was late",
+      "evidence": "quinn marlowe was late on 10/20"
+    },
+    "incidentDate": {
+      "value": "2026-10-20",
+      "evidence": "quinn marlowe was late on 10/20"
+    },
+    "warningLevel": {
+      "value": null,
+      "evidence": null
+    },
+    "payroll": {
+      "value": null,
+      "evidence": null
+    },
+    "payrollAmount": {
+      "value": null,
+      "evidence": null
+    },
+    "policyHeading": {
+      "value": "Attendance",
+      "evidence": null
+    },
+    "priorSteps": [],
+    "otherDates": [
+      {
+        "kind": "other",
+        "date": "2026-10-20",
+        "evidence": "the salon was opened late"
+      }
+    ]
+  },
+  "usage": {
+    "inputTokens": 3505,
+    "outputTokens": 366,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 0
+}

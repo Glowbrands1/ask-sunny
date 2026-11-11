@@ -19,7 +19,7 @@ export const Checkbox = React.forwardRef<
   <CheckboxPrimitive.Root
     ref={ref}
     className={cn(
-      "peer size-4.5 shrink-0 rounded-[5px] border border-border-strong bg-surface transition-colors data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground disabled:cursor-not-allowed disabled:opacity-45",
+      "peer size-5 shrink-0 rounded-[7px] border border-transparent bg-surface-muted shadow-dent transition-colors data-[state=checked]:shadow-chip data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground disabled:cursor-not-allowed disabled:opacity-45",
       className,
     )}
     {...props}
@@ -84,12 +84,12 @@ export const Switch = React.forwardRef<
   <SwitchPrimitive.Root
     ref={ref}
     className={cn(
-      "inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border border-transparent bg-border-strong transition-colors data-[state=checked]:bg-accent disabled:cursor-not-allowed disabled:opacity-45",
+      "inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border border-transparent bg-border-strong shadow-dent transition-colors data-[state=checked]:bg-accent disabled:cursor-not-allowed disabled:opacity-45",
       className,
     )}
     {...props}
   >
-    <SwitchPrimitive.Thumb className="pointer-events-none block size-4 translate-x-0.5 rounded-full bg-white shadow-soft transition-transform data-[state=checked]:translate-x-4" />
+    <SwitchPrimitive.Thumb className="pointer-events-none block size-5 translate-x-0.5 rounded-full bg-white shadow-chip transition-transform data-[state=checked]:translate-x-5" />
   </SwitchPrimitive.Root>
 ));
 Switch.displayName = "Switch";
@@ -105,7 +105,7 @@ export const TabsList = React.forwardRef<
   <TabsPrimitive.List
     ref={ref}
     className={cn(
-      "scroll-slim inline-flex max-w-full items-center gap-1 overflow-x-auto rounded-[var(--radius-md)] border border-border bg-surface-muted p-1",
+      "scroll-slim inline-flex max-w-full items-center gap-1 overflow-x-auto rounded-full bg-surface-muted p-1.5 shadow-dent",
       className,
     )}
     {...props}
@@ -120,7 +120,7 @@ export const TabsTrigger = React.forwardRef<
   <TabsPrimitive.Trigger
     ref={ref}
     className={cn(
-      "inline-flex items-center gap-2 rounded-[var(--radius-sm)] px-3 py-1.5 text-[13px] font-medium whitespace-nowrap text-muted-foreground transition-colors hover:text-foreground data-[state=active]:bg-surface data-[state=active]:text-foreground data-[state=active]:shadow-soft",
+      "inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[13px] font-semibold whitespace-nowrap text-muted-foreground transition-[color,box-shadow] hover:text-foreground data-[state=active]:bg-surface data-[state=active]:text-foreground data-[state=active]:shadow-raised",
       className,
     )}
     {...props}
@@ -165,12 +165,12 @@ export function Progress({
       value={value}
       aria-label={label}
       className={cn(
-        "relative h-1.5 w-full overflow-hidden rounded-full bg-measure-track",
+        "relative h-2.5 w-full overflow-hidden rounded-full bg-measure-track shadow-dent",
         className,
       )}
     >
       <ProgressPrimitive.Indicator
-        className={cn("h-full rounded-full transition-[width] duration-500", toneClass)}
+        className={cn("clay-fill h-full rounded-full transition-[width] duration-500", toneClass)}
         style={{ width: `${Math.min(100, Math.max(0, value))}%` }}
       />
     </ProgressPrimitive.Root>
@@ -213,7 +213,7 @@ export function SegmentedControl({
       }}
       aria-label={ariaLabel}
       className={cn(
-        "inline-flex items-center gap-0.5 rounded-full border border-border bg-surface-muted p-0.5",
+        "inline-flex items-center gap-1 rounded-full bg-surface-muted p-1 shadow-dent",
         className,
       )}
     >
@@ -222,7 +222,7 @@ export function SegmentedControl({
           key={option.value}
           value={option.value}
           className={cn(
-            "inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-bold tracking-[0.04em] uppercase transition-colors",
+            "inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-bold tracking-[0.04em] uppercase transition-colors data-[state=on]:clay-fill",
             "text-muted-foreground hover:text-foreground",
             tone === "brand"
               ? "data-[state=on]:bg-brand-yellow data-[state=on]:text-brand-yellow-foreground"

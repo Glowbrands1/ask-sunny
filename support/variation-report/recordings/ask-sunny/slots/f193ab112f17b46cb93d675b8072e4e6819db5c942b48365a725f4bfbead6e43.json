@@ -1,0 +1,23 @@
+{
+  "key": "f193ab112f17b46cb93d675b8072e4e6819db5c942b48365a725f4bfbead6e43",
+  "model": "claude-haiku-4-5",
+  "reply": {
+    "employee": null,
+    "salon": null,
+    "title": null,
+    "incidentType": null,
+    "incidentDate": null,
+    "payrollAmount": null,
+    "warningLevel": null,
+    "formType": "corrective action form",
+    "formTurn": true,
+    "policyHeading": "Disciplinary Action"
+  },
+  "usage": {
+    "inputTokens": 2468,
+    "outputTokens": 206,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 0
+}

@@ -19,6 +19,7 @@ import {
 import { readProposal, type FormProposal } from "./ingest/proposal";
 import { TEMPLATE_SEEDS } from "./library";
 import { withholdUnpublishedDpoa } from "./payroll-amount-field";
+import { seedOverrideAllows } from "./template-seed-override";
 import { templateSyncDecision } from "./template-sync-policy";
 
 /**
@@ -280,13 +281,15 @@ export async function ensureTemplateLibrary(
   for (const source of TEMPLATE_SEEDS) {
     // Revision 7 of the Corrective Action Form is the live library. It is in
     // the seed, including Payroll deduction amount, and it is not published.
+    // Revision 8 (Type of Offense, approved 4 Nov 2026) is published WITH
+    // that line (Pau, 4 Nov 2026).
     const seed = withholdUnpublishedDpoa(source);
     try {
       const row = known.get(seed.key);
       if (row) {
         const templateId = String(row.id);
         if (await syncTemplateDisplay(templateId, row, seed)) renamed.push(seed.key);
-        const outcome = await publishSeedRevision(templateId, seed, actor);
+        const outcome = await publishSeedRevision(templateId, seed, actor, env);
         if (outcome.repaired) repaired.push(seed.key);
         if (outcome.published) revised.push(seed.key);
         else if (outcome.reason) heldBack.push({ key: seed.key, reason: outcome.reason });
@@ -552,6 +555,7 @@ async function publishSeedRevision(
   templateId: string,
   seed: TemplateSeed,
   actor: string,
+  env: Readonly<Record<string, string | undefined>> = process.env,
 ): Promise<{ published: boolean; reason: string | null; repaired?: boolean }> {
   const supabase = getSupabaseAdmin();
   const versions = await listVersions(templateId);
@@ -571,7 +575,25 @@ async function publishSeedRevision(
   }
 
   const authored = versions.find((version) => version.seedRevision === 0);
-  if (authored) {
+  /*
+   * TEMPLATE_SEED_OVERRIDE (Pau, 5 Nov 2026): the one deliberate exception,
+   * for exactly the key and revision the environment names. Said in the log,
+   * so the publish over an administrator's version is never silent. See
+   * `template-seed-override.ts`.
+   */
+  const overridden = authored !== undefined && seedOverrideAllows(seed.key, seed.revision, env);
+  if (overridden) {
+    console.info(
+      JSON.stringify({
+        event: "forms.template_sync.override",
+        level: "info",
+        key: seed.key,
+        revision: seed.revision,
+        overVersion: authored.version,
+      }),
+    );
+  }
+  if (authored && !overridden) {
     return {
       published: false,
       reason: `Version ${authored.version} was authored here, so revision ${seed.revision} of the source document was not published over it. Open a draft and apply it deliberately.`,

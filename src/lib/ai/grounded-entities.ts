@@ -1,15 +1,19 @@
 import { PRODUCTION_SALONS } from "@/data/salons";
-import { typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
+import { formNameFromRosterEnabled, typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
 import { readCaPolicy } from "@/lib/forms/ca-policy";
+import { namesThisCompany } from "@/lib/forms/company-name";
+import { namesCompanyPositionTitle } from "@/lib/forms/staff-picker";
 import {
   displayName,
   matchEmployeeName,
   rosterNameNamedIn,
   type RosterEmployee,
 } from "@/lib/forms/employee-match";
+import { isDateAnswerWords } from "@/lib/forms/incident-dates";
 import { withKeptTypedNames } from "@/lib/forms/kept-typed-names";
 import { supportsInlineDraft } from "@/lib/forms/inline-draft";
 import { readEmployeeMentions } from "@/lib/forms/proposal";
+import { anchorsOnRoster, lowercaseRosterFirstNameIn, rosterShaped } from "@/lib/forms/roster-shape";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
 import type { ChatFormProposal } from "@/types";
 import type { AskResponse } from "./types";
@@ -43,6 +47,8 @@ export interface GroundedPrep {
   readonly ambiguousTyped: string | null;
   readonly keptTypedName: string | null;
   readonly employeeId: string | null;
+  /** FORM_NAME_FROM_ROSTER_ENABLED: the message names somebody on the roster (exact or close). */
+  readonly rosterAnchored?: boolean;
 }
 
 export function prepareGroundedQuestion(input: {
@@ -53,7 +59,7 @@ export function prepareGroundedQuestion(input: {
 }): GroundedPrep {
   const people = input.people;
   const roster = people as readonly RosterEmployee[];
-  let question = prependFormState(input.question, input.saved);
+  let question = prependFormState(input.question, input.saved, managerTurns(input.history));
   const kept = new Set<string>();
   if (input.saved?.keptTypedName) kept.add(input.saved.keptTypedName);
 
@@ -94,6 +100,7 @@ export function prepareGroundedQuestion(input: {
     ambiguousTyped: gated.ambiguousTyped,
     keptTypedName,
     employeeId: rosterIds && rosterIds.length === 1 ? rosterIds[0]! : null,
+    ...(gated.rosterAnchored ? { rosterAnchored: true } : {}),
   };
 }
 
@@ -210,6 +217,7 @@ function gateMentions(
   unmatched: string[];
   ambiguous: GroundedPerson[];
   ambiguousTyped: string | null;
+  rosterAnchored?: boolean;
 } {
   if (roster.length === 0) {
     return { question, rosterIds: null, unmatched: [], ambiguous: [], ambiguousTyped: null };
@@ -220,9 +228,16 @@ function gateMentions(
   let rosterIds: readonly string[] | null = null;
   let ambiguous: GroundedPerson[] = [];
   let ambiguousTyped: string | null = null;
+  // FORM_NAME_FROM_ROSTER_ENABLED: does the message name somebody on the roster? Only then is a nobody-shaped candidate set aside.
+  // A roster first name typed in lowercase ("for perpetua") is not read as a name, and still anchors the message.
+  const anchored =
+    formNameFromRosterEnabled() &&
+    (mentions.names.some((name) => anchorsOnRoster(name, roster)) || lowercaseRosterFirstNameIn(question, roster));
 
   for (const name of mentions.names) {
     if (isDocumentOrPolicyName(name)) continue;
+    // DATE_ANSWER_APPLIED_ENABLED: "most recent" answers the date question; it is not an unknown person to strip.
+    if (isDateAnswerWords(name)) continue;
     const match = matchEmployeeName(name, roster);
     if (match.kind === "unchecked") continue;
     if (match.kind === "exact") {
@@ -261,6 +276,12 @@ function gateMentions(
       continue;
     }
     if (isSalonPhrase(name)) continue;
+    // B1 (the sibling app's flip-3 tester, 6 Nov 2026), FORM_NAME_FROM_ROSTER_ENABLED: a company position title is never a person missing from the roster.
+    if (formNameFromRosterEnabled() && namesCompanyPositionTitle(name)) continue;
+    // QA, 7 Nov 2026, FORM_NAME_FROM_ROSTER_ENABLED: the company's own name or initials are never a person missing from the roster.
+    if (formNameFromRosterEnabled() && namesThisCompany(name)) continue;
+    // FORM_NAME_FROM_ROSTER_ENABLED: beside a roster name, "Club Close", "Under" (Pau, 4 Nov 2026) are shaped like nobody on the roster; not unmatched people.
+    if (anchored && !rosterShaped(name, roster)) continue;
     // The typed name stays in the question. The reply says Woven does not have it.
     unmatched.push(name);
   }
@@ -271,6 +292,7 @@ function gateMentions(
     unmatched,
     ambiguous,
     ambiguousTyped,
+    ...(anchored ? { rosterAnchored: true } : {}),
   };
 }
 
@@ -415,4 +437,9 @@ function asPerson(employee: RosterEmployee): GroundedPerson {
 function replacePhrase(text: string, phrase: string, replacement: string): string {
   const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return text.replace(new RegExp(`\\b${escaped}\\b`, "i"), replacement);
+}
+
+/** The manager's earlier turns (SECOND_REQUEST_OWN_ACCOUNT_ENABLED: `form-state.ts` stateForTurn). */
+function managerTurns(history: readonly { role: string; content: string }[]): string[] {
+  return history.filter((turn) => turn.role === "user").map((turn) => turn.content);
 }

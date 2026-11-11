@@ -1,0 +1,23 @@
+{
+  "key": "f8966a29bf58dc442b9927ccc4e1f3e36601a39ff5dcd8a59f96a995b54a05c0",
+  "model": "claude-haiku-4-5",
+  "reply": {
+    "employee": "quinn marlowe",
+    "salon": "kearney",
+    "title": null,
+    "incidentType": "not scheduled to work and came into the salon to show her team her new puppy",
+    "incidentDate": "10-22-26",
+    "payrollAmount": null,
+    "warningLevel": "verbal",
+    "formType": "jba manual",
+    "formTurn": true,
+    "policyHeading": "Visitors in the Workplace"
+  },
+  "usage": {
+    "inputTokens": 2531,
+    "outputTokens": 231,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 0
+}

@@ -1,0 +1,30 @@
+{
+  "key": "3929ddf75d64672c7154b281118e1dbb3abd0c27c1d5daba8f49ed90cb1ea08f",
+  "model": "claude-haiku-5-5",
+  "reply": {
+    "employee": {
+      "value": "Mara Quill",
+      "evidence": "create corrective action form for mara quill, Salon Diretor"
+    },
+    "location": null,
+    "jobTitle": {
+      "value": "Salon Diretor",
+      "evidence": "create corrective action form for mara quill, Salon Diretor"
+    },
+    "incident": null,
+    "incidentDate": null,
+    "warningLevel": null,
+    "payroll": null,
+    "payrollAmount": null,
+    "policyHeading": null,
+    "priorSteps": [],
+    "otherDates": []
+  },
+  "usage": {
+    "inputTokens": 4610,
+    "outputTokens": 353,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 1411
+}

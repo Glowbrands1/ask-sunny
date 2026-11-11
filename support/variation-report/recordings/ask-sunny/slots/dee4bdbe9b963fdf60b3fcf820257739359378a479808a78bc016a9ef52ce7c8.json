@@ -1,0 +1,23 @@
+{
+  "key": "dee4bdbe9b963fdf60b3fcf820257739359378a479808a78bc016a9ef52ce7c8",
+  "model": "claude-haiku-4-5",
+  "reply": {
+    "employee": "quinn marlowe",
+    "salon": "kearney",
+    "title": null,
+    "incidentType": "not scheduled to work and came into the salon to show her team her new puppy",
+    "incidentDate": "10-22",
+    "payrollAmount": null,
+    "warningLevel": "verbal",
+    "formType": "jba manual",
+    "formTurn": true,
+    "policyHeading": "Fraternization Policy"
+  },
+  "usage": {
+    "inputTokens": 2529,
+    "outputTokens": 228,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 0
+}

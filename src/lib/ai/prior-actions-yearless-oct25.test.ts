@@ -334,9 +334,26 @@ describe("conv_mvnoiw8n2kfbcvc, word for word", () => {
 
   it("with the flag off it is dated 9/15 with no prior action, as live", async () => {
     vi.stubEnv("PRIOR_ACTIONS_PARSE_ENABLED", "");
+    // Pinned off: PRIOR_SENTENCE_FIX_ENABLED also keeps the coaching's date off the form (twin below).
+    vi.stubEnv("PRIOR_SENTENCE_FIX_ENABLED", "");
     intentModel.reading = reading(null);
     const [first] = await chat([SAID], "conv-yearless-off");
     expect(first!.formProposal?.formDate).toBe("2026-09-15");
+    expect(priorLine(first!.content)).toBeNull();
+  });
+
+  /*
+   * Flag-on twin (PRIOR_SENTENCE_FIX_ENABLED, QA 26 Oct 2026): with only that
+   * flag, "she was coached on 9-15" is an earlier step's date on this
+   * Corrective Action, so the one incident date, 10/20, dates the card. No
+   * prior-actions line without PRIOR_ACTIONS_PARSE_ENABLED, as before.
+   */
+  it("with PRIOR_SENTENCE_FIX_ENABLED alone it is dated 10/20, never the coaching's 9/15", async () => {
+    vi.stubEnv("PRIOR_ACTIONS_PARSE_ENABLED", "");
+    vi.stubEnv("PRIOR_SENTENCE_FIX_ENABLED", "1");
+    intentModel.reading = reading(null);
+    const [first] = await chat([SAID], "conv-yearless-psf");
+    expect(first!.formProposal?.formDate).toBe("2026-10-20");
     expect(priorLine(first!.content)).toBeNull();
   });
 });
@@ -366,6 +383,8 @@ describe("the readers", () => {
 
   it("leave a range, a held coaching and the flag-off reading alone", () => {
     vi.stubEnv("PRIOR_ACTIONS_PARSE_ENABLED", "1");
+    // Pinned off: the flag-off reading below is PRIOR_SENTENCE_FIX_ENABLED's too (twin below).
+    vi.stubEnv("PRIOR_SENTENCE_FIX_ENABLED", "");
     const range = "CA for Test Employee, she was 10-15 minutes late on 10-20";
     expect(blankYearlessStepDates(range, TODAY)).toBe(range);
     expect(fieldLines(range, TODAY)).toEqual(["It happened on 10/20/2026."]);
@@ -376,5 +395,19 @@ describe("the readers", () => {
     expect(statedPriorActions(SAID, TODAY)).toEqual([]);
     expect(fieldLines(SAID, TODAY)).toEqual(["It happened on 9/15/2026."]);
     expect(blankYearlessStepDates(SAID, TODAY)).toBe(SAID);
+  });
+
+  // Flag-on twin: PRIOR_SENTENCE_FIX_ENABLED writes out the one incident date on a Corrective Action, never the coaching's.
+  it("with PRIOR_SENTENCE_FIX_ENABLED the field line is the incident's 10/20; a range and a held coaching are read as before", () => {
+    vi.stubEnv("PRIOR_SENTENCE_FIX_ENABLED", "1");
+    vi.stubEnv("PRIOR_ACTIONS_PARSE_ENABLED", "1");
+    const range = "CA for Test Employee, she was 10-15 minutes late on 10-20";
+    expect(fieldLines(range, TODAY)).toEqual(["It happened on 10/20/2026."]);
+    const held = "I coached her on 10-16 about her cell phone";
+    expect(blankYearlessStepDates(held, TODAY)).toBe(held);
+    expect(statedPriorActions(held, TODAY)).toEqual([]);
+    vi.stubEnv("PRIOR_ACTIONS_PARSE_ENABLED", "");
+    expect(statedPriorActions(SAID, TODAY)).toEqual([]);
+    expect(fieldLines(SAID, TODAY)).toEqual(["It happened on 10/20/2026."]);
   });
 });

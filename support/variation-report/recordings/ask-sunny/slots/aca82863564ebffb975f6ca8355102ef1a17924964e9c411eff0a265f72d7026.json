@@ -1,0 +1,23 @@
+{
+  "key": "aca82863564ebffb975f6ca8355102ef1a17924964e9c411eff0a265f72d7026",
+  "model": "claude-haiku-4-5",
+  "reply": {
+    "employee": "Quinn Marlowe",
+    "salon": null,
+    "title": "Tanning Consultant",
+    "incidentType": "under performance for September 270 tans below in PPTA, UPTA, LPSVA, CC% and Spa%",
+    "incidentDate": "September",
+    "payrollAmount": null,
+    "warningLevel": "verbal",
+    "formType": "performance CA",
+    "formTurn": true,
+    "policyHeading": null
+  },
+  "usage": {
+    "inputTokens": 2948,
+    "outputTokens": 237,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 0
+}

@@ -1,0 +1,23 @@
+{
+  "key": "23632f8a5f7c8fce2dd804518bf582569bed2734036df23cde997eaa15c11fd8",
+  "model": "claude-haiku-4-5",
+  "reply": {
+    "employee": "<UNKNOWN>",
+    "salon": "<UNKNOWN>",
+    "title": "<UNKNOWN>",
+    "incidentType": "being late",
+    "incidentDate": "<UNKNOWN>",
+    "payrollAmount": "<UNKNOWN>",
+    "warningLevel": "<UNKNOWN>",
+    "formType": "ca",
+    "formTurn": true,
+    "policyHeading": "Attendance"
+  },
+  "usage": {
+    "inputTokens": 2482,
+    "outputTokens": 208,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 0
+}

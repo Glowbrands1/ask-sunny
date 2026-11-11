@@ -1,0 +1,226 @@
+{
+  "paper": "letter",
+  "blocks": [
+    {
+      "kind": "letterhead",
+      "brand": "SUN TAN CITY",
+      "title": "Corrective Action Form"
+    },
+    {
+      "kind": "section",
+      "label": "Employee Information"
+    },
+    {
+      "kind": "field_row",
+      "fields": [
+        {
+          "key": "employee_name",
+          "label": "Employee Name",
+          "input": "text",
+          "responsibility": "system"
+        },
+        {
+          "key": "form_date",
+          "label": "Date",
+          "input": "date",
+          "responsibility": "system"
+        }
+      ]
+    },
+    {
+      "kind": "field_row",
+      "fields": [
+        {
+          "key": "job_title",
+          "label": "Job Title",
+          "input": "text",
+          "responsibility": "system"
+        },
+        {
+          "key": "location",
+          "label": "Location",
+          "input": "text",
+          "responsibility": "system"
+        }
+      ]
+    },
+    {
+      "kind": "section",
+      "label": "Type of Warning"
+    },
+    {
+      "kind": "checkbox_group",
+      "key": "warning_type",
+      "options": [
+        {
+          "key": "verbal",
+          "label": "Verbal Warning"
+        },
+        {
+          "key": "written",
+          "label": "Written Warning"
+        },
+        {
+          "key": "termination",
+          "label": "Termination"
+        },
+        {
+          "key": "demotion",
+          "label": "Demotion"
+        }
+      ],
+      "responsibility": "ai",
+      "columns": 2
+    },
+    {
+      "kind": "field",
+      "field": {
+        "key": "prior_actions",
+        "label": "List previously received coaching and/or corrective action with date signed",
+        "input": "long_text",
+        "responsibility": "ai",
+        "help": "One per line: each coaching or corrective action previously received, with the date it was signed. Write \"None — first occurrence\" when there has been none.",
+        "minLines": 4
+      }
+    },
+    {
+      "kind": "section",
+      "label": "Type of Offense"
+    },
+    {
+      "kind": "checkbox_group",
+      "key": "offense_type",
+      "options": [
+        {
+          "key": "tardiness",
+          "label": "Tardiness/Leaving Early"
+        },
+        {
+          "key": "absenteeism",
+          "label": "Absenteeism"
+        },
+        {
+          "key": "standards_of_conduct",
+          "label": "Standards of Conduct"
+        },
+        {
+          "key": "under_performance",
+          "label": "Under Performance"
+        },
+        {
+          "key": "dress_code",
+          "label": "Dress Code Violation"
+        },
+        {
+          "key": "company_policies",
+          "label": "Violation of Company Policies"
+        }
+      ],
+      "responsibility": "ai",
+      "columns": 2
+    },
+    {
+      "kind": "field",
+      "field": {
+        "key": "other_offense",
+        "label": "Other",
+        "input": "text",
+        "responsibility": "ai"
+      }
+    },
+    {
+      "kind": "section",
+      "label": "Details"
+    },
+    {
+      "kind": "field",
+      "field": {
+        "key": "observation",
+        "label": "Observation of Offense",
+        "input": "long_text",
+        "responsibility": "ai",
+        "help": "Written as \"Observed:\" — what happened — then \"Expectation:\" — the standard the employee is expected to meet — then \"Going Forward:\" — what they do differently. One field, three labelled sections.",
+        "narrative": "observed_expectation"
+      }
+    },
+    {
+      "kind": "field",
+      "field": {
+        "key": "policy_violated",
+        "label": "Policy Violated",
+        "input": "text",
+        "responsibility": "ai",
+        "help": "The offense category ticked above. Filled from the form itself, not composed."
+      }
+    },
+    {
+      "kind": "field",
+      "field": {
+        "key": "policy_language",
+        "label": "Direct policy from official manual",
+        "input": "long_text",
+        "responsibility": "ai",
+        "policyGrounded": true,
+        "help": "The approved manual this was checked against, with its section and page. Left for the manager when no approved policy matches."
+      }
+    },
+    {
+      "kind": "field",
+      "field": {
+        "key": "action_plan",
+        "label": "Action Plan",
+        "input": "long_text",
+        "responsibility": "ai",
+        "help": "Two sentences: management will review the policy cited under Direct policy with the employee, and the form's closing sentence — with the payroll deduction between them when payroll deduct is Yes. Written by Ask Sunny from the form; the closing is added automatically.",
+        "narrative": "plan_of_action",
+        "requiredClosing": "Future policy violations may result in additional corrective action up to and including termination of employment."
+      }
+    },
+    {
+      "kind": "checkbox_group",
+      "key": "payroll_deduct",
+      "label": "Is payroll deduct applicable?",
+      "options": [
+        {
+          "key": "yes",
+          "label": "Yes"
+        },
+        {
+          "key": "no",
+          "label": "No"
+        }
+      ],
+      "responsibility": "manager",
+      "columns": 2,
+      "single": true
+    },
+    {
+      "kind": "field",
+      "field": {
+        "key": "payroll_deduct_amount",
+        "label": "Payroll deduction amount",
+        "input": "text",
+        "responsibility": "manager",
+        "help": "The figure you give. Left blank until then — never taken from the policy."
+      }
+    },
+    {
+      "kind": "section",
+      "label": "Acknowledgement of Receipt of Warning"
+    },
+    {
+      "kind": "acknowledgement",
+      "text": "Employee and supervisor discussed the warning and plan for improvement. Further violations may result in additional action."
+    },
+    {
+      "kind": "signature_row",
+      "label": "Employee Signature",
+      "dateLabel": "Date"
+    },
+    {
+      "kind": "signature_row",
+      "label": "Supervisor Signature",
+      "dateLabel": "Date"
+    }
+  ]
+}

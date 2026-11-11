@@ -1,0 +1,23 @@
+{
+  "key": "8a582803320db934dbd66b233a683c5b4bc057e7957f812597e6d528eee35c2b",
+  "model": "claude-haiku-4-5",
+  "reply": {
+    "employee": "Quill, Mara",
+    "salon": null,
+    "title": "Salon Director",
+    "incidentType": null,
+    "incidentDate": null,
+    "payrollAmount": null,
+    "warningLevel": null,
+    "formType": "Corrective Action Form",
+    "formTurn": true,
+    "policyHeading": null
+  },
+  "usage": {
+    "inputTokens": 2868,
+    "outputTokens": 212,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 0
+}

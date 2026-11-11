@@ -1,0 +1,23 @@
+{
+  "key": "f7eccf011b3bf5e8d24b795437d9b24b8682d671aca26d6ef3d380603f8e2d61",
+  "model": "claude-haiku-4-5",
+  "reply": {
+    "employee": "dale ferris",
+    "salon": "manhattan",
+    "title": "tanning consultant",
+    "incidentType": "out of dress code",
+    "incidentDate": "9-29-26",
+    "payrollAmount": null,
+    "warningLevel": null,
+    "formType": "coaching form",
+    "formTurn": true,
+    "policyHeading": "Dress Code for The Company"
+  },
+  "usage": {
+    "inputTokens": 2661,
+    "outputTokens": 217,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 0
+}

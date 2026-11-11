@@ -1,0 +1,7 @@
+{
+  "src/app/api/chat/replay-pack/replay-pack-e2e.test.ts :: the replay pack nov4-scan-sf-s12-msb-not-a-person: \"I need to make a corrective action for msb\" — MSB is Must See Behaviors (the reason), not a person: ask which employee, never save \"Msb\" as the name — OPEN in production (\"msb\" is taken as the employee: the card is for \"Msb\" (\"I can create a Corrective Action Form for **msb**\"), awaiting the incident, and never asks which employee)": {
+    "category": "INTENDED",
+    "twin": "the same case with production's flags (flag unset): OPEN, expected to fail",
+    "reason": "An OPEN-in-production case that holds with CHAT_GLOSSARY_ENABLED on (vitest reports the expected failure as failed when the case passes): \"msb\" is never the employee and the reply asks which employee. Sunny #508 moves it to fixed after the flip."
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "key": "34d1bd11d1286b47fded7e0c44724d2d63b0c716ac3adbf237bb3c6efcaa5e87",
+  "model": "claude-haiku-4-5",
+  "reply": {
+    "employee": {
+      "value": "ivy",
+      "evidence": "I have an emplyee ivy at our Grand Island location"
+    },
+    "location": {
+      "value": "Grand Island",
+      "evidence": "at our Grand Island location"
+    },
+    "jobTitle": {
+      "value": null,
+      "evidence": null
+    },
+    "incident": {
+      "value": "out of dress code three shifts",
+      "evidence": "has been out of dress code three shifts"
+    },
+    "incidentDate": {
+      "value": null,
+      "evidence": null
+    },
+    "warningLevel": {
+      "value": null,
+      "evidence": null
+    },
+    "payroll": {
+      "value": null,
+      "evidence": null
+    },
+    "payrollAmount": {
+      "value": null,
+      "evidence": null
+    },
+    "policyHeading": {
+      "value": "Dress Code for The Company",
+      "evidence": "out of dress code"
+    },
+    "priorSteps": [
+      {
+        "kind": "coaching",
+        "date": "<UNKNOWN>",
+        "evidence": "I verbally coached her on the second offense"
+      }
+    ],
+    "otherDates": []
+  },
+  "usage": {
+    "inputTokens": 3527,
+    "outputTokens": 369,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 0
+}

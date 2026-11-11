@@ -1,0 +1,371 @@
+import type { AskResponse } from "@/lib/ai/types";
+import {
+  staffPickerNoRepeatEnabled,
+  staffPickerRememberLocationEnabled,
+  staffPickerStoreTitlesEnabled,
+  wholeTeamCoachingEnabled,
+} from "@/lib/config/chat-quality-flags";
+import type { AccessScope, ChatMessage, Permission, Role } from "@/types";
+
+/**
+ * ============================================================================
+ * "A COACHING FORM FOR MY WHOLE STAFF" — WHO IS ON IT, ONE PERSON AT A TIME
+ * ============================================================================
+ *
+ * STAFF_PICKER_ENABLED (ported from Ask Bubbles; Pau, 30 Oct 2026; same flag in
+ * both apps). "for whole
+ * staff - associates" was refused in one chat, and "can you create a coaching
+ * form for my whole staff?" made a card for "All team members" in another.
+ * Pau: "if managers wants that then i need to ask bubbles and sunny to be able
+ * to list staff in their location, if multiple, ask which location and check
+ * woven".
+ *
+ * So no card for a whole staff. With more than one salon in the account's
+ * scope and none named, the manager is asked which (never guessed). For one
+ * salon, its staff from the Woven-synced directory — the same scoped roster
+ * every name check reads, so an account sees only its own salons' people —
+ * by name and position only, and the manager is asked who the form is for.
+ * After that person's draft, "do the same <form> for <next>" copies it
+ * (SAME_FORM_COPY_ENABLED). No model call; one directory read.
+ */
+
+/*
+ * THE WHOLE STAFF IS WHO THE FORM IS FOR — NOT A PHRASE ANYWHERE IN THE TURN
+ * (independent review, 31 Oct 2026). "Coaching form for Jordan, he yelled at
+ * customers in front of the whole store" listed the staff instead of making
+ * Jordan's card. So: "a form for the whole / entire / my whole staff", "for
+ * everyone", "for all associates" — the "for" says the staff is the subject —
+ * or, answering the intake's "Who is this form for?", a short turn that is
+ * only that.
+ */
+const GROUP = String.raw`(?:staff|team(?:\s+members)?|crew|associates|employees)`;
+/** WHOLE_TEAM_COACHING_ENABLED (QA, 3 Nov 2026): "the whole salon", "salon wide", "all staff" are the whole staff too. */
+const STORE_GROUP = String.raw`(?:staff|team(?:\s+members)?|crew|associates|employees|salon|store|location)`;
+const ALL = String.raw`(?:whole|entire|all(?:\s+(?:of\s+)?(?:my|our|the))?|every)`;
+const FOR_WHOLE = new RegExp(
+  String.raw`\bfor\s+(?:the\s+|my\s+|our\s+)?${ALL}\s+${GROUP}\b|\bfor\s+(?:everyone|everybody|all\s+(?:my\s+|our\s+)?${GROUP})\b`,
+  "i",
+);
+const ANSWER = new RegExp(
+  String.raw`^\s*(?:it'?s\s+)?(?:for\s+)?(?:the\s+|my\s+|our\s+)?(?:${ALL}\s+${GROUP}|everyone|everybody|all\s+of\s+them)\b[\s\w-]{0,24}[.!]?\s*$`,
+  "i",
+);
+const FORM_WORD = /\b(?:forms?|coaching|corrective\s+action|ca|write[- ]?ups?|drafts?|cards?)\b/i;
+
+/** The marker on the "which location" question, read back from the next turn's history. */
+const ASKED_LOCATION = "Which salon's staff should I list?";
+const LISTED = "Who is this form for?";
+
+/** "a coaching form for my whole staff", "for everyone" — the staff as the form's subject. */
+const FOR_WHOLE_STORE = new RegExp(
+  String.raw`\bfor\s+(?:the\s+|my\s+|our\s+)?${ALL}\s+${STORE_GROUP}\b|\b(?:salon|store)[- ]wide\b|\ball\s+staff\b`,
+  "i",
+);
+
+export function asksForWholeStaff(text: string, continuing = false): boolean {
+  if (FOR_WHOLE.test(text) && FORM_WORD.test(text)) return true;
+  if (wholeTeamCoachingEnabled() && FOR_WHOLE_STORE.test(text) && FORM_WORD.test(text)) return true;
+  return continuing && ANSWER.test(text);
+}
+
+/**
+ * STAFF_PICKER_BARE_ANSWER_ENABLED (QA, live, 31 Oct 2026): with Remy's draft
+ * open after "Do the same coaching form for remy calder", "for whole staff"
+ * made another Coaching Form card for Remy, its Observation the earlier
+ * details sentence: the turn was read as more of the form in progress. A turn
+ * that is ONLY the whole staff — nothing about the open draft in it — is the
+ * staff list; the draft is left as it is. "update the draft: he told the whole
+ * team he was quitting" is not this, and stays the draft's.
+ */
+export function isBareWholeStaff(text: string): boolean {
+  return ANSWER.test(text);
+}
+
+function lastAssistant(history: readonly Pick<ChatMessage, "role" | "content">[]): string {
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const turn = history[index]!;
+    if (turn.role === "assistant") return turn.content ?? "";
+  }
+  return "";
+}
+
+/** A person on the scoped roster: name, position and salons only. */
+export interface StaffPerson {
+  readonly firstName: string;
+  readonly lastName: string;
+  readonly preferredFirstName?: string | null;
+  readonly positionName?: string | null;
+  readonly salonIds: readonly string[];
+}
+
+export interface StaffLocation {
+  readonly id: string;
+  readonly name: string;
+}
+
+function formName(text: string): string {
+  if (/\bcoach/i.test(text)) return "Coaching Form";
+  if (/\b(?:corrective\s+action|ca)\b/i.test(text)) return "Corrective Action Form";
+  return "form";
+}
+
+const MAX_LISTED = 40;
+
+/**
+ * STAFF_PICKER_STORE_TITLES_ENABLED (QA, 31 Oct 2026; same flag in both apps):
+ * a salon's staff, not the office. The directory affiliates office accounts
+ * (Accounting, Franchise Support, HR, Loss Prevention, Maintenance, Marketing,
+ * Operations, Owner, Regional Director, District Manager) with salons too;
+ * with the flag only these Woven titles are listed. A person with no title on
+ * file is kept — nothing says they are not salon staff.
+ */
+const SALON_TITLES = new Set(["Tanning Consultant", "Salon Director", "Assistant Salon Director"].map((title) => title.toLowerCase()));
+
+/** A salon's staff, not the office: the titles above, or no title on file. Also read by `coaching-for-everyone.ts`. */
+export function salonStaff(person: StaffPerson): boolean {
+  const title = person.positionName?.trim();
+  return !title || SALON_TITLES.has(title.toLowerCase());
+}
+
+function listStaff(location: StaffLocation, roster: readonly StaffPerson[], form: string): string {
+  const people = roster
+    .filter((person) => person.salonIds.includes(location.id))
+    .filter((person) => !staffPickerStoreTitlesEnabled() || salonStaff(person))
+    .map((person) => ({
+      name: `${person.preferredFirstName?.trim() || person.firstName} ${person.lastName}`.trim(),
+      position: person.positionName?.trim() || "Position not on file",
+    }))
+    .sort((a, b) => a.position.localeCompare(b.position) || a.name.localeCompare(b.name));
+  const one = form === "form" ? "A form" : `A ${form}`;
+  if (people.length === 0) {
+    return `${one} is for one person at a time. I couldn't find anyone on the directory for **${location.name}**. Tell me the name of the person it is for.`;
+  }
+  const shown = people.slice(0, MAX_LISTED);
+  const groups = new Map<string, string[]>();
+  for (const person of shown) {
+    if (!groups.has(person.position)) groups.set(person.position, []);
+    groups.get(person.position)!.push(person.name);
+  }
+  const lines = [...groups].map(([position, names]) => `**${position}**\n${names.map((name) => `- ${name}`).join("\n")}`);
+  const more = people.length > shown.length ? `\n\n…and ${people.length - shown.length} more. Name anyone not shown.` : "";
+  const next = form === "form" ? "the same form" : `the same ${form}`;
+  return [
+    `${one} is for one person at a time, so I won't make one card for the whole staff. Here is the staff at **${location.name}** on the directory:`,
+    `${lines.join("\n\n")}${more}`,
+    `${LISTED} Name one person. Once their draft is created, say **do ${next} for <next name>** and I'll copy it onto that person's card.`,
+  ].join("\n\n");
+}
+
+/**
+ * The reply for a whole-staff turn, or null for any other turn. Pure: the
+ * caller passes the account's in-scope locations, the scoped roster and the
+ * locations the question names.
+ */
+export function staffPickerReply(input: {
+  question: string;
+  history: readonly Pick<ChatMessage, "role" | "content">[];
+  /** The intake is still asking about a proposed form ("Who is this form for?"). */
+  continuing: boolean;
+  /** The locations this account may see, by the authenticated scope. */
+  locations: readonly StaffLocation[];
+  /** Location ids the question names (any; intersected with `locations` here). */
+  namedLocationIds: readonly string[];
+  roster: readonly StaffPerson[];
+}): string | null {
+  const previous = lastAssistant(input.history);
+  const answeringWhich = previous.includes(ASKED_LOCATION);
+  const wholeStaff = asksForWholeStaff(input.question, input.continuing);
+  if (!wholeStaff && !answeringWhich) return null;
+
+  const inScope = new Map(input.locations.map((location) => [location.id, location]));
+  const named = [...new Set(input.namedLocationIds)].filter((id) => inScope.has(id));
+  // A reply to the location question that names no location is the manager moving on.
+  if (!wholeStaff && named.length !== 1) return null;
+
+  const form = formName(`${input.question} ${previous}`);
+  const one = form === "form" ? "A form" : `A ${form}`;
+  const chosen = named.length === 1 ? inScope.get(named[0]!)! : inScope.size === 1 ? [...inScope.values()][0]! : null;
+  if (chosen && staffPickerNoRepeatEnabled()) {
+    const onward = alreadyListed(input.history, chosen, form);
+    if (onward) return onward;
+  }
+  if (chosen) return listStaff(chosen, input.roster, form);
+  if (inScope.size === 0) {
+    return `${one} is for one person at a time, and I can't list a staff for your account. Tell me the name of the person it is for.`;
+  }
+  const names = [...inScope.values()].map((location) => location.name).sort((a, b) => a.localeCompare(b));
+  const choices = names.length <= 15 ? `\n\n${names.map((name) => `- ${name}`).join("\n")}` : "";
+  return `${one} is for one person at a time, so I won't make one card for the whole staff. ${ASKED_LOCATION} Your account covers ${names.length} salons.${choices}`;
+}
+
+/** Words that say where without naming which: "the kearney salon" is "kearney". */
+const PLACE_FILLER = new Set(["the", "at", "in", "for", "its", "it's", "it", "is", "salon", "salons", "store", "stores", "location", "one", "please", "ne", "ia", "ks", "mo", "sd", "co"]);
+
+/**
+ * A short name of ONE of the account's own locations — every word the
+ * manager typed (fillers aside) is a word of that location's name and of no
+ * other in scope. Only among the account's own locations, so a word shared by
+ * two of them names neither.
+ */
+function shortLocationName(text: string, locations: readonly StaffLocation[]): string[] {
+  const words = text.toLowerCase().split(/[^a-z0-9']+/).filter((word) => word && !PLACE_FILLER.has(word));
+  if (words.length === 0 || words.length > 4) return [];
+  const matches = locations.filter((location) => {
+    const name = new Set(location.name.toLowerCase().split(/[^a-z0-9']+/).filter(Boolean));
+    return words.every((word) => name.has(word));
+  });
+  return matches.length === 1 ? [matches[0]!.id] : [];
+}
+
+/** The latest location, in scope, that the manager named in this conversation. */
+function rememberedLocation(
+  history: readonly Pick<ChatMessage, "role" | "content">[],
+  read: (text: string) => string[],
+  allowed: ReadonlySet<string>,
+): string[] {
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const turn = history[index]!;
+    if (turn.role !== "user" || typeof turn.content !== "string") continue;
+    const ids = [...new Set(read(turn.content).filter((id) => allowed.has(id)))];
+    if (ids.length === 1) return ids;
+  }
+  return [];
+}
+
+/** "Here is the staff at **<salon>** on the directory": the list already given in this conversation. */
+const LISTED_AT = /Here is the staff at \*\*([^*]+)\*\* on the directory/;
+
+/**
+ * STAFF_PICKER_NO_REPEAT_ENABLED (ported from Ask Bubbles: six turns, the
+ * same refusal and the same list each time). Once this conversation listed a
+ * salon's staff, another whole-staff turn for that salon is told what to do
+ * next in one line — never the refusal and the list again.
+ */
+function alreadyListed(
+  history: readonly Pick<ChatMessage, "role" | "content">[],
+  location: StaffLocation,
+  form: string,
+): string | null {
+  const listed = history.some(
+    (turn) => turn.role === "assistant" && typeof turn.content === "string" && LISTED_AT.exec(turn.content)?.[1] === location.name,
+  );
+  if (!listed) return null;
+  const one = form === "form" ? "a form" : `a **${form}**`;
+  const next = form === "form" ? "the same form" : `the same ${form}`;
+  return `The staff at **${location.name}** is listed above. To go on, name one person from that list and I'll start ${one} for them; once it's created, say **do ${next} for <next name>** and I'll copy it onto the next person's card.`;
+}
+
+export function staffPickerAnswer(content: string): AskResponse {
+  return { content, citations: [], coverage: "not_applicable", recommendedVideoIds: [] };
+}
+
+/**
+ * The route's turn: the account's own locations and scoped roster, read only
+ * when the words ask for a whole staff (or answer the location question).
+ */
+export async function staffPickerTurn(input: {
+  question: string;
+  history: readonly Pick<ChatMessage, "role" | "content">[];
+  continuing: boolean;
+  /** The form the intake is still asking about, if any ("coaching", "dpoa", …). */
+  templateKey?: string | null;
+  scope: AccessScope | null;
+  /** The asker's role: the list is only for somebody who may create the form. */
+  role: Role;
+}): Promise<AskResponse | null> {
+  const answeringWhich = lastAssistant(input.history).includes(ASKED_LOCATION);
+  if (!asksForWholeStaff(input.question, input.continuing) && !answeringWhich) return null;
+  /*
+   * ONLY FOR SOMEBODY WHO MAY CREATE THE FORM (independent review, 31 Oct 2026):
+   * every role may ask questions, so an employee asking for "a coaching form
+   * for my whole staff" got their location's staff by name and title. The same
+   * create permission the form needs — Coaching Form or Corrective Action Form,
+   * either for a form not named — or nothing is listed and the turn is answered
+   * as before.
+   */
+  const { DEFAULT_PERMISSION_MATRIX, hasPermission } = await import("@/lib/permissions");
+  const form = formName(`${input.question} ${lastAssistant(input.history)}`);
+  const needs: Permission[] =
+    form === "Coaching Form" ? ["create_coaching_form"] : form === "Corrective Action Form" ? ["create_corrective_action"] : ["create_coaching_form", "create_corrective_action"];
+  if (!needs.some((permission) => hasPermission(DEFAULT_PERMISSION_MATRIX, input.role, permission))) return null;
+  /*
+   * WHOLE_TEAM_COACHING_ENABLED (ported from Ask Bubbles: a Location Manager,
+   * 2 Nov 2026, 1 star: "it says it cannot make a coaching form for all team
+   * members, but it just did it for me earlier"; Pau, 3 Nov: "I need all
+   * managers to have it"). A COACHING form for the whole staff is the team
+   * card ("All team members", one salon) the form intake already makes — so
+   * the picker steps aside and the intake answers, the same in every chat. A
+   * form not named steps aside too: the intake asks which, and the Coaching
+   * Form is the team card. A Corrective Action Form is still one person at a
+   * time.
+   */
+  if (wholeTeamCoachingEnabled() && (form === "Coaching Form" || input.templateKey === "coaching")) return null;
+  if (wholeTeamCoachingEnabled() && form === "form" && !input.templateKey) return null;
+  const [{ authorizedSalonIds }, { PRODUCTION_SALONS, salonById }, { readSalonMentions }, roster] = await Promise.all([
+    import("@/lib/forms/location-scope"),
+    import("@/data/salons"),
+    import("@/lib/forms/salon-mention"),
+    import("@/lib/forms/employee-roster"),
+  ]);
+  /*
+   * The salons this account may see, as the roster reads them: one salon's
+   * scope its own salons, a global scope every salon. A district or region
+   * reads no roster here (`scopeRoster` fails closed), so none is listed.
+   */
+  const ids = !input.scope
+    ? []
+    : input.scope.level === "global"
+      ? PRODUCTION_SALONS.map((salon) => salon.id)
+      : authorizedSalonIds(input.scope);
+  const locations = ids
+    .map((id) => salonById(id))
+    .filter((salon): salon is NonNullable<typeof salon> => Boolean(salon))
+    .map((salon) => ({ id: salon.id, name: salon.name }));
+  const allowed = new Set(locations.map((location) => location.id));
+  const inTurn = (text: string) => {
+    const read = readSalonMentions(text).flatMap((mention) => [...mention.salonIds]);
+    return read.length > 0 || !staffPickerRememberLocationEnabled() ? read : shortLocationName(text, locations);
+  };
+  const said = inTurn(input.question);
+  /*
+   * STAFF_PICKER_REMEMBER_LOCATION_ENABLED (ported from Ask Bubbles: a Location
+   * Manager covering two locations, 2 Nov 2026): she answered with the short
+   * name, then asked again for "a coaching form for all team members" and was
+   * asked "Which … staff should I list?" a second time. A short name of one of
+   * the account's own salons ("kearney") answers it, and a salon this
+   * conversation's manager already named — the latest in scope — is reused; a
+   * turn naming a salon still wins, and a conversation naming none is asked.
+   */
+  const namedLocationIds =
+    said.some((id) => allowed.has(id)) || !staffPickerRememberLocationEnabled()
+      ? said
+      : rememberedLocation(input.history, inTurn, allowed);
+  // Asked first without the roster: the salon question needs no directory read.
+  const draft = staffPickerReply({ ...input, locations, namedLocationIds, roster: [] });
+  if (draft === null) return null;
+  const needsRoster = draft.includes(LISTED) || draft.includes("couldn't find anyone");
+  if (!needsRoster) return staffPickerAnswer(draft);
+  // Woven's title where the directory read gives it; the plain scoped roster otherwise.
+  const facts = await roster.readDirectoryFacts(input.scope);
+  const people: StaffPerson[] =
+    facts.length > 0
+      ? facts.map((person) => ({ ...person, positionName: person.title }))
+      : await roster.loadScopedRoster(input.scope);
+  return staffPickerAnswer(staffPickerReply({ ...input, locations, namedLocationIds, roster: people })!);
+}
+
+/** One of the company's own position names, as the directory writes them (TITLE_ENDS_AT_LINE_ENABLED reads it). */
+export function isCompanyPositionTitle(text: string): boolean {
+  return SALON_TITLES.has(text.trim().replace(/\s+/g, " ").toLowerCase());
+}
+
+/**
+ * B1 (the sibling app's flip-3 tester, 6 Nov 2026): the words name a company position as a manager types it — a title
+ * of the company's own list, or its first two or more words. From the title list only; one word is never enough.
+ */
+export function namesCompanyPositionTitle(text: string): boolean {
+  const typed = text.trim().replace(/\s+/g, " ").toLowerCase();
+  if (SALON_TITLES.has(typed)) return true;
+  if (typed.split(" ").length < 2) return false;
+  return [...SALON_TITLES].some((title) => title.startsWith(`${typed} `));
+}

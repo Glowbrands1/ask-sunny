@@ -668,11 +668,16 @@ describe("6. resolving the manual out of a real corpus", () => {
 
 describe("boxSectionNames — the section Policy Violated names beside a box", () => {
   it("names a cited section that is not the box's own, the first under each box", () => {
-    expect(boxSectionNames(["Late Opening", "Attendance"])).toEqual({ tardiness: "Late Opening" });
-    expect(boxSectionNames(["Attendance", "Late Opening"])).toEqual({ tardiness: "Late Opening" });
-    expect(boxSectionNames(["Cell Phone/Smart Watch Policy"])).toEqual({ company_policies: "Cell Phone/Smart Watch Policy" });
+    // CHANGED ON PURPOSE, Corrective Action revision 8 (client request, template approved 4 Nov 2026): with no version given, each section is also named under the box that replaced its box.
+    expect(boxSectionNames(["Late Opening", "Attendance"])).toEqual({ tardiness: "Late Opening", attendance_policy: "Late Opening" });
+    expect(boxSectionNames(["Attendance", "Late Opening"])).toEqual({ tardiness: "Late Opening", attendance_policy: "Late Opening" });
+    expect(boxSectionNames(["Cell Phone/Smart Watch Policy"])).toEqual({
+      company_policies: "Cell Phone/Smart Watch Policy",
+      standards_of_conduct: "Cell Phone/Smart Watch Policy",
+    });
     expect(boxSectionNames(["Visitors in the Workplace", "Coupon Collection"])).toEqual({
       company_policies: "Visitors in the Workplace",
+      standards_of_conduct: "Visitors in the Workplace",
     });
   });
 

@@ -2,12 +2,16 @@ import { z } from "zod";
 
 import {
   caTemplateMapEnabled,
+  modelPolicyDefersToTopicEnabled,
   codeSlotsEnabled,
+  slotNameOnFormRequestEnabled,
   formChoiceStatedEnabled,
   intentPayrollManagerOnlyEnabled,
   keepFormEmployeeEnabled,
+  latePayrollFromFormEnabled,
   managerWordsOnlyEnabled,
   placeSpanGuardEnabled,
+  priorActionsParseEnabled,
   newestPlaceTurnEnabled,
   notANameGuardEnabled,
   titleWholeWordEnabled,
@@ -15,18 +19,21 @@ import {
   namedFormExactEnabled,
   remapIncidentFixEnabled,
   warningLevelManagerOnlyEnabled,
+  checkedReadingEnabled,
 } from "@/lib/config/chat-quality-flags";
+import { withCorrectedEmployee } from "./corrected-employee";
 import { payrollDeductAmount, payrollDeductFromConversation, type PayrollDeductAnswer } from "@/lib/forms/payroll-deduct";
 import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
 import { lateOpenOn, newestStatedDate, withYearlessDatesWritten } from "@/lib/forms/late-open";
 import { printedPageForPolicy } from "@/lib/forms/printed-policy-pages";
+import { topicHeadings } from "@/lib/forms/specific-policy-topics";
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { stripFieldLabels } from "@/lib/forms/name-words";
 import { isNotAName, maskNotANameText, saidInReply } from "@/lib/forms/not-a-name";
 import { isExitAnswerPhrase } from "@/lib/forms/exit-answer-phrase";
 import { inStatedPermanentAddress } from "@/lib/forms/exit-details";
 import { cleanPersonName, employeeNamedOnPurpose } from "@/lib/forms/roster-validated-name";
-import { datesInText, listIncidentDates, priorSteps } from "@/lib/forms/form-date-answer";
+import { datesInText, listFormDates, listIncidentDates, priorSteps } from "@/lib/forms/form-date-answer";
 import { displayName, matchEmployeeName, type RosterEmployee } from "@/lib/forms/employee-match";
 import { extractEmployeeNames, extractJobTitle, titleAfterJobTitleLabel } from "@/lib/forms/proposal";
 import { readPlaceState } from "@/lib/forms/place-state";
@@ -40,7 +47,8 @@ import { labelledSalonIds } from "@/lib/forms/salon-cue";
 import { newestManagerTurnSalon } from "@/lib/forms/newest-place-turn";
 import { typedEmployeeName } from "@/lib/forms/typed-employee-name";
 import { managerStatedWarningLevel, templateHasWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
-import { isDocumentName, isRosterStateName } from "./not-a-person";
+import { isDocumentName, isReportName, isRosterStateName } from "./not-a-person";
+import { reportNameNotAPersonEnabled } from "@/lib/config/chat-quality-flags";
 import { readsAsStatedTitle, titleTextFromTurns } from "./title-words";
 import { titleInWords } from "./title-in-words";
 import { describedAttendanceKeys } from "@/lib/forms/ca-policy";
@@ -51,9 +59,10 @@ import {
   EMPTY_FORM_STATE,
   prependFormState,
   stateSentences,
-  type ConversationFormState,
-} from "./form-state";
+  type ConversationFormState, type OwnPolicy } from "./form-state";
 import type { GroundedPerson } from "./grounded-entities";
+import type { CheckedReading } from "./reader/check";
+import { mergeCheckedReading } from "./reader/merge";
 import { withoutStateCodes } from "./remap-incident";
 
 /**
@@ -162,6 +171,8 @@ export interface IntentTurnInput {
   readonly headingPages?: Readonly<Record<string, number>>;
   readonly templates: readonly TemplateRow[];
   readonly formInProgress: boolean;
+  /** AI_READS_CODE_CHECKS_ENABLED: the reader's fields that passed the checks, or null. */
+  readonly checked?: CheckedReading | null;
 }
 
 export interface IntentTurnDecision {
@@ -170,6 +181,8 @@ export interface IntentTurnDecision {
   readonly clarification: string | null;
   /** True when this turn is filing or continuing a form. */
   readonly formTurn: boolean;
+  /** AI_READS_CODE_CHECKS_ENABLED: what the checked reading filled, and where it disagreed. */
+  readonly reader?: { readonly filled: readonly string[]; readonly disputed: readonly string[] };
 }
 
 interface ChoiceOption {
@@ -227,6 +240,8 @@ function settleYesNo(question: string, saved: ConversationFormState): Conversati
 
 export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision {
   const input = withoutUntypedSavedName(rawInput);
+  // AI_READS_CODE_CHECKS_ENABLED: off, or with no checked reading, every field below is today's.
+  const merge = mergeCheckedReading(checkedReadingEnabled() ? rawInput.checked : null);
   const choiceStated = formChoiceStatedEnabled();
   const saved = choiceStated
     ? withoutDisciplineProcedure(input.saved ?? EMPTY_FORM_STATE)
@@ -255,16 +270,23 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
    * the slot model's "Test", or nobody, is replaced by the name as typed.
    */
   const typedEmployee = keepFormEmployeeEnabled() && !choice?.person ? typedEmployeeName(input.question) : null;
-  const employee = typedEmployee ? withTypedEmployee(grounded, typedEmployee) : grounded;
+  // CORRECTED_EMPLOYEE_SLOT_ENABLED: "actually it's for rowan kestrel" on an open card is Rowan Kestrel, not the first person named.
+  const employee = withCorrectedEmployee(
+    merge.employee(typedEmployee ? withTypedEmployee(grounded, typedEmployee) : grounded),
+    input.history,
+    input.question,
+    input.people,
+  );
   const userText = [input.question, ...input.history.filter((turn) => turn.role !== "assistant").map((turn) => turn.content)]
     .filter((part) => part.trim() !== "")
     .join("\n");
-  const salon =
+  const salon = merge.salon(
     (newestPlaceTurnEnabled()
       ? newestManagerTurnSalon([input.question, ...input.history.filter((turn) => turn.role === "user").map((turn) => turn.content).reverse()], input.salons)
       : null) ??
-    newestTurnSalon(input.question, input.salons) ??
-    groundSalon(choice?.salon ?? reading?.salon ?? null, userText, input.salons, employee.person);
+      newestTurnSalon(input.question, input.salons) ??
+      groundSalon(choice?.salon ?? reading?.salon ?? null, userText, input.salons, employee.person),
+  );
   // The manager's turns only: a pasted policy is not their words, and
   // "ass't salon director" is read as the assistant title.
   const managerTitleText = managerWordsOnlyEnabled()
@@ -272,7 +294,7 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
     : userText;
   // REMAP_INCIDENT_FIX_ENABLED: "empire, sd" is a place and its state, not Salon Director.
   const titleText = remapIncidentFixEnabled() ? withoutStateCodes(managerTitleText) : managerTitleText;
-  const title = groundTitle(reading?.title ?? null, titleText, input.people, employee.person, employee.name ?? employee.typed);
+  const title = merge.title(groundTitle(reading?.title ?? null, titleText, input.people, employee.person, employee.name ?? employee.typed));
   const groundedIncident = groundIncident(reading?.incidentType ?? null, blob, input.headings);
   const incidentType = choiceStated && isDisciplineProcedure(groundedIncident) ? null : groundedIncident;
   /*
@@ -288,24 +310,11 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
   const groundedDate = statedNow
     ? { iso: statedNow, ambiguous: [] as readonly string[] }
     : groundDate(choice?.date ?? reading?.incidentDate ?? null, dateQuestion, dateText, input.today);
-  const date = codeSlotsEnabled()
-    ? { iso: explicitIncidentIso(dateQuestion, input.today) ?? saved.formDate, ambiguous: [] as readonly string[] }
-    : groundedDate;
-  const managerOnly = intentPayrollManagerOnlyEnabled();
-  // The manager's Yes/No, never an assistant turn's: "payroll deduct is not
-  // applicable" is No in the saved state too (LATE_OPEN_DATE_ENABLED).
-  const payrollAnswer =
-    managerOnly || lateOpen
-      ? payrollDeductFromConversation([...input.history, { role: "user", content: input.question }])
-      : null;
-  const payrollAmount = !managerOnly
-    ? lateOpen && payrollAnswer === "no"
-      ? null
-      : groundPayroll(reading?.payrollAmount ?? null, blob)
-    : payrollAnswer === "no"
-      ? null
-      : (payrollClauseAmount(input) ??
-        (payrollAnswer === "yes" ? groundPayroll(reading?.payrollAmount ?? null, managerBlob(input)) : null));
+  const date = merge.date(
+    codeSlotsEnabled()
+      ? { iso: explicitIncidentIso(dateQuestion, input.today) ?? saved.formDate, ambiguous: [] as readonly string[] }
+      : groundedDate,
+  );
   const formType: { key: string | null; ambiguous: readonly TemplateRow[]; together?: boolean } = choiceStated
     ? groundStatedForm(
         choice?.form ?? null,
@@ -321,12 +330,39 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
         question: input.question,
         managerText: managerBlob(input),
       });
+  const managerOnly = intentPayrollManagerOnlyEnabled();
+  // The manager's Yes/No, never an assistant turn's: "payroll deduct is not
+  // applicable" is No in the saved state too (LATE_OPEN_DATE_ENABLED).
+  /*
+   * LATE_OPEN_PAYROLL_FROM_FORM_ENABLED (live, 26 Oct 2026): payroll deduct is
+   * this form's only — the manager's own statement, or a bare reply to the
+   * payroll question asked just before it — and only a form that asks it (the
+   * Corrective Action Form) takes a bare reply or an amount. With or without
+   * INTENT_PAYROLL_MANAGER_ONLY. See `latePayrollFromForm`.
+   */
+  const payrollFromForm = lateOpen && latePayrollFromFormEnabled();
+  const asksPayroll = payrollFromForm && formAsksPayroll(input.templates, formType.key ?? saved.templateKey);
+  const payrollAnswer = payrollFromForm
+    ? latePayrollFromForm(input, asksPayroll)
+    : managerOnly || lateOpen
+      ? payrollDeductFromConversation([...input.history, { role: "user", content: input.question }])
+      : null;
+  const payrollAmountRead = !managerOnly
+    ? lateOpen && payrollAnswer === "no"
+      ? null
+      : groundPayroll(reading?.payrollAmount ?? null, blob)
+    : payrollAnswer === "no"
+      ? null
+      : (payrollClauseAmount(input) ??
+        (payrollAnswer === "yes" ? groundPayroll(reading?.payrollAmount ?? null, managerBlob(input)) : null));
+  // LATE_OPEN_PAYROLL_FROM_FORM_ENABLED: "$25" on an exit form is no payroll deduction.
+  const payrollAmount = payrollFromForm && !asksPayroll ? null : merge.payrollAmount(payrollAmountRead);
   // NAMED_FORM_EXACT_ENABLED: a numbered choice the manager just made is their
   // naming; otherwise their own latest naming bounds the form.
   const namedFormExact = namedFormExactEnabled();
   const naming = namedFormExact && !choice?.form ? managerFormNaming(input) : null;
   const groundedPolicy = groundPolicy(reading?.policyHeading ?? null, input.headings);
-  const modelPolicy = choiceStated && isDisciplineProcedure(groundedPolicy) ? null : groundedPolicy;
+  const modelPolicy = deferToTopic(choiceStated && isDisciplineProcedure(groundedPolicy) ? null : groundedPolicy, input.question);
   /*
    * THE MANAGER'S LEVEL ONLY (WARNING_LEVEL_MANAGER_ONLY_ENABLED). Live
    * replays, 24 Oct 2026: the blob holds Ask Sunny's own "You'll set the
@@ -336,17 +372,19 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
    * just made, or what their own turns state — nothing else.
    */
   const warningManagerOnly = warningLevelManagerOnlyEnabled();
-  const warningLevel = warningManagerOnly
-    ? {
-        value:
-          choice?.warning ?? managerStatedWarningLevel([...input.history, { role: "user", content: input.question }]),
-        ambiguous: false,
-      }
-    : groundWarning(choice?.warning ?? reading?.warningLevel ?? null, blob);
+  const warningLevel = merge.warningLevel(
+    warningManagerOnly
+      ? {
+          value:
+            choice?.warning ?? managerStatedWarningLevel([...input.history, { role: "user", content: input.question }]),
+          ambiguous: false,
+        }
+      : groundWarning(choice?.warning ?? reading?.warningLevel ?? null, blob),
+  );
   // A heading already grounded stays. The account reader fills one in only
   // when this conversation has not chosen one, so a resend does not replace
   // Late Opening with the broader Attendance section.
-  const policyHeading = modelPolicy ?? saved.policyHeading ?? incidentType;
+  const policyHeading = merge.policyHeading(modelPolicy ?? saved.policyHeading ?? incidentType);
   const policyPage = codeSlotsEnabled()
     ? pageForHeading(policyHeading, input.headingPages) ?? saved.policyPage ?? printedPageForPolicy(policyHeading)
     : modelPolicy
@@ -383,7 +421,12 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
     state = { ...state, templateKey: null };
   }
   if (warningManagerOnly) {
-    const answered = payrollAnsweredNow(input.history, input.question);
+    // LATE_OPEN_PAYROLL_FROM_FORM_ENABLED: only on a form that asks it, and only to the question itself.
+    const answered = !payrollFromForm
+      ? payrollAnsweredNow(input.history, input.question)
+      : asksPayroll
+        ? payrollAnsweredNow(input.history, input.question, { askedOpen: true })
+        : null;
     if (answered) state = { ...state, payrollDeduct: answered };
     /*
      * RE-READ EVERY TURN, AND ONLY FOR A FORM WITH A TYPE OF WARNING. QA, 24
@@ -423,18 +466,38 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
     templates: input.templates,
   });
 
-  const question = formTurn
-    ? questionWithState(input.question, state, input.templates)
+  const asked = formTurn
+    ? questionWithState(
+        input.question,
+        state,
+        input.templates,
+        input.history.filter((turn) => turn.role === "user").map((turn) => turn.content),
+        // SECOND_REQUEST_OWN_ACCOUNT_ENABLED (QA's live round 7b): a new request keeps the policy read in it.
+        modelPolicy && state.policyHeading === modelPolicy ? { policyHeading: modelPolicy, policyPage: state.policyPage ?? null } : null,
+      )
     : typedEmployee && state.employeeName === typedEmployee && asksForAForm(input.question)
       ? `The employee is ${typedEmployee}.\n${input.question}`
       : input.question;
+  /*
+   * SLOT_NAME_ON_FORM_REQUEST_ENABLED: the slot reading's name, or — when the
+   * slot model named nobody this time (QA live check, 17:50 UTC) — the name the
+   * AI reader quoted from the manager's words, put in front when nothing else
+   * already says who the employee is.
+   */
+  const question =
+    slotNameOnFormRequestEnabled() &&
+    detectTemplateIntent(input.question).kind !== "none" &&
+    !/^the employee is /im.test(asked)
+      ? withSlotEmployeeLine(input.question, state.employeeName ?? rawInput.checked?.quotedEmployee ?? null, asked)
+      : asked;
   // FORM_CHOICE_STATED_ENABLED: two forms in one turn is a question, not a
   // card. A form turn otherwise keeps its card, and the proposal would pick
   // one of the two on its own.
-  if (clarification && formType.together) return { question, state, clarification, formTurn: false };
-  if (clarification) return { question, state, clarification, formTurn };
-  if (!formTurn) return { question, state, clarification: null, formTurn: false };
-  return { question, state, clarification: null, formTurn: true };
+  const reader = checkedReadingEnabled() && rawInput.checked ? { reader: { filled: merge.filled, disputed: merge.disputed } } : {};
+  if (clarification && formType.together) return { question, state, clarification, formTurn: false, ...reader };
+  if (clarification) return { question, state, clarification, formTurn, ...reader };
+  if (!formTurn) return { question, state, clarification: null, formTurn: false, ...reader };
+  return { question, state, clarification: null, formTurn: true, ...reader };
 }
 
 /**
@@ -467,8 +530,66 @@ function asksForAForm(question: string): boolean {
   );
 }
 
+/**
+ * SLOT_NAME_ON_FORM_REQUEST_ENABLED (QA live check, 3 Nov 2026): the slot
+ * reading's employee, put in front of a turn that names a form (the test
+ * `readsAForm` in `intent-extraction.ts` uses) as "The employee is …",
+ * when the manager typed that name in this request and the code's own name
+ * reader names nobody in it — a lower-case name ("… corin bellweather was
+ * working …") that the proposal, which reads capitalised names, would miss.
+ * The name keeps only what `cleanPersonName` keeps of it; when that drops any
+ * word ("the primary salon manager"), nothing is added. A name the code reads
+ * already, or one not typed in this turn, adds nothing either. The checks read
+ * the manager's turn (`question`); the line goes in front of `base`, the
+ * question as the turn would otherwise send it ("The form is the …").
+ */
+export function withSlotEmployeeLine(question: string, slotName: string | null, base: string = question): string {
+  const typed = slotName?.trim().replace(/\s+/g, " ");
+  if (!typed) return base;
+  const said = new RegExp(`(?<![A-Za-z])${typed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/ /g, "\\s+")}(?![A-Za-z])`, "i");
+  if (!said.test(question) || extractEmployeeNames(question).length > 0) return base;
+  const name = cleanPersonName(typed, PRODUCTION_SALONS.map((salon) => salon.name));
+  if (!name || name.toLowerCase() !== typed.toLowerCase()) return base;
+  return `The employee is ${name}.\n${base}`;
+}
+
 /** `LIMITS.historyTurns` in `lib/api/validation.ts` (server-only, so not imported here). */
 const HISTORY_CAP = 20;
+
+/**
+ * LATE_OPEN_PAYROLL_FROM_FORM_ENABLED (QA and live, 26 Oct 2026). With
+ * LATE_OPEN_DATE_ENABLED on, the payroll answer was read over the whole thread,
+ * and with WARNING_LEVEL_MANAGER_ONLY on a bare reply was stored on any form:
+ * a "yes", "no" or "$25" after an exit form's card (which lists its "Payroll
+ * Deduction" box) was stored as payroll deduct, and a bare "yes" after "no
+ * payroll deduct" flipped a Corrective Action to Yes. Now: what the manager's
+ * own turns state ("no payroll", "payroll deduct is not applicable"), and a
+ * bare Yes/No only as the reply to the payroll QUESTION asked just before it
+ * and still open (`PAYROLL_ASKED`), and only on a form that asks it — the
+ * Corrective Action Form.
+ */
+function latePayrollFromForm(input: IntentTurnInput, asksPayroll: boolean): PayrollDeductAnswer | null {
+  const said = payrollDeductFromConversation(
+    [...input.history, { role: "user", content: input.question }].filter((turn) => turn.role === "user"),
+  );
+  const replied = asksPayroll ? payrollAnsweredNow(input.history, input.question, { askedOpen: true }) : null;
+  return replied ?? said;
+}
+
+/** Whether the form is one that asks "Is payroll deduct applicable?" — the Corrective Action Form. */
+function formAsksPayroll(templates: readonly TemplateRow[], templateKey: string | null): boolean {
+  if (!templateKey) return false;
+  return templateHasWarningLevel(templates.find((row) => row.key === templateKey) ?? { key: templateKey });
+}
+
+/**
+ * The payroll question itself, still open: "Is payroll deduct applicable? Yes
+ * or No?", "7. Is payroll deduct applicable? (Yes or No)", or the question
+ * ending its line. Not a form's "Payroll Deduction" box, and not the question
+ * read back with its answer ("Is payroll deduct applicable? **No** — tell me
+ * if that should change.").
+ */
+const PAYROLL_ASKED = /is\s+payroll\s+deduct(?:ion)?\s+applicable\?(?![ \t]*(?:yes|no)\b(?![ \t]+or\b))/im;
 
 /** Another yes/no question beside the payroll one: "Did you mean **Rowan Testo**?". */
 const OTHER_YES_NO =
@@ -487,9 +608,12 @@ const OTHER_YES_NO =
 function payrollAnsweredNow(
   history: readonly { role: string; content: string }[],
   question: string,
+  options: { readonly askedOpen?: boolean } = {},
 ): "yes" | "no" | null {
   const before = history[history.length - 1];
   if (!before || before.role !== "assistant") return null;
+  // LATE_OPEN_PAYROLL_FROM_FORM_ENABLED: the payroll question itself was asked, and is still open.
+  if (options.askedOpen && !PAYROLL_ASKED.test(before.content.replace(/[*_`]/g, ""))) return null;
   const questions = (before.content.replace(/[*_`]/g, "").match(/[^.!?\n]*\?/g) ?? [])
     .map((line) => line.trim())
     .filter((line) => !/payroll/i.test(line) && !/^yes\s+or\s+no\?$/i.test(line));
@@ -513,8 +637,10 @@ function questionWithState(
   question: string,
   state: ConversationFormState,
   templates: readonly TemplateRow[],
+  earlier: readonly string[] = [],
+  ownPolicy: OwnPolicy | null = null,
 ): string {
-  const named = prependFormState(question, state);
+  const named = prependFormState(question, state, earlier, ownPolicy);
   const template = state.templateKey ? templates.find((item) => item.key === state.templateKey) : undefined;
   if (!template) return named;
   if (named.toLowerCase().includes(template.name.toLowerCase())) return named;
@@ -772,7 +898,11 @@ function groundEmployee(
    * Permanent Address the manager typed, names nobody — and when it was the
    * only other name read, the one person left is the form's subject.
    */
-  const notAPerson = (name: string | null | undefined) => isExitAnswerPhrase(name) || inStatedPermanentAddress(name, blob);
+  // REPORT_NAME_NOT_A_PERSON_ENABLED: "Daily Stats", "Sales Totals" — the app's own reports — name nobody.
+  const notAPerson = (name: string | null | undefined) =>
+    isExitAnswerPhrase(name) ||
+    inStatedPermanentAddress(name, blob) ||
+    (reportNameNotAPersonEnabled() && Boolean(name) && isReportName(name!));
   if (typed?.trim() && notAPerson(typed)) typed = null;
   const read = typed?.trim() ? [] : manager ? namesInTurns(manager) : extractEmployeeNames(blob);
   const named = read.filter((name) => !notAPerson(name));
@@ -1058,6 +1188,18 @@ function dateSaidAsToday(text: string, question: string, today: string): string 
   return live.length === 0 ? today : null;
 }
 
+/**
+ * PRIOR_ACTIONS_PARSE_ENABLED (ported from Ask Bubbles' `datesInConversation`):
+ * a date written in the conversation that the form-date reader sets aside — an
+ * earlier step's ("previous coaching. verbal (06/25/2026)"), the manual's, a
+ * follow-up's — is not a date for the form, even when the model copied it as
+ * the incident's. Live, the model's "06/25/2026" dated a form 2026-06-25.
+ */
+function notAFormDate(iso: string, blob: string, today: string): boolean {
+  if (!datesInText(blob, today).some((found) => found.iso === iso)) return false;
+  return !listFormDates(blob, today).some((found) => found.iso === iso);
+}
+
 function groundDate(
   typed: string | null,
   question: string,
@@ -1079,7 +1221,9 @@ function groundDate(
   // incident list does not. It counts only when those words are in the
   // conversation, so a date the tool invented still drops.
   const said = typed ? blob.toLowerCase().includes(typed.trim().toLowerCase()) : false;
-  if (normalized && said) return { iso: normalized, ambiguous: [] };
+  if (normalized && said && !(priorActionsParseEnabled() && notAFormDate(normalized, blob, today))) {
+    return { iso: normalized, ambiguous: [] };
+  }
   // "todays date" is the form's date. "today" without the s is the same
   // word; a later turn keeps it because the stored date is already set.
   if (inText.length === 0) {
@@ -1536,4 +1680,20 @@ function slashDate(iso: string): string {
 function blank(value: string | null | undefined): string | null {
   const text = value?.trim() ?? "";
   return text ? text : null;
+}
+
+/**
+ * MODEL_POLICY_DEFERS_TO_TOPIC_ENABLED (QA, round-7c live test, 9 Nov 2026; the people invented): "I need another corrective
+ * action for <P>, his cash drawer was short $20 on 11/3" was read by the slot model as "Handling Theft". That heading was
+ * kept as this request's own (`form-state.ts` stateForTurn), written in front of the turn as "Policy reference: Handling
+ * Theft …", and the card read "theft" from it: "'theft' reads as … Standards of Conduct", Handling Theft p.30, a theft
+ * plan. Where the manager's own words in this turn name an incident the code reads (`forms/specific-policy-topics.ts`), a
+ * model heading that is not one of that incident's sections is not taken. No incident read: the model's heading, as before.
+ */
+function deferToTopic(modelPolicy: string | null, question: string): string | null {
+  if (!modelPolicy || !modelPolicyDefersToTopicEnabled()) return modelPolicy;
+  const headings = topicHeadings(question);
+  if (!headings) return modelPolicy;
+  const key = (heading: string) => heading.trim().toLowerCase().replace(/\s+policy$/, "");
+  return headings.some((heading) => key(heading) === key(modelPolicy)) ? modelPolicy : null;
 }

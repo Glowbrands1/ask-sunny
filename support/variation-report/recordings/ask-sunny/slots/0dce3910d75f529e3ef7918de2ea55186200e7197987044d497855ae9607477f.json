@@ -1,0 +1,23 @@
+{
+  "key": "0dce3910d75f529e3ef7918de2ea55186200e7197987044d497855ae9607477f",
+  "model": "claude-haiku-4-5",
+  "reply": {
+    "employee": "quinn marlowe",
+    "salon": "kearney",
+    "title": null,
+    "incidentType": "on 10-22-26 quinn was not scheduled to work and came into the salon to show her team her new puppy. quinn was in the salon 45 min",
+    "incidentDate": "10-22-26",
+    "payrollAmount": null,
+    "warningLevel": "verbal",
+    "formType": "Corrective Action Form",
+    "formTurn": true,
+    "policyHeading": "Animals in the Workplace"
+  },
+  "usage": {
+    "inputTokens": 2897,
+    "outputTokens": 252,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 0
+}

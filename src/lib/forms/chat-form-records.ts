@@ -1,5 +1,6 @@
 import "server-only";
 
+import { formRecordsNoJudgementEnabled } from "@/lib/config/chat-quality-flags";
 import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import { businessToday } from "@/lib/business-date";
 import type { AccessScope, Role } from "@/types";
@@ -9,6 +10,7 @@ import { FOLLOW_UP_LABEL, followUpState } from "./follow-up";
 import { resolveFormsVisibility } from "./forms-visibility";
 import { instanceListFilterFor, visibleInstances } from "./instance-scope";
 import { listInstances, type InstanceRow } from "./instances";
+import { privateAwareLimit } from "./private-creators";
 
 /**
  * ============================================================================
@@ -207,6 +209,38 @@ function notOnFileSection(rows: readonly InstanceRow[], today: string, viewerId:
   return `${NOT_ON_FILE}\n${rows.map((row) => describeRow(row, today, viewerId)).join("\n")}`;
 }
 
+/*
+ * FORM_RECORDS_NO_JUDGEMENT_ENABLED (port from the sibling app: QA's live test there, 8 Nov 2026; PAST_FORMS_BEFORE_LIBRARY on): "are there
+ * any coaching forms or corrective actions for <A>?" listed the forms, and added a judgement nobody asked for: "a notable
+ * number of Corrective Actions in under two weeks for one person", "worth reviewing … before deciding what comes next".
+ * A list of someone's forms is the forms, their dates and their status; never an assessment of the person's record.
+ */
+export const RECORDS_NO_JUDGEMENT_RULE =
+  "List each form with its date and status only. Never assess the person's record: do not call the number of forms notable, high, a pattern or a concern, do not compare their dates, and do not suggest reviewing them or what to do next, unless the manager asks for that assessment in this message.";
+
+/** A sentence that judges the person's record or advises on it, rather than listing a form. */
+const JUDGEMENT = /\b(?:notable|significant|concerning|a lot of|quite a few|several .{0,30}in (?:under|less than|just)|in (?:under|less than|just) (?:a|one|two|three|\d+) (?:days?|weeks?|months?)|a pattern|patterns? of|worth (?:reviewing|looking|discussing|noting|considering)|before deciding|what comes next|next step|escalat\w*|consider(?:ing)? (?:a|the) (?:next|further)|may (?:want|wish) to review)\b/i;
+
+/**
+ * The reply without its sentences of judgement about the person's record (`RECORDS_NO_JUDGEMENT_RULE`): a line that
+ * lists a form is never touched; a sentence that judges or advises is dropped. Pure; the caller decides when the flag
+ * applies and that the reply is a records answer.
+ */
+export function withoutRecordJudgement(reply: string): string {
+  return (reply ?? "")
+    .split("\n")
+    .map((line) => {
+      if (/^\s*(?:[-*•]|\d+[.)])\s/.test(line)) return line;
+      return line
+        .split(/(?<=[.!?])\s+/)
+        .filter((sentence) => !JUDGEMENT.test(sentence))
+        .join(" ");
+    })
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 export function renderFormRecordsBlock(input: {
   visibility: AccessScope;
   /** The name words searched for, or empty when the question named nobody. */
@@ -221,7 +255,7 @@ export function renderFormRecordsBlock(input: {
   const { words, matches, recent, today } = input;
   const sections: string[] = [
     FORM_RECORDS_HEADING,
-    `${RECORDS_RULES} ${scopeSentence(input.visibility)}${viewerId ? ` ${CREATED_BY_RULE}` : ""}`,
+    `${RECORDS_RULES} ${scopeSentence(input.visibility)}${viewerId ? ` ${CREATED_BY_RULE}` : ""}${formRecordsNoJudgementEnabled() ? ` ${RECORDS_NO_JUDGEMENT_RULE}` : ""}`,
   ];
 
   if (matches) {
@@ -337,17 +371,18 @@ export async function loadFormRecords(input: {
     }
 
     if (words.length > 0) {
+      // PRIVATE_CREATOR_FORMS: over-read, then trim to the page; off, the page itself.
       const rows = visibleInstances(
         formsActor,
-        await listInstances("all", MATCH_LIMIT, { ...filter, employeeNameWords: words }),
-      );
+        await listInstances("all", privateAwareLimit(MATCH_LIMIT), { ...filter, employeeNameWords: words }),
+      ).slice(0, MATCH_LIMIT);
       const matches = matchRowsToQuestion(rows, words);
       if (matches.named.length > 0 || matches.possible.length > 0) {
         return { block: renderFormRecordsBlock({ visibility, words, matches, recent: [], today, viewerId }) };
       }
     }
 
-    const recent = visibleInstances(formsActor, await listInstances("active", RECENT_LIMIT, filter));
+    const recent = visibleInstances(formsActor, await listInstances("active", privateAwareLimit(RECENT_LIMIT), filter)).slice(0, RECENT_LIMIT);
     /*
      * A question that names somebody nobody on file matches is reported as
      * "no form names them" — with the recent list left out, so the model

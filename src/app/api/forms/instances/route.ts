@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 
+import { teamTopicReadConversation } from "@/lib/forms/team-card-not-product";
+import { sameRequestReadConversation } from "@/lib/forms/same-request-other-person";
+import { switchReadConversation } from "@/lib/ai/form-type-switch";
+import { typoReadingTurns } from "@/lib/ai/typo-reading-copy";
+import { protectedNameWords } from "@/lib/ai/typo-name-words";
 import { salonById } from "@/data/salons";
 
 import { historyWantsSeparateDocument } from "@/lib/ai/second-form";
@@ -7,10 +12,12 @@ import { errorResponse } from "@/lib/api/respond";
 import {
   conversationDraftReuseEnabled,
   draftReuseSameChatOnlyEnabled,
+  draftReuseOwnOnlyEnabled,
   conversationProposalDedupeEnabled,
   draftActionsEnabled,
   draftDedupeEnabled,
   payrollAmountFieldEnabled,
+  typoReadingRoutesEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { parseHistory } from "@/lib/api/validation";
 import { authorizeForms } from "@/lib/forms/access";
@@ -42,11 +49,15 @@ import {
   type InstanceView,
 } from "@/lib/forms/instances";
 import { instanceListFilterFor, visibleInstances } from "@/lib/forms/instance-scope";
+import { privateAwareLimit, privateCreatorsActive } from "@/lib/forms/private-creators";
 import { historySaysDifferentIncident } from "@/lib/forms/draft-actions";
 import { findOpenIncidentDraft, findResentDraft } from "@/lib/forms/draft-reopen";
 import type { SameChat } from "@/lib/forms/draft-same-chat";
 import { authorizeLocation } from "@/lib/forms/location-scope";
 import { checkProposalIsCurrent } from "@/lib/forms/proposal-currency";
+import { preferredNamesOf } from "@/lib/forms/preferred-name-current";
+import { looseRosterFor } from "@/lib/forms/loose-name";
+import { rosterNamesFor } from "@/lib/forms/roster-names";
 import { allowsTeamSubject, isTeamSubject } from "@/lib/forms/team-subject";
 import { isDemoMode } from "@/lib/config/runtime";
 import { getTemplateByKey } from "@/lib/forms/repository";
@@ -115,10 +126,11 @@ export async function GET(request: Request) {
      * predicate re-checks what is returned, and the predicate is the one that
      * fails closed if they ever drift.
      */
+    // PRIVATE_CREATOR_FORMS: over-read, then trim to the default page of 200; off, as before.
     const instances = visibleInstances(
       actor,
-      await listInstances(view, undefined, instanceListFilterFor(actor)),
-    );
+      await listInstances(view, privateCreatorsActive() ? privateAwareLimit(200) : undefined, instanceListFilterFor(actor)),
+    ).slice(0, 200);
 
     // The sweep's shape is returned alongside so the screen can say "Delete 5
     // demo forms" with a real number rather than counting what it happens to
@@ -212,10 +224,21 @@ export async function POST(request: Request) {
      * `lib/forms/proposal-currency.ts`.
      */
     if (body.source === "ask_sunny" && Array.isArray(body.conversation)) {
+      // PREFERRED_NAME_CARD_CURRENT_ENABLED: "kit dovetail" is the card's Katrin Dovetail when the manager's roster says Kit is her preferred name. Off: none, and no roster read.
+      const alsoCalled = await preferredNamesOf(actor.scope, body.employeeName);
       const currency = checkProposalIsCurrent({
-        conversation: parseHistory(body.conversation),
+        // FORM_TYPE_SWITCH_ENABLED: "change to coaching" is read as the chat read it, so the switched card is current.
+        // TEAM_CARD_NOT_PRODUCT_ENABLED: on the team card, "selling Spray Tan Kits" is the topic, as the chat read it.
+        // SAME_REQUEST_OTHER_PERSON_ENABLED: "the same thing for <B>" is read from that turn on, as the chat read it.
+        // SAME_REQUEST_KEEPS_EARLIER_CARD_ENABLED: <A>'s card is read as it stood before "the same thing for <B>".
+        conversation: sameRequestReadConversation(teamTopicReadConversation(switchReadConversation(parseHistory(body.conversation)), body.employeeName), body.employeeName),
         templateKey: body.templateKey,
         employeeName: body.employeeName,
+        alsoCalled,
+        // PARTIAL_NAME_LOOSE_MATCH_ENABLED: "marisol co" is the card's Marisol Camarillo when nobody else on the roster fits. Off: undefined, no roster read.
+        looseRoster: await looseRosterFor(actor.scope),
+        // STALE_NEEDS_ROSTER_PERSON_ENABLED: "drop wage" and "forfeit bonus" are not more people. Off: undefined, and no roster read.
+        rosterNames: await rosterNamesFor(actor.scope),
       });
       if (!currency.current) {
         return NextResponse.json({ error: currency.reason, code: "proposal_superseded" }, { status: 409 });
@@ -281,7 +304,8 @@ export async function POST(request: Request) {
        * line stays blank, and the form is still created.
        */
       if (payrollAmountFieldEnabled() && card.payrollDeduct === "yes" && Array.isArray(card.conversation)) {
-        const turns = parseHistory(card.conversation);
+        // TYPO_READING_ROUTES_ENABLED: the reader sees "amont" as amount; the stored conversation stays as typed.
+        const turns = await readingTurns(parseHistory(card.conversation));
         const amount = payrollAmountFromConversation(turns, { payrollAnswer: "yes" });
         if (amount) {
           await applyStatedFacts(
@@ -339,6 +363,16 @@ export async function POST(request: Request) {
       : null;
     const sameChat: SameChat | undefined = sameChatOnly ? { conversationKey: chatKey } : undefined;
     const cardDate = isIsoCalendarDate(body.formDate) ? body.formDate : null;
+    /*
+     * DRAFT_REUSE_OWN_ONLY_ENABLED (QA, 25 Oct 2026). On, no lookup below
+     * hands this manager a draft another manager made: the finders read only
+     * this manager's drafts, and each draft found is checked here again
+     * (`mine`). No acting user reuses nothing. Off, `mine` is always true.
+     * Opening or editing a named draft through the chat, and DRAFT_MERGE, are
+     * not a reuse and are not changed by this.
+     */
+    const ownOnly = draftReuseOwnOnlyEnabled();
+    const mine = (instance: { createdBy?: string | null }) => !ownOnly || (Boolean(actor.id) && instance.createdBy === actor.id);
     const reused = (instance: { formDate?: string | null }) =>
       NextResponse.json({
         instance,
@@ -360,7 +394,7 @@ export async function POST(request: Request) {
         turns: chatTurns,
         ...(sameChatOnly && cardDate ? { formDate: cardDate } : {}),
       }).catch(() => null);
-      if (same) {
+      if (same && mine(same.instance)) {
         /*
          * The facts said since that draft was made, then this card's own
          * stated answers where the draft is still blank — never over a value.
@@ -382,7 +416,8 @@ export async function POST(request: Request) {
      * SAME EMPLOYEE, SAME TEMPLATE, SAME INCIDENT, ANY CHAT. An open draft is
      * reopened instead of filing another one. A different date or a different
      * account of what happened still creates. Not after "different incident"
-     * (`newIncident`, above).
+     * (`newIncident`, above). With DRAFT_REUSE_OWN_ONLY_ENABLED on, only a
+     * draft this manager made is reopened; off, any manager's counts.
      */
     if (body.source === "ask_sunny" && !newIncident && !historyWantsSeparateDocument(body.conversation)) {
       const turns = Array.isArray(body.conversation) ? parseHistory(body.conversation) : [];
@@ -401,7 +436,7 @@ export async function POST(request: Request) {
         incident: incidentText || null,
         ...(sameChat ? { sameChat } : {}),
       }).catch(() => null);
-      if (open) return reused(open);
+      if (open && mine(open)) return reused(open);
     }
 
     /*
@@ -432,7 +467,7 @@ export async function POST(request: Request) {
         proposalId,
         conversationKey,
       }).catch(() => null);
-      if (existing) return reused(existing);
+      if (existing && mine(existing)) return reused(existing);
     } else if (proposalId) {
       // A guard that cannot read is no guard: the create goes ahead as before.
       const existing = await findRecentAssistantDraft({
@@ -442,7 +477,7 @@ export async function POST(request: Request) {
         locationId,
         proposalId,
       }).catch(() => null);
-      if (existing) return reused(existing);
+      if (existing && mine(existing)) return reused(existing);
     }
 
     /*
@@ -473,7 +508,7 @@ export async function POST(request: Request) {
           : {}),
         ...(sameChat ? { sameChat } : {}),
       }).catch(() => null);
-      if (resent) return reused(resent);
+      if (resent && mine(resent)) return reused(resent);
     }
 
     const instance = await createInstance({
@@ -591,4 +626,16 @@ function resolveLocationName(
   const rostered = salonById(locationId)?.name ?? null;
   if (!isDemoMode()) return rostered;
   return requested ?? rostered;
+}
+
+/**
+ * TYPO_READING_ROUTES_ENABLED: the manager's turns as the payroll-amount reader
+ * above sees them, each typo read as the one known word it can only be
+ * (`ai/typo-reading-copy.ts`). Only that reader gets it; the conversation
+ * stored and compared elsewhere in this route is the raw one. Off, the turns
+ * as given.
+ */
+async function readingTurns<T extends { role: string; content: string }>(turns: T[]): Promise<T[]> {
+  if (!typoReadingRoutesEnabled()) return turns;
+  return typoReadingTurns(turns, await protectedNameWords());
 }
