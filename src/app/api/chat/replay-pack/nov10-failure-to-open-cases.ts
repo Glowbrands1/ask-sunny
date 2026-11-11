@@ -33,7 +33,8 @@ export const NOV10_FAILURE_TO_OPEN_CASES: ReplayCase[] = [
     id: "nov10-p16-failure-to-open-is-what-happened",
     title: "P16: \"Can you make a CA for <name> for failure to open on time?\": the card never asks what happened, and cites Late Opening",
     report: 'Pau via QA, 10 Nov 2026 (P16, conv 9 Nov ~16:54Z): "Can you make a CA for <name> for failure to open on time?" → "You haven\'t told me what happened yet."',
-    status: { open: "the card says \"You haven't told me what happened yet\" and cites no policy" },
+    // Changed on purpose (11 Nov 2026): fixed in production by FAILURE_TO_OPEN_IS_LATE_OPENING, QA round 27. Was OPEN.
+    status: "fixed",
     fixFlags: ["FAILURE_TO_OPEN_IS_LATE_OPENING_ENABLED"],
     async run(t) {
       vi.setSystemTime(new Date("2026-11-09T16:54:00Z"));

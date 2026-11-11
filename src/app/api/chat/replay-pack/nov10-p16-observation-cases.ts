@@ -22,7 +22,8 @@ export const NOV10_P16_OBSERVATION_CASES: ReplayCase[] = ([
   id: `nov10-r17b-p16-observation-${casing}`,
   title: `"${said}": the card's Observation of Offense carries the account`,
   report: `QA's live round 17b (10 Nov 2026), gap 1 (P16); ${casing}`,
-  status: { open: "\"You haven't told me what happened yet\"; with the P16 flag, no Observation of Offense" },
+  // Changed on purpose (11 Nov 2026): fixed in production by REQUEST_ISSUE_KEPT, FAILURE_TO_OPEN_IS_LATE_OPENING, QA round 27. Was OPEN.
+  status: "fixed",
   fixFlags: ["FAILURE_TO_OPEN_IS_LATE_OPENING_ENABLED", "REQUEST_ISSUE_KEPT_ENABLED"],
   async run(t: ReplayContext) {
     vi.setSystemTime(new Date("2026-11-10T22:30:00Z"));
