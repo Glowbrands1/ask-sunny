@@ -22,6 +22,8 @@ export interface ReplayAnswer {
   formProposal?: { templateKey?: string; employeeName?: string | null; employeeRole?: string | null; status?: string; subject?: string; locationId?: string | null; wovenCloseMatch?: string | null; formDate?: string | null };
   formUpdate?: { instanceId: string; updated: string[] };
   formOpened?: { instanceId: string };
+  /** The source cards the reply carries. */
+  citations?: { documentTitle?: string }[];
 }
 
 export interface ReplayThread {
@@ -48,6 +50,16 @@ export interface ReplayContext {
   draftWrites(values: Record<string, string>, checked?: Record<string, string[]>, extra?: Record<string, unknown>): void;
   /** The pinned policy manual also has these chunks this case (as `fetchOfficialPolicyManual` returns them); none by default. */
   manualAlsoHas?(chunks: readonly Record<string, unknown>[]): void;
+  /**
+   * FULL_MANUAL_KEEPS_RETRIEVAL (QA, 10 Nov 2026): what the knowledge search returns this case (none by default), the
+   * message normalizer's intent label (none by default: the glossary's reading), and whether the whole JBA Policy Manual
+   * loads for a policy question (not by default: the loader finds no manual offline).
+   */
+  knowledgeHas?(rows: readonly Record<string, unknown>[]): void;
+  normalizerReads?(intent: "policy_question" | "form_command" | "other"): void;
+  fullManualLoads?(): void;
+  /** The grounding block the answering model was given on its last answer. */
+  lastGrounding?(): string;
   /** What the revision model writes on the next revision. */
   revisionWrites(values: Record<string, string>): void;
   /** What the answering model says on its next turns (null: the default answer). */
