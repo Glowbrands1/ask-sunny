@@ -25,6 +25,8 @@ const BROKEN = [
   // QA, 10 Nov 2026: "out of dress code" / "out of uniform" break the policy too.
   "she was out of dress code on 10/14/26",
   "she was out of uniform on 10/14/26",
+  "she was out of uniform again today",
+  "she showed up out of uniform.",
 ];
 
 afterEach(() => vi.unstubAllEnvs());
@@ -51,4 +53,12 @@ describe("not following a policy topic names it as broken (NOT_FOLLOWING_IS_VIOL
     vi.stubEnv("NOT_FOLLOWING_IS_VIOLATION_ENABLED", "true");
     expect(cited("this is not about the dress code, she was late on 10/14/26").some((heading) => DRESS.test(heading))).toBe(false);
   });
+
+  // Port from Ask Bubbles (QA's gate, 11 Nov 2026): a store out of uniform stock is not a person out of uniform.
+  for (const said of ["we ran out of uniform shirts so she wore her own on 10/14/26", "we're out of uniform pants in size M"]) {
+    it(`on: "${said}" cites no Dress Code (a noun after "uniform")`, () => {
+      vi.stubEnv("NOT_FOLLOWING_IS_VIOLATION_ENABLED", "true");
+      expect(cited(said).some((heading) => DRESS.test(heading)), said).toBe(false);
+    });
+  }
 });
