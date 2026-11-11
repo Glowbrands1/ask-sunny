@@ -774,3 +774,22 @@ describe("cached system block and end-to-end latency", () => {
     expect(trace.modelCall?.cacheReadInputTokens).toBe(34872);
   });
 });
+
+describe("FULL_MANUAL_KEEPS_RETRIEVAL_ENABLED: only the [S#] markers the prompt lists stay (QA, 11 Nov 2026)", () => {
+  afterEach(() => {
+    delete process.env.FULL_MANUAL_KEEPS_RETRIEVAL_ENABLED;
+  });
+
+  it("keptMarkers: [S1] (a framework chunk, not listed as valid) goes; [S2] (an excerpt beside the manual) stays", () => {
+    process.env.FULL_MANUAL_KEEPS_RETRIEVAL_ENABLED = "1";
+    const result = choosePolicyManuals("What is the attendance policy?", [TRAINING, BUFF, CRUNCH, OLDER_JBA, JBA]);
+    if (!result.ok) throw new Error("no manual");
+    const content = "Coach the step [S1]. Reset the booth from the control panel [S2].";
+    const listed = applyFullManualAnswer({ content, manuals: result.manuals, sourceCount: 2, keptMarkers: [2] });
+    expect(listed.content).not.toContain("[S1]");
+    expect(listed.content).toContain("[S2]");
+    // Without the list, as before: [S1]…[S<sourceCount>] stay.
+    const counted = applyFullManualAnswer({ content, manuals: result.manuals, sourceCount: 2 });
+    expect(counted.content).toContain("[S1]");
+  });
+});

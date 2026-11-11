@@ -34,6 +34,8 @@ const state = vi.hoisted(() => ({
   /** How many searches had started when the normalizer answered (QA's option C: the search overlaps it). */
   matchedWhenNormalized: -1,
   rows: [] as unknown[],
+  /** The search beside the manual fails (a recall RPC, an embedding error, a timeout). */
+  matchThrows: false,
 }));
 
 vi.mock("./message-normalize-claude", () => ({
@@ -79,6 +81,7 @@ vi.mock("@/lib/knowledge/providers/supabase", () => ({
     readonly name = "test double";
     async match() {
       state.matched += 1;
+      if (state.matchThrows) throw new Error("recall RPC failed");
       return state.rows;
     }
     async fetchRoleGrounding() {
@@ -147,6 +150,7 @@ beforeEach(() => {
   state.grounding = "";
   state.fullManualBlock = undefined;
   state.matched = 0;
+  state.matchThrows = false;
   state.matchedWhenNormalized = -1;
   state.rows = [
     row("tc-cleaning", TC_TITLE, "Spray Tan Cleaning Instructions", TC_STEP, 0.87),
@@ -215,5 +219,27 @@ describe("FULL_MANUAL_KEEPS_RETRIEVAL: a 'policy'-labelled how-to question still
     process.env.FULL_MANUAL_KEEPS_RETRIEVAL_ENABLED = "1";
     await ask(QUESTIONS[0]);
     expect(state.grounding).toBe(off);
+  });
+
+  /*
+   * Gate-Sunny-2 on 1b6cd415 (QA, 11 Nov 2026): with the flag on, a failed search beside the manual threw retrieval_failed
+   * (502) and killed a policy answer that already had the whole manual in its prompt.
+   */
+  it("flag on, the search beside the manual fails: the answer still comes from the manual, never a 502", async () => {
+    process.env.FULL_MANUAL_KEEPS_RETRIEVAL_ENABLED = "1";
+    state.matchThrows = true;
+    state.reply = "Clean the equipment as the policy manual says [p.12].";
+    const response = await ask(QUESTIONS[1]);
+    expect(state.matched, "the search was tried").toBeGreaterThan(0);
+    expect(state.fullManualBlock, "the manual is still in the prompt").toBeTruthy();
+    expect(state.grounding).not.toContain(TC_TITLE);
+    expect(response.content).toContain("Clean the equipment");
+  });
+
+  it("flag off, a search that would fail is never made on the full-manual path", async () => {
+    state.matchThrows = true;
+    const response = await ask(QUESTIONS[1]);
+    expect(state.matched).toBe(0);
+    expect(response.content.length).toBeGreaterThan(0);
   });
 });

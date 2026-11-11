@@ -1482,6 +1482,11 @@ export function applyFullManualAnswer(input: {
   readonly content: string;
   readonly manuals: readonly AssembledManual[];
   readonly sourceCount: number;
+  /**
+   * FULL_MANUAL_KEEPS_RETRIEVAL_ENABLED (QA, 11 Nov 2026): exactly the [S#] markers the prompt lists as valid (the excerpts
+   * beside the manual, not the framework's), when given; otherwise [S1]…[S<sourceCount>].
+   */
+  readonly keptMarkers?: readonly number[];
 }): { readonly content: string; readonly citations: readonly SourceCitation[] } {
   if (input.manuals.length === 0) {
     return { content: dropUnknownSourceMarkers(input.content, input.sourceCount), citations: [] };
@@ -1493,8 +1498,9 @@ export function applyFullManualAnswer(input: {
    * so those markers stay; any other is still taken out. Off (or with no excerpt), every marker goes, as before.
    */
   const keptSources = fullManualKeepsRetrievalEnabled() ? input.sourceCount : 0;
+  const listed = fullManualKeepsRetrievalEnabled() && input.keptMarkers ? new Set(input.keptMarkers) : null;
   const withoutSources = input.content.replace(/[^\S\n]*\[S(\d{1,2})\]/g, (full, raw: string) =>
-    Number(raw) >= 1 && Number(raw) <= keptSources ? full : "",
+    (listed ? listed.has(Number(raw)) : Number(raw) >= 1 && Number(raw) <= keptSources) ? full : "",
   );
   const hits = passagesOf(input.manuals);
   const marked: { manual: AssembledManual; heading: string; page: number }[] = [];

@@ -1563,14 +1563,25 @@ async function answerQuestionUntraced(
         rows = keepEarlierSources(await search(earlierQuery), rows, fetchLimit);
       }
     } catch (error) {
-      if (error instanceof MissingConfigurationError) {
-        throw new AiError("not_configured", error.message, 503, error.missing);
+      /*
+       * FULL_MANUAL_KEEPS_RETRIEVAL_ENABLED (QA, 11 Nov 2026; Gate-Sunny-2 on 1b6cd415): the whole manual is already in the
+       * prompt, so a failed search beside it (recall RPC, embedding, timeout) leaves the manual alone, never a 502.
+       * Before the flag this turn searched nothing and could not fail here.
+       */
+      if (keepsRetrieval) {
+        markStage("retrieval_beside_manual_failed");
+        console.warn(`[full-manual-keeps-retrieval] the search beside the manual failed; answering from the manual alone: ${error instanceof Error ? error.message : String(error)}`);
+        rows = [];
+      } else {
+        if (error instanceof MissingConfigurationError) {
+          throw new AiError("not_configured", error.message, 503, error.missing);
+        }
+        throw new AiError(
+          "retrieval_failed",
+          "The company knowledge base could not be searched, so no answer was produced. Nothing was answered from memory.",
+          502,
+        );
       }
-      throw new AiError(
-        "retrieval_failed",
-        "The company knowledge base could not be searched, so no answer was produced. Nothing was answered from memory.",
-        502,
-      );
     }
     if (scopeManual) {
       rows = scopeToCurrentManual(rows, { limit: matchLimit, dedupeBySection: manualSectionDedupeEnabled() });
@@ -2056,7 +2067,13 @@ async function answerQuestionUntraced(
   // resolves to the row at that position — retrieved data, not model output.
   const checked =
     policyAnswer && fullManuals.length > 0
-      ? applyFullManualAnswer({ content: answer, manuals: fullManuals, sourceCount: keepsRetrieval ? grounding.length : 0 })
+      ? applyFullManualAnswer({
+          content: answer,
+          manuals: fullManuals,
+          sourceCount: keepsRetrieval ? grounding.length : 0,
+          // FULL_MANUAL_KEEPS_RETRIEVAL_ENABLED: only the markers the prompt lists (the excerpts beside the manual).
+          ...(keepsRetrieval ? { keptMarkers: grounding.slice(assembled.mandatoryCount).map((chunk) => chunk.marker) } : {}),
+        })
       : null;
   const spoken = checked?.content ?? answer;
   const markers = extractUsedMarkers(spoken, grounding.map((chunk) => chunk.marker));
