@@ -1,3 +1,4 @@
+import { withoutCreateNowWhenNoEmployee } from "@/lib/forms/no-name-reply-wording";
 import { bareNotDenialEnabled, cleaningOtherEveryWordingEnabled, conductIncidentCitesPageEnabled, exitDateLineAgreesEnabled, replyMatchesCardEnabled } from "@/lib/config/chat-quality-flags";
 import { offeredOffRosterName } from "@/lib/forms/off-roster-confirm";
 import { deniesAFault, deniesAFaultWithBareNot } from "@/lib/forms/draft-never-blank";
@@ -232,6 +233,10 @@ export function withReplyMatchesCard(response: AskResponse): AskResponse {
   const cleaned = withCleaningOtherPolicy(response, requestMessage());
   // OWN_BRAND_ONLY_ENABLED, gated on its own: only this company's brand is named (`ai/own-brand-only.ts`).
   const branded = withOwnBrandOnly(cleaned);
-  if (!replyMatchesCardEnabled()) return branded;
-  return replyMatchesCard(branded, personRosterNames() ?? [], requestMessage());
+  const matched = replyMatchesCardEnabled() ? replyMatchesCard(branded, personRosterNames() ?? [], requestMessage()) : branded;
+  // NO_NAME_REPLY_WORDING_ENABLED: no employee on the card, no Create button — never "You can create it now".
+  const card = matched.formProposal;
+  if (!card?.templateKey) return matched;
+  const content = withoutCreateNowWhenNoEmployee(matched.content, card.employeeName);
+  return content === matched.content ? matched : { ...matched, content };
 }

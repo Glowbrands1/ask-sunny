@@ -1,5 +1,6 @@
 import { addressNotPersonEnabled, formNameFromRosterEnabled, metricChoiceOneQuestionEnabled, metricGuardEnabled, offRosterConfirmEnabled, rosterNearMissEnabled, rosterNotFoundAnyPhrasingEnabled, nearMissQuestionRulesEnabled, formNameOffRosterAskEnabled, offRosterAskBeforeCardEnabled } from "@/lib/config/chat-quality-flags";
 import { isGlossaryTerm } from "@/lib/ai/chat-glossary";
+import { standInForName, withStandInsSaid } from "./no-name-reply-wording";
 import type { AskResponse } from "@/lib/ai/types";
 
 import { HAS_EMPLOYEE_AND_PLACE, SAYS_READY } from "@/lib/ai/ca-what-happened";
@@ -433,8 +434,12 @@ export function withoutUnseatedName(
       for (const roster of names) {
         next = next.replace(new RegExp(String.raw`\b${escape(roster)}\b`, "gi"), (found) => `\u0000${kept.push(found) - 1}\u0000`);
       }
-      for (const pattern of whole) next = next.replace(pattern, "the employee");
-      for (const pattern of single) next = next.replace(pattern, (found: string, at: number, line: string) => (ownWord(line, found, at) ? found : "the employee"));
+      // NO_NAME_REPLY_WORDING_ENABLED: the stand-in is held aside until every word of the name is done ("ima employee"
+      // never becomes "the the employee"; `no-name-reply-wording.ts`). Off, "the employee" as before.
+      const standIn = standInForName();
+      for (const pattern of whole) next = next.replace(pattern, standIn);
+      for (const pattern of single) next = next.replace(pattern, (found: string, at: number, line: string) => (ownWord(line, found, at) ? found : standIn));
+      next = withStandInsSaid(next);
       next = next.replace(/(^|[.!?]\s+|\*\*\s*)the employee/g, (_all, lead: string) => `${lead}The employee`);
       return next.replace(/\u0000(\d+)\u0000/g, (_all, index: string) => kept[Number(index)]!);
     })
