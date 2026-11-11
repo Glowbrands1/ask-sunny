@@ -52,6 +52,7 @@ import {
   remapIncidentFixEnabled,
   placeSpanGuardEnabled,
   notANameGuardEnabled,
+  notANameTestEmployeeEnabled,
   exitIntakeFixEnabled,
   manualNegatedListNoteEnabled,
   policyGateNonblockingEnabled,
@@ -594,6 +595,8 @@ const NEW_FLAGS = [
   // coding 2: CREATE_COMMAND_POINTS_TO_CARD and CARD_COMPLAINT_NOT_ACCOUNT (default off): forced off with the others.
   "CREATE_COMMAND_POINTS_TO_CARD_ENABLED",
   "CARD_COMPLAINT_NOT_ACCOUNT_ENABLED",
+  // #227: NOT_A_NAME_TEST_EMPLOYEE (QA, 11 Nov 2026; default off; read only with NOT_A_NAME_GUARD): forced off with the others.
+  "NOT_A_NAME_TEST_EMPLOYEE_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -915,6 +918,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(placeSpanGuardEnabled()).toBe(false);
     expect(priorActionsParseEnabled()).toBe(false);
     expect(notANameGuardEnabled()).toBe(false);
+    expect(notANameTestEmployeeEnabled()).toBe(false);
     expect(manualNegatedListNoteEnabled()).toBe(false);
     expect(keepFormEmployeeEnabled()).toBe(false);
     expect(titleWholeWordEnabled()).toBe(false);

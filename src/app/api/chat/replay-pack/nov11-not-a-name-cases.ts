@@ -3,7 +3,7 @@ import { expect, vi } from "vitest";
 import { STAFF, type DirectoryRow, type ReplayCase, type ReplayContext } from "./cases";
 
 /**
- * QA's stale-PR cleanup (11 Nov 2026), #227 (NOT_A_NAME_GUARD_ENABLED, never merged). QA's B4 / B8 / G11 / G4 turns,
+ * QA's stale-PR cleanup (11 Nov 2026), #227 (NOT_A_NAME_TEST_EMPLOYEE_ENABLED, default off; never merged). QA's B4 / B8 / G11 / G4 turns,
  * as typed and in lower case: the card said **Test** after "verbal", put "Ne" on the card for "…at Kearney, NE",
  * asked "Who is this for?" for "…at lincoln, ne", and dropped the employee when "Test Employee" opened a sentence.
  * QA's placeholder "Test Employee" is nobody; it is off the roster, as in QA's runs.
@@ -67,14 +67,18 @@ async function g4(t: ReplayContext, turns: readonly string[], onRoster = false) 
 
 const lower = (text: string) => text.toLowerCase();
 /*
- * NOT_A_NAME_GUARD_ENABLED is already on in production, so #227's code (merged with this case) changes production
- * directly: before the merge every case below failed with production's flags (main afd00c99); after it they hold.
+ * #227's readers were first written behind NOT_A_NAME_GUARD_ENABLED, which is live, so they would have gone live on
+ * merge. QA (11 Nov 2026) moved them behind NOT_A_NAME_TEST_EMPLOYEE_ENABLED, default off. With production's flags
+ * the cases below fail, as on main (afd00c99), and hold with the flag on; two G4 cases are noted where they stand.
+ * Flip the status to fixed in the pull request that turns the flag on in production-flags.json.
  */
+const FIX = ["NOT_A_NAME_TEST_EMPLOYEE_ENABLED"];
+const OPEN = { open: "NOT_A_NAME_TEST_EMPLOYEE_ENABLED is off in production: \"Test Employee\" / \"test employee\" is not read as the name, and a salon's state code (\"NE\") can be" };
 
 export const NOV11_NOT_A_NAME_CASES: ReplayCase[] = [
   ...Object.entries(TURNS).flatMap(([id, turns]): ReplayCase[] => [
-    { id: `nov11-not-a-name-${id}`, title: `QA ${id.toUpperCase()}: the card is for Test Employee`, report: REPORT, status: "fixed", run: (t) => caCard(t, turns) },
-    { id: `nov11-not-a-name-${id}-lower`, title: `QA ${id.toUpperCase()}, all lower case: the card is for Test Employee`, report: REPORT, status: "fixed", run: (t) => caCard(t, turns.map(lower)) },
+    { id: `nov11-not-a-name-${id}`, title: `QA ${id.toUpperCase()}: the card is for Test Employee`, report: REPORT, status: OPEN, fixFlags: FIX, run: (t) => caCard(t, turns) },
+    { id: `nov11-not-a-name-${id}-lower`, title: `QA ${id.toUpperCase()}, all lower case: the card is for Test Employee`, report: REPORT, status: OPEN, fixFlags: FIX, run: (t) => caCard(t, turns.map(lower)) },
   ]),
   {
     id: "nov11-not-a-name-g4",
@@ -85,6 +89,14 @@ export const NOV11_NOT_A_NAME_CASES: ReplayCase[] = [
     status: { open: "FORM_NAME_FROM_ROSTER drops an off-roster name that opens a sentence (\"Test Employee\" isn't a person on your team)" },
     run: (t) => g4(t, G4),
   },
-  { id: "nov11-not-a-name-g4-on-roster", title: "QA G4, Test Employee on the roster: keeps the employee", report: REPORT, status: "fixed", run: (t) => g4(t, G4, true) },
-  { id: "nov11-not-a-name-g4-lower", title: "QA G4, all lower case: keeps the employee", report: REPORT, status: "fixed", run: (t) => g4(t, G4.map(lower)) },
+  {
+    id: "nov11-not-a-name-g4-on-roster",
+    title: "QA G4, Test Employee on the roster: keeps the employee",
+    report: REPORT,
+    // Holds with production's flags without the new flag (the roster names "Test Employee"); kept so the flag cannot undo it.
+    status: "fixed",
+    fixFlags: FIX,
+    run: (t) => g4(t, G4, true),
+  },
+  { id: "nov11-not-a-name-g4-lower", title: "QA G4, all lower case: keeps the employee", report: REPORT, status: OPEN, fixFlags: FIX, run: (t) => g4(t, G4.map(lower)) },
 ];

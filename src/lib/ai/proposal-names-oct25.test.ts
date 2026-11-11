@@ -11,8 +11,8 @@ import type { AccessScope, ChatMessage } from "@/types";
  * ============================================================================
  *
  * QA's turns in this app's words (salon, Tanning Consultant), through
- * `answerQuestion` with the production profile and NOT_A_NAME_GUARD_ENABLED
- * (live), and again with CA_TEMPLATE_MAP + FORM_CHOICE_STATED (live in
+ * `answerQuestion` with the production profile, NOT_A_NAME_GUARD_ENABLED
+ * (live) and NOT_A_NAME_TEST_EMPLOYEE_ENABLED (default off), and again with CA_TEMPLATE_MAP + FORM_CHOICE_STATED (live in
  * production since 25 Oct). The proposal's name reader cannot read "Test
  * Employee" ("Employee" names a form), so the card was for **Test** (and
  * stayed so after "verbal"), and with the pair on, "… at Kearney, NE." put
@@ -35,6 +35,8 @@ const PROFILE = [
   "GLOBAL_SALON_ASK_ENABLED",
   "DRAFT_MERGE_ENABLED",
   "NOT_A_NAME_GUARD_ENABLED",
+  // QA, 11 Nov 2026: #227's readers sit behind this default-off flag (read only with the guard above).
+  "NOT_A_NAME_TEST_EMPLOYEE_ENABLED",
 ] as const;
 
 const TODAY = "2026-10-24";
@@ -310,6 +312,13 @@ describe("a salon's state code is not a person", () => {
     expect(isNotAName("ne")).toBe(true);
     expect(isNotAName("Nell")).toBe(false);
   });
+
+  it("NOT_A_NAME_TEST_EMPLOYEE_ENABLED off: as on main, the state code is not singled out", async () => {
+    vi.stubEnv("NOT_A_NAME_TEST_EMPLOYEE_ENABLED", "false");
+    const { isNotAName, maskNotANameText } = await import("@/lib/forms/not-a-name");
+    expect(isNotAName("NE")).toBe(false);
+    expect(maskNotANameText("a verbal CA for Test Employee at Kearney, NE.")).toContain("Kearney, NE.");
+  });
 });
 
 /*
@@ -425,5 +434,14 @@ describe("the typed-name reader, in either case", () => {
     expect(typedEmployeeName("create ca form for Test Employee for violating attendance policy")).toBe("Test Employee");
     expect(typedEmployeeName("create ca form for test employee for violating attendance policy")).toBeNull();
     expect(typedEmployeeName("create ca form for Test employee for violating attendance policy")).toBeNull();
+  });
+
+  it("NOT_A_NAME_TEST_EMPLOYEE_ENABLED off, guard on: as on main — only the capitalised name is read", async () => {
+    vi.stubEnv("NOT_A_NAME_TEST_EMPLOYEE_ENABLED", "false");
+    const { typedEmployeeName } = await import("@/lib/forms/typed-employee-name");
+    expect(typedEmployeeName("create ca form for Test Employee for violating attendance policy")).toBe("Test Employee");
+    expect(typedEmployeeName("create ca form for test employee for violating attendance policy")).toBeNull();
+    expect(typedEmployeeName("okay lets restart test employee tanning consultant ks manhattan")).toBeNull();
+    expect(typedEmployeeName("write a verbal CA for Tanning Consultant, Test Employee at Kearney, NE.")).toBeNull();
   });
 });

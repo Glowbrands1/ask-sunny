@@ -1,4 +1,4 @@
-import { keepFormEmployeeEnabled, notANameGuardEnabled } from "@/lib/config/chat-quality-flags";
+import { keepFormEmployeeEnabled, notANameTestEmployeeEnabled } from "@/lib/config/chat-quality-flags";
 import { isNotAName } from "@/lib/forms/not-a-name";
 import { typedEmployeeName } from "@/lib/forms/typed-employee-name";
 
@@ -25,7 +25,7 @@ import type { AskResponse } from "./types";
 export function withTypedEmployeeOnCard(
   response: AskResponse,
   managerText: string,
-  /** The manager's earlier turns, oldest first. Read with NOT_A_NAME_GUARD_ENABLED only. */
+  /** The manager's earlier turns, oldest first. Read with NOT_A_NAME_TEST_EMPLOYEE_ENABLED only. */
   earlierTurns: readonly string[] = [],
 ): AskResponse {
   const guarded = withGuardedTypedEmployee(response, managerText, earlierTurns);
@@ -50,7 +50,7 @@ export function withTypedEmployeeOnCard(
 }
 /**
  * ============================================================================
- * NOT_A_NAME_GUARD_ENABLED: "TEST EMPLOYEE" ON THE PROPOSAL FLOW (QA, 25 OCT 2026)
+ * NOT_A_NAME_TEST_EMPLOYEE_ENABLED: "TEST EMPLOYEE" ON THE PROPOSAL FLOW (QA, 25 OCT 2026)
  * ============================================================================
  *
  * Ported from Ask Bubbles (QA B4, B8, G11 there). The proposal's name reader
@@ -59,7 +59,7 @@ export function withTypedEmployeeOnCard(
  * CA_TEMPLATE_MAP / FORM_CHOICE_STATED on, "Ne" from "… at Kearney, NE." or
  * nobody ("Who is this for?").
  *
- * With the guard on, the name the manager typed (`typedEmployeeName`, in this
+ * With the flag on (and NOT_A_NAME_GUARD_ENABLED), the name the manager typed (`typedEmployeeName`, in this
  * turn or the newest earlier turn that typed one) goes on a card whose
  * employee is that name's first word, is missing, or is not a person; a line
  * asking who the form is for then becomes the line that names them. A card
@@ -80,7 +80,7 @@ function withGuardedTypedEmployee(
   earlierTurns: readonly string[],
 ): AskResponse | null {
   const proposal = response.formProposal;
-  if (!notANameGuardEnabled() || !proposal || !GUARDED_TEMPLATES.has(proposal.templateKey)) return null;
+  if (!notANameTestEmployeeEnabled() || !proposal || !GUARDED_TEMPLATES.has(proposal.templateKey)) return null;
   const typed = [managerText, ...[...earlierTurns].reverse()].map(typedEmployeeName).find(Boolean) ?? null;
   if (!typed) return null;
   const first = typed.split(" ")[0]!.toLowerCase();

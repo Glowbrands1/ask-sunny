@@ -1,5 +1,5 @@
 import { NOT_A_NAME, NOT_A_TYPED_NAME } from "./name-words";
-import { notANameGuardEnabled } from "@/lib/config/chat-quality-flags";
+import { notANameTestEmployeeEnabled } from "@/lib/config/chat-quality-flags";
 import { isNotAName } from "./not-a-name";
 import { isFormVocabulary } from "./template-intent";
 
@@ -48,7 +48,7 @@ const POSITIONS: readonly RegExp[] = [
 ];
 
 /*
- * NOT_A_NAME_GUARD_ENABLED (ported from Ask Bubbles, QA B8 / G11 there). The
+ * NOT_A_NAME_TEST_EMPLOYEE_ENABLED (ported from Ask Bubbles, QA B8 / G11 there). The
  * role in front of the name: "for Tanning Consultant, Test Employee at
  * Kearney, NE", "for tanning consultant Test Employee at lincoln".
  */
@@ -58,7 +58,7 @@ const AFTER_ROLE = new RegExp(
 );
 
 /*
- * NOT_A_NAME_GUARD_ENABLED (QA G4, Ask Sunny conv_mvo1t7qv253555k): "Okay
+ * NOT_A_NAME_TEST_EMPLOYEE_ENABLED (QA G4, Ask Sunny conv_mvo1t7qv253555k): "Okay
  * let's restart. Test Employee, Tanning Consultant, KS Manhattan. …" — the
  * name opening a sentence after another, as it opens a turn. Only the model's
  * slot carried it, so the card dropped the employee in one run of three.
@@ -73,8 +73,8 @@ function namesSomebody(first: string): boolean {
 }
 
 /*
- * NOT_A_NAME_GUARD_ENABLED (Pau, 26 Oct 2026: "lowercase or first letter
- * capitalized, should be like human"). With the guard on, the name reads the
+ * NOT_A_NAME_TEST_EMPLOYEE_ENABLED (Pau, 26 Oct 2026: "lowercase or first letter
+ * capitalized, should be like human"). With the flag on, the name reads the
  * same however the manager typed it:
  *
  *   - "Employee" is read in either case after a capitalised first name: "for
@@ -110,7 +110,7 @@ function thingFollows(text: string, end: number): boolean {
 /** "Test Employee" when the manager typed it as the employee's name, else null. */
 export function typedEmployeeName(text: string): string | null {
   if (!text) return null;
-  const guard = notANameGuardEnabled();
+  const guard = notANameTestEmployeeEnabled();
   if (!(guard ? /employee/i.test(text) : text.includes("Employee"))) return null;
   for (const position of guard ? ANY_CASE_POSITIONS : POSITIONS) {
     for (const match of text.matchAll(position)) {
