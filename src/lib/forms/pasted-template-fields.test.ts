@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { TEMPLATE } from "@/app/api/chat/replay-pack/nov5-pau-sf-s21-s25-cases";
 
-import { pastedTemplateValues, templatePerson, templateSections } from "./pasted-template-fields";
+import { pastedTemplateValues, templatePerson, templateSections, withPastedLineBreaks } from "./pasted-template-fields";
 
 /**
  * PASTED_TEMPLATE_FIELDS_TO_OPEN_DRAFT_ENABLED (QA's Sunny round-25 live test of sf-s21, 11 Nov 2026): sf-s21's exact
@@ -47,5 +47,17 @@ describe("a pasted template's labelled sections", () => {
 
   it("a turn with no field label places nothing", () => {
     expect(pastedTemplateValues({ text: "she was late again today", fields: CA_FIELDS, employeeName: "Wynne Sarrow" })).toEqual({});
+  });
+});
+
+describe("round 25 5c: pasted lines keep their line breaks", () => {
+  const STEPS = "Step 1 - 10/6/26 - Verbal reminder about arriving on time.\nStep 2 - 10/20/26 - Follow-up talk; she said she would leave earlier.\nStep 3 - 11/3/26 - Written follow-up sent.";
+  it("QA's saved one-line value gets the pasted line breaks back", () => {
+    expect(withPastedLineBreaks(STEPS.split("\n").join(" "), STEPS)).toBe(STEPS);
+  });
+  it("a value already on separate lines, or a different value, is left alone", () => {
+    expect(withPastedLineBreaks(STEPS, STEPS)).toBeNull();
+    expect(withPastedLineBreaks("None - first occurrence.", STEPS)).toBeNull();
+    expect(withPastedLineBreaks("one line", "one line")).toBeNull();
   });
 });

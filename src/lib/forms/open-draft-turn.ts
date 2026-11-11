@@ -65,7 +65,7 @@ export async function openDraftTurn(input: {
     ? await (await import("@/lib/forms/form-write")).editSnapshot(input.instanceId, "open_draft")
     : null;
   // PASTED_TEMPLATE_FIELDS_TO_OPEN_DRAFT_ENABLED: the draft's words before the revision, to see whether it placed the paste.
-  const wordsBefore = pasted && pastedTemplateFieldsToOpenDraftEnabled() ? await draftWords(input.instanceId) : null;
+  const wordsBefore = pastedTemplateFieldsToOpenDraftEnabled() && (pasted || question.includes("\n")) ? await draftWords(input.instanceId) : null;
   const revised = await (await import("@/lib/forms/chat-revision")).reviseActiveForm({
     request: input.request,
     instanceId: input.instanceId,
@@ -80,10 +80,13 @@ export async function openDraftTurn(input: {
    * that …", or "I haven't changed the Corrective Action Form …"). Its labelled sections go into the draft's fields of
    * those labels, in the draft's employee's name.
    */
-  if (wordsBefore && JSON.stringify(await draftWords(input.instanceId)) === JSON.stringify(wordsBefore)) {
+  const wordsAfter = wordsBefore ? await draftWords(input.instanceId) : null;
+  if (pasted && wordsBefore && JSON.stringify(wordsAfter) === JSON.stringify(wordsBefore)) {
     const placed = await placePastedTemplate({ ...input, question, employeeName: open.employeeName });
     if (placed) return placed;
   }
+  // PASTED_TEMPLATE_FIELDS_TO_OPEN_DRAFT_ENABLED (round-25 live 5c): pasted lines the revision joined onto one line get their breaks back.
+  if (wordsBefore && wordsAfter) await keepPastedLineBreaks({ ...input, question, before: wordsBefore, after: wordsAfter });
   if (revised && formEditSingleWriterEnabled() && before) {
     return (await import("@/lib/forms/form-write")).realizedClaim(revised, input.instanceId, before);
   }
@@ -205,4 +208,45 @@ async function draftWords(instanceId: string): Promise<Record<string, string> | 
   const loaded = await (await import("./instances")).loadInstance(instanceId).catch(() => null);
   if (!loaded) return null;
   return Object.fromEntries(loaded.values.map((row) => [row.fieldKey, String(row.value ?? "")]));
+}
+
+/**
+ * PASTED_TEMPLATE_FIELDS_TO_OPEN_DRAFT_ENABLED (round-25 live 5c): a field the revision just changed that holds the
+ * manager's pasted lines joined on one line is written again with the line breaks they were pasted with
+ * (`withPastedLineBreaks`), as the manager's words. Nothing else on the form is touched.
+ */
+async function keepPastedLineBreaks(input: {
+  request: Request;
+  instanceId: string;
+  question: string;
+  today: string;
+  before: Record<string, string>;
+  after: Record<string, string>;
+}): Promise<void> {
+  const { withPastedLineBreaks } = await import("./pasted-template-fields");
+  const values: Record<string, string> = {};
+  for (const [key, value] of Object.entries(input.after)) {
+    if (value === input.before[key]) continue;
+    const restored = withPastedLineBreaks(value, input.question);
+    if (restored) values[key] = restored;
+  }
+  if (Object.keys(values).length === 0) return;
+  const authorized = await (await import("./instance-scope"))
+    .authorizeInstance(input.request, input.instanceId, "edit")
+    .catch(() => null);
+  if (!authorized) return;
+  if (formEditSingleWriterEnabled()) {
+    const { opsFrom, writeFormEdits } = await import("./form-write");
+    // A list field ("one per line") unites a set with its lines, so the joined line is cleared first, in its own write.
+    const rules = { path: "open_draft" as const, actorId: authorized.actor.id, latest: input.question, today: input.today, lineBreaksOnly: true };
+    const clears = Object.keys(values).map((field) => ({ op: "clear" as const, field, by: "manager" as const }));
+    await writeFormEdits(input.instanceId, clears, rules);
+    const written = await writeFormEdits(input.instanceId, opsFrom({ values }, { by: "manager" }), rules);
+    // Never left empty: a key the second write did not take gets the revision's own value back.
+    const kept = new Set(written.changed.map((change) => change.key));
+    const back = Object.fromEntries(Object.keys(values).filter((key) => !kept.has(key)).map((key) => [key, input.after[key] ?? ""]));
+    if (Object.keys(back).length > 0) await writeFormEdits(input.instanceId, opsFrom({ values: back }, { by: "manager" }), rules);
+  } else {
+    await (await import("./instances")).saveInstanceValues(input.instanceId, { values, checked: {} }, authorized.actor.id);
+  }
 }

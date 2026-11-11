@@ -141,6 +141,12 @@ export interface FormEditOp {
 
 export interface FormEditRules {
   readonly path: FormEditPath;
+  /**
+   * PASTED_TEMPLATE_FIELDS_TO_OPEN_DRAFT_ENABLED (QA's round-25 live 5c): the write only puts back the line breaks the
+   * manager pasted with, on a value the revision just wrote with the same words on one line (`withPastedLineBreaks`).
+   * The open-draft path's "already says this" rule (`noRepeat`) would refuse it as the same sentences again.
+   */
+  readonly lineBreaksOnly?: boolean;
   readonly actorId: string;
   /** The latest message. */
   readonly latest?: string;
@@ -297,6 +303,7 @@ function withReaderFoundNothing(
 ): { patchRules: PatchRules; writable: ReadonlySet<string> } {
   if (!formPatchReaderFixesEnabled()) return preset;
   // QA's 2x run: what the field already says is never written again, on any path that writes her edit.
+  if (rules.path === "open_draft" && rules.lineBreaksOnly) return preset;
   if (rules.path === "open_draft" || rules.path === "tool") return { ...preset, patchRules: { ...preset.patchRules, noRepeat: true } };
   if (rules.path !== "revision" && rules.path !== "patch") return preset;
   // The instruction written back as content is refused on both paths (QA's stability run: "Details about the towel.").

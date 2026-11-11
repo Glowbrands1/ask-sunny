@@ -118,3 +118,22 @@ const NOTHING_CHANGED = /^\s*(?:I didn't change anything on the form\.|I haven'?
 export function revisionChangedNothing(content: string): boolean {
   return NOTHING_CHANGED.test(content);
 }
+
+/**
+ * PASTED_TEMPLATE_FIELDS_TO_OPEN_DRAFT_ENABLED (QA's round-25 live test, 5c): the manager pasted three step lines
+ * ("Step 1 - 10/6/26 - …\nStep 2 - …\nStep 3 - …") and the revision model wrote them to Prior Actions on one line,
+ * single-spaced. The request reaches the model with its line breaks and the writer keeps them; the join is the model's.
+ * A value that holds the manager's lines joined by single spaces gets their line breaks back. Null when it does not.
+ */
+export function withPastedLineBreaks(value: string, pasted: string): string | null {
+  const lines = pasted
+    .split(/\n+/)
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  if (lines.length < 2) return null;
+  const joined = lines.join(" ");
+  const flat = value.replace(/[ \t]+/g, " ");
+  if (!flat.includes(joined)) return null;
+  const restored = flat.replace(joined, lines.join("\n"));
+  return restored === value ? null : restored;
+}
