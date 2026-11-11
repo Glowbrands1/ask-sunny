@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { afterEach, describe, expect, it } from "vitest";
 
 import { readExitDetails } from "./exit-details";
@@ -174,3 +176,36 @@ describe.each(REGISTERS)(
     }
   },
 );
+
+/*
+ * QA's October triage of #251 (10 Nov 2026): still failing on main with production's flags. Pinned with those flags,
+ * so the fix is checked on the path production takes.
+ */
+describe("with production's flags (QA's October triage of #251)", () => {
+  const stubbed: string[] = [];
+  function production(on: boolean): void {
+    const flags = (JSON.parse(readFileSync("src/config/production-flags.json", "utf8")) as { on: string[] }).on;
+    for (const name of flags) {
+      if (process.env[name] === undefined) stubbed.push(name);
+      process.env[name] = "true";
+    }
+    withFlag(on);
+  }
+  afterEach(() => {
+    for (const name of stubbed.splice(0)) delete process.env[name];
+  });
+
+  it("off: the run-on leaves Rehire and Reason blank, and \"resigned 9-15 on woven\" names no method (the bug)", () => {
+    production(false);
+    expect(details(RUN_ON).answers.eligible_for_rehire).toBeUndefined();
+    expect(details(RUN_ON).resignationReason).toBeNull();
+    expect(details("she resigned 9-15 on woven").resignationMethod ?? null).toBeNull();
+  });
+
+  it("on: the run-on fills Rehire (yes) and the Reason; \"resigned 9-15 on woven\" is a Woven message", () => {
+    production(true);
+    expect(details(RUN_ON).answers.eligible_for_rehire).toBeDefined();
+    expect(details(RUN_ON).resignationReason).toMatch(/other career options/i);
+    expect(String(details("she resigned 9-15 on woven").resignationMethod ?? "")).toMatch(/woven/i);
+  });
+});
