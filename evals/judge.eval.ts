@@ -104,10 +104,18 @@ describe("the eval's cases", () => {
   it("keep the priority replay fixture's turns and criteria word for word", () => {
     const fixture = JSON.parse(readFileSync("src/lib/ai/__fixtures__/replay_set.json", "utf8")) as EvalCase[];
     const cases = JSON.parse(readFileSync("evals/replay_set.json", "utf8")) as EvalCase[];
+    /*
+     * Changed on purpose (QA, 10 Nov 2026, the roster-name set #741), after Pau's rulings of 5 Nov 2026: s25's eval
+     * criteria take the roster's spelling, "Daisley Veklo"; b9, n1 ("Test Employee": a name with "employee" in it) and n3
+     * ("TT": bare initials) expect no employee on the card and "Who is this form for?". The priority replay fixture keeps
+     * the old criteria: that test measures production's flags. The turns are still pinned word for word.
+     */
+    const ASKS_WHO = { employee: "", noBlockingQuestion: false, replyIncludes: ["Who is this form for?"] };
+    const RULED: Readonly<Record<string, Partial<EvalCase["criteria"]>>> = { s25: { employee: "Daisley Veklo" }, b9: ASKS_WHO, n1: ASKS_WHO, n3: ASKS_WHO };
     for (const item of fixture) {
       const copy = cases.find((other) => other.id === item.id);
       expect(copy, `${item.id} is not in evals/replay_set.json`).toBeDefined();
-      expect({ turns: copy!.turns, criteria: copy!.criteria }, item.id).toEqual({ turns: item.turns, criteria: item.criteria });
+      expect({ turns: copy!.turns, criteria: copy!.criteria }, item.id).toEqual({ turns: item.turns, criteria: { ...item.criteria, ...RULED[item.id] } });
     }
   });
 });

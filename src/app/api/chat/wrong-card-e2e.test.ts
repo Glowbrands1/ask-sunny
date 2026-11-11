@@ -563,6 +563,7 @@ const outcome = (result: Attempt) => (result.ok ? "created" : `${result.status} 
 
 const LATE = "she was late on 10/20";
 const FIX = "NEW_PERSON_REQUEST_ENABLED";
+const OVERLAP = "SAME_REQUEST_OTHER_PERSON_ENABLED";
 const ALSO = "also create a ca for rowan kestrel, he was late on 10/20";
 const NOW = "now create a coaching form for rowan kestrel, he was late on 10/21";
 
@@ -570,6 +571,11 @@ const NOW = "now create a coaching form for rowan kestrel, he was late on 10/21"
 function setUp(config: Config, on: boolean) {
   if (!saved.has(FIX)) saved.set(FIX, process.env[FIX]);
   delete process.env[FIX];
+  // Changed on purpose (coding 6, 10 Nov 2026): SAME_REQUEST_OTHER_PERSON_ENABLED reads "also create a ca for <B>, …" and
+  // "now create a coaching form for <B>, …" too; cleared here so the "off, as reported" rows still document the bug with
+  // both fixes off (QA's gate runs that flag alone).
+  if (!saved.has(OVERLAP)) saved.set(OVERLAP, process.env[OVERLAP]);
+  delete process.env[OVERLAP];
   configure(on ? ON(config, FIX) : config);
 }
 

@@ -1,7 +1,10 @@
 import "server-only";
 
+import { besideManualGrounding, besideManualRows, fullManualKeepsRetrieval, startBesideSearch } from "./full-manual-keeps-retrieval";
 import {
   chatDataToolsEnabled,
+  chatParallelLoadsEnabled,
+  chatParallelRewriteEnabled,
   chatMemoryEnabled,
   chatStyleRulesEnabled,
   chatTraceEnabled,
@@ -47,6 +50,8 @@ import { approvedManualConfirmed, manualDisplayTitle } from "@/lib/forms/officia
 import { MissingConfigurationError, liveReadiness } from "@/lib/config/server-env";
 import { ACTIVE_BRAND } from "@/lib/brand";
 import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
+import { markStage } from "./chat-stage-timings";
+import { held, startedFor } from "./held-promise";
 import { proposeFormForTurn, suggestFormsForTurn, type ChatActor } from "./form-proposal";
 import { acceptedCaOffer, acceptedCaOfferTurn, caOfferLine, withCaOffer } from "./ca-offer";
 import { remapFormTurn, remapShouldRun, type FormRemapSlots } from "./form-full-remap";
@@ -517,6 +522,7 @@ async function answerQuestionUntraced(
   actor: ChatActor,
   memory: { memoryOwnerId?: string } = {},
 ): Promise<AskResponse> {
+  markStage("trace_open");
   const readiness = liveReadiness();
 
   // Missing variables first: that is the ordinary "not set up yet" case, and it
@@ -561,7 +567,17 @@ async function answerQuestionUntraced(
   const listPolicyCard = listPolicyOnCard(request);
   const askedQuestion = !listPolicyCard && questionNotFormEnabled() && isQuestionNotForm(request.question, request.history);
   let intentForm = false;
+  /*
+   * CHAT_PARALLEL_REWRITE_ENABLED (QA, 9 Nov 2026): the message normalizer (`normalizeForChat`, below) starts now, from
+   * the turn as it is, alongside intent extraction instead of after it. Used only when extraction leaves the question and
+   * the history as they were; otherwise it is called again from the extracted turn, as before.
+   */
+  const earlyHeard =
+    chatParallelRewriteEnabled() && queryRewriteEnabled() && intentExtractionEnabled() && !askedQuestion
+      ? startedFor(request, (turn) => normalizeForChat({ question: turn.question, history: turn.history }))
+      : null;
   if (intentExtractionEnabled() && !askedQuestion) {
+    markStage("intent_extraction");
     const prepared = await applyIntentExtraction({ request, actor });
     // A numbered choice (two people, two salons) still asks. The "I still
     // need …" list does not: it replaced the proposal card on every live
@@ -605,8 +621,27 @@ async function answerQuestionUntraced(
    * fetched once one of them has something to say — or, further down, in
    * parallel with retrieval when neither has.
    */
+  /*
+   * CHAT_PARALLEL_LOADS_ENABLED (QA, 10 Nov 2026, live timings): the few-shot read needs only the question and the scope,
+   * both final here, and was the one slow read left before the answer (1.1–2.8 s, alone: the reads it was started with
+   * finish in 0–1 ms). It starts here, beside the normalizer and the query rewrite. A turn that returns before the answer
+   * (a form proposal, a form understood) has made two database reads it does not use; no model call. Its rejection is
+   * held until the await, as before.
+   */
+  const earlyFewShot =
+    chatParallelLoadsEnabled() && fewShotExamplesEnabled() ? held(fewShotBlock({ question: request.question, scopeId: request.scopeId })) : null;
+  // FULL_MANUAL_KEEPS_RETRIEVAL_ENABLED (QA, 10 Nov 2026): the search beside the manual overlaps the normalizer and the rewrite.
+  const earlyBeside = startBesideSearch({
+    question: request.question,
+    history: request.history,
+    openForm: request.openForm ?? null,
+    scopeId: request.scopeId,
+    formInProgress: Boolean(request.continueProposalTemplateKey || request.openForm || request.activeFormInstanceId),
+    match: (query) => new SupabaseKnowledgeProvider().match(query),
+  });
+  markStage(earlyHeard?.reruns(request) ? "query_normalize_rerun" : "query_normalize");
   const heard = queryRewriteEnabled()
-    ? await normalizeForChat({ question: request.question, history: request.history })
+    ? await (earlyHeard?.take(request) ?? normalizeForChat({ question: request.question, history: request.history }))
     : null;
   const routingQuestion = heard?.routingText ?? request.question;
   updateChatTrace({
@@ -910,6 +945,7 @@ async function answerQuestionUntraced(
 
     let manualRead: ReturnType<typeof knowledge.fetchOfficialPolicyManual> | null = null;
     const readManual = () => (manualRead ??= knowledge.fetchOfficialPolicyManual(ACTIVE_BRAND.knowledgeScopeId));
+    markStage("form_proposal");
     const proposal = askedQuestion ? null : await deliverFormProposal({
       request: remapIncidentFixEnabled() ? { ...request, history: formHistory() } : request,
       actor,
@@ -1015,6 +1051,7 @@ async function answerQuestionUntraced(
    */
   if (formToolsEnabled() && !formsTurn) {
     // A question is answered, never read as a form command (`question-not-form.ts`).
+    markStage("form_understand");
     const understood = askedQuestion ? null : await understandFormTurn({
       question: request.question,
       history: request.history,
@@ -1415,6 +1452,7 @@ async function answerQuestionUntraced(
    * `slot-only-turn.ts`); the rewrite would read the turn's own words again.
    */
   const slotTopic = slotOnlyRetrievalTopic(request.question, request.history);
+  markStage("query_rewrite");
   const rewritten = queryRewriteEnabled() && !slotTopic
     ? await rewriteToManualTerms({
         question: request.question,
@@ -1454,13 +1492,16 @@ async function answerQuestionUntraced(
   const scopeManual = currentManualScopeEnabled() || manualSectionDedupeEnabled();
   const fetchLimit = manualScopeFetchLimit(matchLimit, scopeManual);
   if (fullManualPromise) {
+    markStage("full_manual");
     const loadedManual = await fullManualPromise;
     if (loadedManual.ok) {
       fullManualBlock = loadedManual.block;
       fullManuals = loadedManual.manuals;
     }
   }
-  if (fullManualBlock) {
+  // FULL_MANUAL_KEEPS_RETRIEVAL_ENABLED: the other documents are still searched (`full-manual-keeps-retrieval.ts`).
+  const keepsRetrieval = fullManualKeepsRetrieval(fullManualBlock);
+  if (fullManualBlock && !keepsRetrieval) {
     /*
      * The whole manual is in the prompt. Retrieved excerpts are not the
      * policy source. A missing or oversized manual leaves fullManualBlock
@@ -1500,7 +1541,9 @@ async function answerQuestionUntraced(
              */
             limit: fetchLimit,
           });
-      rows = await search(searched);
+      markStage("retrieval");
+      // FULL_MANUAL_KEEPS_RETRIEVAL_ENABLED: the search started with the normalizer, when it did.
+      rows = keepsRetrieval && earlyBeside ? await earlyBeside : await search(searched);
       /*
        * A REFORMAT TURN KEEPS THE SOURCES OF THE ANSWER IT REFORMATS
        * (REFORMAT_KEEPS_SOURCES_ENABLED). "Make this a downloadable document"
@@ -1520,14 +1563,25 @@ async function answerQuestionUntraced(
         rows = keepEarlierSources(await search(earlierQuery), rows, fetchLimit);
       }
     } catch (error) {
-      if (error instanceof MissingConfigurationError) {
-        throw new AiError("not_configured", error.message, 503, error.missing);
+      /*
+       * FULL_MANUAL_KEEPS_RETRIEVAL_ENABLED (QA, 11 Nov 2026; Gate-Sunny-2 on 1b6cd415): the whole manual is already in the
+       * prompt, so a failed search beside it (recall RPC, embedding, timeout) leaves the manual alone, never a 502.
+       * Before the flag this turn searched nothing and could not fail here.
+       */
+      if (keepsRetrieval) {
+        markStage("retrieval_beside_manual_failed");
+        console.warn(`[full-manual-keeps-retrieval] the search beside the manual failed; answering from the manual alone: ${error instanceof Error ? error.message : String(error)}`);
+        rows = [];
+      } else {
+        if (error instanceof MissingConfigurationError) {
+          throw new AiError("not_configured", error.message, 503, error.missing);
+        }
+        throw new AiError(
+          "retrieval_failed",
+          "The company knowledge base could not be searched, so no answer was produced. Nothing was answered from memory.",
+          502,
+        );
       }
-      throw new AiError(
-        "retrieval_failed",
-        "The company knowledge base could not be searched, so no answer was produced. Nothing was answered from memory.",
-        502,
-      );
     }
     if (scopeManual) {
       rows = scopeToCurrentManual(rows, { limit: matchLimit, dedupeBySection: manualSectionDedupeEnabled() });
@@ -1537,6 +1591,7 @@ async function answerQuestionUntraced(
       request.question,
       isCaOrPolicyQuestion(request.question) ? matchLimit : rows.length,
     );
+    if (keepsRetrieval) rows = besideManualRows(rows);
     updateChatTrace({
       retrievalCount: rows.length,
       retrieved: rows.slice(0, 20).map((row) => ({
@@ -1548,6 +1603,7 @@ async function answerQuestionUntraced(
     });
   }
 
+  markStage("parallel_reads");
   const roleResult = await rolePromise;
   const dailyStatsResult = await dailyStatsPromise;
   const performanceManagementResult = await performanceManagementPromise;
@@ -1596,6 +1652,17 @@ async function answerQuestionUntraced(
     };
   }
 
+  /*
+   * CHAT_PARALLEL_LOADS_ENABLED (QA, 9 Nov 2026): the reads below that need nothing more of the turn start here, after
+   * its last early return (the framework refusals above), so every read started is awaited on this turn and a turn
+   * that returns earlier makes none it would not have made. They run alongside the briefing, the summaries and the
+   * system prompt instead of one after another before the answer. Each is awaited where it was, with the same inputs,
+   * so the prompt is the same. The two that write (recalled memory, the long-context summary) start just before the
+   * system prompt is built (`turnWrites`).
+   */
+  const reads = chatParallelLoadsEnabled()
+    ? turnReads({ request, actor, knowledge, families, fullManual: fullManualBlock !== null, fewShot: earlyFewShot })
+    : null;
   const role = roleResult?.ok ? roleResult.grounding : null;
 
   /*
@@ -1729,14 +1796,16 @@ async function answerQuestionUntraced(
    * wrong answer this pipeline can produce. `loadReportBriefing` never rejects,
    * so this cannot fail the answer.
    */
+  markStage("briefing");
   const briefing = await briefingPromise;
   /*
    * GOOGLE_REVIEWS_IN_CHAT_ENABLED: the Google Reviews page's month to date,
    * goal and pace for the caller's salons, read only on a Google review
    * question and only with View Google reviews. Null otherwise.
    */
+  markStage("google_reviews");
   const reviewBlock = googleReviewsInChatEnabled()
-    ? await loadGoogleReviewsChatBlock({ question: request.question, role: actor.role, scope: actor.scope })
+    ? await (reads?.reviews ?? loadGoogleReviewsChatBlock({ question: request.question, role: actor.role, scope: actor.scope }))
     : null;
 
   /*
@@ -1771,12 +1840,25 @@ async function answerQuestionUntraced(
    * non-forms turn this query has been running alongside retrieval, the
    * framework reads and the report briefing, so it costs no serial time.
    */
+  markStage("summaries_memory");
   const settledSummaries = await summariesPromise;
   const personMemory = await memoryPromise;
   const formInventoryBlock = settledSummaries.ok
     ? buildFormInventoryBlock(buildFormInventory(settledSummaries.rows, actor))
     : null;
 
+  /*
+   * CHAT_PARALLEL_LOADS_ENABLED: the two loads that write start here, where nothing between their start and their
+   * awaits can throw, and after everything that reads the conversation's memory (`memoryPromise`, above).
+   */
+  const writes = reads ? turnWrites({ request, actor }) : null;
+  markStage("recalled_memory");
+  const recalledMemory = await (writes?.recalled ?? recalledMemoryBlock(request, actor));
+  markStage("few_shot");
+  const fewShot = fewShotExamplesEnabled()
+    ? await (reads?.fewShot ?? fewShotBlock({ question: request.question, scopeId: request.scopeId }))
+    : null;
+  markStage("system_prompt");
   const builtSystem = buildSystemPrompt({
     assistantName: ACTIVE_BRAND.assistantName,
     brandName: ACTIVE_BRAND.brandName,
@@ -1836,36 +1918,45 @@ async function answerQuestionUntraced(
       hasPermission(DEFAULT_PERMISSION_MATRIX, actor.role, "view_reports"),
     styleRules: chatStyleRulesEnabled(),
     priorCoachingOptional: priorCoachingOptionalEnabled(),
-    recalledMemory: await recalledMemoryBlock(request, actor),
-    ...(fewShotExamplesEnabled()
-      ? { fewShot: await fewShotBlock({ question: request.question, scopeId: request.scopeId }) }
-      : {}),
+    recalledMemory,
+    ...(fewShot !== null ? { fewShot } : {}),
   });
   // MANAGER_NAME_NOT_EMPLOYEE_ENABLED: the manager's name is only for addressing them. See `manager-name-guard.ts`.
   const system = withManagerNameRule(builtSystem);
 
+  markStage("long_context");
   const longContext = longContextEnabled()
-    ? await prepareLongContext({
-        history: request.history,
-        userId: actor.subject ?? null,
-        conversationId: request.conversationId ?? null,
-      })
+    ? await (writes?.longContext ??
+        prepareLongContext({
+          history: request.history,
+          userId: actor.subject ?? null,
+          conversationId: request.conversationId ?? null,
+        }))
     : null;
-  const dataAddition = await loadChatDataBlock({
-    enabled: chatDataToolsEnabled(),
-    question: request.question,
-    role: actor.role,
-    scope: actor.scope,
-    briefedFamilies: families,
-    reviewsHandled: reviewBlock !== null,
-  });
-  const pinnedPolicy = fullManualBlock ? null : await citedManualGrounding(request, knowledge);
+  markStage("chat_data");
+  const dataAddition = await (reads?.data ??
+    loadChatDataBlock({
+      enabled: chatDataToolsEnabled(),
+      question: request.question,
+      role: actor.role,
+      scope: actor.scope,
+      briefedFamilies: families,
+      reviewsHandled: reviewBlock !== null,
+    }));
+  markStage("cited_grounding");
+  const pinnedPolicy = fullManualBlock ? null : await (reads?.cited ?? citedManualGrounding(request, knowledge));
   /*
    * Retrieved rows are [S#] sources. With the manual loaded, those markers
    * are not the policy citation, and a manager manual that retrieval pinned
    * must not be described as the only company document.
    */
-  const knowledgeGrounding = fullManualBlock
+  const knowledgeGrounding = keepsRetrieval
+    ? besideManualGrounding({
+        aside: frameworkAside(grounding.slice(0, assembled.mandatoryCount)),
+        // SENSITIVE_DEFAULTS_REDACT_ENABLED, as below.
+        beside: grounding.slice(assembled.mandatoryCount).map((chunk) => ({ ...chunk, content: redactSensitiveDefaults(chunk.content) })),
+      })
+    : fullManualBlock
     ? [FULL_MANUAL_GROUNDING_NOTE, frameworkAside(grounding)].filter((part) => part.length > 0).join("\n\n")
     : // SENSITIVE_DEFAULTS_REDACT_ENABLED: a default password format or SSN digits are never shown to the model.
       buildGroundingBlock(grounding.map((chunk) => ({ ...chunk, content: redactSensitiveDefaults(chunk.content) })));
@@ -1898,6 +1989,7 @@ async function answerQuestionUntraced(
    */
   let written: string;
   try {
+    markStage("answer_model");
     written = await callClaude({
       system,
       grounding: dataAddition.help ? `${groundingText}\n\n${dataAddition.help}` : groundingText,
@@ -1944,6 +2036,7 @@ async function answerQuestionUntraced(
     formEdit?.failed();
     throw error;
   }
+  markStage("after_answer");
   if (formEdit) {
     formEdit.sent();
     const called = toolInput as { readonly input: unknown } | null;
@@ -1974,7 +2067,13 @@ async function answerQuestionUntraced(
   // resolves to the row at that position — retrieved data, not model output.
   const checked =
     policyAnswer && fullManuals.length > 0
-      ? applyFullManualAnswer({ content: answer, manuals: fullManuals, sourceCount: 0 })
+      ? applyFullManualAnswer({
+          content: answer,
+          manuals: fullManuals,
+          sourceCount: keepsRetrieval ? grounding.length : 0,
+          // FULL_MANUAL_KEEPS_RETRIEVAL_ENABLED: only the markers the prompt lists (the excerpts beside the manual).
+          ...(keepsRetrieval ? { keptMarkers: grounding.slice(assembled.mandatoryCount).map((chunk) => chunk.marker) } : {}),
+        })
       : null;
   const spoken = checked?.content ?? answer;
   const markers = extractUsedMarkers(spoken, grounding.map((chunk) => chunk.marker));
@@ -2024,7 +2123,7 @@ async function answerQuestionUntraced(
   return {
     content,
     formSelection: suggested?.selection,
-    citations: checked ? [...checked.citations] : retrievedCitations,
+    citations: checked ? [...checked.citations, ...(keepsRetrieval ? retrievedCitations : [])] : retrievedCitations,
     /*
      * Coverage is decided by what retrieval returned, not by reading the
      * answer: the server knows whether any chunk cleared the relevance
@@ -2110,6 +2209,59 @@ async function recalledMemoryBlock(request: AskRequest, actor: ChatActor): Promi
   } catch {
     return null;
   }
+}
+
+/**
+ * CHAT_PARALLEL_LOADS_ENABLED: the turn's reads that need nothing more of the turn, started together. The same calls,
+ * with the same inputs, as where they are awaited (`answerQuestionUntraced`); a rejection is held until that await.
+ */
+function turnReads(input: {
+  readonly request: AskRequest;
+  readonly actor: ChatActor;
+  readonly knowledge: Parameters<typeof citedManualGrounding>[1];
+  readonly families: readonly ReportFamilyId[];
+  readonly fullManual: boolean;
+  /** Started before the query rewrite (`earlyFewShot`): non-null exactly when loads and few-shot are both on. */
+  readonly fewShot: ReturnType<typeof fewShotBlock> | null;
+}) {
+  const { request, actor } = input;
+  const reviews = googleReviewsInChatEnabled()
+    ? held(loadGoogleReviewsChatBlock({ question: request.question, role: actor.role, scope: actor.scope }))
+    : Promise.resolve(null);
+  return {
+    reviews,
+    fewShot: input.fewShot,
+    data: held(
+      reviews.then((reviewBlock) =>
+        loadChatDataBlock({
+          enabled: chatDataToolsEnabled(),
+          question: request.question,
+          role: actor.role,
+          scope: actor.scope,
+          briefedFamilies: input.families,
+          reviewsHandled: reviewBlock !== null,
+        }),
+      ),
+    ),
+    cited: input.fullManual ? null : held(citedManualGrounding(request, input.knowledge)),
+  };
+}
+
+/** CHAT_PARALLEL_LOADS_ENABLED: the two loads that write (recalled memory, the long-context summary), started just before the system prompt. */
+function turnWrites(input: { readonly request: AskRequest; readonly actor: ChatActor }) {
+  const { request, actor } = input;
+  return {
+    recalled: held(recalledMemoryBlock(request, actor)),
+    longContext: longContextEnabled()
+      ? held(
+          prepareLongContext({
+            history: request.history,
+            userId: actor.subject ?? null,
+            conversationId: request.conversationId ?? null,
+          }),
+        )
+      : null,
+  };
 }
 
 async function citedManualGrounding(

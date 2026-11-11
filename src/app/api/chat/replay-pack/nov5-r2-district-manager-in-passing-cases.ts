@@ -123,7 +123,8 @@ export const NOV5_R2_DISTRICT_MANAGER_IN_PASSING_CASES: ReplayCase[] = [
     id: "nov5-r2-dm-in-passing-employee-with-the-flip",
     title: "R2 with FORM_NAME_FROM_ROSTER_ENABLED + CA_SALES_POLICY_ENABLED on: the card is for the employee, never the district manager named in passing",
     report: `${REPORT}: with the flip's flags, "I'll draft a Corrective Action Form for <the district manager>"`,
-    status: { open: "with the flip's flags the card is for the district manager (\"When Odalys\" is set aside as shaped like nobody)" },
+    // Changed on purpose (10 Nov 2026): fixed in production by the roster-name set (FORM_NAME_FROM_ROSTER and companions), QA round 22; it now holds with production's flags.
+    status: "fixed",
     fixFlags: [IN_CANDIDATE],
     run: withFlags(FLIP, employee),
   },
@@ -131,7 +132,8 @@ export const NOV5_R2_DISTRICT_MANAGER_IN_PASSING_CASES: ReplayCase[] = [
     id: "nov5-r2-dm-in-passing-position-with-the-flip",
     title: "R2 (1) with FORM_NAME_FROM_ROSTER_ENABLED + CA_SALES_POLICY_ENABLED on: the card is the employee's and its Job title is never the district manager's",
     report: `${REPORT}: does the sales flip change it? Recorded 5 Nov 2026: yes, the card is for the district manager`,
-    status: { open: "with the flip's flags the card is for the district manager, Job title \"District Manager\"" },
+    // Changed on purpose (10 Nov 2026): fixed in production by the roster-name set (FORM_NAME_FROM_ROSTER and companions), QA round 22; it now holds with production's flags.
+    status: "fixed",
     fixFlags: [IN_CANDIDATE, TITLE],
     run: withFlags(FLIP, position),
   },
@@ -139,7 +141,8 @@ export const NOV5_R2_DISTRICT_MANAGER_IN_PASSING_CASES: ReplayCase[] = [
     id: "nov5-r2-dm-in-passing-account-with-the-flip",
     title: "R2 (2) with FORM_NAME_FROM_ROSTER_ENABLED + CA_SALES_POLICY_ENABLED on: the card is the employee's and the Observation carries the complaint",
     report: `${REPORT}: does the sales flip change it? Recorded 5 Nov 2026: the card is for the district manager`,
-    status: { open: "with the flip's flags the card is for the district manager" },
+    // Changed on purpose (10 Nov 2026): fixed in production by the roster-name set (FORM_NAME_FROM_ROSTER and companions), QA round 22; it now holds with production's flags.
+    status: "fixed",
     fixFlags: [IN_CANDIDATE],
     run: withFlags(FLIP, account),
   },
