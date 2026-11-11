@@ -32,7 +32,8 @@ import type { ChatFormProposal, ChatMessage } from "@/types";
  * card is this app's own reading. The drafting model writes a one-line
  * account and no date.
  *
- * NO NEW FLAG. Tests and data only; the flags below are production's.
+ * NO NEW FLAG. Tests and data only; the flags below are production's
+ * (Vercel, 26 Oct 2026 09:44Z).
  *
  * KNOWN GAPS (`GAPS`, at the bottom). A cell that fails on main runs as
  * `it.fails` with a `gap:` note naming its owner — Code 1 (PRIOR_SENTENCE_FIX,
@@ -48,46 +49,87 @@ import type { ChatFormProposal, ChatMessage } from "@/types";
  */
 
 /**
- * Ask Sunny's production flag profile: the list the route e2e tests use
- * (`edits-dates-replay-e2e.test.ts`, `prior-actions-yearless-oct25.test.ts`),
- * plus the date and name fixes known to be on — LATE_OPEN_DATE_ENABLED,
- * PRIOR_ACTIONS_PARSE_ENABLED, STATE_CODE_NOT_A_PERSON_ENABLED. The full remap
- * and code slots are off in this app's production, and the fixes still
- * being built (PRIOR_SENTENCE_FIX, LATE_OPEN_DATE_FIX, DATE_READER_WIDE, the
- * edit date rules, EXIT_INTAKE_FIX) are off: their cells are gaps.
+ * ASK SUNNY'S PRODUCTION FLAGS, EXACTLY AS READ FROM VERCEL PRODUCTION
+ * (26 Oct 2026 09:44Z; the coordinator's relay, "Authoritative production flag
+ * lists"). Every flag below is on; every flag in PROD_OFF is 0 or not set
+ * there; any flag in neither list stays at its code default (off), as in
+ * production. Includes the correction sent after 09:44Z (the first dump was truncated): FIELD_ACCURACY, SLOT_RETENTION, DRAFT_DEDUPE and SECOND_FORM on.
+ * The fixes still being built (PRIOR_SENTENCE_FIX, LATE_OPEN_DATE_FIX,
+ * DATE_READER_WIDE, the edit date rules) are off: their cells are gaps.
+ * When production changes, change these lists and re-tag the gaps.
  */
 const PROD_FLAGS = [
-  "INTENT_EXTRACTION_ENABLED",
-  "QUERY_REWRITE_ENABLED",
-  "GROUNDED_ENTITIES_ENABLED",
-  "TYPED_NAME_PROCEEDS_ENABLED",
-  "FEWSHOT_EXAMPLES_ENABLED",
-  "SLOT_RETENTION_ENABLED",
-  "FIELD_ACCURACY_ENABLED",
-  "LONG_CONTEXT_ENABLED",
-  "POLICY_CITATION_ENABLED",
-  "SECOND_FORM_ENABLED",
-  "GLOBAL_SALON_ASK_ENABLED",
-  "DRAFT_MERGE_ENABLED",
-  "FULL_MANUAL_CONTEXT_ENABLED",
-  "LATE_OPEN_DATE_ENABLED",
-  "PRIOR_ACTIONS_PARSE_ENABLED",
+  "APP_PASSWORD_HELP_ENABLED",
+  "DRAFT_NEVER_BLANK_ENABLED",
+  "DRAFT_REUSE_SAME_CHAT_ONLY_ENABLED",
+  "EXIT_INTAKE_FIX_ENABLED",
+  "FOLLOW_UP_NOT_PRIOR_ENABLED",
+  "LATE_OPEN_PAYROLL_FROM_FORM_ENABLED",
+  "MANUAL_NEGATED_LIST_NOTE_ENABLED",
+  "NAME_BEFORE_TITLE_ENABLED",
+  "POLICY_SPECIFIC_TOPICS_ENABLED",
+  "REOPEN_VERB_GUARD_ENABLED",
+  "SENSITIVE_DEFAULTS_REDACT_ENABLED",
   "STATE_CODE_NOT_A_PERSON_ENABLED",
+  "ACTION_PLAN_MANAGER_ONLY_ENABLED",
+  "ACTION_PLAN_SENTENCES_ENABLED",
+  "ATTENDANCE_POLICY_CITATION_ENABLED",
+  "CA_TEMPLATE_MAP_ENABLED",
+  "CHAT_STYLE_RULES_ENABLED",
+  "CHAT_TRACE_ENABLED",
+  "CROSS_CHAT_REPLY_GUARD_ENABLED",
+  "CURRENT_MANUAL_SCOPE_ENABLED",
+  "DRAFT_MERGE_ENABLED",
+  "FEWSHOT_EXAMPLES_ENABLED",
+  "FORM_CHOICE_STATED_ENABLED",
+  "FULL_MANUAL_CONTEXT_ENABLED",
+  "GLOBAL_SALON_ASK_ENABLED",
+  "GROUNDED_ENTITIES_ENABLED",
+  "HYBRID_SEARCH_ENABLED",
+  "INTENT_EXTRACTION_ENABLED",
+  "KEEP_FORM_EMPLOYEE_ENABLED",
+  "LATE_OPEN_DATE_ENABLED",
+  "LONG_CONTEXT_ENABLED",
+  "MANAGER_PAYROLL_AMOUNT_ONLY_ENABLED",
+  "MANAGER_WORDS_ONLY_ENABLED",
+  "MANUAL_SECTION_DEDUPE_ENABLED",
+  "NOT_A_NAME_GUARD_ENABLED",
+  "PAYROLL_AMOUNT_FIELD_ENABLED",
+  "PLACE_SPAN_GUARD_ENABLED",
+  "POLICY_PAGE_REQUIRED_ENABLED",
+  "PRINTED_PAGE_CITATION_ENABLED",
+  "PRIOR_ACTIONS_PARSE_ENABLED",
+  "PRIOR_COACHING_OPTIONAL_ENABLED",
+  "QUERY_REWRITE_ENABLED",
+  "RETRIEVAL_RECALL_ENABLED",
+  "SELF_CHECK_ENABLED",
+  "SEND_AFTER_HYDRATE_ENABLED",
+  "TITLE_WHOLE_WORD_ENABLED",
+  "TYPED_NAME_PROCEEDS_ENABLED",
+  "WARNING_LEVEL_MANAGER_ONLY_ENABLED",
+  "FIELD_ACCURACY_ENABLED",
+  "SLOT_RETENTION_ENABLED",
+  "DRAFT_DEDUPE_ENABLED",
+  "SECOND_FORM_ENABLED",
 ] as const;
 
-/** Off in production; cleared so a developer's shell cannot change the matrix. */
+/** 0 or not set in production, and the fixes in progress; cleared so a developer's shell cannot change the matrix. */
 const PROD_OFF = [
-  "CODE_SLOTS_ENABLED",
-  "FORM_STATE_ENABLED",
+  "FORM_DATE_INCIDENT_ONLY_ENABLED",
+  "TERSE_SLOT_READ_ENABLED",
   "FORM_FULL_REMAP_ENABLED",
-  "MANAGER_WORDS_ONLY_ENABLED",
-  "CHAT_MEMORY_ENABLED",
-  "SELF_CHECK_ENABLED",
-  "FORM_EDIT_DATE_RULES_ENABLED",
-  "EXIT_INTAKE_FIX_ENABLED",
+  "REMAP_INCIDENT_FIX_ENABLED",
+  "FORM_TOOLS_ENABLED",
+  "CHAT_UPSTREAM_RETRY_ENABLED",
+  "MODEL_RETRY_ENABLED",
+  "GOOGLE_REVIEWS_IN_CHAT_ENABLED",
+  "POLICY_CLEANING_INCIDENT_ENABLED",
+  "NEGATED_LATE_SHIFT_ENABLED",
+  "INTENT_PAYROLL_MANAGER_ONLY_ENABLED",
   "PRIOR_SENTENCE_FIX_ENABLED",
   "LATE_OPEN_DATE_FIX_ENABLED",
   "DATE_READER_WIDE_ENABLED",
+  "FORM_EDIT_DATE_RULES_ENABLED",
 ] as const;
 
 /** This app's place for a live sentence's `{place}`. */
