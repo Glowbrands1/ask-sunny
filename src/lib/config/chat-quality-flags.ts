@@ -4450,3 +4450,24 @@ export function addNotRepeatedSentencesEnabled(): boolean {
 export function payrollBareSentenceEnabled(): boolean {
   return envFlag("PAYROLL_BARE_SENTENCE_ENABLED");
 }
+
+/**
+ * WORN_CLOTHING_IS_DRESS_CODE_ENABLED (ported from Ask Bubbles: QA's Bubbles 17i live test, 11 Nov 2026; same flag in
+ * both apps; default off). "can you make a CA for <C> for wearing a hoodie to work?" made a Corrective Action card with
+ * no Policy line, and its Action Plan said "review the applicable company policy" (reproduced here). On: an account
+ * naming no policy that says the person wore clothes a dress code rules out is the Dress Code, read from the request
+ * (`forms/ca-policy.ts`). Off, as before.
+ */
+export function wornClothingIsDressCodeEnabled(): boolean {
+  return envFlag("WORN_CLOTHING_IS_DRESS_CODE_ENABLED");
+}
+
+/**
+ * COPY_PASTE_POINTS_TO_CARD_ENABLED (ported from Ask Bubbles: QA's Bubbles 17i live test, 11 Nov 2026; same flag in both
+ * apps; default off). With a Corrective Action card on screen, "Do i need to copy and paste it?" was answered as if there
+ * were no card, with a form menu under it (reproduced here). On: the turn is about the card on screen; the reply is one
+ * line pointing to its **Create draft** button, and the card stays attached (`ai/card-meta-turn.ts`). Off, as before.
+ */
+export function copyPastePointsToCardEnabled(): boolean {
+  return envFlag("COPY_PASTE_POINTS_TO_CARD_ENABLED");
+}
