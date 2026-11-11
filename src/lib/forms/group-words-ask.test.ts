@@ -30,6 +30,11 @@ describe("GROUP_WORDS_NOT_A_NAME_ENABLED", () => {
   it("finds the group and the topic in the manager's turns", () => {
     expect(groupNamed(T3)).toBe("multiple employees");
     expect(groupNamed(T1)).toBeNull();
+    // Gate-Bubbles-2 (11 Nov 2026): "the team" leading another noun is a thing, not a group of people.
+    expect(groupNamed("create a coaching form about the team meeting")).toBeNull();
+    expect(groupNamed("a CA for missing the staff meeting yesterday")).toBeNull();
+    expect(groupNamed("I want the same form for my team.")).toBe("my team");
+    expect(groupNamed("the same form for several employees who were late")).toBe("several employees");
     expect(formTopic([T1, T3])).toBe("accountability");
   });
 
@@ -42,5 +47,6 @@ describe("GROUP_WORDS_NOT_A_NAME_ENABLED", () => {
     );
     // A turn that names nobody as a group is left as it was.
     expect(withGroupWordsAsk(askWho, [T1])).toBe(askWho);
+    expect(withGroupWordsAsk(askWho, ["create a coaching form about the team meeting"])).toBe(askWho);
   });
 });

@@ -13,9 +13,12 @@ import { isGroupOfPeople } from "./not-a-name";
  * employees? Tell me their full names", with the form and its topic kept, one form at a time. Pure.
  */
 
-const QUANTIFIED_GROUP = /\b(?:for|to|with|about)\s+((?:(?:multiple|several|many|some|all|both|these|those|my|our|the|a\s+few|few|two|three|four|five|other|more|team|staff)\s+){0,3}(?:employees|staff|people|team|teams|members|associates|workers|crew|everyone|everybody|employes|employess|emplyees))\b/gi;
+const QUANTIFIED_GROUP = /\b(?:for|to|with|about)\s+((?:(?:multiple|several|many|some|all|both|these|those|my|our|the|a\s+few|few|two|three|four|five|other|more|team|staff)\s+){0,3}(?:employees|staff|people|team|teams|members|associates|workers|crew|everyone|everybody|employes|employess|emplyees))(?=\s*(?:$|[.,;:!?)]|(?:for|about|who|that|on|in|at|because|regarding|and|with|to|today|yesterday|this|next|last)\b))/gi;
 
-/** The group of people a manager's turn names ("multiple employees", "my team"), or null when it names none. */
+/**
+ * The group of people a manager's turn names ("multiple employees", "my team"), or null when it names none. A group
+ * word that leads another noun is not a group: "about the team meeting" names a meeting (Gate-Bubbles-2, 11 Nov 2026).
+ */
 export function groupNamed(text: string): string | null {
   for (const match of text.matchAll(QUANTIFIED_GROUP)) {
     if (isGroupOfPeople(match[1]!)) return match[1]!.replace(/\s+/g, " ").trim();
