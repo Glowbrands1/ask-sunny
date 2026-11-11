@@ -37,7 +37,8 @@ function start(t: ReplayContext) {
   return t.thread();
 }
 
-const outsideNotFound = (content: string) => content.split("\n").filter((line) => !/I couldn't find \*\*/.test(line)).join("\n");
+// Changed on purpose (10 Nov 2026, QA's roster-set ruling): with the name set on, a salon manager's not-found line is OFF_ROSTER_ASK's "I can't find **<name>** on your roster — …" (round 12's live wording), not "I couldn't find **<name>** in the Woven roster".
+const outsideNotFound = (content: string) => content.split("\n").filter((line) => !/I couldn't find \*\*|I can't find \*\*[^*]+\*\* on your roster/.test(line)).join("\n");
 
 export const NOV5_REPLY_OWN_WORDS_CASES: ReplayCase[] = [
   {

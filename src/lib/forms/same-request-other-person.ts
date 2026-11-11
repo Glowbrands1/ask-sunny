@@ -1,7 +1,9 @@
 import type { AskResponse } from "@/lib/ai/types";
 import type { ChatMessage } from "@/types";
-import { sameRequestOtherPersonEnabled } from "@/lib/config/chat-quality-flags";
+import { sameRequestCarriesAccountEnabled, sameRequestKeepsEarlierCardEnabled, sameRequestOffRosterEnabled, sameRequestOtherPersonEnabled } from "@/lib/config/chat-quality-flags";
+import { readEmployeeMentions } from "@/lib/forms/proposal";
 import { displayName, rosterNameNamedIn, type RosterEmployee } from "@/lib/forms/employee-match";
+import { EARLIER_CARD_STAYS } from "@/lib/forms/proposal-continuation";
 
 /**
  * ============================================================================
@@ -174,6 +176,53 @@ export function lastNamed(history: readonly ChatMessage[], roster: readonly Rost
   return null;
 }
 
+/*
+ * SAME_REQUEST_OFF_ROSTER_ENABLED (coding 6, 10 Nov 2026; QA's round-23 live test, conv_mwb1xng82tz2tyr, people not
+ * on the directory): "Can you do the same thing for <B> but make it a written" after <A>'s card was no same request at
+ * all — <A> and <B> were read from the roster only — so <B>'s card had no account and <A>'s was superseded.
+ */
+/** <A>: the employee on the latest card in the chat, and the last manager turn naming them. */
+function cardSubject(history: readonly ChatMessage[]): { employeeName: string; index: number } | null {
+  let employeeName: string | null = null;
+  let cardAt = -1;
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    // The route keeps only each turn's words: the card's reply names its employee ("… Form** for **<A>**").
+    const turn = history[index]!;
+    const named =
+      turn.role === "assistant" && typeof turn.content === "string"
+        ? (turn.formProposal?.employeeName?.trim() || /\*\*(?:Corrective Action|Coaching)(?: Form)?\*\*\s+for\s+\*\*([^*\n]{2,60})\*\*/i.exec(turn.content)?.[1]?.trim())
+        : undefined;
+    if (named) {
+      employeeName = named;
+      cardAt = index;
+      break;
+    }
+  }
+  if (!employeeName) return null;
+  const first = new RegExp(`\\b${escaped(words(employeeName)[0] ?? employeeName)}\\b`, "i");
+  for (let index = cardAt; index >= 0; index -= 1) {
+    const turn = history[index]!;
+    if (turn.role === "user" && typeof turn.content === "string" && first.test(turn.content)) return { employeeName, index };
+  }
+  return null;
+}
+
+/** <B> as typed after "for": one person, never <A>, never a pronoun. */
+function typedOtherPerson(question: string, subjectName: string): string | null {
+  // <A> by any part of their name ("one for Jovelle" with Jovelle Kerrigan's card) is never <B>.
+  const subjectWords = new Set(words(subjectName).map((word) => word.toLowerCase()));
+  const isSubject = (name: string) => sameName(name, subjectName) || words(name).every((word) => subjectWords.has(word.toLowerCase()));
+  const names = readEmployeeMentions(question).names.filter((name) => !isSubject(name) && !PRONOUN.test(name.trim()));
+  if (names.length !== 1) return null;
+  const name = names[0]!.trim();
+  return new RegExp(`\\bfor\\s+${words(name).map(escaped).join("\\s+")}\\b`, "i").test(question) ? name : null;
+}
+
+function typedPerson(name: string): RosterEmployee {
+  const [firstName, ...rest] = name.split(/\s+/);
+  return { id: `typed:${name.toLowerCase()}`, firstName: firstName ?? name, lastName: rest.join(" "), preferredFirstName: null } as unknown as RosterEmployee;
+}
+
 /** The form the chat has open: the browser's continuation key, else the last form the replies named. */
 export function openTemplate(history: readonly ChatMessage[], continueKey: string | undefined): string | null {
   if (continueKey) return continueKey;
@@ -239,9 +288,13 @@ export function sameRequestForOtherPerson(input: {
   if (!kind) return null;
   const openKey = openTemplate(input.history, input.continueTemplateKey);
   if (!openKey || (!input.continueTemplateKey && !input.formOpen)) return null;
-  const subject = lastNamed(input.history, input.roster);
+  const offRoster = sameRequestOffRosterEnabled();
+  const subject = lastNamed(input.history, input.roster) ?? (offRoster ? cardSubject(input.history) : null);
   if (!subject) return null;
-  const others = input.roster.filter((person) => !sameName(displayName(person), subject.employeeName) && rosterNameNamedIn(input.question, [person]) !== null);
+  const onRoster = input.roster.filter((person) => !sameName(displayName(person), subject.employeeName) && rosterNameNamedIn(input.question, [person]) !== null);
+  // SAME_REQUEST_OFF_ROSTER_ENABLED: <B> as typed when nobody on the roster is named (TYPED_NAME_PROCEEDS reads a first request so).
+  const typed = onRoster.length === 0 && offRoster ? typedOtherPerson(input.question, subject.employeeName) : null;
+  const others: RosterEmployee[] = typed ? [typedPerson(typed)] : onRoster;
   // "Now make one for LYsandra": a lone first name, as typed, when it is one roster person's (never the card's) — the
   // name readers then ask "Is this for Lysandra Quade?" as for any first name (`lone`).
   const lone = others.length === 0 && kind === "also" ? loneFirstName(input.question, input.roster, subject.employeeName) : null;
@@ -307,14 +360,46 @@ export function withSameRequestNote(answer: AskResponse, turn: SameRequestTurn):
   const lead = new RegExp(`^\\s*${words(turn.name).map(escaped).join("\\s+")}\\s*[.,:;-]\\s*`, "i");
   const said = turn.carried.replace(lead, "").replace(/\s*\n+\s*/g, " ").trim();
   if (!said) return answer;
-  const note = `A new card for **${turn.name}**, from your earlier request: "${said}". The earlier card or form stays as it is.`;
+  const note = `A new card for **${turn.name}**, from your earlier request: "${said}". ${EARLIER_CARD_STAYS}`;
   // The draft is written from the earlier request's turns, read with <B>'s name (`notesForOtherPerson`), and this one.
   const sources = [...turn.sourceIds.filter((id) => !card.sourceMessageIds.includes(id)), ...card.sourceMessageIds];
+  const noted = answer.content.includes(note) ? answer.content : `${note}\n\n${answer.content}`;
   return {
     ...answer,
-    content: answer.content.includes(note) ? answer.content : `${note}\n\n${answer.content}`,
+    content: sameRequestCarriesAccountEnabled() ? withCarriedObservation(noted, carriedAccount(said, turn.name)) : noted,
     formProposal: { ...card, sourceMessageIds: sources },
   };
+}
+
+/*
+ * SAME_REQUEST_CARRIES_ACCOUNT_ENABLED (QA's Sunny r19 live check): <B>'s card shows <A>'s account with <B>'s name —
+ * "Mara Quell was late on 11/3/26" — never the request lead ("create a corrective action for Mara Quell,"), a pronoun
+ * for <B> ("she was late"), or the level line ("Written Warning.").
+ */
+const REQUEST_LEAD =
+  /^\s*(?:(?:can|could|would)\s+you\s+)?(?:please\s+)?(?:create|make|write|do|start|draft|i\s+need(?:\s+to\s+(?:make|create|write|do))?)\s+(?:me\s+)?(?:a\s+|an\s+)?(?:new\s+)?(?:(?:verbal|written)\s+)?(?:corrective\s+action(?:\s+form)?|ca|write[- ]?up|c(?:oa|ao)ching(?:\s+form)?)\s+(?:form\s+)?(?:for\s+)?/i;
+const LEVEL_LINE = /\s*\b(?:verbal|written)\s+warning\.?\s*$/i;
+const PRONOUN_LEAD = /^\s*(?:she|he|they)\b/i;
+
+export function carriedAccount(said: string, name: string): string | null {
+  const named = new RegExp(`^\\s*${words(name).map(escaped).join("\\s+")}\\b\\s*[,.:;-]?\\s*`, "i");
+  let account = said.replace(REQUEST_LEAD, "").replace(LEVEL_LINE, "").trim();
+  const hadName = named.test(account);
+  account = account.replace(named, "").trim();
+  if (!account) return null;
+  account = PRONOUN_LEAD.test(account) || hadName ? account.replace(PRONOUN_LEAD, "").trim() : account;
+  const sentence = `${name} ${account}`.replace(/\s+/g, " ").trim();
+  return /[.!?]$/.test(sentence) ? sentence.replace(/[.!?]$/, "") : sentence;
+}
+
+const OBSERVATION_LINE = /^\*\*Observation of Offense:\*\*[^\n]*$/m;
+
+function withCarriedObservation(content: string, account: string | null): string {
+  if (!account) return content;
+  const line = `**Observation of Offense:** ${account}`;
+  if (OBSERVATION_LINE.test(content)) return content.replace(OBSERVATION_LINE, line);
+  const plan = /^\*\*Action Plan:\*\*/m;
+  return plan.test(content) ? content.replace(plan, (found) => `${line}\n\n${found}`) : `${content.trimEnd()}\n\n${line}`;
 }
 
 /**
@@ -323,14 +408,30 @@ export function withSameRequestNote(answer: AskResponse, turn: SameRequestTurn):
  * make a … for <B>" on: the turns before it were <A>'s request, and the chat
  * answered this one without them. Nothing stored is changed. Off: as before.
  */
-export function sameRequestReadConversation<T extends { readonly role: string; readonly content: string }>(turns: T[]): T[] {
+export function sameRequestReadConversation<T extends { readonly role: string; readonly content: string }>(turns: T[], employeeName?: string | null): T[] {
   if (!sameRequestOtherPersonEnabled()) return turns;
   let at = -1;
   turns.forEach((turn, index) => {
     if (turn.role === "user" && typeof turn.content === "string" && asksForAnotherPerson(turn.content)) at = index;
   });
-  return at <= 0 ? turns : turns.slice(at);
+  if (at <= 0) return turns;
+  /*
+   * SAME_REQUEST_KEEPS_EARLIER_CARD_ENABLED (QA's r19 live check): <A>'s card, still on screen after "the same thing
+   * for <B>", is checked against the conversation as it stood before that turn — it was current then, and <B>'s card
+   * said it stays as it is.
+   */
+  if (sameRequestKeepsEarlierCardEnabled() && employeeName && !namesIn(turns.slice(at), employeeName) && namesIn(turns.slice(0, at), employeeName)) {
+    return turns.slice(0, at);
+  }
+  return turns.slice(at);
 }
+
+/** Whether a manager turn names this person (every word of the name, any case). */
+function namesIn(turns: readonly { readonly role: string; readonly content: string }[], employeeName: string): boolean {
+  const name = new RegExp(`\\b${words(employeeName).map(escaped).join("\\s+")}\\b`, "i");
+  return turns.some((turn) => turn.role === "user" && name.test(turn.content));
+}
+
 
 /**
  * <B>'s DRAFT NOTES, READ AS THE CHAT READ THEM. The card's turns are <A>'s

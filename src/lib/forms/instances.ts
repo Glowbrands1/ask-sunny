@@ -19,6 +19,7 @@ import {
   POLICY_ACKNOWLEDGEMENT_MESSAGE,
   policyAcknowledgementWording,
   unverifiedPolicyFields,
+  blankPolicyFields,
 } from "./policy-verification";
 import {
   draftableCheckboxGroups,
@@ -990,6 +991,10 @@ export async function finalizeInstance(
     before.values,
   );
   const unverified = unverifiedFields.map((field) => field.key);
+  // POLICY_GATE_NONBLOCKING_ENABLED: a blank policy field is not held for, but the record says it was blank (empty when off).
+  const blankPolicy = blankPolicyFields(parseFormDocument(before.version.document), before.instance.variantKey, before.values).map(
+    (field) => field.key,
+  );
 
   if (unverified.length > 0 && options.acknowledgeUnverifiedPolicy !== true) {
     throw new UnverifiedPolicyError(unverified, policyAcknowledgementWording(unverifiedFields, before.events, Boolean(before.instance.revisesInstanceId))
@@ -1039,6 +1044,8 @@ export async function finalizeInstance(
     ...(unverified.length > 0
       ? { unverifiedPolicy: unverified, policyVerificationOverride: true }
       : {}),
+    /* POLICY_GATE_NONBLOCKING_ENABLED: the audit trail of a policy left blank at approval (never set with the flag off). */
+    ...(blankPolicy.length > 0 ? { policyBlankAtFinalize: true, blankPolicy } : {}),
   });
   // A revision, finalized, replaces the form it revises — see `reviseInstance`.
   await supersedeRevised(loaded, actor);

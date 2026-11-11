@@ -13,6 +13,8 @@ describe("acceptsNearMissWithDetails", () => {
   afterEach(() => vi.unstubAllEnvs());
 
   it("off: never", () => {
+    // Changed on purpose (the roster-set gate R16A, 10 Nov 2026): the flag is pinned off here, so the set's env (FORM_NAME and companions on) does not leak in.
+    vi.stubEnv("NEAR_MISS_DETAILS_ACCEPT_ENABLED", "");
     expect(acceptsNearMissWithDetails("verbal warning, no payroll deduct, part-time tanning consultant,", "Corvina Vellacott", CORVINA_TYPED)).toBe(false);
   });
 

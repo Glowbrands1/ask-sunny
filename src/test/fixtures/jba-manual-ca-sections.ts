@@ -167,6 +167,15 @@ const ROWS: Row[] = [
     c: "Visitors in the Workplace\nVisitors are anyone allowed onto Company premises, including friends and family. Employees get a\nSupervisor's approval before inviting a personal visitor, keep visits short, and stay with their\nvisitors. Safety concerns about a visitor go to Human Resources and the Supervisor.",
   },
   {
+    i: 98,
+    l: "Page 30 — Animals in the Workplace",
+    p: 31,
+    s: "Animals in the Workplace",
+    printedPage: 30,
+    sections: [{ page: 30, heading: "Animals in the Workplace" }],
+    c: "Animals in the Workplace\nPets and other animals are not brought into the workplace, for the health and safety of employees\nand clients. Service animals are the exception the law requires.",
+  },
+  {
     i: 100,
     l: "Page 30 — Handling Theft",
     p: 31,

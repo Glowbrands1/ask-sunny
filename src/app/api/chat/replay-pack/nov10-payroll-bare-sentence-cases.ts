@@ -35,7 +35,8 @@ export const NOV10_PAYROLL_BARE_SENTENCE_CASES: ReplayCase[] = [
     id: "nov10-p15-payroll-deduction-sentence-is-yes",
     title: "P15: \"… Payroll deduction.\": the card never asks the payroll question, and Create ticks Payroll Deduct Yes",
     report: 'Pau via QA, 10 Nov 2026 (P15, conv 9 Nov ~16:35Z): "I need a term CA for <name>. Didn\'t show up for her opening shift. Payroll deduction." → "Is payroll deduct applicable?"',
-    status: { open: "the card asks \"Is payroll deduct applicable?\" and the created form's Payroll Deduct box is blank" },
+    // Changed on purpose (12 Nov 2026): fixed in production by PAYROLL_BARE_SENTENCE, QA round 30. Was OPEN.
+    status: "fixed",
     fixFlags: ["PAYROLL_BARE_SENTENCE_ENABLED"],
     async run(t) {
       vi.setSystemTime(new Date("2026-11-09T16:35:00Z"));
