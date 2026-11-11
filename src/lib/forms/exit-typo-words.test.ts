@@ -14,6 +14,8 @@ describe("EXIT_TYPO_WORDS_ENABLED", () => {
   afterEach(() => vi.unstubAllEnvs());
 
   it("off: the misspelled answers are left blank (the bug); payroll is read", () => {
+    // The off case sets the flag itself, so it holds whatever the environment has on (QA, Gate-Sunny on #793).
+    vi.stubEnv("EXIT_TYPO_WORDS_ENABLED", "");
     expect(answers(SAID)).toEqual({ items: undefined, rehire: undefined, payroll: "no" });
   });
 
@@ -37,6 +39,7 @@ describe("EXIT_TYPO_WORDS_ENABLED: real words stay as written (QA, R713)", () =>
   const QA_SAID = "he quit on 11/8/26. he is not required back. payroll not deducted";
 
   it("\"he is not required back\" is not read as \"not rehired\": Eligible for Rehire is read the same as with the flag off", () => {
+    vi.stubEnv("EXIT_TYPO_WORDS_ENABLED", "");
     const off = answers(QA_SAID);
     vi.stubEnv("EXIT_TYPO_WORDS_ENABLED", "true");
     const on = answers(QA_SAID);
