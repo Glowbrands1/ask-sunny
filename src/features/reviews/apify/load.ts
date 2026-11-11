@@ -7,6 +7,8 @@ import {
   type SourceReconciliationRow,
 } from "@/lib/reviews/apify/status";
 import type { ApifySourceStatusReport } from "@/lib/reviews/apify/types";
+import { isDemoMode } from "@/lib/config/runtime";
+import { demoApifySource, demoSourceReconciliation } from "@/lib/demo/reviews-admin-fixtures";
 
 /**
  * Everything the Google review source screen needs, loaded once on the server.
@@ -25,6 +27,11 @@ export type ApifySourceProps =
   | { mode: "unconfigured"; missing: string[] };
 
 export async function loadApifySourcePage(): Promise<ApifySourceProps> {
+  /* DEMO: a healthy, invented source. See `lib/demo/reviews-admin-fixtures.ts`. */
+  if (isDemoMode()) {
+    return { mode: "live", source: demoApifySource(), reconciliation: demoSourceReconciliation() };
+  }
+
   const readiness = supabaseReadiness();
   if (!readiness.ready) return { mode: "unconfigured", missing: readiness.missing };
 

@@ -1,4 +1,8 @@
 import { NextResponse } from "next/server";
+import { isDemoMode } from "@/lib/config/runtime";
+import {
+  DEMO_ANCHOR_REFUSAL,
+} from "@/lib/demo/reviews-admin-fixtures";
 
 import { AiError } from "@/lib/ai/errors";
 import {
@@ -74,6 +78,10 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   try {
+    /* DEMO: baselines are fixed so /reviews stays consistent. See `lib/demo/reviews-admin-fixtures.ts`. */
+    if (isDemoMode()) {
+      return NextResponse.json({ error: DEMO_ANCHOR_REFUSAL, demo: true }, { status: 409 });
+    }
     assertLiveMode();
     assertNoConfigurationProblems();
     const context = await authorizeRequest(request, "manage_integrations");

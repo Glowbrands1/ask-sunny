@@ -6,6 +6,7 @@ import { Notice } from "@/components/ui/feedback";
 import { loadApifySourcePage } from "@/features/reviews/apify/load";
 import { ApifySourceScreen } from "@/features/reviews/apify/source-screen";
 import { requirePagePermission } from "@/lib/auth/page";
+import { isDemoMode } from "@/lib/config/runtime";
 
 export const metadata: Metadata = {
   title: "Google Review Source",
@@ -40,6 +41,15 @@ export default async function GoogleReviewSourcePage() {
   return (
     <PermissionGate permission="manage_integrations" adminOnly>
       <Suspense fallback={null}>
+        {props.mode === "live" && isDemoMode() ? (
+          <div className="px-5 pt-5 sm:px-6">
+            <Notice tone="attention" title="Showing seeded content, not real reviews">
+              <p>
+                This is a demo deployment, and demo deployments never contact Apify or read the review database. The page below is the live Google Review Source screen; every run, Place ID, street address and figure on it is invented demo content.
+              </p>
+            </Notice>
+          </div>
+        ) : null}
         {props.mode === "live" ? (
           <ApifySourceScreen source={props.source} reconciliation={props.reconciliation} />
         ) : (

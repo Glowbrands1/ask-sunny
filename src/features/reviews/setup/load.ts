@@ -8,6 +8,8 @@ import {
   type AnchorSetupRow,
 } from "@/lib/reviews/anchor-admin";
 import { isAllowedStoreCode } from "@/lib/reviews/store-codes";
+import { isDemoMode } from "@/lib/config/runtime";
+import { demoAnchorCandidates, demoAnchorSetupRows } from "@/lib/demo/reviews-admin-fixtures";
 
 /**
  * Everything the anchor setup screen needs, loaded once.
@@ -32,14 +34,27 @@ export type AnchorSetupProps =
 export async function loadAnchorSetupPage(
   searchParams: Record<string, string | string[] | undefined>,
 ): Promise<AnchorSetupProps> {
-  const readiness = supabaseReadiness();
-  if (!readiness.ready) return { mode: "unconfigured", missing: readiness.missing };
-
   const raw = searchParams.store;
   const requested = Array.isArray(raw) ? raw[0] : raw;
   /* Only one of the fifteen. A hand-edited code opens no picker at all. */
   const openStoreCode =
     typeof requested === "string" && isAllowedStoreCode(requested) ? requested : null;
+
+  /*
+   * DEMO: the seeded /reviews figures as baselines. A demo deployment never
+   * holds the Supabase key. See `lib/demo/reviews-admin-fixtures.ts`.
+   */
+  if (isDemoMode()) {
+    return {
+      mode: "live",
+      rows: demoAnchorSetupRows(),
+      openStoreCode,
+      candidates: openStoreCode ? demoAnchorCandidates(openStoreCode) : [],
+    };
+  }
+
+  const readiness = supabaseReadiness();
+  if (!readiness.ready) return { mode: "unconfigured", missing: readiness.missing };
 
   const [rows, candidates] = await Promise.all([
     loadAnchorSetup(),
