@@ -85,6 +85,8 @@ describe("ocrPdfPages", () => {
   });
 
   it("refuses a file over the per-document cap before any request", async () => {
+    // WOVEN_OCR_PAGE_BATCHES_ENABLED reads larger scans in ranges; this pins the cap with it off.
+    vi.stubEnv("WOVEN_OCR_PAGE_BATCHES_ENABLED", "");
     await expect(ocrPdfPages(new Uint8Array(), OCR_MAX_PAGES_PER_DOCUMENT + 1, new OcrBudget())).rejects.toMatchObject({ code: "ocr_too_many_pages" });
     expect(calls).toHaveLength(0);
   });
@@ -102,6 +104,8 @@ describe("ocrPdfPages", () => {
 
 describe("extractPdf with a scanned PDF", () => {
   it("off: no_text, as before, and no request", async () => {
+    // WOVEN_PDF_OCR is on in production; this pins the flag-off path, so it sets the flag off itself.
+    vi.stubEnv("WOVEN_PDF_OCR_ENABLED", "");
     reply = "=== PAGE 1 ===\nshould never be read";
     await expect(extractPdf(scannedPdf(1), { ocr: new OcrBudget() })).rejects.toMatchObject({ code: "no_text" });
     expect(calls).toHaveLength(0);

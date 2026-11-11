@@ -1,6 +1,7 @@
 import "server-only";
 
 import { getAnthropicClient } from "@/lib/ai/anthropic";
+import { wovenOcrPageBatchesEnabled } from "@/lib/config/chat-quality-flags";
 
 import { IngestionError } from "../errors";
 
@@ -39,6 +40,12 @@ import { IngestionError } from "../errors";
 export const OCR_MODEL = "claude-sonnet-5";
 export const OCR_MAX_PAGES_PER_DOCUMENT = 40;
 export const OCR_MAX_PAGES_PER_RUN = 200;
+/**
+ * WOVEN_OCR_PAGE_BATCHES_ENABLED: the most pages read from one scanned PDF (the API reads at most 100 pages of a PDF),
+ * and the most pages one request is asked for, so each request's output fits its token ceiling.
+ */
+export const OCR_MAX_PAGES_BATCHED = 100;
+export const OCR_PAGES_PER_REQUEST = 20;
 
 /** Output room per page, and the ceiling for one request. */
 const OUTPUT_TOKENS_PER_PAGE = 1_500;
@@ -97,10 +104,13 @@ function toBase64(bytes: Uint8Array): string {
  */
 export async function ocrPdfPages(buffer: Uint8Array, totalPages: number, budget: OcrBudget): Promise<string[]> {
   if (totalPages < 1) return [];
-  if (totalPages > OCR_MAX_PAGES_PER_DOCUMENT) {
+  // WOVEN_OCR_PAGE_BATCHES_ENABLED: over 40 pages, up to 100, the file is read in page ranges.
+  const batched = wovenOcrPageBatchesEnabled() && totalPages > OCR_MAX_PAGES_PER_DOCUMENT;
+  const cap = batched ? OCR_MAX_PAGES_BATCHED : OCR_MAX_PAGES_PER_DOCUMENT;
+  if (totalPages > cap) {
     throw new IngestionError(
       "ocr_too_many_pages",
-      `This scanned PDF has ${totalPages} pages; it can be read automatically up to ${OCR_MAX_PAGES_PER_DOCUMENT}.`,
+      `This scanned PDF has ${totalPages} pages; it can be read automatically up to ${cap}.`,
       422,
     );
   }
@@ -111,6 +121,8 @@ export async function ocrPdfPages(buffer: Uint8Array, totalPages: number, budget
       422,
     );
   }
+
+  if (batched) return ocrInPageRanges(buffer, totalPages);
 
   let transcript: string;
   try {
@@ -133,4 +145,66 @@ export async function ocrPdfPages(buffer: Uint8Array, totalPages: number, budget
     throw new IngestionError("ocr_failed", "This scanned PDF could not be read this time.", 502, { cause: error });
   }
   return parseOcrPages(transcript, totalPages);
+}
+
+/** The page ranges a batched read asks for: 1–20, 21–40, … (WOVEN_OCR_PAGE_BATCHES_ENABLED). */
+export function ocrPageRanges(totalPages: number, perRequest: number = OCR_PAGES_PER_REQUEST): { first: number; last: number }[] {
+  const ranges: { first: number; last: number }[] = [];
+  for (let first = 1; first <= totalPages; first += perRequest) ranges.push({ first, last: Math.min(totalPages, first + perRequest - 1) });
+  return ranges;
+}
+
+/**
+ * WOVEN_OCR_PAGE_BATCHES_ENABLED: one request per page range, all sent together, each given the whole file and asked
+ * for its own pages only (with their numbers in the whole file). A page outside a request's range is ignored, so two
+ * requests never write the same page. Any request failing fails the read, as a single request does.
+ */
+async function ocrInPageRanges(buffer: Uint8Array, totalPages: number): Promise<string[]> {
+  const data = toBase64(buffer);
+  const ranges = ocrPageRanges(totalPages);
+  let transcripts: string[];
+  try {
+    transcripts = await Promise.all(
+      ranges.map(async ({ first, last }) => {
+        const stream = getAnthropicClient().messages.stream({
+          model: OCR_MODEL,
+          max_tokens: Math.min(MAX_OUTPUT_TOKENS, OUTPUT_TOKENS_PER_PAGE * (last - first + 1) + 500),
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "document", source: { type: "base64", media_type: "application/pdf", data } },
+                { type: "text", text: `${INSTRUCTIONS}\nTranscribe ONLY pages ${first} to ${last} of this PDF (page numbers in the whole file, starting at 1); write nothing for any other page.` },
+              ],
+            },
+          ],
+        });
+        const message = await stream.finalMessage();
+        return message.content.map((block) => (block.type === "text" ? block.text : "")).join("");
+      }),
+    );
+  } catch (error) {
+    throw new IngestionError("ocr_failed", "This scanned PDF could not be read this time.", 502, { cause: error });
+  }
+  const pages = Array.from({ length: totalPages }, () => "");
+  transcripts.forEach((transcript, index) => {
+    const { first, last } = ranges[index]!;
+    for (const [offset, text] of rangePages(transcript, first, last, totalPages).entries()) pages[first - 1 + offset] = text;
+  });
+  return pages;
+}
+
+/**
+ * One range's pages, in order (QA, 11 Nov 2026: a model that numbers its range from 1 must not leave pages 21–100 empty
+ * in silence). Read with whole-file numbers first; when that gives the range no text, read the same reply with the
+ * range's own numbers (=== PAGE 1 === is the range's first page). When neither gives any text, the read FAILS (a
+ * retryable `ocr_failed`, so the document keeps its last good version and the next sync tries again).
+ */
+export function rangePages(transcript: string, first: number, last: number, totalPages: number): string[] {
+  const count = last - first + 1;
+  const whole = parseOcrPages(transcript, totalPages).slice(first - 1, last);
+  if (whole.some((text) => text.trim() !== "")) return whole;
+  const own = parseOcrPages(transcript, count);
+  if (own.some((text) => text.trim() !== "")) return own;
+  throw new IngestionError("ocr_failed", `Pages ${first}–${last} of this scanned PDF could not be read this time.`, 502);
 }

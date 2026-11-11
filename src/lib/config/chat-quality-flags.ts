@@ -2714,6 +2714,28 @@ export function addThatIsAccountEnabled(): boolean {
   return envFlag("ADD_THAT_IS_ACCOUNT_ENABLED");
 }
 
+/**
+ * INGEST_FAILURE_KEEPS_LAST_GOOD_ENABLED (ported from the sibling app: QA, 10 Nov 2026, a searchable Woven document
+ * there dropped out of search when a newer file failed to read; coding 5; same flag in both apps; default off). A failed
+ * re-ingest marked the whole document "failed", hiding its last good version's chunks. On: when a new version of a
+ * document that was indexed before fails and an earlier version's chunks are stored, the row is put back on that
+ * version (status "indexed"), and the next version number is past every version in its history
+ * (`ingestion/pipeline.ts` `keepLastGoodVersion`). Off, as before.
+ */
+export function ingestFailureKeepsLastGoodEnabled(): boolean {
+  return envFlag("INGEST_FAILURE_KEEPS_LAST_GOOD_ENABLED");
+}
+
+/**
+ * WOVEN_OCR_PAGE_BATCHES_ENABLED (ported from the sibling app: QA, 10 Nov 2026, a 45-page scan there was refused at the
+ * 40-page OCR cap; coding 5; same flag in both apps; default off). On: a scanned PDF over 40 pages, up to 100 (the
+ * API's PDF page limit), is read in requests of at most 20 pages each, run together, each asked for its own page range
+ * of the same file (`ingestion/extract/pdf-ocr.ts`). The run's page budget is unchanged. Off, as before.
+ */
+export function wovenOcrPageBatchesEnabled(): boolean {
+  return envFlag("WOVEN_OCR_PAGE_BATCHES_ENABLED");
+}
+
 // --- end coding 5 flags ---
 
 /**
