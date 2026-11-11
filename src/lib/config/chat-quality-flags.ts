@@ -2704,6 +2704,18 @@ export function policyTopicIntoFieldEnabled(): boolean {
 }
 
 /**
+ * INCIDENT_SPLIT_FIX_ENABLED (QA's October triage of #257, 10 Nov 2026; default off). After the request gave the
+ * account ("create a ca for <name>. on 10-21-26 <first> opened the salon 20 minutes late."), a later "not attendance,
+ * late opening" or a pasted Late Opening paragraph ("… reimburse The Company $25") was added to the Observation of
+ * Offense. On: once the request turn gave the account, pasted policy text and a short "not X, Y" correction are not
+ * read as account; any other later turn still adds to it, and an edit turn is kept for the edit rules
+ * (`ai/observation-turns.ts`). Off, as before.
+ */
+export function incidentSplitFixEnabled(): boolean {
+  return envFlag("INCIDENT_SPLIT_FIX_ENABLED");
+}
+
+/**
  * ADD_THAT_IS_ACCOUNT_ENABLED (ported from the sibling app: QA's live test there on a saved Corrective Action draft,
  * 10 Nov 2026; coding 5; same flag in both apps; default off). "add that she was reminded of the policy" was read as a
  * policy to add ("I couldn't find a section called …") and nothing reached the Observation. On: an add that introduces a
