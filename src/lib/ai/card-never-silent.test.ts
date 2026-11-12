@@ -162,3 +162,55 @@ describe("CARD_NEVER_SILENT_ENABLED on: a negated clause next to a positive one"
     expect(turn(question).content).toContain("Nothing on the card changed with that message.");
   });
 });
+
+/*
+ * Port from Ask Bubbles (Gate-Bubbles-3's R740, 12 Nov 2026): (1) nov8-near-miss-card-kept-make-that-change — "make that change to <name>" got
+ * a second lead ("To edit it, press Create draft …") after the route's roster notice; (2) near-miss-answer-keeps-request
+ * and r22-s14 — the vaguer NEEDS line replaced the specific "who is this for" one; (3) after "it should be under
+ * performance not standard of conduct", "Tell me what to change" came before the app's own answer.
+ */
+describe("R740: no lead on top of a notice, a name change or a policy correction; the specific who line", () => {
+  it("(1) a name-change request gets no lead", () => {
+    process.env[FLAG] = "true";
+    const out = turn("make that change to Wynn Talbott");
+    expect(out.content).toBe(CARD_REPLY);
+  });
+
+  it("(1) a reply that already leads with a roster notice gets no second lead", () => {
+    process.env[FLAG] = "true";
+    const noticed = `"Wynn Talbott" isn't a name on the roster, so the card is for **Wynn Talbot**. Tell me if it's someone else.\n\n${CARD_REPLY}`;
+    const out = withCardNeverSilent({ content: noticed, citations: [], formProposal: CARD } as unknown as AskResponse, {
+      question: "make it again",
+      history: [{ role: "assistant", content: noticed }],
+    } as unknown as AskRequest);
+    expect(out.content).toBe(noticed);
+  });
+
+  it("(2) a card asking who it is for keeps the specific line", () => {
+    process.env[FLAG] = "true";
+    const asking = "Here is what I would put on a **Coaching Form**.\n\nWho is this form for? Tell me the employee's full name.";
+    const out = withCardNeverSilent({ content: asking, citations: [], formProposal: { ...CARD, status: "needs_employee" } } as unknown as AskResponse, {
+      question: "October 1st",
+      history: [{ role: "assistant", content: asking }],
+    } as unknown as AskRequest);
+    expect(out.content.startsWith("I still need to know who this is for before I can make this card.")).toBe(true);
+    expect(out.content).not.toContain("The card below still needs what it asks for");
+  });
+
+  it("(3) a policy correction gets no lead (POLICY_CORRECTION_NOT_ACCOUNT reads it; on in production)", () => {
+    process.env[FLAG] = "true";
+    const before = process.env.POLICY_CORRECTION_NOT_ACCOUNT_ENABLED;
+    process.env.POLICY_CORRECTION_NOT_ACCOUNT_ENABLED = "true";
+    try {
+      expect(turn("it should be under performance not standard of conduct").content).toBe(CARD_REPLY);
+    } finally {
+      if (before === undefined) delete process.env.POLICY_CORRECTION_NOT_ACCOUNT_ENABLED;
+      else process.env.POLICY_CORRECTION_NOT_ACCOUNT_ENABLED = before;
+    }
+  });
+
+  it("an ordinary repeat still gets its lead", () => {
+    process.env[FLAG] = "true";
+    expect(turn("i need to edit this can you make it to where i can edit").content).not.toBe(CARD_REPLY);
+  });
+});

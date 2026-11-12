@@ -1,5 +1,6 @@
 import { cardNeverSilentEnabled } from "@/lib/config/chat-quality-flags";
 
+import { isPolicyCorrection } from "./policy-correction-turn";
 import type { AskRequest, AskResponse } from "./types";
 
 /**
@@ -33,6 +34,19 @@ const UNCHANGED_LINE =
   "Nothing on the card changed with that message. Tell me what to change, or press **Create draft** below to open the form and edit it there.";
 const NEEDS_LINE = "The card below still needs what it asks for before the draft can be created. Tell me here, and I'll fill it in.";
 
+/*
+ * Port from Ask Bubbles (Gate-Bubbles-3 R740, 12 Nov 2026), all on this flag:
+ *   (1) a reply that already leads with a notice gets no second lead, and a name-change request ("make that change to
+ *       <name>") is never read as an edit: the route puts the roster notice in front of it (`proposal-name-correction`);
+ *   (2) a card asking who it is for keeps the specific line, never the vaguer NEEDS_LINE;
+ *   (3) a policy correction ("it should be under performance not standard of conduct") gets no lead: the app's own
+ *       answer to it ("Under Performance isn't on the CA form …") leads.
+ */
+const WHO_LINE = "I still need to know who this is for before I can make this card.";
+const ASKS_WHO = /\bwho is (?:this|it)\b[^?\n]*\bfor\?/i;
+const NAME_CHANGE = /\b(?:make\s+(?:that|the)\s+change\s+to|change\s+(?:her|his|their|the\s+employee'?s?)\s+name\s+to)\b/i;
+const LEADS_WITH_NOTICE = /^(?:"[^"\n]+" isn't a name on the roster|I couldn't find|[^\n]*\bisn't on the roster\b)/i;
+
 export function withCardNeverSilent(response: AskResponse, request: AskRequest): AskResponse {
   if (!cardNeverSilentEnabled()) return response;
   return speakOnCardTurn({ response, question: request.question, history: request.history });
@@ -49,9 +63,13 @@ export function speakOnCardTurn(input: {
   const previous = [...input.history].reverse().find((turn) => turn.role === "assistant");
   const silent = !content.trim() || (previous !== undefined && same(previous.content, content));
   if (!silent) return input.response;
+  // R740 (1) and (3): a notice already leads, a name change, or a policy correction: no lead of this step's own.
+  if (LEADS_WITH_NOTICE.test(content.trim()) || NAME_CHANGE.test(input.question) || isPolicyCorrection(input.question)) return input.response;
   const line = BARE_FORM_WORD.test(input.question.trim())
     ? bareFormLine(proposal.templateName)
-    : answerLine(input.question, proposal.status === "ready" && proposal.supportsInlineDraft);
+    : ASKS_WHO.test(content)
+      ? WHO_LINE
+      : answerLine(input.question, proposal.status === "ready" && proposal.supportsInlineDraft);
   return { ...input.response, content: content.trim() ? `${line}\n\n${content.trim()}` : line };
 }
 
