@@ -16,6 +16,8 @@ afterEach(() => vi.unstubAllEnvs());
 
 describe("CARD_PLAN_MATCHES_CREATE_ENABLED", () => {
   it("off: the card as built", () => {
+    // Pinned off: a run with CARD_PLAN_MATCHES_CREATE_ENABLED set must not turn this arm on (QA, 12 Nov 2026).
+    vi.stubEnv("CARD_PLAN_MATCHES_CREATE_ENABLED", "false");
     vi.stubEnv("ATTENDANCE_ACTION_PLAN_ENABLED", "true");
     expect(withCardPlanAsCreate(card("Attendance (JBA Policy Manual p.14), as you said."), ACCOUNT).content).toContain(GENERAL);
   });
