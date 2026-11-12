@@ -122,6 +122,7 @@ import {
   secondRequestOwnAccountEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { currentFormRequestText } from "@/lib/forms/current-request";
+import { hasSameNamePair } from "@/lib/forms/same-name";
 import { managerWords } from "./edit-date-rules";
 import { inlineCloseMatch } from "@/lib/forms/typed-name-proceeds";
 import { allowsTeamSubject } from "@/lib/forms/team-subject";
@@ -1077,8 +1078,8 @@ async function checkTypedEmployee(
   }
 
   const names = result.candidates.map((candidate) => candidate.name);
-  // SAME_NAME_ASKS_WHICH_ENABLED: one close match stays a note; two or more roster matches are still a question.
-  if (typedNameProceedsEnabled() && !(sameNameAsksWhichEnabled() && result.candidates.length > 1)) {
+  // SAME_NAME_ASKS_WHICH_ENABLED: a close match stays a note; two roster people with ONE name are still a question.
+  if (typedNameProceedsEnabled() && !(sameNameAsksWhichEnabled() && hasSameNamePair(names))) {
     const kept = tidyTypedName(typed.employeeName);
     const different = names.filter((name) => name.trim().toLowerCase() !== kept.toLowerCase());
     const note = inlineCloseMatch(kept, different);

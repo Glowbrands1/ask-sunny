@@ -13,6 +13,7 @@ import { isDateAnswerWords } from "@/lib/forms/incident-dates";
 import { withKeptTypedNames } from "@/lib/forms/kept-typed-names";
 import { supportsInlineDraft } from "@/lib/forms/inline-draft";
 import { readEmployeeMentions } from "@/lib/forms/proposal";
+import { hasSameNamePair } from "@/lib/forms/same-name";
 import { anchorsOnRoster, lowercaseRosterFirstNameIn, rosterShaped } from "@/lib/forms/roster-shape";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
 import type { ChatFormProposal } from "@/types";
@@ -183,8 +184,8 @@ export function applyGroundedProposal(
   },
 ): AskResponse {
   let content = response.content;
-  // SAME_NAME_ASKS_WHICH_ENABLED: two or more roster matches are still a choice with TYPED_NAME_PROCEEDS on.
-  const sameNameChoice = sameNameAsksWhichEnabled() && input.prep.ambiguous.length > 1;
+  // SAME_NAME_ASKS_WHICH_ENABLED: two or more roster people with ONE name are still a choice with TYPED_NAME_PROCEEDS on.
+  const sameNameChoice = sameNameAsksWhichEnabled() && hasSameNamePair(input.prep.ambiguous.map(displayName));
   if (
     (!typedNameProceedsEnabled() || sameNameChoice) &&
     (input.prep.ambiguous.length > 1 || content.startsWith("Did you mean **"))
@@ -268,8 +269,8 @@ function gateMentions(
       if (match.name !== name) next = replacePhrase(next, name, match.name);
       continue;
     }
-    // SAME_NAME_ASKS_WHICH_ENABLED: one close match stays a note; two or more fall through to the choice below.
-    if (match.kind === "confirm" && typedNameProceedsEnabled() && !(sameNameAsksWhichEnabled() && match.candidates.length > 1)) {
+    // SAME_NAME_ASKS_WHICH_ENABLED: a close match stays a note; two people with ONE name fall through to the choice below.
+    if (match.kind === "confirm" && typedNameProceedsEnabled() && !(sameNameAsksWhichEnabled() && hasSameNamePair(match.candidates.map((candidate) => candidate.name)))) {
       continue;
     }
     if (match.kind === "confirm" && match.candidates.length === 1) {
