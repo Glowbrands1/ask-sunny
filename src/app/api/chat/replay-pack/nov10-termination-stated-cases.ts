@@ -84,3 +84,31 @@ export const NOV10_TERMINATION_STATED_CASES: ReplayCase[] = [
     },
   },
 ];
+
+/* Gate-Bubbles' NO-GO (R798, 12 Nov 2026): negated, about a later form, or "long term" — the card never says Termination. */
+const NEVER_STATED = [
+  ["do-not-terminate", "I need a CA for Briony Halvorsen, do not terminate her. Didn't show up for her opening shift."],
+  ["not-a-term-ca", "I need a CA for Briony Halvorsen. This is not a term CA. Didn't show up for her opening shift."],
+  ["not-terminating", "I need a CA for Briony Halvorsen, we are not terminating her. Didn't show up for her opening shift."],
+  ["next-one", "I need a written CA for Briony Halvorsen. Didn't show up for her opening shift. Next one is a term CA."],
+  ["long-term", "I need a CA for Briony Halvorsen with a long term CA plan. Didn't show up for her opening shift."],
+] as const;
+
+export const NOV12_TERMINATION_NEVER_STATED_CASES: ReplayCase[] = NEVER_STATED.map(([key, said]) => ({
+  id: `nov12-termination-never-ticks-${key}`,
+  title: `negative: "${said}" states no termination: no Termination line, nothing ticked`,
+  report: "Gate-Bubbles' NO-GO on TERMINATION_STATED_TICKS (R798, 12 Nov 2026)",
+  status: "fixed",
+  fixFlags: ["TERMINATION_STATED_TICKS_ENABLED"],
+    async run(t) {
+      vi.setSystemTime(new Date("2026-11-09T16:35:00Z"));
+      t.directory([...STAFF, BRIONY]);
+      t.as("salon_director", KEARNEY);
+      const thread = t.thread();
+      const card = await thread.say(said);
+      expect(card.content, `a Termination line:\n${card.content}`).not.toMatch(/Termination, as you said/);
+      expect(card.content).not.toContain(APPROVAL);
+      const id = await thread.create();
+      expect(t.checked(id).warning_type ?? [], "Termination was ticked").not.toContain("termination");
+    },
+}));

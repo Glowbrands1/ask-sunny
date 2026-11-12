@@ -38,6 +38,18 @@ describe("TERMINATION_STATED_TICKS_ENABLED", () => {
     "she was terminated last year and rehired",
     "I need a verbal CA for being late to opening",
     "I need a written warning for her term paper excuse",
+    // Gate-Bubbles' NO-GO (R798, 12 Nov 2026): negated, about a later form, or "long term" — never a Termination tick.
+    "Do not terminate her, she was late again.",
+    "This is not a term CA, just a written.",
+    "We are not terminating him",
+    "Not a termination warning, a verbal.",
+    "no termination form needed",
+    "Next one is a term CA.",
+    "long term CA plan",
+    "I need a CA for Briony Halvorsen, do not terminate her. Didn't show up for her opening shift.",
+    "a written instead of a termination",
+    "if it happens again it's a term CA",
+    "Termination is not needed here.",
   ])("on, not stated: %s", (said) => {
     process.env.TERMINATION_STATED_TICKS_ENABLED = "true";
     expect(statesTermination(said)).toBe(false);
