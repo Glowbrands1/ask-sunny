@@ -2704,6 +2704,26 @@ export function policyTopicIntoFieldEnabled(): boolean {
 }
 
 /**
+ * PASTED_FORM_NAME_NOT_REQUEST_ENABLED (QA's B4; Pau via QA, sf-s22; coding 5; same flag in both apps; default off).
+ * "Make this:" + a reviewer's pasted notes naming a "Kit Coaching Document" switched the Corrective Action card back to
+ * a Coaching Form. On: a short lead ending in ":" followed by pasted list lines is read for the form from the lead only
+ * (`forms/template-intent.ts`). Off, as before.
+ */
+export function pastedFormNameNotRequestEnabled(): boolean {
+  return envFlag("PASTED_FORM_NAME_NOT_REQUEST_ENABLED");
+}
+
+/**
+ * LATE_OPENING_NEEDS_OPENING_ENABLED (QA's B4; Pau via QA, sf-s25; coding 5; same flag in both apps; default off). A
+ * closing account ("scheduled until 9:15PM and clocked out at 9:01 … before the Salon was closed") was cited as Late
+ * Opening. On: a card citing Late Opening when the manager's words say closing and never opening cites no policy
+ * instead (`forms/late-opening-needs-opening.ts`). Off, as before.
+ */
+export function lateOpeningNeedsOpeningEnabled(): boolean {
+  return envFlag("LATE_OPENING_NEEDS_OPENING_ENABLED");
+}
+
+/**
  * EXIT_TYPO_WORDS_ENABLED (Pau's P17, Sunny production, 10 Nov 2026; coding 5; same flag in both apps; default off).
  * "salon items will be returneded … they are eligiable for rehire" left Store Items Returned and Eligible for Rehire
  * blank. On: the exit answer readers read a word one or two letters off "returned", "eligible", "rehire" and the like as

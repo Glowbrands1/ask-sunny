@@ -29,6 +29,7 @@ import {
   caShortcutWordsEnabled,
   formChoiceStatedEnabled,
   formNameFromRosterEnabled,
+  pastedFormNameNotRequestEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { foldsToGlossaryTerm } from "@/lib/ai/chat-glossary";
 
@@ -1556,7 +1557,34 @@ export function withoutLeadingGlossaryTerm(question: string): string {
   return match && foldsToGlossaryTerm(match[1]!) ? question.slice(match[0].length) : question;
 }
 
+/*
+ * PASTED_FORM_NAME_NOT_REQUEST_ENABLED (QA's B4; Pau via QA, sf-s22, 5 Nov 2026): "Make this:" followed by a reviewer's
+ * pasted notes ("1. **Kit Coaching Document:** This was signed on 10/16/2026 …") switched the Corrective Action card
+ * the manager had just insisted on ("It needs to be a CA, not a coaching form") back to a Coaching Form: "coaching
+ * document" inside the paste read as a request for one. On: when a turn is a short lead ending in ":" ("Make this:",
+ * "Use this to make it:") followed by pasted lines (a numbered or bulleted list, or bold labels), the form is read from
+ * the lead only — a form named inside the paste is something the notes mention, not what the manager asked for.
+ */
+const PASTE_LEAD = /^\s*([^\n:]{1,60}):\s*/;
+const PASTED_LIST = /(?:^|\n)\s*(?:\d+[.)]|[-*•])\s+\S|\*\*[^*\n]{2,60}:?\*\*/;
+
+function pastedLead(text: string): string | null {
+  const lead = PASTE_LEAD.exec(text);
+  if (!lead) return null;
+  const rest = text.slice(lead[0].length);
+  if (rest.length < 80 || !rest.includes("\n") || !PASTED_LIST.test(rest)) return null;
+  return lead[1]!;
+}
+
 export function detectTemplateIntent(rawQuestion: string): TemplateIntent {
+  if (pastedFormNameNotRequestEnabled()) {
+    const lead = pastedLead(rawQuestion);
+    if (lead !== null) return readTemplateIntent(lead);
+  }
+  return readTemplateIntent(rawQuestion);
+}
+
+function readTemplateIntent(rawQuestion: string): TemplateIntent {
   const question = withoutLeadingGlossaryTerm(formChoiceStatedEnabled() ? withoutPolicyReference(rawQuestion) : rawQuestion);
   const q = canonicalFormWording(normalize(question));
   /* A question about forms — compared, explained, or when to use one — is answered, never opened. */
