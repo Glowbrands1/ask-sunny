@@ -4547,3 +4547,13 @@ export function groupWordsNotANameEnabled(): boolean {
 export function draftWroteNothingNoticeEnabled(): boolean {
   return envFlag("DRAFT_WROTE_NOTHING_NOTICE_ENABLED");
 }
+
+/**
+ * STEP_B_SECTION_SPACING_ENABLED (ported from Ask Bubbles; QA's live draft test, 8 Nov 2026; same flag in both apps;
+ * default off). After an edit, the blank lines between Observed / Expectation / Going Forward became single newlines.
+ * On: a write of a field that had them keeps one blank line before each section heading (`forms/outline-sections.ts`).
+ * Off, as before.
+ */
+export function stepBSectionSpacingEnabled(): boolean {
+  return envFlag("STEP_B_SECTION_SPACING_ENABLED");
+}

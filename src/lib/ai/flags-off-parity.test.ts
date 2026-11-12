@@ -624,6 +624,8 @@ const NEW_FLAGS = [
   "EXCERPT_EMPTY_CARD_DROP_ENABLED",
   // coding 6: REQUEST_ISSUE_KEPT (ported from Ask Bubbles, QA round 17b; default off).
   "REQUEST_ISSUE_KEPT_ENABLED",
+  // coding 4: STEP_B_SECTION_SPACING (ported from Ask Bubbles; split out of #662, 12 Nov 2026; default off).
+  "STEP_B_SECTION_SPACING_ENABLED",
   "GROUP_WORDS_NOT_A_NAME_ENABLED",
 ] as const;
 
