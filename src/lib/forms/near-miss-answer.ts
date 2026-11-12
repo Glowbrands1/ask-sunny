@@ -1,4 +1,4 @@
-import { nearMissDetailsAcceptEnabled } from "@/lib/config/chat-quality-flags";
+import { nearMissDetailsAcceptEnabled, nearMissTurnedDownEverywhereEnabled } from "@/lib/config/chat-quality-flags";
 
 import { editDistance } from "./employee-match";
 import { statedPayrollDeduct } from "./payroll-deduct-answer";
@@ -34,7 +34,9 @@ export function acceptsNearMissWithDetails(reply: string, asked: string, typedTu
   const typed = new Set(typedTurns.flatMap(words));
   if (!typed.has(first)) return false;
   if (![...typed].some((word) => word !== first && word.length >= 4 && editDistance(word, last) <= 2)) return false;
-  if (/^(?:no|nope|wrong|not)\b/i.test(text) && statedPayrollDeduct(text.split(/[,.;!\n]/)[0] ?? "") === null) return false;
+  // NEAR_MISS_TURNED_DOWN_EVERYWHERE_ENABLED (QA, 11 Nov 2026): "no call no show on 11/3, …" is an account, not a "no".
+  const noThenWords = nearMissTurnedDownEverywhereEnabled() && /^(?:no|nope)\b(?![,.;:!]|\s*$)/i.test(text);
+  if (!noThenWords && /^(?:no|nope|wrong|not)\b/i.test(text) && statedPayrollDeduct(text.split(/[,.;!\n]/)[0] ?? "") === null) return false;
   return statedWarningLevel(text) !== null || statedPayrollDeduct(text) !== null;
 }
 

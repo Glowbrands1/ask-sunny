@@ -4025,6 +4025,17 @@ export function madeAboutReaderAccountEnabled(): boolean {
 }
 
 /**
+ * NEAR_MISS_TURNED_DOWN_EVERYWHERE_ENABLED (QA, 10 Nov 2026; default off; with NEAR_MISS_QUESTION_RULES). After "Is this
+ * for **<roster name>**?", "no, verbal warning, …" took the name off the card, but the card's Action Plan still read
+ * "Management will review … with <first name>." and its Observation opened "no, …". On, the turned-down name (full or
+ * first) leaves the Action Plan line too, and the leading "no," that turned it down leaves the account line
+ * (`forms/near-miss-question-rules.ts`). Off, as before.
+ */
+export function nearMissTurnedDownEverywhereEnabled(): boolean {
+  return envFlag("NEAR_MISS_TURNED_DOWN_EVERYWHERE_ENABLED");
+}
+
+/**
  * NEAR_MISS_QUESTION_RULES_ENABLED (QA's Sunny round-4 gate, 8 Nov 2026; default off; ships with the name set,
  * FORM_NAME_FROM_ROSTER and ROSTER_NEAR_MISS). Two rules for "Is this for **<roster name>**? Tell me if that should
  * change.": (a) a reply that turns it down ("no, verbal warning, …") never gets a card for that name, whichever reader

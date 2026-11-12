@@ -56,3 +56,30 @@ describe("NEAR_MISS_QUESTION_RULES_ENABLED", () => {
     expect(withoutTurnedDownName(given, request("no, verbal warning"))).toBe(given);
   });
 });
+
+describe("NEAR_MISS_TURNED_DOWN_EVERYWHERE_ENABLED (QA, 11 Nov 2026)", () => {
+  beforeEach(() => vi.stubEnv("NEAR_MISS_QUESTION_RULES_ENABLED", "true"));
+  afterEach(() => vi.unstubAllEnvs());
+  const everywhere = (on: boolean) => vi.stubEnv("NEAR_MISS_TURNED_DOWN_EVERYWHERE_ENABLED", on ? "true" : "");
+
+  it("\"no call no show on 11/3, verbal warning\" keeps the asked name; \"no\", \"no,\", \"no.\", \"nope\" still turn it down", () => {
+    everywhere(true);
+    expect(turnedDownName(request("no call no show on 11/3, verbal warning"))).toBeNull();
+    for (const said of ["no", "no, verbal warning", "no. verbal warning", "nope", "nope, it's someone else", "wrong", "not her"]) {
+      expect(turnedDownName(request(said)), said).toBe("Corvina Vellacott");
+    }
+  });
+
+  it("off: \"no call no show …\" is read as before", () => {
+    everywhere(false);
+    expect(turnedDownName(request("no call no show on 11/3, verbal warning"))).toBe("Corvina Vellacott");
+  });
+
+  it("the plan and account lines: the turned-down name leaves the Action Plan; the \"no,\" leaves the account", () => {
+    everywhere(true);
+    const content = `${CARD}\n\n**Observation of Offense:** no, verbal warning the customer complained\n\n**Action Plan:** Management will review the Standards of Conduct policy with Corvina. Corvina will reread it.`;
+    const out = withoutTurnedDownName({ ...answer("Corvina Vellacott"), content }, request("no, verbal warning the customer complained")).content;
+    expect(out).toContain("**Action Plan:** Management will review the Standards of Conduct policy with the employee. The employee will reread it.");
+    expect(out).toContain("**Observation of Offense:** verbal warning the customer complained");
+  });
+});
