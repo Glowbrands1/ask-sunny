@@ -524,9 +524,14 @@ async function call<T>(url: string, init?: RequestInit): Promise<T> {
       : null;
   if (!response) throw new Error(`no route for ${url}`);
   const body = (await response.json()) as T & { error?: string };
+  // The draft route's replies, in order, as the browser receives them (`draftReplies`).
+  if (draft) draftReplies.push(body as Record<string, unknown>);
   if (!response.ok) throw new Error(body.error ?? `HTTP ${response.status}`);
   return body;
 }
+
+/** The draft route's replies this case (DRAFT_WROTE_NOTHING_NOTICE_ENABLED reads its `notice`). */
+const draftReplies: Record<string, unknown>[] = [];
 
 /** The chat route only accepts a UUID for the open form; the fake numbers rows `fake-N`. */
 function toUuid(id: string): string {
@@ -697,6 +702,7 @@ beforeEach(async () => {
   faults.field = null;
   summaries.reply = null;
   faults.strayDraftField = null;
+  draftReplies.length = 0;
   state.directory = [
     { id: "e-1", firstName: "Quinn", lastName: "Marlowe", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-66"], positionName: null },
     { id: "e-2", firstName: "Dale", lastName: "Ferris", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-66"], positionName: null },
@@ -877,6 +883,7 @@ function context(): ReplayContext {
           .filter((row) => row.instance_id === instanceId && Array.isArray(row.checked) && (row.checked as unknown[]).length > 0)
           .map((row) => [String(row.field_key), (row.checked as unknown[]).map(String)]),
       ),
+    draftReplies: () => [...draftReplies],
     draftNotYetSaved: (instanceId) => {
       store.form_instance_values = store.form_instance_values.filter((row) => !(row.instance_id === instanceId && row.filled_by === "ai"));
     },

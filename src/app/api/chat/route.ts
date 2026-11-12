@@ -22,6 +22,7 @@ import {
   missedShiftCitesAttendanceEnabled,
   possessivePlaceNotPersonEnabled,
   outlineOnOpenProposalEnabled,
+  groupWordsNotANameEnabled,
   formNameFromRosterEnabled,
   offRosterConfirmEnabled,
   exitLetterAddresseeEnabled,
@@ -943,9 +944,16 @@ async function postChat(request: Request) {
           businessToday(),
         );
       }
+      // GROUP_WORDS_NOT_A_NAME_ENABLED: "the same form for multiple employees" asks which employees (`lib/forms/group-words-ask.ts`).
+      if (groupWordsNotANameEnabled()) {
+        answer = (await import("@/lib/forms/group-words-ask")).withGroupWordsAsk(answer, [
+          ...parsed.history.filter((turn) => turn.role === "user").map((turn) => turn.content),
+          asked.question,
+        ]);
+      }
       // PROPOSAL_NAME_CORRECTION_ENABLED: an off-roster "change her name to …" on the card is never kept silently; with the roster, the card stays for the one roster person it can only be, and a typo is never offered as a person.
       answer = withCorrectionNotDropped(answer, parsed);
-      // OUTLINE_ON_OPEN_PROPOSAL_ENABLED: the outline turn's reply says the outline is kept as her form's layout.
+      // OUTLINE_ON_OPEN_PROPOSAL_ENABLED: the outline turn's reply says her own details are kept, nothing from the pasted example.
       if (outlineOnProposal) {
         answer = (await import("@/lib/forms/outline-on-proposal")).withOutlineKeptNote(answer, { outlineTurnId: parsed.questionMessageId, requestId: outlineOnProposal.requestId });
       }
