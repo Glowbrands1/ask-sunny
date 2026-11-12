@@ -38,6 +38,8 @@ export const NOV8_FIELD_LABEL_NOT_A_QUESTION_CASES: ReplayCase[] = [
       const thread = t.thread();
       const replies: string[] = [];
       for (const said of TURNS) replies.push((await thread.say(said)).content);
+      // The sibling app's roster-set gate R16A (10 Nov 2026), seen here too: with FORM_NAME_FROM_ROSTER on the exit card read "- **Name:** The employee".
+      for (const said of replies) expect(said, `the card's Name is "The employee":\n${said}`).not.toMatch(/\*\*Name:\*\*\s*The employee/i);
       for (const turn of [4, 5]) {
         const content = replies[turn]!;
         expect(content, `turn ${turn + 1} is answered as a question:\n${content}`).not.toMatch(/A grounded answer from the policy manual/);
@@ -83,6 +85,8 @@ export const NOV8_FIELD_LABEL_NOT_A_QUESTION_CASES: ReplayCase[] = [
       ];
       const replies: string[] = [];
       for (const said of turns) replies.push((await thread.say(said)).content);
+      // The sibling app's roster-set gate R16A (10 Nov 2026), seen here too: with FORM_NAME_FROM_ROSTER on the exit card read "- **Name:** The employee".
+      for (const said of replies) expect(said, `the card's Name is "The employee":\n${said}`).not.toMatch(/\*\*Name:\*\*\s*The employee/i);
       for (const turn of [4, 5]) {
         const content = replies[turn]!;
         expect(content, `turn ${turn + 1} fills the notice date although turn 1 said no notice:\n${content}`).not.toMatch(/Date that notice was given:\*\*\s*\S/);

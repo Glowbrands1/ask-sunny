@@ -1,6 +1,6 @@
 import { expect, vi } from "vitest";
 
-import { typoFullNameToRosterEnabled } from "@/lib/config/chat-quality-flags";
+import { formNameFromRosterEnabled, typoFullNameToRosterEnabled } from "@/lib/config/chat-quality-flags";
 
 import { KEARNEY, STAFF, type DirectoryRow, type ReplayAnswer, type ReplayCase, type ReplayContext } from "./cases";
 import { policyKeptPeople } from "./nov5-policy-kept-across-turns-cases";
@@ -48,11 +48,15 @@ async function cardAfter(t: ReplayContext, correction: string): Promise<{ before
   const thread = t.thread();
   await thread.say(OPENING[0]!);
   const before = (await thread.say(OPENING[1]!)).formProposal!;
-  // Changed on purpose (11 Nov 2026): with TYPO_FULL_NAME_TO_ROSTER_ENABLED (sf-b5) the opening card is already the
-  // roster's Odessa Lark Penhallow (one swap in a surname word); the correction must then leave her as she is.
-  expect(before?.employeeName, "the opening card does not carry the typed name").toBe(
-    typoFullNameToRosterEnabled() ? "Odessa Lark Penhallow" : "Odessa Lark Penhallwo",
-  );
+  /*
+   * Changed on purpose (10 Nov 2026, QA's roster-set gate): with the name set on (FORM_NAME_FROM_ROSTER and its
+   * companions), the first turn asks "Is this for **Odessa Lark Penhallow**?" and the details turn seats the roster's
+   * spelling (NEAR_MISS_DETAILS_ACCEPT), so the opening card is already hers; the correction must still keep it so.
+   * Changed on purpose (11 Nov 2026): with TYPO_FULL_NAME_TO_ROSTER_ENABLED (sf-b5) the opening card is likewise the
+   * roster's Odessa Lark Penhallow (one swap in a surname word); the correction must then leave her as she is.
+   */
+  const opening = formNameFromRosterEnabled() || typoFullNameToRosterEnabled() ? "Odessa Lark Penhallow" : "Odessa Lark Penhallwo";
+  expect(before?.employeeName, "the opening card does not carry the typed name").toBe(opening);
   return { before, after: await thread.say(correction) };
 }
 
