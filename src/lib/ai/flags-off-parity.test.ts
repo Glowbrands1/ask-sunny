@@ -1234,11 +1234,12 @@ function chatHalf(half: 0 | 1): string[] {
   return half === 0 ? all.slice(0, middle) : all.slice(middle);
 }
 /*
- * THE REPLAY PACK IN TWO HALVES (QA, 9 Nov 2026): its child timed out at 540 s on CI (ask-sunny#713, #717; ETIMEDOUT, no
- * assertion failed) as the pack grew. Nearly all of its time is one file, `replay-pack-e2e.test.ts`, so it is halved by
- * case, not by file: the first child runs the whole folder with the first half of the cases by id (`REPLAY_PACK_HALF`
- * "0"; the pack's other test files run there, once), the second child that one file with the second half ("1"). Every
- * case and every file still runs exactly once, with every new flag off.
+ * THE REPLAY PACK IN THIRDS (QA, 9 Nov 2026 in halves; thirds since 12 Nov 2026): its child timed out at 540 s on CI
+ * (ask-sunny#713, #717; then again on main 7e8dcdb6 with halves; ETIMEDOUT, no assertion failed) as the pack grew.
+ * Nearly all of its time is one file, `replay-pack-e2e.test.ts`, so it is split by case, not by file: the first child
+ * runs the whole folder with the first third of the cases by id (`REPLAY_PACK_PART` "0/3"; the pack's other test files
+ * run there, once), the other two children that one file with the second and third thirds. Every case and every file
+ * still runs exactly once, with every new flag off. No timeout is raised.
  */
 const REPLAY_PACK_E2E = `${REPLAY_PACK}/replay-pack-e2e.test.ts`;
 const CHILDREN: readonly { readonly name: string; readonly paths: () => readonly string[]; readonly env?: Readonly<Record<string, string>> }[] = [
@@ -1246,8 +1247,9 @@ const CHILDREN: readonly { readonly name: string; readonly paths: () => readonly
   { name: `${CHAT} (without the replay pack), first half by name`, paths: () => chatHalf(0) },
   { name: `${CHAT} (without the replay pack), second half by name`, paths: () => chatHalf(1) },
   { name: "src/app/api/forms", paths: () => ["src/app/api/forms"] },
-  { name: `${REPLAY_PACK}, first half of the cases by id`, paths: () => [REPLAY_PACK], env: { REPLAY_PACK_HALF: "0" } },
-  { name: `${REPLAY_PACK}, second half of the cases by id`, paths: () => [REPLAY_PACK_E2E], env: { REPLAY_PACK_HALF: "1" } },
+  { name: `${REPLAY_PACK}, first third of the cases by id`, paths: () => [REPLAY_PACK], env: { REPLAY_PACK_PART: "0/3" } },
+  { name: `${REPLAY_PACK}, second third of the cases by id`, paths: () => [REPLAY_PACK_E2E], env: { REPLAY_PACK_PART: "1/3" } },
+  { name: `${REPLAY_PACK}, third third of the cases by id`, paths: () => [REPLAY_PACK_E2E], env: { REPLAY_PACK_PART: "2/3" } },
 ];
 
 describe("existing chat and form suites with every new flag off", () => {
