@@ -385,3 +385,72 @@ export function guardNarrativeDraft(
 
   return { values: next, adjusted, emptied };
 }
+
+/**
+ * ============================================================================
+ * NO PLAN THE MANAGER DID NOT MAKE (DRAFT_NO_INVENTED_PLAN_ENABLED)
+ * ============================================================================
+ *
+ * QA, 25 Oct 2026: a Corrective Action Form's saved Observation carried a
+ * "Going Forward" paragraph the manager never typed — "<Name> plans travel
+ * and preparation so that … notifies the salon in advance if arriving late is
+ * unavoidable" — with ACTION_PLAN_MANAGER_ONLY on. On a form whose Action
+ * Plan is the manager's own, that paragraph is a commitment nobody made, in
+ * the HR record. The "Going Forward" (and older "Next step") section is
+ * dropped from the observed/expectation fields; Observed and Expectation are
+ * kept as drafted. Pure.
+ */
+export function withoutGoingForward(
+  values: Record<string, string>,
+  fields: readonly NarrativeField[],
+): Record<string, string> {
+  const shaped = new Set(fields.filter((field) => field.narrative === OBSERVED_EXPECTATION).map((field) => field.key));
+  const next: Record<string, string> = {};
+  for (const [key, value] of Object.entries(values)) {
+    if (!shaped.has(key) || typeof value !== "string" || value.trim() === "") {
+      next[key] = value;
+      continue;
+    }
+    const sections = splitSections(value);
+    const kept = sections.filter((section) => section.label !== GOING_FORWARD_LABEL && section.label !== "Next step:");
+    next[key] =
+      kept.length === sections.length
+        ? value
+        : kept
+            .map((section) =>
+              section.label ? `${section.label}\n${section.lines.join("\n").trim()}` : section.lines.join("\n").trim(),
+            )
+            .join("\n\n")
+            .trim();
+  }
+  return next;
+}
+
+/**
+ * DRAFT_NO_INVENTED_PLAN_ENABLED, the Coaching guard (QA-2, 26 Oct 2026): did
+ * the manager's notes state a "going forward" plan? A negated mention is not
+ * one: "no going forward needed", "do not add a going forward section",
+ * "without a going forward plan", "she is not on a plan going forward", "not
+ * going forward with discipline". "going forward she will …" and "she will
+ * clock in on time going forward" are.
+ */
+/*
+ * The negation must govern "going forward" itself: right before it, with at
+ * most two filler words between ("no going forward", "without a going
+ * forward", "do not add a going forward", "doesn't want going forward"), or
+ * negating a plan named just before it ("not on a plan going forward").
+ * "No call no show on 10/11 going forward she needs to call", "she wasn't on
+ * time going forward I expect on time" and "she was never told going forward
+ * she must call" negate something else (QA-5, 26 Oct 2026).
+ */
+const GOING_FORWARD_NEGATED_BEFORE =
+  /\b(?:no|not|without|never|don't|dont|do not|won't|doesn't|didn't|isn't|aren't|wasn't|weren't)\s+(?:(?:a|an|the|any|add|adding|need|needed|want|wants|write|include|put|make|for)\s+){0,3}$/i;
+const PLAN_NEGATED_BEFORE = /\b(?:no|not|never|without)\b(?:\s+[\w']+){0,3}\s+plan\s+$/i;
+
+export function managerTypedGoingForward(notes: string): boolean {
+  for (const match of notes.matchAll(/\bgoing forward\b/gi)) {
+    const before = notes.slice(0, match.index);
+    if (!GOING_FORWARD_NEGATED_BEFORE.test(before) && !PLAN_NEGATED_BEFORE.test(before)) return true;
+  }
+  return false;
+}

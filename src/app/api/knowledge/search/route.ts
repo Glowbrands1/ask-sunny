@@ -16,6 +16,7 @@ import { authorizeRequest } from "@/lib/auth/server";
 import { activeKnowledgeCorpus } from "@/lib/knowledge/corpus";
 import { RETRIEVAL } from "@/lib/config/models";
 import { rowToCitation, rowToSearchResult } from "@/lib/knowledge/mappers";
+import { shownCitations } from "@/lib/knowledge/empty-card-drop";
 import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
 import type { KnowledgeQuery } from "@/lib/knowledge/types";
 
@@ -57,7 +58,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       results: rows.map(rowToSearchResult),
-      citations: rows.map(rowToCitation),
+      // EXCERPT_EMPTY_CARD_DROP_ENABLED: no empty card, none labelled with the sibling company.
+      citations: shownCitations(rows.map(rowToCitation)),
     });
   } catch (error) {
     return errorResponse(error, "POST /api/knowledge/search");

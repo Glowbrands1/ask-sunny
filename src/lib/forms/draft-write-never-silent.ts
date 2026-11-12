@@ -34,3 +34,11 @@ export function fieldCount(draft: { values: Record<string, unknown>; checked: Re
 /** The notice when the draft saved nothing. */
 export const DRAFT_NOTHING_SAVED_NOTICE =
   "Nothing was saved on this draft: the prefill couldn't be written to the form. Fill it in below, or tell me what it should say and I'll add it.";
+
+/**
+ * DRAFT_WROTE_NOTHING_NOTICE_ENABLED: the notice when the draft had no account to write from, so its Details (the
+ * narrative) are blank. QA's r21 live check (10 Nov 2026): "make me a coaching form for <name>", the app asked "What
+ * happened?", Create saved only the Name and Date, and nothing was said.
+ */
+export const DRAFT_WROTE_NOTHING_NOTICE =
+  "The details are blank: you haven't told me what happened yet, so there was nothing to draft from. Tell me here what happened and I'll write it in, or fill it in below.";
