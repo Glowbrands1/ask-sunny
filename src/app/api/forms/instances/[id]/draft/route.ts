@@ -384,7 +384,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
 
     const body = ((await request.json().catch(() => null)) ?? {}) as DraftBody;
     // GRAMMAR_ASK_NOT_ACCOUNT_ENABLED: "can you clean up my grammar …?" is no account (`ai/asks-to-the-app.ts`).
-    const sent = String(body.notes ?? "").trim().slice(0, 4000);
+    // PASTED_REVIEW_NOT_ACCOUNT_ENABLED: a pasted reviewer's notes are no account (`ai/pasted-review.ts`).
+    const sent = (await import("@/lib/ai/pasted-review")).readWithoutPastedReview(String(body.notes ?? "").trim().slice(0, 4000)).trim();
     // SAME_REQUEST_OTHER_PERSON_ENABLED: "the same thing for <B>" is drafted from the earlier request, read with <B>'s name.
     const typed = sameRequestOtherPersonEnabled()
       ? (await import("@/lib/forms/same-request-other-person")).notesForOtherPerson({

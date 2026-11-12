@@ -369,6 +369,8 @@ const NEW_FLAGS = [
   "FORM_EDIT_REFERS_BACK_ENABLED",
   "SAME_FORM_COPY_ENABLED",
   "SAME_FORM_COPY_NEW_PERSON_ENABLED",
+  // coding 6: PASTED_REVIEW_NOT_ACCOUNT (default off): forced off with the others.
+  "PASTED_REVIEW_NOT_ACCOUNT_ENABLED",
   // coding 6: DRAFT_WRITE_NEVER_SILENT (default off): forced off with the others.
   "DRAFT_WRITE_NEVER_SILENT_ENABLED",
   // coding 6: CA_PROCEDURE_BASIS (default off; rebuilt from old S544): forced off with the others.

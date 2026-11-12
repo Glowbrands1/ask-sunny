@@ -4121,6 +4121,22 @@ export function reopenCloseSpellingEnabled(): boolean {
 }
 
 /**
+ * PASTED_REVIEW_NOT_ACCOUNT_ENABLED (coding 6, 10 Nov 2026; default off; Pau via
+ * QA, sf-s22, 5 Nov 2026). "Use this to make it: Please make the following
+ * edits and resubmit: 1. **Kit Coaching Document:** … signed by <C> …" — a
+ * reviewer's notes on another employee's form, pasted to show the format —
+ * turned the Corrective Action card into a Coaching Form, put <C>'s notes in
+ * the Observation and their signing date on the card. On: a pasted review
+ * ("Please make the following edits …", or a numbered list of "**Heading:**"
+ * items) is read only for the manager's own words before it, in this turn and
+ * the earlier ones, and the draft's account leaves it out. The stored
+ * messages keep it. See `ai/pasted-review.ts`. Off, as before.
+ */
+export function pastedReviewNotAccountEnabled(): boolean {
+  return envFlag("PASTED_REVIEW_NOT_ACCOUNT_ENABLED");
+}
+
+/**
  * MADE_ABOUT_TOPIC_EVIDENCE_ENABLED (ported from Ask Bubbles: QA's live round 13 there, 9 Nov 2026; default off; same flag
  * in both apps). "make it about being late on 11/5/26" left Other on the old topic: the topic read from the manager's
  * words ("Being late") came with "being late" as its evidence, two words, under the reducer's floor, so it was refused.

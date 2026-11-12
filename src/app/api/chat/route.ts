@@ -26,6 +26,7 @@ import {
   offRosterConfirmEnabled,
   exitLetterAddresseeEnabled,
   letterGreetingNotNameEnabled,
+  pastedReviewNotAccountEnabled,
   templateOutlineFieldsEnabled,
   exitFormDateFromTerminationEnabled,
   offRosterAskBeforeCardEnabled,
@@ -250,6 +251,19 @@ async function postChat(request: Request) {
           ...asked,
           question: read(asked.question),
           history: asked.history.map((turn) => (turn.role === "user" && typeof turn.content === "string" ? { ...turn, content: read(turn.content) } : turn)),
+        };
+      }
+      /*
+       * PASTED_REVIEW_NOT_ACCOUNT_ENABLED (Pau's sf-s22): a reviewer's notes pasted into a turn ("Please make the
+       * following edits …") are read only for the manager's words before them, in this turn and the earlier ones, so
+       * no reader takes them as the account, the form or the date (`ai/pasted-review.ts`). The stored messages keep them.
+       */
+      if (pastedReviewNotAccountEnabled()) {
+        const { withoutPastedReview } = await import("@/lib/ai/pasted-review");
+        asked = {
+          ...asked,
+          question: withoutPastedReview(asked.question),
+          history: asked.history.map((turn) => (turn.role === "user" && typeof turn.content === "string" ? { ...turn, content: withoutPastedReview(turn.content) } : turn)),
         };
       }
       /*

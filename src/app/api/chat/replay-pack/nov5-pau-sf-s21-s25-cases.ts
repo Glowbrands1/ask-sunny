@@ -119,6 +119,8 @@ export const NOV5_PAU_SF_S21_S25_CASES: ReplayCase[] = [
     title: "sf-s22: \"It needs to be a CA, not a coaching form\" and \"Its a CA\" keep the Corrective Action; another employee's reviewer notes never go into the Observation",
     report: `${REPORT}, sf-s22`,
     status: { open: "after \"It needs to be a CA\" the card goes back to \"Here is what I would put on a Coaching Form\", and the Observation carries Corwen's reviewer notes" },
+    // Fixed under PASTED_REVIEW_NOT_ACCOUNT_ENABLED (coding 6, 10 Nov 2026): a pasted review is no account; open on production flags until QA flips it.
+    fixFlags: ["PASTED_REVIEW_NOT_ACCOUNT_ENABLED"],
     async run(t) {
       const thread = start(t);
       const first = await thread.say(S22_T1);
@@ -314,3 +316,29 @@ export const NOV10_R23_SF_S21_LIVE_CASES: ReplayCase[] = [
   },
 ];
 
+/*
+ * PASTED_REVIEW_NOT_ACCOUNT_ENABLED (coding 6, 10 Nov 2026): sf-s22's first two turns, then Create. The draft is
+ * written from the manager's own words: Corwen's reviewer notes, and their signing date, never reach it.
+ */
+export const NOV10_PASTED_REVIEW_CASES: ReplayCase[] = [
+  {
+    id: "nov10-sf-s22-pasted-review-never-drafted",
+    title: "sf-s22: \"Use this to make it: <a reviewer's notes on Corwen's form>\" → Create: Wynne's CA, drafted without Corwen's notes or their date",
+    report: `${REPORT}, sf-s22`,
+    status: { open: "the card turns into a Coaching Form dated 10/16/2026, and the draft is handed Corwen's reviewer notes as the account" },
+    fixFlags: ["PASTED_REVIEW_NOT_ACCOUNT_ENABLED"],
+    async run(t) {
+      const thread = start(t);
+      await thread.say(S22_T1);
+      const second = await thread.say(`Use this to make it: ${REVIEWER_NOTES}`);
+      expect(thread.proposal, `the pasted review turned the card into another form:\n${second.content}`).toMatchObject({ templateKey: "dpoa", employeeName: "Wynne Sarrow" });
+      expect(second.content, `the review's signing date is on the card:\n${second.content}`).not.toMatch(/10\/16\/2026/);
+      expect(observationLine(second), `another employee's notes in the Observation:\n${observationLine(second)}`).not.toMatch(/Corwen/i);
+      const id = await thread.create();
+      const described = /WHAT THE MANAGER DESCRIBED:(?:\\n|\n)([\s\S]*?)(?:\\n|\n)FIELDS YOU MAY WRITE/.exec(t.draftPrompts().at(-1) ?? "")?.[1] ?? "";
+      expect(described, "the draft lost Wynne's own facts").toMatch(/146 tans/);
+      expect(described, "the draft was handed Corwen's reviewer notes").not.toMatch(/Corwen|Kit Coaching Document|resubmit/i);
+      expect(t.values(id).form_date ?? "", "the review's signing date is the form's Date").not.toBe("2026-10-16");
+    },
+  },
+];
