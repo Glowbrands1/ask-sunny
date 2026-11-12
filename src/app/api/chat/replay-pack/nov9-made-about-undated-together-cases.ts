@@ -88,6 +88,8 @@ export const NOV9_MADE_ABOUT_UNDATED_TOGETHER_CASES: ReplayCase[] = [
       const { id, reply, before } = await onDraft(t, TOPIC, "REWRITTEN");
       expect(savedForm(t, id), `the saved form changed:\n${reply.content}`).toBe(before);
       expect(reply.content, `the reply says the form changed:\n${reply.content}`).not.toMatch(/^Updated the|^Changed /m);
+      // Port from Ask Bubbles (QA, group 4, 961ab16c): the undated topic "stays as it was", not "stays as they were".
+      if (/I couldn't rewrite/.test(reply.content)) expect(reply.content).not.toMatch(/topic stays as they were/);
     },
   },
 ];
