@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { EXIT_OPTION } from "./exit-library";
 import { exitFactValues, exitFactsSupplied, readExitFacts } from "./exit-facts";
@@ -6,6 +6,8 @@ import { exitFactValues, exitFactsSupplied, readExitFacts } from "./exit-facts";
 /** A Monday, so "last Friday" and "yesterday" have one right answer. */
 const TODAY = "2026-09-28";
 const read = (text: string) => readExitFacts(text, TODAY);
+
+afterEach(() => vi.unstubAllEnvs());
 
 describe("the dates, each on its own line", () => {
   it("reads the last day worked and the notice date from one sentence", () => {
@@ -23,8 +25,18 @@ describe("the dates, each on its own line", () => {
   });
 
   it("reads a date named after the fact, and ISO dates", () => {
+    // Changed on purpose (QA, 12 Nov 2026): pinned off. With EXIT_NOTICE_STATED_ONLY_ENABLED a bare "resigned on …"
+    // no longer dates the notice; the arm below holds the new rule.
+    vi.stubEnv("EXIT_NOTICE_STATED_ONLY_ENABLED", "false");
     expect(read("2026-09-12 was her last day").lastDayWorked).toBe("2026-09-12");
     expect(read("resigned on 09/02/2026").noticeGiven).toBe("2026-09-02");
+  });
+
+  it("EXIT_NOTICE_STATED_ONLY on: ISO dates still read; a bare \"resigned on …\" dates no notice", () => {
+    vi.stubEnv("EXIT_NOTICE_STATED_ONLY_ENABLED", "true");
+    expect(read("2026-09-12 was her last day").lastDayWorked).toBe("2026-09-12");
+    expect(read("resigned on 09/02/2026").noticeGiven).toBeNull();
+    expect(read("gave notice on 09/02/2026").noticeGiven).toBe("2026-09-02");
   });
 
   it("reads today, yesterday and the last or next weekday against the business day", () => {
