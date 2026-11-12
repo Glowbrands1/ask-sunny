@@ -34,9 +34,14 @@ export const NOV12_STEP_B_SECTION_SPACING_CASES: ReplayCase[] = [
       t.draftWrites({ coaching_details: DETAILS });
       const id = await thread.create();
       const saved = t.values(id).coaching_details ?? "";
-      const rewritten = saved
-        .replace(/(Going Forward:\n)[^\n]+/, "$1Ottoline will set a reminder for every scheduled meeting.")
-        .replace(/\n\n/g, "\n");
+      // With DRAFT_NO_INVENTED_PLAN on (QA r36), the drafted "Going Forward" is the model's and is dropped at Create, so
+      // the reader adds the section the manager asked for rather than replacing it: the manager's own words, written.
+      const reminder = "Ottoline will set a reminder for every scheduled meeting.";
+      const rewritten = (
+        /Going Forward:\n/.test(saved)
+          ? saved.replace(/(Going Forward:\n)[^\n]+/, `$1${reminder}`)
+          : saved.replace(/(\n\nPolicy reference:[^\n]*)?$/, `\n\nGoing Forward:\n${reminder}$1`)
+      ).replace(/\n\n/g, "\n");
       t.patchReads!({ [SAID]: patch("this_form", [{ field: "coaching_details", value: rewritten, how: "replace", evidence: "she will set a reminder" }]) });
       await thread.say(SAID);
       const details = t.values(id).coaching_details ?? "";
