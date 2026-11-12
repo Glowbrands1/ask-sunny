@@ -135,7 +135,9 @@ function previousAnswer(history: readonly Pick<ChatMessage, "role" | "content">[
  * details" and "the details we just discussed" are the latest answer that is none of those.
  */
 const APPS_OWN_REPLY =
-  /^\s*(?:Here is what I would put on|I'll draft an? \*\*|I haven'?t changed the|I didn'?t change anything|\*\*Nothing on the form has changed yet|Nothing on the form has changed|Updated the \*\*|Is this for \*\*|To create it, press|Who is this form for)/i;
+  /^\s*(?:Here is what I would put on|I'll draft an? \*\*|I haven'?t changed the|I didn'?t change anything|\*\*Nothing on the form has changed yet|Nothing on the form has changed|Updated the \*\*|Is this for \*\*|To create it, press|Who is this (?:form|\*\*[^*]+\*\*) for|Which of them is this)/i;
+// The sibling app's Gate-Bubbles-4 (12 Nov 2026): "Who is this **Coaching Form** for?" and "Which of them is this …" are
+// the app's own questions, never the details a manager means by "these details".
 
 function earlierContentAnswer(history: readonly Pick<ChatMessage, "role" | "content">[]): string | null {
   for (let index = history.length - 1; index >= 0; index -= 1) {
@@ -149,7 +151,52 @@ function earlierContentAnswer(history: readonly Pick<ChatMessage, "role" | "cont
 
 /** The answer "these details" / "the details we just discussed" refer to. */
 function referredAnswer(history: readonly Pick<ChatMessage, "role" | "content">[]): string | null {
-  return detailsFromEarlierAnswerEnabled() ? earlierContentAnswer(history) : previousAnswer(history);
+  /*
+   * The sibling app's Gate-Bubbles-4 (12 Nov 2026, NO-GO there on #692; live here, where the flag is on): with no earlier
+   * content answer in the chat, "upate the draft with these details of coaching" got no reading and went to the free
+   * chat model, which can say "Updating the draft now" and write nothing. Then the reading is the flag-off one.
+   */
+  if (!detailsFromEarlierAnswerEnabled()) return previousAnswer(history);
+  return earlierContentAnswer(history) ?? previousAnswer(history);
+}
+
+/*
+ * MAKE_THAT_UPDATE_ACCOUNT_ENABLED (coding 6, 10 Nov 2026; a manager's production wording relayed 5 Nov 2026, no fix
+ * flag until QA's audit of 10 Nov): on the open coaching draft she gave her account ("rowan marked a session as
+ * complete …"), asked "Do i need to copy and paste it? or should it be automatically updating?", then said "make that
+ * update" to a reply that printed nothing to add — so no reader had an update to make. The update she means is her own
+ * account: the latest of her recent turns that names the employee, asks nothing and reads as an account.
+ */
+const ACCOUNT_LOOKBACK = 6;
+function unwrittenAccount(history: readonly Pick<ChatMessage, "role" | "content">[], employeeName: string): string | null {
+  const first = employeeName.trim().split(/\s+/)[0] ?? "";
+  if (first.length < 2) return null;
+  const names = new RegExp(`\\b${first.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+  for (const turn of history.slice(-ACCOUNT_LOOKBACK).reverse()) {
+    if (turn.role !== "user") continue;
+    const text = (turn.content ?? "").trim();
+    if (!text || /\?/.test(text) || QUESTION_START.test(text) || ASKS_SOMETHING.test(text) || MAKE_THAT.test(text)) continue;
+    if (names.test(text) && PAST_ACCOUNT.test(text) && text.split(/\s+/).length >= 6) return text;
+  }
+  return null;
+}
+
+/**
+ * "make that update" after a reply that offered nothing to add, with her account named: the turn as every reader of the
+ * open draft reads it — "make that update: <her account>". Null for any other turn, or with no account to make.
+ */
+export function makeThatUpdateWithAccount(input: {
+  question: string;
+  history: readonly Pick<ChatMessage, "role" | "content">[];
+  employeeName: string;
+}): string | null {
+  const question = input.question.trim();
+  if (!MAKE_THAT.test(question)) return null;
+  const earlier = previousAnswer(input.history);
+  const offered = earlier ? PRINTED_DETAILS.test(earlier) || earlier.split("\n").some((line) => CLAIM_LINE.test(line.trim().replace(/^[*_]+/, ""))) : false;
+  if (offered) return null;
+  const account = unwrittenAccount(input.history, input.employeeName);
+  return account ? `${question.replace(/[.!]+$/, "")}: ${account}` : null;
 }
 
 export function formContentQuestion(input: {

@@ -39,6 +39,7 @@ import { withoutAppLines } from "./app-sentences";
 import { isPolicyCorrection } from "./policy-correction-turn";
 import { withoutPayrollClauses } from "./payroll-clause-not-account";
 import { formatManualCitation } from "./policy-citation-fields";
+import { excerptTextForDisplay } from "@/lib/knowledge/excerpt-brand-filter";
 
 /**
  * REMAP_INCIDENT_FIX_ENABLED: the remap path's What happened, prior actions
@@ -731,7 +732,7 @@ export function remapCitations(manual: RemapManual, sections: readonly ManualSec
       documentTitle: manual.documentTitle,
       locator: `Page ${section.page}`,
       category,
-      excerpt: `${section.heading}. ${chunk?.content ?? ""}`.slice(0, 500),
+      excerpt: `${section.heading}. ${excerptTextForDisplay(chunk?.content ?? "", manual.documentTitle)}`.slice(0, 500),
       relevance: 1,
     });
   }

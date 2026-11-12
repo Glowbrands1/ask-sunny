@@ -163,6 +163,7 @@ import {
   widerDateReaderEnabled,
   aiReadsCodeChecksEnabled,
   envFlag,
+  draftNoInventedPlanEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -369,6 +370,8 @@ const NEW_FLAGS = [
   "FORM_EDIT_REFERS_BACK_ENABLED",
   "SAME_FORM_COPY_ENABLED",
   "SAME_FORM_COPY_NEW_PERSON_ENABLED",
+  // coding 6: GUEST_ATTITUDE_CONDUCT (default off): forced off with the others.
+  "GUEST_ATTITUDE_CONDUCT_ENABLED",
   // coding 6: DRAFT_WRITE_NEVER_SILENT (default off): forced off with the others.
   "DRAFT_WRITE_NEVER_SILENT_ENABLED",
   // coding 6: CA_PROCEDURE_BASIS (default off; rebuilt from old S544): forced off with the others.
@@ -396,6 +399,8 @@ const NEW_FLAGS = [
   "PAYROLL_SPLIT_WORDS_ENABLED",
   // coding 6: SAME_REQUEST_OTHER_PERSON (default off): forced off with the others.
   "SAME_REQUEST_OTHER_PERSON_ENABLED",
+  // coding 6: MAKE_THAT_UPDATE_ACCOUNT (default off; QA's 10 Nov audit, copy-paste case): forced off with the others.
+  "MAKE_THAT_UPDATE_ACCOUNT_ENABLED",
   // coding 6: SAME_REQUEST_OFF_ROSTER (default off; QA's r23 live test, #779 off roster): forced off with the others.
   "SAME_REQUEST_OFF_ROSTER_ENABLED",
   // coding 6: PASTED_OUTLINE_TO_OPEN_DRAFT (default off; QA's r23 live test of sf-s21): forced off with the others.
@@ -407,10 +412,14 @@ const NEW_FLAGS = [
   "MANUAL_CITATION_SWEEP_FIXES_ENABLED",
   // coding 6: FAILURE_TO_OPEN_IS_LATE_OPENING (default off): forced off with the others.
   "FAILURE_TO_OPEN_IS_LATE_OPENING_ENABLED",
+  // coding 6: TERMINATION_STATED_TICKS (default off): forced off with the others.
+  "TERMINATION_STATED_TICKS_ENABLED",
   // coding 6: PAYROLL_BARE_SENTENCE (default off): forced off with the others.
   "PAYROLL_BARE_SENTENCE_ENABLED",
   // coding 6: ADVICE_ASK_NOT_ACCOUNT (default off): forced off with the others.
   "ADVICE_ASK_NOT_ACCOUNT_ENABLED",
+  // coding 6: DRAFT_WROTE_NOTHING_NOTICE (default off): forced off with the others.
+  "DRAFT_WROTE_NOTHING_NOTICE_ENABLED",
   "STAFF_PICKER_ENABLED",
   "STAFF_PICKER_STORE_TITLES_ENABLED",
   "STAFF_PICKER_BARE_ANSWER_ENABLED",
@@ -524,6 +533,8 @@ const NEW_FLAGS = [
   // The second Sunny gate's fix flags (6 Nov 2026): forced off with the others in the child run.
   "TITLE_ENDS_AT_LINE_ENABLED",
   "FULL_POSITION_TITLE_ENABLED",
+  // QA, 10 Nov 2026 (default off): "not following the dress code" names the policy as broken.
+  "NOT_FOLLOWING_IS_VIOLATION_ENABLED",
   "BARE_NOT_DENIAL_ENABLED",
   "PLACE_FROM_CUE_ENABLED",
   // Port of the sibling app's flip-3 fix (6 Nov 2026): forced off with the others in the child run.
@@ -595,7 +606,10 @@ const NEW_FLAGS = [
   "SHIFT_ACCOUNT_IS_INCIDENT_ENABLED",
   // coding 5: UNDATED_ACCOUNT_BRIEF (default off): forced off with the others in the child run.
   "UNDATED_ACCOUNT_BRIEF_ENABLED",
+  "EXCERPT_BRAND_FILTER_ENABLED",
   "EXIT_TYPO_WORDS_ENABLED",
+  "WOVEN_TEXT_NUL_STRIP_ENABLED",
+  "WOVEN_FAILED_RETRY_ENABLED",
   "ADD_THAT_IS_ACCOUNT_ENABLED",
   "WHAT_HAPPENED_NO_CREATE_ENABLED",
   "CREATE_FROM_CONVERSATION_POINTS_TO_CARD_ENABLED",
@@ -616,9 +630,20 @@ const NEW_FLAGS = [
   // coding 2: CREATE_COMMAND_POINTS_TO_CARD and CARD_COMPLAINT_NOT_ACCOUNT (default off): forced off with the others.
   "CREATE_COMMAND_POINTS_TO_CARD_ENABLED",
   "CARD_COMPLAINT_NOT_ACCOUNT_ENABLED",
+  // coding 2: EXCERPT_EMPTY_CARD_DROP (QA, 11 Nov 2026; default off): forced off with the others.
+  "EXCERPT_EMPTY_CARD_DROP_ENABLED",
   // coding 6: REQUEST_ISSUE_KEPT (ported from Ask Bubbles, QA round 17b; default off).
   "REQUEST_ISSUE_KEPT_ENABLED",
+  // coding 4: STEP_B_SECTION_SPACING (ported from Ask Bubbles; split out of #662, 12 Nov 2026; default off).
+  "STEP_B_SECTION_SPACING_ENABLED",
+  "DRAFT_NO_INVENTED_PLAN_ENABLED",
   "GROUP_WORDS_NOT_A_NAME_ENABLED",
+  // coding 4: FORMS_ON_FILE_ORDER_MATCH_POSSIBLE (ported from Ask Bubbles, 11 Nov 2026; default off).
+  "FORMS_ON_FILE_ORDER_MATCH_POSSIBLE_ENABLED",
+  // coding 6: POLICY_CARRY_RETRIEVAL (#248 rebuilt on main; QA item 10; default off).
+  "POLICY_CARRY_RETRIEVAL_ENABLED",
+  // coding 2: OFF_ROSTER_STORE_ANSWER_ONLY (QA's #735 ruling, 12 Nov 2026; default off).
+  "OFF_ROSTER_STORE_ANSWER_ONLY_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -749,8 +774,19 @@ const PROTECTED = [
  * extractJobTitle a title word straight before "EPP" is skipped as the form's
  * name unless the title is said again later. Behind
  * FORM_NAME_NOT_A_TITLE_ENABLED, default off; off, every title is read as before.
+ * The user (Pau) approved in writing on 10 Nov 2026, via QA ("ok termination
+ * closing"), behind TERMINATION_STATED_TICKS_ENABLED (default off), both apps:
+ * in src/lib/forms/required-closing.ts, `withRequiredClosing` returns a value
+ * that already ends with the termination sentence unchanged (with its
+ * `TERMINATION_PLAN_CLOSING` constant and the flag import); in
+ * src/lib/forms/ca-action-plan.ts, `ActionPlanInput.termination`, and a
+ * Termination plan's closing is the termination sentence (`planClosing`, also
+ * in `refreshedActionPlan`). Off, both are exactly as before; instances.ts is
+ * not touched.
  */
 const APPROVED_PROTECTED_EDITS = [
+  ":(exclude)src/lib/forms/required-closing.ts",
+  ":(exclude)src/lib/forms/ca-action-plan.ts",
   ":(exclude)src/lib/forms/proposal.ts",
   ":(exclude)src/lib/forms/chat-revision.ts",
   ":(exclude)src/lib/forms/instances.ts",
@@ -1005,6 +1041,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(cardChangeFinalizedEnabled()).toBe(false);
     expect(formPatchReducerEnabled()).toBe(false);
     expect(formReplyFromDiffEnabled()).toBe(false);
+    expect(draftNoInventedPlanEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(
@@ -1096,6 +1133,8 @@ describe("new flags default off and wrappers are inert", () => {
           // Import's "belongs to another account" line (QA, 31 Oct 2026, both apps): shown only
           // when the server declines a chat as another account's, i.e. only with
           // CHAT_IMPORT_OWN_ONLY_ENABLED on. Off, the server never declines that way, so it never shows.
+          // Its "couldn't confirm … is yours" line (QA, 12 Nov 2026, both apps) likewise shows only for a "not_proven"
+          // decline, which only CHAT_IMPORT_PROVEN_OWN_ENABLED returns.
           ":(exclude)src/features/chat/import-local-history.tsx",
           // App switcher's Leadership Hub tab (requested by Paulyne through the QA session,
           // 1 Nov 2026 — QA to confirm): shell plumbing for a server yes/no. With

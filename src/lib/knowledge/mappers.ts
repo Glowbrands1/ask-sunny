@@ -1,3 +1,4 @@
+import { excerptTextForDisplay } from "./excerpt-brand-filter";
 import { displayLocator } from "./locator";
 import type {
   DocumentFileType,
@@ -148,7 +149,8 @@ export function rowToCitation(row: MatchedChunkRow): SourceCitation {
     /* The page or section, never an extractor label such as "Text". */
     locator: displayLocator(row.locator),
     category: (row.category ?? "other") as KnowledgeCategory,
-    excerpt: row.content,
+    /* Without the sibling company's lines (EXCERPT_BRAND_FILTER_ENABLED); off, the row's text. */
+    excerpt: excerptTextForDisplay(row.content, row.document_title),
     relevance: clamp01(row.similarity),
   };
 }
