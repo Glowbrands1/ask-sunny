@@ -4302,6 +4302,20 @@ export function appInstructionsNotAccountEnabled(): boolean {
 }
 
 /**
+ * GUEST_ATTITUDE_CONDUCT_ENABLED (coding 6, 10 Nov 2026; default off; Pau's
+ * sf-b5, the overnight scan of 4 Nov 2026). "The customer said she was giving
+ * her an attitude when she brought up that the register was charging …" cited
+ * no policy: the rude-to-a-guest reading (Standards of Conduct, page 12, as
+ * Pau confirmed) needs "rude / attitude … to / at / with … a guest", and here
+ * the customer comes first. On: a sentence in which a guest, customer or
+ * client says the employee was giving / gave / had an attitude is that same
+ * reading (`forms/specific-policy-topics.ts`). Off, as before.
+ */
+export function guestAttitudeConductEnabled(): boolean {
+  return envFlag("GUEST_ATTITUDE_CONDUCT_ENABLED");
+}
+
+/**
  * DRAFT_WRITE_NEVER_SILENT_ENABLED (coding 6, 10 Nov 2026; default off; QA's
  * live finding, Sunny round 17). One Create in five saved only the Name and
  * Date: the drafting model ran (chat_traces: forms_draft succeeded), the
