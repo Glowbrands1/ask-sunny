@@ -4571,13 +4571,13 @@ export function formsOnFileOrderMatchPossibleEnabled(): boolean {
 }
 
 /**
- * DRAFT_FIRST_NAME_IS_PERSON_ENABLED (QA's Ask Sunny r36 live check, 12 Nov 2026; same flag in both apps; default off).
- * After Create, "The draft left out <last name> in Observation of Offense; tell me if you want it added." showed though
- * the Observation named the employee by first name ("On November 10, 2026, <first name> arrived 20 minutes late"). The
- * draft's consistency check read each word of the header's name as its own fact. On: the employee is one fact, kept
- * when the narrative fields hold any word of her name (a first name counts as the person); the line lists her whole
- * name only when none is there (`forms/draft-consistency.ts`). Off, as before.
+ * FIRST_NAME_ENOUGH_ENABLED (ported from Ask Bubbles, where it is on; QA's live Bubbles round 17b, 10 Nov 2026, and
+ * ruling (B) on this app's r36 live check, 12 Nov 2026; same flag in both apps; default off). "The draft left out
+ * <surname> in Details of Coaching" showed while Details named the employee by first name. On: on the Coaching Form's
+ * Details a first name is the name; on a Corrective Action a dropped surname is still detected, and when another word of
+ * her name is there the line says "The Observation of Offense names the employee as <first> only; tell me if you want
+ * the full name there." (`forms/draft-consistency.ts`). Off, as before.
  */
-export function draftFirstNameIsPersonEnabled(): boolean {
-  return envFlag("DRAFT_FIRST_NAME_IS_PERSON_ENABLED");
+export function firstNameEnoughEnabled(): boolean {
+  return envFlag("FIRST_NAME_ENOUGH_ENABLED");
 }

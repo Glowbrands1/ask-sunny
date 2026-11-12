@@ -1680,7 +1680,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       const facts = consistency.draftFacts({ employeeName: loaded.instance.employeeName, notes, today: businessToday() });
       const labels = narrativeTargets.map((key) => promptFields.find((field) => field.key === key)?.label ?? key);
       const missing = consistency.missingFacts(prose.attributions.values, narrativeTargets, facts);
-      if (missing.length > 0) leftOut = consistency.leftOutLine(missing, labels);
+      // FIRST_NAME_ENOUGH_ENABLED: a CA Observation that names her by first name says so (`leftOutNotice`).
+      if (missing.length > 0) leftOut = consistency.leftOutNotice({ missing, labels, facts, values: prose.attributions.values, narrativeKeys: narrativeTargets });
       updateChatTrace({ draftCheck: { checked: true, missing_keys: [...new Set(missing.map((fact) => fact.kind))] } });
     }
     const { cleaned, dated, narrated, timeframe, followUp, framing, claims, absence, requirements, attributions } =

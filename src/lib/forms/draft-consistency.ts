@@ -1,5 +1,5 @@
 import { payrollAmounts } from "@/lib/ai/intent-slots";
-import { draftFirstNameIsPersonEnabled } from "@/lib/config/chat-quality-flags";
+import { firstNameEnoughEnabled } from "@/lib/config/chat-quality-flags";
 
 import { datesInText } from "./form-date-answer";
 import { fold, wordsOf } from "./form-reducer";
@@ -43,23 +43,11 @@ export function draftFacts(input: { employeeName: string | null; notes: string; 
   const facts: DraftFact[] = [];
   const noted = new Set(wordsOf(notes));
   const seen = new Set<string>();
-  const nameWords: { word: string; folded: string }[] = [];
   for (const word of (input.employeeName ?? "").split(/\s+/).filter(Boolean)) {
     const folded = wordsOf(word)[0];
     if (!folded || seen.has(folded) || !noted.has(folded)) continue;
     seen.add(folded);
-    nameWords.push({ word, folded });
-  }
-  const says = (text: string, folded: string) => wordsOf(text).some((said) => said === folded || said.split("-").includes(folded));
-  if (draftFirstNameIsPersonEnabled() && nameWords.length > 0) {
-    // DRAFT_FIRST_NAME_IS_PERSON_ENABLED (QA r36 live): the employee is one fact; any word of her name names her.
-    facts.push({
-      kind: "name",
-      shown: nameWords.map((name) => name.word).join(" "),
-      in: (text) => nameWords.some((name) => says(text, name.folded)),
-    });
-  } else {
-    for (const { word, folded } of nameWords) facts.push({ kind: "name", shown: word, in: (text) => says(text, folded) });
+    facts.push({ kind: "name", shown: word, in: (text) => wordsOf(text).some((said) => said === folded || said.split("-").includes(folded)) });
   }
   const dates = new Set<string>();
   for (const date of datesInText(notes, input.today)) {
@@ -73,11 +61,27 @@ export function draftFacts(input: { employeeName: string | null; notes: string; 
   return facts;
 }
 
+/** FIRST_NAME_ENOUGH_ENABLED: the narrative fields where a first name is the name (the Coaching Form's Details). */
+const FIRST_NAME_FIELDS = new Set(["coaching_details"]);
+
 /** The facts no narrative field holds (all narrative fields read together). */
 export function missingFacts(values: Readonly<Record<string, string>>, narrativeKeys: readonly string[], facts: readonly DraftFact[]): DraftFact[] {
   const text = narrativeKeys.map((key) => values[key] ?? "").join("\n");
   if (fold(text) === "") return [];
-  return facts.filter((fact) => !fact.in(text));
+  const missing = facts.filter((fact) => !fact.in(text));
+  /*
+   * FIRST_NAME_ENOUGH_ENABLED (ported from Ask Bubbles; QA's live Bubbles round 17b, 10 Nov 2026, and ruling (B) on this
+   * app's r36 live check, 12 Nov 2026): "The draft left out <surname> in Details of
+   * Coaching" while Details named the employee by first name. A name the account already uses, by any word of it, is
+   * not reported missing. Only for the Coaching Form's Details (QA's report): a Corrective Action's Observation still
+   * reports a dropped surname (the single-writer spec, "Jane was late" in `pm-draft-route.test.ts`).
+   * Off, every word of the name is checked, as before.
+   */
+  const coachingOnly = narrativeKeys.length > 0 && narrativeKeys.every((key) => FIRST_NAME_FIELDS.has(key));
+  if (firstNameEnoughEnabled() && coachingOnly && facts.some((fact) => fact.kind === "name" && fact.in(text))) {
+    return missing.filter((fact) => fact.kind !== "name");
+  }
+  return missing;
 }
 
 function listed(items: readonly string[]): string {
@@ -88,4 +92,31 @@ function listed(items: readonly string[]): string {
 /** The reply's line when the draft left something out. */
 export function leftOutLine(missing: readonly DraftFact[], labels: readonly string[]): string {
   return `The draft left out ${listed(missing.map((fact) => fact.shown))} in ${listed(labels)}; tell me if you want it added.`;
+}
+
+/*
+ * FIRST_NAME_ENOUGH_ENABLED, the Corrective Action's wording (QA's Ask Sunny r36 live check and ruling (B), 12 Nov 2026):
+ * "The draft left out <surname> in Observation of Offense" was shown though the Observation named the employee by first
+ * name, and reads as if she were missing. A dropped surname is still detected (the single-writer spec); when another
+ * word of the name is there, the line says what is true: "The Observation of Offense names the employee as <first>
+ * only; tell me if you want the full name there." Any other fact the draft left out is said as before. Off, as before.
+ */
+export function leftOutNotice(input: {
+  readonly missing: readonly DraftFact[];
+  readonly labels: readonly string[];
+  readonly facts: readonly DraftFact[];
+  readonly values: Readonly<Record<string, string>>;
+  readonly narrativeKeys: readonly string[];
+}): string {
+  const { missing, labels } = input;
+  const text = input.narrativeKeys.map((key) => input.values[key] ?? "").join("\n");
+  const named = input.facts.filter((fact) => fact.kind === "name" && fact.in(text));
+  const nameMissing = missing.filter((fact) => fact.kind === "name");
+  if (!firstNameEnoughEnabled() || named.length === 0 || nameMissing.length === 0) return leftOutLine(missing, labels);
+  const asNamed = named.map((fact) => fact.shown).join(" ");
+  const where = labels.length === 1 ? `The ${labels[0]} names` : `The draft names`;
+  const inFields = labels.length === 1 ? "" : ` in ${listed(labels)}`;
+  const nameLine = `${where} the employee as ${asNamed} only${inFields}; tell me if you want the full name there.`;
+  const rest = missing.filter((fact) => fact.kind !== "name");
+  return rest.length > 0 ? `${leftOutLine(rest, labels)} ${nameLine}` : nameLine;
 }

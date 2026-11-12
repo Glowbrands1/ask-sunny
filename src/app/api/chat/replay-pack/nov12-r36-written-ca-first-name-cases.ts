@@ -14,8 +14,9 @@ import { KEARNEY, STAFF, type DirectoryRow, type ReplayCase } from "./cases";
  *       saved instance's warning_type as NULL. Here the tick is saved as the Type of Warning row's checked
  *       ["written"] (its `value` is null: a checkbox group keeps its ticks in `checked`). A guard, so it stays so.
  *   (b) after Create, "The draft left out <last name> in Observation of Offense; tell me if you want it added." showed
- *       though the Observation named her by first name. DRAFT_FIRST_NAME_IS_PERSON_ENABLED: a first name counts as the
- *       person (`forms/draft-consistency.ts`).
+ *       though the Observation named her by first name. QA's ruling (B): the dropped surname is still detected on a CA
+ *       (the single-writer spec); under FIRST_NAME_ENOUGH_ENABLED (ported from Ask Bubbles) the line says she is named
+ *       by first name only (`forms/draft-consistency.ts` leftOutNotice).
  */
 const ODALYS: DirectoryRow = {
   id: "e-odalys-pemberley-r36",
@@ -53,7 +54,7 @@ export const NOV12_R36_WRITTEN_CA_FIRST_NAME_CASES: ReplayCase[] = [
     title: "an Observation that names her by first name never says the draft left her out",
     report: "QA's r36 live check on Ask Sunny, 12 Nov 2026 (b): \"The draft left out <A> in Observation of Offense\" with her first name there",
     status: { open: "the draft's notice says her last name was left out" },
-    fixFlags: ["DRAFT_FIRST_NAME_IS_PERSON_ENABLED"],
+    fixFlags: ["FIRST_NAME_ENOUGH_ENABLED"],
     async run(t) {
       vi.setSystemTime(new Date("2026-11-12T14:00:00Z"));
       t.directory([...STAFF, ODALYS]);
@@ -63,7 +64,9 @@ export const NOV12_R36_WRITTEN_CA_FIRST_NAME_CASES: ReplayCase[] = [
       t.draftWrites({ observation: OBSERVATION });
       const id = await thread.create();
       expect(t.values(id).observation ?? "", "the stand-in's Observation was not saved").toMatch(/Odalys arrived/);
-      expect(notices(t.draftReplies!()), "the draft said it left her out").not.toMatch(/left out/i);
+      const said = notices(t.draftReplies!());
+      expect(said, "the draft said it left her out").not.toMatch(/left out Pemberley/i);
+      expect(said, said).toMatch(/names the employee as Odalys only; tell me if you want the full name there\./);
     },
   },
 ];
