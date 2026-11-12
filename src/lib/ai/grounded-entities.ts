@@ -1,5 +1,5 @@
 import { PRODUCTION_SALONS } from "@/data/salons";
-import { formNameFromRosterEnabled, typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
+import { formNameFromRosterEnabled, sameNameAsksWhichEnabled, typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
 import { readCaPolicy } from "@/lib/forms/ca-policy";
 import { namesThisCompany } from "@/lib/forms/company-name";
 import { namesCompanyPositionTitle } from "@/lib/forms/staff-picker";
@@ -109,6 +109,27 @@ export function readGroundedChoice(
   reply: string,
   people: readonly GroundedPerson[],
 ): { kind: "person"; id: string; name: string } | { kind: "keep"; typed: string } | null {
+  /*
+   * SAME_NAME_ASKS_WHICH_ENABLED: by this point the question carries the saved form state around the manager's words
+   * ("The form is …\nThe employee is …\n2", or "…\nWarning level: verbal."), so a bare "2" was never read as the
+   * answer. On, each line is tried and the first that answers the choice is the answer.
+   */
+  if (sameNameAsksWhichEnabled()) {
+    const lines = reply.split("\n").map((line) => line.trim()).filter(Boolean);
+    for (const line of lines.length > 0 ? lines : [reply]) {
+      const choice = readGroundedChoiceLine(history, line, people);
+      if (choice) return choice;
+    }
+    return null;
+  }
+  return readGroundedChoiceLine(history, reply, people);
+}
+
+function readGroundedChoiceLine(
+  history: readonly { role: string; content: string }[],
+  reply: string,
+  people: readonly GroundedPerson[],
+): { kind: "person"; id: string; name: string } | { kind: "keep"; typed: string } | null {
   const asked = [...history].reverse().find((turn) => turn.role === "assistant");
   if (!asked) return null;
   const labeled = parseLabeledQuestion(asked.content);
@@ -162,8 +183,10 @@ export function applyGroundedProposal(
   },
 ): AskResponse {
   let content = response.content;
+  // SAME_NAME_ASKS_WHICH_ENABLED: two or more roster matches are still a choice with TYPED_NAME_PROCEEDS on.
+  const sameNameChoice = sameNameAsksWhichEnabled() && input.prep.ambiguous.length > 1;
   if (
-    !typedNameProceedsEnabled() &&
+    (!typedNameProceedsEnabled() || sameNameChoice) &&
     (input.prep.ambiguous.length > 1 || content.startsWith("Did you mean **"))
   ) {
     content = labelDuplicateQuestion(content, input.people, input.prep.ambiguousTyped);
@@ -245,7 +268,8 @@ function gateMentions(
       if (match.name !== name) next = replacePhrase(next, name, match.name);
       continue;
     }
-    if (match.kind === "confirm" && typedNameProceedsEnabled()) {
+    // SAME_NAME_ASKS_WHICH_ENABLED: one close match stays a note; two or more fall through to the choice below.
+    if (match.kind === "confirm" && typedNameProceedsEnabled() && !(sameNameAsksWhichEnabled() && match.candidates.length > 1)) {
       continue;
     }
     if (match.kind === "confirm" && match.candidates.length === 1) {
@@ -318,6 +342,17 @@ function personForOption(option: LabeledOption, people: readonly GroundedPerson[
   const named = people.filter((person) => displayName(person) === option.name);
   if (named.length === 1) return named[0]!;
   const salon = uniqueRosterSalon(option.detail);
+  /*
+   * SAME_NAME_ASKS_WHICH_ENABLED: two people with one name at ONE salon share the salon, so the first salon match was
+   * always the first person — "2" for the Assistant Salon Director chose the Tanning Consultant. On, the option is the
+   * one person whose salon AND title both fit its label; none or several, and nobody is chosen.
+   */
+  if (sameNameAsksWhichEnabled()) {
+    const fits = named.filter(
+      (person) => (!salon || salonLabel(person) === salon) && (!person.title || option.detail.includes(person.title)),
+    );
+    return fits.length === 1 ? fits[0]! : null;
+  }
   const hit = named.find((person) => {
     if (salon && salonLabel(person) === salon) return true;
     return Boolean(person.title && option.detail.includes(person.title));

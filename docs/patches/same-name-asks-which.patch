@@ -1,0 +1,22 @@
+diff --git a/src/lib/ai/form-proposal.ts b/src/lib/ai/form-proposal.ts
+index c108ffeb1..827cc466f 100644
+--- a/src/lib/ai/form-proposal.ts
++++ b/src/lib/ai/form-proposal.ts
+@@ -118,6 +118,7 @@ import {
+   payrollAmountFieldEnabled,
+   storedSlotsNotARequestEnabled,
+   typedNameProceedsEnabled,
++  sameNameAsksWhichEnabled,
+   secondRequestOwnAccountEnabled,
+ } from "@/lib/config/chat-quality-flags";
+ import { currentFormRequestText } from "@/lib/forms/current-request";
+@@ -1076,7 +1077,8 @@ async function checkTypedEmployee(
+   }
+ 
+   const names = result.candidates.map((candidate) => candidate.name);
+-  if (typedNameProceedsEnabled()) {
++  // SAME_NAME_ASKS_WHICH_ENABLED: one close match stays a note; two or more roster matches are still a question.
++  if (typedNameProceedsEnabled() && !(sameNameAsksWhichEnabled() && result.candidates.length > 1)) {
+     const kept = tidyTypedName(typed.employeeName);
+     const different = names.filter((name) => name.trim().toLowerCase() !== kept.toLowerCase());
+     const note = inlineCloseMatch(kept, different);

@@ -16,6 +16,7 @@ import {
   notANameGuardEnabled,
   titleWholeWordEnabled,
   typedNameProceedsEnabled,
+  sameNameAsksWhichEnabled,
   namedFormExactEnabled,
   remapIncidentFixEnabled,
   warningLevelManagerOnlyEnabled,
@@ -945,7 +946,8 @@ function groundEmployee(
   if (match.kind === "confirm") {
     const rows = match.candidates.map((candidate) => asGrounded(candidate.employee, people));
     // One close roster match can still supply the salon. The name stays as typed.
-    if (typedNameProceedsEnabled()) {
+    // SAME_NAME_ASKS_WHICH_ENABLED: two or more roster matches are still a choice ("Which person did you mean…?").
+    if (typedNameProceedsEnabled() && !(sameNameAsksWhichEnabled() && rows.length > 1)) {
       return { person: rows.length === 1 ? rows[0]! : null, name: probe, ambiguous: [], typed: probe };
     }
     const words = probe.split(/\s+/).filter(Boolean);
