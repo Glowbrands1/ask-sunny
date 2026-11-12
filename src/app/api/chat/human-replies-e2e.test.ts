@@ -22,9 +22,11 @@ import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
  *    drawn from your messages above. I have the employee and the salon."
  *
  * With HUMAN_REPLIES_ENABLED the first card turn is as built; every later
- * turn for the same form and employee says what changed in one line ("Got it
- * — the date's 10/14."), leaves out what the manager already read, keeps
- * every question, and says "Nothing's saved until you tap **Create draft**."
+ * turn for the same form and employee says what changed in one line, in place
+ * of the opener ("I'll draft a **Corrective Action Form** for **<name>** — got
+ * it, the date's 10/14."; coaching: "Got it — the date's 10/14."). Changed on
+ * purpose (QA's ruling (b), 12 Nov 2026): NOTHING ELSE changes — every card
+ * line, question, read-back and the save notice stay as built, word for word.
  * The card itself is the same with the flag on or off.
  *
  * Every turn goes through POST /api/chat, in all lowercase and in sentence
@@ -367,7 +369,14 @@ const CA_OPENER =
   "I'll draft a **Corrective Action Form** for **Avery Testperson** from what you've described, and check the applicable company policy before anything policy-related goes on it.";
 const COACHING_OPENER = "Here is what I would put on a **Coaching Form**.";
 const LONG_NOTICE = "nothing is saved to anyone's file until you do.";
-const SHORT_NOTICE = "Nothing's saved until you tap **Create draft**.";
+const CA_LEAD = "I'll draft a **Corrective Action Form** for **Avery Testperson**";
+
+/** A later turn: its first line replaced, every other line as built. */
+function laterTurn(before: string, first: string): string {
+  const rest = before.split("\n").slice(1);
+  while (rest.length > 0 && (rest[0]!.trim() === "" || /^Everything I need is here/.test(rest[0]!.trim()))) rest.shift();
+  return [first, rest.join("\n")].join("\n\n");
+}
 
 /** The card without its random id: the same with the flag on or off. */
 function card(proposal: ChatFormProposal | undefined) {
@@ -411,23 +420,18 @@ describe.each(PROFILES)("(1) the opener is said once (%s)", (_label, flags) => {
         expect(reply.content).toContain(LONG_NOTICE);
       }
 
-      // After: turn 1 is unchanged, and the opener is said once in the chat.
+      // After: turn 1 is unchanged, and the opener's long tail is said once in the chat.
       expect(after[0]!.content).toBe(before[0]!.content);
       const chat = after.map((reply) => reply.content).join("\n\n");
       expect(count(chat, CA_OPENER)).toBe(1);
-      expect(count(chat, LONG_NOTICE)).toBe(1);
-      expect(after[1]!.content.split("\n")[0]).toBe("Got it — no payroll deduct.");
-      expect(after[2]!.content.split("\n")[0]).toBe("Got it — the date's 10/14.");
-      expect(after[3]!.content.split("\n")[0]).toBe("Got it — it's a written warning.");
-      for (const reply of after.slice(1)) {
-        expect(reply.content).toContain(SHORT_NOTICE);
-        // (2) Answered, so not asked again, and not read back again either.
-        expect(reply.content).not.toContain("I won't answer it for you");
+      // Each later turn: its first line says what changed; every other line is the card as built (QA's ruling (b)).
+      expect(after[1]!.content).toBe(laterTurn(before[1]!.content, `${CA_LEAD} — got it, no payroll deduct.`));
+      expect(after[2]!.content).toBe(laterTurn(before[2]!.content, `${CA_LEAD} — got it, the date's 10/14.`));
+      expect(after[3]!.content).toBe(laterTurn(before[3]!.content, `${CA_LEAD} — got it, it's a written warning.`));
+      for (const reply of after) {
+        expect(reply.content).toContain(LONG_NOTICE);
+        expect(reply.content).toContain("**Policy:** Late Opening");
       }
-      expect(after[2]!.content).not.toContain("Is payroll deduct applicable?");
-      expect(after[3]!.content).not.toContain("Is payroll deduct applicable?");
-      // The policy line is read once, on the first card.
-      expect(count(chat, "**Policy:** Late Opening")).toBe(1);
 
       // The card itself does not change.
       after.forEach((reply, index) => expect(card(reply.formProposal)).toEqual(card(before[index]!.formProposal)));
@@ -445,10 +449,10 @@ describe.each(PROFILES)("(1) the opener is said once (%s)", (_label, flags) => {
       expect(before[1]!.content).toContain("Everything I need is here, drawn from your messages above.");
 
       expect(after[0]!.content).toBe(before[0]!.content);
-      expect(after[1]!.content.split("\n")[0]).toBe("Got it — the date's 10/14.");
+      expect(after[1]!.content).toBe(laterTurn(before[1]!.content, "Got it — the date's 10/14."));
       expect(after[1]!.content).not.toContain(COACHING_OPENER);
       expect(after[1]!.content).not.toContain("Everything I need is here");
-      expect(after[1]!.content).toContain(SHORT_NOTICE);
+      expect(after[1]!.content).toContain(LONG_NOTICE);
       after.forEach((reply, index) => expect(card(reply.formProposal)).toEqual(card(before[index]!.formProposal)));
     });
   });
