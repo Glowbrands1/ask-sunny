@@ -91,3 +91,16 @@ export function repeatsOldText(old: string, added: string): boolean {
       return bare.length >= 12 && said.includes(bare);
     });
 }
+
+/*
+ * QA's ruling (b), 12 Nov 2026: only an add that reads as an account (what happened) goes under Observed. An
+ * expectation or instruction ("she must practice the sanitizing checklist every shift", "needs to clock in on time",
+ * "she will set a reminder") keeps the writer's old append, and is never lower-cased into the Observed paragraph.
+ */
+const EXPECTATION_OR_INSTRUCTION =
+  /\b(?:must|needs?\s+to|should|ought\s+to|has\s+to|have\s+to|(?:is|are)\s+(?:expected|required)\s+to|going\s+forward)\b|^\s*(?:\S+\s+){0,2}will\b/i;
+
+/** The added text reads as an account of what happened, not an expectation or an instruction. */
+export function readsAsAccount(added: string): boolean {
+  return added.trim() !== "" && !EXPECTATION_OR_INSTRUCTION.test(added.trim());
+}

@@ -13,7 +13,7 @@ import {
   stepBSectionSpacingEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { madeAbout } from "@/lib/ai/make-it-about";
-import { addUnderObserved, hasSections, repeatsOldText, tailAfterLastSection, withSectionSpacing } from "./outline-sections";
+import { addUnderObserved, hasSections, readsAsAccount, repeatsOldText, tailAfterLastSection, withSectionSpacing } from "./outline-sections";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { isGlossaryTerm } from "@/lib/ai/chat-glossary";
 
@@ -557,19 +557,20 @@ export async function writeFormEdits(instanceId: string, ops: readonly FormEditO
          * the old field (it wrote the Observation twice). Only the old field with new lines after its last section is
          * moved under Observed; any other add that repeats the field is left to the writer as it was before this flag.
          */
-        if (!hasSections(value) && !repeatsOldText(current, value)) {
+        // QA's ruling (b): only an account goes under Observed; an expectation or instruction is appended as before.
+        if (!hasSections(value) && !repeatsOldText(current, value) && readsAsAccount(value)) {
           written = addUnderObserved(current, value);
           how[key] = "replace";
         } else if (hasSections(value)) {
           const tail = tailAfterLastSection(current, value);
-          if (tail !== null) {
+          if (tail !== null && readsAsAccount(tail)) {
             written = addUnderObserved(current, tail);
             how[key] = "replace";
           }
         }
       } else if (underObserved && how[key] === "replace") {
         const tail = tailAfterLastSection(current, value);
-        if (tail !== null) written = addUnderObserved(current, tail);
+        if (tail !== null && readsAsAccount(tail)) written = addUnderObserved(current, tail);
       }
       if (spacing && how[key] !== "add") written = withSectionSpacing(current, written);
       set[key] = written;

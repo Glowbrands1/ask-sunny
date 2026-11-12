@@ -1,4 +1,3 @@
-import { stepBAddUnderObservedEnabled } from "@/lib/config/chat-quality-flags";
 import { expect } from "vitest";
 
 import { KEARNEY, claimsFormChange, noClaimWithoutUpdate, replyMatchesDiff, savedForm, type ReplayAnswer, type ReplayCase, type ReplayContext, type ReplayThread } from "./cases";
@@ -259,11 +258,9 @@ const STEP_B_CASES: readonly ReplayCase[] = [
          * Changed on purpose (10 Nov 2026, as in the sibling app's off-flag audit): with STEP_B_ADD_UNDER_OBSERVED the add
          * goes at the end of the "Observed:" part, before "Expectation:", instead of after it.
          */
-        if (stepBAddUnderObservedEnabled()) {
-          expect(observation, "the add is not in the Observed part").toMatch(/^Observed:\n[^]*practice the sanitizing checklist every shift\.?\n\nExpectation:/i);
-        } else {
-          expect(observation, "the add never reached the Observation").toMatch(/practice the sanitizing checklist every shift\.?$/i);
-        }
+        // QA's ruling (b), 12 Nov 2026: "she Must Practice the sanitizing checklist every shift." is an instruction, not an
+        // account, so STEP_B_ADD_UNDER_OBSERVED leaves it where the writer appends it, flag on or off.
+        expect(observation, "the add never reached the Observation").toMatch(/practice the sanitizing checklist every shift\.?$/i);
       });
     },
   },

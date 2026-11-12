@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { addUnderObserved, hasSections, tailAfterLastSection, withSectionSpacing } from "./outline-sections";
+import { addUnderObserved, hasSections, readsAsAccount, repeatsOldText, tailAfterLastSection, withSectionSpacing } from "./outline-sections";
 
 // QA's live draft test, 8 Nov 2026 (the person invented).
 const OLD = "Observed:\nOttoline missed the monthly meeting on 10/10/26.\n\nExpectation:\nOttoline attends every meeting.\n\nGoing Forward:\nOttoline will set reminders.";
@@ -28,5 +28,27 @@ describe("outline sections", () => {
   it("keeps one blank line before each heading when the field had them", () => {
     expect(withSectionSpacing(OLD, OLD.replace(/\n\n/g, "\n"))).toBe(OLD);
     expect(withSectionSpacing("Observed:\nA\nExpectation:\nB", "Observed:\nA\nExpectation:\nC")).toBe("Observed:\nA\nExpectation:\nC");
+  });
+});
+
+describe("QA's ruling (b), 12 Nov 2026: only an account goes under Observed", () => {
+  it.each(["She was reminded about the meeting twice.", "she was also on her phone", "Marnie was reminded of the policy."])("%j is an account", (said) => {
+    expect(readsAsAccount(said)).toBe(true);
+  });
+
+  it.each([
+    "she Must Practice the sanitizing checklist every shift.",
+    "she needs to clock in on time",
+    "Jane is expected to arrive on time",
+    "she will set a reminder for every meeting",
+    "She should follow the dress code",
+  ])("%j is an expectation or instruction", (said) => {
+    expect(readsAsAccount(said)).toBe(false);
+  });
+
+  it("an add that repeats the field's own text is not new", () => {
+    const old = "Observed:\nOttoline missed the monthly meeting on 10/10/26.\n\nExpectation:\nOttoline attends every meeting.";
+    expect(repeatsOldText(old, "Observed: Ottoline missed the monthly meeting on 10/10/26. She was reminded twice.")).toBe(true);
+    expect(repeatsOldText(old, "She was reminded twice.")).toBe(false);
   });
 });

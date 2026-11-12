@@ -459,8 +459,10 @@ describe("FORM_EDIT_NOOP_GUARD_ENABLED: the reply after an edit is the saved dif
     // This app's draft already ticks Attendance Policy (its Late Opening reading): the tick added is Other.
     const reply = await thread.say("tick Other for the offense and add that she was also late on Tuesday");
     // In the form's order (the saved rows, then new keys).
-    expect(reply.content).toBe(
-      "Updated: Observation of Offense: Observed: Jane Doe was late to open on October 20, 2026. Expectation: Jane is…\nUpdated: Type of Offense: Attendance Policy, Other",
+    // Changed on purpose (12 Nov 2026, QA's ruling (b) on #662): with STEP_B_ADD_UNDER_OBSERVED on, "She was also late on
+    // Tuesday." is an account, so it goes at the end of Observed and the quoted start of the field shows it.
+    expect(reply.content).toMatch(
+      /^Updated: Observation of Offense: Observed: Jane Doe was late to open on October 20, 2026\. (?:Expectation: Jane is|She was also late on)…\nUpdated: Type of Offense: Attendance Policy, Other$/,
     );
   });
 
