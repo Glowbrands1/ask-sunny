@@ -9,6 +9,16 @@ earlier-step reader lists is never a Follow-up line. Ask Bubbles' card has no
 Follow-up lines (`enrichFormCard` does not run on its grounded path), so there
 is nothing to port.
 
+## 26 Oct 2026: the six EPP templates are hidden in Ask Bubbles — Sunny keeps them (Bubbles-only)
+
+Ask Bubbles hid the SDIT, TSD, ASD-SDIT and FTTC EPPs and both DMIT EPP
+readings, which it had carried over from this app with Sunny's content (QA
+decision; Bubbles' `HIDDEN_TEMPLATE_KEYS`). Not ported: these are Ask Sunny's
+own plans, and Sunny-only content stays Sunny-only. Sunny has no hidden list
+and none of the six is in `WITHHELD_FROM_CHOOSER`;
+`src/lib/forms/epp-templates-lock-oct26.test.ts` locks that all six stay
+seeded, active and listed with a published version.
+
 ## 25 Oct 2026: two unflagged full-remap changes in integration bundle 2 — same in both apps
 
 Neither is behind its own flag, and neither changes production today: both

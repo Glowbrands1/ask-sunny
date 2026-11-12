@@ -83,11 +83,10 @@ export const NOV7_NEAR_MISS_DETAILS_CASES: ReplayCase[] = CHATS.flatMap(({ id, p
     title: `negative: the same chat, but "no, …" before the details: the asked name is not taken`,
     report: REPORT,
     status: "fixed",
-    fixFlags: [...NAME_SET, FLAG],
-    // Here the asked name reaches the card after "no, …" with or without NEAR_MISS_DETAILS_ACCEPT (it fails the same with
-    // that flag's code taken out): another reader seats the near-miss. Not this flag's acceptance, which never takes a
-    // turn that opens with "no" (`forms/near-miss-answer.test.ts`); reported to QA, 7 Nov 2026.
-    fixStatus: { open: "after \"Is this for <name>?\", \"no, verbal warning …\" still gives a card for <name>, from a reader other than this flag's" },
+    // Changed on purpose (QA's Sunny round-4 gate, 8 Nov 2026): the name read again from the first turn and seated as its
+    // roster near-miss is taken off by NEAR_MISS_QUESTION_RULES_ENABLED (`forms/near-miss-question-rules.ts`), which
+    // ships with the name set; the open mark goes.
+    fixFlags: [...NAME_SET, FLAG, "NEAR_MISS_QUESTION_RULES_ENABLED"],
     async run(t) {
       vi.setSystemTime(new Date("2026-11-04T15:30:00Z"));
       t.directory([...STAFF, CORVINA, DELPHINE]);
@@ -96,7 +95,11 @@ export const NOV7_NEAR_MISS_DETAILS_CASES: ReplayCase[] = CHATS.flatMap(({ id, p
       const first = await thread.say(turns[0]);
       const reply = await thread.say(`no, ${turns[1]}`);
       // Only an answer to the question can turn it down; where the name was not asked about, this checks nothing.
-      if (ASKED.test(first.content)) expect(thread.proposal?.employeeName ?? null, `the turned-down name is on the card:\n${reply.content}`).not.toBe(person);
+      if (ASKED.test(first.content)) {
+        expect(thread.proposal?.employeeName ?? null, `the turned-down name is on the card:\n${reply.content}`).not.toBe(person);
+        expect(reply.content, `the reply drafts for the turned-down name:\n${reply.content}`).not.toContain(`**${person}**`);
+        expect(reply.content, `the reply does not ask who:\n${reply.content}`).toMatch(/Who is this form for\?/);
+      }
     },
   },
 ]);

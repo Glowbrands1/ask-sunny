@@ -1,6 +1,8 @@
 import { expect, vi } from "vitest";
 
 import { KEARNEY, type ReplayCase, type ReplayContext } from "./cases";
+import { NOV7_EDIT_POLICY_ASK_CASES } from "./nov7-edit-policy-ask-cases";
+import { NOV7_STEP_B_REFUSAL_CASES } from "./nov7-step-b-refusals-cases";
 import { REFUSAL_ROSTER, STEP_B_READER_FLAGS, patch } from "./nov7-step-b-refusals-scenarios";
 
 /**
@@ -129,7 +131,8 @@ export const NOV9_MADE_ABOUT_REWRITE_FINISHES_CASES: ReplayCase[] = [
     id: "nov9-made-about-rewrite-finishes-undated-reader-details",
     title: "QA's live turn 2, \"make it about showing up late\" (no date), the reader rewrites Details: Details and Other together, the Date stays and the reply says so",
     report: `${REPORT} (turn 2: "make it about showing up late" answered "I haven't changed …")`,
-    status: { open: "an undated made-about turn whose reader rewrote Details is refused and handed to the old path" },
+    // Changed on purpose (10 Nov 2026): fixed in production by MADE_ABOUT_UNDATED_TOGETHER, QA round 15.
+    status: "fixed",
     fixFlags: UNDATED_FIX,
     async run(t) {
       vi.setSystemTime(new Date("2026-11-09T22:01:00Z"));
@@ -156,4 +159,18 @@ export const NOV9_MADE_ABOUT_REWRITE_FINISHES_CASES: ReplayCase[] = [
       expect(t.calls().revision - revisionsBefore, "the old path's revision ran a second time").toBe(1);
     },
   },
+  ...[
+    ["nov7-refusal-sun-late-date", NOV7_STEP_B_REFUSAL_CASES],
+    ["nov7-edit-policy-ask-sun-late-date", NOV7_EDIT_POLICY_ASK_CASES],
+  ].map(([id, cases]): ReplayCase => {
+    const source = (cases as readonly ReplayCase[]).find((replay) => replay.id === id)!;
+    return {
+      id: `nov9-made-about-rewrite-finishes-said-date-${id}`,
+      title: `QA's round-14 gate: ${source.title} — with MADE_ABOUT_REWRITE_FINISHES, READER_ACCOUNT and UNDATED_TOGETHER on`,
+      report: "QA's round-14 gate (9 Nov 2026): with the trio on, \"I need you to make it about showing up late and please list the policy make the date for 10/14/26\" answered \"I haven't changed …\": the turn says the form's date, and its reader's Details was set aside as an undated turn's",
+      status: "fixed",
+      fixFlags: [...UNDATED_FIX, "EDIT_POLICY_ASK_ENABLED"],
+      run: source.run,
+    };
+  }),
 ];

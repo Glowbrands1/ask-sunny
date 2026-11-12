@@ -62,7 +62,8 @@ export const NOV5_GATE_ROSTER_ONLY_CLAIMS_CASES: ReplayCase[] = [
     title: "gate regression 2: \"create a CA form for ima employee, for opening salon late on 9-28-26\" asks who; the Observation is \"opening salon late on 9-28-26\", never \"ima employee, …\"",
     report: "ask-sunny#530 (the sales-flip gate, 5 Nov 2026): nov5-roster-only-ima-off-roster, on — asks who, but the Observation becomes \"ima employee, opening salon late on 9-28-26\"",
     // As nov5-roster-only-ima-off-roster: with production's flags (FORM_NAME off) the card is for "ima", a name on no roster.
-    status: { open: "the card is for \"ima\", a name on no roster (FORM_NAME_FROM_ROSTER_ENABLED off)" },
+    // Changed on purpose (10 Nov 2026): fixed in production by the roster-name set (FORM_NAME_FROM_ROSTER and companions), QA round 22; it now holds with production's flags.
+    status: "fixed",
     fixFlags: [FLAG, SALES, GLOSSARY],
     async run(t) {
       vi.setSystemTime(new Date("2026-11-05T15:30:00Z"));

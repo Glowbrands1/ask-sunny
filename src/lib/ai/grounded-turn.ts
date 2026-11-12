@@ -14,6 +14,7 @@ import {
   secondRequestOwnAccountEnabled,
 } from "@/lib/config/chat-quality-flags";
 import type { AskResponse } from "@/lib/ai/types";
+import { withAccountTurnSources } from "@/lib/ai/account-turn-sources";
 import { conversationKeyOf } from "@/lib/forms/conversation-key";
 import { formOpenedFor, openingLine } from "@/lib/forms/editable-draft";
 import { withKeptTypedNames } from "@/lib/forms/kept-typed-names";
@@ -85,7 +86,8 @@ export async function deliverFormProposal(input: {
           wovenNoteShown: input.request.history.some((turn) => /Woven has \*\*/.test(turn.content)),
         });
     // KEEP_FORM_EMPLOYEE_ENABLED: "for Test Employee" stays Test Employee on the card. See `withTypedEmployeeOnCard`.
-    return withEditDateRules(
+    // ACCOUNT_BEFORE_REQUEST_ENABLED: the account the card shows, given before its request, is cited (`ai/account-turn-sources.ts`).
+    return withAccountTurnSources(withEditDateRules(
       withTypedEmployeeOnCard(
         holdFilledSlots({
           response: enriched,
@@ -97,7 +99,7 @@ export async function deliverFormProposal(input: {
         input.request.question,
       ),
       input,
-    );
+    ), input.request.history);
   }
 
   /*
@@ -152,7 +154,8 @@ export async function deliverFormProposal(input: {
     : applied;
 
   const settled = withVisibleSalon(enriched, input);
-  const held = withEditDateRules(
+  // ACCOUNT_BEFORE_REQUEST_ENABLED: the account the card shows, given before its request, is cited (`ai/account-turn-sources.ts`).
+  const held = withAccountTurnSources(withEditDateRules(
     withTypedEmployeeOnCard(
       holdFilledSlots({
         response: settled,
@@ -164,7 +167,7 @@ export async function deliverFormProposal(input: {
       input.request.question,
     ),
     input,
-  );
+  ), input.request.history);
   const reopened = await reopenSameIncident(dedupe, input, held);
   if (reopened) {
     await writeSaved(keepState, input, saved, held, prep);

@@ -4,7 +4,7 @@ import { businessToday } from "@/lib/business-date";
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { storeNameKey } from "@/lib/reporting/store-identity";
 
-import { groundedEntitiesEnabled, intentExtractionEnabled, thisPersonsTurnsEnabled, typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
+import { formNameNotATitleEnabled, groundedEntitiesEnabled, intentExtractionEnabled, thisPersonsTurnsEnabled, typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
 import { isDocumentName, isRosterStateName } from "@/lib/ai/not-a-person";
 
 import { extractFormDate } from "./form-date-answer";
@@ -1807,6 +1807,21 @@ export function titleAfterJobTitleLabel(text: string): string | null {
   return value;
 }
 
+/**
+ * FORM_NAME_NOT_A_TITLE_ENABLED (QA's prod-env reading, 10 Nov 2026, D5; default off): a title word straight before
+ * "EPP" ("SDIT EPP", "TSD EPP", "ASD/SDIT EPP") is the requested form's name, not the employee's title.
+ */
+const FORM_NAME_AFTER = /^(?:\s*\/\s*[a-z]{2,5})?\s+epps?\b/i;
+
+/** FORM_NAME_NOT_A_TITLE_ENABLED: the title word again, after `from`, and not the form's name this time. */
+function titleSaidLater(pattern: RegExp, text: string, from: number): boolean {
+  const flags = pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`;
+  for (const later of text.slice(from).matchAll(new RegExp(pattern.source, flags))) {
+    if (!FORM_NAME_AFTER.test(text.slice(from + later.index! + later[0].length))) return true;
+  }
+  return false;
+}
+
 export function extractJobTitle(text: string): string | null {
   const states = new Set(PRODUCTION_SALONS.map((salon) => salon.state.toLowerCase()));
   for (const entry of JOB_TITLES) {
@@ -1816,6 +1831,12 @@ export function extractJobTitle(text: string): string | null {
     // A roster state is also the abbreviation for Salon Director. "empire, sd"
     // and "at SD Sioux Falls" name the state, not the job.
     if (states.has(word) && stateNamesAPlace(text, match.index ?? 0, match[0].length, word)) continue;
+    // FORM_NAME_NOT_A_TITLE_ENABLED: "Create an SDIT EPP for <name>" names the form, not the employee's title.
+    if (formNameNotATitleEnabled() && FORM_NAME_AFTER.test(text.slice((match.index ?? 0) + match[0].length))) {
+      // A later mention that is the person's title ("… she is an SDIT") still is one.
+      if (titleSaidLater(entry.pattern, text, (match.index ?? 0) + match[0].length)) return entry.title;
+      continue;
+    }
     return entry.title;
   }
   return null;
