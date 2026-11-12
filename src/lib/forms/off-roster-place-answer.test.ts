@@ -57,3 +57,14 @@ describe("OFF_ROSTER_PLACE_ANSWER_ENABLED", () => {
     expect(notAllowed.content).toMatch(/I read \*\*KS Manhattan\*\* as the salon/);
   });
 });
+
+describe("a salon manager's salon-only answer stays OFF_ROSTER_STORE_ANSWER_ONLY's", () => {
+  it("on: a directory salon from a salon director is left to that path; from an admin it is read here", () => {
+    vi.stubEnv("OFF_ROSTER_PLACE_ANSWER_ENABLED", "true");
+    const director = { level: "salon", primaryAreaId: "loc-0309", alsoCoversAreaIds: [] } as never;
+    const admin = { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] } as never;
+    expect(placeAnswerOf("kearney, ne", history, director)).toBeNull();
+    expect(placeAnswerOf("kearney, ne", history, admin)).toMatchObject({ pending: C, salonId: "loc-0309" });
+    expect(placeAnswerOf("IA Altoona", history, director)).toMatchObject({ pending: C, salonId: null });
+  });
+});

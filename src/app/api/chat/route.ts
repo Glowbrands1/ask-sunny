@@ -266,7 +266,7 @@ async function postChat(request: Request) {
       let placeAnswer: import("@/lib/forms/off-roster-place-answer").PlaceAnswer | null = null;
       if (offRosterPlaceAnswerEnabled()) {
         const places = await import("@/lib/forms/off-roster-place-answer");
-        const found = places.placeAnswerOf(asked.question, asked.history);
+        const found = places.placeAnswerOf(asked.question, asked.history, context.identity.scope);
         const typed = found ? places.placeAnswerTurn(found, asked.history) : null;
         if (found && typed) {
           placeAnswer = found;

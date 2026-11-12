@@ -78,9 +78,15 @@ export function placeOnly(text: string): { salonId: string | null } | null {
 
 type Turn = { readonly role: string; readonly content: string };
 
-/** The open offer's name and the place, when this turn is only a place answering it. Off, or any other turn, null. */
-export function placeAnswerOf(question: string, history: readonly Turn[]): PlaceAnswer | null {
+/**
+ * The open offer's name and the place, when this turn is only a place answering it. Off, or any other turn, null. A
+ * salon manager's salon-only answer is OFF_ROSTER_STORE_ANSWER_ONLY's (`off-roster-ask.ts`), which holds the card with
+ * its salon as it stands; this reader leaves it there (the sibling app's gate check on a merge with its STORE_ALIAS,
+ * 12 Nov 2026).
+ */
+export function placeAnswerOf(question: string, history: readonly Turn[], scope?: AccessScope | null): PlaceAnswer | null {
   if (!offRosterPlaceAnswerEnabled()) return null;
+  if (scope?.level === "salon" && storeOnlyAnswer(question)) return null;
   const lastAssistant = [...history].reverse().find((turn) => turn.role === "assistant");
   const pending = offeredOffRosterName(lastAssistant?.content);
   if (!pending) return null;
@@ -121,7 +127,8 @@ export function withPlaceAnswer<T extends { content: string; formProposal?: Card
   const allowed = salon && authorizeLocation(scope ?? null, salon.id).kind === "authorized";
   const account = answer.content
     .split(/\n{2,}/)
-    .filter((paragraph) => !LEAD.test(paragraph.trim()))
+    // The lead, and any line that names the person still unconfirmed ("What is **<c>**'s position …"), are not the account.
+    .filter((paragraph) => !LEAD.test(paragraph.trim()) && !paragraph.toLowerCase().includes(place.pending.toLowerCase()))
     .join("\n\n")
     .trim();
   const noted = allowed
