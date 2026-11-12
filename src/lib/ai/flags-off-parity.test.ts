@@ -622,6 +622,8 @@ const NEW_FLAGS = [
   // coding 6: REQUEST_ISSUE_KEPT (ported from Ask Bubbles, QA round 17b; default off).
   "REQUEST_ISSUE_KEPT_ENABLED",
   "GROUP_WORDS_NOT_A_NAME_ENABLED",
+  // coding 6: EXIT_NOTICE_STATED_ONLY (ported from Ask Bubbles, QA 12 Nov 2026; default off).
+  "EXIT_NOTICE_STATED_ONLY_ENABLED",
 ] as const;
 
 const PROTECTED = [
