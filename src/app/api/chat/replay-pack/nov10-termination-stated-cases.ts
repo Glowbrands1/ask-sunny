@@ -92,6 +92,14 @@ const NEVER_STATED = [
   ["not-terminating", "I need a CA for Briony Halvorsen, we are not terminating her. Didn't show up for her opening shift."],
   ["next-one", "I need a written CA for Briony Halvorsen. Didn't show up for her opening shift. Next one is a term CA."],
   ["long-term", "I need a CA for Briony Halvorsen with a long term CA plan. Didn't show up for her opening shift."],
+  // Gate-Sunny's probe of c10df533 (12 Nov 2026), answered by the safe-by-design rule (QA): no negation or hedge.
+  ["shouldnt-terminate", "I need a CA for Briony Halvorsen. Didn't show up for her opening shift. We shouldn't terminate her."],
+  ["wouldnt-terminate", "I need a CA for Briony Halvorsen. Didn't show up for her opening shift. I wouldn't terminate him."],
+  ["couldnt-terminate", "I need a CA for Briony Halvorsen. Didn't show up for her opening shift. We couldn't terminate her yet."],
+  ["dont-want-term-ca", "I need a CA for Briony Halvorsen. Didn't show up for her opening shift. I don't want to make this a term CA."],
+  ["rather-than-term-ca", "I need a CA for Briony Halvorsen. Didn't show up for her opening shift. Write her up rather than a term CA."],
+  ["hold-off", "I need a CA for Briony Halvorsen. Didn't show up for her opening shift. Hold off on terminating her."],
+  ["decided-against", "I need a CA for Briony Halvorsen. Didn't show up for her opening shift. We decided against terminating her."],
 ] as const;
 
 export const NOV12_TERMINATION_NEVER_STATED_CASES: ReplayCase[] = NEVER_STATED.map(([key, said]) => ({
@@ -111,4 +119,33 @@ export const NOV12_TERMINATION_NEVER_STATED_CASES: ReplayCase[] = NEVER_STATED.m
       const id = await thread.create();
       expect(t.checked(id).warning_type ?? [], "Termination was ticked").not.toContain("termination");
     },
+}));
+
+/* Gate-Sunny's correctly ticking cases (12 Nov 2026): an incident clause after the statement does not block it. */
+// "I need a termination form …" opens the Resignation/Exit Form, not a CA card: its wording is a unit case only.
+const STATED_WITH_INCIDENT = [
+  ["terminating-never-showed", "CA for Briony Halvorsen. We are terminating her, she never showed."],
+  ["term-ca-did-not-show", "I need a term CA for Briony Halvorsen, she did not show up."],
+  // Gate-Sunny wrote "Termination CA for <name>, no call no show." (a unit case): the "I need" opens the card in both apps.
+  ["termination-ca-no-call-no-show", "I need a termination CA for Briony Halvorsen, no call no show."],
+] as const;
+
+export const NOV12_TERMINATION_STATED_INCIDENT_CASES: ReplayCase[] = STATED_WITH_INCIDENT.map(([key, said]) => ({
+  id: `nov12-termination-ticks-${key}`,
+  title: `"${said}": Termination as said, the approval line; Create ticks Termination`,
+  report: "Gate-Sunny's probe of TERMINATION_STATED_TICKS (12 Nov 2026): cases that must keep ticking",
+  status: { open: "the card leaves the level to the manager and Create leaves Type of Warning blank" },
+  fixFlags: ["TERMINATION_STATED_TICKS_ENABLED"],
+  async run(t) {
+    vi.setSystemTime(new Date("2026-11-09T16:35:00Z"));
+    t.directory([...STAFF, BRIONY]);
+    t.as("salon_director", KEARNEY);
+    const thread = t.thread();
+    const card = await thread.say(said);
+    expect(thread.proposal, `no CA card for Briony Halvorsen:\n${card.content}`).toMatchObject({ employeeName: "Briony Halvorsen" });
+    expect(card.content, "the card does not say Termination").toMatch(/\*\*Type of Warning:\*\* Termination, as you said/);
+    expect(card.content.split(APPROVAL).length - 1, "the approval line, exactly once").toBe(1);
+    const id = await thread.create();
+    expect(t.checked(id).warning_type ?? [], "Create did not tick Termination").toEqual(["termination"]);
+  },
 }));

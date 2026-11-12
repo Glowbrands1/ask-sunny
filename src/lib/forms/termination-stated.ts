@@ -13,62 +13,72 @@ import { TERMINATION_PLAN_CLOSING } from "./required-closing";
  * (10 Nov 2026, "A"): when the manager STATES the termination, tick it as their statement — the way a stated verbal or
  * written is — and say that it needs DM/HR approval before it is finalized.
  *
- * STATED, read a sentence at a time: "term CA", "termination CA / form / write-up", "CA for termination", "terminate
- * her", "she is being terminated", "warning level: termination", or a sentence that is only "termination" / "term".
- * NOT STATED: a hedge or a consequence ("she might be terminated if this continues", "up to and including
- * termination", "could lead to termination", "next time it's termination"), a question, a past one ("she was
- * terminated last year and rehired"), a negated one ("do not terminate her", "this is not a term CA"), one about a
- * later form ("next one is a term CA"), or "long term". Suspension and demotion are not read here. Pure.
+ * Safe by design (QA, 12 Nov 2026, after Gate-Sunny's probe of c10df533): a sentence ticks Termination ONLY when
+ * (1) it says none of the negations or hedges below — not, n't, no, never, without, rather, instead, against, hold off,
+ * avoid, unless, if, maybe, might, may, should, would, could, consider, thinking about, want to, next, later, future,
+ * "long term" — and (2) it makes one of the positive statements: "term CA", "termination CA / form / warning",
+ * "terminate her / him / them / <Name>", "<she> is being terminated", "we are terminating". Everything else leaves the
+ * level unticked, and the manager picks it on the form. Two readings keep the manager's own incident words from
+ * blocking a stated termination: "no call no show" is the absence, not a negation, and a clause after the statement
+ * whose subject is the employee ("…, she never showed", "…, she did not show up") is the incident — those clauses are
+ * still read for hedges, and never when they mention a termination. A question never ticks. Suspension and demotion
+ * are not read here. Pure.
  */
 
+/** (2) The positive statements. Only these tick. */
 const STATED = new RegExp(
   [
-    // "long term CA plan", "short-term" are no termination (Gate-Bubbles, R798).
-    String.raw`(?<!\b(?:long|short)[\s-])\bterm\s+(?:ca|c\/a|corrective(?:\s+action)?|write[- ]?up|form)\b`,
-    String.raw`\btermination\s+(?:ca|c\/a|corrective(?:\s+action)?|write[- ]?up|form|warning)\b`,
-    String.raw`\b(?:ca|c\/a|corrective\s+action(?:\s+form)?|write[- ]?up)\s+(?:for\s+|of\s+)?termination\b`,
-    String.raw`\bterminat(?:e|ing)\s+(?:her|him|them|this\s+employee|the\s+employee)\b`,
-    String.raw`\b(?:she|he|they|employee)\s+(?:is|are|will\s+be|has\s+been|have\s+been)\s+(?:being\s+)?terminated\b`,
-    String.raw`\b(?:warning\s+(?:level|type)|type\s+of\s+warning|level)\s*(?:is\s*|[:=-]\s*)termination\b`,
-    String.raw`^\s*(?:it'?s\s+(?:a\s+)?)?(?:term|termination)\s*[.!]?\s*$`,
+    String.raw`\bterm\s+(?:ca|c\/a)\b`,
+    String.raw`\btermination\s+(?:ca|c\/a|form|warning)\b`,
+    String.raw`\bterminate\s+(?:her|him|them)\b`,
+    String.raw`\b(?:is|are)\s+being\s+terminated\b`,
+    String.raw`\b(?:we\s+are|we['’]re)\s+terminating\b`,
   ].join("|"),
   "i",
 );
+/** "terminate <Name>": a capitalised name, read case-sensitively. */
+const TERMINATE_NAME = /\b[Tt]erminate\s+[A-Z][a-z'’-]+\b/;
 
-/** A hedge, a consequence or a condition: the sentence does not decide this form's level. */
-const NOT_DECIDED =
-  /\b(?:might|may|could|would|should\s+(?:she|he|they)|if|unless|until|possible|possibly|potential(?:ly)?|consider(?:ing)?|thinking|maybe|next\s+time|again|lead\s+to|result\s+in|up\s+to\s+and\s+including|warn(?:ed|ing)?\s+(?:her|him|them)|threat(?:en(?:ed)?)?|eventual(?:ly)?|risk)\b/i;
-
-/*
- * Gate-Bubbles' NO-GO (R798, 12 Nov 2026): a negated sentence decides no termination — "do not terminate her", "this is
- * not a term CA", "we are not terminating him", "not a termination warning", "no termination form needed", "never a
- * term", "isn't a termination", "a written instead of a termination" — and neither does one about another form later:
- * "next one is a term CA", "after this", "if it happens again".
- */
-// The negation must govern the termination ("no call no show" next to "termination CA" is the absence, not a denial).
-const NEGATED = new RegExp(
+/** (1) The hedges: read in the whole sentence, incident clauses included. */
+const HEDGE = new RegExp(
   [
-    String.raw`\b(?:not|no|never|nor|without|instead\s+of|(?:do|does|did|is|are|was|were|wo|ca)n['’]?t)\b(?:\W+\w+){0,3}?\W+(?:term\b|terminat)`,
-    String.raw`\bterm(?:ination)?\b(?:\s+(?:ca|form|write[- ]?up|warning))?\s+(?:is\s+|was\s+)?(?:not|isn['’]?t|no\s+longer)\b`,
+    String.raw`\b(?:rather|instead|against|avoid(?:ing)?|unless|if|maybe|might|may|should|would|could|consider(?:ing)?|later|future|next)\b`,
+    String.raw`\bhold(?:ing)?\s+off\b`,
+    String.raw`\bthinking\s+(?:about|of)\b`,
+    String.raw`\bwant(?:s|ed)?\s+to\b`,
+    String.raw`\blong[\s-]term\b`,
   ].join("|"),
   "i",
 );
-const ANOTHER_FORM = /\b(?:next\s+(?:one|form|ca|write[- ]?up|time)|after\s+this|if\s+it\s+happens\s+again|following\s+one|future)\b/i;
+/** (1) The negations: read everywhere but an incident clause after the statement. */
+const NEGATION = /\b(?:not|no|never|nor|cannot|without)\b|n['’]t\b/i;
 
-/** A termination already in the past: "she was terminated last year", "previously terminated". */
-const PAST = /\b(?:was|were|had\s+been|previously|before|last\s+(?:year|month|time))\b[^.!?]*\bterminat|\bterminat\w*\b[^.!?]*\b(?:last\s+(?:year|month|time)|before|previously|rehired)\b/i;
+/** The absence, not a negation: "no call no show", "no-call/no-show", "NCNS". */
+const NO_CALL_NO_SHOW = /\bno[\s-]?call\s*[,/&-]?\s*(?:and\s+)?no[\s-]?show\b|\bncns\b/gi;
+
+/** A clause after the statement that tells the incident: its subject is the employee ("she never showed"). */
+const INCIDENT_CLAUSE = /^\s*(?:and\s+|because\s+|as\s+|since\s+)?(?:she|he|they|the\s+employee)\b/i;
+
+function stated(clause: string): boolean {
+  return STATED.test(clause) || TERMINATE_NAME.test(clause);
+}
+
+/** Whether one sentence states a termination for this form. */
+function sentenceStatesTermination(sentence: string): boolean {
+  const said = sentence.trim();
+  if (said === "" || said.endsWith("?")) return false;
+  const words = said.replace(NO_CALL_NO_SHOW, " ");
+  if (!stated(words) || HEDGE.test(words)) return false;
+  const clauses = words.split(/[,;:–—]|\s-\s/);
+  const last = clauses.reduce((at, clause, i) => (stated(clause) ? i : at), -1);
+  const incident = (clause: string, i: number) => i > last && INCIDENT_CLAUSE.test(clause) && !/\bterm/i.test(clause);
+  return !clauses.some((clause, i) => !incident(clause, i) && NEGATION.test(clause));
+}
 
 /** Whether this text states a termination for the form being written. Off: false. */
 export function statesTermination(text: string): boolean {
   if (!terminationStatedTicksEnabled()) return false;
-  for (const sentence of (text ?? "").split(/(?<=[.!?;])\s+|\n+/)) {
-    const said = sentence.trim();
-    if (said === "" || said.endsWith("?")) continue;
-    if (!STATED.test(said)) continue;
-    if (NOT_DECIDED.test(said) || PAST.test(said) || NEGATED.test(said) || ANOTHER_FORM.test(said)) continue;
-    return true;
-  }
-  return false;
+  return (text ?? "").split(/(?<=[.!?;])\s+|\n+/).some(sentenceStatesTermination);
 }
 
 /** The option key a stated termination ticks on the Type of Warning group. */

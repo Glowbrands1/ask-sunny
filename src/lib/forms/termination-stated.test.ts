@@ -19,11 +19,16 @@ describe("TERMINATION_STATED_TICKS_ENABLED", () => {
   it.each([
     P15,
     "termination CA for Briony Halvorsen, no call no show",
-    "write up for termination",
     "we are going to terminate her today.",
     "She is being terminated.",
-    "Warning level: termination",
-    "Termination.",
+    // Gate-Sunny's correctly ticking cases (12 Nov 2026), which the safe-by-design rule keeps (invented names).
+    "I need a term CA for Briony Halvorsen.",
+    "Termination CA for Briony Halvorsen, no call no show.",
+    "Terminate her.",
+    "She is being terminated for job abandonment.",
+    "We are terminating her, she never showed.",
+    "I need a termination form for her, she did not show up.",
+    "Terminate Briony.",
   ])("on, stated: %s", (said) => {
     process.env.TERMINATION_STATED_TICKS_ENABLED = "true";
     expect(statesTermination(said)).toBe(true);
@@ -56,6 +61,23 @@ describe("TERMINATION_STATED_TICKS_ENABLED", () => {
     "she is not being terminated",
     "not a term CA",
     "no termination",
+    // Gate-Sunny's probe of c10df533 (12 Nov 2026): every one ticked before the safe-by-design rule.
+    "We shouldn't terminate her.",
+    "I wouldn't terminate him.",
+    "We couldn't terminate her yet.",
+    "I don't want to make this a term CA.",
+    "Write her up rather than a term CA.",
+    "Hold off on terminating her.",
+    "We decided against terminating her.",
+    // Changed on purpose (QA, 12 Nov 2026): only the positive statements tick; these once ticked and now leave the
+    // level for the manager to pick on the form.
+    "write up for termination",
+    "Warning level: termination",
+    "Termination.",
+    // A negation outside the incident clause, or a hedge anywhere, still wins.
+    "Termination CA for Briony Halvorsen, not really.",
+    "Terminate her, she might come back though.",
+    "We are terminating her, she is not being terminated.",
   ])("on, not stated: %s", (said) => {
     process.env.TERMINATION_STATED_TICKS_ENABLED = "true";
     expect(statesTermination(said)).toBe(false);
