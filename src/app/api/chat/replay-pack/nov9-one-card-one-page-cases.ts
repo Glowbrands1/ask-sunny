@@ -37,7 +37,7 @@ const LINES = {
 const T1 = "create a corrective action for Corwin Ashgrove, he was late opening the salon on 11/2";
 const FIX = ["ONE_CARD_ONE_PAGE_ENABLED"];
 const REPORT = "QA, Sunny round 9 live (9 Nov 2026): \"Standards of Conduct (page 13)\" and \"… JBA Policy Manual p.12\" on one card";
-const OPEN = { open: "the card cites p.12 under a page-13 Policy line, or has no citation line" };
+// Was OPEN until QA round 34: "the card cites p.12 under a page-13 Policy line, or has no citation line".
 
 /** Every page the card gives the Standards of Conduct. */
 function conductPages(content: string): number[] {
@@ -77,7 +77,8 @@ export const NOV9_ONE_CARD_ONE_PAGE_CASES: ReplayCase[] = [
         id: `nov9-one-card-one-page-${id}${model ? "-model-heading" : ""}`,
         title: `"${turns.at(-1)}"${model ? " (the model also reads Standards of Conduct)" : ""}: the card cites the Standards of Conduct on page 13 only, with its citation line`,
         report: REPORT,
-        status: OPEN,
+        // Changed on purpose (12 Nov 2026): fixed in production by ONE_CARD_ONE_PAGE, QA round 34. Was OPEN (see the note above).
+        status: "fixed" as const,
         fixFlags: FIX,
         run: (t) => card(t, turns, model),
       }),
@@ -87,7 +88,8 @@ export const NOV9_ONE_CARD_ONE_PAGE_CASES: ReplayCase[] = [
     id: "nov9-one-card-one-page-coaching",
     title: "a Coaching card for \"he left the front desk unattended on 11/6/26\" (the model reads Standards of Conduct): p.13 only, never p.13 and p.12",
     report: REPORT,
-    status: { open: "the Coaching card prints p.13 and p.12" },
+    // Changed on purpose (12 Nov 2026): fixed in production by ONE_CARD_ONE_PAGE, QA round 34. Was OPEN ("the Coaching card prints p.13 and p.12").
+    status: "fixed",
     fixFlags: FIX,
     run: (t) => card(t, ["create a coaching form for Corwin Ashgrove, he left the front desk unattended on 11/6/26"], true, "Coaching Form"),
   },
