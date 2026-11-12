@@ -36,12 +36,8 @@ const FORM_REQUEST = /\b(?:create|make|write|draw\s+up|need|draft|prepare|start)
  * adds nothing but her name.
  */
 const NOT_A_PERSON = new Set(
-  "the she he they it this that these those we i you management leadership team manager employee associate everyone nobody someone client guest store salon shift".split(" "),
+  "the she he they it this that these those we i you management leadership team manager managers employee associate everyone nobody someone client guest store salon shift district general assistant lead director supervisor owner hr human resources our my".split(" "),
 );
-/** A capitalised name as the subject of a reported act ("Corisande arrived …", "Tamsyn completed …"). */
-const ACTS = String.raw`(?:was|is|has|had|did|didn['’]?t|arrived|completed|failed|left|came|called|took|refused|walked|clocked|showed|missed|will|must|should)`;
-const NAMED_ACT = new RegExp(String.raw`\b([A-Z][a-z'’]+)(?:\s+[A-Z][a-z'’]+)?\s+${ACTS}\b`, "g");
-const NAMED_ACT_ANY_CASE = new RegExp(String.raw`\b([a-z][a-z'’]{2,})\s+${ACTS}\b`, "gi");
 /** Filler a "same outline …" turn may carry beside her name: nothing of an account. */
 const SAME_OUTLINE_FILLER =
   /\b(?:same|this|that|the|a|an|outline|template|format|layout|but|with|use|using|for|her|his|their|info|information|details|please|pls|it|make|do|apply|to|on|and|just|instead|of|s)\b|['’]s?\b|[^\p{L}\p{N}]+/giu;
@@ -62,15 +58,24 @@ export function requestedName(turn: string): string | null {
 }
 
 /*
- * Gate-Sunny-3's NO-GO on S#875 here (12 Nov 2026): the manager's own labelled account names coworkers, witnesses and
- * nicknames ("What happened: Ilsa was 40 minutes late … Jordan had to cover the front desk"). So an outline is another
- * person's only when (1) it never mentions the card's employee, (2) it names someone, and (3) it is laid out as a filled
- * form — its labels are the form's own sections (Observation of Offense, Action Plan …), not an account's (Date, What
- * happened, Time, Shift). Any doubt keeps the turn as her account.
+ * WHOSE ACCOUNT IS IT (Gate-Sunny-3's NO-GO on S#875, rounds 2 and 3, and G4-802; QA, 12 Nov 2026). The manager's own
+ * account names coworkers, witnesses and nicknames ("What happened: Ilsa was 40 minutes late … Jordan had to cover",
+ * "Observation of Offense: she arrived 40 minutes late … Jordan had to open", "Liz arrived …" on Elizabeth's card). So a
+ * paste is another person's outline only when it is laid out with the form's own section labels, never mentions the
+ * card's employee (nor the name typed in the request), and its SUBJECT — whom the Observation's first sentence is about —
+ * is a named person, first and last name, who is not her. A pronoun ("she arrived …") is her; a single first name may be
+ * her nickname; a witness's report ("Marco Ruiz reported that …") is about her. Any doubt keeps the turn as her account.
  */
 const FORM_SECTION_LABEL =
   /(?:^|\n)[ \t]*(?:observation\s+of\s+offense|action\s+plan|going\s+forward|expectations?|policy\s+violated|policy\s+language|prior\s+actions?|details\s*[–—-]\s*observed)[ \t]*:/i;
-const ARTICLE_BEFORE = /\b(?:the|a|an|her|his|their|my|our|your|this|that)\s+$/i;
+/** The Observation's text: what follows its label, up to the next label; else the paste after its first label. */
+const OBSERVATION = /(?:^|\n)[ \t]*(?:observation\s+of\s+offense|details\s*[–—-]\s*observed|observed)[ \t]*:[ \t]*([\s\S]*?)(?=\n[ \t]*[A-Za-z][A-Za-z /&'’–—-]{2,40}[ \t]*:|$)/i;
+/** "On 10/12/26, …", "During the month of September 2026, …": an opening phrase before the subject. */
+const INTRO = /^(?:(?:on|during|throughout|in|at|today|yesterday|this|last)\b[^,]{0,50},\s*)?/i;
+/** A first and last name, then a lower-case word (the verb). */
+const NAMED_SUBJECT = /^([A-Z][a-z'’-]+)\s+([A-Z][a-z'’-]+)\s+([a-z][a-z'’]*)/;
+/** A witness's or coworker's act about her: the account is still hers. */
+const REPORTING = /^(?:reported|reports|said|says|told|tells|called|calls|saw|sees|noticed|notices|witnessed|observed|observes|heard|texted|emailed|informed|mentioned|stated|states|covered|covers|opened|opens|closed|closes|asked|asks|and)$/;
 
 /** Whether the text mentions the card's employee: a word of her name, in any case, possessive or not. */
 function mentionsEmployee(text: string, employeeName: Her): boolean {
@@ -79,23 +84,23 @@ function mentionsEmployee(text: string, employeeName: Her): boolean {
   return own.some((part) => words.includes(part));
 }
 
-/** Whether the text names someone as the subject of an act: "Corisande arrived …", or lower case when the name recurs. */
-function namesSomeone(text: string): boolean {
-  for (const match of text.matchAll(NAMED_ACT)) {
-    if (!NOT_A_PERSON.has(match[1]!.toLowerCase())) return true;
-  }
-  // "corisande arrived … coach corisande": a lower-case name counts only when it recurs and no article owns it.
-  for (const match of text.matchAll(NAMED_ACT_ANY_CASE)) {
-    const name = match[1]!.toLowerCase();
-    if (NOT_A_PERSON.has(name) || ARTICLE_BEFORE.test(text.slice(0, match.index))) continue;
-    if ((text.toLowerCase().match(new RegExp(`\\b${name}\\b`, "g")) ?? []).length >= 2) return true;
-  }
-  return false;
+/** Whether the Observation's first sentence is about a named person, first and last name, who is not her. */
+function subjectIsAnotherNamedPerson(text: string, employeeName: Her): boolean {
+  const observation = OBSERVATION.exec(text)?.[1] ?? text.replace(/^[^:\n]*:\s*/, "");
+  // "Jordan Pike had to open because she was late": a pronoun subject anywhere in the Observation is her.
+  if (/\b(?:she|he|they)\b/i.test(observation)) return false;
+  const sentence = (observation.trim().split(/(?<=[.!?])\s+|\n/)[0] ?? "").replace(INTRO, "");
+  const named = NAMED_SUBJECT.exec(sentence);
+  if (!named) return false;
+  const [first, last, verb] = [named[1]!.toLowerCase(), named[2]!.toLowerCase(), named[3]!];
+  if (NOT_A_PERSON.has(first) || NOT_A_PERSON.has(last) || REPORTING.test(verb)) return false;
+  const own = nameWords(employeeName);
+  return !own.includes(first) && !own.includes(last);
 }
 
-/** A pasted outline for another person: laid out as a filled form, naming someone, never the card's employee. */
+/** A pasted outline for another person: the form's own labels, never her name, and another named person its subject. */
 function outlineForAnotherPerson(text: string, employeeName: Her): boolean {
-  return FORM_SECTION_LABEL.test(text) && !mentionsEmployee(text, employeeName) && namesSomeone(text);
+  return FORM_SECTION_LABEL.test(text) && !mentionsEmployee(text, employeeName) && subjectIsAnotherNamedPerson(text, employeeName);
 }
 
 /** Whether a "same outline …" turn says nothing but the employee's name. */

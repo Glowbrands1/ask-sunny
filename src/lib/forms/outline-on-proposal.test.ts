@@ -50,12 +50,47 @@ describe("OUTLINE_ON_OPEN_PROPOSAL_ENABLED", () => {
     expect(notesWithoutOutline(["create a corrective action for liz varnholt", liz].join("\n\n"), "Elizabeth Varnholt")).toContain("Liz was 40 minutes late");
   });
 
-  it("a lower-case outline for another person is one (Gate-Sunny-3)", () => {
-    expect(isOutlineTurn("observation of offense: corisande arrived 20 minutes late.\naction plan: the leadership team will coach corisande.", ILSA)).toBe(true);
+  // QA (12 Nov 2026): a lower-case outline is not caught — acceptable; any doubt keeps the turn as her account.
+  it("a lower-case outline is kept as her account (no named subject can be read)", () => {
+    expect(isOutlineTurn("observation of offense: corisande velt arrived 20 minutes late.\naction plan: the leadership team will coach corisande.", ILSA)).toBe(false);
   });
 
+  // Gate-Sunny-3's NO-GO on S#875, round 3 (12 Nov 2026), and QA's probes: her own account in the form's labels.
+  it.each([
+    ["Ilsa Varnholt", "Observation of Offense: she arrived 40 minutes late to her opening shift on 11/3/26. Jordan had to open the salon.\nAction Plan: Leadership will review the attendance policy with her"],
+    ["Elizabeth Varnholt", "Observation of Offense: Liz arrived 40 minutes late to her opening shift on 11/3/26.\nAction Plan: Leadership will review the attendance policy with her"],
+    ["Ilsa Varnholt", "Date: 11/3/26\nWhat happened: Ilsa was 40 minutes late. Marco called me at 9:10 to say the salon was not open."],
+    ["Ilsa Varnholt", "Date: 11/3/26\nWhat happened: she was 40 minutes late and Jordan had to cover her shift"],
+    ["Elizabeth Varnholt", "Date: 11/3/26\nWhat happened: Liz was 40 minutes late"],
+    ["Ilsa Varnholt", "Observation of Offense: Marco Ruiz reported that she arrived 40 minutes late on 11/3/26.\nAction Plan: coach her on arriving on time."],
+    ["Ilsa Varnholt", "Observation of Offense: Jordan Pike opened the salon because she arrived 40 minutes late.\nAction Plan: coach her."],
+    ["Ilsa Varnholt", "Observation of Offense: On 11/3/26, she arrived 40 minutes late. Corisande Velt opened the salon.\nAction Plan: coach her."],
+    ["Ilsa Varnholt", "Observation of Offense: The employee arrived 40 minutes late on 11/3/26.\nAction Plan: The Leadership Team will coach the employee."],
+    ["Ilsa Varnholt", "Observation of Offense: Leadership Team noticed she arrived late.\nAction Plan: coach her."],
+    ["Ilsa Varnholt", "Observation of Offense: Tamsyn completed 237 transactions.\nAction Plan: The Leadership Team will coach Tamsyn."],
+    ["Ilsa Varnholt", "Observation of Offense: I. Varnholt arrived 40 minutes late.\nAction Plan: coach her."],
+    ["Ilsa Varnholt", "Observation of Offense: Ilsa V arrived 40 minutes late.\nAction Plan: coach her."],
+    ["Ilsa Varnholt", "Observation of Offense: Jordan Pike had to open the salon because she was 40 minutes late.\nAction Plan: coach her."],
+    ["Ilsa Varnholt", "Observation of Offense: Jordan Pike covered for 40 minutes; she never called in.\nAction Plan: coach her."],
+    ["Ilsa Varnholt", "Observation of Offense: Salon Director Jane Doe saw her arrive 40 minutes late.\nAction Plan: coach her."],
+    ["Ilsa Varnholt", "Observation of Offense: arrived 40 minutes late on 11/3/26, Jordan Pike opened.\nAction Plan: coach her."],
+    ["Ilsa Varnholt", "Expectation: be on time\nGoing Forward: she will call if late"],
+  ])("her own account (card %s), never an outline: %s", (card, said) => {
+    expect(isOutlineTurn(said, card)).toBe(false);
+  });
+
+  it.each([
+    "Observation of Offense: Corisande Velt arrived 20 minutes late on 10/12/26.\nAction Plan: The Leadership Team will coach Corisande.",
+    "Observation of Offense: On 10/12/26, Corisande Velt arrived 20 minutes late.\nAction Plan: coach Corisande.",
+    "Observation of Offense: During the month of September 2026, Tamsyn Reeve completed 237 transactions.\n\nAction Plan: The Leadership Team will coach Tamsyn.",
+  ])("another named person's outline: %s", (said) => {
+    expect(isOutlineTurn(said, "Ilsa Varnholt")).toBe(true);
+  });
   it("an outline naming another person is one; with no card's employee nothing is", () => {
-    expect(isOutlineTurn("Observation of Offense: Tamsyn completed 237 transactions.\nAction Plan: The Leadership Team will coach Tamsyn.", "Wynne Sarrow")).toBe(true);
+    // Changed on purpose (Gate-Sunny-3 round 3, 12 Nov 2026): a single first name may be her nickname, so it is kept as
+    // her account; a first and last name that is not hers is another person's outline.
+    expect(isOutlineTurn("Observation of Offense: Tamsyn completed 237 transactions.\nAction Plan: The Leadership Team will coach Tamsyn.", "Wynne Sarrow")).toBe(false);
+    expect(isOutlineTurn("Observation of Offense: Tamsyn Reeve completed 237 transactions.\nAction Plan: The Leadership Team will coach Tamsyn.", "Wynne Sarrow")).toBe(true);
     expect(isOutlineTurn(OUTLINE, null)).toBe(true);
     expect(isOutlineTurn(C, null)).toBe(false);
   });
