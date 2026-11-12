@@ -96,6 +96,8 @@ describe("OUTLINE_ON_OPEN_PROPOSAL_ENABLED", () => {
   });
 
   it("off: the request is as sent", () => {
+    // Off set here, not read from the environment (QA, 12 Nov 2026): the arm holds however the run's env is set.
+    vi.stubEnv("OUTLINE_ON_OPEN_PROPOSAL_ENABLED", "");
     expect(withoutOutlineTurns({ question: C, history })).toBeNull();
   });
 
@@ -121,6 +123,8 @@ describe("OUTLINE_ON_OPEN_PROPOSAL_ENABLED", () => {
 
   it("the draft's notes leave the outline turns out; off, as sent", () => {
     const notes = [A, OUTLINE, C].join("\n\n");
+    // Off set here, not read from the environment (QA, 12 Nov 2026).
+    vi.stubEnv("OUTLINE_ON_OPEN_PROPOSAL_ENABLED", "");
     expect(notesWithoutOutline(notes, ILSA)).toBe(notes);
     vi.stubEnv("OUTLINE_ON_OPEN_PROPOSAL_ENABLED", "true");
     expect(notesWithoutOutline(notes, ILSA)).toBe(A);
