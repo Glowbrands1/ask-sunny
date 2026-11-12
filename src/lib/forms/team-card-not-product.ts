@@ -47,6 +47,18 @@ export function writtenAsTopic(name: string, turns: readonly string[]): boolean 
   return naming.length > 0 && naming.every((turn) => asTopic.test(turn) && !asSubject.test(turn));
 }
 
+/**
+ * FORM_NAME_OFF_ROSTER_ASK_ENABLED (QA's #741 gate, 10 Nov 2026: with the roster-name set on, sf-s13's team card was lost):
+ * the card's "employee" is a team card's product, written only as its topic, which the team step after the roster check
+ * turns into the team card. The roster check leaves it for that step.
+ */
+export function teamCardProduct(card: Pick<ChatFormProposal, "employeeName" | "subject" | "templateKey">, turns: readonly string[]): boolean {
+  const name = card.employeeName?.trim();
+  if (!teamCardNotProductEnabled() || !name || card.subject === "team" || !allowsTeamSubject(card.templateKey)) return false;
+  if (!turns.some((turn) => readsAsTeamSubject(turn)) && !turns.some(saysEmployeeBlank)) return false;
+  return writtenAsTopic(name, turns);
+}
+
 export function withTeamCardNotProduct<T extends { content: string; formProposal?: ChatFormProposal | null }>(
   answer: T,
   input: {

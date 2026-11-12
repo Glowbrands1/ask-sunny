@@ -1,5 +1,5 @@
 import { PRODUCTION_SALONS, salonById } from "@/data/salons";
-import { formEditDateRulesEnabled, primarySalonNotEditEnabled } from "@/lib/config/chat-quality-flags";
+import { formEditDateRulesEnabled, primarySalonNotEditEnabled, requestIssueKeptEnabled } from "@/lib/config/chat-quality-flags";
 import { datesInText, listIncidentDates, priorSteps } from "@/lib/forms/form-date-answer";
 import { withYearlessDatesWritten } from "@/lib/forms/late-open";
 import { PRIMARY_SALON_STATEMENT } from "@/lib/forms/primary-salon-statement";
@@ -111,6 +111,18 @@ export function readTurnEdit(turn: string): EditReading {
   return null;
 }
 
+/*
+ * REQUEST_ISSUE_KEPT_ENABLED (ported from Ask Bubbles; QA's live round 17b, 10 Nov 2026, P16): "Can you make a CA for
+ * <name> for failure to open on time?" asks for a form and says why in one question. With the flag on it is the
+ * request and its account: never an instruction to the app, never a question to it (`remap-incident.ts`).
+ */
+const CREATE_REQUEST_WITH_REASON =
+  /^\s*(?:can|could|would|will)\s+you\s+(?:please\s+)?(?:make|create|write|do|start|draft|prepare)\s+(?:me\s+)?(?:a|an|the)?\s*(?:ca|c\/a|corrective(?:\s+action)?|coaching|write-?\s?up|form)\b[^?]*?\bfor\s+[^?]+?\s+for\s+\S/i;
+
+export function createRequestWithReason(sentence: string): boolean {
+  return requestIssueKeptEnabled() && CREATE_REQUEST_WITH_REASON.test(sentence);
+}
+
 /** One sentence: a grammar request, another instruction to the app, or null when it is account. */
 export function readSentenceEdit(sentence: string): EditReading {
   const text = sentence.trim();
@@ -118,6 +130,9 @@ export function readSentenceEdit(sentence: string): EditReading {
   if (GRAMMAR.test(text) && /\b(?:clean|fix|correct|check|improve|make|changes?|tidy|help|rewrite|reword|capitali[sz]\w*|proof-?read)\b/i.test(text)) {
     return { kind: "grammar" };
   }
+  // REQUEST_ISSUE_KEPT_ENABLED (ported from Ask Bubbles; QA's round 17b, P16): "Can you make a CA for <name> for failure
+  // to open on time?" is the request and its account, never an instruction.
+  if (createRequestWithReason(text)) return null;
   const body = stripLead(text);
   if (INSTRUCTION.test(body)) return { kind: "instruction" };
   /* "can you edit the form I already finalized for X?" is asked, not described. */

@@ -31,6 +31,7 @@ import {
   formEditSingleWriterEnabled,
   teamCardWordingEnabled,
   cardPolicyLabelEnabled,
+  caProcedureBasisEnabled,
   caSalesPolicyEnabled,
   priorActionsNoSignedEnabled,
   secondRequestOwnAccountEnabled,
@@ -227,7 +228,7 @@ import {
   LANGUAGE_CLEANUP_RULES,
   guardCoachingFraming,
 } from "@/lib/forms/coaching-framing";
-import { OFFENSE_BASIS_PROPERTY, readOffenseBasis, withoutUnreasonedConduct, type OffenseBasis } from "@/lib/forms/ca-conduct-reason";
+import { offenseBasisProperty, readOffenseBasis, withoutUnreasonedConduct, type OffenseBasis } from "@/lib/forms/ca-conduct-reason";
 import { guardOtherWriteIn } from "@/lib/forms/other-write-in";
 import { withoutRequestInObservation } from "@/lib/forms/request-observation";
 import {
@@ -1252,7 +1253,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
 
     const client = getAnthropicClient();
     /* CA_SALES_POLICY_ENABLED: the tool's optional offense_basis, and what the last call said (`ca-conduct-reason.ts`). */
-    const basisAsked = caSalesPolicyEnabled() && offersConductPolicy && offenseOffered.includes("other");
+    // CA_PROCEDURE_BASIS_ENABLED (sf-b6): the basis is asked with that flag too.
+    const basisAsked = (caSalesPolicyEnabled() || caProcedureBasisEnabled()) && offersConductPolicy && offenseOffered.includes("other");
     let offenseBasis: OffenseBasis | null = null;
     const draftCall = () => client.messages.create({
       model: CLAUDE_MODEL,
@@ -1277,7 +1279,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
                 description: "Checkbox group key to the option keys that apply.",
               },
               // CA_SALES_POLICY_ENABLED only, on a form offering Other: added, optional (`ca-conduct-reason.ts`). Off, absent.
-              ...(basisAsked ? { offense_basis: OFFENSE_BASIS_PROPERTY } : {}),
+              ...(basisAsked ? { offense_basis: offenseBasisProperty() } : {}),
             },
             required: ["values"],
           },
