@@ -61,3 +61,31 @@ export const NOV11_OUTLINE_ON_OPEN_PROPOSAL_CASES: ReplayCase[] = [
     },
   },
 ];
+
+/*
+ * Gate-Bubbles-4's NO-GO on the sibling app's B#802 (G4-802, 12 Nov 2026), ported: the manager's own account, labelled or asking for "this format",
+ * was read as an outline and lost. Guards: production keeps it, and so does the flag (an outline names another person).
+ */
+const OWN_ACCOUNT = [
+  ["labelled-account", "create a corrective action for Ilsa Varnholt", "Date: 11/3/26\nWhat happened: Ilsa Varnholt arrived 40 minutes late and did not call in.", /40 minutes late/],
+  ["this-format", "create a corrective action for Ilsa Varnholt", "Ilsa Varnholt was late on 11/3/26. Use this format for the action plan.", /late on 11\/3\/26/],
+] as const;
+
+export const NOV12_OUTLINE_OWN_ACCOUNT_CASES: ReplayCase[] = OWN_ACCOUNT.map(([key, request, account, kept]) => ({
+  id: `nov12-g4-802-own-account-kept-${key}`,
+  title: `"${request}", then "${account.replace(/\n/g, " / ")}": her own account reaches the card and the draft`,
+  report: "Gate-Bubbles-4's NO-GO on OUTLINE_ON_OPEN_PROPOSAL (G4-802, 12 Nov 2026)",
+  status: "fixed",
+  fixFlags: [FLAG],
+  async run(t) {
+    const thread = start(t);
+    await thread.say(request);
+    const reply = await thread.say(account);
+    expect(thread.proposal, `no card for Ilsa Varnholt:\n${reply.content}`).toMatchObject({ employeeName: "Ilsa Varnholt" });
+    expect(reply.content, `her account was read as an outline:\n${reply.content}`).not.toMatch(/pasted example/);
+    t.draftWrites({ observation: "Observed:\nIlsa Varnholt was late." });
+    await thread.create();
+    const described = t.draftPrompts().map((prompt) => prompt.split("WHAT THE MANAGER DESCRIBED:")[1] ?? "").join("\n");
+    expect(described, `her account did not reach the drafting model:\n${described}`).toMatch(kept);
+  },
+}));
