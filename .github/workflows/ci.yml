@@ -73,20 +73,38 @@ jobs:
       - name: Tests (vitest project "flags-off-parity")
         run: npx vitest run --project flags-off-parity
 
+  # OFF PINS (QA, 11 Nov 2026): every test named for a flag's "off" behaviour, run
+  # with production's flags set (src/config/production-flags.json). A new one that
+  # does not set its own flag off fails here, not the day QA turns the flag on.
+  # Known failures when the guard went in: src/config/off-pins-known.json (may only
+  # shrink). See scripts/off-pins-guard.mjs.
+  off-pins:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Off pins hold under production's flags
+        run: npm run test:off-pins
+
   # "checks" is the REQUIRED CHECK (branch protection and the merge queue name
   # it). It passes only when every job above succeeded: a failed, cancelled or
   # skipped job fails it (a skipped required job would otherwise count as a pass).
   checks:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [lint-typecheck, unit-tests, flags-off-parity]
+    needs: [lint-typecheck, unit-tests, flags-off-parity, off-pins]
     if: always()
     steps:
       - name: Every job passed
         env:
-          RESULTS: ${{ needs.lint-typecheck.result }} ${{ needs.unit-tests.result }} ${{ needs.flags-off-parity.result }}
+          RESULTS: ${{ needs.lint-typecheck.result }} ${{ needs.unit-tests.result }} ${{ needs.flags-off-parity.result }} ${{ needs.off-pins.result }}
         run: |
-          echo "lint-typecheck, unit-tests, flags-off-parity: $RESULTS"
+          echo "lint-typecheck, unit-tests, flags-off-parity, off-pins: $RESULTS"
           for result in $RESULTS; do
             if [ "$result" != "success" ]; then
               echo "::error::A job did not succeed ($result)."
