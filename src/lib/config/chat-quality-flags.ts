@@ -4569,3 +4569,14 @@ export function draftWroteNothingNoticeEnabled(): boolean {
 export function formsOnFileOrderMatchPossibleEnabled(): boolean {
   return envFlag("FORMS_ON_FILE_ORDER_MATCH_POSSIBLE_ENABLED");
 }
+
+/**
+ * OUTLINE_ON_OPEN_PROPOSAL_ENABLED (coding 6, 11 Nov 2026; default off; ported from the sibling app's 17i live test,
+ * reproduced here). On a proposal (Create not pressed), a pasted "Observation of Offense: … / Action Plan: …" outline for
+ * another person changed the card's date to the outline's. On: with no form open, a pasted outline and a "same outline"
+ * turn are no account — left out of the proposal's re-read, which takes the request before them — and the reply says the
+ * outline is kept as her form's layout (`forms/outline-on-proposal.ts`). Off, as before.
+ */
+export function outlineOnOpenProposalEnabled(): boolean {
+  return envFlag("OUTLINE_ON_OPEN_PROPOSAL_ENABLED");
+}

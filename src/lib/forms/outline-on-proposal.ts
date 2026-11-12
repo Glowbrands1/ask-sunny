@@ -1,0 +1,239 @@
+import { outlineOnOpenProposalEnabled } from "@/lib/config/chat-quality-flags";
+
+
+/*
+ * ============================================================================
+ * AN OUTLINE PASTED ON AN OPEN PROPOSAL NEVER COSTS THE PROPOSAL ITS FACTS (OUTLINE_ON_OPEN_PROPOSAL_ENABLED)
+ * ============================================================================
+ *
+ * Ported from the sibling app: QA's Bubbles 17i live test (11 Nov 2026); reproduced here, on a proposal (Create never pressed): (a) "create a corrective action for
+ * <A>, she was late on 11/3/26" made the card (Issue, Attendance p.14); (b) an "Observation of Offense: … / Action
+ * Plan: …" outline written for another person, pasted next, was ignored; (c) "same outline but with <A first>'s info"
+ * left the card with no Issue, no Policy and a generic plan (in the replay pack, the outline's date became <A>'s). The
+ * card is re-read from the manager's turns every time, and the outline — another person's account — was read as hers.
+ *
+ * With the flag on and no form open, a pasted labelled outline and a turn asking for "the same outline" are no account:
+ * they are left out of the re-read, and such a turn is read as the request before it, so step (a)'s Issue, date, Policy
+ * and plan are kept. The reply says her own details are kept and nothing from the pasted example's person goes on the
+ * card. Pure.
+ */
+
+/** Two or more "<Label>:" lines: a pasted labelled outline ("Observation of Offense: … / Action Plan: …"). */
+const LABEL_LINE = /(?:^|\n)[ \t]*[A-Z][A-Za-z /&'’-]{3,40}[ \t]*:/g;
+function looksLikePastedTemplate(text: string): boolean {
+  return (text.match(LABEL_LINE) ?? []).length >= 2;
+}
+
+const SAME_OUTLINE = /\b(?:same|this|that)\s+(?:outline|template|format|layout)\b/i;
+/* A turn that asks for a form ("create a ca for …", "… in the format of <B>") is the request: never left out (the sibling's s22 case). */
+const FORM_REQUEST = /\b(?:create|make|write|draw\s+up|need|draft|prepare|start)\b[^.?!\n]{0,40}\b(?:ca|c\/a|corrective\s+action|coaching|write[- ]?up|warning|form)\b/i;
+
+/*
+ * Gate-Bubbles-4's NO-GO (G4-802, 12 Nov 2026) and Gate-Sunny-3's probe of S#875: the manager's own account, labelled
+ * ("Date: 11/3/26\nWhat happened: <A> arrived 40 minutes late …", "Time: 9am\nShift: opening\nshe was late") or asking for
+ * a format with her facts ("<A> was late on 11/3/26. Use this format for the action plan."), is never left out. A pasted
+ * outline is no account only when it names a person other than the card's employee; a "same outline …" turn only when it
+ * adds nothing but her name.
+ */
+const NOT_A_PERSON = new Set(
+  "the she he they it this that these those we i you management leadership team manager managers employee associate everyone nobody someone client guest store salon shift district general assistant lead director supervisor owner hr human resources our my".split(" "),
+);
+/** Filler a "same outline …" turn may carry beside her name: nothing of an account. */
+const SAME_OUTLINE_FILLER =
+  /\b(?:same|this|that|the|a|an|outline|template|format|layout|but|with|use|using|for|her|his|their|info|information|details|please|pls|it|make|do|apply|to|on|and|just|instead|of|s)\b|['’]s?\b|[^\p{L}\p{N}]+/giu;
+
+/** Her names: the card's employee, and the name the manager typed in the request ("for liz varnholt"). */
+type Her = string | readonly string[] | null | undefined;
+function nameWords(her: Her): string[] {
+  const names = typeof her === "string" ? [her] : (her ?? []);
+  return names.flatMap((name) => name.toLowerCase().split(/[^\p{L}'’-]+/u)).filter((word) => word.length >= 2);
+}
+
+const REQUEST_NAME = /\b(?:for|on)\s+([a-z][a-z'’-]*)(?:\s+([a-z][a-z'’-]*))?/i;
+/** The name typed after "for" in a form request, when the request has one. */
+export function requestedName(turn: string): string | null {
+  if (!FORM_REQUEST.test(turn)) return null;
+  const typed = REQUEST_NAME.exec(turn);
+  return typed ? [typed[1], typed[2]].filter(Boolean).join(" ") : null;
+}
+
+/*
+ * WHOSE ACCOUNT IS IT (Gate-Sunny-3's NO-GO on S#875, rounds 2 and 3, and G4-802; QA, 12 Nov 2026). The manager's own
+ * account names coworkers, witnesses and nicknames ("What happened: Ilsa was 40 minutes late … Jordan had to cover",
+ * "Observation of Offense: she arrived 40 minutes late … Jordan had to open", "Liz arrived …" on Elizabeth's card). So a
+ * paste is another person's outline only when it is laid out with the form's own section labels, never mentions the
+ * card's employee (nor the name typed in the request), and its SUBJECT — whom the Observation's first sentence is about —
+ * is a named person, first and last name, who is not her. A pronoun ("she arrived …") is her; a single first name may be
+ * her nickname; a witness's report ("Marco Ruiz reported that …") is about her. Any doubt keeps the turn as her account.
+ */
+const FORM_SECTION_LABEL =
+  /(?:^|\n)[ \t]*(?:observation\s+of\s+offense|observations?|action\s+plan|going\s+forward|expectations?|policy\s+violated|policy\s+language|prior\s+actions?|details\s*[–—-]\s*observed)[ \t]*:/i;
+/** The Observation's text: what follows its label, up to the next label; else the paste after its first label. */
+const OBSERVATION = /(?:^|\n)[ \t]*(?:observation\s+of\s+offense|observations?|details\s*[–—-]\s*observed|observed)[ \t]*:[ \t]*([\s\S]*?)(?=\n[ \t]*[A-Za-z][A-Za-z /&'’–—-]{2,40}[ \t]*:|$)/i;
+/** "On 10/12/26, …", "During the month of September 2026, …": an opening phrase before the subject. */
+const INTRO = /^(?:(?:on|during|throughout|in|at|today|yesterday|this|last)\b[^,]{0,50},\s*)?/i;
+/** A first and last name, then a lower-case word (the verb). */
+const NAMED_SUBJECT = /^([A-Z][a-z'’-]+)\s+([A-Z][a-z'’-]+)\s+([a-z][a-z'’]*)/;
+/** A witness's or coworker's act about her: the account is still hers. */
+const REPORTING = /^(?:reported|reports|said|says|told|tells|called|calls|saw|sees|noticed|notices|witnessed|observed|observes|heard|texted|emailed|informed|mentioned|stated|states|covered|covers|opened|opens|closed|closes|asked|asks|and)$/;
+
+/** Whether the text mentions the card's employee: a word of her name, in any case, possessive or not. */
+function mentionsEmployee(text: string, employeeName: Her): boolean {
+  const own = nameWords(employeeName);
+  const words = text.toLowerCase().split(/[^\p{L}'’-]+/u).map((word) => word.replace(/['’]s?$/, ""));
+  return own.some((part) => words.includes(part));
+}
+
+/*
+ * QA's 17o live test (12 Nov 2026, HIGH): "Name: <E>\nDate: 10/12/26\nObservation: <E> did not call in", pasted on A's
+ * card, made a new card for E: a bare "Observation:" was not one of the form's labels, and the paste's own "Name:" line
+ * was not read. A "Name:" line holding a first and last name is whom the outline is about.
+ */
+const NAME_LABEL = /(?:^|\n)[ \t]*(?:[Ee]mployee(?:['’]s)?\s+)?[Nn]ame[ \t]*:[ \t]*([A-Z][a-z'’-]+)\s+([A-Z][a-z'’-]+)[ \t]*(?=\n|$)/;
+
+/** The outline's person, first and last name: its "Name:" line, else the Observation's named subject. Null when none is read. */
+export function outlinePerson(text: string): string | null {
+  const labelled = NAME_LABEL.exec(text);
+  if (labelled) return `${labelled[1]} ${labelled[2]}`;
+  const observation = OBSERVATION.exec(text)?.[1] ?? text.replace(/^[^:\n]*:\s*/, "");
+  const named = NAMED_SUBJECT.exec((observation.trim().split(/(?<=[.!?])\s+|\n/)[0] ?? "").replace(INTRO, ""));
+  return named ? `${named[1]} ${named[2]}` : null;
+}
+
+/** Whether the Observation's first sentence is about a named person, first and last name, who is not her. */
+function subjectIsAnotherNamedPerson(text: string, employeeName: Her): boolean {
+  // A "Name:" line naming another person (17o): the outline is that person's, whatever pronoun its Observation uses.
+  const labelled = NAME_LABEL.exec(text);
+  if (labelled) {
+    const own = nameWords(employeeName);
+    const [first, last] = [labelled[1]!.toLowerCase(), labelled[2]!.toLowerCase()];
+    return !NOT_A_PERSON.has(first) && !NOT_A_PERSON.has(last) && !own.includes(first) && !own.includes(last);
+  }
+  const observation = OBSERVATION.exec(text)?.[1] ?? text.replace(/^[^:\n]*:\s*/, "");
+  // "Jordan Pike had to open because she was late": a pronoun subject anywhere in the Observation is her.
+  if (/\b(?:she|he|they)\b/i.test(observation)) return false;
+  const sentence = (observation.trim().split(/(?<=[.!?])\s+|\n/)[0] ?? "").replace(INTRO, "");
+  const named = NAMED_SUBJECT.exec(sentence);
+  if (!named) return false;
+  const [first, last, verb] = [named[1]!.toLowerCase(), named[2]!.toLowerCase(), named[3]!];
+  if (NOT_A_PERSON.has(first) || NOT_A_PERSON.has(last) || REPORTING.test(verb)) return false;
+  const own = nameWords(employeeName);
+  return !own.includes(first) && !own.includes(last);
+}
+
+/** A pasted outline for another person: the form's own labels, never her name, and another named person its subject. */
+function outlineForAnotherPerson(text: string, employeeName: Her): boolean {
+  return FORM_SECTION_LABEL.test(text) && !mentionsEmployee(text, employeeName) && subjectIsAnotherNamedPerson(text, employeeName);
+}
+
+/** Whether a "same outline …" turn says nothing but the employee's name. */
+function addsOnlyTheName(text: string, employeeName: Her): boolean {
+  const own = nameWords(employeeName);
+  if (own.length === 0) return false;
+  const words = text.replace(SAME_OUTLINE_FILLER, " ").toLowerCase().split(/\s+/).filter(Boolean);
+  const named = words.filter((word) => own.some((part) => word === part || word.replace(/s$/, "") === part));
+  return named.length > 0 && named.length === words.length;
+}
+
+/** A pasted filled-form outline for another person, or a turn asking for "the same outline …" with only her name. */
+export function isOutlineTurn(text: string, employeeName?: Her): boolean {
+  if (FORM_REQUEST.test(text)) return false;
+  // A lower-case outline ("observation of offense: …") has the form's own labels even when no label is capitalised.
+  if (looksLikePastedTemplate(text) || FORM_SECTION_LABEL.test(text)) return outlineForAnotherPerson(text, employeeName);
+  return SAME_OUTLINE.test(text) && addsOnlyTheName(text, employeeName);
+}
+
+interface Turn {
+  readonly id?: string;
+  readonly role: string;
+  readonly content: string;
+  readonly formProposal?: { readonly employeeName?: string | null } | null;
+}
+
+/** The card's employee: the latest card's name in the history ("… for **<A>** …" when the turn carries no card). */
+function cardEmployee(history: readonly Turn[]): string | null {
+  for (const turn of [...history].reverse()) {
+    if (turn.role !== "assistant") continue;
+    const name = turn.formProposal?.employeeName ?? /\bfor \*\*([^*\n]+)\*\*/.exec(turn.content)?.[1];
+    if (name) return name;
+  }
+  return null;
+}
+
+interface Asked<T extends Turn> {
+  readonly question: string;
+  readonly history: readonly T[];
+  readonly activeFormInstanceId?: string | null;
+}
+
+/**
+ * The request as the proposal re-read takes it: outline turns left out of the history, and an outline turn read as the
+ * manager's last request before it. `outline` is true when this turn was an outline turn. Null when nothing changes.
+ */
+export function withoutOutlineTurns<T extends Turn, A extends Asked<T>>(
+  asked: A,
+): { asked: A; outline: boolean; requestId?: string; outlinePeople?: readonly string[] } | null {
+  if (!outlineOnOpenProposalEnabled() || asked.activeFormInstanceId) return null;
+  const card = cardEmployee(asked.history);
+  if (!card) return null;
+  const typed = asked.history.filter((turn) => turn.role === "user").map((turn) => requestedName(turn.content));
+  const employee = [card, ...typed.filter((name): name is string => name !== null)];
+  const outline = isOutlineTurn(asked.question, employee);
+  const kept = asked.history.filter((turn) => !(turn.role === "user" && isOutlineTurn(turn.content, employee)));
+  if (!outline && kept.length === asked.history.length) return null;
+  if (!outline) return { asked: { ...asked, history: kept }, outline: false };
+  const request = [...kept].reverse().find((turn) => turn.role === "user" && turn.content.trim() !== "");
+  if (!request) return null;
+  // The pasted outlines' people (17o): the note never says one of them is the one kept.
+  const outlinePeople = [asked.question, ...asked.history.filter((turn) => turn.role === "user").map((turn) => turn.content)]
+    .filter((text) => isOutlineTurn(text, employee))
+    .map(outlinePerson)
+    .filter((name): name is string => name !== null);
+  return {
+    asked: { ...asked, history: kept, question: request.content },
+    outline: true,
+    ...(request.id ? { requestId: request.id } : {}),
+    ...(outlinePeople.length > 0 ? { outlinePeople } : {}),
+  };
+}
+
+interface CardLike {
+  readonly employeeName: string | null;
+  readonly templateName?: string;
+  readonly sourceMessageIds?: readonly string[];
+}
+
+/** On the outline turn, the reply says her own details are kept, and nothing from the pasted example's person. */
+export function withOutlineKeptNote<T extends { content: string; formProposal?: CardLike | null }>(
+  answer: T,
+  cited?: { readonly outlineTurnId?: string; readonly requestId?: string; readonly outlinePeople?: readonly string[] },
+): T {
+  const card = answer.formProposal;
+  if (!card?.employeeName) return answer;
+  // QA's 17o live test: "I've kept **<E>**'s own details", E being the pasted outline's person. Never said of them.
+  if ((cited?.outlinePeople ?? []).some((person) => mentionsEmployee(person, card.employeeName))) return answer;
+  // The card cites the request it was read from, never the outline turn, so Create's notes are her account.
+  const ids = card.sourceMessageIds;
+  const sourceMessageIds =
+    ids && cited?.outlineTurnId && cited.requestId
+      ? [...new Set(ids.map((id) => (id === cited.outlineTurnId ? cited.requestId! : id)))]
+      : ids;
+  // QA (12 Nov 2026): say what is true — nothing keeps the outline as a layout.
+  const note = `I've kept **${card.employeeName}**'s own details; nothing from the person in the pasted example goes on this card.`;
+  return { ...answer, content: `${note}\n\n${answer.content}`, formProposal: { ...card, ...(sourceMessageIds ? { sourceMessageIds } : {}) } };
+}
+
+/**
+ * The draft's notes (the manager's turns, a blank line between them) without the outline turns: the pasted outline is
+ * another person's account, and "same outline but with <A>'s info" is no account, so neither person's name, date or
+ * events from the outline reach <A>'s draft (QA, 11 Nov 2026). The form's own fields give the layout (Observation of
+ * Offense, Action Plan …); the content comes only from <A>'s turns. Unchanged with the flag off, or when every turn is
+ * an outline turn.
+ */
+export function notesWithoutOutline(notes: string, employeeName: string | null): string {
+  if (!outlineOnOpenProposalEnabled() || !employeeName) return notes;
+  const turns = notes.split(/\n{2,}/);
+  const her = [employeeName, ...turns.map(requestedName).filter((name): name is string => name !== null)];
+  const kept = turns.filter((turn) => !isOutlineTurn(turn, her));
+  return kept.length === turns.length || kept.length === 0 ? notes : kept.join("\n\n");
+}
