@@ -1,5 +1,7 @@
 import { expect, vi } from "vitest";
 
+import { cardPlanMatchesCreateEnabled } from "@/lib/config/chat-quality-flags";
+
 import { KEARNEY, STAFF, type ReplayCase, type ReplayContext } from "./cases";
 
 /**
@@ -84,7 +86,8 @@ export const NOV12_17L_CARD_PLAN_MATCHES_CREATE_CASES: ReplayCase[] = [
  * Ported from the sibling app: Gate-Bubbles-4's NO-GO on its B#824 (G4-824, 12 Nov 2026), reproduced here with S#869: on a "Type of Warning: Termination" card the flag replaced the
  * plan with Pau's attendance plan and lost the termination sentence; Create saves the plan with TERMINATION_PLAN_CLOSING.
  * Guards: with CARD_PLAN_MATCHES_CREATE and TERMINATION_STATED_TICKS on, the card's plan still ends with the termination
- * sentence and never promises the closing for a future violation.
+ * sentence and never promises the closing for a future violation. Pau's ruling (b), 13 Nov 2026: the plan is the full
+ * standard plan (for a late, Pau's attendance template) followed by the termination sentence, not the sentence alone.
  */
 const TERMINATION_SENTENCE = "Effective immediately, employment is terminated following the progressive corrective action plan.";
 const TERMINATION_SAID = [
@@ -107,5 +110,11 @@ export const NOV12_G4_824_TERMINATION_PLAN_GUARDS: ReplayCase[] = TERMINATION_SA
     const plan = cardPlan(card.content);
     expect(plan, `the termination sentence left the plan:\n${card.content}`).toMatch(new RegExp(`${TERMINATION_SENTENCE.replace(/\./g, "\\.")}$`));
     expect(plan, `the plan promises a future violation's closing:\n${card.content}`).not.toMatch(/Future policy violations/);
+    // Pau's ruling (b), 13 Nov 2026 (via QA): the full standard plan, then the termination sentence — never the sentence alone.
+    expect(plan.replace(TERMINATION_SENTENCE, "").trim(), `the plan is the termination sentence alone:\n${card.content}`).not.toBe("");
+    // With the fix flag on, the standard plan is Pau's attendance template (on production's flags, the general plan).
+    if (key === "late-on-a-date" && cardPlanMatchesCreateEnabled()) {
+      expect(plan, `the attendance template left the termination plan:\n${card.content}`).toContain("Remy is expected to arrive on time for all scheduled shifts moving forward.");
+    }
   },
 }));
