@@ -28,6 +28,8 @@ describe("REOPEN_IS_OPENING_ENABLED", () => {
   );
 
   it("on: the card's policy reading is Late Opening", () => {
+    // Gate-Sunny-2: off is stubbed first, so the check holds with the flag on in the environment.
+    vi.stubEnv("REOPEN_IS_OPENING_ENABLED", "");
     expect(readCaPolicy(SAID).stated).not.toBe("late_opening");
     vi.stubEnv("REOPEN_IS_OPENING_ENABLED", "true");
     expect(readCaPolicy(SAID).stated).toBe("late_opening");

@@ -1,4 +1,4 @@
-import { CA_POLICY_QUESTION } from "@/lib/forms/ca-policy";
+import { CA_POLICY_QUESTION, describedAttendanceKeys, policiesNamedIn, readCaPolicy } from "@/lib/forms/ca-policy";
 
 /**
  * ============================================================================
@@ -29,11 +29,32 @@ interface Card {
  * built yet (name asks, near-miss asks, "CA for <A> and <B>"), where no policy search had run. Only a BUILT card asks:
  * status "ready" and an employee named (this app's card has no Issue line).
  */
-export function withNoPolicyQuestion<T extends { content: string; formProposal?: Card | null }>(answer: T): T {
+/**
+ * Whether the card-time policy readers find a policy in the manager's words (Gate-Sunny-2 on Ask Sunny #914: "she was
+ * 20 minutes late … on her phone" reads as Attendance with no Policy line shown, and must not be asked about). Any
+ * reading — named, suggested, ambiguous, a missed event, cleaning, sales, Woven, or a described lateness or absence —
+ * means the reader settled something, so the question is not asked.
+ */
+export function readerFindsPolicy(managerText: string): boolean {
+  const text = managerText.trim();
+  if (!text) return false;
+  const reading = readCaPolicy(text);
+  if (reading.stated || reading.suggestion || reading.ambiguous || reading.missedEvent || reading.other || reading.source) return true;
+  if ((reading as { readFromApp?: unknown }).readFromApp) return true;
+  if (describedAttendanceKeys(text)) return true;
+  return text.split(/(?<=[.!?])\s+|\n+/).some((sentence) => policiesNamedIn(sentence.toLowerCase()).length > 0);
+}
+
+/** A reply that already cites a manual page for the card has a policy. */
+const CITES_MANUAL_PAGE = /JBA Policy Manual,?\s+pp?\.\s*\d/i;
+
+export function withNoPolicyQuestion<T extends { content: string; formProposal?: Card | null }>(answer: T, managerText = ""): T {
   const card = answer.formProposal;
   if (!card || !/\bcorrective\s+action\b/i.test(card.templateName ?? "")) return answer;
   if (card.status !== "ready" || !card.employeeName?.trim()) return answer;
   if (/\*\*Policy:\*\*/.test(answer.content) || answer.content.includes(CA_POLICY_QUESTION)) return answer;
+  // Only after the policy reader ran and found nothing (Gate-Sunny-2 on Ask Sunny #914).
+  if (CITES_MANUAL_PAGE.test(answer.content) || readerFindsPolicy(managerText)) return answer;
   const parts = answer.content.split(/\n{2,}/);
   const issue = parts.findIndex((part) => /\*\*Issue:\*\*/.test(part));
   const at = issue >= 0 ? issue + 1 : Math.min(1, parts.length);

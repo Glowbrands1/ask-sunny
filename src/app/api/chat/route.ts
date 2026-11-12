@@ -1013,7 +1013,13 @@ async function postChat(request: Request) {
       // PASTED_REVIEW_ASKS_WHAT_YOU_SAW_ENABLED: a pasted customer review is the customer's words; ask what the manager saw (`lib/forms/pasted-customer-review.ts`).
       if (pastedReviewAsksWhatYouSawEnabled()) answer = (await import("@/lib/forms/pasted-customer-review")).withPastedReviewAsk(answer, asked.question);
       // CA_NO_POLICY_ASKS_WHICH_ENABLED: a Corrective Action card that cites no policy asks which applies (`lib/forms/no-policy-asks-which.ts`).
-      if (caNoPolicyAsksWhichEnabled()) answer = (await import("@/lib/forms/no-policy-asks-which")).withNoPolicyQuestion(answer);
+      if (caNoPolicyAsksWhichEnabled() && answer.formProposal) {
+        // The card's own turns are what its policy reader read.
+        const cited = new Set(answer.formProposal.sourceMessageIds ?? []);
+        const turns = parsed.history.filter((turn) => turn.role === "user" && (cited.size === 0 || (turn.id && cited.has(turn.id))));
+        const managerText = [...turns.map((turn) => String(turn.content)), asked.question].join("\n");
+        answer = (await import("@/lib/forms/no-policy-asks-which")).withNoPolicyQuestion(answer, managerText);
+      }
     } catch (error) {
       /*
        * A FAILED ANSWER IS STILL A RECORDED TURN, closed as a failure. The row

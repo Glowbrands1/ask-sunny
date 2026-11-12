@@ -120,4 +120,24 @@ export const NOV12_17N_LIVE_CASES: ReplayCase[] = [
       expect(answered.content, answered.content).toMatch(/\*\*Policy:\*\* Standards of Conduct\b/);
     },
   },
+  // Gate-Bubbles on Ask Bubbles #848 and Gate-Sunny-2 on Ask Sunny #914 (NO-GO, 12 Nov 2026): CA_NO_POLICY_ASKS_WHICH
+  // asked on replies with no built card, and on a card whose policy the reader had read. QA asked for these guards.
+  ...[
+    { id: "write-ca", say: "write ca" },
+    { id: "msb", say: "I need to make a corrective action for msb" },
+    { id: "two-people", say: "CA for Marnie Holloway and Remy Calder for being late" },
+    { id: "late-on-phone", say: "create verbal ca for Marnie Holloway, she was 20 minutes late on 11/9 because she was on social media on her phone. no payroll deduct" },
+  ].map(
+    (guard): ReplayCase => ({
+      id: `nov12-17n-4a-guard-${guard.id}`,
+      title: `4a guard: "${guard.say}" never asks "Which policy applies?" (no built card, or the reader read a policy)`,
+      report: `${REPORT}: Gate NO-GO on CA_NO_POLICY_ASKS_WHICH`,
+      status: "fixed",
+      fixFlags: ["CA_NO_POLICY_ASKS_WHICH_ENABLED"],
+      async run(t) {
+        const reply = await start(t).say(guard.say);
+        expect(reply.content, reply.content).not.toMatch(/Which policy applies\?\*\* I didn't find a section/);
+      },
+    }),
+  ),
 ];

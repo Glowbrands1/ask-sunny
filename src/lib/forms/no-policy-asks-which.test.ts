@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { NO_POLICY_NOTE, withNoPolicyQuestion } from "./no-policy-asks-which";
+import { NO_POLICY_NOTE, readerFindsPolicy, withNoPolicyQuestion } from "./no-policy-asks-which";
 
 // QA's Bubbles 17n live test (12 Nov 2026, 4a), the manager's words (the employee invented).
 const ISSUE = "**Issue:** he forgot to clsoe the register at night on 11/10 · **Salon:** the salon";
@@ -40,5 +40,20 @@ describe("CA_NO_POLICY_ASKS_WHICH (the step itself; the route asks it only with 
     expect(withNoPolicyQuestion(nameAsk)).toBe(nameAsk);
     const notReady = { ...CARD, formProposal: { ...CARD.formProposal, status: "needs_location" } };
     expect(withNoPolicyQuestion(notReady)).toBe(notReady);
+  });
+
+  it("Gate-Sunny-2 on Ask Sunny #914: a card whose policy the reader read never asks; the close-register account still does", () => {
+    const late = "create verbal ca for marlo quist, she was 20 minutes late on 10-20-26 because she was on social media on her phone. no payroll deduct";
+    expect(readerFindsPolicy(late)).toBe(true);
+    expect(withNoPolicyQuestion(CARD, late)).toBe(CARD);
+    const close = "create a corrective action for Remy Calder, he forgot to clsoe the register at night on 11/10";
+    expect(readerFindsPolicy(close)).toBe(false);
+    expect(withNoPolicyQuestion(CARD, close).content).toContain(NO_POLICY_NOTE);
+    expect(readerFindsPolicy("create a corrective action for Remy Calder for violating the attendance policy")).toBe(true);
+  });
+
+  it("a reply that already cites a manual page has a policy", () => {
+    const cited = { ...CARD, content: `${CARD.content}\n\nCell Phone/Smart Watch Policy, JBA Policy Manual p.19` };
+    expect(withNoPolicyQuestion(cited)).toBe(cited);
   });
 });
