@@ -22,3 +22,9 @@ recorded search query differs, so the replies don't move in the stubbed pack. 0 
 Eval (flag on): 63/63, 42/51 cases pass, and no case changes outcome.
 
 **GO.** The case that now holds is `nov12-248-just-make-it-searches-the-named-policy`.
+
+## Head 573958c7b — GO stands
+
+The only commit since 792fe043 is test-only: the T4 off arm now stubs the flag off itself, the tidy-up asked for above.
+It merges clean onto 40ec11436, and policy-carry-retrieval.test.ts passes 28/28 with the flag on in the env and 28/28
+off.
