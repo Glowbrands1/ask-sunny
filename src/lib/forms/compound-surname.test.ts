@@ -23,6 +23,8 @@ afterEach(() => {
 
 describe("ROSTER_COMPOUND_SURNAME_ENABLED off: as before (the bug)", () => {
   it("a typo in either word of a two-word surname is never close", () => {
+    // Changed on purpose (QA's #741 gate R16A, 10 Nov 2026): the flag is pinned off here, so the set's env does not leak in.
+    vi.stubEnv("ROSTER_COMPOUND_SURNAME_ENABLED", "");
     expect(kind("Odalys Perwett Vansickle")).toBe("none");
     expect(kind("Odalys Prewett Vansikcle")).toBe("none");
     expect(kind("Odalys Vansikcle")).toBe("none");
@@ -79,6 +81,8 @@ describe("ROSTER_COMPOUND_SURNAME_ENABLED: compound first names, and an initial 
   const SEVERIN = row("s", "Severin", "Ashdown Ferrant");
 
   it("off (the bug): \"Rosa Lind T\" and \"Severin F\" match no one, so the card empties", () => {
+    // Changed on purpose (QA's #741 gate R16A, 10 Nov 2026): the flag is pinned off here, so the set's env does not leak in.
+    vi.stubEnv("ROSTER_COMPOUND_SURNAME_ENABLED", "");
     expect(kind("Rosa Lind T", [ROSA])).toBe("none");
     expect(kind("Severin F", [SEVERIN])).toBe("none");
   });

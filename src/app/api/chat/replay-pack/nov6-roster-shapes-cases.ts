@@ -70,6 +70,26 @@ const VARIANTS: readonly { readonly key: string; readonly typed: (shape: Shape) 
 ];
 
 /** With production's flags, 6 Nov 2026: the variants that already keep the roster person (card or asked). */
+// Changed on purpose (10 Nov 2026): fixed in production by the roster-name set (FORM_NAME_FROM_ROSTER and companions), QA round 22; it now holds with production's flags.
+const FIXED_IN_ROUND_22 = new Set([
+  "nov6-roster-shape-apostrophe-first-initial",
+  "nov6-roster-shape-apostrophe-rotation",
+  "nov6-roster-shape-apostrophe-swap",
+  "nov6-roster-shape-apostrophe-typo",
+  "nov6-roster-shape-compound-surname-first-initial",
+  "nov6-roster-shape-compound-surname-rotation",
+  "nov6-roster-shape-compound-surname-typo",
+  "nov6-roster-shape-preferred-first-initial",
+  "nov6-roster-shape-preferred-rotation",
+  "nov6-roster-shape-preferred-swap",
+  "nov6-roster-shape-preferred-typo",
+  "nov6-roster-shape-short-surname-first-initial",
+  "nov6-roster-shape-two-word-first-first-initial",
+  "nov6-roster-shape-two-word-first-rotation",
+  "nov6-roster-shape-two-word-first-swap",
+  "nov6-roster-shape-two-word-first-typo",
+]);
+
 const HOLDS_IN_PRODUCTION = new Set([
   "two-word-first/exact",
   "two-word-first/lowercase",
@@ -114,7 +134,7 @@ for (const shape of SHAPES) {
       id: `nov6-roster-shape-${shape.key}-${variant.key}`,
       title: `${shape.key}, typed ${variant.key} ("${typed}"): the card is ${name}'s, or the reply offers ${name}; never emptied`,
       report: "QA, 5–6 Nov 2026: roster shapes the invented names never had, for flip 3's name set",
-      status: HOLDS_IN_PRODUCTION.has(key) ? "fixed" : { open: `with production's flags the card keeps the typed "${typed}"` },
+      status: HOLDS_IN_PRODUCTION.has(key) || FIXED_IN_ROUND_22.has(`nov6-roster-shape-${shape.key}-${variant.key}`) ? "fixed" : { open: `with production's flags the card keeps the typed "${typed}"` },
       fixFlags: NAME_SET,
       ...(emptied ? { fixStatus: { open: emptied } } : {}),
       async run(t) {

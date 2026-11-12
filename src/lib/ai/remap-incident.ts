@@ -11,6 +11,7 @@ import {
   anotherRequestLeadEnabled,
   secondRequestOwnAccountEnabled,
 } from "@/lib/config/chat-quality-flags";
+import { createRequestWithReason } from "./edit-date-rules";
 import { withoutPriorStepClauses, correctedDates } from "@/lib/forms/form-date-answer";
 import {
   CA_POLICY_LABEL,
@@ -341,6 +342,8 @@ export function withoutQuestionsToTheApp(text: string): string {
 
 /** A question to the app, a confirmation of the policy, a sentence that only names a policy, or a closing thanks. */
 function askOfTheApp(sentence: string): boolean {
+  // REQUEST_ISSUE_KEPT_ENABLED: "Can you make a CA for <name> for failure to open on time?" is the request and its account.
+  if (createRequestWithReason(sentence)) return false;
   if (/\?\s*$/.test(sentence)) return true;
   if (ASKS_A_QUESTION.test(sentence) && ABOUT_THE_RULES.test(sentence) && !ABOUT_THEM.test(sentence)) return true;
   if (CONFIRMS_THE_POLICY.test(sentence)) return true;

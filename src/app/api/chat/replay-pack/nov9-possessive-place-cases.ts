@@ -35,6 +35,8 @@ export const NOV9_POSSESSIVE_PLACE_CASES: ReplayCase[] = [
       const { content } = await thread.say(REPORTED);
       expect(thread.proposal?.employeeName ?? null, `the place's possessive is the card's person:\n${content}`).toBeNull();
       expect(content, `the reply does not ask who:\n${content}`).toMatch(/Who is this \*\*[^*]+\*\* for\?/);
+      // QA's #741 gate (10 Nov 2026): with the roster-name set on, the question quoted "the employee" instead of the place's word.
+      expect(content, `the question does not quote the place's word:\n${content}`).toContain('"Hadley\'s" is part of a place\'s name');
     },
   },
   {

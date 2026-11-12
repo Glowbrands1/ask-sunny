@@ -1,4 +1,4 @@
-import { formDateIncidentOnlyEnabled, lateOpenDateEnabled } from "@/lib/config/chat-quality-flags";
+import { failureToOpenIsLateOpeningEnabled, formDateIncidentOnlyEnabled, lateOpenDateEnabled } from "@/lib/config/chat-quality-flags";
 
 import { listIncidentDates } from "./form-date-answer";
 import { incidentOnly } from "./form-date-incident-only";
@@ -29,6 +29,30 @@ import { incidentOnly } from "./form-date-incident-only";
 
 /** "late to open", "was late to open the salon". */
 export const LATE_TO_OPEN = /\blate\s+to\s+open\b/i;
+
+/*
+ * FAILURE_TO_OPEN_IS_LATE_OPENING_ENABLED (Pau's P16, 9 Nov 2026): "a CA for <name> for failure to open on time" is
+ * a late opening. "failure / failed / failing to open" (not "open the form", "the drawer", "the register" …), and
+ * "did not / didn't / couldn't open" with "on time" or the salon. Read lower-cased.
+ */
+const NOT_THE_SALON =
+  /(?!\s+(?:(?:a|an|the|this|that|her|his|my|their|our|up)\s+)?(?:forms?|drafts?|cards?|files?|ca|c\/a|corrective|coaching|documents?|app|apps|e-?mails?|messages?|tickets?|accounts?|registers?|drawers?|tills?|safes?|boxe?s?|packages?|doors?\s+for)\b)/;
+export const FAILURE_TO_OPEN = new RegExp(
+  String.raw`\bfail(?:ed|ure|ing|s)?\s+to\s+open${NOT_THE_SALON.source}\b` +
+    String.raw`|\b(?:did\s*n['’]?t|did\s+not|didnt|never|could\s*n['’]?t|could\s+not|unable\s+to|(?:was|were)\s*n['’]?t\s+able\s+to|(?:was|were)\s+not\s+able\s+to)\s+open\s+(?:(?:the\s+)?(?:salon|store|location|shop)\s+)?(?:on|in)\s+time\b` +
+    String.raw`|\b(?:did\s*n['’]?t|did\s+not|didnt|never)\s+open\s+(?:the\s+|her\s+|his\s+)?(?:salon|store|location|shop)\b`,
+  "i",
+);
+
+/** FAILURE_TO_OPEN_IS_LATE_OPENING_ENABLED: whether the words say the employee failed to open. Off, false. */
+export function saysFailureToOpen(text: string): boolean {
+  return failureToOpenIsLateOpeningEnabled() && FAILURE_TO_OPEN.test(text);
+}
+
+/** The same flag, for the policy reader's named list. */
+export function failureToOpenOn(): boolean {
+  return failureToOpenIsLateOpeningEnabled();
+}
 
 /**
  * An account that is also about a shift or an absence, which the Attendance
