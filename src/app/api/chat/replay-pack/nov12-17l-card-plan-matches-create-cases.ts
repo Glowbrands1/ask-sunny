@@ -1,0 +1,81 @@
+import { expect, vi } from "vitest";
+
+import { KEARNEY, STAFF, type ReplayCase, type ReplayContext } from "./cases";
+
+/**
+ * ============================================================================
+ * THE CARD SHOWS THE ACTION PLAN CREATE WILL SAVE (ported from the sibling app: QA's Bubbles 17l, 12 Nov 2026; CARD_PLAN_MATCHES_CREATE_ENABLED)
+ * ============================================================================
+ *
+ * "create a written CA for <B>, she was 20 minutes late on 11/9/26, no action plan", then Create. The card's plan:
+ * "Management will review the Attendance policy with <B first>. Future policy violations may result…". Saved: "<B> is
+ * expected to arrive on time for all scheduled shifts moving forward. Leadership will monitor <B>'s attendance closely
+ * and provide coaching as needed. A follow-up meeting will be scheduled to review progress. Continued lateness will result
+ * in further disciplinary review per company policy. Future policy violations may result in additional corrective action
+ * up to and including termination of employment." — Pau's attendance plan (ATTENDANCE_ACTION_PLAN, his approved
+ * wording). QA's ruling (B): it stays, and the card shows it. The tester's words; the person is STAFF's invented Remy Calder.
+ */
+const SAID = "create a written CA for Remy Calder, she was 20 minutes late on 11/9/26, no action plan";
+const PAU_PLAN =
+  "Remy is expected to arrive on time for all scheduled shifts moving forward. Leadership will monitor Remy's attendance closely and provide coaching as needed. A follow-up meeting will be scheduled to review progress. Continued lateness will result in further disciplinary review per company policy. Future policy violations may result in additional corrective action up to and including termination of employment.";
+const FIX = ["CARD_PLAN_MATCHES_CREATE_ENABLED"];
+const REPORT = "QA's Bubbles 17l live test via the sibling app, 12 Nov 2026 (reproduced here): the card's plan was the general one; Create saved Pau's attendance plan";
+
+/** The card's Action Plan line, as the reply shows it. */
+const cardPlan = (content: string) => (/\*\*Action Plan:\*\*\s*([^\n]+)/i.exec(content)?.[1] ?? "").replace(/\s+/g, " ").trim();
+
+function start(t: ReplayContext) {
+  vi.setSystemTime(new Date("2026-11-11T16:00:00Z"));
+  t.directory(STAFF);
+  t.as("salon_director", KEARNEY);
+  return t.thread();
+}
+
+export const NOV12_17L_CARD_PLAN_MATCHES_CREATE_CASES: ReplayCase[] = [
+  {
+    id: "nov12-17l-card-shows-pau-attendance-plan",
+    title: "17l: \"create a written CA for <B>, she was 20 minutes late on 11/9/26, no action plan\": the card's Action Plan is Pau's attendance plan, the one Create saves",
+    report: REPORT,
+    status: { open: "the card shows \"Management will review the Attendance policy with Remy. …\"" },
+    fixFlags: FIX,
+    async run(t) {
+      const thread = start(t);
+      const card = await thread.say(SAID);
+      expect(card.content, `the card does not cite Attendance:\n${card.content}`).toMatch(/\*\*Policy:\*\* Attendance/);
+      expect(cardPlan(card.content), `the card's plan is not the one Create saves:\n${card.content}`).toBe(PAU_PLAN);
+      t.draftWrites({ observation: "Observed:\nOn November 9, 2026, Remy Calder arrived 20 minutes late." });
+      const id = await thread.create();
+      expect((t.values(id).action_plan ?? "").replace(/\s+/g, " ").trim(), "the saved plan is not the card's").toBe(cardPlan(card.content));
+    },
+  },
+  {
+    id: "nov12-17l-card-plan-equals-saved-plan",
+    title: "17l, the Attendance policy named: the card's Action Plan and the saved Action Plan are the same text",
+    report: `${REPORT} (QA: assert card plan == saved plan for an Attendance CA)`,
+    status: { open: "card: \"Management will review the applicable company policy with Remy. …\"; saved: Pau's attendance plan" },
+    fixFlags: FIX,
+    async run(t) {
+      const thread = start(t);
+      const card = await thread.say("create a written CA for Remy Calder for violating the attendance policy, she was 20 minutes late on 11/9/26, no action plan");
+      const shown = cardPlan(card.content);
+      t.draftWrites({ observation: "Observed:\nOn November 9, 2026, Remy Calder arrived 20 minutes late." });
+      const id = await thread.create();
+      expect(t.values(id).policy_violated ?? "", "the saved form does not cite Attendance").toMatch(/Attendance/);
+      const saved = (t.values(id).action_plan ?? "").replace(/\s+/g, " ").trim();
+      expect(saved, "the saved plan is not Pau's attendance plan").toBe(PAU_PLAN);
+      expect(shown, `the card's plan is not the saved plan:\ncard: ${shown}\nsaved: ${saved}`).toBe(saved);
+    },
+  },
+  {
+    id: "nov12-17l-missed-shift-card-keeps-general-plan",
+    title: "guard: a missed shift (\"… for violating the attendance policy, missing her saturday and sunday shifts …\") keeps the general plan on the card",
+    report: `${REPORT} (the guard: MISSED_SHIFT_NOT_LATENESS keeps the general plan on Create)`,
+    status: "fixed",
+    fixFlags: FIX,
+    async run(t) {
+      const thread = start(t);
+      const card = await thread.say("make me an CA for Remy Calder for violating the attendance policy, missing her saturday and sunday shifts due to wanting to go home for the weekend but failed to communicate proporley");
+      expect(cardPlan(card.content), `a missed shift got the lateness plan:\n${card.content}`).not.toMatch(/arrive on time|Continued lateness/i);
+    },
+  },
+];
