@@ -1,5 +1,5 @@
 import { STREAM_HEADER, unwrapStreamed } from "@/lib/api/streamed-response";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -49,6 +49,10 @@ const store: FakeStore = {
   chat_traces: [],
   chat_form_state: [],
   chat_form_incidents: [],
+  // The two tables a turn's memory writes (QA, 10 Nov 2026: CHAT_PARALLEL_LOADS must write exactly as often as before;
+  // without them every write failed silently and the record's row counts were always 0).
+  user_memory: [],
+  chat_context_summaries: [],
 } as unknown as FakeStore;
 
 // As production builds the role table when the ASD may create forms (NEXT_PUBLIC_, read once at load).
@@ -67,6 +71,12 @@ const state = vi.hoisted(() => ({
   slotReading: "none" as "none" | "ca" | "copy",
   /** Chunks the pinned manual also has, when a case sets them (`manualAlsoHas`); none by default. */
   manualExtra: [] as Record<string, unknown>[],
+  /** FULL_MANUAL_KEEPS_RETRIEVAL: what the knowledge search returns (`knowledgeHas`), the normalizer's label, the full manual. */
+  knowledgeRows: [] as Record<string, unknown>[],
+  normalizerIntent: null as string | null,
+  fullManualLoads: false,
+  /** The grounding block the answering model was last given (`lastGrounding`). */
+  lastGrounding: "",
   /** What the slot model (record_intent_slots) reads this turn, when a case sets it — as a production trace shows. */
   slotsRead: {} as Record<string, unknown>,
   /** The employee the AI reader quotes this turn, when a case sets it (it is checked against the roster as in production). */
@@ -92,6 +102,7 @@ const state = vi.hoisted(() => ({
  * the evidence and date checks, the reducer, the writes and the reload are
  * the real ones.
  */
+const systemPrompts = vi.hoisted(() => ({ hashes: [] as string[], texts: [] as string[] }));
 const patchScript = vi.hoisted(() => ({ outputs: [] as unknown[], calls: 0, byLatest: null as Record<string, unknown> | null }));
 vi.mock("@/lib/forms/form-patch-call", () => ({
   FORM_PATCH_DEFAULT_TIMEOUT_MS: 5_000,
@@ -120,7 +131,27 @@ vi.mock("@/lib/forms/form-patch-call", () => ({
  * `t.failSavesOf` (QA, 9 Nov 2026): a save of the form's values that includes the named field returns an error, as a
  * failed database write would, so a case can make a turn throw part-way.
  */
-const faults = vi.hoisted(() => ({ field: null as string | null }));
+const faults = vi.hoisted(() => ({ field: null as string | null, strayDraftField: null as string | null }));
+/** `t.summaryWrites`: what the long-context summary model returns; none by default (the summary call fails, as unscripted). */
+const summaries = vi.hoisted(() => ({ reply: null as string | null }));
+
+/*
+ * `t.draftWriteCarries` (coding 6, 10 Nov 2026; DRAFT_WRITE_NEVER_SILENT_ENABLED): the draft route's next write through
+ * the one writer also carries this field, once, as a stray value would; the REAL writer then refuses it, and with it
+ * the whole write (all or nothing). Every other call is the real `draftWrite`.
+ */
+vi.mock("@/lib/forms/form-write", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/forms/form-write")>();
+  return {
+    ...actual,
+    draftWrite: ((instanceId, draft, ...rest) => {
+      const stray = faults.strayDraftField;
+      faults.strayDraftField = null;
+      const carried = stray ? { ...draft, values: { ...(draft.values ?? {}), [stray]: "stray" } } : draft;
+      return actual.draftWrite(instanceId, carried, ...rest);
+    }) as typeof actual.draftWrite,
+  };
+});
 function withFaults<T>(client: T): T {
   return new Proxy(client as object, {
     get(target, prop, receiver) {
@@ -176,7 +207,7 @@ vi.mock("@/lib/auth/server", async () => {
       }
       return {
         identity: {
-          subject: "qa-manager",
+          subject: (state as { subject?: string }).subject ?? "qa-manager",
           email: "qa-manager@example.test",
           displayName: "QA Manager",
           role,
@@ -225,8 +256,13 @@ vi.mock("@/lib/ai/call-claude", () => ({
       usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 },
     };
   },
-  callClaude: async (input?: { formEditTool?: { data: string; onToolUse: (call: unknown) => void } | null }) => {
+  callClaude: async (input?: { system?: string; grounding?: string; formEditTool?: { data: string; onToolUse: (call: unknown) => void } | null }) => {
     state.chatModelCalls += 1;
+    state.lastGrounding = String(input?.grounding ?? "");
+    // REPLAY_RECORD (QA, 10 Nov 2026): the system prompt each answer was asked with, as a hash, so two versions of the
+    // prompt's assembly can be compared case by case (the stage-timing split of buildSystemPrompt's awaits).
+    systemPrompts.texts.push(String(input?.system ?? ""));
+    if (process.env.REPLAY_RECORD) systemPrompts.hashes.push(createHash("sha256").update(String(input?.system ?? "")).digest("hex").slice(0, 16));
     if (input?.formEditTool) {
       editTool.offered += 1;
       editTool.lastData = input.formEditTool.data;
@@ -259,6 +295,7 @@ vi.mock("@/lib/ai/call-claude", () => ({
   },
   callClaudeTool: async (input: { tool?: { name?: string }; messages?: { content?: unknown }[] }) => {
     state.toolCalls += 1;
+    if (input.tool?.name === "store_summary") return summaries.reply === null ? null : { summary: summaries.reply };
     if (input.tool?.name === "extract_form_fields") {
       const text = JSON.stringify(input.messages ?? []);
       return {
@@ -268,6 +305,12 @@ vi.mock("@/lib/ai/call-claude", () => ({
         actionPlan: null,
         ...state.reading,
       };
+    }
+    if (input.tool?.name === "normalize_message") {
+      if (state.normalizerIntent === null) return null;
+      const text = JSON.stringify(input.messages ?? []);
+      const latest = (text.split("Latest message:\\n").pop() ?? "").replace(/"\}.*$/, "").replace(/\\"/g, '"');
+      return { query: latest, intent: state.normalizerIntent };
     }
     if (input.tool?.name !== "record_intent_slots") return null;
     if (state.slotReading === "copy") {
@@ -358,7 +401,7 @@ vi.mock("@/lib/knowledge/providers/supabase", () => ({
       return [];
     }
     async match() {
-      return [];
+      return state.knowledgeRows;
     }
     async fetchRoleGrounding(role: { id: string }) {
       return {
@@ -401,8 +444,29 @@ vi.mock("@/lib/knowledge/providers/supabase", () => ({
 /** A question that is not a form request searches the manual; nothing to embed offline. */
 vi.mock("@/lib/knowledge/recall-match", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/knowledge/recall-match")>()),
-  matchRecallKnowledge: async () => [],
+  matchRecallKnowledge: async () => state.knowledgeRows,
 }));
+
+/* FULL_MANUAL_KEEPS_RETRIEVAL: the whole JBA Policy Manual (the production rows), when a case says it loads. */
+vi.mock("@/lib/ai/full-manual-load", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/lib/ai/full-manual-load")>();
+  const { choosePolicyManuals } = await import("@/lib/ai/full-manual-context");
+  const fixture = (await import("@/test/fixtures/jba-manual-production-151.json")).default;
+  return {
+    ...original,
+    loadFullManualContext: async (input: { scopeId: string; question: string }) =>
+      state.fullManualLoads
+        ? choosePolicyManuals(input.question, [
+            {
+              id: fixture.document_ids["ask-sunny"],
+              title: fixture.title,
+              category: "policies_compliance",
+              chunks: (fixture.chunks as import("@/lib/ai/full-manual-load").ChunkRow[]).map(original.manualChunkFromRow),
+            },
+          ])
+        : original.loadFullManualContext(input),
+  };
+});
 
 vi.mock("@/lib/knowledge", () => ({
   getKnowledgeProvider: () => {
@@ -495,6 +559,7 @@ type Answer = {
   formOpened?: { instanceId: string; revisesInstanceId?: string | null };
   formUpdate?: { instanceId: string; updated: string[] };
   pendingCopy?: { fromInstanceId: string };
+  citations?: { documentTitle?: string }[];
 };
 
 /** The thread as the browser holds it: a card the answer carried stays open. */
@@ -578,6 +643,20 @@ class Thread {
     this.instanceId = toUuid(result.reference.instanceId);
     return this.instanceId;
   }
+
+  /** Create from the latest card for this person, as pressing Create on that card does (an earlier card still on screen). */
+  async createCard(employeeName: string): Promise<string> {
+    const message = [...this.messages].reverse().find((entry) => entry.formProposal?.employeeName === employeeName);
+    expect(message?.formProposal, `no card for ${employeeName} to create from`).toBeTruthy();
+    const result = await createInlineForm({ proposal: message!.formProposal!, messages: this.messages, call, onCreated: () => {} });
+    this.instanceId = toUuid(result.reference.instanceId);
+    return this.instanceId;
+  }
+
+  /** The chat as the browser holds it (for the browser's own readers). */
+  get conversation() {
+    return this.messages;
+  }
 }
 
 
@@ -602,6 +681,10 @@ beforeEach(async () => {
   state.slotReading = "none";
   state.slotsRead = {};
   state.manualExtra = [];
+  state.knowledgeRows = [];
+  state.normalizerIntent = null;
+  state.fullManualLoads = false;
+  state.lastGrounding = "";
   state.readerEmployee = null;
   state.slotsOnlyIfSaid = false;
   state.remapObservation = null;
@@ -612,6 +695,8 @@ beforeEach(async () => {
   patchScript.calls = 0;
   patchScript.byLatest = null;
   faults.field = null;
+  summaries.reply = null;
+  faults.strayDraftField = null;
   state.directory = [
     { id: "e-1", firstName: "Quinn", lastName: "Marlowe", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-66"], positionName: null },
     { id: "e-2", firstName: "Dale", lastName: "Ferris", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-66"], positionName: null },
@@ -648,6 +733,8 @@ const CLASSIFY_ON = (process.env.FLAG_CLASSIFY_ON ?? "").split(",").map((name) =
 const record: { turns: { question: string; reply: string; updated: string[] | null }[] } = { turns: [] };
 async function recorded(id: string, mode: string, run: () => Promise<void>) {
   record.turns = [];
+  systemPrompts.hashes = [];
+  systemPrompts.texts = [];
   const at = performance.now();
   let error: string | null = null;
   try {
@@ -657,7 +744,10 @@ async function recorded(id: string, mode: string, run: () => Promise<void>) {
     throw thrown;
   } finally {
     if (process.env.REPLAY_RECORD) {
-      appendFileSync(process.env.REPLAY_RECORD, `${JSON.stringify({ id, mode, ok: error === null, error, ms: Math.round(performance.now() - at), turns: record.turns })}\n`);
+      // The rows the turn's writes left (QA, 9 Nov 2026: CHAT_PARALLEL_LOADS must write exactly as often as before).
+      const tables = store as unknown as Record<string, unknown[] | undefined>;
+      const rows = { user_memory: tables.user_memory?.length ?? 0, chat_context_summaries: tables.chat_context_summaries?.length ?? 0 };
+      appendFileSync(process.env.REPLAY_RECORD, `${JSON.stringify({ id, mode, ok: error === null, error, ms: Math.round(performance.now() - at), turns: record.turns, rows, systems: systemPrompts.hashes })}\n`);
     }
   }
 }
@@ -680,14 +770,19 @@ function setScope(scope: unknown) {
 function setRole(role: string | undefined) {
   (state as { role?: string }).role = role;
 }
+function setSubject(subject: string | undefined) {
+  (state as { subject?: string }).subject = subject;
+}
 afterEach(() => {
   setScope(undefined);
   setRole(undefined);
+  setSubject(undefined);
   said.answer = null;
   editTool.input = null;
   editTool.offered = 0;
   editTool.lastData = null;
   draftAsked.length = 0;
+  revisionAsked.length = 0;
   draftSystemAsked.length = 0;
   draftToolsAsked.length = 0;
 });
@@ -695,13 +790,24 @@ afterEach(() => {
 function context(): ReplayContext {
   return {
     thread: () => new Thread(),
-    as: (role, scope) => {
+    as: (role, scope, subject) => {
       setRole(role);
       setScope(scope);
+      setSubject(subject);
     },
     directory: (rows) => {
       state.directory = rows as never;
     },
+    knowledgeHas: (rows) => {
+      state.knowledgeRows = [...rows];
+    },
+    normalizerReads: (intent) => {
+      state.normalizerIntent = intent;
+    },
+    fullManualLoads: () => {
+      state.fullManualLoads = true;
+    },
+    lastGrounding: () => state.lastGrounding,
     manualAlsoHas: (chunks) => {
       state.manualExtra = [...chunks];
     },
@@ -736,10 +842,19 @@ function context(): ReplayContext {
     failSavesOf: (field) => {
       faults.field = field;
     },
+    summaryWrites: (summary) => {
+      summaries.reply = summary;
+    },
+    rows: (table) => [...(((store as unknown as Record<string, unknown[] | undefined>)[table] ?? []) as Record<string, unknown>[])],
+    draftWriteCarries: (field) => {
+      faults.strayDraftField = field;
+    },
     calls: () => ({ chat: state.chatModelCalls, draft: state.draftCalls, revision: state.revisionCalls, tool: state.toolCalls, patch: patchScript.calls }),
     forms: () => store.form_instances as never,
     draftPrompts: () => [...draftAsked],
+    revisionPrompts: () => [...revisionAsked],
     draftSystems: () => [...draftSystemAsked],
+    answerSystems: () => [...systemPrompts.texts],
     draftTools: () => [...draftToolsAsked],
     redraft: (instanceId, notes) =>
       call<Record<string, unknown>>(`/api/forms/instances/${instanceId}/draft`, {

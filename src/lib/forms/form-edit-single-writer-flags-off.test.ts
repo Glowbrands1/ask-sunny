@@ -279,6 +279,13 @@ const FLIPPED_AFTER_FIXTURE: readonly string[] = [
   // Changed on purpose (10 Nov 2026): QA round 19 turned this on in production. The script's "Create a coaching form." -> name -> yes
   // now asks what happened (sf-s27), so the fixture, which predates it, is compared with it off.
   "COACHING_ASKS_WHAT_HAPPENED_ENABLED",
+  // Changed on purpose (10 Nov 2026): QA round 23 turned this on in production. A name-only coaching ask no longer offers Create
+  // beside "what happened" (the card's text changes); the fixture predates it, so it is compared with it off.
+  "WHAT_HAPPENED_NO_CREATE_ENABLED",
+  // Changed on purpose (11 Nov 2026): QA round 24 turned these on in production (#807). A finalize with a blank Direct
+  // policy is no longer held and its event gains policyBlankAtFinalize; the fixture predates them, so it is compared with them off.
+  "POLICY_GATE_NONBLOCKING_ENABLED",
+  "NEXT_PUBLIC_POLICY_GATE_NONBLOCKING_ENABLED",
 ];
 const PRODUCTION = [...PRODUCTION_FLAGS.on, ...PRODUCTION_FLAGS.assumedOn].filter((name) => !FLIPPED_AFTER_FIXTURE.includes(name));
 /*
@@ -588,9 +595,13 @@ describe("FORM_EDIT_SINGLE_WRITER_ENABLED off: the same chats, byte for byte", (
     if (RECORDING) writeFileSync(FIXTURE, `${JSON.stringify(main, null, 1)}\n`);
     expect(existsSync(FIXTURE), `${FIXTURE} is missing`).toBe(true);
     const recorded = JSON.parse(readFileSync(FIXTURE, "utf8")) as typeof main;
-    expect(runs.a).toBe(recorded.a);
-    expect(runs.b).toBe(recorded.b);
-    expect(runs.noneA).toBe(recorded.noneA);
+    // Changed on purpose (QA's #755 gate, 10 Nov 2026): with COACHING_OBSERVED_SAVED_ENABLED on (the gate runs every flag
+    // on) the saved coaching Details start with "Observed:" — the only difference from main's run, so with that flag on
+    // the comparison drops the heading on both sides. Every other byte is still main's.
+    const heading = (text: string) => (process.env.COACHING_OBSERVED_SAVED_ENABLED === "true" ? text.replaceAll('"Observed:\\n', '"') : text);
+    expect(heading(runs.a)).toBe(heading(recorded.a));
+    expect(heading(runs.b)).toBe(heading(recorded.b));
+    expect(heading(runs.noneA)).toBe(heading(recorded.noneA));
   });
 
   it.skipIf(RECORDING)(

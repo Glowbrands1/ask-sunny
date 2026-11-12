@@ -56,6 +56,7 @@ import {
   secondRequestOwnAccountEnabled,
   observationOwnPersonOnlyEnabled,
 } from "@/lib/config/chat-quality-flags";
+import { requestIssueKeptEnabled } from "@/lib/config/chat-quality-flags";
 import { turnsMadeAbout, withObservationMadeAbout } from "./make-it-about";
 import { NOTHING_SET_ASIDE, citationSetAside, policiesSetAside, setAsideAnything, withPolicySetAside, withoutPolicyAsks } from "@/lib/forms/policy-set-aside";
 import { namesOnlyAPolicy } from "@/lib/forms/person-guard";
@@ -69,6 +70,7 @@ import type { ChatFormProposal, SourceCitation } from "@/types";
 import { withoutLevelAndStepClauses } from "./account-clauses";
 import { isAppLine, withoutAppLines } from "./app-sentences";
 import { withoutAsksToTheApp } from "./asks-to-the-app";
+import { withoutAppInstructions } from "./app-instructions";
 import { GRAMMAR_ANSWER, managerWords, observationByRules, readSentenceEdit } from "./edit-date-rules";
 import { titleTextFromQuestion, titleTextFromTurns } from "./title-words";
 import type { GroundedPerson } from "./grounded-entities";
@@ -295,7 +297,9 @@ export function holdFilledSlots(input: {
       const about = proposalMakeItAboutEnabled() ? turnsMadeAbout(own) : own;
       // PROPOSAL_POLICY_SET_ASIDE_ENABLED: "take the attendance policy off the form", and "we have quoted the standards of
       // conduct for …", are policy asks, never account (`forms/policy-set-aside.ts`).
-      const said = proposalPolicySetAsideEnabled() ? withoutPolicyAsks(about) : about;
+      const setAside = proposalPolicySetAsideEnabled() ? withoutPolicyAsks(about) : about;
+      // APP_INSTRUCTIONS_NOT_ACCOUNT_ENABLED: "Please word it in a professional way. I need the policy attached as well." is no account.
+      const said = setAside.map(withoutAppInstructions).filter((turn) => turn.trim() !== "");
       // FORM_EDIT_DATE_RULES_ENABLED: an edit replaces, adds to, or never touches the Observation.
       if (formEditDateRulesEnabled()) content = observationByRules(content, said, build);
       else if (grammarAskNotAccountEnabled()) content = withGrammarAnswered(build(content, said.map(withoutAsksToTheApp)), turns);
@@ -799,7 +803,8 @@ function withObservation(content: string, turns: readonly string[], employeeName
       if (sentences.some((kept) => kept.toLowerCase() === sentence.toLowerCase())) continue;
       // REQUEST_PARTICIPLE_LEAD_ENABLED: "I need a corrective action made for under performance." is the reason.
       if (requestParticipleLeadEnabled() && isRequestReasonOnly(said, sentence)) reasons.add(sentence);
-      sentences.push(sentence);
+      // REQUEST_ISSUE_KEPT_ENABLED: the account read from "Can you make a CA for <name> for …?" ends without the question mark.
+      sentences.push(requestIssueKeptEnabled() ? sentence.replace(/\s*\?+$/, "") : sentence);
     }
   }
   if (sentences.length === 0) return content;
@@ -882,7 +887,9 @@ function withAccount(content: string, turns: readonly string[], employeeName: st
       !(observationNotPolicyNameEnabled() && namesOnlyAPolicy(sentence)),
   );
   if (sentences.length === 0) return content;
-  const told = complaintAccountEnabled() ? sentences.map(withoutLevelLead) : sentences;
+  const asked = complaintAccountEnabled() ? sentences.map(withoutLevelLead) : sentences;
+  // REQUEST_ISSUE_KEPT_ENABLED: the account read from "Can you make a CA for <name> for …?" ends without the question mark.
+  const told = requestIssueKeptEnabled() ? asked.map((sentence) => sentence.replace(/\s*\?+$/, "")) : asked;
   return `${content}\n\n**Observation of Offense:** ${told.join(". ")}`.trim();
 }
 
