@@ -50,6 +50,12 @@ describe("TERMINATION_STATED_TICKS_ENABLED", () => {
     "a written instead of a termination",
     "if it happens again it's a term CA",
     "Termination is not needed here.",
+    // Gate-Sunny's code read (12 Nov 2026).
+    "don't terminate him",
+    "we're not terminating her",
+    "she is not being terminated",
+    "not a term CA",
+    "no termination",
   ])("on, not stated: %s", (said) => {
     process.env.TERMINATION_STATED_TICKS_ENABLED = "true";
     expect(statesTermination(said)).toBe(false);
