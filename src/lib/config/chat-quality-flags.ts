@@ -4653,3 +4653,12 @@ export function policyCarryRetrievalEnabled(): boolean {
 export function notFollowingIsViolationEnabled(): boolean {
   return envFlag("NOT_FOLLOWING_IS_VIOLATION_ENABLED");
 }
+
+/**
+ * TERMINATION_CARD_TIDY_ENABLED (coding 6, 12 Nov 2026; default off; ported from the sibling app, QA's 17o live notes).
+ * The termination card's Action Plan line keeps the line break after it (`ai/termination-stated.ts`). The sibling's
+ * other half (a hedge as the Issue) does not apply here: this app's card has no Issue line. Off, as before.
+ */
+export function terminationCardTidyEnabled(): boolean {
+  return envFlag("TERMINATION_CARD_TIDY_ENABLED");
+}
