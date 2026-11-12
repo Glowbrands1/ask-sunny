@@ -100,6 +100,18 @@ const NEVER_STATED = [
   ["rather-than-term-ca", "I need a CA for Briony Halvorsen. Didn't show up for her opening shift. Write her up rather than a term CA."],
   ["hold-off", "I need a CA for Briony Halvorsen. Didn't show up for her opening shift. Hold off on terminating her."],
   ["decided-against", "I need a CA for Briony Halvorsen. Didn't show up for her opening shift. We decided against terminating her."],
+  // Gate-Bubbles' probe of 869135a8 and Gate-Sunny's hedge probe of af924094 (12 Nov 2026).
+  ["gb-shouldnt", "I need a CA for Briony Halvorsen. Didn't show up for her opening shift. We shouldn't terminate him"],
+  ["gb-wouldnt-yet", "I need a CA for Briony Halvorsen. Didn't show up for her opening shift. I wouldn't terminate her yet"],
+  ["gb-couldnt-over-this", "I need a CA for Briony Halvorsen. Didn't show up for her opening shift. We couldn't terminate him over this"],
+  ["gb-rather-than", "I need a CA for Briony Halvorsen. Didn't show up for her opening shift. Make it a written rather than a term CA"],
+  ["gb-hold-off-on", "I need a CA for Briony Halvorsen. Didn't show up for her opening shift. We'll hold off on terminating her"],
+  ["gb-decided-against", "I need a CA for Briony Halvorsen. Didn't show up for her opening shift. We decided against terminating him"],
+  ["probably", "I need a CA for Briony Halvorsen. Didn't show up for her opening shift. Probably a term CA."],
+  ["i-think", "I need a CA for Briony Halvorsen. Didn't show up for her opening shift. I think we need a term CA for her."],
+  ["pending-hr", "I need a CA for Briony Halvorsen. Didn't show up for her opening shift. Term CA for her, pending HR."],
+  ["ask-hr-whether", "I need a CA for Briony Halvorsen. Didn't show up for her opening shift. Ask HR whether to terminate her."],
+  ["check-with-dm", "I need a CA for Briony Halvorsen. Didn't show up for her opening shift. Check with my DM about a term CA."],
 ] as const;
 
 export const NOV12_TERMINATION_NEVER_STATED_CASES: ReplayCase[] = NEVER_STATED.map(([key, said]) => ({
@@ -128,6 +140,10 @@ const STATED_WITH_INCIDENT = [
   ["term-ca-did-not-show", "I need a term CA for Briony Halvorsen, she did not show up."],
   // Gate-Sunny wrote "Termination CA for <name>, no call no show." (a unit case): the "I need" opens the card in both apps.
   ["termination-ca-no-call-no-show", "I need a termination CA for Briony Halvorsen, no call no show."],
+  // QA's P15 phrasings (12 Nov 2026).
+  ["because-didnt-call-in", "I need a term CA for Briony Halvorsen because she didn't call in."],
+  ["didnt-show-for-shift", "I need a term CA for Briony Halvorsen, didn't show for her shift."],
+  ["so-i-need", "CA for Briony Halvorsen. She didn't show up, so I need a term CA."],
 ] as const;
 
 export const NOV12_TERMINATION_STATED_INCIDENT_CASES: ReplayCase[] = STATED_WITH_INCIDENT.map(([key, said]) => ({

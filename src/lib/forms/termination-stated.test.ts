@@ -29,6 +29,10 @@ describe("TERMINATION_STATED_TICKS_ENABLED", () => {
     "We are terminating her, she never showed.",
     "I need a termination form for her, she did not show up.",
     "Terminate Briony.",
+    // QA's optional P15 phrasings (12 Nov 2026): the incident clause is skipped for negations only.
+    "Term CA for Briony Halvorsen because she didn't call in.",
+    "Term CA for Briony Halvorsen, didn't show for her shift.",
+    "She didn't show up, so I need a term CA.",
   ])("on, stated: %s", (said) => {
     process.env.TERMINATION_STATED_TICKS_ENABLED = "true";
     expect(statesTermination(said)).toBe(true);
@@ -78,6 +82,31 @@ describe("TERMINATION_STATED_TICKS_ENABLED", () => {
     "Termination CA for Briony Halvorsen, not really.",
     "Terminate her, she might come back though.",
     "We are terminating her, she is not being terminated.",
+    // Gate-Bubbles' probe of 869135a8 (12 Nov 2026).
+    "We shouldn't terminate him",
+    "I wouldn't terminate her yet",
+    "We couldn't terminate him over this",
+    "Make it a written rather than a term CA",
+    "We'll hold off on terminating her",
+    "We decided against terminating him",
+    // Gate-Sunny's hedge probe of af924094 (12 Nov 2026).
+    "Probably a term CA.",
+    "I think we need a term CA for her.",
+    "Term CA for her, pending HR.",
+    "Ask HR whether to terminate her.",
+    "Check with my DM about a term CA.",
+    "Likely a term CA.",
+    "Perhaps terminate her.",
+    "I guess we terminate her.",
+    "I believe it's a term CA.",
+    "Seems like a term CA.",
+    "Sounds like a term CA to me.",
+    "Term CA once HR signs off.",
+    // The incident skip never lets a negation through that is not an incident.
+    "Term CA for Briony Halvorsen, wasn't sure.",
+    "Terminate her, didn't decide yet.",
+    "Because she didn't show, not a term CA.",
+    "She didn't show up, so no term CA.",
   ])("on, not stated: %s", (said) => {
     process.env.TERMINATION_STATED_TICKS_ENABLED = "true";
     expect(statesTermination(said)).toBe(false);
