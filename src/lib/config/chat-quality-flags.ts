@@ -4569,3 +4569,13 @@ export function draftWroteNothingNoticeEnabled(): boolean {
 export function formsOnFileOrderMatchPossibleEnabled(): boolean {
   return envFlag("FORMS_ON_FILE_ORDER_MATCH_POSSIBLE_ENABLED");
 }
+
+/**
+ * POLICY_QUOTE_WHOLE_WORDS_ENABLED (Coding-2, 12 Nov 2026; default off; port from Ask Bubbles' POLICY_CITATION gate).
+ * The manual passage quoted under the reply (RETRIEVAL_RECALL, on in production) was cut at 500 characters mid-word and
+ * could end on a stray "*". On: it ends at a sentence or whole word, with "…", and no emphasis markers
+ * (`ai/violation-policy.ts`). Off, as before.
+ */
+export function policyQuoteWholeWordsEnabled(): boolean {
+  return envFlag("POLICY_QUOTE_WHOLE_WORDS_ENABLED");
+}
