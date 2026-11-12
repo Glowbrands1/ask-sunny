@@ -31,7 +31,8 @@ export const NOV11_GROUP_WORDS_NOT_A_NAME_CASES: ReplayCase[] = ([
   id: `nov11-p19-group-words-not-a-name-${casing}`,
   title: `"${T1}", then "${said}": "multiple employees" is never the employee, and the bot asks who they are`,
   report: `${REPORT}; ${casing}`,
-  status: { open: "\"multiple employees\" is read as the employee's name and the card says everything it needs is here" },
+  // Changed on purpose (12 Nov 2026): fixed in production by GROUP_WORDS_NOT_A_NAME, QA round 32. Was OPEN ("multiple employees" read as the employee's name).
+  status: "fixed",
   fixFlags: [FLAG],
   async run(t: ReplayContext) {
     const thread = start(t);
