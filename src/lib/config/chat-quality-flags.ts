@@ -4547,3 +4547,12 @@ export function groupWordsNotANameEnabled(): boolean {
 export function draftWroteNothingNoticeEnabled(): boolean {
   return envFlag("DRAFT_WROTE_NOTHING_NOTICE_ENABLED");
 }
+
+/**
+ * REOPEN_IS_OPENING_ENABLED (ported from Ask Bubbles, QA's 17n live test, 12 Nov 2026; default off; same flag in both
+ * apps). "he was late to reoepn the store on 11/9" cited Attendance (from "late"), not Late Opening. On: "late to
+ * reopen" (or a word within two letters of it) is a late opening (`forms/late-open.ts`). Off, as before.
+ */
+export function reopenIsOpeningEnabled(): boolean {
+  return envFlag("REOPEN_IS_OPENING_ENABLED");
+}

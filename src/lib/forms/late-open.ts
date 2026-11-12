@@ -1,4 +1,9 @@
-import { failureToOpenIsLateOpeningEnabled, formDateIncidentOnlyEnabled, lateOpenDateEnabled } from "@/lib/config/chat-quality-flags";
+import {
+  failureToOpenIsLateOpeningEnabled,
+  formDateIncidentOnlyEnabled,
+  lateOpenDateEnabled,
+  reopenIsOpeningEnabled,
+} from "@/lib/config/chat-quality-flags";
 
 import { listIncidentDates } from "./form-date-answer";
 import { incidentOnly } from "./form-date-incident-only";
@@ -46,7 +51,41 @@ export const FAILURE_TO_OPEN = new RegExp(
 
 /** FAILURE_TO_OPEN_IS_LATE_OPENING_ENABLED: whether the words say the employee failed to open. Off, false. */
 export function saysFailureToOpen(text: string): boolean {
+  if (reopenIsOpeningEnabled() && lateToReopen(text) !== null) return true;
   return failureToOpenIsLateOpeningEnabled() && FAILURE_TO_OPEN.test(text);
+}
+
+/*
+ * REOPEN_IS_OPENING_ENABLED (ported from Ask Bubbles, QA's 17n live test, 12 Nov 2026): "he was late to reoepn the
+ * store on 11/9" was Attendance (from "late"), not Late Opening; so was "late to reopen", spelled right. Reopening the
+ * salon is opening it. "late to <word>" where the word is "reopen" or within two letters of it ("reoepn", "re-open"),
+ * with "the salon" (or the like) after it or nothing at all, is a late opening. Off, null.
+ */
+const LATE_TO_RE = /\blate\s+to\s+(re-?[a-z]{3,6})\b((?:\s+(?:the\s+)?(?:salon|store|location|shop))?)/gi;
+
+/** REOPEN_IS_OPENING_ENABLED: the manager's "late to reopen (the salon)" span as typed, or null. */
+export function lateToReopen(text: string): string | null {
+  for (const match of (text ?? "").matchAll(LATE_TO_RE)) {
+    const word = match[1]!.toLowerCase().replace("-", "");
+    if (word === "reopen" || closeTo(word, "reopen")) return match[0];
+  }
+  return null;
+}
+
+/** Levenshtein distance of at most two, on a short word. */
+function closeTo(word: string, target: string): boolean {
+  const rows = Array.from({ length: word.length + 1 }, (_, index) => [index]);
+  for (let column = 1; column <= target.length; column += 1) rows[0]![column] = column;
+  for (let row = 1; row <= word.length; row += 1) {
+    for (let column = 1; column <= target.length; column += 1) {
+      rows[row]![column] = Math.min(
+        rows[row - 1]![column]! + 1,
+        rows[row]![column - 1]! + 1,
+        rows[row - 1]![column - 1]! + (word[row - 1] === target[column - 1] ? 0 : 1),
+      );
+    }
+  }
+  return rows[word.length]![target.length]! <= 2;
 }
 
 /** The same flag, for the policy reader's named list. */
