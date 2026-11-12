@@ -4486,3 +4486,14 @@ export function adviceAskNotAccountEnabled(): boolean {
 export function groupWordsNotANameEnabled(): boolean {
   return envFlag("GROUP_WORDS_NOT_A_NAME_ENABLED");
 }
+
+/**
+ * TERMINATION_INTAKE_ENABLED (coding 6, 12 Nov 2026; default off; ported from the sibling app, QA). A pasted termination
+ * letter ("Dear <C>, Your employment with … is terminated effective 11/10/26.", the sibling's 17k live test; reproduced
+ * here) got the general answer instead of the Resignation/Exit Form. On: a termination letter asks for the exit form,
+ * and a leading "term / termination CA for <name>" asks for the Corrective Action Form (this app already opened that
+ * card by another path; the reader is the sibling's, kept the same). Off, as before. See `forms/template-intent.ts`.
+ */
+export function terminationIntakeEnabled(): boolean {
+  return envFlag("TERMINATION_INTAKE_ENABLED");
+}
