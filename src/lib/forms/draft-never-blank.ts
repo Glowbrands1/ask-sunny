@@ -8,6 +8,7 @@ import { withoutPriorStepClauses } from "./form-date-answer";
 import { priorSentenceFixFor } from "./prior-sentence-scope";
 import { JOB_TITLES } from "./proposal";
 import { EXPECTATION_LABEL, GOING_FORWARD_LABEL, OBSERVED_LABEL } from "./narrative-draft";
+import { withoutLeadingTitle } from "./title-before-name";
 
 /**
  * ============================================================================
@@ -117,6 +118,8 @@ function issueFromRequest(text: string, employeeName: string | null): string | n
       const lower = issue.toLowerCase();
       if (issue.length < 3 || issue.length > 80 || NOT_AN_ISSUE.test(issue)) continue;
       if (person && (lower === person || lower.startsWith(`${person} `))) continue;
+      // TITLE_BEFORE_NAME_ENABLED: "SDIT <name>" is who the form is for, not what happened.
+      if (person && withoutLeadingTitle(issue).trim().toLowerCase() === person) continue;
       if (personAndPlaceOnly(issue, employeeName)) continue;
       if (onlyAJobTitle(issue)) continue;
       found = issue;

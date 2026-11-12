@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import { leadingFormRequest } from "./template-intent";
-import { leadingTitleLength, nameAfterTitle, withoutLeadingTitle } from "./title-before-name";
+import { leadingTitleLength, nameAfterTitle, sameNameAfterTitle, withoutLeadingTitle } from "./title-before-name";
 
 /** TITLE_BEFORE_NAME_ENABLED (ported from Ask Bubbles, 11 Nov 2026): this app's titles; the person is invented. */
 const FLAG = "TITLE_BEFORE_NAME_ENABLED";
@@ -65,5 +65,25 @@ describe("nameAfterTitle (QA's ruling, 11 Nov 2026): the name a request gives af
 
   it("flag off: nothing", () => {
     expect(nameAfterTitle("Corrective action for Salon Director Wren Tallis")).toBeNull();
+  });
+});
+
+describe("sameNameAfterTitle: the create check's reading \"Director <name>\" is the card's <name>", () => {
+  const said = ["Corrective action for Salon Director Wren Tallis"];
+
+  it("flag on: \"Director Wren Tallis\" read from \"for Salon Director Wren Tallis\" is Wren Tallis", () => {
+    process.env[FLAG] = "true";
+    expect(sameNameAfterTitle("Director Wren Tallis", "Wren Tallis", said)).toBe(true);
+    expect(sameNameAfterTitle("Tanning Consultant Wren Tallis", "Wren Tallis", ["Corrective action for Tanning Consultant Wren Tallis"])).toBe(true);
+  });
+
+  it("flag on: another person, or a request that never put a title before the name, is not", () => {
+    process.env[FLAG] = "true";
+    expect(sameNameAfterTitle("Ronan Wren Tallis", "Wren Tallis", ["Corrective action for Ronan Wren Tallis"])).toBe(false);
+    expect(sameNameAfterTitle("Maya Lund", "Wren Tallis", said)).toBe(false);
+  });
+
+  it("flag off: never", () => {
+    expect(sameNameAfterTitle("Director Wren Tallis", "Wren Tallis", said)).toBe(false);
   });
 });

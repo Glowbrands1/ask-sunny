@@ -13,6 +13,7 @@ import { detectTemplateIntent } from "./template-intent";
 import { dateAnswerTurns } from "./incident-dates";
 import { isPayrollAnswer } from "./payroll-words";
 import { stateCodePlaceContext } from "./state-code-place";
+import { sameNameAfterTitle } from "./title-before-name";
 import { checkedReadingEnabled } from "@/lib/config/chat-quality-flags";
 import type { ChatMessage } from "@/types";
 
@@ -178,7 +179,13 @@ export function checkProposalIsCurrent(input: {
     resolution.kind === "resolved" &&
     !samePerson(resolution.employeeName, input.employeeName) &&
     !accepted &&
-    !(checkedReadingEnabled() && partOfName(resolution.employeeName, input.employeeName))
+    !(checkedReadingEnabled() && partOfName(resolution.employeeName, input.employeeName)) &&
+    // TITLE_BEFORE_NAME_ENABLED: "for Salon Director <name>" was read as "Director <name>"; the card's <name> is them.
+    !sameNameAfterTitle(
+      resolution.employeeName,
+      input.employeeName,
+      context.messages.map((message) => message.content),
+    )
   ) {
     return {
       current: false,

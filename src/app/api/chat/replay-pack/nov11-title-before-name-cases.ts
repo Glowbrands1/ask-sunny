@@ -74,6 +74,36 @@ export const NOV11_TITLE_BEFORE_NAME_CASES: ReplayCase[] = [
       expect(reply.content, reply.content).not.toMatch(/Director Wren Tallis/);
     },
   },
+  /*
+   * QA (12 Nov 2026): the created draft, not only the card. "Corrective action for Salon Director <name>" was refused at
+   * Create ("the conversation now says the form is for Director <name>"), and "… for SDIT <name>" drafted
+   * "Observed: SDIT <name>." The draft is <name>'s and holds what the plain-name request's draft holds (its Action Plan
+   * included, which with no account given is none in either), plus the stated job title; the title is never the account.
+   */
+  ...(["Salon Director", "Tanning Consultant", "SDIT"] as const).map((title) => ({
+    id: `nov11-title-before-name-draft-${title.toLowerCase().replace(/\s+/g, "-")}`,
+    title: `"Corrective action for ${title} ${NAME}" (admin): Create makes the draft for ${NAME}, with its Action Plan`,
+    report: REPORT,
+    status: { open: `the draft is not ${NAME}'s, or Create refuses the card` } as const,
+    fixFlags: FIX,
+    async run(t: ReplayContext) {
+      vi.setSystemTime(new Date("2026-11-11T15:00:00Z"));
+      t.directory(STAFF);
+      t.as("admin", EVERY_SALON);
+      const plain = t.thread();
+      await plain.say(`Corrective action for ${NAME}`);
+      const expected = t.values(await plain.create());
+      const thread = t.thread();
+      await thread.say(`Corrective action for ${title} ${NAME}`);
+      const values = t.values(await thread.create());
+      expect(values.employee_name, JSON.stringify(values)).toBe(NAME);
+      expect(values.observation ?? "", JSON.stringify(values)).not.toMatch(new RegExp(`${title}\\s+${NAME}`, "i"));
+      // The same draft as the plain-name request's, but for the job title the manager stated.
+      const { job_title: stated, ...rest } = values;
+      expect(stated, JSON.stringify(values)).toBeTruthy();
+      expect(rest, `titled: ${JSON.stringify(values)}\nplain: ${JSON.stringify(expected)}`).toEqual(expected);
+    },
+  })),
   {
     id: "nov11-title-before-name-plain-name-unchanged",
     title: `NEVER-BREAK: "Corrective action for ${NAME}" still cards for ${NAME}`,
