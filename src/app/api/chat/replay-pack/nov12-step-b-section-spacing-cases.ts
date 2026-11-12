@@ -52,3 +52,41 @@ export const NOV12_STEP_B_SECTION_SPACING_CASES: ReplayCase[] = [
     },
   },
 ];
+
+/*
+ * QA's Ask Sunny r37 live check (12 Nov 2026, main 7e8dcdb6; STEP_B_SECTION_SPACING on in production; names invented):
+ * on coaching Details "Observed:\n… \n\nExpectation:\n…\n\nPolicy reference: …", the turn "make that update: he also
+ * ignored a second client" saved the labels pulled onto the text line and no blank line before "Policy reference:".
+ * The reader writes the field back in that shape, as live.
+ */
+const R37_REQUEST = "create a coaching form for Ottoline Ormsworth, on 11/9 she was rude to a client";
+const R37_DETAILS =
+  "Observed:\nOn 11/9, Ottoline Ormsworth was rude to a client.\n\nExpectation:\nOttoline Ormsworth is expected to greet every client politely.\n\nPolicy reference: Standards of Conduct Policy, JBA Policy Manual p.12";
+const R37_SAID = "make that update: he also ignored a second client";
+const R37_WRITTEN =
+  "Observed: On 11/9, Ottoline Ormsworth was rude to a client and ignored a second client.\n\nExpectation: Ottoline Ormsworth is expected to greet every client politely.\nPolicy reference: Standards of Conduct Policy, JBA Policy Manual p.12";
+
+export const NOV12_R37_SECTION_LABELS_CASES: ReplayCase[] = [
+  {
+    id: "nov12-r37-section-labels-and-policy-line-kept",
+    title: "\"make that update: he also ignored a second client\": the labels stay on their own lines and Policy reference keeps its blank line",
+    report: "QA's Ask Sunny r37 live check (12 Nov 2026): the labels were pulled onto the text line and the blank line before Policy reference was lost",
+    status: "fixed",
+    async run(t) {
+      vi.setSystemTime(new Date("2026-11-12T16:00:00Z"));
+      t.directory(REFUSAL_ROSTER);
+      t.as("salon_director", KEARNEY);
+      const thread = t.thread();
+      await thread.say(R37_REQUEST);
+      t.draftWrites({ coaching_details: R37_DETAILS });
+      const id = await thread.create();
+      t.patchReads!({ [R37_SAID]: patch("this_form", [{ field: "coaching_details", value: R37_WRITTEN, how: "replace", evidence: "ignored a second client" }]) });
+      await thread.say(R37_SAID);
+      const details = t.values(id).coaching_details ?? "";
+      expect(details, details).toMatch(/ignored a second client/);
+      expect(details, `a label was pulled onto the text line:\n${details}`).toMatch(/^Observed:\nOn 11\/9/);
+      expect(details, `a label was pulled onto the text line:\n${details}`).toMatch(/\n\nExpectation:\nOttoline/);
+      expect(details, `the blank line before Policy reference was lost:\n${details}`).toMatch(/\n\nPolicy reference:/);
+    },
+  },
+];
