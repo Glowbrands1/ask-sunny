@@ -4547,6 +4547,16 @@ export function groupWordsNotANameEnabled(): boolean {
 }
 
 /**
+ * STEP_B_SECTION_SPACING_ENABLED (ported from Ask Bubbles; QA's live draft test, 8 Nov 2026; same flag in both apps;
+ * default off). After an edit, the blank lines between Observed / Expectation / Going Forward became single newlines.
+ * On: a write of a field that had them keeps one blank line before each section heading (`forms/outline-sections.ts`).
+ * Off, as before.
+ */
+export function stepBSectionSpacingEnabled(): boolean {
+  return envFlag("STEP_B_SECTION_SPACING_ENABLED");
+}
+
+/**
  * DRAFT_WROTE_NOTHING_NOTICE_ENABLED (coding 6, 10 Nov 2026; default off;
  * QA's r21 live check). A name-only Coaching card's Create saved only the
  * Name and Date and said nothing: no account, so the drafting model wrote no
