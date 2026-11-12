@@ -25,6 +25,8 @@ function guardOn() {
 
 describe("OFFERED_NAME_ACCEPTED_ENABLED", () => {
   it("off: the accepted name is still ruled out by the request's shape (as before)", () => {
+    // Pinned off (QA, 12 Nov 2026): the suite also runs with production's or a gate's flags in the environment.
+    vi.stubEnv("OFFERED_NAME_ACCEPTED_ENABLED", "");
     guardOn();
     expect(notAPerson(C)).toBe(true);
   });
