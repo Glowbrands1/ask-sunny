@@ -17,7 +17,7 @@ import { KEARNEY, type ReplayCase, type ReplayContext } from "./cases";
 const REPORT = "QA, 12 Nov 2026: a dress-code question about one item is not answered from the policy manual when its intent reads \"other\"";
 const MANUAL = "JBA Policy Manual";
 
-function start(t: ReplayContext, intent: string) {
+function start(t: ReplayContext, intent: "other" | "policy_question") {
   vi.setSystemTime(new Date("2026-11-12T03:00:00Z"));
   t.as("salon_director", KEARNEY);
   t.fullManualLoads!();
