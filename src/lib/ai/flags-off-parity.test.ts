@@ -185,6 +185,9 @@ import { privateCreatorFormsEnabled, privateCreatorsActive } from "@/lib/forms/p
  */
 
 const NEW_FLAGS = [
+  // coding 2: QA's #745 follow-ups, ported from the sibling app's #842 (12 Nov 2026; default off).
+  "TERSE_REQUEST_ACCOUNT_ENABLED",
+  "CREATE_POINTS_TO_SHOWN_CARD_ENABLED",
   // coding 4: FULL_MANUAL_KEEPS_RETRIEVAL (QA, 10 Nov 2026; default off).
   "FULL_MANUAL_KEEPS_RETRIEVAL_ENABLED",
   // coding 4: FORM_NAME_NOT_A_TITLE (QA's prod-env reading, D5, 11 Nov 2026; default off).

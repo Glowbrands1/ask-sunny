@@ -114,3 +114,33 @@ describe("CREATE_FROM_CONVERSATION_POINTS_TO_CARD_ENABLED (QA's P6, Sunny live, 
     }
   });
 });
+
+/**
+ * CREATE_POINTS_TO_SHOWN_CARD_ENABLED — QA's #745 follow-up (12 Nov 2026; ported from the sibling app's #842): "write
+ * ca", then "create it" said "press **Create draft** on the card" while the card only asked who it is for (no button).
+ */
+describe("CREATE_POINTS_TO_SHOWN_CARD_ENABLED", () => {
+  const asksWho = { templateKey: "dpoa", employeeName: null, status: "needs_employee", supportsInlineDraft: false };
+  const ready = { templateKey: "dpoa", employeeName: "Rowan Kestrel", status: "ready", supportsInlineDraft: true };
+  const turn = (formProposal: object) => ({
+    question: "create it",
+    history: [
+      { id: "m1", role: "user", content: "write ca" },
+      { id: "a1", role: "assistant", content: "Who is this for?", formProposal },
+    ] as never,
+    continueProposalTemplateKey: "dpoa",
+    questionMessageId: "m9",
+  });
+
+  it("off: the line is said with a who-is-it-for card (as before)", () => {
+    vi.stubEnv("CREATE_COMMAND_POINTS_TO_CARD_ENABLED", "true");
+    expect(cardMetaTurn(turn(asksWho))?.card?.content).toBe(PRESS_CREATE);
+  });
+
+  it("on: no line pointing to a Create button the card does not show; a ready card keeps it", () => {
+    vi.stubEnv("CREATE_COMMAND_POINTS_TO_CARD_ENABLED", "true");
+    vi.stubEnv("CREATE_POINTS_TO_SHOWN_CARD_ENABLED", "true");
+    expect(cardMetaTurn(turn(asksWho))).toBeNull();
+    expect(cardMetaTurn(turn(ready))?.card?.content).toBe(PRESS_CREATE);
+  });
+});

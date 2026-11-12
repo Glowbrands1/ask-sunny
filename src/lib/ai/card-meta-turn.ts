@@ -1,4 +1,9 @@
-import { cardComplaintNotAccountEnabled, createCommandPointsToCardEnabled, createFromConversationPointsToCardEnabled } from "@/lib/config/chat-quality-flags";
+import {
+  cardComplaintNotAccountEnabled,
+  createCommandPointsToCardEnabled,
+  createFromConversationPointsToCardEnabled,
+  createPointsToShownCardEnabled,
+} from "@/lib/config/chat-quality-flags";
 
 import type { AskRequest, AskResponse } from "./types";
 
@@ -47,6 +52,18 @@ const CREATE_FROM_CONVERSATION = new RegExp(
 const COMPLAINT =
   /^(?:(?:but|hmm|um|uh|ok(?:ay)?)[,\s]+)?(?:this|that|the|your)\s+(?:proposal|card|form|draft)\s+(?:is|looks|seems|was)\s+(?:(?:all|still|kind\s+of|completely)\s+)?(out\s+o[fd]\s+[dfs]ate|outdated|old|wrong|incorrect|not\s+right|off)\s*[.!?]*$/i;
 
+/*
+ * CREATE_POINTS_TO_SHOWN_CARD_ENABLED (port from the sibling app's #842, QA's #745 follow-up, 12 Nov 2026): "write ca",
+ * then "create it" — the card only asks who the form is for and has no **Create draft** button, yet the reply said to
+ * press it. The button is there when the chat shows it (`features/chat/message-bubble.tsx`): an inline draft, or a card
+ * that only needs its salon chosen. Off, every card counts as shown.
+ */
+function showsCreate(proposal: unknown): boolean {
+  if (!createPointsToShownCardEnabled()) return true;
+  const card = proposal as { supportsInlineDraft?: boolean; status?: string } | null | undefined;
+  return !!card && (card.supportsInlineDraft === true || card.status === "needs_location");
+}
+
 function squeezed(question: string): string {
   return (question ?? "").replace(/\s+/g, " ").trim();
 }
@@ -82,6 +99,13 @@ export function cardMetaTurn(
     .find((turn) => turn.role === "user" && typeof turn.content === "string" && kindOf(turn.content) === null);
   const from = fromTurn?.content;
   if (!from) return null;
+  // CREATE_POINTS_TO_SHOWN_CARD_ENABLED: "create it" with no Create button on screen is answered as before this module.
+  const shown = [...(request.history ?? [])]
+    .reverse()
+    .find((turn) => turn.role === "assistant" && (turn as { formProposal?: AskResponse["formProposal"] }).formProposal?.templateKey === request.continueProposalTemplateKey) as
+    | { formProposal?: AskResponse["formProposal"] }
+    | undefined;
+  if (kind === "create" && shown?.formProposal && !showsCreate(shown.formProposal)) return null;
   const line = kind === "create" ? PRESS_CREATE : kind === "outdated" ? WHAT_IS_OUT_OF_DATE : WHAT_IS_WRONG;
   /*
    * The card as it was: its own source turns, so Create drafts from the account, never from "create it" or the
@@ -104,6 +128,7 @@ export function cardMetaTurn(
      */
     answer: (again) => {
       if (!again.formProposal) return again;
+      if (kind === "create" && !showsCreate(again.formProposal)) return again;
       const ids = (again.formProposal.sourceMessageIds ?? []).filter((id) => id !== request.questionMessageId);
       const sourceMessageIds = fromTurn?.id && !ids.includes(fromTurn.id) ? [...ids, fromTurn.id] : ids;
       return { ...again, content: line, formProposal: { ...again.formProposal, sourceMessageIds } };

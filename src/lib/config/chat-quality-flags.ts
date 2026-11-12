@@ -2692,6 +2692,26 @@ export function createFromConversationPointsToCardEnabled(): boolean {
 }
 
 /**
+ * TERSE_REQUEST_ACCOUNT_ENABLED (port from the sibling app's #842, QA's #745 follow-up, 12 Nov 2026; default off).
+ * "writen ca rowan kestrel not atending monthly meeting 12-20-26" put the whole request line in the Observation and
+ * cited no policy: a terse request has no "for" after its head. On: a terse "write(n) ca <name>" head and the name come
+ * off the Observation (`forms/ca-policy.ts` observationAccount), and "atending" reads as the missed meeting, so the
+ * Attendance policy follows. Off, as before.
+ */
+export function terseRequestAccountEnabled(): boolean {
+  return envFlag("TERSE_REQUEST_ACCOUNT_ENABLED");
+}
+
+/**
+ * CREATE_POINTS_TO_SHOWN_CARD_ENABLED (port from the sibling app's #842, QA's #745 follow-up, 12 Nov 2026; default
+ * off). "write ca", then "create it": the reply said "press **Create draft** on the card" while the card only asked who
+ * the form is for (no Create button). On: the line is said only when the card shows the button. Off, as before.
+ */
+export function createPointsToShownCardEnabled(): boolean {
+  return envFlag("CREATE_POINTS_TO_SHOWN_CARD_ENABLED");
+}
+
+/**
  * OBSERVATION_OWN_PERSON_ONLY_ENABLED (QA's P7, Sunny live, 10 Nov 2026; coding 5; same flag in both apps; default off).
  * "Make me a coaching form for <A>, <B>, and <C> for not closing duties correctly" → "create draft for failure to do
  * closing duties and staying over hours" gave the Observation "<B>, and <C> for not closing duties correctly create draft
