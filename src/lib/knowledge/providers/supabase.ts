@@ -4,6 +4,7 @@ import { EMBEDDING_DIMENSIONS, RETRIEVAL } from "@/lib/config/models";
 import { getEmbeddingProvider } from "@/lib/embeddings";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import type { KnowledgeDocument, SearchResult, SourceCitation } from "@/types";
+import { shownCitations } from "../empty-card-drop";
 import {
   rowToCitation,
   rowToDocument,
@@ -182,10 +183,13 @@ export class SupabaseKnowledgeProvider implements KnowledgeProvider {
 
   toCitations(results: SearchResult[]): SourceCitation[] {
     const byChunkId = new Map(this.lastRows.map((row) => [row.chunk_id, row]));
-    return results
-      .map((result) => byChunkId.get(result.chunkId))
-      .filter((row): row is MatchedChunkRow => Boolean(row))
-      .map(rowToCitation);
+    // EXCERPT_EMPTY_CARD_DROP_ENABLED: no empty card, none labelled with the sibling company.
+    return shownCitations(
+      results
+        .map((result) => byChunkId.get(result.chunkId))
+        .filter((row): row is MatchedChunkRow => Boolean(row))
+        .map(rowToCitation),
+    );
   }
 
   /**

@@ -596,6 +596,7 @@ const NEW_FLAGS = [
   "SHIFT_ACCOUNT_IS_INCIDENT_ENABLED",
   // coding 5: UNDATED_ACCOUNT_BRIEF (default off): forced off with the others in the child run.
   "UNDATED_ACCOUNT_BRIEF_ENABLED",
+  "EXCERPT_BRAND_FILTER_ENABLED",
   "EXIT_TYPO_WORDS_ENABLED",
   "WOVEN_TEXT_NUL_STRIP_ENABLED",
   "WOVEN_FAILED_RETRY_ENABLED",
@@ -619,6 +620,8 @@ const NEW_FLAGS = [
   // coding 2: CREATE_COMMAND_POINTS_TO_CARD and CARD_COMPLAINT_NOT_ACCOUNT (default off): forced off with the others.
   "CREATE_COMMAND_POINTS_TO_CARD_ENABLED",
   "CARD_COMPLAINT_NOT_ACCOUNT_ENABLED",
+  // coding 2: EXCERPT_EMPTY_CARD_DROP (QA, 11 Nov 2026; default off): forced off with the others.
+  "EXCERPT_EMPTY_CARD_DROP_ENABLED",
   // coding 6: REQUEST_ISSUE_KEPT (ported from Ask Bubbles, QA round 17b; default off).
   "REQUEST_ISSUE_KEPT_ENABLED",
   "GROUP_WORDS_NOT_A_NAME_ENABLED",
