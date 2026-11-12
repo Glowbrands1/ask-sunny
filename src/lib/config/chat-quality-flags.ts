@@ -4653,3 +4653,14 @@ export function policyCarryRetrievalEnabled(): boolean {
 export function notFollowingIsViolationEnabled(): boolean {
   return envFlag("NOT_FOLLOWING_IS_VIOLATION_ENABLED");
 }
+
+/**
+ * COACHING_TYPE_STATED_TICKS_ENABLED (ported from Ask Bubbles; QA's 17p live check there, 12 Nov 2026; same flag in both
+ * apps; default off). A coaching request that named its type ("… coaching on under performance") was drafted with no
+ * Coaching Type ticked: the tick was the drafting model's. On: exactly one coaching type the manager names is ticked as
+ * their statement before the model drafts, and the model's tick never replaces it; topics stay with the model
+ * (`forms/coaching-type-stated.ts`). Off, as before.
+ */
+export function coachingTypeStatedTicksEnabled(): boolean {
+  return envFlag("COACHING_TYPE_STATED_TICKS_ENABLED");
+}

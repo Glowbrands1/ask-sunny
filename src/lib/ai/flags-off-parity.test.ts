@@ -419,6 +419,8 @@ const NEW_FLAGS = [
   "ADVICE_ASK_NOT_ACCOUNT_ENABLED",
   // coding 6: DRAFT_WROTE_NOTHING_NOTICE (default off): forced off with the others.
   "DRAFT_WROTE_NOTHING_NOTICE_ENABLED",
+  // COACHING_TYPE_STATED_TICKS (ported from Ask Bubbles, QA 17p live, 12 Nov 2026; default off): forced off with the others.
+  "COACHING_TYPE_STATED_TICKS_ENABLED",
   "STAFF_PICKER_ENABLED",
   "STAFF_PICKER_STORE_TITLES_ENABLED",
   "STAFF_PICKER_BARE_ANSWER_ENABLED",

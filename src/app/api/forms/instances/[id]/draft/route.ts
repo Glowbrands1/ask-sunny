@@ -580,6 +580,33 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       ...groups.map((group) => group.key),
     ]);
     /*
+     * COACHING_TYPE_STATED_TICKS_ENABLED (ported from Ask Bubbles; QA's 17p live check there, 12 Nov 2026): a coaching
+     * type the manager names ("… coaching on under performance") is ticked as their statement before the model drafts,
+     * and the model is not shown the group, so its own tick never replaces it (`forms/coaching-type-stated.ts`).
+     */
+    const coachingTypeModule = await import("@/lib/forms/coaching-type-stated");
+    const coachingTypeGroup = groups.find((group) => group.key === coachingTypeModule.COACHING_TYPE_KEY) ?? null;
+    const statedCoachingType = coachingTypeGroup
+      ? coachingTypeModule.statedCoachingType(notes, coachingTypeGroup.options.map((option) => option.key))
+      : null;
+    const coachingTypeStatedFacts = statedCoachingType
+      ? formEditSingleWriterEnabled()
+        ? await (await import("@/lib/forms/form-write")).statedWrite(
+            id,
+            { values: {}, checked: { [coachingTypeModule.COACHING_TYPE_KEY]: [statedCoachingType] } },
+            actor.id,
+            coachingTypeModule.COACHING_TYPE_STATED_KEYS,
+            { notes },
+          )
+        : await applyStatedFacts(
+            id,
+            { values: {}, checked: { [coachingTypeModule.COACHING_TYPE_KEY]: [statedCoachingType] } },
+            actor.id,
+            coachingTypeModule.COACHING_TYPE_STATED_KEYS,
+          )
+      : [];
+
+    /*
      * THE CORRECTIVE ACTION FORM'S ACTION PLAN IS NOT DRAFTED. District
      * Manager feedback, 21 Oct 2026: two sentences, the policy reviewed and
      * the closing (plus the deduction, where payroll deduct is Yes). Built by
@@ -590,7 +617,10 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     const promptFields = fields.filter(
       (field) => !EXIT_DERIVED_KEYS.has(field.key) && field.key !== fixedPlan?.key,
     );
-    const promptGroups = groups.filter((group) => !EXIT_DERIVED_KEYS.has(group.key));
+    const promptGroups = groups.filter(
+      // COACHING_TYPE_STATED_TICKS_ENABLED: a type the manager named is theirs, not the model's.
+      (group) => !EXIT_DERIVED_KEYS.has(group.key) && !(statedCoachingType && group.key === coachingTypeGroup?.key),
+    );
 
     /*
      * THE EXIT FORM'S DETAILS LINES, FROM THE MANAGER'S OWN WORDS — the
@@ -2787,7 +2817,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       ...(fallback ? { fallback } : {}),
       sources: grounding.sources,
       /** Fields filled from the manager's own statements, not by the model. */
-      statedFacts: [...statedFacts, ...exitStatedFacts],
+      statedFacts: [...statedFacts, ...exitStatedFacts, ...coachingTypeStatedFacts],
     });
   } catch (error) {
     if (error instanceof InstanceNotVisibleError) {
