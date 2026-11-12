@@ -254,12 +254,14 @@ async function postChat(request: Request) {
         };
       }
       // OUTLINE_ON_OPEN_PROPOSAL_ENABLED: a pasted outline on an open proposal is no account (`lib/forms/outline-on-proposal.ts`).
-      let outlineOnProposal: { readonly requestId?: string } | null = null;
+      let outlineOnProposal: { readonly requestId?: string; readonly outlinePeople?: readonly string[] } | null = null;
       if (outlineOnOpenProposalEnabled()) {
         const read = (await import("@/lib/forms/outline-on-proposal")).withoutOutlineTurns(asked);
         if (read) {
           asked = read.asked;
-          outlineOnProposal = read.outline ? { ...(read.requestId ? { requestId: read.requestId } : {}) } : null;
+          outlineOnProposal = read.outline
+            ? { ...(read.requestId ? { requestId: read.requestId } : {}), ...(read.outlinePeople ? { outlinePeople: read.outlinePeople } : {}) }
+            : null;
         }
       }
       /*
@@ -955,7 +957,11 @@ async function postChat(request: Request) {
       answer = withCorrectionNotDropped(answer, parsed);
       // OUTLINE_ON_OPEN_PROPOSAL_ENABLED: the outline turn's reply says her own details are kept, nothing from the pasted example.
       if (outlineOnProposal) {
-        answer = (await import("@/lib/forms/outline-on-proposal")).withOutlineKeptNote(answer, { outlineTurnId: parsed.questionMessageId, requestId: outlineOnProposal.requestId });
+        answer = (await import("@/lib/forms/outline-on-proposal")).withOutlineKeptNote(answer, {
+          outlineTurnId: parsed.questionMessageId,
+          requestId: outlineOnProposal.requestId,
+          outlinePeople: outlineOnProposal.outlinePeople,
+        });
       }
       // TWO_FORMS_CARD_NOT_ASKED_ENABLED: a card that names its employee is never asked "Which of them … — <that employee> or …?" (`lib/forms/card-not-asked.ts`).
       if (twoFormsCardNotAskedEnabled()) answer = (await import("@/lib/forms/card-not-asked")).withoutWhichAskOnSeatedCard(answer);

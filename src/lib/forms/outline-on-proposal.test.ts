@@ -133,3 +133,36 @@ describe("OUTLINE_ON_OPEN_PROPOSAL_ENABLED", () => {
     expect(notesWithoutOutline(own, ILSA)).toBe(own);
   });
 });
+
+/* QA's 17o live test (12 Nov 2026, HIGH; invented people): a "Name: / Date: / Observation:" paste on A's open card. */
+describe("OUTLINE_ON_OPEN_PROPOSAL_ENABLED: a labelled \"Name:\" paste (17o)", () => {
+  const ILSA = "Ilsa Varnholt";
+  const PASTE = "Name: Corisande Velt\nDate: 10/12/26\nObservation: Corisande Velt did not call in";
+
+  it("is another person's outline, never her account", () => {
+    expect(isOutlineTurn(PASTE, ILSA)).toBe(true);
+    // The "Name:" line decides whose it is, whatever pronoun the Observation uses.
+    expect(isOutlineTurn("Name: Corisande Velt\nDate: 10/12/26\nObservation: she did not call in", ILSA)).toBe(true);
+  });
+
+  it("her own labelled account, or a paste whose Name: is hers, stays hers", () => {
+    expect(isOutlineTurn("Name: Ilsa Varnholt\nDate: 10/3/26\nObservation: she did not call in", ILSA)).toBe(false);
+    expect(isOutlineTurn("Date: 10/3/26\nObservation: she arrived 40 minutes late", ILSA)).toBe(false);
+    // A lower-case name is not read as another person (any doubt keeps the turn).
+    expect(isOutlineTurn("name: corisande velt\nobservation: she did not call in", ILSA)).toBe(false);
+  });
+
+  it("on the open proposal: left out, and the note never says the outline's person is the one kept", () => {
+    vi.stubEnv("OUTLINE_ON_OPEN_PROPOSAL_ENABLED", "true");
+    const asked = { question: PASTE, history: history.slice(0, 2) };
+    const read = withoutOutlineTurns(asked);
+    expect(read?.outline).toBe(true);
+    expect(read?.asked.question).toBe(A);
+    expect(read?.outlinePeople).toEqual(["Corisande Velt"]);
+    const kept = withOutlineKeptNote({ content: "card", formProposal: { employeeName: ILSA } }, { outlinePeople: read?.outlinePeople });
+    expect(kept.content).toMatch(/^I've kept \*\*Ilsa Varnholt\*\*'s own details/);
+    // A card already made for the outline's person (a chat from before the fix) gets no such note.
+    const wrong = withOutlineKeptNote({ content: "card", formProposal: { employeeName: "Corisande Velt" } }, { outlinePeople: read?.outlinePeople });
+    expect(wrong.content).toBe("card");
+  });
+});

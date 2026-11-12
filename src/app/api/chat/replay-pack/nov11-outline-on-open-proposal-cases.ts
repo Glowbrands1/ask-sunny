@@ -1,4 +1,4 @@
-import { expect } from "vitest";
+import { expect, vi } from "vitest";
 
 import { KEARNEY, STAFF, type DirectoryRow, type ReplayCase, type ReplayContext } from "./cases";
 
@@ -95,3 +95,32 @@ export const NOV12_OUTLINE_OWN_ACCOUNT_CASES: ReplayCase[] = OWN_ACCOUNT.map(([k
     expect(described, `her account did not reach the drafting model:\n${described}`).toMatch(kept);
   },
 }));
+
+/*
+ * Ported from the sibling app (QA's Bubbles 17o live test, 12 Nov 2026, HIGH; names invented). (1) "create a CA for <A>,
+ * she was late on 11/3/26" made A's card; (2) a paste with real line breaks, "Name: <E>\nDate: 10/12/26\nObservation:
+ * <E> did not call in", made a NEW card for E and A's card was superseded; (3) "same outline but with <A first>'s info"
+ * said "I've kept **<E>**'s own details …". A labelled outline pasted while a card is open is the open card's outline,
+ * never a new request; the note never names the outline's person.
+ */
+export const NOV12_OUTLINE_LABELLED_PASTE_CASES: ReplayCase[] = [
+  {
+    id: "nov12-17o-labelled-paste-not-a-new-request",
+    title: "\"Name: <E> / Date: 10/12/26 / Observation: <E> did not call in\" pasted on A's open card makes no card for E; \"same outline but with <A>'s info\" keeps A's card",
+    report: "QA's Bubbles 17o live test, 12 Nov 2026 (HIGH), ported: the labelled paste made a new card for E and the note said E's details were kept",
+    status: { open: "the labelled paste is read as a new request: the card leaves Ilsa Varnholt or takes 10/12/26" },
+    fixFlags: [FLAG],
+    async run(t) {
+      vi.setSystemTime(new Date("2026-11-12T15:00:00Z"));
+      const thread = start(t);
+      const a = await thread.say("create a CA for Ilsa Varnholt, she was late on 11/3/26");
+      const first = thread.proposal as Record<string, unknown> | null;
+      keepsStepA(a, first, "1", first);
+      const b = await thread.say("Name: Corisande Velt\nDate: 10/12/26\nObservation: Corisande Velt did not call in");
+      keepsStepA(b, thread.proposal as Record<string, unknown> | null, "2", first);
+      const c = await thread.say("same outline but with Ilsa's info");
+      keepsStepA(c, thread.proposal as Record<string, unknown> | null, "3", first);
+      expect(c.content, "the note names the outline's person as the one kept").not.toMatch(/kept \*\*Corisande/);
+    },
+  },
+];

@@ -67,9 +67,9 @@ export function requestedName(turn: string): string | null {
  * her nickname; a witness's report ("Marco Ruiz reported that …") is about her. Any doubt keeps the turn as her account.
  */
 const FORM_SECTION_LABEL =
-  /(?:^|\n)[ \t]*(?:observation\s+of\s+offense|action\s+plan|going\s+forward|expectations?|policy\s+violated|policy\s+language|prior\s+actions?|details\s*[–—-]\s*observed)[ \t]*:/i;
+  /(?:^|\n)[ \t]*(?:observation\s+of\s+offense|observations?|action\s+plan|going\s+forward|expectations?|policy\s+violated|policy\s+language|prior\s+actions?|details\s*[–—-]\s*observed)[ \t]*:/i;
 /** The Observation's text: what follows its label, up to the next label; else the paste after its first label. */
-const OBSERVATION = /(?:^|\n)[ \t]*(?:observation\s+of\s+offense|details\s*[–—-]\s*observed|observed)[ \t]*:[ \t]*([\s\S]*?)(?=\n[ \t]*[A-Za-z][A-Za-z /&'’–—-]{2,40}[ \t]*:|$)/i;
+const OBSERVATION = /(?:^|\n)[ \t]*(?:observation\s+of\s+offense|observations?|details\s*[–—-]\s*observed|observed)[ \t]*:[ \t]*([\s\S]*?)(?=\n[ \t]*[A-Za-z][A-Za-z /&'’–—-]{2,40}[ \t]*:|$)/i;
 /** "On 10/12/26, …", "During the month of September 2026, …": an opening phrase before the subject. */
 const INTRO = /^(?:(?:on|during|throughout|in|at|today|yesterday|this|last)\b[^,]{0,50},\s*)?/i;
 /** A first and last name, then a lower-case word (the verb). */
@@ -84,8 +84,31 @@ function mentionsEmployee(text: string, employeeName: Her): boolean {
   return own.some((part) => words.includes(part));
 }
 
+/*
+ * QA's 17o live test (12 Nov 2026, HIGH): "Name: <E>\nDate: 10/12/26\nObservation: <E> did not call in", pasted on A's
+ * card, made a new card for E: a bare "Observation:" was not one of the form's labels, and the paste's own "Name:" line
+ * was not read. A "Name:" line holding a first and last name is whom the outline is about.
+ */
+const NAME_LABEL = /(?:^|\n)[ \t]*(?:[Ee]mployee(?:['’]s)?\s+)?[Nn]ame[ \t]*:[ \t]*([A-Z][a-z'’-]+)\s+([A-Z][a-z'’-]+)[ \t]*(?=\n|$)/;
+
+/** The outline's person, first and last name: its "Name:" line, else the Observation's named subject. Null when none is read. */
+export function outlinePerson(text: string): string | null {
+  const labelled = NAME_LABEL.exec(text);
+  if (labelled) return `${labelled[1]} ${labelled[2]}`;
+  const observation = OBSERVATION.exec(text)?.[1] ?? text.replace(/^[^:\n]*:\s*/, "");
+  const named = NAMED_SUBJECT.exec((observation.trim().split(/(?<=[.!?])\s+|\n/)[0] ?? "").replace(INTRO, ""));
+  return named ? `${named[1]} ${named[2]}` : null;
+}
+
 /** Whether the Observation's first sentence is about a named person, first and last name, who is not her. */
 function subjectIsAnotherNamedPerson(text: string, employeeName: Her): boolean {
+  // A "Name:" line naming another person (17o): the outline is that person's, whatever pronoun its Observation uses.
+  const labelled = NAME_LABEL.exec(text);
+  if (labelled) {
+    const own = nameWords(employeeName);
+    const [first, last] = [labelled[1]!.toLowerCase(), labelled[2]!.toLowerCase()];
+    return !NOT_A_PERSON.has(first) && !NOT_A_PERSON.has(last) && !own.includes(first) && !own.includes(last);
+  }
   const observation = OBSERVATION.exec(text)?.[1] ?? text.replace(/^[^:\n]*:\s*/, "");
   // "Jordan Pike had to open because she was late": a pronoun subject anywhere in the Observation is her.
   if (/\b(?:she|he|they)\b/i.test(observation)) return false;
@@ -147,7 +170,9 @@ interface Asked<T extends Turn> {
  * The request as the proposal re-read takes it: outline turns left out of the history, and an outline turn read as the
  * manager's last request before it. `outline` is true when this turn was an outline turn. Null when nothing changes.
  */
-export function withoutOutlineTurns<T extends Turn, A extends Asked<T>>(asked: A): { asked: A; outline: boolean; requestId?: string } | null {
+export function withoutOutlineTurns<T extends Turn, A extends Asked<T>>(
+  asked: A,
+): { asked: A; outline: boolean; requestId?: string; outlinePeople?: readonly string[] } | null {
   if (!outlineOnOpenProposalEnabled() || asked.activeFormInstanceId) return null;
   const card = cardEmployee(asked.history);
   if (!card) return null;
@@ -159,7 +184,17 @@ export function withoutOutlineTurns<T extends Turn, A extends Asked<T>>(asked: A
   if (!outline) return { asked: { ...asked, history: kept }, outline: false };
   const request = [...kept].reverse().find((turn) => turn.role === "user" && turn.content.trim() !== "");
   if (!request) return null;
-  return { asked: { ...asked, history: kept, question: request.content }, outline: true, ...(request.id ? { requestId: request.id } : {}) };
+  // The pasted outlines' people (17o): the note never says one of them is the one kept.
+  const outlinePeople = [asked.question, ...asked.history.filter((turn) => turn.role === "user").map((turn) => turn.content)]
+    .filter((text) => isOutlineTurn(text, employee))
+    .map(outlinePerson)
+    .filter((name): name is string => name !== null);
+  return {
+    asked: { ...asked, history: kept, question: request.content },
+    outline: true,
+    ...(request.id ? { requestId: request.id } : {}),
+    ...(outlinePeople.length > 0 ? { outlinePeople } : {}),
+  };
 }
 
 interface CardLike {
@@ -171,10 +206,12 @@ interface CardLike {
 /** On the outline turn, the reply says her own details are kept, and nothing from the pasted example's person. */
 export function withOutlineKeptNote<T extends { content: string; formProposal?: CardLike | null }>(
   answer: T,
-  cited?: { readonly outlineTurnId?: string; readonly requestId?: string },
+  cited?: { readonly outlineTurnId?: string; readonly requestId?: string; readonly outlinePeople?: readonly string[] },
 ): T {
   const card = answer.formProposal;
   if (!card?.employeeName) return answer;
+  // QA's 17o live test: "I've kept **<E>**'s own details", E being the pasted outline's person. Never said of them.
+  if ((cited?.outlinePeople ?? []).some((person) => mentionsEmployee(person, card.employeeName))) return answer;
   // The card cites the request it was read from, never the outline turn, so Create's notes are her account.
   const ids = card.sourceMessageIds;
   const sourceMessageIds =
