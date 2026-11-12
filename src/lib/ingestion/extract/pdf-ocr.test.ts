@@ -102,6 +102,8 @@ describe("ocrPdfPages", () => {
 
 describe("extractPdf with a scanned PDF", () => {
   it("off: no_text, as before, and no request", async () => {
+    // Off pins its own flag (QA's off-pins guard, 11 Nov 2026): production has it on.
+    vi.stubEnv("WOVEN_PDF_OCR_ENABLED", "");
     reply = "=== PAGE 1 ===\nshould never be read";
     await expect(extractPdf(scannedPdf(1), { ocr: new OcrBudget() })).rejects.toMatchObject({ code: "no_text" });
     expect(calls).toHaveLength(0);
