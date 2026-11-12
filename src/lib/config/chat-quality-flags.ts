@@ -4486,3 +4486,19 @@ export function adviceAskNotAccountEnabled(): boolean {
 export function groupWordsNotANameEnabled(): boolean {
   return envFlag("GROUP_WORDS_NOT_A_NAME_ENABLED");
 }
+
+/**
+ * MANUAL_CITATION_SWEEP_FIXES_ENABLED (QA's Sunny sweep, 25 Oct 2026; rebuilt on current main from #209, QA's recovery
+ * audit 12 Nov 2026; default off). Policy answers from the manual cited the wrong page or leaked a marker:
+ *   - A3: immigration sentences cited p.9 (the section only continues there); now p.8, the contact-HR sentence p.9;
+ *   - jury duty cited Witness Duty p.48; a sentence that names its section is cited there (p.47);
+ *   - the first PTO tier cited p.42; a tied page counts every passage on it the sentence restates (p.41);
+ *   - "at [p.47], so" became "at, so" when its marker was taken off;
+ *   - E1: "Who is eligible for PTO and when does it start?" was read as a form command ("start");
+ *   - "[S6][S2]:" kept "[S6]" (`stripMarkers`).
+ * `ai/full-manual-context.ts`, `ai/prompts.ts`. `citeRetrievedAnswer` (the retrieval path) is exported here; its
+ * wiring is Coding-2's, in `ai/server-ask.ts`. Off, as before.
+ */
+export function manualCitationSweepFixesEnabled(): boolean {
+  return envFlag("MANUAL_CITATION_SWEEP_FIXES_ENABLED");
+}
