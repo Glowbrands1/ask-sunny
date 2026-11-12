@@ -1,4 +1,4 @@
-import { addressNotPersonEnabled, formNameFromRosterEnabled, metricChoiceOneQuestionEnabled, metricGuardEnabled, offRosterConfirmEnabled, rosterNearMissEnabled, rosterNotFoundAnyPhrasingEnabled, nearMissQuestionRulesEnabled, formNameOffRosterAskEnabled, offRosterAskBeforeCardEnabled, titleBeforeNameEnabled } from "@/lib/config/chat-quality-flags";
+import { addressNotPersonEnabled, titleBeforeNameReplyLinesEnabled, formNameFromRosterEnabled, metricChoiceOneQuestionEnabled, metricGuardEnabled, offRosterConfirmEnabled, rosterNearMissEnabled, rosterNotFoundAnyPhrasingEnabled, nearMissQuestionRulesEnabled, formNameOffRosterAskEnabled, offRosterAskBeforeCardEnabled, titleBeforeNameEnabled } from "@/lib/config/chat-quality-flags";
 import { isGlossaryTerm } from "@/lib/ai/chat-glossary";
 import { nameAfterTitle, withoutLeadingTitle } from "./title-before-name";
 import type { AskResponse } from "@/lib/ai/types";
@@ -124,18 +124,38 @@ function withoutLeadingTitleOnCard(response: AskResponse, names: readonly string
     if (named && lead.test(response.content)) {
       return {
         ...response,
-        content: response.content.replace(lead, `$1 for **${named}**`),
+        content: titleWordToFirstName(response.content.replace(lead, `$1 for **${named}**`), read ? (message ?? "") : "", named),
         formProposal: { ...card, employeeName: named, status: card.status === "needs_employee" ? "ready" : card.status },
       };
     }
   }
   const name = withoutLeadingTitle(typed);
   if (!typed || name === typed) return response;
-  return {
-    ...response,
-    content: response.content.split(`**${typed}**`).join(`**${name}**`).split(`**Name:** ${typed}`).join(`**Name:** ${name}`),
-    formProposal: { ...response.formProposal!, employeeName: name },
-  };
+  let content = response.content.split(`**${typed}**`).join(`**${name}**`).split(`**Name:** ${typed}`).join(`**Name:** ${name}`);
+  if (titleBeforeNameReplyLinesEnabled()) content = replaceTitleWord(content, typed.split(/\s+/)[0] ?? "", name);
+  return { ...response, content, formProposal: { ...response.formProposal!, employeeName: name } };
+}
+
+/*
+ * TITLE_BEFORE_NAME_REPLY_LINES_ENABLED (ported from Ask Bubbles, QA's 17o live test, 12 Nov 2026): the card names the
+ * person, but the reply's lines written from the name as first read kept the title's first word ("… review the
+ * applicable company policy with Tanning.", "with Sdit.", "with Tc."). Those lines take the person's first name. Off,
+ * as before.
+ */
+function replaceTitleWord(content: string, titleWord: string, name: string): string {
+  const first = name.split(/\s+/)[0] ?? name;
+  if (!titleWord || titleWord.toLowerCase() === first.toLowerCase()) return content;
+  return content
+    .replace(new RegExp(String.raw`\bwith ${escape(titleWord)}(?=[.,;])`, "gi"), `with ${first}`)
+    .replace(new RegExp(String.raw`\*\*${escape(titleWord)}\*\*`, "gi"), `**${first}**`);
+}
+
+/** The same, where the name was read from the message after the title ("for <title> <name>"). */
+function titleWordToFirstName(content: string, message: string, named: string): string {
+  if (!titleBeforeNameReplyLinesEnabled() || !message) return content;
+  const typed = /\bfor\s+(.+)$/im.exec(message)?.[1]?.trim() ?? "";
+  if (!typed || withoutLeadingTitle(typed) === typed) return content;
+  return replaceTitleWord(content, typed.split(/\s+/)[0] ?? "", named);
 }
 
 export function rosterOnlyNames(input: AskResponse, names: readonly string[], message?: string): AskResponse {

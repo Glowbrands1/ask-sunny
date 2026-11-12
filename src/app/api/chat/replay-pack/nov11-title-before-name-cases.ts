@@ -164,3 +164,26 @@ export const NOV11_TITLE_BEFORE_NAME_CASES: ReplayCase[] = [
     },
   },
 ];
+
+/*
+ * Ported from Ask Bubbles (QA's 17o live test, 12 Nov 2026): the card names the person, but the reply's plan kept the
+ * title's first word ("… review the applicable company policy with Tanning."). TITLE_BEFORE_NAME_REPLY_LINES_ENABLED.
+ */
+const REPLY_LINES = [
+  ["tanning-consultant", `Corrective action for Tanning Consultant ${NAME}`, "Tanning"],
+  ["sdit", `Corrective action for SDIT ${NAME}`, "Sdit"],
+] as const;
+
+export const NOV12_TITLE_BEFORE_NAME_REPLY_LINES_CASES: ReplayCase[] = REPLY_LINES.map(([key, said, word]) => ({
+  id: `nov12-17o-title-before-name-reply-lines-${key}`,
+  title: `"${said}" (admin): the plan names ${NAME.split(" ")[0]}, never "${word}"`,
+  report: "Ported from Ask Bubbles (QA's 17o live test, 12 Nov 2026): the reply said \"with <title word>\"",
+  status: { open: `no card for ${NAME}, or the plan says "with ${word}"` },
+  fixFlags: [...FIX, "TITLE_BEFORE_NAME_REPLY_LINES_ENABLED"],
+  async run(t: ReplayContext) {
+    const { reply, proposal } = await ask(t, "admin", said);
+    expect(proposal?.employeeName ?? null, reply.content).toBe(NAME);
+    expect(reply.content, reply.content).not.toMatch(new RegExp(String.raw`\bwith ${word}\b|\*\*${word}\*\*`, "i"));
+    expect(reply.content, reply.content).toMatch(/with Wren\./);
+  },
+}));

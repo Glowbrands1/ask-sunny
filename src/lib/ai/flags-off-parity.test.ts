@@ -616,6 +616,8 @@ const NEW_FLAGS = [
   "REQUEST_ISSUE_KEPT_ENABLED",
   // coding 4: TITLE_BEFORE_NAME (ported from Ask Bubbles, 11 Nov 2026; default off).
   "TITLE_BEFORE_NAME_ENABLED",
+  // TITLE_BEFORE_NAME_REPLY_LINES (ported from Ask Bubbles, QA 17o live; default off): forced off with the others.
+  "TITLE_BEFORE_NAME_REPLY_LINES_ENABLED",
 ] as const;
 
 const PROTECTED = [

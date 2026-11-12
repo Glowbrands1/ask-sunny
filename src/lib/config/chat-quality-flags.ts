@@ -4462,3 +4462,13 @@ export function payrollBareSentenceEnabled(): boolean {
 export function titleBeforeNameEnabled(): boolean {
   return envFlag("TITLE_BEFORE_NAME_ENABLED");
 }
+
+/**
+ * TITLE_BEFORE_NAME_REPLY_LINES_ENABLED (ported from Ask Bubbles; QA's Bubbles 17o live test, 12 Nov 2026; same flag in
+ * both apps; default off). With TITLE_BEFORE_NAME on, "Corrective action for Tanning Consultant <name>" names the person
+ * on the card, but the reply's lines written from the name as first read kept the title's first word ("… with
+ * Tanning."). On: those lines take the person's first name (`forms/roster-only-names.ts`). Off, as before.
+ */
+export function titleBeforeNameReplyLinesEnabled(): boolean {
+  return envFlag("TITLE_BEFORE_NAME_REPLY_LINES_ENABLED");
+}
