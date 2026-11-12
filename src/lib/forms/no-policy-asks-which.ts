@@ -18,9 +18,21 @@ import { CA_POLICY_QUESTION } from "@/lib/forms/ca-policy";
 
 export const NO_POLICY_NOTE = `**${CA_POLICY_QUESTION}** I didn't find a section of the policy manual for what you described, so I haven't picked one. Tell me which policy applies, or tick Type of Offense on the form — I won't pick one for you.`;
 
-export function withNoPolicyQuestion<T extends { content: string; formProposal?: { templateName?: string } | null }>(answer: T): T {
+interface Card {
+  readonly templateName?: string;
+  readonly status?: string;
+  readonly employeeName?: string | null;
+}
+
+/**
+ * Gate-Bubbles on Ask Bubbles #848 (NO-GO, 12 Nov 2026), the same here: the note was also added to replies with no card
+ * built yet (name asks, near-miss asks, "CA for <A> and <B>"), where no policy search had run. Only a BUILT card asks:
+ * status "ready" and an employee named (this app's card has no Issue line).
+ */
+export function withNoPolicyQuestion<T extends { content: string; formProposal?: Card | null }>(answer: T): T {
   const card = answer.formProposal;
   if (!card || !/\bcorrective\s+action\b/i.test(card.templateName ?? "")) return answer;
+  if (card.status !== "ready" || !card.employeeName?.trim()) return answer;
   if (/\*\*Policy:\*\*/.test(answer.content) || answer.content.includes(CA_POLICY_QUESTION)) return answer;
   const parts = answer.content.split(/\n{2,}/);
   const issue = parts.findIndex((part) => /\*\*Issue:\*\*/.test(part));

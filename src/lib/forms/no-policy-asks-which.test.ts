@@ -6,7 +6,7 @@ import { NO_POLICY_NOTE, withNoPolicyQuestion } from "./no-policy-asks-which";
 const ISSUE = "**Issue:** he forgot to clsoe the register at night on 11/10 · **Salon:** the salon";
 const CARD = {
   content: `I'll draft a **Corrective Action Form** for **Remy Calder**.\n\n${ISSUE}\n\nIs this a **Verbal Warning** or a **Written Warning**?`,
-  formProposal: { templateName: "Corrective Action Form" },
+  formProposal: { templateName: "Corrective Action Form", status: "ready", employeeName: "Remy Calder" },
 };
 
 describe("CA_NO_POLICY_ASKS_WHICH (the step itself; the route asks it only with the flag on)", () => {
@@ -30,5 +30,15 @@ describe("CA_NO_POLICY_ASKS_WHICH (the step itself; the route asks it only with 
     expect(withNoPolicyQuestion(coaching)).toBe(coaching);
     const none = { content: "Which form?" };
     expect(withNoPolicyQuestion(none)).toBe(none);
+  });
+
+  it("Gate-Bubbles on Ask Bubbles #848: a reply with no card built yet never asks", () => {
+    const nameAsk = {
+      content: "Who is this Corrective Action Form for? I still need to know who this is for before I can make this card.",
+      formProposal: { templateName: "Corrective Action Form", status: "needs_employee", employeeName: null },
+    };
+    expect(withNoPolicyQuestion(nameAsk)).toBe(nameAsk);
+    const notReady = { ...CARD, formProposal: { ...CARD.formProposal, status: "needs_location" } };
+    expect(withNoPolicyQuestion(notReady)).toBe(notReady);
   });
 });
