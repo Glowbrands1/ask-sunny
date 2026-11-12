@@ -659,7 +659,12 @@ const PROD_FIO_MAIN: Record<string, Record<string, unknown> | undefined> = {
 };
 
 describe.each(FIO_RUNS)("production env, flag off, %s: as main", (_fioLabel, fio) => {
-  beforeEach(() => useProfile(false, fio));
+  beforeEach(() => {
+    useProfile(false, fio);
+    // Changed on purpose (R734, port from Ask Bubbles, 12 Nov 2026): these rows pin main with PRIOR_SENTENCE_FIX off,
+    // where PRIOR_ACTIONS_NO_COMMA (default off) lists "I coached her on 10-16" by design, so it is held off here.
+    delete process.env.PRIOR_ACTIONS_NO_COMMA_ENABLED;
+  });
 
   it.each(Object.entries(PROD_MAIN))("%s", async (key, expected) => {
     const { answer, proposal } = await card(SAID[key as keyof typeof SAID]);
@@ -818,7 +823,12 @@ describe.each(FIO_RUNS)("NOT PRODUCTION (full remap on, extra coverage): flag on
 
 
 describe.each(FIO_RUNS)("NOT PRODUCTION (full remap on): flag off, %s, as main", (_fioLabel, fio) => {
-  beforeEach(() => useProfile(false, fio, true));
+  beforeEach(() => {
+    useProfile(false, fio, true);
+    // Changed on purpose (R734, port from Ask Bubbles, 12 Nov 2026): these rows pin main with PRIOR_SENTENCE_FIX off,
+    // where PRIOR_ACTIONS_NO_COMMA (default off) lists "I coached her on 10-16" by design, so it is held off here.
+    delete process.env.PRIOR_ACTIONS_NO_COMMA_ENABLED;
+  });
 
   it.each(Object.entries(REMAP_MAIN))("%s", async (key, expected) => {
     const { proposal } = await card(SAID[key as keyof typeof SAID]);
