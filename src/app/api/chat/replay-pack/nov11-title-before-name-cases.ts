@@ -120,6 +120,12 @@ export const NOV11_TITLE_BEFORE_NAME_CASES: ReplayCase[] = [
       ["of-the-year", "Create a CA for Salon Director Of The Year", "Of The Year"],
       ["tc-training", "Create a CA for TC Training", "Training"],
       ["dm-visit", "Create a CA for DM Visit", "Visit"],
+      // Gate-Sunny's probe of 92a3cca9 (12 Nov 2026), its wordings.
+      ["sdit-training", "Create a CA for SDIT Training", "Training"],
+      ["training-day", "Create a CA for Salon Director Training Day", "Training Day"],
+      ["tc-monday", "Create a CA for TC Monday", "Monday"],
+      ["dm-approval", "Create a CA for DM Approval", "Approval"],
+      ["the-new-girl", "Create a CA for Tanning Consultant The New Girl", "The New Girl"],
     ] as const
   ).map(([key, words, notAName]) => ({
     id: `nov12-title-before-name-not-a-person-${key}`,
@@ -134,6 +140,18 @@ export const NOV11_TITLE_BEFORE_NAME_CASES: ReplayCase[] = [
       expect(reply.content.trim(), "the reply is empty").not.toBe("");
     },
   })),
+  {
+    id: "nov12-title-before-name-trailing-today",
+    title: `"Corrective action for Tanning Consultant ${NAME} Today": asked about ${NAME}, never "${NAME} Today"`,
+    report: "Gate-Sunny's probe (12 Nov 2026): a time word after the name joined it",
+    status: { open: "the card has no employee" },
+    fixFlags: FIX,
+    async run(t: ReplayContext) {
+      const { reply, proposal } = await ask(t, "admin", `Corrective action for Tanning Consultant ${NAME} Today`);
+      expect(reply.content, reply.content).not.toMatch(/Wren Tallis Today/i);
+      expect(proposal?.employeeName ?? null, reply.content).toBe(NAME);
+    },
+  },
   {
     id: "nov11-title-before-name-plain-name-unchanged",
     title: `NEVER-BREAK: "Corrective action for ${NAME}" still cards for ${NAME}`,

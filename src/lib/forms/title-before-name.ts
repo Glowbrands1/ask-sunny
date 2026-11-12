@@ -9,8 +9,9 @@ import { titleBeforeNameEnabled } from "@/lib/config/chat-quality-flags";
  * QA's Ask Bubbles 17h live test: "Corrective action for Team Member <name>" gave no card. Here the same happens with
  * this app's titles ("Corrective action for Tanning Consultant <name>", "… for Salon Director <name>"): the words after
  * "for" count as a name only when the first could be one. A job title in front of the name says who the person is,
- * not what they are called. A state code is never read as one ("for SD Sioux Falls" names a place), and a title with
- * no word after it names nobody.
+ * not what they are called. The state code of a roster salon is never read as one ("for NE Kearney" names a place);
+ * "SD" is no roster salon's state here, so it is Salon Director, as `extractJobTitle` reads it. A title with no word
+ * after it names nobody.
  */
 const STATE_CODES = new Set(PRODUCTION_SALONS.map((salon) => salon.state.toLowerCase()));
 
@@ -50,7 +51,8 @@ export function withoutLeadingTitle(name: string): string {
   const words = name.trim().split(/\s+/);
   const skip = leadingTitleLength(words);
   // The sibling app's Gate-Bubbles R795T (12 Nov 2026): "Team Member Of The Month" names an award, not "Of The Month".
-  return skip === 0 || !personLike(words.slice(skip)) ? name : words.slice(skip).join(" ");
+  const rest = withoutTrailingTime(words.slice(skip));
+  return skip === 0 || !personLike(rest) ? name : rest.join(" ");
 }
 
 const NAME_WORD = /^\p{Lu}[\p{L}'’-]*$/u;
@@ -66,9 +68,25 @@ const NOT_A_NAME_WORD = new Set(
     "day days week weeks weekly month months monthly year years yearly quarter quarters today tomorrow yesterday " +
     "monday mondays tuesday tuesdays wednesday wednesdays thursday thursdays friday fridays saturday saturdays sunday sundays weekend weekends " +
     "training trainings visit visits meeting meetings shift shifts review reviews evaluation evaluations award awards party parties " +
-    "orientation onboarding schedule schedules huddle huddles inventory audit audits"
+    "orientation onboarding schedule schedules huddle huddles inventory audit audits " +
+    "approval approvals request requests check checks call calls walk walkthrough coverage deadline deadlines report reports"
   ).split(" "),
 );
+
+/*
+ * Gate-Sunny's probe (12 Nov 2026): "for Tanning Consultant Wren Tallis Today" — a time word after the name ends it; it
+ * never joins it. The name is "Wren Tallis".
+ */
+const TRAILING_TIME = new Set(
+  "today tonight tomorrow yesterday now monday tuesday wednesday thursday friday saturday sunday".split(" "),
+);
+
+/** The words with any time words at their end left off ("Wren Tallis Today" → "Wren Tallis"). */
+function withoutTrailingTime(words: readonly string[]): string[] {
+  let end = words.length;
+  while (end > 0 && TRAILING_TIME.has(words[end - 1]!.toLowerCase().replace(/[.,;:!?]+$/, ""))) end -= 1;
+  return words.slice(0, end);
+}
 
 /** One to three words, each shaped like a name and none of them a joining, time, event or shift word. */
 function personLike(words: readonly string[]): boolean {
@@ -90,7 +108,7 @@ export function nameAfterTitle(message: string | undefined): string | null {
     const words = match[1]!.trim().split(/\s+/);
     const skip = leadingTitleLength(words);
     if (skip === 0) continue;
-    const name = words.slice(skip);
+    const name = withoutTrailingTime(words.slice(skip));
     if (personLike(name)) return name.join(" ");
   }
   return null;

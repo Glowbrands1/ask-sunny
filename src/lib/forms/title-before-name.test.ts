@@ -105,3 +105,23 @@ describe("the sibling app's Gate-Bubbles R795T (12 Nov 2026): an award, a time o
     expect(withoutLeadingTitle("Tanning Consultant Wren Tallis")).toBe("Wren Tallis");
   });
 });
+
+describe("Gate-Sunny's probe of 92a3cca9 (12 Nov 2026)", () => {
+  it.each([
+    "Create a CA for SDIT Training",
+    "Create a CA for Salon Director Training Day",
+    "Create a CA for TC Monday",
+    "Create a CA for DM Approval",
+    "Create a CA for Tanning Consultant The New Girl",
+  ])("flag on: %j gives no name", (said) => {
+    process.env[FLAG] = "true";
+    expect(nameAfterTitle(said)).toBeNull();
+  });
+
+  it("flag on: a time word after the name never joins it; SD before a name is Salon Director here", () => {
+    process.env[FLAG] = "true";
+    expect(nameAfterTitle("Corrective action for Tanning Consultant Wren Tallis Today")).toBe("Wren Tallis");
+    expect(withoutLeadingTitle("Tanning Consultant Wren Tallis Today")).toBe("Wren Tallis");
+    expect(withoutLeadingTitle("SD Wren Tallis")).toBe("Wren Tallis");
+  });
+});
