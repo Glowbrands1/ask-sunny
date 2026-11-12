@@ -25,6 +25,8 @@ afterEach(() => vi.unstubAllEnvs());
 
 describe("T4 \"just make it\"", () => {
   it("off: no carried topic (searched as before)", () => {
+    // Port from Ask Bubbles (R819, QA, 12 Nov 2026): the off arm stubs its own flag.
+    vi.stubEnv("POLICY_CARRY_RETRIEVAL_ENABLED", "");
     expect(carriedPolicyTopic("just make it", HISTORY)).toBeNull();
   });
 
