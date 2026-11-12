@@ -41,3 +41,15 @@ changes outcome.
 **Before the flip**, make the two test files above flag-aware, the way the PR already did for pm-draft-route: with the
 flag on, expect no model `Going Forward:` block. Otherwise 40 tests go red the moment the suite runs with the flag on,
 for example when production-flags.json lists it and a suite reads that file, or in a gate run.
+
+## Test-only delta, head 706441f6a (contains main 40ec11436) — GO, flip-ready
+
+- Since cb1f314a: `ab21ecd77` (test-only: draft-never-blank-oct26-e2e and account-only-policy-query-e2e made
+  flag-aware) and a merge of main. Checked that the PR's product patch against main (draft route, narrative-draft.ts)
+  is identical to cb1f314a's. tsc clean.
+- The 5 affected test files (draft-never-blank-oct26, account-only-policy-query, pm-draft-route,
+  corrective-action-revision-5, qa-oct21-audit), with production flags in the env:
+  - main 05576461: 374 tests, 48 failed (main's own baseline failures under production flags)
+  - PR OFF: 376 tests, 48 failed, the **same 48**
+  - PR ON: 376 tests, 48 failed, the **same 48**; the 40 flag-on failures from cb1f314a are gone
+- Verdict: **GO**, with no test left stale for the flip.
