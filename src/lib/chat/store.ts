@@ -425,7 +425,13 @@ export type SaveOutcome =
    * browser's store is not keyed by account, so a chat one person had on a
    * shared browser was offered to the next person who signed in there.
    */
-  | "another_account";
+  | "another_account"
+  /**
+   * Refused because an IMPORT could not be proven this account's: an answered turn of it has no activity row recorded
+   * for this account (CHAT_IMPORT_PROVEN_OWN_ENABLED). Distinct from "another_account": no other account is shown to
+   * have written it, so the reason given never says so.
+   */
+  | "not_proven";
 
 export async function saveOwnConversation(
   userId: string,
@@ -465,7 +471,7 @@ export async function saveOwnConversation(
    * row, a turn with no actor) is not proof; it is declined (independent
    * review, 31 Oct 2026: the check above passed such a chat).
    */
-  if (options.imported && !row && chatImportProvenOwnEnabled() && !(await provenOwn(userId, payload))) return "another_account";
+  if (options.imported && !row && chatImportProvenOwnEnabled() && !(await provenOwn(userId, payload))) return "not_proven";
 
   /*
    * AND NOTHING FROM BEFORE A CLEAR COMES BACK EITHER. Clear History removes
