@@ -171,6 +171,7 @@ import { pinnedManualBlock } from "./policy-citation-fields";
 import { deliverFormProposal } from "./grounded-turn";
 import { withJobTitleCase, withJobTitleFromWords, withJobTitleReadBackCase, withSpelledOutTitle } from "./job-title-from-words";
 import { withTerseSlots } from "./terse-slots";
+import { withBareAnswerBinding } from "./bare-answer-guard";
 import { withCaWhatHappened, withCoachingWhatHappened } from "./ca-what-happened";
 import { withCardPolicyPlanOnly } from "./card-policy-plan-only";
 import { cardRequestTurn, listPolicyOnCard, withPolicyListedAtCreate } from "./list-policy-ask";
@@ -451,7 +452,8 @@ async function answerQuestionChecked(
             // UNKNOWN_NAME_ASK_ENABLED: a typed name not on the directory is named back, never asked again in the same words.
             withUnknownNameAsk(
               withFirstNameAsk(
-                withWarningLevelFromClause(withSpelledOutTitle(withJobTitleReadBackCase(withJobTitleCase(withJobTitleFromWords(withCoachingWhatHappened(withoutNoAccountAppPolicy(withCaWhatHappened(await applyQuietQuality(response), request)), request), request)))), request),
+                // BARE_ANSWER_BINDING_ENABLED: a short answer fills only the slot it answers (`ai/bare-answer-guard.ts`).
+                withWarningLevelFromClause(withSpelledOutTitle(withJobTitleReadBackCase(withJobTitleCase(withJobTitleFromWords(withCoachingWhatHappened(withoutNoAccountAppPolicy(withCaWhatHappened(withBareAnswerBinding(await applyQuietQuality(response), request), request)), request), request)))), request),
                 request,
               ),
               request,
