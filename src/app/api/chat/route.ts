@@ -952,6 +952,8 @@ async function postChat(request: Request) {
           asked.question,
         ]);
       }
+      // GO_AHEAD_ASKS_WHO_AND_FORM_ENABLED: "just make it" after a policy question asks one short question (`lib/forms/go-ahead-ask.ts`).
+      answer = (await import("@/lib/forms/go-ahead-ask")).withGoAheadAsk(answer, parsed.history, asked.question);
       // PROPOSAL_NAME_CORRECTION_ENABLED: an off-roster "change her name to …" on the card is never kept silently; with the roster, the card stays for the one roster person it can only be, and a typo is never offered as a person.
       answer = withCorrectionNotDropped(answer, parsed);
       // TWO_FORMS_CARD_NOT_ASKED_ENABLED: a card that names its employee is never asked "Which of them … — <that employee> or …?" (`lib/forms/card-not-asked.ts`).

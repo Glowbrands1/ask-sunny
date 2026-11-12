@@ -4653,3 +4653,14 @@ export function policyCarryRetrievalEnabled(): boolean {
 export function notFollowingIsViolationEnabled(): boolean {
   return envFlag("NOT_FOLLOWING_IS_VIOLATION_ENABLED");
 }
+
+/**
+ * GO_AHEAD_ASKS_WHO_AND_FORM_ENABLED (QA's r37 live check, 12 Nov 2026; low; default off). After "cite the animals in
+ * the workplace policy", "just make it" replied "I need two things first: which employee … and you'll need to ask for it
+ * by name". On: with no card and no form request in the chat, and a policy named earlier, the reply is one short
+ * question — who it is for, and whether it should be a Corrective Action or a Coaching Form (`forms/go-ahead-ask.ts`).
+ * Off, as before.
+ */
+export function goAheadAsksWhoAndFormEnabled(): boolean {
+  return envFlag("GO_AHEAD_ASKS_WHO_AND_FORM_ENABLED");
+}
