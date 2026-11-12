@@ -4569,3 +4569,15 @@ export function draftWroteNothingNoticeEnabled(): boolean {
 export function formsOnFileOrderMatchPossibleEnabled(): boolean {
   return envFlag("FORMS_ON_FILE_ORDER_MATCH_POSSIBLE_ENABLED");
 }
+
+/**
+ * DRAFT_FIRST_NAME_IS_PERSON_ENABLED (QA's Ask Sunny r36 live check, 12 Nov 2026; same flag in both apps; default off).
+ * After Create, "The draft left out <last name> in Observation of Offense; tell me if you want it added." showed though
+ * the Observation named the employee by first name ("On November 10, 2026, <first name> arrived 20 minutes late"). The
+ * draft's consistency check read each word of the header's name as its own fact. On: the employee is one fact, kept
+ * when the narrative fields hold any word of her name (a first name counts as the person); the line lists her whole
+ * name only when none is there (`forms/draft-consistency.ts`). Off, as before.
+ */
+export function draftFirstNameIsPersonEnabled(): boolean {
+  return envFlag("DRAFT_FIRST_NAME_IS_PERSON_ENABLED");
+}

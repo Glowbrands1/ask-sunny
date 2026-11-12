@@ -1,4 +1,5 @@
 import { payrollAmounts } from "@/lib/ai/intent-slots";
+import { draftFirstNameIsPersonEnabled } from "@/lib/config/chat-quality-flags";
 
 import { datesInText } from "./form-date-answer";
 import { fold, wordsOf } from "./form-reducer";
@@ -42,11 +43,23 @@ export function draftFacts(input: { employeeName: string | null; notes: string; 
   const facts: DraftFact[] = [];
   const noted = new Set(wordsOf(notes));
   const seen = new Set<string>();
+  const nameWords: { word: string; folded: string }[] = [];
   for (const word of (input.employeeName ?? "").split(/\s+/).filter(Boolean)) {
     const folded = wordsOf(word)[0];
     if (!folded || seen.has(folded) || !noted.has(folded)) continue;
     seen.add(folded);
-    facts.push({ kind: "name", shown: word, in: (text) => wordsOf(text).some((said) => said === folded || said.split("-").includes(folded)) });
+    nameWords.push({ word, folded });
+  }
+  const says = (text: string, folded: string) => wordsOf(text).some((said) => said === folded || said.split("-").includes(folded));
+  if (draftFirstNameIsPersonEnabled() && nameWords.length > 0) {
+    // DRAFT_FIRST_NAME_IS_PERSON_ENABLED (QA r36 live): the employee is one fact; any word of her name names her.
+    facts.push({
+      kind: "name",
+      shown: nameWords.map((name) => name.word).join(" "),
+      in: (text) => nameWords.some((name) => says(text, name.folded)),
+    });
+  } else {
+    for (const { word, folded } of nameWords) facts.push({ kind: "name", shown: word, in: (text) => says(text, folded) });
   }
   const dates = new Set<string>();
   for (const date of datesInText(notes, input.today)) {
