@@ -109,6 +109,7 @@ export const NOV6_CODING3_FULL_POSITION_TITLE_CASES: ReplayCase[] = [
     "Negative: \"Tanning Consultant Weekends Only\" is not one of the company's positions; the card's Position is \"Tanning Consultant\"",
     // Changed on purpose (QA, 10 Nov 2026): since TITLE_ENDS_AT_LINE (on) "Weekends Only" is read as the title's owner, and
     // the Job Title is left blank for an employee with no roster position. QA ruled that a regression: FULL_POSITION_TITLE.
-    "with production's flags the Job Title is left blank: \"Weekends Only\" is read as the title's owner",
+    // Changed on purpose (12 Nov 2026): fixed in production by FULL_POSITION_TITLE, QA round 33. Was OPEN ("with
+    // production's flags the Job Title is left blank: \"Weekends Only\" is read as the title's owner").
   ),
 ];

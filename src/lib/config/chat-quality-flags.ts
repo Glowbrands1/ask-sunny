@@ -4486,3 +4486,16 @@ export function adviceAskNotAccountEnabled(): boolean {
 export function groupWordsNotANameEnabled(): boolean {
   return envFlag("GROUP_WORDS_NOT_A_NAME_ENABLED");
 }
+
+/**
+ * DRAFT_WROTE_NOTHING_NOTICE_ENABLED (coding 6, 10 Nov 2026; default off;
+ * QA's r21 live check). A name-only Coaching card's Create saved only the
+ * Name and Date and said nothing: no account, so the drafting model wrote no
+ * Details — not a refused write, so DRAFT_WRITE_NEVER_SILENT's notice stayed
+ * quiet. On: when the notes hold no account and no narrative field was
+ * written, the draft's notice says the details are blank and why. Off, as
+ * before.
+ */
+export function draftWroteNothingNoticeEnabled(): boolean {
+  return envFlag("DRAFT_WROTE_NOTHING_NOTICE_ENABLED");
+}
