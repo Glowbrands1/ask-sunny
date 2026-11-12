@@ -1,6 +1,6 @@
 import type { AskResponse } from "@/lib/ai/types";
 import type { ChatMessage } from "@/types";
-import { sameRequestCarriesAccountEnabled, sameRequestKeepsEarlierCardEnabled, sameRequestOffRosterEnabled, sameRequestOtherPersonEnabled } from "@/lib/config/chat-quality-flags";
+import { sameRequestCarriesAccountEnabled, sameRequestKeepsEarlierCardEnabled, sameRequestOffRosterEnabled, sameRequestOtherPersonEnabled, sameRequestRealAccountOnlyEnabled } from "@/lib/config/chat-quality-flags";
 import { readEmployeeMentions } from "@/lib/forms/proposal";
 import { displayName, rosterNameNamedIn, type RosterEmployee } from "@/lib/forms/employee-match";
 import { EARLIER_CARD_STAYS } from "@/lib/forms/proposal-continuation";
@@ -380,12 +380,22 @@ const REQUEST_LEAD =
   /^\s*(?:(?:can|could|would)\s+you\s+)?(?:please\s+)?(?:create|make|write|do|start|draft|i\s+need(?:\s+to\s+(?:make|create|write|do))?)\s+(?:me\s+)?(?:a\s+|an\s+)?(?:new\s+)?(?:(?:verbal|written)\s+)?(?:corrective\s+action(?:\s+form)?|ca|write[- ]?up|c(?:oa|ao)ching(?:\s+form)?)\s+(?:form\s+)?(?:for\s+)?/i;
 const LEVEL_LINE = /\s*\b(?:verbal|written)\s+warning\.?\s*$/i;
 const PRONOUN_LEAD = /^\s*(?:she|he|they)\b/i;
+/** SAME_REQUEST_REAL_ACCOUNT_ONLY: a level word anywhere ("Verbal Warning.", "a written") is never part of the account. */
+const LEVEL_WORDS = /\b(?:verbal|written)(?:\s+warning)?\b[.!?]?/gi;
+/**
+ * SAME_REQUEST_REAL_ACCOUNT_ONLY: a sentence that says what the employee did — a verb, or an -ing / -ed form ("for being
+ * late"). A bare name, level or topic ("Under Performance.") is not an account, so it is never carried (sf-s11).
+ */
+const ACCOUNT_SIGN = /\b(?:was|were|is|are|has|have|had|did|does|didn'?t|doesn'?t|wasn'?t|isn'?t|won'?t|being|been|keeps?|kept)\b|\b[a-z]{2,}(?:ed|ing)\b/i;
 
 export function carriedAccount(said: string, name: string): string | null {
   const named = new RegExp(`^\\s*${words(name).map(escaped).join("\\s+")}\\b\\s*[,.:;-]?\\s*`, "i");
+  const realOnly = sameRequestRealAccountOnlyEnabled();
   let account = said.replace(REQUEST_LEAD, "").replace(LEVEL_LINE, "").trim();
+  if (realOnly) account = account.replace(LEVEL_WORDS, "").replace(/(?:\s*[,;:]\s*){2,}/g, ", ").replace(/^[\s,;:.-]+/, "").trim();
   const hadName = named.test(account);
   account = account.replace(named, "").trim();
+  if (realOnly) account = (account.match(/[^.!?]+[.!?]*/g) ?? []).filter((sentence) => ACCOUNT_SIGN.test(sentence)).join(" ").replace(/\s+/g, " ").trim();
   if (!account) return null;
   account = PRONOUN_LEAD.test(account) || hadName ? account.replace(PRONOUN_LEAD, "").trim() : account;
   const sentence = `${name} ${account}`.replace(/\s+/g, " ").trim();

@@ -11,6 +11,7 @@ afterEach(() => {
   delete process.env.SAME_REQUEST_OTHER_PERSON_ENABLED;
   delete process.env.SAME_REQUEST_KEEPS_EARLIER_CARD_ENABLED;
   delete process.env.NEXT_PUBLIC_SAME_REQUEST_KEEPS_EARLIER_CARD_ENABLED;
+  delete process.env.SAME_REQUEST_REAL_ACCOUNT_ONLY_ENABLED;
 });
 
 describe("SAME_REQUEST_CARRIES_ACCOUNT_ENABLED: <A>'s account with <B>'s name", () => {
@@ -24,6 +25,44 @@ describe("SAME_REQUEST_CARRIES_ACCOUNT_ENABLED: <A>'s account with <B>'s name", 
 
   it("is nothing when the request carries no account", () => {
     expect(carriedAccount("create a corrective action for Mara Quell", "Mara Quell")).toBeNull();
+  });
+});
+
+/*
+ * SAME_REQUEST_REAL_ACCOUNT_ONLY_ENABLED (port from Ask Bubbles' #696 gate: QA, group 4, Gate-Bubbles 961ab16c), the
+ * overnight scan's sf-s11: "Odalys Frewen. Verbal Warning. Under Performance." then "Can you do the same thing for Perrin
+ * Haldane but switch it to a written" carried "Perrin Haldane Written Warning. Under Performance".
+ */
+describe("SAME_REQUEST_REAL_ACCOUNT_ONLY_ENABLED: a name, a level and a bare topic are not an account", () => {
+  const SF_S11 = [
+    "Odalys Frewen. Verbal Warning. Under Performance.",
+    "Perrin Haldane. Verbal Warning. Under Performance.",
+    "Verbal Warning. Under Performance.",
+    "Written Warning. Under Performance",
+    "create a corrective action for Perrin Haldane, written warning, attendance",
+  ];
+
+  it("off (production today): sf-s11 carries the level and the topic", () => {
+    expect(carriedAccount("Perrin Haldane. Verbal Warning. Under Performance.", "Perrin Haldane")).toMatch(/Warning/);
+  });
+
+  it.each(SF_S11)("on: %s carries nothing", (said) => {
+    process.env.SAME_REQUEST_REAL_ACCOUNT_ONLY_ENABLED = "true";
+    expect(carriedAccount(said, "Perrin Haldane")).toBeNull();
+  });
+
+  it("on: a level word inside the account is dropped, the account kept", () => {
+    process.env.SAME_REQUEST_REAL_ACCOUNT_ONLY_ENABLED = "true";
+    expect(carriedAccount("create a corrective action for Mara Quell, verbal warning, she was late on 11/3/26", "Mara Quell")).toBe("Mara Quell was late on 11/3/26");
+  });
+
+  it.each([
+    ["create a corrective action for Mara Quell, she was late on 11/3/26", "Mara Quell was late on 11/3/26"],
+    ["create a corrective action for Mara Quell, she was late on 11/3/26\nWritten Warning.", "Mara Quell was late on 11/3/26"],
+    ["write a CA for Mara Quell for being late to opening on 11/3/26", "Mara Quell for being late to opening on 11/3/26"],
+  ])("on: a real account is carried as before: %s", (said, account) => {
+    process.env.SAME_REQUEST_REAL_ACCOUNT_ONLY_ENABLED = "true";
+    expect(carriedAccount(said, "Mara Quell")).toBe(account);
   });
 });
 

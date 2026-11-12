@@ -4365,6 +4365,18 @@ export function sameRequestCarriesAccountEnabled(): boolean {
 }
 
 /**
+ * SAME_REQUEST_REAL_ACCOUNT_ONLY_ENABLED (Coding-2, 12 Nov 2026; default off; port from Ask Bubbles' #696 gate, QA's
+ * group 4, Gate-Bubbles 961ab16c). With SAME_REQUEST_CARRIES_ACCOUNT on (production), the overnight scan's sf-s11
+ * ("Odalys Frewen. Verbal Warning. Under Performance." → "Can you do the same thing for Perrin Haldane but switch it to a
+ * written") gives <B>'s card the Observation "Perrin Haldane Written Warning. Under Performance". On: only a real
+ * account is carried — level words are dropped anywhere, and a name, level or bare topic carries nothing
+ * (`forms/same-request-other-person.ts` carriedAccount). Off, as before.
+ */
+export function sameRequestRealAccountOnlyEnabled(): boolean {
+  return envFlag("SAME_REQUEST_REAL_ACCOUNT_ONLY_ENABLED");
+}
+
+/**
  * SAME_REQUEST_KEEPS_EARLIER_CARD_ENABLED (coding 6, 10 Nov 2026; default
  * off; QA's Sunny r19 live check). After "Can you do the same thing for <B>
  * but make it a written", <A>'s card read "Superseded — nothing created", so
