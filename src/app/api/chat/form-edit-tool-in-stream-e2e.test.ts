@@ -458,7 +458,9 @@ describe("FORM_EDIT_TOOL_IN_STREAM_ENABLED: a tool call", () => {
     expect(after.startsWith(before)).toBe(true);
     expect(after).toContain("she Must Practice the sanitizing checklist every shift.");
     expect(reply.formUpdate).toEqual({ instanceId: id, updated: ["observation"] });
-    expect(reply.content).toMatch(/^Changed Observation of Offense to "/);
+    // Changed on purpose (12 Nov 2026, Gate-Sunny-2 on #662): with STEP_B_REPLY_KEEPS_LINES on, a field written on several
+    // lines is quoted line by line ("Changed Observation of Offense to:\n> …"); either way the reply names the change.
+    expect(reply.content).toMatch(/^Changed Observation of Offense to(?: "|:\n> )/);
     expect(reply.content).not.toContain("I've updated the form");
     // Exactly one model call this turn: the main one. No revision, no draft, nothing sent back.
     expect(model.main.length).toBe(1);

@@ -548,7 +548,9 @@ describe("FORM_EDIT_NOOP_GUARD_ENABLED needs FORM_EDIT_SINGLE_WRITER_ENABLED", (
     const reply = await thread.say(SF_S11_REQUEST);
     // Before the guard: the request reached the Observation, and the reply said so in the old words.
     expect(values(thread.id).observation).toContain(SF_S11_REQUEST);
-    expect(reply.content).toMatch(/^Changed Observation of Offense to "/);
+    // Changed on purpose (12 Nov 2026, Gate-Sunny-2 on #662): with STEP_B_REPLY_KEEPS_LINES on, a field written on several
+    // lines is quoted line by line ("Changed Observation of Offense to:\n> …"); either way the reply names the change.
+    expect(reply.content).toMatch(/^Changed Observation of Offense to(?: "|:\n> )/);
   });
 });
 

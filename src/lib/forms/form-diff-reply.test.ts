@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { NOTHING_CHANGED, REPLY_VALUE_MAX, replyFromDiff } from "./form-diff-reply";
 
@@ -7,12 +7,17 @@ import { NOTHING_CHANGED, REPLY_VALUE_MAX, replyFromDiff } from "./form-diff-rep
 const LABELS = { observation: "Observation", payroll_amount: "Amount", level: "Level", prior_actions: "Prior Actions" };
 
 describe("replyFromDiff", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
   it("an empty diff says nothing changed", () => {
     expect(replyFromDiff({ changed: [] }, LABELS)).toBe("I didn't change anything on the form.");
     expect(NOTHING_CHANGED).toBe("I didn't change anything on the form.");
   });
 
   it("says Changed <Label> to <value> per change, never Updated", () => {
+    // The one-line format is STEP_B_REPLY_KEEPS_LINES' off behaviour (`form-diff-reply-lines.test.ts` has the on one); pinned
+    // here so it holds once production turns the flag on (Gate-Sunny-2, 12 Nov 2026).
+    vi.stubEnv("STEP_B_REPLY_KEEPS_LINES_ENABLED", "");
     const reply = replyFromDiff(
       {
         changed: [

@@ -13,7 +13,7 @@ import {
   stepBSectionSpacingEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { madeAbout } from "@/lib/ai/make-it-about";
-import { addUnderObserved, hasSections, tailAfterLastSection, withSectionSpacing } from "./outline-sections";
+import { addUnderObserved, hasSections, repeatsOldText, tailAfterLastSection, withSectionSpacing } from "./outline-sections";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { isGlossaryTerm } from "@/lib/ai/chat-glossary";
 
@@ -551,8 +551,22 @@ export async function writeFormEdits(instanceId: string, ops: readonly FormEditO
       if (typeof value !== "string" || typeof current !== "string" || current.trim() === "") continue;
       let written = value;
       if (underObserved && how[key] === "add" && hasSections(current)) {
-        written = addUnderObserved(current, value);
-        how[key] = "replace";
+        /*
+         * Gate-Sunny-2 (12 Nov 2026): the reader may return the whole field as the "add", already written in sections
+         * with the new line placed, or the field run onto one line before the new sentence. That is never inserted into
+         * the old field (it wrote the Observation twice). Only the old field with new lines after its last section is
+         * moved under Observed; any other add that repeats the field is left to the writer as it was before this flag.
+         */
+        if (!hasSections(value) && !repeatsOldText(current, value)) {
+          written = addUnderObserved(current, value);
+          how[key] = "replace";
+        } else if (hasSections(value)) {
+          const tail = tailAfterLastSection(current, value);
+          if (tail !== null) {
+            written = addUnderObserved(current, tail);
+            how[key] = "replace";
+          }
+        }
       } else if (underObserved && how[key] === "replace") {
         const tail = tailAfterLastSection(current, value);
         if (tail !== null) written = addUnderObserved(current, tail);

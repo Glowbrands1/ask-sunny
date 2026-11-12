@@ -11,6 +11,7 @@ afterEach(() => vi.unstubAllEnvs());
 
 describe("replyFromDiff, a multi-line field", () => {
   it("is joined with \"; \" with the flag off (as before)", () => {
+    vi.stubEnv("STEP_B_REPLY_KEEPS_LINES_ENABLED", "");
     expect(replyFromDiff({ changed: [{ key: "coaching_details", before: "", after: DETAILS }] } as never, LABELS)).toContain("Observed:; Ottoline missed");
   });
 
