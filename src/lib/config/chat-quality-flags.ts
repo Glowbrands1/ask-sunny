@@ -2704,6 +2704,29 @@ export function policyTopicIntoFieldEnabled(): boolean {
 }
 
 /**
+ * EXCERPT_BRAND_FILTER_ENABLED (ported from the sibling app, where it is on main; QA's October triage of #232, 10 Nov
+ * 2026; coding 5; default off). The JBA Policy Manual covers every brand, and a retrieved chunk's text was shown whole
+ * as its source excerpt, so the p.42 PTO excerpt under a Sun Tan City answer showed "o Buff City Soap – November 1 and
+ * December 31". On: a line, bullet, sentence or labelled block of a JBA Policy Manual excerpt that names a brand in
+ * `EXCERPT_HIDDEN_BRANDS` (`lib/brand/knowledge.ts`) is left out; what is kept is verbatim
+ * (`lib/knowledge/excerpt-brand-filter.ts`; `mappers.ts`, the card and remap citations). Retrieval, ranking, the
+ * prompt, pages and titles are unchanged. Off, as before.
+ */
+export function excerptBrandFilterEnabled(): boolean {
+  return envFlag("EXCERPT_BRAND_FILTER_ENABLED");
+}
+
+/**
+ * EXCERPT_EMPTY_CARD_DROP_ENABLED (QA via Coding-5, 11 Nov 2026; default off; ships with EXCERPT_BRAND_FILTER). With the
+ * brand filter on, a manual block that is all the sibling company (p.43 "Buff City Soap:" holidays) became a source card
+ * with an empty excerpt, labelled "Page 43 — Buff City Soap". On, such a card is not shown and a hidden brand never labels
+ * a card (`knowledge/empty-card-drop.ts`). Off, as before.
+ */
+export function excerptEmptyCardDropEnabled(): boolean {
+  return envFlag("EXCERPT_EMPTY_CARD_DROP_ENABLED");
+}
+
+/**
  * EXIT_TYPO_WORDS_ENABLED (Pau's P17, Sunny production, 10 Nov 2026; coding 5; same flag in both apps; default off).
  * "salon items will be returneded … they are eligiable for rehire" left Store Items Returned and Eligible for Rehire
  * blank. On: the exit answer readers read a word one or two letters off "returned", "eligible", "rehire" and the like as

@@ -596,6 +596,7 @@ const NEW_FLAGS = [
   "SHIFT_ACCOUNT_IS_INCIDENT_ENABLED",
   // coding 5: UNDATED_ACCOUNT_BRIEF (default off): forced off with the others in the child run.
   "UNDATED_ACCOUNT_BRIEF_ENABLED",
+  "EXCERPT_BRAND_FILTER_ENABLED",
   "EXIT_TYPO_WORDS_ENABLED",
   "WOVEN_TEXT_NUL_STRIP_ENABLED",
   "WOVEN_FAILED_RETRY_ENABLED",
@@ -619,6 +620,8 @@ const NEW_FLAGS = [
   // coding 2: CREATE_COMMAND_POINTS_TO_CARD and CARD_COMPLAINT_NOT_ACCOUNT (default off): forced off with the others.
   "CREATE_COMMAND_POINTS_TO_CARD_ENABLED",
   "CARD_COMPLAINT_NOT_ACCOUNT_ENABLED",
+  // coding 2: EXCERPT_EMPTY_CARD_DROP (QA, 11 Nov 2026; default off): forced off with the others.
+  "EXCERPT_EMPTY_CARD_DROP_ENABLED",
   // coding 6: REQUEST_ISSUE_KEPT (ported from Ask Bubbles, QA round 17b; default off).
   "REQUEST_ISSUE_KEPT_ENABLED",
   "GROUP_WORDS_NOT_A_NAME_ENABLED",
@@ -1099,6 +1102,8 @@ describe("new flags default off and wrappers are inert", () => {
           // Import's "belongs to another account" line (QA, 31 Oct 2026, both apps): shown only
           // when the server declines a chat as another account's, i.e. only with
           // CHAT_IMPORT_OWN_ONLY_ENABLED on. Off, the server never declines that way, so it never shows.
+          // Its "couldn't confirm … is yours" line (QA, 12 Nov 2026, both apps) likewise shows only for a "not_proven"
+          // decline, which only CHAT_IMPORT_PROVEN_OWN_ENABLED returns.
           ":(exclude)src/features/chat/import-local-history.tsx",
           // App switcher's Leadership Hub tab (requested by Paulyne through the QA session,
           // 1 Nov 2026 — QA to confirm): shell plumbing for a server yes/no. With
