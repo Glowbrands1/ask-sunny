@@ -23,7 +23,8 @@ import { TERMINATION_PLAN_CLOSING } from "./required-closing";
  * that tells the incident ("…, she never showed", "…, didn't show for her shift", "… because she didn't call in",
  * "She didn't show up, so …") is skipped for negations — those clauses are still read for hedges, and never skipped when
  * they mention a termination. Gate-Sunny's hedge probe (12 Nov 2026) adds: probably, likely, perhaps, possibly, I
- * think / guess / suppose / believe / feel, seems, sounds like, pending, once, whether, ask, check with, about. A question never ticks. Suspension and demotion
+ * think / guess / suppose / believe / feel, seems, sounds like, pending, once, whether, ask, check with, about; and
+ * (Gate-Bubbles) waiting, before, until, approves / approval, signs off. A question never ticks. Suspension and demotion
  * are not read here. Pure.
  */
 
@@ -54,6 +55,8 @@ const HEDGE = new RegExp(
     String.raw`\bI\s+(?:think|guess|suppose|believe|feel)\b`,
     String.raw`\bsounds?\s+like\b`,
     String.raw`\bcheck(?:ing)?\s+with\b`,
+    // Gate-Bubbles (QA, 12 Nov 2026): "once the DM approves", "waiting on HR before we terminate her".
+    String.raw`\b(?:wait(?:s|ed|ing)?|before|until|till|approv(?:e|es|ed|al|ing)|sign(?:s|ed)?[\s-]+off|sign-?off)\b`,
   ].join("|"),
   "i",
 );

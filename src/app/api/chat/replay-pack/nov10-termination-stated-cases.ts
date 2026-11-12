@@ -112,6 +112,8 @@ const NEVER_STATED = [
   ["pending-hr", "I need a CA for Briony Halvorsen. Didn't show up for her opening shift. Term CA for her, pending HR."],
   ["ask-hr-whether", "I need a CA for Briony Halvorsen. Didn't show up for her opening shift. Ask HR whether to terminate her."],
   ["check-with-dm", "I need a CA for Briony Halvorsen. Didn't show up for her opening shift. Check with my DM about a term CA."],
+  ["once-dm-approves", "I need a CA for Briony Halvorsen. Didn't show up for her opening shift. Term CA for Briony Halvorsen once the DM approves"],
+  ["waiting-on-hr", "I need a CA for Briony Halvorsen. Didn't show up for her opening shift. Waiting on HR before we terminate her"],
 ] as const;
 
 export const NOV12_TERMINATION_NEVER_STATED_CASES: ReplayCase[] = NEVER_STATED.map(([key, said]) => ({

@@ -102,6 +102,12 @@ describe("TERMINATION_STATED_TICKS_ENABLED", () => {
     "Seems like a term CA.",
     "Sounds like a term CA to me.",
     "Term CA once HR signs off.",
+    // Gate-Bubbles (QA, 12 Nov 2026).
+    "Term CA for Briony Halvorsen once the DM approves",
+    "Waiting on HR before we terminate her",
+    "Term CA for her after DM approval.",
+    "Terminate her when HR signs off.",
+    "Term CA for her until HR weighs in.",
     // The incident skip never lets a negation through that is not an incident.
     "Term CA for Briony Halvorsen, wasn't sure.",
     "Terminate her, didn't decide yet.",
