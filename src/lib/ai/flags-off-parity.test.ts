@@ -1133,6 +1133,9 @@ describe("new flags default off and wrappers are inert", () => {
           // Its "couldn't confirm … is yours" line (QA, 12 Nov 2026, both apps) likewise shows only for a "not_proven"
           // decline, which only CHAT_IMPORT_PROVEN_OWN_ENABLED returns.
           ":(exclude)src/features/chat/import-local-history.tsx",
+          // NEXT_PUBLIC_REPLY_QUOTE_LINES (QA approved 13 Nov 2026, both apps; shipped in Bubbles 17r): an edit
+          // reply that quotes lines renders a line each. Off, rich-text renders exactly as before.
+          ":(exclude)src/components/rich-text.tsx",
           // App switcher's Leadership Hub tab (requested by Paulyne through the QA session,
           // 1 Nov 2026 — QA to confirm): shell plumbing for a server yes/no. With
           // LEADERSHIP_HUB_TAB_EMAILS unset the tab never renders, so the shell is as before.
