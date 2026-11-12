@@ -1,4 +1,5 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import PRODUCTION_FLAGS from "@/config/production-flags.json";
 
 import type { DirectoryFact } from "@/lib/forms/employee-roster";
 import { correctiveActionDocument } from "@/lib/forms/library";
@@ -228,6 +229,8 @@ beforeAll(async () => {
 }, 60_000);
 
 beforeEach(() => {
+  // R734 (port from Ask Bubbles): production's whole list unset first, so this flow holds in a production shell.
+  for (const name of [...PRODUCTION_FLAGS.on, ...(PRODUCTION_FLAGS.assumedOn ?? [])]) vi.stubEnv(name, undefined);
   stateBag.forms.clear();
   intentModel.reading = null;
   for (const name of FLAGS) vi.stubEnv(name, "1");

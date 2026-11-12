@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import PRODUCTION_FLAGS from "@/config/production-flags.json";
 
 import { fieldLines } from "@/lib/ai/intake-augment";
 import { decideIntentTurn, type IntentTurnInput } from "@/lib/ai/intent-slots";
@@ -44,7 +45,13 @@ function variants(text: string): string[] {
   return [...new Set([lower, sentence, capitalized])];
 }
 
+/** R734 (port from Ask Bubbles): production's whole list unset, so these pins hold in a production shell. */
+function unsetProductionFlags(): void {
+  for (const name of [...PRODUCTION_FLAGS.on, ...(PRODUCTION_FLAGS.assumedOn ?? [])]) vi.stubEnv(name, undefined);
+}
+
 function flags(parse: boolean, noComma: boolean): void {
+  unsetProductionFlags();
   vi.stubEnv("PRIOR_ACTIONS_PARSE_ENABLED", parse ? "1" : "");
   vi.stubEnv("PRIOR_ACTIONS_NO_COMMA_ENABLED", noComma ? "1" : "");
 }
@@ -355,4 +362,35 @@ describe("PRIOR_ACTIONS_NO_COMMA_ENABLED off: today's output, pinned", () => {
     expect(statedPriorActions("prior verbal 9/1 written 9/15", TODAY)).toEqual([]);
     expect(incidentDates("prior verbal 9/1 written 9/15", TODAY)).toEqual(["2026-09-01", "2026-09-15"]);
   });
+});
+
+/*
+ * R734 (port from Ask Bubbles' gate, 12 Nov 2026), the two regressions on the production path, as guards. With the flag
+ * on, on both readings (PRIOR_SENTENCE_FIX on, as in production, and off): another person's coaching is never this
+ * employee's prior (QA-7 defect 2), and a Coaching Form's own coaching is never a prior.
+ */
+describe.each([
+  ["PRIOR_SENTENCE_FIX on (production)", "1"],
+  ["PRIOR_SENTENCE_FIX off", ""],
+])("R734 guards, flag on, %s", (_label, sentenceFix) => {
+  function on(): void {
+    flags(true, true);
+    vi.stubEnv("PRIOR_SENTENCE_FIX_ENABLED", sentenceFix);
+  }
+
+  it.each(variants("create a ca for rowan pell at test salon, she was late on 10-5. i coached her coworker, not her, on 10-16"))(
+    "%s: no Coaching 10/16 among her priors",
+    (said) => {
+      on();
+      expect(JSON.stringify(statedPriorActions(said, TODAY))).not.toMatch(/10\/16|2026-10-16/);
+    },
+  );
+
+  it.each(variants("create a coaching form for rowan pell at test salon, i coached her on 10-16"))(
+    "%s: the coaching held is no prior",
+    (said) => {
+      on();
+      expect(JSON.stringify(statedPriorActions(said, TODAY))).not.toMatch(/10\/16|2026-10-16/);
+    },
+  );
 });

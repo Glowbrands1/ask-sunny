@@ -393,6 +393,8 @@ const RANGE_AFTER = /^\s*(?:min|mins|minutes|hrs?|hours?|days?|weeks?|months?|ye
  * the incident was today, and it never dates the form, as before.
  */
 /** "I coached her on 10-16", "we counseled him about attendance on 10/1": an earlier step the manager held. */
+/** R734 (port from Ask Bubbles): "i coached her coworker, not her, on 10-16" is another person's step, never a prior. */
+const ANOTHER_PERSONS_STEP = /\b(?:her|his|their)\s+(?:co-?workers?|team\s*mates?|colleagues?|friends?|managers?|trainees?)\b|\bnot\s+(?:her|him|them)\b/i;
 const COACHED_HER_BEFORE =
   /\b(?:i|we)\s+(?:(?:verbally|formally|also|already|then|just)\s+)?(?:coached|counsel(?:ed|led))\s+(?:her|him|them|the employee)\b[^.;\n\d]{0,30}$/i;
 
@@ -754,8 +756,14 @@ function stepsAsWritten(text: string, today: string): WrittenStep[] {
 /** Each earlier step with the offset of its date. A yearless "9-15" is read too with the flag on. */
 function stepSpans(text: string, today: string, context?: string): { step: WrittenStep; index: number }[] {
   const sentenceFix = sentenceFixOn(context ?? text);
+  /*
+   * Port from Ask Bubbles (R734, Gate-Bubbles-3, 12 Nov 2026): this flag's own reading of "I coached her on 10-16" as an
+   * earlier step runs only where PRIOR_SENTENCE_FIX does not already read held coachings, never on a Coaching Form (the
+   * coaching held is that form's date), and never for another person's step ("her coworker, not her").
+   */
+  const ownHeld = priorActionsNoCommaEnabled() && !sentenceFix && !NAMES_COACHING_FORM.test(context ?? text);
   const dates = priorActionsParseEnabled()
-    ? withYearlessDates(text, datesInText(text, today), today, sentenceFix || priorActionsNoCommaEnabled())
+    ? withYearlessDates(text, datesInText(text, today), today, sentenceFix || ownHeld)
     : datesInText(text, today);
   const steps = labelledSteps(text, dates, today);
   // "jba manual 11-1-25" after "previous coaching jba manual 11-1-26": the later date is that step's (flag on only).
@@ -795,8 +803,8 @@ function stepSpans(text: string, today: string, context?: string): { step: Writt
       return at({ iso: found.iso, named: owned[0], ...withAbout });
     }
     // "I coached her on 10-16" before today: an earlier step (PRIOR_ACTIONS_NO_COMMA_ENABLED).
-    const coached = priorActionsNoCommaEnabled() && found.iso < today ? COACHED_HER_BEFORE.exec(before) : null;
-    if (coached) return at({ iso: found.iso, named: coached[0], ...withAbout });
+    const coached = ownHeld && found.iso < today ? COACHED_HER_BEFORE.exec(before) : null;
+    if (coached && !ANOTHER_PERSONS_STEP.test(coached[0])) return at({ iso: found.iso, named: coached[0], ...withAbout });
     return [];
   });
   if (!sentenceFix) return spans;
