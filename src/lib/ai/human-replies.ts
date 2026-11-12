@@ -8,27 +8,21 @@ import type { ChatFormProposal } from "@/types";
  * The owner's rule, 26 Oct 2026: "humanize it". In a ten-turn Corrective
  * Action chat the manager read "I'll draft a Corrective Action Form for … from
  * what you've described, and check the applicable company policy …" ten
- * times, and the policy line, the warning read-back and the "nothing is saved
- * to anyone's file" notice with it.
+ * times.
  *
  * The first card turn for a form and employee is returned as built. On a later
- * turn for the same form and employee:
- *
- *   the opener becomes one line on what this turn changed, read from the
- *   card's own fields ("Got it — the date's 10/14."), never from guesswork;
- *
- *   a paragraph or "**Label:**" line already shown in this chat is left out;
- *
- *   the long save notice becomes SHORT_SAVE_NOTICE, on every card turn.
- *
- * Questions are never removed or reworded: the payroll, salon, policy and
- * question-not-form readers read the last assistant turn's text. Neither is
- * "**Nothing has been created**" or "You haven't told me what happened yet".
- * The card (`formProposal`) is returned exactly as built. Off, the answer is
- * returned unchanged.
+ * turn for the same form and employee the opener (and the coaching opener's
+ * "Everything I need is here …" line) becomes one line on what this turn
+ * changed — on a Corrective Action card after the card's lead, "I'll draft a
+ * **<form>** for **<name>** — got it, …", which the turn readers need — read from the card's own fields ("Got it — the date's 10/14."),
+ * never from guesswork. NOTHING ELSE CHANGES (QA's ruling (b), 12 Nov 2026):
+ * the Policy line, the warning read-back, the payroll question or read-back,
+ * the save notice and every card line stay on every turn, word for word — the
+ * replay pack's multi-turn cases read them, and so do the readers of the last
+ * assistant turn (payroll, salon, policy, question-not-form). The card
+ * (`formProposal`) is returned exactly as built. Off, the answer is returned
+ * unchanged.
  */
-
-export const SHORT_SAVE_NOTICE = "Nothing's saved until you tap **Create draft**.";
 
 interface Turn {
   readonly role: string;
@@ -51,18 +45,7 @@ const OPENERS: readonly RegExp[] = [
 /** Said under the coaching opener. Leaves with it. */
 const AFTER_OPENER = /^Everything I need is here, drawn from your messages? above\.$/;
 
-/** The long notice in every variant: global, one salon, team. */
-const SAVE_NOTICE = /nothing is saved to anyone's file until you do\.$/;
-
-/** Never left out, even when the manager has read it before. */
-const ALWAYS_KEEP: readonly RegExp[] = [/^\*\*Nothing has been created/, /You haven't told me what happened yet/];
-
 const PAYROLL_READBACK = /^Is payroll deduct applicable\? \*\*(?:Yes|No)\*\* — tell me if that should change\.$/;
-
-const LIST_ITEM = /^(?:\d+\.|[-*])\s/;
-
-/** Read-backs set side by side on one line. */
-const SEGMENT = " · ";
 
 const DATE_WORDS =
   /\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b|\b(?:today|yesterday|tomorrow|(?:mon|tues|wednes|thurs|fri|satur|sun)day)\b|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:st|nd|rd|th)?\b/i;
@@ -94,63 +77,14 @@ export function humanizeFormReply(
   const earlier = earlierCardTurns(input.history, proposal);
   if (earlier.length === 0) return answer;
 
-  const seen = new Set(
-    earlier
-      .flatMap((turn) => turn.content.split("\n"))
-      .flatMap((line) => [line, ...line.split(SEGMENT)])
-      .map((part) => part.trim())
-      .filter(Boolean),
-  );
   const lastAssistant = earlier[earlier.length - 1]!.content;
-  const facts = factsOf(proposal, input.question, lastAssistant, input.today);
-  const changes = facts.filter((fact) => fact.named);
-  // A fact said this turn, or already said the same way by an earlier "Got it", is not read back again.
-  const earlierText = earlier.map((turn) => turn.content).join("\n");
-  const replaced = facts
-    .filter((fact) => fact.named || earlierText.includes(fact.says))
-    .flatMap((fact) => fact.replaces);
+  const changes = factsOf(proposal, input.question, lastAssistant, input.today).filter((fact) => fact.named);
 
-  const paragraphs = answer.content.split(/\n{2,}/);
-  const kept: string[] = [];
-  let noticed = false;
-  paragraphs.forEach((paragraph, index) => {
-    const out: string[] = [];
-    paragraph.split("\n").forEach((raw, lineIndex) => {
-      const line = raw.trim();
-      if (!line) return;
-      if (index === 0 && lineIndex === 0) return; // the opener
-      if (AFTER_OPENER.test(line)) return;
-      if (SAVE_NOTICE.test(line)) {
-        if (!noticed) out.push(SHORT_SAVE_NOTICE);
-        noticed = true;
-        return;
-      }
-      if (ALWAYS_KEEP.some((pattern) => pattern.test(line))) {
-        out.push(raw);
-        return;
-      }
-      if (replaced.some((pattern) => pattern.test(line))) return;
-      const readBack = PAYROLL_READBACK.test(line);
-      if (!readBack && (line.includes("?") || LIST_ITEM.test(line))) {
-        out.push(raw);
-        return;
-      }
-      if (seen.has(line)) return;
-      // "**Issue:** … · **Type of warning:** … · …": only the parts not said before.
-      const parts = line.split(SEGMENT);
-      if (parts.length > 1) {
-        const fresh = parts.filter(
-          (part) => !seen.has(part.trim()) && !replaced.some((pattern) => pattern.test(part.trim())),
-        );
-        if (fresh.length > 0) out.push(fresh.join(" · "));
-        return;
-      }
-      out.push(raw);
-    });
-    if (out.length > 0) kept.push(out.join("\n"));
-  });
-
-  const content = [acknowledgement(changes), ...kept].join("\n\n");
+  // Only the opener goes (and the line said under the coaching opener); every other line is the card as built.
+  const rest = lines.slice(1);
+  while (rest.length > 0 && (rest[0]!.trim() === "" || AFTER_OPENER.test(rest[0]!.trim()))) rest.shift();
+  const kept = rest.length > 0 ? [rest.join("\n")] : [];
+  const content = [withCardLead(acknowledgement(changes), lines[0] ?? ""), ...kept].join("\n\n");
   return { ...answer, content };
 }
 
@@ -226,6 +160,21 @@ function factsOf(proposal: ChatFormProposal, question: string, lastAssistant: st
     });
   }
   return facts;
+}
+
+/*
+ * THE CARD'S LEAD STAYS (QA's ruling (b), 12 Nov 2026): the readers of the last assistant turn find the card's form and
+ * employee in "I'll draft a **<form>** for **<name>**" (name correction, near-miss rules, roster names, card slots). A
+ * later turn keeps that lead and drops only the opener's long tail ("from what you've described, and check the
+ * applicable … before anything policy-related goes on it."): "I'll draft a **<form>** for **<name>** — got it, the
+ * date's 10/14."
+ */
+const CARD_LEAD = /^(I'll draft an? \*\*[^*]+\*\* for \*\*[^*]+\*\*) from what you've described\b/;
+
+function withCardLead(ack: string, opener: string): string {
+  const lead = CARD_LEAD.exec(opener.trim())?.[1];
+  if (!lead) return ack;
+  return `${lead} — ${ack.replace(/^Got it — /, "got it, ")}`;
 }
 
 function acknowledgement(changes: readonly Fact[]): string {

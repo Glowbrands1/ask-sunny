@@ -8,8 +8,7 @@ import { KEARNEY, STAFF, type ReplayCase } from "./cases";
  * ============================================================================
  *
  * On main with production's flags, every turn of a Corrective Action chain repeated "I'll draft a **Corrective Action
- * Form** for **<employee>** from what you've described, and check the applicable company policy …" and the "nothing is
- * saved to anyone's file until you do" line. Fixed with HUMAN_REPLIES_ENABLED (`ai/human-replies.ts`).
+ * Form** for **<employee>** from what you've described, and check the applicable company policy …" Fixed with HUMAN_REPLIES_ENABLED (`ai/human-replies.ts`).
  */
 const NAME = "Remy Calder";
 const OPENER = /from what you've described, and check the applicable company policy/;
@@ -30,7 +29,11 @@ export const NOV10_CARD_OPENER_ONCE_CASES: ReplayCase[] = [
       const second = await thread.say("verbal");
       expect(thread.proposal, second.content).toMatchObject({ templateKey: "dpoa", employeeName: NAME });
       expect(second.content, `the opener again:\n${second.content}`).not.toMatch(OPENER);
-      expect(second.content, second.content).not.toMatch(/nothing is saved to anyone's file until you do/);
+      // Changed on purpose (QA's ruling (b), 12 Nov 2026): only the opener goes. The card's Policy line and the full save
+      // notice stay on every turn (the replay pack's multi-turn cases read them).
+      const policyLine = (content: string) => content.split("\n").find((line) => /^\*\*Policy:\*\*/.test(line)) ?? null;
+      expect(policyLine(second.content), `the Policy line left the card:\n${second.content}`).toBe(policyLine(first.content));
+      expect(second.content, `the save notice left the card:\n${second.content}`).toMatch(/nothing is saved to anyone's file until you do/);
     },
   },
 ];

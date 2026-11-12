@@ -3,13 +3,19 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AskResponse } from "@/lib/ai/types";
 import type { ChatFormProposal } from "@/types";
 
-import { humanizeFormReply, SHORT_SAVE_NOTICE } from "./human-replies";
+import { humanizeFormReply } from "./human-replies";
 
 /**
  * HUMAN_REPLIES_ENABLED — the Sunny tester's chats, 26 Oct 2026 (production,
  * real register, invented names). The owner: "humanize it". Each reply below
  * is the text main builds, word for word; each manager turn is tried in all
  * lowercase and in sentence case, the way managers type.
+ *
+ * Changed on purpose (QA's ruling (b), 12 Nov 2026): a later turn replaces the
+ * opener ONLY. These tests used to expect read-backs left out, a short save
+ * notice and the "·" parts trimmed; with those the replay pack's 54 multi-turn
+ * cases lost the card's Policy line and read-backs. Now every line after the
+ * opener is the card as built, word for word.
  */
 
 const FLAG = "HUMAN_REPLIES_ENABLED";
@@ -83,36 +89,40 @@ function cases(words: string): [string][] {
   return [[words.toLowerCase()], [words.charAt(0).toUpperCase() + words.slice(1).toLowerCase()]];
 }
 
-describe("(1) the opener is said once; a later turn says what changed", () => {
+/** The reply a later turn gets: the acknowledgement, then the built reply without its opener, word for word. */
+const CA_LEAD = "I'll draft a **Corrective Action Form** for **Avery Testperson**";
+
+/** A Corrective Action card keeps its lead ("I'll draft a **<form>** for **<name>** — got it, …"); the turn readers need it. */
+function lead(ack: string, built: string): string {
+  return built.startsWith(CA_LEAD) ? `${CA_LEAD} — ${ack.replace(/^Got it — /, "got it, ")}` : ack;
+}
+
+function later(ack: string, built: string): string {
+  const rest = built.split("\n").slice(1);
+  while (rest.length > 0 && (rest[0]!.trim() === "" || /^Everything I need is here/.test(rest[0]!.trim()))) rest.shift();
+  return [lead(ack, built), rest.join("\n")].join("\n\n");
+}
+
+describe("(1) the opener is said once; a later turn says what changed, and nothing else changes", () => {
   it.each(cases("no deduct"))("%s", (question) => {
     const built = answer(ca(VERBAL, PRIOR, PAYROLL_NO), proposal({ warningLevel: "verbal", payrollDeduct: "no" }));
     const reply = humanizeFormReply(built, { history: FIRST_CA, question, today: TODAY });
-    expect(reply.content).toBe(`Got it — no payroll deduct.\n\n${SHORT_SAVE_NOTICE}`);
+    expect(reply.content).toBe(later("Got it — no payroll deduct.", built.content));
     expect(reply.formProposal).toBe(built.formProposal);
   });
 
   it.each(cases("date is 10/14"))("%s", (question) => {
-    const history: Turn[] = [
-      ...FIRST_CA,
-      { role: "user", content: "no deduct" },
-      { role: "assistant", content: `Got it — no payroll deduct.\n\n${SHORT_SAVE_NOTICE}` },
-    ];
     const card = proposal({ warningLevel: "verbal", payrollDeduct: "no", formDate: "2026-10-14" });
-    const reply = humanizeFormReply(answer(ca(VERBAL, PRIOR, PAYROLL_NO), card), { history, question, today: TODAY });
-    expect(reply.content).toBe(`Got it — the date's 10/14.\n\n${SHORT_SAVE_NOTICE}`);
+    const built = answer(ca(VERBAL, PRIOR, PAYROLL_NO), card);
+    const reply = humanizeFormReply(built, { history: FIRST_CA, question, today: TODAY });
+    expect(reply.content).toBe(later("Got it — the date's 10/14.", built.content));
   });
 
   it.each(cases("change it to written"))("%s", (question) => {
-    const history: Turn[] = [
-      ...FIRST_CA,
-      { role: "user", content: "no deduct" },
-      { role: "assistant", content: `Got it — no payroll deduct.\n\n${SHORT_SAVE_NOTICE}` },
-      { role: "user", content: "date is 10/14" },
-      { role: "assistant", content: `Got it — the date's 10/14.\n\n${SHORT_SAVE_NOTICE}` },
-    ];
     const card = proposal({ warningLevel: "written", payrollDeduct: "no", formDate: "2026-10-14" });
-    const reply = humanizeFormReply(answer(ca(WRITTEN, PRIOR, PAYROLL_NO), card), { history, question, today: TODAY });
-    expect(reply.content).toBe(`Got it — it's a written warning.\n\n${SHORT_SAVE_NOTICE}`);
+    const built = answer(ca(WRITTEN, PRIOR, PAYROLL_NO), card);
+    const reply = humanizeFormReply(built, { history: FIRST_CA, question, today: TODAY });
+    expect(reply.content).toBe(later("Got it — it's a written warning.", built.content));
   });
 
   it.each(cases("date 10/14"))("coaching: %s", (question) => {
@@ -121,21 +131,21 @@ describe("(1) the opener is said once; a later turn says what changed", () => {
       { role: "assistant", content: coaching("message") },
     ];
     const card = proposal({ templateKey: "coaching", templateName: "Coaching Form", formDate: "2026-10-14", locationResolution: "resolved", locationId: "loc-1", locationName: "KS Lawrence" });
-    const reply = humanizeFormReply(answer(coaching("messages"), card), { history, question, today: TODAY });
-    expect(reply.content).toBe(`Got it — the date's 10/14.\n\n${SHORT_SAVE_NOTICE}`);
+    const built = answer(coaching("messages"), card);
+    const reply = humanizeFormReply(built, { history, question, today: TODAY });
+    expect(reply.content).toBe(`Got it — the date's 10/14.\n\n${COACHING_NOTICE}`);
   });
 
   it.each(cases("date is 10/14 and make it written"))("two changes at once: %s", (question) => {
-    const card = proposal({ warningLevel: "written", formDate: "2026-10-14" });
-    const reply = humanizeFormReply(answer(ca(WRITTEN, PRIOR, PAYROLL_ASK), card), { history: FIRST_CA, question, today: TODAY });
-    expect(reply.content).toBe(`Got it — the date's 10/14 and it's a written warning.\n\n${PAYROLL_ASK}\n\n${SHORT_SAVE_NOTICE}`);
+    const built = answer(ca(WRITTEN, PRIOR, PAYROLL_ASK), proposal({ warningLevel: "written", formDate: "2026-10-14" }));
+    const reply = humanizeFormReply(built, { history: FIRST_CA, question, today: TODAY });
+    expect(reply.content).toBe(later("Got it — the date's 10/14 and it's a written warning.", built.content));
   });
 
   it.each(cases("she was also on her phone"))("a turn the card has no field for: %s", (question) => {
-    const card = proposal({ warningLevel: "verbal" });
-    const reply = humanizeFormReply(answer(ca(VERBAL, PRIOR, PAYROLL_ASK), card), { history: FIRST_CA, question, today: TODAY });
-    // The payroll question is still open, so it is still asked, word for word.
-    expect(reply.content).toBe(`Got it — here's the card.\n\n${PAYROLL_ASK}\n\n${SHORT_SAVE_NOTICE}`);
+    const built = answer(ca(VERBAL, PRIOR, PAYROLL_ASK), proposal({ warningLevel: "verbal" }));
+    const reply = humanizeFormReply(built, { history: FIRST_CA, question, today: TODAY });
+    expect(reply.content).toBe(later("Got it — here's the card.", built.content));
   });
 
   it("a date from another year keeps its year", () => {
@@ -145,41 +155,23 @@ describe("(1) the opener is said once; a later turn says what changed", () => {
       question: "date is 12/30/25",
       today: TODAY,
     });
-    expect(reply.content.split("\n")[0]).toBe("Got it — the date's 12/30/2025.");
+    expect(reply.content.split("\n")[0]).toBe(`${CA_LEAD} — got it, the date's 12/30/2025.`);
   });
 });
 
-describe("(2) a question already answered is not read back, an open one is still asked", () => {
-  it.each(cases("no deduct"))("%s: the read-back is the acknowledgement, said once", (question) => {
-    const card = proposal({ warningLevel: "verbal", payrollDeduct: "no" });
-    const reply = humanizeFormReply(answer(ca(VERBAL, PRIOR, PAYROLL_NO), card), { history: FIRST_CA, question, today: TODAY });
-    expect(reply.content).not.toContain("Is payroll deduct applicable?");
-    expect(reply.content).not.toContain("I won't answer it for you");
-  });
-
-  it("a bare \"no\" after the payroll question is read back as the payroll answer", () => {
-    const card = proposal({ warningLevel: "verbal", payrollDeduct: "no" });
-    const reply = humanizeFormReply(answer(ca(VERBAL, PRIOR, PAYROLL_NO), card), { history: FIRST_CA, question: "No", today: TODAY });
-    expect(reply.content).toBe(`Got it — no payroll deduct.\n\n${SHORT_SAVE_NOTICE}`);
-  });
-});
-
-describe("read-backs set side by side on one line", () => {
-  it.each(cases("change it to written"))("only the part not said before stays: %s", (question) => {
-    const line = (level: string) => `**Issue:** opened late · **Type of warning:** ${level} Warning, as you said — tell me if that should change`;
-    const history: Turn[] = [FIRST_CA[0]!, { role: "assistant", content: [CA_OPENER, line("Verbal"), SALON_NOTICE].join("\n\n") }];
-    const built = answer([CA_OPENER, line("Written"), SALON_NOTICE].join("\n\n"), proposal({ warningLevel: "written" }));
-    const reply = humanizeFormReply(built, { history, question, today: TODAY });
-    expect(reply.content).toBe(`Got it — it's a written warning.\n\n${SHORT_SAVE_NOTICE}`);
-  });
-});
-
-describe("(4) the long notice is said once in full, then short, on every card turn", () => {
-  it.each([[GLOBAL_NOTICE], [SALON_NOTICE], [COACHING_NOTICE]])("%s", (notice) => {
-    const content = [CA_OPENER, POLICY, VERBAL, notice].join("\n\n");
+describe("(2) every card line after the opener stays (QA's ruling (b))", () => {
+  it.each([[GLOBAL_NOTICE], [SALON_NOTICE], [COACHING_NOTICE]])("the Policy line, the read-back and the full save notice: %s", (notice) => {
+    const content = [CA_OPENER, POLICY, VERBAL, PAYROLL_NO, notice].join("\n\n");
     const history: Turn[] = [FIRST_CA[0]!, { role: "assistant", content }];
-    const reply = humanizeFormReply(answer(content, proposal({ warningLevel: "verbal" })), { history, question: "ok", today: TODAY });
-    expect(reply.content).toBe(`Got it — here's the card.\n\n${SHORT_SAVE_NOTICE}`);
+    const reply = humanizeFormReply(answer(content, proposal({ warningLevel: "verbal", payrollDeduct: "no" })), { history, question: "ok", today: TODAY });
+    expect(reply.content).toBe([`${CA_LEAD} — got it, here's the card.`, POLICY, VERBAL, PAYROLL_NO, notice].join("\n\n"));
+  });
+
+  it("read-backs side by side on one line stay whole", () => {
+    const line = "**Issue:** opened late · **Type of warning:** Written Warning, as you said — tell me if that should change";
+    const built = answer([CA_OPENER, line, SALON_NOTICE].join("\n\n"), proposal({ warningLevel: "written" }));
+    const reply = humanizeFormReply(built, { history: FIRST_CA, question: "change it to written", today: TODAY });
+    expect(reply.content).toBe([`${CA_LEAD} — got it, it's a written warning.`, line, SALON_NOTICE].join("\n\n"));
   });
 });
 
@@ -209,7 +201,7 @@ describe("what is never changed", () => {
     const content = [CA_OPENER, noIncident, notCreated].join("\n\n");
     const history: Turn[] = [FIRST_CA[0]!, { role: "assistant", content }];
     const reply = humanizeFormReply(answer(content), { history, question: "ok", today: TODAY });
-    expect(reply.content).toBe(`Got it — here's the card.\n\n${noIncident}\n\n${notCreated}`);
+    expect(reply.content).toBe(`${CA_LEAD} — got it, here's the card.\n\n${noIncident}\n\n${notCreated}`);
   });
 
   it("a reply without a card, or one that asks who it is for", () => {
