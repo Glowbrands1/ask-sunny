@@ -409,6 +409,8 @@ const NEW_FLAGS = [
   "COACHING_OBSERVED_SAVED_ENABLED",
   // coding 6: APP_INSTRUCTIONS_NOT_ACCOUNT (default off): forced off with the others.
   "APP_INSTRUCTIONS_NOT_ACCOUNT_ENABLED",
+  // coding 5: FULL_MANUAL_CARD_PASSAGE (default off; QA, 12 Nov 2026): forced off with the others.
+  "FULL_MANUAL_CARD_PASSAGE_ENABLED",
   // coding 6: FAILURE_TO_OPEN_IS_LATE_OPENING (default off): forced off with the others.
   "FAILURE_TO_OPEN_IS_LATE_OPENING_ENABLED",
   // coding 6: TERMINATION_STATED_TICKS (default off): forced off with the others.

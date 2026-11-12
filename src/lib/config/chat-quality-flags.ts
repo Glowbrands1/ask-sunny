@@ -4664,3 +4664,14 @@ export function policyCarryRetrievalEnabled(): boolean {
 export function notFollowingIsViolationEnabled(): boolean {
   return envFlag("NOT_FOLLOWING_IS_VIOLATION_ENABLED");
 }
+
+/**
+ * FULL_MANUAL_CARD_PASSAGE_ENABLED (coding 5, 12 Nov 2026; default off; QA's item after round 35). A source card for a
+ * full-manual answer showed only the section heading and its page ("Paid Time Off (PTO)", Page 41), while a card from
+ * retrieval shows the passage. On: the card shows the heading and the first lines of that section's passage on the
+ * cited page, the sibling company's lines left out (`ai/full-manual-context.ts`, `citationFor`), as Ask Bubbles' full-
+ * manual cards already do. Off, as before.
+ */
+export function fullManualCardPassageEnabled(): boolean {
+  return envFlag("FULL_MANUAL_CARD_PASSAGE_ENABLED");
+}

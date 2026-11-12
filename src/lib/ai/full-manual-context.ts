@@ -1,6 +1,7 @@
-import { fullManualKeepsRetrievalEnabled } from "@/lib/config/chat-quality-flags";
+import { fullManualCardPassageEnabled, fullManualKeepsRetrievalEnabled } from "@/lib/config/chat-quality-flags";
 import { headingKey, manualDisplayTitle } from "@/lib/forms/official-policy-manual";
 import { manualEditionYear } from "@/lib/knowledge/current-manual-scope";
+import { excerptTextForDisplay } from "@/lib/knowledge/excerpt-brand-filter";
 import { isPolicyTypeQuestion } from "@/lib/knowledge/hybrid-rank";
 import { headingOf, isPageFooter, printedPageOf } from "@/lib/ingestion/extract/pdf-sections";
 import type { KnowledgeCategory, SourceCitation } from "@/types";
@@ -751,9 +752,31 @@ function citationFor(manual: AssembledManual, heading: string, page: number): So
     documentTitle: manual.displayTitle,
     locator: `Page ${page}`,
     category: categoryOf(manual.category),
-    excerpt: heading,
+    excerpt: fullManualCardPassageEnabled() ? withPassageLines(manual, heading, page) : heading,
     relevance: 1,
   };
+}
+
+/** How much of the passage a card shows, as Ask Bubbles' full-manual cards do. */
+const CARD_PASSAGE_CHARS = 220;
+
+/**
+ * FULL_MANUAL_CARD_PASSAGE_ENABLED: "<heading>: <the first lines of its passage on the cited page>", cut at a whole
+ * word, with the sibling company's lines left out (EXCERPT_BRAND_FILTER). The heading alone when the page has no text
+ * for it.
+ */
+export function withPassageLines(manual: AssembledManual, heading: string, page: number): string {
+  const key = headingKey(heading);
+  const passage =
+    manual.passages.find((item) => item.page === page && item.heading !== null && headingKey(item.heading) === key) ??
+    null;
+  const raw = passage?.text ?? "";
+  const shown = excerptTextForDisplay(raw, manual.title).replace(/\s+/g, " ").trim();
+  const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const body = shown.replace(new RegExp(`^${escaped}[\\s:.-]*`, "i"), "").trim();
+  if (!body) return heading;
+  const cut = body.length <= CARD_PASSAGE_CHARS ? body : `${body.slice(0, CARD_PASSAGE_CHARS).replace(/\s+\S*$/, "")}…`;
+  return `${heading}: ${cut}`;
 }
 
 /*
