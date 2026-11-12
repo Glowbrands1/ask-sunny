@@ -1,5 +1,6 @@
 import { matchGlossary } from "@/lib/ai/glossary";
 import type { ManualChunk } from "@/lib/forms/official-policy-manual";
+import { policyQuoteWholeWordsEnabled } from "@/lib/config/chat-quality-flags";
 
 /**
  * Violation words to the manual section that governs them.
@@ -48,8 +49,29 @@ function passage(section: CitedSection, chunks: readonly ManualChunk[]): string 
   const heading = `JBA Policy Manual — ${section.section}${where}`;
   const chunk = chunkFor(section.section, chunks);
   if (!chunk) return heading;
-  return `${heading}\n${chunk.content.trim().slice(0, 500)}`;
+  return `${heading}\n${policyQuoteWholeWordsEnabled() ? quoted(chunk.content) : chunk.content.trim().slice(0, 500)}`;
 }
+
+const QUOTE_LIMIT = 500;
+
+/*
+ * POLICY_QUOTE_WHOLE_WORDS_ENABLED (port from Ask Bubbles: Gate-Bubbles-2's POLICY_CITATION gate, 12 Nov 2026): the
+ * quote was cut at 500 characters mid-word ("… does not count as calling i") and kept the manual's markdown, so a
+ * section could end on a stray "*". The quote ends at the last sentence (or, failing that, the last whole word) inside
+ * the limit, with "…" when it was shortened, and carries no emphasis markers. Off, as before.
+ */
+function quoted(content: string): string {
+  const plain = content.replace(/\*+/g, "").replace(/[ \t]+\n/g, "\n").trim();
+  if (plain.length <= QUOTE_LIMIT) return plain;
+  const head = plain.slice(0, QUOTE_LIMIT);
+  const sentence = Math.max(head.lastIndexOf(". "), head.lastIndexOf(".\n"), head.lastIndexOf("? "), head.lastIndexOf("! "));
+  if (sentence >= QUOTE_LIMIT / 2) return `${head.slice(0, sentence + 1).trimEnd()} …`;
+  const word = head.search(/\s\S*$/);
+  return `${(word > 0 ? head.slice(0, word) : head).trimEnd()} …`;
+}
+
+/** The quote as the cited block shows it (exported for its test). */
+export const policyQuote = quoted;
 
 /** Append mapped manual passages. Off, or with nothing mapped, the text is unchanged. */
 export function withMappedPolicy(

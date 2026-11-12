@@ -629,6 +629,8 @@ const NEW_FLAGS = [
   "GROUP_WORDS_NOT_A_NAME_ENABLED",
   // coding 4: FORMS_ON_FILE_ORDER_MATCH_POSSIBLE (ported from Ask Bubbles, 11 Nov 2026; default off).
   "FORMS_ON_FILE_ORDER_MATCH_POSSIBLE_ENABLED",
+  // coding 2: POLICY_QUOTE_WHOLE_WORDS (port from Ask Bubbles' POLICY_CITATION gate, 12 Nov 2026; default off).
+  "POLICY_QUOTE_WHOLE_WORDS_ENABLED",
 ] as const;
 
 const PROTECTED = [
