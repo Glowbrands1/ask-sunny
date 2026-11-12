@@ -2772,6 +2772,17 @@ export function wovenFailedRetryEnabled(): boolean {
   return envFlag("WOVEN_FAILED_RETRY_ENABLED");
 }
 
+/**
+ * DRAFT_NO_INVENTED_PLAN_ENABLED (QA's October triage of #256, 10 Nov 2026, rebuilt on main; coding 5; default off).
+ * The Corrective Action Form's Observation (and the Coaching Form) carries no AI-written "Going Forward" section (QA,
+ * 25 Oct 2026, D-draft): a plan or commitment the manager never typed is not part of the HR record. What the employee
+ * does next is the Action Plan, which is the manager's own. Only a Going Forward inside an observation narrative is
+ * dropped; a negated "going forward" is no plan (`forms/narrative-draft.ts`, the draft route). Off, as before.
+ */
+export function draftNoInventedPlanEnabled(): boolean {
+  return envFlag("DRAFT_NO_INVENTED_PLAN_ENABLED");
+}
+
 // --- end coding 5 flags ---
 
 /**
@@ -4546,4 +4557,15 @@ export function groupWordsNotANameEnabled(): boolean {
  */
 export function draftWroteNothingNoticeEnabled(): boolean {
   return envFlag("DRAFT_WROTE_NOTHING_NOTICE_ENABLED");
+}
+
+/**
+ * FORMS_ON_FILE_ORDER_MATCH_POSSIBLE_ENABLED (ported from Ask Bubbles, 11 Nov 2026; QA's Bubbles 17h live test; same flag
+ * in both apps; default off). The FORMS ON FILE block counts a row as naming the person when every word of its employee
+ * name is in the question, in any order, so forms filed as "<last> <first>" were listed as the asked person's own. On: a
+ * name whose words are all there but in another order is a POSSIBLE match, for the model to ask about
+ * (`forms/chat-form-records.ts`). Off, as before.
+ */
+export function formsOnFileOrderMatchPossibleEnabled(): boolean {
+  return envFlag("FORMS_ON_FILE_ORDER_MATCH_POSSIBLE_ENABLED");
 }
