@@ -1,5 +1,5 @@
 import { shiftDays, weekdayOf } from "@/lib/business-date";
-import { exitFulfilledIsLastDayEnabled, exitLetterAddresseeEnabled, exitIntakeFixEnabled, exitShortcutWordsEnabled, exitStatedOnlyEnabled, exitTerminationStatedEnabled, noNoticeNoDateEnabled } from "@/lib/config/chat-quality-flags";
+import { exitFulfilledIsLastDayEnabled, exitLetterAddresseeEnabled, exitIntakeFixEnabled, exitShortcutWordsEnabled, exitStatedOnlyEnabled, exitTerminationStatedEnabled, noNoticeNoDateEnabled, exitNoticeStatedOnlyEnabled } from "@/lib/config/chat-quality-flags";
 
 import {
   EXIT_DATE_FIELDS,
@@ -134,6 +134,10 @@ const WEEKDAY = WEEKDAYS.join("|");
 /** A negation close enough before a verb to reverse it. */
 const NEGATED_BEFORE =
   /\b(?:did ?n[o']?t|didn't|does ?n[o']?t|never|failed to|refused to|won't|will not|wasn't|was not|weren't|were not|isn't|is not|not)\s+(?:\w+\s+){0,2}$/;
+
+/** Words that state notice itself — not a bare "resigned" (EXIT_NOTICE_STATED_ONLY_ENABLED). */
+const NOTICE_STATED =
+  /\b(?:notice|two[- ]weeks?|2[- ]weeks?|14[- ]days?|30[- ]days?|resignation\s+letter)\b|\b(?:gave|give|gives|giving|given|provided|put in|submitted|turned in|handed in|sent)\b[^.;!?\n]{0,30}?\bresignation\b/;
 
 /** What a notice period is called. Fulfilling or skipping one reads these. */
 const NOTICE_ONLY = String.raw`(?:notice|two[- ]weeks?'?(?: notice)?|2[- ]weeks?'?(?: notice)?|two[- ]week notice|14[- ]day(?: notice)?|30[- ]day(?: notice)?)`;
@@ -689,7 +693,15 @@ export function readExitFacts(rawText: string, today: string): ExitFacts {
    * still stands as the resignation's.
    */
   const noticeDenied = noNoticeNoDateEnabled() && NO_NOTICE.test(text.toLowerCase());
-  const noticeGiven = noticeDenied ? null : noticeRead;
+  /*
+   * EXIT_NOTICE_STATED_ONLY_ENABLED (ported from the sibling app: QA's Bubbles 17j live test, 12 Nov 2026; reproduced
+   * here: "exit form for <A>, she resigned 11/8 …" printed "Date that notice was given: November 8"): "resigned" is a
+   * notice-given cue, so a bare resignation date also dated the notice. With the flag, that line is filled only when the
+   * manager states notice ("gave notice on …", "two weeks' notice on …", "turned in her resignation letter on …"); the
+   * date still stands as the Resignation Date.
+   */
+  const noticeUnstated = exitNoticeStatedOnlyEnabled() && !NOTICE_STATED.test(text.toLowerCase());
+  const noticeGiven = noticeDenied || noticeUnstated ? null : noticeRead;
   let noticeFulfilled = settle("noticeFulfilled");
   const quitDate = settle("resigned");
   /*

@@ -4547,3 +4547,13 @@ export function groupWordsNotANameEnabled(): boolean {
 export function draftWroteNothingNoticeEnabled(): boolean {
   return envFlag("DRAFT_WROTE_NOTHING_NOTICE_ENABLED");
 }
+
+/**
+ * EXIT_NOTICE_STATED_ONLY_ENABLED (coding 6, 12 Nov 2026; default off; ported from the sibling app, QA's 17j live test,
+ * reproduced here). "exit form for <A>, she resigned 11/8 …" filled "Date that notice was given" though the manager gave
+ * only the resignation date. On: that line is filled only when the manager states notice; the date stays the Resignation
+ * Date. Off, as before. See `forms/exit-facts.ts`.
+ */
+export function exitNoticeStatedOnlyEnabled(): boolean {
+  return envFlag("EXIT_NOTICE_STATED_ONLY_ENABLED");
+}
