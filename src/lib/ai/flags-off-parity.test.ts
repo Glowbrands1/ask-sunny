@@ -369,6 +369,8 @@ const NEW_FLAGS = [
   "FORM_EDIT_REFERS_BACK_ENABLED",
   "SAME_FORM_COPY_ENABLED",
   "SAME_FORM_COPY_NEW_PERSON_ENABLED",
+  // coding 6: NO_SELECTION_ON_OPEN_CARD (default off): forced off with the others.
+  "NO_SELECTION_ON_OPEN_CARD_ENABLED",
   // coding 6: DRAFT_WRITE_NEVER_SILENT (default off): forced off with the others.
   "DRAFT_WRITE_NEVER_SILENT_ENABLED",
   // coding 6: CA_PROCEDURE_BASIS (default off; rebuilt from old S544): forced off with the others.

@@ -36,6 +36,7 @@ import {
   questionNotFormEnabled,
   sameFormCopyEnabled,
   sameFormCopyNewPersonEnabled,
+  noSelectionOnOpenCardEnabled,
   teamCardNotProductEnabled,
   sameRequestOtherPersonEnabled,
   copyOwnSalonEnabled,
@@ -971,6 +972,10 @@ async function postChat(request: Request) {
         const { formSelection: _dropped, ...rest } = answer;
         void _dropped;
         answer = { ...rest, content: rest.content.replace(/\n*Based on what you've described, I can prepare:\s*$/, "").trimEnd() };
+      }
+      // NO_SELECTION_ON_OPEN_CARD_ENABLED: the card on screen is the form; no "I can prepare:" choice offering it again.
+      if (noSelectionOnOpenCardEnabled()) {
+        answer = (await import("@/lib/forms/no-selection-on-open-card")).withoutSelectionOnOpenCard(answer, parsed.continueProposalTemplateKey);
       }
       // WHAT_HAPPENED_NO_CREATE_ENABLED: while the reply asks what happened, the card offers no Create (`lib/forms/what-happened-no-create.ts`).
       if (whatHappenedNoCreateEnabled()) answer = (await import("@/lib/forms/what-happened-no-create")).withNoCreateWhileAsking(answer);

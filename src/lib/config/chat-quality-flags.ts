@@ -4000,6 +4000,18 @@ export function madeAboutReaderAccountEnabled(): boolean {
 }
 
 /**
+ * NO_SELECTION_ON_OPEN_CARD_ENABLED (coding 6, 10 Nov 2026; default off;
+ * Pau's sf-b6, twin). With a Corrective Action card on screen, a turn adding
+ * a detail ended "Based on what you've described, I can prepare:" above a
+ * choice offering the same form again. On: when the card on screen's form is
+ * among the choices, the choice and its lead are left off. See
+ * `forms/no-selection-on-open-card.ts`. Off, as before.
+ */
+export function noSelectionOnOpenCardEnabled(): boolean {
+  return envFlag("NO_SELECTION_ON_OPEN_CARD_ENABLED");
+}
+
+/**
  * NEAR_MISS_QUESTION_RULES_ENABLED (QA's Sunny round-4 gate, 8 Nov 2026; default off; ships with the name set,
  * FORM_NAME_FROM_ROSTER and ROSTER_NEAR_MISS). Two rules for "Is this for **<roster name>**? Tell me if that should
  * change.": (a) a reply that turns it down ("no, verbal warning, …") never gets a card for that name, whichever reader

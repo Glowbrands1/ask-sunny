@@ -59,6 +59,8 @@ export const NOV5_PAU_SF_B6_TWIN_CASES: ReplayCase[] = [
     title: "sf-b6: the reply never ends at \"I can prepare:\"; the card after \"Create … from this conversation\" carries the detail added on turn 3",
     report: "Pau via QA, 5 Nov 2026 (the sibling app's production, 4 Nov), sf-b6 twin",
     status: { open: "the reply ends \"Based on what you've described, I can prepare:\" with nothing after it" },
+    // Fixed under NO_SELECTION_ON_OPEN_CARD_ENABLED (coding 6, 10 Nov 2026): no form choice for the card already on screen; open on production flags until QA flips it.
+    fixFlags: ["NO_SELECTION_ON_OPEN_CARD_ENABLED"],
     async run(t: T) {
       vi.setSystemTime(new Date("2026-11-04T23:30:00Z"));
       t.directory([...STAFF, WYNNE]);
