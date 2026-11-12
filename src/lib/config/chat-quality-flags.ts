@@ -4547,3 +4547,13 @@ export function groupWordsNotANameEnabled(): boolean {
 export function draftWroteNothingNoticeEnabled(): boolean {
   return envFlag("DRAFT_WROTE_NOTHING_NOTICE_ENABLED");
 }
+
+/**
+ * BARE_COACHING_REQUEST_LEAD_ENABLED (coding 6, 12 Nov 2026; default off; QA, Sunny round 31 live). "create a coaching
+ * for <A>, she told a client …" put the request words at the head of the card's Observation: "coaching" without "form"
+ * was not read as the form in the request lead. On: it is, only when "for" follows (`ai/remap-incident.ts`). Off, as
+ * before.
+ */
+export function bareCoachingRequestLeadEnabled(): boolean {
+  return envFlag("BARE_COACHING_REQUEST_LEAD_ENABLED");
+}

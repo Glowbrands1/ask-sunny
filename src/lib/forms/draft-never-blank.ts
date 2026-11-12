@@ -1,5 +1,5 @@
 import { businessToday } from "@/lib/business-date";
-import { caReasonDueToEnabled, caSalesPolicyEnabled, jobTitleNotIncidentEnabled, levelRequestDateEnabled, requestLineAccountEnabled } from "@/lib/config/chat-quality-flags";
+import { bareCoachingRequestLeadEnabled, caReasonDueToEnabled, caSalesPolicyEnabled, jobTitleNotIncidentEnabled, levelRequestDateEnabled, requestLineAccountEnabled } from "@/lib/config/chat-quality-flags";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 import { JOIN } from "./bounded-context";
@@ -287,12 +287,24 @@ const FORM_REQUEST_LEAD =
   /^\s*(?:please\s+)?(?:(?:create|make|start|open|do|file|write|draft|need|i\s+need)\s+)?(?:a\s+|an\s+)?(?:corrective\s+action(?:\s+form)?|ca|c\/a|dpoa|write[- ]?up|warning)\s+for\b[^,]*,\s*(?=\S)/i;
 
 /** "create a ca for <name> at <salon>, she was late …" → "she was late …"; unchanged when nothing follows the comma. */
+// BARE_COACHING_REQUEST_LEAD_ENABLED (QA, Sunny round 31): "create a coaching for <A>, she told a client …" too.
+const COACHING_REQUEST_LEAD =
+  /^\s*(?:please\s+)?(?:(?:create|make|start|open|do|file|write|draft|need|i\s+need)\s+)?(?:a\s+|an\s+)?coaching(?:\s+(?:form|document|doc|paperwork))?\s+for\b[^,]*,\s*(?=\S)/i;
+
 export function withoutFormRequestLead(sentence: string): string {
-  return sentence.replace(FORM_REQUEST_LEAD, "");
+  const out = sentence.replace(FORM_REQUEST_LEAD, "");
+  return out === sentence && bareCoachingRequestLeadEnabled() ? sentence.replace(COACHING_REQUEST_LEAD, "") : out;
 }
 
+/** BARE_COACHING_REQUEST_LEAD_ENABLED: "create a coaching for <A>, …" asks for the form too. */
+const COACHING_ASK = /\b(?:create|make|start|open|do|file|write|draft|need)\s+(?:a\s+|an\s+)?coaching(?:\s+(?:form|document|doc|paperwork))?\s+for\s/i;
+
 export function asksForTheForm(sentence: string): boolean {
-  return ASKS_FOR_THE_FORM.test(sentence) || (levelRequestDateEnabled() && LEVEL_REQUEST_DATED_ASK.test(sentence));
+  return (
+    ASKS_FOR_THE_FORM.test(sentence) ||
+    (levelRequestDateEnabled() && LEVEL_REQUEST_DATED_ASK.test(sentence)) ||
+    (bareCoachingRequestLeadEnabled() && COACHING_ASK.test(sentence))
+  );
 }
 const NOT_THE_INCIDENT =
   /\b(?:payroll\s+deduct|previous\s+coaching|prior\s+(?:coaching|actions?)|jba\s+(?:policy\s+)?manual)\b/i;

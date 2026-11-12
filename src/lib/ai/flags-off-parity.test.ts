@@ -624,6 +624,7 @@ const NEW_FLAGS = [
   "EXCERPT_EMPTY_CARD_DROP_ENABLED",
   // coding 6: REQUEST_ISSUE_KEPT (ported from Ask Bubbles, QA round 17b; default off).
   "REQUEST_ISSUE_KEPT_ENABLED",
+  "BARE_COACHING_REQUEST_LEAD_ENABLED",
   "GROUP_WORDS_NOT_A_NAME_ENABLED",
 ] as const;
 
