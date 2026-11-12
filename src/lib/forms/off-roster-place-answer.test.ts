@@ -32,6 +32,8 @@ describe("placeOnly", () => {
 
 describe("OFF_ROSTER_PLACE_ANSWER_ENABLED", () => {
   it("off: no place answer", () => {
+    // Pinned off (QA, 12 Nov 2026): the suite also runs with production's or a gate's flags in the environment.
+    vi.stubEnv("OFF_ROSTER_PLACE_ANSWER_ENABLED", "");
     expect(placeAnswerOf("IA Altoona", history)).toBeNull();
   });
 
