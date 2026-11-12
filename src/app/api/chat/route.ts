@@ -24,6 +24,7 @@ import {
   groupWordsNotANameEnabled,
   formNameFromRosterEnabled,
   offRosterConfirmEnabled,
+  offRosterPlaceAnswerEnabled,
   exitLetterAddresseeEnabled,
   letterGreetingNotNameEnabled,
   templateOutlineFieldsEnabled,
@@ -257,6 +258,21 @@ async function postChat(request: Request) {
        * OFF_ROSTER_CONFIRM_ENABLED: "use <name>" (or "yes") to the offer for a person not in Woven is read as the
        * manager's turn that typed the name, and the name is kept on the card as typed (`forms/off-roster-confirm.ts`).
        */
+      /*
+       * OFF_ROSTER_PLACE_ANSWER_ENABLED (QA's Sunny 37b live bug): a place-only reply ("IA Altoona") to the open "use <C>"
+       * offer is never a person: the card is drafted again from the turn that typed the name, and after the turn the
+       * name is held and the offer asked again (`forms/off-roster-place-answer.ts`).
+       */
+      let placeAnswer: import("@/lib/forms/off-roster-place-answer").PlaceAnswer | null = null;
+      if (offRosterPlaceAnswerEnabled()) {
+        const places = await import("@/lib/forms/off-roster-place-answer");
+        const found = places.placeAnswerOf(asked.question, asked.history);
+        const typed = found ? places.placeAnswerTurn(found, asked.history) : null;
+        if (found && typed) {
+          placeAnswer = found;
+          asked = { ...asked, question: typed };
+        }
+      }
       if (offRosterConfirmEnabled()) {
         const taken = (await import("@/lib/forms/off-roster-confirm")).withOffRosterAnswer(asked);
         if (taken) {
@@ -997,6 +1013,8 @@ async function postChat(request: Request) {
       if (offRosterAskBeforeCardEnabled()) {
         answer = (await import("@/lib/forms/off-roster-ask")).withOffRosterAskBeforeCard(answer, { scope: context.identity.scope, history: parsed.history, question: asked.question });
       }
+      // OFF_ROSTER_PLACE_ANSWER_ENABLED: the place answered the offer; the name is held and the offer asked again (`forms/off-roster-place-answer.ts`).
+      if (placeAnswer) answer = (await import("@/lib/forms/off-roster-place-answer")).withPlaceAnswer(answer, placeAnswer, context.identity.scope);
       // SAME_FORM_COPY_NEW_PERSON_ENABLED: the named person's card carries the form to copy from.
       if (newPersonCopy) {
         answer = (await import("@/lib/forms/same-form-copy")).withCopyFrom(answer, newPersonCopy.source, newPersonCopy.name);
