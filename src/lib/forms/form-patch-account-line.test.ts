@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { FormPatchCallInput, FormPatchCallResult } from "./form-patch-call";
 import type { FormPatchInput } from "./form-patch-prompt";
@@ -36,6 +36,9 @@ afterEach(() => {
 });
 
 describe("the account line", () => {
+  // The account line alone: EDIT_POLICY_ASK (on in production) adds its own line after it, so it is pinned off here.
+  beforeEach(() => vi.stubEnv("EDIT_POLICY_ASK_ENABLED", ""));
+
   it("is added after the approved text and the reader lines, with the flag on", async () => {
     vi.stubEnv("FORM_PATCH_REDUCER_ENABLED", "1");
     vi.stubEnv("FORM_PATCH_READER_FIXES_ENABLED", "1");
@@ -47,6 +50,8 @@ describe("the account line", () => {
   it("is never sent with the flag off, or without the reader fixes", async () => {
     vi.stubEnv("FORM_PATCH_REDUCER_ENABLED", "1");
     vi.stubEnv("FORM_PATCH_READER_FIXES_ENABLED", "1");
+    // Off pins its own flag (QA's off-pins guard, 11 Nov 2026): production has it on.
+    vi.stubEnv("STEP_B_MAKE_IT_ABOUT_ACCOUNT_ENABLED", "");
     await readFormPatch(INPUT);
     expect(call.inputs[0]!.system).toBe(`${FORM_PATCH_SYSTEM_PROMPT}\n${FORM_PATCH_READER_LINES}`);
     vi.stubEnv("FORM_PATCH_READER_FIXES_ENABLED", "");
