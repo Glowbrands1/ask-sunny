@@ -31,3 +31,16 @@ describe("FORMS_ON_FILE_ORDER_MATCH_POSSIBLE: a reversed name is a possible matc
     expect(split()).toEqual({ named: ["Wren Tallis"], possible: ["Tallis Wren", "Wren Park"] });
   });
 });
+
+describe("R795F (QA, 12 Nov 2026): a name written \"Last, First\" is the asked order", () => {
+  it("flag on: \"CA for Calder, Remy\" names Remy Calder; \"CA for Calder Remy\" (no comma) stays possible", () => {
+    process.env[FLAG] = "true";
+    const remy = row("Remy Calder");
+    const comma = "CA for Calder, Remy";
+    expect(matchRowsToQuestion([remy], candidateNameWords(comma), comma).named).toHaveLength(1);
+    const bare = "CA for Calder Remy";
+    const split = matchRowsToQuestion([remy], candidateNameWords(bare), bare);
+    expect(split.named).toHaveLength(0);
+    expect(split.possible).toHaveLength(1);
+  });
+});
