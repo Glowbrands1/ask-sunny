@@ -456,9 +456,13 @@ describe("FORM_EDIT_TOOL_IN_STREAM_ENABLED: a tool call", () => {
     const reply = await thread.say(CA_CHAIN[5]);
     const after = values(id).observation!;
     expect(after.startsWith(before)).toBe(true);
-    expect(after).toContain("she Must Practice the sanitizing checklist every shift.");
+    // Changed on purpose (12 Nov 2026, QA's ruling (b) extended): with STEP_B_ADD_UNDER_OBSERVED the instruction goes under
+    // "Expectation:" as its own line, its first letter a capital as the field's other lines have; flag off, as typed.
+    expect(after).toMatch(/\b[sS]he Must Practice the sanitizing checklist every shift\./);
     expect(reply.formUpdate).toEqual({ instanceId: id, updated: ["observation"] });
-    expect(reply.content).toMatch(/^Changed Observation of Offense to "/);
+    // Changed on purpose (12 Nov 2026, Gate-Sunny-2 on #662): with STEP_B_REPLY_KEEPS_LINES on, a field written on several
+    // lines is quoted line by line ("Changed Observation of Offense to:\n> …"); either way the reply names the change.
+    expect(reply.content).toMatch(/^Changed Observation of Offense to(?: "|:\n> )/);
     expect(reply.content).not.toContain("I've updated the form");
     // Exactly one model call this turn: the main one. No revision, no draft, nothing sent back.
     expect(model.main.length).toBe(1);

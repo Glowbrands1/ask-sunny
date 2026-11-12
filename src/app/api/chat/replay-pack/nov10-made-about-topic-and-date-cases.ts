@@ -3,6 +3,7 @@ import { expect, vi } from "vitest";
 import { KEARNEY, type ReplayCase, type ReplayContext } from "./cases";
 import { play } from "./nov7-step-b-refusals-cases";
 import { BUB_PHONE, REFUSAL_ROSTER, STEP_B_READER_FLAGS, STEP_B_REFUSAL_SCENARIOS, patch } from "./nov7-step-b-refusals-scenarios";
+import { stepBAddUnderObservedEnabled } from "@/lib/config/chat-quality-flags";
 
 /**
  * ============================================================================
@@ -365,7 +366,16 @@ export const NOV10_MADE_ABOUT_TOPIC_AND_DATE_CASES: ReplayCase[] = [
       expect(details.match(/Observed:/g) ?? [], `the account was saved twice:\n${details}`).toHaveLength(1);
       expect(details.match(/Going Forward:/g) ?? [], `the account was saved twice:\n${details}`).toHaveLength(1);
       expect(details, `the new line:\n${reply.content}`).toMatch(/reminded of the policy/);
-      expect(details.startsWith(made), `the account changed:\n${details}`).toBe(true);
+      if (stepBAddUnderObservedEnabled()) {
+        // Changed on purpose (12 Nov 2026, Gate-Sunny-2 on #662): with STEP_B_ADD_UNDER_OBSERVED on, the new line goes at
+        // the end of the Observed section, so the saved text no longer starts with the whole earlier field; the account
+        // is still kept once, the new line is under Observed, and the policy reference stays last.
+        expect(details.startsWith(made.split(/\n\s*Expectation:/)[0]!), `the account changed:\n${details}`).toBe(true);
+        expect(details.split(/\n\s*Expectation:/)[0], `the new line is not under Observed:\n${details}`).toContain(line);
+        expect(details.trim().endsWith(made.trim().split("\n").at(-1)!), `the policy reference is not last:\n${details}`).toBe(true);
+      } else {
+        expect(details.startsWith(made), `the account changed:\n${details}`).toBe(true);
+      }
     },
   },
   /*

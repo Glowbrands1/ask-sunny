@@ -2564,6 +2564,34 @@ export function formEditSaidReplacementEnabled(): boolean {
 export function formPatchReaderFixesEnabled(): boolean {
   return envFlag("FORM_PATCH_READER_FIXES_ENABLED") && formPatchReducerEnabled();
 }
+/**
+ * STEP_B_ADD_UNDER_OBSERVED_ENABLED (coding 5, port from the sibling app: QA's live draft test there, 8 Nov 2026; same flag in
+ * both apps; default off). "add to the details that she was reminded about the meeting twice" was appended after
+ * "Going Forward" on a Details of Coaching written in sections. On: the one writer puts added text at the end of the
+ * Observed section, for an "add" and for a whole-text write that is the old text with new lines after its last
+ * section (`forms/outline-sections.ts`, `forms/form-write.ts`). Off, as before.
+ */
+export function stepBAddUnderObservedEnabled(): boolean {
+  return envFlag("STEP_B_ADD_UNDER_OBSERVED_ENABLED");
+}
+
+/**
+ * STEP_B_SECTION_SPACING_ENABLED (coding 5; QA's live draft test, 8 Nov 2026; same flag in both apps; default off).
+ * After an edit, the blank lines between Observed / Expectation / Going Forward became single newlines. On: a write
+ * of a field that had them keeps one blank line before each section heading (`forms/outline-sections.ts`). Off, as
+ * before.
+ */
+export function stepBSectionSpacingEnabled(): boolean {
+  return envFlag("STEP_B_SECTION_SPACING_ENABLED");
+}
+/**
+ * STEP_B_REPLY_KEEPS_LINES_ENABLED (coding 5; QA's live draft test, 8 Nov 2026; same flag in both apps; default off).
+ * Step B's reply quoted a multi-line field on one line joined with "; " ("Observed:; … ; Expectation:; …"). On: it
+ * is quoted line by line, as the form shows it (`forms/form-diff-reply.ts` replyFromDiff). Off, as before.
+ */
+export function stepBReplyKeepsLinesEnabled(): boolean {
+  return envFlag("STEP_B_REPLY_KEEPS_LINES_ENABLED");
+}
 
 /**
  * EDIT_POLICY_ASK_ENABLED (QA's live run, 7 Nov 2026; coding 5; same flag in both apps; default off; only with

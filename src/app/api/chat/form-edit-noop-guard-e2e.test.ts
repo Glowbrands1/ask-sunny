@@ -436,7 +436,9 @@ describe("FORM_EDIT_NOOP_GUARD_ENABLED: the reply after an edit is the saved dif
     const thread = await janeDraft();
     model.next = { text: "I've updated the form.", tool: { ops: [{ op: "append", field: "observation", value: "she Must Practice the sanitizing checklist every shift." }] } };
     const reply = await thread.say(CA_CHAIN[5]);
-    expect(values(thread.id).observation).toContain("she Must Practice the sanitizing checklist every shift.");
+    // Changed on purpose (12 Nov 2026, QA's ruling (b) extended): with STEP_B_ADD_UNDER_OBSERVED the instruction goes under
+    // "Expectation:" as its own line, its first letter a capital as the field's other lines have; flag off, as typed.
+    expect(values(thread.id).observation).toMatch(/\b[sS]he Must Practice the sanitizing checklist every shift\./);
     expect(reply.content).toBe("Updated: Observation of Offense: Observed: Jane Doe was late to open on October 20, 2026. Expectation: Jane is…");
     expect(reply.content).not.toMatch(/^Changed /);
     expect(reply.formUpdate).toEqual({ instanceId: thread.id, updated: ["observation"] });
@@ -459,8 +461,10 @@ describe("FORM_EDIT_NOOP_GUARD_ENABLED: the reply after an edit is the saved dif
     // This app's draft already ticks Attendance Policy (its Late Opening reading): the tick added is Other.
     const reply = await thread.say("tick Other for the offense and add that she was also late on Tuesday");
     // In the form's order (the saved rows, then new keys).
-    expect(reply.content).toBe(
-      "Updated: Observation of Offense: Observed: Jane Doe was late to open on October 20, 2026. Expectation: Jane is…\nUpdated: Type of Offense: Attendance Policy, Other",
+    // Changed on purpose (12 Nov 2026, QA's ruling (b) on #662): with STEP_B_ADD_UNDER_OBSERVED on, "She was also late on
+    // Tuesday." is an account, so it goes at the end of Observed and the quoted start of the field shows it.
+    expect(reply.content).toMatch(
+      /^Updated: Observation of Offense: Observed: Jane Doe was late to open on October 20, 2026\. (?:Expectation: Jane is|She was also late on)…\nUpdated: Type of Offense: Attendance Policy, Other$/,
     );
   });
 
@@ -548,7 +552,9 @@ describe("FORM_EDIT_NOOP_GUARD_ENABLED needs FORM_EDIT_SINGLE_WRITER_ENABLED", (
     const reply = await thread.say(SF_S11_REQUEST);
     // Before the guard: the request reached the Observation, and the reply said so in the old words.
     expect(values(thread.id).observation).toContain(SF_S11_REQUEST);
-    expect(reply.content).toMatch(/^Changed Observation of Offense to "/);
+    // Changed on purpose (12 Nov 2026, Gate-Sunny-2 on #662): with STEP_B_REPLY_KEEPS_LINES on, a field written on several
+    // lines is quoted line by line ("Changed Observation of Offense to:\n> …"); either way the reply names the change.
+    expect(reply.content).toMatch(/^Changed Observation of Offense to(?: "|:\n> )/);
   });
 });
 

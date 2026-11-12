@@ -1,3 +1,4 @@
+import { stepBAddUnderObservedEnabled, stepBReplyKeepsLinesEnabled } from "@/lib/config/chat-quality-flags";
 import { expect } from "vitest";
 
 import { KEARNEY, noClaimWithoutUpdate, replyMatchesDiff, savedForm, type ReplayCase, type ReplayContext } from "./cases";
@@ -102,9 +103,18 @@ export const NOV4_EDIT_TOOL_CASES: readonly ReplayCase[] = [
         const reply = await thread.say(CA_CHAIN[5]);
         replyMatchesDiff(t, id, before, reply, CA_CHAIN[5]);
         expect(reply.formUpdate?.updated).toEqual(["observation"]);
-        expect(t.values(id).observation ?? "").toMatch(/she Must Practice the sanitizing checklist every shift\.$/);
+        // Changed on purpose (12 Nov 2026, QA's ruling (b) extended, Gate-Sunny-2 on #662): with STEP_B_ADD_UNDER_OBSERVED,
+        // "she Must Practice …" is an instruction, not an account, so it goes under "Expectation:" as its own line (its first
+        // letter a capital, as the field's other lines start with one), never under Observed and never glued onto a line.
+        expect(t.values(id).observation ?? "").toMatch(
+          stepBAddUnderObservedEnabled()
+            ? /\nExpectation:\n[^]*\nShe Must Practice the sanitizing checklist every shift\.(?:\n|$)/
+            : /she Must Practice the sanitizing checklist every shift\.$/,
+        );
         expect(t.values(id).observation ?? "", "the first name was dropped").toMatch(/\bJane Doe\b/);
-        expect(reply.content).toMatch(/^Changed Observation of Offense to "/);
+        // Changed on purpose (10 Nov 2026): STEP_B_REPLY_KEEPS_LINES quotes a multi-line field line by line
+        // ("Changed Observation of Offense to:" then "> …" lines) instead of one quoted line joined with "; ".
+        expect(reply.content).toMatch(stepBReplyKeepsLinesEnabled() ? /^Changed Observation of Offense to:\n>/ : /^Changed Observation of Offense to "/);
         expect(reply.content, "the tool's text was shown").not.toContain("I added that");
         // One model call: the main one; no revision, no draft.
         expect(t.calls().chat - calls.chat).toBe(1);
