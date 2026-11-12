@@ -21,6 +21,7 @@ import {
   personGuardEnabled,
   missedShiftCitesAttendanceEnabled,
   possessivePlaceNotPersonEnabled,
+  groupWordsNotANameEnabled,
   formNameFromRosterEnabled,
   offRosterConfirmEnabled,
   exitLetterAddresseeEnabled,
@@ -56,6 +57,8 @@ import {
   reopenByAnyOpenVerbEnabled,
   twoFormsCardNotAskedEnabled,
   secondRequestOwnAccountEnabled,
+  nearMissQuestionRulesEnabled,
+  formNameOffRosterAskEnabled,
   whatHappenedNoCreateEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { streamWhenSlow } from "@/lib/api/streamed-response";
@@ -332,6 +335,12 @@ async function postChat(request: Request) {
         const reply = [...asked.history].reverse().find((turn) => turn.role === "assistant");
         if (reply) (await import("@/lib/forms/last-reply-store")).enterLastReply(String(reply.content ?? ""));
       }
+      // NEAR_MISS_QUESTION_RULES_ENABLED (after the FORM_NAME / METRIC_GUARD pair above, never between them — the sibling
+      // app's round-6 gate, 8 Nov 2026: there it took that `else` and the metric guards stopped reading the message): the card on screen, so a near-miss never replaces it (`lib/forms/near-miss-question-rules.ts`).
+      if (nearMissQuestionRulesEnabled()) {
+        const onScreen = (await import("@/lib/forms/near-miss-question-rules")).cardEmployee(asked);
+        if (onScreen) (await import("@/lib/forms/request-message-store")).enterCardOnScreen(onScreen);
+      }
       /*
        * PERSON_GUARD_ENABLED: the actor's roster, for the rule that somebody on
        * it is always a person. One directory read per turn, only with the flag
@@ -359,6 +368,12 @@ async function postChat(request: Request) {
           }
         }
         enterPersonRoster(names);
+        // FORM_NAME_OFF_ROSTER_ASK_ENABLED: the scope's level, so a name not on the roster is held for a salon manager only (`lib/forms/roster-scope.ts`).
+        // The manager's own turns too, so a full name typed on an earlier turn is still the manager's (QA's #741 eval, g1–g6).
+        if (formNameOffRosterAskEnabled()) {
+          const managerTurns = [...asked.history.filter((turn) => turn.role === "user").map((turn) => String(turn.content ?? "")), asked.question];
+          (await import("@/lib/forms/person-roster-store")).enterRosterScope(context.identity.scope?.level ?? "", managerTurns);
+        }
         /*
          * FORM_NAME_FROM_ROSTER_ENABLED: does this message name somebody on the
          * roster (exact or close, or a roster first name typed in lowercase)?
@@ -919,10 +934,19 @@ async function postChat(request: Request) {
           businessToday(),
         );
       }
+      // GROUP_WORDS_NOT_A_NAME_ENABLED: "the same form for multiple employees" asks which employees (`lib/forms/group-words-ask.ts`).
+      if (groupWordsNotANameEnabled()) {
+        answer = (await import("@/lib/forms/group-words-ask")).withGroupWordsAsk(answer, [
+          ...parsed.history.filter((turn) => turn.role === "user").map((turn) => turn.content),
+          asked.question,
+        ]);
+      }
       // PROPOSAL_NAME_CORRECTION_ENABLED: an off-roster "change her name to …" on the card is never kept silently; with the roster, the card stays for the one roster person it can only be, and a typo is never offered as a person.
       answer = withCorrectionNotDropped(answer, parsed);
       // TWO_FORMS_CARD_NOT_ASKED_ENABLED: a card that names its employee is never asked "Which of them … — <that employee> or …?" (`lib/forms/card-not-asked.ts`).
       if (twoFormsCardNotAskedEnabled()) answer = (await import("@/lib/forms/card-not-asked")).withoutWhichAskOnSeatedCard(answer);
+      // NEAR_MISS_QUESTION_RULES_ENABLED: "no, …" to "Is this for <name>?" never gets a card for that name.
+      if (nearMissQuestionRulesEnabled()) answer = (await import("@/lib/forms/near-miss-question-rules")).withoutTurnedDownName(answer, asked);
       // ADDRESS_NOT_PERSON_ENABLED: "coaching form for 123 Main Street" names an address, not a person (QA, 3 Nov 2026).
       if (addressNotPersonEnabled())
         answer = (await import("@/lib/forms/person-guard")).withAddressNotPerson(
