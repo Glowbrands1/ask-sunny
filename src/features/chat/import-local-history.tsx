@@ -67,7 +67,7 @@ function useLocalHistoryImport() {
     useAppStore();
 
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{ imported: number; error: string | null; anotherAccount?: number } | null>(
+  const [result, setResult] = useState<{ imported: number; error: string | null; anotherAccount?: number; notProven?: number } | null>(
     null,
   );
 
@@ -81,6 +81,8 @@ function useLocalHistoryImport() {
         error: summary.error,
         // CHAT_IMPORT_OWN_ONLY: chats the server declined as another account's are said, not silently left.
         anotherAccount: summary.declined.filter((entry) => entry.reason === "another_account").length,
+        // CHAT_IMPORT_PROVEN_OWN: chats that could not be proven this account's are said as that, never "another account".
+        notProven: summary.declined.filter((entry) => entry.reason === "not_proven").length,
       });
     } catch (error) {
       setResult({
@@ -113,6 +115,25 @@ function anotherAccountSentence(count: number): string {
   return count === 1
     ? "1 chat on this device belongs to another account and was not imported. It stays on this device."
     : `${count} chats on this device belong to another account and were not imported. They stay on this device.`;
+}
+
+/**
+ * CHAT_IMPORT_PROVEN_OWN (QA, 12 Nov 2026): a chat with no answered turn on record for this account could not be
+ * confirmed as theirs. That is not another account's chat, so it is not said that way.
+ */
+function notProvenSentence(count: number): string {
+  return count === 1
+    ? "Ask Sunny couldn't confirm 1 chat on this device is yours, so it wasn't copied. It stays on this device."
+    : `Ask Sunny couldn't confirm ${count} chats on this device are yours, so they weren't copied. They stay on this device.`;
+}
+
+function NotProvenNote({ count }: { count?: number }) {
+  if (!count) return null;
+  return (
+    <p role="status" className="mt-2 text-[11.5px] leading-relaxed text-muted-foreground">
+      {notProvenSentence(count)}
+    </p>
+  );
 }
 
 function AnotherAccountNote({ count }: { count?: number }) {
@@ -175,6 +196,7 @@ export function ImportLocalHistoryPrompt() {
         </p>
       ) : null}
       <AnotherAccountNote count={result?.anotherAccount} />
+      <NotProvenNote count={result?.notProven} />
 
       <div className="mt-2.5 flex items-center gap-2">
         <Button
@@ -305,6 +327,7 @@ export function HistoryImportButton() {
               </p>
             ) : null}
             <AnotherAccountNote count={result?.anotherAccount} />
+            <NotProvenNote count={result?.notProven} />
           </div>
 
           <DialogActions>
