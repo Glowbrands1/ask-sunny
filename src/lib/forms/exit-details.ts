@@ -5,9 +5,11 @@ import {
   exitTerminationStatedEnabled,
   resignMethodFollowupEnabled,
   fieldLabelNotAQuestionEnabled,
+  exitTypoWordsEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { JOIN } from "./bounded-context";
+import { editDistance } from "./typo-match";
 import { isQuestion } from "./employment-change";
 import { EXIT_DETAIL_FIELDS, EXIT_NOTICE_GROUP, EXIT_TYPE_GROUP } from "./exit-library";
 import {
@@ -727,6 +729,57 @@ function aboutTheEmployee(reason: string): string {
   );
 }
 
+/*
+ * EXIT_TYPO_WORDS_ENABLED (Pau's P17, Sunny production, 10 Nov 2026): "salon items will be returneded … they are
+ * eligiable for rehire" left Store Items Returned and Eligible for Rehire blank — the readers match "returned" and
+ * "eligible", and the typed words were one or two letters off. With the flag on, the words the answer readers key on
+ * are read through a close-spelling check first: a word the reader does not know, with the same first letter and one
+ * letter off (two from seven letters), is read as that word. Only for reading the answers; what the manager wrote is
+ * quoted as written.
+ */
+const EXIT_WORDS = ["returned", "returning", "return", "returns", "eligible", "ineligible", "eligibility", "rehire", "rehired", "rehirable", "deducted", "deduction", "forfeited", "forfeit", "minimum"];
+const KNOWN = new Set(EXIT_WORDS);
+/**
+ * Real words one or two letters from a target: never "corrected" ("she retired" is not "she rehired").
+ * QA, R713 (11 Nov 2026): "he is not required back" read as "not rehired" — every word on an English word list that
+ * the check would change is here, except plain forms of the readers' own words ("deducts", "rehires", "forfeits").
+ */
+const REAL_WORDS = new Set([
+  "retired", "retire", "retires", "retiring", "reliable", "related", "retained", "retain", "retains", "retuned",
+  "minimal", "deduced", "deduce", "regained", "relined", "remained", "refunded", "reported", "rehired", "elegant",
+  "debuted", "decocted", "decoction", "dedicated", "dedication", "deduces", "deductive", "defect", "defected",
+  "defecting", "defection", "defects", "defunction", "degusted", "dejected", "dejection", "depicted", "depiction",
+  "deputed", "detect", "detected", "detecting", "detection", "detects", "elidible", "eligibly", "eludible",
+  "exigible", "forefeet", "forefelt", "forest", "forested", "foresting", "forests", "forfair", "forfaired",
+  "forfaiter", "forfend", "forfended", "forhent", "forlent", "fornent", "forwent", "ineligibly", "ineludible",
+  "intelligible", "maximum", "minibus", "minicam", "minicom", "minimax", "minimism", "minimus", "minium", "miniums",
+  "rebored", "reburied", "reburying", "recitable", "recited", "recured", "recures", "recuring", "recurred",
+  "recurring", "recursed", "recursing", "recurved", "recurving", "redshire", "reearned", "reearning", "reearns",
+  "referable", "refiled", "refinable", "refined", "refire", "refired", "refires", "refixed", "rehinge", "rehinged",
+  "rehomed", "rejourn", "rejourned", "rejourning", "rejourns", "relivable", "relived", "remised", "remixed",
+  "reoiled", "repair", "repairable", "repaired", "repairing", "repairs", "reparable", "repined", "repugned",
+  "repugning", "repugns", "repured", "repures", "repuring", "requins", "requirable", "require", "required",
+  "requires", "requiring", "rerunning", "reshine", "reshined", "resided", "resiled", "resined", "resited", "resized",
+  "respirable", "respire", "respired", "resurged", "resurging", "retaining", "retarded", "retarding", "retards",
+  "retiled", "retimed", "retiree", "retirer", "retorn", "retorted", "retorting", "retorts", "retoured", "retouring",
+  "retours", "retried", "retrying", "retunded", "retunding", "retunds", "retunes", "retuning", "returf", "returfed",
+  "returfing", "returfs", "returnee", "returnees", "returner", "returners", "returnik", "returniks", "reurged",
+  "reurging", "reverable", "revered", "reviled", "revisable", "revised", "revivable", "revive", "revived", "revives",
+  "reviving", "rewirable", "rewire", "rewired", "rewires", "rewiring",
+]);
+
+export function withExitWordsSpelled(turn: string): string {
+  return turn.replace(/[A-Za-z]{5,}/g, (word) => {
+    const lower = word.toLowerCase();
+    if (KNOWN.has(lower) || REAL_WORDS.has(lower)) return word;
+    const limit = lower.length >= 7 ? 2 : 1;
+    const close = EXIT_WORDS.filter((target) => target[0] === lower[0] && Math.abs(target.length - lower.length) <= limit && editDistance(lower, target) <= limit);
+    if (close.length === 0) return word;
+    const best = close.reduce((a, b) => (editDistance(lower, a) <= editDistance(lower, b) ? a : b));
+    return best;
+  });
+}
+
 /* ------------------------------------------------------------ reading -- */
 
 function readAnswers(turn: string): Partial<Record<ExitAnswerKey, Reading>> {
@@ -777,7 +830,7 @@ export function readExitDetails(rawText: string, today: string, facts?: ExitFact
   const settled: Partial<Record<ExitAnswerKey, Reading>> = {};
   for (const turn of turns) {
     // THE LATER TURN WINS: a turn that answers a question replaces the answer.
-    for (const [key, reading] of Object.entries(readAnswers(turn)) as [ExitAnswerKey, Reading][]) {
+    for (const [key, reading] of Object.entries(readAnswers(exitTypoWordsEnabled() ? withExitWordsSpelled(turn) : turn)) as [ExitAnswerKey, Reading][]) {
       if (reading !== undefined) settled[key] = reading;
     }
     // FIELD_LABEL_NOT_A_QUESTION_ENABLED: "how employee resigned - told management" is the manager's own answer for that line.

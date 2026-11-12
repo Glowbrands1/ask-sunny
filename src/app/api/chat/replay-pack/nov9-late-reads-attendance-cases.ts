@@ -16,13 +16,21 @@ const FIX = ["LATE_READS_ATTENDANCE_ENABLED"];
 const REPORT = "QA, the Sunny round-10 live test (9 Nov 2026): \"she was late on 11/6/26\" cited Late Opening in 1 of 6 runs";
 const POLICY = (content: string) => /^\*\*Policy:\*\*[^\n]*/m.exec(content)?.[0] ?? "";
 
-async function card(t: ReplayContext, said: string, heading: string) {
+async function reply(t: ReplayContext, said: string, heading: string) {
   vi.setSystemTime(new Date("2026-11-09T16:00:00Z"));
   t.directory(STAFF);
   t.as("salon_director", KEARNEY);
   t.slotsRead({ policyHeading: heading });
-  return (await t.thread().say(said)).content;
+  return t.thread().say(said);
 }
+
+async function card(t: ReplayContext, said: string, heading: string) {
+  return (await reply(t, said, heading)).content;
+}
+
+/** The heading each source card starts with ("Late Opening. …"). */
+const SOURCE_HEADINGS = (citations: readonly unknown[] | undefined) =>
+  (citations ?? []).map((citation) => String((citation as { excerpt?: unknown }).excerpt ?? "").split(".")[0]!.trim());
 
 export const NOV9_LATE_READS_ATTENDANCE_CASES: ReplayCase[] = [
   {
@@ -35,6 +43,29 @@ export const NOV9_LATE_READS_ATTENDANCE_CASES: ReplayCase[] = [
     async run(t) {
       const content = await card(t, "create a CA for Marnie Holloway, she was late on 11/6/26", "Late Opening");
       expect(POLICY(content), `the Policy line:\n${content}`).toMatch(/^\*\*Policy:\*\* Attendance\b/);
+    },
+  },
+  {
+    /*
+     * Gate-Sunny's invariant (11 Nov 2026): nov9-late-reads-attendance checks the Policy line only, and passed while the
+     * same card's Action Plan said "review the Late Opening policy" and its Sources were Late Opening p.15 (QA's live
+     * r22 + r26 turn). The Action Plan and the Sources must read Attendance too. Open on production's flags; holds with
+     * LATE_SLOT_READS_ATTENDANCE_ENABLED (#789), which puts the slots on Attendance.
+     */
+    id: "nov9-late-reads-attendance-plan-and-sources",
+    title: "\"create a CA for <P>, she was late on 11/6/26\", the model's heading Late Opening: the Action Plan and the Sources are Attendance too",
+    report: `${REPORT}; Gate-Sunny, 11 Nov 2026: the Policy line alone passed while the plan and Sources said Late Opening`,
+    // Changed on purpose (11 Nov 2026): fixed in production by LATE_SLOT_READS_ATTENDANCE, QA round 29. Was OPEN.
+    status: "fixed",
+    fixFlags: [...FIX, "LATE_SLOT_READS_ATTENDANCE_ENABLED"],
+    async run(t) {
+      const answer = await reply(t, "create a CA for Marnie Holloway, she was late on 11/6/26", "Late Opening");
+      const content = answer.content;
+      expect(POLICY(content), `the Policy line:\n${content}`).toMatch(/^\*\*Policy:\*\* Attendance\b/);
+      expect(content, `the Action Plan:\n${content}`).toMatch(/\*\*Action Plan:\*\* Management will review the Attendance policy\b/);
+      expect(SOURCE_HEADINGS((answer as { citations?: readonly unknown[] }).citations), `the Sources:\n${content}`).toContain("Attendance");
+      expect(SOURCE_HEADINGS((answer as { citations?: readonly unknown[] }).citations), `the Sources:\n${content}`).not.toContain("Late Opening");
+      expect(content, `no Late Opening anywhere on the card:\n${content}`).not.toMatch(/Late Opening/);
     },
   },
   {

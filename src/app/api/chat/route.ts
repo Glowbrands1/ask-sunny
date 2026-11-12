@@ -21,10 +21,12 @@ import {
   personGuardEnabled,
   missedShiftCitesAttendanceEnabled,
   possessivePlaceNotPersonEnabled,
+  groupWordsNotANameEnabled,
   formNameFromRosterEnabled,
   offRosterConfirmEnabled,
   exitLetterAddresseeEnabled,
   letterGreetingNotNameEnabled,
+  templateOutlineFieldsEnabled,
   exitFormDateFromTerminationEnabled,
   offRosterAskBeforeCardEnabled,
   metricGuardEnabled,
@@ -57,6 +59,7 @@ import {
   secondRequestOwnAccountEnabled,
   nearMissQuestionRulesEnabled,
   formNameOffRosterAskEnabled,
+  whatHappenedNoCreateEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { streamWhenSlow } from "@/lib/api/streamed-response";
 import { finalReplyWithoutMarkers } from "@/lib/ai/source-note";
@@ -222,8 +225,11 @@ async function postChat(request: Request) {
     }
 
     let answer;
+    // TEMPLATE_OUTLINE_FIELDS_ENABLED: the parsed turn the closing note reads (never the raw body's question).
+    let outlineTurn: { question: string; instanceId: string } | null = null;
     try {
       let asked = parseAskRequest(body);
+      if (asked.activeFormInstanceId) outlineTurn = { question: asked.question, instanceId: asked.activeFormInstanceId };
       /*
        * EXIT_LETTER_ADDRESSEE_ENABLED (QA, the live test of rounds 7c and 8, 9 Nov 2026): a letter to the employee,
        * signed "Sincerely,\n<C>\nDistrict Manager", is read without that sign-off in this turn and the manager's
@@ -928,6 +934,13 @@ async function postChat(request: Request) {
           businessToday(),
         );
       }
+      // GROUP_WORDS_NOT_A_NAME_ENABLED: "the same form for multiple employees" asks which employees (`lib/forms/group-words-ask.ts`).
+      if (groupWordsNotANameEnabled()) {
+        answer = (await import("@/lib/forms/group-words-ask")).withGroupWordsAsk(answer, [
+          ...parsed.history.filter((turn) => turn.role === "user").map((turn) => turn.content),
+          asked.question,
+        ]);
+      }
       // PROPOSAL_NAME_CORRECTION_ENABLED: an off-roster "change her name to …" on the card is never kept silently; with the roster, the card stays for the one roster person it can only be, and a typo is never offered as a person.
       answer = withCorrectionNotDropped(answer, parsed);
       // TWO_FORMS_CARD_NOT_ASKED_ENABLED: a card that names its employee is never asked "Which of them … — <that employee> or …?" (`lib/forms/card-not-asked.ts`).
@@ -967,6 +980,8 @@ async function postChat(request: Request) {
         void _dropped;
         answer = { ...rest, content: rest.content.replace(/\n*Based on what you've described, I can prepare:\s*$/, "").trimEnd() };
       }
+      // WHAT_HAPPENED_NO_CREATE_ENABLED: while the reply asks what happened, the card offers no Create (`lib/forms/what-happened-no-create.ts`).
+      if (whatHappenedNoCreateEnabled()) answer = (await import("@/lib/forms/what-happened-no-create")).withNoCreateWhileAsking(answer);
       // OFF_ROSTER_ASK_BEFORE_CARD_ENABLED: a salon manager's card for a full name not on their roster is asked about once, before the card (`lib/forms/off-roster-ask.ts`).
       if (offRosterAskBeforeCardEnabled()) {
         answer = (await import("@/lib/forms/off-roster-ask")).withOffRosterAskBeforeCard(answer, { scope: context.identity.scope, history: parsed.history, question: asked.question });
@@ -1025,6 +1040,23 @@ async function postChat(request: Request) {
       logTurnEvent("turn.answer.missing_turn", { surface, where: "api/chat" });
     }
 
+    /*
+     * TEMPLATE_OUTLINE_FIELDS_ENABLED (Pau's sf-s21, QA's ruling): "the Must see behaviors and not the standard of
+     * conduct" on a form that still cites Standards of Conduct is answered with why (`lib/forms/template-outline.ts`).
+     */
+    if (templateOutlineFieldsEnabled() && outlineTurn) {
+      const { question: outlineQuestion, instanceId: outlineInstanceId } = outlineTurn;
+      const outline = await import("@/lib/forms/template-outline");
+      const loaded = await (await import("@/lib/forms/instance-scope"))
+        .authorizeInstance(request, outlineInstanceId, "view")
+        .then((authorized) => authorized.loaded)
+        .catch(() => null);
+      const value = (key: string) => loaded?.values.find((row) => row.fieldKey === key)?.value ?? "";
+      const note = loaded
+        ? outline.policyKeptNote({ question: outlineQuestion, policyViolated: value("policy_violated"), policyLanguage: value("policy_language") })
+        : null;
+      if (note) answer = { ...answer, content: outline.withPolicyKeptNote(answer.content, note) };
+    }
     // FINAL_REPLY_MARKER_GUARD_ENABLED: no bare source tag reaches the manager, whatever path answered. See `ai/source-note.ts`.
     return NextResponse.json({ ...finalReplyWithoutMarkers(answer), turnId });
   } catch (error) {

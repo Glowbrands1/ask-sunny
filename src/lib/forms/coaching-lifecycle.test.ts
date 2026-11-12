@@ -371,6 +371,45 @@ describe("a new coaching form", () => {
     }
   });
 
+  /*
+   * Gate-Sunny's review of POLICY_GATE_NONBLOCKING (QA, 10 Nov 2026): with the flag on, a finalize with a blank Direct
+   * policy recorded nothing about it, so the record had no audit trail. It now carries policyBlankAtFinalize.
+   */
+  it("on: a blank Direct policy is recorded on the finalized event (policyBlankAtFinalize), without blocking", async () => {
+    process.env.POLICY_GATE_NONBLOCKING_ENABLED = "1";
+    try {
+      const instance = await startCorrectiveForm();
+      expect((await finalizeInstance(instance.id, "dana", null)).status).toBe("finalized");
+      const detail = finalizedEvent((await loadInstance(instance.id))!.events).detail;
+      expect(detail.policyBlankAtFinalize).toBe(true);
+      expect(detail.blankPolicy).toEqual(["policy_language"]);
+      expect(detail.unverifiedPolicy).toBeUndefined();
+    } finally {
+      delete process.env.POLICY_GATE_NONBLOCKING_ENABLED;
+    }
+  });
+
+  it("on: a verified policy carries no blank marker", async () => {
+    process.env.POLICY_GATE_NONBLOCKING_ENABLED = "1";
+    try {
+      const instance = await correctiveFormWithVerifiedPolicy();
+      await finalizeInstance(instance.id, "dana", null);
+      const detail = finalizedEvent((await loadInstance(instance.id))!.events).detail;
+      expect(detail.policyBlankAtFinalize).toBeUndefined();
+      expect(detail.blankPolicy).toBeUndefined();
+    } finally {
+      delete process.env.POLICY_GATE_NONBLOCKING_ENABLED;
+    }
+  });
+
+  it("off: an acknowledged finalize records the override as before, and no blank marker", async () => {
+    const instance = await startCorrectiveForm();
+    await finalizeInstance(instance.id, "dana", null, { acknowledgeUnverifiedPolicy: true });
+    const detail = finalizedEvent((await loadInstance(instance.id))!.events).detail;
+    expect(detail.policyBlankAtFinalize).toBeUndefined();
+    expect(detail.policyVerificationOverride).toBe(true);
+  });
+
   it("B. a hand-typed Direct policy still asks when the gate is non-blocking", async () => {
     process.env.POLICY_GATE_NONBLOCKING_ENABLED = "1";
     try {

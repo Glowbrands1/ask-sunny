@@ -29,6 +29,27 @@ describe("CHAT_PARALLEL_LOADS: what starts early is awaited on the same turn", (
     expect(SOURCE.indexOf("content: FRAMEWORK_UNAVAILABLE_MESSAGE")).toBeLessThan(reads);
   });
 
+  /*
+   * Changed on purpose (QA-approved, 10 Nov 2026, live timings): the few-shot read is the one read that starts before
+   * the turn's early returns, beside the normalizer and the query rewrite, because it was 1.1–2.8 s alone before the
+   * answer. It reads nothing but the question and the scope, both final where it starts, and writes nothing; a turn
+   * that returns early has made a read it does not use (no model call). Every other read still starts in turnReads.
+   */
+  it("the few-shot read starts once, before the query rewrite, from a question and scope that are final there", () => {
+    expect(SOURCE.match(/const earlyFewShot =/g)).toHaveLength(1);
+    const early = SOURCE.indexOf("const earlyFewShot =");
+    const normalize = SOURCE.indexOf('markStage(earlyHeard?.reruns(request) ? "query_normalize_rerun" : "query_normalize");');
+    expect(early).toBeGreaterThan(SOURCE.indexOf("request = prepared.request;"));
+    expect(normalize).toBeGreaterThan(early);
+    expect(SOURCE.slice(early, normalize)).toMatch(/chatParallelLoadsEnabled\(\) && fewShotExamplesEnabled\(\) \? held\(fewShotBlock\(\{ question: request\.question, scopeId: request\.scopeId \}\)\) : null/);
+    // Nothing reassigns the turn after it starts.
+    expect(SOURCE.slice(early)).not.toMatch(/\brequest = /);
+    // turnReads hands it on; it does not start a second one.
+    expect(SOURCE).toContain("fewShot: earlyFewShot })");
+    expect(SOURCE).toContain("    fewShot: input.fewShot,\n");
+    expect(SOURCE.match(/fewShotBlock\(/g)).toHaveLength(2);
+  });
+
   it("the two loads that write start once, after the memory read, and nothing returns or throws-out before their awaits", () => {
     expect(SOURCE.match(/turnWrites\(\{/g)).toHaveLength(1);
     expect(SOURCE.indexOf("const personMemory = await memoryPromise;")).toBeLessThan(SOURCE.indexOf("const writes = reads ? turnWrites("));
