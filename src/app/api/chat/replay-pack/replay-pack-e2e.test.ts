@@ -71,6 +71,12 @@ const state = vi.hoisted(() => ({
   slotReading: "none" as "none" | "ca" | "copy",
   /** Chunks the pinned manual also has, when a case sets them (`manualAlsoHas`); none by default. */
   manualExtra: [] as Record<string, unknown>[],
+  /** FULL_MANUAL_KEEPS_RETRIEVAL: what the knowledge search returns (`knowledgeHas`), the normalizer's label, the full manual. */
+  knowledgeRows: [] as Record<string, unknown>[],
+  normalizerIntent: null as string | null,
+  fullManualLoads: false,
+  /** The grounding block the answering model was last given (`lastGrounding`). */
+  lastGrounding: "",
   /** What the slot model (record_intent_slots) reads this turn, when a case sets it — as a production trace shows. */
   slotsRead: {} as Record<string, unknown>,
   /** The employee the AI reader quotes this turn, when a case sets it (it is checked against the roster as in production). */
@@ -96,7 +102,7 @@ const state = vi.hoisted(() => ({
  * the evidence and date checks, the reducer, the writes and the reload are
  * the real ones.
  */
-const systemPrompts = vi.hoisted(() => ({ hashes: [] as string[] }));
+const systemPrompts = vi.hoisted(() => ({ hashes: [] as string[], texts: [] as string[] }));
 const patchScript = vi.hoisted(() => ({ outputs: [] as unknown[], calls: 0, byLatest: null as Record<string, unknown> | null }));
 vi.mock("@/lib/forms/form-patch-call", () => ({
   FORM_PATCH_DEFAULT_TIMEOUT_MS: 5_000,
@@ -201,7 +207,7 @@ vi.mock("@/lib/auth/server", async () => {
       }
       return {
         identity: {
-          subject: "qa-manager",
+          subject: (state as { subject?: string }).subject ?? "qa-manager",
           email: "qa-manager@example.test",
           displayName: "QA Manager",
           role,
@@ -250,10 +256,12 @@ vi.mock("@/lib/ai/call-claude", () => ({
       usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 },
     };
   },
-  callClaude: async (input?: { system?: string; formEditTool?: { data: string; onToolUse: (call: unknown) => void } | null }) => {
+  callClaude: async (input?: { system?: string; grounding?: string; formEditTool?: { data: string; onToolUse: (call: unknown) => void } | null }) => {
     state.chatModelCalls += 1;
+    state.lastGrounding = String(input?.grounding ?? "");
     // REPLAY_RECORD (QA, 10 Nov 2026): the system prompt each answer was asked with, as a hash, so two versions of the
     // prompt's assembly can be compared case by case (the stage-timing split of buildSystemPrompt's awaits).
+    systemPrompts.texts.push(String(input?.system ?? ""));
     if (process.env.REPLAY_RECORD) systemPrompts.hashes.push(createHash("sha256").update(String(input?.system ?? "")).digest("hex").slice(0, 16));
     if (input?.formEditTool) {
       editTool.offered += 1;
@@ -297,6 +305,12 @@ vi.mock("@/lib/ai/call-claude", () => ({
         actionPlan: null,
         ...state.reading,
       };
+    }
+    if (input.tool?.name === "normalize_message") {
+      if (state.normalizerIntent === null) return null;
+      const text = JSON.stringify(input.messages ?? []);
+      const latest = (text.split("Latest message:\\n").pop() ?? "").replace(/"\}.*$/, "").replace(/\\"/g, '"');
+      return { query: latest, intent: state.normalizerIntent };
     }
     if (input.tool?.name !== "record_intent_slots") return null;
     if (state.slotReading === "copy") {
@@ -387,7 +401,7 @@ vi.mock("@/lib/knowledge/providers/supabase", () => ({
       return [];
     }
     async match() {
-      return [];
+      return state.knowledgeRows;
     }
     async fetchRoleGrounding(role: { id: string }) {
       return {
@@ -430,8 +444,29 @@ vi.mock("@/lib/knowledge/providers/supabase", () => ({
 /** A question that is not a form request searches the manual; nothing to embed offline. */
 vi.mock("@/lib/knowledge/recall-match", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/knowledge/recall-match")>()),
-  matchRecallKnowledge: async () => [],
+  matchRecallKnowledge: async () => state.knowledgeRows,
 }));
+
+/* FULL_MANUAL_KEEPS_RETRIEVAL: the whole JBA Policy Manual (the production rows), when a case says it loads. */
+vi.mock("@/lib/ai/full-manual-load", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/lib/ai/full-manual-load")>();
+  const { choosePolicyManuals } = await import("@/lib/ai/full-manual-context");
+  const fixture = (await import("@/test/fixtures/jba-manual-production-151.json")).default;
+  return {
+    ...original,
+    loadFullManualContext: async (input: { scopeId: string; question: string }) =>
+      state.fullManualLoads
+        ? choosePolicyManuals(input.question, [
+            {
+              id: fixture.document_ids["ask-sunny"],
+              title: fixture.title,
+              category: "policies_compliance",
+              chunks: (fixture.chunks as import("@/lib/ai/full-manual-load").ChunkRow[]).map(original.manualChunkFromRow),
+            },
+          ])
+        : original.loadFullManualContext(input),
+  };
+});
 
 vi.mock("@/lib/knowledge", () => ({
   getKnowledgeProvider: () => {
@@ -489,9 +524,14 @@ async function call<T>(url: string, init?: RequestInit): Promise<T> {
       : null;
   if (!response) throw new Error(`no route for ${url}`);
   const body = (await response.json()) as T & { error?: string };
+  // The draft route's replies, in order, as the browser receives them (`draftReplies`).
+  if (draft) draftReplies.push(body as Record<string, unknown>);
   if (!response.ok) throw new Error(body.error ?? `HTTP ${response.status}`);
   return body;
 }
+
+/** The draft route's replies this case (DRAFT_WROTE_NOTHING_NOTICE_ENABLED reads its `notice`). */
+const draftReplies: Record<string, unknown>[] = [];
 
 /** The chat route only accepts a UUID for the open form; the fake numbers rows `fake-N`. */
 function toUuid(id: string): string {
@@ -524,6 +564,7 @@ type Answer = {
   formOpened?: { instanceId: string; revisesInstanceId?: string | null };
   formUpdate?: { instanceId: string; updated: string[] };
   pendingCopy?: { fromInstanceId: string };
+  citations?: { documentTitle?: string }[];
 };
 
 /** The thread as the browser holds it: a card the answer carried stays open. */
@@ -607,6 +648,20 @@ class Thread {
     this.instanceId = toUuid(result.reference.instanceId);
     return this.instanceId;
   }
+
+  /** Create from the latest card for this person, as pressing Create on that card does (an earlier card still on screen). */
+  async createCard(employeeName: string): Promise<string> {
+    const message = [...this.messages].reverse().find((entry) => entry.formProposal?.employeeName === employeeName);
+    expect(message?.formProposal, `no card for ${employeeName} to create from`).toBeTruthy();
+    const result = await createInlineForm({ proposal: message!.formProposal!, messages: this.messages, call, onCreated: () => {} });
+    this.instanceId = toUuid(result.reference.instanceId);
+    return this.instanceId;
+  }
+
+  /** The chat as the browser holds it (for the browser's own readers). */
+  get conversation() {
+    return this.messages;
+  }
 }
 
 
@@ -631,6 +686,10 @@ beforeEach(async () => {
   state.slotReading = "none";
   state.slotsRead = {};
   state.manualExtra = [];
+  state.knowledgeRows = [];
+  state.normalizerIntent = null;
+  state.fullManualLoads = false;
+  state.lastGrounding = "";
   state.readerEmployee = null;
   state.slotsOnlyIfSaid = false;
   state.remapObservation = null;
@@ -643,6 +702,7 @@ beforeEach(async () => {
   faults.field = null;
   summaries.reply = null;
   faults.strayDraftField = null;
+  draftReplies.length = 0;
   state.directory = [
     { id: "e-1", firstName: "Quinn", lastName: "Marlowe", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-66"], positionName: null },
     { id: "e-2", firstName: "Dale", lastName: "Ferris", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-66"], positionName: null },
@@ -680,6 +740,7 @@ const record: { turns: { question: string; reply: string; updated: string[] | nu
 async function recorded(id: string, mode: string, run: () => Promise<void>) {
   record.turns = [];
   systemPrompts.hashes = [];
+  systemPrompts.texts = [];
   const at = performance.now();
   let error: string | null = null;
   try {
@@ -715,14 +776,19 @@ function setScope(scope: unknown) {
 function setRole(role: string | undefined) {
   (state as { role?: string }).role = role;
 }
+function setSubject(subject: string | undefined) {
+  (state as { subject?: string }).subject = subject;
+}
 afterEach(() => {
   setScope(undefined);
   setRole(undefined);
+  setSubject(undefined);
   said.answer = null;
   editTool.input = null;
   editTool.offered = 0;
   editTool.lastData = null;
   draftAsked.length = 0;
+  revisionAsked.length = 0;
   draftSystemAsked.length = 0;
   draftToolsAsked.length = 0;
 });
@@ -730,13 +796,24 @@ afterEach(() => {
 function context(): ReplayContext {
   return {
     thread: () => new Thread(),
-    as: (role, scope) => {
+    as: (role, scope, subject) => {
       setRole(role);
       setScope(scope);
+      setSubject(subject);
     },
     directory: (rows) => {
       state.directory = rows as never;
     },
+    knowledgeHas: (rows) => {
+      state.knowledgeRows = [...rows];
+    },
+    normalizerReads: (intent) => {
+      state.normalizerIntent = intent;
+    },
+    fullManualLoads: () => {
+      state.fullManualLoads = true;
+    },
+    lastGrounding: () => state.lastGrounding,
     manualAlsoHas: (chunks) => {
       state.manualExtra = [...chunks];
     },
@@ -781,7 +858,9 @@ function context(): ReplayContext {
     calls: () => ({ chat: state.chatModelCalls, draft: state.draftCalls, revision: state.revisionCalls, tool: state.toolCalls, patch: patchScript.calls }),
     forms: () => store.form_instances as never,
     draftPrompts: () => [...draftAsked],
+    revisionPrompts: () => [...revisionAsked],
     draftSystems: () => [...draftSystemAsked],
+    answerSystems: () => [...systemPrompts.texts],
     draftTools: () => [...draftToolsAsked],
     redraft: (instanceId, notes) =>
       call<Record<string, unknown>>(`/api/forms/instances/${instanceId}/draft`, {
@@ -804,6 +883,7 @@ function context(): ReplayContext {
           .filter((row) => row.instance_id === instanceId && Array.isArray(row.checked) && (row.checked as unknown[]).length > 0)
           .map((row) => [String(row.field_key), (row.checked as unknown[]).map(String)]),
       ),
+    draftReplies: () => [...draftReplies],
     draftNotYetSaved: (instanceId) => {
       store.form_instance_values = store.form_instance_values.filter((row) => !(row.instance_id === instanceId && row.filled_by === "ai"));
     },

@@ -48,6 +48,11 @@ export interface OpenFormSummary {
   lines: { label: string; value: string }[];
   /** Policy lines no approved source has verified, by label. */
   unverifiedPolicy: string[];
+  /**
+   * POLICY_GATE_NONBLOCKING_ENABLED: policy lines left blank, by label (absent when there are none or the flag is off).
+   * The answer says they are blank and were not checked against the manual, never that they were quoted from it.
+   */
+  blankPolicy?: string[];
 }
 
 /**

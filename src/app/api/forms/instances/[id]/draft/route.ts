@@ -27,9 +27,11 @@ import {
   cardPolicyToDraftEnabled,
   formPatchReducerEnabled,
   draftWriteNeverSilentEnabled,
+  draftWroteNothingNoticeEnabled,
   formEditSingleWriterEnabled,
   teamCardWordingEnabled,
   cardPolicyLabelEnabled,
+  caProcedureBasisEnabled,
   caSalesPolicyEnabled,
   priorActionsNoSignedEnabled,
   secondRequestOwnAccountEnabled,
@@ -225,7 +227,7 @@ import {
   LANGUAGE_CLEANUP_RULES,
   guardCoachingFraming,
 } from "@/lib/forms/coaching-framing";
-import { OFFENSE_BASIS_PROPERTY, readOffenseBasis, withoutUnreasonedConduct, type OffenseBasis } from "@/lib/forms/ca-conduct-reason";
+import { offenseBasisProperty, readOffenseBasis, withoutUnreasonedConduct, type OffenseBasis } from "@/lib/forms/ca-conduct-reason";
 import { guardOtherWriteIn } from "@/lib/forms/other-write-in";
 import { withoutRequestInObservation } from "@/lib/forms/request-observation";
 import {
@@ -1250,7 +1252,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
 
     const client = getAnthropicClient();
     /* CA_SALES_POLICY_ENABLED: the tool's optional offense_basis, and what the last call said (`ca-conduct-reason.ts`). */
-    const basisAsked = caSalesPolicyEnabled() && offersConductPolicy && offenseOffered.includes("other");
+    // CA_PROCEDURE_BASIS_ENABLED (sf-b6): the basis is asked with that flag too.
+    const basisAsked = (caSalesPolicyEnabled() || caProcedureBasisEnabled()) && offersConductPolicy && offenseOffered.includes("other");
     let offenseBasis: OffenseBasis | null = null;
     const draftCall = () => client.messages.create({
       model: CLAUDE_MODEL,
@@ -1275,7 +1278,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
                 description: "Checkbox group key to the option keys that apply.",
               },
               // CA_SALES_POLICY_ENABLED only, on a form offering Other: added, optional (`ca-conduct-reason.ts`). Off, absent.
-              ...(basisAsked ? { offense_basis: OFFENSE_BASIS_PROPERTY } : {}),
+              ...(basisAsked ? { offense_basis: offenseBasisProperty() } : {}),
             },
             required: ["values"],
           },
@@ -2518,6 +2521,18 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     // The old writer only in the single writer's flag-off branch (form-write-one-writer.test.ts reads this shape).
     const guarded = formEditSingleWriterEnabled() && written ? written : await applyAssistantDraft(id, reduced ? reduced.write : kept, actor.id, draftProvenanceWritten);
     /*
+     * DRAFT_WROTE_NOTHING_NOTICE_ENABLED (QA's r21 live check, 10 Nov 2026): a name-only Coaching card's Create saved
+     * the Name and Date and no Details, and said nothing: there was no account to draft from, so the drafting model
+     * wrote no narrative (no refusal, so DRAFT_WRITE_NEVER_SILENT's notice stays quiet). With the flag on, when the
+     * notes hold no account and no narrative field was written, the reply says so (`draft-write-never-silent.ts`).
+     */
+    const draftWroteNothing =
+      draftWroteNothingNoticeEnabled() &&
+      !draftNothingSaved &&
+      narrativeTargets.length > 0 &&
+      !notesHoldAccount(notes, loaded.instance.employeeName) &&
+      !narrativeTargets.some((key) => (guarded.accepted.values[key] ?? "").trim() !== "");
+    /*
      * NEVER A SILENT BLANK (DRAFT_NEVER_BLANK_ENABLED). Whenever an attempt
      * failed or wrote nothing, or the write itself holds no field, the reason
      * goes on a drafted event of its own (the write's event is
@@ -2682,6 +2697,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         // FORM_EDIT_SINGLE_WRITER_ENABLED: what the draft left out of the account (detected, never retried).
         // DRAFT_WRITE_NEVER_SILENT_ENABLED: nothing saved is said instead — there is no account to have left anything out of.
         draftNothingSaved ? (await import("@/lib/forms/draft-write-never-silent")).DRAFT_NOTHING_SAVED_NOTICE : leftOut,
+        // DRAFT_WROTE_NOTHING_NOTICE_ENABLED: no account, so no Details — said, never a silent blank.
+        draftWroteNothing ? (await import("@/lib/forms/draft-write-never-silent")).DRAFT_WROTE_NOTHING_NOTICE : null,
       ]
         .filter((line): line is string => Boolean(line))
         .join(" ") || null,

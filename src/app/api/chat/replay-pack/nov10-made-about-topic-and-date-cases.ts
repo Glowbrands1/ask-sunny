@@ -1,7 +1,8 @@
 import { expect, vi } from "vitest";
 
 import { KEARNEY, type ReplayCase, type ReplayContext } from "./cases";
-import { REFUSAL_ROSTER, patch } from "./nov7-step-b-refusals-scenarios";
+import { play } from "./nov7-step-b-refusals-cases";
+import { BUB_PHONE, REFUSAL_ROSTER, STEP_B_READER_FLAGS, STEP_B_REFUSAL_SCENARIOS, patch } from "./nov7-step-b-refusals-scenarios";
 
 /**
  * ============================================================================
@@ -241,7 +242,8 @@ export const NOV10_MADE_ABOUT_TOPIC_AND_DATE_CASES: ReplayCase[] = [
     id: "nov10-section-breaks-kept-p9-one-line",
     title: "QA's live Sunny round 15 (03:07:44Z): P9's sentence saved, but the reader returned Details on ONE line (\"Observed: … Expectation: …\"): the saved Details keep their sections",
     report: "QA's live Sunny round 15 (10 Nov 2026, 03:07:44Z): Details of Coaching saved as one paragraph",
-    status: { open: "the reader's one-line account is written as it came, over a field written in sections" },
+    // Changed on purpose (10 Nov 2026): fixed in production by SECTION_BREAKS_KEPT_ENABLED, QA round 23.
+    status: "fixed",
     fixFlags: [
       "MADE_ABOUT_READER_ACCOUNT_ENABLED",
       "MADE_ABOUT_UNDATED_TOGETHER_ENABLED",
@@ -282,6 +284,54 @@ export const NOV10_MADE_ABOUT_TOPIC_AND_DATE_CASES: ReplayCase[] = [
       expect(details, `the sections were run into one paragraph:\n${details}`).toMatch(/^Observed:\n[^\n]+\n\nExpectation:\n[^\n]+/);
     },
   },
+  /*
+   * QA's Bubbles gate (10 Nov 2026) on SECTION_BREAKS_KEPT alone: nov7-refusal-bub-phone-trace, "add that she was also
+   * on her phone", saved "Observed:; …deadline.; Also; observed:; Wrenna was on her phone.;…": the flag read the
+   * in-text "Also observed:" as a section label and split it. Only a known label that starts the text, a line or a
+   * sentence is a heading. The reader's add as the live trace returned it (the whole field, lines joined by " / ").
+   */
+  {
+    id: "nov10-section-breaks-not-also-observed",
+    title: "\"add that she was also on her phone\" with SECTION_BREAKS_KEPT on: the added \"Also observed:\" line is saved as it was said, not split as a section label",
+    report: "QA's Bubbles gate (10 Nov 2026): SECTION_BREAKS_KEPT split \"Also observed:\" in nov7-refusal-bub-phone-trace",
+    status: "fixed",
+    fixFlags: [...STEP_B_READER_FLAGS, "SECTION_BREAKS_KEPT_ENABLED"],
+    run: (t) =>
+      play(t, {
+        ...STEP_B_REFUSAL_SCENARIOS.find((scenario) => scenario.id === "bub-phone")!,
+        id: "section-breaks-not-also-observed",
+        script: {
+          draft: { observation: "Observed:\nWrenna Thistlecombe missed the October 15, 2026 Woven deadline.\nExpectation:\nWoven deadlines are met on time." },
+          patch: {
+            [BUB_PHONE]: patch("this_form", [
+              {
+                field: "observation",
+                value: "Observed: / Wrenna Thistlecombe missed the October 15, 2026 Woven deadline. / Also observed: Wrenna was on her phone. / Expectation: / Woven deadlines are met on time.",
+                how: "add",
+                evidence: "also she was also on her phone",
+              },
+            ]),
+          },
+        },
+        expect: {
+          says: "the Observation keeps \"Also observed: Wrenna was on her phone.\" on one line, and the Woven deadline",
+          check: (run) => {
+            const observation = String(run.saved.observation ?? "");
+            if (!/Woven deadline/.test(observation)) return `lost the Woven deadline: ${JSON.stringify(observation)}`;
+            if (!/Also observed: Wrenna was on her phone\./.test(observation)) return `"Also observed:" was split: ${JSON.stringify(observation)}`;
+            /*
+             * Changed on purpose (QA's gate, 10 Nov 2026): the saved field is checked whole. With ADD_NOT_REPEATED_SENTENCES
+             * (#768) the add was appended after the Expectation and the Expectation saved twice. One Expectation, and the
+             * phone under Observed, before it.
+             */
+            const expectations = observation.match(/Expectation:/g) ?? [];
+            if (expectations.length !== 1) return `${expectations.length} Expectation blocks: ${JSON.stringify(observation)}`;
+            if (observation.search(/on her phone/i) > observation.indexOf("Expectation:")) return `the phone line is after the Expectation: ${JSON.stringify(observation)}`;
+            return null;
+          },
+        },
+      }),
+  },
   {
     id: "nov10-add-not-repeated-after-made-about",
     title: "Ported from Ask Bubbles' live round 15: \"make it about being late on 11/5/26\", then \"add that she was reminded of the policy\" with the reader returning the whole field (on one line) and the new sentence as an add: Details hold ONE copy of the account plus the new line",
@@ -317,5 +367,53 @@ export const NOV10_MADE_ABOUT_TOPIC_AND_DATE_CASES: ReplayCase[] = [
       expect(details, `the new line:\n${reply.content}`).toMatch(/reminded of the policy/);
       expect(details.startsWith(made), `the account changed:\n${details}`).toBe(true);
     },
+  },
+  /*
+   * Ported from Ask Bubbles: QA's live r15b there (10 Nov 2026, 08:36Z, step 5; the person invented): a CA whose Observation was "Observed: … was
+   * late to work on October 23, 2026. / Expectation: … / Going Forward: …"; "add that she was also on her phone" saved the
+   * whole block and then "Observed: … was late to work on October 23, 2026. … was also on her phone.": the late sentence
+   * twice. The reader's add repeated the field's FIRST sentence (with its heading), not the whole field, so
+   * ADD_NOT_REPEATED did not read it as a repeat; with the flag off the same add is saved the same way.
+   */
+  {
+    id: "nov10-add-not-repeated-leading-sentence",
+    title: "QA's live Bubbles r15b: \"add that she was also on her phone\" on a sectioned CA Observation, the reader's add repeating the Observed sentence: the late sentence is saved once, and the phone",
+    report: "Ported from Ask Bubbles: QA's live r15b (10 Nov 2026, 08:36:43Z): the Observed sentence saved twice after the add",
+    // Changed on purpose (11 Nov 2026): fixed in production by ADD_NOT_REPEATED_SENTENCES, QA round 28. Was OPEN.
+    status: "fixed",
+    fixFlags: [...STEP_B_READER_FLAGS, "ADD_NOT_REPEATED_ENABLED", "ADD_NOT_REPEATED_SENTENCES_ENABLED"],
+    run: (t) =>
+      play(t, {
+        ...STEP_B_REFUSAL_SCENARIOS.find((scenario) => scenario.id === "bub-phone")!,
+        id: "add-not-repeated-leading-sentence",
+        steps: [{ say: "create a written CA for Wrenna Thistlecombe at West Dodge Rd, she was late on 10/23/26" }, { create: true }, { say: BUB_PHONE }],
+        script: {
+          draft: {
+            observation:
+              "Observed:\nWrenna Thistlecombe was late to work on October 23, 2026.\n\nExpectation:\nWrenna is expected to arrive on time for every scheduled shift.\n\nGoing Forward:\nWrenna will arrive on time.",
+          },
+          patch: {
+            [BUB_PHONE]: patch("this_form", [
+              {
+                field: "observation",
+                value: "Observed: Wrenna Thistlecombe was late to work on October 23, 2026. Wrenna was also on her phone.",
+                how: "add",
+                evidence: "she was also on her phone",
+              },
+            ]),
+          },
+        },
+        expect: {
+          says: "the Observation says once that she was late on October 23, 2026, and adds that she was also on her phone",
+          check: (run) => {
+            const observation = String(run.saved.observation ?? "");
+            if (!/also on her phone/.test(observation)) return `no phone line: ${JSON.stringify(observation)}`;
+            const late = observation.match(/late to work on October 23, 2026/g) ?? [];
+            if (late.length !== 1) return `the late sentence ${late.length} times: ${JSON.stringify(observation)}`;
+            if ((observation.match(/Observed:/g) ?? []).length !== 1) return `"Observed:" twice: ${JSON.stringify(observation)}`;
+            return null;
+          },
+        },
+      }),
   },
 ];
