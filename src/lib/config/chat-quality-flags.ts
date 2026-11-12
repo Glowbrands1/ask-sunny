@@ -4560,6 +4560,16 @@ export function draftWroteNothingNoticeEnabled(): boolean {
 }
 
 /**
+ * STEP_B_SECTION_SPACING_ENABLED (ported from Ask Bubbles; QA's live draft test, 8 Nov 2026; same flag in both apps;
+ * default off). After an edit, the blank lines between Observed / Expectation / Going Forward became single newlines.
+ * On: a write of a field that had them keeps one blank line before each section heading (`forms/outline-sections.ts`).
+ * Off, as before.
+ */
+export function stepBSectionSpacingEnabled(): boolean {
+  return envFlag("STEP_B_SECTION_SPACING_ENABLED");
+}
+
+/**
  * FORMS_ON_FILE_ORDER_MATCH_POSSIBLE_ENABLED (ported from Ask Bubbles, 11 Nov 2026; QA's Bubbles 17h live test; same flag
  * in both apps; default off). The FORMS ON FILE block counts a row as naming the person when every word of its employee
  * name is in the question, in any order, so forms filed as "<last> <first>" were listed as the asked person's own. On: a
