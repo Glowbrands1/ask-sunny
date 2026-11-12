@@ -635,6 +635,8 @@ const NEW_FLAGS = [
   "GROUP_WORDS_NOT_A_NAME_ENABLED",
   // coding 4: FORMS_ON_FILE_ORDER_MATCH_POSSIBLE (ported from Ask Bubbles, 11 Nov 2026; default off).
   "FORMS_ON_FILE_ORDER_MATCH_POSSIBLE_ENABLED",
+  // coding 6: POLICY_CARRY_RETRIEVAL (#248 rebuilt on main; QA item 10; default off).
+  "POLICY_CARRY_RETRIEVAL_ENABLED",
 ] as const;
 
 const PROTECTED = [

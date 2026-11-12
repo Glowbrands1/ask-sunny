@@ -4631,3 +4631,13 @@ export function stepBSectionSpacingEnabled(): boolean {
 export function formsOnFileOrderMatchPossibleEnabled(): boolean {
   return envFlag("FORMS_ON_FILE_ORDER_MATCH_POSSIBLE_ENABLED");
 }
+
+/**
+ * POLICY_CARRY_RETRIEVAL_ENABLED (Code 3, 26 Oct 2026; rebuilt on main by coding 6, 12 Nov 2026; default off; QA item 10,
+ * reported in Ask Bubbles; same flag in both apps). A go-ahead turn ("just make it", "create it", "yes") is searched with
+ * the policy the manager named earlier, not its own words: "Just make it" found unrelated pages, and the reply denied a
+ * policy it had cited two turns before. Off, the turn is searched as before. The search reads it in `ai/server-ask.ts`.
+ */
+export function policyCarryRetrievalEnabled(): boolean {
+  return envFlag("POLICY_CARRY_RETRIEVAL_ENABLED");
+}
