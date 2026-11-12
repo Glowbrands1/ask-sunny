@@ -76,6 +76,16 @@ export async function play(t: Parameters<ReplayCase["run"]>[0], scenario: Refusa
  *     rewrote the form and said "Updated" (a claim nobody asked for).
  *   sun-make-that-update: the process she gave saved as a shorter summary without the fresh towel.
  */
+/** QA's gate (10 Nov 2026): the added line is under Observed, before the one Expectation. */
+export function phoneUnderObserved(observation: string): string | null {
+  const expectations = observation.match(/Expectation:/g) ?? [];
+  if (expectations.length !== 1) return `${expectations.length} Expectation blocks: ${JSON.stringify(observation)}`;
+  const phone = observation.search(/on her phone/i);
+  if (phone < 0) return `no phone line: ${JSON.stringify(observation)}`;
+  if (phone > observation.indexOf("Expectation:")) return `the phone line is after the Expectation: ${JSON.stringify(observation)}`;
+  return null;
+}
+
 const byId = (id: string) => STEP_B_REFUSAL_SCENARIOS.find((scenario) => scenario.id === id)!;
 const LIVE_SHAPES: readonly RefusalScenario[] = [
   /*
@@ -100,6 +110,15 @@ const LIVE_SHAPES: readonly RefusalScenario[] = [
         ]),
       },
       revisionFrom: { [BUB_PHONE]: { observation: "Observed:\nWrenna Thistlecombe missed the October 15, 2026 Woven deadline.\nShe was on her phone.\nExpectation:\nWoven deadlines are met on time." } },
+    },
+    /*
+     * Changed on purpose (QA's gate, 10 Nov 2026): the saved field is checked whole. With ADD_NOT_REPEATED_SENTENCES the
+     * add was appended after the Expectation and the Expectation saved twice, while "on her phone" was still present.
+     * One Expectation, and the phone under Observed, before it.
+     */
+    expect: {
+      says: "the Observation keeps the Woven deadline, adds that she was also on her phone under Observed, and holds one Expectation",
+      check: (run) => phoneUnderObserved(run.saved.observation ?? "") ?? byId("bub-phone").expect.check(run),
     },
   },
   {

@@ -22,12 +22,18 @@ export interface ReplayAnswer {
   formProposal?: { templateKey?: string; employeeName?: string | null; employeeRole?: string | null; status?: string; subject?: string; locationId?: string | null; wovenCloseMatch?: string | null; formDate?: string | null };
   formUpdate?: { instanceId: string; updated: string[] };
   formOpened?: { instanceId: string };
+  /** The source cards the reply carries. */
+  citations?: { documentTitle?: string }[];
 }
 
 export interface ReplayThread {
   /** `reading`: what the stand-in form-reading model returns this turn (e.g. `{ employeeName }`); none by default. */
   say(text: string, reading?: Record<string, unknown>): Promise<ReplayAnswer>;
   create(): Promise<string>;
+  /** Create from the latest card for this person (an earlier card still on screen). */
+  createCard?(employeeName: string): Promise<string>;
+  /** The chat as the browser holds it. */
+  readonly conversation?: readonly import("@/types").ChatMessage[];
   /** The card on screen also reads this line — what the live model put on it that the stand-in cannot. */
   cardReads(line: string): void;
   readonly proposal: ReplayAnswer["formProposal"] | null;
@@ -36,13 +42,24 @@ export interface ReplayThread {
 
 export interface ReplayContext {
   thread(): ReplayThread;
-  as(role: string, scope: unknown): void;
+  /** `subject`: who is signed in (default "qa-manager"), for a case with two managers. */
+  as(role: string, scope: unknown, subject?: string): void;
   directory(rows: readonly DirectoryRow[]): void;
   /** What the drafting model writes at Create. */
   /** `extra`: other fields of the draft tool's input, e.g. `{ offense_basis: "sales" }` (CA_SALES_POLICY_ENABLED). */
   draftWrites(values: Record<string, string>, checked?: Record<string, string[]>, extra?: Record<string, unknown>): void;
   /** The pinned policy manual also has these chunks this case (as `fetchOfficialPolicyManual` returns them); none by default. */
   manualAlsoHas?(chunks: readonly Record<string, unknown>[]): void;
+  /**
+   * FULL_MANUAL_KEEPS_RETRIEVAL (QA, 10 Nov 2026): what the knowledge search returns this case (none by default), the
+   * message normalizer's intent label (none by default: the glossary's reading), and whether the whole JBA Policy Manual
+   * loads for a policy question (not by default: the loader finds no manual offline).
+   */
+  knowledgeHas?(rows: readonly Record<string, unknown>[]): void;
+  normalizerReads?(intent: "policy_question" | "form_command" | "other"): void;
+  fullManualLoads?(): void;
+  /** The grounding block the answering model was given on its last answer. */
+  lastGrounding?(): string;
   /** What the revision model writes on the next revision. */
   revisionWrites(values: Record<string, string>): void;
   /** What the answering model says on its next turns (null: the default answer). */
@@ -67,6 +84,12 @@ export interface ReplayContext {
   patchReads?(byLatest: Readonly<Record<string, unknown>>): void;
   /** Fault injection (QA, 9 Nov 2026): from now on, a save of the form's values that includes this field fails (the save throws). */
   failSavesOf?(field: string): void;
+  /** The long-context summary model's answer (QA, 10 Nov 2026); unscripted, the summary call fails and nothing is saved. */
+  summaryWrites?(summary: string): void;
+  /** The rows a table holds now (`user_memory`, `chat_context_summaries`, …). */
+  rows?(table: string): Record<string, unknown>[];
+  /** Fault injection (DRAFT_WRITE_NEVER_SILENT_ENABLED): the draft route's next one-writer write also carries this field, once; the real writer refuses it and, all or nothing, the whole write. */
+  draftWriteCarries?(field: string): void;
   calls(): { chat: number; draft: number; revision: number; tool: number; patch: number };
   forms(): Record<string, unknown>[];
   values(instanceId: string): Record<string, string>;
@@ -74,8 +97,12 @@ export interface ReplayContext {
   checked(instanceId: string): Record<string, string[]>;
   /** What the drafting model was given, one entry per draft written. */
   draftPrompts(): string[];
+  /** What the revision model was given (its messages, as JSON), one entry per revision call. */
+  revisionPrompts?(): string[];
   /** The drafting model's system prompt, one entry per draft written. */
   draftSystems?(): string[];
+  /** The answering model's system prompt, one entry per answering call this case. */
+  answerSystems?(): string[];
   /** The draft call's tools as sent, one JSON string per call. */
   draftTools(): string[];
   /** The draft route's POST for this form, as a redraft sends it (`keepManagerValues`); the route's response. */

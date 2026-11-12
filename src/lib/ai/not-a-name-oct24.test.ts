@@ -659,9 +659,15 @@ describe("QA L23: the exit form is for the person the manager typed", { timeout:
       }
       vi.stubEnv("NOT_A_NAME_GUARD_ENABLED", index < 2 ? "" : "true");
     });
-    // Before the guard: the card is for "One Tanner", and the state saved it.
-    expect(turns[1]!.content).toContain("for **One Tanner**");
-    expect(savedAfterTurn2).toBe("One Tanner");
+    if (process.env.FORM_NAME_FROM_ROSTER_ENABLED === "true") {
+      // Changed on purpose (QA's #741 gate, 10 Nov 2026): with FORM_NAME_FROM_ROSTER on, "One Tanner" is on nobody's
+      // roster, so even before the guard the card is never for it; the rest of this test is the same.
+      expect(turns[1]!.content).not.toContain("**One Tanner**");
+    } else {
+      // Before the guard: the card is for "One Tanner", and the state saved it.
+      expect(turns[1]!.content).toContain("for **One Tanner**");
+      expect(savedAfterTurn2).toBe("One Tanner");
+    }
     for (const turn of turns.slice(2)) {
       expect(turn.employeeName, turn.question).toBe("Test Employee");
       expect(turn.content.toLowerCase(), turn.question).not.toContain("one tanner");
