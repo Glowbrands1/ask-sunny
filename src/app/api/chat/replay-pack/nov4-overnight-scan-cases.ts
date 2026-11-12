@@ -370,7 +370,10 @@ export const NOV4_OVERNIGHT_SCAN_CASES: readonly ReplayCase[] = [
     id: "nov11-sf-b5-typo-name-and-title",
     title: "sf-b5: \"Delphine Marlwoe Ostrander\" is the roster's Delphine Marlowe Ostrander, and \"spoke with District manager Tobias Wrenfield\" is never her Position",
     report: `${REPORT}, sf-b5 (the sibling app's chat, in this app's setting); QA's audit item 15.10, 11 Nov 2026`,
-    status: { open: "the card is for \"Delphine Marlwoe Ostrander\" as typed, not the roster's Delphine Marlowe Ostrander, and has no Woven position" },
+    // Changed on purpose (12 Nov 2026, merge of main 8f1eeaec): with production's round-22 roster-name set on
+    // (FORM_NAME_FROM_ROSTER, ROSTER_NEAR_MISS, NEAR_MISS_DETAILS_ACCEPT and the rest), this case already holds in
+    // production; it was open when this branch was cut.
+    status: "fixed",
     fixFlags: ["TYPO_FULL_NAME_TO_ROSTER_ENABLED"],
     async run(t) {
       const thread = start(t);
