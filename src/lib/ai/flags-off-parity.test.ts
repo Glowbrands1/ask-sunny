@@ -184,6 +184,10 @@ import { privateCreatorFormsEnabled, privateCreatorsActive } from "@/lib/forms/p
  */
 
 const NEW_FLAGS = [
+  // coding 4: FULL_MANUAL_KEEPS_RETRIEVAL (QA, 10 Nov 2026; default off).
+  "FULL_MANUAL_KEEPS_RETRIEVAL_ENABLED",
+  // coding 4: FORM_NAME_NOT_A_TITLE (QA's prod-env reading, D5, 11 Nov 2026; default off).
+  "FORM_NAME_NOT_A_TITLE_ENABLED",
   "SLOT_RETENTION_ENABLED",
   "FIELD_ACCURACY_ENABLED",
   "DRAFT_DEDUPE_ENABLED",
@@ -256,6 +260,7 @@ const NEW_FLAGS = [
   "REMOVE_POLICY_NOT_NAMED_ENABLED",
   "FOLLOWUP_NEW_TOPIC_RETRIEVAL_ENABLED",
   "DRAFT_REUSE_SAME_CHAT_ONLY_ENABLED",
+  "DRAFT_REUSE_OWN_ONLY_ENABLED",
   "RESIGN_METHOD_FOLLOWUP_ENABLED",
   "CHAT_LONG_MESSAGE_ENABLED",
   "NEXT_PUBLIC_CHAT_LONG_MESSAGE_ENABLED",
@@ -350,6 +355,10 @@ const NEW_FLAGS = [
   "FINAL_REPLY_MARKER_GUARD_ENABLED",
   // Coding: PROPOSAL_NAME_CORRECTION (round 5, 8 Nov 2026; port from Ask Bubbles; default off).
   "PROPOSAL_NAME_CORRECTION_ENABLED",
+  // Coding: NEAR_MISS_QUESTION_RULES (round 5, 8 Nov 2026; default off; ships with the name set).
+  "NEAR_MISS_QUESTION_RULES_ENABLED",
+  // Coding: FORM_NAME_OFF_ROSTER_ASK (QA, 10 Nov 2026; default off; ships with the name set).
+  "FORM_NAME_OFF_ROSTER_ASK_ENABLED",
   "POLICY_CHANGE_REST_OF_TURN_ENABLED",
   "OPEN_FORM_NO_SELECTION_ENABLED",
   "PERSON_GUARD_ENABLED",
@@ -362,6 +371,21 @@ const NEW_FLAGS = [
   "SAME_FORM_COPY_NEW_PERSON_ENABLED",
   // coding 6: GUEST_ATTITUDE_CONDUCT (default off): forced off with the others.
   "GUEST_ATTITUDE_CONDUCT_ENABLED",
+  // coding 6: DRAFT_WRITE_NEVER_SILENT (default off): forced off with the others.
+  "DRAFT_WRITE_NEVER_SILENT_ENABLED",
+  // coding 6: CA_PROCEDURE_BASIS (default off; rebuilt from old S544): forced off with the others.
+  "CA_PROCEDURE_BASIS_ENABLED",
+  // coding 6: REGISTER_ACCURACY_CONDUCT (default off): forced off with the others.
+  "REGISTER_ACCURACY_CONDUCT_ENABLED",
+  // coding 6: DETAILS_FROM_EARLIER_ANSWER (default off): forced off with the others.
+  "DETAILS_FROM_EARLIER_ANSWER_ENABLED",
+  // coding 6: ACCOUNT_BEFORE_REQUEST (default off): forced off with the others.
+  "ACCOUNT_BEFORE_REQUEST_ENABLED",
+  // coding 6: SAME_REQUEST_CARRIES_ACCOUNT and SAME_REQUEST_KEEPS_EARLIER_CARD (default off): forced off with the others.
+  "SAME_REQUEST_CARRIES_ACCOUNT_ENABLED",
+  "SAME_REQUEST_KEEPS_EARLIER_CARD_ENABLED",
+  // coding 6: TEMPLATE_OUTLINE_FIELDS (default off): forced off with the others.
+  "TEMPLATE_OUTLINE_FIELDS_ENABLED",
   // coding 6: POLICY_REFERENCE_NOT_ACCOUNT (default off): forced off with the others.
   "POLICY_REFERENCE_NOT_ACCOUNT_ENABLED",
   // coding 6: LEVEL_AFTER_FORM_NAME (default off): forced off with the others.
@@ -374,10 +398,20 @@ const NEW_FLAGS = [
   "PAYROLL_SPLIT_WORDS_ENABLED",
   // coding 6: SAME_REQUEST_OTHER_PERSON (default off): forced off with the others.
   "SAME_REQUEST_OTHER_PERSON_ENABLED",
+  // coding 6: SAME_REQUEST_OFF_ROSTER (default off; QA's r23 live test, #779 off roster): forced off with the others.
+  "SAME_REQUEST_OFF_ROSTER_ENABLED",
+  // coding 6: PASTED_OUTLINE_TO_OPEN_DRAFT (default off; QA's r23 live test of sf-s21): forced off with the others.
+  "PASTED_OUTLINE_TO_OPEN_DRAFT_ENABLED",
   // coding 6: COACHING_OBSERVED_SAVED (default off): forced off with the others.
   "COACHING_OBSERVED_SAVED_ENABLED",
   // coding 6: APP_INSTRUCTIONS_NOT_ACCOUNT (default off): forced off with the others.
   "APP_INSTRUCTIONS_NOT_ACCOUNT_ENABLED",
+  // coding 6: FAILURE_TO_OPEN_IS_LATE_OPENING (default off): forced off with the others.
+  "FAILURE_TO_OPEN_IS_LATE_OPENING_ENABLED",
+  // coding 6: PAYROLL_BARE_SENTENCE (default off): forced off with the others.
+  "PAYROLL_BARE_SENTENCE_ENABLED",
+  // coding 6: ADVICE_ASK_NOT_ACCOUNT (default off): forced off with the others.
+  "ADVICE_ASK_NOT_ACCOUNT_ENABLED",
   "STAFF_PICKER_ENABLED",
   "STAFF_PICKER_STORE_TITLES_ENABLED",
   "STAFF_PICKER_BARE_ANSWER_ENABLED",
@@ -490,6 +524,7 @@ const NEW_FLAGS = [
   "METRIC_CHOICE_ONE_QUESTION_ENABLED",
   // The second Sunny gate's fix flags (6 Nov 2026): forced off with the others in the child run.
   "TITLE_ENDS_AT_LINE_ENABLED",
+  "FULL_POSITION_TITLE_ENABLED",
   "BARE_NOT_DENIAL_ENABLED",
   "PLACE_FROM_CUE_ENABLED",
   // Port of the sibling app's flip-3 fix (6 Nov 2026): forced off with the others in the child run.
@@ -551,6 +586,7 @@ const NEW_FLAGS = [
   "MADE_ABOUT_POLICY_LINE_REPLACES_ENABLED",
   "SECTION_BREAKS_KEPT_ENABLED",
   "ADD_NOT_REPEATED_ENABLED",
+  "ADD_NOT_REPEATED_SENTENCES_ENABLED",
   // coding 4: MODEL_POLICY_DEFERS_TO_TOPIC (QA, round 7c, 9 Nov 2026; default off): forced off with the others in the child run.
   "MODEL_POLICY_DEFERS_TO_TOPIC_ENABLED",
   // coding 4: WORK_AREA_ABSENCE_CITES_CONDUCT (Pau's decision, 9 Nov 2026; default off): forced off with the others in the child run.
@@ -560,11 +596,15 @@ const NEW_FLAGS = [
   "SHIFT_ACCOUNT_IS_INCIDENT_ENABLED",
   // coding 5: UNDATED_ACCOUNT_BRIEF (default off): forced off with the others in the child run.
   "UNDATED_ACCOUNT_BRIEF_ENABLED",
+  "EXIT_TYPO_WORDS_ENABLED",
+  "ADD_THAT_IS_ACCOUNT_ENABLED",
+  "WHAT_HAPPENED_NO_CREATE_ENABLED",
   "CREATE_FROM_CONVERSATION_POINTS_TO_CARD_ENABLED",
   "OBSERVATION_OWN_PERSON_ONLY_ENABLED",
   "POLICY_TOPIC_INTO_FIELD_ENABLED",
   "LETTER_GREETING_NOT_NAME_ENABLED",
   "LATE_READS_ATTENDANCE_ENABLED",
+  "LATE_SLOT_READS_ATTENDANCE_ENABLED",
   "EXIT_FORM_DATE_FROM_TERMINATION_ENABLED",
   "EXIT_LETTER_ADDRESSEE_ENABLED",
   "MISSED_SHIFT_CITES_ATTENDANCE_ENABLED",
@@ -577,6 +617,8 @@ const NEW_FLAGS = [
   // coding 2: CREATE_COMMAND_POINTS_TO_CARD and CARD_COMPLAINT_NOT_ACCOUNT (default off): forced off with the others.
   "CREATE_COMMAND_POINTS_TO_CARD_ENABLED",
   "CARD_COMPLAINT_NOT_ACCOUNT_ENABLED",
+  // coding 6: REQUEST_ISSUE_KEPT (ported from Ask Bubbles, QA round 17b; default off).
+  "REQUEST_ISSUE_KEPT_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -699,6 +741,14 @@ const PROTECTED = [
  * Behind CA_SALES_POLICY_ENABLED, default off; off, every row is carried as
  * before. The filed form is never touched. Same hunk in both apps (Ask
  * Bubbles 66813d54); in Ask Sunny the Type of Offense change is revision 8.
+ *
+ * The user (Pau) approved on 11 Nov 2026, via QA (Pau's standing approval for
+ * fixes, recorded by QA), in src/lib/forms/proposal.ts, exactly the hunks in
+ * docs/patches/form-name-not-a-title.patch: the import
+ * `formNameNotATitleEnabled`, `FORM_NAME_AFTER` and `titleSaidLater`, and in
+ * extractJobTitle a title word straight before "EPP" is skipped as the form's
+ * name unless the title is said again later. Behind
+ * FORM_NAME_NOT_A_TITLE_ENABLED, default off; off, every title is read as before.
  */
 const APPROVED_PROTECTED_EDITS = [
   ":(exclude)src/lib/forms/proposal.ts",

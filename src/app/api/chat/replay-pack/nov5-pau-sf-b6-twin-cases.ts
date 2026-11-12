@@ -75,4 +75,51 @@ export const NOV5_PAU_SF_B6_TWIN_CASES: ReplayCase[] = [
       expect(card.content, `the card ignores the detail added on turn 3:\n${card.content}`).toMatch(/4:56|customer complaint|told (?:them )?(?:that )?(?:we|the (?:store|salon)) (?:were|was) closed/i);
     },
   },
+  {
+    id: "nov5-twin-sf-b6-customer-complaint-is-a-reason",
+    title: "sf-b6 twin: here the manager's \"customer complaint\" is read as the Standards of Conduct (and the card says so), so ruling A keeps it with the store-procedure rule on",
+    report: "Pau via QA, 5 Nov 2026 (the sibling app's production, 4 Nov), sf-b6 twin; ruling A",
+    // Ruling A moves the model's tick only when no reader of the manager's words supports a policy. This app's
+    // described-section reader maps "customer complaint" to the Standards of Conduct, and the card names it to
+    // the manager ("**Policy:** \"customer complaint\" reads as … Standards of Conduct (page 12)"), so the
+    // draft's Standards of Conduct is the one the manager was shown, not an AI choice. A guard.
+    status: "fixed",
+    fixFlags: ["CA_PROCEDURE_BASIS_ENABLED"],
+    async run(t: T) {
+      vi.setSystemTime(new Date("2026-11-04T23:30:00Z"));
+      t.directory([...STAFF, WYNNE]);
+      t.as("salon_director", KEARNEY);
+      const thread = t.thread();
+      await thread.say("I need a corrective action form for Wynne Sarrow for counting the drawer early and turning away a customer");
+      t.modelSays(LIVE_T3_ANSWER);
+      await thread.say(T3);
+      t.modelSays(null);
+      const card = await thread.say("Create a Corrective Action Form from this conversation.");
+      expect(card.content, `the card does not name the Standards of Conduct:\n${card.content}`).toMatch(/Standards of Conduct/);
+      t.draftWrites(
+        { observation: "Observed:\nOn Sunday, 11/1/2026, Wynne started closing the last register at 4:56pm, before the 5:00pm close, and a customer who came in at 4:59 was told the salon was closed." },
+        { offense_type: ["standards_of_conduct"] },
+        { offense_basis: "store_procedure" },
+      );
+      const id = await thread.create();
+      expect(t.checked(id).offense_type ?? [], "the Standards of Conduct the card named was dropped").toContain("standards_of_conduct");
+    },
+  },
+  {
+    id: "nov5-twin-sf-b6-control-rude-to-a-guest",
+    title: "sf-b6 twin control: \"rude to a guest\" (basis conduct) keeps the Standards of Conduct with the store-procedure rule on",
+    report: "Pau's ruling (A) via QA, 5 Nov 2026",
+    status: "fixed",
+    fixFlags: ["CA_PROCEDURE_BASIS_ENABLED"],
+    async run(t: T) {
+      vi.setSystemTime(new Date("2026-11-04T23:30:00Z"));
+      t.directory([...STAFF, WYNNE]);
+      t.as("salon_director", KEARNEY);
+      const thread = t.thread();
+      await thread.say("I need a corrective action form for Wynne Sarrow for being rude to a client at the front desk on 11/1");
+      t.draftWrites({ observation: "Observed:\nOn 11/1/2026, Wynne was rude to a client at the front desk." }, { offense_type: ["standards_of_conduct"] }, { offense_basis: "conduct" });
+      const id = await thread.create();
+      expect(t.checked(id).offense_type ?? [], "rude to a client lost the Standards of Conduct").toContain("standards_of_conduct");
+    },
+  },
 ];
