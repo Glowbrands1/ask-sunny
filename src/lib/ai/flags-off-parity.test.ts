@@ -641,6 +641,8 @@ const NEW_FLAGS = [
   "FORMS_ON_FILE_ORDER_MATCH_POSSIBLE_ENABLED",
   // coding 6: POLICY_CARRY_RETRIEVAL (#248 rebuilt on main; QA item 10; default off).
   "POLICY_CARRY_RETRIEVAL_ENABLED",
+  // coding 2: OFF_ROSTER_STORE_ANSWER_ONLY (QA's #735 ruling, 12 Nov 2026; default off).
+  "OFF_ROSTER_STORE_ANSWER_ONLY_ENABLED",
 ] as const;
 
 const PROTECTED = [
