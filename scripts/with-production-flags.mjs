@@ -6,6 +6,7 @@
  * fails the day QA turns the flag on (QA, 11 Nov 2026: four gated fixes held back, and a release e2e).
  *
  *   node scripts/with-production-flags.mjs npx vitest run --project unit
+ *   OFF_PINS_EXTRA_ON=SOME_FLAG_ENABLED npm run test:off-pins   # a flag about to be released, on too
  */
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -14,6 +15,8 @@ const flags = JSON.parse(readFileSync(new URL("../src/config/production-flags.js
 const env = { ...process.env };
 for (const name of flags.off ?? []) env[name] = "off";
 for (const name of flags.on ?? []) env[name] = "true";
+// OFF_PINS_EXTRA_ON: flags about to be released, also on (comma-separated), to find their off pins before QA flips them.
+for (const name of (process.env.OFF_PINS_EXTRA_ON ?? "").split(",").map((item) => item.trim()).filter(Boolean)) env[name] = "true";
 
 const [command, ...args] = process.argv.slice(2);
 if (!command) {
