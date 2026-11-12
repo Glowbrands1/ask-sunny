@@ -1,5 +1,5 @@
 import { PRODUCTION_SALONS } from "@/data/salons";
-import { accountVerbNotANameEnabled, groupWordsNotANameEnabled, notANameGuardEnabled } from "@/lib/config/chat-quality-flags";
+import { accountVerbNotANameEnabled, groupWordsNotANameEnabled, notANameGuardEnabled, notANameGuardHistoryEnabled } from "@/lib/config/chat-quality-flags";
 import { editDistance } from "@/lib/forms/employee-match";
 import { BED_LEVELS } from "@/lib/reporting/bed-usage/metric-map";
 import { COMP_SALES_METRICS } from "@/lib/reporting/comp-sales/metric-catalogue";
@@ -379,7 +379,7 @@ function roleLeadsAsLabel(text: string): string {
  * candidate that is only a role is returned as it is.
  */
 export function withoutRoleLead(candidate: string): string {
-  if (!notANameGuardEnabled() || !candidate.trim()) return candidate;
+  if (!notANameGuardEnabled() || !notANameGuardHistoryEnabled() || !candidate.trim()) return candidate;
   const words = candidate.trim().split(/\s+/);
   const length = roleLeadLength(words.map((word) => word.replace(/[^A-Za-z'’-]/g, "")));
   return length > 0 && length < words.length ? words.slice(length).join(" ") : candidate;
@@ -390,7 +390,8 @@ export function maskNotANameText(text: string): string {
   if (!notANameGuardEnabled() || !text) return text;
   let masked = text;
   for (const line of APP_LINES) masked = masked.replace(line, " ");
-  masked = roleLeadsAsLabel(masked);
+  // NOT_A_NAME_GUARD_HISTORY_ENABLED: a role in front of a name reads as the label ("empolyee Blair", "Tanning Consulatant Blair").
+  if (notANameGuardHistoryEnabled()) masked = roleLeadsAsLabel(masked);
   const lines = masked.split("\n");
   if (lines.filter((line) => BULLET.test(line)).length >= 2) {
     masked = lines.map((line) => (BULLET.test(line) ? "" : line)).join("\n");

@@ -40,6 +40,9 @@ const PROFILE = [
   "GLOBAL_SALON_ASK_ENABLED",
   "DRAFT_MERGE_ENABLED",
   "NOT_A_NAME_GUARD_ENABLED",
+  // Rebuilt on main (12 Nov 2026): #210's readings of the live guard are behind NOT_A_NAME_GUARD_HISTORY_ENABLED (default off);
+  // unflagged, they made "District manager <name>" named in passing the card's employee (nov5-r2-dm-in-passing-*).
+  "NOT_A_NAME_GUARD_HISTORY_ENABLED",
 ] as const;
 
 const TODAY = "2026-10-24";

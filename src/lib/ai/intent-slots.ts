@@ -2,24 +2,25 @@ import { z } from "zod";
 
 import {
   caTemplateMapEnabled,
-  modelPolicyDefersToTopicEnabled,
+  checkedReadingEnabled,
   codeSlotsEnabled,
-  slotNameOnFormRequestEnabled,
   formChoiceStatedEnabled,
   intentPayrollManagerOnlyEnabled,
   keepFormEmployeeEnabled,
   latePayrollFromFormEnabled,
   managerWordsOnlyEnabled,
-  placeSpanGuardEnabled,
-  priorActionsParseEnabled,
+  modelPolicyDefersToTopicEnabled,
+  namedFormExactEnabled,
   newestPlaceTurnEnabled,
   notANameGuardEnabled,
+  notANameGuardHistoryEnabled,
+  placeSpanGuardEnabled,
+  priorActionsParseEnabled,
+  remapIncidentFixEnabled,
+  slotNameOnFormRequestEnabled,
   titleWholeWordEnabled,
   typedNameProceedsEnabled,
-  namedFormExactEnabled,
-  remapIncidentFixEnabled,
   warningLevelManagerOnlyEnabled,
-  checkedReadingEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { withCorrectedEmployee } from "./corrected-employee";
 import { payrollDeductAmount, payrollDeductFromConversation, type PayrollDeductAnswer } from "@/lib/forms/payroll-deduct";
@@ -264,7 +265,7 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
         blob,
         input.people,
         input.salons,
-        notANameGuardEnabled() ? managerWords(input) : null,
+        notANameGuardEnabled() ? (notANameGuardHistoryEnabled() ? managerWords(input) : managerTurns(input)) : null,
       );
   /*
    * KEEP_FORM_EMPLOYEE_ENABLED: "for Test Employee" names Test Employee
@@ -938,9 +939,11 @@ function groundEmployee(
 ): { person: GroundedPerson | null; name: string | null; ambiguous: readonly GroundedPerson[]; typed: string | null } {
   // NOT_A_NAME_GUARD_ENABLED: a roster person only the assistant named ("Did you mean **<name>**?",
   // answered "keep <typed>") is not the employee; the manager's turns and the saved state are read.
-  const fromText = peopleNamedIn(manager ? manager.join("\n") : blob, people);
+  // NOT_A_NAME_GUARD_HISTORY_ENABLED (default off): the three history readings below. Off, as on main.
+  const history = notANameGuardHistoryEnabled();
+  const fromText = peopleNamedIn(history && manager ? manager.join("\n") : blob, people);
   // The guard reads a role the model copied with the name ("Tanning Consulatant <name>") as the label it is.
-  if (manager && typed?.trim()) typed = withoutRoleLead(typed);
+  if (history && manager && typed?.trim()) typed = withoutRoleLead(typed);
   // The guard keeps a name the model copied from an assistant reply, or a
   // placeholder like "blank", off the card: it must be in the manager's words.
   if (manager && typed?.trim() && (isNotAName(typed) || !saidBy(manager, typed))) typed = null;
