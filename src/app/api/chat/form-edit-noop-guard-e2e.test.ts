@@ -436,7 +436,9 @@ describe("FORM_EDIT_NOOP_GUARD_ENABLED: the reply after an edit is the saved dif
     const thread = await janeDraft();
     model.next = { text: "I've updated the form.", tool: { ops: [{ op: "append", field: "observation", value: "she Must Practice the sanitizing checklist every shift." }] } };
     const reply = await thread.say(CA_CHAIN[5]);
-    expect(values(thread.id).observation).toContain("she Must Practice the sanitizing checklist every shift.");
+    // Changed on purpose (12 Nov 2026, QA's ruling (b) extended): with STEP_B_ADD_UNDER_OBSERVED the instruction goes under
+    // "Expectation:" as its own line, its first letter a capital as the field's other lines have; flag off, as typed.
+    expect(values(thread.id).observation).toMatch(/\b[sS]he Must Practice the sanitizing checklist every shift\./);
     expect(reply.content).toBe("Updated: Observation of Offense: Observed: Jane Doe was late to open on October 20, 2026. Expectation: Jane is…");
     expect(reply.content).not.toMatch(/^Changed /);
     expect(reply.formUpdate).toEqual({ instanceId: thread.id, updated: ["observation"] });

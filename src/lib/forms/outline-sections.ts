@@ -104,3 +104,28 @@ const EXPECTATION_OR_INSTRUCTION =
 export function readsAsAccount(added: string): boolean {
   return added.trim() !== "" && !EXPECTATION_OR_INSTRUCTION.test(added.trim());
 }
+
+const EXPECTATION = /^\s*Expectations?\s*:/i;
+/** The app's reference line after the sections ("Policy reference: …") ends a section too. */
+const SECTION_END = /^\s*Policy reference\s*:/i;
+
+/**
+ * QA's ruling (b), extended (12 Nov 2026, Gate-Sunny-2 on #662): an expectation or instruction added to a field written in
+ * sections goes under "Expectation:" as its own line, never glued onto the last line. Its first letter is a capital
+ * only when the field's other lines start with one; otherwise it keeps the manager's casing. Null when the field has no
+ * Expectation section (the writer appends it as before).
+ */
+export function addUnderExpectation(old: string, added: string): string | null {
+  const all = lines(old);
+  const at = all.findIndex((line) => EXPECTATION.test(line));
+  if (at < 0) return null;
+  let next = all.findIndex((line, index) => index > at && (HEADING.test(line) || SECTION_END.test(line)));
+  if (next < 0) next = all.length;
+  let end = next;
+  while (end - 1 > at && all[end - 1]!.trim() === "") end -= 1;
+  const body = all.filter((line) => line.trim() !== "" && !HEADING.test(line) && !SECTION_END.test(line));
+  const capitalised = body.length > 0 && body.every((line) => /^\s*\p{Lu}/u.test(line));
+  const text = added.trim();
+  const said = capitalised ? `${text.charAt(0).toUpperCase()}${text.slice(1)}` : text;
+  return [...all.slice(0, end), said, ...all.slice(end)].join("\n");
+}

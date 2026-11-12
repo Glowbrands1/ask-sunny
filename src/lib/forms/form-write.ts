@@ -13,7 +13,7 @@ import {
   stepBSectionSpacingEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { madeAbout } from "@/lib/ai/make-it-about";
-import { addUnderObserved, hasSections, readsAsAccount, repeatsOldText, tailAfterLastSection, withSectionSpacing } from "./outline-sections";
+import { addUnderExpectation, addUnderObserved, hasSections, readsAsAccount, repeatsOldText, tailAfterLastSection, withSectionSpacing } from "./outline-sections";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { isGlossaryTerm } from "@/lib/ai/chat-glossary";
 
@@ -561,6 +561,13 @@ export async function writeFormEdits(instanceId: string, ops: readonly FormEditO
         if (!hasSections(value) && !repeatsOldText(current, value) && readsAsAccount(value)) {
           written = addUnderObserved(current, value);
           how[key] = "replace";
+        } else if (!hasSections(value) && !repeatsOldText(current, value)) {
+          // QA's ruling (b), extended: an expectation or instruction goes under "Expectation:" as its own line.
+          const under = addUnderExpectation(current, value);
+          if (under !== null) {
+            written = under;
+            how[key] = "replace";
+          }
         } else if (hasSections(value)) {
           const tail = tailAfterLastSection(current, value);
           if (tail !== null && readsAsAccount(tail)) {

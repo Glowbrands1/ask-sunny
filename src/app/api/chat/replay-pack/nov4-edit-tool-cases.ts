@@ -103,10 +103,13 @@ export const NOV4_EDIT_TOOL_CASES: readonly ReplayCase[] = [
         const reply = await thread.say(CA_CHAIN[5]);
         replyMatchesDiff(t, id, before, reply, CA_CHAIN[5]);
         expect(reply.formUpdate?.updated).toEqual(["observation"]);
-        // Changed on purpose (10 Nov 2026, as in the sibling app's off-flag audit): with STEP_B_ADD_UNDER_OBSERVED the add goes
-        // at the end of the "Observed:" part, before "Expectation:", instead of after it.
+        // Changed on purpose (12 Nov 2026, QA's ruling (b) extended, Gate-Sunny-2 on #662): with STEP_B_ADD_UNDER_OBSERVED,
+        // "she Must Practice …" is an instruction, not an account, so it goes under "Expectation:" as its own line (its first
+        // letter a capital, as the field's other lines start with one), never under Observed and never glued onto a line.
         expect(t.values(id).observation ?? "").toMatch(
-          stepBAddUnderObservedEnabled() ? /^Observed:\n[^]*she Must Practice the sanitizing checklist every shift\.\n\nExpectation:/ : /she Must Practice the sanitizing checklist every shift\.$/,
+          stepBAddUnderObservedEnabled()
+            ? /\nExpectation:\n[^]*\nShe Must Practice the sanitizing checklist every shift\.(?:\n|$)/
+            : /she Must Practice the sanitizing checklist every shift\.$/,
         );
         expect(t.values(id).observation ?? "", "the first name was dropped").toMatch(/\bJane Doe\b/);
         // Changed on purpose (10 Nov 2026): STEP_B_REPLY_KEEPS_LINES quotes a multi-line field line by line
