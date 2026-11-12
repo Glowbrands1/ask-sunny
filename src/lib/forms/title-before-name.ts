@@ -49,15 +49,40 @@ export function leadingTitleLength(words: readonly string[]): number {
 export function withoutLeadingTitle(name: string): string {
   const words = name.trim().split(/\s+/);
   const skip = leadingTitleLength(words);
-  return skip === 0 ? name : words.slice(skip).join(" ");
+  // The sibling app's Gate-Bubbles R795T (12 Nov 2026): "Team Member Of The Month" names an award, not "Of The Month".
+  return skip === 0 || !personLike(words.slice(skip)) ? name : words.slice(skip).join(" ");
 }
 
 const NAME_WORD = /^\p{Lu}[\p{L}'’-]*$/u;
 
+/*
+ * The sibling app's Gate-Bubbles R795T (12 Nov 2026): "Create a CA for Team Member Of The Month" gave a ready card for
+ * "Of The Month". The words after a title are a person's name only when none is a joining word or a word for a time, an
+ * event or a shift ("Of The Month", "Of The Year", "Training", "Visit").
+ */
+const NOT_A_NAME_WORD = new Set(
+  (
+    "of the and or for a an to in on at by with from " +
+    "day days week weeks weekly month months monthly year years yearly quarter quarters today tomorrow yesterday " +
+    "monday mondays tuesday tuesdays wednesday wednesdays thursday thursdays friday fridays saturday saturdays sunday sundays weekend weekends " +
+    "training trainings visit visits meeting meetings shift shifts review reviews evaluation evaluations award awards party parties " +
+    "orientation onboarding schedule schedules huddle huddles inventory audit audits"
+  ).split(" "),
+);
+
+/** One to three words, each shaped like a name and none of them a joining, time, event or shift word. */
+function personLike(words: readonly string[]): boolean {
+  return (
+    words.length >= 1 &&
+    words.length <= 3 &&
+    words.every((word) => NAME_WORD.test(word) && !NOT_A_NAME_WORD.has(word.toLowerCase().replace(/[.,;:!?]+$/, "")))
+  );
+}
+
 /**
  * QA's ruling (11 Nov 2026): "Corrective action for Salon Director <name>" reached the roster step with no name: the
  * protected reader took "Salon" as a place and read "Director <name>", and that was set aside. The name the request
- * gives after "for <title>", one to three capitalised words up to the end of the sentence, or null.
+ * gives after "for <title>", one to three person-like words up to the end of the sentence, or null.
  */
 export function nameAfterTitle(message: string | undefined): string | null {
   if (!titleBeforeNameEnabled() || !message) return null;
@@ -66,7 +91,7 @@ export function nameAfterTitle(message: string | undefined): string | null {
     const skip = leadingTitleLength(words);
     if (skip === 0) continue;
     const name = words.slice(skip);
-    if (name.length >= 1 && name.length <= 3 && name.every((word) => NAME_WORD.test(word))) return name.join(" ");
+    if (personLike(name)) return name.join(" ");
   }
   return null;
 }

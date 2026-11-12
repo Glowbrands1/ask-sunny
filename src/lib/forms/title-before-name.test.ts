@@ -89,3 +89,19 @@ describe("sameNameAfterTitle: the create check's reading \"Director <name>\" is 
     expect(sameNameAfterTitle("Director Wren Tallis", "Wren Tallis", said)).toBe(false);
   });
 });
+
+describe("the sibling app's Gate-Bubbles R795T (12 Nov 2026): an award, a time or an event after a title is nobody", () => {
+  it.each(["Create a CA for Tanning Consultant Of The Month", "Create a CA for Salon Director Of The Year", "Create a CA for TC Training", "Create a CA for DM Visit"])(
+    "flag on: %j gives no name",
+    (said) => {
+      process.env[FLAG] = "true";
+      expect(nameAfterTitle(said)).toBeNull();
+    },
+  );
+
+  it("flag on: \"Tanning Consultant Of The Month\" is left whole on a card", () => {
+    process.env[FLAG] = "true";
+    expect(withoutLeadingTitle("Tanning Consultant Of The Month")).toBe("Tanning Consultant Of The Month");
+    expect(withoutLeadingTitle("Tanning Consultant Wren Tallis")).toBe("Wren Tallis");
+  });
+});

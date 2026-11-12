@@ -23,7 +23,10 @@ async function ask(t: ReplayContext, role: "admin" | "salon_director", words: st
   t.directory(STAFF);
   t.as(role, role === "admin" ? EVERY_SALON : KEARNEY);
   const thread = t.thread();
-  const reply = await thread.say(words);
+  let reply = await thread.say(words);
+  // The sibling app's Gate-Bubbles R795T (12 Nov 2026): a name off the roster after a title goes the normal off-roster
+  // way, said back with the "use <name>" offer; an admin takes it, as a manager would.
+  if (role === "admin" && reply.content.includes(`reply **use ${NAME}**`)) reply = await thread.say(`use ${NAME}`);
   return { reply, proposal: thread.proposal };
 }
 
@@ -94,7 +97,9 @@ export const NOV11_TITLE_BEFORE_NAME_CASES: ReplayCase[] = [
       await plain.say(`Corrective action for ${NAME}`);
       const expected = t.values(await plain.create());
       const thread = t.thread();
-      await thread.say(`Corrective action for ${title} ${NAME}`);
+      const first = await thread.say(`Corrective action for ${title} ${NAME}`);
+      // A name off the roster after a title goes the normal off-roster way (the sibling app's R795T): take the offer.
+      if (first.content.includes(`reply **use ${NAME}**`)) await thread.say(`use ${NAME}`);
       const values = t.values(await thread.create());
       expect(values.employee_name, JSON.stringify(values)).toBe(NAME);
       expect(values.observation ?? "", JSON.stringify(values)).not.toMatch(new RegExp(`${title}\\s+${NAME}`, "i"));
@@ -102,6 +107,31 @@ export const NOV11_TITLE_BEFORE_NAME_CASES: ReplayCase[] = [
       const { job_title: stated, ...rest } = values;
       expect(stated, JSON.stringify(values)).toBeTruthy();
       expect(rest, `titled: ${JSON.stringify(values)}\nplain: ${JSON.stringify(expected)}`).toEqual(expected);
+    },
+  })),
+  /*
+   * The sibling app's Gate-Bubbles R795T (12 Nov 2026): "Create a CA for Team Member Of The Month" gave a READY card for
+   * "Of The Month" and an empty reply. Here with this app's titles: an award, a time, an event or a shift after a title
+   * is nobody, the card asks who as it does with the flag off, and the reply is never empty.
+   */
+  ...(
+    [
+      ["of-the-month", "Create a CA for Tanning Consultant Of The Month", "Of The Month"],
+      ["of-the-year", "Create a CA for Salon Director Of The Year", "Of The Year"],
+      ["tc-training", "Create a CA for TC Training", "Training"],
+      ["dm-visit", "Create a CA for DM Visit", "Visit"],
+    ] as const
+  ).map(([key, words, notAName]) => ({
+    id: `nov12-title-before-name-not-a-person-${key}`,
+    title: `NEVER-BREAK: "${words}" names nobody: no "${notAName}" on the card, and the reply is never empty`,
+    report: "The sibling app's Gate-Bubbles R795T (12 Nov 2026): a title before an award or event name made a person of the rest",
+    status: "fixed" as const,
+    fixFlags: FIX,
+    async run(t: ReplayContext) {
+      const { reply, proposal } = await ask(t, "admin", words);
+      expect(proposal?.employeeName ?? null, reply.content).not.toBe(notAName);
+      expect(proposal?.status === "ready" && !proposal?.employeeName, "a ready card with nobody on it").toBe(false);
+      expect(reply.content.trim(), "the reply is empty").not.toBe("");
     },
   })),
   {

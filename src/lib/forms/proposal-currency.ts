@@ -109,7 +109,17 @@ export function checkProposalIsCurrent(input: {
    * name that is neither the card's person (as typed) nor somebody on the
    * roster is not another person; two people on the roster still refuse.
    */
-  const resolution = notOtherPeople(state.resolution, input);
+  const read = notOtherPeople(state.resolution, input);
+  /*
+   * TITLE_BEFORE_NAME_ENABLED (the sibling app's R795T, 12 Nov 2026): after "Corrective action for Salon Director <name>"
+   * and "use <name>", the conversation reads "Director <name>" and "<name>". Both are the card's person.
+   */
+  const userTurns = context.messages.map((message) => message.content);
+  const resolution =
+    read.kind === "ambiguous" &&
+    read.candidates.every((name) => samePerson(name, input.employeeName) || sameNameAfterTitle(name, input.employeeName, userTurns))
+      ? ({ kind: "resolved", employeeName: input.employeeName } as const)
+      : read;
 
   if (resolution.kind === "ambiguous") {
     return {
@@ -184,7 +194,7 @@ export function checkProposalIsCurrent(input: {
     !sameNameAfterTitle(
       resolution.employeeName,
       input.employeeName,
-      context.messages.map((message) => message.content),
+      userTurns,
     )
   ) {
     return {
