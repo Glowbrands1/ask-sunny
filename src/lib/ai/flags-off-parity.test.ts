@@ -641,6 +641,8 @@ const NEW_FLAGS = [
   "FORMS_ON_FILE_ORDER_MATCH_POSSIBLE_ENABLED",
   // coding 6: POLICY_CARRY_RETRIEVAL (#248 rebuilt on main; QA item 10; default off).
   "POLICY_CARRY_RETRIEVAL_ENABLED",
+  // coding 6: PAYROLL_AMOUNT_AFTER_PAYROLL (QA, 12 Nov 2026; default off; both apps).
+  "PAYROLL_AMOUNT_AFTER_PAYROLL_ENABLED",
 ] as const;
 
 const PROTECTED = [

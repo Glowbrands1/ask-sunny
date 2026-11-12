@@ -4653,3 +4653,16 @@ export function policyCarryRetrievalEnabled(): boolean {
 export function notFollowingIsViolationEnabled(): boolean {
   return envFlag("NOT_FOLLOWING_IS_VIOLATION_ENABLED");
 }
+
+
+/**
+ * PAYROLL_AMOUNT_AFTER_PAYROLL_ENABLED (coding 6, 12 Nov 2026; default off; same flag in both apps; QA, from the
+ * sibling app's gate NO-GO on INTENT_PAYROLL_MANAGER_ONLY). With INTENT_PAYROLL_MANAGER_ONLY on (live here), "…showed
+ * up late on october 1, 2026. payroll $25." and "…payroll of 25.00 dollars" kept no payroll amount. On: "payroll $N",
+ * "payroll of N dollars", "payroll is $N", "payroll: $N" are the stated amount (`forms/payroll-deduct-answer.ts`
+ * payrollAmountWording, which reads the env itself).
+ * Off, as before.
+ */
+export function payrollAmountAfterPayrollEnabled(): boolean {
+  return envFlag("PAYROLL_AMOUNT_AFTER_PAYROLL_ENABLED");
+}

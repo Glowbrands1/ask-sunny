@@ -311,8 +311,37 @@ export function normalizePayrollWording(text: string): string {
  * typed. Read by `payrollDeductAmount` (Pau, 30 Oct 2026: "Ok amount line").
  */
 export function payrollAmountWording(text: string): string {
-  const said = payrollAmountSameMessageOn() ? joinReferredAmount(text) : text;
+  const joined = payrollAmountSameMessageOn() ? joinReferredAmount(text) : text;
+  const said = payrollAmountAfterPayrollOn() ? payrollAsDeduction(joined) : joined;
   return caShortcutWordsOn() ? normalizePayrollWording(said) : said;
+}
+
+/**
+ * ============================================================================
+ * "PAYROLL $25." IS THE STATED AMOUNT
+ * (PAYROLL_AMOUNT_AFTER_PAYROLL_ENABLED, default off; QA, 12 Nov 2026)
+ * ============================================================================
+ *
+ * With INTENT_PAYROLL_MANAGER_ONLY on (live here), "…showed up late on
+ * october 1, 2026. payroll $25." and "…payroll of 25.00 dollars" kept no
+ * payroll amount: the amount reader reads only "deduct(ion) $N" and
+ * "$N … deducted". A figure right after "payroll" (", of", "is", "amount
+ * (of)", ":") is the deduction. Nothing new is read as money: "payroll" becomes
+ * "payroll deduction of" and the same reader decides whether what follows is an
+ * amount ("$25", "25.00 dollars", "3.25"; never a bare "25" or a date). A comma
+ * or a word in between ("no payroll, $25 short") is not joined. Off, as typed.
+ */
+const PAYROLL_THEN_FIGURE = /\bpayroll(?:\s+(?:of|is|amount(?:\s+(?:of|is))?))?\s*:?\s*(?=\$|\d)/gi;
+
+/** The text with each "payroll $N" written as "payroll deduction of $N". */
+export function payrollAsDeduction(text: string): string {
+  return (text ?? "").replace(PAYROLL_THEN_FIGURE, "payroll deduction of ");
+}
+
+/** PAYROLL_AMOUNT_AFTER_PAYROLL_ENABLED, read here as the other flags are: this file imports nothing. */
+function payrollAmountAfterPayrollOn(): boolean {
+  const raw = typeof process === "undefined" ? undefined : process.env.PAYROLL_AMOUNT_AFTER_PAYROLL_ENABLED;
+  return typeof raw === "string" && ["1", "true", "on", "yes"].includes(raw.trim().toLowerCase());
 }
 
 /**
