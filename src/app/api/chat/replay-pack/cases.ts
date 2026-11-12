@@ -56,6 +56,8 @@ export interface ReplayContext {
    * loads for a policy question (not by default: the loader finds no manual offline).
    */
   knowledgeHas?(rows: readonly Record<string, unknown>[]): void;
+  /** Every knowledge search's query this case, in order (POLICY_CARRY_RETRIEVAL, 12 Nov 2026). */
+  searches?(): string[];
   normalizerReads?(intent: "policy_question" | "form_command" | "other"): void;
   fullManualLoads?(): void;
   /** The grounding block the answering model was given on its last answer. */
@@ -111,6 +113,8 @@ export interface ReplayContext {
   typeOnForm(instanceId: string, values: Record<string, string>): void;
   /** Production's race: the next message arrives before the drafting model's values are saved. */
   draftNotYetSaved(instanceId: string): void;
+  /** The draft route's replies this case, in order (e.g. its `notice`). */
+  draftReplies?(): Record<string, unknown>[];
 }
 
 export interface DirectoryRow {
