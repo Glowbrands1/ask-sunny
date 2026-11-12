@@ -627,6 +627,8 @@ const NEW_FLAGS = [
   // coding 4: STEP_B_SECTION_SPACING (ported from Ask Bubbles; split out of #662, 12 Nov 2026; default off).
   "STEP_B_SECTION_SPACING_ENABLED",
   "GROUP_WORDS_NOT_A_NAME_ENABLED",
+  // coding 4: FORMS_ON_FILE_ORDER_MATCH_POSSIBLE (ported from Ask Bubbles, 11 Nov 2026; default off).
+  "FORMS_ON_FILE_ORDER_MATCH_POSSIBLE_ENABLED",
 ] as const;
 
 const PROTECTED = [

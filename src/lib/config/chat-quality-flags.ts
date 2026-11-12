@@ -4557,3 +4557,14 @@ export function draftWroteNothingNoticeEnabled(): boolean {
 export function stepBSectionSpacingEnabled(): boolean {
   return envFlag("STEP_B_SECTION_SPACING_ENABLED");
 }
+
+/**
+ * FORMS_ON_FILE_ORDER_MATCH_POSSIBLE_ENABLED (ported from Ask Bubbles, 11 Nov 2026; QA's Bubbles 17h live test; same flag
+ * in both apps; default off). The FORMS ON FILE block counts a row as naming the person when every word of its employee
+ * name is in the question, in any order, so forms filed as "<last> <first>" were listed as the asked person's own. On: a
+ * name whose words are all there but in another order is a POSSIBLE match, for the model to ask about
+ * (`forms/chat-form-records.ts`). Off, as before.
+ */
+export function formsOnFileOrderMatchPossibleEnabled(): boolean {
+  return envFlag("FORMS_ON_FILE_ORDER_MATCH_POSSIBLE_ENABLED");
+}
