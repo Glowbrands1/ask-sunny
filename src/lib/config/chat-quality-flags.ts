@@ -2717,6 +2717,16 @@ export function excerptBrandFilterEnabled(): boolean {
 }
 
 /**
+ * EXCERPT_EMPTY_CARD_DROP_ENABLED (QA via Coding-5, 11 Nov 2026; default off; ships with EXCERPT_BRAND_FILTER). With the
+ * brand filter on, a manual block that is all the sibling company (p.43 "Buff City Soap:" holidays) became a source card
+ * with an empty excerpt, labelled "Page 43 — Buff City Soap". On, such a card is not shown and a hidden brand never labels
+ * a card (`knowledge/empty-card-drop.ts`). Off, as before.
+ */
+export function excerptEmptyCardDropEnabled(): boolean {
+  return envFlag("EXCERPT_EMPTY_CARD_DROP_ENABLED");
+}
+
+/**
  * EXIT_TYPO_WORDS_ENABLED (Pau's P17, Sunny production, 10 Nov 2026; coding 5; same flag in both apps; default off).
  * "salon items will be returneded … they are eligiable for rehire" left Store Items Returned and Eligible for Rehire
  * blank. On: the exit answer readers read a word one or two letters off "returned", "eligible", "rehire" and the like as
