@@ -17,6 +17,7 @@ import {
   wovenTrainingConductEnabled,
   conductIncidentCitesPageEnabled,
   registerAccuracyConductEnabled,
+  notFollowingIsViolationEnabled,
   reopenIsOpeningEnabled,
 } from "@/lib/config/chat-quality-flags";
 
@@ -394,6 +395,13 @@ function missedEventIn(sentences: readonly string[]): string | null {
  * code"), so they count only as an answer — a short reply, or a sentence that
  * frames them as the policy.
  */
+/**
+ * "out of uniform" ending its phrase: then the end, punctuation, a date or a connecting word ("with a hoodie", "wearing
+ * a hoodie", "in a hoodie" — the sibling app's gate, 11 Nov 2026) — never a noun ("uniform shirts").
+ */
+const OUT_OF_UNIFORM =
+  /\bout\s+of\s+uniform\b(?=\s*(?:$|[.,;:!?)\n—-]|\d|(?:on|at|for|again|today|yesterday|tonight|during|while|and|or|but|when|in|with|wearing|this|last|twice|all|every|since|after|before|until|so|because|as|which|that|despite)\b))/;
+
 const NAMED: {
   name: CaPolicyName;
   pattern: RegExp;
@@ -430,6 +438,12 @@ const NAMED: {
   { name: "dress_code", pattern: /\bdress code\b/, alwaysAPolicy: false },
   /* "wore leggings" names the dress code when the manager does not say those words. */
   { name: "dress_code", pattern: /\bwore\s+leggings\b/, alwaysAPolicy: true },
+  /*
+   * NOT_FOLLOWING_IS_VIOLATION_ENABLED (QA, 10 Nov 2026): "out of uniform" is the dress code broken, as "out of dress code"
+   * is — only when "uniform" ends the phrase (port from the sibling app: QA's gate, 11 Nov 2026: "we ran out of uniform shirts
+   * so she wore her own" is a store out of stock, not a person out of uniform). A noun after it is not a match.
+   */
+  { name: "dress_code", pattern: OUT_OF_UNIFORM, alwaysAPolicy: true, enabled: notFollowingIsViolationEnabled },
   { name: "company_policies", pattern: /\bviolation of company polic(?:y|ies)\b/, alwaysAPolicy: true },
 ];
 const POLICY_FRAME =
@@ -437,6 +451,16 @@ const POLICY_FRAME =
 /* "wore jeans against dress code" — the policy broken, straight after "against" (QA, 22 Oct 2026, round 3). */
 const AGAINST_BEFORE = /\b(?:against|breaking|broke|breaks)\s+(?:the\s+|our\s+|company\s+)?$/;
 const NEGATED_BEFORE = /\b(?:not|never|isn't|is not|wasn't|was not|no)\s+(?:\S+\s+){0,2}$/;
+
+/*
+ * NOT_FOLLOWING_IS_VIOLATION_ENABLED (QA's live report in the sibling app, 10 Nov 2026): "make it about not following the dress code" read as no
+ * policy named (the policy after "not … two words" is NEGATED_BEFORE's), so the made-about rewrite wrote no Dress Code
+ * reference. Not following, not wearing, not meeting, not adhering to or not complying with a policy topic is that policy
+ * broken, as AGAINST_BEFORE's "breaking": the policy named, and its own frame. So is "out of dress code" / "out of
+ * uniform" (QA, 10 Nov 2026).
+ */
+const NOT_FOLLOWING_BEFORE =
+  /(?:\b(?:not|never|didn't|did not|wasn't|was not|isn't|is not|failed to|fails to|failing to)\s+(?:follow\w*|wear\w*|meet\w*|adher\w*\s+to|compl\w*\s+with|abid\w*\s+by|in)|\bout\s+of)\s+(?:the\s+|our\s+|company\s+|proper\s+)?$/;
 /*
  * FORM_EDIT_DATE_RULES_ENABLED: "reference the late opening policy INSTEAD of
  * the attendance policy" names Late Opening (QA replay, conv_mvnt5u7l2b5u91t,
@@ -470,7 +494,8 @@ function statedIn(turn: string): CaPolicyName | null {
       const match = pattern.exec(sentence);
       if (!match) continue;
       if (accept && !accept(match[0])) continue;
-      if (NEGATED_BEFORE.test(sentence.slice(0, match.index))) continue;
+      const broken = notFollowingIsViolationEnabled() && NOT_FOLLOWING_BEFORE.test(sentence.slice(0, match.index));
+      if (!broken && NEGATED_BEFORE.test(sentence.slice(0, match.index))) continue;
       if (formEditDateRulesEnabled() && SET_ASIDE_BEFORE.test(sentence.slice(0, match.index))) continue;
       if (takenOff(sentence, match.index, match.index + match[0].length)) continue;
       /*
@@ -478,7 +503,7 @@ function statedIn(turn: string): CaPolicyName | null {
        * "under" (POLICY_FRAME), so the one-word spelling is read the same way. Off, it needs a frame like any other name.
        */
       const framedByItsSpelling = name === "under_performance" && salesShortfallObjectEnabled() && /^underperform/.test(match[0]);
-      if (!alwaysAPolicy && !short && !framedByItsSpelling && !POLICY_FRAME.test(sentence) && !AGAINST_BEFORE.test(sentence.slice(0, match.index))) {
+      if (!alwaysAPolicy && !short && !broken && !framedByItsSpelling && !POLICY_FRAME.test(sentence) && !AGAINST_BEFORE.test(sentence.slice(0, match.index))) {
         continue;
       }
       // The last policy named in the turn is its answer: "not attendance — standards of conduct".

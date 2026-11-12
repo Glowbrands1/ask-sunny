@@ -160,3 +160,36 @@ describe("DETAILS_FROM_EARLIER_ANSWER_ENABLED", () => {
     }
   });
 });
+
+/*
+ * Ported from Ask Bubbles (Gate-Bubbles-4, 12 Nov 2026): "can you upate the draft with these details of coaching?" with
+ * no earlier content answer in the chat. The flag-on reading is the flag-off one, never nothing (which sent the turn to
+ * the free chat model). Invented person.
+ */
+describe("DETAILS_FROM_EARLIER_ANSWER_ENABLED, no earlier content answer", () => {
+  const history: { role: "user" | "assistant"; content: string }[] = [
+    { role: "user", content: "Create a coaching form." },
+    { role: "assistant", content: "Who is this **Coaching Form** for?" },
+    { role: "user", content: "Oswin" },
+    { role: "assistant", content: "Is this for **Oswin Marchbank**?" },
+    { role: "user", content: "yes" },
+    { role: "assistant", content: "Here is what I would put on a **Coaching Form**.\n\nCreate the draft here when you're ready." },
+    { role: "user", content: "spray tan booth, when to reset it and when to restock the solution" },
+    { role: "assistant", content: "I haven't changed the **Coaching Form** for **Oswin Marchbank** — everything on it is as it was." },
+  ];
+  const ask = () =>
+    formContentQuestion({ question: "can you upate the draft with these details of coaching?", history, templateName: "Coaching Form", employeeName: "Oswin Marchbank" });
+
+  it("flag on reads the turn as the flag-off reading does", () => {
+    const saved = process.env.DETAILS_FROM_EARLIER_ANSWER_ENABLED;
+    delete process.env.DETAILS_FROM_EARLIER_ANSWER_ENABLED;
+    const off = ask();
+    process.env.DETAILS_FROM_EARLIER_ANSWER_ENABLED = "true";
+    try {
+      expect(ask()).toEqual(off);
+    } finally {
+      if (saved === undefined) delete process.env.DETAILS_FROM_EARLIER_ANSWER_ENABLED;
+      else process.env.DETAILS_FROM_EARLIER_ANSWER_ENABLED = saved;
+    }
+  });
+});

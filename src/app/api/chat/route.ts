@@ -37,6 +37,7 @@ import {
   titleNotSpeakersManagerEnabled,
   newRequestOwnTurnsEnabled,
   formEditPlainWordsEnabled,
+  makeThatUpdateAccountEnabled,
   questionNotFormEnabled,
   sameFormCopyEnabled,
   sameFormCopyNewPersonEnabled,
@@ -496,6 +497,16 @@ async function postChat(request: Request) {
             })
           : false;
       // PROPOSAL_NAME_CORRECTION_ENABLED: "fix her last name …" on a card not yet created. See `lib/forms/proposal-name-correction.ts`.
+      /*
+       * MAKE_THAT_UPDATE_ACCOUNT_ENABLED: "make that update" after a reply that offered nothing is her own account, as
+       * every reader of the open draft (Step B's patch reading included) reads it. See `lib/forms/form-content-turn.ts`.
+       */
+      if (makeThatUpdateAccountEnabled() && asked.activeFormInstanceId) {
+        const content = await import("@/lib/forms/form-content-turn");
+        const open = await (await import("@/lib/forms/open-form-summary")).describeOpenForm(request, asked.activeFormInstanceId).catch(() => null);
+        const withAccount = open ? content.makeThatUpdateWithAccount({ question: asked.question, history: asked.history, employeeName: open.employeeName }) : null;
+        if (withAccount) asked = { ...asked, question: withAccount };
+      }
       const parsed = withProposalNameCorrection(withSwitchAfterCreate(
         draftAction || staffPick || newRequestOpen
           ? {
