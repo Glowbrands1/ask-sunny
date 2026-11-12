@@ -531,7 +531,7 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
         const label = labels[keptAccountKey] ?? keptAccountKey;
         const about = madeAbout(input.question);
         return {
-          content: `I haven't changed the **${loaded.instance.templateName}** for **${loaded.instance.employeeName}**: I couldn't rewrite **${label}** to be about ${about}, so ${undatedAbout ? "the topic stays" : "the Date and the topic stay"} as they were too. What should **${label}** say about ${about}?`,
+          content: `I haven't changed the **${loaded.instance.templateName}** for **${loaded.instance.employeeName}**: I couldn't rewrite **${label}** to be about ${about}, so ${undatedAbout ? "the topic stays as it was" : "the Date and the topic stay as they were"} too. What should **${label}** say about ${about}?`,
           citations: [],
           coverage: "not_applicable",
           recommendedVideoIds: [],
