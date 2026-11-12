@@ -20,6 +20,8 @@ describe("OUTLINE_ON_OPEN_PROPOSAL_ENABLED", () => {
     expect(isOutlineTurn(OUTLINE)).toBe(true);
     expect(isOutlineTurn(C)).toBe(true);
     expect(isOutlineTurn(A)).toBe(false);
+    // A request that mentions a format is the request, never an outline turn (the s22 replay case, 12 Nov 2026).
+    expect(isOutlineTurn("create a ca for must see behaviors for wynne sarrow but i need it to be in the format of Tamsyn ca")).toBe(false);
   });
 
   it("off: the request is as sent", () => {

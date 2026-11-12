@@ -23,10 +23,13 @@ function looksLikePastedTemplate(text: string): boolean {
   return (text.match(LABEL_LINE) ?? []).length >= 2;
 }
 
-const SAME_OUTLINE = /\b(?:same|this|that|the)\s+(?:outline|template|format|layout)\b/i;
+const SAME_OUTLINE = /\b(?:same|this|that)\s+(?:outline|template|format|layout)\b/i;
+/* A turn that asks for a form ("create a ca for …", "… in the format of <B>") is the request: never left out (the sibling's s22 case). */
+const FORM_REQUEST = /\b(?:create|make|write|draw\s+up|need|draft|prepare|start)\b[^.?!\n]{0,40}\b(?:ca|c\/a|corrective\s+action|coaching|write[- ]?up|warning|form)\b/i;
 
 /** A pasted labelled outline, or a turn asking for "the same outline …". */
 export function isOutlineTurn(text: string): boolean {
+  if (FORM_REQUEST.test(text)) return false;
   return looksLikePastedTemplate(text) || SAME_OUTLINE.test(text);
 }
 
