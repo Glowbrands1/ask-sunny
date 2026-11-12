@@ -976,7 +976,7 @@
       "Yes"
     ],
     "criteria": {
-      "employee": "Dasiley Veklo",
+      "employee": "Daisley Veklo",
       "salon": "loc-0313",
       "date": null,
       "policy": null,
@@ -1361,12 +1361,15 @@
       "this is a violation under Standards of Conduct"
     ],
     "criteria": {
-      "employee": "Test Employee",
+      "employee": "",
       "salon": null,
       "date": "2026-10-15",
       "policy": "Standards of Conduct p.12",
-      "noBlockingQuestion": true,
-      "noLeakedInternalText": true
+      "noBlockingQuestion": false,
+      "noLeakedInternalText": true,
+      "replyIncludes": [
+        "Who is this form for?"
+      ]
     },
     "today": "2026-10-23",
     "actor": {
@@ -1744,12 +1747,15 @@
       "Create a form from this conversation."
     ],
     "criteria": {
-      "employee": "Test Employee",
+      "employee": "",
       "salon": "loc-0462",
       "date": null,
       "policy": null,
-      "noBlockingQuestion": true,
-      "noLeakedInternalText": true
+      "noBlockingQuestion": false,
+      "noLeakedInternalText": true,
+      "replyIncludes": [
+        "Who is this form for?"
+      ]
     },
     "today": "2026-10-23",
     "actor": {
@@ -1931,12 +1937,15 @@
       "name is TT and use todays date to create coaching form"
     ],
     "criteria": {
-      "employee": "TT",
+      "employee": "",
       "salon": null,
       "date": "2026-10-23",
       "policy": null,
-      "noBlockingQuestion": true,
-      "noLeakedInternalText": true
+      "noBlockingQuestion": false,
+      "noLeakedInternalText": true,
+      "replyIncludes": [
+        "Who is this form for?"
+      ]
     },
     "today": "2026-10-23",
     "actor": {
@@ -2924,7 +2933,7 @@
       "help me create a coaching form",
       "1.  Can I keep this field blank to use this coaching form with multiple staff?\n2. October 1st\n3. it's for october promotions, can i upload the pdf to read off of?\n4. tanning consultant",
       "1. employee name is blank\n2. knowledge on october promotions",
-      "Timeline: October 1 \u2013 October 31\nOffers: \n\u2022 $5 Red Light Visits\n\u2022 Eight Red Light Visits for $35\n\u2022 Wellness Product Bundle: KIT Restored Red Light for $79.99 ($64.98 Savings + $6 Bonus)\n\u27a2 BOT Restored Prep Spray\n\u27a2 BOT Restored Post Cream\n\u27a2 BOT Restored Target Serum\n\u27a2 Five Wellness Visits\nTimeline: October 1 \u2013 October 31\nOffers: \n\u2022 $5 Red Light Visits\n\u2022 Eight Red Light Visits for $35\n\u2022 Wellness Product Bundle: KIT Restored Red Light for $79.99 ($64.98 Savings + $6 Bonus)\n\u27a2 BOT Restored Prep Spray\n\u27a2 BOT Restored Post Cream\n\u27a2 BOT Restored Target Serum\n\u27a2 Five Wellness Visits\nTimeline: October 1 \u2013 October 31\nOffers: \n\u2022 $5 Red Light Visits\n\u2022 Eight Red Light Visits for $35\n\u2022 Wellness Product Bundle: KIT Restored Red Light for $79.99 ($64.98 Savings + $6 Bonus)\n\u27a2 BOT Restored Prep Spray\n\u27a2 BOT Restored Post Cream\n\u27a2 BOT Restored Target Serum\n\u27a2 Five Wellness Visits\nTimeline: October 1 \u2013 October 31\nOffers: \n\u2022 $5 Red Light Visits\n\u2022 Eight Red Light Visits for $35\n\u2022 Wellness Product Bundle: KIT Restored Red Light for $79.99 ($64.98 Savings + $6 Bonus)\n\u27a2 BOT Restored Prep Spray\n\u27a2 BOT Restored Post Cream\n\u27a2 BOT Restored Target Serum\n\u27a2 Five Wellness Visits\nTimeline: October 1 \u2013 October 31\nOffers: \n\u2022 ",
+      "Timeline: October 1 – October 31\nOffers: \n• $5 Red Light Visits\n• Eight Red Light Visits for $35\n• Wellness Product Bundle: KIT Restored Red Light for $79.99 ($64.98 Savings + $6 Bonus)\n➢ BOT Restored Prep Spray\n➢ BOT Restored Post Cream\n➢ BOT Restored Target Serum\n➢ Five Wellness Visits\nTimeline: October 1 – October 31\nOffers: \n• $5 Red Light Visits\n• Eight Red Light Visits for $35\n• Wellness Product Bundle: KIT Restored Red Light for $79.99 ($64.98 Savings + $6 Bonus)\n➢ BOT Restored Prep Spray\n➢ BOT Restored Post Cream\n➢ BOT Restored Target Serum\n➢ Five Wellness Visits\nTimeline: October 1 – October 31\nOffers: \n• $5 Red Light Visits\n• Eight Red Light Visits for $35\n• Wellness Product Bundle: KIT Restored Red Light for $79.99 ($64.98 Savings + $6 Bonus)\n➢ BOT Restored Prep Spray\n➢ BOT Restored Post Cream\n➢ BOT Restored Target Serum\n➢ Five Wellness Visits\nTimeline: October 1 – October 31\nOffers: \n• $5 Red Light Visits\n• Eight Red Light Visits for $35\n• Wellness Product Bundle: KIT Restored Red Light for $79.99 ($64.98 Savings + $6 Bonus)\n➢ BOT Restored Prep Spray\n➢ BOT Restored Post Cream\n➢ BOT Restored Target Serum\n➢ Five Wellness Visits\nTimeline: October 1 – October 31\nOffers: \n• ",
       "for rozlin quellmar.  all of it if possible",
       "oh lets create a follow-up coaching form instead then",
       "red light visits and mentioning them on every client check-in.",
@@ -3356,7 +3365,7 @@
         "alsoCoversAreaIds": []
       }
     },
-    "expected": "Prior Actions gets 'JBA Policy Manual \u2014 signed May 2025' and the reply says so."
+    "expected": "Prior Actions gets 'JBA Policy Manual — signed May 2025' and the reply says so."
   },
   {
     "id": "sf-s9",
