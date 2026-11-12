@@ -4664,3 +4664,13 @@ export function policyCarryRetrievalEnabled(): boolean {
 export function notFollowingIsViolationEnabled(): boolean {
   return envFlag("NOT_FOLLOWING_IS_VIOLATION_ENABLED");
 }
+
+/**
+ * APPROVER_TITLE_NOT_EMPLOYEE_ENABLED (QA's r37 live check, 12 Nov 2026; default off). "CA for <A>, probably termination
+ * once the DM approves" put "Job title: District Manager" on the card: "DM" there names who approves. On: a title the
+ * manager wrote only in a clause about who approves, signs off or is waited on is not the employee's; the card has none
+ * and its "Job title:" line goes (`forms/approver-title.ts`, `ai/title-of-the-employee.ts`). Off, as before.
+ */
+export function approverTitleNotEmployeeEnabled(): boolean {
+  return envFlag("APPROVER_TITLE_NOT_EMPLOYEE_ENABLED");
+}
