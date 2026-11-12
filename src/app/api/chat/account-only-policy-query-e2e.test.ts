@@ -544,6 +544,21 @@ describe(`${AO} on`, () => {
     expect(store.form_instance_values.find((row) => row.instance_id === id && row.field_key === "observation")?.value).toBe(clean);
   });
 
+  // Ported from Ask Bubbles (Gate-Bubbles-5, 2f2b8517): with EXPECTATION_POLICY_LINE_KEPT on, a general "An employee
+  // assigned to open …" Expectation was kept, an opening nobody wrote. It is exempt only from "scheduled to" now.
+  it("EXPECTATION_POLICY_LINE_KEPT on: a general opening Expectation nobody wrote is not saved", async () => {
+    if (!saved.has("EXPECTATION_POLICY_LINE_KEPT_ENABLED")) saved.set("EXPECTATION_POLICY_LINE_KEPT_ENABLED", process.env.EXPECTATION_POLICY_LINE_KEPT_ENABLED);
+    process.env.EXPECTATION_POLICY_LINE_KEPT_ENABLED = "true";
+    const general = "An employee assigned to open the salon is expected to arrive on time and ready to work at the start of the scheduled shift.";
+    const thread = new Thread();
+    for (const turn of TURNS) await thread.say(turn);
+    state.draft = { values: { observation: `Observed:\nQuinn was late on October 2, 2026.\n\nExpectation:\n${general}` } };
+    const id = await thread.create();
+    const observation = String(store.form_instance_values.find((row) => row.instance_id === id && row.field_key === "observation")?.value ?? "");
+    expect(observation).not.toContain(general);
+    expect(observation).not.toMatch(/\bopen/i);
+  });
+
   it("notes that say open keep it", async () => {
     TURNS[0] = TURNS[0] + " and the salon was opened late";
     try {

@@ -30,6 +30,10 @@ async function created(t: ReplayContext) {
   return { thread, id };
 }
 
+/** The 27 Oct live report's turns as this app's e2e has them (`account-only-policy-query-e2e.test.ts`, invented person). */
+const OPENING_TURNS = ["create a CA form for quinn marlowe at kearney. she was late on the 2nd", "yes payroll deduct", "$25"];
+const OPENING_LINE = "An employee assigned to open the salon is expected to arrive on time and ready to work at the start of the scheduled shift.";
+
 export const NOV10_EXPECTATION_POLICY_LINE_KEPT_CASES: ReplayCase[] = [
   {
     id: "nov10-expectation-policy-line-kept",
@@ -41,6 +45,26 @@ export const NOV10_EXPECTATION_POLICY_LINE_KEPT_CASES: ReplayCase[] = [
       const { id } = await created(t);
       const observation = t.values(id).observation ?? "";
       expect(observation, `the Expectation was dropped:\n${observation}`).toContain(POLICY_LINE);
+    },
+  },
+  {
+    // Ported from Ask Bubbles (Gate-Bubbles-5, record 2f2b8517): the flag kept every general expectation, so an opening
+    // nobody wrote was saved. It is exempt only from "scheduled to" now; the line says "open" and the manager never did.
+    id: "nov12-expectation-policy-line-no-invented-opening",
+    title: `"${OPENING_TURNS.join('" / "')}": no general expectation about opening is saved`,
+    report: "Ported from Ask Bubbles (Gate-Bubbles-5, 12 Nov 2026): R737 regression, the 27 Oct live report's turns",
+    status: "fixed",
+    fixFlags: FIX,
+    async run(t) {
+      vi.setSystemTime(new Date("2026-10-21T15:00:00Z"));
+      t.directory([{ id: "e-1", firstName: "Quinn", lastName: "Marlowe", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: null }]);
+      t.as("salon_director", KEARNEY);
+      const thread = t.thread();
+      for (const turn of OPENING_TURNS) await thread.say(turn);
+      t.draftWrites({ observation: `Observed:\nQuinn was late on October 2, 2026.\nExpectation:\n${OPENING_LINE}` });
+      const id = await thread.create();
+      const observation = t.values(id).observation ?? "";
+      expect(observation, `an opening nobody wrote was saved:\n${observation}`).not.toMatch(/\bopen/i);
     },
   },
 ];

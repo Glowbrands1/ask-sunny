@@ -48,6 +48,23 @@ describe("EXPECTATION_POLICY_LINE_KEPT: the policy's expectation of every employ
     expect(out).toContain("An employee scheduled to work is expected to arrive on time.");
   });
 
+  // Ported from Ask Bubbles (Gate-Bubbles-5, 2f2b8517): exempt only from "scheduled to"; "open" is still checked.
+  it("flag on: a general expectation about opening goes when the manager never said open", () => {
+    process.env.EXPECTATION_POLICY_LINE_KEPT_ENABLED = "true";
+    const notes = "create a CA form for jane doe at kearney. she was late on the 2nd yes payroll deduct $25";
+    const line = "An employee assigned to open the salon is expected to arrive on time and ready to work at the start of the scheduled shift.";
+    const out = run(`Observed:\nJane Doe was late on October 20, 2026.\nExpectation:\n${line}`, notes);
+    expect(out).not.toContain(line);
+    expect(out).not.toMatch(/\bopen/i);
+  });
+
+  it("flag on: a general expectation scheduled to work, with no other new detail, is kept", () => {
+    process.env.EXPECTATION_POLICY_LINE_KEPT_ENABLED = "true";
+    const line = "An employee scheduled to work is expected to arrive on time.";
+    const notes = "Create a Corrective Action for Jane Doe, she was late on 10-20-26";
+    expect(run(`Observed:\nJane Doe was late on October 20, 2026.\nExpectation:\n${line}`, notes)).toContain(line);
+  });
+
   it("flag on: the Observed section is read as before", () => {
     process.env.EXPECTATION_POLICY_LINE_KEPT_ENABLED = "true";
     const notes = "Create a Corrective Action for Jane Doe, she was late on 10-20-26";
