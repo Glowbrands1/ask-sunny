@@ -617,6 +617,7 @@ const NEW_FLAGS = [
   "CARD_COMPLAINT_NOT_ACCOUNT_ENABLED",
   // coding 6: REQUEST_ISSUE_KEPT (ported from Ask Bubbles, QA round 17b; default off).
   "REQUEST_ISSUE_KEPT_ENABLED",
+  "GROUP_WORDS_NOT_A_NAME_ENABLED",
 ] as const;
 
 const PROTECTED = [
