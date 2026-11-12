@@ -121,3 +121,30 @@ an outline naming the other person by first name only ("Corisande arrived …") 
 - On main 1ecadf923 the PR conflicts in flags-off-parity and chat-quality-flags (the flag lists): a rebase is needed.
 
 **GO.** The case that now holds is `nov11-17i-outline-on-open-proposal`.
+
+## Round 5, head 75026e074 (contains main 1ecadf923; off arms stubbed; port of Bubbles 17o) — GO
+
+- tsc clean. The new commit reads a labelled "Name: <First Last> / Date: / Observation:" paste on an open card as
+  that person's outline (QA's 17o ruling: it must not make a new card for E). A turn that asks for a form ("create a
+  CA for …") is still a request. A lowercase "name: corisande velt" stays her account (any doubt keeps the turn).
+- All 17 of my probes give the same answers as round 4: every own-account variant is kept; "Corisande Velt
+  arrived …" and "same outline but with Ilsa's info" are outlines; first-name-only and lowercase outlines are
+  not caught, as in production today.
+- 1 OFF + 1 ON on 1ecadf923, full suite, production flags in the env:
+
+| | tests | passed | failed |
+|---|---|---|---|
+| OFF | 22,007 | 20,610 | 1,263 |
+| ON  | 22,007 | 20,606 | 1,267 |
+
+  - The two open arms now hold: `nov11-17i-outline-on-open-proposal` and `nov12-17o-labelled-paste-not-a-new-request`
+    (A's card stays, with "I've kept **Ilsa Varnholt**'s own details …"; no card for E). INTENDED. Parity child:
+    INTENDED-HARNESS.
+  - corrective-action-chat-edits-e2e (1) and pm-draft-route.single-writer (2) failed in the ON run only. Run alone,
+    those two files give 17 failed / 82 passed with the flag on and the same with it off (the production-env
+    baseline), so this is load noise. The off arms of outline-on-proposal.test.ts now pass with the flag on.
+  - Replay text: **2 records differ**, the two targets. Every other record is unchanged, including the g4-802 cases,
+    sf-s21 and the nov8 sf-s21/sf-s22 cases. 0 REGRESSION.
+- Eval (flag on): 63/63, 42/51 cases pass, and no case changes outcome.
+
+**GO** on 75026e074. Cases that now hold: `nov11-17i-outline-on-open-proposal`, `nov12-17o-labelled-paste-not-a-new-request`.
