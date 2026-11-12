@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { TERMINATION_OPTION, withTerminationPlan } from "@/lib/forms/termination-stated";
 import { salesResultsOffenseLine, withCaChosenRule } from "@/lib/ai/ca-sales-prompt-lines";
 import { noteSpendUser } from "@/lib/ai/spend-meter";
 import { withSpendMeter } from "@/lib/ai/spend-meter-run";
@@ -13,6 +14,7 @@ import {
   actionPlanSentencesEnabled,
   attendanceActionPlanEnabled,
   hideNoPolicyMatchNoticeEnabled,
+  draftNoInventedPlanEnabled,
   attendancePolicyCitationEnabled,
   draftMergeEnabled,
   draftNeverBlankEnabled,
@@ -27,6 +29,7 @@ import {
   cardPolicyToDraftEnabled,
   formPatchReducerEnabled,
   draftWriteNeverSilentEnabled,
+  draftWroteNothingNoticeEnabled,
   formEditSingleWriterEnabled,
   teamCardWordingEnabled,
   cardPolicyLabelEnabled,
@@ -100,6 +103,7 @@ import {
   OBSERVED_LABEL,
   PLAN_OF_ACTION,
   guardNarrativeDraft,
+  managerTypedGoingForward, withoutGoingForward,
 } from "@/lib/forms/narrative-draft";
 import {
   dropUngroundedPolicy,
@@ -1395,6 +1399,31 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     );
 
     const narrated = guardNarrativeDraft(dated.values, fields, groundingSource);
+    /*
+     * DRAFT_NO_INVENTED_PLAN_ENABLED: on the Corrective Action Form (the one
+     * with a fixed Action Plan) the Observation keeps Observed and Expectation
+     * only. What the employee does next is the manager's Action Plan, never a
+     * "Going Forward" the model wrote. See `withoutGoingForward`.
+     */
+    if (draftNoInventedPlanEnabled() && fixedPlan !== null) {
+      narrated.values = withoutGoingForward(narrated.values, fields);
+    }
+    /*
+     * And on the Coaching and Follow-up Coaching forms (QA, 26 Oct 2026): their
+     * "Going Forward" is the model's too, so it stays only when the manager
+     * stated a plan themselves ("going forward …", "action plan: …"); a negated
+     * "no going forward needed" is not one (`managerTypedGoingForward`).
+     */
+    const coachingForm =
+      loaded.instance.templateKey === "coaching" || loaded.instance.templateKey === "follow-up-coaching";
+    if (
+      draftNoInventedPlanEnabled() &&
+      coachingForm &&
+      !managerTypedGoingForward(notes) &&
+      managerTypedActionPlan(notes) === null
+    ) {
+      narrated.values = withoutGoingForward(narrated.values, fields);
+    }
 
     /*
      * THEN THE TIMEFRAME GUARD. A drafted "Next Follow-Up" survives only if the
@@ -1792,6 +1821,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       ? ((loaded.values ?? []).find((row) => row.fieldKey === PAYROLL_DEDUCT_KEY)?.checked.find(isPayrollDeductAnswer) ??
         null)
       : null;
+    // TERMINATION_STATED_TICKS_ENABLED: Termination, ticked at Create from the manager's statement, closes the plan.
+    const terminationPlan = Boolean(fixedPlan) && ((loaded.values ?? []).find((row) => row.fieldKey === "warning_type")?.checked ?? []).includes(TERMINATION_OPTION);
     const draftedValues = (() => {
       const base = { ...(exit?.values ?? attributions.values) };
       if (priorActions) {
@@ -2316,6 +2347,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
             }),
           },
           closing: fixedPlan.closing,
+          termination: terminationPlan,
         }
       : null;
     /*
@@ -2355,7 +2387,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
             values: {
               ...named.values,
               // PLAN_PAYROLL_SENTENCE_ENABLED: the deduction the manager stated is said in the plan.
-              [fixedPlan.key]: withPayrollSentence(
+              // TERMINATION_STATED_TICKS_ENABLED: on a termination, the plan ends with the termination sentence.
+              [fixedPlan.key]: withTerminationPlan(withPayrollSentence(
                 // MEETING_NOT_LATENESS_PLAN_ENABLED: a missed meeting keeps the general plan.
                 attendanceActionPlanEnabled() && isAttendancePlan(planInput) && !missedMeetingNotLateness(notes)
                   ? attendanceActionPlan(planInput)
@@ -2363,7 +2396,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
                     ? twoSentenceActionPlan(planInput)
                     : correctiveActionPlan(planInput),
                 { answer: planInput.payroll.answer, amount: payrollDeductAmount(notes), employeeName: loaded.instance.employeeName },
-              ),
+              ), terminationPlan),
             },
             provenance: { ...provenance, [fixedPlan.key]: actionPlanProvenance(planInput) },
           }
@@ -2519,6 +2552,18 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     }
     // The old writer only in the single writer's flag-off branch (form-write-one-writer.test.ts reads this shape).
     const guarded = formEditSingleWriterEnabled() && written ? written : await applyAssistantDraft(id, reduced ? reduced.write : kept, actor.id, draftProvenanceWritten);
+    /*
+     * DRAFT_WROTE_NOTHING_NOTICE_ENABLED (QA's r21 live check, 10 Nov 2026): a name-only Coaching card's Create saved
+     * the Name and Date and no Details, and said nothing: there was no account to draft from, so the drafting model
+     * wrote no narrative (no refusal, so DRAFT_WRITE_NEVER_SILENT's notice stays quiet). With the flag on, when the
+     * notes hold no account and no narrative field was written, the reply says so (`draft-write-never-silent.ts`).
+     */
+    const draftWroteNothing =
+      draftWroteNothingNoticeEnabled() &&
+      !draftNothingSaved &&
+      narrativeTargets.length > 0 &&
+      !notesHoldAccount(notes, loaded.instance.employeeName) &&
+      !narrativeTargets.some((key) => (guarded.accepted.values[key] ?? "").trim() !== "");
     /*
      * NEVER A SILENT BLANK (DRAFT_NEVER_BLANK_ENABLED). Whenever an attempt
      * failed or wrote nothing, or the write itself holds no field, the reason
@@ -2684,6 +2729,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         // FORM_EDIT_SINGLE_WRITER_ENABLED: what the draft left out of the account (detected, never retried).
         // DRAFT_WRITE_NEVER_SILENT_ENABLED: nothing saved is said instead — there is no account to have left anything out of.
         draftNothingSaved ? (await import("@/lib/forms/draft-write-never-silent")).DRAFT_NOTHING_SAVED_NOTICE : leftOut,
+        // DRAFT_WROTE_NOTHING_NOTICE_ENABLED: no account, so no Details — said, never a silent blank.
+        draftWroteNothing ? (await import("@/lib/forms/draft-write-never-silent")).DRAFT_WROTE_NOTHING_NOTICE : null,
       ]
         .filter((line): line is string => Boolean(line))
         .join(" ") || null,

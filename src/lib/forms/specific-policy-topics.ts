@@ -1,4 +1,4 @@
-import { animalAnywhereEnabled, policySpecificTopicsEnabled, workAreaAbsenceCitesConductEnabled } from "@/lib/config/chat-quality-flags";
+import { animalAnywhereEnabled, guestAttitudeConductEnabled, policySpecificTopicsEnabled, workAreaAbsenceCitesConductEnabled } from "@/lib/config/chat-quality-flags";
 
 import {
   findManualSection,
@@ -235,6 +235,18 @@ const TOPICS: readonly TopicRule[] = [
     not: /\b(?:guests?|customers?|clients?|members?)\b/,
     unless: /\b(?:coworkers?|co-workers?|team\s*members?|teammates?|colleagues?|staff|employees?|manager|managers|sd|asd|dm|supervisor)\b/,
     cite: { kind: "conduct_line", anchor: /Behavior that demonstrates disrespect/i },
+  },
+  {
+    /*
+     * GUEST_ATTITUDE_CONDUCT_ENABLED (Pau's sf-b5): "The customer said she was giving her an attitude …" — the guest
+     * first, then the attitude, in one sentence — is a guest treated rudely: the Standards of Conduct, page 12.
+     */
+    id: "guest_attitude",
+    enabled: guestAttitudeConductEnabled,
+    words: [
+      /\b(?:guests?|customers?|clients?)\b[^.!?\n]{0,80}?\b(?:giv(?:e|es|ing)|gave|ha(?:d|s|ve|ving)|cop(?:ped|ping)?|show(?:ed|ing|s)?)\s+(?:\S+\s+){0,2}?(?:an?\s+)?(?:bad\s+|rude\s+|nasty\s+)?attitude\b/,
+    ],
+    cite: { kind: "heading", heading: CONDUCT_HEADING },
   },
   {
     /* Rude to a guest is the Standards of Conduct, page 12 (Pau confirmed): the heading, not a listed line. */
