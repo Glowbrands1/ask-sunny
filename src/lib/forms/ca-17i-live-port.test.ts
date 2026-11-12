@@ -51,6 +51,27 @@ describe("WORN_CLOTHING_IS_DRESS_CODE_ENABLED", () => {
   });
 });
 
+// Gate-Bubbles-2 on #799 (12 Nov 2026): QA's two negatives, word for word (the employee invented).
+describe("WORN_CLOTHING_IS_DRESS_CODE_ENABLED: Gate-Bubbles-2's negatives", () => {
+  it("a policy the account names, even one that is not a form box, wins: never the Dress Code", () => {
+    vi.stubEnv("WORN_CLOTHING_IS_DRESS_CODE_ENABLED", "true");
+    expect(readCaPolicy("CA for Marnie Holloway for wearing a hoodie, violating the cell phone policy").readFromApp).not.toBe("dress_code");
+  });
+
+  it("\"comes in\" with no person wearing it is not the Dress Code", () => {
+    vi.stubEnv("WORN_CLOTHING_IS_DRESS_CODE_ENABLED", "true");
+    expect(readCaPolicy("create a CA for Marnie Holloway, the order comes in hoodies and joggers and she stocked it late").readFromApp).not.toBe("dress_code");
+  });
+
+  it.each(["she keeps coming in hoodies", "he came to work in sweats", "she comes in to work in pajamas", "they showed up in joggers"])(
+    "a person coming or showing up in the garment still is: %s",
+    (text) => {
+      vi.stubEnv("WORN_CLOTHING_IS_DRESS_CODE_ENABLED", "true");
+      expect(readCaPolicy(`create a CA for Marnie Holloway, ${text}`).readFromApp).toBe("dress_code");
+    },
+  );
+});
+
 describe("COPY_PASTE_POINTS_TO_CARD_ENABLED", () => {
   const CARD = { templateKey: "dpoa", templateName: "Corrective Action Form", employeeName: "Marnie Holloway" };
   const request = {

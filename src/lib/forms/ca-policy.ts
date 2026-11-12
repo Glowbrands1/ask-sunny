@@ -569,7 +569,14 @@ export function withPlanOnReadPolicy<T extends { content: string; formProposal?:
  * rules out; "uniform", "shirt" and "apron" are what an employee is meant to wear and say nothing on their own.
  */
 const WORN_CLOTHING =
-  /\b(?:wearing|wore|wears|wear|(?:showed|shows|showing|came|comes|coming)\s+(?:up\s+)?(?:to\s+work\s+)?in)\s+(?:a\s+|an\s+|her\s+|his\s+|their\s+|the\s+)?(?:hoodies?|hooded\s+sweatshirts?|sweatshirts?|sweatpants|sweats|joggers|yoga\s+pants|pajamas?|pyjamas?|flip[- ]?flops|crop\s+tops?)\b/;
+  /(?:\b(?:wearing|wore|wears|wear)|\b(?:she|he|they|she's|he's|they're|who)\s+(?:keeps\s+|kept\s+|always\s+)?(?:showed|shows|showing|show|came|comes|coming|come)\s+(?:up\s+|in\s+)?(?:to\s+work\s+)?in|\b(?:showed|shows|showing|show|came|comes|coming|come)\s+(?:up\s+|in\s+)?to\s+work\s+in)\s+(?:a\s+|an\s+|her\s+|his\s+|their\s+|the\s+)?(?:hoodies?|hooded\s+sweatshirts?|sweatshirts?|sweatpants|sweats|joggers|yoga\s+pants|pajamas?|pyjamas?|flip[- ]?flops|crop\s+tops?)\b/;
+
+/**
+ * WORN_CLOTHING_IS_DRESS_CODE_ENABLED (Gate-Bubbles-2 on #799, 12 Nov 2026): an account that names a policy of its own
+ * ("…for wearing a hoodie, violating the cell phone policy") is that policy's, even when it is not one of the form's
+ * boxes: the garment never reads it as the Dress Code.
+ */
+const NAMES_A_POLICY = /\bpolic(?:y|ies)\b/;
 
 /**
  * WORN_CLOTHING_IS_DRESS_CODE_ENABLED: an account that names no policy and says the person wore clothes a dress code
@@ -578,7 +585,9 @@ const WORN_CLOTHING =
 function withWornClothing(reading: CaPolicyReading, said: string): CaPolicyReading {
   if (!wornClothingIsDressCodeEnabled()) return reading;
   if (reading.stated !== null || reading.suggestion !== null || reading.ambiguous || reading.other || reading.missedEvent || reading.readFromApp) return reading;
-  return WORN_CLOTHING.test(said.toLowerCase()) ? { ...reading, readFromApp: "dress_code" } : reading;
+  const text = said.toLowerCase();
+  if (NAMES_A_POLICY.test(text)) return reading;
+  return WORN_CLOTHING.test(text) ? { ...reading, readFromApp: "dress_code" } : reading;
 }
 
 function withMissedShift(reading: CaPolicyReading, said: string): CaPolicyReading {
