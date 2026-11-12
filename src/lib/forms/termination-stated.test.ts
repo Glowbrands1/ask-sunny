@@ -11,6 +11,8 @@ describe("TERMINATION_STATED_TICKS_ENABLED", () => {
   });
 
   it("off: nothing is stated", () => {
+    // Off pins its own flag (QA's off-pins guard, 11 Nov 2026): it must hold once production turns the flag on.
+    delete process.env.TERMINATION_STATED_TICKS_ENABLED;
     expect(statesTermination(P15)).toBe(false);
   });
 
