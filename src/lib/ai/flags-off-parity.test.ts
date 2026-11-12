@@ -396,6 +396,8 @@ const NEW_FLAGS = [
   "PAYROLL_SPLIT_WORDS_ENABLED",
   // coding 6: SAME_REQUEST_OTHER_PERSON (default off): forced off with the others.
   "SAME_REQUEST_OTHER_PERSON_ENABLED",
+  // coding 6: CAPS_PREPOSITION_NOT_NAME (default off; QA's name matrix, last-date-caps): forced off with the others.
+  "CAPS_PREPOSITION_NOT_NAME_ENABLED",
   // coding 6: SAME_REQUEST_OFF_ROSTER (default off; QA's r23 live test, #779 off roster): forced off with the others.
   "SAME_REQUEST_OFF_ROSTER_ENABLED",
   // coding 6: PASTED_OUTLINE_TO_OPEN_DRAFT (default off; QA's r23 live test of sf-s21): forced off with the others.

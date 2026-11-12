@@ -4380,6 +4380,17 @@ export function templateOutlineFieldsEnabled(): boolean {
 }
 
 /**
+ * CAPS_PREPOSITION_NOT_NAME_ENABLED (coding 6, 10 Nov 2026; default off; QA's exact name matrix, 4 Nov 2026,
+ * last-date-caps): "CORRECTIVE ACTION: A GUEST WAS TREATED RUDELY AT THE FRONT DESK ON MONDAY 10/05/2026 BY CORIN
+ * BELLWEATHER" gave "I'll draft a Corrective Action Form for **BY CORIN BELLWEATHER**" and a card with no employee.
+ * On, a capitalised run of three or more words led by a preposition ("BY", "FROM", …) is read without it
+ * (`forms/proposal.ts` readEmployeeMentions). Off, as before.
+ */
+export function capsPrepositionNotNameEnabled(): boolean {
+  return envFlag("CAPS_PREPOSITION_NOT_NAME_ENABLED");
+}
+
+/**
  * SAME_REQUEST_OFF_ROSTER_ENABLED (coding 6, 10 Nov 2026; default off; QA's Sunny round-23 live test,
  * conv_mwb1xng82tz2tyr): "Can you do the same thing for <B> but make it a written" after "create a corrective action
  * for <A>, she was late on 11/3/26", with <A> and <B> not on the directory, gave <B> a card with no Observation and
