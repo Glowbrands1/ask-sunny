@@ -4429,6 +4429,18 @@ export function requestIssueKeptEnabled(): boolean {
 }
 
 /**
+ * REMAP_APP_LINES_NOT_ACCOUNT_ENABLED (coding 6, 11 Nov 2026; default off; QA's S1 from the open-cases audit,
+ * nov5-coding3-ca-offer-yes-no-account-remap). On the full remap with REMAP_INCIDENT_FIX off, the account reader read
+ * the app's own lines ("The employee is <name>. Job title: …. It happened at <salon>.") with the manager's; with the
+ * name and salon taken out, a no-account Corrective Action card's What happened was "The employee is . Job title:
+ * Tanning Consultant. It happened". On: those lines are left out before the account is read (`ai/form-full-remap.ts`).
+ * Off, as before.
+ */
+export function remapAppLinesNotAccountEnabled(): boolean {
+  return envFlag("REMAP_APP_LINES_NOT_ACCOUNT_ENABLED");
+}
+
+/**
  * FORM_NAME_NOT_A_TITLE_ENABLED (QA's prod-env reading, 10 Nov 2026, D5; default off; same flag in both apps). "Create an
  * SDIT EPP for <name> at <salon>" put "Salon Director in Training" on the card as the employee's position: the form's own
  * name ("SDIT EPP", "TSD EPP") was read as a job title (`forms/proposal.ts` extractJobTitle). On: a title word straight

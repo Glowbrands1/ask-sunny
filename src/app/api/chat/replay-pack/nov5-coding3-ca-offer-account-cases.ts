@@ -194,8 +194,9 @@ export const NOV5_CODING3_CA_OFFER_ACCOUNT_CASES: ReplayCase[] = [
      * the remap's account reader, not the offer.
      */
     status: { open: "with the CA_SALES flip and the full remap, What happened is \"Create a Corrective Action Form for policy is Standards of Conduct\"" },
-    fixFlags: [FIX],
-    fixStatus: { open: "the full remap's own no-account card: What happened is \"The employee is . Job title: Tanning Consultant. It happened\" (as for a typed request)" },
+    // QA's S1 (11 Nov 2026): REMAP_APP_LINES_NOT_ACCOUNT_ENABLED leaves the app's own lines out of the full remap's account read, so the
+    // no-account card's What happened is no longer "The employee is . Job title: … It happened"; holds with both flags.
+    fixFlags: [FIX, "REMAP_APP_LINES_NOT_ACCOUNT_ENABLED"],
     async run(t) {
       await withOffer(t, true, async (thread) => {
         const offered = await thread.say(NO_ACCOUNT);

@@ -314,3 +314,33 @@ describe("form full remap", () => {
     expect(slots.observation).toBe("Left the register drawer open.");
   });
 });
+
+/*
+ * REMAP_APP_LINES_NOT_ACCOUNT_ENABLED (QA's S1, 11 Nov 2026; nov5-coding3-ca-offer-yes-no-account-remap; invented
+ * person): the app's own line "The employee is <name>. Job title: …. It happened at <salon>." is no account. Read with
+ * it, the no-account card's What happened was "The employee is . Job title: Tanning Consultant. It happened".
+ */
+describe("the app's own lines are no account on the full remap", () => {
+  const NERISSA = { ...JANE, id: "e-s1-nerissa", firstName: "Nerissa", lastName: "Quellmont" } as RosterEmployee;
+  const history = [
+    { role: "user", content: "Nerissa Quellmont standards of conduct policy\nThe employee is Nerissa Quellmont. Job title: Tanning Consultant. It happened at NE Kearney." },
+    { role: "assistant", content: "Would you like me to create a Corrective Action Form for Nerissa Quellmont?" },
+  ];
+  const read = () =>
+    groundFormSlots({ raw: raw({ observation: null, employeeName: "Nerissa Quellmont" }), history, question: "Nerissa Quellmont", today: TODAY, people: [NERISSA] }).slots.observation;
+
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("off: the app's line, its name and salon taken out, is What happened", () => {
+    vi.stubEnv("PRIOR_SENTENCE_FIX_ENABLED", "true");
+    vi.stubEnv("REMAP_INCIDENT_FIX_ENABLED", "");
+    expect(read() ?? "").toMatch(/^The employee is \. Job title/);
+  });
+
+  it("on: no account, so no What happened", () => {
+    vi.stubEnv("PRIOR_SENTENCE_FIX_ENABLED", "true");
+    vi.stubEnv("REMAP_INCIDENT_FIX_ENABLED", "");
+    vi.stubEnv("REMAP_APP_LINES_NOT_ACCOUNT_ENABLED", "true");
+    expect(read() ?? "").not.toMatch(/The employee is|Job title|It happened/);
+  });
+});
