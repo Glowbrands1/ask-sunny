@@ -56,3 +56,36 @@ I didn't run the full 1+1 on this head: the probe settles the verdict.
 - Add these probes as unit and replay negatives: a coworker who covered, a witness who called, and a nickname.
 
 The Bubbles twin likely needs the same change.
+
+## Round 3, head 9cb9000fb (contains main b5f9d6ce1; tsc clean) — NO-GO
+
+The new rule: an outline must (1) never mention the card's employee or the name typed in the request, (2) name someone
+as the subject of an act, and (3) use the form's own section labels.
+
+| Probe (card: Ilsa Varnholt) | isOutlineTurn |
+|---|---|
+| own account, Date/What happened (round 1) | false ✓ |
+| own account naming a witness ("Marco called me …") | false ✓ |
+| own account naming a coworker ("Jordan had to cover …") | false ✓ |
+| own account, nickname, account labels (card Elizabeth, "Liz was …") | false ✓ |
+| own account in **form labels**, written with **"she"** and naming a coworker: `Observation of Offense: she arrived 40 minutes late … on 11/3/26. Jordan had to open.\nAction Plan: review attendance with her` | **true ✗** |
+| own account in form labels with a nickname (card Elizabeth; "Liz arrived …", "coach Liz"; the request didn't type "Liz") | **true ✗** |
+| own account in form labels, no subject, naming a coworker ("Arrived 40 min late … Jordan covered the desk.") | false ✓ |
+| Corisande outline, capitalised / lowercase | true / true ✓ |
+| "same outline but with Ilsa's info" | true ✓ |
+
+End to end (production flags; uncommitted probe; invented names). The turns were "create a corrective action for Ilsa
+Varnholt", then "Observation of Offense: she arrived 40 minutes late to her opening shift on 11/3/26. Jordan had to open
+the salon.\nAction Plan: Leadership will review the attendance policy with her":
+
+| | OFF | ON |
+|---|---|---|
+| Card date | 2026-11-03 | **null** |
+| Policy | Attendance, as you said | **none** |
+| Drafting model's account | the request and her Observation / Action Plan | **the request only** |
+| Reply | — | "I've kept Ilsa Varnholt's own details; nothing from the person in the pasted example goes on this card." (untrue) |
+
+Class: REGRESSION. A manager can write her own account in the form's section labels, and "she" plus a coworker's name
+is enough to drop it. Suggested direction: the outline's *subject* must be a named person other than her. A pronoun
+subject ("she arrived", "he left") refers to the card's employee, so keep the turn. And a name the roster maps to the
+card's employee (a nickname or preferred first name) counts as hers.
