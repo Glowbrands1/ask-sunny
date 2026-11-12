@@ -90,7 +90,8 @@ export const NOV5_CODING3_CHAT_EDITS_CASES: ReplayCase[] = [
     title: "\"make that update\" after the copy-and-paste question reaches the open draft's readers as her own account, and her account is written",
     report:
       'Manager, production (relayed 5 Nov 2026, both apps): "i don\'t see the details updated in the draft card.  Do i need to copy and paste it?  or should it be automatically updating?" → "make that update" wrote nothing',
-    status: { open: "\"make that update\" reaches the patch model as those three words, with nothing to add: her account is never written" },
+    // Changed on purpose (12 Nov 2026): fixed in production by MAKE_THAT_UPDATE_ACCOUNT_ENABLED, QA round 37. Was OPEN.
+    status: "fixed",
     fixFlags: ["MAKE_THAT_UPDATE_ACCOUNT_ENABLED"],
     async run(t: T) {
       start(t);

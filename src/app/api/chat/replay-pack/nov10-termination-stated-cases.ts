@@ -41,7 +41,8 @@ export const NOV10_TERMINATION_STATED_CASES: ReplayCase[] = [
     id: "nov10-p15-term-ca-ticks-termination",
     title: "P15: \"I need a term CA for <name>. … Payroll deduction.\": Termination as said, the approval line once, the termination plan, payroll Yes with no question; Create ticks Termination",
     report: 'Pau via QA, 10 Nov 2026 (P15, conv 9 Nov ~16:35Z; ruling "A"): "I need a term CA for <name>. Didn\'t show up for her opening shift. Payroll deduction."',
-    status: { open: "the card leaves the level to the manager, asks the payroll question, plans on \"Future policy violations …\", and Create leaves Type of Warning blank with a plan warning of future violations" },
+    // Changed on purpose (12 Nov 2026): fixed in production by TERMINATION_STATED_TICKS_ENABLED, QA round 37. Was OPEN.
+    status: "fixed",
     fixFlags: ["TERMINATION_STATED_TICKS_ENABLED", "PAYROLL_BARE_SENTENCE_ENABLED"],
     async run(t) {
       vi.setSystemTime(new Date("2026-11-09T16:35:00Z"));
@@ -152,7 +153,8 @@ export const NOV12_TERMINATION_STATED_INCIDENT_CASES: ReplayCase[] = STATED_WITH
   id: `nov12-termination-ticks-${key}`,
   title: `"${said}": Termination as said, the approval line; Create ticks Termination`,
   report: "Gate-Sunny's probe of TERMINATION_STATED_TICKS (12 Nov 2026): cases that must keep ticking",
-  status: { open: "the card leaves the level to the manager and Create leaves Type of Warning blank" },
+  // Changed on purpose (12 Nov 2026): fixed in production by TERMINATION_STATED_TICKS_ENABLED, QA round 37. Was OPEN.
+  status: "fixed",
   fixFlags: ["TERMINATION_STATED_TICKS_ENABLED"],
   async run(t) {
     vi.setSystemTime(new Date("2026-11-09T16:35:00Z"));

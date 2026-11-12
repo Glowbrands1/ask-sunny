@@ -38,7 +38,8 @@ export const NOV10_NOT_FOLLOWING_DRESS_CODE_CASES: ReplayCase[] = [
     id: "nov10-not-following-dress-code-reference",
     title: "after a made-about wrote the Attendance reference, \"make it about not following the dress code\": the stale Attendance line is gone and the Dress Code reference is written",
     report: "QA's live report (10 Nov 2026): \"make it about not following the dress code\" wrote no Dress Code reference",
-    status: { open: "\"not following the dress code\" is read as no policy named, so no Dress Code reference is written" },
+    // Changed on purpose (12 Nov 2026): fixed in production by NOT_FOLLOWING_IS_VIOLATION_ENABLED, QA round 37. Was OPEN.
+    status: "fixed",
     fixFlags: ["NOT_FOLLOWING_IS_VIOLATION_ENABLED"],
     async run(t) {
       vi.setSystemTime(new Date("2026-11-10T14:00:00Z"));

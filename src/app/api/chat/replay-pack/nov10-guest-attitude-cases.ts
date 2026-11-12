@@ -38,7 +38,8 @@ export const NOV10_GUEST_ATTITUDE_CASES: ReplayCase[] = [
     id: "nov10-sf-b5-guest-attitude-cites-conduct",
     title: "sf-b5's account (\"The customer said she was giving her an attitude …\"): the CA card cites the Standards of Conduct",
     report: 'Pau via QA, 5 Nov 2026 (overnight scan sf-b5): "create a ca form for <name>" → "verbal warning The date she complained was Oct 31st . The customer said she was giving her an attitude …"',
-    status: { open: "the card cites no policy (\"the applicable company policy\")" },
+    // Changed on purpose (12 Nov 2026): fixed in production by GUEST_ATTITUDE_CONDUCT_ENABLED, QA round 37. Was OPEN.
+    status: "fixed",
     fixFlags: ["GUEST_ATTITUDE_CONDUCT_ENABLED"],
     async run(t) {
       vi.setSystemTime(new Date("2026-11-04T15:30:00Z"));

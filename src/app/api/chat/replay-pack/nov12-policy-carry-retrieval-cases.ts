@@ -24,7 +24,8 @@ export const NOV12_POLICY_CARRY_RETRIEVAL_CASES: ReplayCase[] = [
     id: "nov12-248-just-make-it-searches-the-named-policy",
     title: "QA item 10: after \"cite animals in the workplace policy\", T4 \"just make it\" is searched with that policy, never on its own words",
     report: "QA item 10 (Ask Bubbles production, 25 Oct 2026; conv_mvofuq3l2jae1be): T4 \"just make it\" denied the Animals in the Workplace policy cited at T2",
-    status: { open: "T4 is searched on its own words; no search names the policy" },
+    // Changed on purpose (12 Nov 2026): fixed in production by POLICY_CARRY_RETRIEVAL_ENABLED, QA round 37. Was OPEN.
+    status: "fixed",
     fixFlags: ["POLICY_CARRY_RETRIEVAL_ENABLED"],
     // Until Coding-2 applies the search hunk in `ai/server-ask.ts` (the flag's reader is on main from this branch).
     async run(t) {
