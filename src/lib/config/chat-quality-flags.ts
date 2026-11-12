@@ -4653,3 +4653,13 @@ export function formsOnFileOrderMatchPossibleEnabled(): boolean {
 export function policyCarryRetrievalEnabled(): boolean {
   return envFlag("POLICY_CARRY_RETRIEVAL_ENABLED");
 }
+
+/**
+ * NOT_FOLLOWING_IS_VIOLATION_ENABLED (QA's live report in the sibling app, 10 Nov 2026; default off; same flag in both apps). "make it about not
+ * following the dress code" was read as no policy named, so no Dress Code reference was written. With the flag on, "not
+ * following / not wearing / not meeting / failed to follow <policy topic>" names that policy as broken (`forms/ca-policy.ts`,
+ * NOT_FOLLOWING_BEFORE). Off, as before.
+ */
+export function notFollowingIsViolationEnabled(): boolean {
+  return envFlag("NOT_FOLLOWING_IS_VIOLATION_ENABLED");
+}
