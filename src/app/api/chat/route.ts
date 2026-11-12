@@ -10,6 +10,7 @@ import { modelSpendGuard } from "@/lib/ai/spend-guard";
 import { isQuestionNotForm } from "@/lib/ai/question-not-form";
 import { wantsSeparateDocument } from "@/lib/ai/second-form";
 import {
+  bareFormNameAsksWhatEnabled,
   chatLongMessageEnabled,
   draftActionsEnabled,
   formEditHonestReplyEnabled,
@@ -994,6 +995,8 @@ async function postChat(request: Request) {
       if (copyOwnSalonEnabled()) answer = await (await import("@/lib/forms/same-form-copy")).withCopyOwnSalon(answer, request, asked.question);
       // SAME_REQUEST_OTHER_PERSON_ENABLED: <B>'s card says what of the earlier request it carries.
       if (sameRequestOther) answer = (await import("@/lib/forms/same-request-other-person")).withSameRequestNote(answer, sameRequestOther);
+      // BARE_FORM_NAME_ASKS_WHAT_ENABLED: a turn that is only a form's name asks what the manager needs (`lib/forms/bare-form-name.ts`).
+      if (bareFormNameAsksWhatEnabled()) answer = (await import("@/lib/forms/bare-form-name")).withBareFormNameQuestion(answer, asked.question);
     } catch (error) {
       /*
        * A FAILED ANSWER IS STILL A RECORDED TURN, closed as a failure. The row

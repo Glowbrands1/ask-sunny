@@ -4556,3 +4556,13 @@ export function draftWroteNothingNoticeEnabled(): boolean {
 export function reopenIsOpeningEnabled(): boolean {
   return envFlag("REOPEN_IS_OPENING_ENABLED");
 }
+
+/**
+ * BARE_FORM_NAME_ASKS_WHAT_ENABLED (ported from Ask Bubbles, QA's 17n live test, 12 Nov 2026, 4c; default off; same flag
+ * in both apps). A pasted bare "Corrective Action Form" got "Who is this form for? Tell me the employee's full name." and
+ * an empty card. On: a turn that is only a form's name, with a card naming nobody, asks what the manager needs on that
+ * form, with no card (`forms/bare-form-name.ts`). Off, as before.
+ */
+export function bareFormNameAsksWhatEnabled(): boolean {
+  return envFlag("BARE_FORM_NAME_ASKS_WHAT_ENABLED");
+}

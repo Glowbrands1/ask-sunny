@@ -405,6 +405,7 @@ const NEW_FLAGS = [
   // coding 6: APP_INSTRUCTIONS_NOT_ACCOUNT (default off): forced off with the others.
   "APP_INSTRUCTIONS_NOT_ACCOUNT_ENABLED",
   "REOPEN_IS_OPENING_ENABLED",
+  "BARE_FORM_NAME_ASKS_WHAT_ENABLED",
   // coding 6: FAILURE_TO_OPEN_IS_LATE_OPENING (default off): forced off with the others.
   "FAILURE_TO_OPEN_IS_LATE_OPENING_ENABLED",
   // coding 6: PAYROLL_BARE_SENTENCE (default off): forced off with the others.

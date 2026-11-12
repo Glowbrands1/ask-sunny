@@ -32,4 +32,16 @@ export const NOV12_17N_LIVE_CASES: ReplayCase[] = [
       expect(reply.content, reply.content).not.toMatch(/\*\*Policy:\*\* Attendance\b/);
     },
   },
+  {
+    id: "nov12-17n-4c-bare-form-name-asks-what",
+    title: "4c: a pasted bare \"Corrective Action Form\" asks what the manager needs, with no empty card",
+    report: REPORT,
+    status: { open: "\"Who is this form for? Tell me the employee's full name.\" over an empty card" },
+    fixFlags: ["BARE_FORM_NAME_ASKS_WHAT_ENABLED"],
+    async run(t) {
+      const reply = await start(t).say("Corrective Action Form");
+      expect(reply.content, reply.content).toMatch(/What do you need on the \*\*Corrective Action Form\*\*/);
+      expect(reply.formProposal, "an empty card is shown").toBeUndefined();
+    },
+  },
 ];
