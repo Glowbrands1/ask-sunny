@@ -80,6 +80,38 @@ async function onDraft(t: T, thread: ReplayThread, id: string, text: string): Pr
 
 export const NOV5_CODING3_CHAT_EDITS_CASES: ReplayCase[] = [
   {
+    /*
+     * MAKE_THAT_UPDATE_ACCOUNT_ENABLED (QA's audit, 10 Nov 2026): the "make that update" half of the case below, on
+     * production's path. With FORM_PATCH_REDUCER on, the turn is read by Step B's patch model, the pack's stand-in,
+     * scripted by the latest message as it is HANDED: "make that update" alone reads as nothing to add (the live
+     * outcome); handed her account with it, the read writes it. The invariant is what the patch model is handed.
+     */
+    id: "nov10-make-that-update-writes-her-account",
+    title: "\"make that update\" after the copy-and-paste question reaches the open draft's readers as her own account, and her account is written",
+    report:
+      'Manager, production (relayed 5 Nov 2026, both apps): "i don\'t see the details updated in the draft card.  Do i need to copy and paste it?  or should it be automatically updating?" → "make that update" wrote nothing',
+    // Changed on purpose (12 Nov 2026): fixed in production by MAKE_THAT_UPDATE_ACCOUNT_ENABLED, QA round 37. Was OPEN.
+    status: "fixed",
+    fixFlags: ["MAKE_THAT_UPDATE_ACCOUNT_ENABLED"],
+    async run(t: T) {
+      start(t);
+      const thread = t.thread();
+      for (const turn of ["Create a coaching form.", "Rowan", "yes"]) await thread.say(turn);
+      expect(thread.proposal, "no Coaching Form card for Rowan Kestrel").toMatchObject({ templateKey: "coaching", employeeName: "Rowan Kestrel" });
+      const id = await thread.create();
+      t.patchReads?.({
+        [`make that update: ${ROWAN_DID}`]: { turn: "this_form", set: [{ field: "coaching_details", value: ROWAN_DID, how: "add", evidence: ROWAN_DID }], clear: [] },
+      });
+      await onDraft(t, thread, id, ROWAN_DID);
+      t.modelSays("It should update automatically — no copy-and-paste needed. The details are on the draft card.");
+      await onDraft(t, thread, id, "i don't see the details updated in the draft card.  Do i need to copy and paste it?  or should it be automatically updating?");
+      t.modelSays(null);
+      expect(t.values(id).coaching_details ?? "", "her account was already written; this case needs it unwritten").not.toMatch(SAID);
+      await onDraft(t, thread, id, "make that update");
+      expect(t.values(id).coaching_details ?? "", 'after "make that update" the draft does not say what Rowan did').toMatch(SAID);
+    },
+  },
+  {
     id: "nov5-coding3-these-details-answered-before-the-card",
     title:
       "(a) the coaching details the bot gave BEFORE the card: \"can you upate the draft with these details of coaching?\" → \"it didnt edit in the card\" → \"the details we just discussed!!!\" put them on Rowan's draft",

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { TERMINATION_OPTION, withTerminationPlan } from "@/lib/forms/termination-stated";
 import { salesResultsOffenseLine, withCaChosenRule } from "@/lib/ai/ca-sales-prompt-lines";
 import { noteSpendUser } from "@/lib/ai/spend-meter";
 import { withSpendMeter } from "@/lib/ai/spend-meter-run";
@@ -1820,6 +1821,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       ? ((loaded.values ?? []).find((row) => row.fieldKey === PAYROLL_DEDUCT_KEY)?.checked.find(isPayrollDeductAnswer) ??
         null)
       : null;
+    // TERMINATION_STATED_TICKS_ENABLED: Termination, ticked at Create from the manager's statement, closes the plan.
+    const terminationPlan = Boolean(fixedPlan) && ((loaded.values ?? []).find((row) => row.fieldKey === "warning_type")?.checked ?? []).includes(TERMINATION_OPTION);
     const draftedValues = (() => {
       const base = { ...(exit?.values ?? attributions.values) };
       if (priorActions) {
@@ -2344,6 +2347,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
             }),
           },
           closing: fixedPlan.closing,
+          termination: terminationPlan,
         }
       : null;
     /*
@@ -2383,7 +2387,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
             values: {
               ...named.values,
               // PLAN_PAYROLL_SENTENCE_ENABLED: the deduction the manager stated is said in the plan.
-              [fixedPlan.key]: withPayrollSentence(
+              // TERMINATION_STATED_TICKS_ENABLED: on a termination, the plan ends with the termination sentence.
+              [fixedPlan.key]: withTerminationPlan(withPayrollSentence(
                 // MEETING_NOT_LATENESS_PLAN_ENABLED: a missed meeting keeps the general plan.
                 attendanceActionPlanEnabled() && isAttendancePlan(planInput) && !missedMeetingNotLateness(notes)
                   ? attendanceActionPlan(planInput)
@@ -2391,7 +2396,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
                     ? twoSentenceActionPlan(planInput)
                     : correctiveActionPlan(planInput),
                 { answer: planInput.payroll.answer, amount: payrollDeductAmount(notes), employeeName: loaded.instance.employeeName },
-              ),
+              ), terminationPlan),
             },
             provenance: { ...provenance, [fixedPlan.key]: actionPlanProvenance(planInput) },
           }
