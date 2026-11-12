@@ -4566,3 +4566,14 @@ export function reopenIsOpeningEnabled(): boolean {
 export function bareFormNameAsksWhatEnabled(): boolean {
   return envFlag("BARE_FORM_NAME_ASKS_WHAT_ENABLED");
 }
+
+/**
+ * PASTED_REVIEW_ASKS_WHAT_YOU_SAW_ENABLED (ported from Ask Bubbles, QA's 17n live test, 12 Nov 2026, item 2; default off;
+ * same flag in both apps). A pasted customer review was not taken as the account, but the reply said "Everything I need
+ * is here" and never mentioned it. On: the reply says the review is the customer's words and asks "What did you see
+ * happen?" (`forms/pasted-customer-review.ts`). Off, as before.
+ */
+export function pastedReviewAsksWhatYouSawEnabled(): boolean {
+  return envFlag("PASTED_REVIEW_ASKS_WHAT_YOU_SAW_ENABLED");
+}
+

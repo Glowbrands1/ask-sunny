@@ -1,6 +1,6 @@
 import { expect, vi } from "vitest";
 
-import { KEARNEY, STAFF, noClaimWithoutUpdate, type ReplayCase, type ReplayContext, type ReplayThread } from "./cases";
+import { KEARNEY, STAFF, noClaimWithoutUpdate, type DirectoryRow, type ReplayCase, type ReplayContext, type ReplayThread } from "./cases";
 import { patch } from "./nov7-step-b-refusals-scenarios";
 
 /**
@@ -19,6 +19,19 @@ function start(t: ReplayContext): ReplayThread {
   t.as("salon_director", KEARNEY);
   return t.thread();
 }
+
+// Item 2, QA's own test wording (the name invented).
+const WYNNE: DirectoryRow = {
+  id: "e-wynne-larkspur-17n",
+  firstName: "Wynne",
+  lastName: "Larkspur",
+  preferredFirstName: null,
+  employmentStatus: "active",
+  salonIds: ["loc-0309"],
+  positionName: "Tanning Consultant",
+};
+const REVIEW_TURN =
+  "create a coaching form for Wynne Larkspur. Here is a customer review: 'Went in on Saturday and the girl at the counter ignored me for 10 minutes and was rude when I finally asked for help. One star.'";
 
 export const NOV12_17N_LIVE_CASES: ReplayCase[] = [
   {
@@ -71,6 +84,21 @@ export const NOV12_17N_LIVE_CASES: ReplayCase[] = [
       noClaimWithoutUpdate(reply);
       expect(reply.content, reply.content).not.toMatch(/haven'?t changed/i);
       expect(t.values(id).coaching_details, "the Details are now about cash handling").toMatch(/cash handling/i);
+    },
+  },
+  {
+    id: "nov12-17n-2-pasted-customer-review-asks-what-you-saw",
+    title: "item 2: a pasted customer review is not the account, and the reply says so and asks what the manager saw",
+    report: REPORT,
+    status: { open: "the review is dropped silently: nothing asks what the manager saw" },
+    fixFlags: ["PASTED_REVIEW_ASKS_WHAT_YOU_SAW_ENABLED"],
+    async run(t) {
+      const thread = start(t);
+      t.directory([...STAFF, WYNNE]);
+      const reply = await thread.say(REVIEW_TURN);
+      expect(reply.content, reply.content).toMatch(/review/i);
+      expect(reply.content, reply.content).toMatch(/What did you see happen\?/);
+      expect(reply.content, reply.content).not.toMatch(/Everything I need is here/i);
     },
   },
 ];
