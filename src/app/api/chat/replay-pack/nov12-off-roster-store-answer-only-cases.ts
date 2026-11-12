@@ -35,7 +35,8 @@ export const NOV12_OFF_ROSTER_STORE_ANSWER_ONLY_CASES: ReplayCase[] = (
   id: `nov12-off-roster-store-answer-only-${key}`,
   title: `"create a ca for kira dunmore, she was late today" → "${salon}" → "use Kira Dunmore": the salon answer sets only the salon`,
   report: REPORT,
-  status: { open: `"${salon}" makes the card for Kira Dunmore at once, skipping "use Kira Dunmore"` },
+  // Changed on purpose (13 Nov 2026): fixed in production by OFF_ROSTER_STORE_ANSWER_ONLY_ENABLED, QA round 37b. Was OPEN.
+  status: "fixed",
   fixFlags: [FLAG],
   async run(t: ReplayContext) {
     const thread = start(t);
