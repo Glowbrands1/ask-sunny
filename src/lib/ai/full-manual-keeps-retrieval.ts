@@ -13,6 +13,7 @@ import { matchRecallKnowledge } from "@/lib/knowledge/recall-match";
 
 import { expandGlossaryQuery } from "./glossary";
 import { held } from "./held-promise";
+import { carriedPolicyTopic } from "./policy-carry-retrieval";
 import { retrievalQueryFor } from "./retrieval-query";
 import { EXCLUDED_BRAND, FULL_MANUAL_GROUNDING_NOTE, isPolicyManualTitle } from "./full-manual-context";
 import type { GroundingChunk } from "./prompts";
@@ -84,7 +85,10 @@ export function startBesideSearch(input: {
   readonly match: (query: { query: string; scopeId: string; limit: number }) => Promise<MatchedChunkRow[]>;
 }): Promise<MatchedChunkRow[]> | null {
   if (!fullManualKeepsRetrievalEnabled() || !fullManualContextEnabled() || input.formInProgress) return null;
-  const ownWords = retrievalQueryFor({ question: input.question, history: input.history, openForm: input.openForm });
+  // POLICY_CARRY_RETRIEVAL_ENABLED: "just make it" is searched with the policy named earlier, here as in the answer's search.
+  const ownWords =
+    carriedPolicyTopic(input.question, input.history) ??
+    retrievalQueryFor({ question: input.question, history: input.history, openForm: input.openForm });
   const query = expandPolicyQuery(queryRewriteEnabled() ? expandGlossaryQuery(ownWords) : ownWords);
   const limit = RETRIEVAL.topK;
   const search = (): Promise<MatchedChunkRow[]> =>

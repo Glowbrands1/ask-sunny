@@ -1,3 +1,5 @@
+import { terminationClosingEnabled } from "@/lib/config/chat-quality-flags";
+
 import { fieldsForVariant, type FormDocument, type FormField } from "./document";
 
 /**
@@ -35,6 +37,13 @@ import { fieldsForVariant, type FormDocument, type FormField } from "./document"
  *
  * Pure and browser-safe.
  */
+
+/**
+ * The Action Plan's closing on a termination the manager stated (TERMINATION_STATED_TICKS_ENABLED; Pau's ruling and
+ * written approval, 10 Nov 2026). Matched however its end was spaced or punctuated.
+ */
+export const TERMINATION_PLAN_CLOSING = "Effective immediately, employment is terminated following the progressive corrective action plan.";
+const TERMINATION_CLOSING = /Effective immediately, employment is terminated following the progressive corrective action plan\s*[.!]*\s*$/i;
 
 /** The Corrective Action Form's Action Plan closing, in the business's words (revision 6). */
 export const CA_ACTION_PLAN_CLOSING =
@@ -80,6 +89,13 @@ function closingPattern(closing: string): RegExp {
 export function withRequiredClosing(value: string, closing: string): string {
   const wanted = closing.trim();
   if (wanted === "" || typeof value !== "string" || value.trim() === "") return value;
+  /*
+   * TERMINATION_STATED_TICKS_ENABLED. Edited with Pau's written approval, 10 Nov 2026 (relayed verbatim by QA):
+   * "ok termination closing". A plan that ends with the termination sentence ("Effective immediately, employment is
+   * terminated following the progressive corrective action plan.") is already closed: a termination is not warned of
+   * future violations. Off, this line changes nothing.
+   */
+  if (terminationClosingEnabled() && TERMINATION_CLOSING.test(value.trim())) return value;
 
   const body = [wanted, ...(SUPERSEDED_CLOSINGS.get(wanted) ?? [])]
     .reduce((text, sentence) => text.replace(closingPattern(sentence), " "), value)

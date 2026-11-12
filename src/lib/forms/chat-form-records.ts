@@ -1,6 +1,6 @@
 import "server-only";
 
-import { formRecordsNoJudgementEnabled } from "@/lib/config/chat-quality-flags";
+import { formRecordsNoJudgementEnabled, formsOnFileOrderMatchPossibleEnabled } from "@/lib/config/chat-quality-flags";
 import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import { businessToday } from "@/lib/business-date";
 import type { AccessScope, Role } from "@/types";
@@ -127,10 +127,28 @@ export interface NameMatches {
   possible: InstanceRow[];
 }
 
+/** The name's words come in the order the question has them ("wren tallis" in "… wren tallis"). */
+function inAskedOrder(parts: readonly string[], words: readonly string[], question?: string): boolean {
+  const at = parts.map((part) => words.indexOf(part));
+  if (at.every((index, position) => position === 0 || index > at[position - 1]!)) return true;
+  // R795F (QA, 12 Nov 2026): "CA for Calder, Remy" is the name written "Last, First" — the asked order, not a reversal.
+  return question !== undefined && writtenLastCommaFirst(parts, question);
+}
+
+/** The question writes this name as "Last, First" (the surname, a comma, then the given name or names). */
+function writtenLastCommaFirst(parts: readonly string[], question: string): boolean {
+  if (parts.length < 2) return false;
+  const escape = (word: string) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const last = escape(parts[parts.length - 1]!);
+  const given = parts.slice(0, -1).map(escape).join(String.raw`\s+`);
+  return new RegExp(String.raw`(?<![a-z])${last}\s*,\s*${given}(?![a-z])`, "i").test(question);
+}
+
 /** Splits rows by how fully the question names their employee. Pure. */
 export function matchRowsToQuestion(
   rows: readonly InstanceRow[],
   words: readonly string[],
+  question?: string,
 ): NameMatches {
   const asked = new Set(words);
   const named: InstanceRow[] = [];
@@ -139,7 +157,8 @@ export function matchRowsToQuestion(
     const parts = nameWords(row.employeeName);
     if (parts.length === 0) continue;
     const hits = parts.filter((part) => asked.has(part)).length;
-    if (hits === parts.length) named.push(row);
+    // FORMS_ON_FILE_ORDER_MATCH_POSSIBLE_ENABLED: "Tallis Wren" for "Wren Tallis" is possibly them, never named.
+    if (hits === parts.length && !(formsOnFileOrderMatchPossibleEnabled() && !inAskedOrder(parts, words, question))) named.push(row);
     else if (hits > 0) possible.push(row);
   }
   return { named, possible };
@@ -376,7 +395,7 @@ export async function loadFormRecords(input: {
         formsActor,
         await listInstances("all", privateAwareLimit(MATCH_LIMIT), { ...filter, employeeNameWords: words }),
       ).slice(0, MATCH_LIMIT);
-      const matches = matchRowsToQuestion(rows, words);
+      const matches = matchRowsToQuestion(rows, words, nameSource);
       if (matches.named.length > 0 || matches.possible.length > 0) {
         return { block: renderFormRecordsBlock({ visibility, words, matches, recent: [], today, viewerId }) };
       }

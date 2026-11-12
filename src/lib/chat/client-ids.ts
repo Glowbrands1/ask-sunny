@@ -161,4 +161,9 @@ export type IneligibleReason =
    */
   | "deleted"
   /** Another account wrote it, on a browser they shared (CHAT_IMPORT_OWN_ONLY_ENABLED). */
-  | "another_account";
+  | "another_account"
+  /**
+   * No answered turn of it is on record as this account's, so it could not be proven this account's
+   * (CHAT_IMPORT_PROVEN_OWN_ENABLED). Not "another account": nothing shows anyone else wrote it.
+   */
+  | "not_proven";
