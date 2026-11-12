@@ -2704,6 +2704,16 @@ export function policyTopicIntoFieldEnabled(): boolean {
 }
 
 /**
+ * EXIT_TYPO_WORDS_ENABLED (Pau's P17, Sunny production, 10 Nov 2026; coding 5; same flag in both apps; default off).
+ * "salon items will be returneded … they are eligiable for rehire" left Store Items Returned and Eligible for Rehire
+ * blank. On: the exit answer readers read a word one or two letters off "returned", "eligible", "rehire" and the like as
+ * that word (`forms/exit-details.ts`). Off, as before.
+ */
+export function exitTypoWordsEnabled(): boolean {
+  return envFlag("EXIT_TYPO_WORDS_ENABLED");
+}
+
+/**
  * ADD_THAT_IS_ACCOUNT_ENABLED (ported from the sibling app: QA's live test there on a saved Corrective Action draft,
  * 10 Nov 2026; coding 5; same flag in both apps; default off). "add that she was reminded of the policy" was read as a
  * policy to add ("I couldn't find a section called …") and nothing reached the Observation. On: an add that introduces a
@@ -4449,4 +4459,19 @@ export function addNotRepeatedSentencesEnabled(): boolean {
  */
 export function payrollBareSentenceEnabled(): boolean {
   return envFlag("PAYROLL_BARE_SENTENCE_ENABLED");
+}
+
+/**
+ * ADVICE_ASK_NOT_ACCOUNT_ENABLED (coding 6, 10 Nov 2026; default off; Pau's
+ * P14(b), Sunny production 9 Nov). The manager described an employee's
+ * pushback, asked "how i do about her frusteration", then "tell me how what to
+ * say back. send a messageto me"; the Coaching card's Observation pasted all of
+ * it, the questions to the app included. On: a sentence that only asks the
+ * app for advice or a message ("how do I …", "what should I say", "tell me
+ * how / what …", "send me a message", "help me word …") is left out of the
+ * card's Observation and the draft's account, with or without a "?". See
+ * `ai/app-instructions.ts`. Off, as before.
+ */
+export function adviceAskNotAccountEnabled(): boolean {
+  return envFlag("ADVICE_ASK_NOT_ACCOUNT_ENABLED");
 }
