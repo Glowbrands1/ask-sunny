@@ -163,6 +163,7 @@ import {
   widerDateReaderEnabled,
   aiReadsCodeChecksEnabled,
   envFlag,
+  draftNoInventedPlanEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -369,6 +370,8 @@ const NEW_FLAGS = [
   "FORM_EDIT_REFERS_BACK_ENABLED",
   "SAME_FORM_COPY_ENABLED",
   "SAME_FORM_COPY_NEW_PERSON_ENABLED",
+  // coding 6: GUEST_ATTITUDE_CONDUCT (default off): forced off with the others.
+  "GUEST_ATTITUDE_CONDUCT_ENABLED",
   // coding 6: DRAFT_WRITE_NEVER_SILENT (default off): forced off with the others.
   "DRAFT_WRITE_NEVER_SILENT_ENABLED",
   // coding 6: CA_PROCEDURE_BASIS (default off; rebuilt from old S544): forced off with the others.
@@ -396,6 +399,8 @@ const NEW_FLAGS = [
   "PAYROLL_SPLIT_WORDS_ENABLED",
   // coding 6: SAME_REQUEST_OTHER_PERSON (default off): forced off with the others.
   "SAME_REQUEST_OTHER_PERSON_ENABLED",
+  // coding 6: MAKE_THAT_UPDATE_ACCOUNT (default off; QA's 10 Nov audit, copy-paste case): forced off with the others.
+  "MAKE_THAT_UPDATE_ACCOUNT_ENABLED",
   // coding 6: SAME_REQUEST_OFF_ROSTER (default off; QA's r23 live test, #779 off roster): forced off with the others.
   "SAME_REQUEST_OFF_ROSTER_ENABLED",
   // coding 6: PASTED_OUTLINE_TO_OPEN_DRAFT (default off; QA's r23 live test of sf-s21): forced off with the others.
@@ -406,6 +411,8 @@ const NEW_FLAGS = [
   "APP_INSTRUCTIONS_NOT_ACCOUNT_ENABLED",
   // coding 6: FAILURE_TO_OPEN_IS_LATE_OPENING (default off): forced off with the others.
   "FAILURE_TO_OPEN_IS_LATE_OPENING_ENABLED",
+  // coding 6: TERMINATION_STATED_TICKS (default off): forced off with the others.
+  "TERMINATION_STATED_TICKS_ENABLED",
   // coding 6: PAYROLL_BARE_SENTENCE (default off): forced off with the others.
   "PAYROLL_BARE_SENTENCE_ENABLED",
   // coding 6: ADVICE_ASK_NOT_ACCOUNT (default off): forced off with the others.
@@ -525,6 +532,8 @@ const NEW_FLAGS = [
   // The second Sunny gate's fix flags (6 Nov 2026): forced off with the others in the child run.
   "TITLE_ENDS_AT_LINE_ENABLED",
   "FULL_POSITION_TITLE_ENABLED",
+  // QA, 10 Nov 2026 (default off): "not following the dress code" names the policy as broken.
+  "NOT_FOLLOWING_IS_VIOLATION_ENABLED",
   "BARE_NOT_DENIAL_ENABLED",
   "PLACE_FROM_CUE_ENABLED",
   // Port of the sibling app's flip-3 fix (6 Nov 2026): forced off with the others in the child run.
@@ -624,9 +633,16 @@ const NEW_FLAGS = [
   "EXCERPT_EMPTY_CARD_DROP_ENABLED",
   // coding 6: REQUEST_ISSUE_KEPT (ported from Ask Bubbles, QA round 17b; default off).
   "REQUEST_ISSUE_KEPT_ENABLED",
+  // coding 4: STEP_B_SECTION_SPACING (ported from Ask Bubbles; split out of #662, 12 Nov 2026; default off).
+  "STEP_B_SECTION_SPACING_ENABLED",
+  "DRAFT_NO_INVENTED_PLAN_ENABLED",
   "GROUP_WORDS_NOT_A_NAME_ENABLED",
   // coding 6: CARD_PLAN_MATCHES_CREATE (ported from Ask Bubbles, QA's 17l, 12 Nov 2026; default off).
   "CARD_PLAN_MATCHES_CREATE_ENABLED",
+  // coding 4: FORMS_ON_FILE_ORDER_MATCH_POSSIBLE (ported from Ask Bubbles, 11 Nov 2026; default off).
+  "FORMS_ON_FILE_ORDER_MATCH_POSSIBLE_ENABLED",
+  // coding 6: POLICY_CARRY_RETRIEVAL (#248 rebuilt on main; QA item 10; default off).
+  "POLICY_CARRY_RETRIEVAL_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -757,8 +773,19 @@ const PROTECTED = [
  * extractJobTitle a title word straight before "EPP" is skipped as the form's
  * name unless the title is said again later. Behind
  * FORM_NAME_NOT_A_TITLE_ENABLED, default off; off, every title is read as before.
+ * The user (Pau) approved in writing on 10 Nov 2026, via QA ("ok termination
+ * closing"), behind TERMINATION_STATED_TICKS_ENABLED (default off), both apps:
+ * in src/lib/forms/required-closing.ts, `withRequiredClosing` returns a value
+ * that already ends with the termination sentence unchanged (with its
+ * `TERMINATION_PLAN_CLOSING` constant and the flag import); in
+ * src/lib/forms/ca-action-plan.ts, `ActionPlanInput.termination`, and a
+ * Termination plan's closing is the termination sentence (`planClosing`, also
+ * in `refreshedActionPlan`). Off, both are exactly as before; instances.ts is
+ * not touched.
  */
 const APPROVED_PROTECTED_EDITS = [
+  ":(exclude)src/lib/forms/required-closing.ts",
+  ":(exclude)src/lib/forms/ca-action-plan.ts",
   ":(exclude)src/lib/forms/proposal.ts",
   ":(exclude)src/lib/forms/chat-revision.ts",
   ":(exclude)src/lib/forms/instances.ts",
@@ -1013,6 +1040,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(cardChangeFinalizedEnabled()).toBe(false);
     expect(formPatchReducerEnabled()).toBe(false);
     expect(formReplyFromDiffEnabled()).toBe(false);
+    expect(draftNoInventedPlanEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(

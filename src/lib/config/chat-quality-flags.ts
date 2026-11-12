@@ -2772,6 +2772,17 @@ export function wovenFailedRetryEnabled(): boolean {
   return envFlag("WOVEN_FAILED_RETRY_ENABLED");
 }
 
+/**
+ * DRAFT_NO_INVENTED_PLAN_ENABLED (QA's October triage of #256, 10 Nov 2026, rebuilt on main; coding 5; default off).
+ * The Corrective Action Form's Observation (and the Coaching Form) carries no AI-written "Going Forward" section (QA,
+ * 25 Oct 2026, D-draft): a plan or commitment the manager never typed is not part of the HR record. What the employee
+ * does next is the Action Plan, which is the manager's own. Only a Going Forward inside an observation narrative is
+ * dropped; a negated "going forward" is no plan (`forms/narrative-draft.ts`, the draft route). Off, as before.
+ */
+export function draftNoInventedPlanEnabled(): boolean {
+  return envFlag("DRAFT_NO_INVENTED_PLAN_ENABLED");
+}
+
 // --- end coding 5 flags ---
 
 /**
@@ -4291,6 +4302,20 @@ export function appInstructionsNotAccountEnabled(): boolean {
 }
 
 /**
+ * GUEST_ATTITUDE_CONDUCT_ENABLED (coding 6, 10 Nov 2026; default off; Pau's
+ * sf-b5, the overnight scan of 4 Nov 2026). "The customer said she was giving
+ * her an attitude when she brought up that the register was charging …" cited
+ * no policy: the rude-to-a-guest reading (Standards of Conduct, page 12, as
+ * Pau confirmed) needs "rude / attitude … to / at / with … a guest", and here
+ * the customer comes first. On: a sentence in which a guest, customer or
+ * client says the employee was giving / gave / had an attitude is that same
+ * reading (`forms/specific-policy-topics.ts`). Off, as before.
+ */
+export function guestAttitudeConductEnabled(): boolean {
+  return envFlag("GUEST_ATTITUDE_CONDUCT_ENABLED");
+}
+
+/**
  * DRAFT_WRITE_NEVER_SILENT_ENABLED (coding 6, 10 Nov 2026; default off; QA's
  * live finding, Sunny round 17). One Create in five saved only the Name and
  * Date: the drafting model ran (chat_traces: forms_draft succeeded), the
@@ -4428,6 +4453,18 @@ export function templateOutlineFieldsEnabled(): boolean {
 }
 
 /**
+ * MAKE_THAT_UPDATE_ACCOUNT_ENABLED (coding 6, 10 Nov 2026; default off; a manager's production wording relayed 5 Nov
+ * 2026, no fix flag until QA's audit of 10 Nov): on the open coaching draft, after her account, "i don't see the
+ * details updated in the draft card. Do i need to copy and paste it? or should it be automatically updating?" and
+ * then "make that update" wrote nothing: the reply before it printed nothing to add. On, that "make that update" is
+ * read by every reader of the open draft (Step B's patch reading included) as "make that update: <her latest account
+ * of the employee>" (`forms/form-content-turn.ts`). Off, as before.
+ */
+export function makeThatUpdateAccountEnabled(): boolean {
+  return envFlag("MAKE_THAT_UPDATE_ACCOUNT_ENABLED");
+}
+
+/**
  * SAME_REQUEST_OFF_ROSTER_ENABLED (coding 6, 10 Nov 2026; default off; QA's Sunny round-23 live test,
  * conv_mwb1xng82tz2tyr): "Can you do the same thing for <B> but make it a written" after "create a corrective action
  * for <A>, she was late on 11/3/26", with <A> and <B> not on the directory, gave <B> a card with no Observation and
@@ -4498,6 +4535,34 @@ export function addNotRepeatedSentencesEnabled(): boolean {
 }
 
 /**
+ * TERMINATION_STATED_TICKS_ENABLED (coding 6, 10 Nov 2026; default off;
+ * Pau's P15 ruling "A", via QA). "I need a term CA for <name>. …" — the card
+ * said "You'll set the verbal/written warning level …" and the form's Type of
+ * Warning was blank: chat never ticks Termination (`escalation-guard.ts`). On:
+ * a termination the manager STATES for this form ("term CA", "termination",
+ * "terminate her") is ticked at Create as their statement, the card says so
+ * ("**Type of Warning:** Termination, as you said …") with one line, "Termination
+ * needs your DM/HR approval before you finalize.", and the card's Action Plan
+ * line ends with the termination sentence. A hedge ("she might be terminated if
+ * this continues") states nothing. Suspension and demotion are unchanged; the
+ * guard is unchanged when off. See `forms/termination-stated.ts`. Off, as before.
+ */
+export function terminationStatedTicksEnabled(): boolean {
+  return envFlag("TERMINATION_STATED_TICKS_ENABLED");
+}
+
+/**
+ * TERMINATION_STATED_TICKS_ENABLED where the Action Plan's required closing is read: on the server and in the browser
+ * (the form on screen, `block-view.tsx`). The browser reads NEXT_PUBLIC_TERMINATION_STATED_TICKS_ENABLED, inlined at
+ * build time: FLIP BOTH TOGETHER, or the screen re-adds the closing the saved plan replaced. Off, false.
+ */
+export function terminationClosingEnabled(): boolean {
+  if (typeof window === "undefined") return envFlag("TERMINATION_STATED_TICKS_ENABLED");
+  const inlined = process.env.NEXT_PUBLIC_TERMINATION_STATED_TICKS_ENABLED;
+  return typeof inlined === "string" && ON.has(inlined.trim().toLowerCase());
+}
+
+/**
  * PAYROLL_BARE_SENTENCE_ENABLED (coding 6, 10 Nov 2026; default off; Pau's
  * P15, Sunny production 9 Nov). "I need a term CA for <name>. Didn't show up
  * for her opening shift. Payroll deduction." — the card still asked "Is
@@ -4536,6 +4601,16 @@ export function groupWordsNotANameEnabled(): boolean {
 }
 
 /**
+ * STEP_B_SECTION_SPACING_ENABLED (ported from Ask Bubbles; QA's live draft test, 8 Nov 2026; same flag in both apps;
+ * default off). After an edit, the blank lines between Observed / Expectation / Going Forward became single newlines.
+ * On: a write of a field that had them keeps one blank line before each section heading (`forms/outline-sections.ts`).
+ * Off, as before.
+ */
+export function stepBSectionSpacingEnabled(): boolean {
+  return envFlag("STEP_B_SECTION_SPACING_ENABLED");
+}
+
+/**
  * DRAFT_WROTE_NOTHING_NOTICE_ENABLED (coding 6, 10 Nov 2026; default off;
  * QA's r21 live check). A name-only Coaching card's Create saved only the
  * Name and Date and said nothing: no account, so the drafting model wrote no
@@ -4546,6 +4621,37 @@ export function groupWordsNotANameEnabled(): boolean {
  */
 export function draftWroteNothingNoticeEnabled(): boolean {
   return envFlag("DRAFT_WROTE_NOTHING_NOTICE_ENABLED");
+}
+
+/**
+ * FORMS_ON_FILE_ORDER_MATCH_POSSIBLE_ENABLED (ported from Ask Bubbles, 11 Nov 2026; QA's Bubbles 17h live test; same flag
+ * in both apps; default off). The FORMS ON FILE block counts a row as naming the person when every word of its employee
+ * name is in the question, in any order, so forms filed as "<last> <first>" were listed as the asked person's own. On: a
+ * name whose words are all there but in another order is a POSSIBLE match, for the model to ask about
+ * (`forms/chat-form-records.ts`). Off, as before.
+ */
+export function formsOnFileOrderMatchPossibleEnabled(): boolean {
+  return envFlag("FORMS_ON_FILE_ORDER_MATCH_POSSIBLE_ENABLED");
+}
+
+/**
+ * POLICY_CARRY_RETRIEVAL_ENABLED (Code 3, 26 Oct 2026; rebuilt on main by coding 6, 12 Nov 2026; default off; QA item 10,
+ * reported in Ask Bubbles; same flag in both apps). A go-ahead turn ("just make it", "create it", "yes") is searched with
+ * the policy the manager named earlier, not its own words: "Just make it" found unrelated pages, and the reply denied a
+ * policy it had cited two turns before. Off, the turn is searched as before. The search reads it in `ai/server-ask.ts`.
+ */
+export function policyCarryRetrievalEnabled(): boolean {
+  return envFlag("POLICY_CARRY_RETRIEVAL_ENABLED");
+}
+
+/**
+ * NOT_FOLLOWING_IS_VIOLATION_ENABLED (QA's live report in the sibling app, 10 Nov 2026; default off; same flag in both apps). "make it about not
+ * following the dress code" was read as no policy named, so no Dress Code reference was written. With the flag on, "not
+ * following / not wearing / not meeting / failed to follow <policy topic>" names that policy as broken (`forms/ca-policy.ts`,
+ * NOT_FOLLOWING_BEFORE). Off, as before.
+ */
+export function notFollowingIsViolationEnabled(): boolean {
+  return envFlag("NOT_FOLLOWING_IS_VIOLATION_ENABLED");
 }
 
 /**
