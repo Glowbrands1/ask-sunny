@@ -102,6 +102,7 @@ Harness events (not case failures):
 - prompts.ts sha256, framework general sections and tidy marker stripping (FRAMEWORK_GENERAL_SECTIONS_ENABLED and REFORMAT_KEEPS_SOURCES_ENABLED, off by default; flags-off prompt text unchanged): `ecc5177c98714a8a23e7340304409aef61d5ef43a47600b0be2beaf608b90594`
 - prompts.ts sha256, the CA_SALES exception after the metric rule (CA_SALES_POLICY_ENABLED, off by default; flags-off prompt text unchanged): `e9fa48e33d31ad1abbbccd04aff4d0af779bd62af276c8a8c0252788c1933b0c`
 - prompts.ts sha256, the blank-policy summary line (POLICY_GATE_NONBLOCKING_ENABLED, off by default; flags-off prompt text unchanged): `34663abf9ca176f6e2db172e32e3b2abdcf710c53a89016dea5d1dc5fe004eb5`
+- prompts.ts sha256, stripMarkers takes adjacent markers (MANUAL_CITATION_SWEEP_FIXES_ENABLED, off by default; flags-off prompt text unchanged): `f40a56d3625379376aca3761ce65b0ec2665726c4a1251e555f166b07677364b`
 - commit: `f4b261628145bc17059fa753a5bc22f96a06694e`
 - model: `claude-opus-5`
 - flag set: `INTENT_EXTRACTION_ENABLED, FEWSHOT_EXAMPLES_ENABLED, SELF_CHECK_ENABLED, QUERY_REWRITE_ENABLED, GROUNDED_ENTITIES_ENABLED, DRAFT_MERGE_ENABLED, ACTION_PLAN_SENTENCES_ENABLED, TYPED_NAME_PROCEEDS_ENABLED, ATTENDANCE_POLICY_CITATION_ENABLED, POLICY_PAGE_REQUIRED_ENABLED, MANAGER_PAYROLL_AMOUNT_ONLY_ENABLED, POLICY_GATE_NONBLOCKING_ENABLED, MANUAL_SECTION_DEDUPE_ENABLED, PRINTED_PAGE_CITATION_ENABLED, PAYROLL_AMOUNT_FIELD_ENABLED, CODE_SLOTS_ENABLED, GLOBAL_SALON_ASK_ENABLED`

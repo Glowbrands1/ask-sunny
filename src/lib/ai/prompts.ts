@@ -1,5 +1,5 @@
 import { REPORTS } from "@/features/reports/reports-routes";
-import { promptCacheEnabled } from "@/lib/config/chat-quality-flags";
+import { manualCitationSweepFixesEnabled, promptCacheEnabled } from "@/lib/config/chat-quality-flags";
 import { withSalesException } from "./ca-sales-prompt-lines";
 import { displayLocator } from "@/lib/knowledge/locator";
 import type { AnswerMode } from "@/types";
@@ -994,8 +994,14 @@ export function extractUsedMarkers(answer: string, validMarkers: number[]): numb
  */
 export function stripMarkers(answer: string, options: { readonly tidy?: boolean } = {}): string {
   if (options.tidy) return stripMarkersTidily(answer);
+  /*
+   * MANUAL_CITATION_SWEEP_FIXES_ENABLED: "[S6][S2]:" — the adjacent form — kept its first marker: the lookahead after
+   * "[S6]" did not allow a "[", so only "[S2]" was removed and "**What they accrue** [S6]:" reached the manager (QA's
+   * Sunny sweep E1, conv_mvnqof6h2aa9pd8, 25 Oct 2026; the sibling app fixed the same).
+   */
+  const adjacent = manualCitationSweepFixesEnabled();
   return answer
-    .replace(/\s*\[S\d{1,2}\](?=[\s.,;:!?)]|$)/g, "")
+    .replace(adjacent ? /\s*\[S\d{1,2}\](?=[\s.,;:!?)\[]|$)/g : /\s*\[S\d{1,2}\](?=[\s.,;:!?)]|$)/g, "")
     .replace(/[^\S\n]{2,}/g, " ")
     .trim();
 }
