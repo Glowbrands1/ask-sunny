@@ -407,6 +407,7 @@ const NEW_FLAGS = [
   "REOPEN_IS_OPENING_ENABLED",
   "BARE_FORM_NAME_ASKS_WHAT_ENABLED",
   "PASTED_REVIEW_ASKS_WHAT_YOU_SAW_ENABLED",
+  "CA_NO_POLICY_ASKS_WHICH_ENABLED",
   // coding 6: FAILURE_TO_OPEN_IS_LATE_OPENING (default off): forced off with the others.
   "FAILURE_TO_OPEN_IS_LATE_OPENING_ENABLED",
   // coding 6: PAYROLL_BARE_SENTENCE (default off): forced off with the others.

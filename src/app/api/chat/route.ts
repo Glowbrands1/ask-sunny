@@ -11,6 +11,7 @@ import { isQuestionNotForm } from "@/lib/ai/question-not-form";
 import { wantsSeparateDocument } from "@/lib/ai/second-form";
 import {
   bareFormNameAsksWhatEnabled,
+  caNoPolicyAsksWhichEnabled,
   pastedReviewAsksWhatYouSawEnabled,
   chatLongMessageEnabled,
   draftActionsEnabled,
@@ -1000,6 +1001,8 @@ async function postChat(request: Request) {
       if (bareFormNameAsksWhatEnabled()) answer = (await import("@/lib/forms/bare-form-name")).withBareFormNameQuestion(answer, asked.question);
       // PASTED_REVIEW_ASKS_WHAT_YOU_SAW_ENABLED: a pasted customer review is the customer's words; ask what the manager saw (`lib/forms/pasted-customer-review.ts`).
       if (pastedReviewAsksWhatYouSawEnabled()) answer = (await import("@/lib/forms/pasted-customer-review")).withPastedReviewAsk(answer, asked.question);
+      // CA_NO_POLICY_ASKS_WHICH_ENABLED: a Corrective Action card that cites no policy asks which applies (`lib/forms/no-policy-asks-which.ts`).
+      if (caNoPolicyAsksWhichEnabled()) answer = (await import("@/lib/forms/no-policy-asks-which")).withNoPolicyQuestion(answer);
     } catch (error) {
       /*
        * A FAILED ANSWER IS STILL A RECORDED TURN, closed as a failure. The row

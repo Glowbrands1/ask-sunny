@@ -4577,3 +4577,12 @@ export function pastedReviewAsksWhatYouSawEnabled(): boolean {
   return envFlag("PASTED_REVIEW_ASKS_WHAT_YOU_SAW_ENABLED");
 }
 
+/**
+ * CA_NO_POLICY_ASKS_WHICH_ENABLED (ported from Ask Bubbles, QA's 17n live test, 12 Nov 2026, 4a; QA's ruling; default
+ * off; same flag in both apps). A Corrective Action card with no Policy line asked nothing. On: such a card asks
+ * "**Which policy applies?**" and picks none (`forms/no-policy-asks-which.ts`). Off, as before.
+ */
+export function caNoPolicyAsksWhichEnabled(): boolean {
+  return envFlag("CA_NO_POLICY_ASKS_WHICH_ENABLED");
+}
+
