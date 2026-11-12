@@ -73,6 +73,8 @@ const state = vi.hoisted(() => ({
   manualExtra: [] as Record<string, unknown>[],
   /** FULL_MANUAL_KEEPS_RETRIEVAL: what the knowledge search returns (`knowledgeHas`), the normalizer's label, the full manual. */
   knowledgeRows: [] as Record<string, unknown>[],
+  /** POLICY_CARRY_RETRIEVAL (#248 rebuilt, 12 Nov 2026): every knowledge search's query, in order (`searches`). */
+  knowledgeQueries: [] as string[],
   normalizerIntent: null as string | null,
   fullManualLoads: false,
   /** The grounding block the answering model was last given (`lastGrounding`). */
@@ -400,7 +402,8 @@ vi.mock("@/lib/knowledge/providers/supabase", () => ({
     async search() {
       return [];
     }
-    async match() {
+    async match(query?: { query?: unknown }) {
+      state.knowledgeQueries.push(String(query?.query ?? ""));
       return state.knowledgeRows;
     }
     async fetchRoleGrounding(role: { id: string }) {
@@ -444,7 +447,10 @@ vi.mock("@/lib/knowledge/providers/supabase", () => ({
 /** A question that is not a form request searches the manual; nothing to embed offline. */
 vi.mock("@/lib/knowledge/recall-match", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/knowledge/recall-match")>()),
-  matchRecallKnowledge: async () => state.knowledgeRows,
+  matchRecallKnowledge: async (input?: { query?: unknown }) => {
+    state.knowledgeQueries.push(String(input?.query ?? ""));
+    return state.knowledgeRows;
+  },
 }));
 
 /* FULL_MANUAL_KEEPS_RETRIEVAL: the whole JBA Policy Manual (the production rows), when a case says it loads. */
@@ -687,6 +693,7 @@ beforeEach(async () => {
   state.slotsRead = {};
   state.manualExtra = [];
   state.knowledgeRows = [];
+  state.knowledgeQueries = [];
   state.normalizerIntent = null;
   state.fullManualLoads = false;
   state.lastGrounding = "";
@@ -807,6 +814,7 @@ function context(): ReplayContext {
     knowledgeHas: (rows) => {
       state.knowledgeRows = [...rows];
     },
+    searches: () => [...state.knowledgeQueries],
     normalizerReads: (intent) => {
       state.normalizerIntent = intent;
     },

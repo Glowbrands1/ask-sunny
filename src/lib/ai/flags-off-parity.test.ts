@@ -622,6 +622,8 @@ const NEW_FLAGS = [
   // coding 6: REQUEST_ISSUE_KEPT (ported from Ask Bubbles, QA round 17b; default off).
   "REQUEST_ISSUE_KEPT_ENABLED",
   "GROUP_WORDS_NOT_A_NAME_ENABLED",
+  // coding 6: POLICY_CARRY_RETRIEVAL (#248 rebuilt on main; QA item 10; default off).
+  "POLICY_CARRY_RETRIEVAL_ENABLED",
 ] as const;
 
 const PROTECTED = [
