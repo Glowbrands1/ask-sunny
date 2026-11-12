@@ -13,7 +13,7 @@ import {
   stepBSectionSpacingEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { madeAbout } from "@/lib/ai/make-it-about";
-import { addUnderExpectation, addUnderObserved, hasSections, readsAsAccount, repeatsOldText, tailAfterLastSection, withSectionSpacing } from "./outline-sections";
+import { addUnderExpectation, addUnderObserved, hasObserved, hasSections, readsAsAccount, repeatsOldText, tailAfterLastSection, withSectionSpacing } from "./outline-sections";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { isGlossaryTerm } from "@/lib/ai/chat-glossary";
 
@@ -574,6 +574,14 @@ export async function writeFormEdits(instanceId: string, ops: readonly FormEditO
             written = addUnderObserved(current, tail);
             how[key] = "replace";
           }
+        }
+      } else if (underObserved && how[key] === "add" && hasObserved(current) && !hasSections(value) && !repeatsOldText(current, value) && !readsAsAccount(value)) {
+        // Ported from the sibling app (QA, 12 Nov 2026, Gate-Bubbles-2 on its #814): a field with only its Observed section
+        // gets its first "Expectation:" for an instruction, never the instruction under Observed.
+        const under = addUnderExpectation(current, value);
+        if (under !== null) {
+          written = under;
+          how[key] = "replace";
         }
       } else if (underObserved && how[key] === "replace") {
         const tail = tailAfterLastSection(current, value);

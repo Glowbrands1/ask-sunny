@@ -101,3 +101,39 @@ export const NOV8_STEP_B_OUTLINE_CASES: ReplayCase[] = [
     },
   },
 ];
+
+/*
+ * Ported from the sibling app (QA, 12 Nov 2026, from Gate-Bubbles-2 on its #814): with no Expectation section in the field, an instruction ("add that she
+ * must …") still landed under Observed. Ruling (b): an instruction goes into the Expectation — so one is started, on its
+ * own line after the Observed block. STEP_B_ADD_UNDER_OBSERVED_ENABLED (`forms/outline-sections.ts`). The person invented.
+ */
+const OBSERVED_ONLY = "Observed:\nOttoline Ormsworth missed the monthly meeting on 10/10/26.";
+const INSTRUCTION_SAID = "add that she must put every scheduled meeting on her calendar";
+const INSTRUCTION = "She must put every scheduled meeting on her calendar.";
+
+export const NOV12_STEP_B_INSTRUCTION_STARTS_EXPECTATION_CASES: ReplayCase[] = [
+  {
+    id: "nov12-step-b-instruction-starts-expectation",
+    title: "Details with only an Observed section, then \"add that she must …\": an Expectation section is started for it, never the line under Observed",
+    report: "QA, 12 Nov 2026 (from Gate-Bubbles-2 on the sibling's #814): an instruction landed under Observed when there was no Expectation section",
+    status: { open: "the instruction is appended under Observed" },
+    fixFlags: FIX,
+    async run(t) {
+      vi.setSystemTime(new Date("2026-11-07T19:40:00Z"));
+      t.directory(REFUSAL_ROSTER);
+      t.as("salon_director", KEARNEY);
+      const thread = t.thread();
+      await thread.say(REQUEST);
+      t.draftWrites({ coaching_details: OBSERVED_ONLY });
+      const id = await thread.create();
+      t.patchReads!({ [INSTRUCTION_SAID]: patch("this_form", [{ field: "coaching_details", value: INSTRUCTION, how: "add", evidence: "she must put every scheduled meeting on her calendar" }]) });
+      const before = savedForm(t, id);
+      const reply = await thread.say(INSTRUCTION_SAID);
+      replyMatchesDiff(t, id, before, reply, INSTRUCTION_SAID);
+      const details = t.values(id).coaching_details ?? "";
+      expect(details, `no Expectation section was started for the instruction:\n${details}`).toContain(`\n\nExpectation:\n${INSTRUCTION}`);
+      expect(details.split(/\n\s*Expectation:/)[0] ?? "", `the instruction is under Observed:\n${details}`).not.toContain(INSTRUCTION);
+      expect(details, "the account lost its words").toMatch(/missed the monthly meeting on 10\/10\/26/);
+    },
+  },
+];

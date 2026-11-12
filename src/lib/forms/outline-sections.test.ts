@@ -67,9 +67,25 @@ describe("QA's ruling (b), extended (12 Nov 2026): an instruction goes under Exp
     expect(addUnderExpectation(lower, "she must practice the checklist.")).toBe(`${lower}\nshe must practice the checklist.`);
   });
 
-  it("Expectation last, before the policy reference line; no Expectation section, null", () => {
+  it("Expectation last, before the policy reference line", () => {
     const last = "Observed:\nJane was late.\n\nExpectation:\nJane arrives on time.\n\nPolicy reference: Attendance Policy";
     expect(addUnderExpectation(last, "she must clock in.")).toBe(last.replace("on time.\n\nPolicy", "on time.\nShe must clock in.\n\nPolicy"));
-    expect(addUnderExpectation("Observed:\nJane was late.", "she must clock in.")).toBeNull();
+  });
+
+  // Changed on purpose (ported from the sibling app: QA, 12 Nov 2026, from Gate-Bubbles-2 on its #814): with no Expectation section the instruction used to
+  // stay with the writer's old append (under Observed); now the field's first "Expectation:" is started for it.
+  it("no Expectation section: one is started after the Observed block", () => {
+    expect(addUnderExpectation("Observed:\nJane was late.", "she must clock in.")).toBe("Observed:\nJane was late.\n\nExpectation:\nShe must clock in.");
+    expect(addUnderExpectation("Observed:\njane was late.", "she must clock in.")).toBe("Observed:\njane was late.\n\nExpectation:\nshe must clock in.");
+    expect(addUnderExpectation("Observed:\nJane was late.\n\nGoing Forward:\nJane will be on time.", "she must clock in.")).toBe(
+      "Observed:\nJane was late.\n\nExpectation:\nShe must clock in.\n\nGoing Forward:\nJane will be on time.",
+    );
+    expect(addUnderExpectation("Observed:\nJane was late.\n\nPolicy reference: Attendance Policy", "she must clock in.")).toBe(
+      "Observed:\nJane was late.\n\nExpectation:\nShe must clock in.\n\nPolicy reference: Attendance Policy",
+    );
+  });
+
+  it("neither Expectation nor Observed: null (the writer appends as before)", () => {
+    expect(addUnderExpectation("Jane was late.", "she must clock in.")).toBeNull();
   });
 });
