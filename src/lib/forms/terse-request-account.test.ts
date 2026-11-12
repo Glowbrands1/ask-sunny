@@ -14,6 +14,8 @@ afterEach(() => {
 
 describe("TERSE_REQUEST_ACCOUNT_ENABLED", () => {
   it("off: as before", () => {
+    // Pinned off (QA, 12 Nov 2026): the suite also runs with production's or a gate's flags in the environment.
+    vi.stubEnv("TERSE_REQUEST_ACCOUNT_ENABLED", "");
     vi.stubEnv("SALES_OBSERVATION_ACCOUNT_ENABLED", "true");
     vi.stubEnv("SALES_SHORTFALL_OBJECT_ENABLED", "true");
     expect(observationAccount(TERSE, "Rowan Kestrel")).toBe(TERSE);

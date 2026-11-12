@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PRESS_CREATE, WHAT_IS_OUT_OF_DATE, WHAT_IS_WRONG, cardMetaTurn, withoutCardMetaTurns } from "./card-meta-turn";
 import type { AskResponse } from "./types";
@@ -13,6 +13,12 @@ const onCard = (question: string) => ({ question, history, continueProposalTempl
 
 afterEach(() => {
   vi.unstubAllEnvs();
+});
+
+// CREATE_POINTS_TO_SHOWN_CARD_ENABLED pinned off (QA, 12 Nov 2026): these cards carry no Create button state, and the
+// suite also runs with a gate's flags in the environment; its own tests below turn it on.
+beforeEach(() => {
+  vi.stubEnv("CREATE_POINTS_TO_SHOWN_CARD_ENABLED", "");
 });
 
 function bothOn() {
@@ -133,6 +139,8 @@ describe("CREATE_POINTS_TO_SHOWN_CARD_ENABLED", () => {
   });
 
   it("off: the line is said with a who-is-it-for card (as before)", () => {
+    // Pinned off (QA, 12 Nov 2026): the suite also runs with production's or a gate's flags in the environment.
+    vi.stubEnv("CREATE_POINTS_TO_SHOWN_CARD_ENABLED", "");
     vi.stubEnv("CREATE_COMMAND_POINTS_TO_CARD_ENABLED", "true");
     expect(cardMetaTurn(turn(asksWho))?.card?.content).toBe(PRESS_CREATE);
   });
