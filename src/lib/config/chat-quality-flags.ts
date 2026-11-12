@@ -2724,6 +2724,31 @@ export function addThatIsAccountEnabled(): boolean {
   return envFlag("ADD_THAT_IS_ACCOUNT_ENABLED");
 }
 
+/**
+ * WOVEN_TEXT_NUL_STRIP_ENABLED (QA, 10 Nov 2026: three Woven tanning-bed manuals stuck "failed" since 4 Nov 2026; coding
+ * 5; same flag in both apps; default off). "MT - Evolution 660 / Excellence 880", "MT-Affinity 500-600-800 Schematics"
+ * and "MT - Affinity 500, 600, & 800" failed with "Chunks could not be saved: unsupported Unicode escape sequence": their
+ * extracted text holds NUL characters (U+0000), which Postgres text and jsonb refuse. On: every extracted segment's
+ * text, locator and section lose their NUL characters before chunking (`ingestion/extract/strip-nul.ts`), for an
+ * upload and a Woven sync alike. Off, as before.
+ */
+export function wovenTextNulStripEnabled(): boolean {
+  return envFlag("WOVEN_TEXT_NUL_STRIP_ENABLED");
+}
+
+/**
+ * WOVEN_FAILED_RETRY_ENABLED (QA, 10 Nov 2026: six scanned Woven PDFs stuck "No text could be extracted ... run OCR"
+ * since 4 Nov 2026 although WOVEN_PDF_OCR is on; coding 5; same flag in both apps; default off). They were never
+ * re-attempted: "no_text" was a permanent failure (retry count set to the maximum, so a `continue` run skips the item),
+ * and a full sync applies previously failed items last, so the 14:13Z sync's time budget deferred them. On: with
+ * WOVEN_PDF_OCR on, "no_text" is retryable (OCR can now read it), and a full sync applies previously failed items right
+ * after the retirements, before the rest (`knowledge-sync/engine.ts` `orderDue`, `knowledge-sync/sink.ts`). Off, as
+ * before.
+ */
+export function wovenFailedRetryEnabled(): boolean {
+  return envFlag("WOVEN_FAILED_RETRY_ENABLED");
+}
+
 // --- end coding 5 flags ---
 
 /**
@@ -4474,6 +4499,30 @@ export function payrollBareSentenceEnabled(): boolean {
  */
 export function adviceAskNotAccountEnabled(): boolean {
   return envFlag("ADVICE_ASK_NOT_ACCOUNT_ENABLED");
+}
+
+/**
+ * GROUP_WORDS_NOT_A_NAME_ENABLED (coding 6, 11 Nov 2026; default off; ported from the sibling app's Problem 19, its
+ * production, 10 Nov 2026; reproduced here by the replay case): "I want the same form for multiple employees" put
+ * "multiple employees" on the coaching card as the employee. On, a group of people ("multiple employees", "my
+ * employees", "the team", "everyone") is never a person's name (`forms/not-a-name.ts` isGroupOfPeople, with
+ * NOT_A_NAME_GUARD), and the bot asks which employees, with the form and its topic kept. Off, as before.
+ */
+export function groupWordsNotANameEnabled(): boolean {
+  return envFlag("GROUP_WORDS_NOT_A_NAME_ENABLED");
+}
+
+/**
+ * DRAFT_WROTE_NOTHING_NOTICE_ENABLED (coding 6, 10 Nov 2026; default off;
+ * QA's r21 live check). A name-only Coaching card's Create saved only the
+ * Name and Date and said nothing: no account, so the drafting model wrote no
+ * Details — not a refused write, so DRAFT_WRITE_NEVER_SILENT's notice stayed
+ * quiet. On: when the notes hold no account and no narrative field was
+ * written, the draft's notice says the details are blank and why. Off, as
+ * before.
+ */
+export function draftWroteNothingNoticeEnabled(): boolean {
+  return envFlag("DRAFT_WROTE_NOTHING_NOTICE_ENABLED");
 }
 
 /**

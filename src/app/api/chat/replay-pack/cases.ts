@@ -111,6 +111,8 @@ export interface ReplayContext {
   typeOnForm(instanceId: string, values: Record<string, string>): void;
   /** Production's race: the next message arrives before the drafting model's values are saved. */
   draftNotYetSaved(instanceId: string): void;
+  /** The draft route's replies this case, in order (e.g. its `notice`). */
+  draftReplies?(): Record<string, unknown>[];
 }
 
 export interface DirectoryRow {

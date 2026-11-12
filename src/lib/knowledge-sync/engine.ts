@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { wovenFailedRetryEnabled } from "@/lib/config/chat-quality-flags";
 
 import { planHashDedupe } from "./edition-dedupe";
 import { manifestKey, reconcile } from "./reconcile";
@@ -314,6 +315,8 @@ export async function runKnowledgeSync(deps: EngineDeps, options: RunOptions): P
       options.mode === "continue" ? isDueForContinue(item, now()) : item.pendingAction !== "none",
     );
     due.sort((a, b) => (a.pendingAction === b.pendingAction ? 0 : a.pendingAction === "retire" ? -1 : 1));
+    // WOVEN_FAILED_RETRY_ENABLED: a full sync reaches the items that failed before, ahead of its time budget.
+    if (options.mode === "sync" && wovenFailedRetryEnabled()) due.splice(0, due.length, ...orderDue(due));
 
     let sessionLost: string | null = null;
     for (const item of due) {
@@ -480,6 +483,21 @@ export function isDueForContinue(item: ManifestItem, now: Date): boolean {
   if (item.pendingAction === "none") return false;
   if (item.retryCount >= MAX_AUTOMATIC_RETRIES) return false;
   return item.nextRetryAt === null || Date.parse(item.nextRetryAt) <= now.getTime();
+}
+
+/**
+ * WOVEN_FAILED_RETRY_ENABLED (QA, 10 Nov 2026): the order a full sync applies its due items in. Retirements first, as
+ * before; then the items that failed on an earlier run (they carry the error they failed with); then the rest, each
+ * group in its existing order. Before, a failed item was applied with the rest, after every new and changed file, so a
+ * sync that ran out of time deferred it, and a `continue` run never picks up an item whose retries are used up: the
+ * six scanned PDFs and three manuals stuck since 4 Nov 2026 were not attempted again. Pure.
+ */
+export function orderDue(due: readonly ManifestItem[]): ManifestItem[] {
+  const group = (item: ManifestItem) => (item.pendingAction === "retire" ? 0 : item.lastError !== null || item.retryCount > 0 ? 1 : 2);
+  return due
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) => group(a.item) - group(b.item) || a.index - b.index)
+    .map(({ item }) => item);
 }
 
 /* ------------------------------------------------------------ per item -- */
