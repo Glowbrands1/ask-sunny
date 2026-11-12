@@ -79,3 +79,33 @@ export const NOV12_17L_CARD_PLAN_MATCHES_CREATE_CASES: ReplayCase[] = [
     },
   },
 ];
+
+/*
+ * Ported from the sibling app: Gate-Bubbles-4's NO-GO on its B#824 (G4-824, 12 Nov 2026), reproduced here with S#869: on a "Type of Warning: Termination" card the flag replaced the
+ * plan with Pau's attendance plan and lost the termination sentence; Create saves the plan with TERMINATION_PLAN_CLOSING.
+ * Guards: with CARD_PLAN_MATCHES_CREATE and TERMINATION_STATED_TICKS on, the card's plan still ends with the termination
+ * sentence and never promises the closing for a future violation.
+ */
+const TERMINATION_SENTENCE = "Effective immediately, employment is terminated following the progressive corrective action plan.";
+const TERMINATION_SAID = [
+  ["late-on-a-date", "I need a term CA for Remy Calder, she was 20 minutes late on 11/9/26"],
+  ["terminating-never-showed", "CA for Remy Calder. We are terminating her, she never showed."],
+  ["term-ca-did-not-show", "I need a term CA for Remy Calder, she did not show up."],
+  ["so-i-need", "CA for Remy Calder. She didn't show up, so I need a term CA."],
+] as const;
+
+export const NOV12_G4_824_TERMINATION_PLAN_GUARDS: ReplayCase[] = TERMINATION_SAID.map(([key, said]) => ({
+  id: `nov12-g4-824-termination-plan-kept-${key}`,
+  title: `guard: "${said}" with the card's plan as Create's: the plan ends with the termination sentence`,
+  report: "Ported from the sibling app: Gate-Bubbles-4's NO-GO on its B#824 (G4-824, 12 Nov 2026), reproduced here with S#869",
+  status: "fixed",
+  fixFlags: [...FIX, "TERMINATION_STATED_TICKS_ENABLED"],
+  async run(t) {
+    const thread = start(t);
+    const card = await thread.say(said);
+    if (!/Termination, as you said/.test(card.content)) return; // production's flags: no termination card, nothing to guard
+    const plan = cardPlan(card.content);
+    expect(plan, `the termination sentence left the plan:\n${card.content}`).toMatch(new RegExp(`${TERMINATION_SENTENCE.replace(/\./g, "\\.")}$`));
+    expect(plan, `the plan promises a future violation's closing:\n${card.content}`).not.toMatch(/Future policy violations/);
+  },
+}));

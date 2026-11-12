@@ -62,4 +62,16 @@ describe("CARD_PLAN_MATCHES_CREATE_ENABLED", () => {
       expect(withCardPlanAsCreate(card("Attendance"), ACCOUNT).content).toContain(GENERAL);
     });
   });
+  it("a termination card: Pau's plan ends with the termination sentence, as Create saves it (G4-824)", () => {
+    vi.stubEnv("CARD_PLAN_MATCHES_CREATE_ENABLED", "true");
+    vi.stubEnv("ATTENDANCE_ACTION_PLAN_ENABLED", "true");
+    vi.stubEnv("TERMINATION_STATED_TICKS_ENABLED", "true");
+    const general = "**Action plan:** Management will review the Attendance policy with Remy. Effective immediately, employment is terminated following the progressive corrective action plan.";
+    const built = card("Attendance (JBA Policy Manual p.14), as you said.", general);
+    const termination = { ...built, content: built.content.replace("**Policy:**", "**Type of Warning:** Termination, as you said — I'll tick it on the form.\n\nTermination needs your DM/HR approval before you finalize.\n\n**Policy:**") };
+    const out = withCardPlanAsCreate(termination, "I need a term CA for Remy Calder, she was late on 11/9/26").content;
+    expect(out).toContain("Remy is expected to arrive on time for all scheduled shifts moving forward.");
+    expect(out).toMatch(/Continued lateness will result in further disciplinary review per company policy\. Effective immediately, employment is terminated following the progressive corrective action plan\./);
+    expect(out).not.toMatch(/Future policy violations/);
+  });
 });
