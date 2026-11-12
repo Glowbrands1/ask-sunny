@@ -21,7 +21,8 @@ export const NOV10_DRAFT_NO_INVENTED_PLAN_CASES: ReplayCase[] = [
     id: "nov10-draft-no-invented-plan-ca-observation",
     title: '"create a written CA for <employee>, she was 20 minutes late … no action plan": the saved Observation has no Going Forward',
     report: "QA's October triage (10 Nov 2026) of #256, on main f337302d with production's flags",
-    status: { open: "the model's Going Forward is saved in the Observation; fixed with DRAFT_NO_INVENTED_PLAN_ENABLED" },
+    // Changed on purpose (12 Nov 2026): fixed in production by DRAFT_NO_INVENTED_PLAN_ENABLED, QA round 36. Was OPEN.
+    status: "fixed",
     fixFlags: ["DRAFT_NO_INVENTED_PLAN_ENABLED"],
     async run(t) {
       t.directory(STAFF);

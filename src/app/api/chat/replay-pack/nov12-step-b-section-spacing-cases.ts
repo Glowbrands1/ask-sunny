@@ -23,7 +23,8 @@ export const NOV12_STEP_B_SECTION_SPACING_CASES: ReplayCase[] = [
     id: "nov12-step-b-section-spacing-kept",
     title: "an edit the reader writes back with single newlines keeps the blank line before Expectation and Going Forward",
     report: "Ported from Ask Bubbles (QA's live draft test, 8 Nov 2026): the blank lines between the sections collapsed after an edit",
-    status: { open: "the saved Details have single newlines between the sections" },
+    // Changed on purpose (12 Nov 2026): fixed in production by STEP_B_SECTION_SPACING_ENABLED, QA round 36. Was OPEN.
+    status: "fixed",
     fixFlags: [...STEP_B_READER_FLAGS, "STEP_B_SECTION_SPACING_ENABLED"],
     async run(t) {
       vi.setSystemTime(new Date("2026-11-07T19:40:00Z"));
