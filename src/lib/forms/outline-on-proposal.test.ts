@@ -34,8 +34,24 @@ describe("OUTLINE_ON_OPEN_PROPOSAL_ENABLED", () => {
     "make it look like this template",
     "Date: 11/3/26\nWhat happened: Ilsa arrived 40 minutes late and did not call in.",
     "same outline but with Ilsa's info, she was late on 11/3/26",
+    // Gate-Sunny-3's NO-GO on S#875 (12 Nov 2026): her account names a coworker, a witness or a nickname.
+    "Date: 11/3/26\nWhat happened: Ilsa was 40 minutes late to her opening shift. Jordan had to cover the front desk until she arrived",
+    "Date: 11/3/26\nWhat happened: Marco called to say Ilsa would be late.\nWitness: Marco",
+    "Observation of Offense: Ilsa was 40 minutes late. Jordan had to cover the front desk.\nAction Plan: coach Ilsa on arriving on time.",
+    "Observation of Offense: Ilsa Varnholt was late on 11/3/26.\nAction Plan: Management will coach her.",
   ])("never an outline turn: %s", (said) => {
     expect(isOutlineTurn(said, ILSA)).toBe(false);
+  });
+
+  it("a nickname the manager typed in the request is hers (Gate-Sunny-3)", () => {
+    const liz = "Observation of Offense: Liz was 40 minutes late.\nAction Plan: The Leadership Team will coach Liz.";
+    expect(isOutlineTurn(liz, ["Elizabeth Varnholt", "liz varnholt"])).toBe(false);
+    vi.stubEnv("OUTLINE_ON_OPEN_PROPOSAL_ENABLED", "true");
+    expect(notesWithoutOutline(["create a corrective action for liz varnholt", liz].join("\n\n"), "Elizabeth Varnholt")).toContain("Liz was 40 minutes late");
+  });
+
+  it("a lower-case outline for another person is one (Gate-Sunny-3)", () => {
+    expect(isOutlineTurn("observation of offense: corisande arrived 20 minutes late.\naction plan: the leadership team will coach corisande.", ILSA)).toBe(true);
   });
 
   it("an outline naming another person is one; with no card's employee nothing is", () => {

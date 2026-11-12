@@ -69,6 +69,8 @@ export const NOV11_OUTLINE_ON_OPEN_PROPOSAL_CASES: ReplayCase[] = [
 const OWN_ACCOUNT = [
   ["labelled-account", "create a corrective action for Ilsa Varnholt", "Date: 11/3/26\nWhat happened: Ilsa Varnholt arrived 40 minutes late and did not call in.", /40 minutes late/],
   ["this-format", "create a corrective action for Ilsa Varnholt", "Ilsa Varnholt was late on 11/3/26. Use this format for the action plan.", /late on 11\/3\/26/],
+  // Gate-Sunny-3's NO-GO on S#875 (12 Nov 2026): her account names a coworker who covered (the gate's probe).
+  ["coworker-named", "create a corrective action for Ilsa Varnholt", "Date: 11/3/26\nWhat happened: Ilsa was 40 minutes late to her opening shift. Jordan had to cover the front desk until she arrived", /40 minutes late/],
 ] as const;
 
 export const NOV12_OUTLINE_OWN_ACCOUNT_CASES: ReplayCase[] = OWN_ACCOUNT.map(([key, request, account, kept]) => ({

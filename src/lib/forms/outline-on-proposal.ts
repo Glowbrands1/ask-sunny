@@ -39,29 +39,67 @@ const NOT_A_PERSON = new Set(
   "the she he they it this that these those we i you management leadership team manager employee associate everyone nobody someone client guest store salon shift".split(" "),
 );
 /** A capitalised name as the subject of a reported act ("Corisande arrived …", "Tamsyn completed …"). */
-const NAMED_ACT =
-  /\b([A-Z][a-z'’]+)(?:\s+[A-Z][a-z'’]+)?\s+(?:was|is|has|had|did|didn['’]?t|arrived|completed|failed|left|came|called|took|refused|walked|clocked|showed|missed|will|must|should)\b/g;
+const ACTS = String.raw`(?:was|is|has|had|did|didn['’]?t|arrived|completed|failed|left|came|called|took|refused|walked|clocked|showed|missed|will|must|should)`;
+const NAMED_ACT = new RegExp(String.raw`\b([A-Z][a-z'’]+)(?:\s+[A-Z][a-z'’]+)?\s+${ACTS}\b`, "g");
+const NAMED_ACT_ANY_CASE = new RegExp(String.raw`\b([a-z][a-z'’]{2,})\s+${ACTS}\b`, "gi");
 /** Filler a "same outline …" turn may carry beside her name: nothing of an account. */
 const SAME_OUTLINE_FILLER =
   /\b(?:same|this|that|the|a|an|outline|template|format|layout|but|with|use|using|for|her|his|their|info|information|details|please|pls|it|make|do|apply|to|on|and|just|instead|of|s)\b|['’]s?\b|[^\p{L}\p{N}]+/giu;
 
-function nameWords(employeeName: string | null | undefined): string[] {
-  return (employeeName ?? "").toLowerCase().split(/[^\p{L}'’-]+/u).filter((word) => word.length >= 2);
+/** Her names: the card's employee, and the name the manager typed in the request ("for liz varnholt"). */
+type Her = string | readonly string[] | null | undefined;
+function nameWords(her: Her): string[] {
+  const names = typeof her === "string" ? [her] : (her ?? []);
+  return names.flatMap((name) => name.toLowerCase().split(/[^\p{L}'’-]+/u)).filter((word) => word.length >= 2);
 }
 
-/** Whether the text names, as the subject of an act, someone who is not the card's employee. */
-function namesAnotherPerson(text: string, employeeName: string | null | undefined): boolean {
+const REQUEST_NAME = /\b(?:for|on)\s+([a-z][a-z'’-]*)(?:\s+([a-z][a-z'’-]*))?/i;
+/** The name typed after "for" in a form request, when the request has one. */
+export function requestedName(turn: string): string | null {
+  if (!FORM_REQUEST.test(turn)) return null;
+  const typed = REQUEST_NAME.exec(turn);
+  return typed ? [typed[1], typed[2]].filter(Boolean).join(" ") : null;
+}
+
+/*
+ * Gate-Sunny-3's NO-GO on S#875 here (12 Nov 2026): the manager's own labelled account names coworkers, witnesses and
+ * nicknames ("What happened: Ilsa was 40 minutes late … Jordan had to cover the front desk"). So an outline is another
+ * person's only when (1) it never mentions the card's employee, (2) it names someone, and (3) it is laid out as a filled
+ * form — its labels are the form's own sections (Observation of Offense, Action Plan …), not an account's (Date, What
+ * happened, Time, Shift). Any doubt keeps the turn as her account.
+ */
+const FORM_SECTION_LABEL =
+  /(?:^|\n)[ \t]*(?:observation\s+of\s+offense|action\s+plan|going\s+forward|expectations?|policy\s+violated|policy\s+language|prior\s+actions?|details\s*[–—-]\s*observed)[ \t]*:/i;
+const ARTICLE_BEFORE = /\b(?:the|a|an|her|his|their|my|our|your|this|that)\s+$/i;
+
+/** Whether the text mentions the card's employee: a word of her name, in any case, possessive or not. */
+function mentionsEmployee(text: string, employeeName: Her): boolean {
   const own = nameWords(employeeName);
+  const words = text.toLowerCase().split(/[^\p{L}'’-]+/u).map((word) => word.replace(/['’]s?$/, ""));
+  return own.some((part) => words.includes(part));
+}
+
+/** Whether the text names someone as the subject of an act: "Corisande arrived …", or lower case when the name recurs. */
+function namesSomeone(text: string): boolean {
   for (const match of text.matchAll(NAMED_ACT)) {
+    if (!NOT_A_PERSON.has(match[1]!.toLowerCase())) return true;
+  }
+  // "corisande arrived … coach corisande": a lower-case name counts only when it recurs and no article owns it.
+  for (const match of text.matchAll(NAMED_ACT_ANY_CASE)) {
     const name = match[1]!.toLowerCase();
-    if (NOT_A_PERSON.has(name)) continue;
-    if (!own.some((word) => word === name || name.startsWith(word) || word.startsWith(name))) return true;
+    if (NOT_A_PERSON.has(name) || ARTICLE_BEFORE.test(text.slice(0, match.index))) continue;
+    if ((text.toLowerCase().match(new RegExp(`\\b${name}\\b`, "g")) ?? []).length >= 2) return true;
   }
   return false;
 }
 
+/** A pasted outline for another person: laid out as a filled form, naming someone, never the card's employee. */
+function outlineForAnotherPerson(text: string, employeeName: Her): boolean {
+  return FORM_SECTION_LABEL.test(text) && !mentionsEmployee(text, employeeName) && namesSomeone(text);
+}
+
 /** Whether a "same outline …" turn says nothing but the employee's name. */
-function addsOnlyTheName(text: string, employeeName: string | null | undefined): boolean {
+function addsOnlyTheName(text: string, employeeName: Her): boolean {
   const own = nameWords(employeeName);
   if (own.length === 0) return false;
   const words = text.replace(SAME_OUTLINE_FILLER, " ").toLowerCase().split(/\s+/).filter(Boolean);
@@ -69,10 +107,11 @@ function addsOnlyTheName(text: string, employeeName: string | null | undefined):
   return named.length > 0 && named.length === words.length;
 }
 
-/** A pasted labelled outline naming another person, or a turn asking for "the same outline …" with only her name. */
-export function isOutlineTurn(text: string, employeeName?: string | null): boolean {
+/** A pasted filled-form outline for another person, or a turn asking for "the same outline …" with only her name. */
+export function isOutlineTurn(text: string, employeeName?: Her): boolean {
   if (FORM_REQUEST.test(text)) return false;
-  if (looksLikePastedTemplate(text)) return namesAnotherPerson(text, employeeName);
+  // A lower-case outline ("observation of offense: …") has the form's own labels even when no label is capitalised.
+  if (looksLikePastedTemplate(text) || FORM_SECTION_LABEL.test(text)) return outlineForAnotherPerson(text, employeeName);
   return SAME_OUTLINE.test(text) && addsOnlyTheName(text, employeeName);
 }
 
@@ -105,8 +144,10 @@ interface Asked<T extends Turn> {
  */
 export function withoutOutlineTurns<T extends Turn, A extends Asked<T>>(asked: A): { asked: A; outline: boolean; requestId?: string } | null {
   if (!outlineOnOpenProposalEnabled() || asked.activeFormInstanceId) return null;
-  const employee = cardEmployee(asked.history);
-  if (!employee) return null;
+  const card = cardEmployee(asked.history);
+  if (!card) return null;
+  const typed = asked.history.filter((turn) => turn.role === "user").map((turn) => requestedName(turn.content));
+  const employee = [card, ...typed.filter((name): name is string => name !== null)];
   const outline = isOutlineTurn(asked.question, employee);
   const kept = asked.history.filter((turn) => !(turn.role === "user" && isOutlineTurn(turn.content, employee)));
   if (!outline && kept.length === asked.history.length) return null;
@@ -150,6 +191,7 @@ export function withOutlineKeptNote<T extends { content: string; formProposal?: 
 export function notesWithoutOutline(notes: string, employeeName: string | null): string {
   if (!outlineOnOpenProposalEnabled() || !employeeName) return notes;
   const turns = notes.split(/\n{2,}/);
-  const kept = turns.filter((turn) => !isOutlineTurn(turn, employeeName));
+  const her = [employeeName, ...turns.map(requestedName).filter((name): name is string => name !== null)];
+  const kept = turns.filter((turn) => !isOutlineTurn(turn, her));
   return kept.length === turns.length || kept.length === 0 ? notes : kept.join("\n\n");
 }
