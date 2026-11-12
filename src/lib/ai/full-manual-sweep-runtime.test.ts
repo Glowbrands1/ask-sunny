@@ -133,10 +133,24 @@ afterEach(() => {
 
 describe("a reply answered from retrieval, with the full manual off", () => {
   /*
-   * Rebuilt on current main (QA's recovery audit, 12 Nov 2026): "Where should employees park?" → [p.18] needs
-   * `citeRetrievedAnswer` wired on the retrieval path in `ai/server-ask.ts` (Coding-2's file); that test is added with
-   * the wiring (#209's d7b298e5 has it).
+   * Rebuilt on current main (QA's recovery audit, 12 Nov 2026): `citeRetrievedAnswer` is wired on the retrieval path in
+   * `ai/server-ask.ts` behind MANUAL_CITATION_SWEEP_FIXES_ENABLED (reference d7b298e5).
    */
+  it('"Where should employees park?" → [p.18], Employee Parking (MANUAL_CITATION_SWEEP_FIXES_ENABLED)', async () => {
+    process.env.MANUAL_CITATION_SWEEP_FIXES_ENABLED = "1";
+    state.rows = [manualRow(55, 0.925)];
+    state.reply =
+      "Employees shouldn't park in the spots closest to the front of the location — those are reserved for customers [S1].";
+    const response = await ask("Where should employees park?");
+    expect(state.fullManualBlocks[0]).toBeNull();
+    expect(response.content).toBe(
+      "Employees shouldn't park in the spots closest to the front of the location — those are reserved for customers [p.18].",
+    );
+    expect(response.citations.map((citation) => `${citation.locator} ${citation.excerpt}`)).toEqual([
+      "Page 18 Employee Parking",
+    ]);
+  }, 30_000);
+
   it("with the full manual off, the reply is as before", async () => {
     delete process.env.FULL_MANUAL_CONTEXT_ENABLED;
     state.rows = [manualRow(55, 0.925)];
