@@ -55,7 +55,9 @@ import {
   dateQuestionKeptEnabled,
   secondRequestOwnAccountEnabled,
   observationOwnPersonOnlyEnabled,
+  futureIncidentDateAskEnabled,
 } from "@/lib/config/chat-quality-flags";
+import { isBareDateAnswer } from "@/lib/forms/future-card-date";
 import { turnsMadeAbout, withObservationMadeAbout } from "./make-it-about";
 import { NOTHING_SET_ASIDE, citationSetAside, policiesSetAside, setAsideAnything, withPolicySetAside, withoutPolicyAsks } from "@/lib/forms/policy-set-aside";
 import { namesOnlyAPolicy } from "@/lib/forms/person-guard";
@@ -792,6 +794,8 @@ function withObservation(content: string, turns: readonly string[], employeeName
       // OBSERVATION_OWN_PERSON_ONLY_ENABLED (QA's P7): never the request's other people, nor "create draft for …".
       const sentence = read && observationOwnPersonOnlyEnabled() ? ownPersonAccount(read) : read;
       if (!sentence) continue;
+      // FUTURE_INCIDENT_DATE_ASK_ENABLED (port from Ask Bubbles, G5-743): "it was 10-20-26" answers the date question only.
+      if (futureIncidentDateAskEnabled() && isBareDateAnswer(sentence)) continue;
       // BARE_NOT_AFTER_REQUEST_ENABLED: "ca for <A> not late" says only what did not happen, so it is no Observation.
       if (onlyDeniesForObservation(said, employeeName) || onlyDeniesForObservation(sentence, employeeName)) continue;
       // CA_SALES_POLICY_ENABLED (QA, live, 4 Nov 2026): "a corrective action for msb" left "msb"; a glossary term is the reason, not an account.
@@ -878,6 +882,8 @@ function withAccount(content: string, turns: readonly string[], employeeName: st
   ).filter(
     (sentence) =>
       !onlyAGlossaryTerm(sentence) &&
+      // FUTURE_INCIDENT_DATE_ASK_ENABLED (port from Ask Bubbles, G5-743): "it was 10-20-26" answers the date question only.
+      !(futureIncidentDateAskEnabled() && isBareDateAnswer(sentence)) &&
       // BARE_NOT_AFTER_REQUEST_ENABLED: a sentence that only says what did not happen is no Observation.
       !onlyDeniesForObservation(sentence, employeeName) &&
       !content.toLowerCase().includes(sentence.toLowerCase()) &&

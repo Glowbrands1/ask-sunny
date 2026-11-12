@@ -18,6 +18,21 @@ import { FUTURE_DATE_TAG, futureDateQuestion } from "./incident-dates";
  * created), and the question is asked — once in the conversation. A date the manager gave the form itself ("dated
  * 12/20") is kept, as `decideFormDate` keeps it. Off, the response is returned as it came.
  */
+/*
+ * Port from Ask Bubbles (Gate-Bubbles-5, G5-743, 12 Nov 2026): the answer to this flag's own question ("it was 10-20-26")
+ * was glued onto the Observation ("… on 12-20-26 it was 10-20-26"). A turn that only gives a day is the date, never part
+ * of the account; the date readers still read it. The callers check the flag.
+ */
+const DAY = String.raw`(?:\d{1,2}[\/.-]\d{1,2}(?:[\/.-]\d{2,4})?|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s+\d{4})?|today|yesterday)`;
+const BARE_DATE_ANSWER = new RegExp(
+  String.raw`^\s*(?:(?:it|that|this|the\s+(?:incident|meeting|date|day))\s+(?:was|happened|is)\s+)?(?:on\s+)?(?:the\s+)?${DAY}\s*[.!]?\s*$`,
+  "i",
+);
+
+export function isBareDateAnswer(text: string): boolean {
+  return BARE_DATE_ANSWER.test(text);
+}
+
 export function withoutFutureCardDate(
   response: AskResponse,
   input: {

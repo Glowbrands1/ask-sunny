@@ -48,6 +48,9 @@ export const NOV10_FUTURE_INCIDENT_DATE_CASES: ReplayCase[] = WORDINGS.flatMap((
       const answer = await thread.say("it was 10-20-26");
       expect(cardDate(thread), `the answer does not date the card:\n${answer.content}`).toBe("2026-10-20");
       expect(answer.content, `the date is asked about again:\n${answer.content}`).not.toMatch(/after today/i);
+      // Port from Ask Bubbles (Gate-Bubbles-5, G5-743): the answer only dates the card, and is never glued onto the account.
+      const observation = /\*\*Observation of Offense:\*\*\s*([^\n]*)/.exec(answer.content)?.[1] ?? "";
+      expect(observation, `the answer is in the Observation:\n${answer.content}`).not.toMatch(/it was 10-20-26/i);
     },
   })),
 );
