@@ -407,6 +407,8 @@ const NEW_FLAGS = [
   "APP_INSTRUCTIONS_NOT_ACCOUNT_ENABLED",
   // coding 6: FAILURE_TO_OPEN_IS_LATE_OPENING (default off): forced off with the others.
   "FAILURE_TO_OPEN_IS_LATE_OPENING_ENABLED",
+  // coding 6: TERMINATION_STATED_TICKS (default off): forced off with the others.
+  "TERMINATION_STATED_TICKS_ENABLED",
   // coding 6: PAYROLL_BARE_SENTENCE (default off): forced off with the others.
   "PAYROLL_BARE_SENTENCE_ENABLED",
   // coding 6: ADVICE_ASK_NOT_ACCOUNT (default off): forced off with the others.
@@ -761,8 +763,19 @@ const PROTECTED = [
  * extractJobTitle a title word straight before "EPP" is skipped as the form's
  * name unless the title is said again later. Behind
  * FORM_NAME_NOT_A_TITLE_ENABLED, default off; off, every title is read as before.
+ * The user (Pau) approved in writing on 10 Nov 2026, via QA ("ok termination
+ * closing"), behind TERMINATION_STATED_TICKS_ENABLED (default off), both apps:
+ * in src/lib/forms/required-closing.ts, `withRequiredClosing` returns a value
+ * that already ends with the termination sentence unchanged (with its
+ * `TERMINATION_PLAN_CLOSING` constant and the flag import); in
+ * src/lib/forms/ca-action-plan.ts, `ActionPlanInput.termination`, and a
+ * Termination plan's closing is the termination sentence (`planClosing`, also
+ * in `refreshedActionPlan`). Off, both are exactly as before; instances.ts is
+ * not touched.
  */
 const APPROVED_PROTECTED_EDITS = [
+  ":(exclude)src/lib/forms/required-closing.ts",
+  ":(exclude)src/lib/forms/ca-action-plan.ts",
   ":(exclude)src/lib/forms/proposal.ts",
   ":(exclude)src/lib/forms/chat-revision.ts",
   ":(exclude)src/lib/forms/instances.ts",
