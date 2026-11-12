@@ -89,3 +89,35 @@ Class: REGRESSION. A manager can write her own account in the form's section lab
 is enough to drop it. Suggested direction: the outline's *subject* must be a named person other than her. A pronoun
 subject ("she arrived", "he left") refers to the card's employee, so keep the turn. And a name the roster maps to the
 card's employee (a nickname or preferred first name) counts as hers.
+
+## Round 4, head 757e389f2 — GO
+
+Rule: an outline needs the form's own labels, must never mention her name or the name typed in the request, must have
+no she/he/they in its Observation, and the Observation's first sentence must be about a named person (first and last
+name) who isn't her. Merged onto main 05576461: clean, tsc clean.
+
+Probes (card Ilsa Varnholt). These are **kept as her account**: Date/What happened; coworker named; witness named;
+form labels + "she" + coworker; form labels + nickname (card Elizabeth); a witness's full name as subject ("Jordan Pike
+reported …"); a full-name coworker opening the salon; no subject; surname only. These are **outlines**: "Corisande Velt
+arrived …" and "same outline but with Ilsa's info". **Not caught** (as today; production doesn't catch these either):
+an outline naming the other person by first name only ("Corisande arrived …") or in lowercase.
+
+1 OFF + 1 ON, full suite, production flags in the env:
+
+| | tests | passed | failed |
+|---|---|---|---|
+| OFF | 21,935 | 20,540 | 1,261 |
+| ON  | 21,935 | 20,538 | 1,263 |
+
+- replay `nov11-17i-outline-on-open-proposal` OPEN arm: it now holds. The reply gains "I've kept **Ilsa
+  Varnholt**'s own details; nothing from the person in the pasted example goes on this card.", and the card keeps step
+  (a)'s date and Attendance p.14. INTENDED. Parity child: INTENDED-HARNESS.
+- `outline-on-proposal.test.ts` "off: the request is as sent" and "… off, as sent": these fail with the flag on in the
+  env because the off arms don't force the flag off. INTENDED-HARNESS; tidy-up for Coding-6.
+- Replay text: **1 record differs** (the target). The g4-802 own-account cases, sf-s21,
+  nov8-second-request-sf-s21-template-one-request and nov8-second-request-sf-s22-one-request are **unchanged**.
+  0 REGRESSION.
+- Eval (flag on): 63/63, 42/51 cases pass, and no case changes outcome.
+- On main 1ecadf923 the PR conflicts in flags-off-parity and chat-quality-flags (the flag lists): a rebase is needed.
+
+**GO.** The case that now holds is `nov11-17i-outline-on-open-proposal`.
