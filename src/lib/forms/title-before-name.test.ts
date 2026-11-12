@@ -125,3 +125,31 @@ describe("Gate-Sunny's probe of 92a3cca9 (12 Nov 2026)", () => {
     expect(withoutLeadingTitle("SD Wren Tallis")).toBe("Wren Tallis");
   });
 });
+
+/* Gate-Sunny's NO-GO on #867 (12 Nov 2026): R02 from a production chat, and the gate's notes. Invented people. */
+describe("TITLE_BEFORE_NAME: Gate-Sunny's NO-GO on #867", () => {
+  it("flag on: \"create a CA for salon director, test employee for violating …\" — a title closed by a comma is a label; the name runs as before", () => {
+    process.env[FLAG] = "true";
+    expect(leadingTitleLength(["salon", "director,", "test", "employee"])).toBe(0);
+    const off = (() => {
+      delete process.env[FLAG];
+      return leadingFormRequest("create a CA for salon director, test employee for violating the standards of conduct");
+    })();
+    process.env[FLAG] = "true";
+    expect(leadingFormRequest("create a CA for salon director, test employee for violating the standards of conduct")).toEqual(off);
+  });
+
+  it("flag on: \"SDIT Trainee\" is a title, never a person called Trainee", () => {
+    process.env[FLAG] = "true";
+    expect(withoutLeadingTitle("SDIT Trainee")).toBe("SDIT Trainee");
+    expect(nameAfterTitle("Corrective action for SDIT Trainee")).toBeNull();
+  });
+
+  it("flag on: \"TC Wren Van Der Berg\" is Wren Van Der Berg (a surname particle lets the name run to four words)", () => {
+    process.env[FLAG] = "true";
+    expect(withoutLeadingTitle("TC Wren Van Der Berg")).toBe("Wren Van Der Berg");
+    expect(nameAfterTitle("Corrective action for TC Wren van der Berg")).toBe("Wren van der Berg");
+    // Four plain words are still not a name.
+    expect(nameAfterTitle("Corrective action for TC Wren Tallis Marsh Pike")).toBeNull();
+  });
+});

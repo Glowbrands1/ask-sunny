@@ -41,7 +41,14 @@ function isWholeTitle(phrase: string): boolean {
 export function leadingTitleLength(words: readonly string[]): number {
   if (!titleBeforeNameEnabled()) return 0;
   for (let length = Math.min(4, words.length - 1); length >= 1; length -= 1) {
-    if (isWholeTitle(words.slice(0, length).join(" "))) return length;
+    if (!isWholeTitle(words.slice(0, length).join(" "))) continue;
+    /*
+     * Gate-Sunny's NO-GO on #867 (12 Nov 2026), R02 from a production chat: "create a CA for salon director, test employee
+     * for violating the standards of conduct" carded "test" (expected "test employee"). A title closed by a comma is a
+     * label before the name, and the name after it is read as it was before this flag.
+     */
+    if (/,$/.test(words[length - 1]!)) return 0;
+    return length;
   }
   return 0;
 }
@@ -69,7 +76,9 @@ const NOT_A_NAME_WORD = new Set(
     "monday mondays tuesday tuesdays wednesday wednesdays thursday thursdays friday fridays saturday saturdays sunday sundays weekend weekends " +
     "training trainings visit visits meeting meetings shift shifts review reviews evaluation evaluations award awards party parties " +
     "orientation onboarding schedule schedules huddle huddles inventory audit audits " +
-    "approval approvals request requests check checks call calls walk walkthrough coverage deadline deadlines report reports"
+    "approval approvals request requests check checks call calls walk walkthrough coverage deadline deadlines report reports " +
+    // Gate-Sunny's note on #867 (12 Nov 2026): "SDIT Trainee" is a title, never a person called "Trainee".
+    "trainee trainees hire hires"
   ).split(" "),
 );
 
@@ -88,12 +97,22 @@ function withoutTrailingTime(words: readonly string[]): string[] {
   return words.slice(0, end);
 }
 
-/** One to three words, each shaped like a name and none of them a joining, time, event or shift word. */
+/*
+ * Gate-Sunny's note on #867 (12 Nov 2026): "TC Wren Van Der Berg" read no name — four words. A surname particle (van,
+ * der, de, la …) lets the name run to four words.
+ */
+const PARTICLE = /^(?:van|von|der|den|de|del|della|da|di|la|le|du|st\.?|mac|bin|ibn)$/i;
+
+/** One to three words (four with a surname particle), each shaped like a name and none of them a joining, time, event or shift word. */
 function personLike(words: readonly string[]): boolean {
+  const most = words.some((word, at) => at > 0 && PARTICLE.test(word)) ? 4 : 3;
   return (
     words.length >= 1 &&
-    words.length <= 3 &&
-    words.every((word) => NAME_WORD.test(word) && !NOT_A_NAME_WORD.has(word.toLowerCase().replace(/[.,;:!?]+$/, "")))
+    words.length <= most &&
+    words.every(
+      (word, at) =>
+        (NAME_WORD.test(word) || (at > 0 && PARTICLE.test(word))) && !NOT_A_NAME_WORD.has(word.toLowerCase().replace(/[.,;:!?]+$/, "")),
+    )
   );
 }
 
