@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { candidateNameWords, matchRowsToQuestion } from "./chat-form-records";
 import type { InstanceRow } from "./instances";
@@ -19,10 +19,13 @@ const split = () => {
 
 afterEach(() => {
   delete process.env[FLAG];
+  vi.unstubAllEnvs();
 });
 
 describe("FORMS_ON_FILE_ORDER_MATCH_POSSIBLE: a reversed name is a possible match", () => {
   it("flag off (as on main): \"Tallis Wren\" names the person asked about", () => {
+    // The off behaviour pins its own flag off, so it holds once production turns the flag on (Gate-Sunny, 12 Nov 2026).
+    vi.stubEnv(FLAG, "");
     expect(split()).toEqual({ named: ["Tallis Wren", "Wren Tallis"], possible: ["Wren Park"] });
   });
 
