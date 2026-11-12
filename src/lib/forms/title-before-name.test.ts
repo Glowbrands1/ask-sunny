@@ -34,6 +34,8 @@ describe("TITLE_BEFORE_NAME: a job title before the name", () => {
   });
 
   it("flag off: names are read as before", () => {
+    // Off pins its own flag (QA's off-pins guard, 11 Nov 2026): it must hold once production turns the flag on.
+    delete process.env[FLAG];
     expect(withoutLeadingTitle("Tanning Consultant Wren Tallis")).toBe("Tanning Consultant Wren Tallis");
     expect(leadingFormRequest("Corrective action for Tanning Consultant Wren Tallis")).toBeNull();
   });
