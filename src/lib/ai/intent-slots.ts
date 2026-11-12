@@ -48,8 +48,9 @@ import { newestManagerTurnSalon } from "@/lib/forms/newest-place-turn";
 import { typedEmployeeName } from "@/lib/forms/typed-employee-name";
 import { managerStatedWarningLevel, templateHasWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
 import { isDocumentName, isReportName, isRosterStateName } from "./not-a-person";
-import { reportNameNotAPersonEnabled } from "@/lib/config/chat-quality-flags";
-import { readsAsStatedTitle, titleTextFromTurns } from "./title-words";
+import { formNameNotATitleEnabled, lateSlotReadsAttendanceEnabled, reportNameNotAPersonEnabled } from "@/lib/config/chat-quality-flags";
+import { lateSlotHeading } from "./late-slot-attendance";
+import { readsAsStatedTitle, saidOnlyAsFormName, titleTextFromTurns } from "./title-words";
 import { titleInWords } from "./title-in-words";
 import { describedAttendanceKeys } from "@/lib/forms/ca-policy";
 import { headingKey, sectionHeadingsFor } from "@/lib/forms/official-policy-manual";
@@ -362,7 +363,15 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
   const namedFormExact = namedFormExactEnabled();
   const naming = namedFormExact && !choice?.form ? managerFormNaming(input) : null;
   const groundedPolicy = groundPolicy(reading?.policyHeading ?? null, input.headings);
-  const modelPolicy = deferToTopic(choiceStated && isDisciplineProcedure(groundedPolicy) ? null : groundedPolicy, input.question);
+  const deferredPolicy = deferToTopic(choiceStated && isDisciplineProcedure(groundedPolicy) ? null : groundedPolicy, input.question);
+  /*
+   * LATE_SLOT_READS_ATTENDANCE_ENABLED (QA, live Sunny, 10 Nov 2026): the model's "Late Opening" for "she was late on
+   * 11/3/26" is Attendance here too, as the code's reading already is (LATE_READS_ATTENDANCE), so the card's Policy line,
+   * Action Plan and Sources agree. An opening ("failure to open on time") keeps Late Opening. See `late-slot-attendance.ts`.
+   */
+  const modelPolicy = lateSlotReadsAttendanceEnabled()
+    ? groundPolicy(lateSlotHeading(deferredPolicy, managerBlob(input)), input.headings) ?? deferredPolicy
+    : deferredPolicy;
   /*
    * THE MANAGER'S LEVEL ONLY (WARNING_LEVEL_MANAGER_ONLY_ENABLED). Live
    * replays, 24 Oct 2026: the blob holds Ask Sunny's own "You'll set the
@@ -1125,7 +1134,9 @@ function groundTitle(
   // turns carry it (see `titleInWords`).
   const wholeWord = titleWholeWordEnabled();
   const inWords = (title: string) => !wholeWord || titleInWords(title, blob);
-  const probe = typed?.trim() && inWords(typed.trim()) ? typed.trim() : null;
+  // FORM_NAME_NOT_A_TITLE_ENABLED: "SDIT" read from "Create an SDIT EPP for …" is the form's name, not a title.
+  const formName = (title: string) => formNameNotATitleEnabled() && saidOnlyAsFormName(title, blob);
+  const probe = typed?.trim() && inWords(typed.trim()) && !formName(typed.trim()) ? typed.trim() : null;
   if (probe) {
     const hit = titles.find((title) => title.toLowerCase() === probe.toLowerCase() && inWords(title));
     if (hit) return hit;

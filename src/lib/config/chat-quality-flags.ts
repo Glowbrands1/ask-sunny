@@ -2649,6 +2649,17 @@ export function lateReadsAttendanceEnabled(): boolean {
 }
 
 /**
+ * LATE_SLOT_READS_ATTENDANCE_ENABLED (QA, live Sunny after #784, 10 Nov 2026; default off; same flag in both apps). "create a
+ * corrective action for <T>, she was late on 11/3/26": the Policy line said Attendance (LATE_READS_ATTENDANCE) but the
+ * card's Action Plan and Sources said Late Opening p.15, from the model's heading kept in the slots. On: that heading is
+ * Attendance too when the manager's words say an employee was late and never say "open" (`ai/late-slot-attendance.ts`,
+ * read in `ai/intent-slots.ts`). Off, as before.
+ */
+export function lateSlotReadsAttendanceEnabled(): boolean {
+  return envFlag("LATE_SLOT_READS_ATTENDANCE_ENABLED");
+}
+
+/**
  * EXIT_FORM_DATE_FROM_TERMINATION_ENABLED (QA, the live Sunny round 11, 9 Nov 2026; coding 5; same flag in both apps;
  * default off). A termination letter "… is terminated, effective 11/08/2026 … no-call no-shows on 11/3, 11/5 and 11/7"
  * gave the exit card the Date November 7 (the last no-show) beside Resignation Date November 8 (round 10 had November 8).
@@ -2690,6 +2701,16 @@ export function observationOwnPersonOnlyEnabled(): boolean {
  */
 export function policyTopicIntoFieldEnabled(): boolean {
   return envFlag("POLICY_TOPIC_INTO_FIELD_ENABLED");
+}
+
+/**
+ * EXIT_TYPO_WORDS_ENABLED (Pau's P17, Sunny production, 10 Nov 2026; coding 5; same flag in both apps; default off).
+ * "salon items will be returneded … they are eligiable for rehire" left Store Items Returned and Eligible for Rehire
+ * blank. On: the exit answer readers read a word one or two letters off "returned", "eligible", "rehire" and the like as
+ * that word (`forms/exit-details.ts`). Off, as before.
+ */
+export function exitTypoWordsEnabled(): boolean {
+  return envFlag("EXIT_TYPO_WORDS_ENABLED");
 }
 
 /**
@@ -4417,4 +4438,52 @@ export function requestIssueKeptEnabled(): boolean {
  */
 export function remapAppLinesNotAccountEnabled(): boolean {
   return envFlag("REMAP_APP_LINES_NOT_ACCOUNT_ENABLED");
+}
+
+/**
+ * FORM_NAME_NOT_A_TITLE_ENABLED (QA's prod-env reading, 10 Nov 2026, D5; default off; same flag in both apps). "Create an
+ * SDIT EPP for <name> at <salon>" put "Salon Director in Training" on the card as the employee's position: the form's own
+ * name ("SDIT EPP", "TSD EPP") was read as a job title (`forms/proposal.ts` extractJobTitle). On: a title word straight
+ * before "EPP" is the requested form's name, never the employee's title. Off, as before.
+ */
+export function formNameNotATitleEnabled(): boolean {
+  return envFlag("FORM_NAME_NOT_A_TITLE_ENABLED");
+}
+
+/**
+ * ADD_NOT_REPEATED_SENTENCES_ENABLED (ported from Ask Bubbles: QA's live r15b there, 10 Nov 2026; default off; same flag in
+ * both apps). With ADD_NOT_REPEATED on, "add that she was also on her phone" on a sectioned CA Observation saved the late
+ * sentence twice: the reader's add repeated the field's FIRST sentence and heading, not the whole field. With this flag on
+ * too, an add's leading sentences the field already holds word for word are dropped as well (`forms/added-tail.ts`). Off,
+ * as before.
+ */
+export function addNotRepeatedSentencesEnabled(): boolean {
+  return envFlag("ADD_NOT_REPEATED_SENTENCES_ENABLED");
+}
+
+/**
+ * PAYROLL_BARE_SENTENCE_ENABLED (coding 6, 10 Nov 2026; default off; Pau's
+ * P15, Sunny production 9 Nov). "I need a term CA for <name>. Didn't show up
+ * for her opening shift. Payroll deduction." — the card still asked "Is
+ * payroll deduct applicable?" and left the box blank. On, a sentence that is
+ * only "Payroll deduction." is a Yes. Read in
+ * `forms/payroll-deduct-answer.ts` (which imports nothing). Off, as before.
+ */
+export function payrollBareSentenceEnabled(): boolean {
+  return envFlag("PAYROLL_BARE_SENTENCE_ENABLED");
+}
+
+/**
+ * ADVICE_ASK_NOT_ACCOUNT_ENABLED (coding 6, 10 Nov 2026; default off; Pau's
+ * P14(b), Sunny production 9 Nov). The manager described an employee's
+ * pushback, asked "how i do about her frusteration", then "tell me how what to
+ * say back. send a messageto me"; the Coaching card's Observation pasted all of
+ * it, the questions to the app included. On: a sentence that only asks the
+ * app for advice or a message ("how do I …", "what should I say", "tell me
+ * how / what …", "send me a message", "help me word …") is left out of the
+ * card's Observation and the draft's account, with or without a "?". See
+ * `ai/app-instructions.ts`. Off, as before.
+ */
+export function adviceAskNotAccountEnabled(): boolean {
+  return envFlag("ADVICE_ASK_NOT_ACCOUNT_ENABLED");
 }
