@@ -2606,6 +2606,17 @@ export function possessivePlaceNotPersonEnabled(): boolean {
 export function offRosterAskBeforeCardEnabled(): boolean {
   return envFlag("OFF_ROSTER_ASK_BEFORE_CARD_ENABLED");
 }
+
+/**
+ * OFF_ROSTER_STORE_ANSWER_ONLY_ENABLED (Coding-2, 12 Nov 2026; default off; QA's ruling on Ask Bubbles' #735 gate, both
+ * apps). Under the off-roster ask ("I can't find **<A>** … reply **use <A>**"), a reply that is only a salon set the
+ * salon and made the card for <A> at once, skipping the "use <A>" confirmation (live with production's flags). On: a
+ * salon-only answer sets the salon and the name still needs "use <A>": the card is held, with its salon, and the ask is
+ * made again (`forms/off-roster-ask.ts`). Off, as before.
+ */
+export function offRosterStoreAnswerOnlyEnabled(): boolean {
+  return envFlag("OFF_ROSTER_STORE_ANSWER_ONLY_ENABLED");
+}
 /**
  * EXIT_LETTER_ADDRESSEE_ENABLED (QA, the live Sunny test of rounds 7c and 8, 9 Nov 2026; coding 5; same flag in both
  * apps; default off; with EXIT_LETTER_SIGNER_NOT_SUBJECT_ENABLED). "I need an exit form with this information." and a
