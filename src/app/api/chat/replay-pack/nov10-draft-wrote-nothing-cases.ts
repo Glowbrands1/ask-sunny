@@ -34,7 +34,8 @@ export const NOV10_DRAFT_WROTE_NOTHING_CASES: ReplayCase[] = [
     id: "nov10-r21-name-only-coaching-blank-draft-is-said",
     title: "r21: \"make me a coaching form for <name>\" → Create with no account: the draft says its details are blank, never a silent blank",
     report: 'QA, 10 Nov 2026 (r21 live, conv 13:24Z): name-only coaching card ("make me a coaching form for <T>", app asked "What happened?"), Create → saved only Name+Date, no notice',
-    status: { open: "Create saves no Details and the draft's reply says nothing about it" },
+    // Changed on purpose (12 Nov 2026): fixed in production by DRAFT_WROTE_NOTHING_NOTICE, QA round 33. Was OPEN ("Create saves no Details and the draft's reply says nothing about it").
+    status: "fixed",
     fixFlags: ["DRAFT_WROTE_NOTHING_NOTICE_ENABLED"],
     async run(t) {
       vi.setSystemTime(new Date("2026-11-10T13:24:00Z"));
