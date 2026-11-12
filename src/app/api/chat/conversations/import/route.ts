@@ -189,6 +189,11 @@ export async function POST(request: Request) {
         declined.push({ id: payload.clientConversationId, reason: "another_account" });
         continue;
       }
+      // CHAT_IMPORT_PROVEN_OWN_ENABLED: could not be proven this account's — its own reason, never "another account".
+      if (outcome === "not_proven") {
+        declined.push({ id: payload.clientConversationId, reason: "not_proven" });
+        continue;
+      }
 
       imported.push(payload.clientConversationId);
     }

@@ -135,7 +135,9 @@ function previousAnswer(history: readonly Pick<ChatMessage, "role" | "content">[
  * details" and "the details we just discussed" are the latest answer that is none of those.
  */
 const APPS_OWN_REPLY =
-  /^\s*(?:Here is what I would put on|I'll draft an? \*\*|I haven'?t changed the|I didn'?t change anything|\*\*Nothing on the form has changed yet|Nothing on the form has changed|Updated the \*\*|Is this for \*\*|To create it, press|Who is this form for)/i;
+  /^\s*(?:Here is what I would put on|I'll draft an? \*\*|I haven'?t changed the|I didn'?t change anything|\*\*Nothing on the form has changed yet|Nothing on the form has changed|Updated the \*\*|Is this for \*\*|To create it, press|Who is this (?:form|\*\*[^*]+\*\*) for|Which of them is this)/i;
+// The sibling app's Gate-Bubbles-4 (12 Nov 2026): "Who is this **Coaching Form** for?" and "Which of them is this …" are
+// the app's own questions, never the details a manager means by "these details".
 
 function earlierContentAnswer(history: readonly Pick<ChatMessage, "role" | "content">[]): string | null {
   for (let index = history.length - 1; index >= 0; index -= 1) {
@@ -149,7 +151,13 @@ function earlierContentAnswer(history: readonly Pick<ChatMessage, "role" | "cont
 
 /** The answer "these details" / "the details we just discussed" refer to. */
 function referredAnswer(history: readonly Pick<ChatMessage, "role" | "content">[]): string | null {
-  return detailsFromEarlierAnswerEnabled() ? earlierContentAnswer(history) : previousAnswer(history);
+  /*
+   * The sibling app's Gate-Bubbles-4 (12 Nov 2026, NO-GO there on #692; live here, where the flag is on): with no earlier
+   * content answer in the chat, "upate the draft with these details of coaching" got no reading and went to the free
+   * chat model, which can say "Updating the draft now" and write nothing. Then the reading is the flag-off one.
+   */
+  if (!detailsFromEarlierAnswerEnabled()) return previousAnswer(history);
+  return earlierContentAnswer(history) ?? previousAnswer(history);
 }
 
 export function formContentQuestion(input: {
