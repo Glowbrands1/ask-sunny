@@ -1,6 +1,7 @@
 import { attendanceActionPlanEnabled, cardPlanMatchesCreateEnabled } from "@/lib/config/chat-quality-flags";
 
 import { attendanceActionPlan, isAttendancePlan, missedMeetingNotLateness } from "./attendance-action-plan";
+import { TERMINATION_APPROVAL_LINE, withTerminationPlan } from "./termination-stated";
 
 /*
  * ============================================================================
@@ -22,6 +23,9 @@ const PLAN_LINE = /^(\*\*Action plan:\*\*)\s*Management will review [^\n]*$/im;
 /** The policy the card cites: its Policy line's name, before the page, the source or "as you said". */
 const POLICY_LINE = /^\*\*Policy:\*\*\s*([^(\n,—]+?)(?:\s*\(|\s*,|\s+—|\s*$)/im;
 
+/** The card's stated termination ("**Type of Warning:** Termination, as you said …"). */
+const TERMINATION_TYPE = /^\*\*Type of Warning:\*\*\s*Termination\b/im;
+
 interface CardLike {
   readonly templateKey?: string;
   readonly employeeName?: string | null;
@@ -38,5 +42,11 @@ export function withCardPlanAsCreate<T extends { content: string; formProposal?:
   const citedPolicies = policy.split(/\s*(?:,|&|\band\b)\s*/).map((name) => name.trim()).filter(Boolean);
   const input = { citedPolicies, employeeName: card.employeeName ?? null, payroll: { answer: null, amount: null } };
   if (!isAttendancePlan(input) || missedMeetingNotLateness(account)) return answer;
-  return { ...answer, content: answer.content.replace(line[0], `${line[1]} ${attendanceActionPlan(input)}`) };
+  /*
+   * Ported from the sibling app: Gate-Bubbles-4's NO-GO there (G4-824, 12 Nov 2026), reproduced here with S#869: on a "Type of Warning: Termination" card the plan lost its termination
+   * sentence. Create runs its own closing step on whichever plan it built (`withTerminationPlan`, TERMINATION_STATED_TICKS),
+   * so the card does too: Pau's plan ending with "Effective immediately, employment is terminated …", exactly as saved.
+   */
+  const termination = answer.content.includes(TERMINATION_APPROVAL_LINE) || TERMINATION_TYPE.test(answer.content);
+  return { ...answer, content: answer.content.replace(line[0], `${line[1]} ${withTerminationPlan(attendanceActionPlan(input), termination)}`) };
 }
