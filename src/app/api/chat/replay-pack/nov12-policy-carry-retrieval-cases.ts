@@ -27,7 +27,6 @@ export const NOV12_POLICY_CARRY_RETRIEVAL_CASES: ReplayCase[] = [
     status: { open: "T4 is searched on its own words; no search names the policy" },
     fixFlags: ["POLICY_CARRY_RETRIEVAL_ENABLED"],
     // Until Coding-2 applies the search hunk in `ai/server-ask.ts` (the flag's reader is on main from this branch).
-    fixStatus: { open: "the search hunk in ai/server-ask.ts is not applied yet (Coding-2)" },
     async run(t) {
       t.directory(STAFF);
       t.as("salon_director", KEARNEY);
