@@ -123,6 +123,9 @@ afterEach(() => {
 
 describe("the assistant manager presses Import on the manager's browser", () => {
   it("off, as reported: the manager's chat is copied into the assistant manager's account", async () => {
+    // Off-pin (QA, 12 Nov 2026): CHAT_IMPORT_PROVEN_OWN would also decline this import, so it is held off here too.
+    // afterEach restores process.env.
+    process.env.CHAT_IMPORT_PROVEN_OWN_ENABLED = "";
     const { payload, held } = await importAs(ASSISTANT, false);
     expect(payload.imported).toEqual([MANAGERS_CHAT.id]);
     expect(held(ASSISTANT)).toHaveLength(1);
