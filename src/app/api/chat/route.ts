@@ -21,6 +21,7 @@ import {
   personGuardEnabled,
   missedShiftCitesAttendanceEnabled,
   possessivePlaceNotPersonEnabled,
+  groupWordsNotANameEnabled,
   formNameFromRosterEnabled,
   offRosterConfirmEnabled,
   exitLetterAddresseeEnabled,
@@ -33,6 +34,7 @@ import {
   titleNotSpeakersManagerEnabled,
   newRequestOwnTurnsEnabled,
   formEditPlainWordsEnabled,
+  makeThatUpdateAccountEnabled,
   questionNotFormEnabled,
   sameFormCopyEnabled,
   sameFormCopyNewPersonEnabled,
@@ -492,6 +494,16 @@ async function postChat(request: Request) {
             })
           : false;
       // PROPOSAL_NAME_CORRECTION_ENABLED: "fix her last name …" on a card not yet created. See `lib/forms/proposal-name-correction.ts`.
+      /*
+       * MAKE_THAT_UPDATE_ACCOUNT_ENABLED: "make that update" after a reply that offered nothing is her own account, as
+       * every reader of the open draft (Step B's patch reading included) reads it. See `lib/forms/form-content-turn.ts`.
+       */
+      if (makeThatUpdateAccountEnabled() && asked.activeFormInstanceId) {
+        const content = await import("@/lib/forms/form-content-turn");
+        const open = await (await import("@/lib/forms/open-form-summary")).describeOpenForm(request, asked.activeFormInstanceId).catch(() => null);
+        const withAccount = open ? content.makeThatUpdateWithAccount({ question: asked.question, history: asked.history, employeeName: open.employeeName }) : null;
+        if (withAccount) asked = { ...asked, question: withAccount };
+      }
       const parsed = withProposalNameCorrection(withSwitchAfterCreate(
         draftAction || staffPick || newRequestOpen
           ? {
@@ -933,6 +945,15 @@ async function postChat(request: Request) {
           businessToday(),
         );
       }
+      // GROUP_WORDS_NOT_A_NAME_ENABLED: "the same form for multiple employees" asks which employees (`lib/forms/group-words-ask.ts`).
+      if (groupWordsNotANameEnabled()) {
+        answer = (await import("@/lib/forms/group-words-ask")).withGroupWordsAsk(answer, [
+          ...parsed.history.filter((turn) => turn.role === "user").map((turn) => turn.content),
+          asked.question,
+        ]);
+      }
+      // TYPO_FULL_NAME_TO_ROSTER_ENABLED: the level said after "Is this for <name>?" is the card's (`lib/forms/confirmed-name-level.ts`).
+      answer = (await import("@/lib/forms/confirmed-name-level")).withConfirmedNameLevel(answer, parsed.history, asked.question);
       // PROPOSAL_NAME_CORRECTION_ENABLED: an off-roster "change her name to …" on the card is never kept silently; with the roster, the card stays for the one roster person it can only be, and a typo is never offered as a person.
       answer = withCorrectionNotDropped(answer, parsed);
       // TWO_FORMS_CARD_NOT_ASKED_ENABLED: a card that names its employee is never asked "Which of them … — <that employee> or …?" (`lib/forms/card-not-asked.ts`).

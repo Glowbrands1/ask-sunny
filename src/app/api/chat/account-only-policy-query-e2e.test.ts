@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { draftNoInventedPlanEnabled } from "@/lib/config/chat-quality-flags";
 import { fakeSupabase, type FakeStore } from "@/test/fake-supabase";
 import { JBA_MANUAL_CA_CHUNKS } from "@/test/fixtures/jba-manual-ca-sections";
 import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
@@ -520,7 +521,8 @@ describe(`${AO} on`, () => {
 
   it("the drafted Observed says no opening nobody wrote, dated with the form's date", async () => {
     const observation = await drafted();
-    expect(observation).toBe(EXPECTED);
+    // DRAFT_NO_INVENTED_PLAN_ENABLED (intended change, QA 12 Nov 2026, before the flip): no model "Going Forward" section.
+    expect(observation).toBe(draftNoInventedPlanEnabled() ? EXPECTED.replace(/\n\nGoing Forward:[\s\S]*$/, "") : EXPECTED);
   });
 
   it("\"last tuesday\" is the form's resolved date too", async () => {
@@ -541,7 +543,10 @@ describe(`${AO} on`, () => {
     for (const turn of TURNS) await thread.say(turn);
     state.draft = { values: { observation: clean } };
     const id = await thread.create();
-    expect(store.form_instance_values.find((row) => row.instance_id === id && row.field_key === "observation")?.value).toBe(clean);
+    // DRAFT_NO_INVENTED_PLAN_ENABLED (intended change, QA 12 Nov 2026, before the flip): the model's "Going Forward" is
+    // dropped from the Corrective Action Form's Observation; the Observed line is kept as written. Off, all of it.
+    const kept = draftNoInventedPlanEnabled() ? "Observed:\nThe employee was late to work on October 2, 2026." : clean;
+    expect(store.form_instance_values.find((row) => row.instance_id === id && row.field_key === "observation")?.value).toBe(kept);
   });
 
   it("notes that say open keep it", async () => {

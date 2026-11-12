@@ -9,6 +9,7 @@ import {
   madeAboutAllOrNothingEnabled,
   madeAboutSaidDateEnabled,
   stepBMakeItAboutAccountEnabled,
+  stepBSectionSpacingEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { madeAbout } from "@/lib/ai/make-it-about";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
@@ -46,6 +47,7 @@ import { NO_PRIOR_ACTION, PRIOR_ACTIONS_KEY } from "./prior-actions";
 import { takeReaderFoundNothing } from "./reader-found-nothing";
 import { draftableCheckboxGroups, draftableFields, type DraftValues } from "./responsibility";
 import { copiedContent } from "./same-form-copy";
+import { withSectionSpacing } from "./outline-sections";
 
 /**
  * ============================================================================
@@ -533,6 +535,18 @@ export async function writeFormEdits(instanceId: string, ops: readonly FormEditO
       how[op.field] = op.op === "append" ? "add" : op.reword ? "reword" : "replace";
     }
     evidence[op.field] = op.evidence ?? latest;
+  }
+  /*
+   * STEP_B_SECTION_SPACING_ENABLED (ported from Ask Bubbles; QA's live draft test, 8 Nov 2026): a field written in
+   * sections keeps the blank line before each heading when it had them. An "add" is appended by the writer as before.
+   */
+  if (stepBSectionSpacingEnabled()) {
+    for (const key of Object.keys(set)) {
+      const value = set[key];
+      const current = before[key]?.value;
+      if (typeof value !== "string" || typeof current !== "string" || current.trim() === "" || how[key] === "add") continue;
+      set[key] = withSectionSpacing(current, value);
+    }
   }
   const patch: FormPatch = { set, clear, how, evidence };
 

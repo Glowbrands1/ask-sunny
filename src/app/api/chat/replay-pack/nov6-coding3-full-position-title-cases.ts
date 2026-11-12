@@ -88,7 +88,31 @@ const DM_CASE: ReplayCase = {
   },
 };
 
+/*
+ * QA's Sunny round-33 live test (12 Nov 2026, FULL_POSITION_TITLE on): the tester's exit form, typed with labels on real
+ * line breaks, left the Job Title blank — "Position:" before the title was read as the title's owner. The tester's text
+ * word for word; the employee invented (on the pack's roster, no position of her own).
+ */
+const R33_LABELLED: ReplayCase = {
+  id: "nov12-r33-full-position-title-labelled",
+  title: "Round 33: \"exit form / Name: <A> / Position: Tanning Consultant Weekends Only / Resigned 11/8\": the card's Job Title is \"Tanning Consultant\"",
+  report: "QA's Sunny round-33 live test, 12 Nov 2026: FULL_POSITION_TITLE on, the labelled exit form left Job Title blank",
+  status: "fixed",
+  fixFlags: ["FULL_POSITION_TITLE_ENABLED"],
+  async run(t) {
+    vi.setSystemTime(new Date("2026-11-12T04:20:00Z"));
+    t.directory([...STAFF, ISAURA]);
+    t.as("salon_director", KEARNEY);
+    const thread = t.thread();
+    const reply = await thread.say("exit form\nName: Isaura Corvadine\nPosition: Tanning Consultant Weekends Only\nResigned 11/8");
+    expect(thread.proposal, `no exit card:\n${reply.content}`).toMatchObject({ employeeName: "Isaura Corvadine" });
+    expect(thread.proposal?.employeeRole ?? null, `the card's Position:\n${reply.content}`).toBe("Tanning Consultant");
+    expect(reply.content, `the Job Title is left blank:\n${reply.content}`).not.toMatch(/Left blank for you to review:\*\*[^\n]*Job Title/);
+  },
+};
+
 export const NOV6_CODING3_FULL_POSITION_TITLE_CASES: ReplayCase[] = [
+  R33_LABELLED,
   DM_CASE,
   exitCase(
     "nov6-coding3-full-position-title-asd-exit",
@@ -109,6 +133,7 @@ export const NOV6_CODING3_FULL_POSITION_TITLE_CASES: ReplayCase[] = [
     "Negative: \"Tanning Consultant Weekends Only\" is not one of the company's positions; the card's Position is \"Tanning Consultant\"",
     // Changed on purpose (QA, 10 Nov 2026): since TITLE_ENDS_AT_LINE (on) "Weekends Only" is read as the title's owner, and
     // the Job Title is left blank for an employee with no roster position. QA ruled that a regression: FULL_POSITION_TITLE.
-    "with production's flags the Job Title is left blank: \"Weekends Only\" is read as the title's owner",
+    // Changed on purpose (12 Nov 2026): fixed in production by FULL_POSITION_TITLE, QA round 33. Was OPEN ("with
+    // production's flags the Job Title is left blank: \"Weekends Only\" is read as the title's owner").
   ),
 ];

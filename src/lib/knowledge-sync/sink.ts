@@ -1,5 +1,6 @@
 import "server-only";
 
+import { wovenFailedRetryEnabled, wovenPdfOcrEnabled } from "@/lib/config/chat-quality-flags";
 import { activeKnowledgeCorpus } from "@/lib/knowledge/corpus";
 import { IngestionError } from "@/lib/ingestion/errors";
 import { OcrBudget } from "@/lib/ingestion/extract/pdf-ocr";
@@ -28,7 +29,9 @@ const UPLOADER_LABEL: Record<SourceSystem, string> = { woven: "Woven sync" };
 function asSinkError(error: unknown, fallback: string): SinkError {
   if (error instanceof IngestionError) {
     /* Not retryable: the file itself is the problem, and trying again tomorrow changes nothing. */
-    const permanent = ["unsupported_type", "too_large", "empty_file", "no_text"].includes(error.code);
+    const permanent = ["unsupported_type", "too_large", "empty_file", "no_text"].includes(error.code) &&
+      // WOVEN_FAILED_RETRY_ENABLED: with OCR on, a PDF with no text layer can be read by a later run, so it is retried.
+      !(error.code === "no_text" && wovenFailedRetryEnabled() && wovenPdfOcrEnabled());
     return new SinkError(`ingest_${error.code}`, error.message.slice(0, 300), !permanent);
   }
   return new SinkError(fallback, "Ask Sunny could not save this document.", true);
