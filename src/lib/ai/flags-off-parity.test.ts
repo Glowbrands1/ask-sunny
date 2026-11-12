@@ -648,6 +648,9 @@ const PROTECTED = [
  * src/lib/forms/form-date-answer.ts to fix prior-action parsing behind
  * PRIOR_ACTIONS_PARSE_ENABLED, with the flag-off reading unchanged. It stays
  * on the PROTECTED list; only the diff check leaves it out.
+ * Under that approval (QA, 12 Nov 2026; 233ef2bd rebuilt): "completed" joins
+ * PRIOR_STEP_BEFORE behind PRIOR_ACTIONS_PARSE_ENABLED (priorStepBefore()), so
+ * "she completed … coaching 9/29/26" is a prior action; off, PRIOR_STEP_BEFORE as before.
  *
  * The user (Pau) approved, on 26 Oct 2026, editing src/lib/ai/form-proposal.ts
  * for STORED_SLOTS_NOT_A_REQUEST_ENABLED: in turnsAboutThisForm the new-request
