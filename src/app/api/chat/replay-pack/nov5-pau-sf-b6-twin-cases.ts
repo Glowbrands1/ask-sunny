@@ -59,6 +59,8 @@ export const NOV5_PAU_SF_B6_TWIN_CASES: ReplayCase[] = [
     title: "sf-b6: the reply never ends at \"I can prepare:\"; the card after \"Create … from this conversation\" carries the detail added on turn 3",
     report: "Pau via QA, 5 Nov 2026 (the sibling app's production, 4 Nov), sf-b6 twin",
     status: { open: "the reply ends \"Based on what you've described, I can prepare:\" with nothing after it" },
+    // QA's backlog B7 (10 Nov 2026): the fix — the lead is a full sentence, or goes (`forms/lead-full-sentence.ts`).
+    fixFlags: ["LEAD_FULL_SENTENCE_ENABLED"],
     async run(t: T) {
       vi.setSystemTime(new Date("2026-11-04T23:30:00Z"));
       t.directory([...STAFF, WYNNE]);

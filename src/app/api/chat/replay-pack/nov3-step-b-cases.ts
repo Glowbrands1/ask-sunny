@@ -473,6 +473,8 @@ export const NOV3_STEP_B_CASES: readonly ReplayCase[] = [
      * Step B merges fields; it does not rewrite a sentence.
      */
     status: { open: "the incident date is written twice: the Date field and again in the Observation (\"… on 10-1-26\")" },
+    // QA's backlog B7 (10 Nov 2026): the fix — an account field drops the form's own date (`forms/date-once.ts`).
+    fixFlags: ["DATE_ONCE_ENABLED"],
     async run(t) {
       // HR's report was written on 21 Oct 2026; "today" must not leak onto the form.
       vi.setSystemTime(new Date("2026-10-21T15:30:00Z"));

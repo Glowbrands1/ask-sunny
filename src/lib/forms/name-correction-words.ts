@@ -1,5 +1,5 @@
 import type { AskResponse } from "@/lib/ai/types";
-import { nameCorrectionWordsEnabled } from "@/lib/config/chat-quality-flags";
+import { nameCorrectionWordsEnabled, nameLineCommaEnabled } from "@/lib/config/chat-quality-flags";
 
 /**
  * ============================================================================
@@ -30,6 +30,14 @@ const WHOLE_NAME: readonly RegExp[] = [
   /^\s*(?:please\s+)?redo\s+(?:it\s+(?:as|with)\s+)?(.+?)\s*[.!]?\s*$/i,
 ];
 
+/*
+ * NAME_LINE_COMMA_ENABLED (QA's backlog B7; QA's live CA chat, 4 Nov 2026): "fix her last name, it is Doe-Smith" — the
+ * comma and "it is" kept the last-name reading from matching, so the turn was no name correction at all. On: a comma,
+ * colon or dash after "last name", then "it is" / "it's" / "should be" / "is", reads the same as "… last name to …".
+ */
+const LAST_NAME_PUNCTUATED =
+  /^\s*(?:please\s+)?(?:fix|change|correct|update|make)\s+(?:her|his|their|the(?:\s+employee'?s)?)\s+last\s+name\s*[,:;–—-]\s*(?:(?:it\s+is|it'?s|its|should\s+be|is|to)\s+)?(.+?)\s*[.!]?\s*$/i;
+
 function words(name: string): string[] {
   return name.toLowerCase().split(/[^a-z'-]+/).filter(Boolean);
 }
@@ -39,7 +47,7 @@ export function nameCorrectionQuestion(question: string, currentName: string | n
   if (!nameCorrectionWordsEnabled() || !currentName?.trim()) return null;
   const current = words(currentName);
   if (current.length === 0) return null;
-  const last = LAST_NAME.exec(question);
+  const last = LAST_NAME.exec(question) ?? (nameLineCommaEnabled() ? LAST_NAME_PUNCTUATED.exec(question) : null);
   if (last) {
     const typed = last[1]!.trim();
     if (!typed || typed.split(/\s+/).length > 3) return null;
@@ -62,10 +70,13 @@ export function nameCorrectionQuestion(question: string, currentName: string | n
  * Action's name is the directory's; only its date is chat-correctable): the
  * reply says how to change it, and that nothing changed.
  */
-export function nameNotCorrectedReply(open: { templateName: string; employeeName: string }): AskResponse {
+export function nameNotCorrectedReply(open: { templateName: string; employeeName: string }, asked?: string): AskResponse {
+  // NAME_LINE_COMMA_ENABLED: the name asked for is named back, as a question to confirm (QA's live CA chat, 4 Nov 2026).
+  const wanted = nameLineCommaEnabled() && asked ? /^change her name to (.+)$/.exec(asked)?.[1]?.trim() : undefined;
+  const confirm = wanted && wanted.toLowerCase() !== open.employeeName.toLowerCase() ? ` Should it read **${wanted}**? If so, change the Employee Name line to it.` : "";
   return {
     recommendedVideoIds: [],
-    content: `**Nothing on the form has changed yet.** The name on a ${open.templateName} isn't changed from the chat — edit the Employee Name line on the card and press **Save changes**. The name on the card is **${open.employeeName}**.`,
+    content: `**Nothing on the form has changed yet.** The name on a ${open.templateName} isn't changed from the chat — edit the Employee Name line on the card and press **Save changes**. The name on the card is **${open.employeeName}**.${confirm}`,
     citations: [],
     coverage: "not_applicable",
   };

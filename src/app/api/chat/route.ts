@@ -33,6 +33,8 @@ import {
   refusalNoRepeatEnabled,
   titleNotSpeakersManagerEnabled,
   newRequestOwnTurnsEnabled,
+  addressAsksWhoEnabled,
+  leadFullSentenceEnabled,
   formEditPlainWordsEnabled,
   questionNotFormEnabled,
   sameFormCopyEnabled,
@@ -822,7 +824,7 @@ async function postChat(request: Request) {
         draftAnswer ??
         correction ??
         // A name correction this form does not take in chat: said plainly, never a model's "updated".
-        (nameFix && !correction ? (await import("@/lib/forms/name-correction-words")).nameNotCorrectedReply(nameFix.open) : null) ??
+        (nameFix && !correction ? (await import("@/lib/forms/name-correction-words")).nameNotCorrectedReply(nameFix.open, nameFix.question) : null) ??
         policyChange ??
         redraft ??
         sameCopy ??
@@ -954,6 +956,9 @@ async function postChat(request: Request) {
           [...asked.history.filter((turn) => turn.role === "user").map((turn) => String(turn.content)), asked.question],
           asked.context.todayIso,
         );
+      // ADDRESS_ASKS_WHO_ENABLED: "Corrective action for 123 Main Street" with no card asks who it is for (`lib/forms/address-asks-who.ts`).
+      if (addressAsksWhoEnabled() && !parsed.activeFormInstanceId)
+        answer = (await import("@/lib/forms/address-asks-who")).withAddressFormAsk(answer, asked.question);
       /*
        * FORM_EDIT_HONEST_REPLY_ENABLED: the ordinary answer, with a form open,
        * changed nothing — so it never says it updated the form. See
@@ -980,6 +985,8 @@ async function postChat(request: Request) {
         void _dropped;
         answer = { ...rest, content: rest.content.replace(/\n*Based on what you've described, I can prepare:\s*$/, "").trimEnd() };
       }
+      // LEAD_FULL_SENTENCE_ENABLED: a reply never ends at "I can prepare:" (`lib/forms/lead-full-sentence.ts`).
+      if (leadFullSentenceEnabled()) answer = (await import("@/lib/forms/lead-full-sentence")).withLeadFullSentence(answer);
       // WHAT_HAPPENED_NO_CREATE_ENABLED: while the reply asks what happened, the card offers no Create (`lib/forms/what-happened-no-create.ts`).
       if (whatHappenedNoCreateEnabled()) answer = (await import("@/lib/forms/what-happened-no-create")).withNoCreateWhileAsking(answer);
       // OFF_ROSTER_ASK_BEFORE_CARD_ENABLED: a salon manager's card for a full name not on their roster is asked about once, before the card (`lib/forms/off-roster-ask.ts`).

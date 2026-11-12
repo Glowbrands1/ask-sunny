@@ -37,6 +37,7 @@ import {
   proposalMakeItAboutEnabled,
   proposalPolicySetAsideEnabled,
   sameRequestOtherPersonEnabled,
+  dateOnceEnabled,
   coachingObservedSavedEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { notesMadeAbout } from "@/lib/ai/make-it-about";
@@ -2451,6 +2452,10 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       ),
     };
     if (setAsideAnything(setAside)) draftedPayload.values = valuesWithPolicySetAside(draftedPayload.values, setAside);
+    // DATE_ONCE_ENABLED: the incident date is the Date field's; an account field does not say it again. See `lib/forms/date-once.ts`.
+    if (dateOnceEnabled()) {
+      draftedPayload.values = (await import("@/lib/forms/date-once")).withFormDateOnce(draftedPayload.values, loaded.instance.formDate, narrativeKeys);
+    }
     // COACHING_OBSERVED_SAVED_ENABLED: the saved coaching Details always have an "Observed:" with the account (`lib/forms/coaching-observed-saved.ts`).
     if (coachingObservedSavedEnabled()) {
       draftedPayload.values = (await import("@/lib/forms/coaching-observed-saved")).withCoachingObservedSaved({

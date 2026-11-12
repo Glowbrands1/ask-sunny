@@ -1,4 +1,4 @@
-import { claimGuardEnabled, detailsFromEarlierAnswerEnabled, formEditRefersBackEnabled } from "@/lib/config/chat-quality-flags";
+import { claimGuardEnabled, copyPasteClaimHonestEnabled, detailsFromEarlierAnswerEnabled, formEditRefersBackEnabled } from "@/lib/config/chat-quality-flags";
 import { extractEmployeeNames, samePerson } from "@/lib/forms/proposal";
 import type { ChatMessage } from "@/types";
 
@@ -335,7 +335,16 @@ const MORE_CLAIMS =
 const CHECK_CLAIMS =
   /\b(?:now\s+(?:reads|says|shows|lists)|(?:is|are)\s+now\b|confirmed\s+against|checked\s+against|verified\s+(?:against|with)|match(?:es|ing)\s+(?:woven|the\s+(?:directory|records?|roster))|(?:updated|changed|corrected|fixed)\s+(?:the|her|his|their)\b)/i;
 const ABOUT_THE_RECORD = /\b(?:name|employee|record|records|woven|directory|roster|field|line)\b/i;
+/*
+ * COPY_PASTE_CLAIM_HONEST_ENABLED (same report, both apps): the live answer "It should update automatically — no
+ * copy-and-paste needed. The details are on the draft card." went out as it was with nothing written; the list above
+ * has "no copy-paste needed", not "no copy-and-paste needed", "update(s) automatically" or "the details are on the
+ * draft card". With the flag on, those are claims too.
+ */
+const COPY_PASTE_CLAIMS =
+  /\b(?:no\s+(?:need\s+to\s+)?copy[- ]?(?:and[- ])?paste(?:\s+needed)?|(?:should|will|would|does|it'?ll)\s+(?:all\s+)?update\s+(?:by\s+itself|automatically|on\s+its\s+own)|updates?\s+(?:automatically|on\s+its\s+own|by\s+itself)|details\s+are\s+(?:now\s+|already\s+)?(?:on|in)\s+the\s+(?:draft|card|form))\b/i;
 const claims = (line: string) =>
+  (copyPasteClaimHonestEnabled() && COPY_PASTE_CLAIMS.test(line)) ||
   ((CLAIM.test(line) || (formEditRefersBackEnabled() && MORE_CLAIMS.test(line))) &&
     (ABOUT_THE_FORM.test(line) || /no copy[- ]paste needed/i.test(line))) ||
   (claimGuardEnabled() &&
