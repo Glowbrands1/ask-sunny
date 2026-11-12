@@ -7,6 +7,7 @@ import {
   politeRequestOwnTurnsEnabled,
   priorSentenceFixEnabled,
   requestLeadFillerEnabled,
+  bareCoachingRequestLeadEnabled,
   requestParticipleLeadEnabled,
   anotherRequestLeadEnabled,
   secondRequestOwnAccountEnabled,
@@ -101,8 +102,21 @@ const REQUEST_LEAD_PARTICIPLE_FILLED = new RegExp(
 const LEVEL_WORDS_ANOTHER = String.raw`(?:(?:a|an|the|another|one\s+more)\s+)?(?:(?:new|second|separate|different|other)\s+)?(?:(?:verbal|written|final)\s+(?:warning\s+)?)?`;
 const withAnotherLead = (pattern: RegExp): RegExp => new RegExp(pattern.source.split(LEVEL_WORDS).join(LEVEL_WORDS_ANOTHER), pattern.flags);
 
+/*
+ * BARE_COACHING_REQUEST_LEAD_ENABLED (QA, Sunny round 31 live, 11 Nov 2026; the person invented): "create a coaching for
+ * <A>, she told a client she wouldn't update their info …" made the card's Observation of Offense "create a coaching for
+ * <A>, she told a client …": "coaching" without "form" was not read as the form. With the flag on it is, only when "for"
+ * follows it ("coaching her was hard" is never cut). Off, as before.
+ */
+const FORM_WORDS_BARE_COACHING = FORM_WORDS.replace(
+  String.raw`coaching\s+(?:form|document|doc|paperwork)`,
+  String.raw`coaching(?:\s+(?:form|document|doc|paperwork)|(?=\s+for\b))`,
+);
+const withBareCoaching = (pattern: RegExp): RegExp => new RegExp(pattern.source.split(FORM_WORDS).join(FORM_WORDS_BARE_COACHING), pattern.flags);
+
 function requestLead(): RegExp {
-  const lead = requestLeadBase();
+  const base = requestLeadBase();
+  const lead = bareCoachingRequestLeadEnabled() ? withBareCoaching(base) : base;
   return anotherRequestLeadEnabled() ? withAnotherLead(lead) : lead;
 }
 
