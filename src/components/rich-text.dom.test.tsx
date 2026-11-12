@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 
 import { RichText } from "./rich-text";
@@ -301,5 +301,43 @@ describe("links to the Reports & Analytics tabs", () => {
 
     expect(screen.queryByRole("link")).toBeNull();
     expect(document.body.textContent).toContain("[Power BI](https://app.powerbi.com)");
+  });
+});
+
+/*
+ * NEXT_PUBLIC_REPLY_QUOTE_LINES_ENABLED (ported from Ask Bubbles; QA's 17p live check there, 12 Nov 2026; names invented): STEP_B_REPLY_KEEPS_LINES'
+ * edit reply quotes the field line by line, and the chat showed it as one line with ">" between the parts.
+ */
+const QUOTED_REPLY =
+  "Changed Observation of Offense to:\n> Observed:\n> Gideon Vale was late to his opening shift on 11/10/26.\n> Expectation: Gideon Vale is expected to arrive on time.";
+
+describe("an edit reply quoted line by line", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("flag on: each quoted line is its own line in one quote, never \">\" separators", () => {
+    vi.stubEnv("NEXT_PUBLIC_REPLY_QUOTE_LINES_ENABLED", "true");
+    const { container } = render(<RichText content={QUOTED_REPLY} />);
+    const quote = container.querySelector("blockquote");
+    expect(quote).not.toBeNull();
+    const lines = Array.from(quote!.children).map((child) => child.textContent);
+    expect(lines).toEqual([
+      "Observed:",
+      "Gideon Vale was late to his opening shift on 11/10/26.",
+      "Expectation: Gideon Vale is expected to arrive on time.",
+    ]);
+    expect(container.textContent).not.toContain(">");
+    expect(screen.getByText("Changed Observation of Offense to:")).toBeTruthy();
+  });
+
+  it("flag on: a bare \">\" is a gap between sections", () => {
+    vi.stubEnv("NEXT_PUBLIC_REPLY_QUOTE_LINES_ENABLED", "true");
+    const { container } = render(<RichText content={"> Observed:\n> late\n>\n> Expectation: on time"} />);
+    expect(container.querySelector("blockquote")!.children).toHaveLength(4);
+  });
+
+  it("flag off: as before (one paragraph)", () => {
+    vi.stubEnv("NEXT_PUBLIC_REPLY_QUOTE_LINES_ENABLED", "");
+    const { container } = render(<RichText content={QUOTED_REPLY} />);
+    expect(container.querySelector("blockquote")).toBeNull();
   });
 });
