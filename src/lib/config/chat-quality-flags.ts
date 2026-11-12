@@ -2704,6 +2704,16 @@ export function policyTopicIntoFieldEnabled(): boolean {
 }
 
 /**
+ * OBSERVATION_NO_EARLIER_QUESTION_ENABLED (Pau via QA, sf-s25; coding 5; same flag in both apps; default off). The
+ * card's Observation of Offense opened with the manager's earlier question ("What policy would it be if …"). On: an
+ * Observation (and the card's issue) that begins with an earlier question turn starts after it
+ * (`forms/observation-no-earlier-question.ts`). Off, as before.
+ */
+export function observationNoEarlierQuestionEnabled(): boolean {
+  return envFlag("OBSERVATION_NO_EARLIER_QUESTION_ENABLED");
+}
+
+/**
  * EXIT_TYPO_WORDS_ENABLED (Pau's P17, Sunny production, 10 Nov 2026; coding 5; same flag in both apps; default off).
  * "salon items will be returneded … they are eligiable for rehire" left Store Items Returned and Eligible for Rehire
  * blank. On: the exit answer readers read a word one or two letters off "returned", "eligible", "rehire" and the like as

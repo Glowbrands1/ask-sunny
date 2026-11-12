@@ -56,6 +56,7 @@ import {
   reopenByAnyOpenVerbEnabled,
   twoFormsCardNotAskedEnabled,
   secondRequestOwnAccountEnabled,
+  observationNoEarlierQuestionEnabled,
   nearMissQuestionRulesEnabled,
   formNameOffRosterAskEnabled,
   whatHappenedNoCreateEnabled,
@@ -971,6 +972,13 @@ async function postChat(request: Request) {
         const { formSelection: _dropped, ...rest } = answer;
         void _dropped;
         answer = { ...rest, content: rest.content.replace(/\n*Based on what you've described, I can prepare:\s*$/, "").trimEnd() };
+      }
+      // OBSERVATION_NO_EARLIER_QUESTION_ENABLED: the card's Observation never opens with the manager's earlier question (`lib/forms/observation-no-earlier-question.ts`).
+      if (observationNoEarlierQuestionEnabled() && answer.formProposal) {
+        answer = (await import("@/lib/forms/observation-no-earlier-question")).withObservationNoEarlierQuestion(
+          answer,
+          parsed.history.filter((turn) => turn.role === "user").map((turn) => String(turn.content)),
+        );
       }
       // WHAT_HAPPENED_NO_CREATE_ENABLED: while the reply asks what happened, the card offers no Create (`lib/forms/what-happened-no-create.ts`).
       if (whatHappenedNoCreateEnabled()) answer = (await import("@/lib/forms/what-happened-no-create")).withNoCreateWhileAsking(answer);
