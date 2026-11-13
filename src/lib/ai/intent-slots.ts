@@ -15,6 +15,7 @@ import {
   newestPlaceTurnEnabled,
   notANameGuardEnabled,
   titleWholeWordEnabled,
+  workAreaNotATitleEnabled,
   typedNameProceedsEnabled,
   sameNameAsksWhichEnabled,
   namedFormExactEnabled,
@@ -1116,6 +1117,10 @@ function matchSalonsInText(blob: string, salons: readonly SalonRow[]): SalonRow[
   });
 }
 
+/** A place in the salon where someone works ("front desk", "the back room", "bed 4"), never a job title. */
+const WORK_AREA =
+  /^(?:the\s+)?(?:front\s+desk|desk|back\s+room|break\s*room|stock\s*room|storage\s+room|register|cash\s+register|lobby|counter|front|floor|sales\s+floor|(?:bed|room|booth)\s*#?\s*\d+|tanning\s+room|spa\s+room|laundry(?:\s+room)?|restroom|bathroom)$/i;
+
 function groundTitle(
   typed: string | null,
   blob: string,
@@ -1139,7 +1144,14 @@ function groundTitle(
   const inWords = (title: string) => !wholeWord || titleInWords(title, blob);
   // FORM_NAME_NOT_A_TITLE_ENABLED: "SDIT" read from "Create an SDIT EPP for …" is the form's name, not a title.
   const formName = (title: string) => formNameNotATitleEnabled() && saidOnlyAsFormName(title, blob);
-  const probe = typed?.trim() && inWords(typed.trim()) && !formName(typed.trim()) ? typed.trim() : null;
+  /*
+   * WORK_AREA_NOT_A_TITLE_ENABLED (QA's Sunny 38d live check, 13 Nov 2026; trace conv_mwfcjmwx28iq0v1, slots.title
+   * "front desk"): "create a ca for <A> at the front desk, …" for a person not on the roster gave the card "Job title:
+   * Front Desk" — the model's title, kept because the words were in the turn. A place in the salon where someone works
+   * is never a job title. Off, as before.
+   */
+  const workArea = (title: string) => workAreaNotATitleEnabled() && WORK_AREA.test(title);
+  const probe = typed?.trim() && inWords(typed.trim()) && !formName(typed.trim()) && !workArea(typed.trim()) ? typed.trim() : null;
   if (probe) {
     const hit = titles.find((title) => title.toLowerCase() === probe.toLowerCase() && inWords(title));
     if (hit) return hit;

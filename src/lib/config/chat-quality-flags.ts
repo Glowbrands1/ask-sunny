@@ -4751,3 +4751,12 @@ export function sharedCityAsksSalonEnabled(): boolean {
 export function observationNoLeadingNameEnabled(): boolean {
   return envFlag("OBSERVATION_NO_LEADING_NAME_ENABLED");
 }
+
+/**
+ * WORK_AREA_NOT_A_TITLE (QA's Sunny 38d live check, 13 Nov 2026; default off): a place in the salon where someone works
+ * ("front desk", "back room", "register", "bed 4", "lobby") is never the card's job title, even when the model reads it
+ * as one. See `ai/intent-slots.ts` groundTitle. Off, as before.
+ */
+export function workAreaNotATitleEnabled(): boolean {
+  return envFlag("WORK_AREA_NOT_A_TITLE_ENABLED");
+}
