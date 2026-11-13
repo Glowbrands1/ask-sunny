@@ -46,14 +46,22 @@ The Hub's page code runs unchanged except:
 | `MEMBERS`, `FULL_NAMES`, `MEETING_LEADER`, `KNOWN_ROLES` in config | `Roster`, served by the Hub per request | this repository is public: no people in it |
 | `MEETING_CATALOG` (every meeting's name and description) and the meetings picker | not copied; names come from the Hub with the meeting | one meeting here; no other company's wording in this repository |
 | "← All meetings" | "Open in Leadership Hub ↗" | one meeting here; the rest is in the Hub |
-| Files on an issue (SharedFiles) | a link to the meeting in the Hub | not in v1 |
-| History: Restore (Hub admins) | a link to the Hub's history | not in v1 |
-| Recaps page, Tracker, notification settings | links to the Hub | not in v1 |
+| Files on an issue: Storage as the signed-in Hub user | the Hub's own file code, run by the Hub's partner API with a Storage client limited to `l10-files` + `stc-dm/`, read links ≤ 60 s | no Hub session here; see PARITY.md |
+| Recaps page `/meetings/recaps?meeting=<key>` | `/meetings/<key>/recaps` | one meeting here |
+| Tracker, notification settings | links to the Hub | Tracker is Leadership-only in the Hub; see PARITY.md |
 | Assistant on assistant-ui | the same markup on `@ai-sdk/react` | assistant-ui needs AI SDK 7 and a newer Radix |
-| Assistant: attachments, chat history, @-mentions, note cards, web search, documents | not here | not in v1 (only in the Hub) |
+| Assistant: chat history in the Hub's localStorage keys | `l10-hub-assistant:<Sunny user id>:<meeting>` | not shared with the Hub's history |
+| Assistant @-mentions: everyone the person shares a meeting with | this meeting's people | one meeting here |
+| Assistant: attachments, web search / fetch | not here | see PARITY.md |
 | IDS ranking ("Everyone's top three", Rank buttons, Priority badges) | off (`RANKING = false` in `Ids.tsx`) | the team works IDS as in Bloom Growth, without ranking (14 Nov 2026) |
 
-When the Hub's meeting page changes, re-copy the file and re-apply the row above that concerns it.
+When the Hub's meeting page changes, re-copy the file and re-apply the row above that concerns it. The full audit, file by file, is in [PARITY.md](./PARITY.md).
+
+**Ask Sunny only (not in the Hub):** the "Past meetings" page (`/meetings/[key]/past`, `lib/past.ts`,
+`meeting/_components/PastMeetings.tsx`, the header link next to History). It lists the Hub's recaps (saved by End
+meeting, here or in the Hub) together with the meetings imported from Bloom Growth, which are kept in the meeting
+document as `meetingHistory` (the Hub keeps unknown fields). Times are Central. Keep the header link when re-copying
+`MeetingView.tsx`.
 
 ## Settings
 

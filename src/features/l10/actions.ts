@@ -1,7 +1,7 @@
 "use server";
 
 import { isMeetingKey } from "@/features/l10/lib/config";
-import { endMeeting, loadMeeting, saveMeeting, type EndOutcome, type SaveOutcome } from "@/features/l10/data.server";
+import { deleteRecap, endMeeting, loadMeeting, openMeeting, restoreVersion, saveMeeting, type DeleteOutcome, type EndOutcome, type RestoreOutcome, type SaveOutcome } from "@/features/l10/data.server";
 import type { LoadedMeeting, RecapInput } from "@/features/l10/lib/types";
 
 /**
@@ -41,4 +41,29 @@ export async function loadMeetingAction(key: string): Promise<Timed<{ ok: true; 
   if (typeof key !== "string" || !isMeetingKey(key)) return { ok: false, serverTime: Date.now() };
   const res = await loadMeeting(key);
   return { ...(res.ok ? { ok: true as const, loaded: res.loaded } : { ok: false as const }), serverTime: Date.now() };
+}
+
+/* ── Hub admin actions: the Hub's own checks (hub_admin), made by the Hub on every call ── */
+
+/** Restore an old version (the Hub's restoreVersionAction): saved as a NEW version; Hub admins only. */
+export async function restoreVersionAction(key: string, version: number): Promise<RestoreOutcome> {
+  if (typeof key !== "string" || !isMeetingKey(key) || !Number.isInteger(version) || version < 1) return { ok: false, message: "That version does not exist." };
+  return restoreVersion(key, version);
+}
+
+/** Delete a recap (the Hub's deleteRecapAction): soft delete, Hub admins only. */
+export async function deleteRecapAction(id: string): Promise<DeleteOutcome> {
+  if (typeof id !== "string" || !id || id.length > 64) return { ok: false, kind: "invalid", message: "Unknown recap." };
+  return deleteRecap(id);
+}
+
+/**
+ * The people the assistant's chat box can @-mention: THIS meeting's people only, from the Hub (the Hub's
+ * mentionablePeopleAction lists everyone the person shares any meeting with; Ask Sunny opens one meeting). Empty for
+ * anyone the Hub does not let open the meeting.
+ */
+export async function meetingPeopleAction(key: string): Promise<{ id: string; name: string }[]> {
+  if (typeof key !== "string" || !isMeetingKey(key)) return [];
+  const opened = await openMeeting(key);
+  return opened.ok ? opened.meeting.people.filter((p) => p && typeof p.id === "string" && typeof p.name === "string" && p.name.trim()).map((p) => ({ id: p.id, name: p.name })) : [];
 }

@@ -9,7 +9,7 @@ import { SparkleIcon } from "./icons";
 const AssistantPanel = dynamic(() => import("./AssistantPanel").then((m) => m.AssistantPanel), { ssr: false });
 
 /** The Leadership Hub's floating assistant launcher (src/components/AssistantBubble.tsx), for the DM L10 pages. */
-export function AssistantBubble({ meetingKey }: { meetingKey: string }) {
+export function AssistantBubble({ meetingKey, scope }: { meetingKey: string; /** "<Ask Sunny user id>:<meeting key>", for this person's chat history. */ scope: string }) {
   const [open, setOpen] = useState(false);
   const [everOpened, setEverOpened] = useState(false);
   const launcher = useRef<HTMLButtonElement>(null);
@@ -19,7 +19,7 @@ export function AssistantBubble({ meetingKey }: { meetingKey: string }) {
   }, []);
   return (
     <>
-      {everOpened && <AssistantPanel open={open} onClose={close} meetingKey={meetingKey} />}
+      {everOpened && <AssistantPanel open={open} onClose={close} meetingKey={meetingKey} scope={scope} />}
       <button
         ref={launcher}
         type="button"

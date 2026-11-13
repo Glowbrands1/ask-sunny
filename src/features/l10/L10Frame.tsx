@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 import { leadershipHubUrl } from "@/lib/config/app-switcher";
 import { AssistantBubble } from "./assistant/AssistantBubble";
+import { l10Viewer } from "./data.server";
 import { jetBrainsMono, publicSans } from "@/app/fonts";
 import { NotificationBell } from "./ui/NotificationBell";
 
@@ -15,8 +16,10 @@ export function hubMeetingUrl(key: string, path = ""): string {
  * which in the Hub carries "← Leadership Hub", the bell and the app links. Here the link opens this meeting in the
  * Hub, the bell is the same notes and read state as the Hub's, and the assistant bubble sits bottom right as there.
  */
-export function L10Frame({ meetingKey, children, assistant = true }: { meetingKey: string; children: ReactNode; assistant?: boolean }) {
+export async function L10Frame({ meetingKey, children, assistant = true }: { meetingKey: string; children: ReactNode; assistant?: boolean }) {
   const hub = leadershipHubUrl();
+  // The assistant's chat history is per Ask Sunny user and meeting (this browser only); no verified viewer, no assistant.
+  const viewer = assistant ? await l10Viewer() : null;
   return (
     <div data-testid="l10-frame" className={`hub-l10 ${publicSans.variable} ${jetBrainsMono.variable} flex min-h-full flex-col antialiased`}>
       <div className="meeting-bar box-border flex items-center bg-ink px-4 py-1 text-sm text-paper print:hidden">
@@ -28,7 +31,7 @@ export function L10Frame({ meetingKey, children, assistant = true }: { meetingKe
         </span>
       </div>
       <div className="box-border flex min-w-0 flex-col gap-5 px-4 py-6 sm:px-6 sm:py-7 lg:px-8">{children}</div>
-      {assistant && <AssistantBubble meetingKey={meetingKey} />}
+      {viewer && <AssistantBubble meetingKey={meetingKey} scope={`${viewer.userId}:${meetingKey}`} />}
     </div>
   );
 }
