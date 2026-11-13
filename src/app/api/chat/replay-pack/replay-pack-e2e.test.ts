@@ -500,7 +500,8 @@ vi.mock("@/lib/forms/employee-roster", async (importOriginal) => {
         title: (state.directory as { id: string; positionName?: string | null }[]).find((row) => row.id === person.id)?.positionName ?? null,
         primaryLocationName: "Kearney",
       })),
-    loadScopedRoster: async (scope: AccessScope | null) => actual.scopeRoster(state.directory as never, scope),
+    // The turn's roster limit (`withRosterLimit`), as production's loadScopedRoster applies it.
+    loadScopedRoster: async (scope: AccessScope | null) => actual.withinRosterLimit(actual.scopeRoster(state.directory as never, scope)),
   };
 });
 
