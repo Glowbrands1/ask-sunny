@@ -1,6 +1,6 @@
 // Copied from the Leadership Hub (src/lib/meetings/doc.ts); keep in step with it. See src/features/l10/README.md.
 import type { Roster } from "./config";
-import type { Attendee, Issue, MeetingDoc, MetricFormat, Milestone, RecapInput, Rock, RockStatus, ScorecardRow } from "./types";
+import type { Attendee, Issue, IssueTerm, MeetingDoc, MetricFormat, Milestone, RecapInput, Rock, RockStatus, ScorecardRow } from "./types";
 
 /* ── Reading a saved document ─────────────────────────────────────────────
  * A meeting that has nothing saved shows empty lists, never invented content.
@@ -43,6 +43,15 @@ export function effectiveAttendees(roster: Pick<Roster, "members">, saved: Atten
     const role = was?.role || known || "";
     return was ? { ...was, role } : { id: `att-${first.toLowerCase()}`, name, role, shared: false, rating: null };
   });
+}
+
+/**
+ * Saving the segue list: the people shown, plus every saved row for someone the page no longer shows (taken off a
+ * meeting's display list in the Hub). Their shares and ratings stay in the document untouched (hidden, never deleted).
+ */
+export function keepHiddenAttendees(saved: Attendee[], shown: Attendee[]): Attendee[] {
+  const names = new Set(shown.map((a) => a.name));
+  return [...shown, ...saved.filter((a) => !names.has(a.name))];
 }
 
 /* ── Scorecard ──────────────────────────────────────────────────────────── */
@@ -285,12 +294,27 @@ export function sortIssues(issues: Issue[]): Issue[] {
 }
 
 /** Solving or reopening releases the issue's votes and its old shared rank. */
-export function toggleSolved(issues: Issue[], id: string, session: string): Issue[] {
+export function toggleSolved(issues: Issue[], id: string, session: string, now: string = new Date().toISOString()): Issue[] {
   return issues.map((i) => {
     if (i.id !== id) return i;
-    const base = withoutKey(withoutKey(i, "rank"), "votes");
-    return i.resolved ? { ...base, resolved: false, resolvedSession: null } : { ...base, resolved: true, resolvedSession: session };
+    const base = withoutKey(withoutKey(withoutKey(i, "rank"), "votes"), "resolvedAt");
+    return i.resolved ? { ...base, resolved: false, resolvedSession: null } : { ...base, resolved: true, resolvedSession: session, resolvedAt: now };
   });
+}
+
+/** Which open-issue list an issue sits on; anything not marked long-term is short-term. */
+export function issueTerm(i: Pick<Issue, "term">): IssueTerm {
+  return i.term === "long" ? "long" : "short";
+}
+
+/** Solved issues, most recently solved first (issues without a solve time keep their order, after the dated ones). */
+export function recentlySolved(issues: Issue[]): Issue[] {
+  const at = (i: Issue) => (typeof i.resolvedAt === "string" ? Date.parse(i.resolvedAt) || 0 : 0);
+  return issues
+    .filter((i) => i.resolved)
+    .map((i, n) => ({ i, n }))
+    .sort((a, b) => at(b.i) - at(a.i) || a.n - b.n)
+    .map((x) => x.i);
 }
 
 function withoutKey<T extends object>(o: T, key: string): T {

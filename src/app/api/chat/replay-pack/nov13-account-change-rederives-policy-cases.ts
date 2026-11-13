@@ -102,4 +102,26 @@ export const NOV13_ACCOUNT_CHANGE_REDERIVES_POLICY_CASES: ReplayCase[] = [
       expect(t.values(id).policy_violated ?? "", "the named Attendance policy was dropped").toMatch(/attendance/i);
     },
   },
+  {
+    id: "nov13-account-change-rederives-policy-after-saved-form-check",
+    title: `"${LATE}" then "${PHONE}": the first reading saves half the account, the saved-form check corrects it, and the policy follows the corrected account`,
+    report: `${REPORT}; QA's ruling on the merge with #929 (13 Nov 2026): the saved-form check runs first, and the re-derive reads the account it settled`,
+    status: { open: "production has ACCOUNT_CHANGE_REDERIVES_POLICY off: the offense, policy lines and plan stay Attendance" },
+    fixFlags: [FLAG, "EDIT_SEES_SAVED_FORM_ENABLED"],
+    async run(t) {
+      const { thread, id } = await lateCa(t);
+      // The first reading misses the phone ("She was there the whole shift."): a reading of nothing, which re-derives
+      // nothing. The check round sees the saved form and corrects the account from the manager's words.
+      t.patchReads!({
+        [PHONE]: patch("this_form", [{ field: "observation", value: "Observed:\nShe was there the whole shift.", how: "replace", evidence: "the whole shift" }]),
+      });
+      t.patchChecks!([PHONE_PATCH("she was on her phone the whole shift"), patch("this_form", [])]);
+      await thread.say(PHONE);
+      expect(t.patchCheckCalls!(), "the saved-form check was never asked").toBeGreaterThanOrEqual(1);
+      expect(t.values(id).observation ?? "", "the check's correction is not on the form").toMatch(/on her phone the whole shift/);
+      // Re-derived from the corrected account, not from the half reading.
+      offAttendance(t, id);
+      expect(t.values(id).policy_violated ?? "", "Policy Violated is not the phone policy").toMatch(/cell phone/i);
+    },
+  },
 ];

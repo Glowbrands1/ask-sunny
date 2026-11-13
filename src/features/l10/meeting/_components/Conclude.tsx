@@ -2,6 +2,7 @@
 // Copied from the Leadership Hub (src/app/meetings/_components/Conclude.tsx); keep in step with it. See src/features/l10/README.md.
 
 import { useRef, useState } from "react";
+import Link from "next/link";
 import { Button, Card, cx } from "@/features/l10/ui/ui";
 import { MentionField, MentionText } from "@/features/l10/ui/Mentions";
 import { buildRecap, markRecapped } from "@/features/l10/lib/doc";
@@ -25,7 +26,7 @@ export function Conclude({
   onEnded,
   recapsHref = "/meetings/recaps",
 }: {
-  /** Where "See recaps" goes (Ask Sunny: the recaps page in the Leadership Hub). */
+  /** Where "See recaps" goes (Ask Sunny: /meetings/<key>/recaps, this meeting's recaps page). */
   recapsHref?: string;
   meetingKey: string;
   doc: MeetingDoc;
@@ -154,9 +155,9 @@ export function Conclude({
         {done && (
           <p role="status" className="m-0 text-sm font-semibold">
             {done.created ? "Meeting concluded. The recap is saved for the whole team." : "A recap for this meeting was already saved."}{" "}
-            <a href={recapsHref} target="_blank" rel="noopener noreferrer" className="text-bronze-deep underline">
+            <Link href={recapsHref} className="text-bronze-deep underline">
               See recaps
-            </a>
+            </Link>
           </p>
         )}
         {error && (

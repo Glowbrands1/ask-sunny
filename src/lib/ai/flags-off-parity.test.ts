@@ -195,6 +195,10 @@ const NEW_FLAGS = [
   "FORM_DATE_BUSINESS_TODAY_ENABLED",
   // coding 4: CLOSE_SPELLING_MATCH (Pau via QA, 13 Nov 2026; default off).
   "CLOSE_SPELLING_MATCH_ENABLED",
+  // coding 6: CARD_CHECKED_AGAINST_WORDS (Pau's direction via QA, 13 Nov 2026; default off).
+  "CARD_CHECKED_AGAINST_WORDS_ENABLED",
+  // coding 6: EDIT_SEES_SAVED_FORM (Pau's direction via QA, 13 Nov 2026; default off).
+  "EDIT_SEES_SAVED_FORM_ENABLED",
   // coding 4: FULL_MANUAL_KEEPS_RETRIEVAL (QA, 10 Nov 2026; default off).
   "FULL_MANUAL_KEEPS_RETRIEVAL_ENABLED",
   // coding 4: FORM_NAME_NOT_A_TITLE (QA's prod-env reading, D5, 11 Nov 2026; default off).

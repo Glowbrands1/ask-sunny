@@ -4760,6 +4760,30 @@ export function notFollowingIsViolationEnabled(): boolean {
 }
 
 /**
+ * EDIT_SEES_SAVED_FORM_ENABLED (coding 6, 13 Nov 2026; default off; same flag in both apps; Pau's direction via QA). The
+ * form edit read the turn once as a patch and the code guessed what was written: an "Updated" that did not match the
+ * form, reasons that never landed. On: after the turn's writes on the patch path (`forms/form-patch-turn.ts`), the
+ * stored form is read back and handed to the patch model with the manager's ask ("SAVED AFTER YOUR LAST PATCH"); it
+ * confirms (an empty patch) or sends a correction, written by the same writer. At most 3 patches a turn. The reply is
+ * always the stored form's diff. Off, as before.
+ */
+export function editSeesSavedFormEnabled(): boolean {
+  return envFlag("EDIT_SEES_SAVED_FORM_ENABLED");
+}
+
+/**
+ * CARD_CHECKED_AGAINST_WORDS_ENABLED (coding 6, 13 Nov 2026; default off; same flag in both apps; Pau's direction via
+ * QA). Cards showed an Issue that was a hedge about the decision, a job title, a salon label or a name, and a person who
+ * was a title. On: before a card is shown it is checked against the manager's own words
+ * (`forms/card-checked-against-words.ts`): code checks on every card, a repair from the manager's clauses, and only then
+ * one structured model call (at most two) whose corrections must quote the manager. Nothing is invented: an Issue
+ * nothing repairs is blank and the card asks "What happened?". Off, as before.
+ */
+export function cardCheckedAgainstWordsEnabled(): boolean {
+  return envFlag("CARD_CHECKED_AGAINST_WORDS_ENABLED");
+}
+
+/**
  * SAME_NAME_ASKS_WHICH_ENABLED (coding 6, 12 Nov 2026; default off; QA, high priority). With TYPED_NAME_PROCEEDS on
  * (live), two roster people with the same name were resolved to neither and never asked about: "verbal CA for <name>"
  * with two active <name>s at the salon gave a ready card with one of them's job title and no employee id. On: one close

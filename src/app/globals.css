@@ -1445,14 +1445,9 @@
   --fab-gap: 0.75rem;
   --assistant-size: 3.5rem;
   --assistant-bottom: calc(var(--fab-bottom) + var(--fab-h) + var(--fab-gap));
-  --bg-hub:
-    radial-gradient(60% 50% at 10% 0%, rgb(201 162 39 / 0.28), transparent 70%),
-    radial-gradient(50% 45% at 95% 20%, rgb(10 10 10 / 0.14), transparent 70%),
-    radial-gradient(55% 50% at 50% 100%, #fbf3d5, transparent 70%),
-    linear-gradient(160deg, #f1eee3 0%, #e9e5d8 55%, #e3dcc4 100%);
-
-  background: var(--bg-hub);
-  background-color: var(--color-sand);
+  /* No backdrop of its own: Ask Sunny's clay clouds (.cloud-pattern, fixed behind every page) show through the
+     DM L10 tab, as on Overview (QA, 13 Nov 2026). The Hub's cream gradient is not painted here. */
+  background: transparent;
   color: var(--color-ink);
   font-family: var(--font-public-sans), "Public Sans", ui-sans-serif, system-ui, sans-serif;
   line-height: normal;
