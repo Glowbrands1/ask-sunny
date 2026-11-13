@@ -41,7 +41,8 @@ export const NOV13_CLOSE_SPELLING_POLICY_CASES: ReplayCase[] = CONFIDENT.map((wo
   id: `nov13-close-spelling-policy-${wording.key}`,
   title: `"${wording.turn}" — the card cites ${wording.heading}, spelled as the manual spells it`,
   report: `${REPORT}; ${wording.key}`,
-  status: { open: "a policy named a letter off cites no section of the manual" },
+  // Changed on purpose (13 Nov 2026): fixed in production by CLOSE_SPELLING_MATCH_ENABLED, QA round 38c. Was OPEN.
+  status: "fixed",
   fixFlags: [FLAG],
   async run(t: ReplayContext) {
     const thread = start(t);
@@ -57,7 +58,8 @@ export const NOV13_CLOSE_SPELLING_POLICY_ASK_CASES: ReplayCase[] = [
     id: "nov13-close-spelling-policy-not-confident-asks",
     title: `"… violating the anmals in the wrkplace policy …" — not cited; "Did you mean **Animals in the Workplace**?"`,
     report: `${REPORT}; two words off`,
-    status: { open: `no question: the card says no section was found for "anmals in the wrkplace"` },
+    // Changed on purpose (13 Nov 2026): fixed in production by CLOSE_SPELLING_MATCH_ENABLED, QA round 38c. Was OPEN.
+    status: "fixed",
     fixFlags: [FLAG],
     async run(t: ReplayContext) {
       const thread = start(t);
@@ -102,7 +104,8 @@ export const NOV13_CLOSE_SPELLING_SALON_CASES: ReplayCase[] = (
   id: `nov13-close-spelling-salon-${wording.key}`,
   title: `${wording.turns.map((turn) => `"${turn}"`).join(" → ")} — the card's salon is Grand Island`,
   report: `${REPORT}; a salon a letter off (${wording.key})`,
-  status: { open: "a salon typed a letter off is not read: the card takes the consultant's own salon" },
+  // Changed on purpose (13 Nov 2026): fixed in production by CLOSE_SPELLING_MATCH_ENABLED, QA round 38c. Was OPEN.
+  status: "fixed",
   fixFlags: [FLAG],
   async run(t: ReplayContext) {
     vi.setSystemTime(new Date("2026-11-13T15:00:00Z"));
@@ -139,7 +142,8 @@ export const NOV13_CLOSE_SPELLING_PROOF_CASES: ReplayCase[] = [
     id: "nov13-close-spelling-policy-two-headings-asks-which",
     title: `"… violating the key holdr policy …", with Key Holder Guidelines and Key Holder Requirements — "Did you mean A or B?"`,
     report: `${REPORT}; QA's proof: one letter off from two headings`,
-    status: { open: `no question: the card says no section was found for "key holdr"` },
+    // Changed on purpose (13 Nov 2026): fixed in production by CLOSE_SPELLING_MATCH_ENABLED, QA round 38c. Was OPEN.
+    status: "fixed",
     fixFlags: [FLAG],
     async run(t: ReplayContext) {
       const thread = start(t);
@@ -192,7 +196,8 @@ export const NOV13_CLOSE_SPELLING_CLEANING_CASES: ReplayCase[] = [
     id: "nov13-close-spelling-policy-care-and-clening",
     title: `"… violating the care and clening policy, she left her station a mess …" — the Policy line cites ${CARE}, and the plan agrees`,
     report: `${REPORT}; QA's example "Care and Clening", and QA's ruling: a named policy wins over cleaning-is-Other`,
-    status: { open: `"care and clening" names no section: the Policy line is Other` },
+    // Changed on purpose (13 Nov 2026): fixed in production by CLOSE_SPELLING_MATCH_ENABLED, QA round 38c. Was OPEN.
+    status: "fixed",
     fixFlags: [FLAG],
     async run(t: ReplayContext) {
       const thread = start(t);
@@ -211,7 +216,8 @@ export const NOV13_CLOSE_SPELLING_CLEANING_CASES: ReplayCase[] = [
     id: "nov13-close-spelling-policy-cleaning-not-confident-keeps-other-asks",
     title: `"… violating the care and clneaing policy, she left her station a mess …" — Other stays; "Did you mean **${CARE}**?"`,
     report: `${REPORT}; QA's ruling: not confident keeps Other and asks`,
-    status: { open: "no question: the card says Other and nothing more" },
+    // Changed on purpose (13 Nov 2026): fixed in production by CLOSE_SPELLING_MATCH_ENABLED, QA round 38c. Was OPEN.
+    status: "fixed",
     fixFlags: [FLAG],
     async run(t: ReplayContext) {
       const thread = start(t);
