@@ -813,8 +813,18 @@ const PRIOR_STEP_SAID =
   /\b(?:prior|previous(?:ly)?|past|earlier|completed|had|received|got|signed|was\s+given|were\s+given)\b|\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b/i;
 const ASKS_FOR_FORM = /\b(?:create|make|write|draft|start|need|want|do|issue|prepare|open|give\s+(?:her|him|them))\b/i;
 
+/**
+ * Gate-Sunny-3 on #919 (13 Nov 2026): "… and a CA for Remy Calder for opening the salon late on 11/2" has a date and no
+ * asking verb (the verb is in the first part), so it was read as history, the two-form request collapsed and Remy's
+ * account went onto the first person's card. A part that names a form for someone — "a CA for <name>", "a coaching
+ * form for her" — is a request, dated or not; a history list names no person after its form ("product coaching form
+ * 9/30/26").
+ */
+const FORM_FOR_SOMEONE =
+  /\b(?:a|an|another|the|one)\s+(?:[a-z/.-]+\s+){0,3}?(?:ca|c\/a|corrective\s+action|coaching|write-?up|warning|review|form)(?:\s+form)?\s+for\s+(?!\d)(?![a-z]+ing\b)(?!(?:a|an|the|her\s+[a-z]+ing|his\s+[a-z]+ing)\b)[a-z]/i;
+
 function isPriorStep(part: string): boolean {
-  return PRIOR_STEP_SAID.test(part) && !ASKS_FOR_FORM.test(part);
+  return PRIOR_STEP_SAID.test(part) && !ASKS_FOR_FORM.test(part) && !FORM_FOR_SOMEONE.test(part);
 }
 
 /**
