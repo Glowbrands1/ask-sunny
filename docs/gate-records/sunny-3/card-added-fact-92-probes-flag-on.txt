@@ -1,0 +1,186 @@
+PROBE CONTROL fact | shown=false | she also didn't call to say she'd be late => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE CONTROL fact | shown=true | she also didn't call to say she'd be late => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she didn't call to say she'd be late || ADDED **Added to the Observation of Offense:** she didn't call to say she'd be late
+PROBE LIVE hedge | shown=false | she yelled at a guest and she maybe forgot => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE LIVE hedge | shown=true | she yelled at a guest and she maybe forgot => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she yelled at a guest || ADDED **Added to the Observation of Offense:** she yelled at a guest
+PROBE amount: charged | shown=false | she will be charged $10 for the towels => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE amount: charged | shown=true | she will be charged $10 for the towels => OBS **Observation of Offense:** On 11/3/26 Marnie was late. She will be charged $10 for the towels. || ADDED -
+PROBE amount: deduct | shown=false | deduct $40 from her check => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE amount: deduct | shown=true | deduct $40 from her check => OBS **Observation of Offense:** On 11/3/26 Marnie was late. deduct $40 from her check. || ADDED -
+PROBE amount: has to pay | shown=false | she has to pay $15 for the broken bulb => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE amount: has to pay | shown=true | she has to pay $15 for the broken bulb => OBS **Observation of Offense:** On 11/3/26 Marnie was late. She has to pay $15 for the broken bulb. || ADDED -
+PROBE amount: out of check | shown=false | take it out of her check => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE amount: out of check | shown=true | take it out of her check => OBS **Observation of Offense:** On 11/3/26 Marnie was late. take it out of her check. || ADDED -
+PROBE amount: owes | shown=false | she owes $25 for the late opening => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE amount: owes | shown=true | she owes $25 for the late opening => OBS **Observation of Offense:** On 11/3/26 Marnie was late. She owes $25 for the late opening. || ADDED -
+PROBE amount: pay back | shown=false | she will pay back $20 => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE amount: pay back | shown=true | she will pay back $20 => OBS **Observation of Offense:** On 11/3/26 Marnie was late. She will pay back $20. || ADDED -
+PROBE comma: hedge | shown=false | she skipped the bed cleaning, she maybe forgot => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE comma: hedge | shown=true | she skipped the bed cleaning, she maybe forgot => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she skipped the bed cleaning || ADDED **Added to the Observation of Offense:** she skipped the bed cleaning
+PROBE comma: history | shown=false | she was late again, she already had a CA on 10/14 => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE comma: history | shown=true | she was late again, she already had a CA on 10/14 => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she was late again || ADDED **Added to the Observation of Offense:** she was late again
+PROBE comma: list fact | shown=false | she left towels, lotion, and trash in room 3 => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE comma: list fact | shown=true | she left towels, lotion, and trash in room 3 => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she left towels, lotion, and trash in room 3 || ADDED **Added to the Observation of Offense:** she left towels, lotion, and trash in room 3
+PROBE comma: title | shown=false | she left the salon dirty, she is a Tanning Consultant => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE comma: title | shown=true | she left the salon dirty, she is a Tanning Consultant => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she left the salon dirty || ADDED **Added to the Observation of Offense:** she left the salon dirty
+PROBE comma: two facts | shown=false | she was late, she left early => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE comma: two facts | shown=true | she was late, she left early => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she was late, she left early || ADDED **Added to the Observation of Offense:** she was late, she left early
+PROBE fact: and walked | shown=false | she argued with a client and walked off the floor => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE fact: and walked | shown=true | she argued with a client and walked off the floor => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she argued with a client and walked off the floor || ADDED **Added to the Observation of Offense:** she argued with a client and walked off the floor
+PROBE fact: at fault | shown=false | she is at fault for the lost key => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE fact: at fault | shown=true | she is at fault for the lost key => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she is at fault for the lost key || ADDED **Added to the Observation of Offense:** she is at fault for the lost key
+PROBE fact: at lunch | shown=false | she was at lunch for 2 hours => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE fact: at lunch | shown=true | she was at lunch for 2 hours => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she was at lunch for 2 hours || ADDED **Added to the Observation of Offense:** she was at lunch for 2 hours
+PROBE fact: been late | shown=false | she's been late 3 times this month => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE fact: been late | shown=true | she's been late 3 times this month => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she's been late 3 times this month || ADDED **Added to the Observation of Offense:** she's been late 3 times this month
+PROBE fact: broke bulb | shown=false | she broke a $15 bulb in room 4 => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE fact: broke bulb | shown=true | she broke a $15 bulb in room 4 => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she broke a $15 bulb in room 4 || ADDED **Added to the Observation of Offense:** she broke a $15 bulb in room 4
+PROBE fact: charged by | shown=false | she was charged by a client for a refund she gave herself => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE fact: charged by | shown=true | she was charged by a client for a refund she gave herself => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she was charged by a client for a refund she gave herself || ADDED **Added to the Observation of Offense:** she was charged by a client for a refund she gave herself
+PROBE fact: given keys | shown=false | she was given the keys and left the salon unlocked => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE fact: given keys | shown=true | she was given the keys and left the salon unlocked => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she was given the keys and left the salon unlocked || ADDED **Added to the Observation of Offense:** she was given the keys and left the salon unlocked
+PROBE fact: had attitude | shown=false | she had an attitude with a client => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE fact: had attitude | shown=true | she had an attitude with a client => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she had an attitude with a client || ADDED **Added to the Observation of Offense:** she had an attitude with a client
+PROBE fact: ignored warning | shown=false | she ignored the posted warning about bed cleaning => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE fact: ignored warning | shown=true | she ignored the posted warning about bed cleaning => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she ignored the posted warning about bed cleaning || ADDED **Added to the Observation of Offense:** she ignored the posted warning about bed cleaning
+PROBE fact: is late again | shown=false | she is late again today => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE fact: is late again | shown=true | she is late again today => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she is late again today || ADDED **Added to the Observation of Offense:** she is late again today
+PROBE fact: lotion and towel | shown=false | she ignored the lotion and towel restock => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE fact: lotion and towel | shown=true | she ignored the lotion and towel restock => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she ignored the lotion and towel restock || ADDED **Added to the Observation of Offense:** she ignored the lotion and towel restock
+PROBE fact: maybe word | shown=false | she said maybe and walked out of the salon => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE fact: maybe word | shown=true | she said maybe and walked out of the salon => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she said maybe and walked out of the salon || ADDED **Added to the Observation of Offense:** she said maybe and walked out of the salon
+PROBE fact: name start | shown=false | Marnie left the tanning beds uncleaned => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE fact: name start | shown=true | Marnie left the tanning beds uncleaned => OBS **Observation of Offense:** On 11/3/26 Marnie was late; Marnie left the tanning beds uncleaned || ADDED **Added to the Observation of Offense:** Marnie left the tanning beds uncleaned
+PROBE fact: needs | shown=false | she needs reminders every shift and still skips cleaning => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE fact: needs | shown=true | she needs reminders every shift and still skips cleaning => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she needs reminders every shift and still skips cleaning || ADDED **Added to the Observation of Offense:** she needs reminders every shift and still skips cleaning
+PROBE fact: no-show | shown=false | she was a no-show on Saturday => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE fact: no-show | shown=true | she was a no-show on Saturday => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she was a no-show on Saturday || ADDED **Added to the Observation of Offense:** she was a no-show on Saturday
+PROBE fact: paid client | shown=false | she paid a client back from the drawer without a manager => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE fact: paid client | shown=true | she paid a client back from the drawer without a manager => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she paid a client back from the drawer without a manager || ADDED **Added to the Observation of Offense:** she paid a client back from the drawer without a manager
+PROBE fact: paid herself | shown=false | she paid herself out of the tip jar => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE fact: paid herself | shown=true | she paid herself out of the tip jar => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she paid herself out of the tip jar || ADDED **Added to the Observation of Offense:** she paid herself out of the tip jar
+PROBE fact: pay attention | shown=false | she did not pay attention to the bed timer => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE fact: pay attention | shown=true | she did not pay attention to the bed timer => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she did not pay attention to the bed timer || ADDED **Added to the Observation of Offense:** she did not pay attention to the bed timer
+PROBE fact: salon word | shown=false | she was rude to a client at the Kearney salon => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE fact: salon word | shown=true | she was rude to a client at the Kearney salon => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she was rude to a client at the Kearney salon || ADDED **Added to the Observation of Offense:** she was rude to a client at the Kearney salon
+PROBE fact: short $20 | shown=false | she was short $20 => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE fact: short $20 | shown=true | she was short $20 => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she was short $20 || ADDED **Added to the Observation of Offense:** she was short $20
+PROBE fact: signed for delivery | shown=false | she signed for a delivery and left it in the rain => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE fact: signed for delivery | shown=true | she signed for a delivery and left it in the rain => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she signed for a delivery and left it in the rain || ADDED **Added to the Observation of Offense:** she signed for a delivery and left it in the rain
+PROBE fact: signed out early | shown=false | she signed out of the register early and left => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE fact: signed out early | shown=true | she signed out of the register early and left => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she signed out of the register early and left || ADDED **Added to the Observation of Offense:** she signed out of the register early and left
+PROBE fact: took $20 | shown=false | she took $20 from the drawer => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE fact: took $20 | shown=true | she took $20 from the drawer => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she took $20 from the drawer || ADDED **Added to the Observation of Offense:** she took $20 from the drawer
+PROBE fact: warned client | shown=false | she warned a client to leave => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE fact: warned client | shown=true | she warned a client to leave => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she warned a client to leave || ADDED **Added to the Observation of Offense:** she warned a client to leave
+PROBE fact: was at desk | shown=false | she was at the front desk on her phone the whole shift => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE fact: was at desk | shown=true | she was at the front desk on her phone the whole shift => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she was at the front desk on her phone the whole shift || ADDED **Added to the Observation of Offense:** she was at the front desk on her phone the whole shift
+PROBE fact: works closing | shown=false | she works the closing shift and left 40 minutes early => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE fact: works closing | shown=true | she works the closing shift and left 40 minutes early => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she works the closing shift and left 40 minutes early || ADDED **Added to the Observation of Offense:** she works the closing shift and left 40 minutes early
+PROBE fact: yelled at manager | shown=false | she yelled at the manager in front of clients => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE fact: yelled at manager | shown=true | she yelled at the manager in front of clients => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she yelled at the manager in front of clients || ADDED **Added to the Observation of Offense:** she yelled at the manager in front of clients
+PROBE first-name level | shown=false | Marnie gets a verbal warning => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE first-name level | shown=true | Marnie gets a verbal warning => OBS **Observation of Offense:** On 11/3/26 Marnie was late. Marnie gets a verbal warning. || ADDED -
+PROBE hedge | shown=false | she maybe forgot => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE hedge | shown=true | she maybe forgot => OBS **Observation of Offense:** On 11/3/26 Marnie was late. She maybe forgot. || ADDED -
+PROBE history: CA | shown=false | she already had a CA on 10/14 => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE history: CA | shown=true | she already had a CA on 10/14 => OBS **Observation of Offense:** On 11/3/26 Marnie was late. She already had a CA on 10/14. || ADDED -
+PROBE history: bare verbal | shown=false | had a verbal warning on 10/1 => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE history: bare verbal | shown=true | had a verbal warning on 10/1 => OBS **Observation of Offense:** On 11/3/26 Marnie was late. had a verbal warning on 10/1. || ADDED -
+PROBE history: coached | shown=false | she was coached on this on 10/20 => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE history: coached | shown=true | she was coached on this on 10/20 => OBS **Observation of Offense:** On 11/3/26 Marnie was late. She was coached on this on 10/20. || ADDED -
+PROBE history: given final | shown=false | she was given a final warning on 10/1 => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE history: given final | shown=true | she was given a final warning on 10/1 => OBS **Observation of Offense:** On 11/3/26 Marnie was late. She was given a final warning on 10/1. || ADDED -
+PROBE history: had CA prior | shown=false | she had a CA last week and was late again today => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE history: had CA prior | shown=true | she had a CA last week and was late again today => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she was late again today || ADDED **Added to the Observation of Offense:** she was late again today
+PROBE history: manual | shown=false | she signed the jba policy manual on 10-15-26 => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE history: manual | shown=true | she signed the jba policy manual on 10-15-26 => OBS **Observation of Offense:** On 11/3/26 Marnie was late. She signed the jba policy manual on 10-15-26. || ADDED -
+PROBE history: name verbal | shown=false | Marnie had a verbal warning on 10/1 => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE history: name verbal | shown=true | Marnie had a verbal warning on 10/1 => OBS **Observation of Offense:** On 11/3/26 Marnie was late. Marnie had a verbal warning on 10/1. || ADDED -
+PROBE history: verbal | shown=false | she had a verbal warning on 10/1 => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE history: verbal | shown=true | she had a verbal warning on 10/1 => OBS **Observation of Offense:** On 11/3/26 Marnie was late. She had a verbal warning on 10/1. || ADDED -
+PROBE history: written up | shown=false | she was written up last month => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE history: written up | shown=true | she was written up last month => OBS **Observation of Offense:** On 11/3/26 Marnie was late. She was written up last month. || ADDED -
+PROBE history: written | shown=false | she got a written warning last month => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE history: written | shown=true | she got a written warning last month => OBS **Observation of Offense:** On 11/3/26 Marnie was late. She got a written warning last month. || ADDED -
+PROBE key holder | shown=false | she's a key holder => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE key holder | shown=true | she's a key holder => OBS **Observation of Offense:** On 11/3/26 Marnie was late. She's a key holder. || ADDED -
+PROBE level | shown=false | she gets a verbal warning => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE level | shown=true | she gets a verbal warning => OBS **Observation of Offense:** On 11/3/26 Marnie was late. She gets a verbal warning. || ADDED -
+PROBE mixed: and hedge | shown=false | she left the beds dirty and she maybe forgot => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE mixed: and hedge | shown=true | she left the beds dirty and she maybe forgot => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she left the beds dirty || ADDED **Added to the Observation of Offense:** she left the beds dirty
+PROBE mixed: and level | shown=false | she yelled at a client and she gets a verbal warning => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE mixed: and level | shown=true | she yelled at a client and she gets a verbal warning => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she yelled at a client || ADDED **Added to the Observation of Offense:** she yelled at a client
+PROBE mixed: hedge no subj | shown=false | she skipped bed cleaning and probably forgot => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE mixed: hedge no subj | shown=true | she skipped bed cleaning and probably forgot => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she skipped bed cleaning || ADDED **Added to the Observation of Offense:** she skipped bed cleaning
+PROBE mixed: key holder | shown=false | she was late and she is a key holder => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE mixed: key holder | shown=true | she was late and she is a key holder => OBS **Observation of Offense:** On 11/3/26 Marnie was late. She was late and she is a key holder. || ADDED -
+PROBE mixed: late but history | shown=false | she was late again today but she already had a CA on 10/14 => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE mixed: late but history | shown=true | she was late again today but she already had a CA on 10/14 => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she was late again today || ADDED **Added to the Observation of Offense:** she was late again today
+PROBE mixed: salon | shown=false | she left early but she works at Kearney => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE mixed: salon | shown=true | she left early but she works at Kearney => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she left early || ADDED **Added to the Observation of Offense:** she left early
+PROBE mixed: three parts | shown=false | she was late, she yelled at a client and she had a verbal warning on 10/1 => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE mixed: three parts | shown=true | she was late, she yelled at a client and she had a verbal warning on 10/1 => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she was late and she yelled at a client || ADDED **Added to the Observation of Offense:** she was late and she yelled at a client
+PROBE mixed: title no subj | shown=false | she left early and is a Tanning Consultant => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE mixed: title no subj | shown=true | she left early and is a Tanning Consultant => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she left early || ADDED **Added to the Observation of Offense:** she left early
+PROBE name+title | shown=false | Marnie Holloway, Tanning Consultant => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE name+title | shown=true | Marnie Holloway, Tanning Consultant => OBS **Observation of Offense:** On 11/3/26 Marnie was late. Marnie Holloway, Tanning Consultant. || ADDED -
+PROBE name+title2 | shown=false | Wren Tallis, Salon Director => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE name+title2 | shown=true | Wren Tallis, Salon Director => OBS **Observation of Offense:** On 11/3/26 Marnie was late. Wren Tallis, Salon Director. || ADDED -
+PROBE name+title3 | shown=false | it is Marnie Holloway, our Tanning Consultant at Kearney => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE name+title3 | shown=true | it is Marnie Holloway, our Tanning Consultant at Kearney => OBS **Observation of Offense:** On 11/3/26 Marnie was late. it is Marnie Holloway, our Tanning Consultant at Kearney. || ADDED -
+PROBE name+title4 | shown=false | Marnie Holloway, our Tanning Consultant => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE name+title4 | shown=true | Marnie Holloway, our Tanning Consultant => OBS **Observation of Offense:** On 11/3/26 Marnie was late. Marnie Holloway, our Tanning Consultant. || ADDED -
+PROBE new request | shown=false | she needs a written warning for cash handling => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE new request | shown=true | she needs a written warning for cash handling => OBS **Observation of Offense:** On 11/3/26 Marnie was late. She needs a written warning for cash handling. || ADDED -
+PROBE new request2 | shown=false | Marnie needs a coaching form for the closing checklist => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE new request2 | shown=true | Marnie needs a coaching form for the closing checklist => OBS **Observation of Offense:** On 11/3/26 Marnie was late. Marnie needs a coaching form for the closing checklist. || ADDED -
+PROBE new request3 | shown=false | she also needs a CA for being late on 11/4 => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE new request3 | shown=true | she also needs a CA for being late on 11/4 => OBS **Observation of Offense:** On 11/3/26 Marnie was late. She also needs a CA for being late on 11/4. || ADDED -
+PROBE new request4 | shown=false | she should get a final warning for this => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE new request4 | shown=true | she should get a final warning for this => OBS **Observation of Offense:** On 11/3/26 Marnie was late. She should get a final warning for this. || ADDED -
+PROBE new request5 | shown=false | she should get a write up for the lotion count => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE new request5 | shown=true | she should get a write up for the lotion count => OBS **Observation of Offense:** On 11/3/26 Marnie was late. She should get a write up for the lotion count. || ADDED -
+PROBE new similar | shown=false | she was late again on 11/5/26 => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE new similar | shown=true | she was late again on 11/5/26 => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she was late again on 11/5/26 || ADDED **Added to the Observation of Offense:** she was late again on 11/5/26
+PROBE pay: charged no amt | shown=false | she will be charged for the bulb => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE pay: charged no amt | shown=true | she will be charged for the bulb => OBS **Observation of Offense:** On 11/3/26 Marnie was late. She will be charged for the bulb. || ADDED -
+PROBE pay: no amount | shown=false | she needs to pay for the bulb => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE pay: no amount | shown=true | she needs to pay for the bulb => OBS **Observation of Offense:** On 11/3/26 Marnie was late. She needs to pay for the bulb. || ADDED -
+PROBE repeat+new | shown=false | she was late and she didn't clock in => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE repeat+new | shown=true | she was late and she didn't clock in => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she was late and she didn't clock in || ADDED **Added to the Observation of Offense:** she was late and she didn't clock in
+PROBE repeat: same | shown=false | she was late on 11/3/26 => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE repeat: same | shown=true | she was late on 11/3/26 => OBS **Observation of Offense:** On 11/3/26 Marnie was late. She was late on 11/3/26. || ADDED -
+PROBE salon short | shown=false | she works at Kearney => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE salon short | shown=true | she works at Kearney => OBS **Observation of Offense:** On 11/3/26 Marnie was late. She works at Kearney. || ADDED -
+PROBE salon street | shown=false | she is at the 27th St salon => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE salon street | shown=true | she is at the 27th St salon => OBS **Observation of Offense:** On 11/3/26 Marnie was late. She is at the 27th St salon. || ADDED -
+PROBE salon typo | shown=false | she works at Kearny => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE salon typo | shown=true | she works at Kearny => OBS **Observation of Offense:** On 11/3/26 Marnie was late. She works at Kearny. || ADDED -
+PROBE salon typo2 | shown=false | she was rude to a client at the Kearny salon => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE salon typo2 | shown=true | she was rude to a client at the Kearny salon => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she was rude to a client at the Kearny salon || ADDED **Added to the Observation of Offense:** she was rude to a client at the Kearny salon
+PROBE salon typo3 | shown=false | she is at Lincon Pine Lake => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE salon typo3 | shown=true | she is at Lincon Pine Lake => OBS **Observation of Offense:** On 11/3/26 Marnie was late. She is at Lincon Pine Lake. || ADDED -
+PROBE salon typo4 | shown=false | she is at the Kearny salon => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE salon typo4 | shown=true | she is at the Kearny salon => OBS **Observation of Offense:** On 11/3/26 Marnie was late. She is at the Kearny salon. || ADDED -
+PROBE salon typo5 | shown=false | she was at Omaha Pacfic all day and never cleaned room 2 => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE salon typo5 | shown=true | she was at Omaha Pacfic all day and never cleaned room 2 => OBS **Observation of Offense:** On 11/3/26 Marnie was late; she was at Omaha Pacfic all day and never cleaned room 2 || ADDED **Added to the Observation of Offense:** she was at Omaha Pacfic all day and never cleaned room 2
+PROBE salon | shown=false | she works at NE Kearney => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE salon | shown=true | she works at NE Kearney => OBS **Observation of Offense:** On 11/3/26 Marnie was late. She works at NE Kearney. || ADDED -
+PROBE time: at 9pm fact | shown=false | at 9pm she locked a client in room 2 => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE time: at 9pm fact | shown=true | at 9pm she locked a client in room 2 => OBS **Observation of Offense:** On 11/3/26 Marnie was late; at 9pm she locked a client in room 2 || ADDED **Added to the Observation of Offense:** at 9pm she locked a client in room 2
+PROBE time: last week history | shown=false | last week she had a verbal warning => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE time: last week history | shown=true | last week she had a verbal warning => OBS **Observation of Offense:** On 11/3/26 Marnie was late. last week she had a verbal warning. || ADDED -
+PROBE time: on date title | shown=false | on 11/5 she is a Tanning Consultant => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE time: on date title | shown=true | on 11/5 she is a Tanning Consultant => OBS **Observation of Offense:** On 11/3/26 Marnie was late. on 11/5 she is a Tanning Consultant. || ADDED -
+PROBE time: on sat | shown=false | on Saturday, she left the salon unlocked => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE time: on sat | shown=true | on Saturday, she left the salon unlocked => OBS **Observation of Offense:** On 11/3/26 Marnie was late; on Saturday, she left the salon unlocked || ADDED **Added to the Observation of Offense:** on Saturday, she left the salon unlocked
+PROBE time: then salon | shown=false | then she works at Kearney => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE time: then salon | shown=true | then she works at Kearney => OBS **Observation of Offense:** On 11/3/26 Marnie was late. then she works at Kearney. || ADDED -
+PROBE time: this morning hedge | shown=false | this morning she maybe forgot to clock in => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE time: this morning hedge | shown=true | this morning she maybe forgot to clock in => OBS **Observation of Offense:** On 11/3/26 Marnie was late. this morning she maybe forgot to clock in. || ADDED -
+PROBE time: yesterday fact | shown=false | yesterday she left two beds uncleaned => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE time: yesterday fact | shown=true | yesterday she left two beds uncleaned => OBS **Observation of Offense:** On 11/3/26 Marnie was late; yesterday she left two beds uncleaned || ADDED **Added to the Observation of Offense:** yesterday she left two beds uncleaned
+PROBE time: yesterday level | shown=false | yesterday she gets a verbal warning => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE time: yesterday level | shown=true | yesterday she gets a verbal warning => OBS **Observation of Offense:** On 11/3/26 Marnie was late. yesterday she gets a verbal warning. || ADDED -
+PROBE title | shown=false | she is a Tanning Consultant => OBS **Observation of Offense:** On 11/3/26 Marnie was late.  || ADDED -
+PROBE title | shown=true | she is a Tanning Consultant => OBS **Observation of Offense:** On 11/3/26 Marnie was late. She is a Tanning Consultant. || ADDED -

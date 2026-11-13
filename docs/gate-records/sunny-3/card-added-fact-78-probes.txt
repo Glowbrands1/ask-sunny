@@ -1,0 +1,78 @@
+#0 fact | said: "she yelled at a guest" | Added: she yelled at a guest | Obs: she was late on 11/3/26; she yelled at a guest
+#1 fact | said: "she left the register open" | Added: she left the register open | Obs: she was late on 11/3/26; she left the register open
+#2 fact | said: "she was on her phone at the desk" | Added: she was on her phone at the desk | Obs: she was late on 11/3/26; she was on her phone at the desk
+#3 fact | said: "she clocked out early" | Added: she clocked out early | Obs: she was late on 11/3/26; she clocked out early
+#4 fact | said: "she did not clean bed 4" | Added: she did not clean bed 4 | Obs: she was late on 11/3/26; she did not clean bed 4
+#5 fact | said: "she ignored a guest at the front desk" | Added: she ignored a guest at the front desk | Obs: she was late on 11/3/26; she ignored a guest at the front desk
+#6 fact | said: "she gave a free tan without approval" | Added: she gave a free tan without approval | Obs: she was late on 11/3/26; she gave a free tan without approval
+#7 fact | said: "she was rude to her coworker" | Added: she was rude to her coworker | Obs: she was late on 11/3/26; she was rude to her coworker
+#8 fact | said: "she left the salon unlocked" | Added: she left the salon unlocked | Obs: she was late on 11/3/26; she left the salon unlocked
+#9 fact | said: "she skipped the 10 minute sanitize" | Added: she skipped the 10 minute sanitize | Obs: she was late on 11/3/26; she skipped the 10 minute sanitize
+#10 fact | said: "she didn't answer the phone" | Added: she didn't answer the phone | Obs: she was late on 11/3/26; she didn't answer the phone
+#11 fact | said: "she sold a lotion without ringing it up" | Added: she sold a lotion without ringing it up | Obs: she was late on 11/3/26; she sold a lotion without ringing it up
+#12 hedge | said: "she yelled at a guest and she maybe forgot" | Added: she yelled at a guest | Obs: she was late on 11/3/26; she yelled at a guest
+#13 hedge | said: "she maybe forgot" | Added: - | Obs: she was late on 11/3/26 she maybe forgot [3a no Added, turn stays]
+#14 hedge | said: "i think she yelled at a guest" | Added: - | Obs: she was late on 11/3/26 i think she yelled at a guest [3a no Added, turn stays]
+#15 hedge | said: "she might have yelled at a guest" | Added: - | Obs: she was late on 11/3/26 she might have yelled at a guest [3a no Added, turn stays]
+#16 hedge | said: "she probably forgot to clean the bed" | Added: - | Obs: she was late on 11/3/26 she probably forgot to clean the bed [3a no Added, turn stays]
+#17 hedge | said: "not sure but she yelled at a guest" | Added: - | Obs: she was late on 11/3/26 not sure but she yelled at a guest [3a no Added, turn stays]
+#18 hedge | said: "she yelled at a guest i guess" | Added: she yelled at a guest i guess | Obs: she was late on 11/3/26; she yelled at a guest i guess [3b Added keeps clause]
+#19 hedge | said: "possibly she left the drawer open" | Added: - | Obs: she was late on 11/3/26 possibly she left the drawer open [3a no Added, turn stays]
+#20 hedge | said: "she yelled at a guest, maybe twice" | Added: she yelled at a guest, maybe twice | Obs: she was late on 11/3/26; she yelled at a guest, maybe twice [3b Added keeps clause]
+#21 hedge | said: "apparently she yelled at a guest" | Added: - | Obs: she was late on 11/3/26 apparently she yelled at a guest [3a no Added, turn stays]
+#22 level | said: "make it a written warning, she yelled at a guest" | Added: - | Obs: she was late on 11/3/26 [3d new fact dropped, same with CARD_CHECKED off]
+#23 level | said: "verbal warning" | Added: - | Obs: she was late on 11/3/26
+#24 level | said: "this is a final warning she yelled at a guest" | Added: - | Obs: she was late on 11/3/26 this is a final warning she yelled at a guest [3a no Added, turn stays]
+#25 level | said: "she yelled at a guest, written" | Added: - | Obs: she was late on 11/3/26 she yelled at a guest [3c fact kept, no "; " join]
+#26 level | said: "it should be a verbal" | Added: - | Obs: she was late on 11/3/26
+#27 level | said: "she yelled at a guest. written warning please" | Added: she yelled at a guest | Obs: she was late on 11/3/26; she yelled at a guest
+#28 level | said: "final written" | Added: - | Obs: she was late on 11/3/26
+#29 level | said: "do a written for this one" | Added: - | Obs: she was late on 11/3/26
+#30 title | said: "she is a tanning consultant" | Added: - | Obs: she was late on 11/3/26
+#31 title | said: "she yelled at a guest, she's an assistant salon director" | Added: she yelled at a guest | Obs: she was late on 11/3/26; she yelled at a guest
+#32 title | said: "her title is salon director" | Added: - | Obs: she was late on 11/3/26
+#33 title | said: "she yelled at a guest as a TC" | Added: she yelled at a guest as a TC | Obs: she was late on 11/3/26; she yelled at a guest as a TC [3b Added keeps clause]
+#34 title | said: "she works as a tanning consultant and yelled at a guest" | Added: she works as a tanning consultant and yelled at a guest | Obs: she was late on 11/3/26; she works as a tanning consultant and yelled at a guest [3b Added keeps clause]
+#35 title | said: "job title tanning consultant" | Added: - | Obs: she was late on 11/3/26
+#36 salon | said: "at kearney" | Added: - | Obs: she was late on 11/3/26
+#37 salon | said: "she yelled at a guest at kearney" | Added: - | Obs: she was late on 11/3/26 she yelled at a guest [3c fact kept, no "; " join]
+#38 salon | said: "this was at the grand island salon" | Added: - | Obs: she was late on 11/3/26
+#39 salon | said: "she works at kearney" | Added: - | Obs: she was late on 11/3/26
+#40 salon | said: "she was late at the kearney store" | Added: - | Obs: she was late on 11/3/26 she was late [3c fact kept, no "; " join]
+#41 salon | said: "it happened at north platte" | Added: - | Obs: she was late on 11/3/26 it happened at north platte [3a no Added, turn stays]
+#42 history | said: "she was coached on 10/1 for being late" | Added: - | Obs: she was late on 11/3/26
+#43 history | said: "she had a verbal last month" | Added: she had a verbal last month | Obs: she was late on 11/3/26; she had a verbal last month [3b Added keeps clause]
+#44 history | said: "she yelled at a guest, she was coached for this before" | Added: she yelled at a guest | Obs: she was late on 11/3/26; she yelled at a guest
+#45 history | said: "she got a written in september" | Added: - | Obs: she was late on 11/3/26
+#46 history | said: "last week she also yelled at a guest" | Added: - | Obs: she was late on 11/3/26 last week she also yelled at a guest [3a no Added, turn stays]
+#47 history | said: "she has been late 3 times this month" | Added: she has been late 3 times this month | Obs: she was late on 11/3/26; she has been late 3 times this month [3b Added keeps clause]
+#48 history | said: "she was previously warned about her phone" | Added: she was previously warned about her phone | Obs: she was late on 11/3/26; she was previously warned about her phone [3b Added keeps clause]
+#49 history | said: "she yelled at a guest and was coached on 10/15 for attitude" | Added: - | Obs: she was late on 11/3/26 [3d new fact dropped, same with CARD_CHECKED off]
+#50 history | said: "prior coaching 10/1" | Added: - | Obs: she was late on 11/3/26
+#51 history | said: "she had a verbal on 10/20 for attendance" | Added: - | Obs: she was late on 11/3/26
+#52 pay | said: "she owes $25 for the late opening" | Added: - | Obs: she was late on 11/3/26 she owes $25 for the late opening [3a no Added, turn stays]
+#53 pay | said: "payroll deduct $25" | Added: - | Obs: she was late on 11/3/26
+#54 pay | said: "she has to pay $15 for the broken bulb" | Added: - | Obs: she was late on 11/3/26 she has to pay $15 for the broken bulb [3a no Added, turn stays]
+#55 pay | said: "take $10 out of her check" | Added: - | Obs: she was late on 11/3/26
+#56 pay | said: "she yelled at a guest and owes $25" | Added: she yelled at a guest | Obs: she was late on 11/3/26; she yelled at a guest
+#57 pay | said: "she will be charged $20" | Added: - | Obs: she was late on 11/3/26
+#58 pay | said: "yes payroll deduct" | Added: - | Obs: she was late on 11/3/26
+#59 pay | said: "no payroll deduction" | Added: - | Obs: she was late on 11/3/26
+#60 date | said: "she yelled at a guest on 11/4/26" | Added: she yelled at a guest on 11/4/26 | Obs: she was late on 11/3/26; she yelled at a guest on 11/4/26
+#61 date | said: "this happened yesterday" | Added: - | Obs: she was late on 11/3/26
+#62 date | said: "she also yelled at a guest on 11/2" | Added: she yelled at a guest on 11/2 | Obs: she was late on 11/3/26; she yelled at a guest on 11/2
+#63 date | said: "the date should be 11/4/26" | Added: - | Obs: she was late on 11/3/26
+#64 date | said: "she yelled at a guest today" | Added: she yelled at a guest today | Obs: she was late on 11/3/26; she yelled at a guest today
+#65 date | said: "it was on 11/3" | Added: - | Obs: she was late on 11/3/26 it was on 11/3 [3a no Added, turn stays]
+#66 mixed | said: "she yelled at a guest and left the drawer open" | Added: she yelled at a guest and left the drawer open | Obs: she was late on 11/3/26; she yelled at a guest and left the drawer open
+#67 mixed | said: "she yelled at a guest. she also clocked out early" | Added: she yelled at a guest; she clocked out early | Obs: she was late on 11/3/26; she yelled at a guest; she clocked out early
+#68 mixed | said: "and she was rude" | Added: she was rude | Obs: she was late on 11/3/26; she was rude
+#69 mixed | said: "also she didn't clean" | Added: - | Obs: she was late on 11/3/26 also she didn't clean [3a no Added, turn stays]
+#70 mixed | said: "she yelled at a guest who complained" | Added: she yelled at a guest who complained | Obs: she was late on 11/3/26; she yelled at a guest who complained
+#71 mixed | said: "she said "i dont care" to a guest" | Added: she said "i dont care" to a guest | Obs: she was late on 11/3/26; she said "i dont care" to a guest
+#72 mixed | said: "she yelled at <invented guest name>" | Added: she yelled at <invented guest name> | Obs: she was late on 11/3/26; she yelled at <invented guest name>
+#73 mixed | said: "she yelled at a guest, the guest left" | Added: she yelled at a guest, the guest left | Obs: she was late on 11/3/26; she yelled at a guest, the guest left
+#74 mixed | said: "she was late again on 11/4" | Added: she was late again on 11/4 | Obs: she was late on 11/3/26; she was late again on 11/4
+#75 mixed | said: "she was not late, she yelled at a guest" | Added: she was not late, she yelled at a guest | Obs: she was late on 11/3/26; she was not late, she yelled at a guest [NEG negation added as fact]
+#76 mixed | said: "she didn't yell at a guest" | Added: she didn't yell at a guest | Obs: she was late on 11/3/26; she didn't yell at a guest [NEG negation added as fact]
+#77 mixed | said: "thanks" | Added: - | Obs: she was late on 11/3/26

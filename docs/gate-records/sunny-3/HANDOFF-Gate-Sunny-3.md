@@ -138,3 +138,8 @@ SHA, and which open cases now hold. Records go to branch `claude/gate-sunny-3-re
 - S#927: **GO on 867dc2de0** (prompts unchanged OFF: 0/1,778; ON only the nov13 arms; eval 63/63). Done.
 - S#942: **GO on 0190ed13b9** (whole replay pack ON: only the 2 OPEN arms + the new small-word case; eval 63/63). Done. The PR still needs main merged (flag-list conflict).
 - In flight: nothing. Next: whatever QA routes; the held items above stay held.
+
+## Update ~23:25Z — FREEZE (Pau, via QA)
+- CARD_ADDED_FACT_IN_OBSERVATION at b80cf5bd2: probes and eval done, all clean; the full runs were stopped unfinished. See `2026-11-13-card-added-fact-in-observation.md` for the exact resume step.
+- Coding-6 has the 78-row list (pre-existing gaps 3a/3b/3c/3d/NEG) as a follow-up for both apps.
+- Nothing in flight. All worktrees are clean; no probe files are left. No reminders or triggers set.
