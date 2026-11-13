@@ -60,12 +60,20 @@ jobs:
       - name: Tests (vitest project "unit")
         run: npx vitest run --project unit
 
+  # THE PARITY CHILDREN SIDE BY SIDE (QA, 13 Nov 2026). The project's children (the
+  # chat and form suites re-run with every new flag off) ran one after another in
+  # one job, and the job was cancelled at its 30-minute limit (ask-sunny#930, no
+  # failing test). Each child is now its own matrix job: PARITY_ONLY=<index in
+  # CHILDREN> runs that child alone; "guards" runs the file's other tests and no
+  # child. Together they are exactly what the one job ran. The matrix list must
+  # name every child: `flags-off-parity.test.ts` checks it against CHILDREN.
   flags-off-parity:
     runs-on: ubuntu-latest
-    # 45, not 30 (QA, 13 Nov 2026): the replay pack grew past the 30-minute job limit
-    # (ask-sunny#930 was cancelled at 30:11 with no failing test). Nothing is skipped;
-    # #907 splits the replay child into thirds so no child nears its own 540 s budget.
-    timeout-minutes: 45
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        parity-child: [guards, 0, 1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -73,8 +81,15 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Tests (vitest project "flags-off-parity")
-        run: npx vitest run --project flags-off-parity
+      - name: Tests (vitest project "flags-off-parity", ${{ matrix.parity-child }})
+        env:
+          PARITY_ONLY: ${{ matrix.parity-child }}
+        run: |
+          if [ "$PARITY_ONLY" = "guards" ]; then
+            npx vitest run --project flags-off-parity -t '^(?!.*passes the suites whose expectations are already on main)'
+          else
+            npx vitest run --project flags-off-parity -t 'passes the suites whose expectations are already on main'
+          fi
 
   # "checks" is the REQUIRED CHECK (branch protection and the merge queue name
   # it). It passes only when every job above succeeded: a failed, cancelled or
