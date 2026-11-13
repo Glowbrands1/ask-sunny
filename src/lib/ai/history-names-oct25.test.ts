@@ -40,6 +40,9 @@ const PROFILE = [
   "GLOBAL_SALON_ASK_ENABLED",
   "DRAFT_MERGE_ENABLED",
   "NOT_A_NAME_GUARD_ENABLED",
+  // Rebuilt on main (12 Nov 2026): #210's readings of the live guard are behind NOT_A_NAME_GUARD_HISTORY_ENABLED (default off);
+  // unflagged, they made "District manager <name>" named in passing the card's employee (nov5-r2-dm-in-passing-*).
+  "NOT_A_NAME_GUARD_HISTORY_ENABLED",
 ] as const;
 
 const TODAY = "2026-10-24";
@@ -365,8 +368,72 @@ describe("P2: words that are not the employee (NOT_A_NAME_GUARD_ENABLED, live)",
     for (const turn of turns.slice(1)) expect(turn.employeeName).toBe("Casey Wendell");
   });
 
-  // conv_mvb75wuo2nnsluv (a role in front of the name) and conv_mvh9a9q62mjffk2 ("keep <name>"): NOT_A_NAME_GUARD_HISTORY,
-  // split into its own pull request (Gate-Sunny-3 / QA on #919, 13 Nov 2026).
+  /*
+   * conv_mvb75wuo2nnsluv. Failed on main with the guard on: "Which of them …
+   * — Blair Sutton or empolyee Blair Sutton?", and with a model that copied
+   * the role, the card was for "Empolyee Blair Sutton" / "Tanning Consulatant
+   * Blair Sutton". A misspelt "employee" and a job title in front of the name
+   * are the label every reader already takes off "employee <name>".
+   */
+  const EMPOLYEE = [
+    "corrective action form for empolyee Blair Sutton for opening store late",
+    "can you format a corrective action form for Tanning Consulatant Blair Sutton who opened the store late today",
+    "make the corrective action form draft printable as is",
+  ];
+
+  it.each([
+    ["the model copies the name", ["Blair Sutton"]],
+    ["the model copies the role with it", ["Blair Sutton", "empolyee Blair Sutton", "Tanning Consulatant Blair Sutton"]],
+    ["the model names nobody", []],
+  ])("conv_mvb75wuo2nnsluv: empolyee and the job title are not part of the name — %s", async (_label, names) => {
+    bag.intent.latest = [...names];
+    const turns = await converse(EMPOLYEE);
+    for (const turn of turns) {
+      expect(turn.employeeName, turn.question).toBe("Blair Sutton");
+      expect(offered(turn.content), turn.question).toEqual([]);
+      // The card's lead names the person; the manager's own words stay in What happened.
+      expect(turn.content, turn.question).not.toMatch(/for \*\*(?:empolyee|tanning)/i);
+    }
+  });
+
+  it("conv_mvb75wuo2nnsluv: a correctly spelt title in front of the name comes off too", async () => {
+    bag.intent.latest = ["Tanning Consultant Blair Sutton"];
+    const [turn] = await converse([
+      "can you format a corrective action form for Tanning Consultant Blair Sutton who opened the store late today",
+    ]);
+    expect(turn!.employeeName).toBe("Blair Sutton");
+  });
+
+  /*
+   * conv_mvh9a9q62mjffk2. Production: "Did you mean <directory name>?" and the
+   * manager's "keep <typed>" made the card's employee "keep <typed>". The
+   * question is the production reply, with the names swapped. On main the
+   * card kept the typed name, but every later reply named the directory
+   * person the manager had declined ("for **Karolina Wexler**"): the roster
+   * reader read the assistant's question as if the manager had said it.
+   */
+  const DID_YOU_MEAN_KEEP =
+    'Did you mean **Karolina Wexler**? I couldn\'t find **karolyn** exactly in the employee list for your salons, so I want to be sure before it goes on the form. Reply "yes" to use **Karolina Wexler**, or "no" to keep **karolyn** as you typed it.';
+  const KEEP = [
+    "can you create me a ca form for karolyn",
+    "keep karolyn",
+    "payroll is deductable",
+    "she was caught vaping, given verbal warning",
+  ];
+
+  it.each([
+    ["the model copies the name", ["karolyn"]],
+    ["the model copies keep with it", ["karolyn", "keep karolyn"]],
+  ])('conv_mvh9a9q62mjffk2: "keep <name>" keeps the name as typed — %s', async (_label, names) => {
+    PEOPLE.push(person("Karolina Wexler"));
+    bag.intent.latest = [...names];
+    const turns = await converse(KEEP, { 0: DID_YOU_MEAN_KEEP });
+    expectNever(turns, ["keep"]);
+    for (const turn of turns) {
+      expect(turn.employeeName, turn.question).toBe("Karolyn");
+      expect(turn.content, turn.question).not.toContain("**Karolina Wexler**");
+    }
+  });
 
   /*
    * conv_mvl7ntrk2wg08iy. Production asked "Did you mean <directory name>?",
