@@ -4701,3 +4701,14 @@ export function policyCarryRetrievalEnabled(): boolean {
 export function notFollowingIsViolationEnabled(): boolean {
   return envFlag("NOT_FOLLOWING_IS_VIOLATION_ENABLED");
 }
+
+/**
+ * SAME_NAME_ASKS_WHICH_ENABLED (coding 6, 12 Nov 2026; default off; QA, high priority). With TYPED_NAME_PROCEEDS on
+ * (live), two roster people with the same name were resolved to neither and never asked about: "verbal CA for <name>"
+ * with two active <name>s at the salon gave a ready card with one of them's job title and no employee id. On: one close
+ * roster match still stays a note (the name as typed); two or more roster matches ask "Which person did you mean…?" as
+ * with TYPED_NAME_PROCEEDS off, and a numbered or salon reply selects that person (`ai/intent-slots.ts`). Off, as before.
+ */
+export function sameNameAsksWhichEnabled(): boolean {
+  return envFlag("SAME_NAME_ASKS_WHICH_ENABLED");
+}

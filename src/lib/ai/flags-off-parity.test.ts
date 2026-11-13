@@ -648,6 +648,8 @@ const NEW_FLAGS = [
   "POLICY_CARRY_RETRIEVAL_ENABLED",
   // coding 2: OFF_ROSTER_STORE_ANSWER_ONLY (QA's #735 ruling, 12 Nov 2026; default off).
   "OFF_ROSTER_STORE_ANSWER_ONLY_ENABLED",
+  // coding 6: SAME_NAME_ASKS_WHICH (QA, 12 Nov 2026; default off; high priority).
+  "SAME_NAME_ASKS_WHICH_ENABLED",
 ] as const;
 
 const PROTECTED = [

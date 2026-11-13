@@ -1,0 +1,26 @@
+diff --git a/src/lib/ai/form-proposal.ts b/src/lib/ai/form-proposal.ts
+index c108ffeb1..e279ac555 100644
+--- a/src/lib/ai/form-proposal.ts
++++ b/src/lib/ai/form-proposal.ts
+@@ -118,9 +118,11 @@ import {
+   payrollAmountFieldEnabled,
+   storedSlotsNotARequestEnabled,
+   typedNameProceedsEnabled,
++  sameNameAsksWhichEnabled,
+   secondRequestOwnAccountEnabled,
+ } from "@/lib/config/chat-quality-flags";
+ import { currentFormRequestText } from "@/lib/forms/current-request";
++import { hasSameNamePair } from "@/lib/forms/same-name";
+ import { managerWords } from "./edit-date-rules";
+ import { inlineCloseMatch } from "@/lib/forms/typed-name-proceeds";
+ import { allowsTeamSubject } from "@/lib/forms/team-subject";
+@@ -1076,7 +1078,8 @@ async function checkTypedEmployee(
+   }
+ 
+   const names = result.candidates.map((candidate) => candidate.name);
+-  if (typedNameProceedsEnabled()) {
++  // SAME_NAME_ASKS_WHICH_ENABLED: a close match stays a note; two roster people with ONE name are still a question.
++  if (typedNameProceedsEnabled() && !(sameNameAsksWhichEnabled() && hasSameNamePair(names))) {
+     const kept = tidyTypedName(typed.employeeName);
+     const different = names.filter((name) => name.trim().toLowerCase() !== kept.toLowerCase());
+     const note = inlineCloseMatch(kept, different);
