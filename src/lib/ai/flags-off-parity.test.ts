@@ -1197,6 +1197,11 @@ describe("new flags default off and wrappers are inert", () => {
           // Confetti on a 5-star rating (requested by Paulyne, 9 Nov 2026): the
           // one mount line after a rating saves; `lib/ui/confetti.ts` does the rest.
           ":(exclude)src/features/chat/conversation-rating.tsx",
+          // DM L10 tab (requested by Paulyne via QA, 13 Nov 2026; approved by QA): new pages and
+          // components only, shown only when HUB_PARTNER_SECRET is set and the Leadership Hub says
+          // the person holds the meeting's role. No existing page, chat or form behaviour changes.
+          ":(exclude)src/app/(app)/meetings",
+          ":(exclude)src/features/l10",
         ]),
       ).toBe("");
       expect(changedLines(diff(uiBase, [MONITORING_TABLE])).filter((line) => !MONITORING_MOUNT.includes(line))).toEqual([]);

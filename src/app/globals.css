@@ -1368,3 +1368,189 @@
     animation: cloud-drift 140s linear infinite;
   }
 }
+
+/* ============================================================================
+   THE DM L10 TAB (src/features/l10): the Leadership Hub's look, scoped to .hub-l10.
+   ============================================================================ */
+
+/*
+ * THE LEADERSHIP HUB'S LOOK, FOR THE DM L10 TAB ONLY.
+ *
+ * Copied from the Leadership Hub's src/app/globals.css ("Slate Pro" tokens, glass utilities, the bell's ring) so the
+ * meeting renders exactly as it does in the Hub. Kept here, in globals.css, because every token a component names must be declared in this file
+ * (src/app/theme-semantics.test.ts).
+ *
+ * Nothing here changes the rest of Ask Sunny:
+ *  - @theme only ADDS colour names Ask Sunny does not use (ink, cream, bronze, …). The three names both apps define
+ *    (muted, gold, shadow-float) are Ask Sunny's CSS variables, so the Hub's values are set INSIDE `.hub-l10` only.
+ *  - Fonts, the background and the floating-button positions are set on `.hub-l10`, the wrapper of the L10 pages.
+ */
+
+@theme {
+  --color-ink: #0a0a0a;
+  --color-sand: #e9e5d8;
+  --color-paper: #e8e4d8;
+  --color-line: #cfc8b2;
+  --color-field: #bdb6a0;
+  --color-rule: #e8e4d8;
+  --color-gold-head: #d9b93e;
+  --color-gold-hover: #e0b93a;
+  --color-bronze: #8a6a0f;
+  --color-bronze-deep: #755a0c;
+  --color-cream: #f1eee3;
+  --color-sunny: #fbf3d5;
+  --color-bubbles: #f2f0e8;
+  --color-nav-active: #1c1c1c;
+  --color-nav-border: #6b665a;
+  --color-ok: #f1f1f1;
+  --color-warn: #f0dc8a;
+  --color-warn-ink: #3a2a00;
+  --color-bad: #bdbdbd;
+  --color-spa: #efe6c4;
+  --color-bar: #eadfb5;
+
+  --shadow-card: 0 1px 4px rgba(0, 0, 0, 0.1);
+
+  --color-glass: rgb(255 255 255 / 0.45);
+  --color-glass-solid: rgb(255 255 255 / 0.9);
+  --color-glass-edge: rgb(255 255 255 / 0.6);
+  --shadow-float-hover:
+    inset 0 1px 0 rgb(255 255 255 / 0.95), 0 28px 60px -14px rgb(10 10 10 / 0.22), 0 6px 16px -6px rgb(138 106 15 / 0.16);
+}
+
+/*
+ * Set per element at runtime, declared here so every var() names a declared token: the fonts by next/font on the
+ * DM L10 frame (src/features/l10/fonts.ts), the mention picker's position inline by the picker (ui/Mentions.tsx).
+ */
+:root {
+  --font-public-sans: "Public Sans";
+  --font-jetbrains-mono: "JetBrains Mono";
+  --mx-top: auto;
+  --mx-bottom: auto;
+  --mx-left: 0px;
+  --mx-width: 220px;
+}
+
+.hub-l10 {
+  /* The Hub's values for the names Ask Sunny also defines (see the note above). */
+  --muted: #5a5648;
+  --gold: #c9a227;
+  --shadow-float:
+    inset 0 1px 0 rgb(255 255 255 / 0.95), 0 20px 50px -12px rgb(10 10 10 / 0.18), 0 4px 12px -4px rgb(138 106 15 / 0.12);
+
+  /* The bottom-right floating stack: Add to IDS takes the bottom slot, the assistant bubble sits above it. */
+  --fab-right: 1.25rem;
+  --fab-bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
+  --fab-h: 2.75rem;
+  --fab-gap: 0.75rem;
+  --assistant-size: 3.5rem;
+  --assistant-bottom: calc(var(--fab-bottom) + var(--fab-h) + var(--fab-gap));
+  --bg-hub:
+    radial-gradient(60% 50% at 10% 0%, rgb(201 162 39 / 0.28), transparent 70%),
+    radial-gradient(50% 45% at 95% 20%, rgb(10 10 10 / 0.14), transparent 70%),
+    radial-gradient(55% 50% at 50% 100%, #fbf3d5, transparent 70%),
+    linear-gradient(160deg, #f1eee3 0%, #e9e5d8 55%, #e3dcc4 100%);
+
+  background: var(--bg-hub);
+  background-color: var(--color-sand);
+  color: var(--color-ink);
+  font-family: var(--font-public-sans), "Public Sans", ui-sans-serif, system-ui, sans-serif;
+  line-height: normal;
+  accent-color: var(--color-bronze);
+  caret-color: var(--color-bronze);
+}
+
+.hub-l10 .font-mono {
+  font-family: var(--font-jetbrains-mono), "JetBrains Mono", ui-monospace, monospace;
+}
+
+.hub-l10 a {
+  color: inherit;
+  text-decoration: none;
+  text-underline-offset: 3px;
+}
+
+.hub-l10 button,
+.hub-l10 select {
+  cursor: pointer;
+}
+
+.hub-l10 ::selection {
+  background: rgb(201 162 39 / 0.35);
+  color: var(--color-ink);
+}
+
+@media (max-width: 39.999rem) {
+  .hub-l10 {
+    --fab-right: 1rem;
+    --fab-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+  }
+  :root:has([data-bottom-sheet]) .hub-l10 [data-testid="assistant-launcher"] {
+    visibility: hidden;
+  }
+}
+
+/* ── Glass utilities (the Hub's) ─────────────────────────────── */
+
+@utility glass {
+  border-radius: var(--radius-3xl);
+  border: 1px solid rgb(255 255 255 / 0.5);
+  background-color: var(--color-glass-solid);
+  @apply shadow-float ring-1 ring-white/60;
+
+  @supports (backdrop-filter: blur(1px)) {
+    background-color: rgb(255 255 255 / 0.6);
+    backdrop-filter: blur(var(--blur-2xl)) saturate(1.5);
+  }
+}
+
+@utility glass-hover {
+  @media (hover: hover) and (prefers-reduced-motion: no-preference) {
+    transition-property: translate, box-shadow;
+    transition-duration: 200ms;
+    transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+
+    &:hover {
+      @apply -translate-y-0.5 shadow-float-hover;
+    }
+  }
+}
+
+@utility glass-tile {
+  border-radius: var(--radius-2xl);
+  background-color: rgb(255 255 255 / 0.55);
+  @apply ring-1 ring-white/70 inset-shadow-[0_1px_0_rgb(255_255_255/0.9)];
+}
+
+/* The bell rings while there is anything unread (as in the Hub). */
+@keyframes bell-ring {
+  0%, 15%, 100% { transform: rotate(0deg); }
+  2% { transform: rotate(16deg); }
+  4% { transform: rotate(-14deg); }
+  6% { transform: rotate(11deg); }
+  8% { transform: rotate(-8deg); }
+  10% { transform: rotate(5deg); }
+  12% { transform: rotate(-2deg); }
+}
+.bell-ringing {
+  transform-origin: 50% 10%;
+  animation: bell-ring 4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bell-ringing {
+    animation: none;
+  }
+}
+
+@media print {
+  .hub-l10 {
+    background: #fff !important;
+  }
+  .hub-l10 .glass,
+  .hub-l10 .glass-tile {
+    background: #fff !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    border-color: var(--color-line) !important;
+  }
+}
