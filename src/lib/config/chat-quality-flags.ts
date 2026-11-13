@@ -2617,6 +2617,20 @@ export function offRosterAskBeforeCardEnabled(): boolean {
 export function offRosterStoreAnswerOnlyEnabled(): boolean {
   return envFlag("OFF_ROSTER_STORE_ANSWER_ONLY_ENABLED");
 }
+
+/**
+ * OFF_ROSTER_PLACE_ANSWER_ENABLED (Coding-2, 12 Nov 2026; default off; QA's priority live bug, Sunny 37b, a gap in
+ * OFF_ROSTER_STORE_ANSWER_ONLY). An all-salon admin, "CA for <C>, do not terminate yet, she was late" → the "reply use
+ * <C>" offer → "IA Altoona": the salon, written state-first as the directory writes it, became the employee "Ia
+ * Altoona"; the Observation and date were lost and "use <C>" was not asked again. On, for any scope: while the offer is
+ * open, a reply that is only a place ("<ST> <City>", "<City>, <ST>", or a directory salon or city) is never a person.
+ * The card is drafted again from the turn that typed the name (its account, date and policy kept), the salon is set
+ * where the directory knows it and the scope allows, and the question and offer are asked again
+ * (`forms/off-roster-place-answer.ts`). Off, as before.
+ */
+export function offRosterPlaceAnswerEnabled(): boolean {
+  return envFlag("OFF_ROSTER_PLACE_ANSWER_ENABLED");
+}
 /**
  * EXIT_LETTER_ADDRESSEE_ENABLED (QA, the live Sunny test of rounds 7c and 8, 9 Nov 2026; coding 5; same flag in both
  * apps; default off; with EXIT_LETTER_SIGNER_NOT_SUBJECT_ENABLED). "I need an exit form with this information." and a
