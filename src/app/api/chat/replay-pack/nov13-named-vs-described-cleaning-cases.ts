@@ -90,3 +90,39 @@ export const NOV13_NAMED_VS_DESCRIBED_CLEANING_CASES: ReplayCase[] = [
     },
   })),
 ];
+
+/**
+ * Gate-Sunny-3's two notes on #839 (13 Nov 2026), OPEN and not fixed in this PR (QA): they are main's own limits, the
+ * same with the flags off and on.
+ *   - "she did not take care and clean the beds": rightly not read as NAMING Care and Cleaning, but the cleaning reader
+ *     does not read it as an undone duty either, so the card cites p.21 instead of Other.
+ *   - "violating the care and cleaning policy": the card says "I don't see a section … for 'care and cleaning' … so I
+ *     won't cite one" AND carries a "Care and Cleaning … p.21" line — the two contradict.
+ */
+export const NOV13_CLEANING_GATE_NOTES_CASES: ReplayCase[] = [
+  {
+    id: "nov13-cleaning-gate-note-take-care-and-clean",
+    title: `"ca for Odessa Quillfeather, she did not take care and clean the beds" is a described duty: Other, no p.21`,
+    report: `${REPORT}; note (a)`,
+    status: { open: "the cleaning reader does not read \"did not take care and clean\" as an undone duty: the card cites p.21" },
+    async run(t) {
+      const { card } = await cardAndDraft(t, "ca for Odessa Quillfeather, she did not take care and clean the beds", false);
+      expect(card, `a described duty is not Other:\n${card}`).toMatch(/\*\*Policy:\*\* Other\b/);
+      expect(card, `the card cites p.21 for a described duty:\n${card}`).not.toMatch(/p\.21\b/);
+    },
+  },
+  {
+    id: "nov13-cleaning-gate-note-named-no-contradiction",
+    title: `"please make a ca for Odessa Quillfeather for violating the care and cleaning policy": never both "won't cite one" and a p.21 line`,
+    report: `${REPORT}; note (b)`,
+    // Changed on purpose (13 Nov 2026): Gate-Sunny-3 saw both lines on 9a248824; after main 0ef33633 (its close-spelling
+    // match) is merged, production's card no longer carries both. Kept as a guard.
+    status: "fixed" as const,
+    async run(t) {
+      const { card } = await cardAndDraft(t, "please make a ca for Odessa Quillfeather for violating the care and cleaning policy", false);
+      const wontCite = /so I won't cite one/i.test(card);
+      const cites = /Care and Cleaning[^\n]*p\.21/i.test(card);
+      expect(wontCite && cites, `the card both declines to cite and cites p.21:\n${card}`).toBe(false);
+    },
+  },
+];
