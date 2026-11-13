@@ -30,7 +30,7 @@ import {
   type ManualSection,
 } from "@/lib/forms/official-policy-manual";
 import { extractJobTitle, titleAfterJobTitleLabel } from "@/lib/forms/proposal";
-import { readSalonMentions } from "@/lib/forms/salon-mention";
+import { isCloseSharedCity, readSalonMentions } from "@/lib/forms/salon-mention";
 import { US_STATE_CODE } from "@/lib/forms/state-code-place";
 import { detectTemplateIntent, withoutLeadingGlossaryTerm } from "@/lib/forms/template-intent";
 import type { KnowledgeCategory, SourceCitation } from "@/types";
@@ -982,17 +982,6 @@ function onlyWhoOrWhere(clause: string, employeeName: string | null): boolean {
     return true;
   }
   if (onlyNamesThem(text, employeeName) || isPlaceOnly(text)) return true;
-  /*
-   * SHARED_CITY_ASKS_SALON_ENABLED (QA's Sunny 38c live check, 13 Nov 2026): "<A> at omha" — the employee and a place
-   * the salon reader did not read — became the Observation ("<A> at omha, she was late"). A clause that is only the
-   * employee's name and "at" / "in" a place of up to three words says who and where, never what happened. Off, as before.
-   */
-  if (sharedCityAsksSalonEnabled() && employeeName) {
-    const rest = text.replace(new RegExp(`^${escape(employeeName)}\\b`, "i"), "").trim();
-    if (rest !== text && /^(?:at|in)\s+(?:the\s+)?[A-Za-z'’-]+(?:\s+[A-Za-z'’-]+){0,2}$/i.test(rest) && !/\b(?:was|is|did|had|has|not|late|early)\b/i.test(rest)) {
-      return true;
-    }
-  }
   const unplaced = withoutPlace(text);
   if (unplaced === text) return false;
   // A place was named: what is left is only the person or their job title.
@@ -1021,6 +1010,13 @@ const PLACE_FILLER = new Set(["the", "salon", "location", "store", "our"]);
 function isPlaceOnly(text: string): boolean {
   const ids = [...new Set(readSalonMentions(`at ${text}`).flatMap((mention) => mention.salonIds))];
   if (ids.length === 0) return false;
+  /*
+   * SHARED_CITY_ASKS_SALON_ENABLED (QA, Gate-Sunny's #933 probes, 13 Nov 2026): a shared city typed a letter off ("omha",
+   * "the omha store", "kansas cty") is the place, as the city spelled right is, so "<A> at omha" and "… in omha" leave
+   * the account the same way "… at omaha" does. Only a place the salon reader reads: "at the front desk", "in the back
+   * room" and "at close" are the account and are kept word for word. Off, as before.
+   */
+  if (sharedCityAsksSalonEnabled() && isCloseSharedCity(text)) return true;
   const salonWords = new Set(
     ids.flatMap((id) => (salonById(id)?.name ?? "").toLowerCase().split(/[^a-z0-9]+/)).filter(Boolean),
   );

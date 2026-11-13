@@ -82,3 +82,50 @@ export const NOV13_SHARED_CITY_ASKS_SALON_CASES: ReplayCase[] = [
     },
   },
 ];
+
+/*
+ * Gate-Sunny's #933 probes (13 Nov 2026), QA's ruling: "Losing account details is never acceptable." Only a place the
+ * salon reader reads (a salon, a shared city or its close spelling) leaves the Observation; any other "at/in …" is the
+ * account and is kept word for word. Guards: they hold on production's flags and with the flag.
+ */
+const MUST_KEEP: readonly { key: string; turn: string; kept: string }[] = [
+  { key: "front-desk", turn: "create a ca for marnie holloway at the front desk, she was rude to a guest", kept: "at the front desk" },
+  { key: "back-room", turn: "create a ca for marnie holloway in the back room, she was on her phone", kept: "in the back room" },
+  { key: "at-close", turn: "create a ca for marnie holloway at close, she skipped the beds", kept: "at close" },
+];
+
+export const NOV13_SHARED_CITY_MUST_KEEP_CASES: ReplayCase[] = MUST_KEEP.map((wording) => ({
+  id: `nov13-shared-city-observation-keeps-${wording.key}`,
+  title: `"${wording.turn}" — the Observation keeps "${wording.kept}" (not a salon)`,
+  report: `Gate-Sunny's #933 probes, QA's ruling (13 Nov 2026): account details are never lost`,
+  status: "fixed",
+  async run(t: ReplayContext) {
+    const { reply } = await say(t, "admin", EVERY_SALON, wording.turn);
+    expect(observation(reply), `"${wording.kept}" was lost from the Observation:\n${reply}`).toContain(wording.kept);
+  },
+}));
+
+/*
+ * Gate-Sunny's residuals: a trailing typo city stays in the Observation while the exact city is taken out ("she was late
+ * in omha", "at the omha store"); and "kansas cty" was not read, because "city" had to be exact. With the flag the close
+ * spelling is the exact city's twin: the salon is asked and the place leaves the account.
+ */
+const TRAILING: readonly { key: string; turn: string; place: RegExp }[] = [
+  { key: "late-in-omha", turn: "create a ca for marnie holloway, she was late in omha", place: /\bomha\b/i },
+  { key: "at-the-omha-store", turn: "create a ca for marnie holloway, she was late at the omha store", place: /\bomha\b/i },
+  { key: "kansas-cty", turn: "create a ca for marnie holloway at kansas cty, she was late", place: /\bkansas\b|\bcty\b/i },
+];
+
+export const NOV13_SHARED_CITY_TRAILING_CASES: ReplayCase[] = TRAILING.map((wording) => ({
+  id: `nov13-shared-city-${wording.key}-asks-salon`,
+  title: `Admin: "${wording.turn}" — asks which salon; the typo city leaves the Observation like the exact city`,
+  report: `Gate-Sunny's #933 probes, residuals (13 Nov 2026)`,
+  status: { open: "the close city is not read: no salon question, and it stays in the Observation" },
+  fixFlags: [FLAG],
+  async run(t: ReplayContext) {
+    const { reply, card } = await say(t, "admin", EVERY_SALON, wording.turn);
+    expect(card?.locationId ?? null, `a salon was filed without asking: ${JSON.stringify(card)}\n${reply}`).toBeNull();
+    expect(observation(reply), `the place stayed in the Observation:\n${reply}`).not.toMatch(wording.place);
+    expect(observation(reply), `the account was lost:\n${reply}`).toMatch(/\blate\b/);
+  },
+}));
