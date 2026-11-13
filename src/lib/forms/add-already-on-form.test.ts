@@ -22,3 +22,21 @@ describe("ADD_ALREADY_ON_FORM_SAYS_SO_ENABLED: the sibling app's live 17u test, 
     expect(addAlreadyOnForm("add that", "Ottoline Ormsworth", STORED)).toBe(false);
   });
 });
+
+describe("ADD_ALREADY_ON_FORM_SAYS_SO_ENABLED: the gates' findings (Gate-Bubbles-4, Gate-Sunny-3, 13 Nov 2026)", () => {
+  it("a negation must match in place: \"add that she was NOT on the phone for the entire shift\" is not already on the form", () => {
+    expect(addAlreadyOnForm("add that she was not on the phone for the entire shift", "Ottoline Ormsworth", STORED)).toBe(false);
+    expect(addAlreadyOnForm("add that she wasn't on the phone for the entire shift", "Ottoline Ormsworth", STORED)).toBe(false);
+  });
+  it("\"the whole shift\" is \"the entire shift\"", () => {
+    expect(addAlreadyOnForm("add that she was on the phone for the whole shift", "Ottoline Ormsworth", STORED)).toBe(true);
+    expect(addAlreadyOnForm("add that she was on her phone the whole shift", "Ottoline Ormsworth", ["Observed:\nOttoline Ormsworth was on the phone the entire shift."])).toBe(true);
+  });
+  it("the words in another order, or split across sentences, are not already there", () => {
+    expect(addAlreadyOnForm("add that the entire shift she was on the phone", "Ottoline Ormsworth", STORED)).toBe(false);
+  });
+  it("a negation the form also holds is already there", () => {
+    expect(addAlreadyOnForm("add that she did not clock in", "Ottoline Ormsworth", ["Ottoline Ormsworth didn't clock in."])).toBe(true);
+  });
+});
+

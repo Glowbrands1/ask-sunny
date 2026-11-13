@@ -23,22 +23,40 @@ const COMMAND_WORDS = new Set([
   "into", "onto", "about", "form", "too", "there", "here", "line", "field", "section", "observation", "details",
 ]);
 
-function words(text: string): string[] {
-  return text
-    .toLowerCase()
+/** Contractions read as their two words, so a negation is matched in place ("wasn't" is "was not"). */
+const CONTRACTIONS: readonly [RegExp, string][] = [
+  [/\b(\w+)n['’]t\b/gi, "$1 not"],
+  [/\bcan not\b/gi, "cannot"],
+];
+/** The few words read as the same (the gate's "the whole shift" / "the entire shift"). Kept small on purpose. */
+const SAME: Readonly<Record<string, string>> = { whole: "entire", her: "the", his: "the", their: "the", a: "the", an: "the" };
+/** The lead of a plain add, up to its content ("add that ", "please also include "). */
+const ADD_LEAD = /^\s*(?:please\s+)?(?:can\s+you\s+)?(?:also\s+)?(?:add|include|note|mention|insert)\b\s*(?:that\s+|in\s+that\s+)?/i;
+
+function tokens(text: string): string[] {
+  let plain = text.toLowerCase();
+  for (const [pattern, replacement] of CONTRACTIONS) plain = plain.replace(pattern, replacement);
+  return plain
     .replace(/[’']/g, "")
     .split(/[^\p{L}\p{N}]+/u)
-    .filter((word) => word.length > 2);
+    .filter((word) => word !== "")
+    .map((word) => SAME[word] ?? word);
 }
 
-/** Whether a plain add's every content word is already on the saved form. Pure. */
+/**
+ * Whether a plain add is already on the saved form: its words, after the lead and the subject ("she", "he", "they" or
+ * the employee's name), stand on the form IN ORDER, as one phrase. A negation must match in place: "add that she was
+ * NOT on the phone …" is not on a form that says she was on the phone (Gate-Bubbles-4 on #871). Pure.
+ */
 export function addAlreadyOnForm(ask: string, employeeName: string | null, stored: readonly string[]): boolean {
   if (!ADD_ASK.test(ask)) return false;
-  const name = new Set(words(employeeName ?? ""));
-  const content = words(ask).filter((word) => !COMMAND_WORDS.has(word) && !name.has(word));
-  if (content.length === 0) return false;
-  const form = new Set(stored.flatMap((value) => words(value)));
-  return content.every((word) => form.has(word));
+  let said = tokens(ask.replace(ADD_LEAD, ""));
+  const name = tokens(employeeName ?? "");
+  if (["she", "he", "they"].includes(said[0] ?? "")) said = said.slice(1);
+  else if (name.length > 0 && name.includes(said[0] ?? "")) said = said.slice(said.slice(0, name.length).filter((word) => name.includes(word)).length);
+  if (said.filter((word) => !COMMAND_WORDS.has(word)).length === 0) return false;
+  const phrase = ` ${said.join(" ")} `;
+  return stored.some((value) => ` ${tokens(value).join(" ")} `.includes(phrase));
 }
 
 /** The reply, when the revision changed nothing and the add is already on the saved form; null otherwise. */
