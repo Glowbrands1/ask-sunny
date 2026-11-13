@@ -155,6 +155,7 @@ describe("the DM L10 page in Ask Sunny", () => {
     expect(screen.queryByRole("region", { name: "Everyone's top three" })).toBeNull();
     expect(screen.queryByRole("button", { name: /^Rank by you/ })).toBeNull();
     expect(screen.queryByTestId("room-rank")).toBeNull();
+    expect(document.body.textContent).not.toContain("Rank your top three");
     expect(within(screen.getByRole("list", { name: "Open issues" })).getByRole("button", { name: "Solve Weekly issue" })).toBeTruthy();
   });
 });
