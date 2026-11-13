@@ -7,9 +7,12 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { cx } from "@/features/l10/ui/ui";
+import { collectCitations, toolLabel } from "./citations";
 import { NoteCard } from "./NoteCard";
+import { SourceViewer } from "./SourceViewer";
 import { isNoteDraft } from "./notes";
-import { BrainIcon, ChevronIcon, CloseIcon, CollapseIcon, ExpandIcon, PlusIcon, SendIcon, SparkleIcon, StopIcon } from "./icons";
+import { BrainIcon, CheckIcon, ChevronIcon, CloseIcon, ReportIcon, CollapseIcon, ExpandIcon, HistoryIcon, PlusIcon, SendIcon, SparkleIcon, StopIcon } from "./icons";
+import { currentChatId, deleteFromHistory, listHistory, loadConversation, openFromHistory, saveConversation, saveToHistory, startNewChat, type ChatSummary } from "./storage";
 
 /**
  * THE LEADERSHIP ASSISTANT PANEL, IN THE DM L10 TAB.
@@ -20,7 +23,8 @@ import { BrainIcon, ChevronIcon, CloseIcon, CollapseIcon, ExpandIcon, PlusIcon, 
  *
  * Same as the Hub: header (title, New chat, Expand/Shrink, Close), empty state with the Hub's L10 suggestions,
  * streamed answers in Markdown with the model's "Thinking" summary, tool status chips, Deep think, Stop.
- * Only in the Hub (v1): attachments, chat history, @-mentions and note cards, web sources, "Open as document".
+ * Chat history works as in the Hub (this browser only; per Ask Sunny user and meeting; not shared with the Hub's).
+ * Only in the Hub: attachments, @-mentions in the chat box, web sources, "Open as document".
  */
 
 const focusRing = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-bronze";
@@ -36,11 +40,48 @@ export const L10_SUGGESTIONS = [
   "Which rocks are at risk, and how would you recover them?",
 ];
 
-const TOOL_LABEL: Record<string, [string, string]> = {
-  getMeeting: ["Reading the meeting…", "Read the meeting"],
-  getMeetingRecaps: ["Reading past meetings…", "Read past meetings"],
-  draftNote: ["Drafting a note…", "Drafted a note"],
-};
+const chipBase = "inline-flex min-h-7 max-w-full items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold";
+
+/** The AI SDK's tool part as the Hub's citation helpers read it ({ type: "tool-call", toolName, result }). */
+function toolParts(message: UIMessage) {
+  return message.parts.flatMap((p) => {
+    if (!p.type.startsWith("tool-")) return [];
+    const o = p as { output?: unknown; state?: string };
+    return o.state === "output-available" ? [{ type: "tool-call", toolName: p.type.slice(5), result: o.output }] : [];
+  });
+}
+
+/** The Hub's "Sources" row (MessageParts.tsx Citations): one pill per meeting source the answer read, opening what it read. */
+function Citations({ message }: { message: UIMessage }) {
+  const [openSource, setOpenSource] = useState<string | null>(null);
+  const { reports } = collectCitations(toolParts(message));
+  if (!reports.length) return null;
+  const opened = reports.find((r) => r.source === openSource);
+  return (
+    <div className="mt-3">
+      <div className="flex flex-wrap gap-1.5" aria-label="Sources" role="group" data-testid="citations">
+        {reports.map((r) => {
+          const isOpen = r.source === openSource;
+          return (
+            <button
+              key={r.source}
+              type="button"
+              aria-expanded={isOpen}
+              onClick={() => setOpenSource(isOpen ? null : r.source)}
+              title="Show what the assistant read"
+              className={cx(chipBase, "bg-sunny text-ink ring-1 ring-gold/60 hover:bg-gold-head/40", isOpen && "bg-gold-head/60", focusRing)}
+            >
+              <ReportIcon width={14} height={14} className="shrink-0 text-bronze-deep" />
+              <span className="truncate">{r.source}</span>
+              {r.sample ? <span className="shrink-0 font-normal text-muted">· sample</span> : null}
+            </button>
+          );
+        })}
+      </div>
+      {opened ? <SourceViewer citation={opened} onClose={() => setOpenSource(null)} /> : null}
+    </div>
+  );
+}
 
 /** The route's own words (the budget or rate-limit reply arrives as JSON), else a plain fallback. */
 export function errorText(raw: string | undefined): string {
@@ -115,30 +156,44 @@ function Message({ message, running }: { message: UIMessage; running: boolean })
             if (name === "draftNote" && state === "output-available" && isNoteDraft(output)) {
               return <NoteCard key={i} part={{ toolCallId: (p as { toolCallId?: string }).toolCallId, result: output }} />;
             }
-            const done = state === "output-available" || state === "output-error";
-            const [doing, did] = TOOL_LABEL[name] ?? ["Working…", "Done"];
+            // The Hub's ToolChip (MessageParts.tsx): running, done or failed, in the Hub's words.
+            const running = state !== "output-available" && state !== "output-error";
+            const failed = state === "output-error";
+            const args = (p as { input?: unknown }).input;
+            const label = failed ? `Couldn't finish: ${toolLabel(name, args, true).toLowerCase()}` : toolLabel(name, args, !running);
             return (
-              <span key={i} role="status" className="glass-tile my-1 mr-1.5 inline-flex min-h-8 items-center gap-1.5 px-3 py-1 text-xs font-semibold">
-                <SparkleIcon width={12} height={12} className={cx("text-bronze-deep", !done && "motion-safe:animate-pulse")} />
-                {done ? did : doing}
-              </span>
+              <div key={i} role="status" data-testid="tool-chip" className={cx(chipBase, "my-1 mr-1.5 bg-white/55 text-ink ring-1 ring-white/70", failed && "text-warn-ink ring-warn")}>
+                {running ? <span aria-hidden className="size-2 shrink-0 rounded-full bg-gold motion-safe:animate-pulse" /> : failed ? null : <CheckIcon width={14} height={14} className="shrink-0 text-bronze-deep" />}
+                <span className="truncate">{label}</span>
+              </div>
             );
           }
           return null;
         })}
+        {!running && <Citations message={message} />}
       </div>
     </div>
   );
 }
 
-function Chat({ meetingKey, deep, onDeepChange }: { meetingKey: string; deep: boolean; onDeepChange: (v: boolean) => void }) {
+function Chat({ meetingKey, scope, deep, onDeepChange }: { meetingKey: string; scope: string; deep: boolean; onDeepChange: (v: boolean) => void }) {
   const transport = useMemo(() => new DefaultChatTransport({ api: "/api/l10/assistant" }), []);
-  const { messages, sendMessage, status, stop, error } = useChat({ transport });
+  // The conversation on screen and its history entry, as in the Hub (saved after every answer).
+  const [initial] = useState(() => loadConversation(scope));
+  const [chatId] = useState(() => currentChatId(scope));
+  const { messages, sendMessage, status, stop, error } = useChat({
+    transport,
+    messages: initial,
+    onFinish: ({ messages: all }) => {
+      saveConversation(all, scope);
+      saveToHistory(chatId, all, scope);
+    },
+  });
   const [draft, setDraft] = useState("");
   const running = status === "submitted" || status === "streaming";
   const viewport = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    viewport.current?.scrollTo({ top: viewport.current.scrollHeight });
+    viewport.current?.scrollTo?.({ top: viewport.current.scrollHeight });
   }, [messages]);
 
   function send(text: string) {
@@ -245,12 +300,62 @@ function Chat({ meetingKey, deep, onDeepChange }: { meetingKey: string; deep: bo
   );
 }
 
-export function AssistantPanel({ open, onClose, meetingKey }: { open: boolean; onClose: () => void; meetingKey: string }) {
+/* ── Chat history (the Hub's HistoryList, scoped) ─────────── */
+
+function when(iso: string) {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "" : d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+function HistoryList({ scope, onOpen, onClose }: { scope: string; onOpen: (id: string) => void; onClose: () => void }) {
+  const [chats, setChats] = useState<ChatSummary[]>(() => listHistory(scope));
+  const current = currentChatId(scope);
+  return (
+    <section aria-label="Chat history" data-testid="assistant-history" className="absolute inset-0 z-20 flex flex-col bg-cream/95 backdrop-blur-xl">
+      <header className="flex items-center gap-2 border-b border-line/40 px-4 py-2">
+        <h3 className="m-0 flex-1 text-sm font-bold">Chat history</h3>
+        <button type="button" onClick={onClose} className={cx("rounded-lg px-2.5 py-1.5 text-sm font-semibold hover:bg-white/70", focusRing)}>
+          Back to chat
+        </button>
+      </header>
+      {chats.length === 0 ? (
+        <p className="m-4 text-sm text-muted">No saved chats yet. Each conversation is saved here (in this browser) after the assistant answers.</p>
+      ) : (
+        <ul className="m-0 min-h-0 flex-1 list-none overflow-y-auto overscroll-contain p-2">
+          {chats.map((c) => (
+            <li key={c.id} className="flex items-center gap-1 rounded-xl hover:bg-white/70">
+              <button type="button" onClick={() => onOpen(c.id)} className={cx("min-w-0 flex-1 rounded-xl px-3 py-2 text-left", focusRing)}>
+                <span className="block truncate text-sm font-semibold">{c.title}</span>
+                <span className="block text-xs text-muted">
+                  {when(c.updatedAt)} · {c.count} messages{c.id === current ? " · on screen" : ""}
+                </span>
+              </button>
+              <button
+                type="button"
+                aria-label={`Delete chat: ${c.title}`}
+                onClick={() => {
+                  deleteFromHistory(c.id, scope);
+                  setChats(listHistory(scope));
+                }}
+                className={cx("mr-1 rounded-lg px-2 py-1 text-xs font-semibold text-muted hover:text-ink", focusRing)}
+              >
+                Delete
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+export function AssistantPanel({ open, onClose, meetingKey, scope }: { open: boolean; onClose: () => void; meetingKey: string; /** "<Ask Sunny user id>:<meeting key>": whose chats these are. */ scope: string }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(() => readFlag(WIDE_KEY, true));
   const [deep, setDeep] = useState(() => readFlag(DEEP_KEY, false));
   const [status, setStatus] = useState<"checking" | "online" | "offline">("checking");
   const [chatKey, setChatKey] = useState(0);
+  const [showHistory, setShowHistory] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -273,6 +378,7 @@ export function AssistantPanel({ open, onClose, meetingKey }: { open: boolean; o
   function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
     if (e.key === "Escape" && !e.defaultPrevented) {
       e.stopPropagation();
+      if (showHistory) return setShowHistory(false); // Esc leaves History first, then hides the panel
       onClose();
       return;
     }
@@ -315,7 +421,23 @@ export function AssistantPanel({ open, onClose, meetingKey }: { open: boolean; o
         <h2 id="assistant-title" className="m-0 min-w-0 flex-1 truncate text-[15px] font-bold tracking-tight">
           Leadership Assistant
         </h2>
-        <button type="button" onClick={() => setChatKey((k) => k + 1)} aria-label="New chat" title="New chat" className={headerButton}>
+        {status === "online" && (
+          <button type="button" onClick={() => setShowHistory((v) => !v)} aria-label="Chat history" aria-pressed={showHistory} title="Chat history" className={headerButton}>
+            <HistoryIcon />
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => {
+            // A new chat: the one on screen stays in History (as in the Hub).
+            setShowHistory(false);
+            startNewChat(scope);
+            setChatKey((k) => k + 1);
+          }}
+          aria-label="New chat"
+          title="New chat"
+          className={headerButton}
+        >
           <PlusIcon />
         </button>
         <button type="button" onClick={() => setExpanded((v) => !v)} aria-label={expanded ? "Shrink panel" : "Expand panel"} aria-pressed={expanded} title={expanded ? "Shrink" : "Expand"} className={cx(headerButton, "max-sm:hidden")}>
@@ -336,9 +458,19 @@ export function AssistantPanel({ open, onClose, meetingKey }: { open: boolean; o
               <strong>Assistant not configured.</strong> This deployment has no Anthropic API key, so the assistant is off. The meeting itself still works.
             </p>
           ) : (
-            <Chat key={chatKey} meetingKey={meetingKey} deep={deep} onDeepChange={setDeep} />
+            <Chat key={chatKey} meetingKey={meetingKey} scope={scope} deep={deep} onDeepChange={setDeep} />
           )}
         </div>
+        {showHistory && (
+          <HistoryList
+            scope={scope}
+            onClose={() => setShowHistory(false)}
+            onOpen={(id) => {
+              if (openFromHistory(id, scope)) setChatKey((k) => k + 1); // remount the chat so it loads the chosen conversation
+              setShowHistory(false);
+            }}
+          />
+        )}
       </div>
     </div>
   );
