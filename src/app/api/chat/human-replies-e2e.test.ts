@@ -272,7 +272,7 @@ const PROFILES: readonly (readonly [string, readonly string[]])[] = [
 /** This change's flag, default off. */
 const FLAG = "HUMAN_REPLIES_ENABLED";
 
-const ALL_FLAGS = [...PRODUCTION, ...BUNDLE, FLAG];
+const ALL_FLAGS = [...PRODUCTION, ...BUNDLE, FLAG, "EDIT_SEES_SAVED_FORM_ENABLED", "CARD_CHECKED_AGAINST_WORDS_ENABLED"];
 
 type Answer = {
   content: string;

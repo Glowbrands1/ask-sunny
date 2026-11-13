@@ -4,8 +4,8 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Button, ButtonLink, Card, Modal, cx } from "@/features/l10/ui/ui";
-import { agendaFor, SECTION_HINTS, type AgendaKey, type MeetingKey, type Roster } from "@/features/l10/lib/config";
-import { buildRecap, effectiveAttendees, markRecapped, newItemId } from "@/features/l10/lib/doc";
+import { agendaFromRoster, hintsFromRoster, segueName, type AgendaKey, type MeetingKey, type Roster } from "@/features/l10/lib/config";
+import { buildRecap, effectiveAttendees, keepHiddenAttendees, markRecapped, newItemId } from "@/features/l10/lib/doc";
 import { elapsedSeconds, emptyTimer, endedTimer, formatClock, pausedTimer, plannedSeconds, isReferenceView, readTimer, resumedTimer, startMeeting, type View } from "@/features/l10/lib/timer";
 import type { LoadedMeeting, MeetingInfo } from "@/features/l10/lib/types";
 import { AUTO_SAVED_LABEL, wasAutoSaved } from "@/features/l10/lib/autosave";
@@ -62,7 +62,7 @@ export function MeetingView({
   dateLabel?: string;
   /** Who sits in this meeting, served by the Hub (Ask Sunny's repository carries no names). */
   roster: Roster;
-  /** This meeting in the Leadership Hub (absolute), for "Open in Leadership Hub" and the recaps link. */
+  /** This meeting in the Leadership Hub (absolute), for "Open in Leadership Hub". */
   hubMeetingUrl: string;
   /** The people who can open this meeting, for the @-picker. Empty: no picker. */
   mentionPeople?: Person[];
@@ -75,7 +75,9 @@ export function MeetingView({
   pollMs?: number;
 }) {
   const key = info.key as MeetingKey;
-  const agenda = agendaFor(key);
+  // The Hub's agenda and hints, served with the roster (Ask Sunny: so a change in the Hub's config reaches this page).
+  const agenda = agendaFromRoster(key, roster);
+  const hints = hintsFromRoster(key, roster);
   const [view, setViewLocal] = useState<View>(initialView ?? agenda[0].key);
   // An old version can never save or end a meeting: whatever happens, these refuse.
   const refuse = { ok: false as const, kind: "forbidden" as const, message: "This is an old version and cannot be changed." };
@@ -258,7 +260,7 @@ export function MeetingView({
     <MentionRoster value={mentionPeople}>
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          {/* Ask Sunny opens this one meeting; the full Hub (every meeting, recaps, files, the tracker) is one click away. */}
+          {/* Ask Sunny opens this one meeting; the full Hub (every meeting, the tracker) is one click away. */}
           <a href={hubMeetingUrl} target="_blank" rel="noopener noreferrer" data-testid="open-in-hub" className="text-[13px] font-semibold text-bronze-deep hover:underline print:hidden">
             Open in Leadership Hub ↗
           </a>
@@ -282,6 +284,9 @@ export function MeetingView({
           <ButtonLink href={`/meetings/${info.key}/report`} variant="outline" title="Opens this meeting's report, ready to print or save as PDF">
             Export PDF
           </ButtonLink>
+          <Link href={`/meetings/${info.key}/past`} className="inline-flex min-h-11 items-center px-2 text-[13px] font-semibold text-bronze-deep hover:underline">
+            Past meetings
+          </Link>
           <Link href={`/meetings/${info.key}/history`} className="inline-flex min-h-11 items-center px-2 text-[13px] font-semibold text-bronze-deep hover:underline">
             History
           </Link>
@@ -428,15 +433,15 @@ export function MeetingView({
               Nobody pressed End, so the recap was saved automatically from the last saved state.
             </p>
           )}
-          <p className="m-0 text-sm text-muted">Start a new meeting to begin with clean ratings and Business Best, or reopen this one to keep going.</p>
+          <p className="m-0 text-sm text-muted">{`Start a new meeting to begin with clean ratings and ${segueName(key)}, or reopen this one to keep going.`}</p>
           <div className="flex flex-wrap gap-2">
             <Button variant="primary" onClick={start}>
               Start a new meeting
             </Button>
             <Button onClick={() => setTimer(() => emptyTimer())}>Reopen this meeting</Button>
-            <a href={`${hubMeetingUrl.replace(/\/meetings\/[^/]+$/, "")}/meetings/recaps?meeting=${info.key}`} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center px-2 text-[13px] font-semibold text-bronze-deep hover:underline">
-              See recaps in the Leadership Hub ↗
-            </a>
+            <Link href={`/meetings/${info.key}/recaps`} className="inline-flex min-h-11 items-center px-2 text-[13px] font-semibold text-bronze-deep hover:underline">
+              See recaps
+            </Link>
           </div>
         </Card>
       ) : (
@@ -523,30 +528,30 @@ export function MeetingView({
             )}
             <div>
               <h2 className="m-0 text-xl font-bold">{view === "business-plan" ? "Business Plan" : view === "accountability" ? "Accountability Chart" : section?.title}</h2>
-              <p className="m-0 mt-0.5 text-sm text-muted">{view === "business-plan" ? "Vision, core values and the 1- and 3-year picture. Edits save for everyone." : view === "accountability" ? "One name per seat. Changes save for the whole team." : SECTION_HINTS[view]}</p>
+              <p className="m-0 mt-0.5 text-sm text-muted">{view === "business-plan" ? "Vision, core values and the 1- and 3-year picture. Edits save for everyone." : view === "accountability" ? "One name per seat. Changes save for the whole team." : hints[view]}</p>
             </div>
 
             <fieldset disabled={!!readOnly} className="m-0 flex min-w-0 flex-col gap-4 border-0 p-0">
-            {view === "business-best" && <BusinessBest attendees={attendees} onChange={(next) => edit((d) => ({ ...d, attendees: next }))} />}
+            {view === "business-best" && <BusinessBest attendees={attendees} onChange={(next) => edit((d) => ({ ...d, attendees: keepHiddenAttendees(d.attendees, next) }))} />}
             {view === "scorecard" && <Scorecard doc={doc} edit={edit} people={people} />}
             {view === "rocks" && <Rocks rocks={doc.rocks} onChange={(rocks) => edit((d) => ({ ...d, rocks }))} people={people} today={today} />}
             {view === "headlines" && <Headlines headlines={doc.headlines} onChange={(headlines) => edit((d) => ({ ...d, headlines }))} author={people[0] ?? ""} />}
             {view === "todos" && <Todos todos={doc.todos} onChange={(todos) => edit((d) => ({ ...d, todos }))} people={people} today={today} />}
-            {view === "ids" && <Ids doc={doc} edit={edit} session={timer.sessionId ?? "pending"} meetingKey={info.key} filesHref={hubMeetingUrl} voter={{ id: viewer.id, name: viewer.name || viewer.label }} attendees={attendees} />}
+            {view === "ids" && <Ids doc={doc} edit={edit} session={timer.sessionId ?? "pending"} meetingKey={info.key} voter={{ id: viewer.id, name: viewer.name || viewer.label }} attendees={attendees} />}
             {view === "conclude" && (
               <Conclude
                 meetingKey={info.key}
                 doc={doc}
                 attendees={attendees}
                 edit={edit}
-                onRate={(id, rating) => edit((d) => ({ ...d, attendees: attendees.map((a) => (a.id === id ? { ...a, rating } : a)) }))}
+                onRate={(id, rating) => edit((d) => ({ ...d, attendees: keepHiddenAttendees(d.attendees, attendees.map((a) => (a.id === id ? { ...a, rating } : a))) }))}
                 end={endFn}
                 flushNow={flushNow}
                 sessionKey={timer.sessionId ?? "pending"}
                 fixedSessionId={timer.sessionId}
                 durationSeconds={elapsed}
                 onEnded={() => setTimer((t) => endedTimer(t, serverNow()))}
-                recapsHref={`${hubMeetingUrl.replace(/\/meetings\/[^/]+$/, "")}/meetings/recaps?meeting=${info.key}`}
+                recapsHref={`/meetings/${info.key}/recaps`}
               />
             )}
             {view === "business-plan" && <BusinessPlan meetingName={info.name} doc={doc} edit={edit} today={today} />}

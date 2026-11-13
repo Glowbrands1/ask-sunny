@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
-import { L10Frame, hubMeetingUrl } from "@/features/l10/L10Frame";
+import { L10Frame } from "@/features/l10/L10Frame";
+import { restoreVersionAction } from "@/features/l10/actions";
 import { getVersionRange, listHistory, openMeeting } from "@/features/l10/data.server";
 import { summarizeChange } from "@/features/l10/lib/changes";
 import { isMeetingKey } from "@/features/l10/lib/config";
@@ -14,7 +15,7 @@ export const metadata: Metadata = { title: "Version history" };
 export const dynamic = "force-dynamic";
 const PAGE = 25;
 
-/** The meeting's version history (the Hub's page, read from the Hub). Restoring a version stays a Hub admin action in the Hub. */
+/** The meeting's version history (the Hub's page, read from the Hub). Restore shows for Hub admins, as in the Hub; the Hub checks again. */
 export default async function HistoryPage({ params, searchParams }: { params: Promise<{ key: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   await requireAuthenticatedPage();
   const { key } = await params;
@@ -47,7 +48,7 @@ export default async function HistoryPage({ params, searchParams }: { params: Pr
   });
   return (
     <L10Frame meetingKey={key} assistant={false}>
-      <HistoryList meetingKey={key} meetingName={info.name} entries={entries} olderBefore={oldest > 1 && rows.length === PAGE ? oldest : null} hubHistoryHref={hubMeetingUrl(key, "/history")} />
+      <HistoryList meetingKey={key} meetingName={info.name} entries={entries} admin={opened.meeting.viewer.isHubAdmin} currentVersion={rows.find((r) => r.isCurrent)?.version ?? 0} olderBefore={oldest > 1 && rows.length === PAGE ? oldest : null} restore={restoreVersionAction} />
     </L10Frame>
   );
 }
