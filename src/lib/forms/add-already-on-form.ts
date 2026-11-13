@@ -29,7 +29,12 @@ const CONTRACTIONS: readonly [RegExp, string][] = [
   [/\bcan not\b/gi, "cannot"],
 ];
 /** The few words read as the same (the gate's "the whole shift" / "the entire shift"). Kept small on purpose. */
-const SAME: Readonly<Record<string, string>> = { whole: "entire", her: "the", his: "the", their: "the", a: "the", an: "the" };
+const SAME: Readonly<Record<string, string>> = { whole: "entire" };
+/**
+ * Filler words skipped on both sides before the in-order match (Gate-Sunny-3, 13 Nov 2026: "on the phone the whole
+ * shift" against "on the phone for the entire shift"). Never a negation, a verb or a content word.
+ */
+const FILLER: ReadonlySet<string> = new Set(["the", "a", "an", "her", "his", "their", "for", "of"]);
 /** The lead of a plain add, up to its content ("add that ", "please also include "). */
 const ADD_LEAD = /^\s*(?:please\s+)?(?:can\s+you\s+)?(?:also\s+)?(?:add|include|note|mention|insert)\b\s*(?:that\s+|in\s+that\s+)?/i;
 
@@ -40,7 +45,8 @@ function tokens(text: string): string[] {
     .replace(/[’']/g, "")
     .split(/[^\p{L}\p{N}]+/u)
     .filter((word) => word !== "")
-    .map((word) => SAME[word] ?? word);
+    .map((word) => SAME[word] ?? word)
+    .filter((word) => !FILLER.has(word));
 }
 
 /**

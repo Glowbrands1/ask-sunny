@@ -40,3 +40,22 @@ describe("ADD_ALREADY_ON_FORM_SAYS_SO_ENABLED: the gates' findings (Gate-Bubbles
   });
 });
 
+describe("ADD_ALREADY_ON_FORM_SAYS_SO_ENABLED: a small word left out (Gate-Sunny-3, 13 Nov 2026)", () => {
+  it.each([
+    "add that she was on the phone the whole shift",
+    "add that she was on her phone the whole shift",
+    "add that she was on the phone for the whole shift",
+    "add that she was on her phone for the entire shift",
+    "add that she was on the phone",
+  ])("already on the form: %s", (ask) => {
+    expect(addAlreadyOnForm(ask, "Ottoline Ormsworth", STORED)).toBe(true);
+  });
+  it.each([
+    "add that she was not on the phone for the entire shift",
+    "add that she was on the phone for the entire shift and ignored a guest",
+    "add that she was on the phone for the entire shift of 11/4",
+  ])("not already on the form: %s", (ask) => {
+    expect(addAlreadyOnForm(ask, "Ottoline Ormsworth", STORED)).toBe(false);
+  });
+});
+

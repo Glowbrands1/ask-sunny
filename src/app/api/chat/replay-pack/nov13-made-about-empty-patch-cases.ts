@@ -26,6 +26,7 @@ const REPORT = "The sibling app's live 17u test, ported (13 Nov 2026): \"make it
 const PHONE = "make it about her phone use instead, she was on her phone the whole shift";
 const SANITATION = "change the issue to not doing the 10-minute sanitation";
 const ADD = "add that she was on the phone for the entire shift";
+const ADD_SHORT = "add that she was on the phone the whole shift";
 const PHONE_ACCOUNT = "Observed:\nOttoline Ormsworth was on the phone for the entire shift.\n\nExpectation:\nPhone use is limited to breaks.";
 
 async function toPhone(t: ReplayContext) {
@@ -78,6 +79,21 @@ export const NOV13_MADE_ABOUT_EMPTY_PATCH_CASES: ReplayCase[] = [
       expect(savedForm(t, id), "nothing to change").toBe(before);
       expect(reply.content, `the reply says the form already says it:\n${reply.content}`).toMatch(/already says/i);
       expect(reply.content).not.toMatch(/everything on it is as it was/i);
+    },
+  },
+  {
+    id: "nov13-add-already-on-form-says-so-small-word-left-out",
+    title: `the same draft, "${ADD_SHORT}" (the gate's wording: "the whole shift", no "for"): the reply says the form already says that`,
+    report: `${REPORT} (item 5; Gate-Sunny-3's wording)`,
+    status: { open: "the reply is the generic \"I haven't changed the Corrective Action Form … everything on it is as it was.\"" },
+    fixFlags: ["MADE_ABOUT_EMPTY_PATCH_ANSWERS_SAVED_ENABLED", "ADD_ALREADY_ON_FORM_SAYS_SO_ENABLED"],
+    async run(t) {
+      const { thread, id } = await toPhone(t);
+      t.revisionWrites({ observation: PHONE_ACCOUNT });
+      const before = savedForm(t, id);
+      const reply = await thread.say(ADD_SHORT);
+      expect(savedForm(t, id), "nothing to change").toBe(before);
+      expect(reply.content, `the reply says the form already says it:\n${reply.content}`).toMatch(/already says/i);
     },
   },
 ];
