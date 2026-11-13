@@ -130,16 +130,32 @@ export function personProblem(employee: string | null, input: CardCheckInput): C
  * The account from the manager's own words: the turn that names the employee (else the latest), the clauses after the
  * name, without the request's lead, a hedge, a level, a title, a store or the name. Null when nothing is left.
  */
+/** History or a level said with no subject: "coached her 10-16", "signed the manual 10/1", "wrote her up", "verbal on 10/1". */
+const SUBJECTLESS_HISTORY =
+  /^(?:(?:i|we|management|the manager)\s+)?(?:coached|counseled|counselled|disciplined|warned|documented|wrote\s+(?:her|him|them)\s+up|written\s+up|signed\s+(?:the\s+|her\s+|his\s+)?(?:[\w-]+\s+){0,2}(?:policy|policies|manual|handbook|form|acknowledg\w*|agreement|paperwork|ca|warning|coaching)|gave\s+(?:her|him|them)\s+a)\b/i;
+/** A clause that is a level ("written warning on 10-20", "verbal on 10/1", "final warning"). */
+const LEVEL_START = /^(?:a\s+|an\s+)?(?:verbal|written|final|first|second|last)(?:\s+(?:written\s+)?(?:warning|ca|c\/a|write[- ]?up|corrective action))?\b(?:\s+(?:on|from|in|last|this)\b.*)?$/i;
+
 export function accountFromWords(employee: string | null, input: CardCheckInput): string | null {
   const turns = [...input.turns].reverse();
   const naming = employee ? turns.find((turn) => fold(turn).includes(fold(employee))) : undefined;
   const turn = naming ?? turns[0] ?? "";
   const at = employee ? fold(turn).indexOf(fold(employee)) : -1;
   const after = at >= 0 ? turn.slice(at + employee!.length) : turn.replace(REQUEST_LEAD, "");
+  /*
+   * Gate-Bubbles-5 / Gate-Sunny-2 (13 Nov 2026): the same split and filter as an added fact. "ca for <A>, coached her
+   * 10-16, she was late again 10-20" repairs to "she was late again 10-20"; "…, signed the manual 10/1, late on 10/20"
+   * to "late on 10/20"; "…, coached her 10-16, written warning on 10-20" to nothing (no repair, never history).
+   */
   const clauses = after
-    .split(/[,;]|(?<=[.!?])\s+/)
+    .split(/[,;]|(?<=[.!?])\s+|\s+(?:and|but)\s+(?:then\s+)?/i)
     .map((clause) => clause.trim().replace(/^(?:and|but|because|since|as|for|cause)\s+/i, "").replace(/[.!?]+$/, "").trim())
-    .filter((clause) => clause !== "" && issueProblem(clause, employee, input) === null && !REQUEST_LEAD.test(clause) && !REQUEST_FOR.test(clause));
+    .filter((clause) => {
+      if (clause === "" || issueProblem(clause, employee, input) !== null || REQUEST_LEAD.test(clause) || REQUEST_FOR.test(clause)) return false;
+      if (SUBJECTLESS_HISTORY.test(clause) || LEVEL_START.test(clause)) return false;
+      const subjected = /^(?:she|he|they)\b/i.test(clause) ? clause : `she ${clause}`;
+      return !isHistory(subjected) && !notAFact(subjected, input);
+    });
   const account = clauses.join(", ").trim();
   return contentWords(account).length > 0 ? account : null;
 }
@@ -420,9 +436,21 @@ export async function withCardCheckedAgainstWords(answer: AskResponse, input: Ca
       // Gate-Sunny-2: only what the card's Observation of Offense says counts as shown, never the rest of the reply.
       const observation = out.content.split("\n").find((line) => line.startsWith("**Observation of Offense:**")) ?? "";
       const shown = new Set(contentWords(observation.replace("**Observation of Offense:**", "")));
-      // QA (13 Nov 2026): what the earlier request turn already said is no addition ("she was late" again).
-      const said = latest.turns.length > 1 ? latest.turns[0]! : "";
-      const added = addedFacts(said, out.formProposal!.employeeName, latest).filter((fact) => contentWords(fact).every((word) => shown.has(word)));
+      /*
+       * QA / Gate-Sunny-2 (13 Nov 2026): a first account is never "Added". When the request turn was only the request
+       * ("make a written CA for <name>", or "corrective action" then "<name>"), the next turn IS the account the card is
+       * built from. An addition is named only when an earlier turn, from the one that named her, already gave an account;
+       * and what those turns said is no addition ("she was late" again).
+       */
+      const employee = out.formProposal!.employeeName;
+      const namedAt = employee ? input.turns.findIndex((turn) => fold(turn).includes(fold(employee))) : -1;
+      const earlier = namedAt >= 0 ? input.turns.slice(namedAt, -1) : [];
+      // "make a written CA for <name> on performance": a topic ("performance") is no account; an account says something happened.
+      const hadAccount = earlier.some((turn) => contentWords(accountFromWords(employee, { ...input, turns: [turn] }) ?? "").length >= 2);
+      const said = earlier.join("\n");
+      const added = hadAccount
+        ? addedFacts(said, employee, latest).filter((fact) => contentWords(fact).every((word) => shown.has(word)))
+        : [];
       if (added.length > 0) {
         trace.repaired.push("issue_added_fact");
         out = { ...out, content: `${out.content.trimEnd()}\n\n**Added to the Observation of Offense:** ${added.join("; ")}` };

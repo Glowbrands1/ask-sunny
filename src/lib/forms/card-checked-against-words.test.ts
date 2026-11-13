@@ -225,3 +225,42 @@ describe("CARD_CHECKED_AGAINST_WORDS_ENABLED: a leading time or place phrase (QA
     expect(addedFacts("she was late on 11/3/26", "Marnie Holloway", after("yesterday she gets a verbal warning"))).toEqual([]);
   });
 });
+
+describe("CARD_CHECKED_AGAINST_WORDS_ENABLED: the Issue repair never takes history (Gate-Bubbles-5 / Gate-Sunny-2, 13 Nov 2026)", () => {
+  const read = (turn: string) => accountFromWords("Rory Vance", { turns: [turn], roster: ROSTER });
+  it.each([
+    ["ca for Rory Vance, coached her 10-16, she was late again 10-20", "she was late again 10-20"],
+    ["ca for Rory Vance, signed the manual 10/1, late on 10/20", "late on 10/20"],
+    ["ca for Rory Vance, verbal on 10/1, she left the drawer open", "she left the drawer open"],
+  ])("%s → %s", (turn, account) => {
+    expect(read(turn)).toBe(account);
+  });
+  it("\"ca for Rory Vance, coached her 10-16, written warning on 10-20\": no repair (history and a level), never \"coached her 10-16\"", () => {
+    expect(read("ca for Rory Vance, coached her 10-16, written warning on 10-20")).toBeNull();
+  });
+});
+
+describe("CARD_CHECKED_AGAINST_WORDS_ENABLED: a first account is never \"Added\" (Gate-Sunny-2, 13 Nov 2026)", () => {
+  const card = (observation: string): AskResponse => ({
+    content: `I'll draft a **Corrective Action Form** for **Marnie Holloway**.\n\n**Observation of Offense:** ${observation}`,
+    citations: [],
+    coverage: "not_applicable",
+    recommendedVideoIds: [],
+    formProposal: { employeeName: "Marnie Holloway", status: "ready" } as never,
+  });
+  it.each([
+    [["make a written CA for Marnie Holloway", "she was late on 11/3/26 and didn't call"]],
+    [["corrective action", "Marnie Holloway", "she was late on 11/3/26 and didn't call"]],
+    [["Can you make a written CA for Marnie Holloway on performance", "she was late on 11/3/26 and didn't call"]],
+  ])("%j: the account the card is built from is not called added", async (turns) => {
+    vi.stubEnv("CARD_CHECKED_AGAINST_WORDS_ENABLED", "true");
+    const out = await withCardCheckedAgainstWords(card("she was late on 11/3/26 and didn't call"), { turns, roster: ROSTER }, NO_MODEL);
+    expect(out.content).not.toMatch(/Added to the Observation/);
+  });
+  it("an addition after an earlier account is still named", async () => {
+    vi.stubEnv("CARD_CHECKED_AGAINST_WORDS_ENABLED", "true");
+    const turns = ["make a written CA for Marnie Holloway", "she was late on 11/3/26", "she also didn't call"];
+    const out = await withCardCheckedAgainstWords(card("she was late on 11/3/26 she also didn't call"), { turns, roster: ROSTER }, NO_MODEL);
+    expect(out.content).toMatch(/\*\*Added to the Observation of Offense:\*\* she didn't call/);
+  });
+});
