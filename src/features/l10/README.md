@@ -56,6 +56,12 @@ The Hub's page code runs unchanged except:
 
 When the Hub's meeting page changes, re-copy the file and re-apply the row above that concerns it. The full audit, file by file, is in [PARITY.md](./PARITY.md).
 
+**Ask Sunny only (not in the Hub):** the "Past meetings" page (`/meetings/[key]/past`, `lib/past.ts`,
+`meeting/_components/PastMeetings.tsx`, the header link next to History). It lists the Hub's recaps (saved by End
+meeting, here or in the Hub) together with the meetings imported from Bloom Growth, which are kept in the meeting
+document as `meetingHistory` (the Hub keeps unknown fields). Times are Central. Keep the header link when re-copying
+`MeetingView.tsx`.
+
 ## Settings
 
 - `HUB_PARTNER_SECRET` (server only): the same value as in the Hub's Vercel project. Unset: no tab, every page 404.

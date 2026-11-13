@@ -60,13 +60,16 @@ describe("pages: a meeting the Hub refuses is not found", () => {
     await expect(MeetingPage({ params: params(key), searchParams: search })).rejects.toSatisfy(isNotFound);
   });
 
-  it("the history, version and report pages too", async () => {
+  it("the history, version, report and past meetings pages too", async () => {
     const { default: History } = await import("@/app/(app)/meetings/[key]/history/page");
     const { default: Version } = await import("@/app/(app)/meetings/[key]/history/[version]/page");
     const { default: Report } = await import("@/app/(app)/meetings/[key]/report/page");
+    const { default: Past } = await import("@/app/(app)/meetings/[key]/past/page");
     await expect(History({ params: params("leadership"), searchParams: Promise.resolve({}) })).rejects.toSatisfy(isNotFound);
     await expect(Version({ params: Promise.resolve({ key: "leadership", version: "1" }) })).rejects.toSatisfy(isNotFound);
     await expect(Report({ params: params("leadership") })).rejects.toSatisfy(isNotFound);
+    await expect(Past({ params: params("leadership") })).rejects.toSatisfy(isNotFound);
+    await expect(Past({ params: params("nonsense") })).rejects.toSatisfy(isNotFound);
   });
 
   it("/meetings has nothing to open for someone with no meeting", async () => {

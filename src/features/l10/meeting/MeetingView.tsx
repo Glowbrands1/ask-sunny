@@ -282,6 +282,9 @@ export function MeetingView({
           <ButtonLink href={`/meetings/${info.key}/report`} variant="outline" title="Opens this meeting's report, ready to print or save as PDF">
             Export PDF
           </ButtonLink>
+          <Link href={`/meetings/${info.key}/past`} className="inline-flex min-h-11 items-center px-2 text-[13px] font-semibold text-bronze-deep hover:underline">
+            Past meetings
+          </Link>
           <Link href={`/meetings/${info.key}/history`} className="inline-flex min-h-11 items-center px-2 text-[13px] font-semibold text-bronze-deep hover:underline">
             History
           </Link>
