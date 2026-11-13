@@ -27,7 +27,8 @@ export const NOV12_OFFERED_NAME_ACCEPTED_CASES: ReplayCase[] = SCOPES.map(({ key
   id: `nov12-offered-name-accepted-${key}`,
   title: `${key}: "${REQUEST}" → "reply use ${C}" → "use ${C}": the card is for ${C}, with the account`,
   report: `QA, 12 Nov 2026 (top priority; found on the Sunny 37b replay); ${key}`,
-  status: { open: `"use ${C}" is refused: "\\"${C}\\" isn't a person on your team"` },
+  // Changed on purpose (13 Nov 2026): fixed in production by OFFERED_NAME_ACCEPTED_ENABLED, QA round 38a. Was OPEN.
+  status: "fixed",
   fixFlags: ["OFFERED_NAME_ACCEPTED_ENABLED"],
   async run(t: ReplayContext) {
     vi.setSystemTime(new Date("2026-11-12T15:00:00Z"));

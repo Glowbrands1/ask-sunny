@@ -55,7 +55,8 @@ export const NOV12_OFF_ROSTER_PLACE_ANSWER_CASES: ReplayCase[] = PLACES.map(({ k
   id: `nov12-off-roster-place-answer-${key}`,
   title: `Admin: "${REQUEST}" → offer → "${place}": never a person; the account is kept${salon ? ", the salon set," : ""} and "use ${C}" asked again`,
   report: `${REPORT}; ${key}`,
-  status: { open: "the place is read as a person (or the typed name is taken without \"use\"), and the offer is not asked again" },
+  // Changed on purpose (13 Nov 2026): fixed in production by OFF_ROSTER_PLACE_ANSWER_ENABLED, QA round 38a. Was OPEN.
+    status: "fixed",
   fixFlags: [FLAG],
   async run(t: ReplayContext) {
     const thread = await offered(t);
