@@ -16,6 +16,7 @@ import { statedPayrollDeduct } from "@/lib/forms/payroll-deduct";
 import { withoutAmountAnswers } from "@/lib/forms/amount-answer";
 import { managerStatedWarningLevel, statedWarningLevel, templateHasWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
 import { describesIncident, describesMoreThanTheRequest } from "@/lib/forms/corrective-action-intake";
+import { cardAccountText } from "@/lib/forms/account-spelling";
 import { twoSentenceActionPlan } from "@/lib/forms/action-plan-sentences";
 import { replyWithManagerActionPlan } from "@/lib/forms/manager-action-plan";
 import { readPlaceState } from "@/lib/forms/place-state";
@@ -813,7 +814,8 @@ function withObservation(content: string, turns: readonly string[], employeeName
   const account = sentences.some((sentence) => !reasons.has(sentence)) ? sentences.filter((sentence) => !reasons.has(sentence)) : sentences;
   // COMPLAINT_ACCOUNT_ENABLED: the warning level is the form's Type of Warning, never the account.
   const told = complaintAccountEnabled() ? account.map(withoutLevelLead) : account;
-  return `${content}\n\n**Observation of Offense:** ${told.join(" ")}`.trim();
+  // ACCOUNT_TYPOS_FIXED_ENABLED: the obvious slips mended, the manager's words kept (`forms/account-spelling.ts`).
+  return `${content}\n\n**Observation of Offense:** ${cardAccountText(told.join(" "), employeeName)}`.trim();
 }
 
 /**
@@ -890,7 +892,8 @@ function withAccount(content: string, turns: readonly string[], employeeName: st
   const asked = complaintAccountEnabled() ? sentences.map(withoutLevelLead) : sentences;
   // REQUEST_ISSUE_KEPT_ENABLED: the account read from "Can you make a CA for <name> for …?" ends without the question mark.
   const told = requestIssueKeptEnabled() ? asked.map((sentence) => sentence.replace(/\s*\?+$/, "")) : asked;
-  return `${content}\n\n**Observation of Offense:** ${told.join(". ")}`.trim();
+  // ACCOUNT_TYPOS_FIXED_ENABLED: the obvious slips mended, the manager's words kept (`forms/account-spelling.ts`).
+  return `${content}\n\n**Observation of Offense:** ${cardAccountText(told.join(". "), employeeName)}`.trim();
 }
 
 /**

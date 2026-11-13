@@ -1,5 +1,5 @@
 import { PRODUCTION_SALONS } from "@/data/salons";
-import { formNameFromRosterEnabled, sameNameAsksWhichEnabled, typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
+import { formNameFromRosterEnabled, sameNameAsksWhichEnabled, sharedCityAsksSalonEnabled, typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
 import { readCaPolicy } from "@/lib/forms/ca-policy";
 import { namesThisCompany } from "@/lib/forms/company-name";
 import { namesCompanyPositionTitle } from "@/lib/forms/staff-picker";
@@ -213,7 +213,19 @@ export function applyGroundedProposal(
   if (fact) {
     if (!proposal.employeeRole && fact.title) proposal = { ...proposal, employeeRole: fact.title };
     const ids = factSalonIds(fact);
-    if (ids.length === 1 && (proposal.locationResolution !== "resolved" || !proposal.locationId)) {
+    /*
+     * SHARED_CITY_ASKS_SALON_ENABLED (QA's Sunny 38c live check, 13 Nov 2026): "create a ca for <A> at omaha" as an
+     * Admin was filed at <A>'s own salon (Kearney) although the manager named Omaha and the card was asking which of
+     * its salons. When the manager named salons (the card asks among them) and the employee's salon is not one of
+     * them, the question stands; the employee's salon among them still fills it. Off, as before.
+     */
+    const askedAmongNamed =
+      sharedCityAsksSalonEnabled() &&
+      proposal.locationResolution === "needs_selection" &&
+      (proposal.authorizedLocationIds?.length ?? 0) > 1 &&
+      ids.length === 1 &&
+      !proposal.authorizedLocationIds!.includes(ids[0]!);
+    if (ids.length === 1 && (proposal.locationResolution !== "resolved" || !proposal.locationId) && !askedAmongNamed) {
       proposal = withLocation(proposal, ids[0]!);
     } else if (ids.length > 1 && !proposal.locationId && proposal.employeeName) {
       proposal = {
