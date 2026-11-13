@@ -286,6 +286,11 @@ const FLIPPED_AFTER_FIXTURE: readonly string[] = [
   // policy is no longer held and its event gains policyBlankAtFinalize; the fixture predates them, so it is compared with them off.
   "POLICY_GATE_NONBLOCKING_ENABLED",
   "NEXT_PUBLIC_POLICY_GATE_NONBLOCKING_ENABLED",
+  // Changed on purpose (13 Nov 2026): QA round 38a turned these on in production. HUMAN_REPLIES shortens a later card
+  // turn's opener ("Got it — here's the card."); the fixture predates them, so it is compared with them off.
+  "HUMAN_REPLIES_ENABLED",
+  "OFF_ROSTER_PLACE_ANSWER_ENABLED",
+  "OFFERED_NAME_ACCEPTED_ENABLED",
 ];
 const PRODUCTION = [...PRODUCTION_FLAGS.on, ...PRODUCTION_FLAGS.assumedOn].filter((name) => !FLIPPED_AFTER_FIXTURE.includes(name));
 /*
