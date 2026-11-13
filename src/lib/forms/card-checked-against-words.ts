@@ -40,7 +40,7 @@ export const CARD_CHECK_HEADING = "CARD CHECK";
 /** At most this many model calls for one card. */
 export const CARD_CHECK_MAX_CALLS = 2;
 
-export type CardProblem = "issue_hedge" | "issue_title" | "issue_place" | "issue_name" | "issue_unsaid" | "person_title" | "person_place";
+export type CardProblem = "issue_hedge" | "issue_title" | "issue_place" | "issue_name" | "issue_unsaid" | "issue_missing_fact" | "person_title" | "person_place";
 
 export interface CardCheckInput {
   /** The manager's turns in this conversation, oldest first, the latest last. */
@@ -144,6 +144,38 @@ export function accountFromWords(employee: string | null, input: CardCheckInput)
   return contentWords(account).length > 0 ? account : null;
 }
 
+/**
+ * QA's 17r-c live test (13 Nov 2026): "create a CA for <A>, she was late on 11/3/26", then, on the open card, "she also
+ * didn't call to say she'd be late": the new card's What happened was still the first fact. A fact the manager states
+ * AFTER the turn that named the employee — a sentence about what the employee did ("she …", "<first name> …") that is
+ * not a question, a level, a title, a store or a hedge — must be on the card. The facts the Issue does not already hold,
+ * in her words ("also" dropped). An answer to the card's question ("verbal warning") is never one.
+ */
+const ACCOUNT_START = /^(?:and\s+|but\s+|plus\s+)?(?:she|he|they)\b/i;
+export function addedFacts(issue: string, employee: string | null, input: CardCheckInput): string[] {
+  if (!employee) return [];
+  const named = input.turns.findIndex((turn) => fold(turn).includes(fold(employee)));
+  if (named < 0) return [];
+  const first = employee.trim().split(/\s+/)[0] ?? "";
+  const starts = new RegExp(`^(?:and\\s+|but\\s+|plus\\s+)?${first.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+  const have = new Set(contentWords(issue));
+  const out: string[] = [];
+  for (const turn of input.turns.slice(named + 1)) {
+    if (/\?\s*$/.test(turn.trim())) continue;
+    for (const sentence of turn.split(/(?<=[.!?])\s+|\n+/)) {
+      const clause = sentence.trim().replace(/[.!]+$/, "");
+      if (clause === "" || !(ACCOUNT_START.test(clause) || (first !== "" && starts.test(clause)))) continue;
+      if (issueProblem(clause, employee, input) !== null) continue;
+      const fact = clause.replace(/^(?:and|but|plus)\s+/i, "").replace(/\b(also|too)\b\s*/gi, "").replace(/\s+/g, " ").trim();
+      const words = contentWords(fact);
+      if (words.length === 0 || words.every((word) => have.has(word))) continue;
+      out.push(fact);
+      for (const word of words) have.add(word);
+    }
+  }
+  return out;
+}
+
 const ISSUE_SEGMENT = /(\*\*Issue:\*\*\s*)([^·\n]+?)(\s*(?:·|\n|$))/;
 const WHAT_HAPPENED = "What happened? Tell me in a sentence and I'll put it on the card.";
 const WHO_FOR = "Who is this card for? Tell me their name and I'll put them on it.";
@@ -205,7 +237,7 @@ export interface CardCheckTrace {
   problems: CardProblem[];
   model_calls: number;
   model_ms: number;
-  repaired: ("issue_from_words" | "issue_from_model" | "issue_blank" | "person_removed")[];
+  repaired: ("issue_from_words" | "issue_from_model" | "issue_blank" | "person_removed" | "issue_added_fact")[];
 }
 
 /** The card checked against the manager's words. Off, or with no card, the answer as built. Never throws. */
@@ -260,6 +292,31 @@ export async function withCardCheckedAgainstWords(answer: AskResponse, input: Ca
           out = withIssue(out, null);
         }
         // "issue_unsaid" with no quoted correction: the card's own Issue stays (it may be the reader's summary).
+      }
+    }
+    /* A fact the manager added while the card was open is on it, and the reply says so. */
+    const now = out.formProposal!.issue?.trim() ?? "";
+    if (now !== "") {
+      const added = addedFacts(now, out.formProposal!.employeeName, input);
+      if (added.length > 0) {
+        trace.problems.push("issue_missing_fact");
+        trace.repaired.push("issue_added_fact");
+        const issue = [now, ...added].join("; ");
+        const withAdded = withIssue(out, issue);
+        out = { ...withAdded, content: `${withAdded.content.trimEnd()}\n\n**Added to What happened:** ${added.join("; ")}` };
+      }
+    } else if (out.formProposal!.issue === undefined && input.turns.length > 1) {
+      /*
+       * This app's card has no Issue: the account is its Observation of Offense, which already keeps an added fact. The
+       * reply repeated the whole draft and never said what changed. A fact the LATEST turn adds, that the card shows, is
+       * named.
+       */
+      const latest = { ...input, turns: [...input.turns.slice(0, -1).filter((turn) => out.formProposal!.employeeName && fold(turn).includes(fold(out.formProposal!.employeeName))).slice(0, 1), input.turns.at(-1)!] };
+      const shown = new Set(contentWords(out.content));
+      const added = addedFacts("", out.formProposal!.employeeName, latest).filter((fact) => contentWords(fact).every((word) => shown.has(word)));
+      if (added.length > 0) {
+        trace.repaired.push("issue_added_fact");
+        out = { ...out, content: `${out.content.trimEnd()}\n\n**Added to the Observation of Offense:** ${added.join("; ")}` };
       }
     }
   } catch {

@@ -31,4 +31,23 @@ export const NOV13_CARD_CHECKED_AGAINST_WORDS_CASES: ReplayCase[] = [
       expect(t.cardCheckCalls?.() ?? 0).toBe(0);
     },
   },
+  {
+    id: "nov13-17rc-added-detail-kept-on-card",
+    title: "the sibling app's 17r-c live test, ported: \"create a CA for Marnie Holloway, she was late on 11/3/26\", then \"she also didn't call to say she'd be late\" on the open card: the Observation of Offense keeps both facts, and the reply names the change",
+    report: "Ported from the sibling app: QA's 17r-c live test, 13 Nov 2026 (the added detail lost, the reply repeating the whole draft). Here the Observation already keeps both facts; the reply never said what changed",
+    status: { open: "the reply repeats the whole draft and never says what changed" },
+    fixFlags: ["CARD_CHECKED_AGAINST_WORDS_ENABLED"],
+    async run(t) {
+      vi.setSystemTime(new Date("2026-11-13T16:00:00Z"));
+      t.directory(STAFF);
+      t.as("salon_director", KEARNEY);
+      const thread = t.thread();
+      await thread.say("create a CA for Marnie Holloway, she was late on 11/3/26");
+      const reply = await thread.say("she also didn't call to say she'd be late");
+      const observation = reply.content.split("\n").find((line) => line.startsWith("**Observation of Offense:**")) ?? "";
+      expect(observation, `the Observation lost the first fact:\n${reply.content}`).toMatch(/late on 11\/3\/26/i);
+      expect(observation, `the Observation lost the added detail:\n${reply.content}`).toMatch(/didn'?t call/i);
+      expect(reply.content, `the reply does not name the change:\n${reply.content}`).toMatch(/\*\*Added to the Observation of Offense:\*\*[^\n]*didn'?t call/i);
+    },
+  },
 ];
