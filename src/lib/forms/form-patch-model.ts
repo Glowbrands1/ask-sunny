@@ -6,7 +6,7 @@ import { callFormPatchModel } from "./form-patch-call";
 import { buildFormPatchUserMessage, EDIT_POLICY_ASK_LINES, FORM_PATCH_ACCOUNT_LINE, FORM_PATCH_READER_LINES, FORM_PATCH_SYSTEM_PROMPT, type FormPatchInput } from "./form-patch-prompt";
 import { patchOutputSchema, toPatch, type PatchOutput } from "./form-patch-schema";
 import type { FormPatch } from "./form-reducer";
-import { cleanupChanges, SPELLING_CLEANUP_RULES } from "./spelling-cleanup";
+import { cleanupChanges, SPELLING_CLEANUP_RULES, withOwnWords } from "./spelling-cleanup";
 
 /**
  * The open form's patch from the manager's latest message
@@ -67,21 +67,35 @@ export async function readFormPatch(input: FormPatchInput): Promise<FormPatchRea
   const changes = patchCleanupChanges(input, reading.patch);
   if (changes.length === 0) return reading;
   console.warn(`[spelling-cleanup] the cleaned edit changed ${changes.join("; ")}; reading it with the manager's own text`);
-  return read(false);
+  const again = await read(false);
+  if (!("ok" in again)) return again;
+  /*
+   * QA's safety ruling (13 Nov 2026): the fallback is checked again. A field it would still write with a changed name,
+   * date, number or quote is left out of the patch, so the form keeps the manager's own words there.
+   */
+  const recheck = withOwnWords(again.patch.set, { ...patchCleanupSource(input), own: () => null });
+  if (recheck.replaced.length === 0) return again;
+  console.warn(`[spelling-cleanup] the fallback edit still changed ${recheck.replaced.join(", ")}; keeping the form's own words there`);
+  return { ...again, patch: { ...again.patch, set: recheck.values as typeof again.patch.set } };
 }
 
-/** SPELLING_CLEANUP_ENABLED: what a patch's text changes of the names, dates, numbers and quotes it was given. */
-export function patchCleanupChanges(input: FormPatchInput, patch: FormPatch): string[] {
+/** What a patch was given: the manager's words, the form as it stands, the employee. */
+function patchCleanupSource(input: FormPatchInput): { source: string; today: string; names: string[] } {
   const text = (value: unknown) => (typeof value === "string" ? value : Array.isArray(value) ? value.join("\n") : "");
-  return cleanupChanges({
+  return {
     source: [
       ...input.turns.filter((turn) => turn.role === "manager").map((turn) => turn.content),
       input.latest,
       ...input.fields.map((field) => text(field.value)),
       ...input.readOnly.map((field) => text(field.value)),
     ].join("\n"),
-    written: Object.values(patch.set).map(text).join("\n"),
     today: input.today,
     names: input.employeeName ? [input.employeeName] : [],
-  });
+  };
+}
+
+/** SPELLING_CLEANUP_ENABLED: what a patch's text changes of the names, dates, numbers and quotes it was given. */
+export function patchCleanupChanges(input: FormPatchInput, patch: FormPatch): string[] {
+  const text = (value: unknown) => (typeof value === "string" ? value : Array.isArray(value) ? value.join("\n") : "");
+  return cleanupChanges({ ...patchCleanupSource(input), written: Object.values(patch.set).map(text).join("\n") });
 }

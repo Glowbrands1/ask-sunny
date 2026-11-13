@@ -107,4 +107,24 @@ export const NOV13_SPELLING_CLEANUP_CASES: ReplayCase[] = [
       expect(t.values(id).observation ?? "", "the quote as typed").toContain('"i dont care"');
     },
   },
+  {
+    id: "nov13-spelling-cleanup-fallback-checked-again",
+    title: "QA's safety ruling: when the fallback draft also respells the name, the manager's own words are saved for that field",
+    report: `${REPORT}: QA's safety ruling (Gate-Sunny-3, 13 Nov 2026) — the fallback draft is checked again`,
+    // Only with the flag: production has no cleanup, so the respelled name is saved as drafted.
+    status: { open: "no cleanup check in production" },
+    fixFlags: ["SPELLING_CLEANUP_ENABLED"],
+    async run(t) {
+      const thread = start(t);
+      await thread.say(SAID);
+      // The stand-in writes the same respelled name on the first draft and on the fallback.
+      t.draftWrites({ observation: "Observed:\nBrisa Talmage was not doing the 10-minute sanitation." });
+      const id = await thread.create();
+      const systems = t.draftSystems?.() ?? [];
+      expect(systems.at(-1) ?? "", "the fallback was not drafted without the rule").not.toContain(RULE);
+      const observation = t.values(id).observation ?? "";
+      expect(observation, "the respelled name was saved").not.toMatch(/\bTalmage\b/);
+      expect(observation, "the manager's own words are not on the form").toMatch(/th e10 minute sanitaion/);
+    },
+  },
 ];

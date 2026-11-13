@@ -5,7 +5,7 @@ import { noteSpendUser } from "@/lib/ai/spend-meter";
 import { withSpendMeter } from "@/lib/ai/spend-meter-run";
 
 import { typoReadingText } from "@/lib/ai/typo-reading-copy";
-import { cleanupChanges, SPELLING_CLEANUP_RULES } from "@/lib/forms/spelling-cleanup";
+import { cleanupChanges, SPELLING_CLEANUP_RULES, withOwnWords } from "@/lib/forms/spelling-cleanup";
 import { protectedNameWords } from "@/lib/ai/typo-name-words";
 import { accountOnlyRules, policyQueryNotes, withoutInventedDetail } from "@/lib/forms/account-only-policy-query";
 import { getAnthropicClient } from "@/lib/ai/anthropic";
@@ -1344,17 +1344,38 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      * the draft falls back to the manager's own text: asked again without the cleanup rule (`spelling-cleanup.ts`).
      */
     if (spellingCleanupOn && !first.failed && first.drafted.values) {
+      const cleanupSource = [notes, ...(loaded.values ?? []).map((row) => (typeof row.value === "string" ? row.value : ""))].join("\n");
+      const cleanupNames = [loaded.instance.employeeName ?? ""];
       const changes = cleanupChanges({
-        source: [notes, ...(loaded.values ?? []).map((row) => (typeof row.value === "string" ? row.value : ""))].join("\n"),
+        source: cleanupSource,
         written: Object.values(first.drafted.values).join("\n"),
         today: businessToday(),
-        names: [loaded.instance.employeeName ?? ""],
+        names: cleanupNames,
       });
       if (changes.length > 0) {
         console.warn(`[spelling-cleanup] the cleaned draft changed ${changes.join("; ")}; drafting with the manager's own text`);
         activeSystem = systemFor(false);
         const again = await ask();
         if (!again.failed && again.drafted.values) first = again;
+        /*
+         * QA's safety ruling (13 Nov 2026): the draft that stands is checked again, field by field. A field that still
+         * changes a name, date, number or quote gets the manager's own words: what the form holds for it, the account
+         * itself for a long-text field, or nothing.
+         */
+        const recheck = withOwnWords(first.drafted.values ?? {}, {
+          source: cleanupSource,
+          today: businessToday(),
+          names: cleanupNames,
+          own: (key) => {
+            const held = (loaded.values ?? []).find((row) => row.fieldKey === key)?.value;
+            if (typeof held === "string" && held.trim()) return held;
+            return fields.find((field) => field.key === key)?.input === "long_text" && notes.trim() ? notes : null;
+          },
+        });
+        if (recheck.replaced.length > 0) {
+          console.warn(`[spelling-cleanup] the fallback draft still changed ${recheck.replaced.join(", ")}; saving the manager's own words there`);
+          first = { ...first, drafted: { ...first.drafted, values: recheck.values as Record<string, string> } };
+        }
       }
     }
     let drafted = first.drafted;

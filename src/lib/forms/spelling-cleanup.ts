@@ -129,3 +129,35 @@ function givenNameWords(source: string, names: readonly string[]): Set<string> {
   for (const word of capitalisedWords(source)) words.add(word.toLowerCase());
   return words;
 }
+
+/**
+ * QA's safety ruling (13 Nov 2026, Gate-Sunny-3): the fallback is checked too. Each field of what came back from the
+ * fallback is checked on its own; one that still changes a name, a date, a number or a quote gets the manager's own
+ * words for that field (`own`), or, with none, is left out so the form keeps what it holds. Fields that keep every
+ * fact pass through as written. Returns the values to save and the keys replaced or left out.
+ */
+export function withOwnWords<V>(
+  values: Readonly<Record<string, V>>,
+  input: {
+    readonly source: string;
+    readonly today: string;
+    readonly names?: readonly string[];
+    /** The manager's own words for a field, or null to leave the field out. */
+    readonly own: (key: string) => string | null;
+  },
+): { values: Record<string, V | string>; replaced: string[] } {
+  const out: Record<string, V | string> = {};
+  const replaced: string[] = [];
+  for (const [key, value] of Object.entries(values)) {
+    const changed =
+      typeof value === "string" && cleanupChanges({ source: input.source, written: value, today: input.today, names: input.names }).length > 0;
+    if (!changed) {
+      out[key] = value;
+      continue;
+    }
+    replaced.push(key);
+    const own = input.own(key);
+    if (own !== null) out[key] = own;
+  }
+  return { values: out, replaced };
+}

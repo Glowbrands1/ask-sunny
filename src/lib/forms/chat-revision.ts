@@ -4,7 +4,7 @@ import { getAnthropicClient } from "@/lib/ai/anthropic";
 import type { AskResponse } from "@/lib/ai/types";
 import { ACTIVE_BRAND } from "@/lib/brand";
 import { formEditSingleWriterEnabled, revisionSameValueEnabled, spellingCleanupEnabled } from "@/lib/config/chat-quality-flags";
-import { cleanupChanges } from "@/lib/forms/spelling-cleanup";
+import { cleanupChanges, withOwnWords } from "@/lib/forms/spelling-cleanup";
 import { businessToday } from "@/lib/business-date";
 import { CLAUDE_MAX_TOKENS, CLAUDE_MODEL } from "@/lib/config/models";
 import type { ChatMessage } from "@/types";
@@ -418,6 +418,24 @@ export async function reviseActiveForm(input: {
     if (changes.length > 0) {
       console.warn(`[spelling-cleanup] the cleaned revision changed ${changes.join("; ")}; revising with the manager's own text`);
       response = await revise(systemFor(false));
+      /*
+       * QA's safety ruling (13 Nov 2026): the fallback is checked again. A field it would still write with a changed
+       * name, date, number or quote is left out, so the form keeps the manager's own words there.
+       */
+      const fallback = response.content.find((block): block is Extract<typeof block, { type: "tool_use" }> => block.type === "tool_use");
+      const fallbackInput = (fallback?.input ?? null) as { values?: Record<string, unknown> } | null;
+      if (fallbackInput?.values) {
+        const recheck = withOwnWords(fallbackInput.values, {
+          source: `${notes}\n${currentText}\n${input.question}`,
+          today: input.today ?? businessToday(),
+          names: instance.employeeName ? [instance.employeeName] : [],
+          own: () => null,
+        });
+        if (recheck.replaced.length > 0) {
+          console.warn(`[spelling-cleanup] the fallback revision still changed ${recheck.replaced.join(", ")}; keeping the form's own words there`);
+          fallbackInput.values = recheck.values;
+        }
+      }
     }
   }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { cleanupChanges, cleanupKeepsFacts, SPELLING_CLEANUP_RULES } from "./spelling-cleanup";
+import { cleanupChanges, cleanupKeepsFacts, SPELLING_CLEANUP_RULES, withOwnWords } from "./spelling-cleanup";
 
 /** SPELLING_CLEANUP_ENABLED (Pau via QA, 13 Nov 2026): the code check under the cleanup rule. People invented. */
 const TODAY = "2026-11-10";
@@ -72,5 +72,21 @@ describe("patchCleanupChanges: the chat's form edits (Step B) under the same lim
     expect(patchCleanupChanges(input, { set: { observation: "She skipped the 10-minute sanitation on November 8, 2026." }, clear: [] })).toEqual([
       "date November 8, 2026 was not given",
     ]);
+  });
+});
+
+describe("withOwnWords: QA's safety ruling, the fallback checked again field by field", () => {
+  it("a field that still changes the name gets the manager's own words; a field that keeps every fact stands", () => {
+    const result = withOwnWords(
+      { observation: "Observed:\nBrisa Talmage was not doing the 10-minute sanitation.", expectation: "Complete the 10-minute sanitation every shift." },
+      { source: SAID, today: TODAY, names: ["Brisa Talmadge"], own: (key) => (key === "observation" ? SAID : null) },
+    );
+    expect(result.replaced).toEqual(["observation"]);
+    expect(result.values).toEqual({ observation: SAID, expectation: "Complete the 10-minute sanitation every shift." });
+  });
+
+  it("with no own words for the field, it is left out so the form keeps what it holds", () => {
+    const result = withOwnWords({ observation: 'She said "I don\'t care."' }, { source: 'she said "i dont care"', today: TODAY, own: () => null });
+    expect(result).toEqual({ values: {}, replaced: ["observation"] });
   });
 });
