@@ -325,3 +325,25 @@ describe("CARD_CHECKED_AGAINST_WORDS_ENABLED: a place one letter off is still on
     expect(addedFacts("she was late on 11/3/26", "Marnie Holloway", after("she was rude to a client at the Kearny salon"))).toEqual(["she was rude to a client at the Kearny salon"]);
   });
 });
+
+describe("CARD_CHECKED_AGAINST_WORDS_ENABLED: paying with no amount is payroll too (Gate-Bubbles-5, 13 Nov 2026)", () => {
+  const after = (said: string) => ({ turns: ["create a CA for Marnie Holloway, she was late on 11/3/26", said], roster: ROSTER });
+  it.each(["she needs to pay for the bulb", "she will be charged for the bulb", "she has to pay it back"])("stays out: %s", (said) => {
+    expect(addedFacts("she was late on 11/3/26", "Marnie Holloway", after(said))).toEqual([]);
+  });
+  it.each(["she broke a $15 bulb", "she had to stay late to recount the drawer", "she needs to be told twice before she cleans", "she was charged by a customer for the wrong item and argued"])("still joins: %s", (said) => {
+    expect(addedFacts("she was late on 11/3/26", "Marnie Holloway", after(said))).toEqual([said]);
+  });
+});
+
+describe("CARD_CHECKED_AGAINST_WORDS_ENABLED: the gates' place-typo list (13 Nov 2026)", () => {
+  const after = (said: string) => ({ turns: ["create a CA for Marnie Holloway, she was late on 11/3/26", said], roster: ROSTER });
+  it.each(["she is at Lincon Pine Lake", "she is at the Kearny salon", "she is at NE Kearny"])("with CLOSE_SPELLING_MATCH on, stays out: %s", (said) => {
+    vi.stubEnv("CLOSE_SPELLING_MATCH_ENABLED", "true");
+    expect(addedFacts("she was late on 11/3/26", "Marnie Holloway", after(said))).toEqual([]);
+  });
+  it("with CLOSE_SPELLING_MATCH on, a typo'd thing in the store plus an action still joins", () => {
+    vi.stubEnv("CLOSE_SPELLING_MATCH_ENABLED", "true");
+    expect(addedFacts("she was late on 11/3/26", "Marnie Holloway", after("she was at the frnt desk on her phone"))).toEqual(["she was at the frnt desk on her phone"]);
+  });
+});

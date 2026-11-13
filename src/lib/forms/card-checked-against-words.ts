@@ -205,7 +205,7 @@ function onlyPlace(text: string): boolean {
   if (isPlace(text)) return true;
   let rest = ` ${plain(text)} `;
   for (const word of placeWords()) rest = rest.replace(` ${word} `, " ");
-  rest = rest.replace(/\b(?:the|our|my|a|store|salon|location|shop|ne|ks|mo|ia|co)\b/g, " ").trim();
+  rest = rest.replace(/\b(?:the|our|my|a|store|salon|location|shop|ne|ks|mo|ia|co|rd|road|st|street|ave|avenue|blvd|dr|drive|ln|lane|hwy|pkwy)\b/g, " ").trim();
   /*
    * CLOSE_SPELLING_MATCH_ENABLED (QA, 13 Nov 2026): "she is at Lincon Pine Lake" — a place one letter off is still only a
    * place. The words left are read with the same close-spelling reader as the salon reader (`close-spelling.ts`).
@@ -255,11 +255,14 @@ export function isHistory(text: string): boolean {
  * $20 from the drawer" and "she was short $20" are what she did, and join.
  */
 const MONEY = /(?:\$\s?\d|\b\d+(?:\.\d{2})?\s*(?:dollars?|bucks)\b)/i;
+/** "she needs to pay for the bulb", "she will be charged for the bulb": paying is the payroll answer even with no amount. Never "charged by". */
+const PAY_FOR = /^(?:she|he|they|[\p{L}'’-]+)\s+(?:(?:has|have|had|needs?|must|will\s+have|is\s+going)\s+to\s+pay(?!\s+attention)(?:\s+back)?|must\s+pay(?!\s+attention)(?:\s+back)?|(?:will|is|was|'s|’s)\s+(?:be(?:ing)?\s+)?charged(?!\s+by))\b/iu;
 const OWED = /\b(?:(?:has|have|had|needs?|must|got|gotta)\s+(?:to\s+)?pay(?:\s+back)?|must\s+pay|(?:will|is|was|'s|’s)\s+(?:be(?:ing)?\s+)?charged|(?:we|we're|we’re|we\s+are|i'm|i’m|i\s+am)\s+(?:charging|charge)\s+(?:her|him|them)|charging\s+(?:her|him|them)|take\s+(?:it|that|this)\s+out\s+of\s+(?:her|his|their)\s+(?:check|pay(?:check)?)|owes?|owed|owing|pay(?:s|ing)?\s+(?:it\s+)?back|paid\s+back|repay|reimburse|deduct(?:ed|ion|ing)?|payroll|charge(?:d)?\s+(?:her|him|them)|(?:take|taken|took)\s+(?:it\s+)?out\s+of\s+(?:her|his|their)\s+(?:check|pay))\b/i;
 
 export function notAFact(clause: string, input: CardCheckInput): boolean {
   const text = clause.trim();
   if (MONEY.test(text) && OWED.test(text)) return true;
+  if (PAY_FOR.test(text)) return true;
   if (isHistory(text)) return true;
   if (GETS_LEVEL.test(text) || GIVE_LEVEL.test(text) || HEDGED_VERB.test(text)) return true;
   const identity = IDENTITY_OF.exec(text)?.[1];
