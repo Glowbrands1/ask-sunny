@@ -142,7 +142,13 @@ export async function openMeeting(key: string): Promise<{ ok: true; meeting: Ope
       viewer: { id: b.viewer.id, label: viewer.email, name, isHubAdmin: b.viewer.isHubAdmin === true },
       loaded: b.loaded,
       people: Array.isArray(b.people) ? b.people : [],
-      roster: { members: Array.isArray(b.roster?.members) ? b.roster.members : [], leader: b.roster?.leader ?? null },
+      roster: {
+        members: Array.isArray(b.roster?.members) ? b.roster.members : [],
+        leader: b.roster?.leader ?? null,
+        // The Hub's agenda and section hints for this meeting (the page checks their shape and falls back to its copy).
+        ...(Array.isArray(b.roster?.agenda) ? { agenda: b.roster.agenda } : {}),
+        ...(b.roster?.hints && typeof b.roster.hints === "object" ? { hints: b.roster.hints } : {}),
+      },
     },
   };
 }

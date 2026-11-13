@@ -45,6 +45,15 @@ export function effectiveAttendees(roster: Pick<Roster, "members">, saved: Atten
   });
 }
 
+/**
+ * Saving the segue list: the people shown, plus every saved row for someone the page no longer shows (taken off a
+ * meeting's display list in the Hub). Their shares and ratings stay in the document untouched (hidden, never deleted).
+ */
+export function keepHiddenAttendees(saved: Attendee[], shown: Attendee[]): Attendee[] {
+  const names = new Set(shown.map((a) => a.name));
+  return [...shown, ...saved.filter((a) => !names.has(a.name))];
+}
+
 /* ── Scorecard ──────────────────────────────────────────────────────────── */
 
 /** Newest week first, as indexes into `weeks`. */

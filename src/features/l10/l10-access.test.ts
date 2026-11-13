@@ -171,6 +171,21 @@ describe("opening the meeting", () => {
   });
 });
 
+describe("the Hub's agenda and section hints reach the page (the STC DM L10 change, 13 Nov 2026)", () => {
+  it("are passed through with the roster; a roster without them is unchanged", async () => {
+    signedIn();
+    const agenda = [{ key: "business-best", title: "Segue · AI Best Practice", minutes: 5 }, { key: "ids", title: "IDS · Issues", minutes: 65 }];
+    const hints = { "business-best": "Round-robin: each person shares one AI best practice, then you check them off." };
+    hub.answer = () => ({
+      status: 200,
+      body: { info: STC, viewer: { id: "hub-user-1", name: "Avery Quill" }, loaded: { version: 1, updatedAt: "t", doc: {} }, people: [], roster: { ...ROSTER, agenda, hints } },
+    });
+    const { openMeeting } = await import("./data.server");
+    const opened = await openMeeting("stc-dm");
+    expect(opened.ok && opened.meeting.roster).toEqual({ ...ROSTER, agenda, hints });
+  });
+});
+
 describe("saving, ending and the bell go to the same Hub record", () => {
   beforeEach(() => signedIn());
 
