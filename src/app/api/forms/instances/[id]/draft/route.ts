@@ -5,6 +5,7 @@ import { noteSpendUser } from "@/lib/ai/spend-meter";
 import { withSpendMeter } from "@/lib/ai/spend-meter-run";
 
 import { typoReadingText } from "@/lib/ai/typo-reading-copy";
+import { cleanupChanges, SPELLING_CLEANUP_RULES } from "@/lib/forms/spelling-cleanup";
 import { protectedNameWords } from "@/lib/ai/typo-name-words";
 import { accountOnlyRules, policyQueryNotes, withoutInventedDetail } from "@/lib/forms/account-only-policy-query";
 import { getAnthropicClient } from "@/lib/ai/anthropic";
@@ -41,6 +42,7 @@ import {
   proposalPolicySetAsideEnabled,
   sameRequestOtherPersonEnabled,
   coachingObservedSavedEnabled,
+  spellingCleanupEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { notesMadeAbout } from "@/lib/ai/make-it-about";
 import { withoutPolicyReferenceTurns } from "@/lib/ai/policy-reference-turn";
@@ -985,7 +987,9 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     ]);
     const teamSubject = isTeamSubject(loaded.instance.employeeName);
 
-    const system = [
+    // SPELLING_CLEANUP_ENABLED (Pau via QA, 13 Nov 2026; ported from Ask Bubbles): coaching drafts already clean up as they write.
+    const spellingCleanupOn = spellingCleanupEnabled() && !isCoachingFamily;
+    const systemFor = (cleanup: boolean) => [
       `You prepare drafts of ${ACTIVE_BRAND.brandName} management forms for a manager to review.`,
       "You are drafting, not deciding. A manager edits everything you write and signs it.",
       /*
@@ -1169,6 +1173,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
        */
       ...(isCoachingFamily ? COACHING_CONTEXT_RULES : []),
       ...(isCoachingFamily ? LANGUAGE_CLEANUP_RULES : []),
+      // SPELLING_CLEANUP_ENABLED: every other form cleans up spelling, spacing and capitals too, never a fact (`spelling-cleanup.ts`).
+      ...(cleanup ? SPELLING_CLEANUP_RULES : []),
       ...(hasFollowUpFindings ? MANAGER_FOLLOW_UP_RULES : []),
       ...(teamSubject ? TEAM_SUBJECT_RULES : []),
       /*
@@ -1180,6 +1186,9 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       ...(teamSubject ? [] : employeeNameRules(loaded.instance.employeeName)),
       ...(hasPriorActions ? PRIOR_ACTIONS_RULES : []),
     ].join(" ");
+    const system = systemFor(spellingCleanupOn);
+    // SPELLING_CLEANUP_ENABLED: the system a call is sent with; the copy-as-given one when a cleanup changed a fact.
+    let activeSystem = system;
 
     const prompt = [
       `FORM: ${loaded.instance.templateName}`,
@@ -1261,7 +1270,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     const draftCall = () => client.messages.create({
       model: CLAUDE_MODEL,
       max_tokens: CLAUDE_MAX_TOKENS.detailed,
-      system,
+      system: activeSystem,
       messages: [{ role: "user", content: prompt }],
       tools: [
         {
@@ -1329,7 +1338,25 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       }
       return { drafted: read, failed: false };
     };
-    const first = await ask();
+    let first = await ask();
+    /*
+     * SPELLING_CLEANUP_ENABLED: a cleanup never changes a name, a date, a number or a quote. If what came back did,
+     * the draft falls back to the manager's own text: asked again without the cleanup rule (`spelling-cleanup.ts`).
+     */
+    if (spellingCleanupOn && !first.failed && first.drafted.values) {
+      const changes = cleanupChanges({
+        source: [notes, ...(loaded.values ?? []).map((row) => (typeof row.value === "string" ? row.value : ""))].join("\n"),
+        written: Object.values(first.drafted.values).join("\n"),
+        today: businessToday(),
+        names: [loaded.instance.employeeName ?? ""],
+      });
+      if (changes.length > 0) {
+        console.warn(`[spelling-cleanup] the cleaned draft changed ${changes.join("; ")}; drafting with the manager's own text`);
+        activeSystem = systemFor(false);
+        const again = await ask();
+        if (!again.failed && again.drafted.values) first = again;
+      }
+    }
     let drafted = first.drafted;
 
     /*

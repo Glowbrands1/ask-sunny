@@ -5,6 +5,7 @@ import {
   asYouSaidManagerWordsEnabled,
   caPerformanceReasonEnabled,
   missedShiftCitesAttendanceEnabled,
+  spellingCleanupEnabled,
   lateReadsAttendanceEnabled,
   msbPhraseSocEnabled,
   caSalesPolicyEnabled,
@@ -303,7 +304,9 @@ export function cleaningIncidentPhrase(rawText: string): string | null {
  * patterns and no others.
  */
 export function cleaningUndonePhrase(rawText: string): string | null {
-  for (const sentence of statements(normalize(rawText))) {
+  // SPELLING_CLEANUP_ENABLED: "sanitation", the spelling a cleaned draft writes, is the sanitizing it names.
+  const text = spellingCleanupEnabled() ? (rawText ?? "").replace(/\bsanitation\b/gi, "sanitizing") : rawText;
+  for (const sentence of statements(normalize(text))) {
     for (const [index, pattern] of CLEANING_UNDONE.entries()) {
       const match = pattern.exec(sentence);
       if (match && readsAsIncident(sentence, match, index)) return match[0].trim();
