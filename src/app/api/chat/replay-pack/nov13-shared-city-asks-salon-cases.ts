@@ -47,7 +47,8 @@ export const NOV13_SHARED_CITY_ASKS_SALON_CASES: ReplayCase[] = [
     id: "nov13-shared-city-omha-admin-asks-salon",
     title: `Admin: "create a ca for marnie holloway at omha, she was late" — asks which Omaha salon; the Observation is the account`,
     report: REPORT,
-    status: { open: `"omha" is not read: no salon question, and "marnie holloway at omha" is the Observation` },
+    // Changed on purpose (13 Nov 2026): fixed in production by SHARED_CITY_ASKS_SALON_ENABLED, QA round 38d. Was OPEN.
+    status: "fixed",
     fixFlags: [FLAG],
     async run(t: ReplayContext) {
       const { reply, card } = await say(t, "admin", EVERY_SALON, "create a ca for marnie holloway at omha, she was late");
@@ -58,7 +59,8 @@ export const NOV13_SHARED_CITY_ASKS_SALON_CASES: ReplayCase[] = [
     id: "nov13-shared-city-omha-two-salons-asks-salon",
     title: `Salon director over two Omaha salons: "create a ca for marnie holloway at omha, she was late" — asks which`,
     report: `${REPORT}; QA's question (2)`,
-    status: { open: `"omha" is not read: no salon question, and "marnie holloway at omha" is the Observation` },
+    // Changed on purpose (13 Nov 2026): fixed in production by SHARED_CITY_ASKS_SALON_ENABLED, QA round 38d. Was OPEN.
+    status: "fixed",
     fixFlags: [FLAG],
     async run(t: ReplayContext) {
       const { reply, card } = await say(t, "salon_director", TWO_OMAHA, "create a ca for marnie holloway at omha, she was late");
@@ -74,7 +76,8 @@ export const NOV13_SHARED_CITY_ASKS_SALON_CASES: ReplayCase[] = [
     id: "nov13-shared-city-omaha-admin-asks-salon",
     title: `Admin: "create a ca for marnie holloway at omaha, she was late" — asks which Omaha salon, not the employee's own`,
     report: `${REPORT}; QA's question (1)`,
-    status: { open: "the card is filed at the employee's own salon (Kearney), not asked among the Omaha salons the manager named" },
+    // Changed on purpose (13 Nov 2026): fixed in production by SHARED_CITY_ASKS_SALON_ENABLED, QA round 38d. Was OPEN.
+    status: "fixed",
     fixFlags: [FLAG],
     async run(t: ReplayContext) {
       const { reply, card } = await say(t, "admin", EVERY_SALON, "create a ca for marnie holloway at omaha, she was late");
@@ -120,7 +123,8 @@ export const NOV13_SHARED_CITY_TRAILING_CASES: ReplayCase[] = TRAILING.map((word
   id: `nov13-shared-city-${wording.key}-asks-salon`,
   title: `Admin: "${wording.turn}" — asks which salon; the typo city leaves the Observation like the exact city`,
   report: `Gate-Sunny's #933 probes, residuals (13 Nov 2026)`,
-  status: { open: "the close city is not read: no salon question, and it stays in the Observation" },
+  // Changed on purpose (13 Nov 2026): fixed in production by SHARED_CITY_ASKS_SALON_ENABLED, QA round 38d. Was OPEN.
+  status: "fixed",
   fixFlags: [FLAG],
   async run(t: ReplayContext) {
     const { reply, card } = await say(t, "admin", EVERY_SALON, wording.turn);
