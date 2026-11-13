@@ -131,10 +131,15 @@ export function withPlaceAnswer<T extends { content: string; formProposal?: Card
     .filter((paragraph) => !LEAD.test(paragraph.trim()) && !paragraph.toLowerCase().includes(place.pending.toLowerCase()))
     .join("\n\n")
     .trim();
+  /*
+   * Gate-Bubbles-5 (12 Nov 2026): with the store set here, the all-location reply's "Your account covers every store,
+   * so this form won't name one." contradicted "I've set the store to …". That sentence goes when the place set it.
+   */
+  const told = allowed ? account.replace(/Your account covers every (?:store|salon), so (?:this|the) form won['’]t name one(?: unless you did)?\.\s*/g, "").trim() : account;
   const noted = allowed
     ? `I've set the salon to **${salon!.name}**.`
     : `I read **${place.place}** as the salon, not the employee's name.`;
-  const content = [`${noted} ${offRosterQuestion(place.pending)} ${offRosterOffer(place.pending)}`, account].filter(Boolean).join("\n\n");
+  const content = [`${noted} ${offRosterQuestion(place.pending)} ${offRosterOffer(place.pending)}`, told].filter(Boolean).join("\n\n");
   if (!card) return { ...answer, content };
   return {
     ...answer,

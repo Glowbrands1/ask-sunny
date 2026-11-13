@@ -62,7 +62,11 @@ export const NOV12_OFF_ROSTER_PLACE_ANSWER_CASES: ReplayCase[] = PLACES.map(({ k
     const reply = await thread.say(place);
     heldAndAskedAgain(reply, thread.proposal, place);
     expect(reply.content, `the place is named as a person:\n${reply.content}`).not.toMatch(/\*\*(?:Ia Altoona|Ks Manhattan)\*\*/);
-    if (salon) expect((thread.proposal as { locationId?: string | null }).locationId, `the salon is not set:\n${reply.content}`).toBe(salon);
+    if (salon) {
+      expect((thread.proposal as { locationId?: string | null }).locationId, `the salon is not set:\n${reply.content}`).toBe(salon);
+      // The sibling app's Gate-Bubbles-5 (12 Nov 2026): the salon was set, so the reply never says the form won't name one.
+      expect(reply.content, `the reply contradicts the salon it set:\n${reply.content}`).not.toMatch(/covers every salon/);
+    }
     /*
      * Not asserted here: "use <C>" after the offer. For an all-salon admin it is refused on production's flags even
      * with no place turn between ("\"<C>\" isn't a person on your team"), a defect of its own reported to QA
