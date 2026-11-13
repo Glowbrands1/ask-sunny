@@ -1,10 +1,10 @@
 import "server-only";
 
-import { closeSpellingMatchEnabled } from "@/lib/config/chat-quality-flags";
+import { closeSpellingMatchEnabled, sharedCityAsksSalonEnabled } from "@/lib/config/chat-quality-flags";
 import { PRODUCTION_SALONS, type ProductionSalon } from "@/data/salons";
 import { storeNameKey } from "@/lib/reporting/store-identity";
 
-import { closeWordDistance } from "./close-spelling";
+import { closeWordDistance, editDistance } from "./close-spelling";
 import { salonForTypedNumber, salonsForTypedNumber } from "./salon-text";
 
 /**
@@ -287,6 +287,7 @@ export function readSalonMentions(text: string): SalonMention[] {
   for (const city of CITY_PATTERNS) {
     if (city.pattern.test(spaced)) mentions.push({ salonIds: city.salonIds });
   }
+  if (sharedCityAsksSalonEnabled()) mentions.push(...closeCityMentions(spaced, mentions));
 
   return mentions;
 }
@@ -361,6 +362,54 @@ function closeSalonMentions(haystack: string): SalonMention[] {
     else if (hit.off === 1 && !hit.far) mentions.push({ salonIds });
   }
   return mentions;
+}
+
+/*
+ * SHARED_CITY_ASKS_SALON_ENABLED (QA's Sunny 38c live check, 13 Nov 2026): an Admin's "create a ca for <A> at omha, she
+ * was late" read no salon and no question; "at omaha" asks which Omaha salon. A shared city typed a letter off, after
+ * "at" / "in" and ending where a city ends (`CITY_ENDS`), is a mention of every salon in that city, exactly as the city
+ * spelled right is, so `proposeLocation` asks which for any scope that covers more than one of them. A city word of
+ * five letters or more may be one letter off on the whole name, even typed as four letters ("omha", "kansas cty").
+ * Off, never read.
+ */
+function closeCityMentions(spaced: string, already: readonly SalonMention[]): SalonMention[] {
+  const found: SalonMention[] = [];
+  for (const [index, city] of SHARED_CITIES.entries()) {
+    // CITY_PATTERNS is built from SHARED_CITIES, in the same order.
+    const salonIds = CITY_PATTERNS[index]?.salonIds ?? [];
+    if (salonIds.length === 0 || already.some((mention) => mention.salonIds.join() === salonIds.join())) continue;
+    const words = city.split(" ").length;
+    const pattern = new RegExp(`\\b(?:at|in)\\s+(?:the\\s+)?((?:[a-z]+\\s+){${words - 1}}[a-z]+)${CITY_ENDS}`, "gi");
+    if ([...spaced.matchAll(pattern)].some((match) => closeToCity(match[1]!, city))) found.push({ salonIds });
+  }
+  return found;
+}
+
+/**
+ * One letter off the whole city name: "omha" for "omaha", "kansas cty" for "kansas city" (Gate-Sunny's #933 probes:
+ * a multi-word city allows one letter off on the whole phrase). A city of five letters or more only; the typed name
+ * has as many words and at least four letters.
+ */
+function closeToCity(said: string, city: string): boolean {
+  const typed = said.toLowerCase().replace(/\s+/g, " ").trim();
+  if (city.length < 5 || typed.length < 4 || typed === city || typed.split(" ").length !== city.split(" ").length) return false;
+  return editDistance(typed, city, 1) === 1;
+}
+
+/**
+ * SHARED_CITY_ASKS_SALON_ENABLED: whether these words, less "the" and a salon word, are a shared city typed a letter
+ * off ("omha", "the omha store", "kansas cty"). For the account reader, which takes such a place out as it takes out
+ * the city spelled right. Off, false.
+ */
+export function isCloseSharedCity(text: string): boolean {
+  if (!sharedCityAsksSalonEnabled()) return false;
+  const bare = text
+    .toLowerCase()
+    .replace(/[.!?,]+$/, "")
+    .replace(/^(?:the|our)\s+/, "")
+    .replace(/\s+(?:salon|store|location|studio)$/, "")
+    .trim();
+  return SHARED_CITIES.some((city) => closeToCity(bare, city));
 }
 
 /**

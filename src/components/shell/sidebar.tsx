@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronsLeft, Lock } from "lucide-react";
+import { CalendarCheck, ChevronsLeft, Lock } from "lucide-react";
 
 import { BrandMark, SunMark } from "@/components/brand-mark";
 import { Tooltip } from "@/components/ui/overlays";
@@ -20,6 +20,7 @@ export function SidebarNav({
   overdueFollowUps = 0,
   showAppSwitcher = false,
   showLeadershipHub = false,
+  meetingTabs = [],
 }: {
   collapsed?: boolean;
   onToggleCollapse?: () => void;
@@ -31,6 +32,11 @@ export function SidebarNav({
   showAppSwitcher?: boolean;
   /** Server-decided yes/no for the Leadership Hub tab. */
   showLeadershipHub?: boolean;
+  /**
+   * The DM L10 tab(s): decided on the server by the (app) layout from the Leadership Hub, which lists only the
+   * meetings this person attends and Ask Sunny may open. Not a boundary: the page and every action re-check.
+   */
+  meetingTabs?: { href: string; label: string }[];
 }) {
   const pathname = usePathname();
   const { can, isAdmin, demoMode } = useSession();
@@ -67,6 +73,11 @@ export function SidebarNav({
       return can(item.permission);
     }),
   })).filter((section) => section.items.length > 0);
+  if (meetingTabs.length > 0) {
+    const meetings = { id: "meetings", label: "Meetings", items: meetingTabs.map((t) => ({ label: t.label, href: t.href, icon: CalendarCheck })) };
+    const after = sections.findIndex((s) => s.id === "assistant");
+    sections.splice(after < 0 ? 0 : after + 1, 0, meetings);
+  }
 
   const isCollapsed = variant === "desktop" && collapsed;
 
