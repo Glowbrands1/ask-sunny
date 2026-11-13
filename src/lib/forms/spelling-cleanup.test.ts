@@ -127,3 +127,13 @@ describe("a yearless dashed date is given (Gate-Sunny-3, 13 Nov 2026: prior-sent
     expect(cleanupChanges({ source, written: "She was coached on October 17, 2026.", today: "2026-11-13" })).toEqual(["date October 17, 2026 was not given"]);
   });
 });
+
+describe("a possessive of a name is the same name (Gate-Sunny-3, 13 Nov 2026)", () => {
+  it("\"Marnie Holloway's drawer\" and \"Sela's\" keep the name; a respelled possessive does not", () => {
+    const source = "please make a ca for marnie holloway, she was late on 11/1/26 and left the drawer open";
+    const names = ["Marnie Holloway"];
+    expect(cleanupChanges({ source, names, today: TODAY, written: "Observed:\nMarnie Holloway's drawer was left open after she arrived late on 11/1/26." })).toEqual([]);
+    expect(cleanupChanges({ source: "Sela was late", names: ["Sela Brightwater"], today: TODAY, written: "Observed:\nToday Sela’s shift began late." })).toEqual([]);
+    expect(cleanupChanges({ source, names, today: TODAY, written: "Observed:\nMarnie Halloway's drawer was left open." })).toEqual(["name holloway was written Halloway"]);
+  });
+});

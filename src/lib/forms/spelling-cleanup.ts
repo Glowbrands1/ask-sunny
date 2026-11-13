@@ -177,7 +177,8 @@ function capitalisedWords(text: string): string[] {
   for (const match of text.matchAll(/[A-Z][a-z'’]+/g)) {
     const before = text.slice(0, match.index).replace(/[ \t]+$/, "");
     if (before === "" || /[.!?:\n]$/.test(before) || /(?:^|\n)\s*[-•*]$/.test(before)) continue;
-    words.push(match[0]);
+    // A possessive is the same name ("Holloway's", "Sela’s"; Gate-Sunny-3, 13 Nov 2026).
+    words.push(match[0].replace(/['’]s?$/i, ""));
   }
   return words;
 }

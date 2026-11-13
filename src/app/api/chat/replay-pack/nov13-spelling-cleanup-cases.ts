@@ -133,4 +133,23 @@ export const NOV13_SPELLING_CLEANUP_CASES: ReplayCase[] = [
       expect(observation, "the chat turn was saved as the Observation").not.toMatch(/please make a ca/i);
     },
   },
+  {
+    id: "nov13-spelling-cleanup-possessive-name-kept",
+    title: "a draft writing the employee's full name as a possessive (\"Marnie Holloway's drawer\") keeps the name: one draft call, saved as written",
+    report: `${REPORT}: Gate-Sunny-3, 13 Nov 2026 — a possessive of the full name read as a changed name, and the draft was discarded`,
+    status: "fixed",
+    fixFlags: ["SPELLING_CLEANUP_ENABLED"],
+    async run(t) {
+      vi.setSystemTime(new Date("2026-11-10T18:49:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      const thread = t.thread();
+      await thread.say("please make a ca for marnie holloway, she was late on 11/1/26 and left the drawer open");
+      const before = (t.draftSystems?.() ?? []).length;
+      t.draftWrites({ observation: "Observed:\nMarnie Holloway's drawer was left open after she arrived late on 11/1/26." });
+      const id = await thread.create();
+      expect((t.draftSystems?.() ?? []).length - before, "drafted again: the possessive was read as a changed name").toBe(1);
+      expect(t.values(id).observation ?? "", "the model's draft was discarded").toContain("Marnie Holloway's drawer was left open");
+    },
+  },
 ];
