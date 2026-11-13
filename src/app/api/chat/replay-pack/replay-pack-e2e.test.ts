@@ -926,14 +926,14 @@ describe("src/config/production-flags.json", () => {
 /*
  * REPLAY_PACK_PART (CI only; QA, 9 Nov 2026, in thirds since 12 Nov 2026): the flags-off parity run
  * (`src/lib/ai/flags-off-parity.test.ts`) runs the pack as several children, each with one part of the cases by id
- * ("0/3": the first third, "1/3", "2/3"), so no child passes its time budget as the pack grows. The parts are contiguous
- * by id and together are every case, once. Unset (or not "i/n"), every case runs, as before.
+ * ("0/4", "1/4", "2/4", "3/4"), so no child passes its time budget as the pack grows. The parts interleave by id (case i
+ * of the sorted list goes to part i mod n: since 13 Nov 2026, as contiguous thirds were uneven — 486 s, 188 s, 365 s —
+ * the heavy cases clustering by id) and together are every case, once. Unset (or not "i/n"), every case runs, as before.
  */
 const PART = /^(\d+)\/(\d+)$/.exec(process.env.REPLAY_PACK_PART ?? "");
 const BY_ID = [...CASES].sort((a, b) => a.id.localeCompare(b.id));
 function casesOfPart(index: number, parts: number): typeof CASES {
-  const size = Math.ceil(BY_ID.length / parts);
-  return BY_ID.slice(index * size, (index + 1) * size);
+  return BY_ID.filter((_entry, position) => position % parts === index);
 }
 const RUN = PART && Number(PART[1]) < Number(PART[2]) ? casesOfPart(Number(PART[1]), Number(PART[2])) : CASES;
 
