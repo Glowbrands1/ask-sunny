@@ -128,8 +128,9 @@ export const NOV13_NAMED_CARE_AND_CLEANING_CASES: ReplayCase[] = [
     id: `nov13-named-care-and-cleaning-${key as string}`,
     title: `"${said as string}": the named Care and Cleaning policy is kept, never Other`,
     report: "Gate-Sunny-3 on #839 (13 Nov 2026): a manager who names Care and Cleaning got Other",
-    // Production's CA_SALES_POLICY reads the cleaning account as Other even when the policy is named.
-    status: { open: "a named Care and Cleaning policy reads as Other" },
+    // Production's CA_SALES_POLICY reads the cleaning account as Other even when the policy is named. Changed on purpose
+    // (13 Nov 2026, main 0ef33633): the plainly named "care and cleaning policy" already holds on production there.
+    status: key === "policy" ? ("fixed" as const) : { open: "a named Care and Cleaning policy reads as Other" },
     fixFlags: ["OTHER_POLICY_AGREES_ENABLED", "OTHER_NOT_A_POLICY_NAME_ENABLED"],
     async run(t) {
       vi.setSystemTime(new Date("2026-11-13T15:00:00Z"));
