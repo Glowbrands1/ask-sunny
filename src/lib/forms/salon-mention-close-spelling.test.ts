@@ -16,6 +16,8 @@ const salons = (text: string) => readSalonMentions(text).map((mention) => [...me
 
 describe("salon mentions: close spellings", () => {
   it("flag off: a salon a letter off is not read (as on main)", () => {
+    // Pinned off: a CLOSE_SPELLING_MATCH_ENABLED set in the environment must not turn it on (Gate-Sunny, 13 Nov 2026).
+    vi.stubEnv("CLOSE_SPELLING_MATCH_ENABLED", "");
     expect(salons("coaching for avery at kearny today")).toEqual([]);
     expect(salons("ca for avery at grand islnd, she was late")).toEqual([]);
   });

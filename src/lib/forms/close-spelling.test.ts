@@ -33,6 +33,8 @@ describe("close-spelling: the distance between two words", () => {
 
 describe("close-spelling: a policy named a letter off", () => {
   it("flag off: only the exact spelling names a heading (as on main)", () => {
+    // Pinned off: a CLOSE_SPELLING_MATCH_ENABLED set in the environment must not turn it on (Gate-Sunny, 13 Nov 2026).
+    vi.stubEnv("CLOSE_SPELLING_MATCH_ENABLED", "");
     expect(cited("ca for avery for violating the anmals in the workplace policy")).toBeNull();
     expect(closePolicyQuestion("anmals in the wrkplace", JBA_MANUAL_CA_CHUNKS)).toBeNull();
   });
