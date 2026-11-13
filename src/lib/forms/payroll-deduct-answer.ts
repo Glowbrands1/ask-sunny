@@ -208,7 +208,14 @@ const DEDUCTIBLE_NO: readonly RegExp[] = [
   new RegExp(String.raw`\b(?:not|isn't|isnt|is not|non)[\s-]+(?:payroll[\s-]+)?${DEDUCTIBLE}\b`),
   new RegExp(String.raw`\bpayroll\s+(?:is\s+|will\s+be\s+)?not\s+${DEDUCTIBLE}\b`),
 ];
-const DEDUCTIBLE_YES = new RegExp(String.raw`\bpayroll\s+(?:is\s+|will\s+be\s+|would\s+be\s+)?${DEDUCTIBLE}\b`);
+/*
+ * Gate-Sunny-3 on #919 (13 Nov 2026): with PAYROLL_SPLIT_WORDS on (production), "deductable" is already read as
+ * "deduct" before this, so "payroll is deductable" arrives as "payroll is deduct". After "is / will be / would be",
+ * the bare "deduct" is that same word.
+ */
+const DEDUCTIBLE_YES = new RegExp(
+  String.raw`\bpayroll\s+(?:(?:is|will\s+be|would\s+be)\s+deduct\b(?!\s+(?:applicable|apply|applies))|(?:is\s+|will\s+be\s+|would\s+be\s+)?${DEDUCTIBLE}\b)`,
+);
 
 function readClause(clause: string): ClauseReading {
   if (payrollBareSentenceOn() && BARE_PAYROLL_SENTENCE.test(clause)) return "yes";

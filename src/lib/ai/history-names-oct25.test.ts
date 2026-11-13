@@ -146,6 +146,16 @@ vi.mock("@/lib/knowledge/providers/supabase", async () => {
   };
 });
 
+// Production's retrieval (RETRIEVAL_RECALL / HYBRID_SEARCH, on in production) searches nothing here, as `match` above
+// (Gate-Sunny-3 on #919: unstubbed, these tests threw "the company knowledge base could not be searched").
+vi.mock("@/lib/knowledge/recall-match", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/knowledge/recall-match")>()),
+  matchRecallKnowledge: async () => [],
+}));
+vi.mock("@/lib/knowledge/hybrid-match", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/knowledge/hybrid-match")>()),
+  matchHybridKnowledge: async () => [],
+}));
 vi.mock("@/lib/reporting/read/report-briefing", () => ({ loadReportBriefing: async () => null }));
 vi.mock("@/lib/reporting/read/employee-facts", () => ({
   loadEmployeeFacts: async () => null,
@@ -547,7 +557,8 @@ describe("TITLE_WHOLE_WORD_ENABLED: titles the manager never gave", SLOW, () => 
       "1. test employee 2.today 3. i have observed test running late for shifts even though she is communicating we want to avoid this from happening 4. bed tech st joe",
     ]);
     // The card reads the title back from the "Job title: …" state line; the place never reaches it.
-    expect(turns[1]!.role ?? "").toMatch(/^bed tech\b/);
+    // Changed on purpose (Gate-Sunny-3 on #919): production's title-case flags print it "Bed Tech"; the case is not the bug.
+    expect(turns[1]!.role ?? "").toMatch(/^bed tech\b/i);
     expect(turns[1]!.role ?? "").not.toMatch(/st\.? ?joe/i);
     expect(turns[1]!.content).not.toMatch(/Job title:\*\*[^\n]*st joe/i);
   });
@@ -652,12 +663,23 @@ describe("FORM_CHOICE_STATED_ENABLED: the form the manager asked for", SLOW, () 
   });
 
   // Ask Bubbles B14 conv_mvntxr592mc1e2l, in this app's words. Right in this app already.
-  it("a metric alone opens no Corrective Action card", async () => {
+  it("a metric alone opens no Corrective Action card (CA_SALES_POLICY off)", async () => {
+    vi.stubEnv("CA_SALES_POLICY_ENABLED", "");
     bag.intent.latest = ["Test Employee"];
     bag.extra = { 0: { formType: "dpoa" } };
     const [turn] = await converse(["Test Employee at Kearney has low sales per hour this month, create a corrective action"]);
     expect(turn!.template).toBeNull();
     expect(turn!.content).toMatch(/won't open formal corrective action off a metric/i);
+  });
+
+  // Changed on purpose (Gate-Sunny-3 on #919): CA_SALES_POLICY is on in production (Pau, 4 Nov 2026, Ask Bubbles #426): a
+  // stated sales shortfall with a request for a corrective action goes to the form (nov4-ca-sales-policy-cases.ts (b)).
+  it("with CA_SALES_POLICY on (production): the requested Corrective Action card opens", async () => {
+    vi.stubEnv("CA_SALES_POLICY_ENABLED", "true");
+    bag.intent.latest = ["Test Employee"];
+    bag.extra = { 0: { formType: "dpoa" } };
+    const [turn] = await converse(["Test Employee at Kearney has low sales per hour this month, create a corrective action"]);
+    expect(turn!.template).toBe("Corrective Action Form");
   });
 });
 

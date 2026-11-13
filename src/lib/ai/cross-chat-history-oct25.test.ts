@@ -36,6 +36,29 @@ vi.mock("@/lib/forms/repository", () => ({
   listTemplateSummaries: async () => [],
 }));
 
+/** The one retrieved excerpt, whichever search production's flags pick (Gate-Sunny-3 on #919). */
+const COACHING_ROWS = vi.hoisted(() => [
+  {
+    chunk_id: "c1",
+    document_id: "d1",
+    document_title: "Salon Coaching Guide",
+    category: "leadership_coaching",
+    locator: "Page 2",
+    page: 2,
+    section: null,
+    content: "Coach in private, soon after the behaviour.",
+    similarity: 0.9,
+  },
+]);
+vi.mock("@/lib/knowledge/recall-match", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/knowledge/recall-match")>()),
+  matchRecallKnowledge: async () => COACHING_ROWS,
+}));
+vi.mock("@/lib/knowledge/hybrid-match", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/knowledge/hybrid-match")>()),
+  matchHybridKnowledge: async () => COACHING_ROWS,
+}));
+
 vi.mock("@/lib/knowledge/providers/supabase", () => ({
   SupabaseKnowledgeProvider: class {
     readonly name = "test double";
