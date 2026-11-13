@@ -2631,6 +2631,17 @@ export function offRosterStoreAnswerOnlyEnabled(): boolean {
 export function offRosterPlaceAnswerEnabled(): boolean {
   return envFlag("OFF_ROSTER_PLACE_ANSWER_ENABLED");
 }
+
+/**
+ * OFFERED_NAME_ACCEPTED_ENABLED (Coding-2, 12 Nov 2026; default off; QA, top priority: "an offer the bot makes must be
+ * acceptable"). An all-salon admin: "CA for <C>, do not terminate yet, she was late" → "reply use <C>" → "use <C>" was
+ * refused: "\"<C>\" isn't a person on your team". The request's slot reader takes "<C>," before the account as a
+ * capitalised list item, so the person guard ruled the name out on every turn, the one that takes the offer too. On:
+ * the name the manager took with "use <C>" this turn is a person (`forms/person-guard.ts`). Off, as before.
+ */
+export function offeredNameAcceptedEnabled(): boolean {
+  return envFlag("OFFERED_NAME_ACCEPTED_ENABLED");
+}
 /**
  * EXIT_LETTER_ADDRESSEE_ENABLED (QA, the live Sunny test of rounds 7c and 8, 9 Nov 2026; coding 5; same flag in both
  * apps; default off; with EXIT_LETTER_SIGNER_NOT_SUBJECT_ENABLED). "I need an exit form with this information." and a

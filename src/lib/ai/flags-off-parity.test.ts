@@ -187,6 +187,8 @@ import { privateCreatorFormsEnabled, privateCreatorsActive } from "@/lib/forms/p
 const NEW_FLAGS = [
   // coding 2: OFF_ROSTER_PLACE_ANSWER (QA's Sunny 37b live bug, 12 Nov 2026; default off).
   "OFF_ROSTER_PLACE_ANSWER_ENABLED",
+  // coding 2: OFFERED_NAME_ACCEPTED (QA, 12 Nov 2026: an admin's "use <C>" refused; default off).
+  "OFFERED_NAME_ACCEPTED_ENABLED",
   // coding 4: FULL_MANUAL_KEEPS_RETRIEVAL (QA, 10 Nov 2026; default off).
   "FULL_MANUAL_KEEPS_RETRIEVAL_ENABLED",
   // coding 4: FORM_NAME_NOT_A_TITLE (QA's prod-env reading, D5, 11 Nov 2026; default off).
