@@ -62,7 +62,10 @@ jobs:
 
   flags-off-parity:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # 45, not 30 (QA, 13 Nov 2026): the replay pack grew past the 30-minute job limit
+    # (ask-sunny#930 was cancelled at 30:11 with no failing test). Nothing is skipped;
+    # #907 splits the replay child into thirds so no child nears its own 540 s budget.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
