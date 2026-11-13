@@ -29,12 +29,12 @@ const TOPIC = patch("this_form", [
   { field: "coaching_topics", options: ["other"], how: "replace", evidence: "the other topic is missed monthly meeting" },
 ]);
 
-async function onDraft(t: ReplayContext, checks: readonly unknown[], handOff = false) {
+async function onDraft(t: ReplayContext, checks: readonly unknown[], handOff = false, ask = ASK) {
   vi.setSystemTime(new Date("2026-11-13T15:00:00Z"));
   t.directory(REFUSAL_ROSTER);
   t.as("salon_director", KEARNEY);
   // Handed off: the patch reader falls back, and the old path's revision writes the expectation only.
-  t.patchReads!(handOff ? {} : { [ASK]: FIRST });
+  t.patchReads!(handOff ? {} : { [ask]: FIRST });
   t.patchChecks?.(checks);
   const thread = t.thread();
   await thread.say("create a coaching form for Ottoline Ormsworth, she missed the monthly meeting on 10/10/26");
@@ -42,8 +42,8 @@ async function onDraft(t: ReplayContext, checks: readonly unknown[], handOff = f
   const id = await thread.create();
   if (handOff) t.revisionWrites({ coaching_details: `${DRAFT}\nShe must attend every monthly meeting.` });
   const before = savedForm(t, id);
-  const reply = await thread.say(ASK);
-  replyMatchesDiff(t, id, before, reply, ASK);
+  const reply = await thread.say(ask);
+  replyMatchesDiff(t, id, before, reply, ask);
   return { id, reply };
 }
 
@@ -104,6 +104,19 @@ export const NOV13_EDIT_SEES_SAVED_FORM_CASES: ReplayCase[] = [
       expect(t.values(id).coaching_details ?? "", "the expectation the revision wrote").toMatch(/attend every monthly meeting/i);
       expect(t.values(id).other_topic ?? "", "the topic, written on the check round").toMatch(/missed monthly meeting/i);
       expect(reply.content, `the reply names the topic, from the saved form:\n${reply.content}`).toMatch(/Other/);
+    },
+  },
+  {
+    id: "nov13-edit-sees-saved-form-settled-by-code",
+    title: "a single-field edit, \"add that she must attend every monthly meeting\": the saved form plainly does what was asked, so the check is settled by code with no model call (QA's speed change)",
+    report: `${REPORT} (QA, 13 Nov 2026: a confirm costs a model call of about 1.7 s; most single-field edits must add none)`,
+    status: "fixed",
+    fixFlags: FIX,
+    async run(t) {
+      // No check round is scripted: the code settles it, and the model is never asked.
+      const { id } = await onDraft(t, [], false, "add that she must attend every monthly meeting");
+      expect(t.values(id).coaching_details ?? "").toMatch(/attend every monthly meeting/i);
+      expect(t.patchCheckCalls?.() ?? 0, "settled by code: no model call").toBe(0);
     },
   },
 ];

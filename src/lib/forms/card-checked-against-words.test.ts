@@ -121,29 +121,6 @@ describe("CARD_CHECKED_AGAINST_WORDS_ENABLED: a fact added on the open card (the
   });
 });
 
-describe("CARD_CHECKED_AGAINST_WORDS_ENABLED: never a fact (Gate-Bubbles-5 / Gate-Sunny-2 probes on the 17r-c fix)", () => {
-  const after = (said: string) => ({ turns: ["create a CA for Marnie Holloway, she was late on 11/3/26", said], roster: ROSTER });
-  it.each([
-    "she gets a verbal warning",
-    "Marnie gets a verbal warning",
-    "she's a key holder",
-    "she is a key holder",
-    "she works at NE Kearney",
-    "she works at Kearney",
-    "she is at the Kearney salon",
-    "she maybe forgot",
-    "she is a TITLE",
-    "she's our closing lead",
-    "she might have forgotten",
-  ])("%s: never joined to the card", (said) => {
-    expect(addedFacts("she was late on 11/3/26", "Marnie Holloway", after(said.replace("TITLE", ROSTER[0]!.positionName!)))).toEqual([]);
-  });
-
-  it("the control still joins: \"she also didn't call to say she'd be late\"", () => {
-    expect(addedFacts("she was late on 11/3/26", "Marnie Holloway", after("she also didn't call to say she'd be late"))).toEqual(["she didn't call to say she'd be late"]);
-  });
-});
-
 describe("CARD_CHECKED_AGAINST_WORDS_ENABLED: only the Observation counts as shown (Gate-Sunny-2)", () => {
   it("a fact the reply shows only on another line (the Job title) is never claimed added to the Observation", async () => {
     vi.stubEnv("CARD_CHECKED_AGAINST_WORDS_ENABLED", "true");
@@ -171,5 +148,15 @@ describe("CARD_CHECKED_AGAINST_WORDS_ENABLED: only the Observation counts as sho
     };
     const out = await withCardCheckedAgainstWords(reply, turns, NO_MODEL);
     expect(out.content).toMatch(/\*\*Added to the Observation of Offense:\*\* she didn't call to say she'd be late/);
+  });
+});
+
+describe("CARD_CHECKED_AGAINST_WORDS_ENABLED: added details stick AND nothing wrong joins (gates, 13 Nov 2026)", () => {
+  const after = (said: string) => ({ turns: ["create a CA for Marnie Holloway, she was late on 11/3/26", said], roster: ROSTER });
+  it.each(["she was at the front desk on her phone the whole shift", "she was in the back room on her phone", "she yelled at the manager in front of clients", "she gave the keys to a non key holder", "she told the lead she might not come in and then did not come in", "she was at the front desk on her phone for 20 minutes", "she was a no-show on Saturday", "she ignored the posted warning about bed cleaning", "she said maybe and walked out of the salon", "she left the salon unlocked", "she is always late on weekends", "she was rude to a client", "Marnie left her shift early without telling anyone"])("must join: %s", (said) => {
+    expect(addedFacts("she was late on 11/3/26", "Marnie Holloway", after(said)).length).toBe(1);
+  });
+  it.each(["she gets a verbal warning", "Marnie gets a verbal warning", "she's a key holder", "she is a key holder", "she maybe forgot", "she is a TITLE", "she's our closing lead", "she might have forgotten", "she works at NE Kearney", "she is at the Kearney salon"])("must stay out: %s", (said) => {
+    expect(addedFacts("she was late on 11/3/26", "Marnie Holloway", after(said.replace("TITLE", ROSTER[0]!.positionName!)))).toEqual([]);
   });
 });

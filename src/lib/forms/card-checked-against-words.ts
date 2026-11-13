@@ -153,15 +153,21 @@ export function accountFromWords(employee: string | null, input: CardCheckInput)
  */
 /*
  * NOT A FACT (Gate-Bubbles-5 and Gate-Sunny-2 on the 17r-c fix, 13 Nov 2026): a sentence that starts like an account is
- * still not one when its CONTENT is a level ("she gets a verbal warning"), who she is ("she's a key holder", "she is a
- * <title>", "she's our closing lead"), where she works ("she works at <store>", "she is at <store label>"), or a hedge
- * ("she maybe forgot", "she might have forgotten"). Never joined to the card.
+ * not one when the level, the role or title, the place or the hedge IS its predicate: "she gets a verbal warning", "she
+ * is a key holder" / "she's our closing lead" / "she is a <title>", "she works at <store>" / "she is at <store label>",
+ * "she maybe forgot" / "she might have forgotten". An action that merely CONTAINS such a word is a real fact and joins:
+ * "she was at the register on her phone", "she yelled at the manager", "she ignored the posted warning", "she said maybe
+ * and walked out", "she was a no-show on Saturday".
  */
-const LEVEL_IN = /\b(?:(?:verbal|written|final|first|second|last)\s+(?:written\s+)?(?:warning|ca|c\/a|write[- ]?up|corrective action)|write[- ]?up|warning)s?\b/i;
-const IDENTITY = /\b(?:is|was|'s|’s|are)\s+(?:a|an|our|the|my|their)\s+\w+/i;
-const ROLE = /\b(?:key\s*holders?|keyholders?|managers?|leads?|supervisors?|assistant managers?)\b/i;
-const WORKS_AT = /\b(?:works?|worked|working|is|was|'s|’s|stationed|based|assigned)\s+(?:at|in|out of)\b/i;
-const HEDGE_WORD = /\b(?:maybe|might|may have|probably|possibly|perhaps|i think|i guess|not sure|guess)\b/i;
+const SUBJECT = String.raw`(?:she|he|they|[A-Z][a-z'’-]+)`;
+const LEVEL_WORDS = String.raw`(?:(?:a|an|her|his|their|the)\s+)?(?:(?:verbal|written|final|first|second|last)\s+(?:written\s+)?)?(?:warning|ca|c\/a|write[- ]?up|corrective action)s?`;
+const GETS_LEVEL = new RegExp(String.raw`^${SUBJECT}\s+(?:gets?|got|getting|will get|should get|is getting|receives?|received|deserves?)\s+${LEVEL_WORDS}\b`, "i");
+const GIVE_LEVEL = new RegExp(String.raw`\b(?:give|gave|giving|issue|issued)\s+(?:her|him|them)\s+${LEVEL_WORDS}\b`, "i");
+const IDENTITY_OF = new RegExp(String.raw`^${SUBJECT}(?:\s+(?:is|was|are|were)|'s|’s)\s+(?:a|an|our|the|my|their)\s+(.+)$`, "i");
+const AT_PLACE = new RegExp(String.raw`^${SUBJECT}\s+(?:works?|worked|working|is based|was based|is stationed|is assigned|was assigned)\s+(?:at|in|out of)\s+(.+)$`, "i");
+const IS_AT = new RegExp(String.raw`^${SUBJECT}(?:\s+(?:is|was)|'s|’s)\s+(?:at|in)\s+(.+)$`, "i");
+const HEDGED_VERB = new RegExp(String.raw`^${SUBJECT}\s+(?:maybe|probably|possibly|perhaps|might|may|must have|could have)\b`, "i");
+const ROLE = /\b(?:key\s*holders?|keyholders?|managers?|leads?|supervisors?)\b/i;
 const STREET_SUFFIX = /\b(?:rd|road|st|street|ave|avenue|blvd|boulevard|dr|drive|pkwy|parkway|ln|lane|hwy|highway)\.?$/i;
 
 function placeWords(): string[] {
@@ -170,16 +176,39 @@ function placeWords(): string[] {
     for (const part of label.split(/[,()]/)) {
       const word = plain(part).replace(STREET_SUFFIX, "").trim();
       if (word.length >= 4 && !/^[a-z]{2}$/.test(word)) out.add(word);
+      // Each word of a label part too ("NE Kearney" → "kearney"), for "she is at the Kearney salon".
+      for (const piece of word.split(" ")) if (piece.length >= 4) out.add(piece);
     }
   }
   return [...out];
 }
 
+/** The text is only a place: a store or salon label, or its city or street, with nothing else said. */
+function onlyPlace(text: string): boolean {
+  if (isPlace(text)) return true;
+  let rest = ` ${plain(text)} `;
+  for (const word of placeWords()) rest = rest.replace(` ${word} `, " ");
+  rest = rest.replace(/\b(?:the|our|my|a|store|salon|location|shop|ne|ks|mo|ia|co)\b/g, " ").trim();
+  return rest === "" && plain(text) !== "";
+}
+
+/** Who she is: a role word, a roster title, or a role with a modifier ("closing lead"), and nothing else. */
+function onlyRole(text: string, input: CardCheckInput): boolean {
+  const said = plain(text);
+  if (titles(input.roster).has(said)) return true;
+  const words = said.split(" ");
+  return ROLE.test(said) && words.length <= 3;
+}
+
 export function notAFact(clause: string, input: CardCheckInput): boolean {
-  if (LEVEL_IN.test(clause) || IDENTITY.test(clause) || ROLE.test(clause) || WORKS_AT.test(clause) || HEDGE_WORD.test(clause)) return true;
-  const said = ` ${plain(clause)} `;
-  for (const title of titles(input.roster)) if (title !== "" && said.includes(` ${title} `)) return true;
-  return placeWords().some((word) => said.includes(` ${word} `));
+  const text = clause.trim();
+  if (GETS_LEVEL.test(text) || GIVE_LEVEL.test(text) || HEDGED_VERB.test(text)) return true;
+  const identity = IDENTITY_OF.exec(text)?.[1];
+  if (identity && (onlyRole(identity, input) || onlyPlace(identity))) return true;
+  const works = AT_PLACE.exec(text)?.[1];
+  if (works) return true;
+  const at = IS_AT.exec(text)?.[1];
+  return at !== undefined && onlyPlace(at);
 }
 
 const ACCOUNT_START = /^(?:and\s+|but\s+|plus\s+)?(?:she|he|they)\b/i;

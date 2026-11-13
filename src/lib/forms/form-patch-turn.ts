@@ -41,6 +41,7 @@ import {
   fold,
   sameValue,
   type FieldValue,
+  type FormPatch,
   type PatchRules,
 } from "./form-reducer";
 import { formLabels, snapshotDiff, snapshotOf } from "./form-snapshot";
@@ -817,7 +818,7 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
     policyOutcome ??= await answerPolicy();
     // EDIT_SEES_SAVED_FORM_ENABLED: the patch model sees the saved form and confirms it, or corrects it (at most 3 patches).
     if (editSeesSavedFormEnabled() && formEditSingleWriterEnabled() && patchOps > 0) {
-      await checkSavedForm(input, loaded, (await import("./edit-sees-saved-form")).touchedKeys(reading.patch), actor.id, offered);
+      await checkSavedForm(input, loaded, (await import("./edit-sees-saved-form")).touchedKeys(reading.patch), actor.id, offered, reading.patch);
     }
     const reloaded = await loadInstance(input.instanceId);
     if (!reloaded) return null;
@@ -854,10 +855,20 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
  * after SAVED_CHECK_MAX_PATCHES patches in all. Nothing here answers the turn: the reply is the stored form's diff.
  * One JSON log line per turn, keys and counts only.
  */
-async function checkSavedForm(input: PatchTurnInput, start: LoadedInstance, firstTouched: readonly string[], actorId: string, offered: string | undefined): Promise<void> {
+async function checkSavedForm(
+  input: PatchTurnInput,
+  start: LoadedInstance,
+  firstTouched: readonly string[],
+  actorId: string,
+  offered: string | undefined,
+  firstPatch: FormPatch | null,
+): Promise<void> {
   const check = await import("./edit-sees-saved-form");
   const startDraft = draftFromRows(start.values);
   let touched = [...firstTouched];
+  // QA's speed change: the round's own patch, for the code's check (null: the old path's free-text revision).
+  let roundPatch: FormPatch | null = firstPatch;
+  let modelCalls = 0;
   let patches = 1;
   let stop = "limit";
   const corrected: string[] = [];
@@ -881,6 +892,15 @@ async function checkSavedForm(input: PatchTurnInput, start: LoadedInstance, firs
         stored: before[key]?.value ?? "",
         changed: !sameValue(startDraft[key]?.value, before[key]?.value),
       }));
+      // Settled by code when the saved form plainly does what was asked: no model call.
+      const moved = snapshotDiff(snapshotOf(start), snapshotOf(current)).map((change) => change.key);
+      const stored = Object.fromEntries(Object.entries(before).map(([key, field]) => [key, field.value]));
+      const byCode = check.settledByCode({ ask: input.question, employeeName: current.instance.employeeName || null, fields, patch: roundPatch, stored, moved });
+      if (byCode.settled) {
+        stop = patches === 1 ? "code_confirmed" : "code_confirmed_after_correction";
+        break;
+      }
+      modelCalls += 1;
       const reading = await readFormPatch({ ...modelInput, savedCheck: check.savedCheckBlock(input.question, fields) });
       if (!("ok" in reading) || reading.turn !== "this_form") {
         stop = "ok" in reading ? `turn:${reading.turn}` : `fallback:${reading.fallback}`;
@@ -939,11 +959,12 @@ async function checkSavedForm(input: PatchTurnInput, start: LoadedInstance, firs
       }
       corrected.push(...result.changed.map((change) => change.key));
       touched = [...new Set([...touched, ...check.touchedKeys(patch)])];
+      roundPatch = patch;
     }
   } catch (error) {
     stop = `error:${error instanceof Error ? error.name : typeof error}`;
   }
-  console.info(JSON.stringify({ event: "form_patch.saved_check", instanceId: input.instanceId, patches, stop, corrected: [...new Set(corrected)], refused }));
+  console.info(JSON.stringify({ event: "form_patch.saved_check", instanceId: input.instanceId, patches, stop, model_calls: modelCalls, corrected: [...new Set(corrected)], refused }));
 }
 
 /**
@@ -954,7 +975,7 @@ async function checkSavedForm(input: PatchTurnInput, start: LoadedInstance, firs
  * throws; on any failure the keys are read from storage as they are.
  */
 export async function checkSavedFormAfterRevision(input: PatchTurnInput, start: LoadedInstance, written: readonly string[], actorId: string): Promise<{ readonly changedKeys: string[] }> {
-  await checkSavedForm(input, start, written, actorId, lastAssistant(input.history));
+  await checkSavedForm(input, start, written, actorId, lastAssistant(input.history), null);
   const reloaded = await loadInstance(input.instanceId).catch(() => null);
   return { changedKeys: reloaded ? snapshotDiff(snapshotOf(start), snapshotOf(reloaded)).map((change) => change.key) : [...written] };
 }
