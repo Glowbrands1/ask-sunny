@@ -982,6 +982,20 @@ function onlyWhoOrWhere(clause: string, employeeName: string | null): boolean {
     return true;
   }
   if (onlyNamesThem(text, employeeName) || isPlaceOnly(text)) return true;
+  /*
+   * PLACE_STRIP_WHOLE_PHRASE_ONLY_ENABLED (Gate-Sunny's #933 probes, 13 Nov 2026): "<A> at omaha west" — the employee
+   * and a longer name that starts with a place the reader reads — is who and where, not what happened; it is dropped
+   * whole, never cut to "<A> west". Only the employee's name, "at"/"in", a read place and at most two more words, with
+   * no verb: "<A> at the front desk" is not a read place and stays. Off, as before.
+   */
+  if (placeStripWholePhraseOnlyEnabled() && employeeName) {
+    const lead = new RegExp(`^${escape(employeeName)}\\s+(?:at|in)\\s+(.+)$`, "i").exec(text)?.[1]?.split(/\s+/) ?? [];
+    for (let length = Math.min(3, lead.length); length >= 1 && lead.length > 0; length -= 1) {
+      const extra = lead.slice(length);
+      if (extra.length > 2 || /\b(?:was|is|did|had|has|not|were|are)\b/i.test(extra.join(" "))) break;
+      if (isPlaceOnly(lead.slice(0, length).join(" "))) return true;
+    }
+  }
   const unplaced = withoutPlace(text);
   if (unplaced === text) return false;
   // A place was named: what is left is only the person or their job title.
