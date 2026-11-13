@@ -96,3 +96,27 @@ export const NOV13_OBSERVATION_PLACE_STRIP_MEANING_CASES: ReplayCase[] = [
     },
   },
 ];
+
+/*
+ * QA, after Gate-Bubbles-3's finding on the sibling app's #869 (13 Nov 2026): an allow-list of words that may follow a
+ * place stopped real places being read. A place followed by a date, a dash, a weekday or a bracket must still be read
+ * (it leaves the Observation; the account stays). Guards: they hold on production's flags and with the flag.
+ */
+const MUST_READ: readonly { key: string; turn: string; place: RegExp; account: RegExp }[] = [
+  { key: "omaha-date", turn: "create a ca for marnie holloway, she was late at omaha 11/1/26", place: /\bomaha\b/i, account: /\bshe was late\b/i },
+  { key: "kearney-dash", turn: "create a ca for marnie holloway, she was at kearney - no call no show", place: /\bkearney\b/i, account: /no call no show/i },
+  { key: "lincoln-monday", turn: "create a ca for marnie holloway, she was late at lincoln monday", place: /\blincoln\b/i, account: /\bshe was late\b/i },
+  { key: "omaha-paren", turn: "create a ca for marnie holloway, she was at omaha (late)", place: /\bomaha\b/i, account: /\blate\b/i },
+];
+
+export const NOV13_OBSERVATION_PLACE_MUST_READ_CASES: ReplayCase[] = MUST_READ.map((wording) => ({
+  id: `nov13-observation-place-must-read-${wording.key}`,
+  title: `Admin: "${wording.turn}" — the place is still read and leaves the Observation`,
+  report: "QA (13 Nov 2026), after Gate-Bubbles-3's #869 finding: a real place mention is never lost; invented person",
+  status: "fixed",
+  async run(t: ReplayContext) {
+    const { reply, said } = await observationOf(t, wording.turn);
+    expect(said, `the place was not read:\n${reply}`).not.toMatch(wording.place);
+    expect(said, `the account was lost:\n${reply}`).toMatch(wording.account);
+  },
+}));

@@ -30,7 +30,7 @@ import {
   type ManualSection,
 } from "@/lib/forms/official-policy-manual";
 import { extractJobTitle, titleAfterJobTitleLabel } from "@/lib/forms/proposal";
-import { carriesOnAfterPlace, readSalonMentions } from "@/lib/forms/salon-mention";
+import { continuesPlaceName, readSalonMentions } from "@/lib/forms/salon-mention";
 import { US_STATE_CODE } from "@/lib/forms/state-code-place";
 import { detectTemplateIntent, withoutLeadingGlossaryTerm } from "@/lib/forms/template-intent";
 import type { KnowledgeCategory, SourceCitation } from "@/types";
@@ -1046,12 +1046,13 @@ function withoutPlace(clause: string): string {
       /*
        * PLACE_STRIP_WHOLE_PHRASE_ONLY_ENABLED (QA, Gate-Sunny's #933 probes, 13 Nov 2026; high: it changed an HR
        * record's meaning): "she was late because she was at lincoln high" became "… she was high", and "<A> at omaha
-       * west" became "<A> west". A place is taken out only where its whole phrase ends: at the end of the clause, at
-       * punctuation, or before a word that carries the sentence on. A longer name ("lincoln high", "omaha west") keeps
-       * every word, and no shorter phrase inside it is tried. Off, as before.
+       * west" became "<A> west". A place is not taken out only when the next word continues a longer proper noun
+       * (`continuesPlaceName`: "high", "west", a capitalised word mid-sentence); then every word is kept and no shorter
+       * phrase inside it is tried. A date, a dash, a weekday or the rest of the account leave the place read (QA, after
+       * Gate-Bubbles-3's #869 finding). Off, as before.
        */
       const next = words[index + 1 + length];
-      if (placeStripWholePhraseOnlyEnabled() && next !== undefined && !/[,;:)]$/.test(phrase) && !carriesOnAfterPlace(next)) break;
+      if (placeStripWholePhraseOnlyEnabled() && next !== undefined && !/[,;:)]$/.test(phrase) && continuesPlaceName(next)) break;
       const tail = phrase.slice(bare.length);
       const rest = [...words.slice(0, index), ...words.slice(index + 1 + length)].join(" ");
       return withoutPlace(`${rest}${tail}`.trim());

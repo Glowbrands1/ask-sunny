@@ -157,13 +157,23 @@ const ROSTER_STATES = [...new Set(PRODUCTION_SALONS.map((salon) => salon.state.t
 const STATE_BEFORE = new RegExp(`\\b(?:${ROSTER_STATES.join("|")})\\s+$`);
 const AT_BEFORE = /\b(?:at|in)\s+(?:the\s+)?$/;
 const PLACE_AFTER = /^\s*(?:salon|store|location|studio)\b/;
-/**
- * PLACE_STRIP_WHOLE_PHRASE_ONLY_ENABLED: whether the word after a place phrase carries the sentence on ("today", "and",
- * "she") rather than continuing a longer name ("high" in "lincoln high", "west" in "omaha west"). The account reader
- * takes a place out only where its phrase ends.
+/*
+ * PLACE_STRIP_WHOLE_PHRASE_ONLY_ENABLED (QA, 13 Nov 2026; Gate-Bubbles-3's ruling on the sibling app's #869): a place is
+ * part of a longer proper noun only when the next word continues one — a word from this short list ("lincoln high",
+ * "omaha west", "kansas state") or a capitalised word in the middle of a sentence that is not a weekday, a month or a
+ * pronoun. Anything else (a date, a dash, a bracket, a weekday, the rest of the account) leaves the place read.
  */
-export function carriesOnAfterPlace(word: string): boolean {
-  return new RegExp(`^(?:${CARRIES_ON})$`, "i").test(word.replace(/[^A-Za-z']+$/, ""));
+const CONTINUES_NAME =
+  /^(?:high|middle|elementary|school|central|west|east|north|south|state|university|college|mall|road|street|st|ave|construction|park|hospital)$/i;
+const NOT_A_NAME_WORD =
+  /^(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december|i|she|he|they|we|her|his|their|the|and|but|or|on|at|in)$/i;
+
+/** Whether this word, after a place, continues a longer proper noun ("high", "West", "Mall"). */
+export function continuesPlaceName(next: string): boolean {
+  const word = /^([A-Za-z][A-Za-z'’-]*)/.exec(next)?.[1];
+  if (!word) return false;
+  if (CONTINUES_NAME.test(word)) return true;
+  return /^[A-Z]/.test(word) && !NOT_A_NAME_WORD.test(word);
 }
 
 const CARRIES_ON_AFTER = new RegExp(`^\\s*$|^\\s+;|^\\s+(?:${CARRIES_ON})\\b`);
