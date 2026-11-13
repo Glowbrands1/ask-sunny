@@ -147,4 +147,14 @@ describe("the DM L10 page in Ask Sunny", () => {
     const solved = within(screen.getByRole("list", { name: "Solved issues" })).getAllByRole("listitem");
     expect(solved.map((li) => li.textContent)).toEqual([expect.stringContaining("Newer solved"), expect.stringContaining("Older solved")]);
   });
+
+  it("IDS has no ranking: no top-three table, no Rank buttons, no Priority badges (even on issues ranked in the Hub)", () => {
+    const issues = [{ id: "i1", title: "Weekly issue", notes: "", resolved: false, votes: { "hub-user-2": { rank: 1, name: "Bo" } } }];
+    renderView({ initial: loaded(3, { issues }) });
+    fireEvent.click(screen.getByRole("button", { name: /6 · IDS · Issues/ }));
+    expect(screen.queryByRole("region", { name: "Everyone's top three" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Rank by you/ })).toBeNull();
+    expect(screen.queryByTestId("room-rank")).toBeNull();
+    expect(within(screen.getByRole("list", { name: "Open issues" })).getByRole("button", { name: "Solve Weekly issue" })).toBeTruthy();
+  });
 });

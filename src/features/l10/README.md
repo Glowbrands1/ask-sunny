@@ -51,6 +51,7 @@ The Hub's page code runs unchanged except:
 | Recaps page, Tracker, notification settings | links to the Hub | not in v1 |
 | Assistant on assistant-ui | the same markup on `@ai-sdk/react` | assistant-ui needs AI SDK 7 and a newer Radix |
 | Assistant: attachments, chat history, @-mentions, note cards, web search, documents | not here | not in v1 (only in the Hub) |
+| IDS ranking ("Everyone's top three", Rank buttons, Priority badges) | off (`RANKING = false` in `Ids.tsx`) | the team works IDS as in Bloom Growth, without ranking (14 Nov 2026) |
 
 When the Hub's meeting page changes, re-copy the file and re-apply the row above that concerns it.
 
