@@ -4664,3 +4664,14 @@ export function policyCarryRetrievalEnabled(): boolean {
 export function notFollowingIsViolationEnabled(): boolean {
   return envFlag("NOT_FOLLOWING_IS_VIOLATION_ENABLED");
 }
+
+/**
+ * CLOSE_SPELLING_MATCH (Pau, via QA, 13 Nov 2026; ported from the sibling app): the manager's words are matched against
+ * the app's own lists by close spelling, not only exact spelling. A policy named "Care and Clening" cites the manual's
+ * "Care and Cleaning" section; a salon typed one letter off is read as the roster salon. Two close matches, or one
+ * that is not confident, are asked about ("Did you mean …?" / "which salon"), never taken. Names keep going through
+ * the roster readers. See `forms/close-spelling.ts`. Off, only exact spellings match, as before.
+ */
+export function closeSpellingMatchEnabled(): boolean {
+  return envFlag("CLOSE_SPELLING_MATCH_ENABLED");
+}
