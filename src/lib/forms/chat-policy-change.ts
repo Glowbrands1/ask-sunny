@@ -533,7 +533,8 @@ export async function rederivePolicyFromAccount(input: {
 
   const row = (key: string) => loaded.values.find((value) => value.fieldKey === key);
   const managers = (key: string) => row(key)?.filledBy === "manager" && ((row(key)?.value ?? "").trim() !== "" || (row(key)?.checked ?? []).length > 0);
-  const writer = await import("./form-write");
+  const writer = formEditSingleWriterEnabled() ? await import("./form-write") : null;
+  if (!writer) return [];
   const written: string[] = [];
   const offered = group?.options.map((option) => option.key) ?? [];
   const reading = readCaPolicy(input.account);
