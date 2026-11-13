@@ -9,6 +9,7 @@ import { actorMaySeeInstance, withoutUnreadable } from "@/lib/forms/instance-sco
 import { listOutstandingFollowUps } from "@/lib/forms/instances";
 import { privateAwareLimit } from "@/lib/forms/private-creators";
 import { pageFormsAccess } from "@/lib/forms/page-scope";
+import { l10TabsForLayout } from "@/features/l10/data.server";
 
 /**
  * COUNTS, NOT HUES — the rail's overdue badge.
@@ -48,10 +49,12 @@ async function overdueCount(): Promise<number> {
 }
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
-  const [overdueFollowUps, showAppSwitcherBase, showLeadershipHub] = await Promise.all([
+  const [overdueFollowUps, showAppSwitcherBase, showLeadershipHub, meetingTabs] = await Promise.all([
     overdueCount(),
     pageShowsAppSwitcher(),
     pageShowsLeadershipHub(),
+    // The DM L10 tab: only for people the Leadership Hub lists as attendees (see features/l10).
+    l10TabsForLayout(),
   ]);
   // A listed leader needs the menu to reach the tab, so the menu opens for them too.
   const showAppSwitcher = showAppSwitcherBase || showLeadershipHub;
@@ -60,6 +63,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       overdueFollowUps={overdueFollowUps}
       showAppSwitcher={showAppSwitcher}
       showLeadershipHub={showLeadershipHub}
+      meetingTabs={meetingTabs.map(({ href, label }) => ({ href, label }))}
     >
       {children}
     </AppShell>

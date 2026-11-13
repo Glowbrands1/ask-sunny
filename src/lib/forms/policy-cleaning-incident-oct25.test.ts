@@ -90,7 +90,13 @@ describe("flag on: cleaning is Care and Cleaning p.21", () => {
         documentTitle: "JBA Policy Manual",
         modelHeading,
       });
-      expect(citations.map((citation) => citation.locator)).toEqual(["Page 21"]);
+      /*
+       * Changed on purpose (Pau's rule, 13 Nov 2026; QA, before the OTHER_POLICY_AGREES flip): Pau's newer rule replaces
+       * this ruling. A described cleaning duty is Other, and only a named policy is Care and Cleaning. So with
+       * OTHER_POLICY_AGREES on (and CA_SALES_POLICY's cleaning-is-Other reading), the card cites nothing here.
+       */
+      const otherAgrees = process.env.OTHER_POLICY_AGREES_ENABLED === "true" && process.env.CA_SALES_POLICY_ENABLED === "true";
+      expect(citations.map((citation) => citation.locator)).toEqual(otherAgrees ? [] : ["Page 21"]);
     }
   });
 

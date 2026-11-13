@@ -279,3 +279,19 @@ describe("the app switcher on the rail", () => {
     }
   });
 });
+
+describe("the DM L10 tab", () => {
+  afterEach(() => cleanup());
+
+  it("appears, under Meetings, only when the server passed a tab (the Leadership Hub listed this person)", () => {
+    mocked.value = session("district_manager", false);
+    const { unmount } = render(<SidebarNav meetingTabs={[{ href: "/meetings/stc-dm", label: "DM L10" }]} />);
+    const link = screen.getByRole("link", { name: "DM L10" });
+    expect(link.getAttribute("href")).toBe("/meetings/stc-dm");
+    expect(screen.getByText("Meetings")).toBeTruthy();
+    unmount();
+    render(<SidebarNav />);
+    expect(screen.queryByRole("link", { name: "DM L10" })).toBeNull();
+    expect(screen.queryByText("Meetings")).toBeNull();
+  });
+});
