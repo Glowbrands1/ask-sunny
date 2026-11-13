@@ -133,3 +133,8 @@ SHA, and which open cases now hold. Records go to branch `claude/gate-sunny-3-re
   she was on the phone the whole shift" still missed ("for" left out). Full runs x942/x942ON (on c3743f37 + main
   b3352a76) running; the delta since is add-already-on-form.ts + test + cases only. Resume: re-run the add probes
   (6 wordings, both flags), eval, verdict.
+
+## Update ~23:00Z
+- S#927: **GO on 867dc2de0** (prompts unchanged OFF: 0/1,778; ON only the nov13 arms; eval 63/63). Done.
+- S#942: **GO on 0190ed13b9** (whole replay pack ON: only the 2 OPEN arms + the new small-word case; eval 63/63). Done. The PR still needs main merged (flag-list conflict).
+- In flight: nothing. Next: whatever QA routes; the held items above stay held.
