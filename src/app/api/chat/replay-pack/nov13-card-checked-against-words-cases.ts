@@ -35,8 +35,8 @@ export const NOV13_CARD_CHECKED_AGAINST_WORDS_CASES: ReplayCase[] = [
     id: "nov13-17rc-added-detail-kept-on-card",
     title: "the sibling app's 17r-c live test, ported: \"create a CA for Marnie Holloway, she was late on 11/3/26\", then \"she also didn't call to say she'd be late\" on the open card: the Observation of Offense keeps both facts, and the reply names the change",
     report: "Ported from the sibling app: QA's 17r-c live test, 13 Nov 2026 (the added detail lost, the reply repeating the whole draft). Here the Observation already keeps both facts; the reply never said what changed",
-    // Changed on purpose (13 Nov 2026): fixed in production by CARD_CHECKED_AGAINST_WORDS, QA round 38f. Was OPEN.
-    status: "fixed",
+    // Changed on purpose (13 Nov 2026): back to OPEN. CARD_CHECKED_AGAINST_WORDS was rolled back in production after the 38f live test.
+    status: { open: "the reply repeats the whole draft and never says what changed" },
     fixFlags: ["CARD_CHECKED_AGAINST_WORDS_ENABLED"],
     async run(t) {
       vi.setSystemTime(new Date("2026-11-13T16:00:00Z"));
