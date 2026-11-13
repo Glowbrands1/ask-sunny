@@ -183,3 +183,11 @@ describe("CARD_CHECKED_AGAINST_WORDS_ENABLED: Gate-Bubbles-5's history list (13 
     expect(addedFacts("she was late on 11/3/26", "Marnie Holloway", after(said))).toEqual([said]);
   });
 });
+
+describe("CARD_CHECKED_AGAINST_WORDS_ENABLED: every and/but part through the full filter (QA, 13 Nov 2026)", () => {
+  // A first fact the parts do not repeat, so only the split is tested.
+  const after = (said: string) => ({ turns: ["create a CA for Marnie Holloway, she left the register open on 11/3/26", said], roster: ROSTER });
+  it.each([["she yelled at a client and she gets a verbal warning", "she yelled at a client"], ["she left the beds dirty and she maybe forgot", "she left the beds dirty"], ["she was late and she's a key holder", "she was late"], ["she left early but she works at NE Kearney", "she left early"]])("%s → only %s joins", (said, fact) => {
+    expect(addedFacts("she left the register open on 11/3/26", "Marnie Holloway", after(said))).toEqual([fact]);
+  });
+});

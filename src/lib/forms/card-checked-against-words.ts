@@ -247,17 +247,19 @@ export function addedFacts(issue: string, employee: string | null, input: CardCh
       let clause = sentence.trim().replace(/[.!]+$/, "");
       if (clause === "" || !(ACCOUNT_START.test(clause) || (first !== "" && starts.test(clause)))) continue;
       /*
-       * Gate-Sunny-2 (13 Nov 2026): "she had a CA last week and was late again today" holds history AND a current fact:
-       * the history part is dropped, and the current part joins with her subject ("she was late again today").
+       * Gate-Sunny-2 / QA (13 Nov 2026): a sentence joined by "and"/"but" can hold a fact AND something that is not one
+       * ("she had a CA last week and was late again today", "she yelled at a client and she gets a verbal warning", "she
+       * was late and she's a key holder"). Every part goes through the same checks, with her subject where it has none;
+       * only the fact parts join ("she was late again today", "she yelled at a client", "she was late").
        */
       const parts = clause.split(/\s+(?:and|but)\s+(?:then\s+)?/i);
-      if (parts.length > 1 && parts.some((part) => isHistory(part))) {
+      if (parts.length > 1) {
         const subject = clause.split(/\s+/)[0] ?? "";
-        const current = parts.slice(1).filter((part) => !isHistory(`${subject} ${part}`));
-        const lead = isHistory(parts[0]!) ? null : parts[0]!;
-        const kept = [...(lead ? [lead] : []), ...current];
+        const own = (part: string) => ACCOUNT_START.test(part) || (first !== "" && starts.test(part));
+        const whole = (part: string) => (own(part) ? part : `${subject} ${part}`);
+        const kept = parts.filter((part) => issueProblem(whole(part), employee, input) === null && !notAFact(whole(part), input));
         if (kept.length === 0) continue;
-        clause = lead ? kept.join(" and ") : `${subject} ${kept.join(" and ")}`;
+        if (kept.length < parts.length) clause = [whole(kept[0]!), ...kept.slice(1)].join(" and ");
       }
       if (issueProblem(clause, employee, input) !== null || notAFact(clause, input)) continue;
       const fact = clause.replace(/^(?:and|but|plus)\s+/i, "").replace(/\b(also|too)\b\s*/gi, "").replace(/\s+/g, " ").trim();
