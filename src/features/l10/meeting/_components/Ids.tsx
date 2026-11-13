@@ -6,8 +6,20 @@ import confetti from "canvas-confetti";
 import { Button, cx, inputClass } from "@/features/l10/ui/ui";
 import { MentionField, MentionText, useMentionPlain, useMentionRoster } from "@/features/l10/ui/Mentions";
 import { SharedFiles } from "./SharedFiles";
-import { RANKS, canVote, groupRanks, myRank, newItemId, picksByVoter, searchIssues, sortIssues, toggleSolved, toggleVote, usesPreviousOrder, type Rank, type Voter } from "@/features/l10/lib/doc";
-import type { Attendee, Headline, Issue, MeetingDoc, Rock, Todo } from "@/features/l10/lib/types";
+import { RANKS, canVote, groupRanks, issueTerm, myRank, newItemId, picksByVoter, recentlySolved, searchIssues, sortIssues, toggleSolved, toggleVote, usesPreviousOrder, type Rank, type Voter } from "@/features/l10/lib/doc";
+import type { Attendee, Headline, Issue, IssueTerm, MeetingDoc, Rock, Todo } from "@/features/l10/lib/types";
+
+/** The three IDS lists, as in Bloom Growth: this week's issues, the ones parked for later, and the recently solved. */
+export type IdsTab = IssueTerm | "solved";
+const TAB_LABEL: Record<IdsTab, string> = { short: "Short term", long: "Long-term", solved: "Recently solved" };
+
+/** Moving an issue between the lists releases its votes and old shared rank (only short-term issues are ranked). */
+function withTerm(i: Issue, term: IssueTerm): Issue {
+  const copy = { ...i, term } as Record<string, unknown>;
+  delete copy.votes;
+  delete copy.rank;
+  return copy as Issue;
+}
 
 const initials = (name?: string) => (name ?? "").split(" ").map((n) => n[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
 
@@ -126,7 +138,7 @@ export function Ids({
   const plain = useMentionPlain();
   const [text, setText] = useState("");
   const [query, setQuery] = useState("");
-  const [showSolved, setShowSolved] = useState(false);
+  const [tab, setTab] = useState<IdsTab>("short");
   const [activeId, setActiveId] = useState<string | null>(null);
   /** The row whose Delete was pressed and awaits a second, deliberate press. */
   const [confirmId, setConfirmId] = useState<string | null>(null);
@@ -134,14 +146,18 @@ export function Ids({
   const setIssues = (fn: (xs: Issue[]) => Issue[]) => edit((d) => ({ ...d, issues: fn(d.issues) }));
   const filtered = searchIssues(sortIssues(doc.issues), query);
   const roomRanks = groupRanks(doc.issues);
-  const open = filtered.filter((i) => !i.resolved);
-  const solved = filtered.filter((i) => i.resolved);
+  const shortTerm = filtered.filter((i) => !i.resolved && issueTerm(i) === "short");
+  const longTerm = filtered.filter((i) => !i.resolved && issueTerm(i) === "long");
+  const solved = recentlySolved(filtered);
+  const lists: Record<IdsTab, Issue[]> = { short: shortTerm, long: longTerm, solved };
   const patch = (id: string, p: Partial<Issue>) => setIssues((xs) => xs.map((i) => (i.id === id ? { ...i, ...p } : i)));
 
   const add = () => {
     const t = text.trim();
     if (!t) return;
-    setIssues((xs) => [...xs, { id: newItemId(), title: t, notes: "", resolved: false }]);
+    // A new issue goes on the list being looked at (short-term when "Recently solved" is open).
+    const term: IssueTerm = tab === "long" ? "long" : "short";
+    setIssues((xs) => [...xs, { id: newItemId(), title: t, notes: "", resolved: false, ...(term === "long" ? { term } : {}) }]);
     setText("");
   };
 
@@ -186,6 +202,11 @@ export function Ids({
         <Button variant="outline" onClick={() => edit((d) => ({ ...d, headlines: [...d.headlines, { id: newItemId(), kind: "customer", text: active.title, author: "IDS" } as Headline] }))}>
           Headline
         </Button>
+        {!active.resolved && (
+          <Button variant="outline" className="ml-auto" onClick={() => setIssues((xs) => xs.map((i) => (i.id === active.id ? withTerm(i, issueTerm(active) === "long" ? "short" : "long") : i)))}>
+            {issueTerm(active) === "long" ? "Move to short term" : "Move to long-term"}
+          </Button>
+        )}
       </div>
     </section>
   );
@@ -199,6 +220,8 @@ export function Ids({
           {(() => {
             const mine = myRank(i, voter.id);
             const can = canVote(doc.issues, i.id, voter.id);
+            // Only short-term issues are ranked.
+            if (!i.resolved && issueTerm(i) === "long") return null;
             const hint = i.resolved
               ? "Solved issues are not ranked"
               : mine
@@ -286,23 +309,33 @@ export function Ids({
         </Button>
         <input aria-label="Search issues" type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search issues…" className={cx(inputClass, "w-48 max-sm:w-auto max-sm:flex-1")} />
       </div>
-      <PriorityTable issues={doc.issues} attendees={attendees} />
-      <ul className="m-0 flex list-none flex-col gap-2 p-0" aria-label="Open issues">
-        {open.map(row)}
-        {open.length === 0 && <li className="rounded-[10px] border border-dashed border-line p-4 text-sm text-muted">{query ? "No open issues match." : "No open issues. Nice work."}</li>}
-      </ul>
-      {solved.length > 0 && (
-        <>
-          <Button variant="link" className="self-start" aria-expanded={showSolved} onClick={() => setShowSolved((s) => !s)}>
-            {showSolved ? "Hide" : "Show"} solved ({solved.length})
-          </Button>
-          {showSolved && (
-            <ul className="m-0 flex list-none flex-col gap-2 p-0" aria-label="Solved issues">
-              {solved.map(row)}
-            </ul>
+      <div role="tablist" aria-label="Issue lists" className="flex flex-wrap gap-1 border-b border-line">
+        {(Object.keys(TAB_LABEL) as IdsTab[]).map((k) => (
+          <button
+            key={k}
+            type="button"
+            role="tab"
+            id={`ids-tab-${k}`}
+            aria-selected={tab === k}
+            aria-controls={`ids-panel-${k}`}
+            onClick={() => setTab(k)}
+            className={cx("-mb-px border-b-2 px-3 py-2 text-sm font-semibold", tab === k ? "border-bronze text-ink" : "border-transparent text-muted hover:text-ink")}
+          >
+            {TAB_LABEL[k]} ({lists[k].length})
+          </button>
+        ))}
+      </div>
+      {tab === "short" && <PriorityTable issues={doc.issues.filter((i) => issueTerm(i) === "short")} attendees={attendees} />}
+      <div role="tabpanel" id={`ids-panel-${tab}`} aria-labelledby={`ids-tab-${tab}`}>
+        <ul className="m-0 flex list-none flex-col gap-2 p-0" aria-label={tab === "short" ? "Open issues" : tab === "long" ? "Long-term issues" : "Solved issues"}>
+          {lists[tab].map(row)}
+          {lists[tab].length === 0 && (
+            <li className="rounded-[10px] border border-dashed border-line p-4 text-sm text-muted">
+              {query ? (tab === "solved" ? "No solved issues match." : "No open issues match.") : tab === "short" ? "No open issues. Nice work." : tab === "long" ? "No long-term issues." : "No solved issues yet."}
+            </li>
           )}
-        </>
-      )}
+        </ul>
+      </div>
     </div>
   );
 }
