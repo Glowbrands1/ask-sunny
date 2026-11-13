@@ -252,7 +252,9 @@ export function addedFacts(issue: string, employee: string | null, input: CardCh
        * was late and she's a key holder"). Every part goes through the same checks, with her subject where it has none;
        * only the fact parts join ("she was late again today", "she yelled at a client", "she was late").
        */
-      const parts = clause.split(/\s+(?:and|but)\s+(?:then\s+)?/i);
+      // "and"/"but", or a comma that starts a new clause with her subject ("…dirty, she is a <title>").
+      const nameStart = first !== "" ? `|${first.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}` : "";
+      const parts = clause.split(new RegExp(String.raw`\s+(?:and|but)\s+(?:then\s+)?|,\s+(?=(?:she|he|they${nameStart})\b)`, "i"));
       if (parts.length > 1) {
         const subject = clause.split(/\s+/)[0] ?? "";
         const own = (part: string) => ACCOUNT_START.test(part) || (first !== "" && starts.test(part));
