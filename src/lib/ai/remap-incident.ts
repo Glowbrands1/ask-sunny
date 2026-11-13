@@ -11,6 +11,7 @@ import {
   anotherRequestLeadEnabled,
   placeStripWholePhraseOnlyEnabled,
   secondRequestOwnAccountEnabled,
+  sharedCityAsksSalonEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { createRequestWithReason } from "./edit-date-rules";
 import { withoutPriorStepClauses, correctedDates } from "@/lib/forms/form-date-answer";
@@ -30,7 +31,7 @@ import {
   type ManualSection,
 } from "@/lib/forms/official-policy-manual";
 import { extractJobTitle, titleAfterJobTitleLabel } from "@/lib/forms/proposal";
-import { continuesPlaceName, readSalonMentions } from "@/lib/forms/salon-mention";
+import { continuesPlaceName, isCloseSharedCity, readSalonMentions } from "@/lib/forms/salon-mention";
 import { US_STATE_CODE } from "@/lib/forms/state-code-place";
 import { detectTemplateIntent, withoutLeadingGlossaryTerm } from "@/lib/forms/template-intent";
 import type { KnowledgeCategory, SourceCitation } from "@/types";
@@ -1025,6 +1026,13 @@ const PLACE_FILLER = new Set(["the", "salon", "location", "store", "our"]);
 function isPlaceOnly(text: string): boolean {
   const ids = [...new Set(readSalonMentions(`at ${text}`).flatMap((mention) => mention.salonIds))];
   if (ids.length === 0) return false;
+  /*
+   * SHARED_CITY_ASKS_SALON_ENABLED (QA, Gate-Sunny's #933 probes, 13 Nov 2026): a shared city typed a letter off ("omha",
+   * "the omha store", "kansas cty") is the place, as the city spelled right is, so "<A> at omha" and "… in omha" leave
+   * the account the same way "… at omaha" does. Only a place the salon reader reads: "at the front desk", "in the back
+   * room" and "at close" are the account and are kept word for word. Off, as before.
+   */
+  if (sharedCityAsksSalonEnabled() && isCloseSharedCity(text)) return true;
   const salonWords = new Set(
     ids.flatMap((id) => (salonById(id)?.name ?? "").toLowerCase().split(/[^a-z0-9]+/)).filter(Boolean),
   );

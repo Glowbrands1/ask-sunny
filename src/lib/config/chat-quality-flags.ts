@@ -4008,6 +4008,39 @@ export function oneCardOnePageEnabled(): boolean {
 }
 
 /**
+ * OTHER_POLICY_AGREES_ENABLED (QA's ruling on the Sunny sanitation report, 10 Nov 2026 18:49Z; default off; Pau's rule
+ * stands: cleaning or sanitation left undone is Other, the account its reason). "please make a ca for <name> for not
+ * doing th e10 minute sanitaion": the card cited "Care and Cleaning of Equipment and Facilities Policy, JBA Policy Manual
+ * p.21"; Create saved Other with the EMERGENCY passage as Direct policy. On: (1) sanitation reads as cleaning left undone
+ * (`forms/ca-policy.ts`); (2) the card shows Other with the account and cites no section for it
+ * (`ai/form-card-slots.ts`); (3) with Other ticked and no pinned section, Direct policy is blank, never an unrelated
+ * retrieved passage (`forms/policy-fields.ts`). Off, as before.
+ */
+export function otherPolicyAgreesEnabled(): boolean {
+  return envFlag("OTHER_POLICY_AGREES_ENABLED");
+}
+
+/**
+ * OTHER_NOT_A_POLICY_NAME_ENABLED (QA's ruling on the Sunny sanitation report, 11 Nov 2026; default off). A Corrective Action
+ * saved with Policy Violated "Other" got the Action Plan "Management will review the Other policy with <first>.": "Other" is
+ * a box, not a policy. On, a bare "Other" is never a policy name (`forms/ca-action-plan.ts`, protected:
+ * docs/patches/other-not-a-policy-name.patch) and the plan reads "the applicable company policy". Off, as before.
+ */
+export function otherNotAPolicyNameEnabled(): boolean {
+  return envFlag("OTHER_NOT_A_POLICY_NAME_ENABLED");
+}
+
+/**
+ * ACCOUNT_TYPOS_FIXED_ENABLED (QA, the Sunny sanitation report, 10 Nov 2026 18:49Z; default off). "not doing th e10 minute
+ * sanitaion" went onto the card word for word. On, the card's account keeps the manager's words with obvious slips mended
+ * ("the 10-minute sanitation"; `forms/account-spelling.ts`). The stored messages and the record keep what was typed. Off,
+ * as before.
+ */
+export function accountTyposFixedEnabled(): boolean {
+  return envFlag("ACCOUNT_TYPOS_FIXED_ENABLED");
+}
+
+/**
  * ANOTHER_REQUEST_LEAD_ENABLED (QA, Sunny round 7c and 9 live, 9 Nov 2026; default off; same flag in both apps). "I need
  * another corrective action for <P>, his cash drawer was short $20 on 11/3" was the card's whole Observation: "another" was
  * not read as the request's own word. With the flag on, "another", "one more" and "a second / separate / different / new"
@@ -4703,6 +4736,30 @@ export function notFollowingIsViolationEnabled(): boolean {
 }
 
 /**
+ * EDIT_SEES_SAVED_FORM_ENABLED (coding 6, 13 Nov 2026; default off; same flag in both apps; Pau's direction via QA). The
+ * form edit read the turn once as a patch and the code guessed what was written: an "Updated" that did not match the
+ * form, reasons that never landed. On: after the turn's writes on the patch path (`forms/form-patch-turn.ts`), the
+ * stored form is read back and handed to the patch model with the manager's ask ("SAVED AFTER YOUR LAST PATCH"); it
+ * confirms (an empty patch) or sends a correction, written by the same writer. At most 3 patches a turn. The reply is
+ * always the stored form's diff. Off, as before.
+ */
+export function editSeesSavedFormEnabled(): boolean {
+  return envFlag("EDIT_SEES_SAVED_FORM_ENABLED");
+}
+
+/**
+ * CARD_CHECKED_AGAINST_WORDS_ENABLED (coding 6, 13 Nov 2026; default off; same flag in both apps; Pau's direction via
+ * QA). Cards showed an Issue that was a hedge about the decision, a job title, a salon label or a name, and a person who
+ * was a title. On: before a card is shown it is checked against the manager's own words
+ * (`forms/card-checked-against-words.ts`): code checks on every card, a repair from the manager's clauses, and only then
+ * one structured model call (at most two) whose corrections must quote the manager. Nothing is invented: an Issue
+ * nothing repairs is blank and the card asks "What happened?". Off, as before.
+ */
+export function cardCheckedAgainstWordsEnabled(): boolean {
+  return envFlag("CARD_CHECKED_AGAINST_WORDS_ENABLED");
+}
+
+/**
  * SAME_NAME_ASKS_WHICH_ENABLED (coding 6, 12 Nov 2026; default off; QA, high priority). With TYPED_NAME_PROCEEDS on
  * (live), two roster people with the same name were resolved to neither and never asked about: "verbal CA for <name>"
  * with two active <name>s at the salon gave a ready card with one of them's job title and no employee id. On: one close
@@ -4740,4 +4797,14 @@ export function closeSpellingMatchEnabled(): boolean {
  */
 export function placeStripWholePhraseOnlyEnabled(): boolean {
   return envFlag("PLACE_STRIP_WHOLE_PHRASE_ONLY_ENABLED");
+}
+
+/**
+ * SHARED_CITY_ASKS_SALON (QA's Sunny 38c live check, 13 Nov 2026; default off): a shared city typed a letter off ("at
+ * omha") is read as that city, so any scope covering more than one of its salons is asked which; and a clause that is
+ * only the employee's name and "at <place>" is never the Observation of Offense, read or not. See
+ * `forms/salon-mention.ts` and `ai/remap-incident.ts`. Off, as before.
+ */
+export function sharedCityAsksSalonEnabled(): boolean {
+  return envFlag("SHARED_CITY_ASKS_SALON_ENABLED");
 }
