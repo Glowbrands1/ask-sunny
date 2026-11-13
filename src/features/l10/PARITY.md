@@ -78,6 +78,7 @@ Approved by QA on 13 Nov 2026 under the condition "built narrow". The Hub's own 
 | `NotificationBell.tsx`, `NotificationsView.tsx` | "See all" / "Settings" open the Hub | One meeting here |
 | `assistant/storage.ts` | Key prefix and per-user scope | Keeps it separate from the Hub's history and from other Ask Sunny users |
 | `report/page.tsx`, `recaps/page.tsx` | One meeting, inside `L10Frame`, through `openMeeting` (404 for anyone the Hub refuses) | One meeting here |
+| `Ids.tsx`, `lib/doc.ts`, `lib/types.ts` | IDS tabs Short term / Long-term / Recently solved (Ask Sunny #945, `docs/parity-log/2026-11-14-dm-l10-ids-short-long-term.md`) | Ahead of Hub `main`: the same change is in the open Hub PR [Glowbrands1/leadership-hub#72](https://github.com/Glowbrands1/leadership-hub/pull/72); once it merges they match again |
 | `AssistantPanel.tsx` | The Hub's panel markup on `useChat` (not assistant-ui); the Hub's `OpenDocumentButton` / `AnswerText` inside it | AI SDK 6 in Ask Sunny |
 | `ArtifactPane.tsx`, `artifact-context.tsx` | Imports only | — |
 | `markdown-prose.tsx` | Only `proseClass` / `noImages` from the Hub's `Markdown.tsx` | The Hub's streaming renderer is assistant-ui's |
