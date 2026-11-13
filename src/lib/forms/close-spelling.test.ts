@@ -76,3 +76,27 @@ describe("close-spelling: a policy named a letter off", () => {
     expect(closePolicyQuestion("parking lot", JBA_MANUAL_CA_CHUNKS)).toBeNull();
   });
 });
+
+describe("close-spelling: QA's proof cases (13 Nov 2026)", () => {
+  it("one letter off from two headings: not confident, both offered as \"A or B\"", () => {
+    vi.stubEnv("CLOSE_SPELLING_MATCH_ENABLED", "true");
+    expect(closeHeadingReading("key holdr", ["Key Holder Guidelines", "Key Holder Requirements", "Standards of Conduct"])).toEqual({
+      confident: null,
+      candidates: ["Key Holder Guidelines", "Key Holder Requirements"],
+    });
+  });
+
+  it("a word many headings share is never a confident match", () => {
+    vi.stubEnv("CLOSE_SPELLING_MATCH_ENABLED", "true");
+    expect(closeHeadingReading("wrkplace", HEADINGS).confident).toBeNull();
+    expect(closeHeadingReading("workplace", HEADINGS).confident).toBeNull();
+    expect(closeHeadingReading("sociall", HEADINGS).confident).toBeNull();
+  });
+
+  it("a long title with one word off, every word said, is confident; a word missing is not", () => {
+    vi.stubEnv("CLOSE_SPELLING_MATCH_ENABLED", "true");
+    const heading = "Texting as General Work communications";
+    expect(closeHeadingReading("texting as general work comunications", [heading]).confident).toBe(heading);
+    expect(closeHeadingReading("texting as general comunications", [heading]).confident).toBeNull();
+  });
+});

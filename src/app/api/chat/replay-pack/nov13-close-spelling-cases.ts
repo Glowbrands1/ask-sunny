@@ -114,3 +114,59 @@ export const NOV13_CLOSE_SPELLING_SALON_CASES: ReplayCase[] = (
     expect((thread.proposal as { locationId?: string | null } | null)?.locationId ?? null, `the card's salon:\n${reply}`).toBe(GRAND_ISLAND_ID);
   },
 }));
+
+/*
+ * QA's proof cases (13 Nov 2026), added to the manual for these cases only, with invented headings:
+ *   - a title one letter off from TWO headings asks "Did you mean A or B?" and cites neither;
+ *   - a word many headings share ("workplace": Visitors in the Workplace, Animals in the Workplace) is never a
+ *     confident match.
+ */
+function manualChunk(index: number, page: number, heading: string, body: string) {
+  return {
+    chunkIndex: index,
+    chunkId: `close-${index}`,
+    locator: `Page ${page} — ${heading}`,
+    page: page + 1,
+    content: `${heading}\n${body}`,
+    section: heading,
+    printedPage: page,
+    sections: [{ page, heading }],
+  };
+}
+
+export const NOV13_CLOSE_SPELLING_PROOF_CASES: ReplayCase[] = [
+  {
+    id: "nov13-close-spelling-policy-two-headings-asks-which",
+    title: `"… violating the key holdr policy …", with Key Holder Guidelines and Key Holder Requirements — "Did you mean A or B?"`,
+    report: `${REPORT}; QA's proof: one letter off from two headings`,
+    status: { open: `no question: the card says no section was found for "key holdr"` },
+    fixFlags: [FLAG],
+    async run(t: ReplayContext) {
+      const thread = start(t);
+      t.manualAlsoHas?.([
+        manualChunk(900, 60, "Key Holder Guidelines", "A key holder opens and closes the location."),
+        manualChunk(901, 61, "Key Holder Requirements", "A key holder is at least eighteen."),
+      ]);
+      const reply = (
+        await thread.say("create a verbal ca for juno paxton for violating the key holdr policy, she left the back door unlocked last night")
+      ).content;
+      expect(reply, `not asked between the two:\n${reply}`).toMatch(
+        /Did you mean \*\*Key Holder Guidelines\*\* \(page 60\) or \*\*Key Holder Requirements\*\* \(page 61\)\?/,
+      );
+      expect(reply, `one was cited:\n${reply}`).not.toMatch(/\*\*Policy:\*\* Key Holder (?:Guidelines|Requirements), as you said/);
+    },
+  },
+  {
+    id: "nov13-close-spelling-policy-shared-word-never-confident",
+    title: `"… violating the wrkplace policy …" — never a confident match to one of the "… in the Workplace" headings`,
+    report: `${REPORT}; QA's proof: a word shared by many headings`,
+    status: "fixed",
+    async run(t: ReplayContext) {
+      const thread = start(t);
+      const reply = (
+        await thread.say("create a verbal ca for marnie holloway for violating the wrkplace policy, she argued with a coworker today")
+      ).content;
+      expect(reply, `cited a heading from a shared word:\n${reply}`).not.toMatch(/\*\*Policy:\*\* (?:Visitors|Animals) in the Workplace, as you said/);
+    },
+  },
+];
