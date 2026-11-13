@@ -910,20 +910,27 @@ async function checkSavedForm(input: PatchTurnInput, start: LoadedInstance, firs
         stop = "confirmed";
         break;
       }
-      const result = await (await import("./form-write")).writeFormEdits(input.instanceId, ops, {
-        path: "patch",
-        actorId,
-        latest: input.question,
-        managerTurns: managerTurns(input.history, input.question),
-        ...(offered !== undefined ? { offered } : {}),
-        acceptedOffer: false,
-        today: input.today,
-        loaded: current,
-        writable,
-        statedKeys: stated,
-        syncPlan: { after: [...stated], amountSentence: true, notes: input.question },
-        ...(readerFixes ? { readerFixes } : {}),
-      });
+      // The one writer, loaded only on its flag's side (`form-write-one-writer.test.ts`); the callers check it too.
+      const result = formEditSingleWriterEnabled()
+        ? await (await import("./form-write")).writeFormEdits(input.instanceId, ops, {
+          path: "patch",
+          actorId,
+          latest: input.question,
+          managerTurns: managerTurns(input.history, input.question),
+          ...(offered !== undefined ? { offered } : {}),
+          acceptedOffer: false,
+          today: input.today,
+          loaded: current,
+          writable,
+          statedKeys: stated,
+          syncPlan: { after: [...stated], amountSentence: true, notes: input.question },
+          ...(readerFixes ? { readerFixes } : {}),
+        })
+        : null;
+      if (result === null) {
+        stop = "no_single_writer";
+        break;
+      }
       patches += 1;
       refused.push(...result.refused.map((entry) => ({ key: entry.key, reason: entry.reason })));
       if (result.handoff !== null || result.changed.length === 0) {
