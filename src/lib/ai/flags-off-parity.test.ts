@@ -640,6 +640,10 @@ const NEW_FLAGS = [
   // coding 2: CREATE_COMMAND_POINTS_TO_CARD and CARD_COMPLAINT_NOT_ACCOUNT (default off): forced off with the others.
   "CREATE_COMMAND_POINTS_TO_CARD_ENABLED",
   "CARD_COMPLAINT_NOT_ACCOUNT_ENABLED",
+  // coding 2: OTHER_POLICY_AGREES and OTHER_NOT_A_POLICY_NAME (QA, 11 Nov 2026; default off): forced off with the others.
+  "OTHER_POLICY_AGREES_ENABLED",
+  "OTHER_NOT_A_POLICY_NAME_ENABLED",
+  "ACCOUNT_TYPOS_FIXED_ENABLED",
   // coding 2: EXCERPT_EMPTY_CARD_DROP (QA, 11 Nov 2026; default off): forced off with the others.
   "EXCERPT_EMPTY_CARD_DROP_ENABLED",
   // coding 6: REQUEST_ISSUE_KEPT (ported from Ask Bubbles, QA round 17b; default off).
@@ -778,6 +782,14 @@ const PROTECTED = [
  * Behind CA_SALES_POLICY_ENABLED, default off; off, every row is carried as
  * before. The filed form is never touched. Same hunk in both apps (Ask
  * Bubbles 66813d54); in Ask Sunny the Type of Offense change is revision 8.
+ *
+ * The user (Pau) approved, under Pau's standing approval via QA, 11 Nov 2026, in
+ * src/lib/forms/ca-action-plan.ts, exactly the lines of
+ * docs/patches/other-not-a-policy-name.patch: the import
+ * `otherNotAPolicyNameEnabled`, and in policyNamesFromViolated the one guarded
+ * line `if (otherNotAPolicyNameEnabled() && /^other$/i.test(text)) return "";`
+ * (a bare "Other" is never a policy name: no "review the Other policy").
+ * Behind OTHER_NOT_A_POLICY_NAME_ENABLED, default off; off, as before.
  *
  * The user (Pau) approved on 11 Nov 2026, via QA (Pau's standing approval for
  * fixes, recorded by QA), in src/lib/forms/proposal.ts, exactly the hunks in
