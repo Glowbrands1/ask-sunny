@@ -33,9 +33,9 @@ only as listed in "Copied files that differ" below.
 | Assistant: **chat history** | ✅ same behaviour, own storage | The Hub's `storage.ts`, keyed `l10-hub-assistant:<Sunny user id>:<meeting>`, with the Hub's size cap. Attachments are dropped and every storage call is guarded. **Not shared with the Hub's history**: it lives in each app's own browser storage | `assistant/storage.dom.test.ts`, `assistant/panel-history.dom.test.tsx` |
 | Assistant: tool chips, citations / sources, source viewer, Markdown | ✅ same | Copied `citations.ts`, `SourceViewer.tsx`, the same Markdown setup | `panel-history.dom.test.tsx` |
 | Assistant: **@-mention picker** | ✅ same picker, this meeting's people | The Hub's `MentionPicker` + `chat-mentions`. People come from the Hub for this meeting only (the Hub offers everyone the person shares any meeting with) | `assistant/mention-picker.dom.test.tsx`, `admin-files.test.ts` |
-| Assistant: attachments (images / PDFs) | ❌ not yet | The Hub's attachments are built on assistant-ui with AI SDK 7. Ask Sunny's panel runs on AI SDK 6 / `@ai-sdk/react` (see README). A port needs Ask Sunny's own upload limits and spend review | — |
-| Assistant: web search / web fetch | ❌ not yet: needs a decision | The Hub uses Anthropic's `webSearch_20260318` / `webFetch_20260318`, which Ask Sunny's `@ai-sdk/anthropic` does not have (it has `webSearch_20260209`). The searches also leave the company, so this is a QA / owner decision, not a copy | — |
-| Assistant: "Open as document" | ❌ not yet | Depends on the Hub's document viewer route | — |
+| Assistant: attachments (images / PDFs) | ❌ follow-up (QA accepted 13 Nov 2026) | The Hub's attachments use assistant-ui's composer attachment adapter, which needs AI SDK 7. Ask Sunny's panel runs on AI SDK 6 / `@ai-sdk/react` (see README). A port also needs Ask Sunny's own upload limits and spend review | — |
+| Assistant: web search / web fetch | ⏸ off until the owner decides (QA is asking) | It is a cost and data decision: searches leave the company. Also, the Hub uses Anthropic's `webSearch_20260318` / `webFetch_20260318`, and Ask Sunny's `@ai-sdk/anthropic` has only `webSearch_20260209`. The Hub's partner prompt tells the model that web search is Hub-only | Hub `partner.test.ts` (prompt) |
+| Assistant: "Open as document" | ✅ same | The Hub's `ArtifactPane` + `artifact-context` + `OpenDocumentButton`: plain React with no assistant-ui. It has Copy, Word (`.doc`) and `.md` downloads, made in the browser, and never renders images (`markdown-prose.tsx`: the Hub's `proseClass` / `noImages`). An open document widens the panel; Shrink, New chat and opening a past chat close it. The Hub's partner prompt now says it works here | `assistant/open-document.dom.test.tsx`; Hub `partner.test.ts` |
 
 ## Issue files: a reviewed widening of the Hub's service key
 
@@ -54,7 +54,8 @@ Approved by QA on 13 Nov 2026 under the condition "built narrow". The Hub's own 
   - Read links are clamped to **60 s** (the Hub's own page uses 1 h).
   - Upload addresses: Supabase fixes `createSignedUploadUrl` at **2 hours**, and that cannot be configured (storage-js
     has no expiry option). That is the same as the Hub's own uploads. QA asked for ≤ 2 min, which is not possible
-    with Supabase signed uploads.
+    with Supabase signed uploads. **QA accepted this on 13 Nov 2026**: it is the Hub's own behaviour and a Supabase
+    limit, and the database check and the pinned path come before any upload address is made.
 - **Never list or delete.** The key only signs. Removal follows the Hub's rule: Remove takes the file off the issue
   (a meeting save), and the stored copy is kept.
 - **Guarded.** Hub `partner.test.ts`:
@@ -77,4 +78,6 @@ Approved by QA on 13 Nov 2026 under the condition "built narrow". The Hub's own 
 | `NotificationBell.tsx`, `NotificationsView.tsx` | "See all" / "Settings" open the Hub | One meeting here |
 | `assistant/storage.ts` | Key prefix and per-user scope | Keeps it separate from the Hub's history and from other Ask Sunny users |
 | `report/page.tsx`, `recaps/page.tsx` | One meeting, inside `L10Frame`, through `openMeeting` (404 for anyone the Hub refuses) | One meeting here |
-| `AssistantPanel.tsx` | The Hub's panel markup on `useChat` (not assistant-ui) | AI SDK 6 in Ask Sunny |
+| `AssistantPanel.tsx` | The Hub's panel markup on `useChat` (not assistant-ui); the Hub's `OpenDocumentButton` / `AnswerText` inside it | AI SDK 6 in Ask Sunny |
+| `ArtifactPane.tsx`, `artifact-context.tsx` | Imports only | — |
+| `markdown-prose.tsx` | Only `proseClass` / `noImages` from the Hub's `Markdown.tsx` | The Hub's streaming renderer is assistant-ui's |

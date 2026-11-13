@@ -10,11 +10,13 @@ import { meetingPeopleAction } from "@/features/l10/actions";
 import { cx } from "@/features/l10/ui/ui";
 import type { Person } from "./chat-mentions";
 import { ChatMentionText, ChatPeople, useChatPeople, useMentionPicker } from "./MentionPicker";
-import { collectCitations, toolLabel } from "./citations";
+import { artifactTitle, collectCitations, isArtifactWorthy, toolLabel } from "./citations";
+import { ArtifactContext, useArtifacts, type ArtifactDoc } from "./artifact-context";
+import { ArtifactPane } from "./ArtifactPane";
 import { NoteCard } from "./NoteCard";
 import { SourceViewer } from "./SourceViewer";
 import { isNoteDraft } from "./notes";
-import { BrainIcon, CheckIcon, ChevronIcon, CloseIcon, ReportIcon, CollapseIcon, ExpandIcon, HistoryIcon, PlusIcon, SendIcon, SparkleIcon, StopIcon } from "./icons";
+import { BrainIcon, CheckIcon, ChevronIcon, CloseIcon, DocumentIcon, ReportIcon, CollapseIcon, ExpandIcon, HistoryIcon, PlusIcon, SendIcon, SparkleIcon, StopIcon } from "./icons";
 import { currentChatId, deleteFromHistory, listHistory, loadConversation, openFromHistory, saveConversation, saveToHistory, startNewChat, type ChatSummary } from "./storage";
 
 /**
@@ -28,7 +30,8 @@ import { currentChatId, deleteFromHistory, listHistory, loadConversation, openFr
  * streamed answers in Markdown with the model's "Thinking" summary, tool status chips, Deep think, Stop.
  * Chat history works as in the Hub (this browser only; per Ask Sunny user and meeting; not shared with the Hub's).
  * "@" in the chat box offers this meeting's people (the Hub's MentionPicker; the Hub offers everyone the person shares
- * a meeting with). Only in the Hub: attachments, web sources, "Open as document".
+ * a meeting with). "Open as document" under a long answer opens the Hub's document pane (Copy, Word, .md).
+ * Only in the Hub: attachments, web search.
  */
 
 const focusRing = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-bronze";
@@ -123,6 +126,31 @@ function Markdown({ text }: { text: string }) {
   );
 }
 
+/* ── Artifacts-lite (the Hub's OpenDocumentButton / AnswerText) ── */
+
+function OpenDocumentButton({ text }: { text: string }) {
+  const { open } = useArtifacts();
+  return (
+    <button
+      type="button"
+      onClick={() => open({ title: artifactTitle(text), markdown: text })}
+      className={cx("mt-2 inline-flex min-h-11 items-center gap-2 rounded-xl bg-ink px-3.5 text-sm font-semibold text-gold-head hover:bg-nav-active", focusRing)}
+    >
+      <DocumentIcon width={16} height={16} />
+      Open as document
+    </button>
+  );
+}
+
+function AnswerText({ text, running }: { text: string; running: boolean }) {
+  return (
+    <>
+      <Markdown text={text} />
+      {!running && isArtifactWorthy(text) && <OpenDocumentButton text={text} />}
+    </>
+  );
+}
+
 function Thinking({ text, running }: { text: string; running: boolean }) {
   if (!text.trim()) return null;
   return (
@@ -185,7 +213,7 @@ function Message({ message, running }: { message: UIMessage; running: boolean })
       <div className="w-full max-w-full min-w-0">
         {message.parts.map((p, i) => {
           if (p.type === "reasoning") return <Thinking key={i} text={p.text} running={running && p.state !== "done"} />;
-          if (p.type === "text") return <Markdown key={i} text={p.text} />;
+          if (p.type === "text") return <AnswerText key={i} text={p.text} running={running} />;
           if (p.type.startsWith("tool-")) {
             const name = p.type.slice(5);
             const state = (p as { state?: string }).state;
@@ -408,6 +436,9 @@ export function AssistantPanel({ open, onClose, meetingKey, scope }: { open: boo
   const [deep, setDeep] = useState(() => readFlag(DEEP_KEY, false));
   const [status, setStatus] = useState<"checking" | "online" | "offline">("checking");
   const [chatKey, setChatKey] = useState(0);
+  // The document pane (the Hub's useArtifactState): an open document also makes the panel wide.
+  const [doc, setDoc] = useState<ArtifactDoc | null>(null);
+  const wide = expanded || Boolean(doc);
   const [showHistory, setShowHistory] = useState(false);
 
   useEffect(() => {
@@ -458,11 +489,11 @@ export function AssistantPanel({ open, onClose, meetingKey, scope }: { open: boo
       hidden={!open}
       onKeyDown={onKeyDown}
       data-testid="assistant-panel"
-      data-wide={expanded}
+      data-wide={wide}
       className={cx(
         "glass fixed z-50 flex flex-col overflow-hidden overscroll-contain bg-linear-to-b from-white/42 to-white/30 backdrop-blur-3xl backdrop-saturate-180 [&[hidden]]:hidden",
         "max-sm:inset-0 max-sm:h-dvh max-sm:w-full max-sm:rounded-none",
-        expanded
+        wide
           ? "sm:bottom-5 sm:left-1/2 sm:h-[min(820px,calc(100dvh-2.5rem))] sm:w-[min(960px,calc(100vw-2.5rem))] sm:-translate-x-1/2"
           : "sm:right-(--fab-right) sm:bottom-[calc(var(--assistant-bottom)+var(--assistant-size)+1rem)] sm:h-[min(640px,calc(100dvh-var(--assistant-bottom)-var(--assistant-size)-2.25rem))] sm:w-[420px]",
       )}
@@ -485,6 +516,7 @@ export function AssistantPanel({ open, onClose, meetingKey, scope }: { open: boo
             // A new chat: the one on screen stays in History (as in the Hub).
             setShowHistory(false);
             startNewChat(scope);
+            setDoc(null);
             setChatKey((k) => k + 1);
           }}
           aria-label="New chat"
@@ -493,15 +525,23 @@ export function AssistantPanel({ open, onClose, meetingKey, scope }: { open: boo
         >
           <PlusIcon />
         </button>
-        <button type="button" onClick={() => setExpanded((v) => !v)} aria-label={expanded ? "Shrink panel" : "Expand panel"} aria-pressed={expanded} title={expanded ? "Shrink" : "Expand"} className={cx(headerButton, "max-sm:hidden")}>
-          {expanded ? <CollapseIcon /> : <ExpandIcon />}
+        <button
+          type="button"
+          // An open document also makes the panel wide, so Shrink must close it too or the button would do nothing ("stuck").
+          onClick={() => (wide ? (setExpanded(false), setDoc(null)) : setExpanded(true))}
+          aria-label={wide ? "Shrink panel" : "Expand panel"}
+          aria-pressed={wide}
+          title={wide ? "Shrink" : "Expand"}
+          className={cx(headerButton, "max-sm:hidden")}
+        >
+          {wide ? <CollapseIcon /> : <ExpandIcon />}
         </button>
         <button type="button" onClick={onClose} aria-label="Close assistant" title="Close" className={headerButton}>
           <CloseIcon />
         </button>
       </header>
       <div className="relative flex min-h-0 flex-1">
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div className={cx("flex min-h-0 min-w-0 flex-1 flex-col", doc && "sm:max-w-[54%]")}>
           {status === "checking" ? (
             <p role="status" className="m-4 text-sm text-muted">
               Starting up…
@@ -511,15 +551,21 @@ export function AssistantPanel({ open, onClose, meetingKey, scope }: { open: boo
               <strong>Assistant not configured.</strong> This deployment has no Anthropic API key, so the assistant is off. The meeting itself still works.
             </p>
           ) : (
-            <Chat key={chatKey} meetingKey={meetingKey} scope={scope} deep={deep} onDeepChange={setDeep} />
+            <ArtifactContext.Provider value={{ open: setDoc }}>
+              <Chat key={chatKey} meetingKey={meetingKey} scope={scope} deep={deep} onDeepChange={setDeep} />
+            </ArtifactContext.Provider>
           )}
         </div>
+        {doc && <ArtifactPane doc={doc} onClose={() => setDoc(null)} />}
         {showHistory && (
           <HistoryList
             scope={scope}
             onClose={() => setShowHistory(false)}
             onOpen={(id) => {
-              if (openFromHistory(id, scope)) setChatKey((k) => k + 1); // remount the chat so it loads the chosen conversation
+              if (openFromHistory(id, scope)) {
+                setDoc(null);
+                setChatKey((k) => k + 1); // remount the chat so it loads the chosen conversation
+              }
               setShowHistory(false);
             }}
           />
