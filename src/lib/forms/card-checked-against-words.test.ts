@@ -199,3 +199,19 @@ describe("CARD_CHECKED_AGAINST_WORDS_ENABLED: Gate-Bubbles-5's must-split list (
     expect(addedFacts("she was late on 11/3/26", "Marnie Holloway", after(said.replace("TITLE", title)))).toEqual([fact]);
   });
 });
+
+describe("CARD_CHECKED_AGAINST_WORDS_ENABLED: a repeat is never reported as added (QA, 13 Nov 2026)", () => {
+  it("turn 1 \"…she was late on 11/3/26\", turn 2 \"she was late and she is a key holder\": nothing is reported added", async () => {
+    vi.stubEnv("CARD_CHECKED_AGAINST_WORDS_ENABLED", "true");
+    const turns = { turns: ["create a CA for Marnie Holloway, she was late on 11/3/26", "she was late and she is a key holder"], roster: ROSTER };
+    const reply: AskResponse = {
+      content: "I'll draft a **Corrective Action Form** for **Marnie Holloway**.\n\n**Observation of Offense:** she was late on 11/3/26 she was late",
+      citations: [],
+      coverage: "not_applicable",
+      recommendedVideoIds: [],
+      formProposal: { employeeName: "Marnie Holloway", status: "ready" } as never,
+    };
+    const out = await withCardCheckedAgainstWords(reply, turns, NO_MODEL);
+    expect(out.content).not.toMatch(/Added to the Observation/);
+  });
+});

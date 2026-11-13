@@ -413,7 +413,9 @@ export async function withCardCheckedAgainstWords(answer: AskResponse, input: Ca
       // Gate-Sunny-2: only what the card's Observation of Offense says counts as shown, never the rest of the reply.
       const observation = out.content.split("\n").find((line) => line.startsWith("**Observation of Offense:**")) ?? "";
       const shown = new Set(contentWords(observation.replace("**Observation of Offense:**", "")));
-      const added = addedFacts("", out.formProposal!.employeeName, latest).filter((fact) => contentWords(fact).every((word) => shown.has(word)));
+      // QA (13 Nov 2026): what the earlier request turn already said is no addition ("she was late" again).
+      const said = latest.turns.length > 1 ? latest.turns[0]! : "";
+      const added = addedFacts(said, out.formProposal!.employeeName, latest).filter((fact) => contentWords(fact).every((word) => shown.has(word)));
       if (added.length > 0) {
         trace.repaired.push("issue_added_fact");
         out = { ...out, content: `${out.content.trimEnd()}\n\n**Added to the Observation of Offense:** ${added.join("; ")}` };
