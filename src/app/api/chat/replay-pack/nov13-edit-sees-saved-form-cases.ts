@@ -29,16 +29,18 @@ const TOPIC = patch("this_form", [
   { field: "coaching_topics", options: ["other"], how: "replace", evidence: "the other topic is missed monthly meeting" },
 ]);
 
-async function onDraft(t: ReplayContext, checks: readonly unknown[]) {
+async function onDraft(t: ReplayContext, checks: readonly unknown[], handOff = false) {
   vi.setSystemTime(new Date("2026-11-13T15:00:00Z"));
   t.directory(REFUSAL_ROSTER);
   t.as("salon_director", KEARNEY);
-  t.patchReads!({ [ASK]: FIRST });
+  // Handed off: the patch reader falls back, and the old path's revision writes the expectation only.
+  t.patchReads!(handOff ? {} : { [ASK]: FIRST });
   t.patchChecks?.(checks);
   const thread = t.thread();
   await thread.say("create a coaching form for Ottoline Ormsworth, she missed the monthly meeting on 10/10/26");
   t.draftWrites({ coaching_details: DRAFT });
   const id = await thread.create();
+  if (handOff) t.revisionWrites({ coaching_details: `${DRAFT}\nShe must attend every monthly meeting.` });
   const before = savedForm(t, id);
   const reply = await thread.say(ASK);
   replyMatchesDiff(t, id, before, reply, ASK);
@@ -88,6 +90,20 @@ export const NOV13_EDIT_SEES_SAVED_FORM_CASES: ReplayCase[] = [
       expect(t.values(id).other_topic ?? "", "the refused correction is not saved").not.toMatch(/insubordination/i);
       expect(reply.content).not.toMatch(/insubordination/i);
       expect(t.patchCheckCalls?.() ?? 0, "one check round, then stop").toBeLessThanOrEqual(1);
+    },
+  },
+  {
+    id: "nov13-edit-sees-saved-form-hand-off-revision-corrects",
+    title: "the same turn handed off (the patch reader falls back) to the old path's revision, which writes the expectation only: the check adds the missed topic, and the reply names what is stored",
+    report: `${REPORT} (QA: half the patch-path turns hand off; the loop runs after the revision's write too)`,
+    status: { open: "the topic is never written: the revision missed it and nothing looked at the saved form" },
+    fixFlags: FIX,
+    async run(t) {
+      // Check round 1: the topic is missing from the stored form, so the model corrects it. Round 2: it confirms.
+      const { id, reply } = await onDraft(t, [TOPIC, patch("this_form", [])], true);
+      expect(t.values(id).coaching_details ?? "", "the expectation the revision wrote").toMatch(/attend every monthly meeting/i);
+      expect(t.values(id).other_topic ?? "", "the topic, written on the check round").toMatch(/missed monthly meeting/i);
+      expect(reply.content, `the reply names the topic, from the saved form:\n${reply.content}`).toMatch(/Other/);
     },
   },
 ];

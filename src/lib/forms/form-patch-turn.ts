@@ -41,7 +41,6 @@ import {
   fold,
   sameValue,
   type FieldValue,
-  type FormPatch,
   type PatchRules,
 } from "./form-reducer";
 import { formLabels, snapshotDiff, snapshotOf } from "./form-snapshot";
@@ -818,7 +817,7 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
     policyOutcome ??= await answerPolicy();
     // EDIT_SEES_SAVED_FORM_ENABLED: the patch model sees the saved form and confirms it, or corrects it (at most 3 patches).
     if (editSeesSavedFormEnabled() && formEditSingleWriterEnabled() && patchOps > 0) {
-      await checkSavedForm(input, loaded, reading.patch, actor.id, offered);
+      await checkSavedForm(input, loaded, (await import("./edit-sees-saved-form")).touchedKeys(reading.patch), actor.id, offered);
     }
     const reloaded = await loadInstance(input.instanceId);
     if (!reloaded) return null;
@@ -855,10 +854,10 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
  * after SAVED_CHECK_MAX_PATCHES patches in all. Nothing here answers the turn: the reply is the stored form's diff.
  * One JSON log line per turn, keys and counts only.
  */
-async function checkSavedForm(input: PatchTurnInput, start: LoadedInstance, first: FormPatch, actorId: string, offered: string | undefined): Promise<void> {
+async function checkSavedForm(input: PatchTurnInput, start: LoadedInstance, firstTouched: readonly string[], actorId: string, offered: string | undefined): Promise<void> {
   const check = await import("./edit-sees-saved-form");
   const startDraft = draftFromRows(start.values);
-  let touched = check.touchedKeys(first);
+  let touched = [...firstTouched];
   let patches = 1;
   let stop = "limit";
   const corrected: string[] = [];
@@ -938,6 +937,19 @@ async function checkSavedForm(input: PatchTurnInput, start: LoadedInstance, firs
     stop = `error:${error instanceof Error ? error.name : typeof error}`;
   }
   console.info(JSON.stringify({ event: "form_patch.saved_check", instanceId: input.instanceId, patches, stop, corrected: [...new Set(corrected)], refused }));
+}
+
+/**
+ * EDIT_SEES_SAVED_FORM_ENABLED on the hand-off path (QA, 13 Nov 2026): a turn the patch path handed on is written by the
+ * old path's revision (`chat-revision.ts`, `reviseActiveForm`). After that write, the same check runs here: the stored
+ * form and the manager's ask go to the patch model, which confirms or corrects (at most 2 corrections, written by the
+ * one writer). Returns the keys whose STORED value differs from the form at the turn's start, for the reply. Never
+ * throws; on any failure the keys are read from storage as they are.
+ */
+export async function checkSavedFormAfterRevision(input: PatchTurnInput, start: LoadedInstance, written: readonly string[], actorId: string): Promise<{ readonly changedKeys: string[] }> {
+  await checkSavedForm(input, start, written, actorId, lastAssistant(input.history));
+  const reloaded = await loadInstance(input.instanceId).catch(() => null);
+  return { changedKeys: reloaded ? snapshotDiff(snapshotOf(start), snapshotOf(reloaded)).map((change) => change.key) : [...written] };
 }
 
 /**
