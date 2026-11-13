@@ -71,4 +71,40 @@ export const NOV13_SPELLING_CLEANUP_CASES: ReplayCase[] = [
       expect(systems.at(-1) ?? "", "the second draft still had the rule").not.toContain(RULE);
     },
   },
+  {
+    id: "nov13-spelling-cleanup-quote-kept-as-typed",
+    title: "QA's guard: a quoted phrase with a typo (she said \"i dont care\") stays exactly as typed; a draft that mends it is drafted again without the rule",
+    report: `${REPORT}: QA's guard, 13 Nov 2026 — a quote is never cleaned up`,
+    // Only with the flag: production has no cleanup, so nothing is checked and nothing is drafted again.
+    status: { open: "no cleanup check in production" },
+    fixFlags: ["SPELLING_CLEANUP_ENABLED"],
+    async run(t) {
+      const thread = start(t);
+      await thread.say('please make a ca for Brisa Talmadge, a guest asked her for help and she said "i dont care" on 11/9');
+      // The stand-in writes what a model that mended the quote would write: the check must refuse it.
+      t.draftWrites({ observation: 'Observed:\nWhen a guest asked Brisa Talmadge for help, she said "I don\'t care."' });
+      await thread.create();
+      const systems = t.draftSystems?.() ?? [];
+      expect(systems.at(-2) ?? "", "the first draft had the rule").toContain(RULE);
+      expect(systems.at(-1) ?? "", "the mended quote was not drafted again without the rule").not.toContain(RULE);
+    },
+  },
+  {
+    id: "nov13-spelling-cleanup-quote-as-typed-saved",
+    title: "QA's guard: a draft that keeps the quoted phrase as typed (\"i dont care\") is saved as written, in one call",
+    report: `${REPORT}: QA's guard, 13 Nov 2026`,
+    status: { open: "no cleanup rule in production" },
+    fixFlags: ["SPELLING_CLEANUP_ENABLED"],
+    async run(t) {
+      const thread = start(t);
+      await thread.say('please make a ca for Brisa Talmadge, a guest asked her for help and she said "i dont care" on 11/9');
+      const before = (t.draftSystems?.() ?? []).length;
+      t.draftWrites({ observation: 'Observed:\nWhen a guest asked Brisa Talmadge for help on November 9, 2026, she said "i dont care".' });
+      const id = await thread.create();
+      const systems = (t.draftSystems?.() ?? []).slice(before);
+      expect(systems.length, "drafted once").toBe(1);
+      expect(systems[0] ?? "").toContain(RULE);
+      expect(t.values(id).observation ?? "", "the quote as typed").toContain('"i dont care"');
+    },
+  },
 ];
