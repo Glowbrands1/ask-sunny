@@ -98,8 +98,6 @@ export interface CodeCheckInput {
    * other topic is …") is for the model.
    */
   readonly fieldWords?: Readonly<Record<string, readonly string[]>>;
-  /** The form's own name ("Corrective Action Form"): naming the form is not content. */
-  readonly formName?: string;
 }
 
 /** A rewrite of the account or its wording: only the model can tell whether it reads as asked. */
@@ -107,8 +105,6 @@ const REWRITE_ASK = /\b(?:make\s+it\s+(?:about|for|sound|more|less)|rewrite|re-?
 /** A plain addition: "add that …", "include …", "put … on it", "also note …". */
 const ADD_ASK = /^\s*(?:please\s+)?(?:can\s+you\s+)?(?:also\s+)?(?:add|include|put|note|mention|insert)\b/i;
 /** A date the manager said ("10/14/26", "11/6"): the turn's own date write may move the form's Date. */
-/** "fix her last name, it is X", "change his name to X". */
-const NAME_FIX = /\b(?:fix|change|correct|update)\s+(?:her|his|their|the)\s+(?:last\s+|first\s+|full\s+)?name\b[^.]*?\b(?:it\s+is|it's|to|is)\s+([\p{L}][\p{L}'’ -]{1,60})$/iu;
 const SAID_DATE = /\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b/;
 
 function closeTo(word: string, vocabulary: ReadonlySet<string>): boolean {
@@ -143,16 +139,6 @@ function closeTo(word: string, vocabulary: ReadonlySet<string>): boolean {
 export function settledByCode(input: CodeCheckInput): { readonly settled: boolean; readonly reason: string; readonly detail?: readonly string[] } {
   const touched = new Set(input.fields.map((field) => field.key));
   const form = Object.values(input.stored).map(plainValue).join("\n");
-  /*
-   * A name fix ("fix her last name, it is Quill-Hart"): settled when the stored employee name now holds the new name
-   * and nothing else moved but the name fields.
-   */
-  const nameFix = NAME_FIX.exec(input.ask)?.[1]?.trim();
-  if (nameFix) {
-    const named = plainValue(input.stored.employee_name ?? "").includes(nameFix.toLowerCase().replace(/[’']/g, ""));
-    const onlyName = input.moved.every((key) => key === "employee_name" || DERIVED_KEYS.has(key));
-    return named && onlyName ? { settled: true, reason: "code" } : { settled: false, reason: "name_fix", detail: [nameFix] };
-  }
   if (REWRITE_ASK.test(input.ask)) return { settled: false, reason: "rewrite" };
   if (input.patch === null && !ADD_ASK.test(input.ask)) return { settled: false, reason: "rewrite" };
   if (Object.values(input.patch?.how ?? {}).some((how) => how === "reword")) return { settled: false, reason: "rewrite" };
@@ -175,12 +161,11 @@ export function settledByCode(input: CodeCheckInput): { readonly settled: boolea
   if (others.length > 0) return { settled: false, reason: "other_moved", detail: others };
   const written = new Set([...touched, ...input.moved]);
   const fieldWordSets = Object.entries(input.fieldWords ?? {}).map(([key, list]) => ({ key, words: new Set(list.flatMap((item) => words(item))) }));
-  const vocabulary = new Set([...fieldWordSets.flatMap((field) => [...field.words]), ...words(input.formName ?? "")]);
+  const vocabulary = new Set(fieldWordSets.flatMap((field) => [...field.words]));
   const name = new Set(words(input.employeeName ?? ""));
   const askWords = words(input.ask).filter((word) => !COMMAND_WORDS.has(word) && !name.has(word));
   // A field the ask names that nobody wrote: the ask may want it changed.
   const namedUnwritten = askWords.filter((word) => {
-    if (words(input.formName ?? "").includes(word)) return false;
     const naming = fieldWordSets.filter((field) => closeTo(word, field.words));
     return naming.length > 0 && !naming.some((field) => written.has(field.key));
   });

@@ -898,7 +898,7 @@ async function checkSavedForm(
       const fieldWords = Object.fromEntries(
         modelInput.fields.map((field) => [field.key, [field.key.replace(/_/g, " "), field.label, ...(field.options ?? []).map((option) => option.replace(/_/g, " "))]]),
       );
-      const byCode = check.settledByCode({ ask: input.question, employeeName: current.instance.employeeName || null, fields, patch: roundPatch, stored, moved, fieldWords, formName: current.instance.templateName });
+      const byCode = check.settledByCode({ ask: input.question, employeeName: current.instance.employeeName || null, fields, patch: roundPatch, stored, moved, fieldWords });
       if (byCode.settled) {
         stop = patches === 1 ? "code_confirmed" : "code_confirmed_after_correction";
         break;

@@ -108,24 +108,3 @@ describe("EDIT_SEES_SAVED_FORM_ENABLED: the code settle, widened after QA's reas
     expect(settledByCode({ ...base, ask: "add that she must clock in on time and wash the sink between guests" }).reason).toBe("ask_not_on_form");
   });
 });
-
-describe("EDIT_SEES_SAVED_FORM_ENABLED: the form's own name, and a name fix (QA's reason log, 13 Nov 2026)", () => {
-  const base = {
-    ask: "Add this to the Corrective Action Form: she must clock in on time",
-    employeeName: "Marnie Quill",
-    fields: [{ key: "details", label: "Details", stored: "Observed:\nLate to open.\nShe must clock in on time.", changed: true }],
-    patch: { set: { details: "She must clock in on time." }, how: { details: "add" }, evidence: { details: "she must clock in on time" } },
-    stored: { details: "Observed:\nLate to open.\nShe must clock in on time.", employee_name: "Marnie Quill" },
-    moved: ["details"],
-    fieldWords: { details: ["Details"], offense_type: ["Type of Offense", "corrective"] },
-  };
-  it("naming the form (\"Add this to the Corrective Action Form: …\") is not naming a field", () => {
-    expect(settledByCode({ ...base, formName: "Corrective Action Form" }).settled).toBe(true);
-  });
-  it("\"fix her last name, it is Quill-Hart\": settled when the stored name holds it and nothing else moved", () => {
-    const fix = { ...base, ask: "fix her last name, it is Quill-Hart", fields: [], patch: null, moved: ["employee_name"] };
-    expect(settledByCode({ ...fix, stored: { ...base.stored, employee_name: "Marnie Quill-Hart" } }).settled).toBe(true);
-    expect(settledByCode({ ...fix, stored: { ...base.stored, employee_name: "Marnie Quill" } }).reason).toBe("name_fix");
-    expect(settledByCode({ ...fix, stored: { ...base.stored, employee_name: "Marnie Quill-Hart" }, moved: ["employee_name", "details"] }).reason).toBe("name_fix");
-  });
-});
