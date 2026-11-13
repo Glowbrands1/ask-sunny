@@ -120,3 +120,56 @@ describe("CARD_CHECKED_AGAINST_WORDS_ENABLED: a fact added on the open card (the
     expect(addedFacts("she was late on 11/3/26", "Marnie Holloway", again)).toEqual([]);
   });
 });
+
+describe("CARD_CHECKED_AGAINST_WORDS_ENABLED: never a fact (Gate-Bubbles-5 / Gate-Sunny-2 probes on the 17r-c fix)", () => {
+  const after = (said: string) => ({ turns: ["create a CA for Marnie Holloway, she was late on 11/3/26", said], roster: ROSTER });
+  it.each([
+    "she gets a verbal warning",
+    "Marnie gets a verbal warning",
+    "she's a key holder",
+    "she is a key holder",
+    "she works at NE Kearney",
+    "she works at Kearney",
+    "she is at the Kearney salon",
+    "she maybe forgot",
+    "she is a TITLE",
+    "she's our closing lead",
+    "she might have forgotten",
+  ])("%s: never joined to the card", (said) => {
+    expect(addedFacts("she was late on 11/3/26", "Marnie Holloway", after(said.replace("TITLE", ROSTER[0]!.positionName!)))).toEqual([]);
+  });
+
+  it("the control still joins: \"she also didn't call to say she'd be late\"", () => {
+    expect(addedFacts("she was late on 11/3/26", "Marnie Holloway", after("she also didn't call to say she'd be late"))).toEqual(["she didn't call to say she'd be late"]);
+  });
+});
+
+describe("CARD_CHECKED_AGAINST_WORDS_ENABLED: only the Observation counts as shown (Gate-Sunny-2)", () => {
+  it("a fact the reply shows only on another line (the Job title) is never claimed added to the Observation", async () => {
+    vi.stubEnv("CARD_CHECKED_AGAINST_WORDS_ENABLED", "true");
+    const turns = { turns: ["create a CA for Marnie Holloway, she was late on 11/3/26", "she left the doors unlocked"], roster: ROSTER };
+    const reply: AskResponse = {
+      content: "I'll draft a **Corrective Action Form** for **Marnie Holloway**.\n\n**Job title:** she left the doors unlocked\n\n**Observation of Offense:** she was late on 11/3/26",
+      citations: [],
+      coverage: "not_applicable",
+      recommendedVideoIds: [],
+      formProposal: { employeeName: "Marnie Holloway", status: "ready" } as never,
+    };
+    const out = await withCardCheckedAgainstWords(reply, turns, NO_MODEL);
+    expect(out.content).not.toMatch(/Added to the Observation of Offense/);
+  });
+
+  it("a fact the Observation shows is named", async () => {
+    vi.stubEnv("CARD_CHECKED_AGAINST_WORDS_ENABLED", "true");
+    const turns = { turns: ["create a CA for Marnie Holloway, she was late on 11/3/26", "she also didn't call to say she'd be late"], roster: ROSTER };
+    const reply: AskResponse = {
+      content: "I'll draft a **Corrective Action Form** for **Marnie Holloway**.\n\n**Observation of Offense:** she was late on 11/3/26 she also didn't call to say she'd be late",
+      citations: [],
+      coverage: "not_applicable",
+      recommendedVideoIds: [],
+      formProposal: { employeeName: "Marnie Holloway", status: "ready" } as never,
+    };
+    const out = await withCardCheckedAgainstWords(reply, turns, NO_MODEL);
+    expect(out.content).toMatch(/\*\*Added to the Observation of Offense:\*\* she didn't call to say she'd be late/);
+  });
+});
