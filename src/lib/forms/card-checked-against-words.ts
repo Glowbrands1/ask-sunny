@@ -234,7 +234,7 @@ export function notAFact(clause: string, input: CardCheckInput): boolean {
 
 /** A leading time or place phrase before the account: "on Saturday, ", "yesterday ", "at close ", "this morning ". */
 const TIME_LEAD =
-  /^(?:(?:on\s+(?:(?:mon|tues|wednes|thurs|fri|satur|sun)day|\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?)(?:\s+(?:morning|afternoon|evening|night))?)|yesterday(?:\s+(?:morning|afternoon|evening))?|today|tonight|last\s+night|this\s+(?:morning|afternoon|evening)|earlier\s+today|at\s+(?:close|closing|open|opening))\s*,?\s+/i;
+  /^(?:(?:on\s+(?:(?:mon|tues|wednes|thurs|fri|satur|sun)day|\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?)(?:\s+(?:morning|afternoon|evening|night))?)|yesterday(?:\s+(?:morning|afternoon|evening))?|today|tonight|last\s+night|this\s+(?:morning|afternoon|evening)|earlier\s+today|at\s+(?:close|closing|open|opening)|(?:at|around|about|by)\s+\d{1,2}(?::\d{2})?\s*(?:am|pm|a\.m\.|p\.m\.)?|then|after\s+that|later(?:\s+on)?|afterwards?)\s*,?\s+/i;
 const ACCOUNT_START = /^(?:and\s+|but\s+|plus\s+)?(?:she|he|they)\b/i;
 export function addedFacts(issue: string, employee: string | null, input: CardCheckInput): string[] {
   if (!employee) return [];
