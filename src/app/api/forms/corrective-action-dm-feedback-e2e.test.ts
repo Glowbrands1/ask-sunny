@@ -634,6 +634,10 @@ describe("a dog at work, on the saved draft, against the production manual rows"
 });
 
 describe('"violating visitors at work policy" is the manual\'s Visitors in the Workplace', () => {
+  // The fail-closed reply below is pinned with POLICY_NOT_FOUND_PLAIN_WORDING off (Gate-Bubbles, Bubbles #865): hold it
+  // off so a run with the flag set in the environment still tests today's wording.
+  beforeEach(() => vi.stubEnv("POLICY_NOT_FOUND_PLAIN_WORDING_ENABLED", ""));
+  afterEach(() => vi.unstubAllEnvs());
   it("is named in the reply, ticked, and quoted with its section and page", async () => {
     const { last, create } = await conversation([A1, A2]);
 

@@ -14,6 +14,10 @@ const FAILED_TO_MEET =
 const DID_NOT_COMPLETE =
   "create a verbal warning for Rowan Kestrel. previous coaching: JBA Policy Manual 10-15-26. Rowan did not complete the assigned policy acknowledgements in Woven by the 10-31-26 deadline.";
 
+// These pin the card line as it is with POLICY_NOT_FOUND_PLAIN_WORDING off (Gate-Bubbles, Bubbles #865): hold that flag off
+// so a run with it set in the environment still tests today's wording. The flag's own wording is in
+// policy-not-found-plain-wording.test.ts.
+beforeEach(() => vi.stubEnv("POLICY_NOT_FOUND_PLAIN_WORDING_ENABLED", ""));
 afterEach(() => vi.unstubAllEnvs());
 
 describe("WOVEN_TRAINING_CONDUCT_ENABLED off: what this app says for the sibling app's three live wordings", () => {
