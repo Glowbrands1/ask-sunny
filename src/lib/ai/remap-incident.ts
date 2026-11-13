@@ -32,6 +32,7 @@ import {
 } from "@/lib/forms/official-policy-manual";
 import { extractJobTitle, titleAfterJobTitleLabel } from "@/lib/forms/proposal";
 import { isCloseSharedCity, readSalonMentions } from "@/lib/forms/salon-mention";
+import { WORK_AREA } from "@/lib/forms/work-area";
 import { US_STATE_CODE } from "@/lib/forms/state-code-place";
 import { detectTemplateIntent, withoutLeadingGlossaryTerm } from "@/lib/forms/template-intent";
 import type { KnowledgeCategory, SourceCitation } from "@/types";
@@ -959,14 +960,18 @@ export function managerAccount(sentence: string, employeeName: string | null): s
      * desk, she was rude to a guest"). Off, as before.
      */
     if (observationNoLeadingNameEnabled() && employeeName) {
-      // Only where the employee is not the subject (Gate-Sunny's #939 probes, QA): the place phrase ends the clause
-      // ("<A> at the front desk", before a comma or a full stop), or another subject follows it ("<A> at the front desk
-      // she was rude"). "<A> at the front desk was rude to a guest" keeps the name: it is that clause's subject.
-      const lead = new RegExp(
-        `^${escape(employeeName)}\\s+((?:at|in|on)\\s+(?:the\\s+)?[A-Za-z0-9'’-]+(?:\\s+[A-Za-z0-9'’-]+){0,3})(\\s+(?:she|he|they)\\b.*)?[.!?]?$`,
-        "i",
-      ).exec(text.trim());
-      if (lead && (lead[2] !== undefined || !/\b(?:was|is|were|are|did|has|had|got|kept)\b/i.test(lead[1]!))) text = text.trim().replace(new RegExp(`^${escape(employeeName)}\\s+`, "i"), "");
+      // Only where the employee is not the subject (Gate-Sunny's #939 probes, QA): what follows "at"/"in"/"on" is the
+      // place itself — a work area, "close", or a salon the reader reads — and the clause ends there or another subject
+      // (she/he/they) follows. No verb list: "<A> at close left early" keeps the name, as "<A> at the desk was rude".
+      const lead = new RegExp(`^${escape(employeeName)}\\s+(?:at|in|on)\\s+([^,.!?]+?)(?:\\s*[,.!?].*|\\s+(?:she|he|they)\\b.*)?$`, "i").exec(
+        text.trim(),
+      );
+      const place = lead?.[1]?.trim();
+      const notSubject = (phrase: string) =>
+        WORK_AREA.test(phrase) || /^close$/i.test(phrase) || /^(?:her|his|their)\s+phone$/i.test(phrase) || isPlaceOnly(phrase);
+      if (place && notSubject(place)) {
+        text = text.trim().replace(new RegExp(`^${escape(employeeName)}\\s+`, "i"), "");
+      }
     }
     /*
      * CA_SALES_POLICY_ENABLED (QA, live, 4 Nov 2026): "CA for <name> due to

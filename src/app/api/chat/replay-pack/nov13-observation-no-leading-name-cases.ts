@@ -93,6 +93,11 @@ const NAME_IS_SUBJECT: readonly { key: string; turn: string; kept: string }[] = 
     turn: "create a ca for marnie holloway. she was late. marnie holloway at the front desk was rude",
     kept: "marnie holloway at the front desk was rude",
   },
+  // Gate-Sunny's probes on c3aec37c: a verb not on a list still makes the employee the subject.
+  { key: "desk-ignored", turn: "create a ca for marnie holloway, marnie holloway at the desk ignored guests", kept: "marnie holloway at the desk ignored guests" },
+  { key: "close-left-early", turn: "create a ca for marnie holloway, marnie holloway at close left early", kept: "marnie holloway at close left early" },
+  { key: "front-desk-yelled", turn: "create a ca for marnie holloway, marnie holloway at the front desk yelled", kept: "marnie holloway at the front desk yelled" },
+  { key: "back-room-slept", turn: "create a ca for marnie holloway. marnie holloway in the back room slept.", kept: "marnie holloway in the back room slept" },
 ];
 
 export const NOV13_OBSERVATION_NAME_IS_SUBJECT_CASES: ReplayCase[] = NAME_IS_SUBJECT.map((wording) => ({
@@ -119,6 +124,22 @@ export const NOV13_OBSERVATION_NO_LEADING_NAME_ON_CASES: ReplayCase[] = [
       const { reply, said } = await observationOf(t, "create a ca for marnie holloway on the floor, she was rude to a guest");
       expect(said, `the employee's name leads the Observation:\n${reply}`).not.toMatch(/^marnie\b|holloway/i);
       expect(said, `the account lost words:\n${reply}`).toContain("on the floor, she was rude to a guest");
+    },
+  },
+];
+
+// Gate-Sunny's probe on c3aec37c: "bed #4" is a work area too (a regression from e876d12f, where "#" was not read).
+export const NOV13_OBSERVATION_NO_LEADING_NAME_BED_HASH_CASES: ReplayCase[] = [
+  {
+    id: "nov13-observation-no-leading-name-bed-hash-4",
+    title: `Admin: "create a ca for marnie holloway in bed #4, she left it dirty" — "in bed #4, she left it dirty"`,
+    report: `${REPORT}; Gate-Sunny's #939 probe`,
+    status: { open: `the Observation starts with the employee's name ("marnie holloway in bed #4, …")` },
+    fixFlags: [FLAG],
+    async run(t: ReplayContext) {
+      const { reply, said } = await observationOf(t, "create a ca for marnie holloway in bed #4, she left it dirty");
+      expect(said, `the employee's name leads the Observation:\n${reply}`).not.toMatch(/^marnie\b|holloway/i);
+      expect(said, `the account lost words:\n${reply}`).toContain("in bed #4, she left it dirty");
     },
   },
 ];

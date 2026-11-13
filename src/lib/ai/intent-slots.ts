@@ -55,6 +55,7 @@ import { formNameNotATitleEnabled, lateSlotReadsAttendanceEnabled, reportNameNot
 import { lateSlotHeading } from "./late-slot-attendance";
 import { readsAsStatedTitle, saidOnlyAsFormName, titleTextFromTurns } from "./title-words";
 import { titleInWords } from "./title-in-words";
+import { WORK_AREA } from "@/lib/forms/work-area";
 import { describedAttendanceKeys } from "@/lib/forms/ca-policy";
 import { headingKey, sectionHeadingsFor } from "@/lib/forms/official-policy-manual";
 import { namesHeading } from "@/lib/forms/named-policy-section";
@@ -1116,10 +1117,6 @@ function matchSalonsInText(blob: string, salons: readonly SalonRow[]): SalonRow[
     return words.every((word) => haystack.includes(` ${word} `));
   });
 }
-
-/** A place in the salon where someone works ("front desk", "the back room", "bed 4"), never a job title. */
-const WORK_AREA =
-  /^(?:the\s+)?(?:front\s+desk|desk|back\s+room|break\s*room|stock\s*room|storage\s+room|register|cash\s+register|lobby|counter|front|floor|sales\s+floor|(?:bed|room|booth)\s*#?\s*\d+|tanning\s+room|spa\s+room|laundry(?:\s+room)?|restroom|bathroom)$/i;
 
 function groundTitle(
   typed: string | null,
