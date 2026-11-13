@@ -992,7 +992,8 @@ function onlyWhoOrWhere(clause: string, employeeName: string | null): boolean {
     const lead = new RegExp(`^${escape(employeeName)}\\s+(?:at|in)\\s+(.+)$`, "i").exec(text)?.[1]?.split(/\s+/) ?? [];
     for (let length = Math.min(3, lead.length); length >= 1 && lead.length > 0; length -= 1) {
       const extra = lead.slice(length);
-      if (extra.length > 2 || /\b(?:was|is|did|had|has|not|were|are)\b/i.test(extra.join(" "))) break;
+      // Only words of a name may follow: a date, a number or a verb is the account ("<A> at kearney 11/1/26" keeps the date).
+      if (extra.length > 2 || extra.some((word) => !/^[A-Za-z'’-]+$/.test(word)) || /\b(?:was|is|did|had|has|not|were|are)\b/i.test(extra.join(" "))) break;
       if (isPlaceOnly(lead.slice(0, length).join(" "))) return true;
     }
   }
