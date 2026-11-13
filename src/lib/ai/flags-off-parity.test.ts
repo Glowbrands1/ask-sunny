@@ -185,6 +185,8 @@ import { privateCreatorFormsEnabled, privateCreatorsActive } from "@/lib/forms/p
  */
 
 const NEW_FLAGS = [
+  // coding 4: PLACE_STRIP_WHOLE_PHRASE_ONLY (QA, Gate-Sunny #933 probes, 13 Nov 2026; default off).
+  "PLACE_STRIP_WHOLE_PHRASE_ONLY_ENABLED",
   // coding 2: OFF_ROSTER_PLACE_ANSWER (QA's Sunny 37b live bug, 12 Nov 2026; default off).
   "OFF_ROSTER_PLACE_ANSWER_ENABLED",
   // coding 2: OFFERED_NAME_ACCEPTED (QA, 12 Nov 2026: an admin's "use <C>" refused; default off).

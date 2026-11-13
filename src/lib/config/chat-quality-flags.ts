@@ -4732,3 +4732,12 @@ export function formDateBusinessTodayEnabled(): boolean {
 export function closeSpellingMatchEnabled(): boolean {
   return envFlag("CLOSE_SPELLING_MATCH_ENABLED");
 }
+
+/**
+ * PLACE_STRIP_WHOLE_PHRASE_ONLY (QA, Gate-Sunny's #933 probes, 13 Nov 2026; default off): the account reader takes a
+ * place out of the Observation only where the whole place phrase ends, so "she was at lincoln high" and "<A> at omaha
+ * west" keep every word. See `ai/remap-incident.ts` withoutPlace. Off, as before.
+ */
+export function placeStripWholePhraseOnlyEnabled(): boolean {
+  return envFlag("PLACE_STRIP_WHOLE_PHRASE_ONLY_ENABLED");
+}

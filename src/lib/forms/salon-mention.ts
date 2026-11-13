@@ -157,6 +157,15 @@ const ROSTER_STATES = [...new Set(PRODUCTION_SALONS.map((salon) => salon.state.t
 const STATE_BEFORE = new RegExp(`\\b(?:${ROSTER_STATES.join("|")})\\s+$`);
 const AT_BEFORE = /\b(?:at|in)\s+(?:the\s+)?$/;
 const PLACE_AFTER = /^\s*(?:salon|store|location|studio)\b/;
+/**
+ * PLACE_STRIP_WHOLE_PHRASE_ONLY_ENABLED: whether the word after a place phrase carries the sentence on ("today", "and",
+ * "she") rather than continuing a longer name ("high" in "lincoln high", "west" in "omaha west"). The account reader
+ * takes a place out only where its phrase ends.
+ */
+export function carriesOnAfterPlace(word: string): boolean {
+  return new RegExp(`^(?:${CARRIES_ON})$`, "i").test(word.replace(/[^A-Za-z']+$/, ""));
+}
+
 const CARRIES_ON_AFTER = new RegExp(`^\\s*$|^\\s+;|^\\s+(?:${CARRIES_ON})\\b`);
 
 /*
