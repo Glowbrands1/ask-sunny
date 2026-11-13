@@ -1,4 +1,6 @@
 @import "tailwindcss";
+/* The DM L10 tab: the Leadership Hub's tokens and glass utilities, scoped to `.hub-l10` (see the file). */
+@import "../features/l10/l10.css";
 
 /* ============================================================================
    ASK SUNNY — DESIGN TOKENS · MARQUEE DIRECTION
