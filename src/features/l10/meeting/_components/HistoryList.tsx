@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { Card, PageHeader } from "@/features/l10/ui/ui";
 import type { HistoryRow } from "@/features/l10/data.server";
+import { RestoreButton, type RestoreFn } from "./RestoreButton";
 
 export interface HistoryEntry {
   row: HistoryRow;
@@ -18,7 +19,7 @@ export function saverLabel(r: HistoryRow): string {
 }
 
 /** Every saved version of a meeting, newest first. */
-export function HistoryList({ meetingKey, meetingName, entries, olderBefore, hubHistoryHref }: { meetingKey: string; meetingName: string; entries: HistoryEntry[]; olderBefore: number | null; /** Restoring a version is a Hub admin action, done in the Leadership Hub. */ hubHistoryHref: string }) {
+export function HistoryList({ meetingKey, meetingName, entries, admin, currentVersion, olderBefore, restore }: { meetingKey: string; meetingName: string; entries: HistoryEntry[]; admin: boolean; currentVersion: number; olderBefore: number | null; restore: RestoreFn }) {
   const button = "inline-flex min-h-11 items-center rounded-lg border border-line bg-white px-3 text-sm font-semibold hover:bg-cream";
   return (
     <>
@@ -27,13 +28,7 @@ export function HistoryList({ meetingKey, meetingName, entries, olderBefore, hub
           ← Back to the meeting
         </Link>
       </PageHeader>
-      <p className="m-0 text-sm text-muted">
-        Every saved version, newest first. Viewing an old version changes nothing. Times are Central. Restoring a version is done by a Hub admin in the{" "}
-        <a href={hubHistoryHref} target="_blank" rel="noopener noreferrer" className="font-semibold text-bronze-deep underline">
-          Leadership Hub ↗
-        </a>
-        .
-      </p>
+      <p className="m-0 text-sm text-muted">Every saved version, newest first. Viewing an old version changes nothing. Times are Central.</p>
       <ol className="m-0 flex list-none flex-col gap-3 p-0" aria-label="Saved versions">
         {entries.map(({ row: r, summary, when }) => (
           <li key={r.version}>
@@ -61,6 +56,7 @@ export function HistoryList({ meetingKey, meetingName, entries, olderBefore, hub
                     View
                   </Link>
                 )}
+                {admin && !r.isCurrent && <RestoreButton meetingKey={meetingKey} meetingName={meetingName} version={r.version} savedAtLabel={when} currentVersion={currentVersion} restore={restore} />}
               </div>
             </Card>
           </li>

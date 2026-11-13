@@ -182,6 +182,23 @@ describe("the assistant's Hub config", () => {
     expect(calls).toEqual([["assistant-tool", "avery.quill@example.test", { key: "stc-dm", tool: "getMeeting", input: { part: "rocks" } }]]);
   });
 
+  it("offers draftNote only when the Hub's config does (a Hub without it keeps the two meeting tools)", async () => {
+    const { hubTools, readConfig } = await import("./assistant/assistant.server");
+    const two = { getMeeting: { description: "d", inputSchema: { type: "object" } }, getMeetingRecaps: { description: "d", inputSchema: { type: "object" } } };
+    const base = { system: "S", model: "claude-sonnet-5-5", deepModel: "claude-opus-5-5" };
+    expect(Object.keys(hubTools(readConfig({ status: 200, body: { ...base, tools: two } })!, "a@example.test", "stc-dm"))).toEqual(["getMeeting", "getMeetingRecaps"]);
+    const three = { ...two, draftNote: { description: "Prepare a hub notification", inputSchema: { type: "object" } } };
+    const calls: unknown[] = [];
+    const tools = hubTools(readConfig({ status: 200, body: { ...base, tools: three } })!, "a@example.test", "stc-dm", (async (op: string, email: string, args: Record<string, unknown>) => {
+      calls.push([op, email, args]);
+      return { status: 200, body: { ok: true, result: { status: "draft_not_sent" } } };
+    }) as never);
+    expect(Object.keys(tools)).toEqual(["getMeeting", "getMeetingRecaps", "draftNote"]);
+    // Drafting is the Hub's tool, run by the Hub for this person; nothing is sent from here.
+    await (tools.draftNote.execute as (i: unknown, o: unknown) => Promise<unknown>)({ to: ["Bo"], message: "hi" }, { toolCallId: "t", messages: [] });
+    expect(calls).toEqual([["assistant-tool", "a@example.test", { key: "stc-dm", tool: "draftNote", input: { to: ["Bo"], message: "hi" } }]]);
+  });
+
   it("rate-limits per person like the Hub (20 messages per 10 minutes)", async () => {
     const { assistantRateLimit } = await import("./assistant/assistant.server");
     const t = Date.parse("2026-11-13T18:00:00Z");
