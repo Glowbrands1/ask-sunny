@@ -173,3 +173,13 @@ describe("CARD_CHECKED_AGAINST_WORDS_ENABLED: history words inside a current fac
     expect(addedFacts("she was late on 11/3/26", "Marnie Holloway", after("she had an attitude with a client"))).toEqual(["she had an attitude with a client"]);
   });
 });
+
+describe("CARD_CHECKED_AGAINST_WORDS_ENABLED: Gate-Bubbles-5's history list (13 Nov 2026)", () => {
+  const after = (said: string) => ({ turns: ["create a CA for Marnie Holloway, she was late on 11/3/26", said], roster: ROSTER });
+  it.each(["she received a written warning last month", "she was given a coaching on 10/2", "she got a write-up in September", "she was coached on 9/20 for the same thing"])("stays out: %s", (said) => {
+    expect(addedFacts("she was late on 11/3/26", "Marnie Holloway", after(said))).toEqual([]);
+  });
+  it.each(["she had a client complaint about her attitude that same day", "she was given the closing checklist and skipped half of it"])("joins: %s", (said) => {
+    expect(addedFacts("she was late on 11/3/26", "Marnie Holloway", after(said))).toEqual([said]);
+  });
+});
