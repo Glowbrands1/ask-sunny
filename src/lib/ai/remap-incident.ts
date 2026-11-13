@@ -10,6 +10,7 @@ import {
   requestParticipleLeadEnabled,
   anotherRequestLeadEnabled,
   secondRequestOwnAccountEnabled,
+  sharedCityAsksSalonEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { createRequestWithReason } from "./edit-date-rules";
 import { withoutPriorStepClauses, correctedDates } from "@/lib/forms/form-date-answer";
@@ -981,6 +982,17 @@ function onlyWhoOrWhere(clause: string, employeeName: string | null): boolean {
     return true;
   }
   if (onlyNamesThem(text, employeeName) || isPlaceOnly(text)) return true;
+  /*
+   * SHARED_CITY_ASKS_SALON_ENABLED (QA's Sunny 38c live check, 13 Nov 2026): "<A> at omha" — the employee and a place
+   * the salon reader did not read — became the Observation ("<A> at omha, she was late"). A clause that is only the
+   * employee's name and "at" / "in" a place of up to three words says who and where, never what happened. Off, as before.
+   */
+  if (sharedCityAsksSalonEnabled() && employeeName) {
+    const rest = text.replace(new RegExp(`^${escape(employeeName)}\\b`, "i"), "").trim();
+    if (rest !== text && /^(?:at|in)\s+(?:the\s+)?[A-Za-z'’-]+(?:\s+[A-Za-z'’-]+){0,2}$/i.test(rest) && !/\b(?:was|is|did|had|has|not|late|early)\b/i.test(rest)) {
+      return true;
+    }
+  }
   const unplaced = withoutPlace(text);
   if (unplaced === text) return false;
   // A place was named: what is left is only the person or their job title.

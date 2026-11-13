@@ -1,10 +1,10 @@
 import "server-only";
 
-import { closeSpellingMatchEnabled } from "@/lib/config/chat-quality-flags";
+import { closeSpellingMatchEnabled, sharedCityAsksSalonEnabled } from "@/lib/config/chat-quality-flags";
 import { PRODUCTION_SALONS, type ProductionSalon } from "@/data/salons";
 import { storeNameKey } from "@/lib/reporting/store-identity";
 
-import { closeWordDistance } from "./close-spelling";
+import { closeWordDistance, editDistance } from "./close-spelling";
 import { salonForTypedNumber, salonsForTypedNumber } from "./salon-text";
 
 /**
@@ -287,6 +287,7 @@ export function readSalonMentions(text: string): SalonMention[] {
   for (const city of CITY_PATTERNS) {
     if (city.pattern.test(spaced)) mentions.push({ salonIds: city.salonIds });
   }
+  if (sharedCityAsksSalonEnabled()) mentions.push(...closeCityMentions(spaced, mentions));
 
   return mentions;
 }
@@ -361,6 +362,42 @@ function closeSalonMentions(haystack: string): SalonMention[] {
     else if (hit.off === 1 && !hit.far) mentions.push({ salonIds });
   }
   return mentions;
+}
+
+/*
+ * SHARED_CITY_ASKS_SALON_ENABLED (QA's Sunny 38c live check, 13 Nov 2026): an Admin's "create a ca for <A> at omha, she
+ * was late" read no salon and no question; "at omaha" asks which Omaha salon. A shared city typed a letter off, after
+ * "at" / "in" and ending where a city ends (`CITY_ENDS`), is a mention of every salon in that city, exactly as the city
+ * spelled right is, so `proposeLocation` asks which for any scope that covers more than one of them. A city word of
+ * five letters or more may be one letter off, even when the typed word is four ("omha"); a shorter city word must be
+ * as typed. Off, never read.
+ */
+function closeCityMentions(spaced: string, already: readonly SalonMention[]): SalonMention[] {
+  const found: SalonMention[] = [];
+  for (const [index, city] of SHARED_CITIES.entries()) {
+    const parts = city.split(" ");
+    if (!parts.some((part) => part.length >= 5)) continue;
+    // CITY_PATTERNS is built from SHARED_CITIES, in the same order.
+    const salonIds = CITY_PATTERNS[index]?.salonIds ?? [];
+    if (salonIds.length === 0 || already.some((mention) => mention.salonIds.join() === salonIds.join())) continue;
+    const pattern = new RegExp(`\\b(?:at|in)\\s+(?:the\\s+)?${parts.map(() => "([a-z]+)").join("\\s+")}${CITY_ENDS}`, "gi");
+    for (const match of spaced.matchAll(pattern)) {
+      const said = match.slice(1).map((word) => word.toLowerCase());
+      let off = 0;
+      const close = said.every((word, index) => {
+        const listed = parts[index]!;
+        if (word === listed) return true;
+        if (listed.length < 5 || word.length < 4 || editDistance(word, listed, 1) > 1) return false;
+        off += 1;
+        return true;
+      });
+      if (close && off === 1) {
+        found.push({ salonIds });
+        break;
+      }
+    }
+  }
+  return found;
 }
 
 /**

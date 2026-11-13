@@ -4732,3 +4732,13 @@ export function formDateBusinessTodayEnabled(): boolean {
 export function closeSpellingMatchEnabled(): boolean {
   return envFlag("CLOSE_SPELLING_MATCH_ENABLED");
 }
+
+/**
+ * SHARED_CITY_ASKS_SALON (QA's Sunny 38c live check, 13 Nov 2026; default off): a shared city typed a letter off ("at
+ * omha") is read as that city, so any scope covering more than one of its salons is asked which; and a clause that is
+ * only the employee's name and "at <place>" is never the Observation of Offense, read or not. See
+ * `forms/salon-mention.ts` and `ai/remap-incident.ts`. Off, as before.
+ */
+export function sharedCityAsksSalonEnabled(): boolean {
+  return envFlag("SHARED_CITY_ASKS_SALON_ENABLED");
+}
