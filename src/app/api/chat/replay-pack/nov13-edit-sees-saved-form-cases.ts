@@ -1,0 +1,93 @@
+import { expect, vi } from "vitest";
+
+import { KEARNEY, replyMatchesDiff, savedForm, type ReplayCase, type ReplayContext } from "./cases";
+import { REFUSAL_ROSTER, STEP_B_READER_FLAGS, patch } from "./nov7-step-b-refusals-scenarios";
+
+/**
+ * ============================================================================
+ * THE EDIT SEES THE SAVED FORM (EDIT_SEES_SAVED_FORM_ENABLED; Pau's direction via QA, 13 Nov 2026)
+ * ============================================================================
+ *
+ * The form edit read the turn once as a patch and never looked at what was saved: a reading that missed part of the
+ * ask left it off the form, and nothing noticed. On, the patch model is handed the stored form after the write, with the
+ * manager's ask ("SAVED AFTER YOUR LAST PATCH"), and confirms it or sends a correction (`forms/form-patch-turn.ts`,
+ * `checkSavedForm`). EVERY CHECK ROUND IS SCRIPTED HERE (`t.patchChecks`); an unscripted round confirms.
+ *
+ * The person is invented (the refusal roster's).
+ */
+
+const FIX = [...STEP_B_READER_FLAGS, "EDIT_SEES_SAVED_FORM_ENABLED"];
+const REPORT = "Pau's direction via QA, 13 Nov 2026: the form edit stops editing blind; it checks the saved form and corrects it";
+const DRAFT = "Observed:\nOttoline Ormsworth missed the monthly meeting on 10/10/26.";
+const ASK = "add that she must attend every monthly meeting, and the other topic is missed monthly meeting";
+
+/** The first reading: the expectation only. The topic the manager also asked for is missed. */
+const FIRST = patch("this_form", [{ field: "coaching_details", value: "She must attend every monthly meeting.", how: "add", evidence: "she must attend every monthly meeting" }]);
+/** The check round's correction: the topic, from the manager's words. */
+const TOPIC = patch("this_form", [
+  { field: "other_topic", value: "Missed monthly meeting", how: "replace", evidence: "missed monthly meeting" },
+  { field: "coaching_topics", options: ["other"], how: "replace", evidence: "the other topic is missed monthly meeting" },
+]);
+
+async function onDraft(t: ReplayContext, checks: readonly unknown[]) {
+  vi.setSystemTime(new Date("2026-11-13T15:00:00Z"));
+  t.directory(REFUSAL_ROSTER);
+  t.as("salon_director", KEARNEY);
+  t.patchReads!({ [ASK]: FIRST });
+  t.patchChecks?.(checks);
+  const thread = t.thread();
+  await thread.say("create a coaching form for Ottoline Ormsworth, she missed the monthly meeting on 10/10/26");
+  t.draftWrites({ coaching_details: DRAFT });
+  const id = await thread.create();
+  const before = savedForm(t, id);
+  const reply = await thread.say(ASK);
+  replyMatchesDiff(t, id, before, reply, ASK);
+  return { id, reply };
+}
+
+export const NOV13_EDIT_SEES_SAVED_FORM_CASES: ReplayCase[] = [
+  {
+    id: "nov13-edit-sees-saved-form-corrects-missed-part",
+    title: `a saved draft, "${ASK}": the reading misses the topic; checking the saved form, the model adds it, and the reply names both`,
+    report: REPORT,
+    status: { open: "the topic is never written: the reading missed it and nothing looked at the saved form" },
+    fixFlags: FIX,
+    async run(t) {
+      // Check round 1: the topic is missing from the stored form, so the model corrects it. Round 2: it confirms.
+      const { id, reply } = await onDraft(t, [TOPIC, patch("this_form", [])]);
+      expect(t.values(id).coaching_details ?? "", "the expectation the first reading wrote").toMatch(/attend every monthly meeting/i);
+      expect(t.values(id).other_topic ?? "", "the topic, written on the check round").toMatch(/missed monthly meeting/i);
+      expect(reply.content, `the reply names the topic, from the saved form:\n${reply.content}`).toMatch(/Other/);
+      expect(t.patchCheckCalls?.() ?? 0, "two check rounds: the correction, then the confirm").toBe(2);
+    },
+  },
+  {
+    id: "nov13-edit-sees-saved-form-confirms",
+    title: "the same turn, the saved form already right: the model confirms on the first check, and nothing else is written",
+    report: REPORT,
+    status: "fixed",
+    fixFlags: FIX,
+    async run(t) {
+      const { id, reply } = await onDraft(t, [patch("this_form", [])]);
+      expect(t.values(id).coaching_details ?? "").toMatch(/attend every monthly meeting/i);
+      expect(t.values(id).other_topic ?? "", "no topic: the model confirmed and wrote nothing").toBe("");
+      expect(reply.content).not.toMatch(/Other topic/i);
+      // Off, no check round is made at all.
+      expect(t.patchCheckCalls?.() ?? 0).toBeLessThanOrEqual(1);
+    },
+  },
+  {
+    id: "nov13-edit-sees-saved-form-refused-correction-stops",
+    title: "a correction the writer refuses (words the manager never said): nothing more is written, the loop stops, and the reply is the saved diff",
+    report: REPORT,
+    status: "fixed",
+    fixFlags: FIX,
+    async run(t) {
+      const invented = patch("this_form", [{ field: "other_topic", value: "Repeated insubordination", how: "replace", evidence: "repeated insubordination" }]);
+      const { id, reply } = await onDraft(t, [invented]);
+      expect(t.values(id).other_topic ?? "", "the refused correction is not saved").not.toMatch(/insubordination/i);
+      expect(reply.content).not.toMatch(/insubordination/i);
+      expect(t.patchCheckCalls?.() ?? 0, "one check round, then stop").toBeLessThanOrEqual(1);
+    },
+  },
+];

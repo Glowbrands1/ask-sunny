@@ -21,6 +21,7 @@ import {
   madeAboutRewriteFinishesEnabled,
   stepBDateSaidEnabled,
   stepBDateWithAboutEnabled,
+  editSeesSavedFormEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { madeAbout } from "@/lib/ai/make-it-about";
 import { saidFormDate } from "./form-date-said";
@@ -38,12 +39,14 @@ import {
   applyPatch,
   draftFromRows,
   fold,
+  sameValue,
   type FieldValue,
+  type FormPatch,
   type PatchRules,
 } from "./form-reducer";
 import { formLabels, snapshotDiff, snapshotOf } from "./form-snapshot";
 import { authorizeInstance } from "./instance-scope";
-import { applyAssistantRevision, applyStatedFacts, loadInstance, saveInstanceValues } from "./instances";
+import { applyAssistantRevision, applyStatedFacts, loadInstance, saveInstanceValues, type LoadedInstance } from "./instances";
 import { NO_PRIOR_ACTION, PRIOR_ACTIONS_KEY } from "./prior-actions";
 import { draftableCheckboxGroups, draftableFields } from "./responsibility";
 import type { ChatMessage } from "@/types";
@@ -813,6 +816,10 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
     if (dateToWrite !== null) await writeFormDate(dateToWrite);
     // EDIT_POLICY_ASK_ENABLED: the policy, after the edit is on the form (its account is what the policy is read from).
     policyOutcome ??= await answerPolicy();
+    // EDIT_SEES_SAVED_FORM_ENABLED: the patch model sees the saved form and confirms it, or corrects it (at most 3 patches).
+    if (editSeesSavedFormEnabled() && formEditSingleWriterEnabled() && patchOps > 0) {
+      await checkSavedForm(input, loaded, reading.patch, actor.id, offered);
+    }
     const reloaded = await loadInstance(input.instanceId);
     if (!reloaded) return null;
     const changed = snapshotDiff(snapshotOf(loaded), snapshotOf(reloaded));
@@ -838,6 +845,99 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
     if (rewroteFrom) return await replyFromSaved(input.instanceId, rewroteFrom, intended).catch(() => null);
     return null;
   }
+}
+
+/**
+ * EDIT_SEES_SAVED_FORM_ENABLED (coding 6, 13 Nov 2026; Pau's direction via QA): after the turn's writes, the form is read
+ * back from storage and handed to the patch model with the manager's ask (`edit-sees-saved-form.ts`). An empty patch
+ * confirms it; any other patch is a correction, written by the one writer under the same rules (path "patch", the
+ * reloaded form). It stops on a confirm, a fallback or another kind of turn, a refused or no-op correction, an error, or
+ * after SAVED_CHECK_MAX_PATCHES patches in all. Nothing here answers the turn: the reply is the stored form's diff.
+ * One JSON log line per turn, keys and counts only.
+ */
+async function checkSavedForm(input: PatchTurnInput, start: LoadedInstance, first: FormPatch, actorId: string, offered: string | undefined): Promise<void> {
+  const check = await import("./edit-sees-saved-form");
+  const startDraft = draftFromRows(start.values);
+  let touched = check.touchedKeys(first);
+  let patches = 1;
+  let stop = "limit";
+  const corrected: string[] = [];
+  const refused: { key: string; reason: string }[] = [];
+  try {
+    while (patches < check.SAVED_CHECK_MAX_PATCHES) {
+      const current = await loadInstance(input.instanceId);
+      if (!current) {
+        stop = "reload";
+        break;
+      }
+      const prepared = preparePatch(current, input);
+      if (!prepared) {
+        stop = "no_fields";
+        break;
+      }
+      const { before, labels, readerFixes, verbatim, writable, stated, modelInput } = prepared;
+      const fields = touched.map((key) => ({
+        key,
+        label: labels[key] ?? key,
+        stored: before[key]?.value ?? "",
+        changed: !sameValue(startDraft[key]?.value, before[key]?.value),
+      }));
+      const reading = await readFormPatch({ ...modelInput, savedCheck: check.savedCheckBlock(input.question, fields) });
+      if (!("ok" in reading) || reading.turn !== "this_form") {
+        stop = "ok" in reading ? `turn:${reading.turn}` : `fallback:${reading.fallback}`;
+        break;
+      }
+      const patch = reading.patch;
+      const ops = [
+        ...Object.entries(patch.set).map(([field, value]) => ({
+          op: patch.how?.[field] === "add" ? ("append" as const) : ("set" as const),
+          field,
+          value: notRepeated(
+            patch.how?.[field],
+            keptSections(field, readerFixes ? relined(value, before[field]?.value) : value, before[field]?.value),
+            before[field]?.value,
+          ),
+          ...(patch.evidence?.[field] !== undefined ? { evidence: patch.evidence[field] } : {}),
+          ...(readerFixes && patch.how?.[field] === "reword" ? { reword: true } : {}),
+          ...(readerFixes && verbatim.has(field) ? { by: "manager" as const } : {}),
+        })),
+        ...patch.clear.map((field) => ({
+          op: "clear" as const,
+          field,
+          ...(patch.evidence?.[field] !== undefined ? { evidence: patch.evidence[field] } : {}),
+        })),
+      ];
+      if (ops.length === 0) {
+        stop = "confirmed";
+        break;
+      }
+      const result = await (await import("./form-write")).writeFormEdits(input.instanceId, ops, {
+        path: "patch",
+        actorId,
+        latest: input.question,
+        managerTurns: managerTurns(input.history, input.question),
+        ...(offered !== undefined ? { offered } : {}),
+        acceptedOffer: false,
+        today: input.today,
+        loaded: current,
+        writable,
+        statedKeys: stated,
+        syncPlan: { after: [...stated], amountSentence: true, notes: input.question },
+        ...(readerFixes ? { readerFixes } : {}),
+      });
+      patches += 1;
+      refused.push(...result.refused.map((entry) => ({ key: entry.key, reason: entry.reason })));
+      if (result.handoff !== null || result.changed.length === 0) {
+        stop = result.handoff ?? "noop";
+        break;
+      }
+      corrected.push(...result.changed.map((change) => change.key));
+      touched = [...new Set([...touched, ...check.touchedKeys(patch)])];
+    }
+  } catch (error) {
+    stop = `error:${error instanceof Error ? error.name : typeof error}`;
+  }
+  console.info(JSON.stringify({ event: "form_patch.saved_check", instanceId: input.instanceId, patches, stop, corrected: [...new Set(corrected)], refused }));
 }
 
 /**

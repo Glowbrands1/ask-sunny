@@ -105,11 +105,28 @@ const state = vi.hoisted(() => ({
  * the real ones.
  */
 const systemPrompts = vi.hoisted(() => ({ hashes: [] as string[], texts: [] as string[] }));
-const patchScript = vi.hoisted(() => ({ outputs: [] as unknown[], calls: 0, byLatest: null as Record<string, unknown> | null }));
+const patchScript = vi.hoisted(() => ({
+  outputs: [] as unknown[],
+  calls: 0,
+  byLatest: null as Record<string, unknown> | null,
+  // EDIT_SEES_SAVED_FORM_ENABLED: the check rounds' outputs (`t.patchChecks`), apart from the readings above.
+  checks: [] as unknown[],
+  checkCalls: 0,
+}));
 vi.mock("@/lib/forms/form-patch-call", () => ({
   FORM_PATCH_DEFAULT_TIMEOUT_MS: 5_000,
   formPatchTimeoutMs: () => 5_000,
   callFormPatchModel: async (input?: { prompt?: string }) => {
+    /*
+     * EDIT_SEES_SAVED_FORM_ENABLED (coding 6, 13 Nov 2026): a check round (the prompt holds "SAVED AFTER YOUR LAST
+     * PATCH") never takes a reading from the script above. It answers `t.patchChecks([...])` in order; past the end,
+     * the model confirms the saved form (turn "this_form", no set, no clear). `null` is the call's fallback.
+     */
+    if ((input?.prompt ?? "").includes("SAVED AFTER YOUR LAST PATCH")) {
+      const output = patchScript.checkCalls < patchScript.checks.length ? patchScript.checks[patchScript.checkCalls] : { turn: "this_form", set: [], clear: [] };
+      patchScript.checkCalls += 1;
+      return output === undefined || output === null ? { fallback: "error" } : { ok: true, output };
+    }
     /*
      * `t.patchReads` (coding 5, 7 Nov 2026): the reading is picked by the
      * manager's latest message, so a turn another path answers first (a
@@ -706,6 +723,8 @@ beforeEach(async () => {
   patchScript.outputs = [];
   patchScript.calls = 0;
   patchScript.byLatest = null;
+  patchScript.checks = [];
+  patchScript.checkCalls = 0;
   faults.field = null;
   summaries.reply = null;
   faults.strayDraftField = null;
@@ -853,6 +872,11 @@ function context(): ReplayContext {
       patchScript.calls = 0;
       patchScript.byLatest = { ...byLatest };
     },
+    patchChecks: (outputs) => {
+      patchScript.checks = [...outputs];
+      patchScript.checkCalls = 0;
+    },
+    patchCheckCalls: () => patchScript.checkCalls,
     failSavesOf: (field) => {
       faults.field = field;
     },
