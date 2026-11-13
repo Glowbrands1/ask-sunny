@@ -26,6 +26,7 @@ only as listed in "Copied files that differ" below.
 | **Files on an issue** (attach, open, unlist) | ✅ same rules | See "Issue files" below | Hub `partner.test.ts` ("partner issue files…", "the partner Storage client…", guard test); Sunny `admin-files.test.ts`, `admin-files.dom.test.tsx` |
 | Bell: notifications, unread count, mark read | ✅ same rows | Hub notification functions, own rows only | `notifications/*` tests |
 | Notification settings | 🔗 link to the Hub | Settings belong to the Hub account, not to a meeting | — |
+| Rock Review: "Add new rock" form at the TOP, under the section title (owner's request, 13 Nov 2026) | ✅ same | The same change in both apps' `Rocks.tsx`, for every meeting; behaviour unchanged | `meeting/_components/Rocks.order.dom.test.tsx`; Hub `Rocks.order.test.tsx` |
 | **Tracker** | 🔗 stays in the Hub | In the Hub, only Leadership L10 members and hub admins can open the Tracker. DM L10 attendees are not on that list, so showing it here would widen access | — |
 | Assistant: system prompt, models, Deep think | ✅ same | Served by the Hub (`assistant-config`); runs on Ask Sunny's own `ANTHROPIC_API_KEY` | `assistant` tests |
 | Assistant: meeting tools (`getMeeting`, `getMeetingRecaps`) | ✅ same | Executed by the Hub for this person | `assistant` tests; Hub `partner.test.ts` |
