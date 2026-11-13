@@ -63,11 +63,12 @@ const DESCRIBED: readonly { n: number; said: string; open?: string }[] = [
 ];
 
 export const NOV13_NAMED_VS_DESCRIBED_CLEANING_CASES: ReplayCase[] = [
-  ...NAMED.map(({ n, said, open, create }): ReplayCase => ({
+  ...NAMED.map(({ n, said, create }): ReplayCase => ({
     id: `nov13-cleaning-named-${n}`,
     title: `named ${n}: "${said}" keeps Care and Cleaning on the card and the draft, never Other`,
     report: REPORT,
-    status: open ? { open } : "fixed",
+    // Changed on purpose (13 Nov 2026): fixed in production by OTHER_POLICY_AGREES + OTHER_NOT_A_POLICY_NAME, QA round 38e. Was OPEN.
+    status: "fixed",
     fixFlags: ON,
     async run(t) {
       const { card, saved } = await cardAndDraft(t, said, create !== false);
@@ -76,11 +77,12 @@ export const NOV13_NAMED_VS_DESCRIBED_CLEANING_CASES: ReplayCase[] = [
       if (saved) expect(saved.policy_violated ?? "", `the draft is Other: ${JSON.stringify(saved)}`).not.toBe("Other");
     },
   })),
-  ...DESCRIBED.map(({ n, said, open }): ReplayCase => ({
+  ...DESCRIBED.map(({ n, said }): ReplayCase => ({
     id: `nov13-cleaning-described-${n}`,
     title: `described ${n}: "${said}" is Other on the card and the draft, no Care and Cleaning line`,
     report: REPORT,
-    status: open ? { open } : "fixed",
+    // Changed on purpose (13 Nov 2026): fixed in production by OTHER_POLICY_AGREES + OTHER_NOT_A_POLICY_NAME, QA round 38e. Was OPEN.
+    status: "fixed",
     fixFlags: ON,
     async run(t) {
       const { card, saved } = await cardAndDraft(t, said);

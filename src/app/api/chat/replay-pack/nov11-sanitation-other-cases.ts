@@ -52,7 +52,8 @@ export const NOV11_SANITATION_OTHER_CASES: ReplayCase[] = [
     id: "nov11-sanitation-other-card-equals-draft",
     title: `"${SAID}": the card's policy is the saved Policy Violated (Other), and the card cites no Care and Cleaning page`,
     report: REPORT,
-    status: { open: "the card cites Care and Cleaning p.21; the draft saves no matching policy" },
+    // Changed on purpose (13 Nov 2026): fixed in production by OTHER_POLICY_AGREES + OTHER_NOT_A_POLICY_NAME, QA round 38e. Was OPEN.
+    status: "fixed",
     fixFlags: ["OTHER_POLICY_AGREES_ENABLED"],
     async run(t) {
       const { card, saved, checked } = await cardAndDraft(t);
@@ -68,7 +69,8 @@ export const NOV11_SANITATION_OTHER_CASES: ReplayCase[] = [
     id: "nov11-sanitation-other-plan-not-other-policy",
     title: `"${SAID}": the saved Action Plan never says "the Other policy"`,
     report: REPORT,
-    status: { open: "the Action Plan names Care and Cleaning (card) or \"the Other policy\" (draft)" },
+    // Changed on purpose (13 Nov 2026): fixed in production by OTHER_POLICY_AGREES + OTHER_NOT_A_POLICY_NAME, QA round 38e. Was OPEN.
+    status: "fixed",
     fixFlags: ["OTHER_POLICY_AGREES_ENABLED", "OTHER_NOT_A_POLICY_NAME_ENABLED"],
     // The protected forms/ca-action-plan.ts lines are in (Pau's standing approval via QA, 11 Nov 2026): it holds with both flags.
     async run(t) {
@@ -130,7 +132,8 @@ export const NOV13_NAMED_CARE_AND_CLEANING_CASES: ReplayCase[] = [
     report: "Gate-Sunny-3 on #839 (13 Nov 2026): a manager who names Care and Cleaning got Other",
     // Production's CA_SALES_POLICY reads the cleaning account as Other even when the policy is named. Changed on purpose
     // (13 Nov 2026, main 0ef33633): the plainly named "care and cleaning policy" already holds on production there.
-    status: key === "policy" ? ("fixed" as const) : { open: "a named Care and Cleaning policy reads as Other" },
+    // Changed on purpose (13 Nov 2026): fixed in production by OTHER_POLICY_AGREES + OTHER_NOT_A_POLICY_NAME, QA round 38e. Was OPEN.
+    status: "fixed" as const,
     fixFlags: ["OTHER_POLICY_AGREES_ENABLED", "OTHER_NOT_A_POLICY_NAME_ENABLED"],
     async run(t) {
       vi.setSystemTime(new Date("2026-11-13T15:00:00Z"));

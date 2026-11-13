@@ -62,7 +62,8 @@ export const NOV13_SANITATION_CHAT_SCRIPTED_CASES: ReplayCase[] = [
     id: "nov13-sanitation-chat-scripted-card-and-draft-agree",
     title: `"${T1}" (Care and Cleaning scripted, as live) then "${T2}": card and saved draft both Other, never Care and Cleaning; the Observation keeps "in the morning", and the reply says what changed`,
     report: REPORT,
-    status: { open: "the card cites Care and Cleaning p.21 while the saved draft is Other" },
+    // Changed on purpose (13 Nov 2026): fixed in production by OTHER_POLICY_AGREES + OTHER_NOT_A_POLICY_NAME, QA round 38e. Was OPEN.
+    status: "fixed",
     fixFlags: ["OTHER_POLICY_AGREES_ENABLED"],
     async run(t) {
       const { card, id, saved, reply } = await play(t);
