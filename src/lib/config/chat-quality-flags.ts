@@ -4635,6 +4635,44 @@ export function draftWroteNothingNoticeEnabled(): boolean {
 }
 
 /**
+ * REOPEN_IS_OPENING_ENABLED (ported from Ask Bubbles, QA's 17n live test, 12 Nov 2026; default off; same flag in both
+ * apps). "he was late to reoepn the store on 11/9" cited Attendance (from "late"), not Late Opening. On: "late to
+ * reopen" (or a word within two letters of it) is a late opening (`forms/late-open.ts`). Off, as before.
+ */
+export function reopenIsOpeningEnabled(): boolean {
+  return envFlag("REOPEN_IS_OPENING_ENABLED");
+}
+
+/**
+ * BARE_FORM_NAME_ASKS_WHAT_ENABLED (ported from Ask Bubbles, QA's 17n live test, 12 Nov 2026, 4c; default off; same flag
+ * in both apps). A pasted bare "Corrective Action Form" got "Who is this form for? Tell me the employee's full name." and
+ * an empty card. On: a turn that is only a form's name, with a card naming nobody, asks what the manager needs on that
+ * form, with no card (`forms/bare-form-name.ts`). Off, as before.
+ */
+export function bareFormNameAsksWhatEnabled(): boolean {
+  return envFlag("BARE_FORM_NAME_ASKS_WHAT_ENABLED");
+}
+
+/**
+ * PASTED_REVIEW_ASKS_WHAT_YOU_SAW_ENABLED (ported from Ask Bubbles, QA's 17n live test, 12 Nov 2026, item 2; default off;
+ * same flag in both apps). A pasted customer review was not taken as the account, but the reply said "Everything I need
+ * is here" and never mentioned it. On: the reply says the review is the customer's words and asks "What did you see
+ * happen?" (`forms/pasted-customer-review.ts`). Off, as before.
+ */
+export function pastedReviewAsksWhatYouSawEnabled(): boolean {
+  return envFlag("PASTED_REVIEW_ASKS_WHAT_YOU_SAW_ENABLED");
+}
+
+/**
+ * CA_NO_POLICY_ASKS_WHICH_ENABLED (ported from Ask Bubbles, QA's 17n live test, 12 Nov 2026, 4a; QA's ruling; default
+ * off; same flag in both apps). A Corrective Action card with no Policy line asked nothing. On: such a card asks
+ * "**Which policy applies?**" and picks none (`forms/no-policy-asks-which.ts`). Off, as before.
+ */
+export function caNoPolicyAsksWhichEnabled(): boolean {
+  return envFlag("CA_NO_POLICY_ASKS_WHICH_ENABLED");
+}
+
+/**
  * FORMS_ON_FILE_ORDER_MATCH_POSSIBLE_ENABLED (ported from Ask Bubbles, 11 Nov 2026; QA's Bubbles 17h live test; same flag
  * in both apps; default off). The FORMS ON FILE block counts a row as naming the person when every word of its employee
  * name is in the question, in any order, so forms filed as "<last> <first>" were listed as the asked person's own. On: a

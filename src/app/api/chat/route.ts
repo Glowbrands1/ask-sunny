@@ -10,6 +10,9 @@ import { modelSpendGuard } from "@/lib/ai/spend-guard";
 import { isQuestionNotForm } from "@/lib/ai/question-not-form";
 import { wantsSeparateDocument } from "@/lib/ai/second-form";
 import {
+  bareFormNameAsksWhatEnabled,
+  caNoPolicyAsksWhichEnabled,
+  pastedReviewAsksWhatYouSawEnabled,
   chatLongMessageEnabled,
   draftActionsEnabled,
   formEditHonestReplyEnabled,
@@ -1005,6 +1008,18 @@ async function postChat(request: Request) {
       if (copyOwnSalonEnabled()) answer = await (await import("@/lib/forms/same-form-copy")).withCopyOwnSalon(answer, request, asked.question);
       // SAME_REQUEST_OTHER_PERSON_ENABLED: <B>'s card says what of the earlier request it carries.
       if (sameRequestOther) answer = (await import("@/lib/forms/same-request-other-person")).withSameRequestNote(answer, sameRequestOther);
+      // BARE_FORM_NAME_ASKS_WHAT_ENABLED: a turn that is only a form's name asks what the manager needs (`lib/forms/bare-form-name.ts`).
+      if (bareFormNameAsksWhatEnabled()) answer = (await import("@/lib/forms/bare-form-name")).withBareFormNameQuestion(answer, asked.question);
+      // PASTED_REVIEW_ASKS_WHAT_YOU_SAW_ENABLED: a pasted customer review is the customer's words; ask what the manager saw (`lib/forms/pasted-customer-review.ts`).
+      if (pastedReviewAsksWhatYouSawEnabled()) answer = (await import("@/lib/forms/pasted-customer-review")).withPastedReviewAsk(answer, asked.question);
+      // CA_NO_POLICY_ASKS_WHICH_ENABLED: a Corrective Action card that cites no policy asks which applies (`lib/forms/no-policy-asks-which.ts`).
+      if (caNoPolicyAsksWhichEnabled() && answer.formProposal) {
+        // The card's own turns are what its policy reader read.
+        const cited = new Set(answer.formProposal.sourceMessageIds ?? []);
+        const turns = parsed.history.filter((turn) => turn.role === "user" && (cited.size === 0 || (turn.id && cited.has(turn.id))));
+        const managerText = [...turns.map((turn) => String(turn.content)), asked.question].join("\n");
+        answer = (await import("@/lib/forms/no-policy-asks-which")).withNoPolicyQuestion(answer, managerText);
+      }
     } catch (error) {
       /*
        * A FAILED ANSWER IS STILL A RECORDED TURN, closed as a failure. The row

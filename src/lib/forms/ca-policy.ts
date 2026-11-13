@@ -18,11 +18,12 @@ import {
   conductIncidentCitesPageEnabled,
   registerAccuracyConductEnabled,
   notFollowingIsViolationEnabled,
+  reopenIsOpeningEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { JOIN } from "./bounded-context";
 import { namesPerformance } from "./epp-policy";
-import { FAILURE_TO_OPEN, LATE_TO_OPEN, failureToOpenOn, lateOpenOn } from "./late-open";
+import { FAILURE_TO_OPEN, LATE_TO_OPEN, failureToOpenOn, lateOpenOn, lateToReopen } from "./late-open";
 import {
   findManualSection,
   isApprovedPolicyManualTitle,
@@ -401,7 +402,14 @@ function missedEventIn(sentences: readonly string[]): string | null {
 const OUT_OF_UNIFORM =
   /\bout\s+of\s+uniform\b(?=\s*(?:$|[.,;:!?)\n—-]|\d|(?:on|at|for|again|today|yesterday|tonight|during|while|and|or|but|when|in|with|wearing|this|last|twice|all|every|since|after|before|until|so|because|as|which|that|despite)\b))/;
 
-const NAMED: { name: CaPolicyName; pattern: RegExp; alwaysAPolicy: boolean; enabled?: () => boolean }[] = [
+const NAMED: {
+  name: CaPolicyName;
+  pattern: RegExp;
+  alwaysAPolicy: boolean;
+  enabled?: () => boolean;
+  /** A match counts only when this agrees (REOPEN_IS_OPENING: a word within two letters of "reopen"). */
+  accept?: (matched: string) => boolean;
+}[] = [
   { name: "standards_of_conduct", pattern: /\b(?:standards? of conduct|code of conduct)\b/, alwaysAPolicy: true },
   { name: "under_performance", pattern: /\b(?:under[- ]?performance|underperforming)\b/, alwaysAPolicy: false },
   /*
@@ -418,6 +426,14 @@ const NAMED: { name: CaPolicyName; pattern: RegExp; alwaysAPolicy: boolean; enab
   { name: "late_opening", pattern: new RegExp(LATE_TO_OPEN.source), alwaysAPolicy: true, enabled: lateOpenOn },
   /* "failure to open on time", "did not open the salon" (Pau's P16; FAILURE_TO_OPEN_IS_LATE_OPENING_ENABLED). */
   { name: "late_opening", pattern: new RegExp(FAILURE_TO_OPEN.source), alwaysAPolicy: true, enabled: failureToOpenOn },
+  /* "late to reoepn the salon" (ported from Ask Bubbles, QA's 17n live test, 12 Nov 2026; REOPEN_IS_OPENING_ENABLED). */
+  {
+    name: "late_opening",
+    pattern: /\blate\s+to\s+re-?[a-z]{3,6}\b/,
+    alwaysAPolicy: true,
+    enabled: reopenIsOpeningEnabled,
+    accept: (matched) => lateToReopen(matched) !== null,
+  },
   { name: "attendance", pattern: /\b(?:attendance|tardiness|absenteeism)\b/, alwaysAPolicy: false },
   { name: "dress_code", pattern: /\bdress code\b/, alwaysAPolicy: false },
   /* "wore leggings" names the dress code when the manager does not say those words. */
@@ -473,10 +489,11 @@ function statedIn(turn: string): CaPolicyName | null {
   let found: { name: CaPolicyName; at: number } | null = null;
   const short = turn.split(/\s+/).filter(Boolean).length <= 8;
   for (const sentence of statements(turn)) {
-    for (const { name, pattern, alwaysAPolicy, enabled } of NAMED) {
+    for (const { name, pattern, alwaysAPolicy, enabled, accept } of NAMED) {
       if (enabled && !enabled()) continue;
       const match = pattern.exec(sentence);
       if (!match) continue;
+      if (accept && !accept(match[0])) continue;
       const broken = notFollowingIsViolationEnabled() && NOT_FOLLOWING_BEFORE.test(sentence.slice(0, match.index));
       if (!broken && NEGATED_BEFORE.test(sentence.slice(0, match.index))) continue;
       if (formEditDateRulesEnabled() && SET_ASIDE_BEFORE.test(sentence.slice(0, match.index))) continue;
@@ -505,9 +522,10 @@ function statedIn(turn: string): CaPolicyName | null {
 export function policiesNamedIn(sentence: string): { name: CaPolicyName; start: number; end: number }[] {
   const text = normalize(sentence);
   const found: { name: CaPolicyName; start: number; end: number }[] = [];
-  for (const { name, pattern, enabled } of NAMED) {
+  for (const { name, pattern, enabled, accept } of NAMED) {
     if (enabled && !enabled()) continue;
     const match = pattern.exec(text);
+    if (match && accept && !accept(match[0])) continue;
     if (match && !found.some((seen) => seen.name === name)) found.push({ name, start: match.index, end: match.index + match[0].length });
   }
   return found;
