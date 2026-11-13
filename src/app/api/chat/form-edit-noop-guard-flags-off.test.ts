@@ -270,6 +270,11 @@ const FLIPPED_IN_FLIP_7: readonly string[] = [
   // the same thing for Perrin Haldane …" (Perrin on no directory) is then the same request for another person, not an
   // edit of the open draft; the recording predates it, so it is compared with it off.
   "SAME_REQUEST_OFF_ROSTER_ENABLED",
+  // Changed on purpose (13 Nov 2026): QA round 38a turned these on in production. HUMAN_REPLIES shortens a later card
+  // turn's opener; the fixture predates them, so it is compared with them off.
+  "HUMAN_REPLIES_ENABLED",
+  "OFF_ROSTER_PLACE_ANSWER_ENABLED",
+  "OFFERED_NAME_ACCEPTED_ENABLED",
 ];
 const PRODUCTION = [...PRODUCTION_FLAGS.on, ...PRODUCTION_FLAGS.assumedOn].filter((name) => !FLIPPED_IN_FLIP_7.includes(name));
 const TOOL_FLAGS = ["FORM_EDIT_SINGLE_WRITER_ENABLED", "FORM_EDIT_TOOL_IN_STREAM_ENABLED"] as const;
