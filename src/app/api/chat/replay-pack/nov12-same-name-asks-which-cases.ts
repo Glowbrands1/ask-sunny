@@ -42,7 +42,8 @@ export const NOV12_SAME_NAME_ASKS_WHICH_CASES: ReplayCase[] = [
     id: "nov12-same-name-asks-which",
     title: `"${SAID}" with two Marnie Holloways: "Which person / Did you mean…?", never one of them's title silently`,
     report: "QA, 12 Nov 2026: two roster people with one name are resolved to neither, and the card carries one of them's title",
-    status: { open: "with two Marnie Holloways, the card is ready with one of them's job title and nothing is asked" },
+    // Changed on purpose (13 Nov 2026): fixed in production by SAME_NAME_ASKS_WHICH_ENABLED, QA round 38b. Was OPEN.
+    status: "fixed",
     fixFlags: ["SAME_NAME_ASKS_WHICH_ENABLED"],
     async run(t) {
       const thread = start(t);
@@ -56,7 +57,8 @@ export const NOV12_SAME_NAME_ASKS_WHICH_CASES: ReplayCase[] = [
     id: "nov12-same-name-numbered-reply-selects",
     title: `"${SAID}" with two Marnie Holloways, then the number of the Assistant Salon Director: that person's card`,
     report: "QA, 12 Nov 2026: the numbered reply to the same-name choice selects that person",
-    status: { open: "with two Marnie Holloways, nothing is asked, so no reply can select one" },
+    // Changed on purpose (13 Nov 2026): fixed in production by SAME_NAME_ASKS_WHICH_ENABLED, QA round 38b. Was OPEN.
+    status: "fixed",
     fixFlags: ["SAME_NAME_ASKS_WHICH_ENABLED"],
     async run(t) {
       const thread = start(t);
@@ -73,7 +75,8 @@ export const NOV12_SAME_NAME_ASKS_WHICH_CASES: ReplayCase[] = [
     id: "nov12-same-name-title-reply-selects",
     title: `"${SAID}" with two Marnie Holloways, then "the assistant salon director": that person's card`,
     report: "QA, 12 Nov 2026: the job-title reply to the same-name choice selects that person by identity, never by name",
-    status: { open: "with two Marnie Holloways, nothing is asked, so no reply can select one" },
+    // Changed on purpose (13 Nov 2026): fixed in production by SAME_NAME_ASKS_WHICH_ENABLED, QA round 38b. Was OPEN.
+    status: "fixed",
     fixFlags: ["SAME_NAME_ASKS_WHICH_ENABLED"],
     async run(t) {
       const thread = start(t);
@@ -88,7 +91,8 @@ export const NOV12_SAME_NAME_ASKS_WHICH_CASES: ReplayCase[] = [
     id: "nov12-same-name-salon-reply-selects",
     title: `two Tanning Consultants named Marnie Holloway at two salons, then the other salon's name: that person's card`,
     report: "QA, 12 Nov 2026: the salon reply to the same-name choice selects that person by identity, never by name",
-    status: { open: "with two Marnie Holloways, nothing is asked, so no reply can select one" },
+    // Changed on purpose (13 Nov 2026): fixed in production by SAME_NAME_ASKS_WHICH_ENABLED, QA round 38b. Was OPEN.
+    status: "fixed",
     fixFlags: ["SAME_NAME_ASKS_WHICH_ENABLED"],
     async run(t) {
       vi.setSystemTime(new Date("2026-11-03T15:00:00Z"));
