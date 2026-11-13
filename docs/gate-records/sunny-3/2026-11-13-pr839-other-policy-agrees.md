@@ -111,3 +111,29 @@ Cases that now hold (with the two GO flags): nov13-sanitation-chat-scripted-card
 nov11-sanitation-other-card-equals-draft, nov11-sanitation-other-plan-not-other-policy, nov13-cleaning-described-1..6,
 nov13-cleaning-named-4, nov13-cleaning-named-5, nov13-named-care-and-cleaning-{policy,typo,ampersand}.
 (nov11-sanitation-account-typos-mended holds only with ACCOUNT_TYPOS_FIXED.)
+
+## Delta, head 4d3f80f1 (33e2a71a + main 5d9f1767/0ef33633 + the two pins flag-aware) — GO for 38e
+
+1. **Product diff = only main's merge.** Per file, the PR's own changes (vs its main) are identical, ignoring hunk
+   positions, for all 8 product files: form-card-slots, intent-extraction, keep-filled-slots, chat-quality-flags,
+   account-spelling, ca-action-plan, ca-policy, policy-fields. Only these differ: remap-incident-oct24.test.ts and
+   policy-cleaning-incident-oct25.test.ts (pinned flag-aware) and two case files. The protected ca-action-plan.ts is
+   still the approved patch applied to the new main, byte-identical.
+2. **1 OFF + 1 ON on 0ef33633's production flags** (CLOSE_SPELLING_MATCH on). ON = OTHER_POLICY_AGREES +
+   OTHER_NOT_A_POLICY_NAME; ACCOUNT_TYPOS_FIXED off. SHARED_CITY_ASKS_SALON_ENABLED was set in both arms, but **no such
+   flag exists on this head or on main 0ef33633**, so it's a no-op until 38d's change lands.
+   - OFF 22,355 tests / 1,265 failed; ON 1,282.
+   - The +17 are the 13 target OPEN arms, which now hold (INTENDED), and the 4 parity replay quarters
+     (INTENDED-HARNESS).
+   - The two previously stale POLICY_CLEANING_INCIDENT tests now pass ON.
+   - Replay: 17 records differ:
+     - all target arms: proof case, nov11 ×3, nov13-cleaning described 1–6 and named 4–5, named-care-and-cleaning
+       typo/ampersand (`-policy` is fixed on main by CLOSE_SPELLING_MATCH);
+     - plus nov6-as-you-said-attendance-s2a (INTENDED-ADJACENT: the plan now matches the card's Other).
+     0 REGRESSION.
+3. **Probes, close spelling on:** named 10/10 → Care and Cleaning p.21; described 6/6 → Other, card and saved draft.
+   Named 1 now shows "Care and Cleaning …, as you said — the policy manual's section on page 21" both OFF and ON. The
+   old contradictory "won't cite one" card is gone on main.
+4. **Eval** (2 flags on): 63/63, 42/51 cases pass, and no case changes outcome.
+
+**GO** on 4d3f80f1 for OTHER_POLICY_AGREES and OTHER_NOT_A_POLICY_NAME. ACCOUNT_TYPOS_FIXED stays NO-GO and off.
