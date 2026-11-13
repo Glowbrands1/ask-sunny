@@ -5,6 +5,7 @@ import {
   asYouSaidManagerWordsEnabled,
   caPerformanceReasonEnabled,
   missedShiftCitesAttendanceEnabled,
+  shiftAbsenceWiderEnabled,
   lateReadsAttendanceEnabled,
   msbPhraseSocEnabled,
   caSalesPolicyEnabled,
@@ -587,10 +588,22 @@ export function withPlanOnReadPolicy<T extends { content: string; formProposal?:
   return { ...answer, content: answer.content.replace(GENERIC_PLAN, (_all, lead: string, tail: string) => `${lead}the ${read} policy${tail}`) };
 }
 
+/*
+ * SHIFT_ABSENCE_WIDER_ENABLED (ported from Ask Bubbles; QA's ruling (a) on CA_NO_POLICY_ASKS_WHICH, 13 Nov 2026): two
+ * accounts that are Attendance made a card with no Policy line. "missing her saturday and sunday shifts" put four words
+ * between "missing" and "shifts" (MISSED_SHIFT allows three), and "she didn't call in" named no shift. With the flag on,
+ * up to six words may stand between the verb and "shift(s)" (no "during / in / at …": "missing her name tag during the
+ * shift" is not one), and not calling in (didn't / did not / never / failed to call in), ending there or followed by
+ * sick / for / to work / a date, is a shift not shown up to ("didn't call in the order" is not). Off, as before.
+ */
+const MISSED_SHIFTS_WIDER =
+  /\b(?:missed|missing|skipped|skipping)\s+(?:(?!(?:during|in|at|on|before|after|throughout|while|for)\b)\S+\s+){0,6}?shifts?\b|\b(?:did\s*n['’]?t|did\s+not|didnt|never|failed\s+to|failing\s+to)\s+call(?:ed)?[\s-]+in(?=\s*(?:$|[.,;:!?)]|sick\b|for\b|to\s+work\b|on\b|before\b|and\b|or\b|but\b|\d))/i;
+
 function withMissedShift(reading: CaPolicyReading, said: string): CaPolicyReading {
   if (!missedShiftCitesAttendanceEnabled()) return reading;
   if (reading.stated !== null || reading.suggestion !== null || reading.ambiguous || reading.other || reading.missedEvent || reading.readFromApp) return reading;
-  return MISSED_SHIFT.test(said) ? { ...reading, readFromApp: "attendance" } : reading;
+  const missed = MISSED_SHIFT.test(said) || (shiftAbsenceWiderEnabled() && MISSED_SHIFTS_WIDER.test(said));
+  return missed ? { ...reading, readFromApp: "attendance" } : reading;
 }
 
 

@@ -4664,3 +4664,14 @@ export function policyCarryRetrievalEnabled(): boolean {
 export function notFollowingIsViolationEnabled(): boolean {
   return envFlag("NOT_FOLLOWING_IS_VIOLATION_ENABLED");
 }
+
+/**
+ * SHIFT_ABSENCE_WIDER_ENABLED (ported from Ask Bubbles, coding 5, 13 Nov 2026; default off; same flag in both apps; QA's
+ * ruling (a) on CA_NO_POLICY_ASKS_WHICH). "missing her saturday and sunday shifts" and "she didn't call in" made
+ * Corrective Action cards with no Policy line. On, with MISSED_SHIFT_CITES_ATTENDANCE: up to six words between "missed /
+ * missing / skipped" and "shift(s)", and not calling in, read as Attendance from the request (`forms/ca-policy.ts`).
+ * Off, as before.
+ */
+export function shiftAbsenceWiderEnabled(): boolean {
+  return envFlag("SHIFT_ABSENCE_WIDER_ENABLED");
+}

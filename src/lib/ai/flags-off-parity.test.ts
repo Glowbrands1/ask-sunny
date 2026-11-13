@@ -409,6 +409,8 @@ const NEW_FLAGS = [
   "COACHING_OBSERVED_SAVED_ENABLED",
   // coding 6: APP_INSTRUCTIONS_NOT_ACCOUNT (default off): forced off with the others.
   "APP_INSTRUCTIONS_NOT_ACCOUNT_ENABLED",
+  // coding 5: SHIFT_ABSENCE_WIDER (default off; ported from Ask Bubbles, 13 Nov 2026): forced off with the others.
+  "SHIFT_ABSENCE_WIDER_ENABLED",
   // coding 6: FAILURE_TO_OPEN_IS_LATE_OPENING (default off): forced off with the others.
   "FAILURE_TO_OPEN_IS_LATE_OPENING_ENABLED",
   // coding 6: TERMINATION_STATED_TICKS (default off): forced off with the others.
