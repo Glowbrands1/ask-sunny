@@ -225,3 +225,29 @@ export const NOV13_CLOSE_SPELLING_CLEANING_CASES: ReplayCase[] = [
     },
   },
 ];
+
+/*
+ * QA's live check in the sibling app (17s, 13 Nov 2026): "ca for <A> for violating the key holdr policy" gave no "Did you mean …?".
+ * Read from this app's live manual too (JBA Policy Manual Edited 5.2025, read-only, headings only): it has no key-holder heading at all —
+ * "key" is only in body text (Shoes, Driver Safety Rules, Return of Property). The two-headings case above adds two
+ * INVENTED key-holder headings to test the mechanism; against the real manual, which this pack's fixture matches here,
+ * nothing is close, so nothing is cited and nothing is offered, with the flag or without. A guard, so a later change
+ * never invents a suggestion the manual does not have.
+ */
+export const NOV13_CLOSE_SPELLING_LIVE_MANUAL_GUARDS: ReplayCase[] = [
+  {
+    id: "nov13-close-spelling-policy-key-holdr-no-heading-in-manual",
+    title: `"… violating the key holdr policy …" against the real manual (no key-holder heading) — nothing cited, nothing offered`,
+    report: `${REPORT}; QA's live check: the live manual has no key-holder heading`,
+    status: "fixed",
+    async run(t: ReplayContext) {
+      const thread = start(t);
+      const reply = (
+        await thread.say("create a verbal ca for juno paxton for violating the key holdr policy, she left the back door unlocked last night")
+      ).content;
+      expect(reply, `offered a heading the manual does not have:\n${reply}`).not.toMatch(/Did you mean/);
+      expect(reply, `cited a section for "key holdr":\n${reply}`).not.toMatch(/\*\*Policy:\*\* Key Holder/);
+      expect(reply, `the card no longer says no section was found:\n${reply}`).toMatch(/see a section of the current policy manual for "key holdr"/);
+    },
+  },
+];
