@@ -242,7 +242,7 @@ export function isHistory(text: string): boolean {
  * $20 from the drawer" and "she was short $20" are what she did, and join.
  */
 const MONEY = /(?:\$\s?\d|\b\d+(?:\.\d{2})?\s*(?:dollars?|bucks)\b)/i;
-const OWED = /\b(?:owes?|owed|owing|pay(?:s|ing)?\s+(?:it\s+)?back|paid\s+back|repay|reimburse|deduct(?:ed|ion|ing)?|payroll|charge(?:d)?\s+(?:her|him|them)|(?:take|taken|took)\s+(?:it\s+)?out\s+of\s+(?:her|his|their)\s+(?:check|pay))\b/i;
+const OWED = /\b(?:(?:has|have|had|needs?|must|got|gotta)\s+(?:to\s+)?pay(?:\s+back)?|must\s+pay|(?:will|is|was|'s|’s)\s+(?:be(?:ing)?\s+)?charged|(?:we|we're|we’re|we\s+are|i'm|i’m|i\s+am)\s+(?:charging|charge)\s+(?:her|him|them)|charging\s+(?:her|him|them)|take\s+(?:it|that|this)\s+out\s+of\s+(?:her|his|their)\s+(?:check|pay(?:check)?)|owes?|owed|owing|pay(?:s|ing)?\s+(?:it\s+)?back|paid\s+back|repay|reimburse|deduct(?:ed|ion|ing)?|payroll|charge(?:d)?\s+(?:her|him|them)|(?:take|taken|took)\s+(?:it\s+)?out\s+of\s+(?:her|his|their)\s+(?:check|pay))\b/i;
 
 export function notAFact(clause: string, input: CardCheckInput): boolean {
   const text = clause.trim();

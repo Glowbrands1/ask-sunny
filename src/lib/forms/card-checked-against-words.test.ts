@@ -295,3 +295,21 @@ describe("CARD_CHECKED_AGAINST_WORDS_ENABLED: a payroll or deduction amount is n
     expect(addedFacts("she was late on 11/3/26", "Marnie Holloway", after(said))).toEqual([said]);
   });
 });
+
+describe("CARD_CHECKED_AGAINST_WORDS_ENABLED: payment phrasings are payroll too (Gate-Sunny-2, 13 Nov 2026)", () => {
+  const after = (said: string) => ({ turns: ["create a CA for Marnie Holloway, she was late on 11/3/26", said], roster: ROSTER });
+  it.each([
+    "she has to pay $15 for the broken bulb",
+    "she needs to pay $15 for the broken bulb",
+    "she must pay back $15",
+    "she will be charged $15",
+    "she is being charged $15 for it",
+    "we're charging her $15",
+    "she said take it out of her check, $15",
+  ])("stays out: %s", (said) => {
+    expect(addedFacts("she was late on 11/3/26", "Marnie Holloway", after(said))).toEqual([]);
+  });
+  it.each(["she broke a $15 bulb", "she has to pay attention to the schedule and skipped her break"])("still joins: %s", (said) => {
+    expect(addedFacts("she was late on 11/3/26", "Marnie Holloway", after(said))).toEqual([said]);
+  });
+});
