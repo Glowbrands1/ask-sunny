@@ -4537,6 +4537,23 @@ export function pastedOutlineToOpenDraftEnabled(): boolean {
 }
 
 /**
+ * TYPO_FULL_NAME_TO_ROSTER_ENABLED (coding 6, 11 Nov 2026; default off; QA's audit item 15.10, overnight scan sf-b5,
+ * invented names). "create a ca form for Delphine Marlwoe Ostrander" for the roster's Delphine Marlowe Ostrander made
+ * the card for the name as typed (TYPED_NAME keeps the typed spelling; the near-miss question rides on
+ * FORM_NAME_FROM_ROSTER, off in production), so Woven's position never reached it. On: a full name typed with the
+ * roster person's own first name and every surname word that person's, exact or one typo (two for a long word), when
+ * exactly one roster person is that close, is that person (`forms/employee-match.ts` matchEmployeeName). Off, as before.
+ *
+ * Reworked (12 Nov 2026, QA's ruling on the sibling app's NO-GO, G4-776): the typo is NOT matched straight to the roster
+ * person — "Is this for **<roster name>**?" is still asked first, and a preferred name stays as the roster has it. On:
+ * after that question, a turn that opens with a level on the asked person's Corrective Action card is the card's level
+ * (`forms/confirmed-name-level.ts`; here the level reader already keeps sf-b5's, so it is a guard). Off, as before.
+ */
+export function typoFullNameToRosterEnabled(): boolean {
+  return envFlag("TYPO_FULL_NAME_TO_ROSTER_ENABLED");
+}
+
+/**
  * FAILURE_TO_OPEN_IS_LATE_OPENING_ENABLED (coding 6, 10 Nov 2026; default off;
  * Pau's P16, Sunny production 9 Nov). "Can you make a CA for <name> for
  * failure to open on time?" was answered "You haven't told me what happened

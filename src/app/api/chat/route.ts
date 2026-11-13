@@ -970,6 +970,8 @@ async function postChat(request: Request) {
           asked.question,
         ]);
       }
+      // TYPO_FULL_NAME_TO_ROSTER_ENABLED: the level said after "Is this for <name>?" is the card's (`lib/forms/confirmed-name-level.ts`).
+      answer = (await import("@/lib/forms/confirmed-name-level")).withConfirmedNameLevel(answer, parsed.history, asked.question);
       // PROPOSAL_NAME_CORRECTION_ENABLED: an off-roster "change her name to …" on the card is never kept silently; with the roster, the card stays for the one roster person it can only be, and a typo is never offered as a person.
       answer = withCorrectionNotDropped(answer, parsed);
       // CLOSE_SPELLING_MATCH_ENABLED: a policy named close to a manual heading, not confidently, is asked "Did you mean …?" (`lib/forms/close-policy-ask.ts`).
