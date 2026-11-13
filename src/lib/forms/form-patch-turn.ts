@@ -895,7 +895,10 @@ async function checkSavedForm(
       // Settled by code when the saved form plainly does what was asked: no model call.
       const moved = snapshotDiff(snapshotOf(start), snapshotOf(current)).map((change) => change.key);
       const stored = Object.fromEntries(Object.entries(before).map(([key, field]) => [key, field.value]));
-      const byCode = check.settledByCode({ ask: input.question, employeeName: current.instance.employeeName || null, fields, patch: roundPatch, stored, moved });
+      const fieldWords = Object.fromEntries(
+        modelInput.fields.map((field) => [field.key, [field.key.replace(/_/g, " "), field.label, ...(field.options ?? []).map((option) => option.replace(/_/g, " "))]]),
+      );
+      const byCode = check.settledByCode({ ask: input.question, employeeName: current.instance.employeeName || null, fields, patch: roundPatch, stored, moved, fieldWords });
       if (byCode.settled) {
         stop = patches === 1 ? "code_confirmed" : "code_confirmed_after_correction";
         break;

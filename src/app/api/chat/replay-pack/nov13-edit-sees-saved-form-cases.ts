@@ -60,7 +60,8 @@ export const NOV13_EDIT_SEES_SAVED_FORM_CASES: ReplayCase[] = [
       expect(t.values(id).coaching_details ?? "", "the expectation the first reading wrote").toMatch(/attend every monthly meeting/i);
       expect(t.values(id).other_topic ?? "", "the topic, written on the check round").toMatch(/missed monthly meeting/i);
       expect(reply.content, `the reply names the topic, from the saved form:\n${reply.content}`).toMatch(/Other/);
-      expect(t.patchCheckCalls?.() ?? 0, "two check rounds: the correction, then the confirm").toBe(2);
+      // Changed on purpose (QA's speed change, 13 Nov 2026): the model corrects once, and code confirms the corrected form.
+      expect(t.patchCheckCalls?.() ?? 0, "one model round: the correction; code confirms after it").toBe(1);
     },
   },
   {

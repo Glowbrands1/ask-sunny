@@ -79,34 +79,99 @@ export interface CodeCheckInput {
   readonly employeeName: string | null;
   /** The fields this turn's patches touched, as stored now, and whether each changed from the turn's start. */
   readonly fields: readonly SavedField[];
-  /** The round's patch (its how and evidence); null when the write was the old path's free-text revision. */
-  readonly patch: { readonly how?: Readonly<Record<string, string>>; readonly evidence?: Readonly<Record<string, string>> } | null;
+  /**
+   * The round's patch (its set values, how and evidence); null when the write was the old path's revision, which
+   * code settles only for a plain add ("add that …", "include …") whose words are all on the form.
+   */
+  readonly patch: {
+    readonly set?: Readonly<Record<string, FieldValue>>;
+    readonly how?: Readonly<Record<string, string>>;
+    readonly evidence?: Readonly<Record<string, string>>;
+  } | null;
   /** Every stored value on the form now. */
   readonly stored: Readonly<Record<string, FieldValue>>;
   /** The keys whose stored value differs from the turn's start. */
   readonly moved: readonly string[];
+  /**
+   * Each field's own words (its key, label and option names). A word of the ask that names a field ("details",
+   * "topic") is not content, but only when that field was touched or moved; naming a field nobody wrote ("…and the
+   * other topic is …") is for the model.
+   */
+  readonly fieldWords?: Readonly<Record<string, readonly string[]>>;
+}
+
+/** A rewrite of the account or its wording: only the model can tell whether it reads as asked. */
+const REWRITE_ASK = /\b(?:make\s+it\s+(?:about|for|sound|more|less)|rewrite|re-?word|redraft|re-?do|professional|outline|template|format|tone|clean(?:er)?\s+up|fix\s+(?:the\s+)?wording)\b/i;
+/** A plain addition: "add that …", "include …", "put … on it", "also note …". */
+const ADD_ASK = /^\s*(?:please\s+)?(?:can\s+you\s+)?(?:also\s+)?(?:add|include|put|note|mention|insert)\b/i;
+/** A date the manager said ("10/14/26", "11/6"): the turn's own date write may move the form's Date. */
+const SAID_DATE = /\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b/;
+
+function closeTo(word: string, vocabulary: ReadonlySet<string>): boolean {
+  if (vocabulary.has(word)) return true;
+  if (word.length < 6) return false;
+  for (const known of vocabulary) {
+    if (Math.abs(known.length - word.length) > 2) continue;
+    let edits = 0;
+    const a = word;
+    const b = known;
+    // A cheap distance: letters out of place, enough for "observtion" / "observation".
+    const shorter = a.length <= b.length ? a : b;
+    const longer = a.length <= b.length ? b : a;
+    let at = 0;
+    for (const letter of longer) {
+      if (shorter[at] === letter) at += 1;
+      else edits += 1;
+      if (edits > 2) break;
+    }
+    if (edits <= 2 && at >= shorter.length - 1) return true;
+  }
+  return false;
 }
 
 /**
- * QA (13 Nov 2026, the speed change): the check is settled BY CODE when the saved form plainly does what was asked —
- * every touched field changed, the words each change quoted are in its stored value, nothing else moved (apart from
- * what the writer derives), and every content word of the ask is on the stored form. Anything else (a free-text
- * rewrite, a word of the ask on no field, an unexpected field moved) is for the model. Pure.
+ * QA (13 Nov 2026, the speed change; widened after the reason breakdown): the check is settled BY CODE when the saved
+ * form plainly does what was asked — every touched field changed or already holds what the patch asked for, the words
+ * each change quoted are on the stored form, nothing else moved (apart from what the writer derives, and the Date when
+ * a date was said), and every content word of the ask is on the form or names a field. A rewrite of the account or
+ * its wording, a word of the ask on no field, or an unexpected move is for the model. Pure.
  */
-export function settledByCode(input: CodeCheckInput): { readonly settled: boolean; readonly reason: string } {
-  if (input.patch === null) return { settled: false, reason: "rewrite" };
+export function settledByCode(input: CodeCheckInput): { readonly settled: boolean; readonly reason: string; readonly detail?: readonly string[] } {
   const touched = new Set(input.fields.map((field) => field.key));
-  if (Object.values(input.patch.how ?? {}).some((how) => how === "reword")) return { settled: false, reason: "rewrite" };
-  if (input.fields.some((field) => !field.changed)) return { settled: false, reason: "not_changed" };
-  for (const [key, quote] of Object.entries(input.patch.evidence ?? {})) {
-    const stored = plainValue(input.stored[key] ?? "");
-    if (!touched.has(key)) continue;
-    if (words(quote).some((word) => !COMMAND_WORDS.has(word) && !stored.includes(word))) return { settled: false, reason: "words_missing" };
-  }
-  if (input.moved.some((key) => !touched.has(key) && !DERIVED_KEYS.has(key))) return { settled: false, reason: "other_moved" };
   const form = Object.values(input.stored).map(plainValue).join("\n");
+  if (REWRITE_ASK.test(input.ask)) return { settled: false, reason: "rewrite" };
+  if (input.patch === null && !ADD_ASK.test(input.ask)) return { settled: false, reason: "rewrite" };
+  if (Object.values(input.patch?.how ?? {}).some((how) => how === "reword")) return { settled: false, reason: "rewrite" };
+  const still = input.fields
+    .filter((field) => !field.changed)
+    .filter((field) => {
+      // Already what the patch asked for: nothing needed to change.
+      const wanted = input.patch?.set?.[field.key];
+      return wanted === undefined || plainValue(wanted).trim() !== plainValue(field.stored).trim();
+    })
+    .map((field) => field.key);
+  if (still.length > 0) return { settled: false, reason: "not_changed", detail: still };
+  for (const [key, quote] of Object.entries(input.patch?.evidence ?? {})) {
+    if (!touched.has(key) || Array.isArray(input.stored[key])) continue;
+    const missing = words(quote).filter((word) => !COMMAND_WORDS.has(word) && !form.includes(word));
+    if (missing.length > 0) return { settled: false, reason: "words_missing", detail: missing };
+  }
+  const allowed = (key: string) => touched.has(key) || DERIVED_KEYS.has(key) || (key === "form_date" && SAID_DATE.test(input.ask));
+  const others = input.moved.filter((key) => !allowed(key));
+  if (others.length > 0) return { settled: false, reason: "other_moved", detail: others };
+  const written = new Set([...touched, ...input.moved]);
+  const fieldWordSets = Object.entries(input.fieldWords ?? {}).map(([key, list]) => ({ key, words: new Set(list.flatMap((item) => words(item))) }));
+  const vocabulary = new Set(fieldWordSets.flatMap((field) => [...field.words]));
   const name = new Set(words(input.employeeName ?? ""));
-  const asked = words(input.ask).filter((word) => !COMMAND_WORDS.has(word) && !name.has(word));
-  if (asked.some((word) => !form.includes(word))) return { settled: false, reason: "ask_not_on_form" };
+  const askWords = words(input.ask).filter((word) => !COMMAND_WORDS.has(word) && !name.has(word));
+  // A field the ask names that nobody wrote: the ask may want it changed.
+  const namedUnwritten = askWords.filter((word) => {
+    const naming = fieldWordSets.filter((field) => closeTo(word, field.words));
+    return naming.length > 0 && !naming.some((field) => written.has(field.key));
+  });
+  if (namedUnwritten.length > 0) return { settled: false, reason: "names_unwritten_field", detail: namedUnwritten };
+  const asked = askWords.filter((word) => !closeTo(word, vocabulary));
+  const unheard = asked.filter((word) => !form.includes(word));
+  if (unheard.length > 0) return { settled: false, reason: "ask_not_on_form", detail: unheard };
   return { settled: true, reason: "code" };
 }
