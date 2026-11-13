@@ -154,3 +154,30 @@ export const NOV13_OBSERVATION_PLACE_MUST_READ_CAPITALISED_CASES: ReplayCase[] =
     expect(said, `the account was lost:\n${reply}`).toMatch(wording.account);
   },
 }));
+
+/*
+ * QA, blocking (Gate-Sunny on aeb6aa20, 13 Nov 2026): the "… of" exception reached every block-list word, and "she was
+ * late because she was at lincoln high of all places" became "… because she was high of all places". Only a compass
+ * word before "of" is a direction; any other block-list word keeps the whole phrase. Must-keep guards, with the flag
+ * and without.
+ */
+// `open`: main cuts the place out (the bug this flag fixes); the flag keeps the phrase. Without it: holds on main too.
+const MUST_KEEP_OF: readonly { key: string; turn: string; kept: RegExp; never: RegExp; open?: true }[] = [
+  { key: "lincoln-high-of-all-places", turn: "create a ca for marnie holloway, she was late because she was at lincoln high of all places", kept: /lincoln high of all places/i, never: /\bshe was high\b/i, open: true },
+  { key: "kearney-high-of-all-places", turn: "create a ca for marnie holloway, she was late because she was at kearney high of all places", kept: /kearney high of all places/i, never: /\bshe was high\b/i, open: true },
+  { key: "kansas-state-of-all-things", turn: "create a ca for marnie holloway, she was late because of a game at kansas state of all things", kept: /kansas state of all things/i, never: /\bgame state\b/i },
+  { key: "kearney-mall-of-all-places", turn: "create a ca for marnie holloway, she was late because she was at the kearney mall of all places", kept: /kearney mall of all places/i, never: /\bthe mall of all places\b/i, open: true },
+];
+
+export const NOV13_OBSERVATION_PLACE_MUST_KEEP_OF_CASES: ReplayCase[] = MUST_KEEP_OF.map((wording) => ({
+  id: `nov13-observation-place-must-keep-${wording.key}`,
+  title: `Admin: "${wording.turn}" — the longer name is kept whole`,
+  report: "QA, blocking (Gate-Sunny on #936 aeb6aa20, 13 Nov 2026): only a compass word before \"of\" is a direction; invented person",
+  status: wording.open ? { open: "on main the place is cut out of the longer name" } : "fixed",
+  fixFlags: [FLAG],
+  async run(t: ReplayContext) {
+    const { reply, said } = await observationOf(t, wording.turn);
+    expect(said, `the longer name was cut:\n${reply}`).toMatch(wording.kept);
+    expect(said, `the account's meaning changed:\n${reply}`).not.toMatch(wording.never);
+  },
+}));

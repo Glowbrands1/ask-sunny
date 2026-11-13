@@ -1060,14 +1060,15 @@ function withoutPlace(clause: string): string {
        * Gate-Bubbles-3's #869 finding). Off, as before.
        */
       const next = words[index + 1 + length];
-      // Not when the word is part of the salon's own name ("lincoln 27th street") or "of" follows it ("west of the
-      // beds": a direction) — mirrored from the sibling app's #869 (Gate-Bubbles-3).
+      // Not when the word is part of the salon's own name ("lincoln 27th street"), or is a compass word with "of" after
+      // it ("west of the beds": a direction) — mirrored from the sibling app's #869 (Gate-Bubbles-3). Only a compass
+      // word: "lincoln high of all places" is still a longer name (QA, blocking, Gate-Sunny on aeb6aa20).
       if (
         placeStripWholePhraseOnlyEnabled() &&
         next !== undefined &&
         !/[,;:)]$/.test(phrase) &&
         continuesPlaceName(next) &&
-        !/^of$/i.test(words[index + 2 + length] ?? "") &&
+        !(/^(?:west|east|north|south)$/i.test(next) && /^of$/i.test(words[index + 2 + length] ?? "")) &&
         !inSalonName(bare, next)
       ) {
         break;
