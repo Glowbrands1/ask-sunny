@@ -206,7 +206,7 @@ function onlyRole(text: string, input: CardCheckInput): boolean {
  * on 10-15-26", "he already had a CA on 10/14 for being late", "she had a verbal warning on 10/1".
  */
 const PRIOR_STEP = new RegExp(
-  String.raw`\b(?:already\s+(?:had|got|has|received|signed)|(?:had|has had|has|received|got|was given|were given)\s+(?:a|an|her|his|their|the)?\s*(?:prior\s+|previous\s+|earlier\s+)?(?:(?:verbal|written|final|first|second|last)\s+)?(?:warning|ca|c\/a|coaching|write[- ]?up|corrective action)s?\b|\bsigned\b)`,
+  String.raw`\b(?:already\s+(?:had|got|has|received|signed)|(?:had|has had|has|received|got|was given|were given)\s+(?:a|an|her|his|their|the)?\s*(?:prior\s+|previous\s+|earlier\s+)?(?:(?:verbal|written|final|first|second|last)\s+)?(?:warning|ca|c\/a|coaching|write[- ]?up|corrective action)s?\b|\bsigned\s+(?:off\s+on\s+)?(?:(?:the|her|his|their|a|an|our)\s+)?(?:[\w-]+\s+){0,3}(?:policy|policies|manual|handbook|form|acknowledg\w*|agreement|document|paperwork|ca|c\/a|write[- ]?up|warning|coaching)s?\b)`,
   "i",
 );
 
@@ -215,9 +215,14 @@ const WAS_DISCIPLINED = /\b(?:was|were|has been|had been|got|already been)\s+(?:
 /** "she was given a … on 10/1", "was warned on 10/1": a step given to her on a date. */
 const DATED_GIVEN = /\b(?:was|were|got|had been)\s+(?:given|issued|handed|warned)\b[^.;]*\bon\s+(?:\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?|(?:mon|tues|wednes|thurs|fri|satur|sun)day|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i;
 
+/** An earlier step: a signed policy or form, "already had …", a past warning, coaching or write-up. */
+export function isHistory(text: string): boolean {
+  return PRIOR_STEP.test(text) || WAS_DISCIPLINED.test(text) || DATED_GIVEN.test(text);
+}
+
 export function notAFact(clause: string, input: CardCheckInput): boolean {
   const text = clause.trim();
-  if (PRIOR_STEP.test(text) || WAS_DISCIPLINED.test(text) || DATED_GIVEN.test(text)) return true;
+  if (isHistory(text)) return true;
   if (GETS_LEVEL.test(text) || GIVE_LEVEL.test(text) || HEDGED_VERB.test(text)) return true;
   const identity = IDENTITY_OF.exec(text)?.[1];
   if (identity && (onlyRole(identity, input) || onlyPlace(identity))) return true;
@@ -239,8 +244,21 @@ export function addedFacts(issue: string, employee: string | null, input: CardCh
   for (const turn of input.turns.slice(named + 1)) {
     if (/\?\s*$/.test(turn.trim())) continue;
     for (const sentence of turn.split(/(?<=[.!?])\s+|\n+/)) {
-      const clause = sentence.trim().replace(/[.!]+$/, "");
+      let clause = sentence.trim().replace(/[.!]+$/, "");
       if (clause === "" || !(ACCOUNT_START.test(clause) || (first !== "" && starts.test(clause)))) continue;
+      /*
+       * Gate-Sunny-2 (13 Nov 2026): "she had a CA last week and was late again today" holds history AND a current fact:
+       * the history part is dropped, and the current part joins with her subject ("she was late again today").
+       */
+      const parts = clause.split(/\s+(?:and|but)\s+(?:then\s+)?/i);
+      if (parts.length > 1 && parts.some((part) => isHistory(part))) {
+        const subject = clause.split(/\s+/)[0] ?? "";
+        const current = parts.slice(1).filter((part) => !isHistory(`${subject} ${part}`));
+        const lead = isHistory(parts[0]!) ? null : parts[0]!;
+        const kept = [...(lead ? [lead] : []), ...current];
+        if (kept.length === 0) continue;
+        clause = lead ? kept.join(" and ") : `${subject} ${kept.join(" and ")}`;
+      }
       if (issueProblem(clause, employee, input) !== null || notAFact(clause, input)) continue;
       const fact = clause.replace(/^(?:and|but|plus)\s+/i, "").replace(/\b(also|too)\b\s*/gi, "").replace(/\s+/g, " ").trim();
       const words = contentWords(fact);
