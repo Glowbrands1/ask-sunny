@@ -488,20 +488,34 @@ vi.mock("@/lib/reporting/read/employee-facts", () => ({
   EMPLOYEE_DATA_HEADING: "CURRENT EMPLOYEE PERFORMANCE DATA",
 }));
 
+/** The directory rows the roster reads see: not one marked `unmapped` (at no salon Ask Sunny maps). */
+function rostered(): unknown[] {
+  return (state.directory as { unmapped?: boolean }[]).filter((row) => row.unmapped !== true);
+}
+
 vi.mock("@/lib/forms/employee-roster", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/forms/employee-roster")>();
   return {
     ...actual,
     readDirectoryFacts: async (scope: AccessScope | null) =>
       // No position on record unless the case gives one: the title is the manager's or asked.
-      // Woven's position for each person, as the directory read returns it.
-      actual.scopeRoster(state.directory as never, scope).map((person) => ({
+      // Woven's position for each person, as the directory read returns it (through production's `directoryTitle`).
+      actual.scopeRoster(rostered() as never, scope).map((person) => ({
         ...person,
-        title: (state.directory as { id: string; positionName?: string | null }[]).find((row) => row.id === person.id)?.positionName ?? null,
+        title: actual.directoryTitle((state.directory as { id: string; positionName?: string | null }[]).find((row) => row.id === person.id)?.positionName ?? null),
         primaryLocationName: "Kearney",
       })),
     // The turn's roster limit (`withRosterLimit`), as production's loadScopedRoster applies it.
-    loadScopedRoster: async (scope: AccessScope | null) => actual.withinRosterLimit(actual.scopeRoster(state.directory as never, scope)),
+    loadScopedRoster: async (scope: AccessScope | null) => actual.withinRosterLimit(actual.scopeRoster(rostered() as never, scope)),
+    /*
+     * SAME_NAME_UNMAPPED_NOTE_ENABLED (coding 6, 13 Nov 2026): every active directory row with the name, wherever it works.
+     * A row marked `unmapped: true` (a Woven location that is not a salon) is here but in no roster read above.
+     */
+    activeIdsNamed: async (first: string, last: string) =>
+      (state.directory as { id: string; firstName: string; lastName: string; preferredFirstName?: string | null; employmentStatus?: string }[])
+        .filter((row) => (row.employmentStatus ?? "active") === "active" && row.lastName.toLowerCase() === last.trim().toLowerCase())
+        .filter((row) => [row.firstName, row.preferredFirstName ?? ""].some((name) => name.toLowerCase() === first.trim().toLowerCase()))
+        .map((row) => row.id),
   };
 });
 

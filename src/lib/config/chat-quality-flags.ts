@@ -4721,3 +4721,24 @@ export function sameNameAsksWhichEnabled(): boolean {
 export function formDateBusinessTodayEnabled(): boolean {
   return envFlag("FORM_DATE_BUSINESS_TODAY_ENABLED");
 }
+
+/**
+ * SAME_NAME_UNMAPPED_NOTE_ENABLED (coding 6, 13 Nov 2026; default off; QA's ruling (a) on Sunny 38b's live check). The
+ * one real same-name pair was never asked about: the second person's only location is a Woven location not mapped to a
+ * salon ('ignored'), so the chat's roster holds one of them, and the card went to the other without a word. On: a card
+ * for a name another ACTIVE person also has, who is at no salon in Ask Sunny, says so in one plain line; Create stays
+ * (`forms/same-name-unmapped.ts`). Off, as before.
+ */
+export function sameNameUnmappedNoteEnabled(): boolean {
+  return envFlag("SAME_NAME_UNMAPPED_NOTE_ENABLED");
+}
+
+/**
+ * PLACEHOLDER_TITLE_IS_NONE_ENABLED (coding 6, 13 Nov 2026; default off; QA's ruling (c) on Sunny 38b's live check). The
+ * card showed "Job title: No": the person's Woven position is the placeholder "No Position Set". On: a Woven
+ * placeholder ("No Position Set", "No Position", "None", "N/A", "Unknown", "TBD", "-") is no title
+ * (`forms/employee-roster.ts`, `directoryTitle`). Off, as before.
+ */
+export function placeholderTitleIsNoneEnabled(): boolean {
+  return envFlag("PLACEHOLDER_TITLE_IS_NONE_ENABLED");
+}
