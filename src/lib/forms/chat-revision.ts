@@ -612,6 +612,10 @@ export async function reviseActiveForm(input: {
       written,
       actor.id,
     );
+    // Written, and the saved form is as it was: it already said that. Never "Updated", never "I haven't changed it".
+    if (changedKeys.length === 0 && dateLines.length === 0) {
+      return reply(`The ${who} already says that: I checked the saved form, and nothing on it needed to change. Give it a read below.`);
+    }
     written.splice(0, written.length, ...changedKeys.filter((key) => key !== FOLLOW_UP_DATE_KEY));
   }
   if (written.length === 0) {
