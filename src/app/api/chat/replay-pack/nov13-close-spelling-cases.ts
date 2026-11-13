@@ -170,3 +170,58 @@ export const NOV13_CLOSE_SPELLING_PROOF_CASES: ReplayCase[] = [
     },
   },
 ];
+
+/*
+ * QA's ruling on the sibling app's #859 (13 Nov 2026): "A policy the manager NAMES wins, as everywhere else ... Pau's
+ * cleaning ruling (cleaning left undone → Other) applies when the manager only DESCRIBES cleaning." The manual here
+ * gains its Care and Cleaning section for these cases (this pack's manual fixture has no such sheet). A station left a
+ * mess is a cleaning account: on production flags the card says Other. With the flag the manager's "care and clening"
+ * names that section confidently, so the Policy line cites it and the plan reviews it; "clneaing" (two letters off) is
+ * not confident, so Other stays and "Did you mean …?" is asked.
+ */
+const CARE = "Care and Cleaning of Equipment and Facilities";
+const CARE_SHEET = manualChunk(
+  70,
+  21,
+  CARE,
+  "Employees keep the equipment and the location clean and sanitized, and finish the cleaning duties assigned to their shift before it ends.",
+);
+
+export const NOV13_CLOSE_SPELLING_CLEANING_CASES: ReplayCase[] = [
+  {
+    id: "nov13-close-spelling-policy-care-and-clening",
+    title: `"… violating the care and clening policy, she left her station a mess …" — the Policy line cites ${CARE}, and the plan agrees`,
+    report: `${REPORT}; QA's example "Care and Clening", and QA's ruling: a named policy wins over cleaning-is-Other`,
+    status: { open: `"care and clening" names no section: the Policy line is Other` },
+    fixFlags: [FLAG],
+    async run(t: ReplayContext) {
+      const thread = start(t);
+      t.manualAlsoHas?.([CARE_SHEET]);
+      const reply = (
+        await thread.say("create a verbal ca for marnie holloway for violating the care and clening policy, she left her station a mess at close today")
+      ).content;
+      const policy = /^\*\*Policy:\*\*[^\n]*/m.exec(reply)?.[0] ?? "";
+      expect(policy, `the Policy line:\n${reply}`).toMatch(new RegExp(`^\\*\\*Policy:\\*\\* ${CARE}, as you said — the policy manual's section on page \\d+`));
+      expect(reply, `the card still says Other:\n${reply}`).not.toMatch(/\*\*Policy:\*\* Other/);
+      const plan = /\*\*Action plan:\*\*[^\n]*/i.exec(reply)?.[0] ?? "";
+      expect(plan, `the plan does not review the same policy:\n${reply}`).toContain(`review the ${CARE} policy`);
+    },
+  },
+  {
+    id: "nov13-close-spelling-policy-cleaning-not-confident-keeps-other-asks",
+    title: `"… violating the care and clneaing policy, she left her station a mess …" — Other stays; "Did you mean **${CARE}**?"`,
+    report: `${REPORT}; QA's ruling: not confident keeps Other and asks`,
+    status: { open: "no question: the card says Other and nothing more" },
+    fixFlags: [FLAG],
+    async run(t: ReplayContext) {
+      const thread = start(t);
+      t.manualAlsoHas?.([CARE_SHEET]);
+      const reply = (
+        await thread.say("create a verbal ca for marnie holloway for violating the care and clneaing policy, she left her station a mess at close today")
+      ).content;
+      expect(reply, `Other is gone:\n${reply}`).toMatch(/\*\*Policy:\*\* Other — cleaning duties left undone/);
+      expect(reply, `no "Did you mean":\n${reply}`).toMatch(new RegExp(`Did you mean \\*\\*${CARE}\\*\\* \\(page \\d+\\)\\?`));
+      expect(reply, `cited without asking:\n${reply}`).not.toMatch(new RegExp(`\\*\\*Policy:\\*\\* ${CARE}, as you said`));
+    },
+  },
+];
