@@ -185,6 +185,10 @@ import { privateCreatorFormsEnabled, privateCreatorsActive } from "@/lib/forms/p
  */
 
 const NEW_FLAGS = [
+  // coding 2: OFF_ROSTER_PLACE_ANSWER (QA's Sunny 37b live bug, 12 Nov 2026; default off).
+  "OFF_ROSTER_PLACE_ANSWER_ENABLED",
+  // coding 2: OFFERED_NAME_ACCEPTED (QA, 12 Nov 2026: an admin's "use <C>" refused; default off).
+  "OFFERED_NAME_ACCEPTED_ENABLED",
   // coding 4: FULL_MANUAL_KEEPS_RETRIEVAL (QA, 10 Nov 2026; default off).
   "FULL_MANUAL_KEEPS_RETRIEVAL_ENABLED",
   // coding 4: FORM_NAME_NOT_A_TITLE (QA's prod-env reading, D5, 11 Nov 2026; default off).
@@ -606,6 +610,7 @@ const NEW_FLAGS = [
   // coding 5: UNDATED_ACCOUNT_BRIEF (default off): forced off with the others in the child run.
   "UNDATED_ACCOUNT_BRIEF_ENABLED",
   "EXCERPT_BRAND_FILTER_ENABLED",
+  "HUMAN_REPLIES_ENABLED",
   "EXIT_TYPO_WORDS_ENABLED",
   "WOVEN_TEXT_NUL_STRIP_ENABLED",
   "WOVEN_FAILED_RETRY_ENABLED",
