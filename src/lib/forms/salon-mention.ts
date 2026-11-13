@@ -1,8 +1,10 @@
 import "server-only";
 
+import { closeSpellingMatchEnabled } from "@/lib/config/chat-quality-flags";
 import { PRODUCTION_SALONS, type ProductionSalon } from "@/data/salons";
 import { storeNameKey } from "@/lib/reporting/store-identity";
 
+import { closeWordDistance } from "./close-spelling";
 import { salonForTypedNumber, salonsForTypedNumber } from "./salon-text";
 
 /**
@@ -279,11 +281,85 @@ export function readSalonMentions(text: string): SalonMention[] {
     if (found) mentions.push({ salonIds: alias.salonIds });
   }
 
+  if (closeSpellingMatchEnabled()) mentions.push(...closeSalonMentions(haystack));
+
   const spaced = text.replace(/\s+/g, " ");
   for (const city of CITY_PATTERNS) {
     if (city.pattern.test(spaced)) mentions.push({ salonIds: city.salonIds });
   }
 
+  return mentions;
+}
+
+/*
+ * ============================================================================
+ * CLOSE_SPELLING_MATCH — A SALON TYPED A LETTER OFF (Pau, via QA, 13 Nov 2026)
+ * ============================================================================
+ *
+ * What is left of the manager's words after the exact names above is read
+ * again against the same names, allowing close spellings
+ * (`close-spelling.ts`: one letter off in a word of five letters or more, two in
+ * a word of eight or more), under the same cues: a short name still needs the
+ * sentence to say it is the salon. Words of four letters or fewer — a state, a
+ * street number, "O St" — must be as typed.
+ *
+ *   CONFIDENT: the words are close to exactly one salon, and only one word is
+ *   off, by one letter. It is that salon's mention.
+ *
+ *   CLOSE TO TWO OR MORE SALONS: one mention of all of them, so the salon is
+ *   asked between them, as for a city two salons share ("Did you mean …?").
+ *
+ *   ONE SALON, NOT CONFIDENT (two letters off, or two words off): no mention;
+ *   the salon is asked as before.
+ *
+ * Never a salon the scope does not prove: `proposeLocation` intersects as for
+ * any mention. Off, never read.
+ */
+function closeSalonMentions(haystack: string): SalonMention[] {
+  interface Hit { readonly start: number; readonly end: number; readonly salonIds: readonly string[]; readonly off: number; readonly far: boolean }
+  const hits: Hit[] = [];
+  for (const alias of ALIASES) {
+    const parts = alias.phrase.split(" ");
+    if (!parts.some((part) => part.length >= 5)) continue;
+    // A zero-width match at every word, so word runs overlap ("at grand islnd" is tried at "grand", not only "at").
+    const pattern = new RegExp(
+      `(?<= )(?=(${parts.map((part) => (part.length >= 5 ? "([a-z]+)" : part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))).join(" ")})(?= ))`,
+      "g",
+    );
+    const listed = parts.filter((part) => part.length >= 5);
+    for (const match of haystack.matchAll(pattern)) {
+      const span = match[1]!;
+      let off = 0;
+      let far = false;
+      let close = true;
+      match.slice(2).forEach((word, index) => {
+        if (word === listed[index]) return;
+        const distance = closeWordDistance(word, listed[index]!);
+        if (distance === null) close = false;
+        else {
+          off += 1;
+          far ||= distance > 1;
+        }
+      });
+      if (!close || off === 0) continue;
+      const before = haystack.slice(0, match.index);
+      const after = haystack.slice(match.index + span.length);
+      if (alias.needsCue && !cued(before, after, span, alias.road)) continue;
+      hits.push({ start: match.index, end: match.index + span.length, salonIds: alias.salonIds, off, far });
+    }
+  }
+  // Longest first; each span is read once.
+  hits.sort((a, b) => b.end - b.start - (a.end - a.start) || a.start - b.start);
+  const mentions: SalonMention[] = [];
+  const claimed: Hit[] = [];
+  for (const hit of hits) {
+    if (claimed.some((other) => hit.start < other.end && other.start < hit.end)) continue;
+    const same = hits.filter((other) => other.start === hit.start && other.end === hit.end);
+    claimed.push(hit);
+    const salonIds = [...new Set(same.flatMap((other) => other.salonIds))];
+    if (salonIds.length > 1) mentions.push({ salonIds });
+    else if (hit.off === 1 && !hit.far) mentions.push({ salonIds });
+  }
   return mentions;
 }
 

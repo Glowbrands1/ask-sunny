@@ -191,6 +191,8 @@ const NEW_FLAGS = [
   "OFFERED_NAME_ACCEPTED_ENABLED",
   // coding 4: FORM_DATE_BUSINESS_TODAY (live bug, QA, 13 Nov 2026; default off).
   "FORM_DATE_BUSINESS_TODAY_ENABLED",
+  // coding 4: CLOSE_SPELLING_MATCH (Pau via QA, 13 Nov 2026; default off).
+  "CLOSE_SPELLING_MATCH_ENABLED",
   // coding 4: FULL_MANUAL_KEEPS_RETRIEVAL (QA, 10 Nov 2026; default off).
   "FULL_MANUAL_KEEPS_RETRIEVAL_ENABLED",
   // coding 4: FORM_NAME_NOT_A_TITLE (QA's prod-env reading, D5, 11 Nov 2026; default off).
@@ -1262,22 +1264,31 @@ function chatHalf(half: 0 | 1): string[] {
   return half === 0 ? all.slice(0, middle) : all.slice(middle);
 }
 /*
- * THE REPLAY PACK IN THIRDS (QA, 9 Nov 2026 in halves; thirds since 12 Nov 2026): its child timed out at 540 s on CI
- * (ask-sunny#713, #717; then again on main 7e8dcdb6 with halves; ETIMEDOUT, no assertion failed) as the pack grew.
- * Nearly all of its time is one file, `replay-pack-e2e.test.ts`, so it is split by case, not by file: the first child
- * runs the whole folder with the first third of the cases by id (`REPLAY_PACK_PART` "0/3"; the pack's other test files
- * run there, once), the other two children that one file with the second and third thirds. Every case and every file
- * still runs exactly once, with every new flag off. No timeout is raised.
+ * THE REPLAY PACK IN QUARTERS (QA, 9 Nov 2026 in halves; thirds 12 Nov; quarters 13 Nov 2026): its child timed out at
+ * 540 s on CI (ask-sunny#713, #717; main 7e8dcdb6 with halves; ask-sunny#839 with thirds, its first third at 540 s;
+ * ETIMEDOUT, no assertion failed) as the pack grew. Nearly all of its time is one file, `replay-pack-e2e.test.ts`, so
+ * it is split by case, not by file: four children run that file with one quarter of the cases each (`REPLAY_PACK_PART`
+ * "i/4", interleaved by id so the heavy cases spread out), and one child runs the pack's other test files (a few
+ * seconds). Every case and every file still runs exactly once, with every new flag off. No timeout is raised.
  */
 const REPLAY_PACK_E2E = `${REPLAY_PACK}/replay-pack-e2e.test.ts`;
+/** The pack's own test files besides the e2e (registry, policy-line, step-b-live-check, …): one child, a few seconds. */
+function replayPackOtherFiles(): string[] {
+  return readdirSync(REPLAY_PACK)
+    .filter((name) => /\.test\.tsx?$/.test(name) && `${REPLAY_PACK}/${name}` !== REPLAY_PACK_E2E)
+    .map((name) => `${REPLAY_PACK}/${name}`)
+    .sort();
+}
 const CHILDREN: readonly { readonly name: string; readonly paths: () => readonly string[]; readonly env?: Readonly<Record<string, string>> }[] = [
   { name: "src/lib/ai, src/lib/forms", paths: () => ["src/lib/ai", "src/lib/forms"] },
   { name: `${CHAT} (without the replay pack), first half by name`, paths: () => chatHalf(0) },
   { name: `${CHAT} (without the replay pack), second half by name`, paths: () => chatHalf(1) },
   { name: "src/app/api/forms", paths: () => ["src/app/api/forms"] },
-  { name: `${REPLAY_PACK}, first third of the cases by id`, paths: () => [REPLAY_PACK], env: { REPLAY_PACK_PART: "0/3" } },
-  { name: `${REPLAY_PACK}, second third of the cases by id`, paths: () => [REPLAY_PACK_E2E], env: { REPLAY_PACK_PART: "1/3" } },
-  { name: `${REPLAY_PACK}, third third of the cases by id`, paths: () => [REPLAY_PACK_E2E], env: { REPLAY_PACK_PART: "2/3" } },
+  { name: `${REPLAY_PACK}, its test files other than the e2e`, paths: () => replayPackOtherFiles() },
+  { name: `${REPLAY_PACK}, the cases in quarter 1 of 4`, paths: () => [REPLAY_PACK_E2E], env: { REPLAY_PACK_PART: "0/4" } },
+  { name: `${REPLAY_PACK}, the cases in quarter 2 of 4`, paths: () => [REPLAY_PACK_E2E], env: { REPLAY_PACK_PART: "1/4" } },
+  { name: `${REPLAY_PACK}, the cases in quarter 3 of 4`, paths: () => [REPLAY_PACK_E2E], env: { REPLAY_PACK_PART: "2/4" } },
+  { name: `${REPLAY_PACK}, the cases in quarter 4 of 4`, paths: () => [REPLAY_PACK_E2E], env: { REPLAY_PACK_PART: "3/4" } },
 ];
 
 /*
