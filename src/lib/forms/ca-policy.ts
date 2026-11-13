@@ -737,9 +737,22 @@ export function managerWords(rawText: string): string {
  * between policies, or any other conduct topic leaves it alone. Off, the
  * reading is returned untouched.
  */
+/*
+ * OTHER_POLICY_AGREES_ENABLED, a named policy wins (Gate-Sunny-3 on #839, 13 Nov 2026; Pau's rule): a manager who NAMES
+ * the manual's Care and Cleaning section — in any close spelling ("care and clening", "care & cleaning", "care n
+ * cleaning"), as "the cleaning policy", or by "equipment and facilities" — keeps it. Only a described duty is Other.
+ */
+const NAMES_CARE_AND_CLEANING =
+  /\bcare\s*(?:and|&|n|\+)\s*c[a-z]{0,2}l[a-z]{0,3}n(?:ing|in|g)\b|\bcleaning\s+polic(?:y|ies)\b|\bequipment\s+(?:and|&)\s+facilit\w*/i;
+
+export function namesCareAndCleaning(rawText: string): boolean {
+  return NAMES_CARE_AND_CLEANING.test(rawText ?? "");
+}
+
 function withCleaningOther(reading: CaPolicyReading, rawText: string): CaPolicyReading {
   if (!caSalesPolicyEnabled()) return reading;
   if (reading.stated !== null || reading.ambiguous) return reading;
+  if (otherPolicyAgreesEnabled() && namesCareAndCleaning(rawText)) return reading;
   /*
    * CLEANING_OTHER_EVERY_WORDING_ENABLED: an account read as nothing else ("for not completing his daily cleaning
    * duties" has no task topic) is Other too, where the cleaning reader reads it. Off, only the task incident.

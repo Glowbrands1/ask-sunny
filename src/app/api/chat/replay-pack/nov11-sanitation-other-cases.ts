@@ -113,3 +113,31 @@ export const NOV11_SANITATION_OTHER_CASES: ReplayCase[] = [
     }),
   ),
 ];
+
+/**
+ * A NAMED POLICY WINS (Gate-Sunny-3 on #839, 13 Nov 2026; Pau's rule): with OTHER_POLICY_AGREES on, a manager who names
+ * the Care and Cleaning section — close spellings included — keeps it; only a described duty is Other. Gate-Sunny-3's
+ * own wordings are added with its verdict; these are the shapes it named. Invented person.
+ */
+export const NOV13_NAMED_CARE_AND_CLEANING_CASES: ReplayCase[] = [
+  ["policy", "please make a ca for Brisa Talmadge for violating the care and cleaning policy, she did not sanitize the beds"],
+  ["typo", "please make a ca for Brisa Talmadge per the care and clening policy, the beds were not sanitized"],
+  ["ampersand", "please make a ca for Brisa Talmadge, care & cleaning policy, she left the beds dirty"],
+].map(
+  ([key, said]): ReplayCase => ({
+    id: `nov13-named-care-and-cleaning-${key as string}`,
+    title: `"${said as string}": the named Care and Cleaning policy is kept, never Other`,
+    report: "Gate-Sunny-3 on #839 (13 Nov 2026): a manager who names Care and Cleaning got Other",
+    // Production's CA_SALES_POLICY reads the cleaning account as Other even when the policy is named.
+    status: { open: "a named Care and Cleaning policy reads as Other" },
+    fixFlags: ["OTHER_POLICY_AGREES_ENABLED", "OTHER_NOT_A_POLICY_NAME_ENABLED"],
+    async run(t) {
+      vi.setSystemTime(new Date("2026-11-13T15:00:00Z"));
+      t.directory([...STAFF, BRISA]);
+      t.as("salon_director", KEARNEY);
+      t.manualAlsoHas?.([CARE]);
+      const card = (await t.thread().say(said as string)).content;
+      expect(card, card).not.toMatch(/\*\*Policy:\*\* Other\b/);
+    },
+  }),
+);
