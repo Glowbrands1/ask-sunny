@@ -67,3 +67,59 @@ outcome.
 **GO on behaviour** (0 REGRESSION; prompts unchanged OFF). **Not mergeable until** the 13 source-slice tests pass on the
 PR, since CI is red, and the edit-policy-ask test should be made flag-aware before the flip. Cases that now hold:
 `nov13-spelling-cleanup-sanitation`, `-name-changed-redrafts`, `-quote-kept-as-typed`, `-quote-as-typed-saved`.
+
+## Re-gate, head 1daeb29d4 (contains main 394d5b7c5; QA's fixes 1–4) — test fixes GO; flag ON **NO-GO**
+
+### Test-only fixes: GO
+- The six touched files (coaching-autocomplete, plan-of-action, edit-policy-ask-schema, form-patch-account-line,
+  form-patch-model, spelling-cleanup): clean env, no flags: 57/57; clean env + the flag only: 57/57. With production
+  flags, 5 fail both OFF and ON, the **same 5 as main 394d5b7c** (readFormPatch / account-line production-env baseline).
+- Full `npm test`, clean env, no flags: 22,285 tests, **3 failed**, all noise:
+  - chat-trace.migration fails alone on main too;
+  - retrieval-query passes alone on PR and main;
+  - flags-off-parity replay first-half child: `spawnSync … ETIMEDOUT` under 5 concurrent runs.
+- Prompts with the flag off: replay pack on main 394d5b7c vs PR OFF, with draft, revision and patch system hashes added
+  temporarily. **0 of 1,701 shared records differ** (1,262 draft, 223 revision, 347 patch and 209 chat prompts).
+- Main vs PR OFF (full, production flags): 1,265 vs 1,267 failed. The replay additions are only the 10 new arms. The
+  other flips (create-currency-audit P4, dm-feedback) are known load noise.
+
+### Flag ON: NO-GO (the new field-by-field fallback, `withOwnWords`)
+PR ON vs OFF: 1,267 → **1,340 failed (+73)**. The first head (98acc4959) had +6.
+
+1. **A date the app writes out is read as "a date that was not given", and the Observation becomes the raw chat
+   request.** `ordinal-date-in-draft-e2e` ON (production flags):
+   `[spelling-cleanup] the cleaned draft changed date December 2, 2025 was not given; drafting with the manager's own
+   text` → `the fallback draft still changed observation; saving the manager's own words there` → saved Observation
+   **"create a CA form for quinn marlowe at kearney. Quinn was late on the 2nd"** (expected "…on October 2, 2026.").
+   The same happens for "the 15th". The cleanup check (`cleanupChanges`) treats any date written out from the
+   manager's ordinal/relative words, which the existing date repairs do on purpose, as invented. `withOwnWords` then
+   saves the manager's whole turn, request words included.
+2. **8 fixed replay arms that hold today fail** (production and fix arms):
+   - `nov10-sf-s21-template-outline-saved`
+   - `nov5-sf-s21-must-see-behaviors-template`
+   - `nov7-s34-edit-make-it-about` ("make it about showing up late … make the date for 10/14/26")
+   - `nov8-list-policy-on-card-ca`
+3. Other ON-only failures in the same family (dates, prior rows, drafted text compared exactly):
+   - qa-oct21-audit (16)
+   - prior-sentence-fix-live (15) and prior-sentence-fix (5)
+   - pm-draft-route ×2 (8)
+   - prior-row-not-on-incident-date (4)
+   - ordinal-date-in-draft (3)
+   - tsd-epp/exit draft routes (4)
+   - relative-date-reader, unread-day-date, account-only-policy-query "last tuesday", live-flags-with-reader (a),
+     draft-reuse-same-chat
+   Some are exact-text expectations that may only need to be flag-aware. But (1) and (2) are behaviour: a manager's
+   chat sentence ends up on the form.
+
+The 5 nov13 cases (now including `nov13-spelling-cleanup-fallback-checked-again`) hold ON.
+
+Suggested direction:
+- `cleanupChanges` should accept a date that is the same day as one the manager gave ("the 2nd" with the form's
+  month/year, "last tuesday" resolved, a corrected year).
+- The fallback's "own words" for a field should be that field's previous value or nothing, never the manager's whole
+  chat turn.
+- Re-run with FLAG_CLASSIFY_ON=SPELLING_CLEANUP_ENABLED and production flags; ON vs OFF should differ only in the
+  nov13 arms (plus any exact-text tests made flag-aware, each with a comment).
+
+**Verdict at 1daeb29d4: the test fixes are GO and safe with the flag off (prompts unchanged, suite green apart from
+noise). Turning the flag on is NO-GO.**
