@@ -63,6 +63,7 @@ export const NOV13_OBSERVATION_PLACE_STRIP_MEANING_CASES: ReplayCase[] = [
     title: `Admin: "create a ca for marnie holloway, she was late at omaha today" — "at omaha" still leaves the Observation`,
     report: `${REPORT}; guard`,
     status: "fixed",
+    fixFlags: [FLAG],
     async run(t: ReplayContext) {
       const { reply, said } = await observationOf(t, "create a ca for marnie holloway, she was late at omaha today");
       expect(said, `the place stayed in the Observation:\n${reply}`).not.toMatch(/\bomaha\b/i);
@@ -75,6 +76,7 @@ export const NOV13_OBSERVATION_PLACE_STRIP_MEANING_CASES: ReplayCase[] = [
     title: `Admin: "create a ca for marnie holloway at the front desk, she was rude to a guest" — "at the front desk" is kept`,
     report: `${REPORT}; guard`,
     status: "fixed",
+    fixFlags: [FLAG],
     async run(t: ReplayContext) {
       const { reply, said } = await observationOf(t, "create a ca for marnie holloway at the front desk, she was rude to a guest");
       expect(said, `"at the front desk" was lost:\n${reply}`).toContain("at the front desk");
@@ -107,18 +109,6 @@ const MUST_READ: readonly { key: string; turn: string; place: RegExp; account: R
   { key: "kearney-dash", turn: "create a ca for marnie holloway, she was at kearney - no call no show", place: /\bkearney\b/i, account: /no call no show/i },
   { key: "lincoln-monday", turn: "create a ca for marnie holloway, she was late at lincoln monday", place: /\blincoln\b/i, account: /\bshe was late\b/i },
   { key: "omaha-paren", turn: "create a ca for marnie holloway, she was at omaha (late)", place: /\bomaha\b/i, account: /\blate\b/i },
-  // QA's ruling on Gate-Sunny's probes: a capitalised word after the place does not make it a longer name.
-  { key: "kearney-today-caps", turn: "create a ca for marnie holloway, she was late at Kearney Today", place: /\bkearney\b/i, account: /\blate\b/i },
-  { key: "omaha-again-caps", turn: "create a ca for marnie holloway, she was late at Omaha Again", place: /\bomaha\b/i, account: /\blate\b/i },
-  { key: "kearney-nov-1-caps", turn: "create a ca for marnie holloway, she was late at Kearney Nov 1", place: /\bkearney\b/i, account: /\blate\b/i },
-  { key: "kearney-sat-caps", turn: "create a ca for marnie holloway, she was late at Kearney Sat", place: /\bkearney\b/i, account: /\blate\b/i },
-  { key: "kearney-ncns-caps", turn: "create a ca for marnie holloway, she was at Kearney NCNS", place: /\bkearney\b/i, account: /\bNCNS\b/ },
-  {
-    key: "kearney-then-name",
-    turn: "create a ca for marnie holloway, she was late at kearney Marnie skipped her closing duties",
-    place: /\bkearney\b/i,
-    account: /skipped her closing duties/i,
-  },
 ];
 
 export const NOV13_OBSERVATION_PLACE_MUST_READ_CASES: ReplayCase[] = MUST_READ.map((wording) => ({
@@ -126,6 +116,36 @@ export const NOV13_OBSERVATION_PLACE_MUST_READ_CASES: ReplayCase[] = MUST_READ.m
   title: `Admin: "${wording.turn}" — the place is still read and leaves the Observation`,
   report: "QA (13 Nov 2026), after Gate-Bubbles-3's #869 finding: a real place mention is never lost; invented person",
   status: "fixed",
+  // Run with the flag too (Gate-Sunny): a guard the flag could break must be checked with it on.
+  fixFlags: [FLAG],
+  async run(t: ReplayContext) {
+    const { reply, said } = await observationOf(t, wording.turn);
+    expect(said, `the place was not read:\n${reply}`).not.toMatch(wording.place);
+    expect(said, `the account was lost:\n${reply}`).toMatch(wording.account);
+  },
+}));
+
+/*
+ * Gate-Sunny's #936 probes (13 Nov 2026): a capitalised word after a place ("Today", "Again", "NCNS", "Nov 1", "Sat", a
+ * first name) does not make it a longer name; QA's ruling: only the block-list continues a place name. Run with the flag.
+ */
+const MUST_READ_CAPITALISED: readonly { key: string; turn: string; place: RegExp; account: RegExp }[] = [
+  { key: "kearney-today-capitalised", turn: "create a ca for marnie holloway, She was late at Kearney Today", place: /\bkearney\b/i, account: /\bShe was late Today\b/ },
+  { key: "omaha-again-capitalised", turn: "create a ca for marnie holloway, She was late at Omaha Again", place: /\bomaha\b/i, account: /\bShe was late Again\b/ },
+  { key: "omaha-last-week-capitalised", turn: "create a ca for marnie holloway, She was late at Omaha Last week", place: /\bomaha\b/i, account: /\bLast week\b/ },
+  { key: "kearney-ncns-capitalised", turn: "create a ca for marnie holloway, she was late at Kearney NCNS", place: /\bkearney\b/i, account: /\bNCNS\b/ },
+  { key: "kearney-nov-1", turn: "create a ca for marnie holloway, she was late at Kearney Nov 1", place: /\bkearney\b/i, account: /\bNov 1\b/ },
+  { key: "kearney-sat", turn: "create a ca for marnie holloway, she was late at Kearney Sat", place: /\bkearney\b/i, account: /\bSat\b/ },
+  { key: "omaha-tues", turn: "create a ca for marnie holloway, she was late at Omaha Tues", place: /\bomaha\b/i, account: /\bTues\b/ },
+  { key: "kearney-first-name", turn: "create a ca for marnie holloway, she was late at kearney Marnie skipped the beds too", place: /\bkearney\b/i, account: /skipped the beds/i },
+];
+
+export const NOV13_OBSERVATION_PLACE_MUST_READ_CAPITALISED_CASES: ReplayCase[] = MUST_READ_CAPITALISED.map((wording) => ({
+  id: `nov13-observation-place-must-read-${wording.key}`,
+  title: `Admin: "${wording.turn}" — the place is still read and leaves the Observation`,
+  report: "Gate-Sunny's #936 probes (13 Nov 2026); QA: block-list only, a capitalised word is not a longer name; invented person",
+  status: "fixed",
+  fixFlags: [FLAG],
   async run(t: ReplayContext) {
     const { reply, said } = await observationOf(t, wording.turn);
     expect(said, `the place was not read:\n${reply}`).not.toMatch(wording.place);
