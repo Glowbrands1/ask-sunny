@@ -264,3 +264,24 @@ describe("CARD_CHECKED_AGAINST_WORDS_ENABLED: a first account is never \"Added\"
     expect(out.content).toMatch(/\*\*Added to the Observation of Offense:\*\* she didn't call/);
   });
 });
+
+describe("CARD_CHECKED_AGAINST_WORDS_ENABLED: a name answer or a new request is never an added detail (gates, 13 Nov 2026)", () => {
+  const after = (said: string) => ({ turns: ["create a CA for Marnie Holloway, she was late on 11/3/26", said], roster: ROSTER });
+  it.each(["Marnie Holloway, TITLE", "marnie holloway, TITLE", "Marnie Holloway - TITLE", "it is Marnie Holloway, our TITLE at Kearney", "Marnie Holloway", "marnie holloway needs a written warning for cash handling", "she needs a written warning for cash handling", "Marnie needs a coaching form for the closing checklist", "she also needs a CA for being late on 11/4", "she should get a final warning for this"])("stays out: %s", (said) => {
+    expect(addedFacts("she was late on 11/3/26", "Marnie Holloway", after(said.replace("TITLE", ROSTER[0]!.positionName!)))).toEqual([]);
+  });
+  it.each(["she needed a ride and left early", "Marnie left her shift early without telling anyone", "she gave the keys to a non key holder"])("still joins: %s", (said) => {
+    expect(addedFacts("she was late on 11/3/26", "Marnie Holloway", after(said))).toEqual([said]);
+  });
+});
+
+describe("CARD_CHECKED_AGAINST_WORDS_ENABLED: Gate-Bubbles-5's name-answer and request lines (13 Nov 2026)", () => {
+  const tessa = (said: string) => ({ turns: ["create a CA for Tessa Ormond, she was late on 11/3/26", said], roster: ROSTER });
+  it.each(["Tessa Ormond, Salon Director", "tessa ormond, salon director", "Tessa Ormond - Tanning Consultant"])("a name answer stays out: %s", (said) => {
+    expect(addedFacts("she was late on 11/3/26", "Tessa Ormond", tessa(said))).toEqual([]);
+  });
+  it("after a two-card turn, \"jordan testperson needs a written warning for cash handling\" is a request, never a detail", () => {
+    const turns = ["coaching form for Avery Testperson and a CA for Jordan Testperson", "jordan testperson needs a written warning for cash handling"];
+    expect(addedFacts("cash handling", "Jordan Testperson", { turns, roster: ROSTER })).toEqual([]);
+  });
+});

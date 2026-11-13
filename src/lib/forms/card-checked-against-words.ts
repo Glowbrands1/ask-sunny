@@ -248,6 +248,35 @@ export function notAFact(clause: string, input: CardCheckInput): boolean {
   return at !== undefined && onlyPlace(at);
 }
 
+/*
+ * NOT AN ADDED DETAIL (Gate-Bubbles-5 / Gate-Sunny-2, 13 Nov 2026):
+ * - a name answer: the employee's name alone, or with only her title, position or place ("Tessa Ormond, General
+ *   Manager", "Tessa Ormond - Team Member", "<name>, <title>");
+ * - a new request: "<she|name> (also) needs|should get|gets|deserves … a <level>|CA|coaching|form …" ("jordan testperson
+ *   needs a written warning for cash handling", "she also needs a CA for being late on 11/4").
+ */
+const REQUEST_SHAPE = new RegExp(
+  String.raw`^(?:she|he|they|[\p{L}'’-]+(?:\s+[\p{L}'’-]+)?)\s+(?:also\s+)?(?:needs?|should\s+(?:get|have|receive)|gets?|getting|deserves?|will\s+get|is\s+getting|requires?|must\s+get)\s+(?:(?:a|an|another|her|his|their|the)\s+)?(?:(?:verbal|written|final|first|second|last)\s+)?(?:warning|ca|c\/a|corrective\s+action|coaching(?:\s+form)?|form|write[- ]?up|counseling)\b`,
+  "iu",
+);
+const TITLE_WORDS = new Set([
+  "manager", "managers", "member", "members", "team", "general", "assistant", "associate", "consultant", "director", "lead", "supervisor",
+  "part", "time", "full", "shift", "key", "holder", "keyholder", "crew", "staff", "employee", "our", "a", "an", "the", "at", "is", "she", "store", "salon",
+]);
+
+/** The employee's name (or another roster name) with nothing after it but a title, position or place. */
+function nameAnswer(clause: string, employee: string | null, input: CardCheckInput): boolean {
+  const said = plain(clause);
+  const known = [employee ? plain(employee) : "", ...names(input.roster)].filter((name) => name !== "");
+  const name = known.find((candidate) => said === candidate || said.startsWith(`${candidate} `));
+  if (!name) return false;
+  const rest = said.slice(name.length).trim();
+  if (rest === "") return true;
+  const titleWords = new Set([...titles(input.roster)].flatMap((title) => title.split(" ")));
+  const places = new Set(placeWords().flatMap((place) => place.split(" ")));
+  return rest.split(" ").every((word) => TITLE_WORDS.has(word) || titleWords.has(word) || places.has(word));
+}
+
 /** A leading time or place phrase before the account: "on Saturday, ", "yesterday ", "at close ", "this morning ". */
 const TIME_LEAD =
   /^(?:(?:on\s+(?:(?:mon|tues|wednes|thurs|fri|satur|sun)day|\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?)(?:\s+(?:morning|afternoon|evening|night))?)|yesterday(?:\s+(?:morning|afternoon|evening))?|today|tonight|last\s+night|this\s+(?:morning|afternoon|evening)|earlier\s+today|at\s+(?:close|closing|open|opening)|(?:at|around|about|by)\s+\d{1,2}(?::\d{2})?\s*(?:am|pm|a\.m\.|p\.m\.)?|then|after\s+that|later(?:\s+on)?|afterwards?)\s*,?\s+/i;
@@ -282,11 +311,11 @@ export function addedFacts(issue: string, employee: string | null, input: CardCh
         const subject = clause.split(/\s+/)[0] ?? "";
         const own = (part: string) => ACCOUNT_START.test(part) || (first !== "" && starts.test(part));
         const whole = (part: string) => (own(part) ? part : `${subject} ${part}`);
-        const kept = parts.filter((part) => issueProblem(whole(part), employee, input) === null && !notAFact(whole(part), input));
+        const kept = parts.filter((part) => issueProblem(whole(part), employee, input) === null && !notAFact(whole(part), input) && !REQUEST_SHAPE.test(whole(part)));
         if (kept.length === 0) continue;
         if (kept.length < parts.length) clause = [whole(kept[0]!), ...kept.slice(1)].join(" and ");
       }
-      if (issueProblem(clause, employee, input) !== null || notAFact(clause, input)) continue;
+      if (issueProblem(clause, employee, input) !== null || notAFact(clause, input) || REQUEST_SHAPE.test(clause) || nameAnswer(clause, employee, input)) continue;
       const fact = `${timeLead}${clause.replace(/^(?:and|but|plus)\s+/i, "")}`.replace(/\b(also|too)\b\s*/gi, "").replace(/\s+/g, " ").trim();
       const words = contentWords(fact);
       if (words.length === 0 || words.every((word) => have.has(word))) continue;
