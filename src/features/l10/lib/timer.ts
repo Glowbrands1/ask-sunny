@@ -1,5 +1,6 @@
 // Copied from the Leadership Hub (src/lib/meetings/timer.ts); keep in step with it. See src/features/l10/README.md.
 import { agendaFor, type AgendaKey } from "./config";
+import { keepHiddenAttendees } from "./doc";
 import type { Attendee, Issue, MeetingDoc, Todo } from "./types";
 
 /**
@@ -74,7 +75,8 @@ export function startMeeting(doc: MeetingDoc, now: number, viewer: { id: string;
     ...doc,
     todos,
     issues,
-    attendees: attendees.map((a) => ({ ...a, shared: false, rating: null })),
+    // A clean slate for the people shown; rows of people the page no longer shows are kept as they were.
+    attendees: keepHiddenAttendees(doc.attendees ?? [], attendees.map((a) => ({ ...a, shared: false, rating: null }))),
     timer: { ...emptyTimer(), started: true, running: true, startedAt: now, sessionId: new Date(now).toISOString(), leader: viewer.id, leaderLabel: viewer.label, leaderView: agendaFor("x")[0].key },
   };
 }

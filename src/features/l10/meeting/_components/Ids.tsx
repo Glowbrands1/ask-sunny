@@ -9,6 +9,13 @@ import { SharedFiles } from "./SharedFiles";
 import { RANKS, canVote, groupRanks, issueTerm, myRank, newItemId, picksByVoter, recentlySolved, searchIssues, sortIssues, toggleSolved, toggleVote, usesPreviousOrder, type Rank, type Voter } from "@/features/l10/lib/doc";
 import type { Attendee, Headline, Issue, IssueTerm, MeetingDoc, Rock, Todo } from "@/features/l10/lib/types";
 
+/**
+ * Ask Sunny: no ranking on IDS (the team's choice, 14 Nov 2026: issues are worked as in Bloom Growth, without the
+ * "Everyone's top three" table, the Rank buttons or the Priority badges). The Hub keeps them; this switch is the only
+ * difference, so re-copying the Hub's file means setting it to false again.
+ */
+const RANKING = false;
+
 /** The three IDS lists, as in Bloom Growth: this week's issues, the ones parked for later, and the recently solved. */
 export type IdsTab = IssueTerm | "solved";
 const TAB_LABEL: Record<IdsTab, string> = { short: "Short term", long: "Long-term", solved: "Recently solved" };
@@ -220,8 +227,8 @@ export function Ids({
           {(() => {
             const mine = myRank(i, voter.id);
             const can = canVote(doc.issues, i.id, voter.id);
-            // Only short-term issues are ranked.
-            if (!i.resolved && issueTerm(i) === "long") return null;
+            // Only short-term issues are ranked (and only when ranking is on).
+            if (!RANKING || (!i.resolved && issueTerm(i) === "long")) return null;
             const hint = i.resolved
               ? "Solved issues are not ranked"
               : mine
@@ -255,7 +262,7 @@ export function Ids({
             className={cx("min-w-[140px] flex-1 text-left text-sm", i.resolved && "text-muted line-through")}
           >
             {/* The room's top three (from everyone's ranks), worked in this order. */}
-            {room && (
+            {RANKING && room && (
               <>
                 <span data-testid="room-rank" className="mr-1.5 inline-flex items-center rounded-full bg-gold px-2 py-0.5 align-middle text-[11px] font-extrabold whitespace-nowrap text-ink">
                   Priority {room}
@@ -325,7 +332,7 @@ export function Ids({
           </button>
         ))}
       </div>
-      {tab === "short" && <PriorityTable issues={doc.issues.filter((i) => issueTerm(i) === "short")} attendees={attendees} />}
+      {RANKING && tab === "short" && <PriorityTable issues={doc.issues.filter((i) => issueTerm(i) === "short")} attendees={attendees} />}
       <div role="tabpanel" id={`ids-panel-${tab}`} aria-labelledby={`ids-tab-${tab}`}>
         <ul className="m-0 flex list-none flex-col gap-2 p-0" aria-label={tab === "short" ? "Open issues" : tab === "long" ? "Long-term issues" : "Solved issues"}>
           {lists[tab].map(row)}

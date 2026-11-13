@@ -3,7 +3,7 @@ import "server-only";
 import { getAnthropicClient } from "@/lib/ai/anthropic";
 import type { AskResponse } from "@/lib/ai/types";
 import { ACTIVE_BRAND } from "@/lib/brand";
-import { formEditSingleWriterEnabled, revisionSameValueEnabled } from "@/lib/config/chat-quality-flags";
+import { editSeesSavedFormEnabled, formEditSingleWriterEnabled, revisionSameValueEnabled } from "@/lib/config/chat-quality-flags";
 import { CLAUDE_MAX_TOKENS, CLAUDE_MODEL } from "@/lib/config/models";
 import type { ChatMessage } from "@/types";
 
@@ -599,6 +599,24 @@ export async function reviseActiveForm(input: {
    */
   if (fixedPlan && written.length > 0 && !written.includes(fixedPlan.key)) {
     written.push(...(await syncCorrectiveActionPlan(input.instanceId, actor.id)));
+  }
+  /*
+   * EDIT_SEES_SAVED_FORM_ENABLED (coding 6, 13 Nov 2026; QA, under Pau's standing approval; protected hunk, see
+   * docs/patches/edit-sees-saved-form-revision.patch): the saved form is checked against the manager's ask and corrected
+   * (`form-patch-turn.ts`), and the reply names the fields whose STORED value changed this turn.
+   */
+  if (editSeesSavedFormEnabled() && formEditSingleWriterEnabled() && written.length > 0 && input.today) {
+    const { changedKeys } = await (await import("./form-patch-turn")).checkSavedFormAfterRevision(
+      { request: input.request, instanceId: input.instanceId, question: input.question, history: input.history, today: input.today },
+      loaded,
+      written,
+      actor.id,
+    );
+    // Written, and the saved form is as it was: it already said that. Never "Updated", never "I haven't changed it".
+    if (changedKeys.length === 0 && dateLines.length === 0) {
+      return reply(`The ${who} already says that: I checked the saved form, and nothing on it needed to change. Give it a read below.`);
+    }
+    written.splice(0, written.length, ...changedKeys.filter((key) => key !== FOLLOW_UP_DATE_KEY));
   }
   if (written.length === 0) {
     if (dateLines.length) return dateReply(dateLines, dateChanged ? input.instanceId : null);
