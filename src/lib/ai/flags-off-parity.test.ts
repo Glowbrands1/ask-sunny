@@ -185,6 +185,12 @@ import { privateCreatorFormsEnabled, privateCreatorsActive } from "@/lib/forms/p
  */
 
 const NEW_FLAGS = [
+  // coding 2: OFF_ROSTER_PLACE_ANSWER (QA's Sunny 37b live bug, 12 Nov 2026; default off).
+  "OFF_ROSTER_PLACE_ANSWER_ENABLED",
+  // coding 2: OFFERED_NAME_ACCEPTED (QA, 12 Nov 2026: an admin's "use <C>" refused; default off).
+  "OFFERED_NAME_ACCEPTED_ENABLED",
+  // coding 4: FORM_DATE_BUSINESS_TODAY (live bug, QA, 13 Nov 2026; default off).
+  "FORM_DATE_BUSINESS_TODAY_ENABLED",
   // coding 6: CARD_CHECKED_AGAINST_WORDS (Pau's direction via QA, 13 Nov 2026; default off).
   "CARD_CHECKED_AGAINST_WORDS_ENABLED",
   // coding 6: EDIT_SEES_SAVED_FORM (Pau's direction via QA, 13 Nov 2026; default off).
@@ -610,6 +616,7 @@ const NEW_FLAGS = [
   // coding 5: UNDATED_ACCOUNT_BRIEF (default off): forced off with the others in the child run.
   "UNDATED_ACCOUNT_BRIEF_ENABLED",
   "EXCERPT_BRAND_FILTER_ENABLED",
+  "HUMAN_REPLIES_ENABLED",
   "EXIT_TYPO_WORDS_ENABLED",
   "WOVEN_TEXT_NUL_STRIP_ENABLED",
   "WOVEN_FAILED_RETRY_ENABLED",
@@ -647,6 +654,8 @@ const NEW_FLAGS = [
   "POLICY_CARRY_RETRIEVAL_ENABLED",
   // coding 2: OFF_ROSTER_STORE_ANSWER_ONLY (QA's #735 ruling, 12 Nov 2026; default off).
   "OFF_ROSTER_STORE_ANSWER_ONLY_ENABLED",
+  // coding 6: SAME_NAME_ASKS_WHICH (QA, 12 Nov 2026; default off; high priority).
+  "SAME_NAME_ASKS_WHICH_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -786,6 +795,11 @@ const PROTECTED = [
  * Termination plan's closing is the termination sentence (`planClosing`, also
  * in `refreshedActionPlan`). Off, both are exactly as before; instances.ts is
  * not touched.
+ *
+ * QA approved on 13 Nov 2026 (live bug: evening forms dated the next day; Pau's audit, 27 of 29 evening forms in 30
+ * days), in src/lib/forms/instances.ts, the seeded `form_date`/`date` default only: `input.formDate ?? recordToday()`
+ * (`lib/business-today.ts`) in place of `new Date().toISOString().slice(0, 10)`, and its import. Behind
+ * FORM_DATE_BUSINESS_TODAY_ENABLED, default off; off, recordToday() is that same UTC date.
  */
 const APPROVED_PROTECTED_EDITS = [
   ":(exclude)src/lib/forms/required-closing.ts",

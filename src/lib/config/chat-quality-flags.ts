@@ -2617,6 +2617,31 @@ export function offRosterAskBeforeCardEnabled(): boolean {
 export function offRosterStoreAnswerOnlyEnabled(): boolean {
   return envFlag("OFF_ROSTER_STORE_ANSWER_ONLY_ENABLED");
 }
+
+/**
+ * OFF_ROSTER_PLACE_ANSWER_ENABLED (Coding-2, 12 Nov 2026; default off; QA's priority live bug, Sunny 37b, a gap in
+ * OFF_ROSTER_STORE_ANSWER_ONLY). An all-salon admin, "CA for <C>, do not terminate yet, she was late" → the "reply use
+ * <C>" offer → "IA Altoona": the salon, written state-first as the directory writes it, became the employee "Ia
+ * Altoona"; the Observation and date were lost and "use <C>" was not asked again. On, for any scope: while the offer is
+ * open, a reply that is only a place ("<ST> <City>", "<City>, <ST>", or a directory salon or city) is never a person.
+ * The card is drafted again from the turn that typed the name (its account, date and policy kept), the salon is set
+ * where the directory knows it and the scope allows, and the question and offer are asked again
+ * (`forms/off-roster-place-answer.ts`). Off, as before.
+ */
+export function offRosterPlaceAnswerEnabled(): boolean {
+  return envFlag("OFF_ROSTER_PLACE_ANSWER_ENABLED");
+}
+
+/**
+ * OFFERED_NAME_ACCEPTED_ENABLED (Coding-2, 12 Nov 2026; default off; QA, top priority: "an offer the bot makes must be
+ * acceptable"). An all-salon admin: "CA for <C>, do not terminate yet, she was late" → "reply use <C>" → "use <C>" was
+ * refused: "\"<C>\" isn't a person on your team". The request's slot reader takes "<C>," before the account as a
+ * capitalised list item, so the person guard ruled the name out on every turn, the one that takes the offer too. On:
+ * the name the manager took with "use <C>" this turn is a person (`forms/person-guard.ts`). Off, as before.
+ */
+export function offeredNameAcceptedEnabled(): boolean {
+  return envFlag("OFFERED_NAME_ACCEPTED_ENABLED");
+}
 /**
  * EXIT_LETTER_ADDRESSEE_ENABLED (QA, the live Sunny test of rounds 7c and 8, 9 Nov 2026; coding 5; same flag in both
  * apps; default off; with EXIT_LETTER_SIGNER_NOT_SUBJECT_ENABLED). "I need an exit form with this information." and a
@@ -2792,6 +2817,18 @@ export function wovenFailedRetryEnabled(): boolean {
  */
 export function draftNoInventedPlanEnabled(): boolean {
   return envFlag("DRAFT_NO_INVENTED_PLAN_ENABLED");
+}
+
+/**
+ * HUMAN_REPLIES_ENABLED (QA's October triage, 10 Nov 2026: the sibling's #200 still live; this app's #268 closed
+ * unmerged; rebuilt on main; coding 5; default off). Every turn of a Corrective Action chat repeated the whole opener
+ * and the long save notice. On: the first card turn for a form and employee is as built; a later one opens with one
+ * line on what changed, read from the card's own fields, leaves out lines the manager already read, and says
+ * "Nothing's saved until you tap **Create draft**." where the long notice was. Questions and the card are unchanged
+ * (`ai/human-replies.ts`, the last step of the chat route). Off, as before.
+ */
+export function humanRepliesEnabled(): boolean {
+  return envFlag("HUMAN_REPLIES_ENABLED");
 }
 
 // --- end coding 5 flags ---
@@ -4687,4 +4724,24 @@ export function editSeesSavedFormEnabled(): boolean {
  */
 export function cardCheckedAgainstWordsEnabled(): boolean {
   return envFlag("CARD_CHECKED_AGAINST_WORDS_ENABLED");
+}
+
+/**
+ * SAME_NAME_ASKS_WHICH_ENABLED (coding 6, 12 Nov 2026; default off; QA, high priority). With TYPED_NAME_PROCEEDS on
+ * (live), two roster people with the same name were resolved to neither and never asked about: "verbal CA for <name>"
+ * with two active <name>s at the salon gave a ready card with one of them's job title and no employee id. On: one close
+ * roster match still stays a note (the name as typed); two or more roster matches ask "Which person did you mean…?" as
+ * with TYPED_NAME_PROCEEDS off, and a numbered or salon reply selects that person (`ai/intent-slots.ts`). Off, as before.
+ */
+export function sameNameAsksWhichEnabled(): boolean {
+  return envFlag("SAME_NAME_ASKS_WHICH_ENABLED");
+}
+
+/**
+ * FORM_DATE_BUSINESS_TODAY (live bug, QA, 13 Nov 2026): a new form's date (and every other "today" used as a business
+ * date) is the business date in BUSINESS_TIMEZONE, not the UTC date, which is already tomorrow on an evening form.
+ * See `lib/business-today.ts`. Off, the UTC date, as before.
+ */
+export function formDateBusinessTodayEnabled(): boolean {
+  return envFlag("FORM_DATE_BUSINESS_TODAY_ENABLED");
 }
