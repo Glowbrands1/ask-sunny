@@ -189,6 +189,8 @@ const NEW_FLAGS = [
   "OFF_ROSTER_PLACE_ANSWER_ENABLED",
   // coding 2: OFFERED_NAME_ACCEPTED (QA, 12 Nov 2026: an admin's "use <C>" refused; default off).
   "OFFERED_NAME_ACCEPTED_ENABLED",
+  // coding 4: FORM_DATE_BUSINESS_TODAY (live bug, QA, 13 Nov 2026; default off).
+  "FORM_DATE_BUSINESS_TODAY_ENABLED",
   // coding 4: FULL_MANUAL_KEEPS_RETRIEVAL (QA, 10 Nov 2026; default off).
   "FULL_MANUAL_KEEPS_RETRIEVAL_ENABLED",
   // coding 4: FORM_NAME_NOT_A_TITLE (QA's prod-env reading, D5, 11 Nov 2026; default off).
@@ -789,6 +791,11 @@ const PROTECTED = [
  * Termination plan's closing is the termination sentence (`planClosing`, also
  * in `refreshedActionPlan`). Off, both are exactly as before; instances.ts is
  * not touched.
+ *
+ * QA approved on 13 Nov 2026 (live bug: evening forms dated the next day; Pau's audit, 27 of 29 evening forms in 30
+ * days), in src/lib/forms/instances.ts, the seeded `form_date`/`date` default only: `input.formDate ?? recordToday()`
+ * (`lib/business-today.ts`) in place of `new Date().toISOString().slice(0, 10)`, and its import. Behind
+ * FORM_DATE_BUSINESS_TODAY_ENABLED, default off; off, recordToday() is that same UTC date.
  */
 const APPROVED_PROTECTED_EDITS = [
   ":(exclude)src/lib/forms/required-closing.ts",
