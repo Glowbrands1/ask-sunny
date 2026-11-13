@@ -91,20 +91,36 @@ jobs:
             npx vitest run --project flags-off-parity -t 'passes the suites whose expectations are already on main'
           fi
 
+  # THE PRODUCTION BUILD (QA, 13 Nov 2026). The tests and the typecheck do not compile the app the way Vercel does
+  # (Turbopack, next/font, the route tree), so a build that fails only on Vercel reached main once (the DM L10 tab,
+  # ask-sunny#938). `next build` here needs no secrets: every route that reads one renders on demand.
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Production build
+        run: npx next build
+
   # "checks" is the REQUIRED CHECK (branch protection and the merge queue name
   # it). It passes only when every job above succeeded: a failed, cancelled or
   # skipped job fails it (a skipped required job would otherwise count as a pass).
   checks:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [lint-typecheck, unit-tests, flags-off-parity]
+    needs: [lint-typecheck, unit-tests, flags-off-parity, build]
     if: always()
     steps:
       - name: Every job passed
         env:
-          RESULTS: ${{ needs.lint-typecheck.result }} ${{ needs.unit-tests.result }} ${{ needs.flags-off-parity.result }}
+          RESULTS: ${{ needs.lint-typecheck.result }} ${{ needs.unit-tests.result }} ${{ needs.flags-off-parity.result }} ${{ needs.build.result }}
         run: |
-          echo "lint-typecheck, unit-tests, flags-off-parity: $RESULTS"
+          echo "lint-typecheck, unit-tests, flags-off-parity, build: $RESULTS"
           for result in $RESULTS; do
             if [ "$result" != "success" ]; then
               echo "::error::A job did not succeed ($result)."
