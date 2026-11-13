@@ -1039,6 +1039,9 @@ function withoutPlace(clause: string): string {
     for (let length = Math.min(6, words.length - index - 1); length >= 1; length -= 1) {
       const phrase = words.slice(index + 1, index + 1 + length).join(" ");
       const bare = phrase.replace(/[.!?]+$/, "");
+      // PLACE_STRIP_WHOLE_PHRASE_ONLY_ENABLED (Gate-Sunny's #936 probes): "omaha and" is "omaha" and a joined clause;
+      // a candidate ending in a conjunction is skipped so the shorter one is tried ("at omaha and left early").
+      if (placeStripWholePhraseOnlyEnabled() && /^(?:and|but|or)$/i.test(bare.split(/\s+/).at(-1) ?? "")) continue;
       if (!isPlaceOnly(bare)) continue;
       /*
        * PLACE_STRIP_WHOLE_PHRASE_ONLY_ENABLED (QA, Gate-Sunny's #933 probes, 13 Nov 2026; high: it changed an HR

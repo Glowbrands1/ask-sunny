@@ -80,4 +80,17 @@ export const NOV13_OBSERVATION_PLACE_STRIP_MEANING_CASES: ReplayCase[] = [
       expect(said, `"at the front desk" was lost:\n${reply}`).toContain("at the front desk");
     },
   },
+  {
+    // Gate-Sunny's #936 probe (13 Nov 2026): with the flag, "at omaha and" read as a place and stopped the search, so
+    // "at omaha" stayed; without it the Observation lost "and" ("she was late left early").
+    id: "nov13-observation-at-omaha-and-left-early",
+    title: `Admin: "create a ca for marnie holloway, she was late at omaha and left early" — "she was late and left early"`,
+    report: `${REPORT}; Gate-Sunny's #936 probe`,
+    status: { open: `the Observation reads "she was late left early"` },
+    fixFlags: [FLAG],
+    async run(t: ReplayContext) {
+      const { reply, said } = await observationOf(t, "create a ca for marnie holloway, she was late at omaha and left early");
+      expect(said, `the Observation:\n${reply}`).toMatch(/^she was late and left early\b/i);
+    },
+  },
 ];
