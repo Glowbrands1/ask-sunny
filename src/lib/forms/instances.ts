@@ -1,5 +1,7 @@
 import "server-only";
 
+import { recordToday } from "@/lib/business-today";
+
 import { createHash } from "node:crypto";
 
 import { actionPlanSentencesEnabled } from "@/lib/config/chat-quality-flags";
@@ -591,8 +593,9 @@ export async function createInstance(input: NewInstance): Promise<InstanceRow & 
     employee_role: input.employeeRole,
     job_title: input.employeeRole,
     location: input.locationName,
-    form_date: input.formDate ?? new Date().toISOString().slice(0, 10),
-    date: input.formDate ?? new Date().toISOString().slice(0, 10),
+    // FORM_DATE_BUSINESS_TODAY_ENABLED: the business date, not UTC's (`lib/business-today.ts`).
+    form_date: input.formDate ?? recordToday(),
+    date: input.formDate ?? recordToday(),
   };
 
   const seeded: Record<string, string> = {};
