@@ -59,6 +59,7 @@ import type { GroundedPerson } from "./grounded-entities";
 import { formatManualCitation } from "./policy-citation-fields";
 import { remapCitations, remapManualSections, withoutStateCodes } from "./remap-incident";
 import type { AskResponse } from "./types";
+import { excerptTextForDisplay } from "@/lib/knowledge/excerpt-brand-filter";
 
 /**
  * Slots the manager already stated, put on the proposal the form path built.
@@ -194,7 +195,7 @@ export function formTurnCitations(input: {
       documentTitle: input.documentTitle,
       locator: `Page ${section.page}`,
       category,
-      excerpt: `${section.heading}. ${chunk?.content ?? ""}`.slice(0, 500),
+      excerpt: `${section.heading}. ${excerptTextForDisplay(chunk?.content ?? "", input.documentTitle)}`.slice(0, 500),
       relevance: 1,
     });
   }

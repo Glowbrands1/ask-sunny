@@ -103,3 +103,27 @@ describe("schedule and status words after a title are no person (FULL_POSITION_T
     expect(titleNamesAnotherPerson(typed("Tanning Consultant Only Vance"), "Tanning Consultant", "Isaura Corvadine")).toBe(true);
   });
 });
+
+// QA's Sunny round-33 live test (12 Nov 2026): the tester's labelled exit form, word for word (the employee invented).
+describe("FULL_POSITION_TITLE_ENABLED: a field label before the title is no person", () => {
+  const LABELLED = "exit form\nName: Isaura Corvadine\nPosition: Tanning Consultant Weekends Only\nResigned 11/8";
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("on: \"Position:\" is the field's label, so the title is the employee's", () => {
+    vi.stubEnv("TITLE_ENDS_AT_LINE_ENABLED", "true");
+    vi.stubEnv("FULL_POSITION_TITLE_ENABLED", "true");
+    expect(titleNamesAnotherPerson(LABELLED, "Tanning Consultant", "Isaura Corvadine")).toBe(false);
+  });
+
+  it("on: a person named before the title on its line is still that title's owner", () => {
+    vi.stubEnv("TITLE_ENDS_AT_LINE_ENABLED", "true");
+    vi.stubEnv("FULL_POSITION_TITLE_ENABLED", "true");
+    expect(titleNamesAnotherPerson("she spoke with Brenna Kowaldane District Manager about it", "District Manager", "Isaura Corvadine")).toBe(true);
+  });
+
+  it("off: the label is read as a name (the bug)", () => {
+    vi.stubEnv("TITLE_ENDS_AT_LINE_ENABLED", "true");
+    vi.stubEnv("FULL_POSITION_TITLE_ENABLED", "");
+    expect(titleNamesAnotherPerson(LABELLED, "Tanning Consultant", "Isaura Corvadine")).toBe(true);
+  });
+});

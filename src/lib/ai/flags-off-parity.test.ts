@@ -163,6 +163,7 @@ import {
   widerDateReaderEnabled,
   aiReadsCodeChecksEnabled,
   envFlag,
+  draftNoInventedPlanEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -184,6 +185,16 @@ import { privateCreatorFormsEnabled, privateCreatorsActive } from "@/lib/forms/p
  */
 
 const NEW_FLAGS = [
+  // coding 2: OFF_ROSTER_PLACE_ANSWER (QA's Sunny 37b live bug, 12 Nov 2026; default off).
+  "OFF_ROSTER_PLACE_ANSWER_ENABLED",
+  // coding 2: OFFERED_NAME_ACCEPTED (QA, 12 Nov 2026: an admin's "use <C>" refused; default off).
+  "OFFERED_NAME_ACCEPTED_ENABLED",
+  // coding 4: FORM_DATE_BUSINESS_TODAY (live bug, QA, 13 Nov 2026; default off).
+  "FORM_DATE_BUSINESS_TODAY_ENABLED",
+  // coding 4: FULL_MANUAL_KEEPS_RETRIEVAL (QA, 10 Nov 2026; default off).
+  "FULL_MANUAL_KEEPS_RETRIEVAL_ENABLED",
+  // coding 4: FORM_NAME_NOT_A_TITLE (QA's prod-env reading, D5, 11 Nov 2026; default off).
+  "FORM_NAME_NOT_A_TITLE_ENABLED",
   "SLOT_RETENTION_ENABLED",
   "FIELD_ACCURACY_ENABLED",
   "DRAFT_DEDUPE_ENABLED",
@@ -351,6 +362,10 @@ const NEW_FLAGS = [
   "FINAL_REPLY_MARKER_GUARD_ENABLED",
   // Coding: PROPOSAL_NAME_CORRECTION (round 5, 8 Nov 2026; port from Ask Bubbles; default off).
   "PROPOSAL_NAME_CORRECTION_ENABLED",
+  // Coding: NEAR_MISS_QUESTION_RULES (round 5, 8 Nov 2026; default off; ships with the name set).
+  "NEAR_MISS_QUESTION_RULES_ENABLED",
+  // Coding: FORM_NAME_OFF_ROSTER_ASK (QA, 10 Nov 2026; default off; ships with the name set).
+  "FORM_NAME_OFF_ROSTER_ASK_ENABLED",
   "POLICY_CHANGE_REST_OF_TURN_ENABLED",
   "OPEN_FORM_NO_SELECTION_ENABLED",
   "PERSON_GUARD_ENABLED",
@@ -361,6 +376,8 @@ const NEW_FLAGS = [
   "FORM_EDIT_REFERS_BACK_ENABLED",
   "SAME_FORM_COPY_ENABLED",
   "SAME_FORM_COPY_NEW_PERSON_ENABLED",
+  // coding 6: GUEST_ATTITUDE_CONDUCT (default off): forced off with the others.
+  "GUEST_ATTITUDE_CONDUCT_ENABLED",
   // coding 6: DRAFT_WRITE_NEVER_SILENT (default off): forced off with the others.
   "DRAFT_WRITE_NEVER_SILENT_ENABLED",
   // coding 6: CA_PROCEDURE_BASIS (default off; rebuilt from old S544): forced off with the others.
@@ -388,6 +405,8 @@ const NEW_FLAGS = [
   "PAYROLL_SPLIT_WORDS_ENABLED",
   // coding 6: SAME_REQUEST_OTHER_PERSON (default off): forced off with the others.
   "SAME_REQUEST_OTHER_PERSON_ENABLED",
+  // coding 6: MAKE_THAT_UPDATE_ACCOUNT (default off; QA's 10 Nov audit, copy-paste case): forced off with the others.
+  "MAKE_THAT_UPDATE_ACCOUNT_ENABLED",
   // coding 6: SAME_REQUEST_OFF_ROSTER (default off; QA's r23 live test, #779 off roster): forced off with the others.
   "SAME_REQUEST_OFF_ROSTER_ENABLED",
   // coding 6: PASTED_OUTLINE_TO_OPEN_DRAFT (default off; QA's r23 live test of sf-s21): forced off with the others.
@@ -396,6 +415,16 @@ const NEW_FLAGS = [
   "COACHING_OBSERVED_SAVED_ENABLED",
   // coding 6: APP_INSTRUCTIONS_NOT_ACCOUNT (default off): forced off with the others.
   "APP_INSTRUCTIONS_NOT_ACCOUNT_ENABLED",
+  // coding 6: FAILURE_TO_OPEN_IS_LATE_OPENING (default off): forced off with the others.
+  "FAILURE_TO_OPEN_IS_LATE_OPENING_ENABLED",
+  // coding 6: TERMINATION_STATED_TICKS (default off): forced off with the others.
+  "TERMINATION_STATED_TICKS_ENABLED",
+  // coding 6: PAYROLL_BARE_SENTENCE (default off): forced off with the others.
+  "PAYROLL_BARE_SENTENCE_ENABLED",
+  // coding 6: ADVICE_ASK_NOT_ACCOUNT (default off): forced off with the others.
+  "ADVICE_ASK_NOT_ACCOUNT_ENABLED",
+  // coding 6: DRAFT_WROTE_NOTHING_NOTICE (default off): forced off with the others.
+  "DRAFT_WROTE_NOTHING_NOTICE_ENABLED",
   "STAFF_PICKER_ENABLED",
   "STAFF_PICKER_STORE_TITLES_ENABLED",
   "STAFF_PICKER_BARE_ANSWER_ENABLED",
@@ -509,6 +538,8 @@ const NEW_FLAGS = [
   // The second Sunny gate's fix flags (6 Nov 2026): forced off with the others in the child run.
   "TITLE_ENDS_AT_LINE_ENABLED",
   "FULL_POSITION_TITLE_ENABLED",
+  // QA, 10 Nov 2026 (default off): "not following the dress code" names the policy as broken.
+  "NOT_FOLLOWING_IS_VIOLATION_ENABLED",
   "BARE_NOT_DENIAL_ENABLED",
   "PLACE_FROM_CUE_ENABLED",
   // Port of the sibling app's flip-3 fix (6 Nov 2026): forced off with the others in the child run.
@@ -570,6 +601,7 @@ const NEW_FLAGS = [
   "MADE_ABOUT_POLICY_LINE_REPLACES_ENABLED",
   "SECTION_BREAKS_KEPT_ENABLED",
   "ADD_NOT_REPEATED_ENABLED",
+  "ADD_NOT_REPEATED_SENTENCES_ENABLED",
   // coding 4: MODEL_POLICY_DEFERS_TO_TOPIC (QA, round 7c, 9 Nov 2026; default off): forced off with the others in the child run.
   "MODEL_POLICY_DEFERS_TO_TOPIC_ENABLED",
   // coding 4: WORK_AREA_ABSENCE_CITES_CONDUCT (Pau's decision, 9 Nov 2026; default off): forced off with the others in the child run.
@@ -579,6 +611,11 @@ const NEW_FLAGS = [
   "SHIFT_ACCOUNT_IS_INCIDENT_ENABLED",
   // coding 5: UNDATED_ACCOUNT_BRIEF (default off): forced off with the others in the child run.
   "UNDATED_ACCOUNT_BRIEF_ENABLED",
+  "EXCERPT_BRAND_FILTER_ENABLED",
+  "HUMAN_REPLIES_ENABLED",
+  "EXIT_TYPO_WORDS_ENABLED",
+  "WOVEN_TEXT_NUL_STRIP_ENABLED",
+  "WOVEN_FAILED_RETRY_ENABLED",
   "ADD_THAT_IS_ACCOUNT_ENABLED",
   "WHAT_HAPPENED_NO_CREATE_ENABLED",
   "CREATE_FROM_CONVERSATION_POINTS_TO_CARD_ENABLED",
@@ -586,6 +623,7 @@ const NEW_FLAGS = [
   "POLICY_TOPIC_INTO_FIELD_ENABLED",
   "LETTER_GREETING_NOT_NAME_ENABLED",
   "LATE_READS_ATTENDANCE_ENABLED",
+  "LATE_SLOT_READS_ATTENDANCE_ENABLED",
   "EXIT_FORM_DATE_FROM_TERMINATION_ENABLED",
   "EXIT_LETTER_ADDRESSEE_ENABLED",
   "MISSED_SHIFT_CITES_ATTENDANCE_ENABLED",
@@ -602,6 +640,22 @@ const NEW_FLAGS = [
   "OTHER_POLICY_AGREES_ENABLED",
   "OTHER_NOT_A_POLICY_NAME_ENABLED",
   "ACCOUNT_TYPOS_FIXED_ENABLED",
+  // coding 2: EXCERPT_EMPTY_CARD_DROP (QA, 11 Nov 2026; default off): forced off with the others.
+  "EXCERPT_EMPTY_CARD_DROP_ENABLED",
+  // coding 6: REQUEST_ISSUE_KEPT (ported from Ask Bubbles, QA round 17b; default off).
+  "REQUEST_ISSUE_KEPT_ENABLED",
+  // coding 4: STEP_B_SECTION_SPACING (ported from Ask Bubbles; split out of #662, 12 Nov 2026; default off).
+  "STEP_B_SECTION_SPACING_ENABLED",
+  "DRAFT_NO_INVENTED_PLAN_ENABLED",
+  "GROUP_WORDS_NOT_A_NAME_ENABLED",
+  // coding 4: FORMS_ON_FILE_ORDER_MATCH_POSSIBLE (ported from Ask Bubbles, 11 Nov 2026; default off).
+  "FORMS_ON_FILE_ORDER_MATCH_POSSIBLE_ENABLED",
+  // coding 6: POLICY_CARRY_RETRIEVAL (#248 rebuilt on main; QA item 10; default off).
+  "POLICY_CARRY_RETRIEVAL_ENABLED",
+  // coding 2: OFF_ROSTER_STORE_ANSWER_ONLY (QA's #735 ruling, 12 Nov 2026; default off).
+  "OFF_ROSTER_STORE_ANSWER_ONLY_ENABLED",
+  // coding 6: SAME_NAME_ASKS_WHICH (QA, 12 Nov 2026; default off; high priority).
+  "SAME_NAME_ASKS_WHICH_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -732,15 +786,38 @@ const PROTECTED = [
  * line `if (otherNotAPolicyNameEnabled() && /^other$/i.test(text)) return "";`
  * (a bare "Other" is never a policy name: no "review the Other policy").
  * Behind OTHER_NOT_A_POLICY_NAME_ENABLED, default off; off, as before.
+ *
+ * The user (Pau) approved on 11 Nov 2026, via QA (Pau's standing approval for
+ * fixes, recorded by QA), in src/lib/forms/proposal.ts, exactly the hunks in
+ * docs/patches/form-name-not-a-title.patch: the import
+ * `formNameNotATitleEnabled`, `FORM_NAME_AFTER` and `titleSaidLater`, and in
+ * extractJobTitle a title word straight before "EPP" is skipped as the form's
+ * name unless the title is said again later. Behind
+ * FORM_NAME_NOT_A_TITLE_ENABLED, default off; off, every title is read as before.
+ * The user (Pau) approved in writing on 10 Nov 2026, via QA ("ok termination
+ * closing"), behind TERMINATION_STATED_TICKS_ENABLED (default off), both apps:
+ * in src/lib/forms/required-closing.ts, `withRequiredClosing` returns a value
+ * that already ends with the termination sentence unchanged (with its
+ * `TERMINATION_PLAN_CLOSING` constant and the flag import); in
+ * src/lib/forms/ca-action-plan.ts, `ActionPlanInput.termination`, and a
+ * Termination plan's closing is the termination sentence (`planClosing`, also
+ * in `refreshedActionPlan`). Off, both are exactly as before; instances.ts is
+ * not touched.
+ *
+ * QA approved on 13 Nov 2026 (live bug: evening forms dated the next day; Pau's audit, 27 of 29 evening forms in 30
+ * days), in src/lib/forms/instances.ts, the seeded `form_date`/`date` default only: `input.formDate ?? recordToday()`
+ * (`lib/business-today.ts`) in place of `new Date().toISOString().slice(0, 10)`, and its import. Behind
+ * FORM_DATE_BUSINESS_TODAY_ENABLED, default off; off, recordToday() is that same UTC date.
  */
 const APPROVED_PROTECTED_EDITS = [
+  ":(exclude)src/lib/forms/required-closing.ts",
+  ":(exclude)src/lib/forms/ca-action-plan.ts",
   ":(exclude)src/lib/forms/proposal.ts",
   ":(exclude)src/lib/forms/chat-revision.ts",
   ":(exclude)src/lib/forms/instances.ts",
   ":(exclude)src/lib/forms/payroll-deduct.ts",
   ":(exclude)src/lib/forms/form-date-answer.ts",
   ":(exclude)src/lib/ai/form-proposal.ts",
-  ":(exclude)src/lib/forms/ca-action-plan.ts",
 ];
 
 const UI_PATHS = ["src/app/**/*.tsx", "src/components/**", "src/features/**/*.tsx", "**/*.css"];
@@ -989,6 +1066,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(cardChangeFinalizedEnabled()).toBe(false);
     expect(formPatchReducerEnabled()).toBe(false);
     expect(formReplyFromDiffEnabled()).toBe(false);
+    expect(draftNoInventedPlanEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(
@@ -1080,6 +1158,8 @@ describe("new flags default off and wrappers are inert", () => {
           // Import's "belongs to another account" line (QA, 31 Oct 2026, both apps): shown only
           // when the server declines a chat as another account's, i.e. only with
           // CHAT_IMPORT_OWN_ONLY_ENABLED on. Off, the server never declines that way, so it never shows.
+          // Its "couldn't confirm … is yours" line (QA, 12 Nov 2026, both apps) likewise shows only for a "not_proven"
+          // decline, which only CHAT_IMPORT_PROVEN_OWN_ENABLED returns.
           ":(exclude)src/features/chat/import-local-history.tsx",
           // App switcher's Leadership Hub tab (requested by Paulyne through the QA session,
           // 1 Nov 2026 — QA to confirm): shell plumbing for a server yes/no. With

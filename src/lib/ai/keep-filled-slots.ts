@@ -57,6 +57,7 @@ import {
   secondRequestOwnAccountEnabled,
   observationOwnPersonOnlyEnabled,
 } from "@/lib/config/chat-quality-flags";
+import { requestIssueKeptEnabled } from "@/lib/config/chat-quality-flags";
 import { turnsMadeAbout, withObservationMadeAbout } from "./make-it-about";
 import { NOTHING_SET_ASIDE, citationSetAside, policiesSetAside, setAsideAnything, withPolicySetAside, withoutPolicyAsks } from "@/lib/forms/policy-set-aside";
 import { namesOnlyAPolicy } from "@/lib/forms/person-guard";
@@ -803,7 +804,8 @@ function withObservation(content: string, turns: readonly string[], employeeName
       if (sentences.some((kept) => kept.toLowerCase() === sentence.toLowerCase())) continue;
       // REQUEST_PARTICIPLE_LEAD_ENABLED: "I need a corrective action made for under performance." is the reason.
       if (requestParticipleLeadEnabled() && isRequestReasonOnly(said, sentence)) reasons.add(sentence);
-      sentences.push(sentence);
+      // REQUEST_ISSUE_KEPT_ENABLED: the account read from "Can you make a CA for <name> for …?" ends without the question mark.
+      sentences.push(requestIssueKeptEnabled() ? sentence.replace(/\s*\?+$/, "") : sentence);
     }
   }
   if (sentences.length === 0) return content;
@@ -887,7 +889,9 @@ function withAccount(content: string, turns: readonly string[], employeeName: st
       !(observationNotPolicyNameEnabled() && namesOnlyAPolicy(sentence)),
   );
   if (sentences.length === 0) return content;
-  const told = complaintAccountEnabled() ? sentences.map(withoutLevelLead) : sentences;
+  const asked = complaintAccountEnabled() ? sentences.map(withoutLevelLead) : sentences;
+  // REQUEST_ISSUE_KEPT_ENABLED: the account read from "Can you make a CA for <name> for …?" ends without the question mark.
+  const told = requestIssueKeptEnabled() ? asked.map((sentence) => sentence.replace(/\s*\?+$/, "")) : asked;
   // ACCOUNT_TYPOS_FIXED_ENABLED: the obvious slips mended, the manager's words kept (`forms/account-spelling.ts`).
   return `${content}\n\n**Observation of Offense:** ${cardAccountText(told.join(". "), employeeName)}`.trim();
 }

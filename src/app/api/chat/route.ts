@@ -21,8 +21,10 @@ import {
   personGuardEnabled,
   missedShiftCitesAttendanceEnabled,
   possessivePlaceNotPersonEnabled,
+  groupWordsNotANameEnabled,
   formNameFromRosterEnabled,
   offRosterConfirmEnabled,
+  offRosterPlaceAnswerEnabled,
   exitLetterAddresseeEnabled,
   letterGreetingNotNameEnabled,
   templateOutlineFieldsEnabled,
@@ -33,6 +35,7 @@ import {
   titleNotSpeakersManagerEnabled,
   newRequestOwnTurnsEnabled,
   formEditPlainWordsEnabled,
+  makeThatUpdateAccountEnabled,
   questionNotFormEnabled,
   sameFormCopyEnabled,
   sameFormCopyNewPersonEnabled,
@@ -44,6 +47,7 @@ import {
   wholeTeamCoachingEnabled,
   addressNotPersonEnabled,
   sameAskNoRepeatEnabled,
+  humanRepliesEnabled,
   newRequestOpenDraftEnabled,
   coachingForEveryoneEnabled,
   staffPickerEnabled,
@@ -56,6 +60,8 @@ import {
   reopenByAnyOpenVerbEnabled,
   twoFormsCardNotAskedEnabled,
   secondRequestOwnAccountEnabled,
+  nearMissQuestionRulesEnabled,
+  formNameOffRosterAskEnabled,
   whatHappenedNoCreateEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { streamWhenSlow } from "@/lib/api/streamed-response";
@@ -253,6 +259,21 @@ async function postChat(request: Request) {
        * OFF_ROSTER_CONFIRM_ENABLED: "use <name>" (or "yes") to the offer for a person not in Woven is read as the
        * manager's turn that typed the name, and the name is kept on the card as typed (`forms/off-roster-confirm.ts`).
        */
+      /*
+       * OFF_ROSTER_PLACE_ANSWER_ENABLED (QA's Sunny 37b live bug): a place-only reply ("IA Altoona") to the open "use <C>"
+       * offer is never a person: the card is drafted again from the turn that typed the name, and after the turn the
+       * name is held and the offer asked again (`forms/off-roster-place-answer.ts`).
+       */
+      let placeAnswer: import("@/lib/forms/off-roster-place-answer").PlaceAnswer | null = null;
+      if (offRosterPlaceAnswerEnabled()) {
+        const places = await import("@/lib/forms/off-roster-place-answer");
+        const found = places.placeAnswerOf(asked.question, asked.history, context.identity.scope);
+        const typed = found ? places.placeAnswerTurn(found, asked.history) : null;
+        if (found && typed) {
+          placeAnswer = found;
+          asked = { ...asked, question: typed };
+        }
+      }
       if (offRosterConfirmEnabled()) {
         const taken = (await import("@/lib/forms/off-roster-confirm")).withOffRosterAnswer(asked);
         if (taken) {
@@ -332,6 +353,12 @@ async function postChat(request: Request) {
         const reply = [...asked.history].reverse().find((turn) => turn.role === "assistant");
         if (reply) (await import("@/lib/forms/last-reply-store")).enterLastReply(String(reply.content ?? ""));
       }
+      // NEAR_MISS_QUESTION_RULES_ENABLED (after the FORM_NAME / METRIC_GUARD pair above, never between them — the sibling
+      // app's round-6 gate, 8 Nov 2026: there it took that `else` and the metric guards stopped reading the message): the card on screen, so a near-miss never replaces it (`lib/forms/near-miss-question-rules.ts`).
+      if (nearMissQuestionRulesEnabled()) {
+        const onScreen = (await import("@/lib/forms/near-miss-question-rules")).cardEmployee(asked);
+        if (onScreen) (await import("@/lib/forms/request-message-store")).enterCardOnScreen(onScreen);
+      }
       /*
        * PERSON_GUARD_ENABLED: the actor's roster, for the rule that somebody on
        * it is always a person. One directory read per turn, only with the flag
@@ -359,6 +386,12 @@ async function postChat(request: Request) {
           }
         }
         enterPersonRoster(names);
+        // FORM_NAME_OFF_ROSTER_ASK_ENABLED: the scope's level, so a name not on the roster is held for a salon manager only (`lib/forms/roster-scope.ts`).
+        // The manager's own turns too, so a full name typed on an earlier turn is still the manager's (QA's #741 eval, g1–g6).
+        if (formNameOffRosterAskEnabled()) {
+          const managerTurns = [...asked.history.filter((turn) => turn.role === "user").map((turn) => String(turn.content ?? "")), asked.question];
+          (await import("@/lib/forms/person-roster-store")).enterRosterScope(context.identity.scope?.level ?? "", managerTurns);
+        }
         /*
          * FORM_NAME_FROM_ROSTER_ENABLED: does this message name somebody on the
          * roster (exact or close, or a roster first name typed in lowercase)?
@@ -478,6 +511,16 @@ async function postChat(request: Request) {
             })
           : false;
       // PROPOSAL_NAME_CORRECTION_ENABLED: "fix her last name …" on a card not yet created. See `lib/forms/proposal-name-correction.ts`.
+      /*
+       * MAKE_THAT_UPDATE_ACCOUNT_ENABLED: "make that update" after a reply that offered nothing is her own account, as
+       * every reader of the open draft (Step B's patch reading included) reads it. See `lib/forms/form-content-turn.ts`.
+       */
+      if (makeThatUpdateAccountEnabled() && asked.activeFormInstanceId) {
+        const content = await import("@/lib/forms/form-content-turn");
+        const open = await (await import("@/lib/forms/open-form-summary")).describeOpenForm(request, asked.activeFormInstanceId).catch(() => null);
+        const withAccount = open ? content.makeThatUpdateWithAccount({ question: asked.question, history: asked.history, employeeName: open.employeeName }) : null;
+        if (withAccount) asked = { ...asked, question: withAccount };
+      }
       const parsed = withProposalNameCorrection(withSwitchAfterCreate(
         draftAction || staffPick || newRequestOpen
           ? {
@@ -919,10 +962,19 @@ async function postChat(request: Request) {
           businessToday(),
         );
       }
+      // GROUP_WORDS_NOT_A_NAME_ENABLED: "the same form for multiple employees" asks which employees (`lib/forms/group-words-ask.ts`).
+      if (groupWordsNotANameEnabled()) {
+        answer = (await import("@/lib/forms/group-words-ask")).withGroupWordsAsk(answer, [
+          ...parsed.history.filter((turn) => turn.role === "user").map((turn) => turn.content),
+          asked.question,
+        ]);
+      }
       // PROPOSAL_NAME_CORRECTION_ENABLED: an off-roster "change her name to …" on the card is never kept silently; with the roster, the card stays for the one roster person it can only be, and a typo is never offered as a person.
       answer = withCorrectionNotDropped(answer, parsed);
       // TWO_FORMS_CARD_NOT_ASKED_ENABLED: a card that names its employee is never asked "Which of them … — <that employee> or …?" (`lib/forms/card-not-asked.ts`).
       if (twoFormsCardNotAskedEnabled()) answer = (await import("@/lib/forms/card-not-asked")).withoutWhichAskOnSeatedCard(answer);
+      // NEAR_MISS_QUESTION_RULES_ENABLED: "no, …" to "Is this for <name>?" never gets a card for that name.
+      if (nearMissQuestionRulesEnabled()) answer = (await import("@/lib/forms/near-miss-question-rules")).withoutTurnedDownName(answer, asked);
       // ADDRESS_NOT_PERSON_ENABLED: "coaching form for 123 Main Street" names an address, not a person (QA, 3 Nov 2026).
       if (addressNotPersonEnabled())
         answer = (await import("@/lib/forms/person-guard")).withAddressNotPerson(
@@ -962,6 +1014,8 @@ async function postChat(request: Request) {
       if (offRosterAskBeforeCardEnabled()) {
         answer = (await import("@/lib/forms/off-roster-ask")).withOffRosterAskBeforeCard(answer, { scope: context.identity.scope, history: parsed.history, question: asked.question });
       }
+      // OFF_ROSTER_PLACE_ANSWER_ENABLED: the place answered the offer; the name is held and the offer asked again (`forms/off-roster-place-answer.ts`).
+      if (placeAnswer) answer = (await import("@/lib/forms/off-roster-place-answer")).withPlaceAnswer(answer, placeAnswer, context.identity.scope);
       // SAME_FORM_COPY_NEW_PERSON_ENABLED: the named person's card carries the form to copy from.
       if (newPersonCopy) {
         answer = (await import("@/lib/forms/same-form-copy")).withCopyFrom(answer, newPersonCopy.source, newPersonCopy.name);
@@ -970,6 +1024,18 @@ async function postChat(request: Request) {
       if (copyOwnSalonEnabled()) answer = await (await import("@/lib/forms/same-form-copy")).withCopyOwnSalon(answer, request, asked.question);
       // SAME_REQUEST_OTHER_PERSON_ENABLED: <B>'s card says what of the earlier request it carries.
       if (sameRequestOther) answer = (await import("@/lib/forms/same-request-other-person")).withSameRequestNote(answer, sameRequestOther);
+      /*
+       * HUMAN_REPLIES_ENABLED (QA's October triage of #268 / the sibling's #200): a later card turn for the same form and
+       * employee says what changed instead of the whole opener again; questions and the card are untouched. Last, so it
+       * reads the reply every step above built. Off, unchanged.
+       */
+      if (humanRepliesEnabled()) {
+        answer = (await import("@/lib/ai/human-replies")).humanizeFormReply(answer, {
+          history: parsed.history,
+          question: parsed.question,
+          today: parsed.context.todayIso,
+        });
+      }
     } catch (error) {
       /*
        * A FAILED ANSWER IS STILL A RECORDED TURN, closed as a failure. The row

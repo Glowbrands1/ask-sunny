@@ -51,11 +51,12 @@ function check(mode: "code" | "models"): ReplayCase["run"] {
     const thread = t.thread();
     const reply = await thread.say(TEXT, mode === "models" ? { employeeName: "Leofric Arkwell" } : {});
     expect(thread.proposal?.employeeName ?? null, `a name on no roster is the employee:\n${reply.content}`).toBeNull();
-    expect(reply.content, `the typed name is never said to be not found:\n${reply.content}`).toMatch(/I couldn't find \*\*Leofric Arkwell\*\* in the Woven roster/);
+    // Changed on purpose (10 Nov 2026, QA's roster-set ruling): with the name set on, a salon manager's not-found line is OFF_ROSTER_ASK's "I can't find **<name>** on your roster — …" (round 12's live wording), not "I couldn't find **<name>** in the Woven roster".
+    expect(reply.content, `the typed name is never said to be not found:\n${reply.content}`).toMatch(/I couldn't find \*\*Leofric Arkwell\*\* in the Woven roster|I can't find \*\*Leofric Arkwell\*\* on your roster/);
     // Changed on purpose (QA, 7 Nov 2026; as the sibling app's #516, finding C): with OFF_ROSTER_CONFIRM the off-roster offer ("reply **use <name>**") is the question about the person, instead of "Who is this form for?".
     expect(reply.content, `does not ask who:\n${reply.content}`).toMatch(/Who is this (?:\*\*[^*]+\*\* |form )?for\?|Is this for \*\*|reply \*\*use [^*]+\*\* and I'll put that name on the form/);
     // The name is the not-found note's only: never the employee anywhere else.
-    const elsewhere = reply.content.split("\n").filter((line) => !/I couldn't find \*\*/.test(line)).join("\n");
+    const elsewhere = reply.content.split("\n").filter((line) => !/I couldn't find \*\*|I can't find \*\*[^*]+\*\* on your roster/.test(line)).join("\n");
     expect(elsewhere, `the name is presented as the employee:\n${reply.content}`).not.toMatch(/Leofric|Arkwell/);
   });
 }

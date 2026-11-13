@@ -1,5 +1,6 @@
 import "server-only";
 
+import { besideManualGrounding, besideManualRows, fullManualKeepsRetrieval, startBesideSearch } from "./full-manual-keeps-retrieval";
 import {
   chatDataToolsEnabled,
   chatParallelLoadsEnabled,
@@ -108,6 +109,7 @@ import {
 } from "@/lib/knowledge/role-grounding";
 import { isFrameworkAvailable } from "@/lib/knowledge/framework-availability";
 import { rowToCitation, type MatchedChunkRow } from "@/lib/knowledge/mappers";
+import { shownCitations } from "@/lib/knowledge/empty-card-drop";
 import { loadEmployeeFacts } from "@/lib/reporting/read/employee-facts";
 import { recallPeople } from "@/lib/chat/person-memory-store";
 import {
@@ -187,6 +189,7 @@ import { withOwnPlace } from "./keeps-own-place";
 import { withFormTypeSwitch, withSwitchNote, withSwitchSources } from "./form-type-switch";
 import { withUnreadDateAsk } from "./unread-date-ask";
 import { withStatedAmount } from "./amount-answer-saved";
+import { withTerminationStated } from "./termination-stated";
 import { withWarningLevelFromClause } from "./warning-level-clause";
 import { recallMemory, rememberFact } from "./chat-memory-store";
 import { normalizeForChat } from "./message-normalize-claude";
@@ -201,6 +204,7 @@ import {
 } from "./prompts";
 import { retrievalQueryFor } from "./retrieval-query";
 import { slotOnlyRetrievalTopic } from "./slot-only-turn";
+import { carriedPolicyTopic } from "./policy-carry-retrieval";
 import { appPasswordHelpFor } from "./app-password-help";
 import { redactSensitiveDefaults, withoutSensitiveDefaults } from "./sensitive-defaults";
 import { withoutSharedSourceClaims } from "./sources-not-shared";
@@ -450,7 +454,8 @@ async function answerQuestionChecked(
             // UNKNOWN_NAME_ASK_ENABLED: a typed name not on the directory is named back, never asked again in the same words.
             withUnknownNameAsk(
               withFirstNameAsk(
-                withWarningLevelFromClause(withSpelledOutTitle(withJobTitleReadBackCase(withJobTitleCase(withJobTitleFromWords(withCoachingWhatHappened(withoutNoAccountAppPolicy(withCaWhatHappened(await applyQuietQuality(response), request)), request), request)))), request),
+                // TERMINATION_STATED_TICKS_ENABLED: a termination the manager stated is the card's level, with the approval line.
+                withTerminationStated(withWarningLevelFromClause(withSpelledOutTitle(withJobTitleReadBackCase(withJobTitleCase(withJobTitleFromWords(withCoachingWhatHappened(withoutNoAccountAppPolicy(withCaWhatHappened(await applyQuietQuality(response), request)), request), request)))), request), request),
                 request,
               ),
               request,
@@ -629,6 +634,15 @@ async function answerQuestionUntraced(
    */
   const earlyFewShot =
     chatParallelLoadsEnabled() && fewShotExamplesEnabled() ? held(fewShotBlock({ question: request.question, scopeId: request.scopeId })) : null;
+  // FULL_MANUAL_KEEPS_RETRIEVAL_ENABLED (QA, 10 Nov 2026): the search beside the manual overlaps the normalizer and the rewrite.
+  const earlyBeside = startBesideSearch({
+    question: request.question,
+    history: request.history,
+    openForm: request.openForm ?? null,
+    scopeId: request.scopeId,
+    formInProgress: Boolean(request.continueProposalTemplateKey || request.openForm || request.activeFormInstanceId),
+    match: (query) => new SupabaseKnowledgeProvider().match(query),
+  });
   markStage(earlyHeard?.reruns(request) ? "query_normalize_rerun" : "query_normalize");
   const heard = queryRewriteEnabled()
     ? await (earlyHeard?.take(request) ?? normalizeForChat({ question: request.question, history: request.history }))
@@ -1429,11 +1443,15 @@ async function answerQuestionUntraced(
   let rows: MatchedChunkRow[];
   let fullManualBlock: string | null = null;
   let fullManuals: readonly AssembledManual[] = [];
-  const followedUp = retrievalQueryFor({
-    question: request.question,
-    history: request.history,
-    openForm: request.openForm ?? null,
-  });
+  // POLICY_CARRY_RETRIEVAL_ENABLED: "just make it" is searched with the policy named earlier (QA item 10).
+  const carriedTopic = carriedPolicyTopic(request.question, request.history);
+  const followedUp =
+    carriedTopic ??
+    retrievalQueryFor({
+      question: request.question,
+      history: request.history,
+      openForm: request.openForm ?? null,
+    });
   const glossed = queryRewriteEnabled()
     ? expandGlossaryQuery(heard?.modelQuery ?? followedUp)
     : followedUp;
@@ -1441,7 +1459,7 @@ async function answerQuestionUntraced(
    * A slot-only turn is already searched with the conversation's topic (see
    * `slot-only-turn.ts`); the rewrite would read the turn's own words again.
    */
-  const slotTopic = slotOnlyRetrievalTopic(request.question, request.history);
+  const slotTopic = slotOnlyRetrievalTopic(request.question, request.history) ?? carriedTopic;
   markStage("query_rewrite");
   const rewritten = queryRewriteEnabled() && !slotTopic
     ? await rewriteToManualTerms({
@@ -1489,7 +1507,9 @@ async function answerQuestionUntraced(
       fullManuals = loadedManual.manuals;
     }
   }
-  if (fullManualBlock) {
+  // FULL_MANUAL_KEEPS_RETRIEVAL_ENABLED: the other documents are still searched (`full-manual-keeps-retrieval.ts`).
+  const keepsRetrieval = fullManualKeepsRetrieval(fullManualBlock);
+  if (fullManualBlock && !keepsRetrieval) {
     /*
      * The whole manual is in the prompt. Retrieved excerpts are not the
      * policy source. A missing or oversized manual leaves fullManualBlock
@@ -1530,7 +1550,8 @@ async function answerQuestionUntraced(
             limit: fetchLimit,
           });
       markStage("retrieval");
-      rows = await search(searched);
+      // FULL_MANUAL_KEEPS_RETRIEVAL_ENABLED: the search started with the normalizer, when it did.
+      rows = keepsRetrieval && earlyBeside ? await earlyBeside : await search(searched);
       /*
        * A REFORMAT TURN KEEPS THE SOURCES OF THE ANSWER IT REFORMATS
        * (REFORMAT_KEEPS_SOURCES_ENABLED). "Make this a downloadable document"
@@ -1550,14 +1571,25 @@ async function answerQuestionUntraced(
         rows = keepEarlierSources(await search(earlierQuery), rows, fetchLimit);
       }
     } catch (error) {
-      if (error instanceof MissingConfigurationError) {
-        throw new AiError("not_configured", error.message, 503, error.missing);
+      /*
+       * FULL_MANUAL_KEEPS_RETRIEVAL_ENABLED (QA, 11 Nov 2026; Gate-Sunny-2 on 1b6cd415): the whole manual is already in the
+       * prompt, so a failed search beside it (recall RPC, embedding, timeout) leaves the manual alone, never a 502.
+       * Before the flag this turn searched nothing and could not fail here.
+       */
+      if (keepsRetrieval) {
+        markStage("retrieval_beside_manual_failed");
+        console.warn(`[full-manual-keeps-retrieval] the search beside the manual failed; answering from the manual alone: ${error instanceof Error ? error.message : String(error)}`);
+        rows = [];
+      } else {
+        if (error instanceof MissingConfigurationError) {
+          throw new AiError("not_configured", error.message, 503, error.missing);
+        }
+        throw new AiError(
+          "retrieval_failed",
+          "The company knowledge base could not be searched, so no answer was produced. Nothing was answered from memory.",
+          502,
+        );
       }
-      throw new AiError(
-        "retrieval_failed",
-        "The company knowledge base could not be searched, so no answer was produced. Nothing was answered from memory.",
-        502,
-      );
     }
     if (scopeManual) {
       rows = scopeToCurrentManual(rows, { limit: matchLimit, dedupeBySection: manualSectionDedupeEnabled() });
@@ -1567,6 +1599,7 @@ async function answerQuestionUntraced(
       request.question,
       isCaOrPolicyQuestion(request.question) ? matchLimit : rows.length,
     );
+    if (keepsRetrieval) rows = besideManualRows(rows);
     updateChatTrace({
       retrievalCount: rows.length,
       retrieved: rows.slice(0, 20).map((row) => ({
@@ -1925,7 +1958,13 @@ async function answerQuestionUntraced(
    * are not the policy citation, and a manager manual that retrieval pinned
    * must not be described as the only company document.
    */
-  const knowledgeGrounding = fullManualBlock
+  const knowledgeGrounding = keepsRetrieval
+    ? besideManualGrounding({
+        aside: frameworkAside(grounding.slice(0, assembled.mandatoryCount)),
+        // SENSITIVE_DEFAULTS_REDACT_ENABLED, as below.
+        beside: grounding.slice(assembled.mandatoryCount).map((chunk) => ({ ...chunk, content: redactSensitiveDefaults(chunk.content) })),
+      })
+    : fullManualBlock
     ? [FULL_MANUAL_GROUNDING_NOTE, frameworkAside(grounding)].filter((part) => part.length > 0).join("\n\n")
     : // SENSITIVE_DEFAULTS_REDACT_ENABLED: a default password format or SSN digits are never shown to the model.
       buildGroundingBlock(grounding.map((chunk) => ({ ...chunk, content: redactSensitiveDefaults(chunk.content) })));
@@ -2036,14 +2075,23 @@ async function answerQuestionUntraced(
   // resolves to the row at that position — retrieved data, not model output.
   const checked =
     policyAnswer && fullManuals.length > 0
-      ? applyFullManualAnswer({ content: answer, manuals: fullManuals, sourceCount: 0 })
+      ? applyFullManualAnswer({
+          content: answer,
+          manuals: fullManuals,
+          sourceCount: keepsRetrieval ? grounding.length : 0,
+          // FULL_MANUAL_KEEPS_RETRIEVAL_ENABLED: only the markers the prompt lists (the excerpts beside the manual).
+          ...(keepsRetrieval ? { keptMarkers: grounding.slice(assembled.mandatoryCount).map((chunk) => chunk.marker) } : {}),
+        })
       : null;
   const spoken = checked?.content ?? answer;
   const markers = extractUsedMarkers(spoken, grounding.map((chunk) => chunk.marker));
-  const retrievedCitations: SourceCitation[] = markers
-    .map((marker) => used[marker - 1])
-    .filter((row): row is MatchedChunkRow => Boolean(row))
-    .map(rowToCitation);
+  // EXCERPT_EMPTY_CARD_DROP_ENABLED: no empty card, none labelled with the sibling company (`empty-card-drop.ts`).
+  const retrievedCitations: SourceCitation[] = shownCitations(
+    markers
+      .map((marker) => used[marker - 1])
+      .filter((row): row is MatchedChunkRow => Boolean(row))
+      .map(rowToCitation),
+  );
 
   /*
    * ==========================================================================
@@ -2086,7 +2134,7 @@ async function answerQuestionUntraced(
   return {
     content,
     formSelection: suggested?.selection,
-    citations: checked ? [...checked.citations] : retrievedCitations,
+    citations: checked ? [...checked.citations, ...(keepsRetrieval ? retrievedCitations : [])] : retrievedCitations,
     /*
      * Coverage is decided by what retrieval returned, not by reading the
      * answer: the server knows whether any chunk cleared the relevance

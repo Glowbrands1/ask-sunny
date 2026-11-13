@@ -14,6 +14,7 @@ import {
   madeAboutPolicyLineReplacesEnabled,
   sectionBreaksKeptEnabled,
   addNotRepeatedEnabled,
+  addNotRepeatedSentencesEnabled,
   formDateSaidAloneEnabled,
   madeAboutUndatedTogetherEnabled,
   madeAboutPolicyLineEnabled,
@@ -107,7 +108,7 @@ function lastAssistant(history: readonly Pick<ChatMessage, "role" | "content" | 
 /** ADD_NOT_REPEATED_ENABLED (ported from Ask Bubbles' live round 15): an "add" that repeats the field's text adds only what follows it. */
 function notRepeated(how: string | undefined, value: FieldValue, current: FieldValue | undefined): FieldValue {
   if (!addNotRepeatedEnabled() || how !== "add" || typeof value !== "string" || typeof current !== "string") return value;
-  return addedTail(current, value) ?? value;
+  return addedTail(current, value, { sentences: addNotRepeatedSentencesEnabled() }) ?? value;
 }
 
 /** SECTION_BREAKS_KEPT_ENABLED (QA's live round 15): the reader's account, run onto one line, keeps the field's sections. */
@@ -530,7 +531,7 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
         const label = labels[keptAccountKey] ?? keptAccountKey;
         const about = madeAbout(input.question);
         return {
-          content: `I haven't changed the **${loaded.instance.templateName}** for **${loaded.instance.employeeName}**: I couldn't rewrite **${label}** to be about ${about}, so ${undatedAbout ? "the topic stays" : "the Date and the topic stay"} as they were too. What should **${label}** say about ${about}?`,
+          content: `I haven't changed the **${loaded.instance.templateName}** for **${loaded.instance.employeeName}**: I couldn't rewrite **${label}** to be about ${about}, so ${undatedAbout ? "the topic stays as it was" : "the Date and the topic stay as they were"} too. What should **${label}** say about ${about}?`,
           citations: [],
           coverage: "not_applicable",
           recommendedVideoIds: [],

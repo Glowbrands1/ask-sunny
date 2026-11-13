@@ -72,6 +72,14 @@ const state = vi.hoisted(() => ({
   slotReading: "none" as "none" | "ca" | "copy",
   /** Chunks the pinned manual also has, when a case sets them (`manualAlsoHas`); none by default. */
   manualExtra: [] as Record<string, unknown>[],
+  /** FULL_MANUAL_KEEPS_RETRIEVAL: what the knowledge search returns (`knowledgeHas`), the normalizer's label, the full manual. */
+  knowledgeRows: [] as Record<string, unknown>[],
+  /** POLICY_CARRY_RETRIEVAL (#248 rebuilt, 12 Nov 2026): every knowledge search's query, in order (`searches`). */
+  knowledgeQueries: [] as string[],
+  normalizerIntent: null as string | null,
+  fullManualLoads: false,
+  /** The grounding block the answering model was last given (`lastGrounding`). */
+  lastGrounding: "",
   /** What the slot model (record_intent_slots) reads this turn, when a case sets it — as a production trace shows. */
   slotsRead: {} as Record<string, unknown>,
   /** The employee the AI reader quotes this turn, when a case sets it (it is checked against the roster as in production). */
@@ -251,8 +259,9 @@ vi.mock("@/lib/ai/call-claude", () => ({
       usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 },
     };
   },
-  callClaude: async (input?: { system?: string; formEditTool?: { data: string; onToolUse: (call: unknown) => void } | null }) => {
+  callClaude: async (input?: { system?: string; grounding?: string; formEditTool?: { data: string; onToolUse: (call: unknown) => void } | null }) => {
     state.chatModelCalls += 1;
+    state.lastGrounding = String(input?.grounding ?? "");
     // REPLAY_RECORD (QA, 10 Nov 2026): the system prompt each answer was asked with, as a hash, so two versions of the
     // prompt's assembly can be compared case by case (the stage-timing split of buildSystemPrompt's awaits).
     systemPrompts.texts.push(String(input?.system ?? ""));
@@ -299,6 +308,12 @@ vi.mock("@/lib/ai/call-claude", () => ({
         actionPlan: null,
         ...state.reading,
       };
+    }
+    if (input.tool?.name === "normalize_message") {
+      if (state.normalizerIntent === null) return null;
+      const text = JSON.stringify(input.messages ?? []);
+      const latest = (text.split("Latest message:\\n").pop() ?? "").replace(/"\}.*$/, "").replace(/\\"/g, '"');
+      return { query: latest, intent: state.normalizerIntent };
     }
     if (input.tool?.name !== "record_intent_slots") return null;
     if (state.slotReading === "copy") {
@@ -388,8 +403,9 @@ vi.mock("@/lib/knowledge/providers/supabase", () => ({
     async search() {
       return [];
     }
-    async match() {
-      return [];
+    async match(query?: { query?: unknown }) {
+      state.knowledgeQueries.push(String(query?.query ?? ""));
+      return state.knowledgeRows;
     }
     async fetchRoleGrounding(role: { id: string }) {
       return {
@@ -432,8 +448,32 @@ vi.mock("@/lib/knowledge/providers/supabase", () => ({
 /** A question that is not a form request searches the manual; nothing to embed offline. */
 vi.mock("@/lib/knowledge/recall-match", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/knowledge/recall-match")>()),
-  matchRecallKnowledge: async () => [],
+  matchRecallKnowledge: async (input?: { query?: unknown }) => {
+    state.knowledgeQueries.push(String(input?.query ?? ""));
+    return state.knowledgeRows;
+  },
 }));
+
+/* FULL_MANUAL_KEEPS_RETRIEVAL: the whole JBA Policy Manual (the production rows), when a case says it loads. */
+vi.mock("@/lib/ai/full-manual-load", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/lib/ai/full-manual-load")>();
+  const { choosePolicyManuals } = await import("@/lib/ai/full-manual-context");
+  const fixture = (await import("@/test/fixtures/jba-manual-production-151.json")).default;
+  return {
+    ...original,
+    loadFullManualContext: async (input: { scopeId: string; question: string }) =>
+      state.fullManualLoads
+        ? choosePolicyManuals(input.question, [
+            {
+              id: fixture.document_ids["ask-sunny"],
+              title: fixture.title,
+              category: "policies_compliance",
+              chunks: (fixture.chunks as import("@/lib/ai/full-manual-load").ChunkRow[]).map(original.manualChunkFromRow),
+            },
+          ])
+        : original.loadFullManualContext(input),
+  };
+});
 
 vi.mock("@/lib/knowledge", () => ({
   getKnowledgeProvider: () => {
@@ -461,7 +501,8 @@ vi.mock("@/lib/forms/employee-roster", async (importOriginal) => {
         title: (state.directory as { id: string; positionName?: string | null }[]).find((row) => row.id === person.id)?.positionName ?? null,
         primaryLocationName: "Kearney",
       })),
-    loadScopedRoster: async (scope: AccessScope | null) => actual.scopeRoster(state.directory as never, scope),
+    // The turn's roster limit (`withRosterLimit`), as production's loadScopedRoster applies it.
+    loadScopedRoster: async (scope: AccessScope | null) => actual.withinRosterLimit(actual.scopeRoster(state.directory as never, scope)),
   };
 });
 
@@ -491,9 +532,14 @@ async function call<T>(url: string, init?: RequestInit): Promise<T> {
       : null;
   if (!response) throw new Error(`no route for ${url}`);
   const body = (await response.json()) as T & { error?: string };
+  // The draft route's replies, in order, as the browser receives them (`draftReplies`).
+  if (draft) draftReplies.push(body as Record<string, unknown>);
   if (!response.ok) throw new Error(body.error ?? `HTTP ${response.status}`);
   return body;
 }
+
+/** The draft route's replies this case (DRAFT_WROTE_NOTHING_NOTICE_ENABLED reads its `notice`). */
+const draftReplies: Record<string, unknown>[] = [];
 
 /** The chat route only accepts a UUID for the open form; the fake numbers rows `fake-N`. */
 function toUuid(id: string): string {
@@ -526,6 +572,7 @@ type Answer = {
   formOpened?: { instanceId: string; revisesInstanceId?: string | null };
   formUpdate?: { instanceId: string; updated: string[] };
   pendingCopy?: { fromInstanceId: string };
+  citations?: { documentTitle?: string }[];
 };
 
 /** The thread as the browser holds it: a card the answer carried stays open. */
@@ -649,6 +696,11 @@ beforeEach(async () => {
   // A case that pinned extra manual passages leaves the heading index with them; the next case starts without.
   if (state.manualExtra.length > 0) forgetManualIndexForTests();
   state.manualExtra = [];
+  state.knowledgeRows = [];
+  state.knowledgeQueries = [];
+  state.normalizerIntent = null;
+  state.fullManualLoads = false;
+  state.lastGrounding = "";
   state.readerEmployee = null;
   state.slotsOnlyIfSaid = false;
   state.remapObservation = null;
@@ -661,6 +713,7 @@ beforeEach(async () => {
   faults.field = null;
   summaries.reply = null;
   faults.strayDraftField = null;
+  draftReplies.length = 0;
   state.directory = [
     { id: "e-1", firstName: "Quinn", lastName: "Marlowe", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-66"], positionName: null },
     { id: "e-2", firstName: "Dale", lastName: "Ferris", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-66"], positionName: null },
@@ -762,6 +815,17 @@ function context(): ReplayContext {
     directory: (rows) => {
       state.directory = rows as never;
     },
+    knowledgeHas: (rows) => {
+      state.knowledgeRows = [...rows];
+    },
+    searches: () => [...state.knowledgeQueries],
+    normalizerReads: (intent) => {
+      state.normalizerIntent = intent;
+    },
+    fullManualLoads: () => {
+      state.fullManualLoads = true;
+    },
+    lastGrounding: () => state.lastGrounding,
     manualAlsoHas: (chunks) => {
       state.manualExtra = [...chunks];
       // The slot reader's heading index is cached per scope: an earlier case's index would not have these passages.
@@ -833,6 +897,7 @@ function context(): ReplayContext {
           .filter((row) => row.instance_id === instanceId && Array.isArray(row.checked) && (row.checked as unknown[]).length > 0)
           .map((row) => [String(row.field_key), (row.checked as unknown[]).map(String)]),
       ),
+    draftReplies: () => [...draftReplies],
     draftNotYetSaved: (instanceId) => {
       store.form_instance_values = store.form_instance_values.filter((row) => !(row.instance_id === instanceId && row.filled_by === "ai"));
     },
