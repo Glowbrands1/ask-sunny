@@ -17,6 +17,16 @@ import { isNonPersonWovenId } from "./roster-non-person";
  */
 const rosterLimit = new AsyncLocalStorage<ReadonlySet<string>>();
 
+/**
+ * The roster cut to the turn's `withRosterLimit`, when one is set. Exported so the replay pack's roster stand-in applies
+ * the same limit production's `loadScopedRoster` does (a choice between two same-named people is carried this way).
+ */
+export function withinRosterLimit<T extends { readonly id: string }>(roster: readonly T[]): T[] {
+  const limit = rosterLimit.getStore();
+  if (!limit || limit.size === 0) return [...roster];
+  return roster.filter((person) => limit.has(person.id));
+}
+
 export function withRosterLimit<T>(ids: readonly string[] | null, run: () => T): T {
   if (!ids || ids.length === 0) return rosterLimit.run(new Set(), run);
   return rosterLimit.run(new Set(ids), run);
@@ -168,9 +178,7 @@ export async function loadScopedRoster(scope: AccessScope | null): Promise<Roste
     const roster = rosterStoreScopedEnabled()
       ? (await readStoreRoster(scope)).map(rosterEmployeeOf)
       : scopeRoster(await readDirectoryRoster(), scope);
-    const limit = rosterLimit.getStore();
-    if (!limit || limit.size === 0) return roster;
-    return roster.filter((person) => limit.has(person.id));
+    return withinRosterLimit(roster);
   } catch {
     return [];
   }

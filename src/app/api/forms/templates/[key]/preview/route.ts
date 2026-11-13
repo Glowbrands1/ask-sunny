@@ -1,3 +1,4 @@
+import { recordToday } from "@/lib/business-today";
 import { errorResponse } from "@/lib/api/respond";
 import { authorizeForms } from "@/lib/forms/access";
 import { fieldsForVariant } from "@/lib/forms/document";
@@ -61,7 +62,7 @@ export async function GET(request: Request, context: { params: Promise<{ key: st
       templateName: `${template.name} — preview`,
       templateVersion: version.version,
       employeeName: "[Employee]",
-      formDate: new Date().toISOString().slice(0, 10),
+      formDate: recordToday(),
       reference: version.status === "draft" ? "DRAFT PREVIEW" : "PREVIEW",
       status: "draft",
     });
