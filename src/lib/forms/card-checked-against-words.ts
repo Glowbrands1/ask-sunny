@@ -4,13 +4,14 @@ import { z } from "zod/v4";
 
 import type { AskResponse } from "@/lib/ai/types";
 import { updateChatTrace } from "@/lib/ai/chat-trace-store";
-import { cardCheckedAgainstWordsEnabled } from "@/lib/config/chat-quality-flags";
+import { cardCheckedAgainstWordsEnabled, closeSpellingMatchEnabled } from "@/lib/config/chat-quality-flags";
 import { PRODUCTION_SALONS } from "@/data/salons";
 
 import type { RosterEmployee } from "./employee-match";
 
 /** A roster person as the check reads them: the name, and the job title where the directory has one. */
 export type CardPerson = Pick<RosterEmployee, "firstName" | "lastName" | "preferredFirstName"> & { readonly positionName?: string | null };
+import { closeWordDistance } from "./close-spelling";
 import { fold } from "./form-reducer";
 
 /**
@@ -205,6 +206,18 @@ function onlyPlace(text: string): boolean {
   let rest = ` ${plain(text)} `;
   for (const word of placeWords()) rest = rest.replace(` ${word} `, " ");
   rest = rest.replace(/\b(?:the|our|my|a|store|salon|location|shop|ne|ks|mo|ia|co)\b/g, " ").trim();
+  /*
+   * CLOSE_SPELLING_MATCH_ENABLED (QA, 13 Nov 2026): "she is at Lincon Pine Lake" — a place one letter off is still only a
+   * place. The words left are read with the same close-spelling reader as the salon reader (`close-spelling.ts`).
+   */
+  if (rest !== "" && closeSpellingMatchEnabled()) {
+    const known = [...new Set(placeWords().flatMap((place) => place.split(" ")).filter((word) => word.length >= 4))];
+    rest = rest
+      .split(/\s+/)
+      .filter((word) => !(word.length >= 4 && known.some((place) => closeWordDistance(word, place) !== null)))
+      .join(" ")
+      .trim();
+  }
   return rest === "" && plain(text) !== "";
 }
 
