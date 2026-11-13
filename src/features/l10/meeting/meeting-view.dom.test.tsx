@@ -129,4 +129,22 @@ describe("the DM L10 page in Ask Sunny", () => {
     renderView();
     expect(screen.getByRole("button", { name: /Add to IDS/ })).toBeTruthy();
   });
+
+  it("IDS has Short term, Long-term and Recently solved tabs, as in the Hub", () => {
+    const issues = [
+      { id: "i1", title: "Weekly issue", notes: "", resolved: false },
+      { id: "i2", title: "Parked issue", notes: "", resolved: false, term: "long" },
+      { id: "i3", title: "Older solved", notes: "", resolved: true, resolvedAt: "2026-11-01T12:00:00.000Z" },
+      { id: "i4", title: "Newer solved", notes: "", resolved: true, resolvedAt: "2026-11-10T12:00:00.000Z" },
+    ];
+    renderView({ initial: loaded(3, { issues }) });
+    fireEvent.click(screen.getByRole("button", { name: /6 · IDS · Issues/ }));
+    expect(screen.getByRole("tab", { name: "Short term (1)" }).getAttribute("aria-selected")).toBe("true");
+    expect(within(screen.getByRole("list", { name: "Open issues" })).getByText("Weekly issue")).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: "Long-term (1)" }));
+    expect(within(screen.getByRole("list", { name: "Long-term issues" })).getByText("Parked issue")).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: "Recently solved (2)" }));
+    const solved = within(screen.getByRole("list", { name: "Solved issues" })).getAllByRole("listitem");
+    expect(solved.map((li) => li.textContent)).toEqual([expect.stringContaining("Newer solved"), expect.stringContaining("Older solved")]);
+  });
 });
