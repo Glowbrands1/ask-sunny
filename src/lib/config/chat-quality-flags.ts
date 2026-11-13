@@ -4008,6 +4008,39 @@ export function oneCardOnePageEnabled(): boolean {
 }
 
 /**
+ * OTHER_POLICY_AGREES_ENABLED (QA's ruling on the Sunny sanitation report, 10 Nov 2026 18:49Z; default off; Pau's rule
+ * stands: cleaning or sanitation left undone is Other, the account its reason). "please make a ca for <name> for not
+ * doing th e10 minute sanitaion": the card cited "Care and Cleaning of Equipment and Facilities Policy, JBA Policy Manual
+ * p.21"; Create saved Other with the EMERGENCY passage as Direct policy. On: (1) sanitation reads as cleaning left undone
+ * (`forms/ca-policy.ts`); (2) the card shows Other with the account and cites no section for it
+ * (`ai/form-card-slots.ts`); (3) with Other ticked and no pinned section, Direct policy is blank, never an unrelated
+ * retrieved passage (`forms/policy-fields.ts`). Off, as before.
+ */
+export function otherPolicyAgreesEnabled(): boolean {
+  return envFlag("OTHER_POLICY_AGREES_ENABLED");
+}
+
+/**
+ * OTHER_NOT_A_POLICY_NAME_ENABLED (QA's ruling on the Sunny sanitation report, 11 Nov 2026; default off). A Corrective Action
+ * saved with Policy Violated "Other" got the Action Plan "Management will review the Other policy with <first>.": "Other" is
+ * a box, not a policy. On, a bare "Other" is never a policy name (`forms/ca-action-plan.ts`, protected:
+ * docs/patches/other-not-a-policy-name.patch) and the plan reads "the applicable company policy". Off, as before.
+ */
+export function otherNotAPolicyNameEnabled(): boolean {
+  return envFlag("OTHER_NOT_A_POLICY_NAME_ENABLED");
+}
+
+/**
+ * ACCOUNT_TYPOS_FIXED_ENABLED (QA, the Sunny sanitation report, 10 Nov 2026 18:49Z; default off). "not doing th e10 minute
+ * sanitaion" went onto the card word for word. On, the card's account keeps the manager's words with obvious slips mended
+ * ("the 10-minute sanitation"; `forms/account-spelling.ts`). The stored messages and the record keep what was typed. Off,
+ * as before.
+ */
+export function accountTyposFixedEnabled(): boolean {
+  return envFlag("ACCOUNT_TYPOS_FIXED_ENABLED");
+}
+
+/**
  * ANOTHER_REQUEST_LEAD_ENABLED (QA, Sunny round 7c and 9 live, 9 Nov 2026; default off; same flag in both apps). "I need
  * another corrective action for <P>, his cash drawer was short $20 on 11/3" was the card's whole Observation: "another" was
  * not read as the request's own word. With the flag on, "another", "one more" and "a second / separate / different / new"
@@ -4732,4 +4765,25 @@ export function sameNameAsksWhichEnabled(): boolean {
  */
 export function formDateBusinessTodayEnabled(): boolean {
   return envFlag("FORM_DATE_BUSINESS_TODAY_ENABLED");
+}
+
+/**
+ * CLOSE_SPELLING_MATCH (Pau, via QA, 13 Nov 2026; ported from the sibling app): the manager's words are matched against
+ * the app's own lists by close spelling, not only exact spelling. A policy named "Care and Clening" cites the manual's
+ * "Care and Cleaning" section; a salon typed one letter off is read as the roster salon. Two close matches, or one
+ * that is not confident, are asked about ("Did you mean …?" / "which salon"), never taken. Names keep going through
+ * the roster readers. See `forms/close-spelling.ts`. Off, only exact spellings match, as before.
+ */
+export function closeSpellingMatchEnabled(): boolean {
+  return envFlag("CLOSE_SPELLING_MATCH_ENABLED");
+}
+
+/**
+ * SHARED_CITY_ASKS_SALON (QA's Sunny 38c live check, 13 Nov 2026; default off): a shared city typed a letter off ("at
+ * omha") is read as that city, so any scope covering more than one of its salons is asked which; and a clause that is
+ * only the employee's name and "at <place>" is never the Observation of Offense, read or not. See
+ * `forms/salon-mention.ts` and `ai/remap-incident.ts`. Off, as before.
+ */
+export function sharedCityAsksSalonEnabled(): boolean {
+  return envFlag("SHARED_CITY_ASKS_SALON_ENABLED");
 }

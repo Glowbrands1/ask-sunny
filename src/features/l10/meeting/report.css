@@ -1,0 +1,68 @@
+/* Copied from the Leadership Hub (src/app/meetings/[key]/report/report.css); keep in step with it. See src/features/l10/README.md. */
+/* The quarterly report: an accountability tree on screen, and one section per landscape page in print. */
+.report-seats,
+.report-seat-children {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.report-seat {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 200px;
+  flex: 1 1 220px;
+}
+.report-seat-children {
+  position: relative;
+  padding-left: 16px;
+  border-left: 2px solid var(--color-line);
+}
+
+@media print {
+  @page {
+    size: landscape;
+    margin: 12mm 12mm 14mm;
+    @bottom-right {
+      content: counter(page);
+      font: 600 10px var(--font-public-sans), sans-serif;
+      color: #5a5648;
+    }
+  }
+  .report {
+    gap: 0 !important;
+  }
+  .report-sheet {
+    break-before: page;
+    break-inside: auto;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    background: #fff !important;
+    border: 0 !important;
+    padding: 0 !important;
+  }
+  .report-cover {
+    break-before: avoid;
+    min-height: 170mm;
+    justify-content: space-between;
+  }
+  .report-band {
+    border-bottom: 2px solid #c9a227 !important;
+  }
+  .report-box,
+  .report-seat > div,
+  .report-metrics,
+  .report-placeholder,
+  .report-sheet li {
+    break-inside: avoid;
+  }
+  .report-metrics + .report-metrics {
+    break-before: page;
+  }
+  .report table {
+    min-width: 0 !important;
+  }
+  .report .overflow-x-auto {
+    overflow: visible !important;
+  }
+}

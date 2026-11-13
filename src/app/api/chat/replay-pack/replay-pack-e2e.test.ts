@@ -15,6 +15,7 @@ import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
 
 import type { ReplayContext } from "./cases";
 import { CASES } from "./index";
+import { forgetManualIndexForTests } from "@/lib/ai/intent-extraction";
 
 /**
  * ============================================================================
@@ -692,6 +693,8 @@ beforeEach(async () => {
   store.form_instances = new JoiningRows() as never;
   state.slotReading = "none";
   state.slotsRead = {};
+  // A case that pinned extra manual passages leaves the heading index with them; the next case starts without.
+  if (state.manualExtra.length > 0) forgetManualIndexForTests();
   state.manualExtra = [];
   state.knowledgeRows = [];
   state.knowledgeQueries = [];
@@ -825,6 +828,8 @@ function context(): ReplayContext {
     lastGrounding: () => state.lastGrounding,
     manualAlsoHas: (chunks) => {
       state.manualExtra = [...chunks];
+      // The slot reader's heading index is cached per scope: an earlier case's index would not have these passages.
+      forgetManualIndexForTests();
     },
     draftWrites: (values, checked, extra) => {
       state.draft = { values, ...(checked ? { checked } : {}), ...(extra ?? {}) };
@@ -924,14 +929,18 @@ describe("src/config/production-flags.json", () => {
 });
 
 /*
- * REPLAY_PACK_HALF (CI only; QA, 9 Nov 2026): the flags-off parity run (`src/lib/ai/flags-off-parity.test.ts`) runs the
- * pack as two children, each with one half of the cases by id ("0": the first half, "1": the second), so neither child
- * passes its time budget as the pack grows. Unset, every case runs, as before.
+ * REPLAY_PACK_PART (CI only; QA, 9 Nov 2026, in thirds since 12 Nov 2026): the flags-off parity run
+ * (`src/lib/ai/flags-off-parity.test.ts`) runs the pack as several children, each with one part of the cases by id
+ * ("0/4", "1/4", "2/4", "3/4"), so no child passes its time budget as the pack grows. The parts interleave by id (case i
+ * of the sorted list goes to part i mod n: since 13 Nov 2026, as contiguous thirds were uneven — 486 s, 188 s, 365 s —
+ * the heavy cases clustering by id) and together are every case, once. Unset (or not "i/n"), every case runs, as before.
  */
-const HALF = process.env.REPLAY_PACK_HALF;
+const PART = /^(\d+)\/(\d+)$/.exec(process.env.REPLAY_PACK_PART ?? "");
 const BY_ID = [...CASES].sort((a, b) => a.id.localeCompare(b.id));
-const MIDDLE = Math.ceil(BY_ID.length / 2);
-const RUN = HALF === "0" ? BY_ID.slice(0, MIDDLE) : HALF === "1" ? BY_ID.slice(MIDDLE) : CASES;
+function casesOfPart(index: number, parts: number): typeof CASES {
+  return BY_ID.filter((_entry, position) => position % parts === index);
+}
+const RUN = PART && Number(PART[1]) < Number(PART[2]) ? casesOfPart(Number(PART[1]), Number(PART[2])) : CASES;
 
 describe("the replay pack", () => {
   for (const replay of RUN) {

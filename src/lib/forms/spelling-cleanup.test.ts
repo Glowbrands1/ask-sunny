@@ -119,3 +119,11 @@ describe("a policy page is the app's citation, not the manager's number (Gate-Su
     expect(cleanupChanges({ source, written: "She was 25 minutes late.", today: TODAY })).toEqual(["number 25 was not given"]);
   });
 });
+
+describe("a yearless dashed date is given (Gate-Sunny-3, 13 Nov 2026: prior-sentence-fix T1)", () => {
+  it("\"late on 10-5 and 10-15. i coached her on 10-16\" written out; 10-17 was not given", () => {
+    const source = "late on 10-5 and 10-15. i coached her on 10-16";
+    expect(cleanupChanges({ source, written: "She was late on October 5, 2026 and October 15, 2026. She was coached on October 16, 2026.", today: "2026-11-13" })).toEqual([]);
+    expect(cleanupChanges({ source, written: "She was coached on October 17, 2026.", today: "2026-11-13" })).toEqual(["date October 17, 2026 was not given"]);
+  });
+});

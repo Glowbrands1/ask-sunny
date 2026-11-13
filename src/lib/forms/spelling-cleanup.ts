@@ -92,13 +92,15 @@ export function cleanupKeepsFacts(input: Parameters<typeof cleanupChanges>[0]): 
  * THE SAME DAY IN THE MANAGER'S WORDS (Gate-Sunny-3, 13 Nov 2026). The app writes out dates the manager gave in other
  * words, on purpose ("late on the 2nd" is drafted "on October 2, 2026"; "last tuesday" becomes its date), and a form's
  * prior rows and year are given too. A written date is the manager's when the source names that day in any of these
- * ways: its day of the month as an ordinal or after "on" ("the 2nd", "on the 15"), its weekday ("last tuesday",
+ * ways: its day of the month as an ordinal or after "on" ("the 2nd", "on the 15"), a yearless dashed date ("10-15"),
+ * its weekday ("last tuesday",
  * "on fri"), "today" / "yesterday" / "tonight" / "this morning" for those days, or the same month and day with another
  * year (a corrected year). A date none of these name is still a changed date.
  */
 const ORDINAL_DAY = /\b(?:the\s+|on\s+(?:the\s+)?)?(\d{1,2})(?:st|nd|rd|th)\b|\bon\s+the\s+(\d{1,2})\b/gi;
 const WEEKDAY_WORD = /\b(sun|mon|tue|wed|thu|fri|sat)[a-z]*\b/gi;
 const WEEKDAYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+const DASHED_DAY = /(?<![\d/-])(\d{1,2})-(\d{1,2})(?![\d/-])/g;
 const SAME_DAY_WORD = /\b(?:today|tonight|this\s+(?:morning|afternoon|evening))\b/i;
 const YESTERDAY_WORD = /\b(?:yesterday|yesturday|last\s+night)\b/i;
 
@@ -107,6 +109,13 @@ function spokenDays(source: string, today: string): (iso: string, sourceDates: r
   for (const match of source.matchAll(ORDINAL_DAY)) ordinals.add(Number(match[1] ?? match[2]));
   const weekdays = new Set<number>();
   for (const match of source.matchAll(WEEKDAY_WORD)) weekdays.add(WEEKDAYS.indexOf(match[1]!.toLowerCase()));
+  // A yearless dashed date ("late on 10-5 and 10-15"), month then day, as managers type it (Gate-Sunny-3, 13 Nov 2026).
+  const dashed = new Set<string>();
+  for (const match of source.matchAll(DASHED_DAY)) {
+    const month = Number(match[1]);
+    const day = Number(match[2]);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) dashed.add(`${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`);
+  }
   const sameDay = SAME_DAY_WORD.test(source);
   const yesterday = YESTERDAY_WORD.test(source);
   const validToday = /^\d{4}-\d{2}-\d{2}$/.test(today);
@@ -116,6 +125,7 @@ function spokenDays(source: string, today: string): (iso: string, sourceDates: r
     if (weekdays.has(new Date(Date.UTC(year, month - 1, day)).getUTCDay())) return true;
     if (validToday && sameDay && iso === today) return true;
     if (validToday && yesterday && iso === dayBefore(today)) return true;
+    if (dashed.has(iso.slice(5))) return true;
     return sourceDates.some((given) => given.iso.slice(5) === iso.slice(5));
   };
 }

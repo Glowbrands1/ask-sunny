@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { fieldsForVariant, parseFormDocument } from "./document";
 import REVISION_6 from "@/test/fixtures/forms/corrective-action-revision-6.json";
@@ -343,5 +343,51 @@ describe("4. a value taken off the form carries the form's own provenance", () =
 
     expect(result.values.policy_language).toBeUndefined();
     expect(result.refused).toEqual(["policy_language"]);
+  });
+});
+
+/*
+ * OTHER_POLICY_AGREES_ENABLED (QA's ruling on the Sunny sanitation report, 11 Nov 2026): a Corrective Action for "not
+ * doing th e10 minute sanitaion" saved Other with the EMERGENCY passage as Direct policy — the best-scoring retrieved
+ * passage, unrelated to the account. With only Other ticked and no pinned section, Direct policy is blank.
+ */
+describe("OTHER_POLICY_AGREES_ENABLED: Other never quotes an unrelated retrieved passage", () => {
+  const EMERGENCY = "Page 30 — Emergencies";
+  const run = () =>
+    applyDerivedPolicyFields({
+      document: DOCUMENT,
+      variantKey: null,
+      values: {},
+      checked: { offense_type: ["other"] },
+      grounding: grounded([source(EMERGENCY, 0.82)]),
+      fieldKeys: FIELD_KEYS,
+    });
+
+  afterEach(() => {
+    delete process.env.OTHER_POLICY_AGREES_ENABLED;
+  });
+
+  it("on: Other ticked, no pinned section — Direct policy is left blank", () => {
+    process.env.OTHER_POLICY_AGREES_ENABLED = "true";
+    const result = run();
+    expect(result.values.policy_language).toBeUndefined();
+    expect(result.unresolved).toContain("policy_language");
+  });
+
+  it("off: the retrieved passage, as before", () => {
+    expect(run().values.policy_language).toContain(EMERGENCY);
+  });
+
+  it("on, but a specific box ticked: the retrieved passage is still used for it", () => {
+    process.env.OTHER_POLICY_AGREES_ENABLED = "true";
+    const result = applyDerivedPolicyFields({
+      document: DOCUMENT,
+      variantKey: null,
+      values: {},
+      checked: { offense_type: ["dress_code"] },
+      grounding: grounded([source("Page 12 — Dress for Success", 0.7)]),
+      fieldKeys: FIELD_KEYS,
+    });
+    expect(result.values.policy_language).toContain("Dress for Success");
   });
 });

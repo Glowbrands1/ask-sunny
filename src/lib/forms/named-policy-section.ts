@@ -1,4 +1,6 @@
-import { animalAnywhereEnabled, wovenTrainingConductEnabled } from "@/lib/config/chat-quality-flags";
+import { animalAnywhereEnabled, closeSpellingMatchEnabled, wovenTrainingConductEnabled } from "@/lib/config/chat-quality-flags";
+
+import { closeWordDistance } from "./close-spelling";
 
 import { cleaningIncidentPhrase, groundConductPolicy, isWovenWorkReading, readCaPolicy, STANDARDS_OF_CONDUCT } from "./ca-policy";
 import {
@@ -210,6 +212,11 @@ export function namedManualSection(input: {
   const headings = manualSectionHeadings(input.chunks);
   for (const named of [...namedPolicies(input.text)].reverse()) {
     const matches = [...new Set(headings.filter((heading) => namesHeading(named.phrase, heading)))];
+    // CLOSE_SPELLING_MATCH_ENABLED: no heading as spelled, one heading confidently by close spelling ("Care and Clening").
+    if (matches.length === 0 && closeSpellingMatchEnabled()) {
+      const close = closeHeadingReading(named.phrase, headings);
+      if (close.confident) matches.push(close.confident);
+    }
     if (matches.length !== 1) continue;
     const section = findManualSection(input.chunks, matches);
     if (!section) continue;
@@ -217,6 +224,106 @@ export function namedManualSection(input: {
   }
   return null;
 }
+
+/**
+ * ============================================================================
+ * CLOSE_SPELLING_MATCH — "CARE AND CLENING POLICY" IS THE MANUAL'S "CARE AND
+ * CLEANING"
+ * ============================================================================
+ *
+ * Pau, via QA, 13 Nov 2026: a policy the manager names one letter off cited
+ * nothing, because a heading matched only as spelled. With the flag on, a
+ * phrase no heading answers as spelled is read again, allowing close
+ * spellings (`close-spelling.ts`), by the same rule otherwise: every word said
+ * in the heading, every heading word said.
+ *
+ *   A heading's title before " of " answers for the heading ("Care and
+ *   Cleaning" for "Care and Cleaning of Equipment and Facilities"), and each
+ *   side of a slash, as for an exact match.
+ *
+ *   CONFIDENT: exactly one heading answers, and at most one of the words is
+ *   off, by one letter. It is cited under the manual's own heading and page, so the
+ *   form carries the manual's spelling. The manual's titles are never changed;
+ *   only the manager's words are mapped to one.
+ *
+ *   NOT CONFIDENT: two or more headings answer, or one answers only with two
+ *   letters off or more than one word off. Nothing is cited; the manager is
+ *   asked "Did you mean …?" (`closePolicyQuestion`).
+ *
+ * A phrase a heading answers as spelled never comes here. Off, never read.
+ */
+export interface CloseHeadingReading {
+  /** The one heading the phrase names by close spelling, when the match is confident. */
+  readonly confident: string | null;
+  /** Every heading the phrase may name by close spelling, in the manual's order, when none is confident. */
+  readonly candidates: readonly string[];
+}
+
+export function closeHeadingReading(phrase: string, headings: readonly string[]): CloseHeadingReading {
+  const scored = new Map<string, { off: number; far: boolean }>();
+  for (const heading of headings) {
+    if (scored.has(heading)) continue;
+    // Each side of a slash, and the title before " of " ("Care and Cleaning" of Equipment and Facilities).
+    const sides = [heading, ...(heading.includes("/") ? heading.split("/") : [])].flatMap((side) => {
+      const lead = /^(.+?)\s+of\s+\S/i.exec(side)?.[1];
+      return lead && words(lead).length >= 2 ? [side, lead] : [side];
+    });
+    const best = sides
+      .map((side) => closeHeadingScore(phrase, side))
+      .filter((score): score is { off: number; far: boolean } => score !== null)
+      .sort((a, b) => a.off - b.off || Number(a.far) - Number(b.far))[0];
+    if (best) scored.set(heading, best);
+  }
+  const all = [...scored.entries()];
+  if (all.length === 1 && all[0]![1].off <= 1 && !all[0]![1].far) return { confident: all[0]![0], candidates: [] };
+  return { confident: null, candidates: all.map(([heading]) => heading) };
+}
+
+/** How many words are off, and whether any is two letters off; null when the phrase does not name the heading. */
+function closeHeadingScore(phrase: string, heading: string): { off: number; far: boolean } | null {
+  const said = words(phrase);
+  const printed = words(heading);
+  if (said.length === 0 || printed.length === 0) return null;
+  let off = 0;
+  let far = false;
+  const distance = (a: string, b: string): number | null => {
+    if (sameWord(a, b)) return 0;
+    return closeWordDistance(stem(a), stem(b));
+  };
+  for (const word of said) {
+    const found = printed.map((other) => distance(word, other)).filter((value): value is number => value !== null);
+    if (found.length === 0) return null;
+    const nearest = Math.min(...found);
+    if (nearest > 0) {
+      off += 1;
+      far ||= nearest > 1;
+    }
+  }
+  const covered = printed.every(
+    (word) => OPTIONAL_HEADING_WORDS.has(word) || said.some((other) => distance(other, word) !== null),
+  );
+  return covered ? { off, far } : null;
+}
+
+/**
+ * "Did you mean **Care and Cleaning** (page 21)?" — the question for a policy
+ * named close to one or more headings but not confidently, or null.
+ */
+export function closePolicyQuestion(phrase: string, chunks: readonly ManualChunk[] | null): string | null {
+  if (!closeSpellingMatchEnabled() || !chunks || chunks.length === 0 || words(phrase).length === 0) return null;
+  const headings = manualSectionHeadings(chunks);
+  if (headings.some((heading) => namesHeading(phrase, heading))) return null;
+  const close = closeHeadingReading(phrase, headings);
+  if (close.confident || close.candidates.length === 0) return null;
+  const listed = close.candidates.slice(0, 3).flatMap((heading) => {
+    const section = findManualSection(chunks, [heading]);
+    return section ? [`**${section.heading}** (page ${section.page})`] : [];
+  });
+  if (listed.length === 0) return null;
+  const options = listed.length === 1 ? listed[0]! : `${listed.slice(0, -1).join(", ")} or ${listed.at(-1)}`;
+  return `**Policy:** I don't see a section of the policy manual called "${phrase}". Did you mean ${options}? Tell me which, and I'll cite it; I won't pick one for you.`;
+}
+
 
 /**
  * ============================================================================
