@@ -4,7 +4,7 @@ import { pageAuthorizationEnforced, pageIdentity } from "@/lib/auth/page";
 import { callHub, hubPartnerConfig, type HubAnswer } from "./partner/client.server";
 import { isMeetingKey, type Roster } from "./lib/config";
 import type { LoadedMeeting, MeetingInfo, RecapInput, RecapRow } from "./lib/types";
-import type { AppNotification } from "./notifications/types";
+import type { AppNotification, NoteResult, NoteStatus } from "./notifications/types";
 
 /**
  * THE DM L10 TAB'S DATA, READ AND WRITTEN IN THE LEADERSHIP HUB.
@@ -234,4 +234,38 @@ export async function markAllRead(): Promise<boolean> {
   const viewer = await l10Viewer();
   if (!viewer) return false;
   return (await callHub("notifications-mark-all-read", viewer.email)).status === 200;
+}
+
+/* ── Notes (the assistant's note card; the Hub's send_note) ──────────── */
+
+const NOTE_STATUSES: readonly NoteStatus[] = ["sent", "already_sent", "not_in_meeting", "muted", "self"];
+
+/**
+ * Sends the note on the assistant's card, as the verified signed-in person, through the Hub's send_note (same limits,
+ * same bell). Recipients must be people the Hub lists for this meeting right now: anything else is refused here,
+ * before the Hub is asked to send, and the Hub checks again.
+ */
+export async function sendNote(input: { meetingKey: string; recipientIds: string[]; text: string; ref: string }): Promise<NoteResult> {
+  const opened = await openMeeting(input.meetingKey);
+  if (!opened.ok) return { ok: false, reason: opened.reason === "forbidden" ? "forbidden" : "unavailable" };
+  const listed = new Set(opened.meeting.people.map((p) => p.id));
+  if (!input.recipientIds.every((id) => listed.has(id))) return { ok: false, reason: "invalid" };
+  const viewer = await l10Viewer();
+  if (!viewer) return { ok: false, reason: "forbidden" };
+  const a = await callHub("send-note", viewer.email, { key: input.meetingKey, recipientIds: input.recipientIds, text: input.text, ref: input.ref });
+  if (a.status === 404) return { ok: false, reason: "forbidden" };
+  if (a.status === 400) return { ok: false, reason: "invalid" };
+  if (a.status !== 200) return { ok: false, reason: "unavailable" };
+  const body = a.body as { ok?: unknown; reason?: unknown; results?: unknown };
+  if (body.ok !== true) {
+    const reason = body.reason;
+    return { ok: false, reason: reason === "limit" || reason === "invalid" || reason === "forbidden" ? reason : "unavailable" };
+  }
+  const results = (Array.isArray(body.results) ? body.results : []).flatMap((r: unknown) => {
+    const o = r as { id?: unknown; name?: unknown; status?: unknown };
+    return typeof o.id === "string" && NOTE_STATUSES.includes(o.status as NoteStatus)
+      ? [{ id: o.id, name: typeof o.name === "string" ? o.name : "Someone", status: o.status as NoteStatus }]
+      : [];
+  });
+  return { ok: true, results };
 }

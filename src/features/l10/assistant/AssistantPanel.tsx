@@ -7,6 +7,8 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { cx } from "@/features/l10/ui/ui";
+import { NoteCard } from "./NoteCard";
+import { isNoteDraft } from "./notes";
 import { BrainIcon, ChevronIcon, CloseIcon, CollapseIcon, ExpandIcon, PlusIcon, SendIcon, SparkleIcon, StopIcon } from "./icons";
 
 /**
@@ -37,6 +39,7 @@ export const L10_SUGGESTIONS = [
 const TOOL_LABEL: Record<string, [string, string]> = {
   getMeeting: ["Reading the meeting…", "Read the meeting"],
   getMeetingRecaps: ["Reading past meetings…", "Read past meetings"],
+  draftNote: ["Drafting a note…", "Drafted a note"],
 };
 
 /** The route's own words (the budget or rate-limit reply arrives as JSON), else a plain fallback. */
@@ -107,6 +110,11 @@ function Message({ message, running }: { message: UIMessage; running: boolean })
           if (p.type.startsWith("tool-")) {
             const name = p.type.slice(5);
             const state = (p as { state?: string }).state;
+            // A drafted note is a card the person checks and sends themselves (as in the Hub); anything else is a chip.
+            const output = (p as { output?: unknown }).output;
+            if (name === "draftNote" && state === "output-available" && isNoteDraft(output)) {
+              return <NoteCard key={i} part={{ toolCallId: (p as { toolCallId?: string }).toolCallId, result: output }} />;
+            }
             const done = state === "output-available" || state === "output-error";
             const [doing, did] = TOOL_LABEL[name] ?? ["Working…", "Done"];
             return (
