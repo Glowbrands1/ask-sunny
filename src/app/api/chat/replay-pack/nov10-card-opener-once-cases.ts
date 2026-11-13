@@ -18,7 +18,8 @@ export const NOV10_CARD_OPENER_ONCE_CASES: ReplayCase[] = [
     id: "nov10-card-opener-once-ca-chain",
     title: "a CA chain: the second turn does not repeat the opener, and the card is the same employee's",
     report: "QA's October triage (10 Nov 2026) of the sibling's #200; the same here on main with production's flags",
-    status: { open: "every turn repeats the full opener; fixed with HUMAN_REPLIES_ENABLED" },
+    // Changed on purpose (13 Nov 2026): fixed in production by HUMAN_REPLIES_ENABLED, QA round 38a. Was OPEN.
+    status: "fixed",
     fixFlags: ["HUMAN_REPLIES_ENABLED"],
     async run(t) {
       t.directory(STAFF);
