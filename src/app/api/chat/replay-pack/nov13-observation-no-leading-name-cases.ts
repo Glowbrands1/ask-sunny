@@ -76,3 +76,49 @@ export const NOV13_WORK_AREA_NOT_A_TITLE_CASES: ReplayCase[] = WORK_AREAS.map((w
     expect(reply, `the card shows the work area as the job title:\n${reply}`).not.toMatch(new RegExp(`\\*\\*Job title:\\*\\*\\s*${head}\\b`, "i"));
   },
 }));
+
+/*
+ * Gate-Sunny's #939 probes; QA's ruling (13 Nov 2026): the name is dropped only when the place phrase is a lead that ends
+ * at a comma or full stop, or another subject (she/he/they) follows. Where the employee is the subject of the clause's
+ * verb, the name stays: "<A> at the front desk was rude to a guest" never becomes "at the front desk was rude …".
+ */
+const NAME_IS_SUBJECT: readonly { key: string; turn: string; kept: string }[] = [
+  {
+    key: "front-desk-was-rude",
+    turn: "create a ca for marnie holloway, marnie holloway at the front desk was rude to a guest",
+    kept: "marnie holloway at the front desk was rude to a guest",
+  },
+  {
+    key: "second-sentence",
+    turn: "create a ca for marnie holloway. she was late. marnie holloway at the front desk was rude",
+    kept: "marnie holloway at the front desk was rude",
+  },
+];
+
+export const NOV13_OBSERVATION_NAME_IS_SUBJECT_CASES: ReplayCase[] = NAME_IS_SUBJECT.map((wording) => ({
+  id: `nov13-observation-name-is-subject-${wording.key}`,
+  title: `Admin: "${wording.turn}" — the employee is the subject, so the name stays`,
+  report: `${REPORT}; Gate-Sunny's #939 probes, QA's ruling`,
+  status: "fixed",
+  fixFlags: [FLAG],
+  async run(t: ReplayContext) {
+    const { reply, said } = await observationOf(t, wording.turn);
+    expect(said, `the clause lost its subject:\n${reply}`).toContain(wording.kept);
+  },
+}));
+
+// Gate-Sunny's minor note: "on the floor" leads like "at"/"in".
+export const NOV13_OBSERVATION_NO_LEADING_NAME_ON_CASES: ReplayCase[] = [
+  {
+    id: "nov13-observation-no-leading-name-on-the-floor",
+    title: `Admin: "create a ca for marnie holloway on the floor, she was rude to a guest" — "on the floor, she was rude to a guest"`,
+    report: `${REPORT}; Gate-Sunny's #939 probe`,
+    status: { open: `the Observation starts with the employee's name ("marnie holloway on the floor, …")` },
+    fixFlags: [FLAG],
+    async run(t: ReplayContext) {
+      const { reply, said } = await observationOf(t, "create a ca for marnie holloway on the floor, she was rude to a guest");
+      expect(said, `the employee's name leads the Observation:\n${reply}`).not.toMatch(/^marnie\b|holloway/i);
+      expect(said, `the account lost words:\n${reply}`).toContain("on the floor, she was rude to a guest");
+    },
+  },
+];

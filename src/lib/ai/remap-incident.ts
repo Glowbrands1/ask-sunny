@@ -954,11 +954,19 @@ export function managerAccount(sentence: string, employeeName: string | null): s
     /*
      * OBSERVATION_NO_LEADING_NAME_ENABLED (QA's Sunny 38d live check, 13 Nov 2026): "create a ca for <A> at the front
      * desk, she was rude to a guest" gave the Observation "<A> at the front desk, she was rude to a guest". The employee
-     * is the form's, not the account's: a clause that starts with their name and then "at"/"in" loses the name and keeps
-     * every other word ("at the front desk, she was rude to a guest"). Off, as before.
+     * is the form's, not the account's: a clause that starts with their name and then "at"/"in"/"on" a place, where the
+     * place phrase ends the clause or another subject follows, loses the name and keeps every other word ("at the front
+     * desk, she was rude to a guest"). Off, as before.
      */
     if (observationNoLeadingNameEnabled() && employeeName) {
-      text = text.replace(new RegExp(`^${escape(employeeName)}\\s+(?=(?:at|in)\\s)`, "i"), "");
+      // Only where the employee is not the subject (Gate-Sunny's #939 probes, QA): the place phrase ends the clause
+      // ("<A> at the front desk", before a comma or a full stop), or another subject follows it ("<A> at the front desk
+      // she was rude"). "<A> at the front desk was rude to a guest" keeps the name: it is that clause's subject.
+      const lead = new RegExp(
+        `^${escape(employeeName)}\\s+((?:at|in|on)\\s+(?:the\\s+)?[A-Za-z0-9'’-]+(?:\\s+[A-Za-z0-9'’-]+){0,3})(\\s+(?:she|he|they)\\b.*)?[.!?]?$`,
+        "i",
+      ).exec(text.trim());
+      if (lead && (lead[2] !== undefined || !/\b(?:was|is|were|are|did|has|had|got|kept)\b/i.test(lead[1]!))) text = text.trim().replace(new RegExp(`^${escape(employeeName)}\\s+`, "i"), "");
     }
     /*
      * CA_SALES_POLICY_ENABLED (QA, live, 4 Nov 2026): "CA for <name> due to
