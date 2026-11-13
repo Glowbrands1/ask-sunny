@@ -10,7 +10,7 @@ const cx = (...classes: (string | false | null | undefined)[]) => classes.filter
 import { PrintButton } from "@/features/l10/meeting/_components/PrintButton";
 import { readDoc } from "@/features/l10/lib/doc";
 import type { CellTone } from "@/features/l10/lib/doc";
-import { isMeetingKey } from "@/features/l10/lib/config";
+import { hasReference, isMeetingKey } from "@/features/l10/lib/config";
 import { listRecaps, openMeeting } from "@/features/l10/data.server";
 import { L10Frame } from "@/features/l10/L10Frame";
 import { requireAuthenticatedPage } from "@/lib/auth/page";
@@ -287,6 +287,9 @@ async function Report({ meetingKey: key, mine }: { meetingKey: string; mine: Awa
         </div>
       </Sheet>
 
+      {/* The STC DM L10 has no Reference views, so its report has no Business Plan or org chart (lib/config.ts hasReference). */}
+      {hasReference(key) && (
+        <>
       <Sheet id="business-plan" title="Business Plan" subtitle={subtitle}>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <Box title="Core Values">
@@ -335,6 +338,8 @@ async function Report({ meetingKey: key, mine }: { meetingKey: string; mine: Awa
         )}
       </Sheet>
 
+        </>
+      )}
       <Sheet id="issues" title="Issues" subtitle={subtitle}>
         <p className="m-0 text-sm" data-testid="issues-note">
           {`Open on the IDS list as of ${date}: ${issues.open} ${issues.open === 1 ? "issue" : "issues"}.`}

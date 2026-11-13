@@ -71,7 +71,7 @@ describe("the DM L10 page in Ask Sunny", () => {
     expect(link.getAttribute("target")).toBe("_blank");
   });
 
-  it("has the STC DM agenda with times, and the Reference links", () => {
+  it("has the STC DM agenda with times, and no Reference links", () => {
     renderView();
     const agenda = within(screen.getByRole("region", { name: "Agenda" }));
     const items = agenda.getAllByRole("listitem").map((li) => li.textContent);
@@ -85,8 +85,10 @@ describe("the DM L10 page in Ask Sunny", () => {
       "5 · IDS · Issues65m",
       "6 · Conclude5m",
     ]);
-    expect(agenda.getByRole("button", { name: "Business Plan" })).toBeTruthy();
-    expect(agenda.getByRole("button", { name: "Accountability Chart" })).toBeTruthy();
+    // Changed on purpose 13 Nov 2026: the STC DM L10 has no Reference (its leader asked), so no Business Plan or chart.
+    expect(agenda.queryByText("REFERENCE")).toBeNull();
+    expect(agenda.queryByRole("button", { name: "Business Plan" })).toBeNull();
+    expect(agenda.queryByRole("button", { name: "Accountability Chart" })).toBeNull();
     expect(screen.getByTestId("section-position").textContent).toBe("Section 1 of 6");
   });
 
@@ -250,5 +252,31 @@ describe("the agenda, hints and roster come from the Hub (the STC DM L10 change,
     const [, , doc] = save.mock.calls[0] as unknown as [string, number, { attendees: { name: string }[] }];
     expect(doc.attendees.map((a) => a.name)).toEqual(["Avery Quill", "Bo Lark", "Cy Marlow", "Dex Rowan"]);
     expect(doc.attendees.find((a) => a.name === "Dex Rowan")).toEqual(hidden);
+  });
+});
+
+describe("no Reference for the STC DM L10 (its leader's request, 13 Nov 2026)", () => {
+  it("a link to a reference view opens the agenda; a leader on the Business Plan is not followed there", () => {
+    render(
+      <MeetingView info={info} initial={loaded(3, { timer: { started: true, running: true, startedAt: 1, leader: "someone-else", leaderLabel: "x", leaderView: "business-plan", sessionId: "s1" } })} save={vi.fn() as unknown as SaveFn} end={vi.fn() as unknown as EndFn} viewer={viewer} roster={{ ...roster, reference: false }} hubMeetingUrl={HUB} pollMs={0} debounceMs={0} today="2026-11-13" dateLabel="Fri, Nov 13" initialView="business-plan" />,
+    );
+    expect(screen.queryByRole("heading", { name: "Business Plan" })).toBeNull();
+    expect(document.body.textContent).not.toContain("Vision, core values");
+    expect(screen.getByRole("heading", { level: 2, name: /Segue/ })).toBeTruthy();
+  });
+
+  it("the Hub's word that a meeting has no Reference is followed", async () => {
+    const { referenceFromRoster } = await import("@/features/l10/lib/config");
+    expect(referenceFromRoster("stc-dm", {})).toBe(false);
+    expect(referenceFromRoster("bcs-dm", { reference: false })).toBe(false);
+    expect(referenceFromRoster("bcs-dm", {})).toBe(true);
+    // A Hub that says "true" cannot bring it back for the STC DM L10.
+    expect(referenceFromRoster("stc-dm", { reference: true })).toBe(false);
+  });
+
+  it("its report has no Business Plan or org chart pages", async () => {
+    const { reportSections } = await import("@/features/l10/lib/report");
+    expect(reportSections("stc-dm").map((s) => s.title)).toEqual(["Goals", "Issues", "Metrics", "Meeting Recaps"]);
+    expect(reportSections("bcs-dm").map((s) => s.title)).toContain("Business Plan");
   });
 });

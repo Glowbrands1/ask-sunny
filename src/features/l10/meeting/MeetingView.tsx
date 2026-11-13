@@ -4,7 +4,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Button, ButtonLink, Card, Modal, cx } from "@/features/l10/ui/ui";
-import { agendaFromRoster, hintsFromRoster, segueName, type AgendaKey, type MeetingKey, type Roster } from "@/features/l10/lib/config";
+import { agendaFromRoster, hintsFromRoster, referenceFromRoster, segueName, type AgendaKey, type MeetingKey, type Roster } from "@/features/l10/lib/config";
 import { buildRecap, effectiveAttendees, keepHiddenAttendees, markRecapped, newItemId } from "@/features/l10/lib/doc";
 import { elapsedSeconds, emptyTimer, endedTimer, formatClock, pausedTimer, plannedSeconds, isReferenceView, readTimer, resumedTimer, startMeeting, type View } from "@/features/l10/lib/timer";
 import type { LoadedMeeting, MeetingInfo } from "@/features/l10/lib/types";
@@ -78,7 +78,9 @@ export function MeetingView({
   // The Hub's agenda and hints, served with the roster (Ask Sunny: so a change in the Hub's config reaches this page).
   const agenda = agendaFromRoster(key, roster);
   const hints = hintsFromRoster(key, roster);
-  const [view, setViewLocal] = useState<View>(initialView ?? agenda[0].key);
+  // The Reference views exist only where the meeting has them (not the STC DM L10; the Hub says so with the roster).
+  const reference = referenceFromRoster(key, roster);
+  const [view, setViewLocal] = useState<View>((reference && initialView) || agenda[0].key);
   // An old version can never save or end a meeting: whatever happens, these refuse.
   const refuse = { ok: false as const, kind: "forbidden" as const, message: "This is an old version and cannot be changed." };
   const saveFn: SaveFn = readOnly || !save ? async () => refuse : save;
@@ -117,6 +119,7 @@ export function MeetingView({
 
   // When the leader changes section, every screen follows (the leader's view is part of the shared document).
   const selectView = (v: View) => {
+    if (isReferenceView(v) && !reference) return;
     setViewLocal(v);
     if (live && isLeader) setTimer((t) => ({ ...t, leaderView: v }));
   };
@@ -124,7 +127,7 @@ export function MeetingView({
   const [followed, setFollowed] = useState<View | null>(null);
   if (!isLeader && live && timer.leaderView && followed !== timer.leaderView) {
     setFollowed(timer.leaderView);
-    if (isReferenceView(timer.leaderView) || agenda.some((a) => a.key === timer.leaderView)) setViewLocal(timer.leaderView);
+    if ((reference && isReferenceView(timer.leaderView)) || agenda.some((a) => a.key === timer.leaderView)) setViewLocal(timer.leaderView);
   }
 
   const index = agenda.findIndex((a) => a.key === view);
@@ -481,13 +484,17 @@ export function MeetingView({
                 </li>
               ))}
             </ol>
-            <div className="mt-3 text-xs font-bold tracking-[0.06em] text-muted">REFERENCE</div>
-            <button type="button" aria-current={view === "business-plan" ? "step" : undefined} onClick={() => selectView("business-plan")} className={cx("flex min-h-11 w-full items-center border-t border-rule py-2 text-left text-sm hover:text-bronze-deep", view === "business-plan" && "font-bold text-bronze-deep")}>
-              Business Plan
-            </button>
-            <button type="button" aria-current={view === "accountability" ? "step" : undefined} onClick={() => selectView("accountability")} className={cx("flex min-h-11 w-full items-center border-t border-rule py-2 text-left text-sm hover:text-bronze-deep", view === "accountability" && "font-bold text-bronze-deep")}>
-              Accountability Chart
-            </button>
+            {reference && (
+              <>
+                <div className="mt-3 text-xs font-bold tracking-[0.06em] text-muted">REFERENCE</div>
+                <button type="button" aria-current={view === "business-plan" ? "step" : undefined} onClick={() => selectView("business-plan")} className={cx("flex min-h-11 w-full items-center border-t border-rule py-2 text-left text-sm hover:text-bronze-deep", view === "business-plan" && "font-bold text-bronze-deep")}>
+                  Business Plan
+                </button>
+                <button type="button" aria-current={view === "accountability" ? "step" : undefined} onClick={() => selectView("accountability")} className={cx("flex min-h-11 w-full items-center border-t border-rule py-2 text-left text-sm hover:text-bronze-deep", view === "accountability" && "font-bold text-bronze-deep")}>
+                  Accountability Chart
+                </button>
+              </>
+            )}
               </>
             )}
           </Card>
@@ -554,8 +561,8 @@ export function MeetingView({
                 recapsHref={`/meetings/${info.key}/recaps`}
               />
             )}
-            {view === "business-plan" && <BusinessPlan meetingName={info.name} doc={doc} edit={edit} today={today} />}
-            {view === "accountability" && <AccountabilityChart seats={doc.seats} onChange={(seats) => edit((d) => ({ ...d, seats }))} />}
+            {reference && view === "business-plan" && <BusinessPlan meetingName={info.name} doc={doc} edit={edit} today={today} />}
+            {reference && view === "accountability" && <AccountabilityChart seats={doc.seats} onChange={(seats) => edit((d) => ({ ...d, seats }))} />}
             </fieldset>
 
           </div>

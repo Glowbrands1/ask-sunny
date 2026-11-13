@@ -60,6 +60,13 @@ describe("pages: a meeting the Hub refuses is not found", () => {
     await expect(MeetingPage({ params: params(key), searchParams: search })).rejects.toSatisfy(isNotFound);
   });
 
+  it.each(["business-plan", "accountability"])("/meetings/stc-dm?view=%s is not found, even for someone who may open the meeting", async (view) => {
+    // The STC DM L10 has no Reference (13 Nov 2026): refused before the Hub is asked anything.
+    state.opened = { ok: true, meeting: { info: { key: "stc-dm", name: "STC DM L10" }, viewer: { id: "h1", label: "a@example.test", name: "A", isHubAdmin: false }, loaded: { version: 1, updatedAt: null, doc: {} }, people: [], roster: { members: [], leader: null } } };
+    const { default: MeetingPage } = await import("@/app/(app)/meetings/[key]/page");
+    await expect(MeetingPage({ params: params("stc-dm"), searchParams: Promise.resolve({ view }) })).rejects.toSatisfy(isNotFound);
+  });
+
   it("the history, version, report and past meetings pages too", async () => {
     const { default: History } = await import("@/app/(app)/meetings/[key]/history/page");
     const { default: Version } = await import("@/app/(app)/meetings/[key]/history/[version]/page");
