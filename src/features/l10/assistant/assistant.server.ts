@@ -47,7 +47,10 @@ export interface HubAssistantConfig {
   deepModel: string;
   maxSteps: number;
   maxOutputTokens: number;
-  tools: Record<"getMeeting" | "getMeetingRecaps", { description: string; inputSchema: JSONSchema7 }>;
+  tools: Record<"getMeeting" | "getMeetingRecaps", { description: string; inputSchema: JSONSchema7 }> & {
+    /** The Hub's note drafter (a card the person sends themselves). Absent from a Hub that does not offer it yet. */
+    draftNote?: { description: string; inputSchema: JSONSchema7 };
+  };
 }
 
 export function readConfig(a: HubAnswer): HubAssistantConfig | null {
@@ -66,17 +69,18 @@ export function readConfig(a: HubAnswer): HubAssistantConfig | null {
 
 /** The Hub's two meeting tools, each executed by the Hub for this person (never with data from this server). */
 export function hubTools(config: HubAssistantConfig, email: string, meetingKey: string, call: typeof callHub = callHub): ToolSet {
-  const make = (name: "getMeeting" | "getMeetingRecaps") =>
+  const make = (name: "getMeeting" | "getMeetingRecaps" | "draftNote") =>
     tool({
-      description: config.tools[name].description,
-      inputSchema: jsonSchema<Record<string, unknown>>(config.tools[name].inputSchema),
+      description: config.tools[name]!.description,
+      inputSchema: jsonSchema<Record<string, unknown>>(config.tools[name]!.inputSchema),
       execute: async (input) => {
         const a = await call("assistant-tool", email, { key: meetingKey, tool: name, input });
         if (a.status === 200 && a.body.result) return a.body.result;
         return { source: "Leadership Hub", href: `/meetings/${meetingKey}`, data: { error: "The meeting could not be read just now. Do not guess; tell the person and point them to the page." } };
       },
     });
-  return { getMeeting: make("getMeeting"), getMeetingRecaps: make("getMeetingRecaps") };
+  // draftNote only drafts (the Hub returns a card); nothing is sent until the person presses Send on it.
+  return { getMeeting: make("getMeeting"), getMeetingRecaps: make("getMeetingRecaps"), ...(config.tools.draftNote ? { draftNote: make("draftNote") } : {}) };
 }
 
 export function validMessages(raw: unknown): UIMessage[] | null {

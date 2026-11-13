@@ -165,7 +165,8 @@ describe("opening the meeting", () => {
     const opened = await openMeeting("stc-dm");
     expect(opened).toEqual({
       ok: true,
-      meeting: { info: STC, viewer: { id: "hub-user-1", label: "avery.quill@example.test", name: "Avery" }, loaded: { version: 4, updatedAt: "t", doc: { rocks: [] } }, people: [{ id: "hub-user-1", name: "Avery Quill" }], roster: ROSTER },
+      // isHubAdmin added with Restore / Delete recap (the Hub's admin controls): absent from the Hub's answer means false.
+      meeting: { info: STC, viewer: { id: "hub-user-1", label: "avery.quill@example.test", name: "Avery", isHubAdmin: false }, loaded: { version: 4, updatedAt: "t", doc: { rocks: [] } }, people: [{ id: "hub-user-1", name: "Avery Quill" }], roster: ROSTER },
     });
   });
 });
@@ -217,6 +218,56 @@ describe("saving, ending and the bell go to the same Hub record", () => {
     expect(await data.markAllRead()).toBe(true);
     expect(hub.calls.map((c) => c.op)).toEqual(["notifications-count", "notifications-mark-read", "notifications-mark-all-read"]);
     expect(new Set(hub.calls.map((c) => c.email))).toEqual(new Set(["avery.quill@example.test"]));
+  });
+});
+
+describe("notes from the assistant's card", () => {
+  beforeEach(() => signedIn());
+  const MEETING = {
+    status: 200,
+    body: { info: STC, viewer: { id: "hub-user-1", name: "Avery Quill" }, loaded: { version: 1, updatedAt: "t", doc: {} }, people: [{ id: "00000000-0000-4000-8000-0000000000b2", name: "Bo Lark" }], roster: ROSTER },
+  };
+
+  it("sends as the signed-in person's email, only to people the Hub lists for this meeting", async () => {
+    hub.answer = (op) => (op === "meeting" ? MEETING : { status: 200, body: { ok: true, results: [{ id: "00000000-0000-4000-8000-0000000000b2", name: "Bo Lark", status: "sent" }] } });
+    const { sendNote } = await import("./data.server");
+    expect(await sendNote({ meetingKey: "stc-dm", recipientIds: ["00000000-0000-4000-8000-0000000000b2"], text: "Please send the plan", ref: "call_1" })).toEqual({
+      ok: true,
+      results: [{ id: "00000000-0000-4000-8000-0000000000b2", name: "Bo Lark", status: "sent" }],
+    });
+    expect(hub.calls.map((c) => [c.op, c.email])).toEqual([["meeting", "avery.quill@example.test"], ["send-note", "avery.quill@example.test"]]);
+    expect(hub.calls[1].args).toEqual({ key: "stc-dm", recipientIds: ["00000000-0000-4000-8000-0000000000b2"], text: "Please send the plan", ref: "call_1" });
+  });
+
+  it("refuses a recipient the Hub does not list for this meeting, without asking the Hub to send", async () => {
+    hub.answer = (op) => (op === "meeting" ? MEETING : { status: 200, body: { ok: true, results: [] } });
+    const { sendNote } = await import("./data.server");
+    expect(await sendNote({ meetingKey: "stc-dm", recipientIds: ["00000000-0000-4000-8000-0000000000ff"], text: "hi", ref: "call_2" })).toEqual({ ok: false, reason: "invalid" });
+    expect(hub.calls.map((c) => c.op)).toEqual(["meeting"]);
+  });
+
+  it("a meeting this person may not open (or the Hub refusing) is 'forbidden'; the hourly limit comes back as the Hub's reason", async () => {
+    const { sendNote } = await import("./data.server");
+    expect(await sendNote({ meetingKey: "leadership", recipientIds: ["00000000-0000-4000-8000-0000000000b2"], text: "hi", ref: "r" })).toEqual({ ok: false, reason: "forbidden" });
+    hub.answer = (op) => (op === "meeting" ? MEETING : { status: 200, body: { ok: false, reason: "limit" } });
+    expect(await sendNote({ meetingKey: "stc-dm", recipientIds: ["00000000-0000-4000-8000-0000000000b2"], text: "hi", ref: "r" })).toEqual({ ok: false, reason: "limit" });
+  });
+
+  it("the Server Function checks the note before anything reaches the Hub", async () => {
+    const { sendNoteAction } = await import("./notifications/actions");
+    const id = "00000000-0000-4000-8000-0000000000b2";
+    for (const [key, ids, text, ref] of [
+      ["../x", [id], "hi", "r"],
+      ["stc-dm", [], "hi", "r"],
+      ["stc-dm", Array(11).fill(id), "hi", "r"],
+      ["stc-dm", ["not-a-uuid"], "hi", "r"],
+      ["stc-dm", [id], "   ", "r"],
+      ["stc-dm", [id], "x".repeat(501), "r"],
+      ["stc-dm", [id], "hi", "bad ref!"],
+    ] as [string, string[], string, string][]) {
+      expect(await sendNoteAction(key, ids, text, ref)).toEqual({ ok: false, reason: "invalid" });
+    }
+    expect(hub.calls).toEqual([]);
   });
 });
 
