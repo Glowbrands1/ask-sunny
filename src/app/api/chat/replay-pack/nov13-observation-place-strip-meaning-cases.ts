@@ -109,6 +109,8 @@ const MUST_READ: readonly { key: string; turn: string; place: RegExp; account: R
   { key: "kearney-dash", turn: "create a ca for marnie holloway, she was at kearney - no call no show", place: /\bkearney\b/i, account: /no call no show/i },
   { key: "lincoln-monday", turn: "create a ca for marnie holloway, she was late at lincoln monday", place: /\blincoln\b/i, account: /\bshe was late\b/i },
   { key: "omaha-paren", turn: "create a ca for marnie holloway, she was at omaha (late)", place: /\bomaha\b/i, account: /\blate\b/i },
+  // Mirrored from Gate-Bubbles-3's #869 follow-up: a block-list word before "of" is a direction, not a longer name.
+  { key: "omaha-west-of", turn: "create a ca for marnie holloway, she was late at omaha west of the beds", place: /\bomaha\b/i, account: /west of the beds/i },
 ];
 
 export const NOV13_OBSERVATION_PLACE_MUST_READ_CASES: ReplayCase[] = MUST_READ.map((wording) => ({

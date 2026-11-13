@@ -1032,6 +1032,13 @@ function isPlaceOnly(text: string): boolean {
   return words.length > 0 && words.every((word) => salonWords.has(word) || PLACE_FILLER.has(word));
 }
 
+/** Whether `word` is a word of the name of a salon `place` reads as ("street" after "lincoln 27th"). */
+function inSalonName(place: string, word: string): boolean {
+  const ids = [...new Set(readSalonMentions(`at ${place}`).flatMap((mention) => mention.salonIds))];
+  const bare = word.toLowerCase().replace(/[^a-z0-9]+/g, "");
+  return ids.some((id) => (salonById(id)?.name ?? "").toLowerCase().split(/[^a-z0-9]+/).includes(bare));
+}
+
 /** "at NE Grand Island", "at manhattan": the salon, taken out of the clause. */
 function withoutPlace(clause: string): string {
   const words = clause.trim().split(/\s+/);
@@ -1053,7 +1060,18 @@ function withoutPlace(clause: string): string {
        * Gate-Bubbles-3's #869 finding). Off, as before.
        */
       const next = words[index + 1 + length];
-      if (placeStripWholePhraseOnlyEnabled() && next !== undefined && !/[,;:)]$/.test(phrase) && continuesPlaceName(next)) break;
+      // Not when the word is part of the salon's own name ("lincoln 27th street") or "of" follows it ("west of the
+      // beds": a direction) — mirrored from the sibling app's #869 (Gate-Bubbles-3).
+      if (
+        placeStripWholePhraseOnlyEnabled() &&
+        next !== undefined &&
+        !/[,;:)]$/.test(phrase) &&
+        continuesPlaceName(next) &&
+        !/^of$/i.test(words[index + 2 + length] ?? "") &&
+        !inSalonName(bare, next)
+      ) {
+        break;
+      }
       const tail = phrase.slice(bare.length);
       const rest = [...words.slice(0, index), ...words.slice(index + 1 + length)].join(" ");
       return withoutPlace(`${rest}${tail}`.trim());
