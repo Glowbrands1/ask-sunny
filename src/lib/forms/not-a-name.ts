@@ -360,6 +360,12 @@ function roleLeadsAsLabel(text: string): string {
     }
     const length = roleLeadLength(run);
     if (length === 0) continue;
+    /*
+     * Gate-Sunny-3 on #919 (13 Nov 2026): only a role the request names the form FOR ("form for empolyee <name>", "for
+     * Tanning Consulatant <name>") is the label. "District manager <name>", named in passing in the employee's story,
+     * became "employee <name>" and that person the card's employee (nov5-r2-dm-in-passing-*).
+     */
+    if (!/\bfor[ \t]+$/i.test(text.slice(0, start))) continue;
     const last = words[index + length - 1]!;
     const end = last.index! + last[0].length;
     if (!NAME_WORD_AFTER.test(text.slice(end))) continue;
