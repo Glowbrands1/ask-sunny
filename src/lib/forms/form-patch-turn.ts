@@ -2,6 +2,7 @@ import "server-only";
 
 import type { AskResponse } from "@/lib/ai/types";
 import {
+  accountChangeCloseKeptEnabled,
   accountChangeRederivesPolicyEnabled,
   editPolicyAskEnabled,
   formEditSingleWriterEnabled,
@@ -951,5 +952,26 @@ function accountReplaced(before: string, after: string): boolean {
   const next = sentences(after);
   if (old.length === 0 || next.length === 0) return false;
   // A sentence a new one still holds ("… sanitaion" → "… sanitaion in the morning") is kept: an addition, not a new account.
-  return old.every((sentence) => !next.some((kept) => kept.includes(sentence)));
+  // ACCOUNT_CHANGE_CLOSE_KEPT_ENABLED (Gate on the sibling's port, 13 Nov 2026): so is one a new sentence repeats with a
+  // small edit — a typo fixed, a date corrected, a word inserted or a few reworded — the same account, not a new one.
+  const close = accountChangeCloseKeptEnabled();
+  return old.every((sentence) => !next.some((kept) => kept.includes(sentence) || (close && sameSentence(sentence, kept))));
+}
+
+/**
+ * ACCOUNT_CHANGE_CLOSE_KEPT_ENABLED: the same sentence after a small edit. Word by word, at most two words in five (and
+ * at least one) are changed, inserted or dropped: "did not do the 10 minute santiation" → "… sanitation" (one),
+ * "… on October 20" → "… on October 21" (one), "did not do the …" → "skipped the …" (three of nine). A new account
+ * ("was late on October 20, 2026" → "was on her phone the whole shift") changes most of its words.
+ */
+function sameSentence(a: string, b: string): boolean {
+  const x = a.split(" ");
+  const y = b.split(" ");
+  let row = Array.from({ length: y.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= x.length; i += 1) {
+    const next = [i];
+    for (let j = 1; j <= y.length; j += 1) next[j] = Math.min(row[j]! + 1, next[j - 1]! + 1, row[j - 1]! + (x[i - 1] === y[j - 1] ? 0 : 1));
+    row = next;
+  }
+  return row[y.length]! <= Math.max(1, Math.floor((Math.max(x.length, y.length) * 2) / 5));
 }

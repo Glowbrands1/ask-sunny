@@ -598,11 +598,17 @@ export async function rederivePolicyFromAccount(input: {
 
   // Policy Violated follows the boxes (never a line the manager typed).
   const violated = row(VIOLATED_KEY);
-  if (moved && !managers(VIOLATED_KEY) && fields.some((field) => field.key === VIOLATED_KEY)) {
+  /*
+   * Also when only Direct policy moved (Gate-Sunny-2's follow-up, 13 Nov 2026): Care and Cleaning and the Cell Phone policy
+   * share the Standards of Conduct box, so a phone account replacing a sanitation one re-cited Direct policy and the plan
+   * but left Policy Violated on Care and Cleaning. The line names the section now cited, under the same box.
+   */
+  const recited = written.includes(POLICY_KEY) && sections.length > 0;
+  if ((moved || recited) && !managers(VIOLATED_KEY) && fields.some((field) => field.key === VIOLATED_KEY)) {
     const derived = offenseCategoryValue({
       document,
       variantKey: loaded.instance.variantKey,
-      checked: { [OFFENSE_KEY]: moved.keys },
+      checked: { [OFFENSE_KEY]: moved?.keys ?? keys },
       values: Object.fromEntries(loaded.values.map((value) => [value.fieldKey, value.value ?? ""])),
       sectionNames: boxSectionNames(sections.map((section) => section.heading)),
     });

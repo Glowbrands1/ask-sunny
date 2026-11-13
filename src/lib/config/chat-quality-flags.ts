@@ -4435,6 +4435,17 @@ export function accountChangeRederivesPolicyEnabled(): boolean {
 }
 
 /**
+ * ACCOUNT_CHANGE_CLOSE_KEPT_ENABLED (Coding-2, 13 Nov 2026; default off; Gate-Sunny-2's note on #946, via QA). With
+ * ACCOUNT_CHANGE_REDERIVES_POLICY on, a small edit to the same account (a typo fixed, a date corrected, a word inserted
+ * or a few reworded) also counted as a new account, and re-read its policy: a Care and Cleaning the manager named
+ * became Other after "santiation" was fixed. On: an old sentence a new one repeats with a small word-level edit counts as
+ * kept (`forms/form-patch-turn.ts` accountReplaced), so only a new account re-derives the policy. Off, as before.
+ */
+export function accountChangeCloseKeptEnabled(): boolean {
+  return envFlag("ACCOUNT_CHANGE_CLOSE_KEPT_ENABLED");
+}
+
+/**
  * CA_PROCEDURE_BASIS_ENABLED (Pau via QA, 5 Nov 2026, sf-b6 in the sibling app; default
  * off; same flag in both apps). A Corrective Action for closing a register
  * early and turning away a customer came back with Standards of Conduct

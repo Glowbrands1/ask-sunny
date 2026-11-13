@@ -645,6 +645,8 @@ const NEW_FLAGS = [
   "OTHER_NOT_A_POLICY_NAME_ENABLED",
   // coding 2: ACCOUNT_CHANGE_REDERIVES_POLICY (QA, 13 Nov 2026; ported from Ask Bubbles; default off): forced off with the others.
   "ACCOUNT_CHANGE_REDERIVES_POLICY_ENABLED",
+  // coding 2: ACCOUNT_CHANGE_CLOSE_KEPT (Gate-Sunny-2 on #946, 13 Nov 2026; default off): forced off with the others.
+  "ACCOUNT_CHANGE_CLOSE_KEPT_ENABLED",
   "ACCOUNT_TYPOS_FIXED_ENABLED",
   // coding 2: EXCERPT_EMPTY_CARD_DROP (QA, 11 Nov 2026; default off): forced off with the others.
   "EXCERPT_EMPTY_CARD_DROP_ENABLED",
