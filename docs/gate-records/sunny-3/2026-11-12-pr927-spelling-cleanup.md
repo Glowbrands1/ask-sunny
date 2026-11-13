@@ -21,3 +21,14 @@
 - Pending: the prompt-unchanged-OFF hash check (tools/hash-prompts.py; replay pack on main b3352a76 vs PR
   885244c8e; ~1,650 of 1,790 records done). The 867dc2de0 delta is flag-gated, so OFF prompts can't change. Then
   the verdict (expected GO).
+- **Prompt hash check done:** replay pack on main b3352a76 vs PR OFF (885244c8e), with draft, revision and patch
+  hashes added temporarily. **0 of 1,778 shared records differ** (1,346 draft, 223 revision, 349 patch and 209 chat
+  prompts). Instrumentation reverted.
+
+**Verdict: GO on 867dc2de0** (on main b3352a76).
+- Flag OFF: prompts unchanged, no existing case moves.
+- Flag ON: only the 5 nov13 arms (plus the possessive case) change; the date/fallback class is gone; possessive names
+  are kept; eval 63/63.
+- Cases that now hold: nov13-spelling-cleanup-sanitation, -name-changed-redrafts, -quote-kept-as-typed,
+  -quote-as-typed-saved, -fallback-checked-again, -possessive-name-kept.
+- Note: 8× "October 21, 2026 was not given" in qa-oct21-audit just redrafts without the rule (same result).
