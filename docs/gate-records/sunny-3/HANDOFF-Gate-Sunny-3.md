@@ -124,3 +124,12 @@ SHA, and which open cases now hold. Records go to branch `claude/gate-sunny-3-re
    verdict.
 3. Gate S#942 (merge main; 1 OFF + 1 ON with both flags; eval). Report MADE_ABOUT GO-candidate and the ADD_ALREADY
    wording gap ("the whole shift" vs "the entire shift").
+
+## Update ~22:00Z
+- S#927 now at 867dc2de0 (possessive fix verified). Full OFF/ON clean (only the 5 nov13 arms), eval 63/63; only the
+  OFF prompt-hash check remains → expected GO. Resume: tools/hash-prompts.py on main + PR, tools/pr927.sh both,
+  compare `systems`.
+- S#942 now at 0190ed13b9 (Coding-6's filler-word fix; not yet verified by me). On 05c9af522b QA's wording "add that
+  she was on the phone the whole shift" still missed ("for" left out). Full runs x942/x942ON (on c3743f37 + main
+  b3352a76) running; the delta since is add-already-on-form.ts + test + cases only. Resume: re-run the add probes
+  (6 wordings, both flags), eval, verdict.
