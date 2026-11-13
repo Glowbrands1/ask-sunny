@@ -28,7 +28,7 @@ const viewer = { id: "hub-user-1", label: "avery.quill@example.test", name: "Ave
 const loaded = (version = 3, doc: Record<string, unknown> = { attendees: [{ id: "att-avery", name: "Avery Quill", role: "Visionary", shared: true, rating: null }] }): LoadedMeeting => ({ version, updatedAt: null, doc });
 const HUB = "https://hub.example.test/meetings/stc-dm";
 
-function renderView(over: { save?: SaveFn; load?: LoadFn; initial?: LoadedMeeting; pollMs?: number; roster?: Roster } = {}) {
+function renderView(over: { save?: SaveFn; load?: LoadFn; initial?: LoadedMeeting; pollMs?: number; roster?: Roster; mentionPeople?: { id: string; name: string }[] } = {}) {
   return render(
     <MeetingView
       info={info}
@@ -38,6 +38,7 @@ function renderView(over: { save?: SaveFn; load?: LoadFn; initial?: LoadedMeetin
       load={over.load}
       viewer={viewer}
       roster={over.roster ?? roster}
+      mentionPeople={over.mentionPeople}
       hubMeetingUrl={HUB}
       pollMs={over.pollMs ?? 0}
       debounceMs={0}
@@ -152,7 +153,7 @@ describe("the DM L10 page in Ask Sunny", () => {
   it("IDS has no ranking: no top-three table, no Rank buttons, no Priority badges (even on issues ranked in the Hub)", () => {
     const issues = [{ id: "i1", title: "Weekly issue", notes: "", resolved: false, votes: { "hub-user-2": { rank: 1, name: "Bo" } } }];
     renderView({ initial: loaded(3, { issues }) });
-    fireEvent.click(screen.getByRole("button", { name: /6 · IDS · Issues/ }));
+    fireEvent.click(screen.getByRole("button", { name: /IDS · Issues/ }));
     expect(screen.queryByRole("region", { name: "Everyone's top three" })).toBeNull();
     expect(screen.queryByRole("button", { name: /^Rank by you/ })).toBeNull();
     expect(screen.queryByTestId("room-rank")).toBeNull();
@@ -261,5 +262,19 @@ describe("the agenda, hints and roster come from the Hub (the STC DM L10 change,
     const [, , doc] = save.mock.calls[0] as unknown as [string, number, { attendees: { name: string }[] }];
     expect(doc.attendees.map((a) => a.name)).toEqual(["Avery Quill", "Bo Lark", "Cy Marlow", "Dex Rowan"]);
     expect(doc.attendees.find((a) => a.name === "Dex Rowan")).toEqual(hidden);
+  });
+
+  it("an issue someone adds saves their full name, so their initials show on it", async () => {
+    const save = vi.fn().mockResolvedValue({ ok: true, version: 4, updatedAt: "2026-11-14T00:00:00Z" } satisfies SaveOutcome);
+    renderView({ save: save as unknown as SaveFn, initial: loaded(3, { issues: [] }), mentionPeople: [{ id: "hub-user-1", name: "Avery Quill" }] });
+    fireEvent.click(screen.getByRole("button", { name: /IDS · Issues/ }));
+    fireEvent.change(screen.getByLabelText("Identify a new issue"), { target: { value: "New onboarding process" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add issue" }));
+    expect(screen.getByTitle("Added by Avery Quill").textContent).toBe("AQ");
+    await act(async () => {
+      await vi.waitFor(() => expect(save).toHaveBeenCalled());
+    });
+    const doc = save.mock.calls.at(-1)![2] as { issues: { title: string; addedBy?: string }[] };
+    expect(doc.issues.at(-1)).toMatchObject({ title: "New onboarding process", addedBy: "Avery Quill" });
   });
 });
