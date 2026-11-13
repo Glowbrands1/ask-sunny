@@ -2794,6 +2794,18 @@ export function draftNoInventedPlanEnabled(): boolean {
   return envFlag("DRAFT_NO_INVENTED_PLAN_ENABLED");
 }
 
+/**
+ * HUMAN_REPLIES_ENABLED (QA's October triage, 10 Nov 2026: the sibling's #200 still live; this app's #268 closed
+ * unmerged; rebuilt on main; coding 5; default off). Every turn of a Corrective Action chat repeated the whole opener
+ * and the long save notice. On: the first card turn for a form and employee is as built; a later one opens with one
+ * line on what changed, read from the card's own fields, leaves out lines the manager already read, and says
+ * "Nothing's saved until you tap **Create draft**." where the long notice was. Questions and the card are unchanged
+ * (`ai/human-replies.ts`, the last step of the chat route). Off, as before.
+ */
+export function humanRepliesEnabled(): boolean {
+  return envFlag("HUMAN_REPLIES_ENABLED");
+}
+
 // --- end coding 5 flags ---
 
 /**

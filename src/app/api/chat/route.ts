@@ -46,6 +46,7 @@ import {
   wholeTeamCoachingEnabled,
   addressNotPersonEnabled,
   sameAskNoRepeatEnabled,
+  humanRepliesEnabled,
   newRequestOpenDraftEnabled,
   coachingForEveryoneEnabled,
   staffPickerEnabled,
@@ -1005,6 +1006,18 @@ async function postChat(request: Request) {
       if (copyOwnSalonEnabled()) answer = await (await import("@/lib/forms/same-form-copy")).withCopyOwnSalon(answer, request, asked.question);
       // SAME_REQUEST_OTHER_PERSON_ENABLED: <B>'s card says what of the earlier request it carries.
       if (sameRequestOther) answer = (await import("@/lib/forms/same-request-other-person")).withSameRequestNote(answer, sameRequestOther);
+      /*
+       * HUMAN_REPLIES_ENABLED (QA's October triage of #268 / the sibling's #200): a later card turn for the same form and
+       * employee says what changed instead of the whole opener again; questions and the card are untouched. Last, so it
+       * reads the reply every step above built. Off, unchanged.
+       */
+      if (humanRepliesEnabled()) {
+        answer = (await import("@/lib/ai/human-replies")).humanizeFormReply(answer, {
+          history: parsed.history,
+          question: parsed.question,
+          today: parsed.context.todayIso,
+        });
+      }
     } catch (error) {
       /*
        * A FAILED ANSWER IS STILL A RECORDED TURN, closed as a failure. The row
