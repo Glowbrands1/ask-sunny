@@ -55,10 +55,10 @@ const NAMED: readonly { n: number; said: string; open?: string; create?: boolean
 
 const DESCRIBED: readonly { n: number; said: string; open?: string }[] = [
   { n: 1, said: "please make a ca for Odessa Quillfeather for not doing th e10 minute sanitaion", open: "the card cites Care and Cleaning p.21 for a described duty" },
-  { n: 2, said: "ca for Odessa Quillfeather, she did not clean the beds after her shift", open: "the card is Other but its Action Plan reviews the Care and Cleaning policy" },,
-  { n: 3, said: "ca for Odessa Quillfeather for skipping the 10 minute sanitize", open: "the card is Other but its Action Plan reviews the Care and Cleaning policy" },,
-  { n: 4, said: "ca for Odessa Quillfeather, she left the restrooms dirty at close", open: "the card is Other but its Action Plan reviews the Care and Cleaning policy" },,
-  { n: 5, said: "ca for Odessa Quillfeather for not completing her daily cleaning duties", open: "the card is Other but its Action Plan reviews the Care and Cleaning policy" },,
+  { n: 2, said: "ca for Odessa Quillfeather, she did not clean the beds after her shift", open: "the card is Other but its Action Plan reviews the Care and Cleaning policy" },
+  { n: 3, said: "ca for Odessa Quillfeather for skipping the 10 minute sanitize", open: "the card is Other but its Action Plan reviews the Care and Cleaning policy" },
+  { n: 4, said: "ca for Odessa Quillfeather, she left the restrooms dirty at close", open: "the card is Other but its Action Plan reviews the Care and Cleaning policy" },
+  { n: 5, said: "ca for Odessa Quillfeather for not completing her daily cleaning duties", open: "the card is Other but its Action Plan reviews the Care and Cleaning policy" },
   { n: 6, said: "ca for Odessa Quillfeather, the sanitation was not done this morning", open: "the card cites Care and Cleaning p.21 for a described duty" },
 ];
 
