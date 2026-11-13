@@ -4732,3 +4732,13 @@ export function formDateBusinessTodayEnabled(): boolean {
 export function closeSpellingMatchEnabled(): boolean {
   return envFlag("CLOSE_SPELLING_MATCH_ENABLED");
 }
+
+/**
+ * HEADING_DISTINCTIVE_WORDS (QA, 13 Nov 2026; default off; ported from the sibling app): a manual heading is named by its distinctive words; the
+ * generic heading words "is", "are", "prohibited" and "requirement" may be left off, as "policy" and "guidelines"
+ * already may. "violating the retaliation policy" names "Retaliation is Prohibited". See
+ * `forms/named-policy-section.ts`. Off, every heading word but the optional ones must be said, as before.
+ */
+export function headingDistinctiveWordsEnabled(): boolean {
+  return envFlag("HEADING_DISTINCTIVE_WORDS_ENABLED");
+}

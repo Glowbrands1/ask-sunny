@@ -185,6 +185,8 @@ import { privateCreatorFormsEnabled, privateCreatorsActive } from "@/lib/forms/p
  */
 
 const NEW_FLAGS = [
+  // coding 4: HEADING_DISTINCTIVE_WORDS (QA, 13 Nov 2026; default off).
+  "HEADING_DISTINCTIVE_WORDS_ENABLED",
   // coding 2: OFF_ROSTER_PLACE_ANSWER (QA's Sunny 37b live bug, 12 Nov 2026; default off).
   "OFF_ROSTER_PLACE_ANSWER_ENABLED",
   // coding 2: OFFERED_NAME_ACCEPTED (QA, 12 Nov 2026: an admin's "use <C>" refused; default off).
