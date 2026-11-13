@@ -2003,7 +2003,8 @@ async function namedPolicyFor(text: string, input: ProposalTurn): Promise<NamedP
       const grounded = groundMissedEvent({ reading, chunks: await chunksOf() });
       return grounded.ok
         ? {
-            phrase: missedEventPhrase(reading.missedEvent),
+            // TERSE_REQUEST_ACCOUNT_ENABLED: the manager's own words when only the typo reading found the event (`ca-policy.ts`).
+            phrase: reading.missedEventTyped ?? missedEventPhrase(reading.missedEvent),
             lookup: "described",
             heading: grounded.section.heading,
             page: grounded.section.page,

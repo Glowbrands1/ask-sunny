@@ -40,6 +40,9 @@ export const NOV12_TERSE_REQUEST_ACCOUNT_CASES: ReplayCase[] = casings(TERSE).ma
     expect(observation, `the Observation is the request line:\n${reply.content}`).not.toMatch(/writen ca/i);
     expect(observation, `the account is not the Observation:\n${reply.content}`).toMatch(/^not atending monthly meeting/i);
     expect(reply.content, `the card cites no Attendance policy:\n${reply.content}`).toMatch(/\*\*Policy:\*\*[^\n]*\*\*Attendance\*\*/);
+    // QA's #910 follow-up: the Policy line quotes the manager's own words, never the app's paraphrase.
+    expect(reply.content, `the Policy line quotes words the manager did not write:\n${reply.content}`).not.toMatch(/"missed the monthly meeting"/);
+    expect(reply.content, `the Policy line does not quote the manager's words:\n${reply.content}`).toMatch(/\*\*Policy:\*\*[^\n]*"not atending monthly meeting"/);
   },
 }));
 

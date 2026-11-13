@@ -33,6 +33,9 @@ describe("TERSE_REQUEST_ACCOUNT_ENABLED", () => {
   it("on: 'atending' reads as the missed meeting", () => {
     vi.stubEnv("TERSE_REQUEST_ACCOUNT_ENABLED", "true");
     expect(JSON.stringify(readCaPolicy(TERSE))).toMatch(/monthly meeting/);
+    // QA's #910 follow-up: the reading carries the manager's own words for the Policy line's quote.
+    expect(readCaPolicy(TERSE).missedEventTyped).toBe("not atending monthly meeting");
+    expect(readCaPolicy("writen ca rowan kestrel for not attending the monthly meeting").missedEventTyped).toBeUndefined();
   });
 
   it("on: another person's name, or nothing after the name, is left to the usual reading", () => {
