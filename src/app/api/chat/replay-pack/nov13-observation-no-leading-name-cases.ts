@@ -50,18 +50,18 @@ export const NOV13_OBSERVATION_NO_LEADING_NAME_CASES: ReplayCase[] = WORDINGS.ma
 const WORK_AREA_FLAG = "WORK_AREA_NOT_A_TITLE_ENABLED";
 const OFF_ROSTER = "kira dunmore";
 
-const WORK_AREAS: readonly { key: string; turn: string; area: string; onMain?: "fixed" }[] = [
+const WORK_AREAS: readonly { key: string; turn: string; area: string }[] = [
   { key: "front-desk", turn: `create a ca for ${OFF_ROSTER} at the front desk, she was rude to a guest`, area: "front desk" },
   { key: "register", turn: `create a ca for ${OFF_ROSTER} at the register, she was rude to a guest`, area: "register" },
-  // Guard: main already keeps "bed 4" off the card (the title reader does not take it as stated); it must stay so.
-  { key: "bed-4", turn: `create a ca for ${OFF_ROSTER} in bed 4, she left it dirty`, area: "bed 4", onMain: "fixed" },
+  // On main the card shows "Job title: Bed" (the whole-pack diff, 13 Nov 2026): the work area cut to its first word.
+  { key: "bed-4", turn: `create a ca for ${OFF_ROSTER} in bed 4, she left it dirty`, area: "bed 4" },
 ];
 
 export const NOV13_WORK_AREA_NOT_A_TITLE_CASES: ReplayCase[] = WORK_AREAS.map((wording) => ({
   id: `nov13-work-area-not-a-title-${wording.key}`,
   title: `Admin, a person not on the roster: "${wording.turn}" — "${wording.area}" is never the Job title`,
   report: `${REPORT}; item (a), trace slots.title "front desk"`,
-  status: wording.onMain ?? { open: `the card's Job title is "${wording.area}"` },
+  status: { open: `the card's Job title is the work area ("${wording.area}" or its first word)` },
   fixFlags: [WORK_AREA_FLAG],
   async run(t: ReplayContext) {
     vi.setSystemTime(new Date("2026-11-13T15:00:00Z"));
@@ -71,7 +71,8 @@ export const NOV13_WORK_AREA_NOT_A_TITLE_CASES: ReplayCase[] = WORK_AREAS.map((w
     const thread = t.thread();
     const reply = (await thread.say(wording.turn)).content;
     const role = (thread.proposal as { employeeRole?: string | null } | null)?.employeeRole ?? "";
-    expect(role.toLowerCase(), `the work area became the job title:\n${reply}`).not.toBe(wording.area);
-    expect(reply, `the card shows the work area as the job title:\n${reply}`).not.toMatch(new RegExp(`\\*\\*Job title:\\*\\*\\s*${wording.area}`, "i"));
+    const head = wording.area.split(" ")[0]!;
+    expect(role.toLowerCase(), `the work area became the job title:\n${reply}`).not.toMatch(new RegExp(`^${head}\\b`, "i"));
+    expect(reply, `the card shows the work area as the job title:\n${reply}`).not.toMatch(new RegExp(`\\*\\*Job title:\\*\\*\\s*${head}\\b`, "i"));
   },
 }));
