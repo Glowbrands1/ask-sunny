@@ -4676,3 +4676,15 @@ export function notFollowingIsViolationEnabled(): boolean {
 export function editSeesSavedFormEnabled(): boolean {
   return envFlag("EDIT_SEES_SAVED_FORM_ENABLED");
 }
+
+/**
+ * CARD_CHECKED_AGAINST_WORDS_ENABLED (coding 6, 13 Nov 2026; default off; same flag in both apps; Pau's direction via
+ * QA). Cards showed an Issue that was a hedge about the decision, a job title, a salon label or a name, and a person who
+ * was a title. On: before a card is shown it is checked against the manager's own words
+ * (`forms/card-checked-against-words.ts`): code checks on every card, a repair from the manager's clauses, and only then
+ * one structured model call (at most two) whose corrections must quote the manager. Nothing is invented: an Issue
+ * nothing repairs is blank and the card asks "What happened?". Off, as before.
+ */
+export function cardCheckedAgainstWordsEnabled(): boolean {
+  return envFlag("CARD_CHECKED_AGAINST_WORDS_ENABLED");
+}

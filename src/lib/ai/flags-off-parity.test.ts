@@ -185,6 +185,8 @@ import { privateCreatorFormsEnabled, privateCreatorsActive } from "@/lib/forms/p
  */
 
 const NEW_FLAGS = [
+  // coding 6: CARD_CHECKED_AGAINST_WORDS (Pau's direction via QA, 13 Nov 2026; default off).
+  "CARD_CHECKED_AGAINST_WORDS_ENABLED",
   // coding 6: EDIT_SEES_SAVED_FORM (Pau's direction via QA, 13 Nov 2026; default off).
   "EDIT_SEES_SAVED_FORM_ENABLED",
   // coding 4: FULL_MANUAL_KEEPS_RETRIEVAL (QA, 10 Nov 2026; default off).
