@@ -4,8 +4,8 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Button, ButtonLink, Card, Modal, cx } from "@/features/l10/ui/ui";
-import { agendaFor, SECTION_HINTS, type AgendaKey, type MeetingKey, type Roster } from "@/features/l10/lib/config";
-import { buildRecap, effectiveAttendees, markRecapped, newItemId } from "@/features/l10/lib/doc";
+import { agendaFromRoster, hintsFromRoster, segueName, type AgendaKey, type MeetingKey, type Roster } from "@/features/l10/lib/config";
+import { buildRecap, effectiveAttendees, keepHiddenAttendees, markRecapped, newItemId } from "@/features/l10/lib/doc";
 import { elapsedSeconds, emptyTimer, endedTimer, formatClock, pausedTimer, plannedSeconds, isReferenceView, readTimer, resumedTimer, startMeeting, type View } from "@/features/l10/lib/timer";
 import type { LoadedMeeting, MeetingInfo } from "@/features/l10/lib/types";
 import { AUTO_SAVED_LABEL, wasAutoSaved } from "@/features/l10/lib/autosave";
@@ -75,7 +75,9 @@ export function MeetingView({
   pollMs?: number;
 }) {
   const key = info.key as MeetingKey;
-  const agenda = agendaFor(key);
+  // The Hub's agenda and hints, served with the roster (Ask Sunny: so a change in the Hub's config reaches this page).
+  const agenda = agendaFromRoster(key, roster);
+  const hints = hintsFromRoster(key, roster);
   const [view, setViewLocal] = useState<View>(initialView ?? agenda[0].key);
   // An old version can never save or end a meeting: whatever happens, these refuse.
   const refuse = { ok: false as const, kind: "forbidden" as const, message: "This is an old version and cannot be changed." };
@@ -428,7 +430,7 @@ export function MeetingView({
               Nobody pressed End, so the recap was saved automatically from the last saved state.
             </p>
           )}
-          <p className="m-0 text-sm text-muted">Start a new meeting to begin with clean ratings and Business Best, or reopen this one to keep going.</p>
+          <p className="m-0 text-sm text-muted">{`Start a new meeting to begin with clean ratings and ${segueName(key)}, or reopen this one to keep going.`}</p>
           <div className="flex flex-wrap gap-2">
             <Button variant="primary" onClick={start}>
               Start a new meeting
@@ -523,11 +525,11 @@ export function MeetingView({
             )}
             <div>
               <h2 className="m-0 text-xl font-bold">{view === "business-plan" ? "Business Plan" : view === "accountability" ? "Accountability Chart" : section?.title}</h2>
-              <p className="m-0 mt-0.5 text-sm text-muted">{view === "business-plan" ? "Vision, core values and the 1- and 3-year picture. Edits save for everyone." : view === "accountability" ? "One name per seat. Changes save for the whole team." : SECTION_HINTS[view]}</p>
+              <p className="m-0 mt-0.5 text-sm text-muted">{view === "business-plan" ? "Vision, core values and the 1- and 3-year picture. Edits save for everyone." : view === "accountability" ? "One name per seat. Changes save for the whole team." : hints[view]}</p>
             </div>
 
             <fieldset disabled={!!readOnly} className="m-0 flex min-w-0 flex-col gap-4 border-0 p-0">
-            {view === "business-best" && <BusinessBest attendees={attendees} onChange={(next) => edit((d) => ({ ...d, attendees: next }))} />}
+            {view === "business-best" && <BusinessBest attendees={attendees} onChange={(next) => edit((d) => ({ ...d, attendees: keepHiddenAttendees(d.attendees, next) }))} />}
             {view === "scorecard" && <Scorecard doc={doc} edit={edit} people={people} />}
             {view === "rocks" && <Rocks rocks={doc.rocks} onChange={(rocks) => edit((d) => ({ ...d, rocks }))} people={people} today={today} />}
             {view === "headlines" && <Headlines headlines={doc.headlines} onChange={(headlines) => edit((d) => ({ ...d, headlines }))} author={people[0] ?? ""} />}
@@ -539,7 +541,7 @@ export function MeetingView({
                 doc={doc}
                 attendees={attendees}
                 edit={edit}
-                onRate={(id, rating) => edit((d) => ({ ...d, attendees: attendees.map((a) => (a.id === id ? { ...a, rating } : a)) }))}
+                onRate={(id, rating) => edit((d) => ({ ...d, attendees: keepHiddenAttendees(d.attendees, attendees.map((a) => (a.id === id ? { ...a, rating } : a))) }))}
                 end={endFn}
                 flushNow={flushNow}
                 sessionKey={timer.sessionId ?? "pending"}
