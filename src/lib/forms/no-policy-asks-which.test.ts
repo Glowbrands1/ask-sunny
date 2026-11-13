@@ -56,4 +56,9 @@ describe("CA_NO_POLICY_ASKS_WHICH (the step itself; the route asks it only with 
     const cited = { ...CARD, content: `${CARD.content}\n\nCell Phone/Smart Watch Policy, JBA Policy Manual p.19` };
     expect(withNoPolicyQuestion(cited)).toBe(cited);
   });
+
+  it("a card still waiting for the account never asks (the Sunny whole-pack diff, 13 Nov 2026)", () => {
+    const waiting = { ...CARD, content: `${CARD.content}\n\n**You haven't told me what happened yet**, so I can't cite the policy manual.` };
+    expect(withNoPolicyQuestion(waiting, "make a CA for Remy Calder")).toBe(waiting);
+  });
 });

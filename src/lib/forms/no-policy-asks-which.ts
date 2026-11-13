@@ -45,6 +45,13 @@ export function readerFindsPolicy(managerText: string): boolean {
   return text.split(/(?<=[.!?])\s+|\n+/).some((sentence) => policiesNamedIn(sentence.toLowerCase()).length > 0);
 }
 
+/**
+ * The Sunny whole-pack diff (13 Nov 2026): "make a CA for <name>" and "create a ca for <name> at <salon>. verbal. no payroll
+ * deduct" built a card that says "You haven't told me what happened yet" — no account, so "I didn't find a section … for
+ * what you described" was false. Such a card never asks.
+ */
+const NO_ACCOUNT_YET = /\bhaven['’]t told me what happened\b|\bwhat happened\?/i;
+
 /** A reply that already cites a manual page for the card has a policy. */
 const CITES_MANUAL_PAGE = /JBA Policy Manual,?\s+pp?\.\s*\d/i;
 
@@ -53,6 +60,8 @@ export function withNoPolicyQuestion<T extends { content: string; formProposal?:
   if (!card || !/\bcorrective\s+action\b/i.test(card.templateName ?? "")) return answer;
   if (card.status !== "ready" || !card.employeeName?.trim()) return answer;
   if (/\*\*Policy:\*\*/.test(answer.content) || answer.content.includes(CA_POLICY_QUESTION)) return answer;
+  // A card still waiting for the account ("You haven't told me what happened yet") has nothing to look a policy up for.
+  if (NO_ACCOUNT_YET.test(answer.content)) return answer;
   // Only after the policy reader ran and found nothing (Gate-Sunny-2 on Ask Sunny #914).
   if (CITES_MANUAL_PAGE.test(answer.content) || readerFindsPolicy(managerText)) return answer;
   const parts = answer.content.split(/\n{2,}/);

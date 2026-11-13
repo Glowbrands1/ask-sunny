@@ -126,6 +126,8 @@ export const NOV12_17N_LIVE_CASES: ReplayCase[] = [
     { id: "write-ca", say: "write ca" },
     { id: "msb", say: "I need to make a corrective action for msb" },
     { id: "two-people", say: "CA for Marnie Holloway and Remy Calder for being late" },
+    { id: "name-only", say: "make a CA for Marnie Holloway" },
+    { id: "name-level-payroll-only", say: "create a ca for Marnie Holloway. verbal. no payroll deduct" },
     { id: "late-on-phone", say: "create verbal ca for Marnie Holloway, she was 20 minutes late on 11/9 because she was on social media on her phone. no payroll deduct" },
   ].map(
     (guard): ReplayCase => ({
