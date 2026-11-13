@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 import { leadershipHubUrl } from "@/lib/config/app-switcher";
 import { AssistantBubble } from "./assistant/AssistantBubble";
-import { jetBrainsMono, publicSans } from "./fonts";
+import { jetBrainsMono, publicSans } from "@/app/fonts";
 import { NotificationBell } from "./ui/NotificationBell";
 
 /** This meeting's page in the Leadership Hub (absolute). */

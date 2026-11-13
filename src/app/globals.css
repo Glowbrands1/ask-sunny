@@ -1422,7 +1422,7 @@
  * Set per element at runtime, declared here so every var() names a declared token: the fonts by next/font on the
  * DM L10 frame (src/features/l10/fonts.ts), the mention picker's position inline by the picker (ui/Mentions.tsx).
  */
-:root {
+:where(:root) {
   --font-public-sans: "Public Sans";
   --font-jetbrains-mono: "JetBrains Mono";
   --mx-top: auto;
