@@ -232,6 +232,9 @@ export function notAFact(clause: string, input: CardCheckInput): boolean {
   return at !== undefined && onlyPlace(at);
 }
 
+/** A leading time or place phrase before the account: "on Saturday, ", "yesterday ", "at close ", "this morning ". */
+const TIME_LEAD =
+  /^(?:(?:on\s+(?:(?:mon|tues|wednes|thurs|fri|satur|sun)day|\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?)(?:\s+(?:morning|afternoon|evening|night))?)|yesterday(?:\s+(?:morning|afternoon|evening))?|today|tonight|last\s+night|this\s+(?:morning|afternoon|evening)|earlier\s+today|at\s+(?:close|closing|open|opening))\s*,?\s+/i;
 const ACCOUNT_START = /^(?:and\s+|but\s+|plus\s+)?(?:she|he|they)\b/i;
 export function addedFacts(issue: string, employee: string | null, input: CardCheckInput): string[] {
   if (!employee) return [];
@@ -245,6 +248,10 @@ export function addedFacts(issue: string, employee: string | null, input: CardCh
     if (/\?\s*$/.test(turn.trim())) continue;
     for (const sentence of turn.split(/(?<=[.!?])\s+|\n+/)) {
       let clause = sentence.trim().replace(/[.!]+$/, "");
+      // QA (13 Nov 2026): "on Saturday, she left …", "yesterday she left early", "at close she skipped the deposit": a
+      // leading time or place phrase is set aside for the start test and kept in the joined text.
+      const timeLead = TIME_LEAD.exec(clause)?.[0] ?? "";
+      clause = clause.slice(timeLead.length);
       if (clause === "" || !(ACCOUNT_START.test(clause) || (first !== "" && starts.test(clause)))) continue;
       /*
        * Gate-Sunny-2 / QA (13 Nov 2026): a sentence joined by "and"/"but" can hold a fact AND something that is not one
@@ -264,7 +271,7 @@ export function addedFacts(issue: string, employee: string | null, input: CardCh
         if (kept.length < parts.length) clause = [whole(kept[0]!), ...kept.slice(1)].join(" and ");
       }
       if (issueProblem(clause, employee, input) !== null || notAFact(clause, input)) continue;
-      const fact = clause.replace(/^(?:and|but|plus)\s+/i, "").replace(/\b(also|too)\b\s*/gi, "").replace(/\s+/g, " ").trim();
+      const fact = `${timeLead}${clause.replace(/^(?:and|but|plus)\s+/i, "")}`.replace(/\b(also|too)\b\s*/gi, "").replace(/\s+/g, " ").trim();
       const words = contentWords(fact);
       if (words.length === 0 || words.every((word) => have.has(word))) continue;
       out.push(fact);

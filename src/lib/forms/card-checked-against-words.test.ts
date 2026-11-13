@@ -215,3 +215,13 @@ describe("CARD_CHECKED_AGAINST_WORDS_ENABLED: a repeat is never reported as adde
     expect(out.content).not.toMatch(/Added to the Observation/);
   });
 });
+
+describe("CARD_CHECKED_AGAINST_WORDS_ENABLED: a leading time or place phrase (QA, 13 Nov 2026)", () => {
+  const after = (said: string) => ({ turns: ["create a CA for Marnie Holloway, she was late on 11/3/26", said], roster: ROSTER });
+  it.each(["on Saturday, she left the salon unlocked", "yesterday she left early", "at close she skipped the deposit"])("joins, phrase kept: %s", (said) => {
+    expect(addedFacts("she was late on 11/3/26", "Marnie Holloway", after(said))).toEqual([said]);
+  });
+  it("a time lead does not let a non-fact in: \"yesterday she gets a verbal warning\" stays out", () => {
+    expect(addedFacts("she was late on 11/3/26", "Marnie Holloway", after("yesterday she gets a verbal warning"))).toEqual([]);
+  });
+});
