@@ -4,8 +4,7 @@
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { Button, Card, cx } from "@/features/l10/ui/ui";
-import { NOTIFICATIONS_CHANGED } from "@/features/l10/ui/NotificationBell";
-import { headline, noteHref, timeAgo } from "@/features/l10/notifications/logic";
+import { headline, NOTIFICATIONS_CHANGED, noteHref, timeAgo } from "@/features/l10/notifications/logic";
 import type { AppNotification } from "@/features/l10/notifications/types";
 import { markAllReadAction, markReadAction } from "./actions";
 

@@ -1,6 +1,10 @@
 // Copied from the Leadership Hub (src/lib/notifications/logic.ts); keep in step with it. See src/features/l10/README.md.
 import { PREF_KINDS, type AppNotification, type NotificationKind, type NotificationPrefs, type PrefKind } from "./types";
 
+/** Other screens tell the bell to refresh at once (for example after "mark all read"). Here, not in the bell, so the
+ * bell and NotificationsView do not import each other. */
+export const NOTIFICATIONS_CHANGED = "hub:notifications-changed";
+
 /** Defaults, mirroring app.notification_default in the database (decision 1). */
 export const DEFAULT_PREFS: NotificationPrefs = {
   mention: true,

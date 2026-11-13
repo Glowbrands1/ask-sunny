@@ -32,7 +32,7 @@ browser ──► Ask Sunny page / Server Function / /api/l10/assistant
 - **Assistant.** `assistant/` + `/api/l10/assistant`: the Hub's system prompt, model settings and its `getMeeting` /
   `getMeetingRecaps` tools (run by the Hub, as this person), on Ask Sunny's own `ANTHROPIC_API_KEY`. Per-person rate
   limit as in the Hub (20 messages / 10 minutes).
-- **Look.** `l10.css` adds the Hub's colour tokens and glass utilities; everything that would clash with Ask Sunny's
+- **Look.** The DM L10 section at the end of `src/app/globals.css` adds the Hub's colour tokens and glass utilities; everything that would clash with Ask Sunny's
   tokens is set inside `.hub-l10` only. Fonts (Public Sans, JetBrains Mono) load on these pages only.
 
 ## What is copied from the Hub, and what differs

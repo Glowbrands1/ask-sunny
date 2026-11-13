@@ -6,10 +6,11 @@ import { createPortal } from "react-dom";
 import { listNotificationsAction, unreadCountAction } from "@/features/l10/notifications/actions";
 import { NotificationsView } from "@/features/l10/notifications/NotificationsView";
 import type { AppNotification } from "@/features/l10/notifications/types";
-import { badgeText } from "@/features/l10/notifications/logic";
+import { badgeText, NOTIFICATIONS_CHANGED } from "@/features/l10/notifications/logic";
 
 /** Other screens tell the bell to refresh at once (for example after "mark all read"). */
-export const NOTIFICATIONS_CHANGED = "hub:notifications-changed";
+/** Other screens tell the bell to refresh at once (kept in notifications/logic.ts so the view and the bell do not import each other). */
+export { NOTIFICATIONS_CHANGED };
 
 const REFRESH_MS = 60_000;
 

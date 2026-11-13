@@ -11,7 +11,7 @@ export function hubMeetingUrl(key: string, path = ""): string {
 }
 
 /**
- * The DM L10 pages' frame: the Leadership Hub's look (scoped by `.hub-l10`, see l10.css) and its slim meeting bar,
+ * The DM L10 pages' frame: the Leadership Hub's look (scoped by `.hub-l10`, see the DM L10 section of globals.css) and its slim meeting bar,
  * which in the Hub carries "← Leadership Hub", the bell and the app links. Here the link opens this meeting in the
  * Hub, the bell is the same notes and read state as the Hub's, and the assistant bubble sits bottom right as there.
  */
