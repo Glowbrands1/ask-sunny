@@ -77,7 +77,8 @@ export const SECTION_HINTS: Record<AgendaKey, string> = {
   rocks: "Quarterly rocks by owner: status, milestones and notes.",
   headlines: "Customer and employee headlines to share with the team.",
   todos: "Weekly commitments. Open to-dos carry forward.",
-  ids: "Identify, Discuss, Solve. Rank your top three, then work them in order.",
+  // Ask Sunny: no ranking on IDS (see RANKING in meeting/_components/Ids.tsx), so the hint does not mention it.
+  ids: "Identify, Discuss, Solve. Work each issue through, then press Solve.",
   conclude: "Recap, cascade the message and rate the meeting.",
 };
 
