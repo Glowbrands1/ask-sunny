@@ -107,6 +107,18 @@ const MUST_READ: readonly { key: string; turn: string; place: RegExp; account: R
   { key: "kearney-dash", turn: "create a ca for marnie holloway, she was at kearney - no call no show", place: /\bkearney\b/i, account: /no call no show/i },
   { key: "lincoln-monday", turn: "create a ca for marnie holloway, she was late at lincoln monday", place: /\blincoln\b/i, account: /\bshe was late\b/i },
   { key: "omaha-paren", turn: "create a ca for marnie holloway, she was at omaha (late)", place: /\bomaha\b/i, account: /\blate\b/i },
+  // QA's ruling on Gate-Sunny's probes: a capitalised word after the place does not make it a longer name.
+  { key: "kearney-today-caps", turn: "create a ca for marnie holloway, she was late at Kearney Today", place: /\bkearney\b/i, account: /\blate\b/i },
+  { key: "omaha-again-caps", turn: "create a ca for marnie holloway, she was late at Omaha Again", place: /\bomaha\b/i, account: /\blate\b/i },
+  { key: "kearney-nov-1-caps", turn: "create a ca for marnie holloway, she was late at Kearney Nov 1", place: /\bkearney\b/i, account: /\blate\b/i },
+  { key: "kearney-sat-caps", turn: "create a ca for marnie holloway, she was late at Kearney Sat", place: /\bkearney\b/i, account: /\blate\b/i },
+  { key: "kearney-ncns-caps", turn: "create a ca for marnie holloway, she was at Kearney NCNS", place: /\bkearney\b/i, account: /\bNCNS\b/ },
+  {
+    key: "kearney-then-name",
+    turn: "create a ca for marnie holloway, she was late at kearney Marnie skipped her closing duties",
+    place: /\bkearney\b/i,
+    account: /skipped her closing duties/i,
+  },
 ];
 
 export const NOV13_OBSERVATION_PLACE_MUST_READ_CASES: ReplayCase[] = MUST_READ.map((wording) => ({

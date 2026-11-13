@@ -1048,7 +1048,7 @@ function withoutPlace(clause: string): string {
        * PLACE_STRIP_WHOLE_PHRASE_ONLY_ENABLED (QA, Gate-Sunny's #933 probes, 13 Nov 2026; high: it changed an HR
        * record's meaning): "she was late because she was at lincoln high" became "… she was high", and "<A> at omaha
        * west" became "<A> west". A place is not taken out only when the next word continues a longer proper noun
-       * (`continuesPlaceName`: "high", "west", a capitalised word mid-sentence); then every word is kept and no shorter
+       * (`continuesPlaceName`: a short list — "high", "west", "mall" …); then every word is kept and no shorter
        * phrase inside it is tried. A date, a dash, a weekday or the rest of the account leave the place read (QA, after
        * Gate-Bubbles-3's #869 finding). Off, as before.
        */
