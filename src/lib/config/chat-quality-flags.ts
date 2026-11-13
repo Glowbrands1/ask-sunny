@@ -4664,3 +4664,12 @@ export function policyCarryRetrievalEnabled(): boolean {
 export function notFollowingIsViolationEnabled(): boolean {
   return envFlag("NOT_FOLLOWING_IS_VIOLATION_ENABLED");
 }
+
+/**
+ * FORM_DATE_BUSINESS_TODAY (live bug, QA, 13 Nov 2026): a new form's date (and every other "today" used as a business
+ * date) is the business date in BUSINESS_TIMEZONE, not the UTC date, which is already tomorrow on an evening form.
+ * See `lib/business-today.ts`. Off, the UTC date, as before.
+ */
+export function formDateBusinessTodayEnabled(): boolean {
+  return envFlag("FORM_DATE_BUSINESS_TODAY_ENABLED");
+}
