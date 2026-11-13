@@ -143,6 +143,28 @@ export function accountFromWords(employee: string | null, input: CardCheckInput)
   const turn = naming ?? turns[0] ?? "";
   const at = employee ? fold(turn).indexOf(fold(employee)) : -1;
   const after = at >= 0 ? turn.slice(at + employee!.length) : turn.replace(REQUEST_LEAD, "");
+  const own = accountIn(after, employee, input);
+  if (own !== null || naming === undefined) return own;
+  /*
+   * Gate-Bubbles-5 (13 Nov 2026, nov13-ca-asks-what-happened-negative-answer-to-the-ask): "create corrective action form
+   * for Rowan Kestrel, Team Member Part Time", then "she skipped the closing checklist on her shift last night". The
+   * naming turn holds no account; the turns after it do. Read them in order, the first with an account wins.
+   */
+  const later = input.turns.slice(input.turns.lastIndexOf(naming) + 1);
+  for (const said of later) {
+    // A question to the app ("what level should this be?") is never her account.
+    if (/\?\s*$/.test(said) || /^\s*(?:what|which|who|how|why|when|where|should|can|could|do|does|is|are|will|would)\b/i.test(said)) continue;
+    const account = accountIn(said, employee, input);
+    if (account !== null) return account;
+  }
+  return null;
+}
+
+/** How long or how often she works, after a title ("Team Member Part Time"). */
+const EMPLOYMENT_TYPE = /\s*\b(?:part|full)[- ]?time\b|\s*\b(?:pt|ft|seasonal|temp)\b/gi;
+
+/** The account in one stretch of the manager's words: its clauses that are facts, joined; null when none. */
+function accountIn(after: string, employee: string | null, input: CardCheckInput): string | null {
   /*
    * Gate-Bubbles-5 / Gate-Sunny-2 (13 Nov 2026): the same split and filter as an added fact. "ca for <A>, coached her
    * 10-16, she was late again 10-20" repairs to "she was late again 10-20"; "…, signed the manual 10/1, late on 10/20"
@@ -154,6 +176,8 @@ export function accountFromWords(employee: string | null, input: CardCheckInput)
     .filter((clause) => {
       if (clause === "" || issueProblem(clause, employee, input) !== null || REQUEST_LEAD.test(clause) || REQUEST_FOR.test(clause)) return false;
       if (SUBJECTLESS_HISTORY.test(clause) || LEVEL_START.test(clause)) return false;
+      // Gate-Bubbles-5 (13 Nov 2026): "<title> Part Time" is the title, never an account.
+      if (onlyRole(clause.replace(EMPLOYMENT_TYPE, "").trim(), input)) return false;
       const subjected = /^(?:she|he|they)\b/i.test(clause) ? clause : `she ${clause}`;
       return !isHistory(subjected) && !notAFact(subjected, input);
     });

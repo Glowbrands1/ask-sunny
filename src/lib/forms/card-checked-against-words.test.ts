@@ -83,7 +83,9 @@ describe("CARD_CHECKED_AGAINST_WORDS_ENABLED: the card", () => {
     const turns = { turns: ["write up Marnie Holloway", "verbal warning. she left the register unlocked overnight"], roster: ROSTER };
     const model: CardCheckModel = async () => ({ ok: true, output: { issue: { value: "left the register unlocked overnight", quote: "she left the register unlocked overnight" } } });
     const out = await withCardCheckedAgainstWords(card("verbal warning"), turns, model);
-    expect(out.formProposal?.issue).toBe("left the register unlocked overnight");
+    // Changed on purpose (Gate-Bubbles-5, 13 Nov 2026): the code now reads the account from the turn after the naming
+    // turn, so it repairs this card itself, in her words, before any model call.
+    expect(out.formProposal?.issue).toBe("she left the register unlocked overnight");
   });
 
   it("on: a person who is a job title is taken off the card, and it asks who it is for", async () => {
@@ -347,3 +349,19 @@ describe("CARD_CHECKED_AGAINST_WORDS_ENABLED: the gates' place-typo list (13 Nov
     expect(addedFacts("she was late on 11/3/26", "Marnie Holloway", after("she was at the frnt desk on her phone"))).toEqual(["she was at the frnt desk on her phone"]);
   });
 });
+
+describe("CARD_CHECKED_AGAINST_WORDS_ENABLED: an account in the turn after the naming turn (Gate-Bubbles-5, 13 Nov 2026)", () => {
+  const naming = "create corrective action form for Marnie Holloway, Tanning Consultant Part Time";
+  const answer = "she skipped the closing checklist on her shift last night";
+  it("the naming turn holds only a title; the next turn's account repairs the Issue, and nothing asks what happened", () => {
+    expect(accountFromWords("Marnie Holloway", { turns: [naming, answer], roster: ROSTER })).toBe(answer);
+  });
+  it("the naming turn's own account still wins over a later turn", () => {
+    expect(accountFromWords("Marnie Holloway", { turns: ["create a CA for Marnie Holloway, she was late", answer], roster: ROSTER })).toBe("she was late");
+  });
+  it("a later turn that is no account (a level, a question) repairs nothing", () => {
+    expect(accountFromWords("Marnie Holloway", { turns: [naming, "verbal warning"], roster: ROSTER })).toBeNull();
+    expect(accountFromWords("Marnie Holloway", { turns: [naming, "what level should this be?"], roster: ROSTER })).toBeNull();
+  });
+});
+
