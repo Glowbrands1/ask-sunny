@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { SaveOutcome } from "@/features/l10/data.server";
@@ -128,5 +128,68 @@ describe("the DM L10 page in Ask Sunny", () => {
   it("has the floating Add to IDS button", () => {
     renderView();
     expect(screen.getByRole("button", { name: /Add to IDS/ })).toBeTruthy();
+  });
+});
+
+describe("saving: the page says saved only when the Hub has saved it", () => {
+  it("shows Saving… while the Hub has not answered, and All changes saved only after it confirms", async () => {
+    let answer!: (o: SaveOutcome) => void;
+    const save = vi.fn(() => new Promise<SaveOutcome>((r) => (answer = r)));
+    renderView({ save: save as unknown as SaveFn });
+    await act(async () => {
+      fireEvent.click(screen.getByText("Bo Lark"));
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("save-status").textContent).toBe("Saving…");
+    await act(async () => {
+      answer({ ok: true, version: 4, updatedAt: "t" });
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(screen.getByTestId("save-status").textContent).toBe("All changes saved");
+  });
+
+  it("a failed save says so with the Hub's reason and Try again; Try again saves the same change", async () => {
+    const save = vi
+      .fn<() => Promise<SaveOutcome>>()
+      .mockResolvedValueOnce({ ok: false, kind: "unavailable", message: "The Leadership Hub could not be reached. Your change is kept on this page." })
+      .mockResolvedValueOnce({ ok: true, version: 4, updatedAt: "t" });
+    renderView({ save: save as unknown as SaveFn });
+    await act(async () => {
+      fireEvent.click(screen.getByText("Bo Lark"));
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    const status = screen.getByTestId("save-status");
+    expect(status.getAttribute("data-status")).toBe("failed");
+    expect(status.textContent).toContain("Not saved: The Leadership Hub could not be reached.");
+    expect(status.textContent).not.toContain("All changes saved");
+    await act(async () => {
+      fireEvent.click(within(status).getByRole("button", { name: "Try again" }));
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(save).toHaveBeenCalledTimes(2);
+    const [, version, doc] = save.mock.calls[1] as unknown as [string, number, { attendees: { name: string; shared: boolean }[] }];
+    expect(version).toBe(3);
+    expect(doc.attendees.find((a) => a.name === "Bo Lark")?.shared).toBe(true);
+    expect(screen.getByTestId("save-status").textContent).toBe("All changes saved");
+  });
+
+  it("a save the Hub refuses as stale is merged with the latest and saved on top of it (never overwrites)", async () => {
+    const latest = loaded(7, { attendees: [{ id: "att-avery", name: "Avery Quill", role: "Visionary", shared: true, rating: null }], cascade: "Staffing first" });
+    const save = vi
+      .fn<() => Promise<SaveOutcome>>()
+      .mockResolvedValueOnce({ ok: false, kind: "stale", latest })
+      .mockResolvedValueOnce({ ok: true, version: 8, updatedAt: "t" });
+    renderView({ save: save as unknown as SaveFn });
+    await act(async () => {
+      fireEvent.click(screen.getByText("Bo Lark"));
+      await new Promise((r) => setTimeout(r, 30));
+    });
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+    const [, version, doc] = save.mock.calls[1] as unknown as [string, number, { cascade?: string; attendees: { name: string; shared: boolean }[] }];
+    expect(version).toBe(7);
+    expect(doc.cascade).toBe("Staffing first"); // the other person's edit is kept
+    expect(doc.attendees.find((a) => a.name === "Bo Lark")?.shared).toBe(true); // and so is this one
+    await waitFor(() => expect(screen.getByTestId("save-status").textContent).toBe("All changes saved"));
   });
 });

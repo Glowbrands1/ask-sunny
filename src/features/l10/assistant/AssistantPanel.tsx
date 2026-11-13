@@ -6,7 +6,10 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEven
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+import { meetingPeopleAction } from "@/features/l10/actions";
 import { cx } from "@/features/l10/ui/ui";
+import type { Person } from "./chat-mentions";
+import { ChatMentionText, ChatPeople, useChatPeople, useMentionPicker } from "./MentionPicker";
 import { collectCitations, toolLabel } from "./citations";
 import { NoteCard } from "./NoteCard";
 import { SourceViewer } from "./SourceViewer";
@@ -24,7 +27,8 @@ import { currentChatId, deleteFromHistory, listHistory, loadConversation, openFr
  * Same as the Hub: header (title, New chat, Expand/Shrink, Close), empty state with the Hub's L10 suggestions,
  * streamed answers in Markdown with the model's "Thinking" summary, tool status chips, Deep think, Stop.
  * Chat history works as in the Hub (this browser only; per Ask Sunny user and meeting; not shared with the Hub's).
- * Only in the Hub: attachments, @-mentions in the chat box, web sources, "Open as document".
+ * "@" in the chat box offers this meeting's people (the Hub's MentionPicker; the Hub offers everyone the person shares
+ * a meeting with). Only in the Hub: attachments, web sources, "Open as document".
  */
 
 const focusRing = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-bronze";
@@ -133,12 +137,46 @@ function Thinking({ text, running }: { text: string; running: boolean }) {
   );
 }
 
+/** The person's own text, with teammates they picked with "@" as name chips (the Hub's UserText). */
+function UserText({ text }: { text: string }) {
+  return <>{ChatMentionText({ text, people: useChatPeople() })}</>;
+}
+
+/* The people the chat can @-mention, loaded once per meeting per visit and shared (the Hub's useMentionablePeople). */
+const peopleOnce = new Map<string, Promise<readonly Person[]>>();
+function loadPeople(meetingKey: string): Promise<readonly Person[]> {
+  let p = peopleOnce.get(meetingKey);
+  if (!p) {
+    p = meetingPeopleAction(meetingKey)
+      .then((list) => (Array.isArray(list) ? list : []))
+      .catch(() => {
+        peopleOnce.delete(meetingKey); // try again next time the chat opens
+        return [];
+      });
+    peopleOnce.set(meetingKey, p);
+  }
+  return p;
+}
+function useMentionablePeople(meetingKey: string): readonly Person[] {
+  const [people, setPeople] = useState<readonly Person[]>([]);
+  useEffect(() => {
+    let live = true;
+    void loadPeople(meetingKey).then((p) => live && setPeople(p));
+    return () => {
+      live = false;
+    };
+  }, [meetingKey]);
+  return people;
+}
+
 function Message({ message, running }: { message: UIMessage; running: boolean }) {
   if (message.role === "user") {
     const text = message.parts.map((p) => (p.type === "text" ? p.text : "")).join("");
     return (
       <div className="flex flex-col items-end gap-1 py-2" data-testid="user-message">
-        <p className="m-0 max-w-[88%] rounded-2xl rounded-br-md bg-ink px-3.5 py-2 text-[15px] whitespace-pre-wrap text-white">{text}</p>
+        <p className="m-0 max-w-[88%] rounded-2xl rounded-br-md bg-ink px-3.5 py-2 text-[15px] whitespace-pre-wrap text-white">
+          <UserText text={text} />
+        </p>
       </div>
     );
   }
@@ -190,6 +228,10 @@ function Chat({ meetingKey, scope, deep, onDeepChange }: { meetingKey: string; s
     },
   });
   const [draft, setDraft] = useState("");
+  // "@" offers this meeting's people; picking writes "@Full Name" (the Hub's composer).
+  const people = useMentionablePeople(meetingKey);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const mention = useMentionPicker({ people, text: draft, setText: setDraft, inputRef });
   const running = status === "submitted" || status === "streaming";
   const viewport = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -208,6 +250,9 @@ function Chat({ meetingKey, scope, deep, onDeepChange }: { meetingKey: string; s
     send(draft);
   }
   function onInputKey(e: KeyboardEvent<HTMLTextAreaElement>) {
+    // While the people list is open, Enter / Tab pick a person and Escape closes it (never sends).
+    mention.inputProps.onKeyDown(e);
+    if (e.defaultPrevented) return;
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       send(draft);
@@ -215,6 +260,7 @@ function Chat({ meetingKey, scope, deep, onDeepChange }: { meetingKey: string; s
   }
 
   return (
+    <ChatPeople value={people}>
     <div className="flex min-h-0 flex-1 flex-col">
       <div ref={viewport} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-4 sm:px-5" aria-label="Conversation">
         {messages.length === 0 ? (
@@ -259,16 +305,22 @@ function Chat({ meetingKey, scope, deep, onDeepChange }: { meetingKey: string; s
       <div className="flex flex-col gap-1.5 px-3 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-4 sm:pb-3">
         <form onSubmit={onSubmit} className="glass-tile flex flex-col gap-1.5 p-2 focus-within:ring-2 focus-within:ring-bronze">
           <textarea
+            ref={inputRef}
+            {...mention.inputProps}
             aria-label="Message the Leadership Assistant"
             name="message"
             autoComplete="off"
-            placeholder="Ask anything about this meeting…"
+            placeholder="Ask anything about this meeting, or @ a teammate…"
             rows={1}
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
+            onChange={(e) => {
+              setDraft(e.target.value);
+              mention.inputProps.onChange(e);
+            }}
             onKeyDown={onInputKey}
             className="max-h-48 min-h-11 w-full resize-none bg-transparent px-2 py-2.5 text-[15px] outline-none placeholder:text-muted"
           />
+          {mention.list}
           <div className="flex items-center justify-between">
             <button
               type="button"
@@ -297,6 +349,7 @@ function Chat({ meetingKey, scope, deep, onDeepChange }: { meetingKey: string; s
         <p className="m-0 px-1 text-center text-[11px] text-muted">Can&apos;t change data. Reads this meeting from the Leadership Hub. Check important answers.</p>
       </div>
     </div>
+    </ChatPeople>
   );
 }
 

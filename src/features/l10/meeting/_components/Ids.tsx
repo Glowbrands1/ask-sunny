@@ -5,6 +5,7 @@ import { useState } from "react";
 import confetti from "canvas-confetti";
 import { Button, cx, inputClass } from "@/features/l10/ui/ui";
 import { MentionField, MentionText, useMentionPlain, useMentionRoster } from "@/features/l10/ui/Mentions";
+import { SharedFiles } from "./SharedFiles";
 import { RANKS, canVote, groupRanks, myRank, newItemId, picksByVoter, searchIssues, sortIssues, toggleSolved, toggleVote, usesPreviousOrder, type Rank, type Voter } from "@/features/l10/lib/doc";
 import type { Attendee, Headline, Issue, MeetingDoc, Rock, Todo } from "@/features/l10/lib/types";
 
@@ -110,7 +111,6 @@ export function Ids({
   edit,
   session,
   meetingKey,
-  filesHref,
   voter = { id: "anonymous", name: "Someone" },
   attendees = [],
 }: {
@@ -118,8 +118,6 @@ export function Ids({
   edit: (fn: (d: MeetingDoc) => MeetingDoc) => void;
   session: string;
   meetingKey?: string;
-  /** Ask Sunny: issue files are not in this app yet; this is the meeting in the Leadership Hub, where they are. */
-  filesHref?: string;
   /** The signed-in person: their rank presses are recorded under this id and name. */
   voter?: Voter;
   /** The meeting's attendees, one row each in "Everyone's top three". */
@@ -171,16 +169,12 @@ export function Ids({
         </div>
       </div>
       <MentionField multiline aria-label="Discussion notes" value={active.notes ?? ""} onChange={(v) => patch(active.id, { notes: v })} placeholder="Discussion notes: root cause, proposed solution, decisions…" className="min-h-[160px] py-2" />
-      {/* Files on an issue (the Hub's SharedFiles) are not in Ask Sunny yet: they stay in the Leadership Hub. */}
-      <p data-testid="issue-files-in-hub" data-meeting={meetingKey} className="m-0 text-sm text-muted">
-        {(active.files?.length ?? 0) > 0 ? `${active.files!.length} file${active.files!.length === 1 ? "" : "s"} on this issue. ` : ""}
-        Files are added and opened in the Leadership Hub.{" "}
-        {filesHref && (
-          <a href={filesHref} target="_blank" rel="noopener noreferrer" className="font-semibold text-bronze-deep underline">
-            Open in Leadership Hub ↗
-          </a>
-        )}
-      </p>
+      <SharedFiles
+        meetingKey={meetingKey}
+        issueId={active.id}
+        files={active.files ?? []}
+        onChange={(update) => setIssues((xs) => xs.map((i) => (i.id === active.id ? { ...i, files: update(i.files ?? []) } : i)))}
+      />
       <div className="flex flex-wrap items-center gap-2 border-t border-rule pt-3">
         <span className="text-xs text-muted">Convert to:</span>
         <Button variant="outline" onClick={() => edit((d) => ({ ...d, todos: [...d.todos, { id: newItemId(), text: active.title, owner: "—", due: "Next wk", done: false } as Todo] }))}>

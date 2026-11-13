@@ -120,7 +120,7 @@ export function resetL10TabCache(): void {
 export interface OpenedMeeting {
   info: MeetingInfo;
   /** The Hub account this person acts as (its id is what the meeting clock and votes record). */
-  viewer: { id: string; label: string; name: string };
+  viewer: { id: string; label: string; name: string; /** The Hub says this account is a hub admin (display only: every admin action is checked again by the Hub). */ isHubAdmin: boolean };
   loaded: LoadedMeeting;
   people: { id: string; name: string }[];
   roster: Roster;
@@ -133,13 +133,13 @@ export async function openMeeting(key: string): Promise<{ ok: true; meeting: Ope
   if (!viewer) return hubPartnerConfig() ? { ok: false, reason: "forbidden" } : { ok: false, reason: "not-configured" };
   const a = await callHub("meeting", viewer.email, { key });
   if (a.status !== 200) return failure(a);
-  const b = a.body as { info: MeetingInfo; viewer: { id: string; name: string | null }; loaded: LoadedMeeting; people: { id: string; name: string }[]; roster: Roster };
+  const b = a.body as { info: MeetingInfo; viewer: { id: string; name: string | null; isHubAdmin?: boolean }; loaded: LoadedMeeting; people: { id: string; name: string }[]; roster: Roster };
   const name = (b.viewer.name ?? "").split(/\s+/)[0] || viewer.displayName.split(/\s+/)[0] || viewer.email;
   return {
     ok: true,
     meeting: {
       info: b.info,
-      viewer: { id: b.viewer.id, label: viewer.email, name },
+      viewer: { id: b.viewer.id, label: viewer.email, name, isHubAdmin: b.viewer.isHubAdmin === true },
       loaded: b.loaded,
       people: Array.isArray(b.people) ? b.people : [],
       roster: { members: Array.isArray(b.roster?.members) ? b.roster.members : [], leader: b.roster?.leader ?? null },
@@ -268,4 +268,51 @@ export async function sendNote(input: { meetingKey: string; recipientIds: string
       : [];
   });
   return { ok: true, results };
+}
+
+/* ── Hub admin actions (the Hub's rules: hub_admin only, checked by the Hub every time) ── */
+
+export type RestoreOutcome = { ok: true; version: number } | { ok: false; message: string };
+
+/** Restore an old version (the Hub's restoreVersionAction, run by the Hub for this person): saved as a NEW version. */
+export async function restoreVersion(key: string, version: number): Promise<RestoreOutcome> {
+  const viewer = await l10Viewer();
+  if (!viewer || !isMeetingKey(key)) return { ok: false, message: "You do not have access to this meeting." };
+  const a = await callHub("restore-version", viewer.email, { key, version });
+  if (a.status === 404) return { ok: false, message: "You do not have access to this meeting." };
+  if (a.status !== 200) return { ok: false, message: "The restore did not go through. Nothing was changed." };
+  const b = a.body as { ok?: boolean; version?: number; message?: string };
+  return b.ok === true && typeof b.version === "number" ? { ok: true, version: b.version } : { ok: false, message: typeof b.message === "string" ? b.message : "The restore did not go through. Nothing was changed." };
+}
+
+export type DeleteOutcome = { ok: true; already: boolean } | { ok: false; kind: "forbidden" | "invalid" | "unavailable"; message: string };
+
+/** Soft-deletes one recap (the Hub's l10_delete_recap: hub admins only, recaps of this tab's meeting only). */
+export async function deleteRecap(id: string): Promise<DeleteOutcome> {
+  const viewer = await l10Viewer();
+  if (!viewer) return { ok: false, kind: "forbidden", message: "Only hub admins can delete recaps." };
+  const a = await callHub("delete-recap", viewer.email, { id });
+  if (a.status === 404) return { ok: false, kind: "forbidden", message: "Only hub admins can delete recaps." };
+  const b = a.body as { ok?: boolean; already?: boolean; kind?: string; message?: string };
+  if (a.status === 200 && b.ok === true) return { ok: true, already: b.already === true };
+  const kind = b.kind === "forbidden" || b.kind === "invalid" ? b.kind : "unavailable";
+  return { ok: false, kind, message: typeof b.message === "string" ? b.message : "The recap was not deleted. Nothing changed: try again." };
+}
+
+/* ── Files on an issue (the Hub's own file code, run by the Hub for this person; Storage stays in the Hub) ── */
+
+export type FileReply<T> = { ok: true; data: T } | { ok: false; error: { kind: string; message: string } };
+
+const fileUnavailable = { ok: false as const, error: { kind: "unavailable", message: "The file could not be handled just now. Try again in a moment." } };
+
+export async function fileOp<T>(op: "file-prepare" | "file-finish" | "file-open", args: Record<string, unknown>): Promise<FileReply<T>> {
+  const viewer = await l10Viewer();
+  if (!viewer) return { ok: false, error: { kind: "forbidden", message: "You do not have permission to add files to this meeting." } };
+  const a = await callHub(op, viewer.email, args);
+  if (a.status === 404) return { ok: false, error: { kind: "forbidden", message: "You do not have permission to add files to this meeting." } };
+  if (a.status !== 200) return fileUnavailable;
+  const b = a.body as { ok?: boolean; data?: T; error?: { kind?: unknown; message?: unknown } };
+  if (b.ok === true && b.data !== undefined) return { ok: true, data: b.data };
+  if (b.ok === false && b.error && typeof b.error.message === "string") return { ok: false, error: { kind: typeof b.error.kind === "string" ? b.error.kind : "unavailable", message: b.error.message } };
+  return fileUnavailable;
 }

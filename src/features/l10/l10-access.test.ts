@@ -165,7 +165,8 @@ describe("opening the meeting", () => {
     const opened = await openMeeting("stc-dm");
     expect(opened).toEqual({
       ok: true,
-      meeting: { info: STC, viewer: { id: "hub-user-1", label: "avery.quill@example.test", name: "Avery" }, loaded: { version: 4, updatedAt: "t", doc: { rocks: [] } }, people: [{ id: "hub-user-1", name: "Avery Quill" }], roster: ROSTER },
+      // isHubAdmin added with Restore / Delete recap (the Hub's admin controls): absent from the Hub's answer means false.
+      meeting: { info: STC, viewer: { id: "hub-user-1", label: "avery.quill@example.test", name: "Avery", isHubAdmin: false }, loaded: { version: 4, updatedAt: "t", doc: { rocks: [] } }, people: [{ id: "hub-user-1", name: "Avery Quill" }], roster: ROSTER },
     });
   });
 });

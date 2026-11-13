@@ -62,7 +62,7 @@ export function MeetingView({
   dateLabel?: string;
   /** Who sits in this meeting, served by the Hub (Ask Sunny's repository carries no names). */
   roster: Roster;
-  /** This meeting in the Leadership Hub (absolute), for "Open in Leadership Hub" and the recaps link. */
+  /** This meeting in the Leadership Hub (absolute), for "Open in Leadership Hub". */
   hubMeetingUrl: string;
   /** The people who can open this meeting, for the @-picker. Empty: no picker. */
   mentionPeople?: Person[];
@@ -258,7 +258,7 @@ export function MeetingView({
     <MentionRoster value={mentionPeople}>
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          {/* Ask Sunny opens this one meeting; the full Hub (every meeting, recaps, files, the tracker) is one click away. */}
+          {/* Ask Sunny opens this one meeting; the full Hub (every meeting, the tracker) is one click away. */}
           <a href={hubMeetingUrl} target="_blank" rel="noopener noreferrer" data-testid="open-in-hub" className="text-[13px] font-semibold text-bronze-deep hover:underline print:hidden">
             Open in Leadership Hub ↗
           </a>
@@ -434,9 +434,9 @@ export function MeetingView({
               Start a new meeting
             </Button>
             <Button onClick={() => setTimer(() => emptyTimer())}>Reopen this meeting</Button>
-            <a href={`${hubMeetingUrl.replace(/\/meetings\/[^/]+$/, "")}/meetings/recaps?meeting=${info.key}`} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center px-2 text-[13px] font-semibold text-bronze-deep hover:underline">
-              See recaps in the Leadership Hub ↗
-            </a>
+            <Link href={`/meetings/${info.key}/recaps`} className="inline-flex min-h-11 items-center px-2 text-[13px] font-semibold text-bronze-deep hover:underline">
+              See recaps
+            </Link>
           </div>
         </Card>
       ) : (
@@ -532,7 +532,7 @@ export function MeetingView({
             {view === "rocks" && <Rocks rocks={doc.rocks} onChange={(rocks) => edit((d) => ({ ...d, rocks }))} people={people} today={today} />}
             {view === "headlines" && <Headlines headlines={doc.headlines} onChange={(headlines) => edit((d) => ({ ...d, headlines }))} author={people[0] ?? ""} />}
             {view === "todos" && <Todos todos={doc.todos} onChange={(todos) => edit((d) => ({ ...d, todos }))} people={people} today={today} />}
-            {view === "ids" && <Ids doc={doc} edit={edit} session={timer.sessionId ?? "pending"} meetingKey={info.key} filesHref={hubMeetingUrl} voter={{ id: viewer.id, name: viewer.name || viewer.label }} attendees={attendees} />}
+            {view === "ids" && <Ids doc={doc} edit={edit} session={timer.sessionId ?? "pending"} meetingKey={info.key} voter={{ id: viewer.id, name: viewer.name || viewer.label }} attendees={attendees} />}
             {view === "conclude" && (
               <Conclude
                 meetingKey={info.key}
@@ -546,7 +546,7 @@ export function MeetingView({
                 fixedSessionId={timer.sessionId}
                 durationSeconds={elapsed}
                 onEnded={() => setTimer((t) => endedTimer(t, serverNow()))}
-                recapsHref={`${hubMeetingUrl.replace(/\/meetings\/[^/]+$/, "")}/meetings/recaps?meeting=${info.key}`}
+                recapsHref={`/meetings/${info.key}/recaps`}
               />
             )}
             {view === "business-plan" && <BusinessPlan meetingName={info.name} doc={doc} edit={edit} today={today} />}
