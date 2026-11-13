@@ -4742,3 +4742,12 @@ export function closeSpellingMatchEnabled(): boolean {
 export function sharedCityAsksSalonEnabled(): boolean {
   return envFlag("SHARED_CITY_ASKS_SALON_ENABLED");
 }
+
+/**
+ * OBSERVATION_NO_LEADING_NAME (QA's Sunny 38d live check, 13 Nov 2026; default off): an account clause that starts with
+ * the employee's name and then "at"/"in" ("<A> at the front desk, she was rude to a guest") loses the name; the place
+ * and the rest are kept as typed. See `ai/remap-incident.ts`. Off, as before.
+ */
+export function observationNoLeadingNameEnabled(): boolean {
+  return envFlag("OBSERVATION_NO_LEADING_NAME_ENABLED");
+}

@@ -3,6 +3,7 @@ import {
   caSalesPolicyEnabled,
   levelRequestDateEnabled,
   observationNoLevelLeadEnabled,
+  observationNoLeadingNameEnabled,
   observationWithoutAskEnabled,
   politeRequestOwnTurnsEnabled,
   priorSentenceFixEnabled,
@@ -950,6 +951,15 @@ export function managerAccount(sentence: string, employeeName: string | null): s
     }
     if (onlyWhoOrWhere(text, employeeName)) continue;
     text = withoutPlace(text);
+    /*
+     * OBSERVATION_NO_LEADING_NAME_ENABLED (QA's Sunny 38d live check, 13 Nov 2026): "create a ca for <A> at the front
+     * desk, she was rude to a guest" gave the Observation "<A> at the front desk, she was rude to a guest". The employee
+     * is the form's, not the account's: a clause that starts with their name and then "at"/"in" loses the name and keeps
+     * every other word ("at the front desk, she was rude to a guest"). Off, as before.
+     */
+    if (observationNoLeadingNameEnabled() && employeeName) {
+      text = text.replace(new RegExp(`^${escape(employeeName)}\\s+(?=(?:at|in)\\s)`, "i"), "");
+    }
     /*
      * CA_SALES_POLICY_ENABLED (QA, live, 4 Nov 2026): "CA for <name> due to
      * under performance in salon metrics" kept "<name> due to …" as the
