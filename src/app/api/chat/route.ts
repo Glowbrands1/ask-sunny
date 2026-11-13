@@ -61,6 +61,7 @@ import {
   reopenByAnyOpenVerbEnabled,
   twoFormsCardNotAskedEnabled,
   secondRequestOwnAccountEnabled,
+  cardCheckedAgainstWordsEnabled,
   nearMissQuestionRulesEnabled,
   formNameOffRosterAskEnabled,
   whatHappenedNoCreateEnabled,
@@ -983,6 +984,19 @@ async function postChat(request: Request) {
       }
       // TWO_FORMS_CARD_NOT_ASKED_ENABLED: a card that names its employee is never asked "Which of them … — <that employee> or …?" (`lib/forms/card-not-asked.ts`).
       if (twoFormsCardNotAskedEnabled()) answer = (await import("@/lib/forms/card-not-asked")).withoutWhichAskOnSeatedCard(answer);
+      // CARD_CHECKED_AGAINST_WORDS_ENABLED: the card is checked against the manager's own words before it is shown (`lib/forms/card-checked-against-words.ts`).
+      if (cardCheckedAgainstWordsEnabled() && answer.formProposal) {
+        const { readDirectoryFacts } = await import("@/lib/forms/employee-roster");
+        const { callFormPatchModel } = await import("@/lib/forms/form-patch-call");
+        answer = await (await import("@/lib/forms/card-checked-against-words")).withCardCheckedAgainstWords(
+          answer,
+          {
+            turns: [...parsed.history.filter((turn) => turn.role === "user").map((turn) => String(turn.content ?? "")), asked.question],
+            roster: (await readDirectoryFacts(context.identity.scope).catch(() => [])).map((person) => ({ ...person, positionName: person.title })),
+          },
+          callFormPatchModel,
+        );
+      }
       // NEAR_MISS_QUESTION_RULES_ENABLED: "no, …" to "Is this for <name>?" never gets a card for that name.
       if (nearMissQuestionRulesEnabled()) answer = (await import("@/lib/forms/near-miss-question-rules")).withoutTurnedDownName(answer, asked);
       // ADDRESS_NOT_PERSON_ENABLED: "coaching form for 123 Main Street" names an address, not a person (QA, 3 Nov 2026).
