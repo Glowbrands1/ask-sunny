@@ -200,8 +200,19 @@ function onlyRole(text: string, input: CardCheckInput): boolean {
   return ROLE.test(said) && words.length <= 3;
 }
 
+/*
+ * PRIOR HISTORY (Gate-Bubbles-5's full-pack join scan, 13 Nov 2026): a sentence about an earlier step is not this
+ * incident; it belongs in prior actions, never in What happened or the Observation. "<name> signed the jba policy manual
+ * on 10-15-26", "he already had a CA on 10/14 for being late", "she had a verbal warning on 10/1".
+ */
+const PRIOR_STEP = new RegExp(
+  String.raw`\b(?:already\s+(?:had|got|has|received|signed)|(?:had|has had|has|received|got|was given|were given)\s+(?:a|an|her|his|their|the)?\s*(?:prior\s+|previous\s+|earlier\s+)?(?:(?:verbal|written|final|first|second|last)\s+)?(?:warning|ca|c\/a|coaching|write[- ]?up|corrective action)s?\b|\bsigned\b)`,
+  "i",
+);
+
 export function notAFact(clause: string, input: CardCheckInput): boolean {
   const text = clause.trim();
+  if (PRIOR_STEP.test(text)) return true;
   if (GETS_LEVEL.test(text) || GIVE_LEVEL.test(text) || HEDGED_VERB.test(text)) return true;
   const identity = IDENTITY_OF.exec(text)?.[1];
   if (identity && (onlyRole(identity, input) || onlyPlace(identity))) return true;
