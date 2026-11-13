@@ -1,7 +1,8 @@
+import { closeSpellingMatchEnabled } from "@/lib/config/chat-quality-flags";
 import { formatManualCitation } from "@/lib/ai/policy-citation-fields";
 
 import { sectionText } from "./ca-policy";
-import { namesHeading } from "./named-policy-section";
+import { closeHeadingReading, namesHeading } from "./named-policy-section";
 import { findManualSection, headingKey, manualSectionHeadings, type ManualChunk, type ManualSection } from "./official-policy-manual";
 
 /*
@@ -103,6 +104,11 @@ function alike(word: string, others: ReadonlySet<string>): boolean {
 export function sectionForTopic(topic: string, chunks: readonly ManualChunk[]): ManualSection | null {
   if (chunks.length === 0) return null;
   const namedHeadings = [...new Set(manualSectionHeadings(chunks).filter((heading) => namesHeading(topic, heading)))];
+  // CLOSE_SPELLING_MATCH_ENABLED: a topic naming no heading as spelled names the one it is confidently close to.
+  if (namedHeadings.length === 0 && closeSpellingMatchEnabled()) {
+    const close = closeHeadingReading(topic, manualSectionHeadings(chunks));
+    if (close.confident) namedHeadings.push(close.confident);
+  }
   const named = namedHeadings.length === 1 ? findManualSection(chunks, namedHeadings) : null;
   if (named) return named;
   const wanted = contentWords(topic);
