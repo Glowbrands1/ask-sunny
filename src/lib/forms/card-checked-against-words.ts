@@ -210,9 +210,14 @@ const PRIOR_STEP = new RegExp(
   "i",
 );
 
+/** "she was coached on this on 10/20", "she was written up": an earlier step done to her (Gate-Sunny-2, 13 Nov 2026). */
+const WAS_DISCIPLINED = /\b(?:was|were|has been|had been|got|already been)\s+(?:coached|written up|wrote up|counseled|counselled|disciplined|documented)\b/i;
+/** "she was given a … on 10/1", "was warned on 10/1": a step given to her on a date. */
+const DATED_GIVEN = /\b(?:was|were|got|had been)\s+(?:given|issued|handed|warned)\b[^.;]*\bon\s+(?:\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?|(?:mon|tues|wednes|thurs|fri|satur|sun)day|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i;
+
 export function notAFact(clause: string, input: CardCheckInput): boolean {
   const text = clause.trim();
-  if (PRIOR_STEP.test(text)) return true;
+  if (PRIOR_STEP.test(text) || WAS_DISCIPLINED.test(text) || DATED_GIVEN.test(text)) return true;
   if (GETS_LEVEL.test(text) || GIVE_LEVEL.test(text) || HEDGED_VERB.test(text)) return true;
   const identity = IDENTITY_OF.exec(text)?.[1];
   if (identity && (onlyRole(identity, input) || onlyPlace(identity))) return true;
