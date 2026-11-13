@@ -1268,9 +1268,27 @@ const CHILDREN: readonly { readonly name: string; readonly paths: () => readonly
   { name: `${REPLAY_PACK}, third third of the cases by id`, paths: () => [REPLAY_PACK_E2E], env: { REPLAY_PACK_PART: "2/3" } },
 ];
 
+/*
+ * THE CHILDREN AS PARALLEL CI JOBS (QA, 13 Nov 2026): the children run one after another (each a blocking execFileSync),
+ * so splitting the pack only keeps each child under 540 s; the job's total stays the sum, and the 30-minute job was
+ * cancelled at 30:11 (ask-sunny#930, no failing test). PARITY_ONLY (CI only) runs ONE child — its index in CHILDREN — so
+ * `.github/workflows/ci.yml` runs every child in its own matrix job, side by side; "guards" runs this file's other tests
+ * and no child. Unset (npm test, local), everything runs here, as before. The matrix lists every child: checked below.
+ */
+const PARITY_ONLY = process.env.PARITY_ONLY;
+const childSkipped = (index: number) => PARITY_ONLY !== undefined && PARITY_ONLY !== String(index);
+
+describe("the CI matrix runs every parity child", () => {
+  it("ci.yml's flags-off-parity matrix lists guards and each CHILDREN index, once", () => {
+    const workflow = readFileSync(".github/workflows/ci.yml", "utf8");
+    const listed = /parity-child:\s*\[([^\]]*)\]/.exec(workflow)?.[1]?.split(",").map((item) => item.trim().replace(/^["']|["']$/g, "")) ?? [];
+    expect(listed).toEqual(["guards", ...CHILDREN.map((_child, index) => String(index))]);
+  });
+});
+
 describe("existing chat and form suites with every new flag off", () => {
-  for (const child of CHILDREN) {
-    it.skipIf(CHILD)(
+  for (const [index, child] of CHILDREN.entries()) {
+    it.skipIf(CHILD || childSkipped(index))(
       `passes the suites whose expectations are already on main: ${child.name}`,
       () => {
         const env: NodeJS.ProcessEnv = { ...process.env, FLAGS_OFF_PARITY_CHILD: "1", ...child.env };
