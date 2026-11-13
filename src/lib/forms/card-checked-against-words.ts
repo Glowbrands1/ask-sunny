@@ -236,8 +236,17 @@ export function isHistory(text: string): boolean {
   return PRIOR_STEP.test(text) || WAS_DISCIPLINED.test(text) || DATED_GIVEN.test(text);
 }
 
+/*
+ * A PAYROLL OR DEDUCTION AMOUNT (Gate-Sunny-2, 13 Nov 2026): "she owes $25 for the late opening", "deduct $40 from her
+ * check", "she'll pay back $20", "payroll deduct yes, $15" is the form's payroll answer, never what she did. "she took
+ * $20 from the drawer" and "she was short $20" are what she did, and join.
+ */
+const MONEY = /(?:\$\s?\d|\b\d+(?:\.\d{2})?\s*(?:dollars?|bucks)\b)/i;
+const OWED = /\b(?:owes?|owed|owing|pay(?:s|ing)?\s+(?:it\s+)?back|paid\s+back|repay|reimburse|deduct(?:ed|ion|ing)?|payroll|charge(?:d)?\s+(?:her|him|them)|(?:take|taken|took)\s+(?:it\s+)?out\s+of\s+(?:her|his|their)\s+(?:check|pay))\b/i;
+
 export function notAFact(clause: string, input: CardCheckInput): boolean {
   const text = clause.trim();
+  if (MONEY.test(text) && OWED.test(text)) return true;
   if (isHistory(text)) return true;
   if (GETS_LEVEL.test(text) || GIVE_LEVEL.test(text) || HEDGED_VERB.test(text)) return true;
   const identity = IDENTITY_OF.exec(text)?.[1];

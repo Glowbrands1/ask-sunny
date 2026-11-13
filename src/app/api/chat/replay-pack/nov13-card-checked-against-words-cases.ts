@@ -86,4 +86,22 @@ export const NOV13_CARD_CHECKED_AGAINST_WORDS_CASES: ReplayCase[] = [
       expect(issue, `the request joined the Issue:\n${reply.content}`).not.toMatch(/needs a written warning/i);
     },
   },
+  {
+    id: "nov13-card-checked-payroll-amount-not-a-detail",
+    title: "a CA card for a late opening, then \"she owes $25 for the late opening\": a payroll amount is never added to the account (Gate-Sunny-2)",
+    report: "Gate-Sunny-2, 13 Nov 2026: \"she owes $25 for the late opening\" joined as \"Added to the Observation of Offense\" with CARD_CHECKED on",
+    status: "fixed",
+    fixFlags: ["CARD_CHECKED_AGAINST_WORDS_ENABLED"],
+    async run(t) {
+      vi.setSystemTime(new Date("2026-11-13T16:00:00Z"));
+      t.directory(STAFF);
+      t.as("salon_director", KEARNEY);
+      const thread = t.thread();
+      await thread.say("create a CA for Marnie Holloway, she was late to open on 11/3/26");
+      const reply = await thread.say("she owes $25 for the late opening");
+      expect(reply.content, `the payroll amount was added to the account:\n${reply.content}`).not.toMatch(/\*\*Added to [^\n]*owes/i);
+      const issue = String((thread.proposal as Record<string, unknown> | null)?.issue ?? "");
+      expect(issue, `the payroll amount joined the Issue:\n${reply.content}`).not.toMatch(/owes \$25/i);
+    },
+  },
 ];

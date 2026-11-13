@@ -285,3 +285,13 @@ describe("CARD_CHECKED_AGAINST_WORDS_ENABLED: Gate-Bubbles-5's name-answer and r
     expect(addedFacts("cash handling", "Jordan Testperson", { turns, roster: ROSTER })).toEqual([]);
   });
 });
+
+describe("CARD_CHECKED_AGAINST_WORDS_ENABLED: a payroll or deduction amount is not what she did (Gate-Sunny-2, 13 Nov 2026)", () => {
+  const after = (said: string) => ({ turns: ["create a CA for Marnie Holloway, she was late on 11/3/26", said], roster: ROSTER });
+  it.each(["she owes $25 for the late opening", "deduct $40 from her check", "she'll pay back $20", "payroll deduct yes, $15", "she owes 25 dollars"])("stays out: %s", (said) => {
+    expect(addedFacts("she was late on 11/3/26", "Marnie Holloway", after(said))).toEqual([]);
+  });
+  it.each(["she took $20 from the drawer", "she was short $20", "she gave a client a $10 discount without asking"])("still joins: %s", (said) => {
+    expect(addedFacts("she was late on 11/3/26", "Marnie Holloway", after(said))).toEqual([said]);
+  });
+});
