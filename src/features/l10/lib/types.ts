@@ -81,6 +81,9 @@ export interface IssueVote {
   name: string;
 }
 
+/** The two open-issue lists in IDS: worked this week ("short") or parked for later ("long"). */
+export type IssueTerm = "short" | "long";
+
 export interface Issue {
   id: string;
   title: string;
@@ -95,6 +98,10 @@ export interface Issue {
   resolved: boolean;
   addedBy?: string;
   resolvedSession?: string | null;
+  /** Which IDS list an open issue sits on. Missing means "short" (every issue written before the split). */
+  term?: IssueTerm;
+  /** When the issue was solved (ISO time), for the "Recently solved" list. Missing on issues solved before it was recorded. */
+  resolvedAt?: string;
   files?: IssueFile[];
   [extra: string]: unknown;
 }

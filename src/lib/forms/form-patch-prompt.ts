@@ -68,6 +68,11 @@ export interface FormPatchInput {
   /** The conversation before the latest message, oldest first. */
   readonly turns: readonly FormPatchTurn[];
   readonly latest: string;
+  /**
+   * EDIT_SEES_SAVED_FORM_ENABLED: the check after a write ("SAVED AFTER YOUR LAST PATCH"), placed just before the latest
+   * message. Absent (every first reading, and the flag off), the message is exactly as before.
+   */
+  readonly savedCheck?: string;
 }
 
 /** How many earlier turns the model sees. */
@@ -101,6 +106,7 @@ export function buildFormPatchUserMessage(input: FormPatchInput): string {
     ...(readOnly.length > 0 ? readOnly : ["(none)"]),
     `CONVERSATION (oldest first, last ${FORM_PATCH_TURNS} turns):`,
     ...(turns.length > 0 ? turns : ["(none)"]),
+    ...(input.savedCheck ? [input.savedCheck] : []),
     `LATEST MESSAGE FROM THE MANAGER: ${input.latest.trim()}`,
   ].join("\n");
 }
