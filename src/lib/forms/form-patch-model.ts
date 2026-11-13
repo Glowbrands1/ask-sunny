@@ -84,6 +84,8 @@ function patchCleanupSource(input: FormPatchInput): { source: string; today: str
   const text = (value: unknown) => (typeof value === "string" ? value : Array.isArray(value) ? value.join("\n") : "");
   return {
     source: [
+      // Everything the patch reader was given (its whole message), and the manager's words and the form as read.
+      buildFormPatchUserMessage(input),
       ...input.turns.filter((turn) => turn.role === "manager").map((turn) => turn.content),
       input.latest,
       ...input.fields.map((field) => text(field.value)),

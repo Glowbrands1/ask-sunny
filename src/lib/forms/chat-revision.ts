@@ -410,7 +410,7 @@ export async function reviseActiveForm(input: {
     const first = response.content.find((block): block is Extract<typeof block, { type: "tool_use" }> => block.type === "tool_use");
     const values = ((first?.input ?? {}) as { values?: Record<string, unknown> }).values ?? {};
     const changes = cleanupChanges({
-      source: `${notes}\n${currentText}\n${input.question}`,
+      source: `${prompt}\n${notes}\n${currentText}\n${input.question}`,
       written: Object.values(values).filter((value): value is string => typeof value === "string").join("\n"),
       today: input.today ?? businessToday(),
       names: instance.employeeName ? [instance.employeeName] : [],
@@ -426,7 +426,7 @@ export async function reviseActiveForm(input: {
       const fallbackInput = (fallback?.input ?? null) as { values?: Record<string, unknown> } | null;
       if (fallbackInput?.values) {
         const recheck = withOwnWords(fallbackInput.values, {
-          source: `${notes}\n${currentText}\n${input.question}`,
+          source: `${prompt}\n${notes}\n${currentText}\n${input.question}`,
           today: input.today ?? businessToday(),
           names: instance.employeeName ? [instance.employeeName] : [],
           own: () => null,

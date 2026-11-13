@@ -67,8 +67,11 @@ export const NOV13_SPELLING_CLEANUP_CASES: ReplayCase[] = [
       await thread.create();
       const systems = t.draftSystems?.() ?? [];
       expect(systems.length, "drafted once only").toBeGreaterThanOrEqual(2);
-      expect(systems.at(-2) ?? "", "the first draft had the rule").toContain(RULE);
-      expect(systems.at(-1) ?? "", "the second draft still had the rule").not.toContain(RULE);
+      // A draft call with the rule, then the fallback without it. Any never-blank retry after it is also without it.
+      const ruled = systems.findIndex((system) => system.includes(RULE));
+      expect(ruled, "the first draft had the rule").toBeGreaterThanOrEqual(0);
+      expect(systems.slice(ruled + 1).length, "drafted once only").toBeGreaterThan(0);
+      expect(systems.slice(ruled + 1).every((system) => !system.includes(RULE)), "the fallback still had the rule").toBe(true);
     },
   },
   {
@@ -85,8 +88,10 @@ export const NOV13_SPELLING_CLEANUP_CASES: ReplayCase[] = [
       t.draftWrites({ observation: 'Observed:\nWhen a guest asked Brisa Talmadge for help, she said "I don\'t care."' });
       await thread.create();
       const systems = t.draftSystems?.() ?? [];
-      expect(systems.at(-2) ?? "", "the first draft had the rule").toContain(RULE);
-      expect(systems.at(-1) ?? "", "the mended quote was not drafted again without the rule").not.toContain(RULE);
+      const ruled = systems.findIndex((system) => system.includes(RULE));
+      expect(ruled, "the first draft had the rule").toBeGreaterThanOrEqual(0);
+      expect(systems.slice(ruled + 1).length, "the mended quote was not drafted again without the rule").toBeGreaterThan(0);
+      expect(systems.slice(ruled + 1).every((system) => !system.includes(RULE)), "the fallback still had the rule").toBe(true);
     },
   },
   {
@@ -109,7 +114,7 @@ export const NOV13_SPELLING_CLEANUP_CASES: ReplayCase[] = [
   },
   {
     id: "nov13-spelling-cleanup-fallback-checked-again",
-    title: "QA's safety ruling: when the fallback draft also respells the name, the manager's own words are saved for that field",
+    title: "QA's safety ruling: when the fallback draft also respells the name, that field keeps what the form held (or nothing), never the chat turn",
     report: `${REPORT}: QA's safety ruling (Gate-Sunny-3, 13 Nov 2026) — the fallback draft is checked again`,
     // Only with the flag: production has no cleanup, so the respelled name is saved as drafted.
     status: { open: "no cleanup check in production" },
@@ -124,7 +129,8 @@ export const NOV13_SPELLING_CLEANUP_CASES: ReplayCase[] = [
       expect(systems.at(-1) ?? "", "the fallback was not drafted without the rule").not.toContain(RULE);
       const observation = t.values(id).observation ?? "";
       expect(observation, "the respelled name was saved").not.toMatch(/\bTalmage\b/);
-      expect(observation, "the manager's own words are not on the form").toMatch(/th e10 minute sanitaion/);
+      // Gate-Sunny-3 (13 Nov 2026): the field's fallback is its previous value or nothing, never the manager's chat turn.
+      expect(observation, "the chat turn was saved as the Observation").not.toMatch(/please make a ca/i);
     },
   },
 ];

@@ -51,13 +51,15 @@ export function cleanupChanges(input: {
   const sourceDates = datesInText(source, input.today);
   const writtenDates = datesInText(written, input.today);
   const givenDays = new Set(sourceDates.map((date) => date.iso));
+  const spoken = spokenDays(source, input.today);
   for (const date of writtenDates) {
-    if (!givenDays.has(date.iso)) reasons.push(`date ${written.slice(date.index, date.end)} was not given`);
+    if (givenDays.has(date.iso) || spoken(date.iso, sourceDates)) continue;
+    reasons.push(`date ${written.slice(date.index, date.end)} was not given`);
   }
 
   // Other numbers, with the dates taken out of both texts.
-  const givenNumbers = new Set(numbersIn(withoutSpans(source, sourceDates)));
-  for (const value of numbersIn(withoutSpans(written, writtenDates))) {
+  const givenNumbers = new Set(numbersIn(withoutPages(withoutSpans(source, sourceDates))));
+  for (const value of numbersIn(withoutPages(withoutSpans(written, writtenDates)))) {
     if (!givenNumbers.has(value)) reasons.push(`number ${value} was not given`);
   }
 
@@ -84,6 +86,54 @@ export function cleanupChanges(input: {
 /** Whether the cleaned text keeps every name, date, number and quote it was given. */
 export function cleanupKeepsFacts(input: Parameters<typeof cleanupChanges>[0]): boolean {
   return cleanupChanges(input).length === 0;
+}
+
+/*
+ * THE SAME DAY IN THE MANAGER'S WORDS (Gate-Sunny-3, 13 Nov 2026). The app writes out dates the manager gave in other
+ * words, on purpose ("late on the 2nd" is drafted "on October 2, 2026"; "last tuesday" becomes its date), and a form's
+ * prior rows and year are given too. A written date is the manager's when the source names that day in any of these
+ * ways: its day of the month as an ordinal or after "on" ("the 2nd", "on the 15"), its weekday ("last tuesday",
+ * "on fri"), "today" / "yesterday" / "tonight" / "this morning" for those days, or the same month and day with another
+ * year (a corrected year). A date none of these name is still a changed date.
+ */
+const ORDINAL_DAY = /\b(?:the\s+|on\s+(?:the\s+)?)?(\d{1,2})(?:st|nd|rd|th)\b|\bon\s+the\s+(\d{1,2})\b/gi;
+const WEEKDAY_WORD = /\b(sun|mon|tue|wed|thu|fri|sat)[a-z]*\b/gi;
+const WEEKDAYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+const SAME_DAY_WORD = /\b(?:today|tonight|this\s+(?:morning|afternoon|evening))\b/i;
+const YESTERDAY_WORD = /\b(?:yesterday|yesturday|last\s+night)\b/i;
+
+function spokenDays(source: string, today: string): (iso: string, sourceDates: readonly { iso: string }[]) => boolean {
+  const ordinals = new Set<number>();
+  for (const match of source.matchAll(ORDINAL_DAY)) ordinals.add(Number(match[1] ?? match[2]));
+  const weekdays = new Set<number>();
+  for (const match of source.matchAll(WEEKDAY_WORD)) weekdays.add(WEEKDAYS.indexOf(match[1]!.toLowerCase()));
+  const sameDay = SAME_DAY_WORD.test(source);
+  const yesterday = YESTERDAY_WORD.test(source);
+  const validToday = /^\d{4}-\d{2}-\d{2}$/.test(today);
+  return (iso, sourceDates) => {
+    const [year, month, day] = iso.split("-").map(Number) as [number, number, number];
+    if (ordinals.has(day)) return true;
+    if (weekdays.has(new Date(Date.UTC(year, month - 1, day)).getUTCDay())) return true;
+    if (validToday && sameDay && iso === today) return true;
+    if (validToday && yesterday && iso === dayBefore(today)) return true;
+    return sourceDates.some((given) => given.iso.slice(5) === iso.slice(5));
+  };
+}
+
+function dayBefore(iso: string): string {
+  const [year, month, day] = iso.split("-").map(Number) as [number, number, number];
+  return new Date(Date.UTC(year, month - 1, day - 1)).toISOString().slice(0, 10);
+}
+
+/*
+ * A policy page ("JBA Policy Manual p.14", "p. 12", "page 3") is the app's citation, from the knowledge base, not a
+ * number the manager gave (Gate-Sunny-3, 13 Nov 2026: nov7-s34's revision cites Attendance at p.14). The policy-citation
+ * guards check pages; this check leaves them alone.
+ */
+const PAGE = /\b(?:p|pg|page|pages)\.?\s*\d+(?:\s*[-–]\s*\d+)?/gi;
+
+function withoutPages(text: string): string {
+  return text.replace(PAGE, " ");
 }
 
 function withoutSpans(text: string, spans: readonly { index: number; end: number }[]): string {
@@ -130,6 +180,10 @@ function givenNameWords(source: string, names: readonly string[]): Set<string> {
   return words;
 }
 
+/** What a cleanup may not change; each reason `cleanupChanges` gives starts with one of these. */
+export const CLEANUP_KINDS = ["name", "date", "number", "quote"] as const;
+export type CleanupKind = (typeof CLEANUP_KINDS)[number];
+
 /**
  * QA's safety ruling (13 Nov 2026, Gate-Sunny-3): the fallback is checked too. Each field of what came back from the
  * fallback is checked on its own; one that still changes a name, a date, a number or a quote gets the manager's own
@@ -144,13 +198,22 @@ export function withOwnWords<V>(
     readonly names?: readonly string[];
     /** The manager's own words for a field, or null to leave the field out. */
     readonly own: (key: string) => string | null;
+    /**
+     * Which changes replace a field; all four when omitted. The draft route passes name and quote: a date or number the
+     * fallback (main's own prompt) writes is left to the app's date and metric guards, which remove just the sentence
+     * carrying it (Gate-Sunny-3, 13 Nov 2026), as they do with the flag off.
+     */
+    readonly kinds?: readonly CleanupKind[];
   },
 ): { values: Record<string, V | string>; replaced: string[] } {
   const out: Record<string, V | string> = {};
   const replaced: string[] = [];
   for (const [key, value] of Object.entries(values)) {
     const changed =
-      typeof value === "string" && cleanupChanges({ source: input.source, written: value, today: input.today, names: input.names }).length > 0;
+      typeof value === "string" &&
+      cleanupChanges({ source: input.source, written: value, today: input.today, names: input.names }).some((reason) =>
+        (input.kinds ?? CLEANUP_KINDS).some((kind) => reason.startsWith(`${kind} `)),
+      );
     if (!changed) {
       out[key] = value;
       continue;

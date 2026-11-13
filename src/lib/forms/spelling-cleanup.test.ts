@@ -90,3 +90,32 @@ describe("withOwnWords: QA's safety ruling, the fallback checked again field by 
     expect(result).toEqual({ values: {}, replaced: ["observation"] });
   });
 });
+
+describe("a date the manager gave in other words is given (Gate-Sunny-3, 13 Nov 2026)", () => {
+  const check = (source: string, written: string, today = "2026-11-13") => cleanupChanges({ source, written, today });
+
+  it("\"the 2nd\" written out as a full date, and \"the 15th\"", () => {
+    expect(check("create a CA form for quinn marlowe at kearney. Quinn was late on the 2nd", "Quinn Marlowe was late on October 2, 2026.")).toEqual([]);
+    expect(check("she left early on the 15th", "She left early on October 15, 2026.")).toEqual([]);
+  });
+
+  it("\"last tuesday\", \"yesterday\" and a corrected year are the same day", () => {
+    expect(check("she was late last tuesday", "She was late on Tuesday, November 10, 2026.")).toEqual([]);
+    expect(check("she was late yesterday", "She was late on November 12, 2026.")).toEqual([]);
+    expect(check("late on 10/2/25", "Late on October 2, 2026.")).toEqual([]);
+  });
+
+  it("a day the manager never named is still a changed date", () => {
+    expect(check("Quinn was late on the 2nd", "Quinn was late on October 3, 2026.")).toEqual(["date October 3, 2026 was not given"]);
+    expect(check("she was late last tuesday", "She was late on November 12, 2026.")).toEqual(["date November 12, 2026 was not given"]);
+  });
+});
+
+describe("a policy page is the app's citation, not the manager's number (Gate-Sunny-3, 13 Nov 2026)", () => {
+  it("\"JBA Policy Manual p.14\" and \"p. 12\" are not numbers that were not given; another number still is", () => {
+    const source = "I need you to make it about showing up late and please list the policy make the date for 10/14/26.";
+    expect(cleanupChanges({ source, written: "Wrenna Calloway arrived late to work.\n\nPolicy reference: Attendance Policy, JBA Policy Manual p.14", today: TODAY })).toEqual([]);
+    expect(cleanupChanges({ source, written: "Source: JBA Policy Manual — Standards of Conduct, p. 12", today: TODAY })).toEqual([]);
+    expect(cleanupChanges({ source, written: "She was 25 minutes late.", today: TODAY })).toEqual(["number 25 was not given"]);
+  });
+});

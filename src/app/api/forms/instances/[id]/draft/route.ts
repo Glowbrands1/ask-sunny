@@ -1319,6 +1319,37 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     /* Why each attempt that wrote nothing wrote nothing, for the drafted event. */
     const reasons: string[] = [];
     let lastError: unknown = null;
+    /*
+     * SPELLING_CLEANUP_ENABLED: what the drafting model was given (its whole message: the form, prior rows, the account;
+     * and the form's values), and, once a cleanup has fallen back, the check every later call goes through.
+     */
+    const cleanupSource = spellingCleanupOn
+      ? [prompt, notes, ...(loaded.values ?? []).map((row) => (typeof row.value === "string" ? row.value : ""))].join("\n")
+      : "";
+    const cleanupNames = [loaded.instance.employeeName ?? ""];
+    let cleanupFellBack = false;
+    /*
+     * QA's safety ruling (13 Nov 2026): every draft after the fallback (the fallback itself and any never-blank retry)
+     * is checked again, field by field. A field that still changes a name or a quote keeps what the form held for it,
+     * or is left out; never the chat turn (Gate-Sunny-3, 13 Nov 2026). A changed date or number is left to the date and
+     * metric guards below, which remove just the sentence carrying it, as with the flag off.
+     */
+    const recheckFallback = (drafted: DraftedCall): DraftedCall => {
+      if (!drafted.values) return drafted;
+      const recheck = withOwnWords(drafted.values, {
+        source: cleanupSource,
+        today: businessToday(),
+        names: cleanupNames,
+        kinds: ["name", "quote"],
+        own: (key) => {
+          const held = (loaded.values ?? []).find((row) => row.fieldKey === key)?.value;
+          return typeof held === "string" && held.trim() ? held : null;
+        },
+      });
+      if (recheck.replaced.length === 0) return drafted;
+      console.warn(`[spelling-cleanup] the fallback draft still changed ${recheck.replaced.join(", ")}; keeping the form's own words there`);
+      return { ...drafted, values: recheck.values as Record<string, string> };
+    };
     const ask = async (): Promise<{ drafted: DraftedCall; failed: boolean }> => {
       let reply: DraftReply;
       try {
@@ -1336,7 +1367,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         const empty = emptyCallReason(call?.input, read, reply.stop_reason ?? null);
         if (empty) reasons.push(empty);
       }
-      return { drafted: read, failed: false };
+      return { drafted: cleanupFellBack ? recheckFallback(read) : read, failed: false };
     };
     let first = await ask();
     /*
@@ -1344,8 +1375,6 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      * the draft falls back to the manager's own text: asked again without the cleanup rule (`spelling-cleanup.ts`).
      */
     if (spellingCleanupOn && !first.failed && first.drafted.values) {
-      const cleanupSource = [notes, ...(loaded.values ?? []).map((row) => (typeof row.value === "string" ? row.value : ""))].join("\n");
-      const cleanupNames = [loaded.instance.employeeName ?? ""];
       const changes = cleanupChanges({
         source: cleanupSource,
         written: Object.values(first.drafted.values).join("\n"),
@@ -1355,27 +1384,11 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       if (changes.length > 0) {
         console.warn(`[spelling-cleanup] the cleaned draft changed ${changes.join("; ")}; drafting with the manager's own text`);
         activeSystem = systemFor(false);
+        cleanupFellBack = true;
         const again = await ask();
         if (!again.failed && again.drafted.values) first = again;
-        /*
-         * QA's safety ruling (13 Nov 2026): the draft that stands is checked again, field by field. A field that still
-         * changes a name, date, number or quote gets the manager's own words: what the form holds for it, the account
-         * itself for a long-text field, or nothing.
-         */
-        const recheck = withOwnWords(first.drafted.values ?? {}, {
-          source: cleanupSource,
-          today: businessToday(),
-          names: cleanupNames,
-          own: (key) => {
-            const held = (loaded.values ?? []).find((row) => row.fieldKey === key)?.value;
-            if (typeof held === "string" && held.trim()) return held;
-            return fields.find((field) => field.key === key)?.input === "long_text" && notes.trim() ? notes : null;
-          },
-        });
-        if (recheck.replaced.length > 0) {
-          console.warn(`[spelling-cleanup] the fallback draft still changed ${recheck.replaced.join(", ")}; saving the manager's own words there`);
-          first = { ...first, drafted: { ...first.drafted, values: recheck.values as Record<string, string> } };
-        }
+        // A fallback that failed leaves the cleaned draft, which changed a fact: it is checked the same way.
+        else first = { ...first, drafted: recheckFallback(first.drafted) };
       }
     }
     let drafted = first.drafted;
