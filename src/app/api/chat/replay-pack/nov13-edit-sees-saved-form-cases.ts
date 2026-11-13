@@ -52,7 +52,8 @@ export const NOV13_EDIT_SEES_SAVED_FORM_CASES: ReplayCase[] = [
     id: "nov13-edit-sees-saved-form-corrects-missed-part",
     title: `a saved draft, "${ASK}": the reading misses the topic; checking the saved form, the model adds it, and the reply names both`,
     report: REPORT,
-    status: { open: "the topic is never written: the reading missed it and nothing looked at the saved form" },
+    // Changed on purpose (13 Nov 2026): fixed in production by EDIT_SEES_SAVED_FORM, QA round 38f. Was OPEN.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       // Check round 1: the topic is missing from the stored form, so the model corrects it. Round 2: it confirms.
@@ -97,7 +98,8 @@ export const NOV13_EDIT_SEES_SAVED_FORM_CASES: ReplayCase[] = [
     id: "nov13-edit-sees-saved-form-hand-off-revision-corrects",
     title: "the same turn handed off (the patch reader falls back) to the old path's revision, which writes the expectation only: the check adds the missed topic, and the reply names what is stored",
     report: `${REPORT} (QA: half the patch-path turns hand off; the loop runs after the revision's write too)`,
-    status: { open: "the topic is never written: the revision missed it and nothing looked at the saved form" },
+    // Changed on purpose (13 Nov 2026): fixed in production by EDIT_SEES_SAVED_FORM, QA round 38f. Was OPEN.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       // Check round 1: the topic is missing from the stored form, so the model corrects it. Round 2: it confirms.
