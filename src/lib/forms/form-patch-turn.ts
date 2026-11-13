@@ -18,6 +18,7 @@ import {
   formDateSaidAloneEnabled,
   madeAboutUndatedTogetherEnabled,
   madeAboutPolicyLineEnabled,
+  madeAboutEmptyPatchAnswersSavedEnabled,
   madeAboutRewriteFinishesEnabled,
   stepBDateSaidEnabled,
   stepBDateWithAboutEnabled,
@@ -563,6 +564,16 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
      */
     // A date to write goes on below even with no patch (STEP_B_DATE_SAID); the policy is then answered after it.
     if (Object.keys(reading.patch.set).length === 0 && reading.patch.clear.length === 0 && dateToWrite === null) {
+      /*
+       * MADE_ABOUT_EMPTY_PATCH_ANSWERS_SAVED_ENABLED (ported from the sibling app: QA's live 17u test there, 13 Nov 2026):
+       * the account is already rewritten (above) and nothing else is left to write. The turn answers here, from the saved
+       * form; handed on, the old path's revision ran a second time and denied the change it found ("I haven't changed …").
+       */
+      if (!policyAsk && rewroteFrom && madeAboutEmptyPatchAnswersSavedEnabled()) {
+        noteMadeAboutExit(input, "rewritten_only", true);
+        const saved = await replyFromSaved(input.instanceId, rewroteFrom, []).catch(() => null);
+        if (saved) return saved;
+      }
       if (!policyAsk) return handOff("nothing");
       const outcome = await answerPolicy();
       if (!outcome) return handOff("nothing");
