@@ -7,12 +7,13 @@ import {
   type OfficialPolicyManualResult,
 } from "@/lib/knowledge/providers/supabase";
 import type { ChatMessage } from "@/types";
-import { formEditSingleWriterEnabled, policyChangeRelevantEnabled } from "@/lib/config/chat-quality-flags";
+import { accountChangeRederivesPolicyEnabled, formEditSingleWriterEnabled, policyChangeRelevantEnabled } from "@/lib/config/chat-quality-flags";
 
 import { policyPhrase } from "./ca-action-plan";
 import { syncCorrectiveActionPlan } from "./ca-action-plan-sync";
 import { CA_POLICY_QUESTION, readCaPolicy, statedOffenseKeys } from "./ca-policy";
 import { offeredOffenseKeys } from "./offense-keys";
+import { describedManualSection } from "./named-policy-section";
 import { checkboxGroupsForVariant, fieldsForVariant, parseFormDocument } from "./document";
 import { employeeFirstName } from "./employee-reference";
 import { changeOnEditableDraft } from "./editable-draft";
@@ -485,6 +486,141 @@ async function followReplacedBox(
     keys,
     labels: keys.map((key) => group.options.find((option) => option.key === key)?.label ?? key),
   };
+}
+
+/*
+ * ============================================================================
+ * A REPLACED ACCOUNT CARRIES ITS POLICY (ACCOUNT_CHANGE_REDERIVES_POLICY_ENABLED)
+ * ============================================================================
+ *
+ * Ported from Ask Bubbles at QA's direction (13 Nov 2026; QA's live test there): on a Corrective Action draft about
+ * lateness, "make it about her phone use instead, she was on her phone the whole shift" and "change the issue to not doing the 10-minute sanitation" rewrote
+ * the Observation, and Type of Offense, Policy Violated, Direct policy and the synced Action Plan stayed on Attendance.
+ *
+ * After an edit that replaces the whole account (the caller decides that: the old account's sentences are gone), the
+ * offense is read again from the new account, as on a first draft:
+ *   - a cleaning duty described is Other (Pau's rule): the Other box, Policy Violated from it, Direct policy cleared;
+ *   - otherwise the manual section the account describes (`describedManualSection`) is cited in Direct policy, its box
+ *     ticked (`statedOffenseKeys`, else the section's own box), and Policy Violated follows;
+ *   - nothing read (no section, no Other): the form's policy is left as it was, never cleared on a reading of nothing.
+ * The Action Plan Ask Sunny built follows (`syncPlan`). A policy the manager NAMES in the edit itself is kept (the
+ * named-policy path answers that turn), and a line or tick the manager wrote is never touched. Returns the keys written.
+ */
+export async function rederivePolicyFromAccount(input: {
+  readonly request: Request;
+  readonly instanceId: string;
+  readonly account: string;
+  readonly question: string;
+}): Promise<string[]> {
+  if (!accountChangeRederivesPolicyEnabled() || !formEditSingleWriterEnabled()) return [];
+  let authorized: Awaited<ReturnType<typeof authorizeInstance>>;
+  try {
+    authorized = await authorizeInstance(input.request, input.instanceId, "edit");
+  } catch {
+    return [];
+  }
+  const { actor, loaded } = authorized;
+  const document = parseFormDocument(loaded.version.document);
+  const fields = fieldsForVariant(document, loaded.instance.variantKey);
+  if (!fields.some((field) => field.key === POLICY_KEY && field.policyGrounded)) return [];
+  const group = checkboxGroupsForVariant(document, loaded.instance.variantKey).find((entry) => entry.key === OFFENSE_KEY);
+  const manual = await readManual();
+  if (!manual.ok) return [];
+  const chunks = manual.chunks;
+  const jobTitle = loaded.instance.employeeRole;
+  // A policy named in the edit itself wins: the named-policy path answers it.
+  if (sectionsNamedIn({ text: input.question, chunks, jobTitle }).length > 0) return [];
+
+  const row = (key: string) => loaded.values.find((value) => value.fieldKey === key);
+  const managers = (key: string) => row(key)?.filledBy === "manager" && ((row(key)?.value ?? "").trim() !== "" || (row(key)?.checked ?? []).length > 0);
+  const writer = await import("./form-write");
+  const written: string[] = [];
+  const offered = group?.options.map((option) => option.key) ?? [];
+  const reading = readCaPolicy(input.account);
+
+  let keys: string[] = [];
+  let sections: ManualSection[] = [];
+  // Pau's rule: a cleaning or sanitation duty described is Other (this app's reader, with OTHER_POLICY_AGREES).
+  if (reading.other === "cleaning" && offered.includes("other")) {
+    keys = ["other"];
+  } else {
+    const described = describedManualSection({ text: input.account, chunks });
+    if (described) {
+      sections = [described.section];
+      const stated = statedOffenseKeys(reading, input.account);
+      keys = offeredOffenseKeys([...new Set(stated ?? [offenseKeyForManualHeading(described.section.heading)])], offered);
+    }
+  }
+  /*
+   * Nothing read from the new account (the sibling's gate replay "nov7-refusal-sun-same-outline": a pasted outline reworded with
+   * another employee's facts reads as no section): the policy on the form is kept, never cleared on a reading of nothing.
+   */
+  if (keys.length === 0) return [];
+
+  // Direct policy: the section the account describes, from the manual; or cleared.
+  if (!managers(POLICY_KEY)) {
+    if (sections.length > 0) {
+      const policies = manualGroundedPolicies(manual, sections);
+      const value = policyFieldValue(policies);
+      if (value && value !== (row(POLICY_KEY)?.value ?? "").trim()) {
+        const provenance = {
+          [POLICY_KEY]: {
+            ...officialManualProvenance({
+              documentId: manual.documentId,
+              documentTitle: manual.documentTitle,
+              matchedBy: manual.matchedBy,
+              ownerConfirmed: approvedManualConfirmed(manual),
+              sections,
+            }),
+            citation: policies,
+            via: "account_change",
+          },
+        };
+        const saved = await writer.draftWrite(input.instanceId, { values: { [POLICY_KEY]: value }, checked: {} }, actor.id, provenance, { path: "policy", latest: input.question });
+        if (POLICY_KEY in saved.accepted.values) written.push(POLICY_KEY);
+      }
+    } else if ((row(POLICY_KEY)?.value ?? "").trim() !== "") {
+      await writer.clearWrite(input.instanceId, [POLICY_KEY], actor.id, { path: "policy", latest: input.question });
+      written.push(POLICY_KEY);
+    }
+  }
+
+  // Type of Offense: the box the new account reads as; never over the manager's own tick.
+  const current = row(OFFENSE_KEY)?.checked ?? [];
+  let moved: { keys: string[] } | null = null;
+  if (group && !managers(OFFENSE_KEY) && !(keys.length === current.length && keys.every((key) => current.includes(key)))) {
+    const saved = await writer.draftWrite(input.instanceId, { values: {}, checked: { [OFFENSE_KEY]: keys } }, actor.id, {}, { path: "policy", latest: input.question });
+    if (OFFENSE_KEY in saved.accepted.checked) {
+      moved = { keys };
+      written.push(OFFENSE_KEY);
+    }
+  }
+
+  // Policy Violated follows the boxes (never a line the manager typed).
+  const violated = row(VIOLATED_KEY);
+  if (moved && !managers(VIOLATED_KEY) && fields.some((field) => field.key === VIOLATED_KEY)) {
+    const derived = offenseCategoryValue({
+      document,
+      variantKey: loaded.instance.variantKey,
+      checked: { [OFFENSE_KEY]: moved.keys },
+      values: Object.fromEntries(loaded.values.map((value) => [value.fieldKey, value.value ?? ""])),
+      sectionNames: boxSectionNames(sections.map((section) => section.heading)),
+    });
+    const next = derived ?? "";
+    if (next !== (violated?.value ?? "").trim()) {
+      if (next) {
+        const saved = await writer.draftWrite(input.instanceId, { values: { [VIOLATED_KEY]: next }, checked: {} }, actor.id, formDerivedProvenance([VIOLATED_KEY]), { path: "policy" });
+        if (VIOLATED_KEY in saved.accepted.values) written.push(VIOLATED_KEY);
+      } else {
+        await writer.clearWrite(input.instanceId, [VIOLATED_KEY], actor.id, { path: "policy", latest: input.question });
+        written.push(VIOLATED_KEY);
+      }
+    }
+  }
+
+  // The Action Plan Ask Sunny built follows the policy now cited (`ca-action-plan.ts`, via the one writer).
+  if (written.length > 0) written.push(...(await writer.syncPlan(input.instanceId, actor.id)));
+  return written;
 }
 
 /** The pinned manual, or a reason — a knowledge-base outage never fails the turn. */
