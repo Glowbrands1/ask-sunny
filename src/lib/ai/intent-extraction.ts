@@ -239,6 +239,14 @@ function asPerson(fact: DirectoryFact): GroundedPerson {
 
 const manualIndexCache = new Map<string, Promise<{ headings: string[]; pages: Record<string, number> }>>();
 
+/**
+ * Tests only: forget the manual's heading index, so a replay case that pins extra manual passages (`manualAlsoHas`) reads
+ * them, and the cases after it do not (the #839 full-suite run, 11 Nov 2026). Production never calls it.
+ */
+export function forgetManualIndexForTests(): void {
+  manualIndexCache.clear();
+}
+
 async function loadManualIndex(scopeId: string): Promise<{ headings: string[]; pages: Record<string, number> }> {
   const cached = manualIndexCache.get(scopeId);
   if (cached) return cached;
