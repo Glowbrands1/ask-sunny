@@ -63,7 +63,7 @@ function slotLines(question: string, history: readonly IntakeTurn[]): string[] {
     lines.push(`Job title: ${title}.`);
   }
 
-  // REASON_PLACE_NOT_STORE_ENABLED: a reason's place ("because she was at …") is not guessed as a salon.
+  // REASON_PLACE_NOT_SALON_ENABLED: a reason's place ("because she was at …") is not guessed as a salon.
   const joined = placeReadingText([...earlier, question].join("\n"));
   const salon = singleSalon([...earlier, question]) ?? fuzzySalon(joined) ?? uniqueRosterSalon(joined);
   // PLACE_FROM_CUE_ENABLED: "… for <name> from <salon>" already names one (`forms/place-from-cue.ts`).

@@ -4833,11 +4833,11 @@ export function sharedCityAsksSalonEnabled(): boolean {
 }
 
 /**
- * REASON_PLACE_NOT_STORE (ported from the sibling app, Gate-Bubbles-3's #869 probes, 13 Nov 2026; default off): "she
+ * REASON_PLACE_NOT_SALON (ported from the sibling app, Gate-Bubbles-3's #869 probes, 13 Nov 2026; default off): "she
  * was late because she was at grand island" — where she was is why she was late, not the salon the form is for. With
  * the flag, a place in a "because <she> was at/in …" clause is not read as a salon: the salon comes from Woven or is
  * asked. The account keeps the words. See `forms/salon-mention.ts` readSalonMentions. Off, as before.
  */
-export function reasonPlaceNotStoreEnabled(): boolean {
-  return envFlag("REASON_PLACE_NOT_STORE_ENABLED");
+export function reasonPlaceNotSalonEnabled(): boolean {
+  return envFlag("REASON_PLACE_NOT_SALON_ENABLED");
 }

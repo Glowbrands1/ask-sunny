@@ -50,7 +50,7 @@ import { newestManagerTurnSalon } from "@/lib/forms/newest-place-turn";
 import { typedEmployeeName } from "@/lib/forms/typed-employee-name";
 import { managerStatedWarningLevel, templateHasWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
 import { isDocumentName, isReportName, isRosterStateName } from "./not-a-person";
-import { formNameNotATitleEnabled, lateSlotReadsAttendanceEnabled, reasonPlaceNotStoreEnabled, reportNameNotAPersonEnabled } from "@/lib/config/chat-quality-flags";
+import { formNameNotATitleEnabled, lateSlotReadsAttendanceEnabled, reasonPlaceNotSalonEnabled, reportNameNotAPersonEnabled } from "@/lib/config/chat-quality-flags";
 import { placeReadingText } from "@/lib/forms/reason-place";
 import { lateSlotHeading } from "./late-slot-attendance";
 import { readsAsStatedTitle, saidOnlyAsFormName, titleTextFromTurns } from "./title-words";
@@ -285,7 +285,7 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
     .filter((part) => part.trim() !== "")
     .join("\n");
   /*
-   * REASON_PLACE_NOT_STORE_ENABLED (ported from the sibling app, Gate-Bubbles-3's #869 probes, 13 Nov 2026): "she was
+   * REASON_PLACE_NOT_SALON_ENABLED (ported from the sibling app, Gate-Bubbles-3's #869 probes, 13 Nov 2026): "she was
    * late because she was at grand island" is why she was late, not the salon the form is for. The salon readers get
    * the words with that place blanked, and a model slot that names only that place is not used. Off, as before.
    */
@@ -293,7 +293,7 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
   const salonText = placeText(userText);
   const typedSalon = choice?.salon ?? reading?.salon ?? null;
   const slotSalon =
-    reasonPlaceNotStoreEnabled() && !choice?.salon && typedSalon && !salonText.toLowerCase().includes(typedSalon.trim().toLowerCase())
+    reasonPlaceNotSalonEnabled() && !choice?.salon && typedSalon && !salonText.toLowerCase().includes(typedSalon.trim().toLowerCase())
       ? null
       : typedSalon;
   const salon = merge.salon(

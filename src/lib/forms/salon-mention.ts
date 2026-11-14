@@ -268,7 +268,7 @@ const TIME_BEFORE =
  * the date are read from — never the assistant's.
  */
 export function readSalonMentions(said: string): SalonMention[] {
-  // REASON_PLACE_NOT_STORE_ENABLED: "because she was at grand island" is why, not the salon (`reason-place.ts`).
+  // REASON_PLACE_NOT_SALON_ENABLED: "because she was at grand island" is why, not the salon (`reason-place.ts`).
   const text = placeReadingText(said);
   const mentions: SalonMention[] = [];
 

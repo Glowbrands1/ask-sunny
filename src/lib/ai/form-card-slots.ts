@@ -582,7 +582,7 @@ function followUpDates(text: string, today: string, incident: string | null): st
 function salonIdsIn(text: string): string[] {
   const ids = [...new Set(readSalonMentions(text).flatMap((mention) => mention.salonIds))];
   if (ids.length > 0) return ids;
-  // REASON_PLACE_NOT_STORE_ENABLED: "because she was at lincoln high" is why, not the salon; "lincoln" there names none.
+  // REASON_PLACE_NOT_SALON_ENABLED: "because she was at lincoln high" is why, not the salon; "lincoln" there names none.
   const words = placeReadingText(text).toLowerCase();
   const hits = PRODUCTION_SALONS.filter((salon) => {
     const name = salon.name.toLowerCase();

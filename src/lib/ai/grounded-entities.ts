@@ -82,7 +82,7 @@ export function prepareGroundedQuestion(input: {
   }
 
   if (readSalonMentions(question).length === 0) {
-    // REASON_PLACE_NOT_STORE_ENABLED: a reason's place ("because she was at …") is not guessed as a salon.
+    // REASON_PLACE_NOT_SALON_ENABLED: a reason's place ("because she was at …") is not guessed as a salon.
     const salon = uniqueRosterSalon(placeReadingText(input.question)) ?? uniqueRosterSalon(placeReadingText(question));
     if (salon && !question.includes(`It happened at ${salon}.`)) {
       question = `${question}\nIt happened at ${salon}.`;
