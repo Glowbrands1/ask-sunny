@@ -274,16 +274,6 @@ async function rosterTitle(scope: AccessScope, id: string): Promise<string | nul
   }
 }
 
-/** The roster row's primary salon for this person (in the manager's scope), or null. */
-async function rosterPrimarySalon(scope: AccessScope, id: string): Promise<string | null> {
-  try {
-    const facts = await (await import("@/lib/forms/employee-roster")).readDirectoryFacts(scope);
-    return facts.find((row) => row.id === id)?.primarySalonId ?? null;
-  } catch {
-    return null;
-  }
-}
-
 /** The name the manager just said no to, after this chat's own "Did you mean **<A>**?" / "Is this for **<A>**?". */
 function turnedDownName(context: Pick<ToolContext, "question" | "history">): string | null {
   if (!/^\s*(?:no|nope|nah|not\s+(?:her|him|them|that))\b/i.test(context.question)) return null;
@@ -1165,11 +1155,6 @@ export async function proposeForm(
     ...(datedToday && (card.formDate ?? today) === today ? { dated_today: true } : {}),
     ...(offRosterName ? { off_roster_name: employee.name, staff_list: context.actor.scope.level === "salon" ? "your salon's" : "the", ...((await inactiveMatch(context.actor.scope, employee.name)) ? { inactive_in_woven: true } : {}) } : {}),
     ...(personId && effects.nameLines?.[personId] ? { name_from_staff_list: employee.name } : {}),
-    ...(await (async () => {
-      if (card.status !== "needs_location" || !employee.id) return {};
-      const primary = await rosterPrimarySalon(context.actor.scope, employee.id);
-      return primary && (card.authorizedLocationIds ?? []).includes(primary) ? { employee_salon: rosterSalonName(primary) ?? primary } : {};
-    })()),
     /* QA's live-app item 8: the card uses Woven's title; the manager called them something else ("Salon Director"). */
     ...(() => {
       const said = extractJobTitle(requestWords);

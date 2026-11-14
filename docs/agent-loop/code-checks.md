@@ -166,8 +166,3 @@ This is a TOOL/protocol change, not a reply patch: what Create sends is now data
 - `EARLIER_CARD_STAYS`;
 - the safety clean-ups;
 - the two second-miss honesty lines.
-
-**QA's tester run additions (L3/L4, L5):**
-- propose_form returns `employee_salon` (Woven's primary salon for the employee, in the manager's scope) when the card waits for a salon. The rules book files the card there and says so in one line ("Filed at **<salon>**, where Woven lists <first name>; say if it's another salon").
-- The salon is asked at most once, and a person's name is never taken as the salon answer.
-- The model never repeats its previous question word for word; it acknowledges the answer first.

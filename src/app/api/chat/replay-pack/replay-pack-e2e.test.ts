@@ -532,10 +532,6 @@ vi.mock("@/lib/forms/employee-roster", async (importOriginal) => {
         ...person,
         title: (state.directory as { id: string; positionName?: string | null }[]).find((row) => row.id === person.id)?.positionName ?? null,
         primaryLocationName: "Kearney",
-        // Only a row that names Woven's primary salon carries one (the agent loop's employee_salon fact); others are as before.
-        ...((state.directory as { id: string; primarySalonId?: string | null }[]).find((row) => row.id === person.id)?.primarySalonId
-          ? { primarySalonId: (state.directory as { id: string; primarySalonId?: string | null }[]).find((row) => row.id === person.id)!.primarySalonId }
-          : {}),
       })),
     // The turn's roster limit (`withRosterLimit`), as production's loadScopedRoster applies it.
     loadScopedRoster: async (scope: AccessScope | null) => actual.withinRosterLimit(actual.scopeRoster(state.directory as never, scope)),
