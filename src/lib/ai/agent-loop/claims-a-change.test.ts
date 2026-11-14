@@ -25,6 +25,7 @@ describe("a sentence that says an earlier card was not real", () => {
   it("drops the live run's sentences", () => {
     expect(drop("One correction: my earlier message showed the card before I'd actually built it. Here's the draft — press Create.")).toBe("Here's the draft — press Create.");
     expect(drop("One correction first: my earlier reply went out before I'd checked the roster or the manual — here's the card.")).toBe("");
+    expect(drop("I should be straight with you: my earlier replies described cards that were never actually drafted. This one is real.")).toBe("This one is real.");
   });
   it.each([
     "Here is the card. Your last message never said the date, so which date?",

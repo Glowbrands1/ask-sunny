@@ -43,6 +43,7 @@ import { matchRecallKnowledge } from "@/lib/knowledge/recall-match";
 import { rowToCitation, type MatchedChunkRow } from "@/lib/knowledge/mappers";
 import { shownCitations } from "@/lib/knowledge/empty-card-drop";
 import { topicHeadings } from "@/lib/forms/specific-policy-topics";
+import { formatManualCitation } from "@/lib/ai/policy-citation-fields";
 import { redactSensitiveDefaults } from "@/lib/ai/sensitive-defaults";
 import { expandPolicyQuery } from "@/lib/knowledge/policy-retrieval";
 import type { SourceCitation } from "@/types";
@@ -115,6 +116,8 @@ const WHOSE = String.raw`(?:her|his|their|my|\w+'s|\w+s')`;
  */
 const ASKS_ABOUT_FORMS: readonly RegExp[] = [
   /\bon file\b|\bform monitoring\b/i,
+  /* "in the format of <C>'s ca", "the same as corvinas ca", "look like <C>s coaching": another form, asked for by the manager (QA, 14 Nov 2026). */
+  new RegExp(String.raw`\b(?:format\s+of|same\s+as|look(?:s)?\s+like|copy(?:\s+of)?)\s+(?:\w+\s+){0,2}?\w+(?:'s|’s|s)\s+${FORM}\b`, "i"),
   new RegExp(String.raw`\bon record\b|\b${WHOSE}\s+(?:disciplinary\s+|work\s+)?records?\b`, "i"),
   // "her history", "form history", "write-up history", never "history of <something that is not a form>".
   new RegExp(String.raw`\b(?:${WHOSE}|form|disciplinary|write[- ]?up|ca|coaching|corrective(?:\s+action)?)\s+history\b(?!\s+of\s+(?!${FORM}\b)\w)`, "i"),
@@ -222,6 +225,21 @@ function salonLabel(id: string): string {
 
 function staffRow(person: RosterEmployee) {
   return { employee_id: person.id, name: displayName(person), salons: person.salonIds.map(salonLabel) };
+}
+
+/**
+ * An exit card's dates read back in the form's own labels and words (EXIT_DATE_LINE_AGREES; the live re-run's
+ * no-notice-no-date-resigned: "the resignation date is lost"), read by today's exit reader from the manager's words.
+ */
+async function exitDateLines(managerWords: string, today: string): Promise<string[]> {
+  const [{ readExitFacts, EXIT_ROLE_LABEL }, { exitDateInWords }] = await Promise.all([import("@/lib/forms/exit-facts"), import("@/lib/forms/exit-intake")]);
+  const facts = readExitFacts(managerWords, today);
+  const lines: string[] = [];
+  for (const role of ["lastDayWorked", "noticeGiven", "noticeFulfilled"] as const) {
+    if (facts[role]) lines.push(`**${EXIT_ROLE_LABEL[role]}:** ${exitDateInWords(facts[role]!)}`);
+  }
+  if (facts.resignationDate) lines.push(`**${EXIT_ROLE_LABEL.resigned}:** ${exitDateInWords(facts.resignationDate)}`);
+  return lines;
 }
 
 /** The roster row's Woven title for this person, or null. */
@@ -572,11 +590,12 @@ export function cardLines(
 ): string[] {
   const lines: string[] = [];
   const corrective = templateKey === "dpoa";
-  if (card.issue) lines.push(`${corrective ? "**Observation of Offense:**" : "**What happened:**"} ${card.issue}`);
+  /* The account line in today's label on every card (`keep-filled-slots.ts`), coaching included. */
+  if (card.issue) lines.push(`**Observation of Offense:** ${card.issue}`);
   if (card.warningLevel) lines.push(`**Type of Warning:** ${card.warningLevel === "verbal" ? "Verbal Warning" : "Written Warning"}, as you said.`);
   if (card.priorActions) lines.push(`**Prior actions:** ${card.priorActions}, as you said.`);
   if (card.payrollDeduct) {
-    lines.push(`**${PAYROLL_DEDUCT_LABEL}** ${card.payrollDeduct === "yes" ? "Yes" : "No"}, as you said.${card.payrollDeduct === "yes" && card.payrollDeductAmount ? ` **${PAYROLL_AMOUNT_LABEL}:** ${card.payrollDeductAmount}.` : ""}`);
+    lines.push(`**${PAYROLL_DEDUCT_LABEL}** ${card.payrollDeduct === "yes" ? "Yes" : "No"}, as you said.${card.payrollDeduct === "yes" && card.payrollDeductAmount ? ` **${PAYROLL_AMOUNT_LABEL}:** ${/^\$/.test(card.payrollDeductAmount) ? "" : "$"}${card.payrollDeductAmount}.` : ""}`);
   }
   if (extra.datedFrom) {
     lines.push(`Dated ${extra.datedFrom.chosen} (when it happened); say if you want ${extra.datedFrom.others.join(" or ")}.`);
@@ -611,8 +630,7 @@ export function incidentDates(managerWords: string, priorActions: string | null)
   for (const match of managerWords.replace(PAYROLL_AMOUNT, " ").matchAll(ACCOUNT_DATE)) {
     const key = `${Number(match[1])}/${Number(match[2])}`;
     if (Number(match[1]) > 12 || prior.has(key) || seen.has(key)) continue;
-    const before = managerWords.slice(Math.max(0, match.index! - 40), match.index!);
-    if (/\b(?:coached|previous(?:ly)?|prior|signed|received|given|issued|had (?:a|her|his|their) (?:verbal|written|ca|coaching))\b[^.\n]*$/i.test(before)) continue;
+    if (PRIOR_STEP_BEFORE.test(sentenceBefore(managerWords, match.index!))) continue;
     seen.set(key, key);
   }
   return [...seen.values()];
@@ -648,6 +666,31 @@ export function mentionsPerson(text: string, name: string, rosterNames: readonly
  * cut account). A structural check, not wording: every date, time, amount, place ("at <place>") and time word the
  * manager gave about this person must still be in what_happened. Empty is allowed (Create waits for the account).
  */
+/** Performance metrics managers name ("PPTA, LPSVA, Club Average, Club Close %, and Spa %"). */
+const ACCOUNT_METRIC = /\b(?:PPTA|LPSVA|UPTA|MSB|CC\s?%|Spa\s?%|Club\s+Close\s?%|Club\s+Average|Average\s+Club)(?=\W|$)/gi;
+
+/**
+ * Whole numbers of two or more digits that are not part of a date, a time or an amount, and not a year ("146 tans",
+ * "237 tanning transactions", "40 min"): a figure the account must keep, and a card may not add.
+ */
+export function standaloneFigures(text: string): string[] {
+  const bare = text.replace(ACCOUNT_DATE, " ").replace(ACCOUNT_TIME, " ").replace(ACCOUNT_MONEY, " ");
+  ACCOUNT_DATE.lastIndex = 0;
+  return [...bare.matchAll(/(?<![\d.])\d{2,}(?![\d.])/g)].map((match) => match[0]).filter((figure) => !/^(?:19|20)\d\d$/.test(figure));
+}
+
+/** "in the format of <C>'s ca", "the same as <C>s", "look like <C>'s": another form as the model for this one. */
+export const FORMAT_OF_ANOTHER = /\b(?:format\s+of|same\s+as|look(?:s)?\s+(?:exactly\s+|exactally\s+)?like|copy(?:\s+of)?)\b/i;
+
+/** The sentence so far before this point (from the last ". ", "! ", "? " or line break). */
+function sentenceBefore(text: string, index: number): string {
+  const head = text.slice(0, index);
+  const cut = Math.max(head.lastIndexOf(". "), head.lastIndexOf("! "), head.lastIndexOf("? "), head.lastIndexOf("\n"));
+  return head.slice(cut + 1);
+}
+
+/** Words before a date that make it an earlier step's date, in the same sentence. */
+const PRIOR_STEP_BEFORE = /\b(?:coached|previous(?:ly)?|prior|signed|received|given|issued|already|had (?:a|her|his|their) (?:verbal|written|ca|coaching))\b[^.\n]*$/i;
 const ACCOUNT_DATE = /\b(\d{1,2})[/-](\d{1,2})(?:[/-]\d{2,4})?\b/g;
 const ACCOUNT_TIME = /\b\d{1,2}(?::|;)\d{2}\s*(?:am|pm)?\b|\b\d{1,2}\s*(?:am|pm)\b/gi;
 const ACCOUNT_MONEY = /\$\s?\d+(?:\.\d{2})?/g;
@@ -657,12 +700,19 @@ const NOT_A_PLACE = new Set(["least", "all", "first", "once", "times", "a", "an"
 /** "$25 will be payroll deducted", "payroll deduct $50", "$20 payroll deduct applies": the amount goes on the payroll field, not the account. */
 const PAYROLL_AMOUNT = /\$\s?\d+(?:\.\d{2})?\s*(?:will be\s+|is\s+|to be\s+)?(?:payroll\s+)?deduct\w*|(?:payroll\s+)?deduct\w*\s*(?:of\s+|for\s+|is\s+)?\$\s?\d+(?:\.\d{2})?/gi;
 
-export function accountMissing(managerWords: string, account: string): string[] {
+export function accountMissing(managerWords: string, account: string, priorActions: string | null = null): string[] {
   managerWords = managerWords.replace(PAYROLL_AMOUNT, " ");
   const said = account.toLowerCase();
   const missing: string[] = [];
+  /*
+   * A date of an earlier step (LEVEL_STEP_NOT_ACCOUNT: "previous coaching … 10-15-26", "signed the policy manual on
+   * 10-15-26", a date listed in prior_actions) belongs in Prior actions, never the Observation (the live re-run's r5,
+   * coding3 and payroll-amount cases), so it is not required here.
+   */
+  const priorDays = new Set([...(priorActions ?? "").matchAll(ACCOUNT_DATE)].map((match) => `${Number(match[1])}/${Number(match[2])}`));
   for (const match of managerWords.matchAll(ACCOUNT_DATE)) {
     const [month, day] = [Number(match[1]), Number(match[2])];
+    if (priorDays.has(`${month}/${day}`) || PRIOR_STEP_BEFORE.test(sentenceBefore(managerWords, match.index!))) continue;
     const kept = [...said.matchAll(ACCOUNT_DATE)].some((other) => Number(other[1]) === month && Number(other[2]) === day);
     if (!kept) missing.push(match[0]);
   }
@@ -677,6 +727,14 @@ export function accountMissing(managerWords: string, account: string): string[] 
       if (!kept.has(figure(match[0])) && !said.includes(match[0].toLowerCase())) missing.push(match[0]);
     }
   }
+  /* Metrics and figures exactly as written (QA, the MSB family): "PPTA", "Club Close %", "146 tans", "237". */
+  for (const match of managerWords.matchAll(ACCOUNT_METRIC)) {
+    const metric = match[0].toLowerCase().replace(/\s+/g, " ");
+    const kept = said.replace(/\s+/g, " ").includes(metric) || (/^msb$/.test(metric) && /must see behaviou?rs?/.test(said));
+    if (!kept) missing.push(match[0]);
+  }
+  const accountFigures = new Set(standaloneFigures(account));
+  for (const figure of standaloneFigures(managerWords)) if (!accountFigures.has(figure)) missing.push(figure);
   for (const match of managerWords.matchAll(ACCOUNT_WHEN)) {
     const word = match[0].toLowerCase().replace(/^(?:on|last) /, "");
     if (!said.includes(word)) missing.push(match[0]);
@@ -847,13 +905,39 @@ export async function proposeForm(
     .filter((message) => sourceIds.includes(message.id ?? ""))
     .map((message) => message.content)
     .join("\n");
+  /*
+   * HARD GUARD, NO INVENTED FIGURES (QA, the MSB family: "B's own numbers replace C's"): a figure in the account the
+   * manager never wrote (another form's "237", a guessed count) is refused.
+   */
+  if (whatHappened && ACCOUNT_FORMS.has(template.key)) {
+    // Every number the manager wrote anywhere (a date's "20" may be written out as "October 20").
+    const said = new Set([...managerTurns(context).matchAll(/\d+/g)].map((match) => String(Number(match[0]))));
+    const invented = standaloneFigures(whatHappened).filter((figure) => !said.has(String(Number(figure))));
+    if (invented.length > 0) return { error: `what_happened has figures the manager never gave: ${invented.join(", ")}. Use only this employee's figures as the manager wrote them; another form's numbers never go on this card.` };
+  }
+  /* HARD GUARD (QA, the MSB family): with another employee's form as the format, that employee never appears on this card. */
+  if (whatHappened && FORMAT_OF_ANOTHER.test(managerTurns(context))) {
+    const roster = await rosterFor(context.actor.scope);
+    if (roster.kind === "read") {
+      const names = roster.roster.map(displayName);
+      const other = names.find((name) => !samePerson(name, employee.name) && mentionsPerson(whatHappened, name, names));
+      if (other) return { error: `${other}'s form is only the format. ${other} never appears on ${employee.name}'s card; write ${employee.name}'s own account.` };
+      /* The format's own figures (a pasted "<C> completed 237 tanning transactions") are <C>'s, never this card's. */
+      const sentences = managerTurns(context).split(/(?<=[.!?])\s+|\n+/);
+      const othersNamed = names.filter((name) => !samePerson(name, employee.name) && mentionsPerson(managerTurns(context), name, names));
+      const theirs = new Set(sentences.filter((sentence) => othersNamed.some((name) => mentionsPerson(sentence, name, names))).flatMap(standaloneFigures));
+      const ours = new Set(sentences.filter((sentence) => !othersNamed.some((name) => mentionsPerson(sentence, name, names))).flatMap(standaloneFigures));
+      const borrowed = standaloneFigures(whatHappened).filter((figure) => theirs.has(figure) && !ours.has(figure));
+      if (borrowed.length > 0) return { error: `${borrowed.join(", ")} ${borrowed.length === 1 ? "is" : "are"} the format's own figures, not ${employee.name}'s. Use ${employee.name}'s figures as the manager gave them.` };
+    }
+  }
   if (whatHappened && ACCOUNT_FORMS.has(template.key)) {
     /* A payroll or level answer ("yes payroll, $20", "make it a written") is not the incident's account. */
     const accountWords = asked.messages
       .filter((message) => sourceIds.includes(message.id ?? "") && !LEVEL_OR_PAYROLL_ANSWER.test(String(message.content).trim()))
       .map((message) => message.content)
       .join("\n");
-    const dropped = accountMissing(withoutPayrollClauses(accountWords), whatHappened);
+    const dropped = accountMissing(withoutPayrollClauses(accountWords), whatHappened, typeof input.prior_actions === "string" ? input.prior_actions : null);
     if (dropped.length > 0) {
       return { error: `what_happened leaves out what the manager said: ${dropped.map((word) => `"${word}"`).join(", ")}. Put the manager's whole account of this incident in what_happened, every date, time, place and amount as they said it, and propose again.` };
     }
@@ -904,7 +988,8 @@ export async function proposeForm(
   if (policyHeading && topicFits && !managerNamed && !topicFits.some((heading) => headingKey(heading) === headingKey(policyHeading!))) {
     return { error: `${policyHeading} is not this incident's section. What the manager described is cited under: ${topicFits.join(", ")}. Read that section and propose again.` };
   }
-  let policyLine: string | null = policyHeading && !confirmPolicy ? (page ? `${policyHeading}, JBA Policy Manual p.${page}` : policyHeading) : null;
+  /* As today's card prints it (`formatManualCitation`): "Standards of Conduct Policy, JBA Policy Manual p.12". */
+  let policyLine: string | null = policyHeading && !confirmPolicy ? formatManualCitation(policyHeading, page) : null;
   let policyNote: string | null = null;
   if (cleaning && !careAndCleaning) {
     const conduct = policyHeading !== null && /standards of conduct/i.test(policyHeading);
@@ -936,17 +1021,29 @@ export async function proposeForm(
    * Several incident dates (Pau 14 Nov: act and state the assumption): a date the model chose from the stated ones is
    * kept and the reply names the others; a date that is not one of them is never kept; with none, the one question.
    */
+  /*
+   * QA's reconciliation (16:17Z): the date is picked only when it is clear; two incident dates in one account ("late
+   * on 10/5 and again on 10/15") are never clear, so the one question asks which (a prior step's date is not counted,
+   * `incidentDates`). The manager's answer sets it.
+   */
   const answered = datesGiven.length > 1 && latestDates.length === 1 && datesGiven.includes(latestDates[0]!);
   if (answered) date = monthDayToIso(latestDates[0]!);
-  const chosen = datesGiven.length > 1 && date ? datesGiven.find((given) => monthDayToIso(given) === date) ?? null : null;
-  if (datesGiven.length > 1 && date && !chosen) date = null;
+  else if (datesGiven.length > 1) date = null;
   const datesAsked = datesGiven.length > 1 && !date ? datesGiven : [];
-  const datedFrom = chosen && !answered ? { chosen, others: datesGiven.filter((given) => given !== chosen) } : null;
+  const datedFrom = null;
   if (date && date > today) return { error: `The incident date ${date} is after today (${today}, the salon's local date). Ask the manager.` };
   const askedLevel = input.warning_level === "verbal" || input.warning_level === "written" ? input.warning_level : null;
   const level = askedLevel && (askedLevel === "verbal" ? /\bverbal\b/i : /\bwritten\b|\bwrite[- ]?up\b/i).test(managerWords) ? askedLevel : null;
   const dropped = [askedLevel && !level ? "warning_level" : null, askedPayroll && !payroll ? "payroll_deduct" : null, typedAmount && !amount ? "payroll_amount" : null].filter(Boolean);
-  const priorActions = typeof input.prior_actions === "string" && input.prior_actions.trim() ? input.prior_actions.trim().slice(0, 600) : null;
+  /*
+   * Prior actions as today reads them from the manager's own words (`statedPriorActions`: "Verbal corrective action —
+   * signed 09/02/2026", a corrected date replacing the first; the live re-run's second-request-prior-step-correction
+   * and r5), else the model's list. Never from forms on file.
+   */
+  const statedSteps = (await import("@/lib/forms/prior-actions")).statedPriorActions(requestWords, today);
+  const priorActions = statedSteps.length > 0
+    ? statedSteps.join("; ").slice(0, 600)
+    : typeof input.prior_actions === "string" && input.prior_actions.trim() ? input.prior_actions.trim().slice(0, 600) : null;
   const incidentTime = typeof input.incident_time === "string" && input.incident_time.trim() ? input.incident_time.trim().slice(0, 40) : null;
 
   const proposal = buildProposal({
@@ -961,6 +1058,15 @@ export async function proposeForm(
     employee: { kind: "resolved", employeeName: employee.name },
     employeeSalonIds: [...employee.salonIds],
   });
+  /*
+   * HARD GUARD, NEVER AN EMPTY ACCOUNT WHEN ONE WAS GIVEN (QA's live triage, 16:17Z: the lost-account cases): the
+   * manager already said what happened in this person's turns, so a card with an empty what_happened is refused and
+   * the model gets their words back.
+   */
+  if (whatHappened === "" && ACCOUNT_FORMS.has(template.key)) {
+    const given = latestAccount(asked.messages.filter((message) => sourceIds.includes(message.id ?? "")).map((message) => String(message.content ?? "")));
+    if (given) return { error: `The manager already said what happened: ${JSON.stringify(given)}. Put their account in what_happened (their words; only spelling fixed) and propose again.` };
+  }
   /* No account yet: the card shows, and Create waits for what happened (as WHAT_HAPPENED_NO_CREATE does today). */
   const awaiting = whatHappened === "" && ACCOUNT_FORMS.has(template.key);
   /* NO_ACCOUNT_NO_APP_POLICY (parity gap #20): with no account, no policy is cited unless the manager named one. */
@@ -997,7 +1103,16 @@ export async function proposeForm(
     ...(personId && effects.nameLines?.[personId] ? [effects.nameLines[personId]!] : []),
     ...cardLines(card, template.key, { datesAsked, datedFrom }),
     ...(datedToday && (card.formDate ?? today) === today ? [DATED_TODAY_LINE] : []),
+    ...(template.key === "stc-exit" ? await exitDateLines(requestWords, today) : []),
+    /*
+     * Pau's line, said exactly, on a Standards of Conduct card for under performance, MSB or the sales metrics (QA, the
+     * MSB family: "Pau's exact under-performance line"); the reply always carries it.
+     */
+    ...(policyHeading && /standards of conduct/i.test(policyHeading) && (/\bunder[- ]?perform(?:ance|ing)\b|must see behaviou?rs?|\bperform[a-z]*\b/i.test(managerWords) || ACCOUNT_METRIC.test(managerWords))
+      ? [UNDER_PERFORMANCE_EXPLAINED]
+      : []),
   ];
+  ACCOUNT_METRIC.lastIndex = 0;
   effects.policyLine = policyLine;
   effects.confirmPolicy = didYouMean;
   return {
@@ -1126,6 +1241,39 @@ export async function editForm(
       return { error: `This form is ${loaded.instance.status}, so it cannot be edited here. Tell the manager.` };
     }
     /*
+     * THE ACCOUNT FIELD BY ITS OWN KEY (the live re-run's make-that-update: values for "observation", "what_happened",
+     * "details" on a Coaching Form were refused as unknown fields until the step limit): a name for the account is the
+     * form's own account field (Observation on a CA, Details of Coaching on a coaching form).
+     */
+    const fieldKeys = documentFieldKeys(loaded.version.document);
+    const accountField = ["observation", "coaching_details"].find((key) => fieldKeys.has(key)) ?? null;
+    for (const field of Object.keys(values)) {
+      if (!fieldKeys.has(field) && ACCOUNT_ALIASES.has(field) && accountField) {
+        values[accountField] = values[field]!;
+        delete values[field];
+      }
+    }
+    const unknown = Object.keys(values).filter((field) => !fieldKeys.has(field) && field !== "warning_type" && field !== "employee_name");
+    if (unknown.length > 0) {
+      return { error: `${unknown.join(", ")} ${unknown.length === 1 ? "is not a field" : "are not fields"} of this form; nothing was written. Its fields: ${[...fieldKeys].join(", ")}.` };
+    }
+    /* HARD GUARD, NEVER AN EMPTY ACCOUNT (QA, 16:17Z): the account field is never cleared by an edit. */
+    if (accountField && accountField in values && values[accountField]!.trim() === "") {
+      return { error: `${accountField} is never written empty. Write the manager's account in it.` };
+    }
+    /*
+     * "MAKE THAT UPDATE" / "WRITE THE OBSERVATION" WRITES THE ACCOUNT (MAKE_THAT_UPDATE_ACCOUNT; QA's live triage 16:17Z:
+     * make-that-update and stepb): the manager's latest account in this chat goes into the account field as they said
+     * it, added after what is there, when the field does not hold it yet.
+     */
+    if (Object.keys(values).length === 0 && accountField && WRITE_ACCOUNT_REQUEST.test(context.question)) {
+      const account = latestAccount(context.history.filter((turn) => turn.role === "user").slice(-8).map((turn) => String(turn.content ?? "")));
+      const old = loaded.values.find((row) => row.fieldKey === accountField)?.value ?? "";
+      if (account && !old.toLowerCase().includes(account.toLowerCase().replace(/[.!]+$/, ""))) {
+        values[accountField] = old.trim() ? `${old.trimEnd()}\n${account}` : account;
+      }
+    }
+    /*
      * No field values: the manager's own request goes through the form's reviser (`chat-revision.ts`, the same one
      * today's chat uses), which knows each template's fields, the date, the policy reference line, the Action Plan and
      * the protected values. Its reply says what changed.
@@ -1245,6 +1393,31 @@ export async function searchKnowledge(context: ToolContext, effects: ToolEffects
 export const REWORD_REQUEST = /\b(?:make (?:it|this|that)(?: sound)? (?:more )?(?:professional|better|cleaner)|re-?word|re-?phrase|clean (?:it|this|that) up|sound (?:more )?(?:professional|better)|professional(?:ly)? word)/i;
 /** Fields a reword never touches. */
 const REWORD_KEEPS = new Set(["warning_type", "payroll_deduct", "payroll_deduct_amount", "form_date", "employee_name", "job_title", "policy_violated", "direct_policy"]);
+
+/** "make that update", "write the observation", "put that on the form", "update the draft with that": write the account. */
+export const WRITE_ACCOUNT_REQUEST = /^(?:\s*(?:ok(?:ay)?|yes|please|can you|could you|just)[,\s]*)*(?:make (?:that|the|those) (?:update|change)s?|write (?:the |up the |in the )?(?:observ\w*|details?|account)|put (?:that|it|this|those details) (?:on|in(?:to)?) (?:the )?(?:form|draft|card)|(?:upd?ate|add) (?:the )?(?:draft|form|card) with (?:that|this|those|these|it|the details\w*)(?: (?:details|of coaching))*)\b/i;
+const INCIDENT_VERB = /\b(?:was|were|did(?:n'?t)?|had(?:n'?t)?|left|came|showed|marked|forgot|missed|refused|yelled|said|told|failed|skipped|called|clocked|took|gave|ran|let|wore|used|ignored|arrived|opened|closed|didnt|wasnt)\b/i;
+const NOT_AN_ACCOUNT = /\?|^\s*(?:make|write|update|upate|put|add|can|could|would|please|create|i need|i want|do|does|how|what|why|when|where|who|is|are|should|thank|thanks|ok|okay|yes|no)\b/i;
+
+/**
+ * The manager's latest account among these turns, newest first: a statement (not a question or an instruction to the
+ * app) of five or more words that says what someone did. Null when there is none.
+ */
+export function latestAccount(turns: readonly string[]): string | null {
+  for (const text of [...turns].reverse()) {
+    const said = text.trim();
+    if (!said || NOT_AN_ACCOUNT.test(said) || said.split(/\s+/).length < 5) continue;
+    if (INCIDENT_VERB.test(said)) return said;
+  }
+  return null;
+}
+
+/** The form's own field keys, from its template document. */
+function documentFieldKeys(document: unknown): Set<string> {
+  return new Set([...JSON.stringify(document ?? {}).matchAll(/"key":"([a-z0-9_]+)"/g)].map((match) => match[1]!));
+}
+/** Names a model may use for the account field: the form's own key is used. */
+const ACCOUNT_ALIASES = new Set(["observation", "observation_of_offense", "what_happened", "details", "details_of_coaching", "coaching_details", "account", "issue"]);
 
 /** A short answer about the level or payroll: "yes payroll, $20", "make it a written", "no payroll". */
 export const LEVEL_OR_PAYROLL_ANSWER = /^(?=.{0,80}$)(?:.*\b(?:payroll|deduct\w*)\b|.*\b(?:make it|it'?s|change it to)\s+(?:a\s+)?(?:verbal|written)\b)/i;

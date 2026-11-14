@@ -178,7 +178,7 @@ function salonWordStandIn(view: LoopView): LoopDecision {
   if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "rowan kestrel" } };
   const rowan = (lastResult(view, "find_staff")?.matches ?? []) as { employee_id: string; name: string }[];
   if (rowan.length === 0) return { tool: "find_staff", input: { name: "rowan kestrel" } };
-  if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: rowan[0]!.employee_id, policy: headingWith(view, /late open/i), incident_date: "2026-10-20", warning_level: "verbal" } };
+  if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: rowan[0]!.employee_id, policy: headingWith(view, /late open/i), incident_date: "2026-10-20", warning_level: "verbal", what_happened: "Rowan Kestrel was late on 10/20 and the salon was opened late." } };
   return { text: "Here is the Corrective Action Form for Rowan Kestrel." };
 }
 
@@ -546,7 +546,8 @@ export const NOV14_AGENT_LOOP_CASES: ReplayCase[] = [
         const name = /brisa talmadge/i.test(said) ? "Brisa Talmadge" : said.trim();
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name } };
         // A careless model tries the typed name anyway: the roster can be read, so it is refused.
-        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_name: name } };
+        // The account is given, as a real model gives it (the empty-account guard refuses a card without it).
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_name: name, what_happened: "She was late." } };
         return { text: `I couldn't find ${name} on the roster. Who is this form for?` };
       });
       t.loopModel!(standIn);

@@ -15,6 +15,7 @@ import { noteModelCall } from "../model-failure";
 import { activeSpendMeter } from "../spend-meter";
 import { AI_TIMEOUT_MESSAGE, isAiTimeLimitError, logAiFailure, withStreamTimeLimit } from "../time-limit";
 import type { AskResponse } from "../types";
+import { EARLIER_CARD_STAYS } from "@/lib/forms/proposal-continuation";
 import { withOutOfScopePlace } from "../out-of-scope-place";
 import { withoutSensitiveDefaults } from "../sensitive-defaults";
 import { finalReplyWithoutMarkers, withoutSourceMarkers, withoutSourceNotes } from "../source-note";
@@ -110,7 +111,7 @@ function withCardNote(message: ChatMessage): string {
 }
 
 /** A sentence saying an earlier card was not real or not built: never true (see CARD_NOTE); dropped from the reply. */
-export const DISOWNS_EARLIER_CARD = /(?:^|(?<=[.!?]\s))(?:One correction(?: first)?:\s*)?[^.!?\n]*\bmy (?:earlier|previous|last) (?:reply|message)\b[^.!?\n]*\b(?:before I(?:'d)?|never|wasn't|was not|went out)\b[^.!?\n]*[.!?—-]*\s*/gi;
+export const DISOWNS_EARLIER_CARD = /(?:^|(?<=[.!?]\s))(?:One correction(?: first)?:\s*)?[^.!?\n]*\bmy (?:earlier|previous|last) (?:repl(?:y|ies)|messages?)\b[^.!?\n]*\b(?:before I(?:'d)?|never|wasn't|was not|went out)\b[^.!?\n]*[.!?—-]*\s*/gi;
 
 /** The conversation as model messages: the manager's and Sunny's turns, newest 20, starting with the manager's. */
 function conversationOf(history: readonly ChatMessage[], question: string): { role: "user" | "assistant"; content: unknown }[] {
@@ -482,6 +483,16 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     lastReply && CARD_REPLY.test(String(lastReply.content)) && !/still open/i.test(content)
   ) {
     content = `${content.trim()}\n\n${CARD_STILL_OPEN}`;
+  }
+  /*
+   * ANOTHER PERSON'S CARD KEEPS THE EARLIER ONE (SAME_REQUEST_KEEPS_EARLIER_CARD; the live run's same-request-keeps-
+   * earlier-card): a card for a different person than an earlier card in this chat says the earlier card stays, so the
+   * screen keeps both creatable (`isProposalSuperseded` reads that line).
+   */
+  if (effects.proposal?.employeeName) {
+    const name = effects.proposal.employeeName.toLowerCase();
+    const earlierCard = input.history.some((turn) => turn.role === "assistant" && CARD_REPLY.test(String(turn.content)) && !String(turn.content).toLowerCase().includes(name));
+    if (earlierCard && !content.includes(EARLIER_CARD_STAYS)) content = `${content.trim()}\n\n${EARLIER_CARD_STAYS}`;
   }
   /* Today's whole-staff reply (list_staff), as written: the list or the which-salon question, never a card. */
   if (effects.replyOverride && !effects.proposal) content = effects.replyOverride;

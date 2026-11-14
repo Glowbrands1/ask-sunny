@@ -2,6 +2,7 @@ import { expect, vi } from "vitest";
 
 import { KEARNEY, STAFF, TWO_SALONS, type DirectoryRow, type ReplayCase, type ReplayContext } from "./cases";
 import { firstMatch, lastResult, loopStandIn, type LoopView } from "./loop-stand-in";
+import { isProposalSuperseded } from "@/lib/forms/proposal-continuation";
 
 /**
  * ============================================================================
@@ -33,6 +34,14 @@ const ISOLDE_TWO: DirectoryRow = { id: "e-isolde-varga-two", firstName: "Isolde"
 /** An office account affiliated with the salon (never on a salon's staff list), and a person at the other salon. */
 const OFFICE: DirectoryRow = { id: "e-perrin-holloway", firstName: "Perrin", lastName: "Holloway", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Regional Director" };
 const OTHER_SALON: DirectoryRow = { id: "e-wrenna-castell", firstName: "Wrenna", lastName: "Castell", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0307"], positionName: "Tanning Consultant" };
+/** The MSB family (QA, 14 Nov 2026; real manager wordings, names invented): A, B and C. */
+const SAFFI: DirectoryRow = { id: "e-saffi-brannock", firstName: "Saffi", lastName: "Brannock", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" };
+const LIORA: DirectoryRow = { id: "e-liora-quenby", firstName: "Liora", lastName: "Quenby", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" };
+const CORVINA: DirectoryRow = { id: "e-corvina-lisle", firstName: "Corvina", lastName: "Lisle", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" };
+const MSB_A = "I need a corrective action made for not meeting must see behaviors. Saffi Brannock was below on PPTA, LPSVA, Club Average, Club Close % and Spa in the month of October.";
+const MSB_B = "create a ca for must see behaviors for performace this should be for liora quenby - verbal 146 tans Below in PPTA, LPSVA, Average Club, CC%, Spa%";
+const MSB_C = "...but i need it to be in the format of Corvina Lisle's ca it needs to look exactally the same as corvina lisles but wtih all of this information";
+const MSB_D = "Observation of Offense: During the month of September 2026, Corvina Lisle completed 237 tanning transactions. Throughout these transactions, Corvina Lisle failed to follow their Must See Behaviors resulting in a performance below Sun Tan City averages in the following areas UPTA, Average Club, CC%, and Spa %.\nIt needs to look like this format but for liora quenby:";
 /** At a salon outside the signed-in manager's scope. */
 const FARAWAY: DirectoryRow = { id: "e-ysolde-marchetti", firstName: "Ysolde", lastName: "Marchetti", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-9917"], positionName: "Tanning Consultant" };
 
@@ -203,7 +212,7 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
   },
   {
     id: "nov14-agent-loop-two-dates-asked",
-    title: "two incident dates (QA's L3 must-fix; Pau 14 Nov: act and state the assumption): a date chosen from the stated ones is kept and the reply names the others; none chosen → the date stays empty and one question asks which; a date not stated is never kept; a prior step's date is not counted; the answer sets the date",
+    title: "two incident dates (QA's L3 must-fix; QA 16:17Z: pick only when clear): two dates of one repeated incident leave the date empty and one question asks which, whatever date the model picks; a prior step's date is not counted; the answer sets the date",
     report: `${REPORT}; L3 (14 Nov 2026): "two dates in the account and the loop put one on the form without asking"`,
     status: "fixed",
     fixFlags: [FLAG],
@@ -228,12 +237,11 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       await thread.say("10/2");
       expect(thread.proposal?.formDate ?? "", "the answer did not set the date").toBe("2026-10-02");
 
-      // Changed on purpose (Pau 14 Nov: fewer questions, act and state the assumption): a stated date chosen is kept, the other named.
+      // QA's reconciliation (16:17Z): two dates of one repeated incident are never clear, so even a model that picks one is asked which.
       const picked = t.thread();
       const dated = await picked.say("ca for tamsin orwell (pick), she left the spray booth dirty on 9/28 and again on 10/2");
-      expect(picked.proposal?.formDate).toBe("2026-09-28");
-      expect(dated.content).toContain("Dated 9/28 (when it happened); say if you want 10/2.");
-      expect(dated.content).not.toMatch(/Which date goes on the form/);
+      expect(picked.proposal?.formDate ?? null, "a date was picked without asking").toBeNull();
+      expect(dated.content).toContain("Which date goes on the form?");
       // A date nobody stated is never kept: the one question instead.
       const invented = t.thread();
       const notStated = await invented.say("ca for tamsin orwell (invent), she left the spray booth dirty on 9/28 and again on 10/2");
@@ -701,6 +709,159 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       const elsewhere = t.thread();
       const outside = await elsewhere.say("ca for tamsin orwell, she was late at grand island");
       expect(outside.content).toMatch(/\*\*NE Grand Island\*\* isn't a salon on your assignment/);
+    },
+  },
+  {
+    id: "nov14-agent-loop-msb-family",
+    title: "the MSB / performance family (QA, 14 Nov 2026; production wordings, names invented): a CA citing the Standards of Conduct with Pau's line; metrics and figures kept verbatim; MSB never a person; a stated verbal kept; \"in the format of <C>'s ca\" opens the gate, and <C>'s name and figures never reach <B>'s card",
+    report: `${REPORT}; QA: Pau flagged the MSB/performance family; manager wordings from production history (3–4 Nov 2026)`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-13T22:40:00Z"));
+      t.directory([...STAFF, SAFFI, LIORA, CORVINA]);
+      t.as("salon_director", KEARNEY);
+      const accountA = "Saffi Brannock was below on PPTA, LPSVA, Club Average, Club Close % and Spa in the month of October.";
+      const accountB = "Liora Quenby had 146 tans and was below in PPTA, LPSVA, Average Club, CC%, Spa%.";
+      const careless = loopStandIn((view) => {
+        const said = view.turns.filter((turn) => turn.role === "user").map((turn) => turn.text).join("\n");
+        const latestTurn = view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "";
+        const tries = view.results.filter((result) => result.tool === "propose_form").length;
+        if (/Saffi/.test(latestTurn)) {
+          if (tries === 0) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: SAFFI.id, policy: "Standards of Conduct", what_happened: "Saffi Brannock was below on PPTA, LPSVA, Club Average and Spa in October." } };
+          if (tries === 1) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: SAFFI.id, policy: "Standards of Conduct", what_happened: accountA } };
+          return { text: "Here's the card." };
+        }
+        if (/format of Corvina|look like this format/i.test(latestTurn)) {
+          if (/format of Corvina/i.test(latestTurn) && !lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: "Corvina Lisle" } };
+          if (tries === 0) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: LIORA.id, policy: "Standards of Conduct", warning_level: "verbal", what_happened: "During the month of September 2026, Liora Quenby completed 237 tanning transactions and failed to follow their Must See Behaviors in UPTA, Average Club, CC%, and Spa %." } };
+          if (tries === 1) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: LIORA.id, policy: "Standards of Conduct", warning_level: "verbal", what_happened: "Like Corvina Lisle, Liora Quenby had 146 tans and was below in PPTA, LPSVA, Average Club, CC%, Spa%." } };
+          if (tries === 2) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: LIORA.id, policy: "Standards of Conduct", warning_level: "verbal", what_happened: `Throughout her transactions, ${accountB}` } };
+          return { text: "Here's the card in that format." };
+        }
+        if (/liora quenby/i.test(said)) {
+          if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "msb" } };
+          if (tries === 0) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: LIORA.id, policy: "Standards of Conduct", warning_level: "verbal", what_happened: "Liora Quenby was below in PPTA, LPSVA, Average Club, CC%, Spa%." } };
+          if (tries === 1) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: LIORA.id, policy: "Standards of Conduct", warning_level: "verbal", what_happened: accountB } };
+          return { text: "Here's the card." };
+        }
+        return { text: "Who is this Corrective Action Form for?" };
+      });
+      t.loopModel!(careless);
+      const results = () => toolResults(careless.views, "propose_form");
+
+      // A: every metric kept; Standards of Conduct with Pau's line.
+      const a = t.thread();
+      const replyA = await a.say(MSB_A);
+      expect(results().some((result) => /leaves out.*Club Close %/.test(result)), "a dropped metric was taken").toBe(true);
+      expect(a.proposal?.issue ?? "").toContain("Club Close %");
+      expect(replyA.content).toContain("Under Performance isn't on the CA form. Sales performance CAs use the Standards of Conduct.");
+      expect(replyA.content).toMatch(/\*\*Policy:\*\* Standards of Conduct Policy, JBA Policy Manual p\.12/);
+
+      // B: MSB is never a person; "146 tans" kept; the stated verbal kept.
+      const b = t.thread();
+      await b.say(MSB_B);
+      expect(toolResults(careless.views, "find_staff").some((result) => /"matches":\[\]/.test(result)), "MSB was found as a person").toBe(true);
+      expect(results().some((result) => /leaves out.*146/.test(result)), "the 146 tans were dropped").toBe(true);
+      expect(b.proposal).toMatchObject({ employeeName: "Liora Quenby", warningLevel: "verbal" });
+      expect(b.proposal?.issue ?? "").toMatch(/146 tans/);
+
+      // C: the format of C's CA (on file): the gate opens; C's figures and C's name never reach B's card.
+      const c = t.thread();
+      await c.say(MSB_B);
+      await c.say(MSB_C);
+      expect(toolResults(careless.views, "find_past_forms").at(-1), "the gate did not open for \"the format of <C>'s ca\"").not.toMatch(/only when the manager asks|not asked/i);
+      const cResults = results();
+      expect(cResults.some((result) => /figures the manager never gave: 237/.test(result)), "C's figure reached B's card").toBe(true);
+      expect(cResults.some((result) => /Corvina Lisle's form is only the format/.test(result)), "C's name reached B's card").toBe(true);
+      expect(c.proposal?.employeeName).toBe("Liora Quenby");
+      expect(c.proposal?.issue ?? "").not.toMatch(/Corvina|237/);
+      expect(c.proposal?.issue ?? "").toMatch(/146 tans/);
+
+      // D: C's pasted Observation as the format: its 237 is C's, never B's.
+      const d = t.thread();
+      await d.say(MSB_B);
+      await d.say(MSB_D);
+      expect(results().some((result) => /237 is the format's own figures, not Liora Quenby's/.test(result)), "the pasted format's figure reached B's card").toBe(true);
+      expect(d.proposal?.issue ?? "").not.toMatch(/Corvina|237/);
+    },
+  },
+  {
+    id: "nov14-agent-loop-guard-account-never-empty",
+    title: "the account is never left empty (QA's live triage, 16:17Z: 8 lost-account cases): a card with no account when the manager gave one is refused; edit_form maps \"observation\" to a coaching form's Details; \"make that update\" writes the manager's latest account as they said it",
+    report: `${REPORT}; the live re-run's make-that-update and stepb (\"rowan marked a session as complete but the guest hadn't been sprayed yet\")`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-13T22:40:00Z"));
+      t.directory([...STAFF, TAMSIN]);
+      t.as("salon_director", KEARNEY);
+      // A card with no account although the manager gave one.
+      const empty = loopStandIn((view) => {
+        const tries = view.results.filter((result) => result.tool === "propose_form").length;
+        if (tries === 0) return { tool: "propose_form", input: { template_key: "coaching", employee_id: TAMSIN.id } };
+        if (tries === 1) return { tool: "propose_form", input: { template_key: "coaching", employee_id: TAMSIN.id, what_happened: "Tamsin Orwell marked a session as complete but the guest hadn't been sprayed yet." } };
+        return { text: "Here's the card." };
+      });
+      t.loopModel!(empty);
+      const first = t.thread();
+      await first.say("coaching form for tamsin orwell, she marked a session as complete but the guest hadn't been sprayed yet");
+      expect(toolResults(empty.views, "propose_form")[0], "a card with an empty account was taken").toMatch(/already said what happened/);
+      expect(first.proposal?.issue ?? "").toMatch(/marked a session as complete/);
+
+      // A created coaching draft: the account turn, then "make that update" with no values writes it, word for word.
+      t.loopModel!(loopStandIn((view) => (lastResult(view, "propose_form") ? { text: "Coaching Form for Tamsin Orwell. What happened?" } : { tool: "propose_form", input: { template_key: "coaching", employee_id: TAMSIN.id } })));
+      const thread = t.thread();
+      await thread.say("create a coaching form for tamsin orwell");
+      const id = await thread.create();
+      t.loopModel!(loopStandIn(() => ({ text: "Got it." })));
+      await thread.say("tamsin marked a session as complete but the guest hadn't been sprayed yet");
+      const updater = loopStandIn((view) => (lastResult(view, "edit_form") ? { text: "Done." } : { tool: "edit_form", input: { instance_id: id } }));
+      t.loopModel!(updater);
+      await thread.say("make that update");
+      expect(t.values(id).coaching_details ?? "", "the account was not written").toMatch(/tamsin marked a session as complete but the guest hadn't been sprayed yet/i);
+
+      // "observation" on a coaching form is its Details; an empty account is refused.
+      const aliased = loopStandIn((view) => {
+        const edits = view.results.filter((result) => result.tool === "edit_form").length;
+        if (edits === 0) return { tool: "edit_form", input: { instance_id: id, values: { coaching_details: "" } } };
+        if (edits === 1) return { tool: "edit_form", input: { instance_id: id, values: { observation: "Tamsin Orwell skipped the spray booth check on 11/12." } } };
+        return { text: "Done." };
+      });
+      t.loopModel!(aliased);
+      await thread.say("she also skipped the spray booth check on 11/12, put that in");
+      expect(toolResults(aliased.views, "edit_form")[0], "an empty account was written").toMatch(/never written empty/);
+      expect(t.values(id).coaching_details ?? "", "\"observation\" did not reach the Details").toMatch(/skipped the spray booth check on 11\/12/);
+    },
+  },
+  {
+    id: "nov14-agent-loop-earlier-card-kept",
+    title: "\"do the same thing for <B> but make it a written\" (the live re-run's same-request-keeps-earlier-card): <B>'s card never supersedes <A>'s; both stay creatable",
+    report: `${REPORT}; live re-run (14 Nov 2026): <A>'s card was superseded by <B>'s`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-13T22:40:00Z"));
+      t.directory([...STAFF, TAMSIN, CORBIN]);
+      t.as("salon_director", KEARNEY);
+      t.loopModel!(loopStandIn((view) => {
+        const said = view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "";
+        const corbin = /corbin/i.test(said);
+        if (!lastResult(view, "propose_form")) {
+          return { tool: "propose_form", input: { template_key: "dpoa", employee_id: corbin ? CORBIN.id : TAMSIN.id, what_happened: `${corbin ? "Corbin Ashdown" : "Tamsin Orwell"} was late on 11/3/26.`, ...(corbin ? { warning_level: "written" } : {}) } };
+        }
+        return { text: "Here's the card." };
+      }));
+      const thread = t.thread();
+      await thread.say("create a corrective action for tamsin orwell, she was late on 11/3/26");
+      await thread.say("Can you do the same thing for corbin ashdown but make it a written");
+      const tamsin = thread.conversation!.find((message) => message.formProposal?.employeeName === "Tamsin Orwell")!.formProposal!;
+      expect(isProposalSuperseded(thread.conversation!, tamsin.proposalId), "<A>'s card is superseded by <B>'s").toBe(false);
+      expect(t.values(await thread.createCard!("Tamsin Orwell")).employee_name).toBe("Tamsin Orwell");
+      expect(t.values(await thread.createCard!("Corbin Ashdown")).employee_name).toBe("Corbin Ashdown");
     },
   },
   {

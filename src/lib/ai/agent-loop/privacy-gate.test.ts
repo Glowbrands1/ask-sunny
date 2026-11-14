@@ -52,6 +52,9 @@ const OPEN = [
   "she already has a CA but the policy wasn't listed",
   "she already has a verbal, now do a written",
   "I need you to draw me up a a coachong document for Wrenna. She already has one but the policy was not listed",
+  // QA (14 Nov 2026), the MSB family: the manager asks for another employee's CA as the format (invented names).
+  "...but i need it to be in the format of Corvina Lisle's ca it needs to look exactally the same as corvina lisles but wtih all of this information",
+  "make it look the same as corvinas ca",
 ];
 
 describe("the past-forms gate", () => {
