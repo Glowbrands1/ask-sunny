@@ -1299,6 +1299,15 @@ export async function editForm(
      */
     const rewordFacts: { reword_lost?: Record<string, string[]>; reword_touched_fixed_fields?: string[] } = {};
     if (REWORD_REQUEST.test(context.question) && Object.keys(values).length > 0) {
+      /*
+       * HARD GUARD, THE RIGHT PERSON (QA's review of batch C): a reword never changes who the form is about. Values for
+       * employee_name or job_title are refused and nothing is written, as #18's right-person part; the other fixed
+       * fields a reword touches are facts.
+       */
+      const person = Object.keys(values).filter((field) => field === "employee_name" || field === "job_title");
+      if (person.length > 0) {
+        return { error: `A reword never changes who the form is about: ${person.join(", ")} ${person.length === 1 ? "was" : "were"} not changed and nothing was written. Edit again with the free-text fields only.` };
+      }
       const fixed = Object.keys(values).filter((field) => REWORD_KEEPS.has(field));
       if (fixed.length > 0) rewordFacts.reword_touched_fixed_fields = fixed;
       for (const [field, text] of Object.entries(values)) {

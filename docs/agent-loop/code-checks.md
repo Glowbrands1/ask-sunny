@@ -175,6 +175,7 @@ edit_form facts:
 | Check | Fact |
 |---|---|
 | #28, a reword dropped words or touched fixed fields | `reword_lost`, `reword_touched_fixed_fields` |
+| #28, a reword with values for `employee_name` or `job_title` | still a refusal (the right person), nothing written |
 | #30, a level or payroll answer also wrote other fields | `level_or_payroll_answer_also_wrote` |
 
 **Still refusals (approved SAFETY):**

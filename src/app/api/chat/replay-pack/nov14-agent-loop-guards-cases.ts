@@ -604,7 +604,7 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       t.loopModel!(editor);
       await thread.say("can you clean it up");
       const results = toolResults(editor.views, "edit_form");
-// Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite; code-check audit batch C): a fact, not a refusal; the model fixes the card.
+      // Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite; code-check audit batch C): a fact, not a refusal; the model fixes the card.
       expect(results.some((result) => /"reword_lost":\{"observation":\[[^\]]*\$15/.test(result)), "a reword dropping the $15 is not a fact").toBe(true);
       expect(results.some((result) => /changes only the free-text fields|must come from the manager's own words/.test(result)), "a reword touching the level was written").toBe(true);
       expect(step).toBeGreaterThanOrEqual(2);
@@ -789,7 +789,7 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       const b = t.thread();
       await b.say(MSB_B);
       expect(toolResults(careless.views, "find_staff").some((result) => /"matches":\[\]/.test(result)), "MSB was found as a person").toBe(true);
-// Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite; code-check audit batch C): a fact, not a refusal; the model fixes the card.
+      // Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite; code-check audit batch C): a fact, not a refusal; the model fixes the card.
       expect(results().some((result) => /"account_words_missing":\[[^\]]*146/.test(result)), "the dropped 146 tans are not a fact").toBe(true);
       expect(b.proposal).toMatchObject({ employeeName: "Liora Quenby", warningLevel: "verbal" });
       expect(b.proposal?.issue ?? "").toMatch(/146 tans/);
@@ -1196,6 +1196,30 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       expect(reply.content, "the false claim reached the manager").not.toMatch(/I've added|now says/);
       expect(reply.content).toMatch(/didn't change anything/i);
       expect(reply.formUpdate ?? null).toBeNull();
+    },
+  },
+  {
+    id: "nov14-agent-loop-guard-reword-never-changes-the-person",
+    title: "\"make it professional\" on a draft with values that change employee_name to another roster person: refused, nothing written (the right person stays a hard guard in batch C)",
+    report: `${REPORT}; QA's review of batch C (#999): a reword touching employee_name was written and only reported`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-13T22:40:00Z"));
+      t.directory([...STAFF, TAMSIN, CORBIN]);
+      t.as("salon_director", KEARNEY);
+      t.loopModel!(loopStandIn((view) => (lastResult(view, "propose_form") ? { text: "Here's the Coaching Form for **Tamsin Orwell**.\n\n**Observation of Offense:** Skipped the spray booth check on 11/12." } : { tool: "propose_form", input: { template_key: "coaching", employee_id: TAMSIN.id, what_happened: "Tamsin Orwell skipped the spray booth check on 11/12." } })));
+      const thread = t.thread();
+      await thread.say("coaching form for tamsin orwell, she skipped the spray booth check on 11/12");
+      const id = await thread.create();
+      t.typeOnForm(id, { coaching_details: "Tamsin Orwell skipped the spray booth check on 11/12." });
+      const before = JSON.stringify(t.values(id));
+      const rewriter = loopStandIn((view) => (lastResult(view, "edit_form") ? { text: "Reworded." } : { tool: "edit_form", input: { instance_id: id, values: { employee_name: "Corbin Ashdown", coaching_details: "The employee did not complete the spray booth check on 11/12." } } }));
+      t.loopModel!(rewriter);
+      await thread.say("make it professional");
+      expect(toolResults(rewriter.views, "edit_form")[0], "a reword changing the person was not refused").toMatch(/A reword never changes who the form is about: employee_name/);
+      expect(JSON.stringify(t.values(id)), "the draft changed").toBe(before);
     },
   },
   {
