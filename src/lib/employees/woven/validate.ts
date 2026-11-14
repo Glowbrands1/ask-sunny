@@ -1,5 +1,7 @@
 import "server-only";
 
+import { recordToday } from "@/lib/business-today";
+
 import { WovenApiError, WovenClient, type EmployeeListResult, type TokenInfo } from "./client";
 import type { WovenConfig } from "./config";
 import {
@@ -578,7 +580,7 @@ export async function runWovenLiveValidation(options: ValidationOptions): Promis
   if (current.size === 0) findings.push({ verdict: "fail", area: "Employees", message: "The default /employees read returned no employees." });
 
   /* ---- 4. normalise everything, locally — the same code the sync uses ---- */
-  const today = now().toISOString().slice(0, 10);
+  const today = recordToday(now());
   const positions = new Set<string>();
   const primaries = new Set<string>();
   const seen = new Set<string>();
