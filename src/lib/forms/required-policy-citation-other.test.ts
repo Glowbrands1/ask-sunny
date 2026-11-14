@@ -11,7 +11,7 @@ describe("the Attendance citation in Policy Violated beside Other", () => {
   afterEach(() => vi.unstubAllEnvs());
 
   it("off: the citation is the whole field (as before)", () => {
-    // Pinned off (Gate-Sunny-3 on #971): the off arm holds even when the flag is on in the env (production-flags.json).
+    // Changed on purpose (Gate-Sunny-3 on #971, 14 Nov 2026): pinned off, so the off arm holds even when the flag is on in the env (production-flags.json).
     vi.stubEnv("OTHER_BESIDE_DESCRIBED_ENABLED", "");
     expect(write("Attendance Policy, Other")).toBe("Attendance Policy, JBA Policy Manual p.14");
   });
