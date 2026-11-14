@@ -17,7 +17,10 @@ import { REFUSAL_ROSTER, STEP_B_READER_FLAGS, patch } from "./nov7-step-b-refusa
  */
 
 const SAID = "add to the details that she was reminded about the meeting twice";
-const REQUEST = "create a coaching form for Ottoline Ormsworth, she missed the monthly meeting on 10/10/26";
+// Changed on purpose (14 Nov 2026, merging main bf62d363): with DRAFT_NO_INVENTED_PLAN_ENABLED (live since round 36)
+// a "Going Forward" the manager never gave is not saved, so the request now states the plan the draft writes;
+// the cases still test where an added line goes and that the blank lines stay.
+const REQUEST = "create a coaching form for Ottoline Ormsworth, she missed the monthly meeting on 10/10/26. going forward she will put every scheduled meeting on her calendar";
 const DETAILS =
   "Observed:\nOttoline Ormsworth missed the monthly meeting on 10/10/26.\n\nExpectation:\nOttoline is expected to attend every scheduled meeting.\n\nGoing Forward:\nOttoline will put every scheduled meeting on her calendar.";
 const ADDED = "She was reminded about the meeting twice.";
