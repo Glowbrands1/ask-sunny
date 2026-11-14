@@ -6,7 +6,8 @@ import { mainAnswerTimeoutMs, streamGapTimeoutMs } from "@/lib/config/ai-timeout
 import { chatTraceEnabled } from "@/lib/config/chat-quality-flags";
 import { authorizedSalonIds } from "@/lib/forms/location-scope";
 import { rosterSalonName } from "@/lib/forms/salon-mention";
-import type { ChatMessage } from "@/types";
+import type { ChatFormProposal, ChatMessage } from "@/types";
+import { cardPolicyHeading } from "@/lib/forms/card-policy";
 
 import { finishChatTrace, openChatTrace } from "../chat-trace";
 import { chatTraceDraft } from "../chat-trace-store";
@@ -16,9 +17,10 @@ import { activeSpendMeter } from "../spend-meter";
 import { AI_TIMEOUT_MESSAGE, isAiTimeLimitError, logAiFailure, withStreamTimeLimit } from "../time-limit";
 import type { AskResponse } from "../types";
 import { EARLIER_CARD_STAYS } from "@/lib/forms/proposal-continuation";
-import { withOutOfScopePlace } from "../out-of-scope-place";
 import { withoutSensitiveDefaults } from "../sensitive-defaults";
 import { finalReplyWithoutMarkers, withoutSourceMarkers, withoutSourceNotes } from "../source-note";
+import { extractUsedMarkers } from "../prompts";
+import { shownCitations } from "@/lib/knowledge/empty-card-drop";
 import { agentLoopSystem, AGENT_LOOP_RULES } from "./prompt";
 import { agentLoopStepLimit } from "./switch";
 import {
@@ -103,15 +105,89 @@ const count = (value: unknown): number => (typeof value === "number" && Number.i
  * card's (its Policy line or its account line) gets an app-written note.
  */
 export const CARD_NOTE = "[app note: this reply showed a card built with propose_form]";
-export const CARD_STILL_OPEN = "The card above is still open; press Create when it looks right, or tell me what to change.";
 const CARD_REPLY = /^\s*\*\*(?:Policy|Observation of Offense|What happened):?\*\*/im;
+
+/**
+ * ============================================================================
+ * THE REPLY REVIEWS ITSELF AGAINST THE CARD (QA's urgent regression, 14 Nov 2026)
+ * ============================================================================
+ *
+ * Live on Pau's account: "make it a written" after a card was answered "**Type of Warning:** Written Warning, as you
+ * said." with no new card, so the card on screen had no level and Create would have saved the form without it. Pau
+ * asked whether the loop reviews its own work: it does, here. What the reply says the card holds (level, payroll,
+ * amount, policy, date) is compared with the card this turn proposed (or, with no new card, the card on screen, which
+ * did not change). A difference is handed back to the model ONCE with the card's facts, to fix the card or the reply;
+ * only if it still differs does the reply say plainly that the change is not on the card yet. Code refuses or informs;
+ * it never writes the card's values into the reply.
+ */
+export interface CardClaims {
+  warningLevel?: "verbal" | "written";
+  payrollDeduct?: "yes" | "no";
+  payrollAmount?: string;
+  policy?: string;
+  date?: string;
+}
+
+const CLAIM_LEVEL = [/\*\*Type of Warning:?\*\*:?\s*(Verbal|Written)\b/i, /\b(Verbal|Written) Warning,? as you said/i, /\b(?:warning level|level)\b[^.\n]{0,30}\b(?:is|to|now|set to)\b\s*(?:a\s+)?\**(verbal|written)\b/i, /\b(?:made|changed|updated|set)\b[^.\n]{0,30}\b(?:to|as)\s+(?:a\s+)?\**(verbal|written)\b/i];
+const CLAIM_PAYROLL = [/Is payroll deduct applicable\?\*\*:?\s*(Yes|No)\b/i, /\*\*Payroll deduct:?\*\*:?\s*(Yes|No)\b/i, /\bpayroll deduct(?:ion)?\b[^.\n]{0,20}\b(?:is|to|set to)\s+\**(yes|no)\b/i];
+const CLAIM_AMOUNT = [/\*\*Payroll deduction amount:?\*\*:?\s*\$?(\d+(?:\.\d{1,2})?)/i, /\bpayroll[^.\n]{0,40}\$(\d+(?:\.\d{1,2})?)/i];
+const CLAIM_DATE = [/\bDated (\d{1,2}\/\d{1,2})(?:\/\d{2,4})?\b/, /\*\*(?:Date|Form date|Incident date):?\*\*:?\s*(\d{1,2}\/\d{1,2})/i];
+
+export function cardClaims(content: string): CardClaims {
+  const first = (patterns: readonly RegExp[]) => {
+    for (const pattern of patterns) {
+      const found = pattern.exec(content)?.[1];
+      if (found) return found;
+    }
+    return undefined;
+  };
+  const level = first(CLAIM_LEVEL)?.toLowerCase();
+  const payroll = first(CLAIM_PAYROLL)?.toLowerCase();
+  const policy = /^\s*\*\*Policy:?\*\*:?\s*(.+)$/im.exec(content)?.[1]?.trim();
+  return {
+    ...(level === "verbal" || level === "written" ? { warningLevel: level } : {}),
+    ...(payroll === "yes" || payroll === "no" ? { payrollDeduct: payroll } : {}),
+    ...(first(CLAIM_AMOUNT) ? { payrollAmount: first(CLAIM_AMOUNT) } : {}),
+    ...(policy ? { policy } : {}),
+    ...(first(CLAIM_DATE) ? { date: first(CLAIM_DATE) } : {}),
+  };
+}
+
+/** The card's facts as the model is shown them, and the fields the reply states that the card does not hold. */
+export function cardMismatch(claims: CardClaims, card: ChatFormProposal | null): string[] {
+  const wrong: string[] = [];
+  const policyHeading = (line: string | null | undefined) => (line ? cardPolicyHeading(`**Policy:** ${line}`)?.toLowerCase() ?? null : null);
+  if (claims.warningLevel && card?.warningLevel !== claims.warningLevel) wrong.push(`warning level (${claims.warningLevel})`);
+  if (claims.payrollDeduct && card?.payrollDeduct !== claims.payrollDeduct) wrong.push(`payroll deduct (${claims.payrollDeduct})`);
+  if (claims.payrollAmount && Number(card?.payrollDeductAmount?.replace(/[^\d.]/g, "") ?? NaN) !== Number(claims.payrollAmount)) wrong.push(`payroll amount ($${claims.payrollAmount})`);
+  if (claims.policy && card && card.policyLine !== undefined && policyHeading(claims.policy) !== policyHeading(card.policyLine)) wrong.push(`policy (${claims.policy})`);
+  if (claims.policy && !card) wrong.push(`policy (${claims.policy})`);
+  if (claims.date) {
+    const [month, day] = claims.date.split("/").map(Number);
+    const on = card?.formDate ? card.formDate.split("-").map(Number) : null;
+    if (!on || on[1] !== month || on[2] !== day) wrong.push(`date (${claims.date})`);
+  }
+  return wrong;
+}
+
+function cardFacts(card: ChatFormProposal | null): Record<string, unknown> {
+  if (!card) return { card_this_turn: null };
+  return {
+    form: card.templateName,
+    employee: card.employeeName,
+    form_date: card.formDate ?? null,
+    salon: card.locationId ? rosterSalonName(card.locationId) ?? card.locationId : null,
+    policy: card.policyLine ?? null,
+    warning_level: card.warningLevel ?? null,
+    payroll_deduct: card.payrollDeduct ?? null,
+    payroll_amount: card.payrollDeductAmount ?? null,
+    observation: card.issue ?? null,
+  };
+}
 function withCardNote(message: ChatMessage): string {
   const content = String(message.content);
   return message.role === "assistant" && CARD_REPLY.test(content) ? `${content}\n\n${CARD_NOTE}` : content;
 }
-
-/** A sentence saying an earlier card was not real or not built: never true (see CARD_NOTE); dropped from the reply. */
-export const DISOWNS_EARLIER_CARD = /(?:^|(?<=[.!?]\s))(?:One correction(?: first)?:\s*)?[^.!?\n]*\bmy (?:earlier|previous|last) (?:repl(?:y|ies)|messages?)\b[^.!?\n]*\b(?:before I(?:'d)?|never|wasn't|was not|went out)\b[^.!?\n]*[.!?—-]*\s*/gi;
 
 /** The conversation as model messages: the manager's and Sunny's turns, newest 20, starting with the manager's. */
 function conversationOf(history: readonly ChatMessage[], question: string): { role: "user" | "assistant"; content: unknown }[] {
@@ -171,7 +247,7 @@ export const AGENT_LOOP_TOOLS = [
         template_key: { type: "string" },
         employee_id: { type: "string", description: "From find_staff." },
         employee_name: { type: "string", description: "Only when find_staff said the roster cannot be searched." },
-        policy: { type: "string", description: "One JBA Policy Manual heading, exactly, or \"Other\" (a cleaning or sanitation duty left undone is always Other)." },
+        policy: { type: "string", description: "One JBA Policy Manual heading, exactly; or \"Other — <short topic>\"; or both, \"<heading>; Other — <topic>\" (a cleaning or sanitation duty left undone is Other, as the rules book says)." },
         what_happened: {
           type: "string",
           description:
@@ -183,6 +259,7 @@ export const AGENT_LOOP_TOOLS = [
         payroll_amount: { type: "string", description: "The deduction amount the manager stated, digits." },
         prior_actions: { type: "string", description: "Earlier steps only as the manager stated them (\"verbal on 10/2\", \"coached last month\"); never from records on file." },
         incident_time: { type: "string", description: "The time of the incident if the manager gave one, as they said it." },
+        salon: { type: "string", description: "The salon the form is for, as the manager named it (\"kearney\", \"IA Altoona\"), when the card asks which salon or the manager says one. Only the manager's own salons are accepted." },
       },
       ["template_key"],
     ),
@@ -264,7 +341,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     today: input.today,
     openFormId: input.openFormId,
   };
-  const effects: ToolEffects = { proposal: null, policyLine: null, formUpdate: null };
+  const effects: ToolEffects = { proposal: null, formUpdate: null };
   /* The open form as saved before the turn, for the no-false-"updated" guard below (FORM_EDIT_NOOP_GUARD's snapshot). */
   const noop = input.openFormId ? await import("@/lib/forms/form-noop-reply") : null;
   const openBefore = noop && input.openFormId ? await noop.formBeforeTurn(input.openFormId, input.request) : null;
@@ -275,7 +352,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     find_staff: (args) => findStaff(context, args, effects),
     find_past_forms: (args) => findPastForms(context, args),
     read_form: (args) => readForm(context, args),
-    read_policy: (args) => readPolicy(context, args),
+    read_policy: (args) => readPolicy(context, args, effects),
     propose_form: (args) => proposeForm(context, effects, args),
     edit_form: (args) => editForm(context, effects, args),
     open_form: (args) => openForm(context, effects, args),
@@ -299,7 +376,14 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   };
 
   const [templates, manual] = await Promise.all([templateChoices(input.actor.role), manualFor(input.scopeId)]);
+  /*
+   * A CARD IS OPEN (Pau, 15:00Z 14 Nov 2026: a mid-form question is answered and the open card stays): the last reply
+   * showed a card not yet created. A fact for the model (batch A); the rules book says what the reply says about it.
+   */
+  const lastReply = [...input.history].reverse().find((turn) => turn.role === "assistant" && !turn.error);
+  const cardOpenAtStart = !input.openFormId && Boolean(lastReply && CARD_REPLY.test(String(lastReply.content)));
   const dynamic = agentLoopSystem({
+    cardOpen: cardOpenAtStart,
     managerName: input.actor.displayName,
     role: input.actor.role,
     salons: authorizedSalonIds(input.actor.scope).map((id) => rosterSalonName(id) ?? id),
@@ -329,6 +413,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   let stoppedAt = "step_limit" as "reply" | "step_limit" | "timeout" | "error";
   const usage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
   let modelCalls = 0;
+  let selfReview: { mismatched: string[]; fixed: boolean } | null = null;
   try {
     /*
      * AI TIME LIMITS (Part 1): each step has 45 s to its first token, then 30 s between chunks, and the whole loop
@@ -413,6 +498,52 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         text = final?.finishReason === "length" ? "" : (final?.text ?? "").trim();
         if (text === "") stoppedAt = "step_limit";
       }
+      /*
+       * SELF-REVIEW (above, `cardMismatch`): with a card made this turn, or a card on screen and nothing changed this
+       * turn, the reply's stated fields are checked against the card. A difference costs one more model call, with the
+       * card's facts; nothing is checked, and nothing is called, when the reply states no card field.
+       */
+      const reviewed = stoppedAt === "reply" && !effects.formUpdate && !effects.formOpened && !input.openFormId && (effects.proposal || cardOpenAtStart);
+      const wrong = reviewed ? cardMismatch(cardClaims(text), effects.proposal) : [];
+      if (wrong.length > 0) {
+        const response = await result.response;
+        const note = [
+          `[app check] Your reply says the card has: ${wrong.join("; ")}. ${effects.proposal ? "The card you proposed this turn does not." : "No card was proposed this turn, so the card on the manager's screen did not change."}`,
+          `Card now: ${JSON.stringify(cardFacts(effects.proposal))}.`,
+          "If the manager asked for that change, call propose_form again for the same person and form with it (and everything else the card already has). Otherwise correct your reply. Never state a value the card does not hold. Then write your reply to the manager again.",
+        ].join("\n");
+        const review = streamText({
+          model: model as never,
+          system: [
+            { role: "system", content: AGENT_LOOP_RULES, providerOptions: EPHEMERAL },
+            { role: "system", content: dynamic },
+          ],
+          messages: [...(conversationOf(input.history, input.question) as never[]), ...(response.messages as never[]), { role: "user", content: note } as never],
+          tools,
+          stopWhen: stepCountIs(4),
+          maxOutputTokens: CLAUDE_MAX_TOKENS.standard,
+          maxRetries: timed.maxRetries,
+          abortSignal: timed.signal,
+          onError: () => {},
+          onChunk: () => watch.chunk(),
+          onStepFinish: (step) => {
+            const used = tokensOf(step.usage as StepUsage);
+            for (const key of Object.keys(usage) as (keyof typeof usage)[]) usage[key] += used[key];
+            activeSpendMeter()?.calls.push({ model: CLAUDE_MODEL, inputTokens: used.input_tokens, outputTokens: used.output_tokens, cacheReadTokens: used.cache_read_input_tokens, cacheWriteTokens: used.cache_creation_input_tokens });
+            modelSteps.push({ step: stepNumber, ms: 0, stop: step.finishReason ?? null, ...used });
+            modelCalls += 1;
+            stepNumber += 1;
+          },
+        });
+        const second = (await review.steps).at(-1);
+        const again = second && second.finishReason !== "tool-calls" ? (second.text ?? "").trim() : "";
+        const still = again ? cardMismatch(cardClaims(again), effects.proposal) : wrong;
+        selfReview = { mismatched: wrong, fixed: still.length === 0 };
+        /* Only on a second miss: the reply says plainly what is not on the card (today's no-op honesty pattern). */
+        text = still.length === 0 && again
+          ? again
+          : `That change isn't on the card yet: ${still.join("; ")}. Tell me again and I'll update the card.`;
+      }
     });
   } catch (error) {
     if (error instanceof MissingConfigurationError) throw new AiError("not_configured", error.message, 503, error.missing);
@@ -434,71 +565,39 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   if (trace) {
     trace.slots = {
       ...(trace.slots ?? {}),
-      agent_loop: { steps, model_steps: modelSteps, model_calls: modelCalls, step_limit: limit, stopped: stoppedAt, ms: latencyMs },
+      agent_loop: { steps, model_steps: modelSteps, model_calls: modelCalls, step_limit: limit, stopped: stoppedAt, ms: latencyMs, ...(selfReview ? { self_review: selfReview } : {}) },
     };
   }
 
   if (stoppedAt === "timeout") throw new AiError("model_failed", AI_TIMEOUT_MESSAGE, 504);
   if (stoppedAt === "error") throw new AiError("model_failed", LOOP_FAILED_REPLY, 502);
 
-  let content = (stoppedAt === "step_limit" ? STEP_LIMIT_REPLY : text).replace(DISOWNS_EARLIER_CARD, "").trim();
+  /*
+   * The reply is the model's own (Pau, 14 Nov 2026: "code may refuse or inform, never rewrite"; the code-check audit's
+   * batch A). Code adds only the protocol marker below and the safety clean-ups at the end; the card's questions, read-
+   * backs and policy line are facts on propose_form's result, worded by the rules book's Card replies.
+   */
+  let content = (stoppedAt === "step_limit" ? STEP_LIMIT_REPLY : text).trim();
   if (content === "") content = effects.proposal ? "Here is the form for you to review." : STEP_LIMIT_REPLY;
-  /*
-   * The card's policy line, which the Create button sends to the draft (`card-policy.ts`): the one propose_form decided
-   * (a manual heading, or Other under the company's cleaning rule). A "**Policy:**" line the model wrote itself is
-   * replaced by it, so the card and the draft never disagree.
-   */
-  /*
-   * THE CARD'S QUESTIONS ARE ALWAYS ASKED (QA, 14 Nov 2026, from L1–L10: the payroll question, the warning level and
-   * the two-dates question went missing). Today's card lines the reply left out are added, in today's words, before the
-   * Policy line.
-   */
-  if (effects.proposal && effects.requiredLines?.length) {
-    const flat = (text: string) => text.toLowerCase().replace(/[*_\s]+/g, " ").trim();
-    /* The account line is kept in the model's words when it gave one under the label; added only when it gave none. */
-    const accountLabel = /^\*\*(?:Observation of Offense|What happened):\*\*/;
-    const missing = effects.requiredLines.filter((line) => (accountLabel.test(line) ? !accountLabel.test(content.trim()) && !/\*\*(?:Observation of Offense|What happened):\*\*/.test(content) : !flat(content).includes(flat(line))));
-    if (missing.length > 0) {
-      const body = content.split("\n").filter((line) => !/^\s*\*\*Policy:?\*\*/i.test(line)).join("\n").trim();
-      const policy = content.split("\n").filter((line) => /^\s*\*\*Policy:?\*\*/i.test(line));
-      content = [body, missing.join("\n\n"), ...policy].filter(Boolean).join("\n\n");
-    }
-  }
-  if (effects.proposal && effects.policyLine) {
-    content = `${content.split("\n").filter((line) => !/^\s*\*\*Policy:?\*\*/i.test(line)).join("\n").trim()}\n\n**Policy:** ${effects.policyLine}`;
-  }
-
-  /*
-   * An edit the open-form reader wrote: its reply is what was saved, field by field (the realized diff today's chat
-   * shows), so the reply never claims more or less than the draft now holds.
-   */
-  /*
-   * THE CARD STAYS OPEN (Pau, 15:00Z 14 Nov 2026: a mid-form question is answered and the open card stays). The last
-   * reply showed a card not yet created, and this turn made no card, edit or list: the reply says the card is still
-   * open, so the conversation goes on with it.
-   */
-  const lastReply = [...input.history].reverse().find((turn) => turn.role === "assistant" && !turn.error);
-  if (
-    !effects.proposal && !effects.formUpdate && !effects.formOpened && !effects.replyOverride && !input.openFormId &&
-    lastReply && CARD_REPLY.test(String(lastReply.content)) && !/still open/i.test(content)
-  ) {
-    content = `${content.trim()}\n\n${CARD_STILL_OPEN}`;
-  }
   /*
    * ANOTHER PERSON'S CARD KEEPS THE EARLIER ONE (SAME_REQUEST_KEEPS_EARLIER_CARD; the live run's same-request-keeps-
    * earlier-card): a card for a different person than an earlier card in this chat says the earlier card stays, so the
    * screen keeps both creatable (`isProposalSuperseded` reads that line).
    */
+  /*
+   * Only the LATEST card in the chat counts, and it is this person's when it names them by any part of their name (QA's
+   * live-app item 14, 14 Nov 2026: the marker showed after same-card edits, "make it a written", "make it professional",
+   * because an older card reply did not spell the full name).
+   */
   if (effects.proposal?.employeeName) {
-    const name = effects.proposal.employeeName.toLowerCase();
-    const earlierCard = input.history.some((turn) => turn.role === "assistant" && CARD_REPLY.test(String(turn.content)) && !String(turn.content).toLowerCase().includes(name));
-    if (earlierCard && !content.includes(EARLIER_CARD_STAYS)) content = `${content.trim()}\n\n${EARLIER_CARD_STAYS}`;
-  }
-  /* Today's whole-staff reply (list_staff), as written: the list or the which-salon question, never a card. */
-  if (effects.replyOverride && !effects.proposal) content = effects.replyOverride;
-  if (effects.revisedReply && effects.formUpdate && !effects.proposal) content = effects.revisedReply;
-  else if (effects.formOpened?.revisesInstanceId && !effects.proposal && !/new draft/i.test(content)) {
-    content = `I opened a new draft of the ${effects.formOpened.templateName} that revises the finalized one; the original is unchanged.\n\n${content}`.trim();
+    const parts = effects.proposal.employeeName.toLowerCase().split(/\s+/).filter((part) => part.length >= 3);
+    const latestCard = [...input.history].reverse().find((turn) => turn.role === "assistant" && !turn.error && CARD_REPLY.test(String(turn.content)));
+    const latest = String(latestCard?.content ?? "").toLowerCase();
+    const namesThisPerson = parts.some((part) => new RegExp(`\\b${part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(latest));
+    /* The card reply names its employee in bold (the rules book's Card replies); a card that names nobody is never "another person's". */
+    const namesSomeone = /\*\*[A-Z][a-z'-]+(?: [A-Z][a-z'-]+)+\*\*/.test(String(latestCard?.content ?? ""));
+    const anotherPersons = Boolean(latestCard) && parts.length > 0 && !namesThisPerson && namesSomeone;
+    if (anotherPersons && !content.includes(EARLIER_CARD_STAYS)) content = `${content.trim()}\n\n${EARLIER_CARD_STAYS}`;
   }
   /*
    * HARD GUARD, NO FALSE "UPDATED" (the honesty breach in the live run, nov3-stepb-write-the-observation): with a form
@@ -520,16 +619,25 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
    * source tags (SOURCE_NOTE_GUARD, FINAL_REPLY_MARKER_GUARD), and never a default-password format or SSN digits, in
    * the reply or in a source card's excerpt (SENSITIVE_DEFAULTS_REDACT). Each behind its own flag, as today.
    */
+  /*
+   * THE CARDS ARE THE SOURCES THE REPLY USES (QA's live-app item 12: cards that did not match the reply's sources, and
+   * product sheets nobody cited): the [S<n>] the reply wrote, as today's grounded path keeps them; a reply with no marker
+   * keeps a source whose document it names. The markers never reach the manager.
+   */
+  const sources = effects.sources ?? [];
+  const used = extractUsedMarkers(content, sources.map((_, index) => index + 1));
+  const cited = used.length > 0
+    ? used.map((marker) => sources[marker - 1]!)
+    : sources.filter((source, index, all) => content.toLowerCase().includes(source.documentTitle.toLowerCase()) && all.findIndex((row) => row.documentId === source.documentId) === index);
+  content = content.replace(/\s?\[S\d{1,2}\]/g, "");
   const answer: AskResponse = {
     content: withoutSourceMarkers(withoutSourceNotes(content)),
-    citations: effects.citations ?? [],
+    citations: shownCitations([...cited, ...(effects.citations ?? [])]),
     coverage: "not_applicable",
     recommendedVideoIds: [],
     ...(effects.proposal ? { formProposal: effects.proposal } : {}),
     ...(effects.formUpdate ? { formUpdate: effects.formUpdate } : {}),
     ...(effects.formOpened ? { formOpened: effects.formOpened } : {}),
   };
-  /* OUT_OF_SCOPE_PLACE_SAID (parity gap #22): a salon the manager named outside their scope is said to be, as today. */
-  const placed = withOutOfScopePlace(answer, { question: input.question } as never, input.actor as never);
-  return finalReplyWithoutMarkers(withoutSensitiveDefaults(placed, input.question));
+  return finalReplyWithoutMarkers(withoutSensitiveDefaults(answer, input.question));
 }

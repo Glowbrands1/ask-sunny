@@ -668,6 +668,12 @@ export interface ChatFormProposal {
    */
   priorActions?: string | null;
   /**
+   * The policy the card cites, as its "**Policy:**" line reads after the label ("Late Opening Policy, JBA Policy
+   * Manual p.15"). Set by the agent loop's propose_form, whose reply is the model's own words: Create sends this
+   * card's policy, not whatever the reply's text says (`cardPolicyFor`). Optional; older cards read the reply.
+   */
+  policyLine?: string | null;
+  /**
    * A time the manager labelled ("time 10:20"). A bare "10-20" is 20 October,
    * not a time.
    */
