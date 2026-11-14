@@ -330,7 +330,13 @@ function stepsSaid(notes: string, today: string): { iso: string; named: string; 
    * file by its own date goes under Prior actions with that date, as "she had a verbal on 10/30" already does.
    */
   const history = historyLevelNotThisFormEnabled()
-    ? [...sentences, ...historyWarningLevels(notes, today).filter((step) => step.iso && !have.has(step.iso) && have.add(step.iso))]
+    ? [
+        ...sentences,
+        ...historyWarningLevels(notes, today)
+          .filter((step) => step.iso && !have.has(step.iso) && have.add(step.iso))
+          // "verbal warning signed 9/1/26": the manager said signed, so the row says so (`saidSigned`).
+          .map((step) => (step.signed ? { iso: step.iso, named: step.named, signed: true } : { iso: step.iso, named: step.named })),
+      ]
     : sentences;
   const told = historyLevelRowsEnabled() ? withoutThisFormsLevel([...history, ...levelWasDatedSteps(notes, today).filter((step) => !have.has(step.iso) && have.add(step.iso))], notes, today) : history;
   // PRIOR_STEP_DATE_LIST_ENABLED: "coaching on 9/8/2026, 9/15/2026 and 9/25/2026" is a row per date.
@@ -421,8 +427,9 @@ function managerStepLine(step: { iso: string; named: string; topic?: string; abo
 }
 
 /** Whether the manager's own words for a step say it was signed ("verbal ca signed 9-1-26"). */
-function saidSigned(step: { named: string; topic?: string }): boolean {
-  return /\bsign(?:ed|ing)?\b/i.test(`${step.named} ${step.topic ?? ""}`);
+function saidSigned(step: { named: string; topic?: string; signed?: boolean }): boolean {
+  // HISTORY_LEVEL_NOT_THIS_FORM_ENABLED: "verbal warning signed 9/1/26" read by the level reader carries `signed`.
+  return step.signed === true || /\bsign(?:ed|ing)?\b/i.test(`${step.named} ${step.topic ?? ""}`);
 }
 
 /**

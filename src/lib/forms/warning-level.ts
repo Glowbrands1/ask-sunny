@@ -229,6 +229,8 @@ function historyByDateOrPointer(
 export interface HistoryWarningLevel {
   readonly named: string;
   readonly iso: string;
+  /** The manager wrote that it was signed ("verbal warning signed 9/1/26"): the row keeps their word. */
+  readonly signed?: boolean;
 }
 
 /**
@@ -248,7 +250,7 @@ export function historyWarningLevels(text: string, today: string = businessToday
       // prior-actions readers, with the manager's corrections; only the ones the date check alone reads are added here.
       if (olderHistory(before, after)) continue;
       const iso = historyByDateOrPointer(before, after, today, read, (sentence.index ?? 0) + match.index + match[0].length, opensTurn(read, sentence.index ?? 0, before));
-      if (iso !== null) out.push({ named: match[0], iso });
+      if (iso !== null) out.push({ named: match[0], iso, ...(/^\s*(?:(?:was|were)\s+)?signed\b/.test(after) ? { signed: true } : {}) });
     }
   }
   return out;
