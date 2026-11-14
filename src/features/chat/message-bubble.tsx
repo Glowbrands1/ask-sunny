@@ -689,7 +689,11 @@ function FormProposalCard({
           </ProposalRow>
         ) : null}
         {proposal.payrollDeduct ? (
-          <ProposalRow label="Payroll deduct">{proposal.payrollDeduct === "yes" ? "Yes" : "No"}</ProposalRow>
+          <ProposalRow label="Payroll deduct">
+            {proposal.payrollDeduct === "yes" ? "Yes" : "No"}
+            {/* The amount the card carries, which Create sends (`create-inline-form.ts`); QA live-app, 14 Nov 2026: the face showed "Yes" without the $20. */}
+            {proposal.payrollDeduct === "yes" && proposal.payrollDeductAmount ? ` — $${proposal.payrollDeductAmount.replace(/^\$/, "")}` : null}
+          </ProposalRow>
         ) : null}
         {proposal.issue ? <ProposalRow label="What happened">{proposal.issue}</ProposalRow> : null}
       </dl>

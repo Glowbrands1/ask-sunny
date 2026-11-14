@@ -827,8 +827,8 @@ export async function proposeForm(
 ): Promise<ToolResult> {
   /*
    * One card per reply (the screen shows one, as today's TWO_FORMS_EACH_PERSON): the next person's form is offered.
-   * The same form for the same person may be proposed again in the reply (batch B: acting on the card's facts, e.g.
-   * payroll_amount_said); the new card replaces the first.
+   * The same form for the same person may be proposed again in the reply (the self-review in run.ts, and batch B's
+   * facts such as payroll_amount_said: the card is fixed within the turn); the new card replaces the first.
    */
   const anotherCard = (name: string | null) =>
     effects.proposal && (effects.proposal.templateKey !== (typeof input.template_key === "string" ? input.template_key.trim() : "") || !name || !samePerson(effects.proposal.employeeName ?? "", name))
@@ -1171,6 +1171,7 @@ export async function proposeForm(
       observation: card.issue ?? null,
       warning_level: level,
       payroll_deduct: payroll,
+      payroll_amount: payroll === "yes" && amount ? `$${amount.replace(/^\$/, "")}` : null,
       prior_actions: priorActions,
       policy: policyLine,
       create_offered: card.supportsInlineDraft,

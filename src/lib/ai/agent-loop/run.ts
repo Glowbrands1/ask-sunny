@@ -6,7 +6,8 @@ import { mainAnswerTimeoutMs, streamGapTimeoutMs } from "@/lib/config/ai-timeout
 import { chatTraceEnabled } from "@/lib/config/chat-quality-flags";
 import { authorizedSalonIds } from "@/lib/forms/location-scope";
 import { rosterSalonName } from "@/lib/forms/salon-mention";
-import type { ChatMessage } from "@/types";
+import type { ChatFormProposal, ChatMessage } from "@/types";
+import { cardPolicyHeading } from "@/lib/forms/card-policy";
 
 import { finishChatTrace, openChatTrace } from "../chat-trace";
 import { chatTraceDraft } from "../chat-trace-store";
@@ -105,6 +106,84 @@ const count = (value: unknown): number => (typeof value === "number" && Number.i
  */
 export const CARD_NOTE = "[app note: this reply showed a card built with propose_form]";
 const CARD_REPLY = /^\s*\*\*(?:Policy|Observation of Offense|What happened):?\*\*/im;
+
+/**
+ * ============================================================================
+ * THE REPLY REVIEWS ITSELF AGAINST THE CARD (QA's urgent regression, 14 Nov 2026)
+ * ============================================================================
+ *
+ * Live on Pau's account: "make it a written" after a card was answered "**Type of Warning:** Written Warning, as you
+ * said." with no new card, so the card on screen had no level and Create would have saved the form without it. Pau
+ * asked whether the loop reviews its own work: it does, here. What the reply says the card holds (level, payroll,
+ * amount, policy, date) is compared with the card this turn proposed (or, with no new card, the card on screen, which
+ * did not change). A difference is handed back to the model ONCE with the card's facts, to fix the card or the reply;
+ * only if it still differs does the reply say plainly that the change is not on the card yet. Code refuses or informs;
+ * it never writes the card's values into the reply.
+ */
+export interface CardClaims {
+  warningLevel?: "verbal" | "written";
+  payrollDeduct?: "yes" | "no";
+  payrollAmount?: string;
+  policy?: string;
+  date?: string;
+}
+
+const CLAIM_LEVEL = [/\*\*Type of Warning:?\*\*:?\s*(Verbal|Written)\b/i, /\b(Verbal|Written) Warning,? as you said/i, /\b(?:warning level|level)\b[^.\n]{0,30}\b(?:is|to|now|set to)\b\s*(?:a\s+)?\**(verbal|written)\b/i, /\b(?:made|changed|updated|set)\b[^.\n]{0,30}\b(?:to|as)\s+(?:a\s+)?\**(verbal|written)\b/i];
+const CLAIM_PAYROLL = [/Is payroll deduct applicable\?\*\*:?\s*(Yes|No)\b/i, /\*\*Payroll deduct:?\*\*:?\s*(Yes|No)\b/i, /\bpayroll deduct(?:ion)?\b[^.\n]{0,20}\b(?:is|to|set to)\s+\**(yes|no)\b/i];
+const CLAIM_AMOUNT = [/\*\*Payroll deduction amount:?\*\*:?\s*\$?(\d+(?:\.\d{1,2})?)/i, /\bpayroll[^.\n]{0,40}\$(\d+(?:\.\d{1,2})?)/i];
+const CLAIM_DATE = [/\bDated (\d{1,2}\/\d{1,2})(?:\/\d{2,4})?\b/, /\*\*(?:Date|Form date|Incident date):?\*\*:?\s*(\d{1,2}\/\d{1,2})/i];
+
+export function cardClaims(content: string): CardClaims {
+  const first = (patterns: readonly RegExp[]) => {
+    for (const pattern of patterns) {
+      const found = pattern.exec(content)?.[1];
+      if (found) return found;
+    }
+    return undefined;
+  };
+  const level = first(CLAIM_LEVEL)?.toLowerCase();
+  const payroll = first(CLAIM_PAYROLL)?.toLowerCase();
+  const policy = /^\s*\*\*Policy:?\*\*:?\s*(.+)$/im.exec(content)?.[1]?.trim();
+  return {
+    ...(level === "verbal" || level === "written" ? { warningLevel: level } : {}),
+    ...(payroll === "yes" || payroll === "no" ? { payrollDeduct: payroll } : {}),
+    ...(first(CLAIM_AMOUNT) ? { payrollAmount: first(CLAIM_AMOUNT) } : {}),
+    ...(policy ? { policy } : {}),
+    ...(first(CLAIM_DATE) ? { date: first(CLAIM_DATE) } : {}),
+  };
+}
+
+/** The card's facts as the model is shown them, and the fields the reply states that the card does not hold. */
+export function cardMismatch(claims: CardClaims, card: ChatFormProposal | null): string[] {
+  const wrong: string[] = [];
+  const policyHeading = (line: string | null | undefined) => (line ? cardPolicyHeading(`**Policy:** ${line}`)?.toLowerCase() ?? null : null);
+  if (claims.warningLevel && card?.warningLevel !== claims.warningLevel) wrong.push(`warning level (${claims.warningLevel})`);
+  if (claims.payrollDeduct && card?.payrollDeduct !== claims.payrollDeduct) wrong.push(`payroll deduct (${claims.payrollDeduct})`);
+  if (claims.payrollAmount && Number(card?.payrollDeductAmount?.replace(/[^\d.]/g, "") ?? NaN) !== Number(claims.payrollAmount)) wrong.push(`payroll amount ($${claims.payrollAmount})`);
+  if (claims.policy && card && card.policyLine !== undefined && policyHeading(claims.policy) !== policyHeading(card.policyLine)) wrong.push(`policy (${claims.policy})`);
+  if (claims.policy && !card) wrong.push(`policy (${claims.policy})`);
+  if (claims.date) {
+    const [month, day] = claims.date.split("/").map(Number);
+    const on = card?.formDate ? card.formDate.split("-").map(Number) : null;
+    if (!on || on[1] !== month || on[2] !== day) wrong.push(`date (${claims.date})`);
+  }
+  return wrong;
+}
+
+function cardFacts(card: ChatFormProposal | null): Record<string, unknown> {
+  if (!card) return { card_this_turn: null };
+  return {
+    form: card.templateName,
+    employee: card.employeeName,
+    form_date: card.formDate ?? null,
+    salon: card.locationId ? rosterSalonName(card.locationId) ?? card.locationId : null,
+    policy: card.policyLine ?? null,
+    warning_level: card.warningLevel ?? null,
+    payroll_deduct: card.payrollDeduct ?? null,
+    payroll_amount: card.payrollDeductAmount ?? null,
+    observation: card.issue ?? null,
+  };
+}
 function withCardNote(message: ChatMessage): string {
   const content = String(message.content);
   return message.role === "assistant" && CARD_REPLY.test(content) ? `${content}\n\n${CARD_NOTE}` : content;
@@ -302,8 +381,9 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
    * showed a card not yet created. A fact for the model (batch A); the rules book says what the reply says about it.
    */
   const lastReply = [...input.history].reverse().find((turn) => turn.role === "assistant" && !turn.error);
+  const cardOpenAtStart = !input.openFormId && Boolean(lastReply && CARD_REPLY.test(String(lastReply.content)));
   const dynamic = agentLoopSystem({
-    cardOpen: !input.openFormId && Boolean(lastReply && CARD_REPLY.test(String(lastReply.content))),
+    cardOpen: cardOpenAtStart,
     managerName: input.actor.displayName,
     role: input.actor.role,
     salons: authorizedSalonIds(input.actor.scope).map((id) => rosterSalonName(id) ?? id),
@@ -333,6 +413,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   let stoppedAt = "step_limit" as "reply" | "step_limit" | "timeout" | "error";
   const usage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
   let modelCalls = 0;
+  let selfReview: { mismatched: string[]; fixed: boolean } | null = null;
   try {
     /*
      * AI TIME LIMITS (Part 1): each step has 45 s to its first token, then 30 s between chunks, and the whole loop
@@ -417,6 +498,52 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         text = final?.finishReason === "length" ? "" : (final?.text ?? "").trim();
         if (text === "") stoppedAt = "step_limit";
       }
+      /*
+       * SELF-REVIEW (above, `cardMismatch`): with a card made this turn, or a card on screen and nothing changed this
+       * turn, the reply's stated fields are checked against the card. A difference costs one more model call, with the
+       * card's facts; nothing is checked, and nothing is called, when the reply states no card field.
+       */
+      const reviewed = stoppedAt === "reply" && !effects.formUpdate && !effects.formOpened && !input.openFormId && (effects.proposal || cardOpenAtStart);
+      const wrong = reviewed ? cardMismatch(cardClaims(text), effects.proposal) : [];
+      if (wrong.length > 0) {
+        const response = await result.response;
+        const note = [
+          `[app check] Your reply says the card has: ${wrong.join("; ")}. ${effects.proposal ? "The card you proposed this turn does not." : "No card was proposed this turn, so the card on the manager's screen did not change."}`,
+          `Card now: ${JSON.stringify(cardFacts(effects.proposal))}.`,
+          "If the manager asked for that change, call propose_form again for the same person and form with it (and everything else the card already has). Otherwise correct your reply. Never state a value the card does not hold. Then write your reply to the manager again.",
+        ].join("\n");
+        const review = streamText({
+          model: model as never,
+          system: [
+            { role: "system", content: AGENT_LOOP_RULES, providerOptions: EPHEMERAL },
+            { role: "system", content: dynamic },
+          ],
+          messages: [...(conversationOf(input.history, input.question) as never[]), ...(response.messages as never[]), { role: "user", content: note } as never],
+          tools,
+          stopWhen: stepCountIs(4),
+          maxOutputTokens: CLAUDE_MAX_TOKENS.standard,
+          maxRetries: timed.maxRetries,
+          abortSignal: timed.signal,
+          onError: () => {},
+          onChunk: () => watch.chunk(),
+          onStepFinish: (step) => {
+            const used = tokensOf(step.usage as StepUsage);
+            for (const key of Object.keys(usage) as (keyof typeof usage)[]) usage[key] += used[key];
+            activeSpendMeter()?.calls.push({ model: CLAUDE_MODEL, inputTokens: used.input_tokens, outputTokens: used.output_tokens, cacheReadTokens: used.cache_read_input_tokens, cacheWriteTokens: used.cache_creation_input_tokens });
+            modelSteps.push({ step: stepNumber, ms: 0, stop: step.finishReason ?? null, ...used });
+            modelCalls += 1;
+            stepNumber += 1;
+          },
+        });
+        const second = (await review.steps).at(-1);
+        const again = second && second.finishReason !== "tool-calls" ? (second.text ?? "").trim() : "";
+        const still = again ? cardMismatch(cardClaims(again), effects.proposal) : wrong;
+        selfReview = { mismatched: wrong, fixed: still.length === 0 };
+        /* Only on a second miss: the reply says plainly what is not on the card (today's no-op honesty pattern). */
+        text = still.length === 0 && again
+          ? again
+          : `That change isn't on the card yet: ${still.join("; ")}. Tell me again and I'll update the card.`;
+      }
     });
   } catch (error) {
     if (error instanceof MissingConfigurationError) throw new AiError("not_configured", error.message, 503, error.missing);
@@ -438,7 +565,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   if (trace) {
     trace.slots = {
       ...(trace.slots ?? {}),
-      agent_loop: { steps, model_steps: modelSteps, model_calls: modelCalls, step_limit: limit, stopped: stoppedAt, ms: latencyMs },
+      agent_loop: { steps, model_steps: modelSteps, model_calls: modelCalls, step_limit: limit, stopped: stoppedAt, ms: latencyMs, ...(selfReview ? { self_review: selfReview } : {}) },
     };
   }
 

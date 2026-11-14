@@ -309,6 +309,8 @@ const FLIPPED_AFTER_FIXTURE: readonly string[] = [
   "MODEL_WARNING_LEVEL_DISCARDED_ENABLED",
   // QA 15 Nov 2026: on in production behind AGENT_LOOP_USERS (nobody listed here, so no turn changes).
   "AGENT_LOOP_ENABLED",
+  // QA 15 Nov 2026 (Pau approved): #894, the card shows the Action Plan Create will save.
+  "CARD_PLAN_MATCHES_CREATE_ENABLED",
 ];
 const PRODUCTION = [...PRODUCTION_FLAGS.on, ...PRODUCTION_FLAGS.assumedOn].filter((name) => !FLIPPED_AFTER_FIXTURE.includes(name));
 /*
