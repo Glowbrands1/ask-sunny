@@ -1,6 +1,7 @@
-import { formEditSaidReplacementEnabled, priorActionsNoSignedEnabled } from "@/lib/config/chat-quality-flags";
+import { formEditSaidReplacementEnabled, issueEditIsTheAccountEnabled, priorActionsNoSignedEnabled } from "@/lib/config/chat-quality-flags";
 
 import type { InstanceValueRow } from "./instances";
+import { replacedAccount } from "./issue-edit-account";
 import { offeredOffenseKey } from "./offense-keys";
 import { priorLineDate } from "./prior-actions";
 
@@ -483,7 +484,45 @@ function faithfulSaidWords(rules: PatchRules): Set<string> {
   if (sources.accepted && sources.offered) for (const word of wordsOf(sources.offered)) said.add(word);
   for (const read of sources.readerValues ?? []) for (const word of wordsOf(read)) said.add(word);
   for (const word of wordsOf(`${rules.faithful!.employeeName}\n${rules.faithful!.formText}`)) said.add(word);
+  /*
+   * ISSUE_EDIT_IS_THE_ACCOUNT_ENABLED (v2-Gate-Bubbles-5's probe, 14 Nov 2026): "change the issue to she was texting on
+   * her cell phone the whole shift on Nov 4th" was written "… on November 4, 2026." and refused as not her words
+   * ("november", "4" unsaid). A date she said counts in the words it is written in: the month's full name and the day.
+   */
+  if (issueEditIsTheAccountEnabled()) {
+    for (const text of [sources.manager, ...(sources.managerTurns ?? []), sources.namingTurn ?? ""]) {
+      for (const word of spelledDateWords(text)) said.add(word);
+    }
+  }
   return said;
+}
+
+const MONTH_NAMES = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+
+/**
+ * ISSUE_EDIT_IS_THE_ACCOUNT_ENABLED: the words a date she typed is written in — "Nov 4th", "november 4", "the 4th of
+ * Nov" and "11/4" or "11/4/26" give "november" and "4" (and "2026" for a year she gave). Pure; nothing is guessed.
+ */
+export function spelledDateWords(text: string): string[] {
+  const out: string[] = [];
+  const lower = (text ?? "").toLowerCase();
+  const month = (name: string) => MONTH_NAMES.findIndex((full) => full.startsWith(name.slice(0, 3)));
+  const add = (monthIndex: number, day: string, year?: string) => {
+    const dayNumber = Number(day);
+    if (monthIndex < 0 || !(dayNumber >= 1 && dayNumber <= 31)) return;
+    out.push(MONTH_NAMES[monthIndex]!, String(dayNumber));
+    if (year) out.push(year.length === 2 ? `20${year}` : year);
+  };
+  const named = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b(?:,?\s+(\d{4}))?/g;
+  for (const found of lower.matchAll(named)) add(month(found[1]!), found[2]!, found[3]);
+  const dayFirst = /\b(\d{1,2})(?:st|nd|rd|th)\s+of\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b/g;
+  for (const found of lower.matchAll(dayFirst)) add(month(found[2]!), found[1]!);
+  const numeric = /\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{4}|\d{2}))?\b/g;
+  for (const found of lower.matchAll(numeric)) {
+    const monthNumber = Number(found[1]);
+    if (monthNumber >= 1 && monthNumber <= 12) add(monthNumber - 1, found[2]!, found[3]);
+  }
+  return out;
 }
 
 /**
@@ -737,8 +776,14 @@ function keepsProtected(key: string, old: string, next: string, rules: PatchRule
   const latestDates = new Set(guard.datesIn(guard.latest));
   // MADE_ABOUT_SAID_DATE_ENABLED: a made-about rewrite replaces the incident; its old dates go with it (`oldIncidentDates`).
   const followsFormDate = Boolean(guard.formDate) && (nextDates.has(guard.formDate!) || guard.oldIncidentDates === true);
+  /*
+   * ISSUE_EDIT_IS_THE_ACCOUNT_ENABLED (v2-Gate-Bubbles-5's probe, 14 Nov 2026): "change the issue to <sentence> on Nov 4th"
+   * replaces the account with one dated as she says; the new text has her date, so the old incident's date goes with it.
+   */
+  const replacedWithSaidDate =
+    issueEditIsTheAccountEnabled() && replacedAccount(guard.latest) !== null && [...latestDates].some((date) => nextDates.has(date));
   for (const date of guard.datesIn(old)) {
-    if (nextDates.has(date) || latestDates.has(date)) continue;
+    if (nextDates.has(date) || latestDates.has(date) || replacedWithSaidDate) continue;
     // The text moved to the form's current Date line (the form's date changed): the old day may go.
     if (followsFormDate && date !== guard.formDate) continue;
     return false;

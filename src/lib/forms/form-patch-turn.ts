@@ -22,6 +22,7 @@ import {
   stepBDateSaidEnabled,
   stepBDateWithAboutEnabled,
   editSeesSavedFormEnabled,
+  issueEditIsTheAccountEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { madeAbout } from "@/lib/ai/make-it-about";
 import { saidFormDate } from "./form-date-said";
@@ -29,6 +30,8 @@ import { withSectionBreaks } from "./section-breaks";
 import { addedTail } from "./added-tail";
 import { splitAppCitationLine } from "./app-citation-line";
 import { endMadeAboutWrite, madeAboutDate, madeAboutTopic, noteMadeAboutWrite } from "./made-about-date";
+import { datesInText } from "./form-date-answer";
+import { replacedAccount } from "./issue-edit-account";
 import { syncCorrectiveActionPlan } from "./ca-action-plan-sync";
 import { checkboxGroupsForVariant, fieldsForVariant, parseFormDocument } from "./document";
 import { replyFromDiff } from "./form-diff-reply";
@@ -417,6 +420,16 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
     const saidDate = stepBDateSaidEnabled() ? saidFormDate(input.question, input.today) : null;
     let dateToWrite = saidDate !== null && "form_date" in before && before.form_date?.value !== saidDate ? saidDate : null;
     const readSet = reading.patch.set;
+    /*
+     * ISSUE_EDIT_IS_THE_ACCOUNT_ENABLED (v2-Gate-Bubbles-5's probe, 14 Nov 2026): "change the issue to she was texting on her
+     * cell phone the whole shift on Nov 4th" is a new account with its own date. When the reader writes the account, the
+     * one date that account names is the form's Date, as for a dated made-about turn; the same date changes nothing.
+     */
+    if (issueEditIsTheAccountEnabled() && dateToWrite === null && "form_date" in before && ACCOUNT_KEYS.some((key) => key in readSet)) {
+      const account = replacedAccount(input.question);
+      const dates = account ? [...new Set(datesInText(account, input.today).map((date) => date.iso))] : [];
+      if (dates.length === 1 && before.form_date?.value !== dates[0]) dateToWrite = dates[0]!;
+    }
     const aboutNotRewritten =
       stepBMakeItAboutAccountEnabled() &&
       madeAbout(input.question) !== null &&

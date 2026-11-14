@@ -4799,3 +4799,15 @@ export function closeSpellingMatchEnabled(): boolean {
 export function sharedCityAsksSalonEnabled(): boolean {
   return envFlag("SHARED_CITY_ASKS_SALON_ENABLED");
 }
+
+/**
+ * ISSUE_EDIT_IS_THE_ACCOUNT_ENABLED (coding 6; port of Ask Bubbles, v2-Gate-Bubbles-5's probes there, via QA, 14 Nov 2026; default off).
+ * On a saved Corrective Action about lateness, "change the issue to she was texting on her cell phone the whole shift on
+ * Nov 4th" changed only the date, and with the form's own date ("… on 11/3/26") replied "already has 11/03/2026 as the
+ * incident date. Nothing needed changing": the CA's date reader (`forms/ca-chat-corrections.ts`) took the turn for its
+ * date and the new account was dropped. On, a turn that replaces the account ("change the issue / observation / what
+ * happened to <sentence>") is left to the form's edit reader, which writes the account and the date it says. Off, as before.
+ */
+export function issueEditIsTheAccountEnabled(): boolean {
+  return envFlag("ISSUE_EDIT_IS_THE_ACCOUNT_ENABLED");
+}
