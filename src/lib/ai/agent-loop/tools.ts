@@ -747,10 +747,16 @@ export async function proposeForm(
     incident_time?: unknown;
   },
 ): Promise<ToolResult> {
-  /* One card per reply (the screen shows one, as today's TWO_FORMS_EACH_PERSON): the next person's form is offered. */
-  if (effects.proposal) {
-    return { error: `A card for ${effects.proposal.employeeName ?? "someone"} is already shown in this reply. Offer the next person's form in your reply and propose it when the manager says yes.` };
-  }
+  /*
+   * One card per reply (the screen shows one, as today's TWO_FORMS_EACH_PERSON): the next person's form is offered.
+   * The same form for the same person may be proposed again in the reply (the self-review in run.ts: the card is fixed
+   * to match the manager's answer); the new card replaces the first.
+   */
+  const anotherCard = (name: string | null) =>
+    effects.proposal && (effects.proposal.templateKey !== (typeof input.template_key === "string" ? input.template_key.trim() : "") || !name || !samePerson(effects.proposal.employeeName ?? "", name))
+      ? { error: `A card for ${effects.proposal.employeeName ?? "someone"} is already shown in this reply. Offer the next person's form in your reply and propose it when the manager says yes.` }
+      : null;
+  if (effects.proposal && effects.proposal.templateKey !== (typeof input.template_key === "string" ? input.template_key.trim() : "")) return anotherCard(null)!;
   /* HARD GUARD (STAFF_PICKER): a form asked for a whole staff is never one card for everyone. */
   if ((await import("@/lib/forms/staff-picker")).isBareWholeStaff(context.question) || (await import("@/lib/forms/staff-picker")).asksForWholeStaff(context.question)) {
     return { error: "This form was asked for a whole staff. A form is for one person at a time: call list_staff and say what it returns." };
@@ -805,6 +811,8 @@ export async function proposeForm(
     }
   }
 
+  const second = anotherCard(employee.name);
+  if (second) return second;
   /* The manager's own name is never the employee (as MANAGER_NAME_NOT_EMPLOYEE does on the old path). */
   if (context.actor.displayName && samePerson(context.actor.displayName, employee.name)) {
     return { error: "That is the signed-in manager's own name, not an employee. Ask who the form is about." };
@@ -1063,6 +1071,7 @@ export async function proposeForm(
       observation: card.issue ?? null,
       warning_level: level,
       payroll_deduct: payroll,
+      payroll_amount: payroll === "yes" && amount ? `$${amount.replace(/^\$/, "")}` : null,
       prior_actions: priorActions,
       policy: policyLine,
       create_offered: card.supportsInlineDraft,

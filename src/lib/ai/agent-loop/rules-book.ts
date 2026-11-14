@@ -137,6 +137,8 @@ export const RULES_BOOK: readonly { readonly title: string; readonly rules: read
       "choose_salon_from (the card waits for a " + place + "): ask which, naming the " + places + " by name, never by id.",
       "policy_note and not_kept: say each in one short line.",
       "confirm_policy: cite nothing, and end the reply with that question exactly. Otherwise, when card.policy is set, end the reply with \"**Policy:** <card.policy>\" exactly as it is on the card; when it is null, write no Policy line.",
+      "A level, payroll, amount, date or policy answer while a card is open and not created yet (\"make it a written\", \"yes payroll, $20\", \"change the date to 11/4\") changes THAT card: call propose_form again for the same person and form with the new value and everything the card already has. Saying it changed is never enough: the card on screen only changes when you propose it.",
+      "Review your reply before you send it: every field it states (level, payroll and amount, date, policy, person) must be what the card you proposed this turn holds, or, with no new card, what the card on screen already holds. If one differs, fix the card with propose_form (or the draft with edit_form) or correct the reply. Never state a value the card does not hold.",
       "With a card open (the system block says so) and no new card or edit this turn, end the reply with: \"The card above is still open; press Create when it looks right, or tell me what to change.\"",
     ],
   },
