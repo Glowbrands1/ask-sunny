@@ -51,7 +51,7 @@ import { typedEmployeeName } from "@/lib/forms/typed-employee-name";
 import { managerStatedWarningLevel, templateHasWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
 import { isDocumentName, isReportName, isRosterStateName } from "./not-a-person";
 import { formNameNotATitleEnabled, lateSlotReadsAttendanceEnabled, reasonPlaceNotStoreEnabled, reportNameNotAPersonEnabled } from "@/lib/config/chat-quality-flags";
-import { placeReadingText } from "@/lib/forms/salon-mention";
+import { placeReadingText } from "@/lib/forms/reason-place";
 import { lateSlotHeading } from "./late-slot-attendance";
 import { readsAsStatedTitle, saidOnlyAsFormName, titleTextFromTurns } from "./title-words";
 import { titleInWords } from "./title-in-words";

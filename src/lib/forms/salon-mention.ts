@@ -1,10 +1,11 @@
 import "server-only";
 
-import { closeSpellingMatchEnabled, reasonPlaceNotStoreEnabled, sharedCityAsksSalonEnabled } from "@/lib/config/chat-quality-flags";
+import { closeSpellingMatchEnabled, sharedCityAsksSalonEnabled } from "@/lib/config/chat-quality-flags";
 import { PRODUCTION_SALONS, type ProductionSalon } from "@/data/salons";
 import { storeNameKey } from "@/lib/reporting/store-identity";
 
 import { closeWordDistance, editDistance } from "./close-spelling";
+import { placeReadingText } from "./reason-place";
 import { salonForTypedNumber, salonsForTypedNumber } from "./salon-text";
 
 /**
@@ -251,27 +252,9 @@ const TIME_BEFORE =
  * `text` is the manager's own turns — the same bounded window the employee and
  * the date are read from — never the assistant's.
  */
-/*
- * REASON_PLACE_NOT_STORE_ENABLED (ported from the sibling app, Gate-Bubbles-3's #869 probes, 13 Nov 2026): "she was
- * late because she was at <place>" — the place says why she was late, not the salon the form is for. The place in a
- * "because <she|he|they|I|we|a name> was/were at|in …" clause, up to the clause's end ("," "." ";" "and" "but"), is
- * blanked (same length) before the salons are read. "at grand island, she was late" and "late at grand island" are not
- * reasons and are still read. Only for reading the salon: the account keeps the words.
- */
-const REASON_PLACE =
-  /(\bbecause\s+(?:she|he|they|i|we|[a-z][a-z'’-]*)\s+(?:was|were|had\s+been)\s+)((?:at|in)\s+[^,.;:!?()\n]*?)(?=\s*(?:[,.;:!?()\n]|$)|\s+(?:and|but)\b)/gi;
-
-function withoutReasonPlaces(text: string): string {
-  return text.replace(REASON_PLACE, (_, lead: string, place: string) => `${lead}${" ".repeat(place.length)}`);
-}
-
-/** `text` with a reason's place blanked when REASON_PLACE_NOT_STORE_ENABLED is on; for the readers that guess a salon. */
-export function placeReadingText(text: string): string {
-  return reasonPlaceNotStoreEnabled() ? withoutReasonPlaces(text) : text;
-}
-
 export function readSalonMentions(said: string): SalonMention[] {
-  const text = reasonPlaceNotStoreEnabled() ? withoutReasonPlaces(said) : said;
+  // REASON_PLACE_NOT_STORE_ENABLED: "because she was at grand island" is why, not the salon (`reason-place.ts`).
+  const text = placeReadingText(said);
   const mentions: SalonMention[] = [];
 
   for (const match of text.matchAll(SALON_NUMBER)) {
