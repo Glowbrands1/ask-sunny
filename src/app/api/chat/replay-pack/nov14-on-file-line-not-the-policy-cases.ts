@@ -24,7 +24,13 @@ import { KEARNEY, STAFF, type DirectoryRow, type ReplayCase, type ReplayContext 
 const PERSON: DirectoryRow = { id: "e-briony-calloway", firstName: "Briony", lastName: "Calloway", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" };
 const T1 = "Please create a CA written warning for Briony Calloway for being out of dresscode on 11/13. Briony Calloway wore her coat during Briony Calloways shift after previosly being asked to take it off multiple times.";
 const T2 = "Write me a CA form for Briony Calloway having a black crewneck on during her shift, not a zip up jacket on 11/13 and 11/6";
-const SEPARATE = "separate CA for Briony Calloway: she opened the salon 25 minutes late on 11/12";
+/** Gate-Sunny-3's wordings (14 Nov 2026), invented name: a repeat offender's real late opening, named or described. */
+const REPEAT_OFFENDER: readonly (readonly [string, string])[] = [
+  ["ok-ca", "ok CA for Briony Calloway, she opened the salon 25 minutes late on 11/12"],
+  ["make-it-about", "make it about her opening the salon 15 minutes late on 11/13 instead"],
+  ["separate-ca", "separate CA for Briony Calloway: she opened the salon 25 minutes late on 11/12"],
+  ["typo", "change it to late openng"],
+];
 const T4 = "CA for Briony Calloway  not being in dresscode on 11/13 and 11/6";
 
 async function lateOpeningOnFile(t: ReplayContext) {
@@ -76,9 +82,9 @@ export const NOV14_ON_FILE_LINE_NOT_THE_POLICY_CASES: ReplayCase[] = [
       expect(lines[2], "the resent request changed its policy").toBe(lines[1]);
     },
   },
-  {
-    id: "nov14-on-file-line-not-the-policy-described-late-opening-kept",
-    title: `a real late opening the manager describes ("${SEPARATE}"), with Late Opening on file: the card keeps its Late Opening line`,
+  ...REPEAT_OFFENDER.map(([key, said]): ReplayCase => ({
+    id: `nov14-on-file-line-not-the-policy-late-opening-kept-${key}`,
+    title: `a real late opening the manager describes ("${said}"), with Late Opening on file: the card keeps its Late Opening line`,
     report: `${REPORT}; negative (Gate-Sunny-3, 14 Nov 2026: a repeat offender's described late opening lost its Policy line)`,
     status: "fixed",
     fixFlags: [FLAG],
@@ -93,8 +99,8 @@ export const NOV14_ON_FILE_LINE_NOT_THE_POLICY_CASES: ReplayCase[] = [
       const last = [...((thread.conversation ?? []) as unknown as { role: string; content: string }[])].reverse().find((m) => m.role === "assistant");
       if (last) last.content = `${last.content}\n\n${ON_FILE}`;
       t.slotsRead({ employee: "Briony Calloway", formType: "Corrective Action Form", formTurn: true, policyHeading: "Late Opening" });
-      const reply = await thread.say(SEPARATE);
+      const reply = await thread.say(said);
       expect(policyLine(reply.content), `the described late opening lost its Policy line:\n${reply.content}`).toMatch(/late opening/i);
     },
-  },
+  })),
 ];

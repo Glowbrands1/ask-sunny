@@ -569,6 +569,16 @@ const LATE_ARRIVAL =
   /\b(?:was|were|is|been|came\s+in|arrived|showed\s+up|clocked\s+in|running|being)\s+(?:\S+\s+){0,2}?late\b|\b(?:tardy|tardies|tardiness|lateness)\b|\blate\s+(?:to|for)\s+(?:her|his|their|a|the|work|shift)/i;
 const OPENING_WORD = /\bopen(?:s|ed|ing|er|ers)?\b/i;
 
+/**
+ * ON_FILE_LINE_NOT_THE_POLICY_ENABLED (Gate-Sunny-3, 14 Nov 2026): the manager's own words describe a late opening, by the
+ * readers the card uses for it ("late opening", "opened late", "late to open", "failure to open", or an employee late
+ * who opened). Read on the manager's words only.
+ */
+export function describesLateOpening(said: string): boolean {
+  const text = normalize(said);
+  return LATE_OPENING_SAID.test(text) || LATE_TO_OPEN.test(text) || FAILURE_TO_OPEN.test(text) || (/\blate\b/.test(text) && OPENING_WORD.test(text)) || (LATE_ARRIVAL.test(said) && OPENING_WORD.test(said));
+}
+
 function withLateIsAttendance(reading: CaPolicyReading, said: string): CaPolicyReading {
   if (!lateReadsAttendanceEnabled() || reading.readFromApp !== "late_opening") return reading;
   if (!LATE_ARRIVAL.test(said) || OPENING_WORD.test(said)) return reading;

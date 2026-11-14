@@ -6,7 +6,7 @@ import { aiReadsCodeChecksEnabled, intentExtractionEnabled, lastFirstNameReadEna
 import { readDirectoryFacts, loadScopedRoster, type DirectoryFact } from "@/lib/forms/employee-roster";
 import { listTemplateSummaries } from "@/lib/forms/repository";
 import { detectTemplateIntent } from "@/lib/forms/template-intent";
-import { findManualSection, manualSectionHeadings } from "@/lib/forms/official-policy-manual";
+import { findManualSection, manualSectionHeadings, type ManualChunk } from "@/lib/forms/official-policy-manual";
 import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
 
 import { callClaudeTool } from "./call-claude";
@@ -140,7 +140,7 @@ export async function applyIntentExtraction(input: {
       onFileLineNotThePolicyEnabled() &&
       decided.state.policyHeading !== null &&
       decided.state.policyHeading !== (saved?.policyHeading ?? null) &&
-      headingOnlyOnFile(decided.state.policyHeading, input.request.question, input.request.history);
+      headingOnlyOnFile(decided.state.policyHeading, input.request.question, input.request.history, manual.chunks);
     const decision = fromOnFile ? withoutOnFileHeading(decided, saved) : decided;
     await writeSaved(input.actor.subject, input.request.conversationId, decision.state);
     updateChatTrace({
@@ -248,7 +248,7 @@ function asPerson(fact: DirectoryFact): GroundedPerson {
   };
 }
 
-const manualIndexCache = new Map<string, Promise<{ headings: string[]; pages: Record<string, number> }>>();
+const manualIndexCache = new Map<string, Promise<{ headings: string[]; pages: Record<string, number>; chunks: readonly ManualChunk[] }>>();
 
 /**
  * Tests only: forget the manual's heading index, so a replay case that pins extra manual passages (`manualAlsoHas`) reads
@@ -258,7 +258,7 @@ export function forgetManualIndexForTests(): void {
   manualIndexCache.clear();
 }
 
-async function loadManualIndex(scopeId: string): Promise<{ headings: string[]; pages: Record<string, number> }> {
+async function loadManualIndex(scopeId: string): Promise<{ headings: string[]; pages: Record<string, number>; chunks: readonly ManualChunk[] }> {
   const cached = manualIndexCache.get(scopeId);
   if (cached) return cached;
   const pending = loadManualIndexOnce(scopeId);
@@ -266,19 +266,20 @@ async function loadManualIndex(scopeId: string): Promise<{ headings: string[]; p
   return pending;
 }
 
-async function loadManualIndexOnce(scopeId: string): Promise<{ headings: string[]; pages: Record<string, number> }> {
+async function loadManualIndexOnce(scopeId: string): Promise<{ headings: string[]; pages: Record<string, number>; chunks: readonly ManualChunk[] }> {
   try {
     const manual = await new SupabaseKnowledgeProvider().fetchOfficialPolicyManual(scopeId);
-    if (!manual.ok) return { headings: [], pages: {} };
+    if (!manual.ok) return { headings: [], pages: {}, chunks: [] };
     const headings = manualSectionHeadings(manual.chunks);
     const pages: Record<string, number> = {};
     for (const heading of headings) {
       const section = findManualSection(manual.chunks, [heading]);
       if (section && section.page > 0) pages[heading] = section.page;
     }
-    return { headings, pages };
+    // ON_FILE_LINE_NOT_THE_POLICY_ENABLED: the manual's own readers run on the manager's words.
+    return { headings, pages, chunks: manual.chunks };
   } catch {
-    return { headings: [], pages: {} };
+    return { headings: [], pages: {}, chunks: [] };
   }
 }
 
