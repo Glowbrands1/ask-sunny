@@ -185,6 +185,8 @@ import { privateCreatorFormsEnabled, privateCreatorsActive } from "@/lib/forms/p
  */
 
 const NEW_FLAGS = [
+  // coding 4: PLACE_STRIP_WHOLE_PHRASE_ONLY (QA, Gate-Sunny #933 probes, 13 Nov 2026; default off).
+  "PLACE_STRIP_WHOLE_PHRASE_ONLY_ENABLED",
   // coding 4: SHARED_CITY_ASKS_SALON (QA, Sunny 38c live, 13 Nov 2026; default off).
   "SHARED_CITY_ASKS_SALON_ENABLED",
   // coding 2: OFF_ROSTER_PLACE_ANSWER (QA's Sunny 37b live bug, 12 Nov 2026; default off).
