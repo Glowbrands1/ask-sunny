@@ -1,0 +1,23 @@
+/* Copied from the Leadership Hub (src/app/meetings/print.css); keep in step with it. See src/features/l10/README.md. */
+/* Printing a meeting page (Export PDF = the browser's Save as PDF): wide tables fit, cards do not split across pages. */
+@media print {
+  @page {
+    size: landscape;
+    margin: 12mm;
+  }
+  body {
+    background: #fff !important;
+  }
+  .overflow-x-auto {
+    overflow: visible !important;
+  }
+  section,
+  li,
+  tr {
+    break-inside: avoid;
+  }
+  a {
+    color: inherit !important;
+    text-decoration: none !important;
+  }
+}

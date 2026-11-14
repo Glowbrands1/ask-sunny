@@ -436,7 +436,15 @@ for (const path of ["intent", "remap"] as const) {
       const response = await chat(CASES.cleaning);
       expectIncident(response, /cleaning duties not being completed/i);
       expect(happened(response)).not.toMatch(/\b0-26\b|^for /i);
-      cites(response, "Care and Cleaning of Equipment and Facilities", 21);
+      /*
+       * Changed on purpose (Pau's rule, 13 Nov 2026; QA, before the OTHER_POLICY_AGREES flip): a described cleaning duty is
+       * Other, and only a named policy is Care and Cleaning. With OTHER_POLICY_AGREES on (and CA_SALES_POLICY's
+       * cleaning-is-Other reading), the card says Other and cites no p.21.
+       */
+      if (process.env.OTHER_POLICY_AGREES_ENABLED === "true" && process.env.CA_SALES_POLICY_ENABLED === "true") {
+        expect(response.content, response.content).toMatch(/\*\*Policy:\*\* Other\b/);
+        expect(response.content, response.content).not.toMatch(/p\.21\b/);
+      } else cites(response, "Care and Cleaning of Equipment and Facilities", 21);
     });
 
     it("opening the salon late is what happened, with Late Opening p.15 and the manual acknowledgement", async () => {

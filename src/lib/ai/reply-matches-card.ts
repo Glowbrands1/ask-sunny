@@ -1,4 +1,4 @@
-import { bareNotDenialEnabled, cleaningOtherEveryWordingEnabled, conductIncidentCitesPageEnabled, exitDateLineAgreesEnabled, replyMatchesCardEnabled } from "@/lib/config/chat-quality-flags";
+import { bareNotDenialEnabled, cleaningOtherEveryWordingEnabled, closeSpellingMatchEnabled, conductIncidentCitesPageEnabled, exitDateLineAgreesEnabled, replyMatchesCardEnabled } from "@/lib/config/chat-quality-flags";
 import { offeredOffRosterName } from "@/lib/forms/off-roster-confirm";
 import { deniesAFault, deniesAFaultWithBareNot } from "@/lib/forms/draft-never-blank";
 import { caPolicyProposalLine, readCaPolicy, removedOffenseLabels } from "@/lib/forms/ca-policy";
@@ -178,6 +178,8 @@ function withoutNotToldWhenTold(content: string, issue: string | null | undefine
  * **Policy:** line is the Other line, and a Standards of Conduct citation line goes. Pau: cleaning is Other.
  */
 const CORRECTIVE_ACTION_KEY = "dpoa";
+/** The Policy line of a policy the manager named that the manual answers (`ca-policy.ts` namedPolicyLine, "found"). */
+const NAMED_FOUND_LINE = /\*\*Policy:\*\* [^\n]+, as you said — the policy manual's section on page \d+/;
 const SOC_CITATION = /^\s*(?:[-*]\s*)?\**Standards of Conduct\**(?:\s+Policy)?,\s*JBA Policy Manual\b/i;
 
 export function withCleaningOtherPolicy(response: AskResponse, message?: string): AskResponse {
@@ -185,6 +187,9 @@ export function withCleaningOtherPolicy(response: AskResponse, message?: string)
   if (!cleaningOtherEveryWordingEnabled() || !card || card.templateKey !== CORRECTIVE_ACTION_KEY) return response;
   const reading = readCaPolicy([message ?? "", card.issue ?? ""].filter(Boolean).join("\n"));
   if (reading.other !== "cleaning") return response;
+  // CLOSE_SPELLING_MATCH_ENABLED (QA, 13 Nov 2026): a policy the manager named and the manual answers, already on the
+  // card's Policy line, wins over cleaning-is-Other (`caPolicyProposalLine`). Off, as before.
+  if (closeSpellingMatchEnabled() && NAMED_FOUND_LINE.test(response.content)) return response;
   const other = caPolicyProposalLine(reading);
   if (!other) return response;
   let placed = false;

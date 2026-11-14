@@ -227,11 +227,27 @@ function sources(dir: string): string[] {
   return out;
 }
 
+/*
+ * ONE REVIEWED EXCEPTION (QA, 13 Nov 2026): the DM L10 tab's Leadership Assistant (src/features/l10/assistant) is
+ * built on the AI SDK, on its own route (/api/l10/assistant) and its own page. The point of this guard is that chat
+ * and forms never load the AI SDK while Step B's flags are off; the L10 assistant is outside both, and the second test
+ * below keeps it that way: nothing outside the L10 tab imports it.
+ */
+const L10_ASSISTANT = ["src/features/l10/assistant/", "src/app/api/l10/"];
+const isL10 = (path: string) => L10_ASSISTANT.some((dir) => path.split("\\").join("/").startsWith(dir));
+
 describe("the AI SDK is imported only by the form-patch call module", () => {
   it("no other production source imports it", () => {
     const needles = ['from "ai"', "from 'ai'", 'import("ai")', "import('ai')", "@ai-sdk/anthropic"];
-    const offenders = sources("src").filter((path) => path !== ONLY && needles.some((needle) => readFileSync(path, "utf8").includes(needle)));
+    const offenders = sources("src").filter((path) => path !== ONLY && !isL10(path) && needles.some((needle) => readFileSync(path, "utf8").includes(needle)));
     expect(offenders).toEqual([]);
+  });
+
+  it("the DM L10 assistant (the one exception) is reached only from the DM L10 tab, never from chat or forms", () => {
+    const outside = sources("src").filter(
+      (path) => !path.split("\\").join("/").startsWith("src/features/l10/") && !isL10(path) && /@\/features\/l10\/assistant/.test(readFileSync(path, "utf8")),
+    );
+    expect(outside).toEqual([]);
   });
 
   it("the call module imports it only dynamically", () => {
