@@ -29,6 +29,9 @@ const CLOSED = [
   "she was told last week by the dm, need a written",
   "pls do a ca on her she was late AGAIN",
   "she was on her phone the whole shift, last shift too",
+  // QA (14 Nov 2026): "already has one" with no form word in the same message stays closed.
+  "she already has one",
+  "she already has one, she was late again",
 ];
 
 const OPEN = [
@@ -45,6 +48,10 @@ const OPEN = [
   "has she been written up before?",
   "written up before.",
   "i coached her before for this",
+  // QA (14 Nov 2026): the same message names a form word AND says the person already has one.
+  "she already has a CA but the policy wasn't listed",
+  "she already has a verbal, now do a written",
+  "I need you to draw me up a a coachong document for Wrenna. She already has one but the policy was not listed",
 ];
 
 describe("the past-forms gate", () => {

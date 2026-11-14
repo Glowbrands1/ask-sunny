@@ -50,11 +50,12 @@ export const RULES_BOOK: readonly { readonly title: string; readonly rules: read
   {
     title: "What happened (the account, the Observation)",
     rules: [
-      "what_happened is the manager's own account of THIS incident, all of it, not the first fragment: who did what, where, when, and what the guest or coworker said. Keep work areas and sites (\"at the front desk\", \"at <" + place + " name>\") and every name as typed (\"the new hire\" stays \"the new hire\").",
+      "what_happened is the manager's own account of THIS incident, all of it, not the first fragment: who did what, where, when, and what the guest or coworker said. Keep EVERY clause, place, time, amount and add-on the manager gave, in this message or a later one about the same incident (\"in the morning\", \"at <place> last week\", \"for late open\", \"$20\", \"she also left her station early that day\"). Keep work areas and sites (\"at the front desk\", \"at <" + place + " name>\") and every name as typed (\"the new hire\" stays \"the new hire\"; \"<name> at the front desk was rude\" keeps <name> as the subject).",
       "Never put the manager's instructions in it: no \"create a CA for\", \"make it about\", \"change the observation to\", \"the policy violated is\", \"for violating standards of conduct\", job titles used as a request, or the payroll or warning-level words. Only the facts of what happened.",
       "Never invent or add facts, reasons, feelings or plans the manager did not state.",
       "Clean up spelling, spacing and capitals (\"th e10 minute sanitaion\" → \"the 10-minute sanitation\", \"disenfect\" → \"disinfect\"), keeping the manager's meaning and wording. Never change names, dates, times, numbers, amounts or anything in quotes (quoted words stay exactly as typed), and never turn a real word into another (\"complained\" stays \"complained\").",
-      "If the manager has not said what happened (only a name, or \"not late\", or a bare reason with no account), propose the card without what_happened (Create waits) and ask \"What happened?\" in one short question.",
+      "Anything the manager says the employee did, however short, IS the account: \"failure to open on time\", \"late opening the salon on 11/2\", \"she was late\", \"the register was off $20\", \"for late open\". Put it in what_happened and never ask \"What happened?\" about it.",
+      "Only when the manager has said nothing the employee did (only a name or a form, or \"not late\"), propose the card without what_happened (Create waits) and ask \"What happened?\" in one short question.",
       "A place in a \"because\" or \"due to\" clause (\"late because of traffic on Dodge\") is part of the account, never the " + place + " the form is for.",
     ],
   },
@@ -68,6 +69,7 @@ export const RULES_BOOK: readonly { readonly title: string; readonly rules: read
       "A guest or customer complaint about the employee's conduct, and \"MSB\" / \"must see behaviors\", is the Standards of Conduct.",
       "Underperformance against sales or performance targets is the Standards of Conduct. If the manager asked for \"Under Performance\", add in your reply: \"Under Performance isn't on the CA form. Sales performance CAs use the Standards of Conduct.\"",
       "A policy the manager names is used when it is a heading (any case). If it is misspelled and propose_form returns confirm_policy, cite nothing yet and end your reply with that question exactly.",
+      "A policy the manager named, or the card already cites, stays when the manager answers another question (a name, a date, the level): carry it into the next propose_form.",
       "A form on file is a record, not this incident: never take this form's policy, date or details from an older form.",
     ],
   },
@@ -75,9 +77,10 @@ export const RULES_BOOK: readonly { readonly title: string; readonly rules: read
     title: "Dates, level, payroll, prior actions",
     rules: [
       "Dates are the " + place + "'s local dates (US Central time). \"Last night\", \"yesterday\" and weekdays count from today's Central date. A month and day with no year is the most recent such day not after today. Tool dates are YYYY-MM-DD. The date is optional; it defaults to today.",
+      "Two or more dates for the incident (\"late on 10/5 and again on 10/15\", \"shifts 11/7 and 11/8\"): keep them all in the account, leave incident_date empty, and ask which one goes on the form (\"You mentioned 10/5/26 and 10/15/26 — which date goes on the form?\").",
       "The warning level (verbal or written) only when the manager stated it for this form. \"Told twice\", \"second time\" or history is never a level.",
       "Payroll deduct exactly as the manager stated it: yes, no, or yes with the amount in payroll_amount (\"$20 payroll deduct\" → yes, 20). Never assume it either way.",
-      "Prior actions only from what the manager says about earlier steps (\"she had a verbal on 10/2\", \"coached last month\"), never from records on file.",
+      "Prior actions only from what the manager says about earlier steps (\"she had a verbal on 10/2\", \"coached last month\", \"signed a coaching document on 10/14\"), never from records on file. List every step the manager names, each with its date as written (\"Coaching — 09/08/2026; Verbal CA — 10/02/2026\").",
     ],
   },
   {
@@ -92,6 +95,7 @@ export const RULES_BOOK: readonly { readonly title: string; readonly rules: read
     rules: [
       "A change to a draft (\"make it about being late on 11/5\", \"change the date\", \"add that she was rude\"): edit_form with the instance_id and no values; the form's own reviser applies the manager's words, and its words become your reply.",
       "A change to a finalized form: edit_form makes a NEW draft that revises it; the original is never changed. Tell the manager it is a new draft revising the original.",
+      "Corrections to the open draft are edits, never a new lookup or a new form: \"fix her last name, it is <X>\" / \"her name is spelled <X>\" (edit_form; the reviser checks the spelling), \"reference <policy X> INSTEAD of <policy Y>\" (edit_form replaces Y with X), \"sorry, the verbal was on 9-2 not 9-1\" (edit_form moves that date). Read the open draft with read_form first when you need to know what it says.",
       "Never claim a change that edit_form did not report as made. If it changed nothing, say plainly what was not changed. Never start a new form in place of an edit.",
     ],
   },
@@ -103,6 +107,7 @@ export const RULES_BOOK: readonly { readonly title: string; readonly rules: read
       "A reply that proposes a card shows the card_lines propose_form returned, each on its own line, then ends with the policy_line it returned, exactly.",
       "Questions about using this app (signing in, passwords, what you can do): answer from app_help, never \"ask IT\" when it has the answer. Data you do not have (reviews, sales, schedules): say so honestly and say where the manager can look.",
       "Name only this company's brand (" + ACTIVE_BRAND.brandName + "); never list or compare other brands.",
+      "Use few steps: call independent tools together in one step (find_staff and read_policy side by side), and do not re-read what a tool already told you this turn.",
       "Keep replies short and plain. No tool names, ids or JSON.",
     ],
   },

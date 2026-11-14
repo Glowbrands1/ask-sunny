@@ -19,9 +19,10 @@ import { sectionWording } from "@/lib/forms/policy-citation";
 import { buildProposal, extractEmployeeNames, managerContext, samePerson, tidyTypedName } from "@/lib/forms/proposal";
 import { cleaningUndonePhrase, namesCareAndCleaning } from "@/lib/forms/ca-policy";
 import { turnsFromThisPersonsRequest } from "@/lib/forms/this-persons-turns";
-import { closeHeadingReading, namedPolicies, namesHeading } from "@/lib/forms/named-policy-section";
+import { closePolicyQuestion, namedPolicies } from "@/lib/forms/named-policy-section";
 import { startsNewForm } from "@/lib/ai/remap-incident";
 import { statedPayrollDeduct } from "@/lib/forms/payroll-deduct";
+import { UNDER_PERFORMANCE_EXPLAINED } from "@/lib/ai/under-performance-explained";
 import { listTemplateSummaries, type TemplateSummary } from "@/lib/forms/repository";
 import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
 import type { AccessScope, ChatFormProposal, ChatMessage, Role } from "@/types";
@@ -103,6 +104,13 @@ const ASKS_ABOUT_FORMS: readonly RegExp[] = [
   // The subject is the employee, never "you / I / we" ("do you have a form for …"); "have to sign" is no question about files.
   new RegExp(String.raw`\b(?:has|have|had|did|does|do)\s+(?!(?:you|u|i|we)\b)(?:\w+\s+){1,4}?(?:had|gotten|got|have(?!\s+to\b)|get|been|received|given)\s+(?:\w+\s+){0,3}?${FORM}\b`, "i"),
   /\bsame as (?:last time|before|the last one|last one)\b/i,
+  /*
+   * "she already has a CA but the policy wasn't listed", "she already has a verbal, now do a written", or a form word
+   * earlier in the SAME message ("a coachong document for <name>. She already has one …"). A bare "she already has
+   * one" with no form word in that message stays closed (QA, 14 Nov 2026).
+   */
+  new RegExp(String.raw`\balready (?:has|had|got|have)\s+(?:a|an|her|his|their|one)?\s*(?:\w+\s+)?${FORM}\b`, "i"),
+  new RegExp(String.raw`(?:${FORM}|coach\w*|document)\b[^?!\n]{0,160}?\balready (?:has|had|got|have) (?:one|it)\b`, "i"),
   // "edit <name>'s CA", "open her coaching", "pull up the write-up for <name>": a form on file, named.
   new RegExp(String.raw`\b(?:open|reopen|edit|pull up|bring up|show me|view)\b[^.?!\n]{0,40}?\b${FORM}\b`, "i"),
 ];
@@ -484,21 +492,25 @@ export async function proposeForm(
    * CLOSE_SPELLING (the manual's own reader): a policy the manager named with a misspelling that is not one confident
    * match is confirmed, never assumed ("anmals in the wrkplace" → "Did you mean Animals in the Workplace?").
    */
-  let confirmPolicy: string | null = null;
-  if (policyHeading && manual) {
+  /*
+   * The app's own question (`closePolicyQuestion`): one close heading, or a choice between the two or three it could
+   * be ("Did you mean **Key Holder Guidelines** (page 60) or **Key Holder Requirements** (page 61)?"). Nothing is cited
+   * until the manager says which.
+   */
+  let didYouMean: string | null = null;
+  if (manual) {
     for (const named of namedPolicies(requestWords)) {
-      if (manual.headings.some((heading) => namesHeading(named.phrase, heading))) continue;
-      const close = closeHeadingReading(named.phrase, manual.headings);
-      if (!close.confident && close.candidates.includes(policyHeading)) confirmPolicy = policyHeading;
+      didYouMean = closePolicyQuestion(named.phrase, manual.chunks);
+      if (didYouMean) break;
     }
   }
+  const confirmPolicy = didYouMean !== null;
   // The Other topic is read from the account as the model cleaned it (SPELLING_CLEANUP: "th e10 minute sanitaion" → "the 10-minute sanitation"), else the manager's words.
   const cleaning = (whatHappened ? cleaningUndonePhrase(whatHappened) : null) ?? cleaningUndonePhrase(requestWords);
   const careAndCleaning = namesCareAndCleaning(requestWords);
   /* As today's card cites it: the heading, then the page the manual prints. */
   const page = policyHeading && manual ? findManualSection(manual.chunks, [policyHeading])?.page ?? null : null;
   let policyLine: string | null = policyHeading && !confirmPolicy ? (page ? `${policyHeading}, JBA Policy Manual p.${page}` : policyHeading) : null;
-  const didYouMean = confirmPolicy ? `Did you mean **${confirmPolicy}**${page ? ` (page ${page})` : ""}?` : null;
   let policyNote: string | null = null;
   if (cleaning && !careAndCleaning) {
     const conduct = policyHeading !== null && /standards of conduct/i.test(policyHeading);
@@ -574,8 +586,12 @@ export async function proposeForm(
     card_lines: cardLines(card, template.key),
     ...(policyLine ? { policy_line: `**Policy:** ${policyLine}` } : {}),
     ...(policyNote ? { policy_note: policyNote } : {}),
+    /* Pau's line, word for word, whenever the manager asked for Under Performance and the card cites the Standards of Conduct. */
+    ...(policyHeading && /standards of conduct/i.test(policyHeading) && /\bunder[- ]?perform(?:ance|ing)\b/i.test(managerWords)
+      ? { say_exactly: `Include this sentence in your reply, word for word: "${UNDER_PERFORMANCE_EXPLAINED}"` }
+      : {}),
     ...(dropped.length > 0 ? { not_kept: `${dropped.join(", ")} left blank: the manager did not state it. Ask only if it matters; never assume it.` } : {}),
-    ...(didYouMean ? { confirm_policy: `The manager's policy name is not a heading as spelled, so no policy is cited yet. Your reply ends with: ${didYouMean}` } : {}),
+    ...(didYouMean ? { confirm_policy: `The manager's policy name is not a heading as spelled, so no policy is cited yet. End your reply with this line, word for word: ${didYouMean}` } : {}),
     note: awaiting
       ? "The card is shown under your reply with Create held until the manager says what happened: ask them what happened, in one short question."
       : "The card is shown under your reply. Nothing is saved until the manager presses Create. End your reply with the policy_line exactly.",

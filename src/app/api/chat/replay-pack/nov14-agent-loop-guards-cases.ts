@@ -30,6 +30,11 @@ const CORBIN: DirectoryRow = { id: "e-corbin-ashdown", firstName: "Corbin", last
 /** At a salon outside the signed-in manager's scope. */
 const FARAWAY: DirectoryRow = { id: "e-ysolde-marchetti", firstName: "Ysolde", lastName: "Marchetti", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-9917"], positionName: "Tanning Consultant" };
 
+/** A manual section, as the close-spelling cases build them (`nov13-close-spelling-cases.ts`). */
+function manualChunk(index: number, page: number, heading: string, body: string) {
+  return { chunkIndex: index, chunkId: `loop-${index}`, locator: `Page ${page} — ${heading}`, page: page + 1, content: `${heading}\n${body}`, section: heading, printedPage: page, sections: [{ page, heading }] };
+}
+
 const toolResults = (views: readonly LoopView[], tool: string) => views.flatMap((view) => view.results.filter((result) => result.tool === tool)).map((result) => JSON.stringify(result.output));
 
 /** A finalized Corrective Action with Termination ticked, on file for Tamsin. */
@@ -278,6 +283,50 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
         expect(markers, `step ${step}: markers other than the rules and the last message`).toEqual([0, prompt.length - 1]);
       }
       expect((stepping.prompts as Sent[][])[2]!.at(-1)!.role, "step 3's marker is not on the latest tool result").toBe("tool");
+    },
+  },
+  {
+    id: "nov14-agent-loop-close-spelling-two-headings-tool",
+    title: "\"… violating the key holdr policy …\" (live failure nov13-close-spelling-policy-two-headings-asks-which): propose_form cites nothing and returns the app's own question between the two headings, with pages",
+    report: `${REPORT}; live sample (14 Nov 2026): the loop asked about one heading, not between the two`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-13T22:40:00Z"));
+      t.directory([...STAFF, TAMSIN]);
+      t.as("salon_director", KEARNEY);
+      t.manualAlsoHas?.([manualChunk(900, 60, "Key Holder Guidelines", "A key holder opens and closes the location."), manualChunk(901, 61, "Key Holder Requirements", "A key holder is at least eighteen.")]);
+      const proposer = loopStandIn((view) => {
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, policy: "Key Holder Guidelines", what_happened: "Tamsin Orwell left the back door unlocked last night.", warning_level: "verbal" } };
+        return { text: String(lastResult(view, "propose_form")?.confirm_policy ?? "") };
+      });
+      t.loopModel!(proposer);
+      const reply = await t.thread().say("create a verbal ca for tamsin orwell for violating the key holdr policy, she left the back door unlocked last night");
+      const result = toolResults(proposer.views, "propose_form")[0] ?? "";
+      expect(result, "no question between the two headings").toMatch(/Did you mean \*\*Key Holder Guidelines\*\* \(page 60\) or \*\*Key Holder Requirements\*\* \(page 61\)\?/);
+      expect(result, "a policy was cited before the manager chose").toMatch(/"policy":null/);
+      expect(reply.content).not.toMatch(/\*\*Policy:\*\* Key Holder (?:Guidelines|Requirements), JBA/);
+    },
+  },
+  {
+    id: "nov14-agent-loop-under-performance-line-in-tool",
+    title: "\"CA for <name> for underperformance for october\": propose_form returns Pau's Under Performance line word for word, for the model to copy",
+    report: `${REPORT}; live sample (14 Nov 2026): Pau's line on 6 of 9 cards (QA: put it in the tool result; bar 9/9)`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-06T15:00:00Z"));
+      t.directory([...STAFF, TAMSIN]);
+      t.as("salon_director", KEARNEY);
+      const proposer = loopStandIn((view) => {
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, policy: "Standards of Conduct", what_happened: "Tamsin Orwell was under her sales targets for October." } };
+        return { text: "Here is the card." };
+      });
+      t.loopModel!(proposer);
+      await t.thread().say("CA for Tamsin Orwell for underperformance for october");
+      expect(toolResults(proposer.views, "propose_form")[0], "Pau's line is not in the tool result").toContain("Under Performance isn't on the CA form. Sales performance CAs use the Standards of Conduct.");
     },
   },
   {
