@@ -8,6 +8,7 @@
  * "the whole shift", "October 20" → "October 21") read as a new account and re-derived the policy: a Corrective Action
  * drafted on the Attendance policy moved to Cell Phone on a one-letter fix. A close sentence is the same sentence:
  *   - the same letters once spaces are dropped ("th e10 minute" → "the 10 minute"); or
+ *   - a date, in any form, is one word ("11/3/26", "November 4, 2026", "Nov 4th", "the 4th");
  *   - at most two words differ on each side, and each differing word pairs with one on the other side that is a date
  *     word (a number, a month or a weekday) on both sides, a pronoun or article on both sides (the saved Observation
  *     says "on the cell phone" where the manager retypes "on her cell phone"), or the same word misspelled (one or two
@@ -68,6 +69,29 @@ function allPaired(from: readonly string[], to: readonly string[]): boolean {
   return to.some((candidate, index) => pairs(first!, candidate) && allPaired(rest, [...to.slice(0, index), ...to.slice(index + 1)]));
 }
 
+/*
+ * A date, in any of the forms a manager or the app writes it, is one word here (Gate-Bubbles-5's probe on #876, 14 Nov
+ * 2026: "11/3/26" rewritten as "November 4, 2026" was three differing words, over MAX_DIFFERING). Read on the sentence as
+ * `accountReplaced` gives it: lowercased, punctuation turned to spaces ("11/3/26" is "11 3 26").
+ */
+const MONTH = String.raw`(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)`;
+const DAY = String.raw`(?:[12]\d|3[01]|0?[1-9])(?:st|nd|rd|th)?`;
+const YEAR = String.raw`(?:\d{4}|\d{2})`;
+const DATES = new RegExp(
+  [
+    String.raw`\b${MONTH}\s+${DAY}(?:\s+${YEAR})?\b`, // november 4 2026, nov 4th
+    String.raw`\b${DAY}\s+(?:of\s+)?${MONTH}(?:\s+${YEAR})?\b`, // 4th of november, 4 nov 2026
+    String.raw`\b(?:1[0-2]|0?[1-9])\s+(?:[12]\d|3[01]|0?[1-9])(?:\s+${YEAR})?\b`, // 11 3 26 (11/3/26), 11 3
+    String.raw`\bthe\s+(?:[12]\d|3[01]|0?[1-9])(?:st|nd|rd|th)\b`, // the 4th
+  ].join("|"),
+  "g",
+);
+const DATE_TOKEN = "datesaid";
+
+function withDatesAsOneWord(sentence: string): string {
+  return sentence.replace(DATES, DATE_TOKEN).replace(/\s+/g, " ").trim();
+}
+
 /**
  * Two sentences, each already lowercased with its punctuation turned to single spaces (as `accountReplaced` reads
  * them), are the same sentence with a typo or a date changed.
@@ -75,8 +99,8 @@ function allPaired(from: readonly string[], to: readonly string[]): boolean {
 export function closeSentence(before: string, after: string): boolean {
   if (before === after) return true;
   if (before.replace(/\s+/g, "") === after.replace(/\s+/g, "")) return true;
-  const a = before.split(/\s+/).filter(Boolean);
-  const b = after.split(/\s+/).filter(Boolean);
+  const a = withDatesAsOneWord(before).split(/\s+/).filter(Boolean);
+  const b = withDatesAsOneWord(after).split(/\s+/).filter(Boolean);
   const leftA = leftOver(a, b);
   const leftB = leftOver(b, a);
   if (leftA.length > MAX_DIFFERING || leftB.length > MAX_DIFFERING || leftA.length !== leftB.length) return false;

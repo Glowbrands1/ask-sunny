@@ -55,6 +55,37 @@ async function typoFix(t: ReplayContext) {
     }
 }
 
+/*
+ * Ported from Ask Bubbles: Gate-Bubbles-5's probe on #876 (14 Nov 2026), its wording with an invented person: on an Attendance CA whose account
+ * says "…texting on the cell phone the whole shift on 11/3/26", "in the observation change 11/3/26 to November 4, 2026"
+ * moved the policy to Cell Phone with both flags on: the date written another way was three differing words. A date in
+ * any form is one word now (`close-sentence.ts`).
+ */
+const DATE_REQUEST = "create ca form for nell orrin for violating the attendance policy, she was late on 11/3/26 because she was texting on her cell phone the whole shift. verbal. no payroll deduct.";
+const DATE_FIX = "in the observation change 11/3/26 to November 4, 2026";
+const DATE_REPORT = "Gate-Bubbles-5 on #876 (14 Nov 2026): \"in the observation change 11/3/26 to November 4, 2026\" moved an Attendance CA to Cell Phone with both flags on";
+
+async function dateFix(t: ReplayContext) {
+  vi.setSystemTime(new Date("2026-11-10T15:00:00Z"));
+  t.directory([...STAFF, NELL]);
+  t.as("salon_director", KEARNEY);
+  const thread = t.thread();
+  await thread.say(DATE_REQUEST);
+  t.draftWrites({ observation: "Observed:\nNell Orrin was texting on the cell phone the whole shift on 11/3/26." });
+  const id = await thread.create();
+  expect(t.checked(id).offense_type ?? [], "the draft is not on Attendance").toContain("attendance_policy");
+  const before = { ...t.values(id) };
+  t.patchReads!({
+    [DATE_FIX]: patch("this_form", [{ field: "observation", value: "Observed:\nNell Orrin was texting on the cell phone the whole shift on November 4, 2026.", how: "replace", evidence: "change 11/3/26 to November 4, 2026" }]),
+  });
+  const reply = await thread.say(DATE_FIX);
+  expect(t.values(id).observation ?? "", `the date fix was not saved:\n${reply.content}`).toMatch(/November 4, 2026/);
+  expect(t.checked(id).offense_type ?? [], `a date fix moved the offense:\n${reply.content}`).toEqual(["attendance_policy"]);
+  for (const key of ["policy_violated", "policy_language", "action_plan"]) {
+    expect(t.values(id)[key] ?? "", `a date fix moved ${key}:\n${reply.content}`).toBe(before[key] ?? "");
+  }
+}
+
 export const NOV13_ACCOUNT_REPLACED_CLOSE_SENTENCE_CASES: ReplayCase[] = [
   {
     id: "nov13-account-replaced-close-sentence-typo-rederives-before-fix",
@@ -87,5 +118,22 @@ export const NOV13_ACCOUNT_REPLACED_CLOSE_SENTENCE_CASES: ReplayCase[] = [
       await thread.say(NEW_ACCOUNT);
       expect(t.checked(id).offense_type ?? [], "a changed account kept Attendance").not.toContain("attendance_policy");
     },
+  },
+  {
+    id: "nov14-account-replaced-close-sentence-date-rewritten-keeps-policy",
+    title: `"${DATE_REQUEST}" then "${DATE_FIX}" (only the date, written another way): the Attendance policy, its lines and plan stay`,
+    report: DATE_REPORT,
+    status: "fixed",
+    fixFlags: [REDERIVE, FLAG],
+    run: dateFix,
+  },
+  {
+    id: "nov14-account-replaced-close-sentence-date-rewritten-before-fix",
+    title: `"${DATE_REQUEST}" then "${DATE_FIX}", ACCOUNT_CHANGE_REDERIVES_POLICY alone: the policy moves`,
+    report: DATE_REPORT,
+    status: "fixed",
+    fixFlags: [REDERIVE],
+    fixStatus: { open: "the date fix re-derives the policy: Attendance moves to Cell Phone" },
+    run: dateFix,
   },
 ];

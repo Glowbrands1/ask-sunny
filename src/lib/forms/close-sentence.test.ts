@@ -29,6 +29,22 @@ describe("closeSentence (ACCOUNT_REPLACED_CLOSE_SENTENCE_KEPT_ENABLED)", () => {
     expect(close("Nell Orrin was late on Monday.", "Nell Orrin was late on Tuesday.")).toBe(true);
   });
 
+  it("a date rewritten in another form is one difference (Gate-Bubbles-5's probe on #876, 14 Nov 2026)", () => {
+    const account = "Ottoline Ormsworth was texting on the cell phone the whole shift on 11/3/26.";
+    expect(close(account, "Ottoline Ormsworth was texting on the cell phone the whole shift on November 4, 2026.")).toBe(true);
+    expect(close(account, "Ottoline Ormsworth was texting on the cell phone the whole shift on Nov 4th.")).toBe(true);
+    expect(close(account, "Ottoline Ormsworth was texting on the cell phone the whole shift on the 4th.")).toBe(true);
+    expect(close(account, "Ottoline Ormsworth was texting on the cell phone the whole shift on 4th of November 2026.")).toBe(true);
+    expect(close("She was late on November 3, 2026.", "She was late on 11/4/26.")).toBe(true);
+    // A date fix and a typo fix together are still close.
+    expect(close(account, "Ottoline Ormsworth was texting on the cell phone the whole shfit on November 4, 2026.")).toBe(true);
+  });
+
+  it("a date read as one word never hides a changed account", () => {
+    expect(close("She was late on 11/3/26.", "She was rude to a customer on November 4, 2026.")).toBe(false);
+    expect(close("She skipped the 10 minute sanitation on 11/3/26.", "She skipped the 10 minute sanitation and the floors on 11/3/26.")).toBe(false);
+  });
+
   it("a changed account is a new sentence", () => {
     expect(close("Nell Orrin was late on October 20, 2026.", "Nell Orrin was on her phone on October 20, 2026.")).toBe(false);
     expect(close("Nell Orrin was late on October 20, 2026.", "Nell Orrin was rude on October 20, 2026.")).toBe(false);
