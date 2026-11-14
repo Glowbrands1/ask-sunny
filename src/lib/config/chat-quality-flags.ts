@@ -4820,3 +4820,13 @@ export function namedPoliciesAllKeptEnabled(): boolean {
 export function policyLineCoversEverySectionEnabled(): boolean {
   return envFlag("POLICY_LINE_COVERS_EVERY_SECTION_ENABLED");
 }
+
+/**
+ * MIXED_POLICY_PLAN_ENABLED (Coding-2, 14 Nov 2026; default off; Pau's option A, ported from Ask Bubbles). A Corrective
+ * Action on Attendance and another policy saved Pau's attendance plan alone. On: the attendance plan is kept exactly,
+ * with one line per other policy before the closing, "Management will review the <Policy> policy with <employee>."
+ * (`forms/attendance-action-plan.ts`), on the card and the draft alike. An Attendance-only CA is unchanged. Off, as before.
+ */
+export function mixedPolicyPlanEnabled(): boolean {
+  return envFlag("MIXED_POLICY_PLAN_ENABLED");
+}

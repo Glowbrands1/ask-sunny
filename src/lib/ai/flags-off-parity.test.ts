@@ -652,6 +652,8 @@ const NEW_FLAGS = [
   "NAMED_POLICIES_ALL_KEPT_ENABLED",
   // coding 2: POLICY_LINE_COVERS_EVERY_SECTION (QA, 14 Nov 2026; ported from Ask Bubbles; default off): forced off with the others.
   "POLICY_LINE_COVERS_EVERY_SECTION_ENABLED",
+  // coding 2: MIXED_POLICY_PLAN (Pau's option A; ported from Ask Bubbles; default off): forced off with the others.
+  "MIXED_POLICY_PLAN_ENABLED",
   // coding 2: EXCERPT_EMPTY_CARD_DROP (QA, 11 Nov 2026; default off): forced off with the others.
   "EXCERPT_EMPTY_CARD_DROP_ENABLED",
   // coding 6: REQUEST_ISSUE_KEPT (ported from Ask Bubbles, QA round 17b; default off).
