@@ -4803,6 +4803,16 @@ export function closeSpellingMatchEnabled(): boolean {
 }
 
 /**
+ * HEADING_DISTINCTIVE_WORDS (QA, 13 Nov 2026; default off; ported from the sibling app): a manual heading is named by its distinctive words; the
+ * generic heading words "is", "are", "prohibited" and "requirement" may be left off, as "policy" and "guidelines"
+ * already may. "violating the retaliation policy" names "Retaliation is Prohibited". See
+ * `forms/named-policy-section.ts`. Off, every heading word but the optional ones must be said, as before.
+ */
+export function headingDistinctiveWordsEnabled(): boolean {
+  return envFlag("HEADING_DISTINCTIVE_WORDS_ENABLED");
+}
+
+/**
  * PLACE_STRIP_WHOLE_PHRASE_ONLY (QA, Gate-Sunny's #933 probes, 13 Nov 2026; default off): the account reader takes a
  * place out of the Observation only where the whole place phrase ends, so "she was at lincoln high" and "<A> at omaha
  * west" keep every word. See `ai/remap-incident.ts` withoutPlace. Off, as before.

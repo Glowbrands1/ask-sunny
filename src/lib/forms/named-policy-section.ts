@@ -1,4 +1,4 @@
-import { animalAnywhereEnabled, closeSpellingMatchEnabled, wovenTrainingConductEnabled } from "@/lib/config/chat-quality-flags";
+import { animalAnywhereEnabled, closeSpellingMatchEnabled, headingDistinctiveWordsEnabled, wovenTrainingConductEnabled } from "@/lib/config/chat-quality-flags";
 
 import { closeWordDistance } from "./close-spelling";
 
@@ -81,6 +81,23 @@ const OPTIONAL_HEADING_WORDS = new Set([
   "usage", "use", "procedure", "procedures", "guidelines", "requirements", "expectations", "workplace",
 ]);
 
+/*
+ * HEADING_DISTINCTIVE_WORDS_ENABLED (QA, 13 Nov 2026, from the sibling app's 17s live check; ported: "violating the retaliaton policy", and even
+ * "retaliation policy", named no section, because "Retaliation is Prohibited" wanted "is prohibited" said too). A
+ * heading is named by its distinctive words; these generic heading words may be left off as well ("policy", "rules",
+ * "procedures", "guidelines", "requirements" already may). Of the live manual's headings this changes three:
+ * "Retaliation is Prohibited" (→ "retaliation"), "Emergency Situation Notification Requirement" (→ "emergency
+ * situation notification") and the FLSA heading ("Fair Labor Standard Act … Safe Harbor"). "standards" is deliberately
+ * not here (QA): Standards of Conduct stays with `ca-policy.ts`'s own reading. A distinctive word two headings share
+ * still names neither (the one-heading rule in `namedManualSection`). Off, as before.
+ */
+const GENERIC_HEADING_WORDS = new Set(["is", "are", "prohibited", "requirement"]);
+
+/** A heading word the manager may leave off. */
+function optionalHeadingWord(word: string): boolean {
+  return OPTIONAL_HEADING_WORDS.has(word) || (headingDistinctiveWordsEnabled() && GENERIC_HEADING_WORDS.has(word));
+}
+
 function words(text: string): string[] {
   return text
     .toLowerCase()
@@ -116,7 +133,7 @@ export function namesHeading(phrase: string, heading: string): boolean {
   const printed = words(heading);
   if (said.length === 0 || printed.length === 0) return false;
   const covered = (part: readonly string[]) =>
-    part.every((word) => OPTIONAL_HEADING_WORDS.has(word) || said.some((other) => sameWord(word, other)));
+    part.every((word) => optionalHeadingWord(word) || said.some((other) => sameWord(word, other)));
   return (
     said.every((word) => printed.some((other) => sameWord(word, other))) &&
     (covered(printed) || headingAlternatives(heading).some((part) => part.length > 0 && covered(part)))
@@ -300,7 +317,7 @@ function closeHeadingScore(phrase: string, heading: string): { off: number; far:
     }
   }
   const covered = printed.every(
-    (word) => OPTIONAL_HEADING_WORDS.has(word) || said.some((other) => distance(other, word) !== null),
+    (word) => optionalHeadingWord(word) || said.some((other) => distance(other, word) !== null),
   );
   return covered ? { off, far } : null;
 }
