@@ -4870,3 +4870,13 @@ export function workAreaNotATitleEnabled(): boolean {
 export function reasonPlaceNotSalonEnabled(): boolean {
   return envFlag("REASON_PLACE_NOT_SALON_ENABLED");
 }
+
+/**
+ * NEGATED_FIRST_TIME_NOT_NONE (ported from the sibling app: Gate-Bubbles-3's #888 follow-up, QA 14 Nov 2026; default
+ * off): "not her first time" and "this isn't the first time she's been late" read as a first occurrence, so Prior Actions
+ * became "None — first occurrence" — a clean history the manager denied. With the flag a negated first-time phrase never
+ * reads as None. See `forms/corrective-action-intake.ts` statesFirstOccurrence. Off, as before.
+ */
+export function negatedFirstTimeNotNoneEnabled(): boolean {
+  return envFlag("NEGATED_FIRST_TIME_NOT_NONE_ENABLED");
+}
