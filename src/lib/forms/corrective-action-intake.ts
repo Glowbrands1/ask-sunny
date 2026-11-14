@@ -1,5 +1,5 @@
 import { mentionsGlossaryTerm } from "@/lib/ai/chat-glossary";
-import { caSalesPolicyEnabled, caShortcutWordsEnabled, describedTopicIsAccountEnabled, nameQuestionOnlyEnabled, shiftAccountIsIncidentEnabled } from "@/lib/config/chat-quality-flags";
+import { caSalesPolicyEnabled, caShortcutWordsEnabled, describedTopicIsAccountEnabled, nameQuestionOnlyEnabled, negatedFirstTimeNotNoneEnabled, shiftAccountIsIncidentEnabled } from "@/lib/config/chat-quality-flags";
 
 import { isSalesPolicyReading, readCaPolicy } from "./ca-policy";
 import { saysFailureToOpen } from "./late-open";
@@ -630,8 +630,19 @@ export function answeredWhatHappened(
  * form as "None — first occurrence" rather than as a blank line a reader can
  * mistake for a history nobody checked.
  */
+/*
+ * NEGATED_FIRST_TIME_NOT_NONE_ENABLED (ported from the sibling app: Gate-Bubbles-3's #888 follow-up, QA 14 Nov 2026; high: it stated a clean history
+ * the manager denied): "not her first time" and "this isn't the first time she's been late" matched "first time" and
+ * read as a first occurrence, so Prior Actions became "None — first occurrence". A negated first-time phrase ("not
+ * her first", "isn't the first time", "wasn't his first offense") is taken out before reading: it never reads as None.
+ * Off, as before.
+ */
+const NEGATED_FIRST =
+  /\b(?:not|isn['’]?t|is not|wasn['’]?t|was not|ain['’]?t|aint|hardly|far from|never)\s+(?:(?:her|his|their|the|my|a|an|your)\s+)?(?:first|1st)\b(?:\s+(?:time|occurrence|occasion|offen[cs]e|incident|instance))?/g;
+
 export function statesFirstOccurrence(text: string): boolean {
-  return any(normalize(text), PREVIOUS_NONE);
+  const said = normalize(text);
+  return any(negatedFirstTimeNotNoneEnabled() ? said.replace(NEGATED_FIRST, " ") : said, PREVIOUS_NONE);
 }
 
 /* --------------------------------------------------------------- guided --- */
