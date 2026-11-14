@@ -74,3 +74,27 @@ export const NOV14_REASON_PLACE_NEVER_SALON_GUARDS: ReplayCase[] = [
     expect(locationId, `the store was not filed:\n${reply}`).toBe(KEARNEY);
   },
 }));
+
+/*
+ * QA (14 Nov 2026): the Grand Island wording that passed live, run on the reader path too (the reader reads "grand
+ * island" as the location). Open on production flags: the reader's location files the reason's place.
+ */
+export const NOV14_REASON_PLACE_NEVER_SALON_GRAND_ISLAND: ReplayCase[] = [
+  {
+    id: "nov14-reason-place-never-salon-grand-island-reader",
+    title: `Admin: "create a ca for tavia quellan, she was late because she was at grand island" (the reader reads "grand island") — not filed at Grand Island`,
+    report: "QA's check of the Sunny live pass on the reader path, 14 Nov 2026; invented person",
+    status: { open: "the AI reader's location files the reason's place as the Grand Island salon" },
+    fixFlags: [FLAG],
+    async run(t: ReplayContext) {
+      vi.setSystemTime(new Date("2026-11-14T15:00:00Z"));
+      t.directory([...STAFF]);
+      t.as("admin", { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] });
+      t.readerReads({ location: "grand island" });
+      const thread = t.thread();
+      const reply = (await thread.say("create a ca for tavia quellan, she was late because she was at grand island")).content;
+      const locationId = (thread.proposal as { locationId?: string | null } | null)?.locationId ?? null;
+      expect(locationId, `the reason's place was filed as the salon:\n${reply}`).not.toBe("loc-0307");
+    },
+  },
+];
