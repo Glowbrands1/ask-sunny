@@ -34,16 +34,64 @@ const FIRST_HAND = [
 export const STATED_NOT_OBSERVED_RULE =
   "Something the manager states without saying how they know it is written plainly, as they stated it (\"<Name> yelled at a guest\"): never as observed, seen, witnessed, noticed or confirmed by anyone.";
 
-const OBSERVED_DOING = /\b(was|were)(\s+also)?\s+(?:observed|seen|witnessed|noticed|caught)\s+(?=[a-z]+ing\b)/gi;
-const OBSERVED_TO_BE = /\b(was|were)(\s+also)?\s+(?:observed|seen|witnessed|noticed)\s+to\s+be\b/gi;
-const IT_WAS_OBSERVED = /\b(?:it\s+was|it\s+has\s+been)\s+(?:observed|seen|witnessed|noticed)\s+that\s+/gi;
+/*
+ * QA's rulings on the sibling app's Gate-Bubbles-5 #911 probes (14 Nov 2026; ported):
+ *   1. the manager's own word is kept: "she was observed sleeping in the back room" saves "was observed sleeping …";
+ *   2. "seen" (and "witnessed", "noticed") gets the same guard as "observed", with or without an "-ing" after it
+ *      ("was seen on her phone" → "was on her phone");
+ *   3. the source is decided per clause: "I saw her yelling at a guest … and she was also late" keeps "observed"
+ *      for the yelling only, never for "arriving late".
+ * A draft sentence keeps its "observed / seen / witnessed" only when a clause of the manager's words that gives a source
+ * (she saw it, a camera showed it, or she said it was observed) names the same action. Never before "by" ("was seen
+ * by a guest" names who saw it).
+ */
+const OBSERVED_WORD = String.raw`(?:observed|seen|witnessed|noticed|caught)`;
+const OBSERVED_PASSIVE = new RegExp(String.raw`\b(was|were)(\s+also)?\s+${OBSERVED_WORD}\s+(?:to\s+be\s+)?(?!by\b|that\b)`, "i");
+const IT_WAS_OBSERVED = /\b(?:it\s+was|it\s+has\s+been)\s+(?:observed|seen|witnessed|noticed)\s+that\s+/i;
+/** A clause of the manager's words that says how she knows: she saw it, a recording showed it, or she said it was observed. */
+const SOURCE_CUES: readonly RegExp[] = [
+  ...FIRST_HAND,
+  new RegExp(String.raw`\b(?:was|were)\s+(?:also\s+)?(?:observed|seen|witnessed)\b`, "i"),
+  /\b(?:camera|cameras|video|footage|cctv|recording)\b/i,
+];
+const NOT_AN_ACTION = new Set(["that", "this", "with", "from", "their", "there", "they", "them", "were", "also", "have", "been", "employee", "november"]);
 
-/** The text without an observation the manager never claimed; unchanged when her words say she saw it. */
+function actionWords(text: string): Set<string> {
+  return new Set(
+    text
+      .toLowerCase()
+      .split(/[^a-z]+/)
+      .filter((word) => word.length >= 4 && !NOT_AN_ACTION.has(word))
+      .map((word) => word.replace(/(?:ing|ed|es|s)$/, "")),
+  );
+}
+
+/** The action words of each clause of the manager's words that gives a source. */
+function sourcedActions(source: string): Set<string>[] {
+  return source
+    .split(/[.!?\n]+|\s+and\s+|,\s+|;\s+/i)
+    .filter((clause) => SOURCE_CUES.some((cue) => cue.test(clause)))
+    .map(actionWords);
+}
+
+/** The text without an observation the manager never claimed; a sentence whose action she gave a source for is kept. */
 export function withoutUnstatedObservation(text: string, source: string): string {
-  if (FIRST_HAND.some((pattern) => pattern.test(source))) return text;
-  return text
-    .replace(OBSERVED_DOING, (_match, verb: string, also: string | undefined) => `${verb}${also ?? ""} `)
-    .replace(OBSERVED_TO_BE, (_match, verb: string, also: string | undefined) => `${verb}${also ?? ""}`)
-    .replace(IT_WAS_OBSERVED, "")
-    .replace(/(^|[.!?]\s+|\n)([a-z])/g, (_match, lead: string, letter: string) => `${lead}${letter.toUpperCase()}`);
+  const sourced = sourcedActions(source);
+  const backed = (after: string) => {
+    const words = actionWords(after);
+    return sourced.some((clause) => [...words].some((word) => clause.has(word)));
+  };
+  return text.replace(/[^.!?\n]+(?:[.!?]+|(?=\n)|$)/g, (sentence) => {
+    let next = sentence;
+    const passive = OBSERVED_PASSIVE.exec(next);
+    if (passive && !backed(next.slice(passive.index + passive[0].length))) {
+      next = `${next.slice(0, passive.index)}${passive[1]}${passive[2] ?? ""} ${next.slice(passive.index + passive[0].length)}`;
+    }
+    const itWas = IT_WAS_OBSERVED.exec(next);
+    if (itWas && !backed(next.slice(itWas.index + itWas[0].length))) {
+      const rest = next.slice(itWas.index + itWas[0].length);
+      next = `${next.slice(0, itWas.index)}${rest.charAt(0).toUpperCase()}${rest.slice(1)}`;
+    }
+    return next;
+  });
 }
