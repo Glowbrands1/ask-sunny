@@ -205,7 +205,7 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       expect(toolResults(terse.views, "propose_form").at(-1), "the unset payroll and level are not stated").toMatch(/"unset":\["payroll_deduct","warning_level"\]/);
       expect(unstated.formProposal, "the card waited on an optional field").toBeTruthy();
 
-      const stated = await t.thread().say("written ca for tamsin orwell, she was 30 minutes late on 11/12, no payroll deduct");
+      await t.thread().say("written ca for tamsin orwell, she was 30 minutes late on 11/12, no payroll deduct");
       // Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite; code-check audit batch A): the line is the model's, from this fact.
       expect(toolResults(terse.views, "propose_form").at(-1)).toMatch(/"stated":\{"warning_level":"written","payroll_deduct":"no"/);
       expect(toolResults(terse.views, "propose_form").at(-1), "named as unset what was stated").not.toMatch(/"unset"/);
@@ -279,7 +279,7 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       t.loopModel!(model);
       const thread = t.thread();
       await thread.say("create a coaching form for tamsin orwell, she missed the monthly meeting on 10/10/26");
-      const reply = await thread.say("she also left her station early that day");
+      await thread.say("she also left her station early that day");
       const earlier = model.views.at(-1)!.turns.filter((turn) => turn.role === "assistant").map((turn) => turn.text).join("\n");
       expect(earlier, "the model was not told the earlier card was real").toContain("[app note: this reply showed a card built with propose_form]");
       expect(thread.proposal?.issue ?? "").toMatch(/left her station early/);
