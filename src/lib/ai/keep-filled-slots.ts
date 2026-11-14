@@ -56,7 +56,10 @@ import {
   dateQuestionKeptEnabled,
   secondRequestOwnAccountEnabled,
   observationOwnPersonOnlyEnabled,
+  cardAccountDropsNonFactsEnabled,
 } from "@/lib/config/chat-quality-flags";
+import { factOfClause, hedgedAccount, repeatsAFact } from "@/lib/forms/account-facts";
+import { factContext, notAFact } from "@/lib/forms/card-checked-against-words";
 import { requestIssueKeptEnabled } from "@/lib/config/chat-quality-flags";
 import { turnsMadeAbout, withObservationMadeAbout } from "./make-it-about";
 import { NOTHING_SET_ASIDE, citationSetAside, policiesSetAside, setAsideAnything, withPolicySetAside, withoutPolicyAsks } from "@/lib/forms/policy-set-aside";
@@ -763,6 +766,9 @@ function onlyAGlossaryTerm(sentence: string): boolean {
 }
 
 /** The account already given, copied onto the card so the offense is not asked again. */
+/** CARD_ACCOUNT_DROPS_NON_FACTS_ENABLED: a new clause with its own subject ("… and she maybe forgot", "…, she …"). */
+const FACT_CLAUSE_SPLIT = /(\s+(?:and|but)\s+(?:then\s+)?|,\s+)(?=(?:she|he|they)\b)/gi;
+
 function withObservation(content: string, turns: readonly string[], employeeName: string | null, today?: string): string {
   const ignore = employeeName ? [employeeName] : [];
   const managerOnly = managerWordsOnlyEnabled();
@@ -815,6 +821,54 @@ function withObservation(content: string, turns: readonly string[], employeeName
   // COMPLAINT_ACCOUNT_ENABLED: the warning level is the form's Type of Warning, never the account.
   const told = complaintAccountEnabled() ? account.map(withoutLevelLead) : account;
   // ACCOUNT_TYPOS_FIXED_ENABLED: the obvious slips mended, the manager's words kept (`forms/account-spelling.ts`).
+  /*
+   * CARD_ACCOUNT_DROPS_NON_FACTS_ENABLED (port of Ask Bubbles; QA's Bubbles 17w live chat, 14 Nov 2026): "<A> was late on
+   * 11/3/26" / "she yelled at a guest and she maybe forgot" / "corrective action form" showed "… on 11/3/26 she yelled at a
+   * guest and she maybe forgot". Each sentence's clauses that are no fact (`notAFact`: a hedge, a level, history, a
+   * payment) are left out, and the facts are joined with "; ".
+   */
+  if (cardAccountDropsNonFactsEnabled()) {
+    /*
+     * Each sentence stays word for word unless a clause of it is no fact; then its facts are kept, joined with "; ".
+     * Only a clause about her is a payment (`notAFact`): "she owes $25 …", never the payroll answer "payroll deduct
+     * applies and $3.25 will be deducted from check" (nov8-sales-triple-payroll-deduct-applies).
+     */
+    const aboutHer = /^(?:she|he|they)\b/i;
+    const facts: string[] = [];
+    let dropped = false;
+    for (const sentence of told) {
+      if (hedgedAccount(sentence)) {
+        dropped = true;
+        continue;
+      }
+      /*
+       * Gate-Bubbles-4's bar on the sibling app (G4-893, 14 Nov 2026): only drop. A clause with her subject that states
+       * no fact is cut out with the "and"/comma before it; the clauses kept stay as written, with the words between them.
+       */
+      const pieces = sentence.trim().replace(/[.!]+$/, "").split(FACT_CLAUSE_SPLIT);
+      let kept = "";
+      for (let index = 0; index < pieces.length; index += 2) {
+        const part = pieces[index]!;
+        const clause = factOfClause(part, factContext({ turns: [], roster: [] }));
+        const payment = clause !== null && aboutHer.test(clause) && notAFact(clause, { turns: [], roster: [] });
+        if (clause === null || payment) {
+          dropped = true;
+          continue;
+        }
+        if (clause !== part.trim()) dropped = true;
+        kept = kept === "" ? clause : `${kept}${pieces[index - 1] ?? " "}${clause}`;
+      }
+      const whole = kept === "" ? [] : [kept];
+      for (const fact of whole) {
+        if (repeatsAFact(fact, facts)) {
+          dropped = true;
+          continue;
+        }
+        facts.push(fact);
+      }
+    }
+    if (dropped && facts.length > 0) return `${content}\n\n**Observation of Offense:** ${cardAccountText(facts.join("; "), employeeName)}`.trim();
+  }
   return `${content}\n\n**Observation of Offense:** ${cardAccountText(told.join(" "), employeeName)}`.trim();
 }
 

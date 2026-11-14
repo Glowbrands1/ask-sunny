@@ -4,13 +4,14 @@ import { z } from "zod/v4";
 
 import type { AskResponse } from "@/lib/ai/types";
 import { updateChatTrace } from "@/lib/ai/chat-trace-store";
-import { cardAddedFactInObservationEnabled, cardCheckedAgainstWordsEnabled, closeSpellingMatchEnabled } from "@/lib/config/chat-quality-flags";
+import { cardAccountDropsNonFactsEnabled, cardAddedFactInObservationEnabled, cardCheckedAgainstWordsEnabled, closeSpellingMatchEnabled } from "@/lib/config/chat-quality-flags";
 import { PRODUCTION_SALONS } from "@/data/salons";
 
 import type { RosterEmployee } from "./employee-match";
 
 /** A roster person as the check reads them: the name, and the job title where the directory has one. */
 export type CardPerson = Pick<RosterEmployee, "firstName" | "lastName" | "preferredFirstName"> & { readonly positionName?: string | null };
+import { factOfClause, withoutLeads, type FactContext } from "./account-facts";
 import { closeWordDistance } from "./close-spelling";
 import { fold } from "./form-reducer";
 
@@ -201,7 +202,7 @@ function placeWords(): string[] {
 }
 
 /** The text is only a place: a store or salon label, or its city or street, with nothing else said. */
-function onlyPlace(text: string): boolean {
+function onlyPlace(text: string, close = closeSpellingMatchEnabled()): boolean {
   if (isPlace(text)) return true;
   let rest = ` ${plain(text)} `;
   for (const word of placeWords()) rest = rest.replace(` ${word} `, " ");
@@ -210,7 +211,7 @@ function onlyPlace(text: string): boolean {
    * CLOSE_SPELLING_MATCH_ENABLED (QA, 13 Nov 2026): "she is at Lincon Pine Lake" — a place one letter off is still only a
    * place. The words left are read with the same close-spelling reader as the salon reader (`close-spelling.ts`).
    */
-  if (rest !== "" && closeSpellingMatchEnabled()) {
+  if (rest !== "" && close) {
     const known = [...new Set(placeWords().flatMap((place) => place.split(" ")).filter((word) => word.length >= 4))];
     rest = rest
       .split(/\s+/)
@@ -306,6 +307,15 @@ function nameAnswer(clause: string, employee: string | null, input: CardCheckInp
 const TIME_LEAD =
   /^(?:(?:on\s+(?:(?:mon|tues|wednes|thurs|fri|satur|sun)day|\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?)(?:\s+(?:morning|afternoon|evening|night))?)|yesterday(?:\s+(?:morning|afternoon|evening))?|today|tonight|last\s+night|this\s+(?:morning|afternoon|evening)|earlier\s+today|at\s+(?:close|closing|open|opening)|(?:at|around|about|by)\s+\d{1,2}(?::\d{2})?\s*(?:am|pm|a\.m\.|p\.m\.)?|then|after\s+that|later(?:\s+on)?|afterwards?)\s*,?\s+/i;
 const ACCOUNT_START = /^(?:and\s+|but\s+|plus\s+)?(?:she|he|they)\b/i;
+/** CARD_ACCOUNT_DROPS_NON_FACTS_ENABLED: this app's places and titles, for `factOfClause`. */
+export function factContext(input: CardCheckInput): FactContext {
+  return {
+    // Spelled exactly: a place one letter off is kept in the manager's words, never cut (the sibling's G4-893).
+    onlyPlace: (text) => onlyPlace(text, false),
+    onlyTitle: (text) => onlyRole(text, input) || plain(text).split(" ").every((word) => TITLE_WORDS.has(word)),
+  };
+}
+
 export function addedFacts(issue: string, employee: string | null, input: CardCheckInput): string[] {
   if (!employee) return [];
   const named = input.turns.findIndex((turn) => fold(turn).includes(fold(employee)));
@@ -320,6 +330,10 @@ export function addedFacts(issue: string, employee: string | null, input: CardCh
       let clause = sentence.trim().replace(/[.!]+$/, "");
       // QA (13 Nov 2026): "on Saturday, she left …", "yesterday she left early", "at close she skipped the deposit": a
       // leading time or place phrase is set aside for the start test and kept in the joined text.
+      // CARD_ACCOUNT_DROPS_NON_FACTS_ENABLED (v2-Gate-Sunny-3's probes, 14 Nov 2026): "also she didn't clean", "make it a
+      // written warning, she yelled at a guest": the lead is set aside, so the account after it is read.
+      const drops = cardAccountDropsNonFactsEnabled();
+      if (drops) clause = withoutLeads(clause);
       const timeLead = TIME_LEAD.exec(clause)?.[0] ?? "";
       clause = clause.slice(timeLead.length);
       if (clause === "" || !(ACCOUNT_START.test(clause) || (first !== "" && starts.test(clause)))) continue;
@@ -337,8 +351,31 @@ export function addedFacts(issue: string, employee: string | null, input: CardCh
         const own = (part: string) => ACCOUNT_START.test(part) || (first !== "" && starts.test(part));
         const whole = (part: string) => (own(part) ? part : `${subject} ${part}`);
         const kept = parts.filter((part) => issueProblem(whole(part), employee, input) === null && !notAFact(whole(part), input) && !REQUEST_SHAPE.test(whole(part)));
-        if (kept.length === 0) continue;
-        if (kept.length < parts.length) clause = [whole(kept[0]!), ...kept.slice(1)].join(" and ");
+        /*
+         * CARD_ACCOUNT_DROPS_NON_FACTS_ENABLED: a part with no fact (`factOfClause`: a hedge, history or denial) is
+         * dropped; a part keeps the manager's words, never the subject added for the check (Gate-Bubbles-4 on the
+         * sibling app, G4-893: "…and left early" became "…and she left early"). Nothing dropped or cleaned: as it was.
+         */
+        const strip = (fact: string) => (fact.toLowerCase().startsWith(`${subject.toLowerCase()} `) ? fact.slice(subject.length + 1) : fact);
+        const cleaned = drops
+          ? kept
+              .map((part) => {
+                const fact = factOfClause(whole(part), factContext(input));
+                if (fact === null) return null;
+                // The same words but the punctuation after them ("…average ticket," before "and"): the part as written.
+                const bare = (text: string) => text.trim().replace(/[\s,;:.!-]+$/, "");
+                if (bare(fact) === bare(whole(part))) return part;
+                return own(part) ? fact : strip(fact);
+              })
+              .filter((part): part is string => part !== null)
+          : kept;
+        if (cleaned.length === 0) continue;
+        const same = cleaned.length === parts.length && cleaned.every((part, index) => part === parts[index]);
+        if (!same) clause = [whole(cleaned[0]!), ...cleaned.slice(1)].join(" and ");
+      } else if (drops) {
+        const fact = factOfClause(clause, factContext(input));
+        if (fact === null) continue;
+        clause = fact;
       }
       if (issueProblem(clause, employee, input) !== null || notAFact(clause, input) || REQUEST_SHAPE.test(clause) || nameAnswer(clause, employee, input)) continue;
       const fact = `${timeLead}${clause.replace(/^(?:and|but|plus)\s+/i, "")}`.replace(/\b(also|too)\b\s*/gi, "").replace(/\s+/g, " ").trim();

@@ -4833,6 +4833,17 @@ export function sharedCityAsksSalonEnabled(): boolean {
 }
 
 /**
+ * CARD_ACCOUNT_DROPS_NON_FACTS_ENABLED (coding 6; port of Ask Bubbles, QA's Bubbles 17w live chat, 14 Nov 2026; default
+ * off). "<A> was late on 11/3/26", then "she yelled at a guest and she maybe forgot", then "corrective action form": the
+ * card's Observation was every turn joined with a space, hedge included ("… on 11/3/26 she yelled at a guest and she maybe
+ * forgot"). On, the account's clauses that are no fact (a hedge, a level, history, a payment: the card check's `notAFact`)
+ * are left out and the facts are joined with "; " (`ai/keep-filled-slots.ts`). Off, as before.
+ */
+export function cardAccountDropsNonFactsEnabled(): boolean {
+  return envFlag("CARD_ACCOUNT_DROPS_NON_FACTS_ENABLED");
+}
+
+/**
  * ON_FILE_LINE_NOT_THE_POLICY_ENABLED (Coding-2, 14 Nov 2026; default off; Pau's morning scan via QA). A dress-code
  * request sent again word for word was carded "Policy: Late Opening — read from this request": the intent reader took
  * the heading from the app's own "On file in Form Monitoring … (… Late Opening)" listing. On: a heading the manager's own
