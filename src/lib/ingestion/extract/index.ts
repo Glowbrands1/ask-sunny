@@ -5,6 +5,7 @@ import type { SupportedFileType } from "../validation";
 import { extractDocx } from "./docx";
 import { extractPdf } from "./pdf";
 import type { OcrBudget } from "./pdf-ocr";
+import { withoutNulCharacters } from "./strip-nul";
 import { extractTextFile } from "./txt";
 import type { ExtractedDocument } from "./types";
 
@@ -17,6 +18,16 @@ export { splitHtmlByHeading } from "./docx";
  * extractor module — nothing else in the pipeline changes.
  */
 export async function extractDocument(
+  fileType: SupportedFileType,
+  buffer: Uint8Array,
+  /** WOVEN_PDF_OCR_ENABLED: a Woven sync's page budget for scanned PDFs (`extract/pdf-ocr.ts`). */
+  options: { ocr?: OcrBudget } = {},
+): Promise<ExtractedDocument> {
+  // WOVEN_TEXT_NUL_STRIP_ENABLED: Postgres refuses U+0000 in a chunk (`extract/strip-nul.ts`).
+  return withoutNulCharacters(await extractByType(fileType, buffer, options));
+}
+
+async function extractByType(
   fileType: SupportedFileType,
   buffer: Uint8Array,
   /** WOVEN_PDF_OCR_ENABLED: a Woven sync's page budget for scanned PDFs (`extract/pdf-ocr.ts`). */

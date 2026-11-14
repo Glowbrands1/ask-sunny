@@ -1,3 +1,5 @@
+import { otherPolicyAgreesEnabled } from "@/lib/config/chat-quality-flags";
+
 import { OFFENSE_KEY_SUCCESSORS } from "./offense-keys";
 import { checkboxGroupsForVariant, type FormDocument } from "./document";
 import { manualDisplayTitle } from "./official-policy-manual";
@@ -358,11 +360,21 @@ export function applyDerivedPolicyFields(input: {
       sectionNames: input.sectionNames ?? null,
     }),
   );
+  /*
+   * OTHER_POLICY_AGREES_ENABLED (QA's ruling on the Sunny sanitation report, 11 Nov 2026): with only Other ticked and no
+   * pinned section for it, the retrieval fallback quoted whatever passage scored best — the EMERGENCY text ("Anytime
+   * emergency personnel are called (other than for false alarms) …") on a Corrective Action for sanitation left undone.
+   * Other names no policy: Direct policy is left blank (POLICY_GATE_NONBLOCKING's blank marker applies). Off, as before.
+   */
+  const ticked = input.checked.offense_type ?? [];
+  const otherOnly = otherPolicyAgreesEnabled() && ticked.length > 0 && ticked.every((key) => key === "other");
   assign(
     "policy_language",
     (input.manualReference ?? "").trim() !== ""
       ? input.manualReference!.trim()
-      : manualReferenceValue(input.grounding, input.officialManualDocumentId, { manualAmbiguous: input.manualAmbiguous }),
+      : otherOnly
+        ? null
+        : manualReferenceValue(input.grounding, input.officialManualDocumentId, { manualAmbiguous: input.manualAmbiguous }),
   );
 
   /*

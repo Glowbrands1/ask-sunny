@@ -1,5 +1,7 @@
 import "server-only";
 
+import { recordToday } from "@/lib/business-today";
+
 import { WovenApiError, WovenClient } from "./client";
 import { NEW_HIRE_WINDOW_DAYS, readWovenConfig, WOVEN_SYNC_WRITES_ENABLED_ENV, type WovenConfig } from "./config";
 import { EMPLOYEE_LIST_PASSES, TERMINATED_STATUS_READ, terminatedStatusQuery } from "./contract";
@@ -173,10 +175,6 @@ class SyncRejected extends Error {
 
 function emptyChangeCounts(): Record<ChangeKind, number> {
   return Object.fromEntries(CHANGE_KINDS.map((kind) => [kind, 0])) as Record<ChangeKind, number>;
-}
-
-function isoDate(date: Date): string {
-  return date.toISOString().slice(0, 10);
 }
 
 function bump(map: Record<string, number>, key: string, by = 1) {
@@ -366,7 +364,7 @@ export async function runWovenEmployeeSync(options: SyncOptions): Promise<SyncOu
     }
 
     /* ---- 4. every page of both passes ---- */
-    const today = isoDate(now());
+    const today = recordToday(now());
     /* EVERY version of each EmployeeID, in read order, so one read's stale Status cannot silently win. */
     const versions = new Map<string, { read: string; employee: NormalizedEmployee }[]>();
     const idsByPass = new Map<string, Set<string>>();
