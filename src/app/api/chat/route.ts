@@ -245,7 +245,7 @@ async function postChat(request: Request) {
           question: parsedForLoop.question,
           questionMessageId: parsedForLoop.questionMessageId,
           history: parsedForLoop.history,
-          scopeId: parsedForLoop.scopeId,
+          scopeId: activeKnowledgeCorpus(),
           today: businessToday(),
           conversationId: parsedForLoop.conversationId,
           openFormId: parsedForLoop.activeFormInstanceId ?? null,
