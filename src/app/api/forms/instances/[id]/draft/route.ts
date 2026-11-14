@@ -42,6 +42,7 @@ import {
   sameRequestOtherPersonEnabled,
   coachingObservedSavedEnabled,
   namedPoliciesAllKeptEnabled,
+  policyLineCoversEverySectionEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { notesMadeAbout } from "@/lib/ai/make-it-about";
 import { withoutPolicyReferenceTurns } from "@/lib/ai/policy-reference-turn";
@@ -1883,7 +1884,12 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      * single section won here and Standards of Conduct was dropped.
      */
     const allNamedKeys =
-      caPolicy && namedPoliciesAllKeptEnabled() && (caPolicy.alsoStated?.length ?? 0) > 0 ? statedOffenseKeys(caPolicy, policyNotes) : null;
+      caPolicy &&
+      ((namedPoliciesAllKeptEnabled() && (caPolicy.alsoStated?.length ?? 0) > 0) ||
+        // POLICY_LINE_COVERS_EVERY_SECTION_ENABLED: lateness and a conduct incident, both described, tick both.
+        (policyLineCoversEverySectionEnabled() && caPolicy.alsoDescribed))
+        ? statedOffenseKeys(caPolicy, policyNotes)
+        : null;
     const statedKeys = caPolicy
       ? (allNamedKeys ??
         (cardSection ? [cardSection.offenseKey] : null) ??

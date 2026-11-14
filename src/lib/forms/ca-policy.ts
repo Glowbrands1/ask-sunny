@@ -8,6 +8,7 @@ import {
   lateReadsAttendanceEnabled,
   msbPhraseSocEnabled,
   caSalesPolicyEnabled,
+  policyLineCoversEverySectionEnabled,
   namedPoliciesAllKeptEnabled,
   cleaningOtherEveryWordingEnabled,
   otherPolicyAgreesEnabled,
@@ -149,6 +150,11 @@ export interface CaPolicyReading {
    * to it ("the attendance policy and standards of conduct"). Absent off, or when one policy was named.
    */
   alsoStated?: CaPolicyName[];
+  /**
+   * POLICY_LINE_COVERS_EVERY_SECTION_ENABLED: a conduct incident the account describes beside the lateness it
+   * describes ("she was late on 11/3/26 and yelled at a customer"), in the manager's words. Absent off.
+   */
+  alsoDescribed?: { readonly key: typeof STANDARDS_OF_CONDUCT; readonly phrase: string };
 }
 
 /* ------------------------------------------------------------ the words -- */
@@ -584,7 +590,30 @@ export function policiesNamedIn(sentence: string): { name: CaPolicyName; start: 
 export function readCaPolicy(rawText: string): CaPolicyReading {
   const said = managerWords(rawText);
   // Merge of main into #595: WOVEN_TRAINING_CONDUCT's reading (default off) before AS_YOU_SAID_APP_READ's fallback, on the manager's words.
-  return withLateOpeningDescribed(withMissedShift(withLateIsAttendance(withAppReading(withWovenWork(withCleaningOther(withSalesPolicy(readCaPolicyFromWords(said), said), said), said), rawText, said), said), said), said);
+  return withConductBesideLateness(withLateOpeningDescribed(withMissedShift(withLateIsAttendance(withAppReading(withWovenWork(withCleaningOther(withSalesPolicy(readCaPolicyFromWords(said), said), said), said), rawText, said), said), said), said), said);
+}
+
+/*
+ * POLICY_LINE_COVERS_EVERY_SECTION_ENABLED (ported from Ask Bubbles; QA's two-offense Create check, 13 Nov 2026): "create ca form for <B>, she
+ * was late on 11/3/26 and yelled at a customer" read as Attendance only. The card said "Policy: Attendance, from what
+ * you described ("late")", Direct policy cited Attendance only, and the second offense the manager described was never
+ * read. With the flag, a conduct incident described beside the lateness (rude, yelled, shouted, argued, swore, cursed,
+ * disrespectful; the words the app already reads as an incident, the sibling's `incident-reading.ts`) is read too: the Standards of
+ * Conduct, in the manager's words. Only where no policy was named and the account describes lateness or absence.
+ */
+const CONDUCT_INCIDENT =
+  /\b(?:was\s+|were\s+|got\s+|being\s+)?(?:rude|unprofessional|argued|arguing|shouted|yelled|yelling|swore|swearing|cursed|cursing|disrespect\w*)\b(?:\s+(?:at|to|with)\s+(?:a|an|the|her|his|their|our)?\s*\w+)?/;
+
+function withConductBesideLateness(reading: CaPolicyReading, said: string): CaPolicyReading {
+  if (!policyLineCoversEverySectionEnabled()) return reading;
+  if (reading.stated !== null || reading.other || reading.ambiguous) return reading;
+  if (reading.suggestion === STANDARDS_OF_CONDUCT) return reading;
+  if (describedAttendanceKeys(said) === null) return reading;
+  const text = normalize(said);
+  const match = CONDUCT_INCIDENT.exec(text);
+  // A denied incident ("she was late but was not rude") is no incident.
+  if (!match || NEGATED_BEFORE.test(text.slice(0, match.index))) return reading;
+  return { ...reading, alsoDescribed: { key: STANDARDS_OF_CONDUCT, phrase: match[0].trim() } };
 }
 
 /*
@@ -1075,6 +1104,10 @@ const ABSENCE = /\b(?:absent|absence|absences|absenteeism|no[- ]call|no[- ]show|
 const LATENESS = /\b(?:late|lateness|tardy|tardiness|left early|leaving early|clocked out early)\b/;
 
 export function statedOffenseKeys(reading: CaPolicyReading, rawText: string): string[] | null {
+  // POLICY_LINE_COVERS_EVERY_SECTION_ENABLED: lateness and a conduct incident, both described, tick both boxes.
+  if (policyLineCoversEverySectionEnabled() && reading.stated === null && reading.alsoDescribed) {
+    return [...new Set([...(describedAttendanceKeys(rawText) ?? []), reading.alsoDescribed.key])];
+  }
   // NAMED_POLICIES_ALL_KEPT_ENABLED: every policy named together is ticked, in the order written.
   if (namedPoliciesAllKeptEnabled() && reading.stated !== null && (reading.alsoStated?.length ?? 0) > 0) {
     const keys = [...(reading.alsoStated ?? []), reading.stated].flatMap((name) => statedOffenseKeys({ ...reading, stated: name, alsoStated: undefined }, rawText) ?? []);
@@ -1259,6 +1292,11 @@ function namedPolicyLine(named: NamedPolicyReading): string {
   return `**Policy:** "${named.phrase}", as you said. I'll look for that section in the current policy manual and quote it on the draft; if the manual has no section by that name, Direct policy is left for you to complete.`;
 }
 
+/** "Attendance and Standards of Conduct", "Attendance, Dress Code and Standards of Conduct". */
+function joinedPolicies(labels: readonly string[]): string {
+  return labels.length <= 1 ? (labels[0] ?? "") : `${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}`;
+}
+
 /** How a missed event is read back: "missed the monthly meeting". */
 export function missedEventPhrase(event: string): string {
   return `missed ${withArticle(event)}`;
@@ -1322,6 +1360,20 @@ export function caPolicyProposalLine(reading: CaPolicyReading, named: NamedPolic
    */
   // A missed meeting reads as Attendance without being named; the manual's section for it is said the same way.
   const readAsAttendance = reading.stated === "attendance" && reading.missedEvent !== null;
+  /*
+   * POLICY_LINE_COVERS_EVERY_SECTION_ENABLED: the line names every policy the draft will carry. Several named ("the
+   * attendance policy and standards of conduct", NAMED_POLICIES_ALL_KEPT's reading) are all said; a conduct incident
+   * described beside the lateness is said beside the Attendance reading.
+   */
+  if (policyLineCoversEverySectionEnabled() && reading.stated !== null && (reading.alsoStated?.length ?? 0) > 0) {
+    const labels = [...new Set([...(reading.alsoStated ?? []), reading.stated].map((name) => CA_POLICY_LABEL[name]))];
+    return `**Policy:** ${joinedPolicies(labels)}, as you said. I'll quote each section from the current policy manual on the draft.`;
+  }
+  if (policyLineCoversEverySectionEnabled() && !reading.stated && reading.alsoDescribed) {
+    const first = named?.lookup === "described" ? named.heading : CA_POLICY_LABEL[reading.readFromApp ?? "attendance"];
+    const words = named?.lookup === "described" ? `"${named.phrase}"; "${reading.alsoDescribed.phrase}"` : `"${reading.alsoDescribed.phrase}"`;
+    return `**Policy:** ${first} and Standards of Conduct, read from what you described (${words}). I'll quote both sections from the current policy manual on the draft; tell me if a different policy applies.`;
+  }
   if ((!reading.stated || readAsAttendance) && named && (named.lookup !== "missing" || (!reading.ambiguous && !reading.suggestion))) {
     return namedPolicyLine(named);
   }

@@ -4809,3 +4809,14 @@ export function sharedCityAsksSalonEnabled(): boolean {
 export function namedPoliciesAllKeptEnabled(): boolean {
   return envFlag("NAMED_POLICIES_ALL_KEPT_ENABLED");
 }
+
+/**
+ * POLICY_LINE_COVERS_EVERY_SECTION_ENABLED (Coding-2, 14 Nov 2026; default off; ported from Ask Bubbles, QA's
+ * two-offense Create check). "she was late on 11/3/26 and yelled at a customer" was read as Attendance only, and the
+ * card said one policy where the CA carried two. On: a conduct incident described beside lateness is read too
+ * (`forms/ca-policy.ts` withConductBesideLateness), the card line names every policy (named or described), and the draft
+ * ticks and cites each. Off, as before.
+ */
+export function policyLineCoversEverySectionEnabled(): boolean {
+  return envFlag("POLICY_LINE_COVERS_EVERY_SECTION_ENABLED");
+}
