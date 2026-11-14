@@ -3,6 +3,7 @@ import { expect, vi } from "vitest";
 import { cardPlanMatchesCreateEnabled } from "@/lib/config/chat-quality-flags";
 
 import { KEARNEY, STAFF, type DirectoryRow, type ReplayCase, type ReplayContext } from "./cases";
+import { lastResult, loopStandIn } from "./loop-stand-in";
 
 /**
  * ============================================================================
@@ -38,7 +39,8 @@ export const NOV12_17L_CARD_PLAN_MATCHES_CREATE_CASES: ReplayCase[] = [
     id: "nov12-17l-card-shows-pau-attendance-plan",
     title: "17l: \"create a written CA for <B>, she was 20 minutes late on 11/9/26, no action plan\": the card's Action Plan is Pau's attendance plan, the one Create saves",
     report: REPORT,
-    status: { open: "the card shows \"Management will review the Attendance policy with Remy. …\"" },
+    // Changed on purpose (15 Nov 2026): fixed in production by CARD_PLAN_MATCHES_CREATE, Sunny 38o. Was OPEN.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const thread = start(t);
@@ -54,7 +56,8 @@ export const NOV12_17L_CARD_PLAN_MATCHES_CREATE_CASES: ReplayCase[] = [
     id: "nov12-17l-card-plan-equals-saved-plan",
     title: "17l, the Attendance policy named: the card's Action Plan and the saved Action Plan are the same text",
     report: `${REPORT} (QA: assert card plan == saved plan for an Attendance CA)`,
-    status: { open: "card: \"Management will review the applicable company policy with Remy. …\"; saved: Pau's attendance plan" },
+    // Changed on purpose (15 Nov 2026): fixed in production by CARD_PLAN_MATCHES_CREATE, Sunny 38o. Was OPEN.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const thread = start(t);
@@ -144,6 +147,71 @@ export const NOV14_CARD_PLAN_OWN_WORDS_NOT_ACCOUNT_CASES: ReplayCase[] = [
       await thread.say("Rhea Calloway failing to complete shifts 11/7 and 11/8");
       const reply = await thread.say("no payroll deduct");
       expect(reply.content, `the next turn cites a policy read from the app's own plan:\n${reply.content}`).not.toMatch(/^Attendance Policy, JBA Policy Manual p\.14$/m);
+    },
+  },
+];
+
+/*
+ * THE AGENT LOOP'S CARD (QA, 15 Nov 2026, with #894's release): with AGENT_LOOP on for the signed-in manager, the card
+ * comes from the loop's propose_form. Its card carries no Action Plan: no plan field on the card, none in card_lines or
+ * the lines run.ts always adds, and no rules-book line asks for one. So the card never shows a plan that Create's would
+ * contradict, and the loop needs no change for CARD_PLAN_MATCHES_CREATE. These cases hold that: if the loop's card ever
+ * gains a plan line, it must be the plan Create saves. Create is unchanged under the loop: Pau's attendance plan for a
+ * late, and on a termination card that plan with only the termination closing.
+ */
+const STATED_LATE = "Remy Calder arrived 20 minutes late for her scheduled shift on 11/9/26.";
+
+function loopCard(t: ReplayContext, whatHappened: string) {
+  t.loopModel!(loopStandIn((view) => {
+    if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", policy: "Attendance", what_happened: whatHappened } };
+    return { text: "Here is the Corrective Action card for Remy Calder." };
+  }));
+}
+
+export const NOV15_CARD_PLAN_AGENT_LOOP_CASES: ReplayCase[] = [
+  {
+    id: "nov15-card-plan-agent-loop-attendance",
+    title: "agent loop on, an attendance CA (\"create a written CA for <B>, she was 20 minutes late on 11/9/26, no action plan\"): the loop's card shows no plan to disagree with, and Create saves Pau's attendance plan",
+    report: `${REPORT} (QA, 15 Nov 2026: check the loop's card against Create's plan)`,
+    status: "fixed",
+    fixFlags: FIX,
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      const thread = start(t);
+      loopCard(t, STATED_LATE);
+      const card = await thread.say(SAID);
+      const shown = cardPlan(card.content);
+      t.draftWrites({ observation: "Observed:\nOn November 9, 2026, Remy Calder arrived 20 minutes late." });
+      const id = await thread.create();
+      const saved = (t.values(id).action_plan ?? "").replace(/\s+/g, " ").trim();
+      if (cardPlanMatchesCreateEnabled()) expect(saved, "the saved plan is not Pau's attendance plan").toBe(PAU_PLAN);
+      // The loop's card shows no plan; a plan line it ever shows is the saved one.
+      if (shown) expect(shown, `the loop's card plan is not the saved plan:\ncard: ${shown}\nsaved: ${saved}`).toBe(saved);
+      else expect(card.content, `the loop's card shows a plan line:\n${card.content}`).not.toMatch(/\*\*Action Plan:\*\*/i);
+    },
+  },
+  {
+    id: "nov15-card-plan-agent-loop-termination",
+    title: "agent loop on, \"I need a term CA for <B>, she was 20 minutes late on 11/9/26\": the loop's card shows no plan, and Create saves the standard plan with only the termination closing",
+    report: `${REPORT}; Gate-Bubbles-4's G4-824 via the sibling app (QA, 15 Nov 2026: the loop's termination card)`,
+    status: "fixed",
+    fixFlags: [...FIX, "TERMINATION_STATED_TICKS_ENABLED"],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      const thread = start(t);
+      loopCard(t, STATED_LATE);
+      const card = await thread.say("I need a term CA for Remy Calder, she was 20 minutes late on 11/9/26");
+      const shown = cardPlan(card.content);
+      t.draftWrites({ observation: "Observed:\nOn November 9, 2026, Remy Calder arrived 20 minutes late." });
+      const id = await thread.create();
+      const saved = (t.values(id).action_plan ?? "").replace(/\s+/g, " ").trim();
+      // Create ticks the stated termination (TERMINATION_STATED_TICKS, on in production), unchanged under the loop.
+      expect(t.checked(id).warning_type ?? [], "Create did not tick the stated termination").toContain("termination");
+      expect(saved, "the saved termination plan lost its closing").toMatch(new RegExp(`${TERMINATION_SENTENCE.replace(/\./g, "\\.")}$`));
+      expect(saved, "the saved termination plan promises a future violation's closing").not.toMatch(/Future policy violations/);
+      expect(saved.replace(TERMINATION_SENTENCE, "").trim(), "the saved plan is the termination sentence alone").not.toBe("");
+      if (shown) expect(shown, `the loop's card plan is not the saved plan:\ncard: ${shown}\nsaved: ${saved}`).toBe(saved);
+      else expect(card.content, `the loop's card shows a plan line:\n${card.content}`).not.toMatch(/\*\*Action Plan:\*\*/i);
     },
   },
 ];
