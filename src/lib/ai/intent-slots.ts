@@ -15,6 +15,7 @@ import {
   newestPlaceTurnEnabled,
   notANameGuardEnabled,
   titleWholeWordEnabled,
+  workAreaNotATitleEnabled,
   typedNameProceedsEnabled,
   sameNameAsksWhichEnabled,
   namedFormExactEnabled,
@@ -50,10 +51,12 @@ import { newestManagerTurnSalon } from "@/lib/forms/newest-place-turn";
 import { typedEmployeeName } from "@/lib/forms/typed-employee-name";
 import { managerStatedWarningLevel, templateHasWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
 import { isDocumentName, isReportName, isRosterStateName } from "./not-a-person";
-import { formNameNotATitleEnabled, lateSlotReadsAttendanceEnabled, reportNameNotAPersonEnabled, salonNameLetterWordEnabled } from "@/lib/config/chat-quality-flags";
+import { formNameNotATitleEnabled, lateSlotReadsAttendanceEnabled, reasonPlaceNotSalonEnabled, reportNameNotAPersonEnabled, salonNameLetterWordEnabled } from "@/lib/config/chat-quality-flags";
+import { placeReadingText } from "@/lib/forms/reason-place";
 import { lateSlotHeading } from "./late-slot-attendance";
 import { readsAsStatedTitle, saidOnlyAsFormName, titleTextFromTurns } from "./title-words";
 import { titleInWords } from "./title-in-words";
+import { WORK_AREA } from "@/lib/forms/work-area";
 import { describedAttendanceKeys } from "@/lib/forms/ca-policy";
 import { headingKey, sectionHeadingsFor } from "@/lib/forms/official-policy-manual";
 import { namesHeading } from "@/lib/forms/named-policy-section";
@@ -283,12 +286,24 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
   const userText = [input.question, ...input.history.filter((turn) => turn.role !== "assistant").map((turn) => turn.content)]
     .filter((part) => part.trim() !== "")
     .join("\n");
+  /*
+   * REASON_PLACE_NOT_SALON_ENABLED (ported from the sibling app, Gate-Bubbles-3's #869 probes, 13 Nov 2026): "she was
+   * late because she was at grand island" is why she was late, not the salon the form is for. The salon readers get
+   * the words with that place blanked, and a model slot that names only that place is not used. Off, as before.
+   */
+  const placeText = (text: string) => placeReadingText(text);
+  const salonText = placeText(userText);
+  const typedSalon = choice?.salon ?? reading?.salon ?? null;
+  const slotSalon =
+    reasonPlaceNotSalonEnabled() && !choice?.salon && typedSalon && !salonText.toLowerCase().includes(typedSalon.trim().toLowerCase())
+      ? null
+      : typedSalon;
   const salon = merge.salon(
     (newestPlaceTurnEnabled()
-      ? newestManagerTurnSalon([input.question, ...input.history.filter((turn) => turn.role === "user").map((turn) => turn.content).reverse()], input.salons)
+      ? newestManagerTurnSalon([input.question, ...input.history.filter((turn) => turn.role === "user").map((turn) => turn.content).reverse()].map(placeText), input.salons)
       : null) ??
-      newestTurnSalon(input.question, input.salons) ??
-      groundSalon(choice?.salon ?? reading?.salon ?? null, userText, input.salons, employee.person),
+      newestTurnSalon(placeText(input.question), input.salons) ??
+      groundSalon(slotSalon, salonText, input.salons, employee.person),
   );
   // The manager's turns only: a pasted policy is not their words, and
   // "ass't salon director" is read as the assistant title.
@@ -1156,7 +1171,14 @@ function groundTitle(
   const inWords = (title: string) => !wholeWord || titleInWords(title, blob);
   // FORM_NAME_NOT_A_TITLE_ENABLED: "SDIT" read from "Create an SDIT EPP for …" is the form's name, not a title.
   const formName = (title: string) => formNameNotATitleEnabled() && saidOnlyAsFormName(title, blob);
-  const probe = typed?.trim() && inWords(typed.trim()) && !formName(typed.trim()) ? typed.trim() : null;
+  /*
+   * WORK_AREA_NOT_A_TITLE_ENABLED (QA's Sunny 38d live check, 13 Nov 2026; trace conv_mwfcjmwx28iq0v1, slots.title
+   * "front desk"): "create a ca for <A> at the front desk, …" for a person not on the roster gave the card "Job title:
+   * Front Desk" — the model's title, kept because the words were in the turn. A place in the salon where someone works
+   * is never a job title. Off, as before.
+   */
+  const workArea = (title: string) => workAreaNotATitleEnabled() && WORK_AREA.test(title);
+  const probe = typed?.trim() && inWords(typed.trim()) && !formName(typed.trim()) && !workArea(typed.trim()) ? typed.trim() : null;
   if (probe) {
     const hit = titles.find((title) => title.toLowerCase() === probe.toLowerCase() && inWords(title));
     if (hit) return hit;
