@@ -10,7 +10,7 @@ import { readScopedRoster } from "@/lib/forms/employee-roster";
 import { inlineDraftVariantKey, supportsInlineDraft } from "@/lib/forms/inline-draft";
 import { authorizeInstance, InstanceNotVisibleError, instanceListFilterFor, visibleInstances } from "@/lib/forms/instance-scope";
 import { applyAssistantRevision, listInstances } from "@/lib/forms/instances";
-import { formEditSingleWriterEnabled, formEditToolInStreamEnabled, formPatchReducerEnabled } from "@/lib/config/chat-quality-flags";
+import { formEditPlainWordsEnabled, formEditSingleWriterEnabled, formEditToolInStreamEnabled, formPatchReducerEnabled } from "@/lib/config/chat-quality-flags";
 import type { AskResponse } from "@/lib/ai/types";
 import { findManualSection, manualSectionHeadings, type ManualChunk } from "@/lib/forms/official-policy-manual";
 import { sectionWording } from "@/lib/forms/policy-citation";
@@ -101,6 +101,8 @@ const ASKS_ABOUT_FORMS: readonly RegExp[] = [
   // The subject is the employee, never "you / I / we" ("do you have a form for …"); "have to sign" is no question about files.
   new RegExp(String.raw`\b(?:has|have|had|did|does|do)\s+(?!(?:you|u|i|we)\b)(?:\w+\s+){1,4}?(?:had|gotten|got|have(?!\s+to\b)|get|been|received|given)\s+(?:\w+\s+){0,3}?${FORM}\b`, "i"),
   /\bsame as (?:last time|before|the last one|last one)\b/i,
+  // "edit <name>'s CA", "open her coaching", "pull up the write-up for <name>": a form on file, named.
+  new RegExp(String.raw`\b(?:open|reopen|edit|pull up|bring up|show me|view)\b[^.?!\n]{0,40}?\b${FORM}\b`, "i"),
 ];
 
 const asks = (text: string) => ASKS_ABOUT_FORMS.some((pattern) => pattern.test(text));
@@ -371,6 +373,17 @@ export async function proposeForm(
   const template = templates.find((row) => row.key === key);
   if (!template) return { error: "This manager cannot create that form. Use one of these template keys.", templates: templates.map((row) => ({ key: row.key, name: row.name })) };
 
+  /*
+   * HARD GUARD: the draft on screen keeps the manager's turns (OPEN_DRAFT_KEEPS_TURNS; a report of lost typing). With a
+   * draft open, a second card for the same form is refused unless the manager asked for another or a new one.
+   */
+  if (context.openFormId && !/\b(?:another|new|second|separate|fresh|different)\b/i.test(context.question)) {
+    const open = await authorizeInstance(context.request, context.openFormId, "view").then(({ loaded }) => loaded.instance).catch(() => null);
+    if (open && open.status === "draft" && open.templateKey === key) {
+      return { error: `The ${open.templateName} draft for ${open.employeeName} is open on screen: put this on that draft with edit_form (instance_id ${open.id}). Propose a new card only if the manager asks for another or a new one.` };
+    }
+  }
+
   /* The person: a roster id from find_staff, or (district / region logins only) the name as typed. */
   const read = await rosterFor(context.actor.scope);
   if (read.kind === "failed") return { error: ROSTER_FAILED };
@@ -589,8 +602,45 @@ async function openFormTurn(context: ToolContext, id: string): Promise<AskRespon
     (await (await import("@/lib/forms/chat-correction")).correctActiveForm(turn)) ??
     (formPatchReducerEnabled() && !formEditToolInStreamEnabled() ? await (await import("@/lib/forms/form-patch-turn")).patchActiveForm(turn) : null) ??
     (await (await import("@/lib/forms/chat-revision")).reviseActiveForm(turn)) ??
+    (formEditPlainWordsEnabled() ? await plainWordsRevision(context, id, turn) : null) ??
     (await (await import("@/lib/forms/open-draft-turn")).openDraftTurn(turn))
   );
+}
+
+/** FORM_EDIT_PLAIN_WORDS, as the route runs it: "make that update", "this is what i am wanting to coach on: …". */
+async function plainWordsRevision(context: ToolContext, id: string, turn: Parameters<typeof import("@/lib/forms/chat-revision").reviseActiveForm>[0]): Promise<AskResponse | null> {
+  const open = await (await import("@/lib/forms/open-form-summary")).describeOpenForm(context.request, id);
+  if (!open || open.status !== "draft") return null;
+  const rewritten = (await import("@/lib/forms/form-content-turn")).formContentRevision({ question: context.question, history: turn.history, templateName: open.templateName, employeeName: open.employeeName });
+  if (!rewritten) return null;
+  return (await import("@/lib/forms/chat-revision")).reviseActiveForm({ ...turn, question: rewritten.question, history: rewritten.history });
+}
+
+/* ----------------------------------------------------------- open form --- */
+
+/**
+ * Puts a form on file in front of the manager, as today's chat reopen does (`formOpened`): a draft opens to edit; a
+ * finalized form opens read-only (its card offers "Edit as new draft"). Past forms only when asked.
+ */
+export async function openForm(context: ToolContext, effects: ToolEffects, input: { instance_id?: unknown }): Promise<ToolResult> {
+  const id = typeof input.instance_id === "string" ? input.instance_id.trim() : "";
+  if (id === "") return { error: "Give the form's instance_id (from find_past_forms)." };
+  if (id !== context.openFormId && !asksAboutPastForms(context)) return { error: NOT_ASKED };
+  try {
+    const { loaded } = await authorizeInstance(context.request, id, "view");
+    const instance = loaded.instance;
+    effects.formOpened = { instanceId: instance.id, templateName: instance.templateName, revisesInstanceId: null };
+    return {
+      opened: true,
+      form: instance.templateName,
+      employee: instance.employeeName,
+      status: instance.status,
+      note: instance.status === "draft" ? "The draft is open on the manager's screen to edit." : "The form is open read-only; a change to it goes on a new draft revising it (edit_form).",
+    };
+  } catch (error) {
+    if (error instanceof InstanceNotVisibleError) return { error: "That form does not exist or this manager cannot open it." };
+    return { error: "That form could not be opened just now." };
+  }
 }
 
 /* ------------------------------------------------------------ app help --- */

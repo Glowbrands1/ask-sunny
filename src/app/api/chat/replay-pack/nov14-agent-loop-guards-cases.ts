@@ -185,6 +185,36 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
     },
   },
   {
+    id: "nov14-agent-loop-guard-open-draft-keeps-turns",
+    title: "with a draft open, \"I talked to her about it last week\" never gets a second card for the same form; \"another CA\" may",
+    report: `${REPORT}; OPEN_DRAFT_KEEPS_TURNS (2 Nov scan: the second draft lost what the manager typed)`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-13T22:40:00Z"));
+      t.directory([...STAFF, TAMSIN]);
+      t.as("salon_director", KEARNEY);
+      const again = loopStandIn((view) => {
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "tamsin orwell" } };
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, what_happened: "Tamsin Orwell was on her phone at the front desk." } };
+        return { text: JSON.stringify(lastResult(view, "propose_form")) };
+      });
+      t.loopModel!(again);
+      const thread = t.thread();
+      await thread.say("ca for tamsin orwell, she was on her phone at the front desk");
+      t.draftWrites({ observation: "Observed:\nTamsin Orwell was on her phone at the front desk." }, {});
+      await thread.create();
+      const before = t.forms().length;
+      const reply = await thread.say("I talked to her about it last week");
+      expect(reply.formProposal, `a second card for the open draft:\n${reply.content}`).toBeUndefined();
+      expect(reply.content).toMatch(/is open on screen: put this on that draft with edit_form/);
+      expect(t.forms().length).toBe(before);
+      const another = await thread.say("make another ca for tamsin orwell, she was late on 11/12");
+      expect(another.formProposal?.templateKey, "\"another\" was refused").toBe("dpoa");
+    },
+  },
+  {
     id: "nov14-agent-loop-guard-scope",
     title: "scope: a person at a salon outside the manager's scope is never found by find_staff, and propose_form refuses their roster id",
     report: `${REPORT}: "every tool is scoped to the manager's salons"`,

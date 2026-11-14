@@ -19,6 +19,7 @@ import { agentLoopStepLimit } from "./switch";
 import {
   appHelp,
   editForm,
+  openForm,
   findPastForms,
   findStaff,
   manualFor,
@@ -159,6 +160,11 @@ export const AGENT_LOOP_TOOLS = [
     input_schema: object({ instance_id: { type: "string" }, values: { type: "object", additionalProperties: { type: "string" } } }, ["instance_id"]),
   },
   {
+    name: "open_form",
+    description: "Open a form on file on the manager's screen (a draft to edit, a finalized form read-only). Only for a form the manager asked to open, edit or see.",
+    input_schema: object({ instance_id: { type: "string" } }, ["instance_id"]),
+  },
+  {
     name: "app_help",
     description: "This app's own help: how to sign in, reset or change your password, and what Sunny can do. Use it for any question about using this app; never send the manager to IT when this has the answer.",
     input_schema: object({ topic: { type: "string", enum: ["password", "sign_in", "what_sunny_does"] } }, ["topic"]),
@@ -216,6 +222,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     read_policy: (args) => readPolicy(context, args),
     propose_form: (args) => proposeForm(context, effects, args),
     edit_form: (args) => editForm(context, effects, args),
+    open_form: (args) => openForm(context, effects, args),
     app_help: (args) => appHelp(args),
   };
 
@@ -356,7 +363,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
    * shows), so the reply never claims more or less than the draft now holds.
    */
   if (effects.revisedReply && effects.formUpdate && !effects.proposal) content = effects.revisedReply;
-  else if (effects.formOpened && !effects.proposal && !/new draft/i.test(content)) {
+  else if (effects.formOpened?.revisesInstanceId && !effects.proposal && !/new draft/i.test(content)) {
     content = `I opened a new draft of the ${effects.formOpened.templateName} that revises the finalized one; the original is unchanged.\n\n${content}`.trim();
   }
 
