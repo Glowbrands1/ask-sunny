@@ -4822,3 +4822,15 @@ export function cardAddedFactInObservationEnabled(): boolean {
 export function sharedCityAsksSalonEnabled(): boolean {
   return envFlag("SHARED_CITY_ASKS_SALON_ENABLED");
 }
+
+/**
+ * OTHER_BESIDE_DESCRIBED_ENABLED (Coding-2, 14 Nov 2026; default off; QA's ruling (b) on the sibling app's gate probes,
+ * checked here on production's flags). With OTHER_POLICY_AGREES on, "she was on her phone and did not do the 10 minute
+ * sanitation" saved Other alone while Direct policy quoted the Cell Phone section, and "she was late on 11/3/26 and did
+ * not do the sanitation" dropped Attendance. On (with OTHER_POLICY_AGREES): a cleaning duty beside a second offense the
+ * account describes ticks both, and the card, Policy Violated, Direct policy and plan follow the described offense; a
+ * cleaning duty that is the only offense stays Other alone (`forms/ca-policy.ts` withoutCleaningDuty). Off, as before.
+ */
+export function otherBesideDescribedEnabled(): boolean {
+  return envFlag("OTHER_BESIDE_DESCRIBED_ENABLED");
+}

@@ -650,6 +650,8 @@ const NEW_FLAGS = [
   "OTHER_POLICY_AGREES_ENABLED",
   "OTHER_NOT_A_POLICY_NAME_ENABLED",
   "ACCOUNT_TYPOS_FIXED_ENABLED",
+  // coding 2: OTHER_BESIDE_DESCRIBED (QA's ruling (b), 14 Nov 2026; default off): forced off with the others.
+  "OTHER_BESIDE_DESCRIBED_ENABLED",
   // coding 2: EXCERPT_EMPTY_CARD_DROP (QA, 11 Nov 2026; default off): forced off with the others.
   "EXCERPT_EMPTY_CARD_DROP_ENABLED",
   // coding 6: REQUEST_ISSUE_KEPT (ported from Ask Bubbles, QA round 17b; default off).
