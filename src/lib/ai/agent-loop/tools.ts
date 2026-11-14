@@ -927,12 +927,14 @@ export async function proposeForm(
    * HARD GUARD, NO INVENTED FIGURES (QA, the MSB family: "B's own numbers replace C's"): a figure in the account the
    * manager never wrote (another form's "237", a guessed count) is refused.
    */
+  /* Batch C (code-check #18): the figures in the account the manager never wrote, as a fact for the model to fix. */
+  let figuresNotSaid: string[] = [];
   if (whatHappened && ACCOUNT_FORMS.has(template.key)) {
     // Every number the manager wrote anywhere (a date's "20" may be written out as "October 20").
     const said = new Set([...managerTurns(context).matchAll(/\d+/g)].map((match) => String(Number(match[0]))));
-    const invented = standaloneFigures(whatHappened).filter((figure) => !said.has(String(Number(figure))));
-    if (invented.length > 0) return { error: `what_happened has figures the manager never gave: ${invented.join(", ")}. Use only this employee's figures as the manager wrote them; another form's numbers never go on this card.` };
+    figuresNotSaid = standaloneFigures(whatHappened).filter((figure) => !said.has(String(Number(figure))));
   }
+  let formatFigures: string[] = [];
   /* HARD GUARD (QA, the MSB family): with another employee's form as the format, that employee never appears on this card. */
   if (whatHappened && FORMAT_OF_ANOTHER.test(managerTurns(context))) {
     const roster = await rosterFor(context.actor.scope);
@@ -945,20 +947,18 @@ export async function proposeForm(
       const othersNamed = names.filter((name) => !samePerson(name, employee.name) && mentionsPerson(managerTurns(context), name, names));
       const theirs = new Set(sentences.filter((sentence) => othersNamed.some((name) => mentionsPerson(sentence, name, names))).flatMap(standaloneFigures));
       const ours = new Set(sentences.filter((sentence) => !othersNamed.some((name) => mentionsPerson(sentence, name, names))).flatMap(standaloneFigures));
-      const borrowed = standaloneFigures(whatHappened).filter((figure) => theirs.has(figure) && !ours.has(figure));
-      if (borrowed.length > 0) return { error: `${borrowed.join(", ")} ${borrowed.length === 1 ? "is" : "are"} the format's own figures, not ${employee.name}'s. Use ${employee.name}'s figures as the manager gave them.` };
+      formatFigures = standaloneFigures(whatHappened).filter((figure) => theirs.has(figure) && !ours.has(figure));
     }
   }
+  /* Batch C (code-check #16): what the manager said that the account leaves out, as a fact for the model to put back. */
+  let accountLost: string[] = [];
   if (whatHappened && ACCOUNT_FORMS.has(template.key)) {
     /* A payroll or level answer ("yes payroll, $20", "make it a written") is not the incident's account. */
     const accountWords = asked.messages
       .filter((message) => sourceIds.includes(message.id ?? "") && !LEVEL_OR_PAYROLL_ANSWER.test(String(message.content).trim()))
       .map((message) => message.content)
       .join("\n");
-    const dropped = accountMissing(withoutPayrollClauses(accountWords), whatHappened, typeof input.prior_actions === "string" ? input.prior_actions : null);
-    if (dropped.length > 0) {
-      return { error: `what_happened leaves out what the manager said: ${dropped.map((word) => `"${word}"`).join(", ")}. Put the manager's whole account of this incident in what_happened, every date, time, place and amount as they said it, and propose again.` };
-    }
+    accountLost = accountMissing(withoutPayrollClauses(accountWords), whatHappened, typeof input.prior_actions === "string" ? input.prior_actions : null);
   }
 
   /*
@@ -993,7 +993,6 @@ export async function proposeForm(
       if (didYouMean) break;
     }
   }
-  const confirmPolicy = didYouMean !== null;
   // The Other topic is read from the account as the model cleaned it (SPELLING_CLEANUP: "th e10 minute sanitaion" → "the 10-minute sanitation"), else the manager's words.
   const cleaning = (whatHappened ? cleaningUndonePhrase(whatHappened) : null) ?? cleaningUndonePhrase(requestWords);
   const careAndCleaning = namesCareAndCleaning(requestWords);
@@ -1006,15 +1005,14 @@ export async function proposeForm(
    */
   const topicFits = topicHeadings(requestWords);
   const managerNamed = namedPolicies(requestWords).some((named) => policyHeading !== null && headingKey(named.phrase) === headingKey(policyHeading));
-  if (policyHeading && topicFits && !managerNamed && !topicFits.some((heading) => headingKey(heading) === headingKey(policyHeading!))) {
-    return { error: `${policyHeading} is not this incident's section. What the manager described is cited under: ${topicFits.join(", ")}. Read that section and propose again.` };
-  }
+  /* Batch C (code-check #19): the headings today's reader fits this incident to, when the model's is not one of them. */
+  const fitsHeadings = policyHeading && topicFits && !managerNamed && !topicFits.some((heading) => headingKey(heading) === headingKey(policyHeading!)) ? topicFits : null;
   /* As today's card prints it (`formatManualCitation`): "Standards of Conduct Policy, JBA Policy Manual p.12". */
   /*
    * The card cites the policy the model chose (batch B, code-check #22: the cleaning rule is a fact and a rules-book
    * line, no longer an override). "Other" carries the model's short topic.
    */
-  let policyLine: string | null = policyHeading && !confirmPolicy ? formatManualCitation(policyHeading, page) : null;
+  let policyLine: string | null = policyHeading ? formatManualCitation(policyHeading, page) : null;
   const otherPart = askedOther || (/^other\b/i.test(askedPolicy) ? askedPolicy : "");
   if (otherPart) {
     const topic = otherPart.replace(/^other\s*[—:-]?\s*/i, "").trim() || cleaning || whatHappened.slice(0, 120);
@@ -1059,7 +1057,8 @@ export async function proposeForm(
     return { error: `${date} is none of the dates the manager gave (${datesGiven.join(", ")}). Leave incident_date empty and ask which, or use one of those.` };
   }
   const datesAsked = datesGiven.length > 1 && !date ? datesGiven : [];
-  if (date && date > today) return { error: `The incident date ${date} is after today (${today}, the salon's local date). Ask the manager.` };
+  /* Batch C (code-check #32): a date after today is a fact with today's date; the rules book says to ask. */
+  const dateAfterToday = date && date > today ? date : null;
   const askedLevel = input.warning_level === "verbal" || input.warning_level === "written" ? input.warning_level : null;
   const level = askedLevel && (askedLevel === "verbal" ? /\bverbal\b/i : /\bwritten\b|\bwrite[- ]?up\b/i).test(managerWords) ? askedLevel : null;
   const dropped = [askedLevel && !level ? "warning_level" : null, askedPayroll && !payroll ? "payroll_deduct" : null, typedAmount && !amount ? "payroll_amount" : null].filter(Boolean);
@@ -1094,10 +1093,10 @@ export async function proposeForm(
    * manager already said what happened in this person's turns, so a card with an empty what_happened is refused and
    * the model gets their words back.
    */
-  if (whatHappened === "" && ACCOUNT_FORMS.has(template.key)) {
-    const given = latestAccount(asked.messages.filter((message) => sourceIds.includes(message.id ?? "")).map((message) => String(message.content ?? "")));
-    if (given) return { error: `The manager already said what happened: ${JSON.stringify(given)}. Put their account in what_happened (their words; only spelling fixed) and propose again.` };
-  }
+  /* Batch C (code-check #17): the account the manager already gave, when what_happened is empty. */
+  const accountGiven = whatHappened === "" && ACCOUNT_FORMS.has(template.key)
+    ? latestAccount(asked.messages.filter((message) => sourceIds.includes(message.id ?? "")).map((message) => String(message.content ?? "")))
+    : null;
   /* No account yet: the card shows, and Create waits for what happened (as WHAT_HAPPENED_NO_CREATE does today). */
   const awaiting = whatHappened === "" && ACCOUNT_FORMS.has(template.key);
   /* NO_ACCOUNT_NO_APP_POLICY as a fact (batch B, code-check #21; r3 639: an MSB or topic request counts as naming it). */
@@ -1148,6 +1147,12 @@ export async function proposeForm(
       : {}),
     ...(corrective && payroll === "yes" && !amount ? { payroll_amount_unset: true } : {}),
     ...(datesGiven.length > 1 ? { dates_given: datesGiven, ...(date ? { date_chosen: date } : {}) } : {}),
+    ...(accountLost.length > 0 ? { account_words_missing: accountLost } : {}),
+    ...(accountGiven ? { account_given: untrusted(accountGiven) } : {}),
+    ...(figuresNotSaid.length > 0 ? { figures_not_said: figuresNotSaid } : {}),
+    ...(formatFigures.length > 0 ? { format_figures: formatFigures } : {}),
+    ...(fitsHeadings ? { fits_headings: fitsHeadings } : {}),
+    ...(dateAfterToday ? { date_after_today: { date: dateAfterToday, today } } : {}),
     ...(statedSteps.length > 0 ? { prior_steps_said: statedSteps } : {}),
     ...(corrective && payroll === "yes" && !amount && statedAmount ? { payroll_amount_said: `$${statedAmount}` } : {}),
     ...(cleaning && !careAndCleaning ? { cleaning_duty: cleaning } : {}),
@@ -1244,12 +1249,14 @@ export async function editForm(
   if (unstated.length > 0) {
     return { error: `${unstated.join(", ")} must come from the manager's own words, and this message does not state ${unstated.length === 1 ? "it" : "them"}. Nothing was written. Ask, or leave it for the manager.` };
   }
-  /* A payroll or level answer ("yes payroll, $20", "make it a written") changes only those fields (Pau, 15:05Z). */
+  /*
+   * A payroll or level answer ("yes payroll, $20", "make it a written") changes only those fields (Pau, 15:05Z): the
+   * rules book teaches it; the result says which other fields this answer also wrote (code-check #30, batch C).
+   */
   const targeted = new Set(["warning_type", "payroll_deduct", PAYROLL_AMOUNT_KEY]);
-  if (LEVEL_OR_PAYROLL_ANSWER.test(context.question) && Object.keys(values).some((field) => targeted.has(field))) {
-    const extra = Object.keys(values).filter((field) => !targeted.has(field));
-    if (extra.length > 0) return { error: `This message answers the warning level or payroll only. ${extra.join(", ")} were not changed; send only those fields.` };
-  }
+  const answerAlsoWrote = LEVEL_OR_PAYROLL_ANSWER.test(context.question) && Object.keys(values).some((field) => targeted.has(field))
+    ? Object.keys(values).filter((field) => !targeted.has(field))
+    : [];
   const otherFields = Object.keys(values).filter((field) => field !== "employee_name");
   if (NAME_CORRECTION.test(context.question) && otherFields.length > 0) {
     return { error: `This message corrects the employee's name only. ${otherFields.join(", ")} were not changed. Call edit_form with no values (the form's reviser applies the spelling), or values for employee_name only.` };
@@ -1286,13 +1293,19 @@ export async function editForm(
      * up"): only the free-text fields change, and each keeps every date, time, place and amount the old text had (the
      * account check propose_form runs). Level, payroll, date, person and policy are never part of a reword.
      */
+    /*
+     * A reword keeps every fact (Pau via QA): the rules book teaches it; the result says what the new wording left out
+     * of the old and which fixed fields it touched, so the model puts them back (code-check #28, batch C).
+     */
+    const rewordFacts: { reword_lost?: Record<string, string[]>; reword_touched_fixed_fields?: string[] } = {};
     if (REWORD_REQUEST.test(context.question) && Object.keys(values).length > 0) {
       const fixed = Object.keys(values).filter((field) => REWORD_KEEPS.has(field));
-      if (fixed.length > 0) return { error: `A reword changes only the free-text fields. ${fixed.join(", ")} were not changed; leave them out.` };
+      if (fixed.length > 0) rewordFacts.reword_touched_fixed_fields = fixed;
       for (const [field, text] of Object.entries(values)) {
+        if (REWORD_KEEPS.has(field)) continue;
         const old = loaded.values.find((row) => row.fieldKey === field)?.value ?? "";
         const lost = accountMissing(old, text);
-        if (lost.length > 0) return { error: `The reworded ${field} leaves out ${lost.map((word) => `"${word}"`).join(", ")} from what it said. Keep every name, date, time, place, amount and quote as it was, add nothing new, and edit again. Nothing was written.` };
+        if (lost.length > 0) rewordFacts.reword_lost = { ...(rewordFacts.reword_lost ?? {}), [field]: lost };
       }
     }
     if (loaded.instance.status !== "draft") {
@@ -1364,7 +1377,15 @@ export async function editForm(
       : await applyAssistantRevision(id, { values, checked }, [], context.actor.subject);
     const updated = [...Object.keys(written.accepted.values ?? {}), ...Object.keys(written.accepted.checked ?? {})];
     if (updated.length > 0) effects.formUpdate = { instanceId: id, updated };
-    return { updated, refused: written.rejected.map((row) => ({ field: row.key, reason: row.reason })) };
+    return {
+      updated,
+      refused: written.rejected.map((row) => ({ field: row.key, reason: row.reason })),
+      ...rewordFacts,
+      ...(answerAlsoWrote.length > 0 ? { level_or_payroll_answer_also_wrote: answerAlsoWrote } : {}),
+      ...(rewordFacts.reword_lost || rewordFacts.reword_touched_fixed_fields || answerAlsoWrote.length > 0
+        ? { note: "Saved. Check these facts against what the manager asked and edit again to put anything back (the rules book's Editing lines)." }
+        : {}),
+    };
   } catch (error) {
     if (error instanceof InstanceNotVisibleError) return { error: "That form does not exist or this manager cannot edit it." };
     return { error: "That form could not be changed just now. Nothing was saved." };
