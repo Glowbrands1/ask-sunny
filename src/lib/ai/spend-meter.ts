@@ -30,7 +30,7 @@ import type { TokenUsage } from "./model-prices";
  * that was not before. Off, no meter, no wrapping, no extra row.
  */
 
-export type SpendSource = "chat" | "forms_draft" | "sales_totals" | "form_ingest";
+export type SpendSource = "chat" | "forms_draft" | "sales_totals" | "form_ingest" | "l10_assistant";
 
 export interface SpendMeter {
   readonly source: SpendSource;
