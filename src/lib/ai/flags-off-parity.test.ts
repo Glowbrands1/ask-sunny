@@ -818,8 +818,15 @@ const PROTECTED = [
  * days), in src/lib/forms/instances.ts, the seeded `form_date`/`date` default only: `input.formDate ?? recordToday()`
  * (`lib/business-today.ts`) in place of `new Date().toISOString().slice(0, 10)`, and its import. Behind
  * FORM_DATE_BUSINESS_TODAY_ENABLED, default off; off, recordToday() is that same UTC date.
+ *
+ * The user (Pau), under the standing approval, via QA on 14 Nov 2026, behind REASON_PLACE_NOT_STORE_ENABLED (default
+ * off): in src/lib/forms/salon-mention.ts, readSalonMentions reads `placeReadingText(said)` (`forms/reason-place.ts`),
+ * which blanks the place of a "because she was at …" reason with the flag on and returns its input unchanged with it
+ * off (reason-place-not-salon.test.ts proves the identity). The import and those two lines;
+ * docs/patches/reason-place-not-salon.patch. Off, exactly as before.
  */
 const APPROVED_PROTECTED_EDITS = [
+  ":(exclude)src/lib/forms/salon-mention.ts",
   ":(exclude)src/lib/forms/required-closing.ts",
   ":(exclude)src/lib/forms/ca-action-plan.ts",
   ":(exclude)src/lib/forms/proposal.ts",
