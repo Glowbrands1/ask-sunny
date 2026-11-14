@@ -1,3 +1,5 @@
+import { diffReplyOptionLabelsEnabled } from "@/lib/config/chat-quality-flags";
+
 import type { FieldValue, FormDiff } from "./form-reducer";
 
 /**
@@ -24,10 +26,19 @@ function shown(value: FieldValue): string {
   return `${(space > REPLY_VALUE_MAX / 2 ? cut.slice(0, space) : cut).trimEnd()}…`;
 }
 
-export function replyFromDiff(diff: Pick<FormDiff, "changed">, labels: Readonly<Record<string, string>>): string {
+export function replyFromDiff(
+  diff: Pick<FormDiff, "changed">,
+  labels: Readonly<Record<string, string>>,
+  /** DIFF_REPLY_OPTION_LABELS_ENABLED: each checkbox group's option labels, by group and option key. */
+  options: Readonly<Record<string, Readonly<Record<string, string>>>> = {},
+): string {
   if (diff.changed.length === 0) return NOTHING_CHANGED;
+  // DIFF_REPLY_OPTION_LABELS_ENABLED (v2-Gate-Sunny-2 / QA, 14 Nov 2026): `Changed Type of Offense to "standards_of_conduct"`.
+  const labelled = diffReplyOptionLabelsEnabled();
   return diff.changed
-    .map((change) => {
+    .map((raw) => {
+      const group = labelled ? options[raw.key] : undefined;
+      const change = group && typeof raw.after !== "string" ? { ...raw, after: raw.after.map((option) => group[option] ?? option) } : raw;
       const label = labels[change.key] ?? change.key;
       const value = shown(change.after);
       return value === "" ? `Cleared ${label}.` : `Changed ${label} to "${value}".`;
