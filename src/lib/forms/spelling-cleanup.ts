@@ -1,3 +1,6 @@
+import { PRODUCTION_SALONS } from "@/data/salons";
+
+import { accountNames } from "./account-names";
 import { editDistance } from "./employee-match";
 import { datesInText } from "./form-date-answer";
 
@@ -79,6 +82,21 @@ export function cleanupChanges(input: {
         break;
       }
     }
+  }
+
+  // QA's bar (the sibling gate's #772 probe, 14 Nov 2026; ported): a salon name or a roster name, typed in any case, is a name.
+  // A known name the manager typed ("manuel", "Kearny") that the writer turned into another word, or a near miss the
+  // writer turned into a known name ("kearny" → "kearney"), is a changed name.
+  const known = knownNameWords(input.names ?? []);
+  const sourceWords = wordCounts(source);
+  const writtenWords = wordCounts(written);
+  for (const [word, count] of sourceWords) {
+    const isName = known.has(word) || [...known].some((name) => name.length >= 4 && word.length >= 4 && word[0] === name[0] && editDistance(word, name) === 1);
+    if (!isName || (writtenWords.get(word) ?? 0) >= count) continue;
+    // Said once: a name the capitalised-word check above already caught is not reported again.
+    if (reasons.some((reason) => reason.toLowerCase().startsWith(`name ${word} `))) continue;
+    const became = [...writtenWords.keys()].find((other) => other !== word && !sourceWords.has(other) && other[0] === word[0] && editDistance(other, word) <= 2);
+    if (became) reasons.push(`name ${word} was written ${became}`);
   }
   return [...new Set(reasons)];
 }
@@ -166,9 +184,27 @@ function numbersIn(text: string): string[] {
 }
 
 const QUOTE = /["“]([^"“”\n]{3,}?)["”]/g;
+// QA's bar (14 Nov 2026): a single-quoted span is a quote too ('that is not my registr'); an apostrophe in a word is not.
+const SINGLE_QUOTE = /(?<![A-Za-z0-9])['‘]([^'‘’\n]{3,}?)['’](?![A-Za-z0-9])/g;
 
 function quotesIn(text: string): string[] {
-  return [...text.matchAll(QUOTE)].map((match) => match[1]!.trim()).filter((quote) => quote.split(/\s+/).length >= 2);
+  return [...text.matchAll(QUOTE), ...text.matchAll(SINGLE_QUOTE)]
+    .map((match) => match[1]!.trim())
+    .filter((quote) => quote.split(/\s+/).length >= 2);
+}
+
+/** Salon name words and the turn's roster name words (`account-names.ts`), with the form's names: all names. */
+function knownNameWords(names: readonly string[]): Set<string> {
+  const words = new Set<string>(accountNames());
+  for (const name of names) for (const word of name.toLowerCase().split(/[^a-z'’-]+/)) if (word.length >= 2) words.add(word);
+  for (const salon of PRODUCTION_SALONS) for (const word of salon.name.toLowerCase().split(/[^a-z]+/)) if (word.length >= 4) words.add(word);
+  return words;
+}
+
+function wordCounts(text: string): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const match of text.toLowerCase().matchAll(/[a-z]+/g)) counts.set(match[0], (counts.get(match[0]) ?? 0) + 1);
+  return counts;
 }
 
 /** Words that open a sentence or a labelled line are capitalised by grammar, not because they name someone. */
