@@ -133,7 +133,10 @@ describe("a possessive of a name is the same name (Gate-Sunny-3, 13 Nov 2026)", 
     const source = "please make a ca for marnie holloway, she was late on 11/1/26 and left the drawer open";
     const names = ["Marnie Holloway"];
     expect(cleanupChanges({ source, names, today: TODAY, written: "Observed:\nMarnie Holloway's drawer was left open after she arrived late on 11/1/26." })).toEqual([]);
-    expect(cleanupChanges({ source: "Sela was late", names: ["Sela Brightwater"], today: TODAY, written: "Observed:\nToday Sela’s shift began late." })).toEqual([]);
+    // Changed on purpose (QA, 14 Nov 2026): the source was "Sela was late", which never says today. With
+    // RELATIVE_DATE_READER_ENABLED (live in production) the check reads the draft's "Today" as a date and correctly
+    // flags it as unsaid, so the manager's words now say today; the line still tests only the possessive.
+    expect(cleanupChanges({ source: "Sela was late today", names: ["Sela Brightwater"], today: TODAY, written: "Observed:\nToday Sela’s shift began late." })).toEqual([]);
     expect(cleanupChanges({ source, names, today: TODAY, written: "Observed:\nMarnie Halloway's drawer was left open." })).toEqual(["name holloway was written Halloway"]);
   });
 });
