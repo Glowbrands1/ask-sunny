@@ -25,16 +25,21 @@ async function cardFor(t: ReplayContext, turn: string) {
   return { reply, locationId: (thread.proposal as { locationId?: string | null } | null)?.locationId ?? null };
 }
 
-const OPEN: readonly { key: string; turn: string }[] = [
+/*
+ * "because": an open case until 38j. REASON_PLACE_NOT_SALON (#975) is on in production since round 38j, so a "because
+ * she was at …" reason's place is never the salon there, and this case now holds in production too: a guard
+ * ("fixed"), flag off and on. "instead-of-shift" is not a reason and stays open.
+ */
+const OPEN: readonly { key: string; turn: string; fixedInProduction?: true }[] = [
   { key: "instead-of-shift", turn: "create a ca for marnie holloway, she was at lincoln street fair instead of her shift" },
-  { key: "because", turn: "create a ca for marnie holloway, she missed her shift because she was at the lincoln street fair" },
+  { key: "because", turn: "create a ca for marnie holloway, she missed her shift because she was at the lincoln street fair", fixedInProduction: true },
 ];
 
 export const NOV14_SALON_NAME_LETTER_WORD_CASES: ReplayCase[] = OPEN.map((wording) => ({
   id: `nov14-salon-name-letter-word-${wording.key}`,
   title: `Admin: "${wording.turn}" — not filed at NE Lincoln O Street`,
   report: REPORT,
-  status: { open: `"lincoln street fair" is read as the NE Lincoln O Street salon` },
+  status: wording.fixedInProduction ? "fixed" : { open: `"lincoln street fair" is read as the NE Lincoln O Street salon` },
   fixFlags: [FLAG],
   async run(t: ReplayContext) {
     const { reply, locationId } = await cardFor(t, wording.turn);
