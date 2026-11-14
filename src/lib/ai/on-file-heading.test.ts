@@ -25,4 +25,20 @@ describe("headingOnlyOnFile", () => {
     expect(headingOnlyOnFile("Dress Code for The Company", T2, history)).toBe(false);
     expect(headingOnlyOnFile("Late Opening", T2, [{ role: "assistant", content: "**Policy:** Late Opening, from what you described." }])).toBe(false);
   });
+
+  it("a late opening the manager describes is theirs, even with Late Opening on file (Gate-Sunny-3, 14 Nov 2026)", () => {
+    for (const said of [
+      "ok CA for Briony Calloway, she opened the salon 25 minutes late on 11/12",
+      "make it about her opening the salon 15 minutes late on 11/13 instead",
+      "separate CA for Briony Calloway: she opened the salon 25 minutes late on 11/12",
+      "change it to late openng",
+    ]) {
+      expect(headingOnlyOnFile("Late Opening", said, history), said).toBe(false);
+    }
+  });
+
+  it("the resent crewneck request still does not describe Late Opening or Attendance", () => {
+    expect(headingOnlyOnFile("Late Opening", T2, history)).toBe(true);
+    expect(headingOnlyOnFile("Attendance", T2, history)).toBe(true);
+  });
 });

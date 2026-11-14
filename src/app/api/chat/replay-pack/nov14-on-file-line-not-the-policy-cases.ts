@@ -24,6 +24,7 @@ import { KEARNEY, STAFF, type DirectoryRow, type ReplayCase, type ReplayContext 
 const PERSON: DirectoryRow = { id: "e-briony-calloway", firstName: "Briony", lastName: "Calloway", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" };
 const T1 = "Please create a CA written warning for Briony Calloway for being out of dresscode on 11/13. Briony Calloway wore her coat during Briony Calloways shift after previosly being asked to take it off multiple times.";
 const T2 = "Write me a CA form for Briony Calloway having a black crewneck on during her shift, not a zip up jacket on 11/13 and 11/6";
+const SEPARATE = "separate CA for Briony Calloway: she opened the salon 25 minutes late on 11/12";
 const T4 = "CA for Briony Calloway  not being in dresscode on 11/13 and 11/6";
 
 async function lateOpeningOnFile(t: ReplayContext) {
@@ -73,6 +74,27 @@ export const NOV14_ON_FILE_LINE_NOT_THE_POLICY_CASES: ReplayCase[] = [
       const lines = await chat(t);
       lines.forEach((line, i) => expect(line, `t${i + 1} names the policy from the On file listing: ${line}`).not.toMatch(/late opening/i));
       expect(lines[2], "the resent request changed its policy").toBe(lines[1]);
+    },
+  },
+  {
+    id: "nov14-on-file-line-not-the-policy-described-late-opening-kept",
+    title: `a real late opening the manager describes ("${SEPARATE}"), with Late Opening on file: the card keeps its Late Opening line`,
+    report: `${REPORT}; negative (Gate-Sunny-3, 14 Nov 2026: a repeat offender's described late opening lost its Policy line)`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      vi.setSystemTime(new Date("2026-11-13T22:40:00Z"));
+      t.directory([...STAFF, PERSON]);
+      t.as("salon_director", KEARNEY);
+      await lateOpeningOnFile(t);
+      const thread = t.thread();
+      t.slotsRead({ employee: "Briony Calloway", formType: "Corrective Action Form", formTurn: true, policyHeading: "Dress Code for The Company" });
+      await thread.say(T1);
+      const last = [...((thread.conversation ?? []) as unknown as { role: string; content: string }[])].reverse().find((m) => m.role === "assistant");
+      if (last) last.content = `${last.content}\n\n${ON_FILE}`;
+      t.slotsRead({ employee: "Briony Calloway", formType: "Corrective Action Form", formTurn: true, policyHeading: "Late Opening" });
+      const reply = await thread.say(SEPARATE);
+      expect(policyLine(reply.content), `the described late opening lost its Policy line:\n${reply.content}`).toMatch(/late opening/i);
     },
   },
 ];
