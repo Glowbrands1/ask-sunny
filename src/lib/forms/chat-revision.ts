@@ -3,7 +3,9 @@ import "server-only";
 import { getAnthropicClient } from "@/lib/ai/anthropic";
 import type { AskResponse } from "@/lib/ai/types";
 import { ACTIVE_BRAND } from "@/lib/brand";
-import { editSeesSavedFormEnabled, formEditSingleWriterEnabled, revisionSameValueEnabled } from "@/lib/config/chat-quality-flags";
+import { editSeesSavedFormEnabled, formEditSingleWriterEnabled, revisionSameValueEnabled, spellingCleanupEnabled } from "@/lib/config/chat-quality-flags";
+import { cleanupChanges, withOwnWords } from "@/lib/forms/spelling-cleanup";
+import { businessToday } from "@/lib/business-date";
 import { CLAUDE_MAX_TOKENS, CLAUDE_MODEL } from "@/lib/config/models";
 import type { ChatMessage } from "@/types";
 
@@ -313,7 +315,7 @@ export async function reviseActiveForm(input: {
   // A report with no edit verb is handled only as the follow-up findings it gives.
   if (!asksRevision && !(reportsFollowUp && followUpKeys)) return null;
 
-  const system = [
+  const systemFor = (cleanup: boolean) => [
     corrective
       ? `You revise drafts of the ${ACTIVE_BRAND.brandName} ${instance.templateName} for a manager, who reviews and signs it.`
       : `You revise drafts of ${ACTIVE_BRAND.brandName} coaching forms for a manager, who reviews and signs them.`,
@@ -333,7 +335,8 @@ export async function reviseActiveForm(input: {
           `${fixedPlan.key} (the Action Plan) is written by the form itself from its policy and payroll lines. Return it only when the manager asks to change the Action Plan by name, in the words they ask for.`,
         ]
       : []),
-    ...LANGUAGE_CLEANUP_RULES,
+    // SPELLING_CLEANUP_ENABLED: left out only on the retry after a cleanup changed a name, date, number or quote.
+    ...(cleanup ? LANGUAGE_CLEANUP_RULES : []),
     ...(followUpKeys ? MANAGER_FOLLOW_UP_RULES : []),
     ...(team ? TEAM_SUBJECT_RULES : []),
     // The same rule every form-drafting prompt carries — see `employee-reference.ts`.
@@ -341,6 +344,7 @@ export async function reviseActiveForm(input: {
     "Never select a termination, demotion or suspension.",
     scopeInstruction(scope, labelOf),
   ].join(" ");
+  const system = systemFor(true);
 
   const prompt = [
     `FORM: ${instance.templateName}`,
@@ -362,10 +366,10 @@ export async function reviseActiveForm(input: {
     .join("\n");
 
   const client = getAnthropicClient();
-  const response = await client.messages.create({
+  const revise = (revisionSystem: string) => client.messages.create({
     model: CLAUDE_MODEL,
     max_tokens: CLAUDE_MAX_TOKENS.detailed,
-    system,
+    system: revisionSystem,
     messages: [{ role: "user", content: prompt }],
     tools: [
       {
@@ -396,6 +400,44 @@ export async function reviseActiveForm(input: {
     ],
     tool_choice: { type: "tool", name: "revise_form_fields" },
   });
+
+  let response = await revise(system);
+  /*
+   * SPELLING_CLEANUP_ENABLED (Pau via QA, 13 Nov 2026; ported from Ask Bubbles): the cleanup never changes a name, a
+   * date, a number or a quote. If the revision did, it is asked again without the cleanup rules (`spelling-cleanup.ts`).
+   */
+  if (spellingCleanupEnabled()) {
+    const first = response.content.find((block): block is Extract<typeof block, { type: "tool_use" }> => block.type === "tool_use");
+    const values = ((first?.input ?? {}) as { values?: Record<string, unknown> }).values ?? {};
+    const changes = cleanupChanges({
+      source: `${prompt}\n${notes}\n${currentText}\n${input.question}`,
+      written: Object.values(values).filter((value): value is string => typeof value === "string").join("\n"),
+      today: input.today ?? businessToday(),
+      names: instance.employeeName ? [instance.employeeName] : [],
+    });
+    if (changes.length > 0) {
+      console.warn(`[spelling-cleanup] the cleaned revision changed ${changes.join("; ")}; revising with the manager's own text`);
+      response = await revise(systemFor(false));
+      /*
+       * QA's safety ruling (13 Nov 2026): the fallback is checked again. A field it would still write with a changed
+       * name, date, number or quote is left out, so the form keeps the manager's own words there.
+       */
+      const fallback = response.content.find((block): block is Extract<typeof block, { type: "tool_use" }> => block.type === "tool_use");
+      const fallbackInput = (fallback?.input ?? null) as { values?: Record<string, unknown> } | null;
+      if (fallbackInput?.values) {
+        const recheck = withOwnWords(fallbackInput.values, {
+          source: `${prompt}\n${notes}\n${currentText}\n${input.question}`,
+          today: input.today ?? businessToday(),
+          names: instance.employeeName ? [instance.employeeName] : [],
+          own: () => null,
+        });
+        if (recheck.replaced.length > 0) {
+          console.warn(`[spelling-cleanup] the fallback revision still changed ${recheck.replaced.join(", ")}; keeping the form's own words there`);
+          fallbackInput.values = recheck.values;
+        }
+      }
+    }
+  }
 
   const call = response.content.find(
     (block): block is Extract<typeof block, { type: "tool_use" }> => block.type === "tool_use",

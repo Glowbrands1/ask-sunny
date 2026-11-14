@@ -148,6 +148,7 @@ export async function openMeeting(key: string): Promise<{ ok: true; meeting: Ope
         // The Hub's agenda and section hints for this meeting (the page checks their shape and falls back to its copy).
         ...(Array.isArray(b.roster?.agenda) ? { agenda: b.roster.agenda } : {}),
         ...(b.roster?.hints && typeof b.roster.hints === "object" ? { hints: b.roster.hints } : {}),
+        ...(typeof b.roster?.reference === "boolean" ? { reference: b.roster.reference } : {}),
       },
     },
   };
