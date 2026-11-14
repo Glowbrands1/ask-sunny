@@ -314,6 +314,35 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
     },
   },
   {
+    id: "nov14-agent-loop-guard-name-correction-is-the-name",
+    title: "\"fix her last name, it is <X>\" (the live re-run's nov4-edit-tool-ca-t2): an edit_form that rewrites the Observation is refused; the form is unchanged",
+    report: `${REPORT}; live re-run (14 Nov 2026): a name correction rewrote the Observation`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-13T22:40:00Z"));
+      t.directory([...STAFF, TAMSIN]);
+      t.as("salon_director", KEARNEY);
+      t.loopModel!(loopStandIn((view) => {
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, what_happened: "Tamsin Orwell was late to open on 11/10." } };
+        return { text: "Here's the draft." };
+      }));
+      const thread = t.thread();
+      await thread.say("ca for tamsin orwell, she was late to open on 11/10");
+      const id = await thread.create();
+      const before = JSON.stringify(t.values(id));
+      const editor = loopStandIn((view) => {
+        if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { instance_id: id, values: { observation: "Tamsin Orwell-Smith was late to open on 11/10." } } };
+        return { text: JSON.stringify(lastResult(view, "edit_form")) };
+      });
+      t.loopModel!(editor);
+      await thread.say("fix her last name, it is Orwell-Smith");
+      expect(toolResults(editor.views, "edit_form")[0]).toMatch(/corrects the employee's name only/);
+      expect(JSON.stringify(t.values(id)), "the Observation was rewritten by a name correction").toBe(before);
+    },
+  },
+  {
     id: "nov14-agent-loop-guard-one-card-per-reply",
     title: "two people in one request: one card per reply, each person's own; never a second card in the same reply",
     report: `${REPORT}: multiple people (TWO_FORMS_EACH_PERSON's outcome)`,

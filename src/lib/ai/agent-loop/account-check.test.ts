@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { accountMissing } from "./tools";
+import { accountMissing, NAME_CORRECTION } from "./tools";
 
 /*
  * The account check in propose_form (QA, 14 Nov 2026): the live run's lost-account failures, in their wording (people
@@ -27,4 +27,14 @@ describe("the account keeps the manager's dates, times, places and amounts", () 
   ])("keeps: %s", (said, account) => {
     expect(accountMissing(said, account)).toEqual([]);
   });
+});
+
+/* The name-correction guard (agent-loop/tools.ts, live re-run 14 Nov 2026): which messages correct only the name. */
+describe("a message that corrects the employee's name", () => {
+  it.each(["fix her last name, it is Doe-Smith", "her name is spelled Orwel", "the last name should be Varga", "wrong surname"])("corrects the name: %s", (said) =>
+    expect(NAME_CORRECTION.test(said)).toBe(true),
+  );
+  it.each(["she was late on 11/3", "add that she was rude to a guest", "change the date to 11/4", "she gave her name to the guest"])("does not: %s", (said) =>
+    expect(NAME_CORRECTION.test(said)).toBe(false),
+  );
 });
