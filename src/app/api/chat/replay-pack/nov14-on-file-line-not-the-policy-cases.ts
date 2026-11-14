@@ -74,7 +74,8 @@ export const NOV14_ON_FILE_LINE_NOT_THE_POLICY_CASES: ReplayCase[] = [
     id: "nov14-on-file-line-not-the-policy-dress-code-resent",
     title: `Pau's dress-code chat ("${T2}" sent twice, every reply listing a Late Opening CA on file): no card names Late Opening, and the resent request keeps its policy`,
     report: REPORT,
-    status: { open: "the resent request is carded \"Policy: Late Opening — read from this request\", from the app's own On file listing" },
+    // Changed on purpose (14 Nov 2026): fixed in production by ON_FILE_LINE_NOT_THE_POLICY_ENABLED, QA round 38i. Was OPEN.
+    status: "fixed",
     fixFlags: [FLAG],
     async run(t) {
       const lines = await chat(t);
