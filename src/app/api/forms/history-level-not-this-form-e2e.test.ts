@@ -219,6 +219,31 @@ async function reply(said: string, today = "2026-11-14") {
   });
 }
 
+/** The reply to the last of several manager turns, Ask Sunny's answers fed forward as history. */
+async function replies(turns: string[], today = "2026-11-13") {
+  const history: { id: string; role: "user" | "assistant"; content: string; createdAt: string; formProposal?: unknown }[] = [];
+  let open: string | undefined;
+  let last: Awaited<ReturnType<typeof proposeFormForTurn>> = null;
+  for (const [index, said] of turns.entries()) {
+    last = await proposeFormForTurn({
+      history: history as never,
+      question: said,
+      questionMessageId: `m${index}`,
+      actor: { role: state.role as never, scope: state.scope as AccessScope },
+      summaries: await listTemplateSummaries(),
+      today,
+      policyManual: async () => (state.manual?.chunks as never) ?? null,
+      ...(open ? { continueTemplateKey: open } : {}),
+    });
+    if (last?.formProposal) open = last.formProposal.templateKey;
+    history.push(
+      { id: `m${index}`, role: "user", content: said, createdAt: `${today}T15:3${index}:00Z` },
+      { id: `a${index}`, role: "assistant", content: last?.content ?? "", createdAt: `${today}T15:3${index}:01Z`, ...(last?.formProposal ? { formProposal: last.formProposal } : {}) },
+    );
+  }
+  return last;
+}
+
 /** The card the form intake gives one manager turn, or null when the turn is not read as a form request at all. */
 async function card(said: string, today = "2026-11-14") {
   return (await reply(said, today))?.formProposal ?? null;
@@ -301,4 +326,51 @@ describe("Gate-Sunny-3 on #970, flag on", () => {
     expect(answer?.content).toMatch(/\*\*Prior actions:\*\* Verbal warning — (?:signed )?10\/30\/2026/);
     expect(answer?.content).toContain(ASKED);
   });
+});
+
+/*
+ * QA's bar on the gates' NO-GO (Gate-Sunny-3 and Gate-Bubbles-5, 14 Nov 2026), every wording an assert, the people
+ * invented, the clock at 11/13: a dated level that is the prior history never becomes this form's level, on the card or
+ * in the intake; "on <day> <Month>" and "on the 21st" are dates like any other; and the incident-day rule covers them.
+ */
+describe("QA's bar on the history NO-GO, flag on", () => {
+  const ASKED = "You'll set the verbal/written warning level on the form";
+  // PRIOR_ACTIONS_PARSE / PRIOR_ACTIONS_NO_SIGNED (on in production) write "— 09/21/2026"; off, "— signed …".
+  const rows = (content: string | undefined) =>
+    (/\*\*Prior actions:\*\* (.*?), as you said\./.exec(content ?? "")?.[1]?.split("; ") ?? []).map((row) => row.replace(" — signed ", " — "));
+
+  it('"Create a CA for Pat Rivera, late again today. She got a verbal warning on 9/2 and a written warning on 9/21." has no level, and both rows', async () => {
+    ON();
+    const answer = await replies(["Create a CA for Pat Rivera, late again today. She got a verbal warning on 9/2 and a written warning on 9/21."]);
+    expect(answer?.formProposal?.warningLevel ?? null).toBeNull();
+    expect(answer?.content).not.toMatch(/Type of Warning:\*\* \w+ Warning, as you said/);
+    expect(answer?.content).toContain(ASKED);
+    expect(rows(answer?.content)).toEqual(["Verbal warning — 09/02/2026", "Written warning — 09/21/2026"]);
+  });
+
+  for (const reply of ["verbal warning on 21 September", "written warning on the 21st", "written warning on the 21st, now late again"]) {
+    it(`a reply "${reply}" after "create a ca form for pat rivera, late again today" is history, not this form's level`, async () => {
+      ON();
+      const answer = await replies(["create a ca form for pat rivera, late again today", reply]);
+      expect(answer?.formProposal?.warningLevel ?? null).toBeNull();
+      expect(answer?.content).not.toMatch(/Type of Warning:\*\* \w+ Warning, as you said/);
+    });
+  }
+
+  it('the reply "verbal warning on 21 September" is listed under Prior actions with its date', async () => {
+    ON();
+    const answer = await replies(["create a ca form for pat rivera, late again today", "verbal warning on 21 September"]);
+    expect(rows(answer?.content)).toEqual(["Verbal warning — 09/21/2026"]);
+  });
+
+  for (const said of [
+    "verbal warning on the 12th for pat rivera, she was late that day",
+    "verbal warning on 12 November for pat rivera, she was late that day",
+    "verbal warning on 11/12/26 for pat rivera, she was late that day",
+  ]) {
+    it(`the incident-day rule covers ordinals and named months as numeric dates: "${said}" is Verbal`, async () => {
+      ON();
+      expect((await replies([said]))?.formProposal?.warningLevel).toBe("verbal");
+    });
+  }
 });

@@ -8,7 +8,7 @@ import { STAFF, KEARNEY, type DirectoryRow, type ReplayCase, type ReplayContext,
  * ============================================================================
  *
  * QA's two wordings, the person invented: a dated earlier warning, and one "for the same thing", made the card's level
- * that earlier warning. Ask Bubbles reads both as history (its reader, 9 Oct 2026).
+ * that earlier warning. The sibling app reads both as history (its reader, 9 Oct 2026).
  */
 const REPORT = "QA, 14 Nov 2026: an earlier warning was read as this form's level";
 const ODALYS: DirectoryRow = {

@@ -104,7 +104,7 @@ function historyLevelNotThisFormOn(): boolean {
 }
 
 /*
- * HISTORY_LEVEL_NOT_THIS_FORM_ENABLED (QA, 14 Nov 2026; the mechanism of Ask Bubbles' 9 Oct reader). A level with ITS
+ * HISTORY_LEVEL_NOT_THIS_FORM_ENABLED (QA, 14 Nov 2026; the mechanism of the sibling app's 9 Oct reader). A level with ITS
  * OWN DATE right after it — "verbal warning on 9/21", "written warning 10/2", "verbal ca on the 21st", "written
  * warning on september 21" — is a step on file, unless that day is today. A level "for the same thing" / "for that" /
  * "for it" points back at an earlier one. Neither is this form's level, unless a request verb in the same sentence asks
@@ -125,6 +125,9 @@ function olderHistory(before: string, after: string): boolean {
   );
 }
 
+/** "she was late that day", "that night", "the same day": the incident is on the level's own day. */
+const SAME_DAY_AS_LEVEL = /\b(?:that|the\s+same|same)\s+(?:day|night|morning|afternoon|evening|shift)\b/;
+
 /** The level opens the turn: nothing but "a" / "new" / "please" before it, in the turn's first sentence. */
 function opensTurn(read: string, sentenceStart: number, before: string): boolean {
   return read.slice(0, sentenceStart).trim() === "" && /^\s*(?:(?:a|an|new|please)\s+)*$/.test(before);
@@ -140,6 +143,15 @@ function isoOfSaid(said: string, today: string): string | null {
   let y: number | null = null;
   const numeric = /(\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{2}|\d{4}))?\b/.exec(said);
   const named = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})\b|\b(\d{1,2})\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/.exec(said);
+  // "the 12th": a day of this month, or of the month before when that day is still to come (QA's bar, 14 Nov 2026).
+  const ordinal = /\b(\d{1,2})(?:st|nd|rd|th)\b/.exec(said);
+  if (!numeric && !named && ordinal) {
+    d = Number(ordinal[1]);
+    m = d > day ? (month === 1 ? 12 : month - 1) : month;
+    y = d > day && month === 1 ? year - 1 : year;
+    if (d < 1 || d > 31) return null;
+    return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  }
   if (numeric) {
     m = Number(numeric[1]);
     d = Number(numeric[2]);
@@ -200,15 +212,16 @@ function historyByDateOrPointer(
   if (!dated) return null;
   const own = isoOfSaid(dated[0], today);
   const incident = incidentDay(read, afterStart, afterStart + dated[0].length, today);
-  // An ordinal ("the 21st") names no month: it is read as before, a step on file.
   if (!own) return "";
   if (incident) return own < incident ? own : null;
   /*
-   * No other day in the turn. A level that opens the turn — "verbal warning on 11/12/26 for <W>, she was late that day"
-   * — is this form's, on the incident's own day. Said after other words ("she gets a written warning 10/1"), its date
-   * is weighed against today, as before (Ask Bubbles reads both the same way).
+   * No other day in the turn. A level that opens the turn, in a turn that puts the incident on that day — "verbal
+   * warning on 11/12/26 for <W>, she was late that day" — is this form's. Otherwise ("written warning on the 21st",
+   * "verbal warning on 21 September", "she gets a written warning 10/1") its date is weighed against today: before it,
+   * a step on file (QA's bar on the gates' NO-GO, 14 Nov 2026; the sibling app reads them the same way).
    */
-  if (leads) return null;
+  // QA's bar on the gates' NO-GO (14 Nov 2026): only when the turn also says the incident was on that day.
+  if (leads && SAME_DAY_AS_LEVEL.test(read)) return null;
   return own === today ? null : own;
 }
 
