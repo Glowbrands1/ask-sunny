@@ -2,6 +2,7 @@ import "server-only";
 
 import type { AskResponse } from "@/lib/ai/types";
 import {
+  accountChangeRederivesPolicyEnabled,
   editPolicyAskEnabled,
   formEditSingleWriterEnabled,
   formPatchReaderFixesEnabled,
@@ -494,6 +495,24 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
      * (MADE_ABOUT_POLICY_LINE). True when the account changed. Used by the made-about path below and, with
      * MADE_ABOUT_SAID_DATE_ENABLED, when a reader's account edit was refused on a turn that says the form's date.
      */
+    /*
+     * ACCOUNT_CHANGE_REDERIVES_POLICY_ENABLED (ported from Ask Bubbles, QA 13 Nov 2026): the edit replaced the whole
+     * account (none of the old account's sentences is left), so the offense, Direct policy, Policy Violated and the plan
+     * follow the new one (`chat-policy-change.ts` rederivePolicyFromAccount). Run once per turn, after the account is on
+     * the form: on the made-about path too, which leaves this turn before the reader's edits (QA's live 17x item 2a in
+     * the sibling app, 14 Nov 2026: "make it about her phone use instead, …" rewrote the account and left the policy
+     * lines and plan on Attendance, because that path left before this step ran).
+     */
+    let rederived = false;
+    const rederiveIfReplaced = async (): Promise<void> => {
+      if (rederived || !accountChangeRederivesPolicyEnabled()) return;
+      rederived = true;
+      const oldAccount = loaded.values.find((value) => value.fieldKey === "observation")?.value ?? "";
+      const newAccount = (await loadInstance(input.instanceId))?.values.find((value) => value.fieldKey === "observation")?.value ?? "";
+      if (accountReplaced(oldAccount, newAccount)) {
+        await (await import("./chat-policy-change")).rederivePolicyFromAccount({ request: input.request, instanceId: input.instanceId, account: newAccount, question: input.question });
+      }
+    };
     const rewriteAccountByRevision = async (accountKey: string): Promise<boolean> => {
       const coordinate = madeAboutAllOrNothingEnabled();
       if (coordinate) noteMadeAboutWrite(input.instanceId);
@@ -566,6 +585,8 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
      */
     // A date to write goes on below even with no patch (STEP_B_DATE_SAID); the policy is then answered after it.
     if (Object.keys(reading.patch.set).length === 0 && reading.patch.clear.length === 0 && dateToWrite === null) {
+      // ACCOUNT_CHANGE_REDERIVES_POLICY_ENABLED: an account the made-about revision rewrote, before this turn is left.
+      await rederiveIfReplaced();
       if (!policyAsk) return handOff("nothing");
       const outcome = await answerPolicy();
       if (!outcome) return handOff("nothing");
@@ -820,6 +841,8 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
     if (editSeesSavedFormEnabled() && formEditSingleWriterEnabled() && patchOps > 0) {
       await checkSavedForm(input, loaded, (await import("./edit-sees-saved-form")).touchedKeys(reading.patch), actor.id, offered, reading.patch);
     }
+    // ACCOUNT_CHANGE_REDERIVES_POLICY_ENABLED: the account on the form now; the diff reply below then says what moved.
+    await rederiveIfReplaced();
     const reloaded = await loadInstance(input.instanceId);
     if (!reloaded) return null;
     const changed = snapshotDiff(snapshotOf(loaded), snapshotOf(reloaded));
@@ -1067,4 +1090,19 @@ function madeAboutReading(
     evidence[box.key] = said;
   }
   return { ok: true, turn: "this_form", patch: { set, clear: [], evidence } };
+}
+
+/** ACCOUNT_CHANGE_REDERIVES_POLICY_ENABLED: none of the old account's sentences is left in the new one. */
+function accountReplaced(before: string, after: string): boolean {
+  const sentences = (text: string) =>
+    text
+      .replace(/^\s*Observed:\s*/i, "")
+      .split(/(?<=[.!?])\s+|\n+/)
+      .map((sentence) => sentence.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim())
+      .filter((sentence) => sentence.split(" ").length >= 3);
+  const old = sentences(before);
+  const next = sentences(after);
+  if (old.length === 0 || next.length === 0) return false;
+  // A sentence a new one still holds ("… sanitaion" → "… sanitaion in the morning") is kept: an addition, not a new account.
+  return old.every((sentence) => !next.some((kept) => kept.includes(sentence)));
 }
