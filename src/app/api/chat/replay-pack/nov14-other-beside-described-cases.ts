@@ -40,7 +40,8 @@ export const NOV14_OTHER_BESIDE_DESCRIBED_CASES: ReplayCase[] = BESIDE.map(([key
   id: `nov14-other-beside-described-${key}`,
   title: `"${ask}": the described offense keeps its card line, box, Policy Violated, Direct policy and plan; Other is ticked beside it`,
   report: REPORT,
-  status: { open: "the draft saves Other alone (and, for the phone, Direct policy quotes the Cell Phone section the box no longer names)" },
+  // Changed on purpose (14 Nov 2026): fixed in production by OTHER_BESIDE_DESCRIBED_ENABLED, QA round 38k. Was OPEN.
+  status: "fixed",
   fixFlags: ["OTHER_BESIDE_DESCRIBED_ENABLED"],
   async run(t) {
     vi.setSystemTime(new Date("2026-11-13T15:00:00Z"));
