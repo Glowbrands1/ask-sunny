@@ -307,6 +307,8 @@ const FLIPPED_AFTER_FIXTURE: readonly string[] = [
   "REASON_PLACE_NOT_SALON_ENABLED",
   "OTHER_BESIDE_DESCRIBED_ENABLED",
   "MODEL_WARNING_LEVEL_DISCARDED_ENABLED",
+  // QA 15 Nov 2026: on in production behind AGENT_LOOP_USERS (nobody listed here, so no turn changes).
+  "AGENT_LOOP_ENABLED",
 ];
 const PRODUCTION = [...PRODUCTION_FLAGS.on, ...PRODUCTION_FLAGS.assumedOn].filter((name) => !FLIPPED_AFTER_FIXTURE.includes(name));
 /*

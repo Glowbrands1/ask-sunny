@@ -74,10 +74,16 @@ export const NOV4_EDIT_TOOL_CASES: readonly ReplayCase[] = [
         const reply = await thread.say(CA_CHAIN[1]);
         replyMatchesDiff(t, id, before, reply, CA_CHAIN[1]);
         noClaimWithoutUpdate(reply);
-        expect(t.editToolOffers!().offered, "the main call was not offered edit_form").toBe(1);
-        expect(t.editToolOffers!().lastData ?? "", "the open form was not in the DATA block").toContain('"key":"observation"');
         const observation = t.values(id).observation ?? "";
         expect(observation, "the tool's replace reached the form").not.toMatch(/^Doe-Smith was late/);
+        if (t.loopActive?.()) {
+          // Changed on purpose (loop-ON arm asserts meaning): with the loop answering there is no in-stream edit tool or
+          // main-call count to check; the outcome is: the first name is never dropped, and nothing is claimed unsaved.
+          expect(observation, "Jane was dropped").not.toMatch(/(?:^|\n)(?:Observed:\n)?Doe-Smith\b/);
+          return;
+        }
+        expect(t.editToolOffers!().offered, "the main call was not offered edit_form").toBe(1);
+        expect(t.editToolOffers!().lastData ?? "", "the open form was not in the DATA block").toContain('"key":"observation"');
         expect(observation, "Jane was dropped").toMatch(/\bJane Doe-Smith\b/);
         expect(reply.content, "the tool's text was shown").not.toContain("I've fixed her last name");
         // Handed off: the revision ran after the one main call.

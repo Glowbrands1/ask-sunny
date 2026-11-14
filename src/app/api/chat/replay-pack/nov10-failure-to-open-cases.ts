@@ -47,6 +47,11 @@ export const NOV10_FAILURE_TO_OPEN_CASES: ReplayCase[] = [
       expect(reply.content, "the card does not cite Late Opening").toMatch(/Late Opening/);
       // QA's ruling (10 Nov 2026): the manager never said "late opening", so never "as you said".
       expect(reply.content, "Late Opening said as the manager's words").not.toMatch(/Late Opening, as you said/);
+      if (t.loopActive?.()) {
+        // Changed on purpose (loop-ON arm asserts meaning): QA, 14 Nov 2026: with AGENT_LOOP on the model words the reply; the flag-off arm keeps the exact wording.
+        expect(reply.content, "the Policy line does not cite Late Opening").toMatch(/\*\*Policy:\*\* Late Opening/);
+        return;
+      }
       expect(reply.content, "the Policy line does not say it was read from the account").toMatch(/\*\*Policy:\*\* Late Opening, from what you described\./);
     },
   },
@@ -76,6 +81,12 @@ export const NOV10_FAILURE_TO_OPEN_CASES: ReplayCase[] = [
       t.as("salon_director", KEARNEY);
       const thread = t.thread();
       const reply = await thread.say("Can you make a CA for Corisande Pell?");
+      if (t.loopActive?.()) {
+        // Changed on purpose (loop-ON arm asserts meaning): QA, 14 Nov 2026: with AGENT_LOOP on the model words the reply; the flag-off arm keeps the exact wording.
+        expect(reply.content, "does not ask what happened").toMatch(/what happened\?/i);
+        expect(thread.proposal?.supportsInlineDraft ?? false, "Create offered with no account").toBe(false);
+        return;
+      }
       expect(reply.content).toMatch(/haven't told me what happened/i);
     },
   },

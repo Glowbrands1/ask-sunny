@@ -191,6 +191,8 @@ const NEW_FLAGS = [
   "OBSERVATION_NO_LEADING_NAME_ENABLED",
   // coding 4: REASON_PLACE_NOT_SALON (ported from the sibling app, Gate-Bubbles-3, 13 Nov 2026; default off).
   "REASON_PLACE_NOT_SALON_ENABLED",
+  // coding 7: AGENT_LOOP (QA, 14 Nov 2026: the HR chat's tool loop; default off; AGENT_LOOP_USERS limits it to listed users).
+  "AGENT_LOOP_ENABLED",
   // coding 4: PLACE_STRIP_WHOLE_PHRASE_ONLY (QA, Gate-Sunny #933 probes, 13 Nov 2026; default off).
   "PLACE_STRIP_WHOLE_PHRASE_ONLY_ENABLED",
   // coding 4: SHARED_CITY_ASKS_SALON (QA, Sunny 38c live, 13 Nov 2026; default off).
