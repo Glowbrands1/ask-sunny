@@ -418,17 +418,6 @@ export async function proposeForm(
   const template = templates.find((row) => row.key === key);
   if (!template) return { error: "This manager cannot create that form. Use one of these template keys.", templates: templates.map((row) => ({ key: row.key, name: row.name })) };
 
-  /*
-   * HARD GUARD: the draft on screen keeps the manager's turns (OPEN_DRAFT_KEEPS_TURNS; a report of lost typing). With a
-   * draft open, a second card for the same form is refused unless the manager asked for another or a new one.
-   */
-  if (context.openFormId && !/\b(?:another|new|second|separate|fresh|different)\b/i.test(context.question)) {
-    const open = await authorizeInstance(context.request, context.openFormId, "view").then(({ loaded }) => loaded.instance).catch(() => null);
-    if (open && open.status === "draft" && open.templateKey === key) {
-      return { error: `The ${open.templateName} draft for ${open.employeeName} is open on screen: put this on that draft with edit_form (instance_id ${open.id}). Propose a new card only if the manager asks for another or a new one.` };
-    }
-  }
-
   /* The person: a roster id from find_staff, or (district / region logins only) the name as typed. */
   const read = await rosterFor(context.actor.scope);
   if (read.kind === "failed") return { error: ROSTER_FAILED };
@@ -449,6 +438,18 @@ export async function proposeForm(
     if (!typedName) return { error: "Give the employee's name as the manager typed it." };
     employee = { name: typedName, salonIds: [] };
   }
+  /*
+   * HARD GUARD: the draft on screen keeps the manager's turns (OPEN_DRAFT_KEEPS_TURNS; a report of lost typing). With a
+   * draft open, a second card for the same form AND the same person is refused unless the manager asked for another or
+   * a new one. Another person ("the same form for <C>", "<A> and <B>") always gets their own card.
+   */
+  if (context.openFormId && !/\b(?:another|new|second|separate|fresh|different)\b/i.test(context.question)) {
+    const open = await authorizeInstance(context.request, context.openFormId, "view").then(({ loaded }) => loaded.instance).catch(() => null);
+    if (open && open.status === "draft" && open.templateKey === key && samePerson(open.employeeName, employee.name)) {
+      return { error: `The ${open.templateName} draft for ${open.employeeName} is open on screen: put this on that draft with edit_form (instance_id ${open.id}). Propose a new card only if the manager asks for another or a new one.` };
+    }
+  }
+
   /* The manager's own name is never the employee (as MANAGER_NAME_NOT_EMPLOYEE does on the old path). */
   if (context.actor.displayName && samePerson(context.actor.displayName, employee.name)) {
     return { error: "That is the signed-in manager's own name, not an employee. Ask who the form is about." };

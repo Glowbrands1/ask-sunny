@@ -186,14 +186,14 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
   },
   {
     id: "nov14-agent-loop-guard-open-draft-keeps-turns",
-    title: "with a draft open, \"I talked to her about it last week\" never gets a second card for the same form; \"another CA\" may",
+    title: "with a draft open, \"I talked to her about it last week\" never gets a second card for the same form and person; \"another CA\" may, and \"the same form for <C>\" gives C a card",
     report: `${REPORT}; OPEN_DRAFT_KEEPS_TURNS (2 Nov scan: the second draft lost what the manager typed)`,
     status: "fixed",
     fixFlags: [FLAG],
     async run(t) {
       if (!t.loopOn?.()) return;
       vi.setSystemTime(new Date("2026-11-13T22:40:00Z"));
-      t.directory([...STAFF, TAMSIN]);
+      t.directory([...STAFF, TAMSIN, CORBIN]);
       t.as("salon_director", KEARNEY);
       const again = loopStandIn((view) => {
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "tamsin orwell" } };
@@ -212,6 +212,16 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       expect(t.forms().length).toBe(before);
       const another = await thread.say("make another ca for tamsin orwell, she was late on 11/12");
       expect(another.formProposal?.templateKey, "\"another\" was refused").toBe("dpoa");
+
+      // Multi-person (QA, 14 Nov 2026): another person always gets their own card, the draft open or not.
+      const corbin = loopStandIn((view) => {
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "corbin ashdown" } };
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: CORBIN.id, what_happened: "Corbin Ashdown was on his phone at the front desk." } };
+        return { text: "Here is Corbin Ashdown's card." };
+      });
+      t.loopModel!(corbin);
+      const same = await thread.say("the same form for corbin ashdown");
+      expect(same.formProposal?.employeeName, `the same form for another person was refused:\n${same.content}`).toBe("Corbin Ashdown");
     },
   },
   {
