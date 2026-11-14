@@ -2,7 +2,7 @@ import { expect, vi } from "vitest";
 
 import { KEARNEY, STAFF, TWO_SALONS, type DirectoryRow, type ReplayCase, type ReplayContext } from "./cases";
 import { firstMatch, lastResult, loopStandIn, type LoopView } from "./loop-stand-in";
-import { isProposalSuperseded } from "@/lib/forms/proposal-continuation";
+import { EARLIER_CARD_STAYS, isProposalSuperseded } from "@/lib/forms/proposal-continuation";
 
 /**
  * ============================================================================
@@ -201,13 +201,14 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       t.loopModel!(terse);
       const unstated = await t.thread().say("ca for tamsin orwell, she was 30 minutes late on 11/12");
       // Changed on purpose (Pau 14 Nov: fewer questions, act and state the assumption): one line, not two questions.
-      expect(unstated.content, "the unset payroll and level are not stated").toContain("Payroll deduct and warning level aren't set; tell me if they apply.");
+      // Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite; code-check audit batch A): the line is the model's, from this fact.
+      expect(toolResults(terse.views, "propose_form").at(-1), "the unset payroll and level are not stated").toMatch(/"unset":\["payroll_deduct","warning_level"\]/);
       expect(unstated.formProposal, "the card waited on an optional field").toBeTruthy();
 
-      const stated = await t.thread().say("written ca for tamsin orwell, she was 30 minutes late on 11/12, no payroll deduct");
-      expect(stated.content).toMatch(/\*\*Type of Warning:\*\* Written Warning, as you said/);
-      expect(stated.content).toMatch(/Is payroll deduct applicable\?\*\* No, as you said/);
-      expect(stated.content, "named as unset what was stated").not.toMatch(/aren't set|isn't set/);
+      await t.thread().say("written ca for tamsin orwell, she was 30 minutes late on 11/12, no payroll deduct");
+      // Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite; code-check audit batch A): the line is the model's, from this fact.
+      expect(toolResults(terse.views, "propose_form").at(-1)).toMatch(/"stated":\{"warning_level":"written","payroll_deduct":"no"/);
+      expect(toolResults(terse.views, "propose_form").at(-1), "named as unset what was stated").not.toMatch(/"unset"/);
     },
   },
   {
@@ -233,7 +234,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       const thread = t.thread();
       const asked = await thread.say("ca for tamsin orwell, she left the spray booth dirty on 9/28 and again on 10/2");
       expect(thread.proposal?.formDate ?? null, "a date was picked without asking").toBeNull();
-      expect(asked.content).toContain("You mentioned more than one date (**9/28**, **10/2**). Which date goes on the form?");
+      // Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite; code-check audit batch A): the line is the model's, from this fact.
+      expect(toolResults(picker.views, "propose_form").at(-1), asked.content).toMatch(/"dates_given":\["9\/28","10\/2"\]/);
       await thread.say("10/2");
       expect(thread.proposal?.formDate ?? "", "the answer did not set the date").toBe("2026-10-02");
 
@@ -241,12 +243,14 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       const picked = t.thread();
       const dated = await picked.say("ca for tamsin orwell (pick), she left the spray booth dirty on 9/28 and again on 10/2");
       expect(picked.proposal?.formDate ?? null, "a date was picked without asking").toBeNull();
-      expect(dated.content).toContain("Which date goes on the form?");
+      // Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite; code-check audit batch A): the line is the model's, from this fact.
+      expect(toolResults(picker.views, "propose_form").at(-1), dated.content).toMatch(/"dates_given":\["9\/28","10\/2"\]/);
       // A date nobody stated is never kept: the one question instead.
       const invented = t.thread();
       const notStated = await invented.say("ca for tamsin orwell (invent), she left the spray booth dirty on 9/28 and again on 10/2");
       expect(invented.proposal?.formDate ?? null).toBeNull();
-      expect(notStated.content).toContain("Which date goes on the form?");
+      // Changed on purpose (batch A): the question is the model's, from the dates_given fact.
+      expect(toolResults(picker.views, "propose_form").at(-1), notStated.content).toMatch(/"dates_given":\["9\/28","10\/2"\]/);
 
       const prior = t.thread();
       const one = await prior.say("ca for tamsin orwell, she was late on 11/3 after being coached on 10/1");
@@ -269,15 +273,15 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
         if (!lastResult(view, "propose_form")) {
           return { tool: "propose_form", input: { template_key: "coaching", employee_id: TAMSIN.id, what_happened: /station early/.test(said) ? "Tamsin Orwell missed the monthly meeting on 10/10/26. She also left her station early that day." : "Tamsin Orwell missed the monthly meeting on 10/10/26." } };
         }
-        return { text: /station early/.test(said) ? "One correction: my earlier message showed the card before I'd actually built it. Here's the draft, now with both details — press Create when it looks right." : "Here's the coaching form — press Create when it looks right." };
+        /* Changed on purpose (batch A): the card reply is the model's, with the account line the rules book's Card replies teach; the sentence disowning the earlier card is now the rules book's to prevent (live), not code's to strip. */
+        return { text: "Here's the Coaching Form for **Tamsin Orwell** — press Create when it looks right.\n\n**Observation of Offense:** Missed the monthly meeting on 10/10/26." };
       });
       t.loopModel!(model);
       const thread = t.thread();
       await thread.say("create a coaching form for tamsin orwell, she missed the monthly meeting on 10/10/26");
-      const reply = await thread.say("she also left her station early that day");
+      await thread.say("she also left her station early that day");
       const earlier = model.views.at(-1)!.turns.filter((turn) => turn.role === "assistant").map((turn) => turn.text).join("\n");
       expect(earlier, "the model was not told the earlier card was real").toContain("[app note: this reply showed a card built with propose_form]");
-      expect(reply.content, "a false correction reached the manager").not.toMatch(/my earlier message|before I'd actually built/);
       expect(thread.proposal?.issue ?? "").toMatch(/left her station early/);
     },
   },
@@ -392,7 +396,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       const thread = t.thread();
       const reply = await thread.say("ca for tamsen orwel, she was late on 11/10");
       expect(thread.proposal?.employeeName).toBe("Tamsin Orwell");
-      expect(reply.content).toContain("Using **Tamsin Orwell** from your staff list.");
+      // Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite; code-check audit batch A): the line is the model's, from this fact.
+      expect(toolResults(model.views, "propose_form").at(-1), reply.content).toMatch(/"name_from_staff_list":"Tamsin Orwell"/);
     },
   },
   {
@@ -434,7 +439,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
             },
           };
         }
-        return { text: "Here's the card." };
+        /* Changed on purpose (batch A): the card reply is the model's, with the account line the rules book's Card replies teach. */
+        return { text: lastResult(view, "propose_form") ? "Here's the card for **Tamsin Orwell**.\n\n**Observation of Offense:** As you said." : "The Attendance policy covers lateness." };
       });
       t.loopModel!(model);
 
@@ -448,7 +454,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       await coaching.say("coaching form, she skipped the spray booth check");
       const person = await coaching.say("tamsin");
       expect(coaching.proposal, "the name did not land on the coaching card").toMatchObject({ templateKey: "coaching", employeeName: "Tamsin Orwell" });
-      expect(person.content).toContain("Using **Tamsin Orwell** from your staff list.");
+      // Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite; code-check audit batch A): the line is the model's, from this fact.
+      expect(toolResults(model.views, "propose_form").at(-1), person.content).toMatch(/"name_from_staff_list":"Tamsin Orwell"/);
 
       const exit = t.thread();
       await exit.say("exit form for tamsin orwell, she resigned");
@@ -460,7 +467,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       await mid.say("she was late tuesday");
       const answer = await mid.say("what's the policy on lateness?");
       expect(answer.formProposal, "a policy question made a new card").toBeUndefined();
-      expect(answer.content, "the open card was not said to be still open").toContain("The card above is still open");
+      // Changed on purpose (batch A): the open card is a fact in the system block; the rules book's Card replies say the line.
+      expect(model.views.at(-1)!.system, `the model was not told the card is open:\n${answer.content}`).toMatch(/A card is open/);
       expect(mid.proposal, "the card was dropped").toMatchObject({ templateKey: "dpoa", employeeName: "Tamsin Orwell" });
     },
   },
@@ -698,7 +706,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
 
       const undated = t.thread();
       const dated = await undated.say("my DM Perrin Holloway told me tamsin orwell was late, make a ca");
-      expect(dated.content).toContain("Dated today — tell me if it was another day.");
+      // Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite; code-check audit batch A): the line is the model's, from this fact.
+      expect(toolResults(model.views, "propose_form").at(-1), dated.content).toMatch(/"dated_today":true/);
       expect(undated.proposal?.employeeRole ?? null, "the title is not the roster's").toBe("Tanning Consultant");
 
       const declined = t.thread();
@@ -708,7 +717,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
 
       const elsewhere = t.thread();
       const outside = await elsewhere.say("ca for tamsin orwell, she was late at grand island");
-      expect(outside.content).toMatch(/\*\*NE Grand Island\*\* isn't a salon on your assignment/);
+      // Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite; code-check audit batch A): the line is the model's, from this fact.
+      expect(toolResults(model.views, "propose_form").at(-1), outside.content).toMatch(/"salon_outside_scope":"NE Grand Island"/);
     },
   },
   {
@@ -756,8 +766,9 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       const replyA = await a.say(MSB_A);
       expect(results().some((result) => /leaves out.*Club Close %/.test(result)), "a dropped metric was taken").toBe(true);
       expect(a.proposal?.issue ?? "").toContain("Club Close %");
-      expect(replyA.content).toContain("Under Performance isn't on the CA form. Sales performance CAs use the Standards of Conduct.");
-      expect(replyA.content).toMatch(/\*\*Policy:\*\* Standards of Conduct Policy, JBA Policy Manual p\.12/);
+      // Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite; code-check audit batch A): the line is the model's, from this fact.
+      expect(results().at(-1), replyA.content).toMatch(/"under_performance":true/);
+      expect((a.proposal as { policyLine?: string | null } | undefined)?.policyLine ?? "").toMatch(/^Standards of Conduct Policy, JBA Policy Manual p\.12/);
 
       // B: MSB is never a person; "146 tans" kept; the stated verbal kept.
       const b = t.thread();
@@ -853,7 +864,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
         if (!lastResult(view, "propose_form")) {
           return { tool: "propose_form", input: { template_key: "dpoa", employee_id: corbin ? CORBIN.id : TAMSIN.id, what_happened: `${corbin ? "Corbin Ashdown" : "Tamsin Orwell"} was late on 11/3/26.`, ...(corbin ? { warning_level: "written" } : {}) } };
         }
-        return { text: "Here's the card." };
+        /* Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite): the card reply is the model's, in the rules book's Card replies words. */
+        return { text: `Here's the Corrective Action Form for **${corbin ? "Corbin Ashdown" : "Tamsin Orwell"}**.\n\n**Observation of Offense:** Late on 11/3/26.` };
       }));
       const thread = t.thread();
       await thread.say("create a corrective action for tamsin orwell, she was late on 11/3/26");
@@ -862,6 +874,36 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       expect(isProposalSuperseded(thread.conversation!, tamsin.proposalId), "<A>'s card is superseded by <B>'s").toBe(false);
       expect(t.values(await thread.createCard!("Tamsin Orwell")).employee_name).toBe("Tamsin Orwell");
       expect(t.values(await thread.createCard!("Corbin Ashdown")).employee_name).toBe("Corbin Ashdown");
+    },
+  },
+  {
+    id: "nov14-agent-loop-same-card-edit-no-earlier-card-line",
+    title: "\"make it a written\" / \"make it professional\" on the same person's card never says \"The earlier card or form stays as it is.\"",
+    report: `${REPORT}; QA live-app item 14 (14 Nov 2026): "\"The earlier card or form stays as it is.\" appears after SAME-card edits (E t3/t4 \"make it a written\", \"make it professional\")"`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-13T22:40:00Z"));
+      t.directory([...STAFF, TAMSIN, CORBIN]);
+      t.as("salon_director", KEARNEY);
+      t.loopModel!(loopStandIn((view) => {
+        const said = view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "";
+        if (!lastResult(view, "propose_form")) {
+          const written = /written/i.test(view.turns.filter((turn) => turn.role === "user").map((turn) => turn.text).join(" "));
+          const what = /professional/i.test(said) ? "The employee arrived late for the scheduled shift on 11/3/26." : "Late on 11/3/26.";
+          return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, what_happened: what, ...(written ? { warning_level: "written" } : {}) } };
+        }
+        /* The first reply names the person; the edits' replies say only what changed (no name), as the live run's did. */
+        if (/create a corrective action/i.test(said)) return { text: "Here's the Corrective Action Form for **Tamsin Orwell**.\n\n**Observation of Offense:** Late on 11/3/26." };
+        return { text: "Updated the card.\n\n**Observation of Offense:** Late on 11/3/26." };
+      }));
+      const thread = t.thread();
+      await thread.say("create a corrective action for tamsin orwell, she was late on 11/3/26");
+      const written = await thread.say("make it a written");
+      expect(written.content).not.toContain(EARLIER_CARD_STAYS);
+      const professional = await thread.say("make it professional");
+      expect(professional.content).not.toContain(EARLIER_CARD_STAYS);
     },
   },
   {
@@ -954,12 +996,13 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       const thread = t.thread();
       const first = await thread.say("ca for Perpetua Vandersloot, she was late on 11/12");
       expect(thread.proposal?.employeeName, "the typed name was not carded").toBe("Perpetua Vandersloot");
-      expect(first.content).toContain("**Perpetua Vandersloot** isn't on your salon's Woven staff list, so I've used the name as you typed it. Check it before you press Create.");
+      // Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite; code-check audit batch A): the line is the model's, from this fact.
+      expect(toolResults(typed.views, "propose_form").at(-1), first.content).toMatch(/"off_roster_name":"Perpetua Vandersloot","staff_list":"your salon's"/);
 
       // Privacy: a person at another salon reads exactly as "not on the list"; nothing says they exist elsewhere.
       const elsewhere = t.thread();
       const other = await elsewhere.say("ca for Ysolde Marchetti, she was late on 11/12");
-      expect(other.content).toContain("**Ysolde Marchetti** isn't on your salon's Woven staff list");
+      expect(toolResults(typed.views, "propose_form").at(-1), other.content).toMatch(/"off_roster_name":"Ysolde Marchetti","staff_list":"your salon's"/);
       expect(JSON.stringify(typed.views.flatMap((view) => view.results)), "another salon's roster leaked").not.toMatch(/e-ysolde-marchetti|loc-9917/);
 
       // A place is never a person.
@@ -1040,7 +1083,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       });
       t.loopModel!(proposer);
       await t.thread().say("CA for Tamsin Orwell for underperformance for october");
-      expect(toolResults(proposer.views, "propose_form")[0], "Pau's line is not in the tool result").toContain("Under Performance isn't on the CA form. Sales performance CAs use the Standards of Conduct.");
+      // Changed on purpose (batch A): a fact on the card result; the rules book's Card replies carry Pau's line.
+      expect(toolResults(proposer.views, "propose_form")[0], "the fact is not in the tool result").toMatch(/"under_performance":true/);
     },
   },
   {
@@ -1252,17 +1296,19 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       expect(both.proposal ?? null, "a card for everyone").toBeNull();
       // A card tried for everyone is refused (live, the model may go straight to list_staff).
       for (const result of toolResults(carder.views, "propose_form")) expect(result).toMatch(/one person at a time/);
-      expect(asked.content).toContain("Which salon's staff should I list?");
+      // Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite; code-check audit batch A): the line is the model's, from this fact.
+      expect(toolResults(carder.views, "list_staff").at(-1), asked.content).toMatch(/"which_salon":true/);
 
       t.as("salon_director", KEARNEY);
       const one = t.thread();
       const listed = await one.say("can you create a coaching form for my whole staff?");
       expect(one.proposal ?? null).toBeNull();
-      expect(listed.content).toMatch(/won't make one card for the whole staff/);
-      expect(listed.content).toContain("Tamsin Orwell");
-      expect(listed.content).toContain("Who is this form for?");
-      expect(listed.content, "an office account was listed as salon staff").not.toContain("Perrin Holloway");
-      expect(listed.content, "another salon's staff was listed").not.toContain("Wrenna Castell");
+      // Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite; code-check audit batch A): the line is the model's, from this fact.
+      const list = toolResults(carder.views, "list_staff").at(-1) ?? "";
+      expect(list, listed.content).toMatch(/"whole_staff_form":"Coaching Form"/);
+      expect(list).toContain("Tamsin Orwell");
+      expect(list, "an office account was listed as salon staff").not.toContain("Perrin Holloway");
+      expect(list, "another salon's staff was listed").not.toContain("Wrenna Castell");
     },
   },
   {
@@ -1358,7 +1404,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       const revision = (t.forms() as { id: string; status: string; form_date?: string; revises_instance_id?: string | null }[]).find((row) => row.revises_instance_id === id);
       expect(revision?.status, `no draft revising it:\n${reply.content}`).toBe("draft");
       expect(revision?.form_date ?? t.values(revision!.id).form_date, `the revision's date:\n${reply.content}`).toBe("2026-11-04");
-      expect(reply.content, "the reply does not say it is a new draft").toMatch(/new draft/i);
+      // Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite; code-check audit batch A): the line is the model's, from this fact.
+      expect(toolResults(editor.views, "edit_form").at(-1), "the model is not told it is a new draft").toMatch(/"revision_draft":\{.*"original_unchanged":true/);
     },
   },
 ];

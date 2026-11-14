@@ -555,7 +555,8 @@ export const NOV14_AGENT_LOOP_CASES: ReplayCase[] = [
       // Changed on purpose (QA ruling 14 Nov 14:40Z): follows production's TYPED_NAME_PROCEEDS for district/region/all-salon logins.
       const first = await thread.say("CA for Brisa Talmadge, do not terminate yet, she was late");
       expect(first.formProposal?.employeeName, `no card for the typed name:\n${first.content}`).toBe("Brisa Talmadge");
-      expect(first.content).toContain("**Brisa Talmadge** isn't on the Woven staff list, so I've used the name as you typed it. Check the spelling before you press Create.");
+      // Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite; code-check audit batch A): the line is the model's, from this fact.
+      expect(JSON.stringify(standIn.views.flatMap((view) => view.results)), first.content).toMatch(/off_roster_name\\?":\\?"Brisa Talmadge\\?",\\?"staff_list\\?":\\?"the\\?"/);
       const before = standIn.views.flatMap((view) => view.results).length;
       const salon = await thread.say("KS Manhattan");
       expect(salon.formProposal?.employeeName ?? null, "a salon became the employee").not.toBe("KS Manhattan");
@@ -615,7 +616,8 @@ export const NOV14_AGENT_LOOP_CASES: ReplayCase[] = [
         // A person named inside the account never replaces the form's employee.
         if (card) expect(card.employeeName, `turn ${index + 1}: the card moved to someone else:\n${reply.content}`).toBe("Linnea Brightwater");
         expect(policyLine(reply.content), `turn ${index + 1}: the new hire's Late Opening:\n${reply.content}`).not.toMatch(/late opening/i);
-        if (card) expect(policyLine(reply.content), `turn ${index + 1}: not Standards of Conduct:\n${reply.content}`).toMatch(/standards of conduct/i);
+        // Changed on purpose (batch A): the card carries its policy (Create sends it); the reply's line is the model's words.
+        if (card) expect((card as { policyLine?: string | null }).policyLine ?? "", `turn ${index + 1}: not Standards of Conduct:\n${reply.content}`).toMatch(/standards of conduct/i);
       }
       const last = replies.at(-1)!.formProposal;
       expect(last?.employeeName, "no card for the Salon Director at the end").toBe("Linnea Brightwater");
