@@ -9,6 +9,8 @@ import { cleanupChanges, SPELLING_CLEANUP_RULES, withOwnWords } from "@/lib/form
 import { protectedNameWords } from "@/lib/ai/typo-name-words";
 import { accountOnlyRules, policyQueryNotes, withoutInventedDetail } from "@/lib/forms/account-only-policy-query";
 import { getAnthropicClient } from "@/lib/ai/anthropic";
+import { withAiTimeLimit } from "@/lib/ai/time-limit";
+import { helperTimeoutMs } from "@/lib/config/ai-timeouts";
 import { flaggedCitationWrite } from "@/lib/ai/policy-citation-fields";
 import {
   actionPlanManagerOnlyEnabled,
@@ -1313,7 +1315,12 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     // CA_PROCEDURE_BASIS_ENABLED (sf-b6): the basis is asked with that flag too.
     const basisAsked = (caSalesPolicyEnabled() || caProcedureBasisEnabled()) && offersConductPolicy && offenseOffered.includes("other");
     let offenseBasis: OffenseBasis | null = null;
-    const draftCall = () => client.messages.create({
+    /*
+     * AI TIME LIMITS (QA, 14 Nov 2026): each drafting call ends by the helper limit (30 s), the SDK's retries
+     * included (`lib/ai/time-limit.ts`). A timeout is a short message to the manager and a server log line; with
+     * DRAFT_NEVER_BLANK_ENABLED it is one more failed attempt, as any model error is.
+     */
+    const draftCall = () => withAiTimeLimit("draft", helperTimeoutMs(), (timed) => client.messages.create({
       model: CLAUDE_MODEL,
       max_tokens: CLAUDE_MAX_TOKENS.detailed,
       system: activeSystem,
@@ -1343,7 +1350,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         },
       ],
       tool_choice: { type: "tool", name: "write_form_fields" },
-    });
+    }, timed));
     type DraftReply = Awaited<ReturnType<typeof draftCall>>;
     const toolCall = (reply: DraftReply) =>
       reply.content.find(

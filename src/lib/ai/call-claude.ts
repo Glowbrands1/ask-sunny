@@ -10,6 +10,8 @@ import { modelRequestOptions, modelUnavailable } from "./model-retry";
 import { cachedSystem, cachedUserContent, systemWithCachedManual } from "./prompt-cache";
 import { withTruncationRetry } from "./truncation";
 import { truncationRetryEnabled } from "@/lib/config/chat-quality-flags";
+import { helperTimeoutMs, mainAnswerTimeoutMs, mainAnswerTotalMs, streamGapTimeoutMs } from "@/lib/config/ai-timeouts";
+import { isAiTimeLimitError, logAiFailure, withAiTimeLimit, withStreamTimeLimit, type StreamWatch, type TimedCallOptions } from "./time-limit";
 
 /**
  * ============================================================================
@@ -135,6 +137,11 @@ export interface CallClaudeInput {
    * exactly as before.
    */
   readonly glossary?: string | null;
+  /**
+   * The call's name in the time-limit and failure log lines. Omitted, "main_answer".
+   * The limits are the streamed answer's (45 s to the first token, 30 s gaps, 110 s in all) whatever the name.
+   */
+  readonly callName?: string;
 }
 
 /** A `tool_use` block of the reply: its name, and its input (the block's own, or its streamed input_json_delta). */
@@ -195,7 +202,7 @@ function mergeUsage(previous: unknown, next: unknown): unknown {
  * Message — what the tests return — has no delta, so first-token time stays
  * empty rather than being filled with the whole-call latency.
  */
-export async function collectModelResult(response: unknown, started: number): Promise<CollectedModelResult> {
+export async function collectModelResult(response: unknown, started: number, watch?: StreamWatch): Promise<CollectedModelResult> {
   if (!isAsyncIterable(response) && typeof response === "object" && response !== null && "content" in response) {
     const message = response as {
       stop_reason?: string | null;
@@ -226,6 +233,8 @@ export async function collectModelResult(response: unknown, started: number): Pr
   /* FORM_EDIT_TOOL_IN_STREAM_ENABLED: a tool call's block opens with its name; its input arrives as input_json_delta. */
   const tools = new Map<number, { name: string; json: string }>();
   for await (const event of response) {
+    // AI TIME LIMITS: every event resets the gap limit once the answer has begun (`withStreamTimeLimit`).
+    watch?.chunk();
     if (typeof event !== "object" || event === null || !("type" in event)) continue;
     const typed = event as {
       type?: string;
@@ -239,12 +248,16 @@ export async function collectModelResult(response: unknown, started: number): Pr
       usage = mergeUsage(usage, typed.message?.usage);
     } else if (typed.type === "content_block_start" && typed.content_block?.type === "tool_use" && typeof typed.content_block.name === "string") {
       tools.set(typed.index ?? tools.size, { name: typed.content_block.name, json: "" });
+      watch?.firstToken();
     } else if (typed.type === "content_block_delta" && typed.delta?.type === "input_json_delta") {
       const tool = tools.get(typed.index ?? -1);
       if (tool) tool.json += typed.delta.partial_json ?? "";
     } else if (typed.type === "content_block_delta" && typed.delta?.type === "text_delta") {
       const delta = typed.delta.text ?? "";
-      if (delta.length > 0 && firstTokenMs === null) firstTokenMs = Date.now() - started;
+      if (delta.length > 0 && firstTokenMs === null) {
+        firstTokenMs = Date.now() - started;
+        watch?.firstToken();
+      }
       text += delta;
     } else if (typed.type === "message_delta") {
       if (typeof typed.delta?.stop_reason === "string") stopReason = typed.delta.stop_reason;
@@ -330,35 +343,53 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
         }
       : {}),
   };
+  const callName = input.callName ?? "main_answer";
   try {
-    const options = modelRequestOptions();
-    // Stream so the first text delta can be timed. A caller that returns a
-    // finished message is still accepted, with first_token_ms left empty.
-    const attempt = async (maxTokens: number) => {
-      /*
-       * FIRST TOKEN IS TIMED PER ATTEMPT (QA, 1 Nov 2026): timed from the start
-       * of the whole call, a retried answer's first token included the entire
-       * cut-off first attempt (~30 s) and read as 31–43 s. Ask Bubbles already
-       * times each attempt. Trace-only: nothing about the answer changes.
-       */
-      const attemptStarted = Date.now();
-      const streamed = { ...params, max_tokens: maxTokens, stream: true as const };
-      const created = options
-        ? await client.messages.create(streamed, options)
-        : await client.messages.create(streamed);
-      return collectModelResult(created, attemptStarted);
-    };
     /*
-     * TRUNCATION_RETRY_ENABLED: an answer cut off at max_tokens is asked once
-     * more with a larger budget, and never shown cut off. See `truncation.ts`.
+     * AI TIME LIMITS (QA, 14 Nov 2026), whatever MODEL_RETRY_ENABLED says:
+     * 45 s for the first token, then 30 s between chunks, 110 s in all (both
+     * truncation attempts and the SDK's retries included). A long answer that
+     * keeps streaming is never cut. With MODEL_RETRY_ENABLED on its retry
+     * count is kept; off, the SDK's (2). See `time-limit.ts`.
      */
-    const response = truncationRetryEnabled()
-      ? await withTruncationRetry(
-          input.maxTokens,
-          attempt,
-          "Sunny ran out of room before finishing that answer, so it was not shown. Try asking for less at once, or split the question into parts.",
-        )
-      : await attempt(input.maxTokens);
+    const flagged = modelRequestOptions();
+    const limits = { firstTokenMs: mainAnswerTimeoutMs(), gapMs: streamGapTimeoutMs(), totalMs: mainAnswerTotalMs() };
+    const response = await withStreamTimeLimit(callName, limits, async (timed: TimedCallOptions, watch: StreamWatch) => {
+      const options = {
+        signal: timed.signal,
+        // The SDK's own timeout only covers the wait for the response headers: the first-token limit.
+        timeout: timed.timeout,
+        maxRetries: flagged?.maxRetries ?? timed.maxRetries,
+      };
+      let attempts = 0;
+      // Stream so the first text delta can be timed. A caller that returns a
+      // finished message is still accepted, with first_token_ms left empty.
+      const attempt = async (maxTokens: number) => {
+        /*
+         * FIRST TOKEN IS TIMED PER ATTEMPT (QA, 1 Nov 2026): timed from the start
+         * of the whole call, a retried answer's first token included the entire
+         * cut-off first attempt (~30 s) and read as 31–43 s. Ask Bubbles already
+         * times each attempt. Trace-only: nothing about the answer changes.
+         */
+        const attemptStarted = Date.now();
+        // A truncation retry waits for its own first token again.
+        if ((attempts += 1) > 1) watch.attempt();
+        const streamed = { ...params, max_tokens: maxTokens, stream: true as const };
+        const created = await client.messages.create(streamed, options);
+        return collectModelResult(created, attemptStarted, watch);
+      };
+      /*
+       * TRUNCATION_RETRY_ENABLED: an answer cut off at max_tokens is asked once
+       * more with a larger budget, and never shown cut off. See `truncation.ts`.
+       */
+      return truncationRetryEnabled()
+        ? await withTruncationRetry(
+            input.maxTokens,
+            attempt,
+            "Sunny ran out of room before finishing that answer, so it was not shown. Try asking for less at once, or split the question into parts.",
+          )
+        : await attempt(input.maxTokens);
+    });
 
     const noted = {
       model: CLAUDE_MODEL,
@@ -370,6 +401,7 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
     };
     if (response.stopReason === "refusal") {
       noteModelCall({ ...noted, subtype: "refused" });
+      logAiFailure(callName, noted.latencyMs, "refused");
       throw new AiError(
         "refused",
         "Sunny could not answer that question. Try rephrasing it, or ask a manager directly.",
@@ -386,16 +418,36 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
 
     if (!response.text) {
       noteModelCall({ ...noted, subtype: "empty_answer" });
+      logAiFailure(callName, noted.latencyMs, "empty_answer");
       throw new AiError("model_failed", "Sunny returned an empty answer.", 502);
     }
 
     noteModelCall(noted);
     return response.text;
   } catch (error) {
-    if (error instanceof AiError) throw error;
+    /* AI TIME LIMITS: a timeout is on the trace as one; `withAiTimeLimit` already wrote its log line. */
+    if (isAiTimeLimitError(error)) {
+      noteModelCall({
+        model: CLAUDE_MODEL,
+        maxTokens: input.maxTokens,
+        stopReason: null,
+        latencyMs: Date.now() - started,
+        firstTokenMs: null,
+        usage: null,
+        subtype: "timeout",
+      });
+      throw error;
+    }
+    if (error instanceof AiError) {
+      // A truncation or another AiError raised inside the call: on the server log too (status and code only).
+      if (error.code === "truncated") logAiFailure(callName, Date.now() - started, error);
+      throw error;
+    }
     if (error instanceof MissingConfigurationError) {
       throw new AiError("not_configured", error.message, 503, error.missing);
     }
+    /* AI TIME LIMITS: a main-call failure goes to the server log as well as the trace (status and type only). */
+    logAiFailure(callName, Date.now() - started, error);
     // The SDK error can echo the request, which carries confidential grounding
     // text. Only the class name is kept — never the body. The class, status,
     // and subtype are recorded for the trace before this object is discarded.
@@ -443,9 +495,13 @@ export async function callClaudeTool(input: {
     };
   };
   readonly maxTokens: number;
+  /** The call's name in the time-limit and failure log lines. Omitted, the tool's name. */
+  readonly callName?: string;
 }): Promise<unknown> {
   const client = getAnthropicClient();
   const messages = input.messages.filter((message) => message.content.trim() !== "");
+  const callName = input.callName ?? input.tool.name;
+  const started = Date.now();
   try {
     const toolParams = {
       model: input.model,
@@ -469,10 +525,19 @@ export async function callClaudeTool(input: {
         content: message.content,
       })),
     };
-    const options = modelRequestOptions();
-    const response = options
-      ? await client.messages.create(toolParams, options)
-      : await client.messages.create(toolParams);
+    /*
+     * AI TIME LIMITS (QA, 14 Nov 2026): a helper call ends by the helper limit
+     * (30 s), retries included, whatever MODEL_RETRY_ENABLED says. With that
+     * flag on its retry count is kept; off, the SDK's (2).
+     */
+    const flagged = modelRequestOptions();
+    const response = await withAiTimeLimit(callName, helperTimeoutMs(), (timed) =>
+      client.messages.create(toolParams, {
+        signal: timed.signal,
+        timeout: timed.timeout,
+        maxRetries: flagged?.maxRetries ?? timed.maxRetries,
+      }),
+    );
 
     const block = response.content.find((item) => item.type === "tool_use");
     if (!block || block.type !== "tool_use") {
@@ -484,8 +549,14 @@ export async function callClaudeTool(input: {
     }
     return block.input;
   } catch (error) {
-    if (error instanceof AiError) throw error;
+    if (error instanceof AiError) {
+      // A timeout already wrote its line; any other AiError (no tool call came back) is logged here.
+      if (!isAiTimeLimitError(error)) logAiFailure(callName, Date.now() - started, error);
+      throw error;
+    }
     if (error instanceof MissingConfigurationError) throw error;
+    /* AI TIME LIMITS: a helper's failure is on the server log, even where its caller falls back quietly. */
+    logAiFailure(callName, Date.now() - started, error);
     throw modelUnavailable(error);
   }
 }
@@ -503,7 +574,8 @@ export async function callClaudeToolTimed(input: Parameters<typeof callClaudeToo
   const client = getAnthropicClient();
   const messages = input.messages.filter((message) => message.content.trim() !== "");
   try {
-    const response = await client.messages.create(
+    /* AI TIME LIMITS: the reader's own limit, now enforced on the whole call (`time-limit.ts`), still no retry. */
+    const response = await withAiTimeLimit(input.callName ?? "reader", input.timeoutMs, (timed) => client.messages.create(
       {
         model: input.model,
         max_tokens: input.maxTokens,
@@ -523,8 +595,8 @@ export async function callClaudeToolTimed(input: Parameters<typeof callClaudeToo
         tool_choice: { type: "tool" as const, name: input.tool.name },
         messages: messages.map((message) => ({ role: message.role, content: message.content })),
       },
-      { timeout: input.timeoutMs, maxRetries: 0 },
-    );
+      { signal: timed.signal, timeout: input.timeoutMs, maxRetries: 0 },
+    ), { maxRetries: 0 });
     const block = response.content.find((item) => item.type === "tool_use");
     if (!block || block.type !== "tool_use") {
       throw new AiError("model_failed", "Sunny could not reach the language model. No answer was generated.", 502);
