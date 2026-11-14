@@ -4435,6 +4435,17 @@ export function accountChangeRederivesPolicyEnabled(): boolean {
 }
 
 /**
+ * ACCOUNT_REPLACED_CLOSE_SENTENCE_KEPT_ENABLED (Coding-2, 13 Nov 2026; default off; ported from Ask Bubbles, QA's
+ * follow-up to ACCOUNT_CHANGE_REDERIVES_POLICY). With that flag on, an Observation edit counted as a new account unless
+ * each old sentence was still there word for word, so fixing a typo ("the whole shfit" → "the whole shift") or a date
+ * re-derived the policy. On: a sentence with only a typo or a date changed is the same sentence
+ * (`forms/close-sentence.ts`), so such an edit keeps the policy. Off, as before.
+ */
+export function accountReplacedCloseSentenceKeptEnabled(): boolean {
+  return envFlag("ACCOUNT_REPLACED_CLOSE_SENTENCE_KEPT_ENABLED");
+}
+
+/**
  * CA_PROCEDURE_BASIS_ENABLED (Pau via QA, 5 Nov 2026, sf-b6 in the sibling app; default
  * off; same flag in both apps). A Corrective Action for closing a register
  * early and turning away a customer came back with Standards of Conduct

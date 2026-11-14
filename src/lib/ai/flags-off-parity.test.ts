@@ -662,6 +662,8 @@ const NEW_FLAGS = [
   "ACCOUNT_TYPOS_FIXED_ENABLED",
   // coding 2: ON_FILE_LINE_NOT_THE_POLICY (Pau's morning scan, 14 Nov 2026; default off): forced off with the others.
   "ON_FILE_LINE_NOT_THE_POLICY_ENABLED",
+  // coding 2: ACCOUNT_REPLACED_CLOSE_SENTENCE_KEPT (QA, 13 Nov 2026; ported from Ask Bubbles; default off): forced off with the others.
+  "ACCOUNT_REPLACED_CLOSE_SENTENCE_KEPT_ENABLED",
   // coding 2: EXCERPT_EMPTY_CARD_DROP (QA, 11 Nov 2026; default off): forced off with the others.
   "EXCERPT_EMPTY_CARD_DROP_ENABLED",
   // coding 6: REQUEST_ISSUE_KEPT (ported from Ask Bubbles, QA round 17b; default off).

@@ -152,6 +152,12 @@ export interface ReplayCase {
    * production's real flags (QA's Vercel read, 5 Nov 2026).
    */
   fixStatus?: { open: string };
+  /**
+   * Flags turned OFF in this case's fix-flag run only (after production's and FLAG_CLASSIFY_ON's), never in its
+   * production run (QA / Gate-Sunny-2 on #956, 14 Nov 2026): a before-fix recorder keeps recording the old bug when a
+   * later fix is on globally, while its production run follows production.
+   */
+  fixOffFlags?: string[];
   run(context: ReplayContext): Promise<void>;
 }
 
