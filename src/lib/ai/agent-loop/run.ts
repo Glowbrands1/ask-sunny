@@ -47,8 +47,9 @@ import {
  *   steps        AGENT_LOOP_MAX_STEPS, default 6, never more than 10
  *   time         Part 1's stream limits on each step (45 s to its first
  *                token, then 30 s between chunks: a long answer that keeps
- *                streaming is never cut); the whole loop 100 s, under the
- *                route's 120 s
+ *                streaming is never cut); the whole loop 100 s, and never
+ *                past the route's 120 s less 8 s from the request's start
+ *                (`deadlineAwareTotalMs`, Part 1)
  *   limit/error  a clear reply, never an empty one, and a server log line
  *   trace        chat_traces `slots.agent_loop`: each tool call's name, ms and
  *                result size, and each model call's ms, stop reason and
