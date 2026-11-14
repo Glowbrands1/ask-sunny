@@ -4682,6 +4682,17 @@ export function groupWordsNotANameEnabled(): boolean {
 }
 
 /**
+ * A misspelled policy name is still that policy (Code 3, policy reading; QA
+ * item 8, 25 Oct 2026): "attendence", "standerds of conduct", "verbl warning".
+ * One slip (two for a long word) from a word a policy is named by is read as
+ * that word, never changing the first letter or a real word one slip away.
+ * Off, the words are read exactly as typed.
+ */
+export function policyNameTyposEnabled(): boolean {
+  return envFlag("POLICY_NAME_TYPOS_ENABLED");
+}
+
+/**
  * STEP_B_SECTION_SPACING_ENABLED (ported from Ask Bubbles; QA's live draft test, 8 Nov 2026; same flag in both apps;
  * default off). After an edit, the blank lines between Observed / Expectation / Going Forward became single newlines.
  * On: a write of a field that had them keeps one blank line before each section heading (`forms/outline-sections.ts`).
