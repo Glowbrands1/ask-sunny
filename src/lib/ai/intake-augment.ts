@@ -109,7 +109,7 @@ function trigrams(text: string): Set<string> {
   return grams;
 }
 
-function fuzzySalon(text: string): string | null {
+export function fuzzySalon(text: string): string | null {
   const phrases = [...text.matchAll(/(?:\bat|\bin)\s+(?:the\s+)?([a-z0-9][a-z0-9'’.-]*(?:\s+[a-z0-9][a-z0-9'’.-]*){0,3})/gi)];
   const raw = phrases.at(-1)?.[1]?.trim();
   if (!raw) return null;

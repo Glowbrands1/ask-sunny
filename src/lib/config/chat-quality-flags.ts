@@ -4831,3 +4831,14 @@ export function cardAddedFactInObservationEnabled(): boolean {
 export function sharedCityAsksSalonEnabled(): boolean {
   return envFlag("SHARED_CITY_ASKS_SALON_ENABLED");
 }
+
+/**
+ * FUZZY_SALON_ASKS (QA's Sunny 38h live check, 14 Nov 2026; the sibling app's #881 FUZZY_STORE_ASKS, ported as a
+ * mechanism; default off): a salon only a resemblance reader supplied ("at omaha west" read as NE Omaha Pacific by
+ * trigrams, "lincoln" alone as NE Lincoln Pine Lake) is not filed; the reply asks "I read … as … — is that the
+ * salon?", and "yes" files it. A card that names a salon never says "won't name one". See `ai/loose-salon-ask.ts`.
+ * Off, as before.
+ */
+export function fuzzySalonAsksEnabled(): boolean {
+  return envFlag("FUZZY_SALON_ASKS_ENABLED");
+}
