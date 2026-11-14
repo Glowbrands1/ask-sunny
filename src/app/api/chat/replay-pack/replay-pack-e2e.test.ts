@@ -681,7 +681,15 @@ class Thread {
     if (payload.pendingCopy) this.offeredCopy = { fromInstanceId: payload.pendingCopy.fromInstanceId, answer: payload.content };
     if (payload.formProposal) this.proposal = payload.formProposal;
     if (payload.formOpened) this.instanceId = toUuid(payload.formOpened.instanceId);
-    record.turns.push({ question, reply: payload.content ?? "", updated: payload.formUpdate?.updated ?? null });
+    record.turns.push({
+      question,
+      reply: payload.content ?? "",
+      updated: payload.formUpdate?.updated ?? null,
+      // Live loop runs only (AGENT_LOOP_LIVE_ALL): the card, for the outcome report. Absent otherwise, so other records are unchanged.
+      ...(process.env.AGENT_LOOP_LIVE_ALL === "1" && payload.formProposal
+        ? { card: { template: payload.formProposal.templateKey, employee: payload.formProposal.employeeName ?? null, level: payload.formProposal.warningLevel ?? null, payroll: (payload.formProposal as { payrollDeduct?: string | null }).payrollDeduct ?? null, issue: payload.formProposal.issue ?? null } }
+        : {}),
+    });
     return payload;
   }
 
@@ -803,7 +811,7 @@ const CLASSIFY_ON = (process.env.FLAG_CLASSIFY_ON ?? "").split(",").map((name) =
  * live failures with their targeted fixes off.
  */
 const CLASSIFY_OFF = (process.env.FLAG_CLASSIFY_OFF ?? "").split(",").map((name) => name.trim()).filter((name) => name !== "");
-const record: { turns: { question: string; reply: string; updated: string[] | null }[] } = { turns: [] };
+const record: { turns: { question: string; reply: string; updated: string[] | null; card?: Record<string, unknown> }[] } = { turns: [] };
 async function recorded(id: string, mode: string, run: () => Promise<void>) {
   record.turns = [];
   systemPrompts.hashes = [];
