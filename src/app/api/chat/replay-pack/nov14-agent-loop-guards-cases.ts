@@ -1199,6 +1199,36 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
     },
   },
   {
+    id: "nov14-agent-loop-draft-claim-handed-back",
+    title: "code-check #48 (batch D): with a draft open, a reply that claims a change nothing saved is handed back once with what the draft shows; the model makes the edit with edit_form and the reply is its own, true one",
+    report: `${REPORT}; live sample (14 Nov 2026): "the reply says the form changed, and the saved form did not"; Pau 14 Nov: code may refuse or inform, never rewrite`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-13T22:40:00Z"));
+      t.directory([...STAFF, TAMSIN]);
+      t.as("salon_director", KEARNEY);
+      t.loopModel!(loopStandIn((view) => (lastResult(view, "propose_form") ? { text: "Coaching Form for **Tamsin Orwell**. What happened?" } : { tool: "propose_form", input: { template_key: "coaching", employee_id: TAMSIN.id } })));
+      const thread = t.thread();
+      await thread.say("create a coaching form for tamsin orwell");
+      const id = await thread.create();
+      // A model that first claims the edit, then makes it when the app hands its reply back.
+      const fixer = loopStandIn((view) => {
+        const checked = /\[app check\]/.test([...view.turns].reverse().find((turn) => turn.role === "user")?.text ?? "");
+        if (!checked) return { text: "I've added that to the coaching details." };
+        if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { instance_id: id, values: { coaching_details: "Tamsin Orwell skipped the spray booth check this morning." } } };
+        return { text: "Added to the Details of Coaching: Tamsin Orwell skipped the spray booth check this morning." };
+      });
+      t.loopModel!(fixer);
+      const reply = await thread.say("she skipped the spray booth check this morning");
+      expect(fixer.views.some((view) => /\[app check\] Your reply says the draft changed/.test(view.turns.at(-1)?.text ?? "")), "the claim was not handed back").toBe(true);
+      expect(t.values(id).coaching_details ?? "", "the edit was not made").toMatch(/skipped the spray booth check this morning/);
+      expect(reply.content, `the reply is not the model's own:\n${reply.content}`).toMatch(/^Added to the Details of Coaching/);
+      expect(reply.formUpdate?.updated ?? []).toContain("coaching_details");
+    },
+  },
+  {
     id: "nov14-agent-loop-guard-reword-never-changes-the-person",
     title: "\"make it professional\" on a draft with values that change employee_name to another roster person: refused, nothing written (the right person stays a hard guard in batch C)",
     report: `${REPORT}; QA's review of batch C (#999): a reword touching employee_name was written and only reported`,
