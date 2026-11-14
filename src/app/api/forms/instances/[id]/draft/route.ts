@@ -604,9 +604,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
           (group) => group.key === WARNING_TYPE_KEY && group.options.some((option) => WARNING_LEVEL_KEYS.has(option.key)),
         ) ?? null)
       : null;
-    const promptGroups = groups.filter(
-      (group) => !EXIT_DERIVED_KEYS.has(group.key) && group.key !== modelWarningGroup?.key,
-    );
+    const promptGroups = groups.filter((group) => !EXIT_DERIVED_KEYS.has(group.key)).filter((group) => group.key !== modelWarningGroup?.key);
     /*
      * MODEL_WARNING_LEVEL_DISCARDED_ENABLED, AND THE LEVEL THE MANAGER SAID IN THESE TURNS (as Ask Bubbles does): a level
      * stated in the turns the form is drafted from ("5. verbal warning") is the manager's statement, written before the
