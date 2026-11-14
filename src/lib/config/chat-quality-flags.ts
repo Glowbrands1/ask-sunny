@@ -4736,6 +4736,18 @@ export function notFollowingIsViolationEnabled(): boolean {
 }
 
 /**
+ * SPELLING_CLEANUP_ENABLED (ported from Ask Bubbles, coding 5, 13 Nov 2026; default off; Pau via QA; same flag in both
+ * apps). "please make a ca for <name> for not doing th e10 minute sanitaion" put the typo on the form: only coaching
+ * drafts clean up as they write. On: the Corrective Action draft and the chat's form edits (Step B) use the manager's
+ * words and meaning with spelling, spacing and capitals fixed, never a name, date, number or quote changed; a code
+ * check compares those before and after and falls back to the manager's own text when any differ
+ * (`forms/spelling-cleanup.ts`). Off, as before.
+ */
+export function spellingCleanupEnabled(): boolean {
+  return envFlag("SPELLING_CLEANUP_ENABLED");
+}
+
+/**
  * EDIT_SEES_SAVED_FORM_ENABLED (coding 6, 13 Nov 2026; default off; same flag in both apps; Pau's direction via QA). The
  * form edit read the turn once as a patch and the code guessed what was written: an "Updated" that did not match the
  * form, reasons that never landed. On: after the turn's writes on the patch path (`forms/form-patch-turn.ts`), the
@@ -4788,6 +4800,26 @@ export function formDateBusinessTodayEnabled(): boolean {
  */
 export function closeSpellingMatchEnabled(): boolean {
   return envFlag("CLOSE_SPELLING_MATCH_ENABLED");
+}
+
+/**
+ * PLACE_STRIP_WHOLE_PHRASE_ONLY (QA, Gate-Sunny's #933 probes, 13 Nov 2026; default off): the account reader takes a
+ * place out of the Observation only where the whole place phrase ends, so "she was at lincoln high" and "<A> at omaha
+ * west" keep every word. See `ai/remap-incident.ts` withoutPlace. Off, as before.
+ */
+export function placeStripWholePhraseOnlyEnabled(): boolean {
+  return envFlag("PLACE_STRIP_WHOLE_PHRASE_ONLY_ENABLED");
+}
+
+/**
+ * CARD_ADDED_FACT_IN_OBSERVATION_ENABLED (coding 6; QA's Sunny 38f live test, 13 Nov 2026; default off). With
+ * CARD_CHECKED_AGAINST_WORDS on, "she yelled at a guest and she maybe forgot" after a card was noted as "Added to the
+ * Observation of Offense: she yelled at a guest" while the card's Observation held the whole turn, joined with a
+ * space. On, the card's Observation line is the earlier account, then "; " and the added facts, the same as the note.
+ * Off, as before.
+ */
+export function cardAddedFactInObservationEnabled(): boolean {
+  return envFlag("CARD_ADDED_FACT_IN_OBSERVATION_ENABLED");
 }
 
 /**

@@ -138,6 +138,22 @@ export function Rocks({ rocks, onChange, people, today }: { rocks: Rock[]; onCha
   };
   return (
     <div className="flex max-w-3xl flex-col gap-4">
+      {/* The add form comes first, under the section title, so anyone can add a rock without scrolling (owner's request, 13 Nov 2026). */}
+      <div className="rounded-[10px] border border-dashed border-line bg-cream/60 p-3 print:hidden">
+        <div className="mb-2 text-xs font-bold text-muted">Add new rock</div>
+        <div className="flex flex-wrap items-center gap-2">
+          <input aria-label="New rock title" value={title} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} placeholder="Rock title…" className={cx(inputClass, "min-w-[220px] flex-1")} />
+          <select aria-label="New rock owner" value={owner} onChange={(e) => setOwner(e.target.value)} className={cx(inputClass, "w-48")}>
+            {owners.map((o) => (
+              <option key={o}>{o}</option>
+            ))}
+          </select>
+          <input type="date" aria-label="New rock due date" value={due} onChange={(e) => setDue(e.target.value)} className={cx(inputClass, "w-40")} />
+          <Button variant="primary" disabled={!title.trim()} onClick={add}>
+            Add rock
+          </Button>
+        </div>
+      </div>
       {rockSections(rocks, people, showArchived).map(([who, list]) => (
         <section key={who} aria-label={who === "Company" ? "Company Rocks" : `${who}'s Rocks`} className="overflow-hidden rounded-[10px] border border-line bg-white shadow-card">
           <div className="flex items-baseline gap-2 border-b border-line bg-cream px-3 py-2">
@@ -147,7 +163,7 @@ export function Rocks({ rocks, onChange, people, today }: { rocks: Rock[]; onCha
             </span>
           </div>
           {list.length === 0 ? (
-            <div className="px-3 py-3 text-sm text-muted">{who === "Company" ? "No company rocks yet. Add one below with owner “Company”." : `No rocks for ${who} yet. Add one below, or duplicate a company rock here.`}</div>
+            <div className="px-3 py-3 text-sm text-muted">{who === "Company" ? "No company rocks yet. Add one above with owner “Company”." : `No rocks for ${who} yet. Add one above, or duplicate a company rock here.`}</div>
           ) : (
             list.map((r) => (
               <RockCard
@@ -168,21 +184,6 @@ export function Rocks({ rocks, onChange, people, today }: { rocks: Rock[]; onCha
           {showArchived ? "Hide" : "Show"} archived ({archivedCount})
         </Button>
       )}
-      <div className="rounded-[10px] border border-dashed border-line bg-cream/60 p-3 print:hidden">
-        <div className="mb-2 text-xs font-bold text-muted">Add new rock</div>
-        <div className="flex flex-wrap items-center gap-2">
-          <input aria-label="New rock title" value={title} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} placeholder="Rock title…" className={cx(inputClass, "min-w-[220px] flex-1")} />
-          <select aria-label="New rock owner" value={owner} onChange={(e) => setOwner(e.target.value)} className={cx(inputClass, "w-48")}>
-            {owners.map((o) => (
-              <option key={o}>{o}</option>
-            ))}
-          </select>
-          <input type="date" aria-label="New rock due date" value={due} onChange={(e) => setDue(e.target.value)} className={cx(inputClass, "w-40")} />
-          <Button variant="primary" disabled={!title.trim()} onClick={add}>
-            Add rock
-          </Button>
-        </div>
-      </div>
     </div>
   );
 }

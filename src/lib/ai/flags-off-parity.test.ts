@@ -187,6 +187,8 @@ import { privateCreatorFormsEnabled, privateCreatorsActive } from "@/lib/forms/p
 const NEW_FLAGS = [
   // coding 4: REASON_PLACE_NOT_STORE (ported from the sibling app, Gate-Bubbles-3, 13 Nov 2026; default off).
   "REASON_PLACE_NOT_STORE_ENABLED",
+  // coding 4: PLACE_STRIP_WHOLE_PHRASE_ONLY (QA, Gate-Sunny #933 probes, 13 Nov 2026; default off).
+  "PLACE_STRIP_WHOLE_PHRASE_ONLY_ENABLED",
   // coding 4: SHARED_CITY_ASKS_SALON (QA, Sunny 38c live, 13 Nov 2026; default off).
   "SHARED_CITY_ASKS_SALON_ENABLED",
   // coding 2: OFF_ROSTER_PLACE_ANSWER (QA's Sunny 37b live bug, 12 Nov 2026; default off).
@@ -425,6 +427,8 @@ const NEW_FLAGS = [
   "COACHING_OBSERVED_SAVED_ENABLED",
   // coding 6: APP_INSTRUCTIONS_NOT_ACCOUNT (default off): forced off with the others.
   "APP_INSTRUCTIONS_NOT_ACCOUNT_ENABLED",
+  // coding 5: SPELLING_CLEANUP (default off; Pau via QA, 13 Nov 2026): forced off with the others.
+  "SPELLING_CLEANUP_ENABLED",
   // coding 6: FAILURE_TO_OPEN_IS_LATE_OPENING (default off): forced off with the others.
   "FAILURE_TO_OPEN_IS_LATE_OPENING_ENABLED",
   // coding 6: TERMINATION_STATED_TICKS (default off): forced off with the others.
