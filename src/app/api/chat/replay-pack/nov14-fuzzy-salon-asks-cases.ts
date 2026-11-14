@@ -178,3 +178,62 @@ export const NOV14_FUZZY_SALON_ASKS_GUARDS: ReplayCase[] = NAMED.map((wording) =
     expect(reply).not.toMatch(/is that the salon\?/);
   },
 }));
+
+/**
+ * A salon named in answer to the salon question is filed, not asked again (Gate-Sunny, #977 gate, 14 Nov 2026): the
+ * priority replay's g7 ("Dodge") on production salons. Gate-Sunny's case; invented person, off-roster.
+ */
+const ANSWERS = [
+  { key: "27th-street", answer: "27th street", salon: "loc-0310" },
+  { key: "o-street", answer: "o street", salon: "loc-0311" },
+  { key: "pine-lake", answer: "pine lake", salon: "loc-0312" }, // guard: already fine
+];
+export const NOV14_FUZZY_SALON_ASKS_ANSWER_CASES: ReplayCase[] = ANSWERS.map((w) => ({
+  id: `nov14-fuzzy-salon-asks-answer-${w.key}`,
+  title: `DM: "create a coaching form for kira dunmore", then "${w.answer}" — filed, not asked again`,
+  report: "Gate-Sunny's #977 gate (14 Nov 2026), priority-replay g7 on production salons; invented person",
+  // Guards, not open cases: with the flag off the answer is filed (production today); with the flag on it was asked
+  // again before this fix (Gate-Sunny's probe: 27th street and o street failed, pine lake passed).
+  status: "fixed",
+  fixFlags: ["FUZZY_SALON_ASKS_ENABLED"],
+  async run(t: ReplayContext) {
+    vi.setSystemTime(new Date("2026-11-14T15:00:00Z"));
+    t.directory([...STAFF]);
+    t.as("district_manager", { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] });
+    const thread = t.thread();
+    await thread.say("create a coaching form for kira dunmore");
+    const { content } = await thread.say(w.answer);
+    const p = thread.proposal as { locationId?: string | null } | null;
+    expect(p?.locationId ?? null, `the salon answer was not filed:\n${content}`).toBe(w.salon);
+    expect(content, `the salon was asked again:\n${content}`).not.toMatch(/is that the salon\?/);
+  },
+}));
+
+/**
+ * The priority replay's s5 with the flag on (Gate-Sunny, #977 gate): "works at lawrence as a tanning consultant. use
+ * todays date" was read as the longer place "lawrence as a tanning consultant" (and "lawrence. use todays date"), and
+ * the salon was asked about. A full stop and "as" end the place. Invented person, off-roster.
+ */
+const LAWRENCE_REQUEST = "create coaching form for kira dunmore, works at lawrence as a tanning consultant. use todays date";
+export const NOV14_FUZZY_SALON_ASKS_PLACE_ENDS: ReplayCase[] = [
+  [LAWRENCE_REQUEST],
+  // s5's next turn, said after the request.
+  [LAWRENCE_REQUEST, "kira dunmore, tanning consultant at lawrence. use todays date"],
+].map((turns, index) => ({
+  id: `nov14-fuzzy-salon-asks-place-ends-${index + 1}`,
+  title: `DM: ${turns.map((turn) => `"${turn}"`).join(", then ")} — filed at KS Lawrence, not asked`,
+  report: "Gate-Sunny's #977 gate (14 Nov 2026), priority-replay s5 with the flag on; invented person",
+  status: "fixed",
+  fixFlags: ["FUZZY_SALON_ASKS_ENABLED"],
+  async run(t: ReplayContext) {
+    vi.setSystemTime(new Date("2026-11-14T15:00:00Z"));
+    t.directory([...STAFF]);
+    t.as("district_manager", { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] });
+    const thread = t.thread();
+    let content = "";
+    for (const turn of turns) content = (await thread.say(turn)).content;
+    const p = thread.proposal as { locationId?: string | null } | null;
+    expect(p?.locationId ?? null, `the salon was not filed:\n${content}`).toBe("loc-0468");
+    expect(content, `the salon was asked about:\n${content}`).not.toMatch(/is that the salon\?/);
+  },
+}));

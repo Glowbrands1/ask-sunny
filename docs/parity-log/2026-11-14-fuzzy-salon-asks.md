@@ -12,3 +12,10 @@ stores are named by city, and a guess lands only where the city has a single sto
 files ("at bellevue high" → Bellevue, NE). A city two stores share gives no guess ("at sioux falls west" → none,
 probed on Ask Bubbles 6d6b5d42). There is no multi-word store name whose one long word could stand for it, so neither
 failure happens there. Close spellings are already asked by #881.
+
+**Gate-Sunny's #977 gate (14 Nov 2026).** With the flag on, a salon named in answer to the salon question ("27th
+street", "o street", "Dodge") was asked about again, and "works at lawrence as a tanning consultant. use todays date"
+was read as a longer place. An answer to the app's own salon question, in words of the resolved salon's name, now
+files it; "as", "to", "from", "who", "where" and a full stop end a place phrase. Sibling app: not needed. Bubbles'
+FUZZY_STORE_ASKS asks only about a spelling more than one letter off (`forms/location-scope.ts`), has no longer-place
+reading, and `forms/store-confirmation.ts` already files an answer to its store question.

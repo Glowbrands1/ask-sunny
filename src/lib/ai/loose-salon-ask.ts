@@ -82,6 +82,9 @@ export function askLooseSalon(
   // isn't on your assignment"). That reply is left as it is, honest without this pass.
   if (!covers(input.scope, salonId)) return response;
   if (ownSalon(proposal, input.people ?? [], salonId) || onlySalon(input.scope, salonId)) return agreeing(response);
+  // Gate-Sunny's #977 gate: the manager's answer to our own salon question, in words from the salon's name ("27th street",
+  // "o street", "dodge"), is that salon: it is filed, never asked about again.
+  if (answersSalonQuestion(input.history, answer, salonId)) return agreeing(response);
   // A city inside a longer place ("at kearney high", "at the kearney mall", "at omaha west") is not the salon named.
   const longer = longerPlaces(said, salonId);
   const bare = longer.reduce((text, phrase) => text.split(phrase.text).join(" ".repeat(phrase.text.length)), said);
@@ -118,7 +121,9 @@ function onlyThisQuestion(content: string): string {
 /** Words of a salon's name, its city, a salon number, or a word saying it is a salon: not a longer place's words. */
 const SALON_WORD = /^(?:the|salon|location|store|sun|tan|city|stc|[a-z]{2}|\d+)$/;
 const PLACE_PHRASE =
-  /\b(?:at|in)\s+((?:the\s+)?[a-z0-9][a-z0-9'’.-]*(?:\s+[a-z0-9][a-z0-9'’.-]*){0,4}?)(?=\s*(?:[,.;:!?()\n]|$)|\s+(?:on|and|but|she|he|they|for|because|was|were|is|today|yesterday|this|last|with|by|after|before|during|when|while|of|at|in)\b)/gi;
+  // A full stop ends the phrase ("at lawrence. use todays date"), and "as", "to", "from", "who", "where" do too ("at
+  // lawrence as a tanning consultant"): the priority replay's s5 with the flag on (Gate-Sunny, #977 gate).
+  /\b(?:at|in)\s+((?:the\s+)?[a-z0-9][a-z0-9'’-]*(?:\s+[a-z0-9][a-z0-9'’-]*){0,4}?)(?=\s*(?:[,.;:!?()\n]|$)|\s+(?:on|and|but|she|he|they|for|because|was|were|is|today|yesterday|this|last|with|by|after|before|during|when|while|of|at|in|as|to|from|who|where)\b)/gi;
 
 /**
  * The "at/in …" phrases that hold one of this salon's words and also a word that is not one ("kearney high", "the
@@ -236,6 +241,27 @@ function partialName(said: string): string | null {
     return words.includes(name) || name.split(/\s+/).filter((word) => word.length >= 5).every((word) => words.includes(word));
   });
   return hits.length === 1 ? hits[0]!.id : null;
+}
+
+const SALON_QUESTION = /Which salon is this about\?|— is that the salon\? Say yes, or tell me the salon\./;
+const ANSWER_FILLER = new Set(["the", "at", "in", "it", "its", "it's", "salon", "one", "is", "location", "store"]);
+const nameWords = (text: string) =>
+  text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => (word === "st" ? "street" : word === "ave" ? "avenue" : word === "rd" ? "road" : word));
+
+/** Whether `answer` answers the last reply's salon question with words that are all in this salon's name. */
+function answersSalonQuestion(history: readonly ChatMessage[], answer: string, salonId: string): boolean {
+  const last = [...history].reverse().find((turn) => turn.role === "assistant");
+  if (!last || !SALON_QUESTION.test(last.content)) return false;
+  const name = PRODUCTION_SALONS.find((entry) => entry.id === salonId)?.name;
+  if (!name) return false;
+  const words = nameWords(answer).filter((word) => !ANSWER_FILLER.has(word));
+  const salonWords = new Set(nameWords(name));
+  return words.length > 0 && words.length <= 4 && words.every((word) => salonWords.has(word));
 }
 
 function lastConfirm(history: readonly ChatMessage[]): { salonId: string } | null {
