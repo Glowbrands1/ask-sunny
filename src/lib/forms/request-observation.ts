@@ -1,6 +1,7 @@
 import { caReasonDueToEnabled, caSalesPolicyEnabled } from "@/lib/config/chat-quality-flags";
 
 import { asksForTheForm, requestIssueClause, withoutFormRequestLead } from "./draft-never-blank";
+import { opensWithLevelLedRequest, withoutLevelLedRequestLead } from "./level-led-lead";
 
 /**
  * ============================================================================
@@ -26,7 +27,7 @@ import { asksForTheForm, requestIssueClause, withoutFormRequestLead } from "./dr
 function reasonOf(sentence: string, employeeName: string | null): string | null {
   const issue = requestIssueClause(sentence, employeeName);
   if (issue || !caReasonDueToEnabled()) return issue;
-  const rest = withoutFormRequestLead(sentence).trim();
+  const rest = withoutLevelLedRequestLead(withoutFormRequestLead(sentence)).trim();
   return rest && rest !== sentence.trim() && !asksForTheForm(rest) ? rest : null;
 }
 
@@ -44,7 +45,8 @@ export function withoutRequestInObservation(
   const label = LABEL.exec(value)?.[1] ?? "";
   const body = value.slice(label.length);
   const first = /^[^\n]*?(?:[.!?](?=\s|$)|$)/m.exec(body)?.[0] ?? "";
-  if (!first.trim() || !asksForTheForm(first)) return null;
+  // LEVEL_LEADS_REQUEST_ENABLED: "second verbal for <A>, she was late …" asks for the form too (`level-led-lead.ts`).
+  if (!first.trim() || !(asksForTheForm(first) || opensWithLevelLedRequest(first))) return null;
   const issue = reasonOf(first, employeeName);
   if (!issue) return null;
   const sentence = `${issue.charAt(0).toUpperCase()}${issue.slice(1)}${/[.!?]$/.test(issue) ? "" : "."}`;

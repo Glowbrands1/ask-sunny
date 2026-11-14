@@ -1,4 +1,5 @@
 import { PRODUCTION_SALONS, salonById } from "@/data/salons";
+import { withoutLevelLedRequestLead } from "@/lib/forms/level-led-lead";
 import { isPolicyCorrection } from "./policy-correction-turn";
 import { observationAccount } from "@/lib/forms/ca-policy";
 import { ownPersonAccount } from "./observation-own-person";
@@ -778,7 +779,8 @@ function withObservation(content: string, turns: readonly string[], employeeName
     for (const part of read.text.split(/\n+|(?<=[.!?])\s+/)) {
       // LEVEL_STEP_NOT_ACCOUNT_ENABLED: "this should be a written and note a verbal ca was given on 9-1-26" says nothing that happened.
       // PAYROLL_CLAUSE_NOT_ACCOUNT_ENABLED: "$20 payroll deduct applies" and "Payroll deduction amount: $20." are the payroll answer.
-      const said = withoutPayrollClauses((levelStepNotAccountEnabled() ? withoutLevelAndStepClauses(part) : part).trim());
+      // LEVEL_LEADS_REQUEST_ENABLED: "second verbal for <A>," is the request, not the account (`forms/level-led-lead.ts`).
+      const said = withoutLevelLedRequestLead(withoutPayrollClauses((levelStepNotAccountEnabled() ? withoutLevelAndStepClauses(part) : part).trim()));
       if (said.length < 12) continue;
       // POLICY_CORRECTION_NOT_ACCOUNT_ENABLED: "it should be under performance not standard of conduct" is about the form.
       if (isPolicyCorrection(said)) continue;
