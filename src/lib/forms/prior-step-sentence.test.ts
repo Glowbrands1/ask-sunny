@@ -80,6 +80,9 @@ describe(`${FLAG} off: as main`, () => {
   beforeEach(() => {
     saved.set("HISTORY_LEVEL_NOT_THIS_FORM_ENABLED", process.env.HISTORY_LEVEL_NOT_THIS_FORM_ENABLED);
     delete process.env.HISTORY_LEVEL_NOT_THIS_FORM_ENABLED;
+    // …and HISTORY_LEVEL_ROWS off (QA's follow-ups, 14 Nov 2026): "a verbal ca was given on 9-1-26" is a row with it on.
+    saved.set("HISTORY_LEVEL_ROWS_ENABLED", process.env.HISTORY_LEVEL_ROWS_ENABLED);
+    delete process.env.HISTORY_LEVEL_ROWS_ENABLED;
   });
 
   it.each([[P3], [MA]])("no row", (turns) => {

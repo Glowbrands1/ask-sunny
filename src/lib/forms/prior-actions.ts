@@ -1,6 +1,7 @@
 import {
   futurePriorRowDropEnabled,
   historyLevelNotThisFormEnabled,
+  historyLevelRowsEnabled,
   priorActionsNoSignedEnabled,
   priorActionsParseEnabled,
   priorRowNotOnIncidentDateEnabled,
@@ -10,7 +11,7 @@ import {
 } from "@/lib/config/chat-quality-flags";
 
 import { statesFirstOccurrence } from "./corrective-action-intake";
-import { historyWarningLevels } from "./warning-level";
+import { historyWarningLevels, statedWarningLevel } from "./warning-level";
 import { correctedDates, datesInText, managerDatesForDraft, priorSteps } from "./form-date-answer";
 import { incidentDates } from "./incident-dates";
 import { priorSentenceFixFor } from "./prior-sentence-scope";
@@ -215,7 +216,34 @@ function stepTopic(topic: string | undefined): string {
  */
 export function statedPriorActions(notes: string, today: string): string[] {
   const lines = stepsSaid(notes, today).map(managerStepLine);
-  return [...lines, ...undatedListSteps(notes, today, lines)];
+  const all = [...lines, ...undatedListSteps(notes, today, lines)];
+  // HISTORY_LEVEL_ROWS_ENABLED: an identical row is listed once.
+  return historyLevelRowsEnabled() ? [...new Set(all)] : all;
+}
+
+/*
+ * HISTORY_LEVEL_ROWS_ENABLED (QA's follow-ups, 14 Nov 2026). "her first verbal was 9/21", "the written was on 10/15": a
+ * level named and then dated with "was (on)" is a step on file, its row the level's. A level dated on the incident's own
+ * day, when it is the level this form states, is this form's — never a Prior row as well.
+ */
+const LEVEL_WAS_DATED =
+  /\b(verbal|written)(?:\s+(?:warning|ca|c\/a|corrective\s+action|write[- ]?up))?\s+(?:was|were)\s+(?:(?:given|issued|signed)\s+)?(?:on\s+|dated\s+)?(?:the\s+)?/gi;
+
+function levelWasDatedSteps(notes: string, today: string): { iso: string; named: string }[] {
+  const steps: { iso: string; named: string }[] = [];
+  for (const match of (notes ?? "").matchAll(LEVEL_WAS_DATED)) {
+    const at = match.index + match[0].length;
+    const dated = [...datesInText(notes.slice(at, at + 16), today), ...dotDates(notes.slice(at, at + 16), today)].find((found) => found.index === 0);
+    if (!dated || dated.iso > today) continue;
+    steps.push({ iso: dated.iso, named: `${match[1]!.toLowerCase()} warning` });
+  }
+  return steps;
+}
+
+/** The level a step names ("verbal warning", "Verbal corrective action"), or null for coaching and the rest. */
+function stepLevel(named: string): "verbal" | "written" | null {
+  const level = /\b(verbal|written)\b/i.exec(named)?.[1]?.toLowerCase();
+  return level === "verbal" || level === "written" ? level : null;
 }
 
 /*
@@ -281,6 +309,18 @@ function sentenceSteps(notes: string, today: string): { iso: string; named: stri
   return steps;
 }
 
+/** HISTORY_LEVEL_ROWS_ENABLED: the steps less the level this form states, when it is named once (dated on the incident's day). */
+function withoutThisFormsLevel<T extends { iso: string; named: string }>(steps: readonly T[], notes: string, today: string): T[] {
+  const level = statedWarningLevel(notes, { today });
+  if (!level) return [...steps];
+  // Named once in the turn, the level this form states and the row are the same words. Or the row's date is the
+  // incident's: the latest day the turn gives, said more than once ("late on 11/12/26, verbal warning 11/12/26").
+  const once = (notes.match(new RegExp(String.raw`\b${level}\b`, "gi")) ?? []).length === 1;
+  const days = datesInText(notes, today).map((found) => found.iso);
+  const incidentDay = (iso: string) => days.filter((day) => day === iso).length >= 2 && days.every((day) => day <= iso);
+  return steps.filter((step) => !(stepLevel(step.named) === level && (once || incidentDay(step.iso))));
+}
+
 /** The steps the manager dated: `priorSteps`, and with PRIOR_STEP_SENTENCE_ENABLED a step told in a sentence. */
 function stepsSaid(notes: string, today: string): { iso: string; named: string; topic?: string; about?: string }[] {
   const steps = priorSteps(notes, today);
@@ -290,9 +330,10 @@ function stepsSaid(notes: string, today: string): { iso: string; named: string; 
    * HISTORY_LEVEL_NOT_THIS_FORM_ENABLED (F2, QA 14 Nov 2026): "verbal warning on 9/21. late again … today" — the level on
    * file by its own date goes under Prior actions with that date, as "she had a verbal on 10/30" already does.
    */
-  const told = historyLevelNotThisFormEnabled()
+  const history = historyLevelNotThisFormEnabled()
     ? [...sentences, ...historyWarningLevels(notes, today).filter((step) => step.iso && !have.has(step.iso) && have.add(step.iso))]
     : sentences;
+  const told = historyLevelRowsEnabled() ? withoutThisFormsLevel([...history, ...levelWasDatedSteps(notes, today).filter((step) => !have.has(step.iso) && have.add(step.iso))], notes, today) : history;
   // PRIOR_STEP_DATE_LIST_ENABLED: "coaching on 9/8/2026, 9/15/2026 and 9/25/2026" is a row per date.
   if (!priorStepDateListEnabled()) return told;
   return [...told, ...dateListSteps(notes, today).dated.filter((step) => !have.has(step.iso) && have.add(step.iso))];

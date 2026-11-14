@@ -668,6 +668,8 @@ const NEW_FLAGS = [
   "SAME_NAME_ASKS_WHICH_ENABLED",
   // coding 5: HISTORY_LEVEL_NOT_THIS_FORM (QA, 14 Nov 2026; #970; default off).
   "HISTORY_LEVEL_NOT_THIS_FORM_ENABLED",
+  // coding 5: HISTORY_LEVEL_ROWS (QA's follow-ups to #970 / Ask Bubbles #898, 14 Nov 2026; default off).
+  "HISTORY_LEVEL_ROWS_ENABLED",
 ] as const;
 
 const PROTECTED = [
