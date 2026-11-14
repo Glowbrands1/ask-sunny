@@ -11,7 +11,7 @@ import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
 import { readDirectoryRoster, readScopedRoster, type DirectoryRosterRow } from "@/lib/forms/employee-roster";
 import { inlineDraftVariantKey, supportsInlineDraft } from "@/lib/forms/inline-draft";
 import { authorizeInstance, InstanceNotVisibleError, instanceListFilterFor, visibleInstances } from "@/lib/forms/instance-scope";
-import { applyAssistantRevision, listInstances } from "@/lib/forms/instances";
+import { applyAssistantRevision, deleteInstance, listInstances } from "@/lib/forms/instances";
 import {
   currentManualScopeEnabled,
   formEditPlainWordsEnabled,
@@ -1284,8 +1284,24 @@ export async function editForm(
     if (loaded.instance.status === "finalized") {
       const { openEditableDraft, formOpenedFor } = await import("@/lib/forms/editable-draft");
       const draft = await openEditableDraft(context.request, id, { revise: true, reason: context.question.slice(0, 500) });
+      const openedBefore = effects.formOpened ?? null;
       effects.formOpened = formOpenedFor(draft);
       const revisedEdit = await editForm({ ...context, openFormId: draft.instanceId }, effects, { instance_id: draft.instanceId, values: input.values });
+      /*
+       * F3 (QA, batch F): A REFUSED EDIT LEAVES NO EMPTY REVISION. When the edit on the new draft is refused (an
+       * unstated level or payroll, a reword that changes the person, an unknown field…), the revision this call opened
+       * is deleted again (a draft, holding only the carried values; opening it wrote nothing on the original), and the
+       * screen opens nothing. A revision that was already open before this call is never deleted.
+       */
+      if ("error" in revisedEdit && draft.opened) {
+        try {
+          await deleteInstance(draft.instanceId);
+        } catch {
+          // Left as a draft; the error below still says nothing was written.
+        }
+        effects.formOpened = openedBefore;
+        return { ...revisedEdit, original_unchanged: true, note: "Nothing was written and no new draft was opened. Say what was refused and why." };
+      }
       return { ...revisedEdit, revision_draft: { form: draft.templateName, employee: draft.employeeName }, original_unchanged: true, note: "Say it is a new draft revising the finalized form, as the rules book's Editing lines teach." };
     }
     /*
