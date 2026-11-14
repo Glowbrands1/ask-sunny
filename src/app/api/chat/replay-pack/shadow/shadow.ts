@@ -46,6 +46,8 @@ export interface ShadowConversation {
   readonly rating: number | null;
   /** Optional: the conversation's own time (ISO), so "today" and relative dates read as they did. Absent, the pack's clock. */
   readonly at?: string;
+  /** Optional (QA): what production answered then, for the loop-vs-today metrics — its replies and the turn (1-based) its first ready card came, or null. */
+  readonly today?: { readonly replies: readonly string[]; readonly readyAt: number | null; readonly cards?: readonly (Record<string, unknown> | null)[] } | null;
 }
 
 /** The shared roster (`SHADOW_ROSTER`, QA 14 Nov 2026): a JSON array of roster rows, as a line's "roster". */
@@ -109,6 +111,8 @@ export interface ShadowRecord {
   readonly truth: Record<string, unknown> | null;
   readonly rating: number | null;
   readonly roster: string[];
+  /** The input's "today" (production's replies then), passed through for summary.py. */
+  readonly today: ShadowConversation["today"] | null;
 }
 
 function cardOf(proposal: Record<string, unknown> | undefined, reply: string): Record<string, unknown> | null {
@@ -121,6 +125,8 @@ function cardOf(proposal: Record<string, unknown> | undefined, reply: string): R
     payroll: proposal.payrollDeduct ?? null,
     policy: replyLine(reply, "Policy"),
     observation: replyLine(reply, "Observation of Offense") ?? (proposal.issue as string | null | undefined) ?? replyLine(reply, "Issue"),
+    /* A ready card (QA): one the manager can create from chat, for a named employee. */
+    ready: Boolean(proposal.supportsInlineDraft) && Boolean(proposal.employeeName),
   };
 }
 
@@ -196,6 +202,7 @@ export function shadowCases(input: string, out: string | undefined, limit?: numb
           truth: conversation.truth ?? null,
           rating: conversation.rating ?? null,
           roster: conversation.roster.map((row) => `${row.firstName} ${row.lastName}`),
+          today: conversation.today ?? null,
         };
         appendFileSync(out, `${JSON.stringify(record)}\n`);
       }

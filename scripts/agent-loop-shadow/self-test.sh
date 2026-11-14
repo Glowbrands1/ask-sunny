@@ -30,5 +30,19 @@ for conv in ("selftest-ca", "selftest-coaching"):
     assert row["guards"] == [], row
     assert row["loop"] and row["loop"]["model_calls"] > 0, row
 assert rows["selftest-off-roster"]["fields"] is None and not rows["selftest-off-roster"]["card"], rows["selftest-off-roster"]
+# Turns to a ready card, questions, continuity breaks: loop vs the input's "today" (QA).
+ca = rows["selftest-ca"]["flow"]
+assert ca["loop"]["ready_at"] == 1 and ca["today"]["ready_at"] == 2, ca
+assert ca["today"]["questions"] == 3 and ca["today"]["asking_replies"] == 2, ca
+# The stand-in answers turn 2 with no card (a), and today asked payroll again after "no payroll deduct" (c).
+assert [kind for _, kind in ca["loop"]["breaks"]] == ["a: card dropped"], ca
+assert [kind for _, kind in ca["today"]["breaks"]] == ["c: asked again (payroll)"], ca
+from summary import breaks
+card = lambda template, employee: {"template": template, "employee": employee}
+roster = ["Odalys Brackwen", "Isolde Farrant"]
+assert breaks(["ca for Odalys Brackwen", "written"], ["", ""], [card("dpoa", "Odalys Brackwen"), card("dpoa", "Isolde Farrant")], roster) == [(2, "d: short answer made a new card")]
+assert breaks(["ca for Odalys Brackwen", "she was late again on the 3rd"], ["", ""], [card("dpoa", "Odalys Brackwen"), card("coaching", "Odalys Brackwen")], roster) == [(2, "b: form or person changed unasked")]
+assert breaks(["ca for Odalys Brackwen", "now a ca for Isolde Farrant too"], ["", ""], [card("dpoa", "Odalys Brackwen"), card("dpoa", "Isolde Farrant")], roster) == []
+assert breaks(["ca for Odalys Brackwen", "cancel that"], ["", ""], [card("dpoa", "Odalys Brackwen"), None], roster) == []
 print("self-test OK")
 PY

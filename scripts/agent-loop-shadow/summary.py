@@ -117,6 +117,150 @@ def guards(record):
     return sorted(set(flags))
 
 
+# ---------------------------------------------------------------- questions, readiness, continuity (QA, 14 Nov 2026)
+
+QUESTION = re.compile(r"[^.!?\n]*\?")
+TOPICS = {
+    "who": re.compile(r"\bwho\b|which (?:employee|person|team member)|(?:their|the employee'?s) (?:full )?name|did you mean\b.*\b(?:1\.|or)\b", re.I),
+    "what happened": re.compile(r"what happened|what did (?:she|he|they)|describe|tell me (?:more|what)", re.I),
+    "date": re.compile(r"\b(?:what|which) (?:date|day)\b|\bwhen did\b|\bwhat date\b", re.I),
+    "policy": re.compile(r"\b(?:which|what) policy\b|policy (?:applies|fits)", re.I),
+    "payroll": re.compile(r"payroll", re.I),
+    "level": re.compile(r"verbal (?:warning\*?\*? )?or (?:a )?\**written|warning level|\blevel\b", re.I),
+}
+CANCEL = re.compile(r"\b(?:cancel|never ?mind|forget (?:it|that)|scrap|stop|don'?t (?:make|create|need)|no (?:form|ca|need))\b", re.I)
+NEW_FORM = re.compile(r"\b(?:new|another|different|second|separate|instead|also|switch|change it to|make it a)\b", re.I)
+
+
+TAIL = re.compile(r"^(?:yes or no|yes/no|or no|or not)\?$", re.I)
+
+
+def questions(reply):
+    """The question sentences a reply asks the manager ("Yes or No?" after a question is part of it)."""
+    found = [match.group(0).strip() for match in QUESTION.finditer(reply or "")]
+    return [question for question in found if question and not TAIL.match(question)]
+
+
+def topics(reply):
+    asked = " ".join(questions(reply))
+    return {name for name, pattern in TOPICS.items() if pattern.search(asked)}
+
+
+def first_ready(cards):
+    """The 1-based turn of the first ready card, or None."""
+    return next((index + 1 for index, card in enumerate(cards) if card and card.get("ready")), None)
+
+
+def names_person(text, roster, employee):
+    """The turn names a roster person other than the card's employee."""
+    lowered = norm(text)
+    current = norm(employee)
+    return any(name and name != current and (name in lowered or name.split(" ")[0] in lowered.split()) for name in (norm(n) for n in roster))
+
+
+def short_answer(text):
+    words = norm(text).split()
+    return 0 < len(words) <= 4
+
+
+def breaks(turns, replies, cards, roster):
+    """Continuity breaks (a)-(d), as (turn, kind) pairs. `cards` may be None (today without cards): (a), (b), (d) are skipped."""
+    found = []
+    asked = {}
+    open_card = None
+    for index, said in enumerate(turns):
+        reply = replies[index] if index < len(replies) else ""
+        card = cards[index] if cards is not None and index < len(cards) else None
+        if cards is not None:
+            if open_card and not card and not CANCEL.search(said):
+                found.append((index + 1, "a: card dropped"))
+            if open_card and card and (card.get("template") != open_card.get("template") or norm(card.get("employee")) != norm(open_card.get("employee"))):
+                if short_answer(said):
+                    found.append((index + 1, "d: short answer made a new card"))
+                elif not NEW_FORM.search(said) and not names_person(said, roster, open_card.get("employee")):
+                    found.append((index + 1, "b: form or person changed unasked"))
+            if card:
+                open_card = card
+            elif CANCEL.search(said):
+                open_card = None
+        for topic in topics(reply):
+            if topic in asked and asked[topic] < index:
+                found.append((index + 1, f"c: asked again ({topic})"))
+            asked.setdefault(topic, index)
+    return found
+
+
+def flow(record):
+    """Per conversation: ready turn, questions, breaks, for the loop and (when given) today."""
+    turns = [turn["question"] for turn in record["turns"]]
+    loop_replies = [turn["reply"] for turn in record["turns"]]
+    loop_cards = [turn.get("card") for turn in record["turns"]]
+    roster = record.get("roster", [])
+    result = {
+        "loop": {
+            "ready_at": first_ready(loop_cards),
+            "questions": sum(len(questions(reply)) for reply in loop_replies),
+            "asking_replies": sum(bool(questions(reply)) for reply in loop_replies),
+            "breaks": breaks(turns, loop_replies, loop_cards, roster),
+        }
+    }
+    today = record.get("today")
+    if today:
+        today_replies = list(today.get("replies") or [])
+        today_cards = today.get("cards")
+        result["today"] = {
+            "ready_at": today.get("readyAt"),
+            "questions": sum(len(questions(reply)) for reply in today_replies),
+            "asking_replies": sum(bool(questions(reply)) for reply in today_replies),
+            "breaks": breaks(turns, today_replies, list(today_cards) if today_cards is not None else None, roster),
+            "cards_given": today_cards is not None,
+        }
+    return result
+
+
+def mean(values):
+    values = [value for value in values if value is not None]
+    return sum(values) / len(values) if values else None
+
+
+def fmt(value, digits=2):
+    return "-" if value is None else f"{value:.{digits}f}"
+
+
+def report_flow(rows, with_truth):
+    """Turns to the first ready card (conversations with a truth), questions per conversation, continuity breaks: loop vs today."""
+    sides = ("loop", "today")
+    print("turns to the first ready card (conversations with a truth; never = no ready card):")
+    for side in sides:
+        have = [row["flow"][side] for row in with_truth if side in row["flow"]]
+        if not have:
+            continue
+        ready = [entry["ready_at"] for entry in have]
+        print(f"  {side:<5} mean {fmt(mean(ready))} over {sum(r is not None for r in ready)}; never {sum(r is None for r in ready)} of {len(have)}")
+    print("questions per conversation (question sentences; replies that ask):")
+    for side in sides:
+        have = [row["flow"][side] for row in rows if side in row["flow"]]
+        if have:
+            print(f"  {side:<5} {fmt(mean([e['questions'] for e in have]))} questions; {fmt(mean([e['asking_replies'] for e in have]))} asking replies; over {len(have)}")
+    print("continuity breaks (a card dropped, b form/person changed unasked, c asked again, d short answer made a new card):")
+    for side in sides:
+        have = [(row["conv"], row["flow"][side]) for row in rows if side in row["flow"]]
+        if not have:
+            continue
+        broken = [(conv, entry["breaks"]) for conv, entry in have if entry["breaks"]]
+        kinds = {}
+        for _, found in broken:
+            for _, kind in found:
+                key = kind.split(":")[0]
+                kinds[key] = kinds.get(key, 0) + 1
+        note = ""
+        if side == "today" and not all(entry.get("cards_given") for _, entry in have):
+            note = " (today without \"cards\": only c is counted)"
+        print(f"  {side:<5} {sum(len(found) for _, found in broken)} breaks in {len(broken)} of {len(have)} conversations {dict(sorted(kinds.items()))}{note}")
+        for conv, found in broken[:30]:
+            print(f"    {conv}: " + "; ".join(f"turn {turn} {kind}" for turn, kind in found))
+
+
 def load(path):
     return [json.loads(line) for line in open(path) if line.strip()]
 
@@ -148,6 +292,7 @@ def main():
             "guards": guards(record),
             "rating": record.get("rating"),
             "loop": loop.get(record["id"]),
+            "flow": flow(record),
         })
 
     if "--json" in sys.argv:
@@ -176,6 +321,8 @@ def main():
     print("guard flags:" + ("" if flagged else " none"))
     for flag, convs in sorted(flagged.items()):
         print(f"  {flag}: {len(convs)} ({', '.join(convs[:10])}{' …' if len(convs) > 10 else ''})")
+
+    report_flow(rows, with_truth)
 
     loops = [row["loop"] for row in rows if row["loop"]]
     turns = sum(entry["turns"] for entry in loops)
