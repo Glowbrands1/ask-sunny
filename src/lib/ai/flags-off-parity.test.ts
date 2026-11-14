@@ -666,6 +666,8 @@ const NEW_FLAGS = [
   "OFF_ROSTER_STORE_ANSWER_ONLY_ENABLED",
   // coding 6: SAME_NAME_ASKS_WHICH (QA, 12 Nov 2026; default off; high priority).
   "SAME_NAME_ASKS_WHICH_ENABLED",
+  // coding 5: MODEL_WARNING_LEVEL_DISCARDED (QA, 14 Nov 2026; #964; default off; flips with #970's HISTORY_LEVEL_NOT_THIS_FORM).
+  "MODEL_WARNING_LEVEL_DISCARDED_ENABLED",
 ] as const;
 
 const PROTECTED = [
