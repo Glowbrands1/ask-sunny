@@ -2572,6 +2572,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         coaching: isCoachingFamily,
         notes,
         employeeName: loaded.instance.employeeName,
+        // COACHING_OBSERVED_HEADING_KEPT_ENABLED: only Details drafted this turn get the heading, never the saved text.
+        saved: Object.fromEntries((loaded.values ?? []).map((row) => [row.fieldKey, row.value ?? ""])),
       }) as typeof draftedPayload.values;
     }
     const kept = draftMergeEnabled()

@@ -4882,3 +4882,15 @@ export function reasonPlaceNotSalonEnabled(): boolean {
 export function otherBesideDescribedEnabled(): boolean {
   return envFlag("OTHER_BESIDE_DESCRIBED_ENABLED");
 }
+
+/**
+ * COACHING_OBSERVED_HEADING_KEPT_ENABLED (coding 6; port of the sibling app's R678 re-land fix, QA, 14 Nov 2026; default
+ * off). With COACHING_OBSERVED_SAVED on (in production since round 20), a Details text the model drafted with a bold or
+ * dash heading ("**Observed:** …", "Observed - …") got a second plain "Observed:" over it. On: such a heading is a
+ * heading, and a Details text that is the form's saved text (carried or kept) is never given one
+ * (`forms/coaching-observed-saved.ts`). Off, as before.
+ */
+export function coachingObservedHeadingKeptEnabled(): boolean {
+  return envFlag("COACHING_OBSERVED_HEADING_KEPT_ENABLED");
+}
+
