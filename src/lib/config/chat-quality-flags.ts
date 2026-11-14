@@ -4833,6 +4833,16 @@ export function sharedCityAsksSalonEnabled(): boolean {
 }
 
 /**
+ * REASON_PLACE_NOT_SALON (ported from the sibling app, Gate-Bubbles-3's #869 probes, 13 Nov 2026; default off): "she
+ * was late because she was at grand island" — where she was is why she was late, not the salon the form is for. With
+ * the flag, a place in a "because <she> was at/in …" clause is not read as a salon: the salon comes from Woven or is
+ * asked. The account keeps the words. See `forms/salon-mention.ts` readSalonMentions. Off, as before.
+ */
+export function reasonPlaceNotSalonEnabled(): boolean {
+  return envFlag("REASON_PLACE_NOT_SALON_ENABLED");
+}
+
+/**
  * ON_FILE_LINE_NOT_THE_POLICY_ENABLED (Coding-2, 14 Nov 2026; default off; Pau's morning scan via QA). A dress-code
  * request sent again word for word was carded "Policy: Late Opening — read from this request": the intent reader took
  * the heading from the app's own "On file in Form Monitoring … (… Late Opening)" listing. On: a heading the manager's own
