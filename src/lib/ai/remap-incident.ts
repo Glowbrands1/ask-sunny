@@ -3,12 +3,15 @@ import {
   caSalesPolicyEnabled,
   levelRequestDateEnabled,
   observationNoLevelLeadEnabled,
+  observationNoLeadingNameEnabled,
   observationWithoutAskEnabled,
   politeRequestOwnTurnsEnabled,
   priorSentenceFixEnabled,
   requestLeadFillerEnabled,
   requestParticipleLeadEnabled,
   anotherRequestLeadEnabled,
+  reasonPlaceNotSalonEnabled,
+  placeStripWholePhraseOnlyEnabled,
   secondRequestOwnAccountEnabled,
   sharedCityAsksSalonEnabled,
 } from "@/lib/config/chat-quality-flags";
@@ -30,7 +33,8 @@ import {
   type ManualSection,
 } from "@/lib/forms/official-policy-manual";
 import { extractJobTitle, titleAfterJobTitleLabel } from "@/lib/forms/proposal";
-import { isCloseSharedCity, readSalonMentions } from "@/lib/forms/salon-mention";
+import { continuesPlaceName, isCloseSharedCity, readSalonMentions } from "@/lib/forms/salon-mention";
+import { WORK_AREA } from "@/lib/forms/work-area";
 import { US_STATE_CODE } from "@/lib/forms/state-code-place";
 import { detectTemplateIntent, withoutLeadingGlossaryTerm } from "@/lib/forms/template-intent";
 import type { KnowledgeCategory, SourceCitation } from "@/types";
@@ -951,6 +955,27 @@ export function managerAccount(sentence: string, employeeName: string | null): s
     if (onlyWhoOrWhere(text, employeeName)) continue;
     text = withoutPlace(text);
     /*
+     * OBSERVATION_NO_LEADING_NAME_ENABLED (QA's Sunny 38d live check, 13 Nov 2026): "create a ca for <A> at the front
+     * desk, she was rude to a guest" gave the Observation "<A> at the front desk, she was rude to a guest". The employee
+     * is the form's, not the account's: a clause that starts with their name and then "at"/"in"/"on" a place, where the
+     * place phrase ends the clause or another subject follows, loses the name and keeps every other word ("at the front
+     * desk, she was rude to a guest"). Off, as before.
+     */
+    if (observationNoLeadingNameEnabled() && employeeName) {
+      // Only where the employee is not the subject (Gate-Sunny's #939 probes, QA): what follows "at"/"in"/"on" is the
+      // place itself — a work area, "close", or a salon the reader reads — and the clause ends there or another subject
+      // (she/he/they) follows. No verb list: "<A> at close left early" keeps the name, as "<A> at the desk was rude".
+      const lead = new RegExp(`^${escape(employeeName)}\\s+(?:at|in|on)\\s+([^,.!?]+?)(?:\\s*[,.!?].*|\\s+(?:she|he|they)\\b.*)?$`, "i").exec(
+        text.trim(),
+      );
+      const place = lead?.[1]?.trim();
+      const notSubject = (phrase: string) =>
+        WORK_AREA.test(phrase) || /^close$/i.test(phrase) || /^(?:her|his|their)\s+phone$/i.test(phrase) || isPlaceOnly(phrase);
+      if (place && notSubject(place)) {
+        text = text.trim().replace(new RegExp(`^${escape(employeeName)}\\s+`, "i"), "");
+      }
+    }
+    /*
      * CA_SALES_POLICY_ENABLED (QA, live, 4 Nov 2026): "CA for <name> due to
      * under performance in salon metrics" kept "<name> due to …" as the
      * account. The employee the request named, before the word that joins the
@@ -982,6 +1007,21 @@ function onlyWhoOrWhere(clause: string, employeeName: string | null): boolean {
     return true;
   }
   if (onlyNamesThem(text, employeeName) || isPlaceOnly(text)) return true;
+  /*
+   * PLACE_STRIP_WHOLE_PHRASE_ONLY_ENABLED (Gate-Sunny's #933 probes, 13 Nov 2026): "<A> at omaha west" — the employee
+   * and a longer name that starts with a place the reader reads — is who and where, not what happened; it is dropped
+   * whole, never cut to "<A> west". Only the employee's name, "at"/"in", a read place and at most two more words, with
+   * no verb: "<A> at the front desk" is not a read place and stays. Off, as before.
+   */
+  if (placeStripWholePhraseOnlyEnabled() && employeeName) {
+    const lead = new RegExp(`^${escape(employeeName)}\\s+(?:at|in)\\s+(.+)$`, "i").exec(text)?.[1]?.split(/\s+/) ?? [];
+    for (let length = Math.min(3, lead.length); length >= 1 && lead.length > 0; length -= 1) {
+      const extra = lead.slice(length);
+      // Only words of a name may follow: a date, a number or a verb is the account ("<A> at kearney 11/1/26" keeps the date).
+      if (extra.length > 2 || extra.some((word) => !/^[A-Za-z'’-]+$/.test(word)) || /\b(?:was|is|did|had|has|not|were|are)\b/i.test(extra.join(" "))) break;
+      if (isPlaceOnly(lead.slice(0, length).join(" "))) return true;
+    }
+  }
   const unplaced = withoutPlace(text);
   if (unplaced === text) return false;
   // A place was named: what is left is only the person or their job title.
@@ -1024,15 +1064,50 @@ function isPlaceOnly(text: string): boolean {
   return words.length > 0 && words.every((word) => salonWords.has(word) || PLACE_FILLER.has(word));
 }
 
+/** Whether `word` is a word of the name of a salon `place` reads as ("street" after "lincoln 27th"). */
+function inSalonName(place: string, word: string): boolean {
+  const ids = [...new Set(readSalonMentions(`at ${place}`).flatMap((mention) => mention.salonIds))];
+  const bare = word.toLowerCase().replace(/[^a-z0-9]+/g, "");
+  return ids.some((id) => (salonById(id)?.name ?? "").toLowerCase().split(/[^a-z0-9]+/).includes(bare));
+}
+
 /** "at NE Grand Island", "at manhattan": the salon, taken out of the clause. */
 function withoutPlace(clause: string): string {
   const words = clause.trim().split(/\s+/);
   for (let index = 0; index < words.length - 1; index += 1) {
     if (!/^(?:at|in)$/i.test(words[index]!)) continue;
+    // REASON_PLACE_NOT_SALON_ENABLED: "because she was at grand island" is why she was late, not the salon; the account
+    // keeps it (on main the Observation read "she was late because she was"). Off, as before.
+    if (reasonPlaceNotSalonEnabled() && /\b(?:because|bc|b\/c|cause|'cause|cuz|since)\s+\S+\s+(?:was|were|had\s+been)$/i.test(words.slice(0, index).join(" "))) continue;
     for (let length = Math.min(6, words.length - index - 1); length >= 1; length -= 1) {
       const phrase = words.slice(index + 1, index + 1 + length).join(" ");
       const bare = phrase.replace(/[.!?]+$/, "");
+      // PLACE_STRIP_WHOLE_PHRASE_ONLY_ENABLED (Gate-Sunny's #936 probes): "omaha and" is "omaha" and a joined clause;
+      // a candidate ending in a conjunction is skipped so the shorter one is tried ("at omaha and left early").
+      if (placeStripWholePhraseOnlyEnabled() && /^(?:and|but|or)$/i.test(bare.split(/\s+/).at(-1) ?? "")) continue;
       if (!isPlaceOnly(bare)) continue;
+      /*
+       * PLACE_STRIP_WHOLE_PHRASE_ONLY_ENABLED (QA, Gate-Sunny's #933 probes, 13 Nov 2026; high: it changed an HR
+       * record's meaning): "she was late because she was at lincoln high" became "… she was high", and "<A> at omaha
+       * west" became "<A> west". A place is not taken out only when the next word continues a longer proper noun
+       * (`continuesPlaceName`: a short list — "high", "west", "mall" …); then every word is kept and no shorter
+       * phrase inside it is tried. A date, a dash, a weekday or the rest of the account leave the place read (QA, after
+       * Gate-Bubbles-3's #869 finding). Off, as before.
+       */
+      const next = words[index + 1 + length];
+      // Not when the word is part of the salon's own name ("lincoln 27th street"), or is a compass word with "of" after
+      // it ("west of the beds": a direction) — mirrored from the sibling app's #869 (Gate-Bubbles-3). Only a compass
+      // word: "lincoln high of all places" is still a longer name (QA, blocking, Gate-Sunny on aeb6aa20).
+      if (
+        placeStripWholePhraseOnlyEnabled() &&
+        next !== undefined &&
+        !/[,;:)]$/.test(phrase) &&
+        continuesPlaceName(next) &&
+        !(/^(?:west|east|north|south)$/i.test(next) && /^of$/i.test(words[index + 2 + length] ?? "")) &&
+        !inSalonName(bare, next)
+      ) {
+        break;
+      }
       const tail = phrase.slice(bare.length);
       const rest = [...words.slice(0, index), ...words.slice(index + 1 + length)].join(" ");
       return withoutPlace(`${rest}${tail}`.trim());
