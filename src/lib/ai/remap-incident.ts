@@ -3,12 +3,14 @@ import {
   caSalesPolicyEnabled,
   levelRequestDateEnabled,
   observationNoLevelLeadEnabled,
+  observationNoLeadingNameEnabled,
   observationWithoutAskEnabled,
   politeRequestOwnTurnsEnabled,
   priorSentenceFixEnabled,
   requestLeadFillerEnabled,
   requestParticipleLeadEnabled,
   anotherRequestLeadEnabled,
+  reasonPlaceNotSalonEnabled,
   placeStripWholePhraseOnlyEnabled,
   secondRequestOwnAccountEnabled,
   sharedCityAsksSalonEnabled,
@@ -32,6 +34,7 @@ import {
 } from "@/lib/forms/official-policy-manual";
 import { extractJobTitle, titleAfterJobTitleLabel } from "@/lib/forms/proposal";
 import { continuesPlaceName, isCloseSharedCity, readSalonMentions } from "@/lib/forms/salon-mention";
+import { WORK_AREA } from "@/lib/forms/work-area";
 import { US_STATE_CODE } from "@/lib/forms/state-code-place";
 import { detectTemplateIntent, withoutLeadingGlossaryTerm } from "@/lib/forms/template-intent";
 import type { KnowledgeCategory, SourceCitation } from "@/types";
@@ -952,6 +955,27 @@ export function managerAccount(sentence: string, employeeName: string | null): s
     if (onlyWhoOrWhere(text, employeeName)) continue;
     text = withoutPlace(text);
     /*
+     * OBSERVATION_NO_LEADING_NAME_ENABLED (QA's Sunny 38d live check, 13 Nov 2026): "create a ca for <A> at the front
+     * desk, she was rude to a guest" gave the Observation "<A> at the front desk, she was rude to a guest". The employee
+     * is the form's, not the account's: a clause that starts with their name and then "at"/"in"/"on" a place, where the
+     * place phrase ends the clause or another subject follows, loses the name and keeps every other word ("at the front
+     * desk, she was rude to a guest"). Off, as before.
+     */
+    if (observationNoLeadingNameEnabled() && employeeName) {
+      // Only where the employee is not the subject (Gate-Sunny's #939 probes, QA): what follows "at"/"in"/"on" is the
+      // place itself — a work area, "close", or a salon the reader reads — and the clause ends there or another subject
+      // (she/he/they) follows. No verb list: "<A> at close left early" keeps the name, as "<A> at the desk was rude".
+      const lead = new RegExp(`^${escape(employeeName)}\\s+(?:at|in|on)\\s+([^,.!?]+?)(?:\\s*[,.!?].*|\\s+(?:she|he|they)\\b.*)?$`, "i").exec(
+        text.trim(),
+      );
+      const place = lead?.[1]?.trim();
+      const notSubject = (phrase: string) =>
+        WORK_AREA.test(phrase) || /^close$/i.test(phrase) || /^(?:her|his|their)\s+phone$/i.test(phrase) || isPlaceOnly(phrase);
+      if (place && notSubject(place)) {
+        text = text.trim().replace(new RegExp(`^${escape(employeeName)}\\s+`, "i"), "");
+      }
+    }
+    /*
      * CA_SALES_POLICY_ENABLED (QA, live, 4 Nov 2026): "CA for <name> due to
      * under performance in salon metrics" kept "<name> due to …" as the
      * account. The employee the request named, before the word that joins the
@@ -1052,6 +1076,9 @@ function withoutPlace(clause: string): string {
   const words = clause.trim().split(/\s+/);
   for (let index = 0; index < words.length - 1; index += 1) {
     if (!/^(?:at|in)$/i.test(words[index]!)) continue;
+    // REASON_PLACE_NOT_SALON_ENABLED: "because she was at grand island" is why she was late, not the salon; the account
+    // keeps it (on main the Observation read "she was late because she was"). Off, as before.
+    if (reasonPlaceNotSalonEnabled() && /\b(?:because|bc|b\/c|cause|'cause|cuz|since)\s+\S+\s+(?:was|were|had\s+been)$/i.test(words.slice(0, index).join(" "))) continue;
     for (let length = Math.min(6, words.length - index - 1); length >= 1; length -= 1) {
       const phrase = words.slice(index + 1, index + 1 + length).join(" ");
       const bare = phrase.replace(/[.!?]+$/, "");
