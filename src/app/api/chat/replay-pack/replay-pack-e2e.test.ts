@@ -832,6 +832,10 @@ async function recorded(id: string, mode: string, run: () => Promise<void>) {
               tokens: ["input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"].map((key) =>
                 looped.reduce((sum, entry) => sum + (entry.model_steps ?? []).reduce((inner, step) => inner + (step[key] ?? 0), 0), 0),
               ),
+              /* Live runs only (AGENT_LOOP_LIVE_ALL): the tool results the model saw, cut short, to read why a turn went as it did. */
+              ...(process.env.AGENT_LOOP_LIVE_ALL === "1" && loop.standIn
+                ? { tools: loop.standIn.views.map((view) => view.results.map((result) => `${result.tool}: ${JSON.stringify(result.output).slice(0, 400)}`)) }
+                : {}),
             },
           }
         : {};

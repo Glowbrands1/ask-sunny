@@ -505,7 +505,7 @@ export const NOV14_AGENT_LOOP_CASES: ReplayCase[] = [
         // A careless model proposes before asking: the card needs an employee_id, so it is refused.
         if (/^verbal CA/.test(said) && !lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", warning_level: "verbal" } };
         if (/^verbal CA/.test(said)) return { text: `Which Marnie Holloway did you mean? I found ${matches.length}.` };
-        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-90", warning_level: "verbal", incident_date: "2026-11-01" } };
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-90", warning_level: "verbal", incident_date: "2026-11-01", what_happened: "she was late on 11/1/26" } };
         return { text: "Here is the Corrective Action Form for Marnie Holloway." };
       });
       t.loopModel!(standIn);

@@ -71,10 +71,12 @@ function policyLine(reply: ReplayAnswer): string {
 const METRIC_AS_PERSON = /\*\*(?:Club Close|Club Average|Under|PPTA|LPSVA|Spa)\*\*|(?:—|-|,)\s*(?:Club Close|Under)\b(?:,| or|\?)/;
 
 /** Never a card, a question or a note for "Under Performance" or "Under"; with a card or a reply that asks, it asks who. */
-function noUnderAsPerson(thread: { proposal: ReplayAnswer["formProposal"] | null }, reply: ReplayAnswer): void {
+function noUnderAsPerson(thread: { proposal: ReplayAnswer["formProposal"] | null }, reply: ReplayAnswer, loopActive = false): void {
   expect(thread.proposal?.employeeName ?? "", "\"Under\" is the card's employee").not.toMatch(/under/i);
   expect(reply.content, `"Under Performance" or "Under" is named as a person:\n${reply.content}`).not.toMatch(/\*\*Under(?: Performance)?\*\*|couldn't find[^.]*Under|Is this for \*\*Under/i);
-  expect(reply.content, `it does not ask who the form is for:\n${reply.content}`).toMatch(/Who is this (?:\*\*[^*]+\*\* |form )?for\?|Employee's full name/);
+  // Changed on purpose (loop-ON arm asserts meaning): QA, 14 Nov 2026: with AGENT_LOOP on, any question asking who the form is for.
+  const asksWho = loopActive ? /\bwho\b[^?\n]*\bfor\?|Employee's full name/i : /Who is this (?:\*\*[^*]+\*\* |form )?for\?|Employee's full name/;
+  expect(reply.content, `it does not ask who the form is for:\n${reply.content}`).toMatch(asksWho);
 }
 
 export const NOV5_REQUEST_SLOT_CASES: ReplayCase[] = [
@@ -175,7 +177,7 @@ export const NOV5_REQUEST_SLOT_CASES: ReplayCase[] = [
     async run(t) {
       const thread = start(t);
       const reply = await thread.say("I need a corrective action verbal. This is for Under Performance on PPTA, LPSVA, Club Average, Club Close %, and Spa %.");
-      noUnderAsPerson(thread, reply);
+      noUnderAsPerson(thread, reply, t.loopActive?.() ?? false);
     },
   },
   {
@@ -188,7 +190,7 @@ export const NOV5_REQUEST_SLOT_CASES: ReplayCase[] = [
     async run(t) {
       const thread = start(t);
       const reply = await thread.say("I need a CA for Under Performance on PPTA, LPSVA, Club Average, Club Close %, and Spa %.");
-      noUnderAsPerson(thread, reply);
+      noUnderAsPerson(thread, reply, t.loopActive?.() ?? false);
     },
   },
   {

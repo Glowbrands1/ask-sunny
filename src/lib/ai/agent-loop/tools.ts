@@ -10,10 +10,15 @@ import { readScopedRoster } from "@/lib/forms/employee-roster";
 import { inlineDraftVariantKey, supportsInlineDraft } from "@/lib/forms/inline-draft";
 import { authorizeInstance, InstanceNotVisibleError, instanceListFilterFor, visibleInstances } from "@/lib/forms/instance-scope";
 import { applyAssistantRevision, listInstances } from "@/lib/forms/instances";
-import { formEditSingleWriterEnabled } from "@/lib/config/chat-quality-flags";
+import { formEditSingleWriterEnabled, formEditToolInStreamEnabled, formPatchReducerEnabled } from "@/lib/config/chat-quality-flags";
+import type { AskResponse } from "@/lib/ai/types";
 import { findManualSection, manualSectionHeadings, type ManualChunk } from "@/lib/forms/official-policy-manual";
 import { sectionWording } from "@/lib/forms/policy-citation";
-import { buildProposal, managerContext, samePerson, tidyTypedName } from "@/lib/forms/proposal";
+import { buildProposal, extractEmployeeNames, managerContext, samePerson, tidyTypedName } from "@/lib/forms/proposal";
+import { cleaningUndonePhrase, namesCareAndCleaning } from "@/lib/forms/ca-policy";
+import { turnsFromThisPersonsRequest } from "@/lib/forms/this-persons-turns";
+import { closeHeadingReading, namedPolicies, namesHeading } from "@/lib/forms/named-policy-section";
+import { startsNewForm } from "@/lib/ai/remap-incident";
 import { listTemplateSummaries, type TemplateSummary } from "@/lib/forms/repository";
 import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
 import type { AccessScope, ChatFormProposal, ChatMessage, Role } from "@/types";
@@ -68,8 +73,13 @@ export interface ToolContext {
 /** What the turn's tools produced for the reply: the card and the edit, when there were any. */
 export interface ToolEffects {
   proposal: ChatFormProposal | null;
-  policyHeading: string | null;
+  /** The card's "**Policy:**" line, after "**Policy:** ". */
+  policyLine: string | null;
   formUpdate: { instanceId: string; updated: string[] } | null;
+  /** CLOSE_SPELLING: "Did you mean **<heading>** (page N)?", asked instead of citing a policy spelled too far off. */
+  confirmPolicy?: string | null;
+  /** The open-form reader's own reply when edit_form changed the draft: the realized diff of what was saved. */
+  revisedReply?: string | null;
 }
 
 export type ToolResult = Record<string, unknown>;
@@ -262,10 +272,23 @@ export async function templateChoices(role: Role): Promise<{ key: string; name: 
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+/** The forms whose Create waits for an account of what happened. */
+const ACCOUNT_FORMS = new Set(["dpoa", "coaching", "follow-up-coaching"]);
+
 export async function proposeForm(
   context: ToolContext,
   effects: ToolEffects,
-  input: { template_key?: unknown; employee_id?: unknown; employee_name?: unknown; policy?: unknown; what_happened?: unknown; incident_date?: unknown; warning_level?: unknown },
+  input: {
+    template_key?: unknown;
+    employee_id?: unknown;
+    employee_name?: unknown;
+    policy?: unknown;
+    what_happened?: unknown;
+    incident_date?: unknown;
+    warning_level?: unknown;
+    payroll_deduct?: unknown;
+    payroll_amount?: unknown;
+  },
 ): Promise<ToolResult> {
   const key = typeof input.template_key === "string" ? input.template_key.trim() : "";
   const templates = await creatableTemplates(context.actor.role).catch(() => null);
@@ -292,17 +315,62 @@ export async function proposeForm(
     return { error: "That is the signed-in manager's own name, not an employee. Ask who the form is about." };
   }
 
-  /* The policy: a heading of the manual, as the manual spells it. */
+  const whatHappened = typeof input.what_happened === "string" ? input.what_happened.trim().slice(0, 2_000) : "";
+  const asked = managerContext(context.history as ChatMessage[], { id: context.questionMessageId, content: context.question });
+  /* THIS request's turns (QA, 14 Nov 2026; THIS_PERSONS_TURNS behaviour): an earlier incident in the chat never feeds this card. */
+  const personTurns = turnsFromThisPersonsRequest(asked, employee.name, { names: extractEmployeeNames, same: samePerson });
+  // A later create request with its own incident ("make me a CA for <name> for being late …") starts a new form: its own turn only.
+  const newRequest = context.questionMessageId && startsNewForm(context.history, context.question);
+  const sourceIds = newRequest ? personTurns.filter((id) => id === context.questionMessageId) : personTurns;
+  const requestWords = asked.messages
+    .filter((message) => sourceIds.includes(message.id ?? ""))
+    .map((message) => message.content)
+    .join("\n");
+
+  /*
+   * The policy: "Other", or a heading of the manual as the manual spells it. Pau's rule (OTHER_POLICY_AGREES): a
+   * cleaning or sanitation duty left undone is Other, never the Standards of Conduct; a Care and Cleaning policy the
+   * manager names keeps that section; a cleaning duty beside another offense cites both.
+   */
   const manual = await manualFor(context.scopeId);
   const askedPolicy = typeof input.policy === "string" ? input.policy.trim() : "";
   let policyHeading: string | null = null;
-  if (askedPolicy) {
+  if (askedPolicy && !/^other\b/i.test(askedPolicy)) {
     if (!manual) return { error: "The JBA Policy Manual could not be read just now, so no policy can be cited. Propose without a policy or say so." };
     policyHeading = headingOf(manual.headings, askedPolicy);
-    if (!policyHeading) return { error: "That is not a heading of the JBA Policy Manual. Pick the one heading that fits what happened.", headings: manual.headings };
+    if (!policyHeading) return { error: "That is not a heading of the JBA Policy Manual (or \"Other\"). Pick the one heading that fits what happened.", headings: manual.headings };
+  }
+  /*
+   * CLOSE_SPELLING (the manual's own reader): a policy the manager named with a misspelling that is not one confident
+   * match is confirmed, never assumed ("anmals in the wrkplace" → "Did you mean Animals in the Workplace?").
+   */
+  let confirmPolicy: string | null = null;
+  if (policyHeading && manual) {
+    for (const named of namedPolicies(requestWords)) {
+      if (manual.headings.some((heading) => namesHeading(named.phrase, heading))) continue;
+      const close = closeHeadingReading(named.phrase, manual.headings);
+      if (!close.confident && close.candidates.includes(policyHeading)) confirmPolicy = policyHeading;
+    }
+  }
+  const cleaning = cleaningUndonePhrase(`${requestWords}\n${whatHappened}`);
+  const careAndCleaning = namesCareAndCleaning(requestWords);
+  /* As today's card cites it: the heading, then the page the manual prints. */
+  const page = policyHeading && manual ? findManualSection(manual.chunks, [policyHeading])?.page ?? null : null;
+  let policyLine: string | null = policyHeading && !confirmPolicy ? (page ? `${policyHeading}, JBA Policy Manual p.${page}` : policyHeading) : null;
+  const didYouMean = confirmPolicy ? `Did you mean **${confirmPolicy}**${page ? ` (page ${page})` : ""}?` : null;
+  let policyNote: string | null = null;
+  if (cleaning && !careAndCleaning) {
+    const conduct = policyHeading !== null && /standards of conduct/i.test(policyHeading);
+    policyLine = policyHeading && !conduct ? `${policyHeading}; Other — ${cleaning}` : `Other — ${cleaning}`;
+    if (conduct) policyNote = "A cleaning or sanitation duty left undone is Other on the Corrective Action Form, never the Standards of Conduct (the company's rule): the card says Other.";
+  } else if (/^other\b/i.test(askedPolicy)) {
+    const topic = askedPolicy.replace(/^other\s*[—:-]?\s*/i, "").trim() || whatHappened.slice(0, 120);
+    policyLine = topic ? `Other — ${topic}` : "Other";
   }
 
-  const whatHappened = typeof input.what_happened === "string" ? input.what_happened.trim().slice(0, 2_000) : "";
+  /* Payroll deduct, only as the manager stated it. */
+  const payroll = input.payroll_deduct === "yes" || input.payroll_deduct === "no" ? input.payroll_deduct : null;
+  const amount = typeof input.payroll_amount === "string" && /\d/.test(input.payroll_amount) ? input.payroll_amount.replace(/[^\d.]/g, "") : null;
   const today = context.today || businessToday();
   const date = typeof input.incident_date === "string" && DATE.test(input.incident_date.trim()) ? input.incident_date.trim() : null;
   if (date && date > today) return { error: `The incident date ${date} is after today (${today}, the salon's local date). Ask the manager.` };
@@ -312,7 +380,7 @@ export async function proposeForm(
     proposalId: randomUUID(),
     templateKey: template.key,
     templateName: template.name,
-    context: managerContext(context.history as ChatMessage[], { id: context.questionMessageId, content: context.question }),
+    context: asked,
     scope: context.actor.scope,
     inlineDraftSupported: supportsInlineDraft(template.key, template.currentVersion?.variants ?? []),
     variantKey: inlineDraftVariantKey(template.currentVersion?.variants ?? []),
@@ -320,14 +388,21 @@ export async function proposeForm(
     employee: { kind: "resolved", employeeName: employee.name },
     employeeSalonIds: [...employee.salonIds],
   });
+  /* No account yet: the card shows, and Create waits for what happened (as WHAT_HAPPENED_NO_CREATE does today). */
+  const awaiting = whatHappened === "" && ACCOUNT_FORMS.has(template.key);
   const card: ChatFormProposal = {
     ...proposal,
+    sourceMessageIds: sourceIds,
     formDate: date ?? proposal.formDate ?? null,
     ...(level ? { warningLevel: level } : {}),
     ...(whatHappened ? { issue: whatHappened } : {}),
+    ...(payroll ? { payrollDeduct: payroll } : {}),
+    ...(payroll === "yes" && amount ? { payrollDeductAmount: amount } : {}),
+    ...(awaiting ? { awaitingIncident: true as const, supportsInlineDraft: false } : {}),
   };
   effects.proposal = card;
-  effects.policyHeading = policyHeading;
+  effects.policyLine = policyLine;
+  effects.confirmPolicy = didYouMean;
   return {
     card: {
       form: card.templateName,
@@ -337,9 +412,16 @@ export async function proposeForm(
       ...(card.status === "needs_location" ? { choose_salon_from: card.authorizedLocationIds } : {}),
       form_date: card.formDate ?? null,
       warning_level: level,
-      policy: policyHeading,
+      payroll_deduct: payroll,
+      policy: policyLine,
+      create_offered: card.supportsInlineDraft,
     },
-    note: "The card is shown under your reply. Nothing is saved until the manager presses Create.",
+    ...(policyLine ? { policy_line: `**Policy:** ${policyLine}` } : {}),
+    ...(policyNote ? { policy_note: policyNote } : {}),
+    ...(didYouMean ? { confirm_policy: `The manager's policy name is not a heading as spelled, so no policy is cited yet. Your reply ends with: ${didYouMean}` } : {}),
+    note: awaiting
+      ? "The card is shown under your reply with Create held until the manager says what happened: ask them what happened, in one short question."
+      : "The card is shown under your reply. Nothing is saved until the manager presses Create. End your reply with the policy_line exactly.",
   };
 }
 
@@ -358,12 +440,26 @@ export async function editForm(
       if (typeof value === "string") values[field] = value;
     }
   }
-  if (Object.keys(values).length === 0) return { error: "Give at least one field key and its new text." };
   try {
     const { loaded } = await authorizeInstance(context.request, id, "edit");
     // Finalized forms are never edited here (instances.ts's draft-only checks and the database trigger also refuse).
     if (loaded.instance.status !== "draft") {
       return { error: `This form is ${loaded.instance.status}, not a draft, so it cannot be edited. Tell the manager; a finalized form is changed only by opening a revision on Form Monitoring.` };
+    }
+    /*
+     * No field values: the manager's own request goes through the form's reviser (`chat-revision.ts`, the same one
+     * today's chat uses), which knows each template's fields, the date, the policy reference line, the Action Plan and
+     * the protected values. Its reply says what changed.
+     */
+    if (Object.keys(values).length === 0) {
+      const revised = await openFormTurn(context, id);
+      if (!revised) return { updated: [], note: "The form's reviser found nothing in the manager's message to change. Ask what they want changed." };
+      const updated = revised.formUpdate?.instanceId === id ? revised.formUpdate.updated : [];
+      if (updated.length > 0) {
+        effects.formUpdate = { instanceId: id, updated };
+        effects.revisedReply = revised.content;
+      }
+      return { updated, reviser_said: revised.content.slice(0, 1_500), note: updated.length > 0 ? "The reviser's own words are shown to the manager as your reply; add nothing." : undefined };
     }
     // The revision's writer, as chat-revision.ts saves: the one writer with FORM_EDIT_SINGLE_WRITER_ENABLED, else the old one.
     const written = formEditSingleWriterEnabled()
@@ -376,4 +472,32 @@ export async function editForm(
     if (error instanceof InstanceNotVisibleError) return { error: "That form does not exist or this manager cannot edit it." };
     return { error: "That form could not be changed just now. Nothing was saved." };
   }
+}
+
+/**
+ * The manager's turn on the open draft, through the same readers today's chat runs, in the route's order and each
+ * behind its own flag: the correction ("change her name to …"), the patch reader (FORM_PATCH_REDUCER: "make it about
+ * being late on 11/5/26" sets the Date, Other and Details together), the revision, and last the open-draft turn.
+ * The first that answers wins; null when none reads the turn as an edit of this form.
+ */
+async function openFormTurn(context: ToolContext, id: string): Promise<AskResponse | null> {
+  const turn = { request: context.request, instanceId: id, question: context.question, history: context.history as ChatMessage[], today: context.today || businessToday() };
+  return (
+    (await (await import("@/lib/forms/chat-correction")).correctActiveForm(turn)) ??
+    (formPatchReducerEnabled() && !formEditToolInStreamEnabled() ? await (await import("@/lib/forms/form-patch-turn")).patchActiveForm(turn) : null) ??
+    (await (await import("@/lib/forms/chat-revision")).reviseActiveForm(turn)) ??
+    (await (await import("@/lib/forms/open-draft-turn")).openDraftTurn(turn))
+  );
+}
+
+/* ------------------------------------------------------------ app help --- */
+
+/** This app's own help, read-only: the sign-in page's words (`ai/app-password-help.ts`), never another system's. */
+export async function appHelp(input: { topic?: unknown }): Promise<ToolResult> {
+  const { appPasswordAnswer } = await import("@/lib/ai/app-password-help");
+  if (input.topic === "password" || input.topic === "sign_in") return { answer: appPasswordAnswer(), note: "Give the manager these steps in your own short words." };
+  return {
+    answer:
+      "Sunny answers questions from the JBA Policy Manual, looks up the manager's staff and the forms on file, and prepares HR forms (coaching, corrective action and the others the manager may create) as cards they review and Create. It does not hold sales, review or scheduling data.",
+  };
 }

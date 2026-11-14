@@ -84,7 +84,12 @@ async function position(t: Parameters<ReplayCase["run"]>[0]) {
 
 /** Defect 2: What happened carries the complaint. */
 async function account(t: Parameters<ReplayCase["run"]>[0]) {
-  const { reply } = await story(t);
+  const { thread, reply } = await story(t);
+  if (t.loopActive?.()) {
+    // Changed on purpose (loop-ON arm asserts meaning): QA, 14 Nov 2026: with AGENT_LOOP on the model words the reply; the flag-off arm keeps the exact wording.
+    expect(thread.proposal?.issue ?? "", `the card's account is only the first fragment:\n${reply.content}`).toMatch(/rude|attitude/i);
+    return;
+  }
   expect(observationLine(reply), `the Observation is only the first fragment:\n${observationLine(reply)}`).toMatch(/rude|attitude/i);
 }
 

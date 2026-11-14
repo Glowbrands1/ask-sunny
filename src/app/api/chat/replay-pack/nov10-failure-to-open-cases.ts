@@ -76,6 +76,12 @@ export const NOV10_FAILURE_TO_OPEN_CASES: ReplayCase[] = [
       t.as("salon_director", KEARNEY);
       const thread = t.thread();
       const reply = await thread.say("Can you make a CA for Corisande Pell?");
+      if (t.loopActive?.()) {
+        // Changed on purpose (loop-ON arm asserts meaning): QA, 14 Nov 2026: with AGENT_LOOP on the model words the reply; the flag-off arm keeps the exact wording.
+        expect(reply.content, "does not ask what happened").toMatch(/what happened\?/i);
+        expect(thread.proposal?.supportsInlineDraft ?? false, "Create offered with no account").toBe(false);
+        return;
+      }
       expect(reply.content).toMatch(/haven't told me what happened/i);
     },
   },

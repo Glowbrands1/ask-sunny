@@ -5,6 +5,7 @@ import { MissingConfigurationError, requireEnv } from "@/lib/config/server-env";
 import { mainAnswerTimeoutMs, streamGapTimeoutMs } from "@/lib/config/ai-timeouts";
 import { chatTraceEnabled } from "@/lib/config/chat-quality-flags";
 import { authorizedSalonIds } from "@/lib/forms/location-scope";
+import { stillAsks } from "@/lib/forms/reply-guards";
 import type { ChatMessage } from "@/types";
 
 import { finishChatTrace, openChatTrace } from "../chat-trace";
@@ -14,9 +15,11 @@ import { noteModelCall } from "../model-failure";
 import { activeSpendMeter } from "../spend-meter";
 import { AI_TIMEOUT_MESSAGE, isAiTimeLimitError, logAiFailure, withStreamTimeLimit } from "../time-limit";
 import type { AskResponse } from "../types";
+import { withUnderPerformanceExplained } from "../under-performance-explained";
 import { agentLoopSystem, AGENT_LOOP_RULES } from "./prompt";
 import { agentLoopStepLimit } from "./switch";
 import {
+  appHelp,
   editForm,
   findPastForms,
   findStaff,
@@ -135,18 +138,26 @@ export const AGENT_LOOP_TOOLS = [
         template_key: { type: "string" },
         employee_id: { type: "string", description: "From find_staff." },
         employee_name: { type: "string", description: "Only when find_staff said the roster cannot be searched." },
-        policy: { type: "string", description: "One JBA Policy Manual heading, exactly." },
+        policy: { type: "string", description: "One JBA Policy Manual heading, exactly, or \"Other\" (a cleaning or sanitation duty left undone is always Other)." },
         what_happened: { type: "string", description: "What happened, in the manager's words." },
         incident_date: { type: "string", description: "YYYY-MM-DD, the salon's local date." },
         warning_level: { type: "string", enum: ["verbal", "written"] },
+        payroll_deduct: { type: "string", enum: ["yes", "no"], description: "Only when the manager said whether payroll deduct applies." },
+        payroll_amount: { type: "string", description: "The deduction amount the manager stated, digits." },
       },
       ["template_key"],
     ),
   },
   {
     name: "edit_form",
-    description: "Change fields of a DRAFT form (field key to new text). Finalized forms cannot be edited.",
-    input_schema: object({ instance_id: { type: "string" }, values: { type: "object", additionalProperties: { type: "string" } } }, ["instance_id", "values"]),
+    description:
+      "Change a DRAFT form. Leave values out to have the form's own reviser apply the manager's latest message (dates, details, the policy line); give values (field key to exact text) only for text the manager dictated word for word. Finalized forms cannot be edited.",
+    input_schema: object({ instance_id: { type: "string" }, values: { type: "object", additionalProperties: { type: "string" } } }, ["instance_id"]),
+  },
+  {
+    name: "app_help",
+    description: "This app's own help: how to sign in, reset or change your password, and what Sunny can do. Use it for any question about using this app; never send the manager to IT when this has the answer.",
+    input_schema: object({ topic: { type: "string", enum: ["password", "sign_in", "what_sunny_does"] } }, ["topic"]),
   },
 ];
 
@@ -189,7 +200,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     scopeId: input.scopeId,
     today: input.today,
   };
-  const effects: ToolEffects = { proposal: null, policyHeading: null, formUpdate: null };
+  const effects: ToolEffects = { proposal: null, policyLine: null, formUpdate: null };
   const steps: AgentLoopStep[] = [];
   /* Each model call's tokens and ms, for the trace (numbers only). */
   const modelSteps: { step: number; ms: number; stop: string | null; input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number }[] = [];
@@ -200,6 +211,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     read_policy: (args) => readPolicy(context, args),
     propose_form: (args) => proposeForm(context, effects, args),
     edit_form: (args) => editForm(context, effects, args),
+    app_help: (args) => appHelp(args),
   };
 
   /* One tool call, timed and counted for the trace: its name, ms and result size; never its values. */
@@ -325,12 +337,29 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
 
   let content = stoppedAt === "step_limit" ? STEP_LIMIT_REPLY : text;
   if (content === "") content = effects.proposal ? "Here is the form for you to review." : STEP_LIMIT_REPLY;
-  /* The card's policy line, which the Create button sends to the draft (`card-policy.ts`): added only when the model left it out. */
-  if (effects.proposal && effects.policyHeading && !/\*\*Policy:\*\*/.test(content)) {
-    content = `${content}\n\n**Policy:** ${effects.policyHeading}`;
+  /*
+   * The card's policy line, which the Create button sends to the draft (`card-policy.ts`): the one propose_form decided
+   * (a manual heading, or Other under the company's cleaning rule). A "**Policy:**" line the model wrote itself is
+   * replaced by it, so the card and the draft never disagree.
+   */
+  if (effects.proposal && effects.policyLine) {
+    content = `${content.split("\n").filter((line) => !/^\s*\*\*Policy:?\*\*/i.test(line)).join("\n").trim()}\n\n**Policy:** ${effects.policyLine}`;
+  }
+  /* CLOSE_SPELLING: a policy spelled too far off is asked about, never cited (the tool decided; the code says it). */
+  if (effects.proposal && effects.confirmPolicy && !content.includes(effects.confirmPolicy)) {
+    content = `${content.split("\n").filter((line) => !/^\s*\*\*Policy:?\*\*|did you mean/i.test(line)).join("\n").trim()}\n\n${effects.confirmPolicy}`;
   }
 
-  return {
+  /*
+   * An edit the open-form reader wrote: its reply is what was saved, field by field (the realized diff today's chat
+   * shows), so the reply never claims more or less than the draft now holds.
+   */
+  if (effects.revisedReply && effects.formUpdate && !effects.proposal) content = effects.revisedReply;
+
+  /* EVERY REPLY (QA, 3 Nov 2026): "I still need …" only when the reply asks who, which location or which date. */
+  if (/^I still need\b/m.test(content) && stillAsks(content) === null) content = content.replace(/^I still need\b/gm, "I need");
+
+  const response: AskResponse = {
     content,
     citations: [],
     coverage: "not_applicable",
@@ -338,4 +367,6 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     ...(effects.proposal ? { formProposal: effects.proposal } : {}),
     ...(effects.formUpdate ? { formUpdate: effects.formUpdate } : {}),
   };
+  /* Pau's line (UNDER_PERFORMANCE_EXPLAINED, the app's own finisher): Under Performance asked for, Standards of Conduct cited. */
+  return withUnderPerformanceExplained(response, { question: input.question });
 }
