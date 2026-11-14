@@ -294,7 +294,7 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       t.as("salon_director", KEARNEY);
       const model = loopStandIn((view) => {
         const said = view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "";
-        if (/^edit/i.test(said)) {
+        if (/\bedit\b/i.test(said)) {
           if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "tamsen orwel" } };
           return { text: JSON.stringify(lastResult(view, "find_staff")) };
         }
@@ -309,8 +309,12 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       expect(found).toContain('"name":"Tamsin Orwell"');
       expect(found, "asked Did you mean about the card's own person").not.toMatch(/did_you_mean/);
 
-      await t.thread().say("edit tamsen orwel ca");
+      const fresh = t.thread();
+      await fresh.say("edit tamsen orwel ca");
       expect(toolResults(model.views, "find_staff").at(-1), "a close spelling with no card in the chat was used unasked").toMatch(/did_you_mean/);
+      // Did-you-mean answered "no": still not that person.
+      await fresh.say("no, edit tamsen orwel ca as typed");
+      expect(toolResults(model.views, "find_staff").at(-1), "a \"no\" to Did you mean was read as yes").toMatch(/did_you_mean/);
     },
   },
   {

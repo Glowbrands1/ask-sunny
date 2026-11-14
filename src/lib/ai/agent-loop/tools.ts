@@ -240,7 +240,12 @@ export async function findStaff(context: ToolContext, input: { name?: unknown })
      * the live re-run's sf-s26): it is that person, as the manager can see the card. Only one close candidate, and
      * only when an earlier reply in this chat named them.
      */
-    const onCard = close.kind === "confirm" && close.candidates.length === 1
+    /*
+     * Also the answer to this chat's own "Did you mean **<A>**?" that goes on with the form's details instead of yes
+     * or no (today's NEAR_MISS_DETAILS_ACCEPT; the live re-run's proposal-name-correction). A "no" keeps asking.
+     */
+    const saidNo = /^\s*(?:no|nope|nah|not\s+(?:her|him|them|that))\b/i.test(context.question);
+    const onCard = close.kind === "confirm" && close.candidates.length === 1 && !saidNo
       ? context.history.some((turn) => turn.role === "assistant" && typeof turn.content === "string" && turn.content.includes(close.candidates[0]!.name))
       : false;
     if (onCard && close.kind === "confirm") {
