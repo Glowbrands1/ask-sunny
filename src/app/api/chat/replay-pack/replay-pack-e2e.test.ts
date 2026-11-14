@@ -1079,7 +1079,14 @@ const BY_ID = [...CASES].sort((a, b) => a.id.localeCompare(b.id));
 function casesOfPart(index: number, parts: number): typeof CASES {
   return BY_ID.filter((_entry, position) => position % parts === index);
 }
-const RUN = PART && Number(PART[1]) < Number(PART[2]) ? casesOfPart(Number(PART[1]), Number(PART[2])) : CASES;
+/*
+ * SHADOW_IN (dev, opt-in; never in CI; nothing changes when unset): QA's shadow replay of the agent loop. The private
+ * conversations in that file replace the pack's cases, one case each (`shadow/shadow.ts`, `scripts/agent-loop-shadow`).
+ */
+const SHADOW = process.env.SHADOW_IN
+  ? (await import("./shadow/shadow")).shadowCases(process.env.SHADOW_IN, process.env.SHADOW_OUT, Number(process.env.SHADOW_LIMIT ?? 0))
+  : null;
+const RUN = SHADOW ?? (PART && Number(PART[1]) < Number(PART[2]) ? casesOfPart(Number(PART[1]), Number(PART[2])) : CASES);
 
 describe("the replay pack", () => {
   for (const replay of RUN) {
