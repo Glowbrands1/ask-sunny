@@ -4852,3 +4852,15 @@ export function reasonPlaceNotSalonEnabled(): boolean {
 export function onFileLineNotThePolicyEnabled(): boolean {
   return envFlag("ON_FILE_LINE_NOT_THE_POLICY_ENABLED");
 }
+
+/**
+ * REASON_SUBJECT_ANY_NOUN_PHRASE (Gate-Sunny's #975 follow-up, QA 14 Nov 2026; default off; with REASON_PLACE_NOT_SALON):
+ * "she left early because her kid was sick in lincoln" read Lincoln as the salon and the account lost "in lincoln": the
+ * reason's subject was one word, and nothing could stand between "was" and the place. With the flag the subject may be
+ * a noun phrase of up to four words, the verb "got" / "went" / "stayed" / "broke down", and up to two words ("sick")
+ * before at/in, never a work word, so "because she was late at kearney" is still read. See `forms/reason-place.ts`.
+ * Off, as before.
+ */
+export function reasonSubjectAnyNounPhraseEnabled(): boolean {
+  return envFlag("REASON_SUBJECT_ANY_NOUN_PHRASE_ENABLED");
+}

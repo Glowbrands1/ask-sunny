@@ -10,6 +10,7 @@ import {
   requestParticipleLeadEnabled,
   anotherRequestLeadEnabled,
   reasonPlaceNotSalonEnabled,
+  reasonSubjectAnyNounPhraseEnabled,
   placeStripWholePhraseOnlyEnabled,
   secondRequestOwnAccountEnabled,
   sharedCityAsksSalonEnabled,
@@ -43,6 +44,10 @@ import { isPolicyCorrection } from "./policy-correction-turn";
 import { withoutPayrollClauses } from "./payroll-clause-not-account";
 import { formatManualCitation } from "./policy-citation-fields";
 import { excerptTextForDisplay } from "@/lib/knowledge/excerpt-brand-filter";
+import { REASON_LEAD_WIDE } from "@/lib/forms/reason-place";
+
+/** REASON_SUBJECT_ANY_NOUN_PHRASE_ENABLED: the words before "at"/"in" end a widened reason ("because her kid was sick"). */
+const REASON_LEAD_BEFORE_PLACE = new RegExp(`${REASON_LEAD_WIDE}$`, "i");
 
 /**
  * REMAP_INCIDENT_FIX_ENABLED: the remap path's What happened, prior actions
@@ -1056,6 +1061,8 @@ function withoutPlace(clause: string): string {
     // REASON_PLACE_NOT_SALON_ENABLED: "because she was at grand island" is why she was late, not the salon; the account
     // keeps it (on main the Observation read "she was late because she was"). Off, as before.
     if (reasonPlaceNotSalonEnabled() && /\b(?:because|bc|b\/c|cause|'cause|cuz|since)\s+\S+\s+(?:was|were|had\s+been)$/i.test(words.slice(0, index).join(" "))) continue;
+    // REASON_SUBJECT_ANY_NOUN_PHRASE_ENABLED: "because her kid was sick in lincoln" keeps "in lincoln" too.
+    if (reasonPlaceNotSalonEnabled() && reasonSubjectAnyNounPhraseEnabled() && REASON_LEAD_BEFORE_PLACE.test(words.slice(0, index).join(" "))) continue;
     for (let length = Math.min(6, words.length - index - 1); length >= 1; length -= 1) {
       const phrase = words.slice(index + 1, index + 1 + length).join(" ");
       const bare = phrase.replace(/[.!?]+$/, "");

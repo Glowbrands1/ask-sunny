@@ -185,6 +185,8 @@ import { privateCreatorFormsEnabled, privateCreatorsActive } from "@/lib/forms/p
  */
 
 const NEW_FLAGS = [
+  // coding 4: REASON_SUBJECT_ANY_NOUN_PHRASE (Gate-Sunny's #975 follow-up, QA 14 Nov 2026; default off).
+  "REASON_SUBJECT_ANY_NOUN_PHRASE_ENABLED",
   // coding 4: REASON_PLACE_NOT_SALON (ported from the sibling app, Gate-Bubbles-3, 13 Nov 2026; default off).
   "REASON_PLACE_NOT_SALON_ENABLED",
   // coding 4: PLACE_STRIP_WHOLE_PHRASE_ONLY (QA, Gate-Sunny #933 probes, 13 Nov 2026; default off).
