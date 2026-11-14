@@ -24,15 +24,20 @@ import { AiError } from "./errors";
 
 export const AI_TIMEOUT_MESSAGE = "Sunny took too long to answer, so nothing was sent. Please try again in a moment.";
 
+/** Which limit ran out: the whole call, the wait for the first token, a gap between chunks, or the stream's total. */
+export type TimeLimitKind = "call" | "first_token" | "gap" | "total";
+
 export class AiTimeLimitError extends AiError {
   readonly call: string;
   readonly limitMs: number;
+  readonly kind: TimeLimitKind;
 
-  constructor(call: string, limitMs: number) {
+  constructor(call: string, limitMs: number, kind: TimeLimitKind = "call") {
     super("model_failed", AI_TIMEOUT_MESSAGE, 504);
     this.name = "AiTimeLimitError";
     this.call = call;
     this.limitMs = limitMs;
+    this.kind = kind;
   }
 }
 
@@ -48,9 +53,10 @@ export interface TimedCallOptions {
 }
 
 /** The server log line for a timed-out call. Counts and names of code only. */
-export function logAiTimeout(call: string, durationMs: number, limitMs: number, route = currentAiRoute()): void {
+export function logAiTimeout(call: string, durationMs: number, limitMs: number, route = currentAiRoute(), kind: TimeLimitKind = "call"): void {
+  const which = kind === "call" ? "" : ` limit=${kind}`;
   console.error(
-    `[ai.timeout] route=${route} call=${call} duration_ms=${Math.round(durationMs)} limit_ms=${Math.round(limitMs)}`,
+    `[ai.timeout] route=${route} call=${call} duration_ms=${Math.round(durationMs)} limit_ms=${Math.round(limitMs)}${which}`,
   );
 }
 
@@ -122,5 +128,85 @@ export async function withAiTimeLimit<T>(
     throw error;
   } finally {
     if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+/** What a streamed call reports as it reads its stream (`collectModelResult`). */
+export interface StreamWatch {
+  /** A new attempt starts (a truncation retry): it waits for its own first token again. */
+  attempt(): void;
+  /** The first text (or tool call) arrived: from now on only the gap between chunks is limited. */
+  firstToken(): void;
+  /** Any stream event arrived. */
+  chunk(): void;
+}
+
+/**
+ * A streamed call's limits (QA, 14 Nov 2026, from production's long answers):
+ * `firstTokenMs` for its first token, then `gapMs` between any two chunks,
+ * and `totalMs` in all, the SDK's retries included. A call that keeps
+ * streaming is never cut short of `totalMs`. On a timeout: the same message
+ * and one log line naming which limit ran out.
+ */
+export async function withStreamTimeLimit<T>(
+  call: string,
+  limits: { readonly firstTokenMs: number; readonly gapMs: number; readonly totalMs: number },
+  run: (options: TimedCallOptions, watch: StreamWatch) => Promise<T>,
+  settings: { readonly maxRetries?: number } = {},
+): Promise<T> {
+  const controller = new AbortController();
+  const started = performance.now();
+  let phaseTimer: ReturnType<typeof setTimeout> | undefined;
+  let streaming = false;
+  let failed: AiTimeLimitError | null = null;
+  let reject: (error: AiTimeLimitError) => void = () => {};
+  const deadline = new Promise<never>((_, rejectWith) => {
+    reject = rejectWith;
+  });
+  deadline.catch(() => {});
+  const fail = (kind: TimeLimitKind, limitMs: number) => {
+    if (failed) return;
+    failed = new AiTimeLimitError(call, limitMs, kind);
+    // Rejected before the abort, so the race settles on the timeout and not on a stream the abort ended quietly.
+    reject(failed);
+    controller.abort();
+  };
+  const arm = (kind: TimeLimitKind, limitMs: number) => {
+    if (failed) return;
+    if (phaseTimer !== undefined) clearTimeout(phaseTimer);
+    phaseTimer = setTimeout(() => fail(kind, limitMs), limitMs);
+  };
+  const watch: StreamWatch = {
+    attempt: () => {
+      streaming = false;
+      arm("first_token", limits.firstTokenMs);
+    },
+    firstToken: () => {
+      streaming = true;
+      arm("gap", limits.gapMs);
+    },
+    chunk: () => {
+      if (streaming) arm("gap", limits.gapMs);
+    },
+  };
+  watch.attempt();
+  const totalTimer = setTimeout(() => fail("total", limits.totalMs), limits.totalMs);
+  try {
+    const result = await Promise.race([
+      run({ signal: controller.signal, timeout: limits.firstTokenMs, maxRetries: settings.maxRetries ?? AI_MAX_RETRIES }, watch),
+      deadline,
+    ]);
+    if (failed) throw failed;
+    return result;
+  } catch (error) {
+    const timedOut: AiTimeLimitError | null = failed ?? (isAiTimeLimitError(error) ? error : null);
+    if (timedOut) {
+      logAiTimeout(call, performance.now() - started, timedOut.limitMs, currentAiRoute(), timedOut.kind);
+      throw timedOut;
+    }
+    throw error;
+  } finally {
+    if (phaseTimer !== undefined) clearTimeout(phaseTimer);
+    clearTimeout(totalTimer);
   }
 }

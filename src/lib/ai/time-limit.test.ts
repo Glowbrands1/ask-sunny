@@ -8,7 +8,7 @@ vi.mock("server-only", () => ({}));
  * stalled stream ends only when its signal aborts, and then ends QUIETLY, as
  * the SDK's stream does; the other stall ignores the signal and never settles.
  */
-const client = vi.hoisted(() => ({ mode: "ok" as "ok" | "fail" | "stall-stream" | "stall-ignore-signal" | "stall-tool", calls: [] as unknown[][] }));
+const client = vi.hoisted(() => ({ mode: "ok" as "ok" | "fail" | "stall-stream" | "stall-ignore-signal" | "stall-tool" | "slow-long" | "stall-midway" | "endless", calls: [] as unknown[][] }));
 vi.mock("./anthropic", () => ({
   getAnthropicClient: () => ({
     messages: {
@@ -21,6 +21,29 @@ vi.mock("./anthropic", () => ({
               yield { type: "message_start", message: { usage: { input_tokens: 10 } } };
               await new Promise<void>((resolve) => options?.signal?.addEventListener("abort", () => resolve()));
               // Aborted: the SDK's stream returns without throwing.
+            },
+          });
+        }
+        if (client.mode === "slow-long" || client.mode === "stall-midway" || client.mode === "endless") {
+          const mode = client.mode;
+          const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+          return Promise.resolve({
+            async *[Symbol.asyncIterator]() {
+              yield { type: "message_start", message: { usage: { input_tokens: 10 } } };
+              // The first token at 40 s (production's long answers: 15–43 s).
+              await wait(40_000);
+              yield { type: "content_block_delta", delta: { type: "text_delta", text: "A long" } };
+              if (mode === "stall-midway") {
+                await new Promise<void>((resolve) => options?.signal?.addEventListener("abort", () => resolve()));
+                return;
+              }
+              // Then a chunk every 5 s: to 60 s, or (endless) for as long as it is read.
+              for (let at = 45_000; mode === "endless" || at <= 60_000; at += 5_000) {
+                await wait(5_000);
+                if (options?.signal?.aborted) return;
+                yield { type: "content_block_delta", delta: { type: "text_delta", text: " answer" } };
+              }
+              yield { type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 3000 } };
             },
           });
         }
@@ -96,7 +119,7 @@ describe("the main answer (callClaude)", () => {
     expect(error).toBeInstanceOf(AiTimeLimitError);
     expect((error as AiError).message).toBe(AI_TIMEOUT_MESSAGE);
     expect((error as AiError).status).toBe(504);
-    expect(loggedLines()).toEqual([expect.stringMatching(/^\[ai\.timeout\] route=chat call=main_answer duration_ms=\d+ limit_ms=45000$/)]);
+    expect(loggedLines()).toEqual([expect.stringMatching(/^\[ai\.timeout\] route=chat call=main_answer duration_ms=\d+ limit_ms=45000 limit=first_token$/)]);
     // No question, grounding or answer text in the log line.
     expect(loggedLines().join("\n")).not.toContain("dress code");
     // On the trace as a timeout.
@@ -129,7 +152,41 @@ describe("the main answer (callClaude)", () => {
     }
   });
 
-  it("AI_MAIN_TIMEOUT_MS sets the limit", async () => {
+  it("QA's long answer: first token at 40 s, done at 60 s — it succeeds, nothing is logged", async () => {
+    client.mode = "slow-long";
+    vi.useFakeTimers();
+    const settled = callClaude(input).then((text) => text, (error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(61_000);
+    expect(await settled).toBe("A long answer answer answer answer");
+    expect(errors).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("an answer that begins and then goes quiet ends 30 s after its last chunk (limit=gap)", async () => {
+    client.mode = "stall-midway";
+    vi.useFakeTimers();
+    const settled = callClaude(input).then(() => null, (error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(40_000 + 29_999);
+    expect(errors).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    const error = await settled;
+    expect(error).toBeInstanceOf(AiTimeLimitError);
+    expect((error as AiError).message).toBe(AI_TIMEOUT_MESSAGE);
+    expect(loggedLines()).toEqual([expect.stringMatching(/call=main_answer duration_ms=\d+ limit_ms=30000 limit=gap$/)]);
+  });
+
+  it("a stream that never ends is stopped at the 110 s cap, under the route's 120 s (limit=total)", async () => {
+    client.mode = "endless";
+    vi.useFakeTimers();
+    const settled = callClaude(input).then(() => null, (error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(109_999);
+    expect(errors).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(await settled).toBeInstanceOf(AiTimeLimitError);
+    expect(loggedLines()).toEqual([expect.stringMatching(/limit_ms=110000 limit=total$/)]);
+  });
+
+  it("AI_MAIN_TIMEOUT_MS sets the first-token limit", async () => {
     process.env.AI_MAIN_TIMEOUT_MS = "6000";
     client.mode = "stall-stream";
     vi.useFakeTimers();
