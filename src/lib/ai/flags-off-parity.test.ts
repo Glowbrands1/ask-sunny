@@ -666,6 +666,8 @@ const NEW_FLAGS = [
   "OFF_ROSTER_STORE_ANSWER_ONLY_ENABLED",
   // coding 6: SAME_NAME_ASKS_WHICH (QA, 12 Nov 2026; default off; high priority).
   "SAME_NAME_ASKS_WHICH_ENABLED",
+  // coding 5: LEVEL_LEADS_REQUEST (QA, 14 Nov 2026; #968; default off).
+  "LEVEL_LEADS_REQUEST_ENABLED",
 ] as const;
 
 const PROTECTED = [

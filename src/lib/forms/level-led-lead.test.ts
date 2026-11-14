@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { withoutLevelLedRequestLead } from "./level-led-lead";
 import { withoutRequestInObservation } from "./request-observation";
@@ -13,6 +13,11 @@ const LIVE = [
   "another verbal for Quilla Farrowmere, she was late on 11/12/26",
   "2nd written for Quilla Farrowmere, she was late on 11/12/26",
 ];
+
+beforeEach(() => {
+  // Each case sets the flag itself; off is off whatever the environment says.
+  delete process.env.LEVEL_LEADS_REQUEST_ENABLED;
+});
 
 afterEach(() => {
   delete process.env.LEVEL_LEADS_REQUEST_ENABLED;
