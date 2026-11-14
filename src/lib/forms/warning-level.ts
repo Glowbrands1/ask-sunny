@@ -115,6 +115,16 @@ const OWN_DATE_AFTER =
 const POINTS_BACK_AFTER = /^\s*for\s+(?:the\s+same|this\s+same|same|that|it)\b/;
 const ASKS_IN_SENTENCE = /\b(?:create|make|draft|prepare|write|do|start|issue|give|need|needs|want|file|document|open)\b/;
 
+/** The level reads as a step on file by the readers that came before HISTORY_LEVEL_NOT_THIS_FORM. */
+function olderHistory(before: string, after: string): boolean {
+  return (
+    LEVEL_HISTORY_BEFORE.test(before) ||
+    LEVEL_HISTORY_AFTER.test(after) ||
+    LEVEL_HISTORY_HEADING.test(before) ||
+    ((LEVEL_HISTORY_LABEL.test(before) || LEVEL_HISTORY_VERB.test(before)) && DATED_AFTER.test(after))
+  );
+}
+
 /** The level opens the turn: nothing but "a" / "new" / "please" before it, in the turn's first sentence. */
 function opensTurn(read: string, sentenceStart: number, before: string): boolean {
   return read.slice(0, sentenceStart).trim() === "" && /^\s*(?:(?:a|an|new|please)\s+)*$/.test(before);
@@ -221,6 +231,9 @@ export function historyWarningLevels(text: string, today: string = businessToday
     for (const match of body.matchAll(LEVEL_NAMED)) {
       const before = body.slice(0, match.index);
       const after = body.slice(match.index + match[0].length);
+      // A level the older readers already call history ("previous coaching: … verbal ca 9-1-26") is listed by the
+      // prior-actions readers, with the manager's corrections; only the ones the date check alone reads are added here.
+      if (olderHistory(before, after)) continue;
       const iso = historyByDateOrPointer(before, after, today, read, (sentence.index ?? 0) + match.index + match[0].length, opensTurn(read, sentence.index ?? 0, before));
       if (iso !== null) out.push({ named: match[0], iso });
     }
@@ -397,10 +410,7 @@ export function statedWarningLevel(
       const before = body.slice(0, match.index);
       const after = body.slice(match.index + match[0].length);
       if (
-        LEVEL_HISTORY_BEFORE.test(before) ||
-        LEVEL_HISTORY_AFTER.test(after) ||
-        LEVEL_HISTORY_HEADING.test(before) ||
-        ((LEVEL_HISTORY_LABEL.test(before) || LEVEL_HISTORY_VERB.test(before)) && DATED_AFTER.test(after)) ||
+        olderHistory(before, after) ||
         // HISTORY_LEVEL_NOT_THIS_FORM_ENABLED: its own date, or "for the same thing" — a step on file.
         (historyLevelNotThisFormOn() &&
           historyByDateOrPointer(before, after, options.today ?? businessToday(), read, (sentence.index ?? 0) + match.index! + match[0].length, opensTurn(read, sentence.index ?? 0, before)) !== null)
