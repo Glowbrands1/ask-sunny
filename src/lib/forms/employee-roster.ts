@@ -175,13 +175,24 @@ export async function readDirectoryRoster(): Promise<DirectoryRosterRow[]> {
 export async function loadScopedRoster(scope: AccessScope | null): Promise<RosterEmployee[]> {
   if (!scope || scope.level === "district" || scope.level === "region") return [];
   try {
-    const roster = rosterStoreScopedEnabled()
-      ? (await readStoreRoster(scope)).map(rosterEmployeeOf)
-      : scopeRoster(await readDirectoryRoster(), scope);
-    return withinRosterLimit(roster);
+    return await readScopedRoster(scope);
   } catch {
     return [];
   }
+}
+
+/**
+ * The same scoped roster, but a read failure THROWS instead of becoming an
+ * empty list. `loadScopedRoster` is this inside a catch. The tool loop's
+ * find_staff (AGENT_LOOP_ENABLED) reads it, so "the roster could not be read"
+ * is said as that, never as "nobody by that name". A district, region or
+ * missing scope is not read here either: the caller decides what that means.
+ */
+export async function readScopedRoster(scope: AccessScope): Promise<RosterEmployee[]> {
+  const roster = rosterStoreScopedEnabled()
+    ? (await readStoreRoster(scope)).map(rosterEmployeeOf)
+    : scopeRoster(await readDirectoryRoster(), scope);
+  return withinRosterLimit(roster);
 }
 
 /** Roster row plus the Woven title and primary location the name check does not read. */

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { noteSpendUser } from "@/lib/ai/spend-meter";
 import { withSpendMeter } from "@/lib/ai/spend-meter-run";
+import { agentLoopFor } from "@/lib/ai/agent-loop/switch";
 
 import { withSwitchAfterCreate } from "@/lib/ai/form-type-switch";
 import { withCorrectionNotDropped, withProposalNameCorrection } from "@/lib/forms/proposal-name-correction";
@@ -227,6 +228,34 @@ async function postChat(request: Request) {
     if (capped) {
       await closeTurn(turnId, { category: "unclassified", succeeded: true, latencyMs: Date.now() - askedAt });
       return NextResponse.json({ ...finalReplyWithoutMarkers(capped), turnId });
+    }
+
+    /*
+     * AGENT_LOOP_ENABLED (QA, 14 Nov 2026): the turn answered by the tool loop (`lib/ai/agent-loop/`), for every user
+     * or only AGENT_LOOP_USERS. After authentication, the rate limit, the open turn and the spend guard above; instead
+     * of every handler and reply rewrite below. The loop's reply is returned as the model wrote it, so the history the
+     * browser saves is the model's own. Off (or not a listed user), this branch is never taken.
+     */
+    if (agentLoopFor(context.identity.email)) {
+      try {
+        const parsedForLoop = parseAskRequest(body);
+        const looped = await (await import("@/lib/ai/agent-loop/run")).runAgentTurn({
+          request,
+          actor: context.identity,
+          question: parsedForLoop.question,
+          questionMessageId: parsedForLoop.questionMessageId,
+          history: parsedForLoop.history,
+          scopeId: parsedForLoop.scopeId,
+          today: businessToday(),
+          conversationId: parsedForLoop.conversationId,
+          openFormId: parsedForLoop.activeFormInstanceId ?? null,
+        });
+        await closeTurn(turnId, { category: "unclassified", succeeded: true, latencyMs: Date.now() - askedAt });
+        return NextResponse.json({ ...looped, turnId });
+      } catch (error) {
+        await closeTurn(turnId, { category: "unclassified", succeeded: false, latencyMs: Date.now() - askedAt });
+        throw error;
+      }
     }
 
     let answer;

@@ -19,7 +19,7 @@ import { expect } from "vitest";
 
 export interface ReplayAnswer {
   content: string;
-  formProposal?: { templateKey?: string; employeeName?: string | null; employeeRole?: string | null; status?: string; subject?: string; locationId?: string | null; wovenCloseMatch?: string | null; formDate?: string | null };
+  formProposal?: { templateKey?: string; employeeName?: string | null; employeeRole?: string | null; status?: string; subject?: string; locationId?: string | null; wovenCloseMatch?: string | null; formDate?: string | null; warningLevel?: string | null; issue?: string | null };
   formUpdate?: { instanceId: string; updated: string[] };
   formOpened?: { instanceId: string };
   /** The source cards the reply carries. */
@@ -126,6 +126,12 @@ export interface ReplayContext {
   draftNotYetSaved(instanceId: string): void;
   /** The draft route's replies this case, in order (e.g. its `notice`). */
   draftReplies?(): Record<string, unknown>[];
+  /** AGENT_LOOP_ENABLED: whether this run has the tool loop on (a case's `fixFlags` run, or production once QA turns it on). */
+  loopOn?(): boolean;
+  /** AGENT_LOOP_ENABLED: the loop's stand-in model for this case (`loop-stand-in.ts`). */
+  loopModel?(standIn: import("./loop-stand-in").LoopStandIn): void;
+  /** AGENT_LOOP_ENABLED: find_staff's roster read fails from now on. */
+  rosterFails?(): void;
 }
 
 export interface DirectoryRow {

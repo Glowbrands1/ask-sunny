@@ -16,6 +16,7 @@ import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
 import type { ReplayContext } from "./cases";
 import { CASES } from "./index";
 import { forgetManualIndexForTests } from "@/lib/ai/intent-extraction";
+import { isLoopRequest } from "./loop-stand-in";
 
 /**
  * ============================================================================
@@ -164,6 +165,8 @@ vi.mock("@/lib/forms/form-patch-call", () => ({
  * failed database write would, so a case can make a turn throw part-way.
  */
 const faults = vi.hoisted(() => ({ field: null as string | null, strayDraftField: null as string | null }));
+/** AGENT_LOOP_ENABLED: the case's stand-in (`t.loopModel`) and the roster fault (`t.rosterFails`). */
+const loop = vi.hoisted(() => ({ standIn: null as import("./loop-stand-in").LoopStandIn | null, rosterFails: false }));
 /** `t.summaryWrites`: what the long-context summary model returns; none by default (the summary call fails, as unscripted). */
 const summaries = vi.hoisted(() => ({ reply: null as string | null }));
 
@@ -390,6 +393,11 @@ vi.mock("@/lib/ai/anthropic", () => ({
   getAnthropicClient: () => ({
     messages: {
       create: async (request: { tool_choice?: { name?: string } }) => {
+        // AGENT_LOOP_ENABLED: a call offering the loop's tools is the case's stand-in model (`t.loopModel`).
+        if (isLoopRequest(request)) {
+          if (!loop.standIn) throw new Error("the loop was called with no stand-in model (t.loopModel)");
+          return loop.standIn.respond(request);
+        }
         const revising = request.tool_choice?.name === "revise_form_fields";
         if (!revising) {
           state.draftCalls += 1;
@@ -532,6 +540,11 @@ vi.mock("@/lib/forms/employee-roster", async (importOriginal) => {
       })),
     // The turn's roster limit (`withRosterLimit`), as production's loadScopedRoster applies it.
     loadScopedRoster: async (scope: AccessScope | null) => actual.withinRosterLimit(actual.scopeRoster(state.directory as never, scope)),
+    // AGENT_LOOP_ENABLED: find_staff's roster read, the same people (`t.rosterFails()` makes it fail, as a directory outage would).
+    readScopedRoster: async (scope: AccessScope) => {
+      if (loop.rosterFails) throw new Error("The employee directory could not be read.");
+      return actual.withinRosterLimit(actual.scopeRoster(state.directory as never, scope));
+    },
   };
 });
 
@@ -569,6 +582,9 @@ async function call<T>(url: string, init?: RequestInit): Promise<T> {
 
 /** The draft route's replies this case (DRAFT_WROTE_NOTHING_NOTICE_ENABLED reads its `notice`). */
 const draftReplies: Record<string, unknown>[] = [];
+
+/* AGENT_LOOP_ENABLED (QA, 14 Nov 2026): the loop's manual cache, forgotten between cases (each case pins its own passages). */
+const { forgetAgentLoopManualForTests } = await import("@/lib/ai/agent-loop/tools");
 
 /** The chat route only accepts a UUID for the open form; the fake numbers rows `fake-N`. */
 function toUuid(id: string): string {
@@ -837,6 +853,9 @@ afterEach(() => {
   setScope(undefined);
   setRole(undefined);
   setSubject(undefined);
+  loop.standIn = null;
+  loop.rosterFails = false;
+  forgetAgentLoopManualForTests();
   said.answer = null;
   editTool.input = null;
   editTool.offered = 0;
@@ -951,6 +970,13 @@ function context(): ReplayContext {
           .map((row) => [String(row.field_key), (row.checked as unknown[]).map(String)]),
       ),
     draftReplies: () => [...draftReplies],
+    loopOn: () => process.env.AGENT_LOOP_ENABLED === "true",
+    loopModel: (standIn) => {
+      loop.standIn = standIn;
+    },
+    rosterFails: () => {
+      loop.rosterFails = true;
+    },
     draftNotYetSaved: (instanceId) => {
       store.form_instance_values = store.form_instance_values.filter((row) => !(row.instance_id === instanceId && row.filled_by === "ai"));
     },
