@@ -4799,3 +4799,13 @@ export function closeSpellingMatchEnabled(): boolean {
 export function sharedCityAsksSalonEnabled(): boolean {
   return envFlag("SHARED_CITY_ASKS_SALON_ENABLED");
 }
+
+/**
+ * SALON_NAME_LETTER_WORD (Coding-4's finding, 13 Nov 2026; default off): "she was at lincoln street fair" was filed at
+ * the NE Lincoln O Street salon — the slot reader matched a salon by its words of four letters or more, so "lincoln"
+ * and "street" were enough. With the flag a one-letter word of the name (the street "O") must be said too, before the
+ * word after it ("o street", "o st"). See `ai/intent-slots.ts` matchSalonsInText. Off, as before.
+ */
+export function salonNameLetterWordEnabled(): boolean {
+  return envFlag("SALON_NAME_LETTER_WORD_ENABLED");
+}
