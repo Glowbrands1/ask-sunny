@@ -52,7 +52,7 @@ The Hub's page code runs unchanged except:
 | Assistant on assistant-ui | the same markup on `@ai-sdk/react` | assistant-ui needs AI SDK 7 and a newer Radix |
 | Assistant: chat history in the Hub's localStorage keys | `l10-hub-assistant:<Sunny user id>:<meeting>` | not shared with the Hub's history |
 | Assistant @-mentions: everyone the person shares a meeting with | this meeting's people | one meeting here |
-| Assistant: attachments, web search / fetch | not here | see PARITY.md |
+| Assistant: web search / fetch tool version 20260318 | 20260209 | the newest in `@ai-sdk/anthropic` for AI SDK 6; see PARITY.md |
 | IDS ranking ("Everyone's top three", Rank buttons, Priority badges) | off (`RANKING = false` in `Ids.tsx`) | the team works IDS as in Bloom Growth, without ranking (14 Nov 2026) |
 
 When the Hub's meeting page changes, re-copy the file and re-apply the row above that concerns it. The full audit, file by file, is in [PARITY.md](./PARITY.md).

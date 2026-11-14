@@ -1,4 +1,4 @@
-import { assistantRateLimit, readConfig, streamHubAssistant, validMessages } from "@/features/l10/assistant/assistant.server";
+import { assistantRateLimit, attachmentProblem, readConfig, streamHubAssistant, validMessages } from "@/features/l10/assistant/assistant.server";
 import { modelSpendGuard } from "@/lib/ai/spend-guard";
 import { l10Viewer } from "@/features/l10/data.server";
 import { isMeetingKey } from "@/features/l10/lib/config";
@@ -39,6 +39,10 @@ export async function POST(req: Request) {
   // The Hub's prompt, models and tools, for this person and this meeting (404 when they may not open it here).
   const config = readConfig(await callHub("assistant-config", viewer.email, { key, pathname: `/meetings/${key}` }));
   if (!config) return json(404, { error: "not_found" });
+
+  // The Hub route's attachment guard, with the Hub's limits. Nothing is logged (the body holds the conversation and files).
+  const problem = attachmentProblem(messages, config.attachments);
+  if (problem) return json(413, { error: "attachment", message: problem });
 
   return streamHubAssistant({ config, messages, deep: body.deep === true, email: viewer.email, userId: viewer.userId, meetingKey: key, signal: req.signal });
 }

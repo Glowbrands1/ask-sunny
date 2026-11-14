@@ -132,6 +132,7 @@ export function Ids({
   meetingKey,
   voter = { id: "anonymous", name: "Someone" },
   attendees = [],
+  addedBy = "",
 }: {
   doc: MeetingDoc;
   edit: (fn: (d: MeetingDoc) => MeetingDoc) => void;
@@ -141,6 +142,8 @@ export function Ids({
   voter?: Voter;
   /** The meeting's attendees, one row each in "Everyone's top three". */
   attendees?: Pick<Attendee, "name">[];
+  /** The signed-in person's full name, saved on each issue they add (its initials show on the row). Empty: not saved. */
+  addedBy?: string;
 }) {
   const plain = useMentionPlain();
   const [text, setText] = useState("");
@@ -164,7 +167,7 @@ export function Ids({
     if (!t) return;
     // A new issue goes on the list being looked at (short-term when "Recently solved" is open).
     const term: IssueTerm = tab === "long" ? "long" : "short";
-    setIssues((xs) => [...xs, { id: newItemId(), title: t, notes: "", resolved: false, ...(term === "long" ? { term } : {}) }]);
+    setIssues((xs) => [...xs, { id: newItemId(), title: t, notes: "", resolved: false, ...(term === "long" ? { term } : {}), ...(addedBy.trim() ? { addedBy: addedBy.trim() } : {}) }]);
     setText("");
   };
 
