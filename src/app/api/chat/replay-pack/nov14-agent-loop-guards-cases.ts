@@ -571,7 +571,7 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
           tries += 1;
           return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, what_happened: "Tamsin Orwell arrived 40 minutes late on 11/10 and did not report a $15 drawer shortage at the front desk." } };
         }
-        if (reword && proposals === 1 && lastResult(view, "propose_form")?.error) {
+        if (reword && proposals === 1 && (lastResult(view, "propose_form")?.facts as { account_words_missing?: string[] } | undefined)?.account_words_missing) {
           return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, what_happened: "Tamsin Orwell arrived 40 minutes late, at 10:40am on 11/10, and did not report a $15 drawer shortage at the front desk." } };
         }
         return { text: "Here's the card." };
@@ -581,7 +581,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       await thread.say(messy);
       await thread.say("make it professional");
       expect(tries).toBe(1);
-      expect(toolResults(card.views, "propose_form").some((result) => /leaves out/.test(result) && /10:40/.test(result)), "a reword dropping the time was taken").toBe(true);
+      // Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite; code-check audit batch C): a fact, not a refusal; the model fixes the card.
+      expect(toolResults(card.views, "propose_form").some((result) => /"account_words_missing":\[[^\]]*10:40/.test(result)), "a reword dropping the time is not a fact").toBe(true);
       expect(thread.proposal?.issue ?? "").toMatch(/10:40am on 11\/10/);
       expect(thread.proposal?.issue ?? "").toMatch(/\$15/);
 
@@ -603,7 +604,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       t.loopModel!(editor);
       await thread.say("can you clean it up");
       const results = toolResults(editor.views, "edit_form");
-      expect(results.some((result) => /leaves out \\"\$15\\"/.test(result)), "a reword dropping the $15 was written").toBe(true);
+      // Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite; code-check audit batch C): a fact, not a refusal; the model fixes the card.
+      expect(results.some((result) => /"reword_lost":\{"observation":\[[^\]]*\$15/.test(result)), "a reword dropping the $15 is not a fact").toBe(true);
       expect(results.some((result) => /changes only the free-text fields|must come from the manager's own words/.test(result)), "a reword touching the level was written").toBe(true);
       expect(step).toBeGreaterThanOrEqual(2);
       const after = t.values(id);
@@ -707,7 +709,9 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
 
       const drawer = t.thread();
       await drawer.say("ca for tamsin orwell, the drawer was $15 short on 11/12");
-      expect(toolResults(model.views, "propose_form").some((result) => /not this incident's section/.test(result)), "Handling Theft was taken for a short drawer").toBe(true);
+      // Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite; code-check audit batch C): a fact, not a refusal; the model fixes the card.
+      expect(toolResults(model.views, "propose_form").some((result) => /"fits_headings":\[[^\]]*Standards of Conduct/.test(result)), "the short drawer's section is not a fact").toBe(true);
+      expect((drawer.proposal as { policyLine?: string | null } | undefined)?.policyLine ?? "", "Handling Theft stayed on the card").toMatch(/^Standards of Conduct/);
       expect(drawer.proposal?.formDate).toBe("2026-11-12");
 
       const none = t.thread();
@@ -774,7 +778,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       // A: every metric kept; Standards of Conduct with Pau's line.
       const a = t.thread();
       const replyA = await a.say(MSB_A);
-      expect(results().some((result) => /leaves out.*Club Close %/.test(result)), "a dropped metric was taken").toBe(true);
+      // Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite; code-check audit batch C): a fact, not a refusal; the model fixes the card.
+      expect(results().some((result) => /"account_words_missing":\[[^\]]*Club Close %/.test(result)), "a dropped metric is not a fact").toBe(true);
       expect(a.proposal?.issue ?? "").toContain("Club Close %");
       // Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite; code-check audit batch A): the line is the model's, from this fact.
       expect(results().at(-1), replyA.content).toMatch(/"under_performance":true/);
@@ -784,7 +789,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       const b = t.thread();
       await b.say(MSB_B);
       expect(toolResults(careless.views, "find_staff").some((result) => /"matches":\[\]/.test(result)), "MSB was found as a person").toBe(true);
-      expect(results().some((result) => /leaves out.*146/.test(result)), "the 146 tans were dropped").toBe(true);
+      // Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite; code-check audit batch C): a fact, not a refusal; the model fixes the card.
+      expect(results().some((result) => /"account_words_missing":\[[^\]]*146/.test(result)), "the dropped 146 tans are not a fact").toBe(true);
       expect(b.proposal).toMatchObject({ employeeName: "Liora Quenby", warningLevel: "verbal" });
       expect(b.proposal?.issue ?? "").toMatch(/146 tans/);
 
@@ -794,7 +800,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       await c.say(MSB_C);
       expect(toolResults(careless.views, "find_past_forms").at(-1), "the gate did not open for \"the format of <C>'s ca\"").not.toMatch(/only when the manager asks|not asked/i);
       const cResults = results();
-      expect(cResults.some((result) => /figures the manager never gave: 237/.test(result)), "C's figure reached B's card").toBe(true);
+      // Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite; code-check audit batch C): a fact, not a refusal; the model fixes the card. C's name on B's card stays a refusal (the right person).
+      expect(cResults.some((result) => /"figures_not_said":\[[^\]]*"237"|"format_figures":\[[^\]]*"237"/.test(result)), "C's figure on B's card is not a fact").toBe(true);
       expect(cResults.some((result) => /Corvina Lisle's form is only the format/.test(result)), "C's name reached B's card").toBe(true);
       expect(c.proposal?.employeeName).toBe("Liora Quenby");
       expect(c.proposal?.issue ?? "").not.toMatch(/Corvina|237/);
@@ -804,7 +811,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       const d = t.thread();
       await d.say(MSB_B);
       await d.say(MSB_D);
-      expect(results().some((result) => /237 is the format's own figures, not Liora Quenby's/.test(result)), "the pasted format's figure reached B's card").toBe(true);
+      // Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite; code-check audit batch C): a fact, not a refusal; the model fixes the card.
+      expect(results().some((result) => /"format_figures":\["237"\]/.test(result)), "the pasted format's figure on B's card is not a fact").toBe(true);
       expect(d.proposal?.issue ?? "").not.toMatch(/Corvina|237/);
     },
   },
@@ -829,7 +837,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       t.loopModel!(empty);
       const first = t.thread();
       await first.say("coaching form for tamsin orwell, she marked a session as complete but the guest hadn't been sprayed yet");
-      expect(toolResults(empty.views, "propose_form")[0], "a card with an empty account was taken").toMatch(/already said what happened/);
+      // Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite; code-check audit batch C): a fact, not a refusal; the model fixes the card.
+      expect(toolResults(empty.views, "propose_form")[0], "the account the manager gave is not a fact").toMatch(/"account_given":\{"untrusted_text":"[^"]*marked a session as complete/);
       expect(first.proposal?.issue ?? "").toMatch(/marked a session as complete/);
 
       // A created coaching draft: the account turn, then "make that update" with no values writes it, word for word.
@@ -1076,14 +1085,19 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       t.as("salon_director", KEARNEY);
       t.manualAlsoHas?.([manualChunk(900, 60, "Key Holder Guidelines", "A key holder opens and closes the location."), manualChunk(901, 61, "Key Holder Requirements", "A key holder is at least eighteen.")]);
       const proposer = loopStandIn((view) => {
-        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, policy: "Key Holder Guidelines", what_happened: "Tamsin Orwell left the back door unlocked last night.", warning_level: "verbal" } };
-        return { text: String(lastResult(view, "propose_form")?.confirm_policy ?? "") };
+        const tries = view.results.filter((result) => result.tool === "propose_form").length;
+        const facts = lastResult(view, "propose_form")?.facts as { confirm_policy?: string } | undefined;
+        if (tries === 0) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, policy: "Key Holder Guidelines", what_happened: "Tamsin Orwell left the back door unlocked last night.", warning_level: "verbal" } };
+        // Changed on purpose (batch C, code-check #33): on confirm_policy the model proposes again with no policy, as the rules book teaches.
+        if (tries === 1 && facts?.confirm_policy) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, what_happened: "Tamsin Orwell left the back door unlocked last night.", warning_level: "verbal" } };
+        return { text: String(facts?.confirm_policy ?? "") };
       });
       t.loopModel!(proposer);
       const reply = await t.thread().say("create a verbal ca for tamsin orwell for violating the key holdr policy, she left the back door unlocked last night");
       const result = toolResults(proposer.views, "propose_form")[0] ?? "";
       expect(result, "no question between the two headings").toMatch(/Did you mean \*\*Key Holder Guidelines\*\* \(page 60\) or \*\*Key Holder Requirements\*\* \(page 61\)\?/);
-      expect(result, "a policy was cited before the manager chose").toMatch(/"policy":null/);
+      // Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite; code-check audit batch C): a fact, not a refusal; the model fixes the card.
+      expect(toolResults(proposer.views, "propose_form").at(-1), "a policy was cited before the manager chose").toMatch(/"policy":null/);
       expect(reply.content).not.toMatch(/\*\*Policy:\*\* Key Holder (?:Guidelines|Requirements), JBA/);
     },
   },
@@ -1182,6 +1196,60 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       expect(reply.content, "the false claim reached the manager").not.toMatch(/I've added|now says/);
       expect(reply.content).toMatch(/didn't change anything/i);
       expect(reply.formUpdate ?? null).toBeNull();
+    },
+  },
+  {
+    id: "nov14-agent-loop-draft-claim-handed-back",
+    title: "code-check #48 (batch D): with a draft open, a reply that claims a change nothing saved is handed back once with what the draft shows; the model makes the edit with edit_form and the reply is its own, true one",
+    report: `${REPORT}; live sample (14 Nov 2026): "the reply says the form changed, and the saved form did not"; Pau 14 Nov: code may refuse or inform, never rewrite`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-13T22:40:00Z"));
+      t.directory([...STAFF, TAMSIN]);
+      t.as("salon_director", KEARNEY);
+      t.loopModel!(loopStandIn((view) => (lastResult(view, "propose_form") ? { text: "Coaching Form for **Tamsin Orwell**. What happened?" } : { tool: "propose_form", input: { template_key: "coaching", employee_id: TAMSIN.id } })));
+      const thread = t.thread();
+      await thread.say("create a coaching form for tamsin orwell");
+      const id = await thread.create();
+      // A model that first claims the edit, then makes it when the app hands its reply back.
+      const fixer = loopStandIn((view) => {
+        const checked = /\[app check\]/.test([...view.turns].reverse().find((turn) => turn.role === "user")?.text ?? "");
+        if (!checked) return { text: "I've added that to the coaching details." };
+        if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { instance_id: id, values: { coaching_details: "Tamsin Orwell skipped the spray booth check this morning." } } };
+        return { text: "Added to the Details of Coaching: Tamsin Orwell skipped the spray booth check this morning." };
+      });
+      t.loopModel!(fixer);
+      const reply = await thread.say("she skipped the spray booth check this morning");
+      expect(fixer.views.some((view) => /\[app check\] Your reply says the draft changed/.test(view.turns.at(-1)?.text ?? "")), "the claim was not handed back").toBe(true);
+      expect(t.values(id).coaching_details ?? "", "the edit was not made").toMatch(/skipped the spray booth check this morning/);
+      expect(reply.content, `the reply is not the model's own:\n${reply.content}`).toMatch(/^Added to the Details of Coaching/);
+      expect(reply.formUpdate?.updated ?? []).toContain("coaching_details");
+    },
+  },
+  {
+    id: "nov14-agent-loop-guard-reword-never-changes-the-person",
+    title: "\"make it professional\" on a draft with values that change employee_name to another roster person: refused, nothing written (the right person stays a hard guard in batch C)",
+    report: `${REPORT}; QA's review of batch C (#999): a reword touching employee_name was written and only reported`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-13T22:40:00Z"));
+      t.directory([...STAFF, TAMSIN, CORBIN]);
+      t.as("salon_director", KEARNEY);
+      t.loopModel!(loopStandIn((view) => (lastResult(view, "propose_form") ? { text: "Here's the Coaching Form for **Tamsin Orwell**.\n\n**Observation of Offense:** Skipped the spray booth check on 11/12." } : { tool: "propose_form", input: { template_key: "coaching", employee_id: TAMSIN.id, what_happened: "Tamsin Orwell skipped the spray booth check on 11/12." } })));
+      const thread = t.thread();
+      await thread.say("coaching form for tamsin orwell, she skipped the spray booth check on 11/12");
+      const id = await thread.create();
+      t.typeOnForm(id, { coaching_details: "Tamsin Orwell skipped the spray booth check on 11/12." });
+      const before = JSON.stringify(t.values(id));
+      const rewriter = loopStandIn((view) => (lastResult(view, "edit_form") ? { text: "Reworded." } : { tool: "edit_form", input: { instance_id: id, values: { employee_name: "Corbin Ashdown", coaching_details: "The employee did not complete the spray booth check on 11/12." } } }));
+      t.loopModel!(rewriter);
+      await thread.say("make it professional");
+      expect(toolResults(rewriter.views, "edit_form")[0], "a reword changing the person was not refused").toMatch(/A reword never changes who the form is about: employee_name/);
+      expect(JSON.stringify(t.values(id)), "the draft changed").toBe(before);
     },
   },
   {

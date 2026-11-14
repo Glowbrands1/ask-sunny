@@ -150,3 +150,57 @@ This is a TOOL/protocol change, not a reply patch: what Create sends is now data
   - The markers are stripped before the reply reaches the manager.
 
 **Rules book:** lines for each new fact, plus QA's live-app items 1, 2, 4, 5, 6, 11 and 13.
+
+## Batch C (done)
+
+**Converted: #16, #17, #18 (except its right-person part), #19, #28, #30, #32, #33.** Each is a fact now; the rules book's Card replies and Editing lines say how to fix the card or draft before replying.
+
+propose_form facts:
+
+| Check | Fact |
+|---|---|
+| #16, the account leaves out the manager's words | `account_words_missing` |
+| #17, empty account when the manager gave one | `account_given` |
+| #18, figures nobody said | `figures_not_said` |
+| #18, a format's figures | `format_figures` |
+| #19, a heading outside the incident's topic | `fits_headings` |
+| #32, a date after today | `date_after_today` |
+| #33, close-spelling policy | `confirm_policy`; the model proposes again with no policy |
+
+- #18's right-person part stays a refusal: another person's name is never on this card.
+- With #33, the card now cites the model's policy rather than nulling it.
+
+edit_form facts:
+
+| Check | Fact |
+|---|---|
+| #28, a reword dropped words or touched fixed fields | `reword_lost`, `reword_touched_fixed_fields` |
+| #28, a reword with values for `employee_name` or `job_title` | still a refusal (the right person), nothing written |
+| #30, a level or payroll answer also wrote other fields | `level_or_payroll_answer_also_wrote` |
+
+**Still refusals (approved SAFETY):**
+- no invented level or payroll;
+- the right person;
+- a name correction is the name;
+- whole staff;
+- drafts only;
+- the past-forms gate.
+
+**Also in this batch:**
+- QA's ruling of 15 Nov: with the loop answering, the place stays in the Observation as said (`nov13-observation-place-must-read-*` loop arm).
+
+## Batch D (done)
+
+**#48, the draft honesty check:**
+- With a draft open, a reply that claims a change nothing saved goes back to the model once, with what the saved draft shows. The model then makes the change with edit_form, or says plainly that it was not made.
+- Only if the reply still claims an unsaved change does today's FORM_EDIT_NOOP_GUARD answer from the saved diff replace it.
+- The trace records `draft_review: { claimed, fixed }`.
+
+**The card self-review (#997):**
+- It already hands back once and only states plainly that a change isn't on the card if the second try fails.
+- Both reviews share one hand-back call. It costs at most one more model call, with up to 4 steps, and only when a mismatch is found.
+
+**After batch D,** code writes into the reply only:
+- `EARLIER_CARD_STAYS`;
+- the safety clean-ups;
+- the two second-miss honesty lines.

@@ -123,8 +123,16 @@ export const NOV13_OBSERVATION_PLACE_MUST_READ_CASES: ReplayCase[] = MUST_READ.m
   fixFlags: [FLAG],
   async run(t: ReplayContext) {
     const { reply, said } = await observationOf(t, wording.turn);
-    expect(said, `the place was not read:\n${reply}`).not.toMatch(wording.place);
-    expect(said, `the account was lost:\n${reply}`).toMatch(wording.account);
+    // Changed on purpose (QA 15 Nov: the loop keeps places as said; Pau rated it better on L9): with the agent loop
+    // answering, the place stays in the Observation as the manager said it. Today's path still reads it out.
+    if (t.loopActive?.()) {
+      expect(said, `the loop dropped the place:\n${reply}`).toMatch(wording.place);
+      // The loop writes the account with ordinary capitals ("at Omaha last week"), so its account is matched in any case.
+      expect(said, `the account was lost:\n${reply}`).toMatch(new RegExp(wording.account.source, "i"));
+    } else {
+      expect(said, `the place was not read:\n${reply}`).not.toMatch(wording.place);
+      expect(said, `the account was lost:\n${reply}`).toMatch(wording.account);
+    }
   },
 }));
 
@@ -151,8 +159,16 @@ export const NOV13_OBSERVATION_PLACE_MUST_READ_CAPITALISED_CASES: ReplayCase[] =
   fixFlags: [FLAG],
   async run(t: ReplayContext) {
     const { reply, said } = await observationOf(t, wording.turn);
-    expect(said, `the place was not read:\n${reply}`).not.toMatch(wording.place);
-    expect(said, `the account was lost:\n${reply}`).toMatch(wording.account);
+    // Changed on purpose (QA 15 Nov: the loop keeps places as said; Pau rated it better on L9): with the agent loop
+    // answering, the place stays in the Observation as the manager said it. Today's path still reads it out.
+    if (t.loopActive?.()) {
+      expect(said, `the loop dropped the place:\n${reply}`).toMatch(wording.place);
+      // The loop writes the account with ordinary capitals ("at Omaha last week"), so its account is matched in any case.
+      expect(said, `the account was lost:\n${reply}`).toMatch(new RegExp(wording.account.source, "i"));
+    } else {
+      expect(said, `the place was not read:\n${reply}`).not.toMatch(wording.place);
+      expect(said, `the account was lost:\n${reply}`).toMatch(wording.account);
+    }
   },
 }));
 
