@@ -7,10 +7,19 @@
  * MODEL_RETRY_ENABLED on (off in production): every other call ran on the
  * SDK's 10-minute default, bounded only by the route's maxDuration (120 s on
  * chat and drafting), so a stalled call ended in the platform's own error
- * instead of a reply. Each limit here is the call's WHOLE time, retries
- * included (`lib/ai/time-limit.ts`), so a retry can never push a call past it.
+ * instead of a reply. The limits include the SDK's retries
+ * (`lib/ai/time-limit.ts`), so a retry can never push a call past them.
  *
- *   main answer     45 s   AI_MAIN_TIMEOUT_MS     (5,000 to 110,000)
+ * THE STREAMED MAIN ANSWER IS LIMITED BY ITS STREAM, NOT ITS LENGTH (QA, from
+ * 14 days of chat_traces: p99 16.4 s, and 5 SUCCESSFUL long answers took
+ * 46–57 s, first token at 15–43 s). A call that is streaming is never cut:
+ *
+ *   first token     45 s   AI_MAIN_TIMEOUT_MS       (5,000 to 110,000)
+ *   then each gap   30 s   AI_STREAM_GAP_MS         (1,000 to 60,000)
+ *   whole answer   110 s   AI_MAIN_TOTAL_MS         (10,000 to 115,000; under the route's 120 s)
+ *
+ * Non-streamed calls have a whole-call limit:
+ *
  *   helper calls    30 s   AI_HELPER_TIMEOUT_MS   (1,000 to 60,000)
  *   AI reader       3.5 s  AI_READER_TIMEOUT_MS   (500 to 10,000; unchanged)
  *   form patch      5 s    FORM_PATCH_TIMEOUT_MS  (1,000 to 10,000; unchanged)
@@ -39,12 +48,25 @@ function fromEnv(name: string, fallback: number, min: number, max: number): numb
   return value;
 }
 
-/** The main chat answer (`callClaude`), and the L10 assistant's step. */
+/** The streamed main answer (`callClaude`): the wait for its first token. */
 export function mainAnswerTimeoutMs(): number {
   return fromEnv("AI_MAIN_TIMEOUT_MS", AI_MAIN_TIMEOUT_DEFAULT_MS, 5_000, 110_000);
 }
 
-/** Helper calls: `callClaudeTool`, drafting, chat revision, the L10 assistant's chunk gap. */
+export const AI_STREAM_GAP_DEFAULT_MS = 30_000;
+export const AI_MAIN_TOTAL_DEFAULT_MS = 110_000;
+
+/** The streamed main answer: the longest wait between two chunks once it has begun. */
+export function streamGapTimeoutMs(): number {
+  return fromEnv("AI_STREAM_GAP_MS", AI_STREAM_GAP_DEFAULT_MS, 1_000, 60_000);
+}
+
+/** The streamed main answer: its whole time, retries included, just under the chat route's 120 s maxDuration. */
+export function mainAnswerTotalMs(): number {
+  return fromEnv("AI_MAIN_TOTAL_MS", AI_MAIN_TOTAL_DEFAULT_MS, 10_000, 115_000);
+}
+
+/** Helper calls (not streamed, whole call): `callClaudeTool`, drafting, chat revision; also the L10 assistant's chunk gap. */
 export function helperTimeoutMs(): number {
   return fromEnv("AI_HELPER_TIMEOUT_MS", AI_HELPER_TIMEOUT_DEFAULT_MS, 1_000, 60_000);
 }

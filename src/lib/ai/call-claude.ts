@@ -10,8 +10,8 @@ import { modelRequestOptions, modelUnavailable } from "./model-retry";
 import { cachedSystem, cachedUserContent, systemWithCachedManual } from "./prompt-cache";
 import { withTruncationRetry } from "./truncation";
 import { truncationRetryEnabled } from "@/lib/config/chat-quality-flags";
-import { helperTimeoutMs, mainAnswerTimeoutMs } from "@/lib/config/ai-timeouts";
-import { isAiTimeLimitError, logAiFailure, withAiTimeLimit, type TimedCallOptions } from "./time-limit";
+import { helperTimeoutMs, mainAnswerTimeoutMs, mainAnswerTotalMs, streamGapTimeoutMs } from "@/lib/config/ai-timeouts";
+import { isAiTimeLimitError, logAiFailure, withAiTimeLimit, withStreamTimeLimit, type StreamWatch, type TimedCallOptions } from "./time-limit";
 
 /**
  * ============================================================================
@@ -139,7 +139,7 @@ export interface CallClaudeInput {
   readonly glossary?: string | null;
   /**
    * The call's name in the time-limit and failure log lines. Omitted, "main_answer".
-   * The limit is `mainAnswerTimeoutMs()` (45 s) whatever the name.
+   * The limits are the streamed answer's (45 s to the first token, 30 s gaps, 110 s in all) whatever the name.
    */
   readonly callName?: string;
 }
@@ -202,7 +202,7 @@ function mergeUsage(previous: unknown, next: unknown): unknown {
  * Message — what the tests return — has no delta, so first-token time stays
  * empty rather than being filled with the whole-call latency.
  */
-export async function collectModelResult(response: unknown, started: number): Promise<CollectedModelResult> {
+export async function collectModelResult(response: unknown, started: number, watch?: StreamWatch): Promise<CollectedModelResult> {
   if (!isAsyncIterable(response) && typeof response === "object" && response !== null && "content" in response) {
     const message = response as {
       stop_reason?: string | null;
@@ -233,6 +233,8 @@ export async function collectModelResult(response: unknown, started: number): Pr
   /* FORM_EDIT_TOOL_IN_STREAM_ENABLED: a tool call's block opens with its name; its input arrives as input_json_delta. */
   const tools = new Map<number, { name: string; json: string }>();
   for await (const event of response) {
+    // AI TIME LIMITS: every event resets the gap limit once the answer has begun (`withStreamTimeLimit`).
+    watch?.chunk();
     if (typeof event !== "object" || event === null || !("type" in event)) continue;
     const typed = event as {
       type?: string;
@@ -246,12 +248,16 @@ export async function collectModelResult(response: unknown, started: number): Pr
       usage = mergeUsage(usage, typed.message?.usage);
     } else if (typed.type === "content_block_start" && typed.content_block?.type === "tool_use" && typeof typed.content_block.name === "string") {
       tools.set(typed.index ?? tools.size, { name: typed.content_block.name, json: "" });
+      watch?.firstToken();
     } else if (typed.type === "content_block_delta" && typed.delta?.type === "input_json_delta") {
       const tool = tools.get(typed.index ?? -1);
       if (tool) tool.json += typed.delta.partial_json ?? "";
     } else if (typed.type === "content_block_delta" && typed.delta?.type === "text_delta") {
       const delta = typed.delta.text ?? "";
-      if (delta.length > 0 && firstTokenMs === null) firstTokenMs = Date.now() - started;
+      if (delta.length > 0 && firstTokenMs === null) {
+        firstTokenMs = Date.now() - started;
+        watch?.firstToken();
+      }
       text += delta;
     } else if (typed.type === "message_delta") {
       if (typeof typed.delta?.stop_reason === "string") stopReason = typed.delta.stop_reason;
@@ -338,21 +344,24 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
       : {}),
   };
   const callName = input.callName ?? "main_answer";
-  const limitMs = mainAnswerTimeoutMs();
   try {
     /*
-     * AI TIME LIMITS (QA, 14 Nov 2026): the whole answer — both truncation
-     * attempts and the SDK's retries — ends by the main limit (45 s), whatever
-     * MODEL_RETRY_ENABLED says. With that flag on its timeout and retry count
-     * are kept; off, the SDK's retry count (2) is kept. See `time-limit.ts`.
+     * AI TIME LIMITS (QA, 14 Nov 2026), whatever MODEL_RETRY_ENABLED says:
+     * 45 s for the first token, then 30 s between chunks, 110 s in all (both
+     * truncation attempts and the SDK's retries included). A long answer that
+     * keeps streaming is never cut. With MODEL_RETRY_ENABLED on its retry
+     * count is kept; off, the SDK's (2). See `time-limit.ts`.
      */
     const flagged = modelRequestOptions();
-    const response = await withAiTimeLimit(callName, limitMs, async (timed: TimedCallOptions) => {
+    const limits = { firstTokenMs: mainAnswerTimeoutMs(), gapMs: streamGapTimeoutMs(), totalMs: mainAnswerTotalMs() };
+    const response = await withStreamTimeLimit(callName, limits, async (timed: TimedCallOptions, watch: StreamWatch) => {
       const options = {
         signal: timed.signal,
-        timeout: flagged?.timeout ?? timed.timeout,
+        // The SDK's own timeout only covers the wait for the response headers: the first-token limit.
+        timeout: timed.timeout,
         maxRetries: flagged?.maxRetries ?? timed.maxRetries,
       };
+      let attempts = 0;
       // Stream so the first text delta can be timed. A caller that returns a
       // finished message is still accepted, with first_token_ms left empty.
       const attempt = async (maxTokens: number) => {
@@ -363,9 +372,11 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
          * times each attempt. Trace-only: nothing about the answer changes.
          */
         const attemptStarted = Date.now();
+        // A truncation retry waits for its own first token again.
+        if ((attempts += 1) > 1) watch.attempt();
         const streamed = { ...params, max_tokens: maxTokens, stream: true as const };
         const created = await client.messages.create(streamed, options);
-        return collectModelResult(created, attemptStarted);
+        return collectModelResult(created, attemptStarted, watch);
       };
       /*
        * TRUNCATION_RETRY_ENABLED: an answer cut off at max_tokens is asked once
