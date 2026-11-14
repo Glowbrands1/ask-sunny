@@ -111,6 +111,7 @@ export const RULES_BOOK: readonly { readonly title: string; readonly rules: read
       "prior_actions is yours to write: from propose_form's prior_steps_said fact when it is there (today's reading of the manager's words, a corrected date already replacing the first), else from what the manager said. Propose again with it when the card's prior actions do not match prior_steps_said.",
       "payroll_amount_said (the manager stated an amount you left out): propose again with payroll_amount.",
       "With no account yet (Create waits), cite no policy unless policy_named_by_manager is true (the manager named a policy, a topic such as MSB, or a section).",
+      "date_after_today (propose_form, or edit_form refusing form_date / incident_date): the date is after today, the " + place + "'s local date, so it is not on the card or the form. Say so in one line and ask which day (\"12/20/2026 is after today, so the card has no date yet. Which day was it?\").",
     ],
   },
   {

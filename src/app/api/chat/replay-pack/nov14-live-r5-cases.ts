@@ -451,4 +451,84 @@ export const NOV14_LIVE_R5_CASES: ReplayCase[] = [
       if (offline) expect(toolResults(rewriter.views, "edit_form").some((result) => /"reword_added_link":\{"coaching_details":\["resulting in"\]\}/.test(result)), "the added link is not a fact").toBe(true);
     },
   },
+  {
+    id: "nov14-live-r5-e12-a-date-after-today-is-never-on-the-card",
+    title: "QA E12 (Pau's review): \"write up <name> for being late on 12/20/2026\" sent on 11/14: the card holds no date after today, and the reply asks which day; a draft's form_date after today is refused",
+    report: `${REPORT_E}: E12, since batch C a date after today was only a fact, so the card kept the future date`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      const model = loopStandIn((view): LoopDecision => {
+        const result = lastResult(view, "propose_form") as { facts?: { date_after_today?: unknown } } | null;
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
+        if (!result) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: "Remy Calder was late on 12/20/2026.", incident_date: "2026-12-20" } };
+        return { text: `Here's the Corrective Action Form for **Remy Calder**.\n\n${result.facts?.date_after_today ? "12/20/2026 is after today, so the card has no date yet. Which day was it?" : "Dated 12/20/2026."}\n\n**Observation of Offense:** Remy Calder was late on 12/20/2026.` };
+      });
+      t.loopModel!(model);
+      const thread = t.thread();
+      const reply = await thread.say("write up remy calder for being late on 12/20/2026");
+      expect(thread.proposal?.formDate ?? "", `the card holds a date after today:\n${reply.content}`).not.toMatch(/^2026-12-20$/);
+      expect((thread.proposal?.formDate ?? "") <= "2026-11-14").toBe(true);
+      expect(reply.content, "the reply does not ask which day").toMatch(/which day|what day|which date|what date/i);
+      if (offline) expect(toolResults(model.views, "propose_form").some((result) => /"date_after_today":\{"date":"2026-12-20"/.test(result)), "the future date is not a fact").toBe(true);
+    },
+  },
+  {
+    id: "nov14-live-r5-e12-edit-form-refuses-a-form-date-after-today",
+    title: "QA E12 (Pau's review): with a draft open, \"change the date to 12/20/2026\" on 11/14: edit_form refuses form_date after today and nothing is written",
+    report: `${REPORT_E}: E12, the same for edit_form writing form_date`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: "Remy Calder was late on 11/12.", incident_date: "2026-11-12" } };
+        return { text: "Here's the Corrective Action Form for **Remy Calder**.\n\n**Observation of Offense:** Remy Calder was late on 11/12." };
+      }));
+      const thread = t.thread();
+      await thread.say("write up remy calder for being late on 11/12");
+      const id = await thread.create();
+      const before = t.values(id).form_date ?? "";
+      const editor = loopStandIn((view): LoopDecision => {
+        const edit = lastResult(view, "edit_form");
+        if (!edit) return { tool: "edit_form", input: { instance_id: id, values: { form_date: "2026-12-20" } } };
+        return { text: edit.error ? "12/20/2026 is after today, so I didn't change the date. Which day was it?" : "Changed the date to 12/20/2026." };
+      });
+      t.loopModel!(editor);
+      const reply = await thread.say("change the date to 12/20/2026");
+      expect(t.values(id).form_date ?? "", `a form date after today was written:\n${reply.content}`).toBe(before);
+      if (offline) expect(toolResults(editor.views, "edit_form")[0], "edit_form wrote a date after today").toMatch(/is after today \(2026-11-14/);
+    },
+  },
+  {
+    id: "nov14-live-r5-e13-central-evening-is-still-today",
+    title: "QA E13 (Pau's review): on the evening of 11/14, salon time (UTC is already 11/15), \"write up <name> for being late on 11/15\": the card is never dated this year's 11/15",
+    report: `${REPORT_E}: E13, monthDayToIso used the server's UTC clock, not the salon's local date`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      // 11:30 pm Eastern (the app's BUSINESS_TIMEZONE default) and 10:30 pm Central on 11/14; UTC is already 11/15.
+      vi.setSystemTime(new Date("2026-11-15T04:30:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        const result = lastResult(view, "propose_form") as { facts?: { date_after_today?: unknown; date_read_as_last_year?: unknown } } | null;
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
+        if (!result) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: "Remy Calder was late on 11/15.", incident_date: "2026-11-15" } };
+        return { text: `Here's the Corrective Action Form for **Remy Calder**.\n\n${result.facts?.date_after_today ? "11/15/2026 is after today, so the card has no date yet. Which day was it?" : "Dated 11/15."}` };
+      }));
+      const thread = t.thread();
+      const reply = await thread.say("write up remy calder for being late on 11/15");
+      expect(thread.proposal?.formDate ?? "", `the card is dated tomorrow (UTC's today):\n${reply.content}`).not.toBe("2026-11-15");
+    },
+  },
 ];

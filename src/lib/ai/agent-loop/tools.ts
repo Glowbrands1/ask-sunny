@@ -661,13 +661,26 @@ export async function readPolicy(context: ToolContext, input: { heading?: unknow
 
 /* -------------------------------------------------------- propose form --- */
 
-/** "10/2" as the most recent such day not after today, in ISO form (the card's date field). */
-function monthDayToIso(monthDay: string): string {
+/**
+ * "10/2" as the most recent such day not after `today`, in ISO form (the card's date field). Batch E (E13): `today` is
+ * the salon's local date (`context.today`, America/Chicago), never the server's UTC clock, which is already tomorrow
+ * on a Central evening.
+ */
+export function monthDayToIso(monthDay: string, today: string): string {
   const [month, day] = monthDay.split("/").map(Number) as [number, number];
-  const now = new Date();
-  let year = now.getUTCFullYear();
-  if (Date.UTC(year, month - 1, day) > now.getTime()) year -= 1;
-  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  const iso = (year: number) => `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  const year = Number(today.slice(0, 4));
+  return iso(year) > today ? iso(year - 1) : iso(year);
+}
+
+/** A form date as the model wrote it ("2026-12-20", "12/20/2026", "12/20"), in ISO form, or null. */
+function isoDate(value: string, today: string): string | null {
+  const text = value.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  const full = /^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/.exec(text);
+  if (full) return `${full[3]!.length === 2 ? `20${full[3]}` : full[3]}-${full[1]!.padStart(2, "0")}-${full[2]!.padStart(2, "0")}`;
+  const short = /^(\d{1,2})\/(\d{1,2})$/.exec(text);
+  return short ? monthDayToIso(`${short[1]}/${short[2]}`, today) : null;
 }
 
 /**
@@ -1092,13 +1105,13 @@ export async function proposeForm(
    * `incidentDates`). The manager's answer sets it.
    */
   const answered = datesGiven.length > 1 && latestDates.length === 1 && datesGiven.includes(latestDates[0]!);
-  if (answered) date = monthDayToIso(latestDates[0]!);
+  if (answered) date = monthDayToIso(latestDates[0]!, today);
   /*
    * Batch B (code-check #20): with several stated dates the model's choice stands; the dates are a fact and the rules
    * book says to pick only when the account makes it clear, else ask (never both). A date that is none of the stated
    * ones is refused, as an invented value.
    */
-  if (datesGiven.length > 1 && date && !answered && !datesGiven.some((given) => monthDayToIso(given) === date)) {
+  if (datesGiven.length > 1 && date && !answered && !datesGiven.some((given) => monthDayToIso(given, today) === date)) {
     return { error: `${date} is none of the dates the manager gave (${datesGiven.join(", ")}). Leave incident_date empty and ask which, or use one of those.` };
   }
   const datesAsked = datesGiven.length > 1 && !date ? datesGiven : [];
@@ -1106,7 +1119,7 @@ export async function proposeForm(
   const dateAfterToday = date && date > today ? date : null;
   /* Batch E (E10): the manager's month/day ("12/20" on 11/14) was read as last year's; the reply says so in one line. */
   const lastYear = date && !dateAfterToday && date.slice(0, 4) < today.slice(0, 4)
-    ? incidentDates(requestWords, null).find((given) => monthDayToIso(given) === date) ?? null
+    ? incidentDates(requestWords, null).find((given) => monthDayToIso(given, today) === date) ?? null
     : null;
   const askedLevel = input.warning_level === "verbal" || input.warning_level === "written" ? input.warning_level : null;
   const level = askedLevel && (askedLevel === "verbal" ? /\bverbal\b/i : /\bwritten\b|\bwrite[- ]?up\b/i).test(managerWords) ? askedLevel : null;
@@ -1157,10 +1170,12 @@ export async function proposeForm(
   const datedToday = ACCOUNT_FORMS.has(template.key) && !awaiting && !date && datesGiven.length === 0 && !ACCOUNT_WHEN.test(requestWords) && !ACCOUNT_DATE.test(requestWords);
   ACCOUNT_DATE.lastIndex = 0;
   ACCOUNT_WHEN.lastIndex = 0;
+  /* Batch E (E12): a date after today is never on the card, the model's or today's reading (the field is refused; the fact says so). */
+  const futureDate = dateAfterToday ?? (!date && proposal.formDate && proposal.formDate > today ? proposal.formDate : null);
   const card: ChatFormProposal = {
     ...proposal,
     sourceMessageIds: sourceIds,
-    formDate: datesAsked.length > 0 ? null : date ?? proposal.formDate ?? null,
+    formDate: datesAsked.length > 0 || futureDate ? null : date ?? proposal.formDate ?? null,
     ...(level ? { warningLevel: level } : {}),
     ...(whatHappened ? { issue: whatHappened } : {}),
     ...(payroll ? { payrollDeduct: payroll } : {}),
@@ -1201,7 +1216,7 @@ export async function proposeForm(
     ...(figuresNotSaid.length > 0 ? { figures_not_said: figuresNotSaid } : {}),
     ...(formatFigures.length > 0 ? { format_figures: formatFigures } : {}),
     ...(fitsHeadings ? { fits_headings: fitsHeadings } : {}),
-    ...(dateAfterToday ? { date_after_today: { date: dateAfterToday, today } } : {}),
+    ...(futureDate ? { date_after_today: { date: futureDate, today, not_on_card: true } } : {}),
     ...(lastYear && date ? { date_read_as_last_year: { said: lastYear, date } } : {}),
     ...(notInManual && policyLine ? { policy_not_in_manual: notInManual } : {}),
     ...(whatHappened && addedLinks(managerWords, whatHappened).length > 0 ? { reword_added_link: addedLinks(managerWords, whatHappened) } : {}),
@@ -1302,6 +1317,12 @@ export async function editForm(
       const digits = value.replace(/[^\d.]/g, "");
       if (!digits || !managerTurns(context).replace(/[^\d.]/g, " ").split(/\s+/).some((n) => n !== "" && Number(n) === Number(digits))) unstated.push(field);
     }
+  }
+  /* Batch E (E12): a form or incident date after today (the salon's local date) is never written. */
+  const editToday = context.today || businessToday();
+  const later = Object.entries(values).filter(([field, value]) => (field === "form_date" || field === "incident_date") && (isoDate(value, editToday) ?? "") > editToday);
+  if (later.length > 0) {
+    return { error: `${later.map(([field, value]) => `${field} ${value}`).join(", ")} is after today (${editToday}, the salon's local date). Nothing was written. Ask the manager which day.`, date_after_today: { today: editToday } };
   }
   if (unstated.length > 0) {
     return { error: `${unstated.join(", ")} must come from the manager's own words, and this message does not state ${unstated.length === 1 ? "it" : "them"}. Nothing was written. Ask, or leave it for the manager.` };
