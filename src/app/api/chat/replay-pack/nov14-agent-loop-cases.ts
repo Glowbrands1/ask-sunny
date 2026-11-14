@@ -381,7 +381,7 @@ export const NOV14_AGENT_LOOP_CASES: ReplayCase[] = [
   },
   {
     id: "nov14-agent-loop-listed-users-only",
-    title: "AGENT_LOOP_USERS lists another user: this manager stays on today's path (the loop's model is never asked)",
+    title: "AGENT_LOOP_USERS empty or unset, or listing another user: this manager stays on today's path (the loop's model is never asked)",
     report: `${REPORT}: enabled for listed users only`,
     status: "fixed",
     fixFlags: [FLAG],
@@ -394,6 +394,14 @@ export const NOV14_AGENT_LOOP_CASES: ReplayCase[] = [
       t.loopModel!(standIn);
       const saved = process.env.AGENT_LOOP_USERS;
       try {
+        // On, with the list empty or unset: nobody (Pau via QA, 14 Nov 2026).
+        for (const empty of ["", " , "]) {
+          process.env.AGENT_LOOP_USERS = empty;
+          await t.thread().say("what is the late opening policy?");
+        }
+        delete process.env.AGENT_LOOP_USERS;
+        await t.thread().say("what is the late opening policy?");
+        expect(standIn.calls, "the loop ran with no one listed").toBe(0);
         process.env.AGENT_LOOP_USERS = "pilot.manager@example.test, Another.Pilot@Example.test";
         const off = await t.thread().say("what is the late opening policy?");
         expect(standIn.calls).toBe(0);
@@ -469,6 +477,67 @@ export const NOV14_AGENT_LOOP_CASES: ReplayCase[] = [
         if (saved === undefined) delete process.env.AI_MAIN_TIMEOUT_MS;
         else process.env.AI_MAIN_TIMEOUT_MS = saved;
       }
+    },
+  },
+  {
+    id: "nov14-agent-loop-same-name-no-create-before-choice",
+    title: "QA's bar, loop on: two Marnie Holloways — a card is never offered (let alone Create) until the manager picks one; then that person's card",
+    report: `${REPORT}: QA, 14 Nov 2026 (bar on Gate-Sunny's case 4)`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-03T15:00:00Z"));
+      t.directory([...STAFF, SECOND_MARNIE]);
+      t.as("salon_director", KEARNEY);
+      const standIn = loopStandIn((view) => {
+        const said = latest(view);
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "marnie holloway" } };
+        const matches = (lastResult(view, "find_staff")?.matches ?? []) as { employee_id: string; salons: string[] }[];
+        // A careless model proposes before asking: the card needs an employee_id, so it is refused.
+        if (/^verbal CA/.test(said) && !lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", warning_level: "verbal" } };
+        if (/^verbal CA/.test(said)) return { text: `Which Marnie Holloway did you mean? I found ${matches.length}.` };
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-90", warning_level: "verbal", incident_date: "2026-11-01" } };
+        return { text: "Here is the Corrective Action Form for Marnie Holloway." };
+      });
+      t.loopModel!(standIn);
+      const thread = t.thread();
+      const asked = await thread.say(D1);
+      expect(t.loopActive?.()).toBe(true);
+      expect(asked.formProposal, "a card before the person was chosen").toBeUndefined();
+      const refused = standIn.views.flatMap((view) => view.results).find((result) => result.tool === "propose_form");
+      expect(String(refused?.output.error ?? ""), "propose_form took no employee").toMatch(/employee_id/);
+      const chosen = await thread.say("the assistant salon director one");
+      expect(chosen.formProposal?.employeeName).toBe("Marnie Holloway");
+      expect((chosen.formProposal as { supportsInlineDraft?: boolean } | undefined)?.supportsInlineDraft).toBe(true);
+    },
+  },
+  {
+    id: "nov14-agent-loop-off-roster-no-card-without-employee",
+    title: "QA's bar, loop on: an admin's off-roster name and then a salon (\"KS Manhattan\"): no card with no employee, so never a Create with no employee",
+    report: `${REPORT}: QA, 14 Nov 2026 (bar on Gate-Sunny's case 5)`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-12T15:00:00Z"));
+      t.directory([...STAFF]);
+      t.as("admin", { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] });
+      const standIn = loopStandIn((view) => {
+        const said = latest(view);
+        const name = /brisa talmadge/i.test(said) ? "Brisa Talmadge" : said.trim();
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name } };
+        // A careless model tries the typed name anyway: the roster can be read, so it is refused.
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_name: name } };
+        return { text: `I couldn't find ${name} on the roster. Who is this form for?` };
+      });
+      t.loopModel!(standIn);
+      const thread = t.thread();
+      const replies = [await thread.say("CA for Brisa Talmadge, do not terminate yet, she was late"), await thread.say("KS Manhattan")];
+      for (const reply of replies) expect(reply.formProposal, `a card with no roster employee:\n${reply.content}`).toBeUndefined();
+      const results = standIn.views.flatMap((view) => view.results);
+      expect(results.filter((result) => result.tool === "find_staff").every((result) => (result.output.matches as unknown[]).length === 0)).toBe(true);
+      expect(results.filter((result) => result.tool === "propose_form").every((result) => /employee_id/.test(String(result.output.error)))).toBe(true);
     },
   },
 ];

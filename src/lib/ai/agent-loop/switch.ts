@@ -6,7 +6,9 @@ import { agentLoopEnabled } from "@/lib/config/chat-quality-flags";
  * ============================================================================
  *
  *   AGENT_LOOP_ENABLED off            nobody: every turn as before.
- *   on, AGENT_LOOP_USERS unset/empty  every signed-in user.
+ *   on, AGENT_LOOP_USERS unset/empty  NOBODY (Pau via QA, 14 Nov 2026: a
+ *                                     missing or empty list must never turn
+ *                                     the loop on for every manager).
  *   on, AGENT_LOOP_USERS "a@x,b@y"    only those emails (case and spaces
  *                                     ignored); everyone else as before.
  *
@@ -22,7 +24,7 @@ export function agentLoopUsers(): string[] {
 export function agentLoopFor(email: string | null | undefined): boolean {
   if (!agentLoopEnabled()) return false;
   const users = agentLoopUsers();
-  if (users.length === 0) return true;
+  if (users.length === 0) return false;
   const signedIn = (email ?? "").trim().toLowerCase();
   return signedIn !== "" && users.includes(signedIn);
 }

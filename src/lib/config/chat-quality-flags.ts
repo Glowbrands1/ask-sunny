@@ -4874,8 +4874,8 @@ export function reasonPlaceNotSalonEnabled(): boolean {
 /**
  * AGENT_LOOP_ENABLED (QA, 14 Nov 2026): the HR chat answered by one model with tools — find_staff, find_past_forms,
  * read_form, propose_form, edit_form (and read_policy) — whose results go back to it, step by step, until it writes the
- * reply (`lib/ai/agent-loop/`). With AGENT_LOOP_USERS set, only those signed-in users (`agent-loop/switch.ts`). Off,
- * the route never reaches the loop and every turn is answered exactly as before.
+ * reply (`lib/ai/agent-loop/`). Only for the signed-in users listed in AGENT_LOOP_USERS; with that list unset or empty,
+ * nobody (`agent-loop/switch.ts`). Off, the route never reaches the loop and every turn is answered exactly as before.
  */
 export function agentLoopEnabled(): boolean {
   return envFlag("AGENT_LOOP_ENABLED");

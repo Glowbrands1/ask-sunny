@@ -128,7 +128,9 @@ export interface ReplayContext {
   draftReplies?(): Record<string, unknown>[];
   /** AGENT_LOOP_ENABLED: whether this run has the tool loop on (a case's `fixFlags` run, or production once QA turns it on). */
   loopOn?(): boolean;
-  /** AGENT_LOOP_ENABLED: the loop's stand-in model for this case (`loop-stand-in.ts`). */
+  /** AGENT_LOOP_ENABLED: the loop really answers this case's turns (the flag on, a stand-in model, the manager listed). */
+  loopActive?(): boolean;
+  /** AGENT_LOOP_ENABLED: the loop's stand-in model for this case (`loop-stand-in.ts`); lists the signed-in manager in AGENT_LOOP_USERS. */
   loopModel?(standIn: import("./loop-stand-in").LoopStandIn): void;
   /** AGENT_LOOP_ENABLED: find_staff's roster read fails from now on. */
   rosterFails?(): void;

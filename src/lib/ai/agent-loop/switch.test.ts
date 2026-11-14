@@ -25,12 +25,18 @@ describe("agentLoopFor", () => {
     expect(agentLoopFor("pilot.manager@example.test")).toBe(false);
   });
 
-  it("on with no list: every signed-in user", () => {
+  it("on with the list unset or empty: NOBODY gets the loop (Pau via QA, 14 Nov 2026)", () => {
+    process.env.AGENT_LOOP_ENABLED = "1";
+    delete process.env.AGENT_LOOP_USERS;
+    expect(agentLoopFor("anyone@example.test")).toBe(false);
+    expect(agentLoopFor("pilot.manager@example.test")).toBe(false);
+    for (const empty of ["", " ", " , ", ",,"]) {
+      process.env.AGENT_LOOP_USERS = empty;
+      expect(agentLoopFor("anyone@example.test"), JSON.stringify(empty)).toBe(false);
+    }
     process.env.AGENT_LOOP_ENABLED = "true";
     delete process.env.AGENT_LOOP_USERS;
-    expect(agentLoopFor("anyone@example.test")).toBe(true);
-    process.env.AGENT_LOOP_USERS = " , ";
-    expect(agentLoopFor("anyone@example.test")).toBe(true);
+    expect(agentLoopFor("anyone@example.test")).toBe(false);
   });
 
   it("on with a list: only those users, ignoring case and spaces", () => {

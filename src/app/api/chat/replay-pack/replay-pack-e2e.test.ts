@@ -165,7 +165,7 @@ vi.mock("@/lib/forms/form-patch-call", () => ({
  */
 const faults = vi.hoisted(() => ({ field: null as string | null, strayDraftField: null as string | null }));
 /** AGENT_LOOP_ENABLED: the case's stand-in (`t.loopModel`) and the roster fault (`t.rosterFails`). */
-const loop = vi.hoisted(() => ({ standIn: null as import("./loop-stand-in").LoopStandIn | null, rosterFails: false }));
+const loop = vi.hoisted(() => ({ standIn: null as import("./loop-stand-in").LoopStandIn | null, rosterFails: false, users: undefined as string | undefined, listed: false }));
 /** `t.summaryWrites`: what the long-context summary model returns; none by default (the summary call fails, as unscripted). */
 const summaries = vi.hoisted(() => ({ reply: null as string | null }));
 
@@ -851,6 +851,11 @@ afterEach(() => {
   loop.standIn = null;
   loop.rosterFails = false;
   __setAgentLoopModelForTests(null);
+  if (loop.listed) {
+    if (loop.users === undefined) delete process.env.AGENT_LOOP_USERS;
+    else process.env.AGENT_LOOP_USERS = loop.users;
+    loop.listed = false;
+  }
   forgetAgentLoopManualForTests();
   said.answer = null;
   editTool.input = null;
@@ -970,7 +975,14 @@ function context(): ReplayContext {
     loopModel: (standIn) => {
       loop.standIn = standIn;
       __setAgentLoopModelForTests(standIn.model);
+      // The loop runs only for listed users (an empty list is nobody): this case's signed-in manager is listed.
+      if (!loop.listed) {
+        loop.users = process.env.AGENT_LOOP_USERS;
+        loop.listed = true;
+      }
+      process.env.AGENT_LOOP_USERS = "qa-manager@example.test";
     },
+    loopActive: () => process.env.AGENT_LOOP_ENABLED === "true" && loop.standIn !== null,
     rosterFails: () => {
       loop.rosterFails = true;
     },
