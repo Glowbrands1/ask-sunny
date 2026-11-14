@@ -74,3 +74,6 @@ nov6-roster-shape-two-word-first-lowercase
 nov6-title-ends-at-line-exit-s16
 nov7-edit-policy-ask-not-asked
 nov8-unknown-name-ask-no-repeat
+nov14-agent-loop-reply-clean-up
+nov14-agent-loop-truncation-retry
+nov14-agent-loop-parity-card-guards

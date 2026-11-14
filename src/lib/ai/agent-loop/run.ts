@@ -15,6 +15,9 @@ import { noteModelCall } from "../model-failure";
 import { activeSpendMeter } from "../spend-meter";
 import { AI_TIMEOUT_MESSAGE, isAiTimeLimitError, logAiFailure, withStreamTimeLimit } from "../time-limit";
 import type { AskResponse } from "../types";
+import { withOutOfScopePlace } from "../out-of-scope-place";
+import { withoutSensitiveDefaults } from "../sensitive-defaults";
+import { finalReplyWithoutMarkers, withoutSourceMarkers, withoutSourceNotes } from "../source-note";
 import { agentLoopSystem, AGENT_LOOP_RULES } from "./prompt";
 import { agentLoopStepLimit } from "./switch";
 import {
@@ -374,6 +377,41 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
       const last = steps.at(-1);
       text = (last?.text ?? "").trim();
       stoppedAt = last && last.finishReason === "tool-calls" ? "step_limit" : "reply";
+      /*
+       * TRUNCATION_RETRY (parity gap #36): a reply cut at the token limit is never shown cut. It is written again once,
+       * from the same conversation and this turn's tool results (the cut text left out), with twice the budget and no
+       * tools, so nothing is called twice.
+       */
+      if (last?.finishReason === "length") {
+        const response = await result.response;
+        const turn = [...response.messages];
+        if (turn.at(-1)?.role === "assistant") turn.pop();
+        const again = streamText({
+          model: model as never,
+          system: [
+            { role: "system", content: AGENT_LOOP_RULES, providerOptions: EPHEMERAL },
+            { role: "system", content: dynamic },
+          ],
+          messages: [...(conversationOf(input.history, input.question) as never[]), ...(turn as never[])],
+          maxOutputTokens: CLAUDE_MAX_TOKENS.standard * 2,
+          maxRetries: timed.maxRetries,
+          abortSignal: timed.signal,
+          onError: () => {},
+          onChunk: () => watch.chunk(),
+          onStepFinish: (step) => {
+            const used = tokensOf(step.usage as StepUsage);
+            for (const key of Object.keys(usage) as (keyof typeof usage)[]) usage[key] += used[key];
+            activeSpendMeter()?.calls.push({ model: CLAUDE_MODEL, inputTokens: used.input_tokens, outputTokens: used.output_tokens, cacheReadTokens: used.cache_read_input_tokens, cacheWriteTokens: used.cache_creation_input_tokens });
+            modelSteps.push({ step: stepNumber, ms: 0, stop: step.finishReason ?? null, ...used });
+            modelCalls += 1;
+            stepNumber += 1;
+          },
+        });
+        const retried = await again.steps;
+        const final = retried.at(-1);
+        text = final?.finishReason === "length" ? "" : (final?.text ?? "").trim();
+        if (text === "") stoppedAt = "step_limit";
+      }
     });
   } catch (error) {
     if (error instanceof MissingConfigurationError) throw new AiError("not_configured", error.message, 503, error.missing);
@@ -466,8 +504,13 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     }
   }
 
-  return {
-    content,
+  /*
+   * THE REPLY'S LAST CLEAN-UP, as every other path's (parity gaps #11, #30, #29): no bracketed source notes or bare
+   * source tags (SOURCE_NOTE_GUARD, FINAL_REPLY_MARKER_GUARD), and never a default-password format or SSN digits, in
+   * the reply or in a source card's excerpt (SENSITIVE_DEFAULTS_REDACT). Each behind its own flag, as today.
+   */
+  const answer: AskResponse = {
+    content: withoutSourceMarkers(withoutSourceNotes(content)),
     citations: effects.citations ?? [],
     coverage: "not_applicable",
     recommendedVideoIds: [],
@@ -475,4 +518,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     ...(effects.formUpdate ? { formUpdate: effects.formUpdate } : {}),
     ...(effects.formOpened ? { formOpened: effects.formOpened } : {}),
   };
+  /* OUT_OF_SCOPE_PLACE_SAID (parity gap #22): a salon the manager named outside their scope is said to be, as today. */
+  const placed = withOutOfScopePlace(answer, { question: input.question } as never, input.actor as never);
+  return finalReplyWithoutMarkers(withoutSensitiveDefaults(placed, input.question));
 }

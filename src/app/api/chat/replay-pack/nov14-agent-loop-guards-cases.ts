@@ -587,6 +587,123 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
     },
   },
   {
+    id: "nov14-agent-loop-reply-clean-up",
+    title: "the loop's reply gets today's last clean-up (parity gaps #11, #29, #30): no bare source tags or bracketed source notes, never a default-password format, in the reply or the passage the model reads",
+    report: `${REPORT}; parity matrix gaps (QA, 14 Nov 2026): SENSITIVE_DEFAULTS_REDACT, FINAL_REPLY_MARKER_GUARD, SOURCE_NOTE_GUARD`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-13T22:40:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      t.knowledgeHas!([
+        {
+          chunk_id: "kb-login-1",
+          document_id: "doc-login",
+          document_title: "Register Login Guide",
+          category: "operations",
+          locator: "Page 1",
+          page: 1,
+          section: "Logging in",
+          content: "Sign in at the register with your employee number. The default password is your first initial plus the last four digits of your SSN. Change it after your first login.",
+          similarity: 0.8,
+        },
+      ]);
+      const model = loopStandIn((view) => {
+        if (!lastResult(view, "search_knowledge")) return { tool: "search_knowledge", input: { query: "register login" } };
+        return { text: "Sign in at the register with your employee number [S1][S2]. [S1 note: this passage is from an older guide] The default password is your first initial plus the last four digits of your SSN. Change it after your first login." };
+      });
+      t.loopModel!(model);
+      const reply = await t.thread().say("how do i log in to the register");
+      expect(reply.content, "a bare source tag reached the manager").not.toMatch(/\[S\d/);
+      expect(reply.content, "a default-password format reached the manager").not.toMatch(/last four digits of your SSN/i);
+      expect(reply.content).toMatch(/employee number/);
+      expect(toolResults(model.views, "search_knowledge")[0], "the model read the default-password format").not.toMatch(/last four digits of your SSN/i);
+    },
+  },
+  {
+    id: "nov14-agent-loop-truncation-retry",
+    title: "a reply cut at the token limit is written again once, never shown cut (parity gap #36, TRUNCATION_RETRY); cut twice, the reply is the clear step-limit sentence",
+    report: `${REPORT}; parity matrix gap #36`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-13T22:40:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      let calls = 0;
+      t.loopModel!(loopStandIn(() => {
+        calls += 1;
+        return calls === 1 ? { text: "Here are the steps to close the salon: first count the drawer, then", cut: true } : { text: "Here are the steps to close the salon: count the drawer, then lock the doors." };
+      }));
+      const reply = await t.thread().say("what are the closing steps");
+      expect(reply.content, "the cut reply was shown").not.toMatch(/then$/);
+      expect(reply.content).toMatch(/lock the doors/);
+      expect(calls).toBe(2);
+
+      t.loopModel!(loopStandIn(() => ({ text: "Here are the steps, first", cut: true })));
+      const twice = await t.thread().say("what are the closing steps");
+      expect(twice.content, "a reply cut twice was shown").not.toMatch(/first$/);
+    },
+  },
+  {
+    id: "nov14-agent-loop-parity-card-guards",
+    title: "parity gaps closed in code (QA, 14 Nov 2026): a heading outside the incident's topic is refused (short drawer ≠ Handling Theft); no account → no policy unless named; no date said → \"Dated today\" line; a \"no\" to Is-this-for never seats that person; the job title is the roster's, never the manager's DM's; a salon outside the scope is said to be",
+    report: `${REPORT}; parity matrix gaps #40, #20, #45, #33/#34/#39, #22 and Pau's act-and-state ruling`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-13T22:40:00Z"));
+      t.directory([...STAFF, TAMSIN, CORBIN]);
+      t.as("salon_director", KEARNEY);
+      const model = loopStandIn((view) => {
+        const said = view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "";
+        if (/drawer/.test(said)) {
+          const tries = view.results.filter((result) => result.tool === "propose_form").length;
+          if (tries === 0) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, policy: "Handling Theft", what_happened: "The drawer was $15 short on 11/12." } };
+          if (tries === 1) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, policy: "Standards of Conduct", what_happened: "The drawer was $15 short on 11/12." } };
+          return { text: "Here's the card." };
+        }
+        if (/^no\b/i.test(said)) {
+          if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: CORBIN.id } };
+          return { text: JSON.stringify(lastResult(view, "propose_form")) };
+        }
+        if (/is this for/i.test(said)) return { text: "Is this for **Corbin Ashdown**?" };
+        if (!lastResult(view, "propose_form")) {
+          return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, policy: "Attendance", ...(/grand island/.test(said) ? { what_happened: "She was late at Grand Island." } : /late/.test(said) ? { what_happened: "She was late." } : {}) } };
+        }
+        return { text: "Here's the card." };
+      });
+      t.loopModel!(model);
+
+      const drawer = t.thread();
+      await drawer.say("ca for tamsin orwell, the drawer was $15 short on 11/12");
+      expect(toolResults(model.views, "propose_form").some((result) => /not this incident's section/.test(result)), "Handling Theft was taken for a short drawer").toBe(true);
+      expect(drawer.proposal?.formDate).toBe("2026-11-12");
+
+      const none = t.thread();
+      const bare = await none.say("ca for tamsin orwell");
+      expect(bare.content, "a policy was cited with no account").not.toMatch(/\*\*Policy:\*\*/);
+
+      const undated = t.thread();
+      const dated = await undated.say("my DM Perrin Holloway told me tamsin orwell was late, make a ca");
+      expect(dated.content).toContain("Dated today — tell me if it was another day.");
+      expect(undated.proposal?.employeeRole ?? null, "the title is not the roster's").toBe("Tanning Consultant");
+
+      const declined = t.thread();
+      await declined.say("is this for corbin? make a ca");
+      await declined.say("no");
+      expect(declined.proposal ?? null, "a person the manager said no to was carded").toBeNull();
+
+      const elsewhere = t.thread();
+      const outside = await elsewhere.say("ca for tamsin orwell, she was late at grand island");
+      expect(outside.content).toMatch(/\*\*NE Grand Island\*\* isn't a salon on your assignment/);
+    },
+  },
+  {
     id: "nov14-agent-loop-guard-one-card-per-reply",
     title: "two people in one request: one card per reply, each person's own; never a second card in the same reply",
     report: `${REPORT}: multiple people (TWO_FORMS_EACH_PERSON's outcome)`,

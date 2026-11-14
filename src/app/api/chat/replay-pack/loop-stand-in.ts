@@ -24,7 +24,7 @@ export interface LoopView {
 
 export type LoopDecision =
   | { readonly tool: string; readonly input: Record<string, unknown> }
-  | { readonly text: string }
+  | { readonly text: string; readonly cut?: boolean }
   /** The request is accepted and nothing more arrives, until the call is aborted (a stalled model). */
   | { readonly stall: true };
 
@@ -125,7 +125,7 @@ export function loopStandIn(decide: (view: LoopView) => LoopDecision): LoopStand
                 { type: "text-start", id: "t" },
                 { type: "text-delta", id: "t", delta: decision.text },
                 { type: "text-end", id: "t" },
-                { type: "finish", finishReason: { unified: "stop", raw: "end_turn" }, usage: USAGE },
+                { type: "finish", finishReason: decision.cut ? { unified: "length", raw: "max_tokens" } : { unified: "stop", raw: "end_turn" }, usage: USAGE },
               ];
         return { stream: streamOf(parts) };
       },
