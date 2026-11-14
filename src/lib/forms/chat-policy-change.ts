@@ -28,6 +28,7 @@ import {
   headingKey,
   manualSectionHeadings,
   manualDisplayTitle,
+  manualSectionsFor,
   officialManualProvenance,
   offenseKeyForManualHeading,
   sectionHeadingsFor,
@@ -663,7 +664,14 @@ function besideOtherReading(account: string, chunks: Parameters<typeof described
   const attendance = besideAttendanceKeys(rest);
   if (!described && !attendance) return null;
   const stated = statedOffenseKeys(readCaPolicy(rest), rest) ?? attendance ?? (described ? [offenseKeyForManualHeading(described.section.heading)] : []);
-  return stated.length > 0 ? { keys: stated, sections: described ? [described.section] : [] } : null;
+  if (stated.length === 0) return null;
+  /*
+   * Gate-Sunny-2 / Gate-Bubbles-5 on this flag (14 Nov 2026): "she was late to her shift and did not do the sanitation"
+   * read the lateness through the attendance boxes, which carry no section, so Direct policy was cleared. The section is
+   * the boxes' own, as Create cites it (`manualSectionsFor`).
+   */
+  const sections = described ? [described.section] : manualSectionsFor({ chunks: chunks ?? [], offenseKeys: stated, notes: rest });
+  return { keys: stated, sections };
 }
 
 /** The pinned manual, or a reason — a knowledge-base outage never fails the turn. */
