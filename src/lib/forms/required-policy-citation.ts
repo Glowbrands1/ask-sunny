@@ -97,7 +97,11 @@ export function policyFieldsWithCitation(input: {
      * became the citation line. The citation replaces only the Attendance label. Off, as before.
      */
     const otherToo = otherBesideDescribedEnabled() && /(?:^|,\s*)Other\s*$/.test(violated);
-    values.policy_violated = otherToo ? `${line}, Other` : line;
+    // Every other label stays beside the citation ("Attendance Policy, JBA Policy Manual p.14, Standards of Conduct, Other").
+    const kept = violated
+      .split(/\s*,\s*/)
+      .filter((label) => label.trim() !== "" && !TARDINESS_BOX.test(label) && !ATTENDANCE_POLICY_BOX.test(label));
+    values.policy_violated = otherToo ? [line, ...kept].join(", ") : line;
   }
   if (input.pageRequired) {
     for (const key of ["policy_language", "coaching_details", "follow_up_observation"] as const) {
