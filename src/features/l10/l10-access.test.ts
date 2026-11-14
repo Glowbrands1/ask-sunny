@@ -178,11 +178,12 @@ describe("the Hub's agenda and section hints reach the page (the STC DM L10 chan
     const hints = { "business-best": "Round-robin: each person shares one AI best practice, then you check them off." };
     hub.answer = () => ({
       status: 200,
-      body: { info: STC, viewer: { id: "hub-user-1", name: "Avery Quill" }, loaded: { version: 1, updatedAt: "t", doc: {} }, people: [], roster: { ...ROSTER, agenda, hints } },
+      body: { info: STC, viewer: { id: "hub-user-1", name: "Avery Quill" }, loaded: { version: 1, updatedAt: "t", doc: {} }, people: [], roster: { ...ROSTER, agenda, hints, reference: false } },
     });
     const { openMeeting } = await import("./data.server");
     const opened = await openMeeting("stc-dm");
-    expect(opened.ok && opened.meeting.roster).toEqual({ ...ROSTER, agenda, hints });
+    // reference: false is the Hub saying this meeting has no Business Plan / Accountability Chart (13 Nov 2026).
+    expect(opened.ok && opened.meeting.roster).toEqual({ ...ROSTER, agenda, hints, reference: false });
   });
 });
 
