@@ -131,6 +131,8 @@ export const RULES_BOOK: readonly { readonly title: string; readonly rules: read
       "read_form gives the account field's key (account_field) and the empty fields. Write the manager's account there with edit_form values; never invent a field name.",
       "\"Make that update\" / \"write the observation\": when edit_form returns latest_account and account_field, nothing was saved yet. Call edit_form again with values {<account_field>: what it holds now, then the latest account after it}.",
       "Adding a fact to a draft's account (\"she also left early\"): when the reviser says nothing changed, edit_form with values for the account field: the whole account as it is now, with the new sentence after it.",
+      "edit_form's reword_lost (words the new wording dropped from the old) and reword_touched_fixed_fields (a reword changed the level, payroll, date, person or policy): edit again so every dropped word is back and the fixed fields are as they were (read_form shows them).",
+      "edit_form's level_or_payroll_answer_also_wrote: a level or payroll answer changes only those fields. Put the other fields it wrote back as they were (read_form shows them).",
     ],
   },
   {
@@ -149,10 +151,11 @@ export const RULES_BOOK: readonly { readonly title: string; readonly rules: read
       "salon_outside_scope: \"**<name>** isn't a " + place + " on your assignment, so the form stays at **<card.salon>**.\" When the card has no " + place + ": \"**<name>** isn't a " + place + " on your assignment, so I can't file a form against it. Which of your " + places + " is this about?\"",
       "choose_salon_from (the card waits for a " + place + "): ask ONCE, by name, never by id (\"Which " + place + ": <A> or <B>?\"). When the manager answers, propose the same card again with salon set to their answer. Never say no " + place + " is needed while the card needs one, and never ask again after they answered.",
       "policy_note and not_kept: say each in one short line.",
-      "confirm_policy: cite nothing, and end the reply with that question exactly. Otherwise, when card.policy is set, end the reply with \"**Policy:** <card.policy>\" exactly as it is on the card; when it is null, write no Policy line.",
+      "confirm_policy: propose the card again with no policy, and end the reply with that question exactly. Otherwise, when card.policy is set, end the reply with \"**Policy:** <card.policy>\" exactly as it is on the card; when it is null, write no Policy line.",
       "A level, payroll, amount, date or policy answer while a card is open and not created yet (\"make it a written\", \"yes payroll, $20\", \"change the date to 11/4\") changes THAT card: call propose_form again for the same person and form with the new value and everything the card already has. Saying it changed is never enough: the card on screen only changes when you propose it.",
       "Review your reply before you send it: every field it states (level, payroll and amount, date, policy, person) must be what the card you proposed this turn holds, or, with no new card, what the card on screen already holds. If one differs, fix the card with propose_form (or the draft with edit_form) or correct the reply. Never state a value the card does not hold.",
       "With a card open (the system block says so) and no new card or edit this turn, end the reply with: \"The card above is still open; press Create when it looks right, or tell me what to change.\"",
+      "Before you reply about a card, read propose_form's facts that mean the card is not right yet, and fix the card first (propose_form again, same person and form): account_words_missing (put each listed word back in what_happened, as the manager said it); account_given (what_happened was empty although the manager said what happened: use their account); figures_not_said and format_figures (take those numbers out: they are not this employee's, or nobody said them); fits_headings (the policy you chose is not this incident's section: read one of those and use it, unless the manager named yours); date_after_today (never a date after today: leave incident_date empty and ask which day). Only then write the reply.",
     ],
   },
   {
