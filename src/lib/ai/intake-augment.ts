@@ -10,6 +10,7 @@ import {
   statedPayrollDeduct,
 } from "@/lib/forms/payroll-deduct";
 import { extractJobTitle, readEmployeeMentions } from "@/lib/forms/proposal";
+import { placeReadingText } from "@/lib/forms/reason-place";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
 import { placeText } from "@/lib/forms/place-from-cue";
 import { statedWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
@@ -62,7 +63,8 @@ function slotLines(question: string, history: readonly IntakeTurn[]): string[] {
     lines.push(`Job title: ${title}.`);
   }
 
-  const joined = [...earlier, question].join("\n");
+  // REASON_PLACE_NOT_SALON_ENABLED: a reason's place ("because she was at …") is not guessed as a salon.
+  const joined = placeReadingText([...earlier, question].join("\n"));
   const salon = singleSalon([...earlier, question]) ?? fuzzySalon(joined) ?? uniqueRosterSalon(joined);
   // PLACE_FROM_CUE_ENABLED: "… for <name> from <salon>" already names one (`forms/place-from-cue.ts`).
   if (salon && readSalonMentions(placeText(question)).length === 0) {
