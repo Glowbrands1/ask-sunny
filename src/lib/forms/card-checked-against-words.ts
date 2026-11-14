@@ -362,7 +362,9 @@ export function addedFacts(issue: string, employee: string | null, input: CardCh
               .map((part) => {
                 const fact = factOfClause(whole(part), factContext(input));
                 if (fact === null) return null;
-                if (fact === whole(part).trim().replace(/[.!]+$/, "")) return part;
+                // The same words but the punctuation after them ("…average ticket," before "and"): the part as written.
+                const bare = (text: string) => text.trim().replace(/[\s,;:.!-]+$/, "");
+                if (bare(fact) === bare(whole(part))) return part;
                 return own(part) ? fact : strip(fact);
               })
               .filter((part): part is string => part !== null)

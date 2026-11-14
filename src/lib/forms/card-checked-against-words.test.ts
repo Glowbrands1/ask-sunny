@@ -347,3 +347,20 @@ describe("CARD_CHECKED_AGAINST_WORDS_ENABLED: the gates' place-typo list (13 Nov
     expect(addedFacts("she was late on 11/3/26", "Marnie Holloway", after("she was at the frnt desk on her phone"))).toEqual(["she was at the frnt desk on her phone"]);
   });
 });
+
+/*
+ * CARD_ACCOUNT_DROPS_NON_FACTS_ENABLED (Gate-Bubbles-4's bar, G4-893, 14 Nov 2026): a joined account is never reworded.
+ * nov2-p1a lost the comma of "average ticket, and units per transaction" when the part before "and" was checked.
+ */
+describe("CARD_ACCOUNT_DROPS_NON_FACTS_ENABLED: a joined account keeps its punctuation", () => {
+  afterEach(() => vi.unstubAllEnvs());
+  const after = (said: string) => ({ turns: ["create a CA for Marnie Holloway, she was late on 11/3/26", said], roster: ROSTER });
+  it("keeps the comma before \"and\"", () => {
+    const said = "She had 24 transactions and was below in UPT, ATV, average ticket, and units per transaction";
+    vi.stubEnv("CARD_ACCOUNT_DROPS_NON_FACTS_ENABLED", "");
+    const off = addedFacts("she was late on 11/3/26", "Marnie Holloway", after(said));
+    vi.stubEnv("CARD_ACCOUNT_DROPS_NON_FACTS_ENABLED", "true");
+    expect(addedFacts("she was late on 11/3/26", "Marnie Holloway", after(said))).toEqual(off);
+  });
+});
+
