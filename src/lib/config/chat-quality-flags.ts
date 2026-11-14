@@ -4799,3 +4799,13 @@ export function closeSpellingMatchEnabled(): boolean {
 export function sharedCityAsksSalonEnabled(): boolean {
   return envFlag("SHARED_CITY_ASKS_SALON_ENABLED");
 }
+
+/**
+ * NAMED_POLICIES_ALL_KEPT_ENABLED (Coding-2, 13 Nov 2026; default off; ported from Ask Bubbles, QA's two-offense Create
+ * check). Naming "the attendance policy and standards of conduct" kept only the last policy named: Attendance left Type
+ * of Offense, Policy Violated and the plan. On: policies named together in one list are all kept
+ * (`forms/ca-policy.ts` statedTogetherIn); a later name that corrects an earlier one still wins alone. Off, as before.
+ */
+export function namedPoliciesAllKeptEnabled(): boolean {
+  return envFlag("NAMED_POLICIES_ALL_KEPT_ENABLED");
+}
