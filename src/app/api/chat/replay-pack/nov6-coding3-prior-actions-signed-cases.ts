@@ -83,8 +83,12 @@ async function coachingOnFile(t: T): Promise<void> {
 async function correctiveAction(t: T, said: string | readonly string[], priorLine: string): Promise<string> {
   const thread = t.thread();
   await thread.say(`I need a corrective action for ${NAME}, she left the front desk unattended again on 11/3/26`);
-  for (const turn of typeof said === "string" ? [said] : said) await thread.say(turn);
+  let last = "";
+  for (const turn of typeof said === "string" ? [said] : said) last = (await thread.say(turn)).content;
   expect(thread.proposal, `no Corrective Action card for ${NAME}`).toMatchObject({ templateKey: "dpoa", employeeName: NAME });
+  // Gate-Bubbles-5 (13 Nov 2026): "<name> signed the jba policy manual …" is prior history, never this incident's account.
+  expect(String((thread.proposal as Record<string, unknown> | null)?.issue ?? ""), `prior history joined the Issue:\n${last}`).not.toMatch(/signed/i);
+  expect(last, `prior history was added to the account:\n${last}`).not.toMatch(/\*\*Added to [^\n]*signed/i);
   t.draftWrites({ prior_actions: priorLine });
   const id = await thread.create();
   return t.values(id).prior_actions ?? "";

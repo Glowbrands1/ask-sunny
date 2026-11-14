@@ -25,6 +25,11 @@ function urlOr(value: string | undefined, fallback: string): string {
   return trimmed || fallback;
 }
 
+/** The Leadership Hub's address: the switcher's link, the DM L10 tab's "Open in Leadership Hub" links and its partner API. */
+export function leadershipHubUrl(): string {
+  return urlOr(process.env.NEXT_PUBLIC_LEADERSHIP_HUB_URL, DEFAULT_LEADERSHIP_HUB_URL).replace(/\/+$/, "");
+}
+
 export type SwitchableApp = {
   id: "ask-sunny" | "ask-bubbles" | "leadership-hub";
   emoji: string;
