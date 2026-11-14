@@ -37,7 +37,8 @@ export const NOV13_OBSERVATION_PLACE_STRIP_MEANING_CASES: ReplayCase[] = [
     id: "nov13-observation-at-lincoln-high-keeps-meaning",
     title: `Admin: "… she was late because she was at lincoln high" — the Observation never reads "because she was high"`,
     report: `${REPORT}; QA: high priority, it changes the meaning of an HR record`,
-    status: { open: `the Observation reads "she was late because she was high": "at lincoln" is stripped as a place` },
+    // Changed on purpose (14 Nov 2026): fixed in production by PLACE_STRIP_WHOLE_PHRASE_ONLY_ENABLED, QA round 38h. Was OPEN.
+    status: "fixed",
     fixFlags: [FLAG],
     async run(t: ReplayContext) {
       const { reply, said } = await observationOf(t, "create a ca for marnie holloway, she was late because she was at lincoln high");
@@ -49,7 +50,8 @@ export const NOV13_OBSERVATION_PLACE_STRIP_MEANING_CASES: ReplayCase[] = [
     id: "nov13-observation-at-omaha-west-no-leftover",
     title: `Admin: "create a ca for marnie holloway at omaha west, she was late" — no "marnie holloway west" left in the Observation`,
     report: REPORT,
-    status: { open: `the Observation reads "marnie holloway west, she was late": "at omaha" is stripped and "west" left behind` },
+    // Changed on purpose (14 Nov 2026): fixed in production by PLACE_STRIP_WHOLE_PHRASE_ONLY_ENABLED, QA round 38h. Was OPEN.
+    status: "fixed",
     fixFlags: [FLAG],
     async run(t: ReplayContext) {
       const { reply, said } = await observationOf(t, "create a ca for marnie holloway at omaha west, she was late");
@@ -87,9 +89,8 @@ export const NOV13_OBSERVATION_PLACE_STRIP_MEANING_CASES: ReplayCase[] = [
     id: "nov13-observation-place-before-and-stripped",
     title: `Admin: "create a ca for marnie holloway, she was late at omaha and left early" — "at omaha" leaves, "and left early" stays`,
     report: `${REPORT}; Gate-Sunny's #936 probe`,
-    status: {
-      open: `off, "at omaha and" is stripped ("she was late left early"); with the flag, "omaha and" is tried first, "left" does not carry on, and "at omaha" is kept`,
-    },
+    // Changed on purpose (14 Nov 2026): fixed in production by PLACE_STRIP_WHOLE_PHRASE_ONLY_ENABLED, QA round 38h. Was OPEN.
+    status: "fixed",
     fixFlags: [FLAG],
     async run(t: ReplayContext) {
       const { reply, said } = await observationOf(t, "create a ca for marnie holloway, she was late at omaha and left early");
@@ -173,7 +174,9 @@ export const NOV13_OBSERVATION_PLACE_MUST_KEEP_OF_CASES: ReplayCase[] = MUST_KEE
   id: `nov13-observation-place-must-keep-${wording.key}`,
   title: `Admin: "${wording.turn}" — the longer name is kept whole`,
   report: "QA, blocking (Gate-Sunny on #936 aeb6aa20, 13 Nov 2026): only a compass word before \"of\" is a direction; invented person",
-  status: wording.open ? { open: "on main the place is cut out of the longer name" } : "fixed",
+  // Changed on purpose (14 Nov 2026): fixed in production by PLACE_STRIP_WHOLE_PHRASE_ONLY_ENABLED, QA round 38h. The
+  // `open` ones were OPEN; every wording now holds in production.
+  status: "fixed",
   fixFlags: [FLAG],
   async run(t: ReplayContext) {
     const { reply, said } = await observationOf(t, wording.turn);
