@@ -8,6 +8,7 @@ import {
   lateReadsAttendanceEnabled,
   msbPhraseSocEnabled,
   caSalesPolicyEnabled,
+  namedPoliciesAllKeptEnabled,
   cleaningOtherEveryWordingEnabled,
   otherPolicyAgreesEnabled,
   closeSpellingMatchEnabled,
@@ -143,6 +144,11 @@ export interface CaPolicyReading {
    * time" alone; the manager never said "late opening", so the card says it as read from the account, never "as you said".
    */
   lateOpeningDescribed?: true;
+  /**
+   * NAMED_POLICIES_ALL_KEPT_ENABLED: the other policies named together with `stated`, in the same sentence and joined
+   * to it ("the attendance policy and standards of conduct"). Absent off, or when one policy was named.
+   */
+  alsoStated?: CaPolicyName[];
 }
 
 /* ------------------------------------------------------------ the words -- */
@@ -510,6 +516,45 @@ function statedIn(turn: string): CaPolicyName | null {
     }
   }
   return found?.name ?? null;
+}
+
+/*
+ * NAMED_POLICIES_ALL_KEPT_ENABLED (QA's two-offense Create check, 13 Nov 2026): "for violating the attendance policy and
+ * standards of conduct, she was late … and yelled at a customer" kept only the last policy named (Standards of
+ * Conduct), so Attendance left the offense, Policy Violated and the plan. Names joined in one list ("X and Y",
+ * "X, Y and Z", "X as well as Y") are all the manager's answer; a later name that corrects an earlier one ("not
+ * attendance — standards of conduct", "attendance, actually standards of conduct") is not joined and still wins alone.
+ */
+const JOINED_NAMES = /^(?:\s+polic(?:y|ies))?\s*(?:,\s*(?:and\s+|&\s*|plus\s+)?|\s(?:and|&|plus|as well as|along with)\s+)(?:also\s+)?(?:the\s+|our\s+|a\s+|company\s+)*(?:violat\w*\s+(?:the\s+|of\s+(?:the\s+)?)?)?$/;
+
+/** The policies named together with the one `statedIn` reads, in the order written; [] when it stands alone. */
+function statedTogetherIn(turn: string, stated: CaPolicyName): CaPolicyName[] {
+  for (const sentence of statements(turn)) {
+    const hits: { name: CaPolicyName; start: number; end: number }[] = [];
+    for (const { name, pattern, enabled } of NAMED) {
+      if (enabled && !enabled()) continue;
+      const match = pattern.exec(sentence);
+      if (!match) continue;
+      if (NEGATED_BEFORE.test(sentence.slice(0, match.index)) && !(notFollowingIsViolationEnabled() && NOT_FOLLOWING_BEFORE.test(sentence.slice(0, match.index)))) continue;
+      if (takenOff(sentence, match.index, match.index + match[0].length)) continue;
+      hits.push({ name, start: match.index, end: match.index + match[0].length });
+    }
+    hits.sort((a, b) => a.start - b.start);
+    // Runs of names joined by a list word; the run that holds the stated policy is the answer.
+    let run: typeof hits = [];
+    for (const hit of hits) {
+      const last = run[run.length - 1];
+      if (last && JOINED_NAMES.test(sentence.slice(last.end, hit.start))) run.push(hit);
+      else {
+        if (run.some((entry) => entry.name === stated) && run.length > 1) break;
+        run = [hit];
+      }
+    }
+    if (run.length > 1 && run.some((entry) => entry.name === stated)) {
+      return [...new Set(run.map((entry) => entry.name))].filter((name) => name !== stated);
+    }
+  }
+  return [];
 }
 
 /**
@@ -933,7 +978,16 @@ function readCaPolicyFromWords(rawText: string): CaPolicyReading {
   const missedEvent = missedEventIn(sentences);
 
   let stated: CaPolicyName | null = null;
-  for (const turn of turns) stated = statedIn(turn) ?? stated;
+  let statedTurn: string | null = null;
+  for (const turn of turns) {
+    const named = statedIn(turn);
+    if (named !== null) {
+      stated = named;
+      statedTurn = turn;
+    }
+  }
+  // NAMED_POLICIES_ALL_KEPT_ENABLED: the policies named together with it.
+  const alsoStated = namedPoliciesAllKeptEnabled() && stated !== null && statedTurn !== null ? statedTogetherIn(statedTurn, stated) : [];
   /*
    * A MISSED MEETING IS ATTENDANCE — owner decision, 22 Oct 2026, after the
    * District Manager's 21 Oct report ("not attending the monthly meeting" was
@@ -971,6 +1025,7 @@ function readCaPolicyFromWords(rawText: string): CaPolicyReading {
       source: stated === STANDARDS_OF_CONDUCT ? "stated" : null,
       ambiguous: null,
       missedEvent,
+      ...(alsoStated.length > 0 ? { alsoStated } : {}),
     };
   }
   if (topics.length === 0) {
@@ -1020,6 +1075,11 @@ const ABSENCE = /\b(?:absent|absence|absences|absenteeism|no[- ]call|no[- ]show|
 const LATENESS = /\b(?:late|lateness|tardy|tardiness|left early|leaving early|clocked out early)\b/;
 
 export function statedOffenseKeys(reading: CaPolicyReading, rawText: string): string[] | null {
+  // NAMED_POLICIES_ALL_KEPT_ENABLED: every policy named together is ticked, in the order written.
+  if (namedPoliciesAllKeptEnabled() && reading.stated !== null && (reading.alsoStated?.length ?? 0) > 0) {
+    const keys = [...(reading.alsoStated ?? []), reading.stated].flatMap((name) => statedOffenseKeys({ ...reading, stated: name, alsoStated: undefined }, rawText) ?? []);
+    return [...new Set(keys)];
+  }
   switch (reading.stated) {
     case null:
       // OTHER_POLICY_AGREES_ENABLED: cleaning or sanitation left undone ticks Other on the draft, as the card says (Pau's rule).
