@@ -18,6 +18,17 @@ const CLOSED = [
   "need a ca for wren, last time i told her no phone",
   "do a coaching for ottilie she was late tuesday",
   "her history of migraines came up again",
+  // QA's second probe (14 Nov 2026): requests for a NEW form, and incident wording.
+  "do you have a form for tardiness",
+  "does she have to sign the form",
+  "do a ca for ottilie before her shift ends",
+  "give her a verbal warning before she clocks out",
+  "fill out the form before she leaves",
+  "i coached her before close on cleaning beds",
+  "she was given a warning by the customer to stop",
+  "she was told last week by the dm, need a written",
+  "pls do a ca on her she was late AGAIN",
+  "she was on her phone the whole shift, last shift too",
 ];
 
 const OPEN = [
@@ -30,6 +41,10 @@ const OPEN = [
   "pull up ottilie's record",
   "same as last time",
   "open my previous coaching for wren",
+  "does she have any write ups",
+  "has she been written up before?",
+  "written up before.",
+  "i coached her before for this",
 ];
 
 describe("the past-forms gate", () => {

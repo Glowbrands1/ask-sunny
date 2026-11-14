@@ -94,11 +94,12 @@ const ASKS_ABOUT_FORMS: readonly RegExp[] = [
   new RegExp(String.raw`\bon record\b|\b${WHOSE}\s+(?:disciplinary\s+|work\s+)?records?\b`, "i"),
   // "her history", "form history", "write-up history", never "history of <something that is not a form>".
   new RegExp(String.raw`\b(?:${WHOSE}|form|disciplinary|write[- ]?up|ca|coaching|corrective(?:\s+action)?)\s+history\b(?!\s+of\s+(?!${FORM}\b)\w)`, "i"),
-  // "written up before", "had a CA before", "coached before".
-  new RegExp(String.raw`\b(?:${FORM}|coached)\s+(?:\w+\s+){0,2}before\b`, "i"),
+  // "written up before", "had a CA before?", "coached her before for this"; never "before her shift / before she leaves".
+  new RegExp(String.raw`\b(?:${FORM}|coached)\s+(?:\w+\s+){0,2}before(?=\s*(?:[?.!,;]|$)|\s+(?:too|already|this|that|for (?:this|that|the same))\b)`, "i"),
   new RegExp(String.raw`\b(?:previous(?:ly)?|prior|past|earlier|old|older|existing|finalized|finished|latest|last)\s+(?:\w+\s+)?${FORM}\b`, "i"),
   // "has she had any write ups", "did he ever get a CA", "have they been written up".
-  new RegExp(String.raw`\b(?:has|have|had|did|does|do)\s+(?:\w+\s+){1,4}?(?:had|gotten|got|have|get|been|received|given)\s+(?:\w+\s+){0,3}?${FORM}\b`, "i"),
+  // The subject is the employee, never "you / I / we" ("do you have a form for …"); "have to sign" is no question about files.
+  new RegExp(String.raw`\b(?:has|have|had|did|does|do)\s+(?!(?:you|u|i|we)\b)(?:\w+\s+){1,4}?(?:had|gotten|got|have(?!\s+to\b)|get|been|received|given)\s+(?:\w+\s+){0,3}?${FORM}\b`, "i"),
   /\bsame as (?:last time|before|the last one|last one)\b/i,
 ];
 
