@@ -4831,3 +4831,14 @@ export function cardAddedFactInObservationEnabled(): boolean {
 export function sharedCityAsksSalonEnabled(): boolean {
   return envFlag("SHARED_CITY_ASKS_SALON_ENABLED");
 }
+
+/**
+ * LONGER_PLACE_NAME_KEPT (Gate-Sunny's #936 follow-ups, QA 14 Nov 2026; default off): the Observation cut a city out of a
+ * longer place name ("at lincoln street fair" → "street fair", "at the lincoln zoo" → "zoo"), and a place right after
+ * "was" left a broken sentence ("she was of all places", "she was and left early"). With the flag the longer name is
+ * kept unless the whole phrase is a salon, and a place straight after "was"/"were"/"is" stays. See
+ * `ai/remap-incident.ts` withoutPlace. Off, as before.
+ */
+export function longerPlaceNameKeptEnabled(): boolean {
+  return envFlag("LONGER_PLACE_NAME_KEPT_ENABLED");
+}
