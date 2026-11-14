@@ -92,6 +92,44 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
     },
   },
   {
+    id: "nov14-agent-loop-guard-privacy-incident-wording-stays-closed",
+    title: "privacy: QA's probe sentences, ordinary incident wording (\"before\", \"records\", \"a history of\", \"did she get a\", \"last time\"), never open forms on file; a request naming them does",
+    report: `${REPORT}; QA's review of #992 (14 Nov 2026): the gate opened on incident wording`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-13T22:40:00Z"));
+      t.directory([...STAFF, TAMSIN]);
+      t.as("salon_director", KEARNEY);
+      await terminationOnFile(t);
+      const closed = [
+        "ca for tamsin orwell, she left before closing and didnt clean the beds",
+        "ca for tamsin orwell, she didnt record the lotion sales",
+        "did she get a break today? tamsin orwell was rude to a client",
+        "ca for tamsin orwell, she said she has a history of migraines and left early",
+        "tamsin orwell clocked in 20 min late, she was told before about being on time",
+        "need a ca for tamsin orwell, last time i told her no phone",
+        "do a coaching for tamsin orwell she was late tuesday",
+      ];
+      for (const said of closed) {
+        const nosy = loopStandIn(nosyStandIn);
+        t.loopModel!(nosy);
+        const reply = await t.thread().say(said);
+        for (const output of [...toolResults(nosy.views, "find_past_forms"), ...toolResults(nosy.views, "read_form")]) {
+          expect(output, `"${said}" opened forms on file`).toMatch(/not asked about forms on file/);
+        }
+        expect(reply.content, `"${said}": the Termination on file was brought up`).not.toMatch(/terminat/i);
+      }
+      for (const said of ["has tamsin orwell had any write ups", "change the date on my last CA for tamsin orwell"]) {
+        const nosy = loopStandIn(nosyStandIn);
+        t.loopModel!(nosy);
+        await t.thread().say(said);
+        expect(toolResults(nosy.views, "find_past_forms")[0], `"${said}" did not open forms on file`).not.toMatch(/not asked about forms on file/);
+      }
+    },
+  },
+  {
     id: "nov14-agent-loop-guard-no-invented-level-or-payroll",
     title: "no invented warning level or payroll: a level or payroll deduct the manager did not state never reaches the card; stated, it does",
     report: `${REPORT}: "no invented warning level or payroll"`,

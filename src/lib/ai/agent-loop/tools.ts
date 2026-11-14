@@ -80,14 +80,35 @@ export interface ToolContext {
  * the manager's own words ask about them: what is on file, history, an earlier form, "same as last time", "open my
  * last coaching". The manager's latest message, or the one before it when the latest is a short answer.
  */
-const ASKS_ABOUT_FORMS =
-  /\b(?:on file|history|form monitoring|records?|before|previous(?:ly)?|prior (?:forms?|cas?|coachings?|write[- ]?ups?|warnings?)|past (?:forms?|cas?|coachings?)|last (?:time|one|form|cas?|coaching|corrective|write[- ]?up|warning|verbal|written)|same as (?:last|before|the last)|(?:has|have|did) (?:s?he|they|\w+) (?:had|gotten|got|have|get) (?:a|an|any)|(?:open|pull up|show|find|change|edit|update|fix|reopen)\b[^.?!\n]{0,40}\b(?:last|previous|latest|finalized|finished|old|earlier|existing)\b)/i;
+/* A form or discipline word: what a request for forms on file names (QA's review, 14 Nov 2026). */
+const FORM = String.raw`(?:c\.?a\.?s?|corrective(?:\s+actions?)?|write[- ]?ups?|written[- ]up|warnings?|coachings?|forms?|terminations?|disciplin\w*|verbals?|writtens?)`;
+const WHOSE = String.raw`(?:her|his|their|my|\w+'s|\w+s')`;
+
+/**
+ * Each pattern names forms or discipline on file. Ordinary incident wording never opens the gate: "left before
+ * closing", "didn't record the sales", "did she get a break", "a history of migraines", "told before", "last time I
+ * told her" (QA's probe sentences, `privacy-gate.test.ts`).
+ */
+const ASKS_ABOUT_FORMS: readonly RegExp[] = [
+  /\bon file\b|\bform monitoring\b/i,
+  new RegExp(String.raw`\bon record\b|\b${WHOSE}\s+(?:disciplinary\s+|work\s+)?records?\b`, "i"),
+  // "her history", "form history", "write-up history", never "history of <something that is not a form>".
+  new RegExp(String.raw`\b(?:${WHOSE}|form|disciplinary|write[- ]?up|ca|coaching|corrective(?:\s+action)?)\s+history\b(?!\s+of\s+(?!${FORM}\b)\w)`, "i"),
+  // "written up before", "had a CA before", "coached before".
+  new RegExp(String.raw`\b(?:${FORM}|coached)\s+(?:\w+\s+){0,2}before\b`, "i"),
+  new RegExp(String.raw`\b(?:previous(?:ly)?|prior|past|earlier|old|older|existing|finalized|finished|latest|last)\s+(?:\w+\s+)?${FORM}\b`, "i"),
+  // "has she had any write ups", "did he ever get a CA", "have they been written up".
+  new RegExp(String.raw`\b(?:has|have|had|did|does|do)\s+(?:\w+\s+){1,4}?(?:had|gotten|got|have|get|been|received|given)\s+(?:\w+\s+){0,3}?${FORM}\b`, "i"),
+  /\bsame as (?:last time|before|the last one|last one)\b/i,
+];
+
+const asks = (text: string) => ASKS_ABOUT_FORMS.some((pattern) => pattern.test(text));
 
 export function asksAboutPastForms(context: Pick<ToolContext, "question" | "history">): boolean {
-  if (ASKS_ABOUT_FORMS.test(context.question)) return true;
+  if (asks(context.question)) return true;
   if (context.question.trim().split(/\s+/).length > 6) return false;
   const earlier = [...context.history].reverse().find((message) => message.role === "user");
-  return earlier ? ASKS_ABOUT_FORMS.test(earlier.content) : false;
+  return earlier ? asks(earlier.content) : false;
 }
 
 const NOT_ASKED = "The manager has not asked about forms on file, so they are not looked at (company privacy rule). Work from what the manager said; never mention other forms.";
