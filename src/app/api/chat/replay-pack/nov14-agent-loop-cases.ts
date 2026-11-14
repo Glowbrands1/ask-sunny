@@ -548,4 +548,65 @@ export const NOV14_AGENT_LOOP_CASES: ReplayCase[] = [
       expect(results.filter((result) => result.tool === "propose_form").every((result) => /employee_id/.test(String(result.output.error)))).toBe(true);
     },
   },
+  {
+    id: "nov14-agent-loop-account-name-never-the-employee",
+    title: "QA's L4 bar (live baseline, 14 Nov 2026): a CA for a Salon Director whose account names a new hire — the form stays the Salon Director's every turn, the Observation keeps both names, the policy stays Standards of Conduct (never the new hire's Late Opening on file)",
+    report: `${REPORT}: QA via Pau, a production 1★ chat (L4) in invented names; today's app switched the CA to the new hire named in the account and carried her Late Opening`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-14T16:00:00Z"));
+      const director: DirectoryRow = { id: "e-linnea-brightwater", firstName: "Linnea", lastName: "Brightwater", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Salon Director" };
+      const hire: DirectoryRow = { id: "e-saoirse-pennick", firstName: "Saoirse", lastName: "Pennick", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" };
+      t.directory([...STAFF, director, hire]);
+      t.as("admin", { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] });
+      // The new hire has a finalized Late Opening CA on file, as in production.
+      const prior = t.thread();
+      await prior.say("create a verbal ca for Saoirse Pennick for late opening on 10/26/26, she opened the salon 20 minutes late");
+      t.draftWrites({ observation: "Observed:\nSaoirse Pennick opened the salon 20 minutes late on 10/26/26." }, { warning_type: ["verbal"] });
+      const priorId = await prior.create();
+      Object.assign(t.forms().find((row) => row.id === priorId)!, { status: "finalized", form_date: "2026-10-26" });
+
+      const ACCOUNT = "Linnea completed onboarding with new hire Saoirse Pennick on 9-28-26. As of 10-16-26 Saoirse had not acknowledged onboarding policies in Woven that should have been completed during onboarding.";
+      const TURNS = [
+        "create a CA for salon director, linnea brightwater for violating the standards of conduct",
+        "Linnea Brightwater, Salon Director",
+        `change observation of offense to: ${ACCOUNT}`,
+        "create the ca",
+        `create ca for linnea brightwater, salon director. the offense is: change observation of offense to: ${ACCOUNT} the policy violated is standards of conduct.`,
+        `create ca for linnea brightwater, salon director. the offense is: change observation of offense to: ${ACCOUNT} the policy violated is standards of conduct.`,
+        "linnea",
+      ];
+      /* The stand-in is a careful model (live, AGENT_LOOP_LIVE=1, the real one decides): the form's person is the one the request is about. */
+      const standIn = loopStandIn((view) => {
+        const said = latest(view);
+        const all = managerTurns(view).join("\n");
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "linnea brightwater" } };
+        if (!/onboarding/i.test(all)) return { text: "What did Linnea do? I'll put it on the form in your words." };
+        if (!lastResult(view, "propose_form")) {
+          const account = /change observation of offense to:\s*([\s\S]*?)(?:\s*the policy violated|$)/i.exec(all)?.[1]?.trim() ?? said;
+          return { tool: "propose_form", input: { template_key: "dpoa", employee_id: firstMatch(view)?.employee_id, policy: "Standards of Conduct", what_happened: account, incident_date: "2026-10-16" } };
+        }
+        return { text: "The Corrective Action Form for Linnea Brightwater is ready to review." };
+      });
+      t.loopModel!(standIn);
+      const thread = t.thread();
+      const replies: ReplayAnswer[] = [];
+      for (const turn of TURNS) replies.push(await thread.say(turn));
+      for (const [index, reply] of replies.entries()) {
+        const card = reply.formProposal;
+        // A person named inside the account never replaces the form's employee.
+        if (card) expect(card.employeeName, `turn ${index + 1}: the card moved to someone else:\n${reply.content}`).toBe("Linnea Brightwater");
+        expect(policyLine(reply.content), `turn ${index + 1}: the new hire's Late Opening:\n${reply.content}`).not.toMatch(/late opening/i);
+        if (card) expect(policyLine(reply.content), `turn ${index + 1}: not Standards of Conduct:\n${reply.content}`).toMatch(/standards of conduct/i);
+      }
+      const last = replies.at(-1)!.formProposal;
+      expect(last?.employeeName, "no card for the Salon Director at the end").toBe("Linnea Brightwater");
+      // The Observation edit keeps every name as written.
+      expect(last?.issue ?? "", "the account lost a name").toMatch(/Linnea[\s\S]*Saoirse Pennick/);
+      // The finalized CA on file is untouched.
+      expect(t.forms().find((row) => row.id === priorId)?.status).toBe("finalized");
+    },
+  },
 ];
