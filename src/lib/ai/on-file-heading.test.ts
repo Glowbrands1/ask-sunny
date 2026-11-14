@@ -24,6 +24,11 @@ describe("headingOnlyOnFile", () => {
     expect(headingOnlyOnFile("Attendance", T2, history)).toBe(true);
   });
 
+  it("no heading (undefined or null) is never dropped and never throws (Gate-Sunny-3, 14 Nov 2026)", () => {
+    expect(headingOnlyOnFile(undefined, T2, history, CHUNKS)).toBe(false);
+    expect(headingOnlyOnFile(null, T2, history, CHUNKS)).toBe(false);
+  });
+
   it("a heading the manager names is kept, even when it is also on file", () => {
     expect(headingOnlyOnFile("Late Opening", "make a ca for Briony Calloway for late opening on 11/13", history)).toBe(false);
     expect(headingOnlyOnFile("Late Opening", T2, [{ role: "user", content: "she was the late opening person again" }, ...history])).toBe(false);

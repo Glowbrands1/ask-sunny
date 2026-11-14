@@ -56,7 +56,9 @@ function managerReadsHeading(heading: string, managerText: string, chunks: reado
 }
 
 /** True when `heading` is named in an app "On file" listing and the manager's own words neither name nor describe it. */
-export function headingOnlyOnFile(heading: string, question: string, history: readonly Turn[], chunks: readonly ManualChunk[] = []): boolean {
+export function headingOnlyOnFile(heading: string | null | undefined, question: string, history: readonly Turn[], chunks: readonly ManualChunk[] = []): boolean {
+  // No heading, nothing to drop: never a throw that loses the turn's whole intent reading (Gate-Sunny-3, 14 Nov 2026).
+  if (typeof heading !== "string") return false;
   const named = headingWords(heading);
   if (!named) return false;
   const managerText = [...history.filter((turn) => turn.role === "user").map((turn) => turn.content), question].join("\n");

@@ -136,11 +136,13 @@ export async function applyIntentExtraction(input: {
      * ON_FILE_LINE_NOT_THE_POLICY_ENABLED (Pau's morning scan, 13 Nov 2026): a heading the reader took from the app's own
      * "On file" listing, never from the manager's words, is not this request's policy; the heading it had is kept.
      */
+    // A state without a heading (undefined as well as null) has none to drop (Gate-Sunny-3, 14 Nov 2026).
+    const readHeading = decided.state.policyHeading ?? null;
     const fromOnFile =
       onFileLineNotThePolicyEnabled() &&
-      decided.state.policyHeading !== null &&
-      decided.state.policyHeading !== (saved?.policyHeading ?? null) &&
-      headingOnlyOnFile(decided.state.policyHeading, input.request.question, input.request.history, manual.chunks);
+      readHeading !== null &&
+      readHeading !== (saved?.policyHeading ?? null) &&
+      headingOnlyOnFile(readHeading, input.request.question, input.request.history, manual.chunks);
     const decision = fromOnFile ? withoutOnFileHeading(decided, saved) : decided;
     await writeSaved(input.actor.subject, input.request.conversationId, decision.state);
     updateChatTrace({
