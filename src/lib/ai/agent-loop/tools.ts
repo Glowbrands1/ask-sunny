@@ -33,7 +33,7 @@ import { turnsFromThisPersonsRequest } from "@/lib/forms/this-persons-turns";
 import { closePolicyQuestion, namedPolicies } from "@/lib/forms/named-policy-section";
 import { startsNewForm } from "@/lib/ai/remap-incident";
 import { PAYROLL_DEDUCT_LABEL, payrollAmountFromConversation, statedPayrollDeduct } from "@/lib/forms/payroll-deduct";
-import { PAYROLL_AMOUNT_LABEL, PAYROLL_AMOUNT_QUESTION } from "@/lib/forms/payroll-amount-field";
+import { PAYROLL_AMOUNT_LABEL } from "@/lib/forms/payroll-amount-field";
 import { withoutPayrollClauses } from "@/lib/ai/payroll-clause-not-account";
 import { UNDER_PERFORMANCE_EXPLAINED } from "@/lib/ai/under-performance-explained";
 import { listTemplateSummaries, type TemplateSummary } from "@/lib/forms/repository";
@@ -161,6 +161,8 @@ export interface ToolEffects {
   requiredLines?: string[];
   /** A reply the app gives in its own words (today's whole-staff list): the turn's reply, as written. */
   replyOverride?: string | null;
+  /** Lines the reply says about how a name was read ("Using **<A>** from your staff list."), by roster id. */
+  nameLines?: Record<string, string>;
   /** The knowledge-base passages search_knowledge returned, as today's source cards. */
   citations?: SourceCitation[];
   /** A new draft revising a finalized form, opened on the manager's screen (`editable-draft.ts`). */
@@ -222,7 +224,22 @@ function staffRow(person: RosterEmployee) {
   return { employee_id: person.id, name: displayName(person), salons: person.salonIds.map(salonLabel) };
 }
 
-export async function findStaff(context: ToolContext, input: { name?: unknown }): Promise<ToolResult> {
+/** QA's ruling (14 Nov 2026), said exactly: a card made with a name not on the Woven staff list. */
+export function offRosterLine(name: string): string {
+  return `**${name}** isn't on the Woven staff list, so I've used the name as you typed it. Check the spelling before you press Create.`;
+}
+
+/** Pau (14 Nov 2026), said exactly: one strong close roster match is used, and the reply says so. */
+export function closeNameLine(name: string): string {
+  return `Using **${name}** from your staff list.`;
+}
+
+/** A login that covers every salon: today's TYPED_NAME_PROCEEDS cards a typed name at once (QA's ruling, 14 Nov). */
+function coversEverySalon(scope: AccessScope): boolean {
+  return scope.level === "global";
+}
+
+export async function findStaff(context: ToolContext, input: { name?: unknown }, effects?: ToolEffects): Promise<ToolResult> {
   const typed = typeof input.name === "string" ? input.name.trim() : "";
   if (typed === "") return { error: "Give the name to look for." };
   const read = await rosterFor(context.actor.scope);
@@ -251,6 +268,17 @@ export async function findStaff(context: ToolContext, input: { name?: unknown })
     if (onCard && close.kind === "confirm") {
       return { matches: [staffRow(close.candidates[0]!.employee)], note: `A close spelling of ${close.candidates[0]!.name}, the person on this chat's card. Use them; no need to ask.` };
     }
+    /*
+     * ONE STRONG CLOSE MATCH IS USED (Pau, 14 Nov 2026: "it's best if it doesn't ask too many questions"): exactly one
+     * roster person is a close spelling, so the card is theirs and the reply says so in one line the manager can
+     * correct before Create ("Using **<A>** from your staff list."). Two or more → asked. A "no" to an earlier
+     * Did-you-mean → asked.
+     */
+    if (close.kind === "confirm" && close.candidates.length === 1 && !saidNo) {
+      const chosen = close.candidates[0]!;
+      if (effects) effects.nameLines = { ...(effects.nameLines ?? {}), [chosen.employee.id]: closeNameLine(chosen.name) };
+      return { matches: [staffRow(chosen.employee)], note: `A close spelling of ${chosen.name}, the only one on the roster. Use them; the reply says "${closeNameLine(chosen.name)}"` };
+    }
     if (close.kind === "confirm" && close.candidates.length > 0) {
       const names = close.candidates.map((candidate) => candidate.name);
       return {
@@ -269,6 +297,10 @@ export async function findStaff(context: ToolContext, input: { name?: unknown })
     const person = offRosterTyped(typed, context.question, read.roster.map(displayName)) ?? offRosterTyped(typed, `for ${typed}`, read.roster.map(displayName));
     if (!person) {
       return { matches: [], note: "Nobody on this manager's roster has that name, and it does not read as a person's name (it may be a salon, a place, a title or a metric). Never put it on a form as a person: ask who the form is for." };
+    }
+    /* QA's ruling (14 Nov 2026), production's TYPED_NAME_PROCEEDS: an all-salon login gets the card at once, with the line. */
+    if (coversEverySalon(context.actor.scope)) {
+      return { matches: [], not_on_roster: person, note: `Not on the Woven staff list. Propose the card now with employee_name "${person}" as typed; the reply says "${offRosterLine(person)}"` };
     }
     return {
       matches: [],
@@ -484,28 +516,45 @@ export async function readPolicy(context: ToolContext, input: { heading?: unknow
 /* -------------------------------------------------------- propose form --- */
 
 /**
- * THE CARD'S LINES, IN TODAY'S WORDS (`ai/form-proposal.ts`), for the manager to check before Create, and the
- * questions today's card always asks (QA, 14 Nov 2026, from L1–L10): the warning level read back or left to the
- * manager, prior actions, the payroll question or its answer, the amount, and which date when several were given.
+ * THE CARD'S LINES, for the manager to check before Create (QA, 14 Nov 2026, from L1–L10; Pau 14 Nov: "it's best if
+ * it doesn't ask too many questions, it should be intuitive"). Act on the best reading and state what was left open
+ * in ONE short line; never block the card on an optional field; at most one question per reply.
+ * - A stated level, prior actions and payroll are read back.
+ * - Unstated payroll and level: "Payroll deduct and warning level aren't set; tell me if they apply." (one line).
+ * - Several incident dates: the chosen one is named with the others ("Dated 9/28 (when it happened); say if you want
+ *   10/2."); with none chosen, the one question asks which.
  * The reply always carries them (run.ts adds any the model left out).
  */
-export function cardLines(card: ChatFormProposal, templateKey: string, extra: { readonly datesAsked?: readonly string[] } = {}): string[] {
+export const UNSET_LINE = {
+  both: "Payroll deduct and warning level aren't set; tell me if they apply.",
+  payroll: "Payroll deduct isn't set; tell me if it applies.",
+  level: "Warning level isn't set; tell me if it applies.",
+} as const;
+export const AMOUNT_UNSET_LINE = "The payroll deduction amount isn't set; tell me the figure if there is one.";
+
+export function cardLines(
+  card: ChatFormProposal,
+  templateKey: string,
+  extra: { readonly datesAsked?: readonly string[]; readonly datedFrom?: { readonly chosen: string; readonly others: readonly string[] } | null } = {},
+): string[] {
   const lines: string[] = [];
   const corrective = templateKey === "dpoa";
   if (card.issue) lines.push(`${corrective ? "**Observation of Offense:**" : "**What happened:**"} ${card.issue}`);
-  if (card.warningLevel) lines.push(`**Type of Warning:** ${card.warningLevel === "verbal" ? "Verbal Warning" : "Written Warning"}, as you said — I'll tick it on the form. Tell me if that should change.`);
-  if (card.priorActions) lines.push(`**Prior actions:** ${card.priorActions}, as you said. I'll list them on the form — tell me if that should change.`);
-  if (extra.datesAsked && extra.datesAsked.length > 1) {
+  if (card.warningLevel) lines.push(`**Type of Warning:** ${card.warningLevel === "verbal" ? "Verbal Warning" : "Written Warning"}, as you said.`);
+  if (card.priorActions) lines.push(`**Prior actions:** ${card.priorActions}, as you said.`);
+  if (card.payrollDeduct) {
+    lines.push(`**${PAYROLL_DEDUCT_LABEL}** ${card.payrollDeduct === "yes" ? "Yes" : "No"}, as you said.${card.payrollDeduct === "yes" && card.payrollDeductAmount ? ` **${PAYROLL_AMOUNT_LABEL}:** ${card.payrollDeductAmount}.` : ""}`);
+  }
+  if (extra.datedFrom) {
+    lines.push(`Dated ${extra.datedFrom.chosen} (when it happened); say if you want ${extra.datedFrom.others.join(" or ")}.`);
+  } else if (extra.datesAsked && extra.datesAsked.length > 1) {
     lines.push(`You mentioned more than one date (${extra.datesAsked.map((date) => `**${date}**`).join(", ")}). Which date goes on the form?`);
   }
   if (corrective && !card.awaitingIncident) {
-    const outstanding = [card.warningLevel ? null : "the verbal/written warning level", card.priorActions ? null : "any prior coaching or corrective action"].filter(Boolean);
-    if (outstanding.length > 0) lines.push(`You'll set ${outstanding.join(" and ")} on the form — I won't guess at ${outstanding.length === 1 ? "it" : "them"}.`);
-    if (card.payrollDeduct) lines.push(`${PAYROLL_DEDUCT_LABEL} **${card.payrollDeduct === "yes" ? "Yes" : "No"}** — tell me if that should change.`);
-    else lines.push(`One more question: **${PAYROLL_DEDUCT_LABEL}** Yes or No? Tell me here, or tick it on the form — I won't answer it for you.`);
-    if (card.payrollDeduct === "yes") {
-      lines.push(card.payrollDeductAmount ? `**${PAYROLL_AMOUNT_LABEL}** **${card.payrollDeductAmount}** — tell me if that should change.` : PAYROLL_AMOUNT_QUESTION);
-    }
+    if (!card.payrollDeduct && !card.warningLevel) lines.push(UNSET_LINE.both);
+    else if (!card.payrollDeduct) lines.push(UNSET_LINE.payroll);
+    else if (!card.warningLevel) lines.push(UNSET_LINE.level);
+    if (card.payrollDeduct === "yes" && !card.payrollDeductAmount) lines.push(AMOUNT_UNSET_LINE);
   }
   return lines;
 }
@@ -694,6 +743,7 @@ export async function proposeForm(
   const read = await rosterFor(context.actor.scope);
   if (read.kind === "failed") return { error: ROSTER_FAILED };
   let employee: { name: string; salonIds: readonly string[] };
+  let offRosterName: string | null = null;
   if (read.kind === "read") {
     const id = typeof input.employee_id === "string" ? input.employee_id.trim() : "";
     const person = id ? read.roster.find((row) => row.id === id) : undefined;
@@ -703,7 +753,10 @@ export async function proposeForm(
      * OFF_ROSTER_CONFIRM (as today): a person not in Woven yet goes on the form by the name the manager typed, only
      * after the app offered "reply **use <name>**" and the manager said so. Never a name nobody confirmed.
      */
-    else if (typed && offRosterConfirmed(context, typed)) employee = { name: typed, salonIds: [] };
+    else if (typed && !rosterMatches(typed, read.roster).length && (offRosterConfirmed(context, typed) || (coversEverySalon(context.actor.scope) && offRosterTyped(typed, `for ${typed}`, read.roster.map(displayName)) && matchEmployeeName(typed, read.roster).kind !== "confirm"))) {
+      employee = { name: typed, salonIds: [] };
+      offRosterName = typed;
+    }
     else return { error: "Give the employee_id find_staff returned for this person (call find_staff first). A name not on the roster goes on a form only after the manager answers the \"reply **use <name>**\" offer." };
   } else {
     const typedName = typeof input.employee_name === "string" ? tidyTypedName(input.employee_name) : "";
@@ -818,9 +871,16 @@ export async function proposeForm(
   /* Several incident dates and the latest message does not pick one: the date waits, and the card asks (today's rule). */
   const datesGiven = ACCOUNT_FORMS.has(template.key) ? incidentDates(requestWords, typeof input.prior_actions === "string" ? input.prior_actions : null) : [];
   const latestDates = incidentDates(context.question, null);
-  const datesAsked = datesGiven.length > 1 && !(latestDates.length === 1 && datesGiven.includes(latestDates[0]!)) ? datesGiven : [];
-  if (datesAsked.length > 0) date = null;
-  else if (datesGiven.length > 1 && latestDates.length === 1) date = monthDayToIso(latestDates[0]!);
+  /*
+   * Several incident dates (Pau 14 Nov: act and state the assumption): a date the model chose from the stated ones is
+   * kept and the reply names the others; a date that is not one of them is never kept; with none, the one question.
+   */
+  const answered = datesGiven.length > 1 && latestDates.length === 1 && datesGiven.includes(latestDates[0]!);
+  if (answered) date = monthDayToIso(latestDates[0]!);
+  const chosen = datesGiven.length > 1 && date ? datesGiven.find((given) => monthDayToIso(given) === date) ?? null : null;
+  if (datesGiven.length > 1 && date && !chosen) date = null;
+  const datesAsked = datesGiven.length > 1 && !date ? datesGiven : [];
+  const datedFrom = chosen && !answered ? { chosen, others: datesGiven.filter((given) => given !== chosen) } : null;
   if (date && date > today) return { error: `The incident date ${date} is after today (${today}, the salon's local date). Ask the manager.` };
   const askedLevel = input.warning_level === "verbal" || input.warning_level === "written" ? input.warning_level : null;
   const level = askedLevel && (askedLevel === "verbal" ? /\bverbal\b/i : /\bwritten\b|\bwrite[- ]?up\b/i).test(managerWords) ? askedLevel : null;
@@ -855,7 +915,12 @@ export async function proposeForm(
     ...(awaiting ? { awaitingIncident: true as const, supportsInlineDraft: false } : {}),
   };
   effects.proposal = card;
-  effects.requiredLines = cardLines(card, template.key, { datesAsked });
+  const personId = typeof input.employee_id === "string" ? input.employee_id.trim() : "";
+  effects.requiredLines = [
+    ...(offRosterName ? [offRosterLine(employee.name)] : []),
+    ...(personId && effects.nameLines?.[personId] ? [effects.nameLines[personId]!] : []),
+    ...cardLines(card, template.key, { datesAsked, datedFrom }),
+  ];
   effects.policyLine = policyLine;
   effects.confirmPolicy = didYouMean;
   return {
@@ -872,7 +937,7 @@ export async function proposeForm(
       policy: policyLine,
       create_offered: card.supportsInlineDraft,
     },
-    card_lines: cardLines(card, template.key, { datesAsked }),
+    card_lines: cardLines(card, template.key, { datesAsked, datedFrom }),
     ...(policyLine ? { policy_line: `**Policy:** ${policyLine}` } : {}),
     ...(policyNote ? { policy_note: policyNote } : {}),
     /* Pau's line, word for word, whenever the manager asked for Under Performance and the card cites the Standards of Conduct. */

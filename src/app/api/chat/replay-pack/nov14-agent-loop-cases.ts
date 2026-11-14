@@ -532,7 +532,7 @@ export const NOV14_AGENT_LOOP_CASES: ReplayCase[] = [
   },
   {
     id: "nov14-agent-loop-off-roster-no-card-without-employee",
-    title: "QA's bar, loop on: an admin's off-roster name and then a salon (\"KS Manhattan\"): no card with no employee, so never a Create with no employee",
+    title: "QA's bar, loop on: an admin's off-roster name and then a salon (\"KS Manhattan\"): the admin's card has the typed name at once with the not-on-Woven line (production's TYPED_NAME_PROCEEDS), and a salon is never the employee, so never a Create with no employee",
     report: `${REPORT}: QA, 14 Nov 2026 (bar on Gate-Sunny's case 5)`,
     status: "fixed",
     fixFlags: [FLAG],
@@ -551,11 +551,16 @@ export const NOV14_AGENT_LOOP_CASES: ReplayCase[] = [
       });
       t.loopModel!(standIn);
       const thread = t.thread();
-      const replies = [await thread.say("CA for Brisa Talmadge, do not terminate yet, she was late"), await thread.say("KS Manhattan")];
-      for (const reply of replies) expect(reply.formProposal, `a card with no roster employee:\n${reply.content}`).toBeUndefined();
-      const results = standIn.views.flatMap((view) => view.results);
-      expect(results.filter((result) => result.tool === "find_staff").every((result) => (result.output.matches as unknown[]).length === 0)).toBe(true);
-      expect(results.filter((result) => result.tool === "propose_form").every((result) => /employee_id/.test(String(result.output.error)))).toBe(true);
+      // Changed on purpose (QA ruling 14 Nov 14:40Z): follows production's TYPED_NAME_PROCEEDS for district/region/all-salon logins.
+      const first = await thread.say("CA for Brisa Talmadge, do not terminate yet, she was late");
+      expect(first.formProposal?.employeeName, `no card for the typed name:\n${first.content}`).toBe("Brisa Talmadge");
+      expect(first.content).toContain("**Brisa Talmadge** isn't on the Woven staff list, so I've used the name as you typed it. Check the spelling before you press Create.");
+      const before = standIn.views.flatMap((view) => view.results).length;
+      const salon = await thread.say("KS Manhattan");
+      expect(salon.formProposal?.employeeName ?? null, "a salon became the employee").not.toBe("KS Manhattan");
+      const later = standIn.views.flatMap((view) => view.results).slice(before);
+      expect(later.filter((result) => result.tool === "find_staff").every((result) => (result.output.matches as unknown[]).length === 0)).toBe(true);
+      expect(later.filter((result) => result.tool === "propose_form").every((result) => /employee_id|ask who/i.test(String(result.output.error)))).toBe(true);
     },
   },
   {

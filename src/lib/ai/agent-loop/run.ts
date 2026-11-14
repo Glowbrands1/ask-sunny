@@ -267,7 +267,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   /* Each model call's tokens and ms, for the trace (numbers only). */
   const modelSteps: { step: number; ms: number; stop: string | null; input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number }[] = [];
   const handlers: Record<string, (args: Record<string, unknown>) => Promise<ToolResult>> = {
-    find_staff: (args) => findStaff(context, args),
+    find_staff: (args) => findStaff(context, args, effects),
     find_past_forms: (args) => findPastForms(context, args),
     read_form: (args) => readForm(context, args),
     read_policy: (args) => readPolicy(context, args),

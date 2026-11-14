@@ -191,19 +191,19 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       });
       t.loopModel!(terse);
       const unstated = await t.thread().say("ca for tamsin orwell, she was 30 minutes late on 11/12");
-      expect(unstated.content, "no payroll question").toContain("One more question: **Is payroll deduct applicable?** Yes or No?");
-      expect(unstated.content, "the warning level was neither asked nor left to the manager").toMatch(/You'll set the verbal\/written warning level/);
+      // Changed on purpose (Pau 14 Nov: fewer questions, act and state the assumption): one line, not two questions.
+      expect(unstated.content, "the unset payroll and level are not stated").toContain("Payroll deduct and warning level aren't set; tell me if they apply.");
+      expect(unstated.formProposal, "the card waited on an optional field").toBeTruthy();
 
       const stated = await t.thread().say("written ca for tamsin orwell, she was 30 minutes late on 11/12, no payroll deduct");
       expect(stated.content).toMatch(/\*\*Type of Warning:\*\* Written Warning, as you said/);
-      expect(stated.content).toMatch(/Is payroll deduct applicable\? \*\*No\*\*/);
-      expect(stated.content, "asked a question already answered").not.toMatch(/Yes or No\?/);
-      expect(stated.content, "asked a level already given").not.toMatch(/verbal\/written warning level/);
+      expect(stated.content).toMatch(/Is payroll deduct applicable\?\*\* No, as you said/);
+      expect(stated.content, "named as unset what was stated").not.toMatch(/aren't set|isn't set/);
     },
   },
   {
     id: "nov14-agent-loop-two-dates-asked",
-    title: "two incident dates and no answer (QA's L3 must-fix): the card's date stays empty and the reply asks which, listing the dates; a prior step's date is not counted; the answer sets the date",
+    title: "two incident dates (QA's L3 must-fix; Pau 14 Nov: act and state the assumption): a date chosen from the stated ones is kept and the reply names the others; none chosen → the date stays empty and one question asks which; a date not stated is never kept; a prior step's date is not counted; the answer sets the date",
     report: `${REPORT}; L3 (14 Nov 2026): "two dates in the account and the loop put one on the form without asking"`,
     status: "fixed",
     fixFlags: [FLAG],
@@ -215,7 +215,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       const picker = loopStandIn((view) => {
         const said = view.turns.filter((turn) => turn.role === "user").map((turn) => turn.text).join(" ");
         if (!lastResult(view, "propose_form")) {
-          return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, what_happened: /9\/28/.test(said) ? "Tamsin Orwell left the spray booth dirty on 9/28 and again on 10/2." : "Tamsin Orwell was late on 11/3 after being coached on 10/1.", incident_date: /9\/28/.test(said) ? "2026-09-28" : "2026-11-03" } };
+          const picks = /pick/.test(said);
+          return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, what_happened: /9\/28/.test(said) ? "Tamsin Orwell left the spray booth dirty on 9/28 and again on 10/2." : "Tamsin Orwell was late on 11/3 after being coached on 10/1.", ...(/9\/28/.test(said) ? (picks ? { incident_date: "2026-09-28" } : /invent/.test(said) ? { incident_date: "2026-09-30" } : {}) : { incident_date: "2026-11-03" }) } };
         }
         return { text: "Here is the card." };
       });
@@ -226,6 +227,18 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       expect(asked.content).toContain("You mentioned more than one date (**9/28**, **10/2**). Which date goes on the form?");
       await thread.say("10/2");
       expect(thread.proposal?.formDate ?? "", "the answer did not set the date").toBe("2026-10-02");
+
+      // Changed on purpose (Pau 14 Nov: fewer questions, act and state the assumption): a stated date chosen is kept, the other named.
+      const picked = t.thread();
+      const dated = await picked.say("ca for tamsin orwell (pick), she left the spray booth dirty on 9/28 and again on 10/2");
+      expect(picked.proposal?.formDate).toBe("2026-09-28");
+      expect(dated.content).toContain("Dated 9/28 (when it happened); say if you want 10/2.");
+      expect(dated.content).not.toMatch(/Which date goes on the form/);
+      // A date nobody stated is never kept: the one question instead.
+      const invented = t.thread();
+      const notStated = await invented.say("ca for tamsin orwell (invent), she left the spray booth dirty on 9/28 and again on 10/2");
+      expect(invented.proposal?.formDate ?? null).toBeNull();
+      expect(notStated.content).toContain("Which date goes on the form?");
 
       const prior = t.thread();
       const one = await prior.say("ca for tamsin orwell, she was late on 11/3 after being coached on 10/1");
@@ -283,7 +296,7 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
   },
   {
     id: "nov14-agent-loop-close-spelling-of-card-person",
-    title: "\"edit tamsen orwel ca\" after Tamsin Orwell's card in this chat (the live re-run's sf-s26): find_staff reads the close spelling as the card's person, with no Did-you-mean; with no card in the chat it still asks",
+    title: "\"edit tamsen orwel ca\" after Tamsin Orwell's card in this chat (the live re-run's sf-s26): find_staff reads the close spelling as the card's person, with no Did-you-mean; one strong close match is used anyway (Pau, 14 Nov); a \"no\" to Did-you-mean still asks",
     report: `${REPORT}; live re-run (14 Nov 2026): "Edit <close spelling> CA" asked Did you mean instead of opening`,
     status: "fixed",
     fixFlags: [FLAG],
@@ -309,9 +322,11 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       expect(found).toContain('"name":"Tamsin Orwell"');
       expect(found, "asked Did you mean about the card's own person").not.toMatch(/did_you_mean/);
 
+      // Changed on purpose (Pau 14 Nov: fewer questions, act and state the assumption): one strong close match is used
+      // with no card in the chat too, and the reply says so; a "no" to an earlier Did-you-mean still asks.
       const fresh = t.thread();
       await fresh.say("edit tamsen orwel ca");
-      expect(toolResults(model.views, "find_staff").at(-1), "a close spelling with no card in the chat was used unasked").toMatch(/did_you_mean/);
+      expect(toolResults(model.views, "find_staff").at(-1)).toContain('"name":"Tamsin Orwell"');
       // Did-you-mean answered "no": still not that person.
       await fresh.say("no, edit tamsen orwel ca as typed");
       expect(toolResults(model.views, "find_staff").at(-1), "a \"no\" to Did you mean was read as yes").toMatch(/did_you_mean/);
@@ -344,6 +359,32 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       await thread.say("fix her last name, it is Orwell-Smith");
       expect(toolResults(editor.views, "edit_form")[0]).toMatch(/corrects the employee's name only/);
       expect(JSON.stringify(t.values(id)), "the Observation was rewritten by a name correction").toBe(before);
+    },
+  },
+  {
+    id: "nov14-agent-loop-one-close-name-used",
+    title: "one strong close roster match (Pau 14 Nov: fewer questions): \"ca for tamsen orwel\" gives Tamsin Orwell's card at once and the reply says \"Using **Tamsin Orwell** from your staff list.\"",
+    report: `${REPORT}; Pau (14 Nov 2026): "it's best if it doesn't ask too many questions, it should be intuitive"`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-13T22:40:00Z"));
+      t.directory([...STAFF, TAMSIN, CORBIN]);
+      t.as("salon_director", KEARNEY);
+      const model = loopStandIn((view) => {
+        const said = view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "";
+        const typed = /orwel/.test(said) ? "tamsen orwel" : "corbin ashdon";
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: typed } };
+        const id = (lastResult(view, "find_staff")?.matches as { employee_id: string }[] | undefined)?.[0]?.employee_id;
+        if (id && !lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: id, what_happened: "She was late on 11/10." } };
+        return { text: "Here's the draft." };
+      });
+      t.loopModel!(model);
+      const thread = t.thread();
+      const reply = await thread.say("ca for tamsen orwel, she was late on 11/10");
+      expect(thread.proposal?.employeeName).toBe("Tamsin Orwell");
+      expect(reply.content).toContain("Using **Tamsin Orwell** from your staff list.");
     },
   },
   {
