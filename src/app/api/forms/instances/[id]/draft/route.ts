@@ -176,6 +176,9 @@ import {
   statedOffenseKeys,
   withConductOffense,
   withStatedOffense,
+  withoutCleaningDuty,
+  withoutSetAsideOffense,
+  besideAttendanceKeys,
 } from "@/lib/forms/ca-policy";
 import { CA_SALES_POLICY_RULE, withSalesOffense } from "@/lib/forms/ca-sales-policy";
 import { ATTENDANCE_POLICY, CA_REVISION_8_OFFENSE_RULE, offeredOffenseKey, withOfferedOffense } from "@/lib/forms/offense-keys";
@@ -754,7 +757,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      * for <A>, his cash drawer was short") was drafted with the first request's policy (Late Opening) as its Policy
      * Violated. Only the policy reads below use it; payroll, exit and every other reader keep the notes as sent.
      */
-    const policyNotes = secondRequestOwnAccountEnabled() ? currentFormRequestText(notes) : notes;
+    // POLICY_LINE_COVERS_EVERY_SECTION_ENABLED: a policy taken off a two-offense account is read without its clause (`withoutSetAsideOffense`).
+    const policyNotes = withoutSetAsideOffense(secondRequestOwnAccountEnabled() ? currentFormRequestText(notes) : notes, setAside.names);
     const wantsEppPolicy = fields.some((field) => field.key === EPP_POLICY_REFERENCE_KEY);
     const needsPolicy = fields.some(
       (field) => field.policyGrounded && field.key !== EPP_POLICY_REFERENCE_KEY,
@@ -802,7 +806,21 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         (group) =>
           group.key === "offense_type" && group.options.some((option) => option.key === STANDARDS_OF_CONDUCT),
       );
-    const caPolicy = offersConductPolicy ? readCaPolicy(policyNotes) : null;
+    /*
+     * OTHER_BESIDE_DESCRIBED_ENABLED (QA's ruling (b) on the sibling app's gate probes, 14 Nov 2026): a cleaning duty left
+     * undone beside a second offense the account describes ("she was on her phone and did not do the 10 minute
+     * sanitation"; "she was late on 11/3/26 and did not do the sanitation"). The policy is read from the account without
+     * the cleaning duty, so the described offense keeps its box, Policy Violated, Direct policy and plan, and Other is
+     * ticked beside it (below). A cleaning duty that is the only offense stays Other alone (Pau's rule). Off, as before.
+     */
+    const besideOther = ((): string | null => {
+      const rest = offersConductPolicy ? withoutCleaningDuty(policyNotes) : null;
+      if (rest === null) return null;
+      const described = besideAttendanceKeys(rest) !== null || (manual.ok && describedManualSection({ text: rest, chunks: manual.chunks }) !== null);
+      return described ? rest : null;
+    })();
+    const policyText = besideOther ?? policyNotes;
+    const caPolicy = offersConductPolicy ? readCaPolicy(policyText) : null;
     /*
      * A POLICY THE MANAGER NAMED BY THE MANUAL'S OWN HEADING — "violating
      * visitors at work policy" is the manual's Visitors in the Workplace
@@ -823,12 +841,12 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         : null;
     // Only where it ticks the box the manager's own words tick, or they tick none: a card's generic
     // "Attendance" never turns a missed meeting (Absenteeism) into Tardiness.
-    const ownKeys = cardHeading && caPolicy ? statedOffenseKeys(caPolicy, policyNotes) : null;
+    const ownKeys = cardHeading && caPolicy ? statedOffenseKeys(caPolicy, policyText) : null;
     const cardSection = cardHeading && (!ownKeys || ownKeys.includes(cardHeading.offenseKey)) ? cardHeading : null;
     const namedSection =
       cardSection ??
       (caPolicy && caPolicy.stated === null && manual.ok
-        ? namedManualSection({ text: policyNotes, chunks: manual.chunks })
+        ? namedManualSection({ text: policyText, chunks: manual.chunks })
         : null);
     /*
      * NO POLICY NAMED, BUT ONE DESCRIBED — "talking on her cell phone" is the
@@ -841,7 +859,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      */
     const describedSection =
       caPolicy && caPolicy.stated === null && !namedSection && manual.ok
-        ? describedManualSection({ text: policyNotes, chunks: manual.chunks })
+        ? describedManualSection({ text: policyText, chunks: manual.chunks })
         : null;
     /*
      * A MEETING NOT ATTENDED, WHERE THE MANUAL SAYS WHAT THAT IS — its
@@ -867,7 +885,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      */
     const describedChoices =
       caPolicy && caPolicy.stated === null && !namedSection && !describedSection && !eventSection && manual.ok
-        ? describedManualChoices({ text: policyNotes, chunks: manual.chunks })
+        ? describedManualChoices({ text: policyText, chunks: manual.chunks })
         : null;
 
     /*
@@ -1949,14 +1967,17 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       ((namedPoliciesAllKeptEnabled() && (caPolicy.alsoStated?.length ?? 0) > 0) ||
         // POLICY_LINE_COVERS_EVERY_SECTION_ENABLED: lateness and a conduct incident, both described, tick both.
         (policyLineCoversEverySectionEnabled() && caPolicy.alsoDescribed))
-        ? statedOffenseKeys(caPolicy, policyNotes)
+        ? statedOffenseKeys(caPolicy, policyText)
         : null;
-    const statedKeys = caPolicy
+    const ownStatedKeys = caPolicy
       ? (allNamedKeys ??
         (cardSection ? [cardSection.offenseKey] : null) ??
-        statedOffenseKeys(caPolicy, policyNotes) ??
+        statedOffenseKeys(caPolicy, policyText) ??
         (policySection ? [policySection.offenseKey] : null))
       : null;
+    // OTHER_BESIDE_DESCRIBED_ENABLED (QA's ruling (b)): the cleaning duty beside the described offense is ticked Other too.
+    const besideKeys = besideOther !== null ? (ownStatedKeys ?? besideAttendanceKeys(besideOther)) : null;
+    const statedKeys = besideKeys ? [...besideKeys.filter((key) => key !== "other"), "other"] : ownStatedKeys;
     const statedOffense = statedKeys
       ? withStatedOffense({
           checked: enforced.checked,

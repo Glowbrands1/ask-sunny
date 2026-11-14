@@ -13,6 +13,7 @@ import {
   namedPoliciesAllKeptEnabled,
   cleaningOtherEveryWordingEnabled,
   otherPolicyAgreesEnabled,
+  otherBesideDescribedEnabled,
   closeSpellingMatchEnabled,
   formEditDateRulesEnabled,
   removePolicyNotNamedEnabled,
@@ -613,9 +614,43 @@ export function readCaPolicy(rawText: string): CaPolicyReading {
 const CONDUCT_INCIDENT =
   /\b(?:was\s+|were\s+|got\s+|being\s+)?(?:rude|unprofessional|argued|arguing|shouted|yelled|yelling|swore|swearing|cursed|cursing|disrespect\w*)\b(?:\s+(?:at|to|with)\s+(?:a|an|the|her|his|their|our)?\s*\w+)?/;
 
+/**
+ * POLICY_LINE_COVERS_EVERY_SECTION_ENABLED (ported from Ask Bubbles: Gate-Bubbles-4's NO-GO probe, 14 Nov 2026): a
+ * two-offense account ("she was late on 11/3/26 and she yelled at a customer") with one of its policies taken off ("take
+ * the attendance policy off the form", `policy-set-aside.ts`) is read for its policy without that offense's clause, so
+ * the other policy keeps its box, section, Policy Violated and plan. Only the text the policy is read from; the account
+ * itself is untouched. Unchanged when the flag is off, nothing of these two is taken off, or the account does not
+ * describe both.
+ */
+export function withoutSetAsideOffense(text: string, names: ReadonlySet<CaPolicyName>): string {
+  if (!policyLineCoversEverySectionEnabled()) return text;
+  const offAttendance = names.has("attendance");
+  const offConduct = names.has(STANDARDS_OF_CONDUCT);
+  if (offAttendance === offConduct) return text;
+  const conduct = (part: string) => CONDUCT_INCIDENT.test(normalize(part));
+  const late = (part: string) => describedAttendanceKeys(part) !== null;
+  if (!late(text) || !conduct(text)) return text;
+  const read = (text ?? "")
+    .split("\n")
+    .map((line) =>
+      line
+        .split(/\s*,\s*(?:and\s+)?|\s+and\s+/i)
+        .filter((part) => !(offAttendance ? late(part) && !conduct(part) : conduct(part) && !late(part)))
+        .join(" and "),
+    )
+    .join("\n");
+  return read.trim() === "" ? text : read;
+}
+
 function withConductBesideLateness(reading: CaPolicyReading, said: string): CaPolicyReading {
   if (!policyLineCoversEverySectionEnabled()) return reading;
-  if (reading.stated !== null || reading.other || reading.ambiguous) return reading;
+  /*
+   * Ported from Ask Bubbles (Gate-Bubbles-4's NO-GO probe on its chain, 14 Nov 2026): "she was late on 11/3/26 and
+   * yelled at a customer, and didn't do the sanitation" read as cleaning (Other), so the conduct beside the lateness was
+   * never read and the card named Attendance only. A cleaning duty beside them is read past (OTHER_BESIDE_DESCRIBED says
+   * Other beside).
+   */
+  if (reading.stated !== null || (reading.other && reading.other !== "cleaning") || reading.ambiguous) return reading;
   if (reading.suggestion === STANDARDS_OF_CONDUCT) return reading;
   if (describedAttendanceKeys(said) === null) return reading;
   const text = normalize(said);
@@ -855,6 +890,48 @@ export function managerWords(rawText: string): string {
  */
 const NAMES_CARE_AND_CLEANING =
   /\bcare\s*(?:and|&|n|\+)\s*c[a-z]{0,2}l[a-z]{0,3}n(?:ing|in|g)\b|\bcleaning\s+polic(?:y|ies)\b|\bequipment\s+(?:and|&)\s+facilit\w*/i;
+
+/** The sentence the card adds after an offense described beside a cleaning duty (OTHER_BESIDE_DESCRIBED_ENABLED). */
+export const OTHER_BESIDE_NOTE = "The cleaning duty left undone is recorded under **Other** on the form too.";
+
+/**
+ * OTHER_BESIDE_DESCRIBED_ENABLED (with OTHER_POLICY_AGREES_ENABLED; QA's ruling (b), 14 Nov 2026): the account without its
+ * cleaning duty left undone, to read whether a second offense is described beside it ("she was on her phone and did not
+ * do the 10 minute sanitation" → "she was on her phone and"). Null when either flag is off, the account is not read as
+ * cleaning left undone, or nothing is left. The caller reads the rest with the manual (`describedManualSection`) or as
+ * attendance (`describedAttendanceKeys`); a cleaning duty that is the only offense stays Other alone (Pau's rule).
+ */
+export function withoutCleaningDuty(rawText: string): string | null {
+  if (!otherPolicyAgreesEnabled() || !otherBesideDescribedEnabled() || readCaPolicy(rawText).other !== "cleaning") return null;
+  const phrase = cleaningUndonePhrase(rawText);
+  if (!phrase) return null;
+  const at = (rawText ?? "").toLowerCase().replace(/[‘’‛]/g, "'").indexOf(phrase);
+  if (at < 0) return null;
+  // Line breaks are kept: the app's own lines are read line by line (`withoutAppLines`), never as the manager's words.
+  // QA's ruling on Gate-Sunny-3's #971 finding (14 Nov 2026): duties words ("opening duties", "side work") are no offense.
+  const rest = `${rawText.slice(0, at)} ${rawText.slice(at + phrase.length)}`.replace(DUTY_WORDS, " ").replace(/[ \t]{2,}/g, " ").trim();
+  return rest === "" ? null : rest;
+}
+
+/*
+ * OTHER_BESIDE_DESCRIBED_ENABLED (QA's ruling on Gate-Sunny-3's #971 finding, 14 Nov 2026): "Write me a CA for <R> for
+ * failing to complete opening duties. <R> did not complete daily cleaning duties." became Attendance and Other: the
+ * opening duties read as attendance. Duties and checklists are the cleaning duty's own kind of work, never a second
+ * offense, and attendance beside a cleaning duty needs a word for lateness or an absence.
+ */
+const DUTY_WORDS = /\b(?:(?:opening|closing)(?:\s*\/\s*(?:opening|closing))?\s+(?:duties|duty|checklists?|tasks?)|side\s*work)\b/gi;
+const LATENESS_OR_ABSENCE =
+  /\b(?:late|lateness|tardy|tardiness|no[- ]?call|no[- ]?show(?:ed)?|left\s+early|leaving\s+early|leaves\s+early|absent|absence|missed\s+(?:\S+\s+){0,2}?shifts?|call(?:ed|s)?[- ]?(?:out|off))\b/i;
+
+/** Attendance described beside a cleaning duty, in the rest of the account: only with a lateness or absence word. */
+export function besideAttendanceKeys(rest: string): string[] | null {
+  return LATENESS_OR_ABSENCE.test(rest) ? describedAttendanceKeys(rest) : null;
+}
+
+/** A reading of the rest of the account that is attendance counts only with a lateness or absence word (as above). */
+export function besideReadsAttendance(rest: string): boolean {
+  return LATENESS_OR_ABSENCE.test(rest);
+}
 
 export function namesCareAndCleaning(rawText: string): boolean {
   return NAMES_CARE_AND_CLEANING.test(rawText ?? "");
@@ -1249,6 +1326,12 @@ export type NamedPolicyReading =
        * `official-policy-manual` tag). Absent when confirmed or not known.
        */
       unconfirmedManual?: string;
+      /**
+       * OTHER_BESIDE_DESCRIBED_ENABLED (QA's ruling (b), 14 Nov 2026): the section the account describes BESIDE a
+       * cleaning duty left undone ("on her phone and did not do the 10 minute sanitation"). It leads the card and the
+       * draft; the cleaning duty is ticked Other beside it.
+       */
+      besideOther?: true;
     }
   | { phrase: string; lookup: "missing" | "unknown" }
   /** The account describes more than one section the manual titles a Policy: the manager chooses. */
@@ -1370,6 +1453,15 @@ export function caPolicyProposalLine(reading: CaPolicyReading, named: NamedPolic
    * DESCRIBES cleaning. A name the manual does not answer keeps Other (`close-policy-ask.ts` then asks "Did you mean
    * …?"). Off, as before.
    */
+  // OTHER_BESIDE_DESCRIBED_ENABLED (QA's ruling (b)): a section described beside the cleaning duty leads; Other is said beside it.
+  if (otherBesideDescribedEnabled() && reading.other === "cleaning" && named?.lookup === "described" && named.besideOther) {
+    // POLICY_LINE_COVERS_EVERY_SECTION_ENABLED (ported from Ask Bubbles): a conduct incident beside the lateness is said too.
+    const line =
+      policyLineCoversEverySectionEnabled() && reading.alsoDescribed
+        ? caPolicyProposalLine({ ...reading, other: undefined }, { ...named, besideOther: undefined })
+        : namedPolicyLine(named);
+    return `${line} ${OTHER_BESIDE_NOTE}`;
+  }
   if (reading.other === "cleaning" && !(closeSpellingMatchEnabled() && named?.lookup === "found")) {
     return "**Policy:** Other — cleaning duties left undone are recorded under Other on the Corrective Action Form, not the Standards of Conduct. Tell me if a different policy applies.";
   }
