@@ -67,4 +67,25 @@ export const NOV14_MODEL_WARNING_LEVEL_DISCARDED_CASES: ReplayCase[] = [
       expect(t.checked(id).warning_type ?? [], "the stated level").toEqual(["verbal"]);
     },
   },
+  // The audit's "climbed a rung" shape (QA, 14 Nov 2026): 3 of 27 AI-filled levels were Written where the manager's only
+  // level word was an EARLIER verbal warning. History is not this form's level.
+  ...[
+    ["late-again", "make a ca for Rowan Pellsby, late again 30 mins today. she got a verbal warning on 10/21"],
+    ["register-again", "Rowan Pellsby left the register unlocked again tonight, she already had a verbal last month. create a ca"],
+    ["previous-verbal", "create a corrective action for Rowan Pellsby for no call no show on 11/12/26. previous verbal 9/30/26"],
+  ].map(([slug, said]): ReplayCase => ({
+    id: `nov14-model-warning-level-climbed-rung-${slug}`,
+    title: `"${said}": an earlier verbal is history, so the model's Written is not saved`,
+    report: `${REPORT}: the audit's "climbed a rung" shape (Written where the manager only spoke of an earlier verbal)`,
+    status: { open: "the draft writes the model's Written tick (MODEL_WARNING_LEVEL_DISCARDED off in production)" },
+    fixFlags: ["MODEL_WARNING_LEVEL_DISCARDED_ENABLED"],
+    async run(t) {
+      const thread = start(t);
+      const answer = await thread.say(said!);
+      expect(answer.formProposal, "no card").toBeTruthy();
+      t.draftWrites({ observation: "Observed:\nRowan Pellsby did not meet the expectation." }, { warning_type: ["written"] });
+      const id = await thread.create();
+      expect(t.checked(id).warning_type ?? [], "the model's climbed level was saved").toEqual([]);
+    },
+  })),
 ];

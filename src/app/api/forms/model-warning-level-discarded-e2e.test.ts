@@ -378,3 +378,26 @@ describe("flag on: a level the manager stated is kept", () => {
     expect(field(form, "warning_type")!.checked).toEqual(["written"]);
   });
 });
+
+/**
+ * The audit's "climbed a rung" shape (QA's read-only split, 14 Nov 2026): 3 of the 27 AI-filled levels were Written where
+ * the manager's only level word was "verbal": an EARLIER verbal warning, which the model took one rung up. History is
+ * not this form's level; with the flag on nothing is ticked.
+ */
+describe("flag on: an earlier verbal warning is never climbed to Written", () => {
+  beforeEach(() => {
+    process.env.MODEL_WARNING_LEVEL_DISCARDED_ENABLED = "true";
+  });
+
+  for (const said of [
+    "make a ca for pat rivera, late again 30 mins today. she got a verbal warning on 10/21",
+    "pat rivera left the register unlocked again tonight, she already had a verbal last month. create a ca",
+    "create a corrective action for pat rivera for no call no show on 11/12/26. previous verbal 9/30/26",
+  ]) {
+    it(`"${said}": the earlier verbal is history, and the model's Written is not saved`, async () => {
+      const { proposal, form } = await filed([said], "Pat Rivera did not follow the expectation.", { warning_type: ["written"] });
+      expect(proposal.warningLevel ?? null).toBeNull();
+      expect(field(form, "warning_type")?.checked ?? []).toEqual([]);
+    });
+  }
+});
