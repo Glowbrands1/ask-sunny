@@ -6,10 +6,8 @@ import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import { businessToday } from "@/lib/business-date";
 import { candidateNameWords, chatFormsActor } from "@/lib/forms/chat-form-records";
 import { displayName, matchEmployeeName, nameConfirmationQuestion, type RosterEmployee } from "@/lib/forms/employee-match";
-import { offRosterOffer } from "@/lib/forms/off-roster-confirm";
-import { offRosterQuestion } from "@/lib/forms/off-roster-ask";
 import { offRosterTyped } from "@/lib/forms/roster-only-names";
-import { rosterSalonName } from "@/lib/forms/salon-mention";
+import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
 import { readScopedRoster } from "@/lib/forms/employee-roster";
 import { inlineDraftVariantKey, supportsInlineDraft } from "@/lib/forms/inline-draft";
 import { authorizeInstance, InstanceNotVisibleError, instanceListFilterFor, visibleInstances } from "@/lib/forms/instance-scope";
@@ -224,19 +222,24 @@ function staffRow(person: RosterEmployee) {
   return { employee_id: person.id, name: displayName(person), salons: person.salonIds.map(salonLabel) };
 }
 
-/** QA's ruling (14 Nov 2026), said exactly: a card made with a name not on the Woven staff list. */
-export function offRosterLine(name: string): string {
-  return `**${name}** isn't on the Woven staff list, so I've used the name as you typed it. Check the spelling before you press Create.`;
+/** A salon or city of the company's ("grand island", "KS Manhattan"): never a person's name. */
+function namesAPlace(typed: string): boolean {
+  return readSalonMentions(typed).length > 0 || readSalonMentions(`at ${typed}`).length > 0;
+}
+
+/**
+ * QA's rulings (14 Nov 2026, 14:35Z and 15:11Z; Pau's fewer-questions rule), said exactly: a card made with a name
+ * not on the Woven staff list. A salon login's list is its own salon's.
+ */
+export function offRosterLine(name: string, scope?: AccessScope): string {
+  return scope && scope.level === "salon"
+    ? `**${name}** isn't on your salon's Woven staff list, so I've used the name as you typed it. Check it before you press Create.`
+    : `**${name}** isn't on the Woven staff list, so I've used the name as you typed it. Check the spelling before you press Create.`;
 }
 
 /** Pau (14 Nov 2026), said exactly: one strong close roster match is used, and the reply says so. */
 export function closeNameLine(name: string): string {
   return `Using **${name}** from your staff list.`;
-}
-
-/** A login that covers every salon: today's TYPED_NAME_PROCEEDS cards a typed name at once (QA's ruling, 14 Nov). */
-function coversEverySalon(scope: AccessScope): boolean {
-  return scope.level === "global";
 }
 
 export async function findStaff(context: ToolContext, input: { name?: unknown }, effects?: ToolEffects): Promise<ToolResult> {
@@ -294,19 +297,16 @@ export async function findStaff(context: ToolContext, input: { name?: unknown },
      * and use the typed name, as everywhere else). A word that is not a person's name (a place, a title, the company, a
      * metric) is never offered.
      */
-    const person = offRosterTyped(typed, context.question, read.roster.map(displayName)) ?? offRosterTyped(typed, `for ${typed}`, read.roster.map(displayName));
+    const person = namesAPlace(typed) ? null : offRosterTyped(typed, context.question, read.roster.map(displayName)) ?? offRosterTyped(typed, `for ${typed}`, read.roster.map(displayName));
     if (!person) {
       return { matches: [], note: "Nobody on this manager's roster has that name, and it does not read as a person's name (it may be a salon, a place, a title or a metric). Never put it on a form as a person: ask who the form is for." };
     }
-    /* QA's ruling (14 Nov 2026), production's TYPED_NAME_PROCEEDS: an all-salon login gets the card at once, with the line. */
-    if (coversEverySalon(context.actor.scope)) {
-      return { matches: [], not_on_roster: person, note: `Not on the Woven staff list. Propose the card now with employee_name "${person}" as typed; the reply says "${offRosterLine(person)}"` };
-    }
-    return {
-      matches: [],
-      not_on_roster: person,
-      note: `Not on the roster. Say exactly: "${offRosterQuestion(person)} ${offRosterOffer(person)}" and wait for the manager's answer.`,
-    };
+    /*
+     * QA's ruling (15:11Z 14 Nov 2026; Pau's fewer-questions rule wins over the salon-level ask-first): every login
+     * gets the card at once with the typed name, and the reply says it is not on the Woven staff list. A person at a
+     * salon outside the manager's scope is read the same way (the roster is scoped): their existence is never shown.
+     */
+    return { matches: [], not_on_roster: person, note: `Not on the Woven staff list. Propose the card now with employee_name "${person}" as typed; the reply says "${offRosterLine(person, context.actor.scope)}"` };
   }
   /* A first name alone is confirmed before it goes on a form, as today ("Is this for **Rhea Calloway**?"). */
   /*
@@ -765,7 +765,7 @@ export async function proposeForm(
      * OFF_ROSTER_CONFIRM (as today): a person not in Woven yet goes on the form by the name the manager typed, only
      * after the app offered "reply **use <name>**" and the manager said so. Never a name nobody confirmed.
      */
-    else if (typed && !rosterMatches(typed, read.roster).length && (offRosterConfirmed(context, typed) || (coversEverySalon(context.actor.scope) && offRosterTyped(typed, `for ${typed}`, read.roster.map(displayName)) && matchEmployeeName(typed, read.roster).kind !== "confirm"))) {
+    else if (typed && !rosterMatches(typed, read.roster).length && !namesAPlace(typed) && (offRosterConfirmed(context, typed) || (offRosterTyped(typed, `for ${typed}`, read.roster.map(displayName)) && matchEmployeeName(typed, read.roster).kind !== "confirm"))) {
       employee = { name: typed, salonIds: [] };
       offRosterName = typed;
     }
@@ -934,7 +934,7 @@ export async function proposeForm(
   effects.proposal = card;
   const personId = typeof input.employee_id === "string" ? input.employee_id.trim() : "";
   effects.requiredLines = [
-    ...(offRosterName ? [offRosterLine(employee.name)] : []),
+    ...(offRosterName ? [offRosterLine(employee.name, context.actor.scope)] : []),
     ...(personId && effects.nameLines?.[personId] ? [effects.nameLines[personId]!] : []),
     ...cardLines(card, template.key, { datesAsked, datedFrom }),
   ];

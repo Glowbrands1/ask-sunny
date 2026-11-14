@@ -13,7 +13,7 @@ set -euo pipefail
 out="$1"; cap="$2"; shift 2
 if [ -z "${ANTHROPIC_API_KEY:-}" ]; then echo "ANTHROPIC_API_KEY is not set" >&2; exit 2; fi
 mkdir -p "$out"
-cat "$@" | grep -v '^\s*$' | sort -u > "$out/cases.txt"
+cat "$@" | grep -v '^\s*\(#\|$\)' | sort -u > "$out/cases.txt"
 split -n l/3 -d "$out/cases.txt" "$out/part"
 for part in 00 01 02; do
   [ -s "$out/part$part" ] || continue

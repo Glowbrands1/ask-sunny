@@ -654,28 +654,40 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
     },
   },
   {
-    id: "nov14-agent-loop-guard-off-roster-only-when-confirmed",
-    title: "roster identity: a name not in Woven goes on a card only after the app offered \"reply **use <name>**\" and the manager said so",
+    id: "nov14-agent-loop-guard-off-roster-typed-name-with-line",
+    title: "roster identity (QA's ruling 15:11Z 14 Nov 2026): a name not on the manager's Woven staff list gets the card at once with the name as typed and the line saying so, said exactly; a person at a salon outside the manager's scope is read the same way and never revealed; a place is never carded as a person",
     report: `${REPORT}; OFF_ROSTER_CONFIRM's outcome (a person not in Woven yet can still get a form)`,
     status: "fixed",
     fixFlags: [FLAG],
     async run(t) {
       if (!t.loopOn?.()) return;
       vi.setSystemTime(new Date("2026-11-13T22:40:00Z"));
-      t.directory([...STAFF]);
+      t.directory([...STAFF, FARAWAY]);
       t.as("salon_director", KEARNEY);
       const typed = loopStandIn((view) => {
-        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "Perpetua Vandersloot" } };
-        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_name: "Perpetua Vandersloot", what_happened: "Perpetua Vandersloot was late on 11/12." } };
-        return { text: String(lastResult(view, "find_staff")?.note ?? "") };
+        const said = view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "";
+        const name = /marchetti/i.test(said) ? "Ysolde Marchetti" : /grand island/i.test(said) ? "Grand Island" : "Perpetua Vandersloot";
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name } };
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_name: name, what_happened: `${name} was late on 11/12.` } };
+        return { text: "Here's the card." };
       });
       t.loopModel!(typed);
+      // Changed on purpose (Pau 14 Nov: fewer questions; card + not-on-Woven line).
       const thread = t.thread();
       const first = await thread.say("ca for Perpetua Vandersloot, she was late on 11/12");
-      expect(thread.proposal ?? null, "an unconfirmed off-roster name was carded").toBeNull();
-      expect(first.content, first.content).toMatch(/reply \*\*use Perpetua Vandersloot\*\*/);
-      await thread.say("use Perpetua Vandersloot");
-      expect(thread.proposal?.employeeName, "the confirmed name was refused").toBe("Perpetua Vandersloot");
+      expect(thread.proposal?.employeeName, "the typed name was not carded").toBe("Perpetua Vandersloot");
+      expect(first.content).toContain("**Perpetua Vandersloot** isn't on your salon's Woven staff list, so I've used the name as you typed it. Check it before you press Create.");
+
+      // Privacy: a person at another salon reads exactly as "not on the list"; nothing says they exist elsewhere.
+      const elsewhere = t.thread();
+      const other = await elsewhere.say("ca for Ysolde Marchetti, she was late on 11/12");
+      expect(other.content).toContain("**Ysolde Marchetti** isn't on your salon's Woven staff list");
+      expect(JSON.stringify(typed.views.flatMap((view) => view.results)), "another salon's roster leaked").not.toMatch(/e-ysolde-marchetti|loc-9917/);
+
+      // A place is never a person.
+      const place = t.thread();
+      await place.say("ca for grand island, she was late on 11/12");
+      expect(place.proposal ?? null, "a place was carded as a person").toBeNull();
     },
   },
   {
