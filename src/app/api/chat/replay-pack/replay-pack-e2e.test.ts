@@ -82,6 +82,8 @@ const state = vi.hoisted(() => ({
   lastGrounding: "",
   /** What the slot model (record_intent_slots) reads this turn, when a case sets it — as a production trace shows. */
   slotsRead: {} as Record<string, unknown>,
+  /** What the AI reader (AI_READS_CODE_CHECKS) reads besides the name, as the live model does (`readerReads`). */
+  readerReads: {} as Record<string, unknown>,
   /** The employee the AI reader quotes this turn, when a case sets it (it is checked against the roster as in production). */
   readerEmployee: null as string | null,
   slotsOnlyIfSaid: false,
@@ -283,6 +285,8 @@ vi.mock("@/lib/ai/call-claude", () => ({
       input: {
         employee: name ? { value: name, evidence: manager } : null,
         incident: /late/.test(manager) ? { value: "late", evidence: manager } : null,
+        // A case's own reading, with its sentence as evidence (the sibling app's 17z live bug: the live reader reads the place).
+        ...Object.fromEntries(Object.entries(state.readerReads).map(([key, value]) => [key, { value, evidence: manager }])),
         incidentDate: /10\/20/.test(manager) ? { value: "2026-10-20", evidence: "10/20" } : null,
       },
       usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 },
@@ -722,6 +726,7 @@ beforeEach(async () => {
   store.form_instances = new JoiningRows() as never;
   state.slotReading = "none";
   state.slotsRead = {};
+  state.readerReads = {};
   // A case that pinned extra manual passages leaves the heading index with them; the next case starts without.
   if (state.manualExtra.length > 0) forgetManualIndexForTests();
   state.manualExtra = [];
@@ -882,6 +887,9 @@ function context(): ReplayContext {
     },
     modelSays: (text) => {
       said.answer = text;
+    },
+    readerReads: (fields) => {
+      state.readerReads = fields;
     },
     slotsRead: (slots, readerEmployee = null, options = {}) => {
       state.slotsRead = slots;
