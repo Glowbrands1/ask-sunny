@@ -1055,7 +1055,7 @@ function withoutPlace(clause: string): string {
     if (!/^(?:at|in)$/i.test(words[index]!)) continue;
     // REASON_PLACE_NOT_STORE_ENABLED: "because she was at grand island" is why she was late, not the salon; the account
     // keeps it (on main the Observation read "she was late because she was"). Off, as before.
-    if (reasonPlaceNotStoreEnabled() && /\bbecause\s+\S+\s+(?:was|were|had\s+been)$/i.test(words.slice(0, index).join(" "))) continue;
+    if (reasonPlaceNotStoreEnabled() && /\b(?:because|bc|b\/c|cause|'cause|cuz|since)\s+\S+\s+(?:was|were|had\s+been)$/i.test(words.slice(0, index).join(" "))) continue;
     for (let length = Math.min(6, words.length - index - 1); length >= 1; length -= 1) {
       const phrase = words.slice(index + 1, index + 1 + length).join(" ");
       const bare = phrase.replace(/[.!?]+$/, "");

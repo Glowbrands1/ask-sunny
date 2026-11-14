@@ -38,6 +38,19 @@ describe("REASON_PLACE_NOT_STORE", () => {
     expect(ids("she was late because she was at grand island")).toEqual([]);
   });
 
+  it("on: the same reason said another way (the sibling gate's probes)", () => {
+    vi.stubEnv("REASON_PLACE_NOT_STORE_ENABLED", "true");
+    for (const why of ["bc", "b/c", "cause", "'cause", "cuz", "since"]) {
+      expect(ids(`she was late ${why} she was at grand island`), why).toEqual([]);
+    }
+  });
+
+  it("on: \"since\" as a time word leaves the salon to be read (QA, 14 Nov 2026)", () => {
+    vi.stubEnv("REASON_PLACE_NOT_STORE_ENABLED", "true");
+    expect(ids("since 11/3 she has been late at grand island")).toEqual(["loc-0307"]);
+    expect(ids("she's been late at grand island since monday")).toEqual(["loc-0307"]);
+  });
+
   it("on: a salon said as the salon is still read", () => {
     vi.stubEnv("REASON_PLACE_NOT_STORE_ENABLED", "true");
     expect(ids("she was late at grand island")).toEqual(["loc-0307"]);

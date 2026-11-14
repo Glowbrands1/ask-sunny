@@ -40,6 +40,18 @@ export const NOV13_REASON_PLACE_NOT_SALON_CASES: ReplayCase[] = [
       expect(reply, `the account lost the words:\n${reply}`).toMatch(/because she was at grand island/i);
     },
   },
+  // The sibling gate's probes: the same reason said "bc" or "since".
+  ...(["bc", "since"] as const).map((why): ReplayCase => ({
+    id: `nov13-reason-place-not-salon-grand-island-${why}`,
+    title: `Admin: "create a ca for marnie holloway, she was late ${why} she was at grand island" — not filed at Grand Island`,
+    report: `${REPORT}; the sibling gate's #879 probes`,
+    status: { open: "the reason's place is read as the Grand Island salon" },
+    fixFlags: [FLAG],
+    async run(t: ReplayContext) {
+      const { reply, locationId } = await cardFor(t, `create a ca for marnie holloway, she was late ${why} she was at grand island`);
+      expect(locationId, `a salon was read from the reason:\n${reply}`).not.toBe(GRAND_ISLAND);
+    },
+  })),
 ];
 
 /** Guards, flag off and on: a salon said as the salon is still read. */
