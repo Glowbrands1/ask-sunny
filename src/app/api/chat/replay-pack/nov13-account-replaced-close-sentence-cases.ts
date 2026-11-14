@@ -86,18 +86,6 @@ async function dateFix(t: ReplayContext) {
   }
 }
 
-/*
- * Changed on purpose (QA, 14 Nov 2026, on Gate-Sunny-2's #956 verdict): the two before-fix cases record the old bug,
- * which is gone once ACCOUNT_REPLACED_CLOSE_SENTENCE_KEPT is on. So that they keep recording it when that flag is on
- * globally (fix-open:ACCOUNT_CHANGE, FLAG_CLASSIFY_ON, a later production flip), they pin it off explicitly.
- */
-function closeSentenceOff(run: (t: ReplayContext) => Promise<void>) {
-  return async (t: ReplayContext) => {
-    vi.stubEnv(FLAG, "");
-    await run(t);
-  };
-}
-
 export const NOV13_ACCOUNT_REPLACED_CLOSE_SENTENCE_CASES: ReplayCase[] = [
   {
     id: "nov13-account-replaced-close-sentence-typo-rederives-before-fix",
@@ -106,7 +94,10 @@ export const NOV13_ACCOUNT_REPLACED_CLOSE_SENTENCE_CASES: ReplayCase[] = [
     status: "fixed",
     fixFlags: [REDERIVE],
     fixStatus: { open: "the typo fix re-derives the policy: Attendance moves to Cell Phone" },
-    run: closeSentenceOff(typoFix),
+    // Changed on purpose (QA, on Gate-Sunny-2's #956 verdict, 14 Nov 2026): this case records the before-fix bug, so its
+    // fix-flag run pins the close-sentence flag off even when that flag is on globally. Its production run is not pinned.
+    fixOffFlags: [FLAG],
+    run: typoFix,
   },
   {
     id: "nov13-account-replaced-close-sentence-typo-keeps-policy",
@@ -146,6 +137,9 @@ export const NOV13_ACCOUNT_REPLACED_CLOSE_SENTENCE_CASES: ReplayCase[] = [
     status: "fixed",
     fixFlags: [REDERIVE],
     fixStatus: { open: "the date fix re-derives the policy: Attendance moves to Cell Phone" },
-    run: closeSentenceOff(dateFix),
+    // Changed on purpose (QA, on Gate-Sunny-2's #956 verdict, 14 Nov 2026): this case records the before-fix bug, so its
+    // fix-flag run pins the close-sentence flag off even when that flag is on globally. Its production run is not pinned.
+    fixOffFlags: [FLAG],
+    run: dateFix,
   },
 ];
