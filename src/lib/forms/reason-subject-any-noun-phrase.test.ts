@@ -16,6 +16,9 @@ const REASONS = [
   "she was late because her car broke down in kearney",
   "she left early because her son got hurt at kearney",
   "she was late bc her mom was stuck in grand island",
+  // Gate-Sunny's probe of #989 (14 Nov 2026).
+  "she was late because she was stuck in kearney",
+  "she left early because she had to be in grand island",
 ];
 
 describe("REASON_SUBJECT_ANY_NOUN_PHRASE", () => {
@@ -38,6 +41,8 @@ describe("REASON_SUBJECT_ANY_NOUN_PHRASE", () => {
       "she was late because she was working at kearney",
       "she was late because she went to work in kearney",
       "since 11/3 she has been late at kearney",
+      // "had to be" outside a "because" reason (this reader never reads "at kearney by 9", even on main).
+      "she had to be at kearney and was late",
     ]) {
       expect(read(said), said).toBe(true);
     }
