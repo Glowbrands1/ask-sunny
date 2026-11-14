@@ -16,7 +16,7 @@ import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
 import type { ReplayContext } from "./cases";
 import { CASES } from "./index";
 import { forgetManualIndexForTests } from "@/lib/ai/intent-extraction";
-import { liveRecording } from "./loop-stand-in";
+import { liveRecording, loopStandIn } from "./loop-stand-in";
 
 /**
  * ============================================================================
@@ -820,7 +820,22 @@ async function recorded(id: string, mode: string, run: () => Promise<void>) {
       // The rows the turn's writes left (QA, 9 Nov 2026: CHAT_PARALLEL_LOADS must write exactly as often as before).
       const tables = store as unknown as Record<string, unknown[] | undefined>;
       const rows = { user_memory: tables.user_memory?.length ?? 0, chat_context_summaries: tables.chat_context_summaries?.length ?? 0 };
-      appendFileSync(process.env.REPLAY_RECORD, `${JSON.stringify({ id, mode, ok: error === null, error, ms: Math.round(performance.now() - at), turns: record.turns, rows, systems: systemPrompts.hashes })}\n`);
+      // AGENT_LOOP_ENABLED: the loop's model calls and tokens, only on a run the loop answered (absent otherwise, so a loop-off record is as before).
+      const looped = ((tables.chat_traces ?? []) as { slots?: { agent_loop?: { model_calls?: number; model_steps?: Record<string, number>[] } } }[])
+        .map((row) => row.slots?.agent_loop)
+        .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+      const loopRecord = looped.length > 0
+        ? {
+            loop: {
+              turns: looped.length,
+              model_calls: looped.reduce((sum, entry) => sum + (entry.model_calls ?? 0), 0),
+              tokens: ["input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"].map((key) =>
+                looped.reduce((sum, entry) => sum + (entry.model_steps ?? []).reduce((inner, step) => inner + (step[key] ?? 0), 0), 0),
+              ),
+            },
+          }
+        : {};
+      appendFileSync(process.env.REPLAY_RECORD, `${JSON.stringify({ id, mode, ok: error === null, error, ms: Math.round(performance.now() - at), turns: record.turns, rows, systems: systemPrompts.hashes, ...loopRecord })}\n`);
     }
   }
 }
@@ -838,6 +853,23 @@ function production(extra: readonly string[] = []) {
   for (const name of CLASSIFY_OFF) {
     if (!saved.has(name)) saved.set(name, process.env[name]);
     delete process.env[name];
+  }
+  /*
+   * AGENT_LOOP_LIVE_ALL (dev, opt-in; nothing changes when unset): with AGENT_LOOP_ENABLED on in this run (e.g.
+   * FLAG_CLASSIFY_ON=AGENT_LOOP_ENABLED) and AGENT_LOOP_LIVE=1, every case's turns go to the real model through the
+   * loop, the signed-in manager listed, so any case is a live loop-on run. A case that sets its own stand-in replaces it.
+   */
+  if (process.env.AGENT_LOOP_LIVE_ALL === "1" && liveModel && process.env.AGENT_LOOP_ENABLED === "true") {
+    const recorder = loopStandIn(() => {
+      throw new Error("live: the real model answers");
+    });
+    loop.standIn = recorder;
+    __setAgentLoopModelForTests(liveRecording(recorder, liveModel));
+    if (!loop.listed) {
+      loop.users = process.env.AGENT_LOOP_USERS;
+      loop.listed = true;
+    }
+    process.env.AGENT_LOOP_USERS = "qa-manager@example.test";
   }
 }
 
