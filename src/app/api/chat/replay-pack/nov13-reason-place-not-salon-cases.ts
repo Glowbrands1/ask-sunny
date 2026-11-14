@@ -39,7 +39,8 @@ export const NOV13_REASON_PLACE_NOT_SALON_CASES: ReplayCase[] = [
     id: "nov13-reason-place-not-salon-grand-island",
     title: `Admin: "create a ca for marnie holloway, she was late because she was at grand island" — not filed at Grand Island`,
     report: REPORT,
-    status: { open: "the reason's place is read as the Grand Island salon" },
+    // Changed on purpose (14 Nov 2026): fixed in production by REASON_PLACE_NOT_SALON_ENABLED, QA round 38j. Was OPEN.
+    status: "fixed",
     fixFlags: [FLAG],
     async run(t: ReplayContext) {
       const { reply, locationId } = await cardFor(t, "create a ca for marnie holloway, she was late because she was at grand island");
@@ -54,7 +55,8 @@ export const NOV13_REASON_PLACE_NOT_SALON_CASES: ReplayCase[] = [
     id: "nov14-reason-place-not-salon-lincoln-high",
     title: `Admin: "create a ca for tavia quellan, she was late because she was at lincoln high" — not filed at Lincoln Pine Lake`,
     report: "QA's Sunny 38h live check, 14 Nov 2026; invented person",
-    status: { open: "\"lincoln\" in the reason is read as NE Lincoln Pine Lake" },
+    // Changed on purpose (14 Nov 2026): fixed in production by REASON_PLACE_NOT_SALON_ENABLED, QA round 38j. Was OPEN.
+    status: "fixed",
     fixFlags: [FLAG],
     async run(t: ReplayContext) {
       const { reply, locationId } = await cardFor(t, "create a ca for tavia quellan, she was late because she was at lincoln high");
@@ -73,7 +75,8 @@ export const NOV13_REASON_PLACE_NOT_SALON_CASES: ReplayCase[] = [
     id: `nov14-reason-place-not-salon-${key}`,
     title: `Admin: "create a ca for tavia quellan, she was late because she was at ${place}" — no salon read from the reason`,
     report: "QA's Sunny 38h live check, 14 Nov 2026; invented person",
-    status: { open: "the city in the reason's place is read as its salon" },
+    // Changed on purpose (14 Nov 2026): fixed in production by REASON_PLACE_NOT_SALON_ENABLED, QA round 38j. Was OPEN.
+    status: "fixed",
     fixFlags: [FLAG],
     async run(t: ReplayContext) {
       const { reply, locationId } = await cardFor(t, `create a ca for tavia quellan, she was late because she was at ${place}`);
@@ -86,7 +89,8 @@ export const NOV13_REASON_PLACE_NOT_SALON_CASES: ReplayCase[] = [
     id: `nov13-reason-place-not-salon-grand-island-${why}`,
     title: `Admin: "create a ca for marnie holloway, she was late ${why} she was at grand island" — not filed at Grand Island`,
     report: `${REPORT}; the sibling gate's #879 probes`,
-    status: { open: "the reason's place is read as the Grand Island salon" },
+    // Changed on purpose (14 Nov 2026): fixed in production by REASON_PLACE_NOT_SALON_ENABLED, QA round 38j. Was OPEN.
+    status: "fixed",
     fixFlags: [FLAG],
     async run(t: ReplayContext) {
       const { reply, locationId } = await cardFor(t, `create a ca for marnie holloway, she was late ${why} she was at grand island`);

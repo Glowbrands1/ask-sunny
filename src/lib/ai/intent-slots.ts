@@ -15,6 +15,7 @@ import {
   newestPlaceTurnEnabled,
   notANameGuardEnabled,
   titleWholeWordEnabled,
+  workAreaNotATitleEnabled,
   typedNameProceedsEnabled,
   sameNameAsksWhichEnabled,
   namedFormExactEnabled,
@@ -55,6 +56,7 @@ import { placeReadingText } from "@/lib/forms/reason-place";
 import { lateSlotHeading } from "./late-slot-attendance";
 import { readsAsStatedTitle, saidOnlyAsFormName, titleTextFromTurns } from "./title-words";
 import { titleInWords } from "./title-in-words";
+import { WORK_AREA } from "@/lib/forms/work-area";
 import { describedAttendanceKeys } from "@/lib/forms/ca-policy";
 import { headingKey, sectionHeadingsFor } from "@/lib/forms/official-policy-manual";
 import { namesHeading } from "@/lib/forms/named-policy-section";
@@ -1152,7 +1154,14 @@ function groundTitle(
   const inWords = (title: string) => !wholeWord || titleInWords(title, blob);
   // FORM_NAME_NOT_A_TITLE_ENABLED: "SDIT" read from "Create an SDIT EPP for …" is the form's name, not a title.
   const formName = (title: string) => formNameNotATitleEnabled() && saidOnlyAsFormName(title, blob);
-  const probe = typed?.trim() && inWords(typed.trim()) && !formName(typed.trim()) ? typed.trim() : null;
+  /*
+   * WORK_AREA_NOT_A_TITLE_ENABLED (QA's Sunny 38d live check, 13 Nov 2026; trace conv_mwfcjmwx28iq0v1, slots.title
+   * "front desk"): "create a ca for <A> at the front desk, …" for a person not on the roster gave the card "Job title:
+   * Front Desk" — the model's title, kept because the words were in the turn. A place in the salon where someone works
+   * is never a job title. Off, as before.
+   */
+  const workArea = (title: string) => workAreaNotATitleEnabled() && WORK_AREA.test(title);
+  const probe = typed?.trim() && inWords(typed.trim()) && !formName(typed.trim()) && !workArea(typed.trim()) ? typed.trim() : null;
   if (probe) {
     const hit = titles.find((title) => title.toLowerCase() === probe.toLowerCase() && inWords(title));
     if (hit) return hit;
