@@ -29,6 +29,7 @@ import {
   caShortcutWordsEnabled,
   formChoiceStatedEnabled,
   formNameFromRosterEnabled,
+  levelLeadsRequestEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { foldsToGlossaryTerm } from "@/lib/ai/chat-glossary";
 
@@ -612,6 +613,32 @@ function namesOnlyTheForm(q: string): boolean {
  * a CA" is. A question is still a question, and "corrective action for
  * repeated lateness" — a topic, lower-case — is still read as one.
  */
+/*
+ * LEVEL_LEADS_REQUEST_ENABLED, QA's rulings on Gate-Bubbles-5's findings (14 Nov 2026): the level leads only when the
+ * clause after "for <name>" goes on as an account or a reason: the end, a comma and an account (never "went fine",
+ * "was signed"), "for <reason>", or "she / he / they …". "verbal for <A> was on 10/1/26" is history, and "verbal for <A>
+ * went fine today, she signed it" a statement; neither is a request.
+ */
+const LEVEL_LEADS_REQUEST = new RegExp(String.raw`^\s*(?:please\s+)?(?:an?\s+)?(?:(?:another|one\s+more|first|1st|second|2nd|third|3rd|next)\s+)?(verbal|written)\s+for\s+(?!(?:the|that|this|it|same|being|a|an|her|his|their|them|him|not|no|missing|\d)\b)([a-z][a-z'’-]*(?:\s+[a-z][a-z'’-]*){0,2}?)(?=\s*$|\s*[,:;—–-]\s*(?!(?:it|that|this|which)?\s*(?:went|was|were|is|got|has\s+been|signed)\b)|\s+for\s+\S|\s+(?:she|he|they)\s+\S)`, "i");
+const LEADING_GROUP = /\b(?:team|staff|crew|everyone|everybody|employees|people|members|associates|workers)$/i;
+
+/*
+ * LEVEL_LEADS_REQUEST_ENABLED (QA, 14 Nov 2026): "second verbal for <A>, she was late on 11/12/26" names the level and
+ * the person and no form word, and got no card. A level leading into "for <name>" is the request, as "Written CA for
+ * <A>" is; "another", "second" / "2nd" and the like only count the steps. The word after "for" must be able to be a
+ * name, so "verbal for the late opening" is not read.
+ */
+function levelLeadsRequest(original: string): boolean {
+  // A question asks about one; QA's ruling (14 Nov 2026, Gate-Bubbles-5): it offers no card.
+  if (original.trim().endsWith("?")) return false;
+  const levelled = LEVEL_LEADS_REQUEST.exec(original);
+  if (levelled === null) return false;
+  const who = levelled[2]!;
+  // "verbal for West Dodge team, everyone was late": a group is not a person (GROUP_WORDS asks which employees).
+  if (LEADING_GROUP.test(who)) return false;
+  return couldBeName(who.split(/\s+/)[0]);
+}
+
 function leadsWithTheForm(q: string, original: string): boolean {
   if (q.endsWith("?")) return false;
   if (/^(?:please\s+)?(?:a\s+|new\s+)?(?:(?:verbal|written|final)\s+(?:written\s+)?)?corrective actions?(?:\s+form)?\s*(?:[,:;]|\s[-–—]\s)\s*\S/.test(q)) return true;
@@ -1630,6 +1657,8 @@ export function detectTemplateIntent(rawQuestion: string): TemplateIntent {
   if (!informational && LEVEL_AS_DOCUMENT.test(q)) return { kind: "explicit", templateKey: "dpoa" };
   // CA_SHORTCUT_WORDS_ENABLED: "create a written on 10/20 for …", "make her a verbal" — the level names the form.
   if (caShortcutWordsEnabled() && !informational && CREATE_LEVEL.test(q)) return { kind: "explicit", templateKey: "dpoa" };
+  // LEVEL_LEADS_REQUEST_ENABLED: "second verbal for <A>, …" — see `levelLeadsRequest`.
+  if (levelLeadsRequestEnabled() && !informational && levelLeadsRequest(question)) return { kind: "explicit", templateKey: "dpoa" };
 
   /*
    * THE NAME OF THE PROGRESSION, with no document named alongside it — and not

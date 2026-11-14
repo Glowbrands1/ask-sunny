@@ -4831,3 +4831,14 @@ export function cardAddedFactInObservationEnabled(): boolean {
 export function sharedCityAsksSalonEnabled(): boolean {
   return envFlag("SHARED_CITY_ASKS_SALON_ENABLED");
 }
+
+/**
+ * LEVEL_LEADS_REQUEST_ENABLED (coding 5, 14 Nov 2026; default off; QA, from Gate-Sunny-3's probe). "second verbal for
+ * <A>, she was late on 11/12/26" got no card at all: a level leading straight into "for <name>", with no form word
+ * ("CA", "corrective action", "warning") and no issuing verb, was not read as a request. On: "verbal for <A>", "second
+ * verbal for <A>", "another verbal for <A>", "2nd written for <A>" ask for the Corrective Action Form, the same as "a
+ * verbal CA for <A>" (`forms/template-intent.ts`). The word after "for" must still be able to be a name. Off, as before.
+ */
+export function levelLeadsRequestEnabled(): boolean {
+  return envFlag("LEVEL_LEADS_REQUEST_ENABLED");
+}

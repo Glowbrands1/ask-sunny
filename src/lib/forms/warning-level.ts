@@ -23,6 +23,21 @@ function normalize(text: string): string {
     : read;
 }
 
+/** LEVEL_LEADS_REQUEST_ENABLED, read here for the same reason. */
+function levelLeadsRequestOn(): boolean {
+  const raw = typeof process === "undefined" ? undefined : process.env.LEVEL_LEADS_REQUEST_ENABLED;
+  return typeof raw === "string" && ["1", "true", "on", "yes"].includes(raw.trim().toLowerCase());
+}
+
+/*
+ * LEVEL_LEADS_REQUEST_ENABLED (QA, 14 Nov 2026): a message that OPENS with a level and "for" / "on" — "second verbal for
+ * <A>, she was late", "2nd written for <A>", "another verbal for <A>", "verbal for <A>" — states this form's level. The
+ * count words say which step it is, not a different level. History ("she had a verbal for being late") never opens the
+ * message, so it is not read here.
+ */
+const LEVEL_LEADS = new RegExp(String.raw`^\s*(?:please\s+)?(?:an?\s+)?(?:(?:another|one\s+more|first|1st|second|2nd|third|3rd|next)\s+)?(verbal|written)\s+for\s+(?!(?:the|that|this|it|same|being|a|an|her|his|their|them|him|not|no|missing|\d)\b)([a-z][a-z'’-]*(?:\s+[a-z][a-z'’-]*){0,2}?)(?=\s*$|\s*[,:;—–-]\s*(?!(?:it|that|this|which)?\s*(?:went|was|were|is|got|has\s+been|signed)\b)|\s+for\s+\S|\s+(?:she|he|they)\s+\S)`, "i");
+const LEADING_GROUP = /\b(?:team|staff|crew|everyone|everybody|employees|people|members|associates|workers)$/i;
+
 /** LEVEL_AFTER_FORM_NAME_ENABLED, read here for the same reason. */
 function levelAfterFormNameOn(): boolean {
   const raw = typeof process === "undefined" ? undefined : process.env.LEVEL_AFTER_FORM_NAME_ENABLED;
@@ -254,6 +269,12 @@ export function statedWarningLevel(
       }
       levels.add(match[1] as StatedWarningLevel);
     }
+  }
+  if (levels.size === 0 && levelLeadsRequestOn() && !read.trim().endsWith("?")) {
+    // LEVEL_LEADS_REQUEST_ENABLED: the message opens with the level ("second verbal for <A>, …"); see `LEVEL_LEADS`.
+    // Only when nothing else in it states a level: a later stated level wins (QA, 14 Nov 2026).
+    const leads = LEVEL_LEADS.exec(read);
+    if (leads && !LEADING_GROUP.test(leads[2]!)) return leads[1] as StatedWarningLevel;
   }
   return levels.size === 1 ? [...levels][0]! : null;
 }
