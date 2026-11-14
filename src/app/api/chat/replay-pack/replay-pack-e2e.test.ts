@@ -16,6 +16,7 @@ import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
 import type { ReplayContext } from "./cases";
 import { CASES } from "./index";
 import { forgetManualIndexForTests } from "@/lib/ai/intent-extraction";
+import { liveRecording, loopStandIn } from "./loop-stand-in";
 
 /**
  * ============================================================================
@@ -164,6 +165,8 @@ vi.mock("@/lib/forms/form-patch-call", () => ({
  * failed database write would, so a case can make a turn throw part-way.
  */
 const faults = vi.hoisted(() => ({ field: null as string | null, strayDraftField: null as string | null }));
+/** AGENT_LOOP_ENABLED: the case's stand-in (`t.loopModel`) and the roster fault (`t.rosterFails`). */
+const loop = vi.hoisted(() => ({ standIn: null as import("./loop-stand-in").LoopStandIn | null, rosterFails: false, users: undefined as string | undefined, listed: false }));
 /** `t.summaryWrites`: what the long-context summary model returns; none by default (the summary call fails, as unscripted). */
 const summaries = vi.hoisted(() => ({ reply: null as string | null }));
 
@@ -532,6 +535,11 @@ vi.mock("@/lib/forms/employee-roster", async (importOriginal) => {
       })),
     // The turn's roster limit (`withRosterLimit`), as production's loadScopedRoster applies it.
     loadScopedRoster: async (scope: AccessScope | null) => actual.withinRosterLimit(actual.scopeRoster(state.directory as never, scope)),
+    // AGENT_LOOP_ENABLED: find_staff's roster read, the same people (`t.rosterFails()` makes it fail, as a directory outage would).
+    readScopedRoster: async (scope: AccessScope) => {
+      if (loop.rosterFails) throw new Error("The employee directory could not be read.");
+      return actual.withinRosterLimit(actual.scopeRoster(state.directory as never, scope));
+    },
   };
 });
 
@@ -542,7 +550,8 @@ vi.mock("@/lib/forms/prior-forms", async (importOriginal) => ({
 
 process.env.NEXT_PUBLIC_DEMO_MODE = "false";
 
-vi.setConfig({ hookTimeout: 30_000, testTimeout: 30_000 });
+// AGENT_LOOP_LIVE (dev, opt-in): a live model turn takes longer than the stand-ins.
+vi.setConfig({ hookTimeout: 30_000, testTimeout: process.env.AGENT_LOOP_LIVE === "1" ? 600_000 : 30_000 });
 
 const { ensureTemplateLibrary } = await import("@/lib/forms/repository");
 const { stillAsks } = await import("@/lib/forms/reply-guards");
@@ -569,6 +578,14 @@ async function call<T>(url: string, init?: RequestInit): Promise<T> {
 
 /** The draft route's replies this case (DRAFT_WROTE_NOTHING_NOTICE_ENABLED reads its `notice`). */
 const draftReplies: Record<string, unknown>[] = [];
+
+/* AGENT_LOOP_LIVE (dev, opt-in; never in CI): the real model for the loop's cases. Unset, the stand-ins. */
+const liveModel = process.env.AGENT_LOOP_LIVE === "1"
+  ? (await import("@ai-sdk/anthropic")).createAnthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? "" })(process.env.ANTHROPIC_MODEL || "claude-opus-5")
+  : null;
+/* AGENT_LOOP_ENABLED (QA, 14 Nov 2026): the loop's stand-in model (`t.loopModel`), and its manual cache forgotten between cases. */
+const { __setAgentLoopModelForTests } = await import("@/lib/ai/agent-loop/run");
+const { forgetAgentLoopManualForTests } = await import("@/lib/ai/agent-loop/tools");
 
 /** The chat route only accepts a UUID for the open form; the fake numbers rows `fake-N`. */
 function toUuid(id: string): string {
@@ -664,7 +681,15 @@ class Thread {
     if (payload.pendingCopy) this.offeredCopy = { fromInstanceId: payload.pendingCopy.fromInstanceId, answer: payload.content };
     if (payload.formProposal) this.proposal = payload.formProposal;
     if (payload.formOpened) this.instanceId = toUuid(payload.formOpened.instanceId);
-    record.turns.push({ question, reply: payload.content ?? "", updated: payload.formUpdate?.updated ?? null });
+    record.turns.push({
+      question,
+      reply: payload.content ?? "",
+      updated: payload.formUpdate?.updated ?? null,
+      // Live loop runs (AGENT_LOOP_LIVE_ALL) or REPLAY_RECORD_CARDS=1: the card, for the outcome report. Absent otherwise, so other records are unchanged.
+      ...((process.env.AGENT_LOOP_LIVE_ALL === "1" || process.env.REPLAY_RECORD_CARDS === "1") && payload.formProposal
+        ? { card: { template: payload.formProposal.templateKey, employee: payload.formProposal.employeeName ?? null, level: payload.formProposal.warningLevel ?? null, payroll: (payload.formProposal as { payrollDeduct?: string | null }).payrollDeduct ?? null, issue: payload.formProposal.issue ?? null } }
+        : {}),
+    });
     return payload;
   }
 
@@ -786,7 +811,7 @@ const CLASSIFY_ON = (process.env.FLAG_CLASSIFY_ON ?? "").split(",").map((name) =
  * live failures with their targeted fixes off.
  */
 const CLASSIFY_OFF = (process.env.FLAG_CLASSIFY_OFF ?? "").split(",").map((name) => name.trim()).filter((name) => name !== "");
-const record: { turns: { question: string; reply: string; updated: string[] | null }[] } = { turns: [] };
+const record: { turns: { question: string; reply: string; updated: string[] | null; card?: Record<string, unknown> }[] } = { turns: [] };
 async function recorded(id: string, mode: string, run: () => Promise<void>) {
   record.turns = [];
   systemPrompts.hashes = [];
@@ -803,7 +828,26 @@ async function recorded(id: string, mode: string, run: () => Promise<void>) {
       // The rows the turn's writes left (QA, 9 Nov 2026: CHAT_PARALLEL_LOADS must write exactly as often as before).
       const tables = store as unknown as Record<string, unknown[] | undefined>;
       const rows = { user_memory: tables.user_memory?.length ?? 0, chat_context_summaries: tables.chat_context_summaries?.length ?? 0 };
-      appendFileSync(process.env.REPLAY_RECORD, `${JSON.stringify({ id, mode, ok: error === null, error, ms: Math.round(performance.now() - at), turns: record.turns, rows, systems: systemPrompts.hashes })}\n`);
+      // AGENT_LOOP_ENABLED: the loop's model calls and tokens, only on a run the loop answered (absent otherwise, so a loop-off record is as before).
+      const looped = ((tables.chat_traces ?? []) as { slots?: { agent_loop?: { model_calls?: number; model_steps?: Record<string, number>[] } } }[])
+        .map((row) => row.slots?.agent_loop)
+        .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+      const loopRecord = looped.length > 0
+        ? {
+            loop: {
+              turns: looped.length,
+              model_calls: looped.reduce((sum, entry) => sum + (entry.model_calls ?? 0), 0),
+              tokens: ["input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"].map((key) =>
+                looped.reduce((sum, entry) => sum + (entry.model_steps ?? []).reduce((inner, step) => inner + (step[key] ?? 0), 0), 0),
+              ),
+              /* Live runs only (AGENT_LOOP_LIVE_ALL): the tool results the model saw, cut short, to read why a turn went as it did. */
+              ...(process.env.AGENT_LOOP_LIVE_ALL === "1" && loop.standIn
+                ? { tools: loop.standIn.views.map((view) => view.results.map((result) => `${result.tool}: ${JSON.stringify(result.output).slice(0, 400)}`)) }
+                : {}),
+            },
+          }
+        : {};
+      appendFileSync(process.env.REPLAY_RECORD, `${JSON.stringify({ id, mode, ok: error === null, error, ms: Math.round(performance.now() - at), turns: record.turns, rows, systems: systemPrompts.hashes, ...loopRecord })}\n`);
     }
   }
 }
@@ -822,6 +866,23 @@ function production(extra: readonly string[] = []) {
     if (!saved.has(name)) saved.set(name, process.env[name]);
     delete process.env[name];
   }
+  /*
+   * AGENT_LOOP_LIVE_ALL (dev, opt-in; nothing changes when unset): with AGENT_LOOP_ENABLED on in this run (e.g.
+   * FLAG_CLASSIFY_ON=AGENT_LOOP_ENABLED) and AGENT_LOOP_LIVE=1, every case's turns go to the real model through the
+   * loop, the signed-in manager listed, so any case is a live loop-on run. A case that sets its own stand-in replaces it.
+   */
+  if (process.env.AGENT_LOOP_LIVE_ALL === "1" && liveModel && process.env.AGENT_LOOP_ENABLED === "true") {
+    const recorder = loopStandIn(() => {
+      throw new Error("live: the real model answers");
+    });
+    loop.standIn = recorder;
+    __setAgentLoopModelForTests(liveRecording(recorder, liveModel));
+    if (!loop.listed) {
+      loop.users = process.env.AGENT_LOOP_USERS;
+      loop.listed = true;
+    }
+    process.env.AGENT_LOOP_USERS = "qa-manager@example.test";
+  }
 }
 
 function setScope(scope: unknown) {
@@ -837,6 +898,15 @@ afterEach(() => {
   setScope(undefined);
   setRole(undefined);
   setSubject(undefined);
+  loop.standIn = null;
+  loop.rosterFails = false;
+  __setAgentLoopModelForTests(null);
+  if (loop.listed) {
+    if (loop.users === undefined) delete process.env.AGENT_LOOP_USERS;
+    else process.env.AGENT_LOOP_USERS = loop.users;
+    loop.listed = false;
+  }
+  forgetAgentLoopManualForTests();
   said.answer = null;
   editTool.input = null;
   editTool.offered = 0;
@@ -951,6 +1021,22 @@ function context(): ReplayContext {
           .map((row) => [String(row.field_key), (row.checked as unknown[]).map(String)]),
       ),
     draftReplies: () => [...draftReplies],
+    loopOn: () => process.env.AGENT_LOOP_ENABLED === "true",
+    loopModel: (standIn) => {
+      loop.standIn = standIn;
+      // AGENT_LOOP_LIVE (dev, opt-in): the real model, recorded into the case's stand-in (`liveRecording`).
+      __setAgentLoopModelForTests(liveModel ? liveRecording(standIn, liveModel) : standIn.model);
+      // The loop runs only for listed users (an empty list is nobody): this case's signed-in manager is listed.
+      if (!loop.listed) {
+        loop.users = process.env.AGENT_LOOP_USERS;
+        loop.listed = true;
+      }
+      process.env.AGENT_LOOP_USERS = "qa-manager@example.test";
+    },
+    loopActive: () => process.env.AGENT_LOOP_ENABLED === "true" && loop.standIn !== null,
+    rosterFails: () => {
+      loop.rosterFails = true;
+    },
     draftNotYetSaved: (instanceId) => {
       store.form_instance_values = store.form_instance_values.filter((row) => !(row.instance_id === instanceId && row.filled_by === "ai"));
     },

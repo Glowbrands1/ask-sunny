@@ -2,6 +2,8 @@ import "server-only";
 
 import { anthropic, type AnthropicLanguageModelOptions } from "@ai-sdk/anthropic";
 import { convertToModelMessages, jsonSchema, stepCountIs, streamText, tool, type LanguageModelUsage, type SystemModelMessage, type ToolSet, type UIMessage } from "ai";
+import { logAiTimeout } from "@/lib/ai/time-limit";
+import { helperTimeoutMs } from "@/lib/config/ai-timeouts";
 
 import { persistSpendRow } from "@/lib/ai/chat-trace";
 import type { TokenUsage } from "@/lib/ai/model-prices";
@@ -216,6 +218,15 @@ function sumSteps(steps: readonly { usage: LanguageModelUsage }[]): LanguageMode
   );
 }
 
+/** The L10 assistant's whole answer, under its route's maxDuration (300 s). */
+export const L10_TOTAL_TIMEOUT_MS = 280_000;
+
+/** An abort the time limit caused (the AI SDK aborts with a TimeoutError or AbortError). */
+function isTimeoutError(error: unknown): boolean {
+  const name = (error as { name?: unknown } | null)?.name;
+  return name === "TimeoutError" || name === "AbortError";
+}
+
 export async function streamHubAssistant(input: { config: HubAssistantConfig; messages: UIMessage[]; deep: boolean; email: string; userId: string; meetingKey: string; signal?: AbortSignal }) {
   const { config, deep } = input;
   const modelId = deep ? config.deepModel : config.model;
@@ -227,6 +238,7 @@ export async function streamHubAssistant(input: { config: HubAssistantConfig; me
   };
   // The Hub's system prompt with the Hub's cache breakpoint (Anthropic caches tools + system as one prefix).
   const system: SystemModelMessage = { role: "system", content: config.system, providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } } };
+  const startedAt = Date.now();
   const result = streamText({
     model: anthropic(modelId),
     system,
@@ -236,6 +248,12 @@ export async function streamHubAssistant(input: { config: HubAssistantConfig; me
     stopWhen: stepCountIs(config.maxSteps),
     maxOutputTokens: config.maxOutputTokens,
     abortSignal: input.signal,
+    /*
+     * AI TIME LIMITS (QA, 14 Nov 2026): a stream that goes quiet for the helper limit (30 s) is stopped, and the whole
+     * answer ends inside the route's 300 s. Not a 45 s step limit: a deep-think step can run past a minute while it
+     * streams. The reply on a timeout is the onError message below; the log line is written there.
+     */
+    timeout: { totalMs: L10_TOTAL_TIMEOUT_MS, chunkMs: helperTimeoutMs() },
     onError: () => {},
     providerOptions: {
       anthropic: {
@@ -256,6 +274,8 @@ export async function streamHubAssistant(input: { config: HubAssistantConfig; me
     sendSources: true,
     onError: (error) => {
       const e = error as { name?: string; statusCode?: number };
+      // AI TIME LIMITS: a timeout gets its own log line (route, call, duration; no content).
+      if (isTimeoutError(error) && !input.signal?.aborted) logAiTimeout(deep ? "l10_assistant_deep" : "l10_assistant", Date.now() - startedAt, L10_TOTAL_TIMEOUT_MS, "l10_assistant");
       console.error("[l10-assistant] stream error", JSON.stringify({ name: e?.name ?? "unknown", status: e?.statusCode ?? null, deep }));
       return "The assistant could not answer just now. Please try again in a minute.";
     },

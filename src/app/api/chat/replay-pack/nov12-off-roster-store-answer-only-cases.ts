@@ -41,6 +41,15 @@ export const NOV12_OFF_ROSTER_STORE_ANSWER_ONLY_CASES: ReplayCase[] = (
   async run(t: ReplayContext) {
     const thread = start(t);
     const asked = await thread.say("create a ca for kira dunmore, she was late today");
+    if (t.loopActive?.()) {
+      // Changed on purpose (Pau 14 Nov: fewer questions / off-roster card + not-on-Woven line): with the loop on, the card comes at once with the line; every outcome check is kept.
+      expect(card(thread)?.employeeName ?? null, `no card for the typed name:\n${asked.content}`).toBe("Kira Dunmore");
+      expect(asked.content).toMatch(/\*\*Kira Dunmore\*\* isn't on (?:your salon's|the) Woven staff list/);
+      const placed = await thread.say(salon);
+      expect(card(thread)?.employeeName ?? null, `the salon answer changed the person:\n${placed.content}`).toBe("Kira Dunmore");
+      expect(salonOf(thread), "the salon answer did not set the salon").toBe(KEARNEY_ID);
+      return;
+    }
     expect(asked.content, "no off-roster ask").toMatch(/reply \*\*use Kira Dunmore\*\*/);
     const answered = await thread.say(salon);
     expect(answered.content, `the salon answer skipped the confirmation:\n${answered.content}`).toMatch(/reply \*\*use Kira Dunmore\*\*/);

@@ -93,6 +93,12 @@ export const NOV2_METRIC_LOOP_CASES: readonly ReplayCase[] = [
       t.modelSays(null);
       const opening = (text: string) => text.split(/\n\s*\n/)[0]!.trim();
       expect(opening(second.content)).not.toBe(opening(first.content));
+      if (t.loopActive?.()) {
+        // Changed on purpose (loop-ON arm asserts meaning): QA, 14 Nov 2026: with AGENT_LOOP on the model words the reply; the flag-off arm keeps the exact wording.
+        // The meaning: the second reply moves the conversation on (a question, coaching, or a form), never the same refusal.
+        expect(second.content, second.content).toMatch(/coaching|form|\?/i);
+        return;
+      }
       expect(second.content).toMatch(/coaching/i);
     },
   },

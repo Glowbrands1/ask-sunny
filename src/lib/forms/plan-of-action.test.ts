@@ -239,7 +239,12 @@ const ROUTE = readFileSync("src/app/api/forms/instances/[id]/draft/route.ts", "u
   .replace(/\/\*[\s\S]*?\*\//g, "")
   .replace(/(^|[^:])\/\/.*$/gm, "$1");
 
-const SYSTEM = ROUTE.slice(ROUTE.indexOf("const system = ["), ROUTE.indexOf("const prompt = ["));
+/*
+ * Changed on purpose (SPELLING_CLEANUP_ENABLED, 13 Nov 2026): the instructions are built by `systemFor(cleanup)` so a
+ * draft can be asked again without the cleanup rule; the slice starts there. The assertions are unchanged.
+ */
+const SYSTEM_START = ROUTE.indexOf("const systemFor = (cleanup: boolean) => [");
+const SYSTEM = SYSTEM_START < 0 ? "" : ROUTE.slice(SYSTEM_START, ROUTE.indexOf("const prompt = ["));
 
 describe("the draft asks for the paragraph", () => {
   it("asks for one paragraph, not labelled sections", () => {

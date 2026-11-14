@@ -16,6 +16,16 @@ vi.mock("./form-patch-call", () => ({
 
 import { FORM_PATCH_SYSTEM_PROMPT } from "./form-patch-prompt";
 import { readFormPatch } from "./form-patch-model";
+import { SPELLING_CLEANUP_RULES } from "./spelling-cleanup";
+import { spellingCleanupEnabled } from "@/lib/config/chat-quality-flags";
+
+/**
+ * Changed on purpose (SPELLING_CLEANUP_ENABLED, 13 Nov 2026): the system as sent; with that flag on, its cleanup rules
+ * follow the approved text and the other lines (`form-patch-model.ts`).
+ */
+function withCleanupRules(text: string): string {
+  return spellingCleanupEnabled() ? [text, ...SPELLING_CLEANUP_RULES].join("\n") : text;
+}
 
 const INPUT: FormPatchInput = {
   today: "2026-11-03",
@@ -46,7 +56,7 @@ describe("readFormPatch", () => {
       turn: "this_form",
       patch: { set: { payroll_amount: "$3.25" }, clear: [], how: { payroll_amount: "replace" }, evidence: { payroll_amount: "$3.25 will be deducted" } },
     });
-    expect(call.inputs[0]!.system).toBe(FORM_PATCH_SYSTEM_PROMPT);
+    expect(call.inputs[0]!.system).toBe(withCleanupRules(FORM_PATCH_SYSTEM_PROMPT));
     expect(call.inputs[0]!.prompt).toContain("LATEST MESSAGE FROM THE MANAGER: payroll deduct applies");
     expect(JSON.stringify(call.inputs[0]!.schema)).toContain('"payroll_amount"');
   });

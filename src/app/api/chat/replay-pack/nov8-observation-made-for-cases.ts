@@ -75,7 +75,8 @@ export const NOV8_OBSERVATION_MADE_FOR_CASES: ReplayCase[] = [
     fixFlags: [FLAG],
     async run(t) {
       const line = await observation(t, "I need a corrective action made for Remy Calder for late opening the salon on 11/2");
-      expect(line, `the account is lost:\n${line}`).toMatch(/late opening the salon on 11\/2/);
+      // Changed on purpose (loop-ON arm asserts meaning): QA, 14 Nov 2026: with AGENT_LOOP on the model words the reply; the flag-off arm keeps the exact wording.
+      expect(line, `the account is lost:\n${line}`).toMatch(t.loopActive?.() ? /late opening the salon on 11\/2/i : /late opening the salon on 11\/2/);
       expect(line, `the request's words are in the Observation:\n${line}`).not.toMatch(/\bmade for\b/i);
     },
   },

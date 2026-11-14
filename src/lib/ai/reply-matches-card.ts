@@ -1,7 +1,7 @@
-import { bareNotDenialEnabled, cleaningOtherEveryWordingEnabled, closeSpellingMatchEnabled, conductIncidentCitesPageEnabled, exitDateLineAgreesEnabled, replyMatchesCardEnabled } from "@/lib/config/chat-quality-flags";
+import { bareNotDenialEnabled, cleaningOtherEveryWordingEnabled, closeSpellingMatchEnabled, conductIncidentCitesPageEnabled, otherBesideDescribedEnabled, exitDateLineAgreesEnabled, replyMatchesCardEnabled } from "@/lib/config/chat-quality-flags";
 import { offeredOffRosterName } from "@/lib/forms/off-roster-confirm";
 import { deniesAFault, deniesAFaultWithBareNot } from "@/lib/forms/draft-never-blank";
-import { caPolicyProposalLine, readCaPolicy, removedOffenseLabels } from "@/lib/forms/ca-policy";
+import { OTHER_BESIDE_NOTE, caPolicyProposalLine, readCaPolicy, removedOffenseLabels } from "@/lib/forms/ca-policy";
 import { cardPolicyHeading } from "@/lib/forms/card-policy";
 import { EXIT_TEMPLATE_KEY } from "@/lib/forms/exit-library";
 import { exitDateInWords } from "@/lib/forms/exit-intake";
@@ -190,6 +190,9 @@ export function withCleaningOtherPolicy(response: AskResponse, message?: string)
   // CLOSE_SPELLING_MATCH_ENABLED (QA, 13 Nov 2026): a policy the manager named and the manual answers, already on the
   // card's Policy line, wins over cleaning-is-Other (`caPolicyProposalLine`). Off, as before.
   if (closeSpellingMatchEnabled() && NAMED_FOUND_LINE.test(response.content)) return response;
+  // OTHER_BESIDE_DESCRIBED_ENABLED (QA's ruling (b), 14 Nov 2026): an offense described beside the cleaning duty, with
+  // Other said beside it, is already the card's line (`caPolicyProposalLine`). Off, as before.
+  if (otherBesideDescribedEnabled() && response.content.includes(OTHER_BESIDE_NOTE)) return response;
   const other = caPolicyProposalLine(reading);
   if (!other) return response;
   let placed = false;

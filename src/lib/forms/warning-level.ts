@@ -408,3 +408,27 @@ export function warningLevelChecked(
 ): Record<string, string[]> {
   return isStatedWarningLevel(level) && offered.includes(level) ? { [WARNING_TYPE_KEY]: [level] } : {};
 }
+
+/**
+ * MODEL_WARNING_LEVEL_DISCARDED_ENABLED: the Type of Warning options that are a LEVEL, the manager's decision, which the
+ * draft model never sets. Termination and Demotion are refused separately (`escalation-guard.ts`).
+ */
+export const WARNING_LEVEL_KEYS: ReadonlySet<string> = new Set(["verbal", "written", "final_warning"]);
+
+/**
+ * MODEL_WARNING_LEVEL_DISCARDED_ENABLED: the model's ticks with any warning level taken out of `groupKey` (the same as
+ * Ask Bubbles' guard). Returns what was dropped, for the trail.
+ */
+export function withoutModelWarningLevel(
+  checked: Record<string, string[]>,
+  groupKey: string = WARNING_TYPE_KEY,
+): { checked: Record<string, string[]>; dropped: string[] } {
+  const selected = checked[groupKey];
+  if (!Array.isArray(selected)) return { checked, dropped: [] };
+  const kept = selected.filter((option) => !WARNING_LEVEL_KEYS.has(option));
+  const dropped = selected.filter((option) => WARNING_LEVEL_KEYS.has(option));
+  const next = { ...checked };
+  if (kept.length > 0) next[groupKey] = kept;
+  else delete next[groupKey];
+  return { checked: next, dropped };
+}

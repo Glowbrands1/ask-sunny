@@ -5,6 +5,7 @@ import { PRODUCTION_SALONS, type ProductionSalon } from "@/data/salons";
 import { storeNameKey } from "@/lib/reporting/store-identity";
 
 import { closeWordDistance, editDistance } from "./close-spelling";
+import { placeReadingText } from "./reason-place";
 import { salonForTypedNumber, salonsForTypedNumber } from "./salon-text";
 
 /**
@@ -157,6 +158,21 @@ const ROSTER_STATES = [...new Set(PRODUCTION_SALONS.map((salon) => salon.state.t
 const STATE_BEFORE = new RegExp(`\\b(?:${ROSTER_STATES.join("|")})\\s+$`);
 const AT_BEFORE = /\b(?:at|in)\s+(?:the\s+)?$/;
 const PLACE_AFTER = /^\s*(?:salon|store|location|studio)\b/;
+/*
+ * PLACE_STRIP_WHOLE_PHRASE_ONLY_ENABLED (QA, 13 Nov 2026; Gate-Bubbles-3's ruling on the sibling app's #869, then QA's
+ * ruling on Gate-Sunny's probes): a place is part of a longer proper noun only when the next word is on this short list
+ * ("lincoln high", "omaha west", "kansas state"). Nothing else, a capitalised word included ("late at Kearney Today",
+ * "at Kearney NCNS"), stops the place being read.
+ */
+const CONTINUES_NAME =
+  /^(?:high|middle|elementary|school|central|west|east|north|south|state|university|college|mall|road|street|st|ave|construction|park|hospital)$/i;
+
+/** Whether this word, after a place, continues a longer proper noun ("high", "west", "mall"). */
+export function continuesPlaceName(next: string): boolean {
+  const word = /^([A-Za-z][A-Za-z'’-]*)/.exec(next)?.[1];
+  return Boolean(word && CONTINUES_NAME.test(word));
+}
+
 const CARRIES_ON_AFTER = new RegExp(`^\\s*$|^\\s+;|^\\s+(?:${CARRIES_ON})\\b`);
 
 /*
@@ -251,7 +267,9 @@ const TIME_BEFORE =
  * `text` is the manager's own turns — the same bounded window the employee and
  * the date are read from — never the assistant's.
  */
-export function readSalonMentions(text: string): SalonMention[] {
+export function readSalonMentions(said: string): SalonMention[] {
+  // REASON_PLACE_NOT_SALON_ENABLED: "because she was at grand island" is why, not the salon (`reason-place.ts`).
+  const text = placeReadingText(said);
   const mentions: SalonMention[] = [];
 
   for (const match of text.matchAll(SALON_NUMBER)) {

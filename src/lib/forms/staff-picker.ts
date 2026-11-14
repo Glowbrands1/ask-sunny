@@ -53,7 +53,7 @@ const ANSWER = new RegExp(
 const FORM_WORD = /\b(?:forms?|coaching|corrective\s+action|ca|write[- ]?ups?|drafts?|cards?)\b/i;
 
 /** The marker on the "which location" question, read back from the next turn's history. */
-const ASKED_LOCATION = "Which salon's staff should I list?";
+export const ASKED_LOCATION = "Which salon's staff should I list?";
 const LISTED = "Who is this form for?";
 
 /** "a coaching form for my whole staff", "for everyone" — the staff as the form's subject. */
@@ -103,7 +103,7 @@ export interface StaffLocation {
   readonly name: string;
 }
 
-function formName(text: string): string {
+export function formName(text: string): string {
   if (/\bcoach/i.test(text)) return "Coaching Form";
   if (/\b(?:corrective\s+action|ca)\b/i.test(text)) return "Corrective Action Form";
   return "form";
@@ -127,8 +127,9 @@ export function salonStaff(person: StaffPerson): boolean {
   return !title || SALON_TITLES.has(title.toLowerCase());
 }
 
-function listStaff(location: StaffLocation, roster: readonly StaffPerson[], form: string): string {
-  const people = roster
+/** One salon's staff by name and position only (salon titles with STAFF_PICKER_STORE_TITLES), as listed below. */
+export function salonStaffRows(location: StaffLocation, roster: readonly StaffPerson[]): { name: string; position: string }[] {
+  return roster
     .filter((person) => person.salonIds.includes(location.id))
     .filter((person) => !staffPickerStoreTitlesEnabled() || salonStaff(person))
     .map((person) => ({
@@ -136,6 +137,11 @@ function listStaff(location: StaffLocation, roster: readonly StaffPerson[], form
       position: person.positionName?.trim() || "Position not on file",
     }))
     .sort((a, b) => a.position.localeCompare(b.position) || a.name.localeCompare(b.name));
+}
+
+/** Today's whole-staff reply for one salon (the agent loop's list_staff says it as written). */
+export function listStaff(location: StaffLocation, roster: readonly StaffPerson[], form: string): string {
+  const people = salonStaffRows(location, roster);
   const one = form === "form" ? "A form" : `A ${form}`;
   if (people.length === 0) {
     return `${one} is for one person at a time. I couldn't find anyone on the directory for **${location.name}**. Tell me the name of the person it is for.`;

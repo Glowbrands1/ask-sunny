@@ -5,11 +5,13 @@ import {
   asYouSaidManagerWordsEnabled,
   caPerformanceReasonEnabled,
   missedShiftCitesAttendanceEnabled,
+  spellingCleanupEnabled,
   lateReadsAttendanceEnabled,
   msbPhraseSocEnabled,
   caSalesPolicyEnabled,
   cleaningOtherEveryWordingEnabled,
   otherPolicyAgreesEnabled,
+  otherBesideDescribedEnabled,
   closeSpellingMatchEnabled,
   formEditDateRulesEnabled,
   removePolicyNotNamedEnabled,
@@ -316,16 +318,24 @@ export function cleaningIncidentPhrase(rawText: string): string | null {
  * patterns and no others.
  */
 export function cleaningUndonePhrase(rawText: string): string | null {
-  for (const sentence of statements(normalize(rawText))) {
+  /*
+   * SPELLING_CLEANUP_ENABLED: "sanitation" reads as the sanitizing it names. A same-length stand-in the cleaning words
+   * match ("sanitzation") is read, and the phrase returned says "sanitation" again: it is quoted as the manager's words.
+   * Kept with OTHER_POLICY_AGREES_ENABLED (which reads the sanitation family itself) so the flags stand on their own.
+   */
+  const cleanup = spellingCleanupEnabled();
+  const text = cleanup ? (rawText ?? "").replace(/\bsanitation\b/gi, "sanitzation") : rawText;
+  const said = (phrase: string) => (cleanup ? phrase.replace(/\bsanitzation\b/g, "sanitation") : phrase);
+  for (const sentence of statements(normalize(text))) {
     // OTHER_POLICY_AGREES_ENABLED: the sanitation family reads as cleaning too.
     const sanitation = otherPolicyAgreesEnabled();
     for (const [index, pattern] of (sanitation ? CLEANING_UNDONE_WITH_SANITATION : CLEANING_UNDONE).entries()) {
       const match = pattern.exec(sentence);
-      if (match && readsAsIncident(sentence, match, index)) return match[0].trim();
+      if (match && readsAsIncident(sentence, match, index)) return said(match[0].trim());
     }
     if (cleaningOtherEveryWordingEnabled()) {
       const match = (sanitation ? CLEANING_UNDONE_GERUND_WITH_SANITATION : CLEANING_UNDONE_GERUND).exec(sentence);
-      if (match && readsAsIncident(sentence, match, 1)) return match[0].trim();
+      if (match && readsAsIncident(sentence, match, 1)) return said(match[0].trim());
     }
   }
   return null;
@@ -569,6 +579,33 @@ const LATE_ARRIVAL =
   /\b(?:was|were|is|been|came\s+in|arrived|showed\s+up|clocked\s+in|running|being)\s+(?:\S+\s+){0,2}?late\b|\b(?:tardy|tardies|tardiness|lateness)\b|\blate\s+(?:to|for)\s+(?:her|his|their|a|the|work|shift)/i;
 const OPENING_WORD = /\bopen(?:s|ed|ing|er|ers)?\b/i;
 
+/**
+ * ON_FILE_LINE_NOT_THE_POLICY_ENABLED (Gate-Sunny-3, 14 Nov 2026): the manager's own words describe a late opening, by the
+ * readers the card uses for it ("late opening", "opened late", "late to open", "failure to open", or an employee late
+ * who opened). Read on the manager's words only.
+ */
+export function describesLateOpening(said: string): boolean {
+  const text = normalize(said);
+  return (
+    LATE_OPENING_SAID.test(text) ||
+    LATE_TO_OPEN.test(text) ||
+    FAILURE_TO_OPEN.test(text) ||
+    NOT_OPEN_UNTIL.test(text) ||
+    OPENED_AFTER_SUPPOSED.test(text) ||
+    ((/\blate\b/.test(text) || LATE_ARRIVAL.test(said)) && OPENING_DUTY.test(text))
+  );
+}
+
+/* Opening the salon itself ("opened the salon", "open up", "opening shift"), never "open to feedback". */
+const OPENING_DUTY =
+  /\bopen(?:ed|ing|s)?\s+(?:up\b|(?:the\s+|her\s+|his\s+|their\s+|our\s+)?(?:salon|store|doors?|shop|location|building)\b)|\bopening\s+(?:shift|duties|time|manager)\b/;
+
+/* QA's probes (14 Nov 2026): "the salon wasn't open until 9:30, supposed to open at 9". */
+const NOT_OPEN_UNTIL = /\b(?:was ?n[o']?t|wasn't|was not|is ?n[o']?t|isn't|not|did ?n[o']?t|didn't|did not|never)\s+(?:get\s+|getting\s+)?open(?:ed)?\s+(?:up\s+)?until\b/;
+/* "she opened up 20 min after we were supposed to", "opened 20 minutes past opening time". */
+const OPENED_AFTER_SUPPOSED =
+  /\bopen(?:ed|s)?\s+(?:up\s+)?(?:\S+\s+){0,3}?(?:after|past)\s+(?:(?:we|she|he|they|it|the\s+\w+)\s+(?:was|were|is|are)\s+supposed\s+to|(?:the\s+)?open(?:ing)?\s+time|(?:the\s+)?time\s+(?:we|she|he|they)\s+(?:was|were)\s+supposed\s+to)\b/;
+
 function withLateIsAttendance(reading: CaPolicyReading, said: string): CaPolicyReading {
   if (!lateReadsAttendanceEnabled() || reading.readFromApp !== "late_opening") return reading;
   if (!LATE_ARRIVAL.test(said) || OPENING_WORD.test(said)) return reading;
@@ -745,6 +782,48 @@ export function managerWords(rawText: string): string {
  */
 const NAMES_CARE_AND_CLEANING =
   /\bcare\s*(?:and|&|n|\+)\s*c[a-z]{0,2}l[a-z]{0,3}n(?:ing|in|g)\b|\bcleaning\s+polic(?:y|ies)\b|\bequipment\s+(?:and|&)\s+facilit\w*/i;
+
+/** The sentence the card adds after an offense described beside a cleaning duty (OTHER_BESIDE_DESCRIBED_ENABLED). */
+export const OTHER_BESIDE_NOTE = "The cleaning duty left undone is recorded under **Other** on the form too.";
+
+/**
+ * OTHER_BESIDE_DESCRIBED_ENABLED (with OTHER_POLICY_AGREES_ENABLED; QA's ruling (b), 14 Nov 2026): the account without its
+ * cleaning duty left undone, to read whether a second offense is described beside it ("she was on her phone and did not
+ * do the 10 minute sanitation" → "she was on her phone and"). Null when either flag is off, the account is not read as
+ * cleaning left undone, or nothing is left. The caller reads the rest with the manual (`describedManualSection`) or as
+ * attendance (`describedAttendanceKeys`); a cleaning duty that is the only offense stays Other alone (Pau's rule).
+ */
+export function withoutCleaningDuty(rawText: string): string | null {
+  if (!otherPolicyAgreesEnabled() || !otherBesideDescribedEnabled() || readCaPolicy(rawText).other !== "cleaning") return null;
+  const phrase = cleaningUndonePhrase(rawText);
+  if (!phrase) return null;
+  const at = (rawText ?? "").toLowerCase().replace(/[‘’‛]/g, "'").indexOf(phrase);
+  if (at < 0) return null;
+  // Line breaks are kept: the app's own lines are read line by line (`withoutAppLines`), never as the manager's words.
+  // QA's ruling on Gate-Sunny-3's #971 finding (14 Nov 2026): duties words ("opening duties", "side work") are no offense.
+  const rest = `${rawText.slice(0, at)} ${rawText.slice(at + phrase.length)}`.replace(DUTY_WORDS, " ").replace(/[ \t]{2,}/g, " ").trim();
+  return rest === "" ? null : rest;
+}
+
+/*
+ * OTHER_BESIDE_DESCRIBED_ENABLED (QA's ruling on Gate-Sunny-3's #971 finding, 14 Nov 2026): "Write me a CA for <R> for
+ * failing to complete opening duties. <R> did not complete daily cleaning duties." became Attendance and Other: the
+ * opening duties read as attendance. Duties and checklists are the cleaning duty's own kind of work, never a second
+ * offense, and attendance beside a cleaning duty needs a word for lateness or an absence.
+ */
+const DUTY_WORDS = /\b(?:(?:opening|closing)(?:\s*\/\s*(?:opening|closing))?\s+(?:duties|duty|checklists?|tasks?)|side\s*work)\b/gi;
+const LATENESS_OR_ABSENCE =
+  /\b(?:late|lateness|tardy|tardiness|no[- ]?call|no[- ]?show(?:ed)?|left\s+early|leaving\s+early|leaves\s+early|absent|absence|missed\s+(?:\S+\s+){0,2}?shifts?|call(?:ed|s)?[- ]?(?:out|off))\b/i;
+
+/** Attendance described beside a cleaning duty, in the rest of the account: only with a lateness or absence word. */
+export function besideAttendanceKeys(rest: string): string[] | null {
+  return LATENESS_OR_ABSENCE.test(rest) ? describedAttendanceKeys(rest) : null;
+}
+
+/** A reading of the rest of the account that is attendance counts only with a lateness or absence word (as above). */
+export function besideReadsAttendance(rest: string): boolean {
+  return LATENESS_OR_ABSENCE.test(rest);
+}
 
 export function namesCareAndCleaning(rawText: string): boolean {
   return NAMES_CARE_AND_CLEANING.test(rawText ?? "");
@@ -1120,6 +1199,12 @@ export type NamedPolicyReading =
        * `official-policy-manual` tag). Absent when confirmed or not known.
        */
       unconfirmedManual?: string;
+      /**
+       * OTHER_BESIDE_DESCRIBED_ENABLED (QA's ruling (b), 14 Nov 2026): the section the account describes BESIDE a
+       * cleaning duty left undone ("on her phone and did not do the 10 minute sanitation"). It leads the card and the
+       * draft; the cleaning duty is ticked Other beside it.
+       */
+      besideOther?: true;
     }
   | { phrase: string; lookup: "missing" | "unknown" }
   /** The account describes more than one section the manual titles a Policy: the manager chooses. */
@@ -1236,6 +1321,10 @@ export function caPolicyProposalLine(reading: CaPolicyReading, named: NamedPolic
    * DESCRIBES cleaning. A name the manual does not answer keeps Other (`close-policy-ask.ts` then asks "Did you mean
    * …?"). Off, as before.
    */
+  // OTHER_BESIDE_DESCRIBED_ENABLED (QA's ruling (b)): a section described beside the cleaning duty leads; Other is said beside it.
+  if (otherBesideDescribedEnabled() && reading.other === "cleaning" && named?.lookup === "described" && named.besideOther) {
+    return `${namedPolicyLine(named)} ${OTHER_BESIDE_NOTE}`;
+  }
   if (reading.other === "cleaning" && !(closeSpellingMatchEnabled() && named?.lookup === "found")) {
     return "**Policy:** Other — cleaning duties left undone are recorded under Other on the Corrective Action Form, not the Standards of Conduct. Tell me if a different policy applies.";
   }

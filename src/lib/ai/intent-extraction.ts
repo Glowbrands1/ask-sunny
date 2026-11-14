@@ -2,11 +2,11 @@ import "server-only";
 
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { CLAUDE_HAIKU_MODEL, CLAUDE_READER_MODEL } from "@/lib/config/models";
-import { aiReadsCodeChecksEnabled, intentExtractionEnabled, lastFirstNameReadEnabled, remapIncidentFixEnabled } from "@/lib/config/chat-quality-flags";
+import { aiReadsCodeChecksEnabled, intentExtractionEnabled, lastFirstNameReadEnabled, onFileLineNotThePolicyEnabled, remapIncidentFixEnabled } from "@/lib/config/chat-quality-flags";
 import { readDirectoryFacts, loadScopedRoster, type DirectoryFact } from "@/lib/forms/employee-roster";
 import { listTemplateSummaries } from "@/lib/forms/repository";
 import { detectTemplateIntent } from "@/lib/forms/template-intent";
-import { findManualSection, manualSectionHeadings } from "@/lib/forms/official-policy-manual";
+import { findManualSection, manualSectionHeadings, type ManualChunk } from "@/lib/forms/official-policy-manual";
 import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
 
 import { callClaudeTool } from "./call-claude";
@@ -14,7 +14,8 @@ import { glossaryBlock } from "./chat-glossary";
 import type { ChatActor } from "./form-proposal";
 import { loadFormState, saveFormState } from "./form-state-store";
 import { updateChatTrace } from "./chat-trace-store";
-import { stateSentences } from "./form-state";
+import { headingOnlyOnFile } from "./on-file-heading";
+import { stateSentences, type ConversationFormState } from "./form-state";
 import { isTeamCardTurn } from "@/lib/forms/whole-team-coaching";
 import type { GroundedPerson } from "./grounded-entities";
 import {
@@ -106,7 +107,7 @@ export async function applyIntentExtraction(input: {
 
     // REMAP_INCIDENT_FIX_ENABLED: "prior = manual ack 9/01" is a prior step, not the incident date.
     const fixed = remapIncidentFixEnabled();
-    const decision = decideIntentTurn({
+    const decided = decideIntentTurn({
       question: fixed ? priorShorthand(input.request.question) : input.request.question,
       history: anotherPerson
         ? []
@@ -131,6 +132,18 @@ export async function applyIntentExtraction(input: {
       ),
       checked,
     });
+    /*
+     * ON_FILE_LINE_NOT_THE_POLICY_ENABLED (Pau's morning scan, 13 Nov 2026): a heading the reader took from the app's own
+     * "On file" listing, never from the manager's words, is not this request's policy; the heading it had is kept.
+     */
+    // A state without a heading (undefined as well as null) has none to drop (Gate-Sunny-3, 14 Nov 2026).
+    const readHeading = decided.state.policyHeading ?? null;
+    const fromOnFile =
+      onFileLineNotThePolicyEnabled() &&
+      readHeading !== null &&
+      readHeading !== (saved?.policyHeading ?? null) &&
+      headingOnlyOnFile(readHeading, input.request.question, input.request.history, manual.chunks);
+    const decision = fromOnFile ? withoutOnFileHeading(decided, saved) : decided;
     await writeSaved(input.actor.subject, input.request.conversationId, decision.state);
     updateChatTrace({
       slots: {
@@ -237,7 +250,7 @@ function asPerson(fact: DirectoryFact): GroundedPerson {
   };
 }
 
-const manualIndexCache = new Map<string, Promise<{ headings: string[]; pages: Record<string, number> }>>();
+const manualIndexCache = new Map<string, Promise<{ headings: string[]; pages: Record<string, number>; chunks: readonly ManualChunk[] }>>();
 
 /**
  * Tests only: forget the manual's heading index, so a replay case that pins extra manual passages (`manualAlsoHas`) reads
@@ -247,7 +260,7 @@ export function forgetManualIndexForTests(): void {
   manualIndexCache.clear();
 }
 
-async function loadManualIndex(scopeId: string): Promise<{ headings: string[]; pages: Record<string, number> }> {
+async function loadManualIndex(scopeId: string): Promise<{ headings: string[]; pages: Record<string, number>; chunks: readonly ManualChunk[] }> {
   const cached = manualIndexCache.get(scopeId);
   if (cached) return cached;
   const pending = loadManualIndexOnce(scopeId);
@@ -255,19 +268,20 @@ async function loadManualIndex(scopeId: string): Promise<{ headings: string[]; p
   return pending;
 }
 
-async function loadManualIndexOnce(scopeId: string): Promise<{ headings: string[]; pages: Record<string, number> }> {
+async function loadManualIndexOnce(scopeId: string): Promise<{ headings: string[]; pages: Record<string, number>; chunks: readonly ManualChunk[] }> {
   try {
     const manual = await new SupabaseKnowledgeProvider().fetchOfficialPolicyManual(scopeId);
-    if (!manual.ok) return { headings: [], pages: {} };
+    if (!manual.ok) return { headings: [], pages: {}, chunks: [] };
     const headings = manualSectionHeadings(manual.chunks);
     const pages: Record<string, number> = {};
     for (const heading of headings) {
       const section = findManualSection(manual.chunks, [heading]);
       if (section && section.page > 0) pages[heading] = section.page;
     }
-    return { headings, pages };
+    // ON_FILE_LINE_NOT_THE_POLICY_ENABLED: the manual's own readers run on the manager's words.
+    return { headings, pages, chunks: manual.chunks };
   } catch {
-    return { headings: [], pages: {} };
+    return { headings: [], pages: {}, chunks: [] };
   }
 }
 
@@ -278,4 +292,37 @@ async function loadTemplates(): Promise<{ key: string; name: string }[]> {
   } catch {
     return [];
   }
+}
+
+/**
+ * ON_FILE_LINE_NOT_THE_POLICY_ENABLED: the turn with the heading the reader took from the app's "On file" listing put
+ * back to the one the request already had (none, if it had none). Its incident, when it is that heading, goes with it,
+ * and the app's lines on the question are written again from the corrected state.
+ */
+function withoutOnFileHeading<T extends { readonly state: ConversationFormState; readonly question: string }>(decided: T, saved: ConversationFormState | null): T {
+  const dropped = decided.state.policyHeading;
+  const incidentIsHeading = Boolean(dropped && decided.state.incidentType && decided.state.incidentType.toLowerCase() === dropped.toLowerCase());
+  const state: ConversationFormState = {
+    ...decided.state,
+    policyHeading: saved?.policyHeading ?? null,
+    policyPage: saved?.policyHeading ? (saved.policyPage ?? null) : null,
+    incidentType: incidentIsHeading ? (saved?.incidentType ?? null) : decided.state.incidentType,
+  };
+  // The app's sentences sit together on one line ("… Warning level: written. Policy reference: Late Opening, … ."):
+  // the ones the corrected state no longer says are taken out, the ones it now says are put on that line.
+  const before = stateSentences(decided.state);
+  const after = stateSentences(state);
+  let question = decided.question;
+  for (const sentence of before.filter((line) => !after.includes(line))) {
+    question = question.replace(` ${sentence}`, "").replace(sentence, "");
+  }
+  const added = after.filter((line) => !before.includes(line));
+  if (added.length > 0) {
+    const lines = question.split("\n");
+    const at = lines.findIndex((line) => line.startsWith("The employee is "));
+    if (at >= 0) lines[at] = `${lines[at]} ${added.join(" ")}`;
+    else lines.unshift(added.join(" "));
+    question = lines.join("\n");
+  }
+  return { ...decided, state, question };
 }

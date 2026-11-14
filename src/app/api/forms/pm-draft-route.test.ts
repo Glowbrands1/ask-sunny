@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { draftNoInventedPlanEnabled } from "@/lib/config/chat-quality-flags";
+import { draftNoInventedPlanEnabled, modelWarningLevelDiscardedEnabled } from "@/lib/config/chat-quality-flags";
 
 import { parseFormDocument } from "@/lib/forms/document";
 import { TEMPLATE_SEEDS } from "@/lib/forms/library";
@@ -166,6 +166,11 @@ vi.mock("@/lib/knowledge", () => ({
 vi.mock("@/lib/forms/instances", async () =>
   (await import("@/test/forms/saved-form-instances")).savedFormInstances(
     {
+  // MODEL_WARNING_LEVEL_DISCARDED_ENABLED: a level the manager said is written as their statement, before the model runs.
+  applyStatedFacts: async (_id: string, stated: { values?: Record<string, string>; checked?: Record<string, string[]> }) => [
+    ...Object.keys(stated.values ?? {}),
+    ...Object.keys(stated.checked ?? {}),
+  ],
   applyAssistantDraft: async (
     _id: string,
     draft: { values: Record<string, string>; checked: Record<string, string[]> },
@@ -422,8 +427,10 @@ describe("a sensitive final action never reaches the persistence call", () => {
     const payload = await post(NOTES);
 
     expect(state.persisted).toHaveLength(1);
-    expect(state.persisted[0]!.checked.warning_type).toEqual(["written"]);
-    expect(state.persisted[0]!.checked.warning_type).not.toContain("termination");
+    // Changed on purpose (14 Nov 2026, MODEL_WARNING_LEVEL_DISCARDED_ENABLED): the model never sets the Type of Warning;
+    // these notes state no level, so with the flag on nothing is ticked (the Termination is still refused and reported).
+    expect(state.persisted[0]!.checked.warning_type).toEqual(modelWarningLevelDiscardedEnabled() ? undefined : ["written"]);
+    expect(state.persisted[0]!.checked.warning_type ?? []).not.toContain("termination");
 
     // And the manager is told, because a silently unticked box reads as "Ask
     // Sunny judged this not to apply".
@@ -450,7 +457,9 @@ describe("a sensitive final action never reaches the persistence call", () => {
 
     const payload = await post(NOTES);
 
-    expect(state.persisted[0]!.checked.warning_type).toEqual(["written"]);
+    // Changed on purpose (14 Nov 2026, MODEL_WARNING_LEVEL_DISCARDED_ENABLED): the model never sets the Type of Warning;
+    // these notes state no level, so with the flag on nothing is ticked.
+    expect(state.persisted[0]!.checked.warning_type).toEqual(modelWarningLevelDiscardedEnabled() ? undefined : ["written"]);
     expect(payload.sensitiveRefused).toEqual({});
   });
 });
@@ -1001,7 +1010,17 @@ describe("the mini-skirt case, end to end", () => {
     await post(NOTES);
 
     expect(state.persisted[0]!.checked.offense_type).toEqual(["dress_code"]);
-    expect(state.persisted[0]!.checked.warning_type).toEqual(["verbal"]);
+    // Changed on purpose (14 Nov 2026, MODEL_WARNING_LEVEL_DISCARDED_ENABLED): "5. verbal warning" is the manager's own
+    // answer, so with the flag on Verbal is written as their statement before the model runs, not by the draft.
+    if (modelWarningLevelDiscardedEnabled()) {
+      expect(state.persisted[0]!.checked.warning_type).toBeUndefined();
+      const stated = (await import("@/test/forms/saved-form-instances")).savedRows("form-1").warning_type;
+      expect(stated?.checked).toEqual(["verbal"]);
+      // Written as a stated fact: `applyStatedFacts` stores it as "system" with the manager's statement as provenance.
+      expect(stated?.filledBy).toBe("system");
+    } else {
+      expect(state.persisted[0]!.checked.warning_type).toEqual(["verbal"]);
+    }
     expect(state.persisted[0]!.values.prior_actions).toBe("None - first occurrence");
   });
 

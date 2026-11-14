@@ -36,6 +36,13 @@ export const NOV12_OFFERED_NAME_ACCEPTED_CASES: ReplayCase[] = SCOPES.map(({ key
     t.as(role, scope as never);
     const thread = t.thread();
     const first = await thread.say(REQUEST);
+    if (t.loopActive?.()) {
+      // Changed on purpose (Pau 14 Nov: fewer questions / off-roster card + not-on-Woven line): with the loop on, the card comes at once with the line; every outcome check is kept.
+      expect((thread.proposal as { employeeName?: string | null } | null)?.employeeName, `no card for ${C}:\n${first.content}`).toBe(C);
+      expect(first.content).toMatch(new RegExp(`\\*\\*${C}\\*\\* isn't on (?:your salon's|the) Woven staff list`));
+      expect(observation(first), `the account was lost:\n${first.content}`).toMatch(/she was late/i);
+      return;
+    }
     expect(first.content, `no offer for ${C}:\n${first.content}`).toContain(`reply **use ${C}**`);
     const used = await thread.say(`use ${C}`);
     expect(used.content, `the offer was refused:\n${used.content}`).not.toMatch(/isn't a person on your team/);

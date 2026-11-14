@@ -235,12 +235,35 @@ function sources(dir: string): string[] {
  */
 const L10_ASSISTANT = ["src/features/l10/assistant/", "src/app/api/l10/"];
 const isL10 = (path: string) => L10_ASSISTANT.some((dir) => path.split("\\").join("/").startsWith(dir));
+/*
+ * Changed on purpose (14 Nov 2026, Pau: the agent loop uses the Vercel AI SDK like L10). The HR chat's tool loop
+ * (AGENT_LOOP_ENABLED, default off) is the second reviewed exception. It keeps this guard's point: its module loads the
+ * AI SDK only by `await import()`, and the chat route loads the module only by `await import()` inside the
+ * `agentLoopFor(...)` branch — so with the flag off chat never loads the AI SDK (the test at the end of this block).
+ */
+const AGENT_LOOP = "src/lib/ai/agent-loop/run.ts";
+const isAgentLoop = (path: string) => path.split("\\").join("/") === AGENT_LOOP;
 
 describe("the AI SDK is imported only by the form-patch call module", () => {
   it("no other production source imports it", () => {
     const needles = ['from "ai"', "from 'ai'", 'import("ai")', "import('ai')", "@ai-sdk/anthropic"];
-    const offenders = sources("src").filter((path) => path !== ONLY && !isL10(path) && needles.some((needle) => readFileSync(path, "utf8").includes(needle)));
+    const offenders = sources("src").filter((path) => path !== ONLY && !isL10(path) && !isAgentLoop(path) && needles.some((needle) => readFileSync(path, "utf8").includes(needle)));
     expect(offenders).toEqual([]);
+  });
+
+  it("the agent loop (the second exception) loads the AI SDK only dynamically, and chat loads the loop only behind its flag", () => {
+    const loop = readFileSync(AGENT_LOOP, "utf8");
+    expect(loop).toContain('await import("ai")');
+    expect(loop).toContain('await import("@ai-sdk/anthropic")');
+    expect(loop).not.toContain('from "ai"');
+    expect(loop).not.toContain('from "@ai-sdk/anthropic"');
+    const importers = sources("src").filter((path) => path.split("\\").join("/") !== AGENT_LOOP && readFileSync(path, "utf8").includes("agent-loop/run"));
+    expect(importers.map((path) => path.split("\\").join("/"))).toEqual(["src/app/api/chat/route.ts"]);
+    const route = readFileSync("src/app/api/chat/route.ts", "utf8");
+    expect(route).not.toMatch(/from "@\/lib\/ai\/agent-loop\/run"/);
+    const branch = route.slice(route.indexOf("if (agentLoopFor(context.identity.email))"));
+    expect(branch.indexOf('await import("@/lib/ai/agent-loop/run")')).toBeGreaterThan(0);
+    expect(branch.indexOf('await import("@/lib/ai/agent-loop/run")')).toBeLessThan(600);
   });
 
   it("the DM L10 assistant (the one exception) is reached only from the DM L10 tab, never from chat or forms", () => {

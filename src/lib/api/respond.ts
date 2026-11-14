@@ -61,6 +61,13 @@ export function errorResponse(error: unknown, route = "route"): NextResponse {
 
   if (error instanceof AiError) {
     /*
+     * AI TIME LIMITS (QA, 14 Nov 2026): an AI failure answered to the manager is on the server log too — the
+     * route, the code and the status only. The message is not logged; it is ours, but it is the reply.
+     */
+    if (error.code !== "bad_request" && error.code !== "not_configured") {
+      console.warn(`[${route}] ai error: ${error.code} ${error.status}`);
+    }
+    /*
      * A 429 SAYS WHEN, NOT JUST NO.
      *
      * The seconds were only ever in the message text, which meant a client that

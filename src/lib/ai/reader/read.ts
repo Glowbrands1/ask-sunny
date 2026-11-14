@@ -1,6 +1,7 @@
 import "server-only";
 
 import { withoutAppLines } from "@/lib/ai/app-sentences";
+import { readerTimeoutMs } from "@/lib/config/ai-timeouts";
 import { CLAUDE_READER_MODEL } from "@/lib/config/models";
 
 import { callClaudeToolTimed } from "../call-claude";
@@ -24,9 +25,8 @@ import { parseFormReading, READER_TOOL_DESCRIPTION, READER_TOOL_INPUT_SCHEMA, RE
  * are the same text in the sibling app.
  */
 
-/** The reader's limit; AI_READER_TIMEOUT_MS sets it for a trial (milliseconds, 500 to 10,000). */
-const CONFIGURED_TIMEOUT = Number(process.env.AI_READER_TIMEOUT_MS);
-export const READER_TIMEOUT_MS = Number.isFinite(CONFIGURED_TIMEOUT) && CONFIGURED_TIMEOUT >= 500 && CONFIGURED_TIMEOUT <= 10_000 ? CONFIGURED_TIMEOUT : 3_500;
+/** The reader's limit; AI_READER_TIMEOUT_MS sets it for a trial (milliseconds, 500 to 10,000). See `config/ai-timeouts.ts`. */
+export const READER_TIMEOUT_MS = readerTimeoutMs();
 
 const SYSTEM = `You read a manager's request for an HR form and call record_form_reading once.
 

@@ -2,6 +2,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { EDIT_POLICY_ASK_LINES, FORM_PATCH_SYSTEM_PROMPT, type FormPatchInput } from "./form-patch-prompt";
 import { patchOutputSchema } from "./form-patch-schema";
+import { SPELLING_CLEANUP_RULES } from "./spelling-cleanup";
+import { spellingCleanupEnabled } from "@/lib/config/chat-quality-flags";
+
+/** The text as sent: with SPELLING_CLEANUP_ENABLED on, the cleanup rules follow it (`form-patch-model.ts`). */
+function withCleanupRules(text: string): string {
+  return spellingCleanupEnabled() ? [text, ...SPELLING_CLEANUP_RULES].join("\n") : text;
+}
 
 /**
  * EDIT_POLICY_ASK_ENABLED (QA's live run, 7 Nov 2026: "… and please list the policy …" on an open Coaching Form
@@ -43,7 +50,8 @@ describe("readFormPatch with EDIT_POLICY_ASK_ENABLED", () => {
     vi.mocked(callFormPatchModel).mockResolvedValue({ ok: true, output: OUTPUT });
     const { readFormPatch } = await import("./form-patch-model");
     const reading = await readFormPatch(input);
-    expect(vi.mocked(callFormPatchModel).mock.calls[0]![0].system).toBe(FORM_PATCH_SYSTEM_PROMPT);
+    // Changed on purpose (SPELLING_CLEANUP_ENABLED, 13 Nov 2026): with that flag on, its rules follow the approved text.
+    expect(vi.mocked(callFormPatchModel).mock.calls[0]![0].system).toBe(withCleanupRules(FORM_PATCH_SYSTEM_PROMPT));
     expect(reading).not.toHaveProperty("policyAsked");
   });
 
@@ -56,7 +64,8 @@ describe("readFormPatch with EDIT_POLICY_ASK_ENABLED", () => {
     const reading = await readFormPatch(input);
     const system = vi.mocked(callFormPatchModel).mock.calls[0]![0].system;
     expect(system.startsWith(FORM_PATCH_SYSTEM_PROMPT)).toBe(true);
-    expect(system.endsWith(EDIT_POLICY_ASK_LINES)).toBe(true);
+    // Changed on purpose (SPELLING_CLEANUP_ENABLED, 13 Nov 2026): with that flag on, its rules come after this line.
+    expect(system.endsWith(withCleanupRules(EDIT_POLICY_ASK_LINES))).toBe(true);
     expect(reading).toMatchObject({ ok: true, policyAsked: true });
   });
 

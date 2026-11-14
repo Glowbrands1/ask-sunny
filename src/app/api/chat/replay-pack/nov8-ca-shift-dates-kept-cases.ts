@@ -39,7 +39,9 @@ async function told(t: ReplayContext, answer: string) {
   t.as("salon_director", KEARNEY);
   const thread = t.thread();
   const asked = await thread.say(T1);
-  expect(asked.content, "the first name is not asked about").toMatch(/Is this for \*\*Rhea Calloway\*\*\?/);
+  // Changed on purpose (Pau 14 Nov: fewer questions): with the loop on, the one Rhea on the roster is used and said.
+  if (t.loopActive?.()) expect(asked.content, "the first name was neither asked about nor said").toMatch(/Is this for \*\*Rhea Calloway\*\*\?|Using \*\*Rhea Calloway\*\* from your staff list/);
+  else expect(asked.content, "the first name is not asked about").toMatch(/Is this for \*\*Rhea Calloway\*\*\?/);
   const reply = await thread.say(answer);
   expect(thread.proposal, `no Corrective Action card:\n${reply.content}`).toMatchObject({ templateKey: "dpoa", employeeName: "Rhea Calloway" });
   expect(observation(reply.content), `the shift dates are lost:\n${reply.content}`).toMatch(/11\/7 and 11\/8/);

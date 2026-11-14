@@ -1,0 +1,49 @@
+# Targeted live run (QA plan, 14 Nov 2026): the cases for what changed, the previously failing cases, 10 random controls.
+# changed
+# previously failing (22326b82)
+nov10-make-that-update-writes-her-account
+nov10-p12-three-requests-t3
+nov10-p14b-advice-asks-not-on-the-card
+nov10-p16-failure-to-open-is-what-happened
+nov10-r17b-p16-observation-as-typed
+nov10-same-request-keeps-earlier-card-off-roster
+nov12-off-roster-place-answer-state-first-unlisted
+nov12-off-roster-store-answer-only-lower
+nov12-offered-name-accepted-salon-director
+nov13-card-added-fact-in-observation
+nov13-observation-place-must-read-omaha-last-week-capitalised
+nov3-open-draft-new-request
+nov3-stepb-write-the-observation
+nov4-edit-tool-ca-t2-drops-jane
+nov4-mgr-2-msb-no-name
+nov5-sf-s26-edit-misspelled-ca
+nov6-diffemp-qa-after-create-lower
+nov6-no-notice-no-date-resigned
+nov6-off-roster-exit-for-name-yes
+nov6-payroll-amount-same-message
+nov7-refusal-sun-late-date-drift
+nov7-sf-s36-exit-surname-typo
+nov8-639-name-answer-keeps-standards-of-conduct
+nov8-ca-shift-dates-request-again
+nov8-form-date-said-negative
+nov8-observation-made-for-late-opening
+nov8-proposal-make-it-about-negative
+nov8-proposal-name-correction-correct-way
+nov8-r5-prior-step-date-list
+nov8-second-request-prior-step-correction
+nov8-two-forms-card-not-asked-ef902fec
+nov9-exit-form-date-termination
+nov9-made-about-rewrite-finishes-said-date-nov7-edit-policy-ask-sun-late-date
+nov9-off-roster-ask-district-not-held
+# controls (random 10 of the 38 that passed)
+nov13-close-spelling-policy-two-headings-asks-which
+nov13-sanitation-chat-scripted-card-and-draft-agree
+nov14-on-file-line-not-the-policy-late-opening-kept-typo
+nov5-two-names-one-request-no-cross-match
+nov6-coding3-prior-actions-signed-policy-manual-kept
+nov6-offer-never-a-distance-two-near-miss
+nov6-roster-shape-two-word-first-lowercase
+nov6-title-ends-at-line-exit-s16
+nov7-edit-policy-ask-not-asked
+nov8-unknown-name-ask-no-repeat
+# round 3 (QA 16:20Z triage): new cases

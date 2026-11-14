@@ -32,6 +32,11 @@ export const NOV10_P16_OBSERVATION_CASES: ReplayCase[] = ([
     const thread = t.thread();
     const reply = await thread.say(said);
     expect(reply.content, "the card does not cite Late Opening").toMatch(/Late Opening/);
+    if (t.loopActive?.()) {
+      // Changed on purpose (loop-ON arm asserts meaning): QA, 14 Nov 2026: with AGENT_LOOP on the model words the reply; the flag-off arm keeps the exact wording.
+      expect(observation(reply.content), `no account on the card:\n${reply.content}`).toMatch(/^failure to open on time\.?$/i);
+      return;
+    }
     expect(observation(reply.content), `no account on the card:\n${reply.content}`).toMatch(/^failure to open on time$/i);
   },
 }));

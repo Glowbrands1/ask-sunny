@@ -16,6 +16,16 @@ vi.mock("./form-patch-call", () => ({
 
 import { FORM_PATCH_ACCOUNT_LINE, FORM_PATCH_READER_LINES, FORM_PATCH_SYSTEM_PROMPT } from "./form-patch-prompt";
 import { readFormPatch } from "./form-patch-model";
+import { SPELLING_CLEANUP_RULES } from "./spelling-cleanup";
+import { spellingCleanupEnabled } from "@/lib/config/chat-quality-flags";
+
+/**
+ * Changed on purpose (SPELLING_CLEANUP_ENABLED, 13 Nov 2026): the system as sent; with that flag on, its cleanup rules
+ * follow the approved text and the other lines (`form-patch-model.ts`).
+ */
+function withCleanupRules(text: string): string {
+  return spellingCleanupEnabled() ? [text, ...SPELLING_CLEANUP_RULES].join("\n") : text;
+}
 
 const INPUT: FormPatchInput = {
   today: "2026-11-07",
@@ -41,17 +51,17 @@ describe("the account line", () => {
     vi.stubEnv("FORM_PATCH_READER_FIXES_ENABLED", "1");
     vi.stubEnv("STEP_B_MAKE_IT_ABOUT_ACCOUNT_ENABLED", "1");
     await readFormPatch(INPUT);
-    expect(call.inputs[0]!.system).toBe(`${FORM_PATCH_SYSTEM_PROMPT}\n${FORM_PATCH_READER_LINES}\n${FORM_PATCH_ACCOUNT_LINE}`);
+    expect(call.inputs[0]!.system).toBe(withCleanupRules(`${FORM_PATCH_SYSTEM_PROMPT}\n${FORM_PATCH_READER_LINES}\n${FORM_PATCH_ACCOUNT_LINE}`));
   });
 
   it("is never sent with the flag off, or without the reader fixes", async () => {
     vi.stubEnv("FORM_PATCH_REDUCER_ENABLED", "1");
     vi.stubEnv("FORM_PATCH_READER_FIXES_ENABLED", "1");
     await readFormPatch(INPUT);
-    expect(call.inputs[0]!.system).toBe(`${FORM_PATCH_SYSTEM_PROMPT}\n${FORM_PATCH_READER_LINES}`);
+    expect(call.inputs[0]!.system).toBe(withCleanupRules(`${FORM_PATCH_SYSTEM_PROMPT}\n${FORM_PATCH_READER_LINES}`));
     vi.stubEnv("FORM_PATCH_READER_FIXES_ENABLED", "");
     vi.stubEnv("STEP_B_MAKE_IT_ABOUT_ACCOUNT_ENABLED", "1");
     await readFormPatch(INPUT);
-    expect(call.inputs[1]!.system).toBe(FORM_PATCH_SYSTEM_PROMPT);
+    expect(call.inputs[1]!.system).toBe(withCleanupRules(FORM_PATCH_SYSTEM_PROMPT));
   });
 });

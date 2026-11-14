@@ -1,8 +1,10 @@
 import "server-only";
 
+import { FORM_PATCH_TIMEOUT_DEFAULT_MS, formPatchTimeoutMs } from "@/lib/config/ai-timeouts";
 import { CLAUDE_READER_MODEL } from "@/lib/config/models";
 import { requireEnv } from "@/lib/config/server-env";
 import { activeSpendMeter } from "@/lib/ai/spend-meter";
+import { logAiFailure, logAiTimeout } from "@/lib/ai/time-limit";
 
 /**
  * ============================================================================
@@ -22,14 +24,9 @@ import { activeSpendMeter } from "@/lib/ai/spend-meter";
  * runs on the old path.
  */
 
-export const FORM_PATCH_DEFAULT_TIMEOUT_MS = 5_000;
-
-/** The call's limit; FORM_PATCH_TIMEOUT_MS sets it for a trial, clamped to 1,000–10,000 ms. */
-export function formPatchTimeoutMs(): number {
-  const configured = Number(process.env.FORM_PATCH_TIMEOUT_MS);
-  if (!process.env.FORM_PATCH_TIMEOUT_MS || !Number.isFinite(configured)) return FORM_PATCH_DEFAULT_TIMEOUT_MS;
-  return Math.min(10_000, Math.max(1_000, Math.round(configured)));
-}
+/** The call's limit; FORM_PATCH_TIMEOUT_MS sets it for a trial, clamped to 1,000–10,000 ms. See `config/ai-timeouts.ts`. */
+export const FORM_PATCH_DEFAULT_TIMEOUT_MS = FORM_PATCH_TIMEOUT_DEFAULT_MS;
+export { formPatchTimeoutMs };
 
 export interface FormPatchCallInput {
   readonly system: string;
@@ -63,7 +60,18 @@ function recordUsage(usage: unknown): void {
 }
 
 export async function callFormPatchModel(input: FormPatchCallInput): Promise<FormPatchCallResult> {
-  const signal = AbortSignal.timeout(formPatchTimeoutMs());
+  const limitMs = formPatchTimeoutMs();
+  const signal = AbortSignal.timeout(limitMs);
+  const started = Date.now();
+  /* AI TIME LIMITS (QA, 14 Nov 2026): a timeout or a failure is on the server log too; the turn still falls back. */
+  const timedOut = (): { readonly fallback: "timeout" } => {
+    logAiTimeout("form_patch", Date.now() - started, limitMs);
+    return { fallback: "timeout" };
+  };
+  const failed = (error: unknown): { readonly fallback: "error" } => {
+    logAiFailure("form_patch", Date.now() - started, error);
+    return { fallback: "error" };
+  };
   try {
     const { generateObject, jsonSchema, NoObjectGeneratedError } = await import("ai");
     const { createAnthropic } = await import("@ai-sdk/anthropic");
@@ -82,14 +90,14 @@ export async function callFormPatchModel(input: FormPatchCallInput): Promise<For
       recordUsage(result.usage);
       return { ok: true, output: result.object };
     } catch (error) {
-      if (signal.aborted) return { fallback: "timeout" };
+      if (signal.aborted) return timedOut();
       if (NoObjectGeneratedError.isInstance(error)) {
         recordUsage(error.usage);
         return { fallback: "invalid" };
       }
-      return { fallback: "error" };
+      return failed(error);
     }
-  } catch {
-    return { fallback: signal.aborted ? "timeout" : "error" };
+  } catch (error) {
+    return signal.aborted ? timedOut() : failed(error);
   }
 }

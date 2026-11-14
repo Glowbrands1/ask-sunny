@@ -24,6 +24,12 @@ export const NOV6_BARE_NOT_DENIAL_CASES: ReplayCase[] = [
       const thread = t.thread();
       const reply = await thread.say("create a corrective action for Rowan Kestrel, not late");
       expect(thread.proposal, `no Corrective Action card:\n${reply.content}`).toMatchObject({ templateKey: "dpoa" });
+      if (t.loopActive?.()) {
+        // Changed on purpose (loop-ON arm asserts meaning): QA, 14 Nov 2026: with AGENT_LOOP on the model words the reply; the flag-off arm keeps the exact wording.
+        expect(reply.content, `does not ask what happened:\n${reply.content}`).toMatch(/what happened\?/i);
+        expect(thread.proposal?.supportsInlineDraft, `drafted with no account (Create offered):\n${reply.content}`).toBe(false);
+        return;
+      }
       expect(reply.content, `drafted with no account:\n${reply.content}`).toMatch(ASKS);
     },
   },
@@ -40,6 +46,12 @@ export const NOV6_BARE_NOT_DENIAL_CASES: ReplayCase[] = [
       const thread = t.thread();
       const reply = await thread.say("create a corrective action for Rowan Kestrel, not late");
       expect(thread.proposal, `no Corrective Action card:\n${reply.content}`).toMatchObject({ templateKey: "dpoa" });
+      if (t.loopActive?.()) {
+        // Changed on purpose (loop-ON arm asserts meaning): QA, 14 Nov 2026: with AGENT_LOOP on the model words the reply; the flag-off arm keeps the exact wording.
+        expect(reply.content, `does not ask what happened:\n${reply.content}`).toMatch(/what happened\?/i);
+        expect(thread.proposal?.supportsInlineDraft, `drafted with no account (Create offered):\n${reply.content}`).toBe(false);
+        return;
+      }
       expect(reply.content, `drafted with no account:\n${reply.content}`).toMatch(ASKS);
     },
   },

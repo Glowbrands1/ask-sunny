@@ -2,6 +2,7 @@ import "server-only";
 
 import { spendGuardAllCallsEnabled } from "@/lib/config/chat-quality-flags";
 
+import { runInAiRoute } from "./ai-route";
 import { persistSpendRow } from "./chat-trace";
 import { activeSpendMeter, runSpendMeter, type SpendMeter, type SpendSource } from "./spend-meter";
 
@@ -13,6 +14,11 @@ import { activeSpendMeter, runSpendMeter, type SpendMeter, type SpendSource } fr
  * Off, `run` as it was.
  */
 export async function withSpendMeter<T>(source: SpendSource, run: () => Promise<T>): Promise<T> {
+  // The route's name for the AI time-limit log lines (`ai-route.ts`); nothing else changes.
+  return runInAiRoute(source, () => metered(source, run));
+}
+
+async function metered<T>(source: SpendSource, run: () => Promise<T>): Promise<T> {
   if (!spendGuardAllCallsEnabled() || activeSpendMeter()) return run();
   const meter: SpendMeter = { source, userId: null, calls: [], flushed: 0 };
   try {

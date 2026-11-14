@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { modelWarningLevelDiscardedEnabled } from "@/lib/config/chat-quality-flags";
+
 import { fakeSupabase, type FakeStore } from "@/test/fake-supabase";
 import type { AccessScope, ChatMessage } from "@/types";
 
@@ -629,7 +631,11 @@ describe("Q4 nothing the manager did not say is put on the form", () => {
      * manager to confirm (`draft/route.ts`) — although the chat says it won't
      * guess. Left as designed pending a business decision (QA, 22 Oct 2026).
      */
-    expect((await review(id)).values.find((entry) => entry.fieldKey === "warning_type")?.filledBy).toBe("ai");
+    // Changed on purpose (14 Nov 2026): QA's business decision came with MODEL_WARNING_LEVEL_DISCARDED_ENABLED (the 38g
+    // live test). With it on the model's suggested level is not written: no level was stated, so the box stays empty.
+    expect((await review(id)).values.find((entry) => entry.fieldKey === "warning_type")?.filledBy).toBe(
+      modelWarningLevelDiscardedEnabled() ? undefined : "ai",
+    );
     expect(form.payroll_deduct).toBeUndefined();
     expect(form.prior_actions).toBeUndefined();
     expect(form.observation).toContain("skipped the monthly meeting on October 20, 2026.");
