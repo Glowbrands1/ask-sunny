@@ -124,8 +124,10 @@ function withOnePolicy(content: string): string {
    * the account reads ("Attendance and Standards of Conduct, as you said") is the card's policies, each of them; the
    * joined name is no one heading, so every citation line was dropped. Off, the one heading as before.
    */
-  const cards = policyLineCoversEverySectionEnabled()
-    ? new Set([card, ...heading.split(/\s*(?:,|&|\band\b)\s*/).map((part) => normalHeading(part.trim())).filter(Boolean)])
+  // Only "and" / "&" join sections: a comma starts the line's own words ("Attendance, from what you described …").
+  const joined = heading.split(",")[0]!;
+  const cards = policyLineCoversEverySectionEnabled() && /\s(?:and|&)\s/i.test(joined)
+    ? new Set([card, ...joined.split(/\s+(?:and|&)\s+/i).map((part) => normalHeading(part.trim())).filter(Boolean)])
     : new Set([card]);
   return content
     .split("\n")
