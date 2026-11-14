@@ -320,7 +320,7 @@ const PROFILES: readonly (readonly [string, readonly string[]])[] = [
 /** This fix's flag, default off. The exact-turn cases run with it on. */
 const FLAG = "QUESTION_NOT_FORM_ENABLED";
 
-const ALL_FLAGS = [...PRODUCTION, ...BUNDLE, FLAG];
+const ALL_FLAGS = [...PRODUCTION, ...BUNDLE, FLAG, "EDIT_SEES_SAVED_FORM_ENABLED", "CARD_CHECKED_AGAINST_WORDS_ENABLED"];
 
 type Answer = {
   content: string;
