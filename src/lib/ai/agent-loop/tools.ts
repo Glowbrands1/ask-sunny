@@ -492,7 +492,8 @@ export async function proposeForm(
       if (!close.confident && close.candidates.includes(policyHeading)) confirmPolicy = policyHeading;
     }
   }
-  const cleaning = cleaningUndonePhrase(`${requestWords}\n${whatHappened}`);
+  // The Other topic is read from the account as the model cleaned it (SPELLING_CLEANUP: "th e10 minute sanitaion" → "the 10-minute sanitation"), else the manager's words.
+  const cleaning = (whatHappened ? cleaningUndonePhrase(whatHappened) : null) ?? cleaningUndonePhrase(requestWords);
   const careAndCleaning = namesCareAndCleaning(requestWords);
   /* As today's card cites it: the heading, then the page the manual prints. */
   const page = policyHeading && manual ? findManualSection(manual.chunks, [policyHeading])?.page ?? null : null;
