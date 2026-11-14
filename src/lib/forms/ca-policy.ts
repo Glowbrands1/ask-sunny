@@ -578,6 +578,33 @@ const LATE_ARRIVAL =
   /\b(?:was|were|is|been|came\s+in|arrived|showed\s+up|clocked\s+in|running|being)\s+(?:\S+\s+){0,2}?late\b|\b(?:tardy|tardies|tardiness|lateness)\b|\blate\s+(?:to|for)\s+(?:her|his|their|a|the|work|shift)/i;
 const OPENING_WORD = /\bopen(?:s|ed|ing|er|ers)?\b/i;
 
+/**
+ * ON_FILE_LINE_NOT_THE_POLICY_ENABLED (Gate-Sunny-3, 14 Nov 2026): the manager's own words describe a late opening, by the
+ * readers the card uses for it ("late opening", "opened late", "late to open", "failure to open", or an employee late
+ * who opened). Read on the manager's words only.
+ */
+export function describesLateOpening(said: string): boolean {
+  const text = normalize(said);
+  return (
+    LATE_OPENING_SAID.test(text) ||
+    LATE_TO_OPEN.test(text) ||
+    FAILURE_TO_OPEN.test(text) ||
+    NOT_OPEN_UNTIL.test(text) ||
+    OPENED_AFTER_SUPPOSED.test(text) ||
+    ((/\blate\b/.test(text) || LATE_ARRIVAL.test(said)) && OPENING_DUTY.test(text))
+  );
+}
+
+/* Opening the salon itself ("opened the salon", "open up", "opening shift"), never "open to feedback". */
+const OPENING_DUTY =
+  /\bopen(?:ed|ing|s)?\s+(?:up\b|(?:the\s+|her\s+|his\s+|their\s+|our\s+)?(?:salon|store|doors?|shop|location|building)\b)|\bopening\s+(?:shift|duties|time|manager)\b/;
+
+/* QA's probes (14 Nov 2026): "the salon wasn't open until 9:30, supposed to open at 9". */
+const NOT_OPEN_UNTIL = /\b(?:was ?n[o']?t|wasn't|was not|is ?n[o']?t|isn't|not|did ?n[o']?t|didn't|did not|never)\s+(?:get\s+|getting\s+)?open(?:ed)?\s+(?:up\s+)?until\b/;
+/* "she opened up 20 min after we were supposed to", "opened 20 minutes past opening time". */
+const OPENED_AFTER_SUPPOSED =
+  /\bopen(?:ed|s)?\s+(?:up\s+)?(?:\S+\s+){0,3}?(?:after|past)\s+(?:(?:we|she|he|they|it|the\s+\w+)\s+(?:was|were|is|are)\s+supposed\s+to|(?:the\s+)?open(?:ing)?\s+time|(?:the\s+)?time\s+(?:we|she|he|they)\s+(?:was|were)\s+supposed\s+to)\b/;
+
 function withLateIsAttendance(reading: CaPolicyReading, said: string): CaPolicyReading {
   if (!lateReadsAttendanceEnabled() || reading.readFromApp !== "late_opening") return reading;
   if (!LATE_ARRIVAL.test(said) || OPENING_WORD.test(said)) return reading;
