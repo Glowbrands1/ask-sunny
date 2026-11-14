@@ -4822,3 +4822,15 @@ export function cardAddedFactInObservationEnabled(): boolean {
 export function sharedCityAsksSalonEnabled(): boolean {
   return envFlag("SHARED_CITY_ASKS_SALON_ENABLED");
 }
+
+/**
+ * HISTORY_LEVEL_NOT_THIS_FORM_ENABLED (coding 5, 14 Nov 2026; default off; QA, priority; Ask Bubbles' reader has read
+ * these as history since 9 Oct 2026). "verbal warning on 9/21. late again for 30 mins today" and "written warning for
+ * the same thing, now late today" were read as THIS form's level: the card was Verbal / Written from an earlier
+ * warning. On: a level followed by its own date on another day, or by "for the same thing" / "for that" / "for it", is
+ * a step on file, not this form's level, unless a request verb asks for it in the same sentence ("create a verbal CA on
+ * 11/12/26 for …"). See `forms/warning-level.ts`. Off, as before.
+ */
+export function historyLevelNotThisFormEnabled(): boolean {
+  return envFlag("HISTORY_LEVEL_NOT_THIS_FORM_ENABLED");
+}
