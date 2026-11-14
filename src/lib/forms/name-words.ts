@@ -1,3 +1,4 @@
+import { notANameGuardHistoryEnabled } from "@/lib/config/chat-quality-flags";
 /**
  * ============================================================================
  * THE WORDS THAT ARE NEVER SOMEBODY'S NAME
@@ -11,7 +12,7 @@
  * reads only the salon roster and the report catalogues.
  */
 
-import { isNotAName, maskNotANameText } from "./not-a-name";
+import { isNotAName, maskNotANameText, withoutRoleLead } from "./not-a-name";
 
 export const NOT_A_NAME = new Set([
   /*
@@ -313,7 +314,9 @@ export function isOnlyFieldLabel(name: string): boolean {
 
 /** The name with a leading field label, or a trailing Job or Title, removed. A label alone is not a name. */
 export function stripFieldLabels(name: string): string | null {
-  const source = readNameFieldValue(name) ?? name;
+  // NOT_A_NAME_GUARD_HISTORY_ENABLED: "empolyee Blair Sutton", "Tanning Consultant Blair Sutton" are Blair Sutton.
+  const read = readNameFieldValue(name) ?? name;
+  const source = notANameGuardHistoryEnabled() ? withoutRoleLead(read) : read;
   const words = withoutTrailingJobOrTitle(withoutLeadingLabels(nameWords(source)));
   if (words.length === 0 || words.every((word) => isFieldLabelWord(word))) return null;
   // NOT_A_NAME_GUARD_ENABLED: "blank", "require practice", "spa", "lawrence".

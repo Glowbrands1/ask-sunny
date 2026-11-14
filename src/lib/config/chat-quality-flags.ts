@@ -4692,6 +4692,20 @@ export function groupWordsNotANameEnabled(): boolean {
 }
 
 /**
+ * NOT_A_NAME_GUARD_HISTORY_ENABLED (QA's Sunny chat-history read, 25 Oct 2026; #210 rebuilt on main, 12 Nov 2026;
+ * default off). #210 extended the live NOT_A_NAME_GUARD unflagged; rebuilt, those readings are behind this flag:
+ *   - a name the manager said "yes" to after "Did you mean **<name>**?" is the manager's word, and one answered
+ *     "keep <typed>" is not (conv_mvl7ntrk2wg08iy, conv_mvh9a9q62mjffk2);
+ *   - roster people are found only in the manager's turns and the saved state, never in an assistant reply;
+ *   - a role the model copied with the name ("Tanning Consulatant <name>") is taken off as the label it is.
+ * Unflagged, the third made "District manager <name>", named in passing, the card's employee
+ * (nov5-r2-dm-in-passing-*), so the three wait for this flag's own gate. Off, as on main.
+ */
+export function notANameGuardHistoryEnabled(): boolean {
+  return envFlag("NOT_A_NAME_GUARD_HISTORY_ENABLED");
+}
+
+/**
  * STEP_B_SECTION_SPACING_ENABLED (ported from Ask Bubbles; QA's live draft test, 8 Nov 2026; same flag in both apps;
  * default off). After an edit, the blank lines between Observed / Expectation / Going Forward became single newlines.
  * On: a write of a field that had them keeps one blank line before each section heading (`forms/outline-sections.ts`).

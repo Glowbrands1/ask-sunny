@@ -13,6 +13,7 @@ import {
   namedFormExactEnabled,
   newestPlaceTurnEnabled,
   notANameGuardEnabled,
+  notANameGuardHistoryEnabled,
   placeSpanGuardEnabled,
   priorActionsParseEnabled,
   remapIncidentFixEnabled,
@@ -31,12 +32,12 @@ import { printedPageForPolicy } from "@/lib/forms/printed-policy-pages";
 import { topicHeadings } from "@/lib/forms/specific-policy-topics";
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { stripFieldLabels } from "@/lib/forms/name-words";
-import { isNotAName, maskNotANameText, saidInReply } from "@/lib/forms/not-a-name";
+import { isNotAName, maskNotANameText, saidInReply, withoutRoleLead } from "@/lib/forms/not-a-name";
 import { isExitAnswerPhrase } from "@/lib/forms/exit-answer-phrase";
 import { inStatedPermanentAddress } from "@/lib/forms/exit-details";
 import { cleanPersonName, employeeNamedOnPurpose } from "@/lib/forms/roster-validated-name";
 import { datesInText, listFormDates, listIncidentDates, priorSteps } from "@/lib/forms/form-date-answer";
-import { displayName, matchEmployeeName, type RosterEmployee } from "@/lib/forms/employee-match";
+import { acceptedNameSuggestions, displayName, matchEmployeeName, type RosterEmployee } from "@/lib/forms/employee-match";
 import { extractEmployeeNames, extractJobTitle, titleAfterJobTitleLabel } from "@/lib/forms/proposal";
 import { readPlaceState } from "@/lib/forms/place-state";
 import { correctiveActionBasis } from "@/lib/forms/corrective-action-intake";
@@ -266,7 +267,7 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
         blob,
         input.people,
         input.salons,
-        notANameGuardEnabled() ? managerTurns(input) : null,
+        notANameGuardEnabled() ? (notANameGuardHistoryEnabled() ? managerWords(input) : managerTurns(input)) : null,
       );
   /*
    * KEEP_FORM_EMPLOYEE_ENABLED: "for Test Employee" names Test Employee
@@ -924,6 +925,16 @@ function managerTurns(input: IntentTurnInput): string[] {
   return [...said, input.question, saved].filter((part) => part.trim() !== "");
 }
 
+/**
+ * NOT_A_NAME_GUARD_ENABLED: what a name may be read from — the manager's turns
+ * and the saved state, plus a name the manager said "yes" to when the assistant
+ * asked "Did you mean **<name>**?" (conv_mvl7ntrk2wg08iy). A suggestion the
+ * manager answered "keep <typed>" is not among them (conv_mvh9a9q62mjffk2).
+ */
+function managerWords(input: IntentTurnInput): string[] {
+  const accepted = acceptedNameSuggestions([...input.history, { role: "user", content: input.question }]);
+  return [...managerTurns(input), ...accepted];
+}
 
 function conversationBlob(input: IntentTurnInput): string {
   const prior = input.history.map((turn) => turn.content);
@@ -938,7 +949,13 @@ function groundEmployee(
   salons: readonly SalonRow[] = [],
   manager: readonly string[] | null = null,
 ): { person: GroundedPerson | null; name: string | null; ambiguous: readonly GroundedPerson[]; typed: string | null } {
-  const fromText = peopleNamedIn(blob, people);
+  // NOT_A_NAME_GUARD_ENABLED: a roster person only the assistant named ("Did you mean **<name>**?",
+  // answered "keep <typed>") is not the employee; the manager's turns and the saved state are read.
+  // NOT_A_NAME_GUARD_HISTORY_ENABLED (default off): the three history readings below. Off, as on main.
+  const history = notANameGuardHistoryEnabled();
+  const fromText = peopleNamedIn(history && manager ? manager.join("\n") : blob, people);
+  // The guard reads a role the model copied with the name ("Tanning Consulatant <name>") as the label it is.
+  if (history && manager && typed?.trim()) typed = withoutRoleLead(typed);
   // The guard keeps a name the model copied from an assistant reply, or a
   // placeholder like "blank", off the card: it must be in the manager's words.
   if (manager && typed?.trim() && (isNotAName(typed) || !saidBy(manager, typed))) typed = null;
