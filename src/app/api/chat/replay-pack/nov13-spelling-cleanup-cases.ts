@@ -38,8 +38,8 @@ export const NOV13_SPELLING_CLEANUP_CASES: ReplayCase[] = [
     id: "nov13-spelling-cleanup-sanitation",
     title: `"${SAID}": the CA draft is written "not doing the 10-minute sanitation" and cites Other (cleaning left undone)`,
     report: REPORT,
-    // Changed on purpose (14 Nov 2026): fixed in production by SPELLING_CLEANUP, QA round 38g. Was OPEN.
-    status: "fixed",
+    // Changed on purpose (14 Nov 2026): back to OPEN. SPELLING_CLEANUP was rolled back in production after the 38g live test.
+    status: { open: "the CA draft has no cleanup rule, and the typed \"sanitaion\" reads as no cleaning: Standards of Conduct" },
     fixFlags: ["SPELLING_CLEANUP_ENABLED"],
     async run(t) {
       const thread = start(t);
@@ -59,8 +59,8 @@ export const NOV13_SPELLING_CLEANUP_CASES: ReplayCase[] = [
     title: "a cleaned draft that respells the employee's name is drafted again without the cleanup rule (the manager's text)",
     report: `${REPORT}: the hard limit — a cleanup never changes a name, date, number or quote`,
     // Only with the flag: production has no cleanup, so nothing is checked and nothing is drafted again.
-    // Changed on purpose (14 Nov 2026): fixed in production by SPELLING_CLEANUP, QA round 38g. Was OPEN.
-    status: "fixed",
+    // Changed on purpose (14 Nov 2026): back to OPEN. SPELLING_CLEANUP was rolled back in production after the 38g live test.
+    status: { open: "no cleanup check in production" },
     fixFlags: ["SPELLING_CLEANUP_ENABLED"],
     async run(t) {
       const thread = start(t);
@@ -81,8 +81,8 @@ export const NOV13_SPELLING_CLEANUP_CASES: ReplayCase[] = [
     title: "QA's guard: a quoted phrase with a typo (she said \"i dont care\") stays exactly as typed; a draft that mends it is drafted again without the rule",
     report: `${REPORT}: QA's guard, 13 Nov 2026 — a quote is never cleaned up`,
     // Only with the flag: production has no cleanup, so nothing is checked and nothing is drafted again.
-    // Changed on purpose (14 Nov 2026): fixed in production by SPELLING_CLEANUP, QA round 38g. Was OPEN.
-    status: "fixed",
+    // Changed on purpose (14 Nov 2026): back to OPEN. SPELLING_CLEANUP was rolled back in production after the 38g live test.
+    status: { open: "no cleanup check in production" },
     fixFlags: ["SPELLING_CLEANUP_ENABLED"],
     async run(t) {
       const thread = start(t);
@@ -101,8 +101,8 @@ export const NOV13_SPELLING_CLEANUP_CASES: ReplayCase[] = [
     id: "nov13-spelling-cleanup-quote-as-typed-saved",
     title: "QA's guard: a draft that keeps the quoted phrase as typed (\"i dont care\") is saved as written, in one call",
     report: `${REPORT}: QA's guard, 13 Nov 2026`,
-    // Changed on purpose (14 Nov 2026): fixed in production by SPELLING_CLEANUP, QA round 38g. Was OPEN.
-    status: "fixed",
+    // Changed on purpose (14 Nov 2026): back to OPEN. SPELLING_CLEANUP was rolled back in production after the 38g live test.
+    status: { open: "no cleanup rule in production" },
     fixFlags: ["SPELLING_CLEANUP_ENABLED"],
     async run(t) {
       const thread = start(t);
@@ -121,8 +121,8 @@ export const NOV13_SPELLING_CLEANUP_CASES: ReplayCase[] = [
     title: "QA's safety ruling: when the fallback draft also respells the name, that field keeps what the form held (or nothing), never the chat turn",
     report: `${REPORT}: QA's safety ruling (Gate-Sunny-3, 13 Nov 2026) — the fallback draft is checked again`,
     // Only with the flag: production has no cleanup, so the respelled name is saved as drafted.
-    // Changed on purpose (14 Nov 2026): fixed in production by SPELLING_CLEANUP, QA round 38g. Was OPEN.
-    status: "fixed",
+    // Changed on purpose (14 Nov 2026): back to OPEN. SPELLING_CLEANUP was rolled back in production after the 38g live test.
+    status: { open: "no cleanup check in production" },
     fixFlags: ["SPELLING_CLEANUP_ENABLED"],
     async run(t) {
       const thread = start(t);
