@@ -4854,6 +4854,16 @@ export function policyLineCoversEverySectionEnabled(): boolean {
 }
 
 /**
+ * MIXED_POLICY_PLAN_ENABLED (Coding-2, 14 Nov 2026; default off; Pau's option A, ported from Ask Bubbles). A Corrective
+ * Action on Attendance and another policy saved Pau's attendance plan alone. On: the attendance plan is kept exactly,
+ * with one line per other policy before the closing, "Management will review the <Policy> policy with <employee>."
+ * (`forms/attendance-action-plan.ts`), on the card and the draft alike. An Attendance-only CA is unchanged. Off, as before.
+ */
+export function mixedPolicyPlanEnabled(): boolean {
+  return envFlag("MIXED_POLICY_PLAN_ENABLED");
+}
+
+/**
  * ON_FILE_LINE_NOT_THE_POLICY_ENABLED (Coding-2, 14 Nov 2026; default off; Pau's morning scan via QA). A dress-code
  * request sent again word for word was carded "Policy: Late Opening — read from this request": the intent reader took
  * the heading from the app's own "On file in Form Monitoring … (… Late Opening)" listing. On: a heading the manager's own

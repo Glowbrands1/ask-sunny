@@ -1,7 +1,7 @@
-import { meetingNotLatenessPlanEnabled, missedShiftNotLatenessEnabled } from "@/lib/config/chat-quality-flags";
+import { meetingNotLatenessPlanEnabled, missedShiftNotLatenessEnabled, mixedPolicyPlanEnabled } from "@/lib/config/chat-quality-flags";
 
 import { employeeFirstName } from "./employee-reference";
-import { policyNamesFromViolated, type ActionPlanInput } from "./ca-action-plan";
+import { policyNamesFromViolated, policyPhrase, type ActionPlanInput } from "./ca-action-plan";
 import { CA_ACTION_PLAN_CLOSING } from "./required-closing";
 
 /**
@@ -61,5 +61,27 @@ export function attendanceActionPlan(input: ActionPlanInput): string {
   ].join(" ");
   const closing = (input.closing?.trim() || CA_ACTION_PLAN_CLOSING).replace(/\s+/g, " ").trim();
   const ended = /[.!?]$/.test(closing) ? closing : `${closing}.`;
-  return `${body} ${ended}`;
+  const others = mixedPolicyPlanEnabled() ? otherPolicyLines(input, first) : [];
+  return others.length > 0 ? `${body} ${others.join(" ")} ${ended}` : `${body} ${ended}`;
 }
+
+/*
+ * MIXED_POLICY_PLAN_ENABLED (Pau's option A, 13 Nov 2026 23:57Z, relayed by QA; ported from Ask Bubbles): a Corrective
+ * Action on Attendance and another policy keeps Pau's attendance plan exactly as it is, with ONE line per other policy
+ * before the closing: "Management will review the <Policy> policy with <employee>." An Attendance-only CA is unchanged.
+ * Other is a box, not a policy, and Late Opening has its own plan; neither adds a line.
+ */
+function otherPolicyLines(input: ActionPlanInput, first: string | null): string[] {
+  const names = input.citedPolicies.length > 0 ? input.citedPolicies : policyNamesFromViolated(input.policyViolated);
+  // A manual citation ("Attendance Policy, JBA Policy Manual p.14" splits into "JBA Policy Manual p.14") is no policy name.
+  const citation = (name: string) => /\bJBA Policy Manual\b|^\s*p(?:age|\.)\s*\d+\s*$/i.test(name);
+  const others = names.filter(
+    (name) => !/\battendance\b/i.test(name) && !/\blate\s+open/i.test(name) && !/^other$/i.test(name.trim()) && !citation(name),
+  );
+  const seen = new Set<string>();
+  return others
+    .map((name) => policyPhrase([name]))
+    .filter((phrase) => !seen.has(phrase.toLowerCase()) && Boolean(seen.add(phrase.toLowerCase())))
+    .map((phrase) => `Management will review ${phrase} with ${first ?? "the employee"}.`);
+}
+
