@@ -153,7 +153,8 @@ describe("the DM L10 page in Ask Sunny", () => {
   it("IDS has no ranking: no top-three table, no Rank buttons, no Priority badges (even on issues ranked in the Hub)", () => {
     const issues = [{ id: "i1", title: "Weekly issue", notes: "", resolved: false, votes: { "hub-user-2": { rank: 1, name: "Bo" } } }];
     renderView({ initial: loaded(3, { issues }) });
-    fireEvent.click(screen.getByRole("button", { name: /IDS · Issues/ }));
+    // Any position: the STC DM agenda has no Headlines since 13 Nov 2026, so IDS is item 5 there (6 elsewhere).
+    fireEvent.click(screen.getByRole("button", { name: /\d · IDS · Issues/ }));
     expect(screen.queryByRole("region", { name: "Everyone's top three" })).toBeNull();
     expect(screen.queryByRole("button", { name: /^Rank by you/ })).toBeNull();
     expect(screen.queryByTestId("room-rank")).toBeNull();
