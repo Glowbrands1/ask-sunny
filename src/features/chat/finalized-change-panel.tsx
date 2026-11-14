@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Label, Select } from "@/components/ui/field";
 import { FormsFetchError } from "@/features/forms/forms-fetch";
 import { RevisionReasonDialog } from "@/form-revisions/revision-reason-dialog";
+import { reloadIfAlreadyRevised } from "@/form-revisions/already-revised";
 import { useMayEditForm } from "@/form-revisions/use-revision-history";
 import { cardChangeFinalizedEnabled } from "@/lib/forms/card-change-flag";
 import { formRevisionsUiEnabled } from "@/lib/config/chat-quality-flags";
@@ -186,7 +187,11 @@ function Panel({
     } catch (error) {
       // The server asks for a reason (its revisions flag is on): ask it here too.
       if (error instanceof FormsFetchError && error.code === "REVISION_REASON_REQUIRED") setAsking(true);
-      else setProblem((error as Error).message);
+      else {
+        // REVISED_FORM_POINTS_TO_NEWER_ENABLED: replaced elsewhere since the card loaded; the card re-reads.
+        reloadIfAlreadyRevised(error, instanceId);
+        setProblem((error as Error).message);
+      }
     } finally {
       setBusy(false);
     }

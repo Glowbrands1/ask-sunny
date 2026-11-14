@@ -4822,3 +4822,15 @@ export function cardAddedFactInObservationEnabled(): boolean {
 export function sharedCityAsksSalonEnabled(): boolean {
   return envFlag("SHARED_CITY_ASKS_SALON_ENABLED");
 }
+
+/**
+ * REVISED_FORM_POINTS_TO_NEWER_ENABLED (coding 5, 14 Nov 2026; default off; QA, from a live runtime error; same flag in
+ * both apps). "Edit as new draft" (or the change panel, or the reason dialog) pressed on a card loaded while its form
+ * was finalized, after a revision of it was finalized elsewhere, threw "That form has already been revised." as a 500:
+ * the manager saw "Something went wrong" and a card that still looked editable. On: the refusal is a 409 with
+ * `form_already_revised` and a line pointing to the newer version (`forms/revision-chain.ts`); the card reloads and shows
+ * "Revised" with its link. Nothing is revised automatically. Off, as before.
+ */
+export function revisedFormPointsToNewerEnabled(): boolean {
+  return envFlag("REVISED_FORM_POINTS_TO_NEWER_ENABLED");
+}

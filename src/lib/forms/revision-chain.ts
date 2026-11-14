@@ -1,10 +1,12 @@
 import "server-only";
 
 import { businessToday } from "@/lib/business-date";
-import { formRevisionsEnabled } from "@/lib/config/chat-quality-flags";
+import { formRevisionsEnabled, revisedFormPointsToNewerEnabled } from "@/lib/config/chat-quality-flags";
 
 import { findOpenRevision, loadInstance, reviseInstance, type InstanceRow, type LoadedInstance } from "./instances";
 import {
+  FORM_ALREADY_REVISED,
+  FORM_ALREADY_REVISED_MESSAGE,
   normalizeRevisionReason,
   referenceOf,
   revisionMarks,
@@ -170,12 +172,45 @@ export class RevisionReasonRequiredError extends Error {
  *   A RE-EVALUATION (the DMIT EPP's next stage) is not an edit: a reason is
  *   recorded when one is given, and not required.
  */
+/**
+ * REVISED_FORM_POINTS_TO_NEWER_ENABLED: a form a newer version already replaced cannot be edited. Carries the newest
+ * version's id (null when the chain's pointer is missing) so the reply can point to it.
+ */
+export class FormAlreadyRevisedError extends Error {
+  readonly code = FORM_ALREADY_REVISED;
+  constructor(readonly newerId: string | null) {
+    super(FORM_ALREADY_REVISED_MESSAGE);
+    this.name = "FormAlreadyRevisedError";
+  }
+}
+
+/** The newest version after a `revised` form: forward through each `revised` event to the first form not replaced. */
+async function newestAfter(loaded: LoadedInstance): Promise<string | null> {
+  const seen = new Set([loaded.instance.id]);
+  let current = loaded;
+  let newest: string | null = null;
+  for (let hop = 0; hop < MAX_HOPS && current.instance.status === "revised"; hop += 1) {
+    const id = newerIdOf(current);
+    if (!id || seen.has(id)) break;
+    seen.add(id);
+    newest = id;
+    const next = await loadInstance(id);
+    if (!next) break;
+    current = next;
+  }
+  return newest;
+}
+
 export async function reviseFinalizedForm(
   instanceId: string,
   actor: string,
   kind: "revised" | "reevaluated",
   rawReason?: unknown,
 ): Promise<InstanceRow> {
+  if (revisedFormPointsToNewerEnabled()) {
+    const current = await loadInstance(instanceId);
+    if (current?.instance.status === "revised") throw new FormAlreadyRevisedError(await newestAfter(current));
+  }
   if (!formRevisionsEnabled()) return reviseInstance(instanceId, actor, kind);
 
   const loaded = await loadInstance(instanceId);
