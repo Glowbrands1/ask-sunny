@@ -685,8 +685,8 @@ class Thread {
       question,
       reply: payload.content ?? "",
       updated: payload.formUpdate?.updated ?? null,
-      // Live loop runs only (AGENT_LOOP_LIVE_ALL): the card, for the outcome report. Absent otherwise, so other records are unchanged.
-      ...(process.env.AGENT_LOOP_LIVE_ALL === "1" && payload.formProposal
+      // Live loop runs (AGENT_LOOP_LIVE_ALL) or REPLAY_RECORD_CARDS=1: the card, for the outcome report. Absent otherwise, so other records are unchanged.
+      ...((process.env.AGENT_LOOP_LIVE_ALL === "1" || process.env.REPLAY_RECORD_CARDS === "1") && payload.formProposal
         ? { card: { template: payload.formProposal.templateKey, employee: payload.formProposal.employeeName ?? null, level: payload.formProposal.warningLevel ?? null, payroll: (payload.formProposal as { payrollDeduct?: string | null }).payrollDeduct ?? null, issue: payload.formProposal.issue ?? null } }
         : {}),
     });
