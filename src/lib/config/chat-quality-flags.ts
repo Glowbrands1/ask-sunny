@@ -4831,3 +4831,12 @@ export function cardAddedFactInObservationEnabled(): boolean {
 export function sharedCityAsksSalonEnabled(): boolean {
   return envFlag("SHARED_CITY_ASKS_SALON_ENABLED");
 }
+
+/**
+ * CARD_PLAN_MATCHES_CREATE_ENABLED (coding 6, 12 Nov 2026; default off; ported from the sibling app, QA's 17l, ruling B;
+ * reproduced here). An Attendance Corrective Action's card showed the general plan while Create saved Pau's attendance
+ * plan. On: the card shows the plan Create will save. Off, as before. See `forms/card-plan-matches-create.ts`.
+ */
+export function cardPlanMatchesCreateEnabled(): boolean {
+  return envFlag("CARD_PLAN_MATCHES_CREATE_ENABLED");
+}

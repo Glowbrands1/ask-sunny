@@ -660,6 +660,8 @@ const NEW_FLAGS = [
   "STEP_B_SECTION_SPACING_ENABLED",
   "DRAFT_NO_INVENTED_PLAN_ENABLED",
   "GROUP_WORDS_NOT_A_NAME_ENABLED",
+  // coding 6: CARD_PLAN_MATCHES_CREATE (ported from Ask Bubbles, QA's 17l, 12 Nov 2026; default off).
+  "CARD_PLAN_MATCHES_CREATE_ENABLED",
   // coding 4: FORMS_ON_FILE_ORDER_MATCH_POSSIBLE (ported from Ask Bubbles, 11 Nov 2026; default off).
   "FORMS_ON_FILE_ORDER_MATCH_POSSIBLE_ENABLED",
   // coding 6: POLICY_CARRY_RETRIEVAL (#248 rebuilt on main; QA item 10; default off).

@@ -25,6 +25,7 @@ import {
   groupWordsNotANameEnabled,
   formNameFromRosterEnabled,
   offRosterConfirmEnabled,
+  cardPlanMatchesCreateEnabled,
   offRosterPlaceAnswerEnabled,
   exitLetterAddresseeEnabled,
   letterGreetingNotNameEnabled,
@@ -981,6 +982,13 @@ async function postChat(request: Request) {
           const manual = await new SupabaseKnowledgeProvider().fetchOfficialPolicyManual(ACTIVE_BRAND.knowledgeScopeId);
           return manual.ok ? manual.chunks : null;
         }, [...parsed.history.filter((turn) => turn.role === "user").map((turn) => turn.content), asked.question].join("\n"));
+      }
+      // CARD_PLAN_MATCHES_CREATE_ENABLED: an Attendance CA's card shows the plan Create will save (`lib/forms/card-plan-matches-create.ts`).
+      if (cardPlanMatchesCreateEnabled()) {
+        answer = (await import("@/lib/forms/card-plan-matches-create")).withCardPlanAsCreate(answer, [
+          ...parsed.history.filter((turn) => turn.role === "user").map((turn) => turn.content),
+          asked.question,
+        ].join("\n\n"));
       }
       // TWO_FORMS_CARD_NOT_ASKED_ENABLED: a card that names its employee is never asked "Which of them … — <that employee> or …?" (`lib/forms/card-not-asked.ts`).
       if (twoFormsCardNotAskedEnabled()) answer = (await import("@/lib/forms/card-not-asked")).withoutWhichAskOnSeatedCard(answer);

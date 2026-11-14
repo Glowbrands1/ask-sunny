@@ -21,6 +21,7 @@ import {
   remapIncidentFixEnabled,
   warningLevelManagerOnlyEnabled,
   checkedReadingEnabled,
+  cardPlanMatchesCreateEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { withCorrectedEmployee } from "./corrected-employee";
 import { payrollDeductAmount, payrollDeductFromConversation, type PayrollDeductAnswer } from "@/lib/forms/payroll-deduct";
@@ -298,7 +299,13 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
   // REMAP_INCIDENT_FIX_ENABLED: "empire, sd" is a place and its state, not Salon Director.
   const titleText = remapIncidentFixEnabled() ? withoutStateCodes(managerTitleText) : managerTitleText;
   const title = merge.title(groundTitle(reading?.title ?? null, titleText, input.people, employee.person, employee.name ?? employee.typed));
-  const groundedIncident = groundIncident(reading?.incidentType ?? null, blob, input.headings);
+  /*
+   * CARD_PLAN_MATCHES_CREATE_ENABLED (Gate-Sunny's #894 finding, QA's ruling (b), 14 Nov 2026): the card now shows Pau's
+   * attendance plan ("… arrive on time … Continued lateness will result …"), and the next turn read the app's own plan as
+   * a lateness account: the incident heading became Attendance and a citation line was added to the card. The app never
+   * reads its own words as the account: the described heading is read from the manager's turns only. Off, as before.
+   */
+  const groundedIncident = groundIncident(reading?.incidentType ?? null, blob, input.headings, cardPlanMatchesCreateEnabled() ? userText : blob);
   const incidentType = choiceStated && isDisciplineProcedure(groundedIncident) ? null : groundedIncident;
   /*
    * LATE_OPEN_DATE_ENABLED (QA, 24 Oct 2026): "late to open 10-19" and
@@ -1158,8 +1165,8 @@ function groundTitle(
   return null;
 }
 
-function groundIncident(typed: string | null, blob: string, headings: readonly string[]): string | null {
-  const fromAccount = headingFromAccount(blob, headings);
+function groundIncident(typed: string | null, blob: string, headings: readonly string[], account: string = blob): string | null {
+  const fromAccount = headingFromAccount(account, headings);
   if (fromAccount) return fromAccount;
   if (!typed) return null;
   const exact = headings.find((heading) => headingKey(heading) === headingKey(typed));
