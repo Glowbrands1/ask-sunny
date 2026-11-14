@@ -8,11 +8,11 @@ import {
   type OfficialPolicyManualResult,
 } from "@/lib/knowledge/providers/supabase";
 import type { ChatMessage } from "@/types";
-import { accountChangeRederivesPolicyEnabled, formEditSingleWriterEnabled, policyChangeRelevantEnabled } from "@/lib/config/chat-quality-flags";
+import { accountChangeOtherBesideEnabled, accountChangeRederivesPolicyEnabled, formEditSingleWriterEnabled, policyChangeRelevantEnabled } from "@/lib/config/chat-quality-flags";
 
 import { policyPhrase } from "./ca-action-plan";
 import { syncCorrectiveActionPlan } from "./ca-action-plan-sync";
-import { CA_POLICY_QUESTION, readCaPolicy, statedOffenseKeys } from "./ca-policy";
+import { CA_POLICY_QUESTION, besideAttendanceKeys, readCaPolicy, statedOffenseKeys, withoutCleaningDuty } from "./ca-policy";
 import { offeredOffenseKeys } from "./offense-keys";
 import { describedManualSection } from "./named-policy-section";
 import { checkboxGroupsForVariant, fieldsForVariant, parseFormDocument } from "./document";
@@ -542,8 +542,18 @@ export async function rederivePolicyFromAccount(input: {
 
   let keys: string[] = [];
   let sections: ManualSection[] = [];
+  /*
+   * ACCOUNT_CHANGE_OTHER_BESIDE_ENABLED (Gate-Bubbles-5's finding via QA, 14 Nov 2026): a cleaning duty beside a second
+   * offense the new account describes ("she was on her phone and did not do the sanitation") ticks both, as Create does
+   * (OTHER_BESIDE_DESCRIBED): the offense is read from the account without the cleaning duty, and Other is added. Off,
+   * or a cleaning duty alone: Other alone, as before.
+   */
+  const beside = reading.other === "cleaning" && offered.includes("other") && accountChangeOtherBesideEnabled() ? besideOtherReading(input.account, chunks) : null;
   // Pau's rule: a cleaning or sanitation duty described is Other (this app's reader, with OTHER_POLICY_AGREES).
-  if (reading.other === "cleaning" && offered.includes("other")) {
+  if (beside) {
+    sections = beside.sections;
+    keys = offeredOffenseKeys([...new Set([...beside.keys, "other"])], offered);
+  } else if (reading.other === "cleaning" && offered.includes("other")) {
     keys = ["other"];
   } else {
     /*
@@ -639,6 +649,21 @@ export async function rederivePolicyFromAccount(input: {
   // The Action Plan Ask Sunny built follows the policy now cited (`ca-action-plan.ts`, via the one writer).
   if (written.length > 0) written.push(...(await writer.syncPlan(input.instanceId, actor.id)));
   return written;
+}
+
+/**
+ * ACCOUNT_CHANGE_OTHER_BESIDE_ENABLED: the offense an account describes beside its cleaning duty, read as Create reads it
+ * (`withoutCleaningDuty`, then the described manual section or the attendance boxes); null when the cleaning duty is
+ * the only offense.
+ */
+function besideOtherReading(account: string, chunks: Parameters<typeof describedManualSection>[0]["chunks"]): { keys: string[]; sections: ManualSection[] } | null {
+  const rest = withoutCleaningDuty(account);
+  if (rest === null) return null;
+  const described = describedManualSection({ text: rest, chunks });
+  const attendance = besideAttendanceKeys(rest);
+  if (!described && !attendance) return null;
+  const stated = statedOffenseKeys(readCaPolicy(rest), rest) ?? attendance ?? (described ? [offenseKeyForManualHeading(described.section.heading)] : []);
+  return stated.length > 0 ? { keys: stated, sections: described ? [described.section] : [] } : null;
 }
 
 /** The pinned manual, or a reason — a knowledge-base outage never fails the turn. */

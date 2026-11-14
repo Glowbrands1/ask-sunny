@@ -4929,3 +4929,16 @@ export function addAlreadyOnFormSaysSoEnabled(): boolean {
 export function otherBesideDescribedEnabled(): boolean {
   return envFlag("OTHER_BESIDE_DESCRIBED_ENABLED");
 }
+
+/**
+ * ACCOUNT_CHANGE_OTHER_BESIDE_ENABLED (Coding-2, 14 Nov 2026; default off; Gate-Bubbles-5's finding via QA, checked here
+ * too). With ACCOUNT_CHANGE_REDERIVES_POLICY on, "change the issue to she was on her phone and did not do the
+ * sanitation" on a lateness draft re-derived to Other alone: the cleaning duty was read first, so the phone was dropped,
+ * while a Create from the same words ticks Cell Phone and Other (OTHER_BESIDE_DESCRIBED). On (with
+ * OTHER_BESIDE_DESCRIBED and OTHER_POLICY_AGREES): the re-derive reads the account without the cleaning duty, as Create
+ * does, and ticks the described offense and Other; a cleaning duty that is the only offense stays Other alone
+ * (`forms/chat-policy-change.ts` rederivePolicyFromAccount). Off, as before.
+ */
+export function accountChangeOtherBesideEnabled(): boolean {
+  return envFlag("ACCOUNT_CHANGE_OTHER_BESIDE_ENABLED");
+}
