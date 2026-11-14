@@ -25,6 +25,11 @@ describe("a stated field the card does not hold", () => {
   it("names each field that differs", () => {
     expect(cardMismatch({ warningLevel: "verbal", payrollAmount: "25", date: "11/5" }, card)).toEqual(["warning level (verbal)", "payroll amount ($25)", "date (11/5)"]);
   });
+  it("a Policy line is the card's whole line, not its heading alone (batch E, E6)", () => {
+    const attendance = { policyLine: "Attendance Policy, JBA Policy Manual p.14" } as never;
+    expect(cardMismatch({ policy: "Attendance" }, attendance)).toEqual(["policy (Attendance)"]);
+    expect(cardMismatch({ policy: "Attendance Policy (JBA Policy Manual, p.14)" }, attendance)).toEqual([]);
+  });
   it("with no card this turn, every stated field differs from the card on screen", () => {
     expect(cardMismatch({ warningLevel: "written" }, null)).toEqual(["warning level (written)"]);
   });

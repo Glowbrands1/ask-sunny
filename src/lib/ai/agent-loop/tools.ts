@@ -28,7 +28,7 @@ import { sectionWording } from "@/lib/forms/policy-citation";
 import { buildProposal, extractEmployeeNames, extractJobTitle, managerContext, samePerson, tidyTypedName } from "@/lib/forms/proposal";
 import { cleaningUndonePhrase, namesCareAndCleaning } from "@/lib/forms/ca-policy";
 import { turnsFromThisPersonsRequest } from "@/lib/forms/this-persons-turns";
-import { closeHeadingReading, closePolicyQuestion, namedPolicies } from "@/lib/forms/named-policy-section";
+import { closeHeadingReading, closePolicyQuestion, namedPolicies, namesHeading } from "@/lib/forms/named-policy-section";
 import { startsNewForm } from "@/lib/ai/remap-incident";
 import { payrollAmountFromConversation, statedPayrollDeduct } from "@/lib/forms/payroll-deduct";
 import { PAYROLL_AMOUNT_KEY } from "@/lib/forms/payroll-amount-field";
@@ -397,6 +397,14 @@ export async function findStaff(context: ToolContext, input: { name?: unknown },
  *   scope is never listed.
  * - Only for somebody who may create a Coaching or Corrective Action Form, as today's picker.
  */
+/* Batch E (E11): words that join two facts into a cause or a result. A reword never adds one the manager did not write. */
+const LINKING = /\b(resulting in|which resulted in|as a result(?: of)?|which led to|leading to|led to|because(?: of)?|due to|caused by|causing|so that|therefore|consequently)\b/gi;
+/** The linking phrases in `text` that `before` does not have. */
+export function addedLinks(before: string, text: string): string[] {
+  const had = new Set([...before.matchAll(LINKING)].map((match) => match[1]!.toLowerCase()));
+  return [...new Set([...text.matchAll(LINKING)].map((match) => match[1]!.toLowerCase()))].filter((phrase) => !had.has(phrase));
+}
+
 /** A position as compared: lowercase words, a plural "s" dropped ("Tanning Consultants" = "tanning consultant"). */
 function positionKey(text: string): string {
   return text.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).map((word) => (word.length > 3 && word.endsWith("s") ? word.slice(0, -1) : word)).join(" ");
@@ -1020,10 +1028,14 @@ export async function proposeForm(
    * until the manager says which.
    */
   let didYouMean: string | null = null;
+  /* Batch E (E9): a policy the manager named that no heading answers, by name or close spelling ("the key holdr policy"). */
+  let notInManual: string | null = null;
   if (manual) {
     for (const named of namedPolicies(requestWords)) {
       didYouMean = closePolicyQuestion(named.phrase, manual.chunks);
       if (didYouMean) break;
+      const close = closeHeadingReading(named.phrase, manual.headings);
+      if (!notInManual && !manual.headings.some((heading) => namesHeading(named.phrase, heading)) && !close.confident && close.candidates.length === 0) notInManual = named.phrase;
     }
   }
   // The Other topic is read from the account as the model cleaned it (SPELLING_CLEANUP: "th e10 minute sanitaion" → "the 10-minute sanitation"), else the manager's words.
@@ -1092,6 +1104,10 @@ export async function proposeForm(
   const datesAsked = datesGiven.length > 1 && !date ? datesGiven : [];
   /* Batch C (code-check #32): a date after today is a fact with today's date; the rules book says to ask. */
   const dateAfterToday = date && date > today ? date : null;
+  /* Batch E (E10): the manager's month/day ("12/20" on 11/14) was read as last year's; the reply says so in one line. */
+  const lastYear = date && !dateAfterToday && date.slice(0, 4) < today.slice(0, 4)
+    ? incidentDates(requestWords, null).find((given) => monthDayToIso(given) === date) ?? null
+    : null;
   const askedLevel = input.warning_level === "verbal" || input.warning_level === "written" ? input.warning_level : null;
   const level = askedLevel && (askedLevel === "verbal" ? /\bverbal\b/i : /\bwritten\b|\bwrite[- ]?up\b/i).test(managerWords) ? askedLevel : null;
   const dropped = [askedLevel && !level ? "warning_level" : null, askedPayroll && !payroll ? "payroll_deduct" : null, typedAmount && !amount ? "payroll_amount" : null].filter(Boolean);
@@ -1186,6 +1202,9 @@ export async function proposeForm(
     ...(formatFigures.length > 0 ? { format_figures: formatFigures } : {}),
     ...(fitsHeadings ? { fits_headings: fitsHeadings } : {}),
     ...(dateAfterToday ? { date_after_today: { date: dateAfterToday, today } } : {}),
+    ...(lastYear && date ? { date_read_as_last_year: { said: lastYear, date } } : {}),
+    ...(notInManual && policyLine ? { policy_not_in_manual: notInManual } : {}),
+    ...(whatHappened && addedLinks(managerWords, whatHappened).length > 0 ? { reword_added_link: addedLinks(managerWords, whatHappened) } : {}),
     ...(statedSteps.length > 0 ? { prior_steps_said: statedSteps } : {}),
     ...(corrective && payroll === "yes" && !amount && statedAmount ? { payroll_amount_said: `$${statedAmount}` } : {}),
     ...(cleaning && !careAndCleaning ? { cleaning_duty: cleaning } : {}),
@@ -1335,7 +1354,7 @@ export async function editForm(
      * A reword keeps every fact (Pau via QA): the rules book teaches it; the result says what the new wording left out
      * of the old and which fixed fields it touched, so the model puts them back (code-check #28, batch C).
      */
-    const rewordFacts: { reword_lost?: Record<string, string[]>; reword_touched_fixed_fields?: string[] } = {};
+    const rewordFacts: { reword_lost?: Record<string, string[]>; reword_touched_fixed_fields?: string[]; reword_added_link?: Record<string, string[]> } = {};
     if (REWORD_REQUEST.test(context.question) && Object.keys(values).length > 0) {
       /*
        * HARD GUARD, THE RIGHT PERSON (QA's review of batch C): a reword never changes who the form is about. Values for
@@ -1353,6 +1372,8 @@ export async function editForm(
         const old = loaded.values.find((row) => row.fieldKey === field)?.value ?? "";
         const lost = accountMissing(old, text);
         if (lost.length > 0) rewordFacts.reword_lost = { ...(rewordFacts.reword_lost ?? {}), [field]: lost };
+        const linked = addedLinks(old, text);
+        if (linked.length > 0) rewordFacts.reword_added_link = { ...(rewordFacts.reword_added_link ?? {}), [field]: linked };
       }
     }
     if (loaded.instance.status !== "draft") {
@@ -1429,7 +1450,7 @@ export async function editForm(
       refused: written.rejected.map((row) => ({ field: row.key, reason: row.reason })),
       ...rewordFacts,
       ...(answerAlsoWrote.length > 0 ? { level_or_payroll_answer_also_wrote: answerAlsoWrote } : {}),
-      ...(rewordFacts.reword_lost || rewordFacts.reword_touched_fixed_fields || answerAlsoWrote.length > 0
+      ...(rewordFacts.reword_lost || rewordFacts.reword_touched_fixed_fields || rewordFacts.reword_added_link || answerAlsoWrote.length > 0
         ? { note: "Saved. Check these facts against what the manager asked and edit again to put anything back (the rules book's Editing lines)." }
         : {}),
     };

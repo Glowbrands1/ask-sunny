@@ -218,5 +218,11 @@ Rules-book lines and facts only; no reply patches. Each item has an outcome case
 | E5, "ca for the key holdr policy" | `close_heading` or `confirm_policy` (read_policy, on a close spelling) | Which form: name the matched policy in the question; "use that one" is the policy |
 | E6, the whole **Policy:** line | — (card.policy was already the full line; the model shortened it) | Card replies: the whole line, never the heading alone |
 | E7, staff count and one position | `staff_count`, `position`/`position_count`, `position_not_found` (list_staff, new optional `position` input) | Staff lists: the count first; only that position's people, after the salon |
+| E8, a new card's reply that says nothing about it | — | Card replies: a new card's reply says what is on it and ends with the Policy line; "still open" only with no new card |
+| E9, a policy the manual has no heading for | `policy_not_in_manual` (propose_form) | Card replies: cite the fitting section and say so in one line; The policy: a one-word answer after a card is that card's policy, never a knowledge search |
+| E10, a month/day later than today | `date_read_as_last_year` (propose_form) | Card replies: "Dated <M/D/YYYY> (last <month>)"; never a date after today |
+| E11, a reword that adds a cause | `reword_added_link` (propose_form, edit_form) | Editing and Card replies: grammar and tone only, facts stay separate |
+
+**E8 in code:** the self-review also hands back, once, a reply to a new card that cites a policy when the reply has no **Policy:** line. On a second miss the model's own reply is kept; only a stated value the card does not hold gets today's "That change isn't on the card yet" line.
 
 **E6 in code:** the card self-review compares the reply's **Policy:** line with the card's whole policy line (letters and digits only), not just the heading. A shortened line is handed back once, like any other mismatch (batch D's hand-back). Nothing new is written into the reply.

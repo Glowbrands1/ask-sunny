@@ -96,6 +96,7 @@ export const RULES_BOOK: readonly { readonly title: string; readonly rules: read
       "A policy the manager takes off (\"remove the policy\", \"no policy on this one\", \"not dress code\") stays off until they name one again, and that sentence is never part of the account.",
       "A form on file is a record, not this incident: never take this form's policy, date or details from an older form.",
       "Before saying the JBA Policy Manual does not cover something, search it: search_knowledge with the manager's words, then read_policy on the best heading. A rule can sit inside a section about something else (\"No tanning while on the clock\" is in Employee Discounts for Company Products and Services). Your answer and any card for the same incident cite the same section.",
+      "A one-word or short answer right after a card (\"guidelines\", \"the security one\", \"that one\") is about that card's policy: read that heading with read_policy and propose the card again with it. Never answer it with search_knowledge.",
     ],
   },
   {
@@ -136,6 +137,7 @@ export const RULES_BOOK: readonly { readonly title: string; readonly rules: read
       "Adding a fact to a draft's account (\"she also left early\"): when the reviser says nothing changed, edit_form with values for the account field: the whole account as it is now, with the new sentence after it.",
       "edit_form's reword_lost (words the new wording dropped from the old) and reword_touched_fixed_fields (a reword changed the level, payroll, date, person or policy): edit again so every dropped word is back and the fixed fields are as they were (read_form shows them).",
       "edit_form's level_or_payroll_answer_also_wrote: a level or payroll answer changes only those fields. Put the other fields it wrote back as they were (read_form shows them).",
+      "A reword (\"make it professional\") fixes grammar, spelling and tone only. It never adds a cause, a result or a link between facts (\"resulting in\", \"because\", \"which led to\", \"due to\"): \"didnt check the beds between clients and left towels on the floor in room 3\" is \"She did not check the beds between clients. She left towels on the floor in room 3.\"",
     ],
   },
   {
@@ -160,6 +162,10 @@ export const RULES_BOOK: readonly { readonly title: string; readonly rules: read
       "Review your reply before you send it: every field it states (level, payroll and amount, date, policy, person) must be what the card you proposed this turn holds, or, with no new card, what the card on screen already holds. If one differs, fix the card with propose_form (or the draft with edit_form) or correct the reply. Never state a value the card does not hold.",
       "With a card open (the system block says so) and no new card or edit this turn, end the reply with: \"The card above is still open; press Create when it looks right, or tell me what to change.\"",
       "Before you reply about a card, read propose_form's facts that mean the card is not right yet, and fix the card first (propose_form again, same person and form): account_words_missing (put each listed word back in what_happened, as the manager said it); account_given (what_happened was empty although the manager said what happened: use their account); figures_not_said and format_figures (take those numbers out: they are not this employee's, or nobody said them); fits_headings (the policy you chose is not this incident's section: read one of those and use it, unless the manager named yours); date_after_today (never a date after today: leave incident_date empty and ask which day). Only then write the reply.",
+      "A turn that proposes a card says what is on it: the form and the person in the first line, any assumption line from the facts, the Observation, then the **Policy:** line. \"The card above is still open …\" is only for a turn with no new card, never the whole reply.",
+      "policy_not_in_manual (the manager named a policy the JBA manual has no heading for, nor a close one): cite the section that fits what happened and say in one line \"The JBA manual has no <their words> policy, so the card cites **<heading>** (p.<page>); say if you want another.\" Never stop to ask first.",
+      "date_read_as_last_year (a month/day later in the year than today, read as last year's): say \"Dated <M/D/YYYY> (last <month>); say if you meant another day.\" Never put a date after today on the card.",
+      "reword_added_link (propose_form or edit_form): your wording joined facts with words the manager never used (\"resulting in\", \"because\", \"which led to\", \"due to\"). Write it again with those facts as separate sentences, as the manager said them.",
     ],
   },
   {

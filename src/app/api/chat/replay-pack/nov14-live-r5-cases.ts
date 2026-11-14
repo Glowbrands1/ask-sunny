@@ -310,4 +310,145 @@ export const NOV14_LIVE_R5_CASES: ReplayCase[] = [
       expect(reply.content, `another position was listed:\n${reply.content}`).not.toMatch(/Juno Paxton/);
     },
   },
+  {
+    id: "nov14-live-r5-e8-new-card-reply-says-what-is-on-it",
+    title: "QA E8/E9: \"ca for <name> for violating the key holdr policy, she left the back door unlocked last night\" (no Key Holder heading in the manual): the reply says what is on the new card, says in one line which section it cites instead, and ends with the whole Policy line; a reply that is only \"The card above is still open\" is handed back",
+    report: `${REPORT_E}: E8, the WHOLE reply after a new card was "The card above is still open; press Create when it looks right, or tell me what to change."`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      t.manualAlsoHas?.([manualChunk(902, 25, "Security Policy", "Lock every door and the safe at close.")]);
+      const model = loopStandIn((view): LoopDecision => {
+        const checked = /\[app check\]/.test(latest(view));
+        if (checked) {
+          const line = /"\*\*Policy:\*\* ([^"]+)"/.exec(latest(view))?.[1] ?? "";
+          return { text: `Here's the Corrective Action Form for **Remy Calder**.\n\nThe JBA manual has no key holdr policy, so the card cites **Security Policy** (p.25); say if you want another.\n\n**Observation of Offense:** Remy Calder left the back door unlocked last night.\n\n**Policy:** ${line}` };
+        }
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
+        if (!lastResult(view, "read_policy")) return { tool: "read_policy", input: { heading: "Security Policy" } };
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", policy: "Security Policy", what_happened: "Remy Calder left the back door unlocked last night." } };
+        return { text: "The card above is still open; press Create when it looks right, or tell me what to change." };
+      });
+      t.loopModel!(model);
+      const reply = await t.thread().say("ca for remy calder for violating the key holdr policy, she left the back door unlocked last night");
+      const policyLine = (reply.formProposal as { policyLine?: string | null } | undefined)?.policyLine ?? "";
+      expect(policyLine, "the card cites no section").toMatch(/^Security Policy/);
+      expect(reply.content, `the reply does not say what is on the card:\n${reply.content}`).toMatch(/Remy Calder/);
+      expect(reply.content.trim(), "the whole reply is the still-open line").not.toMatch(/^The card above is still open[^\n]*$/);
+      const said = /^\s*\*\*Policy:?\*\*:?\s*(.+)$/im.exec(reply.content)?.[1]?.trim() ?? "";
+      expect(said.toLowerCase().replace(/[^a-z0-9]+/g, ""), `no whole Policy line:\n${reply.content}`).toBe(policyLine.toLowerCase().replace(/[^a-z0-9]+/g, ""));
+      expect(reply.content, "the reply does not say the manual has no such policy").toMatch(/no key ?ho?ldr? policy/i);
+      if (offline) {
+        expect(model.views.some((view) => /\[app check\] Your reply does not say what is on the card/.test(latest(view))), "the still-open-only reply was not handed back").toBe(true);
+        expect(toolResults(model.views, "propose_form").some((result) => /"policy_not_in_manual":"key holdr/.test(result)), "a policy the manual lacks is not a fact").toBe(true);
+      }
+    },
+  },
+  {
+    id: "nov14-live-r5-e9-one-word-answer-is-the-cards-policy",
+    title: "QA E9: right after a card, a one-word answer (\"guidelines\") is about that card's policy: no knowledge search, and the reply is about the card's policy",
+    report: `${REPORT_E}: E9, t2 "guidelines" searched the DM Training Manual and left the card unchanged`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      t.manualAlsoHas?.([manualChunk(902, 25, "Security Policy", "Lock every door and the safe at close.")]);
+      const card = (view: LoopView) => (lastResult(view, "propose_form")?.card ?? {}) as { policy?: string | null };
+      const model = loopStandIn((view): LoopDecision => {
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
+        if (!lastResult(view, "read_policy")) return { tool: "read_policy", input: { heading: "Security Policy" } };
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", policy: "Security Policy", what_happened: "Remy Calder left the back door unlocked last night." } };
+        const intro = /^guidelines$/i.test(latest(view).trim())
+          ? "The JBA manual has no Key Holder Guidelines either, so the card keeps **Security Policy** (p.25); say if you want another."
+          : "Here's the Corrective Action Form for **Remy Calder**.\n\n**Observation of Offense:** Remy Calder left the back door unlocked last night.";
+        return { text: `${intro}\n\n**Policy:** ${card(view).policy ?? ""}` };
+      });
+      t.loopModel!(model);
+      const thread = t.thread();
+      await thread.say("ca for remy calder for violating the key holdr policy, she left the back door unlocked last night");
+      const before = model.views.length;
+      const reply = await thread.say("guidelines");
+      expect(model.views.slice(before).some((view) => view.results.some((result) => result.tool === "search_knowledge")), "a one-word answer about the card's policy became a knowledge search").toBe(false);
+      expect(reply.content, `the reply is not about the card's policy:\n${reply.content}`).toMatch(/Security Policy/);
+    },
+  },
+  {
+    id: "nov14-live-r5-e10-month-day-later-than-today-said",
+    title: "QA E10: \"write up <name> for being late on 12/20\" sent on 11/14: the card is dated last year's 12/20, and the reply says so in one line",
+    report: `${REPORT_E}: E10, the card was silently dated 2025-12-20, with no line saying so`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      const model = loopStandIn((view): LoopDecision => {
+        const result = lastResult(view, "propose_form") as { card?: { policy?: string | null }; facts?: { date_read_as_last_year?: { said: string; date: string } } } | null;
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
+        if (!result) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: "Remy Calder was late on 12/20.", incident_date: "2025-12-20" } };
+        const read = result.facts?.date_read_as_last_year;
+        return {
+          text: [
+            "Here's the Corrective Action Form for **Remy Calder**.",
+            read ? "Dated 12/20/2025 (last December); say if you meant another day." : "",
+            "**Observation of Offense:** Remy Calder was late on 12/20.",
+            result.card?.policy ? `**Policy:** ${result.card.policy}` : "",
+          ].filter(Boolean).join("\n\n"),
+        };
+      });
+      t.loopModel!(model);
+      const thread = t.thread();
+      const reply = await thread.say("write up remy calder for being late on 12/20");
+      const formDate = thread.proposal?.formDate ?? "";
+      expect(formDate <= "2026-11-14", `the card is dated after today: ${formDate}`).toBe(true);
+      if (formDate === "2025-12-20") expect(reply.content, `the past-year reading is not said:\n${reply.content}`).toMatch(/12\/20\/2025|December 20, 2025|last December/i);
+      if (offline) expect(toolResults(model.views, "propose_form").some((result) => /"date_read_as_last_year":\{"said":"12\/20","date":"2025-12-20"\}/.test(result)), "the past-year reading is not a fact").toBe(true);
+    },
+  },
+  {
+    id: "nov14-live-r5-e11-reword-never-adds-a-cause",
+    title: "QA E11: \"make it professional\" on \"she didnt check the beds between clients and left towels on the floor in room 3\": grammar and tone only; never \"resulting in\" or another link between the facts",
+    report: `${REPORT_E}: E11, the reword wrote "She did not check the beds between clients, resulting in towels being left on the floor in room 3."`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      const said = "she didnt check the beds between clients and left towels on the floor in room 3";
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "coaching", employee_id: "e-2", what_happened: "Remy Calder didn't check the beds between clients and left towels on the floor in room 3." } };
+        return { text: "Here's the Coaching Form for **Remy Calder**.\n\n**Observation of Offense:** Remy Calder didn't check the beds between clients and left towels on the floor in room 3." };
+      }));
+      const thread = t.thread();
+      await thread.say(`coaching form for remy calder, ${said}`);
+      const id = await thread.create();
+      t.typeOnForm(id, { coaching_details: "Remy Calder didnt check the beds between clients and left towels on the floor in room 3." });
+      // A model that first links the facts, then writes them as separate sentences when edit_form reports the link.
+      const rewriter = loopStandIn((view): LoopDecision => {
+        const edits = view.results.filter((result) => result.tool === "edit_form");
+        const linked = (edits.at(-1)?.output as { reword_added_link?: Record<string, string[]> } | undefined)?.reword_added_link;
+        if (edits.length === 0) return { tool: "edit_form", input: { instance_id: id, values: { coaching_details: "Remy Calder did not check the beds between clients, resulting in towels being left on the floor in room 3." } } };
+        if (edits.length === 1 && linked) return { tool: "edit_form", input: { instance_id: id, values: { coaching_details: "Remy Calder did not check the beds between clients during her shift. She also left used towels on the floor in room 3." } } };
+        return { text: "Reworded: Remy Calder did not check the beds between clients during her shift. She also left used towels on the floor in room 3." };
+      });
+      t.loopModel!(rewriter);
+      await thread.say("make it professional");
+      const details = t.values(id).coaching_details ?? "";
+      expect(details, `a reword added a cause or result:\n${details}`).not.toMatch(/resulting in|as a result|led to|leading to|because|due to|caused/i);
+      expect(details, "a fact was lost").toMatch(/room 3/);
+      expect(details).toMatch(/beds between clients/);
+      if (offline) expect(toolResults(rewriter.views, "edit_form").some((result) => /"reword_added_link":\{"coaching_details":\["resulting in"\]\}/.test(result)), "the added link is not a fact").toBe(true);
+    },
+  },
 ];

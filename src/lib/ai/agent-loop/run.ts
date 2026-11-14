@@ -155,8 +155,11 @@ export function cardClaims(content: string): CardClaims {
 /** The card's facts as the model is shown them, and the fields the reply states that the card does not hold. */
 export function cardMismatch(claims: CardClaims, card: ChatFormProposal | null): string[] {
   const wrong: string[] = [];
-  /* Batch E (E6): the whole line (heading, manual, page), letters and digits only, so "Standards of Conduct" alone is a mismatch. */
-  const policyLine = (line: string | null | undefined) => (line ? line.toLowerCase().replace(/[^a-z0-9]+/g, "") : null);
+  /*
+   * Batch E (E6): the whole line (heading, manual, page), letters and digits only and articles aside, so "Standards of
+   * Conduct" alone is a mismatch and "Other — 10-minute sanitation" for "Other — the 10-minute sanitation" is not.
+   */
+  const policyLine = (line: string | null | undefined) => (line ? line.toLowerCase().replace(/\b(?:the|a|an)\b/g, " ").replace(/[^a-z0-9]+/g, "") : null);
   if (claims.warningLevel && card?.warningLevel !== claims.warningLevel) wrong.push(`warning level (${claims.warningLevel})`);
   if (claims.payrollDeduct && card?.payrollDeduct !== claims.payrollDeduct) wrong.push(`payroll deduct (${claims.payrollDeduct})`);
   if (claims.payrollAmount && Number(card?.payrollDeductAmount?.replace(/[^\d.]/g, "") ?? NaN) !== Number(claims.payrollAmount)) wrong.push(`payroll amount ($${claims.payrollAmount})`);
@@ -535,19 +538,25 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
       };
       const reviewed = stoppedAt === "reply" && !effects.formUpdate && !effects.formOpened && !input.openFormId && (effects.proposal || cardOpenAtStart);
       const wrong = reviewed ? cardMismatch(cardClaims(text), effects.proposal) : [];
-      if (wrong.length > 0) {
+      /* Batch E (E8): a new card that cites a policy, and a reply with no **Policy:** line, goes back once; never rewritten. */
+      const noPolicyLine = (reply: string) => Boolean(reviewed && effects.proposal?.policyLine && !cardClaims(reply).policy);
+      const missing = noPolicyLine(text);
+      if (wrong.length > 0 || missing) {
         const note = [
-          `[app check] Your reply says the card has: ${wrong.join("; ")}. ${effects.proposal ? "The card you proposed this turn does not." : "No card was proposed this turn, so the card on the manager's screen did not change."}`,
+          ...(wrong.length > 0 ? [`[app check] Your reply says the card has: ${wrong.join("; ")}. ${effects.proposal ? "The card you proposed this turn does not." : "No card was proposed this turn, so the card on the manager's screen did not change."}`] : []),
+          ...(missing ? [`[app check] Your reply does not say what is on the card you proposed: give the form and the person, any assumption line, the Observation, and end with "**Policy:** ${effects.proposal!.policyLine}".`] : []),
           `Card now: ${JSON.stringify(cardFacts(effects.proposal))}.`,
           "If the manager asked for that change, call propose_form again for the same person and form with it (and everything else the card already has). Otherwise correct your reply. Never state a value the card does not hold. Then write your reply to the manager again.",
         ].join("\n");
         const again = await handBack(note);
         const still = again ? cardMismatch(cardClaims(again), effects.proposal) : wrong;
-        selfReview = { mismatched: wrong, fixed: still.length === 0 };
-        /* Only on a second miss: the reply says plainly what is not on the card (today's no-op honesty pattern). */
-        text = still.length === 0 && again
-          ? again
-          : `That change isn't on the card yet: ${still.join("; ")}. Tell me again and I'll update the card.`;
+        selfReview = { mismatched: [...wrong, ...(missing ? ["policy line (missing)"] : [])], fixed: still.length === 0 && Boolean(again) && !noPolicyLine(again) };
+        /*
+         * Only on a second miss of a stated value: the reply says plainly what is not on the card (today's no-op honesty
+         * pattern). A reply that only left the Policy line out keeps the model's words (the hand-back's, else the first).
+         */
+        if (still.length > 0) text = `That change isn't on the card yet: ${still.join("; ")}. Tell me again and I'll update the card.`;
+        else if (again) text = again;
       }
       /*
        * THE DRAFT'S HONESTY CHECK HANDS BACK FIRST (code-check #48, batch D): with a draft open, a reply that claims the
