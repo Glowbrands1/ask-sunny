@@ -4866,3 +4866,31 @@ export function sharedCityAsksSalonEnabled(): boolean {
 export function onFileLineNotThePolicyEnabled(): boolean {
   return envFlag("ON_FILE_LINE_NOT_THE_POLICY_ENABLED");
 }
+
+/**
+ * OBSERVATION_NO_LEADING_NAME (QA's Sunny 38d live check, 13 Nov 2026; default off): an account clause that starts with
+ * the employee's name and then "at"/"in" ("<A> at the front desk, she was rude to a guest") loses the name; the place
+ * and the rest are kept as typed. See `ai/remap-incident.ts`. Off, as before.
+ */
+export function observationNoLeadingNameEnabled(): boolean {
+  return envFlag("OBSERVATION_NO_LEADING_NAME_ENABLED");
+}
+
+/**
+ * WORK_AREA_NOT_A_TITLE (QA's Sunny 38d live check, 13 Nov 2026; default off): a place in the salon where someone works
+ * ("front desk", "back room", "register", "bed 4", "lobby") is never the card's job title, even when the model reads it
+ * as one. See `ai/intent-slots.ts` groundTitle. Off, as before.
+ */
+export function workAreaNotATitleEnabled(): boolean {
+  return envFlag("WORK_AREA_NOT_A_TITLE_ENABLED");
+}
+
+/**
+ * REASON_PLACE_NOT_SALON (ported from the sibling app, Gate-Bubbles-3's #869 probes, 13 Nov 2026; default off): "she
+ * was late because she was at grand island" — where she was is why she was late, not the salon the form is for. With
+ * the flag, a place in a "because <she> was at/in …" clause is not read as a salon: the salon comes from Woven or is
+ * asked. The account keeps the words. See `forms/salon-mention.ts` readSalonMentions. Off, as before.
+ */
+export function reasonPlaceNotSalonEnabled(): boolean {
+  return envFlag("REASON_PLACE_NOT_SALON_ENABLED");
+}
