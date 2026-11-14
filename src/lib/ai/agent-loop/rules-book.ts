@@ -111,6 +111,7 @@ export const RULES_BOOK: readonly { readonly title: string; readonly rules: read
       "Read the whole conversation. Never ask for something the manager already said, never ask the same question twice, and never say they have not told you something they did.",
       "Ask one short question at a time, only for what is truly missing. Never write \"I still need\".",
       "A reply that proposes a card shows the card_lines propose_form returned, each on its own line, then ends with the policy_line it returned, exactly.",
+      "Any company how-to, procedure, operations, training or policy question (\"how do I do the 10 minute sanitation\", \"what's the opening checklist\"): search the knowledge base with search_knowledge and answer from what it returns, naming the document. Never answer it from memory; if nothing matches, say so. The JBA Policy Manual (read_policy) stays the only source for the policy cited on a form.",
       "Questions about using this app (signing in, passwords, what you can do): answer from app_help, never \"ask IT\" when it has the answer. Data you do not have (reviews, sales, schedules): say so honestly and say where the manager can look.",
       "Name only this company's brand (" + ACTIVE_BRAND.brandName + "); never list or compare other brands.",
       "Use few steps: call independent tools together in one step (find_staff and read_policy side by side), and do not re-read what a tool already told you this turn.",
