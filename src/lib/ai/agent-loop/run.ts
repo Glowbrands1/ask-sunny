@@ -51,8 +51,9 @@ import {
  *   time         each model step 90 s (a long final answer is not cut); the
  *                whole loop 100 s, under the route's 120 s
  *   limit/error  a clear reply, never an empty one, and a server log line
- *   trace        chat_traces `slots.agent_loop`: each step's tool, ms and
- *                result size — names and numbers only, never values
+ *   trace        chat_traces `slots.agent_loop`: each tool call's name, ms and
+ *                result size, and each model call's ms, stop reason and
+ *                tokens — names and numbers only, never values
  *   spend        every step's usage into the request's spend meter; the
  *                trace row carries the model and the turn's totals, so the
  *                monthly budget and the daily cap count it
@@ -181,6 +182,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   };
   const effects: ToolEffects = { proposal: null, policyHeading: null, formUpdate: null };
   const steps: AgentLoopStep[] = [];
+  /* Each model call's tokens and ms, for the trace (numbers only). */
+  const modelSteps: { step: number; ms: number; stop: string | null; input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number }[] = [];
   const handlers: Record<string, (args: Record<string, unknown>) => Promise<ToolResult>> = {
     find_staff: (args) => findStaff(context, args),
     find_past_forms: (args) => findPastForms(context, args),
@@ -233,6 +236,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
      */
     await withAiTimeLimit("agent_loop", AGENT_LOOP_TOTAL_MS, async () => {
       for (let step = 1; step <= limit; step += 1) {
+        const stepStarted = performance.now();
         const reply = (await withAiTimeLimit("agent_loop_step", AGENT_LOOP_STEP_MS, (timed) =>
           client.messages.create(
             {
@@ -249,6 +253,15 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         )) as unknown as ModelReply;
         modelCalls += 1;
         for (const key of Object.keys(usage) as (keyof typeof usage)[]) usage[key] += count(reply.usage?.[key]);
+        modelSteps.push({
+          step,
+          ms: Math.round(performance.now() - stepStarted),
+          stop: reply.stop_reason ?? null,
+          input_tokens: count(reply.usage?.input_tokens),
+          output_tokens: count(reply.usage?.output_tokens),
+          cache_read_input_tokens: count(reply.usage?.cache_read_input_tokens),
+          cache_creation_input_tokens: count(reply.usage?.cache_creation_input_tokens),
+        });
         const content = reply.content ?? [];
         const calls = content.filter((block) => block.type === "tool_use" && typeof block.name === "string");
         text = content
@@ -289,7 +302,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   if (trace) {
     trace.slots = {
       ...(trace.slots ?? {}),
-      agent_loop: { steps, model_calls: modelCalls, step_limit: limit, stopped: stoppedAt, ms: latencyMs },
+      agent_loop: { steps, model_steps: modelSteps, model_calls: modelCalls, step_limit: limit, stopped: stoppedAt, ms: latencyMs },
     };
   }
 

@@ -429,6 +429,10 @@ export const NOV14_AGENT_LOOP_CASES: ReplayCase[] = [
       const looped = (row!.slots as { agent_loop: { steps: { tool: string; ms: number; resultChars: number }[]; model_calls: number; stopped: string } }).agent_loop;
       expect(looped.steps.map((step) => step.tool)).toEqual(["find_staff", "find_past_forms", "propose_form"]);
       expect(looped.model_calls).toBe(4);
+      // Per model call: its tokens (the stand-in reports 200 in, 60 out, 1,000 cached) and ms.
+      const modelSteps = (row!.slots as { agent_loop: { model_steps: { step: number; input_tokens: number; output_tokens: number; cache_read_input_tokens: number; ms: number }[] } }).agent_loop.model_steps;
+      expect(modelSteps.map((step) => step.step)).toEqual([1, 2, 3, 4]);
+      expect(modelSteps.every((step) => step.input_tokens === 200 && step.output_tokens === 60 && step.cache_read_input_tokens === 1000 && step.ms >= 0)).toBe(true);
       expect(looped.stopped).toBe("reply");
       expect(looped.steps.every((step) => step.resultChars > 0 && step.ms >= 0)).toBe(true);
       expect(JSON.stringify(looped)).not.toMatch(/Briony|Calloway|coat/i);
