@@ -5,6 +5,7 @@ import { MissingConfigurationError, requireEnv } from "@/lib/config/server-env";
 import { mainAnswerTimeoutMs, streamGapTimeoutMs } from "@/lib/config/ai-timeouts";
 import { chatTraceEnabled } from "@/lib/config/chat-quality-flags";
 import { authorizedSalonIds } from "@/lib/forms/location-scope";
+import { rosterSalonName } from "@/lib/forms/salon-mention";
 import type { ChatMessage } from "@/types";
 
 import { finishChatTrace, openChatTrace } from "../chat-trace";
@@ -244,7 +245,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   const dynamic = agentLoopSystem({
     managerName: input.actor.displayName,
     role: input.actor.role,
-    salons: authorizedSalonIds(input.actor.scope),
+    salons: authorizedSalonIds(input.actor.scope).map((id) => rosterSalonName(id) ?? id),
     today: input.today,
     templates,
     headings: manual?.headings ?? [],

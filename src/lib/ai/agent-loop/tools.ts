@@ -5,7 +5,9 @@ import { randomUUID } from "node:crypto";
 import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import { businessToday } from "@/lib/business-date";
 import { candidateNameWords, chatFormsActor } from "@/lib/forms/chat-form-records";
-import { displayName, type RosterEmployee } from "@/lib/forms/employee-match";
+import { displayName, matchEmployeeName, nameConfirmationQuestion, type RosterEmployee } from "@/lib/forms/employee-match";
+import { offRosterOffer } from "@/lib/forms/off-roster-confirm";
+import { rosterSalonName } from "@/lib/forms/salon-mention";
 import { readScopedRoster } from "@/lib/forms/employee-roster";
 import { inlineDraftVariantKey, supportsInlineDraft } from "@/lib/forms/inline-draft";
 import { authorizeInstance, InstanceNotVisibleError, instanceListFilterFor, visibleInstances } from "@/lib/forms/instance-scope";
@@ -167,8 +169,13 @@ export function rosterMatches(typed: string, roster: readonly RosterEmployee[]):
   });
 }
 
+/** The salon's name as the manager knows it (never only its id). */
+function salonLabel(id: string): string {
+  return rosterSalonName(id) ?? id;
+}
+
 function staffRow(person: RosterEmployee) {
-  return { employee_id: person.id, name: displayName(person), salons: [...person.salonIds] };
+  return { employee_id: person.id, name: displayName(person), salons: person.salonIds.map(salonLabel) };
 }
 
 export async function findStaff(context: ToolContext, input: { name?: unknown }): Promise<ToolResult> {
@@ -177,9 +184,29 @@ export async function findStaff(context: ToolContext, input: { name?: unknown })
   const read = await rosterFor(context.actor.scope);
   if (read.kind === "failed") return { error: ROSTER_FAILED };
   if (read.kind === "unchecked") return { unchecked: true, note: ROSTER_UNCHECKED };
-  const found = rosterMatches(typed, read.roster).slice(0, 10);
+  let found = rosterMatches(typed, read.roster).slice(0, 10);
+  /* The roster's exact full name wins over people whose names only start the same ("Test Employee" vs "Test Employee Two"). */
+  const exact = found.filter((person) => samePerson(displayName(person), typed) && words(displayName(person)).length === words(typed).length);
+  if (exact.length > 0) found = exact;
   if (found.length === 0) {
-    return { matches: [], note: "Nobody on this manager's roster has that name. It may be a salon, a place or a typo: ask the manager; never put it on a form as a person." };
+    /* Close spellings, as the app's own name check reads them ("Marnie Halloway" → Marnie Holloway). */
+    const close = matchEmployeeName(typed, read.roster);
+    if (close.kind === "confirm" && close.candidates.length > 0) {
+      const names = close.candidates.map((candidate) => candidate.name);
+      return {
+        matches: [],
+        did_you_mean: close.candidates.slice(0, 5).map((candidate) => staffRow(candidate.employee)),
+        note: `Not on the roster as typed. Ask the manager, in these words: ${nameConfirmationQuestion(typed, names)}`,
+      };
+    }
+    return {
+      matches: [],
+      note: `Nobody on this manager's roster has that name. It may be a salon, a place, a metric or a typo: never put a place or a metric on a form as a person. For a person's name, say: "I couldn't find **${typed}** in the Woven roster." and then: "${offRosterOffer(typed)}"`,
+    };
+  }
+  /* A first name alone is confirmed before it goes on a form, as today ("Is this for **Rhea Calloway**?"). */
+  if (found.length === 1 && words(typed).length === 1) {
+    return { matches: found.map(staffRow), note: `Only a first name was given: ask "Is this for **${displayName(found[0]!)}**?" and wait for yes before proposing.` };
   }
   const shared = new Set(found.map((person) => displayName(person).toLowerCase())).size < found.length;
   return {
@@ -306,6 +333,24 @@ export async function readPolicy(context: ToolContext, input: { heading?: unknow
 
 /* -------------------------------------------------------- propose form --- */
 
+/** The card's facts as today's reply shows them, for the manager to check before Create. */
+function cardLines(card: ChatFormProposal, templateKey: string): string[] {
+  const lines: string[] = [];
+  if (card.issue) lines.push(`${templateKey === "dpoa" ? "**Observation of Offense:**" : "**What happened:**"} ${card.issue}`);
+  if (card.warningLevel) lines.push(`**Type of Warning:** ${card.warningLevel === "verbal" ? "Verbal Warning" : "Written Warning"}, as you said.`);
+  if (card.priorActions) lines.push(`**Prior actions:** ${card.priorActions}`);
+  if (card.payrollDeduct) lines.push(`**Payroll Deduct:** ${card.payrollDeduct === "yes" ? `Yes${card.payrollDeductAmount ? ` — $${card.payrollDeductAmount}` : ""}` : "No"}`);
+  return lines;
+}
+
+/** The manager accepted the off-roster offer for this name ("use <name>", or yes right after the offer). */
+function offRosterConfirmed(context: Pick<ToolContext, "question" | "history">, typed: string): boolean {
+  const offered = context.history.some((message) => message.role === "assistant" && message.content.toLowerCase().includes(`reply **use ${typed.toLowerCase()}**`));
+  if (!offered) return false;
+  const said = context.question.trim().toLowerCase();
+  return said.includes(`use ${typed.toLowerCase()}`) || /^(?:yes|yep|yeah|ok|okay|sure)\b|\buse (?:that|the) name\b|\buse it\b/.test(said);
+}
+
 /** Every message the manager typed in this chat, the latest included. */
 function managerTurns(context: Pick<ToolContext, "question" | "history">): string {
   return [...context.history.filter((message) => message.role === "user").map((message) => message.content), context.question].join("\n");
@@ -391,12 +436,18 @@ export async function proposeForm(
   if (read.kind === "read") {
     const id = typeof input.employee_id === "string" ? input.employee_id.trim() : "";
     const person = id ? read.roster.find((row) => row.id === id) : undefined;
-    if (!person) return { error: "Give the employee_id find_staff returned for this person (call find_staff first). Never a name that is not on the roster." };
-    employee = { name: displayName(person), salonIds: person.salonIds };
-  } else {
     const typed = typeof input.employee_name === "string" ? tidyTypedName(input.employee_name) : "";
-    if (!typed) return { error: "Give the employee's name as the manager typed it." };
-    employee = { name: typed, salonIds: [] };
+    if (person) employee = { name: displayName(person), salonIds: person.salonIds };
+    /*
+     * OFF_ROSTER_CONFIRM (as today): a person not in Woven yet goes on the form by the name the manager typed, only
+     * after the app offered "reply **use <name>**" and the manager said so. Never a name nobody confirmed.
+     */
+    else if (typed && offRosterConfirmed(context, typed)) employee = { name: typed, salonIds: [] };
+    else return { error: "Give the employee_id find_staff returned for this person (call find_staff first). A name not on the roster goes on a form only after the manager answers the \"reply **use <name>**\" offer." };
+  } else {
+    const typedName = typeof input.employee_name === "string" ? tidyTypedName(input.employee_name) : "";
+    if (!typedName) return { error: "Give the employee's name as the manager typed it." };
+    employee = { name: typedName, salonIds: [] };
   }
   /* The manager's own name is never the employee (as MANAGER_NAME_NOT_EMPLOYEE does on the old path). */
   if (context.actor.displayName && samePerson(context.actor.displayName, employee.name)) {
@@ -518,6 +569,7 @@ export async function proposeForm(
       policy: policyLine,
       create_offered: card.supportsInlineDraft,
     },
+    card_lines: cardLines(card, template.key),
     ...(policyLine ? { policy_line: `**Policy:** ${policyLine}` } : {}),
     ...(policyNote ? { policy_note: policyNote } : {}),
     ...(dropped.length > 0 ? { not_kept: `${dropped.join(", ")} left blank: the manager did not state it. Ask only if it matters; never assume it.` } : {}),

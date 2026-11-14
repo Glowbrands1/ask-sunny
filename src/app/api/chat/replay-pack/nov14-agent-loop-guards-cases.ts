@@ -215,6 +215,31 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
     },
   },
   {
+    id: "nov14-agent-loop-guard-off-roster-only-when-confirmed",
+    title: "roster identity: a name not in Woven goes on a card only after the app offered \"reply **use <name>**\" and the manager said so",
+    report: `${REPORT}; OFF_ROSTER_CONFIRM's outcome (a person not in Woven yet can still get a form)`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-13T22:40:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      const typed = loopStandIn((view) => {
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "Perpetua Vandersloot" } };
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_name: "Perpetua Vandersloot", what_happened: "Perpetua Vandersloot was late on 11/12." } };
+        return { text: String(lastResult(view, "find_staff")?.note ?? "") };
+      });
+      t.loopModel!(typed);
+      const thread = t.thread();
+      const first = await thread.say("ca for Perpetua Vandersloot, she was late on 11/12");
+      expect(thread.proposal ?? null, "an unconfirmed off-roster name was carded").toBeNull();
+      expect(first.content, first.content).toMatch(/reply \*\*use Perpetua Vandersloot\*\*/);
+      await thread.say("use Perpetua Vandersloot");
+      expect(thread.proposal?.employeeName, "the confirmed name was refused").toBe("Perpetua Vandersloot");
+    },
+  },
+  {
     id: "nov14-agent-loop-guard-scope",
     title: "scope: a person at a salon outside the manager's scope is never found by find_staff, and propose_form refuses their roster id",
     report: `${REPORT}: "every tool is scoped to the manager's salons"`,

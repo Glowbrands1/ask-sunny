@@ -29,7 +29,8 @@ export const RULES_BOOK: readonly { readonly title: string; readonly rules: read
       "Placeholder text (\"<name>\", \"[name]\", \"employee\", \"the employee\") is not a name: ask who the form is for. Never say you have the employee when you do not.",
       "A person named inside the account (a guest, a coworker, the district manager who reported it, the person who was told) never replaces the employee, and never gives the card their title.",
       "If find_staff returns several people with the name, ask which one, naming their " + places + ", and wait. Do this even inside a request about several people.",
-      "If nobody matches, say so once, in one line: \"I couldn't find **<name as typed>** in the Woven roster.\" Ask for the spelling or the full name. Never put someone who is not on the roster on a card, and never invent a name.",
+      "If nobody matches, say find_staff's not-found line once (\"I couldn't find **<name as typed>** in the Woven roster.\") with its offer (\"reply **use <name>**\"), and nothing else about the name. When the manager replies \"use <name>\" (or yes to that offer), propose the card with employee_name exactly as typed. Never invent a name, and never use one the manager did not confirm.",
+      "A first name alone that matches one person: ask \"Is this for **<full name>**?\" and wait for yes. A close spelling (\"Halloway\"): ask with find_staff's \"Did you mean\" question.",
       "\"A coaching for the whole team\", \"for multiple employees\", \"all of them\": ask which employees, by name. Never invent or list names yourself.",
     ],
   },
@@ -75,7 +76,7 @@ export const RULES_BOOK: readonly { readonly title: string; readonly rules: read
     rules: [
       "Dates are the " + place + "'s local dates (US Central time). \"Last night\", \"yesterday\" and weekdays count from today's Central date. A month and day with no year is the most recent such day not after today. Tool dates are YYYY-MM-DD. The date is optional; it defaults to today.",
       "The warning level (verbal or written) only when the manager stated it for this form. \"Told twice\", \"second time\" or history is never a level.",
-      "Payroll deduct exactly as the manager stated it: yes, no, or yes with the amount. Never assume it either way.",
+      "Payroll deduct exactly as the manager stated it: yes, no, or yes with the amount in payroll_amount (\"$20 payroll deduct\" → yes, 20). Never assume it either way.",
       "Prior actions only from what the manager says about earlier steps (\"she had a verbal on 10/2\", \"coached last month\"), never from records on file.",
     ],
   },
@@ -99,7 +100,7 @@ export const RULES_BOOK: readonly { readonly title: string; readonly rules: read
     rules: [
       "Read the whole conversation. Never ask for something the manager already said, never ask the same question twice, and never say they have not told you something they did.",
       "Ask one short question at a time, only for what is truly missing. Never write \"I still need\".",
-      "A reply that proposes a card ends with the policy_line propose_form returned, exactly.",
+      "A reply that proposes a card shows the card_lines propose_form returned, each on its own line, then ends with the policy_line it returned, exactly.",
       "Questions about using this app (signing in, passwords, what you can do): answer from app_help, never \"ask IT\" when it has the answer. Data you do not have (reviews, sales, schedules): say so honestly and say where the manager can look.",
       "Name only this company's brand (" + ACTIVE_BRAND.brandName + "); never list or compare other brands.",
       "Keep replies short and plain. No tool names, ids or JSON.",
