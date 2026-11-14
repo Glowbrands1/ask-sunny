@@ -146,3 +146,22 @@ export function headingWith(view: LoopView, word: RegExp): string | null {
   const block = view.system.split("JBA Policy Manual headings")[1] ?? "";
   return block.split("\n").map((line) => line.replace(/^- /, "").trim()).find((line) => word.test(line)) ?? null;
 }
+
+/**
+ * AGENT_LOOP_LIVE (dev, opt-in; nothing changes when unset): the real model in place of the stand-in, wrapped so a
+ * case still sees what it was shown (`views`, `calls`). Needs ANTHROPIC_API_KEY; never runs in CI.
+ */
+export function liveRecording(standIn: LoopStandIn, real: unknown): unknown {
+  const model = real as { doStream: (options: { prompt: Message[] }) => Promise<unknown>; doGenerate: (options: { prompt: Message[] }) => Promise<unknown> };
+  const record = (options: { prompt: Message[] }) => {
+    standIn.calls += 1;
+    standIn.views.push(viewOf(options.prompt));
+  };
+  return new Proxy(model as object, {
+    get(target, prop, receiver) {
+      if (prop === "doStream") return async (options: { prompt: Message[] }) => (record(options), model.doStream(options));
+      if (prop === "doGenerate") return async (options: { prompt: Message[] }) => (record(options), model.doGenerate(options));
+      return Reflect.get(target, prop, receiver);
+    },
+  });
+}

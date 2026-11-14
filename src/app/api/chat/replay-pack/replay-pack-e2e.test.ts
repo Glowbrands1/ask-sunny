@@ -16,6 +16,7 @@ import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
 import type { ReplayContext } from "./cases";
 import { CASES } from "./index";
 import { forgetManualIndexForTests } from "@/lib/ai/intent-extraction";
+import { liveRecording } from "./loop-stand-in";
 
 /**
  * ============================================================================
@@ -549,7 +550,8 @@ vi.mock("@/lib/forms/prior-forms", async (importOriginal) => ({
 
 process.env.NEXT_PUBLIC_DEMO_MODE = "false";
 
-vi.setConfig({ hookTimeout: 30_000, testTimeout: 30_000 });
+// AGENT_LOOP_LIVE (dev, opt-in): a live model turn takes longer than the stand-ins.
+vi.setConfig({ hookTimeout: 30_000, testTimeout: process.env.AGENT_LOOP_LIVE === "1" ? 600_000 : 30_000 });
 
 const { ensureTemplateLibrary } = await import("@/lib/forms/repository");
 const { stillAsks } = await import("@/lib/forms/reply-guards");
@@ -577,6 +579,10 @@ async function call<T>(url: string, init?: RequestInit): Promise<T> {
 /** The draft route's replies this case (DRAFT_WROTE_NOTHING_NOTICE_ENABLED reads its `notice`). */
 const draftReplies: Record<string, unknown>[] = [];
 
+/* AGENT_LOOP_LIVE (dev, opt-in; never in CI): the real model for the loop's cases. Unset, the stand-ins. */
+const liveModel = process.env.AGENT_LOOP_LIVE === "1"
+  ? (await import("@ai-sdk/anthropic")).createAnthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? "" })(process.env.ANTHROPIC_MODEL || "claude-opus-5")
+  : null;
 /* AGENT_LOOP_ENABLED (QA, 14 Nov 2026): the loop's stand-in model (`t.loopModel`), and its manual cache forgotten between cases. */
 const { __setAgentLoopModelForTests } = await import("@/lib/ai/agent-loop/run");
 const { forgetAgentLoopManualForTests } = await import("@/lib/ai/agent-loop/tools");
@@ -974,7 +980,8 @@ function context(): ReplayContext {
     loopOn: () => process.env.AGENT_LOOP_ENABLED === "true",
     loopModel: (standIn) => {
       loop.standIn = standIn;
-      __setAgentLoopModelForTests(standIn.model);
+      // AGENT_LOOP_LIVE (dev, opt-in): the real model, recorded into the case's stand-in (`liveRecording`).
+      __setAgentLoopModelForTests(liveModel ? liveRecording(standIn, liveModel) : standIn.model);
       // The loop runs only for listed users (an empty list is nobody): this case's signed-in manager is listed.
       if (!loop.listed) {
         loop.users = process.env.AGENT_LOOP_USERS;

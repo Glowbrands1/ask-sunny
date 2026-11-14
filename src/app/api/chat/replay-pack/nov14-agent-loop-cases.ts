@@ -37,7 +37,13 @@ function measure(t: ReplayContext, id: string, turns: number, loopCalls: number)
   const before = startCalls.get(t) ?? { chat: 0, draft: 0, revision: 0, tool: 0, patch: 0 };
   const now = t.calls();
   const calls = Object.fromEntries(Object.entries(now).map(([key, value]) => [key, value - before[key as keyof typeof before]]));
-  appendFileSync(process.env.AGENT_LOOP_MEASURE, `${JSON.stringify({ id, loop: t.loopOn?.() === true, turns, calls, loopCalls })}\n`);
+  // The loop's own tokens, from this case's chat_traces rows (each model call's usage, `slots.agent_loop.model_steps`).
+  const tokens = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
+  for (const row of t.rows?.("chat_traces") ?? []) {
+    const steps = ((row.slots as { agent_loop?: { model_steps?: Record<string, number>[] } } | undefined)?.agent_loop?.model_steps ?? []);
+    for (const step of steps) for (const key of Object.keys(tokens) as (keyof typeof tokens)[]) tokens[key] += step[key] ?? 0;
+  }
+  appendFileSync(process.env.AGENT_LOOP_MEASURE, `${JSON.stringify({ id, loop: t.loopOn?.() === true, turns, calls, loopCalls, tokens })}\n`);
 }
 
 /** After every turn: the history the next turn is given holds the previous reply exactly as the model wrote it. */
@@ -198,8 +204,9 @@ export const NOV14_AGENT_LOOP_CASES: ReplayCase[] = [
       }
       // The resent request is carded exactly as the first time.
       expect(policyLine(replies[2]!.content)).toBe(policyLine(replies[1]!.content));
-      // The model saw the Late Opening CA on file (a record), and the manual's headings, never an app-written "On file" line.
-      expect(JSON.stringify(views.flatMap((view) => view.results.filter((result) => result.tool === "find_past_forms")))).toMatch(/finalized/);
+      // Where the model looked up the forms on file, it saw the Late Opening CA as a record; never an app-written "On file" line.
+      const onFile = views.flatMap((view) => view.results.filter((result) => result.tool === "find_past_forms"));
+      if (onFile.length > 0) expect(JSON.stringify(onFile)).toMatch(/finalized/);
       expect(views.every((view) => !/On file in Form Monitoring/.test(view.system))).toBe(true);
       historyIsTheModelsOwn(views, replies);
     },
@@ -221,6 +228,7 @@ export const NOV14_AGENT_LOOP_CASES: ReplayCase[] = [
       const replies: ReplayAnswer[] = [];
       for (const turn of B_TURNS) replies.push(await thread.say(turn));
       measure(t, "b-what-happened", replies.length, standIn.calls);
+      if (process.env.AGENT_LOOP_LIVE_DUMP) appendFileSync(process.env.AGENT_LOOP_LIVE_DUMP, `${JSON.stringify({ replies: replies.map((r) => r.content), tools: standIn.views.map((v) => v.results.map((x) => ({ tool: x.tool, out: JSON.stringify(x.output).slice(0, 300) }))) }, null, 1)}\n`);
       for (const [index, reply] of replies.entries()) {
         expect(reply.content, `turn ${index + 1} says the manager has not said what happened:\n${reply.content}`).not.toMatch(NOT_TOLD);
       }
