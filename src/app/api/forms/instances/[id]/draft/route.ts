@@ -43,6 +43,7 @@ import {
   sameRequestOtherPersonEnabled,
   coachingObservedSavedEnabled,
   spellingCleanupEnabled,
+  modelWarningLevelDiscardedEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { notesMadeAbout } from "@/lib/ai/make-it-about";
 import { withoutPolicyReferenceTurns } from "@/lib/ai/policy-reference-turn";
@@ -229,6 +230,7 @@ import {
   type DraftedCall,
 } from "@/lib/forms/draft-never-blank";
 import { WARNING_TYPE_KEY } from "@/lib/forms/corrective-action-intake";
+import { WARNING_LEVEL_KEYS, WARNING_LEVEL_STATED_KEYS, warningLevelFromTurns, withoutModelWarningLevel } from "@/lib/forms/warning-level";
 import {
   COACHING_CONTEXT_RULES,
   LANGUAGE_CLEANUP_RULES,
@@ -594,7 +596,35 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     const promptFields = fields.filter(
       (field) => !EXIT_DERIVED_KEYS.has(field.key) && field.key !== fixedPlan?.key,
     );
-    const promptGroups = groups.filter((group) => !EXIT_DERIVED_KEYS.has(group.key));
+    /*
+     * MODEL_WARNING_LEVEL_DISCARDED_ENABLED: THE TYPE OF WARNING IS THE MANAGER'S, NEVER THE MODEL'S (Ask Bubbles, 9 Oct
+     * 2026; Sunny's 38g live test, 14 Nov 2026). The group is not shown to the model, and a level it ticks anyway is
+     * dropped below. A level the manager stated was ticked at creation and is kept. Off, the model is shown every group.
+     */
+    const modelWarningGroup = modelWarningLevelDiscardedEnabled()
+      ? (groups.find(
+          (group) => group.key === WARNING_TYPE_KEY && group.options.some((option) => WARNING_LEVEL_KEYS.has(option.key)),
+        ) ?? null)
+      : null;
+    const promptGroups = groups.filter((group) => !EXIT_DERIVED_KEYS.has(group.key)).filter((group) => group.key !== modelWarningGroup?.key);
+    /*
+     * MODEL_WARNING_LEVEL_DISCARDED_ENABLED, AND THE LEVEL THE MANAGER SAID IN THESE TURNS (as Ask Bubbles does): a level
+     * stated in the turns the form is drafted from ("5. verbal warning") is the manager's statement, written before the
+     * model runs and only into an empty box (a level ticked at creation stays). History is not a statement
+     * (`statedWarningLevel`). Unstated stays empty.
+     */
+    if (modelWarningGroup) {
+      const said = warningLevelFromTurns(notes.split(/\n+/));
+      const offered = modelWarningGroup.options.map((option) => option.key);
+      const statedLevel = said && offered.includes(said) ? { [modelWarningGroup.key]: [said] } : null;
+      if (statedLevel) {
+        if (formEditSingleWriterEnabled()) {
+          await (await import("@/lib/forms/form-write")).statedWrite(id, { values: {}, checked: statedLevel }, actor.id, WARNING_LEVEL_STATED_KEYS, { notes });
+        } else {
+          await applyStatedFacts(id, { values: {}, checked: statedLevel }, actor.id, WARNING_LEVEL_STATED_KEYS);
+        }
+      }
+    }
 
     /*
      * THE EXIT FORM'S DETAILS LINES, FROM THE MANAGER'S OWN WORDS — the
@@ -1820,10 +1850,14 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      * never mistaken for the model deciding a termination. The model still
      * cannot select it: its output never reaches the box.
      */
+    // MODEL_WARNING_LEVEL_DISCARDED_ENABLED: a warning level the model ticked anyway is dropped (see `modelWarningGroup`).
+    const modelChecked = modelWarningGroup
+      ? withoutModelWarningLevel(framing.checked, modelWarningGroup.key).checked
+      : framing.checked;
     const sensitive = refuseSensitiveSelections({
       document,
       variantKey,
-      checked: isExitForm ? withoutDerivedKeys(framing.checked) : framing.checked,
+      checked: isExitForm ? withoutDerivedKeys(modelChecked) : modelChecked,
     });
 
     const exit = isExitForm
