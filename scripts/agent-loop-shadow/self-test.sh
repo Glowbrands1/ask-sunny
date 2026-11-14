@@ -10,7 +10,7 @@ trap 'rm -rf "$tmp"' EXIT
 SHADOW_STANDIN=1 SHADOW_IN="$here/selftest-input.jsonl" SHADOW_ROSTER="$here/selftest-roster.json" SHADOW_OUT="$tmp/out.jsonl" "$here/run.sh" 1
 python3 "$here/summary.py" "$tmp/out.jsonl"
 python3 "$here/summary.py" "$tmp/out.jsonl" --json > "$tmp/rows.jsonl"
-python3 - "$tmp/rows.jsonl" "$here" <<'PY'
+PYTHONDONTWRITEBYTECODE=1 python3 - "$tmp/rows.jsonl" "$here" <<'PY'
 import json, sys
 sys.path.insert(0, sys.argv[2])
 from summary import compare, truth_levels, truth_policy
