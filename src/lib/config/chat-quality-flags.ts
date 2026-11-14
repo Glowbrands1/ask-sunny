@@ -4799,3 +4799,13 @@ export function closeSpellingMatchEnabled(): boolean {
 export function sharedCityAsksSalonEnabled(): boolean {
   return envFlag("SHARED_CITY_ASKS_SALON_ENABLED");
 }
+
+/**
+ * PRIOR_ACTIONS_UNSAID_BLANK (ported from the sibling app: QA's Bubbles 17x live test, 14 Nov 2026; default off): at
+ * Create, prior_actions was AI-filled "None — first occurrence" though the manager said nothing about history. With
+ * the flag a "None" line is kept only where the manager said this is the first occurrence; otherwise the field stays
+ * blank. See `forms/prior-actions.ts` groundPriorActions. Off, as before.
+ */
+export function priorActionsUnsaidBlankEnabled(): boolean {
+  return envFlag("PRIOR_ACTIONS_UNSAID_BLANK_ENABLED");
+}
