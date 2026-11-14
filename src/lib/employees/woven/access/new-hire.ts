@@ -1,3 +1,4 @@
+import { recordToday } from "@/lib/business-today";
 import { ROLES } from "@/lib/permissions";
 import type { Role } from "@/types";
 
@@ -73,7 +74,7 @@ export function readNewHireConfig(env: Record<string, string | undefined> = proc
   const perHour = (env[NEW_HIRE_INVITES_PER_HOUR_ENV] ?? "").trim() === "2" ? 2 : 1;
   return {
     enabled: true,
-    rule: { since, extraRoles: [...new Set(named)] as Role[], today: now.toISOString().slice(0, 10) },
+    rule: { since, extraRoles: [...new Set(named)] as Role[], today: recordToday(now) },
     perHour,
     problem: null,
   };

@@ -123,6 +123,9 @@ afterEach(() => {
 
 describe("the assistant manager presses Import on the manager's browser", () => {
   it("off, as reported: the manager's chat is copied into the assistant manager's account", async () => {
+    // Off-pin (QA, 12 Nov 2026): CHAT_IMPORT_PROVEN_OWN would also decline this import, so it is held off here too.
+    // afterEach restores process.env.
+    process.env.CHAT_IMPORT_PROVEN_OWN_ENABLED = "";
     const { payload, held } = await importAs(ASSISTANT, false);
     expect(payload.imported).toEqual([MANAGERS_CHAT.id]);
     expect(held(ASSISTANT)).toHaveLength(1);
@@ -200,7 +203,9 @@ describe("CHAT_IMPORT_PROVEN_OWN_ENABLED: an import with no proof of whose it is
   ] as const)("on: declined — %s", async (_case, chat, activity) => {
     const payload = await importChat(chat, [...activity], true);
     expect(payload.imported).toEqual([]);
-    expect(payload.declined).toEqual([{ id: MANAGERS_CHAT.id, reason: "another_account" }]);
+    // "not_proven", not "another_account" (changed on purpose, QA 12 Nov 2026): nothing shows another account wrote it —
+    // it could not be confirmed as this account's, and the reason shown says that, not "belongs to another account".
+    expect(payload.declined).toEqual([{ id: MANAGERS_CHAT.id, reason: "not_proven" }]);
   });
 
   it("on: a chat whose every answered turn is this account's is imported", async () => {

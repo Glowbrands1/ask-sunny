@@ -15,6 +15,7 @@ import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
 
 import type { ReplayContext } from "./cases";
 import { CASES } from "./index";
+import { forgetManualIndexForTests } from "@/lib/ai/intent-extraction";
 
 /**
  * ============================================================================
@@ -73,6 +74,8 @@ const state = vi.hoisted(() => ({
   manualExtra: [] as Record<string, unknown>[],
   /** FULL_MANUAL_KEEPS_RETRIEVAL: what the knowledge search returns (`knowledgeHas`), the normalizer's label, the full manual. */
   knowledgeRows: [] as Record<string, unknown>[],
+  /** POLICY_CARRY_RETRIEVAL (#248 rebuilt, 12 Nov 2026): every knowledge search's query, in order (`searches`). */
+  knowledgeQueries: [] as string[],
   normalizerIntent: null as string | null,
   fullManualLoads: false,
   /** The grounding block the answering model was last given (`lastGrounding`). */
@@ -103,11 +106,40 @@ const state = vi.hoisted(() => ({
  * the real ones.
  */
 const systemPrompts = vi.hoisted(() => ({ hashes: [] as string[], texts: [] as string[] }));
-const patchScript = vi.hoisted(() => ({ outputs: [] as unknown[], calls: 0, byLatest: null as Record<string, unknown> | null }));
+const patchScript = vi.hoisted(() => ({
+  outputs: [] as unknown[],
+  calls: 0,
+  byLatest: null as Record<string, unknown> | null,
+  // EDIT_SEES_SAVED_FORM_ENABLED: the check rounds' outputs (`t.patchChecks`), apart from the readings above.
+  checks: [] as unknown[],
+  checkCalls: 0,
+  // CARD_CHECKED_AGAINST_WORDS_ENABLED: the card check's model outputs (`t.cardChecks`).
+  cards: [] as unknown[],
+  cardCalls: 0,
+}));
 vi.mock("@/lib/forms/form-patch-call", () => ({
   FORM_PATCH_DEFAULT_TIMEOUT_MS: 5_000,
   formPatchTimeoutMs: () => 5_000,
   callFormPatchModel: async (input?: { prompt?: string }) => {
+    /*
+     * EDIT_SEES_SAVED_FORM_ENABLED (coding 6, 13 Nov 2026): a check round (the prompt holds "SAVED AFTER YOUR LAST
+     * PATCH") never takes a reading from the script above. It answers `t.patchChecks([...])` in order; past the end,
+     * the model confirms the saved form (turn "this_form", no set, no clear). `null` is the call's fallback.
+     */
+    /*
+     * CARD_CHECKED_AGAINST_WORDS_ENABLED (coding 6, 13 Nov 2026): the card check's call (its prompt starts "CARD CHECK")
+     * answers `t.cardChecks([...])` in order; past the end, or `null`, it falls back and only the code's checks run.
+     */
+    if ((input?.prompt ?? "").startsWith("CARD CHECK")) {
+      const output = patchScript.cards[patchScript.cardCalls];
+      patchScript.cardCalls += 1;
+      return output === undefined || output === null ? { fallback: "error" } : { ok: true, output };
+    }
+    if ((input?.prompt ?? "").includes("SAVED AFTER YOUR LAST PATCH")) {
+      const output = patchScript.checkCalls < patchScript.checks.length ? patchScript.checks[patchScript.checkCalls] : { turn: "this_form", set: [], clear: [] };
+      patchScript.checkCalls += 1;
+      return output === undefined || output === null ? { fallback: "error" } : { ok: true, output };
+    }
     /*
      * `t.patchReads` (coding 5, 7 Nov 2026): the reading is picked by the
      * manager's latest message, so a turn another path answers first (a
@@ -400,7 +432,8 @@ vi.mock("@/lib/knowledge/providers/supabase", () => ({
     async search() {
       return [];
     }
-    async match() {
+    async match(query?: { query?: unknown }) {
+      state.knowledgeQueries.push(String(query?.query ?? ""));
       return state.knowledgeRows;
     }
     async fetchRoleGrounding(role: { id: string }) {
@@ -444,7 +477,10 @@ vi.mock("@/lib/knowledge/providers/supabase", () => ({
 /** A question that is not a form request searches the manual; nothing to embed offline. */
 vi.mock("@/lib/knowledge/recall-match", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/knowledge/recall-match")>()),
-  matchRecallKnowledge: async () => state.knowledgeRows,
+  matchRecallKnowledge: async (input?: { query?: unknown }) => {
+    state.knowledgeQueries.push(String(input?.query ?? ""));
+    return state.knowledgeRows;
+  },
 }));
 
 /* FULL_MANUAL_KEEPS_RETRIEVAL: the whole JBA Policy Manual (the production rows), when a case says it loads. */
@@ -494,7 +530,8 @@ vi.mock("@/lib/forms/employee-roster", async (importOriginal) => {
         title: (state.directory as { id: string; positionName?: string | null }[]).find((row) => row.id === person.id)?.positionName ?? null,
         primaryLocationName: "Kearney",
       })),
-    loadScopedRoster: async (scope: AccessScope | null) => actual.scopeRoster(state.directory as never, scope),
+    // The turn's roster limit (`withRosterLimit`), as production's loadScopedRoster applies it.
+    loadScopedRoster: async (scope: AccessScope | null) => actual.withinRosterLimit(actual.scopeRoster(state.directory as never, scope)),
   };
 });
 
@@ -524,9 +561,14 @@ async function call<T>(url: string, init?: RequestInit): Promise<T> {
       : null;
   if (!response) throw new Error(`no route for ${url}`);
   const body = (await response.json()) as T & { error?: string };
+  // The draft route's replies, in order, as the browser receives them (`draftReplies`).
+  if (draft) draftReplies.push(body as Record<string, unknown>);
   if (!response.ok) throw new Error(body.error ?? `HTTP ${response.status}`);
   return body;
 }
+
+/** The draft route's replies this case (DRAFT_WROTE_NOTHING_NOTICE_ENABLED reads its `notice`). */
+const draftReplies: Record<string, unknown>[] = [];
 
 /** The chat route only accepts a UUID for the open form; the fake numbers rows `fake-N`. */
 function toUuid(id: string): string {
@@ -550,7 +592,7 @@ const REMAP_EXTRA = ["FORM_FULL_REMAP_ENABLED", "REMAP_INCIDENT_FIX_ENABLED"] as
 const FLAG = "PRIOR_SENTENCE_FIX_ENABLED";
 /** FORM_DATE_INCIDENT_ONLY_ENABLED (D3, =0 in production) is pinned by each case, never read from the shell. */
 const FIO = "FORM_DATE_INCIDENT_ONLY_ENABLED";
-const ALL_FLAGS = [...PRODUCTION, ...REMAP_EXTRA, FLAG, FIO, "CODE_SLOTS_ENABLED", "POLICY_CITATION_ENABLED", "FORM_STATE_ENABLED", "REMAP_DRAFT_SOURCES_ENABLED", "NEXT_PUBLIC_REMAP_DRAFT_SOURCES_ENABLED", "INTENT_PAYROLL_MANAGER_ONLY_ENABLED", "CHAT_DATA_TOOLS_ENABLED", "CHAT_MEMORY_ENABLED"];
+const ALL_FLAGS = [...PRODUCTION, ...REMAP_EXTRA, FLAG, FIO, "CODE_SLOTS_ENABLED", "POLICY_CITATION_ENABLED", "FORM_STATE_ENABLED", "REMAP_DRAFT_SOURCES_ENABLED", "NEXT_PUBLIC_REMAP_DRAFT_SOURCES_ENABLED", "INTENT_PAYROLL_MANAGER_ONLY_ENABLED", "CHAT_DATA_TOOLS_ENABLED", "CHAT_MEMORY_ENABLED", "EDIT_SEES_SAVED_FORM_ENABLED", "CARD_CHECKED_AGAINST_WORDS_ENABLED"];
 
 type Answer = {
   content: string;
@@ -680,8 +722,11 @@ beforeEach(async () => {
   store.form_instances = new JoiningRows() as never;
   state.slotReading = "none";
   state.slotsRead = {};
+  // A case that pinned extra manual passages leaves the heading index with them; the next case starts without.
+  if (state.manualExtra.length > 0) forgetManualIndexForTests();
   state.manualExtra = [];
   state.knowledgeRows = [];
+  state.knowledgeQueries = [];
   state.normalizerIntent = null;
   state.fullManualLoads = false;
   state.lastGrounding = "";
@@ -694,9 +739,14 @@ beforeEach(async () => {
   patchScript.outputs = [];
   patchScript.calls = 0;
   patchScript.byLatest = null;
+  patchScript.checks = [];
+  patchScript.checkCalls = 0;
+  patchScript.cards = [];
+  patchScript.cardCalls = 0;
   faults.field = null;
   summaries.reply = null;
   faults.strayDraftField = null;
+  draftReplies.length = 0;
   state.directory = [
     { id: "e-1", firstName: "Quinn", lastName: "Marlowe", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-66"], positionName: null },
     { id: "e-2", firstName: "Dale", lastName: "Ferris", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-66"], positionName: null },
@@ -730,6 +780,12 @@ const KNOWN_OFF = PRODUCTION_FLAGS.off;
  * behaviour change in a case that still passes is seen.
  */
 const CLASSIFY_ON = (process.env.FLAG_CLASSIFY_ON ?? "").split(",").map((name) => name.trim()).filter((name) => name !== "");
+/*
+ * FLAG_CLASSIFY_OFF (coding 6, 13 Nov 2026; dev, opt-in; nothing changes when unset): flags turned OFF in every case,
+ * after production's and FLAG_CLASSIFY_ON's — so a general check (CARD_CHECKED_AGAINST_WORDS) can be run against the
+ * live failures with their targeted fixes off.
+ */
+const CLASSIFY_OFF = (process.env.FLAG_CLASSIFY_OFF ?? "").split(",").map((name) => name.trim()).filter((name) => name !== "");
 const record: { turns: { question: string; reply: string; updated: string[] | null }[] } = { turns: [] };
 async function recorded(id: string, mode: string, run: () => Promise<void>) {
   record.turns = [];
@@ -761,6 +817,10 @@ function production(extra: readonly string[] = []) {
   for (const name of [...PRODUCTION, ...extra]) {
     if (!saved.has(name)) saved.set(name, process.env[name]);
     process.env[name] = "true";
+  }
+  for (const name of CLASSIFY_OFF) {
+    if (!saved.has(name)) saved.set(name, process.env[name]);
+    delete process.env[name];
   }
 }
 
@@ -801,6 +861,7 @@ function context(): ReplayContext {
     knowledgeHas: (rows) => {
       state.knowledgeRows = [...rows];
     },
+    searches: () => [...state.knowledgeQueries],
     normalizerReads: (intent) => {
       state.normalizerIntent = intent;
     },
@@ -810,6 +871,8 @@ function context(): ReplayContext {
     lastGrounding: () => state.lastGrounding,
     manualAlsoHas: (chunks) => {
       state.manualExtra = [...chunks];
+      // The slot reader's heading index is cached per scope: an earlier case's index would not have these passages.
+      forgetManualIndexForTests();
     },
     draftWrites: (values, checked, extra) => {
       state.draft = { values, ...(checked ? { checked } : {}), ...(extra ?? {}) };
@@ -839,6 +902,16 @@ function context(): ReplayContext {
       patchScript.calls = 0;
       patchScript.byLatest = { ...byLatest };
     },
+    patchChecks: (outputs) => {
+      patchScript.checks = [...outputs];
+      patchScript.checkCalls = 0;
+    },
+    patchCheckCalls: () => patchScript.checkCalls,
+    cardChecks: (outputs) => {
+      patchScript.cards = [...outputs];
+      patchScript.cardCalls = 0;
+    },
+    cardCheckCalls: () => patchScript.cardCalls,
     failSavesOf: (field) => {
       faults.field = field;
     },
@@ -877,6 +950,7 @@ function context(): ReplayContext {
           .filter((row) => row.instance_id === instanceId && Array.isArray(row.checked) && (row.checked as unknown[]).length > 0)
           .map((row) => [String(row.field_key), (row.checked as unknown[]).map(String)]),
       ),
+    draftReplies: () => [...draftReplies],
     draftNotYetSaved: (instanceId) => {
       store.form_instance_values = store.form_instance_values.filter((row) => !(row.instance_id === instanceId && row.filled_by === "ai"));
     },
@@ -908,14 +982,18 @@ describe("src/config/production-flags.json", () => {
 });
 
 /*
- * REPLAY_PACK_HALF (CI only; QA, 9 Nov 2026): the flags-off parity run (`src/lib/ai/flags-off-parity.test.ts`) runs the
- * pack as two children, each with one half of the cases by id ("0": the first half, "1": the second), so neither child
- * passes its time budget as the pack grows. Unset, every case runs, as before.
+ * REPLAY_PACK_PART (CI only; QA, 9 Nov 2026, in thirds since 12 Nov 2026): the flags-off parity run
+ * (`src/lib/ai/flags-off-parity.test.ts`) runs the pack as several children, each with one part of the cases by id
+ * ("0/4", "1/4", "2/4", "3/4"), so no child passes its time budget as the pack grows. The parts interleave by id (case i
+ * of the sorted list goes to part i mod n: since 13 Nov 2026, as contiguous thirds were uneven — 486 s, 188 s, 365 s —
+ * the heavy cases clustering by id) and together are every case, once. Unset (or not "i/n"), every case runs, as before.
  */
-const HALF = process.env.REPLAY_PACK_HALF;
+const PART = /^(\d+)\/(\d+)$/.exec(process.env.REPLAY_PACK_PART ?? "");
 const BY_ID = [...CASES].sort((a, b) => a.id.localeCompare(b.id));
-const MIDDLE = Math.ceil(BY_ID.length / 2);
-const RUN = HALF === "0" ? BY_ID.slice(0, MIDDLE) : HALF === "1" ? BY_ID.slice(MIDDLE) : CASES;
+function casesOfPart(index: number, parts: number): typeof CASES {
+  return BY_ID.filter((_entry, position) => position % parts === index);
+}
+const RUN = PART && Number(PART[1]) < Number(PART[2]) ? casesOfPart(Number(PART[1]), Number(PART[2])) : CASES;
 
 describe("the replay pack", () => {
   for (const replay of RUN) {

@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
+import { TERMINATION_OPTION, withTerminationPlan } from "@/lib/forms/termination-stated";
 import { salesResultsOffenseLine, withCaChosenRule } from "@/lib/ai/ca-sales-prompt-lines";
 import { noteSpendUser } from "@/lib/ai/spend-meter";
 import { withSpendMeter } from "@/lib/ai/spend-meter-run";
 
 import { typoReadingText } from "@/lib/ai/typo-reading-copy";
+import { cleanupChanges, SPELLING_CLEANUP_RULES, withOwnWords } from "@/lib/forms/spelling-cleanup";
 import { protectedNameWords } from "@/lib/ai/typo-name-words";
 import { accountOnlyRules, policyQueryNotes, withoutInventedDetail } from "@/lib/forms/account-only-policy-query";
 import { getAnthropicClient } from "@/lib/ai/anthropic";
@@ -13,6 +15,7 @@ import {
   actionPlanSentencesEnabled,
   attendanceActionPlanEnabled,
   hideNoPolicyMatchNoticeEnabled,
+  draftNoInventedPlanEnabled,
   attendancePolicyCitationEnabled,
   draftMergeEnabled,
   draftNeverBlankEnabled,
@@ -27,6 +30,7 @@ import {
   cardPolicyToDraftEnabled,
   formPatchReducerEnabled,
   draftWriteNeverSilentEnabled,
+  draftWroteNothingNoticeEnabled,
   formEditSingleWriterEnabled,
   teamCardWordingEnabled,
   cardPolicyLabelEnabled,
@@ -38,6 +42,7 @@ import {
   proposalPolicySetAsideEnabled,
   sameRequestOtherPersonEnabled,
   coachingObservedSavedEnabled,
+  spellingCleanupEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { notesMadeAbout } from "@/lib/ai/make-it-about";
 import { withoutPolicyReferenceTurns } from "@/lib/ai/policy-reference-turn";
@@ -100,6 +105,7 @@ import {
   OBSERVED_LABEL,
   PLAN_OF_ACTION,
   guardNarrativeDraft,
+  managerTypedGoingForward, withoutGoingForward,
 } from "@/lib/forms/narrative-draft";
 import {
   dropUngroundedPolicy,
@@ -981,7 +987,9 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     ]);
     const teamSubject = isTeamSubject(loaded.instance.employeeName);
 
-    const system = [
+    // SPELLING_CLEANUP_ENABLED (Pau via QA, 13 Nov 2026; ported from Ask Bubbles): coaching drafts already clean up as they write.
+    const spellingCleanupOn = spellingCleanupEnabled() && !isCoachingFamily;
+    const systemFor = (cleanup: boolean) => [
       `You prepare drafts of ${ACTIVE_BRAND.brandName} management forms for a manager to review.`,
       "You are drafting, not deciding. A manager edits everything you write and signs it.",
       /*
@@ -1165,6 +1173,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
        */
       ...(isCoachingFamily ? COACHING_CONTEXT_RULES : []),
       ...(isCoachingFamily ? LANGUAGE_CLEANUP_RULES : []),
+      // SPELLING_CLEANUP_ENABLED: every other form cleans up spelling, spacing and capitals too, never a fact (`spelling-cleanup.ts`).
+      ...(cleanup ? SPELLING_CLEANUP_RULES : []),
       ...(hasFollowUpFindings ? MANAGER_FOLLOW_UP_RULES : []),
       ...(teamSubject ? TEAM_SUBJECT_RULES : []),
       /*
@@ -1176,6 +1186,9 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       ...(teamSubject ? [] : employeeNameRules(loaded.instance.employeeName)),
       ...(hasPriorActions ? PRIOR_ACTIONS_RULES : []),
     ].join(" ");
+    const system = systemFor(spellingCleanupOn);
+    // SPELLING_CLEANUP_ENABLED: the system a call is sent with; the copy-as-given one when a cleanup changed a fact.
+    let activeSystem = system;
 
     const prompt = [
       `FORM: ${loaded.instance.templateName}`,
@@ -1257,7 +1270,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     const draftCall = () => client.messages.create({
       model: CLAUDE_MODEL,
       max_tokens: CLAUDE_MAX_TOKENS.detailed,
-      system,
+      system: activeSystem,
       messages: [{ role: "user", content: prompt }],
       tools: [
         {
@@ -1306,6 +1319,37 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     /* Why each attempt that wrote nothing wrote nothing, for the drafted event. */
     const reasons: string[] = [];
     let lastError: unknown = null;
+    /*
+     * SPELLING_CLEANUP_ENABLED: what the drafting model was given (its whole message: the form, prior rows, the account;
+     * and the form's values), and, once a cleanup has fallen back, the check every later call goes through.
+     */
+    const cleanupSource = spellingCleanupOn
+      ? [prompt, notes, ...(loaded.values ?? []).map((row) => (typeof row.value === "string" ? row.value : ""))].join("\n")
+      : "";
+    const cleanupNames = [loaded.instance.employeeName ?? ""];
+    let cleanupFellBack = false;
+    /*
+     * QA's safety ruling (13 Nov 2026): every draft after the fallback (the fallback itself and any never-blank retry)
+     * is checked again, field by field. A field that still changes a name or a quote keeps what the form held for it,
+     * or is left out; never the chat turn (Gate-Sunny-3, 13 Nov 2026). A changed date or number is left to the date and
+     * metric guards below, which remove just the sentence carrying it, as with the flag off.
+     */
+    const recheckFallback = (drafted: DraftedCall): DraftedCall => {
+      if (!drafted.values) return drafted;
+      const recheck = withOwnWords(drafted.values, {
+        source: cleanupSource,
+        today: businessToday(),
+        names: cleanupNames,
+        kinds: ["name", "quote"],
+        own: (key) => {
+          const held = (loaded.values ?? []).find((row) => row.fieldKey === key)?.value;
+          return typeof held === "string" && held.trim() ? held : null;
+        },
+      });
+      if (recheck.replaced.length === 0) return drafted;
+      console.warn(`[spelling-cleanup] the fallback draft still changed ${recheck.replaced.join(", ")}; keeping the form's own words there`);
+      return { ...drafted, values: recheck.values as Record<string, string> };
+    };
     const ask = async (): Promise<{ drafted: DraftedCall; failed: boolean }> => {
       let reply: DraftReply;
       try {
@@ -1323,9 +1367,30 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         const empty = emptyCallReason(call?.input, read, reply.stop_reason ?? null);
         if (empty) reasons.push(empty);
       }
-      return { drafted: read, failed: false };
+      return { drafted: cleanupFellBack ? recheckFallback(read) : read, failed: false };
     };
-    const first = await ask();
+    let first = await ask();
+    /*
+     * SPELLING_CLEANUP_ENABLED: a cleanup never changes a name, a date, a number or a quote. If what came back did,
+     * the draft falls back to the manager's own text: asked again without the cleanup rule (`spelling-cleanup.ts`).
+     */
+    if (spellingCleanupOn && !first.failed && first.drafted.values) {
+      const changes = cleanupChanges({
+        source: cleanupSource,
+        written: Object.values(first.drafted.values).join("\n"),
+        today: businessToday(),
+        names: cleanupNames,
+      });
+      if (changes.length > 0) {
+        console.warn(`[spelling-cleanup] the cleaned draft changed ${changes.join("; ")}; drafting with the manager's own text`);
+        activeSystem = systemFor(false);
+        cleanupFellBack = true;
+        const again = await ask();
+        if (!again.failed && again.drafted.values) first = again;
+        // A fallback that failed leaves the cleaned draft, which changed a fact: it is checked the same way.
+        else first = { ...first, drafted: recheckFallback(first.drafted) };
+      }
+    }
     let drafted = first.drafted;
 
     /*
@@ -1395,6 +1460,31 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     );
 
     const narrated = guardNarrativeDraft(dated.values, fields, groundingSource);
+    /*
+     * DRAFT_NO_INVENTED_PLAN_ENABLED: on the Corrective Action Form (the one
+     * with a fixed Action Plan) the Observation keeps Observed and Expectation
+     * only. What the employee does next is the manager's Action Plan, never a
+     * "Going Forward" the model wrote. See `withoutGoingForward`.
+     */
+    if (draftNoInventedPlanEnabled() && fixedPlan !== null) {
+      narrated.values = withoutGoingForward(narrated.values, fields);
+    }
+    /*
+     * And on the Coaching and Follow-up Coaching forms (QA, 26 Oct 2026): their
+     * "Going Forward" is the model's too, so it stays only when the manager
+     * stated a plan themselves ("going forward …", "action plan: …"); a negated
+     * "no going forward needed" is not one (`managerTypedGoingForward`).
+     */
+    const coachingForm =
+      loaded.instance.templateKey === "coaching" || loaded.instance.templateKey === "follow-up-coaching";
+    if (
+      draftNoInventedPlanEnabled() &&
+      coachingForm &&
+      !managerTypedGoingForward(notes) &&
+      managerTypedActionPlan(notes) === null
+    ) {
+      narrated.values = withoutGoingForward(narrated.values, fields);
+    }
 
     /*
      * THEN THE TIMEFRAME GUARD. A drafted "Next Follow-Up" survives only if the
@@ -1792,6 +1882,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       ? ((loaded.values ?? []).find((row) => row.fieldKey === PAYROLL_DEDUCT_KEY)?.checked.find(isPayrollDeductAnswer) ??
         null)
       : null;
+    // TERMINATION_STATED_TICKS_ENABLED: Termination, ticked at Create from the manager's statement, closes the plan.
+    const terminationPlan = Boolean(fixedPlan) && ((loaded.values ?? []).find((row) => row.fieldKey === "warning_type")?.checked ?? []).includes(TERMINATION_OPTION);
     const draftedValues = (() => {
       const base = { ...(exit?.values ?? attributions.values) };
       if (priorActions) {
@@ -2316,6 +2408,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
             }),
           },
           closing: fixedPlan.closing,
+          termination: terminationPlan,
         }
       : null;
     /*
@@ -2355,7 +2448,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
             values: {
               ...named.values,
               // PLAN_PAYROLL_SENTENCE_ENABLED: the deduction the manager stated is said in the plan.
-              [fixedPlan.key]: withPayrollSentence(
+              // TERMINATION_STATED_TICKS_ENABLED: on a termination, the plan ends with the termination sentence.
+              [fixedPlan.key]: withTerminationPlan(withPayrollSentence(
                 // MEETING_NOT_LATENESS_PLAN_ENABLED: a missed meeting keeps the general plan.
                 attendanceActionPlanEnabled() && isAttendancePlan(planInput) && !missedMeetingNotLateness(notes)
                   ? attendanceActionPlan(planInput)
@@ -2363,7 +2457,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
                     ? twoSentenceActionPlan(planInput)
                     : correctiveActionPlan(planInput),
                 { answer: planInput.payroll.answer, amount: payrollDeductAmount(notes), employeeName: loaded.instance.employeeName },
-              ),
+              ), terminationPlan),
             },
             provenance: { ...provenance, [fixedPlan.key]: actionPlanProvenance(planInput) },
           }
@@ -2519,6 +2613,18 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     }
     // The old writer only in the single writer's flag-off branch (form-write-one-writer.test.ts reads this shape).
     const guarded = formEditSingleWriterEnabled() && written ? written : await applyAssistantDraft(id, reduced ? reduced.write : kept, actor.id, draftProvenanceWritten);
+    /*
+     * DRAFT_WROTE_NOTHING_NOTICE_ENABLED (QA's r21 live check, 10 Nov 2026): a name-only Coaching card's Create saved
+     * the Name and Date and no Details, and said nothing: there was no account to draft from, so the drafting model
+     * wrote no narrative (no refusal, so DRAFT_WRITE_NEVER_SILENT's notice stays quiet). With the flag on, when the
+     * notes hold no account and no narrative field was written, the reply says so (`draft-write-never-silent.ts`).
+     */
+    const draftWroteNothing =
+      draftWroteNothingNoticeEnabled() &&
+      !draftNothingSaved &&
+      narrativeTargets.length > 0 &&
+      !notesHoldAccount(notes, loaded.instance.employeeName) &&
+      !narrativeTargets.some((key) => (guarded.accepted.values[key] ?? "").trim() !== "");
     /*
      * NEVER A SILENT BLANK (DRAFT_NEVER_BLANK_ENABLED). Whenever an attempt
      * failed or wrote nothing, or the write itself holds no field, the reason
@@ -2684,6 +2790,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         // FORM_EDIT_SINGLE_WRITER_ENABLED: what the draft left out of the account (detected, never retried).
         // DRAFT_WRITE_NEVER_SILENT_ENABLED: nothing saved is said instead — there is no account to have left anything out of.
         draftNothingSaved ? (await import("@/lib/forms/draft-write-never-silent")).DRAFT_NOTHING_SAVED_NOTICE : leftOut,
+        // DRAFT_WROTE_NOTHING_NOTICE_ENABLED: no account, so no Details — said, never a silent blank.
+        draftWroteNothing ? (await import("@/lib/forms/draft-write-never-silent")).DRAFT_WROTE_NOTHING_NOTICE : null,
       ]
         .filter((line): line is string => Boolean(line))
         .join(" ") || null,
