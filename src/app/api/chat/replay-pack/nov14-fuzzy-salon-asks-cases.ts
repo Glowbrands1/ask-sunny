@@ -63,7 +63,9 @@ export const NOV14_FUZZY_SALON_ASKS_CASES: ReplayCase[] = [
     id: "nov14-fuzzy-salon-asks-lincoln-high",
     title: `Admin: "create a ca for tavia quellan, she was late because she was at lincoln high" — not filed at Lincoln Pine Lake unasked`,
     report: REPORT,
-    status: { open: "\"lincoln\" alone is filed as NE Lincoln Pine Lake, unasked" },
+    // Open until 38j; REASON_PLACE_NOT_SALON (#975) is on in production since then, so a reason's place is never the
+    // salon there: a guard now, flag off and on.
+    status: "fixed",
     fixFlags: [FLAG],
     async run(t: ReplayContext) {
       const { reply, locationId } = await say(t, ["create a ca for tavia quellan, she was late because she was at lincoln high"]);
@@ -90,7 +92,6 @@ export const NOV14_FUZZY_SALON_ASKS_CASES: ReplayCase[] = [
   ...([
     { key: "kearney-high", turn: "create a ca for tavia quellan at kearney high, she was late", typed: "kearney high" },
     { key: "kearney-mall", turn: "create a ca for tavia quellan at the kearney mall, she was late", typed: "the kearney mall" },
-    { key: "because-kearney-high", turn: "create a ca for tavia quellan, she was late because she was at kearney high of all places", typed: "kearney high" },
   ] as const).map(({ key, turn, typed }): ReplayCase => ({
     id: `nov14-fuzzy-salon-asks-${key}`,
     title: `Admin: "${turn}" — asks whether NE Kearney is the salon`,
@@ -104,6 +105,20 @@ export const NOV14_FUZZY_SALON_ASKS_CASES: ReplayCase[] = [
       expectSalonLineAgrees(reply, locationId);
     },
   })),
+  // The same in a "because" reason: since 38j (REASON_PLACE_NOT_SALON, #975, on in production) a reason's place is never
+  // the salon, so nothing is filed and nothing is asked (QA's ruling). A guard: not filed at NE Kearney, the reply agrees.
+  {
+    id: "nov14-fuzzy-salon-asks-because-kearney-high",
+    title: `Admin: "create a ca for tavia quellan, she was late because she was at kearney high of all places" — not filed at NE Kearney`,
+    report: REPORT,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t: ReplayContext) {
+      const { reply, locationId } = await say(t, ["create a ca for tavia quellan, she was late because she was at kearney high of all places"]);
+      expect(locationId, `"kearney high" in the reason was filed:\n${reply}`).not.toBe(KEARNEY);
+      expectSalonLineAgrees(reply, locationId);
+    },
+  },
   // QA's ruling (14 Nov 2026): a bare "yes" never answers two questions, least of all payroll deduct. The salon
   // confirm is the only question in its reply; payroll waits and is asked next.
   {
