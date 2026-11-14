@@ -121,6 +121,25 @@ export const NOV14_FUZZY_SALON_ASKS_CASES: ReplayCase[] = [
       expect(reply, `payroll deduct was not asked next:\n${reply}`).toMatch(/payroll deduct applicable\?/i);
     },
   },
+  // Gate-Sunny's #977 probes (14 Nov 2026): a resemblance match outside the manager's assignment is never offered. The
+  // gate's case, as given.
+  {
+    id: "nov14-fuzzy-salon-asks-not-off-assignment",
+    title: `Single-salon SD: "create a ca for marnie holloway at omaha west, she was late" — never asks "is that the salon?" about a salon off the assignment`,
+    report: "Gate-Sunny's #977 probes, 14 Nov 2026; invented person",
+    // A guard, not an open case: with the flag off nothing asks (main's honest "isn't a salon on your assignment" line);
+    // it was this PR's first head that asked.
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t: ReplayContext) {
+      vi.setSystemTime(new Date("2026-11-14T15:00:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", { level: "salon", primaryAreaId: "loc-0313", alsoCoversAreaIds: [] });
+      const thread = t.thread();
+      const first = (await thread.say("create a ca for marnie holloway at omaha west, she was late")).content;
+      expect(first, `offered a salon off the assignment:\n${first}`).not.toMatch(/is that the salon\?/i);
+    },
+  },
 ];
 
 /** Guards, flag off and on: a salon the manager named — whole, short, or a letter off — is filed with no question. */

@@ -71,13 +71,16 @@ export function askLooseSalon(
   const asked = lastConfirm(input.history);
 
   // "yes" to "I read … as <salon> — is that the salon?": that salon is the manager's word now.
-  if (asked && YES.test(answer)) {
+  if (asked && YES.test(answer) && covers(input.scope, asked.salonId)) {
     if (proposal.locationId === asked.salonId) return agreeing(response);
     return agreeing({ ...response, formProposal: filed(proposal, asked.salonId) });
   }
 
   const salonId = proposal.locationResolution === "resolved" ? proposal.locationId : null;
   if (!salonId) return response;
+  // Gate-Sunny's #977 probes: a salon off the manager's assignment is never offered ("is that the salon?" then "it
+  // isn't on your assignment"). That reply is left as it is, honest without this pass.
+  if (!covers(input.scope, salonId)) return response;
   if (ownSalon(proposal, input.people ?? [], salonId) || onlySalon(input.scope, salonId)) return agreeing(response);
   // A city inside a longer place ("at kearney high", "at the kearney mall", "at omaha west") is not the salon named.
   const longer = longerPlaces(said, salonId);
@@ -199,6 +202,12 @@ function ownSalon(proposal: ChatFormProposal, people: readonly GroundedPerson[],
       displayName(person).toLowerCase() === name &&
       (person.primarySalonId === salonId || person.salonIds.includes(salonId)),
   );
+}
+
+/** Whether the account's scope covers this salon: every salon for a global scope (or no scope at all). */
+function covers(scope: AccessScope | null, salonId: string): boolean {
+  if (!scope || scope.level === "global") return true;
+  return authorizedSalonIds(scope).includes(salonId);
 }
 
 function onlySalon(scope: AccessScope | null, salonId: string): boolean {
