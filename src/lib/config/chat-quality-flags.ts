@@ -4833,6 +4833,16 @@ export function sharedCityAsksSalonEnabled(): boolean {
 }
 
 /**
+ * SALON_NAME_LETTER_WORD (Coding-4's finding, 13 Nov 2026; default off): "she was at lincoln street fair" was filed at
+ * the NE Lincoln O Street salon — the slot reader matched a salon by its words of four letters or more, so "lincoln"
+ * and "street" were enough. With the flag a one-letter word of the name (the street "O") must be said too, before the
+ * word after it ("o street", "o st"). See `ai/intent-slots.ts` matchSalonsInText. Off, as before.
+ */
+export function salonNameLetterWordEnabled(): boolean {
+  return envFlag("SALON_NAME_LETTER_WORD_ENABLED");
+}
+
+/**
  * ON_FILE_LINE_NOT_THE_POLICY_ENABLED (Coding-2, 14 Nov 2026; default off; Pau's morning scan via QA). A dress-code
  * request sent again word for word was carded "Policy: Late Opening — read from this request": the intent reader took
  * the heading from the app's own "On file in Form Monitoring … (… Late Opening)" listing. On: a heading the manager's own

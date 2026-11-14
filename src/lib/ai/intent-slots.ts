@@ -51,7 +51,7 @@ import { newestManagerTurnSalon } from "@/lib/forms/newest-place-turn";
 import { typedEmployeeName } from "@/lib/forms/typed-employee-name";
 import { managerStatedWarningLevel, templateHasWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
 import { isDocumentName, isReportName, isRosterStateName } from "./not-a-person";
-import { formNameNotATitleEnabled, lateSlotReadsAttendanceEnabled, reasonPlaceNotSalonEnabled, reportNameNotAPersonEnabled } from "@/lib/config/chat-quality-flags";
+import { formNameNotATitleEnabled, lateSlotReadsAttendanceEnabled, reasonPlaceNotSalonEnabled, reportNameNotAPersonEnabled, salonNameLetterWordEnabled } from "@/lib/config/chat-quality-flags";
 import { placeReadingText } from "@/lib/forms/reason-place";
 import { lateSlotHeading } from "./late-slot-attendance";
 import { readsAsStatedTitle, saidOnlyAsFormName, titleTextFromTurns } from "./title-words";
@@ -1127,7 +1127,24 @@ function matchSalonsInText(blob: string, salons: readonly SalonRow[]): SalonRow[
   return salons.filter((salon) => {
     const words = wordsOf(salon.name).filter((word) => word.length >= 4);
     if (words.length === 0) return false;
+    if (salonNameLetterWordEnabled() && !letterWordsSaid(salon.name, blob)) return false;
     return words.every((word) => haystack.includes(` ${word} `));
+  });
+}
+
+/*
+ * SALON_NAME_LETTER_WORD_ENABLED (Coding-4's finding, 13 Nov 2026): "NE Lincoln O Street" was matched by any text with
+ * "lincoln" and "street" in it — "she was at lincoln street fair" was filed at that salon — because only the name's
+ * words of four letters or more were checked. A one-letter word of the name (the street "O") is what tells it apart:
+ * it must be said, before the word that follows it in the name ("o street", "o st", "O. St"). Off, as before.
+ */
+function letterWordsSaid(name: string, blob: string): boolean {
+  const words = name.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().split(/\s+/);
+  const text = ` ${blob.toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\bstreet\b/g, "st")} `;
+  return words.every((word, index) => {
+    if (!/^[a-z]$/.test(word) || index === 0) return true;
+    const next = (words[index + 1] ?? "").replace(/^street$/, "st");
+    return text.includes(next ? ` ${word} ${next} ` : ` ${word} `);
   });
 }
 
