@@ -67,8 +67,14 @@ function readingCopy(text: string): { text: string; original: (index: number) =>
 
 /** True when `said` is a relative date word, typos included when that flag is on. */
 export function isRelativeDateWord(said: string): boolean {
-  return RELATIVE_DATE_WORD.test(readingCopy(said).text.trim());
+  const word = readingCopy(said).text.trim();
+  // RELATIVE_DAY_PART_WORDS_ENABLED: "last night", "tonight", "this morning" are relative words too, so a caller that
+  // re-reads relative words against the real day treats them alike (the sibling gate's #891 finding).
+  if (relativeDayPartWordsEnabled() && DAY_PART_ONLY.test(word)) return true;
+  return RELATIVE_DATE_WORD.test(word);
 }
+
+const DAY_PART_ONLY = /^(?:tonight|this\s+(?:morning|afternoon|evening)|last\s+night)$/i;
 
 export function relativeDates(typed: string, today: string): FoundDate[] {
   if (!relativeDateReaderEnabled() || !typed || !/^\d{4}-\d{2}-\d{2}$/.test(today)) return [];
