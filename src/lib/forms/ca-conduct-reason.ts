@@ -1,4 +1,4 @@
-import { caProcedureBasisEnabled, caSalesPolicyEnabled } from "@/lib/config/chat-quality-flags";
+import { caProcedureBasisEnabled, caSalesPolicyEnabled, spellingCleanupEnabled } from "@/lib/config/chat-quality-flags";
 
 import { cleaningUndonePhrase, isSalesPolicyReading, STANDARDS_OF_CONDUCT, type CaPolicyReading } from "./ca-policy";
 import { managerIssueWords } from "./other-write-in";
@@ -138,7 +138,14 @@ export function withoutUnreasonedConduct<T extends { values: Record<string, stri
    * Pau's cleaning ruling (QA sf-s15, 5 Nov 2026): when the drafting model sends no basis, cleaning
    * left undone in the manager's words (`cleaningUndonePhrase`, the existing reader) is the upkeep basis.
    */
-  const basis = input.basis ?? (cleaningUndonePhrase(input.notes) !== null ? "upkeep_or_task" : null);
+  /*
+   * SPELLING_CLEANUP_ENABLED (Pau via QA, 13 Nov 2026; ported from Ask Bubbles): the drafted text, written with the
+   * manager's spelling mended ("not doing th e10 minute sanitaion" drafted "… the 10-minute sanitation"), is read the
+   * same way when the manager's own typed words are not.
+   */
+  const drafted = spellingCleanupEnabled() ? Object.values(input.draft.values).join("\n") : "";
+  const cleaning = cleaningUndonePhrase(input.notes) !== null || (drafted !== "" && cleaningUndonePhrase(drafted) !== null);
+  const basis = input.basis ?? (cleaning ? "upkeep_or_task" : null);
   if (input.specific || conductHasReason(input.reading, input.stated, basis)) return null;
   const rest = ticked.filter((key) => key !== STANDARDS_OF_CONDUCT);
   const words = managerIssueWords(input.notes);
