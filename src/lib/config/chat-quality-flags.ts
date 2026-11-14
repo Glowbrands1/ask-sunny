@@ -4833,6 +4833,15 @@ export function sharedCityAsksSalonEnabled(): boolean {
 }
 
 /**
+ * CARD_PLAN_MATCHES_CREATE_ENABLED (coding 6, 12 Nov 2026; default off; ported from the sibling app, QA's 17l, ruling B;
+ * reproduced here). An Attendance Corrective Action's card showed the general plan while Create saved Pau's attendance
+ * plan. On: the card shows the plan Create will save. Off, as before. See `forms/card-plan-matches-create.ts`.
+ */
+export function cardPlanMatchesCreateEnabled(): boolean {
+  return envFlag("CARD_PLAN_MATCHES_CREATE_ENABLED");
+}
+
+/**
  * ON_FILE_LINE_NOT_THE_POLICY_ENABLED (Coding-2, 14 Nov 2026; default off; Pau's morning scan via QA). A dress-code
  * request sent again word for word was carded "Policy: Late Opening — read from this request": the intent reader took
  * the heading from the app's own "On file in Form Monitoring … (… Late Opening)" listing. On: a heading the manager's own

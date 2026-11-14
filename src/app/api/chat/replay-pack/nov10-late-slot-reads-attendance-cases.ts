@@ -38,7 +38,9 @@ export const NOV10_LATE_SLOT_READS_ATTENDANCE_CASES: ReplayCase[] = [
     async run(t) {
       const content = await card(t, "create a corrective action for Marnie Holloway, she was late on 11/3/26", "Late Opening");
       expect(line(content, "Policy"), `the Policy line:\n${content}`).toMatch(/^\*\*Policy:\*\* Attendance\b/);
-      expect(line(content, "Action Plan"), `the Action Plan:\n${content}`).toMatch(/Attendance/);
+      // Changed on purpose (CARD_PLAN_MATCHES_CREATE, QA's 17l ruling (B), 12 Nov 2026): Pau's attendance plan reviews
+      // attendance in its own words ("… monitor <first>'s attendance closely …").
+      expect(line(content, "Action Plan"), `the Action Plan:\n${content}`).toMatch(/Attendance|attendance closely/);
       expect(content, `the card still names Late Opening:\n${content}`).not.toMatch(/Late Opening/);
     },
   },

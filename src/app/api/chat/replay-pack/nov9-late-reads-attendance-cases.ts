@@ -62,7 +62,9 @@ export const NOV9_LATE_READS_ATTENDANCE_CASES: ReplayCase[] = [
       const answer = await reply(t, "create a CA for Marnie Holloway, she was late on 11/6/26", "Late Opening");
       const content = answer.content;
       expect(POLICY(content), `the Policy line:\n${content}`).toMatch(/^\*\*Policy:\*\* Attendance\b/);
-      expect(content, `the Action Plan:\n${content}`).toMatch(/\*\*Action Plan:\*\* Management will review the Attendance policy\b/);
+      // Changed on purpose (CARD_PLAN_MATCHES_CREATE, QA's 17l ruling (B), 12 Nov 2026): with that flag the card shows Pau's
+      // attendance plan, the one Create saves ("… Leadership will monitor <first>'s attendance closely …").
+      expect(content, `the Action Plan:\n${content}`).toMatch(/\*\*Action Plan:\*\* (?:Management will review the Attendance policy\b|\S+ is expected to arrive on time[^\n]*attendance closely)/);
       expect(SOURCE_HEADINGS((answer as { citations?: readonly unknown[] }).citations), `the Sources:\n${content}`).toContain("Attendance");
       expect(SOURCE_HEADINGS((answer as { citations?: readonly unknown[] }).citations), `the Sources:\n${content}`).not.toContain("Late Opening");
       expect(content, `no Late Opening anywhere on the card:\n${content}`).not.toMatch(/Late Opening/);
