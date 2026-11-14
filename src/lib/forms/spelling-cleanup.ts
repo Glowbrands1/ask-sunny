@@ -1,6 +1,7 @@
 import { PRODUCTION_SALONS } from "@/data/salons";
 
 import { accountNames } from "./account-names";
+import { COMMON_WORDS } from "./common-words";
 import { editDistance } from "./employee-match";
 import { datesInText } from "./form-date-answer";
 
@@ -87,20 +88,35 @@ export function cleanupChanges(input: {
   // QA's bar (the sibling gate's #772 probe, 14 Nov 2026; ported): a salon name or a roster name, typed in any case, is a name.
   // A known name the manager typed ("manuel", "Kearny") that the writer turned into another word, or a near miss the
   // writer turned into a known name ("kearny" → "kearney"), is a changed name.
-  const known = knownNameWords(input.names ?? []);
+  // QA (14 Nov 2026, ported from the sibling gate's #860 NO-GO): a salon word is matched only exactly or as an
+  // inflection, never by edit distance (the sibling app's "west" of "West Dodge Rd" read as a respelled "was"); a near
+  // miss the writer turned into a salon word, or another spelling of it, is still a changed name ("kearny" →
+  // "kearney"). A roster name keeps the near-miss rule, but a near miss where either word is a common English word
+  // needs six letters and one edit.
+  const people = personNameWords(input.names ?? []);
+  const salons = salonNameWords();
   const sourceWords = wordCounts(source);
   const writtenWords = wordCounts(written);
   for (const [word, count] of sourceWords) {
-    // A word one letter from a known name, or two from a long one ("kerny" for "kearney"; Gate-Sunny-2, #983), is that name.
-    const isName = known.has(word) || [...known].some((name) => name.length >= 4 && word.length >= 4 && word[0] === name[0] && editDistance(word, name) <= (name.length >= 6 && word.length >= 5 ? 2 : 1));
-    if (!isName || (writtenWords.get(word) ?? 0) >= count) continue;
+    if ((writtenWords.get(word) ?? 0) >= count) continue;
     // Said once: a name the capitalised-word check above already caught is not reported again.
     if (reasons.some((reason) => reason.toLowerCase().startsWith(`name ${word} `))) continue;
     // A plural of the word is not another name: "Test Employee" and "Employees are expected …" (Gate-Sunny-2, #983).
     const inflected = (other: string) => other === `${word}s` || other === `${word}es` || word === `${other}s` || word === `${other}es`;
-    const became = [...writtenWords.keys()].find(
-      (other) => other !== word && !sourceWords.has(other) && !inflected(other) && other[0] === word[0] && editDistance(other, word) <= 2,
+    const fresh = [...writtenWords.keys()].filter((other) => other !== word && !sourceWords.has(other) && !inflected(other));
+    // A near miss of a salon word written as that salon word, or as another spelling of it ("kerny" for "kearney";
+    // Gate-Sunny-2, #983). A salon word typed as it is spelt is never near-matched.
+    const near = salons.has(word) ? [] : [...salons].filter((salon) => nearSalonWord(word, salon));
+    const toSalon = fresh.find((other) =>
+      near.some((salon) => other === salon || (nearSalonWord(other, salon) && editDistance(other, word) <= 2)),
     );
+    if (toSalon) {
+      reasons.push(`name ${word} was written ${toSalon}`);
+      continue;
+    }
+    const isPerson = people.has(word) || [...people].some((name) => nearPersonName(word, name));
+    if (!isPerson) continue;
+    const became = fresh.find((other) => nearPersonName(other, word));
     if (became) reasons.push(`name ${word} was written ${became}`);
   }
   return [...new Set(reasons)];
@@ -202,11 +218,30 @@ function quotesIn(text: string): string[] {
 }
 
 /** Salon name words and the turn's roster name words (`account-names.ts`), with the form's names: all names. */
-function knownNameWords(names: readonly string[]): Set<string> {
+function personNameWords(names: readonly string[]): Set<string> {
   const words = new Set<string>(accountNames());
   for (const name of names) for (const word of name.toLowerCase().split(/[^a-z'’-]+/)) if (word.length >= 2) words.add(word);
+  return words;
+}
+
+function salonNameWords(): Set<string> {
+  const words = new Set<string>();
   for (const salon of PRODUCTION_SALONS) for (const word of salon.name.toLowerCase().split(/[^a-z]+/)) if (word.length >= 4) words.add(word);
   return words;
+}
+
+/** A typed word one letter from a salon word, or two from a long one, written as that salon word. */
+function nearSalonWord(typed: string, salon: string): boolean {
+  if (typed[0] !== salon[0] || typed.length < 4) return false;
+  return editDistance(typed, salon) <= (salon.length >= 6 && typed.length >= 5 ? 2 : 1);
+}
+
+/** Two words close enough to be one roster name; a common English word on either side needs six letters and one edit. */
+function nearPersonName(left: string, right: string): boolean {
+  if (left === right || left[0] !== right[0] || left.length < 4 || right.length < 4) return false;
+  const distance = editDistance(left, right);
+  if (COMMON_WORDS.has(left) || COMMON_WORDS.has(right)) return left.length >= 6 && right.length >= 6 && distance <= 1;
+  return distance <= (Math.max(left.length, right.length) >= 6 && Math.min(left.length, right.length) >= 5 ? 2 : 1);
 }
 
 function wordCounts(text: string): Map<string, number> {

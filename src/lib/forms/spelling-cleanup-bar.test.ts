@@ -65,3 +65,21 @@ describe("cleanupChanges: Gate-Sunny-2's #983 probes", () => {
     expect(changes("she was sent to kerny", "She was sent to Kearney.")).toContainEqual(expect.stringMatching(/^name kerny/));
   });
 });
+
+describe("cleanupChanges: a salon word is matched only exactly (QA, ported from the sibling gate's #860 NO-GO, 14 Nov 2026)", () => {
+  it("a Pine Lake draft saying \"she was late\" is not a changed name (\"lake\" is not a respelled \"late\")", () => {
+    expect(changes("create a ca for kira dunmore at pine lake, tardy again today", "Observed:\nKira Dunmore was late again today.")).toEqual([]);
+  });
+
+  it("\"grand\" of Grand Island is not a respelled \"grant\"", () => {
+    expect(changes("create a ca for kira dunmore at grand island, no call no show", "Kira Dunmore did not call; management will not grant the shift.")).toEqual([]);
+  });
+
+  it("a near miss written as the salon word is still a changed name; a roster name still is", () => {
+    expect(changes("she was sent to Kearny", "She was sent to kearney.")).toContainEqual(expect.stringMatching(/^name kearny/));
+    withAccountNames(() => {
+      noteAccountNames([{ firstName: "Manuel", lastName: "Quellby" }]);
+      expect(changes("manuel saw her leave the drawer open", "Manual saw her leave the drawer open.")).toContainEqual(expect.stringMatching(/^name manuel/));
+    });
+  });
+});
