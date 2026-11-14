@@ -145,3 +145,32 @@ export const NOV13_NAMED_CARE_AND_CLEANING_CASES: ReplayCase[] = [
     },
   }),
 );
+
+/*
+ * QA's bar (the sibling gate's #772 probe, 14 Nov 2026; ported): the card's Observation never edits a coworker on the
+ * roster, a salon name or a quoted span. Guards with ACCOUNT_TYPOS_FIXED (they hold flag off: nothing is edited).
+ * Invented people: Manuel Quellby is a coworker one letter from "manual".
+ */
+const MANUEL: DirectoryRow = { ...BRISA, id: "e-manuel-quellby", firstName: "Manuel", lastName: "Quellby" };
+const KEPT: readonly { key: string; said: string; account: RegExp }[] = [
+  { key: "coworker", said: "please make a ca for Brisa Talmadge, manuel saw her leave the drawer open", account: /manuel saw her leave the drawer open/ },
+  { key: "salon", said: "please make a ca for Brisa Talmadge, she was sent to Kearny and never showed", account: /sent to Kearny and never showed/ },
+  { key: "quoted", said: "please make a ca for Brisa Talmadge, she told a guest 'that is not my registr'", account: /'that is not my registr/ },
+];
+
+export const NOV14_ACCOUNT_TYPOS_BAR_GUARDS: ReplayCase[] = KEPT.map((wording) => ({
+  id: `nov14-account-typos-bar-${wording.key}`,
+  title: `"${wording.said}": the card's Observation keeps it as typed`,
+  report: "QA's bar, the sibling gate's #772 probe (14 Nov 2026); invented people",
+  status: "fixed",
+  fixFlags: ["ACCOUNT_TYPOS_FIXED_ENABLED"],
+  async run(t: ReplayContext) {
+    vi.setSystemTime(new Date("2026-11-14T15:00:00Z"));
+    t.directory([...STAFF, BRISA, MANUEL]);
+    t.as("salon_director", KEARNEY);
+    const card = (await t.thread().say(wording.said)).content;
+    const account = /^\*\*Observation of Offense:\*\* ([^\n]*)$/m.exec(card)?.[1] ?? "";
+    expect(account, card).toMatch(wording.account);
+    expect(account, card).not.toMatch(/manual saw|Kearney and never|my register/);
+  },
+}));

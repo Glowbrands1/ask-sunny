@@ -7,6 +7,7 @@ import type { AccessScope } from "@/types";
 
 import { rosterStoreScopedEnabled } from "@/lib/config/chat-quality-flags";
 
+import { noteAccountNames } from "./account-names";
 import { isServiceAccountName, type RosterEmployee } from "./employee-match";
 import { authorizedSalonIds } from "./location-scope";
 import { isNonPersonWovenId } from "./roster-non-person";
@@ -22,6 +23,9 @@ const rosterLimit = new AsyncLocalStorage<ReadonlySet<string>>();
  * the same limit production's `loadScopedRoster` does (a choice between two same-named people is carried this way).
  */
 export function withinRosterLimit<T extends { readonly id: string }>(roster: readonly T[]): T[] {
+  // ACCOUNT_TYPOS_FIXED_ENABLED / SPELLING_CLEANUP_ENABLED (QA's bar, 14 Nov 2026): every roster name is kept from a
+  // spelling fix (`account-names.ts`).
+  noteAccountNames(roster as readonly { readonly firstName?: string | null; readonly lastName?: string | null }[]);
   const limit = rosterLimit.getStore();
   if (!limit || limit.size === 0) return [...roster];
   return roster.filter((person) => limit.has(person.id));

@@ -53,6 +53,8 @@ import {
   coachingForEveryoneEnabled,
   staffPickerEnabled,
   chatResponseStreamEnabled,
+  accountTyposFixedEnabled,
+  spellingCleanupEnabled,
   formPatchReducerEnabled,
   formPatchReaderFixesEnabled,
   formReplyFromDiffEnabled,
@@ -100,6 +102,7 @@ import { businessToday } from "@/lib/business-date";
 import { isClientConversationId } from "@/lib/chat/client-ids";
 import type { AskRequest, AskResponse } from "@/lib/ai/types";
 import type { AnswerMode, ChatMessage } from "@/types";
+import { withAccountNames } from "@/lib/forms/account-names";
 
 /**
  * POST /api/chat
@@ -134,8 +137,11 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** SPEND_GUARD_ALL_CALLS_ENABLED: this route's Claude calls are counted (`ai/spend-meter.ts`). Off, as before. */
 export async function POST(request: Request) {
   // CHAT_RESPONSE_STREAM_ENABLED: a slow answer is streamed so nothing cuts it off at 30 s. See `api/streamed-response.ts`.
-  if (chatResponseStreamEnabled()) return streamWhenSlow(() => withSpendMeter("chat", () => postChat(request)));
-  return withSpendMeter("chat", () => postChat(request));
+  // SPELLING_CLEANUP_ENABLED / ACCOUNT_TYPOS_FIXED_ENABLED (QA's bar, 14 Nov 2026): the turn's roster names are
+  // collected, so a spelling fix never edits one (`forms/account-names.ts`). Off, as before.
+  const post = () => (spellingCleanupEnabled() || accountTyposFixedEnabled() ? withAccountNames(() => postChat(request)) : postChat(request));
+  if (chatResponseStreamEnabled()) return streamWhenSlow(() => withSpendMeter("chat", post));
+  return withSpendMeter("chat", post);
 }
 
 async function postChat(request: Request) {

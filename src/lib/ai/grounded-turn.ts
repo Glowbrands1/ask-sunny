@@ -1,6 +1,7 @@
 import "server-only";
 
 import {
+  accountTyposFixedEnabled,
   draftDedupeEnabled,
   draftReuseSameChatOnlyEnabled,
   fieldAccuracyEnabled,
@@ -37,6 +38,7 @@ import { startsFormForAnotherPerson } from "./new-person-request";
 import { applyEditDateRules } from "./edit-date-rules";
 import { withTypedEmployeeOnCard } from "./typed-employee-card";
 import { applyGroundedProposal, prepareGroundedQuestion, type GroundedPerson, type GroundedPrep } from "./grounded-entities";
+import { noteAccountNames, withAccountNames } from "@/lib/forms/account-names";
 
 /**
  * Form proposal with the grounded-entity and form-state flags.
@@ -57,7 +59,17 @@ const EMPTY_PREP: GroundedPrep = {
   employeeId: null,
 };
 
-export async function deliverFormProposal(input: {
+/** ACCOUNT_TYPOS_FIXED_ENABLED (QA's bar, ported): the turn's roster names are collected for the account's spelling. */
+export async function deliverFormProposal(input: Parameters<typeof deliverFormProposalInTurn>[0]): Promise<AskResponse | null> {
+  return withAccountNames(async () => {
+    // The turn may read its people from the directory facts, not the roster, so the roster's names are read here; off,
+    // no extra read.
+    if (accountTyposFixedEnabled()) noteAccountNames(await loadScopedRoster(input.actor.scope).catch(() => []));
+    return deliverFormProposalInTurn(input);
+  });
+}
+
+async function deliverFormProposalInTurn(input: {
   readonly request: AskRequest;
   readonly actor: ChatActor;
   readonly question: string;
