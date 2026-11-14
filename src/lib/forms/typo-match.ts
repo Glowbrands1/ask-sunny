@@ -35,11 +35,11 @@ export function editDistance(a: string, b: string): number {
 
 const ENDINGS = ["s", "es", "d", "ed", "ing", "er", "ers", "ly"];
 
-function inflects(word: string, candidate: string): boolean {
+export function inflects(word: string, candidate: string): boolean {
   return ENDINGS.some((ending) => word === candidate + ending || candidate === word + ending);
 }
 
-function allowed(word: string): number {
+export function allowed(word: string): number {
   return word.length >= 9 ? 2 : 1;
 }
 

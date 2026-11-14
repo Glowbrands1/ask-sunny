@@ -68,3 +68,20 @@ describe("ACCOUNT_TYPOS_FIXED_ENABLED: an apostrophe inside a quote (Gate-Sunny-
     expect(cardAccountText("she told a guest ‘that isn’t my registr’ and walked off", null)).toBe("she told a guest ‘that isn’t my registr’ and walked off");
   });
 });
+
+describe("ACCOUNT_TYPOS_FIXED_ENABLED: a real word is never mended (QA, Gate-Sunny-2's #983 wordings, 14 Nov 2026)", () => {
+  afterEach(() => vi.unstubAllEnvs());
+  it("\"complained\" is not \"complaint\"", () => {
+    vi.stubEnv("ACCOUNT_TYPOS_FIXED_ENABLED", "true");
+    expect(cardAccountText("she complained to a guest", null)).toBe("she complained to a guest");
+    expect(cardAccountText("The date she complained was Oct 31st", null)).toBe("The date she complained was Oct 31st");
+    expect(cardAccountText("the guest complained", null)).toBe("the guest complained");
+  });
+
+  it("a misspelling is still mended, and \"manger\" is still the slip for manager", () => {
+    vi.stubEnv("ACCOUNT_TYPOS_FIXED_ENABLED", "true");
+    expect(cardAccountText("not doing th e10 minute sanitaion", null)).toBe("not doing the 10-minute sanitation");
+    expect(cardAccountText("the customer made a complant", null)).toBe("the customer made a complaint");
+    expect(cardAccountText("she was rude to her manger", null)).toBe("she was rude to her manager");
+  });
+});

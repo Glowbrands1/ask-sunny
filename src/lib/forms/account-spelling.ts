@@ -2,6 +2,7 @@ import { PRODUCTION_SALONS } from "@/data/salons";
 import { accountTyposFixedEnabled } from "@/lib/config/chat-quality-flags";
 
 import { accountNames } from "./account-names";
+import { REAL_WORDS } from "./real-words";
 
 import { correctedText } from "./typo-match";
 import { NEVER_CORRECTED, typoVocabulary } from "./typo-vocabulary";
@@ -19,10 +20,11 @@ import { NEVER_CORRECTED, typoVocabulary } from "./typo-vocabulary";
  * is reworded, and dates, numbers and titles are left as typed (FORM_INPUT_FIDELITY, S#166, is about those; it is untouched).
  * Off: the text as written.
  */
-const ACCOUNT_WORDS = [
+export const ACCOUNT_WORDS = [
   "sanitation", "sanitize", "sanitized", "cleaning", "cleaned", "minute", "minutes", "morning", "evening", "closing",
   "opening", "register", "drawer", "shift", "lotion", "towels", "customer", "complaint", "schedule", "completed",
 ];
+const MENDED_ANYWAY: ReadonlySet<string> = new Set(["manger"]);
 const SHORT_WORDS = new Set(["the", "a", "an", "to", "of", "in", "on", "at", "for", "and", "her", "his", "my", "our"]);
 
 /** "th e10" → "the 10": a short word whose last letter slipped onto the number after it. */
@@ -94,6 +96,9 @@ export function cardAccountText(text: string, name: string | null | undefined): 
     return (
       capitalised.has(lower) ||
       NEVER_CORRECTED.has(word) ||
+      // QA (14 Nov 2026): a real word is never mended ("she complained to a guest" is not "complaint"). "manger" is the
+      // slip for "manager" in a manager's chat (`typo-vocabulary.ts`), not a real word here.
+      (REAL_WORDS.has(lower) && !MENDED_ANYWAY.has(lower)) ||
       people.has(lower) ||
       near(lower, people) ||
       salons.has(lower) ||

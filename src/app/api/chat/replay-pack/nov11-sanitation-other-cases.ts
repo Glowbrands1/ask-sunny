@@ -156,6 +156,10 @@ const KEPT: readonly { key: string; said: string; account: RegExp }[] = [
   { key: "coworker", said: "please make a ca for Brisa Talmadge, manuel saw her leave the drawer open", account: /manuel saw her leave the drawer open/ },
   { key: "salon", said: "please make a ca for Brisa Talmadge, she was sent to Kearny and never showed", account: /sent to Kearny and never showed/ },
   { key: "quoted", said: "please make a ca for Brisa Talmadge, she told a guest 'that is not my registr'", account: /'that is not my registr/ },
+  // QA (14 Nov 2026), Gate-Sunny-2's #983 wordings: a real word is never mended ("complained" is not "complaint").
+  // Gate-Sunny-2's "she complained to a guest" alone is no incident (no Observation, flag off or on); its unit test is word for word.
+  { key: "complained-to-a-guest", said: "please make a ca for Brisa Talmadge, she was rude and complained to a guest", account: /complained to a guest/ },
+  { key: "the-guest-complained", said: "please make a ca for Brisa Talmadge, she was rude and the guest complained", account: /the guest complained/ },
 ];
 
 export const NOV14_ACCOUNT_TYPOS_BAR_GUARDS: ReplayCase[] = KEPT.map((wording) => ({
@@ -171,6 +175,6 @@ export const NOV14_ACCOUNT_TYPOS_BAR_GUARDS: ReplayCase[] = KEPT.map((wording) =
     const card = (await t.thread().say(wording.said)).content;
     const account = /^\*\*Observation of Offense:\*\* ([^\n]*)$/m.exec(card)?.[1] ?? "";
     expect(account, card).toMatch(wording.account);
-    expect(account, card).not.toMatch(/manual saw|Kearney and never|my register/);
+    expect(account, card).not.toMatch(/manual saw|Kearney and never|my register|complaint/);
   },
 }));
