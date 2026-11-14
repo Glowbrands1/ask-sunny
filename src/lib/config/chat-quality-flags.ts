@@ -4842,3 +4842,21 @@ export function sharedCityAsksSalonEnabled(): boolean {
 export function onFileLineNotThePolicyEnabled(): boolean {
   return envFlag("ON_FILE_LINE_NOT_THE_POLICY_ENABLED");
 }
+
+/**
+ * OBSERVATION_NO_LEADING_NAME (QA's Sunny 38d live check, 13 Nov 2026; default off): an account clause that starts with
+ * the employee's name and then "at"/"in" ("<A> at the front desk, she was rude to a guest") loses the name; the place
+ * and the rest are kept as typed. See `ai/remap-incident.ts`. Off, as before.
+ */
+export function observationNoLeadingNameEnabled(): boolean {
+  return envFlag("OBSERVATION_NO_LEADING_NAME_ENABLED");
+}
+
+/**
+ * WORK_AREA_NOT_A_TITLE (QA's Sunny 38d live check, 13 Nov 2026; default off): a place in the salon where someone works
+ * ("front desk", "back room", "register", "bed 4", "lobby") is never the card's job title, even when the model reads it
+ * as one. See `ai/intent-slots.ts` groundTitle. Off, as before.
+ */
+export function workAreaNotATitleEnabled(): boolean {
+  return envFlag("WORK_AREA_NOT_A_TITLE_ENABLED");
+}
