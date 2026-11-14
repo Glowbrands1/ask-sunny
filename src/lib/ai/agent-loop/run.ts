@@ -92,11 +92,27 @@ export interface AgentTurnInput {
 
 const count = (value: unknown): number => (typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0);
 
+/**
+ * THE EARLIER CARDS WERE REAL (the live re-run, 14 Nov 2026: "One correction: my earlier message showed the card
+ * before I'd actually built it", three times). Earlier turns reach the model as text only, without their tool calls
+ * (and the history's own card data is the browser's, so it is not read: `parseHistory`), so a reply that reads as a
+ * card's (its Policy line or its account line) gets an app-written note.
+ */
+export const CARD_NOTE = "[app note: this reply showed a card built with propose_form]";
+const CARD_REPLY = /^\s*\*\*(?:Policy|Observation of Offense|What happened):?\*\*/im;
+function withCardNote(message: ChatMessage): string {
+  const content = String(message.content);
+  return message.role === "assistant" && CARD_REPLY.test(content) ? `${content}\n\n${CARD_NOTE}` : content;
+}
+
+/** A sentence saying an earlier card was not real or not built: never true (see CARD_NOTE); dropped from the reply. */
+export const DISOWNS_EARLIER_CARD = /(?:^|(?<=[.!?]\s))(?:One correction(?: first)?:\s*)?[^.!?\n]*\bmy (?:earlier|previous|last) (?:reply|message)\b[^.!?\n]*\b(?:before I(?:'d)?|never|wasn't|was not|went out)\b[^.!?\n]*[.!?—-]*\s*/gi;
+
 /** The conversation as model messages: the manager's and Sunny's turns, newest 20, starting with the manager's. */
 function conversationOf(history: readonly ChatMessage[], question: string): { role: "user" | "assistant"; content: unknown }[] {
   const turns = history
     .filter((message) => !message.error && typeof message.content === "string" && message.content.trim() !== "")
-    .map((message) => ({ role: message.role === "assistant" ? ("assistant" as const) : ("user" as const), content: message.content as unknown }))
+    .map((message) => ({ role: message.role === "assistant" ? ("assistant" as const) : ("user" as const), content: withCardNote(message) as unknown }))
     .slice(-20);
   while (turns.length > 0 && turns[0]!.role === "assistant") turns.shift();
   // Two turns of one role in a row (a failed reply left out) are joined, as the API needs them to alternate.
@@ -385,7 +401,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   if (stoppedAt === "timeout") throw new AiError("model_failed", AI_TIMEOUT_MESSAGE, 504);
   if (stoppedAt === "error") throw new AiError("model_failed", LOOP_FAILED_REPLY, 502);
 
-  let content = stoppedAt === "step_limit" ? STEP_LIMIT_REPLY : text;
+  let content = (stoppedAt === "step_limit" ? STEP_LIMIT_REPLY : text).replace(DISOWNS_EARLIER_CARD, "").trim();
   if (content === "") content = effects.proposal ? "Here is the form for you to review." : STEP_LIMIT_REPLY;
   /*
    * The card's policy line, which the Create button sends to the draft (`card-policy.ts`): the one propose_form decided
@@ -399,7 +415,9 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
    */
   if (effects.proposal && effects.requiredLines?.length) {
     const flat = (text: string) => text.toLowerCase().replace(/[*_\s]+/g, " ").trim();
-    const missing = effects.requiredLines.filter((line) => !flat(content).includes(flat(line)));
+    /* The account line is kept in the model's words when it gave one under the label; added only when it gave none. */
+    const accountLabel = /^\*\*(?:Observation of Offense|What happened):\*\*/;
+    const missing = effects.requiredLines.filter((line) => (accountLabel.test(line) ? !accountLabel.test(content.trim()) && !/\*\*(?:Observation of Offense|What happened):\*\*/.test(content) : !flat(content).includes(flat(line))));
     if (missing.length > 0) {
       const body = content.split("\n").filter((line) => !/^\s*\*\*Policy:?\*\*/i.test(line)).join("\n").trim();
       const policy = content.split("\n").filter((line) => /^\s*\*\*Policy:?\*\*/i.test(line));

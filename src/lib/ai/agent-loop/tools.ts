@@ -32,7 +32,7 @@ import { cleaningUndonePhrase, namesCareAndCleaning } from "@/lib/forms/ca-polic
 import { turnsFromThisPersonsRequest } from "@/lib/forms/this-persons-turns";
 import { closePolicyQuestion, namedPolicies } from "@/lib/forms/named-policy-section";
 import { startsNewForm } from "@/lib/ai/remap-incident";
-import { PAYROLL_DEDUCT_LABEL, statedPayrollDeduct } from "@/lib/forms/payroll-deduct";
+import { PAYROLL_DEDUCT_LABEL, payrollAmountFromConversation, statedPayrollDeduct } from "@/lib/forms/payroll-deduct";
 import { PAYROLL_AMOUNT_LABEL, PAYROLL_AMOUNT_QUESTION } from "@/lib/forms/payroll-amount-field";
 import { withoutPayrollClauses } from "@/lib/ai/payroll-clause-not-account";
 import { UNDER_PERFORMANCE_EXPLAINED } from "@/lib/ai/under-performance-explained";
@@ -598,6 +598,14 @@ function managerTurns(context: Pick<ToolContext, "question" | "history">): strin
   return [...context.history.filter((message) => message.role === "user").map((message) => message.content), context.question].join("\n");
 }
 
+/** The conversation's turns, with the latest message, as today's payroll readers take them. */
+function conversationTurns(context: Pick<ToolContext, "question" | "history">) {
+  return [
+    ...context.history.map((message) => ({ role: message.role, content: typeof message.content === "string" ? message.content : "", error: Boolean(message.error) })),
+    { role: "user" as const, content: context.question, error: false },
+  ];
+}
+
 /** Payroll deduct as the manager stated it: in their words, or a bare yes / no right after the payroll question. */
 function payrollStated(context: Pick<ToolContext, "question" | "history">): "yes" | "no" | null {
   const turns = [...context.history.filter((message) => message.role === "user").map((message) => message.content), context.question];
@@ -784,7 +792,9 @@ export async function proposeForm(
   const askedPayroll = (input.payroll_deduct === "yes" || input.payroll_deduct === "no") ? input.payroll_deduct : null;
   const payroll = askedPayroll && payrollStated(context) === askedPayroll ? askedPayroll : null;
   const typedAmount = typeof input.payroll_amount === "string" && /\d/.test(input.payroll_amount) ? input.payroll_amount.replace(/[^\d.]/g, "") : null;
-  const amount = typedAmount && managerWords.replace(/[^\d.]/g, " ").split(/\s+/).some((n) => n !== "" && Number(n) === Number(typedAmount)) ? typedAmount : null;
+  /* The amount the manager stated, read as today reads it (`payrollAmountFromConversation`) when the model left it out. */
+  const statedAmount = payroll === "yes" ? payrollAmountFromConversation(conversationTurns(context), { payrollAnswer: "yes" })?.replace(/[^\d.]/g, "") ?? null : null;
+  const amount = (typedAmount && managerWords.replace(/[^\d.]/g, " ").split(/\s+/).some((n) => n !== "" && Number(n) === Number(typedAmount)) ? typedAmount : null) ?? statedAmount;
   const today = context.today || businessToday();
   let date = typeof input.incident_date === "string" && DATE.test(input.incident_date.trim()) ? input.incident_date.trim() : null;
   /* Several incident dates and the latest message does not pick one: the date waits, and the card asks (today's rule). */
@@ -827,7 +837,7 @@ export async function proposeForm(
     ...(awaiting ? { awaitingIncident: true as const, supportsInlineDraft: false } : {}),
   };
   effects.proposal = card;
-  effects.requiredLines = cardLines(card, template.key, { datesAsked }).filter((line) => !/^\*\*(?:Observation of Offense|What happened):\*\*/.test(line));
+  effects.requiredLines = cardLines(card, template.key, { datesAsked });
   effects.policyLine = policyLine;
   effects.confirmPolicy = didYouMean;
   return {

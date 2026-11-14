@@ -233,6 +233,55 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
     },
   },
   {
+    id: "nov14-agent-loop-earlier-card-was-real",
+    title: "an earlier card was real (the live re-run: \"One correction: my earlier message showed the card before I'd actually built it\", three times): the model sees an app note on the earlier card's turn, and a sentence disowning it never reaches the manager",
+    report: `${REPORT}; live re-run (14 Nov 2026): false corrections about an earlier card`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-13T22:40:00Z"));
+      t.directory([...STAFF, TAMSIN]);
+      t.as("salon_director", KEARNEY);
+      const model = loopStandIn((view) => {
+        const said = view.turns.filter((turn) => turn.role === "user").map((turn) => turn.text).join(" ");
+        if (!lastResult(view, "propose_form")) {
+          return { tool: "propose_form", input: { template_key: "coaching", employee_id: TAMSIN.id, what_happened: /station early/.test(said) ? "Tamsin Orwell missed the monthly meeting on 10/10/26. She also left her station early that day." : "Tamsin Orwell missed the monthly meeting on 10/10/26." } };
+        }
+        return { text: /station early/.test(said) ? "One correction: my earlier message showed the card before I'd actually built it. Here's the draft, now with both details — press Create when it looks right." : "Here's the coaching form — press Create when it looks right." };
+      });
+      t.loopModel!(model);
+      const thread = t.thread();
+      await thread.say("create a coaching form for tamsin orwell, she missed the monthly meeting on 10/10/26");
+      const reply = await thread.say("she also left her station early that day");
+      const earlier = model.views.at(-1)!.turns.filter((turn) => turn.role === "assistant").map((turn) => turn.text).join("\n");
+      expect(earlier, "the model was not told the earlier card was real").toContain("[app note: this reply showed a card built with propose_form]");
+      expect(reply.content, "a false correction reached the manager").not.toMatch(/my earlier message|before I'd actually built/);
+      expect(thread.proposal?.issue ?? "").toMatch(/left her station early/);
+    },
+  },
+  {
+    id: "nov14-agent-loop-payroll-amount-stated",
+    title: "a payroll amount the manager stated reaches the card although the model left it out (the live re-run's nov6-payroll-amount-same-message), read as today reads it",
+    report: `${REPORT}; live re-run (14 Nov 2026): "the $20 is not on the card"`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-13T22:40:00Z"));
+      t.directory([...STAFF, TAMSIN]);
+      t.as("salon_director", KEARNEY);
+      t.loopModel!(loopStandIn((view) => {
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, what_happened: "The register was short $20 on 11-1-26, which will be payroll deducted.", warning_level: "verbal", payroll_deduct: "yes" } };
+        return { text: "Here is the card." };
+      }));
+      const thread = t.thread();
+      const reply = await thread.say("create a verbal ca for tamsin orwell. on 11-1-26 the register was short $20 which will be payroll deducted from her check. payroll deduct applies");
+      expect(thread.proposal as unknown, "the stated amount is not on the card").toMatchObject({ payrollDeduct: "yes", payrollDeductAmount: "20" });
+      expect(reply.content, "the amount was asked although it was stated").not.toContain("**Payroll deduction amount**?");
+    },
+  },
+  {
     id: "nov14-agent-loop-guard-one-card-per-reply",
     title: "two people in one request: one card per reply, each person's own; never a second card in the same reply",
     report: `${REPORT}: multiple people (TWO_FORMS_EACH_PERSON's outcome)`,

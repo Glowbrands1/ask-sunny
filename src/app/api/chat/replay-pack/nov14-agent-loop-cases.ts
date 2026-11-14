@@ -51,7 +51,9 @@ function historyIsTheModelsOwn(views: readonly LoopView[], replies: readonly Rep
   for (const [index, reply] of replies.slice(0, -1).entries()) {
     const next = views.find((view) => view.step === 0 && view.turns.filter((turn) => turn.role === "user").length === index + 2);
     if (!next) continue;
-    expect(next.turns.filter((turn) => turn.role === "assistant").map((turn) => turn.text), `turn ${index + 2} was not given reply ${index + 1} as written`).toContain(reply.content);
+    // Changed on purpose (the earlier-card note, `run.ts` CARD_NOTE): a card's reply is given as written, plus the app's note after it.
+    const given = next.turns.filter((turn) => turn.role === "assistant").map((turn) => turn.text.replace("\n\n[app note: this reply showed a card built with propose_form]", ""));
+    expect(given, `turn ${index + 2} was not given reply ${index + 1} as written`).toContain(reply.content);
   }
 }
 
