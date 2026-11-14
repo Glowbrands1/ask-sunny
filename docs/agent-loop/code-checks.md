@@ -150,3 +150,19 @@ This is a TOOL/protocol change, not a reply patch: what Create sends is now data
   - The markers are stripped before the reply reaches the manager.
 
 **Rules book:** lines for each new fact, plus QA's live-app items 1, 2, 4, 5, 6, 11 and 13.
+
+## Batch D (done)
+
+**#48, the draft honesty check:**
+- With a draft open, a reply that claims a change nothing saved goes back to the model once, with what the saved draft shows. The model then makes the change with edit_form, or says plainly that it was not made.
+- Only if the reply still claims an unsaved change does today's FORM_EDIT_NOOP_GUARD answer from the saved diff replace it.
+- The trace records `draft_review: { claimed, fixed }`.
+
+**The card self-review (#997):**
+- It already hands back once and only states plainly that a change isn't on the card if the second try fails.
+- Both reviews share one hand-back call. It costs at most one more model call, with up to 4 steps, and only when a mismatch is found.
+
+**After batch D,** code writes into the reply only:
+- `EARLIER_CARD_STAYS`;
+- the safety clean-ups;
+- the two second-miss honesty lines.

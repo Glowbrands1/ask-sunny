@@ -414,6 +414,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   const usage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
   let modelCalls = 0;
   let selfReview: { mismatched: string[]; fixed: boolean } | null = null;
+  let draftReview: { claimed: boolean; fixed: boolean } | null = null;
   try {
     /*
      * AI TIME LIMITS (Part 1): each step has 45 s to its first token, then 30 s between chunks, and the whole loop
@@ -503,15 +504,9 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
        * turn, the reply's stated fields are checked against the card. A difference costs one more model call, with the
        * card's facts; nothing is checked, and nothing is called, when the reply states no card field.
        */
-      const reviewed = stoppedAt === "reply" && !effects.formUpdate && !effects.formOpened && !input.openFormId && (effects.proposal || cardOpenAtStart);
-      const wrong = reviewed ? cardMismatch(cardClaims(text), effects.proposal) : [];
-      if (wrong.length > 0) {
+      /* The hand-back (one more model call, only on a mismatch): the turn so far and the app's note; its final text, or "". */
+      const handBack = async (note: string): Promise<string> => {
         const response = await result.response;
-        const note = [
-          `[app check] Your reply says the card has: ${wrong.join("; ")}. ${effects.proposal ? "The card you proposed this turn does not." : "No card was proposed this turn, so the card on the manager's screen did not change."}`,
-          `Card now: ${JSON.stringify(cardFacts(effects.proposal))}.`,
-          "If the manager asked for that change, call propose_form again for the same person and form with it (and everything else the card already has). Otherwise correct your reply. Never state a value the card does not hold. Then write your reply to the manager again.",
-        ].join("\n");
         const review = streamText({
           model: model as never,
           system: [
@@ -535,14 +530,43 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
             stepNumber += 1;
           },
         });
-        const second = (await review.steps).at(-1);
-        const again = second && second.finishReason !== "tool-calls" ? (second.text ?? "").trim() : "";
+        const last = (await review.steps).at(-1);
+        return last && last.finishReason !== "tool-calls" ? (last.text ?? "").trim() : "";
+      };
+      const reviewed = stoppedAt === "reply" && !effects.formUpdate && !effects.formOpened && !input.openFormId && (effects.proposal || cardOpenAtStart);
+      const wrong = reviewed ? cardMismatch(cardClaims(text), effects.proposal) : [];
+      if (wrong.length > 0) {
+        const note = [
+          `[app check] Your reply says the card has: ${wrong.join("; ")}. ${effects.proposal ? "The card you proposed this turn does not." : "No card was proposed this turn, so the card on the manager's screen did not change."}`,
+          `Card now: ${JSON.stringify(cardFacts(effects.proposal))}.`,
+          "If the manager asked for that change, call propose_form again for the same person and form with it (and everything else the card already has). Otherwise correct your reply. Never state a value the card does not hold. Then write your reply to the manager again.",
+        ].join("\n");
+        const again = await handBack(note);
         const still = again ? cardMismatch(cardClaims(again), effects.proposal) : wrong;
         selfReview = { mismatched: wrong, fixed: still.length === 0 };
         /* Only on a second miss: the reply says plainly what is not on the card (today's no-op honesty pattern). */
         text = still.length === 0 && again
           ? again
           : `That change isn't on the card yet: ${still.join("; ")}. Tell me again and I'll update the card.`;
+      }
+      /*
+       * THE DRAFT'S HONESTY CHECK HANDS BACK FIRST (code-check #48, batch D): with a draft open, a reply that claims the
+       * draft changed when nothing on it was saved goes back to the model once, with what the saved draft shows, to make
+       * the change with edit_form or say plainly it was not made. Only if the reply still claims an unsaved change does
+       * the check after this block give today's FORM_EDIT_NOOP_GUARD answer from the saved diff.
+       */
+      if (stoppedAt === "reply" && noop && openBefore && !effects.proposal && !effects.formOpened && CLAIMS_A_CHANGE.test(text)) {
+        const saved = await noop.replyFromSavedDiff({ request: input.request, before: openBefore, answer: { content: text, citations: [], coverage: "not_applicable", recommendedVideoIds: [] } });
+        if (!saved.formUpdate) {
+          const note = [
+            "[app check] Your reply says the draft changed, but nothing on it was saved this turn.",
+            `What the saved draft shows: ${saved.content.slice(0, 1_500)}`,
+            "If the manager asked for a change, make it now with edit_form (values for the field; read_form gives its key). Otherwise say plainly what was not changed. Never claim a change edit_form did not report. Then write your reply to the manager again.",
+          ].join("\n");
+          const again = await handBack(note);
+          draftReview = { claimed: true, fixed: Boolean(again) && (Boolean(effects.formUpdate) || !CLAIMS_A_CHANGE.test(again)) };
+          if (again) text = again;
+        }
       }
     });
   } catch (error) {
@@ -565,7 +589,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   if (trace) {
     trace.slots = {
       ...(trace.slots ?? {}),
-      agent_loop: { steps, model_steps: modelSteps, model_calls: modelCalls, step_limit: limit, stopped: stoppedAt, ms: latencyMs, ...(selfReview ? { self_review: selfReview } : {}) },
+      agent_loop: { steps, model_steps: modelSteps, model_calls: modelCalls, step_limit: limit, stopped: stoppedAt, ms: latencyMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}) },
     };
   }
 
@@ -601,8 +625,9 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   }
   /*
    * HARD GUARD, NO FALSE "UPDATED" (the honesty breach in the live run, nov3-stepb-write-the-observation): with a form
-   * open, a reply that claims the form changed when the saved form did not is replaced by today's FORM_EDIT_NOOP_GUARD
-   * answer from the saved diff ("I didn't change anything on the form …"), and the turn claims only what was saved.
+   * open, a reply that STILL claims the form changed when the saved form did not, after the hand-back above, is
+   * replaced by today's FORM_EDIT_NOOP_GUARD answer from the saved diff ("I didn't change anything on the form …"),
+   * and the turn claims only what was saved.
    */
   if (noop && openBefore && !effects.proposal && !effects.formOpened) {
     const checked = await noop.replyFromSavedDiff({ request: input.request, before: openBefore, answer: { content, citations: [], coverage: "not_applicable", recommendedVideoIds: [] } });
