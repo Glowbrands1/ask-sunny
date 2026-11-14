@@ -1177,6 +1177,15 @@ describe("new flags default off and wrappers are inert", () => {
           ":(exclude)src/components/shell/app-shell.tsx",
           ":(exclude)src/components/shell/sidebar.tsx",
           ":(exclude)src/components/shell/app-switcher.tsx",
+          // Public /about and /privacy for Google's OAuth consent screen; no chat or form
+          // behavior; requested by Pau (1 Nov 2026, ported from Ask Bubbles). Two new pages,
+          // their shared frame, and the About / Privacy links under the sign-in form.
+          // login-screen.tsx is excluded as a whole file, so later edits to it are not
+          // checked by this guard.
+          ":(exclude)src/app/about/page.tsx",
+          ":(exclude)src/app/privacy/page.tsx",
+          ":(exclude)src/features/public/public-page.tsx",
+          ":(exclude)src/features/auth/login-screen.tsx",
           `:(exclude)${SIGN_IN_FORM}`,
           // THE CLAY RESTYLE (requested by Paulyne, 9 Nov 2026, from the approved
           // "Ask Sunny Clay Web" mockup; QA to confirm before merge). Unlike the
