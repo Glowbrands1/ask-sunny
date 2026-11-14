@@ -83,3 +83,21 @@ describe("cleanupChanges: a salon word is matched only exactly (QA, ported from 
     });
   });
 });
+
+describe("cleanupChanges: a common English word is never a place-word near miss (Gate-Sunny-2, #983, 14 Nov 2026)", () => {
+  it("\"late\" is not a respelled \"lake\": the gate's repro", () => {
+    const check = (source: string, written: string) => cleanupChanges({ source, written, today: "2026-11-14", names: ["Brisa Talmadge"] });
+    expect(check("she was late to her shift on 11/3, late again on 11/4", "She was late to her shift on 11/3 and again on 11/4, the last two days.")).toEqual([]);
+    expect(check("she was late to her shift on 11/3, late again on 11/4", "She was late to her shift on 11/3 and later again on 11/4.")).toEqual([]);
+  });
+
+  it("the other near words the gate found are not changed names", () => {
+    for (const [source, written] of [
+      ["she parked in the fire lane twice", "She parked in the fire line twice."],
+      ["she was missing her name badge", "She was without her name badge on the mission floor."],
+      ["she was strict with a guest about cents", "She was rude to a guest about the cost."],
+    ]) {
+      expect(changes(source!, written!), source).toEqual([]);
+    }
+  });
+});

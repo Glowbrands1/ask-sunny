@@ -232,6 +232,8 @@ function salonNameWords(): Set<string> {
 
 /** A typed word one letter from a salon word, or two from a long one, written as that salon word. */
 function nearSalonWord(typed: string, salon: string): boolean {
+  // A common English word is not a typo of a place word ("late" is not "lake"; Gate-Sunny-2, #983).
+  if (COMMON_WORDS.has(typed)) return false;
   if (typed[0] !== salon[0] || typed.length < 4) return false;
   return editDistance(typed, salon) <= (salon.length >= 6 && typed.length >= 5 ? 2 : 1);
 }
