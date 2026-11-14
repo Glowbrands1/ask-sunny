@@ -1,0 +1,32 @@
+diff --git a/src/lib/forms/chat-revision.ts b/src/lib/forms/chat-revision.ts
+index d397e3cd..37b8afd8 100644
+--- a/src/lib/forms/chat-revision.ts
++++ b/src/lib/forms/chat-revision.ts
+@@ -1,6 +1,8 @@
+ import "server-only";
+ 
+ import { getAnthropicClient } from "@/lib/ai/anthropic";
++import { withAiTimeLimit } from "@/lib/ai/time-limit";
++import { helperTimeoutMs } from "@/lib/config/ai-timeouts";
+ import type { AskResponse } from "@/lib/ai/types";
+ import { ACTIVE_BRAND } from "@/lib/brand";
+ import { editSeesSavedFormEnabled, formEditSingleWriterEnabled, revisionSameValueEnabled, spellingCleanupEnabled } from "@/lib/config/chat-quality-flags";
+@@ -366,7 +368,8 @@ export async function reviseActiveForm(input: {
+     .join("\n");
+ 
+   const client = getAnthropicClient();
+-  const revise = (revisionSystem: string) => client.messages.create({
++  // AI TIME LIMITS (QA, 14 Nov 2026): the revision ends by the helper limit, retries included (`time-limit.ts`).
++  const revise = (revisionSystem: string) => withAiTimeLimit("chat_revision", helperTimeoutMs(), (timed) => client.messages.create({
+     model: CLAUDE_MODEL,
+     max_tokens: CLAUDE_MAX_TOKENS.detailed,
+     system: revisionSystem,
+@@ -399,7 +402,7 @@ export async function reviseActiveForm(input: {
+       },
+     ],
+     tool_choice: { type: "tool", name: "revise_form_fields" },
+-  });
++  }, timed));
+ 
+   let response = await revise(system);
+   /*

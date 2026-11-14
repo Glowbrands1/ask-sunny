@@ -25,7 +25,10 @@ describe("a stalled reader", () => {
   it("asks the SDK for the reader's limit and no retry", async () => {
     create.mockResolvedValue({ content: [{ type: "tool_use", name: "t", input: {} }], usage: { input_tokens: 1, output_tokens: 1 } });
     await callClaudeToolTimed({ model: "m", system: "s", maxTokens: 5, timeoutMs: READER_TIMEOUT_MS, tool: { name: "t", description: "d", input_schema: { type: "object" } }, messages: [{ role: "user", content: "x" }] });
-    expect(create.mock.calls[0]![1]).toEqual({ timeout: READER_TIMEOUT_MS, maxRetries: 0 });
+    // AI TIME LIMITS (QA, 14 Nov 2026): changed on purpose — the call also carries the time limit's abort signal,
+    // which ends the whole call, body included, at the same limit (`time-limit.ts`). Limit and retry are unchanged.
+    expect(create.mock.calls[0]![1]).toMatchObject({ timeout: READER_TIMEOUT_MS, maxRetries: 0 });
+    expect(create.mock.calls[0]![1].signal).toBeInstanceOf(AbortSignal);
   });
 
   it("falls back as a timeout when the call stalls past the limit, with Date frozen as the report freezes it", async () => {
