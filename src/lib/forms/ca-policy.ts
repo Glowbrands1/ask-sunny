@@ -9,6 +9,8 @@ import {
   msbPhraseSocEnabled,
   caSalesPolicyEnabled,
   cleaningOtherEveryWordingEnabled,
+  otherPolicyAgreesEnabled,
+  closeSpellingMatchEnabled,
   formEditDateRulesEnabled,
   removePolicyNotNamedEnabled,
   policyCleaningIncidentEnabled,
@@ -220,30 +222,41 @@ const UNDONE_DUTIES = new RegExp(
 /** Cleaning, sanitizing or the equipment — the words that make it Care and Cleaning. */
 const CLEANING_WORD =
   String.raw`(?:clean(?:ing|ed|s)?|san[ai]?t[ai]?[zs]\w*|disinfect\w*|wip(?:e|ed|ing)\s+down|mop(?:ped|ping)?|sweep(?:ing)?|swept|vacuum\w*|dust(?:ing|ed)?)`;
-const CLEANING_UNDONE = [
+function cleaningUndonePatterns(word: string): RegExp[] {
+  return [
   new RegExp(
-    String.raw`\b${CLEANING_WORD}\b[^.;!?\n]{0,40}?(?:(?:were|was|are|is|been)\s+not\s+(?:being\s+)?|(?:were ?n[o']?t|weren't|was ?n[o']?t|wasn't|are ?n[o']?t|aren't|is ?n[o']?t|isn't)\s+(?:being\s+)?|not\s+being\s+|(?:did ?n[o']?t|didn't|never)\s+(?:get|got)\s+)(?:completed|done|finished)\b`,
+    String.raw`\b${word}\b[^.;!?\n]{0,40}?(?:(?:were|was|are|is|been)\s+not\s+(?:being\s+)?|(?:were ?n[o']?t|weren't|was ?n[o']?t|wasn't|are ?n[o']?t|aren't|is ?n[o']?t|isn't)\s+(?:being\s+)?|not\s+being\s+|(?:did ?n[o']?t|didn't|never)\s+(?:get|got)\s+)(?:completed|done|finished)\b`,
   ),
-  new RegExp(String.raw`\b(?:${FAILED}|not)\s+(?:\S+\s+){0,3}?(?:complete|completed|finish|finished|do|done)\b[^.;!?\n]{0,30}?\b${CLEANING_WORD}\b`),
-  new RegExp(String.raw`\b(?:${FAILED}|not)\s+(?:\S+\s+){0,2}?${CLEANING_WORD}\b`),
+  new RegExp(String.raw`\b(?:${FAILED}|not)\s+(?:\S+\s+){0,3}?(?:complete|completed|finish|finished|do|done)\b[^.;!?\n]{0,30}?\b${word}\b`),
+  new RegExp(String.raw`\b(?:${FAILED}|not)\s+(?:\S+\s+){0,2}?${word}\b`),
   // "skipped the 10 minute sanitize"
-  new RegExp(String.raw`\b(?:skipped|skips|skipping)\s+(?:\S+\s+){0,4}?${CLEANING_WORD}\b`),
+  new RegExp(String.raw`\b(?:skipped|skips|skipping)\s+(?:\S+\s+){0,4}?${word}\b`),
   /\bleft\s+(?:\S+\s+){0,4}?(?:dirty|unclean|filthy|a\s+mess|messy|uncleaned|unsanitized)\b/,
   /\b(?:dirty|unclean|filthy|uncleaned|unsanitized)\s+(?:\S+\s+){0,1}?(?:beds?|booths?|rooms?|equipment|lobby|restrooms?|bathrooms?|floors?|counters?|stations?|machines?|units?|towels?|break\s?room)\b/,
   // "she left without cleaning the restrooms" (QA-7, 26 Oct 2026)
   new RegExp(
-    String.raw`\b(?:left|leaves|leaving|went\s+home|clocked\s+out|closed(?:\s+up)?)\s+(?:\S+\s+){0,3}?without\s+(?:\S+\s+){0,2}?${CLEANING_WORD}\b`,
+    String.raw`\b(?:left|leaves|leaving|went\s+home|clocked\s+out|closed(?:\s+up)?)\s+(?:\S+\s+){0,3}?without\s+(?:\S+\s+){0,2}?${word}\b`,
   ),
 ];
+}
+const CLEANING_UNDONE = cleaningUndonePatterns(CLEANING_WORD);
+/*
+ * OTHER_POLICY_AGREES_ENABLED (QA's ruling on the Sunny sanitation report, 11 Nov 2026): "for not doing th e10 minute
+ * sanitaion" is cleaning left undone too. CLEANING_WORD reads "sanitize"/"sanitized" but not "sanitation" or its
+ * misspellings, so the cleaning-is-Other rule never read it. With the flag, the sanitation family is a cleaning word.
+ */
+const CLEANING_WORD_WITH_SANITATION = String.raw`(?:${CLEANING_WORD}|sani?ta?t?i?a?on\w*|sanitation\w*)`;
+const CLEANING_UNDONE_WITH_SANITATION = cleaningUndonePatterns(CLEANING_WORD_WITH_SANITATION);
 
 /*
  * CLEANING_OTHER_EVERY_WORDING_ENABLED (6 Nov 2026): "for not completing his daily cleaning duties" — the
  * same reading as `CLEANING_UNDONE`'s "not complete … cleaning", in the -ing form. Read with that pattern's
  * denial guards (index 1). Off, never read.
  */
-const CLEANING_UNDONE_GERUND = new RegExp(
-  String.raw`\b(?:${FAILED}|not)\s+(?:\S+\s+){0,3}?(?:completing|finishing|doing)\b[^.;!?\n]{0,30}?\b${CLEANING_WORD}\b`,
-);
+const cleaningUndoneGerund = (word: string) =>
+  new RegExp(String.raw`\b(?:${FAILED}|not)\s+(?:\S+\s+){0,3}?(?:completing|finishing|doing)\b[^.;!?\n]{0,30}?\b${word}\b`);
+const CLEANING_UNDONE_GERUND = cleaningUndoneGerund(CLEANING_WORD);
+const CLEANING_UNDONE_GERUND_WITH_SANITATION = cleaningUndoneGerund(CLEANING_WORD_WITH_SANITATION);
 
 /**
  * Whether the account says cleaning was left undone: "the cleaning didn't get
@@ -304,12 +317,14 @@ export function cleaningIncidentPhrase(rawText: string): string | null {
  */
 export function cleaningUndonePhrase(rawText: string): string | null {
   for (const sentence of statements(normalize(rawText))) {
-    for (const [index, pattern] of CLEANING_UNDONE.entries()) {
+    // OTHER_POLICY_AGREES_ENABLED: the sanitation family reads as cleaning too.
+    const sanitation = otherPolicyAgreesEnabled();
+    for (const [index, pattern] of (sanitation ? CLEANING_UNDONE_WITH_SANITATION : CLEANING_UNDONE).entries()) {
       const match = pattern.exec(sentence);
       if (match && readsAsIncident(sentence, match, index)) return match[0].trim();
     }
     if (cleaningOtherEveryWordingEnabled()) {
-      const match = CLEANING_UNDONE_GERUND.exec(sentence);
+      const match = (sanitation ? CLEANING_UNDONE_GERUND_WITH_SANITATION : CLEANING_UNDONE_GERUND).exec(sentence);
       if (match && readsAsIncident(sentence, match, 1)) return match[0].trim();
     }
   }
@@ -723,9 +738,22 @@ export function managerWords(rawText: string): string {
  * between policies, or any other conduct topic leaves it alone. Off, the
  * reading is returned untouched.
  */
+/*
+ * OTHER_POLICY_AGREES_ENABLED, a named policy wins (Gate-Sunny-3 on #839, 13 Nov 2026; Pau's rule): a manager who NAMES
+ * the manual's Care and Cleaning section — in any close spelling ("care and clening", "care & cleaning", "care n
+ * cleaning"), as "the cleaning policy", or by "equipment and facilities" — keeps it. Only a described duty is Other.
+ */
+const NAMES_CARE_AND_CLEANING =
+  /\bcare\s*(?:and|&|n|\+)\s*c[a-z]{0,2}l[a-z]{0,3}n(?:ing|in|g)\b|\bcleaning\s+polic(?:y|ies)\b|\bequipment\s+(?:and|&)\s+facilit\w*/i;
+
+export function namesCareAndCleaning(rawText: string): boolean {
+  return NAMES_CARE_AND_CLEANING.test(rawText ?? "");
+}
+
 function withCleaningOther(reading: CaPolicyReading, rawText: string): CaPolicyReading {
   if (!caSalesPolicyEnabled()) return reading;
   if (reading.stated !== null || reading.ambiguous) return reading;
+  if (otherPolicyAgreesEnabled() && namesCareAndCleaning(rawText)) return reading;
   /*
    * CLEANING_OTHER_EVERY_WORDING_ENABLED: an account read as nothing else ("for not completing his daily cleaning
    * duties" has no task topic) is Other too, where the cleaning reader reads it. Off, only the task incident.
@@ -994,6 +1022,8 @@ const LATENESS = /\b(?:late|lateness|tardy|tardiness|left early|leaving early|cl
 export function statedOffenseKeys(reading: CaPolicyReading, rawText: string): string[] | null {
   switch (reading.stated) {
     case null:
+      // OTHER_POLICY_AGREES_ENABLED: cleaning or sanitation left undone ticks Other on the draft, as the card says (Pau's rule).
+      if (otherPolicyAgreesEnabled() && reading.other === "cleaning") return ["other"];
       // CA_SALES_POLICY_ENABLED: a sales or MSB account ticks the Standards of Conduct. Off, never set.
       return isSalesPolicyReading(reading) ? [STANDARDS_OF_CONDUCT] : null;
     case "attendance": {
@@ -1200,7 +1230,13 @@ export function unconfirmedManualLine(named: NamedPolicyReading | null): string 
 
 export function caPolicyProposalLine(reading: CaPolicyReading, named: NamedPolicyReading | null = null): string | null {
   // CA_SALES_POLICY_ENABLED (`withCleaningOther`): cleaning left undone is the form's Other box. Off, never set.
-  if (reading.other === "cleaning") {
+  /*
+   * CLOSE_SPELLING_MATCH_ENABLED (QA's ruling, 13 Nov 2026; ported from the sibling app): a policy the manager NAMES,
+   * which the manual answers, wins over a cleaning account — Pau's cleaning-is-Other ruling is for a manager who only
+   * DESCRIBES cleaning. A name the manual does not answer keeps Other (`close-policy-ask.ts` then asks "Did you mean
+   * …?"). Off, as before.
+   */
+  if (reading.other === "cleaning" && !(closeSpellingMatchEnabled() && named?.lookup === "found")) {
     return "**Policy:** Other — cleaning duties left undone are recorded under Other on the Corrective Action Form, not the Standards of Conduct. Tell me if a different policy applies.";
   }
   /*
