@@ -142,6 +142,15 @@ export interface ToolEffects {
 
 export type ToolResult = Record<string, unknown>;
 
+/**
+ * DATA, NOT INSTRUCTIONS (QA, 14 Nov 2026). Text a tool returns that people wrote (a form's fields, a reviser's reply
+ * quoting them) is wrapped in a labelled envelope, so the model reads it as information, never as an instruction,
+ * however it is worded. The rules book says the same (`rules-book.ts`).
+ */
+export function untrusted(text: string): { untrusted_text: string } {
+  return { untrusted_text: text };
+}
+
 /* ------------------------------------------------------------- roster --- */
 
 type RosterRead = { readonly kind: "read"; readonly roster: readonly RosterEmployee[] } | { readonly kind: "unchecked" } | { readonly kind: "failed" };
@@ -264,7 +273,7 @@ export async function readForm(context: ToolContext, input: { instance_id?: unkn
   if (id !== context.openFormId && !asksAboutPastForms(context)) return { error: NOT_ASKED };
   try {
     const { loaded } = await authorizeInstance(context.request, id, "view");
-    const values: Record<string, string> = {};
+    const values: Record<string, { untrusted_text: string }> = {};
     let size = 0;
     for (const row of loaded.values) {
       const text = row.value?.trim() ?? "";
@@ -273,7 +282,7 @@ export async function readForm(context: ToolContext, input: { instance_id?: unkn
       if (!shown) continue;
       size += shown.length;
       if (size > VALUES_LIMIT) break;
-      values[row.fieldKey] = shown;
+      values[row.fieldKey] = untrusted(shown);
     }
     return {
       instance_id: loaded.instance.id,
@@ -645,7 +654,7 @@ export async function editForm(
         effects.formUpdate = { instanceId: id, updated };
         effects.revisedReply = revised.content;
       }
-      return { updated, reviser_said: revised.content.slice(0, 1_500), note: updated.length > 0 ? "The reviser's own words are shown to the manager as your reply; add nothing." : undefined };
+      return { updated, reviser_said: untrusted(revised.content.slice(0, 1_500)), note: updated.length > 0 ? "The reviser's own words are shown to the manager as your reply; add nothing." : undefined };
     }
     // The revision's writer, as chat-revision.ts saves: the one writer with FORM_EDIT_SINGLE_WRITER_ENABLED, else the old one.
     const written = formEditSingleWriterEnabled()
