@@ -535,6 +535,11 @@ vi.mock("@/lib/forms/employee-roster", async (importOriginal) => {
       })),
     // The turn's roster limit (`withRosterLimit`), as production's loadScopedRoster applies it.
     loadScopedRoster: async (scope: AccessScope | null) => actual.withinRosterLimit(actual.scopeRoster(state.directory as never, scope)),
+    // The whole directory, terminated people included (the agent loop's inactive_in_woven fact reads it).
+    readDirectoryRoster: async () => {
+      if (loop.rosterFails) throw new Error("The employee directory could not be read.");
+      return state.directory as never;
+    },
     // AGENT_LOOP_ENABLED: find_staff's roster read, the same people (`t.rosterFails()` makes it fail, as a directory outage would).
     readScopedRoster: async (scope: AccessScope) => {
       if (loop.rosterFails) throw new Error("The employee directory could not be read.");

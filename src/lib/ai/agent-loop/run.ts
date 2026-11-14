@@ -18,6 +18,8 @@ import type { AskResponse } from "../types";
 import { EARLIER_CARD_STAYS } from "@/lib/forms/proposal-continuation";
 import { withoutSensitiveDefaults } from "../sensitive-defaults";
 import { finalReplyWithoutMarkers, withoutSourceMarkers, withoutSourceNotes } from "../source-note";
+import { extractUsedMarkers } from "../prompts";
+import { shownCitations } from "@/lib/knowledge/empty-card-drop";
 import { agentLoopSystem, AGENT_LOOP_RULES } from "./prompt";
 import { agentLoopStepLimit } from "./switch";
 import {
@@ -166,7 +168,7 @@ export const AGENT_LOOP_TOOLS = [
         template_key: { type: "string" },
         employee_id: { type: "string", description: "From find_staff." },
         employee_name: { type: "string", description: "Only when find_staff said the roster cannot be searched." },
-        policy: { type: "string", description: "One JBA Policy Manual heading, exactly, or \"Other\" (a cleaning or sanitation duty left undone is always Other)." },
+        policy: { type: "string", description: "One JBA Policy Manual heading, exactly; or \"Other — <short topic>\"; or both, \"<heading>; Other — <topic>\" (a cleaning or sanitation duty left undone is Other, as the rules book says)." },
         what_happened: {
           type: "string",
           description:
@@ -178,6 +180,7 @@ export const AGENT_LOOP_TOOLS = [
         payroll_amount: { type: "string", description: "The deduction amount the manager stated, digits." },
         prior_actions: { type: "string", description: "Earlier steps only as the manager stated them (\"verbal on 10/2\", \"coached last month\"); never from records on file." },
         incident_time: { type: "string", description: "The time of the incident if the manager gave one, as they said it." },
+        salon: { type: "string", description: "The salon the form is for, as the manager named it (\"kearney\", \"IA Altoona\"), when the card asks which salon or the manager says one. Only the manager's own salons are accepted." },
       },
       ["template_key"],
     ),
@@ -270,7 +273,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     find_staff: (args) => findStaff(context, args, effects),
     find_past_forms: (args) => findPastForms(context, args),
     read_form: (args) => readForm(context, args),
-    read_policy: (args) => readPolicy(context, args),
+    read_policy: (args) => readPolicy(context, args, effects),
     propose_form: (args) => proposeForm(context, effects, args),
     edit_form: (args) => editForm(context, effects, args),
     open_form: (args) => openForm(context, effects, args),
@@ -489,9 +492,20 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
    * source tags (SOURCE_NOTE_GUARD, FINAL_REPLY_MARKER_GUARD), and never a default-password format or SSN digits, in
    * the reply or in a source card's excerpt (SENSITIVE_DEFAULTS_REDACT). Each behind its own flag, as today.
    */
+  /*
+   * THE CARDS ARE THE SOURCES THE REPLY USES (QA's live-app item 12: cards that did not match the reply's sources, and
+   * product sheets nobody cited): the [S<n>] the reply wrote, as today's grounded path keeps them; a reply with no marker
+   * keeps a source whose document it names. The markers never reach the manager.
+   */
+  const sources = effects.sources ?? [];
+  const used = extractUsedMarkers(content, sources.map((_, index) => index + 1));
+  const cited = used.length > 0
+    ? used.map((marker) => sources[marker - 1]!)
+    : sources.filter((source, index, all) => content.toLowerCase().includes(source.documentTitle.toLowerCase()) && all.findIndex((row) => row.documentId === source.documentId) === index);
+  content = content.replace(/\s?\[S\d{1,2}\]/g, "");
   const answer: AskResponse = {
     content: withoutSourceMarkers(withoutSourceNotes(content)),
-    citations: effects.citations ?? [],
+    citations: shownCitations([...cited, ...(effects.citations ?? [])]),
     coverage: "not_applicable",
     recommendedVideoIds: [],
     ...(effects.proposal ? { formProposal: effects.proposal } : {}),
