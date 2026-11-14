@@ -363,6 +363,13 @@ describe("QA's bar on the history NO-GO, flag on", () => {
     expect(rows(answer?.content)).toEqual(["Verbal warning — 09/21/2026"]);
   });
 
+  it('"verbal warning signed 9/1/26" keeps the manager\'s "signed" on its Prior row (Gate-Bubbles-5, 14 Nov 2026)', async () => {
+    ON();
+    const answer = await replies(["ca for pat rivera, late again today. verbal warning signed 9/1/26"]);
+    expect(answer?.formProposal?.warningLevel ?? null).toBeNull();
+    expect(answer?.content).toContain("Verbal warning — signed 09/01/2026");
+  });
+
   for (const said of [
     "verbal warning on the 12th for pat rivera, she was late that day",
     "verbal warning on 12 November for pat rivera, she was late that day",
