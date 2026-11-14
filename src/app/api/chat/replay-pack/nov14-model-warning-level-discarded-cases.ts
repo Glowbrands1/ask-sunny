@@ -36,7 +36,8 @@ export const NOV14_MODEL_WARNING_LEVEL_DISCARDED_CASES: ReplayCase[] = [
     id: "nov14-model-warning-level-not-stated-stays-empty",
     title: `"${SAID}": no level was stated, so the card has none and the saved Type of Warning stays empty`,
     report: REPORT,
-    status: { open: "the draft writes the model's Written tick (MODEL_WARNING_LEVEL_DISCARDED off in production)" },
+    // Changed on purpose (14 Nov 2026): fixed in production by MODEL_WARNING_LEVEL_DISCARDED_ENABLED, QA round 38l. Was OPEN.
+    status: "fixed",
     fixFlags: ["MODEL_WARNING_LEVEL_DISCARDED_ENABLED"],
     async run(t) {
       const thread = start(t);
@@ -77,7 +78,8 @@ export const NOV14_MODEL_WARNING_LEVEL_DISCARDED_CASES: ReplayCase[] = [
     id: `nov14-model-warning-level-climbed-rung-${slug}`,
     title: `"${said}": an earlier verbal is history, so the model's Written is not saved`,
     report: `${REPORT}: the audit's "climbed a rung" shape (Written where the manager only spoke of an earlier verbal)`,
-    status: { open: "the draft writes the model's Written tick (MODEL_WARNING_LEVEL_DISCARDED off in production)" },
+    // Changed on purpose (14 Nov 2026): fixed in production by MODEL_WARNING_LEVEL_DISCARDED_ENABLED, QA round 38l. Was OPEN.
+    status: "fixed",
     fixFlags: ["MODEL_WARNING_LEVEL_DISCARDED_ENABLED"],
     async run(t) {
       const thread = start(t);
