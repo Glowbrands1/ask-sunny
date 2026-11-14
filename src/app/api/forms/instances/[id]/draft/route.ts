@@ -43,7 +43,9 @@ import {
   sameRequestOtherPersonEnabled,
   coachingObservedSavedEnabled,
   spellingCleanupEnabled,
+  reportedNotObservedEnabled,
 } from "@/lib/config/chat-quality-flags";
+import { STATED_NOT_OBSERVED_RULE, withoutUnstatedObservation } from "@/lib/forms/evidence-basis";
 import { notesMadeAbout } from "@/lib/ai/make-it-about";
 import { withoutPolicyReferenceTurns } from "@/lib/ai/policy-reference-turn";
 import { NOTHING_SET_ASIDE, policiesSetAside, setAsideAnything, valuesWithPolicySetAside, withoutPolicyTakeOff } from "@/lib/forms/policy-set-aside";
@@ -1025,6 +1027,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
             "Do not mention follow-up dates or scheduling at all: the follow-up date is recorded separately by the manager, not in these fields.",
           ]),
       "If you cannot support a field from what you were given, return it empty.",
+      // REPORTED_NOT_OBSERVED_ENABLED: a statement with no stated source is written as she stated it.
+      ...(reportedNotObservedEnabled() ? [STATED_NOT_OBSERVED_RULE] : []),
       "Return only the fields you were asked for.",
       /*
        * THE OBSERVED / EXPECTATION SHAPE, asked for only by the fields whose
@@ -1492,6 +1496,15 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      * agreement between a manager and an employee that neither of them made.
      * Untouched on the thirteen templates that declare no timeframe field.
      */
+    /*
+     * REPORTED_NOT_OBSERVED_ENABLED (port of Ask Bubbles, 14 Nov 2026): "… was also observed yelling at a guest" from
+     * "she yelled at a guest": a statement with no stated source is written as she stated it.
+     */
+    if (reportedNotObservedEnabled()) {
+      for (const [key, value] of Object.entries(narrated.values)) {
+        if (typeof value === "string" && value !== "") narrated.values[key] = withoutUnstatedObservation(value, notes);
+      }
+    }
     const timeframe = guardFollowUpTimeframe(narrated.values, fields, notes);
 
     /*

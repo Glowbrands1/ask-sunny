@@ -4822,3 +4822,13 @@ export function cardAddedFactInObservationEnabled(): boolean {
 export function sharedCityAsksSalonEnabled(): boolean {
   return envFlag("SHARED_CITY_ASKS_SALON_ENABLED");
 }
+
+/**
+ * REPORTED_NOT_OBSERVED_ENABLED (coding 6; port of Ask Bubbles, QA's Bubbles Create check, 14 Nov 2026; default off). A
+ * fact the manager stated ("she yelled at a guest") was drafted as observed ("was also observed yelling at a guest"). On,
+ * the draft prompt asks for a statement with no stated source to be written as she stated it, and the draft's "was
+ * observed <doing>" becomes "was <doing>" unless her words say she saw it (`forms/evidence-basis.ts`). Off, as before.
+ */
+export function reportedNotObservedEnabled(): boolean {
+  return envFlag("REPORTED_NOT_OBSERVED_ENABLED");
+}
