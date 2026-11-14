@@ -21,10 +21,12 @@ const REPORT = "QA's Sunny 38h live check, 14 Nov 2026 (Admin, all areas, off-ro
 const EVERY_SALON = { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] };
 const OMAHA_PACIFIC = "loc-0410";
 const LINCOLN_PINE_LAKE = "loc-0312";
+const KEARNEY = "loc-0309";
 
 interface Card {
   readonly locationId?: string | null;
   readonly locationResolution?: string;
+  readonly payrollDeduct?: string | null;
 }
 
 async function say(t: ReplayContext, turns: readonly string[]) {
@@ -35,7 +37,7 @@ async function say(t: ReplayContext, turns: readonly string[]) {
   let reply = "";
   for (const turn of turns) reply = (await thread.say(turn)).content;
   const card = (thread.proposal as Card | null) ?? {};
-  return { reply, locationId: card.locationId ?? null, resolution: card.locationResolution ?? null };
+  return { reply, locationId: card.locationId ?? null, resolution: card.locationResolution ?? null, payroll: card.payrollDeduct ?? null };
 }
 
 /** The card's Salon and the reply's salon line agree. */
@@ -84,6 +86,41 @@ export const NOV14_FUZZY_SALON_ASKS_CASES: ReplayCase[] = [
       expectSalonLineAgrees(reply, locationId);
     },
   },
+  // QA's further 38h live cases: a single-salon city inside a longer place is filed as that salon, unasked.
+  ...([
+    { key: "kearney-high", turn: "create a ca for tavia quellan at kearney high, she was late", typed: "kearney high" },
+    { key: "kearney-mall", turn: "create a ca for tavia quellan at the kearney mall, she was late", typed: "the kearney mall" },
+    { key: "because-kearney-high", turn: "create a ca for tavia quellan, she was late because she was at kearney high of all places", typed: "kearney high" },
+  ] as const).map(({ key, turn, typed }): ReplayCase => ({
+    id: `nov14-fuzzy-salon-asks-${key}`,
+    title: `Admin: "${turn}" — asks whether NE Kearney is the salon`,
+    report: REPORT,
+    status: { open: "the city inside a longer place is filed as NE Kearney, unasked" },
+    fixFlags: [FLAG],
+    async run(t: ReplayContext) {
+      const { reply, locationId } = await say(t, [turn]);
+      expect(locationId, `"${typed}" was filed without asking:\n${reply}`).not.toBe(KEARNEY);
+      expect(reply).toContain(`I read **${typed}** as **NE Kearney** — is that the salon?`);
+      expectSalonLineAgrees(reply, locationId);
+    },
+  })),
+  // QA's ruling (14 Nov 2026): a bare "yes" never answers two questions, least of all payroll deduct. The salon
+  // confirm is the only question in its reply; payroll waits and is asked next.
+  {
+    id: "nov14-fuzzy-salon-asks-yes-is-not-payroll",
+    title: `Admin: "… at omaha west, she was late", then "yes" — the salon is filed, payroll deduct is still unanswered and asked`,
+    report: `${REPORT}; QA's one-question ruling`,
+    status: { open: "the salon question shares its reply with the payroll question, and \"yes\" answers payroll" },
+    fixFlags: [FLAG],
+    async run(t: ReplayContext) {
+      const first = await say(t, ["create a ca for tavia quellan at omaha west, she was late"]);
+      expect(first.reply, `the salon question is not the only question:\n${first.reply}`).not.toMatch(/payroll deduct applicable\?/i);
+      const { reply, locationId, payroll } = await say(t, ["create a ca for tavia quellan at omaha west, she was late", "yes"]);
+      expect(locationId, `"yes" did not file the salon asked about:\n${reply}`).toBe(OMAHA_PACIFIC);
+      expect(payroll, `"yes" answered payroll deduct:\n${reply}`).toBeNull();
+      expect(reply, `payroll deduct was not asked next:\n${reply}`).toMatch(/payroll deduct applicable\?/i);
+    },
+  },
 ];
 
 /** Guards, flag off and on: a salon the manager named — whole, short, or a letter off — is filed with no question. */
@@ -91,6 +128,8 @@ const NAMED: readonly { key: string; turn: string; salon: string }[] = [
   { key: "omaha-pacific", turn: "create a ca for tavia quellan at omaha pacific, she was late", salon: OMAHA_PACIFIC },
   { key: "omaha-pacfic", turn: "create a ca for tavia quellan at omaha pacfic, she was late", salon: OMAHA_PACIFIC },
   { key: "lincoln-pine-lake", turn: "create a ca for tavia quellan at lincoln pine lake, she was late", salon: LINCOLN_PINE_LAKE },
+  { key: "kearney", turn: "create a ca for tavia quellan at kearney, she was late", salon: KEARNEY },
+  { key: "the-kearney-salon", turn: "create a ca for tavia quellan at the kearney salon, she was late", salon: KEARNEY },
 ];
 
 export const NOV14_FUZZY_SALON_ASKS_GUARDS: ReplayCase[] = NAMED.map((wording) => ({

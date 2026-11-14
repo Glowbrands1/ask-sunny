@@ -78,10 +78,12 @@ export function askLooseSalon(
 
   const salonId = proposal.locationResolution === "resolved" ? proposal.locationId : null;
   if (!salonId) return response;
-  if (firmlyNamed(said, salonId) || ownSalon(proposal, input.people ?? [], salonId) || onlySalon(input.scope, salonId)) {
-    return agreeing(response);
-  }
-  const typed = resembledBy(said, salonId);
+  if (ownSalon(proposal, input.people ?? [], salonId) || onlySalon(input.scope, salonId)) return agreeing(response);
+  // A city inside a longer place ("at kearney high", "at the kearney mall", "at omaha west") is not the salon named.
+  const longer = longerPlaces(said, salonId);
+  const bare = longer.reduce((text, phrase) => text.split(phrase.text).join(" ".repeat(phrase.text.length)), said);
+  if (firmlyNamed(bare, salonId)) return agreeing(response);
+  const typed = longer.at(-1)?.place ?? (firmlyNamed(said, salonId) ? null : resembledBy(said, salonId));
   if (!typed) return agreeing(response);
 
   const salon = PRODUCTION_SALONS.find((entry) => entry.id === salonId);
@@ -96,8 +98,67 @@ export function askLooseSalon(
     asked && NO.test(answer)
       ? GLOBAL_SALON_ASK
       : `I read **${typed}** as **${salon?.name ?? salonId}** — is that the salon? Say yes, or tell me the salon.`;
-  const content = response.content.replace(SALON_SENTENCE, DRAFT_STAYS_READY).trim();
+  // QA's ruling (14 Nov 2026): a bare "yes" never answers two questions. The salon question is the only one in this
+  // reply; payroll deduct and any other question wait for the next turn.
+  const content = onlyThisQuestion(response.content.replace(SALON_SENTENCE, DRAFT_STAYS_READY)).trim();
   return { ...response, content: content.includes(ask) ? content : `${content}\n\n${ask}`, formProposal: next };
+}
+
+/** The reply with every other question paragraph taken out; the card's own field lines ("**Label:** …") stay. */
+function onlyThisQuestion(content: string): string {
+  return content
+    .split(/\n{2,}/)
+    .filter((paragraph) => /^\s*\*\*[^*\n]+:\*\*/.test(paragraph) || !/\?(?:\*\*)?(?=\s|$)/.test(paragraph))
+    .join("\n\n");
+}
+
+/** Words of a salon's name, its city, a salon number, or a word saying it is a salon: not a longer place's words. */
+const SALON_WORD = /^(?:the|salon|location|store|sun|tan|city|stc|[a-z]{2}|\d+)$/;
+const PLACE_PHRASE =
+  /\b(?:at|in)\s+((?:the\s+)?[a-z0-9][a-z0-9'’.-]*(?:\s+[a-z0-9][a-z0-9'’.-]*){0,4}?)(?=\s*(?:[,.;:!?()\n]|$)|\s+(?:on|and|but|she|he|they|for|because|was|were|is|today|yesterday|this|last|with|by|after|before|during|when|while|of|at|in)\b)/gi;
+
+/**
+ * The "at/in …" phrases that hold one of this salon's words and also a word that is not one ("kearney high", "the
+ * kearney mall", "omaha west"): a longer place named after the city, not the salon. A word one letter off a salon word
+ * ("pacfic") is that word.
+ */
+function longerPlaces(said: string, salonId: string): { text: string; place: string }[] {
+  const name = PRODUCTION_SALONS.find((entry) => entry.id === salonId)?.name;
+  if (!name) return [];
+  const own = name.toLowerCase().replace(/^[a-z]{2}\s+/, "").split(/[^a-z0-9]+/).filter(Boolean);
+  const isOwn = (word: string) => own.includes(word) || (word.length >= 5 && own.some((part) => part.length >= 5 && oneOff(word, part)));
+  const found: { text: string; place: string }[] = [];
+  for (const match of said.matchAll(PLACE_PHRASE)) {
+    const place = match[1]!.trim();
+    const words = place.toLowerCase().split(/\s+/).map((word) => word.replace(/[^a-z0-9]/g, "")).filter(Boolean);
+    if (!words.some(isOwn)) continue;
+    if (words.every((word) => isOwn(word) || SALON_WORD.test(word))) continue;
+    found.push({ text: match[0], place });
+  }
+  return found;
+}
+
+function oneOff(left: string, right: string): boolean {
+  if (left === right || Math.abs(left.length - right.length) > 1) return false;
+  let i = 0;
+  let j = 0;
+  let edits = 0;
+  while (i < left.length && j < right.length) {
+    if (left[i] === right[j]) {
+      i += 1;
+      j += 1;
+      continue;
+    }
+    edits += 1;
+    if (edits > 1) return false;
+    if (left.length > right.length) i += 1;
+    else if (left.length < right.length) j += 1;
+    else {
+      i += 1;
+      j += 1;
+    }
+  }
+  return edits + (left.length - i) + (right.length - j) <= 1;
 }
 
 /** The reply's salon line agrees with the card: a card that names a salon never says "won't name one". */
