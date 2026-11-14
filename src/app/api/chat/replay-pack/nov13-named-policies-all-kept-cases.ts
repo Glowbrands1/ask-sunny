@@ -18,10 +18,22 @@ import { KEARNEY, STAFF, type DirectoryRow, type ReplayCase, type ReplayContext 
 
 const NELL: DirectoryRow = { id: "e-nell-orrin-npk", firstName: "Nell", lastName: "Orrin", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" };
 const BOTH = "create ca form for nell orrin for violating the attendance policy and standards of conduct, she was late on 11/3/26 and yelled at a customer. verbal. no payroll deduct.";
+const REVERSED = "create a ca for nell orrin for violating standards of conduct and the attendance policy, she yelled at a customer and was late on 11/3/26. verbal. no payroll deduct.";
 const CORRECTED = "create ca form for nell orrin, not attendance, standards of conduct, she yelled at a customer on 11/3/26. verbal. no payroll deduct.";
 const REPORT = "QA, 13 Nov 2026 (two-offense Create check): naming the attendance policy and standards of conduct kept only Standards of Conduct";
 const FLAG = "NAMED_POLICIES_ALL_KEPT_ENABLED";
 const ATTENDANCE_KEYS = /^(?:attendance_policy|tardiness|absenteeism)$/;
+
+function bothKept(t: ReplayContext, id: string) {
+  const offense = t.checked(id).offense_type ?? [];
+  const values = t.values(id);
+  expect(offense, "Standards of Conduct left the offense").toContain("standards_of_conduct");
+  expect(offense.some((key) => ATTENDANCE_KEYS.test(key)), `Attendance left the offense: ${offense.join(", ")}`).toBe(true);
+  expect(values.policy_violated ?? "", "Policy Violated dropped Attendance").toMatch(/attendance/i);
+  expect(values.policy_violated ?? "", "Policy Violated dropped Standards of Conduct").toMatch(/standards of conduct/i);
+  expect(values.policy_language ?? "", "Direct policy dropped Attendance").toMatch(/attendance/i);
+  expect(values.policy_language ?? "", "Direct policy dropped Standards of Conduct").toMatch(/standards of conduct/i);
+}
 
 async function create(t: ReplayContext, request: string, observation: string) {
   vi.setSystemTime(new Date("2026-11-10T15:00:00Z"));
@@ -65,6 +77,17 @@ export const NOV13_NAMED_POLICIES_ALL_KEPT_CASES: ReplayCase[] = [
       const offense = t.checked(id).offense_type ?? [];
       expect(offense, "the corrected-away Attendance was ticked").not.toContain("attendance_policy");
       expect(t.values(id).policy_violated ?? "").not.toMatch(/attendance/i);
+    },
+  },
+  {
+    id: "nov14-named-policies-all-kept-reversed-order",
+    title: `"${REVERSED}" (the attendance policy named last): both policies are kept`,
+    report: `${REPORT}; Gate-Bubbles-4 on #878 (14 Nov 2026): with Attendance named last, Standards of Conduct was dropped`,
+    status: { open: "only Attendance is kept: Standards of Conduct leaves the offense, Policy Violated and Direct policy" },
+    fixFlags: [FLAG],
+    async run(t) {
+      const { id } = await create(t, REVERSED, "Observed:\nNell Orrin yelled at a customer and was late on November 3, 2026.");
+      bothKept(t, id);
     },
   },
 ];

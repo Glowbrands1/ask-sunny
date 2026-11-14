@@ -41,6 +41,7 @@ import {
   proposalPolicySetAsideEnabled,
   sameRequestOtherPersonEnabled,
   coachingObservedSavedEnabled,
+  namedPoliciesAllKeptEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { notesMadeAbout } from "@/lib/ai/make-it-about";
 import { withoutPolicyReferenceTurns } from "@/lib/ai/policy-reference-turn";
@@ -1876,8 +1877,16 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       (describedSection && !(enforced.checked.offense_type ?? []).some((key) => SPECIFIC_SECTION_BOXES.has(key))
         ? describedSection
         : null);
+    /*
+     * NAMED_POLICIES_ALL_KEPT_ENABLED (ported from Ask Bubbles; Gate-Bubbles-4 on its #878, 14 Nov 2026): every policy
+     * the manager named together is ticked, in either order. The card cites one of them; with Attendance named last its
+     * single section won here and Standards of Conduct was dropped.
+     */
+    const allNamedKeys =
+      caPolicy && namedPoliciesAllKeptEnabled() && (caPolicy.alsoStated?.length ?? 0) > 0 ? statedOffenseKeys(caPolicy, policyNotes) : null;
     const statedKeys = caPolicy
-      ? ((cardSection ? [cardSection.offenseKey] : null) ??
+      ? (allNamedKeys ??
+        (cardSection ? [cardSection.offenseKey] : null) ??
         statedOffenseKeys(caPolicy, policyNotes) ??
         (policySection ? [policySection.offenseKey] : null))
       : null;
