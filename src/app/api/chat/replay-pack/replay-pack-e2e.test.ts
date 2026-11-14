@@ -877,8 +877,8 @@ function context(): ReplayContext {
     draftWrites: (values, checked, extra) => {
       state.draft = { values, ...(checked ? { checked } : {}), ...(extra ?? {}) };
     },
-    revisionWrites: (values) => {
-      state.revision = { values };
+    revisionWrites: (values, checked) => {
+      state.revision = checked ? { values, checked } : { values };
     },
     modelSays: (text) => {
       said.answer = text;

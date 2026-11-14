@@ -1,5 +1,6 @@
 import "server-only";
 
+import { madeAbout } from "@/lib/ai/make-it-about";
 import type { AskResponse } from "@/lib/ai/types";
 import { ACTIVE_BRAND } from "@/lib/brand";
 import {
@@ -545,10 +546,19 @@ export async function rederivePolicyFromAccount(input: {
   if (reading.other === "cleaning" && offered.includes("other")) {
     keys = ["other"];
   } else {
-    const described = describedManualSection({ text: input.account, chunks });
+    /*
+     * The account as saved, else the manager's own made-about words (QA's live 17x item 2a in the sibling app, 14 Nov
+     * 2026): the saved account says "on the phone the whole shift" (the app's neutral wording for "her phone"), which
+     * reads as no section, while "make it about her phone use instead, she was on her phone the whole shift" reads as
+     * the Cell Phone policy. Only the made-about clause is read, never the rest of the turn.
+     */
+    const about = madeAbout(input.question);
+    const fromAccount = describedManualSection({ text: input.account, chunks });
+    const described = fromAccount ?? (about ? describedManualSection({ text: about, chunks }) : null);
+    const readFrom = fromAccount ? input.account : (about ?? input.account);
     if (described) {
       sections = [described.section];
-      const stated = statedOffenseKeys(reading, input.account);
+      const stated = statedOffenseKeys(fromAccount ? reading : readCaPolicy(readFrom), readFrom);
       keys = offeredOffenseKeys([...new Set(stated ?? [offenseKeyForManualHeading(described.section.heading)])], offered);
     }
   }
@@ -597,13 +607,20 @@ export async function rederivePolicyFromAccount(input: {
     }
   }
 
-  // Policy Violated follows the boxes (never a line the manager typed).
+  /*
+   * Policy Violated follows the boxes (never a line the manager typed): the box this step ticked, or the one already on
+   * the form when it is the box the new account reads as (QA's live 17x item 2a in the sibling app, 14 Nov 2026: the
+   * made-about revision had ticked Standards of Conduct itself, so nothing "moved" here and Policy Violated stayed
+   * Attendance).
+   */
   const violated = row(VIOLATED_KEY);
-  if (moved && !managers(VIOLATED_KEY) && fields.some((field) => field.key === VIOLATED_KEY)) {
+  const boxes = moved ? moved.keys : current;
+  const boxesAgree = keys.length > 0 && keys.length === boxes.length && keys.every((key) => boxes.includes(key));
+  if (boxesAgree && !managers(VIOLATED_KEY) && fields.some((field) => field.key === VIOLATED_KEY)) {
     const derived = offenseCategoryValue({
       document,
       variantKey: loaded.instance.variantKey,
-      checked: { [OFFENSE_KEY]: moved.keys },
+      checked: { [OFFENSE_KEY]: boxes },
       values: Object.fromEntries(loaded.values.map((value) => [value.fieldKey, value.value ?? ""])),
       sectionNames: boxSectionNames(sections.map((section) => section.heading)),
     });
