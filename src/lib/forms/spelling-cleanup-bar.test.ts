@@ -11,6 +11,17 @@ const TODAY = "2026-11-14";
 const changes = (source: string, written: string, names: readonly string[] = []) => cleanupChanges({ source, written, today: TODAY, names });
 
 describe("cleanupChanges: QA's bar", () => {
+  it("a plural of a name word is not a changed name (Gate-Sunny-2, #983: \"Test Employee\", \"Employees are expected\")", () => {
+    // The route's source is the prompt, the notes and the form's values: the name is typed more often than it is written.
+    const said = "create a written CA for Test Employee at Kearney, she was 20 minutes late for her shift on 10-20-26";
+    const source = [said, "Test Employee"].join("\n");
+    const written =
+      "Observed:\nOn October 20, 2026, Test Employee arrived 20 minutes late for her scheduled shift.\nExpectation:\nEmployees are expected to arrive on time.";
+    expect(changes(source, written, ["Test Employee"])).toEqual([]);
+    // A name still changed into a near word is caught.
+    expect(changes("Manuel saw her leave", "Manual saw her leave.", ["Manuel Quellby"])).toContainEqual(expect.stringMatching(/^name manuel/));
+  });
+
   it("an edited single-quoted span is caught", () => {
     expect(changes("she told a guest 'that is not my registr'", "She told a guest 'that is not my register'.")).toContainEqual(expect.stringMatching(/^quote /));
     expect(changes("she told a guest ‘that is not my registr’", "She told a guest ‘that is not my register’.")).toContainEqual(expect.stringMatching(/^quote /));

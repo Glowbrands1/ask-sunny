@@ -96,7 +96,11 @@ export function cleanupChanges(input: {
     if (!isName || (writtenWords.get(word) ?? 0) >= count) continue;
     // Said once: a name the capitalised-word check above already caught is not reported again.
     if (reasons.some((reason) => reason.toLowerCase().startsWith(`name ${word} `))) continue;
-    const became = [...writtenWords.keys()].find((other) => other !== word && !sourceWords.has(other) && other[0] === word[0] && editDistance(other, word) <= 2);
+    // A plural of the word is not another name: "Test Employee" and "Employees are expected …" (Gate-Sunny-2, #983).
+    const inflected = (other: string) => other === `${word}s` || other === `${word}es` || word === `${other}s` || word === `${other}es`;
+    const became = [...writtenWords.keys()].find(
+      (other) => other !== word && !sourceWords.has(other) && !inflected(other) && other[0] === word[0] && editDistance(other, word) <= 2,
+    );
     if (became) reasons.push(`name ${word} was written ${became}`);
   }
   return [...new Set(reasons)];
