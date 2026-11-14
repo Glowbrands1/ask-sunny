@@ -58,7 +58,8 @@ import {
   observationOwnPersonOnlyEnabled,
   cardAccountDropsNonFactsEnabled,
 } from "@/lib/config/chat-quality-flags";
-import { notAFact } from "@/lib/forms/card-checked-against-words";
+import { factOfClause, hedgedAccount, repeatsAFact } from "@/lib/forms/account-facts";
+import { factContext, notAFact } from "@/lib/forms/card-checked-against-words";
 import { requestIssueKeptEnabled } from "@/lib/config/chat-quality-flags";
 import { turnsMadeAbout, withObservationMadeAbout } from "./make-it-about";
 import { NOTHING_SET_ASIDE, citationSetAside, policiesSetAside, setAsideAnything, withPolicySetAside, withoutPolicyAsks } from "@/lib/forms/policy-set-aside";
@@ -829,10 +830,11 @@ function withObservation(content: string, turns: readonly string[], employeeName
   if (cardAccountDropsNonFactsEnabled()) {
     const facts: string[] = [];
     for (const sentence of told) {
+      if (hedgedAccount(sentence)) continue;
       for (const part of sentence.split(FACT_CLAUSE_SPLIT)) {
-        const clause = part.trim().replace(/[.!]+$/, "");
-        if (clause === "" || notAFact(clause, { turns: [], roster: [] })) continue;
-        if (!facts.some((fact) => fact.toLowerCase() === clause.toLowerCase())) facts.push(clause);
+        const clause = factOfClause(part, factContext({ turns: [], roster: [] }));
+        if (clause === null || notAFact(clause, { turns: [], roster: [] })) continue;
+        if (!repeatsAFact(clause, facts)) facts.push(clause);
       }
     }
     if (facts.length > 0) return `${content}\n\n**Observation of Offense:** ${cardAccountText(facts.join("; "), employeeName)}`.trim();
