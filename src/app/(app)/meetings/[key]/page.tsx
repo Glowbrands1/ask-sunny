@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { L10Frame, hubMeetingUrl } from "@/features/l10/L10Frame";
 import { endMeetingAction, loadMeetingAction, saveMeetingAction } from "@/features/l10/actions";
 import { openMeeting } from "@/features/l10/data.server";
-import { isMeetingKey } from "@/features/l10/lib/config";
+import { hasReference, isMeetingKey } from "@/features/l10/lib/config";
 import { businessDate } from "@/features/l10/lib/dueStatus";
 import { MeetingView } from "@/features/l10/meeting/MeetingView";
 import { Card } from "@/features/l10/ui/ui";
@@ -29,6 +29,8 @@ export default async function MeetingPage({ params, searchParams }: { params: Pr
   if (!isMeetingKey(key)) notFound();
   const asked = (await searchParams).view;
   const initialView = asked === "accountability" || asked === "business-plan" ? asked : undefined;
+  // A meeting without the Reference views (the STC DM L10) refuses a link to one, like a missing page.
+  if (initialView && !hasReference(key)) notFound();
 
   const opened = await openMeeting(key);
   if (!opened.ok && opened.reason === "forbidden") notFound();
