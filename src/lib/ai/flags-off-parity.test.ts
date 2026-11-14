@@ -847,6 +847,12 @@ const PROTECTED = [
  * line. Attendance beside the duty counts only with a lateness or absence word (`besideReadsAttendance`, the
  * ATTENDANCE_OFFENSE_KEYS test; Gate-Sunny-3's #971 finding). Behind OTHER_BESIDE_DESCRIBED_ENABLED (default off); off,
  * as before. form-proposal.ts is already excluded below.
+ *
+ * The user (Pau), under the standing approval, via QA on 14 Nov 2026 (AI time limits, agent loop Part 1, no flag):
+ * in src/lib/forms/chat-revision.ts, the two imports (`withAiTimeLimit`, `helperTimeoutMs`) and the revision's
+ * `client.messages.create` wrapped in `withAiTimeLimit("chat_revision", helperTimeoutMs(), …)`, so the revision ends
+ * by the helper limit with a reply and a log line, never an empty answer; docs/patches/ai-time-limits-chat-revision.patch.
+ * A call that finishes in time returns exactly what it did before. chat-revision.ts is already excluded below.
  */
 const APPROVED_PROTECTED_EDITS = [
   ":(exclude)src/lib/forms/salon-mention.ts",
