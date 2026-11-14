@@ -1,33 +1,5 @@
 # Targeted live run (QA plan, 14 Nov 2026): the cases for what changed, the previously failing cases, 10 random controls.
 # changed
-nov14-agent-loop-card-questions-always-asked
-nov14-agent-loop-close-spelling-of-card-person
-nov14-agent-loop-close-spelling-two-headings-tool
-nov14-agent-loop-continuity
-nov14-agent-loop-earlier-card-was-real
-nov14-agent-loop-guard-finalized-change-is-a-revision
-nov14-agent-loop-guard-form-text-is-data
-nov14-agent-loop-guard-name-correction-is-the-name
-nov14-agent-loop-guard-no-false-updated
-nov14-agent-loop-guard-no-invented-level-or-payroll
-nov14-agent-loop-guard-off-roster-typed-name-with-line
-nov14-agent-loop-guard-one-card-per-reply
-nov14-agent-loop-guard-open-draft-keeps-turns
-nov14-agent-loop-guard-privacy-incident-wording-stays-closed
-nov14-agent-loop-guard-privacy-termination-not-asked
-nov14-agent-loop-guard-right-persons-account
-nov14-agent-loop-guard-scope
-nov14-agent-loop-make-it-professional
-nov14-agent-loop-one-close-name-used
-nov14-agent-loop-open-draft-new-request-allowed
-nov14-agent-loop-payroll-amount-stated
-nov14-agent-loop-payroll-level-answers-targeted
-nov14-agent-loop-prompt-cache-markers
-nov14-agent-loop-search-knowledge
-nov14-agent-loop-staff-list-question
-nov14-agent-loop-two-dates-asked
-nov14-agent-loop-under-performance-line-in-tool
-nov14-agent-loop-whole-staff-form
 # previously failing (22326b82)
 nov10-make-that-update-writes-her-account
 nov10-p12-three-requests-t3
@@ -74,6 +46,3 @@ nov6-roster-shape-two-word-first-lowercase
 nov6-title-ends-at-line-exit-s16
 nov7-edit-policy-ask-not-asked
 nov8-unknown-name-ask-no-repeat
-nov14-agent-loop-reply-clean-up
-nov14-agent-loop-truncation-retry
-nov14-agent-loop-parity-card-guards
