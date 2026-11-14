@@ -99,6 +99,7 @@ const count = (value: unknown): number => (typeof value === "number" && Number.i
  * card's (its Policy line or its account line) gets an app-written note.
  */
 export const CARD_NOTE = "[app note: this reply showed a card built with propose_form]";
+export const CARD_STILL_OPEN = "The card above is still open; press Create when it looks right, or tell me what to change.";
 const CARD_REPLY = /^\s*\*\*(?:Policy|Observation of Offense|What happened):?\*\*/im;
 function withCardNote(message: ChatMessage): string {
   const content = String(message.content);
@@ -185,7 +186,7 @@ export const AGENT_LOOP_TOOLS = [
   {
     name: "edit_form",
     description:
-      "Change a form. Leave values out to have the form's own reviser apply the manager's latest message (dates, details, the policy line); give values (field key to exact text) only for text the manager dictated word for word. A finalized form is never changed: this opens a new draft revising it and applies the change there.",
+      "Change a form. Leave values out to have the form's own reviser apply the manager's latest message (dates, details, the policy line); give values (field key to exact text) only for text the manager dictated word for word. A warning level or payroll answer (\"make it a written\", \"yes payroll, $20\") is a targeted edit: values warning_type (verbal/written), payroll_deduct (yes/no), payroll_deduct_amount only. A finalized form is never changed: this opens a new draft revising it and applies the change there.",
     input_schema: object({ instance_id: { type: "string" }, values: { type: "object", additionalProperties: { type: "string" } } }, ["instance_id"]),
   },
   {
@@ -432,6 +433,18 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
    * An edit the open-form reader wrote: its reply is what was saved, field by field (the realized diff today's chat
    * shows), so the reply never claims more or less than the draft now holds.
    */
+  /*
+   * THE CARD STAYS OPEN (Pau, 15:00Z 14 Nov 2026: a mid-form question is answered and the open card stays). The last
+   * reply showed a card not yet created, and this turn made no card, edit or list: the reply says the card is still
+   * open, so the conversation goes on with it.
+   */
+  const lastReply = [...input.history].reverse().find((turn) => turn.role === "assistant" && !turn.error);
+  if (
+    !effects.proposal && !effects.formUpdate && !effects.formOpened && !effects.replyOverride && !input.openFormId &&
+    lastReply && CARD_REPLY.test(String(lastReply.content)) && !/still open/i.test(content)
+  ) {
+    content = `${content.trim()}\n\n${CARD_STILL_OPEN}`;
+  }
   /* Today's whole-staff reply (list_staff), as written: the list or the which-salon question, never a card. */
   if (effects.replyOverride && !effects.proposal) content = effects.replyOverride;
   if (effects.revisedReply && effects.formUpdate && !effects.proposal) content = effects.revisedReply;

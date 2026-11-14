@@ -388,6 +388,205 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
     },
   },
   {
+    id: "nov14-agent-loop-continuity",
+    title: "a conversation stays continuous (Pau, 15:00Z 14 Nov 2026): a short answer to the loop's own question lands on the open card — CA \"What happened?\" → \"she was late tuesday\"; coaching \"who?\" → \"tamsin\"; exit \"last day?\" → \"friday\"; a policy question mid-card is answered and the card is said to be still open",
+    report: `${REPORT}; Pau (15:00Z): "the conversation must stay continuous"`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-13T22:40:00Z"));
+      t.directory([...STAFF, TAMSIN, CORBIN]);
+      t.as("salon_director", KEARNEY);
+      // A model that reads the follow-up as the open card's answer, as the rules book says.
+      const model = loopStandIn((view) => {
+        const users = view.turns.filter((turn) => turn.role === "user").map((turn) => turn.text);
+        const said = users.at(-1) ?? "";
+        const all = users.join(" ");
+        if (/policy on lateness/.test(said)) {
+          if (!lastResult(view, "read_policy")) return { tool: "read_policy", input: { heading: "Attendance" } };
+          return { text: "The Attendance policy covers lateness." };
+        }
+        const template = /exit/.test(all) ? "stc-exit" : /coaching/.test(all) ? "coaching" : "dpoa";
+        if (/^(?:ca|coaching|exit)/.test(said)) {
+          if (template === "coaching" && !/tamsin/.test(said)) return { text: "Who is the coaching for?" };
+          if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: template, employee_id: TAMSIN.id } };
+          return { text: template === "stc-exit" ? "Exit form for Tamsin Orwell. What was her last day?" : "Corrective Action for Tamsin Orwell. What happened?" };
+        }
+        if (template === "coaching" && !lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: said.trim() } };
+        if (!lastResult(view, "propose_form")) {
+          return {
+            tool: "propose_form",
+            input: {
+              template_key: template,
+              employee_id: TAMSIN.id,
+              ...(template === "dpoa" ? { what_happened: "She was late on Tuesday." } : {}),
+              ...(template === "coaching" ? { what_happened: "She skipped the spray booth check." } : {}),
+              ...(template === "stc-exit" ? { what_happened: "She resigned; her last day was Friday.", incident_date: "2026-11-13" } : {}),
+            },
+          };
+        }
+        return { text: "Here's the card." };
+      });
+      t.loopModel!(model);
+
+      const ca = t.thread();
+      await ca.say("ca for tamsin orwell");
+      await ca.say("she was late tuesday");
+      expect(ca.proposal, "the answer did not land on the CA card").toMatchObject({ templateKey: "dpoa", employeeName: "Tamsin Orwell" });
+      expect(ca.proposal?.issue ?? "").toMatch(/late on Tuesday/);
+
+      const coaching = t.thread();
+      await coaching.say("coaching form, she skipped the spray booth check");
+      const person = await coaching.say("tamsin");
+      expect(coaching.proposal, "the name did not land on the coaching card").toMatchObject({ templateKey: "coaching", employeeName: "Tamsin Orwell" });
+      expect(person.content).toContain("Using **Tamsin Orwell** from your staff list.");
+
+      const exit = t.thread();
+      await exit.say("exit form for tamsin orwell, she resigned");
+      await exit.say("friday");
+      expect(exit.proposal, "the date did not land on the exit card").toMatchObject({ templateKey: "stc-exit", employeeName: "Tamsin Orwell", formDate: "2026-11-13" });
+
+      const mid = t.thread();
+      await mid.say("ca for tamsin orwell");
+      await mid.say("she was late tuesday");
+      const answer = await mid.say("what's the policy on lateness?");
+      expect(answer.formProposal, "a policy question made a new card").toBeUndefined();
+      expect(answer.content, "the open card was not said to be still open").toContain("The card above is still open");
+      expect(mid.proposal, "the card was dropped").toMatchObject({ templateKey: "dpoa", employeeName: "Tamsin Orwell" });
+    },
+  },
+  {
+    id: "nov14-agent-loop-payroll-level-answers-targeted",
+    title: "payroll and level answers fill exactly those fields (Pau, 15:05Z 14 Nov 2026): on the card (\"yes payroll, $20\", \"make it a written\"); on a created draft as a targeted edit, every other field byte-identical; on a finalized form through the revision draft, the original unchanged; an unstated level is never written by edit_form",
+    report: `${REPORT}; Pau (15:05Z): "the manager's answer must FILL or EDIT exactly those fields, in any state"`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-13T22:40:00Z"));
+      t.directory([...STAFF, TAMSIN]);
+      t.as("salon_director", KEARNEY);
+      const card = (extra: Record<string, unknown> = {}) => ({ tool: "propose_form" as const, input: { template_key: "dpoa", employee_id: TAMSIN.id, what_happened: "Tamsin Orwell was late on 11/10.", ...extra } });
+      // Before Create: the answers re-propose the same card with the field filled.
+      t.loopModel!(loopStandIn((view) => {
+        const said = view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "";
+        if (!lastResult(view, "propose_form")) {
+          return card(/payroll/.test(said) ? { payroll_deduct: "yes", payroll_amount: "20" } : /written/.test(said) ? { warning_level: "written" } : {});
+        }
+        return { text: "Here's the card." };
+      }));
+      const pre = t.thread();
+      await pre.say("ca for tamsin orwell, she was late on 11/10");
+      await pre.say("yes payroll, $20");
+      expect(pre.proposal as unknown).toMatchObject({ employeeName: "Tamsin Orwell", payrollDeduct: "yes", payrollDeductAmount: "20" });
+      await pre.say("make it a written");
+      expect(pre.proposal?.warningLevel).toBe("written");
+
+      // After Create: a targeted edit; every other field byte-identical.
+      t.loopModel!(loopStandIn((view) => (lastResult(view, "propose_form") ? { text: "Here's the card." } : card())));
+      const post = t.thread();
+      await post.say("ca for tamsin orwell, she was late on 11/10");
+      const id = await post.create();
+      const before = t.values(id);
+      const editor = loopStandIn((view) => {
+        if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { instance_id: id, values: { warning_type: "written" } } };
+        return { text: JSON.stringify(lastResult(view, "edit_form")) };
+      });
+      t.loopModel!(editor);
+      await post.say("make it a written");
+      expect(t.checked(id).warning_type, "the stated level was not written").toEqual(["written"]);
+      const after = t.values(id);
+      for (const [key, value] of Object.entries(before)) if (key !== "warning_type") expect(after[key], `${key} changed`).toBe(value);
+
+      // An unstated level is refused by edit_form, and nothing is written.
+      const eager = loopStandIn((view) => {
+        if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { instance_id: id, values: { warning_type: "verbal" } } };
+        return { text: JSON.stringify(lastResult(view, "edit_form")) };
+      });
+      t.loopModel!(eager);
+      await post.say("she said sorry afterwards");
+      expect(toolResults(eager.views, "edit_form")[0]).toMatch(/must come from the manager's own words/);
+      expect(t.checked(id).warning_type).toEqual(["written"]);
+
+      // A finalized form: the revision draft carries the change; the original is unchanged.
+      Object.assign(t.forms().find((row) => row.id === id)!, { status: "finalized" });
+      const original = JSON.stringify({ values: t.values(id), checked: t.checked(id) });
+      const reviser = loopStandIn((view) => {
+        if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { instance_id: id, values: { payroll_deduct: "no" } } };
+        return { text: "Done." };
+      });
+      t.loopModel!(reviser);
+      const revised = await post.say("no payroll on that one");
+      expect(JSON.stringify({ values: t.values(id), checked: t.checked(id) }), "the finalized form changed").toBe(original);
+      expect(revised.formOpened, "no revision draft was opened").toBeTruthy();
+    },
+  },
+  {
+    id: "nov14-agent-loop-make-it-professional",
+    title: "\"make it professional\" (Pau via QA, 14 Nov 2026): a reword keeps every date, time, place and amount, on the card and on a created draft; a reword that drops one is refused; a reword never touches the level, payroll or date fields",
+    report: `${REPORT}; Pau: "make it professional", "reword it", "clean it up"`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-13T22:40:00Z"));
+      t.directory([...STAFF, TAMSIN]);
+      t.as("salon_director", KEARNEY);
+      const messy = "ca for tamsin orwell she came in 40 min late at 10:40am on 11/10 and didnt clock the $15 drawer short at the front desk";
+      // On the card: a reword that loses "10:40am" is refused; one that keeps every fact is taken.
+      let tries = 0;
+      const card = loopStandIn((view) => {
+        const said = view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "";
+        const reword = /professional/.test(said);
+        const proposals = view.results.filter((result) => result.tool === "propose_form").length;
+        if (!reword && proposals === 0) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, what_happened: "She came in 40 min late at 10:40am on 11/10 and didnt clock the $15 drawer short at the front desk." } };
+        if (reword && proposals === 0) {
+          tries += 1;
+          return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, what_happened: "Tamsin Orwell arrived 40 minutes late on 11/10 and did not report a $15 drawer shortage at the front desk." } };
+        }
+        if (reword && proposals === 1 && lastResult(view, "propose_form")?.error) {
+          return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, what_happened: "Tamsin Orwell arrived 40 minutes late, at 10:40am on 11/10, and did not report a $15 drawer shortage at the front desk." } };
+        }
+        return { text: "Here's the card." };
+      });
+      t.loopModel!(card);
+      const thread = t.thread();
+      await thread.say(messy);
+      await thread.say("make it professional");
+      expect(tries).toBe(1);
+      expect(toolResults(card.views, "propose_form").some((result) => /leaves out/.test(result) && /10:40/.test(result)), "a reword dropping the time was taken").toBe(true);
+      expect(thread.proposal?.issue ?? "").toMatch(/10:40am on 11\/10/);
+      expect(thread.proposal?.issue ?? "").toMatch(/\$15/);
+
+      // On a created draft: targeted edit of the Observation only; a dropped amount and a level are refused.
+      const id = await thread.create();
+      t.typeOnForm(id, { observation: "Observed:\nShe came in 40 min late at 10:40am on 11/10 and didnt clock the $15 drawer short." });
+      const before = { ...t.values(id) };
+      let step = 0;
+      const editor = loopStandIn((view) => {
+        if (view.step > 2) return { text: "Done." };
+        step = view.step;
+        const reworded = [
+          { observation: "Observed:\nTamsin Orwell arrived 40 minutes late at 10:40am on 11/10 and did not report a drawer shortage." },
+          { observation: "Observed:\nTamsin Orwell arrived 40 minutes late at 10:40am on 11/10 and did not report a $15 drawer shortage.", warning_type: "written" },
+          { observation: "Observed:\nTamsin Orwell arrived 40 minutes late at 10:40am on 11/10 and did not report a $15 drawer shortage." },
+        ][view.step]!;
+        return { tool: "edit_form", input: { instance_id: id, values: reworded } };
+      });
+      t.loopModel!(editor);
+      await thread.say("can you clean it up");
+      const results = toolResults(editor.views, "edit_form");
+      expect(results.some((result) => /leaves out \\"\$15\\"/.test(result)), "a reword dropping the $15 was written").toBe(true);
+      expect(results.some((result) => /changes only the free-text fields|must come from the manager's own words/.test(result)), "a reword touching the level was written").toBe(true);
+      expect(step).toBeGreaterThanOrEqual(2);
+      const after = t.values(id);
+      expect(after.observation).toMatch(/\$15 drawer shortage/);
+      for (const [key, value] of Object.entries(before)) if (key !== "observation") expect(after[key], `${key} changed`).toBe(value);
+      expect(t.checked(id).warning_type ?? []).toEqual([]);
+    },
+  },
+  {
     id: "nov14-agent-loop-guard-one-card-per-reply",
     title: "two people in one request: one card per reply, each person's own; never a second card in the same reply",
     report: `${REPORT}: multiple people (TWO_FORMS_EACH_PERSON's outcome)`,
