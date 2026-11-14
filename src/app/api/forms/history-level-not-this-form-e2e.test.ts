@@ -240,6 +240,8 @@ describe("QA, 14 Nov 2026: an earlier warning is not this form's level", () => {
     "make a ca for pat rivera, late again 30 mins today. she got a verbal warning on 10/21",
     "pat rivera left the register unlocked again tonight, she already had a verbal last month. create a ca",
     "create a corrective action for pat rivera for no call no show on 11/12/26. previous verbal 9/30/26",
+    // No other day in the turn, and the level does not open it: weighed against today (Ask Bubbles' review phrasing).
+    "make a ca for pat rivera. she gets a written warning 10/1",
   ]) {
     it(`flag on: "${said}" states no level for this form`, async () => {
       ON();

@@ -115,6 +115,11 @@ const OWN_DATE_AFTER =
 const POINTS_BACK_AFTER = /^\s*for\s+(?:the\s+same|this\s+same|same|that|it)\b/;
 const ASKS_IN_SENTENCE = /\b(?:create|make|draft|prepare|write|do|start|issue|give|need|needs|want|file|document|open)\b/;
 
+/** The level opens the turn: nothing but "a" / "new" / "please" before it, in the turn's first sentence. */
+function opensTurn(read: string, sentenceStart: number, before: string): boolean {
+  return read.slice(0, sentenceStart).trim() === "" && /^\s*(?:(?:a|an|new|please)\s+)*$/.test(before);
+}
+
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 
 /** The ISO day of a date as the manager wrote it, its year the latest one not after today when they gave none. */
@@ -171,7 +176,14 @@ function incidentDay(read: string, ownStart: number, ownEnd: number, today: stri
  * when its date is BEFORE the incident's: "verbal warning on 9/21. late again for 30 mins today".
  */
 /** The ISO day of the step on file the level just named is, or "" when it points back undated, or null when it is not one. */
-function historyByDateOrPointer(before: string, after: string, today: string, read: string, afterStart: number): string | null {
+function historyByDateOrPointer(
+  before: string,
+  after: string,
+  today: string,
+  read: string,
+  afterStart: number,
+  leads: boolean,
+): string | null {
   if (ASKS_IN_SENTENCE.test(before)) return null;
   if (POINTS_BACK_AFTER.test(after)) return "";
   const dated = OWN_DATE_AFTER.exec(after);
@@ -180,7 +192,14 @@ function historyByDateOrPointer(before: string, after: string, today: string, re
   const incident = incidentDay(read, afterStart, afterStart + dated[0].length, today);
   // An ordinal ("the 21st") names no month: it is read as before, a step on file.
   if (!own) return "";
-  return incident && own < incident ? own : null;
+  if (incident) return own < incident ? own : null;
+  /*
+   * No other day in the turn. A level that opens the turn — "verbal warning on 11/12/26 for <W>, she was late that day"
+   * — is this form's, on the incident's own day. Said after other words ("she gets a written warning 10/1"), its date
+   * is weighed against today, as before (Ask Bubbles reads both the same way).
+   */
+  if (leads) return null;
+  return own === today ? null : own;
 }
 
 /** A level the turn names as a step on file by its own date or by pointing back: what it says, and its ISO day ("" undated). */
@@ -202,7 +221,7 @@ export function historyWarningLevels(text: string, today: string = businessToday
     for (const match of body.matchAll(LEVEL_NAMED)) {
       const before = body.slice(0, match.index);
       const after = body.slice(match.index + match[0].length);
-      const iso = historyByDateOrPointer(before, after, today, read, (sentence.index ?? 0) + match.index + match[0].length);
+      const iso = historyByDateOrPointer(before, after, today, read, (sentence.index ?? 0) + match.index + match[0].length, opensTurn(read, sentence.index ?? 0, before));
       if (iso !== null) out.push({ named: match[0], iso });
     }
   }
@@ -221,7 +240,7 @@ export function withoutHistoryWarningLevels(text: string, today: string = busine
     for (const match of [...body.matchAll(LEVEL_NAMED)].reverse()) {
       const before = body.slice(0, match.index);
       const after = body.slice(match.index + match[0].length);
-      if (historyByDateOrPointer(before, after, today, read, (sentence.index ?? 0) + match.index + match[0].length) === null) continue;
+      if (historyByDateOrPointer(before, after, today, read, (sentence.index ?? 0) + match.index + match[0].length, opensTurn(read, sentence.index ?? 0, before)) === null) continue;
       kept = kept.slice(0, match.index) + " ".repeat(match[0].length) + kept.slice(match.index + match[0].length);
     }
     out += kept + whole.slice(body.length);
@@ -384,7 +403,7 @@ export function statedWarningLevel(
         ((LEVEL_HISTORY_LABEL.test(before) || LEVEL_HISTORY_VERB.test(before)) && DATED_AFTER.test(after)) ||
         // HISTORY_LEVEL_NOT_THIS_FORM_ENABLED: its own date, or "for the same thing" — a step on file.
         (historyLevelNotThisFormOn() &&
-          historyByDateOrPointer(before, after, options.today ?? businessToday(), read, (sentence.index ?? 0) + match.index! + match[0].length) !== null)
+          historyByDateOrPointer(before, after, options.today ?? businessToday(), read, (sentence.index ?? 0) + match.index! + match[0].length, opensTurn(read, sentence.index ?? 0, before)) !== null)
       ) {
         continue;
       }
