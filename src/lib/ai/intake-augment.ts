@@ -10,7 +10,7 @@ import {
   statedPayrollDeduct,
 } from "@/lib/forms/payroll-deduct";
 import { extractJobTitle, readEmployeeMentions } from "@/lib/forms/proposal";
-import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
+import { placeReadingText, readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
 import { placeText } from "@/lib/forms/place-from-cue";
 import { statedWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
 
@@ -109,7 +109,9 @@ function trigrams(text: string): Set<string> {
   return grams;
 }
 
-function fuzzySalon(text: string): string | null {
+function fuzzySalon(said: string): string | null {
+  // REASON_PLACE_NOT_STORE_ENABLED: "because she was at grand island" is why she was late, not where; not read here.
+  const text = placeReadingText(said);
   const phrases = [...text.matchAll(/(?:\bat|\bin)\s+(?:the\s+)?([a-z0-9][a-z0-9'’.-]*(?:\s+[a-z0-9][a-z0-9'’.-]*){0,3})/gi)];
   const raw = phrases.at(-1)?.[1]?.trim();
   if (!raw) return null;
@@ -127,8 +129,9 @@ function fuzzySalon(text: string): string | null {
  * One salon the words uniquely resemble, when `readSalonMentions` did not
  * take them. Two salons, or a weak resemblance, is no salon.
  */
-export function uniqueRosterSalon(text: string): string | null {
-  const tokens = text
+export function uniqueRosterSalon(said: string): string | null {
+  // REASON_PLACE_NOT_STORE_ENABLED: "because she was at grand island" is why she was late, not where; not read here.
+  const tokens = placeReadingText(said)
     .toLowerCase()
     .replace(/[^a-z0-9']+/g, " ")
     .trim()

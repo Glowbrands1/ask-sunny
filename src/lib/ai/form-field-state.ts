@@ -5,7 +5,7 @@ import { extractFormDate } from "@/lib/forms/form-date-answer";
 import { payrollAmountFromConversation, payrollAnswerForAmount, payrollDeductAmount } from "@/lib/forms/payroll-deduct";
 import { statedPayrollDeduct } from "@/lib/forms/payroll-deduct-answer";
 import { extractEmployeeNames } from "@/lib/forms/proposal";
-import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
+import { placeReadingText, readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
 import { rosterSalonFor } from "@/lib/forms/salon-text";
 import { statedWarningLevel } from "@/lib/forms/warning-level";
 import { sectionTitleMatches } from "@/lib/knowledge/hybrid-rank";
@@ -168,7 +168,9 @@ export function corroborateModelFields(
   }
 
   let salon = base.salon;
-  if (!salon && model.salon && appears(text, model.salon)) {
+  // REASON_PLACE_NOT_STORE_ENABLED: a salon the tool read only from "because she was at grand island" is why she was
+  // late, not where; it must appear outside such a reason. Off, as before.
+  if (!salon && model.salon && appears(placeReadingText(text), model.salon)) {
     const fromPhrase = salonFromText(model.salon) ?? salonFromText(text) ?? uniqueRosterSalon(model.salon);
     if (fromPhrase) salon = fromPhrase;
   }
