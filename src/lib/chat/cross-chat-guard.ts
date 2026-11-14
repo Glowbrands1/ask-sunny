@@ -352,10 +352,24 @@ export function withoutCrossChatClaims(
   const lines = content.split("\n").map((line) => {
     if (!MANAGER_SAID.test(line) && !readsBackHistory(line) && !NAMES_ANOTHER_CHAT.test(line)) return line;
     const sentences = line.match(SENTENCE) ?? [line];
+    /*
+     * A form the removed sentence brought in from another chat, pointed back
+     * to later in the same paragraph ("the exit form"), is the same claim: "earlier today you also
+     * created a Resignation/Exit Form … If both are about the same <name>, …
+     * if the exit form is accurate, …" (QA, conv_mvhznk6fmmqez06).
+     */
+    const carried = new Set<string>();
     const kept = sentences.filter((sentence) => {
-      if (!claimsAnotherChat(sentence, input)) return true;
-      removed.push(sentence.trim());
-      return false;
+      if (claimsAnotherChat(sentence, input)) {
+        removed.push(sentence.trim());
+        for (const kind of formKinds(sentence)) carried.add(kind);
+        return false;
+      }
+      if (formsReferredTo(sentence).some((kind) => carried.has(kind))) {
+        removed.push(sentence.trim());
+        return false;
+      }
+      return true;
     });
     if (kept.length === sentences.length) return line;
     const lead = /^\s*(?:[-*]\s+|\d+\.\s+)?/.exec(line)?.[0] ?? "";
@@ -373,6 +387,19 @@ export function withoutCrossChatClaims(
   // Nothing left but other chats: a neutral line, never the carryover itself.
   if (!joined) return { content: CROSS_CHAT_NEUTRAL_REPLY, removed };
   return { content: joined, removed };
+}
+
+const FORM_KIND = /\b([a-z][a-z-]+)(?:\s+action)?\s+forms?\b/gi;
+const NOT_A_KIND = /^(?:the|a|an|this|that|your|her|his|their|new|draft|one|same)$/;
+
+/** The forms a sentence points back to: "if the exit form is accurate" → exit. A form in general ("a coaching form") is not one. */
+function formsReferredTo(sentence: string): string[] {
+  return [...sentence.matchAll(/\b(?:the|that|this)\s+(?:\*\*)?([a-z][a-z-]+)(?:\s+action)?\s+forms?\b/gi)].map((match) => match[1]!.toLowerCase());
+}
+
+/** The kinds of form a sentence names: "a Resignation/Exit Form" → exit. */
+function formKinds(sentence: string): string[] {
+  return [...sentence.matchAll(FORM_KIND)].map((match) => match[1]!.toLowerCase()).filter((kind) => !NOT_A_KIND.test(kind));
 }
 
 /** What the manager sees when every sentence of the reply was another chat's. */

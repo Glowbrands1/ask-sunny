@@ -163,6 +163,7 @@ import {
   widerDateReaderEnabled,
   aiReadsCodeChecksEnabled,
   envFlag,
+  payrollDeductibleWordEnabled,
   draftNoInventedPlanEnabled,
 } from "@/lib/config/chat-quality-flags";
 
@@ -658,6 +659,7 @@ const NEW_FLAGS = [
   "STEP_B_SECTION_SPACING_ENABLED",
   "DRAFT_NO_INVENTED_PLAN_ENABLED",
   "GROUP_WORDS_NOT_A_NAME_ENABLED",
+  "PAYROLL_DEDUCTIBLE_WORD_ENABLED",
   // coding 4: FORMS_ON_FILE_ORDER_MATCH_POSSIBLE (ported from Ask Bubbles, 11 Nov 2026; default off).
   "FORMS_ON_FILE_ORDER_MATCH_POSSIBLE_ENABLED",
   // coding 6: POLICY_CARRY_RETRIEVAL (#248 rebuilt on main; QA item 10; default off).
@@ -694,6 +696,9 @@ const PROTECTED = [
  * src/lib/forms/form-date-answer.ts to fix prior-action parsing behind
  * PRIOR_ACTIONS_PARSE_ENABLED, with the flag-off reading unchanged. It stays
  * on the PROTECTED list; only the diff check leaves it out.
+ * Under that approval (QA, 12 Nov 2026; 233ef2bd rebuilt): "completed" joins
+ * PRIOR_STEP_BEFORE behind PRIOR_ACTIONS_PARSE_ENABLED (priorStepBefore()), so
+ * "she completed … coaching 9/29/26" is a prior action; off, PRIOR_STEP_BEFORE as before.
  *
  * The user (Pau) approved, on 26 Oct 2026, editing src/lib/ai/form-proposal.ts
  * for STORED_SLOTS_NOT_A_REQUEST_ENABLED: in turnsAboutThisForm the new-request
@@ -1076,6 +1081,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(cardChangeFinalizedEnabled()).toBe(false);
     expect(formPatchReducerEnabled()).toBe(false);
     expect(formReplyFromDiffEnabled()).toBe(false);
+    expect(payrollDeductibleWordEnabled()).toBe(false);
     expect(draftNoInventedPlanEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";

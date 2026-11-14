@@ -831,6 +831,16 @@ export function reopenByAnyOpenVerbEnabled(): boolean {
   return envFlag("REOPEN_BY_ANY_OPEN_VERB_ENABLED");
 }
 
+/**
+ * "payroll is deductable" / "payroll deductible" is the manager's Yes, and
+ * "not payroll deductible" their No (QA, Ask Sunny history,
+ * conv_mvh9a9q62mjffk2: the card asked the payroll question again on every
+ * turn after "payroll is deductable"). Off, those words are read as nothing.
+ */
+export function payrollDeductibleWordEnabled(): boolean {
+  return envFlag("PAYROLL_DEDUCTIBLE_WORD_ENABLED");
+}
+
 function flagOn(value: string | undefined): boolean {
   if (typeof value !== "string") return false;
   return ON.has(value.trim().toLowerCase());

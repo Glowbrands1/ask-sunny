@@ -170,9 +170,19 @@ function isServiceWord(word: string): boolean {
   return SERVICE_WORDS.has(word) || (word.endsWith("s") && SERVICE_WORDS.has(word.slice(0, -1)));
 }
 
-/** A word that stands for nobody wherever it is typed: a placeholder or a service. */
+/**
+ * The steps of a training ("Video, activity/roleplay, assessment"), offered
+ * back as people in conv_mvnt8lbq2rlbp0m (QA G5, 25 Oct 2026): "Which of them
+ * is this Coaching Form for — <name>, Video or assessment?".
+ */
+const TRAINING_STEP = new Set([
+  "video", "videos", "activity", "activities", "roleplay", "roleplays", "role-play", "role-plays", "roleplaying",
+  "assessment", "assessments", "quiz", "quizzes", "module", "modules", "worksheet", "worksheets", "curriculum",
+]);
+
+/** A word that stands for nobody wherever it is typed: a placeholder, a service or a training step. */
 function isStandInWord(word: string): boolean {
-  return PLACEHOLDER.has(word) || isServiceWord(word);
+  return PLACEHOLDER.has(word) || isServiceWord(word) || TRAINING_STEP.has(word);
 }
 
 /** A capitalised run that is a document, or names a placeholder or a service. */

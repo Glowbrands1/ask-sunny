@@ -30,6 +30,10 @@ export const NOV5_TWO_NAMES_ONE_REQUEST_CASES: ReplayCase[] = [
       const thread = t.thread();
       const reply = await thread.say(MESSAGE);
       expect(reply.content, `the other person is offered as a match for Marnie Holloway:\n${reply.content}`).not.toMatch(/Which person did you mean for \*\*Marnie Holloway\*\*/);
+      // Gate-Sunny-3 on #919 (13 Nov 2026): Marnie's card never carries Remy's account ("…at the register, Remy Calder for
+      // opening the salon late on 11/2"), each Observation is only that person's.
+      expect(reply.content, `Remy Calder's account is on Marnie Holloway's card:\n${reply.content}`).not.toMatch(/register,?\s+Remy Calder for opening/i);
+      expect(reply.content, `Marnie Holloway's card lost her own account:\n${reply.content}`).toMatch(/her customer service at the register/i);
     },
   },
 ];

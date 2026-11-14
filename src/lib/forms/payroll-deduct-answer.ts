@@ -187,8 +187,42 @@ function payrollBareSentenceOn(): boolean {
   return typeof raw === "string" && ["1", "true", "on", "yes"].includes(raw.trim().toLowerCase());
 }
 
+/*
+ * PAYROLL_DEDUCTIBLE_WORD_ENABLED. "payroll is deductable" (QA, Ask Sunny
+ * history, conv_mvh9a9q62mjffk2) was read as nothing, so the card asked
+ * "Is payroll deduct applicable?" on every later turn. "Deductible", either
+ * spelling, after "payroll" is the answer; "not (payroll) deductible" is No.
+ */
+const DEDUCTIBLE = String.raw`deduct[ai]ble`;
+
+/**
+ * PAYROLL_DEDUCTIBLE_WORD_ENABLED, read exactly as `envFlag` reads it
+ * (`payrollDeductibleWordEnabled` in chat-quality-flags.ts): this module
+ * imports nothing, so the flag is read here.
+ */
+function deductibleWordOn(): boolean {
+  const raw = typeof process === "undefined" ? undefined : process.env.PAYROLL_DEDUCTIBLE_WORD_ENABLED;
+  return typeof raw === "string" && ["1", "true", "on", "yes"].includes(raw.trim().toLowerCase());
+}
+const DEDUCTIBLE_NO: readonly RegExp[] = [
+  new RegExp(String.raw`\b(?:not|isn't|isnt|is not|non)[\s-]+(?:payroll[\s-]+)?${DEDUCTIBLE}\b`),
+  new RegExp(String.raw`\bpayroll\s+(?:is\s+|will\s+be\s+)?not\s+${DEDUCTIBLE}\b`),
+];
+/*
+ * Gate-Sunny-3 on #919 (13 Nov 2026): with PAYROLL_SPLIT_WORDS on (production), "deductable" is already read as
+ * "deduct" before this, so "payroll is deductable" arrives as "payroll is deduct". After "is / will be / would be",
+ * the bare "deduct" is that same word.
+ */
+const DEDUCTIBLE_YES = new RegExp(
+  String.raw`\bpayroll\s+(?:(?:is|will\s+be|would\s+be)\s+deduct\b(?!\s+(?:applicable|apply|applies))|(?:is\s+|will\s+be\s+|would\s+be\s+)?${DEDUCTIBLE}\b)`,
+);
+
 function readClause(clause: string): ClauseReading {
   if (payrollBareSentenceOn() && BARE_PAYROLL_SENTENCE.test(clause)) return "yes";
+  if (deductibleWordOn() && !UNDECIDED.test(clause)) {
+    if (DEDUCTIBLE_NO.some((pattern) => pattern.test(clause))) return "no";
+    if (DEDUCTIBLE_YES.test(clause) && !DENIAL.test(clause)) return "yes";
+  }
   if (UNDECIDED.test(clause) && ABOUT_DEDUCTION.test(clause)) return "unclear";
   if (DENIED_WAIVER.test(clause) && ABOUT_DEDUCTION.test(clause)) return "unclear";
   const negative = NEGATIVE.find((pattern) => pattern.test(clause)) ?? (notDeductibleRead() && NOT_DEDUCTIBLE.test(clause) ? NOT_DEDUCTIBLE : undefined);
