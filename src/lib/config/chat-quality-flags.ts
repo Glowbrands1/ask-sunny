@@ -4841,3 +4841,12 @@ export function sharedCityAsksSalonEnabled(): boolean {
 export function priorActionsUnsaidBlankEnabled(): boolean {
   return envFlag("PRIOR_ACTIONS_UNSAID_BLANK_ENABLED");
 }
+
+/**
+ * PRIOR_ACTIONS_NONE_WORDINGS (ported from the sibling app: Gate-Bubbles-3's #888 follow-up, QA 14 Nov 2026; default
+ * off; with PRIOR_ACTIONS_UNSAID_BLANK): a drafted "N/A" or "No prior corrective action" is taken out like "None" when
+ * the manager said nothing about history. See `forms/prior-actions.ts`. Off, as before.
+ */
+export function priorActionsNoneWordingsEnabled(): boolean {
+  return envFlag("PRIOR_ACTIONS_NONE_WORDINGS_ENABLED");
+}

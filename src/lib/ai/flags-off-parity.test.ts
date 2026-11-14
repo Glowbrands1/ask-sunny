@@ -185,6 +185,8 @@ import { privateCreatorFormsEnabled, privateCreatorsActive } from "@/lib/forms/p
  */
 
 const NEW_FLAGS = [
+  // coding 4: PRIOR_ACTIONS_NONE_WORDINGS (ported; Gate-Bubbles-3's #888 follow-up, QA 14 Nov 2026; default off).
+  "PRIOR_ACTIONS_NONE_WORDINGS_ENABLED",
   // coding 4: PRIOR_ACTIONS_UNSAID_BLANK (ported from the sibling app, QA 17x, 14 Nov 2026; default off).
   "PRIOR_ACTIONS_UNSAID_BLANK_ENABLED",
   // coding 4: PLACE_STRIP_WHOLE_PHRASE_ONLY (QA, Gate-Sunny #933 probes, 13 Nov 2026; default off).

@@ -1,5 +1,6 @@
 import {
   priorActionsUnsaidBlankEnabled,
+  priorActionsNoneWordingsEnabled,
   futurePriorRowDropEnabled,
   priorActionsNoSignedEnabled,
   priorActionsParseEnabled,
@@ -463,7 +464,7 @@ export function groundPriorActions(input: {
        * stands only where the manager said this is the first occurrence; otherwise the field is left blank. Off, as
        * before.
        */
-      if (priorActionsUnsaidBlankEnabled() && /^none\b/i.test(line) && !statesFirstOccurrence(input.notes)) {
+      if (priorActionsUnsaidBlankEnabled() && unsaidNoneLine(line) && !statesFirstOccurrence(input.notes)) {
         removed.push(line);
         return false;
       }
@@ -607,4 +608,18 @@ function undatedStepKinds(notes: string, today: string): Set<string> {
     if (kind) kinds.add(kind);
   }
   return kinds;
+}
+
+/*
+ * PRIOR_ACTIONS_NONE_WORDINGS_ENABLED (ported from the sibling app: Gate-Bubbles-3's #888 follow-up, QA 14 Nov 2026; default off; with
+ * PRIOR_ACTIONS_UNSAID_BLANK): a drafted "N/A" or "No prior corrective action" got through, because only a line starting
+ * "None" was taken out. With the flag every way of drafting "none" is: "None", "N/A", "NA", "Not applicable", "No prior /
+ * previous corrective action / coaching / discipline / write-ups / warnings / history / actions". Off, "None" only.
+ */
+const NONE_WORDING =
+  /^(?:none|n\/a|na|not applicable|no (?:prior|previous|past)(?:\s+(?:corrective actions?|coachings?|discipline|disciplinary actions?|write-?ups?|warnings?|history|actions?|incidents?))?)\b/i;
+
+function unsaidNoneLine(line: string): boolean {
+  if (/^none\b/i.test(line)) return true;
+  return priorActionsNoneWordingsEnabled() && NONE_WORDING.test(line.trim());
 }
