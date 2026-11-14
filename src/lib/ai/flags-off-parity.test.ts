@@ -185,6 +185,8 @@ import { privateCreatorFormsEnabled, privateCreatorsActive } from "@/lib/forms/p
  */
 
 const NEW_FLAGS = [
+  // coding 4: LONGER_PLACE_NAME_KEPT (Gate-Sunny's #936 follow-ups, QA 14 Nov 2026; default off).
+  "LONGER_PLACE_NAME_KEPT_ENABLED",
   // coding 4: WORK_AREA_NOT_A_TITLE (QA, Sunny 38d live, 13 Nov 2026; default off).
   "WORK_AREA_NOT_A_TITLE_ENABLED",
   // coding 4: OBSERVATION_NO_LEADING_NAME (QA, Sunny 38d live, 13 Nov 2026; default off).

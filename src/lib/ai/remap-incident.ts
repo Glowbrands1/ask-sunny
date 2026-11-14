@@ -10,6 +10,7 @@ import {
   requestLeadFillerEnabled,
   requestParticipleLeadEnabled,
   anotherRequestLeadEnabled,
+  longerPlaceNameKeptEnabled,
   reasonPlaceNotSalonEnabled,
   placeStripWholePhraseOnlyEnabled,
   secondRequestOwnAccountEnabled,
@@ -1102,9 +1103,26 @@ function withoutPlace(clause: string): string {
         placeStripWholePhraseOnlyEnabled() &&
         next !== undefined &&
         !/[,;:)]$/.test(phrase) &&
-        continuesPlaceName(next) &&
+        (continuesPlaceName(next) || (longerPlaceNameKeptEnabled() && LONGER_NAME_WORD.test(next))) &&
         !(/^(?:west|east|north|south)$/i.test(next) && /^of$/i.test(words[index + 2 + length] ?? "")) &&
-        !inSalonName(bare, next)
+        // LONGER_PLACE_NAME_KEPT_ENABLED: a word of a salon's name counts only when the longer phrase is that salon
+        // ("lincoln 27th street"), not when it merely shares a word with one ("lincoln street fair" ≠ Lincoln O Street).
+        !(longerPlaceNameKeptEnabled() ? readSalonMentions(`at ${bare} ${next}`).length > 0 : inSalonName(bare, next))
+      ) {
+        break;
+      }
+      /*
+       * LONGER_PLACE_NAME_KEPT_ENABLED (Gate-Sunny's #936 follow-ups, QA 14 Nov 2026): straight after "was" / "were" / "is",
+       * with "and", "but", "or" or "of" after it, the place is what the sentence says ("she was at omaha of all places",
+       * "she was at omaha and left early"); taking it out left "she was of all places", "she was and left early". Kept.
+       * "she was at kearney - no call no show" and "she was late at omaha today" still lose it.
+       */
+      if (
+        longerPlaceNameKeptEnabled() &&
+        index > 0 &&
+        /^(?:was|were|is|are|been|being)$/i.test(words[index - 1]!) &&
+        !/[,;:)]$/.test(phrase) &&
+        /^(?:and|but|or|of)$/i.test(next ?? "")
       ) {
         break;
       }
@@ -1115,6 +1133,9 @@ function withoutPlace(clause: string): string {
   }
   return clause.trim();
 }
+
+/** LONGER_PLACE_NAME_KEPT_ENABLED: more words that continue a longer place name ("the lincoln zoo", "grand island fair"). */
+const LONGER_NAME_WORD = /^(?:zoo|fair|fairgrounds|festival|southeast|southwest|northeast|northwest|airport|library|church|hall|center|centre|arena|stadium|theater|theatre|museum|clinic)$/i;
 
 /**
  * "prior = manual ack 9/01" is the prior-action shorthand the remap path
