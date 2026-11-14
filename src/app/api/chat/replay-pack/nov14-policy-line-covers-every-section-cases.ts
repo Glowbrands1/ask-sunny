@@ -73,6 +73,9 @@ export const NOV14_POLICY_LINE_COVERS_EVERY_SECTION_CASES: ReplayCase[] = [
       const { id, policyLine, card } = await create(t, NAMED, "Observed:\nNell Orrin was late on November 3, 2026 and yelled at a customer.");
       expect(policyLine, `the card's Policy line does not name Attendance:\n${card}`).toMatch(/attendance/i);
       expect(policyLine, `the card's Policy line does not name Standards of Conduct:\n${card}`).toMatch(/standards of conduct/i);
+      // The pack's own diff (14 Nov 2026): the joined line dropped the card's citation lines. Each section keeps its own.
+      expect(card, `the card lost the Attendance citation line:\n${card}`).toMatch(/^Attendance Policy, JBA Policy Manual p\.\d+$/m);
+      expect(card, `the card lost the Standards of Conduct citation line:\n${card}`).toMatch(/^Standards of Conduct Policy, JBA Policy Manual p\.\d+$/m);
       bothOnDraft(t, id);
     },
   },
