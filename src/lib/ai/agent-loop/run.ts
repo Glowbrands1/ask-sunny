@@ -21,6 +21,7 @@ import { withoutSensitiveDefaults } from "../sensitive-defaults";
 import { finalReplyWithoutMarkers, withoutSourceMarkers, withoutSourceNotes } from "../source-note";
 import { extractUsedMarkers } from "../prompts";
 import { shownCitations } from "@/lib/knowledge/empty-card-drop";
+import { DATA_TOOL_SPECS, dataToolHandlers } from "./data-tools";
 import { agentLoopSystem, AGENT_LOOP_RULES } from "./prompt";
 import { agentLoopStepLimit } from "./switch";
 import {
@@ -280,6 +281,8 @@ export const AGENT_LOOP_TOOLS = [
     description: "This app's own help: how to sign in, reset or change your password, and what Sunny can do. Use it for any question about using this app; never send the manager to IT when this has the answer.",
     input_schema: object({ topic: { type: "string", enum: ["password", "sign_in", "what_sunny_does"] } }, ["topic"]),
   },
+  /* The app data tools (QA, 15 Nov 2026): Google Reviews and the reports, with the scope rules in code (`data-tools.ts`). */
+  ...DATA_TOOL_SPECS,
 ];
 
 const EPHEMERAL = { anthropic: { cacheControl: { type: "ephemeral" } } } as const;
@@ -359,6 +362,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     search_knowledge: (args) => searchKnowledge(context, effects, args),
     list_staff: (args) => listStaffTool(context, effects, args),
     app_help: (args) => appHelp(args),
+    ...dataToolHandlers({ actor: context.actor, question: context.question, scopeId: context.scopeId, today: context.today }, effects),
   };
 
   /* One tool call, timed and counted for the trace: its name, ms and result size; never its values. */

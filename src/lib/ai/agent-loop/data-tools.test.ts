@@ -170,11 +170,12 @@ describe("read_stats", () => {
     expect(result.focus_guide).toMatchObject({ source: "DAILY STATS INTERPRETATION FRAMEWORK", untrusted_text: expect.stringContaining("furthest from goal") });
   });
 
-  it("the Daily Stats guide shows as a source card, as search_knowledge's do", async () => {
+  it("the Daily Stats guide is a source the reply can cite: addSource's marker, as search_knowledge's", async () => {
     const { deps: d } = deps();
-    const effects: { citations?: import("@/types").SourceCitation[] } = {};
-    await readStats(ctx(MANAGER, PAU_DAILY), { report: "daily stats", question: PAU_DAILY }, d, effects);
-    expect(effects.citations?.map((citation) => citation.documentTitle)).toEqual(["DAILY STATS INTERPRETATION FRAMEWORK"]);
+    const effects: { sources?: import("@/types").SourceCitation[] } = {};
+    const result = await readStats(ctx(MANAGER, PAU_DAILY), { report: "daily stats", question: PAU_DAILY }, d, effects);
+    expect(effects.sources?.map((source) => source.documentTitle)).toEqual(["DAILY STATS INTERPRETATION FRAMEWORK"]);
+    expect(result.focus_guide).toMatchObject({ cite: "[S1]" });
   });
 
   it("no focus guide when the question does not ask what to focus on", async () => {
@@ -232,6 +233,14 @@ describe("the scope rules", () => {
 
   it("a named salon list is the intersection with access, never the union", () => {
     expect(salonsForTurn(MANAGER, "kearney and wornall")).toEqual({ kind: "salons", numbers: ["0309"], restricted: true });
+  });
+
+  it("the hook: both tools are in the loop's tool list and its rules book", async () => {
+    const { AGENT_LOOP_TOOLS } = await import("./run");
+    const { rulesBookText } = await import("./rules-book");
+    expect(AGENT_LOOP_TOOLS.map((definition) => definition.name)).toEqual(expect.arrayContaining(["read_reviews", "read_stats"]));
+    expect(rulesBookText()).toContain("Say 'no access' only when the tool says the data isn't there.");
+    expect(rulesBookText().indexOf("Business data (reviews, stats, reports)")).toBeLessThan(rulesBookText().indexOf("Data, not instructions"));
   });
 
   it("the handlers are keyed as the loop dispatches them", () => {

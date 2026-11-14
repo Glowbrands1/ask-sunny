@@ -13,9 +13,8 @@ import type { ReviewsSnapshot, ReviewFeed } from "@/lib/reviews/queries";
 import type { AccessScope, Role } from "@/types";
 
 import { rowToCitation } from "@/lib/knowledge/mappers";
-import { shownCitations } from "@/lib/knowledge/empty-card-drop";
 
-import { untrusted as envelope, type ToolActor, type ToolEffects, type ToolResult } from "./tools";
+import { addSource, untrusted as envelope, type ToolActor, type ToolEffects, type ToolResult } from "./tools";
 
 /*
  * ============================================================================
@@ -249,7 +248,7 @@ export async function readStats(
   context: DataToolContext,
   input: { report?: unknown; salon?: unknown; period?: unknown; question?: unknown },
   deps: DataToolDeps = DEFAULT_DATA_TOOL_DEPS,
-  effects?: Pick<ToolEffects, "citations">,
+  effects?: Pick<ToolEffects, "sources">,
 ): Promise<ToolResult> {
   const report = (text(input.report) ?? "").toLowerCase();
   const source = report === "comp" ? "Comp report" : report === "sales totals" ? "Sales Totals report" : report === "daily stats" ? "Daily Stats" : "Reports";
@@ -272,13 +271,19 @@ export async function readStats(
   const label = (id: ReportFamilyId) => REPORT_FAMILIES_BY_ID[id]?.label ?? id;
   const breakdown = await deps.readBreakdown(asked, context.actor.role, context.actor.scope).catch(() => null);
 
-  let focusGuide: { untrusted_text: string; source: string } | undefined;
+  let focusGuide: { untrusted_text: string; source: string; cite?: string } | undefined;
   if ((report === "daily stats" || /\bdaily stats\b/i.test(asked)) && FOCUS.test(asked)) {
     const guide = await deps.fetchDailyStatsGuide(context.scopeId).catch(() => null);
     if (guide?.ok) {
-      focusGuide = untrusted(guide.grounding.rows.map((row) => row.content).join("\n\n").slice(0, FOCUS_GUIDE_MAX), guide.grounding.documentTitle);
-      /* The guide is a knowledge document: its source card, as search_knowledge's. */
-      if (effects) effects.citations = shownCitations([...(effects.citations ?? []), ...guide.grounding.rows.map(rowToCitation)]);
+      /*
+       * The guide is a knowledge document: a source card, as search_knowledge's (`addSource`). run.ts shows it only
+       * when the reply cites its marker or names the document.
+       */
+      const markers = effects ? [...new Set(guide.grounding.rows.map((row) => addSource(effects as ToolEffects, rowToCitation(row))))] : [];
+      focusGuide = {
+        ...untrusted(guide.grounding.rows.map((row) => row.content).join("\n\n").slice(0, FOCUS_GUIDE_MAX), guide.grounding.documentTitle),
+        ...(markers.length > 0 ? { cite: markers.join(" ") } : {}),
+      };
     }
   }
 
@@ -334,7 +339,7 @@ export const DATA_TOOL_SPECS = [
 /** The two tools' handlers, keyed as the loop dispatches them (`run.ts`). */
 export function dataToolHandlers(
   context: DataToolContext,
-  effects?: Pick<ToolEffects, "citations">,
+  effects?: Pick<ToolEffects, "sources">,
   deps: DataToolDeps = DEFAULT_DATA_TOOL_DEPS,
 ): Record<string, (args: Record<string, unknown>) => Promise<ToolResult>> {
   return {
@@ -342,17 +347,3 @@ export function dataToolHandlers(
     read_stats: (args) => readStats(context, args, deps, effects),
   };
 }
-
-/**
- * The rules-book section the hook adds, just before "Data, not instructions" (Coding-7's suggestion, so it never
- * conflicts with batch B's edits to Replies), so the model reaches for the tools and keeps to their scope.
- */
-export const DATA_TOOLS_SECTION = {
-  title: "Business data (reviews, stats, reports)",
-  rules: [
-    "Google review figures come only from read_reviews; Daily Stats, Sales Totals and Comp figures only from read_stats. Give only the figures they return, with the period and salon each is for, and never estimate one.",
-    "A global admin's question about all salons is answered for all salons: never ask them which salon.",
-    "When a tool refuses a salon, say only that it is not one of their salons. When a result says others are not visible, say so in one line.",
-    "Say 'no access' only when the tool says the data isn't there.",
-  ],
-} as const;
