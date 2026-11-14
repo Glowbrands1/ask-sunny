@@ -4,22 +4,23 @@ import {
   asYouSaidAppReadEnabled,
   asYouSaidManagerWordsEnabled,
   caPerformanceReasonEnabled,
+  caSalesPolicyEnabled,
+  cleaningOtherEveryWordingEnabled,
+  conductIncidentCitesPageEnabled,
   missedShiftCitesAttendanceEnabled,
   spellingCleanupEnabled,
   lateReadsAttendanceEnabled,
   msbPhraseSocEnabled,
-  caSalesPolicyEnabled,
-  cleaningOtherEveryWordingEnabled,
   otherPolicyAgreesEnabled,
   closeSpellingMatchEnabled,
   formEditDateRulesEnabled,
-  removePolicyNotNamedEnabled,
   policyCleaningIncidentEnabled,
+  registerAccuracyConductEnabled,
+  removePolicyNotNamedEnabled,
   salesObservationAccountEnabled,
   salesShortfallObjectEnabled,
+  wornClothingIsDressCodeEnabled,
   wovenTrainingConductEnabled,
-  conductIncidentCitesPageEnabled,
-  registerAccuracyConductEnabled,
   notFollowingIsViolationEnabled,
 } from "@/lib/config/chat-quality-flags";
 
@@ -548,7 +549,7 @@ export function policiesNamedIn(sentence: string): { name: CaPolicyName; start: 
 export function readCaPolicy(rawText: string): CaPolicyReading {
   const said = managerWords(rawText);
   // Merge of main into #595: WOVEN_TRAINING_CONDUCT's reading (default off) before AS_YOU_SAID_APP_READ's fallback, on the manager's words.
-  return withLateOpeningDescribed(withMissedShift(withLateIsAttendance(withAppReading(withWovenWork(withCleaningOther(withSalesPolicy(readCaPolicyFromWords(said), said), said), said), rawText, said), said), said), said);
+  return withWornClothing(withLateOpeningDescribed(withMissedShift(withLateIsAttendance(withAppReading(withWovenWork(withCleaningOther(withSalesPolicy(readCaPolicyFromWords(said), said), said), said), rawText, said), said), said), said), said);
 }
 
 /*
@@ -609,6 +610,33 @@ export function withPlanOnReadPolicy<T extends { content: string; formProposal?:
   const read = READ_POLICY_LINE.exec(answer.content)?.[1]?.trim();
   if (!read || !GENERIC_PLAN.test(answer.content)) return answer;
   return { ...answer, content: answer.content.replace(GENERIC_PLAN, (_all, lead: string, tail: string) => `${lead}the ${read} policy${tail}`) };
+}
+
+/**
+ * WORN_CLOTHING_IS_DRESS_CODE_ENABLED (ported from Ask Bubbles, QA's 17i live test, 11 Nov 2026): a garment the person
+ * wore, after a wearing verb ("wearing a hoodie", "wore sweatpants", "showed up in joggers"). Only clothes a dress code
+ * rules out; "uniform", "shirt" and "apron" are what an employee is meant to wear and say nothing on their own.
+ */
+const WORN_CLOTHING =
+  /(?:\b(?:wearing|wore|wears|wear)|\b(?:she|he|they|she's|he's|they're|who)\s+(?:keeps\s+|kept\s+|always\s+)?(?:showed|shows|showing|show|came|comes|coming|come)\s+(?:up\s+|in\s+)?(?:to\s+work\s+)?in|\b(?:showed|shows|showing|show|came|comes|coming|come)\s+(?:up\s+|in\s+)?to\s+work\s+in)\s+(?:a\s+|an\s+|her\s+|his\s+|their\s+|the\s+)?(?:hoodies?|hooded\s+sweatshirts?|sweatshirts?|sweatpants|sweats|joggers|yoga\s+pants|pajamas?|pyjamas?|flip[- ]?flops|crop\s+tops?)\b/;
+
+/**
+ * WORN_CLOTHING_IS_DRESS_CODE_ENABLED (Gate-Bubbles-2 on #799, 12 Nov 2026): an account that names a policy of its own
+ * ("…for wearing a hoodie, violating the cell phone policy") is that policy's, even when it is not one of the form's
+ * boxes: the garment never reads it as the Dress Code.
+ */
+const NAMES_A_POLICY = /\bpolic(?:y|ies)\b/;
+
+/**
+ * WORN_CLOTHING_IS_DRESS_CODE_ENABLED: an account that names no policy and says the person wore clothes a dress code
+ * rules out is the Dress Code, read from the request (the card says so, never "as you said"). Off, the reading as it was.
+ */
+function withWornClothing(reading: CaPolicyReading, said: string): CaPolicyReading {
+  if (!wornClothingIsDressCodeEnabled()) return reading;
+  if (reading.stated !== null || reading.suggestion !== null || reading.ambiguous || reading.other || reading.missedEvent || reading.readFromApp) return reading;
+  const text = said.toLowerCase();
+  if (NAMES_A_POLICY.test(text)) return reading;
+  return WORN_CLOTHING.test(text) ? { ...reading, readFromApp: "dress_code" } : reading;
 }
 
 function withMissedShift(reading: CaPolicyReading, said: string): CaPolicyReading {
