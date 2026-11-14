@@ -1,6 +1,6 @@
 import { expect, vi } from "vitest";
 
-import { KEARNEY, STAFF, type DirectoryRow, type ReplayCase, type ReplayContext } from "./cases";
+import { KEARNEY, STAFF, TWO_SALONS, type DirectoryRow, type ReplayCase, type ReplayContext } from "./cases";
 import { firstMatch, lastResult, loopStandIn, type LoopView } from "./loop-stand-in";
 
 /**
@@ -30,6 +30,9 @@ const CORBIN: DirectoryRow = { id: "e-corbin-ashdown", firstName: "Corbin", last
 /** Two people whose names start the same (the live run's nov6-diffemp shape, people invented). */
 const ISOLDE: DirectoryRow = { id: "e-isolde-varga", firstName: "Isolde", lastName: "Varga", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" };
 const ISOLDE_TWO: DirectoryRow = { id: "e-isolde-varga-two", firstName: "Isolde", lastName: "Varga Two", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" };
+/** An office account affiliated with the salon (never on a salon's staff list), and a person at the other salon. */
+const OFFICE: DirectoryRow = { id: "e-perrin-holloway", firstName: "Perrin", lastName: "Holloway", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Regional Director" };
+const OTHER_SALON: DirectoryRow = { id: "e-wrenna-castell", firstName: "Wrenna", lastName: "Castell", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0307"], positionName: "Tanning Consultant" };
 /** At a salon outside the signed-in manager's scope. */
 const FARAWAY: DirectoryRow = { id: "e-ysolde-marchetti", firstName: "Ysolde", lastName: "Marchetti", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-9917"], positionName: "Tanning Consultant" };
 
@@ -165,6 +168,68 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       await stated.say("written ca for tamsin orwell, she was 30 minutes late on 11/12, payroll deduct $50");
       expect(stated.proposal?.warningLevel, "the stated level was dropped").toBe("written");
       expect(stated.proposal as unknown, "the stated payroll was dropped").toMatchObject({ payrollDeduct: "yes", payrollDeductAmount: "50" });
+    },
+  },
+  {
+    id: "nov14-agent-loop-card-questions-always-asked",
+    title: "the card's questions are always asked (QA's L1–L10 must-fixes): a CA reply carries the payroll question and the warning-level line in today's words when neither was stated, even when the model leaves them out; stated, they are read back",
+    report: `${REPORT}; L1–L10 review (14 Nov 2026): "the payroll question and the warning-level line were missing from some CA replies"`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-13T22:40:00Z"));
+      t.directory([...STAFF, TAMSIN]);
+      t.as("salon_director", KEARNEY);
+      // A terse model: the card, and no questions in its reply.
+      const terse = loopStandIn((view) => {
+        const said = view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "";
+        if (!lastResult(view, "propose_form")) {
+          return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, what_happened: "Tamsin Orwell was 30 minutes late on 11/12.", ...(/written/.test(said) ? { warning_level: "written", payroll_deduct: "no" } : {}) } };
+        }
+        return { text: "Here is the Corrective Action Form for Tamsin Orwell." };
+      });
+      t.loopModel!(terse);
+      const unstated = await t.thread().say("ca for tamsin orwell, she was 30 minutes late on 11/12");
+      expect(unstated.content, "no payroll question").toContain("One more question: **Is payroll deduct applicable?** Yes or No?");
+      expect(unstated.content, "the warning level was neither asked nor left to the manager").toMatch(/You'll set the verbal\/written warning level/);
+
+      const stated = await t.thread().say("written ca for tamsin orwell, she was 30 minutes late on 11/12, no payroll deduct");
+      expect(stated.content).toMatch(/\*\*Type of Warning:\*\* Written Warning, as you said/);
+      expect(stated.content).toMatch(/Is payroll deduct applicable\? \*\*No\*\*/);
+      expect(stated.content, "asked a question already answered").not.toMatch(/Yes or No\?/);
+      expect(stated.content, "asked a level already given").not.toMatch(/verbal\/written warning level/);
+    },
+  },
+  {
+    id: "nov14-agent-loop-two-dates-asked",
+    title: "two incident dates and no answer (QA's L3 must-fix): the card's date stays empty and the reply asks which, listing the dates; a prior step's date is not counted; the answer sets the date",
+    report: `${REPORT}; L3 (14 Nov 2026): "two dates in the account and the loop put one on the form without asking"`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-13T22:40:00Z"));
+      t.directory([...STAFF, TAMSIN]);
+      t.as("salon_director", KEARNEY);
+      const picker = loopStandIn((view) => {
+        const said = view.turns.filter((turn) => turn.role === "user").map((turn) => turn.text).join(" ");
+        if (!lastResult(view, "propose_form")) {
+          return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, what_happened: /9\/28/.test(said) ? "Tamsin Orwell left the spray booth dirty on 9/28 and again on 10/2." : "Tamsin Orwell was late on 11/3 after being coached on 10/1.", incident_date: /9\/28/.test(said) ? "2026-09-28" : "2026-11-03" } };
+        }
+        return { text: "Here is the card." };
+      });
+      t.loopModel!(picker);
+      const thread = t.thread();
+      const asked = await thread.say("ca for tamsin orwell, she left the spray booth dirty on 9/28 and again on 10/2");
+      expect(thread.proposal?.formDate ?? null, "a date was picked without asking").toBeNull();
+      expect(asked.content).toContain("You mentioned more than one date (**9/28**, **10/2**). Which date goes on the form?");
+      await thread.say("10/2");
+      expect(thread.proposal?.formDate ?? "", "the answer did not set the date").toBe("2026-10-02");
+
+      const prior = t.thread();
+      const one = await prior.say("ca for tamsin orwell, she was late on 11/3 after being coached on 10/1");
+      expect(one.content, "a prior step's date was counted as an incident date").not.toMatch(/more than one date/);
     },
   },
   {
@@ -518,6 +583,84 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       expect(result, "the passage is not in the untrusted_text envelope").toMatch(/"text":\{"untrusted_text":"After every session/);
       expect(reply.citations?.length ?? 0, "the reply carries no source card").toBeGreaterThan(0);
       expect(searcher.views[0]!.system, "no rules-book line for knowledge questions").toMatch(/search the knowledge base with search_knowledge/);
+    },
+  },
+  {
+    id: "nov14-agent-loop-whole-staff-form",
+    title: "\"a coaching form for my whole staff\" (STAFF_PICKER, QA 14 Nov 2026): never one card for everyone; with two salons and none named, today's which-salon question; one salon, today's list (salon titles only, no office account) and \"Who is this form for?\"",
+    report: `${REPORT}; STAFF_PICKER + STAFF_PICKER_STORE_TITLES had no loop counterpart`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-13T22:40:00Z"));
+      t.directory([...STAFF, TAMSIN, CORBIN, OFFICE, OTHER_SALON]);
+      // A careless model tries a card first, then lists.
+      const carder = loopStandIn((view) => {
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "coaching", employee_id: TAMSIN.id, what_happened: "Team coaching." } };
+        if (!lastResult(view, "list_staff")) return { tool: "list_staff", input: {} };
+        return { text: "Done." };
+      });
+      t.loopModel!(carder);
+      t.as("salon_director", TWO_SALONS);
+      const both = t.thread();
+      const asked = await both.say("can you create a coaching form for my whole staff?");
+      expect(both.proposal ?? null, "a card for everyone").toBeNull();
+      // A card tried for everyone is refused (live, the model may go straight to list_staff).
+      for (const result of toolResults(carder.views, "propose_form")) expect(result).toMatch(/one person at a time/);
+      expect(asked.content).toContain("Which salon's staff should I list?");
+
+      t.as("salon_director", KEARNEY);
+      const one = t.thread();
+      const listed = await one.say("can you create a coaching form for my whole staff?");
+      expect(one.proposal ?? null).toBeNull();
+      expect(listed.content).toMatch(/won't make one card for the whole staff/);
+      expect(listed.content).toContain("Tamsin Orwell");
+      expect(listed.content).toContain("Who is this form for?");
+      expect(listed.content, "an office account was listed as salon staff").not.toContain("Perrin Holloway");
+      expect(listed.content, "another salon's staff was listed").not.toContain("Wrenna Castell");
+    },
+  },
+  {
+    id: "nov14-agent-loop-staff-list-question",
+    title: "\"who's on my staff\" (QA 14 Nov 2026): names and positions of the manager's OWN salon only; never another salon's staff (scope), never an office account; a district login is told the roster can't be listed here",
+    report: `${REPORT}; a plain staff-list question`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-13T22:40:00Z"));
+      t.directory([...STAFF, TAMSIN, CORBIN, OFFICE, OTHER_SALON, FARAWAY]);
+      t.as("salon_director", KEARNEY);
+      const lister = loopStandIn((view) => {
+        const said = view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "";
+        if (!lastResult(view, "list_staff")) return { tool: "list_staff", input: /grand island/i.test(said) ? { salon: "Grand Island" } : {} };
+        return { text: JSON.stringify(lastResult(view, "list_staff")) };
+      });
+      t.loopModel!(lister);
+      await t.thread().say("who's on my staff?");
+      const own = toolResults(lister.views, "list_staff").at(-1) ?? "";
+      expect(own).toContain("Tamsin Orwell");
+      expect(own).toContain("Tanning Consultant");
+      expect(own, "an office account was listed").not.toContain("Perrin Holloway");
+      expect(own, "another salon's staff was listed").not.toContain("Wrenna Castell");
+      expect(own, "a salon outside the scope was listed").not.toContain("Ysolde Marchetti");
+      const rows = (JSON.parse(own) as { staff: Record<string, unknown>[] }).staff;
+      expect(rows.length).toBeGreaterThan(0);
+      for (const row of rows) expect(Object.keys(row).sort(), "more than names and positions").toEqual(["name", "position"]);
+
+      // Another salon's staff, asked by name: never listed.
+      const callsBefore = toolResults(lister.views, "list_staff").length;
+      const otherReply = await t.thread().say("who works at grand island?");
+      expect(otherReply.content, "another salon's staff reached the manager").not.toContain("Wrenna Castell");
+      // A list_staff call for it, if the model made one, was refused.
+      for (const result of toolResults(lister.views, "list_staff").slice(callsBefore)) expect(result).toMatch(/not one of this manager's salons/);
+
+      t.as("district_manager", { level: "district", primaryAreaId: "dist-01", alsoCoversAreaIds: [] });
+      const districtBefore = toolResults(lister.views, "list_staff").length;
+      const district = await t.thread().say("who's on my staff?");
+      expect(district.content, "a district login was given names").not.toMatch(/Tamsin Orwell|Corbin Ashdown/);
+      for (const result of toolResults(lister.views, "list_staff").slice(districtBefore)) expect(result).toMatch(/can't be listed here/);
     },
   },
   {

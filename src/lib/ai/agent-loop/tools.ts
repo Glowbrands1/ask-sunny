@@ -32,7 +32,8 @@ import { cleaningUndonePhrase, namesCareAndCleaning } from "@/lib/forms/ca-polic
 import { turnsFromThisPersonsRequest } from "@/lib/forms/this-persons-turns";
 import { closePolicyQuestion, namedPolicies } from "@/lib/forms/named-policy-section";
 import { startsNewForm } from "@/lib/ai/remap-incident";
-import { statedPayrollDeduct } from "@/lib/forms/payroll-deduct";
+import { PAYROLL_DEDUCT_LABEL, statedPayrollDeduct } from "@/lib/forms/payroll-deduct";
+import { PAYROLL_AMOUNT_LABEL, PAYROLL_AMOUNT_QUESTION } from "@/lib/forms/payroll-amount-field";
 import { withoutPayrollClauses } from "@/lib/ai/payroll-clause-not-account";
 import { UNDER_PERFORMANCE_EXPLAINED } from "@/lib/ai/under-performance-explained";
 import { listTemplateSummaries, type TemplateSummary } from "@/lib/forms/repository";
@@ -156,6 +157,10 @@ export interface ToolEffects {
   confirmPolicy?: string | null;
   /** The open-form reader's own reply when edit_form changed the draft: the realized diff of what was saved. */
   revisedReply?: string | null;
+  /** The card's questions and read-backs the reply must carry (today's card lines, `cardLines`). */
+  requiredLines?: string[];
+  /** A reply the app gives in its own words (today's whole-staff list): the turn's reply, as written. */
+  replyOverride?: string | null;
   /** The knowledge-base passages search_knowledge returned, as today's source cards. */
   citations?: SourceCitation[];
   /** A new draft revising a finalized form, opened on the manager's screen (`editable-draft.ts`). */
@@ -263,6 +268,82 @@ export async function findStaff(context: ToolContext, input: { name?: unknown })
   return {
     matches: found.map(staffRow),
     ...(found.length > 1 ? { note: shared ? "Several people share this name: ask the manager which one (by salon) before proposing a form." : "Several people match: ask the manager which one." } : {}),
+  };
+}
+
+/* ---------------------------------------------------------- staff list --- */
+
+/**
+ * LIST_STAFF (QA, 14 Nov 2026: STAFF_PICKER + STAFF_PICKER_STORE_TITLES had no loop counterpart).
+ * - "A coaching form for my whole staff" never gets a card for everyone: several salons and none named → which salon;
+ *   one salon → today's list (`staff-picker.ts`, its words as written) and "Who is this form for?".
+ * - "Who's on my staff": the manager's OWN salons only, names and positions only (salon titles, no office accounts,
+ *   no shared logins), capped. Never contact details, pay or addresses: the directory read carries none.
+ * - A district or region login reads no roster here (as today), so nothing is listed. A salon outside the manager's
+ *   scope is never listed.
+ * - Only for somebody who may create a Coaching or Corrective Action Form, as today's picker.
+ */
+export async function listStaffTool(context: ToolContext, effects: ToolEffects, input: { salon?: unknown }): Promise<ToolResult> {
+  const scope = context.actor.scope;
+  if (!["create_coaching_form", "create_corrective_action"].some((permission) => hasPermission(DEFAULT_PERMISSION_MATRIX, context.actor.role, permission as never))) {
+    return { error: "This role cannot list the staff. Say so." };
+  }
+  if (scope.level === "district" || scope.level === "region") {
+    return { error: "This login covers a district or region, so its staff roster can't be listed here. Say so in those words; never list or guess names." };
+  }
+  const [{ authorizedSalonIds }, { PRODUCTION_SALONS, salonById }, { readSalonMentions }, picker, roster] = await Promise.all([
+    import("@/lib/forms/location-scope"),
+    import("@/data/salons"),
+    import("@/lib/forms/salon-mention"),
+    import("@/lib/forms/staff-picker"),
+    import("@/lib/forms/employee-roster"),
+  ]);
+  const ids = scope.level === "global" ? PRODUCTION_SALONS.map((salon) => salon.id) : authorizedSalonIds(scope);
+  const locations = ids
+    .map((id) => salonById(id))
+    .filter((salon): salon is NonNullable<typeof salon> => Boolean(salon))
+    .map((salon) => ({ id: salon.id, name: salon.name }));
+  const allowed = new Set(locations.map((location) => location.id));
+  const previous = [...context.history].reverse().find((turn) => turn.role === "assistant")?.content ?? "";
+  const forForm = picker.asksForWholeStaff(context.question, true) || (typeof previous === "string" && previous.includes(picker.ASKED_LOCATION));
+  const form = picker.formName(`${context.question} ${typeof previous === "string" && forForm ? previous : ""}`);
+  const one = form === "form" ? "A form" : `A ${form}`;
+  const typed = typeof input.salon === "string" ? input.salon.trim() : "";
+  const named = [...new Set([typed, context.question].flatMap((text) => (text ? readSalonMentions(text).flatMap((mention) => [...mention.salonIds]) : [])))];
+  const own = named.filter((id) => allowed.has(id));
+  if (own.length === 0 && named.length > 0) {
+    return { error: "That salon is not one of this manager's salons; its staff are never listed here. Say so." };
+  }
+  let chosen = own.length === 1 ? locations.find((location) => location.id === own[0])! : locations.length === 1 ? locations[0]! : null;
+  if (!chosen && typed) {
+    const wanted = typed.toLowerCase().split(/[^a-z0-9']+/).filter((word) => word && !["the", "salon", "store", "location", "at", "in"].includes(word));
+    const hits = locations.filter((location) => wanted.length > 0 && wanted.every((word) => location.name.toLowerCase().split(/[^a-z0-9']+/).includes(word)));
+    if (hits.length === 1) chosen = hits[0]!;
+  }
+  if (!chosen) {
+    if (locations.length === 0) return { error: "No salon is in this login's scope, so no staff can be listed. Say so." };
+    const names = locations.map((location) => location.name).sort((a, b) => a.localeCompare(b));
+    const choices = names.length <= 15 ? `\n\n${names.map((name) => `- ${name}`).join("\n")}` : "";
+    const ask = forForm
+      ? `${one} is for one person at a time, so I won't make one card for the whole staff. ${picker.ASKED_LOCATION} Your account covers ${names.length} salons.${choices}`
+      : `${picker.ASKED_LOCATION} Your account covers ${names.length} salons.${choices}`;
+    if (forForm) effects.replyOverride = ask;
+    return { say_exactly: ask };
+  }
+  const facts = await roster.readDirectoryFacts(scope).catch(() => []);
+  const people = facts.length > 0 ? facts.map((person) => ({ ...person, positionName: person.title })) : [];
+  if (people.length === 0) return { error: ROSTER_FAILED };
+  if (forForm) {
+    const reply = picker.listStaff(chosen, people, form);
+    effects.replyOverride = reply;
+    return { say_exactly: reply };
+  }
+  const rows = picker.salonStaffRows(chosen, people);
+  return {
+    salon: chosen.name,
+    staff: rows.slice(0, 40),
+    ...(rows.length > 40 ? { more: rows.length - 40 } : {}),
+    note: "Names and positions only, grouped by position. Never contact details, pay or addresses.",
   };
 }
 
@@ -384,14 +465,57 @@ export async function readPolicy(context: ToolContext, input: { heading?: unknow
 
 /* -------------------------------------------------------- propose form --- */
 
-/** The card's facts as today's reply shows them, for the manager to check before Create. */
-function cardLines(card: ChatFormProposal, templateKey: string): string[] {
+/**
+ * THE CARD'S LINES, IN TODAY'S WORDS (`ai/form-proposal.ts`), for the manager to check before Create, and the
+ * questions today's card always asks (QA, 14 Nov 2026, from L1–L10): the warning level read back or left to the
+ * manager, prior actions, the payroll question or its answer, the amount, and which date when several were given.
+ * The reply always carries them (run.ts adds any the model left out).
+ */
+export function cardLines(card: ChatFormProposal, templateKey: string, extra: { readonly datesAsked?: readonly string[] } = {}): string[] {
   const lines: string[] = [];
-  if (card.issue) lines.push(`${templateKey === "dpoa" ? "**Observation of Offense:**" : "**What happened:**"} ${card.issue}`);
-  if (card.warningLevel) lines.push(`**Type of Warning:** ${card.warningLevel === "verbal" ? "Verbal Warning" : "Written Warning"}, as you said.`);
-  if (card.priorActions) lines.push(`**Prior actions:** ${card.priorActions}`);
-  if (card.payrollDeduct) lines.push(`**Payroll Deduct:** ${card.payrollDeduct === "yes" ? `Yes${card.payrollDeductAmount ? ` — $${card.payrollDeductAmount}` : ""}` : "No"}`);
+  const corrective = templateKey === "dpoa";
+  if (card.issue) lines.push(`${corrective ? "**Observation of Offense:**" : "**What happened:**"} ${card.issue}`);
+  if (card.warningLevel) lines.push(`**Type of Warning:** ${card.warningLevel === "verbal" ? "Verbal Warning" : "Written Warning"}, as you said — I'll tick it on the form. Tell me if that should change.`);
+  if (card.priorActions) lines.push(`**Prior actions:** ${card.priorActions}, as you said. I'll list them on the form — tell me if that should change.`);
+  if (extra.datesAsked && extra.datesAsked.length > 1) {
+    lines.push(`You mentioned more than one date (${extra.datesAsked.map((date) => `**${date}**`).join(", ")}). Which date goes on the form?`);
+  }
+  if (corrective && !card.awaitingIncident) {
+    const outstanding = [card.warningLevel ? null : "the verbal/written warning level", card.priorActions ? null : "any prior coaching or corrective action"].filter(Boolean);
+    if (outstanding.length > 0) lines.push(`You'll set ${outstanding.join(" and ")} on the form — I won't guess at ${outstanding.length === 1 ? "it" : "them"}.`);
+    if (card.payrollDeduct) lines.push(`${PAYROLL_DEDUCT_LABEL} **${card.payrollDeduct === "yes" ? "Yes" : "No"}** — tell me if that should change.`);
+    else lines.push(`One more question: **${PAYROLL_DEDUCT_LABEL}** Yes or No? Tell me here, or tick it on the form — I won't answer it for you.`);
+    if (card.payrollDeduct === "yes") {
+      lines.push(card.payrollDeductAmount ? `**${PAYROLL_AMOUNT_LABEL}** **${card.payrollDeductAmount}** — tell me if that should change.` : PAYROLL_AMOUNT_QUESTION);
+    }
+  }
   return lines;
+}
+
+/** "10/2" as the most recent such day not after today, in ISO form (the card's date field). */
+function monthDayToIso(monthDay: string): string {
+  const [month, day] = monthDay.split("/").map(Number) as [number, number];
+  const now = new Date();
+  let year = now.getUTCFullYear();
+  if (Date.UTC(year, month - 1, day) > now.getTime()) year -= 1;
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+/**
+ * The incident's dates as the manager wrote them, one per day, leaving out dates of earlier steps (prior actions)
+ * and of payroll. Two or more, and the latest message does not pick one: the card's date waits for the manager.
+ */
+export function incidentDates(managerWords: string, priorActions: string | null): string[] {
+  const prior = new Set([...(priorActions ?? "").matchAll(ACCOUNT_DATE)].map((match) => `${Number(match[1])}/${Number(match[2])}`));
+  const seen = new Map<string, string>();
+  for (const match of managerWords.replace(PAYROLL_AMOUNT, " ").matchAll(ACCOUNT_DATE)) {
+    const key = `${Number(match[1])}/${Number(match[2])}`;
+    if (Number(match[1]) > 12 || prior.has(key) || seen.has(key)) continue;
+    const before = managerWords.slice(Math.max(0, match.index! - 40), match.index!);
+    if (/\b(?:coached|previous(?:ly)?|prior|signed|received|given|issued|had (?:a|her|his|their) (?:verbal|written|ca|coaching))\b[^.\n]*$/i.test(before)) continue;
+    seen.set(key, key);
+  }
+  return [...seen.values()];
 }
 
 /** The manager accepted the off-roster offer for this name ("use <name>", or yes right after the offer). */
@@ -530,6 +654,10 @@ export async function proposeForm(
   if (effects.proposal) {
     return { error: `A card for ${effects.proposal.employeeName ?? "someone"} is already shown in this reply. Offer the next person's form in your reply and propose it when the manager says yes.` };
   }
+  /* HARD GUARD (STAFF_PICKER): a form asked for a whole staff is never one card for everyone. */
+  if ((await import("@/lib/forms/staff-picker")).isBareWholeStaff(context.question) || (await import("@/lib/forms/staff-picker")).asksForWholeStaff(context.question)) {
+    return { error: "This form was asked for a whole staff. A form is for one person at a time: call list_staff and say what it returns." };
+  }
   const key = typeof input.template_key === "string" ? input.template_key.trim() : "";
   const templates = await creatableTemplates(context.actor.role).catch(() => null);
   if (!templates) return { error: "The forms library could not be read just now." };
@@ -658,7 +786,13 @@ export async function proposeForm(
   const typedAmount = typeof input.payroll_amount === "string" && /\d/.test(input.payroll_amount) ? input.payroll_amount.replace(/[^\d.]/g, "") : null;
   const amount = typedAmount && managerWords.replace(/[^\d.]/g, " ").split(/\s+/).some((n) => n !== "" && Number(n) === Number(typedAmount)) ? typedAmount : null;
   const today = context.today || businessToday();
-  const date = typeof input.incident_date === "string" && DATE.test(input.incident_date.trim()) ? input.incident_date.trim() : null;
+  let date = typeof input.incident_date === "string" && DATE.test(input.incident_date.trim()) ? input.incident_date.trim() : null;
+  /* Several incident dates and the latest message does not pick one: the date waits, and the card asks (today's rule). */
+  const datesGiven = ACCOUNT_FORMS.has(template.key) ? incidentDates(requestWords, typeof input.prior_actions === "string" ? input.prior_actions : null) : [];
+  const latestDates = incidentDates(context.question, null);
+  const datesAsked = datesGiven.length > 1 && !(latestDates.length === 1 && datesGiven.includes(latestDates[0]!)) ? datesGiven : [];
+  if (datesAsked.length > 0) date = null;
+  else if (datesGiven.length > 1 && latestDates.length === 1) date = monthDayToIso(latestDates[0]!);
   if (date && date > today) return { error: `The incident date ${date} is after today (${today}, the salon's local date). Ask the manager.` };
   const askedLevel = input.warning_level === "verbal" || input.warning_level === "written" ? input.warning_level : null;
   const level = askedLevel && (askedLevel === "verbal" ? /\bverbal\b/i : /\bwritten\b|\bwrite[- ]?up\b/i).test(managerWords) ? askedLevel : null;
@@ -683,7 +817,7 @@ export async function proposeForm(
   const card: ChatFormProposal = {
     ...proposal,
     sourceMessageIds: sourceIds,
-    formDate: date ?? proposal.formDate ?? null,
+    formDate: datesAsked.length > 0 ? null : date ?? proposal.formDate ?? null,
     ...(level ? { warningLevel: level } : {}),
     ...(whatHappened ? { issue: whatHappened } : {}),
     ...(payroll ? { payrollDeduct: payroll } : {}),
@@ -693,6 +827,7 @@ export async function proposeForm(
     ...(awaiting ? { awaitingIncident: true as const, supportsInlineDraft: false } : {}),
   };
   effects.proposal = card;
+  effects.requiredLines = cardLines(card, template.key, { datesAsked }).filter((line) => !/^\*\*(?:Observation of Offense|What happened):\*\*/.test(line));
   effects.policyLine = policyLine;
   effects.confirmPolicy = didYouMean;
   return {
@@ -709,7 +844,7 @@ export async function proposeForm(
       policy: policyLine,
       create_offered: card.supportsInlineDraft,
     },
-    card_lines: cardLines(card, template.key),
+    card_lines: cardLines(card, template.key, { datesAsked }),
     ...(policyLine ? { policy_line: `**Policy:** ${policyLine}` } : {}),
     ...(policyNote ? { policy_note: policyNote } : {}),
     /* Pau's line, word for word, whenever the manager asked for Under Performance and the card cites the Standards of Conduct. */
