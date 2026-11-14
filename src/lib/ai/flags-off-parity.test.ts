@@ -185,6 +185,14 @@ import { privateCreatorFormsEnabled, privateCreatorsActive } from "@/lib/forms/p
  */
 
 const NEW_FLAGS = [
+  // coding 4: WORK_AREA_NOT_A_TITLE (QA, Sunny 38d live, 13 Nov 2026; default off).
+  "WORK_AREA_NOT_A_TITLE_ENABLED",
+  // coding 4: OBSERVATION_NO_LEADING_NAME (QA, Sunny 38d live, 13 Nov 2026; default off).
+  "OBSERVATION_NO_LEADING_NAME_ENABLED",
+  // coding 4: REASON_PLACE_NOT_SALON (ported from the sibling app, Gate-Bubbles-3, 13 Nov 2026; default off).
+  "REASON_PLACE_NOT_SALON_ENABLED",
+  // coding 4: PLACE_STRIP_WHOLE_PHRASE_ONLY (QA, Gate-Sunny #933 probes, 13 Nov 2026; default off).
+  "PLACE_STRIP_WHOLE_PHRASE_ONLY_ENABLED",
   // coding 4: SHARED_CITY_ASKS_SALON (QA, Sunny 38c live, 13 Nov 2026; default off).
   "SHARED_CITY_ASKS_SALON_ENABLED",
   // coding 2: OFF_ROSTER_PLACE_ANSWER (QA's Sunny 37b live bug, 12 Nov 2026; default off).
@@ -425,6 +433,8 @@ const NEW_FLAGS = [
   "COACHING_OBSERVED_SAVED_ENABLED",
   // coding 6: APP_INSTRUCTIONS_NOT_ACCOUNT (default off): forced off with the others.
   "APP_INSTRUCTIONS_NOT_ACCOUNT_ENABLED",
+  // coding 5: SPELLING_CLEANUP (default off; Pau via QA, 13 Nov 2026): forced off with the others.
+  "SPELLING_CLEANUP_ENABLED",
   // coding 6: FAILURE_TO_OPEN_IS_LATE_OPENING (default off): forced off with the others.
   "FAILURE_TO_OPEN_IS_LATE_OPENING_ENABLED",
   // coding 6: TERMINATION_STATED_TICKS (default off): forced off with the others.
@@ -650,6 +660,10 @@ const NEW_FLAGS = [
   "OTHER_POLICY_AGREES_ENABLED",
   "OTHER_NOT_A_POLICY_NAME_ENABLED",
   "ACCOUNT_TYPOS_FIXED_ENABLED",
+  // coding 2: ON_FILE_LINE_NOT_THE_POLICY (Pau's morning scan, 14 Nov 2026; default off): forced off with the others.
+  "ON_FILE_LINE_NOT_THE_POLICY_ENABLED",
+  // coding 2: OTHER_BESIDE_DESCRIBED (QA's ruling (b), 14 Nov 2026; default off): forced off with the others.
+  "OTHER_BESIDE_DESCRIBED_ENABLED",
   // coding 2: EXCERPT_EMPTY_CARD_DROP (QA, 11 Nov 2026; default off): forced off with the others.
   "EXCERPT_EMPTY_CARD_DROP_ENABLED",
   // coding 6: REQUEST_ISSUE_KEPT (ported from Ask Bubbles, QA round 17b; default off).
@@ -818,8 +832,24 @@ const PROTECTED = [
  * days), in src/lib/forms/instances.ts, the seeded `form_date`/`date` default only: `input.formDate ?? recordToday()`
  * (`lib/business-today.ts`) in place of `new Date().toISOString().slice(0, 10)`, and its import. Behind
  * FORM_DATE_BUSINESS_TODAY_ENABLED, default off; off, recordToday() is that same UTC date.
+ *
+ * The user (Pau), under the standing approval, via QA on 14 Nov 2026, behind REASON_PLACE_NOT_SALON_ENABLED (default
+ * off): in src/lib/forms/salon-mention.ts, readSalonMentions reads `placeReadingText(said)` (`forms/reason-place.ts`),
+ * which blanks the place of a "because she was at …" reason with the flag on and returns its input unchanged with it
+ * off (reason-place-not-salon.test.ts proves the identity). The import and those two lines;
+ * docs/patches/reason-place-not-salon.patch. Off, exactly as before.
+ * Under Pau's standing approval for protected-file edits (relayed by QA, 14 Nov 2026, QA's ruling (b) on the sibling
+ * app's gate probes), in src/lib/ai/form-proposal.ts, exactly the lines of
+ * docs/patches/other-beside-described-form-proposal.patch: the imports `withoutCleaningDuty` and `OTHER_BESIDE_NOTE`;
+ * at the start of namedPolicyFor, a cleaning duty beside a second described offense reads that offense from the account
+ * without the duty (marked `besideOther`); before correctiveActionReady, lateness beside a cleaning duty is read from
+ * the account without it; and correctiveActionReady's `besideOther` parameter adds OTHER_BESIDE_NOTE after the Policy
+ * line. Attendance beside the duty counts only with a lateness or absence word (`besideReadsAttendance`, the
+ * ATTENDANCE_OFFENSE_KEYS test; Gate-Sunny-3's #971 finding). Behind OTHER_BESIDE_DESCRIBED_ENABLED (default off); off,
+ * as before. form-proposal.ts is already excluded below.
  */
 const APPROVED_PROTECTED_EDITS = [
+  ":(exclude)src/lib/forms/salon-mention.ts",
   ":(exclude)src/lib/forms/required-closing.ts",
   ":(exclude)src/lib/forms/ca-action-plan.ts",
   ":(exclude)src/lib/forms/proposal.ts",

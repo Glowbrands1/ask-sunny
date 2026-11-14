@@ -40,10 +40,11 @@ import {
   statedPayrollDeduct,
 } from "@/lib/forms/payroll-deduct";
 import { extractJobTitle, titleAfterJobTitleLabel } from "@/lib/forms/proposal";
+import { placeReadingText } from "@/lib/forms/reason-place";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
 import type { ChatFormProposal, KnowledgeCategory, SourceCitation } from "@/types";
 
-import { describedAttendanceKeys, readCaPolicy, statedOffenseKeys } from "@/lib/forms/ca-policy";
+import { besideAttendanceKeys, describedAttendanceKeys, readCaPolicy, statedOffenseKeys, withoutCleaningDuty } from "@/lib/forms/ca-policy";
 import {
   citeAttendanceForTardiness,
   formatPolicyCitation,
@@ -183,8 +184,15 @@ export function formTurnCitations(input: {
    * account its reason, so the card cites no manual section for it — never "Care and Cleaning of Equipment and Facilities
    * … p.21" above a draft that saves Other. Off, as before.
    */
-  if (otherPolicyAgreesEnabled() && readCaPolicy(input.notes).other === "cleaning") return [];
-  const sections = violatedSections(sectionsFor(input.notes, input.chunks, input.modelHeading ?? null));
+  /*
+   * OTHER_BESIDE_DESCRIBED_ENABLED (QA's ruling (b), 14 Nov 2026): beside a second offense the account describes, the
+   * card cites that offense's section, read from the account without the cleaning duty. Off, as before.
+   */
+  const beside = withoutCleaningDuty(input.notes);
+  const notes =
+    beside !== null && (besideAttendanceKeys(beside) !== null || describedManualSection({ text: beside, chunks: input.chunks }) !== null) ? beside : null;
+  if (notes === null && otherPolicyAgreesEnabled() && readCaPolicy(input.notes).other === "cleaning") return [];
+  const sections = violatedSections(sectionsFor(notes ?? input.notes, input.chunks, input.modelHeading ?? null));
   const category = categoryOf(input.documentCategory);
   const citations: SourceCitation[] = [];
   for (const section of sections) {
@@ -581,7 +589,8 @@ function followUpDates(text: string, today: string, incident: string | null): st
 function salonIdsIn(text: string): string[] {
   const ids = [...new Set(readSalonMentions(text).flatMap((mention) => mention.salonIds))];
   if (ids.length > 0) return ids;
-  const words = text.toLowerCase();
+  // REASON_PLACE_NOT_SALON_ENABLED: "because she was at lincoln high" is why, not the salon; "lincoln" there names none.
+  const words = placeReadingText(text).toLowerCase();
   const hits = PRODUCTION_SALONS.filter((salon) => {
     const name = salon.name.toLowerCase();
     return words.includes(name) || name.split(/\s+/).filter((word) => word.length >= 5).every((word) => words.includes(word));

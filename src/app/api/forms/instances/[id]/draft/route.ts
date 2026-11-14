@@ -5,6 +5,7 @@ import { noteSpendUser } from "@/lib/ai/spend-meter";
 import { withSpendMeter } from "@/lib/ai/spend-meter-run";
 
 import { typoReadingText } from "@/lib/ai/typo-reading-copy";
+import { cleanupChanges, SPELLING_CLEANUP_RULES, withOwnWords } from "@/lib/forms/spelling-cleanup";
 import { protectedNameWords } from "@/lib/ai/typo-name-words";
 import { accountOnlyRules, policyQueryNotes, withoutInventedDetail } from "@/lib/forms/account-only-policy-query";
 import { getAnthropicClient } from "@/lib/ai/anthropic";
@@ -41,6 +42,7 @@ import {
   proposalPolicySetAsideEnabled,
   sameRequestOtherPersonEnabled,
   coachingObservedSavedEnabled,
+  spellingCleanupEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { notesMadeAbout } from "@/lib/ai/make-it-about";
 import { withoutPolicyReferenceTurns } from "@/lib/ai/policy-reference-turn";
@@ -172,6 +174,8 @@ import {
   statedOffenseKeys,
   withConductOffense,
   withStatedOffense,
+  withoutCleaningDuty,
+  besideAttendanceKeys,
 } from "@/lib/forms/ca-policy";
 import { CA_SALES_POLICY_RULE, withSalesOffense } from "@/lib/forms/ca-sales-policy";
 import { ATTENDANCE_POLICY, CA_REVISION_8_OFFENSE_RULE, offeredOffenseKey, withOfferedOffense } from "@/lib/forms/offense-keys";
@@ -798,7 +802,21 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         (group) =>
           group.key === "offense_type" && group.options.some((option) => option.key === STANDARDS_OF_CONDUCT),
       );
-    const caPolicy = offersConductPolicy ? readCaPolicy(policyNotes) : null;
+    /*
+     * OTHER_BESIDE_DESCRIBED_ENABLED (QA's ruling (b) on the sibling app's gate probes, 14 Nov 2026): a cleaning duty left
+     * undone beside a second offense the account describes ("she was on her phone and did not do the 10 minute
+     * sanitation"; "she was late on 11/3/26 and did not do the sanitation"). The policy is read from the account without
+     * the cleaning duty, so the described offense keeps its box, Policy Violated, Direct policy and plan, and Other is
+     * ticked beside it (below). A cleaning duty that is the only offense stays Other alone (Pau's rule). Off, as before.
+     */
+    const besideOther = ((): string | null => {
+      const rest = offersConductPolicy ? withoutCleaningDuty(policyNotes) : null;
+      if (rest === null) return null;
+      const described = besideAttendanceKeys(rest) !== null || (manual.ok && describedManualSection({ text: rest, chunks: manual.chunks }) !== null);
+      return described ? rest : null;
+    })();
+    const policyText = besideOther ?? policyNotes;
+    const caPolicy = offersConductPolicy ? readCaPolicy(policyText) : null;
     /*
      * A POLICY THE MANAGER NAMED BY THE MANUAL'S OWN HEADING — "violating
      * visitors at work policy" is the manual's Visitors in the Workplace
@@ -819,12 +837,12 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         : null;
     // Only where it ticks the box the manager's own words tick, or they tick none: a card's generic
     // "Attendance" never turns a missed meeting (Absenteeism) into Tardiness.
-    const ownKeys = cardHeading && caPolicy ? statedOffenseKeys(caPolicy, policyNotes) : null;
+    const ownKeys = cardHeading && caPolicy ? statedOffenseKeys(caPolicy, policyText) : null;
     const cardSection = cardHeading && (!ownKeys || ownKeys.includes(cardHeading.offenseKey)) ? cardHeading : null;
     const namedSection =
       cardSection ??
       (caPolicy && caPolicy.stated === null && manual.ok
-        ? namedManualSection({ text: policyNotes, chunks: manual.chunks })
+        ? namedManualSection({ text: policyText, chunks: manual.chunks })
         : null);
     /*
      * NO POLICY NAMED, BUT ONE DESCRIBED — "talking on her cell phone" is the
@@ -837,7 +855,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      */
     const describedSection =
       caPolicy && caPolicy.stated === null && !namedSection && manual.ok
-        ? describedManualSection({ text: policyNotes, chunks: manual.chunks })
+        ? describedManualSection({ text: policyText, chunks: manual.chunks })
         : null;
     /*
      * A MEETING NOT ATTENDED, WHERE THE MANUAL SAYS WHAT THAT IS — its
@@ -863,7 +881,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      */
     const describedChoices =
       caPolicy && caPolicy.stated === null && !namedSection && !describedSection && !eventSection && manual.ok
-        ? describedManualChoices({ text: policyNotes, chunks: manual.chunks })
+        ? describedManualChoices({ text: policyText, chunks: manual.chunks })
         : null;
 
     /*
@@ -985,7 +1003,9 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     ]);
     const teamSubject = isTeamSubject(loaded.instance.employeeName);
 
-    const system = [
+    // SPELLING_CLEANUP_ENABLED (Pau via QA, 13 Nov 2026; ported from Ask Bubbles): coaching drafts already clean up as they write.
+    const spellingCleanupOn = spellingCleanupEnabled() && !isCoachingFamily;
+    const systemFor = (cleanup: boolean) => [
       `You prepare drafts of ${ACTIVE_BRAND.brandName} management forms for a manager to review.`,
       "You are drafting, not deciding. A manager edits everything you write and signs it.",
       /*
@@ -1169,6 +1189,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
        */
       ...(isCoachingFamily ? COACHING_CONTEXT_RULES : []),
       ...(isCoachingFamily ? LANGUAGE_CLEANUP_RULES : []),
+      // SPELLING_CLEANUP_ENABLED: every other form cleans up spelling, spacing and capitals too, never a fact (`spelling-cleanup.ts`).
+      ...(cleanup ? SPELLING_CLEANUP_RULES : []),
       ...(hasFollowUpFindings ? MANAGER_FOLLOW_UP_RULES : []),
       ...(teamSubject ? TEAM_SUBJECT_RULES : []),
       /*
@@ -1180,6 +1202,9 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       ...(teamSubject ? [] : employeeNameRules(loaded.instance.employeeName)),
       ...(hasPriorActions ? PRIOR_ACTIONS_RULES : []),
     ].join(" ");
+    const system = systemFor(spellingCleanupOn);
+    // SPELLING_CLEANUP_ENABLED: the system a call is sent with; the copy-as-given one when a cleanup changed a fact.
+    let activeSystem = system;
 
     const prompt = [
       `FORM: ${loaded.instance.templateName}`,
@@ -1261,7 +1286,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     const draftCall = () => client.messages.create({
       model: CLAUDE_MODEL,
       max_tokens: CLAUDE_MAX_TOKENS.detailed,
-      system,
+      system: activeSystem,
       messages: [{ role: "user", content: prompt }],
       tools: [
         {
@@ -1310,6 +1335,37 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     /* Why each attempt that wrote nothing wrote nothing, for the drafted event. */
     const reasons: string[] = [];
     let lastError: unknown = null;
+    /*
+     * SPELLING_CLEANUP_ENABLED: what the drafting model was given (its whole message: the form, prior rows, the account;
+     * and the form's values), and, once a cleanup has fallen back, the check every later call goes through.
+     */
+    const cleanupSource = spellingCleanupOn
+      ? [prompt, notes, ...(loaded.values ?? []).map((row) => (typeof row.value === "string" ? row.value : ""))].join("\n")
+      : "";
+    const cleanupNames = [loaded.instance.employeeName ?? ""];
+    let cleanupFellBack = false;
+    /*
+     * QA's safety ruling (13 Nov 2026): every draft after the fallback (the fallback itself and any never-blank retry)
+     * is checked again, field by field. A field that still changes a name or a quote keeps what the form held for it,
+     * or is left out; never the chat turn (Gate-Sunny-3, 13 Nov 2026). A changed date or number is left to the date and
+     * metric guards below, which remove just the sentence carrying it, as with the flag off.
+     */
+    const recheckFallback = (drafted: DraftedCall): DraftedCall => {
+      if (!drafted.values) return drafted;
+      const recheck = withOwnWords(drafted.values, {
+        source: cleanupSource,
+        today: businessToday(),
+        names: cleanupNames,
+        kinds: ["name", "quote"],
+        own: (key) => {
+          const held = (loaded.values ?? []).find((row) => row.fieldKey === key)?.value;
+          return typeof held === "string" && held.trim() ? held : null;
+        },
+      });
+      if (recheck.replaced.length === 0) return drafted;
+      console.warn(`[spelling-cleanup] the fallback draft still changed ${recheck.replaced.join(", ")}; keeping the form's own words there`);
+      return { ...drafted, values: recheck.values as Record<string, string> };
+    };
     const ask = async (): Promise<{ drafted: DraftedCall; failed: boolean }> => {
       let reply: DraftReply;
       try {
@@ -1327,9 +1383,30 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         const empty = emptyCallReason(call?.input, read, reply.stop_reason ?? null);
         if (empty) reasons.push(empty);
       }
-      return { drafted: read, failed: false };
+      return { drafted: cleanupFellBack ? recheckFallback(read) : read, failed: false };
     };
-    const first = await ask();
+    let first = await ask();
+    /*
+     * SPELLING_CLEANUP_ENABLED: a cleanup never changes a name, a date, a number or a quote. If what came back did,
+     * the draft falls back to the manager's own text: asked again without the cleanup rule (`spelling-cleanup.ts`).
+     */
+    if (spellingCleanupOn && !first.failed && first.drafted.values) {
+      const changes = cleanupChanges({
+        source: cleanupSource,
+        written: Object.values(first.drafted.values).join("\n"),
+        today: businessToday(),
+        names: cleanupNames,
+      });
+      if (changes.length > 0) {
+        console.warn(`[spelling-cleanup] the cleaned draft changed ${changes.join("; ")}; drafting with the manager's own text`);
+        activeSystem = systemFor(false);
+        cleanupFellBack = true;
+        const again = await ask();
+        if (!again.failed && again.drafted.values) first = again;
+        // A fallback that failed leaves the cleaned draft, which changed a fact: it is checked the same way.
+        else first = { ...first, drafted: recheckFallback(first.drafted) };
+      }
+    }
     let drafted = first.drafted;
 
     /*
@@ -1876,11 +1953,14 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       (describedSection && !(enforced.checked.offense_type ?? []).some((key) => SPECIFIC_SECTION_BOXES.has(key))
         ? describedSection
         : null);
-    const statedKeys = caPolicy
+    const ownStatedKeys = caPolicy
       ? ((cardSection ? [cardSection.offenseKey] : null) ??
-        statedOffenseKeys(caPolicy, policyNotes) ??
+        statedOffenseKeys(caPolicy, policyText) ??
         (policySection ? [policySection.offenseKey] : null))
       : null;
+    // OTHER_BESIDE_DESCRIBED_ENABLED (QA's ruling (b)): the cleaning duty beside the described offense is ticked Other too.
+    const besideKeys = besideOther !== null ? (ownStatedKeys ?? besideAttendanceKeys(besideOther)) : null;
+    const statedKeys = besideKeys ? [...besideKeys.filter((key) => key !== "other"), "other"] : ownStatedKeys;
     const statedOffense = statedKeys
       ? withStatedOffense({
           checked: enforced.checked,

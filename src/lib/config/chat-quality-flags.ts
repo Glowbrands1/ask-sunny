@@ -4736,6 +4736,18 @@ export function notFollowingIsViolationEnabled(): boolean {
 }
 
 /**
+ * SPELLING_CLEANUP_ENABLED (ported from Ask Bubbles, coding 5, 13 Nov 2026; default off; Pau via QA; same flag in both
+ * apps). "please make a ca for <name> for not doing th e10 minute sanitaion" put the typo on the form: only coaching
+ * drafts clean up as they write. On: the Corrective Action draft and the chat's form edits (Step B) use the manager's
+ * words and meaning with spelling, spacing and capitals fixed, never a name, date, number or quote changed; a code
+ * check compares those before and after and falls back to the manager's own text when any differ
+ * (`forms/spelling-cleanup.ts`). Off, as before.
+ */
+export function spellingCleanupEnabled(): boolean {
+  return envFlag("SPELLING_CLEANUP_ENABLED");
+}
+
+/**
  * EDIT_SEES_SAVED_FORM_ENABLED (coding 6, 13 Nov 2026; default off; same flag in both apps; Pau's direction via QA). The
  * form edit read the turn once as a patch and the code guessed what was written: an "Updated" that did not match the
  * form, reasons that never landed. On: after the turn's writes on the patch path (`forms/form-patch-turn.ts`), the
@@ -4791,6 +4803,26 @@ export function closeSpellingMatchEnabled(): boolean {
 }
 
 /**
+ * PLACE_STRIP_WHOLE_PHRASE_ONLY (QA, Gate-Sunny's #933 probes, 13 Nov 2026; default off): the account reader takes a
+ * place out of the Observation only where the whole place phrase ends, so "she was at lincoln high" and "<A> at omaha
+ * west" keep every word. See `ai/remap-incident.ts` withoutPlace. Off, as before.
+ */
+export function placeStripWholePhraseOnlyEnabled(): boolean {
+  return envFlag("PLACE_STRIP_WHOLE_PHRASE_ONLY_ENABLED");
+}
+
+/**
+ * CARD_ADDED_FACT_IN_OBSERVATION_ENABLED (coding 6; QA's Sunny 38f live test, 13 Nov 2026; default off). With
+ * CARD_CHECKED_AGAINST_WORDS on, "she yelled at a guest and she maybe forgot" after a card was noted as "Added to the
+ * Observation of Offense: she yelled at a guest" while the card's Observation held the whole turn, joined with a
+ * space. On, the card's Observation line is the earlier account, then "; " and the added facts, the same as the note.
+ * Off, as before.
+ */
+export function cardAddedFactInObservationEnabled(): boolean {
+  return envFlag("CARD_ADDED_FACT_IN_OBSERVATION_ENABLED");
+}
+
+/**
  * SHARED_CITY_ASKS_SALON (QA's Sunny 38c live check, 13 Nov 2026; default off): a shared city typed a letter off ("at
  * omha") is read as that city, so any scope covering more than one of its salons is asked which; and a clause that is
  * only the employee's name and "at <place>" is never the Observation of Offense, read or not. See
@@ -4810,4 +4842,55 @@ export function sharedCityAsksSalonEnabled(): boolean {
  */
 export function issueEditIsTheAccountEnabled(): boolean {
   return envFlag("ISSUE_EDIT_IS_THE_ACCOUNT_ENABLED");
+}
+
+/**
+ * ON_FILE_LINE_NOT_THE_POLICY_ENABLED (Coding-2, 14 Nov 2026; default off; Pau's morning scan via QA). A dress-code
+ * request sent again word for word was carded "Policy: Late Opening — read from this request": the intent reader took
+ * the heading from the app's own "On file in Form Monitoring … (… Late Opening)" listing. On: a heading the manager's own
+ * words never name, which an app "On file" listing does, is dropped, and the heading the request already had is kept
+ * (`ai/on-file-heading.ts`). Off, as before.
+ */
+export function onFileLineNotThePolicyEnabled(): boolean {
+  return envFlag("ON_FILE_LINE_NOT_THE_POLICY_ENABLED");
+}
+
+/**
+ * OBSERVATION_NO_LEADING_NAME (QA's Sunny 38d live check, 13 Nov 2026; default off): an account clause that starts with
+ * the employee's name and then "at"/"in" ("<A> at the front desk, she was rude to a guest") loses the name; the place
+ * and the rest are kept as typed. See `ai/remap-incident.ts`. Off, as before.
+ */
+export function observationNoLeadingNameEnabled(): boolean {
+  return envFlag("OBSERVATION_NO_LEADING_NAME_ENABLED");
+}
+
+/**
+ * WORK_AREA_NOT_A_TITLE (QA's Sunny 38d live check, 13 Nov 2026; default off): a place in the salon where someone works
+ * ("front desk", "back room", "register", "bed 4", "lobby") is never the card's job title, even when the model reads it
+ * as one. See `ai/intent-slots.ts` groundTitle. Off, as before.
+ */
+export function workAreaNotATitleEnabled(): boolean {
+  return envFlag("WORK_AREA_NOT_A_TITLE_ENABLED");
+}
+
+/**
+ * REASON_PLACE_NOT_SALON (ported from the sibling app, Gate-Bubbles-3's #869 probes, 13 Nov 2026; default off): "she
+ * was late because she was at grand island" — where she was is why she was late, not the salon the form is for. With
+ * the flag, a place in a "because <she> was at/in …" clause is not read as a salon: the salon comes from Woven or is
+ * asked. The account keeps the words. See `forms/salon-mention.ts` readSalonMentions. Off, as before.
+ */
+export function reasonPlaceNotSalonEnabled(): boolean {
+  return envFlag("REASON_PLACE_NOT_SALON_ENABLED");
+}
+
+/**
+ * OTHER_BESIDE_DESCRIBED_ENABLED (Coding-2, 14 Nov 2026; default off; QA's ruling (b) on the sibling app's gate probes,
+ * checked here on production's flags). With OTHER_POLICY_AGREES on, "she was on her phone and did not do the 10 minute
+ * sanitation" saved Other alone while Direct policy quoted the Cell Phone section, and "she was late on 11/3/26 and did
+ * not do the sanitation" dropped Attendance. On (with OTHER_POLICY_AGREES): a cleaning duty beside a second offense the
+ * account describes ticks both, and the card, Policy Violated, Direct policy and plan follow the described offense; a
+ * cleaning duty that is the only offense stays Other alone (`forms/ca-policy.ts` withoutCleaningDuty). Off, as before.
+ */
+export function otherBesideDescribedEnabled(): boolean {
+  return envFlag("OTHER_BESIDE_DESCRIBED_ENABLED");
 }
