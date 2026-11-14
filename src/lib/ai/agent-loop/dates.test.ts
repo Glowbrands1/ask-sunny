@@ -22,6 +22,23 @@ describe("a month/day as the card's date", () => {
   });
 });
 
+/* QA (Pau: "yes its CT"; production sets NEXT_PUBLIC_BUSINESS_TIMEZONE=America/Chicago): 05:30Z on 11/15 is still 11/14 in Central. */
+describe("with the salon's time zone set to America/Chicago", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+  it("at 05:30Z on 11/15, today is 11/14 and \"11/15\" is last year's, never this year's", async () => {
+    vi.stubEnv("NEXT_PUBLIC_BUSINESS_TIMEZONE", "America/Chicago");
+    vi.resetModules();
+    const { businessToday } = await import("@/lib/business-date");
+    const today = businessToday(new Date("2026-11-15T05:30:00Z"));
+    expect(today).toBe("2026-11-14");
+    expect(monthDayToIso("11/15", today)).toBe("2025-11-15");
+    expect(isoDate("11/15/2026", today)! > today, "a full 11/15/2026 is after today, so the card refuses it").toBe(true);
+  });
+});
+
 /* Batch E (E14, Pau via QA): one reader for every date style; two dates match when month and day (and year, when both have one) do. */
 describe("one date reader for every style", () => {
   const JUNE_11 = ["6/11", "6-11", "on 6.11", "06/11/2026", "6/11/26", "6.11.26", "June 11", "Jun 11", "june 11th", "11 June", "the 11th of June", "June 11, 2026", "11th of June 2026"];
