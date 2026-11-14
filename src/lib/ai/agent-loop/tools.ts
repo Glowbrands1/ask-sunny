@@ -8,7 +8,7 @@ import { candidateNameWords, chatFormsActor } from "@/lib/forms/chat-form-record
 import { displayName, matchEmployeeName, nameConfirmationQuestion, type RosterEmployee } from "@/lib/forms/employee-match";
 import { offRosterTyped } from "@/lib/forms/roster-only-names";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
-import { readDirectoryRoster, readScopedRoster } from "@/lib/forms/employee-roster";
+import { readDirectoryRoster, readScopedRoster, type DirectoryRosterRow } from "@/lib/forms/employee-roster";
 import { inlineDraftVariantKey, supportsInlineDraft } from "@/lib/forms/inline-draft";
 import { authorizeInstance, InstanceNotVisibleError, instanceListFilterFor, visibleInstances } from "@/lib/forms/instance-scope";
 import { applyAssistantRevision, listInstances } from "@/lib/forms/instances";
@@ -195,13 +195,19 @@ async function rosterFor(scope: AccessScope): Promise<RosterRead> {
  * directory's affiliations), every salon for a global login; never a district or region login (unchecked). The full
  * name only; no other field.
  */
+let directoryForTests: (() => Promise<readonly DirectoryRosterRow[]>) | null = null;
+/** Tests only: the whole directory (terminated people included) for `inactiveMatch`; null reads it as production does. */
+export function __setAgentLoopDirectoryForTests(read: (() => Promise<readonly DirectoryRosterRow[]>) | null): void {
+  directoryForTests = read;
+}
+
 export async function inactiveMatch(scope: AccessScope, typed: string): Promise<string | null> {
   if (scope.level !== "salon" && scope.level !== "global") return null;
   const wanted = words(typed);
   if (wanted.length < 2) return null;
   try {
     const allowed = scope.level === "salon" ? new Set((await import("@/lib/forms/location-scope")).authorizedSalonIds(scope)) : null;
-    const rows = (await readDirectoryRoster()).filter((row) => row.employmentStatus === "terminated" && row.firstName && row.lastName && (!allowed || row.salonIds.some((id) => allowed.has(id))));
+    const rows = (await (directoryForTests ?? readDirectoryRoster)()).filter((row) => row.employmentStatus === "terminated" && row.firstName && row.lastName && (!allowed || row.salonIds.some((id) => allowed.has(id))));
     const hits = rows.filter((row) => {
       const own = words([row.firstName, row.preferredFirstName ?? "", row.lastName].join(" "));
       return wanted.every((word) => own.includes(word));
