@@ -282,6 +282,38 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
     },
   },
   {
+    id: "nov14-agent-loop-close-spelling-of-card-person",
+    title: "\"edit tamsen orwel ca\" after Tamsin Orwell's card in this chat (the live re-run's sf-s26): find_staff reads the close spelling as the card's person, with no Did-you-mean; with no card in the chat it still asks",
+    report: `${REPORT}; live re-run (14 Nov 2026): "Edit <close spelling> CA" asked Did you mean instead of opening`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-13T22:40:00Z"));
+      t.directory([...STAFF, TAMSIN]);
+      t.as("salon_director", KEARNEY);
+      const model = loopStandIn((view) => {
+        const said = view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "";
+        if (/^edit/i.test(said)) {
+          if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "tamsen orwel" } };
+          return { text: JSON.stringify(lastResult(view, "find_staff")) };
+        }
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, what_happened: "Tamsin Orwell was late opening the salon on 11/10." } };
+        return { text: "Here's the draft Corrective Action for Tamsin Orwell." };
+      });
+      t.loopModel!(model);
+      const thread = t.thread();
+      await thread.say("ca for tamsin orwell, she was late opening the salon on 11/10");
+      await thread.say("edit tamsen orwel ca");
+      const found = toolResults(model.views, "find_staff").at(-1) ?? "";
+      expect(found).toContain('"name":"Tamsin Orwell"');
+      expect(found, "asked Did you mean about the card's own person").not.toMatch(/did_you_mean/);
+
+      await t.thread().say("edit tamsen orwel ca");
+      expect(toolResults(model.views, "find_staff").at(-1), "a close spelling with no card in the chat was used unasked").toMatch(/did_you_mean/);
+    },
+  },
+  {
     id: "nov14-agent-loop-guard-one-card-per-reply",
     title: "two people in one request: one card per reply, each person's own; never a second card in the same reply",
     report: `${REPORT}: multiple people (TWO_FORMS_EACH_PERSON's outcome)`,

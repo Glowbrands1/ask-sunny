@@ -235,6 +235,17 @@ export async function findStaff(context: ToolContext, input: { name?: unknown })
   if (found.length === 0) {
     /* Close spellings, as the app's own name check reads them ("Marnie Halloway" → Marnie Holloway). */
     const close = matchEmployeeName(typed, read.roster);
+    /*
+     * The person on this chat's own card, spelled a little off ("Edit Thesaly Brant CA" after Thessaly Brandt's card;
+     * the live re-run's sf-s26): it is that person, as the manager can see the card. Only one close candidate, and
+     * only when an earlier reply in this chat named them.
+     */
+    const onCard = close.kind === "confirm" && close.candidates.length === 1
+      ? context.history.some((turn) => turn.role === "assistant" && typeof turn.content === "string" && turn.content.includes(close.candidates[0]!.name))
+      : false;
+    if (onCard && close.kind === "confirm") {
+      return { matches: [staffRow(close.candidates[0]!.employee)], note: `A close spelling of ${close.candidates[0]!.name}, the person on this chat's card. Use them; no need to ask.` };
+    }
     if (close.kind === "confirm" && close.candidates.length > 0) {
       const names = close.candidates.map((candidate) => candidate.name);
       return {
@@ -372,6 +383,8 @@ export async function findPastForms(context: ToolContext, input: { employee_name
         form_date: row.formDate,
         salon: row.locationId,
       }));
+    /* "Draw me up a coaching document … she already has one" (the live re-run's sun-late-date): none on file is no reason to stop. */
+    if (forms.length === 0) return { forms, note: "None on file. If the manager asked you to create or draw up a form, propose it now with their account and date, and say no earlier form was found on file." };
     return { forms };
   } catch {
     return { error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
