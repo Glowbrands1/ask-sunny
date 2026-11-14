@@ -35,6 +35,10 @@ vi.mock("@/lib/session/session-context", () => ({
     user: { avatarInitials: "PC", name: "Rosalyn" },
     role: "salon_director",
     isAdmin: false,
+    // The card production shows (NEXT_PUBLIC_CARD_CHANGE_FINALIZED on) asks the session what the viewer may do
+    // (Gate-Bubbles, B887): without these it renders nothing under test.
+    can: () => true,
+    demoMode: false,
   }),
 }));
 
@@ -1609,6 +1613,69 @@ describe("Edit as new draft on a card whose form was replaced elsewhere", () => 
     expect(recorded.filter((made) => made.method === "GET" && made.url === "/api/forms/instances/inst-42")).toHaveLength(1);
   });
 });
+
+/*
+ * The same, on the card production shows (NEXT_PUBLIC_CARD_CHANGE_FINALIZED on; Gate-Bubbles' probe, B887): "Edit as
+ * new draft" and "Change something → Send change" both re-read the card to Revised with "Open newer version".
+ */
+describe("a card whose form was replaced elsewhere, with NEXT_PUBLIC_CARD_CHANGE_FINALIZED on", () => {
+  beforeEach(() => {
+    vi.stubEnv("NEXT_PUBLIC_CARD_CHANGE_FINALIZED_ENABLED", "true");
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  function replacedElsewhere() {
+    const card = { replaced: false };
+    const original = loadedInstance({ status: "finalized" });
+    fakeFetch((url, init) => {
+      if (url === "/api/forms/instances/inst-42" && init.method === "POST") {
+        return { ok: false, payload: { error: FORM_ALREADY_REVISED_MESSAGE, code: FORM_ALREADY_REVISED, newerId: "inst-43" } };
+      }
+      return {
+        payload: {
+          ...original,
+          instance: { ...original.instance, status: card.replaced ? "revised" : "finalized" },
+          events: [
+            ...original.events,
+            ...(card.replaced
+              ? [{ kind: "revised", actor: "user-2", createdAt: "2026-10-20T12:00:00Z", detail: { revisionId: "inst-43" } }]
+              : []),
+          ],
+        },
+      };
+    });
+    return card;
+  }
+
+  it("Edit as new draft: the card re-reads and shows Revised with its link", async () => {
+    const card = replacedElsewhere();
+    const { container } = mounted();
+    const edit = await screen.findByRole("button", { name: /edit as new draft/i });
+    card.replaced = true;
+    fireEvent.click(edit);
+    await waitFor(() => expect(container.textContent).toMatch(/This form was revised: a newer version replaces it/));
+    expect(screen.getByRole("button", { name: /open newer version/i })).toBeTruthy();
+    expect(onFormCreated).not.toHaveBeenCalled();
+  });
+
+  it("Change something → Send change: the card re-reads and shows Revised with its link", async () => {
+    const card = replacedElsewhere();
+    const { container } = mounted();
+    fireEvent.click(await screen.findByRole("button", { name: /change something/i }));
+    fireEvent.change(container.querySelector("input[id^='fin-date-']")!, { target: { value: "2026-10-19" } });
+    card.replaced = true;
+    fireEvent.click(screen.getByRole("button", { name: /send change/i }));
+    await waitFor(() => expect(container.textContent).toMatch(/This form was revised: a newer version replaces it/));
+    expect(screen.getByRole("button", { name: /open newer version/i })).toBeTruthy();
+    // One refused revise; no draft was written to.
+    expect(recorded.filter((made) => made.method !== "GET")).toEqual([
+      { url: "/api/forms/instances/inst-42", method: "POST", body: { action: "revise" } },
+    ]);
+  });
+});
+
 
 /* ==================================================================== */
 /*  A DRAFT WITH NO POLICY ON IT MUST NOT READ AS A FINISHED ONE        */

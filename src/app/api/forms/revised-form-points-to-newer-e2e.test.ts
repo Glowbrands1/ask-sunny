@@ -192,6 +192,8 @@ beforeEach(async () => {
   state.role = "salon_director";
   state.scope = { level: "salon", primaryAreaId: "loc-0310", alsoCoversAreaIds: ["loc-0311"] };
   state.details = "";
+  // The flag-off cases are off whatever the environment says (Gate-Bubbles, B887); the flag-on cases set it themselves.
+  delete process.env.REVISED_FORM_POINTS_TO_NEWER_ENABLED;
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date("2026-10-20T19:23:00Z"));
   await ensureTemplateLibrary("system");
