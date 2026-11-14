@@ -29,6 +29,7 @@ import {
   caShortcutWordsEnabled,
   formChoiceStatedEnabled,
   formNameFromRosterEnabled,
+  levelLeadsRequestEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { foldsToGlossaryTerm } from "@/lib/ai/chat-glossary";
 
@@ -612,6 +613,18 @@ function namesOnlyTheForm(q: string): boolean {
  * a CA" is. A question is still a question, and "corrective action for
  * repeated lateness" — a topic, lower-case — is still read as one.
  */
+/*
+ * LEVEL_LEADS_REQUEST_ENABLED (QA, 14 Nov 2026): "second verbal for <A>, she was late on 11/12/26" names the level and
+ * the person and no form word, and got no card. A level leading into "for <name>" is the request, as "Written CA for
+ * <A>" is; "another", "second" / "2nd" and the like only count the steps. The word after "for" must be able to be a
+ * name, so "verbal for the late opening" is not read.
+ */
+function levelLeadsRequest(original: string): boolean {
+  const levelled =
+    /^\s*(?:please\s+)?(?:an?\s+)?(?:(?:another|one\s+more|first|1st|second|2nd|third|3rd|next)\s+)?(?:verbal|written)(?:\s+warning)?\s+(?:for|on)\s+(\S+)/i.exec(original);
+  return levelled !== null && couldBeName(levelled[1]);
+}
+
 function leadsWithTheForm(q: string, original: string): boolean {
   if (q.endsWith("?")) return false;
   if (/^(?:please\s+)?(?:a\s+|new\s+)?(?:(?:verbal|written|final)\s+(?:written\s+)?)?corrective actions?(?:\s+form)?\s*(?:[,:;]|\s[-–—]\s)\s*\S/.test(q)) return true;
@@ -1630,6 +1643,8 @@ export function detectTemplateIntent(rawQuestion: string): TemplateIntent {
   if (!informational && LEVEL_AS_DOCUMENT.test(q)) return { kind: "explicit", templateKey: "dpoa" };
   // CA_SHORTCUT_WORDS_ENABLED: "create a written on 10/20 for …", "make her a verbal" — the level names the form.
   if (caShortcutWordsEnabled() && !informational && CREATE_LEVEL.test(q)) return { kind: "explicit", templateKey: "dpoa" };
+  // LEVEL_LEADS_REQUEST_ENABLED: "second verbal for <A>, …" — see `levelLeadsRequest`.
+  if (levelLeadsRequestEnabled() && !informational && levelLeadsRequest(question)) return { kind: "explicit", templateKey: "dpoa" };
 
   /*
    * THE NAME OF THE PROGRESSION, with no document named alongside it — and not

@@ -23,6 +23,20 @@ function normalize(text: string): string {
     : read;
 }
 
+/** LEVEL_LEADS_REQUEST_ENABLED, read here for the same reason. */
+function levelLeadsRequestOn(): boolean {
+  const raw = typeof process === "undefined" ? undefined : process.env.LEVEL_LEADS_REQUEST_ENABLED;
+  return typeof raw === "string" && ["1", "true", "on", "yes"].includes(raw.trim().toLowerCase());
+}
+
+/*
+ * LEVEL_LEADS_REQUEST_ENABLED (QA, 14 Nov 2026): a message that OPENS with a level and "for" / "on" — "second verbal for
+ * <A>, she was late", "2nd written for <A>", "another verbal for <A>", "verbal for <A>" — states this form's level. The
+ * count words say which step it is, not a different level. History ("she had a verbal for being late") never opens the
+ * message, so it is not read here.
+ */
+const LEVEL_LEADS = /^\s*(?:please\s+)?(?:an?\s+)?(?:(?:another|one\s+more|first|1st|second|2nd|third|3rd|next)\s+)?(verbal|written)(?:\s+warning)?\s+(?:for|on)\s+\S/;
+
 /** LEVEL_AFTER_FORM_NAME_ENABLED, read here for the same reason. */
 function levelAfterFormNameOn(): boolean {
   const raw = typeof process === "undefined" ? undefined : process.env.LEVEL_AFTER_FORM_NAME_ENABLED;
@@ -226,6 +240,9 @@ export function statedWarningLevel(
   const levels = new Set<StatedWarningLevel>();
   // Only `managerStatedWarningLevel` asks for this; it is reached behind WARNING_LEVEL_MANAGER_ONLY_ENABLED.
   const read = options.undecidedStatesNothing ? withoutUndecidedLevels(normalize(text)) : normalize(text);
+  // LEVEL_LEADS_REQUEST_ENABLED: the message opens with the level ("second verbal for <A>, …"); see `LEVEL_LEADS`.
+  const leads = levelLeadsRequestOn() ? LEVEL_LEADS.exec(read) : null;
+  if (leads) levels.add(leads[1] as StatedWarningLevel);
   // A sentence at a time, so a cue in one sentence says nothing about the next.
   for (const sentence of read.matchAll(/[^.;!?\n]+[.;!?\n]?/g)) {
     const body = sentence[0].replace(/[.;!?\n]$/, "");
