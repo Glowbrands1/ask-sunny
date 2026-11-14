@@ -4,7 +4,7 @@ import { z } from "zod/v4";
 
 import type { AskResponse } from "@/lib/ai/types";
 import { updateChatTrace } from "@/lib/ai/chat-trace-store";
-import { cardAccountDropsNonFactsEnabled, cardCheckedAgainstWordsEnabled, closeSpellingMatchEnabled } from "@/lib/config/chat-quality-flags";
+import { cardAccountDropsNonFactsEnabled, cardAddedFactInObservationEnabled, cardCheckedAgainstWordsEnabled, closeSpellingMatchEnabled } from "@/lib/config/chat-quality-flags";
 import { PRODUCTION_SALONS } from "@/data/salons";
 
 import type { RosterEmployee } from "./employee-match";
@@ -527,6 +527,21 @@ export async function withCardCheckedAgainstWords(answer: AskResponse, input: Ca
         : [];
       if (added.length > 0) {
         trace.repaired.push("issue_added_fact");
+        /*
+         * CARD_ADDED_FACT_IN_OBSERVATION_ENABLED (QA's Sunny 38f live test, 13 Nov 2026): "create a CA for <A>, she was
+         * late on 11/3/26", then "she yelled at a guest and she maybe forgot". The note said "Added …: she yelled at a
+         * guest", but the card's Observation (built before this check) held the whole turn, joined with a space: "she was
+         * late on 11/3/26 she yelled at a guest and she maybe forgot". The line now says what the note says: the earlier
+         * account, then the added facts after "; ".
+         */
+        if (cardAddedFactInObservationEnabled() && observation !== "") {
+          const body = observation.replace("**Observation of Offense:**", "").trim();
+          const latestTurn = input.turns.at(-1)!.trim().replace(/[.!]+$/, "");
+          const at = body.toLowerCase().lastIndexOf(latestTurn.toLowerCase());
+          const before = at > 0 ? body.slice(0, at).trim().replace(/[\s.;,]+$/, "") : (accountFromWords(employee, { ...input, turns: earlier }) ?? "");
+          const line = `**Observation of Offense:** ${[before, ...added].filter((part) => part.trim() !== "").join("; ")}`;
+          out = { ...out, content: out.content.split("\n").map((text) => (text === observation ? line : text)).join("\n") };
+        }
         out = { ...out, content: `${out.content.trimEnd()}\n\n**Added to the Observation of Offense:** ${added.join("; ")}` };
       }
     }
