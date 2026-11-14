@@ -5,6 +5,14 @@ import { draftNoInventedPlanEnabled } from "@/lib/config/chat-quality-flags";
 import { parseFormDocument } from "@/lib/forms/document";
 import { TEMPLATE_SEEDS } from "@/lib/forms/library";
 
+// POLICY_NOT_FOUND_PLAIN_WORDING (14 Nov 2026) rewords the "Woven does not see this policy" notices; pinned off here so
+// a flag-on run still checks the wording these tests assert. The plain wording: policy-not-found-plain-notices.test.ts.
+beforeEach(() => {
+  vi.stubEnv("POLICY_NOT_FOUND_PLAIN_WORDING_ENABLED", "");
+  vi.stubEnv("NEXT_PUBLIC_POLICY_NOT_FOUND_PLAIN_WORDING_ENABLED", "");
+});
+
+
 /*
  * CHANGED ON PURPOSE, Corrective Action revision 8 (client request, template
  * approved 4 Nov 2026): expectations on the current form read its four boxes.

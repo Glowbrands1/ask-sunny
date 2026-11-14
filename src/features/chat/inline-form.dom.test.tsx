@@ -14,6 +14,14 @@ import { parseFormDocument } from "@/lib/forms/document";
 import { TEMPLATE_SEEDS } from "@/lib/forms/library";
 import type { ChatFormInstanceRef, ChatFormProposal, ChatMessage } from "@/types";
 
+// POLICY_NOT_FOUND_PLAIN_WORDING (14 Nov 2026) rewords the "Woven does not see this policy" notices; pinned off here so
+// a flag-on run still checks the wording these tests assert. The plain wording: policy-not-found-plain-notices.test.ts.
+beforeEach(() => {
+  vi.stubEnv("POLICY_NOT_FOUND_PLAIN_WORDING_ENABLED", "");
+  vi.stubEnv("NEXT_PUBLIC_POLICY_NOT_FOUND_PLAIN_WORDING_ENABLED", "");
+});
+
+
 /**
  * ============================================================================
  * REQUIREMENTS 7-10, 18, 30-33, 35-45 — THE FLOW A MANAGER ACTUALLY TOUCHES
@@ -1652,6 +1660,24 @@ describe("the policy-verification notice", () => {
     expect(notice).toContain("Policy Violated");
     expect(notice).toContain("Direct policy from official manual");
     expect(notice).toMatch(/before you issue this form/i);
+  });
+
+  it("POLICY_NOT_FOUND_PLAIN_WORDING: says \"I don't see …\" with the browser flag on, \"Woven does not see …\" off", () => {
+    const blankPolicy = () =>
+      policyVerificationNoticeFor(
+        correctiveInstance([
+          { fieldKey: "observation", value: "Sarah was observed wearing a mini skirt." },
+          { fieldKey: "policy_violated", value: null },
+          { fieldKey: "policy_language", value: null },
+        ]),
+        false,
+      ) ?? "";
+    expect(blankPolicy()).toMatch(/blank because Woven does not see a matching policy/);
+    expect(blankPolicy()).toMatch(/Woven does not see this policy in the knowledge base, so it cannot be verified/);
+    vi.stubEnv("NEXT_PUBLIC_POLICY_NOT_FOUND_PLAIN_WORDING_ENABLED", "true");
+    expect(blankPolicy()).toMatch(/blank because I don't see a matching policy in the knowledge base/);
+    expect(blankPolicy()).toMatch(/I don't see this policy in the knowledge base, so it cannot be verified — confirm/);
+    expect(blankPolicy()).not.toMatch(/Woven does not see/);
   });
 
   it("goes when the values carry verified provenance", () => {
