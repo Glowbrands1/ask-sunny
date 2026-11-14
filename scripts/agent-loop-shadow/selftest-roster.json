@@ -1,0 +1,22 @@
+[
+ {
+  "id": "e-shadow-1",
+  "firstName": "Odalys",
+  "lastName": "Brackwen",
+  "preferredFirstName": null,
+  "salonIds": [
+   "loc-0309"
+  ],
+  "positionName": "Tanning Consultant"
+ },
+ {
+  "id": "e-shadow-2",
+  "firstName": "Isolde",
+  "lastName": "Farrant",
+  "preferredFirstName": null,
+  "salonIds": [
+   "loc-0309"
+  ],
+  "positionName": "Tanning Consultant"
+ }
+]

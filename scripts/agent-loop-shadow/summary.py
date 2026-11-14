@@ -50,12 +50,37 @@ def overlap(card_text, truth_text):
     return len(truth & tokens(card_text)) / len(truth)
 
 
+# truth.values (QA, 14 Nov 2026): the saved form's {field_key: value}; read when "policy" / "warning_type" are absent.
+POLICY_KEYS = ("policy_violated", "policy", "policy_references", "policy_ref", "direct_policy")
+
+
+def as_list(value):
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    return [part for part in re.split(r"[,;/]\s*|\s+and\s+", str(value)) if part.strip()]
+
+
+def truth_policy(truth):
+    if truth.get("policy") is not None:
+        return truth.get("policy")
+    values = truth.get("values") or {}
+    return next((values[key] for key in POLICY_KEYS if values.get(key)), None)
+
+
+def truth_levels(truth):
+    if truth.get("warning_type") is not None:
+        return as_list(truth.get("warning_type"))
+    return as_list((truth.get("values") or {}).get("warning_type"))
+
+
 def compare(final, truth):
     """Field -> True/False for a conversation with a truth (a missing card misses every field)."""
     card = final or {}
-    want_levels = {str(level).lower() for level in (truth.get("warning_type") or [])} & LEVELS
+    want_levels = {str(level).strip().lower() for level in truth_levels(truth)} & LEVELS
     have_levels = {str(card.get("level")).lower()} & LEVELS if card.get("level") else set()
-    truth_heading, card_heading = heading(truth.get("policy")), heading(card.get("policy"))
+    truth_heading, card_heading = heading(truth_policy(truth)), heading(card.get("policy"))
     return {
         "template": bool(card) and card.get("template") == truth.get("template"),
         "employee": bool(card) and norm(card.get("employee")) == norm(truth.get("employee")),
@@ -171,4 +196,5 @@ def main():
             print(f"  {row['conv']}: {row['score']:.2f} missed={','.join(missed) or '-'} overlap={lap} guards={','.join(row['guards']) or '-'}{' ERROR' if row['error'] else ''}")
 
 
-main()
+if __name__ == "__main__":
+    main()

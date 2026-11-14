@@ -4,11 +4,12 @@
 # memory and nothing is saved. NEVER commit the input or the output; keep both outside the repository.
 #
 #   ANTHROPIC_API_KEY="$AI_READER_KEY" SHADOW_IN=/private/shadow-in.jsonl SHADOW_OUT=/private/shadow-out.jsonl \
-#     [SHADOW_LIMIT=20] [SHADOW_SHARDS=3] scripts/agent-loop-shadow/run.sh CAP_DOLLARS
+#     [SHADOW_ROSTER=/private/roster.json] [SHADOW_LIMIT=20] [SHADOW_SHARDS=3] scripts/agent-loop-shadow/run.sh CAP_DOLLARS
 #   python3 scripts/agent-loop-shadow/summary.py /private/shadow-out.jsonl
 #
 # The run stops when the model cost reaches CAP_DOLLARS (scripts/agent-loop-live/costcap.py). SHADOW_LIMIT keeps the
-# first n conversations. The loop's calls and tokens go to "${SHADOW_OUT%.jsonl}.records/run-*.jsonl".
+# first n conversations. SHADOW_ROSTER is a shared roster (a JSON array of roster rows) for lines with no "roster".
+# The loop's calls and tokens go to "${SHADOW_OUT%.jsonl}.records/run-*.jsonl".
 # SHADOW_STANDIN=1 runs the scripted stand-in model instead (no API key, no live calls): scripts/agent-loop-shadow/self-test.sh.
 set -euo pipefail
 cap="${1:?usage: run.sh CAP_DOLLARS (with SHADOW_IN and SHADOW_OUT set)}"
@@ -17,6 +18,7 @@ cap="${1:?usage: run.sh CAP_DOLLARS (with SHADOW_IN and SHADOW_OUT set)}"
 standin="${SHADOW_STANDIN:-0}"
 if [ "$standin" != "1" ] && [ -z "${ANTHROPIC_API_KEY:-}" ]; then echo "ANTHROPIC_API_KEY is not set" >&2; exit 2; fi
 here="$(cd "$(dirname "$0")" && pwd)"
+if [ -n "${SHADOW_ROSTER:-}" ]; then SHADOW_ROSTER="$(cd "$(dirname "$SHADOW_ROSTER")" && pwd)/$(basename "$SHADOW_ROSTER")"; export SHADOW_ROSTER; fi
 repo="$(cd "$here/../.." && pwd)"
 case "$(cd "$(dirname "$SHADOW_OUT")" && pwd)/" in "$repo"/*) echo "SHADOW_OUT is inside the repository; keep real data outside it" >&2; exit 2;; esac
 records="${SHADOW_OUT%.jsonl}.records"

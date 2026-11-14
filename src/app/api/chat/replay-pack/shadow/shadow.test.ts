@@ -2,20 +2,28 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { packRoster, packScope, readShadowInput, replyLine, scriptedStandIn, shadowCases } from "./shadow";
+import { packRoster, packScope, readShadowInput, readShadowRoster, replyLine, scriptedStandIn, shadowCases } from "./shadow";
 
 /* The shadow replay's own pieces, on the INVENTED self-test conversations (scripts/agent-loop-shadow/selftest-input.jsonl). */
 const INPUT = join(process.cwd(), "scripts/agent-loop-shadow/selftest-input.jsonl");
+const ROSTER = join(process.cwd(), "scripts/agent-loop-shadow/selftest-roster.json");
 
 describe("the shadow replay of the agent loop (dev harness)", () => {
   it("reads one conversation per line, SHADOW_LIMIT keeping the first n", () => {
-    expect(readShadowInput(INPUT).map((row) => row.conv)).toEqual(["selftest-ca", "selftest-coaching", "selftest-off-roster"]);
-    expect(readShadowInput(INPUT, 2)).toHaveLength(2);
-    expect(shadowCases(INPUT, undefined, 1).map((entry) => entry.id)).toEqual(["shadow-selftest-ca"]);
+    const shared = readShadowRoster(ROSTER);
+    expect(readShadowInput(INPUT, 0, shared).map((row) => row.conv)).toEqual(["selftest-ca", "selftest-coaching", "selftest-off-roster"]);
+    expect(readShadowInput(INPUT, 2, shared)).toHaveLength(2);
+    expect(shadowCases(INPUT, undefined, 1, ROSTER).map((entry) => entry.id)).toEqual(["shadow-selftest-ca"]);
+  });
+
+  it("a line with no roster uses the shared one (SHADOW_ROSTER), and needs one", () => {
+    const shared = readShadowRoster(ROSTER)!;
+    expect(readShadowInput(INPUT, 0, shared)[2]!.roster).toEqual(shared);
+    expect(() => readShadowInput(INPUT, 0, null)).toThrow(/selftest-input\.jsonl:3: needs .*SHADOW_ROSTER/);
   });
 
   it("maps the manager's scope and roster to the replay pack's", () => {
-    const [first] = readShadowInput(INPUT);
+    const [first] = readShadowInput(INPUT, 0, readShadowRoster(ROSTER));
     expect(packScope({ role: "district_manager", level: "district", salonIds: ["loc-1", "loc-2"] })).toEqual({ level: "district", primaryAreaId: "loc-1", alsoCoversAreaIds: ["loc-2"] });
     expect(packRoster(first!.roster)[0]).toMatchObject({ firstName: "Odalys", employmentStatus: "active", salonIds: ["loc-0309"] });
   });
@@ -26,7 +34,7 @@ describe("the shadow replay of the agent loop (dev harness)", () => {
   });
 
   it("the scripted stand-in never states a level or a date that was not typed", () => {
-    const [first] = readShadowInput(INPUT);
+    const [first] = readShadowInput(INPUT, 0, readShadowRoster(ROSTER));
     const decide = scriptedStandIn(first!.roster);
     const view = (text: string, results: { tool: string; output: Record<string, unknown> }[] = []) => ({ system: "", turns: [{ role: "user" as const, text }], results, step: results.length });
     expect(decide(view("ca for Odalys Brackwen, late"))).toEqual({ tool: "find_staff", input: { name: "Odalys Brackwen" } });
