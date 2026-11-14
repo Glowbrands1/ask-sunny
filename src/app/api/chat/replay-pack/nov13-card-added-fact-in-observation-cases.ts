@@ -23,7 +23,8 @@ export const NOV13_CARD_ADDED_FACT_IN_OBSERVATION_CASES: ReplayCase[] = [
     id: "nov13-card-added-fact-in-observation",
     title: "\"create a CA for Marnie Holloway, she was late on 11/3/26\" → \"she yelled at a guest and she maybe forgot\": the card's Observation is the account, then \"; she yelled at a guest\", and the hedge stays out",
     report: REPORT,
-    status: { open: "the card's Observation is the whole turn joined with a space, hedge included; it disagrees with the note" },
+    // Changed on purpose (14 Nov 2026): fixed in production by CARD_CHECKED_AGAINST_WORDS + CARD_ADDED_FACT_IN_OBSERVATION, QA round 38g. Was OPEN.
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       vi.setSystemTime(new Date("2026-11-13T16:00:00Z"));
