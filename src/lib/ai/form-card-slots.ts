@@ -543,7 +543,7 @@ function dateSaidAsToday(text: string, question: string, today: string): string 
   return live.length === 0 ? today : null;
 }
 
-function withoutStateSentences(question: string): string {
+export function withoutStateSentences(question: string): string {
   return question
     .replace(/\bThe form is the [^.\n]+\./gi, " ")
     .replace(/\bThe employee is [^.\n]+\./gi, " ")

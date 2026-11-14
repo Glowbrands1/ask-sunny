@@ -35,6 +35,7 @@ import { enrichFormCard } from "./form-card-slots";
 import { holdFilledSlots } from "./keep-filled-slots";
 import { startsFormForAnotherPerson } from "./new-person-request";
 import { applyEditDateRules } from "./edit-date-rules";
+import { askLooseSalon } from "./loose-salon-ask";
 import { withTypedEmployeeOnCard } from "./typed-employee-card";
 import { applyGroundedProposal, prepareGroundedQuestion, type GroundedPerson, type GroundedPrep } from "./grounded-entities";
 
@@ -87,7 +88,8 @@ export async function deliverFormProposal(input: {
         });
     // KEEP_FORM_EMPLOYEE_ENABLED: "for Test Employee" stays Test Employee on the card. See `withTypedEmployeeOnCard`.
     // ACCOUNT_BEFORE_REQUEST_ENABLED: the account the card shows, given before its request, is cited (`ai/account-turn-sources.ts`).
-    return withAccountTurnSources(withEditDateRules(
+    // FUZZY_SALON_ASKS_ENABLED: a salon the words only resemble is asked, not filed (`ai/loose-salon-ask.ts`).
+    return withLooseSalonAsked(withAccountTurnSources(withEditDateRules(
       withTypedEmployeeOnCard(
         holdFilledSlots({
           response: enriched,
@@ -99,7 +101,7 @@ export async function deliverFormProposal(input: {
         input.request.question,
       ),
       input,
-    ), input.request.history);
+    ), input.request.history), input, []);
   }
 
   /*
@@ -155,7 +157,8 @@ export async function deliverFormProposal(input: {
 
   const settled = withVisibleSalon(enriched, input);
   // ACCOUNT_BEFORE_REQUEST_ENABLED: the account the card shows, given before its request, is cited (`ai/account-turn-sources.ts`).
-  const held = withAccountTurnSources(withEditDateRules(
+  // FUZZY_SALON_ASKS_ENABLED: a salon the words only resemble is asked, not filed (`ai/loose-salon-ask.ts`).
+  const held = withLooseSalonAsked(withAccountTurnSources(withEditDateRules(
     withTypedEmployeeOnCard(
       holdFilledSlots({
         response: settled,
@@ -167,7 +170,7 @@ export async function deliverFormProposal(input: {
       input.request.question,
     ),
     input,
-  ), input.request.history);
+  ), input.request.history), input, people);
   const reopened = await reopenSameIncident(dedupe, input, held);
   if (reopened) {
     await writeSaved(keepState, input, saved, held, prep);
@@ -175,6 +178,19 @@ export async function deliverFormProposal(input: {
   }
   await writeSaved(keepState, input, saved, held, prep);
   return held;
+}
+
+function withLooseSalonAsked(
+  response: AskResponse,
+  input: { readonly request: AskRequest; readonly actor: ChatActor; readonly question: string },
+  people: readonly GroundedPerson[],
+): AskResponse {
+  return askLooseSalon(response, {
+    question: input.request.question,
+    history: input.request.history,
+    scope: input.actor.scope,
+    people,
+  });
 }
 
 /** FORM_EDIT_DATE_RULES_ENABLED: read from the manager's own turns, not the state sentences. See `edit-date-rules.ts`. */

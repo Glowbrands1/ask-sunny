@@ -4833,6 +4833,17 @@ export function sharedCityAsksSalonEnabled(): boolean {
 }
 
 /**
+ * FUZZY_SALON_ASKS (QA's Sunny 38h live check, 14 Nov 2026; the sibling app's #881 FUZZY_STORE_ASKS, ported as a
+ * mechanism; default off): a salon only a resemblance reader supplied ("at omaha west" read as NE Omaha Pacific by
+ * trigrams, "lincoln" alone as NE Lincoln Pine Lake) is not filed; the reply asks "I read … as … — is that the
+ * salon?", and "yes" files it. A card that names a salon never says "won't name one". See `ai/loose-salon-ask.ts`.
+ * Off, as before.
+ */
+export function fuzzySalonAsksEnabled(): boolean {
+  return envFlag("FUZZY_SALON_ASKS_ENABLED");
+}
+
+/**
  * ON_FILE_LINE_NOT_THE_POLICY_ENABLED (Coding-2, 14 Nov 2026; default off; Pau's morning scan via QA). A dress-code
  * request sent again word for word was carded "Policy: Late Opening — read from this request": the intent reader took
  * the heading from the app's own "On file in Form Monitoring … (… Late Opening)" listing. On: a heading the manager's own
