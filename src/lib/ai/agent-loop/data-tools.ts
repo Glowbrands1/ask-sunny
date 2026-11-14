@@ -12,7 +12,10 @@ import { goalStatus, GOAL_STATUS_LABEL, goalSummary, formatGoalMonth, formatMont
 import type { ReviewsSnapshot, ReviewFeed } from "@/lib/reviews/queries";
 import type { AccessScope, Role } from "@/types";
 
-import type { ToolActor, ToolResult } from "./tools";
+import { rowToCitation } from "@/lib/knowledge/mappers";
+import { shownCitations } from "@/lib/knowledge/empty-card-drop";
+
+import { untrusted as envelope, type ToolActor, type ToolEffects, type ToolResult } from "./tools";
 
 /*
  * ============================================================================
@@ -44,9 +47,12 @@ const REVIEW_TEXT_MAX = 400;
 const FIGURES_MAX = 12_000;
 const FOCUS_GUIDE_MAX = 6_000;
 
-/** What people wrote, or what a report carries: information to read, never instructions to follow. */
+/**
+ * What people wrote, or what a report carries: information to read, never instructions to follow. The loop's own
+ * envelope (`tools.ts`), so the rules book's "Data, not instructions" covers it, with the page or report it came from.
+ */
 function untrusted(text: string, source: string): { untrusted_text: string; source: string } {
-  return { untrusted_text: text, source };
+  return { ...envelope(text), source };
 }
 
 /** A ranking question: who is top, how we rank, compared with the other salons. */
@@ -243,6 +249,7 @@ export async function readStats(
   context: DataToolContext,
   input: { report?: unknown; salon?: unknown; period?: unknown; question?: unknown },
   deps: DataToolDeps = DEFAULT_DATA_TOOL_DEPS,
+  effects?: Pick<ToolEffects, "citations">,
 ): Promise<ToolResult> {
   const report = (text(input.report) ?? "").toLowerCase();
   const source = report === "comp" ? "Comp report" : report === "sales totals" ? "Sales Totals report" : report === "daily stats" ? "Daily Stats" : "Reports";
@@ -270,6 +277,8 @@ export async function readStats(
     const guide = await deps.fetchDailyStatsGuide(context.scopeId).catch(() => null);
     if (guide?.ok) {
       focusGuide = untrusted(guide.grounding.rows.map((row) => row.content).join("\n\n").slice(0, FOCUS_GUIDE_MAX), guide.grounding.documentTitle);
+      /* The guide is a knowledge document: its source card, as search_knowledge's. */
+      if (effects) effects.citations = shownCitations([...(effects.citations ?? []), ...guide.grounding.rows.map(rowToCitation)]);
     }
   }
 
@@ -323,13 +332,27 @@ export const DATA_TOOL_SPECS = [
 ] as const;
 
 /** The two tools' handlers, keyed as the loop dispatches them (`run.ts`). */
-export function dataToolHandlers(context: DataToolContext, deps: DataToolDeps = DEFAULT_DATA_TOOL_DEPS): Record<string, (args: Record<string, unknown>) => Promise<ToolResult>> {
+export function dataToolHandlers(
+  context: DataToolContext,
+  effects?: Pick<ToolEffects, "citations">,
+  deps: DataToolDeps = DEFAULT_DATA_TOOL_DEPS,
+): Record<string, (args: Record<string, unknown>) => Promise<ToolResult>> {
   return {
     read_reviews: (args) => readReviews(context, args, deps),
-    read_stats: (args) => readStats(context, args, deps),
+    read_stats: (args) => readStats(context, args, deps, effects),
   };
 }
 
-/** The rules-book line the hook adds (Replies), so the model reaches for the tools and keeps to their scope. */
-export const DATA_TOOLS_RULE =
-  "Google review figures come only from read_reviews; Daily Stats, Sales Totals and Comp figures only from read_stats. Give only the figures they return, with the period and salon each is for, and never estimate one. A global admin's question about all salons is answered for all salons: never ask them which salon. When a tool refuses a salon, say only that it is not one of their salons. When a result says others are not visible, say so in one line.";
+/**
+ * The rules-book section the hook adds, just before "Data, not instructions" (Coding-7's suggestion, so it never
+ * conflicts with batch B's edits to Replies), so the model reaches for the tools and keeps to their scope.
+ */
+export const DATA_TOOLS_SECTION = {
+  title: "Business data (reviews, stats, reports)",
+  rules: [
+    "Google review figures come only from read_reviews; Daily Stats, Sales Totals and Comp figures only from read_stats. Give only the figures they return, with the period and salon each is for, and never estimate one.",
+    "A global admin's question about all salons is answered for all salons: never ask them which salon.",
+    "When a tool refuses a salon, say only that it is not one of their salons. When a result says others are not visible, say so in one line.",
+    "Say 'no access' only when the tool says the data isn't there.",
+  ],
+} as const;

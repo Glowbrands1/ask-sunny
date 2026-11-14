@@ -85,7 +85,7 @@ function deps(overrides: Partial<DataToolDeps> = {}) {
     readBreakdown: async () => null,
     fetchDailyStatsGuide: vi.fn(async () => ({
       ok: true as const,
-      grounding: { role: {} as never, documentId: "d", documentTitle: "DAILY STATS INTERPRETATION FRAMEWORK", matchedBy: "tag" as const, rows: [{ content: "Lead with the one metric furthest from goal." } as never], presentGroups: [] },
+      grounding: { role: {} as never, documentId: "d", documentTitle: "DAILY STATS INTERPRETATION FRAMEWORK", matchedBy: "tag" as const, rows: [{ chunk_id: "c1", document_id: "d", document_title: "DAILY STATS INTERPRETATION FRAMEWORK", category: "operations", locator: "Section 2", content: "Lead with the one metric furthest from goal.", similarity: 0.9 } as never], presentGroups: [] },
     })),
   };
   return { deps: { ...base, ...overrides }, briefings };
@@ -168,6 +168,13 @@ describe("read_stats", () => {
     expect(result.freshness).toEqual([{ report: "Sales Totals", as_of: "2026-11-13", days_behind: 1, says: "Sales Totals is one day behind." }]);
     expect(result.figures).toMatchObject({ source: "Daily Stats", untrusted_text: expect.stringContaining("Grand Total") });
     expect(result.focus_guide).toMatchObject({ source: "DAILY STATS INTERPRETATION FRAMEWORK", untrusted_text: expect.stringContaining("furthest from goal") });
+  });
+
+  it("the Daily Stats guide shows as a source card, as search_knowledge's do", async () => {
+    const { deps: d } = deps();
+    const effects: { citations?: import("@/types").SourceCitation[] } = {};
+    await readStats(ctx(MANAGER, PAU_DAILY), { report: "daily stats", question: PAU_DAILY }, d, effects);
+    expect(effects.citations?.map((citation) => citation.documentTitle)).toEqual(["DAILY STATS INTERPRETATION FRAMEWORK"]);
   });
 
   it("no focus guide when the question does not ask what to focus on", async () => {
