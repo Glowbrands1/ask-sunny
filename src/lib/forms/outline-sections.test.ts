@@ -89,3 +89,19 @@ describe("QA's ruling (b), extended (12 Nov 2026): an instruction goes under Exp
     expect(addUnderExpectation("Jane was late.", "she must clock in.")).toBeNull();
   });
 });
+
+describe("withSectionSpacing", () => {
+  it("puts back the blank line before each heading the field had", () => {
+    expect(withSectionSpacing(OLD, OLD.replace(/\n\n/g, "\n"))).toBe(OLD);
+  });
+
+  it("a field that never had blank lines is left as written", () => {
+    const tight = OLD.replace(/\n\n/g, "\n");
+    expect(withSectionSpacing(tight, tight)).toBe(tight);
+  });
+
+  it("never adds a blank line before the first heading, and keeps one, not two", () => {
+    const next = `${OLD.replace("\n\nExpectation:", "\n\n\nExpectation:")}`;
+    expect(withSectionSpacing(OLD, next)).toBe(OLD);
+  });
+});

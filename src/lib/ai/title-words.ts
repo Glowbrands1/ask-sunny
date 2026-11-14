@@ -77,3 +77,21 @@ export function readsAsStatedTitle(input: {
   if (input.knownTitle(probe)) return true;
   return words.length <= 4 && !words.some((word) => CLAUSE_WORDS.has(word.replace(/[.,;:!?]+$/, "")));
 }
+
+/**
+ * FORM_NAME_NOT_A_TITLE_ENABLED (QA's prod-env reading, 11 Nov 2026, D5 off-roster): "Create an SDIT EPP for <name> at
+ * IA Altoona" names the form. The model's slot reading gave "SDIT" as the title, and for a person not on the roster that
+ * reading was kept because the word is in the manager's text. True when every time the manager says the title word, the
+ * form's name follows it ("SDIT EPP", "ASD/SDIT EPP"); "… she is an SDIT" is the title again. The same reading as
+ * `extractJobTitle` in `forms/proposal.ts`.
+ */
+const FORM_NAME_AFTER = /^(?:\s*\/\s*[a-z]{2,5})?\s+epps?\b/i;
+
+export function saidOnlyAsFormName(probe: string, text: string): boolean {
+  const words = probe.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return false;
+  const escaped = words.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("\\s+");
+  const mentions = [...text.matchAll(new RegExp(`(?:^|[^a-z0-9'’])(${escaped})(?![a-z0-9'’])`, "gi"))];
+  if (mentions.length === 0) return false;
+  return mentions.every((mention) => FORM_NAME_AFTER.test(text.slice(mention.index! + mention[0].length)));
+}

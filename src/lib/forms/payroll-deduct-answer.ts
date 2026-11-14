@@ -174,7 +174,21 @@ function notDeductibleRead(): boolean {
   return typeof raw === "string" && ["1", "true", "yes", "on"].includes(raw.trim().toLowerCase());
 }
 
+/*
+ * PAYROLL_BARE_SENTENCE_ENABLED (coding 6, 10 Nov 2026; Pau's P15, Sunny production 9 Nov): "I need a term CA for
+ * <name>. Didn't show up for her opening shift. Payroll deduction." — the last sentence is the answer, Yes, and the
+ * card asked "Is payroll deduct applicable?". With the flag on, a sentence that is only "payroll deduction" /
+ * "payroll deduct" (a statement, not a question) is a Yes, as "payroll deduction applies" is. Read here, as
+ * CA_SHORTCUT_WORDS is, because this module imports nothing. Off, as before.
+ */
+const BARE_PAYROLL_SENTENCE = /^(?:payroll\s+deduct(?:ion)?|payroll\s+ded)\s*[.!]?$/;
+function payrollBareSentenceOn(): boolean {
+  const raw = typeof process === "undefined" ? undefined : process.env.PAYROLL_BARE_SENTENCE_ENABLED;
+  return typeof raw === "string" && ["1", "true", "on", "yes"].includes(raw.trim().toLowerCase());
+}
+
 function readClause(clause: string): ClauseReading {
+  if (payrollBareSentenceOn() && BARE_PAYROLL_SENTENCE.test(clause)) return "yes";
   if (UNDECIDED.test(clause) && ABOUT_DEDUCTION.test(clause)) return "unclear";
   if (DENIED_WAIVER.test(clause) && ABOUT_DEDUCTION.test(clause)) return "unclear";
   const negative = NEGATIVE.find((pattern) => pattern.test(clause)) ?? (notDeductibleRead() && NOT_DEDUCTIBLE.test(clause) ? NOT_DEDUCTIBLE : undefined);

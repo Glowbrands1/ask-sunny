@@ -29,12 +29,15 @@ export function AppShell({
   /** Administrators only, decided on the server by the layout. */
   showAppSwitcher = false,
   showLeadershipHub = false,
+  meetingTabs = [],
 }: {
   children: ReactNode;
   overdueFollowUps?: number;
   showAppSwitcher?: boolean;
   /** Server-decided yes/no for the Leadership Hub tab. */
   showLeadershipHub?: boolean;
+  /** The DM L10 tab(s), decided on the server from the Leadership Hub (attendees only). Empty: no tab. */
+  meetingTabs?: { href: string; label: string }[];
 }) {
   const { hydrated, signedIn, demoMode } = useSession();
   const pathname = usePathname();
@@ -169,6 +172,7 @@ export function AppShell({
           overdueFollowUps={overdueFollowUps}
           showAppSwitcher={showAppSwitcher}
           showLeadershipHub={showLeadershipHub}
+          meetingTabs={meetingTabs}
         />
         </div>
       </aside>
@@ -199,6 +203,7 @@ export function AppShell({
                 overdueFollowUps={overdueFollowUps}
                 showAppSwitcher={showAppSwitcher}
                 showLeadershipHub={showLeadershipHub}
+                meetingTabs={meetingTabs}
               />
             </div>
           </div>

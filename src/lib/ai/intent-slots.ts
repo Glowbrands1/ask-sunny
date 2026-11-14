@@ -16,6 +16,7 @@ import {
   notANameGuardEnabled,
   titleWholeWordEnabled,
   typedNameProceedsEnabled,
+  sameNameAsksWhichEnabled,
   namedFormExactEnabled,
   remapIncidentFixEnabled,
   warningLevelManagerOnlyEnabled,
@@ -24,6 +25,7 @@ import {
 import { withCorrectedEmployee } from "./corrected-employee";
 import { payrollDeductAmount, payrollDeductFromConversation, type PayrollDeductAnswer } from "@/lib/forms/payroll-deduct";
 import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
+import { hasSameNamePair } from "@/lib/forms/same-name";
 import { lateOpenOn, newestStatedDate, withYearlessDatesWritten } from "@/lib/forms/late-open";
 import { printedPageForPolicy } from "@/lib/forms/printed-policy-pages";
 import { topicHeadings } from "@/lib/forms/specific-policy-topics";
@@ -48,9 +50,9 @@ import { newestManagerTurnSalon } from "@/lib/forms/newest-place-turn";
 import { typedEmployeeName } from "@/lib/forms/typed-employee-name";
 import { managerStatedWarningLevel, templateHasWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
 import { isDocumentName, isReportName, isRosterStateName } from "./not-a-person";
-import { lateSlotReadsAttendanceEnabled, reportNameNotAPersonEnabled } from "@/lib/config/chat-quality-flags";
+import { formNameNotATitleEnabled, lateSlotReadsAttendanceEnabled, reportNameNotAPersonEnabled } from "@/lib/config/chat-quality-flags";
 import { lateSlotHeading } from "./late-slot-attendance";
-import { readsAsStatedTitle, titleTextFromTurns } from "./title-words";
+import { readsAsStatedTitle, saidOnlyAsFormName, titleTextFromTurns } from "./title-words";
 import { titleInWords } from "./title-in-words";
 import { describedAttendanceKeys } from "@/lib/forms/ca-policy";
 import { headingKey, sectionHeadingsFor } from "@/lib/forms/official-policy-manual";
@@ -945,7 +947,8 @@ function groundEmployee(
   if (match.kind === "confirm") {
     const rows = match.candidates.map((candidate) => asGrounded(candidate.employee, people));
     // One close roster match can still supply the salon. The name stays as typed.
-    if (typedNameProceedsEnabled()) {
+    // SAME_NAME_ASKS_WHICH_ENABLED: two or more roster people with ONE name are still a choice ("Which person did you mean…?").
+    if (typedNameProceedsEnabled() && !(sameNameAsksWhichEnabled() && hasSameNamePair(rows.map(displayName)))) {
       return { person: rows.length === 1 ? rows[0]! : null, name: probe, ambiguous: [], typed: probe };
     }
     const words = probe.split(/\s+/).filter(Boolean);
@@ -1134,7 +1137,9 @@ function groundTitle(
   // turns carry it (see `titleInWords`).
   const wholeWord = titleWholeWordEnabled();
   const inWords = (title: string) => !wholeWord || titleInWords(title, blob);
-  const probe = typed?.trim() && inWords(typed.trim()) ? typed.trim() : null;
+  // FORM_NAME_NOT_A_TITLE_ENABLED: "SDIT" read from "Create an SDIT EPP for …" is the form's name, not a title.
+  const formName = (title: string) => formNameNotATitleEnabled() && saidOnlyAsFormName(title, blob);
+  const probe = typed?.trim() && inWords(typed.trim()) && !formName(typed.trim()) ? typed.trim() : null;
   if (probe) {
     const hit = titles.find((title) => title.toLowerCase() === probe.toLowerCase() && inWords(title));
     if (hit) return hit;

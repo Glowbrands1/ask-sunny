@@ -1,4 +1,5 @@
-import { formNameOffRosterAskEnabled, offRosterAskBeforeCardEnabled, offRosterConfirmEnabled } from "@/lib/config/chat-quality-flags";
+import { formNameOffRosterAskEnabled, offRosterAskBeforeCardEnabled, offRosterConfirmEnabled, offRosterStoreAnswerOnlyEnabled } from "@/lib/config/chat-quality-flags";
+import { salonById } from "@/data/salons";
 import type { AccessScope } from "@/types";
 
 import { normalizeTypedName } from "./employee-match";
@@ -6,6 +7,33 @@ import { isAcceptedOffRoster, offRosterCardNote, offRosterOffer, offRosterTakenL
 import { personRosterNames } from "./person-guard";
 import { offRosterTyped } from "./roster-only-names";
 import { editDistance } from "./typo-match";
+import { readSalonMentions } from "./salon-mention";
+
+/** Words around a salon that say nothing else ("at", "the salon is", "she works at our …"). */
+const SALON_FILLER = new Set(["at", "the", "our", "salon", "store", "location", "is", "its", "it's", "in", "she", "he", "they", "work", "works", "from"]);
+const salonWords = (text: string) =>
+  text
+    .toLowerCase()
+    .replace(/\bstreet\b/g, "st")
+    .replace(/[^\p{L}\p{N}']+/gu, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+/**
+ * OFF_ROSTER_STORE_ANSWER_ONLY_ENABLED: the turn is only a salon: one salon the readers are sure of, and nothing else but
+ * its own name's words, filler and a state abbreviation ("kearney, ne", "o st", "NE Lincoln O Street").
+ */
+export function storeOnlyAnswer(text: string): boolean {
+  // A whole-turn reply carries no cue of its own ("kearney, ne"); it is read as "at …", the place it answers.
+  const mentions = readSalonMentions(/^\s*at\b/i.test(text) ? text : `at ${text}`).filter((mention) => mention.salonIds.length === 1);
+  if (mentions.length !== 1) return false;
+  const salon = salonById(mentions[0]!.salonIds[0]!);
+  if (!salon) return false;
+  const own = new Set(salonWords(salon.name));
+  const rest = salonWords(text).filter((word) => !own.has(word) && !SALON_FILLER.has(word));
+  return rest.length === 0 || (rest.length === 1 && /^[a-z]{2}$/.test(rest[0]!));
+}
 
 /*
  * ============================================================================
@@ -113,6 +141,22 @@ export function withOffRosterAskBeforeCard<T extends { content: string; formProp
    * close to them (a near miss is asked as that person), never a product, an all-caps run or a title. Said back as it
    * would be offered (Title Case).
    */
+  /*
+   * OFF_ROSTER_STORE_ANSWER_ONLY_ENABLED (QA's ruling on Ask Bubbles' #735 gate, 12 Nov 2026): a salon-only answer to
+   * this question sets the salon; the name still needs "use <name>". The card is held, with its salon, and the question
+   * and offer are asked again.
+   */
+  if (offRosterStoreAnswerOnlyEnabled() && !isAcceptedOffRoster(name)) {
+    const offered = [...input.history].reverse().find((turn) => turn.role === "assistant")?.content ?? "";
+    const pending = /reply \*\*use ([^*]+)\*\*/.exec(offered)?.[1]?.trim();
+    if (pending && offered.includes(offRosterQuestion(pending)) && storeOnlyAnswer(input.question)) {
+      return {
+        ...answer,
+        content: `${offRosterQuestion(pending)} ${offRosterOffer(pending)}`,
+        formProposal: { ...card, employeeName: null, employeeRole: null, status: "needs_employee", supportsInlineDraft: false },
+      };
+    }
+  }
   const typed = offRosterTyped(name, input.question, roster);
   if (!typed) return answer;
   const question = offRosterQuestion(typed);
