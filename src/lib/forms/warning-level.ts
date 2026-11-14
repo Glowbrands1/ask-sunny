@@ -115,18 +115,118 @@ const OWN_DATE_AFTER =
 const POINTS_BACK_AFTER = /^\s*for\s+(?:the\s+same|this\s+same|same|that|it)\b/;
 const ASKS_IN_SENTENCE = /\b(?:create|make|draft|prepare|write|do|start|issue|give|need|needs|want|file|document|open)\b/;
 
-/** The level just named is a step on file by its own date or by pointing back (see `OWN_DATE_AFTER`). */
-function historyByDateOrPointer(before: string, after: string, today: string | undefined): boolean {
-  if (ASKS_IN_SENTENCE.test(before)) return false;
-  if (POINTS_BACK_AFTER.test(after)) return true;
-  const dated = OWN_DATE_AFTER.exec(after);
-  if (!dated) return false;
-  // The same day as today is the incident being documented, not history.
-  if (today && /^\d{4}-\d{2}-\d{2}$/.test(today)) {
-    const md = /(\d{1,2})[/.-](\d{1,2})/.exec(dated[0]);
-    if (md && Number(md[1]) === Number(today.slice(5, 7)) && Number(md[2]) === Number(today.slice(8, 10))) return false;
+const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+
+/** The ISO day of a date as the manager wrote it, its year the latest one not after today when they gave none. */
+function isoOfSaid(said: string, today: string): string | null {
+  const [year, month, day] = today.split("-").map(Number) as [number, number, number];
+  let m: number;
+  let d: number;
+  let y: number | null = null;
+  const numeric = /(\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{2}|\d{4}))?\b/.exec(said);
+  const named = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})\b|\b(\d{1,2})\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/.exec(said);
+  if (numeric) {
+    m = Number(numeric[1]);
+    d = Number(numeric[2]);
+    if (numeric[3]) y = Number(numeric[3].length === 2 ? `20${numeric[3]}` : numeric[3]);
+  } else if (named) {
+    m = MONTHS.indexOf((named[1] ?? named[4])!) + 1;
+    d = Number(named[2] ?? named[3]);
+  } else return null;
+  if (m < 1 || m > 12 || d < 1 || d > 31) return null;
+  if (y === null) y = m > month || (m === month && d > day) ? year - 1 : year;
+  return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+function daysBefore(iso: string, days: number): string {
+  const date = new Date(`${iso}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() - days);
+  return date.toISOString().slice(0, 10);
+}
+
+const ANY_DATE =
+  /\b\d{1,2}[/.-]\d{1,2}(?:[/.-](?:\d{4}|\d{2}))?\b|\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+\d{1,2}\b/g;
+const SAID_TODAY = /\b(?:today|tonight|this\s+(?:morning|afternoon|evening))\b/;
+const SAID_YESTERDAY = /\b(?:yesterday|last\s+night)\b/;
+
+/**
+ * The day of the incident the turn describes, other than the level's own date: another date in the turn, or
+ * "today" / "yesterday". The latest wins. Null when the turn gives none — "she was late that day" is the level's day.
+ */
+function incidentDay(read: string, ownStart: number, ownEnd: number, today: string): string | null {
+  const days: string[] = [];
+  for (const match of read.matchAll(ANY_DATE)) {
+    if (match.index >= ownStart && match.index < ownEnd) continue;
+    const iso = isoOfSaid(match[0], today);
+    if (iso && iso <= today) days.push(iso);
   }
-  return true;
+  if (SAID_TODAY.test(read)) days.push(today);
+  if (SAID_YESTERDAY.test(read)) days.push(daysBefore(today, 1));
+  return days.sort().at(-1) ?? null;
+}
+
+/*
+ * QA's rulings on Gate-Sunny-3's findings (14 Nov 2026), F1: a level dated with the incident's own date is this form's
+ * level — "verbal warning on 11/12/26 for <W>, she was late that day", filed the next day. It is a step on file only
+ * when its date is BEFORE the incident's: "verbal warning on 9/21. late again for 30 mins today".
+ */
+/** The ISO day of the step on file the level just named is, or "" when it points back undated, or null when it is not one. */
+function historyByDateOrPointer(before: string, after: string, today: string, read: string, afterStart: number): string | null {
+  if (ASKS_IN_SENTENCE.test(before)) return null;
+  if (POINTS_BACK_AFTER.test(after)) return "";
+  const dated = OWN_DATE_AFTER.exec(after);
+  if (!dated) return null;
+  const own = isoOfSaid(dated[0], today);
+  const incident = incidentDay(read, afterStart, afterStart + dated[0].length, today);
+  // An ordinal ("the 21st") names no month: it is read as before, a step on file.
+  if (!own) return "";
+  return incident && own < incident ? own : null;
+}
+
+/** A level the turn names as a step on file by its own date or by pointing back: what it says, and its ISO day ("" undated). */
+export interface HistoryWarningLevel {
+  readonly named: string;
+  readonly iso: string;
+}
+
+/**
+ * HISTORY_LEVEL_NOT_THIS_FORM_ENABLED: the levels a turn names as steps on file (F2 and F3 of QA's rulings, 14 Nov
+ * 2026) — read back under Prior actions with their date, and never counted as the form's level being stated. Off, none.
+ */
+export function historyWarningLevels(text: string, today: string = businessToday()): HistoryWarningLevel[] {
+  if (!historyLevelNotThisFormOn()) return [];
+  const read = normalize(text);
+  const out: HistoryWarningLevel[] = [];
+  for (const sentence of read.matchAll(/[^.;!?\n]+[.;!?\n]?/g)) {
+    const body = sentence[0].replace(/[.;!?\n]$/, "");
+    for (const match of body.matchAll(LEVEL_NAMED)) {
+      const before = body.slice(0, match.index);
+      const after = body.slice(match.index + match[0].length);
+      const iso = historyByDateOrPointer(before, after, today, read, (sentence.index ?? 0) + match.index + match[0].length);
+      if (iso !== null) out.push({ named: match[0], iso });
+    }
+  }
+  return out;
+}
+
+/** The text with the levels `historyWarningLevels` reads as steps on file blanked out (normalized as the intake reads). */
+export function withoutHistoryWarningLevels(text: string, today: string = businessToday()): string {
+  const read = normalize(text);
+  if (!historyLevelNotThisFormOn()) return read;
+  let out = "";
+  for (const sentence of read.matchAll(/[^.;!?\n]+[.;!?\n]?/g)) {
+    const whole = sentence[0];
+    const body = whole.replace(/[.;!?\n]$/, "");
+    let kept = body;
+    for (const match of [...body.matchAll(LEVEL_NAMED)].reverse()) {
+      const before = body.slice(0, match.index);
+      const after = body.slice(match.index + match[0].length);
+      if (historyByDateOrPointer(before, after, today, read, (sentence.index ?? 0) + match.index + match[0].length) === null) continue;
+      kept = kept.slice(0, match.index) + " ".repeat(match[0].length) + kept.slice(match.index + match[0].length);
+    }
+    out += kept + whole.slice(body.length);
+  }
+  return out;
 }
 
 /** A step already taken, said before the level: "she had a written CA", "prior verbal warning". */
@@ -283,7 +383,8 @@ export function statedWarningLevel(
         LEVEL_HISTORY_HEADING.test(before) ||
         ((LEVEL_HISTORY_LABEL.test(before) || LEVEL_HISTORY_VERB.test(before)) && DATED_AFTER.test(after)) ||
         // HISTORY_LEVEL_NOT_THIS_FORM_ENABLED: its own date, or "for the same thing" — a step on file.
-        (historyLevelNotThisFormOn() && historyByDateOrPointer(before, after, options.today ?? businessToday()))
+        (historyLevelNotThisFormOn() &&
+          historyByDateOrPointer(before, after, options.today ?? businessToday(), read, (sentence.index ?? 0) + match.index! + match[0].length) !== null)
       ) {
         continue;
       }

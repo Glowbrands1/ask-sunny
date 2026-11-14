@@ -1,5 +1,5 @@
 import { mentionsGlossaryTerm } from "@/lib/ai/chat-glossary";
-import { caSalesPolicyEnabled, caShortcutWordsEnabled, describedTopicIsAccountEnabled, nameQuestionOnlyEnabled, shiftAccountIsIncidentEnabled } from "@/lib/config/chat-quality-flags";
+import { caSalesPolicyEnabled, caShortcutWordsEnabled, describedTopicIsAccountEnabled, historyLevelNotThisFormEnabled, nameQuestionOnlyEnabled, shiftAccountIsIncidentEnabled } from "@/lib/config/chat-quality-flags";
 
 import { isSalesPolicyReading, readCaPolicy } from "./ca-policy";
 import { saysFailureToOpen } from "./late-open";
@@ -10,7 +10,7 @@ import {
   statedPayrollDeduct,
   type PayrollDeductAnswer,
 } from "./payroll-deduct";
-import { statedWarningLevel } from "./warning-level";
+import { statedWarningLevel, withoutHistoryWarningLevels } from "./warning-level";
 
 /**
  * ============================================================================
@@ -463,8 +463,14 @@ export function readCorrectiveActionIntake(input: {
     what_happened: any(text, INCIDENT_TOPIC) || any(text, OBSERVATIONAL_CLAUSE),
     /* "verbal CA" and a bare "verbal." too — see `statedWarningLevel`. */
     // CA_SHORTCUT_WORDS_ENABLED: "final warning" is no level the form prints — the level is asked, not left silent.
+    // HISTORY_LEVEL_NOT_THIS_FORM_ENABLED (F3, QA 14 Nov 2026): "verbal warning on 9/21" before today's incident is on file, not this form's level.
     warning_level:
-      any(caShortcutWordsEnabled() ? text.replace(/\bfinal(?:\s+written)?\s+warning\b/g, " ") : text, WARNING_LEVEL_GIVEN) ||
+      any(
+        ((levelText) => (caShortcutWordsEnabled() ? levelText.replace(/\bfinal(?:\s+written)?\s+warning\b/g, " ") : levelText))(
+          historyLevelNotThisFormEnabled() ? withoutHistoryWarningLevels(input.text) : text,
+        ),
+        WARNING_LEVEL_GIVEN,
+      ) ||
       statedWarningLevel(input.text) !== null,
     /*
      * A STATED ABSENCE ("first time") or a STATED HISTORY ("already warned

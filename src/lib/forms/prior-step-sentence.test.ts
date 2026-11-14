@@ -73,6 +73,15 @@ describe(`${FLAG} on`, () => {
 });
 
 describe(`${FLAG} off: as main`, () => {
+  /*
+   * Changed on purpose (#970, 14 Nov 2026): "as main" also means HISTORY_LEVEL_NOT_THIS_FORM off. With it on, P3's
+   * "a verbal ca was given on 9-1-26", dated before the 9-28 incident, is a step on file and gets its row (QA's F2).
+   */
+  beforeEach(() => {
+    saved.set("HISTORY_LEVEL_NOT_THIS_FORM_ENABLED", process.env.HISTORY_LEVEL_NOT_THIS_FORM_ENABLED);
+    delete process.env.HISTORY_LEVEL_NOT_THIS_FORM_ENABLED;
+  });
+
   it.each([[P3], [MA]])("no row", (turns) => {
     expect(statedPriorActions(turns.join("\n\n"), TODAY)).toEqual([]);
   });

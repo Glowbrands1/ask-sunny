@@ -1,5 +1,6 @@
 import {
   futurePriorRowDropEnabled,
+  historyLevelNotThisFormEnabled,
   priorActionsNoSignedEnabled,
   priorActionsParseEnabled,
   priorRowNotOnIncidentDateEnabled,
@@ -9,6 +10,7 @@ import {
 } from "@/lib/config/chat-quality-flags";
 
 import { statesFirstOccurrence } from "./corrective-action-intake";
+import { historyWarningLevels } from "./warning-level";
 import { correctedDates, datesInText, managerDatesForDraft, priorSteps } from "./form-date-answer";
 import { incidentDates } from "./incident-dates";
 import { priorSentenceFixFor } from "./prior-sentence-scope";
@@ -283,7 +285,14 @@ function sentenceSteps(notes: string, today: string): { iso: string; named: stri
 function stepsSaid(notes: string, today: string): { iso: string; named: string; topic?: string; about?: string }[] {
   const steps = priorSteps(notes, today);
   const have = new Set(steps.map((step) => step.iso));
-  const told = priorStepSentenceEnabled() ? [...steps, ...sentenceSteps(notes, today).filter((step) => !have.has(step.iso) && have.add(step.iso))] : steps;
+  const sentences = priorStepSentenceEnabled() ? [...steps, ...sentenceSteps(notes, today).filter((step) => !have.has(step.iso) && have.add(step.iso))] : steps;
+  /*
+   * HISTORY_LEVEL_NOT_THIS_FORM_ENABLED (F2, QA 14 Nov 2026): "verbal warning on 9/21. late again … today" — the level on
+   * file by its own date goes under Prior actions with that date, as "she had a verbal on 10/30" already does.
+   */
+  const told = historyLevelNotThisFormEnabled()
+    ? [...sentences, ...historyWarningLevels(notes, today).filter((step) => step.iso && !have.has(step.iso) && have.add(step.iso))]
+    : sentences;
   // PRIOR_STEP_DATE_LIST_ENABLED: "coaching on 9/8/2026, 9/15/2026 and 9/25/2026" is a row per date.
   if (!priorStepDateListEnabled()) return told;
   return [...told, ...dateListSteps(notes, today).dated.filter((step) => !have.has(step.iso) && have.add(step.iso))];

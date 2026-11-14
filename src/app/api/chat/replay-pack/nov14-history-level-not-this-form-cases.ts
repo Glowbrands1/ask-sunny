@@ -46,3 +46,46 @@ export const NOV14_HISTORY_LEVEL_NOT_THIS_FORM_CASES: ReplayCase[] = (
     expect((answer.formProposal as { warningLevel?: string | null } | undefined)?.warningLevel ?? null, "the level").toBeNull();
   },
 }));
+
+/*
+ * Gate-Sunny-3's findings on #970, as QA ruled them (14 Nov 2026), the person invented. F1: a level dated with the
+ * incident's own day, filed the next day, is this form's level. F2/F3: a level dated before today's incident goes under
+ * Prior actions with its date, and the card still says the level is the manager's to set.
+ */
+function startOn13(t: ReplayContext): ReplayThread {
+  vi.setSystemTime(new Date("2026-11-13T18:00:00Z"));
+  t.directory([...STAFF, ODALYS]);
+  t.as("salon_director", KEARNEY);
+  return t.thread();
+}
+
+export const NOV14_HISTORY_LEVEL_GATE_CASES: ReplayCase[] = [
+  {
+    id: "nov14-history-level-own-incident-day",
+    title: '"verbal warning on 11/12/26 for Odalys Brackwen, she was late that day", filed the next day, is a Verbal',
+    report: "Gate-Sunny-3 on #970 (F1), 14 Nov 2026: a level dated with the incident's own day was read as history",
+    // A guard, not a fix: flag off it is Verbal already; with the flag on it must stay Verbal.
+    status: "fixed",
+    async run(t) {
+      const thread = startOn13(t);
+      const answer = await thread.say("verbal warning on 11/12/26 for Odalys Brackwen, she was late that day");
+      expect(answer.formProposal, "no card").toBeTruthy();
+      expect((answer.formProposal as { warningLevel?: string | null } | undefined)?.warningLevel ?? null, "the level").toBe("verbal");
+    },
+  },
+  {
+    id: "nov14-history-level-goes-under-prior-actions",
+    title: '"ca for Odalys Brackwen, verbal warning on 9/21. late again for 30 mins today" lists the verbal under Prior actions',
+    report: "Gate-Sunny-3 on #970 (F2, F3), 14 Nov 2026: the earlier verbal was dropped, and the card no longer said the level was the manager's",
+    status: { open: "the card's level is the earlier warning's" },
+    fixFlags: ["HISTORY_LEVEL_NOT_THIS_FORM_ENABLED"],
+    async run(t) {
+      const thread = startOn13(t);
+      const answer = await thread.say("ca for Odalys Brackwen, verbal warning on 9/21. late again for 30 mins today");
+      expect(answer.formProposal, "no card").toBeTruthy();
+      expect((answer.formProposal as { warningLevel?: string | null } | undefined)?.warningLevel ?? null, "the level").toBeNull();
+      expect(answer.content, "Prior actions").toMatch(/\*\*Prior actions:\*\* Verbal warning — (?:signed )?09\/21\/2026/);
+      expect(answer.content, "the level is the manager's").toContain("You'll set the verbal/written warning level on the form");
+    },
+  },
+];

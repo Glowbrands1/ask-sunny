@@ -205,19 +205,23 @@ afterEach(() => {
   delete process.env.HISTORY_LEVEL_NOT_THIS_FORM_ENABLED;
 });
 
-/** The card the form intake gives one manager turn, or null when the turn is not read as a form request at all. */
-async function card(said: string) {
-  const message = { id: "m1", role: "user" as const, content: said, createdAt: "2026-11-14T03:30:00Z" };
-  const response = await proposeFormForTurn({
+/** The reply the form intake gives one manager turn, on the business day `today`. */
+async function reply(said: string, today = "2026-11-14") {
+  const message = { id: "m1", role: "user" as const, content: said, createdAt: `${today}T15:30:00Z` };
+  return proposeFormForTurn({
     history: [],
     question: said,
     questionMessageId: message.id,
     actor: { role: state.role as never, scope: state.scope as AccessScope },
     summaries: await listTemplateSummaries(),
-    today: "2026-11-14",
+    today,
     policyManual: async () => (state.manual?.chunks as never) ?? null,
   });
-  return response?.formProposal ?? null;
+}
+
+/** The card the form intake gives one manager turn, or null when the turn is not read as a form request at all. */
+async function card(said: string, today = "2026-11-14") {
+  return (await reply(said, today))?.formProposal ?? null;
 }
 
 const ON = () => {
@@ -257,4 +261,42 @@ describe("flag on: a level the manager asks for keeps its level, dated or not", 
       expect((await card(said))?.warningLevel).toBe(level);
     });
   }
+});
+
+/*
+ * QA's rulings on Gate-Sunny-3's findings on #970 (14 Nov 2026), in the gate's wordings, the person invented.
+ */
+describe("Gate-Sunny-3 on #970, flag on", () => {
+  const ASKED = "You'll set the verbal/written warning level on the form";
+
+  it('F1: "verbal warning on 11/12/26 for pat rivera, she was late that day", filed the next day, is this form\'s level', async () => {
+    ON();
+    vi.setSystemTime(new Date("2026-11-13T18:00:00Z"));
+    try {
+      expect((await card("verbal warning on 11/12/26 for pat rivera, she was late that day", "2026-11-13"))?.warningLevel).toBe("verbal");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('F2 and F3: "ca for pat rivera, verbal warning on 9/21. late again for 30 mins today" lists the verbal under Prior actions and leaves the level unset', async () => {
+    ON();
+    vi.setSystemTime(new Date("2026-11-13T18:00:00Z"));
+    try {
+      const answer = await reply("ca for pat rivera, verbal warning on 9/21. late again for 30 mins today", "2026-11-13");
+      expect(answer?.formProposal?.warningLevel ?? null).toBeNull();
+      expect(answer?.content).toMatch(/\*\*Prior actions:\*\* Verbal warning — (?:signed )?09\/21\/2026/);
+      expect(answer?.content).toContain(ASKED);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('as "ca for pat rivera, she had a verbal on 10/30. late again for 30 mins today" already does', async () => {
+    ON();
+    const answer = await reply("ca for pat rivera, she had a verbal on 10/30. late again for 30 mins today", "2026-11-13");
+    expect(answer?.formProposal?.warningLevel ?? null).toBeNull();
+    expect(answer?.content).toMatch(/\*\*Prior actions:\*\* Verbal warning — (?:signed )?10\/30\/2026/);
+    expect(answer?.content).toContain(ASKED);
+  });
 });

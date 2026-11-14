@@ -199,7 +199,9 @@ describe("the level reader stays out of the intake's import cycle", () => {
     const { join } = await import("node:path");
     const imports = (path: string) =>
       [...readFileSync(join(process.cwd(), path), "utf8").matchAll(/^\s*import\s.*from\s+"([^"]+)"/gm)].map((m) => m[1]);
-    expect(imports("src/lib/forms/warning-level.ts")).toEqual(["./payroll-deduct-answer"]);
+    // Changed on purpose (#970, 14 Nov 2026): the business day reader, which imports nothing either, dates "on 9/21".
+    expect(imports("src/lib/forms/warning-level.ts")).toEqual(["@/lib/business-date", "./payroll-deduct-answer"]);
+    expect(imports("src/lib/business-date.ts")).toEqual([]);
     expect(imports("src/lib/forms/payroll-deduct-answer.ts")).toEqual([]);
   });
 });
