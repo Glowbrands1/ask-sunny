@@ -187,6 +187,12 @@ import { privateCreatorFormsEnabled, privateCreatorsActive } from "@/lib/forms/p
 const NEW_FLAGS = [
   // coding 4: LONGER_PLACE_NAME_KEPT (Gate-Sunny's #936 follow-ups, QA 14 Nov 2026; default off).
   "LONGER_PLACE_NAME_KEPT_ENABLED",
+  // coding 4: WORK_AREA_NOT_A_TITLE (QA, Sunny 38d live, 13 Nov 2026; default off).
+  "WORK_AREA_NOT_A_TITLE_ENABLED",
+  // coding 4: OBSERVATION_NO_LEADING_NAME (QA, Sunny 38d live, 13 Nov 2026; default off).
+  "OBSERVATION_NO_LEADING_NAME_ENABLED",
+  // coding 4: REASON_PLACE_NOT_SALON (ported from the sibling app, Gate-Bubbles-3, 13 Nov 2026; default off).
+  "REASON_PLACE_NOT_SALON_ENABLED",
   // coding 4: PLACE_STRIP_WHOLE_PHRASE_ONLY (QA, Gate-Sunny #933 probes, 13 Nov 2026; default off).
   "PLACE_STRIP_WHOLE_PHRASE_ONLY_ENABLED",
   // coding 4: SHARED_CITY_ASKS_SALON (QA, Sunny 38c live, 13 Nov 2026; default off).
@@ -654,6 +660,8 @@ const NEW_FLAGS = [
   "OTHER_POLICY_AGREES_ENABLED",
   "OTHER_NOT_A_POLICY_NAME_ENABLED",
   "ACCOUNT_TYPOS_FIXED_ENABLED",
+  // coding 2: ON_FILE_LINE_NOT_THE_POLICY (Pau's morning scan, 14 Nov 2026; default off): forced off with the others.
+  "ON_FILE_LINE_NOT_THE_POLICY_ENABLED",
   // coding 2: EXCERPT_EMPTY_CARD_DROP (QA, 11 Nov 2026; default off): forced off with the others.
   "EXCERPT_EMPTY_CARD_DROP_ENABLED",
   // coding 6: REQUEST_ISSUE_KEPT (ported from Ask Bubbles, QA round 17b; default off).
@@ -822,8 +830,15 @@ const PROTECTED = [
  * days), in src/lib/forms/instances.ts, the seeded `form_date`/`date` default only: `input.formDate ?? recordToday()`
  * (`lib/business-today.ts`) in place of `new Date().toISOString().slice(0, 10)`, and its import. Behind
  * FORM_DATE_BUSINESS_TODAY_ENABLED, default off; off, recordToday() is that same UTC date.
+ *
+ * The user (Pau), under the standing approval, via QA on 14 Nov 2026, behind REASON_PLACE_NOT_SALON_ENABLED (default
+ * off): in src/lib/forms/salon-mention.ts, readSalonMentions reads `placeReadingText(said)` (`forms/reason-place.ts`),
+ * which blanks the place of a "because she was at …" reason with the flag on and returns its input unchanged with it
+ * off (reason-place-not-salon.test.ts proves the identity). The import and those two lines;
+ * docs/patches/reason-place-not-salon.patch. Off, exactly as before.
  */
 const APPROVED_PROTECTED_EDITS = [
+  ":(exclude)src/lib/forms/salon-mention.ts",
   ":(exclude)src/lib/forms/required-closing.ts",
   ":(exclude)src/lib/forms/ca-action-plan.ts",
   ":(exclude)src/lib/forms/proposal.ts",
