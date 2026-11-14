@@ -20,11 +20,13 @@ import {
   slotNameOnFormRequestEnabled,
   titleWholeWordEnabled,
   typedNameProceedsEnabled,
+  sameNameAsksWhichEnabled,
   warningLevelManagerOnlyEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { withCorrectedEmployee } from "./corrected-employee";
 import { payrollDeductAmount, payrollDeductFromConversation, type PayrollDeductAnswer } from "@/lib/forms/payroll-deduct";
 import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
+import { hasSameNamePair } from "@/lib/forms/same-name";
 import { lateOpenOn, newestStatedDate, withYearlessDatesWritten } from "@/lib/forms/late-open";
 import { printedPageForPolicy } from "@/lib/forms/printed-policy-pages";
 import { topicHeadings } from "@/lib/forms/specific-policy-topics";
@@ -1003,7 +1005,8 @@ function groundEmployee(
   if (match.kind === "confirm") {
     const rows = match.candidates.map((candidate) => asGrounded(candidate.employee, people));
     // One close roster match can still supply the salon. The name stays as typed.
-    if (typedNameProceedsEnabled()) {
+    // SAME_NAME_ASKS_WHICH_ENABLED: two or more roster people with ONE name are still a choice ("Which person did you mean…?").
+    if (typedNameProceedsEnabled() && !(sameNameAsksWhichEnabled() && hasSameNamePair(rows.map(displayName)))) {
       return { person: rows.length === 1 ? rows[0]! : null, name: probe, ambiguous: [], typed: probe };
     }
     const words = probe.split(/\s+/).filter(Boolean);
