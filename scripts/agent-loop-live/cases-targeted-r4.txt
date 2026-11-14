@@ -1,0 +1,33 @@
+# Targeted live run r4 (QA, 14 Nov 2026): after batches A and B and the self-review hotfix (#996, #997, #998). Cap $3.
+# Excludes the scripted nov14-agent-loop-* cases; their stand-ins decide the outcome. Edit-path outcomes are judged
+# in the real app by the tester, because the harness reviser is scripted.
+# live-app items 1-13 and the self-review: outcomes only (nov14-live-r4-cases.ts)
+nov14-live-r4-self-review-written
+nov14-live-r4-pre-create-date-and-policy
+nov14-live-r4-salon-asked-once-by-name
+nov14-live-r4-two-dates-not-both
+nov14-live-r4-inactive-in-woven
+nov14-live-r4-woven-title-said
+nov14-live-r4-msb-146-tans
+nov14-live-r4-manual-source-card
+nov14-live-r4-reviews-docs-not-no-access
+# r3's card-path failures (QA's triage, 46d457bf)
+nov8-639-name-answer-keeps-standards-of-conduct
+nov13-observation-place-must-read-omaha-last-week-capitalised
+nov12-off-roster-store-answer-only-lower
+nov12-off-roster-place-answer-state-first-unlisted
+nov10-make-that-update-writes-her-account
+nov6-diffemp-qa-after-create-lower
+nov3-stepb-write-the-observation
+nov13-card-added-fact-in-observation
+# controls (10 random from cases-passed30, seeded)
+nov8-possessive-no-apostrophe-capital
+nov10-p12-coaching-observed-saved-model-writes-nothing
+nov4-mgr-2-msb-no-name
+nov9-made-about-policy-line-no-section
+nov6-coding3-prior-actions-signed-policy-manual-kept
+nov3-same-ask-b10
+nov8-woven-conduct-named-policy-wins
+nov6-woven-training-conduct-did-not-complete
+nov8-proposal-name-correction-correct-way
+nov7-a2-negative-previous-store
