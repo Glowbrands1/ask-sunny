@@ -4682,6 +4682,18 @@ export function groupWordsNotANameEnabled(): boolean {
 }
 
 /**
+ * A short answer fills the slot it answers and nothing else: Employee is
+ * never a title, place, warning level or yes/no; Job title is never a place,
+ * level or yes/no; Payroll changes only when the turn says payroll or is a
+ * bare yes/no to the payroll question asked last (25 Oct 2026, Ask Sunny
+ * conv_mvoehonm2pfrkng, conv_mvofnrm5217ss9v). See `ai/bare-answer-guard.ts`.
+ * Off, the card is as before.
+ */
+export function bareAnswerBindingEnabled(): boolean {
+  return envFlag("BARE_ANSWER_BINDING_ENABLED");
+}
+
+/**
  * STEP_B_SECTION_SPACING_ENABLED (ported from Ask Bubbles; QA's live draft test, 8 Nov 2026; same flag in both apps;
  * default off). After an edit, the blank lines between Observed / Expectation / Going Forward became single newlines.
  * On: a write of a field that had them keeps one blank line before each section heading (`forms/outline-sections.ts`).

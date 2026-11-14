@@ -163,6 +163,7 @@ import {
   widerDateReaderEnabled,
   aiReadsCodeChecksEnabled,
   envFlag,
+  bareAnswerBindingEnabled,
   draftNoInventedPlanEnabled,
 } from "@/lib/config/chat-quality-flags";
 
@@ -660,6 +661,7 @@ const NEW_FLAGS = [
   "STEP_B_SECTION_SPACING_ENABLED",
   "DRAFT_NO_INVENTED_PLAN_ENABLED",
   "GROUP_WORDS_NOT_A_NAME_ENABLED",
+  "BARE_ANSWER_BINDING_ENABLED",
   // coding 4: FORMS_ON_FILE_ORDER_MATCH_POSSIBLE (ported from Ask Bubbles, 11 Nov 2026; default off).
   "FORMS_ON_FILE_ORDER_MATCH_POSSIBLE_ENABLED",
   // coding 6: POLICY_CARRY_RETRIEVAL (#248 rebuilt on main; QA item 10; default off).
@@ -1078,6 +1080,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(cardChangeFinalizedEnabled()).toBe(false);
     expect(formPatchReducerEnabled()).toBe(false);
     expect(formReplyFromDiffEnabled()).toBe(false);
+    expect(bareAnswerBindingEnabled()).toBe(false);
     expect(draftNoInventedPlanEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
