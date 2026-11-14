@@ -621,7 +621,7 @@ function namesOnlyTheForm(q: string): boolean {
  */
 function levelLeadsRequest(original: string): boolean {
   const levelled =
-    /^\s*(?:please\s+)?(?:an?\s+)?(?:(?:another|one\s+more|first|1st|second|2nd|third|3rd|next)\s+)?(?:verbal|written)(?:\s+warning)?\s+(?:for|on)\s+(\S+)/i.exec(original);
+    /^\s*(?:please\s+)?(?:an?\s+)?(?:(?:another|one\s+more|first|1st|second|2nd|third|3rd|next)\s+)?(?:verbal|written)\s+for\s+(\S+)/i.exec(original);
   return levelled !== null && couldBeName(levelled[1]);
 }
 

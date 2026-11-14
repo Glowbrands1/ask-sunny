@@ -249,4 +249,14 @@ describe('"second verbal for <A>, she was late on 11/12/26" (Gate-Sunny-3 via QA
     expect(proposal?.templateKey).toBe("dpoa");
     expect(proposal?.warningLevel ?? null).toBeNull();
   });
+
+  // Ask Bubbles' warning-level suite caught this on the first draft: a level "for that" is history, never this form's.
+  // ("verbal warning on 9/21. late again …" and "written warning for the same thing …" are read as this form's level by
+  // Ask Sunny's older reader with this flag off as well: a separate, pre-existing item, reported to QA 14 Nov 2026.)
+  for (const said of ["verbal for that, late again today"]) {
+    it(`flag on: "${said}" states no level for this form`, async () => {
+      process.env.LEVEL_LEADS_REQUEST_ENABLED = "true";
+      expect((await card(said))?.warningLevel ?? null).toBeNull();
+    });
+  }
 });

@@ -35,7 +35,7 @@ function levelLeadsRequestOn(): boolean {
  * count words say which step it is, not a different level. History ("she had a verbal for being late") never opens the
  * message, so it is not read here.
  */
-const LEVEL_LEADS = /^\s*(?:please\s+)?(?:an?\s+)?(?:(?:another|one\s+more|first|1st|second|2nd|third|3rd|next)\s+)?(verbal|written)(?:\s+warning)?\s+(?:for|on)\s+\S/;
+const LEVEL_LEADS = /^\s*(?:please\s+)?(?:an?\s+)?(?:(?:another|one\s+more|first|1st|second|2nd|third|3rd|next)\s+)?(verbal|written)\s+for\s+(?!(?:the|that|this|it|same|being|a|an|her|his|their|them|him|not|no|missing|\d)\b)[a-z][a-z'’-]*/i;
 
 /** LEVEL_AFTER_FORM_NAME_ENABLED, read here for the same reason. */
 function levelAfterFormNameOn(): boolean {
