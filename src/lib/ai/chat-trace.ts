@@ -97,7 +97,7 @@ async function persistChatTrace(draft: ChatTraceDraft): Promise<void> {
       error_class: draft.errorClass,
       error_status: draft.errorStatus,
       form_in_progress: draft.formInProgress,
-      slots: withStages(withDraftCheck(withFormEdit(metered ? { ...(draft.slots ?? {}), ...metered } : (draft.slots ?? {}), draft.formEdit), draft.draftCheck), draft.stages, draft.stagesFrom ?? draft.startedAt),
+      slots: withStages(withCardCheck(withDraftCheck(withFormEdit(metered ? { ...(draft.slots ?? {}), ...metered } : (draft.slots ?? {}), draft.formEdit), draft.draftCheck), draft.cardCheck), draft.stages, draft.stagesFrom ?? draft.startedAt),
       retryable: model?.retryable ?? false,
       retried: false,
       succeeded: draft.succeeded === true,
@@ -118,6 +118,11 @@ function withStages(slots: Record<string, unknown>, stages: ChatTraceDraft["stag
 }
 
 /** FORM_EDIT_SINGLE_WRITER_ENABLED: the post-draft check's keys, when it ran; otherwise the slots as they were. */
+/** CARD_CHECKED_AGAINST_WORDS_ENABLED: `slots.card_check`. Absent (the flag off, or no card), the slots as before. */
+function withCardCheck(slots: Record<string, unknown>, check: Record<string, unknown> | undefined): Record<string, unknown> {
+  return check ? { ...slots, card_check: check } : slots;
+}
+
 function withDraftCheck(slots: Record<string, unknown>, check: Record<string, unknown> | undefined): Record<string, unknown> {
   return check ? { ...slots, draft_check: check } : slots;
 }

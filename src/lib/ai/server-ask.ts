@@ -109,6 +109,7 @@ import {
 } from "@/lib/knowledge/role-grounding";
 import { isFrameworkAvailable } from "@/lib/knowledge/framework-availability";
 import { rowToCitation, type MatchedChunkRow } from "@/lib/knowledge/mappers";
+import { shownCitations } from "@/lib/knowledge/empty-card-drop";
 import { loadEmployeeFacts } from "@/lib/reporting/read/employee-facts";
 import { recallPeople } from "@/lib/chat/person-memory-store";
 import {
@@ -188,6 +189,7 @@ import { withOwnPlace } from "./keeps-own-place";
 import { withFormTypeSwitch, withSwitchNote, withSwitchSources } from "./form-type-switch";
 import { withUnreadDateAsk } from "./unread-date-ask";
 import { withStatedAmount } from "./amount-answer-saved";
+import { withTerminationStated } from "./termination-stated";
 import { withWarningLevelFromClause } from "./warning-level-clause";
 import { recallMemory, rememberFact } from "./chat-memory-store";
 import { normalizeForChat } from "./message-normalize-claude";
@@ -202,6 +204,7 @@ import {
 } from "./prompts";
 import { retrievalQueryFor } from "./retrieval-query";
 import { slotOnlyRetrievalTopic } from "./slot-only-turn";
+import { carriedPolicyTopic } from "./policy-carry-retrieval";
 import { appPasswordHelpFor } from "./app-password-help";
 import { redactSensitiveDefaults, withoutSensitiveDefaults } from "./sensitive-defaults";
 import { withoutSharedSourceClaims } from "./sources-not-shared";
@@ -451,7 +454,8 @@ async function answerQuestionChecked(
             // UNKNOWN_NAME_ASK_ENABLED: a typed name not on the directory is named back, never asked again in the same words.
             withUnknownNameAsk(
               withFirstNameAsk(
-                withWarningLevelFromClause(withSpelledOutTitle(withJobTitleReadBackCase(withJobTitleCase(withJobTitleFromWords(withCoachingWhatHappened(withoutNoAccountAppPolicy(withCaWhatHappened(await applyQuietQuality(response), request)), request), request)))), request),
+                // TERMINATION_STATED_TICKS_ENABLED: a termination the manager stated is the card's level, with the approval line.
+                withTerminationStated(withWarningLevelFromClause(withSpelledOutTitle(withJobTitleReadBackCase(withJobTitleCase(withJobTitleFromWords(withCoachingWhatHappened(withoutNoAccountAppPolicy(withCaWhatHappened(await applyQuietQuality(response), request)), request), request)))), request), request),
                 request,
               ),
               request,
@@ -1439,11 +1443,15 @@ async function answerQuestionUntraced(
   let rows: MatchedChunkRow[];
   let fullManualBlock: string | null = null;
   let fullManuals: readonly AssembledManual[] = [];
-  const followedUp = retrievalQueryFor({
-    question: request.question,
-    history: request.history,
-    openForm: request.openForm ?? null,
-  });
+  // POLICY_CARRY_RETRIEVAL_ENABLED: "just make it" is searched with the policy named earlier (QA item 10).
+  const carriedTopic = carriedPolicyTopic(request.question, request.history);
+  const followedUp =
+    carriedTopic ??
+    retrievalQueryFor({
+      question: request.question,
+      history: request.history,
+      openForm: request.openForm ?? null,
+    });
   const glossed = queryRewriteEnabled()
     ? expandGlossaryQuery(heard?.modelQuery ?? followedUp)
     : followedUp;
@@ -1451,7 +1459,7 @@ async function answerQuestionUntraced(
    * A slot-only turn is already searched with the conversation's topic (see
    * `slot-only-turn.ts`); the rewrite would read the turn's own words again.
    */
-  const slotTopic = slotOnlyRetrievalTopic(request.question, request.history);
+  const slotTopic = slotOnlyRetrievalTopic(request.question, request.history) ?? carriedTopic;
   markStage("query_rewrite");
   const rewritten = queryRewriteEnabled() && !slotTopic
     ? await rewriteToManualTerms({
@@ -2077,10 +2085,13 @@ async function answerQuestionUntraced(
       : null;
   const spoken = checked?.content ?? answer;
   const markers = extractUsedMarkers(spoken, grounding.map((chunk) => chunk.marker));
-  const retrievedCitations: SourceCitation[] = markers
-    .map((marker) => used[marker - 1])
-    .filter((row): row is MatchedChunkRow => Boolean(row))
-    .map(rowToCitation);
+  // EXCERPT_EMPTY_CARD_DROP_ENABLED: no empty card, none labelled with the sibling company (`empty-card-drop.ts`).
+  const retrievedCitations: SourceCitation[] = shownCitations(
+    markers
+      .map((marker) => used[marker - 1])
+      .filter((row): row is MatchedChunkRow => Boolean(row))
+      .map(rowToCitation),
+  );
 
   /*
    * ==========================================================================

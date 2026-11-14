@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { draftNoInventedPlanEnabled } from "@/lib/config/chat-quality-flags";
 import { fakeSupabase, type FakeStore } from "@/test/fake-supabase";
 import { JBA_MANUAL_CA_CHUNKS } from "@/test/fixtures/jba-manual-ca-sections";
 import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
@@ -357,7 +358,7 @@ const REMAP_EXTRA = ["FORM_FULL_REMAP_ENABLED", "REMAP_INCIDENT_FIX_ENABLED"] as
 const FLAG = "PRIOR_SENTENCE_FIX_ENABLED";
 /** FORM_DATE_INCIDENT_ONLY_ENABLED (D3, =0 in production) is pinned by each case, never read from the shell. */
 const FIO = "FORM_DATE_INCIDENT_ONLY_ENABLED";
-const ALL_FLAGS = [...PRODUCTION, ...REMAP_EXTRA, FLAG, FIO, "CODE_SLOTS_ENABLED", "POLICY_CITATION_ENABLED", "FORM_STATE_ENABLED", "REMAP_DRAFT_SOURCES_ENABLED", "NEXT_PUBLIC_REMAP_DRAFT_SOURCES_ENABLED", "INTENT_PAYROLL_MANAGER_ONLY_ENABLED", "CHAT_DATA_TOOLS_ENABLED", "CHAT_MEMORY_ENABLED"];
+const ALL_FLAGS = [...PRODUCTION, ...REMAP_EXTRA, FLAG, FIO, "CODE_SLOTS_ENABLED", "POLICY_CITATION_ENABLED", "FORM_STATE_ENABLED", "REMAP_DRAFT_SOURCES_ENABLED", "NEXT_PUBLIC_REMAP_DRAFT_SOURCES_ENABLED", "INTENT_PAYROLL_MANAGER_ONLY_ENABLED", "CHAT_DATA_TOOLS_ENABLED", "CHAT_MEMORY_ENABLED", "EDIT_SEES_SAVED_FORM_ENABLED", "CARD_CHECKED_AGAINST_WORDS_ENABLED"];
 
 type Answer = {
   content: string;
@@ -520,7 +521,8 @@ describe(`${AO} on`, () => {
 
   it("the drafted Observed says no opening nobody wrote, dated with the form's date", async () => {
     const observation = await drafted();
-    expect(observation).toBe(EXPECTED);
+    // DRAFT_NO_INVENTED_PLAN_ENABLED (intended change, QA 12 Nov 2026, before the flip): no model "Going Forward" section.
+    expect(observation).toBe(draftNoInventedPlanEnabled() ? EXPECTED.replace(/\n\nGoing Forward:[\s\S]*$/, "") : EXPECTED);
   });
 
   it("\"last tuesday\" is the form's resolved date too", async () => {
@@ -541,7 +543,10 @@ describe(`${AO} on`, () => {
     for (const turn of TURNS) await thread.say(turn);
     state.draft = { values: { observation: clean } };
     const id = await thread.create();
-    expect(store.form_instance_values.find((row) => row.instance_id === id && row.field_key === "observation")?.value).toBe(clean);
+    // DRAFT_NO_INVENTED_PLAN_ENABLED (intended change, QA 12 Nov 2026, before the flip): the model's "Going Forward" is
+    // dropped from the Corrective Action Form's Observation; the Observed line is kept as written. Off, all of it.
+    const kept = draftNoInventedPlanEnabled() ? "Observed:\nThe employee was late to work on October 2, 2026." : clean;
+    expect(store.form_instance_values.find((row) => row.instance_id === id && row.field_key === "observation")?.value).toBe(kept);
   });
 
   it("notes that say open keep it", async () => {

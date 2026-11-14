@@ -1,4 +1,5 @@
 import {
+  otherNotAPolicyNameEnabled,
   actionPlanSentencesEnabled,
   managerPayrollAmountOnlyEnabled,
   payrollAmountFieldEnabled,
@@ -15,7 +16,9 @@ import {
   quotedDeductionAmount,
   type PayrollDeductAnswer,
 } from "./payroll-deduct";
-import { CA_ACTION_PLAN_CLOSING, withRequiredClosing } from "./required-closing";
+import { terminationStatedTicksEnabled } from "@/lib/config/chat-quality-flags";
+
+import { CA_ACTION_PLAN_CLOSING, TERMINATION_PLAN_CLOSING, withRequiredClosing } from "./required-closing";
 
 /**
  * ============================================================================
@@ -105,6 +108,8 @@ export function policyNamesFromViolated(value: string | null | undefined): strin
       const section = /^.+?\s+[—–]\s+(.+)$/.exec(text) ?? /^violation of company polic(?:y|ies)\s*-\s*(.+)$/i.exec(text);
       if (section) return section[1]!.trim();
       if (/^violation of company polic(?:y|ies)$/i.test(text)) return "";
+      // OTHER_NOT_A_POLICY_NAME_ENABLED: "Other" is a box, never a policy ("review the Other policy").
+      if (otherNotAPolicyNameEnabled() && /^other$/i.test(text)) return "";
       return text.replace(/\s+violations?$/i, "").trim();
     })
     .filter((name, index, all) => name !== "" && all.findIndex((other) => other.toLowerCase() === name.toLowerCase()) === index);
@@ -135,6 +140,18 @@ export interface ActionPlanInput {
   };
   /** The version's required closing; absent on a version without one, which gets the current wording. */
   readonly closing?: string | null;
+  /** TERMINATION_STATED_TICKS_ENABLED: the form's Type of Warning is Termination. */
+  readonly termination?: boolean;
+}
+
+/*
+ * TERMINATION_STATED_TICKS_ENABLED. Edited with Pau's written approval, 10 Nov 2026 (relayed verbatim by QA): "ok
+ * termination closing". When the Type of Warning is Termination, the plan's closing sentence is the termination
+ * sentence, not the warning of future violations. Off, the closing is as before.
+ */
+function planClosing(input: ActionPlanInput): string {
+  if (input.termination && terminationStatedTicksEnabled()) return TERMINATION_PLAN_CLOSING;
+  return input.closing?.trim() || CA_ACTION_PLAN_CLOSING;
 }
 
 /** The whole Action Plan, closing included. */
@@ -148,7 +165,7 @@ export function correctiveActionPlan(input: ActionPlanInput): string {
     `Management will review ${policyPhrase(names)} with ${firstName ?? "the employee"}.`,
     payroll,
   ].filter((sentence): sentence is string => sentence !== null);
-  return withRequiredClosing(sentences.join(" "), input.closing?.trim() || CA_ACTION_PLAN_CLOSING);
+  return withRequiredClosing(sentences.join(" "), planClosing(input));
 }
 
 /** The provenance a built plan is stored with: what it was built from. */
@@ -249,6 +266,8 @@ export function refreshedActionPlan(input: {
       }),
     },
     closing: plan.closing,
+    // TERMINATION_STATED_TICKS_ENABLED (Pau's approval, 10 Nov 2026): a refreshed plan keeps the termination closing.
+    termination: (rowOf("warning_type")?.checked ?? []).includes("termination"),
   };
   const value = correctiveActionPlan(built);
   if (value === row.value) return null;

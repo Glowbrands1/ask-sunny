@@ -163,6 +163,7 @@ import {
   widerDateReaderEnabled,
   aiReadsCodeChecksEnabled,
   envFlag,
+  draftNoInventedPlanEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -184,6 +185,20 @@ import { privateCreatorFormsEnabled, privateCreatorsActive } from "@/lib/forms/p
  */
 
 const NEW_FLAGS = [
+  // coding 4: SHARED_CITY_ASKS_SALON (QA, Sunny 38c live, 13 Nov 2026; default off).
+  "SHARED_CITY_ASKS_SALON_ENABLED",
+  // coding 2: OFF_ROSTER_PLACE_ANSWER (QA's Sunny 37b live bug, 12 Nov 2026; default off).
+  "OFF_ROSTER_PLACE_ANSWER_ENABLED",
+  // coding 2: OFFERED_NAME_ACCEPTED (QA, 12 Nov 2026: an admin's "use <C>" refused; default off).
+  "OFFERED_NAME_ACCEPTED_ENABLED",
+  // coding 4: FORM_DATE_BUSINESS_TODAY (live bug, QA, 13 Nov 2026; default off).
+  "FORM_DATE_BUSINESS_TODAY_ENABLED",
+  // coding 4: CLOSE_SPELLING_MATCH (Pau via QA, 13 Nov 2026; default off).
+  "CLOSE_SPELLING_MATCH_ENABLED",
+  // coding 6: CARD_CHECKED_AGAINST_WORDS (Pau's direction via QA, 13 Nov 2026; default off).
+  "CARD_CHECKED_AGAINST_WORDS_ENABLED",
+  // coding 6: EDIT_SEES_SAVED_FORM (Pau's direction via QA, 13 Nov 2026; default off).
+  "EDIT_SEES_SAVED_FORM_ENABLED",
   // coding 4: FULL_MANUAL_KEEPS_RETRIEVAL (QA, 10 Nov 2026; default off).
   "FULL_MANUAL_KEEPS_RETRIEVAL_ENABLED",
   // coding 4: FORM_NAME_NOT_A_TITLE (QA's prod-env reading, D5, 11 Nov 2026; default off).
@@ -369,6 +384,8 @@ const NEW_FLAGS = [
   "FORM_EDIT_REFERS_BACK_ENABLED",
   "SAME_FORM_COPY_ENABLED",
   "SAME_FORM_COPY_NEW_PERSON_ENABLED",
+  // coding 6: GUEST_ATTITUDE_CONDUCT (default off): forced off with the others.
+  "GUEST_ATTITUDE_CONDUCT_ENABLED",
   // coding 6: DRAFT_WRITE_NEVER_SILENT (default off): forced off with the others.
   "DRAFT_WRITE_NEVER_SILENT_ENABLED",
   // coding 6: CA_PROCEDURE_BASIS (default off; rebuilt from old S544): forced off with the others.
@@ -396,6 +413,8 @@ const NEW_FLAGS = [
   "PAYROLL_SPLIT_WORDS_ENABLED",
   // coding 6: SAME_REQUEST_OTHER_PERSON (default off): forced off with the others.
   "SAME_REQUEST_OTHER_PERSON_ENABLED",
+  // coding 6: MAKE_THAT_UPDATE_ACCOUNT (default off; QA's 10 Nov audit, copy-paste case): forced off with the others.
+  "MAKE_THAT_UPDATE_ACCOUNT_ENABLED",
   // coding 6: SAME_REQUEST_OFF_ROSTER (default off; QA's r23 live test, #779 off roster): forced off with the others.
   "SAME_REQUEST_OFF_ROSTER_ENABLED",
   // coding 6: PASTED_OUTLINE_TO_OPEN_DRAFT (default off; QA's r23 live test of sf-s21): forced off with the others.
@@ -404,8 +423,18 @@ const NEW_FLAGS = [
   "COACHING_OBSERVED_SAVED_ENABLED",
   // coding 6: APP_INSTRUCTIONS_NOT_ACCOUNT (default off): forced off with the others.
   "APP_INSTRUCTIONS_NOT_ACCOUNT_ENABLED",
+  // coding 5: SPELLING_CLEANUP (default off; Pau via QA, 13 Nov 2026): forced off with the others.
+  "SPELLING_CLEANUP_ENABLED",
   // coding 6: FAILURE_TO_OPEN_IS_LATE_OPENING (default off): forced off with the others.
   "FAILURE_TO_OPEN_IS_LATE_OPENING_ENABLED",
+  // coding 6: TERMINATION_STATED_TICKS (default off): forced off with the others.
+  "TERMINATION_STATED_TICKS_ENABLED",
+  // coding 6: PAYROLL_BARE_SENTENCE (default off): forced off with the others.
+  "PAYROLL_BARE_SENTENCE_ENABLED",
+  // coding 6: ADVICE_ASK_NOT_ACCOUNT (default off): forced off with the others.
+  "ADVICE_ASK_NOT_ACCOUNT_ENABLED",
+  // coding 6: DRAFT_WROTE_NOTHING_NOTICE (default off): forced off with the others.
+  "DRAFT_WROTE_NOTHING_NOTICE_ENABLED",
   "STAFF_PICKER_ENABLED",
   "STAFF_PICKER_STORE_TITLES_ENABLED",
   "STAFF_PICKER_BARE_ANSWER_ENABLED",
@@ -519,6 +548,8 @@ const NEW_FLAGS = [
   // The second Sunny gate's fix flags (6 Nov 2026): forced off with the others in the child run.
   "TITLE_ENDS_AT_LINE_ENABLED",
   "FULL_POSITION_TITLE_ENABLED",
+  // QA, 10 Nov 2026 (default off): "not following the dress code" names the policy as broken.
+  "NOT_FOLLOWING_IS_VIOLATION_ENABLED",
   "BARE_NOT_DENIAL_ENABLED",
   "PLACE_FROM_CUE_ENABLED",
   // Port of the sibling app's flip-3 fix (6 Nov 2026): forced off with the others in the child run.
@@ -590,6 +621,11 @@ const NEW_FLAGS = [
   "SHIFT_ACCOUNT_IS_INCIDENT_ENABLED",
   // coding 5: UNDATED_ACCOUNT_BRIEF (default off): forced off with the others in the child run.
   "UNDATED_ACCOUNT_BRIEF_ENABLED",
+  "EXCERPT_BRAND_FILTER_ENABLED",
+  "HUMAN_REPLIES_ENABLED",
+  "EXIT_TYPO_WORDS_ENABLED",
+  "WOVEN_TEXT_NUL_STRIP_ENABLED",
+  "WOVEN_FAILED_RETRY_ENABLED",
   "ADD_THAT_IS_ACCOUNT_ENABLED",
   "WHAT_HAPPENED_NO_CREATE_ENABLED",
   "CREATE_FROM_CONVERSATION_POINTS_TO_CARD_ENABLED",
@@ -610,8 +646,26 @@ const NEW_FLAGS = [
   // coding 2: CREATE_COMMAND_POINTS_TO_CARD and CARD_COMPLAINT_NOT_ACCOUNT (default off): forced off with the others.
   "CREATE_COMMAND_POINTS_TO_CARD_ENABLED",
   "CARD_COMPLAINT_NOT_ACCOUNT_ENABLED",
+  // coding 2: OTHER_POLICY_AGREES and OTHER_NOT_A_POLICY_NAME (QA, 11 Nov 2026; default off): forced off with the others.
+  "OTHER_POLICY_AGREES_ENABLED",
+  "OTHER_NOT_A_POLICY_NAME_ENABLED",
+  "ACCOUNT_TYPOS_FIXED_ENABLED",
+  // coding 2: EXCERPT_EMPTY_CARD_DROP (QA, 11 Nov 2026; default off): forced off with the others.
+  "EXCERPT_EMPTY_CARD_DROP_ENABLED",
   // coding 6: REQUEST_ISSUE_KEPT (ported from Ask Bubbles, QA round 17b; default off).
   "REQUEST_ISSUE_KEPT_ENABLED",
+  // coding 4: STEP_B_SECTION_SPACING (ported from Ask Bubbles; split out of #662, 12 Nov 2026; default off).
+  "STEP_B_SECTION_SPACING_ENABLED",
+  "DRAFT_NO_INVENTED_PLAN_ENABLED",
+  "GROUP_WORDS_NOT_A_NAME_ENABLED",
+  // coding 4: FORMS_ON_FILE_ORDER_MATCH_POSSIBLE (ported from Ask Bubbles, 11 Nov 2026; default off).
+  "FORMS_ON_FILE_ORDER_MATCH_POSSIBLE_ENABLED",
+  // coding 6: POLICY_CARRY_RETRIEVAL (#248 rebuilt on main; QA item 10; default off).
+  "POLICY_CARRY_RETRIEVAL_ENABLED",
+  // coding 2: OFF_ROSTER_STORE_ANSWER_ONLY (QA's #735 ruling, 12 Nov 2026; default off).
+  "OFF_ROSTER_STORE_ANSWER_ONLY_ENABLED",
+  // coding 6: SAME_NAME_ASKS_WHICH (QA, 12 Nov 2026; default off; high priority).
+  "SAME_NAME_ASKS_WHICH_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -735,6 +789,14 @@ const PROTECTED = [
  * before. The filed form is never touched. Same hunk in both apps (Ask
  * Bubbles 66813d54); in Ask Sunny the Type of Offense change is revision 8.
  *
+ * The user (Pau) approved, under Pau's standing approval via QA, 11 Nov 2026, in
+ * src/lib/forms/ca-action-plan.ts, exactly the lines of
+ * docs/patches/other-not-a-policy-name.patch: the import
+ * `otherNotAPolicyNameEnabled`, and in policyNamesFromViolated the one guarded
+ * line `if (otherNotAPolicyNameEnabled() && /^other$/i.test(text)) return "";`
+ * (a bare "Other" is never a policy name: no "review the Other policy").
+ * Behind OTHER_NOT_A_POLICY_NAME_ENABLED, default off; off, as before.
+ *
  * The user (Pau) approved on 11 Nov 2026, via QA (Pau's standing approval for
  * fixes, recorded by QA), in src/lib/forms/proposal.ts, exactly the hunks in
  * docs/patches/form-name-not-a-title.patch: the import
@@ -742,8 +804,24 @@ const PROTECTED = [
  * extractJobTitle a title word straight before "EPP" is skipped as the form's
  * name unless the title is said again later. Behind
  * FORM_NAME_NOT_A_TITLE_ENABLED, default off; off, every title is read as before.
+ * The user (Pau) approved in writing on 10 Nov 2026, via QA ("ok termination
+ * closing"), behind TERMINATION_STATED_TICKS_ENABLED (default off), both apps:
+ * in src/lib/forms/required-closing.ts, `withRequiredClosing` returns a value
+ * that already ends with the termination sentence unchanged (with its
+ * `TERMINATION_PLAN_CLOSING` constant and the flag import); in
+ * src/lib/forms/ca-action-plan.ts, `ActionPlanInput.termination`, and a
+ * Termination plan's closing is the termination sentence (`planClosing`, also
+ * in `refreshedActionPlan`). Off, both are exactly as before; instances.ts is
+ * not touched.
+ *
+ * QA approved on 13 Nov 2026 (live bug: evening forms dated the next day; Pau's audit, 27 of 29 evening forms in 30
+ * days), in src/lib/forms/instances.ts, the seeded `form_date`/`date` default only: `input.formDate ?? recordToday()`
+ * (`lib/business-today.ts`) in place of `new Date().toISOString().slice(0, 10)`, and its import. Behind
+ * FORM_DATE_BUSINESS_TODAY_ENABLED, default off; off, recordToday() is that same UTC date.
  */
 const APPROVED_PROTECTED_EDITS = [
+  ":(exclude)src/lib/forms/required-closing.ts",
+  ":(exclude)src/lib/forms/ca-action-plan.ts",
   ":(exclude)src/lib/forms/proposal.ts",
   ":(exclude)src/lib/forms/chat-revision.ts",
   ":(exclude)src/lib/forms/instances.ts",
@@ -998,6 +1076,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(cardChangeFinalizedEnabled()).toBe(false);
     expect(formPatchReducerEnabled()).toBe(false);
     expect(formReplyFromDiffEnabled()).toBe(false);
+    expect(draftNoInventedPlanEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(
@@ -1089,6 +1168,8 @@ describe("new flags default off and wrappers are inert", () => {
           // Import's "belongs to another account" line (QA, 31 Oct 2026, both apps): shown only
           // when the server declines a chat as another account's, i.e. only with
           // CHAT_IMPORT_OWN_ONLY_ENABLED on. Off, the server never declines that way, so it never shows.
+          // Its "couldn't confirm … is yours" line (QA, 12 Nov 2026, both apps) likewise shows only for a "not_proven"
+          // decline, which only CHAT_IMPORT_PROVEN_OWN_ENABLED returns.
           ":(exclude)src/features/chat/import-local-history.tsx",
           // App switcher's Leadership Hub tab (requested by Paulyne through the QA session,
           // 1 Nov 2026 — QA to confirm): shell plumbing for a server yes/no. With
@@ -1134,6 +1215,11 @@ describe("new flags default off and wrappers are inert", () => {
           // Confetti on a 5-star rating (requested by Paulyne, 9 Nov 2026): the
           // one mount line after a rating saves; `lib/ui/confetti.ts` does the rest.
           ":(exclude)src/features/chat/conversation-rating.tsx",
+          // DM L10 tab (requested by Paulyne via QA, 13 Nov 2026; approved by QA): new pages and
+          // components only, shown only when HUB_PARTNER_SECRET is set and the Leadership Hub says
+          // the person holds the meeting's role. No existing page, chat or form behaviour changes.
+          ":(exclude)src/app/(app)/meetings",
+          ":(exclude)src/features/l10",
         ]),
       ).toBe("");
       expect(changedLines(diff(uiBase, [MONITORING_TABLE])).filter((line) => !MONITORING_MOUNT.includes(line))).toEqual([]);
@@ -1191,25 +1277,54 @@ function chatHalf(half: 0 | 1): string[] {
   return half === 0 ? all.slice(0, middle) : all.slice(middle);
 }
 /*
- * THE REPLAY PACK IN TWO HALVES (QA, 9 Nov 2026): its child timed out at 540 s on CI (ask-sunny#713, #717; ETIMEDOUT, no
- * assertion failed) as the pack grew. Nearly all of its time is one file, `replay-pack-e2e.test.ts`, so it is halved by
- * case, not by file: the first child runs the whole folder with the first half of the cases by id (`REPLAY_PACK_HALF`
- * "0"; the pack's other test files run there, once), the second child that one file with the second half ("1"). Every
- * case and every file still runs exactly once, with every new flag off.
+ * THE REPLAY PACK IN QUARTERS (QA, 9 Nov 2026 in halves; thirds 12 Nov; quarters 13 Nov 2026): its child timed out at
+ * 540 s on CI (ask-sunny#713, #717; main 7e8dcdb6 with halves; ask-sunny#839 with thirds, its first third at 540 s;
+ * ETIMEDOUT, no assertion failed) as the pack grew. Nearly all of its time is one file, `replay-pack-e2e.test.ts`, so
+ * it is split by case, not by file: four children run that file with one quarter of the cases each (`REPLAY_PACK_PART`
+ * "i/4", interleaved by id so the heavy cases spread out), and one child runs the pack's other test files (a few
+ * seconds). Every case and every file still runs exactly once, with every new flag off. No timeout is raised.
  */
 const REPLAY_PACK_E2E = `${REPLAY_PACK}/replay-pack-e2e.test.ts`;
+/** The pack's own test files besides the e2e (registry, policy-line, step-b-live-check, …): one child, a few seconds. */
+function replayPackOtherFiles(): string[] {
+  return readdirSync(REPLAY_PACK)
+    .filter((name) => /\.test\.tsx?$/.test(name) && `${REPLAY_PACK}/${name}` !== REPLAY_PACK_E2E)
+    .map((name) => `${REPLAY_PACK}/${name}`)
+    .sort();
+}
 const CHILDREN: readonly { readonly name: string; readonly paths: () => readonly string[]; readonly env?: Readonly<Record<string, string>> }[] = [
   { name: "src/lib/ai, src/lib/forms", paths: () => ["src/lib/ai", "src/lib/forms"] },
   { name: `${CHAT} (without the replay pack), first half by name`, paths: () => chatHalf(0) },
   { name: `${CHAT} (without the replay pack), second half by name`, paths: () => chatHalf(1) },
   { name: "src/app/api/forms", paths: () => ["src/app/api/forms"] },
-  { name: `${REPLAY_PACK}, first half of the cases by id`, paths: () => [REPLAY_PACK], env: { REPLAY_PACK_HALF: "0" } },
-  { name: `${REPLAY_PACK}, second half of the cases by id`, paths: () => [REPLAY_PACK_E2E], env: { REPLAY_PACK_HALF: "1" } },
+  { name: `${REPLAY_PACK}, its test files other than the e2e`, paths: () => replayPackOtherFiles() },
+  { name: `${REPLAY_PACK}, the cases in quarter 1 of 4`, paths: () => [REPLAY_PACK_E2E], env: { REPLAY_PACK_PART: "0/4" } },
+  { name: `${REPLAY_PACK}, the cases in quarter 2 of 4`, paths: () => [REPLAY_PACK_E2E], env: { REPLAY_PACK_PART: "1/4" } },
+  { name: `${REPLAY_PACK}, the cases in quarter 3 of 4`, paths: () => [REPLAY_PACK_E2E], env: { REPLAY_PACK_PART: "2/4" } },
+  { name: `${REPLAY_PACK}, the cases in quarter 4 of 4`, paths: () => [REPLAY_PACK_E2E], env: { REPLAY_PACK_PART: "3/4" } },
 ];
 
+/*
+ * THE CHILDREN AS PARALLEL CI JOBS (QA, 13 Nov 2026): the children run one after another (each a blocking execFileSync),
+ * so splitting the pack only keeps each child under 540 s; the job's total stays the sum, and the 30-minute job was
+ * cancelled at 30:11 (ask-sunny#930, no failing test). PARITY_ONLY (CI only) runs ONE child — its index in CHILDREN — so
+ * `.github/workflows/ci.yml` runs every child in its own matrix job, side by side; "guards" runs this file's other tests
+ * and no child. Unset (npm test, local), everything runs here, as before. The matrix lists every child: checked below.
+ */
+const PARITY_ONLY = process.env.PARITY_ONLY;
+const childSkipped = (index: number) => PARITY_ONLY !== undefined && PARITY_ONLY !== String(index);
+
+describe("the CI matrix runs every parity child", () => {
+  it("ci.yml's flags-off-parity matrix lists guards and each CHILDREN index, once", () => {
+    const workflow = readFileSync(".github/workflows/ci.yml", "utf8");
+    const listed = /parity-child:\s*\[([^\]]*)\]/.exec(workflow)?.[1]?.split(",").map((item) => item.trim().replace(/^["']|["']$/g, "")) ?? [];
+    expect(listed).toEqual(["guards", ...CHILDREN.map((_child, index) => String(index))]);
+  });
+});
+
 describe("existing chat and form suites with every new flag off", () => {
-  for (const child of CHILDREN) {
-    it.skipIf(CHILD)(
+  for (const [index, child] of CHILDREN.entries()) {
+    it.skipIf(CHILD || childSkipped(index))(
       `passes the suites whose expectations are already on main: ${child.name}`,
       () => {
         const env: NodeJS.ProcessEnv = { ...process.env, FLAGS_OFF_PARITY_CHILD: "1", ...child.env };
