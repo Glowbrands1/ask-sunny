@@ -38,3 +38,16 @@ describe("a message that corrects the employee's name", () => {
     expect(NAME_CORRECTION.test(said)).toBe(false),
   );
 });
+
+/* Prior steps' dates are not the account (the live re-run of 14 Nov 2026: r5, coding3, payroll-amount; invented names). */
+describe("an earlier step's date is never required in the Observation", () => {
+  it.each([
+    ["she is under performance for september. she already received a verbal warning and coaching on 9/8/2026, 9/15/2026 and 9/25/2026.", "Under performance for September.", null],
+    ["she left the front desk unattended again on 11/3/26. this is a verbal warning. previous coaching policy manual 10-15-26", "She left the front desk unattended again on 11/3/26.", null],
+    ["on 11-1-26 the register was off $20. previous coaching was jba policy manual on 8-1-26.", "On 11-1-26 the register was off $20.", null],
+    ["late on 11/3/26. she signed the policy manual 10-15-26", "She was late on 11/3/26.", "Signed the policy manual — 10/15/26"],
+  ])("%s", (said, account, prior) => expect(accountMissing(said, account, prior)).toEqual([]));
+  it("the incident's own date is still required", () => {
+    expect(accountMissing("written ca for tamsin orwell, she was late on 11/12", "She was late.")).toEqual(["11/12"]);
+  });
+});

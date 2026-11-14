@@ -611,8 +611,7 @@ export function incidentDates(managerWords: string, priorActions: string | null)
   for (const match of managerWords.replace(PAYROLL_AMOUNT, " ").matchAll(ACCOUNT_DATE)) {
     const key = `${Number(match[1])}/${Number(match[2])}`;
     if (Number(match[1]) > 12 || prior.has(key) || seen.has(key)) continue;
-    const before = managerWords.slice(Math.max(0, match.index! - 40), match.index!);
-    if (/\b(?:coached|previous(?:ly)?|prior|signed|received|given|issued|had (?:a|her|his|their) (?:verbal|written|ca|coaching))\b[^.\n]*$/i.test(before)) continue;
+    if (PRIOR_STEP_BEFORE.test(sentenceBefore(managerWords, match.index!))) continue;
     seen.set(key, key);
   }
   return [...seen.values()];
@@ -648,6 +647,15 @@ export function mentionsPerson(text: string, name: string, rosterNames: readonly
  * cut account). A structural check, not wording: every date, time, amount, place ("at <place>") and time word the
  * manager gave about this person must still be in what_happened. Empty is allowed (Create waits for the account).
  */
+/** The sentence so far before this point (from the last ". ", "! ", "? " or line break). */
+function sentenceBefore(text: string, index: number): string {
+  const head = text.slice(0, index);
+  const cut = Math.max(head.lastIndexOf(". "), head.lastIndexOf("! "), head.lastIndexOf("? "), head.lastIndexOf("\n"));
+  return head.slice(cut + 1);
+}
+
+/** Words before a date that make it an earlier step's date, in the same sentence. */
+const PRIOR_STEP_BEFORE = /\b(?:coached|previous(?:ly)?|prior|signed|received|given|issued|already|had (?:a|her|his|their) (?:verbal|written|ca|coaching))\b[^.\n]*$/i;
 const ACCOUNT_DATE = /\b(\d{1,2})[/-](\d{1,2})(?:[/-]\d{2,4})?\b/g;
 const ACCOUNT_TIME = /\b\d{1,2}(?::|;)\d{2}\s*(?:am|pm)?\b|\b\d{1,2}\s*(?:am|pm)\b/gi;
 const ACCOUNT_MONEY = /\$\s?\d+(?:\.\d{2})?/g;
@@ -657,12 +665,19 @@ const NOT_A_PLACE = new Set(["least", "all", "first", "once", "times", "a", "an"
 /** "$25 will be payroll deducted", "payroll deduct $50", "$20 payroll deduct applies": the amount goes on the payroll field, not the account. */
 const PAYROLL_AMOUNT = /\$\s?\d+(?:\.\d{2})?\s*(?:will be\s+|is\s+|to be\s+)?(?:payroll\s+)?deduct\w*|(?:payroll\s+)?deduct\w*\s*(?:of\s+|for\s+|is\s+)?\$\s?\d+(?:\.\d{2})?/gi;
 
-export function accountMissing(managerWords: string, account: string): string[] {
+export function accountMissing(managerWords: string, account: string, priorActions: string | null = null): string[] {
   managerWords = managerWords.replace(PAYROLL_AMOUNT, " ");
   const said = account.toLowerCase();
   const missing: string[] = [];
+  /*
+   * A date of an earlier step (LEVEL_STEP_NOT_ACCOUNT: "previous coaching … 10-15-26", "signed the policy manual on
+   * 10-15-26", a date listed in prior_actions) belongs in Prior actions, never the Observation (the live re-run's r5,
+   * coding3 and payroll-amount cases), so it is not required here.
+   */
+  const priorDays = new Set([...(priorActions ?? "").matchAll(ACCOUNT_DATE)].map((match) => `${Number(match[1])}/${Number(match[2])}`));
   for (const match of managerWords.matchAll(ACCOUNT_DATE)) {
     const [month, day] = [Number(match[1]), Number(match[2])];
+    if (priorDays.has(`${month}/${day}`) || PRIOR_STEP_BEFORE.test(sentenceBefore(managerWords, match.index!))) continue;
     const kept = [...said.matchAll(ACCOUNT_DATE)].some((other) => Number(other[1]) === month && Number(other[2]) === day);
     if (!kept) missing.push(match[0]);
   }
@@ -853,7 +868,7 @@ export async function proposeForm(
       .filter((message) => sourceIds.includes(message.id ?? "") && !LEVEL_OR_PAYROLL_ANSWER.test(String(message.content).trim()))
       .map((message) => message.content)
       .join("\n");
-    const dropped = accountMissing(withoutPayrollClauses(accountWords), whatHappened);
+    const dropped = accountMissing(withoutPayrollClauses(accountWords), whatHappened, typeof input.prior_actions === "string" ? input.prior_actions : null);
     if (dropped.length > 0) {
       return { error: `what_happened leaves out what the manager said: ${dropped.map((word) => `"${word}"`).join(", ")}. Put the manager's whole account of this incident in what_happened, every date, time, place and amount as they said it, and propose again.` };
     }
@@ -961,6 +976,15 @@ export async function proposeForm(
     employee: { kind: "resolved", employeeName: employee.name },
     employeeSalonIds: [...employee.salonIds],
   });
+  /*
+   * HARD GUARD, NEVER AN EMPTY ACCOUNT WHEN ONE WAS GIVEN (QA's live triage, 16:17Z: the lost-account cases): the
+   * manager already said what happened in this person's turns, so a card with an empty what_happened is refused and
+   * the model gets their words back.
+   */
+  if (whatHappened === "" && ACCOUNT_FORMS.has(template.key)) {
+    const given = latestAccount(asked.messages.filter((message) => sourceIds.includes(message.id ?? "")).map((message) => String(message.content ?? "")));
+    if (given) return { error: `The manager already said what happened: ${JSON.stringify(given)}. Put their account in what_happened (their words; only spelling fixed) and propose again.` };
+  }
   /* No account yet: the card shows, and Create waits for what happened (as WHAT_HAPPENED_NO_CREATE does today). */
   const awaiting = whatHappened === "" && ACCOUNT_FORMS.has(template.key);
   /* NO_ACCOUNT_NO_APP_POLICY (parity gap #20): with no account, no policy is cited unless the manager named one. */
@@ -1126,6 +1150,39 @@ export async function editForm(
       return { error: `This form is ${loaded.instance.status}, so it cannot be edited here. Tell the manager.` };
     }
     /*
+     * THE ACCOUNT FIELD BY ITS OWN KEY (the live re-run's make-that-update: values for "observation", "what_happened",
+     * "details" on a Coaching Form were refused as unknown fields until the step limit): a name for the account is the
+     * form's own account field (Observation on a CA, Details of Coaching on a coaching form).
+     */
+    const fieldKeys = documentFieldKeys(loaded.version.document);
+    const accountField = ["observation", "coaching_details"].find((key) => fieldKeys.has(key)) ?? null;
+    for (const field of Object.keys(values)) {
+      if (!fieldKeys.has(field) && ACCOUNT_ALIASES.has(field) && accountField) {
+        values[accountField] = values[field]!;
+        delete values[field];
+      }
+    }
+    const unknown = Object.keys(values).filter((field) => !fieldKeys.has(field) && field !== "warning_type" && field !== "employee_name");
+    if (unknown.length > 0) {
+      return { error: `${unknown.join(", ")} ${unknown.length === 1 ? "is not a field" : "are not fields"} of this form; nothing was written. Its fields: ${[...fieldKeys].join(", ")}.` };
+    }
+    /* HARD GUARD, NEVER AN EMPTY ACCOUNT (QA, 16:17Z): the account field is never cleared by an edit. */
+    if (accountField && accountField in values && values[accountField]!.trim() === "") {
+      return { error: `${accountField} is never written empty. Write the manager's account in it.` };
+    }
+    /*
+     * "MAKE THAT UPDATE" / "WRITE THE OBSERVATION" WRITES THE ACCOUNT (MAKE_THAT_UPDATE_ACCOUNT; QA's live triage 16:17Z:
+     * make-that-update and stepb): the manager's latest account in this chat goes into the account field as they said
+     * it, added after what is there, when the field does not hold it yet.
+     */
+    if (Object.keys(values).length === 0 && accountField && WRITE_ACCOUNT_REQUEST.test(context.question)) {
+      const account = latestAccount(context.history.filter((turn) => turn.role === "user").slice(-8).map((turn) => String(turn.content ?? "")));
+      const old = loaded.values.find((row) => row.fieldKey === accountField)?.value ?? "";
+      if (account && !old.toLowerCase().includes(account.toLowerCase().replace(/[.!]+$/, ""))) {
+        values[accountField] = old.trim() ? `${old.trimEnd()}\n${account}` : account;
+      }
+    }
+    /*
      * No field values: the manager's own request goes through the form's reviser (`chat-revision.ts`, the same one
      * today's chat uses), which knows each template's fields, the date, the policy reference line, the Action Plan and
      * the protected values. Its reply says what changed.
@@ -1245,6 +1302,31 @@ export async function searchKnowledge(context: ToolContext, effects: ToolEffects
 export const REWORD_REQUEST = /\b(?:make (?:it|this|that)(?: sound)? (?:more )?(?:professional|better|cleaner)|re-?word|re-?phrase|clean (?:it|this|that) up|sound (?:more )?(?:professional|better)|professional(?:ly)? word)/i;
 /** Fields a reword never touches. */
 const REWORD_KEEPS = new Set(["warning_type", "payroll_deduct", "payroll_deduct_amount", "form_date", "employee_name", "job_title", "policy_violated", "direct_policy"]);
+
+/** "make that update", "write the observation", "put that on the form", "update the draft with that": write the account. */
+export const WRITE_ACCOUNT_REQUEST = /^(?:\s*(?:ok(?:ay)?|yes|please|can you|could you|just)[,\s]*)*(?:make (?:that|the|those) (?:update|change)s?|write (?:the |up the |in the )?(?:observ\w*|details?|account)|put (?:that|it|this|those details) (?:on|in(?:to)?) (?:the )?(?:form|draft|card)|(?:upd?ate|add) (?:the )?(?:draft|form|card) with (?:that|this|those|these|it|the details\w*)(?: (?:details|of coaching))*)\b/i;
+const INCIDENT_VERB = /\b(?:was|were|did(?:n'?t)?|had(?:n'?t)?|left|came|showed|marked|forgot|missed|refused|yelled|said|told|failed|skipped|called|clocked|took|gave|ran|let|wore|used|ignored|arrived|opened|closed|didnt|wasnt)\b/i;
+const NOT_AN_ACCOUNT = /\?|^\s*(?:make|write|update|upate|put|add|can|could|would|please|create|i need|i want|do|does|how|what|why|when|where|who|is|are|should|thank|thanks|ok|okay|yes|no)\b/i;
+
+/**
+ * The manager's latest account among these turns, newest first: a statement (not a question or an instruction to the
+ * app) of five or more words that says what someone did. Null when there is none.
+ */
+export function latestAccount(turns: readonly string[]): string | null {
+  for (const text of [...turns].reverse()) {
+    const said = text.trim();
+    if (!said || NOT_AN_ACCOUNT.test(said) || said.split(/\s+/).length < 5) continue;
+    if (INCIDENT_VERB.test(said)) return said;
+  }
+  return null;
+}
+
+/** The form's own field keys, from its template document. */
+function documentFieldKeys(document: unknown): Set<string> {
+  return new Set([...JSON.stringify(document ?? {}).matchAll(/"key":"([a-z0-9_]+)"/g)].map((match) => match[1]!));
+}
+/** Names a model may use for the account field: the form's own key is used. */
+const ACCOUNT_ALIASES = new Set(["observation", "observation_of_offense", "what_happened", "details", "details_of_coaching", "coaching_details", "account", "issue"]);
 
 /** A short answer about the level or payroll: "yes payroll, $20", "make it a written", "no payroll". */
 export const LEVEL_OR_PAYROLL_ANSWER = /^(?=.{0,80}$)(?:.*\b(?:payroll|deduct\w*)\b|.*\b(?:make it|it'?s|change it to)\s+(?:a\s+)?(?:verbal|written)\b)/i;
