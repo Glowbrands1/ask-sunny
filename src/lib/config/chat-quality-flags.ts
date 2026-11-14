@@ -4799,3 +4799,13 @@ export function closeSpellingMatchEnabled(): boolean {
 export function sharedCityAsksSalonEnabled(): boolean {
   return envFlag("SHARED_CITY_ASKS_SALON_ENABLED");
 }
+
+/**
+ * RELATIVE_DAY_PART_WORDS (QA's Sunny live check, 13 Nov 2026; default off): "she no-call no-showed tonight" gave a
+ * card with no Date. With the flag "tonight", "this morning", "this afternoon" and "this evening" read as the business
+ * today and "last night" as the business yesterday (`forms/relative-dates.ts`, with RELATIVE_DATE_READER). Off, as
+ * before.
+ */
+export function relativeDayPartWordsEnabled(): boolean {
+  return envFlag("RELATIVE_DAY_PART_WORDS_ENABLED");
+}
