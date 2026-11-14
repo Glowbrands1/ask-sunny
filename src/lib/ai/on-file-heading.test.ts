@@ -40,9 +40,17 @@ describe("headingOnlyOnFile", () => {
       "make it about her opening the salon 15 minutes late on 11/13 instead",
       "separate CA for Briony Calloway: she opened the salon 25 minutes late on 11/12",
       "change it to late openng",
+      // QA's probes for Gate-Sunny-3 (14 Nov 2026).
+      "she didn't open the salon on time",
+      "the salon wasn't open until 9:30, supposed to open at 9",
+      "she opened up 20 min after we were supposed to",
     ]) {
       expect(headingOnlyOnFile("Late Opening", said, history, CHUNKS), said).toBe(false);
     }
+  });
+
+  it("lateness that is not about opening carries no evidence for Late Opening", () => {
+    expect(headingOnlyOnFile("Late Opening", "she was late to her shift on 11/12 and was not open to feedback", history, CHUNKS)).toBe(true);
   });
 
   it("the resent crewneck request carries no evidence for Late Opening or Attendance, with the manual's readers too", () => {
