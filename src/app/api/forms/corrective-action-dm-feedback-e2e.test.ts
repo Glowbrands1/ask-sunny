@@ -634,6 +634,8 @@ describe("a dog at work, on the saved draft, against the production manual rows"
 });
 
 describe('"violating visitors at work policy" is the manual\'s Visitors in the Workplace', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
   it("is named in the reply, ticked, and quoted with its section and page", async () => {
     const { last, create } = await conversation([A1, A2]);
 
@@ -665,6 +667,8 @@ describe('"violating visitors at work policy" is the manual\'s Visitors in the W
   });
 
   it("fails closed: a named policy no heading answers cites nothing, and the reply says so", async () => {
+    // POLICY_NOT_FOUND_PLAIN_WORDING (13 Nov 2026) rewords this line; pinned off so the old line is still checked.
+    vi.stubEnv("POLICY_NOT_FOUND_PLAIN_WORDING_ENABLED", "");
     const { last, create } = await conversation([
       "create verbal CA for remy calder for violating the unicorn parking policy on 10-10-26. no payroll deduct",
     ]);

@@ -4792,6 +4792,16 @@ export function formDateBusinessTodayEnabled(): boolean {
 }
 
 /**
+ * POLICY_NOT_FOUND_PLAIN_WORDING (QA, 13 Nov 2026; default off): the card's line for a policy the manual has no section
+ * for says "I don't see a section of the current policy manual for "<phrase>" …" for every phrase, not "Woven does not
+ * see …", which reads oddly to a manager. See `forms/ca-policy.ts` namedPolicyLine. Off, only a phrase about Woven
+ * (WOVEN_TRAINING_CONDUCT) gets the plain wording, as before.
+ */
+export function policyNotFoundPlainWordingEnabled(): boolean {
+  return envFlag("POLICY_NOT_FOUND_PLAIN_WORDING_ENABLED");
+}
+
+/**
  * CLOSE_SPELLING_MATCH (Pau, via QA, 13 Nov 2026; ported from the sibling app): the manager's words are matched against
  * the app's own lists by close spelling, not only exact spelling. A policy named "Care and Clening" cites the manual's
  * "Care and Cleaning" section; a salon typed one letter off is read as the roster salon. Two close matches, or one
