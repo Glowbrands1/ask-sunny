@@ -4844,3 +4844,14 @@ export function sharedCityAsksSalonEnabled(): boolean {
 export function cleaningPolicyIsCareAndCleaningEnabled(): boolean {
   return envFlag("CLEANING_POLICY_IS_CARE_AND_CLEANING_ENABLED");
 }
+
+/**
+ * ON_FILE_LINE_NOT_THE_POLICY_ENABLED (Coding-2, 14 Nov 2026; default off; Pau's morning scan via QA). A dress-code
+ * request sent again word for word was carded "Policy: Late Opening — read from this request": the intent reader took
+ * the heading from the app's own "On file in Form Monitoring … (… Late Opening)" listing. On: a heading the manager's own
+ * words never name, which an app "On file" listing does, is dropped, and the heading the request already had is kept
+ * (`ai/on-file-heading.ts`). Off, as before.
+ */
+export function onFileLineNotThePolicyEnabled(): boolean {
+  return envFlag("ON_FILE_LINE_NOT_THE_POLICY_ENABLED");
+}
