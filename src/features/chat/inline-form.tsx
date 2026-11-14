@@ -11,6 +11,7 @@ import { Notice } from "@/components/ui/feedback";
 import { Dialog, DialogActions, DialogContent } from "@/components/ui/overlays";
 import { FinalizedChangePanel } from "./finalized-change-panel";
 import { downloadFormPdf, formsFetch, FormsFetchError } from "@/features/forms/forms-fetch";
+import { reloadIfAlreadyRevised } from "@/form-revisions/already-revised";
 import { onFormUpdate } from "./form-update-events";
 import {
   ResponsiveForm,
@@ -584,6 +585,8 @@ export function InlineForm({
       setAction({ kind: "idle" });
       showRecord(result.instance.id, result.instance.templateName || loaded.instance.templateName);
     } catch (error) {
+      // REVISED_FORM_POINTS_TO_NEWER_ENABLED: replaced elsewhere since this card loaded; it re-reads and shows the link.
+      reloadIfAlreadyRevised(error, instanceId);
       setAction({ kind: "error", message: (error as Error).message });
     }
   }

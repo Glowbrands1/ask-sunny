@@ -8,6 +8,7 @@ import type { RevisionHistoryResponse } from "@/lib/forms/revision-history";
 import { useSession } from "@/lib/session/session-context";
 import type { ChatFormInstanceRef } from "@/types";
 
+import { reloadIfAlreadyRevised } from "./already-revised";
 import { editPermissionFor } from "./edit-permission";
 
 export type RevisionHistoryState =
@@ -81,7 +82,11 @@ export async function openRevisionWithReason(
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ action: "revise", reason }),
     },
-  );
+  ).catch((error: unknown) => {
+    // REVISED_FORM_POINTS_TO_NEWER_ENABLED: replaced elsewhere; every view re-reads, the dialog shows the line.
+    reloadIfAlreadyRevised(error, reference.instanceId);
+    throw error;
+  });
   return {
     ...reference,
     instanceId: result.instance.id,

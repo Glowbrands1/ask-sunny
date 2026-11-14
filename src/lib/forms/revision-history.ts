@@ -27,6 +27,14 @@
 /** The `code` a refusal carries, so a client keys off it rather than the prose. */
 export const REVISION_REASON_REQUIRED = "REVISION_REASON_REQUIRED";
 
+/**
+ * REVISED_FORM_POINTS_TO_NEWER_ENABLED: the `code` and line of a refusal to edit a form a newer version already
+ * replaced. The client keys off the code (it reloads the card, which then shows the newer version's link).
+ */
+export const FORM_ALREADY_REVISED = "form_already_revised";
+export const FORM_ALREADY_REVISED_MESSAGE =
+  "This form was already replaced by a newer version, so it can't be edited. Open the newer version to change it.";
+
 /** Long enough for a sentence or two; the history is not a narrative field. */
 export const REVISION_REASON_MAX_LENGTH = 500;
 

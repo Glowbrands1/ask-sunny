@@ -18,7 +18,7 @@ import {
   loadInstance,
   saveInstanceValues,
 } from "@/lib/forms/instances";
-import { reviseFinalizedForm, RevisionReasonRequiredError } from "@/lib/forms/revision-chain";
+import { FormAlreadyRevisedError, reviseFinalizedForm, RevisionReasonRequiredError } from "@/lib/forms/revision-chain";
 
 /**
  * One form.
@@ -166,6 +166,13 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      */
     if (error instanceof RevisionReasonRequiredError) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: 400 });
+    }
+    /*
+     * 409 WITH A CODE (REVISED_FORM_POINTS_TO_NEWER_ENABLED): a newer version already replaced this form. Thrown only
+     * with the flag on; the card reloads on the code and shows the newer version's link.
+     */
+    if (error instanceof FormAlreadyRevisedError) {
+      return NextResponse.json({ error: error.message, code: error.code, newerId: error.newerId }, { status: 409 });
     }
     if (error instanceof UnverifiedPolicyError) {
       return NextResponse.json(
