@@ -309,16 +309,15 @@ function sentenceSteps(notes: string, today: string): { iso: string; named: stri
   return steps;
 }
 
-/** HISTORY_LEVEL_ROWS_ENABLED: the steps less the level this form states, when it is named once (dated on the incident's day). */
+/** HISTORY_LEVEL_ROWS_ENABLED: the steps less the level this form states, dated on the incident's own day. */
 function withoutThisFormsLevel<T extends { iso: string; named: string }>(steps: readonly T[], notes: string, today: string): T[] {
   const level = statedWarningLevel(notes, { today });
   if (!level) return [...steps];
-  // Named once in the turn, the level this form states and the row are the same words. Or the row's date is the
-  // incident's: the latest day the turn gives, said more than once ("late on 11/12/26, verbal warning 11/12/26").
-  const once = (notes.match(new RegExp(String.raw`\b${level}\b`, "gi")) ?? []).length === 1;
+  // The row's date is the incident's: the latest day the turn gives, said more than once ("late on 11/12/26, verbal
+  // warning 11/12/26"). A level given on an earlier day keeps its row ("given verbal warning on 9/21": the owner's rule).
   const days = datesInText(notes, today).map((found) => found.iso);
   const incidentDay = (iso: string) => days.filter((day) => day === iso).length >= 2 && days.every((day) => day <= iso);
-  return steps.filter((step) => !(stepLevel(step.named) === level && (once || incidentDay(step.iso))));
+  return steps.filter((step) => !(stepLevel(step.named) === level && incidentDay(step.iso)));
 }
 
 /** The steps the manager dated: `priorSteps`, and with PRIOR_STEP_SENTENCE_ENABLED a step told in a sentence. */
