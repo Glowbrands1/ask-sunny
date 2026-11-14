@@ -82,14 +82,17 @@ export function askLooseSalon(
   // isn't on your assignment"). That reply is left as it is, honest without this pass.
   if (!covers(input.scope, salonId)) return response;
   if (ownSalon(proposal, input.people ?? [], salonId) || onlySalon(input.scope, salonId)) return agreeing(response);
-  // Gate-Sunny's #977 gate: the manager's answer to our own salon question, in words from the salon's name ("27th street",
-  // "o street", "dodge"), is that salon: it is filed, never asked about again.
-  if (answersSalonQuestion(input.history, answer, salonId)) return agreeing(response);
+  // Gate-Sunny's #977 gate, QA's rule (14 Nov 2026): the manager's answer to our own salon question that names one salon
+  // ("27th street", "o street", "dodge": words from its name, or a salon a trusted reader reads in the answer alone) is
+  // that salon: it is filed, with no confirm. A looser answer is still asked about, quoting the whole answer.
+  const answering = askedForSalon(input.history);
+  if (answering && (inSalonName(answer, salonId) || firmlyNamed(answer, salonId))) return agreeing(response);
   // A city inside a longer place ("at kearney high", "at the kearney mall", "at omaha west") is not the salon named.
   const longer = longerPlaces(said, salonId);
   const bare = longer.reduce((text, phrase) => text.split(phrase.text).join(" ".repeat(phrase.text.length)), said);
   if (firmlyNamed(bare, salonId)) return agreeing(response);
-  const typed = longer.at(-1)?.place ?? (firmlyNamed(said, salonId) ? null : resembledBy(said, salonId));
+  const guessed = longer.at(-1)?.place ?? (firmlyNamed(said, salonId) ? null : resembledBy(said, salonId));
+  const typed = guessed && answering && answer ? answer.replace(/[.!?]+$/, "") : guessed;
   if (!typed) return agreeing(response);
 
   const salon = PRODUCTION_SALONS.find((entry) => entry.id === salonId);
@@ -253,10 +256,14 @@ const nameWords = (text: string) =>
     .filter(Boolean)
     .map((word) => (word === "st" ? "street" : word === "ave" ? "avenue" : word === "rd" ? "road" : word));
 
-/** Whether `answer` answers the last reply's salon question with words that are all in this salon's name. */
-function answersSalonQuestion(history: readonly ChatMessage[], answer: string, salonId: string): boolean {
+/** Whether the last reply asked the manager for the salon. */
+function askedForSalon(history: readonly ChatMessage[]): boolean {
   const last = [...history].reverse().find((turn) => turn.role === "assistant");
-  if (!last || !SALON_QUESTION.test(last.content)) return false;
+  return Boolean(last && SALON_QUESTION.test(last.content));
+}
+
+/** Whether every word of `answer` is a word of this salon's name ("27th street" for NE Lincoln 27th Street). */
+function inSalonName(answer: string, salonId: string): boolean {
   const name = PRODUCTION_SALONS.find((entry) => entry.id === salonId)?.name;
   if (!name) return false;
   const words = nameWords(answer).filter((word) => !ANSWER_FILLER.has(word));

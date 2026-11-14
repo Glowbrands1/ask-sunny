@@ -187,6 +187,10 @@ const ANSWERS = [
   { key: "27th-street", answer: "27th street", salon: "loc-0310" },
   { key: "o-street", answer: "o street", salon: "loc-0311" },
   { key: "pine-lake", answer: "pine lake", salon: "loc-0312" }, // guard: already fine
+  // QA's rule (14 Nov 2026): an answer that names one salon is filed, "at <salon>" and "the … one" too.
+  { key: "at-27th-street", answer: "at 27th street", salon: "loc-0310" },
+  { key: "27th-st", answer: "27th st", salon: "loc-0310" },
+  { key: "the-o-street-one", answer: "the o street one", salon: "loc-0311" },
 ];
 export const NOV14_FUZZY_SALON_ASKS_ANSWER_CASES: ReplayCase[] = ANSWERS.map((w) => ({
   id: `nov14-fuzzy-salon-asks-answer-${w.key}`,
@@ -237,3 +241,27 @@ export const NOV14_FUZZY_SALON_ASKS_PLACE_ENDS: ReplayCase[] = [
     expect(content, `the salon was asked about:\n${content}`).not.toMatch(/is that the salon\?/);
   },
 }));
+
+/**
+ * QA's rule (14 Nov 2026): a looser answer to the salon question is still asked about, and the question quotes the
+ * manager's whole answer, never a cut of it ("omaha west", not "omaha"). With the flag off it is filed as read.
+ */
+export const NOV14_FUZZY_SALON_ASKS_WHOLE_ANSWER: ReplayCase[] = [
+  {
+    id: "nov14-fuzzy-salon-asks-whole-answer-omaha-west",
+    title: `DM: "create a coaching form for kira dunmore", then "omaha west" — any question quotes "omaha west" whole`,
+    report: "QA's rule on Gate-Sunny's #977 gate (14 Nov 2026); invented person",
+    status: "fixed",
+    fixFlags: ["FUZZY_SALON_ASKS_ENABLED"],
+    async run(t: ReplayContext) {
+      vi.setSystemTime(new Date("2026-11-14T15:00:00Z"));
+      t.directory([...STAFF]);
+      t.as("district_manager", { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] });
+      const thread = t.thread();
+      await thread.say("create a coaching form for kira dunmore");
+      const { content } = await thread.say("omaha west");
+      const asked = /I read \*\*([^*]+)\*\* as/.exec(content)?.[1];
+      if (asked !== undefined) expect(asked, content).toBe("omaha west");
+    },
+  },
+];
