@@ -43,7 +43,7 @@ import { extractJobTitle, titleAfterJobTitleLabel } from "@/lib/forms/proposal";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
 import type { ChatFormProposal, KnowledgeCategory, SourceCitation } from "@/types";
 
-import { describedAttendanceKeys, readCaPolicy, statedOffenseKeys, withoutCleaningDuty } from "@/lib/forms/ca-policy";
+import { besideAttendanceKeys, describedAttendanceKeys, readCaPolicy, statedOffenseKeys, withoutCleaningDuty } from "@/lib/forms/ca-policy";
 import {
   citeAttendanceForTardiness,
   formatPolicyCitation,
@@ -189,7 +189,7 @@ export function formTurnCitations(input: {
    */
   const beside = withoutCleaningDuty(input.notes);
   const notes =
-    beside !== null && (describedAttendanceKeys(beside) !== null || describedManualSection({ text: beside, chunks: input.chunks }) !== null) ? beside : null;
+    beside !== null && (besideAttendanceKeys(beside) !== null || describedManualSection({ text: beside, chunks: input.chunks }) !== null) ? beside : null;
   if (notes === null && otherPolicyAgreesEnabled() && readCaPolicy(input.notes).other === "cleaning") return [];
   const sections = violatedSections(sectionsFor(notes ?? input.notes, input.chunks, input.modelHeading ?? null));
   const category = categoryOf(input.documentCategory);

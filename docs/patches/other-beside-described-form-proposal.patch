@@ -1,19 +1,24 @@
 diff --git a/src/lib/ai/form-proposal.ts b/src/lib/ai/form-proposal.ts
-index e279ac55..3a0fd09d 100644
+index e279ac55..f5eaf8a1 100644
 --- a/src/lib/ai/form-proposal.ts
 +++ b/src/lib/ai/form-proposal.ts
-@@ -50,6 +50,8 @@ import {
+@@ -50,6 +50,9 @@ import {
    MISSED_EVENT_OFFENSE,
    missedEventPhrase,
    readCaPolicy,
 +  withoutCleaningDuty,
++  besideReadsAttendance,
 +  OTHER_BESIDE_NOTE,
    type CaPolicyReading,
    type NamedPolicyReading,
  } from "@/lib/forms/ca-policy";
-@@ -1977,6 +1979,16 @@ function choice(summary: TemplateSummary): ChatFormChoice {
+@@ -1976,7 +1979,22 @@ function choice(summary: TemplateSummary): ChatFormChoice {
+  * named none. Never throws: a manual that cannot be read leaves the lookup to
   * the draft, as before.
   */
++/** The Type of Offense keys that are attendance (OTHER_BESIDE_DESCRIBED_ENABLED: beside a cleaning duty only with a lateness or absence word). */
++const ATTENDANCE_OFFENSE_KEYS = /^(?:attendance_policy|tardiness|absenteeism|late_opening|attendance)$/;
++
  async function namedPolicyFor(text: string, input: ProposalTurn): Promise<NamedPolicyReading | null> {
 +  /*
 +   * OTHER_BESIDE_DESCRIBED_ENABLED (QA's ruling (b), 14 Nov 2026): a cleaning duty left undone beside a second offense the
@@ -23,12 +28,14 @@ index e279ac55..3a0fd09d 100644
 +  const rest = withoutCleaningDuty(secondRequestOwnAccountEnabled() ? currentFormRequestText(text) : text);
 +  if (rest !== null) {
 +    const beside = await namedPolicyFor(rest, input);
-+    if (beside && beside.lookup === "described") return { ...beside, besideOther: true };
++    // Attendance beside a cleaning duty needs a lateness or absence word ("opening duties" are not one).
++    const attendance = beside?.lookup === "described" && ATTENDANCE_OFFENSE_KEYS.test(beside.offenseKey);
++    if (beside && beside.lookup === "described" && (!attendance || besideReadsAttendance(rest))) return { ...beside, besideOther: true };
 +  }
    const policyReading = readCaPolicy(secondRequestOwnAccountEnabled() ? currentFormRequestText(text) : text);
    // A missed meeting reads as Attendance; the manual still says where (see `groundMissedEvent` below).
    if (policyReading.stated !== null && !(policyReading.stated === "attendance" && policyReading.missedEvent)) return null;
-@@ -2242,15 +2254,25 @@ function proposalContent(
+@@ -2242,15 +2260,27 @@ function proposalContent(
       * being stopped for it.
       */
      if (proposal.status !== "needs_location") {
@@ -40,7 +47,9 @@ index e279ac55..3a0fd09d 100644
 +       */
 +      const rest = extra.namedPolicy?.lookup === "described" && extra.namedPolicy.besideOther ? null : withoutCleaningDuty(cardText);
 +      const restReading = rest !== null ? readCaPolicy(rest) : null;
-+      const beside = restReading && (restReading.stated !== null || restReading.readFromApp) ? restReading : null;
++      const restAttendance = restReading && (restReading.stated === "attendance" || restReading.readFromApp === "attendance");
++      const beside =
++        restReading && (restReading.stated !== null || restReading.readFromApp) && (!restAttendance || besideReadsAttendance(rest!)) ? restReading : null;
        return correctiveActionReady(
          proposal,
          intake,
@@ -55,7 +64,7 @@ index e279ac55..3a0fd09d 100644
        );
      }
    }
-@@ -2443,6 +2465,7 @@ function correctiveActionReady(
+@@ -2443,6 +2473,7 @@ function correctiveActionReady(
    namedPolicy: NamedPolicyReading | null = null,
    priorOnFile: PriorFormsReading = NO_PRIOR_FORMS,
    payrollAmountAsked = false,
@@ -63,7 +72,7 @@ index e279ac55..3a0fd09d 100644
  ): string {
    // A step the manager already dated is theirs; the record adds only the rest.
    const notStated = (form: PriorFormOnFile) => !priorActions.some((line) => line.includes(signedDate(form.formDate)));
-@@ -2472,7 +2495,9 @@ function correctiveActionReady(
+@@ -2472,7 +2503,9 @@ function correctiveActionReady(
     * it only where the current manual's section supports it. An account that
     * also reads as attendance or a target is a question. See `ca-policy.ts`.
     */

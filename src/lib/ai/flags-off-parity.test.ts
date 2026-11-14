@@ -827,7 +827,9 @@ const PROTECTED = [
  * at the start of namedPolicyFor, a cleaning duty beside a second described offense reads that offense from the account
  * without the duty (marked `besideOther`); before correctiveActionReady, lateness beside a cleaning duty is read from
  * the account without it; and correctiveActionReady's `besideOther` parameter adds OTHER_BESIDE_NOTE after the Policy
- * line. Behind OTHER_BESIDE_DESCRIBED_ENABLED (default off); off, as before. form-proposal.ts is already excluded below.
+ * line. Attendance beside the duty counts only with a lateness or absence word (`besideReadsAttendance`, the
+ * ATTENDANCE_OFFENSE_KEYS test; Gate-Sunny-3's #971 finding). Behind OTHER_BESIDE_DESCRIBED_ENABLED (default off); off,
+ * as before. form-proposal.ts is already excluded below.
  */
 const APPROVED_PROTECTED_EDITS = [
   ":(exclude)src/lib/forms/required-closing.ts",

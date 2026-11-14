@@ -773,8 +773,29 @@ export function withoutCleaningDuty(rawText: string): string | null {
   const at = (rawText ?? "").toLowerCase().replace(/[‘’‛]/g, "'").indexOf(phrase);
   if (at < 0) return null;
   // Line breaks are kept: the app's own lines are read line by line (`withoutAppLines`), never as the manager's words.
-  const rest = `${rawText.slice(0, at)} ${rawText.slice(at + phrase.length)}`.replace(/[ \t]{2,}/g, " ").trim();
+  // QA's ruling on Gate-Sunny-3's #971 finding (14 Nov 2026): duties words ("opening duties", "side work") are no offense.
+  const rest = `${rawText.slice(0, at)} ${rawText.slice(at + phrase.length)}`.replace(DUTY_WORDS, " ").replace(/[ \t]{2,}/g, " ").trim();
   return rest === "" ? null : rest;
+}
+
+/*
+ * OTHER_BESIDE_DESCRIBED_ENABLED (QA's ruling on Gate-Sunny-3's #971 finding, 14 Nov 2026): "Write me a CA for <R> for
+ * failing to complete opening duties. <R> did not complete daily cleaning duties." became Attendance and Other: the
+ * opening duties read as attendance. Duties and checklists are the cleaning duty's own kind of work, never a second
+ * offense, and attendance beside a cleaning duty needs a word for lateness or an absence.
+ */
+const DUTY_WORDS = /\b(?:(?:opening|closing)(?:\s*\/\s*(?:opening|closing))?\s+(?:duties|duty|checklists?|tasks?)|side\s*work)\b/gi;
+const LATENESS_OR_ABSENCE =
+  /\b(?:late|lateness|tardy|tardiness|no[- ]?call|no[- ]?show(?:ed)?|left\s+early|leaving\s+early|leaves\s+early|absent|absence|missed\s+(?:\S+\s+){0,2}?shifts?|call(?:ed|s)?[- ]?(?:out|off))\b/i;
+
+/** Attendance described beside a cleaning duty, in the rest of the account: only with a lateness or absence word. */
+export function besideAttendanceKeys(rest: string): string[] | null {
+  return LATENESS_OR_ABSENCE.test(rest) ? describedAttendanceKeys(rest) : null;
+}
+
+/** A reading of the rest of the account that is attendance counts only with a lateness or absence word (as above). */
+export function besideReadsAttendance(rest: string): boolean {
+  return LATENESS_OR_ABSENCE.test(rest);
 }
 
 export function namesCareAndCleaning(rawText: string): boolean {

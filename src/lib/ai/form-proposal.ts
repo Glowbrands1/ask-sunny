@@ -51,6 +51,7 @@ import {
   missedEventPhrase,
   readCaPolicy,
   withoutCleaningDuty,
+  besideReadsAttendance,
   OTHER_BESIDE_NOTE,
   type CaPolicyReading,
   type NamedPolicyReading,
@@ -1978,6 +1979,9 @@ function choice(summary: TemplateSummary): ChatFormChoice {
  * named none. Never throws: a manual that cannot be read leaves the lookup to
  * the draft, as before.
  */
+/** The Type of Offense keys that are attendance (OTHER_BESIDE_DESCRIBED_ENABLED: beside a cleaning duty only with a lateness or absence word). */
+const ATTENDANCE_OFFENSE_KEYS = /^(?:attendance_policy|tardiness|absenteeism|late_opening|attendance)$/;
+
 async function namedPolicyFor(text: string, input: ProposalTurn): Promise<NamedPolicyReading | null> {
   /*
    * OTHER_BESIDE_DESCRIBED_ENABLED (QA's ruling (b), 14 Nov 2026): a cleaning duty left undone beside a second offense the
@@ -1987,7 +1991,9 @@ async function namedPolicyFor(text: string, input: ProposalTurn): Promise<NamedP
   const rest = withoutCleaningDuty(secondRequestOwnAccountEnabled() ? currentFormRequestText(text) : text);
   if (rest !== null) {
     const beside = await namedPolicyFor(rest, input);
-    if (beside && beside.lookup === "described") return { ...beside, besideOther: true };
+    // Attendance beside a cleaning duty needs a lateness or absence word ("opening duties" are not one).
+    const attendance = beside?.lookup === "described" && ATTENDANCE_OFFENSE_KEYS.test(beside.offenseKey);
+    if (beside && beside.lookup === "described" && (!attendance || besideReadsAttendance(rest))) return { ...beside, besideOther: true };
   }
   const policyReading = readCaPolicy(secondRequestOwnAccountEnabled() ? currentFormRequestText(text) : text);
   // A missed meeting reads as Attendance; the manual still says where (see `groundMissedEvent` below).
@@ -2262,7 +2268,9 @@ function proposalContent(
        */
       const rest = extra.namedPolicy?.lookup === "described" && extra.namedPolicy.besideOther ? null : withoutCleaningDuty(cardText);
       const restReading = rest !== null ? readCaPolicy(rest) : null;
-      const beside = restReading && (restReading.stated !== null || restReading.readFromApp) ? restReading : null;
+      const restAttendance = restReading && (restReading.stated === "attendance" || restReading.readFromApp === "attendance");
+      const beside =
+        restReading && (restReading.stated !== null || restReading.readFromApp) && (!restAttendance || besideReadsAttendance(rest!)) ? restReading : null;
       return correctiveActionReady(
         proposal,
         intake,

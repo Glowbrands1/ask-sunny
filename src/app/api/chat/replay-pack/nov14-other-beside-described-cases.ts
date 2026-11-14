@@ -90,4 +90,29 @@ export const NOV14_OTHER_BESIDE_DESCRIBED_GUARDS: ReplayCase[] = [
       expect(t.values(id).policy_violated ?? "").toMatch(/^Other$/);
     },
   },
+  {
+    id: "nov14-other-beside-described-opening-duties-stay-other",
+    title: "\"Write me a CA for Pia Wexcombe for failing to complete opening duties. Pia Wexcombe did not complete daily cleaning duties. on november 2, 2026\": duties are no second offense, so Other alone",
+    report: "Gate-Sunny-3's #971 finding (14 Nov 2026), QA's ruling: duties words never count as a second offense; attendance needs a lateness or absence word",
+    status: "fixed",
+    fixFlags: ["OTHER_BESIDE_DESCRIBED_ENABLED"],
+    async run(t) {
+      vi.setSystemTime(new Date("2026-11-13T15:00:00Z"));
+      t.directory([...STAFF, PIA]);
+      t.as("salon_director", KEARNEY);
+      const thread = t.thread();
+      // As nov6-as-you-said-attendance-s2a-opening-cleaning-duties: the intent reader's heading is "Attendance".
+      t.slotsRead({ policyHeading: "Attendance" });
+      const card = await thread.say("Write me a CA for Pia Wexcombe for failing to complete opening duties. Pia Wexcombe did not complete daily cleaning duties. on november 2, 2026");
+      t.draftWrites({ observation: "Observed:\nOn November 2, 2026, Pia Wexcombe did not complete opening duties or daily cleaning duties." });
+      const id = await thread.create();
+      if (!flagsOn()) return;
+      const where = JSON.stringify({ offense: t.checked(id).offense_type, violated: t.values(id).policy_violated, plan: t.values(id).action_plan });
+      expect(card.content, `the card does not say Other:\n${card.content}`).toMatch(/\*\*Policy:\*\* Other/);
+      expect(card.content, `the card reads the duties as Attendance:\n${card.content}`).not.toMatch(/\*\*Policy:\*\*[^\n]*Attendance|Attendance Policy, JBA Policy Manual/);
+      expect(t.checked(id).offense_type ?? [], `duties became a second offense ${where}`).toEqual(["other"]);
+      expect(t.values(id).policy_violated ?? "", `Policy Violated is not Other ${where}`).toMatch(/^Other$/);
+      expect(t.values(id).action_plan ?? "", `the plan is not the applicable-policy plan ${where}`).toMatch(/applicable company policy/i);
+    },
+  },
 ];
