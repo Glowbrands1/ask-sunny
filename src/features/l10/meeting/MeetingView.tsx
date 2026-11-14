@@ -98,6 +98,8 @@ export function MeetingView({
   // An old version never shows a live meeting: no clock, no leader, no "meeting over" card.
   const timer = readOnly ? emptyTimer() : readTimer(doc);
   const isLeader = !!timer.leader && timer.leader === viewer.id;
+  /** The signed-in person's full name (from the meeting's people), saved on each issue they add. */
+  const myName = (mentionPeople.find((p) => p.id === viewer.id)?.name ?? viewer.name ?? "").trim();
   const live = timer.started && !timer.ended;
   // The first render uses the server's render time (the same number on the server and in the browser), so the clock
   // text the server sent matches what the browser renders first (no hydration mismatch); it catches up right after.
@@ -537,7 +539,7 @@ export function MeetingView({
             {view === "rocks" && <Rocks rocks={doc.rocks} onChange={(rocks) => edit((d) => ({ ...d, rocks }))} people={people} today={today} />}
             {view === "headlines" && <Headlines headlines={doc.headlines} onChange={(headlines) => edit((d) => ({ ...d, headlines }))} author={people[0] ?? ""} />}
             {view === "todos" && <Todos todos={doc.todos} onChange={(todos) => edit((d) => ({ ...d, todos }))} people={people} today={today} />}
-            {view === "ids" && <Ids doc={doc} edit={edit} session={timer.sessionId ?? "pending"} meetingKey={info.key} voter={{ id: viewer.id, name: viewer.name || viewer.label }} attendees={attendees} />}
+            {view === "ids" && <Ids doc={doc} edit={edit} session={timer.sessionId ?? "pending"} meetingKey={info.key} voter={{ id: viewer.id, name: viewer.name || viewer.label }} attendees={attendees} addedBy={myName} />}
             {view === "conclude" && (
               <Conclude
                 meetingKey={info.key}
@@ -564,7 +566,7 @@ export function MeetingView({
 
       {/* Room at the bottom so the floating Add to IDS button never covers the last rows. */}
       <div aria-hidden className="h-20" />
-      {!readOnly && <ParkIt open={parkOpen} setOpen={setParkOpen} onPark={(title) => edit((d) => ({ ...d, issues: [...d.issues, { id: newItemId(), title, notes: "", resolved: false }] }))} />}
+      {!readOnly && <ParkIt open={parkOpen} setOpen={setParkOpen} onPark={(title) => edit((d) => ({ ...d, issues: [...d.issues, { id: newItemId(), title, notes: "", resolved: false, ...(myName ? { addedBy: myName } : {}) }] }))} />}
     </MentionRoster>
   );
 }
