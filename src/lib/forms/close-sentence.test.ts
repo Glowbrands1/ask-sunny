@@ -40,6 +40,16 @@ describe("closeSentence (ACCOUNT_REPLACED_CLOSE_SENTENCE_KEPT_ENABLED)", () => {
     expect(close(account, "Ottoline Ormsworth was texting on the cell phone the whole shfit on November 4, 2026.")).toBe(true);
   });
 
+  it("Gate-Bubbles-5's other date shapes are one difference (14 Nov 2026)", () => {
+    const at = (date: string) => `Odalys Quenby was texting on the cell phone the whole shift on ${date}.`;
+    expect(close(at("11/3/26"), at("Nov 4th"))).toBe(true);
+    expect(close(at("11/3/26"), at("11/4"))).toBe(true);
+    expect(close(at("Tuesday, 11/3/26"), at("Wednesday, November 4th"))).toBe(true);
+    expect(close(at("Tuesday"), at("Wednesday"))).toBe(true);
+    expect(close(at("the 3rd"), at("the 4th"))).toBe(true);
+    expect(close(at("3rd"), at("4th"))).toBe(true);
+  });
+
   it("a date read as one word never hides a changed account", () => {
     expect(close("She was late on 11/3/26.", "She was rude to a customer on November 4, 2026.")).toBe(false);
     expect(close("She skipped the 10 minute sanitation on 11/3/26.", "She skipped the 10 minute sanitation and the floors on 11/3/26.")).toBe(false);
