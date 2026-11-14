@@ -90,6 +90,17 @@ export function toChatTurnError(error: unknown, question: string): ChatTurnError
         };
 
       case "model_failed":
+        // AI TIME LIMITS (QA, 14 Nov 2026): a call that ran out of time says so, in the server's short message.
+        if (error.status === 504 && error.message) {
+          return { kind: "model_failed", message: error.message, retryable: true, question };
+        }
+        return {
+          kind: "model_failed",
+          message:
+            "Sunny could not produce an answer. Nothing was answered from memory — try again in a moment.",
+          retryable: true,
+          question,
+        };
       default:
         return {
           kind: "model_failed",
