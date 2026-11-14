@@ -185,6 +185,9 @@ import { privateCreatorFormsEnabled, privateCreatorsActive } from "@/lib/forms/p
  */
 
 const NEW_FLAGS = [
+  // coding 2: QA's #745 follow-ups, ported from the sibling app's #842 (12 Nov 2026; default off).
+  "TERSE_REQUEST_ACCOUNT_ENABLED",
+  "CREATE_POINTS_TO_SHOWN_CARD_ENABLED",
   // coding 4: SHARED_CITY_ASKS_SALON (QA, Sunny 38c live, 13 Nov 2026; default off).
   "SHARED_CITY_ASKS_SALON_ENABLED",
   // coding 2: OFF_ROSTER_PLACE_ANSWER (QA's Sunny 37b live bug, 12 Nov 2026; default off).

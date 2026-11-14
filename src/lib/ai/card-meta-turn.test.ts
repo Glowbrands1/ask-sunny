@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PRESS_CREATE, WHAT_IS_OUT_OF_DATE, WHAT_IS_WRONG, cardMetaTurn, withoutCardMetaTurns } from "./card-meta-turn";
 import type { AskResponse } from "./types";
@@ -13,6 +13,12 @@ const onCard = (question: string) => ({ question, history, continueProposalTempl
 
 afterEach(() => {
   vi.unstubAllEnvs();
+});
+
+// CREATE_POINTS_TO_SHOWN_CARD_ENABLED pinned off (QA, 12 Nov 2026): these cards carry no Create button state, and the
+// suite also runs with a gate's flags in the environment; its own tests below turn it on.
+beforeEach(() => {
+  vi.stubEnv("CREATE_POINTS_TO_SHOWN_CARD_ENABLED", "");
 });
 
 function bothOn() {
@@ -112,5 +118,37 @@ describe("CREATE_FROM_CONVERSATION_POINTS_TO_CARD_ENABLED (QA's P6, Sunny live, 
     for (const question of ["create a coaching form from this conversation", "create a form for Rowan Kestrel", "make a form from this conversation for being late on 11/2"]) {
       expect(cardMetaTurn(onCard(question)), question).toBeNull();
     }
+  });
+});
+
+/**
+ * CREATE_POINTS_TO_SHOWN_CARD_ENABLED — QA's #745 follow-up (12 Nov 2026; ported from the sibling app's #842): "write
+ * ca", then "create it" said "press **Create draft** on the card" while the card only asked who it is for (no button).
+ */
+describe("CREATE_POINTS_TO_SHOWN_CARD_ENABLED", () => {
+  const asksWho = { templateKey: "dpoa", employeeName: null, status: "needs_employee", supportsInlineDraft: false };
+  const ready = { templateKey: "dpoa", employeeName: "Rowan Kestrel", status: "ready", supportsInlineDraft: true };
+  const turn = (formProposal: object) => ({
+    question: "create it",
+    history: [
+      { id: "m1", role: "user", content: "write ca" },
+      { id: "a1", role: "assistant", content: "Who is this for?", formProposal },
+    ] as never,
+    continueProposalTemplateKey: "dpoa",
+    questionMessageId: "m9",
+  });
+
+  it("off: the line is said with a who-is-it-for card (as before)", () => {
+    // Pinned off (QA, 12 Nov 2026): the suite also runs with production's or a gate's flags in the environment.
+    vi.stubEnv("CREATE_POINTS_TO_SHOWN_CARD_ENABLED", "");
+    vi.stubEnv("CREATE_COMMAND_POINTS_TO_CARD_ENABLED", "true");
+    expect(cardMetaTurn(turn(asksWho))?.card?.content).toBe(PRESS_CREATE);
+  });
+
+  it("on: no line pointing to a Create button the card does not show; a ready card keeps it", () => {
+    vi.stubEnv("CREATE_COMMAND_POINTS_TO_CARD_ENABLED", "true");
+    vi.stubEnv("CREATE_POINTS_TO_SHOWN_CARD_ENABLED", "true");
+    expect(cardMetaTurn(turn(asksWho))).toBeNull();
+    expect(cardMetaTurn(turn(ready))?.card?.content).toBe(PRESS_CREATE);
   });
 });
