@@ -2,7 +2,6 @@ import "server-only";
 
 import { CLAUDE_EFFORT, CLAUDE_MAX_TOKENS, CLAUDE_MODEL } from "@/lib/config/models";
 import { MissingConfigurationError } from "@/lib/config/server-env";
-import { mainAnswerTimeoutMs } from "@/lib/config/ai-timeouts";
 import { chatTraceEnabled } from "@/lib/config/chat-quality-flags";
 import { authorizedSalonIds } from "@/lib/forms/location-scope";
 import type { ChatMessage } from "@/types";
@@ -49,8 +48,8 @@ import {
  * the turn record.
  *
  *   steps        AGENT_LOOP_MAX_STEPS, default 6, never more than 10
- *   time         each model step the main limit (45 s); the whole loop 100 s,
- *                under the route's 120 s
+ *   time         each model step 90 s (a long final answer is not cut); the
+ *                whole loop 100 s, under the route's 120 s
  *   limit/error  a clear reply, never an empty one, and a server log line
  *   trace        chat_traces `slots.agent_loop`: each step's tool, ms and
  *                result size — names and numbers only, never values
@@ -60,6 +59,11 @@ import {
  */
 
 export const AGENT_LOOP_TOTAL_MS = 100_000;
+/**
+ * One step's whole-call limit. Not streamed, so not the main answer's first-token limit: QA's 14 days of chat_traces
+ * had successful long answers of 46–57 s, which a 45 s whole-call limit would have cut. The loop's total still holds.
+ */
+export const AGENT_LOOP_STEP_MS = 90_000;
 
 export const STEP_LIMIT_REPLY = "I couldn't finish that in the steps I have for one message. Could you tell me the one thing you want done first?";
 export const LOOP_FAILED_REPLY = "Sunny could not finish that answer. Nothing was saved. Please send it again in a moment.";
@@ -223,13 +227,13 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   try {
     const client = getAnthropicClient();
     /*
-     * AI TIME LIMITS: each model step ends by the main limit (45 s), the SDK's retries included; the whole loop by
+     * AI TIME LIMITS: each model step ends by AGENT_LOOP_STEP_MS, the SDK's retries included; the whole loop by
      * AGENT_LOOP_TOTAL_MS, under the route's 120 s. Every step goes through the app's one client, so the spend meter
      * counts it (SPEND_GUARD_ALL_CALLS_ENABLED) as it counts every other call.
      */
     await withAiTimeLimit("agent_loop", AGENT_LOOP_TOTAL_MS, async () => {
       for (let step = 1; step <= limit; step += 1) {
-        const reply = (await withAiTimeLimit("agent_loop_step", mainAnswerTimeoutMs(), (timed) =>
+        const reply = (await withAiTimeLimit("agent_loop_step", AGENT_LOOP_STEP_MS, (timed) =>
           client.messages.create(
             {
               model: CLAUDE_MODEL,
