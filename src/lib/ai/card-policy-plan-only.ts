@@ -70,7 +70,7 @@ export function withCardPolicyPlanOnly(response: AskResponse): AskResponse {
    * and the reply's citations also keep each section the line names; the plan is read as before. Off, as before.
    */
   const cited = policyLineCoversEverySectionEnabled()
-    ? [...policies, ...policies.flatMap((policy) => policy.split(/\s*(?:,|&|\band\b)\s*/).map((part) => part.trim()).filter(Boolean))]
+    ? [...policies, ...policies.flatMap((policy) => policy.split(/\s+(?:and|&)\s+/i).map((part) => part.trim()).filter(Boolean))]
     : policies;
   const lines = content.split("\n");
   const citationLines = lines.filter((line) => CITATION_ONLY_LINE.test(line.trim()));
