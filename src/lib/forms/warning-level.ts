@@ -104,7 +104,7 @@ function historyLevelNotThisFormOn(): boolean {
 }
 
 /*
- * HISTORY_LEVEL_NOT_THIS_FORM_ENABLED (QA, 14 Nov 2026; the mechanism of Ask Bubbles' 9 Oct reader). A level with ITS
+ * HISTORY_LEVEL_NOT_THIS_FORM_ENABLED (QA, 14 Nov 2026; the mechanism of the sibling app's 9 Oct reader). A level with ITS
  * OWN DATE right after it — "verbal warning on 9/21", "written warning 10/2", "verbal ca on the 21st", "written
  * warning on september 21" — is a step on file, unless that day is today. A level "for the same thing" / "for that" /
  * "for it" points back at an earlier one. Neither is this form's level, unless a request verb in the same sentence asks
@@ -218,7 +218,7 @@ function historyByDateOrPointer(
    * No other day in the turn. A level that opens the turn, in a turn that puts the incident on that day — "verbal
    * warning on 11/12/26 for <W>, she was late that day" — is this form's. Otherwise ("written warning on the 21st",
    * "verbal warning on 21 September", "she gets a written warning 10/1") its date is weighed against today: before it,
-   * a step on file (QA's bar on the gates' NO-GO, 14 Nov 2026; Ask Bubbles reads them the same way).
+   * a step on file (QA's bar on the gates' NO-GO, 14 Nov 2026; the sibling app reads them the same way).
    */
   // QA's bar on the gates' NO-GO (14 Nov 2026): only when the turn also says the incident was on that day.
   if (leads && SAME_DAY_AS_LEVEL.test(read)) return null;
