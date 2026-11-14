@@ -1,4 +1,4 @@
-import { cardPolicyPlanOnlyEnabled } from "@/lib/config/chat-quality-flags";
+import { cardPolicyPlanOnlyEnabled, policyLineCoversEverySectionEnabled } from "@/lib/config/chat-quality-flags";
 
 import type { AskResponse } from "./types";
 
@@ -63,11 +63,20 @@ export function withCardPolicyPlanOnly(response: AskResponse): AskResponse {
     return `${lead}${shown.join(" and ")} ${kept.length > 1 ? "policies" : "policy"}${tail}`;
   });
 
+  /*
+   * POLICY_LINE_COVERS_EVERY_SECTION_ENABLED (the pack's own diff, 14 Nov 2026): a Policy line naming every section the
+   * account reads ("Attendance and Standards of Conduct, as you said") kept no citation line, because the joined name is
+   * no one policy: "Standards of Conduct Policy, JBA Policy Manual p.12" was dropped. Under the flag the citation lines
+   * and the reply's citations also keep each section the line names; the plan is read as before. Off, as before.
+   */
+  const cited = policyLineCoversEverySectionEnabled()
+    ? [...policies, ...policies.flatMap((policy) => policy.split(/\s+(?:and|&)\s+/i).map((part) => part.trim()).filter(Boolean))]
+    : policies;
   const lines = content.split("\n");
   const citationLines = lines.filter((line) => CITATION_ONLY_LINE.test(line.trim()));
-  if (citationLines.some((line) => namesOnly(CITATION_ONLY_LINE.exec(line.trim())![1]!, policies))) {
+  if (citationLines.some((line) => namesOnly(CITATION_ONLY_LINE.exec(line.trim())![1]!, cited))) {
     content = lines
-      .filter((line) => !CITATION_ONLY_LINE.test(line.trim()) || namesOnly(CITATION_ONLY_LINE.exec(line.trim())![1]!, policies))
+      .filter((line) => !CITATION_ONLY_LINE.test(line.trim()) || namesOnly(CITATION_ONLY_LINE.exec(line.trim())![1]!, cited))
       .join("\n")
       .replace(/\n{3,}/g, "\n\n");
   }
@@ -75,7 +84,7 @@ export function withCardPolicyPlanOnly(response: AskResponse): AskResponse {
   const citations = response.citations ?? [];
   const heading = (citation: (typeof citations)[number]) =>
     [citation.excerpt?.split(".")[0] ?? "", (citation as { section?: string | null }).section ?? "", citation.locator ?? ""].join(" ");
-  const keptCitations = citations.filter((citation) => namesOnly(heading(citation), policies));
+  const keptCitations = citations.filter((citation) => namesOnly(heading(citation), cited));
   const nextCitations = keptCitations.length > 0 ? keptCitations : citations;
 
   if (content === response.content && nextCitations.length === citations.length) return response;

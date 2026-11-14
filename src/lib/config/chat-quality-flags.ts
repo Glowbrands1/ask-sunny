@@ -4833,6 +4833,27 @@ export function sharedCityAsksSalonEnabled(): boolean {
 }
 
 /**
+ * NAMED_POLICIES_ALL_KEPT_ENABLED (Coding-2, 13 Nov 2026; default off; ported from Ask Bubbles, QA's two-offense Create
+ * check). Naming "the attendance policy and standards of conduct" kept only the last policy named: Attendance left Type
+ * of Offense, Policy Violated and the plan. On: policies named together in one list are all kept
+ * (`forms/ca-policy.ts` statedTogetherIn); a later name that corrects an earlier one still wins alone. Off, as before.
+ */
+export function namedPoliciesAllKeptEnabled(): boolean {
+  return envFlag("NAMED_POLICIES_ALL_KEPT_ENABLED");
+}
+
+/**
+ * POLICY_LINE_COVERS_EVERY_SECTION_ENABLED (Coding-2, 14 Nov 2026; default off; ported from Ask Bubbles, QA's
+ * two-offense Create check). "she was late on 11/3/26 and yelled at a customer" was read as Attendance only, and the
+ * card said one policy where the CA carried two. On: a conduct incident described beside lateness is read too
+ * (`forms/ca-policy.ts` withConductBesideLateness), the card line names every policy (named or described), and the draft
+ * ticks and cites each. Off, as before.
+ */
+export function policyLineCoversEverySectionEnabled(): boolean {
+  return envFlag("POLICY_LINE_COVERS_EVERY_SECTION_ENABLED");
+}
+
+/**
  * ON_FILE_LINE_NOT_THE_POLICY_ENABLED (Coding-2, 14 Nov 2026; default off; Pau's morning scan via QA). A dress-code
  * request sent again word for word was carded "Policy: Late Opening — read from this request": the intent reader took
  * the heading from the app's own "On file in Form Monitoring … (… Late Opening)" listing. On: a heading the manager's own

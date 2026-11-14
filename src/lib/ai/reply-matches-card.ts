@@ -1,4 +1,4 @@
-import { bareNotDenialEnabled, cleaningOtherEveryWordingEnabled, closeSpellingMatchEnabled, conductIncidentCitesPageEnabled, otherBesideDescribedEnabled, exitDateLineAgreesEnabled, replyMatchesCardEnabled } from "@/lib/config/chat-quality-flags";
+import { bareNotDenialEnabled, cleaningOtherEveryWordingEnabled, closeSpellingMatchEnabled, conductIncidentCitesPageEnabled, otherBesideDescribedEnabled, policyLineCoversEverySectionEnabled, exitDateLineAgreesEnabled, replyMatchesCardEnabled } from "@/lib/config/chat-quality-flags";
 import { offeredOffRosterName } from "@/lib/forms/off-roster-confirm";
 import { deniesAFault, deniesAFaultWithBareNot } from "@/lib/forms/draft-never-blank";
 import { OTHER_BESIDE_NOTE, caPolicyProposalLine, readCaPolicy, removedOffenseLabels } from "@/lib/forms/ca-policy";
@@ -119,12 +119,22 @@ function withOnePolicy(content: string): string {
   const heading = read && conductIncidentCitesPageEnabled() ? (/^this reads as \*\*([^*]+)\*\*/i.exec(read)?.[1] ?? read) : read;
   if (!heading) return content;
   const card = normalHeading(heading);
+  /*
+   * POLICY_LINE_COVERS_EVERY_SECTION_ENABLED (the pack's own diff, 14 Nov 2026): a Policy line that names every section
+   * the account reads ("Attendance and Standards of Conduct, as you said") is the card's policies, each of them; the
+   * joined name is no one heading, so every citation line was dropped. Off, the one heading as before.
+   */
+  // Only "and" / "&" join sections: a comma starts the line's own words ("Attendance, from what you described …").
+  const joined = heading.split(",")[0]!;
+  const cards = policyLineCoversEverySectionEnabled() && /\s(?:and|&)\s/i.test(joined)
+    ? new Set([card, ...joined.split(/\s+(?:and|&)\s+/i).map((part) => normalHeading(part.trim())).filter(Boolean)])
+    : new Set([card]);
   return content
     .split("\n")
     .filter((line) => {
       if (/\*\*Policy:\*\*/.test(line)) return true;
       const cited = MANUAL_LINE.exec(line)?.[1];
-      return !cited || normalHeading(cited) === card;
+      return !cited || cards.has(normalHeading(cited));
     })
     .join("\n");
 }

@@ -42,6 +42,8 @@ import {
   proposalPolicySetAsideEnabled,
   sameRequestOtherPersonEnabled,
   coachingObservedSavedEnabled,
+  namedPoliciesAllKeptEnabled,
+  policyLineCoversEverySectionEnabled,
   spellingCleanupEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { notesMadeAbout } from "@/lib/ai/make-it-about";
@@ -175,6 +177,7 @@ import {
   withConductOffense,
   withStatedOffense,
   withoutCleaningDuty,
+  withoutSetAsideOffense,
   besideAttendanceKeys,
 } from "@/lib/forms/ca-policy";
 import { CA_SALES_POLICY_RULE, withSalesOffense } from "@/lib/forms/ca-sales-policy";
@@ -754,7 +757,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      * for <A>, his cash drawer was short") was drafted with the first request's policy (Late Opening) as its Policy
      * Violated. Only the policy reads below use it; payroll, exit and every other reader keep the notes as sent.
      */
-    const policyNotes = secondRequestOwnAccountEnabled() ? currentFormRequestText(notes) : notes;
+    // POLICY_LINE_COVERS_EVERY_SECTION_ENABLED: a policy taken off a two-offense account is read without its clause (`withoutSetAsideOffense`).
+    const policyNotes = withoutSetAsideOffense(secondRequestOwnAccountEnabled() ? currentFormRequestText(notes) : notes, setAside.names);
     const wantsEppPolicy = fields.some((field) => field.key === EPP_POLICY_REFERENCE_KEY);
     const needsPolicy = fields.some(
       (field) => field.policyGrounded && field.key !== EPP_POLICY_REFERENCE_KEY,
@@ -1953,8 +1957,21 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       (describedSection && !(enforced.checked.offense_type ?? []).some((key) => SPECIFIC_SECTION_BOXES.has(key))
         ? describedSection
         : null);
+    /*
+     * NAMED_POLICIES_ALL_KEPT_ENABLED (ported from Ask Bubbles; Gate-Bubbles-4 on its #878, 14 Nov 2026): every policy
+     * the manager named together is ticked, in either order. The card cites one of them; with Attendance named last its
+     * single section won here and Standards of Conduct was dropped.
+     */
+    const allNamedKeys =
+      caPolicy &&
+      ((namedPoliciesAllKeptEnabled() && (caPolicy.alsoStated?.length ?? 0) > 0) ||
+        // POLICY_LINE_COVERS_EVERY_SECTION_ENABLED: lateness and a conduct incident, both described, tick both.
+        (policyLineCoversEverySectionEnabled() && caPolicy.alsoDescribed))
+        ? statedOffenseKeys(caPolicy, policyText)
+        : null;
     const ownStatedKeys = caPolicy
-      ? ((cardSection ? [cardSection.offenseKey] : null) ??
+      ? (allNamedKeys ??
+        (cardSection ? [cardSection.offenseKey] : null) ??
         statedOffenseKeys(caPolicy, policyText) ??
         (policySection ? [policySection.offenseKey] : null))
       : null;

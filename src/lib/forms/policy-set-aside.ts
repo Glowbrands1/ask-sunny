@@ -1,3 +1,6 @@
+import { policyLineCoversEverySectionEnabled } from "@/lib/config/chat-quality-flags";
+
+import { policyPhrase } from "./ca-action-plan";
 import { CA_POLICY_LABEL, policiesNamedIn, type CaPolicyName } from "./ca-policy";
 
 /**
@@ -153,6 +156,8 @@ export function policySetAsideLine(setAside: PolicySetAside): string {
  */
 export function withPolicySetAside(content: string, setAside: PolicySetAside): string {
   if (!setAsideAnything(setAside)) return content;
+  const otherKept = policyLineCoversEverySectionEnabled() ? withOtherPolicyKept(content, setAside) : null;
+  if (otherKept !== null) return otherKept;
   const kept = content
     .split("\n")
     .filter((line) => {
@@ -187,7 +192,14 @@ export function valuesWithPolicySetAside(values: Record<string, string>, setAsid
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(values)) {
     if (POLICY_FIELD_KEYS.has(key)) {
-      out[key] = citesSetAside(value, setAside) ? "" : value;
+      /*
+       * POLICY_LINE_COVERS_EVERY_SECTION_ENABLED (ported from Ask Bubbles): the policy left after one was taken off keeps
+       * its quoted section, which may mention the other: Direct policy follows Policy Violated, which names only the
+       * policy left.
+       */
+      const violated = (values.policy_violated ?? "").trim();
+      const keepsLeft = policyLineCoversEverySectionEnabled() && key === "policy_language" && violated !== "" && !citesSetAside(violated, setAside);
+      out[key] = !keepsLeft && citesSetAside(value, setAside) ? "" : value;
       continue;
     }
     if (typeof value !== "string" || !POLICY_REFERENCE_LINE.test(value.split("\n").find((line) => POLICY_REFERENCE_LINE.test(line)) ?? "")) {
@@ -202,4 +214,36 @@ export function valuesWithPolicySetAside(values: Record<string, string>, setAsid
       .trim();
   }
   return out;
+}
+
+/*
+ * POLICY_LINE_COVERS_EVERY_SECTION_ENABLED (ported from Ask Bubbles: Gate-Bubbles-4's NO-GO probe, 14 Nov 2026): on a
+ * card citing two policies ("Attendance and Standards of Conduct"), "take the attendance policy off the form" said
+ * "Policy: none — you took the Attendance policy off" with a generic plan. One taken off, the other stays: the Policy
+ * line names it, its citation lines stay, and the plan reviews it (the card's plan step then shows the plan Create
+ * saves; Create reads the account without the offense taken off, `ca-policy.ts` withoutSetAsideOffense). Null when the
+ * card does not cite a policy that stays, so the line says "none" as before.
+ */
+function withOtherPolicyKept(content: string, setAside: PolicySetAside): string | null {
+  if (setAside.any) return null;
+  const lines = content.split("\n");
+  const at = lines.findIndex((line) => POLICY_ROW.test(line.trim()));
+  if (at < 0) return null;
+  const cited = [...new Set(policiesNamedIn(lines[at]!.toLowerCase()).map((found) => found.name))];
+  const left = cited.filter((name) => !setAside.names.has(name));
+  if (left.length === 0 || left.length === cited.length) return null;
+  const leftLabels = left.map((name) => CA_POLICY_LABEL[name]);
+  const gone = labelsOf(setAside);
+  const joined = leftLabels.length === 1 ? leftLabels[0]! : `${leftLabels.slice(0, -1).join(", ")} and ${leftLabels.at(-1)}`;
+  lines[at] = `**Policy:** ${joined} — you took the ${gone.join(" and ")} policy off, so I'll cite only ${joined} on the draft. Tell me if a different policy applies.`;
+  return lines
+    .map((line) => {
+      const plan = /^(\*\*Action plan:\*\*)\s*(.*)$/i.exec(line.trim());
+      if (!plan) return line;
+      const first = /\bwith ([A-Z][\w'-]*)\./.exec(plan[2]!)?.[1] ?? "the employee";
+      const closing = /Future policy violations[^\n]*$/.exec(plan[2]!)?.[0] ?? "";
+      return `${plan[1]} Management will review ${policyPhrase(leftLabels)} with ${first}.${closing ? ` ${closing}` : ""}`;
+    })
+    .filter((line, index) => index === at || !(CITATION_LINE.test(line.trim()) && !line.trim().startsWith("**") && citesSetAside(line.trim(), setAside)))
+    .join("\n");
 }

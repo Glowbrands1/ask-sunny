@@ -9,6 +9,8 @@ import {
   lateReadsAttendanceEnabled,
   msbPhraseSocEnabled,
   caSalesPolicyEnabled,
+  policyLineCoversEverySectionEnabled,
+  namedPoliciesAllKeptEnabled,
   cleaningOtherEveryWordingEnabled,
   otherPolicyAgreesEnabled,
   otherBesideDescribedEnabled,
@@ -145,6 +147,16 @@ export interface CaPolicyReading {
    * time" alone; the manager never said "late opening", so the card says it as read from the account, never "as you said".
    */
   lateOpeningDescribed?: true;
+  /**
+   * NAMED_POLICIES_ALL_KEPT_ENABLED: the other policies named together with `stated`, in the same sentence and joined
+   * to it ("the attendance policy and standards of conduct"). Absent off, or when one policy was named.
+   */
+  alsoStated?: CaPolicyName[];
+  /**
+   * POLICY_LINE_COVERS_EVERY_SECTION_ENABLED: a conduct incident the account describes beside the lateness it
+   * describes ("she was late on 11/3/26 and yelled at a customer"), in the manager's words. Absent off.
+   */
+  alsoDescribed?: { readonly key: typeof STANDARDS_OF_CONDUCT; readonly phrase: string };
 }
 
 /* ------------------------------------------------------------ the words -- */
@@ -522,6 +534,45 @@ function statedIn(turn: string): CaPolicyName | null {
   return found?.name ?? null;
 }
 
+/*
+ * NAMED_POLICIES_ALL_KEPT_ENABLED (QA's two-offense Create check, 13 Nov 2026): "for violating the attendance policy and
+ * standards of conduct, she was late … and yelled at a customer" kept only the last policy named (Standards of
+ * Conduct), so Attendance left the offense, Policy Violated and the plan. Names joined in one list ("X and Y",
+ * "X, Y and Z", "X as well as Y") are all the manager's answer; a later name that corrects an earlier one ("not
+ * attendance — standards of conduct", "attendance, actually standards of conduct") is not joined and still wins alone.
+ */
+const JOINED_NAMES = /^(?:\s+polic(?:y|ies))?\s*(?:,\s*(?:and\s+|&\s*|plus\s+)?|\s(?:and|&|plus|as well as|along with)\s+)(?:also\s+)?(?:the\s+|our\s+|a\s+|company\s+)*(?:violat\w*\s+(?:the\s+|of\s+(?:the\s+)?)?)?$/;
+
+/** The policies named together with the one `statedIn` reads, in the order written; [] when it stands alone. */
+function statedTogetherIn(turn: string, stated: CaPolicyName): CaPolicyName[] {
+  for (const sentence of statements(turn)) {
+    const hits: { name: CaPolicyName; start: number; end: number }[] = [];
+    for (const { name, pattern, enabled } of NAMED) {
+      if (enabled && !enabled()) continue;
+      const match = pattern.exec(sentence);
+      if (!match) continue;
+      if (NEGATED_BEFORE.test(sentence.slice(0, match.index)) && !(notFollowingIsViolationEnabled() && NOT_FOLLOWING_BEFORE.test(sentence.slice(0, match.index)))) continue;
+      if (takenOff(sentence, match.index, match.index + match[0].length)) continue;
+      hits.push({ name, start: match.index, end: match.index + match[0].length });
+    }
+    hits.sort((a, b) => a.start - b.start);
+    // Runs of names joined by a list word; the run that holds the stated policy is the answer.
+    let run: typeof hits = [];
+    for (const hit of hits) {
+      const last = run[run.length - 1];
+      if (last && JOINED_NAMES.test(sentence.slice(last.end, hit.start))) run.push(hit);
+      else {
+        if (run.some((entry) => entry.name === stated) && run.length > 1) break;
+        run = [hit];
+      }
+    }
+    if (run.length > 1 && run.some((entry) => entry.name === stated)) {
+      return [...new Set(run.map((entry) => entry.name))].filter((name) => name !== stated);
+    }
+  }
+  return [];
+}
+
 /**
  * PROPOSAL_POLICY_SET_ASIDE_ENABLED (`forms/policy-set-aside.ts`): every policy this sentence names by name, where
  * it is in the sentence. Read the same way `statedIn` reads a name, with no frame needed; the caller decides what the
@@ -549,7 +600,64 @@ export function policiesNamedIn(sentence: string): { name: CaPolicyName; start: 
 export function readCaPolicy(rawText: string): CaPolicyReading {
   const said = managerWords(rawText);
   // Merge of main into #595: WOVEN_TRAINING_CONDUCT's reading (default off) before AS_YOU_SAID_APP_READ's fallback, on the manager's words.
-  return withLateOpeningDescribed(withMissedShift(withLateIsAttendance(withAppReading(withWovenWork(withCleaningOther(withSalesPolicy(readCaPolicyFromWords(said), said), said), said), rawText, said), said), said), said);
+  return withConductBesideLateness(withLateOpeningDescribed(withMissedShift(withLateIsAttendance(withAppReading(withWovenWork(withCleaningOther(withSalesPolicy(readCaPolicyFromWords(said), said), said), said), rawText, said), said), said), said), said);
+}
+
+/*
+ * POLICY_LINE_COVERS_EVERY_SECTION_ENABLED (ported from Ask Bubbles; QA's two-offense Create check, 13 Nov 2026): "create ca form for <B>, she
+ * was late on 11/3/26 and yelled at a customer" read as Attendance only. The card said "Policy: Attendance, from what
+ * you described ("late")", Direct policy cited Attendance only, and the second offense the manager described was never
+ * read. With the flag, a conduct incident described beside the lateness (rude, yelled, shouted, argued, swore, cursed,
+ * disrespectful; the words the app already reads as an incident, the sibling's `incident-reading.ts`) is read too: the Standards of
+ * Conduct, in the manager's words. Only where no policy was named and the account describes lateness or absence.
+ */
+const CONDUCT_INCIDENT =
+  /\b(?:was\s+|were\s+|got\s+|being\s+)?(?:rude|unprofessional|argued|arguing|shouted|yelled|yelling|swore|swearing|cursed|cursing|disrespect\w*)\b(?:\s+(?:at|to|with)\s+(?:a|an|the|her|his|their|our)?\s*\w+)?/;
+
+/**
+ * POLICY_LINE_COVERS_EVERY_SECTION_ENABLED (ported from Ask Bubbles: Gate-Bubbles-4's NO-GO probe, 14 Nov 2026): a
+ * two-offense account ("she was late on 11/3/26 and she yelled at a customer") with one of its policies taken off ("take
+ * the attendance policy off the form", `policy-set-aside.ts`) is read for its policy without that offense's clause, so
+ * the other policy keeps its box, section, Policy Violated and plan. Only the text the policy is read from; the account
+ * itself is untouched. Unchanged when the flag is off, nothing of these two is taken off, or the account does not
+ * describe both.
+ */
+export function withoutSetAsideOffense(text: string, names: ReadonlySet<CaPolicyName>): string {
+  if (!policyLineCoversEverySectionEnabled()) return text;
+  const offAttendance = names.has("attendance");
+  const offConduct = names.has(STANDARDS_OF_CONDUCT);
+  if (offAttendance === offConduct) return text;
+  const conduct = (part: string) => CONDUCT_INCIDENT.test(normalize(part));
+  const late = (part: string) => describedAttendanceKeys(part) !== null;
+  if (!late(text) || !conduct(text)) return text;
+  const read = (text ?? "")
+    .split("\n")
+    .map((line) =>
+      line
+        .split(/\s*,\s*(?:and\s+)?|\s+and\s+/i)
+        .filter((part) => !(offAttendance ? late(part) && !conduct(part) : conduct(part) && !late(part)))
+        .join(" and "),
+    )
+    .join("\n");
+  return read.trim() === "" ? text : read;
+}
+
+function withConductBesideLateness(reading: CaPolicyReading, said: string): CaPolicyReading {
+  if (!policyLineCoversEverySectionEnabled()) return reading;
+  /*
+   * Ported from Ask Bubbles (Gate-Bubbles-4's NO-GO probe on its chain, 14 Nov 2026): "she was late on 11/3/26 and
+   * yelled at a customer, and didn't do the sanitation" read as cleaning (Other), so the conduct beside the lateness was
+   * never read and the card named Attendance only. A cleaning duty beside them is read past (OTHER_BESIDE_DESCRIBED says
+   * Other beside).
+   */
+  if (reading.stated !== null || (reading.other && reading.other !== "cleaning") || reading.ambiguous) return reading;
+  if (reading.suggestion === STANDARDS_OF_CONDUCT) return reading;
+  if (describedAttendanceKeys(said) === null) return reading;
+  const text = normalize(said);
+  const match = CONDUCT_INCIDENT.exec(text);
+  // A denied incident ("she was late but was not rude") is no incident.
+  if (!match || NEGATED_BEFORE.test(text.slice(0, match.index))) return reading;
+  return { ...reading, alsoDescribed: { key: STANDARDS_OF_CONDUCT, phrase: match[0].trim() } };
 }
 
 /*
@@ -1012,7 +1120,16 @@ function readCaPolicyFromWords(rawText: string): CaPolicyReading {
   const missedEvent = missedEventIn(sentences);
 
   let stated: CaPolicyName | null = null;
-  for (const turn of turns) stated = statedIn(turn) ?? stated;
+  let statedTurn: string | null = null;
+  for (const turn of turns) {
+    const named = statedIn(turn);
+    if (named !== null) {
+      stated = named;
+      statedTurn = turn;
+    }
+  }
+  // NAMED_POLICIES_ALL_KEPT_ENABLED: the policies named together with it.
+  const alsoStated = namedPoliciesAllKeptEnabled() && stated !== null && statedTurn !== null ? statedTogetherIn(statedTurn, stated) : [];
   /*
    * A MISSED MEETING IS ATTENDANCE — owner decision, 22 Oct 2026, after the
    * District Manager's 21 Oct report ("not attending the monthly meeting" was
@@ -1050,6 +1167,7 @@ function readCaPolicyFromWords(rawText: string): CaPolicyReading {
       source: stated === STANDARDS_OF_CONDUCT ? "stated" : null,
       ambiguous: null,
       missedEvent,
+      ...(alsoStated.length > 0 ? { alsoStated } : {}),
     };
   }
   if (topics.length === 0) {
@@ -1099,6 +1217,15 @@ const ABSENCE = /\b(?:absent|absence|absences|absenteeism|no[- ]call|no[- ]show|
 const LATENESS = /\b(?:late|lateness|tardy|tardiness|left early|leaving early|clocked out early)\b/;
 
 export function statedOffenseKeys(reading: CaPolicyReading, rawText: string): string[] | null {
+  // POLICY_LINE_COVERS_EVERY_SECTION_ENABLED: lateness and a conduct incident, both described, tick both boxes.
+  if (policyLineCoversEverySectionEnabled() && reading.stated === null && reading.alsoDescribed) {
+    return [...new Set([...(describedAttendanceKeys(rawText) ?? []), reading.alsoDescribed.key])];
+  }
+  // NAMED_POLICIES_ALL_KEPT_ENABLED: every policy named together is ticked, in the order written.
+  if (namedPoliciesAllKeptEnabled() && reading.stated !== null && (reading.alsoStated?.length ?? 0) > 0) {
+    const keys = [...(reading.alsoStated ?? []), reading.stated].flatMap((name) => statedOffenseKeys({ ...reading, stated: name, alsoStated: undefined }, rawText) ?? []);
+    return [...new Set(keys)];
+  }
   switch (reading.stated) {
     case null:
       // OTHER_POLICY_AGREES_ENABLED: cleaning or sanitation left undone ticks Other on the draft, as the card says (Pau's rule).
@@ -1284,6 +1411,11 @@ function namedPolicyLine(named: NamedPolicyReading): string {
   return `**Policy:** "${named.phrase}", as you said. I'll look for that section in the current policy manual and quote it on the draft; if the manual has no section by that name, Direct policy is left for you to complete.`;
 }
 
+/** "Attendance and Standards of Conduct", "Attendance, Dress Code and Standards of Conduct". */
+function joinedPolicies(labels: readonly string[]): string {
+  return labels.length <= 1 ? (labels[0] ?? "") : `${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}`;
+}
+
 /** How a missed event is read back: "missed the monthly meeting". */
 export function missedEventPhrase(event: string): string {
   return `missed ${withArticle(event)}`;
@@ -1323,7 +1455,12 @@ export function caPolicyProposalLine(reading: CaPolicyReading, named: NamedPolic
    */
   // OTHER_BESIDE_DESCRIBED_ENABLED (QA's ruling (b)): a section described beside the cleaning duty leads; Other is said beside it.
   if (otherBesideDescribedEnabled() && reading.other === "cleaning" && named?.lookup === "described" && named.besideOther) {
-    return `${namedPolicyLine(named)} ${OTHER_BESIDE_NOTE}`;
+    // POLICY_LINE_COVERS_EVERY_SECTION_ENABLED (ported from Ask Bubbles): a conduct incident beside the lateness is said too.
+    const line =
+      policyLineCoversEverySectionEnabled() && reading.alsoDescribed
+        ? caPolicyProposalLine({ ...reading, other: undefined }, { ...named, besideOther: undefined })
+        : namedPolicyLine(named);
+    return `${line} ${OTHER_BESIDE_NOTE}`;
   }
   if (reading.other === "cleaning" && !(closeSpellingMatchEnabled() && named?.lookup === "found")) {
     return "**Policy:** Other — cleaning duties left undone are recorded under Other on the Corrective Action Form, not the Standards of Conduct. Tell me if a different policy applies.";
@@ -1351,6 +1488,20 @@ export function caPolicyProposalLine(reading: CaPolicyReading, named: NamedPolic
    */
   // A missed meeting reads as Attendance without being named; the manual's section for it is said the same way.
   const readAsAttendance = reading.stated === "attendance" && reading.missedEvent !== null;
+  /*
+   * POLICY_LINE_COVERS_EVERY_SECTION_ENABLED: the line names every policy the draft will carry. Several named ("the
+   * attendance policy and standards of conduct", NAMED_POLICIES_ALL_KEPT's reading) are all said; a conduct incident
+   * described beside the lateness is said beside the Attendance reading.
+   */
+  if (policyLineCoversEverySectionEnabled() && reading.stated !== null && (reading.alsoStated?.length ?? 0) > 0) {
+    const labels = [...new Set([...(reading.alsoStated ?? []), reading.stated].map((name) => CA_POLICY_LABEL[name]))];
+    return `**Policy:** ${joinedPolicies(labels)}, as you said. I'll quote each section from the current policy manual on the draft.`;
+  }
+  if (policyLineCoversEverySectionEnabled() && !reading.stated && reading.alsoDescribed) {
+    const first = named?.lookup === "described" ? named.heading : CA_POLICY_LABEL[reading.readFromApp ?? "attendance"];
+    const words = named?.lookup === "described" ? `"${named.phrase}"; "${reading.alsoDescribed.phrase}"` : `"${reading.alsoDescribed.phrase}"`;
+    return `**Policy:** ${first} and Standards of Conduct, read from what you described (${words}). I'll quote both sections from the current policy manual on the draft; tell me if a different policy applies.`;
+  }
   if ((!reading.stated || readAsAttendance) && named && (named.lookup !== "missing" || (!reading.ambiguous && !reading.suggestion))) {
     return namedPolicyLine(named);
   }
