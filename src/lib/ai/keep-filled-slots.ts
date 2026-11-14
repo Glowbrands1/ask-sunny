@@ -767,7 +767,7 @@ function onlyAGlossaryTerm(sentence: string): boolean {
 
 /** The account already given, copied onto the card so the offense is not asked again. */
 /** CARD_ACCOUNT_DROPS_NON_FACTS_ENABLED: a new clause with its own subject ("… and she maybe forgot", "…, she …"). */
-const FACT_CLAUSE_SPLIT = /\s+(?:and|but)\s+(?:then\s+)?(?=(?:she|he|they)\b)|,\s+(?=(?:she|he|they)\b)/i;
+const FACT_CLAUSE_SPLIT = /(\s+(?:and|but)\s+(?:then\s+)?|,\s+)(?=(?:she|he|they)\b)/gi;
 
 function withObservation(content: string, turns: readonly string[], employeeName: string | null, today?: string): string {
   const ignore = employeeName ? [employeeName] : [];
@@ -841,19 +841,24 @@ function withObservation(content: string, turns: readonly string[], employeeName
         dropped = true;
         continue;
       }
-      const parts = sentence.split(FACT_CLAUSE_SPLIT);
-      const kept: string[] = [];
-      for (const part of parts) {
+      /*
+       * Gate-Bubbles-4's bar on the sibling app (G4-893, 14 Nov 2026): only drop. A clause with her subject that states
+       * no fact is cut out with the "and"/comma before it; the clauses kept stay as written, with the words between them.
+       */
+      const pieces = sentence.trim().replace(/[.!]+$/, "").split(FACT_CLAUSE_SPLIT);
+      let kept = "";
+      for (let index = 0; index < pieces.length; index += 2) {
+        const part = pieces[index]!;
         const clause = factOfClause(part, factContext({ turns: [], roster: [] }));
         const payment = clause !== null && aboutHer.test(clause) && notAFact(clause, { turns: [], roster: [] });
         if (clause === null || payment) {
           dropped = true;
           continue;
         }
-        if (clause !== part.trim().replace(/[.!]+$/, "")) dropped = true;
-        kept.push(clause);
+        if (clause !== part.trim()) dropped = true;
+        kept = kept === "" ? clause : `${kept}${pieces[index - 1] ?? " "}${clause}`;
       }
-      const whole = kept.length === parts.length && !dropped ? [sentence.trim().replace(/[.!]+$/, "")] : kept;
+      const whole = kept === "" ? [] : [kept];
       for (const fact of whole) {
         if (repeatsAFact(fact, facts)) {
           dropped = true;

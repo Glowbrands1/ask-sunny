@@ -27,7 +27,8 @@ export interface FactContext {
   readonly onlyTitle: (text: string) => boolean;
 }
 
-const LEAD_FILLER = /^(?:(?:and|also|plus|then|but|oh|ok|okay|so)\s*,?\s+)+/i;
+/** "then" is not filler: it is a time lead, kept with the fact (the sibling's G4-893: "then she walked out" lost "then"). */
+const LEAD_FILLER = /^(?:(?:and|also|plus|but|oh|ok|okay|so)\s*,?\s+)+/i;
 const LEVEL_WORDS = String.raw`(?:(?:verbal|written|final|first|second|last)\s+){0,2}(?:warning|ca|c\/a|write[- ]?up|corrective\s+action)`;
 /** "make it a written warning, ", "this is a final warning ", "it should be a written, ": the level is the form's, not what happened. */
 const LEVEL_LEAD = new RegExp(
@@ -75,6 +76,9 @@ function lastPlacePhrase(text: string): { readonly index: number; readonly words
 }
 /** "she works as a team member": who she is, nothing that happened. */
 const WORKS_AS_ONLY = new RegExp(String.raw`^${SUBJECT}\s+(?:works|worked|is\s+working|is\s+employed)\s+as\s+(?:a|an|the|our)?\s*(.+)$`, "i");
+
+/** What is left of "she works at <place>" once the place is set aside: where she works, nothing that happened. */
+const WORKS_THERE = new RegExp(String.raw`^${SUBJECT}\s+(?:works|worked|is\s+working|was\s+working|is|was|is\s+employed)$`, "i");
 
 /** A short all-capitals abbreviation the manager typed for a title ("TM", "TC", "AGM"). */
 function abbreviation(text: string): boolean {
@@ -126,7 +130,11 @@ export function factOfClause(clause: string, context: FactContext): string | nul
     const title = AS_TITLE.exec(text);
     if (title && (context.onlyTitle(title[1]!) || abbreviation(title[1]!))) text = text.slice(0, title.index).trim();
     const place = lastPlacePhrase(text);
-    if (place && context.onlyPlace(place.words)) text = text.slice(0, place.index).trim();
+    if (place && context.onlyPlace(place.words)) {
+      text = text.slice(0, place.index).trim();
+      // "she works at <salon>": where she works, never a fact (the sibling's G4-893: "she works" was added).
+      if (WORKS_THERE.test(text)) return null;
+    }
   }
   text = text.replace(/[\s,;:-]+$/, "").trim();
   return text.split(/\s+/).length >= 2 ? text : null;
