@@ -185,6 +185,8 @@ import { privateCreatorFormsEnabled, privateCreatorsActive } from "@/lib/forms/p
  */
 
 const NEW_FLAGS = [
+  // coding 4: PLACE_STRIP_WHOLE_PHRASE_ONLY (QA, Gate-Sunny #933 probes, 13 Nov 2026; default off).
+  "PLACE_STRIP_WHOLE_PHRASE_ONLY_ENABLED",
   // coding 4: SHARED_CITY_ASKS_SALON (QA, Sunny 38c live, 13 Nov 2026; default off).
   "SHARED_CITY_ASKS_SALON_ENABLED",
   // coding 2: OFF_ROSTER_PLACE_ANSWER (QA's Sunny 37b live bug, 12 Nov 2026; default off).
@@ -652,6 +654,8 @@ const NEW_FLAGS = [
   "OTHER_POLICY_AGREES_ENABLED",
   "OTHER_NOT_A_POLICY_NAME_ENABLED",
   "ACCOUNT_TYPOS_FIXED_ENABLED",
+  // coding 2: ON_FILE_LINE_NOT_THE_POLICY (Pau's morning scan, 14 Nov 2026; default off): forced off with the others.
+  "ON_FILE_LINE_NOT_THE_POLICY_ENABLED",
   // coding 2: EXCERPT_EMPTY_CARD_DROP (QA, 11 Nov 2026; default off): forced off with the others.
   "EXCERPT_EMPTY_CARD_DROP_ENABLED",
   // coding 6: REQUEST_ISSUE_KEPT (ported from Ask Bubbles, QA round 17b; default off).

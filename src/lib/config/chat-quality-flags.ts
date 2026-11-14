@@ -4803,6 +4803,15 @@ export function closeSpellingMatchEnabled(): boolean {
 }
 
 /**
+ * PLACE_STRIP_WHOLE_PHRASE_ONLY (QA, Gate-Sunny's #933 probes, 13 Nov 2026; default off): the account reader takes a
+ * place out of the Observation only where the whole place phrase ends, so "she was at lincoln high" and "<A> at omaha
+ * west" keep every word. See `ai/remap-incident.ts` withoutPlace. Off, as before.
+ */
+export function placeStripWholePhraseOnlyEnabled(): boolean {
+  return envFlag("PLACE_STRIP_WHOLE_PHRASE_ONLY_ENABLED");
+}
+
+/**
  * CARD_ADDED_FACT_IN_OBSERVATION_ENABLED (coding 6; QA's Sunny 38f live test, 13 Nov 2026; default off). With
  * CARD_CHECKED_AGAINST_WORDS on, "she yelled at a guest and she maybe forgot" after a card was noted as "Added to the
  * Observation of Offense: she yelled at a guest" while the card's Observation held the whole turn, joined with a
@@ -4832,4 +4841,15 @@ export function sharedCityAsksSalonEnabled(): boolean {
  */
 export function cardAccountDropsNonFactsEnabled(): boolean {
   return envFlag("CARD_ACCOUNT_DROPS_NON_FACTS_ENABLED");
+}
+
+/**
+ * ON_FILE_LINE_NOT_THE_POLICY_ENABLED (Coding-2, 14 Nov 2026; default off; Pau's morning scan via QA). A dress-code
+ * request sent again word for word was carded "Policy: Late Opening — read from this request": the intent reader took
+ * the heading from the app's own "On file in Form Monitoring … (… Late Opening)" listing. On: a heading the manager's own
+ * words never name, which an app "On file" listing does, is dropped, and the heading the request already had is kept
+ * (`ai/on-file-heading.ts`). Off, as before.
+ */
+export function onFileLineNotThePolicyEnabled(): boolean {
+  return envFlag("ON_FILE_LINE_NOT_THE_POLICY_ENABLED");
 }
