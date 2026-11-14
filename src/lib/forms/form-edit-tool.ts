@@ -265,7 +265,7 @@ export async function prepareFormEditTool(input: {
           // FORM_EDIT_NOOP_GUARD_ENABLED (Step 4): "Updated: <label>: <value>" per saved change.
           content: formEditNoopGuardEnabled()
             ? updatedLines(result.changed, labels, (await import("./form-noop-reply")).optionLabelsOf(loaded))
-            : replyFromDiff({ changed: result.changed }, labels),
+            : replyFromDiff({ changed: result.changed }, labels, (await import("./form-snapshot")).formOptionLabels(loaded)),
           citations: [],
           coverage: "not_applicable",
           recommendedVideoIds: [],

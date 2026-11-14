@@ -833,7 +833,7 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
       return { ...response, content: `${response.content.trimEnd()}\n\nThe **${labels.form_date ?? "Date"}** stays ${date}; tell me if it should change.` };
     };
     return dateStays(withKeptAccount(withPolicySentence(withPolicySentence({
-      content: replyFromDiff({ changed }, labels),
+      content: replyFromDiff({ changed }, labels, snapshotOf(reloaded).options),
       citations: [],
       coverage: "not_applicable",
       recommendedVideoIds: [],
@@ -1005,7 +1005,7 @@ async function replyFromSaved(
   const notSaved = [...new Set(intended)].filter((key) => !done.has(key) && from.labels[key]).map((key) => `**${from.labels[key]}**`);
   const unsaid = notSaved.length > 0 ? `\n\nI couldn't save the change to ${notSaved.join(", ")}: it is as it was. Tell me again and I'll try once more.` : "";
   return {
-    content: `${replyFromDiff({ changed }, from.labels)}${unsaid}`,
+    content: `${replyFromDiff({ changed }, from.labels, snapshotOf(reloaded).options)}${unsaid}`,
     citations: [],
     coverage: "not_applicable",
     recommendedVideoIds: [],

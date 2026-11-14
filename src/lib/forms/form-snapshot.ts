@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { AskResponse } from "@/lib/ai/types";
+import { diffReplyOptionLabelsEnabled } from "@/lib/config/chat-quality-flags";
 
 import { blocksForVariant, checkboxGroupsForVariant, fieldsForVariant, interpolate, parseFormDocument } from "./document";
 import { NOTHING_CHANGED, replyFromDiff } from "./form-diff-reply";
@@ -33,6 +34,8 @@ export interface FormSnapshot {
   readonly draft: FormDraft;
   /** What each key is called on the form, for the reply. */
   readonly labels: Readonly<Record<string, string>>;
+  /** DIFF_REPLY_OPTION_LABELS_ENABLED: each checkbox group's option labels, for the reply. Absent with the flag off. */
+  readonly options?: Readonly<Record<string, Readonly<Record<string, string>>>>;
   /**
    * Who wrote each value row and from what: `filledBy|provenance.source`
    * (QA, 3 Nov 2026, H2). A policy line re-verified against the manual with
@@ -53,6 +56,17 @@ const HEADER: readonly { key: string; label: string; read: (loaded: LoadedInstan
 
 /** The header's keys: the instance's own columns (employee, position, salon, Date, follow-up date). */
 export const HEADER_KEYS: ReadonlySet<string> = new Set(HEADER.map((entry) => entry.key));
+
+/** DIFF_REPLY_OPTION_LABELS_ENABLED: each checkbox group's option labels, by group and option key. */
+export function formOptionLabels(loaded: LoadedInstance): Record<string, Record<string, string>> {
+  const document = parseFormDocument(loaded.version.document);
+  return Object.fromEntries(
+    checkboxGroupsForVariant(document, loaded.instance.variantKey).map((group) => [
+      group.key,
+      Object.fromEntries(group.options.map((option) => [option.key, interpolate(option.label, null) || option.key])),
+    ]),
+  );
+}
 
 /** Labels for every field and checkbox group; an unlabelled group is named by its section heading. */
 export function formLabels(loaded: LoadedInstance): Record<string, string> {
@@ -83,7 +97,14 @@ export function snapshotOf(loaded: LoadedInstance): FormSnapshot {
   Object.assign(draft, draftFromRows(loaded.values));
   const stamps: Record<string, string> = {};
   for (const row of loaded.values) stamps[row.fieldKey] = `${row.filledBy}|${String(row.provenance?.source ?? "")}`;
-  return { instanceId: loaded.instance.id, status: loaded.instance.status, draft, labels: formLabels(loaded), stamps };
+  return {
+    instanceId: loaded.instance.id,
+    status: loaded.instance.status,
+    draft,
+    labels: formLabels(loaded),
+    stamps,
+    ...(diffReplyOptionLabelsEnabled() ? { options: formOptionLabels(loaded) } : {}),
+  };
 }
 
 /** The open form as saved now, read under "view" authorization. Null when it cannot be read. */
@@ -148,7 +169,7 @@ export function checkedClaim(answer: AskResponse, before: FormSnapshot, after: F
   void _false;
   return {
     ...rest,
-    content: changed.length === 0 ? NOTHING_CHANGED : replyFromDiff({ changed }, after.labels),
+    content: changed.length === 0 ? NOTHING_CHANGED : replyFromDiff({ changed }, after.labels, after.options),
     ...(changed.length > 0 ? { formUpdate: { instanceId: before.instanceId, updated: changed.map((change) => change.key) } } : {}),
   };
 }

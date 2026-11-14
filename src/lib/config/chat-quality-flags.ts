@@ -4822,3 +4822,13 @@ export function cardAddedFactInObservationEnabled(): boolean {
 export function sharedCityAsksSalonEnabled(): boolean {
   return envFlag("SHARED_CITY_ASKS_SALON_ENABLED");
 }
+
+/**
+ * DIFF_REPLY_OPTION_LABELS_ENABLED (coding 6; v2-Gate-Sunny-2's nit on the S#942 gate and QA, 14 Nov 2026; port of Ask
+ * Bubbles; default off). A form edit's reply from the saved diff named a checkbox group's option by its key: `Changed Type of
+ * Offense to "standards_of_conduct"`. On, the option's label is shown ("Standards of Conduct"), as the "Updated:" lines
+ * already do (`forms/form-diff-reply.ts`). Off, as before.
+ */
+export function diffReplyOptionLabelsEnabled(): boolean {
+  return envFlag("DIFF_REPLY_OPTION_LABELS_ENABLED");
+}
