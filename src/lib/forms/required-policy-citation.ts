@@ -1,3 +1,4 @@
+import { otherBesideDescribedEnabled } from "@/lib/config/chat-quality-flags";
 import { describedAttendanceKeys, readCaPolicy } from "./ca-policy";
 import {
   findManualSection,
@@ -90,7 +91,13 @@ export function policyFieldsWithCitation(input: {
   const values = { ...input.values };
   const violated = values.policy_violated ?? "";
   if (input.attendance && (TARDINESS_BOX.test(violated) || ATTENDANCE_POLICY_BOX.test(violated)) && paged.some((section) => /^attendance$/i.test(section.heading))) {
-    values.policy_violated = line;
+    /*
+     * OTHER_BESIDE_DESCRIBED_ENABLED (Gate-Sunny-3's #971 probe, 14 Nov 2026): lateness beside a cleaning duty ticks
+     * Attendance and Other, and Policy Violated ("Attendance Policy, Other") lost its "Other" when the Attendance label
+     * became the citation line. The citation replaces only the Attendance label. Off, as before.
+     */
+    const otherToo = otherBesideDescribedEnabled() && /(?:^|,\s*)Other\s*$/.test(violated);
+    values.policy_violated = otherToo ? `${line}, Other` : line;
   }
   if (input.pageRequired) {
     for (const key of ["policy_language", "coaching_details", "follow_up_observation"] as const) {

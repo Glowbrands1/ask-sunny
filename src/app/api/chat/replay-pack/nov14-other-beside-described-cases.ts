@@ -60,6 +60,8 @@ export const NOV14_OTHER_BESIDE_DESCRIBED_CASES: ReplayCase[] = BESIDE.map(([key
     expect(offense.some((k) => box.test(k)), `the described offense lost its box ${where}`).toBe(true);
     expect(offense, `Other is not ticked beside the described offense ${where}`).toContain("other");
     expect(values.policy_violated ?? "", `Policy Violated lost the described policy ${where}`).toMatch(policy);
+      // Gate-Sunny-3's #971 probe (14 Nov 2026): Policy Violated names Other beside the described policy.
+      expect(values.policy_violated ?? "", `Policy Violated lost Other ${where}`).toMatch(/(?:^|,\s*)Other$/);
     expect(values.policy_language ?? "", `Direct policy is not the described section ${where}`).not.toBe("");
     expect(values.action_plan ?? "", `the plan does not follow the described offense ${where}`).toMatch(policy);
   },
