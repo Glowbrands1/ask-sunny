@@ -8,10 +8,10 @@ import { STAFF, type ReplayCase, type ReplayContext } from "./cases";
  * ============================================================================
  *
  * Ported from the sibling app's 17z live bug (QA): there the tester's "write a CA for <A>, she was late because she was
- * at kearney" was filed at the store, because the AI reader (AI_READS_CODE_CHECKS) read "kearney" as the location and
+ * at kearney" was filed at that place, because the AI reader (AI_READS_CODE_CHECKS) read "kearney" as the location and
  * the merge filed it; the reason-place readers never saw that path. Here, on main af04c58c with REASON_PLACE_NOT_SALON on,
  * the same happens once the replay's reader reads the place as the live one does (`readerReads`): NE Kearney, resolved.
- * The account keeps the words here (no store-alias rewrite). Invented person.
+ * The account keeps the words here (no alias rewrite). Invented person.
  */
 const FLAG = "REASON_PLACE_NEVER_SALON_ENABLED";
 const REPORT = "Ported from the sibling app's 17z live bug (QA, 14 Nov 2026), the tester's wording; invented person";
@@ -42,14 +42,14 @@ export const NOV14_REASON_PLACE_NEVER_SALON_CASES: ReplayCase[] = [
     fixFlags: [FLAG],
     async run(t: ReplayContext) {
       const { reply, locationId } = await cardFor(t, TURN);
-      expect(locationId, `the reason's place was filed as the store:\n${reply}`).not.toBe(KEARNEY);
+      expect(locationId, `the reason's place was filed as the salon:\n${reply}`).not.toBe(KEARNEY);
     },
   },
   {
     id: "nov14-reason-place-never-salon-issue-as-typed",
     title: `Admin: "${TURN}" — the Observation keeps "because she was at kearney" as typed`,
     report: REPORT,
-    // A guard here: this app never rewrote the account (the sibling app's store-alias pass did).
+    // A guard here: this app never rewrote the account (the sibling app's alias pass did).
     status: "fixed",
     fixFlags: [FLAG],
     async run(t: ReplayContext) {
@@ -59,10 +59,10 @@ export const NOV14_REASON_PLACE_NEVER_SALON_CASES: ReplayCase[] = [
   },
 ];
 
-/** Guards, flag off and on: a store said as the store is still filed. */
+/** Guards, flag off and on: a salon said as the salon is still filed. */
 export const NOV14_REASON_PLACE_NEVER_SALON_GUARDS: ReplayCase[] = [
   { key: "late-at-kearney", turn: "write a CA for tavia quellan, she was late at kearney" },
-  { key: "at-the-kearney-store", turn: "write a CA for tavia quellan at the kearney store, she was late" },
+  { key: "at-the-kearney-salon", turn: "write a CA for tavia quellan at the kearney salon, she was late" },
 ].map((wording) => ({
   id: `nov14-reason-place-never-salon-guard-${wording.key}`,
   title: `Admin: "${wording.turn}" — filed at NE Kearney`,
@@ -71,7 +71,7 @@ export const NOV14_REASON_PLACE_NEVER_SALON_GUARDS: ReplayCase[] = [
   fixFlags: [FLAG],
   async run(t: ReplayContext) {
     const { reply, locationId } = await cardFor(t, wording.turn);
-    expect(locationId, `the store was not filed:\n${reply}`).toBe(KEARNEY);
+    expect(locationId, `the salon was not filed:\n${reply}`).toBe(KEARNEY);
   },
 }));
 
