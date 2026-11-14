@@ -2,7 +2,7 @@ import { expect, vi } from "vitest";
 
 import { KEARNEY, STAFF, TWO_SALONS, type DirectoryRow, type ReplayCase, type ReplayContext } from "./cases";
 import { firstMatch, lastResult, loopStandIn, type LoopView } from "./loop-stand-in";
-import { isProposalSuperseded } from "@/lib/forms/proposal-continuation";
+import { EARLIER_CARD_STAYS, isProposalSuperseded } from "@/lib/forms/proposal-continuation";
 
 /**
  * ============================================================================
@@ -853,7 +853,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
         if (!lastResult(view, "propose_form")) {
           return { tool: "propose_form", input: { template_key: "dpoa", employee_id: corbin ? CORBIN.id : TAMSIN.id, what_happened: `${corbin ? "Corbin Ashdown" : "Tamsin Orwell"} was late on 11/3/26.`, ...(corbin ? { warning_level: "written" } : {}) } };
         }
-        return { text: "Here's the card." };
+        /* Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite): the card reply is the model's, in the rules book's Card replies words. */
+        return { text: `Here's the Corrective Action Form for **${corbin ? "Corbin Ashdown" : "Tamsin Orwell"}**.\n\n**Observation of Offense:** Late on 11/3/26.` };
       }));
       const thread = t.thread();
       await thread.say("create a corrective action for tamsin orwell, she was late on 11/3/26");
@@ -862,6 +863,36 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       expect(isProposalSuperseded(thread.conversation!, tamsin.proposalId), "<A>'s card is superseded by <B>'s").toBe(false);
       expect(t.values(await thread.createCard!("Tamsin Orwell")).employee_name).toBe("Tamsin Orwell");
       expect(t.values(await thread.createCard!("Corbin Ashdown")).employee_name).toBe("Corbin Ashdown");
+    },
+  },
+  {
+    id: "nov14-agent-loop-same-card-edit-no-earlier-card-line",
+    title: "\"make it a written\" / \"make it professional\" on the same person's card never says \"The earlier card or form stays as it is.\"",
+    report: `${REPORT}; QA live-app item 14 (14 Nov 2026): "\"The earlier card or form stays as it is.\" appears after SAME-card edits (E t3/t4 \"make it a written\", \"make it professional\")"`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-13T22:40:00Z"));
+      t.directory([...STAFF, TAMSIN, CORBIN]);
+      t.as("salon_director", KEARNEY);
+      t.loopModel!(loopStandIn((view) => {
+        const said = view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "";
+        if (!lastResult(view, "propose_form")) {
+          const written = /written/i.test(view.turns.filter((turn) => turn.role === "user").map((turn) => turn.text).join(" "));
+          const what = /professional/i.test(said) ? "The employee arrived late for the scheduled shift on 11/3/26." : "Late on 11/3/26.";
+          return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, what_happened: what, ...(written ? { warning_level: "written" } : {}) } };
+        }
+        /* The first reply names the person; the edits' replies say only what changed (no name), as the live run's did. */
+        if (/create a corrective action/i.test(said)) return { text: "Here's the Corrective Action Form for **Tamsin Orwell**.\n\n**Observation of Offense:** Late on 11/3/26." };
+        return { text: "Updated the card.\n\n**Observation of Offense:** Late on 11/3/26." };
+      }));
+      const thread = t.thread();
+      await thread.say("create a corrective action for tamsin orwell, she was late on 11/3/26");
+      const written = await thread.say("make it a written");
+      expect(written.content).not.toContain(EARLIER_CARD_STAYS);
+      const professional = await thread.say("make it professional");
+      expect(professional.content).not.toContain(EARLIER_CARD_STAYS);
     },
   },
   {

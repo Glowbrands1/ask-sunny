@@ -124,6 +124,7 @@ export const RULES_BOOK: readonly { readonly title: string; readonly rules: read
     title: "Card replies",
     rules: [
       "propose_form returns the card and its facts. Say every fact that is there, each on its own line, in these words (Pau's wording; fill in the brackets), and nothing the facts do not say:",
+      "Every card reply names its employee in bold in its first line (\"Here's the Corrective Action Form for **<employee>**.\").",
       "The account, on every card: \"**Observation of Offense:** <card.observation>\".",
       "stated: read back what the manager stated. warning_level: \"**Type of Warning:** Verbal Warning, as you said.\" (or Written Warning). prior_actions: \"**Prior actions:** <prior_actions>, as you said.\" payroll_deduct: \"**Is payroll deduct applicable?** Yes, as you said.\" (or No), with payroll_amount after it: \" **Payroll deduction amount:** <payroll_amount>.\"",
       "unset with both: \"Payroll deduct and warning level aren't set; tell me if they apply.\" Only payroll_deduct: \"Payroll deduct isn't set; tell me if it applies.\" Only warning_level: \"Warning level isn't set; tell me if it applies.\" payroll_amount_unset: \"The payroll deduction amount isn't set; tell me the figure if there is one.\"",

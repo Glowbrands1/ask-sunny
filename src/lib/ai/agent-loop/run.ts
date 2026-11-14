@@ -454,10 +454,20 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
    * earlier-card): a card for a different person than an earlier card in this chat says the earlier card stays, so the
    * screen keeps both creatable (`isProposalSuperseded` reads that line).
    */
+  /*
+   * Only the LATEST card in the chat counts, and it is this person's when it names them by any part of their name (QA's
+   * live-app item 14, 14 Nov 2026: the marker showed after same-card edits, "make it a written", "make it professional",
+   * because an older card reply did not spell the full name).
+   */
   if (effects.proposal?.employeeName) {
-    const name = effects.proposal.employeeName.toLowerCase();
-    const earlierCard = input.history.some((turn) => turn.role === "assistant" && CARD_REPLY.test(String(turn.content)) && !String(turn.content).toLowerCase().includes(name));
-    if (earlierCard && !content.includes(EARLIER_CARD_STAYS)) content = `${content.trim()}\n\n${EARLIER_CARD_STAYS}`;
+    const parts = effects.proposal.employeeName.toLowerCase().split(/\s+/).filter((part) => part.length >= 3);
+    const latestCard = [...input.history].reverse().find((turn) => turn.role === "assistant" && !turn.error && CARD_REPLY.test(String(turn.content)));
+    const latest = String(latestCard?.content ?? "").toLowerCase();
+    const namesThisPerson = parts.some((part) => new RegExp(`\\b${part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(latest));
+    /* The card reply names its employee in bold (the rules book's Card replies); a card that names nobody is never "another person's". */
+    const namesSomeone = /\*\*[A-Z][a-z'-]+(?: [A-Z][a-z'-]+)+\*\*/.test(String(latestCard?.content ?? ""));
+    const anotherPersons = Boolean(latestCard) && parts.length > 0 && !namesThisPerson && namesSomeone;
+    if (anotherPersons && !content.includes(EARLIER_CARD_STAYS)) content = `${content.trim()}\n\n${EARLIER_CARD_STAYS}`;
   }
   /*
    * HARD GUARD, NO FALSE "UPDATED" (the honesty breach in the live run, nov3-stepb-write-the-observation): with a form
