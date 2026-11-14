@@ -260,3 +260,29 @@ describe('"second verbal for <A>, she was late on 11/12/26" (Gate-Sunny-3 via QA
     });
   }
 });
+
+/** QA's rulings on Gate-Bubbles-5's findings (14 Nov 2026), in the gate's wordings (the person invented). */
+describe("flag on: QA's rulings F1 / F2 on the gate's findings", () => {
+  beforeEach(() => {
+    process.env.LEVEL_LEADS_REQUEST_ENABLED = "true";
+  });
+
+  it('F1: "verbal for <A> was on 10/1/26, now she needs a written for being late on 11/12/26": the later stated level wins', async () => {
+    const proposal = await card("verbal for pat rivera was on 10/1/26, now she needs a written for being late on 11/12/26");
+    expect(proposal?.warningLevel ?? null).toBe("written");
+  });
+
+  it('F2: "verbal for <A> went fine today, she signed it" is a statement, not a request', async () => {
+    expect(await card("verbal for pat rivera went fine today, she signed it")).toBeNull();
+  });
+
+  it('"second verbal for <A>?" is a question: no card is offered', async () => {
+    expect(await card("second verbal for pat rivera?")).toBeNull();
+  });
+
+  it('"verbal for <store> team, everyone was late" is a group, never a card with no employee', async () => {
+    expect(await card("verbal for the west dodge team, everyone was late")).toBeNull();
+    expect(await card("verbal for west dodge team, everyone was late")).toBeNull();
+  });
+});
+

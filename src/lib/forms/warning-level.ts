@@ -35,7 +35,8 @@ function levelLeadsRequestOn(): boolean {
  * count words say which step it is, not a different level. History ("she had a verbal for being late") never opens the
  * message, so it is not read here.
  */
-const LEVEL_LEADS = /^\s*(?:please\s+)?(?:an?\s+)?(?:(?:another|one\s+more|first|1st|second|2nd|third|3rd|next)\s+)?(verbal|written)\s+for\s+(?!(?:the|that|this|it|same|being|a|an|her|his|their|them|him|not|no|missing|\d)\b)[a-z][a-z'’-]*/i;
+const LEVEL_LEADS = new RegExp(String.raw`^\s*(?:please\s+)?(?:an?\s+)?(?:(?:another|one\s+more|first|1st|second|2nd|third|3rd|next)\s+)?(verbal|written)\s+for\s+(?!(?:the|that|this|it|same|being|a|an|her|his|their|them|him|not|no|missing|\d)\b)([a-z][a-z'’-]*(?:\s+[a-z][a-z'’-]*){0,2}?)(?=\s*$|\s*[,:;—–-]\s*(?!(?:it|that|this|which)?\s*(?:went|was|were|is|got|has\s+been|signed)\b)|\s+for\s+\S|\s+(?:she|he|they)\s+\S)`, "i");
+const LEADING_GROUP = /\b(?:team|staff|crew|everyone|everybody|employees|people|members|associates|workers)$/i;
 
 /** LEVEL_AFTER_FORM_NAME_ENABLED, read here for the same reason. */
 function levelAfterFormNameOn(): boolean {
@@ -240,9 +241,6 @@ export function statedWarningLevel(
   const levels = new Set<StatedWarningLevel>();
   // Only `managerStatedWarningLevel` asks for this; it is reached behind WARNING_LEVEL_MANAGER_ONLY_ENABLED.
   const read = options.undecidedStatesNothing ? withoutUndecidedLevels(normalize(text)) : normalize(text);
-  // LEVEL_LEADS_REQUEST_ENABLED: the message opens with the level ("second verbal for <A>, …"); see `LEVEL_LEADS`.
-  const leads = levelLeadsRequestOn() ? LEVEL_LEADS.exec(read) : null;
-  if (leads) levels.add(leads[1] as StatedWarningLevel);
   // A sentence at a time, so a cue in one sentence says nothing about the next.
   for (const sentence of read.matchAll(/[^.;!?\n]+[.;!?\n]?/g)) {
     const body = sentence[0].replace(/[.;!?\n]$/, "");
@@ -271,6 +269,12 @@ export function statedWarningLevel(
       }
       levels.add(match[1] as StatedWarningLevel);
     }
+  }
+  if (levels.size === 0 && levelLeadsRequestOn() && !read.trim().endsWith("?")) {
+    // LEVEL_LEADS_REQUEST_ENABLED: the message opens with the level ("second verbal for <A>, …"); see `LEVEL_LEADS`.
+    // Only when nothing else in it states a level: a later stated level wins (QA, 14 Nov 2026).
+    const leads = LEVEL_LEADS.exec(read);
+    if (leads && !LEADING_GROUP.test(leads[2]!)) return leads[1] as StatedWarningLevel;
   }
   return levels.size === 1 ? [...levels][0]! : null;
 }
