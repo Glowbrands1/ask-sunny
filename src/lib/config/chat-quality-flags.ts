@@ -4882,3 +4882,16 @@ export function reasonPlaceNotSalonEnabled(): boolean {
 export function otherBesideDescribedEnabled(): boolean {
   return envFlag("OTHER_BESIDE_DESCRIBED_ENABLED");
 }
+
+/**
+ * MODEL_WARNING_LEVEL_DISCARDED_ENABLED (coding 5, 14 Nov 2026; default off; QA, from the 38g live test; Ask Bubbles has
+ * had this unflagged since 9 Oct 2026). "please make a ca for <B> for not doing the 10 minute sanitation on 11/12/26, she
+ * was told twice": the card had no warning level ("I won't guess at them") and the saved draft had Type of Warning
+ * Written, filled by the model. The draft showed the model the Type of Warning group and wrote its tick whenever the
+ * manager had stated no level. On: the group is not shown to the draft model and any Verbal / Written / Final level it
+ * ticks anyway is dropped (`forms/warning-level.ts`); a level the manager stated is ticked at creation from the card, as
+ * before, and kept. Unstated stays empty. Off, as before.
+ */
+export function modelWarningLevelDiscardedEnabled(): boolean {
+  return envFlag("MODEL_WARNING_LEVEL_DISCARDED_ENABLED");
+}

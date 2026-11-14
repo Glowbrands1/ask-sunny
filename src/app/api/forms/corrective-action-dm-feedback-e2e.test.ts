@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import manual151 from "@/test/fixtures/jba-manual-production-151.json";
 import { manualChunkFromRow, type ChunkRow as ManualChunkRow } from "@/lib/ai/full-manual-load";
-import { formDateIncidentOnlyEnabled } from "@/lib/config/chat-quality-flags";
+import { formDateIncidentOnlyEnabled, modelWarningLevelDiscardedEnabled } from "@/lib/config/chat-quality-flags";
 
 import { fakeSupabase, type FakeStore } from "@/test/fake-supabase";
 import type { AccessScope, ChatMessage } from "@/types";
@@ -448,7 +448,10 @@ describe("the warning level in the request is read, not left open", () => {
 
     state.draft = { values: {}, checked: { warning_type: ["verbal"] } };
     const { reference } = await create();
-    expect(field(await review(reference.instanceId), "warning_type")!.filledBy).toBe("ai");
+    // Changed on purpose (14 Nov 2026, MODEL_WARNING_LEVEL_DISCARDED_ENABLED): with the flag on the model's Verbal is not
+    // written either; the written CA in August is history, so no level is ticked at all.
+    if (modelWarningLevelDiscardedEnabled()) expect(field(await review(reference.instanceId), "warning_type")).toBeUndefined();
+    else expect(field(await review(reference.instanceId), "warning_type")!.filledBy).toBe("ai");
   });
 });
 
