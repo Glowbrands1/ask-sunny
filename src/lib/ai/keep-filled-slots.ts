@@ -828,16 +828,41 @@ function withObservation(content: string, turns: readonly string[], employeeName
    * payment) are left out, and the facts are joined with "; ".
    */
   if (cardAccountDropsNonFactsEnabled()) {
+    /*
+     * Each sentence stays word for word unless a clause of it is no fact; then its facts are kept, joined with "; ".
+     * Only a clause about her is a payment (`notAFact`): "she owes $25 …", never the payroll answer "payroll deduct
+     * applies and $3.25 will be deducted from check" (nov8-sales-triple-payroll-deduct-applies).
+     */
+    const aboutHer = /^(?:she|he|they)\b/i;
     const facts: string[] = [];
+    let dropped = false;
     for (const sentence of told) {
-      if (hedgedAccount(sentence)) continue;
-      for (const part of sentence.split(FACT_CLAUSE_SPLIT)) {
+      if (hedgedAccount(sentence)) {
+        dropped = true;
+        continue;
+      }
+      const parts = sentence.split(FACT_CLAUSE_SPLIT);
+      const kept: string[] = [];
+      for (const part of parts) {
         const clause = factOfClause(part, factContext({ turns: [], roster: [] }));
-        if (clause === null || notAFact(clause, { turns: [], roster: [] })) continue;
-        if (!repeatsAFact(clause, facts)) facts.push(clause);
+        const payment = clause !== null && aboutHer.test(clause) && notAFact(clause, { turns: [], roster: [] });
+        if (clause === null || payment) {
+          dropped = true;
+          continue;
+        }
+        if (clause !== part.trim().replace(/[.!]+$/, "")) dropped = true;
+        kept.push(clause);
+      }
+      const whole = kept.length === parts.length && !dropped ? [sentence.trim().replace(/[.!]+$/, "")] : kept;
+      for (const fact of whole) {
+        if (repeatsAFact(fact, facts)) {
+          dropped = true;
+          continue;
+        }
+        facts.push(fact);
       }
     }
-    if (facts.length > 0) return `${content}\n\n**Observation of Offense:** ${cardAccountText(facts.join("; "), employeeName)}`.trim();
+    if (dropped && facts.length > 0) return `${content}\n\n**Observation of Offense:** ${cardAccountText(facts.join("; "), employeeName)}`.trim();
   }
   return `${content}\n\n**Observation of Offense:** ${cardAccountText(told.join(" "), employeeName)}`.trim();
 }
