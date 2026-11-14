@@ -42,4 +42,29 @@ export const NOV14_CARD_ACCOUNT_DROPS_NON_FACTS_CASES: ReplayCase[] = [
       expect(observation).toBe("Marnie Holloway was late on 11/3/26; she yelled at a guest");
     },
   },
+  {
+    id: "nov14-card-account-38g-level-turn-keeps-checked-line",
+    title: `"create a CA for Marnie Holloway, she was late on 11/3/26" → "she yelled at a guest and she maybe forgot" → "she gets a verbal warning", then a title, history and payment turn: the Observation keeps the checked line`,
+    report: "QA's live Sunny 38g test (14 Nov 2026): after a level turn the card's Observation was rebuilt from the raw turns, \"; \" gone and the hedge back",
+    status: { open: "\"she was late on 11/3/26 she yelled at a guest and she maybe forgot\": the Observation rebuilt from the raw turns after the level turn" },
+    fixFlags: ["CARD_ACCOUNT_DROPS_NON_FACTS_ENABLED"],
+    async run(t) {
+      vi.setSystemTime(new Date("2026-11-13T16:00:00Z"));
+      t.directory(STAFF);
+      t.as("salon_director", KEARNEY);
+      const thread = t.thread();
+      await thread.say("create a CA for Marnie Holloway, she was late on 11/3/26");
+      const second = await thread.say("she yelled at a guest and she maybe forgot");
+      const line = (content: string) => (content.match(/^\*\*Observation of Offense:\*\*\s*(.*)$/m) ?? [])[1] ?? "";
+      expect(line(second.content), `after t2:\n${second.content}`).toBe("she was late on 11/3/26; she yelled at a guest");
+      const third = await thread.say("she gets a verbal warning");
+      expect(line(third.content), `after the level turn:\n${third.content}`).toBe("she was late on 11/3/26; she yelled at a guest");
+      expect(third.content, "a level turn adds nothing").not.toMatch(/\*\*Added to/);
+      // QA: a level, title, history or payment turn never rebuilds the line.
+      for (const said of ["she is a tanning consultant", "she had a verbal last month", "she owes $25 for the late opening"]) {
+        const later = await thread.say(said);
+        expect(line(later.content), `after "${said}":\n${later.content}`).toBe("she was late on 11/3/26; she yelled at a guest");
+      }
+    },
+  },
 ];
