@@ -206,7 +206,8 @@ export const NOV14_AGENT_LOOP_CASES: ReplayCase[] = [
       expect(policyLine(replies[2]!.content)).toBe(policyLine(replies[1]!.content));
       // Where the model looked up the forms on file, it saw the Late Opening CA as a record; never an app-written "On file" line.
       const onFile = views.flatMap((view) => view.results.filter((result) => result.tool === "find_past_forms"));
-      if (onFile.length > 0) expect(JSON.stringify(onFile)).toMatch(/finalized/);
+      // Changed on purpose (14 Nov 2026, Pau's privacy rule via QA): forms on file are looked at only when the manager asks; nobody asked here.
+      for (const result of onFile) expect(JSON.stringify(result.output)).toMatch(/not asked about forms on file/);
       expect(views.every((view) => !/On file in Form Monitoring/.test(view.system))).toBe(true);
       historyIsTheModelsOwn(views, replies);
     },
@@ -353,8 +354,8 @@ export const NOV14_AGENT_LOOP_CASES: ReplayCase[] = [
   },
   {
     id: "nov14-agent-loop-edit-form-drafts-only",
-    title: "edit_form changes a draft through the one writer, and refuses a finalized form (nothing saved)",
-    report: `${REPORT}: finalized forms can never be edited`,
+    title: "edit_form changes a draft through the one writer; a finalized form is never written: the change goes on a new draft revising it",
+    report: `${REPORT}: finalized forms can never be edited (Pau, 14 Nov 2026: a change to one opens the Edit button's revision draft)`,
     status: "fixed",
     fixFlags: [FLAG],
     async run(t) {
@@ -370,8 +371,9 @@ export const NOV14_AGENT_LOOP_CASES: ReplayCase[] = [
       const id = await thread.create();
       const edited = "Observed:\nBriony Calloway wore her coat during her shift on 11/13 after being asked to take it off.";
       let target = id;
+      let wanted = edited;
       const standIn = loopStandIn((view) =>
-        lastResult(view, "edit_form") ? { text: JSON.stringify(lastResult(view, "edit_form")) } : { tool: "edit_form", input: { instance_id: target, values: { observation: edited } } },
+        lastResult(view, "edit_form") ? { text: JSON.stringify(lastResult(view, "edit_form")) } : { tool: "edit_form", input: { instance_id: target, values: { observation: wanted } } },
       );
       t.loopModel!(standIn);
       const draftReply = await thread.say("add that she was asked to take it off");
@@ -380,11 +382,17 @@ export const NOV14_AGENT_LOOP_CASES: ReplayCase[] = [
 
       Object.assign(t.forms().find((row) => row.id === id)!, { status: "finalized" });
       target = id;
+      wanted = "Observed:\nBriony Calloway wore her jacket during her shift on 11/13 after being asked to take it off.";
       const before = JSON.stringify(t.values(id));
       const finalReply = await thread.say("change the observation to say it was a jacket");
-      expect(JSON.parse(finalReply.content).error).toMatch(/not a draft, so it cannot be edited/);
-      expect(finalReply.formUpdate).toBeUndefined();
-      expect(JSON.stringify(t.values(id))).toBe(before);
+      // Changed on purpose (14 Nov 2026, Pau via QA): was a refusal; now a new draft revising the finalized form, the original byte-identical.
+      expect(JSON.stringify(t.values(id)), "the finalized form was written").toBe(before);
+      expect(finalReply.formOpened?.revisesInstanceId, finalReply.content).toBe(id);
+      // The harness renumbers a form it opens (fake-N → a UUID), so the revision is found by what it revises.
+      const revision = (t.forms() as { id: string; status: string; revises_instance_id?: string | null }[]).find((row) => row.revises_instance_id === id);
+      expect(revision?.status, "no draft revising the finalized form").toBe("draft");
+      expect(t.values(revision!.id).observation, finalReply.content).toBe(wanted);
+      expect(finalReply.formUpdate?.updated).toEqual(["observation"]);
     },
   },
   {

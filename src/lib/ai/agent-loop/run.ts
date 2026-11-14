@@ -5,7 +5,6 @@ import { MissingConfigurationError, requireEnv } from "@/lib/config/server-env";
 import { mainAnswerTimeoutMs, streamGapTimeoutMs } from "@/lib/config/ai-timeouts";
 import { chatTraceEnabled } from "@/lib/config/chat-quality-flags";
 import { authorizedSalonIds } from "@/lib/forms/location-scope";
-import { stillAsks } from "@/lib/forms/reply-guards";
 import type { ChatMessage } from "@/types";
 
 import { finishChatTrace, openChatTrace } from "../chat-trace";
@@ -15,7 +14,6 @@ import { noteModelCall } from "../model-failure";
 import { activeSpendMeter } from "../spend-meter";
 import { AI_TIMEOUT_MESSAGE, isAiTimeLimitError, logAiFailure, withStreamTimeLimit } from "../time-limit";
 import type { AskResponse } from "../types";
-import { withUnderPerformanceExplained } from "../under-performance-explained";
 import { agentLoopSystem, AGENT_LOOP_RULES } from "./prompt";
 import { agentLoopStepLimit } from "./switch";
 import {
@@ -117,12 +115,12 @@ export const AGENT_LOOP_TOOLS = [
   },
   {
     name: "find_past_forms",
-    description: "List the forms on file (Form Monitoring) for one employee, as this manager may see them.",
+    description: "List the forms on file (Form Monitoring) for one employee. Only when the manager asks about forms on file or history; never otherwise.",
     input_schema: object({ employee_name: { type: "string" } }, ["employee_name"]),
   },
   {
     name: "read_form",
-    description: "Read one form's current saved values and status.",
+    description: "Read one form's saved values and status: the form open on screen, or one the manager asked about.",
     input_schema: object({ instance_id: { type: "string" } }, ["instance_id"]),
   },
   {
@@ -139,11 +137,17 @@ export const AGENT_LOOP_TOOLS = [
         employee_id: { type: "string", description: "From find_staff." },
         employee_name: { type: "string", description: "Only when find_staff said the roster cannot be searched." },
         policy: { type: "string", description: "One JBA Policy Manual heading, exactly, or \"Other\" (a cleaning or sanitation duty left undone is always Other)." },
-        what_happened: { type: "string", description: "What happened, in the manager's words." },
+        what_happened: {
+          type: "string",
+          description:
+            "This incident's account in the manager's own words, all of it, with work areas and names kept as typed. Spelling, spacing and capitals cleaned; never names, dates, numbers, amounts or quoted words. No instructions (\"create a CA\", \"make it about\", \"the policy is\"), no level or payroll words, nothing invented. Leave out when the manager has not said what happened.",
+        },
         incident_date: { type: "string", description: "YYYY-MM-DD, the salon's local date." },
-        warning_level: { type: "string", enum: ["verbal", "written"] },
+        warning_level: { type: "string", enum: ["verbal", "written"], description: "Only when the manager stated it for this form." },
         payroll_deduct: { type: "string", enum: ["yes", "no"], description: "Only when the manager said whether payroll deduct applies." },
         payroll_amount: { type: "string", description: "The deduction amount the manager stated, digits." },
+        prior_actions: { type: "string", description: "Earlier steps only as the manager stated them (\"verbal on 10/2\", \"coached last month\"); never from records on file." },
+        incident_time: { type: "string", description: "The time of the incident if the manager gave one, as they said it." },
       },
       ["template_key"],
     ),
@@ -151,7 +155,7 @@ export const AGENT_LOOP_TOOLS = [
   {
     name: "edit_form",
     description:
-      "Change a DRAFT form. Leave values out to have the form's own reviser apply the manager's latest message (dates, details, the policy line); give values (field key to exact text) only for text the manager dictated word for word. Finalized forms cannot be edited.",
+      "Change a form. Leave values out to have the form's own reviser apply the manager's latest message (dates, details, the policy line); give values (field key to exact text) only for text the manager dictated word for word. A finalized form is never changed: this opens a new draft revising it and applies the change there.",
     input_schema: object({ instance_id: { type: "string" }, values: { type: "object", additionalProperties: { type: "string" } } }, ["instance_id"]),
   },
   {
@@ -199,6 +203,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     history: input.history,
     scopeId: input.scopeId,
     today: input.today,
+    openFormId: input.openFormId,
   };
   const effects: ToolEffects = { proposal: null, policyLine: null, formUpdate: null };
   const steps: AgentLoopStep[] = [];
@@ -345,28 +350,23 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   if (effects.proposal && effects.policyLine) {
     content = `${content.split("\n").filter((line) => !/^\s*\*\*Policy:?\*\*/i.test(line)).join("\n").trim()}\n\n**Policy:** ${effects.policyLine}`;
   }
-  /* CLOSE_SPELLING: a policy spelled too far off is asked about, never cited (the tool decided; the code says it). */
-  if (effects.proposal && effects.confirmPolicy && !content.includes(effects.confirmPolicy)) {
-    content = `${content.split("\n").filter((line) => !/^\s*\*\*Policy:?\*\*|did you mean/i.test(line)).join("\n").trim()}\n\n${effects.confirmPolicy}`;
-  }
 
   /*
    * An edit the open-form reader wrote: its reply is what was saved, field by field (the realized diff today's chat
    * shows), so the reply never claims more or less than the draft now holds.
    */
   if (effects.revisedReply && effects.formUpdate && !effects.proposal) content = effects.revisedReply;
+  else if (effects.formOpened && !effects.proposal && !/new draft/i.test(content)) {
+    content = `I opened a new draft of the ${effects.formOpened.templateName} that revises the finalized one; the original is unchanged.\n\n${content}`.trim();
+  }
 
-  /* EVERY REPLY (QA, 3 Nov 2026): "I still need …" only when the reply asks who, which location or which date. */
-  if (/^I still need\b/m.test(content) && stillAsks(content) === null) content = content.replace(/^I still need\b/gm, "I need");
-
-  const response: AskResponse = {
+  return {
     content,
     citations: [],
     coverage: "not_applicable",
     recommendedVideoIds: [],
     ...(effects.proposal ? { formProposal: effects.proposal } : {}),
     ...(effects.formUpdate ? { formUpdate: effects.formUpdate } : {}),
+    ...(effects.formOpened ? { formOpened: effects.formOpened } : {}),
   };
-  /* Pau's line (UNDER_PERFORMANCE_EXPLAINED, the app's own finisher): Under Performance asked for, Standards of Conduct cited. */
-  return withUnderPerformanceExplained(response, { question: input.question });
 }

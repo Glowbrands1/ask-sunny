@@ -21,7 +21,7 @@ export interface ReplayAnswer {
   content: string;
   formProposal?: { templateKey?: string; employeeName?: string | null; employeeRole?: string | null; status?: string; subject?: string; locationId?: string | null; wovenCloseMatch?: string | null; formDate?: string | null; warningLevel?: string | null; issue?: string | null; supportsInlineDraft?: boolean };
   formUpdate?: { instanceId: string; updated: string[] };
-  formOpened?: { instanceId: string };
+  formOpened?: { instanceId: string; revisesInstanceId?: string | null };
   /** The source cards the reply carries. */
   citations?: { documentTitle?: string }[];
 }

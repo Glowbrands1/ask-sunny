@@ -19,6 +19,7 @@ import { cleaningUndonePhrase, namesCareAndCleaning } from "@/lib/forms/ca-polic
 import { turnsFromThisPersonsRequest } from "@/lib/forms/this-persons-turns";
 import { closeHeadingReading, namedPolicies, namesHeading } from "@/lib/forms/named-policy-section";
 import { startsNewForm } from "@/lib/ai/remap-incident";
+import { statedPayrollDeduct } from "@/lib/forms/payroll-deduct";
 import { listTemplateSummaries, type TemplateSummary } from "@/lib/forms/repository";
 import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
 import type { AccessScope, ChatFormProposal, ChatMessage, Role } from "@/types";
@@ -68,7 +69,28 @@ export interface ToolContext {
   readonly scopeId: string;
   /** The salon's local date (America/Chicago in production), `YYYY-MM-DD`. */
   readonly today: string;
+  /** The form open on the manager's screen, if any: read_form of it is never gated. */
+  readonly openFormId?: string | null;
 }
+
+/* ------------------------------------------------------ hard guard: privacy --- */
+
+/**
+ * PAST FORMS ONLY WHEN ASKED (Pau's privacy rule, 14 Nov 2026; a hard guard). Forms on file are looked at only when
+ * the manager's own words ask about them: what is on file, history, an earlier form, "same as last time", "open my
+ * last coaching". The manager's latest message, or the one before it when the latest is a short answer.
+ */
+const ASKS_ABOUT_FORMS =
+  /\b(?:on file|history|form monitoring|records?|before|previous(?:ly)?|prior (?:forms?|cas?|coachings?|write[- ]?ups?|warnings?)|past (?:forms?|cas?|coachings?)|last (?:time|one|form|cas?|coaching|corrective|write[- ]?up|warning|verbal|written)|same as (?:last|before|the last)|(?:has|have|did) (?:s?he|they|\w+) (?:had|gotten|got|have|get) (?:a|an|any)|(?:open|pull up|show|find|change|edit|update|fix|reopen)\b[^.?!\n]{0,40}\b(?:last|previous|latest|finalized|finished|old|earlier|existing)\b)/i;
+
+export function asksAboutPastForms(context: Pick<ToolContext, "question" | "history">): boolean {
+  if (ASKS_ABOUT_FORMS.test(context.question)) return true;
+  if (context.question.trim().split(/\s+/).length > 6) return false;
+  const earlier = [...context.history].reverse().find((message) => message.role === "user");
+  return earlier ? ASKS_ABOUT_FORMS.test(earlier.content) : false;
+}
+
+const NOT_ASKED = "The manager has not asked about forms on file, so they are not looked at (company privacy rule). Work from what the manager said; never mention other forms.";
 
 /** What the turn's tools produced for the reply: the card and the edit, when there were any. */
 export interface ToolEffects {
@@ -80,6 +102,8 @@ export interface ToolEffects {
   confirmPolicy?: string | null;
   /** The open-form reader's own reply when edit_form changed the draft: the realized diff of what was saved. */
   revisedReply?: string | null;
+  /** A new draft revising a finalized form, opened on the manager's screen (`editable-draft.ts`). */
+  formOpened?: AskResponse["formOpened"] | null;
 }
 
 export type ToolResult = Record<string, unknown>;
@@ -145,6 +169,7 @@ export async function findStaff(context: ToolContext, input: { name?: unknown })
 export async function findPastForms(context: ToolContext, input: { employee_name?: unknown }): Promise<ToolResult> {
   const typed = typeof input.employee_name === "string" ? input.employee_name.trim() : "";
   if (typed === "") return { error: "Give the employee's name." };
+  if (!asksAboutPastForms(context)) return { error: NOT_ASKED };
   const actor = await chatFormsActor(context.actor).catch(() => undefined);
   if (actor === undefined) return { error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
   if (actor === null) return { error: "This manager's role cannot view Form Monitoring, so past forms cannot be listed." };
@@ -177,6 +202,7 @@ const VALUES_LIMIT = 6_000;
 export async function readForm(context: ToolContext, input: { instance_id?: unknown }): Promise<ToolResult> {
   const id = typeof input.instance_id === "string" ? input.instance_id.trim() : "";
   if (id === "") return { error: "Give the form's instance_id (from find_past_forms or the open form)." };
+  if (id !== context.openFormId && !asksAboutPastForms(context)) return { error: NOT_ASKED };
   try {
     const { loaded } = await authorizeInstance(context.request, id, "view");
     const values: Record<string, string> = {};
@@ -256,6 +282,27 @@ export async function readPolicy(context: ToolContext, input: { heading?: unknow
 
 /* -------------------------------------------------------- propose form --- */
 
+/** Every message the manager typed in this chat, the latest included. */
+function managerTurns(context: Pick<ToolContext, "question" | "history">): string {
+  return [...context.history.filter((message) => message.role === "user").map((message) => message.content), context.question].join("\n");
+}
+
+/** Payroll deduct as the manager stated it: in their words, or a bare yes / no right after the payroll question. */
+function payrollStated(context: Pick<ToolContext, "question" | "history">): "yes" | "no" | null {
+  const turns = [...context.history.filter((message) => message.role === "user").map((message) => message.content), context.question];
+  for (const turn of [...turns].reverse()) {
+    const stated = statedPayrollDeduct(turn);
+    if (stated) return stated;
+  }
+  const lastAssistant = [...context.history].reverse().find((message) => message.role === "assistant");
+  if (lastAssistant && /payroll/i.test(lastAssistant.content)) {
+    const bare = context.question.trim().toLowerCase().replace(/[.!]+$/, "");
+    if (/^(?:yes|yep|yeah|y)\b/.test(bare)) return "yes";
+    if (/^(?:no|nope|nah|n)\b/.test(bare)) return "no";
+  }
+  return null;
+}
+
 async function creatableTemplates(role: Role): Promise<TemplateSummary[]> {
   const rows = await listTemplateSummaries();
   return rows.filter((row) => row.active && row.currentVersion && hasPermission(DEFAULT_PERMISSION_MATRIX, role, row.requiredPermission as never));
@@ -288,8 +335,14 @@ export async function proposeForm(
     warning_level?: unknown;
     payroll_deduct?: unknown;
     payroll_amount?: unknown;
+    prior_actions?: unknown;
+    incident_time?: unknown;
   },
 ): Promise<ToolResult> {
+  /* One card per reply (the screen shows one, as today's TWO_FORMS_EACH_PERSON): the next person's form is offered. */
+  if (effects.proposal) {
+    return { error: `A card for ${effects.proposal.employeeName ?? "someone"} is already shown in this reply. Offer the next person's form in your reply and propose it when the manager says yes.` };
+  }
   const key = typeof input.template_key === "string" ? input.template_key.trim() : "";
   const templates = await creatableTemplates(context.actor.role).catch(() => null);
   if (!templates) return { error: "The forms library could not be read just now." };
@@ -369,12 +422,23 @@ export async function proposeForm(
   }
 
   /* Payroll deduct, only as the manager stated it. */
-  const payroll = input.payroll_deduct === "yes" || input.payroll_deduct === "no" ? input.payroll_deduct : null;
-  const amount = typeof input.payroll_amount === "string" && /\d/.test(input.payroll_amount) ? input.payroll_amount.replace(/[^\d.]/g, "") : null;
+  /*
+   * HARD GUARD: no invented warning level or payroll. Each is kept only when the manager's own words in this chat
+   * state it (a level named; payroll deduct stated, or answered right after the payroll question; the amount's digits).
+   */
+  const managerWords = managerTurns(context);
+  const askedPayroll = (input.payroll_deduct === "yes" || input.payroll_deduct === "no") ? input.payroll_deduct : null;
+  const payroll = askedPayroll && payrollStated(context) === askedPayroll ? askedPayroll : null;
+  const typedAmount = typeof input.payroll_amount === "string" && /\d/.test(input.payroll_amount) ? input.payroll_amount.replace(/[^\d.]/g, "") : null;
+  const amount = typedAmount && managerWords.replace(/[^\d.]/g, " ").split(/\s+/).some((n) => n !== "" && Number(n) === Number(typedAmount)) ? typedAmount : null;
   const today = context.today || businessToday();
   const date = typeof input.incident_date === "string" && DATE.test(input.incident_date.trim()) ? input.incident_date.trim() : null;
   if (date && date > today) return { error: `The incident date ${date} is after today (${today}, the salon's local date). Ask the manager.` };
-  const level = input.warning_level === "verbal" || input.warning_level === "written" ? input.warning_level : null;
+  const askedLevel = input.warning_level === "verbal" || input.warning_level === "written" ? input.warning_level : null;
+  const level = askedLevel && (askedLevel === "verbal" ? /\bverbal\b/i : /\bwritten\b|\bwrite[- ]?up\b/i).test(managerWords) ? askedLevel : null;
+  const dropped = [askedLevel && !level ? "warning_level" : null, askedPayroll && !payroll ? "payroll_deduct" : null, typedAmount && !amount ? "payroll_amount" : null].filter(Boolean);
+  const priorActions = typeof input.prior_actions === "string" && input.prior_actions.trim() ? input.prior_actions.trim().slice(0, 600) : null;
+  const incidentTime = typeof input.incident_time === "string" && input.incident_time.trim() ? input.incident_time.trim().slice(0, 40) : null;
 
   const proposal = buildProposal({
     proposalId: randomUUID(),
@@ -398,6 +462,8 @@ export async function proposeForm(
     ...(whatHappened ? { issue: whatHappened } : {}),
     ...(payroll ? { payrollDeduct: payroll } : {}),
     ...(payroll === "yes" && amount ? { payrollDeductAmount: amount } : {}),
+    ...(priorActions ? { priorActions } : {}),
+    ...(incidentTime ? { incidentTime } : {}),
     ...(awaiting ? { awaitingIncident: true as const, supportsInlineDraft: false } : {}),
   };
   effects.proposal = card;
@@ -413,11 +479,13 @@ export async function proposeForm(
       form_date: card.formDate ?? null,
       warning_level: level,
       payroll_deduct: payroll,
+      prior_actions: priorActions,
       policy: policyLine,
       create_offered: card.supportsInlineDraft,
     },
     ...(policyLine ? { policy_line: `**Policy:** ${policyLine}` } : {}),
     ...(policyNote ? { policy_note: policyNote } : {}),
+    ...(dropped.length > 0 ? { not_kept: `${dropped.join(", ")} left blank: the manager did not state it. Ask only if it matters; never assume it.` } : {}),
     ...(didYouMean ? { confirm_policy: `The manager's policy name is not a heading as spelled, so no policy is cited yet. Your reply ends with: ${didYouMean}` } : {}),
     note: awaiting
       ? "The card is shown under your reply with Create held until the manager says what happened: ask them what happened, in one short question."
@@ -442,9 +510,22 @@ export async function editForm(
   }
   try {
     const { loaded } = await authorizeInstance(context.request, id, "edit");
-    // Finalized forms are never edited here (instances.ts's draft-only checks and the database trigger also refuse).
+    /*
+     * HARD GUARD: a finalized form is never written. A change to one opens a NEW draft revising it, by the same code
+     * the card's "Edit as new draft" and today's chat reopen use (`openEditableDraft` → `reviseFinalizedForm`), and the
+     * change is applied there; the original stays as it was (the form_instance_values_frozen trigger also holds it).
+     */
+    if (loaded.instance.status === "finalized") {
+      const { openEditableDraft, formOpenedFor } = await import("@/lib/forms/editable-draft");
+      const draft = await openEditableDraft(context.request, id, { revise: true, reason: context.question.slice(0, 500) });
+      effects.formOpened = formOpenedFor(draft);
+      const revisedEdit = await editForm({ ...context, openFormId: draft.instanceId }, effects, { instance_id: draft.instanceId, values: input.values });
+      const opening = `I opened a new draft of the ${draft.templateName} for ${draft.employeeName} that revises the finalized one; the original is unchanged.`;
+      if (effects.revisedReply) effects.revisedReply = `${opening}\n\n${effects.revisedReply}`;
+      return { ...revisedEdit, revision_draft: draft.instanceId, original_unchanged: true, note: `Tell the manager: ${opening}` };
+    }
     if (loaded.instance.status !== "draft") {
-      return { error: `This form is ${loaded.instance.status}, not a draft, so it cannot be edited. Tell the manager; a finalized form is changed only by opening a revision on Form Monitoring.` };
+      return { error: `This form is ${loaded.instance.status}, so it cannot be edited here. Tell the manager.` };
     }
     /*
      * No field values: the manager's own request goes through the form's reviser (`chat-revision.ts`, the same one
