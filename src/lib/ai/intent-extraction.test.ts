@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { intentExtractionEnabled } from "@/lib/config/chat-quality-flags";
 
@@ -428,5 +428,84 @@ describe("INTENT_EXTRACTION_ENABLED", () => {
       if (previous === undefined) delete process.env.INTENT_EXTRACTION_ENABLED;
       else process.env.INTENT_EXTRACTION_ENABLED = previous;
     }
+  });
+});
+
+/**
+ * SAME_NAME_ASKS_WHICH_ENABLED (QA, 12 Nov 2026; high priority). The three tests above ran with every flag off; under
+ * production's flags TYPED_NAME_PROCEEDS is on, and "two people with one name are a choice" got no choice — the slot
+ * read neither Alex Rivera and asked nothing, so the numbered and salon replies had nothing to answer. These arms run
+ * the same turns with TYPED_NAME_PROCEEDS on: off, the bug; on, the choice, and each reply selects that person.
+ */
+describe("TYPED_NAME_PROCEEDS on (production): two people with one name", () => {
+  afterEach(() => vi.unstubAllEnvs());
+  const proceeds = (sameName: boolean) => {
+    vi.stubEnv("TYPED_NAME_PROCEEDS_ENABLED", "true");
+    vi.stubEnv("SAME_NAME_ASKS_WHICH_ENABLED", sameName ? "true" : "false");
+  };
+  const ask = (question: string, raw: IntentTurnInput["raw"]) =>
+    decideIntentTurn(turn({ question, people: [ALEX_NORTH, ALEX_SOUTH], raw }));
+
+  it("SAME_NAME_ASKS_WHICH off: no choice is offered and nobody is chosen (the bug)", () => {
+    proceeds(false);
+    const decision = ask("corrective action for alex rivera, she showed up late on 10/1/2026, verbal", {
+      employee: "alex rivera", salon: null, title: null, incidentType: "showed up late", incidentDate: "10/1/2026",
+      payrollAmount: null, warningLevel: "verbal", formType: "corrective action", formTurn: true,
+    });
+    expect(decision.clarification ?? "").not.toContain("Which person did you mean");
+    expect(decision.state.employeeId).toBeNull();
+  });
+
+  it("on: two people with one name are a choice that shows salon and title", () => {
+    proceeds(true);
+    const decision = ask("corrective action for alex rivera, she showed up late on 10/1/2026, verbal", {
+      employee: "alex rivera", salon: null, title: null, incidentType: "showed up late", incidentDate: "10/1/2026",
+      payrollAmount: null, warningLevel: "verbal", formType: "corrective action", formTurn: true,
+    });
+    expect(decision.clarification).toContain("Which person did you mean");
+    expect(decision.clarification).toContain("North Salon");
+    expect(decision.clarification).toContain("South Salon");
+    expect(decision.clarification).toContain("Salon Director");
+    expect(decision.clarification).toContain("Tanning Consultant");
+    expect(decision.state.employeeId).toBeNull();
+  });
+
+  it("on: a numbered reply selects that person and does not ask again", () => {
+    proceeds(true);
+    const asked = ask("corrective action for alex rivera, showed up late on 10/1/2026, verbal", {
+      employee: "alex rivera", formType: "corrective action", formTurn: true, incidentDate: "10/1/2026", warningLevel: "verbal", incidentType: "showed up late",
+    });
+    const decision = decideIntentTurn(
+      turn({
+        question: "2",
+        people: [ALEX_NORTH, ALEX_SOUTH],
+        history: [
+          { role: "user", content: "corrective action for alex rivera, showed up late on 10/1/2026, verbal" },
+          { role: "assistant", content: asked.clarification ?? "" },
+        ],
+        saved: asked.state,
+        raw: { employee: null, formTurn: true },
+      }),
+    );
+    expect(decision.state.employeeId).toBe("emp-alex-s");
+    expect(decision.state.title).toBe("Tanning Consultant");
+    expect(decision.clarification ?? "").not.toContain("Which person");
+  });
+
+  it("on: a salon reply selects that person", () => {
+    proceeds(true);
+    const asked = ask("alex rivera showed up late on 10-1-2026, verbal corrective action", {
+      employee: "Alex Rivera", formTurn: true, formType: "corrective action", incidentDate: "10-1-2026", warningLevel: "verbal",
+    });
+    const decision = decideIntentTurn(
+      turn({
+        question: "the south salon one",
+        people: [ALEX_NORTH, ALEX_SOUTH],
+        history: [{ role: "assistant", content: asked.clarification ?? "" }],
+        saved: asked.state,
+        raw: { formTurn: true },
+      }),
+    );
+    expect(decision.state.employeeId).toBe("emp-alex-s");
   });
 });

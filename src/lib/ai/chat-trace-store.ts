@@ -42,6 +42,8 @@ export interface ChatTraceDraft {
    * check did not run.
    */
   draftCheck?: Record<string, unknown>;
+  /** CARD_CHECKED_AGAINST_WORDS_ENABLED: `slots.card_check` — the kinds of problem, model calls and ms, what was repaired. Never text. */
+  cardCheck?: Record<string, unknown>;
   /**
    * CHAT_STAGE_TIMINGS_ENABLED: how long each awaited step of the turn took, written to `slots.stages`. Names and
    * milliseconds only (from the request's receipt), never content. Absent when the flag is off.
