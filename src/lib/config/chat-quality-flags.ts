@@ -4803,6 +4803,15 @@ export function closeSpellingMatchEnabled(): boolean {
 }
 
 /**
+ * PLACE_STRIP_WHOLE_PHRASE_ONLY (QA, Gate-Sunny's #933 probes, 13 Nov 2026; default off): the account reader takes a
+ * place out of the Observation only where the whole place phrase ends, so "she was at lincoln high" and "<A> at omaha
+ * west" keep every word. See `ai/remap-incident.ts` withoutPlace. Off, as before.
+ */
+export function placeStripWholePhraseOnlyEnabled(): boolean {
+  return envFlag("PLACE_STRIP_WHOLE_PHRASE_ONLY_ENABLED");
+}
+
+/**
  * CARD_ADDED_FACT_IN_OBSERVATION_ENABLED (coding 6; QA's Sunny 38f live test, 13 Nov 2026; default off). With
  * CARD_CHECKED_AGAINST_WORDS on, "she yelled at a guest and she maybe forgot" after a card was noted as "Added to the
  * Observation of Offense: she yelled at a guest" while the card's Observation held the whole turn, joined with a
