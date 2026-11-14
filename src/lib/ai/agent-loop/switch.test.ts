@@ -17,6 +17,22 @@ afterEach(() => {
 });
 
 describe("agentLoopFor", () => {
+  it("\"*\" is every signed-in user; mixed with emails it is nobody (QA, 14 Nov 2026)", () => {
+    process.env.AGENT_LOOP_ENABLED = "1";
+    process.env.AGENT_LOOP_USERS = " * ";
+    expect(agentLoopFor("anyone@example.test")).toBe(true);
+    expect(agentLoopFor("")).toBe(false);
+    expect(agentLoopFor(null)).toBe(false);
+    for (const mixed of ["*,pilot.manager@example.test", "pilot.manager@example.test, *"]) {
+      process.env.AGENT_LOOP_USERS = mixed;
+      expect(agentLoopFor("pilot.manager@example.test"), mixed).toBe(false);
+      expect(agentLoopFor("anyone@example.test"), mixed).toBe(false);
+    }
+    process.env.AGENT_LOOP_ENABLED = "false";
+    process.env.AGENT_LOOP_USERS = "*";
+    expect(agentLoopFor("anyone@example.test")).toBe(false);
+  });
+
   it("off: nobody, whatever the list says", () => {
     delete process.env.AGENT_LOOP_ENABLED;
     process.env.AGENT_LOOP_USERS = "pilot.manager@example.test";

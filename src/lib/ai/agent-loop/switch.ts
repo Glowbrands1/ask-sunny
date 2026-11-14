@@ -11,6 +11,10 @@ import { agentLoopEnabled } from "@/lib/config/chat-quality-flags";
  *                                     the loop on for every manager).
  *   on, AGENT_LOOP_USERS "a@x,b@y"    only those emails (case and spaces
  *                                     ignored); everyone else as before.
+ *   on, AGENT_LOOP_USERS "*"          every signed-in user (QA, 14 Nov 2026:
+ *                                     pilot to everyone with one env change).
+ *                                     A "*" mixed with emails ("*,a@x") is
+ *                                     rejected: nobody, with a log line.
  *
  * QA sets the real list in Vercel. Tests use invented addresses only.
  */
@@ -26,6 +30,13 @@ export function agentLoopFor(email: string | null | undefined): boolean {
   const users = agentLoopUsers();
   if (users.length === 0) return false;
   const signedIn = (email ?? "").trim().toLowerCase();
+  if (users.includes("*")) {
+    if (users.length > 1) {
+      console.warn("AGENT_LOOP_USERS mixes \"*\" with emails; nobody gets the agent loop until it is one or the other.");
+      return false;
+    }
+    return signedIn !== "";
+  }
   return signedIn !== "" && users.includes(signedIn);
 }
 
