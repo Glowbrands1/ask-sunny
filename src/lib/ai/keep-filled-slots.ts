@@ -56,7 +56,9 @@ import {
   dateQuestionKeptEnabled,
   secondRequestOwnAccountEnabled,
   observationOwnPersonOnlyEnabled,
+  cardAccountDropsNonFactsEnabled,
 } from "@/lib/config/chat-quality-flags";
+import { notAFact } from "@/lib/forms/card-checked-against-words";
 import { requestIssueKeptEnabled } from "@/lib/config/chat-quality-flags";
 import { turnsMadeAbout, withObservationMadeAbout } from "./make-it-about";
 import { NOTHING_SET_ASIDE, citationSetAside, policiesSetAside, setAsideAnything, withPolicySetAside, withoutPolicyAsks } from "@/lib/forms/policy-set-aside";
@@ -763,6 +765,9 @@ function onlyAGlossaryTerm(sentence: string): boolean {
 }
 
 /** The account already given, copied onto the card so the offense is not asked again. */
+/** CARD_ACCOUNT_DROPS_NON_FACTS_ENABLED: a new clause with its own subject ("… and she maybe forgot", "…, she …"). */
+const FACT_CLAUSE_SPLIT = /\s+(?:and|but)\s+(?:then\s+)?(?=(?:she|he|they)\b)|,\s+(?=(?:she|he|they)\b)/i;
+
 function withObservation(content: string, turns: readonly string[], employeeName: string | null, today?: string): string {
   const ignore = employeeName ? [employeeName] : [];
   const managerOnly = managerWordsOnlyEnabled();
@@ -815,6 +820,23 @@ function withObservation(content: string, turns: readonly string[], employeeName
   // COMPLAINT_ACCOUNT_ENABLED: the warning level is the form's Type of Warning, never the account.
   const told = complaintAccountEnabled() ? account.map(withoutLevelLead) : account;
   // ACCOUNT_TYPOS_FIXED_ENABLED: the obvious slips mended, the manager's words kept (`forms/account-spelling.ts`).
+  /*
+   * CARD_ACCOUNT_DROPS_NON_FACTS_ENABLED (port of Ask Bubbles; QA's Bubbles 17w live chat, 14 Nov 2026): "<A> was late on
+   * 11/3/26" / "she yelled at a guest and she maybe forgot" / "corrective action form" showed "… on 11/3/26 she yelled at a
+   * guest and she maybe forgot". Each sentence's clauses that are no fact (`notAFact`: a hedge, a level, history, a
+   * payment) are left out, and the facts are joined with "; ".
+   */
+  if (cardAccountDropsNonFactsEnabled()) {
+    const facts: string[] = [];
+    for (const sentence of told) {
+      for (const part of sentence.split(FACT_CLAUSE_SPLIT)) {
+        const clause = part.trim().replace(/[.!]+$/, "");
+        if (clause === "" || notAFact(clause, { turns: [], roster: [] })) continue;
+        if (!facts.some((fact) => fact.toLowerCase() === clause.toLowerCase())) facts.push(clause);
+      }
+    }
+    if (facts.length > 0) return `${content}\n\n**Observation of Offense:** ${cardAccountText(facts.join("; "), employeeName)}`.trim();
+  }
   return `${content}\n\n**Observation of Offense:** ${cardAccountText(told.join(" "), employeeName)}`.trim();
 }
 
