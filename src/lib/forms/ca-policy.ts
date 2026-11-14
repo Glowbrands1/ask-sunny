@@ -5,6 +5,7 @@ import {
   asYouSaidManagerWordsEnabled,
   caPerformanceReasonEnabled,
   missedShiftCitesAttendanceEnabled,
+  spellingCleanupEnabled,
   lateReadsAttendanceEnabled,
   msbPhraseSocEnabled,
   caSalesPolicyEnabled,
@@ -328,16 +329,24 @@ export function cleaningIncidentPhrase(rawText: string): string | null {
  * patterns and no others.
  */
 export function cleaningUndonePhrase(rawText: string): string | null {
-  for (const sentence of statements(normalize(rawText))) {
+  /*
+   * SPELLING_CLEANUP_ENABLED: "sanitation" reads as the sanitizing it names. A same-length stand-in the cleaning words
+   * match ("sanitzation") is read, and the phrase returned says "sanitation" again: it is quoted as the manager's words.
+   * Kept with OTHER_POLICY_AGREES_ENABLED (which reads the sanitation family itself) so the flags stand on their own.
+   */
+  const cleanup = spellingCleanupEnabled();
+  const text = cleanup ? (rawText ?? "").replace(/\bsanitation\b/gi, "sanitzation") : rawText;
+  const said = (phrase: string) => (cleanup ? phrase.replace(/\bsanitzation\b/g, "sanitation") : phrase);
+  for (const sentence of statements(normalize(text))) {
     // OTHER_POLICY_AGREES_ENABLED: the sanitation family reads as cleaning too.
     const sanitation = otherPolicyAgreesEnabled();
     for (const [index, pattern] of (sanitation ? CLEANING_UNDONE_WITH_SANITATION : CLEANING_UNDONE).entries()) {
       const match = pattern.exec(sentence);
-      if (match && readsAsIncident(sentence, match, index)) return match[0].trim();
+      if (match && readsAsIncident(sentence, match, index)) return said(match[0].trim());
     }
     if (cleaningOtherEveryWordingEnabled()) {
       const match = (sanitation ? CLEANING_UNDONE_GERUND_WITH_SANITATION : CLEANING_UNDONE_GERUND).exec(sentence);
-      if (match && readsAsIncident(sentence, match, 1)) return match[0].trim();
+      if (match && readsAsIncident(sentence, match, 1)) return said(match[0].trim());
     }
   }
   return null;

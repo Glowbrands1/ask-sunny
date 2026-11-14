@@ -30,6 +30,8 @@ export interface Roster {
   agenda?: AgendaSection[];
   /** The Hub's one-line hint under each section title. Absent: this copy's sectionHintsFor. */
   hints?: Partial<Record<AgendaKey, string>>;
+  /** Whether the meeting has the Reference views (Business Plan, Accountability Chart). Absent: this copy's hasReference. */
+  reference?: boolean;
 }
 
 export const EMPTY_ROSTER: Roster = { members: [], leader: null };
@@ -56,6 +58,15 @@ export const AGENDA: AgendaSection[] = [
  * The leadership meeting has no Headlines and no To-Do List; their 10 minutes go to IDS (70), so it is the 90 minutes
  * its cadence says ("Mondays · 90 min").
  */
+/**
+ * Whether a meeting shows the Reference views (Business Plan, Accountability Chart). The STC DM L10 does not (its
+ * leader's request, 13 Nov 2026); the Hub's database also keeps them out of everything it sends for that meeting.
+ */
+export const hasReference = (key: string): boolean => key !== "stc-dm";
+
+/** Reference views for this page: the Hub's word (served with the roster) when it gives one, and never where this copy says none. */
+export const referenceFromRoster = (key: string, roster: Pick<Roster, "reference">): boolean => hasReference(key) && roster.reference !== false;
+
 /** What each person shares in the segue: "Business Best", except the STC DM L10's "AI Best Practice". */
 export function segueName(key: string): string {
   return key === "stc-dm" ? "AI Best Practice" : "Business Best";
