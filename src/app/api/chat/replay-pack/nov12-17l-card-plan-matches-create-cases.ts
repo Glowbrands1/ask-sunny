@@ -2,7 +2,7 @@ import { expect, vi } from "vitest";
 
 import { cardPlanMatchesCreateEnabled } from "@/lib/config/chat-quality-flags";
 
-import { KEARNEY, STAFF, type ReplayCase, type ReplayContext } from "./cases";
+import { KEARNEY, STAFF, type DirectoryRow, type ReplayCase, type ReplayContext } from "./cases";
 
 /**
  * ============================================================================
@@ -118,3 +118,32 @@ export const NOV12_G4_824_TERMINATION_PLAN_GUARDS: ReplayCase[] = TERMINATION_SA
     }
   },
 }));
+
+/*
+ * Gate-Sunny's #894 finding (14 Nov 2026; QA's ruling (b)): with the card showing Pau's attendance plan, the next turn read
+ * the app's own plan words ("arrive on time … Continued lateness …") as a lateness account. The intent reader's described
+ * heading became Attendance, and "no payroll deduct" gained an "Attendance Policy, JBA Policy Manual p.14" line the
+ * flag-off card never had. The app never reads its own words as the account: the next turn's card gains no citation
+ * line. The chat of nov9-ca-shift-answer-own-account-next-turn; Rhea Calloway is that file's invented person.
+ */
+const RHEA_NEXT: DirectoryRow = { id: "e-rhea-calloway-cpm", firstName: "Rhea", lastName: "Calloway", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" };
+
+export const NOV14_CARD_PLAN_OWN_WORDS_NOT_ACCOUNT_CASES: ReplayCase[] = [
+  {
+    id: "nov14-card-plan-next-turn-not-own-words",
+    title: "\"make me CA for Rhea failing to complete shifts\" → answer → \"no payroll deduct\": the plan's own words never add a citation line",
+    report: "Gate-Sunny's #894 finding (14 Nov 2026): the app read its own plan as a lateness account on the next turn",
+    status: "fixed",
+    fixFlags: FIX,
+    async run(t) {
+      vi.setSystemTime(new Date("2026-11-09T15:00:00Z"));
+      t.directory([...STAFF, RHEA_NEXT]);
+      t.as("salon_director", KEARNEY);
+      const thread = t.thread();
+      await thread.say("make me CA for Rhea failing to complete shifts");
+      await thread.say("Rhea Calloway failing to complete shifts 11/7 and 11/8");
+      const reply = await thread.say("no payroll deduct");
+      expect(reply.content, `the next turn cites a policy read from the app's own plan:\n${reply.content}`).not.toMatch(/^Attendance Policy, JBA Policy Manual p\.14$/m);
+    },
+  },
+];
