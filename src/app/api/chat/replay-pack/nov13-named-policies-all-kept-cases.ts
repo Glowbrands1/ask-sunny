@@ -63,7 +63,10 @@ export const NOV13_NAMED_POLICIES_ALL_KEPT_CASES: ReplayCase[] = [
       expect(values.policy_violated ?? "", "Policy Violated dropped Standards of Conduct").toMatch(/standards of conduct/i);
       expect(values.policy_language ?? "", "Direct policy dropped Attendance").toMatch(/attendance/i);
       expect(values.policy_language ?? "", "Direct policy dropped Standards of Conduct").toMatch(/standards of conduct/i);
-      expect(values.action_plan ?? "", "the plan reviews Standards of Conduct only").not.toMatch(/review the Standards of Conduct policy with/i);
+      // Changed on purpose (MIXED_POLICY_PLAN, Pau's option A, 14 Nov 2026): the plan may review the Standards of
+      // Conduct beside Pau's attendance plan; what it must never do is review the Standards of Conduct alone.
+      const plan = values.action_plan ?? "";
+      expect(/review the Standards of Conduct policy with/i.test(plan) && !/attendance|arrive on time/i.test(plan), `the plan reviews Standards of Conduct only: ${plan}`).toBe(false);
     },
   },
   {

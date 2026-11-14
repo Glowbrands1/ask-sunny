@@ -73,7 +73,11 @@ export function attendanceActionPlan(input: ActionPlanInput): string {
  */
 function otherPolicyLines(input: ActionPlanInput, first: string | null): string[] {
   const names = input.citedPolicies.length > 0 ? input.citedPolicies : policyNamesFromViolated(input.policyViolated);
-  const others = names.filter((name) => !/\battendance\b/i.test(name) && !/\blate\s+open/i.test(name) && !/^other$/i.test(name.trim()));
+  // A manual citation ("Attendance Policy, JBA Policy Manual p.14" splits into "JBA Policy Manual p.14") is no policy name.
+  const citation = (name: string) => /\bJBA Policy Manual\b|^\s*p(?:age|\.)\s*\d+\s*$/i.test(name);
+  const others = names.filter(
+    (name) => !/\battendance\b/i.test(name) && !/\blate\s+open/i.test(name) && !/^other$/i.test(name.trim()) && !citation(name),
+  );
   const seen = new Set<string>();
   return others
     .map((name) => policyPhrase([name]))

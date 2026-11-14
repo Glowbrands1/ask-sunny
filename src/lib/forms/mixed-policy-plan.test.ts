@@ -26,4 +26,13 @@ describe("MIXED_POLICY_PLAN_ENABLED", () => {
     expect(plan.match(/Management will review/g)?.length).toBe(1);
     expect(plan).not.toMatch(/Other policy/);
   });
+
+  it("on: a Policy Violated that is the Attendance citation adds no line (the pack's diff, 14 Nov 2026)", () => {
+    vi.stubEnv("MIXED_POLICY_PLAN_ENABLED", "true");
+    // "take the attendance policy off the form" refreshed the plan from "Attendance Policy, JBA Policy Manual p.14",
+    // and "JBA Policy Manual p.14" was read as a second policy: "Management will review the JBA Policy Manual p.14 policy".
+    const plan = attendanceActionPlan({ ...input([]), policyViolated: "Attendance Policy, JBA Policy Manual p.14" });
+    expect(plan).not.toMatch(/Management will review/);
+    expect(plan).not.toMatch(/JBA Policy Manual/);
+  });
 });
