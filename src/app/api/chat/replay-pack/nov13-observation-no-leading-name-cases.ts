@@ -32,7 +32,8 @@ export const NOV13_OBSERVATION_NO_LEADING_NAME_CASES: ReplayCase[] = WORDINGS.ma
   id: `nov13-observation-no-leading-name-${wording.key}`,
   title: `Admin: "${wording.turn}" — the Observation is "${wording.kept}", without the employee's name`,
   report: REPORT,
-  status: { open: `the Observation starts with the employee's name ("marnie holloway ${wording.kept}")` },
+  // Changed on purpose (14 Nov 2026): fixed in production by OBSERVATION_NO_LEADING_NAME_ENABLED, QA round 38j. Was OPEN.
+  status: "fixed",
   fixFlags: [FLAG],
   async run(t: ReplayContext) {
     const { reply, said } = await observationOf(t, wording.turn);
@@ -61,7 +62,8 @@ export const NOV13_WORK_AREA_NOT_A_TITLE_CASES: ReplayCase[] = WORK_AREAS.map((w
   id: `nov13-work-area-not-a-title-${wording.key}`,
   title: `Admin, a person not on the roster: "${wording.turn}" — "${wording.area}" is never the Job title`,
   report: `${REPORT}; item (a), trace slots.title "front desk"`,
-  status: { open: `the card's Job title is the work area ("${wording.area}" or its first word)` },
+  // Changed on purpose (14 Nov 2026): fixed in production by WORK_AREA_NOT_A_TITLE_ENABLED, QA round 38j. Was OPEN.
+  status: "fixed",
   fixFlags: [WORK_AREA_FLAG],
   async run(t: ReplayContext) {
     vi.setSystemTime(new Date("2026-11-13T15:00:00Z"));
@@ -118,7 +120,8 @@ export const NOV13_OBSERVATION_NO_LEADING_NAME_ON_CASES: ReplayCase[] = [
     id: "nov13-observation-no-leading-name-on-the-floor",
     title: `Admin: "create a ca for marnie holloway on the floor, she was rude to a guest" — "on the floor, she was rude to a guest"`,
     report: `${REPORT}; Gate-Sunny's #939 probe`,
-    status: { open: `the Observation starts with the employee's name ("marnie holloway on the floor, …")` },
+    // Changed on purpose (14 Nov 2026): fixed in production by OBSERVATION_NO_LEADING_NAME_ENABLED, QA round 38j. Was OPEN.
+    status: "fixed",
     fixFlags: [FLAG],
     async run(t: ReplayContext) {
       const { reply, said } = await observationOf(t, "create a ca for marnie holloway on the floor, she was rude to a guest");
@@ -134,7 +137,8 @@ export const NOV13_OBSERVATION_NO_LEADING_NAME_BED_HASH_CASES: ReplayCase[] = [
     id: "nov13-observation-no-leading-name-bed-hash-4",
     title: `Admin: "create a ca for marnie holloway in bed #4, she left it dirty" — "in bed #4, she left it dirty"`,
     report: `${REPORT}; Gate-Sunny's #939 probe`,
-    status: { open: `the Observation starts with the employee's name ("marnie holloway in bed #4, …")` },
+    // Changed on purpose (14 Nov 2026): fixed in production by OBSERVATION_NO_LEADING_NAME_ENABLED, QA round 38j. Was OPEN.
+    status: "fixed",
     fixFlags: [FLAG],
     async run(t: ReplayContext) {
       const { reply, said } = await observationOf(t, "create a ca for marnie holloway in bed #4, she left it dirty");
