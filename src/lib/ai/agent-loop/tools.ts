@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 
 import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import { businessToday } from "@/lib/business-date";
+import { isoDate, monthDayToIso, readDates, sameDate, withoutDates } from "./dates";
 import { candidateNameWords, chatFormsActor } from "@/lib/forms/chat-form-records";
 import { displayName, matchEmployeeName, nameConfirmationQuestion, type RosterEmployee } from "@/lib/forms/employee-match";
 import { offRosterTyped } from "@/lib/forms/roster-only-names";
@@ -661,39 +662,22 @@ export async function readPolicy(context: ToolContext, input: { heading?: unknow
 
 /* -------------------------------------------------------- propose form --- */
 
-/**
- * "10/2" as the most recent such day not after `today`, in ISO form (the card's date field). Batch E (E13): `today` is
- * the salon's local date (`context.today`, America/Chicago), never the server's UTC clock, which is already tomorrow
- * on a Central evening.
- */
-export function monthDayToIso(monthDay: string, today: string): string {
-  const [month, day] = monthDay.split("/").map(Number) as [number, number];
-  const iso = (year: number) => `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-  const year = Number(today.slice(0, 4));
-  return iso(year) > today ? iso(year - 1) : iso(year);
-}
-
-/** A form date as the model wrote it ("2026-12-20", "12/20/2026", "12/20"), in ISO form, or null. */
-function isoDate(value: string, today: string): string | null {
-  const text = value.trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
-  const full = /^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/.exec(text);
-  if (full) return `${full[3]!.length === 2 ? `20${full[3]}` : full[3]}-${full[1]!.padStart(2, "0")}-${full[2]!.padStart(2, "0")}`;
-  const short = /^(\d{1,2})\/(\d{1,2})$/.exec(text);
-  return short ? monthDayToIso(`${short[1]}/${short[2]}`, today) : null;
-}
+/* The card's date and edit_form's form_date are read by the shared date reader (batch E, E13/E14: `./dates`). */
+export { monthDayToIso } from "./dates";
 
 /**
  * The incident's dates as the manager wrote them, one per day, leaving out dates of earlier steps (prior actions)
  * and of payroll. Two or more, and the latest message does not pick one: the card's date waits for the manager.
  */
 export function incidentDates(managerWords: string, priorActions: string | null): string[] {
-  const prior = new Set([...(priorActions ?? "").matchAll(ACCOUNT_DATE)].map((match) => `${Number(match[1])}/${Number(match[2])}`));
+  /* Batch E (E14): every date style ("6/11", "June 11", "the 11th of June"), each day once as "M/D". */
+  const prior = readDates(priorActions ?? "");
   const seen = new Map<string, string>();
-  for (const match of managerWords.replace(PAYROLL_AMOUNT, " ").matchAll(ACCOUNT_DATE)) {
-    const key = `${Number(match[1])}/${Number(match[2])}`;
-    if (Number(match[1]) > 12 || prior.has(key) || seen.has(key)) continue;
-    if (PRIOR_STEP_BEFORE.test(sentenceBefore(managerWords, match.index!))) continue;
+  const words = managerWords.replace(PAYROLL_AMOUNT, (amount) => " ".repeat(amount.length));
+  for (const date of readDates(words)) {
+    const key = `${date.month}/${date.day}`;
+    if (prior.some((other) => sameDate(other, date)) || seen.has(key)) continue;
+    if (PRIOR_STEP_BEFORE.test(sentenceBefore(words, date.index))) continue;
     seen.set(key, key);
   }
   return [...seen.values()];
@@ -737,8 +721,7 @@ const ACCOUNT_METRIC = /\b(?:PPTA|LPSVA|UPTA|MSB|CC\s?%|Spa\s?%|Club\s+Close\s?%
  * "237 tanning transactions", "40 min"): a figure the account must keep, and a card may not add.
  */
 export function standaloneFigures(text: string): string[] {
-  const bare = text.replace(ACCOUNT_DATE, " ").replace(ACCOUNT_TIME, " ").replace(ACCOUNT_MONEY, " ");
-  ACCOUNT_DATE.lastIndex = 0;
+  const bare = withoutDates(text).replace(ACCOUNT_TIME, " ").replace(ACCOUNT_MONEY, " ");
   return [...bare.matchAll(/(?<![\d.])\d{2,}(?![\d.])/g)].map((match) => match[0]).filter((figure) => !/^(?:19|20)\d\d$/.test(figure));
 }
 
@@ -754,7 +737,6 @@ function sentenceBefore(text: string, index: number): string {
 
 /** Words before a date that make it an earlier step's date, in the same sentence. */
 const PRIOR_STEP_BEFORE = /\b(?:coached|previous(?:ly)?|prior|signed|received|given|issued|already|had (?:a|her|his|their) (?:verbal|written|ca|coaching))\b[^.\n]*$/i;
-const ACCOUNT_DATE = /\b(\d{1,2})[/-](\d{1,2})(?:[/-]\d{2,4})?\b/g;
 const ACCOUNT_TIME = /\b\d{1,2}(?::|;)\d{2}\s*(?:am|pm)?\b|\b\d{1,2}\s*(?:am|pm)\b/gi;
 const ACCOUNT_MONEY = /\$\s?\d+(?:\.\d{2})?/g;
 const ACCOUNT_WHEN = /\b(?:this morning|this afternoon|tonight|last night|last week|yesterday|in the morning|in the afternoon|at (?:open|close|opening|closing)|(?:on |last )?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)|(?:january|february|march|april|may|june|july|august|september|october|november|december))\b/gi;
@@ -762,6 +744,19 @@ const NOT_A_PLACE = new Set(["least", "all", "first", "once", "times", "a", "an"
 
 /** "$25 will be payroll deducted", "payroll deduct $50", "$20 payroll deduct applies": the amount goes on the payroll field, not the account. */
 const PAYROLL_AMOUNT = /\$\s?\d+(?:\.\d{2})?\s*(?:will be\s+|is\s+|to be\s+)?(?:payroll\s+)?deduct\w*|(?:payroll\s+)?deduct\w*\s*(?:of\s+|for\s+|is\s+)?\$\s?\d+(?:\.\d{2})?/gi;
+
+/** What kind of word the account check found missing (the trace records kinds, never the words: batch E, E15). */
+export function accountWordKind(word: string): string {
+  if (readDates(word).length > 0) return "date";
+  ACCOUNT_TIME.lastIndex = 0;
+  if (new RegExp(ACCOUNT_TIME.source, "i").test(word)) return "time";
+  if (/\$\s?\d/.test(word)) return "amount";
+  if (new RegExp(ACCOUNT_METRIC.source, "i").test(word)) return "metric";
+  if (/^\d+$/.test(word.trim())) return "figure";
+  if (new RegExp(ACCOUNT_WHEN.source, "i").test(word)) return "when";
+  if (/^at\s/i.test(word)) return "place";
+  return "word";
+}
 
 export function accountMissing(managerWords: string, account: string, priorActions: string | null = null): string[] {
   managerWords = managerWords.replace(PAYROLL_AMOUNT, " ");
@@ -772,12 +767,12 @@ export function accountMissing(managerWords: string, account: string, priorActio
    * 10-15-26", a date listed in prior_actions) belongs in Prior actions, never the Observation (the live re-run's r5,
    * coding3 and payroll-amount cases), so it is not required here.
    */
-  const priorDays = new Set([...(priorActions ?? "").matchAll(ACCOUNT_DATE)].map((match) => `${Number(match[1])}/${Number(match[2])}`));
-  for (const match of managerWords.matchAll(ACCOUNT_DATE)) {
-    const [month, day] = [Number(match[1]), Number(match[2])];
-    if (priorDays.has(`${month}/${day}`) || PRIOR_STEP_BEFORE.test(sentenceBefore(managerWords, match.index!))) continue;
-    const kept = [...said.matchAll(ACCOUNT_DATE)].some((other) => Number(other[1]) === month && Number(other[2]) === day);
-    if (!kept) missing.push(match[0]);
+  /* Batch E (E14): a date is kept when the account has the same day in any style ("9-28-26" as "September 28, 2026"). */
+  const priorDays = readDates(priorActions ?? "");
+  const accountDays = readDates(account);
+  for (const date of readDates(managerWords)) {
+    if (priorDays.some((other) => sameDate(other, date)) || PRIOR_STEP_BEFORE.test(sentenceBefore(managerWords, date.index))) continue;
+    if (!accountDays.some((other) => sameDate(other, date))) missing.push(date.text);
   }
   /*
    * A time or an amount is kept when the account has the same figure as a time or an amount ("10:40am" as "10:40 am",
@@ -798,7 +793,7 @@ export function accountMissing(managerWords: string, account: string, priorActio
   }
   const accountFigures = new Set(standaloneFigures(account));
   for (const figure of standaloneFigures(managerWords)) if (!accountFigures.has(figure)) missing.push(figure);
-  for (const match of managerWords.matchAll(ACCOUNT_WHEN)) {
+  for (const match of withoutDates(managerWords).matchAll(ACCOUNT_WHEN)) {
     const word = match[0].toLowerCase().replace(/^(?:on|last) /, "");
     if (!said.includes(word)) missing.push(match[0]);
   }
@@ -1167,8 +1162,7 @@ export async function proposeForm(
    * Act and state the assumption (Pau, 14 Nov 2026): no date in the manager's words, so the card is dated today, and
    * the reply says so in one line the manager can correct.
    */
-  const datedToday = ACCOUNT_FORMS.has(template.key) && !awaiting && !date && datesGiven.length === 0 && !ACCOUNT_WHEN.test(requestWords) && !ACCOUNT_DATE.test(requestWords);
-  ACCOUNT_DATE.lastIndex = 0;
+  const datedToday = ACCOUNT_FORMS.has(template.key) && !awaiting && !date && datesGiven.length === 0 && !ACCOUNT_WHEN.test(requestWords) && readDates(requestWords).length === 0;
   ACCOUNT_WHEN.lastIndex = 0;
   /* Batch E (E12): a date after today is never on the card, the model's or today's reading (the field is refused; the fact says so). */
   const futureDate = dateAfterToday ?? (!date && proposal.formDate && proposal.formDate > today ? proposal.formDate : null);

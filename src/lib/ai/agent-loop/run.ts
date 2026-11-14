@@ -36,6 +36,7 @@ import {
   readForm,
   readPolicy,
   templateChoices,
+  accountWordKind,
   type ToolContext,
   type ToolEffects,
   type ToolResult,
@@ -82,6 +83,42 @@ export interface AgentLoopStep {
   readonly ms: number;
   readonly resultChars: number;
   readonly ok: boolean;
+  /** Batch E (E15): why, never what. The refusal's kind, and the names of the facts the result carried (no values). */
+  readonly error_kind?: string;
+  readonly fact_keys?: readonly string[];
+  /** account_words_missing as kinds only ("date", "time", "place"), never the words. */
+  readonly missing_kinds?: readonly string[];
+}
+
+/* Batch E (E15): a refusal's kind, read from its fixed wording (the text itself, which can carry names, never goes in the trace). */
+const ERROR_KINDS: readonly [RegExp, string][] = [
+  [/after today/i, "date_after_today"],
+  [/never changes who the form is about|another (?:employee|person)|said no to/i, "right_person"],
+  [/must come from the manager's own words|none of the dates the manager gave|never gave/i, "not_stated"],
+  [/not a heading|No section of the manual/i, "not_a_heading"],
+  [/find_staff|not on the roster|Give the employee/i, "person_not_found"],
+  [/isn't|is not one of this manager's|outside|scope|cannot (?:list|create|edit|view)|can't be listed/i, "scope"],
+  [/whole staff/i, "whole_staff"],
+  [/already shown in this reply|already has/i, "one_card"],
+  [/finalized|cannot be edited|is (?:submitted|final)/i, "drafts_only"],
+  [/past forms|NOT_ASKED|did not ask/i, "past_forms_gate"],
+  [/could not be read|failed just now|could not be (?:found|changed)/i, "read_failed"],
+  [/no tool named/i, "unknown_tool"],
+];
+/** Result keys that are data, not facts (never listed in the trace). */
+const NOT_FACT_KEYS = new Set(["error", "note", "card", "facts", "matches", "staff", "wording", "headings", "source", "salon", "salons", "positions", "templates", "updated", "refused", "forms", "passages", "document", "heading", "page", "fields", "values"]);
+
+function stepReason(result: ToolResult): Pick<AgentLoopStep, "error_kind" | "fact_keys" | "missing_kinds"> {
+  const record = result as Record<string, unknown>;
+  const facts = record.facts && typeof record.facts === "object" ? Object.keys(record.facts as object) : [];
+  const keys = [...new Set([...facts, ...Object.keys(record).filter((key) => !NOT_FACT_KEYS.has(key))])].sort();
+  const missing = (record.facts as { account_words_missing?: unknown } | undefined)?.account_words_missing;
+  const error = typeof record.error === "string" ? (ERROR_KINDS.find(([pattern]) => pattern.test(record.error as string))?.[1] ?? "refused") : null;
+  return {
+    ...(error ? { error_kind: error } : {}),
+    ...(keys.length > 0 ? { fact_keys: keys } : {}),
+    ...(Array.isArray(missing) ? { missing_kinds: [...new Set(missing.map((word) => accountWordKind(String(word))))].sort() } : {}),
+  };
 }
 
 export interface AgentTurnInput {
@@ -378,7 +415,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     } catch {
       result = { error: "That lookup failed just now." };
     }
-    steps.push({ step, tool: name, ms: Math.round(performance.now() - started), resultChars: JSON.stringify(result).length, ok: !("error" in result) });
+    steps.push({ step, tool: name, ms: Math.round(performance.now() - started), resultChars: JSON.stringify(result).length, ok: !("error" in result), ...stepReason(result) });
     return result;
   };
 

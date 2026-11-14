@@ -224,6 +224,8 @@ Rules-book lines and facts only; no reply patches. Each item has an outcome case
 | E11, a reword that adds a cause | `reword_added_link` (propose_form, edit_form) | Editing and Card replies: grammar and tone only, facts stay separate |
 | E12, a date after today on a card or draft | refused: propose_form leaves the card's date empty and returns `date_after_today`; edit_form refuses `form_date` / `incident_date` after today and writes nothing | Dates: say so and ask which day |
 | E13, the server's UTC clock | — (`monthDayToIso` reads the salon's local date, `context.today`) | — |
+| E14, dates written in another style | — (one reader, `src/lib/ai/agent-loop/dates.ts`, for the account check, incident dates, the card date and edit_form's form_date: 6/11, 6-11, 06/11/2026, 6.11.26, June 11, Jun 11th, 11 June, the 11th of June, Sept 28, with or without a year) | — |
+| E15, a trace step with no reason | — (each step records `error_kind`, `fact_keys` and `missing_kinds`; never names, words or figures) | — |
 
 **E8 in code:** the self-review also hands back, once, a reply to a new card that cites a policy when the reply has no **Policy:** line. On a second miss the model's own reply is kept; only a stated value the card does not hold gets today's "That change isn't on the card yet" line.
 

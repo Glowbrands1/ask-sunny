@@ -531,4 +531,60 @@ export const NOV14_LIVE_R5_CASES: ReplayCase[] = [
       expect(thread.proposal?.formDate ?? "", `the card is dated tomorrow (UTC's today):\n${reply.content}`).not.toBe("2026-11-15");
     },
   },
+  {
+    id: "nov14-live-r5-e14-a-date-in-another-style-is-kept",
+    title: "QA E14 (Pau's live chats): \"9-28-26\" in the request and \"September 28, 2026\" in the account: the date is kept, nothing is flagged missing",
+    report: `${REPORT_E}: E14, Pau's chats at 01:45, 01:53 and 01:54 PHT flagged "9-28-26" as left out of an account that wrote it out`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      const model = loopStandIn((view): LoopDecision => {
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: "Remy Calder was a no call no show on September 28, 2026.", incident_date: "2026-09-28" } };
+        return { text: "Here's the Corrective Action Form for **Remy Calder**.\n\n**Observation of Offense:** Remy Calder was a no call no show on September 28, 2026." };
+      });
+      t.loopModel!(model);
+      const thread = t.thread();
+      const reply = await thread.say("ca for remy calder, she was a no call no show on 9-28-26");
+      expect(thread.proposal?.issue ?? "", `the date is not on the card:\n${reply.content}`).toMatch(/September 28, 2026|9[-/]28/);
+      if (offline) expect(toolResults(model.views, "propose_form").some((result) => /account_words_missing/.test(result)), "a date written another way was flagged missing").toBe(false);
+    },
+  },
+  {
+    id: "nov14-live-r5-e15-trace-keeps-the-reason-never-the-words",
+    title: "QA E15: a tool result's refusal kind and fact keys are on the trace (account_words_missing as kinds: date), never the names, words or figures",
+    report: `${REPORT_E}: E15, the trace recorded ok:false with no reason, so the 9-28-26 flag could not be explained`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      if (!offline) return; // the trace's shape, not the model's choices
+      vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        const tries = view.results.filter((result) => result.tool === "propose_form").length;
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
+        if (tries === 0) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: "Remy Calder was a no call no show." } };
+        if (tries === 1) return { tool: "edit_form", input: { instance_id: "no-such-form", values: { form_date: "2026-12-20" } } };
+        return { text: "Here's the Corrective Action Form for **Remy Calder**.\n\n**Observation of Offense:** Remy Calder was a no call no show." };
+      }));
+      await t.thread().say("ca for remy calder, she was a no call no show on 10/3");
+      const rows = t.rows?.("chat_traces") ?? [];
+      const row = [...rows].reverse().find((entry) => (entry.slots as { agent_loop?: unknown } | undefined)?.agent_loop);
+      expect(row, "no chat trace with the loop's steps").toBeTruthy();
+      const steps = (row!.slots as { agent_loop: { steps: { tool: string; ok: boolean; error_kind?: string; fact_keys?: string[]; missing_kinds?: string[] }[] } }).agent_loop.steps;
+      const proposed = steps.find((step) => step.tool === "propose_form");
+      expect(proposed?.fact_keys ?? [], "the propose_form step names no facts").toContain("account_words_missing");
+      expect(proposed?.missing_kinds, "the missing words are not given as kinds").toEqual(["date"]);
+      const edited = steps.find((step) => step.tool === "edit_form");
+      expect(edited?.ok).toBe(false);
+      expect(edited?.error_kind, "a refused step has no reason").toBeTruthy();
+      expect(JSON.stringify(steps), "the trace carries names, words or figures").not.toMatch(/Remy|Calder|no call|10\/3|2026-12-20/i);
+    },
+  },
 ];

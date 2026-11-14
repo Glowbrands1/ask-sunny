@@ -34,7 +34,7 @@ nov7-a2-negative-previous-store
 # batch C: the place stays in the Observation as said (QA 15 Nov ruling), outcomes only
 nov13-observation-place-must-read-omaha-date
 nov13-observation-place-must-read-lincoln-monday
-# batch E: QA's tester follow-ups E1-E13, outcomes only (nov14-live-r5-cases.ts)
+# batch E: QA's tester follow-ups E1-E14 (E15 is offline only), outcomes only (nov14-live-r5-cases.ts)
 nov14-live-r5-salon-from-woven-not-asked
 nov14-live-r5-l4-salon-asked-at-most-once
 nov14-live-r5-yes-never-repeats-the-question
@@ -51,3 +51,4 @@ nov14-live-r5-e11-reword-never-adds-a-cause
 nov14-live-r5-e12-a-date-after-today-is-never-on-the-card
 nov14-live-r5-e12-edit-form-refuses-a-form-date-after-today
 nov14-live-r5-e13-central-evening-is-still-today
+nov14-live-r5-e14-a-date-in-another-style-is-kept
