@@ -4791,6 +4791,17 @@ export function closeSpellingMatchEnabled(): boolean {
 }
 
 /**
+ * CARD_ADDED_FACT_IN_OBSERVATION_ENABLED (coding 6; QA's Sunny 38f live test, 13 Nov 2026; default off). With
+ * CARD_CHECKED_AGAINST_WORDS on, "she yelled at a guest and she maybe forgot" after a card was noted as "Added to the
+ * Observation of Offense: she yelled at a guest" while the card's Observation held the whole turn, joined with a
+ * space. On, the card's Observation line is the earlier account, then "; " and the added facts, the same as the note.
+ * Off, as before.
+ */
+export function cardAddedFactInObservationEnabled(): boolean {
+  return envFlag("CARD_ADDED_FACT_IN_OBSERVATION_ENABLED");
+}
+
+/**
  * SHARED_CITY_ASKS_SALON (QA's Sunny 38c live check, 13 Nov 2026; default off): a shared city typed a letter off ("at
  * omha") is read as that city, so any scope covering more than one of its salons is asked which; and a clause that is
  * only the employee's name and "at <place>" is never the Observation of Offense, read or not. See
