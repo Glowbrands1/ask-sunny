@@ -2,6 +2,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { fakeSupabase, type FakeStore } from "@/test/fake-supabase";
 
+// POLICY_NOT_FOUND_PLAIN_WORDING (14 Nov 2026) rewords the "Woven does not see this policy" notices; pinned off here so
+// a flag-on run still checks the wording these tests assert. The plain wording: policy-not-found-plain-notices.test.ts.
+beforeEach(() => {
+  vi.stubEnv("POLICY_NOT_FOUND_PLAIN_WORDING_ENABLED", "");
+  vi.stubEnv("NEXT_PUBLIC_POLICY_NOT_FOUND_PLAIN_WORDING_ENABLED", "");
+});
+
+
 /**
  * THE COACHING FORM ACROSS ITS WHOLE LIFE, AND THE PROMISE THAT MATTERS MOST.
  *

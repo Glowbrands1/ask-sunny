@@ -1,4 +1,4 @@
-import { policyGateNonblockingEnabled, revisionEditNeedsEditEnabled } from "@/lib/config/chat-quality-flags";
+import { policyGateNonblockingEnabled, policyNotFoundPlainNoticesEnabled, revisionEditNeedsEditEnabled } from "@/lib/config/chat-quality-flags";
 
 import { fieldsForVariant, type FormDocument } from "./document";
 
@@ -125,6 +125,15 @@ export const POLICY_ACKNOWLEDGEMENT_TITLE = "Woven does not see this policy in t
 export const POLICY_ACKNOWLEDGEMENT_MESSAGE =
   "Woven does not see this policy in the knowledge base, so the policy on this form could not be verified. Review the applicable company policy before issuing this Corrective Action Form. If you have verified the policy yourself, you may continue.";
 
+/*
+ * POLICY_NOT_FOUND_PLAIN_WORDING (QA, 14 Nov 2026; `policyNotFoundPlainNoticesEnabled`): the app says what it did not
+ * find, as the card's Policy line does — "Woven does not see …" reads oddly to a manager. The rest is unchanged.
+ */
+export const POLICY_ACKNOWLEDGEMENT_TITLE_PLAIN = "I don't see this policy in the knowledge base";
+
+export const POLICY_ACKNOWLEDGEMENT_MESSAGE_PLAIN =
+  "I don't see this policy in the knowledge base, so the policy on this form could not be verified. Review the applicable company policy before issuing this Corrective Action Form. If you have verified the policy yourself, you may continue.";
+
 /**
  * ============================================================================
  * "YOU EDITED THE POLICY WORDING" ONLY WHEN THAT IS WHAT HAPPENED
@@ -198,5 +207,7 @@ export function policyAcknowledgementWording(
 ): { title: string; message: string } {
   return policyWordingEdited(fields, events, isRevision)
     ? { title: POLICY_EDITED_TITLE, message: POLICY_EDITED_MESSAGE }
-    : { title: POLICY_ACKNOWLEDGEMENT_TITLE, message: POLICY_ACKNOWLEDGEMENT_MESSAGE };
+    : policyNotFoundPlainNoticesEnabled()
+      ? { title: POLICY_ACKNOWLEDGEMENT_TITLE_PLAIN, message: POLICY_ACKNOWLEDGEMENT_MESSAGE_PLAIN }
+      : { title: POLICY_ACKNOWLEDGEMENT_TITLE, message: POLICY_ACKNOWLEDGEMENT_MESSAGE };
 }

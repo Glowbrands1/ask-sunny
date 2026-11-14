@@ -35,6 +35,7 @@ import type {
 import type { ChatFormInstanceRef } from "@/types";
 import { displayLocator } from "@/lib/knowledge/locator";
 import { NO_AUTOFILL } from "@/features/forms/document/autofill";
+import { policyNotFoundPlainNoticesEnabled } from "@/lib/config/chat-quality-flags";
 
 /**
  * ============================================================================
@@ -1227,16 +1228,18 @@ export function policyVerificationNoticeFor(
     return `You edited the policy wording: ${quote(byHand)} ${byHand.length === 1 ? "was" : "were"} changed by hand, so Ask Sunny can't confirm ${byHand.length === 1 ? "it matches" : "they match"} the policy manual. Check the wording against the official manual before you issue this form.`;
   }
 
+  // POLICY_NOT_FOUND_PLAIN_WORDING (QA, 14 Nov 2026): "I don't see …", not "Woven does not see …". Off, as before.
+  const plain = policyNotFoundPlainNoticesEnabled();
   const parts = [
     blank.length > 0
-      ? `${quote(blank)} ${blank.length === 1 ? "is" : "are"} blank because Woven does not see a matching policy in the knowledge base`
+      ? `${quote(blank)} ${blank.length === 1 ? "is" : "are"} blank because ${plain ? "I don't" : "Woven does not"} see a matching policy in the knowledge base`
       : null,
     byHand.length > 0
       ? `${quote(byHand)} ${byHand.length === 1 ? "was" : "were"} entered by hand and ${byHand.length === 1 ? "has" : "have"} not been checked against the manual`
       : null,
   ].filter((part): part is string => part !== null);
 
-  return `Policy verification is still required: ${parts.join(", and ")}. Woven does not see this policy in the knowledge base, so it cannot be verified — confirm the exact policy in the official manual before you issue this form.`;
+  return `Policy verification is still required: ${parts.join(", and ")}. ${plain ? "I don't" : "Woven does not"} see this policy in the knowledge base, so it cannot be verified — confirm the exact policy in the official manual before you issue this form.`;
 }
 
 /**
