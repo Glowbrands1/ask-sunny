@@ -1342,7 +1342,15 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     const cleanupSource = spellingCleanupOn
       ? [prompt, notes, ...(loaded.values ?? []).map((row) => (typeof row.value === "string" ? row.value : ""))].join("\n")
       : "";
-    const cleanupNames = [loaded.instance.employeeName ?? ""];
+    // QA's bar (14 Nov 2026): every roster name is a name to the cleanup check, not only the employee's.
+    const cleanupNames = [
+      loaded.instance.employeeName ?? "",
+      ...(spellingCleanupOn
+        ? (await (await import("@/lib/forms/employee-roster")).loadScopedRoster(actor.scope).catch(() => [])).map((person) =>
+            [person.firstName, person.preferredFirstName, person.lastName].filter(Boolean).join(" "),
+          )
+        : []),
+    ];
     let cleanupFellBack = false;
     /*
      * QA's safety ruling (13 Nov 2026): every draft after the fallback (the fallback itself and any never-blank retry)

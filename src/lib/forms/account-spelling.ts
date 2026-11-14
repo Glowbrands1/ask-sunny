@@ -1,4 +1,8 @@
+import { PRODUCTION_SALONS } from "@/data/salons";
 import { accountTyposFixedEnabled } from "@/lib/config/chat-quality-flags";
+
+import { accountNames } from "./account-names";
+import { REAL_WORDS } from "./real-words";
 
 import { correctedText } from "./typo-match";
 import { NEVER_CORRECTED, typoVocabulary } from "./typo-vocabulary";
@@ -16,10 +20,11 @@ import { NEVER_CORRECTED, typoVocabulary } from "./typo-vocabulary";
  * is reworded, and dates, numbers and titles are left as typed (FORM_INPUT_FIDELITY, S#166, is about those; it is untouched).
  * Off: the text as written.
  */
-const ACCOUNT_WORDS = [
+export const ACCOUNT_WORDS = [
   "sanitation", "sanitize", "sanitized", "cleaning", "cleaned", "minute", "minutes", "morning", "evening", "closing",
   "opening", "register", "drawer", "shift", "lotion", "towels", "customer", "complaint", "schedule", "completed",
 ];
+const MENDED_ANYWAY: ReadonlySet<string> = new Set(["manger"]);
 const SHORT_WORDS = new Set(["the", "a", "an", "to", "of", "in", "on", "at", "for", "and", "her", "his", "my", "our"]);
 
 /** "th e10" → "the 10": a short word whose last letter slipped onto the number after it. */
@@ -34,11 +39,82 @@ function withUnitHyphen(text: string): string {
   return text.replace(/\b(\d+) (minute|hour|day|week)\b(?=\s+[a-z])/gi, "$1-$2");
 }
 
-/** The account as the card shows it. `name` words (the employee's) are never corrected. */
+/*
+ * QA's bar (the sibling gate's #772 probe, 14 Nov 2026; ported): the account's spelling never edits
+ *   - inside a quoted span of any kind ("…", '…', “…”, ‘…’): "registr" in 'that is not my registr' stays;
+ *   - a capitalised word, so it never changes a word's case ("Keyhodler Dariel" stays);
+ *   - a roster name (every person on the turn's roster, `account-names.ts`, not only the employee) or a close typo of
+ *     one ("Manuel saw her", "manuel saw her" stay);
+ *   - a salon name: salon words are not in its list, and a word a letter from one is left ("kearny salon", "Lincon").
+ */
+// A quote left open to the end of the text (the Issue reader can drop a closing quote mark) is quoted to the end; an
+// apostrophe between two letters ("isn't") is part of the quote, not its end (Gate-Sunny-2, #983).
+const QUOTED = /"[^"\n]*(?:"|$)|“[^”\n]*(?:”|$)|‘(?:[^’\n]|(?<=[A-Za-z])’(?=[A-Za-z]))*(?:’|$)|(?<![A-Za-z0-9])'(?:[^'\n]|(?<=[A-Za-z])'(?=[A-Za-z]))+(?:'(?![A-Za-z0-9])|$)/g;
+
+function salonWords(): ReadonlySet<string> {
+  return new Set(PRODUCTION_SALONS.flatMap((salon) => salon.name.toLowerCase().split(/[^a-z]+/)).filter((word) => word.length >= 3));
+}
+
+function oneEditApart(left: string, right: string): boolean {
+  if (left === right) return true;
+  if (Math.abs(left.length - right.length) > 1) return false;
+  let i = 0;
+  let j = 0;
+  let edits = 0;
+  while (i < left.length && j < right.length) {
+    if (left[i] === right[j]) {
+      i += 1;
+      j += 1;
+      continue;
+    }
+    edits += 1;
+    if (edits > 1) return false;
+    if (left.length > right.length) i += 1;
+    else if (left.length < right.length) j += 1;
+    else if (left[i] === right[j + 1] && left[i + 1] === right[j]) {
+      i += 2;
+      j += 2;
+    } else {
+      i += 1;
+      j += 1;
+    }
+  }
+  return edits + (left.length - i) + (right.length - j) <= 1;
+}
+
+/** The account as the card shows it. Names, salon words, capitalised words and quoted spans are never corrected. */
 export function cardAccountText(text: string, name: string | null | undefined): string {
   if (!accountTyposFixedEnabled()) return text;
-  const protectedWords = new Set((name ?? "").toLowerCase().split(/\s+/).filter(Boolean));
-  const list = [...new Set([...typoVocabulary(), ...ACCOUNT_WORDS])];
-  const spelled = correctedText(withWordBreaksMended(text), list, (word) => protectedWords.has(word.toLowerCase()) || NEVER_CORRECTED.has(word)).text;
-  return withUnitHyphen(spelled);
+  const people = new Set([...(name ?? "").toLowerCase().split(/\s+/).filter(Boolean), ...accountNames()]);
+  const salons = salonWords();
+  const list = [...new Set([...typoVocabulary(), ...ACCOUNT_WORDS])].filter((word) => !salons.has(word));
+  const near = (word: string, words: ReadonlySet<string>) => [...words].some((other) => other.length >= 4 && oneEditApart(word, other));
+  // `correctedText` asks about a word lowercased, so the capitalised words are collected first.
+  let capitalised: ReadonlySet<string> = new Set();
+  const keep = (word: string) => {
+    const lower = word.toLowerCase();
+    return (
+      capitalised.has(lower) ||
+      NEVER_CORRECTED.has(word) ||
+      // QA (14 Nov 2026): a real word is never mended ("she complained to a guest" is not "complaint"). "manger" is the
+      // slip for "manager" in a manager's chat (`typo-vocabulary.ts`), not a real word here.
+      (REAL_WORDS.has(lower) && !MENDED_ANYWAY.has(lower)) ||
+      people.has(lower) ||
+      near(lower, people) ||
+      salons.has(lower) ||
+      near(lower, salons)
+    );
+  };
+  const mend = (piece: string) => {
+    capitalised = new Set([...piece.matchAll(/\b[A-Z][A-Za-z]*/g)].map((match) => match[0].toLowerCase()));
+    return withUnitHyphen(correctedText(withWordBreaksMended(piece), list, keep).text);
+  };
+  // Quoted spans are kept exactly as typed; only the text between them is mended.
+  let out = "";
+  let last = 0;
+  for (const match of text.matchAll(QUOTED)) {
+    out += mend(text.slice(last, match.index)) + match[0];
+    last = match.index! + match[0].length;
+  }
+  return out + mend(text.slice(last));
 }
