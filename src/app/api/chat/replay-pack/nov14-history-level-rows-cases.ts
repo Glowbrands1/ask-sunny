@@ -3,10 +3,10 @@ import { vi, expect } from "vitest";
 import { STAFF, KEARNEY, type DirectoryRow, type ReplayCase, type ReplayContext, type ReplayThread } from "./cases";
 
 /**
- * QA's follow-ups to both gates on #970 / Ask Bubbles #898 (14 Nov 2026), in QA's wordings, the person invented: the
+ * QA's follow-ups to both gates on #970 / the sibling app's #898 (14 Nov 2026), in QA's wordings, the person invented: the
  * Prior actions rows a manager's dated history gives (HISTORY_LEVEL_ROWS, on top of HISTORY_LEVEL_NOT_THIS_FORM).
  */
-const REPORT = "QA, 14 Nov 2026: follow-ups to the gates on #970 / Ask Bubbles #898";
+const REPORT = "QA, 14 Nov 2026: follow-ups to the gates on #970 / the sibling app's #898";
 const ISOLDE: DirectoryRow = {
   id: "e-isolde-farrant-rows",
   firstName: "Isolde",
