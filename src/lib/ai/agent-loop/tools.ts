@@ -28,7 +28,7 @@ import { sectionWording } from "@/lib/forms/policy-citation";
 import { buildProposal, extractEmployeeNames, extractJobTitle, managerContext, samePerson, tidyTypedName } from "@/lib/forms/proposal";
 import { cleaningUndonePhrase, namesCareAndCleaning } from "@/lib/forms/ca-policy";
 import { turnsFromThisPersonsRequest } from "@/lib/forms/this-persons-turns";
-import { closePolicyQuestion, namedPolicies } from "@/lib/forms/named-policy-section";
+import { closeHeadingReading, closePolicyQuestion, namedPolicies } from "@/lib/forms/named-policy-section";
 import { startsNewForm } from "@/lib/ai/remap-incident";
 import { payrollAmountFromConversation, statedPayrollDeduct } from "@/lib/forms/payroll-deduct";
 import { PAYROLL_AMOUNT_KEY } from "@/lib/forms/payroll-amount-field";
@@ -274,6 +274,16 @@ async function rosterTitle(scope: AccessScope, id: string): Promise<string | nul
   }
 }
 
+/** The roster row's primary salon for this person (in the manager's scope), or null. */
+async function rosterPrimarySalon(scope: AccessScope, id: string): Promise<string | null> {
+  try {
+    const facts = await (await import("@/lib/forms/employee-roster")).readDirectoryFacts(scope);
+    return facts.find((row) => row.id === id)?.primarySalonId ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** The name the manager just said no to, after this chat's own "Did you mean **<A>**?" / "Is this for **<A>**?". */
 function turnedDownName(context: Pick<ToolContext, "question" | "history">): string | null {
   if (!/^\s*(?:no|nope|nah|not\s+(?:her|him|them|that))\b/i.test(context.question)) return null;
@@ -387,7 +397,12 @@ export async function findStaff(context: ToolContext, input: { name?: unknown },
  *   scope is never listed.
  * - Only for somebody who may create a Coaching or Corrective Action Form, as today's picker.
  */
-export async function listStaffTool(context: ToolContext, effects: ToolEffects, input: { salon?: unknown }): Promise<ToolResult> {
+/** A position as compared: lowercase words, a plural "s" dropped ("Tanning Consultants" = "tanning consultant"). */
+function positionKey(text: string): string {
+  return text.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).map((word) => (word.length > 3 && word.endsWith("s") ? word.slice(0, -1) : word)).join(" ");
+}
+
+export async function listStaffTool(context: ToolContext, effects: ToolEffects, input: { salon?: unknown; position?: unknown }): Promise<ToolResult> {
   const scope = context.actor.scope;
   if (!["create_coaching_form", "create_corrective_action"].some((permission) => hasPermission(DEFAULT_PERMISSION_MATRIX, context.actor.role, permission as never))) {
     return { error: "This role cannot list the staff. Say so." };
@@ -437,10 +452,18 @@ export async function listStaffTool(context: ToolContext, effects: ToolEffects, 
   const facts = await roster.readDirectoryFacts(scope).catch(() => []);
   const people = facts.length > 0 ? facts.map((person) => ({ ...person, positionName: person.title })) : [];
   if (people.length === 0) return { error: ROSTER_FAILED };
-  const rows = picker.salonStaffRows(chosen, people);
+  const all = picker.salonStaffRows(chosen, people);
+  /* Batch E (E7): the head count, and one position's people when the manager asked for it (facts; the rules book words them). */
+  const asked = typeof input.position === "string" ? positionKey(input.position) : "";
+  const rows = asked ? all.filter((row) => positionKey(row.position).includes(asked)) : all;
+  if (asked && rows.length === 0) {
+    return { salon: chosen.name, staff_count: all.length, position_not_found: input.position, positions: [...new Set(all.map((row) => row.position))] };
+  }
   return {
     ...(forForm ? { whole_staff_form: form, one_person_per_form: true } : {}),
     salon: chosen.name,
+    staff_count: all.length,
+    ...(asked ? { position: input.position, position_count: rows.length } : {}),
     staff: rows.slice(0, 40),
     ...(rows.length > 40 ? { more: rows.length - 40 } : {}),
     note: forForm
@@ -592,7 +615,17 @@ export async function readPolicy(context: ToolContext, input: { heading?: unknow
   const manual = await manualFor(context.scopeId);
   if (!manual) return { error: "The JBA Policy Manual could not be read just now. Say so; do not answer from memory." };
   const heading = headingOf(manual.headings, asked);
-  if (!heading) return { error: "No section of the manual has that heading. Use one of these exactly.", headings: manual.headings };
+  if (!heading) {
+    /* Batch E (E5): a close spelling ("key holdr") is a fact: the one heading it names, or the app's Did-you-mean question. */
+    const close = closeHeadingReading(asked, manual.headings);
+    const question = close.confident ? null : closePolicyQuestion(asked, manual.chunks);
+    return {
+      error: "No section of the manual has that heading. Use one of these exactly.",
+      ...(close.confident ? { close_heading: close.confident } : {}),
+      ...(question ? { confirm_policy: question } : {}),
+      headings: manual.headings,
+    };
+  }
   const section = findManualSection(manual.chunks, [heading]);
   if (!section) return { error: "That section could not be found in the manual just now." };
   /*
@@ -1160,6 +1193,11 @@ export async function proposeForm(
     ...(datedToday && (card.formDate ?? today) === today ? { dated_today: true } : {}),
     ...(offRosterName ? { off_roster_name: employee.name, staff_list: context.actor.scope.level === "salon" ? "your salon's" : "the", ...((await inactiveMatch(context.actor.scope, employee.name)) ? { inactive_in_woven: true } : {}) } : {}),
     ...(personId && effects.nameLines?.[personId] ? { name_from_staff_list: employee.name } : {}),
+    ...(await (async () => {
+      if (card.status !== "needs_location" || !employee.id) return {};
+      const primary = await rosterPrimarySalon(context.actor.scope, employee.id);
+      return primary && (card.authorizedLocationIds ?? []).includes(primary) ? { employee_salon: rosterSalonName(primary) ?? primary } : {};
+    })()),
     /* QA's live-app item 8: the card uses Woven's title; the manager called them something else ("Salon Director"). */
     ...(() => {
       const said = extractJobTitle(requestWords);

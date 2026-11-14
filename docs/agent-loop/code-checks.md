@@ -204,3 +204,19 @@ edit_form facts:
 - `EARLIER_CARD_STAYS`;
 - the safety clean-ups;
 - the two second-miss honesty lines.
+
+## Batch E (QA's tester follow-ups, part 4)
+
+Rules-book lines and facts only; no reply patches. Each item has an outcome case in `nov14-live-r5-cases.ts`, in the follow-up's own words with invented names, and the r5 live list is `scripts/agent-loop-live/cases-targeted-r5.txt`.
+
+| Item | Fact (tool) | Rules book |
+|---|---|---|
+| E1, the salon from Woven | `employee_salon` (propose_form, when the card waits for a salon; Woven's primary salon, only if it is in the manager's scope) | Card replies: file it there, "Filed at **<salon>**, where Woven lists <first name>"; ask at most once; a name is never the salon answer |
+| E2, no word-for-word repeat | — | Card replies: acknowledge the answer, ask only what is missing |
+| E3, "just make it" after a policy | — | Which form: a Corrective Action citing that policy, ONE question (who it is for) |
+| E4, "same thing for <B>" while <A>'s card waits | `employee_salon` (E1) | Which form: make <B>'s card now, never hold <B> behind <A> |
+| E5, "ca for the key holdr policy" | `close_heading` or `confirm_policy` (read_policy, on a close spelling) | Which form: name the matched policy in the question; "use that one" is the policy |
+| E6, the whole **Policy:** line | — (card.policy was already the full line; the model shortened it) | Card replies: the whole line, never the heading alone |
+| E7, staff count and one position | `staff_count`, `position`/`position_count`, `position_not_found` (list_staff, new optional `position` input) | Staff lists: the count first; only that position's people, after the salon |
+
+**E6 in code:** the card self-review compares the reply's **Policy:** line with the card's whole policy line (letters and digits only), not just the heading. A shortened line is handed back once, like any other mismatch (batch D's hand-back). Nothing new is written into the reply.

@@ -7,7 +7,6 @@ import { chatTraceEnabled } from "@/lib/config/chat-quality-flags";
 import { authorizedSalonIds } from "@/lib/forms/location-scope";
 import { rosterSalonName } from "@/lib/forms/salon-mention";
 import type { ChatFormProposal, ChatMessage } from "@/types";
-import { cardPolicyHeading } from "@/lib/forms/card-policy";
 
 import { finishChatTrace, openChatTrace } from "../chat-trace";
 import { chatTraceDraft } from "../chat-trace-store";
@@ -156,11 +155,12 @@ export function cardClaims(content: string): CardClaims {
 /** The card's facts as the model is shown them, and the fields the reply states that the card does not hold. */
 export function cardMismatch(claims: CardClaims, card: ChatFormProposal | null): string[] {
   const wrong: string[] = [];
-  const policyHeading = (line: string | null | undefined) => (line ? cardPolicyHeading(`**Policy:** ${line}`)?.toLowerCase() ?? null : null);
+  /* Batch E (E6): the whole line (heading, manual, page), letters and digits only, so "Standards of Conduct" alone is a mismatch. */
+  const policyLine = (line: string | null | undefined) => (line ? line.toLowerCase().replace(/[^a-z0-9]+/g, "") : null);
   if (claims.warningLevel && card?.warningLevel !== claims.warningLevel) wrong.push(`warning level (${claims.warningLevel})`);
   if (claims.payrollDeduct && card?.payrollDeduct !== claims.payrollDeduct) wrong.push(`payroll deduct (${claims.payrollDeduct})`);
   if (claims.payrollAmount && Number(card?.payrollDeductAmount?.replace(/[^\d.]/g, "") ?? NaN) !== Number(claims.payrollAmount)) wrong.push(`payroll amount ($${claims.payrollAmount})`);
-  if (claims.policy && card && card.policyLine !== undefined && policyHeading(claims.policy) !== policyHeading(card.policyLine)) wrong.push(`policy (${claims.policy})`);
+  if (claims.policy && card && card.policyLine !== undefined && policyLine(claims.policy) !== policyLine(card.policyLine)) wrong.push(`policy (${claims.policy})`);
   if (claims.policy && !card) wrong.push(`policy (${claims.policy})`);
   if (claims.date) {
     const [month, day] = claims.date.split("/").map(Number);
@@ -227,7 +227,7 @@ export const AGENT_LOOP_TOOLS = [
   {
     name: "list_staff",
     description: "The staff of one of the signed-in manager's own salons, by name and position. For \"who's on my staff\" and for a form asked for a whole staff (never one card for everyone). With several salons and none named, it gives the question to ask.",
-    input_schema: object({ salon: { type: "string", description: "The salon the manager named, if any." } }, []),
+    input_schema: object({ salon: { type: "string", description: "The salon the manager named, if any." }, position: { type: "string", description: "One position the manager asked about (\"tanning consultants\"), if any." } }, []),
   },
   {
     name: "search_knowledge",
