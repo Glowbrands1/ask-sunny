@@ -1,8 +1,8 @@
 "use client";
 
 import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport, type UIMessage } from "ai";
-import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { DefaultChatTransport, type FileUIPart, type UIMessage } from "ai";
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -13,10 +13,11 @@ import { ChatMentionText, ChatPeople, useChatPeople, useMentionPicker } from "./
 import { artifactTitle, collectCitations, isArtifactWorthy, toolLabel } from "./citations";
 import { ArtifactContext, useArtifacts, type ArtifactDoc } from "./artifact-context";
 import { ArtifactPane } from "./ArtifactPane";
+import { ATTACH_ACCEPT, MAX_FILES_PER_MESSAGE, attachmentProblem as fileProblem, toFilePart } from "./attachments";
 import { NoteCard } from "./NoteCard";
 import { SourceViewer } from "./SourceViewer";
 import { isNoteDraft } from "./notes";
-import { BrainIcon, CheckIcon, ChevronIcon, CloseIcon, DocumentIcon, ReportIcon, CollapseIcon, ExpandIcon, HistoryIcon, PlusIcon, SendIcon, SparkleIcon, StopIcon } from "./icons";
+import { BrainIcon, CheckIcon, ChevronIcon, CloseIcon, DocumentIcon, PaperclipIcon, ReportIcon, CollapseIcon, ExpandIcon, HistoryIcon, PlusIcon, SendIcon, SparkleIcon, StopIcon } from "./icons";
 import { currentChatId, deleteFromHistory, listHistory, loadConversation, openFromHistory, saveConversation, saveToHistory, startNewChat, type ChatSummary } from "./storage";
 
 /**
@@ -31,7 +32,7 @@ import { currentChatId, deleteFromHistory, listHistory, loadConversation, openFr
  * Chat history works as in the Hub (this browser only; per Ask Sunny user and meeting; not shared with the Hub's).
  * "@" in the chat box offers this meeting's people (the Hub's MentionPicker; the Hub offers everyone the person shares
  * a meeting with). "Open as document" under a long answer opens the Hub's document pane (Copy, Word, .md).
- * Only in the Hub: attachments, web search.
+ * Attachments (images and PDFs, the Hub's limits) and web search / fetch work as in the Hub (owner's decision, 13 Nov 2026).
  */
 
 const focusRing = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-bronze";
@@ -197,14 +198,37 @@ function useMentionablePeople(meetingKey: string): readonly Person[] {
   return people;
 }
 
+/** A file part whose bytes were not kept (a chat reopened from history) becomes a short note for the model. */
+export function withoutDroppedFiles(m: UIMessage): UIMessage {
+  if (!m.parts.some((p) => p.type === "file" && !p.url)) return m;
+  return { ...m, parts: m.parts.map((p) => (p.type === "file" && !p.url ? { type: "text" as const, text: `[Attached earlier: ${p.filename ?? "a file"}. Its contents are no longer available in this saved chat.]` } : p)) };
+}
+
 function Message({ message, running }: { message: UIMessage; running: boolean }) {
   if (message.role === "user") {
     const text = message.parts.map((p) => (p.type === "text" ? p.text : "")).join("");
+    const files = message.parts.filter((p): p is FileUIPart => p.type === "file");
     return (
       <div className="flex flex-col items-end gap-1 py-2" data-testid="user-message">
-        <p className="m-0 max-w-[88%] rounded-2xl rounded-br-md bg-ink px-3.5 py-2 text-[15px] whitespace-pre-wrap text-white">
-          <UserText text={text} />
-        </p>
+        <div className="flex max-w-[88%] flex-col items-end gap-1.5">
+          {files.length > 0 && (
+            <div className="flex flex-wrap justify-end gap-1.5">
+              {files.map((f, i) => (
+                // Shown above the dark bubble, on the light panel: dark chip with light text (the Hub's AttachmentList).
+                <span key={i} data-testid="sent-attachment" className="inline-flex min-h-7 max-w-full items-center gap-1.5 rounded-full bg-ink px-2.5 py-1 text-xs font-semibold text-white ring-1 ring-ink/20">
+                  <PaperclipIcon width={14} height={14} className="shrink-0 text-gold-head" />
+                  <span className="truncate">{f.filename ?? "Attachment"}</span>
+                </span>
+              ))}
+            </div>
+          )}
+          {/* A message that is only a file has no text: no empty black bubble. */}
+          {text.trim() !== "" && (
+            <p className="m-0 rounded-2xl rounded-br-md bg-ink px-3.5 py-2 text-[15px] whitespace-pre-wrap text-white">
+              <UserText text={text} />
+            </p>
+          )}
+        </div>
       </div>
     );
   }
@@ -243,7 +267,16 @@ function Message({ message, running }: { message: UIMessage; running: boolean })
 }
 
 function Chat({ meetingKey, scope, deep, onDeepChange }: { meetingKey: string; scope: string; deep: boolean; onDeepChange: (v: boolean) => void }) {
-  const transport = useMemo(() => new DefaultChatTransport({ api: "/api/l10/assistant" }), []);
+  const transport = useMemo(
+    () =>
+      new DefaultChatTransport({
+        api: "/api/l10/assistant",
+        // A chat reopened from this browser's history has its attachments' bytes dropped (they are not stored); what is
+        // left of them goes as a note, not as an empty file.
+        prepareSendMessagesRequest: ({ id, messages, body, trigger, messageId }) => ({ body: { ...body, id, trigger, messageId, messages: messages.map(withoutDroppedFiles) } }),
+      }),
+    [],
+  );
   // The conversation on screen and its history entry, as in the Hub (saved after every answer).
   const [initial] = useState(() => loadConversation(scope));
   const [chatId] = useState(() => currentChatId(scope));
@@ -256,6 +289,26 @@ function Chat({ meetingKey, scope, deep, onDeepChange }: { meetingKey: string; s
     },
   });
   const [draft, setDraft] = useState("");
+  // Attachments waiting to be sent (the Hub's composer: attach, paste or drop; images and PDFs; ≤ 5, ≤ 10 MB each).
+  const [files, setFiles] = useState<File[]>([]);
+  const [fileNote, setFileNote] = useState("");
+  const [dragging, setDragging] = useState(false);
+  const picker = useRef<HTMLInputElement>(null);
+  function addFiles(list: FileList | File[] | null | undefined) {
+    const picked = list ? Array.from(list) : [];
+    if (picked.length === 0) return;
+    const problems: string[] = [];
+    const ok: File[] = [];
+    for (const f of picked) {
+      const problem = fileProblem(f);
+      if (problem) problems.push(problem);
+      else ok.push(f);
+    }
+    const room = Math.max(0, MAX_FILES_PER_MESSAGE - files.length);
+    if (ok.length > room) problems.push(`Limit of ${MAX_FILES_PER_MESSAGE} files reached.`);
+    if (room > 0 && ok.length) setFiles([...files, ...ok.slice(0, room)]);
+    setFileNote(problems.join(" "));
+  }
   // "@" offers this meeting's people; picking writes "@Full Name" (the Hub's composer).
   const people = useMentionablePeople(meetingKey);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -266,16 +319,28 @@ function Chat({ meetingKey, scope, deep, onDeepChange }: { meetingKey: string; s
     viewport.current?.scrollTo?.({ top: viewport.current.scrollHeight });
   }, [messages]);
 
-  function send(text: string) {
+  async function send(text: string) {
     const t = text.trim();
-    if (!t || running) return;
+    if ((!t && files.length === 0) || running) return;
+    let parts: FileUIPart[] = [];
+    if (files.length) {
+      try {
+        parts = await Promise.all(files.map(toFilePart));
+      } catch (e) {
+        setFileNote(e instanceof Error ? e.message : "A file could not be read.");
+        return;
+      }
+    }
     // Deep think and the meeting go with each message, so a switch applies to the next one.
-    void sendMessage({ text: t }, { body: { deep, key: meetingKey } });
+    // A file alone is sent without an empty text part (as the Hub's composer does).
+    void sendMessage(parts.length ? (t ? { text: t, files: parts } : { files: parts }) : { text: t }, { body: { deep, key: meetingKey } });
     setDraft("");
+    setFiles([]);
+    setFileNote("");
   }
   function onSubmit(e: FormEvent) {
     e.preventDefault();
-    send(draft);
+    void send(draft);
   }
   function onInputKey(e: KeyboardEvent<HTMLTextAreaElement>) {
     // While the people list is open, Enter / Tab pick a person and Escape closes it (never sends).
@@ -283,7 +348,7 @@ function Chat({ meetingKey, scope, deep, onDeepChange }: { meetingKey: string; s
     if (e.defaultPrevented) return;
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
-      send(draft);
+      void send(draft);
     }
   }
 
@@ -303,7 +368,7 @@ function Chat({ meetingKey, scope, deep, onDeepChange }: { meetingKey: string; s
             <ul className="m-0 flex list-none flex-col gap-2 p-0" aria-label="Suggested prompts">
               {L10_SUGGESTIONS.map((p) => (
                 <li key={p}>
-                  <button type="button" onClick={() => send(p)} className={cx("glass-tile min-h-11 w-full px-3.5 py-2.5 text-left text-sm font-medium text-pretty hover:bg-white/90", focusRing)}>
+                  <button type="button" onClick={() => void send(p)} className={cx("glass-tile min-h-11 w-full px-3.5 py-2.5 text-left text-sm font-medium text-pretty hover:bg-white/90", focusRing)}>
                     {p}
                   </button>
                 </li>
@@ -331,14 +396,48 @@ function Chat({ meetingKey, scope, deep, onDeepChange }: { meetingKey: string; s
         )}
       </div>
       <div className="flex flex-col gap-1.5 px-3 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-4 sm:pb-3">
-        <form onSubmit={onSubmit} className="glass-tile flex flex-col gap-1.5 p-2 focus-within:ring-2 focus-within:ring-bronze">
+        <form
+          onSubmit={onSubmit}
+          data-dragging={dragging}
+          onDragOver={(e: DragEvent) => {
+            if (!e.dataTransfer?.types?.includes("Files")) return;
+            e.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(e: DragEvent) => {
+            if (!e.dataTransfer?.files?.length) return;
+            e.preventDefault();
+            setDragging(false);
+            addFiles(e.dataTransfer.files);
+          }}
+          className="glass-tile flex flex-col gap-1.5 p-2 focus-within:ring-2 focus-within:ring-bronze data-[dragging=true]:ring-2 data-[dragging=true]:ring-gold"
+        >
+          {files.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {files.map((f, i) => (
+                <span key={`${f.name}-${i}`} data-testid="attachment-chip" className="inline-flex min-h-9 max-w-full items-center gap-1.5 rounded-full bg-white/70 py-1 pr-1 pl-3 text-xs font-semibold ring-1 ring-white/80">
+                  <PaperclipIcon width={14} height={14} className="shrink-0 text-bronze-deep" />
+                  <span className="truncate">{f.name}</span>
+                  <button type="button" aria-label="Remove attachment" onClick={() => setFiles((xs) => xs.filter((_, j) => j !== i))} className={cx("inline-flex size-8 shrink-0 items-center justify-center rounded-full hover:bg-ink/10", focusRing)}>
+                    <CloseIcon width={14} height={14} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          {fileNote && (
+            <p role="alert" data-testid="attachment-error" className="m-0 px-2 text-xs font-semibold text-[#8a1c1c]">
+              {fileNote}
+            </p>
+          )}
           <textarea
             ref={inputRef}
             {...mention.inputProps}
             aria-label="Message the Leadership Assistant"
             name="message"
             autoComplete="off"
-            placeholder="Ask anything about this meeting, or @ a teammate…"
+            placeholder="Ask anything, @ a teammate, or drop a PDF or image…"
             rows={1}
             value={draft}
             onChange={(e) => {
@@ -346,10 +445,37 @@ function Chat({ meetingKey, scope, deep, onDeepChange }: { meetingKey: string; s
               mention.inputProps.onChange(e);
             }}
             onKeyDown={onInputKey}
+            onPaste={(e: ClipboardEvent<HTMLTextAreaElement>) => {
+              if (e.clipboardData?.files?.length) {
+                e.preventDefault();
+                addFiles(e.clipboardData.files);
+              }
+            }}
             className="max-h-48 min-h-11 w-full resize-none bg-transparent px-2 py-2.5 text-[15px] outline-none placeholder:text-muted"
           />
           {mention.list}
           <div className="flex items-center justify-between">
+            <input
+              ref={picker}
+              type="file"
+              multiple
+              accept={ATTACH_ACCEPT}
+              className="hidden"
+              data-testid="attach-input"
+              onChange={(e) => {
+                addFiles(e.target.files);
+                e.target.value = "";
+              }}
+            />
+            <button
+              type="button"
+              disabled={files.length >= MAX_FILES_PER_MESSAGE}
+              onClick={() => picker.current?.click()}
+              aria-label={files.length >= MAX_FILES_PER_MESSAGE ? `Limit of ${MAX_FILES_PER_MESSAGE} files reached` : "Attach images or PDFs"}
+              className={cx("inline-flex size-11 items-center justify-center rounded-xl text-muted hover:bg-white/70 hover:text-ink disabled:cursor-not-allowed disabled:opacity-40", focusRing)}
+            >
+              <PaperclipIcon />
+            </button>
             <button
               type="button"
               role="switch"
@@ -368,7 +494,7 @@ function Chat({ meetingKey, scope, deep, onDeepChange }: { meetingKey: string; s
                 <StopIcon />
               </button>
             ) : (
-              <button type="submit" disabled={!draft.trim()} aria-label="Send message" className={cx("inline-flex size-11 items-center justify-center rounded-xl bg-ink text-gold-head hover:bg-nav-active disabled:cursor-not-allowed disabled:opacity-40", focusRing)}>
+              <button type="submit" disabled={!draft.trim() && files.length === 0} aria-label="Send message" className={cx("inline-flex size-11 items-center justify-center rounded-xl bg-ink text-gold-head hover:bg-nav-active disabled:cursor-not-allowed disabled:opacity-40", focusRing)}>
                 <SendIcon />
               </button>
             )}
