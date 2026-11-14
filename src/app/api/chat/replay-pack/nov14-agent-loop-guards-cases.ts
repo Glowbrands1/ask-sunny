@@ -250,6 +250,37 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
     },
   },
   {
+    id: "nov14-agent-loop-prompt-cache-markers",
+    title: "prompt caching: every step carries two cache markers, the rules (system) and the step's last message, which moves forward as tool results arrive",
+    report: `${REPORT}; QA, 14 Nov 2026: a 9% prompt-cache hit rate`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-13T22:40:00Z"));
+      t.directory([...STAFF, TAMSIN]);
+      t.as("salon_director", KEARNEY);
+      const stepping = loopStandIn((view) => {
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "tamsin orwell" } };
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, what_happened: "Tamsin Orwell was late on 11/12." } };
+        return { text: "Here is the card." };
+      });
+      t.loopModel!(stepping);
+      await t.thread().say("ca for tamsin orwell, she was late on 11/12");
+      type Sent = { role: string; providerOptions?: { anthropic?: { cacheControl?: { type?: string } } } };
+      const marked = (message: Sent) => message.providerOptions?.anthropic?.cacheControl?.type === "ephemeral";
+      expect(stepping.prompts.length, "the loop took fewer than three steps").toBe(3);
+      for (const [step, prompt] of (stepping.prompts as Sent[][]).entries()) {
+        const markers = prompt.map((message, index) => (marked(message) ? index : -1)).filter((index) => index >= 0);
+        expect(marked(prompt[0]!), `step ${step}: the rules (first system message) carry no cache marker`).toBe(true);
+        expect(prompt[0]!.role).toBe("system");
+        expect(marked(prompt[prompt.length - 1]!), `step ${step}: the last message carries no cache marker`).toBe(true);
+        expect(markers, `step ${step}: markers other than the rules and the last message`).toEqual([0, prompt.length - 1]);
+      }
+      expect((stepping.prompts as Sent[][])[2]!.at(-1)!.role, "step 3's marker is not on the latest tool result").toBe("tool");
+    },
+  },
+  {
     id: "nov14-agent-loop-guard-scope",
     title: "scope: a person at a salon outside the manager's scope is never found by find_staff, and propose_form refuses their roster id",
     report: `${REPORT}: "every tool is scoped to the manager's salons"`,

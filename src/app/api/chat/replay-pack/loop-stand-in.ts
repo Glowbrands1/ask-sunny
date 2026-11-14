@@ -32,6 +32,8 @@ export interface LoopStandIn {
   /** The AI SDK language model the loop is given (`__setAgentLoopModelForTests`). */
   readonly model: unknown;
   readonly views: LoopView[];
+  /** Each step's prompt exactly as the model received it (the provider's view, cache markers included). */
+  readonly prompts: unknown[];
   calls: number;
 }
 
@@ -85,6 +87,7 @@ function streamOf(parts: readonly Record<string, unknown>[]): ReadableStream<Rec
 export function loopStandIn(decide: (view: LoopView) => LoopDecision): LoopStandIn {
   const standIn: LoopStandIn = {
     views: [],
+    prompts: [],
     calls: 0,
     model: {
       specificationVersion: "v3",
@@ -96,6 +99,7 @@ export function loopStandIn(decide: (view: LoopView) => LoopDecision): LoopStand
       },
       async doStream(options: { prompt: Message[]; abortSignal?: AbortSignal }) {
         standIn.calls += 1;
+        standIn.prompts.push(options.prompt);
         const view = viewOf(options.prompt);
         standIn.views.push(view);
         const decision = decide(view);

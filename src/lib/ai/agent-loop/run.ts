@@ -172,6 +172,21 @@ export const AGENT_LOOP_TOOLS = [
   },
 ];
 
+const EPHEMERAL = { anthropic: { cacheControl: { type: "ephemeral" } } } as const;
+
+/**
+ * PROMPT CACHING (QA, 14 Nov 2026: a 9% cache hit rate). Two of Anthropic's four breakpoints: the rules (tools + the
+ * static system prompt, the first breakpoint, set on the system message) and the LAST message of each step, moved
+ * forward by `prepareStep`, so step 2 onwards reads the conversation and the earlier tool results from cache instead
+ * of paying for them again. The marker is set on a copy for that step only; the conversation itself is not changed.
+ */
+export function withLastMessageCached<T extends { providerOptions?: Record<string, unknown> }>(messages: readonly T[]): T[] {
+  if (messages.length === 0) return [...messages];
+  const last = messages[messages.length - 1]!;
+  const options = (last.providerOptions ?? {}) as Record<string, Record<string, unknown> | undefined>;
+  return [...messages.slice(0, -1), { ...last, providerOptions: { ...options, anthropic: { ...(options.anthropic ?? {}), ...EPHEMERAL.anthropic } } }];
+}
+
 /** Test seam: the language model (AI SDK) the loop calls. Unset, Claude through @ai-sdk/anthropic. */
 let modelForTests: unknown = null;
 export function __setAgentLoopModelForTests(model: unknown): void {
@@ -283,12 +298,13 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
       const result = streamText({
         model: model as never,
         system: [
-          { role: "system", content: AGENT_LOOP_RULES, providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } } },
+          { role: "system", content: AGENT_LOOP_RULES, providerOptions: EPHEMERAL },
           { role: "system", content: dynamic },
         ],
         messages: conversationOf(input.history, input.question) as never,
         tools,
         stopWhen: stepCountIs(limit),
+        prepareStep: ({ messages }) => ({ messages: withLastMessageCached(messages) }),
         maxOutputTokens: CLAUDE_MAX_TOKENS.standard,
         maxRetries: timed.maxRetries,
         abortSignal: timed.signal,
