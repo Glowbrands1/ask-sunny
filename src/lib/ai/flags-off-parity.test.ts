@@ -429,6 +429,8 @@ const NEW_FLAGS = [
   "PASTED_OUTLINE_TO_OPEN_DRAFT_ENABLED",
   // coding 6: COACHING_OBSERVED_SAVED (default off): forced off with the others.
   "COACHING_OBSERVED_SAVED_ENABLED",
+  // coding 6: COACHING_OBSERVED_HEADING_KEPT (port of the sibling's R678 fix; QA, 14 Nov 2026; default off).
+  "COACHING_OBSERVED_HEADING_KEPT_ENABLED",
   // coding 6: APP_INSTRUCTIONS_NOT_ACCOUNT (default off): forced off with the others.
   "APP_INSTRUCTIONS_NOT_ACCOUNT_ENABLED",
   // coding 5: SPELLING_CLEANUP (default off; Pau via QA, 13 Nov 2026): forced off with the others.

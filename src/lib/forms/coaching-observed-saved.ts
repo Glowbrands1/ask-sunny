@@ -1,4 +1,4 @@
-import { coachingObservedSavedEnabled } from "@/lib/config/chat-quality-flags";
+import { coachingObservedHeadingKeptEnabled, coachingObservedSavedEnabled } from "@/lib/config/chat-quality-flags";
 import { businessToday } from "@/lib/business-date";
 import { managerWordsObservation } from "@/lib/forms/draft-never-blank";
 import { datesInText } from "@/lib/forms/form-date-answer";
@@ -24,8 +24,15 @@ import { OBSERVED_LABEL } from "@/lib/forms/narrative-draft";
  * A field that already has an "Observed:" with text is left as it is. Pure.
  */
 
-const HEADING = /^\s*(Observed|Expectation|Going Forward):/im;
-const OBSERVED = /(^|\n)\s*Observed:[ \t]*\n?([\s\S]*?)(?=\n\s*(?:Expectation|Going Forward):|$)/i;
+const PLAIN_HEADING = /^\s*(Observed|Expectation|Going Forward):/im;
+const PLAIN_OBSERVED = /(^|\n)\s*Observed:[ \t]*\n?([\s\S]*?)(?=\n\s*(?:Expectation|Going Forward):|$)/i;
+/*
+ * COACHING_OBSERVED_HEADING_KEPT_ENABLED (the sibling's R678 / QA, 14 Nov 2026): a heading the model wrote in bold or
+ * with a dash ("**Observed:** …", "Observed - …") is a heading; the flag had added a second plain "Observed:" over it.
+ */
+const MARK = String.raw`[ \t]*(?:\*\*)?[ \t]*(?::|-|–|—)[ \t]*(?:\*\*)?`;
+const MARKED_HEADING = new RegExp(String.raw`^\s*(?:\*\*)?(Observed|Expectation|Going Forward)${MARK}`, "im");
+const MARKED_OBSERVED = new RegExp(String.raw`(^|\n)\s*(?:\*\*)?Observed${MARK}[ \t]*\n?([\s\S]*?)(?=\n\s*(?:\*\*)?(?:Expectation|Going Forward)${MARK}|$)`, "i");
 
 const POLICY_LINE = /^\s*Policy reference:[^\n]*$/i;
 
@@ -85,10 +92,17 @@ export function withCoachingObservedSaved(input: {
   coaching: boolean;
   notes: string;
   employeeName: string | null;
+  /** COACHING_OBSERVED_HEADING_KEPT_ENABLED: what the form already holds; its saved Details are never given a heading. */
+  saved?: Readonly<Record<string, string>>;
 }): Record<string, unknown> {
   if (!coachingObservedSavedEnabled() || !input.coaching || input.narrativeKeys.length === 0) return input.values;
+  const kept = coachingObservedHeadingKeptEnabled();
+  const HEADING = kept ? MARKED_HEADING : PLAIN_HEADING;
+  const OBSERVED = kept ? MARKED_OBSERVED : PLAIN_OBSERVED;
   const key = input.narrativeKeys[0]!;
   const current = typeof input.values[key] === "string" ? (input.values[key] as string) : "";
+  const saved = kept ? input.saved?.[key] : undefined;
+  if (saved !== undefined && saved.trim() !== "" && saved.trim() === current.trim()) return input.values;
   const observed = OBSERVED.exec(current);
   if (observed && observed[2]!.trim() !== "") return input.values;
   // The policy set-aside line ("Policy reference: …") is the app's, never the account: it stays after, and is never put

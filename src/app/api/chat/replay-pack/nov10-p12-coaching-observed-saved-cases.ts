@@ -114,3 +114,26 @@ export const NOV10_P12_EDIT_SAVED_CASES: ReplayCase[] = [
     run: (t) => play(t, MEETING_SCENARIO),
   },
 ];
+
+/*
+ * COACHING_OBSERVED_HEADING_KEPT (the sibling's R678 / QA, 14 Nov 2026): with COACHING_OBSERVED_SAVED on, a model that
+ * wrote the heading in bold or with a dash got a second plain "Observed:" over it on the saved Details.
+ */
+export const NOV14_COACHING_OBSERVED_HEADING_KEPT_CASES: ReplayCase[] = (
+  [
+    ["bold", "**Observed:** Brisa Talvenor did not hit her October sales numbers.\n\n**Expectation:** Brisa is expected to meet her monthly goals."],
+    ["dash", "Observed - Brisa Talvenor did not hit her October sales numbers.\n\nExpectation - Brisa is expected to meet her monthly goals."],
+  ] as const
+).map(([key, written]) => ({
+  id: `nov14-coaching-observed-heading-kept-${key}`,
+  title: `R678 (${key} heading): "${SAID}" → Create: the saved Details have one "Observed" heading, the model's`,
+  report: "QA (14 Nov 2026), the sibling's R678: a bold or dash \"Observed\" got a second plain \"Observed:\" over it",
+  status: { open: "the saved Details start with a second, plain \"Observed:\"" },
+  fixFlags: ["COACHING_OBSERVED_HEADING_KEPT_ENABLED"],
+  async run(t: T) {
+    const details = await saved(t, { coaching_details: written });
+    expect(details.match(/Observed/gi)?.length ?? 0, `more than one "Observed":\n${details}`).toBe(1);
+    expect(details, details).toMatch(/october/i);
+  },
+}));
+

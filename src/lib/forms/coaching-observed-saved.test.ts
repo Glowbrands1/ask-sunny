@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { requestAccount, withCoachingObservedSaved } from "./coaching-observed-saved";
 
@@ -41,3 +41,41 @@ describe("the saved coaching Details", () => {
     expect(withCoachingObservedSaved({ ...base(), coaching: false })).toEqual({});
   });
 });
+
+/* COACHING_OBSERVED_HEADING_KEPT (the sibling's R678, QA 14 Nov 2026). The person is invented. */
+describe("COACHING_OBSERVED_HEADING_KEPT_ENABLED", () => {
+  afterEach(() => vi.unstubAllEnvs());
+  const run = (value: string, on: boolean, saved?: Record<string, string>) => {
+    vi.stubEnv("COACHING_OBSERVED_SAVED_ENABLED", "true");
+    vi.stubEnv("COACHING_OBSERVED_HEADING_KEPT_ENABLED", on ? "true" : "");
+    return withCoachingObservedSaved({
+      values: { coaching_details: value },
+      narrativeKeys: ["coaching_details"],
+      coaching: true,
+      notes: "I need a coaching form for Odalys Penwarden, she left the register drawer open",
+      employeeName: "Odalys Penwarden",
+      ...(saved ? { saved } : {}),
+    }).coaching_details;
+  };
+  const BOLD = [
+    "**Observed:** Odalys Penwarden left the register drawer open.",
+    "**Observed:**\nOdalys Penwarden left the register drawer open.",
+    "Observed - Odalys Penwarden left the register drawer open.",
+    "**Observed** - Odalys Penwarden left the register drawer open.",
+  ];
+  it.each(BOLD)("off: as production, %j gets a second \"Observed:\"", (value) => {
+    expect(run(value, false)).toBe(`Observed:\n${value}`);
+  });
+  it.each(BOLD)("on: a bold or dash heading is a heading: %j is kept", (value) => {
+    expect(run(value, true)).toBe(value);
+  });
+  it("on: the form's saved Details never get a heading", () => {
+    const saved = "Odalys Penwarden left the register drawer open on 10/15/26. We reviewed the cash handling policy.";
+    expect(run(saved, true, { coaching_details: saved })).toBe(saved);
+  });
+  it("on: Details drafted this turn still get it", () => {
+    const drafted = "Odalys Penwarden left the register drawer open.";
+    expect(run(drafted, true, { coaching_details: "" })).toBe(`Observed:\n${drafted}`);
+  });
+});
+
