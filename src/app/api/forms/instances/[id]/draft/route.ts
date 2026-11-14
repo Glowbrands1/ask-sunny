@@ -45,6 +45,7 @@ import {
   sameRequestOtherPersonEnabled,
   coachingObservedSavedEnabled,
   spellingCleanupEnabled,
+  modelWarningLevelDiscardedEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { notesMadeAbout } from "@/lib/ai/make-it-about";
 import { withoutPolicyReferenceTurns } from "@/lib/ai/policy-reference-turn";
@@ -176,6 +177,8 @@ import {
   statedOffenseKeys,
   withConductOffense,
   withStatedOffense,
+  withoutCleaningDuty,
+  besideAttendanceKeys,
 } from "@/lib/forms/ca-policy";
 import { CA_SALES_POLICY_RULE, withSalesOffense } from "@/lib/forms/ca-sales-policy";
 import { ATTENDANCE_POLICY, CA_REVISION_8_OFFENSE_RULE, offeredOffenseKey, withOfferedOffense } from "@/lib/forms/offense-keys";
@@ -229,6 +232,7 @@ import {
   type DraftedCall,
 } from "@/lib/forms/draft-never-blank";
 import { WARNING_TYPE_KEY } from "@/lib/forms/corrective-action-intake";
+import { WARNING_LEVEL_KEYS, WARNING_LEVEL_STATED_KEYS, warningLevelFromTurns, withoutModelWarningLevel } from "@/lib/forms/warning-level";
 import {
   COACHING_CONTEXT_RULES,
   LANGUAGE_CLEANUP_RULES,
@@ -594,7 +598,35 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     const promptFields = fields.filter(
       (field) => !EXIT_DERIVED_KEYS.has(field.key) && field.key !== fixedPlan?.key,
     );
-    const promptGroups = groups.filter((group) => !EXIT_DERIVED_KEYS.has(group.key));
+    /*
+     * MODEL_WARNING_LEVEL_DISCARDED_ENABLED: THE TYPE OF WARNING IS THE MANAGER'S, NEVER THE MODEL'S (Ask Bubbles, 9 Oct
+     * 2026; Sunny's 38g live test, 14 Nov 2026). The group is not shown to the model, and a level it ticks anyway is
+     * dropped below. A level the manager stated was ticked at creation and is kept. Off, the model is shown every group.
+     */
+    const modelWarningGroup = modelWarningLevelDiscardedEnabled()
+      ? (groups.find(
+          (group) => group.key === WARNING_TYPE_KEY && group.options.some((option) => WARNING_LEVEL_KEYS.has(option.key)),
+        ) ?? null)
+      : null;
+    const promptGroups = groups.filter((group) => !EXIT_DERIVED_KEYS.has(group.key)).filter((group) => group.key !== modelWarningGroup?.key);
+    /*
+     * MODEL_WARNING_LEVEL_DISCARDED_ENABLED, AND THE LEVEL THE MANAGER SAID IN THESE TURNS (as Ask Bubbles does): a level
+     * stated in the turns the form is drafted from ("5. verbal warning") is the manager's statement, written before the
+     * model runs and only into an empty box (a level ticked at creation stays). History is not a statement
+     * (`statedWarningLevel`). Unstated stays empty.
+     */
+    if (modelWarningGroup) {
+      const said = warningLevelFromTurns(notes.split(/\n+/));
+      const offered = modelWarningGroup.options.map((option) => option.key);
+      const statedLevel = said && offered.includes(said) ? { [modelWarningGroup.key]: [said] } : null;
+      if (statedLevel) {
+        if (formEditSingleWriterEnabled()) {
+          await (await import("@/lib/forms/form-write")).statedWrite(id, { values: {}, checked: statedLevel }, actor.id, WARNING_LEVEL_STATED_KEYS, { notes });
+        } else {
+          await applyStatedFacts(id, { values: {}, checked: statedLevel }, actor.id, WARNING_LEVEL_STATED_KEYS);
+        }
+      }
+    }
 
     /*
      * THE EXIT FORM'S DETAILS LINES, FROM THE MANAGER'S OWN WORDS — the
@@ -802,7 +834,21 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         (group) =>
           group.key === "offense_type" && group.options.some((option) => option.key === STANDARDS_OF_CONDUCT),
       );
-    const caPolicy = offersConductPolicy ? readCaPolicy(policyNotes) : null;
+    /*
+     * OTHER_BESIDE_DESCRIBED_ENABLED (QA's ruling (b) on the sibling app's gate probes, 14 Nov 2026): a cleaning duty left
+     * undone beside a second offense the account describes ("she was on her phone and did not do the 10 minute
+     * sanitation"; "she was late on 11/3/26 and did not do the sanitation"). The policy is read from the account without
+     * the cleaning duty, so the described offense keeps its box, Policy Violated, Direct policy and plan, and Other is
+     * ticked beside it (below). A cleaning duty that is the only offense stays Other alone (Pau's rule). Off, as before.
+     */
+    const besideOther = ((): string | null => {
+      const rest = offersConductPolicy ? withoutCleaningDuty(policyNotes) : null;
+      if (rest === null) return null;
+      const described = besideAttendanceKeys(rest) !== null || (manual.ok && describedManualSection({ text: rest, chunks: manual.chunks }) !== null);
+      return described ? rest : null;
+    })();
+    const policyText = besideOther ?? policyNotes;
+    const caPolicy = offersConductPolicy ? readCaPolicy(policyText) : null;
     /*
      * A POLICY THE MANAGER NAMED BY THE MANUAL'S OWN HEADING — "violating
      * visitors at work policy" is the manual's Visitors in the Workplace
@@ -823,12 +869,12 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         : null;
     // Only where it ticks the box the manager's own words tick, or they tick none: a card's generic
     // "Attendance" never turns a missed meeting (Absenteeism) into Tardiness.
-    const ownKeys = cardHeading && caPolicy ? statedOffenseKeys(caPolicy, policyNotes) : null;
+    const ownKeys = cardHeading && caPolicy ? statedOffenseKeys(caPolicy, policyText) : null;
     const cardSection = cardHeading && (!ownKeys || ownKeys.includes(cardHeading.offenseKey)) ? cardHeading : null;
     const namedSection =
       cardSection ??
       (caPolicy && caPolicy.stated === null && manual.ok
-        ? namedManualSection({ text: policyNotes, chunks: manual.chunks })
+        ? namedManualSection({ text: policyText, chunks: manual.chunks })
         : null);
     /*
      * NO POLICY NAMED, BUT ONE DESCRIBED — "talking on her cell phone" is the
@@ -841,7 +887,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      */
     const describedSection =
       caPolicy && caPolicy.stated === null && !namedSection && manual.ok
-        ? describedManualSection({ text: policyNotes, chunks: manual.chunks })
+        ? describedManualSection({ text: policyText, chunks: manual.chunks })
         : null;
     /*
      * A MEETING NOT ATTENDED, WHERE THE MANUAL SAYS WHAT THAT IS — its
@@ -867,7 +913,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      */
     const describedChoices =
       caPolicy && caPolicy.stated === null && !namedSection && !describedSection && !eventSection && manual.ok
-        ? describedManualChoices({ text: policyNotes, chunks: manual.chunks })
+        ? describedManualChoices({ text: policyText, chunks: manual.chunks })
         : null;
 
     /*
@@ -1811,10 +1857,14 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      * never mistaken for the model deciding a termination. The model still
      * cannot select it: its output never reaches the box.
      */
+    // MODEL_WARNING_LEVEL_DISCARDED_ENABLED: a warning level the model ticked anyway is dropped (see `modelWarningGroup`).
+    const modelChecked = modelWarningGroup
+      ? withoutModelWarningLevel(framing.checked, modelWarningGroup.key).checked
+      : framing.checked;
     const sensitive = refuseSensitiveSelections({
       document,
       variantKey,
-      checked: isExitForm ? withoutDerivedKeys(framing.checked) : framing.checked,
+      checked: isExitForm ? withoutDerivedKeys(modelChecked) : modelChecked,
     });
 
     const exit = isExitForm
@@ -1944,11 +1994,14 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       (describedSection && !(enforced.checked.offense_type ?? []).some((key) => SPECIFIC_SECTION_BOXES.has(key))
         ? describedSection
         : null);
-    const statedKeys = caPolicy
+    const ownStatedKeys = caPolicy
       ? ((cardSection ? [cardSection.offenseKey] : null) ??
-        statedOffenseKeys(caPolicy, policyNotes) ??
+        statedOffenseKeys(caPolicy, policyText) ??
         (policySection ? [policySection.offenseKey] : null))
       : null;
+    // OTHER_BESIDE_DESCRIBED_ENABLED (QA's ruling (b)): the cleaning duty beside the described offense is ticked Other too.
+    const besideKeys = besideOther !== null ? (ownStatedKeys ?? besideAttendanceKeys(besideOther)) : null;
+    const statedKeys = besideKeys ? [...besideKeys.filter((key) => key !== "other"), "other"] : ownStatedKeys;
     const statedOffense = statedKeys
       ? withStatedOffense({
           checked: enforced.checked,

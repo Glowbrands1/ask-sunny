@@ -662,6 +662,8 @@ const NEW_FLAGS = [
   "ACCOUNT_TYPOS_FIXED_ENABLED",
   // coding 2: ON_FILE_LINE_NOT_THE_POLICY (Pau's morning scan, 14 Nov 2026; default off): forced off with the others.
   "ON_FILE_LINE_NOT_THE_POLICY_ENABLED",
+  // coding 2: OTHER_BESIDE_DESCRIBED (QA's ruling (b), 14 Nov 2026; default off): forced off with the others.
+  "OTHER_BESIDE_DESCRIBED_ENABLED",
   // coding 2: EXCERPT_EMPTY_CARD_DROP (QA, 11 Nov 2026; default off): forced off with the others.
   "EXCERPT_EMPTY_CARD_DROP_ENABLED",
   // coding 6: REQUEST_ISSUE_KEPT (ported from Ask Bubbles, QA round 17b; default off).
@@ -678,6 +680,8 @@ const NEW_FLAGS = [
   "OFF_ROSTER_STORE_ANSWER_ONLY_ENABLED",
   // coding 6: SAME_NAME_ASKS_WHICH (QA, 12 Nov 2026; default off; high priority).
   "SAME_NAME_ASKS_WHICH_ENABLED",
+  // coding 5: MODEL_WARNING_LEVEL_DISCARDED (QA, 14 Nov 2026; #964; default off; flips with #970's HISTORY_LEVEL_NOT_THIS_FORM).
+  "MODEL_WARNING_LEVEL_DISCARDED_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -836,6 +840,21 @@ const PROTECTED = [
  * which blanks the place of a "because she was at …" reason with the flag on and returns its input unchanged with it
  * off (reason-place-not-salon.test.ts proves the identity). The import and those two lines;
  * docs/patches/reason-place-not-salon.patch. Off, exactly as before.
+ * Under Pau's standing approval for protected-file edits (relayed by QA, 14 Nov 2026, QA's ruling (b) on the sibling
+ * app's gate probes), in src/lib/ai/form-proposal.ts, exactly the lines of
+ * docs/patches/other-beside-described-form-proposal.patch: the imports `withoutCleaningDuty` and `OTHER_BESIDE_NOTE`;
+ * at the start of namedPolicyFor, a cleaning duty beside a second described offense reads that offense from the account
+ * without the duty (marked `besideOther`); before correctiveActionReady, lateness beside a cleaning duty is read from
+ * the account without it; and correctiveActionReady's `besideOther` parameter adds OTHER_BESIDE_NOTE after the Policy
+ * line. Attendance beside the duty counts only with a lateness or absence word (`besideReadsAttendance`, the
+ * ATTENDANCE_OFFENSE_KEYS test; Gate-Sunny-3's #971 finding). Behind OTHER_BESIDE_DESCRIBED_ENABLED (default off); off,
+ * as before. form-proposal.ts is already excluded below.
+ *
+ * The user (Pau), under the standing approval, via QA on 14 Nov 2026 (AI time limits, agent loop Part 1, no flag):
+ * in src/lib/forms/chat-revision.ts, the two imports (`withAiTimeLimit`, `helperTimeoutMs`) and the revision's
+ * `client.messages.create` wrapped in `withAiTimeLimit("chat_revision", helperTimeoutMs(), …)`, so the revision ends
+ * by the helper limit with a reply and a log line, never an empty answer; docs/patches/ai-time-limits-chat-revision.patch.
+ * A call that finishes in time returns exactly what it did before. chat-revision.ts is already excluded below.
  */
 const APPROVED_PROTECTED_EDITS = [
   ":(exclude)src/lib/forms/salon-mention.ts",

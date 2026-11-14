@@ -44,7 +44,7 @@ import { placeReadingText } from "@/lib/forms/reason-place";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
 import type { ChatFormProposal, KnowledgeCategory, SourceCitation } from "@/types";
 
-import { describedAttendanceKeys, readCaPolicy, statedOffenseKeys } from "@/lib/forms/ca-policy";
+import { besideAttendanceKeys, describedAttendanceKeys, readCaPolicy, statedOffenseKeys, withoutCleaningDuty } from "@/lib/forms/ca-policy";
 import {
   citeAttendanceForTardiness,
   formatPolicyCitation,
@@ -184,8 +184,15 @@ export function formTurnCitations(input: {
    * account its reason, so the card cites no manual section for it — never "Care and Cleaning of Equipment and Facilities
    * … p.21" above a draft that saves Other. Off, as before.
    */
-  if (otherPolicyAgreesEnabled() && readCaPolicy(input.notes).other === "cleaning") return [];
-  const sections = violatedSections(sectionsFor(input.notes, input.chunks, input.modelHeading ?? null));
+  /*
+   * OTHER_BESIDE_DESCRIBED_ENABLED (QA's ruling (b), 14 Nov 2026): beside a second offense the account describes, the
+   * card cites that offense's section, read from the account without the cleaning duty. Off, as before.
+   */
+  const beside = withoutCleaningDuty(input.notes);
+  const notes =
+    beside !== null && (besideAttendanceKeys(beside) !== null || describedManualSection({ text: beside, chunks: input.chunks }) !== null) ? beside : null;
+  if (notes === null && otherPolicyAgreesEnabled() && readCaPolicy(input.notes).other === "cleaning") return [];
+  const sections = violatedSections(sectionsFor(notes ?? input.notes, input.chunks, input.modelHeading ?? null));
   const category = categoryOf(input.documentCategory);
   const citations: SourceCitation[] = [];
   for (const section of sections) {
