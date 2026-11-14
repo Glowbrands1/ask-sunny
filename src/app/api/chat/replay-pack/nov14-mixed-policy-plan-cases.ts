@@ -18,6 +18,8 @@ const NELL: DirectoryRow = { id: "e-nell-orrin-mpp", firstName: "Nell", lastName
 const BOTH = "create a ca for Nell Orrin, she was late on 11/3/26 and she yelled at a customer. verbal. no payroll deduct.";
 const NAMED = "create a ca for Nell Orrin for violating the attendance policy and standards of conduct, she was late on 11/3/26 and she yelled at a customer. verbal. no payroll deduct.";
 const LATE_ONLY = "create a ca for Nell Orrin for violating the attendance policy, she was late on 11/3/26. verbal. no payroll deduct.";
+/** QA's 17z wording in the sibling app, run there by Gate-Bubbles-4 (14 Nov 2026): two described offenses and a cleaning duty. */
+const THREE = "create a ca for Nell Orrin, she was late on 11/3/26 and yelled at a customer, and didn't do the sanitation. verbal. no payroll deduct.";
 const REPORT = "QA's Bubbles Create check (13 Nov 2026): \"<B> was late on 11/3/26\" + \"she yelled at a customer\" saved a plan that covered lateness only; Pau's option A";
 const KEEP_BOTH = ["NAMED_POLICIES_ALL_KEPT_ENABLED", "POLICY_LINE_COVERS_EVERY_SECTION_ENABLED"];
 const FLAG = "MIXED_POLICY_PLAN_ENABLED";
@@ -81,6 +83,38 @@ export const NOV14_MIXED_POLICY_PLAN_CASES: ReplayCase[] = [
       const plan = t.values(id).action_plan ?? "";
       expect(plan).toMatch(LATENESS_PLAN);
       expect(plan).not.toMatch(/Management will review/);
+    },
+  },
+  {
+    id: "nov14-mixed-policy-plan-two-offenses-and-cleaning",
+    title: `"${THREE}": Attendance, Standards of Conduct and Other ticked; Policy Violated lists all three; Pau's plan plus the conduct line, on the card and the draft`,
+    report: "Ported from Ask Bubbles: QA's 17z wording and Gate-Bubbles-4's NO-GO probe (14 Nov 2026): the saved form was right, but the card's Policy line named Attendance only (+ the Other note) and the card's plan had no conduct line",
+    status: { open: "with the chain off, Standards of Conduct is not kept beside lateness and the cleaning duty" },
+    fixFlags: [...KEEP_BOTH, FLAG],
+    async run(t) {
+      const { id, card, cardPlan } = await create(t, THREE, "Observed:\nNell Orrin was late on November 3, 2026, yelled at a customer, and did not do the sanitation.");
+      const offense = t.checked(id).offense_type ?? [];
+      const values = t.values(id);
+      const where = JSON.stringify({ offense, violated: values.policy_violated, plan: (values.action_plan ?? "").slice(-200) });
+      expect(offense.some((key) => /attendance|tardiness/.test(key)), `Attendance is not ticked ${where}`).toBe(true);
+      expect(offense, `Standards of Conduct is not ticked ${where}`).toContain("standards_of_conduct");
+      expect(offense, `Other is not ticked ${where}`).toContain("other");
+      expect(values.policy_violated ?? "", `Policy Violated dropped Attendance ${where}`).toMatch(/attendance/i);
+      expect(values.policy_violated ?? "", `Policy Violated dropped Standards of Conduct ${where}`).toMatch(/standards of conduct/i);
+      expect(values.policy_violated ?? "", `Policy Violated dropped Other ${where}`).toMatch(/\bOther\b/);
+      const plan = values.action_plan ?? "";
+      expect(plan, `the lateness plan is not kept as it is ${where}`).toMatch(LATENESS_PLAN);
+      expect(plan, `no line for the Standards of Conduct ${where}`).toContain(SOC_LINE);
+      expect(plan, `the plan names Other as a policy ${where}`).not.toMatch(/\bthe Other polic/i);
+      expect(plan.match(/Management will review/g)?.length ?? 0, `more than one review line ${where}`).toBe(1);
+      // The card: its Policy line covers Attendance and Standards of Conduct with the Other note, and its plan has the conduct line.
+      const policyLine = /^\*\*Policy:\*\*.*$/im.exec(card)?.[0] ?? "";
+      expect(policyLine, `the card's Policy line drops Attendance:\n${card}`).toMatch(/attendance/i);
+      expect(policyLine, `the card's Policy line drops Standards of Conduct:\n${card}`).toMatch(/standards of conduct/i);
+      expect(card, `the card does not note Other:\n${card}`).toContain("recorded under **Other** on the form too");
+      // Pau's plan (with the conduct line) reaches this app's card only with CARD_PLAN_MATCHES_CREATE (#894); without it the
+      // card's general plan must still review the Standards of Conduct.
+      expect(cardPlan, `the card's plan does not review the Standards of Conduct:\n${card}`).toMatch(/standards of conduct/i);
     },
   },
 ];
