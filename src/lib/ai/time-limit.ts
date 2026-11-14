@@ -1,6 +1,6 @@
-import { AI_MAX_RETRIES } from "@/lib/config/ai-timeouts";
+import { AI_MAX_RETRIES, deadlineMarginMs, routeMaxMs } from "@/lib/config/ai-timeouts";
 
-import { currentAiRoute } from "./ai-route";
+import { aiRequestStartedAt, currentAiRoute } from "./ai-route";
 import { AiError } from "./errors";
 
 /**
@@ -190,7 +190,8 @@ export async function withStreamTimeLimit<T>(
     },
   };
   watch.attempt();
-  const totalTimer = setTimeout(() => fail("total", limits.totalMs), limits.totalMs);
+  const totalMs = deadlineAwareTotalMs(limits.totalMs);
+  const totalTimer = setTimeout(() => fail("total", totalMs), totalMs);
   try {
     const result = await Promise.race([
       run({ signal: controller.signal, timeout: limits.firstTokenMs, maxRetries: settings.maxRetries ?? AI_MAX_RETRIES }, watch),
@@ -209,4 +210,16 @@ export async function withStreamTimeLimit<T>(
     if (phaseTimer !== undefined) clearTimeout(phaseTimer);
     clearTimeout(totalTimer);
   }
+}
+
+/**
+ * A stream's total limit, cut to the time left before the route's maxDuration less the margin (QA, 14 Nov 2026), so
+ * a slow turn ends with the message and a log line, never the platform's kill. Outside a route, the limit as given.
+ * Never below one second.
+ */
+export function deadlineAwareTotalMs(totalMs: number, now: number = Date.now()): number {
+  const started = aiRequestStartedAt();
+  if (started === null) return totalMs;
+  const left = started + routeMaxMs() - deadlineMarginMs() - now;
+  return Math.max(1_000, Math.min(totalMs, left));
 }
