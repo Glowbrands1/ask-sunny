@@ -3,6 +3,7 @@ import {
   createCommandPointsToCardEnabled,
   createFromConversationPointsToCardEnabled,
   createPointsToShownCardEnabled,
+  copyPastePointsToCardEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import type { AskRequest, AskResponse } from "./types";
@@ -27,6 +28,9 @@ import type { AskRequest, AskResponse } from "./types";
 
 export const PRESS_CREATE =
   "To create it, press **Create draft** on the card — I can't create the draft from a chat message. Nothing is saved to anyone's file until you press it.";
+/** COPY_PASTE_POINTS_TO_CARD_ENABLED: "Do i need to copy and paste it?" with the card on screen. */
+export const NOTHING_TO_COPY =
+  "No — there's nothing to copy or paste. The card above already has it: press **Create draft** on it, and the draft opens here for you to edit. Nothing is saved to anyone's file until you press it.";
 export const WHAT_IS_OUT_OF_DATE = "What on the proposal is out of date? Tell me what to change and I'll update the card.";
 export const WHAT_IS_WRONG = "What on the proposal is wrong? Tell me what to change and I'll update the card.";
 
@@ -63,13 +67,21 @@ function showsCreate(proposal: unknown): boolean {
   const card = proposal as { supportsInlineDraft?: boolean; status?: string } | null | undefined;
   return !!card && (card.supportsInlineDraft === true || card.status === "needs_location");
 }
+/**
+ * COPY_PASTE_POINTS_TO_CARD_ENABLED (ported from Ask Bubbles, QA's 17i live test, 11 Nov 2026): "Do i need to copy and
+ * paste it?", "do I have to copy it", "should I copy paste this into the form?", "where do I paste it?" — a question
+ * about moving the card's text by hand.
+ */
+const COPY_QUESTION =
+  /^(?:(?:so|ok(?:ay)?|and|wait)[,\s]+)?(?:(?:do|should|must|would|will)\s+i\s+(?:(?:need|have)\s+to\s+)?|(?:how|where)\s+do\s+i\s+|can\s+i\s+(?:just\s+)?)(?:copy(?:\s*(?:and|&|n|\/)?\s*paste)?|paste)\b[^?]{0,60}\??$/i;
 
 function squeezed(question: string): string {
   return (question ?? "").replace(/\s+/g, " ").trim();
 }
 
-function kindOf(question: string): "create" | "outdated" | "wrong" | null {
+function kindOf(question: string): "create" | "copy" | "outdated" | "wrong" | null {
   const text = squeezed(question);
+  if (copyPastePointsToCardEnabled() && COPY_QUESTION.test(text)) return "copy";
   if (createCommandPointsToCardEnabled() && CREATE_COMMAND.test(text)) return "create";
   // CREATE_FROM_CONVERSATION_POINTS_TO_CARD_ENABLED: "Create a form from this conversation." (P6).
   if (createCommandPointsToCardEnabled() && createFromConversationPointsToCardEnabled() && CREATE_FROM_CONVERSATION.test(text)) return "create";
@@ -106,7 +118,7 @@ export function cardMetaTurn(
     | { formProposal?: AskResponse["formProposal"] }
     | undefined;
   if (kind === "create" && shown?.formProposal && !showsCreate(shown.formProposal)) return null;
-  const line = kind === "create" ? PRESS_CREATE : kind === "outdated" ? WHAT_IS_OUT_OF_DATE : WHAT_IS_WRONG;
+  const line = kind === "create" ? PRESS_CREATE : kind === "copy" ? NOTHING_TO_COPY : kind === "outdated" ? WHAT_IS_OUT_OF_DATE : WHAT_IS_WRONG;
   /*
    * The card as it was: its own source turns, so Create drafts from the account, never from "create it" or the
    * complaint (proposing it again from `from` would point the card at this turn).
