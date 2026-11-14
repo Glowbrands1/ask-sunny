@@ -11,6 +11,7 @@
  * (local production-build check, 22 Oct 2026). Pure and browser-safe.
  */
 
+import { businessToday } from "@/lib/business-date";
 import { statedPayrollDeduct } from "./payroll-deduct-answer";
 
 /** Lower-cased, with horizontal runs collapsed and newlines kept (the same reading as the intake's). */
@@ -95,6 +96,38 @@ export function isStatedWarningLevel(value: unknown): value is StatedWarningLeve
 }
 
 const LEVEL_NAMED = /\b(verbal|written)\s+(?:warning|ca|c\/a|corrective(?:\s+action)?)\b/g;
+
+/** HISTORY_LEVEL_NOT_THIS_FORM_ENABLED, read here because this module imports only the payroll reader. */
+function historyLevelNotThisFormOn(): boolean {
+  const raw = typeof process === "undefined" ? undefined : process.env.HISTORY_LEVEL_NOT_THIS_FORM_ENABLED;
+  return typeof raw === "string" && ["1", "true", "on", "yes"].includes(raw.trim().toLowerCase());
+}
+
+/*
+ * HISTORY_LEVEL_NOT_THIS_FORM_ENABLED (QA, 14 Nov 2026; the mechanism of Ask Bubbles' 9 Oct reader). A level with ITS
+ * OWN DATE right after it — "verbal warning on 9/21", "written warning 10/2", "verbal ca on the 21st", "written
+ * warning on september 21" — is a step on file, unless that day is today. A level "for the same thing" / "for that" /
+ * "for it" points back at an earlier one. Neither is this form's level, unless a request verb in the same sentence asks
+ * for it: "create a verbal CA on 11/12/26 for …" is the request, and the date is the incident's.
+ */
+const OWN_DATE_AFTER =
+  /^\s*(?:(?:was\s+|were\s+)?(?:given|issued|signed)\s+)?(?:on\s+|dated\s+)?(?:the\s+)?(?:\d{1,2}[/.-]\d{1,2}\b|\d{1,2}(?:st|nd|rd|th)\b|(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+\d{1,2}\b|\d{1,2}\s+(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b)/;
+const POINTS_BACK_AFTER = /^\s*for\s+(?:the\s+same|this\s+same|same|that|it)\b/;
+const ASKS_IN_SENTENCE = /\b(?:create|make|draft|prepare|write|do|start|issue|give|need|needs|want|file|document|open)\b/;
+
+/** The level just named is a step on file by its own date or by pointing back (see `OWN_DATE_AFTER`). */
+function historyByDateOrPointer(before: string, after: string, today: string | undefined): boolean {
+  if (ASKS_IN_SENTENCE.test(before)) return false;
+  if (POINTS_BACK_AFTER.test(after)) return true;
+  const dated = OWN_DATE_AFTER.exec(after);
+  if (!dated) return false;
+  // The same day as today is the incident being documented, not history.
+  if (today && /^\d{4}-\d{2}-\d{2}$/.test(today)) {
+    const md = /(\d{1,2})[/.-](\d{1,2})/.exec(dated[0]);
+    if (md && Number(md[1]) === Number(today.slice(5, 7)) && Number(md[2]) === Number(today.slice(8, 10))) return false;
+  }
+  return true;
+}
 
 /** A step already taken, said before the level: "she had a written CA", "prior verbal warning". */
 const LEVEL_HISTORY_BEFORE =
@@ -221,7 +254,7 @@ function levelBesidePayrollAnswer(body: string): RegExpExecArray | null {
 /** The level one manager turn states for this form, or null. */
 export function statedWarningLevel(
   text: string,
-  options: { readonly undecidedStatesNothing?: boolean } = {},
+  options: { readonly undecidedStatesNothing?: boolean; readonly today?: string } = {},
 ): StatedWarningLevel | null {
   const levels = new Set<StatedWarningLevel>();
   // Only `managerStatedWarningLevel` asks for this; it is reached behind WARNING_LEVEL_MANAGER_ONLY_ENABLED.
@@ -248,7 +281,9 @@ export function statedWarningLevel(
         LEVEL_HISTORY_BEFORE.test(before) ||
         LEVEL_HISTORY_AFTER.test(after) ||
         LEVEL_HISTORY_HEADING.test(before) ||
-        ((LEVEL_HISTORY_LABEL.test(before) || LEVEL_HISTORY_VERB.test(before)) && DATED_AFTER.test(after))
+        ((LEVEL_HISTORY_LABEL.test(before) || LEVEL_HISTORY_VERB.test(before)) && DATED_AFTER.test(after)) ||
+        // HISTORY_LEVEL_NOT_THIS_FORM_ENABLED: its own date, or "for the same thing" — a step on file.
+        (historyLevelNotThisFormOn() && historyByDateOrPointer(before, after, options.today ?? businessToday()))
       ) {
         continue;
       }
