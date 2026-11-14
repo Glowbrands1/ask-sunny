@@ -36,3 +36,21 @@ describe("cleanupChanges: QA's bar", () => {
     expect(changes("she didn't count the registr", "She didn't count the register.")).toEqual([]);
   });
 });
+
+describe("cleanupChanges: Gate-Sunny-2's #983 probes", () => {
+  it("a quote left open to the end is caught", () => {
+    expect(changes("she said ‘i read the polcy", "She said ‘i read the policy.")).toContainEqual(expect.stringMatching(/^quote /));
+    expect(changes(`she said "i read the polcy`, `She said "i read the policy.`)).toContainEqual(expect.stringMatching(/^quote /));
+    // The same words kept, only a full stop added: not a changed quote.
+    expect(changes("she said ‘i read the polcy", "She said ‘i read the polcy.")).toEqual([]);
+  });
+
+  it("a single-quoted span with an apostrophe inside is one quote", () => {
+    expect(changes("she told a guest 'that isn't my registr' and walked off", "She told a guest 'that isn't my register' and walked off.")).toContainEqual(expect.stringMatching(/^quote /));
+  });
+
+  it("a lowercase near miss of a long place name turned into a spelling of it is a changed name", () => {
+    expect(changes("she was sent to kerny", "She was sent to Kearny.")).toContainEqual(expect.stringMatching(/^name kerny/));
+    expect(changes("she was sent to kerny", "She was sent to Kearney.")).toContainEqual(expect.stringMatching(/^name kerny/));
+  });
+});

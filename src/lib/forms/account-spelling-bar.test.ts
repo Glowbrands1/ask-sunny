@@ -59,3 +59,12 @@ describe("ACCOUNT_TYPOS_FIXED_ENABLED: a quote left open", () => {
     expect(cardAccountText("she didn't count the registr", null)).toBe("she didn't count the register");
   });
 });
+
+describe("ACCOUNT_TYPOS_FIXED_ENABLED: an apostrophe inside a quote (Gate-Sunny-2, #983)", () => {
+  afterEach(() => vi.unstubAllEnvs());
+  it("an apostrophe between two letters does not end a single-quoted span", () => {
+    vi.stubEnv("ACCOUNT_TYPOS_FIXED_ENABLED", "true");
+    expect(cardAccountText("she told a guest 'that isn't my registr' and walked off", null)).toBe("she told a guest 'that isn't my registr' and walked off");
+    expect(cardAccountText("she told a guest ‘that isn’t my registr’ and walked off", null)).toBe("she told a guest ‘that isn’t my registr’ and walked off");
+  });
+});

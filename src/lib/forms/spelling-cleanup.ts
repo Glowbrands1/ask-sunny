@@ -91,7 +91,8 @@ export function cleanupChanges(input: {
   const sourceWords = wordCounts(source);
   const writtenWords = wordCounts(written);
   for (const [word, count] of sourceWords) {
-    const isName = known.has(word) || [...known].some((name) => name.length >= 4 && word.length >= 4 && word[0] === name[0] && editDistance(word, name) === 1);
+    // A word one letter from a known name, or two from a long one ("kerny" for "kearney"; Gate-Sunny-2, #983), is that name.
+    const isName = known.has(word) || [...known].some((name) => name.length >= 4 && word.length >= 4 && word[0] === name[0] && editDistance(word, name) <= (name.length >= 6 && word.length >= 5 ? 2 : 1));
     if (!isName || (writtenWords.get(word) ?? 0) >= count) continue;
     // Said once: a name the capitalised-word check above already caught is not reported again.
     if (reasons.some((reason) => reason.toLowerCase().startsWith(`name ${word} `))) continue;
@@ -183,13 +184,16 @@ function numbersIn(text: string): string[] {
   });
 }
 
-const QUOTE = /["“]([^"“”\n]{3,}?)["”]/g;
+// A quote may be left open to the end of its line (Gate-Sunny-2, #983: ‘i read the polcy); an apostrophe between two
+// letters ("isn't") is part of a single-quoted span, not its end.
+const QUOTE = /["“]([^"“”\n]{3,}?)(?:["”]|$)/gm;
 // QA's bar (14 Nov 2026): a single-quoted span is a quote too ('that is not my registr'); an apostrophe in a word is not.
-const SINGLE_QUOTE = /(?<![A-Za-z0-9])['‘]([^'‘’\n]{3,}?)['’](?![A-Za-z0-9])/g;
+const SINGLE_QUOTE = /(?<![A-Za-z0-9])['‘]((?:[^'‘’\n]|(?<=[A-Za-z])['’](?=[A-Za-z])){3,}?)(?:['’](?![A-Za-z0-9])|$)/gm;
 
 function quotesIn(text: string): string[] {
   return [...text.matchAll(QUOTE), ...text.matchAll(SINGLE_QUOTE)]
-    .map((match) => match[1]!.trim())
+    // A quote left open has no closing mark to end it: the full stop a writer adds after it is not part of it.
+    .map((match) => (/["”'’]$/.test(match[0]) ? match[1]!.trim() : match[1]!.trim().replace(/[.!?,;:]+$/, "")))
     .filter((quote) => quote.split(/\s+/).length >= 2);
 }
 
