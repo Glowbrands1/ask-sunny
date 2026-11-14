@@ -106,3 +106,14 @@ Kept as exceptions:
 5. **Batch D, honesty hand-back:** #48.
 
 Each batch has its own targeted live run on the behaviors it converts. Scripted cases that asserted a patch's exact text are changed to assert the outcome, each with a "Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite)" comment.
+
+## Batch A (done)
+
+Converted: #25, #39, #40, #41, #43, #45, #46, #47, #50.
+- `propose_form` returns `card` (with `salon` and `choose_salon_from` by name, `observation`, `policy`) and `facts`. The facts are: `unset`, `stated`, `payroll_amount_unset`, `dates_given`, `dated_today`, `off_roster_name` plus `staff_list`, `name_from_staff_list`, `exit_dates`, `under_performance`, `confirm_policy`, `policy_note`, `not_kept`, `salon_outside_scope`.
+- `find_staff` returns `name_from_staff_list` / `not_on_roster` with `staff_list`.
+- `list_staff` returns `whole_staff_form`, `which_salon`, `salons`, `salon`, `staff`.
+- `edit_form` returns `reviser_said` / `updated`, and `revision_draft` / `original_unchanged`.
+- The dynamic system block says when a card is open.
+- The rules book's new **Card replies** and **Staff lists** sections carry Pau's wording for each fact.
+- `run.ts` writes into the reply only `EARLIER_CARD_STAYS` (#44) and the safety clean-ups (#49). The honesty no-op (#48) is unchanged until batch D.

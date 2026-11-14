@@ -30,10 +30,9 @@ import { cleaningUndonePhrase, namesCareAndCleaning } from "@/lib/forms/ca-polic
 import { turnsFromThisPersonsRequest } from "@/lib/forms/this-persons-turns";
 import { closePolicyQuestion, namedPolicies } from "@/lib/forms/named-policy-section";
 import { startsNewForm } from "@/lib/ai/remap-incident";
-import { PAYROLL_DEDUCT_LABEL, payrollAmountFromConversation, statedPayrollDeduct } from "@/lib/forms/payroll-deduct";
-import { PAYROLL_AMOUNT_KEY, PAYROLL_AMOUNT_LABEL } from "@/lib/forms/payroll-amount-field";
+import { payrollAmountFromConversation, statedPayrollDeduct } from "@/lib/forms/payroll-deduct";
+import { PAYROLL_AMOUNT_KEY } from "@/lib/forms/payroll-amount-field";
 import { withoutPayrollClauses } from "@/lib/ai/payroll-clause-not-account";
-import { UNDER_PERFORMANCE_EXPLAINED } from "@/lib/ai/under-performance-explained";
 import { listTemplateSummaries, type TemplateSummary } from "@/lib/forms/repository";
 import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
 import { RETRIEVAL } from "@/lib/config/models";
@@ -153,18 +152,8 @@ const NOT_ASKED = "The manager has not asked about forms on file, so they are no
 /** What the turn's tools produced for the reply: the card and the edit, when there were any. */
 export interface ToolEffects {
   proposal: ChatFormProposal | null;
-  /** The card's "**Policy:**" line, after "**Policy:** ". */
-  policyLine: string | null;
   formUpdate: { instanceId: string; updated: string[] } | null;
-  /** CLOSE_SPELLING: "Did you mean **<heading>** (page N)?", asked instead of citing a policy spelled too far off. */
-  confirmPolicy?: string | null;
-  /** The open-form reader's own reply when edit_form changed the draft: the realized diff of what was saved. */
-  revisedReply?: string | null;
-  /** The card's questions and read-backs the reply must carry (today's card lines, `cardLines`). */
-  requiredLines?: string[];
-  /** A reply the app gives in its own words (today's whole-staff list): the turn's reply, as written. */
-  replyOverride?: string | null;
-  /** Lines the reply says about how a name was read ("Using **<A>** from your staff list."), by roster id. */
+  /** Roster ids find_staff chose from a close spelling or a lone first name this turn (the card's name_from_staff_list fact). */
   nameLines?: Record<string, string>;
   /** The knowledge-base passages search_knowledge returned, as today's source cards. */
   citations?: SourceCitation[];
@@ -265,21 +254,6 @@ function namesAPlace(typed: string): boolean {
   return readSalonMentions(typed).length > 0 || readSalonMentions(`at ${typed}`).length > 0;
 }
 
-/**
- * QA's rulings (14 Nov 2026, 14:35Z and 15:11Z; Pau's fewer-questions rule), said exactly: a card made with a name
- * not on the Woven staff list. A salon login's list is its own salon's.
- */
-export function offRosterLine(name: string, scope?: AccessScope): string {
-  return scope && scope.level === "salon"
-    ? `**${name}** isn't on your salon's Woven staff list, so I've used the name as you typed it. Check it before you press Create.`
-    : `**${name}** isn't on the Woven staff list, so I've used the name as you typed it. Check the spelling before you press Create.`;
-}
-
-/** Pau (14 Nov 2026), said exactly: one strong close roster match is used, and the reply says so. */
-export function closeNameLine(name: string): string {
-  return `Using **${name}** from your staff list.`;
-}
-
 export async function findStaff(context: ToolContext, input: { name?: unknown }, effects?: ToolEffects): Promise<ToolResult> {
   const typed = typeof input.name === "string" ? input.name.trim() : "";
   if (typed === "") return { error: "Give the name to look for." };
@@ -317,8 +291,8 @@ export async function findStaff(context: ToolContext, input: { name?: unknown },
      */
     if (close.kind === "confirm" && close.candidates.length === 1 && !saidNo) {
       const chosen = close.candidates[0]!;
-      if (effects) effects.nameLines = { ...(effects.nameLines ?? {}), [chosen.employee.id]: closeNameLine(chosen.name) };
-      return { matches: [staffRow(chosen.employee)], note: `A close spelling of ${chosen.name}, the only one on the roster. Use them; the reply says "${closeNameLine(chosen.name)}"` };
+      if (effects) effects.nameLines = { ...(effects.nameLines ?? {}), [chosen.employee.id]: chosen.name };
+      return { matches: [staffRow(chosen.employee)], name_from_staff_list: chosen.name, note: `A close spelling of ${chosen.name}, the only one on the roster. Use them, and say so as the rules book's Card replies teach.` };
     }
     if (close.kind === "confirm" && close.candidates.length > 0) {
       const names = close.candidates.map((candidate) => candidate.name);
@@ -344,7 +318,7 @@ export async function findStaff(context: ToolContext, input: { name?: unknown },
      * gets the card at once with the typed name, and the reply says it is not on the Woven staff list. A person at a
      * salon outside the manager's scope is read the same way (the roster is scoped): their existence is never shown.
      */
-    return { matches: [], not_on_roster: person, note: `Not on the Woven staff list. Propose the card now with employee_name "${person}" as typed; the reply says "${offRosterLine(person, context.actor.scope)}"` };
+    return { matches: [], not_on_roster: person, staff_list: context.actor.scope.level === "salon" ? "your salon's" : "the", note: `Not on the Woven staff list. Propose the card now with employee_name "${person}" as typed, and say so as the rules book's Card replies teach.` };
   }
   /* A first name alone is confirmed before it goes on a form, as today ("Is this for **Rhea Calloway**?"). */
   /*
@@ -354,8 +328,8 @@ export async function findStaff(context: ToolContext, input: { name?: unknown },
    */
   if (found.length === 1 && words(typed).length === 1) {
     const only = found[0]!;
-    if (effects) effects.nameLines = { ...(effects.nameLines ?? {}), [only.id]: closeNameLine(displayName(only)) };
-    return { matches: found.map(staffRow), note: `Only a first name was given and one person has it: use ${displayName(only)}; the reply says "${closeNameLine(displayName(only))}"` };
+    if (effects) effects.nameLines = { ...(effects.nameLines ?? {}), [only.id]: displayName(only) };
+    return { matches: found.map(staffRow), name_from_staff_list: displayName(only), note: `Only a first name was given and one person has it: use ${displayName(only)}, and say so as the rules book's Card replies teach.` };
   }
   const shared = new Set(found.map((person) => displayName(person).toLowerCase())).size < found.length;
   return {
@@ -400,7 +374,6 @@ export async function listStaffTool(context: ToolContext, effects: ToolEffects, 
   const previous = [...context.history].reverse().find((turn) => turn.role === "assistant")?.content ?? "";
   const forForm = picker.asksForWholeStaff(context.question, true) || (typeof previous === "string" && previous.includes(picker.ASKED_LOCATION));
   const form = picker.formName(`${context.question} ${typeof previous === "string" && forForm ? previous : ""}`);
-  const one = form === "form" ? "A form" : `A ${form}`;
   const typed = typeof input.salon === "string" ? input.salon.trim() : "";
   const named = [...new Set([typed, context.question].flatMap((text) => (text ? readSalonMentions(text).flatMap((mention) => [...mention.salonIds]) : [])))];
   const own = named.filter((id) => allowed.has(id));
@@ -416,27 +389,26 @@ export async function listStaffTool(context: ToolContext, effects: ToolEffects, 
   if (!chosen) {
     if (locations.length === 0) return { error: "No salon is in this login's scope, so no staff can be listed. Say so." };
     const names = locations.map((location) => location.name).sort((a, b) => a.localeCompare(b));
-    const choices = names.length <= 15 ? `\n\n${names.map((name) => `- ${name}`).join("\n")}` : "";
-    const ask = forForm
-      ? `${one} is for one person at a time, so I won't make one card for the whole staff. ${picker.ASKED_LOCATION} Your account covers ${names.length} salons.${choices}`
-      : `${picker.ASKED_LOCATION} Your account covers ${names.length} salons.${choices}`;
-    if (forForm) effects.replyOverride = ask;
-    return { say_exactly: ask };
+    return {
+      ...(forForm ? { whole_staff_form: form, one_person_per_form: true } : {}),
+      which_salon: true,
+      salon_count: names.length,
+      ...(names.length <= 15 ? { salons: names } : {}),
+      note: "Ask which salon's staff to list as the rules book's Staff lists teach.",
+    };
   }
   const facts = await roster.readDirectoryFacts(scope).catch(() => []);
   const people = facts.length > 0 ? facts.map((person) => ({ ...person, positionName: person.title })) : [];
   if (people.length === 0) return { error: ROSTER_FAILED };
-  if (forForm) {
-    const reply = picker.listStaff(chosen, people, form);
-    effects.replyOverride = reply;
-    return { say_exactly: reply };
-  }
   const rows = picker.salonStaffRows(chosen, people);
   return {
+    ...(forForm ? { whole_staff_form: form, one_person_per_form: true } : {}),
     salon: chosen.name,
     staff: rows.slice(0, 40),
     ...(rows.length > 40 ? { more: rows.length - 40 } : {}),
-    note: "Names and positions only, grouped by position. Never contact details, pay or addresses.",
+    note: forForm
+      ? "A form is for one person at a time: no card for the whole staff. Say so and list them as the rules book's Staff lists teach."
+      : "Names and positions only, grouped by position. Never contact details, pay or addresses.",
   };
 }
 
@@ -564,52 +536,6 @@ export async function readPolicy(context: ToolContext, input: { heading?: unknow
 }
 
 /* -------------------------------------------------------- propose form --- */
-
-/**
- * THE CARD'S LINES, for the manager to check before Create (QA, 14 Nov 2026, from L1–L10; Pau 14 Nov: "it's best if
- * it doesn't ask too many questions, it should be intuitive"). Act on the best reading and state what was left open
- * in ONE short line; never block the card on an optional field; at most one question per reply.
- * - A stated level, prior actions and payroll are read back.
- * - Unstated payroll and level: "Payroll deduct and warning level aren't set; tell me if they apply." (one line).
- * - Several incident dates: the chosen one is named with the others ("Dated 9/28 (when it happened); say if you want
- *   10/2."); with none chosen, the one question asks which.
- * The reply always carries them (run.ts adds any the model left out).
- */
-export const UNSET_LINE = {
-  both: "Payroll deduct and warning level aren't set; tell me if they apply.",
-  payroll: "Payroll deduct isn't set; tell me if it applies.",
-  level: "Warning level isn't set; tell me if it applies.",
-} as const;
-export const DATED_TODAY_LINE = "Dated today — tell me if it was another day.";
-export const AMOUNT_UNSET_LINE = "The payroll deduction amount isn't set; tell me the figure if there is one.";
-
-export function cardLines(
-  card: ChatFormProposal,
-  templateKey: string,
-  extra: { readonly datesAsked?: readonly string[]; readonly datedFrom?: { readonly chosen: string; readonly others: readonly string[] } | null } = {},
-): string[] {
-  const lines: string[] = [];
-  const corrective = templateKey === "dpoa";
-  /* The account line in today's label on every card (`keep-filled-slots.ts`), coaching included. */
-  if (card.issue) lines.push(`**Observation of Offense:** ${card.issue}`);
-  if (card.warningLevel) lines.push(`**Type of Warning:** ${card.warningLevel === "verbal" ? "Verbal Warning" : "Written Warning"}, as you said.`);
-  if (card.priorActions) lines.push(`**Prior actions:** ${card.priorActions}, as you said.`);
-  if (card.payrollDeduct) {
-    lines.push(`**${PAYROLL_DEDUCT_LABEL}** ${card.payrollDeduct === "yes" ? "Yes" : "No"}, as you said.${card.payrollDeduct === "yes" && card.payrollDeductAmount ? ` **${PAYROLL_AMOUNT_LABEL}:** ${/^\$/.test(card.payrollDeductAmount) ? "" : "$"}${card.payrollDeductAmount}.` : ""}`);
-  }
-  if (extra.datedFrom) {
-    lines.push(`Dated ${extra.datedFrom.chosen} (when it happened); say if you want ${extra.datedFrom.others.join(" or ")}.`);
-  } else if (extra.datesAsked && extra.datesAsked.length > 1) {
-    lines.push(`You mentioned more than one date (${extra.datesAsked.map((date) => `**${date}**`).join(", ")}). Which date goes on the form?`);
-  }
-  if (corrective && !card.awaitingIncident) {
-    if (!card.payrollDeduct && !card.warningLevel) lines.push(UNSET_LINE.both);
-    else if (!card.payrollDeduct) lines.push(UNSET_LINE.payroll);
-    else if (!card.warningLevel) lines.push(UNSET_LINE.level);
-    if (card.payrollDeduct === "yes" && !card.payrollDeductAmount) lines.push(AMOUNT_UNSET_LINE);
-  }
-  return lines;
-}
 
 /** "10/2" as the most recent such day not after today, in ISO form (the card's date field). */
 function monthDayToIso(monthDay: string): string {
@@ -1030,7 +956,6 @@ export async function proposeForm(
   if (answered) date = monthDayToIso(latestDates[0]!);
   else if (datesGiven.length > 1) date = null;
   const datesAsked = datesGiven.length > 1 && !date ? datesGiven : [];
-  const datedFrom = null;
   if (date && date > today) return { error: `The incident date ${date} is after today (${today}, the salon's local date). Ask the manager.` };
   const askedLevel = input.warning_level === "verbal" || input.warning_level === "written" ? input.warning_level : null;
   const level = askedLevel && (askedLevel === "verbal" ? /\bverbal\b/i : /\bwritten\b|\bwrite[- ]?up\b/i).test(managerWords) ? askedLevel : null;
@@ -1098,50 +1023,68 @@ export async function proposeForm(
   card.employeeRole = employee.id ? await rosterTitle(context.actor.scope, employee.id) : null;
   effects.proposal = card;
   const personId = typeof input.employee_id === "string" ? input.employee_id.trim() : "";
-  effects.requiredLines = [
-    ...(offRosterName ? [offRosterLine(employee.name, context.actor.scope)] : []),
-    ...(personId && effects.nameLines?.[personId] ? [effects.nameLines[personId]!] : []),
-    ...cardLines(card, template.key, { datesAsked, datedFrom }),
-    ...(datedToday && (card.formDate ?? today) === today ? [DATED_TODAY_LINE] : []),
-    ...(template.key === "stc-exit" ? await exitDateLines(requestWords, today) : []),
-    /*
-     * Pau's line, said exactly, on a Standards of Conduct card for under performance, MSB or the sales metrics (QA, the
-     * MSB family: "Pau's exact under-performance line"); the reply always carries it.
-     */
-    ...(policyHeading && /standards of conduct/i.test(policyHeading) && (/\bunder[- ]?perform(?:ance|ing)\b|must see behaviou?rs?|\bperform[a-z]*\b/i.test(managerWords) || ACCOUNT_METRIC.test(managerWords))
-      ? [UNDER_PERFORMANCE_EXPLAINED]
-      : []),
-  ];
+  /*
+   * THE CARD'S FACTS (Pau, 14 Nov 2026: "code may refuse or inform, never rewrite"; the code-check audit's batch A).
+   * What is true about the card, for the model to say in its own reply as the rules book's "Card replies" lines teach;
+   * code no longer writes or appends any of it.
+   */
+  const underPerformance = Boolean(policyHeading && /standards of conduct/i.test(policyHeading) && (/\bunder[- ]?perform(?:ance|ing)\b|must see behaviou?rs?|\bperform[a-z]*\b/i.test(managerWords) || ACCOUNT_METRIC.test(managerWords)));
   ACCOUNT_METRIC.lastIndex = 0;
-  effects.policyLine = policyLine;
-  effects.confirmPolicy = didYouMean;
+  const corrective = template.key === "dpoa";
+  const unset = corrective && !awaiting ? [...(payroll ? [] : ["payroll_deduct"]), ...(level ? [] : ["warning_level"])] : [];
+  const salonNames = (ids: readonly string[] | undefined) => (ids ?? []).map((id) => ({ id, name: rosterSalonName(id) ?? id }));
+  const facts = {
+    ...(unset.length > 0 ? { unset } : {}),
+    ...(level || payroll || priorActions
+      ? { stated: { ...(level ? { warning_level: level } : {}), ...(payroll ? { payroll_deduct: payroll } : {}), ...(payroll === "yes" && amount ? { payroll_amount: `$${amount.replace(/^\$/, "")}` } : {}), ...(priorActions ? { prior_actions: priorActions } : {}) } }
+      : {}),
+    ...(corrective && payroll === "yes" && !amount ? { payroll_amount_unset: true } : {}),
+    ...(datesAsked.length > 0 ? { dates_given: datesAsked } : {}),
+    ...(datedToday && (card.formDate ?? today) === today ? { dated_today: true } : {}),
+    ...(offRosterName ? { off_roster_name: employee.name, staff_list: context.actor.scope.level === "salon" ? "your salon's" : "the" } : {}),
+    ...(personId && effects.nameLines?.[personId] ? { name_from_staff_list: employee.name } : {}),
+    ...(template.key === "stc-exit" ? { exit_dates: await exitDateLines(requestWords, today) } : {}),
+    ...(underPerformance ? { under_performance: true } : {}),
+    ...(didYouMean ? { confirm_policy: didYouMean } : {}),
+    ...(policyNote ? { policy_note: policyNote } : {}),
+    ...(dropped.length > 0 ? { not_kept: dropped } : {}),
+    ...((await outsideScopeSalon(context)) ?? {}),
+  };
   return {
     card: {
       form: card.templateName,
       employee: card.employeeName,
       status: card.status,
-      salon: card.locationId,
-      ...(card.status === "needs_location" ? { choose_salon_from: card.authorizedLocationIds } : {}),
+      salon: card.locationId ? rosterSalonName(card.locationId) ?? card.locationId : null,
+      ...(card.status === "needs_location" ? { choose_salon_from: salonNames(card.authorizedLocationIds) } : {}),
       form_date: card.formDate ?? null,
+      observation: card.issue ?? null,
       warning_level: level,
       payroll_deduct: payroll,
       prior_actions: priorActions,
       policy: policyLine,
       create_offered: card.supportsInlineDraft,
     },
-    card_lines: cardLines(card, template.key, { datesAsked, datedFrom }),
-    ...(policyLine ? { policy_line: `**Policy:** ${policyLine}` } : {}),
-    ...(policyNote ? { policy_note: policyNote } : {}),
-    /* Pau's line, word for word, whenever the manager asked for Under Performance and the card cites the Standards of Conduct. */
-    ...(policyHeading && /standards of conduct/i.test(policyHeading) && /\bunder[- ]?perform(?:ance|ing)\b/i.test(managerWords)
-      ? { say_exactly: `Include this sentence in your reply, word for word: "${UNDER_PERFORMANCE_EXPLAINED}"` }
-      : {}),
-    ...(dropped.length > 0 ? { not_kept: `${dropped.join(", ")} left blank: the manager did not state it. Ask only if it matters; never assume it.` } : {}),
-    ...(didYouMean ? { confirm_policy: `The manager's policy name is not a heading as spelled, so no policy is cited yet. End your reply with this line, word for word: ${didYouMean}` } : {}),
+    facts,
     note: awaiting
-      ? "The card is shown under your reply with Create held until the manager says what happened: ask them what happened, in one short question."
-      : "The card is shown under your reply. Nothing is saved until the manager presses Create. End your reply with the policy_line exactly.",
+      ? "The card is shown under your reply with Create held until the manager says what happened. Say the card's facts as the rules book's Card replies teach, and ask what happened in one short question."
+      : "The card is shown under your reply. Nothing is saved until the manager presses Create. Say the card's facts as the rules book's Card replies teach.",
   };
+}
+
+/**
+ * OUT_OF_SCOPE_PLACE_SAID as a fact (batch A): a salon the manager named in this turn that is not one of theirs, by
+ * today's reading (`out-of-scope-place.ts`). The model says it, as the rules book teaches.
+ */
+async function outsideScopeSalon(context: ToolContext): Promise<{ salon_outside_scope: string } | null> {
+  const { authorizedSalonIds } = await import("@/lib/forms/location-scope");
+  const scope = context.actor.scope;
+  if (scope.level !== "salon") return null;
+  const allowed = authorizedSalonIds(scope);
+  const named = [...new Set(readSalonMentions(context.question).flatMap((mention) => [...mention.salonIds]))];
+  if (named.length !== 1 || allowed.includes(named[0]!)) return null;
+  const name = rosterSalonName(named[0]!);
+  return name ? { salon_outside_scope: name } : null;
 }
 
 /* ----------------------------------------------------------- edit form --- */
@@ -1219,9 +1162,7 @@ export async function editForm(
       const draft = await openEditableDraft(context.request, id, { revise: true, reason: context.question.slice(0, 500) });
       effects.formOpened = formOpenedFor(draft);
       const revisedEdit = await editForm({ ...context, openFormId: draft.instanceId }, effects, { instance_id: draft.instanceId, values: input.values });
-      const opening = `I opened a new draft of the ${draft.templateName} for ${draft.employeeName} that revises the finalized one; the original is unchanged.`;
-      if (effects.revisedReply) effects.revisedReply = `${opening}\n\n${effects.revisedReply}`;
-      return { ...revisedEdit, revision_draft: draft.instanceId, original_unchanged: true, note: `Tell the manager: ${opening}` };
+      return { ...revisedEdit, revision_draft: { form: draft.templateName, employee: draft.employeeName }, original_unchanged: true, note: "Say it is a new draft revising the finalized form, as the rules book's Editing lines teach." };
     }
     /*
      * HARD GUARD, A REWORD KEEPS EVERY FACT (Pau via QA, 14 Nov 2026: "make it professional", "reword it", "clean it
@@ -1282,11 +1223,14 @@ export async function editForm(
       const revised = await openFormTurn(context, id);
       if (!revised) return { updated: [], note: "The form's reviser found nothing in the manager's message to change. Ask what they want changed." };
       const updated = revised.formUpdate?.instanceId === id ? revised.formUpdate.updated : [];
-      if (updated.length > 0) {
-        effects.formUpdate = { instanceId: id, updated };
-        effects.revisedReply = revised.content;
-      }
-      return { updated, reviser_said: untrusted(revised.content.slice(0, 1_500)), note: updated.length > 0 ? "The reviser's own words are shown to the manager as your reply; add nothing." : undefined };
+      if (updated.length > 0) effects.formUpdate = { instanceId: id, updated };
+      return {
+        updated,
+        reviser_said: untrusted(revised.content.slice(0, 1_500)),
+        note: updated.length > 0
+          ? "Tell the manager what changed, from reviser_said and updated: each changed field and its new wording. Claim nothing else."
+          : "Nothing was saved. Say plainly what was not changed.",
+      };
     }
     // The warning level is a tick box on the form: written as a checked group, never as text.
     const checked: Record<string, string[]> = {};

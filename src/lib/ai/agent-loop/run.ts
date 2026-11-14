@@ -16,7 +16,6 @@ import { activeSpendMeter } from "../spend-meter";
 import { AI_TIMEOUT_MESSAGE, isAiTimeLimitError, logAiFailure, withStreamTimeLimit } from "../time-limit";
 import type { AskResponse } from "../types";
 import { EARLIER_CARD_STAYS } from "@/lib/forms/proposal-continuation";
-import { withOutOfScopePlace } from "../out-of-scope-place";
 import { withoutSensitiveDefaults } from "../sensitive-defaults";
 import { finalReplyWithoutMarkers, withoutSourceMarkers, withoutSourceNotes } from "../source-note";
 import { agentLoopSystem, AGENT_LOOP_RULES } from "./prompt";
@@ -103,15 +102,11 @@ const count = (value: unknown): number => (typeof value === "number" && Number.i
  * card's (its Policy line or its account line) gets an app-written note.
  */
 export const CARD_NOTE = "[app note: this reply showed a card built with propose_form]";
-export const CARD_STILL_OPEN = "The card above is still open; press Create when it looks right, or tell me what to change.";
 const CARD_REPLY = /^\s*\*\*(?:Policy|Observation of Offense|What happened):?\*\*/im;
 function withCardNote(message: ChatMessage): string {
   const content = String(message.content);
   return message.role === "assistant" && CARD_REPLY.test(content) ? `${content}\n\n${CARD_NOTE}` : content;
 }
-
-/** A sentence saying an earlier card was not real or not built: never true (see CARD_NOTE); dropped from the reply. */
-export const DISOWNS_EARLIER_CARD = /(?:^|(?<=[.!?]\s))(?:One correction(?: first)?:\s*)?[^.!?\n]*\bmy (?:earlier|previous|last) (?:repl(?:y|ies)|messages?)\b[^.!?\n]*\b(?:before I(?:'d)?|never|wasn't|was not|went out)\b[^.!?\n]*[.!?—-]*\s*/gi;
 
 /** The conversation as model messages: the manager's and Sunny's turns, newest 20, starting with the manager's. */
 function conversationOf(history: readonly ChatMessage[], question: string): { role: "user" | "assistant"; content: unknown }[] {
@@ -264,7 +259,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     today: input.today,
     openFormId: input.openFormId,
   };
-  const effects: ToolEffects = { proposal: null, policyLine: null, formUpdate: null };
+  const effects: ToolEffects = { proposal: null, formUpdate: null };
   /* The open form as saved before the turn, for the no-false-"updated" guard below (FORM_EDIT_NOOP_GUARD's snapshot). */
   const noop = input.openFormId ? await import("@/lib/forms/form-noop-reply") : null;
   const openBefore = noop && input.openFormId ? await noop.formBeforeTurn(input.openFormId, input.request) : null;
@@ -299,7 +294,13 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   };
 
   const [templates, manual] = await Promise.all([templateChoices(input.actor.role), manualFor(input.scopeId)]);
+  /*
+   * A CARD IS OPEN (Pau, 15:00Z 14 Nov 2026: a mid-form question is answered and the open card stays): the last reply
+   * showed a card not yet created. A fact for the model (batch A); the rules book says what the reply says about it.
+   */
+  const lastReply = [...input.history].reverse().find((turn) => turn.role === "assistant" && !turn.error);
   const dynamic = agentLoopSystem({
+    cardOpen: !input.openFormId && Boolean(lastReply && CARD_REPLY.test(String(lastReply.content))),
     managerName: input.actor.displayName,
     role: input.actor.role,
     salons: authorizedSalonIds(input.actor.scope).map((id) => rosterSalonName(id) ?? id),
@@ -441,49 +442,13 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   if (stoppedAt === "timeout") throw new AiError("model_failed", AI_TIMEOUT_MESSAGE, 504);
   if (stoppedAt === "error") throw new AiError("model_failed", LOOP_FAILED_REPLY, 502);
 
-  let content = (stoppedAt === "step_limit" ? STEP_LIMIT_REPLY : text).replace(DISOWNS_EARLIER_CARD, "").trim();
+  /*
+   * The reply is the model's own (Pau, 14 Nov 2026: "code may refuse or inform, never rewrite"; the code-check audit's
+   * batch A). Code adds only the protocol marker below and the safety clean-ups at the end; the card's questions, read-
+   * backs and policy line are facts on propose_form's result, worded by the rules book's Card replies.
+   */
+  let content = (stoppedAt === "step_limit" ? STEP_LIMIT_REPLY : text).trim();
   if (content === "") content = effects.proposal ? "Here is the form for you to review." : STEP_LIMIT_REPLY;
-  /*
-   * The card's policy line, which the Create button sends to the draft (`card-policy.ts`): the one propose_form decided
-   * (a manual heading, or Other under the company's cleaning rule). A "**Policy:**" line the model wrote itself is
-   * replaced by it, so the card and the draft never disagree.
-   */
-  /*
-   * THE CARD'S QUESTIONS ARE ALWAYS ASKED (QA, 14 Nov 2026, from L1–L10: the payroll question, the warning level and
-   * the two-dates question went missing). Today's card lines the reply left out are added, in today's words, before the
-   * Policy line.
-   */
-  if (effects.proposal && effects.requiredLines?.length) {
-    const flat = (text: string) => text.toLowerCase().replace(/[*_\s]+/g, " ").trim();
-    /* The account line is kept in the model's words when it gave one under the label; added only when it gave none. */
-    const accountLabel = /^\*\*(?:Observation of Offense|What happened):\*\*/;
-    const missing = effects.requiredLines.filter((line) => (accountLabel.test(line) ? !accountLabel.test(content.trim()) && !/\*\*(?:Observation of Offense|What happened):\*\*/.test(content) : !flat(content).includes(flat(line))));
-    if (missing.length > 0) {
-      const body = content.split("\n").filter((line) => !/^\s*\*\*Policy:?\*\*/i.test(line)).join("\n").trim();
-      const policy = content.split("\n").filter((line) => /^\s*\*\*Policy:?\*\*/i.test(line));
-      content = [body, missing.join("\n\n"), ...policy].filter(Boolean).join("\n\n");
-    }
-  }
-  if (effects.proposal && effects.policyLine) {
-    content = `${content.split("\n").filter((line) => !/^\s*\*\*Policy:?\*\*/i.test(line)).join("\n").trim()}\n\n**Policy:** ${effects.policyLine}`;
-  }
-
-  /*
-   * An edit the open-form reader wrote: its reply is what was saved, field by field (the realized diff today's chat
-   * shows), so the reply never claims more or less than the draft now holds.
-   */
-  /*
-   * THE CARD STAYS OPEN (Pau, 15:00Z 14 Nov 2026: a mid-form question is answered and the open card stays). The last
-   * reply showed a card not yet created, and this turn made no card, edit or list: the reply says the card is still
-   * open, so the conversation goes on with it.
-   */
-  const lastReply = [...input.history].reverse().find((turn) => turn.role === "assistant" && !turn.error);
-  if (
-    !effects.proposal && !effects.formUpdate && !effects.formOpened && !effects.replyOverride && !input.openFormId &&
-    lastReply && CARD_REPLY.test(String(lastReply.content)) && !/still open/i.test(content)
-  ) {
-    content = `${content.trim()}\n\n${CARD_STILL_OPEN}`;
-  }
   /*
    * ANOTHER PERSON'S CARD KEEPS THE EARLIER ONE (SAME_REQUEST_KEEPS_EARLIER_CARD; the live run's same-request-keeps-
    * earlier-card): a card for a different person than an earlier card in this chat says the earlier card stays, so the
@@ -493,12 +458,6 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     const name = effects.proposal.employeeName.toLowerCase();
     const earlierCard = input.history.some((turn) => turn.role === "assistant" && CARD_REPLY.test(String(turn.content)) && !String(turn.content).toLowerCase().includes(name));
     if (earlierCard && !content.includes(EARLIER_CARD_STAYS)) content = `${content.trim()}\n\n${EARLIER_CARD_STAYS}`;
-  }
-  /* Today's whole-staff reply (list_staff), as written: the list or the which-salon question, never a card. */
-  if (effects.replyOverride && !effects.proposal) content = effects.replyOverride;
-  if (effects.revisedReply && effects.formUpdate && !effects.proposal) content = effects.revisedReply;
-  else if (effects.formOpened?.revisesInstanceId && !effects.proposal && !/new draft/i.test(content)) {
-    content = `I opened a new draft of the ${effects.formOpened.templateName} that revises the finalized one; the original is unchanged.\n\n${content}`.trim();
   }
   /*
    * HARD GUARD, NO FALSE "UPDATED" (the honesty breach in the live run, nov3-stepb-write-the-observation): with a form
@@ -529,7 +488,5 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     ...(effects.formUpdate ? { formUpdate: effects.formUpdate } : {}),
     ...(effects.formOpened ? { formOpened: effects.formOpened } : {}),
   };
-  /* OUT_OF_SCOPE_PLACE_SAID (parity gap #22): a salon the manager named outside their scope is said to be, as today. */
-  const placed = withOutOfScopePlace(answer, { question: input.question } as never, input.actor as never);
-  return finalReplyWithoutMarkers(withoutSensitiveDefaults(placed, input.question));
+  return finalReplyWithoutMarkers(withoutSensitiveDefaults(answer, input.question));
 }

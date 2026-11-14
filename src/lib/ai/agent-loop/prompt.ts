@@ -36,6 +36,8 @@ export function agentLoopSystem(input: {
   readonly templates: readonly { key: string; name: string }[];
   readonly headings: readonly string[];
   readonly openFormId: string | null;
+  /** The last reply showed a card not yet created: it is still on the manager's screen. */
+  readonly cardOpen?: boolean;
 }): string {
   const weekday = WEEKDAYS[weekdayOf(input.today)] ?? "";
   const lines = [
@@ -49,6 +51,7 @@ export function agentLoopSystem(input: {
       ? `JBA Policy Manual headings (use one exactly for a form's policy):\n${input.headings.map((heading) => `- ${heading}`).join("\n")}`
       : "The JBA Policy Manual could not be read; propose a form without a policy and say so.",
     input.openFormId ? `The form open on the manager's screen: instance_id ${input.openFormId} (read_form shows it).` : "",
+    input.cardOpen ? "A card is open: your last reply showed a card the manager has not created yet; it is still on their screen." : "",
   ];
   return lines.filter(Boolean).join("\n\n");
 }
