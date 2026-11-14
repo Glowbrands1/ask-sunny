@@ -33,3 +33,18 @@ describe("the policy heading on the card", () => {
     expect(cardPolicyPhrase("Bonus Policy")).toBe("Bonus Policy");
   });
 });
+
+/* The agent loop's card carries its policy (code-check audit #40, batch A): Create sends it, whatever the reply's words say. */
+describe("a card that carries its own policy", () => {
+  const card = (policyLine: string | null, content: string) => [
+    { role: "user" as const, content: "ca for her, she opened 20 minutes late" },
+    { role: "assistant" as const, content, formProposal: { proposalId: "p-9", policyLine } as never },
+  ];
+  it("sends the card's policy, not the reply's line", () => {
+    expect(cardPolicyFor({ proposalId: "p-9" }, card("Late Opening Policy, JBA Policy Manual p.15", "**Policy:** Attendance Policy, JBA Policy Manual p.14"))).toBe("Late Opening");
+    expect(cardPolicyFor({ proposalId: "p-9" }, card("Late Opening Policy, JBA Policy Manual p.15", "Here's the card."))).toBe("Late Opening");
+  });
+  it("sends none when the card cites none, even if the reply names one", () => {
+    expect(cardPolicyFor({ proposalId: "p-9" }, card(null, "**Policy:** Attendance Policy, JBA Policy Manual p.14"))).toBeNull();
+  });
+});

@@ -1021,6 +1021,8 @@ export async function proposeForm(
    * manager's ("my DM told me"), a coworker's or a letter signer's. A name not on the roster gets none; the manager fills it.
    */
   card.employeeRole = employee.id ? await rosterTitle(context.actor.scope, employee.id) : null;
+  /* The policy Create sends is the card's (`cardPolicyFor`), never read back from the model's reply (code-check #40). */
+  card.policyLine = policyLine;
   effects.proposal = card;
   const personId = typeof input.employee_id === "string" ? input.employee_id.trim() : "";
   /*

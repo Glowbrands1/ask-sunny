@@ -31,7 +31,12 @@ export function cardPolicyHeading(content: string): string | null {
 export function cardPolicyFor(proposal: Pick<ChatFormProposal, "proposalId">, messages: readonly Pick<ChatMessage, "role" | "content" | "formProposal">[]): string | null {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index]!;
-    if (message.role === "assistant" && message.formProposal?.proposalId === proposal.proposalId) return cardPolicyHeading(message.content);
+    if (message.role === "assistant" && message.formProposal?.proposalId === proposal.proposalId) {
+      /* The card's own policy when it carries one (the agent loop's cards), else the reply's Policy line, as before. */
+      const own = message.formProposal.policyLine;
+      if (own !== undefined) return own ? cardPolicyHeading(`**Policy:** ${own}`) : null;
+      return cardPolicyHeading(message.content);
+    }
   }
   return null;
 }

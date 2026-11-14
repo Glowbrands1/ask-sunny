@@ -117,3 +117,9 @@ Converted: #25, #39, #40, #41, #43, #45, #46, #47, #50.
 - The dynamic system block says when a card is open.
 - The rules book's new **Card replies** and **Staff lists** sections carry Pau's wording for each fact.
 - `run.ts` writes into the reply only `EARLIER_CARD_STAYS` (#44) and the safety clean-ups (#49). The honesty no-op (#48) is unchanged until batch D.
+
+**Correction to #40.** The audit assumed the Create button already sent the card's policy. It did not. `cardPolicyFor` (`src/lib/forms/card-policy.ts`) read the policy from the reply's `**Policy:**` line, so dropping the line replacement would have let the model's wording decide what the draft cites.
+
+Batch A therefore adds `policyLine` to `ChatFormProposal`. propose_form sets it, and `cardPolicyFor` prefers it over the reply text. Cards without the field (today's path) still read the reply as before.
+
+This is a TOOL/protocol change, not a reply patch: what Create sends is now data on the card.
