@@ -186,6 +186,28 @@ describe("the main answer (callClaude)", () => {
     expect(loggedLines()).toEqual([expect.stringMatching(/limit_ms=110000 limit=total$/)]);
   });
 
+  it("QA: 40 s of work before the answer, then an endless stream: the 504 by 112 s from the request, never Vercel's 120 s kill", async () => {
+    client.mode = "endless";
+    vi.useFakeTimers();
+    let settled: Promise<unknown> = Promise.resolve(null);
+    const started = Date.now();
+    const route = runInAiRoute("chat", async () => {
+      // The reader, retrieval and the other helpers first.
+      await new Promise<void>((resolve) => setTimeout(resolve, 40_000));
+      settled = callClaude(input).then(() => null, (error: unknown) => error);
+      return settled;
+    });
+    await vi.advanceTimersByTimeAsync(40_000 + 71_999);
+    expect(errors).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    const error = await route;
+    expect(error).toBeInstanceOf(AiTimeLimitError);
+    expect((error as AiError).message).toBe(AI_TIMEOUT_MESSAGE);
+    expect(Date.now() - started).toBeLessThanOrEqual(112_000);
+    // The total was cut from 110 s to what was left: 120 − 8 − 40 = 72 s.
+    expect(loggedLines()).toEqual([expect.stringMatching(/^\[ai\.timeout\] route=chat call=main_answer duration_ms=\d+ limit_ms=72000 limit=total$/)]);
+  });
+
   it("AI_MAIN_TIMEOUT_MS sets the first-token limit", async () => {
     process.env.AI_MAIN_TIMEOUT_MS = "6000";
     client.mode = "stall-stream";

@@ -82,3 +82,20 @@ export function formPatchTimeoutMs(): number {
   if (!process.env.FORM_PATCH_TIMEOUT_MS || !Number.isFinite(configured)) return FORM_PATCH_TIMEOUT_DEFAULT_MS;
   return Math.min(10_000, Math.max(1_000, Math.round(configured)));
 }
+
+/**
+ * QA, 14 Nov 2026: the helpers before the main answer (reader, retrieval, …) use part of the route's 120 s, so a
+ * stream's total is also cut to the time left before the route's maxDuration, less a margin for the reply and its log
+ * line. Measured from the request's start (`ai-route.ts`). AI_ROUTE_MAX_MS (60,000 to 300,000) is the chat and
+ * drafting routes' maxDuration; AI_DEADLINE_MARGIN_MS (1,000 to 30,000) the margin.
+ */
+export const AI_ROUTE_MAX_DEFAULT_MS = 120_000;
+export const AI_DEADLINE_MARGIN_DEFAULT_MS = 8_000;
+
+export function routeMaxMs(): number {
+  return fromEnv("AI_ROUTE_MAX_MS", AI_ROUTE_MAX_DEFAULT_MS, 60_000, 300_000);
+}
+
+export function deadlineMarginMs(): number {
+  return fromEnv("AI_DEADLINE_MARGIN_MS", AI_DEADLINE_MARGIN_DEFAULT_MS, 1_000, 30_000);
+}
