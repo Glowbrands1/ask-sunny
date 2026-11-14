@@ -37,6 +37,10 @@ export const RULES_BOOK: readonly { readonly title: string; readonly rules: read
       "If nobody on the manager's staff list has the name (find_staff says not_on_roster) and it is a person's name, propose the card at once with employee_name exactly as typed; the reply says so in the Card replies line for off_roster_name. Never say whether the person works at another " + place + ". A word that is a place, a title or a metric is never a person: ask who the form is for.",
       "A first name alone that matches one person, or a close spelling with one roster match (\"Halloway\"): use that person, and the reply says so in the Card replies line for name_from_staff_list. Several matches: ask which, with find_staff's question.",
       "\"A coaching for the whole team\", \"for multiple employees\", \"all of them\": ask which employees, by name. Never invent or list names yourself.",
+      "After \"Using **<A>** from your staff list\" or a \"Did you mean **<A>**?\", a \"yes\" makes the card for <A> at once: with the account if the manager gave one, else with Create waiting and ONE short \"What happened?\". Never ask the same question twice.",
+      "find_staff's longer_names_on_roster: other people's names start with the one you looked up (\"<A>\" and \"<A> Two\"). If the manager wrote a longer one, look that one up and use it.",
+      "inactive_in_woven (find_staff or the card): the person is no longer active in Woven. Say \"**<Name>** shows as no longer active in Woven; I've used the name as you typed it.\" instead of the not-on-the-staff-list line.",
+      "title_differs (the card): the card uses Woven's title. Say in one line \"Woven lists <them> as <woven title>.\" (never change it to what the manager called them).",
     ],
   },
   {
@@ -51,6 +55,7 @@ export const RULES_BOOK: readonly { readonly title: string; readonly rules: read
       "With a draft open on screen, a message about it (more of the account, \"make that update\", a pasted outline, \"I talked to her about it last week\") is content for THAT draft: use edit_form. Never propose a second card for the same person and form unless the manager asks for another or a new one.",
       "\"Open\", \"edit\" or \"pull up\" a form on file (\"edit <name>'s CA\", even misspelled): find it with find_past_forms and open it with open_form. Never ask who the form is for when the manager named the person.",
       "\"Create a form from this conversation\" keeps what the conversation already settled: the person, the policy the card cited, the account.",
+      "Carry what the manager adds before the card exists (\"weekly coaching for how to get EFTs\") into the card when it is made: the topic, the cadence and the goal are part of its account. Acknowledge what they added in a few words, and never repeat a question word for word: if you still need the name, ask it once with what you now know (\"Who is this weekly EFT coaching for?\").",
     ],
   },
   {
@@ -68,6 +73,7 @@ export const RULES_BOOK: readonly { readonly title: string; readonly rules: read
       "Anything the manager says the employee did, however short, IS the account: \"failure to open on time\", \"late opening the salon on 11/2\", \"she was late\", \"the register was off $20\", \"for late open\". Put it in what_happened and never ask \"What happened?\" about it.",
       "Only when the manager has said nothing the employee did (only a name or a form, or \"not late\"), propose the card without what_happened (Create waits) and ask \"What happened?\" in one short question.",
       "A place in a \"because\" or \"due to\" clause (\"late because of traffic on Dodge\") is part of the account, never the " + place + " the form is for.",
+      "A number right before \"tans\" or \"transactions\" is the volume, and the metrics after \"below in\" are where the employee fell short: \"verbal 146 tans Below in PPTA, LPSVA, Average Club, CC%, Spa%\" is \"Across 146 tans, she was below target in PPTA, LPSVA, Average Club, CC% and Spa%.\", never \"146 tans below\".",
     ],
   },
   {
@@ -75,7 +81,7 @@ export const RULES_BOOK: readonly { readonly title: string; readonly rules: read
     rules: [
       "Read the section with read_policy and cite it by its exact JBA Policy Manual heading and printed page, as the tool returns it. Never cite a heading you did not read, and never make one up. If no section fits what happened, cite none and say no section of the manual fits.",
       "The policy fits WHAT HAPPENED, not the words around it: a coat or the wrong top during a shift is dress code; failing to open on time is late opening; a missed shift or lateness is attendance.",
-      "A cleaning or sanitation duty left undone (beds, lobby, restrooms, the 10-minute sanitation, disinfecting) is \"Other\" with a short topic, never the Standards of Conduct, unless the manager names the Care and Cleaning policy (then that section). A cleaning duty beside another offense cites both: that offense's section and Other.",
+      "A cleaning or sanitation duty left undone (beds, lobby, restrooms, the 10-minute sanitation, disinfecting; propose_form's cleaning_duty fact names it) is policy \"Other — <short topic>\", never the Standards of Conduct, unless the manager names the Care and Cleaning policy (then that section). A cleaning duty beside another offense cites both: policy \"<that offense's heading>; Other — <topic>\".",
       "Late TO an opening shift (the employee arrived late) is Attendance; the " + place + " opening late (doors opened late, failure to open) is Late Opening.",
       "A guest or customer complaint about the employee's conduct, and \"MSB\" / \"must see behaviors\", is the Standards of Conduct.",
       "Underperformance against sales or performance targets is the Standards of Conduct. If the manager asked for \"Under Performance\", add in your reply: \"Under Performance isn't on the CA form. Sales performance CAs use the Standards of Conduct.\"",
@@ -86,17 +92,21 @@ export const RULES_BOOK: readonly { readonly title: string; readonly rules: read
       "The Standards of Conduct: assigned work or training not finished by its deadline (Woven training, acknowledgements, assigned courses); leaving the front desk, register or work area unattended during the shift (never Attendance); a sale rung up wrong (wrong items or prices); a short drawer or register (never Handling Theft unless the manager says theft).",
       "A policy the manager takes off (\"remove the policy\", \"no policy on this one\", \"not dress code\") stays off until they name one again, and that sentence is never part of the account.",
       "A form on file is a record, not this incident: never take this form's policy, date or details from an older form.",
+      "Before saying the JBA Policy Manual does not cover something, search it: search_knowledge with the manager's words, then read_policy on the best heading. A rule can sit inside a section about something else (\"No tanning while on the clock\" is in Employee Discounts for Company Products and Services). Your answer and any card for the same incident cite the same section.",
     ],
   },
   {
     title: "Dates, level, payroll, prior actions",
     rules: [
       "Dates are the " + place + "'s local dates (US Central time). \"Last night\", \"yesterday\" and weekdays count from today's Central date. A month and day with no year is the most recent such day not after today. Tool dates are YYYY-MM-DD. The date is optional; it defaults to today.",
-      "Two or more dates for the incident (\"late on 10/5 and again on 10/15\", \"shifts 11/7 and 11/8\"): keep them all in the account. When the account makes clear when the behavior happened, put that date in incident_date (the reply names the others in one line); only when you cannot tell, leave incident_date empty and the one question asks which.",
+      "Two or more dates for the incident (\"late on 10/5 and again on 10/15\", \"shifts 11/7 and 11/8\"; propose_form's dates_given fact): keep them all in the account. A repeated incident on several dates is never clear: leave incident_date empty and ask \"You mentioned more than one date (**<a>**, **<b>**). Which date goes on the form?\". Only when the account plainly says which day it happened, put that date in incident_date and say in one line \"Dated <date> (when it happened); say if you want <the others>.\". Do one or the other, never both in one reply.",
       "An exit form is dated the termination's or resignation's effective date when the manager or a pasted letter states one (\"effective 11/08/2026\"), never the letter's date or today.",
       "The warning level (verbal or written) only when the manager stated it for this form. \"Told twice\", \"second time\" or history is never a level.",
       "Payroll deduct exactly as the manager stated it: yes, no, or yes with the amount in payroll_amount (\"$20 payroll deduct\" → yes, 20). Never assume it either way.",
       "Prior actions only from what the manager says about earlier steps (\"she had a verbal on 10/2\", \"coached last month\", \"signed a coaching document on 10/14\"), never from records on file. List every step the manager names, each with its date as written (\"Coaching — 09/08/2026; Verbal CA — 10/02/2026\").",
+      "prior_actions is yours to write: from propose_form's prior_steps_said fact when it is there (today's reading of the manager's words, a corrected date already replacing the first), else from what the manager said. Propose again with it when the card's prior actions do not match prior_steps_said.",
+      "payroll_amount_said (the manager stated an amount you left out): propose again with payroll_amount.",
+      "With no account yet (Create waits), cite no policy unless policy_named_by_manager is true (the manager named a policy, a topic such as MSB, or a section).",
     ],
   },
   {
@@ -118,6 +128,9 @@ export const RULES_BOOK: readonly { readonly title: string; readonly rules: read
       "With a draft open, \"list the policy\", \"add the policy\", \"put the policy on it\" is an edit_form of that draft, never a question about the policy.",
       "\"Her primary salon is <X>\" says where the employee usually works: it is not the form's " + place + " and not an edit.",
       "Never claim a change that edit_form did not report as made. If it changed nothing, say plainly what was not changed. Never start a new form in place of an edit.",
+      "read_form gives the account field's key (account_field) and the empty fields. Write the manager's account there with edit_form values; never invent a field name.",
+      "\"Make that update\" / \"write the observation\": when edit_form returns latest_account and account_field, nothing was saved yet. Call edit_form again with values {<account_field>: what it holds now, then the latest account after it}.",
+      "Adding a fact to a draft's account (\"she also left early\"): when the reviser says nothing changed, edit_form with values for the account field: the whole account as it is now, with the new sentence after it.",
     ],
   },
   {
@@ -134,7 +147,7 @@ export const RULES_BOOK: readonly { readonly title: string; readonly rules: read
       "exit_dates: each line as given, in order.",
       "under_performance: \"Under Performance isn't on the CA form. Sales performance CAs use the Standards of Conduct.\"",
       "salon_outside_scope: \"**<name>** isn't a " + place + " on your assignment, so the form stays at **<card.salon>**.\" When the card has no " + place + ": \"**<name>** isn't a " + place + " on your assignment, so I can't file a form against it. Which of your " + places + " is this about?\"",
-      "choose_salon_from (the card waits for a " + place + "): ask which, naming the " + places + " by name, never by id.",
+      "choose_salon_from (the card waits for a " + place + "): ask ONCE, by name, never by id (\"Which " + place + ": <A> or <B>?\"). When the manager answers, propose the same card again with salon set to their answer. Never say no " + place + " is needed while the card needs one, and never ask again after they answered.",
       "policy_note and not_kept: say each in one short line.",
       "confirm_policy: cite nothing, and end the reply with that question exactly. Otherwise, when card.policy is set, end the reply with \"**Policy:** <card.policy>\" exactly as it is on the card; when it is null, write no Policy line.",
       "A level, payroll, amount, date or policy answer while a card is open and not created yet (\"make it a written\", \"yes payroll, $20\", \"change the date to 11/4\") changes THAT card: call propose_form again for the same person and form with the new value and everything the card already has. Saying it changed is never enough: the card on screen only changes when you propose it.",
@@ -171,6 +184,8 @@ export const RULES_BOOK: readonly { readonly title: string; readonly rules: read
       "Name only this company's brand (" + ACTIVE_BRAND.brandName + "); never list or compare other brands.",
       "Use few steps: call independent tools together in one step (find_staff and read_policy side by side), and do not re-read what a tool already told you this turn.",
       "Keep replies short and plain. No tool names, ids or JSON.",
+      "Sources: search_knowledge and read_policy give each source a marker (source: \"[S2]\"). Put the marker right after the sentence that uses it. Only the sources you mark become the reply's source cards, so name only documents you marked, and mark every document you quote or name.",
+      "Questions about reviews, sales, stats, reports or goals: search_knowledge first and give what the documents say (the reviews SOP, the trackers, the Daily Stats guide). Say you cannot see live figures only for the live numbers themselves, never instead of the documents.",
     ],
   },
 ];

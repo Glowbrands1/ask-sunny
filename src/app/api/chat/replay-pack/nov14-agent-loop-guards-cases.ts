@@ -242,7 +242,10 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       // QA's reconciliation (16:17Z): two dates of one repeated incident are never clear, so even a model that picks one is asked which.
       const picked = t.thread();
       const dated = await picked.say("ca for tamsin orwell (pick), she left the spray booth dirty on 9/28 and again on 10/2");
-      expect(picked.proposal?.formDate ?? null, "a date was picked without asking").toBeNull();
+      // Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite; code-check audit batch B): the model's pick of a stated date stands, the facts say which it chose and what else was said, and the rules book's
+      // "never clear, ask" decides live. A date nobody stated is still refused (below).
+      expect(picked.proposal?.formDate ?? null).toBe("2026-09-28");
+      expect(toolResults(picker.views, "propose_form").at(-1), dated.content).toMatch(/"date_chosen":"2026-09-28"/);
       // Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite; code-check audit batch A): the line is the model's, from this fact.
       expect(toolResults(picker.views, "propose_form").at(-1), dated.content).toMatch(/"dates_given":\["9\/28","10\/2"\]/);
       // A date nobody stated is never kept: the one question instead.
@@ -250,7 +253,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       const notStated = await invented.say("ca for tamsin orwell (invent), she left the spray booth dirty on 9/28 and again on 10/2");
       expect(invented.proposal?.formDate ?? null).toBeNull();
       // Changed on purpose (batch A): the question is the model's, from the dates_given fact.
-      expect(toolResults(picker.views, "propose_form").at(-1), notStated.content).toMatch(/"dates_given":\["9\/28","10\/2"\]/);
+      // Changed on purpose (batch B, code-check #20): a date nobody stated is refused, with the stated dates, so the model asks.
+      expect(toolResults(picker.views, "propose_form").at(-1), notStated.content).toMatch(/2026-09-30 is none of the dates the manager gave \(9\/28, 10\/2\)/);
 
       const prior = t.thread();
       const one = await prior.say("ca for tamsin orwell, she was late on 11/3 after being coached on 10/1");
@@ -296,12 +300,18 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       vi.setSystemTime(new Date("2026-11-13T22:40:00Z"));
       t.directory([...STAFF, TAMSIN]);
       t.as("salon_director", KEARNEY);
-      t.loopModel!(loopStandIn((view) => {
-        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, what_happened: "The register was short $20 on 11-1-26, which will be payroll deducted.", warning_level: "verbal", payroll_deduct: "yes" } };
+      // Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite; code-check audit batch B): the amount is no longer filled in by code; propose_form says the
+      // stated amount (payroll_amount_said) and the model proposes again with it, as the rules book teaches.
+      const payer = loopStandIn((view) => {
+        const said = (lastResult(view, "propose_form")?.facts as { payroll_amount_said?: string } | undefined)?.payroll_amount_said;
+        const tries = view.results.filter((result) => result.tool === "propose_form").length;
+        if (tries === 0 || (tries === 1 && said)) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, what_happened: "The register was short $20 on 11-1-26, which will be payroll deducted.", warning_level: "verbal", payroll_deduct: "yes", ...(said ? { payroll_amount: said } : {}) } };
         return { text: "Here is the card." };
-      }));
+      });
+      t.loopModel!(payer);
       const thread = t.thread();
       const reply = await thread.say("create a verbal ca for tamsin orwell. on 11-1-26 the register was short $20 which will be payroll deducted from her check. payroll deduct applies");
+      expect(toolResults(payer.views, "propose_form")[0], "the stated amount is not a fact").toMatch(/"payroll_amount_said":"\$20"/);
       expect(thread.proposal as unknown, "the stated amount is not on the card").toMatchObject({ payrollDeduct: "yes", payrollDeductAmount: "20" });
       expect(reply.content, "the amount was asked although it was stated").not.toContain("**Payroll deduction amount**?");
     },
@@ -829,9 +839,17 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       const id = await thread.create();
       t.loopModel!(loopStandIn(() => ({ text: "Got it." })));
       await thread.say("tamsin marked a session as complete but the guest hadn't been sprayed yet");
-      const updater = loopStandIn((view) => (lastResult(view, "edit_form") ? { text: "Done." } : { tool: "edit_form", input: { instance_id: id } }));
+      // Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite; code-check audit batch B): "make that update" no longer writes the account in code; edit_form
+      // returns latest_account and account_field and the model writes it with values, as the rules book teaches.
+      const updater = loopStandIn((view) => {
+        const edit = lastResult(view, "edit_form") as { latest_account?: { untrusted_text: string }; account_field?: string } | null;
+        if (!edit) return { tool: "edit_form", input: { instance_id: id } };
+        if (edit.latest_account && edit.account_field) return { tool: "edit_form", input: { instance_id: id, values: { [edit.account_field]: edit.latest_account.untrusted_text } } };
+        return { text: "Done." };
+      });
       t.loopModel!(updater);
       await thread.say("make that update");
+      expect(toolResults(updater.views, "edit_form")[0], "the latest account is not a fact").toMatch(/"account_field":"coaching_details"/);
       expect(t.values(id).coaching_details ?? "", "the account was not written").toMatch(/tamsin marked a session as complete but the guest hadn't been sprayed yet/i);
 
       // "observation" on a coaching form is its Details; an empty account is refused.
@@ -839,11 +857,14 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
         const edits = view.results.filter((result) => result.tool === "edit_form").length;
         if (edits === 0) return { tool: "edit_form", input: { instance_id: id, values: { coaching_details: "" } } };
         if (edits === 1) return { tool: "edit_form", input: { instance_id: id, values: { observation: "Tamsin Orwell skipped the spray booth check on 11/12." } } };
+        // Changed on purpose (batch B, code-check #27): "observation" is refused with the form's own key, and the model uses it.
+        if (edits === 2) return { tool: "edit_form", input: { instance_id: id, values: { coaching_details: "Tamsin Orwell skipped the spray booth check on 11/12." } } };
         return { text: "Done." };
       });
       t.loopModel!(aliased);
       await thread.say("she also skipped the spray booth check on 11/12, put that in");
       expect(toolResults(aliased.views, "edit_form")[0], "an empty account was written").toMatch(/never written empty/);
+      expect(toolResults(aliased.views, "edit_form").some((result) => /not a field.*The account goes in coaching_details/.test(result)), "an unknown field was not refused with the account field").toBe(true);
       expect(t.values(id).coaching_details ?? "", "\"observation\" did not reach the Details").toMatch(/skipped the spray booth check on 11\/12/);
     },
   },

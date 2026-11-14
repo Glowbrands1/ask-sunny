@@ -585,7 +585,7 @@ const liveModel = process.env.AGENT_LOOP_LIVE === "1"
   : null;
 /* AGENT_LOOP_ENABLED (QA, 14 Nov 2026): the loop's stand-in model (`t.loopModel`), and its manual cache forgotten between cases. */
 const { __setAgentLoopModelForTests } = await import("@/lib/ai/agent-loop/run");
-const { forgetAgentLoopManualForTests } = await import("@/lib/ai/agent-loop/tools");
+const { forgetAgentLoopManualForTests, __setAgentLoopDirectoryForTests } = await import("@/lib/ai/agent-loop/tools");
 
 /** The chat route only accepts a UUID for the open form; the fake numbers rows `fake-N`. */
 function toUuid(id: string): string {
@@ -901,6 +901,7 @@ afterEach(() => {
   loop.standIn = null;
   loop.rosterFails = false;
   __setAgentLoopModelForTests(null);
+  __setAgentLoopDirectoryForTests(null);
   if (loop.listed) {
     if (loop.users === undefined) delete process.env.AGENT_LOOP_USERS;
     else process.env.AGENT_LOOP_USERS = loop.users;
@@ -1024,6 +1025,8 @@ function context(): ReplayContext {
     loopOn: () => process.env.AGENT_LOOP_ENABLED === "true",
     loopModel: (standIn) => {
       loop.standIn = standIn;
+      // The loop's inactive_in_woven fact reads the whole directory (terminated people too) through its own seam.
+      __setAgentLoopDirectoryForTests(async () => state.directory as never);
       // AGENT_LOOP_LIVE (dev, opt-in): the real model, recorded into the case's stand-in (`liveRecording`).
       __setAgentLoopModelForTests(liveModel ? liveRecording(standIn, liveModel) : standIn.model);
       // The loop runs only for listed users (an empty list is nobody): this case's signed-in manager is listed.

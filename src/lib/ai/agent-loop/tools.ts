@@ -8,7 +8,7 @@ import { candidateNameWords, chatFormsActor } from "@/lib/forms/chat-form-record
 import { displayName, matchEmployeeName, nameConfirmationQuestion, type RosterEmployee } from "@/lib/forms/employee-match";
 import { offRosterTyped } from "@/lib/forms/roster-only-names";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
-import { readScopedRoster } from "@/lib/forms/employee-roster";
+import { readDirectoryRoster, readScopedRoster, type DirectoryRosterRow } from "@/lib/forms/employee-roster";
 import { inlineDraftVariantKey, supportsInlineDraft } from "@/lib/forms/inline-draft";
 import { authorizeInstance, InstanceNotVisibleError, instanceListFilterFor, visibleInstances } from "@/lib/forms/instance-scope";
 import { applyAssistantRevision, listInstances } from "@/lib/forms/instances";
@@ -25,7 +25,7 @@ import {
 import type { AskResponse } from "@/lib/ai/types";
 import { findManualSection, manualSectionHeadings, type ManualChunk } from "@/lib/forms/official-policy-manual";
 import { sectionWording } from "@/lib/forms/policy-citation";
-import { buildProposal, extractEmployeeNames, managerContext, samePerson, tidyTypedName } from "@/lib/forms/proposal";
+import { buildProposal, extractEmployeeNames, extractJobTitle, managerContext, samePerson, tidyTypedName } from "@/lib/forms/proposal";
 import { cleaningUndonePhrase, namesCareAndCleaning } from "@/lib/forms/ca-policy";
 import { turnsFromThisPersonsRequest } from "@/lib/forms/this-persons-turns";
 import { closePolicyQuestion, namedPolicies } from "@/lib/forms/named-policy-section";
@@ -40,7 +40,6 @@ import { manualScopeFetchLimit, scopeToCurrentManual } from "@/lib/knowledge/cur
 import { matchHybridKnowledge } from "@/lib/knowledge/hybrid-match";
 import { matchRecallKnowledge } from "@/lib/knowledge/recall-match";
 import { rowToCitation, type MatchedChunkRow } from "@/lib/knowledge/mappers";
-import { shownCitations } from "@/lib/knowledge/empty-card-drop";
 import { topicHeadings } from "@/lib/forms/specific-policy-topics";
 import { formatManualCitation } from "@/lib/ai/policy-citation-fields";
 import { redactSensitiveDefaults } from "@/lib/ai/sensitive-defaults";
@@ -155,7 +154,12 @@ export interface ToolEffects {
   formUpdate: { instanceId: string; updated: string[] } | null;
   /** Roster ids find_staff chose from a close spelling or a lone first name this turn (the card's name_from_staff_list fact). */
   nameLines?: Record<string, string>;
-  /** The knowledge-base passages search_knowledge returned, as today's source cards. */
+  /**
+   * Every source a tool read this turn, numbered from 1 in the order read: the model cites one as [S<n>] (`addSource`).
+   * Only the ones the reply cites become source cards (run.ts, QA's live-app item 12), as today's grounded path does.
+   */
+  sources?: SourceCitation[];
+  /** Kept for callers that set cards directly; run.ts shows `sources` the reply cites. */
   citations?: SourceCitation[];
   /** A new draft revising a finalized form, opened on the manager's screen (`editable-draft.ts`). */
   formOpened?: AskResponse["formOpened"] | null;
@@ -182,6 +186,35 @@ async function rosterFor(scope: AccessScope): Promise<RosterRead> {
     return { kind: "read", roster: await readScopedRoster(scope) };
   } catch {
     return { kind: "failed" };
+  }
+}
+
+/**
+ * QA's live-app item 7 (14 Nov 2026): a name that is a person no longer active in Woven (terminated) is said to be,
+ * not "not on the staff list". Only someone the manager could see while active: a salon login's own salons (by the
+ * directory's affiliations), every salon for a global login; never a district or region login (unchecked). The full
+ * name only; no other field.
+ */
+let directoryForTests: (() => Promise<readonly DirectoryRosterRow[]>) | null = null;
+/** Tests only: the whole directory (terminated people included) for `inactiveMatch`; null reads it as production does. */
+export function __setAgentLoopDirectoryForTests(read: (() => Promise<readonly DirectoryRosterRow[]>) | null): void {
+  directoryForTests = read;
+}
+
+export async function inactiveMatch(scope: AccessScope, typed: string): Promise<string | null> {
+  if (scope.level !== "salon" && scope.level !== "global") return null;
+  const wanted = words(typed);
+  if (wanted.length < 2) return null;
+  try {
+    const allowed = scope.level === "salon" ? new Set((await import("@/lib/forms/location-scope")).authorizedSalonIds(scope)) : null;
+    const rows = (await (directoryForTests ?? readDirectoryRoster)()).filter((row) => row.employmentStatus === "terminated" && row.firstName && row.lastName && (!allowed || row.salonIds.some((id) => allowed.has(id))));
+    const hits = rows.filter((row) => {
+      const own = words([row.firstName, row.preferredFirstName ?? "", row.lastName].join(" "));
+      return wanted.every((word) => own.includes(word));
+    });
+    return hits.length === 1 ? `${hits[0]!.preferredFirstName?.trim() || hits[0]!.firstName!.trim()} ${hits[0]!.lastName!.trim()}` : null;
+  } catch {
+    return null;
   }
 }
 
@@ -263,6 +296,8 @@ export async function findStaff(context: ToolContext, input: { name?: unknown },
   let found = rosterMatches(typed, read.roster).slice(0, 10);
   /* The roster's exact full name wins over people whose names only start the same ("Test Employee" vs "Test Employee Two"). */
   const exact = found.filter((person) => samePerson(displayName(person), typed) && words(displayName(person)).length === words(typed).length);
+  /* r3 (right-persons-account): the longer names are a fact, so a manager's "<A> Two" is never lost to "<A>". */
+  const longer = exact.length > 0 ? found.filter((person) => !exact.includes(person)).map(displayName) : [];
   if (exact.length > 0) found = exact;
   if (found.length === 0) {
     /* Close spellings, as the app's own name check reads them ("Marnie Halloway" → Marnie Holloway). */
@@ -318,7 +353,8 @@ export async function findStaff(context: ToolContext, input: { name?: unknown },
      * gets the card at once with the typed name, and the reply says it is not on the Woven staff list. A person at a
      * salon outside the manager's scope is read the same way (the roster is scoped): their existence is never shown.
      */
-    return { matches: [], not_on_roster: person, staff_list: context.actor.scope.level === "salon" ? "your salon's" : "the", note: `Not on the Woven staff list. Propose the card now with employee_name "${person}" as typed, and say so as the rules book's Card replies teach.` };
+    const inactive = await inactiveMatch(context.actor.scope, person);
+    return { matches: [], not_on_roster: person, staff_list: context.actor.scope.level === "salon" ? "your salon's" : "the", ...(inactive ? { inactive_in_woven: inactive } : {}), note: `Not on the Woven staff list${inactive ? " (no longer active in Woven)" : ""}. Propose the card now with employee_name "${person}" as typed, and say so as the rules book's Card replies teach.` };
   }
   /* A first name alone is confirmed before it goes on a form, as today ("Is this for **Rhea Calloway**?"). */
   /*
@@ -334,6 +370,7 @@ export async function findStaff(context: ToolContext, input: { name?: unknown },
   const shared = new Set(found.map((person) => displayName(person).toLowerCase())).size < found.length;
   return {
     matches: found.map(staffRow),
+    ...(longer.length > 0 ? { longer_names_on_roster: longer, longer_note: "Other people's names start with this one. If the manager wrote one of these longer names, look that one up instead." } : {}),
     ...(found.length > 1 ? { note: shared ? "Several people share this name: ask the manager which one (by salon) before proposing a form." : "Several people match: ask the manager which one." } : {}),
   };
 }
@@ -466,6 +503,8 @@ export async function readForm(context: ToolContext, input: { instance_id?: unkn
       if (size > VALUES_LIMIT) break;
       values[row.fieldKey] = untrusted(shown);
     }
+    const fieldKeys = documentFieldKeys(loaded.version.document);
+    const filled = new Set(Object.keys(values));
     return {
       instance_id: loaded.instance.id,
       form: loaded.instance.templateName,
@@ -475,6 +514,9 @@ export async function readForm(context: ToolContext, input: { instance_id?: unkn
       editable: loaded.instance.status === "draft",
       form_date: loaded.instance.formDate,
       values,
+      /* The field the manager's account goes in (Observation on a CA, Details of Coaching on a coaching form). */
+      account_field: ["observation", "coaching_details"].find((key) => fieldKeys.has(key)) ?? null,
+      empty_fields: [...fieldKeys].filter((key) => !filled.has(key)).slice(0, 40),
     };
   } catch (error) {
     if (error instanceof InstanceNotVisibleError) return { error: "That form does not exist or this manager cannot open it." };
@@ -482,9 +524,26 @@ export async function readForm(context: ToolContext, input: { instance_id?: unkn
   }
 }
 
+/**
+ * A source the model may cite, numbered for this turn: the same document and page or section keeps its number. Returns
+ * the marker the model writes ("[S2]").
+ */
+export function addSource(effects: ToolEffects, citation: SourceCitation): string {
+  const sources = (effects.sources ??= []);
+  const at = sources.findIndex((row) => row.documentId === citation.documentId && row.locator === citation.locator);
+  if (at >= 0) return `[S${at + 1}]`;
+  sources.push(citation);
+  return `[S${sources.length}]`;
+}
+
 /* -------------------------------------------------------- policy manual --- */
 
-type ManualRead = { readonly chunks: readonly ManualChunk[]; readonly headings: readonly string[] } | null;
+type ManualRead = {
+  readonly chunks: readonly ManualChunk[];
+  readonly headings: readonly string[];
+  /** The manual's own row, for its source card (QA's live-app item 9). */
+  readonly document?: { readonly id: string; readonly title: string; readonly category: string };
+} | null;
 const manualCache = new Map<string, Promise<ManualRead>>();
 
 export function manualFor(scopeId: string): Promise<ManualRead> {
@@ -494,7 +553,11 @@ export function manualFor(scopeId: string): Promise<ManualRead> {
     try {
       const manual = await new SupabaseKnowledgeProvider().fetchOfficialPolicyManual(scopeId);
       if (!manual.ok) return null;
-      return { chunks: manual.chunks, headings: manualSectionHeadings(manual.chunks) };
+      return {
+        chunks: manual.chunks,
+        headings: manualSectionHeadings(manual.chunks),
+        document: { id: manual.documentId, title: manual.documentTitle, category: manual.documentCategory ?? "policy" },
+      };
     } catch {
       return null;
     }
@@ -524,7 +587,7 @@ function headingOf(headings: readonly string[], asked: string): string | null {
   return headings.find((heading) => key(heading) === wanted) ?? null;
 }
 
-export async function readPolicy(context: ToolContext, input: { heading?: unknown }): Promise<ToolResult> {
+export async function readPolicy(context: ToolContext, input: { heading?: unknown }, effects?: ToolEffects): Promise<ToolResult> {
   const asked = typeof input.heading === "string" ? input.heading.trim() : "";
   const manual = await manualFor(context.scopeId);
   if (!manual) return { error: "The JBA Policy Manual could not be read just now. Say so; do not answer from memory." };
@@ -532,6 +595,26 @@ export async function readPolicy(context: ToolContext, input: { heading?: unknow
   if (!heading) return { error: "No section of the manual has that heading. Use one of these exactly.", headings: manual.headings };
   const section = findManualSection(manual.chunks, [heading]);
   if (!section) return { error: "That section could not be found in the manual just now." };
+  /*
+   * QA's live-app item 9 (B1, B5, B7: the manual quoted with a page and no source card): the section read is a source
+   * card, as a search_knowledge passage is (`rowToCitation`, `shownCitations`).
+   */
+  const chunk = manual.chunks.find((row) => row.chunkIndex === section.chunkIndex);
+  if (effects && manual.document && chunk?.chunkId && chunk.locator) {
+    const row: MatchedChunkRow = {
+      chunk_id: chunk.chunkId,
+      document_id: manual.document.id,
+      document_title: manual.document.title,
+      category: manual.document.category,
+      locator: chunk.locator,
+      page: chunk.page,
+      section: section.heading,
+      content: chunk.content,
+      similarity: 1,
+    };
+    const marker = addSource(effects, rowToCitation(row));
+    return { document: "JBA Policy Manual", heading: section.heading, page: section.page, source: marker, wording: sectionWording(manual.chunks, section) };
+  }
   return { document: "JBA Policy Manual", heading: section.heading, page: section.page, wording: sectionWording(manual.chunks, section) };
 }
 
@@ -745,12 +828,13 @@ export async function proposeForm(
     payroll_amount?: unknown;
     prior_actions?: unknown;
     incident_time?: unknown;
+    salon?: unknown;
   },
 ): Promise<ToolResult> {
   /*
    * One card per reply (the screen shows one, as today's TWO_FORMS_EACH_PERSON): the next person's form is offered.
-   * The same form for the same person may be proposed again in the reply (the self-review in run.ts: the card is fixed
-   * to match the manager's answer); the new card replaces the first.
+   * The same form for the same person may be proposed again in the reply (the self-review in run.ts, and batch B's
+   * facts such as payroll_amount_said: the card is fixed within the turn); the new card replaces the first.
    */
   const anotherCard = (name: string | null) =>
     effects.proposal && (effects.proposal.templateKey !== (typeof input.template_key === "string" ? input.template_key.trim() : "") || !name || !samePerson(effects.proposal.employeeName ?? "", name))
@@ -883,7 +967,10 @@ export async function proposeForm(
    * manager names keeps that section; a cleaning duty beside another offense cites both.
    */
   const manual = await manualFor(context.scopeId);
-  const askedPolicy = typeof input.policy === "string" ? input.policy.trim() : "";
+  const askedPolicyWhole = typeof input.policy === "string" ? input.policy.trim() : "";
+  /* A heading beside Other ("Late Opening; Other — beds not cleaned"): the heading is checked, Other is the model's topic. */
+  const askedOther = /(?:^|;\s*)(other\b.*)$/i.exec(askedPolicyWhole)?.[1]?.trim() ?? "";
+  const askedPolicy = askedOther && askedPolicyWhole.includes(";") ? askedPolicyWhole.split(";")[0]!.trim() : askedPolicyWhole;
   let policyHeading: string | null = null;
   if (askedPolicy && !/^other\b/i.test(askedPolicy)) {
     if (!manual) return { error: "The JBA Policy Manual could not be read just now, so no policy can be cited. Propose without a policy or say so." };
@@ -923,15 +1010,16 @@ export async function proposeForm(
     return { error: `${policyHeading} is not this incident's section. What the manager described is cited under: ${topicFits.join(", ")}. Read that section and propose again.` };
   }
   /* As today's card prints it (`formatManualCitation`): "Standards of Conduct Policy, JBA Policy Manual p.12". */
+  /*
+   * The card cites the policy the model chose (batch B, code-check #22: the cleaning rule is a fact and a rules-book
+   * line, no longer an override). "Other" carries the model's short topic.
+   */
   let policyLine: string | null = policyHeading && !confirmPolicy ? formatManualCitation(policyHeading, page) : null;
-  let policyNote: string | null = null;
-  if (cleaning && !careAndCleaning) {
-    const conduct = policyHeading !== null && /standards of conduct/i.test(policyHeading);
-    policyLine = policyHeading && !conduct ? `${policyHeading}; Other — ${cleaning}` : `Other — ${cleaning}`;
-    if (conduct) policyNote = "A cleaning or sanitation duty left undone is Other on the Corrective Action Form, never the Standards of Conduct (the company's rule): the card says Other.";
-  } else if (/^other\b/i.test(askedPolicy)) {
-    const topic = askedPolicy.replace(/^other\s*[—:-]?\s*/i, "").trim() || whatHappened.slice(0, 120);
-    policyLine = topic ? `Other — ${topic}` : "Other";
+  const otherPart = askedOther || (/^other\b/i.test(askedPolicy) ? askedPolicy : "");
+  if (otherPart) {
+    const topic = otherPart.replace(/^other\s*[—:-]?\s*/i, "").trim() || cleaning || whatHappened.slice(0, 120);
+    const other = topic ? `Other — ${topic}` : "Other";
+    policyLine = policyLine ? `${policyLine}; ${other}` : other;
   }
 
   /* Payroll deduct, only as the manager stated it. */
@@ -945,7 +1033,7 @@ export async function proposeForm(
   const typedAmount = typeof input.payroll_amount === "string" && /\d/.test(input.payroll_amount) ? input.payroll_amount.replace(/[^\d.]/g, "") : null;
   /* The amount the manager stated, read as today reads it (`payrollAmountFromConversation`) when the model left it out. */
   const statedAmount = payroll === "yes" ? payrollAmountFromConversation(conversationTurns(context), { payrollAnswer: "yes" })?.replace(/[^\d.]/g, "") ?? null : null;
-  const amount = (typedAmount && managerWords.replace(/[^\d.]/g, " ").split(/\s+/).some((n) => n !== "" && Number(n) === Number(typedAmount)) ? typedAmount : null) ?? statedAmount;
+  const amount = typedAmount && managerWords.replace(/[^\d.]/g, " ").split(/\s+/).some((n) => n !== "" && Number(n) === Number(typedAmount)) ? typedAmount : null;
   const today = context.today || businessToday();
   let date = typeof input.incident_date === "string" && DATE.test(input.incident_date.trim()) ? input.incident_date.trim() : null;
   /* Several incident dates and the latest message does not pick one: the date waits, and the card asks (today's rule). */
@@ -962,7 +1050,14 @@ export async function proposeForm(
    */
   const answered = datesGiven.length > 1 && latestDates.length === 1 && datesGiven.includes(latestDates[0]!);
   if (answered) date = monthDayToIso(latestDates[0]!);
-  else if (datesGiven.length > 1) date = null;
+  /*
+   * Batch B (code-check #20): with several stated dates the model's choice stands; the dates are a fact and the rules
+   * book says to pick only when the account makes it clear, else ask (never both). A date that is none of the stated
+   * ones is refused, as an invented value.
+   */
+  if (datesGiven.length > 1 && date && !answered && !datesGiven.some((given) => monthDayToIso(given) === date)) {
+    return { error: `${date} is none of the dates the manager gave (${datesGiven.join(", ")}). Leave incident_date empty and ask which, or use one of those.` };
+  }
   const datesAsked = datesGiven.length > 1 && !date ? datesGiven : [];
   if (date && date > today) return { error: `The incident date ${date} is after today (${today}, the salon's local date). Ask the manager.` };
   const askedLevel = input.warning_level === "verbal" || input.warning_level === "written" ? input.warning_level : null;
@@ -974,13 +1069,16 @@ export async function proposeForm(
    * and r5), else the model's list. Never from forms on file.
    */
   const statedSteps = (await import("@/lib/forms/prior-actions")).statedPriorActions(requestWords, today);
-  const priorActions = statedSteps.length > 0
-    ? statedSteps.join("; ").slice(0, 600)
-    : typeof input.prior_actions === "string" && input.prior_actions.trim() ? input.prior_actions.trim().slice(0, 600) : null;
+  /* Batch B (code-check #23): the model's list, written from today's reading (the prior_steps_said fact). */
+  const priorActions = typeof input.prior_actions === "string" && input.prior_actions.trim() ? input.prior_actions.trim().slice(0, 600) : null;
   const incidentTime = typeof input.incident_time === "string" && input.incident_time.trim() ? input.incident_time.trim().slice(0, 40) : null;
 
+  const typedSalon = typeof input.salon === "string" ? input.salon.trim() : "";
+  const answeredSalonIds = typedSalon ? [...new Set([typedSalon, `at ${typedSalon}`].flatMap((text) => readSalonMentions(text).flatMap((mention) => [...mention.salonIds])))] : [];
+  if (typedSalon && answeredSalonIds.length === 0) return { error: `"${typedSalon}" is not a salon the app knows. Ask which of the manager's salons it is.` };
   const proposal = buildProposal({
     proposalId: randomUUID(),
+    ...(answeredSalonIds.length > 0 ? { answeredSalonIds } : {}),
     templateKey: template.key,
     templateName: template.name,
     context: asked,
@@ -1002,8 +1100,8 @@ export async function proposeForm(
   }
   /* No account yet: the card shows, and Create waits for what happened (as WHAT_HAPPENED_NO_CREATE does today). */
   const awaiting = whatHappened === "" && ACCOUNT_FORMS.has(template.key);
-  /* NO_ACCOUNT_NO_APP_POLICY (parity gap #20): with no account, no policy is cited unless the manager named one. */
-  if (awaiting && namedPolicies(requestWords).length === 0) policyLine = null;
+  /* NO_ACCOUNT_NO_APP_POLICY as a fact (batch B, code-check #21; r3 639: an MSB or topic request counts as naming it). */
+  const policyNamedByManager = namedPolicies(requestWords).length > 0 || topicFits !== null || /\bmsb\b|must see behaviou?rs?/i.test(requestWords);
   /*
    * Act and state the assumption (Pau, 14 Nov 2026): no date in the manager's words, so the card is dated today, and
    * the reply says so in one line the manager can correct.
@@ -1049,16 +1147,24 @@ export async function proposeForm(
       ? { stated: { ...(level ? { warning_level: level } : {}), ...(payroll ? { payroll_deduct: payroll } : {}), ...(payroll === "yes" && amount ? { payroll_amount: `$${amount.replace(/^\$/, "")}` } : {}), ...(priorActions ? { prior_actions: priorActions } : {}) } }
       : {}),
     ...(corrective && payroll === "yes" && !amount ? { payroll_amount_unset: true } : {}),
-    ...(datesAsked.length > 0 ? { dates_given: datesAsked } : {}),
+    ...(datesGiven.length > 1 ? { dates_given: datesGiven, ...(date ? { date_chosen: date } : {}) } : {}),
+    ...(statedSteps.length > 0 ? { prior_steps_said: statedSteps } : {}),
+    ...(corrective && payroll === "yes" && !amount && statedAmount ? { payroll_amount_said: `$${statedAmount}` } : {}),
+    ...(cleaning && !careAndCleaning ? { cleaning_duty: cleaning } : {}),
+    ...(awaiting ? { policy_named_by_manager: policyNamedByManager } : {}),
     ...(datedToday && (card.formDate ?? today) === today ? { dated_today: true } : {}),
-    ...(offRosterName ? { off_roster_name: employee.name, staff_list: context.actor.scope.level === "salon" ? "your salon's" : "the" } : {}),
+    ...(offRosterName ? { off_roster_name: employee.name, staff_list: context.actor.scope.level === "salon" ? "your salon's" : "the", ...((await inactiveMatch(context.actor.scope, employee.name)) ? { inactive_in_woven: true } : {}) } : {}),
     ...(personId && effects.nameLines?.[personId] ? { name_from_staff_list: employee.name } : {}),
+    /* QA's live-app item 8: the card uses Woven's title; the manager called them something else ("Salon Director"). */
+    ...(() => {
+      const said = extractJobTitle(requestWords);
+      return said && card.employeeRole && said.trim().toLowerCase() !== card.employeeRole.trim().toLowerCase() ? { title_differs: { woven: card.employeeRole, manager_said: said } } : {};
+    })(),
     ...(template.key === "stc-exit" ? { exit_dates: await exitDateLines(requestWords, today) } : {}),
     ...(underPerformance ? { under_performance: true } : {}),
     ...(didYouMean ? { confirm_policy: didYouMean } : {}),
-    ...(policyNote ? { policy_note: policyNote } : {}),
     ...(dropped.length > 0 ? { not_kept: dropped } : {}),
-    ...((await outsideScopeSalon(context)) ?? {}),
+    ...((await outsideScopeSalon(context)) ?? (card.namedLocationOutOfScope ? { salon_outside_scope: card.namedLocationOutOfScope } : {})),
   };
   return {
     card: {
@@ -1199,15 +1305,10 @@ export async function editForm(
      */
     const fieldKeys = documentFieldKeys(loaded.version.document);
     const accountField = ["observation", "coaching_details"].find((key) => fieldKeys.has(key)) ?? null;
-    for (const field of Object.keys(values)) {
-      if (!fieldKeys.has(field) && ACCOUNT_ALIASES.has(field) && accountField) {
-        values[accountField] = values[field]!;
-        delete values[field];
-      }
-    }
+    /* Batch B (code-check #27): no field is renamed for the model; an unknown one is refused with the form's own keys. */
     const unknown = Object.keys(values).filter((field) => !fieldKeys.has(field) && field !== "warning_type" && field !== "employee_name");
     if (unknown.length > 0) {
-      return { error: `${unknown.join(", ")} ${unknown.length === 1 ? "is not a field" : "are not fields"} of this form; nothing was written. Its fields: ${[...fieldKeys].join(", ")}.` };
+      return { error: `${unknown.join(", ")} ${unknown.length === 1 ? "is not a field" : "are not fields"} of this form; nothing was written. Its fields: ${[...fieldKeys].join(", ")}.${accountField ? ` The account goes in ${accountField}.` : ""}` };
     }
     /* HARD GUARD, NEVER AN EMPTY ACCOUNT (QA, 16:17Z): the account field is never cleared by an edit. */
     if (accountField && accountField in values && values[accountField]!.trim() === "") {
@@ -1218,13 +1319,14 @@ export async function editForm(
      * make-that-update and stepb): the manager's latest account in this chat goes into the account field as they said
      * it, added after what is there, when the field does not hold it yet.
      */
-    if (Object.keys(values).length === 0 && accountField && WRITE_ACCOUNT_REQUEST.test(context.question)) {
-      const account = latestAccount(context.history.filter((turn) => turn.role === "user").slice(-8).map((turn) => String(turn.content ?? "")));
-      const old = loaded.values.find((row) => row.fieldKey === accountField)?.value ?? "";
-      if (account && !old.toLowerCase().includes(account.toLowerCase().replace(/[.!]+$/, ""))) {
-        values[accountField] = old.trim() ? `${old.trimEnd()}\n${account}` : account;
-      }
-    }
+    /* Batch B (code-check #26): the manager's latest account and the field it goes in, for the model to write with values. */
+    const writeAccount = Object.keys(values).length === 0 && accountField && WRITE_ACCOUNT_REQUEST.test(context.question)
+      ? (() => {
+          const account = latestAccount(context.history.filter((turn) => turn.role === "user").slice(-8).map((turn) => String(turn.content ?? "")));
+          const old = loaded.values.find((row) => row.fieldKey === accountField)?.value ?? "";
+          return account && !old.toLowerCase().includes(account.toLowerCase().replace(/[.!]+$/, "")) ? { latest_account: untrusted(account), account_field: accountField, account_now: untrusted(old) } : null;
+        })()
+      : null;
     /*
      * No field values: the manager's own request goes through the form's reviser (`chat-revision.ts`, the same one
      * today's chat uses), which knows each template's fields, the date, the policy reference line, the Action Plan and
@@ -1232,15 +1334,22 @@ export async function editForm(
      */
     if (Object.keys(values).length === 0) {
       const revised = await openFormTurn(context, id);
-      if (!revised) return { updated: [], note: "The form's reviser found nothing in the manager's message to change. Ask what they want changed." };
+      if (!revised) {
+        return writeAccount
+          ? { updated: [], ...writeAccount, note: "Nothing was saved yet. Write the manager's latest account into account_field with values: what it holds now, then the new account after it." }
+          : { updated: [], note: "The form's reviser found nothing in the manager's message to change. Ask what they want changed." };
+      }
       const updated = revised.formUpdate?.instanceId === id ? revised.formUpdate.updated : [];
       if (updated.length > 0) effects.formUpdate = { instanceId: id, updated };
       return {
         updated,
         reviser_said: untrusted(revised.content.slice(0, 1_500)),
+        ...(updated.length === 0 && writeAccount ? writeAccount : {}),
         note: updated.length > 0
           ? "Tell the manager what changed, from reviser_said and updated: each changed field and its new wording. Claim nothing else."
-          : "Nothing was saved. Say plainly what was not changed.",
+          : writeAccount
+            ? "Nothing was saved yet. Write the manager's latest account into account_field with values: what it holds now, then the new account after it."
+            : "Nothing was saved. Say plainly what was not changed.",
       };
     }
     // The warning level is a tick box on the form: written as a checked group, never as text.
@@ -1330,10 +1439,11 @@ export async function searchKnowledge(context: ToolContext, effects: ToolEffects
   }
   if (scopeManual) rows = scopeToCurrentManual(rows, { limit, dedupeBySection: manualSectionDedupeEnabled() });
   rows = rows.slice(0, limit);
-  effects.citations = shownCitations([...(effects.citations ?? []), ...rows.map(rowToCitation)]);
+  const markers = rows.map((row) => addSource(effects, rowToCitation(row)));
   if (rows.length === 0) return { results: [], note: "Nothing in the company knowledge base matches. Say so; never answer from memory." };
   return {
-    results: rows.map((row) => ({
+    results: rows.map((row, index) => ({
+      source: markers[index],
       document: row.document_title,
       ...(row.page !== null ? { page: row.page } : {}),
       ...(row.section ? { section: row.section } : {}),
@@ -1372,7 +1482,6 @@ function documentFieldKeys(document: unknown): Set<string> {
   return new Set([...JSON.stringify(document ?? {}).matchAll(/"key":"([a-z0-9_]+)"/g)].map((match) => match[1]!));
 }
 /** Names a model may use for the account field: the form's own key is used. */
-const ACCOUNT_ALIASES = new Set(["observation", "observation_of_offense", "what_happened", "details", "details_of_coaching", "coaching_details", "account", "issue"]);
 
 /** A short answer about the level or payroll: "yes payroll, $20", "make it a written", "no payroll". */
 export const LEVEL_OR_PAYROLL_ANSWER = /^(?=.{0,80}$)(?:.*\b(?:payroll|deduct\w*)\b|.*\b(?:make it|it'?s|change it to)\s+(?:a\s+)?(?:verbal|written)\b)/i;

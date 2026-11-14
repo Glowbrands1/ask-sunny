@@ -123,3 +123,30 @@ Converted: #25, #39, #40, #41, #43, #45, #46, #47, #50.
 Batch A therefore adds `policyLine` to `ChatFormProposal`. propose_form sets it, and `cardPolicyFor` prefers it over the reply text. Cards without the field (today's path) still read the reply as before.
 
 This is a TOOL/protocol change, not a reply patch: what Create sends is now data on the card.
+
+## Batch B (done)
+
+**Converted: #20, #21, #22, #23, #24, #26, #27** (#37 went with batch A).
+- **#20, dates:** the model's date stands when it is one of the dates the manager stated. A date nobody stated is refused. `dates_given` and `date_chosen` are facts.
+- **#21, no account:** `policy_named_by_manager` is a fact. An MSB or topic request counts as naming the policy, which covers r3 case 639.
+- **#22, cleaning duty:** the policy is the model's own: `Other — <topic>`, or `<heading>; Other — <topic>`. `cleaning_duty` is a fact.
+- **#23, prior actions:** the model's list. `prior_steps_said` is a fact.
+- **#24, payroll amount:** the model's, still checked against the manager's digits. `payroll_amount_said` is a fact.
+- **#26, "make that update":** edit_form returns `latest_account` and `account_field`, and the model writes the account with values.
+- **#27, field names:** no field is renamed. An unknown field is refused, with the form's own keys and the account field. read_form returns `account_field` and `empty_fields`.
+
+**Tool additions (QA's r3 run and live-app pass):**
+- **One card per reply:** the same form for the same person may be proposed again within a reply; the second card replaces the first. That lets the model act on a fact in the same turn.
+- **propose_form:**
+  - takes a `salon` input. The answer reaches the card through today's scope check (`proposeLocation`).
+  - returns `title_differs` when the roster title differs from what the manager said.
+  - returns `salon_outside_scope` from the card's own scope check as well.
+- **find_staff:**
+  - returns `longer_names_on_roster` (r3 "Isolde Varga Two").
+  - returns `inactive_in_woven`, but only for a person in the manager's own salons, or any salon for a global login.
+- **Source cards:**
+  - read_policy produces a source card, as search_knowledge does.
+  - Every source gets an `[S<n>]` marker (`addSource`). Only the sources the reply cites become cards; a reply with no markers keeps the sources whose title it names.
+  - The markers are stripped before the reply reaches the manager.
+
+**Rules book:** lines for each new fact, plus QA's live-app items 1, 2, 4, 5, 6, 11 and 13.
