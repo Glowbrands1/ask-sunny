@@ -4422,6 +4422,19 @@ export function whatHappenedNoCreateEnabled(): boolean {
 }
 
 /**
+ * ACCOUNT_CHANGE_REDERIVES_POLICY_ENABLED (Coding-2, 13 Nov 2026; default off; ported from Ask Bubbles at QA's direction).
+ * On a Corrective Action draft about lateness, "make it about her phone use instead, she was on her phone the whole
+ * shift" and "change the issue to not doing the 10-minute sanitation" rewrote the Observation, but Type of Offense,
+ * Policy Violated, Direct policy and the synced Action Plan stayed on the old topic (Attendance). On: when an edit
+ * replaces the whole account, the offense is read again from the new account and those lines and the plan follow it
+ * (`forms/chat-policy-change.ts` rederivePolicyFromAccount). A policy the manager names in that edit is kept, and a line
+ * or tick the manager wrote is never touched. Off, as before.
+ */
+export function accountChangeRederivesPolicyEnabled(): boolean {
+  return envFlag("ACCOUNT_CHANGE_REDERIVES_POLICY_ENABLED");
+}
+
+/**
  * CA_PROCEDURE_BASIS_ENABLED (Pau via QA, 5 Nov 2026, sf-b6 in the sibling app; default
  * off; same flag in both apps). A Corrective Action for closing a register
  * early and turning away a customer came back with Standards of Conduct

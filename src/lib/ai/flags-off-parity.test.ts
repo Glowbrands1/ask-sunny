@@ -657,6 +657,8 @@ const NEW_FLAGS = [
   // coding 2: OTHER_POLICY_AGREES and OTHER_NOT_A_POLICY_NAME (QA, 11 Nov 2026; default off): forced off with the others.
   "OTHER_POLICY_AGREES_ENABLED",
   "OTHER_NOT_A_POLICY_NAME_ENABLED",
+  // coding 2: ACCOUNT_CHANGE_REDERIVES_POLICY (QA, 13 Nov 2026; ported from Ask Bubbles; default off): forced off with the others.
+  "ACCOUNT_CHANGE_REDERIVES_POLICY_ENABLED",
   "ACCOUNT_TYPOS_FIXED_ENABLED",
   // coding 2: ON_FILE_LINE_NOT_THE_POLICY (Pau's morning scan, 14 Nov 2026; default off): forced off with the others.
   "ON_FILE_LINE_NOT_THE_POLICY_ENABLED",
