@@ -43,6 +43,7 @@ import { matchRecallKnowledge } from "@/lib/knowledge/recall-match";
 import { rowToCitation, type MatchedChunkRow } from "@/lib/knowledge/mappers";
 import { shownCitations } from "@/lib/knowledge/empty-card-drop";
 import { topicHeadings } from "@/lib/forms/specific-policy-topics";
+import { formatManualCitation } from "@/lib/ai/policy-citation-fields";
 import { redactSensitiveDefaults } from "@/lib/ai/sensitive-defaults";
 import { expandPolicyQuery } from "@/lib/knowledge/policy-retrieval";
 import type { SourceCitation } from "@/types";
@@ -115,6 +116,8 @@ const WHOSE = String.raw`(?:her|his|their|my|\w+'s|\w+s')`;
  */
 const ASKS_ABOUT_FORMS: readonly RegExp[] = [
   /\bon file\b|\bform monitoring\b/i,
+  /* "in the format of <C>'s ca", "the same as corvinas ca", "look like <C>s coaching": another form, asked for by the manager (QA, 14 Nov 2026). */
+  new RegExp(String.raw`\b(?:format\s+of|same\s+as|look(?:s)?\s+like|copy(?:\s+of)?)\s+(?:\w+\s+){0,2}?\w+(?:'s|’s|s)\s+${FORM}\b`, "i"),
   new RegExp(String.raw`\bon record\b|\b${WHOSE}\s+(?:disciplinary\s+|work\s+)?records?\b`, "i"),
   // "her history", "form history", "write-up history", never "history of <something that is not a form>".
   new RegExp(String.raw`\b(?:${WHOSE}|form|disciplinary|write[- ]?up|ca|coaching|corrective(?:\s+action)?)\s+history\b(?!\s+of\s+(?!${FORM}\b)\w)`, "i"),
@@ -222,6 +225,21 @@ function salonLabel(id: string): string {
 
 function staffRow(person: RosterEmployee) {
   return { employee_id: person.id, name: displayName(person), salons: person.salonIds.map(salonLabel) };
+}
+
+/**
+ * An exit card's dates read back in the form's own labels and words (EXIT_DATE_LINE_AGREES; the live re-run's
+ * no-notice-no-date-resigned: "the resignation date is lost"), read by today's exit reader from the manager's words.
+ */
+async function exitDateLines(managerWords: string, today: string): Promise<string[]> {
+  const [{ readExitFacts, EXIT_ROLE_LABEL }, { exitDateInWords }] = await Promise.all([import("@/lib/forms/exit-facts"), import("@/lib/forms/exit-intake")]);
+  const facts = readExitFacts(managerWords, today);
+  const lines: string[] = [];
+  for (const role of ["lastDayWorked", "noticeGiven", "noticeFulfilled"] as const) {
+    if (facts[role]) lines.push(`**${EXIT_ROLE_LABEL[role]}:** ${exitDateInWords(facts[role]!)}`);
+  }
+  if (facts.resignationDate) lines.push(`**${EXIT_ROLE_LABEL.resigned}:** ${exitDateInWords(facts.resignationDate)}`);
+  return lines;
 }
 
 /** The roster row's Woven title for this person, or null. */
@@ -572,11 +590,12 @@ export function cardLines(
 ): string[] {
   const lines: string[] = [];
   const corrective = templateKey === "dpoa";
-  if (card.issue) lines.push(`${corrective ? "**Observation of Offense:**" : "**What happened:**"} ${card.issue}`);
+  /* The account line in today's label on every card (`keep-filled-slots.ts`), coaching included. */
+  if (card.issue) lines.push(`**Observation of Offense:** ${card.issue}`);
   if (card.warningLevel) lines.push(`**Type of Warning:** ${card.warningLevel === "verbal" ? "Verbal Warning" : "Written Warning"}, as you said.`);
   if (card.priorActions) lines.push(`**Prior actions:** ${card.priorActions}, as you said.`);
   if (card.payrollDeduct) {
-    lines.push(`**${PAYROLL_DEDUCT_LABEL}** ${card.payrollDeduct === "yes" ? "Yes" : "No"}, as you said.${card.payrollDeduct === "yes" && card.payrollDeductAmount ? ` **${PAYROLL_AMOUNT_LABEL}:** ${card.payrollDeductAmount}.` : ""}`);
+    lines.push(`**${PAYROLL_DEDUCT_LABEL}** ${card.payrollDeduct === "yes" ? "Yes" : "No"}, as you said.${card.payrollDeduct === "yes" && card.payrollDeductAmount ? ` **${PAYROLL_AMOUNT_LABEL}:** ${/^\$/.test(card.payrollDeductAmount) ? "" : "$"}${card.payrollDeductAmount}.` : ""}`);
   }
   if (extra.datedFrom) {
     lines.push(`Dated ${extra.datedFrom.chosen} (when it happened); say if you want ${extra.datedFrom.others.join(" or ")}.`);
@@ -647,6 +666,22 @@ export function mentionsPerson(text: string, name: string, rosterNames: readonly
  * cut account). A structural check, not wording: every date, time, amount, place ("at <place>") and time word the
  * manager gave about this person must still be in what_happened. Empty is allowed (Create waits for the account).
  */
+/** Performance metrics managers name ("PPTA, LPSVA, Club Average, Club Close %, and Spa %"). */
+const ACCOUNT_METRIC = /\b(?:PPTA|LPSVA|UPTA|MSB|CC\s?%|Spa\s?%|Club\s+Close\s?%|Club\s+Average|Average\s+Club)(?=\W|$)/gi;
+
+/**
+ * Whole numbers of two or more digits that are not part of a date, a time or an amount, and not a year ("146 tans",
+ * "237 tanning transactions", "40 min"): a figure the account must keep, and a card may not add.
+ */
+export function standaloneFigures(text: string): string[] {
+  const bare = text.replace(ACCOUNT_DATE, " ").replace(ACCOUNT_TIME, " ").replace(ACCOUNT_MONEY, " ");
+  ACCOUNT_DATE.lastIndex = 0;
+  return [...bare.matchAll(/(?<![\d.])\d{2,}(?![\d.])/g)].map((match) => match[0]).filter((figure) => !/^(?:19|20)\d\d$/.test(figure));
+}
+
+/** "in the format of <C>'s ca", "the same as <C>s", "look like <C>'s": another form as the model for this one. */
+export const FORMAT_OF_ANOTHER = /\b(?:format\s+of|same\s+as|look(?:s)?\s+(?:exactly\s+|exactally\s+)?like|copy(?:\s+of)?)\b/i;
+
 /** The sentence so far before this point (from the last ". ", "! ", "? " or line break). */
 function sentenceBefore(text: string, index: number): string {
   const head = text.slice(0, index);
@@ -692,6 +727,14 @@ export function accountMissing(managerWords: string, account: string, priorActio
       if (!kept.has(figure(match[0])) && !said.includes(match[0].toLowerCase())) missing.push(match[0]);
     }
   }
+  /* Metrics and figures exactly as written (QA, the MSB family): "PPTA", "Club Close %", "146 tans", "237". */
+  for (const match of managerWords.matchAll(ACCOUNT_METRIC)) {
+    const metric = match[0].toLowerCase().replace(/\s+/g, " ");
+    const kept = said.replace(/\s+/g, " ").includes(metric) || (/^msb$/.test(metric) && /must see behaviou?rs?/.test(said));
+    if (!kept) missing.push(match[0]);
+  }
+  const accountFigures = new Set(standaloneFigures(account));
+  for (const figure of standaloneFigures(managerWords)) if (!accountFigures.has(figure)) missing.push(figure);
   for (const match of managerWords.matchAll(ACCOUNT_WHEN)) {
     const word = match[0].toLowerCase().replace(/^(?:on|last) /, "");
     if (!said.includes(word)) missing.push(match[0]);
@@ -862,6 +905,32 @@ export async function proposeForm(
     .filter((message) => sourceIds.includes(message.id ?? ""))
     .map((message) => message.content)
     .join("\n");
+  /*
+   * HARD GUARD, NO INVENTED FIGURES (QA, the MSB family: "B's own numbers replace C's"): a figure in the account the
+   * manager never wrote (another form's "237", a guessed count) is refused.
+   */
+  if (whatHappened && ACCOUNT_FORMS.has(template.key)) {
+    // Every number the manager wrote anywhere (a date's "20" may be written out as "October 20").
+    const said = new Set([...managerTurns(context).matchAll(/\d+/g)].map((match) => String(Number(match[0]))));
+    const invented = standaloneFigures(whatHappened).filter((figure) => !said.has(String(Number(figure))));
+    if (invented.length > 0) return { error: `what_happened has figures the manager never gave: ${invented.join(", ")}. Use only this employee's figures as the manager wrote them; another form's numbers never go on this card.` };
+  }
+  /* HARD GUARD (QA, the MSB family): with another employee's form as the format, that employee never appears on this card. */
+  if (whatHappened && FORMAT_OF_ANOTHER.test(managerTurns(context))) {
+    const roster = await rosterFor(context.actor.scope);
+    if (roster.kind === "read") {
+      const names = roster.roster.map(displayName);
+      const other = names.find((name) => !samePerson(name, employee.name) && mentionsPerson(whatHappened, name, names));
+      if (other) return { error: `${other}'s form is only the format. ${other} never appears on ${employee.name}'s card; write ${employee.name}'s own account.` };
+      /* The format's own figures (a pasted "<C> completed 237 tanning transactions") are <C>'s, never this card's. */
+      const sentences = managerTurns(context).split(/(?<=[.!?])\s+|\n+/);
+      const othersNamed = names.filter((name) => !samePerson(name, employee.name) && mentionsPerson(managerTurns(context), name, names));
+      const theirs = new Set(sentences.filter((sentence) => othersNamed.some((name) => mentionsPerson(sentence, name, names))).flatMap(standaloneFigures));
+      const ours = new Set(sentences.filter((sentence) => !othersNamed.some((name) => mentionsPerson(sentence, name, names))).flatMap(standaloneFigures));
+      const borrowed = standaloneFigures(whatHappened).filter((figure) => theirs.has(figure) && !ours.has(figure));
+      if (borrowed.length > 0) return { error: `${borrowed.join(", ")} ${borrowed.length === 1 ? "is" : "are"} the format's own figures, not ${employee.name}'s. Use ${employee.name}'s figures as the manager gave them.` };
+    }
+  }
   if (whatHappened && ACCOUNT_FORMS.has(template.key)) {
     /* A payroll or level answer ("yes payroll, $20", "make it a written") is not the incident's account. */
     const accountWords = asked.messages
@@ -919,7 +988,8 @@ export async function proposeForm(
   if (policyHeading && topicFits && !managerNamed && !topicFits.some((heading) => headingKey(heading) === headingKey(policyHeading!))) {
     return { error: `${policyHeading} is not this incident's section. What the manager described is cited under: ${topicFits.join(", ")}. Read that section and propose again.` };
   }
-  let policyLine: string | null = policyHeading && !confirmPolicy ? (page ? `${policyHeading}, JBA Policy Manual p.${page}` : policyHeading) : null;
+  /* As today's card prints it (`formatManualCitation`): "Standards of Conduct Policy, JBA Policy Manual p.12". */
+  let policyLine: string | null = policyHeading && !confirmPolicy ? formatManualCitation(policyHeading, page) : null;
   let policyNote: string | null = null;
   if (cleaning && !careAndCleaning) {
     const conduct = policyHeading !== null && /standards of conduct/i.test(policyHeading);
@@ -951,17 +1021,29 @@ export async function proposeForm(
    * Several incident dates (Pau 14 Nov: act and state the assumption): a date the model chose from the stated ones is
    * kept and the reply names the others; a date that is not one of them is never kept; with none, the one question.
    */
+  /*
+   * QA's reconciliation (16:17Z): the date is picked only when it is clear; two incident dates in one account ("late
+   * on 10/5 and again on 10/15") are never clear, so the one question asks which (a prior step's date is not counted,
+   * `incidentDates`). The manager's answer sets it.
+   */
   const answered = datesGiven.length > 1 && latestDates.length === 1 && datesGiven.includes(latestDates[0]!);
   if (answered) date = monthDayToIso(latestDates[0]!);
-  const chosen = datesGiven.length > 1 && date ? datesGiven.find((given) => monthDayToIso(given) === date) ?? null : null;
-  if (datesGiven.length > 1 && date && !chosen) date = null;
+  else if (datesGiven.length > 1) date = null;
   const datesAsked = datesGiven.length > 1 && !date ? datesGiven : [];
-  const datedFrom = chosen && !answered ? { chosen, others: datesGiven.filter((given) => given !== chosen) } : null;
+  const datedFrom = null;
   if (date && date > today) return { error: `The incident date ${date} is after today (${today}, the salon's local date). Ask the manager.` };
   const askedLevel = input.warning_level === "verbal" || input.warning_level === "written" ? input.warning_level : null;
   const level = askedLevel && (askedLevel === "verbal" ? /\bverbal\b/i : /\bwritten\b|\bwrite[- ]?up\b/i).test(managerWords) ? askedLevel : null;
   const dropped = [askedLevel && !level ? "warning_level" : null, askedPayroll && !payroll ? "payroll_deduct" : null, typedAmount && !amount ? "payroll_amount" : null].filter(Boolean);
-  const priorActions = typeof input.prior_actions === "string" && input.prior_actions.trim() ? input.prior_actions.trim().slice(0, 600) : null;
+  /*
+   * Prior actions as today reads them from the manager's own words (`statedPriorActions`: "Verbal corrective action —
+   * signed 09/02/2026", a corrected date replacing the first; the live re-run's second-request-prior-step-correction
+   * and r5), else the model's list. Never from forms on file.
+   */
+  const statedSteps = (await import("@/lib/forms/prior-actions")).statedPriorActions(requestWords, today);
+  const priorActions = statedSteps.length > 0
+    ? statedSteps.join("; ").slice(0, 600)
+    : typeof input.prior_actions === "string" && input.prior_actions.trim() ? input.prior_actions.trim().slice(0, 600) : null;
   const incidentTime = typeof input.incident_time === "string" && input.incident_time.trim() ? input.incident_time.trim().slice(0, 40) : null;
 
   const proposal = buildProposal({
@@ -1021,7 +1103,16 @@ export async function proposeForm(
     ...(personId && effects.nameLines?.[personId] ? [effects.nameLines[personId]!] : []),
     ...cardLines(card, template.key, { datesAsked, datedFrom }),
     ...(datedToday && (card.formDate ?? today) === today ? [DATED_TODAY_LINE] : []),
+    ...(template.key === "stc-exit" ? await exitDateLines(requestWords, today) : []),
+    /*
+     * Pau's line, said exactly, on a Standards of Conduct card for under performance, MSB or the sales metrics (QA, the
+     * MSB family: "Pau's exact under-performance line"); the reply always carries it.
+     */
+    ...(policyHeading && /standards of conduct/i.test(policyHeading) && (/\bunder[- ]?perform(?:ance|ing)\b|must see behaviou?rs?|\bperform[a-z]*\b/i.test(managerWords) || ACCOUNT_METRIC.test(managerWords))
+      ? [UNDER_PERFORMANCE_EXPLAINED]
+      : []),
   ];
+  ACCOUNT_METRIC.lastIndex = 0;
   effects.policyLine = policyLine;
   effects.confirmPolicy = didYouMean;
   return {

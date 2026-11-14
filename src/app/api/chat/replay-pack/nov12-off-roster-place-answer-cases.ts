@@ -30,6 +30,13 @@ async function offered(t: ReplayContext) {
   t.as("admin", ADMIN);
   const thread = t.thread();
   const first = await thread.say(REQUEST);
+  if (t.loopActive?.()) {
+    // Changed on purpose (Pau 14 Nov: fewer questions / off-roster card + not-on-Woven line): with the loop on, the card comes at once with the line; every outcome check is kept.
+    expect((thread.proposal as { employeeName?: string | null } | null)?.employeeName, `no card for ${C}:\n${first.content}`).toBe(C);
+    expect(first.content).toMatch(new RegExp(`\\*\\*${C}\\*\\* isn't on (?:your salon's|the) Woven staff list`));
+    expect(observation(first), `the first card's Observation:\n${first.content}`).toMatch(/she was late/i);
+    return thread;
+  }
   expect(first.content, `no offer for ${C}:\n${first.content}`).toContain(`reply **use ${C}**`);
   expect(observation(first), `the first card's Observation:\n${first.content}`).toBe("do not terminate yet, she was late");
   return thread;
@@ -61,6 +68,15 @@ export const NOV12_OFF_ROSTER_PLACE_ANSWER_CASES: ReplayCase[] = PLACES.map(({ k
   async run(t: ReplayContext) {
     const thread = await offered(t);
     const reply = await thread.say(place);
+    if (t.loopActive?.()) {
+      // Changed on purpose (Pau 14 Nov: fewer questions / off-roster card + not-on-Woven line): with the loop on, the card comes at once with the line; every outcome check is kept.
+      const card = thread.proposal as { employeeName?: string | null; templateKey?: string; locationId?: string | null } | null;
+      expect(card?.employeeName ?? null, `"${place}" became the employee:\n${reply.content}`).toBe(C);
+      expect(card?.templateKey).toBe("dpoa");
+      expect(observation(reply), `the Observation was lost:\n${reply.content}`).toMatch(/she was late/i);
+      if (salon) expect(card?.locationId, `the salon is not set:\n${reply.content}`).toBe(salon);
+      return;
+    }
     heldAndAskedAgain(reply, thread.proposal, place);
     expect(reply.content, `the place is named as a person:\n${reply.content}`).not.toMatch(/\*\*(?:Ia Altoona|Ks Manhattan)\*\*/);
     if (salon) {

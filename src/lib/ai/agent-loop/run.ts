@@ -111,7 +111,7 @@ function withCardNote(message: ChatMessage): string {
 }
 
 /** A sentence saying an earlier card was not real or not built: never true (see CARD_NOTE); dropped from the reply. */
-export const DISOWNS_EARLIER_CARD = /(?:^|(?<=[.!?]\s))(?:One correction(?: first)?:\s*)?[^.!?\n]*\bmy (?:earlier|previous|last) (?:reply|message)\b[^.!?\n]*\b(?:before I(?:'d)?|never|wasn't|was not|went out)\b[^.!?\n]*[.!?—-]*\s*/gi;
+export const DISOWNS_EARLIER_CARD = /(?:^|(?<=[.!?]\s))(?:One correction(?: first)?:\s*)?[^.!?\n]*\bmy (?:earlier|previous|last) (?:repl(?:y|ies)|messages?)\b[^.!?\n]*\b(?:before I(?:'d)?|never|wasn't|was not|went out)\b[^.!?\n]*[.!?—-]*\s*/gi;
 
 /** The conversation as model messages: the manager's and Sunny's turns, newest 20, starting with the manager's. */
 function conversationOf(history: readonly ChatMessage[], question: string): { role: "user" | "assistant"; content: unknown }[] {
