@@ -17,6 +17,7 @@ const FLAG = "REASON_PLACE_NOT_STORE_ENABLED";
 const REPORT = "Ported from the sibling app (Gate-Bubbles-3's #869 probes, 13 Nov 2026); invented people";
 const EVERY_SALON = { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] };
 const GRAND_ISLAND = "loc-0307";
+const LINCOLN_PINE_LAKE = "loc-0312";
 
 async function cardFor(t: ReplayContext, turn: string) {
   vi.setSystemTime(new Date("2026-11-13T15:00:00Z"));
@@ -25,6 +26,11 @@ async function cardFor(t: ReplayContext, turn: string) {
   const thread = t.thread();
   const reply = (await thread.say(turn)).content;
   return { reply, locationId: (thread.proposal as { locationId?: string | null } | null)?.locationId ?? null };
+}
+
+/** QA's Sunny 38h live check: a card that names a salon is never next to "this form won't name one". */
+function expectSalonLineAgrees(reply: string, locationId: string | null) {
+  if (locationId) expect(reply, `the card names ${locationId}, the reply says it won't name one:\n${reply}`).not.toMatch(/won't name one/i);
 }
 
 export const NOV13_REASON_PLACE_NOT_SALON_CASES: ReplayCase[] = [
@@ -38,6 +44,22 @@ export const NOV13_REASON_PLACE_NOT_SALON_CASES: ReplayCase[] = [
       const { reply, locationId } = await cardFor(t, "create a ca for marnie holloway, she was late because she was at grand island");
       expect(locationId, `a salon was read from the reason:\n${reply}`).not.toBe(GRAND_ISLAND);
       expect(reply, `the account lost the words:\n${reply}`).toMatch(/because she was at grand island/i);
+    },
+  },
+  // QA's Sunny 38h live check (Admin, all areas, a person not on the roster): "lincoln" in the reason was read as
+  // NE Lincoln Pine Lake (loc-0312), resolved, by the card's partial-name fallback, with no question, while the reply
+  // said "Your account covers every salon, so this form won't name one." Invented person.
+  {
+    id: "nov14-reason-place-not-salon-lincoln-high",
+    title: `Admin: "create a ca for tavia quellan, she was late because she was at lincoln high" — not filed at Lincoln Pine Lake`,
+    report: "QA's Sunny 38h live check, 14 Nov 2026; invented person",
+    status: { open: "\"lincoln\" in the reason is read as NE Lincoln Pine Lake" },
+    fixFlags: [FLAG],
+    async run(t: ReplayContext) {
+      const { reply, locationId } = await cardFor(t, "create a ca for tavia quellan, she was late because she was at lincoln high");
+      expect(locationId, `a salon was read from the reason:\n${reply}`).not.toBe(LINCOLN_PINE_LAKE);
+      expectSalonLineAgrees(reply, locationId);
+      expect(reply, `the account lost the words:\n${reply}`).toMatch(/because she was at lincoln high/i);
     },
   },
   // The sibling gate's probes: the same reason said "bc" or "since".
@@ -60,6 +82,11 @@ const MUST_READ: readonly { key: string; turn: string }[] = [
   { key: "late-at-grand-island", turn: "create a ca for marnie holloway, she was late at grand island on 11/1/26" },
 ];
 
+/** Guards, flag off and on: the whole salon name said as the salon is still read through the same fallback. */
+const MUST_READ_LINCOLN: readonly { key: string; turn: string }[] = [
+  { key: "at-lincoln-pine-lake", turn: "create a ca for tavia quellan at lincoln pine lake, she was late" },
+];
+
 export const NOV13_REASON_PLACE_NOT_SALON_GUARDS: ReplayCase[] = MUST_READ.map((wording) => ({
   id: `nov13-reason-place-not-salon-guard-${wording.key}`,
   title: `Admin: "${wording.turn}" — the salon is still read`,
@@ -69,5 +96,17 @@ export const NOV13_REASON_PLACE_NOT_SALON_GUARDS: ReplayCase[] = MUST_READ.map((
   async run(t: ReplayContext) {
     const { reply, locationId } = await cardFor(t, wording.turn);
     expect(locationId, `the salon was not read:\n${reply}`).toBe(GRAND_ISLAND);
+  },
+}));
+
+export const NOV14_REASON_PLACE_LINCOLN_GUARDS: ReplayCase[] = MUST_READ_LINCOLN.map((wording) => ({
+  id: `nov14-reason-place-not-salon-guard-${wording.key}`,
+  title: `Admin: "${wording.turn}" — the salon is still read`,
+  report: "QA's Sunny 38h live check, 14 Nov 2026; invented person",
+  status: "fixed",
+  fixFlags: [FLAG],
+  async run(t: ReplayContext) {
+    const { reply, locationId } = await cardFor(t, wording.turn);
+    expect(locationId, `the salon was not read:\n${reply}`).toBe(LINCOLN_PINE_LAKE);
   },
 }));

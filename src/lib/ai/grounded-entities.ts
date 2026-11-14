@@ -15,6 +15,7 @@ import { supportsInlineDraft } from "@/lib/forms/inline-draft";
 import { readEmployeeMentions } from "@/lib/forms/proposal";
 import { hasSameNamePair } from "@/lib/forms/same-name";
 import { anchorsOnRoster, lowercaseRosterFirstNameIn, rosterShaped } from "@/lib/forms/roster-shape";
+import { placeReadingText } from "@/lib/forms/reason-place";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
 import type { ChatFormProposal } from "@/types";
 import type { AskResponse } from "./types";
@@ -81,7 +82,8 @@ export function prepareGroundedQuestion(input: {
   }
 
   if (readSalonMentions(question).length === 0) {
-    const salon = uniqueRosterSalon(input.question) ?? uniqueRosterSalon(question);
+    // REASON_PLACE_NOT_STORE_ENABLED: a reason's place ("because she was at …") is not guessed as a salon.
+    const salon = uniqueRosterSalon(placeReadingText(input.question)) ?? uniqueRosterSalon(placeReadingText(question));
     if (salon && !question.includes(`It happened at ${salon}.`)) {
       question = `${question}\nIt happened at ${salon}.`;
     }
