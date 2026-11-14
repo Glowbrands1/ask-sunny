@@ -30,11 +30,16 @@ async function observationOf(t: ReplayContext, turn: string): Promise<{ said: st
   return { reply, said: /\*\*Observation of Offense:\*\*\s*([^\n]*)/.exec(reply)?.[1]?.trim() ?? "" };
 }
 
-const OPEN: readonly { key: string; turn: string; kept: RegExp }[] = [
+/*
+ * The three "because she was at …" cases were open until 38j. REASON_PLACE_NOT_SALON (#975) is on in production since
+ * round 38j and keeps a reason's place in the account, so they now hold with production's flags: guards ("fixed"),
+ * flag off and on.
+ */
+const OPEN: readonly { key: string; turn: string; kept: RegExp; fixedInProduction?: true }[] = [
   { key: "lincoln-street-fair", turn: "create a ca for marnie holloway, she was at lincoln street fair instead of her shift", kept: /\bat lincoln street fair instead of her shift\b/i },
-  { key: "lincoln-zoo", turn: "create a ca for marnie holloway, she was late because she was at the lincoln zoo", kept: /\bat the lincoln zoo\b/i },
-  { key: "grand-island-fair", turn: "create a ca for marnie holloway, she was late because she was at the grand island fair", kept: /\bat the grand island fair\b/i },
-  { key: "lincoln-southeast-high", turn: "create a ca for marnie holloway, she was late because she was at lincoln southeast high", kept: /\bat lincoln southeast high\b/i },
+  { key: "lincoln-zoo", turn: "create a ca for marnie holloway, she was late because she was at the lincoln zoo", kept: /\bat the lincoln zoo\b/i, fixedInProduction: true },
+  { key: "grand-island-fair", turn: "create a ca for marnie holloway, she was late because she was at the grand island fair", kept: /\bat the grand island fair\b/i, fixedInProduction: true },
+  { key: "lincoln-southeast-high", turn: "create a ca for marnie holloway, she was late because she was at lincoln southeast high", kept: /\bat lincoln southeast high\b/i, fixedInProduction: true },
   { key: "omaha-of-all-places", turn: "create a ca for marnie holloway, she was late, she was at omaha of all places", kept: /\bshe was at omaha of all places\b/i },
   { key: "omaha-and-left-early", turn: "create a ca for marnie holloway, she was at omaha and left early", kept: /\bshe was at omaha and left early\b/i },
   { key: "lincoln-and-was-late", turn: "create a ca for marnie holloway, she was at lincoln and was late", kept: /\bshe was at lincoln and was late\b/i },
@@ -44,7 +49,7 @@ export const NOV14_LONGER_PLACE_NAME_KEPT_CASES: ReplayCase[] = OPEN.map((wordin
   id: `nov14-longer-place-name-kept-${wording.key}`,
   title: `Admin: "${wording.turn}" — the Observation keeps every word of the place`,
   report: REPORT,
-  status: { open: "the city is cut out of the longer place name, or the place out of its sentence" },
+  status: wording.fixedInProduction ? "fixed" : { open: "the city is cut out of the longer place name, or the place out of its sentence" },
   fixFlags: [FLAG],
   async run(t: ReplayContext) {
     const { said, reply } = await observationOf(t, wording.turn);
