@@ -27,6 +27,9 @@ const REPORT = "QA, 14 Nov 2026 (Pau's hard guards for the agent loop)";
 
 const TAMSIN: DirectoryRow = { id: "e-tamsin-orwell", firstName: "Tamsin", lastName: "Orwell", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" };
 const CORBIN: DirectoryRow = { id: "e-corbin-ashdown", firstName: "Corbin", lastName: "Ashdown", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" };
+/** Two people whose names start the same (the live run's nov6-diffemp shape, people invented). */
+const ISOLDE: DirectoryRow = { id: "e-isolde-varga", firstName: "Isolde", lastName: "Varga", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" };
+const ISOLDE_TWO: DirectoryRow = { id: "e-isolde-varga-two", firstName: "Isolde", lastName: "Varga Two", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" };
 /** At a salon outside the signed-in manager's scope. */
 const FARAWAY: DirectoryRow = { id: "e-ysolde-marchetti", firstName: "Ysolde", lastName: "Marchetti", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-9917"], positionName: "Tanning Consultant" };
 
@@ -202,7 +205,9 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       t.as("salon_director", KEARNEY);
       const again = loopStandIn((view) => {
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "tamsin orwell" } };
-        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, what_happened: "Tamsin Orwell was on her phone at the front desk." } };
+        // The account of the turn it answers (the account check refuses one that drops the manager's date).
+        const late = /late on 11\/12/i.test(view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "");
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, what_happened: late ? "Tamsin Orwell was late on 11/12." : "Tamsin Orwell was on her phone at the front desk." } };
         return { text: JSON.stringify(lastResult(view, "propose_form")) };
       });
       t.loopModel!(again);
@@ -374,6 +379,106 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       expect(reply.formUpdate, "a form was edited from the form's text").toBeUndefined();
       expect(t.forms().length, "a form was created").toBe(formsBefore);
       expect(JSON.stringify(t.values(id)), "the finalized form changed").toBe(valuesBefore);
+    },
+  },
+  {
+    id: "nov14-agent-loop-guard-no-false-updated",
+    title: "no false \"updated\" (the live run's nov3-stepb honesty breach): with a draft open, a reply that claims the form changed when nothing was saved is replaced by today's saved-diff answer",
+    report: `${REPORT}; live sample (14 Nov 2026): "the reply says the form changed, and the saved form did not"`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-13T22:40:00Z"));
+      t.directory([...STAFF, TAMSIN]);
+      t.as("salon_director", KEARNEY);
+      const proposer = loopStandIn((view) => {
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "coaching", employee_id: TAMSIN.id } };
+        return { text: "Coaching Form for Tamsin Orwell. What happened?" };
+      });
+      t.loopModel!(proposer);
+      const thread = t.thread();
+      await thread.say("create a coaching form for tamsin orwell");
+      const id = await thread.create();
+      const before = JSON.stringify(t.values(id));
+      // A careless model claims an edit it never made.
+      t.loopModel!(loopStandIn(() => ({ text: "I've added that to the coaching details — the draft now says she skipped the spray-booth check." })));
+      const reply = await thread.say("she skipped the spray booth check this morning");
+      expect(JSON.stringify(t.values(id))).toBe(before);
+      expect(reply.content, "the false claim reached the manager").not.toMatch(/I've added|now says/);
+      expect(reply.content).toMatch(/didn't change anything/i);
+      expect(reply.formUpdate ?? null).toBeNull();
+    },
+  },
+  {
+    id: "nov14-agent-loop-guard-right-persons-account",
+    title: "the right person's account (the live run's nov6-diffemp, top severity): with <A>'s card on screen, \"now one for <A> Two …\" builds <A> Two's card from that turn only, never <A>'s turn",
+    report: `${REPORT}; live sample (14 Nov 2026): one employee's turns landed on another employee's card`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-10-26T15:00:00Z"));
+      t.directory([...STAFF, ISOLDE, ISOLDE_TWO]);
+      t.as("salon_director", KEARNEY);
+      const proposer = loopStandIn((view) => {
+        const said = view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "";
+        const two = /varga two/i.test(said);
+        if (!lastResult(view, "propose_form")) {
+          return { tool: "propose_form", input: { template_key: "dpoa", employee_id: two ? ISOLDE_TWO.id : ISOLDE.id, what_happened: two ? "Isolde Varga Two was late on 10-20-26." : "Isolde Varga was late opening the salon on Monday." } };
+        }
+        return { text: "Here is the card." };
+      });
+      t.loopModel!(proposer);
+      const thread = t.thread();
+      await thread.say("I need a corrective action for Isolde Varga, she was late opening the salon on Monday");
+      const first = thread.conversation!.at(-2)!;
+      const reply = await thread.say("now one for Isolde Varga Two for being late on 10-20-26");
+      expect(reply.formProposal?.employeeName).toBe("Isolde Varga Two");
+      const sources = (reply.formProposal as { sourceMessageIds?: string[] } | undefined)?.sourceMessageIds ?? [];
+      expect(sources, "<A>'s turn is a source of <A> Two's card").not.toContain(first.id);
+
+      // After Create (the live failure's shape): a careless model edits <A>'s open draft with <B>'s turn. Refused.
+      const second = t.thread();
+      t.loopModel!(proposer);
+      await second.say("I need a corrective action for Isolde Varga, she was late opening the salon on Monday");
+      const aForm = await second.create();
+      const aBefore = JSON.stringify(t.values(aForm));
+      const editor = loopStandIn((view) => {
+        if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { instance_id: aForm, values: { observation: "Isolde Varga Two was late on 10-20-26." } } };
+        return { text: JSON.stringify(lastResult(view, "edit_form")) };
+      });
+      t.loopModel!(editor);
+      const onA = await second.say("now one for isolde varga two for being late on 10-20-26");
+      expect(onA.formUpdate?.instanceId ?? null, "<A>'s form was written over with <B>'s turn").toBeNull();
+      expect(JSON.stringify(t.values(aForm)), "<A>'s form changed").toBe(aBefore);
+      expect(onA.content).toMatch(/not Isolde Varga; this form is Isolde Varga's/);
+    },
+  },
+  {
+    id: "nov14-agent-loop-open-draft-new-request-allowed",
+    title: "with <A>'s blank draft open, \"make me a CA for <A> for being late to opening this morning\" is a new form (the live run's nov3-open-draft-new-request), never refused as the open draft's",
+    report: `${REPORT}; live sample (14 Nov 2026): the open-draft guard refused a new request with its own incident`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-13T22:40:00Z"));
+      t.directory([...STAFF, TAMSIN]);
+      t.as("salon_director", KEARNEY);
+      const proposer = loopStandIn((view) => {
+        const said = view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "";
+        if (!lastResult(view, "propose_form")) {
+          return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, what_happened: /opening this morning/.test(said) ? "Tamsin Orwell was late to opening this morning." : "Tamsin Orwell failed to take the trash out." } };
+        }
+        return { text: JSON.stringify(lastResult(view, "propose_form")) };
+      });
+      t.loopModel!(proposer);
+      const thread = t.thread();
+      await thread.say("Tamsin Orwell failed to take trash out, make a CA");
+      await thread.create();
+      const reply = await thread.say("make me a CA for Tamsin Orwell for being late to opening this morning");
+      expect(reply.formProposal?.employeeName, `the new request was refused:\n${reply.content}`).toBe("Tamsin Orwell");
     },
   },
   {

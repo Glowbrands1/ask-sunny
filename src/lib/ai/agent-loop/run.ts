@@ -174,6 +174,10 @@ export const AGENT_LOOP_TOOLS = [
 
 const EPHEMERAL = { anthropic: { cacheControl: { type: "ephemeral" } } } as const;
 
+/** A reply that says the form was changed ("I've added …", "updated the draft", "the draft now reads …"). */
+export const CLAIMS_A_CHANGE =
+  /\b(?:i(?:'ve| have)?\s+(?:now\s+)?(?:added|updated|changed|put|written|wrote|moved|replaced|saved|filled|set|corrected|fixed|included)|(?:has|have) been (?:added|updated|changed|saved|written|filled|corrected)|(?:updated|changed|added to) (?:the|your|her|his) (?:draft|form|card|observation)|(?:draft|form|card|observation) now (?:reads|says|shows|has|includes)|is now (?:on|in) the (?:draft|form|card)|done[.!—-])/i;
+
 /**
  * PROMPT CACHING (QA, 14 Nov 2026: a 9% cache hit rate). Two of Anthropic's four breakpoints: the rules (tools + the
  * static system prompt, the first breakpoint, set on the system message) and the LAST message of each step, moved
@@ -228,6 +232,9 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     openFormId: input.openFormId,
   };
   const effects: ToolEffects = { proposal: null, policyLine: null, formUpdate: null };
+  /* The open form as saved before the turn, for the no-false-"updated" guard below (FORM_EDIT_NOOP_GUARD's snapshot). */
+  const noop = input.openFormId ? await import("@/lib/forms/form-noop-reply") : null;
+  const openBefore = noop && input.openFormId ? await noop.formBeforeTurn(input.openFormId, input.request) : null;
   const steps: AgentLoopStep[] = [];
   /* Each model call's tokens and ms, for the trace (numbers only). */
   const modelSteps: { step: number; ms: number; stop: string | null; input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number }[] = [];
@@ -382,6 +389,20 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   if (effects.revisedReply && effects.formUpdate && !effects.proposal) content = effects.revisedReply;
   else if (effects.formOpened?.revisesInstanceId && !effects.proposal && !/new draft/i.test(content)) {
     content = `I opened a new draft of the ${effects.formOpened.templateName} that revises the finalized one; the original is unchanged.\n\n${content}`.trim();
+  }
+  /*
+   * HARD GUARD, NO FALSE "UPDATED" (the honesty breach in the live run, nov3-stepb-write-the-observation): with a form
+   * open, a reply that claims the form changed when the saved form did not is replaced by today's FORM_EDIT_NOOP_GUARD
+   * answer from the saved diff ("I didn't change anything on the form …"), and the turn claims only what was saved.
+   */
+  if (noop && openBefore && !effects.proposal && !effects.formOpened) {
+    const checked = await noop.replyFromSavedDiff({ request: input.request, before: openBefore, answer: { content, citations: [], coverage: "not_applicable", recommendedVideoIds: [] } });
+    if (!checked.formUpdate && CLAIMS_A_CHANGE.test(content)) {
+      content = checked.content;
+      effects.formUpdate = null;
+    } else if (checked.formUpdate) {
+      effects.formUpdate = checked.formUpdate;
+    }
   }
 
   return {

@@ -7,6 +7,8 @@ import { businessToday } from "@/lib/business-date";
 import { candidateNameWords, chatFormsActor } from "@/lib/forms/chat-form-records";
 import { displayName, matchEmployeeName, nameConfirmationQuestion, type RosterEmployee } from "@/lib/forms/employee-match";
 import { offRosterOffer } from "@/lib/forms/off-roster-confirm";
+import { offRosterQuestion } from "@/lib/forms/off-roster-ask";
+import { offRosterTyped } from "@/lib/forms/roster-only-names";
 import { rosterSalonName } from "@/lib/forms/salon-mention";
 import { readScopedRoster } from "@/lib/forms/employee-roster";
 import { inlineDraftVariantKey, supportsInlineDraft } from "@/lib/forms/inline-draft";
@@ -22,6 +24,7 @@ import { turnsFromThisPersonsRequest } from "@/lib/forms/this-persons-turns";
 import { closePolicyQuestion, namedPolicies } from "@/lib/forms/named-policy-section";
 import { startsNewForm } from "@/lib/ai/remap-incident";
 import { statedPayrollDeduct } from "@/lib/forms/payroll-deduct";
+import { withoutPayrollClauses } from "@/lib/ai/payroll-clause-not-account";
 import { UNDER_PERFORMANCE_EXPLAINED } from "@/lib/ai/under-performance-explained";
 import { listTemplateSummaries, type TemplateSummary } from "@/lib/forms/repository";
 import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
@@ -216,9 +219,21 @@ export async function findStaff(context: ToolContext, input: { name?: unknown })
         note: `Not on the roster as typed. Ask the manager, in these words: ${nameConfirmationQuestion(typed, names)}`,
       };
     }
+    /*
+     * As today (OFF_ROSTER_ASK_BEFORE_CARD + OFF_ROSTER_CONFIRM + TYPED_NAME_PROCEEDS): a person's name not in Woven is
+     * held once, with the app's own question and "reply **use <Name>**" offer. QA's loop bar (14 Nov 2026) holds an
+     * all-salon admin too, although today's TYPED_NAME_PROCEEDS would not (district and region logins are "unchecked"
+     * and use the typed name, as everywhere else). A word that is not a person's name (a place, a title, the company, a
+     * metric) is never offered.
+     */
+    const person = offRosterTyped(typed, context.question, read.roster.map(displayName)) ?? offRosterTyped(typed, `for ${typed}`, read.roster.map(displayName));
+    if (!person) {
+      return { matches: [], note: "Nobody on this manager's roster has that name, and it does not read as a person's name (it may be a salon, a place, a title or a metric). Never put it on a form as a person: ask who the form is for." };
+    }
     return {
       matches: [],
-      note: `Nobody on this manager's roster has that name. It may be a salon, a place, a metric or a typo: never put a place or a metric on a form as a person. For a person's name, say: "I couldn't find **${typed}** in the Woven roster." and then: "${offRosterOffer(typed)}"`,
+      not_on_roster: person,
+      note: `Not on the roster. Say exactly: "${offRosterQuestion(person)} ${offRosterOffer(person)}" and wait for the manager's answer.`,
     };
   }
   /* A first name alone is confirmed before it goes on a form, as today ("Is this for **Rhea Calloway**?"). */
@@ -368,6 +383,73 @@ function offRosterConfirmed(context: Pick<ToolContext, "question" | "history">, 
   return said.includes(`use ${typed.toLowerCase()}`) || /^(?:yes|yep|yeah|ok|okay|sure)\b|\buse (?:that|the) name\b|\buse it\b/.test(said);
 }
 
+/**
+ * The text names this person: their full name as words, and not as the start of a longer roster name ("Test Employee"
+ * inside "Test Employee Two" is Test Employee Two).
+ */
+export function mentionsPerson(text: string, name: string, rosterNames: readonly string[]): boolean {
+  const lower = text.toLowerCase();
+  const own = name.toLowerCase().trim();
+  if (own === "") return false;
+  const longer = rosterNames.map((other) => other.toLowerCase()).filter((other) => other !== own && other.startsWith(`${own} `));
+  const escaped = own.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  for (const match of lower.matchAll(new RegExp(`\\b${escaped}\\b`, "g"))) {
+    const rest = lower.slice(match.index!);
+    if (!longer.some((other) => rest.startsWith(other))) return true;
+  }
+  return false;
+}
+
+/*
+ * HARD GUARD, THE ACCOUNT KEEPS WHAT THE MANAGER SAID (QA, 14 Nov 2026: the live run's dominant failure was a lost or
+ * cut account). A structural check, not wording: every date, time, amount, place ("at <place>") and time word the
+ * manager gave about this person must still be in what_happened. Empty is allowed (Create waits for the account).
+ */
+const ACCOUNT_DATE = /\b(\d{1,2})[/-](\d{1,2})(?:[/-]\d{2,4})?\b/g;
+const ACCOUNT_TIME = /\b\d{1,2}(?::|;)\d{2}\s*(?:am|pm)?\b|\b\d{1,2}\s*(?:am|pm)\b/gi;
+const ACCOUNT_MONEY = /\$\s?\d+(?:\.\d{2})?/g;
+const ACCOUNT_WHEN = /\b(?:this morning|this afternoon|tonight|last night|last week|yesterday|in the morning|in the afternoon|at (?:open|close|opening|closing)|(?:on |last )?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)|(?:january|february|march|april|may|june|july|august|september|october|november|december))\b/gi;
+const NOT_A_PLACE = new Set(["least", "all", "first", "once", "times", "a", "an", "the", "her", "his", "my", "our", "work", "this", "that", "it", "open", "opening", "close", "closing"]);
+
+/** "$25 will be payroll deducted", "payroll deduct $50", "$20 payroll deduct applies": the amount goes on the payroll field, not the account. */
+const PAYROLL_AMOUNT = /\$\s?\d+(?:\.\d{2})?\s*(?:will be\s+|is\s+|to be\s+)?(?:payroll\s+)?deduct\w*|(?:payroll\s+)?deduct\w*\s*(?:of\s+|for\s+|is\s+)?\$\s?\d+(?:\.\d{2})?/gi;
+
+export function accountMissing(managerWords: string, account: string): string[] {
+  managerWords = managerWords.replace(PAYROLL_AMOUNT, " ");
+  const said = account.toLowerCase();
+  const missing: string[] = [];
+  for (const match of managerWords.matchAll(ACCOUNT_DATE)) {
+    const [month, day] = [Number(match[1]), Number(match[2])];
+    const kept = [...said.matchAll(ACCOUNT_DATE)].some((other) => Number(other[1]) === month && Number(other[2]) === day);
+    if (!kept) missing.push(match[0]);
+  }
+  for (const pattern of [ACCOUNT_TIME, ACCOUNT_MONEY]) {
+    for (const match of managerWords.matchAll(pattern)) {
+      const digits = match[0].replace(/[^\d]/g, "");
+      if (!said.replace(/[^\d]/g, " ").split(/\s+/).some((n) => n !== "" && digits.startsWith(n) && n.length >= Math.min(digits.length, 2)) && !said.includes(match[0].toLowerCase())) missing.push(match[0]);
+    }
+  }
+  for (const match of managerWords.matchAll(ACCOUNT_WHEN)) {
+    const word = match[0].toLowerCase().replace(/^(?:on|last) /, "");
+    if (!said.includes(word)) missing.push(match[0]);
+  }
+  for (const match of managerWords.matchAll(/\bat\s+(?:the\s+)?([a-z][a-z'-]+)/gi)) {
+    const place = match[1]!.toLowerCase();
+    if (!NOT_A_PLACE.has(place) && !said.includes(place)) missing.push(`at ${match[1]}`);
+  }
+  return [...new Set(missing)];
+}
+
+/**
+ * A create request with its own incident ("make me a CA for <name> for being late to opening this morning"): a new
+ * form, never the open draft's turn (the live run's nov3-open-draft-new-request).
+ */
+export function NEW_REQUEST_WITH_INCIDENT(text: string): boolean {
+  const asks = /\b(?:make|create|write|draw|start|need|do|put together)\b[^.?!\n]{0,30}?\b(?:ca|c\.a\.|corrective(?: action)?|coaching|write[- ]?up|warning|form)\b/i.test(text);
+  const incident = /\bfor (?:being|not|failing|leaving|missing|taking|skipping|no[- ]?call|late|tardiness)\b|\b(?:was|were|did not|didn'?t|failed|left|missed|forgot|refused)\b/i.test(text);
+  return asks && incident;
+}
+
 /** Every message the manager typed in this chat, the latest included. */
 function managerTurns(context: Pick<ToolContext, "question" | "history">): string {
   return [...context.history.filter((message) => message.role === "user").map((message) => message.content), context.question].join("\n");
@@ -460,7 +542,7 @@ export async function proposeForm(
    * draft open, a second card for the same form AND the same person is refused unless the manager asked for another or
    * a new one. Another person ("the same form for <C>", "<A> and <B>") always gets their own card.
    */
-  if (context.openFormId && !/\b(?:another|new|second|separate|fresh|different)\b/i.test(context.question)) {
+  if (context.openFormId && !/\b(?:another|new|second|separate|fresh|different)\b/i.test(context.question) && !startsNewForm(context.history, context.question) && !NEW_REQUEST_WITH_INCIDENT(context.question)) {
     const open = await authorizeInstance(context.request, context.openFormId, "view").then(({ loaded }) => loaded.instance).catch(() => null);
     if (open && open.status === "draft" && open.templateKey === key && samePerson(open.employeeName, employee.name)) {
       return { error: `The ${open.templateName} draft for ${open.employeeName} is open on screen: put this on that draft with edit_form (instance_id ${open.id}). Propose a new card only if the manager asks for another or a new one.` };
@@ -473,9 +555,19 @@ export async function proposeForm(
   }
 
   const whatHappened = typeof input.what_happened === "string" ? input.what_happened.trim().slice(0, 2_000) : "";
+  /* The incident's own words (this person's turns, read below) are checked against the account once they are known. */
   const asked = managerContext(context.history as ChatMessage[], { id: context.questionMessageId, content: context.question });
   /* THIS request's turns (QA, 14 Nov 2026; THIS_PERSONS_TURNS behaviour): an earlier incident in the chat never feeds this card. */
-  const personTurns = turnsFromThisPersonsRequest(asked, employee.name, { names: extractEmployeeNames, same: samePerson });
+  const rosterNames = read.kind === "read" ? read.roster.map(displayName) : [];
+  /*
+   * HARD GUARD, THE RIGHT PERSON'S ACCOUNT (the live run's nov6-diffemp): a turn that names another roster person and
+   * not this one ("…for Test Employee, she was late…" beside "Test Employee Two") is never this card's source.
+   */
+  const personTurns = turnsFromThisPersonsRequest(asked, employee.name, { names: extractEmployeeNames, same: samePerson }).filter((id) => {
+    if (id === context.questionMessageId) return true;
+    const said = asked.messages.find((message) => message.id === id)?.content ?? "";
+    return mentionsPerson(said, employee.name, rosterNames) || !rosterNames.some((name) => !samePerson(name, employee.name) && mentionsPerson(said, name, rosterNames));
+  });
   // A later create request with its own incident ("make me a CA for <name> for being late …") starts a new form: its own turn only.
   const newRequest = context.questionMessageId && startsNewForm(context.history, context.question);
   const sourceIds = newRequest ? personTurns.filter((id) => id === context.questionMessageId) : personTurns;
@@ -483,6 +575,12 @@ export async function proposeForm(
     .filter((message) => sourceIds.includes(message.id ?? ""))
     .map((message) => message.content)
     .join("\n");
+  if (whatHappened && ACCOUNT_FORMS.has(template.key)) {
+    const dropped = accountMissing(withoutPayrollClauses(requestWords), whatHappened);
+    if (dropped.length > 0) {
+      return { error: `what_happened leaves out what the manager said: ${dropped.map((word) => `"${word}"`).join(", ")}. Put the manager's whole account of this incident in what_happened, every date, time, place and amount as they said it, and propose again.` };
+    }
+  }
 
   /*
    * The policy: "Other", or a heading of the manual as the manual spells it. Pau's rule (OTHER_POLICY_AGREES): a
@@ -625,6 +723,19 @@ export async function editForm(
   try {
     const { loaded } = await authorizeInstance(context.request, id, "edit");
     /*
+     * HARD GUARD, THE RIGHT PERSON'S FORM (the live run's nov6-diffemp, top severity): a message about another roster
+     * person, and not this form's employee ("now one for <B> …" with <A>'s draft open), never edits <A>'s form; it is
+     * <B>'s own card. As today's reviser rules ("about a different person is not a revision", `chat-revision.ts`).
+     */
+    const roster = await rosterFor(context.actor.scope);
+    if (roster.kind === "read") {
+      const names = roster.roster.map(displayName);
+      const other = names.find((name) => !samePerson(name, loaded.instance.employeeName) && mentionsPerson(context.question, name, names));
+      if (other && !mentionsPerson(context.question, loaded.instance.employeeName, names)) {
+        return { error: `This message is about ${other}, not ${loaded.instance.employeeName}; this form is ${loaded.instance.employeeName}'s and was not changed. Propose ${other}'s own card instead.` };
+      }
+    }
+    /*
      * HARD GUARD: a finalized form is never written. A change to one opens a NEW draft revising it, by the same code
      * the card's "Edit as new draft" and today's chat reopen use (`openEditableDraft` → `reviseFinalizedForm`), and the
      * change is applied there; the original stays as it was (the form_instance_values_frozen trigger also holds it).
@@ -677,13 +788,26 @@ export async function editForm(
  */
 async function openFormTurn(context: ToolContext, id: string): Promise<AskResponse | null> {
   const turn = { request: context.request, instanceId: id, question: context.question, history: context.history as ChatMessage[], today: context.today || businessToday() };
-  return (
-    (await (await import("@/lib/forms/chat-correction")).correctActiveForm(turn)) ??
-    (formPatchReducerEnabled() && !formEditToolInStreamEnabled() ? await (await import("@/lib/forms/form-patch-turn")).patchActiveForm(turn) : null) ??
-    (await (await import("@/lib/forms/chat-revision")).reviseActiveForm(turn)) ??
-    (formEditPlainWordsEnabled() ? await plainWordsRevision(context, id, turn) : null) ??
-    (await (await import("@/lib/forms/open-draft-turn")).openDraftTurn(turn))
-  );
+  /*
+   * In the route's order. A reader that answers but saves nothing ("I haven't changed …") hands the turn to the next
+   * one (the live run's "make that update": the patch reader answered, wrote nothing, and the account never reached
+   * the draft); the first that saves wins, else the first answer.
+   */
+  const readers: (() => Promise<AskResponse | null>)[] = [
+    async () => (await import("@/lib/forms/chat-correction")).correctActiveForm(turn),
+    async () => (formPatchReducerEnabled() && !formEditToolInStreamEnabled() ? (await import("@/lib/forms/form-patch-turn")).patchActiveForm(turn) : null),
+    async () => (await import("@/lib/forms/chat-revision")).reviseActiveForm(turn),
+    async () => (formEditPlainWordsEnabled() ? plainWordsRevision(context, id, turn) : null),
+    async () => (await import("@/lib/forms/open-draft-turn")).openDraftTurn(turn),
+  ];
+  let firstAnswer: AskResponse | null = null;
+  for (const read of readers) {
+    const answer = await read();
+    if (!answer) continue;
+    if ((answer.formUpdate?.updated.length ?? 0) > 0) return answer;
+    firstAnswer ??= answer;
+  }
+  return firstAnswer;
 }
 
 /** FORM_EDIT_PLAIN_WORDS, as the route runs it: "make that update", "this is what i am wanting to coach on: …". */
