@@ -808,7 +808,7 @@ async function recorded(id: string, mode: string, run: () => Promise<void>) {
   }
 }
 
-function production(extra: readonly string[] = []) {
+function production(extra: readonly string[] = [], off: readonly string[] = []) {
   extra = [...extra, ...CLASSIFY_ON];
   for (const name of [...ALL_FLAGS, ...KNOWN_OFF, ...extra]) {
     if (!saved.has(name)) saved.set(name, process.env[name]);
@@ -818,7 +818,7 @@ function production(extra: readonly string[] = []) {
     if (!saved.has(name)) saved.set(name, process.env[name]);
     process.env[name] = "true";
   }
-  for (const name of CLASSIFY_OFF) {
+  for (const name of [...CLASSIFY_OFF, ...off]) {
     if (!saved.has(name)) saved.set(name, process.env[name]);
     delete process.env[name];
   }
@@ -1013,12 +1013,12 @@ describe("the replay pack", () => {
     if (replay.fixFlags?.length && replay.fixStatus) {
       // A fix-flag run that fails today (`fixStatus`): expected to fail. The day it passes, drop fixStatus.
       it.fails(`${title} — OPEN with ${replay.fixFlags.join(", ")} on (${replay.fixStatus.open})`, async () => {
-        production(replay.fixFlags);
+        production(replay.fixFlags, replay.fixOffFlags);
         await recorded(replay.id, `fix-open:${replay.fixFlags!.join(",")}`, () => replay.run(context()));
       });
     } else if (replay.fixFlags?.length) {
       it(`${title} — holds with ${replay.fixFlags.join(", ")} on`, async () => {
-        production(replay.fixFlags);
+        production(replay.fixFlags, replay.fixOffFlags);
         await recorded(replay.id, `fix:${replay.fixFlags!.join(",")}`, () => replay.run(context()));
       });
     }
