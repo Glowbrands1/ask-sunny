@@ -4682,6 +4682,19 @@ export function groupWordsNotANameEnabled(): boolean {
 }
 
 /**
+ * Plain conduct wording reads as the Standards of Conduct (Code 3, policy
+ * reading; QA T4/T2/J1, 25 Oct 2026): a policy acknowledgment left undone in
+ * either spelling, a refusal to do what the manager asked or walking off,
+ * talking back or disrespect to a manager, and gossip or talking negatively
+ * about co-workers. Gossip is never the harassment section unless the manager
+ * used a harassment word, and a Standards of Conduct reading is cited by the
+ * code, not left to the model. Off, the policy is read exactly as before.
+ */
+export function policyConductWordingEnabled(): boolean {
+  return envFlag("POLICY_CONDUCT_WORDING_ENABLED");
+}
+
+/**
  * STEP_B_SECTION_SPACING_ENABLED (ported from Ask Bubbles; QA's live draft test, 8 Nov 2026; same flag in both apps;
  * default off). After an edit, the blank lines between Observed / Expectation / Going Forward became single newlines.
  * On: a write of a field that had them keeps one blank line before each section heading (`forms/outline-sections.ts`).
