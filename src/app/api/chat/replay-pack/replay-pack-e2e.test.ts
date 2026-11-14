@@ -16,7 +16,6 @@ import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
 import type { ReplayContext } from "./cases";
 import { CASES } from "./index";
 import { forgetManualIndexForTests } from "@/lib/ai/intent-extraction";
-import { isLoopRequest } from "./loop-stand-in";
 
 /**
  * ============================================================================
@@ -393,11 +392,6 @@ vi.mock("@/lib/ai/anthropic", () => ({
   getAnthropicClient: () => ({
     messages: {
       create: async (request: { tool_choice?: { name?: string } }) => {
-        // AGENT_LOOP_ENABLED: a call offering the loop's tools is the case's stand-in model (`t.loopModel`).
-        if (isLoopRequest(request)) {
-          if (!loop.standIn) throw new Error("the loop was called with no stand-in model (t.loopModel)");
-          return loop.standIn.respond(request);
-        }
         const revising = request.tool_choice?.name === "revise_form_fields";
         if (!revising) {
           state.draftCalls += 1;
@@ -583,7 +577,8 @@ async function call<T>(url: string, init?: RequestInit): Promise<T> {
 /** The draft route's replies this case (DRAFT_WROTE_NOTHING_NOTICE_ENABLED reads its `notice`). */
 const draftReplies: Record<string, unknown>[] = [];
 
-/* AGENT_LOOP_ENABLED (QA, 14 Nov 2026): the loop's manual cache, forgotten between cases (each case pins its own passages). */
+/* AGENT_LOOP_ENABLED (QA, 14 Nov 2026): the loop's stand-in model (`t.loopModel`), and its manual cache forgotten between cases. */
+const { __setAgentLoopModelForTests } = await import("@/lib/ai/agent-loop/run");
 const { forgetAgentLoopManualForTests } = await import("@/lib/ai/agent-loop/tools");
 
 /** The chat route only accepts a UUID for the open form; the fake numbers rows `fake-N`. */
@@ -855,6 +850,7 @@ afterEach(() => {
   setSubject(undefined);
   loop.standIn = null;
   loop.rosterFails = false;
+  __setAgentLoopModelForTests(null);
   forgetAgentLoopManualForTests();
   said.answer = null;
   editTool.input = null;
@@ -973,6 +969,7 @@ function context(): ReplayContext {
     loopOn: () => process.env.AGENT_LOOP_ENABLED === "true",
     loopModel: (standIn) => {
       loop.standIn = standIn;
+      __setAgentLoopModelForTests(standIn.model);
     },
     rosterFails: () => {
       loop.rosterFails = true;

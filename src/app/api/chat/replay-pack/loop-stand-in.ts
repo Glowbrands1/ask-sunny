@@ -22,75 +22,112 @@ export interface LoopView {
   readonly step: number;
 }
 
-export type LoopDecision = { readonly tool: string; readonly input: Record<string, unknown> } | { readonly text: string };
+export type LoopDecision =
+  | { readonly tool: string; readonly input: Record<string, unknown> }
+  | { readonly text: string }
+  /** The request is accepted and nothing more arrives, until the call is aborted (a stalled model). */
+  | { readonly stall: true };
 
 export interface LoopStandIn {
-  /** The answer to one loop call (`messages.create` with the loop's tools). */
-  readonly respond: (request: unknown) => Promise<unknown>;
+  /** The AI SDK language model the loop is given (`__setAgentLoopModelForTests`). */
+  readonly model: unknown;
   readonly views: LoopView[];
   calls: number;
 }
 
-type Block = { type?: string; text?: string; name?: string; id?: string; tool_use_id?: string; content?: unknown };
-type Message = { role: string; content: string | Block[] };
-type Request = { system?: string | { text?: string }[]; messages?: Message[] };
+type Part = { type?: string; text?: string; toolName?: string; toolCallId?: string; output?: { type?: string; value?: unknown } };
+type Message = { role: string; content: string | Part[] };
 
-function viewOf(request: Request): LoopView {
-  const system = typeof request.system === "string" ? request.system : (request.system ?? []).map((block) => block.text ?? "").join("\n\n");
-  const messages = request.messages ?? [];
-  // The turn begins at the last user message that is the manager's words (not tool results).
+/** What the model was shown, from an AI SDK (v3) prompt: system, the conversation, this turn's tool results. */
+function viewOf(prompt: readonly Message[]): LoopView {
+  const system = prompt
+    .filter((message) => message.role === "system")
+    .map((message) => (typeof message.content === "string" ? message.content : ""))
+    .join("\n\n");
+  // The turn begins at the last user message (the manager's words; tool results are "tool" messages).
   let start = -1;
-  messages.forEach((message, index) => {
-    if (message.role === "user" && (typeof message.content === "string" || message.content.some((block) => block.type === "text"))) start = index;
+  prompt.forEach((message, index) => {
+    if (message.role === "user") start = index;
   });
   const turns: { role: "user" | "assistant"; text: string }[] = [];
-  for (const message of messages.slice(0, start + 1)) {
-    const text = typeof message.content === "string" ? message.content : message.content.filter((block) => block.type === "text").map((block) => block.text ?? "").join("\n");
-    if (text !== "") turns.push({ role: message.role === "assistant" ? "assistant" : "user", text });
+  for (const message of prompt.slice(0, start + 1)) {
+    if (message.role !== "user" && message.role !== "assistant") continue;
+    const text = typeof message.content === "string" ? message.content : message.content.filter((part) => part.type === "text").map((part) => part.text ?? "").join("\n");
+    if (text !== "") turns.push({ role: message.role, text });
   }
-  /* This turn's tool calls and their results, paired by id. */
-  const names = new Map<string, string>();
   const results: { tool: string; output: Record<string, unknown> }[] = [];
   let step = 0;
-  for (const message of messages.slice(start + 1)) {
-    if (typeof message.content === "string") continue;
-    if (message.role === "assistant") {
-      step += 1;
-      for (const block of message.content) if (block.type === "tool_use") names.set(block.id ?? "", block.name ?? "");
-    } else {
-      for (const block of message.content) {
-        if (block.type === "tool_result") results.push({ tool: names.get(block.tool_use_id ?? "") ?? "", output: JSON.parse(String(block.content ?? "{}")) as Record<string, unknown> });
-      }
+  for (const message of prompt.slice(start + 1)) {
+    if (message.role === "assistant") step += 1;
+    if (message.role !== "tool" || typeof message.content === "string") continue;
+    for (const part of message.content) {
+      if (part.type === "tool-result") results.push({ tool: part.toolName ?? "", output: (part.output?.value ?? {}) as Record<string, unknown> });
     }
   }
   return { system, turns, results, step };
 }
 
-const USAGE = { input_tokens: 200, output_tokens: 60, cache_read_input_tokens: 1000, cache_creation_input_tokens: 0 };
+const USAGE = {
+  inputTokens: { total: 1200, noCache: 200, cacheRead: 1000, cacheWrite: 0 },
+  outputTokens: { total: 60, text: 60, reasoning: 0 },
+};
 
-/** The loop's model, answering each step with `decide`'s choice, in the Anthropic Messages shape. */
+function streamOf(parts: readonly Record<string, unknown>[]): ReadableStream<Record<string, unknown>> {
+  return new ReadableStream({
+    start(controller) {
+      for (const part of parts) controller.enqueue(part);
+      controller.close();
+    },
+  });
+}
+
+/** A language model (AI SDK v3, streamed) that answers each step with `decide`'s choice. */
 export function loopStandIn(decide: (view: LoopView) => LoopDecision): LoopStandIn {
   const standIn: LoopStandIn = {
     views: [],
     calls: 0,
-    respond: async (request: unknown) => {
-      standIn.calls += 1;
-      const view = viewOf(request as Request);
-      standIn.views.push(view);
-      const decision = decide(view);
-      if ("tool" in decision) {
-        return { stop_reason: "tool_use", content: [{ type: "tool_use", id: `call-${standIn.calls}`, name: decision.tool, input: decision.input }], usage: USAGE };
-      }
-      return { stop_reason: "end_turn", content: [{ type: "text", text: decision.text }], usage: USAGE };
+    model: {
+      specificationVersion: "v3",
+      provider: "stand-in",
+      modelId: "claude-stand-in",
+      supportedUrls: {},
+      async doGenerate() {
+        throw new Error("the stand-in only streams");
+      },
+      async doStream(options: { prompt: Message[]; abortSignal?: AbortSignal }) {
+        standIn.calls += 1;
+        const view = viewOf(options.prompt);
+        standIn.views.push(view);
+        const decision = decide(view);
+        if ("stall" in decision) {
+          return {
+            stream: new ReadableStream({
+              start(controller) {
+                controller.enqueue({ type: "stream-start", warnings: [] });
+                options.abortSignal?.addEventListener("abort", () => controller.error(Object.assign(new Error("aborted"), { name: "AbortError" })));
+              },
+            }),
+          };
+        }
+        const parts: Record<string, unknown>[] =
+          "tool" in decision
+            ? [
+                { type: "stream-start", warnings: [] },
+                { type: "tool-call", toolCallId: `call-${standIn.calls}`, toolName: decision.tool, input: JSON.stringify(decision.input) },
+                { type: "finish", finishReason: { unified: "tool-calls", raw: "tool_use" }, usage: USAGE },
+              ]
+            : [
+                { type: "stream-start", warnings: [] },
+                { type: "text-start", id: "t" },
+                { type: "text-delta", id: "t", delta: decision.text },
+                { type: "text-end", id: "t" },
+                { type: "finish", finishReason: { unified: "stop", raw: "end_turn" }, usage: USAGE },
+              ];
+        return { stream: streamOf(parts) };
+      },
     },
   };
   return standIn;
-}
-
-/** A loop call: the request offers the loop's tools. */
-export function isLoopRequest(request: unknown): boolean {
-  const tools = (request as { tools?: { name?: string }[] } | null)?.tools ?? [];
-  return tools.some((tool) => tool.name === "find_staff") && tools.some((tool) => tool.name === "propose_form");
 }
 
 /** The last result of a tool this turn, if any. */

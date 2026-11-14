@@ -1,18 +1,18 @@
 import "server-only";
 
 import { CLAUDE_EFFORT, CLAUDE_MAX_TOKENS, CLAUDE_MODEL } from "@/lib/config/models";
-import { MissingConfigurationError } from "@/lib/config/server-env";
+import { MissingConfigurationError, requireEnv } from "@/lib/config/server-env";
+import { mainAnswerTimeoutMs, streamGapTimeoutMs } from "@/lib/config/ai-timeouts";
 import { chatTraceEnabled } from "@/lib/config/chat-quality-flags";
 import { authorizedSalonIds } from "@/lib/forms/location-scope";
 import type { ChatMessage } from "@/types";
 
-import { getAnthropicClient } from "../anthropic";
 import { finishChatTrace, openChatTrace } from "../chat-trace";
 import { chatTraceDraft } from "../chat-trace-store";
 import { AiError } from "../errors";
 import { noteModelCall } from "../model-failure";
-import { cachedSystem, DYNAMIC_MARKER } from "../prompt-cache";
-import { AI_TIMEOUT_MESSAGE, isAiTimeLimitError, logAiFailure, withAiTimeLimit } from "../time-limit";
+import { activeSpendMeter } from "../spend-meter";
+import { AI_TIMEOUT_MESSAGE, isAiTimeLimitError, logAiFailure, withStreamTimeLimit } from "../time-limit";
 import type { AskResponse } from "../types";
 import { agentLoopSystem, AGENT_LOOP_RULES } from "./prompt";
 import { agentLoopStepLimit } from "./switch";
@@ -35,36 +35,31 @@ import {
  * THE HR CHAT'S TOOL LOOP (AGENT_LOOP_ENABLED)
  * ============================================================================
  *
- * The L10 assistant's pattern (`features/l10/assistant/assistant.server.ts`,
- * tools with `stopWhen: stepCountIs(n)`), on the app's own Anthropic client:
- * the model asks for a tool, the code runs it as the signed-in manager
- * (`tools.ts`), the result goes back to the model as a tool_result, and so on
- * until it writes the reply — which is returned AS WRITTEN: no reply rewrites,
- * no intent routing. The app's client, not the AI SDK: the AI SDK stays in the
- * form-patch call and the L10 tab (`form-patch-flags-off.test.ts`), and every
- * step is counted by the spend meter and bounded by the AI time limits like
- * any other call. The route keeps everything around it: authentication, the
- * rate limit, the spend guard and daily cap (checked before this is reached),
- * the turn record.
+ * The L10 assistant's stack and pattern (`features/l10/assistant/assistant.server.ts`):
+ * the Vercel AI SDK's streamText with tools and `stopWhen: stepCountIs(n)`.
+ * The model asks for a tool, the code runs it as the signed-in manager
+ * (`tools.ts`), the result goes back to the model, and so on until it writes
+ * the reply — which is returned AS WRITTEN: no reply rewrites, no intent
+ * routing. The route keeps everything around it: authentication, the rate
+ * limit, the spend guard and daily cap (checked before this is reached), the
+ * turn record.
  *
  *   steps        AGENT_LOOP_MAX_STEPS, default 6, never more than 10
- *   time         each model step 90 s (a long final answer is not cut); the
- *                whole loop 100 s, under the route's 120 s
+ *   time         Part 1's stream limits on each step (45 s to its first
+ *                token, then 30 s between chunks: a long answer that keeps
+ *                streaming is never cut); the whole loop 100 s, under the
+ *                route's 120 s
  *   limit/error  a clear reply, never an empty one, and a server log line
  *   trace        chat_traces `slots.agent_loop`: each tool call's name, ms and
  *                result size, and each model call's ms, stop reason and
  *                tokens — names and numbers only, never values
- *   spend        every step's usage into the request's spend meter; the
+ *   spend        every step's usage into the request's spend meter
+ *                (SPEND_GUARD_ALL_CALLS_ENABLED), as form-patch-call does; the
  *                trace row carries the model and the turn's totals, so the
  *                monthly budget and the daily cap count it
  */
 
 export const AGENT_LOOP_TOTAL_MS = 100_000;
-/**
- * One step's whole-call limit. Not streamed, so not the main answer's first-token limit: QA's 14 days of chat_traces
- * had successful long answers of 46–57 s, which a 45 s whole-call limit would have cut. The loop's total still holds.
- */
-export const AGENT_LOOP_STEP_MS = 90_000;
 
 export const STEP_LIMIT_REPLY = "I couldn't finish that in the steps I have for one message. Could you tell me the one thing you want done first?";
 export const LOOP_FAILED_REPLY = "Sunny could not finish that answer. Nothing was saved. Please send it again in a moment.";
@@ -154,8 +149,21 @@ export const AGENT_LOOP_TOOLS = [
   },
 ];
 
-type ContentBlock = { type?: string; text?: string; id?: string; name?: string; input?: unknown };
-type ModelReply = { content?: ContentBlock[]; stop_reason?: string | null; usage?: Record<string, unknown> | null };
+/** Test seam: the language model (AI SDK) the loop calls. Unset, Claude through @ai-sdk/anthropic. */
+let modelForTests: unknown = null;
+export function __setAgentLoopModelForTests(model: unknown): void {
+  modelForTests = model;
+}
+
+type StepUsage = { inputTokens?: number; outputTokens?: number; inputTokenDetails?: { noCacheTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number } };
+
+/** An AI SDK step's usage in Anthropic's names: uncached input, output, cache reads, cache writes. */
+function tokensOf(usage: StepUsage | undefined) {
+  const cacheRead = count(usage?.inputTokenDetails?.cacheReadTokens);
+  const cacheWrite = count(usage?.inputTokenDetails?.cacheWriteTokens);
+  const input = usage?.inputTokenDetails?.noCacheTokens ?? Math.max(0, count(usage?.inputTokens) - cacheRead - cacheWrite);
+  return { input_tokens: count(input), output_tokens: count(usage?.outputTokens), cache_read_input_tokens: cacheRead, cache_creation_input_tokens: cacheWrite };
+}
 
 export async function runAgentTurn(input: AgentTurnInput): Promise<AskResponse> {
   if (!chatTraceEnabled()) return loop(input);
@@ -217,74 +225,79 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     headings: manual?.headings ?? [],
     openFormId: input.openFormId,
   });
-  // The rules are cached; the turn's facts after the marker are not (`prompt-cache.ts`).
-  const system = cachedSystem(`${AGENT_LOOP_RULES}\n\n${DYNAMIC_MARKER}\n${dynamic}`);
+
+  const { jsonSchema, stepCountIs, streamText, tool } = await import("ai");
+  const model = modelForTests ?? (await import("@ai-sdk/anthropic")).createAnthropic({ apiKey: requireEnv("ANTHROPIC_API_KEY") })(CLAUDE_MODEL);
+  let stepNumber = 1;
+  const tools = Object.fromEntries(
+    AGENT_LOOP_TOOLS.map((definition) => [
+      definition.name,
+      tool({
+        description: definition.description,
+        inputSchema: jsonSchema<Record<string, unknown>>(definition.input_schema as never),
+        execute: (args: Record<string, unknown>) => runTool(stepNumber, definition.name, args),
+      }),
+    ]),
+  );
 
   const limit = agentLoopStepLimit();
   const started = performance.now();
-  const messages = conversationOf(input.history, input.question);
   let text = "";
   let stoppedAt = "step_limit" as "reply" | "step_limit" | "timeout" | "error";
   const usage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
   let modelCalls = 0;
   try {
-    const client = getAnthropicClient();
     /*
-     * AI TIME LIMITS: each model step ends by AGENT_LOOP_STEP_MS, the SDK's retries included; the whole loop by
-     * AGENT_LOOP_TOTAL_MS, under the route's 120 s. Every step goes through the app's one client, so the spend meter
-     * counts it (SPEND_GUARD_ALL_CALLS_ENABLED) as it counts every other call.
+     * AI TIME LIMITS (Part 1): each step has 45 s to its first token, then 30 s between chunks, and the whole loop
+     * AGENT_LOOP_TOTAL_MS, under the route's 120 s — through the abort signal. A long answer that keeps streaming is
+     * never cut. Each step's usage goes into the request's spend meter, as every other call's does.
      */
-    await withAiTimeLimit("agent_loop", AGENT_LOOP_TOTAL_MS, async () => {
-      for (let step = 1; step <= limit; step += 1) {
-        const stepStarted = performance.now();
-        const reply = (await withAiTimeLimit("agent_loop_step", AGENT_LOOP_STEP_MS, (timed) =>
-          client.messages.create(
-            {
-              model: CLAUDE_MODEL,
-              max_tokens: CLAUDE_MAX_TOKENS.standard,
-              thinking: { type: "adaptive" as const },
-              output_config: { effort: CLAUDE_EFFORT },
-              system,
-              tools: AGENT_LOOP_TOOLS,
-              messages,
-            } as never,
-            timed,
-          ),
-        )) as unknown as ModelReply;
-        modelCalls += 1;
-        for (const key of Object.keys(usage) as (keyof typeof usage)[]) usage[key] += count(reply.usage?.[key]);
-        modelSteps.push({
-          step,
-          ms: Math.round(performance.now() - stepStarted),
-          stop: reply.stop_reason ?? null,
-          input_tokens: count(reply.usage?.input_tokens),
-          output_tokens: count(reply.usage?.output_tokens),
-          cache_read_input_tokens: count(reply.usage?.cache_read_input_tokens),
-          cache_creation_input_tokens: count(reply.usage?.cache_creation_input_tokens),
-        });
-        const content = reply.content ?? [];
-        const calls = content.filter((block) => block.type === "tool_use" && typeof block.name === "string");
-        text = content
-          .filter((block) => block.type === "text" && typeof block.text === "string")
-          .map((block) => block.text ?? "")
-          .join("\n")
-          .trim();
-        if (reply.stop_reason !== "tool_use" || calls.length === 0) {
-          stoppedAt = "reply";
-          return;
-        }
-        messages.push({ role: "assistant", content });
-        const results = [];
-        for (const call of calls) {
-          const result = await runTool(step, call.name!, call.input);
-          results.push({ type: "tool_result", tool_use_id: call.id, content: JSON.stringify(result), ...("error" in result ? { is_error: true } : {}) });
-        }
-        messages.push({ role: "user", content: results });
-      }
+    await withStreamTimeLimit("agent_loop", { firstTokenMs: mainAnswerTimeoutMs(), gapMs: streamGapTimeoutMs(), totalMs: AGENT_LOOP_TOTAL_MS }, async (timed, watch) => {
+      let stepStarted = performance.now();
+      const result = streamText({
+        model: model as never,
+        system: [
+          { role: "system", content: AGENT_LOOP_RULES, providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } } },
+          { role: "system", content: dynamic },
+        ],
+        messages: conversationOf(input.history, input.question) as never,
+        tools,
+        stopWhen: stepCountIs(limit),
+        maxOutputTokens: CLAUDE_MAX_TOKENS.standard,
+        maxRetries: timed.maxRetries,
+        abortSignal: timed.signal,
+        providerOptions: { anthropic: { thinking: { type: "adaptive" }, effort: CLAUDE_EFFORT } } as never,
+        onError: () => {},
+        onChunk: ({ chunk }) => {
+          watch.chunk();
+          if (chunk.type === "text-delta" || chunk.type === "reasoning-delta" || chunk.type === "tool-input-start" || chunk.type === "tool-call") watch.firstToken();
+        },
+        onStepFinish: (step) => {
+          const used = tokensOf(step.usage as StepUsage);
+          for (const key of Object.keys(usage) as (keyof typeof usage)[]) usage[key] += used[key];
+          activeSpendMeter()?.calls.push({
+            model: CLAUDE_MODEL,
+            inputTokens: used.input_tokens,
+            outputTokens: used.output_tokens,
+            cacheReadTokens: used.cache_read_input_tokens,
+            cacheWriteTokens: used.cache_creation_input_tokens,
+          });
+          modelSteps.push({ step: stepNumber, ms: Math.round(performance.now() - stepStarted), stop: step.finishReason ?? null, ...used });
+          modelCalls += 1;
+          stepNumber += 1;
+          stepStarted = performance.now();
+          // The next step waits for its own first token.
+          watch.attempt();
+        },
+      });
+      const steps = await result.steps;
+      const last = steps.at(-1);
+      text = (last?.text ?? "").trim();
+      stoppedAt = last && last.finishReason === "tool-calls" ? "step_limit" : "reply";
     });
   } catch (error) {
     if (error instanceof MissingConfigurationError) throw new AiError("not_configured", error.message, 503, error.missing);
-    // A timeout already wrote its log line (`withAiTimeLimit`).
+    // A timeout already wrote its log line (`withStreamTimeLimit`).
     stoppedAt = isAiTimeLimitError(error) ? "timeout" : "error";
     if (stoppedAt === "error") logAiFailure("agent_loop", performance.now() - started, error);
   }

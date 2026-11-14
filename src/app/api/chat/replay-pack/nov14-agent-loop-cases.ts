@@ -441,4 +441,34 @@ export const NOV14_AGENT_LOOP_CASES: ReplayCase[] = [
       expect(Number(row!.output_tokens)).toBe(4 * 60);
     },
   },
+  {
+    id: "nov14-agent-loop-stalled-model-times-out",
+    title: "a loop step whose model never sends a token ends at the first-token limit with Part 1's message (504), never an empty reply",
+    report: `${REPORT}: each call has the Part 1 time limits`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-03T15:00:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      t.loopModel!(loopStandIn(() => ({ stall: true })));
+      const saved = process.env.AI_MAIN_TIMEOUT_MS;
+      process.env.AI_MAIN_TIMEOUT_MS = "5000";
+      const started = performance.now();
+      try {
+        const failure = await t.thread().say("verbal CA for rowan kestrel, she was late on 11/1/26").then(
+          () => null,
+          (error: unknown) => String((error as Error).message),
+        );
+        expect(failure, "the stalled loop answered 200").not.toBeNull();
+        expect(failure).toMatch(/took too long to answer/);
+        expect(failure).toMatch(/504/);
+        expect(performance.now() - started).toBeLessThan(15_000);
+      } finally {
+        if (saved === undefined) delete process.env.AI_MAIN_TIMEOUT_MS;
+        else process.env.AI_MAIN_TIMEOUT_MS = saved;
+      }
+    },
+  },
 ];
