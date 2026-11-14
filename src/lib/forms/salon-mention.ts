@@ -5,6 +5,7 @@ import { PRODUCTION_SALONS, type ProductionSalon } from "@/data/salons";
 import { storeNameKey } from "@/lib/reporting/store-identity";
 
 import { closeWordDistance, editDistance } from "./close-spelling";
+import { placeReadingText } from "./reason-place";
 import { salonForTypedNumber, salonsForTypedNumber } from "./salon-text";
 
 /**
@@ -266,7 +267,9 @@ const TIME_BEFORE =
  * `text` is the manager's own turns — the same bounded window the employee and
  * the date are read from — never the assistant's.
  */
-export function readSalonMentions(text: string): SalonMention[] {
+export function readSalonMentions(said: string): SalonMention[] {
+  // REASON_PLACE_NOT_SALON_ENABLED: "because she was at grand island" is why, not the salon (`reason-place.ts`).
+  const text = placeReadingText(said);
   const mentions: SalonMention[] = [];
 
   for (const match of text.matchAll(SALON_NUMBER)) {

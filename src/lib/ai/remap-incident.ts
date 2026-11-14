@@ -10,6 +10,7 @@ import {
   requestLeadFillerEnabled,
   requestParticipleLeadEnabled,
   anotherRequestLeadEnabled,
+  reasonPlaceNotSalonEnabled,
   placeStripWholePhraseOnlyEnabled,
   secondRequestOwnAccountEnabled,
   sharedCityAsksSalonEnabled,
@@ -1075,6 +1076,9 @@ function withoutPlace(clause: string): string {
   const words = clause.trim().split(/\s+/);
   for (let index = 0; index < words.length - 1; index += 1) {
     if (!/^(?:at|in)$/i.test(words[index]!)) continue;
+    // REASON_PLACE_NOT_SALON_ENABLED: "because she was at grand island" is why she was late, not the salon; the account
+    // keeps it (on main the Observation read "she was late because she was"). Off, as before.
+    if (reasonPlaceNotSalonEnabled() && /\b(?:because|bc|b\/c|cause|'cause|cuz|since)\s+\S+\s+(?:was|were|had\s+been)$/i.test(words.slice(0, index).join(" "))) continue;
     for (let length = Math.min(6, words.length - index - 1); length >= 1; length -= 1) {
       const phrase = words.slice(index + 1, index + 1 + length).join(" ");
       const bare = phrase.replace(/[.!?]+$/, "");
