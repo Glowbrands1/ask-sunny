@@ -12,6 +12,7 @@ import { wantsSeparateDocument } from "@/lib/ai/second-form";
 import {
   chatLongMessageEnabled,
   closeSpellingMatchEnabled,
+  addAlreadyOnFormSaysSoEnabled,
   draftActionsEnabled,
   formEditHonestReplyEnabled,
   claimGuardEnabled,
@@ -748,7 +749,7 @@ async function postChat(request: Request) {
             })
           : null;
       const separateDocument = !sameCopy && secondFormEnabled() && wantsSeparateDocument(parsed.question);
-      const askedRevision =
+      const askedRevisionFirst =
         !sameCopy && !correction && !askedQuestion && !policyChange && !redraft && parsed.activeFormInstanceId && !separateDocument
           ? await (await import("@/lib/forms/chat-revision")).reviseActiveForm({
               request,
@@ -758,6 +759,15 @@ async function postChat(request: Request) {
               today: parsed.context.todayIso,
             })
           : null;
+      /*
+       * ADD_ALREADY_ON_FORM_SAYS_SO_ENABLED (ported from the sibling app: QA's live 17u test there, item 5, 13 Nov 2026):
+       * an add the saved form already holds, which the revision answered with its generic "I haven't changed …", says the
+       * form already says that.
+       */
+      const askedRevision =
+        askedRevisionFirst && parsed.activeFormInstanceId && addAlreadyOnFormSaysSoEnabled()
+          ? ((await (await import("@/lib/forms/add-already-on-form")).alreadyOnFormReply(request, parsed.activeFormInstanceId, parsed.question, askedRevisionFirst)) ?? askedRevisionFirst)
+          : askedRevisionFirst;
       /*
        * FORM_EDIT_PLAIN_WORDS_ENABLED: "this is what i am wanting to coach on:
        * …", "make that update", "update the draft with these details" — said
