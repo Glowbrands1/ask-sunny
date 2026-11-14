@@ -1,6 +1,7 @@
 import { datesInText } from "@/lib/forms/form-date-answer";
 import { displayName, editDistance } from "@/lib/forms/employee-match";
 import { extractJobTitle } from "@/lib/forms/proposal";
+import { reasonPlaceSpans, withoutReasonPlaces } from "@/lib/forms/reason-place";
 
 import type { GroundedPerson } from "../grounded-entities";
 import { isGlossaryTerm } from "../chat-glossary";
@@ -90,7 +91,11 @@ export function checkReading(reading: FormReading, context: CheckContext): Check
     reading.employee.value?.trim() && reading.employee.evidence && quoted(reading.employee.evidence, context.managerTurns)
       ? reading.employee.value.trim()
       : null;
-  const location = keep("location", reading.location, (value, evidence) => checkLocation(value, evidence, context.locations));
+  // REASON_PLACE_NEVER_SALON_ENABLED (ported from the sibling app's 17z live bug): a place said only inside a reason
+  // ("because she was at kearney") is why, not the salon; the reader's reading of it is not the card's salon.
+  const location = keep("location", reading.location, (value, evidence) =>
+    onlyInAReason(value, context.managerTurns) ? null : checkLocation(value, evidence, context.locations),
+  );
   const jobTitle = keep("jobTitle", reading.jobTitle, (value, evidence) => checkTitle(value, evidence, context.people));
   const dated = (rows: FormReading["priorSteps"]) =>
     rows
@@ -205,6 +210,15 @@ function nameFits(person: GroundedPerson, words: readonly string[]): boolean {
 }
 
 /* --------------------------------------------------------- the other ones --- */
+
+/** The typed place appears in the manager's turns only inside a reason's place (`forms/reason-place.ts`). */
+function onlyInAReason(value: string, turns: readonly string[]): boolean {
+  const typed = plainWords(value);
+  if (!typed) return false;
+  const spans = turns.flatMap((turn) => reasonPlaceSpans(turn));
+  if (spans.length === 0 || !spans.some((span) => ` ${plainWords(span)} `.includes(` ${typed} `))) return false;
+  return !turns.some((turn) => ` ${plainWords(withoutReasonPlaces(turn))} `.includes(` ${typed} `));
+}
 
 /**
  * The location the manager wrote, inside its quote: its words ("kearney",

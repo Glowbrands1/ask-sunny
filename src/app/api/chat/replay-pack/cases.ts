@@ -79,6 +79,8 @@ export interface ReplayContext {
    * (checked against the roster, as in production), as a production trace shows them. `onlyIfSaid`: the slot
    * model reads the scripted employee only on a call whose messages contain that name, as the live model would.
    */
+  /** What the AI reader reads on the next turns besides the name (field → value), each quoted from the turn. */
+  readerReads(fields: Record<string, string>): void;
   slotsRead(slots: Record<string, unknown>, readerEmployee?: string | null, options?: { onlyIfSaid?: boolean }): void;
   /** Step B's form-patch model: its raw outputs, one per call in order (null: the call falls back). Unscripted calls fall back. */
   patchWrites(outputs: readonly unknown[]): void;

@@ -185,6 +185,8 @@ import { privateCreatorFormsEnabled, privateCreatorsActive } from "@/lib/forms/p
  */
 
 const NEW_FLAGS = [
+  // coding 4: REASON_PLACE_NEVER_SALON (ported; the sibling app's 17z live bug, QA 14 Nov 2026; default off).
+  "REASON_PLACE_NEVER_SALON_ENABLED",
   // coding 4: WORK_AREA_NOT_A_TITLE (QA, Sunny 38d live, 13 Nov 2026; default off).
   "WORK_AREA_NOT_A_TITLE_ENABLED",
   // coding 4: OBSERVATION_NO_LEADING_NAME (QA, Sunny 38d live, 13 Nov 2026; default off).

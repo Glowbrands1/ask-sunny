@@ -4870,3 +4870,13 @@ export function workAreaNotATitleEnabled(): boolean {
 export function reasonPlaceNotSalonEnabled(): boolean {
   return envFlag("REASON_PLACE_NOT_SALON_ENABLED");
 }
+
+/**
+ * REASON_PLACE_NEVER_SALON (ported from the sibling app's 17z live bug, QA 14 Nov 2026; default off; with
+ * REASON_PLACE_NOT_SALON): with the AI reader reading the place as the live model does, "write a CA for <A>, she was late
+ * because she was at kearney" was filed at NE Kearney: the reader's location took the reason's place. With the flag a
+ * reason's place is never the salon for the AI reader either (`ai/reader/check.ts`). Off, as before.
+ */
+export function reasonPlaceNeverSalonEnabled(): boolean {
+  return envFlag("REASON_PLACE_NEVER_SALON_ENABLED");
+}
