@@ -1,0 +1,76 @@
+diff --git a/src/lib/ai/form-proposal.ts b/src/lib/ai/form-proposal.ts
+index e279ac55..3a0fd09d 100644
+--- a/src/lib/ai/form-proposal.ts
++++ b/src/lib/ai/form-proposal.ts
+@@ -50,6 +50,8 @@ import {
+   MISSED_EVENT_OFFENSE,
+   missedEventPhrase,
+   readCaPolicy,
++  withoutCleaningDuty,
++  OTHER_BESIDE_NOTE,
+   type CaPolicyReading,
+   type NamedPolicyReading,
+ } from "@/lib/forms/ca-policy";
+@@ -1977,6 +1979,16 @@ function choice(summary: TemplateSummary): ChatFormChoice {
+  * the draft, as before.
+  */
+ async function namedPolicyFor(text: string, input: ProposalTurn): Promise<NamedPolicyReading | null> {
++  /*
++   * OTHER_BESIDE_DESCRIBED_ENABLED (QA's ruling (b), 14 Nov 2026): a cleaning duty left undone beside a second offense the
++   * account describes. The second offense is read from the account without the cleaning duty and leads the card, with
++   * Other said beside it (`caPolicyProposalLine`). Alone, Other as before.
++   */
++  const rest = withoutCleaningDuty(secondRequestOwnAccountEnabled() ? currentFormRequestText(text) : text);
++  if (rest !== null) {
++    const beside = await namedPolicyFor(rest, input);
++    if (beside && beside.lookup === "described") return { ...beside, besideOther: true };
++  }
+   const policyReading = readCaPolicy(secondRequestOwnAccountEnabled() ? currentFormRequestText(text) : text);
+   // A missed meeting reads as Attendance; the manual still says where (see `groundMissedEvent` below).
+   if (policyReading.stated !== null && !(policyReading.stated === "attendance" && policyReading.missedEvent)) return null;
+@@ -2242,15 +2254,25 @@ function proposalContent(
+      * being stopped for it.
+      */
+     if (proposal.status !== "needs_location") {
++      const cardText = secondRequestOwnAccountEnabled() ? currentFormRequestText(context.text) : context.text;
++      /*
++       * OTHER_BESIDE_DESCRIBED_ENABLED (QA's ruling (b), 14 Nov 2026): lateness beside a cleaning duty ("she was late on
++       * 11/3/26 and did not do the sanitation") is read from the account without the duty, so the card says Attendance
++       * as it would alone, with Other said beside it. A section the manual describes is handled by `namedPolicyFor`.
++       */
++      const rest = extra.namedPolicy?.lookup === "described" && extra.namedPolicy.besideOther ? null : withoutCleaningDuty(cardText);
++      const restReading = rest !== null ? readCaPolicy(rest) : null;
++      const beside = restReading && (restReading.stated !== null || restReading.readFromApp) ? restReading : null;
+       return correctiveActionReady(
+         proposal,
+         intake,
+         asksPayrollDeduct(match),
+-        readCaPolicy(secondRequestOwnAccountEnabled() ? currentFormRequestText(context.text) : context.text),
++        beside ?? readCaPolicy(cardText),
+         statedPriorActions(context.text, today),
+         extra.namedPolicy ?? null,
+         extra.priorOnFile ?? NO_PRIOR_FORMS,
+         extra.payrollAmountAsked === true,
++        beside !== null,
+       );
+     }
+   }
+@@ -2443,6 +2465,7 @@ function correctiveActionReady(
+   namedPolicy: NamedPolicyReading | null = null,
+   priorOnFile: PriorFormsReading = NO_PRIOR_FORMS,
+   payrollAmountAsked = false,
++  besideOther = false,
+ ): string {
+   // A step the manager already dated is theirs; the record adds only the rest.
+   const notStated = (form: PriorFormOnFile) => !priorActions.some((line) => line.includes(signedDate(form.formDate)));
+@@ -2472,7 +2495,9 @@ function correctiveActionReady(
+    * it only where the current manual's section supports it. An account that
+    * also reads as attendance or a target is a question. See `ca-policy.ts`.
+    */
+-  const policyLine = caPolicyProposalLine(policy, namedPolicy);
++  const ownPolicyLine = caPolicyProposalLine(policy, namedPolicy);
++  // OTHER_BESIDE_DESCRIBED_ENABLED: the offense read beside a cleaning duty, with Other said beside it.
++  const policyLine = ownPolicyLine && besideOther ? `${ownPolicyLine} ${OTHER_BESIDE_NOTE}` : ownPolicyLine;
+   if (policyLine) lines.push("", policyLine);
+   const sourceLine = policyLine ? unconfirmedManualLine(namedPolicy) : null;
+   if (sourceLine) lines.push("", sourceLine);

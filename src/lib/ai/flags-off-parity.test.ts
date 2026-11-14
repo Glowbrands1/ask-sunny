@@ -820,6 +820,14 @@ const PROTECTED = [
  * days), in src/lib/forms/instances.ts, the seeded `form_date`/`date` default only: `input.formDate ?? recordToday()`
  * (`lib/business-today.ts`) in place of `new Date().toISOString().slice(0, 10)`, and its import. Behind
  * FORM_DATE_BUSINESS_TODAY_ENABLED, default off; off, recordToday() is that same UTC date.
+ *
+ * Under Pau's standing approval for protected-file edits (relayed by QA, 14 Nov 2026, QA's ruling (b) on the sibling
+ * app's gate probes), in src/lib/ai/form-proposal.ts, exactly the lines of
+ * docs/patches/other-beside-described-form-proposal.patch: the imports `withoutCleaningDuty` and `OTHER_BESIDE_NOTE`;
+ * at the start of namedPolicyFor, a cleaning duty beside a second described offense reads that offense from the account
+ * without the duty (marked `besideOther`); before correctiveActionReady, lateness beside a cleaning duty is read from
+ * the account without it; and correctiveActionReady's `besideOther` parameter adds OTHER_BESIDE_NOTE after the Policy
+ * line. Behind OTHER_BESIDE_DESCRIBED_ENABLED (default off); off, as before. form-proposal.ts is already excluded below.
  */
 const APPROVED_PROTECTED_EDITS = [
   ":(exclude)src/lib/forms/required-closing.ts",
