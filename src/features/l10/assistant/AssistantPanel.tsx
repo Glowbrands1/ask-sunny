@@ -4,6 +4,8 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type FileUIPart, type UIMessage } from "ai";
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
 import ReactMarkdown from "react-markdown";
+
+import { formatBusinessTime } from "@/lib/business-date";
 import remarkGfm from "remark-gfm";
 
 import { meetingPeopleAction } from "@/features/l10/actions";
@@ -509,9 +511,9 @@ function Chat({ meetingKey, scope, deep, onDeepChange }: { meetingKey: string; s
 
 /* ── Chat history (the Hub's HistoryList, scoped) ─────────── */
 
-function when(iso: string) {
+export function when(iso: string) {
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? "" : d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  return formatBusinessTime(d) ?? "";
 }
 
 function HistoryList({ scope, onOpen, onClose }: { scope: string; onOpen: (id: string) => void; onClose: () => void }) {

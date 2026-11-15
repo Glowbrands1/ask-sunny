@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
+/* The business zone is read when business-date.ts loads: production is Central. */
+vi.hoisted(() => {
+  process.env.NEXT_PUBLIC_BUSINESS_TIMEZONE = "America/Chicago";
+});
+
 import type { LoadReportBriefingInput, ReportBriefing } from "@/lib/reporting/read/report-briefing";
 import type { ReviewFeed, ReviewsSnapshot } from "@/lib/reviews/queries";
 import type { AccessScope, Role } from "@/types";
@@ -107,6 +112,13 @@ describe("read_reviews", () => {
     expect(shown).not.toContain("Wornall");
     expect(shown).not.toContain("Pine Lake");
     expect(shown).not.toContain("0306");
+  });
+
+  it("the last sync comes back already in Central time, never UTC (Pau, 15 Nov 2026: \"the whole app and chat should be in CT\"; the chat had said \"2026-11-14 12:01 UTC\")", async () => {
+    const { deps: d } = deps();
+    const result = await readReviews(ctx(MANAGER, PAU_REVIEWS), {}, d);
+    expect(result.last_sync).toBe("Nov 14, 6:00 AM CT");
+    expect(JSON.stringify(result)).not.toMatch(/UTC|\dZ"/);
   });
 
   it("the latest reviews: at most five, newest first, the manager's salons only, never a reviewer's name, words in the untrusted envelope", async () => {

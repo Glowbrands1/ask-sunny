@@ -1262,6 +1262,11 @@ describe("new flags default off and wrappers are inert", () => {
           // the person holds the meeting's role. No existing page, chat or form behaviour changes.
           ":(exclude)src/app/(app)/meetings",
           ":(exclude)src/features/l10",
+          // Times shown in the business zone (CT) (Pau via QA, 15 Nov 2026: "The whole app and chat should be in CT"):
+          // display formatting only, on purpose and not behind a flag; the stored values stay UTC.
+          ":(exclude)src/features/admin/analytics/feedback-queue.tsx",
+          ":(exclude)src/features/admin/analytics/usage-shape.tsx",
+          ":(exclude)src/features/reports/salon-performance/data-source-panel.tsx",
         ]),
       ).toBe("");
       expect(changedLines(diff(uiBase, [MONITORING_TABLE])).filter((line) => !MONITORING_MOUNT.includes(line))).toEqual([]);
