@@ -5,6 +5,7 @@ import { payrollAmounts } from "@/lib/ai/intent-slots";
 import { businessToday } from "@/lib/business-date";
 import {
   formEditNoopGuardEnabled,
+  formEditTouchesUpdatedAtEnabled,
   formPatchReaderFixesEnabled,
   madeAboutAllOrNothingEnabled,
   madeAboutSaidDateEnabled,
@@ -668,6 +669,15 @@ export async function writeFormEdits(instanceId: string, ops: readonly FormEditO
           ...(rules.syncPlan.amountSentence ? { amountSentence: true } : {}),
         })
       : [];
+
+  /*
+   * FORM_EDIT_TOUCHES_UPDATED_AT_ENABLED (batch F8): a value edit moves the form's updated_at, as a form_date edit
+   * always did (the touch trigger fires only on the instance row), so Form Monitoring's "recently changed" sees it.
+   */
+  if (formEditTouchesUpdatedAtEnabled() && (written.size > 0 || planKeys.length > 0)) {
+    const { error } = await getSupabaseAdmin().from("form_instances").update({ updated_at: new Date().toISOString() }).eq("id", instanceId);
+    if (error) throw new Error(`Could not save when the form was changed: ${error.message}`);
+  }
 
   /* 6. reload → snapshotDiff */
   const reloaded = await loadInstance(instanceId);
