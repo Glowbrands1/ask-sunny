@@ -52,6 +52,14 @@ export function PastMeetings({ meetingKey, meetingName, meetings }: { meetingKey
                       <dt className="text-xs text-muted">Issues solved</dt>
                       <dd className="m-0 font-semibold">{m.issuesSolved}</dd>
                     </div>
+                    {m.todosCompletedPct !== null && (
+                      <div>
+                        <dt className="text-xs text-muted">To-dos completed</dt>
+                        <dd className="m-0 font-semibold" data-testid="past-todos-completed">
+                          {m.todosCompletedPct}%
+                        </dd>
+                      </div>
+                    )}
                     <div>
                       <dt className="text-xs text-muted">Rated</dt>
                       <dd className="m-0 font-semibold">

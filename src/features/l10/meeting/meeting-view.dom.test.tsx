@@ -109,9 +109,10 @@ describe("the DM L10 page in Ask Sunny", () => {
     renderView({ save: save as unknown as SaveFn });
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /Bo Lark/ })); // by role: the New Issue bar's owner picker lists the names too (15 Nov 2026)
-      await new Promise((r) => setTimeout(r, 20));
     });
-    expect(save).toHaveBeenCalledTimes(1);
+    // The debounced save is waited for, not slept for: a fixed sleep failed under load (QA, 15 Nov 2026).
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByTestId("save-status").textContent).toBe("All changes saved"));
     const [key, version, doc] = save.mock.calls[0] as unknown as [string, number, { attendees: { name: string; shared: boolean }[] }];
     expect(key).toBe("stc-dm");
     expect(version).toBe(3);
@@ -179,9 +180,9 @@ describe("saving: the page says saved only when the Hub has saved it", () => {
     renderView({ save: save as unknown as SaveFn });
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /Bo Lark/ })); // by role: the New Issue bar's owner picker lists the names too (15 Nov 2026)
-      await new Promise((r) => setTimeout(r, 20));
     });
-    expect(save).toHaveBeenCalledTimes(1);
+    // The debounced save is waited for, not slept for: a fixed sleep failed under load (QA, 15 Nov 2026).
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
     expect(screen.getByTestId("save-status").textContent).toBe("Saving…");
     await act(async () => {
       answer({ ok: true, version: 4, updatedAt: "t" });
@@ -198,17 +199,17 @@ describe("saving: the page says saved only when the Hub has saved it", () => {
     renderView({ save: save as unknown as SaveFn });
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /Bo Lark/ })); // by role: the New Issue bar's owner picker lists the names too (15 Nov 2026)
-      await new Promise((r) => setTimeout(r, 20));
     });
+    // The debounced save is waited for, not slept for: a fixed sleep failed under load (QA, 15 Nov 2026).
+    await waitFor(() => expect(screen.getByTestId("save-status").getAttribute("data-status")).toBe("failed"));
     const status = screen.getByTestId("save-status");
-    expect(status.getAttribute("data-status")).toBe("failed");
     expect(status.textContent).toContain("Not saved: The Leadership Hub could not be reached.");
     expect(status.textContent).not.toContain("All changes saved");
     await act(async () => {
       fireEvent.click(within(status).getByRole("button", { name: "Try again" }));
-      await new Promise((r) => setTimeout(r, 20));
     });
-    expect(save).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByTestId("save-status").textContent).toBe("All changes saved"));
     const [, version, doc] = save.mock.calls[1] as unknown as [string, number, { attendees: { name: string; shared: boolean }[] }];
     expect(version).toBe(3);
     expect(doc.attendees.find((a) => a.name === "Bo Lark")?.shared).toBe(true);
@@ -267,8 +268,9 @@ describe("the agenda, hints and roster come from the Hub (the STC DM L10 change,
     expect(document.body.textContent).not.toContain("Dex Rowan");
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /Bo Lark/ })); // by role: the New Issue bar's owner picker lists the names too (15 Nov 2026)
-      await new Promise((r) => setTimeout(r, 20));
     });
+    // The debounced save is waited for, not slept for: a fixed sleep failed under load (QA, 15 Nov 2026).
+    await waitFor(() => expect(save).toHaveBeenCalled());
     const [, , doc] = save.mock.calls[0] as unknown as [string, number, { attendees: { name: string }[] }];
     expect(doc.attendees.map((a) => a.name)).toEqual(["Avery Quill", "Bo Lark", "Cy Marlow", "Dex Rowan"]);
     expect(doc.attendees.find((a) => a.name === "Dex Rowan")).toEqual(hidden);
@@ -333,8 +335,9 @@ describe("IDS: move between the lists from the row, and no headlines where the m
     expect(buttons.indexOf("Delete")).toBeGreaterThan(buttons.indexOf("Long-term"));
     await act(async () => {
       fireEvent.click(within(shortRow).getByRole("button", { name: "Move to long-term: Weekly issue" }));
-      await new Promise((r) => setTimeout(r, 20));
     });
+    // The debounced save is waited for, not slept for: a fixed sleep failed under load (QA, 15 Nov 2026).
+    await waitFor(() => expect(save).toHaveBeenCalled());
     expect(screen.getByRole("tab", { name: "Short term (0)" })).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Long-term (2)" })).toBeTruthy();
     const [, , doc] = save.mock.calls.at(-1) as unknown as [string, number, { issues: { id: string; term?: string }[] }];
