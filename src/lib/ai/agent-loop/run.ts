@@ -93,7 +93,12 @@ export function doneThisTurn(effects: Pick<ToolEffects, "proposal" | "formUpdate
   }
   if (effects.formOpened) done.push("I opened a new draft revising the finalized form; the original stays as it was.");
   if (effects.formUpdate && effects.formUpdate.updated.length > 0) {
-    const fields = effects.formUpdate.updated.map((field) => field.replace(/_/g, " "));
+    /* PR 3: the fields the form really holds changed, read back after the write (`saved-diff.ts`): each with its new wording, shortened. */
+    const saved = effects.formUpdate.saved ?? [];
+    const label = (field: string) => field.replace(/_/g, " ");
+    const fields = saved.length > 0
+      ? saved.map((change) => `${label(change.field)} (${change.after === "" ? "cleared" : `now "${change.after.length > 60 ? `${change.after.slice(0, 57)}...` : change.after}"`})`)
+      : effects.formUpdate.updated.map(label);
     done.push(`I saved ${fields.length === 1 ? "the" : "these"} change${fields.length === 1 ? "" : "s"} on the form: ${fields.join(", ")}.`);
   }
   return done.length > 0 ? done.join(" ") : null;
@@ -120,6 +125,9 @@ export interface AgentLoopStep {
   readonly fact_keys?: readonly string[];
   /** account_words_missing as kinds only ("date", "time", "place"), never the words. */
   readonly missing_kinds?: readonly string[];
+  /** PR 3: the names of the fields a tool saved, and the reason codes of what it refused or left off the card. Never values. */
+  readonly saved_fields?: readonly string[];
+  readonly reason_codes?: readonly string[];
 }
 
 /* Batch E (E15): a refusal's kind, read from its fixed wording (the text itself, which can carry names, never goes in the trace). */
@@ -138,16 +146,20 @@ const ERROR_KINDS: readonly [RegExp, string][] = [
   [/no tool named/i, "unknown_tool"],
 ];
 /** Result keys that are data, not facts (never listed in the trace). */
-const NOT_FACT_KEYS = new Set(["error", "note", "card", "facts", "matches", "staff", "wording", "headings", "source", "salon", "salons", "positions", "templates", "updated", "refused", "forms", "passages", "document", "heading", "page", "fields", "values"]);
+const NOT_FACT_KEYS = new Set(["error", "note", "card", "facts", "matches", "staff", "wording", "headings", "source", "salon", "salons", "positions", "templates", "updated", "saved", "refused", "not_on_card", "revision_draft", "forms", "passages", "document", "heading", "page", "fields", "values"]);
 
-function stepReason(result: ToolResult): Pick<AgentLoopStep, "error_kind" | "fact_keys" | "missing_kinds"> {
+function stepReason(result: ToolResult): Pick<AgentLoopStep, "error_kind" | "fact_keys" | "missing_kinds" | "saved_fields" | "reason_codes"> {
   const record = result as Record<string, unknown>;
   const facts = record.facts && typeof record.facts === "object" ? Object.keys(record.facts as object) : [];
   const keys = [...new Set([...facts, ...Object.keys(record).filter((key) => !NOT_FACT_KEYS.has(key))])].sort();
   const missing = (record.facts as { account_words_missing?: unknown } | undefined)?.account_words_missing;
   const error = typeof record.error === "string" ? (ERROR_KINDS.find(([pattern]) => pattern.test(record.error as string))?.[1] ?? "refused") : null;
+  const savedFields = Array.isArray(record.saved) ? [...new Set((record.saved as { field?: unknown }[]).map((row) => String(row.field ?? "")).filter(Boolean))].sort() : [];
+  const codes = [...new Set([...(Array.isArray(record.refused) ? record.refused : []), ...(Array.isArray(record.not_on_card) ? record.not_on_card : [])].map((row) => String((row as { reason_code?: unknown }).reason_code ?? "")).filter(Boolean))].sort();
   return {
     ...(error ? { error_kind: error } : {}),
+    ...(savedFields.length > 0 ? { saved_fields: savedFields } : {}),
+    ...(codes.length > 0 ? { reason_codes: codes } : {}),
     ...(keys.length > 0 ? { fact_keys: keys } : {}),
     ...(Array.isArray(missing) ? { missing_kinds: [...new Set(missing.map((word) => accountWordKind(String(word))))].sort() } : {}),
   };
@@ -836,11 +848,13 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
    */
   if (noop && openBefore && !effects.proposal && !effects.formOpened) {
     const checked = await noop.replyFromSavedDiff({ request: input.request, before: openBefore, answer: { content, citations: [], coverage: "not_applicable", recommendedVideoIds: [] } });
-    if (!checked.formUpdate && CLAIMS_A_CHANGE.test(content)) {
+    /* PR 3: a save the tools read back from the form (effects.formUpdate.saved) is never overruled by this diff of the screen's copy. */
+    const readBack = (effects.formUpdate?.saved?.length ?? 0) > 0;
+    if (!checked.formUpdate && CLAIMS_A_CHANGE.test(content) && !readBack) {
       content = checked.content;
       effects.formUpdate = null;
     } else if (checked.formUpdate) {
-      effects.formUpdate = checked.formUpdate;
+      effects.formUpdate = { ...checked.formUpdate, ...(effects.formUpdate?.instanceId === checked.formUpdate.instanceId && effects.formUpdate.saved ? { saved: effects.formUpdate.saved } : {}) };
     }
   }
 
