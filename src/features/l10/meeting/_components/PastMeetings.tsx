@@ -5,6 +5,7 @@ import { formatDuration } from "@/features/l10/lib/doc";
 import type { PastMeeting } from "@/features/l10/lib/past";
 import { formatCentral } from "@/features/l10/lib/when";
 import { Card, PageHeader } from "@/features/l10/ui/ui";
+import { PastMeetingDetails } from "./MeetingSummary";
 
 const SOURCE: Record<PastMeeting["source"], string> = { l10: "Held here", "bloom-growth": "From Bloom Growth" };
 
@@ -72,28 +73,8 @@ export function PastMeetings({ meetingKey, meetingName, meetings }: { meetingKey
                       {m.attendees.map((a) => `${a.name} (${a.rating ?? "—"})`).join(" · ")}
                     </p>
                   )}
-                  {m.solvedTitles.length > 0 && (
-                    <div className="text-sm">
-                      <span className="text-xs text-muted">Solved:</span>
-                      <ul className="m-0 mt-1 pl-5">
-                        {m.solvedTitles.map((t, n) => (
-                          <li key={n}>{t}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  {m.cascade && (
-                    <p className="m-0 text-sm">
-                      <span className="text-xs text-muted">Cascading message: </span>
-                      {m.cascade}
-                    </p>
-                  )}
-                  {m.notes && (
-                    <p className="m-0 text-sm whitespace-pre-wrap">
-                      <span className="text-xs text-muted">Notes: </span>
-                      {m.notes}
-                    </p>
-                  )}
+                  {/* Each row opens its full summary, as Bloom's "Summary for <date>" (the owner's request, 15 Nov 2026). */}
+                  <PastMeetingDetails meeting={m} />
                 </Card>
               </li>
             );

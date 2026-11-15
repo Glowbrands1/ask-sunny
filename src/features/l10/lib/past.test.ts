@@ -68,6 +68,37 @@ describe("past meetings", () => {
     expect(todosCompletedPct({})).toBeNull();
   });
 
+  it("reads the Bloom enrichment (solvedIssues, todos, notes) when a row carries it, and says it was not recorded when not", () => {
+    const enriched = {
+      ...bloom,
+      solvedIssues: [{ title: "Door lock", owner: "Avery Quill" }, { title: 7 }, { title: "Late shift" }],
+      todos: [{ text: "Order towels", owner: "Bo Lark", dueDate: "2026-11-20" }, { text: "Call the landlord", owner: "Avery Quill", dueDate: null }, { owner: "x" }],
+      notes: "Talked about the holiday hours",
+    };
+    const [rich] = pastMeetings([], { meetingHistory: [enriched] });
+    expect(rich.solvedIssues).toEqual([
+      { title: "Door lock", owner: "Avery Quill" },
+      { title: "Late shift", owner: "" },
+    ]);
+    expect(rich.solvedTitles).toEqual(["Door lock", "Late shift"]);
+    expect(rich.issuesSolved).toBe(9); // the stored count, when it is larger than the listed issues
+    expect(rich.openTodos).toEqual([
+      { text: "Order towels", owner: "Bo Lark", due: "2026-11-20" },
+      { text: "Call the landlord", owner: "Avery Quill", due: "" },
+    ]);
+    expect(rich.notes).toBe("Talked about the holiday hours");
+    expect(rich.recorded).toEqual({ todos: true, issues: true, notes: true });
+    // Imported before the enrichment: nothing about to-dos, issues or notes is recorded.
+    const [plain] = pastMeetings([], { meetingHistory: [bloom] });
+    expect(plain.recorded).toEqual({ todos: false, issues: false, notes: false });
+    expect([plain.openTodos, plain.solvedIssues, plain.notes]).toEqual([[], [], null]);
+    // An empty list is recorded (none), unlike a missing one.
+    const [empty] = pastMeetings([], { meetingHistory: [{ ...bloom, solvedIssues: [], todos: [] }] });
+    expect(empty.recorded).toEqual({ todos: true, issues: true, notes: false });
+    // Recaps always record all three.
+    expect(pastMeetings([recap()], {})[0].recorded).toEqual({ todos: true, issues: true, notes: true });
+  });
+
   it("works out a Bloom meeting's length and average rating (people who did not rate are left out)", () => {
     const [row] = pastMeetings([], { meetingHistory: [bloom] });
     expect(row).toMatchObject({ source: "bloom-growth", durationSeconds: 4123, ratingAvg: 8.5, issuesSolved: 9, solvedTitles: [] });

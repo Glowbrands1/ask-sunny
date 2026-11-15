@@ -9,13 +9,10 @@ import { listRecaps, openMeeting } from "@/features/l10/data.server";
 import { AUTO_SAVED_LABEL } from "@/features/l10/lib/autosave";
 import { isMeetingKey } from "@/features/l10/lib/config";
 import { formatDuration, formatHeld } from "@/features/l10/lib/doc";
-import { businessDate, todoState } from "@/features/l10/lib/dueStatus";
-import { solvedOwner, solvedTitle } from "@/features/l10/lib/types";
-import { todosCompletedPct } from "@/features/l10/lib/past";
+import { recapToPast } from "@/features/l10/lib/past";
+import { PastMeetingDetails } from "@/features/l10/meeting/_components/MeetingSummary";
 import { DeleteRecapButton } from "@/features/l10/meeting/_components/DeleteRecapButton";
 import { PrintButton } from "@/features/l10/meeting/_components/PrintButton";
-import { MentionText } from "@/features/l10/ui/Mentions";
-import { StatusBadge } from "@/features/l10/ui/StatusBadge";
 import { Card, PageHeader } from "@/features/l10/ui/ui";
 import { requireAuthenticatedPage } from "@/lib/auth/page";
 
@@ -61,7 +58,6 @@ export default async function RecapsPage({ params, searchParams }: { params: Pro
       </Link>
     </div>
   );
-  const today = businessDate();
   if (recaps.length === 0) {
     return (
       <Frame meetingKey={key}>
@@ -94,78 +90,20 @@ export default async function RecapsPage({ params, searchParams }: { params: Pro
                 {AUTO_SAVED_LABEL}. Nobody pressed End, so ratings and the cascading message may be incomplete.
               </p>
             )}
-            <dl className="m-0 grid grid-cols-3 gap-3 text-sm max-[500px]:grid-cols-1">
-              <div>
-                <dt className="text-[11px] font-bold tracking-wide text-muted uppercase">Overall rating</dt>
-                <dd className="m-0 text-3xl font-bold">{r.rating_avg != null ? Number(r.rating_avg).toFixed(1) : "—"}</dd>
-              </div>
-              <div>
-                <dt className="text-[11px] font-bold tracking-wide text-muted uppercase">Issues solved</dt>
-                <dd className="m-0 text-3xl font-bold">{r.resolved_issues?.length ?? 0}</dd>
-              </div>
-              {/* Recaps saved from 15 Nov 2026 record how many of the meeting's to-dos were done; older ones show nothing here. */}
-              {todosCompletedPct(r) !== null && (
-                <div>
-                  <dt className="text-[11px] font-bold tracking-wide text-muted uppercase">To-dos completed</dt>
-                  <dd className="m-0 text-3xl font-bold" data-testid="recap-todos-completed">
-                    {todosCompletedPct(r)}%
-                  </dd>
-                </div>
-              )}
-              <div>
-                <dt className="text-[11px] font-bold tracking-wide text-muted uppercase">Attendees</dt>
-                <dd className="m-0">
-                  {(r.attendees ?? []).map((a) => (
-                    <span key={a.name} className="mr-1.5 inline-block text-xs">
-                      {a.name}
-                      {a.rating != null ? ` · ${a.rating}` : ""}
-                    </span>
-                  ))}
-                </dd>
-              </div>
-            </dl>
-            {(r.open_todos?.length ?? 0) > 0 && (
-              <div>
-                <h3 className="m-0 mb-1 text-sm font-bold">Outstanding to-dos</h3>
-                <ul className="m-0 list-disc pl-5 text-sm">
-                  {r.open_todos.map((t, i) => (
-                    <li key={i}>
-                      <MentionText text={t.text ?? ""} people={people} /> <span className="text-muted">· {t.owner} · {t.dueDate ?? t.due}</span>
-                      {todoState({ done: false, dueDate: t.dueDate }, today) !== "none" && <StatusBadge className="ml-2 align-middle" state={todoState({ done: false, dueDate: t.dueDate }, today) as "overdue" | "soon"} />}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {(r.resolved_issues?.length ?? 0) > 0 && (
-              <div>
-                <h3 className="m-0 mb-1 text-sm font-bold">Issues solved</h3>
-                <ul className="m-0 list-disc pl-5 text-sm">
-                  {r.resolved_issues.map((t, i) => (
-                    <li key={i}>
-                      <MentionText text={solvedTitle(t)} people={people} />
-                      {solvedOwner(t) && <span className="text-muted"> · {solvedOwner(t)}</span>}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {r.cascade && (
-              <div>
-                <h3 className="m-0 mb-1 text-sm font-bold">Cascading message</h3>
-                <p className="m-0 text-sm">
-                  <MentionText text={r.cascade} people={people} />
-                </p>
-              </div>
-            )}
-            {r.notes && (
-              <div>
-                <h3 className="m-0 mb-1 text-sm font-bold">Notes</h3>
-                <p className="m-0 text-sm whitespace-pre-wrap" data-testid="recap-notes">
-                  <MentionText text={r.notes} people={people} />
-                </p>
-              </div>
-            )}
+            {(() => {
+              const m = recapToPast(r);
+              const rated = m.attendees.filter((x) => x.rating !== null).length;
+              return (
+                <>
+                  <p className="m-0 text-sm">
+                    Rating {m.ratingAvg !== null ? Number(m.ratingAvg).toFixed(1) : "—"} · {m.issuesSolved} issues solved
+                    {m.todosCompletedPct !== null && ` · ${m.todosCompletedPct}% to-dos completed`} · {rated} of {m.attendees.length} rated
+                  </p>
+                  {/* Each row opens its full summary, as Bloom's "Summary for <date>" (the owner's request, 15 Nov 2026). */}
+                  <PastMeetingDetails meeting={m} people={people} />
+                </>
+              );
+            })()}
           </Card>
         </li>
       ))}
