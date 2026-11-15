@@ -1,7 +1,7 @@
 import { expect, vi } from "vitest";
 
 import { KEARNEY, STAFF, TWO_SALONS, type DirectoryRow, type ReplayCase, type ReplayContext } from "./cases";
-import { lastResult, loopStandIn, type LoopDecision, type LoopView } from "./loop-stand-in";
+import { lastResult, loopStandIn, type LoopDecision, type LoopView, evidenceFrom } from "./loop-stand-in";
 
 /**
  * ============================================================================
@@ -164,8 +164,8 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       const model = loopStandIn((view): LoopDecision => {
         const found = lastResult(view, "find_past_forms") as { best_match?: string } | null;
         if (!view.results.some((result) => result.tool === "propose_form")) return { tool: "propose_form", input: { template_key: "coaching", employee_id: "e-2", what_happened: "Getting rooms ready between guests." } };
-        if (!found) return { tool: "find_past_forms", input: { employee_name: "Remy Calder", form: "coaching", date: "10/31", about: "getting rooms ready between guests" } };
-        if (found.best_match && !lastResult(view, "open_form")) return { tool: "open_form", input: { instance_id: found.best_match } };
+        if (!found) return { tool: "find_past_forms", input: { employee_name: "Remy Calder", form: "coaching", date: "10/31", about: "getting rooms ready between guests", forms_on_file_evidence: evidenceFrom(view), open: true } };
+        if (found.best_match && !lastResult(view, "open_form")) return { tool: "open_form", input: { instance_id: found.best_match, forms_on_file_evidence: evidenceFrom(view) } };
         return { text: "Opened Remy Calder's Coaching Form from 10/31." };
       });
       t.loopModel!(model);
@@ -174,7 +174,8 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       expect(reply.formOpened?.instanceId, `the form on file was not opened:\n${reply.content}`).toBe(rooms);
       expect(reply.formProposal ?? null, "an open request made a new card").toBeNull();
       expect(reply.content, "the reply talks about the staff list").not.toMatch(/staff list/i);
-      if (offline) expect(toolResults(model.views, "propose_form")[0], "propose_form did not refuse an open request").toMatch(/asked to open a form on file/);
+      // Changed on purpose (the rebuild plan's PR 1b: OPEN_REQUEST, a word list, is gone): the card the model proposed first is withdrawn when it finds the form to open (find_past_forms open: true).
+      if (offline) expect(toolResults(model.views, "find_past_forms")[0], "the card proposed first was not withdrawn").toMatch(/"card_withdrawn"/);
     },
   },
   {
@@ -194,11 +195,11 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
         const said = [...view.turns].reverse().find((turn) => turn.role === "user")?.text ?? "";
         const found = lastResult(view, "find_past_forms") as { forms?: unknown[]; best_match?: string; error?: string } | null;
         if (/10\/31 one/.test(said)) {
-          if (!found) return { tool: "find_past_forms", input: { employee_name: "Remy Calder", form: "coaching", date: "10/31", about: "getting rooms ready between guests" } };
-          if (found.best_match && !lastResult(view, "open_form")) return { tool: "open_form", input: { instance_id: found.best_match } };
+          if (!found) return { tool: "find_past_forms", input: { employee_name: "Remy Calder", form: "coaching", date: "10/31", about: "getting rooms ready between guests", forms_on_file_evidence: evidenceFrom(view), open: true } };
+          if (found.best_match && !lastResult(view, "open_form")) return { tool: "open_form", input: { instance_id: found.best_match, forms_on_file_evidence: evidenceFrom(view) } };
           return { text: found.error ? "I can't look at forms on file for that." : "Opened the 10/31 Coaching Form." };
         }
-        if (!found) return { tool: "find_past_forms", input: { employee_name: "Remy Calder", form: "coaching" } };
+        if (!found) return { tool: "find_past_forms", input: { employee_name: "Remy Calder", form: "coaching", forms_on_file_evidence: evidenceFrom(view), open: true } };
         return { text: `Remy Calder has two Coaching Forms on file:\n- 10/31\n- 11/5\n\n${(found as { which_form_question?: string }).which_form_question ?? "Which one?"}` };
       });
       t.loopModel!(model);
@@ -232,10 +233,10 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       const model = loopStandIn((view): LoopDecision => {
         const said = [...view.turns].reverse().find((turn) => turn.role === "user")?.text ?? "";
         const found = lastResult(view, "find_past_forms") as { forms?: { instance_id: string; salon: string | null; form_date: string }[]; single_out?: string; which_form_question?: string } | null;
-        if (!found) return { tool: "find_past_forms", input: { employee_name: "Remy Calder", form: "coaching" } };
+        if (!found) return { tool: "find_past_forms", input: { employee_name: "Remy Calder", form: "coaching", forms_on_file_evidence: evidenceFrom(view), open: true } };
         // The model decides, from the facts: the manager's "no salon" fits exactly one form's salon.
         const fits = found.single_out && /no salon/.test(said) ? (found.forms ?? []).filter((form) => form.salon === "no salon") : [];
-        if (fits.length === 1 && !lastResult(view, "open_form")) return { tool: "open_form", input: { instance_id: fits[0]!.instance_id } };
+        if (fits.length === 1 && !lastResult(view, "open_form")) return { tool: "open_form", input: { instance_id: fits[0]!.instance_id, forms_on_file_evidence: evidenceFrom(view) } };
         if (lastResult(view, "open_form")) return { text: "Opening the 10/31 Coaching Form (no salon)." };
         return { text: `Remy Calder has two Coaching Forms on file:\n- 10/31\n- 11/5\n\n${found.which_form_question ?? "Which one?"}` };
       });
@@ -260,8 +261,8 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       const ca = await onFile(t, "e-2", "Remy Calder", "dpoa", "2026-11-12", "Remy Calder was 20 minutes late on 11/12.");
       const model = loopStandIn((view): LoopDecision => {
         const found = lastResult(view, "find_past_forms") as { best_match?: string; close_names?: string[] } | null;
-        if (!found) return { tool: "find_past_forms", input: { employee_name: "remy caldr", form: "ca" } };
-        if (found.best_match && !lastResult(view, "open_form")) return { tool: "open_form", input: { instance_id: found.best_match } };
+        if (!found) return { tool: "find_past_forms", input: { employee_name: "remy caldr", form: "ca", forms_on_file_evidence: evidenceFrom(view), open: true } };
+        if (found.best_match && !lastResult(view, "open_form")) return { tool: "open_form", input: { instance_id: found.best_match, forms_on_file_evidence: evidenceFrom(view) } };
         return { text: found.close_names ? `Which one: ${found.close_names.join(" or ")}?` : "Opening **Remy Calder**'s form." };
       });
       t.loopModel!(model);
@@ -357,7 +358,7 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       const model = loopStandIn((view): LoopDecision => {
         const result = lastResult(view, "propose_form") as { facts?: { date_after_today?: unknown } } | null;
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
-        if (!result) return { tool: "propose_form", input: { template_key: "stc-exit", employee_id: "e-2", incident_date: "2026-11-28" } };
+        if (!result) return { tool: "propose_form", input: { template_key: "stc-exit", exit_evidence: evidenceFrom(view), employee_id: "e-2", incident_date: "2026-11-28" } };
         return { text: `Here's the Employee Exit Form for **Remy Calder**.\n\n${result.facts?.date_after_today ? "11/28 is after today." : "Last day 11/28/2026, as you said."}` };
       });
       t.loopModel!(model);
@@ -412,7 +413,7 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       t.loopModel!(loopStandIn((view): LoopDecision => {
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
         // QA's design (15 Nov 2026): the model decides the exit is a termination; the tool locks it on the word.
-        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "stc-exit", employee_id: "e-2", incident_date: "2026-11-20", exit_type: "termination", effective_date: "11/20" } };
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "stc-exit", exit_evidence: evidenceFrom(view), employee_id: "e-2", incident_date: "2026-11-20", exit_type: "termination", effective_date: "11/20" } };
         return { text: "Here's the Employee Exit Form for **Remy Calder**: a termination, effective 11/20/2026, as you said. Not eligible for rehire; reason: no call no show for 3 shifts." };
       }));
       const thread = t.thread();
@@ -559,7 +560,7 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       t.as("salon_director", KEARNEY);
       t.loopModel!(loopStandIn((view): LoopDecision => {
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
-        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "stc-exit", employee_id: "e-2", incident_date: "2026-11-28" } };
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "stc-exit", exit_evidence: evidenceFrom(view), employee_id: "e-2", incident_date: "2026-11-28" } };
         return { text: "Here's the Employee Exit Form for **Remy Calder**: a resignation with notice. Last day 11/28/2026, as you said." };
       }));
       const thread = t.thread();
@@ -593,11 +594,11 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       t.directory([...STAFF]);
       t.as("salon_director", KEARNEY);
       const model = loopStandIn((view): LoopDecision => {
-        const results = view.results.filter((result) => result.tool === "propose_form").map((result) => result.output as { exit_not_asked?: boolean; facts?: { termination_stated?: { approval: string } } });
+        const results = view.results.filter((result) => result.tool === "propose_form").map((result) => result.output as { exit_not_stated?: boolean; facts?: { termination_stated?: { approval: string } } });
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
         // A model that reaches for the exit form first: the tool refuses it, as the manager asked for no exit.
         if (results.length === 0) return { tool: "propose_form", input: { template_key: "stc-exit", employee_id: "e-2", incident_date: "2026-11-10", exit_type: "termination" } };
-        if (results.length === 1 && results[0]!.exit_not_asked) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: "3 no call no shows on 11/10, 11/12 and 11/13.", incident_date: "2026-11-13", warning_level: "termination" } };
+        if (results.length === 1 && results[0]!.exit_not_stated) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: "3 no call no shows on 11/10, 11/12 and 11/13.", incident_date: "2026-11-13", warning_level: "termination" } };
         const stated = results.at(-1)!.facts?.termination_stated;
         return { text: `Here's the Corrective Action Form for **Remy Calder**.\n\n${stated ? `**Type of Warning:** Termination, as you said — I'll tick it on the form. Tell me if that should change.\n${stated.approval}` : ""}\n\nWant the Employee Exit Form for Remy Calder too?` };
       });
@@ -626,7 +627,7 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
         const result = lastResult(view, "propose_form") as { card?: { policy?: string | null }; facts?: { exit_termination?: { effective: string; dated_today?: boolean } } } | null;
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
         // A model that reaches for the CA's Attendance policy: an exit cites none.
-        if (!result) return { tool: "propose_form", input: { template_key: "stc-exit", employee_id: "e-2", policy: "Attendance", effective_date: "11/20", exit_type: "termination" } };
+        if (!result) return { tool: "propose_form", input: { template_key: "stc-exit", exit_evidence: evidenceFrom(view), employee_id: "e-2", policy: "Attendance", effective_date: "11/20", exit_type: "termination" } };
         const exit = result.facts?.exit_termination;
         return {
           text: [
@@ -660,7 +661,7 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       t.as("salon_director", TWO_SALONS);
       t.loopModel!(loopStandIn((view): LoopDecision => {
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "isla marrow" } };
-        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "stc-exit", employee_id: ISLA.id, incident_date: "2026-11-28" } };
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "stc-exit", exit_evidence: evidenceFrom(view), employee_id: ISLA.id, incident_date: "2026-11-28" } };
         return { text: "Here's the Employee Exit Form for **Isla Marrow**. Filed at **NE Kearney**, where Woven lists Isla; say if it's another salon. Last day 11/28/2026, as you said." };
       }));
       const thread = t.thread();
@@ -721,9 +722,9 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       // find_past_forms (the "On file" lines), by either name: both of hers, never Remy's.
       const lookup = (typed: string) => loopStandIn((view): LoopDecision => {
         const found = lastResult(view, "find_past_forms") as { forms?: { instance_id: string }[] } | null;
-        if (!found) return { tool: "find_past_forms", input: { employee_name: typed } };
+        if (!found) return { tool: "find_past_forms", input: { employee_name: typed, forms_on_file_evidence: evidenceFrom(view), open: true } };
         const read = lastResult(view, "read_form");
-        if (!read && found.forms?.[0]) return { tool: "read_form", input: { instance_id: found.forms[0].instance_id } };
+        if (!read && found.forms?.[0]) return { tool: "read_form", input: { instance_id: found.forms[0].instance_id, forms_on_file_evidence: evidenceFrom(view) } };
         return { text: `On file for ${typed}: ${found.forms?.length ?? 0} forms.` };
       });
       for (const typed of ["Jo Quill", "Josephine Quill"]) {
@@ -780,7 +781,7 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       for (const said of ["exit form for remy calder, she gave notice, last day 11/28. Not a termination.", "exit form for remy calder. She quit, last day 11/28. She was fired from her last job btw"]) {
         const model = loopStandIn((view): LoopDecision => {
           if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
-          if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "stc-exit", employee_id: "e-2", incident_date: "2026-11-28" } };
+          if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "stc-exit", exit_evidence: evidenceFrom(view), employee_id: "e-2", incident_date: "2026-11-28" } };
           return { text: "Here's the Employee Exit Form for **Remy Calder**." };
         });
         t.loopModel!(model);

@@ -1,7 +1,7 @@
 import { expect, vi } from "vitest";
 
 import { KEARNEY, STAFF, TWO_SALONS, type DirectoryRow, type ReplayCase, type ReplayContext } from "./cases";
-import { firstMatch, lastResult, loopStandIn, type LoopView } from "./loop-stand-in";
+import { firstMatch, lastResult, loopStandIn, type LoopView, evidenceFrom } from "./loop-stand-in";
 import { EARLIER_CARD_STAYS, isProposalSuperseded } from "@/lib/forms/proposal-continuation";
 
 /**
@@ -68,11 +68,18 @@ async function terminationOnFile(t: ReplayContext): Promise<string> {
   return id;
 }
 
-/** A model that looks at forms on file whenever it can, and tells the manager what it found. */
+/**
+ * A model that looks at forms on file whenever it can, and tells the manager what it found. Changed on purpose (the
+ * rebuild plan's PR 1, 15 Nov 2026): the gate is evidence now, so this model quotes the manager's ask only where the
+ * script's message asks (the asking sentences below); everywhere else it calls with no evidence and is refused.
+ */
+const ASKING = /write ups|had a ca before|my last CA|on file/i;
 function nosyStandIn(view: LoopView) {
-  if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: "Tamsin Orwell" } };
+  const asked = ASKING.test(view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "");
+  const evidence = asked ? { forms_on_file_evidence: evidenceFrom(view) } : {};
+  if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: "Tamsin Orwell", ...evidence } };
   const listed = (lastResult(view, "find_past_forms")?.forms ?? []) as { instance_id: string; form: string; status: string }[];
-  if (listed.length > 0 && !lastResult(view, "read_form")) return { tool: "read_form", input: { instance_id: listed[0]!.instance_id } };
+  if (listed.length > 0 && !lastResult(view, "read_form")) return { tool: "read_form", input: { instance_id: listed[0]!.instance_id, ...evidence } };
   if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "tamsin orwell" } };
   if (!/before|on file/i.test(view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "") && !lastResult(view, "propose_form")) {
     return { tool: "propose_form", input: { template_key: "dpoa", employee_id: firstMatch(view)?.employee_id, what_happened: "Tamsin Orwell was on her phone at the front desk on 11/13." } };
@@ -101,7 +108,7 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       const reply = await thread.say("create a ca for tamsin orwell, she was on her phone at the front desk on 11/13");
       expect(thread.proposal, reply.content).toMatchObject({ templateKey: "dpoa", employeeName: "Tamsin Orwell" });
       for (const output of [...toolResults(nosy.views, "find_past_forms"), ...toolResults(nosy.views, "read_form")]) {
-        expect(output, "a form on file was read without the manager asking").toMatch(/not asked about forms on file/);
+        expect(output, "a form on file was read without the manager asking").toMatch(/"reason_code":"privacy_not_asked"/);
       }
       expect(reply.content, "the Termination on file was brought up").not.toMatch(/terminat/i);
       expect(JSON.stringify(thread.proposal), "the Termination on file reached the card").not.toMatch(/terminat/i);
@@ -137,7 +144,7 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
         t.loopModel!(nosy);
         const reply = await t.thread().say(said);
         for (const output of [...toolResults(nosy.views, "find_past_forms"), ...toolResults(nosy.views, "read_form")]) {
-          expect(output, `"${said}" opened forms on file`).toMatch(/not asked about forms on file/);
+          expect(output, `"${said}" opened forms on file`).toMatch(/"reason_code":"privacy_not_asked"/);
         }
         expect(reply.content, `"${said}": the Termination on file was brought up`).not.toMatch(/terminat/i);
       }
@@ -145,7 +152,7 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
         const nosy = loopStandIn(nosyStandIn);
         t.loopModel!(nosy);
         await t.thread().say(said);
-        expect(toolResults(nosy.views, "find_past_forms")[0], `"${said}" did not open forms on file`).not.toMatch(/not asked about forms on file/);
+        expect(toolResults(nosy.views, "find_past_forms")[0], `"${said}" did not open forms on file`).not.toMatch(/"reason_code":"privacy_not_asked"/);
       }
     },
   },
@@ -376,7 +383,9 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       const id = await thread.create();
       const before = JSON.stringify(t.values(id));
       const editor = loopStandIn((view) => {
-        if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { instance_id: id, values: { observation: "Tamsin Orwell-Smith was late to open on 11/10." } } };
+        // Changed on purpose (rebuild plan PR 1a): NAME_CORRECTION's word list is gone; the model says it is a name
+        // correction (intent correct_name, quoting the manager) and code refuses the other fields it tried to write.
+        if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { instance_id: id, intent: "correct_name", name_evidence: evidenceFrom(view, "it is Orwell-Smith"), values: { observation: "Tamsin Orwell-Smith was late to open on 11/10." } } };
         return { text: JSON.stringify(lastResult(view, "edit_form")) };
       });
       t.loopModel!(editor);
@@ -435,7 +444,9 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
         const template = /exit/.test(all) ? "stc-exit" : /coaching/.test(all) ? "coaching" : "dpoa";
         if (/^(?:ca|coaching|exit)/.test(said)) {
           if (template === "coaching" && !/tamsin/.test(said)) return { text: "Who is the coaching for?" };
-          if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: template, employee_id: TAMSIN.id } };
+          // Changed on purpose (rebuild plan PR 1a): an exit card needs exit_evidence, the manager's words asking for it.
+          const exitAsked = template === "stc-exit" ? { exit_evidence: evidenceFrom(view, "exit form for tamsin orwell") } : {};
+          if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: template, employee_id: TAMSIN.id, ...exitAsked } };
           return { text: template === "stc-exit" ? "Exit form for Tamsin Orwell. What was her last day?" : "Corrective Action for Tamsin Orwell. What happened?" };
         }
         if (template === "coaching" && !lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: said.trim() } };
@@ -447,7 +458,7 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
               employee_id: TAMSIN.id,
               ...(template === "dpoa" ? { what_happened: "She was late on Tuesday." } : {}),
               ...(template === "coaching" ? { what_happened: "She skipped the spray booth check." } : {}),
-              ...(template === "stc-exit" ? { what_happened: "She resigned; her last day was Friday.", incident_date: "2026-11-13" } : {}),
+              ...(template === "stc-exit" ? { what_happened: "She resigned; her last day was Friday.", incident_date: "2026-11-13", exit_evidence: evidenceFrom(view, "exit form for tamsin orwell", 1) } : {}),
             },
           };
         }
@@ -758,7 +769,7 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
           return { text: "Here's the card." };
         }
         if (/format of Corvina|look like this format/i.test(latestTurn)) {
-          if (/format of Corvina/i.test(latestTurn) && !lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: "Corvina Lisle" } };
+          if (/format of Corvina/i.test(latestTurn) && !lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: "Corvina Lisle", forms_on_file_evidence: evidenceFrom(view) } };
           if (tries === 0) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: LIORA.id, policy: "Standards of Conduct", warning_level: "verbal", what_happened: "During the month of September 2026, Liora Quenby completed 237 tanning transactions and failed to follow their Must See Behaviors in UPTA, Average Club, CC%, and Spa %." } };
           if (tries === 1) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: LIORA.id, policy: "Standards of Conduct", warning_level: "verbal", what_happened: "Like Corvina Lisle, Liora Quenby had 146 tans and was below in PPTA, LPSVA, Average Club, CC%, Spa%." } };
           if (tries === 2) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: LIORA.id, policy: "Standards of Conduct", warning_level: "verbal", what_happened: `Throughout her transactions, ${accountB}` } };
@@ -838,7 +849,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       const first = t.thread();
       await first.say("coaching form for tamsin orwell, she marked a session as complete but the guest hadn't been sprayed yet");
       // Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite; code-check audit batch C): a fact, not a refusal; the model fixes the card.
-      expect(toolResults(empty.views, "propose_form")[0], "the account the manager gave is not a fact").toMatch(/"account_given":\{"untrusted_text":"[^"]*marked a session as complete/);
+      // Changed on purpose (the rebuild plan's PR 1, 15 Nov 2026): the fact is this person's request words (request_words); the model reads the account in them, no word list does.
+      expect(toolResults(empty.views, "propose_form")[0], "the manager's words are not a fact").toMatch(/"request_words":\{"untrusted_text":"[^"]*marked a session as complete/);
       expect(first.proposal?.issue ?? "").toMatch(/marked a session as complete/);
 
       // A created coaching draft: the account turn, then "make that update" with no values writes it, word for word.
@@ -852,7 +864,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       // returns latest_account and account_field and the model writes it with values, as the rules book teaches.
       const updater = loopStandIn((view) => {
         const edit = lastResult(view, "edit_form") as { latest_account?: { untrusted_text: string }; account_field?: string } | null;
-        if (!edit) return { tool: "edit_form", input: { instance_id: id } };
+        // Changed on purpose (the rebuild plan's PR 1): "make that update" is the model's intent write_account, citing the manager's account message.
+        if (!edit) return { tool: "edit_form", input: { instance_id: id, intent: "write_account", account_evidence: [evidenceFrom(view, "tamsin marked a session as complete", 1)] } };
         if (edit.latest_account && edit.account_field) return { tool: "edit_form", input: { instance_id: id, values: { [edit.account_field]: edit.latest_account.untrusted_text } } };
         return { text: "Done." };
       });
@@ -976,7 +989,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "tamsin orwell" } };
         // The account of the turn it answers (the account check refuses one that drops the manager's date).
         const late = /late on 11\/12/i.test(view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "");
-        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, what_happened: late ? "Tamsin Orwell was late on 11/12." : "Tamsin Orwell was on her phone at the front desk." } };
+        // Changed on purpose (rebuild plan PR 1b): "make another ca" is the model's new_form_evidence.
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, what_happened: late ? "Tamsin Orwell was late on 11/12." : "Tamsin Orwell was on her phone at the front desk." , ...(late ? { new_form_evidence: evidenceFrom(view, "make another ca") } : {}) } };
         return { text: JSON.stringify(lastResult(view, "propose_form")) };
       });
       t.loopModel!(again);
@@ -1150,9 +1164,9 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       const valuesBefore = JSON.stringify(t.values(id));
 
       const reader = loopStandIn((view) => {
-        if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: "Tamsin Orwell" } };
+        if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: "Tamsin Orwell", forms_on_file_evidence: evidenceFrom(view) } };
         const listed = (lastResult(view, "find_past_forms")?.forms ?? []) as { instance_id: string }[];
-        if (listed.length > 0 && !lastResult(view, "read_form")) return { tool: "read_form", input: { instance_id: listed[0]!.instance_id } };
+        if (listed.length > 0 && !lastResult(view, "read_form")) return { tool: "read_form", input: { instance_id: listed[0]!.instance_id, forms_on_file_evidence: evidenceFrom(view) } };
         return { text: "Tamsin Orwell has one finalized Corrective Action on file, from 11/2/26." };
       });
       t.loopModel!(reader);
@@ -1312,7 +1326,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       const proposer = loopStandIn((view) => {
         const said = view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "";
         if (!lastResult(view, "propose_form")) {
-          return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, what_happened: /opening this morning/.test(said) ? "Tamsin Orwell was late to opening this morning." : "Tamsin Orwell failed to take the trash out." } };
+          // Changed on purpose (rebuild plan PR 1b): a new form while a draft is open is the model's new_form_evidence.
+          return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, what_happened: /opening this morning/.test(said) ? "Tamsin Orwell was late to opening this morning." : "Tamsin Orwell failed to take the trash out." , ...(/make me a CA/.test(said) ? { new_form_evidence: evidenceFrom(view, "make me a CA for Tamsin Orwell") } : {}) } };
         }
         return { text: JSON.stringify(lastResult(view, "propose_form")) };
       });
@@ -1482,9 +1497,10 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       const before = JSON.stringify({ form: t.forms().find((row) => row.id === id), values: t.values(id) });
 
       const editor = loopStandIn((view) => {
-        if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: "Tamsin Orwell" } };
+        if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: "Tamsin Orwell", forms_on_file_evidence: evidenceFrom(view) } };
         const listed = (lastResult(view, "find_past_forms")?.forms ?? []) as { instance_id: string }[];
-        if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { instance_id: listed[0]?.instance_id ?? "" } };
+        // Changed on purpose (rebuild plan PR 1a): edit_form of a form that is not open needs the manager's own ask quoted.
+        if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { instance_id: listed[0]?.instance_id ?? "", forms_on_file_evidence: evidenceFrom(view, "my last CA for tamsin orwell") } };
         return { text: "Done." };
       });
       t.loopModel!(editor);

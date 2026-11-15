@@ -1,7 +1,7 @@
 import { expect, vi } from "vitest";
 
 import { KEARNEY, STAFF, type ReplayCase, type ReplayContext } from "./cases";
-import { lastResult, loopStandIn, type LoopDecision, type LoopView } from "./loop-stand-in";
+import { lastResult, loopStandIn, type LoopDecision, type LoopView, evidenceFrom } from "./loop-stand-in";
 
 /**
  * ============================================================================
@@ -144,12 +144,12 @@ export const NOV15_AGENT_LOOP_TERMINATION_DECISION_CASES: ReplayCase[] = [
       t.directory([...STAFF]);
       t.as("salon_director", KEARNEY);
       const model = loopStandIn((view): LoopDecision => {
-        const results = view.results.filter((result) => result.tool === "propose_form").map((result) => result.output as { exit_not_asked?: boolean; facts?: { termination_stated?: { approval: string } } });
+        const results = view.results.filter((result) => result.tool === "propose_form").map((result) => result.output as { exit_not_stated?: boolean; facts?: { termination_stated?: { approval: string } } });
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
         // The live bug: the model reached for the exit form first.
         if (results.length === 0) return { tool: "propose_form", input: { template_key: "stc-exit", employee_id: "e-2", exit_type: "termination" } };
         const last = results.at(-1)!;
-        if ((last as { exit_not_asked?: boolean }).exit_not_asked && results.length === 1) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: tag === "t4" ? "She stole from the register today." : ACCOUNT, incident_date: tag === "t4" ? "2026-11-14" : "2026-11-12", warning_level: "termination" } };
+        if ((last as { exit_not_stated?: boolean }).exit_not_stated && results.length === 1) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: tag === "t4" ? "She stole from the register today." : ACCOUNT, incident_date: tag === "t4" ? "2026-11-14" : "2026-11-12", warning_level: "termination" } };
         const stated = last.facts?.termination_stated;
         return { text: `Here's the Corrective Action Form for **Remy Calder**.\n\n${stated ? `**Type of Warning:** Termination, as you said — I'll tick it on the form. Tell me if that should change.\n${stated.approval}` : HEDGE}\n\nWant the Employee Exit Form for Remy Calder too?` };
       });
@@ -312,7 +312,7 @@ export const NOV15_AGENT_LOOP_TERMINATION_DECISION_CASES: ReplayCase[] = [
       ] as const) {
         t.loopModel!(loopStandIn((view): LoopDecision => {
           if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
-          if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "stc-exit", employee_id: "e-2", exit_type: "termination", effective_date: date } };
+          if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "stc-exit", exit_evidence: evidenceFrom(view), employee_id: "e-2", exit_type: "termination", effective_date: date } };
           return { text: "Here's the Employee Exit Form for **Remy Calder**." };
         }));
         const thread = t.thread();
@@ -335,7 +335,7 @@ export const NOV15_AGENT_LOOP_TERMINATION_DECISION_CASES: ReplayCase[] = [
       const exit = async (words: string, termination: boolean) => {
         const model = loopStandIn((view): LoopDecision => {
           if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
-          if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "stc-exit", employee_id: "e-2", incident_date: "2026-11-28", exit_type: termination ? "termination" : "resignation" } };
+          if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "stc-exit", exit_evidence: evidenceFrom(view), employee_id: "e-2", incident_date: "2026-11-28", exit_type: termination ? "termination" : "resignation" } };
           return { text: "Here's the Employee Exit Form for **Remy Calder**." };
         });
         t.loopModel!(model);

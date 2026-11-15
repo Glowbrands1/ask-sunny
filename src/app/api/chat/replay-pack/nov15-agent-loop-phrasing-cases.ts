@@ -3,7 +3,7 @@ import { expect, vi } from "vitest";
 import { BEHAVIOURS, TESTY, TESTY_ACCOUNT, type Behaviour, type Phrasing } from "@/lib/ai/agent-loop/phrasing-table";
 
 import { KEARNEY, STAFF, type DirectoryRow, type ReplayCase, type ReplayContext, type ReplayThread } from "./cases";
-import { lastResult, loopStandIn, type LoopDecision } from "./loop-stand-in";
+import { evidenceFrom, lastResult, loopStandIn, type LoopDecision } from "./loop-stand-in";
 
 /**
  * ============================================================================
@@ -30,7 +30,6 @@ export const OPEN_UNTIL_PR1: Readonly<Record<string, string>> = {
   "nov15-phrasing-answer-level-2": "TODO(PR1): a misspelt level (\"writen\") is not read by LEVEL_OR_PAYROLL_ANSWER; level_evidence replaces it",
   "nov15-phrasing-answer-payroll-4": "TODO(PR1): a bare \"yes $20\" has no payroll word for LEVEL_OR_PAYROLL_ANSWER; payroll_evidence replaces it",
   "nov15-phrasing-answer-payroll-5": "TODO(PR1): a long payroll answer is past LEVEL_OR_PAYROLL_ANSWER's 80 characters; payroll_evidence replaces it",
-  "nov15-phrasing-forms-on-file-2": "TODO(PR1): \"on fiel\" does not open ASKS_ABOUT_FORMS; forms_on_file_evidence replaces it",
   "nov15-phrasing-undo-level-2": "TODO(PR1): a misspelt level (\"verbl\") is not read; level_evidence replaces it",
 };
 
@@ -106,19 +105,24 @@ const SCRIPTS: Record<Behaviour["key"], Script> = {
     expect(thread.proposal as unknown).toMatchObject({ payrollDeduct: "yes", payrollDeductAmount: "20" });
   },
   "fix-name": async (t, said) => {
-    // Today edit_form cannot set the employee name (a system field); a name correction is recognised from the words and
-    // an Observation rewrite sent with it is refused. TODO(PR1): edit_form intent "correct_name" + name_evidence, and the
-    // outcome becomes the corrected employee_name saved (and nothing else) for every phrasing.
+    // PR 1 (the rebuild plan): a name correction is edit_form intent "correct_name" with name_evidence quoting the new
+    // name from this message, and QA's ruling 2: the form's reviser never changes the name. TODO(QA): the form's writer
+    // refuses employee_name ("system fields are not drafted"), so today every phrasing ends the same way: the name write
+    // is refused and nothing on the draft changes. Saving the corrected name needs a writer decision.
     const { thread, id } = await draft(t);
     const before = t.values(id);
-    t.loopModel!(loopStandIn((view): LoopDecision => (lastResult(view, "edit_form") ? { text: "Done." } : { tool: "edit_form", input: { instance_id: id, values: { observation: `${TESTY.firstName} ${TESTY.corrected} was late to open the salon on 11/10.` } } })));
+    const editor = loopStandIn((view): LoopDecision => (lastResult(view, "edit_form") ? { text: "Done." } : { tool: "edit_form", input: { instance_id: id, intent: "correct_name", values: { employee_name: `${TESTY.firstName} ${TESTY.corrected}` }, name_evidence: evidenceFrom(view, TESTY.corrected) } }));
+    t.loopModel!(editor);
     await thread.say(said);
-    expect(t.values(id), "a name correction rewrote the draft").toEqual(before);
+    const result = editor.views.at(-1)!.results.find((entry) => entry.tool === "edit_form")?.output as { refused?: { field: string }[]; reason_code?: string } | undefined;
+    expect(result?.reason_code, "the name evidence was refused (the quote holds the new name in every phrasing)").toBeUndefined();
+    expect(result?.refused?.map((row) => row.field), "the name write was not reported refused").toEqual(["employee_name"]);
+    expect(t.values(id), "a name correction changed the draft").toEqual(before);
   },
   "exit-form": async (t, said) => {
     await setup(t);
     t.loopModel!(loopStandIn((view): LoopDecision => {
-      if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: exitKey(), employee_id: TESTY.id, exit_type: "resignation" } };
+      if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: exitKey(), employee_id: TESTY.id, exit_type: "resignation", exit_evidence: evidenceFrom(view) } };
       return { text: "Here's the card." };
     }));
     const thread = t.thread();
@@ -128,7 +132,7 @@ const SCRIPTS: Record<Behaviour["key"], Script> = {
   },
   "forms-on-file": async (t, said) => {
     await draft(t);
-    const asker = loopStandIn((view): LoopDecision => (lastResult(view, "find_past_forms") ? { text: "Here is what is on file." } : { tool: "find_past_forms", input: { employee_name: `${TESTY.firstName} ${TESTY.lastName}` } }));
+    const asker = loopStandIn((view): LoopDecision => (lastResult(view, "find_past_forms") ? { text: "Here is what is on file." } : { tool: "find_past_forms", input: { employee_name: `${TESTY.firstName} ${TESTY.lastName}`, forms_on_file_evidence: evidenceFrom(view) } }));
     t.loopModel!(asker);
     const thread = t.thread();
     const reply = await thread.say(said);

@@ -116,6 +116,11 @@ function holdsWholeWords(text: string, quote: string): boolean {
   return false;
 }
 
+/** Whether `phrase` is in `text` as whole words, read as verifyEvidence reads quotes (case, space, dashes). */
+export function holdsPhrase(text: string, phrase: string): boolean {
+  return holdsWholeWords(normalized(withoutMessageIdTags(text)), normalized(phrase));
+}
+
 /** Evidence as the model passed it: an object with a message_id and a quote, both strings; null otherwise. */
 export function readEvidence(value: unknown): Evidence | null {
   if (!value || typeof value !== "object") return null;
