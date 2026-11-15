@@ -843,8 +843,17 @@ export async function writeRevisionEdits(
  * manager's save refuses a finalized form).
  */
 export async function dictatedPlanWrite(instanceId: string, plan: string, actorId: string): Promise<{ saved: string | null }> {
-  const result = await saveInstanceValues(instanceId, { values: { action_plan: plan }, checked: {} }, actorId, { via: "chat" });
-  return { saved: result.rejected.some((row) => row.key === "action_plan") ? null : (result.values.action_plan ?? plan) };
+  return dictatedFieldWrite(instanceId, "action_plan", plan, actorId);
+}
+
+/**
+ * Batch J2 (G8 generalized): any one field the manager dictated in chat, word for word, saved as the manager's own
+ * edit (as the form page saves their typing), via chat. The caller (edit_form) checks the words are the manager's
+ * current message (`agent-loop/dictated.ts`). Drafts only (the manager's save refuses a finalized form).
+ */
+export async function dictatedFieldWrite(instanceId: string, field: string, text: string, actorId: string): Promise<{ saved: string | null }> {
+  const result = await saveInstanceValues(instanceId, { values: { [field]: text }, checked: {} }, actorId, { via: "chat" });
+  return { saved: result.rejected.some((row) => row.key === field) ? null : (result.values[field] ?? text) };
 }
 
 /* -------------------------------- the old writers' shapes, through here ---- */

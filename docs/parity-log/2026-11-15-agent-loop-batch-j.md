@@ -13,7 +13,9 @@
 - **J7–J10** (speed, from the J6 report). With a draft open a change goes straight to edit_form; the self-check
   hand-back asks as the turn did, so its prefix is cached; what_happened stays the manager's own account;
   `first_token_ms` is written on loop traces (`chat-trace.ts`).
-- **J2** (a dictated field saved word for word) reuses batch G's helper and lands after G.
+- **J2.** A field the manager dictates ("change observation of offense to: …") is saved word for word, on the card and
+  on a draft: batch G's Action Plan lock generalized (`agent-loop/dictated.ts`; `form-write.ts` dictatedFieldWrite). A
+  pasted outline, and "change the observation to say …", are not dictation.
 
 **Ask Bubbles** (v2-Coding-5, 15 Nov 2026):
 

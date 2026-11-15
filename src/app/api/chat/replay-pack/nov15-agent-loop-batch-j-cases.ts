@@ -297,4 +297,56 @@ export const NOV15_AGENT_LOOP_BATCH_J_CASES: ReplayCase[] = [
       }
     },
   },
+  {
+    id: "nov15-batch-j2-dictated-observation-saved-word-for-word",
+    title: "J2: \"change observation of offense to: <text>\" is saved word for word: a reworded account is refused with the dictated text, on the card and on the draft",
+    report: `${REPORT}; L4 t3: "change observation of offense to: <B> completed onboarding with new hire <C> on 9-28-26. …" was saved in the passive voice and lost <B> as the subject`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      // The live turn's words, the people invented: Juno Paxton (STAFF's), a new hire Corran Vale.
+      const said = "Juno completed onboarding with new hire Corran Vale on 9-28-26. As of 10-16-26 Corran had not acknowledged onboarding policies in Woven that should have been completed during onboarding.";
+      const reworded = "On 9-28-26, onboarding was completed with new hire Corran Vale. As of 10-16-26, Corran had not acknowledged onboarding policies in Woven that should have been completed during onboarding.";
+      let draftId = "";
+      // As the live model did: the passive reword first; then the words propose_form / edit_form hand back.
+      const POLICY = "\n\n**Policy:** Standards of Conduct Policy, JBA Policy Manual p.12";
+      const model = loopStandIn((view) => {
+        const latest = view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "";
+        // The app's own self-check note: the stand-in answers it with its reply, as a careful model would.
+        if (/^\[app check\]/.test(latest)) return { text: `Here's the Corrective Action Form for **Juno Paxton**.${POLICY}` };
+        const handed = (view.results.at(-1)?.output as { dictated_text?: { untrusted_text?: string } } | undefined)?.dictated_text?.untrusted_text;
+        if (/^change observation of offense to:/i.test(latest) && draftId) {
+          if (lastResult(view, "edit_form") && !handed) return { text: "Updated the Observation." };
+          return { tool: "edit_form", input: { instance_id: draftId, values: { observation: handed ?? reworded } } };
+        }
+        if (/^change observation of offense to:/i.test(latest)) {
+          if (lastResult(view, "propose_form") && !handed) return { text: `Here's the updated Corrective Action Form for **Juno Paxton**.${POLICY}` };
+          return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-3", policy: "Standards of Conduct", what_happened: handed ?? reworded } };
+        }
+        return lastResult(view, "propose_form")
+          ? { text: `Here's the Corrective Action Form for **Juno Paxton**.\n\nWhat happened?${POLICY}` }
+          : { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-3", policy: "Standards of Conduct", ...(/did not finish onboarding/.test(latest) ? { what_happened: latest } : {}) } };
+      });
+      const thread = start(t);
+      t.loopModel!(model);
+      await thread.say("create a CA for salon director, juno paxton for violating the standards of conduct");
+      await thread.say(`change observation of offense to: ${said}`);
+      const proposed = model.views.flatMap((view) => view.results).filter((result) => result.tool === "propose_form").map((result) => result.output as { error?: string });
+      if (offline) expect(proposed.some((result) => /dictated the account/.test(result.error ?? "")), "the reword was not refused").toBe(true);
+      expect(thread.proposal?.issue, "the card's account is not the manager's words").toBe(said);
+
+      // On a draft (its own thread: Create after this dictation is a separate report, the new hire read as the person):
+      // the same words, saved as dictated.
+      const onDraft = start(t);
+      await onDraft.say("create a CA for salon director, juno paxton for violating the standards of conduct");
+      await onDraft.say("Juno did not finish onboarding with her new hire.");
+      t.draftWrites({ observation: "Observed:\nJuno Paxton did not finish onboarding with her new hire." });
+      draftId = await onDraft.create();
+      await onDraft.say(`change observation of offense to: ${said}`);
+      const edits = model.views.flatMap((view) => view.results).filter((result) => result.tool === "edit_form").map((result) => result.output as { error?: string });
+      if (offline) expect(edits.some((result) => /dictated observation/.test(result.error ?? "")), "the draft's reword was not refused").toBe(true);
+      expect(t.values(draftId).observation, "the draft's Observation is not the manager's words").toBe(said);
+    },
+  },
 ];

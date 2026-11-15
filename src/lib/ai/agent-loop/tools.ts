@@ -8,6 +8,7 @@ import { randomUUID } from "node:crypto";
 import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import { businessToday } from "@/lib/business-date";
 import { isoDate, monthDayToIso, readDates, sameDate, withoutDates } from "./dates";
+import { ACCOUNT_LABELS, ACTION_PLAN_LABELS, dictatedField, dictatedText, pastedOutline as isPastedOutline } from "./dictated";
 import { candidateNameWords, chatFormsActor } from "@/lib/forms/chat-form-records";
 import { displayName, matchEmployeeName, nameConfirmationQuestion, type RosterEmployee } from "@/lib/forms/employee-match";
 import { offRosterTyped } from "@/lib/forms/roster-only-names";
@@ -172,17 +173,8 @@ export function exactWarningLevel(value: string): "verbal" | "written" | "termin
  * it a written…" after it stays out. Null when either check fails.
  */
 export function dictatedActionPlan(message: string, modelText: string): string | null {
-  /*
-   * QA's third review: (A) "action plan … :" with no comma, period or semicolon between (80 characters at most: T9's
-   * "the action plan section of the form needs to reflect the following verbage:" has 59); (B) "change / make / set /
-   * update / replace the action plan to".
-   */
-  const marker = /\baction\s+plan\b[^\n,.;]{0,80}:/i.exec(message) ?? /\b(?:change|make|set|update|replace)\s+(?:the\s+)?action\s+plan(?:\s+section)?\s+to\b/i.exec(message);
-  const words = (modelText ?? "").trim().split(/\s+/).filter(Boolean);
-  if (!marker || words.join(" ").length <= 10) return null;
-  const pattern = new RegExp(words.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("\\s+"), "i");
-  const found = pattern.exec(message.slice(marker.index + marker[0].length));
-  return found ? found[0] : null;
+  /* Batch J2: G8's markers and matching, now `dictated.ts`'s for any field; the Action Plan is one of its labels. */
+  return dictatedField(message, ACTION_PLAN_LABELS, modelText);
 }
 
 /** Batch G (G4): the app's own question when several forms on file fit (find_past_forms gives it; the rules book ends the reply with it). */
@@ -1257,7 +1249,22 @@ export async function proposeForm(
     return { error: "That is the signed-in manager's own name, not an employee. Ask who the form is about." };
   }
 
-  const whatHappened = typeof input.what_happened === "string" ? input.what_happened.trim().slice(0, 2_000) : "";
+  let whatHappened = typeof input.what_happened === "string" ? input.what_happened.trim().slice(0, 2_000) : "";
+  /*
+   * Batch J2 (QA's live re-run, L4 t3: "change observation of offense to: <text>" was saved reworded, in the passive
+   * voice): an account the manager dictates in this message is their words, as the message has them; a reworded one is
+   * refused with the dictated text, so the card is never the model's version of it (`dictated.ts`).
+   */
+  if (whatHappened && ACCOUNT_FORMS.has(template.key) && !isPastedOutline(context.question)) {
+    const said = dictatedText(context.question, ACCOUNT_LABELS);
+    if (said) {
+      const dictated = dictatedField(context.question, ACCOUNT_LABELS, whatHappened);
+      if (!dictated) {
+        return { error: "The manager dictated the account in this message. Put their words in what_happened word for word (dictated_text), never reworded.", dictated_text: untrusted(said) };
+      }
+      whatHappened = dictated;
+    }
+  }
   /* The incident's own words (this person's turns, read below) are checked against the account once they are known. */
   const asked = managerContext(context.history as ChatMessage[], { id: context.questionMessageId, content: context.question });
   /* THIS request's turns (QA, 14 Nov 2026; THIS_PERSONS_TURNS behaviour): an earlier incident in the chat never feeds this card. */
@@ -2027,6 +2034,30 @@ export async function editForm(
     if (unknown.length > 0) {
       return { error: `${unknown.join(", ")} ${unknown.length === 1 ? "is not a field" : "are not fields"} of this form; nothing was written. Its fields: ${[...fieldKeys].join(", ")}.${accountField ? ` The account goes in ${accountField}.` : ""}` };
     }
+    /*
+     * Batch J2: a field the manager dictates in this message by its label ("change observation of offense to: …") is
+     * saved as the message has it; a reworded value for it is refused with the dictated text. The Action Plan keeps
+     * G8's own lock below.
+     */
+    const dictatedFields: Record<string, string> = {};
+    {
+      const { fieldsForVariant, interpolate, parseFormDocument } = await import("@/lib/forms/document");
+      const labelled = fieldsForVariant(parseFormDocument(loaded.version.document), loaded.instance.variantKey);
+      for (const [field, value] of Object.entries(values)) {
+        if (field === "action_plan" || typeof value !== "string" || isPastedOutline(context.question)) continue;
+        const own = labelled.find((row) => row.key === field);
+        const labels = [own ? interpolate(own.label, null) : "", field.replace(/_/g, " "), ...(field === accountField ? ACCOUNT_LABELS : [])].filter(Boolean);
+        const said = dictatedText(context.question, labels);
+        if (!said) continue;
+        const dictated = dictatedField(context.question, labels, value);
+        if (!dictated) {
+          return { error: `The manager dictated ${field} in this message; nothing was written. Write their words in ${field} word for word (dictated_text), never reworded.`, dictated_text: untrusted(said) };
+        }
+        /* Saved after the revision's write, as the manager's own edit (G8's way), so the reviser's guards never reword it. */
+        dictatedFields[field] = dictated;
+        delete values[field];
+      }
+    }
     /* HARD GUARD, NEVER AN EMPTY ACCOUNT (QA, 16:17Z): the account field is never cleared by an edit. */
     if (accountField && accountField in values && values[accountField]!.trim() === "") {
       return { error: `${accountField} is never written empty. Write the manager's account in it.` };
@@ -2037,7 +2068,7 @@ export async function editForm(
      * it, added after what is there, when the field does not hold it yet.
      */
     /* Batch B (code-check #26): the manager's latest account and the field it goes in, for the model to write with values. */
-    const writeAccount = Object.keys(values).length === 0 && accountField && WRITE_ACCOUNT_REQUEST.test(context.question)
+    const writeAccount = Object.keys(values).length === 0 && Object.keys(dictatedFields).length === 0 && accountField && WRITE_ACCOUNT_REQUEST.test(context.question)
       ? (() => {
           const account = latestAccount(context.history.filter((turn) => turn.role === "user").slice(-8).map((turn) => String(turn.content ?? "")));
           const old = loaded.values.find((row) => row.fieldKey === accountField)?.value ?? "";
@@ -2049,7 +2080,7 @@ export async function editForm(
      * today's chat uses), which knows each template's fields, the date, the policy reference line, the Action Plan and
      * the protected values. Its reply says what changed.
      */
-    if (Object.keys(values).length === 0) {
+    if (Object.keys(values).length === 0 && Object.keys(dictatedFields).length === 0) {
       /*
        * QA's third review: the reviser (today's path, unchanged) writes a date the message states with no today check.
        * In the loop, on a CA or coaching form, a message stating a date after today goes no further: one question.
@@ -2159,9 +2190,20 @@ export async function editForm(
         dictatedPlan = planSaved.rejected.some((row) => row.key === "action_plan") ? null : (planSaved.values.action_plan ?? planToSave);
       }
     }
+    /* Batch J2: each field the manager dictated, as G8 saves the plan. */
+    const dictatedSaved: string[] = [];
+    for (const [field, text] of Object.entries(dictatedFields)) {
+      const kept = formEditSingleWriterEnabled()
+        ? (await (await import("@/lib/forms/form-write")).dictatedFieldWrite(id, field, text, context.actor.subject)).saved
+        : await (async () => {
+            const result = await (await import("@/lib/forms/instances")).saveInstanceValues(id, { values: { [field]: text }, checked: {} }, context.actor.subject, { via: "chat" });
+            return result.rejected.some((row) => row.key === field) ? null : (result.values[field] ?? text);
+          })();
+      if (kept !== null) dictatedSaved.push(field);
+    }
     const saved = (await authorizeInstance(context.request, id, "view")).loaded;
     const dateWritten = documentDate !== null && saved.values.some((row) => row.fieldKey === "form_date" && row.value === documentDate);
-    const updated = [...Object.keys(written.accepted.values ?? {}), ...Object.keys(written.accepted.checked ?? {}), ...(dateWritten ? ["form_date"] : []), ...(dictatedPlan !== null ? ["action_plan"] : [])];
+    const updated = [...Object.keys(written.accepted.values ?? {}), ...Object.keys(written.accepted.checked ?? {}), ...(dateWritten ? ["form_date"] : []), ...(dictatedPlan !== null ? ["action_plan"] : []), ...dictatedSaved];
     if (updated.length > 0) effects.formUpdate = { instanceId: id, updated };
     return {
       updated,
