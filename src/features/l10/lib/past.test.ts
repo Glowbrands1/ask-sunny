@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { importedMeetings, pastMeetings } from "./past";
+import { importedMeetings, pastMeetings, todosCompletedPct } from "./past";
 import type { RecapRow } from "./types";
 
 // Invented people only.
@@ -59,6 +59,13 @@ describe("past meetings", () => {
   it("works out To-dos completed from the recap's counts, and has none on older recaps", () => {
     expect(pastMeetings([recap({ todos_done: 3, todos_total: 4 })], {})[0].todosCompletedPct).toBe(75);
     expect(pastMeetings([recap()], {})[0].todosCompletedPct).toBeNull();
+  });
+
+  it("todosCompletedPct: the share done, or null when the recap has no counts (shown as nothing)", () => {
+    expect(todosCompletedPct({ todos_done: 3, todos_total: 4 })).toBe(75);
+    expect(todosCompletedPct({ todos_done: 0, todos_total: 0 })).toBeNull();
+    expect(todosCompletedPct({ todos_done: null, todos_total: null })).toBeNull();
+    expect(todosCompletedPct({})).toBeNull();
   });
 
   it("works out a Bloom meeting's length and average rating (people who did not rate are left out)", () => {

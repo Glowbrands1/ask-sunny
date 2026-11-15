@@ -51,6 +51,7 @@ import { redactSensitiveDefaults } from "@/lib/ai/sensitive-defaults";
 import { expandPolicyQuery } from "@/lib/knowledge/policy-retrieval";
 import type { SourceCitation } from "@/types";
 import type { AccessScope, ChatFormProposal, ChatMessage, Role } from "@/types";
+import { personKey, type CardRecord } from "@/lib/ai/agent-loop/card-record";
 
 /**
  * ============================================================================
@@ -101,8 +102,13 @@ export interface ToolContext {
   readonly today: string;
   /** The form open on the manager's screen, if any: read_form of it is never gated. */
   readonly openFormId?: string | null;
-  /** The last reply, when it showed a card not yet created: its person's forms are this conversation's (privacy gate). */
-  readonly cardReply?: string | null;
+  /**
+   * PR 2 (the card record): the card the last reply showed, not yet created, read from the server's record. Its person's
+   * forms are this conversation's (privacy gate).
+   */
+  readonly cardOnScreen?: CardRecord | null;
+  /** PR 2: the latest card this chat made before this turn (the record), for the earlier_card fact. */
+  readonly earlierCard?: CardRecord | null;
 }
 
 /* ------------------------------------------------------ hard guard: privacy --- */
@@ -164,9 +170,9 @@ async function formsOnFileAskedFor(context: ToolContext, evidence: unknown, pers
   if (namesSomeone(asked.said)) return { ok: false, reason: "evidence_other_person", reasonCode: "privacy_not_this_person" };
   const antecedent = asked.before.find(namesSomeone);
   if (antecedent !== undefined && namedIn(antecedent)) return { ok: true };
-  // TODO(PR2): interim (QA, 15 Nov 2026): the card's person is read from the last card reply's text; Coding-5's
-  // server-side card record (PR 2) replaces this.
-  if (context.cardReply && namedIn(context.cardReply)) return { ok: true };
+  // PR 2: the card on screen, by the server's card record (its person's roster id, or the key of a typed name), never the reply's text.
+  const onScreen = context.cardOnScreen;
+  if (onScreen && ((onScreen.employeeKey !== null && holders.some((row) => personKey(row.id) === onScreen.employeeKey)) || (onScreen.employeeKey === null && onScreen.nameKey === personKey(person)))) return { ok: true };
   if (context.openFormId) {
     const open = await authorizeInstance(context.request, context.openFormId, "view").then(({ loaded }) => loaded.instance.employeeName).catch(() => null);
     if (open && sameRosterPerson(open, person, roster)) return { ok: true };
@@ -408,6 +414,8 @@ export interface ToolEffects {
   nameLines?: Record<string, string>;
   /** Batch G (G4), by the rebuild plan's PR 1b: find_past_forms found forms on file to open (open: true) for this person. */
   openRequested?: string;
+  /** PR 2: the roster id of the card's person (the card record); null for a team card or a name not on the roster. */
+  proposalEmployeeId?: string | null;
   /**
    * Every source a tool read this turn, numbered from 1 in the order read: the model cites one as [S<n>] (`addSource`).
    * Only the ones the reply cites become source cards (run.ts, QA's live-app item 12), as today's grounded path does.
@@ -1940,7 +1948,21 @@ export async function proposeForm(
   if (card.employeeRole) card.employeeRole = (await import("@/lib/ai/job-title-from-words")).spelledOutTitle(card.employeeRole);
   /* The policy Create sends is the card's (`cardPolicyFor`), never read back from the model's reply (code-check #40). */
   card.policyLine = policyLine;
+  /*
+   * EARLIER CARD (PR 2; replaces run.ts's bold-name match and EARLIER_CARD_STAYS line): the latest earlier card in this
+   * chat, by the server's record, was another person's. Compared by roster id (by name only when either has none). It
+   * stays creatable (`earlierCardKept`), and the model is told so as the earlier_card fact.
+   */
+  const earlier = context.earlierCard ?? null;
+  const earlierKept =
+    earlier !== null &&
+    card.employeeName !== null &&
+    (earlier.employeeKey && employee.id ? earlier.employeeKey !== personKey(employee.id) : earlier.nameKey !== null && earlier.nameKey !== personKey(card.employeeName));
+  if (earlierKept) card.earlierCardKept = true;
+  const earlierRead = earlierKept && earlier!.employeeKey ? await rosterFor(context.actor.scope) : null;
+  const earlierRow = earlierRead?.kind === "read" ? earlierRead.roster.find((row) => personKey(row.id) === earlier!.employeeKey) : undefined;
   effects.proposal = card;
+  effects.proposalEmployeeId = employee.id ?? null;
   const personId = typeof input.employee_id === "string" ? input.employee_id.trim() : "";
   /*
    * THE CARD'S FACTS (Pau, 14 Nov 2026: "code may refuse or inform, never rewrite"; the code-check audit's batch A).
@@ -1976,6 +1998,7 @@ export async function proposeForm(
     .slice(0, 3)
     .map(({ name, sentence }) => ({ name: untrusted(name), sentence: untrusted(sentence) }));
   const facts = {
+    ...(earlierKept ? { earlier_card: { kept: true, ...(earlierRow ? { employee: displayName(earlierRow) } : {}), form: earlier!.templateName ?? earlier!.templateKey } } : {}),
     ...(otherNamed.length > 0 ? { account_names_other_person: { named: otherNamed, card_person: employee.name } } : {}),
     ...(unset.length > 0 ? { unset } : {}),
     ...(level || payroll || priorActions
@@ -2186,6 +2209,7 @@ export async function coachTeam(context: ToolContext, effects: ToolEffects): Pro
   });
   if (card.subject !== "team") return { reason_code: "read_failed", error: "The team card could not be made from this message. Ask which " + locationWord() + "'s team, or who the form is for." };
   effects.proposal = card;
+  effects.proposalEmployeeId = null;
   return {
     card: {
       form: card.templateName,

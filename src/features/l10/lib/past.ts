@@ -36,6 +36,8 @@ export interface PastMeeting {
   cascade: string | null;
   /** The meeting's shared notes, when the recap has them (the Hub's 20261205120000_l10_recap_notes). */
   notes: string | null;
+  /** The to-dos still open when it ended (recaps keep them; the Bloom import does not). */
+  openTodos: { text: string; owner: string; due: string }[];
 }
 
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
@@ -68,6 +70,11 @@ function average(ratings: (number | null)[]): number | null {
   return given.length ? Math.round((given.reduce((s, r) => s + r, 0) / given.length) * 10) / 10 : null;
 }
 
+/** Share of a recap's to-dos done when the meeting ended (0–100), or null when the recap does not say (older recaps). */
+export function todosCompletedPct(r: Pick<RecapRow, "todos_done" | "todos_total">): number | null {
+  return typeof r.todos_total === "number" && typeof r.todos_done === "number" && r.todos_total > 0 ? Math.round((r.todos_done / r.todos_total) * 100) : null;
+}
+
 /** Recaps and imported Bloom meetings together, newest first. Deleted recaps are left out. */
 export function pastMeetings(recaps: RecapRow[], doc: Record<string, unknown>): PastMeeting[] {
   const fromRecaps: PastMeeting[] = recaps
@@ -82,9 +89,10 @@ export function pastMeetings(recaps: RecapRow[], doc: Record<string, unknown>): 
       issuesSolved: (r.resolved_issues ?? []).length,
       solvedTitles: (r.resolved_issues ?? []).map(solvedTitle),
       solvedIssues: (r.resolved_issues ?? []).map((s) => ({ title: solvedTitle(s), owner: solvedOwner(s) })),
-      todosCompletedPct: typeof r.todos_total === "number" && typeof r.todos_done === "number" && r.todos_total > 0 ? Math.round((r.todos_done / r.todos_total) * 100) : null,
+      todosCompletedPct: todosCompletedPct(r),
       cascade: str(r.cascade),
       notes: str(r.notes),
+      openTodos: (r.open_todos ?? []).flatMap((t) => (t && typeof t.text === "string" ? [{ text: t.text, owner: typeof t.owner === "string" ? t.owner : "", due: str(t.dueDate) ?? str(t.due) ?? "" }] : [])),
     }));
   const fromBloom: PastMeeting[] = importedMeetings(doc).map((m) => ({
     key: m.id,
@@ -99,6 +107,7 @@ export function pastMeetings(recaps: RecapRow[], doc: Record<string, unknown>): 
     todosCompletedPct: null,
     cascade: null,
     notes: null,
+    openTodos: [],
   }));
   return [...fromRecaps, ...fromBloom].sort((a, b) => Date.parse(b.heldAt) - Date.parse(a.heldAt));
 }
