@@ -844,13 +844,8 @@ export async function writeRevisionEdits(
  */
 export async function dictatedPlanWrite(instanceId: string, plan: string, actorId: string): Promise<{ saved: string | null }> {
   const result = await saveInstanceValues(instanceId, { values: { action_plan: plan }, checked: {} }, actorId, { via: "chat" });
-  const saved = result.rejected.some((row) => row.key === "action_plan") ? null : (result.values.action_plan ?? plan);
-  /* Batch G2 (QA's live run C20): the dictated plan moves updated_at as F8's value edits do; a failed touch is logged, never a failed save. */
-  if (saved !== null && formEditTouchesUpdatedAtEnabled()) {
-    const { error } = await getSupabaseAdmin().from("form_instances").update({ updated_at: new Date().toISOString() }).eq("id", instanceId);
-    if (error) console.warn(`form-write: the dictated plan on form ${instanceId} was saved, but its updated_at could not be moved.`);
-  }
-  return { saved };
+  /* Batch G2 (QA's live run C20): the dictated plan moves updated_at through saveInstanceValues itself (FORM_EDIT_TOUCHES_UPDATED_AT). */
+  return { saved: result.rejected.some((row) => row.key === "action_plan") ? null : (result.values.action_plan ?? plan) };
 }
 
 /* -------------------------------- the old writers' shapes, through here ---- */
