@@ -307,3 +307,64 @@ describe("no Reference for the STC DM L10 (its leader's request, 13 Nov 2026)", 
     expect(reportSections("bcs-dm").map((s) => s.title)).toContain("Business Plan");
   });
 });
+
+describe("IDS: move between the lists from the row, and no headlines where the meeting has none (15 Nov 2026)", () => {
+  const issues = [
+    { id: "a1", title: "Weekly issue", notes: "", resolved: false },
+    { id: "a2", title: "Parked issue", notes: "", resolved: false, term: "long" },
+    { id: "a3", title: "Done issue", notes: "", resolved: true, resolvedAt: "2026-11-10T12:00:00.000Z" },
+  ];
+  const openIds = () => fireEvent.click(screen.getByRole("button", { name: /\d · IDS · Issues/ }));
+
+  it("each open row has Long-term / Short term next to Solve; it moves the issue and the tab counts follow", async () => {
+    const save = vi.fn(async (): Promise<SaveOutcome> => ({ ok: true, version: 4, updatedAt: "t" }));
+    renderView({ save: save as unknown as SaveFn, initial: loaded(3, { issues }) });
+    openIds();
+    const shortRow = within(screen.getByRole("list", { name: "Open issues" })).getByRole("listitem");
+    const buttons = within(shortRow).getAllByRole("button").map((b) => b.textContent);
+    expect(buttons.indexOf("Long-term")).toBe(buttons.indexOf("Solve") + 1);
+    expect(buttons.indexOf("Delete")).toBeGreaterThan(buttons.indexOf("Long-term"));
+    await act(async () => {
+      fireEvent.click(within(shortRow).getByRole("button", { name: "Move to long-term: Weekly issue" }));
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(screen.getByRole("tab", { name: "Short term (0)" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Long-term (2)" })).toBeTruthy();
+    const [, , doc] = save.mock.calls.at(-1) as unknown as [string, number, { issues: { id: string; term?: string }[] }];
+    expect(doc.issues.find((i) => i.id === "a1")?.term).toBe("long");
+    fireEvent.click(screen.getByRole("tab", { name: "Long-term (2)" }));
+    fireEvent.click(within(screen.getByRole("list", { name: "Long-term issues" })).getByRole("button", { name: "Move to short term: Parked issue" }));
+    expect(screen.getByRole("tab", { name: "Short term (1)" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Long-term (1)" })).toBeTruthy();
+  });
+
+  it("solved rows have no move button", () => {
+    renderView({ initial: loaded(3, { issues }) });
+    openIds();
+    fireEvent.click(screen.getByRole("tab", { name: "Recently solved (1)" }));
+    const solved = within(screen.getByRole("list", { name: "Solved issues" })).getByRole("listitem");
+    expect(within(solved).queryByRole("button", { name: /^Move to/ })).toBeNull();
+  });
+
+  it("Convert to Headline shows only where the meeting's agenda has Headlines (the STC DM L10 does not)", () => {
+    renderView({ initial: loaded(3, { issues: [issues[0]] }) });
+    openIds();
+    fireEvent.click(screen.getByRole("button", { name: /Weekly issue/, expanded: false }));
+    const detail = within(screen.getByRole("region", { name: "Issue detail" }));
+    expect(detail.queryByRole("button", { name: "Headline" })).toBeNull();
+    expect(detail.getByRole("button", { name: "To-Do" })).toBeTruthy();
+    expect(detail.getByRole("button", { name: "Rock" })).toBeTruthy();
+    cleanup();
+    // A meeting whose Hub-served agenda has Headlines (as BCS DM's does) keeps the button.
+    const withHeadlines = [
+      { key: "business-best", title: "Segue · Business Best", minutes: 5 },
+      { key: "headlines", title: "Customer / Employee Headlines", minutes: 5 },
+      { key: "ids", title: "IDS · Issues", minutes: 60 },
+      { key: "conclude", title: "Conclude", minutes: 5 },
+    ] as Roster["agenda"];
+    renderView({ initial: loaded(3, { issues: [issues[0]] }), roster: { ...roster, agenda: withHeadlines } });
+    openIds();
+    fireEvent.click(screen.getByRole("button", { name: /Weekly issue/, expanded: false }));
+    expect(within(screen.getByRole("region", { name: "Issue detail" })).getByRole("button", { name: "Headline" })).toBeTruthy();
+  });
+});
