@@ -1,6 +1,6 @@
 import { expect, vi } from "vitest";
 
-import { KEARNEY, STAFF, type ReplayCase } from "./cases";
+import { KEARNEY, STAFF, type DirectoryRow, type ReplayCase, type ReplayContext } from "./cases";
 import { lastResult, loopStandIn, type LoopDecision, type LoopView } from "./loop-stand-in";
 
 /**
@@ -21,6 +21,21 @@ const PAUSED = "Rewording isn't available yet. Tell me exactly what to change an
 const toolResults = (views: readonly LoopView[], tool: string) => views.flatMap((view) => view.results.filter((result) => result.tool === tool)).map((result) => JSON.stringify(result.output));
 /** Offline only: a live run checks outcomes, never which tool facts the real model asked for. */
 const offline = process.env.AGENT_LOOP_LIVE !== "1";
+
+/** Close in spelling to Remy Calder (G4's two-close-names case). */
+const REMI: DirectoryRow = { id: "e-remi-calder", firstName: "Remi", lastName: "Calder", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" };
+
+/** A created form on file for <employee id>: form, date and account as given; returns its instance id. */
+async function onFile(t: ReplayContext, employeeId: string, name: string, templateKey: string, date: string, account: string): Promise<string> {
+  t.loopModel!(loopStandIn((view): LoopDecision => {
+    if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name } };
+    if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: templateKey, employee_id: employeeId, what_happened: account, incident_date: date } };
+    return { text: `Here's the form for **${name}**.\n\n**Observation of Offense:** ${account}` };
+  }));
+  const thread = t.thread();
+  await thread.say(`${templateKey === "coaching" ? "coaching form" : "ca"} for ${name.toLowerCase()}, ${account}`);
+  return thread.create();
+}
 
 export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
   {
@@ -124,6 +139,101 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       expect(saved, "another sentence was rewritten").toMatch(/Expectation: She is expected to arrive on time for every scheduled shift\./);
       expect(saved.indexOf("left 20 minutes early"), "the added fact went after Expectation").toBeLessThan(saved.indexOf("Expectation:"));
       if (offline) expect(toolResults(model.views, "edit_form")[0], "the misplaced add is not a fact").toMatch(/"add_not_at_end_of_observed":\["observation"\]/);
+    },
+  },
+  {
+    id: "nov15-agent-loop-g4-open-by-description-never-a-new-card",
+    title: "G4: \"open the coaching form for <B> dated 10/31 about getting rooms ready between guests\" opens that form on file, never a new card",
+    report: `${REPORT}: no formOpened; it proposed a new Coaching card and said "<B> isn't on the Woven staff list"`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      const rooms = await onFile(t, "e-2", "Remy Calder", "coaching", "2026-10-31", "Remy Calder did not get rooms ready between guests on 10/31.");
+      await onFile(t, "e-2", "Remy Calder", "coaching", "2026-11-05", "Remy Calder was late to her shift on 11/5.");
+      // A model that first reaches for a new card (the live bug), then finds and opens the form on file.
+      const model = loopStandIn((view): LoopDecision => {
+        const found = lastResult(view, "find_past_forms") as { best_match?: string } | null;
+        if (!view.results.some((result) => result.tool === "propose_form")) return { tool: "propose_form", input: { template_key: "coaching", employee_id: "e-2", what_happened: "Getting rooms ready between guests." } };
+        if (!found) return { tool: "find_past_forms", input: { employee_name: "Remy Calder", form: "coaching", date: "10/31", about: "getting rooms ready between guests" } };
+        if (found.best_match && !lastResult(view, "open_form")) return { tool: "open_form", input: { instance_id: found.best_match } };
+        return { text: "Opened Remy Calder's Coaching Form from 10/31." };
+      });
+      t.loopModel!(model);
+      const thread = t.thread();
+      const reply = await thread.say("open the coaching form for remy calder dated 10/31 about getting rooms ready between guests");
+      expect(reply.formOpened?.instanceId, `the form on file was not opened:\n${reply.content}`).toBe(rooms);
+      expect(reply.formProposal ?? null, "an open request made a new card").toBeNull();
+      expect(reply.content, "the reply talks about the staff list").not.toMatch(/staff list/i);
+      if (offline) expect(toolResults(model.views, "propose_form")[0], "propose_form did not refuse an open request").toMatch(/asked to open a form on file/);
+    },
+  },
+  {
+    id: "nov15-agent-loop-g4-pick-one-by-date-and-words",
+    title: "G4: \"open my coaching form for <B>\" asks which; \"the 10/31 one about getting rooms ready between guests\" opens it in one step",
+    report: `${REPORT}: the answer "the 10/31 one about getting rooms ready between guests" hit the step limit after 49.7s`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      const rooms = await onFile(t, "e-2", "Remy Calder", "coaching", "2026-10-31", "Remy Calder did not get rooms ready between guests on 10/31.");
+      await onFile(t, "e-2", "Remy Calder", "coaching", "2026-11-05", "Remy Calder was late to her shift on 11/5.");
+      const model = loopStandIn((view): LoopDecision => {
+        const said = [...view.turns].reverse().find((turn) => turn.role === "user")?.text ?? "";
+        const found = lastResult(view, "find_past_forms") as { forms?: unknown[]; best_match?: string; error?: string } | null;
+        if (/10\/31 one/.test(said)) {
+          if (!found) return { tool: "find_past_forms", input: { employee_name: "Remy Calder", form: "coaching", date: "10/31", about: "getting rooms ready between guests" } };
+          if (found.best_match && !lastResult(view, "open_form")) return { tool: "open_form", input: { instance_id: found.best_match } };
+          return { text: found.error ? "I can't look at forms on file for that." : "Opened the 10/31 Coaching Form." };
+        }
+        if (!found) return { tool: "find_past_forms", input: { employee_name: "Remy Calder", form: "coaching" } };
+        return { text: "Remy Calder has two Coaching Forms on file: 10/31 and 11/5. Which one?" };
+      });
+      t.loopModel!(model);
+      const thread = t.thread();
+      await thread.say("open my coaching form for remy calder");
+      const before = model.views.length;
+      const reply = await thread.say("the 10/31 one about getting rooms ready between guests");
+      expect(reply.formOpened?.instanceId, `the picked form was not opened:\n${reply.content}`).toBe(rooms);
+      // Each step's view repeats the turn's earlier results: the last view holds them all.
+      const calls = Math.max(0, ...model.views.slice(before).map((view) => view.results.length));
+      expect(calls, "picking one took more than find_past_forms and open_form").toBeLessThanOrEqual(2);
+    },
+  },
+  {
+    id: "nov15-agent-loop-g4-edit-a-misspelled-name-ca",
+    title: "G4 (REOPEN_CLOSE_SPELLING, parity gap #43): \"edit remy caldr ca\" opens the one form on file whose employee's name it closely spells; two close names are asked about",
+    report: `${REPORT}; parity matrix #43: "Edit <misspelled name> CA" with that person's CA on file`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
+      t.directory([...STAFF, REMI]);
+      t.as("salon_director", KEARNEY);
+      const ca = await onFile(t, "e-2", "Remy Calder", "dpoa", "2026-11-12", "Remy Calder was 20 minutes late on 11/12.");
+      const model = loopStandIn((view): LoopDecision => {
+        const found = lastResult(view, "find_past_forms") as { best_match?: string; close_names?: string[] } | null;
+        if (!found) return { tool: "find_past_forms", input: { employee_name: "remy caldr", form: "ca" } };
+        if (found.best_match && !lastResult(view, "open_form")) return { tool: "open_form", input: { instance_id: found.best_match } };
+        return { text: found.close_names ? `Which one: ${found.close_names.join(" or ")}?` : "Opening **Remy Calder**'s form." };
+      });
+      t.loopModel!(model);
+      const reply = await t.thread().say("edit remy caldr ca");
+      expect(reply.formOpened?.instanceId, `the close spelling's form was not opened:\n${reply.content}`).toBe(ca);
+      // A second person on file with a name as close: ask which, open nothing.
+      await onFile(t, REMI.id, "Remi Calder", "dpoa", "2026-11-10", "Remi Calder was late on 11/10.");
+      t.loopModel!(model);
+      const both = await t.thread().say("edit remy caldr ca");
+      expect(both.formOpened ?? null, "a form was opened although two names are as close").toBeNull();
+      expect(both.content, `the two names were not asked about:\n${both.content}`).toMatch(/Remy Calder/);
+      expect(both.content).toMatch(/Remi Calder/);
     },
   },
 ];

@@ -258,7 +258,12 @@ export const AGENT_LOOP_TOOLS = [
   {
     name: "find_past_forms",
     description: "List the forms on file (Form Monitoring) for one employee. Only when the manager asks about forms on file or history; never otherwise.",
-    input_schema: object({ employee_name: { type: "string" } }, ["employee_name"]),
+    input_schema: object({
+      employee_name: { type: "string" },
+      form: { type: "string", description: "The form the manager named (\"coaching\", \"CA\"), if any." },
+      date: { type: "string", description: "The form's date as the manager gave it (\"10/31\"), if any." },
+      about: { type: "string", description: "Words the manager used about the form (\"getting rooms ready between guests\"), if any." },
+    }, ["employee_name"]),
   },
   {
     name: "read_form",

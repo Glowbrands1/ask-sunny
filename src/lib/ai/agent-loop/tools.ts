@@ -142,10 +142,20 @@ const asks = (text: string) => ASKS_ABOUT_FORMS.some((pattern) => pattern.test(t
 
 export function asksAboutPastForms(context: Pick<ToolContext, "question" | "history">): boolean {
   if (asks(context.question)) return true;
-  if (context.question.trim().split(/\s+/).length > 6) return false;
   const earlier = [...context.history].reverse().find((message) => message.role === "user");
+  /*
+   * Batch G (G4, QA's live test): the answer to the app's own which-form question ("the 10/31 one about getting rooms
+   * ready between guests") is part of the same request, however long. Only when the reply just before it asked a
+   * question and the manager's message before that asked about forms on file.
+   */
+  const lastReply = [...context.history].reverse().find((message) => message.role === "assistant");
+  if (earlier && asks(earlier.content) && typeof lastReply?.content === "string" && /\?\s*$/.test(lastReply.content.trim())) return true;
+  if (context.question.trim().split(/\s+/).length > 6) return false;
   return earlier ? asks(earlier.content) : false;
 }
+
+/** Batch G (G4): "open / edit / pull up / show me <a form on file>" never makes a new card. */
+export const OPEN_REQUEST = new RegExp(String.raw`\b(?:open|reopen|edit|pull up|bring up|show me|view)\b[^.?!\n]{0,40}?\b${FORM}\b`, "i");
 
 const NOT_ASKED = "The manager has not asked about forms on file, so they are not looked at (company privacy rule). Work from what the manager said; never mention other forms.";
 
@@ -513,7 +523,7 @@ export async function listStaffTool(context: ToolContext, effects: ToolEffects, 
 
 /* ---------------------------------------------------------- past forms --- */
 
-export async function findPastForms(context: ToolContext, input: { employee_name?: unknown }): Promise<ToolResult> {
+export async function findPastForms(context: ToolContext, input: { employee_name?: unknown; form?: unknown; date?: unknown; about?: unknown }): Promise<ToolResult> {
   const typed = typeof input.employee_name === "string" ? input.employee_name.trim() : "";
   if (typed === "") return { error: "Give the employee's name." };
   if (!asksAboutPastForms(context)) return { error: NOT_ASKED };
@@ -523,9 +533,56 @@ export async function findPastForms(context: ToolContext, input: { employee_name
   const nameWords = candidateNameWords(typed);
   if (nameWords.length === 0) return { forms: [] };
   try {
-    const rows = visibleInstances(actor, await listInstances("all", 50, { ...instanceListFilterFor(actor), employeeNameWords: nameWords }));
+    let rows = visibleInstances(actor, await listInstances("all", 50, { ...instanceListFilterFor(actor), employeeNameWords: nameWords }))
+      .filter((row) => samePerson(row.employeeName, typed) || words(row.employeeName).join(" ").includes(words(typed).join(" ")));
+    /*
+     * Batch G (G4, REOPEN_CLOSE_SPELLING, parity gap #43): no form under the typed name, so the forms this manager may
+     * open are read for an employee whose name it closely spells. One person: theirs. Two or more: ask which.
+     */
+    let closeSpelling: string | null = null;
+    if (rows.length === 0) {
+      const { closelySpelledEmployee } = await import("@/lib/forms/reopen-close-spelling");
+      const visible = visibleInstances(actor, await listInstances("all", 200, instanceListFilterFor(actor)));
+      const fits = [...new Set(visible.map((row) => row.employeeName))].filter((name) => closelySpelledEmployee(typed, [name]) === name);
+      if (fits.length > 1) return { forms: [], close_names: fits.slice(0, 5), note: "Several people on file have a name close to that spelling. Ask which one, by name." };
+      if (fits.length === 1) {
+        closeSpelling = fits[0]!;
+        rows = visible.filter((row) => row.employeeName === closeSpelling);
+      }
+    }
+    /* Batch G (G4): the form, date and words the manager described, to choose one ("the 10/31 one about getting rooms ready"). */
+    const today = context.today || businessToday();
+    const wantForm = typeof input.form === "string" ? input.form.toLowerCase() : "";
+    if (wantForm) {
+      const coaching = /coach/.test(wantForm);
+      const ca = /\bca\b|corrective|write[- ]?up|warning|verbal|written/.test(wantForm);
+      const narrowed = rows.filter((row) => (coaching ? /coach/i.test(row.templateName) : true) && (ca ? /corrective/i.test(row.templateName) || row.templateKey === "dpoa" : true));
+      if (narrowed.length > 0) rows = narrowed;
+    }
+    const iso = typeof input.date === "string" ? isoDate(input.date, today) : null;
+    const wantDate = iso ? { month: Number(iso.slice(5, 7)), day: Number(iso.slice(8, 10)), year: /\d{4}|\/\d{2}$/.test(String(input.date)) ? Number(iso.slice(0, 4)) : null } : undefined;
+    if (wantDate) {
+      const narrowed = rows.filter((row) => {
+        const [year, month, day] = (row.formDate ?? "").split("-").map(Number);
+        return sameDate(wantDate, { month: month ?? 0, day: day ?? 0, year: year ?? null });
+      });
+      if (narrowed.length > 0) rows = narrowed;
+    }
+    const about = typeof input.about === "string" ? words(input.about).filter((word) => word.length > 3) : [];
+    if (about.length > 0 && rows.length > 1 && rows.length <= 8) {
+      const scored = await Promise.all(rows.map(async (row) => {
+        const text = await authorizeInstance(context.request, row.id, "view")
+          .then(({ loaded }) => loaded.values.filter((value) => value.fieldKey === "observation" || value.fieldKey === "coaching_details").map((value) => value.value ?? "").join(" "))
+          .catch(() => "");
+        const have = new Set(words(text));
+        return { row, score: about.filter((word) => have.has(word)).length };
+      }));
+      const best = Math.max(...scored.map((entry) => entry.score));
+      const top = scored.filter((entry) => entry.score === best && best > 0);
+      if (top.length > 0) rows = top.map((entry) => entry.row);
+    }
+    const described = Boolean(wantForm || wantDate || about.length > 0);
     const forms = rows
-      .filter((row) => samePerson(row.employeeName, typed) || words(row.employeeName).join(" ").includes(words(typed).join(" ")))
       .slice(0, 20)
       .map((row) => ({
         instance_id: row.id,
@@ -538,7 +595,11 @@ export async function findPastForms(context: ToolContext, input: { employee_name
       }));
     /* "Draw me up a coaching document … she already has one" (the live re-run's sun-late-date): none on file is no reason to stop. */
     if (forms.length === 0) return { forms, note: "None on file. If the manager asked you to create or draw up a form, propose it now with their account and date, and say no earlier form was found on file." };
-    return { forms };
+    return {
+      forms,
+      ...(closeSpelling ? { close_spelling_of: { typed: untrusted(typed), on_file: closeSpelling } } : {}),
+      ...(forms.length === 1 && (described || closeSpelling) ? { best_match: forms[0]!.instance_id, note: "One form fits what the manager described. If they asked to open, edit or see it, open it now with open_form." } : {}),
+    };
   } catch {
     return { error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
   }
@@ -920,6 +981,10 @@ export async function proposeForm(
       ? { error: `A card for ${effects.proposal.employeeName ?? "someone"} is already shown in this reply. Offer the next person's form in your reply and propose it when the manager says yes.` }
       : null;
   if (effects.proposal && effects.proposal.templateKey !== (typeof input.template_key === "string" ? input.template_key.trim() : "")) return anotherCard(null)!;
+  /* Batch G (G4): an open request is for a form on file (find_past_forms, open_form), never a new card (code may refuse). */
+  if (OPEN_REQUEST.test(context.question) && !/\b(?:create|make|new|draw up|write up|start)\b/i.test(context.question)) {
+    return { error: "The manager asked to open a form on file, not to make one. Find it with find_past_forms and open it with open_form." };
+  }
   /* Batch G (G0, Pau 15 Nov): rewording is paused; a reword request never re-proposes the card with new wording. */
   if (REWORD_REQUEST.test(context.question)) return { reword_paused: true, note: REWORD_PAUSED.note };
   /* HARD GUARD (STAFF_PICKER): a form asked for a whole staff is never one card for everyone. */
