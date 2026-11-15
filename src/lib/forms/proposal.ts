@@ -156,7 +156,8 @@ const COUNTS_PEOPLE = new Set(["both", "either", "neither", "each", "all", "ever
 
 /** How many words a name answer has; READABLE_NAMES_ENABLED: its particles ("de la", "van der") are not counted. */
 function nameWordCount(words: readonly string[]): number {
-  return readableNamesEnabled() ? words.filter((word) => !isNameParticle(word)).length : words.length;
+  // The last word is the surname, never a particle ("kim le").
+  return readableNamesEnabled() ? words.filter((word, index) => index === words.length - 1 || !isNameParticle(word)).length : words.length;
 }
 
 function readTypedName(words: readonly string[], whole: boolean): string | null {
@@ -167,7 +168,9 @@ function readTypedName(words: readonly string[], whole: boolean): string | null 
    * is not counted as one of its parts, so "maria de la torre" is not cut to "maria de" nor "jacinta van der berg" to
    * "jacinta van". Off, every word counts, as before.
    */
-  const counted = (): number => (readableNamesEnabled() ? parts.filter((part) => !isNameParticle(part)).length : parts.length);
+  // A particle that is the message's last word is the surname ("ca for kim le"): it counts.
+  const counted = (): number =>
+    readableNamesEnabled() ? parts.filter((part, index) => !isNameParticle(part) || (index === parts.length - 1 && parts.length === words.length)).length : parts.length;
   for (const [index, raw] of words.entries()) {
     if (parts.length === 0 && GERUND.test(raw) && GERUND_OBJECT.test((words[index + 1] ?? "").replace(WRAPPER_AFTER, "").toLowerCase())) {
       if (whole) return null;
@@ -228,8 +231,6 @@ function readTypedName(words: readonly string[], whole: boolean): string | null 
       /^\d/.test(next);
     if (!boundary) parts.pop();
   }
-  // READABLE_NAMES_ENABLED: a name never ends on a particle ("for maria de" with the rest cut is "maria").
-  if (readableNamesEnabled()) while (parts.length > 1 && isNameParticle(parts[parts.length - 1]!)) parts.pop();
   if (parts.length === 0) return null;
   if (whole && parts.length !== words.length) return null;
   return parts.join(" ");

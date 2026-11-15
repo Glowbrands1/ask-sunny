@@ -45,13 +45,16 @@ function readablePart(part: string): string {
   return upperFirst(part);
 }
 
-/** A whole word typed in one case. */
-function readableWord(word: string, first: boolean): string {
+/**
+ * A whole word typed in one case. A particle is lowercase only BETWEEN the first name and the last word: the last word
+ * is the surname, so "thanh le", "kim du" and "LINH DA" read "Thanh Le", "Kim Du", "Linh Da" (QA's review, 15 Nov 2026).
+ */
+function readableWord(word: string, first: boolean, last: boolean): string {
   const lower = word.toLocaleLowerCase("en-US");
   const bare = lower.replace(/\.$/, "");
   if (!first && SUFFIX_DOTTED[bare]) return SUFFIX_DOTTED[bare]!;
   if (!first && SUFFIX_ROMAN.test(lower)) return lower.toUpperCase();
-  if (!first && PARTICLES.has(lower)) return lower;
+  if (!first && !last && PARTICLES.has(lower)) return lower;
   return lower.split("-").map(readablePart).join("-");
 }
 
@@ -64,7 +67,10 @@ function oneCase(word: string): boolean {
 /** A person's name with readable case and single spaces. Letters are never changed; mixed-case words are kept. */
 export function readableName(name: string): string {
   const words = name.trim().split(/\s+/).filter(Boolean);
-  return words.map((word, index) => (oneCase(word) ? readableWord(word, index === 0) : word)).join(" ");
+  // The surname is the last word that is not a suffix ("maria de la torre jr" ends on "torre").
+  let last = words.length - 1;
+  while (last > 0 && (SUFFIX_DOTTED[words[last]!.toLocaleLowerCase("en-US").replace(/\.$/, "")] || SUFFIX_ROMAN.test(words[last]!.toLocaleLowerCase("en-US")))) last -= 1;
+  return words.map((word, index) => (oneCase(word) ? readableWord(word, index === 0, index === last) : word)).join(" ");
 }
 
 /** A surname particle ("de", "la", "van", "der", …): part of a name, never a name part of its own when counting them. */

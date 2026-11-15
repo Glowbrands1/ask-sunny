@@ -165,6 +165,47 @@ export const NOV15_READABLE_NAMES_CASES: ReplayCase[] = [
   ),
 ];
 
+/** QA's review of #1013: a second roster person whose legal name is Lorraine's preferred one (invented). */
+const OTHER_RAE: DirectoryRow = { id: "e-rae-fairweather-rn", firstName: "Rae", lastName: "Fairweather", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" };
+/** QA's review of #1013: an all-caps roster row (invented). */
+const LORRAINE_CAPS: DirectoryRow = { ...LORRAINE, firstName: "LORRAINE", lastName: "FAIRWEATHER", preferredFirstName: "RAE" };
+
+export const NOV15_READABLE_NAMES_REVIEW_CASES: ReplayCase[] = [
+  {
+    id: "nov15-readable-names-review-two-people-never-merged",
+    title: "QA's review: Lorraine Fairweather (preferred Rae) and another roster person, Rae Fairweather — asking for Lorraine never opens Rae's CA",
+    report: "QA's independent review of #1013, 15 Nov 2026: the alias list only had people with a preferred name, so a legal Rae Fairweather was invisible and merged",
+    status: "fixed",
+    fixFlags: [FLAG, "REOPEN_BY_ANY_OPEN_VERB_ENABLED"],
+    async run(t) {
+      vi.setSystemTime(new Date("2026-11-14T16:00:00Z"));
+      t.directory([...STAFF, LORRAINE, OTHER_RAE]);
+      t.as("salon_director", KEARNEY);
+      const id = await caSavedAs(t, "Rae Fairweather");
+      const reply = await t.thread().say("open the CA for Lorraine Fairweather");
+      const opened = reply.formOpened as { instanceId: string; revisesInstanceId?: string | null } | undefined;
+      expect([opened?.instanceId, opened?.revisesInstanceId], reply.content).not.toContain(id);
+    },
+  },
+  {
+    id: "nov15-readable-names-review-all-caps-row",
+    title: "QA's review: an all-caps roster row (LORRAINE FAIRWEATHER, preferred RAE) and \"Create a CA for rae fairweather\": \"Rae Fairweather\", never \"Rae FAIRWEATHER\"",
+    report: "QA's independent review of #1013, 15 Nov 2026: all-caps rows gave \"Rae FAIRWEATHER (LORRAINE FAIRWEATHER in Woven)\"",
+    status: { open: "the card shows the all-caps legal row, \"LORRAINE FAIRWEATHER\"" },
+    fixFlags: [FLAG],
+    async run(t) {
+      vi.setSystemTime(new Date("2026-11-14T16:00:00Z"));
+      t.directory([...STAFF, LORRAINE_CAPS]);
+      t.as("salon_director", KEARNEY);
+      const thread = t.thread();
+      const reply = await thread.say("Create a CA for rae fairweather, she was late on 11/12", { employeeName: "rae fairweather" });
+      expect(thread.proposal?.employeeName, reply.content).toBe("Rae Fairweather");
+      expect(reply.content).toContain("**Rae Fairweather** (Lorraine Fairweather in Woven)");
+      expect(reply.content).not.toMatch(/FAIRWEATHER/);
+    },
+  },
+];
+
 /** A Corrective Action saved under one of the person's names, in an earlier chat. */
 async function caSavedAs(t: ReplayContext, name: string): Promise<string> {
   const earlier = t.thread();

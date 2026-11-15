@@ -868,6 +868,12 @@ const PROTECTED = [
  * reads one roster person's preferred and legal names as the same person (`sameRosterPerson`, QA, 15 Nov 2026). Behind
  * READABLE_NAMES_ENABLED (default off); off, every count is `words.length` / `parts.length` as before and the typed
  * name is only trimmed (readable-name.test.ts's flag-off section). proposal.ts is already excluded below.
+ *
+ * The user (Pau), under the standing approval, via QA on 15 Nov 2026 (QA's review of #1013), in
+ * src/lib/forms/instances.ts, exactly the lines of docs/patches/readable-names-instances.patch: the import
+ * `sameRosterPerson`, and findRecentAssistantDraft's name check also takes the same roster person under their other
+ * name (preferred or legal). Behind READABLE_NAMES_ENABLED (default off); off, sameRosterPerson is false and the check is
+ * as before.
  */
 const APPROVED_PROTECTED_EDITS = [
   ":(exclude)src/lib/forms/salon-mention.ts",

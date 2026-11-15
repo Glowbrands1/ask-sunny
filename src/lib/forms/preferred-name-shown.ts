@@ -1,4 +1,6 @@
 import { readableNamesEnabled } from "@/lib/config/chat-quality-flags";
+
+import { nameInOneCase, readableName } from "./readable-name";
 import type { AskResponse } from "@/lib/ai/types";
 
 /**
@@ -55,11 +57,35 @@ export function nameAsSaid(alias: PreferredAlias, managerWords: string): string 
   return saidLegal && !saidPreferred ? alias.legal : alias.preferred;
 }
 
-/** The card's employee as one of the roster's preferred-name people, or null. */
+/**
+ * The card's employee as one of the roster's preferred-name people, or null. A legal name is that person (who may have no
+ * preferred name); a preferred name only when no one else is known by it (QA's review: a legal "Rae Fairweather" is not
+ * Lorraine, preferred Rae).
+ */
 export function aliasOf(employee: string, aliases: readonly PreferredAlias[]): PreferredAlias | null {
   if (!employee) return null;
-  const alias = aliases.find((row) => same(row.legal, employee) || same(row.preferred, employee));
+  const byLegal = aliases.filter((row) => same(row.legal, employee));
+  const byPreferred = aliases.filter((row) => same(row.preferred, employee) && !same(row.legal, employee));
+  const owners = byLegal.length > 0 ? byLegal : byPreferred;
+  const alias = owners.length === 1 && byLegal.length + byPreferred.length === 1 ? owners[0]! : null;
   return alias && !same(alias.legal, alias.preferred) ? alias : null;
+}
+
+/**
+ * A roster person's two names as the card shows them: the legal name through `displayName` (an all-caps row reads
+ * "Lorraine Fairweather"), the preferred one with the same surname ("Rae Fairweather", never "Rae FAIRWEATHER").
+ */
+export function aliasForRosterPerson(
+  person: { readonly firstName: string; readonly lastName: string; readonly preferredFirstName?: string | null },
+  shown: (person: { readonly firstName: string; readonly lastName: string }) => string,
+): PreferredAlias {
+  const legal = shown(person);
+  const preferred = person.preferredFirstName?.trim();
+  if (!preferred || same(preferred, person.firstName)) return { legal, preferred: legal };
+  const firstWords = person.firstName.trim().split(/\s+/).length;
+  const surname = legal.split(" ").slice(firstWords).join(" ");
+  const first = readableNamesEnabled() && nameInOneCase(preferred) ? readableName(preferred) : preferred;
+  return { legal, preferred: `${first} ${surname}`.trim() };
 }
 
 /**

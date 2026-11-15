@@ -37,13 +37,10 @@ const PROMO = new Set([
 const NOT_A_REPLY = /^(?:yes|yeah|yep|yup|no|nope|ok|okay)$/i;
 
 function asTyped(name: string): string {
-  // READABLE_NAMES_ENABLED (QA, 15 Nov 2026): "jacinta van der berg" reads "Jacinta van der Berg", not "Jacinta Van Der
-  // Berg"; "mcdonald" reads "McDonald". Mixed-case words and short all-caps words (initials) are kept, as below.
-  if (readableNamesEnabled()) {
-    const typed = name.trim().split(/\s+/).filter(Boolean);
-    const readable = readableName(name).split(" ");
-    return typed.map((word, index) => (word.length <= 3 && word === word.toUpperCase() && /\p{L}/u.test(word) ? word : readable[index]!)).join(" ");
-  }
+  // READABLE_NAMES_ENABLED (QA, 15 Nov 2026, and QA's review): "jacinta van der berg" reads "Jacinta van der Berg",
+  // "mcdonald" "McDonald", "MARIA DEL RIO" "Maria del Rio", "ANA LEE" "Ana Lee": particles lowercase, other words in
+  // title case. A typed name is no roster row, so no all-caps word is kept as initials; mixed-case words are kept.
+  if (readableNamesEnabled()) return readableName(name);
   return name
     .trim()
     .replace(/\s+/g, " ")

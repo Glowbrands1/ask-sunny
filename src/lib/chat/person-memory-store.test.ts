@@ -50,6 +50,15 @@ class Query {
     this.filters.push((row) => String(row[column] ?? "").toLowerCase().includes(needle));
     return this;
   }
+  /** PostgREST's or(): "col.ilike.*x*,col.ilike.*y*" (READABLE_NAMES_ENABLED reads both first names). */
+  or(filter: string) {
+    const parts = filter.split(",").map((part) => {
+      const [column, , pattern] = part.split(".");
+      return { column: column!, needle: String(pattern ?? "").replace(/[*%"]/g, "").toLowerCase() };
+    });
+    this.filters.push((row) => parts.some(({ column, needle }) => String(row[column] ?? "").toLowerCase().includes(needle)));
+    return this;
+  }
   order(column: string, options?: { ascending?: boolean }) {
     this.orderBy = { column, ascending: options?.ascending ?? true };
     return this;
@@ -351,5 +360,29 @@ describe("recallPeople with the cross-chat guard", () => {
     const block = await recall("Wren is talking negatively about co workers again, same as last time", guarded);
     expect(block).toContain("Earlier conversation, 2026-10-23");
     expect(block).toContain("records from OTHER conversations");
+  });
+});
+
+describe("READABLE_NAMES_ENABLED: a form saved under the person's other first name is recalled (QA's review of #1013)", () => {
+  it("asked about Lorraine Fairweather, the form saved as Rae Fairweather (preferred Rae) is hers", async () => {
+    vi.stubEnv("READABLE_NAMES_ENABLED", "true");
+    const { installPreferredAliases } = await import("@/lib/forms/preferred-name-shown");
+    installPreferredAliases(() => [{ legal: "Lorraine Fairweather", preferred: "Rae Fairweather" }]);
+    try {
+      db.tables.form_instances!.push({
+        employee_name: "Rae Fairweather",
+        status: "finalized",
+        form_date: "2026-10-03",
+        created_by: ME,
+        archived_at: null,
+        created_at: "2026-10-03T15:00:00Z",
+        form_templates: { name: "Coaching Form" },
+      });
+      const block = await recall("What about Lorraine Fairweather?");
+      expect(block).toContain("Coaching Form for Rae Fairweather — dated 2026-10-03, finalized");
+    } finally {
+      installPreferredAliases(() => undefined);
+      vi.unstubAllEnvs();
+    }
   });
 });

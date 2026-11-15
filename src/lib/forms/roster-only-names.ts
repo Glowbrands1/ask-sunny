@@ -543,7 +543,8 @@ const NAME_SHAPE = {
   test(typed: string): boolean {
     if (!readableNamesEnabled()) return NAME_SHAPE_RUN.test(typed);
     const words = typed.trim().split(/\s+/);
-    const particle = (word: string, index: number) => index > 0 && isNameParticle(word);
+    // The last word is the surname, never a particle ("Thanh Le").
+    const particle = (word: string, index: number) => index > 0 && index < words.length - 1 && isNameParticle(word);
     const counted = words.filter((word, index) => !particle(word, index));
     const particles = words.filter(particle);
     return NAME_SHAPE_RUN.test(counted.join(" ")) && particles.every((word) => /^\p{Ll}+$/u.test(word));
