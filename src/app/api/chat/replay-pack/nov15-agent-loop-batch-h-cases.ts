@@ -304,4 +304,24 @@ export const NOV15_AGENT_LOOP_BATCH_H_CASES: ReplayCase[] = [
       expect(edit?.error ?? "", "the pasted outline was refused as another person's").not.toMatch(/This message is about/);
     },
   },
+  {
+    id: "nov15-batch-h12-stated-termination-on-the-card",
+    title: "H12 TERMINATION_STATED_TICKS: \"I need a term CA for <B>, she was 20 minutes late on 11/9/26\": the card says Termination with the approval line, never asks the level, and Create ticks it",
+    report: `${REPORT}; Pau's P15 ruling, 10 Nov 2026: a stated termination is ticked, with the DM/HR approval line`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      const thread = start(t);
+      const model = loopStandIn((view) => (lastResult(view, "propose_form") ? { text: "Here is the card." } : { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", policy: "Attendance", what_happened: "Remy Calder was 20 minutes late on 11/9/26." } }));
+      t.loopModel!(model);
+      await thread.say("I need a term CA for Remy Calder, she was 20 minutes late on 11/9/26");
+      const facts = proposed(model.views)?.facts ?? {};
+      expect(facts.termination_stated, "the stated termination was not a fact").toEqual({ approval: "Termination needs your DM/HR approval before you finalize." });
+      expect((facts.unset as string[] | undefined) ?? [], "the level was asked over a stated termination").not.toContain("warning_level");
+      t.draftWrites({ observation: "Observed:\nRemy Calder arrived 20 minutes late for her shift on 11/9/26." });
+      const id = await thread.create();
+      expect(t.checked(id).warning_type ?? [], "Create did not tick Termination").toContain("termination");
+    },
+  },
 ];

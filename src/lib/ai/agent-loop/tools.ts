@@ -1206,7 +1206,13 @@ export async function proposeForm(
   const underPerformance = Boolean(policyHeading && /standards of conduct/i.test(policyHeading) && (/\bunder[- ]?perform(?:ance|ing)\b|must see behaviou?rs?|\bperform[a-z]*\b/i.test(managerWords) || ACCOUNT_METRIC.test(managerWords)));
   ACCOUNT_METRIC.lastIndex = 0;
   const corrective = template.key === "dpoa";
-  const unset = corrective && !awaiting ? [...(payroll ? [] : ["payroll_deduct"]), ...(level ? [] : ["warning_level"])] : [];
+  /*
+   * TERMINATION_STATED_TICKS (batch H12; Pau's P15 ruling): a termination the manager stated is the level, ticked at
+   * Create (`api/forms/instances`, unchanged); the card says so with the DM/HR approval line, and never asks the level.
+   */
+  const stated = await import("@/lib/forms/termination-stated");
+  const terminationStated = corrective && !level && (await import("@/lib/config/chat-quality-flags")).terminationStatedTicksEnabled() && stated.statesTermination(requestWords);
+  const unset = corrective && !awaiting ? [...(payroll ? [] : ["payroll_deduct"]), ...(level || terminationStated ? [] : ["warning_level"])] : [];
   const salonNames = (ids: readonly string[] | undefined) => (ids ?? []).map((id) => ({ id, name: rosterSalonName(id) ?? id }));
   const facts = {
     ...(unset.length > 0 ? { unset } : {}),
@@ -1237,6 +1243,7 @@ export async function proposeForm(
     ...(template.key === "stc-exit" ? { exit_dates: await exitDateLines(requestWords, today) } : {}),
     ...(jobTitleTyped ? { job_title_from_your_words: card.employeeRole } : {}),
     ...(whichSalon ? { which_salon: true } : {}),
+    ...(terminationStated ? { termination_stated: { approval: stated.TERMINATION_APPROVAL_LINE } } : {}),
     /* CARRIED_PERSON_NOTICE (batch H10): the person was read from before the manager's last six turns. */
     ...((await import("@/lib/ai/carried-person-notice")).carriedFromEarlier(template.key, card.employeeName, { history: context.history as ChatMessage[], question: context.question }) ? { person_from_earlier: card.employeeName } : {}),
     ...(underPerformance ? { under_performance: true } : {}),
