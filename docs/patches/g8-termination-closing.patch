@@ -76,10 +76,10 @@ index e5e69a1b..02793edf 100644
        if (typeof row.value === "string" && closed[row.field_key] !== row.value) {
          row.value = closed[row.field_key]!;
 diff --git a/src/lib/forms/required-closing.ts b/src/lib/forms/required-closing.ts
-index 55fb142a..a1ceac0f 100644
+index 55fb142a..95204a31 100644
 --- a/src/lib/forms/required-closing.ts
 +++ b/src/lib/forms/required-closing.ts
-@@ -44,6 +44,23 @@ import { fieldsForVariant, type FormDocument, type FormField } from "./document"
+@@ -44,6 +44,27 @@ import { fieldsForVariant, type FormDocument, type FormField } from "./document"
   */
  export const TERMINATION_PLAN_CLOSING = "Effective immediately, employment is terminated following the progressive corrective action plan.";
  const TERMINATION_CLOSING = /Effective immediately, employment is terminated following the progressive corrective action plan\s*[.!]*\s*$/i;
@@ -92,8 +92,12 @@ index 55fb142a..a1ceac0f 100644
 +    .trim();
 +}
 +
-+/** A last sentence that states the termination itself (Pau's approval, 15 Nov 2026). */
-+const STATED_TERMINATION_LAST = /\b(?:has\s+|have\s+)?result(?:ed|s)?\s+in\s+(?:the\s+)?(?:immediate\s+)?termination\s+of\s+(?:(?:her|his|their)\s+)?employment\b|\bemployment\s+(?:is|has\s+been|was)\s+(?:immediately\s+)?terminated\b/i;
++/**
++ * A last sentence that states the termination itself (Pau's approval, 15 Nov 2026), past or perfect only: "has / have
++ * resulted in" or "resulted in" (immediate) termination of employment, "employment has been / was terminated". Never
++ * "results / will / may / could result in" (QA's review: the app's own future-violations closing, or a warning).
++ */
++const STATED_TERMINATION_LAST = /\b(?:(?:has|have)\s+)?resulted\s+in\s+(?:the\s+)?(?:immediate\s+)?termination\s+of\s+(?:(?:her|his|their)\s+)?employment\b|\bemployment\s+(?:has\s+been|was)\s+(?:immediately\s+)?terminated\b/i;
 +
 +/** The value's last sentence (a closing quote or bracket kept with it). */
 +function lastSentence(value: string): string {
@@ -103,7 +107,7 @@ index 55fb142a..a1ceac0f 100644
  
  /** The Corrective Action Form's Action Plan closing, in the business's words (revision 6). */
  export const CA_ACTION_PLAN_CLOSING =
-@@ -96,6 +113,13 @@ export function withRequiredClosing(value: string, closing: string): string {
+@@ -96,6 +117,13 @@ export function withRequiredClosing(value: string, closing: string): string {
     * future violations. Off, this line changes nothing.
     */
    if (terminationClosingEnabled() && TERMINATION_CLOSING.test(value.trim())) return value;
@@ -117,7 +121,7 @@ index 55fb142a..a1ceac0f 100644
  
    const body = [wanted, ...(SUPERSEDED_CLOSINGS.get(wanted) ?? [])]
      .reduce((text, sentence) => text.replace(closingPattern(sentence), " "), value)
-@@ -145,6 +169,12 @@ export function applyRequiredClosings(
+@@ -145,6 +173,12 @@ export function applyRequiredClosings(
    document: FormDocument,
    variantKey: string | null,
    values: Record<string, string>,
@@ -130,7 +134,7 @@ index 55fb142a..a1ceac0f 100644
  ): Record<string, string> {
    const fields = closingFields(document, variantKey);
    if (fields.length === 0) return values;
-@@ -153,7 +183,10 @@ export function applyRequiredClosings(
+@@ -153,7 +187,10 @@ export function applyRequiredClosings(
    for (const field of fields) {
      const current = values[field.key];
      if (typeof current !== "string") continue;

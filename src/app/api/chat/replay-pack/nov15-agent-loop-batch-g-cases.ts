@@ -697,4 +697,29 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       expect(toolResults(remy.views, "edit_form")[0] ?? "", "another roster person's account went on her form").toMatch(/This message is about Remy Calder/);
     },
   },
+  {
+    id: "nov15-agent-loop-review-g3-exit-not-a-termination",
+    title: "QA's review of batch G, item 3: \"exit form for remy calder, she gave notice, last day 11/28. Not a termination.\" keeps the stated last day as the card's date; it is no involuntary separation",
+    report: `${REPORT}; QA's review of batch G (15 Nov 2026), item 3`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-15T18:00:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      for (const said of ["exit form for remy calder, she gave notice, last day 11/28. Not a termination.", "exit form for remy calder. She quit, last day 11/28. She was fired from her last job btw"]) {
+        const model = loopStandIn((view): LoopDecision => {
+          if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
+          if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "stc-exit", employee_id: "e-2", incident_date: "2026-11-28" } };
+          return { text: "Here's the Employee Exit Form for **Remy Calder**." };
+        });
+        t.loopModel!(model);
+        const thread = t.thread();
+        await thread.say(said);
+        expect(thread.proposal?.formDate, `the stated last day was replaced after "${said}"`).toBe("2026-11-28");
+        if (offline) expect(toolResults(model.views, "propose_form")[0] ?? "", `"${said}" was read as a termination`).not.toMatch(/exit_termination/);
+      }
+    },
+  },
 ];

@@ -195,3 +195,37 @@ describe("the Action Plan's closing on a form with Termination ticked", () => {
     expect(applyRequiredClosings(await ca(), null, { action_plan: "Management will review the attendance policy with her." }).action_plan).toBe(`Management will review the attendance policy with her. ${CA_ACTION_PLAN_CLOSING}`);
   });
 });
+
+/*
+ * QA's review of batch G (15 Nov 2026): only a past or perfect termination closes the plan. A future, modal or present
+ * "result in termination" is a warning, so the required closing still follows it, on either kind of form.
+ */
+describe("a future or modal 'result in termination' never closes the plan", () => {
+  afterEach(() => vi.unstubAllEnvs());
+  const ca = async () => (await import("./library")).correctiveActionDocument();
+  const FUTURE = [
+    "Future policy violations may result in termination of employment.",
+    "Any further violations will result in termination of employment.",
+    "If this happens again it will result in termination of employment.",
+    "Another no call no show could result in termination of employment.",
+    "Continued violations result in termination of employment.",
+  ];
+  for (const sentence of FUTURE) {
+    it(`on a termination form: "${sentence}" gets the termination closing`, async () => {
+      vi.stubEnv("TERMINATION_STATED_TICKS_ENABLED", "true");
+      const plan = `Management reviewed the attendance policy with her. ${sentence}`;
+      expect(applyRequiredClosings(await ca(), null, { action_plan: plan }, { terminationTicked: true }).action_plan).toBe(`${plan} ${TERMINATION_PLAN_CLOSING}`);
+    });
+    it(`on a form with no termination: "${sentence}" keeps the required CA closing`, async () => {
+      vi.stubEnv("TERMINATION_STATED_TICKS_ENABLED", "true");
+      const plan = `Management reviewed the attendance policy with her. ${sentence}`;
+      expect(applyRequiredClosings(await ca(), null, { action_plan: plan }).action_plan).toBe(`${plan} ${CA_ACTION_PLAN_CLOSING}`);
+    });
+  }
+  it("'… resulted in termination of employment.' and 'employment was terminated …' still close it", () => {
+    vi.stubEnv("TERMINATION_STATED_TICKS_ENABLED", "true");
+    for (const plan of ["The violation resulted in termination of employment.", "Her employment was terminated on 11/15/2026."]) {
+      expect(withRequiredClosing(plan, CA_ACTION_PLAN_CLOSING)).toBe(plan);
+    }
+  });
+});

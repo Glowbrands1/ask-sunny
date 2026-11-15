@@ -179,6 +179,11 @@ describe("the widened termination statements", () => {
     "my DM approved her termination, write up the CA",
     "I need a term CA for Tamsin Lune",
     "the DM said to terminate her",
+    // QA's review of batch G (15 Nov 2026): edit_form now reads only this reader, on the current message.
+    "make it a termination",
+    "make this a termination, she walked out",
+    "this is a termination",
+    "Violation of Company policy resulted in immediate termination of employment.",
   ])("reads %s as stated", async (text) => {
     expect(await reads(text)).toBe(true);
   });
@@ -195,6 +200,19 @@ describe("the widened termination statements", () => {
     "thinking about firing her",
     "once the DM approves, write a termination CA",
     "waiting on approval for her termination CA",
+    // QA's review of batch G (15 Nov 2026): history, intent, future, modal and negated forms (invented names none needed).
+    "He has been terminated at his previous job",
+    "Previously she has been terminated and rehired",
+    "They fired him at his old salon",
+    "she got fired her first week at Target",
+    "I told her we'd fire her",
+    "I need to fire her",
+    "I'd like to fire her",
+    "Any further violations will result in termination.",
+    "I don't think it should be a termination",
+    "this is not a termination",
+    "don't make it a termination",
+    "it will be a termination next time",
   ])("never reads %s as stated", async (text) => {
     expect(await reads(text)).toBe(false);
   });

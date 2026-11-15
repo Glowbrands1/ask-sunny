@@ -77,7 +77,7 @@ export const NOV15_AGENT_LOOP_SILENT_FAILURE_CASES: ReplayCase[] = [
   },
   {
     id: "nov15-silent-g9-cant-select-termination",
-    title: "G9: after the termination Action Plan, \"under the type of warning drop down box I can't select Termination.\" ticks Termination on the draft and gives the DM/HR approval line; asked alone, it changes nothing",
+    title: "G9: \"under the type of warning drop down box I can't select Termination.\" is a question about the form and changes nothing, before or after the termination Action Plan; \"make it a termination\" ticks it with the DM/HR approval line",
     report: `${REPORT}: t4 got "I haven't changed the form."`,
     status: "fixed",
     fixFlags: [FLAG],
@@ -96,7 +96,13 @@ export const NOV15_AGENT_LOOP_SILENT_FAILURE_CASES: ReplayCase[] = [
       await thread.say(T4);
       expect(t.checked(id).warning_type ?? [], "Termination was ticked without the manager stating a termination").not.toContain("termination");
       await thread.say(T8);
-      const reply = await thread.say(T4);
+      /*
+       * Changed on purpose (QA's review of batch G, 15 Nov 2026, item 1): edit_form ticks Termination only when THIS
+       * message states it, so T4 after the plan is still a question about the form; the manager saying it ticks it.
+       */
+      await thread.say(T4);
+      expect(t.checked(id).warning_type ?? [], "T4 alone ticked Termination from an earlier turn").not.toContain("termination");
+      const reply = await thread.say("make it a termination");
       expect(t.checked(id).warning_type, `Termination was not ticked:\n${reply.content}`).toEqual(["termination"]);
       expect(reply.content, "no DM/HR approval line").toMatch(/Termination needs your DM\/HR approval before you finalize\./);
       expect(reply.content).not.toMatch(/haven't changed the form/i);
@@ -249,6 +255,80 @@ export const NOV15_AGENT_LOOP_SILENT_FAILURE_CASES: ReplayCase[] = [
       expect(reply.content).toMatch(/Termination needs your DM\/HR approval before you finalize\./);
       const id = await thread.create();
       expect(t.checked(id).warning_type, "Create did not tick Termination").toEqual(["termination"]);
+    },
+  },
+  {
+    id: "nov15-silent-review-g1-termination-only-from-this-message",
+    title: "QA's review of batch G, item 1: edit_form ticks Termination only when THIS message states it: \"if this happens again it will result in termination\" and a termination said earlier about someone else never unlock it",
+    report: `${REPORT}; QA's review of batch G (15 Nov 2026), item 1`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      const { thread, id } = await wrensDraft(t);
+      const ticker = loopStandIn((view): LoopDecision => {
+        if (/I'll do his form later/.test(latest(view))) return { text: "Noted." };
+        if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { instance_id: id, values: { warning_type: "termination" } } };
+        return { text: "Done." };
+      });
+      t.loopModel!(ticker);
+      await thread.say("if this happens again it will result in termination, put that on the form");
+      expect(t.checked(id).warning_type ?? [], "a future \"will result in termination\" ticked Termination").not.toContain("termination");
+      await thread.say("Remy Calder has been terminated, I'll do his form later");
+      await thread.say("ok tick the warning box on this one");
+      expect(t.checked(id).warning_type ?? [], "a termination said about another person unlocked this form").not.toContain("termination");
+    },
+  },
+  {
+    id: "nov15-silent-review-g4-incident-date-after-today-refused",
+    title: "QA's review of batch G, item 4: \"wrong date, she was late on 11/20\" (after today) writes no date; only the form's own date, named as such, may be after today",
+    report: `${REPORT}; QA's review of batch G (15 Nov 2026), item 4`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      const { thread, id } = await wrensDraft(t);
+      const before = t.values(id).form_date ?? "";
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { instance_id: id, values: { form_date: "11/20/2026" } } };
+        return { text: "Which day was it?" };
+      }));
+      await thread.say("wrong date, she was late on 11/20");
+      expect(t.values(id).form_date ?? "", "an incident date after today was written as the form's date").toBe(before);
+    },
+  },
+  {
+    id: "nov15-silent-review-g5-warning-level-exact",
+    title: "QA's review of batch G, item 5: a warning level of \"written termination\" is refused, never ticked as Termination or as Written",
+    report: `${REPORT}; QA's review of batch G (15 Nov 2026), item 5`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      const { thread, id } = await wrensDraft(t);
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { instance_id: id, values: { warning_type: "written termination" } } };
+        return { text: "Done." };
+      }));
+      await thread.say("make it a termination, written up today");
+      expect(t.checked(id).warning_type ?? [], "an inexact level was ticked").toEqual([]);
+    },
+  },
+  {
+    id: "nov15-silent-review-g6-dictated-plan-is-the-managers-text",
+    title: "QA's review of batch G, item 6: \"Action Plan: <text>\" saves the text after the label as the manager typed it, never the model's string",
+    report: `${REPORT}; QA's review of batch G (15 Nov 2026), item 6`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      const { thread, id } = await wrensDraft(t);
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { instance_id: id, values: { action_plan: "Wren will complete the daily cleaning checklist every shift." } } };
+        return { text: "Updated the Action Plan." };
+      }));
+      await thread.say("Action Plan: Wren Will complete the Daily Cleaning Checklist every shift and initial it");
+      expect(t.values(id).action_plan ?? "", "the Action Plan is not the manager's own text").toMatch(/^Wren Will complete the Daily Cleaning Checklist every shift and initial it/);
     },
   },
   {

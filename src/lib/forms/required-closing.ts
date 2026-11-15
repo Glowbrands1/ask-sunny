@@ -53,8 +53,12 @@ function withoutFutureClosing(value: string): string {
     .trim();
 }
 
-/** A last sentence that states the termination itself (Pau's approval, 15 Nov 2026). */
-const STATED_TERMINATION_LAST = /\b(?:has\s+|have\s+)?result(?:ed|s)?\s+in\s+(?:the\s+)?(?:immediate\s+)?termination\s+of\s+(?:(?:her|his|their)\s+)?employment\b|\bemployment\s+(?:is|has\s+been|was)\s+(?:immediately\s+)?terminated\b/i;
+/**
+ * A last sentence that states the termination itself (Pau's approval, 15 Nov 2026), past or perfect only: "has / have
+ * resulted in" or "resulted in" (immediate) termination of employment, "employment has been / was terminated". Never
+ * "results / will / may / could result in" (QA's review: the app's own future-violations closing, or a warning).
+ */
+const STATED_TERMINATION_LAST = /\b(?:(?:has|have)\s+)?resulted\s+in\s+(?:the\s+)?(?:immediate\s+)?termination\s+of\s+(?:(?:her|his|their)\s+)?employment\b|\bemployment\s+(?:has\s+been|was)\s+(?:immediately\s+)?terminated\b/i;
 
 /** The value's last sentence (a closing quote or bracket kept with it). */
 function lastSentence(value: string): string {
