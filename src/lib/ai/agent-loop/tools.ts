@@ -155,6 +155,12 @@ export function asksAboutPastForms(context: Pick<ToolContext, "question" | "hist
   return earlier ? asks(earlier.content) : false;
 }
 
+/**
+ * Batch G (G9): the manager saying this form is a termination ("… has resulted in immediate termination of employment",
+ * "make it a termination", "this is a termination"). "I can't select Termination" alone is a question, never this.
+ */
+const TERMINATION_SAID = /\bresult(?:ed|s)?\s+in\s+(?:the\s+)?(?:immediate\s+)?termination\b|\bmake\s+(?:it|this)\s+(?:a\s+)?termination\b|\b(?:this|it)\s+(?:is|should\s+be)\s+a\s+termination\b|\bemployment\s+(?:is|has\s+been)\s+terminated\b/i;
+
 /** Batch G (G4): the app's own question when several forms on file fit (find_past_forms gives it; the rules book ends the reply with it). */
 export const WHICH_FORM_QUESTION = "Which one should I open?";
 
@@ -990,8 +996,17 @@ export async function proposeForm(
   if (OPEN_REQUEST.test(context.question) && !/\b(?:create|make|new|draw up|write up|start)\b/i.test(context.question)) {
     return { error: "The manager asked to open a form on file, not to make one. Find it with find_past_forms and open it with open_form." };
   }
-  /* Batch G (G0, Pau 15 Nov): rewording is paused; a reword request never re-proposes the card with new wording. */
-  if (REWORD_REQUEST.test(context.question)) return { reword_paused: true, note: REWORD_PAUSED.note };
+  /*
+   * Batch G (G0, Pau 15 Nov): rewording is paused; a reword request never re-proposes the card with new wording. G13:
+   * a re-proposal that keeps the card's account word for word and adds the new facts is allowed (and says so).
+   */
+  const rewordAsked = REWORD_REQUEST.test(context.question);
+  if (rewordAsked) {
+    const lastCard = [...context.history].reverse().find((message) => message.role === "assistant" && (message.formProposal || /\*\*Observation of Offense:\*\*/.test(String(message.content))));
+    const onScreen = lastCard?.formProposal?.issue ?? /\*\*Observation of Offense:\*\*\s*(.+)/.exec(String(lastCard?.content ?? ""))?.[1]?.trim() ?? "";
+    const next = typeof input.what_happened === "string" ? input.what_happened : "";
+    if (!onScreen.trim() || !next.trim() || addPlacement(onScreen, next).changed.length > 0) return { reword_paused: true, note: REWORD_PAUSED.note };
+  }
   /* HARD GUARD (STAFF_PICKER): a form asked for a whole staff is never one card for everyone. */
   if ((await import("@/lib/forms/staff-picker")).isBareWholeStaff(context.question) || (await import("@/lib/forms/staff-picker")).asksForWholeStaff(context.question)) {
     return { error: "This form was asked for a whole staff. A form is for one person at a time: call list_staff and say what it returns." };
@@ -1315,6 +1330,7 @@ export async function proposeForm(
     ...(formatFigures.length > 0 ? { format_figures: formatFigures } : {}),
     ...(fitsHeadings ? { fits_headings: fitsHeadings } : {}),
     ...(futureDate ? { date_after_today: { date: futureDate, today, not_on_card: true } } : {}),
+    ...(rewordAsked ? { reword_paused: true } : {}),
     ...(lastYear && date ? { date_read_as_last_year: { said: lastYear, date } } : {}),
     ...(notInManual && policyLine ? { policy_not_in_manual: notInManual } : {}),
     ...(whatHappened && addedLinks(managerWords, whatHappened).length > 0 ? { reword_added_link: addedLinks(managerWords, whatHappened) } : {}),
@@ -1388,14 +1404,19 @@ export async function editForm(
 ): Promise<ToolResult> {
   const id = typeof input.instance_id === "string" ? input.instance_id.trim() : "";
   if (id === "") return { error: "Give the form's instance_id." };
-  /* Batch G (G0, Pau 15 Nov): rewording is paused. A reword request writes nothing (code may refuse); the fact says why. */
-  if (REWORD_REQUEST.test(context.question)) return REWORD_PAUSED;
   const values: Record<string, string> = {};
   if (input.values && typeof input.values === "object") {
     for (const [field, value] of Object.entries(input.values as Record<string, unknown>)) {
       if (typeof value === "string") values[field] = value;
     }
   }
+  /*
+   * Batch G (G0, Pau 15 Nov): rewording is paused. A reword request writes nothing that rewords (code may refuse); the
+   * fact says why. G13 (a production chat): new facts sent with the ask ("take what i said but use it in a more
+   * professional tone") are still added, when every sentence already on the form stays word for word.
+   */
+  const rewordAsked = REWORD_REQUEST.test(context.question);
+  if (rewordAsked && Object.keys(values).length === 0) return REWORD_PAUSED;
   /*
    * HARD GUARD, A NAME CORRECTION IS THE NAME (the live re-run's nov4-edit-tool-ca-t2: "fix her last name, it is <X>"
    * rewrote the Observation). Values for any other field are refused; with no values the form's own reviser applies it.
@@ -1408,7 +1429,16 @@ export async function editForm(
   const unstated: string[] = [];
   for (const [field, value] of Object.entries(values)) {
     if (field === "warning_type") {
-      const level = /written/i.test(value) ? /\bwritten\b|\bwrite[- ]?up\b/i : /verbal/i.test(value) ? /\bverbal\b/i : /terminat/i.test(value) ? /\bterminat\w*|\bterm\b/i : null;
+      /*
+       * Batch G (G9, a production chat): Termination only when the manager states this form is a termination, in this
+       * chat ("Action Plan: … resulted in immediate termination of employment", "make it a termination"), as today's
+       * TERMINATION_STATED_TICKS reads it; "I can't select Termination" alone is a question about the form.
+       */
+      if (/terminat/i.test(value)) {
+        if (!(await import("@/lib/forms/termination-stated")).statesTermination(managerTurns(context)) && !TERMINATION_SAID.test(managerTurns(context))) unstated.push(field);
+        continue;
+      }
+      const level = /written/i.test(value) ? /\bwritten\b|\bwrite[- ]?up\b/i : /verbal/i.test(value) ? /\bverbal\b/i : null;
       if (!level || !level.test(context.question)) unstated.push(field);
     } else if (field === "payroll_deduct") {
       const answer = /^\s*yes/i.test(value) ? "yes" : /^\s*no/i.test(value) ? "no" : null;
@@ -1435,14 +1465,33 @@ export async function editForm(
   }
   try {
     const { loaded } = await authorizeInstance(context.request, id, "edit");
+    if (rewordAsked) {
+      const rewords = Object.entries(values).some(([field, text]) => {
+        const old = loaded.values.find((row) => row.fieldKey === field)?.value ?? "";
+        return old.trim() !== "" && addPlacement(old, text).changed.length > 0;
+      });
+      if (rewords) return REWORD_PAUSED;
+    }
     /*
      * Batch E (E12), scoped by batch G (G6, Pau via QA): an INCIDENT date after today (the salon's local date) is never
      * written, on an incident form (CA, coaching, follow-up coaching). An exit's last day or effective date, and every
      * follow-up or future-by-design date, may be after today and is never refused.
      */
     const editToday = context.today || businessToday();
+    /*
+     * Batch G (G11, a production chat: "change date of document to 11-15-2026"): a date the manager typed in this message
+     * for the document is theirs to set, after today or not (the reply says so). Only a date read from the account is
+     * never after today.
+     */
+    const typedDates = readDates(context.question);
     const later = ACCOUNT_FORMS.has(loaded.instance.templateKey)
-      ? Object.entries(values).filter(([field, value]) => (field === "form_date" || field === "incident_date") && (isoDate(value, editToday) ?? "") > editToday)
+      ? Object.entries(values).filter(([field, value]) => {
+          if (field !== "form_date" && field !== "incident_date") return false;
+          const iso = isoDate(value, editToday);
+          if (!iso || iso <= editToday) return false;
+          const [year, month, day] = iso.split("-").map(Number) as [number, number, number];
+          return !typedDates.some((typed) => sameDate(typed, { month, day, year }));
+        })
       : [];
     if (later.length > 0) {
       return { error: `${later.map(([field, value]) => `${field} ${value}`).join(", ")} is after today (${editToday}, the salon's local date). Nothing was written. Ask the manager which day.`, date_after_today: { today: editToday } };
@@ -1585,8 +1634,48 @@ export async function editForm(
       if (answer) checked.payroll_deduct = [answer];
       delete values.payroll_deduct;
     }
-    /* Only the payroll keys this write carries, after the stated-by-the-manager guard passed (an unstated one returned above). */
-    const statedPayroll = [...(checked.payroll_deduct ? ["payroll_deduct"] : []), ...(values[PAYROLL_AMOUNT_KEY] ? [PAYROLL_AMOUNT_KEY] : [])];
+    /*
+     * Batch G (G11, a production chat: "change date of document to 11-15-2026"): the document's date the manager typed
+     * in this message is their statement, written as today's form-patch turn writes it (`correctionWrite`, else a
+     * stated fact). Any other form_date value stays with the assistant's writer, which never drafts the Date.
+     */
+    let documentDate: string | null = null;
+    if (values.form_date && /\bdate\b/i.test(context.question)) {
+      const iso = isoDate(values.form_date, editToday);
+      const [year, month, day] = (iso ?? "").split("-").map(Number) as [number, number, number];
+      if (iso && typedDates.some((typed) => sameDate(typed, { month, day, year }))) {
+        const fresh = (await authorizeInstance(context.request, id, "edit")).loaded;
+        if (formEditSingleWriterEnabled()) {
+          await (await import("@/lib/forms/form-write")).correctionWrite({ instanceId: id, loaded: fresh, stated: { values: { form_date: iso }, checked: {} }, actorId: context.actor.subject, said: context.question, today: editToday });
+        } else {
+          await (await import("@/lib/forms/instances")).applyStatedFacts(id, { values: { form_date: iso }, checked: {} }, context.actor.subject, new Set(["form_date"]));
+        }
+        documentDate = iso;
+        delete values.form_date;
+      }
+    }
+    /*
+     * Only the keys this write carries that the manager stated, after the guards above passed: payroll (G5), a
+     * termination level (G9), and an Action Plan that is the manager's own text in this message, word for word (G8).
+     */
+    const squash = (text: string) => text.toLowerCase().replace(/\s+/g, " ").trim();
+    const statedPayroll = [
+      ...(checked.payroll_deduct ? ["payroll_deduct"] : []),
+      ...(values[PAYROLL_AMOUNT_KEY] ? [PAYROLL_AMOUNT_KEY] : []),
+      ...(checked.warning_type?.[0] === "termination" ? ["warning_type"] : []),
+    ];
+    /*
+     * Batch G (G8, a production chat: "Action Plan: Violation of Company policy has resulted in immediate termination of
+     * employment."): an Action Plan the manager dictated in this message, word for word, is the manager's own edit,
+     * saved as the form page saves their typing (`saveInstanceValues`, the manager as actor; the version's required
+     * closing rules apply as they do to any manager edit). Never a policy lookup, and not rewording.
+     */
+    let dictatedPlan: string | null = null;
+    if (values.action_plan && squash(values.action_plan).length > 10 && squash(context.question).includes(squash(values.action_plan))) {
+      const saved = await (await import("@/lib/forms/instances")).saveInstanceValues(id, { values: { action_plan: values.action_plan.trim() }, checked: {} }, context.actor.subject);
+      if (!saved.rejected.some((row) => row.key === "action_plan")) dictatedPlan = saved.values.action_plan ?? values.action_plan.trim();
+      delete values.action_plan;
+    }
     // The revision's writer, as chat-revision.ts saves: the one writer with FORM_EDIT_SINGLE_WRITER_ENABLED, else the old one.
     const written = formEditSingleWriterEnabled()
       ? await (await import("@/lib/forms/form-write")).writeRevisionEdits(id, { values, checked }, [], {
@@ -1596,13 +1685,18 @@ export async function editForm(
           ...(statedPayroll.length > 0 ? { managerStated: statedPayroll } : {}),
         })
       : await applyAssistantRevision(id, { values, checked }, [], context.actor.subject);
-    const updated = [...Object.keys(written.accepted.values ?? {}), ...Object.keys(written.accepted.checked ?? {})];
+    const saved = (await authorizeInstance(context.request, id, "view")).loaded;
+    const dateWritten = documentDate !== null && saved.values.some((row) => row.fieldKey === "form_date" && row.value === documentDate);
+    const updated = [...Object.keys(written.accepted.values ?? {}), ...Object.keys(written.accepted.checked ?? {}), ...(dateWritten ? ["form_date"] : []), ...(dictatedPlan !== null ? ["action_plan"] : [])];
     if (updated.length > 0) effects.formUpdate = { instanceId: id, updated };
     return {
       updated,
       refused: written.rejected.map((row) => ({ field: row.key, reason: row.reason })),
       ...rewordFacts,
       ...addFacts,
+      ...(rewordAsked ? { reword_paused: true } : {}),
+      ...(dateWritten && documentDate! > editToday ? { date_after_today_as_asked: documentDate } : {}),
+      ...(checked.warning_type?.[0] === "termination" && updated.includes("warning_type") ? { termination_approval_line: (await import("@/lib/forms/termination-stated")).TERMINATION_APPROVAL_LINE } : {}),
       ...(answerAlsoWrote.length > 0 ? { level_or_payroll_answer_also_wrote: answerAlsoWrote } : {}),
       ...(rewordFacts.reword_lost || rewordFacts.reword_touched_fixed_fields || rewordFacts.reword_added_link || addFacts.add_changed_sentences || addFacts.add_not_at_end_of_observed || answerAlsoWrote.length > 0
         ? { note: "Saved. Check these facts against what the manager asked and edit again to put anything back (the rules book's Editing lines)." }
@@ -1701,7 +1795,7 @@ export async function searchKnowledge(context: ToolContext, effects: ToolEffects
 /** Batch G (G0): what edit_form and propose_form return for a reword request while rewording is paused. Nothing is written. */
 const REWORD_PAUSED = { updated: [], reword_paused: true, note: "Rewording is paused. Nothing was changed. Say the rules book's reword_paused line." } as const;
 
-export const REWORD_REQUEST = /\b(?:make (?:it|this|that)(?: sound)? (?:more )?(?:professional|better|cleaner)|re-?word|re-?phrase|clean (?:it|this|that) up|sound (?:more )?(?:professional|better)|professional(?:ly)? word)/i;
+export const REWORD_REQUEST = /\b(?:make (?:it|this|that)(?: sound)? (?:more )?(?:professional|better|cleaner)|re-?word|re-?phrase|clean (?:it|this|that) up|sound (?:more )?(?:professional|better)|professional(?:ly)? word|(?:a )?(?:more )?professional tone)/i;
 /** Fields a reword never touches. */
 const REWORD_KEEPS = new Set(["warning_type", "payroll_deduct", "payroll_deduct_amount", "form_date", "employee_name", "job_title", "policy_violated", "direct_policy"]);
 

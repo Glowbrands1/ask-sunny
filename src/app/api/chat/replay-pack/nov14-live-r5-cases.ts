@@ -445,7 +445,7 @@ export const NOV14_LIVE_R5_CASES: ReplayCase[] = [
   },
   {
     id: "nov14-live-r5-e12-edit-form-refuses-a-form-date-after-today",
-    title: "QA E12 (Pau's review): with a draft open, \"change the date to 12/20/2026\" on 11/14: edit_form refuses form_date after today and nothing is written",
+    title: "QA E12 (Pau's review), refined by G11: with a draft open, a form date after today that the manager never typed is refused; \"change the date to 12/20/2026\", typed by the manager, is written and said",
     report: `${REPORT_E}: E12, the same for edit_form writing form_date`,
     status: "fixed",
     fixFlags: [FLAG],
@@ -466,12 +466,16 @@ export const NOV14_LIVE_R5_CASES: ReplayCase[] = [
       const editor = loopStandIn((view): LoopDecision => {
         const edit = lastResult(view, "edit_form");
         if (!edit) return { tool: "edit_form", input: { instance_id: id, values: { form_date: "2026-12-20" } } };
-        return { text: edit.error ? "12/20/2026 is after today, so I didn't change the date. Which day was it?" : "Changed the date to 12/20/2026." };
+        return { text: edit.error ? "That date is after today, so I didn't change it. Which day was it?" : "Dated 12/20/2026 (after today), as you asked." };
       });
       t.loopModel!(editor);
-      const reply = await thread.say("change the date to 12/20/2026");
-      expect(t.values(id).form_date ?? "", `a form date after today was written:\n${reply.content}`).toBe(before);
-      if (offline) expect(toolResults(editor.views, "edit_form")[0], "edit_form wrote a date after today").toMatch(/is after today \(2026-11-14/);
+      // A date the manager never typed (the model's own reading): refused, nothing written.
+      const unsaid = await thread.say("fix the date on it");
+      expect(t.values(id).form_date ?? "", `a form date after today nobody typed was written:\n${unsaid.content}`).toBe(before);
+      if (offline) expect(toolResults(editor.views, "edit_form")[0], "edit_form wrote a date after today nobody typed").toMatch(/is after today \(2026-11-14/);
+      // Changed on purpose (batch G, G11: a document date the manager sets may be after today): the manager's own date is written and said.
+      const asked = await thread.say("change the date to 12/20/2026");
+      expect(t.values(id).form_date ?? "", `the manager's own document date was not written:\n${asked.content}`).toMatch(/2026-12-20|12\/20\/2026/);
     },
   },
   {

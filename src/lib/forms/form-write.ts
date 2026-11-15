@@ -788,10 +788,12 @@ export async function realizedClaim(answer: AskResponse, instanceId: string, bef
  */
 /*
  * `managerStated` (the agent loop's edit_form, batch G5; QA approved 15 Nov 2026 under Pau's rule: "if it asks these
- * questions and manager answers, the payroll will be filled or edited"): only MANAGER_STATED_KEYS (payroll deduct and
- * its amount), and only when the caller has checked that the manager stated them in this message. They are written as
- * the manager, as the card's Create does. Every other manager field is refused as before.
+ * questions and manager answers, the payroll will be filled or edited"; G9, a production chat): only payroll deduct
+ * and its amount (MANAGER_STATED_KEYS) and the warning level, and only when the caller has checked that the manager
+ * stated them in this message. They are written as the manager, as the card's Create does. Every other key is written
+ * as before.
  */
+const WRITTEN_AS_STATED: ReadonlySet<string> = new Set([...MANAGER_STATED_KEYS, "warning_type"]);
 export async function writeRevisionEdits(
   instanceId: string,
   draft: Partial<DraftValues>,
@@ -801,11 +803,11 @@ export async function writeRevisionEdits(
     readonly latest: string;
     readonly notes?: string;
     readonly named?: readonly string[];
-    /** Keys the manager stated in this message; only MANAGER_STATED_KEYS count. Absent: the write layer's rules, unchanged. */
+    /** Keys the manager stated in this message; only WRITTEN_AS_STATED count. Absent: the write layer's rules, unchanged. */
     readonly managerStated?: readonly string[];
   },
 ): Promise<{ accepted: DraftValues; cleared: string[]; rejected: { key: string; reason: string }[] }> {
-  const stated = new Set((context.managerStated ?? []).filter((key) => MANAGER_STATED_KEYS.has(key)));
+  const stated = new Set((context.managerStated ?? []).filter((key) => WRITTEN_AS_STATED.has(key)));
   const ops: FormEditOp[] = [
     ...opsFrom({ values: draft.values ?? {}, checked: draft.checked ?? {} }).map((op) => (stated.has(op.field) ? { ...op, by: "manager" as const } : op)),
     ...cleared.map((field) => ({ op: "clear" as const, field })),

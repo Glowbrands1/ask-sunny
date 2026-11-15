@@ -1,0 +1,179 @@
+import { expect, vi } from "vitest";
+
+import { KEARNEY, STAFF, type DirectoryRow, type ReplayCase, type ReplayContext, type ReplayThread } from "./cases";
+import { lastResult, loopStandIn, type LoopDecision, type LoopView } from "./loop-stand-in";
+
+/**
+ * ============================================================================
+ * THIS MORNING'S SILENT-FAILURE SCAN (QA, 15 Nov 2026): A CA CHAT ON TODAY'S APP, AND THE LOOP'S ANSWER
+ * ============================================================================
+ *
+ * Pau: "Using the AI loop, I hope we don't have these mistakes going forward. Sunny first." The manager's exact
+ * words, with the employee swapped for QA's invented "Wren Halloway". Today's app read the Action Plan instruction as
+ * a policy name, said "I haven't changed the form" to the Termination question and to the account sent again, and
+ * these cases hold the loop to what it must do instead (batch G: G8, G9, G10, G11, G13).
+ */
+
+const FLAG = "AGENT_LOOP_ENABLED";
+const REPORT = "QA's silent-failure scan (15 Nov 2026), a production Corrective Action chat";
+
+const WREN: DirectoryRow = { id: "e-wren-halloway", firstName: "Wren", lastName: "Halloway", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" };
+
+const T1 = "create corrective action for Wren Halloway";
+const T2 = "Wren did not complete the daily cleaning checklist on Saturday (11.07.2026) and Sunday (11.08.2026)";
+const T4 = "under the type of warning drop down box I can't select Termination.";
+const T8 = "Action Plan: Violation of Company policy has resulted in immediate termination of employment.";
+const T9 = "The action plan section of the form needs to reflect the following verbage: Violation of Company policy has resulted in immediate termination of employment.";
+const T10 = "change date of document to 11-15-2026";
+const PLAN = "Violation of Company policy has resulted in immediate termination of employment.";
+const ACCOUNT = "Wren did not complete the daily cleaning checklist on Saturday (11.07.2026) and Sunday (11.08.2026).";
+
+const latest = (view: LoopView) => [...view.turns].reverse().find((turn) => turn.role === "user")?.text ?? "";
+const toolResults = (views: readonly LoopView[], tool: string) => views.flatMap((view) => view.results.filter((result) => result.tool === tool)).map((result) => JSON.stringify(result.output));
+const offline = process.env.AGENT_LOOP_LIVE !== "1";
+
+/** t1 and t2, then Create: Wren's Corrective Action draft, open, with the account as the manager wrote it. */
+async function wrensDraft(t: ReplayContext): Promise<{ thread: ReplayThread; id: string }> {
+  vi.setSystemTime(new Date("2026-11-13T22:00:00Z"));
+  t.directory([...STAFF, WREN]);
+  t.as("salon_director", KEARNEY);
+  t.loopModel!(loopStandIn((view): LoopDecision => {
+    if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "Wren Halloway" } };
+    if (/daily cleaning checklist/.test(latest(view)) && !lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: WREN.id, what_happened: ACCOUNT } };
+    if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: WREN.id } };
+    return { text: "Here's the Corrective Action Form for **Wren Halloway**." };
+  }));
+  const thread = t.thread();
+  await thread.say(T1);
+  await thread.say(T2);
+  const id = await thread.create();
+  t.typeOnForm(id, { observation: ACCOUNT });
+  return { thread, id };
+}
+
+export const NOV15_AGENT_LOOP_SILENT_FAILURE_CASES: ReplayCase[] = [
+  {
+    id: "nov15-silent-g8-action-plan-instruction-is-the-field",
+    title: "G8: \"Action Plan: Violation of Company policy has resulted in immediate termination of employment.\" writes that Action Plan, never a policy lookup; so does \"The action plan section of the form needs to reflect the following verbage: …\"",
+    report: `${REPORT}: t8 and t9 got "I couldn't find a section called 'violation of company'" and nothing changed`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      const { thread, id } = await wrensDraft(t);
+      const model = loopStandIn((view): LoopDecision => {
+        if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { instance_id: id, values: { action_plan: PLAN } } };
+        return { text: `Updated the Action Plan: ${PLAN}` };
+      });
+      t.loopModel!(model);
+      for (const turn of [T8, T9]) {
+        const reply = await thread.say(turn);
+        expect(t.values(id).action_plan ?? "", `the Action Plan is not the manager's text after "${turn}":\n${reply.content}`).toMatch(/^Violation of Company policy has resulted in immediate termination of employment\./);
+        expect(reply.content, "the instruction was read as a policy name").not.toMatch(/couldn't find a section/i);
+      }
+      if (offline) expect(model.views.some((view) => view.results.some((result) => result.tool === "read_policy" || result.tool === "search_knowledge")), "an Action Plan instruction became a policy lookup").toBe(false);
+    },
+  },
+  {
+    id: "nov15-silent-g9-cant-select-termination",
+    title: "G9: after the termination Action Plan, \"under the type of warning drop down box I can't select Termination.\" ticks Termination on the draft and gives the DM/HR approval line; asked alone, it changes nothing",
+    report: `${REPORT}: t4 got "I haven't changed the form."`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      const { thread, id } = await wrensDraft(t);
+      // Asked alone (no termination stated yet): a question about the form, nothing written.
+      const model = loopStandIn((view): LoopDecision => {
+        const said = latest(view);
+        const edit = lastResult(view, "edit_form") as { error?: string; termination_approval_line?: string } | null;
+        if (/Action Plan:/.test(said)) return lastResult(view, "edit_form") ? { text: `Updated the Action Plan: ${PLAN}` } : { tool: "edit_form", input: { instance_id: id, values: { action_plan: PLAN } } };
+        if (!edit) return { tool: "edit_form", input: { instance_id: id, values: { warning_type: "termination" } } };
+        return { text: edit.error ? "To pick Termination, open the Type of Warning box on the form; tell me if this form is a termination and I'll set it." : `**Type of Warning:** Termination, as you said. ${edit.termination_approval_line ?? ""}` };
+      });
+      t.loopModel!(model);
+      await thread.say(T4);
+      expect(t.checked(id).warning_type ?? [], "Termination was ticked without the manager stating a termination").not.toContain("termination");
+      await thread.say(T8);
+      const reply = await thread.say(T4);
+      expect(t.checked(id).warning_type, `Termination was not ticked:\n${reply.content}`).toEqual(["termination"]);
+      expect(reply.content, "no DM/HR approval line").toMatch(/Termination needs your DM\/HR approval before you finalize\./);
+      expect(reply.content).not.toMatch(/haven't changed the form/i);
+    },
+  },
+  {
+    id: "nov15-silent-g10-account-sent-again",
+    title: "G10: the same account sent again with the draft open (t5) says it is already on the form, and nothing is written twice",
+    report: `${REPORT}: t5 (t2 sent again) got "I haven't changed the form"`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      const { thread, id } = await wrensDraft(t);
+      const before = t.values(id).observation;
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        const read = lastResult(view, "read_form") as { values?: { observation?: { untrusted_text?: string } } } | null;
+        if (!read) return { tool: "read_form", input: { instance_id: id } };
+        return { text: `That's already on the form: "${read.values?.observation?.untrusted_text ?? ""}"` };
+      }));
+      const reply = await thread.say(T2);
+      expect(t.values(id).observation, "the account was written twice").toBe(before);
+      expect(reply.content, `the reply does not say it is already on the form:\n${reply.content}`).toMatch(/already on the form/i);
+    },
+  },
+  {
+    id: "nov15-silent-g11-document-date-the-manager-sets",
+    title: "G11: \"change date of document to 11-15-2026\" sent at 7:35 PM CT on 11/13 dates the draft 11/15/2026 and says it is after today, as asked",
+    report: `${REPORT}: t10, a document date the manager set after today`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      const { thread, id } = await wrensDraft(t);
+      vi.setSystemTime(new Date("2026-11-14T01:35:00Z")); // 7:35 PM Central on 11/13
+      const model = loopStandIn((view): LoopDecision => {
+        const edit = lastResult(view, "edit_form") as { date_after_today_as_asked?: string; error?: string } | null;
+        if (!edit) return { tool: "edit_form", input: { instance_id: id, values: { form_date: "2026-11-15" } } };
+        return { text: edit.date_after_today_as_asked ? "Dated 11/15/2026 (after today), as you asked." : edit.error ?? "Done." };
+      });
+      t.loopModel!(model);
+      const reply = await thread.say(T10);
+      expect(t.values(id).form_date ?? "", `the document date was not set:\n${reply.content}`).toBe("2026-11-15");
+      expect(reply.content).toMatch(/Dated 11\/15\/2026 \(after today\), as you asked\./);
+      if (offline) expect(toolResults(model.views, "edit_form")[0], "the date the manager set was not a fact").toMatch(/"date_after_today_as_asked":"2026-11-15"/);
+    },
+  },
+  {
+    id: "nov15-silent-g13-new-facts-with-a-tone-ask",
+    title: "G13 (the sibling app's chat, fixed in this loop first): new examples, then \"take what i said but use it in a more professional tone\": every example is on the card, only the rewording is declined, and payroll is not asked again",
+    report: `${REPORT}; the sibling app's chat: the card kept only the first sentence and asked payroll again`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
+      t.directory([...STAFF, WREN]);
+      t.as("salon_director", KEARNEY);
+      const first = "Wren Halloway left the front desk unattended on 11/10.";
+      const all = `${first} She also skipped the bed sanitation on 11/11. On 11/12 she left early without telling anyone.`;
+      const model = loopStandIn((view): LoopDecision => {
+        const said = latest(view);
+        const proposed = lastResult(view, "propose_form") as { reword_paused?: boolean } | null;
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "Wren Halloway" } };
+        if (/professional tone/.test(said)) {
+          if (!proposed) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: WREN.id, what_happened: all, payroll_deduct: "no" } };
+          return { text: `Here's the Corrective Action Form for **Wren Halloway**, with all three examples.\n\n**Observation of Offense:** ${all}\n\nRewording isn't available yet. Tell me exactly what to change and I'll update it.` };
+        }
+        if (!proposed) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: WREN.id, what_happened: first, ...(/no payroll/.test(said) ? { payroll_deduct: "no" } : {}) } };
+        return { text: `Here's the Corrective Action Form for **Wren Halloway**.\n\n**Observation of Offense:** ${first}` };
+      });
+      t.loopModel!(model);
+      const thread = t.thread();
+      await thread.say("ca for wren halloway, she left the front desk unattended on 11/10, no payroll deduct");
+      const reply = await thread.say("she also skipped the bed sanitation on 11/11. on 11/12 she left early without telling anyone. take what i said but use it in a more professional tone");
+      expect(thread.proposal?.issue ?? "", `an example was dropped:\n${reply.content}`).toMatch(/front desk[\s\S]*bed sanitation[\s\S]*left early/);
+      expect(reply.content, "the rewording part was not declined").toMatch(/Rewording isn't available yet/);
+      expect(reply.content, "payroll was asked again").not.toMatch(/payroll deduct (?:isn't set|applicable\?)|tell me if (?:payroll|it) applies/i);
+    },
+  },
+];
