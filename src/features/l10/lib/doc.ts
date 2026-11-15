@@ -402,6 +402,8 @@ export function buildRecap(doc: MeetingDoc, attendees: Attendee[], sessionKey: s
     attendees: attendees.map((a) => ({ name: a.name, rating: a.rating })),
     openTodos: doc.todos.filter((t) => !t.done),
     resolvedIssues: doc.issues.filter((i) => i.resolved && (i.resolvedSession ?? null) === sessionKey).map((i) => i.title),
+    // The shared notes pad (Meeting Notes on the Bloom-style meetings), when there is anything in it.
+    ...(typeof doc.meetingNotes === "string" && doc.meetingNotes.trim() ? { notes: doc.meetingNotes } : {}),
   };
 }
 

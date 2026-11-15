@@ -80,6 +80,12 @@ export function PastMeetings({ meetingKey, meetingName, meetings }: { meetingKey
                       {m.cascade}
                     </p>
                   )}
+                  {m.notes && (
+                    <p className="m-0 text-sm whitespace-pre-wrap">
+                      <span className="text-xs text-muted">Notes: </span>
+                      {m.notes}
+                    </p>
+                  )}
                 </Card>
               </li>
             );
