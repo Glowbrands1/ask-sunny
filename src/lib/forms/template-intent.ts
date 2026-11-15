@@ -563,9 +563,11 @@ export function canonicalShorthand(text: string): string {
  *
  * A WHITELIST AT THE START OF A SENTENCE (QA's re-review, 15 Nov 2026; word lists kept leaking both ways): optional
  * politeness ("please", "can you", "could you", "I need to", "need to"), then create | make | do | write (up) | start |
- * draft | need, then "a termination" (optionally "CA", "C/A" or "form"), then "for", then a NAME that resolves — a roster
+ * draft | need, then "a termination" (optionally "CA" or "C/A"; never "form": "termination form for <A>" stays the Exit form, as
+ * "termination paperwork" does), then "for", then a NAME that resolves — a roster
  * person's full name, a title and a roster surname only one person has ("Ms. Holloway"), or an off-roster full name in
- * capitals. With no roster installed (a pure caller), a name-shaped full name. A "?" blocks only when it ends that same
+ * capitals. Titles (Mr, Ms, Mrs, Mx, Dr) are stripped before the name is resolved and from the request that is read on, so
+ * "Ms. Holloway" is Holloway and the name reader never takes "Ms" for the person. With no roster installed (a pure caller), a name-shaped full name. A "?" blocks only when it ends that same
  * sentence. Anything else — "So do I create a termination for … or not", "I think we should do a termination for …",
  * "create a termination for no call no show" — is read as it always was.
  */
@@ -577,28 +579,31 @@ export function installTerminationRosterNames(read: () => readonly string[] | un
 }
 
 const TERMINATION_SENTENCE =
-  /^(\s*(?:please\s+)?(?:(?:can|could)\s+you\s+(?:please\s+)?|i\s+need\s+to\s+|need\s+to\s+)?(?:create|make|do|write(?:\s+up)?|start|draft|need)\s+(?:me\s+)?(?:an?\s+)?)termination(?:\s+(?:ca|c\/a|form))?(\s+for\s+)/i;
+  /^(\s*(?:please\s+)?(?:(?:can|could)\s+you\s+(?:please\s+)?|i\s+need\s+to\s+|need\s+to\s+)?(?:create|make|do|write(?:\s+up)?|start|draft|need)\s+(?:me\s+)?(?:an?\s+)?)termination(?:\s+(?:ca|c\/a))?(\s+for\s+)/i;
 const TITLE = /^(?:mr|ms|mrs|mx|dr)\.?\s+/i;
 const NAME_SHAPED_WORD = /^[\p{L}][\p{L}'’-]*$/u;
 
 /** The words after "for" up to the sentence's end or a comma: the name, if one resolves. */
 function nameResolvesAfterFor(rest: string): boolean {
   const head = rest.split(/[,;:!?]|\s+(?:she|he|they|who|because|bc|for|since|was|is|did|didn['’]t|has|had)\b/i)[0]!.trim().replace(/[.]+$/, "");
-  const words = head.split(/\s+/).filter(Boolean);
+  const titled = TITLE.exec(head);
+  const bare = titled ? head.slice(titled[0].length) : head;
+  const words = bare.split(/\s+/).filter(Boolean);
   const roster = readTerminationRoster();
   const norm = (text: string) => text.toLowerCase().replace(/\s+/g, " ").trim();
-  const said = norm(head);
+  const said = norm(bare);
   if (roster && roster.length > 0) {
-    // A roster person's full name, as the words after "for" begin.
+    // A roster person's full name, as the words after "for" (the title aside) begin.
     if (roster.some((name) => said === norm(name) || said.startsWith(`${norm(name)} `))) return true;
     // A title and a surname only one roster person has ("Ms. Holloway").
-    const titled = TITLE.exec(head);
     if (titled) {
-      const surname = norm(head.slice(titled[0].length)).split(" ")[0] ?? "";
+      const surname = said.split(" ")[0] ?? "";
       const owners = roster.filter((name) => norm(name).split(" ").slice(-1)[0] === surname);
       if (surname && owners.length === 1) return true;
     }
   }
+  // A title with no roster person behind it is no name.
+  if (titled && !(roster && roster.length > 0)) return false;
   // A full name: two or three name words, none a stop word; in capitals when a roster was read.
   const name = words.slice(0, 3);
   if (name.length < 2) return false;
@@ -629,7 +634,9 @@ function asTerminationRequest(text: string): string {
     if (!match) continue;
     const after = start + match[0].length;
     if (sentenceAsks(text, start) || !nameResolvesAfterFor(text.slice(after))) continue;
-    out = `${out.slice(0, start)}${match[1]}termination corrective action${match[2]}${out.slice(after)}`;
+    // The title goes (Ms. Holloway → Holloway), so the name reader on the rewritten request never takes "Ms" for the name.
+    const title = TITLE.exec(text.slice(after));
+    out = `${out.slice(0, start)}${match[1]}termination corrective action${match[2]}${out.slice(after + (title ? title[0].length : 0))}`;
   }
   return out;
 }

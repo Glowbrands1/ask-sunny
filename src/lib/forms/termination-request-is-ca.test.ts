@@ -28,7 +28,12 @@ describe("TERMINATION_REQUEST_IS_CA_ENABLED, with the roster read", () => {
     ["could you make a termination for marnie holloway", `could you make a ${CA} for marnie holloway`],
     ["need a termination for Marnie Holloway", `need a ${CA} for Marnie Holloway`],
     ["create a termination for Marnie Holloway. Is the DM on today?", `create a ${CA} for Marnie Holloway. Is the DM on today?`],
-    ["do a termination for Ms. Holloway", `do a ${CA} for Ms. Holloway`],
+    // QA's second re-review: the title is stripped before the name resolves and from the request read on.
+    ["do a termination for Ms. Holloway", `do a ${CA} for Holloway`],
+    ["do a termination for Mrs. Holloway, she walked out", `do a ${CA} for Holloway, she walked out`],
+    ["make a termination for Dr Holloway", `make a ${CA} for Holloway`],
+    ["create a termination for Mx. Holloway", `create a ${CA} for Holloway`],
+    ["create a termination for Mr. Marnie Holloway", `create a ${CA} for Marnie Holloway`],
     ["please create a termination CA for Remy Calder", `please create a ${CA} for Remy Calder`],
     ["create a termination for Zebulon Marchbanks, he walked out", `create a ${CA} for Zebulon Marchbanks, he walked out`],
   ])("on: %s", (said, read) => {
@@ -37,6 +42,10 @@ describe("TERMINATION_REQUEST_IS_CA_ENABLED, with the roster read", () => {
 
   it.each([
     ["create termination paperwork for Marnie Holloway"],
+    // QA's second re-review: "form" is not in the suffix; the Exit form stays the Exit form, as on main.
+    ["create a termination form for Marnie Holloway"],
+    ["do a termination form for Remy Calder"],
+    ["need a termination paperwork for Marnie Holloway"],
     ["what is the termination policy for no call no shows"],
     ["termination for Marnie Holloway"],
     // Questions (QA's review of #1014), and the re-review's two that passed as requests.
@@ -56,6 +65,12 @@ describe("TERMINATION_REQUEST_IS_CA_ENABLED, with the roster read", () => {
     ["I need to do a termination for Marnie"],
   ])("on, unchanged: %s", (said) => {
     expect(canonicalFormWording(said)).toBe(said);
+  });
+
+  it("a title never leaves \"Ms\" as the name for the reader that follows", () => {
+    for (const said of ["do a termination for Ms. Holloway", "do a termination for Mrs. Holloway", "do a termination for Dr. Holloway"]) {
+      expect(canonicalFormWording(said)).not.toMatch(/\b(?:ms|mrs|dr)\b/i);
+    }
   });
 
   it("a title with a surname two roster people have does not resolve", () => {

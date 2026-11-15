@@ -100,6 +100,7 @@ export const NOV15_TERMINATION_REQUEST_IS_CA_CASES: ReplayCase[] = [
       ["need a termination for Marnie Holloway, she no call no showed on 11/12", "Marnie Holloway", STAFF],
       ["create a termination for Marnie Holloway, she no call no showed on 11/12. Is the DM in today?", "Marnie Holloway", STAFF],
       ["do a termination for Ms. Holloway, she no call no showed on 11/12", "Marnie Holloway", STAFF],
+      ["create a termination for Marnie Holloway. she no call no showed 11/12, is that enough?", "Marnie Holloway", STAFF],
       ["create a termination for Cash Holloway, he no call no showed on 11/12", "Cash Holloway", [...STAFF.filter((row) => row.lastName !== "Holloway"), CASH]],
     ] as const
   ).map(
@@ -116,8 +117,26 @@ export const NOV15_TERMINATION_REQUEST_IS_CA_CASES: ReplayCase[] = [
         const thread = t.thread();
         const reply = await thread.say(said, { employeeName: person });
         expect(thread.proposal?.templateKey, reply.content).toBe("dpoa");
-        // "Ms. Holloway": the request is read; the card's name reader takes "Ms" as a name, a separate gap (reported).
-        if (!said.includes("Ms.")) expect(thread.proposal?.employeeName, reply.content).toBe(person);
+        // QA's second re-review: the title is stripped, so "Ms. Holloway" is Holloway and never "Ms" (no "couldn't find **Ms**").
+        expect(reply.content, "a title was read as the name").not.toMatch(/\*\*(?:Ms|Mr|Mrs|Mx|Dr)\*\*/);
+        if (!/\b(?:Ms|Mr|Mrs|Mx|Dr)\./.test(said)) expect(thread.proposal?.employeeName, reply.content).toBe(person);
+        // A title and a surname: the card is made and the app either seats the roster person or asks who; it never says it could not find the title.
+        else expect([person, null], reply.content).toContain(thread.proposal?.employeeName ?? null);
+      },
+    }),
+  ),
+  ...["create a termination form for Marnie Holloway", "do a termination form for Marnie Holloway, she no call no showed on 11/12"].map(
+    (said, index): ReplayCase => ({
+      id: `nov15-termination-request-is-ca-form-is-exit-${index + 1}`,
+      title: `"${said}": "form" is not in the whitelist, so it stays the Exit form as on main (QA's second re-review): never a Corrective Action card`,
+      report: RE_REVIEW,
+      status: "fixed",
+      fixFlags: [FLAG],
+      async run(t) {
+        start(t);
+        const thread = t.thread();
+        const reply = await thread.say(said, { employeeName: "Marnie Holloway" });
+        expect(thread.proposal?.templateKey ?? null, reply.content).not.toBe("dpoa");
       },
     }),
   ),
