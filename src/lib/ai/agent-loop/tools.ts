@@ -907,10 +907,18 @@ export async function proposeForm(
    * draft open, a second card for the same form AND the same person is refused unless the manager asked for another or
    * a new one. Another person ("the same form for <C>", "<A> and <B>") always gets their own card.
    */
-  if (context.openFormId && !/\b(?:another|new|second|separate|fresh|different)\b/i.test(context.question) && !startsNewForm(context.history, context.question) && !NEW_REQUEST_WITH_INCIDENT(context.question)) {
+  /*
+   * sf-s21 5d (the batch H live run): "I need the CA for the Must see behaviors and not the standard of conduct" reads
+   * as a new request, but it is about the policy of the draft on screen (`template-outline.ts`): the guard holds.
+   */
+  const mustSeeNotConduct = (await import("@/lib/forms/template-outline")).asksMustSeeNotConduct(context.question);
+  if (context.openFormId && (mustSeeNotConduct || (!/\b(?:another|new|second|separate|fresh|different)\b/i.test(context.question) && !startsNewForm(context.history, context.question) && !NEW_REQUEST_WITH_INCIDENT(context.question)))) {
     const open = await authorizeInstance(context.request, context.openFormId, "view").then(({ loaded }) => loaded.instance).catch(() => null);
     if (open && open.status === "draft" && open.templateKey === key && samePerson(open.employeeName, employee.name)) {
-      return { error: `The ${open.templateName} draft for ${open.employeeName} is open on screen: put this on that draft with edit_form (instance_id ${open.id}). Propose a new card only if the manager asks for another or a new one.` };
+      return {
+        error: `The ${open.templateName} draft for ${open.employeeName} is open on screen: put this on that draft with edit_form (instance_id ${open.id}). Propose a new card only if the manager asks for another or a new one.`,
+        ...(mustSeeNotConduct ? { must_see_behaviors: "Must See Behaviors is part of the Standards of Conduct policy (the JBA Policy Manual has no Must See Behaviors section), so the form keeps that policy." } : {}),
+      };
     }
   }
 
@@ -1243,7 +1251,7 @@ export async function proposeForm(
     ...(template.key === "stc-exit" ? { exit_dates: await exitDateLines(requestWords, today) } : {}),
     ...(jobTitleTyped ? { job_title_from_your_words: card.employeeRole } : {}),
     ...(whichSalon ? { which_salon: true } : {}),
-    ...(terminationStated ? { termination_stated: { approval: stated.TERMINATION_APPROVAL_LINE } } : {}),
+    ...(terminationStated ? { termination_stated: { approval: stated.TERMINATION_APPROVAL_LINE, plan_closing: stated.TERMINATION_PLAN_SENTENCE } } : {}),
     /* CARRIED_PERSON_NOTICE (batch H10): the person was read from before the manager's last six turns. */
     ...((await import("@/lib/ai/carried-person-notice")).carriedFromEarlier(template.key, card.employeeName, { history: context.history as ChatMessage[], question: context.question }) ? { person_from_earlier: card.employeeName } : {}),
     ...(underPerformance ? { under_performance: true } : {}),
@@ -1309,7 +1317,13 @@ export async function coachTeam(context: ToolContext, effects: ToolEffects): Pro
     if (turn) return { app_reply: untrusted(turn.content), note: "Say app_reply to the manager as given, every line: it holds the people, the counts and the exact words the next step reads." };
   }
   const { wholeTeamRequest } = await import("@/lib/forms/whole-team-coaching");
-  const team = wholeTeamRequest({ question: context.question, history: context.history as ChatMessage[], draftOpen: Boolean(context.openFormId) });
+  /*
+   * "Create a coaching form." then "for the whole salon" (nov3-team-observation-echo, the batch H live run): the turn
+   * answers who the coaching asked for is, as today's intake reads it when it is still asking about a Coaching Form.
+   */
+  const lastAsk = [...context.history].reverse().find((turn) => turn.role === "user");
+  const continuing = lastAsk && /\bcoach(?:ing)?\b/i.test(String(lastAsk.content ?? "")) ? "coaching" : null;
+  const team = wholeTeamRequest({ question: context.question, history: context.history as ChatMessage[], draftOpen: Boolean(context.openFormId), continuingTemplateKey: continuing });
   if (!team) {
     return { error: "This is not a whole-team coaching request. A form for one person goes through find_staff and propose_form; with a Coaching draft open, \"this coaching for everyone on my team\" is the request for one draft each." };
   }
@@ -1411,9 +1425,17 @@ export async function editForm(
      */
     const pastedOutline = await (async () => {
       if (!(await import("@/lib/config/chat-quality-flags")).pastedOutlineToOpenDraftEnabled()) return false;
-      const [{ fieldsForVariant, interpolate, parseFormDocument }, { headedFields }] = await Promise.all([import("@/lib/forms/document"), import("@/lib/forms/template-outline")]);
+      const [{ fieldsForVariant, interpolate, parseFormDocument }, outline] = await Promise.all([import("@/lib/forms/document"), import("@/lib/forms/template-outline")]);
       const fields = fieldsForVariant(parseFormDocument(loaded.version.document), loaded.instance.variantKey).map((field) => ({ key: field.key, label: interpolate(field.label, null) }));
-      return headedFields(context.question, fields).length >= 2;
+      /*
+       * "the same out line but with <name>'s info" (sf-s21 5c, the batch H live run): the request for a pasted
+       * outline is the form's reviser's (`template-outline.ts` names each of the outline's fields for it, the Action
+       * Plan included). Values the model wrote itself are set aside, so the outline is written as today's chat writes it.
+       */
+      if (outline.templateOutlineKeys({ question: context.question, history: context.history, fields }).size > 0) {
+        for (const field of Object.keys(values)) delete values[field];
+      }
+      return outline.headedFields(context.question, fields).length >= 2;
     })();
     if (roster.kind === "read" && !pastedOutline) {
       const names = roster.roster.map(displayName);

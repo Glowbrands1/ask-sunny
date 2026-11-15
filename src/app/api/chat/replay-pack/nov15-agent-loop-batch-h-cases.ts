@@ -317,7 +317,11 @@ export const NOV15_AGENT_LOOP_BATCH_H_CASES: ReplayCase[] = [
       t.loopModel!(model);
       await thread.say("I need a term CA for Remy Calder, she was 20 minutes late on 11/9/26");
       const facts = proposed(model.views)?.facts ?? {};
-      expect(facts.termination_stated, "the stated termination was not a fact").toEqual({ approval: "Termination needs your DM/HR approval before you finalize." });
+      // Changed on purpose (15 Nov 2026, the batch H live run): the fact also carries the plan's termination closing, so the card says how Create's plan ends (P15's plan line).
+      expect(facts.termination_stated, "the stated termination was not a fact").toEqual({
+        approval: "Termination needs your DM/HR approval before you finalize.",
+        plan_closing: "Effective immediately, employment is terminated following the progressive corrective action plan.",
+      });
       expect((facts.unset as string[] | undefined) ?? [], "the level was asked over a stated termination").not.toContain("warning_level");
       t.draftWrites({ observation: "Observed:\nRemy Calder arrived 20 minutes late for her shift on 11/9/26." });
       const id = await thread.create();
