@@ -98,13 +98,59 @@ export function doneThisTurn(effects: Pick<ToolEffects, "proposal" | "formUpdate
   return done.length > 0 ? done.join(" ") : null;
 }
 
-/** F1: an error or timeout after something was saved: what was, and that the rest did not finish. */
-export function partialReply(done: string, stopped: "timeout" | "error"): string {
+/**
+ * Batch J3 (QA's live re-run, 9b: "make it a written and yes payroll $15" saved the level and payroll, not the $15,
+ * stopped at the step limit and never said so): what this message stated that is not on the card or the form after
+ * the turn, and the fields an edit refused. Facts only, each "**<field>** (<value>)".
+ */
+export function notSavedThisTurn(
+  question: string,
+  effects: Pick<ToolEffects, "proposal" | "formUpdate">,
+  refused: readonly string[],
+  formOpen: boolean,
+): string[] {
+  const missing: string[] = [];
+  const updated = new Set(effects.formUpdate?.updated ?? []);
+  const card = effects.proposal;
+  const level = /\b(verbal|written)\b/i.exec(question)?.[1]?.toLowerCase() ?? null;
+  const saysPayroll = /\bpayroll\b/i.test(question);
+  const payrollNo = /\b(?:no|not)\s+payroll\b|\bpayroll\b[^.\n]{0,20}\b(?:no|not applicable)\b/i.test(question);
+  const payrollYes = /\b(?:yes|with)\b[^.\n]{0,20}\bpayroll\b|\bpayroll\b[^.\n]{0,20}\b(?:yes|applies)\b|\$\s?\d/i.test(question);
+  const payroll = saysPayroll ? (payrollNo ? "no" : payrollYes ? "yes" : null) : null;
+  const amount = /\$\s?(\d+(?:\.\d{1,2})?)/.exec(question)?.[1] ?? null;
+  const levelName = level === "written" ? "Written Warning" : "Verbal Warning";
+  const check = (have: boolean, label: string, value: string) => {
+    if (!have) missing.push(`**${label}** (${value})`);
+  };
+  if (card) {
+    if (level) check(card.warningLevel === level, "Type of Warning", levelName);
+    if (payroll) check(card.payrollDeduct === payroll, "Payroll deduct", payroll === "yes" ? "Yes" : "No");
+    if (amount && payroll !== "no") check(Number(card.payrollDeductAmount?.replace(/[^\d.]/g, "") ?? NaN) === Number(amount), "Payroll deduction amount", `$${amount}`);
+  } else if (formOpen) {
+    if (level) check(updated.has("warning_type"), "Type of Warning", levelName);
+    if (payroll) check(updated.has("payroll_deduct"), "Payroll deduct", payroll === "yes" ? "Yes" : "No");
+    if (amount && payroll !== "no") check(updated.has("payroll_deduct_amount"), "Payroll deduction amount", `$${amount}`);
+  }
+  for (const field of refused) {
+    const label = `**${field.replace(/_/g, " ")}**`;
+    if (!missing.some((line) => line.toLowerCase().startsWith(label.toLowerCase()))) missing.push(label);
+  }
+  return missing;
+}
+
+function notSavedLine(missing: readonly string[]): string {
+  return `Not saved yet: ${missing.join(", ")}. Tell me again and I'll add ${missing.length === 1 ? "it" : "them"}.`;
+}
+
+/** F1: an error or timeout after something was saved: what was, and that the rest did not finish; J3: what was not saved. */
+export function partialReply(done: string, stopped: "timeout" | "error", missing: readonly string[] = []): string {
+  if (missing.length > 0) return `${done} ${stopped === "timeout" ? "I ran out of time before finishing the rest" : "Something went wrong before I could finish the rest"}. ${notSavedLine(missing)}`;
   return `${done} ${stopped === "timeout" ? "I ran out of time before finishing the rest of that answer" : "Something went wrong before I could finish the rest of that answer"}, so please check it and send anything still missing again.`;
 }
 
-/** F2: the step limit with a card ready or a saved edit: name it, then ask for the one thing left. */
-export function stepLimitReply(done: string | null): string {
+/** F2: the step limit with a card ready or a saved edit: name it, then what was not saved (J3), else the one thing left. */
+export function stepLimitReply(done: string | null, missing: readonly string[] = []): string {
+  if (missing.length > 0) return `${done ? `${done} ` : ""}I couldn't finish everything in one message. ${notSavedLine(missing)}`;
   return done ? `${done} I couldn't finish everything else in one message. What's the one thing still left?` : STEP_LIMIT_REPLY;
 }
 
@@ -474,6 +520,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   };
 
   /* One tool call, timed and counted for the trace: its name, ms and result size; never its values. */
+  const refusedFields: string[] = [];
   const runTool = async (step: number, name: string, args: unknown): Promise<ToolResult> => {
     const started = performance.now();
     let result: ToolResult;
@@ -482,6 +529,10 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
       result = handler ? await handler((args && typeof args === "object" ? args : {}) as Record<string, unknown>) : { error: `There is no tool named ${name}.` };
     } catch {
       result = { error: "That lookup failed just now." };
+    }
+    /* J3: the fields an edit refused this turn, for a reply that stops early. */
+    if (name === "edit_form" && Array.isArray((result as { refused?: unknown }).refused)) {
+      for (const row of (result as { refused: { field?: unknown }[] }).refused) if (typeof row?.field === "string") refusedFields.push(row.field);
     }
     steps.push({ step, tool: name, ms: Math.round(performance.now() - started), resultChars: JSON.stringify(result).length, ok: !("error" in result), ...stepReason(result) });
     return result;
@@ -748,8 +799,9 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
    * batch A). Code adds only the protocol marker below and the safety clean-ups at the end; the card's questions, read-
    * backs and policy line are facts on propose_form's result, worded by the rules book's Card replies.
    */
+  const missing = stoppedAt === "reply" ? [] : notSavedThisTurn(input.question, effects, refusedFields, Boolean(input.openFormId));
   let content = (
-    stoppedAt === "timeout" || stoppedAt === "error" ? partialReply(done!, stoppedAt) : stoppedAt === "step_limit" ? stepLimitReply(done) : text
+    stoppedAt === "timeout" || stoppedAt === "error" ? partialReply(done!, stoppedAt, missing) : stoppedAt === "step_limit" ? stepLimitReply(done, missing) : text
   ).trim();
   if (content === "") content = done ?? STEP_LIMIT_REPLY;
   /*

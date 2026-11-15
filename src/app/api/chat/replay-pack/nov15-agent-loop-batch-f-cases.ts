@@ -101,7 +101,10 @@ export const NOV15_AGENT_LOOP_BATCH_F_CASES: ReplayCase[] = [
       const reply = await thread.say(SAID);
       expect(reply.content, "the step limit said it couldn't finish over a ready card").not.toBe(STEP_LIMIT_REPLY);
       expect(reply.content).toMatch(/Here is the \*\*.+\*\* for \*\*Remy Calder\*\* for you to review\./);
-      expect(reply.content).toMatch(/What's the one thing still left\?/);
+      // Changed on purpose (15 Nov 2026, batch J3): SAID states a verbal the card does not hold, so the step-limit reply
+      // names it as not saved instead of asking for "the one thing still left" (QA's 9b: never just that question).
+      expect(reply.content).toMatch(/Not saved yet: \*\*Type of Warning\*\* \(Verbal Warning\)\. Tell me again and I'll add it\./);
+      expect(reply.content).not.toMatch(/What's the one thing still left\?/);
       expect(reply.formProposal?.employeeName).toBe("Remy Calder");
     },
   },

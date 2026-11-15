@@ -123,4 +123,37 @@ export const NOV15_AGENT_LOOP_BATCH_J_CASES: ReplayCase[] = [
       expect(again.content, "\"What happened?\" was asked again word for word").not.toMatch(/What happened\?/);
     },
   },
+  {
+    id: "nov15-batch-j3-step-limit-names-what-was-not-saved",
+    title: "J3: \"make it a written and yes payroll $15\" on an open draft, saved without the $15 and stopped at the step limit: the reply says the $15 is not saved",
+    report: `${REPORT}; 9b (38s): payroll yes saved, the $15 not, the step limit hit, and the reply never said the $15 was not saved`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      let draftId = "";
+      // The live turn's shape: the level and payroll written, then reads until the step limit; the amount never written.
+      const model = loopStandIn((view) => {
+        const said = view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "";
+        if (/payroll \$15/.test(said)) {
+          if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { instance_id: draftId, values: { warning_type: "written", payroll_deduct: "yes" } } };
+          return { tool: "read_form", input: { instance_id: draftId } };
+        }
+        return lastResult(view, "propose_form")
+          ? { text: "Here is the card." }
+          : { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-3", policy: "Late Opening", what_happened: "Late opening the salon on 11/12." } };
+      });
+      const thread = start(t);
+      t.loopModel!(model);
+      await thread.say("CA for juno paxton, ASD, late to open 11/12");
+      t.draftWrites({ observation: "Observed:\nJuno Paxton opened the salon late on 11/12." });
+      draftId = await thread.create();
+      const reply = await thread.say("make it a written and yes payroll $15");
+      // Payroll on a draft is G5's (batch G); until it lands, payroll Yes is not written either, and the reply says so too.
+      expect(reply.content, "the reply never said the $15 was not saved").toMatch(/Not saved yet: [^\n]*\*\*Payroll deduction amount\*\* \(\$15\)/);
+      expect(reply.content).not.toMatch(/What's the one thing still left\?/);
+      expect(reply.content, "the saved level was listed as not saved").not.toMatch(/\*\*Type of Warning\*\* \(Written/);
+      expect(reply.content).toMatch(/I saved the change on the form: warning type\./);
+    },
+  },
 ];
