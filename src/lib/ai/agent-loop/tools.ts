@@ -422,6 +422,8 @@ export interface ToolEffects {
   nameLines?: Record<string, string>;
   /** Fix batch item 6: propose_form asked who this form is for (no person yet), for the record. */
   personAsked?: { templateKey: string };
+  /** find_staff ran this turn: a person was named, so a card without one is not "nobody named" (item 6). */
+  staffLookedUp?: boolean;
   /** Fix batch items 4 and 3: this turn's last "Did you mean" (the roster ids offered, the name typed), for the record. */
   nameQuestion?: { offeredIds: string[]; typed: string };
   /** Batch G (G4), by the rebuild plan's PR 1b: find_past_forms found forms on file to open (open: true) for this person. */
@@ -608,6 +610,7 @@ const ALSO_ASK_ACCOUNT = "If so, tell me what happened.";
 export async function findStaff(context: ToolContext, input: { name?: unknown; person_evidence?: unknown }, effects?: ToolEffects): Promise<ToolResult> {
   const typed = typeof input.name === "string" ? input.name.trim() : "";
   if (typed === "") return { reason_code: "missing_input", error: "Give the name to look for." };
+  if (effects) effects.staffLookedUp = true;
   const read = await rosterFor(context.actor.scope);
   if (read.kind === "failed") return { reason_code: "roster_failed", error: ROSTER_FAILED };
   if (read.kind === "unchecked") return { unchecked: true, note: ROSTER_UNCHECKED };
@@ -1231,7 +1234,8 @@ export function incidentDates(managerWords: string, priorActions: string | null)
 }
 
 /**
- * Fix batch item 6 (c124, c165; QA's review of #1051): nobody is named for the form. The question is always ask_exactly
+ * Fix batch item 6 (c124, c165; QA's review of #1051): nobody is named for the form (no employee, and no find_staff ran
+ * this turn: a person looked up but not yet chosen keeps the employee_id refusal). The question is always ask_exactly
  * (with the policy when one was named: batch G18), and the turn records that it asked (`person_asked`), so the next
  * turn is told up front that the manager's message answers it (`answering_who_question`), never by reading the reply.
  */
@@ -1520,14 +1524,15 @@ export async function proposeForm(
        * Form for?" without the policy): no person yet, and the manager named a policy in this chat; the question to ask
        * names it with its heading and page.
        */
-      if (!typed && !id) return askWhoFor(context, template, effects);
+      if (!typed && !id && !effects.staffLookedUp) return askWhoFor(context, template, effects);
       return {
         reason_code: "not_on_roster", error: "Give the employee_id find_staff returned for this person (call find_staff first). A name not on the roster goes on a form only after the manager answers the \"reply **use <name>**\" offer.",
       };
     }
   } else {
     const typedName = typeof input.employee_name === "string" ? tidyTypedName(input.employee_name) : "";
-    if (!typedName) return askWhoFor(context, template, effects);
+    if (!typedName && !effects.staffLookedUp) return askWhoFor(context, template, effects);
+    if (!typedName) return { reason_code: "missing_input", error: "Give the employee's name as the manager typed it." };
     employee = { name: typedName, salonIds: [] };
   }
   /*
