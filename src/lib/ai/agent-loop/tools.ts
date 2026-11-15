@@ -31,6 +31,7 @@ import { findManualSection, manualSectionHeadings, type ManualChunk } from "@/li
 import { sectionWording } from "@/lib/forms/policy-citation";
 import { buildProposal, extractEmployeeNames, extractJobTitle, managerContext, samePerson, tidyTypedName } from "@/lib/forms/proposal";
 import { cleaningUndonePhrase, namesCareAndCleaning } from "@/lib/forms/ca-policy";
+import { fieldStates, mergeSaved, refusedFields, savedDiff, type SavedChange } from "@/lib/ai/agent-loop/saved-diff";
 import { turnsFromThisPersonsRequest } from "@/lib/forms/this-persons-turns";
 import { closeHeadingReading, closePolicyQuestion, namedPolicies, namesHeading } from "@/lib/forms/named-policy-section";
 import { startsNewForm } from "@/lib/ai/remap-incident";
@@ -248,7 +249,8 @@ const NOT_ASKED = "The manager has not asked about forms on file, so they are no
 /** What the turn's tools produced for the reply: the card and the edit, when there were any. */
 export interface ToolEffects {
   proposal: ChatFormProposal | null;
-  formUpdate: { instanceId: string; updated: string[] } | null;
+  /** `saved`: each field that really changed on the form written, read back from the database (PR 3; `saved-diff.ts`). */
+  formUpdate: { instanceId: string; updated: string[]; saved?: SavedChange[]; putBack?: string[] } | null;
   /** Roster ids find_staff chose from a close spelling or a lone first name this turn (the card's name_from_staff_list fact). */
   nameLines?: Record<string, string>;
   /**
@@ -1478,7 +1480,7 @@ export async function proposeForm(
    * deduct, the warning level and the termination are CA-only fields (Corrective Action): they are never kept for
    * another template, whatever the conversation said for the CA (code may refuse; the fact says what was dropped).
    */
-  const caOnlyFields = template.key === "dpoa";
+  const caOnlyFields = template.key === appConfig().formKeys.corrective;
   const askedPayroll = (input.payroll_deduct === "yes" || input.payroll_deduct === "no") ? input.payroll_deduct : null;
   const payroll = caOnlyFields && askedPayroll && payrollStated(context) === askedPayroll ? askedPayroll : null;
   const typedAmount = typeof input.payroll_amount === "string" && /\d/.test(input.payroll_amount) ? input.payroll_amount.replace(/[^\d.]/g, "") : null;
@@ -1524,7 +1526,7 @@ export async function proposeForm(
   /*
    * Batch K6 (QA's 266 shadow replay, c079: a second person's coaching took 10/16 from the FIRST person's account). On an
    * incident form, a date the manager typed only in another request's turns, none of this person's, is not kept on this
-   * person's card (not_kept incident_date; the rules book asks or leaves it for the manager).
+   * person's card (not_on_card incident_date; the rules book asks or leaves it for the manager).
    */
   const otherRequestsDates = ACCOUNT_FORMS.has(template.key) && datesGiven.length === 0 && !readDates(requestWords).length ? incidentDates(managerTurns(context), null).map((given) => monthDayToIso(given, today)) : [];
   /* Only another request's date: the model's choice, or today's builder reading the whole chat (`proposal.formDate`). */
@@ -1546,11 +1548,10 @@ export async function proposeForm(
    * Batch G (QA's design, 15 Nov 2026; Pau's standing approval): the MODEL decides this Corrective Action is a
    * termination (warning_level "termination", taught by the rules book's examples); code only LOCKS it. It is kept only
    * when the manager's own words for this request carry a termination word (`saysTerminationWord`), else refused
-   * (not_kept). Create checks the word again, server-side.
+   * (not_on_card). Create checks the word again, server-side.
    */
   const askedTermination = input.warning_level === "termination" && template.key === appConfig().formKeys.corrective;
   const loopTermination = askedTermination && !level && (await import("@/lib/config/chat-quality-flags")).terminationStatedTicksEnabled() && (await import("@/lib/forms/termination-word")).saysTerminationWord(requestWords);
-  const dropped = [dateFromAnotherRequest ? "incident_date" : null, (askedLevel && !level) || (askedTermination && !loopTermination) ? "warning_level" : null, askedPayroll && !payroll ? "payroll_deduct" : null, typedAmount && !amount ? "payroll_amount" : null].filter(Boolean);
   /*
    * Prior actions as today reads them from the manager's own words (`statedPriorActions`: "Verbal corrective action —
    * signed 09/02/2026", a corrected date replacing the first; the live re-run's second-request-prior-step-correction
@@ -1807,11 +1808,26 @@ export async function proposeForm(
     ...((await import("@/lib/ai/carried-person-notice")).carriedFromEarlier(template.key, card.employeeName, { history: context.history as ChatMessage[], question: context.question }) ? { person_from_earlier: card.employeeName } : {}),
     ...(underPerformance ? { under_performance: true } : {}),
     ...(didYouMean ? { confirm_policy: didYouMean } : {}),
-    ...(dropped.length > 0 || (askedExitTermination && !exitTermination) || priorActionsRefused ? { not_kept: [...dropped, ...(askedExitTermination && !exitTermination ? ["exit_type"] : []), ...(priorActionsRefused ? ["prior_actions"] : [])] } : {}),
     ...(priorActionsRefused ? { prior_actions_not_kept: priorActionsRefused } : {}),
     ...((await outsideScopeSalon(context)) ?? (card.namedLocationOutOfScope ? { salon_outside_scope: card.namedLocationOutOfScope } : {})),
   };
+  /*
+   * PR 3 (rebuild plan; owner's audit): what the model asked for that is NOT on the card, each with a reason code, so the
+   * reply never claims it. (Was the fact not_kept: names only.) Values are never in it.
+   */
+  const notOnCard: { field: string; reason_code: string }[] = [
+    ...(dateFromAnotherRequest ? [{ field: "incident_date", reason_code: "date_from_another_request" }] : []),
+    ...((askedLevel && !level) ? [{ field: "warning_level", reason_code: caOnlyFields ? "level_not_stated" : "not_on_this_form" }] : []),
+    ...((askedTermination && !loopTermination) ? [{ field: "warning_level", reason_code: "termination_not_stated" }] : []),
+    ...((askedPayroll && !payroll) ? [{ field: "payroll_deduct", reason_code: caOnlyFields ? "payroll_not_stated" : "not_on_this_form" }] : []),
+    ...((typedAmount && !amount) ? [{ field: "payroll_amount", reason_code: caOnlyFields ? "amount_not_stated" : "not_on_this_form" }] : []),
+    ...((askedExitTermination && !exitTermination) ? [{ field: "exit_type", reason_code: "termination_not_stated" }] : []),
+    ...(priorActionsRefused ? [{ field: "prior_actions", reason_code: "prior_actions_not_kept" }] : []),
+    ...(futureDate ? [{ field: "form_date", reason_code: "date_after_today" }] : []),
+    ...(datesAsked.length > 0 ? [{ field: "form_date", reason_code: "several_dates_not_chosen" }] : []),
+  ];
   return {
+    ...(notOnCard.length > 0 ? { not_on_card: notOnCard } : {}),
     card: {
       form: card.templateName,
       employee: card.employeeName,
@@ -1823,7 +1839,8 @@ export async function proposeForm(
       job_title: card.employeeRole ?? null,
       form_date: card.formDate ?? null,
       observation: card.issue ?? null,
-      warning_level: level,
+      warning_level: level ?? (loopTermination ? "termination" : null),
+      incident_time: card.incidentTime ?? null,
       payroll_deduct: payroll,
       payroll_amount: payroll === "yes" && amount ? `$${amount.replace(/^\$/, "")}` : null,
       prior_actions: priorActions,
@@ -2059,6 +2076,19 @@ export async function editForm(
      * follow-up or future-by-design date, may be after today and is never refused.
      */
     const editToday = context.today || businessToday();
+    /* PR 3: the form's fields as they stand before any write this call makes; the saved list is the difference read back after. */
+    const beforeStates = fieldStates(loaded.values);
+    const recordSaved = async (claimed: readonly string[], reasons: ReadonlyMap<string, string> = new Map()) => {
+      const now = (await authorizeInstance(context.request, id, "view")).loaded;
+      const saved = savedDiff(beforeStates, fieldStates(now.values));
+      if (saved.length > 0) {
+        /* Edits in a row add up: updated is every field changed so far this turn on this form, not this call's alone. */
+        const merged = mergeSaved(effects.formUpdate, id, saved);
+        effects.formUpdate = { instanceId: id, updated: merged.saved.map((change) => change.field), saved: merged.saved, putBack: merged.putBack };
+      }
+      const { refused, unchanged } = refusedFields(claimed, saved, reasons);
+      return { saved, refused, unchanged, now };
+    };
     /*
      * Batch G (G11, a production chat: "change date of document to 11-15-2026"): a date the manager typed in this message
      * for the document is theirs to set, after today or not (the reply says so). Only a date read from the account is
@@ -2151,7 +2181,7 @@ export async function editForm(
           note: "Nothing was written and no new draft was opened. Say what was refused and why.",
         };
       }
-      return { ...revisedEdit, revision_draft: { form: draft.templateName, employee: draft.employeeName }, original_unchanged: true, note: "Say it is a new draft revising the finalized form, as the rules book's Editing lines teach." };
+      return { ...revisedEdit, revision_draft: { id: draft.instanceId, from_id: id, form: draft.templateName, employee: draft.employeeName }, original_unchanged: true, note: "Say it is a new draft revising the finalized form, as the rules book's Editing lines teach." };
     }
     /*
      * HARD GUARD, A REWORD KEEPS EVERY FACT (Pau via QA, 14 Nov 2026: "make it professional", "reword it", "clean it
@@ -2246,14 +2276,18 @@ export async function editForm(
           ? { updated: [], ...writeAccount, note: "Nothing was saved yet. Write the manager's latest account into account_field with values: what it holds now, then the new account after it." }
           : { updated: [], note: "The form's reviser found nothing in the manager's message to change. Ask what they want changed." };
       }
-      const updated = revised.formUpdate?.instanceId === id ? revised.formUpdate.updated : [];
-      if (updated.length > 0) effects.formUpdate = { instanceId: id, updated };
+      /* PR 3: what the reviser says it updated is a claim; what was saved is read back from the form. */
+      const claimed = revised.formUpdate?.instanceId === id ? revised.formUpdate.updated : [];
+      const { saved, refused, unchanged } = await recordSaved(claimed);
       return {
-        updated,
+        updated: saved.map((change) => change.field),
+        saved,
+        refused,
+        ...(unchanged.length > 0 ? { unchanged } : {}),
         reviser_said: untrusted(revised.content.slice(0, 1_500)),
-        ...(updated.length === 0 && writeAccount ? writeAccount : {}),
-        note: updated.length > 0
-          ? "Tell the manager what changed, from reviser_said and updated: each changed field and its new wording. Claim nothing else."
+        ...(saved.length === 0 && writeAccount ? writeAccount : {}),
+        note: saved.length > 0
+          ? "Tell the manager what changed, from saved (each field, before and after). Claim nothing else."
           : writeAccount
             ? "Nothing was saved yet. Write the manager's latest account into account_field with values: what it holds now, then the new account after it."
             : "Nothing was saved. Say plainly what was not changed.",
@@ -2342,16 +2376,19 @@ export async function editForm(
         dictatedPlan = planSaved.rejected.some((row) => row.key === "action_plan") ? null : (planSaved.values.action_plan ?? planToSave);
       }
     }
-    const saved = (await authorizeInstance(context.request, id, "view")).loaded;
-    const dateWritten = documentDate !== null && saved.values.some((row) => row.fieldKey === "form_date" && row.value === documentDate);
-    const updated = [...Object.keys(written.accepted.values ?? {}), ...Object.keys(written.accepted.checked ?? {}), ...(dateWritten ? ["form_date"] : []), ...(dictatedPlan !== null ? ["action_plan"] : [])];
-    if (updated.length > 0) effects.formUpdate = { instanceId: id, updated };
+    /* PR 3: claimed = what the writers accepted; the saved list is what the form shows after the write. */
+    const claimed = [...Object.keys(written.accepted.values ?? {}), ...Object.keys(written.accepted.checked ?? {}), ...(documentDate !== null ? ["form_date"] : []), ...(dictatedPlan !== null ? ["action_plan"] : []), ...written.rejected.map((row) => row.key)];
+    const reasons = new Map(written.rejected.map((row) => [row.key, row.reason] as const));
+    const { saved: savedChanges, refused, unchanged, now: saved } = await recordSaved(claimed, reasons);
+    const updated = savedChanges.map((change) => change.field);
     /* Batch G2 (item 1, EDIT_SEES_SAVED_FORM): the level the saved form holds now, read back, so the reply never claims it from the card or history. */
     const savedLevel = saved.values.find((row) => row.fieldKey === "warning_type")?.checked ?? [];
     const levelLabel: Record<string, string> = { verbal: "Verbal", written: "Written", termination: "Termination" };
     return {
       updated,
-      refused: written.rejected.map((row) => ({ field: row.key, reason: row.reason })),
+      saved: savedChanges,
+      refused,
+      ...(unchanged.length > 0 ? { unchanged } : {}),
       ...(loaded.instance.templateKey === appConfig().formKeys.corrective ? { saved_level: savedLevel.length > 0 ? savedLevel.map((key) => levelLabel[key] ?? key).join(", ") : null } : {}),
       ...rewordFacts,
       ...addFacts,
