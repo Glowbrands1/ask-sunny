@@ -31,6 +31,9 @@ import { rulesBookText } from "./rules-book";
  *
  * Re-taken on purpose on 16 Nov 2026 (fix batch item 2, "final warning", Pau's ruling): one Card replies line was added
  * for level_not_named. It reads the same under every config; nothing else changed.
+ *
+ * Re-taken on purpose on 16 Nov 2026 (the retry guard, QA): one Card replies line was added for stop_retrying. It reads
+ * the same under every config; nothing else changed.
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");

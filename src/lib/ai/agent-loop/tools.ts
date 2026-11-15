@@ -188,6 +188,11 @@ async function formsOnFileAskedFor(context: ToolContext, evidence: unknown, pers
   return { ok: false, reason: "evidence_other_person", reasonCode: "privacy_not_this_person" };
 }
 
+/** find_staff's offer for a name not on the staff list (the propose_form refusal gives the same line). */
+export function offRosterNameQuestion(name: string): string {
+  return `I can't find **${name}** on your staff list. Reply **use ${name}** to put the name on the form as you typed it, or give me the full name.`;
+}
+
 /** What the model says its exit_evidence quote is (fix batch item 1); null when it said nothing or something else. */
 export type ExitEvidenceKind = "asks_for_exit_form" | "yes_to_exit_offer" | "resignation_told";
 export function exitEvidenceKind(value: unknown): ExitEvidenceKind | null {
@@ -752,7 +757,7 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
       const holdsName = named.ok && !isJobTitlePhrase(typed) && holdsPhrase(String((input.person_evidence as { quote: string }).quote), typed);
       if (holdsName) {
         const shown = typed.replace(/\s+/g, " ").trim();
-        return { reason_code: "not_on_roster", matches: [], not_on_roster: shown, note: `Not on the ${staffSystem()} staff list. Ask the manager, in these words: I can't find **${shown}** on your staff list. Reply **use ${shown}** to put the name on the form as you typed it, or give me the full name.` };
+        return { reason_code: "not_on_roster", matches: [], not_on_roster: shown, note: `Not on the ${staffSystem()} staff list. Ask the manager, in these words: ${offRosterNameQuestion(shown)}` };
       }
     }
     if (!person) {
@@ -1578,8 +1583,14 @@ export async function proposeForm(
        * names it with its heading and page.
        */
       if (!typed && !id && !effects.staffLookedUp) return askWhoFor(context, template, effects);
+      /*
+       * The retry guard (QA, 16 Nov 2026; the 266 re-run's c219 turn 3 ran propose_form five times): with a typed name,
+       * the refusal says what to ask (find_staff's own use-<name> line), so the model asks instead of retrying.
+       */
+      const shown = typed.replace(/\s+/g, " ").trim();
       return {
         reason_code: "not_on_roster", error: "Give the employee_id find_staff returned for this person (call find_staff first). A name not on the roster goes on a form only after the manager answers the \"reply **use <name>**\" offer.",
+        ...(shown ? { ask_exactly: offRosterNameQuestion(shown) } : {}),
       };
     }
   } else {

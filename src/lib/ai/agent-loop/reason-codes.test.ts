@@ -31,6 +31,8 @@ const KNOWN = new Set([
   "several_dates_not_chosen", "date_from_another_request", "not_on_this_form",
   // Fix batch item 1 (16 Nov 2026): a resignation told with no ask makes no exit card; the app offers the form.
   "exit_not_asked",
+  // The retry guard (QA, 16 Nov 2026): a third call of a tool refused twice this turn for one reason_code is not run.
+  "stop_retrying",
 ]);
 
 /** A line that returns a refusal: `error:` followed by a string, a template or a named message (not `error: Boolean(...)`). */

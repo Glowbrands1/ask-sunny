@@ -601,15 +601,41 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     ...dataToolHandlers({ actor: context.actor, question: context.question, scopeId: context.scopeId, today: context.today }, effects),
   };
 
+  /*
+   * THE RETRY GUARD (QA, 16 Nov 2026; the 266 re-run on the fix batch: c219 turn 3 ran propose_form five times in a row
+   * and stopped at 7 of 8 steps, c134 alternated propose_form and find_staff). Keyed on (tool, reason_code) in one turn,
+   * whatever the args: the second refusal carries the fact stop_retrying {reason_code, ask_exactly?}; any later call of
+   * that tool in the turn is refused without running it (the count goes in the trace). Code never writes the reply.
+   */
+  const refusalCounts = new Map<string, number>();
+  const stoppedTools = new Map<string, { reason_code: string; ask_exactly?: string }>();
+  let retriesBlocked = 0;
   /* One tool call, timed and counted for the trace: its name, ms and result size; never its values. */
   const runTool = async (step: number, name: string, args: unknown): Promise<ToolResult> => {
     const started = performance.now();
     let result: ToolResult;
-    try {
-      const handler = handlers[name];
-      result = handler ? await handler((args && typeof args === "object" ? args : {}) as Record<string, unknown>) : { reason_code: "unknown_tool", error: `There is no tool named ${name}.` };
-    } catch {
-      result = { reason_code: "tool_threw", error: "That lookup failed just now." };
+    const stopped = stoppedTools.get(name);
+    if (stopped) {
+      retriesBlocked += 1;
+      result = { reason_code: "stop_retrying", error: `${name} was refused twice this turn for ${stopped.reason_code}; it was not run again. Reply to the manager now${stopped.ask_exactly ? ", ending with ask_exactly" : ""}.`, stop_retrying: stopped, ...(stopped.ask_exactly ? { ask_exactly: stopped.ask_exactly } : {}) };
+    } else {
+      try {
+        const handler = handlers[name];
+        result = handler ? await handler((args && typeof args === "object" ? args : {}) as Record<string, unknown>) : { reason_code: "unknown_tool", error: `There is no tool named ${name}.` };
+      } catch {
+        result = { reason_code: "tool_threw", error: "That lookup failed just now." };
+      }
+      const refusal = result as { reason_code?: unknown; error?: unknown; ask_exactly?: unknown };
+      if (typeof refusal.reason_code === "string" && typeof refusal.error === "string") {
+        const key = `${name}\u0000${refusal.reason_code}`;
+        const count = (refusalCounts.get(key) ?? 0) + 1;
+        refusalCounts.set(key, count);
+        if (count >= 2) {
+          const stop = { reason_code: refusal.reason_code, ...(typeof refusal.ask_exactly === "string" ? { ask_exactly: refusal.ask_exactly } : {}) };
+          stoppedTools.set(name, stop);
+          result = { ...result, stop_retrying: stop };
+        }
+      }
     }
     steps.push({ step, tool: name, ms: Math.round(performance.now() - started), resultChars: JSON.stringify(result).length, ok: !("error" in result), ...stepReason(result, name) });
     return result;
@@ -908,7 +934,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     trace.firstTokenMs = firstTokenMs;
     trace.slots = {
       ...(trace.slots ?? {}),
-      agent_loop: { ...(cardSlot ? { card: cardSlot } : {}), ...(nameQuestionSlot ? { name_question: nameQuestionSlot } : {}), ...(personAskedSlot ? { person_asked: personAskedSlot } : {}), steps, model_steps: modelSteps, model_calls: modelCalls, step_limit: limit, steps_used: stepNumber - 1, stopped: stoppedAt, ms: latencyMs, first_token_ms: firstTokenMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}), ...(levelReview ? { level_review: levelReview } : {}) },
+      agent_loop: { ...(cardSlot ? { card: cardSlot } : {}), ...(nameQuestionSlot ? { name_question: nameQuestionSlot } : {}), ...(personAskedSlot ? { person_asked: personAskedSlot } : {}), steps, model_steps: modelSteps, model_calls: modelCalls, step_limit: limit, steps_used: stepNumber - 1, stopped: stoppedAt, ms: latencyMs, first_token_ms: firstTokenMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}), ...(levelReview ? { level_review: levelReview } : {}), ...(retriesBlocked > 0 ? { stop_retrying: retriesBlocked } : {}) },
     };
   }
 
