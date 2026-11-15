@@ -77,6 +77,16 @@ One line per behavior: the flag(s), what is missing, and a suggested fix.
 49. **CLOSED** (RULE (rules book)). `HUMAN_REPLIES`: A later card turn for the same form and person opens with one line on what changed and skips lines already read. **Fix:** rules-book Replies: "A card again for the same form and person: one line on what changed; never repeat lines the manager already read"; run.ts: add only required lines changed since the last card.
 50. **CLOSED** (RULE (rules book)). `OBSERVATION_NO_LEADING_NAME`: An account clause that starts "<employee> at <place>," drops the name and keeps the rest. **Fix:** rules-book What happened: "An account that opens with the employee's own name then at/in ('<A> at the front desk, she was rude') drops the name: 'at the front desk, she was rude'."
 
+## Turns the loop does not take yet (batch F5, 15 Nov 2026)
+
+A turn carrying one of these goes to today's path, and the trace says why (`slots.agent_loop_skipped`; `agent-loop/switch.ts` `agentLoopSkipReason`). Each is a TODO, to support in the loop later:
+
+- [ ] **attachments** (`attachedDocumentIds`): the documents the manager attached to the question. TODO: pass them to search_knowledge as a scoped read.
+- [ ] **report context** (`reportContext`): the report the manager was looking at when they asked. TODO: pass it to read_stats as its default report, salons and period.
+- [ ] **pending copy** (`pendingCopyFromInstanceId`, SAME_FORM_COPY_NEW_PERSON): "the same form for a new person" after the app offered the copy. TODO: let propose_form take the copied form (see gap 28).
+- [ ] **answer mode** (`mode` quick / detailed): the manager's chosen answer length. TODO: pass it to the prompt as a reply-length line.
+- **Not skipped: `continueProposalTemplateKey`.** The browser sends it on nearly every turn after a card, and the loop reads that card from the history itself. Skipping on it would send most card follow-ups to today's path, so it is only noted (`slots.agent_loop_carried`).
+
 ## Pau's 14 Nov rulings: intentional changes
 
 These replace today's behavior on purpose and are not gaps. Where the loop does not yet do what a ruling says, the line says so. That work is for Coding-7, the same as the gaps.

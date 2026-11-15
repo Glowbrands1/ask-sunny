@@ -26,7 +26,9 @@ export type LoopDecision =
   | { readonly tool: string; readonly input: Record<string, unknown> }
   | { readonly text: string; readonly cut?: boolean }
   /** The request is accepted and nothing more arrives, until the call is aborted (a stalled model). */
-  | { readonly stall: true };
+  | { readonly stall: true }
+  /** The model call fails outright (batch F1: an error after a tool already saved). */
+  | { readonly fail: true };
 
 export interface LoopStandIn {
   /** The AI SDK language model the loop is given (`__setAgentLoopModelForTests`). */
@@ -103,6 +105,7 @@ export function loopStandIn(decide: (view: LoopView) => LoopDecision): LoopStand
         const view = viewOf(options.prompt);
         standIn.views.push(view);
         const decision = decide(view);
+        if ("fail" in decision) throw new Error("the stand-in model failed");
         if ("stall" in decision) {
           return {
             stream: new ReadableStream({
