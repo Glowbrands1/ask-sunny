@@ -55,6 +55,8 @@ import { findOpenIncidentDraft, findResentDraft } from "@/lib/forms/draft-reopen
 import type { SameChat } from "@/lib/forms/draft-same-chat";
 import { authorizeLocation } from "@/lib/forms/location-scope";
 import { TERMINATION_OPTION, statesTermination } from "@/lib/forms/termination-stated";
+import { saysTerminationWord } from "@/lib/forms/termination-word";
+import { terminationStatedTicksEnabled } from "@/lib/config/chat-quality-flags";
 import { checkProposalIsCurrent } from "@/lib/forms/proposal-currency";
 import { preferredNamesOf } from "@/lib/forms/preferred-name-current";
 import { looseRosterFor } from "@/lib/forms/loose-name";
@@ -168,6 +170,8 @@ export async function POST(request: Request) {
       payrollDeduct?: unknown;
       payrollDeductAmount?: unknown;
       warningLevel?: unknown;
+      /** The agent loop's card: its termination is the model's, locked; today's reader never decides it. */
+      fromAgentLoop?: unknown;
       /** The chat the proposal came from, for `checkProposalIsCurrent`. Ask Sunny only. */
       conversation?: unknown;
       /** Optional stable id for this chat. The first message id is used when this is absent. */
@@ -333,9 +337,22 @@ export async function POST(request: Request) {
        * Read from the manager's own turns; a hedge ("she might be terminated if this continues") states nothing. Off,
        * `statesTermination` is false.
        */
+      /*
+       * The agent loop's card (QA's design, 15 Nov 2026; Pau's standing approval): its model decided this form is a
+       * termination, and that is accepted only when the conversation's own user turns carry a termination word, checked
+       * here, server-side (`saysTerminationWord`). Otherwise today's reader below decides, as before.
+       */
+      const userTurns = Array.isArray(card.conversation)
+        ? (await readingTurns(parseHistory(card.conversation))).filter((turn) => turn.role === "user").map((turn) => String(turn.content)).join("\n")
+        : "";
+      /* QA's third review: gated by TERMINATION_STATED_TICKS like today's tick; a loop card never runs today's reader. */
+      const fromAgentLoop = card.fromAgentLoop === true;
+      const loopTermination = card.templateKey === "dpoa" && card.warningLevel === "termination" && terminationStatedTicksEnabled() && saysTerminationWord(userTurns);
       const statedLevel = isStatedWarningLevel(card.warningLevel)
         ? card.warningLevel
-        : card.templateKey === "dpoa" &&
+        : loopTermination
+          ? TERMINATION_OPTION
+          : !fromAgentLoop && card.templateKey === "dpoa" &&
             Array.isArray(card.conversation) &&
             statesTermination(
               (await readingTurns(parseHistory(card.conversation)))
