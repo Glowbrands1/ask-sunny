@@ -1548,6 +1548,17 @@ export async function proposeForm(
     if (!manual) return { reason_code: "read_failed", error: "The JBA Policy Manual could not be read just now, so no policy can be cited. Propose without a policy or say so." };
     policyHeading = headingOf(manual.headings, askedPolicy);
     if (!policyHeading) return { reason_code: "not_a_heading", error: "That is not a heading of the JBA Policy Manual (or \"Other\"). Pick the one heading that fits what happened.", headings: manual.headings };
+    /*
+     * Batch J5 (QA's live re-run: "CA for <name>, ASD, late to open 11/12" cited Attendance p.14): "late to open" and a
+     * failure to open are the manual's Late Opening section, as today's chat reads them (`late-open.ts`,
+     * LATE_OPEN_DATE / FAILURE_TO_OPEN_IS_LATE_OPENING). Late for a shift stays Attendance (`describesAttendanceToo`).
+     */
+    const lateOpen = await import("@/lib/forms/late-open");
+    const lateOpening = manual.headings.find((heading) => headingKey(heading) === headingKey("Late Opening"));
+    const saysLateOpening = (lateOpen.lateOpenOn() && lateOpen.LATE_TO_OPEN.test(requestWords)) || lateOpen.saysFailureToOpen(requestWords);
+    if (lateOpening && saysLateOpening && headingKey(policyHeading) === headingKey("Attendance") && !lateOpen.describesAttendanceToo(requestWords)) {
+      return { reason_code: "wrong_heading", error: `The manager's words ("late to open", a failure to open) are the manual's ${lateOpening} section, not Attendance. Propose the card again with policy "${lateOpening}".` };
+    }
   }
   /*
    * CLOSE_SPELLING (the manual's own reader): a policy the manager named with a misspelling that is not one confident
@@ -1889,7 +1900,7 @@ export async function proposeForm(
       ? { stated: { ...(level ? { warning_level: level } : {}), ...(payroll ? { payroll_deduct: payroll } : {}), ...(payroll === "yes" && amount ? { payroll_amount: `$${amount.replace(/^\$/, "")}` } : {}), ...(priorActions ? { prior_actions: priorActions } : {}) } }
       : {}),
     /* AMOUNT_UNKNOWN_ACK (batch H1): "I don't know the amount" leaves it blank for the manager, said once, never asked again. */
-    ...(corrective && payroll === "yes" && !amount ? (saysAmountUnknown(context.question) ? { payroll_amount_unknown: true } : { payroll_amount_unset: true }) : {}),
+    ...(corrective && payroll === "yes" && !amount ? (saysAmountUnknown(context.question, context.history, { amountOpen: true }) ? { payroll_amount_unknown: true } : { payroll_amount_unset: true }) : {}),
     ...(datesGiven.length > 1 ? { dates_given: datesGiven, ...(date ? { date_chosen: date } : {}) } : {}),
     /* Batch G (G16): this chat already asked which date; a second ask is never made (the rules book: use the best reading). */
     ...(datesGiven.length > 1 && context.history.some((message) => message.role === "assistant" && /more than one date|which date goes on the form/i.test(String(message.content))) ? { dates_asked_before: true } : {}),

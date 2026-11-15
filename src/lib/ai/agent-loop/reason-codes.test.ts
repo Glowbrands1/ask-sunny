@@ -24,6 +24,8 @@ const KNOWN = new Set([
   // PR 1b: the request and account evidence (requestTurns builds `${kind}_invalid` and the rest), and the open request.
   "request_evidence_invalid", "request_evidence_other_person", "request_evidence_not_this_request",
   "account_evidence_invalid", "account_evidence_other_person", "account_evidence_not_this_request", "account_evidence_missing", "open_requested",
+  // Batch J5 (#1028): "late to open" proposed as Attendance; the words are the manual's Late Opening section.
+  "wrong_heading",
   // Added on purpose (PR 3, tools return exactly what was saved): propose_form's not_on_card codes, a field left off the card.
   "level_not_stated", "termination_not_stated", "payroll_not_stated", "amount_not_stated", "prior_actions_not_kept",
   "several_dates_not_chosen", "date_from_another_request", "not_on_this_form",

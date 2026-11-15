@@ -115,6 +115,17 @@ export function monthDayToIso(monthDay: string, today: string): string {
 export function isoDate(value: string, today: string): string | null {
   const text = value.trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  /*
+   * QA's batch J review (15 Nov 2026): "2026-12-20T00:00", "2026/12/20", "2026-12-20T09", "2026-12-20 9am" and
+   * "2026-12-20 at 9:00" were read as 12/20 of LAST year. A leading four-digit year is always the year, and whatever
+   * follows the day (a time) is ignored. A format parser.
+   */
+  const leading = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?!\d)/.exec(text);
+  if (leading) {
+    const [year, month, day] = [Number(leading[1]), Number(leading[2]), Number(leading[3])];
+    if (month < 1 || month > 12 || day < 1 || day > new Date(Date.UTC(year, month, 0)).getUTCDate()) return null;
+    return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  }
   const [date] = readDates(text);
   if (!date) return null;
   if (date.year !== null) return `${date.year}-${String(date.month).padStart(2, "0")}-${String(date.day).padStart(2, "0")}`;
