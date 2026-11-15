@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { nameConfirmationQuestion } from "@/lib/forms/employee-match";
 
-import { confirmedSpellings, latestTurnConfirms, spellingsConfirmedFor } from "./confirmed-spelling";
+import { answerNamesSomeoneElse, confirmedSpellings, latestTurnConfirms, spellingsConfirmedFor } from "./confirmed-spelling";
 
 /**
  * Fix batch item 4 (HANDOFF section 7: "Did you mean" confirmation: one consistent instruction, and accept the full
@@ -47,5 +47,33 @@ describe("a spelling the manager confirmed (item 4)", () => {
     expect(spellingsConfirmedFor(answered, ["Juno Paxton"])).toEqual([]);
     expect(latestTurnConfirms(answered, ["Remy Calder"])?.by).toBe("full_name");
     expect(latestTurnConfirms([...answered, { role: "assistant", content: "Here's the card." }, { role: "user", content: "thanks" }], ["Remy Calder"])).toBeNull();
+  });
+});
+
+describe("a reply that names someone else is not a yes (item 3, c137)", () => {
+  const roster = ["Remy Calder", "Juno Paxton", "Rowan Kestrel"];
+  const remi = nameConfirmationQuestion("Remi", ["Remy Calder"]);
+  const asked = (answer: string) => [
+    { role: "user", content: "put together a coaching document for Remi" },
+    { role: "assistant", content: `${remi}\n\nIf so, tell me what happened.` },
+    { role: "user", content: answer },
+  ];
+
+  it("a pasted account about another roster person, or a name nobody has, names them", () => {
+    expect(answerNamesSomeoneElse(asked("Juno Paxton was late to her shift on 11/14 and did not call ahead."), "Remy Calder", roster)).toEqual({ others: ["Juno Paxton"], typed: "Remi" });
+    expect(answerNamesSomeoneElse(asked("juno paxton was late to her shift on 11/14"), "Remy Calder", roster)?.others).toEqual(["Juno Paxton"]);
+    expect(answerNamesSomeoneElse(asked("Odessa Vantreight was late to her shift on 11/14"), "Remy Calder", roster)?.others).toEqual(["Odessa Vantreight"]);
+  });
+
+  it("a yes, the full name typed back, or an account naming nobody else is not caught", () => {
+    expect(answerNamesSomeoneElse(asked("yes"), "Remy Calder", roster)).toBeNull();
+    expect(answerNamesSomeoneElse(asked("yes, she was late on 11/14, Juno Paxton saw it"), "Remy Calder", roster)).toBeNull();
+    expect(answerNamesSomeoneElse(asked("Remy Calder, she was late on 11/14"), "Remy Calder", roster)).toBeNull();
+    expect(answerNamesSomeoneElse(asked("she was late to her shift on 11/14"), "Remy Calder", roster)).toBeNull();
+  });
+
+  it("only answers to this chat's own question for this person count", () => {
+    expect(answerNamesSomeoneElse(asked("Juno Paxton was late"), "Rowan Kestrel", roster)).toBeNull();
+    expect(answerNamesSomeoneElse([{ role: "user", content: "Juno Paxton was late" }], "Remy Calder", roster)).toBeNull();
   });
 });

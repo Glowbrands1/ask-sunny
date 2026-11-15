@@ -79,3 +79,50 @@ export const NOV16_AGENT_LOOP_DID_YOU_MEAN_CONFIRM_CASES: ReplayCase[] = (["Remy
     expect(thread.proposal?.formDate, "the first turn's date was dropped as another person's request").toBe("2026-11-14");
   },
 }));
+
+/*
+ * HANDOFF section 7, item 3: "c137: after 'Did you mean X?', the manager pasted an account naming another person in
+ * full, and the loop carded X. A reply that names someone else is not a yes." The stand-in here does what c137's model
+ * did: it takes the offered name as if the manager had said yes. Code refuses that card (right_person) and the reply
+ * asks; the account's own person is looked up instead.
+ */
+NOV16_AGENT_LOOP_DID_YOU_MEAN_CONFIRM_CASES.push(
+  ...([
+    ["roster", "Juno Paxton was late to her shift on 11/14 and did not call ahead."],
+    ["off-roster", "Odessa Vantreight was late to her shift on 11/14 and did not call ahead."],
+  ] as const).map(([tag, pasted]): ReplayCase => ({
+    id: `nov16-item3-reply-naming-someone-else-is-not-a-yes-c137-${tag}`,
+    title: `Item 3 (c137's shape): "put together a coaching document for Remi" asks Did you mean **Remy Calder**?; the pasted account "${pasted}" is not a yes: no card for Remy Calder, and the reply asks`,
+    report: "QA's targeted re-run (16 Nov 2026), c137, from the Runner's masked set; HANDOFF section 7 item 3",
+    status: "fixed",
+    fixFlags: [FLAG, NEAR_MISS],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      await salon(t);
+      const refusals: string[] = [];
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        const staff = lastResult(view, "find_staff") as StaffResult;
+        const second = view.turns.filter((turn) => turn.role === "user").length > 1;
+        // c137's model: the offered name, as if the pasted account were a yes.
+        if (!staff) return { tool: "find_staff", input: { name: second ? "Remy Calder" : "Remi" } };
+        const asked = /Ask the manager, in these words: ([\s\S]+)$/.exec(staff.note ?? "")?.[1];
+        if (asked) return { text: [asked, staff.also_ask_if_no_account].filter(Boolean).join("\n\n") };
+        const card = lastResult(view, "propose_form") as { error?: string } | null;
+        const person = staff.matches?.[0];
+        if (person && !card) return { tool: "propose_form", input: { template_key: "coaching", employee_id: person.employee_id, what_happened: "She was late to her shift on 11/14 and did not call ahead.", incident_date: "2026-11-14" } };
+        if (card?.error) {
+          refusals.push(card.error);
+          return { text: /ask: "([^"]+)"/.exec(card.error)?.[1] ?? "Who is this Coaching Form for?" };
+        }
+        return { text: `Here's the Coaching Form for **${person?.name ?? ""}**.` };
+      }));
+      const thread = t.thread();
+      const ask = await thread.say("put together a coaching document for Remi");
+      expect(ask.content).toMatch(/Did you mean \*\*Remy Calder\*\*\?/);
+      const reply = await thread.say(pasted);
+      expect(thread.proposal?.employeeName ?? null, `a reply naming someone else carded Remy Calder:\n${reply.content}`).not.toBe("Remy Calder");
+      expect(refusals.at(-1) ?? "", "propose_form did not refuse the offered name").toMatch(/not a yes/);
+      expect(reply.content).toMatch(/Is this form for \*\*(Juno Paxton|Odessa Vantreight)\*\* or \*\*Remy Calder\*\*\?/);
+    },
+  })),
+);

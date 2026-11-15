@@ -10,7 +10,7 @@ import { appConfig } from "./app-config";
 import { isoDate, monthDayToIso, readDates, sameDate, withoutDates } from "./dates";
 import { candidateNameWords, chatFormsActor } from "@/lib/forms/chat-form-records";
 import { holdsPhrase, identifiedTurns, verifyEvidence, withoutMessageIdTags, type IdentifiedTurn } from "./evidence";
-import { latestTurnConfirms, spellingsConfirmedFor } from "./confirmed-spelling";
+import { answerNamesSomeoneElse, latestTurnConfirms, spellingsConfirmedFor } from "./confirmed-spelling";
 import { displayName, matchEmployeeName, nameConfirmationQuestion, readNameConfirmation, type RosterEmployee } from "@/lib/forms/employee-match";
 import { offRosterTyped } from "@/lib/forms/roster-only-names";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
@@ -1469,6 +1469,17 @@ export async function proposeForm(
     const turnedDown = person ? turnedDownName(context) : null;
     if (person && turnedDown && samePerson(turnedDown, displayName(person))) {
       return { reason_code: "right_person", error: `The manager said no to ${displayName(person)}. Never put them on the card; ask who the form is for.` };
+    }
+    /*
+     * Fix batch item 3 (c137): the answer to this chat's own "Did you mean **<A>**?" that names someone else in full (a
+     * pasted account about <B>) is not a yes: <A> is never carded from it (`confirmed-spelling.ts`; ruling A).
+     */
+    const elsewhere = person ? answerNamesSomeoneElse(conversationTurns(context), displayName(person), read.roster.map(displayName)) : null;
+    if (person && elsewhere) {
+      const other = elsewhere.others[0]!;
+      return {
+        reason_code: "right_person", error: `The manager's answer to "Did you mean ${displayName(person)}?" names ${elsewhere.others.join(", ")}, not ${displayName(person)}: that is not a yes. Never put ${displayName(person)} on the card from it. Look up ${other} with find_staff; if the form's person is still unclear, ask: "Is this form for **${other}** or **${displayName(person)}**?"`,
+      };
     }
     if (person) employee = { name: nameAsSaid(person, managerTurns(context)), salonIds: person.salonIds, id: person.id };
     /*

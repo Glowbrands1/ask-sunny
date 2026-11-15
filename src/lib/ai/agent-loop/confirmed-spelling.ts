@@ -1,5 +1,6 @@
-import { readNameConfirmation } from "@/lib/forms/employee-match";
-import { samePerson } from "@/lib/forms/proposal";
+import { AFFIRMATIVE, readNameConfirmation } from "@/lib/forms/employee-match";
+import { notAPerson } from "@/lib/forms/person-guard";
+import { extractEmployeeNames, samePerson } from "@/lib/forms/proposal";
 
 import { holdsPhrase } from "./evidence";
 
@@ -74,4 +75,31 @@ export function spellingsConfirmedFor(conversation: readonly Turn[], names: read
 export function latestTurnConfirms(conversation: readonly Turn[], names: readonly string[]): ConfirmedSpelling | null {
   const last = conversation.filter((turn) => typeof turn.content === "string").length - 1;
   return confirmedSpellings(conversation).find((settled) => settled.answerIndex === last && names.some((name) => samePerson(name, settled.name))) ?? null;
+}
+
+/**
+ * Fix batch item 3 (c137): the latest turn answers this chat's own "Did you mean **<A>**?" for this person, is not a
+ * yes, and names somebody else in full (a capitalised name `extractEmployeeNames` reads, or a roster person's full name
+ * as whole words). That reply is not a yes: <A> is never carded from it. Null when the turn is a yes, names nobody
+ * else, or answers no such question.
+ */
+export function answerNamesSomeoneElse(
+  conversation: readonly Turn[],
+  person: string,
+  rosterNames: readonly string[],
+): { others: string[]; typed: string } | null {
+  const turns = conversation.filter((turn) => typeof turn.content === "string");
+  const answer = turns[turns.length - 1];
+  const before = turns[turns.length - 2];
+  if (!answer || answer.role !== "user" || before?.role !== "assistant") return null;
+  const asked = askedIn(before.content);
+  if (!asked || !asked.offered.some((name) => samePerson(name, person))) return null;
+  if (latestTurnConfirms(turns, [person])) return null;
+  // A yes that goes on with the account ("yes, she was late on 11/14, <B> saw it"): its first clause is today's bare yes.
+  if (AFFIRMATIVE.test(answer.content.split(/[,.;!\n]/)[0] ?? "")) return null;
+  const isOffered = (name: string) => samePerson(name, person) || samePerson(name, asked.typed) || asked.offered.some((offered) => samePerson(name, offered));
+  const read = extractEmployeeNames(answer.content).filter((name) => name.trim().split(/\s+/).length > 1 && !notAPerson(name));
+  const onRoster = rosterNames.filter((name) => name.trim().split(/\s+/).length > 1 && holdsPhrase(answer.content, name));
+  const others = [...new Set([...onRoster, ...read])].filter((name) => !isOffered(name));
+  return others.length > 0 ? { others, typed: asked.typed } : null;
 }
