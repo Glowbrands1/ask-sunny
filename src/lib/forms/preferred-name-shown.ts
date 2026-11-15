@@ -89,3 +89,34 @@ export function withPreferredNameShown(response: AskResponse, managerWords: stri
     formProposal: { ...proposal, employeeName: alias.preferred, wovenCloseMatch: proposal.wovenCloseMatch?.trim() || preferredCardNote(alias) },
   };
 }
+
+/* ------------------------------------------------- one person, two names -- */
+
+const key = (name: string) => name.toLowerCase().replace(/['’]s\b/g, "").replace(/\./g, "").replace(/\s+/g, " ").trim();
+
+/**
+ * QA, 15 Nov 2026 (with Pau's name ruling): a form saved as "Rae Fairweather" and one saved as "Lorraine Fairweather"
+ * are the same roster person, and form_instances holds only employee_name. So every by-name lookup — the on-file lines,
+ * prior forms, find_past_forms, edit-by-name, duplicate-draft reuse — reads the roster person's preferred and legal
+ * names as one. Only when one roster person has both: a name another roster person also has is never merged.
+ * READABLE_NAMES_ENABLED; off, or no aliases this turn, nothing is merged.
+ */
+export function rosterAliasesOf(name: string): readonly string[] {
+  if (!readableNamesEnabled()) return [name];
+  const aliases = readAliases() ?? [];
+  const wanted = key(name);
+  const own = aliases.filter((row) => key(row.legal) === wanted || key(row.preferred) === wanted);
+  if (own.length !== 1) return [name];
+  const [alias] = own;
+  // Another roster person known by either name (a legal "Rae Fairweather", say) is somebody else: no merge.
+  const taken = aliases.filter((row) => row !== alias && [row.legal, row.preferred].some((other) => key(other) === key(alias!.legal) || key(other) === key(alias!.preferred)));
+  if (taken.length > 0) return [name];
+  return [alias!.legal, alias!.preferred];
+}
+
+/** Two names are one roster person by their preferred and legal names (`rosterAliasesOf`). */
+export function sameRosterPerson(a: string, b: string): boolean {
+  const left = rosterAliasesOf(a);
+  if (left.length < 2) return false;
+  return left.some((name) => key(name) === key(b));
+}

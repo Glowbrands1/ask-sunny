@@ -1,6 +1,6 @@
 import { expect, vi } from "vitest";
 
-import { KEARNEY, STAFF, type DirectoryRow, type ReplayCase } from "./cases";
+import { KEARNEY, STAFF, type DirectoryRow, type ReplayCase, type ReplayContext } from "./cases";
 import { lastResult, loopStandIn } from "./loop-stand-in";
 
 /**
@@ -142,4 +142,36 @@ export const NOV15_READABLE_NAMES_CASES: ReplayCase[] = [
       expect(reply.content).not.toContain("in Woven)");
     },
   },
+  ...([
+    ["saved-preferred-asked-legal", "Rae Fairweather", "open the CA for Lorraine Fairweather"],
+    ["saved-legal-asked-preferred", "Lorraine Fairweather", "open the CA for Rae Fairweather"],
+  ] as const).map(
+    ([slug, savedAs, asked]): ReplayCase => ({
+      id: `nov15-readable-names-lookup-${slug}`,
+      title: `A CA saved as "${savedAs}" is found by "${asked}": one roster person, two names`,
+      report: "QA, 15 Nov 2026: form_instances holds only employee_name; every by-name lookup reads the preferred and legal names as one person",
+      status: { open: "the form saved under the other name is not found" },
+      fixFlags: [FLAG, "REOPEN_BY_ANY_OPEN_VERB_ENABLED"],
+      async run(t) {
+        vi.setSystemTime(new Date("2026-11-14T16:00:00Z"));
+        t.directory([...STAFF, LORRAINE]);
+        t.as("salon_director", KEARNEY);
+        const id = await caSavedAs(t, savedAs);
+        const reply = await t.thread().say(asked);
+        const opened = reply.formOpened as { instanceId: string; revisesInstanceId?: string | null } | undefined;
+        expect([opened?.instanceId, opened?.revisesInstanceId], reply.content).toContain(id);
+      },
+    }),
+  ),
 ];
+
+/** A Corrective Action saved under one of the person's names, in an earlier chat. */
+async function caSavedAs(t: ReplayContext, name: string): Promise<string> {
+  const earlier = t.thread();
+  await earlier.say(`I need a corrective action for ${name}, she was late opening the salon on Monday`, { employeeName: name });
+  t.draftWrites({ observation: "Observed:\nShe opened the salon late on Monday." });
+  const id = await earlier.create();
+  const row = t.forms().find((form) => form.id === id);
+  if (row) row.employee_name = name;
+  return id;
+}

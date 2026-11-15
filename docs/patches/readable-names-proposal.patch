@@ -1,5 +1,5 @@
 diff --git a/src/lib/forms/proposal.ts b/src/lib/forms/proposal.ts
-index f586215d..f848c7a5 100644
+index f586215d7..e98979987 100644
 --- a/src/lib/forms/proposal.ts
 +++ b/src/lib/forms/proposal.ts
 @@ -4,7 +4,7 @@ import { businessToday } from "@/lib/business-date";
@@ -11,15 +11,16 @@ index f586215d..f848c7a5 100644
  import { isDocumentName, isRosterStateName } from "@/lib/ai/not-a-person";
  
  import { extractFormDate } from "./form-date-answer";
-@@ -18,6 +18,7 @@ import {
+@@ -18,6 +18,8 @@ import {
    TEAM_SUBJECT_LABEL,
  } from "./team-subject";
  import { proposeLocation } from "./location-scope";
++import { sameRosterPerson } from "./preferred-name-shown";
 +import { isNameParticle, readableName } from "./readable-name";
  import { isExitTerms, namesSomebody, notInStreetAddress } from "./answer-not-a-name";
  import { nameBeforeAccountVerb } from "./not-a-name";
  import { isMultiWordSalonName } from "./salon-mention";
-@@ -152,16 +153,27 @@ const GERUND_OBJECT = /^(?:the|a|an|her|his|their|my|our|its|this|that|these|tho
+@@ -152,16 +154,27 @@ const GERUND_OBJECT = /^(?:the|a|an|her|his|their|my|our|its|this|that|these|tho
   */
  const COUNTS_PEOPLE = new Set(["both", "either", "neither", "each", "all", "everyone", "everybody", "anyone", "anybody", "nobody", "none", "whoever"]);
  
@@ -48,7 +49,7 @@ index f586215d..f848c7a5 100644
      // An opening wrapper can only precede the name, so only the first word loses one.
      const opened = parts.length === 0 ? raw.replace(WRAPPER_BEFORE, "") : raw;
      const unwrapped = opened.replace(WRAPPER_AFTER, "");
-@@ -205,8 +217,8 @@ function readTypedName(words: readonly string[], whole: boolean): string | null
+@@ -205,8 +218,8 @@ function readTypedName(words: readonly string[], whole: boolean): string | null
     * third word stays only when it ends the message, carries the punctuation,
     * or is followed by a word that cannot be part of a name.
     */
@@ -59,7 +60,7 @@ index f586215d..f848c7a5 100644
      const boundary =
        next === undefined ||
        NOT_A_NAME.has(next) ||
-@@ -215,6 +227,8 @@ function readTypedName(words: readonly string[], whole: boolean): string | null
+@@ -215,6 +228,8 @@ function readTypedName(words: readonly string[], whole: boolean): string | null
        /^\d/.test(next);
      if (!boundary) parts.pop();
    }
@@ -68,7 +69,7 @@ index f586215d..f848c7a5 100644
    if (parts.length === 0) return null;
    if (whole && parts.length !== words.length) return null;
    return parts.join(" ");
-@@ -946,7 +960,7 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
+@@ -946,7 +961,7 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
      const words = withoutAnswerLead(answer.trim().replace(/[.?!]+$/, ""))
        .split(/\s+/)
        .filter(Boolean);
@@ -77,7 +78,7 @@ index f586215d..f848c7a5 100644
      // "kearney", "sorry, it's grand island": a reply that is only a salon. See `isPlaceReply`.
      if (candidate && !opensWithRosterState(candidate) && !isPlaceReply(candidate)) strong.push(candidate);
    }
-@@ -978,7 +992,7 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
+@@ -978,7 +993,7 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
    const listed = INTAKE_LIST.exec(text)?.[1];
    if (listed) {
      const words = listed.trim().split(/\s+/).filter(Boolean);
@@ -86,7 +87,7 @@ index f586215d..f848c7a5 100644
      if (candidate && !opensWithRosterState(candidate) && !isPlaceReply(candidate)) strong.push(candidate);
    }
  
-@@ -1227,7 +1241,7 @@ function sentenceAnswers(text: string): string[] {
+@@ -1227,7 +1242,7 @@ function sentenceAnswers(text: string): string[] {
    const names: string[] = [];
    for (const sentence of text.split(/(?<=[.!?])\s+|\n+|\s*[,;]\s*|\s+[-–—]\s+|\s+(?:and|but|then)\s+/)) {
      const words = withoutAnswerLead(sentence.trim().replace(/[.?!]+$/, "")).split(/\s+/).filter(Boolean);
@@ -95,7 +96,16 @@ index f586215d..f848c7a5 100644
      if (candidate && !opensWithRosterState(candidate) && !isPlaceReply(candidate)) names.push(candidate);
    }
    return names;
-@@ -1688,7 +1702,9 @@ function completePartialName(
+@@ -1311,6 +1326,8 @@ export function samePerson(a: string, b: string): boolean {
+   const y = words(b);
+   if (x.length === 0 || y.length === 0) return false;
+   if (x.join(" ") === y.join(" ")) return true;
++  // READABLE_NAMES_ENABLED: one roster person's preferred and legal names are the same person (`preferred-name-shown.ts`).
++  if (sameRosterPerson(a, b)) return true;
+   if (x.length === 1 || y.length === 1) return x[0] === y[0];
+   if (x[0] !== y[0]) return false;
+   const [last, other] = [x[x.length - 1]!, y[y.length - 1]!];
+@@ -1688,7 +1705,9 @@ function completePartialName(
   * tidied; the field stays editable on the form.
   */
  export function tidyTypedName(name: string): string {

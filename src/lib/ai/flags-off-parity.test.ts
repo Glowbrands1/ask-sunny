@@ -864,7 +864,8 @@ const PROTECTED = [
  * have de la Torre etc."), in src/lib/forms/proposal.ts, exactly the lines of docs/patches/readable-names-proposal.patch:
  * the imports `readableNamesEnabled`, `isNameParticle` and `readableName`; `nameWordCount` (the answer readers' two-word
  * limit does not count surname particles); in readTypedName, the name-part limit and the middle-name rule do not count
- * particles, and a particle left at the end is dropped; and tidyTypedName makes the typed name readable. Behind
+ * particles, and a particle left at the end is dropped; tidyTypedName makes the typed name readable; and samePerson
+ * reads one roster person's preferred and legal names as the same person (`sameRosterPerson`, QA, 15 Nov 2026). Behind
  * READABLE_NAMES_ENABLED (default off); off, every count is `words.length` / `parts.length` as before and the typed
  * name is only trimmed (readable-name.test.ts's flag-off section). proposal.ts is already excluded below.
  */
