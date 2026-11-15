@@ -22,7 +22,7 @@ import { extractUsedMarkers } from "../prompts";
 import { shownCitations } from "@/lib/knowledge/empty-card-drop";
 import { DATA_TOOL_SPECS, dataToolHandlers } from "./data-tools";
 import { agentLoopSystem, AGENT_LOOP_RULES } from "./prompt";
-import { identifiedTurns, messageIdTag, withoutMessageIdTags } from "./evidence";
+import { generatedId, identifiedTurns, messageIdTag, withoutMessageIdTags } from "./evidence";
 import { agentLoopStepLimit } from "./switch";
 import {
   appHelp,
@@ -279,7 +279,7 @@ function withCardNote(message: ChatMessage): string {
 function conversationOf(history: readonly ChatMessage[], question: string, questionMessageId?: string | null): { role: "user" | "assistant"; content: unknown }[] {
   const shown = new Map(history.map((message) => [message, withCardNote(message)]));
   const turns = identifiedTurns(history, question, questionMessageId).map((turn, position, all) => {
-    const message = position < all.length - 1 ? history.find((candidate, index) => (candidate.id ?? `h${index}`) === turn.id) : undefined;
+    const message = position < all.length - 1 ? history.find((candidate, index) => (candidate.id ?? generatedId(index)) === turn.id) : undefined;
     const content = message ? (shown.get(message) ?? turn.content) : turn.content;
     return { role: turn.role, content: (turn.role === "user" ? `${content}\n\n${messageIdTag(turn.id)}` : content) as unknown };
   });

@@ -18,7 +18,7 @@ const turns = identifiedTurns(history, "make it a written please", "m9");
 
 describe("identifiedTurns", () => {
   it("gives each shown turn its id, the history place when it has none, and the message answered now last", () => {
-    expect(turns.map((turn) => turn.id)).toEqual(["m1", "m2", "m3", "h4", "m9"]);
+    expect(turns.map((turn) => turn.id)).toEqual(["m1", "m2", "m3", "gen-h4", "m9"]);
     expect(turns.at(-1)).toMatchObject({ role: "user", content: "make it a written please", index: 4 });
   });
   it("names the message answered now CURRENT_MESSAGE_ID when the chat gave it no id", () => {
@@ -58,6 +58,32 @@ describe("verifyEvidence", () => {
     );
     expect(verifyEvidence({ message_id: "a1", quote: "she was written up before" }, asked, { afterMessageId: "a2" })).toEqual({ ok: false, reason: "evidence_after_card" });
     expect(verifyEvidence({ message_id: "a3", quote: "written" }, asked, { afterMessageId: "a2" })).toMatchObject({ ok: true });
+  });
+});
+
+describe("QA's review of #1023", () => {
+  it("an afterMessageId that names no turn refuses, never fails open", () => {
+    expect(verifyEvidence({ message_id: "m9", quote: "a written please" }, turns, { afterMessageId: "nope" })).toEqual({ ok: false, reason: "evidence_after_card" });
+  });
+  it("a quote is at least 3 characters and whole words: \"a\", \"up\", \",\" and the inside of a word are not evidence", () => {
+    for (const quote of ["a", "up", ",", "...", "ate"]) {
+      expect(verifyEvidence({ message_id: "m1", quote }, turns), quote).toEqual({ ok: false, reason: "evidence_quote_not_found" });
+    }
+    expect(verifyEvidence({ message_id: "m1", quote: "late" }, turns)).toMatchObject({ ok: true });
+  });
+  it("reads the U+2010 hyphen and the ellipsis as plain ones", () => {
+    const typed = identifiedTurns([{ id: "x1", role: "user", content: "a no‐call no‐show… again" }] as unknown as ChatMessage[], "ok");
+    expect(verifyEvidence({ message_id: "x1", quote: "no-call no-show... again" }, typed)).toMatchObject({ ok: true });
+  });
+  it("strips a tag with or without the space", () => {
+    expect(withoutMessageIdTags("late\n[message_id:m1]")).toBe("late");
+    expect(withoutMessageIdTags("late [message_id: m1]")).toBe("late");
+  });
+  it("an id on two turns is evidence_ambiguous_id, and a generated id never collides with a browser's", () => {
+    const twice = identifiedTurns([{ id: "d1", role: "user", content: "she was late" }, { id: "d1", role: "user", content: "she was rude" }] as unknown as ChatMessage[], "ok");
+    expect(verifyEvidence({ message_id: "d1", quote: "she was late" }, twice)).toEqual({ ok: false, reason: "evidence_ambiguous_id" });
+    const mixed = identifiedTurns([{ id: "h0", role: "user", content: "browser id" }, { role: "user", content: "no id" }] as unknown as ChatMessage[], "ok");
+    expect(mixed.map((turn) => turn.id)).toEqual(["h0", "gen-h1", "current"]);
   });
 });
 
