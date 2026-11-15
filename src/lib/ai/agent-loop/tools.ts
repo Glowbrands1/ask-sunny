@@ -308,6 +308,20 @@ function namesAPlace(typed: string): boolean {
 export async function findStaff(context: ToolContext, input: { name?: unknown }, effects?: ToolEffects): Promise<ToolResult> {
   const typed = typeof input.name === "string" ? input.name.trim() : "";
   if (typed === "") return { error: "Give the name to look for." };
+  /*
+   * Batch J7 (QA, from the J6 speed report: 9b spent 3 of its 6 steps on read_form, find_staff and a refused
+   * propose_form with the draft already open): the open draft's own person needs no lookup. The change goes to edit_form.
+   */
+  if (context.openFormId) {
+    const open = await authorizeInstance(context.request, context.openFormId, "view").then(({ loaded }) => loaded.instance).catch(() => null);
+    const first = open?.employeeName?.trim().split(/\s+/)[0] ?? "";
+    if (open?.employeeName && open.status === "draft" && (samePerson(open.employeeName, typed) || (first !== "" && typed.toLowerCase() === first.toLowerCase()))) {
+      return {
+        open_draft: { instance_id: open.id, employee: open.employeeName, form: open.templateName },
+        note: `${open.employeeName} is the person on the open draft. Use edit_form with instance_id ${open.id} for the change; find_staff, read_form and propose_form are not needed.`,
+      };
+    }
+  }
   const read = await rosterFor(context.actor.scope);
   if (read.kind === "failed") return { error: ROSTER_FAILED };
   if (read.kind === "unchecked") return { unchecked: true, note: ROSTER_UNCHECKED };
@@ -970,7 +984,8 @@ export async function proposeForm(
     const open = await authorizeInstance(context.request, context.openFormId, "view").then(({ loaded }) => loaded.instance).catch(() => null);
     if (open && open.status === "draft" && open.templateKey === key && samePerson(open.employeeName, employee.name)) {
       return {
-        error: `The ${open.templateName} draft for ${open.employeeName} is open on screen: put this on that draft with edit_form (instance_id ${open.id}). Propose a new card only if the manager asks for another or a new one.`,
+        // Batch J7: the exact call to make, so the model does not loop through other tools first.
+        error: `The ${open.templateName} draft for ${open.employeeName} is open on screen: use edit_form with instance_id ${open.id}. Propose a new card only if the manager asks for another or a new one.`,
         ...(mustSeeNotConduct ? { must_see_behaviors: "Must See Behaviors is part of the Standards of Conduct policy (the JBA Policy Manual has no Must See Behaviors section), so the form keeps that policy." } : {}),
       };
     }

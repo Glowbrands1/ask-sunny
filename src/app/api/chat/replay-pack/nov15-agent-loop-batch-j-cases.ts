@@ -177,4 +177,44 @@ export const NOV15_AGENT_LOOP_BATCH_J_CASES: ReplayCase[] = [
       expect(asked.content).not.toContain("I'll leave the **Payroll deduction amount** blank");
     },
   },
+  {
+    id: "nov15-batch-j7-open-draft-change-goes-to-edit-form",
+    title: "J7: with a draft open, find_staff for the draft's own person says to use edit_form with its instance_id (no roster read); another person is still looked up",
+    report: `${REPORT}; J6's speed report: 9b spent 3 of 6 steps on read_form, find_staff and a refused propose_form with the draft open`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      let draftId = "";
+      const model = loopStandIn((view) => {
+        const said = view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "";
+        if (/make it a written/.test(said)) {
+          if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "Juno Paxton" } };
+          if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { instance_id: draftId, values: { warning_type: "written" } } };
+          return { text: "Done: **Type of Warning:** Written Warning." };
+        }
+        if (/remy calder/.test(said)) return lastResult(view, "find_staff") ? { text: "Found." } : { tool: "find_staff", input: { name: "Remy Calder" } };
+        return lastResult(view, "propose_form")
+          ? { text: "Here is the card." }
+          : { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-3", policy: "Late Opening", what_happened: "Late opening the salon on 11/12." } };
+      });
+      const thread = start(t);
+      t.loopModel!(model);
+      await thread.say("CA for juno paxton, ASD, late to open 11/12");
+      t.draftWrites({ observation: "Observed:\nJuno Paxton opened the salon late on 11/12." });
+      draftId = await thread.create();
+      await thread.say("make it a written");
+      const looked = model.views.flatMap((view) => view.results).filter((result) => result.tool === "find_staff").at(-1)?.output as { open_draft?: { instance_id?: string }; note?: string; matches?: unknown } | undefined;
+      expect(looked?.open_draft?.instance_id, "find_staff did not point at the open draft").toBe(draftId);
+      expect(looked?.note ?? "").toContain(`Use edit_form with instance_id ${draftId}`);
+      expect(looked?.matches, "the roster was read for the draft's own person").toBeUndefined();
+      expect(t.checked(draftId).warning_type ?? []).toEqual(["written"]);
+
+      // Another person with the draft open is still found on the roster.
+      await thread.say("is remy calder on my staff");
+      const other = model.views.flatMap((view) => view.results).filter((result) => result.tool === "find_staff").at(-1)?.output as { open_draft?: unknown; matches?: { name?: string }[] } | undefined;
+      expect(other?.open_draft).toBeUndefined();
+      expect(other?.matches?.[0]?.name).toBe("Remy Calder");
+    },
+  },
 ];

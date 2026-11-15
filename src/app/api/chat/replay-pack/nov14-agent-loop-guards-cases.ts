@@ -987,7 +987,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       const before = t.forms().length;
       const reply = await thread.say("I talked to her about it last week");
       expect(reply.formProposal, `a second card for the open draft:\n${reply.content}`).toBeUndefined();
-      expect(reply.content).toMatch(/is open on screen: put this on that draft with edit_form/);
+      // Changed on purpose (15 Nov 2026, batch J7): the refusal names the exact call to make, so the model does not loop.
+      expect(reply.content).toMatch(/is open on screen: use edit_form with instance_id /);
       expect(t.forms().length).toBe(before);
       const another = await thread.say("make another ca for tamsin orwell, she was late on 11/12");
       expect(another.formProposal?.templateKey, "\"another\" was refused").toBe("dpoa");
