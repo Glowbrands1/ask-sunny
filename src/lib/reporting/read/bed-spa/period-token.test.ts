@@ -88,8 +88,10 @@ describe("period labels", () => {
     expect(formatBedSpaDate("2026-01-01")).toBe("Jan 1, 2026");
   });
 
-  it("formats the stored load time in UTC", () => {
-    expect(formatLoadedAt("2026-09-08T10:24:00.000Z")).toBe("Sep 8, 2026 10:24 UTC");
+  it("formats the stored load time in Central time (Pau, 15 Nov 2026: the whole app and chat are in CT; was UTC)", () => {
+    // Changed on purpose: the business zone is Central in production (NEXT_PUBLIC_BUSINESS_TIMEZONE); September is CDT.
+    expect(formatLoadedAt("2026-09-08T10:24:00.000Z")).toMatch(/^Sep 8, 2026, \d{1,2}:24 [AP]M [A-Z]T$/);
+    expect(formatLoadedAt("2026-09-08T10:24:00.000Z")).not.toMatch(/UTC/);
   });
 
   it("says so rather than inventing a load time", () => {

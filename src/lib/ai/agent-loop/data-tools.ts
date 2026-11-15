@@ -1,3 +1,4 @@
+import { formatBusinessTime } from "@/lib/business-date";
 import { PRODUCTION_SALONS, salonById, salonByNumber } from "@/data/salons";
 import { reportBreakdownEnabled } from "@/lib/config/chat-quality-flags";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
@@ -222,7 +223,8 @@ export async function readReviews(context: DataToolContext, input: { salon?: unk
       ? { all_salons: { salons_counting: summary.counting, count: summary.qualifyingMonthToDate, combined_goal: summary.combinedTarget, at_goal: summary.atGoal, on_pace: summary.onPace, behind_pace: summary.behindPace } }
       : {}),
     latest,
-    last_sync: snapshot.lastSyncAt,
+    /* Central time, already converted (Pau, 15 Nov 2026: "The whole app and chat should be in CT"); the database stays UTC. */
+    last_sync: formatBusinessTime(snapshot.lastSyncAt) ?? null,
     ...(restricted && RANKING.test(context.question) ? { others: OTHERS_NOT_VISIBLE } : {}),
     note: "count is qualifying (3, 4 or 5 star) reviews month to date; goal is per salon per month. Give only figures written here, with the period and salon each is for.",
   };
@@ -336,11 +338,17 @@ export const DATA_TOOL_SPECS = [
   },
 ] as const;
 
+/** Test seam: the reads the replay pack's handlers use, over the real ones (unset: the real reads). */
+let depsForTests: Partial<DataToolDeps> | null = null;
+export function __setDataToolDepsForTests(deps: Partial<DataToolDeps> | null): void {
+  depsForTests = deps;
+}
+
 /** The two tools' handlers, keyed as the loop dispatches them (`run.ts`). */
 export function dataToolHandlers(
   context: DataToolContext,
   effects?: Pick<ToolEffects, "sources">,
-  deps: DataToolDeps = DEFAULT_DATA_TOOL_DEPS,
+  deps: DataToolDeps = depsForTests ? { ...DEFAULT_DATA_TOOL_DEPS, ...depsForTests } : DEFAULT_DATA_TOOL_DEPS,
 ): Record<string, (args: Record<string, unknown>) => Promise<ToolResult>> {
   return {
     read_reviews: (args) => readReviews(context, args, deps),
