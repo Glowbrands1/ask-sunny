@@ -1210,7 +1210,8 @@ export function incidentDates(managerWords: string, priorActions: string | null)
  * missed the roster went on the card as typed (the off-roster shortcut below), with no check at all.
  *
  * It applies when the card the last reply showed (the server's card record), or, right after the manager's "no" to
- * this chat's own "Did you mean", the latest card this chat made, is this form for a roster person, and the model now
+ * this chat's own "Did you mean", the latest card this chat made, is this form (for a roster person or a name not on
+ * the roster), and the model now
  * gives a typed name (no employee_id) that is not that person but shares their first or last name: a correction of
  * the card's name, not another person's request. Names are compared as names; the manager's words are never read.
  *
@@ -1230,13 +1231,25 @@ function cardNameCorrection(
   if (context.openFormId) return null;
   const declined = readNameConfirmation([...(context.history as ChatMessage[]).map((turn) => ({ role: turn.role, content: String(turn.content ?? "") })), { role: "user", content: context.question }])?.kind === "declined";
   const card = context.cardOnScreen ?? (declined ? (context.earlierCard ?? null) : null);
-  if (!card || card.templateKey !== templateKey || !card.employeeKey) return null;
-  const cardPerson = roster.find((row) => personKey(row.id) === card.employeeKey);
-  if (!cardPerson || fullNamesOf(cardPerson).some((full) => samePerson(full, typed))) return null;
+  if (!card || card.templateKey !== templateKey) return null;
+  /*
+   * The card's name: its roster person (the record's employeeKey), or, for a name not on the roster (live s10's card
+   * was one), the name in this chat's earlier manager turns whose key is the record's nameKey. The record holds only
+   * one-way keys, so a name is taken only when its key matches; the name reader is the app's own (`extractEmployeeNames`).
+   */
+  const cardPerson = card.employeeKey ? roster.find((row) => personKey(row.id) === card.employeeKey) : undefined;
+  const offRosterCardName = !card.employeeKey && card.nameKey
+    ? (context.history as ChatMessage[])
+        .filter((turn) => turn.role === "user")
+        .flatMap((turn) => extractEmployeeNames(String(turn.content ?? "")))
+        .find((name) => personKey(name) === card.nameKey) ?? null
+    : null;
+  const cardName = cardPerson ? displayName(cardPerson) : offRosterCardName;
+  if (!cardName) return null;
+  if ((cardPerson ? fullNamesOf(cardPerson) : [cardName]).some((full) => samePerson(full, typed))) return null;
   const said = words(typed);
-  const firstNames = words([cardPerson.firstName, cardPerson.preferredFirstName ?? ""].join(" "));
-  const lastNames = words(cardPerson.lastName);
-  const sharesAName = said.length >= 2 && (firstNames.includes(said[0]!) || lastNames.includes(said.at(-1)!));
+  const own = cardPerson ? { first: words([cardPerson.firstName, cardPerson.preferredFirstName ?? ""].join(" ")), last: words(cardPerson.lastName) } : { first: words(cardName).slice(0, 1), last: words(cardName).slice(-1) };
+  const sharesAName = said.length >= 2 && (own.first.includes(said[0]!) || own.last.includes(said.at(-1)!));
   if (!sharesAName) return null;
   const holders = roster.filter((row) => fullNamesOf(row).some((full) => samePerson(full, typed)));
   if (holders.length === 1) return { person: holders[0]! };
@@ -1252,7 +1265,7 @@ function cardNameCorrection(
   return {
     refusal: {
       reason_code: "name_correction_not_on_roster",
-      error: `${typed} is not on the ${staffSystem()} staff list. The card was not changed and is still for ${displayName(cardPerson)}. Say so; it goes on the card as typed only if the manager replies **use ${typed}**.`,
+      error: `${typed} is not on the ${staffSystem()} staff list. The card was not changed and is still for ${cardName}. Say so; it goes on the card as typed only if the manager replies **use ${typed}**.`,
     },
   };
 }

@@ -7,8 +7,8 @@ name: only the Employee Name line, as the manager's correction (`nameCorrectionW
 the form's subject column with it. Before, the writer refused `employee_name` and the draft kept the old name. Nothing
 else on the form changes. Flag-off (FORM_EDIT_SINGLE_WRITER), the manager's save and the subject column, as today's chat.
 
-**Also live s10** (Pau's ruling, 16 Nov 2026): on a card not yet created, a typed name that corrects the card's
-person (same form, shares their first or last name) goes through the roster check in `propose_form`: an exact roster
+**Also live s10** (Pau's ruling, 16 Nov 2026): on a card not yet created (for a roster person or, as in the live
+chat, a name not on the roster), a typed name that corrects the card's name (same form, shares its first or last name) goes through the roster check in `propose_form`: an exact roster
 match is used, a close spelling asks "Did you mean <name>?" with keep-as-typed, and no match is refused
 (`name_correction_not_on_roster`) and the card keeps its name until the manager replies "use <name>".
 
