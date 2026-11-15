@@ -133,6 +133,7 @@ export function Ids({
   voter = { id: "anonymous", name: "Someone" },
   attendees = [],
   addedBy = "",
+  headlines = true,
 }: {
   doc: MeetingDoc;
   edit: (fn: (d: MeetingDoc) => MeetingDoc) => void;
@@ -144,6 +145,8 @@ export function Ids({
   attendees?: Pick<Attendee, "name">[];
   /** The signed-in person's full name, saved on each issue they add (its initials show on the row). Empty: not saved. */
   addedBy?: string;
+  /** Whether the meeting's agenda has a Headlines section; without one, an issue cannot be converted into a headline. */
+  headlines?: boolean;
 }) {
   const plain = useMentionPlain();
   const [text, setText] = useState("");
@@ -209,9 +212,12 @@ export function Ids({
         <Button variant="outline" onClick={() => edit((d) => ({ ...d, rocks: [...d.rocks, { id: newItemId(), title: active.title, owner: "Company", status: "on-track", milestones: [] } as Rock] }))}>
           Rock
         </Button>
-        <Button variant="outline" onClick={() => edit((d) => ({ ...d, headlines: [...d.headlines, { id: newItemId(), kind: "customer", text: active.title, author: "IDS" } as Headline] }))}>
-          Headline
-        </Button>
+        {/* Only where the meeting has a Headlines section (not the STC DM or Leadership L10): it would land in a hidden list. */}
+        {headlines && (
+          <Button variant="outline" onClick={() => edit((d) => ({ ...d, headlines: [...d.headlines, { id: newItemId(), kind: "customer", text: active.title, author: "IDS" } as Headline] }))}>
+            Headline
+          </Button>
+        )}
         {!active.resolved && (
           <Button variant="outline" className="ml-auto" onClick={() => setIssues((xs) => xs.map((i) => (i.id === active.id ? withTerm(i, issueTerm(active) === "long" ? "short" : "long") : i)))}>
             {issueTerm(active) === "long" ? "Move to short term" : "Move to long-term"}
@@ -298,6 +304,16 @@ export function Ids({
               }}>
                 {i.resolved ? "Reopen" : "Solve"}
               </Button>
+              {/* Move between the lists right from the row (also in the opened issue). Solved issues stay where they are. */}
+              {!i.resolved && (
+                <Button
+                  variant="outline"
+                  aria-label={`${issueTerm(i) === "long" ? "Move to short term" : "Move to long-term"}: ${plain(i.title)}`}
+                  onClick={() => setIssues((xs) => xs.map((x) => (x.id === i.id ? withTerm(x, issueTerm(i) === "long" ? "short" : "long") : x)))}
+                >
+                  {issueTerm(i) === "long" ? "Short term" : "Long-term"}
+                </Button>
+              )}
               <Button variant="outline" className="text-red-700" aria-label={`Delete ${plain(i.title)}`} onClick={() => setConfirmId(i.id)}>
                 Delete
               </Button>

@@ -49,6 +49,8 @@ const store: FakeStore = {
   chat_conversations: [],
   chat_messages: [],
   chat_traces: [],
+  // PR 4: a closed turn's outcome (category, succeeded), recorded by the closeTurn mock below.
+  activity_events: [],
   chat_form_state: [],
   chat_form_incidents: [],
   // The two tables a turn's memory writes (QA, 10 Nov 2026: CHAT_PARALLEL_LOADS must write exactly as often as before;
@@ -259,7 +261,9 @@ vi.mock("@/lib/auth/server", async () => {
 vi.mock("@/lib/analytics/record", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/analytics/record")>()),
   openTurn: async () => "turn-qa",
-  closeTurn: async () => {},
+  closeTurn: async (turnId: string, outcome: Record<string, unknown>) => {
+    (store as unknown as Record<string, unknown[]>).activity_events?.push({ id: turnId, ...outcome });
+  },
   recordActivity: async () => {},
   recordActivityAsync: () => {},
 }));
