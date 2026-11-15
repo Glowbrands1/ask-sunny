@@ -109,9 +109,10 @@ describe("the DM L10 page in Ask Sunny", () => {
     renderView({ save: save as unknown as SaveFn });
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /Bo Lark/ })); // by role: the New Issue bar's owner picker lists the names too (15 Nov 2026)
-      await new Promise((r) => setTimeout(r, 20));
     });
-    expect(save).toHaveBeenCalledTimes(1);
+    // The debounced save is waited for, not slept for: a fixed sleep failed under load (QA, 15 Nov 2026).
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByTestId("save-status").textContent).toBe("All changes saved"));
     const [key, version, doc] = save.mock.calls[0] as unknown as [string, number, { attendees: { name: string; shared: boolean }[] }];
     expect(key).toBe("stc-dm");
     expect(version).toBe(3);
@@ -179,9 +180,9 @@ describe("saving: the page says saved only when the Hub has saved it", () => {
     renderView({ save: save as unknown as SaveFn });
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /Bo Lark/ })); // by role: the New Issue bar's owner picker lists the names too (15 Nov 2026)
-      await new Promise((r) => setTimeout(r, 20));
     });
-    expect(save).toHaveBeenCalledTimes(1);
+    // The debounced save is waited for, not slept for: a fixed sleep failed under load (QA, 15 Nov 2026).
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
     expect(screen.getByTestId("save-status").textContent).toBe("Saving…");
     await act(async () => {
       answer({ ok: true, version: 4, updatedAt: "t" });
@@ -198,17 +199,17 @@ describe("saving: the page says saved only when the Hub has saved it", () => {
     renderView({ save: save as unknown as SaveFn });
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /Bo Lark/ })); // by role: the New Issue bar's owner picker lists the names too (15 Nov 2026)
-      await new Promise((r) => setTimeout(r, 20));
     });
+    // The debounced save is waited for, not slept for: a fixed sleep failed under load (QA, 15 Nov 2026).
+    await waitFor(() => expect(screen.getByTestId("save-status").getAttribute("data-status")).toBe("failed"));
     const status = screen.getByTestId("save-status");
-    expect(status.getAttribute("data-status")).toBe("failed");
     expect(status.textContent).toContain("Not saved: The Leadership Hub could not be reached.");
     expect(status.textContent).not.toContain("All changes saved");
     await act(async () => {
       fireEvent.click(within(status).getByRole("button", { name: "Try again" }));
-      await new Promise((r) => setTimeout(r, 20));
     });
-    expect(save).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByTestId("save-status").textContent).toBe("All changes saved"));
     const [, version, doc] = save.mock.calls[1] as unknown as [string, number, { attendees: { name: string; shared: boolean }[] }];
     expect(version).toBe(3);
     expect(doc.attendees.find((a) => a.name === "Bo Lark")?.shared).toBe(true);
@@ -267,8 +268,9 @@ describe("the agenda, hints and roster come from the Hub (the STC DM L10 change,
     expect(document.body.textContent).not.toContain("Dex Rowan");
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /Bo Lark/ })); // by role: the New Issue bar's owner picker lists the names too (15 Nov 2026)
-      await new Promise((r) => setTimeout(r, 20));
     });
+    // The debounced save is waited for, not slept for: a fixed sleep failed under load (QA, 15 Nov 2026).
+    await waitFor(() => expect(save).toHaveBeenCalled());
     const [, , doc] = save.mock.calls[0] as unknown as [string, number, { attendees: { name: string }[] }];
     expect(doc.attendees.map((a) => a.name)).toEqual(["Avery Quill", "Bo Lark", "Cy Marlow", "Dex Rowan"]);
     expect(doc.attendees.find((a) => a.name === "Dex Rowan")).toEqual(hidden);
@@ -333,8 +335,9 @@ describe("IDS: move between the lists from the row, and no headlines where the m
     expect(buttons.indexOf("Delete")).toBeGreaterThan(buttons.indexOf("Long-term"));
     await act(async () => {
       fireEvent.click(within(shortRow).getByRole("button", { name: "Move to long-term: Weekly issue" }));
-      await new Promise((r) => setTimeout(r, 20));
     });
+    // The debounced save is waited for, not slept for: a fixed sleep failed under load (QA, 15 Nov 2026).
+    await waitFor(() => expect(save).toHaveBeenCalled());
     expect(screen.getByRole("tab", { name: "Short term (0)" })).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Long-term (2)" })).toBeTruthy();
     const [, , doc] = save.mock.calls.at(-1) as unknown as [string, number, { issues: { id: string; term?: string }[] }];
@@ -421,6 +424,17 @@ describe("Bloom-style page: what every page shares", () => {
     expect(body.getByText("Meeting rating").nextSibling?.textContent).toBe("8.5");
     expect(body.getByText("Total time").nextSibling?.textContent).toBe("58m");
     expect(body.getByText("Front desk coverage")).toBeTruthy();
+  });
+
+  it("Last meeting's summary renders solved issues stored as { title, owner } as well as plain titles", () => {
+    render(
+      <MeetingView info={info} initial={loaded()} save={vi.fn() as unknown as SaveFn} end={vi.fn() as unknown as EndFn} viewer={viewer} roster={roster} hubMeetingUrl={HUB} pollMs={0} debounceMs={0} today="2026-11-15" recaps={[{ ...recap, resolved_issues: [{ title: "Door lock", owner: "Bo Lark" }, "Old style title"] }]} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Last meeting's summary/ }));
+    const body = within(screen.getByTestId("last-meeting-summary"));
+    expect(body.getByText("Door lock")).toBeTruthy();
+    expect(body.getByText("Old style title")).toBeTruthy();
+    expect(body.getByText("Issues solved").nextSibling?.textContent).toBe("2");
   });
 
   it("the New Issue bar saves the issue with its owner and who added it", async () => {
@@ -515,5 +529,70 @@ describe("Bloom-style page: Scorecard", () => {
     expect(table.getByRole("button", { name: "Sales calls 9 Nov / 15 Nov: —" }).className).toContain("border-dashed");
     expect(table.getByRole("button", { name: "Sales calls 2 Nov / 8 Nov: 6" }).className).toContain("bg-[#e1f1e4]");
     expect(table.getByRole("button", { name: "Sales calls 26 Oct / 1 Nov: 4" }).className).toContain("bg-[#fbe4e4]");
+  });
+});
+
+// QA, 15 Nov 2026: Rock Review edits a rock in a panel on the right (a goal drawer), as in the Hub, not inline.
+describe("Rock Review: a rock opens in a side panel", () => {
+  const rocks = [
+    { id: "k1", title: "Open two new rooms", owner: "Avery Quill", status: "on-track", milestones: [{ id: "m1", text: "Sign the lease", done: false }] },
+    { id: "k2", title: "Hire a trainer", owner: "Cy Marlow", status: "on-track", milestones: [] },
+  ];
+  const start = () => {
+    const save = vi.fn().mockResolvedValue({ ok: true, version: 4, updatedAt: "2026-11-13T00:00:00Z" } satisfies SaveOutcome);
+    const { container } = renderView({ save: save as unknown as SaveFn, initial: loaded(3, { attendees: [], rocks }) });
+    fireEvent.click(within(screen.getByRole("region", { name: "Agenda" })).getByRole("button", { name: /Rock Review/ }));
+    return { save, container };
+  };
+  const panel = () => screen.getByRole("dialog", { name: "Edit rock" });
+  const row = (title: string) => screen.getByRole("button", { name: `Edit ${title}` });
+
+  it("clicking a rock opens the panel with its fields, and the list stays", () => {
+    const { container } = start();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(row("Open two new rooms"));
+    const p = within(panel());
+    expect((p.getByLabelText("Rock title") as HTMLInputElement).value).toBe("Open two new rooms");
+    expect((p.getByLabelText("Owner of Open two new rooms") as HTMLSelectElement).value).toBe("Avery Quill");
+    expect(p.getByLabelText("Due date of Open two new rooms")).toBeTruthy();
+    expect((p.getByLabelText("Status of Open two new rooms") as HTMLSelectElement).value).toBe("on-track");
+    expect(p.getByRole("checkbox", { name: "Milestone done: Sign the lease" })).toBeTruthy();
+    expect(p.getByLabelText("Add milestone")).toBeTruthy();
+    expect(p.getByLabelText("Notes for Open two new rooms")).toBeTruthy();
+    expect(row("Hire a trainer").getAttribute("aria-expanded")).toBe("false");
+    // Rendered in place, not portalled out, so in the app it sits inside the DM L10 frame's styles (.hub-l10), where
+    // the floating buttons move clear of it (globals.css, [data-side-panel]).
+    expect(container.contains(panel())).toBe(true);
+    expect(panel().hasAttribute("data-side-panel")).toBe(true);
+  });
+
+  it("ticking a milestone saves through the same path", async () => {
+    const { save } = start();
+    fireEvent.click(row("Open two new rooms"));
+    fireEvent.click(within(panel()).getByRole("checkbox", { name: "Milestone done: Sign the lease" }));
+    await waitFor(() => expect(save).toHaveBeenCalled());
+    const doc = save.mock.calls.at(-1)![2] as { rocks: { id: string; milestones: { done: boolean }[] }[] };
+    expect(doc.rocks.find((r) => r.id === "k1")!.milestones[0].done).toBe(true);
+    // It autosaves (no Save button); the footer repeats the meeting's save status quietly, as in Bloom's goal drawer.
+    expect(within(panel()).queryByRole("button", { name: /^Save/ })).toBeNull();
+    await waitFor(() => expect(within(panel()).getByTestId("rock-panel-save-status").textContent).toBe("All changes saved"));
+  });
+
+  it("closes with the close button and with Esc", () => {
+    start();
+    fireEvent.click(row("Open two new rooms"));
+    fireEvent.click(screen.getByRole("button", { name: "Close rock editor" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(row("Open two new rooms"));
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("only one rock is open at a time", () => {
+    start();
+    fireEvent.click(row("Open two new rooms"));
+    fireEvent.click(row("Hire a trainer"));
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect((within(panel()).getByLabelText("Rock title") as HTMLInputElement).value).toBe("Hire a trainer");
   });
 });

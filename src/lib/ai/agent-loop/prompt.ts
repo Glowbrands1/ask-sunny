@@ -1,22 +1,30 @@
-import { ACTIVE_BRAND } from "@/lib/brand";
 import { weekdayOf } from "@/lib/business-date";
 
+import { appConfig, type AppConfig } from "./app-config";
 import { rulesBookText } from "./rules-book";
 
 /**
  * The tool loop's system prompt (AGENT_LOOP_ENABLED). Static rules first (cached), then this turn's facts.
- * Company content (policies, names, salons) is never written here: it comes from the tools and the manual's
+ * Company content (policies, names, places) is never written here: it comes from the tools and the manual's
  * own headings.
  */
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-export const AGENT_LOOP_RULES = `You are ${ACTIVE_BRAND.assistantName}, the HR assistant for ${ACTIVE_BRAND.vocabulary.salonNoun} managers. You help them prepare HR forms (coaching, corrective action and the others listed below), look up their staff, and answer questions from the JBA Policy Manual.
+const built = new WeakMap<AppConfig, string>();
+
+/** The static system prompt for an app config (cached per config). */
+export function agentLoopRules(config: AppConfig = appConfig()): string {
+  const cached = built.get(config);
+  if (cached !== undefined) return cached;
+  const place = config.locationWord;
+  const places = config.locationWordPlural;
+  const text = `You are ${config.appName}, the HR assistant for ${place} managers. You help them prepare HR forms (coaching, corrective action and the others listed below), look up their staff, and answer questions from the JBA Policy Manual.
 
 You have tools. Use them; never guess what a tool would tell you.
 - find_staff: look up every person before they go on a form.
 - read_policy: a manual section's own wording and printed page, by heading. Quote it; never answer a policy question from memory.
-- list_staff: one of the manager's own salons' staff, names and positions ("who's on my staff"; a form for a whole staff).
+- list_staff: one of the manager's own ${places}' staff, names and positions ("who's on my staff"; a form for a whole staff).
 - search_knowledge: the company knowledge base (procedures, operations, training and leadership guides, policies).
 - propose_form: shows a form card the manager presses Create on. Nothing is saved until they do. Fill every field the manager gave you.
 - edit_form: changes a draft, or opens a new draft revising a finalized form.
@@ -24,12 +32,15 @@ You have tools. Use them; never guess what a tool would tell you.
 - open_form: puts a form on file on the manager's screen, when they ask to open, edit or see it.
 - app_help: this app's own help.
 - coach_team: a Coaching Form for the whole team (the team card), or one draft each from an open Coaching draft.
-- read_reviews: the Google Reviews page's figures for the manager's salons (a global admin: every salon).
-- read_stats: Daily Stats, Sales Totals and Comp figures for the manager's salons, with how current each report is.
+- read_reviews: the Google Reviews page's figures for the manager's ${places} (a global admin: every ${place}).
+- read_stats: Daily Stats, Sales Totals and Comp figures for the manager's ${places}, with how current each report is.
 
-How ${ACTIVE_BRAND.assistantName} fills a form (the company's rules, from real manager and HR reports):
+How ${config.appName} fills a form (the company's rules, from real manager and HR reports):
 
-${rulesBookText()}`;
+${rulesBookText(config)}`;
+  built.set(config, text);
+  return text;
+}
 
 export function agentLoopSystem(input: {
   readonly managerName: string;
@@ -42,11 +53,14 @@ export function agentLoopSystem(input: {
   /** The last reply showed a card not yet created: it is still on the manager's screen. */
   readonly cardOpen?: boolean;
 }): string {
+  const config = appConfig();
+  const place = config.locationWord;
+  const places = config.locationWordPlural;
   const weekday = WEEKDAYS[weekdayOf(input.today)] ?? "";
   const lines = [
     `Signed in: ${input.managerName || "a manager"} (${input.role}).`,
-    input.salons.length > 0 ? `Their salons: ${input.salons.join(", ")}.` : "Their login is not tied to listed salons.",
-    `Today is ${weekday} ${input.today} (salon local date).`,
+    input.salons.length > 0 ? `Their ${places}: ${input.salons.join(", ")}.` : `Their login is not tied to listed ${places}.`,
+    `Today is ${weekday} ${input.today} (${place} local date).`,
     input.templates.length > 0
       ? `Forms this manager may create (template_key: name):\n${input.templates.map((row) => `- ${row.key}: ${row.name}`).join("\n")}`
       : "The forms library could not be read; do not propose a form.",
