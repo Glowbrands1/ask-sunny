@@ -3,8 +3,8 @@ import { notFound } from "next/navigation";
 
 import { L10Frame, hubMeetingUrl } from "@/features/l10/L10Frame";
 import { endMeetingAction, loadMeetingAction, saveMeetingAction } from "@/features/l10/actions";
-import { openMeeting } from "@/features/l10/data.server";
-import { hasReference, isMeetingKey } from "@/features/l10/lib/config";
+import { listRecaps, openMeeting } from "@/features/l10/data.server";
+import { bloomStyle, hasReference, isMeetingKey } from "@/features/l10/lib/config";
 import { businessDate } from "@/features/l10/lib/dueStatus";
 import { MeetingView } from "@/features/l10/meeting/MeetingView";
 import { Card } from "@/features/l10/ui/ui";
@@ -46,6 +46,8 @@ export default async function MeetingPage({ params, searchParams }: { params: Pr
     );
   }
   const m = opened.meeting;
+  // A Bloom-style meeting shows "Last meeting's summary"; a recap list that fails to load just leaves it empty.
+  const recaps = bloomStyle(key) ? await listRecaps(key) : null;
   return (
     <L10Frame meetingKey={key}>
       <MeetingView
@@ -62,6 +64,7 @@ export default async function MeetingPage({ params, searchParams }: { params: Pr
         dateLabel={dateLabel(new Date())}
         serverTime={new Date().getTime()}
         today={businessDate()}
+        recaps={recaps?.ok ? recaps.recaps : []}
       />
     </L10Frame>
   );

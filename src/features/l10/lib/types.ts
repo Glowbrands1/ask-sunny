@@ -97,6 +97,8 @@ export interface Issue {
   votes?: Record<string, IssueVote>;
   resolved: boolean;
   addedBy?: string;
+  /** Who owns the issue (the New Issue bar's owner picker on the Bloom-style meetings, 15 Nov 2026). */
+  owner?: string;
   resolvedSession?: string | null;
   /** Which IDS list an open issue sits on. Missing means "short" (every issue written before the split). */
   term?: IssueTerm;
