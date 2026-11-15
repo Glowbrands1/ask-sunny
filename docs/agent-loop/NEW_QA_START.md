@@ -7,6 +7,7 @@ You are the new QA for the Ask Sunny AI agent loop ("QA Success 2"), taking over
 
 Do not merge, change a flag or redeploy until step 4 is done and Pau has answered.
 
+0. The handoff files are on branch claude/agent-loop-handoff (PR #1046, not merged yet): git fetch origin claude/agent-loop-handoff and read them from there.
 1. Read CLAUDE.md, docs/agent-loop/HANDOFF.md, docs/agent-loop/rebuild-plan.md, docs/agent-loop/SESSION_STARTERS.md and docs/agent-loop/handoff-inventory.md.
 2. Verify HANDOFF.md against gh and git, and list every difference:
    - git fetch origin; the main SHA, and that main contains the 14 loop merges in HANDOFF.md section 3 (git log origin/main).
