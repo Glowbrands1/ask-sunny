@@ -42,10 +42,23 @@ describe("past meetings", () => {
     expect(rows[0]).toMatchObject({ source: "l10", durationSeconds: 4200, ratingAvg: 9.5, issuesSolved: 1, solvedTitles: ["Weekly issue"], cascade: "Share the new checklist" });
   });
 
-  it("reads solved issues stored as plain titles (older recaps) and as { title, owner } (newer recaps)", () => {
+  it("carries a recap's meeting notes (the Hub's 20261205120000); older recaps and Bloom imports have none", () => {
+    const rows = pastMeetings([recap({ id: "r2", held_at: "2026-11-17T20:00:00.000Z", notes: "Talked about the schedule" }), recap()], { meetingHistory: [bloom] });
+    expect(rows.map((r) => r.notes)).toEqual(["Talked about the schedule", null, null]);
+  });
+
+  it("reads solved issues stored as plain titles (older recaps) and as { title, owner } (from 15 Nov 2026)", () => {
     const [row] = pastMeetings([recap({ resolved_issues: ["Old title", { title: "New title", owner: "Bo Lark" }] })], {});
     expect(row.solvedTitles).toEqual(["Old title", "New title"]);
-    expect(row.issuesSolved).toBe(2);
+    expect(row.solvedIssues).toEqual([
+      { title: "Old title", owner: "" },
+      { title: "New title", owner: "Bo Lark" },
+    ]);
+  });
+
+  it("works out To-dos completed from the recap's counts, and has none on older recaps", () => {
+    expect(pastMeetings([recap({ todos_done: 3, todos_total: 4 })], {})[0].todosCompletedPct).toBe(75);
+    expect(pastMeetings([recap()], {})[0].todosCompletedPct).toBeNull();
   });
 
   it("works out a Bloom meeting's length and average rating (people who did not rate are left out)", () => {

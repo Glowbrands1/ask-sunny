@@ -199,6 +199,11 @@ export interface RecapRow {
   open_todos: { text?: string; owner?: string; due?: string; dueDate?: string }[];
   /** Each solved issue: a plain title (older recaps) or { title, owner } (from 15 Nov 2026). Read with solvedTitle / solvedOwner. */
   resolved_issues: SolvedIssue[];
+  /** The meeting's shared notes when it was ended (the Hub's l10.meeting_recaps.notes, 20261205120000). */
+  notes?: string | null;
+  /** How many of the meeting's to-dos were done, and how many there were, when it was ended (null on older recaps). */
+  todos_done?: number | null;
+  todos_total?: number | null;
   /** Saved by the scheduled auto-save because nobody pressed End (database column l10.meeting_recaps.auto_saved). */
   auto_saved?: boolean;
   /** Set when a hub admin deleted the recap (soft delete: hidden everywhere, restorable). */
@@ -213,7 +218,12 @@ export interface RecapInput {
   durationSeconds: number;
   attendees: { name: string; rating: number | null }[];
   openTodos: unknown[];
-  resolvedIssues: string[];
+  resolvedIssues: SolvedIssue[];
+  /** The meeting's shared notes (doc.meetingNotes); left out when there are none. */
+  notes?: string;
+  /** How many of the meeting's to-dos were done, of how many. */
+  todosDone?: number;
+  todosTotal?: number;
 }
 
 /** A solved issue on a recap: a plain title (recaps saved before 15 Nov 2026) or its title and owner. */
