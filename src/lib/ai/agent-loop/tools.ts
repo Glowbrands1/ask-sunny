@@ -10,6 +10,7 @@ import { appConfig } from "./app-config";
 import { isoDate, monthDayToIso, readDates, sameDate, withoutDates } from "./dates";
 import { candidateNameWords, chatFormsActor } from "@/lib/forms/chat-form-records";
 import { holdsPhrase, identifiedTurns, verifyEvidence, withoutMessageIdTags, type IdentifiedTurn } from "./evidence";
+import { latestTurnConfirms, spellingsConfirmedFor } from "./confirmed-spelling";
 import { displayName, matchEmployeeName, nameConfirmationQuestion, readNameConfirmation, type RosterEmployee } from "@/lib/forms/employee-match";
 import { offRosterTyped } from "@/lib/forms/roster-only-names";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
@@ -605,6 +606,18 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
   /* r3 (right-persons-account): the longer names are a fact, so a manager's "<A> Two" is never lost to "<A>". */
   const longer = exact.length > 0 ? found.filter((person) => !exact.includes(person)).map(displayName) : [];
   if (exact.length > 0) found = exact;
+  /*
+   * Fix batch item 4 (c022): this turn answers this chat's own "Did you mean **<A>**?" with yes or with <A>'s full name
+   * typed back, and the lookup is <A>: a fact, so the model proposes the card instead of asking again.
+   */
+  const confirmed = found.length === 1 ? latestTurnConfirms(conversationTurns(context), [displayName(found[0]!)]) : null;
+  if (confirmed) {
+    return {
+      matches: [staffRow(found[0]!)],
+      confirmed_by_manager: { name: displayName(found[0]!), typed_before: confirmed.typed, answer: confirmed.by },
+      note: `The manager confirmed ${displayName(found[0]!)} (their answer to Did you mean). Do not ask again: propose the card for ${displayName(found[0]!)} now, with this request's account from the earlier turns where "${confirmed.typed}" was typed.`,
+    };
+  }
   if (found.length === 0) {
     /* Close spellings, as the app's own name check reads them ("Marnie Halloway" → Marnie Holloway). */
     const close = matchEmployeeName(typed, read.roster);
@@ -1529,7 +1542,16 @@ export async function proposeForm(
    * HARD GUARD, THE RIGHT PERSON'S ACCOUNT (the live run's nov6-diffemp): a turn that names another roster person and
    * not this one ("…for Test Employee, she was late…" beside "Test Employee Two") is never this card's source.
    */
-  const personTurns = turnsFromThisPersonsRequest(asked, employee.name, { names: extractEmployeeNames, same: samePerson }).filter((id) => {
+  /*
+   * Fix batch item 4 (c022): a spelling the manager confirmed as this person in this chat's own "Did you mean **<A>**?",
+   * by yes or by typing <A>'s full name back, is this person: the turn that typed it is this person's request, never
+   * another person's (`confirmed-spelling.ts`; the app's own question, no word list).
+   */
+  const rosterPerson = read.kind === "read" && employee.id ? read.roster.find((row) => row.id === employee.id) : undefined;
+  const confirmedTyped = rosterPerson ? spellingsConfirmedFor(conversationTurns(context), [displayName(rosterPerson), employee.name]) : [];
+  const sameAsThisPerson = (named: string, person: string) =>
+    samePerson(named, person) || (samePerson(person, employee.name) && confirmedTyped.some((typed) => samePerson(named, typed)));
+  const personTurns = turnsFromThisPersonsRequest(asked, employee.name, { names: extractEmployeeNames, same: sameAsThisPerson }).filter((id) => {
     if (id === context.questionMessageId) return true;
     const said = asked.messages.find((message) => message.id === id)?.content ?? "";
     return mentionsPerson(said, employee.name, rosterNames) || !rosterNames.some((name) => !samePerson(name, employee.name) && mentionsPerson(said, name, rosterNames));
