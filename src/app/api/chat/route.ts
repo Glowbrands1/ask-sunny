@@ -248,6 +248,7 @@ async function postChat(request: Request) {
         if (trace) trace.slots = { ...(trace.slots ?? {}), agent_loop_skipped: loopSkip };
       } else try {
         const parsedForLoop = parseAskRequest(body);
+        let loopTools: readonly string[] = [];
         const looped = await (await import("@/lib/ai/agent-loop/run")).runAgentTurn({
           request,
           actor: context.identity,
@@ -258,12 +259,17 @@ async function postChat(request: Request) {
           today: businessToday(),
           conversationId: parsedForLoop.conversationId,
           openFormId: parsedForLoop.activeFormInstanceId ?? null,
+          onTools: (tools) => {
+            loopTools = tools;
+          },
         });
         /* What the turn carried that the loop reads another way (`loopCarriedOnly`): noted, never a reason to skip. */
         const carried = loopCarriedOnly(parsedForLoop);
         const loopTrace = carried.length > 0 ? chatTraceDraft() : undefined;
         if (loopTrace) loopTrace.slots = { ...(loopTrace.slots ?? {}), agent_loop_carried: carried };
-        await closeTurn(turnId, { category: "unclassified", succeeded: true, latencyMs: Date.now() - askedAt });
+        /* PR 4: the loop's turn is logged by the tools it actually called (never by the message text). */
+        const { loopTurnCategory } = await import("@/lib/ai/agent-loop/turn-category");
+        await closeTurn(turnId, { category: loopTurnCategory(loopTools, looped), succeeded: true, latencyMs: Date.now() - askedAt });
         return NextResponse.json({ ...looped, turnId });
       } catch (error) {
         await closeTurn(turnId, { category: "unclassified", succeeded: false, latencyMs: Date.now() - askedAt });

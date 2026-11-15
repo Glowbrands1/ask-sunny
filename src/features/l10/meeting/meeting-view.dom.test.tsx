@@ -57,7 +57,8 @@ describe("the DM L10 page in Ask Sunny", () => {
   it("has the Hub's header: title, team and cadence, leader, Export PDF, History, Start meeting, signed-in name, save status", () => {
     renderView();
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("STC DM L10");
-    expect(document.body.textContent).toContain("Fri, Nov 13 · STC District Managers · Tuesdays · 90 min · Usually led by Bo Lark");
+    // "58 min", not the stored "90 min", since 15 Nov 2026: the cadence line shows the agenda's total (QA).
+    expect(document.body.textContent).toContain("Fri, Nov 13 · STC District Managers · Tuesdays · 58 min · Usually led by Bo Lark");
     expect(screen.getByRole("link", { name: "Export PDF" }).getAttribute("href")).toBe("/meetings/stc-dm/report");
     expect(screen.getByRole("link", { name: "History" }).getAttribute("href")).toBe("/meetings/stc-dm/history");
     expect(screen.getByRole("button", { name: "Start meeting" })).toBeTruthy();
@@ -76,16 +77,19 @@ describe("the DM L10 page in Ask Sunny", () => {
     renderView();
     const agenda = within(screen.getByRole("region", { name: "Agenda" }));
     const items = agenda.getAllByRole("listitem").map((li) => li.textContent);
-    // Changed on purpose 13 Nov 2026: the STC DM L10's leader asked for "AI Best Practice" and no Headlines (IDS 65,
-    // still 90 minutes). This roster carries no agenda, so the page uses its copy of the Hub's config.
+    // Changed on purpose 13 Nov 2026: the STC DM L10's leader asked for "AI Best Practice" and no Headlines. Changed
+    // again 15 Nov 2026 (the owner's request): its Bloom Growth agenda, titles and minutes exactly (it was "Segue · AI
+    // Best Practice" 5 … "IDS · Issues" 65). This roster carries no agenda, so the page uses its copy of the Hub's config.
     expect(items).toEqual([
-      "1 · Segue · AI Best Practice5m",
-      "2 · Scorecard5m",
-      "3 · Rock Review5m",
-      "4 · To-Do List5m",
-      "5 · IDS · Issues65m",
+      "1 · AI Best Practice5m",
+      "2 · Scorecard10m",
+      "3 · Rock Review8m",
+      "4 · To-do List5m",
+      "5 · IDS25m",
       "6 · Conclude5m",
     ]);
+    // The cadence line shows the agenda's total, so it cannot drift from it (QA, 15 Nov 2026).
+    expect(document.body.textContent).toContain("STC District Managers · Tuesdays · 58 min");
     // Changed on purpose 13 Nov 2026: the STC DM L10 has no Reference (its leader asked), so no Business Plan or chart.
     expect(agenda.queryByText("REFERENCE")).toBeNull();
     expect(agenda.queryByRole("button", { name: "Business Plan" })).toBeNull();
@@ -142,7 +146,7 @@ describe("the DM L10 page in Ask Sunny", () => {
       { id: "i4", title: "Newer solved", notes: "", resolved: true, resolvedAt: "2026-11-10T12:00:00.000Z" },
     ];
     renderView({ initial: loaded(3, { issues }) });
-    fireEvent.click(screen.getByRole("button", { name: /\d · IDS · Issues/ }));
+    fireEvent.click(screen.getByRole("button", { name: /\d · IDS/ }));
     expect(screen.getByRole("tab", { name: "Short term (1)" }).getAttribute("aria-selected")).toBe("true");
     expect(within(screen.getByRole("list", { name: "Open issues" })).getByText("Weekly issue")).toBeTruthy();
     fireEvent.click(screen.getByRole("tab", { name: "Long-term (1)" }));
@@ -156,7 +160,7 @@ describe("the DM L10 page in Ask Sunny", () => {
     const issues = [{ id: "i1", title: "Weekly issue", notes: "", resolved: false, votes: { "hub-user-2": { rank: 1, name: "Bo" } } }];
     renderView({ initial: loaded(3, { issues }) });
     // Any position: the STC DM agenda has no Headlines since 13 Nov 2026, so IDS is item 5 there (6 elsewhere).
-    fireEvent.click(screen.getByRole("button", { name: /\d · IDS · Issues/ }));
+    fireEvent.click(screen.getByRole("button", { name: /\d · IDS/ }));
     expect(screen.queryByRole("region", { name: "Everyone's top three" })).toBeNull();
     expect(screen.queryByRole("button", { name: /^Rank by you/ })).toBeNull();
     expect(screen.queryByTestId("room-rank")).toBeNull();
@@ -270,7 +274,7 @@ describe("the agenda, hints and roster come from the Hub (the STC DM L10 change,
   it("an issue someone adds saves their full name, so their initials show on it", async () => {
     const save = vi.fn().mockResolvedValue({ ok: true, version: 4, updatedAt: "2026-11-14T00:00:00Z" } satisfies SaveOutcome);
     renderView({ save: save as unknown as SaveFn, initial: loaded(3, { issues: [] }), mentionPeople: [{ id: "hub-user-1", name: "Avery Quill" }] });
-    fireEvent.click(screen.getByRole("button", { name: /IDS · Issues/ }));
+    fireEvent.click(screen.getByRole("button", { name: /\d · IDS/ })); // "IDS" in the STC DM L10's Bloom agenda since 15 Nov 2026
     fireEvent.change(screen.getByLabelText("Identify a new issue"), { target: { value: "New onboarding process" } });
     fireEvent.click(screen.getByRole("button", { name: "Add issue" }));
     expect(screen.getByTitle("Added by Avery Quill").textContent).toBe("AQ");
@@ -289,7 +293,7 @@ describe("no Reference for the STC DM L10 (its leader's request, 13 Nov 2026)", 
     );
     expect(screen.queryByRole("heading", { name: "Business Plan" })).toBeNull();
     expect(document.body.textContent).not.toContain("Vision, core values");
-    expect(screen.getByRole("heading", { level: 2, name: /Segue/ })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 2, name: /AI Best Practice/ })).toBeTruthy(); // the first section, titled "AI Best Practice" (no "Segue ·") since its Bloom agenda, 15 Nov 2026
   });
 
   it("the Hub's word that a meeting has no Reference is followed", async () => {
@@ -314,7 +318,7 @@ describe("IDS: move between the lists from the row, and no headlines where the m
     { id: "a2", title: "Parked issue", notes: "", resolved: false, term: "long" },
     { id: "a3", title: "Done issue", notes: "", resolved: true, resolvedAt: "2026-11-10T12:00:00.000Z" },
   ];
-  const openIds = () => fireEvent.click(screen.getByRole("button", { name: /\d · IDS · Issues/ }));
+  const openIds = () => fireEvent.click(screen.getByRole("button", { name: /\d · IDS/ }));
 
   it("each open row has Long-term / Short term next to Solve; it moves the issue and the tab counts follow", async () => {
     const save = vi.fn(async (): Promise<SaveOutcome> => ({ ok: true, version: 4, updatedAt: "t" }));
