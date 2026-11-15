@@ -1,4 +1,4 @@
-import { addressNotPersonEnabled, formNameFromRosterEnabled, metricChoiceOneQuestionEnabled, metricGuardEnabled, offRosterConfirmEnabled, rosterNearMissEnabled, rosterNotFoundAnyPhrasingEnabled, nearMissQuestionRulesEnabled, formNameOffRosterAskEnabled, offRosterAskBeforeCardEnabled } from "@/lib/config/chat-quality-flags";
+import { addressNotPersonEnabled, formNameFromRosterEnabled, metricChoiceOneQuestionEnabled, metricGuardEnabled, offRosterConfirmEnabled, rosterNearMissEnabled, rosterNotFoundAnyPhrasingEnabled, nearMissQuestionRulesEnabled, formNameOffRosterAskEnabled, offRosterAskBeforeCardEnabled, terminationRequestIsCaEnabled } from "@/lib/config/chat-quality-flags";
 import { isGlossaryTerm } from "@/lib/ai/chat-glossary";
 import type { AskResponse } from "@/lib/ai/types";
 
@@ -99,6 +99,16 @@ function said(names: readonly string[]): string {
 /** The reply and card with only roster people as the employee and as choices. Pure; see `withRosterOnlyNames`. */
 export function rosterOnlyNames(response: AskResponse, names: readonly string[], message?: string): AskResponse {
   if (names.length === 0) return response;
+  // TERMINATION_REQUEST_IS_CA_ENABLED (QA's second re-review, 15 Nov 2026): a title before a name ("for Ms. Holloway") is not
+  // the name; "Ms" is never read as the person. Titles go before any reader below sees the message. Off, as before.
+  if (terminationRequestIsCaEnabled() && message) {
+    const lastName = (name: string) => name.trim().split(/\s+/).slice(-1)[0]?.toLowerCase() ?? "";
+    // "Ms. Holloway": the roster's full name when one person has the surname, else the surname alone; the title always goes.
+    message = message.replace(/\b(?:mr|ms|mrs|mx|dr)\.?\s+(\p{Lu}[\p{L}'’-]*)/giu, (_whole, surname: string) => {
+      const owners = names.filter((name) => lastName(name) === surname.toLowerCase());
+      return owners.length === 1 ? owners[0]! : surname;
+    });
+  }
   let content = response.content;
   let proposal = response.formProposal;
   let ask: string | null = null;

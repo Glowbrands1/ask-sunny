@@ -17,7 +17,7 @@ const KNOWN = new Set([
   "form_not_visible", "not_a_heading", "one_card", "wrong_tool", "whole_staff", "right_person", "draft_open", "date_not_stated",
   "salon_unknown", "not_stated", "name_correction_only", "date_after_today", "drafts_only", "unknown_field", "empty_account",
   "bad_level", "not_a_saved_form", "not_a_form_id", "write_failed", "finalized_revision_refused", "not_configured", "not_synced",
-  "unknown_tool", "tool_threw", "name_evidence_missing", "name_correction_other_fields", "exit_not_stated", "level_not_stated", "payroll_not_stated",
+  "unknown_tool", "tool_threw", "name_evidence_missing", "name_correction_other_fields", "name_correction_did_you_mean", "name_correction_needs_evidence", "name_correction_no_name", "name_correction_other_person", "name_not_in_evidence", "privacy_not_this_person", "exit_not_stated", "level_not_stated", "payroll_not_stated",
 ]);
 
 /** A line that returns a refusal: `error:` followed by a string, a template or a named message (not `error: Boolean(...)`). */

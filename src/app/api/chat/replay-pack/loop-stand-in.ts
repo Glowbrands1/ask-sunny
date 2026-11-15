@@ -60,7 +60,7 @@ function viewOf(prompt: readonly Message[]): LoopView {
     if (message.role !== "user" && message.role !== "assistant") continue;
     const shown = typeof message.content === "string" ? message.content : message.content.filter((part) => part.type === "text").map((part) => part.text ?? "").join("\n");
     // The evidence tags (`[message_id: <id>]`, evidence.ts) are kept apart, so a case reads the manager's words as typed.
-    const messageIds = [...shown.matchAll(/\[message_id: ([^\]\n]+)\]/g)].map((found) => found[1]!);
+    const messageIds = [...shown.matchAll(/\[message_id:\s*([^\]\n]+)\]/g)].map((found) => found[1]!.trim());
     const text = withoutMessageIdTags(shown);
     if (text !== "") turns.push({ role: message.role, text, ...(messageIds.length > 0 ? { messageIds } : {}) });
   }
@@ -180,10 +180,13 @@ export function liveRecording(standIn: LoopStandIn, real: unknown): unknown {
 
 /**
  * Evidence for a tool (the rebuild plan, `evidence.ts`): the id of the manager message this turn answers (or the one
- * `back` manager messages before it) and a quote from it (by default its first 40 characters), as a model would pass it.
+ * `back` manager messages before it) and a quote from it (by default its first whole words, about 40 characters), as a model would pass it.
  */
 export function evidenceFrom(view: LoopView, quote?: string, back = 0): { message_id: string; quote: string } {
   const manager = view.turns.filter((turn) => turn.role === "user" && (turn.messageIds?.length ?? 0) > 0);
   const turn = manager[manager.length - 1 - back] ?? manager.at(-1);
-  return { message_id: turn?.messageIds?.at(-1) ?? "current", quote: quote ?? (turn?.text ?? "").slice(0, 40) };
+  // The default quote is the message's first words, whole (evidence.ts matches whole words only).
+  // Contiguous: it stops at the first word that does not fit (a later short word is never added after a gap).
+  const opening = (turn?.text ?? "").split(/\s+/).reduce((kept, word) => (kept.full || (kept.text !== "" && kept.text.length + word.length + 1 > 40) ? { ...kept, full: true } : { text: `${kept.text} ${word}`.trim(), full: false }), { text: "", full: false }).text;
+  return { message_id: turn?.messageIds?.at(-1) ?? "current", quote: quote ?? opening };
 }

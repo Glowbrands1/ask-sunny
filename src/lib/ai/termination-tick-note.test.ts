@@ -79,10 +79,22 @@ describe("QA's review of #1010: a negation, a question or another person's termi
   });
 
   it.each([
-    ["Marnie Holloway no call no showed so we're terminating her"],
+    // The reader (`termination-stated.ts`) does not tick these, so the note applies; "no call no show" is no negation.
     ["Marnie Holloway no-showed on 11/12, we are terminating her, write the CA"],
+    ["she no call no showed and my DM approved her termination"],
+    ["Marnie Holloway had a no call no show, termination was approved by my DM"],
   ])("QA round 3: no call no show is the reason, not a negation: %s → note", (said) => {
     expect(withTerminationTickNote(before, asked(said)).content).toContain(TERMINATION_TICK_NOTE);
+  });
+
+  /*
+   * Changed on purpose (15 Nov 2026, merging #1014 into #1010): "Marnie Holloway no call no showed so we're terminating
+   * her" first got the note because the stated-termination reader did not tick "no call no showed". #1014 makes that
+   * reader accept "showed", so it now TICKS this sentence and the note correctly stays off: exactly one of the two
+   * (the pairing cases, nov15-termination-pairing-note-or-tick-*).
+   */
+  it("a termination the reader now ticks gets the tick, not the note", () => {
+    expect(withTerminationTickNote(before, asked("Marnie Holloway no call no showed so we're terminating her"))).toBe(before);
   });
 
   it("another person's termination earlier in the chat never reaches this card", () => {

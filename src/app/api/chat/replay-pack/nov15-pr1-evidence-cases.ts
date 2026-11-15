@@ -87,6 +87,60 @@ export const NOV15_PR1_EVIDENCE_CASES: ReplayCase[] = [
     },
   },
   {
+    id: "nov15-pr1-privacy-ask-is-about-this-person",
+    title: "PR 1a review (QA, ruling 1): \"write a new form for Remy Calder…\" quoted as forms_on_file_evidence never opens Juno Paxton's forms (privacy_not_this_person); the same words open Remy Calder's",
+    report: `${REPORT}: QA's review of #1026, ruling 1 (privacy evidence is tied to the person)`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      await remysDraft(t);
+      const model = loopStandIn((view): LoopDecision => {
+        const looks = view.results.filter((result) => result.tool === "find_past_forms");
+        if (looks.length === 0) return { tool: "find_past_forms", input: { employee_name: "Juno Paxton", forms_on_file_evidence: evidenceFrom(view, "new form") } };
+        if (looks.length === 1) return { tool: "find_past_forms", input: { employee_name: "Remy Calder", forms_on_file_evidence: evidenceFrom(view, "new form for Remy Calder") } };
+        return { text: "Done." };
+      });
+      t.loopModel!(model);
+      await t.thread().say("write a new form for Remy Calder, she was late to her shift on 11/14");
+      const [juno, remy] = model.views.at(-1)!.results.filter((result) => result.tool === "find_past_forms").map((result) => result.output) as { reason_code?: string; forms?: unknown[] }[];
+      expect(juno, "another person's forms opened on this person's request").toMatchObject({ reason_code: "privacy_not_this_person" });
+      expect(remy?.reason_code, "the person the manager named stayed closed").toBeUndefined();
+    },
+  },
+  {
+    id: "nov15-pr1-only-a-quoted-name-correction-renames",
+    title: "PR 1a review (QA, ruling 2): \"fix her last name please\" with employee_name \"Juno Paxton\" on Remy Calder's draft is refused (no evidence: name_evidence_missing; evidence without the name: name_not_in_evidence); the form keeps Remy Calder",
+    report: `${REPORT}: QA's review of #1026, ruling 2 (every employee_name write is a quoted name correction)`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "Remy Calder" } };
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: "She was late to her shift on 11/14.", incident_date: "2026-11-14" } };
+        return { text: "Here's the Corrective Action Form for **Remy Calder**." };
+      }));
+      const thread = t.thread();
+      await thread.say("CA for Remy Calder, she was late to her shift on 11/14");
+      const id = await thread.create();
+      const before = JSON.stringify(t.values(id));
+      const model = loopStandIn((view): LoopDecision => {
+        const edits = view.results.filter((result) => result.tool === "edit_form");
+        if (edits.length === 0) return { tool: "edit_form", input: { instance_id: id, values: { employee_name: "Juno Paxton" } } };
+        if (edits.length === 1) return { tool: "edit_form", input: { instance_id: id, values: { employee_name: "Juno Paxton" }, name_evidence: evidenceFrom(view, "fix her last name please") } };
+        return { text: (edits.map((edit) => (edit.output as { reason_code?: string }).reason_code)).join(", ") };
+      });
+      t.loopModel!(model);
+      const reply = await thread.say("fix her last name please");
+      expect(reply.content).toBe("name_evidence_missing, name_not_in_evidence");
+      expect(JSON.stringify(t.values(id)), "the form's name was changed").toBe(before);
+    },
+  },
+  {
     id: "nov15-pr1-name-correction-changes-only-the-name",
     title: "PR 1: \"fix her last name, it is Calder-Voss\" on the open draft is edit_form intent correct_name: with another field too it is refused (name_correction_other_fields), with no name_evidence it is refused (name_evidence_missing), and nothing else is written",
     report: `${REPORT}: NAME_CORRECTION (tools.ts:2348) replaced by intent correct_name + name_evidence`,

@@ -22,7 +22,7 @@ import { extractUsedMarkers } from "../prompts";
 import { shownCitations } from "@/lib/knowledge/empty-card-drop";
 import { DATA_TOOL_SPECS, dataToolHandlers } from "./data-tools";
 import { agentLoopSystem, AGENT_LOOP_RULES } from "./prompt";
-import { identifiedTurns, messageIdTag, withoutMessageIdTags } from "./evidence";
+import { generatedId, identifiedTurns, messageIdTag, withoutMessageIdTags } from "./evidence";
 import { agentLoopStepLimit } from "./switch";
 import {
   appHelp,
@@ -271,7 +271,7 @@ function withCardNote(message: ChatMessage): string {
 function conversationOf(history: readonly ChatMessage[], question: string, questionMessageId?: string | null): { role: "user" | "assistant"; content: unknown }[] {
   const shown = new Map(history.map((message) => [message, withCardNote(message)]));
   const turns = identifiedTurns(history, question, questionMessageId).map((turn, position, all) => {
-    const message = position < all.length - 1 ? history.find((candidate, index) => (candidate.id ?? `h${index}`) === turn.id) : undefined;
+    const message = position < all.length - 1 ? history.find((candidate, index) => (candidate.id ?? generatedId(index)) === turn.id) : undefined;
     const content = message ? (shown.get(message) ?? turn.content) : turn.content;
     return { role: turn.role, content: (turn.role === "user" ? `${content}\n\n${messageIdTag(turn.id)}` : content) as unknown };
   });
@@ -491,6 +491,12 @@ export async function runAgentTurn(input: AgentTurnInput): Promise<AskResponse> 
 }
 
 async function loop(input: AgentTurnInput): Promise<AskResponse> {
+  /*
+   * A CARD IS OPEN (Pau, 15:00Z 14 Nov 2026: a mid-form question is answered and the open card stays): the last reply
+   * showed a card not yet created. A fact for the model (batch A); the rules book says what the reply says about it.
+   */
+  const lastReply = [...input.history].reverse().find((turn) => turn.role === "assistant" && !turn.error);
+  const cardOpenAtStart = !input.openFormId && Boolean(lastReply && CARD_REPLY.test(String(lastReply.content)));
   const context: ToolContext = {
     request: input.request,
     actor: input.actor,
@@ -501,6 +507,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     scopeId: input.scopeId,
     today: input.today,
     openFormId: input.openFormId,
+    // TODO(PR2): interim; Coding-5's server-side card record replaces the reply text as the card's person.
+    cardReply: cardOpenAtStart ? String(lastReply!.content) : null,
   };
   const effects: ToolEffects = { proposal: null, formUpdate: null };
   /* The open form as saved before the turn, for the no-false-"updated" guard below (FORM_EDIT_NOOP_GUARD's snapshot). */
@@ -541,12 +549,6 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   };
 
   const [templates, manual] = await Promise.all([templateChoices(input.actor.role), manualFor(input.scopeId)]);
-  /*
-   * A CARD IS OPEN (Pau, 15:00Z 14 Nov 2026: a mid-form question is answered and the open card stays): the last reply
-   * showed a card not yet created. A fact for the model (batch A); the rules book says what the reply says about it.
-   */
-  const lastReply = [...input.history].reverse().find((turn) => turn.role === "assistant" && !turn.error);
-  const cardOpenAtStart = !input.openFormId && Boolean(lastReply && CARD_REPLY.test(String(lastReply.content)));
   const dynamic = agentLoopSystem({
     cardOpen: cardOpenAtStart,
     managerName: input.actor.displayName,

@@ -10,8 +10,8 @@
  * never reads what the words mean; the model does, taught by the rules book.
  *
  * Message ids: each manager turn the model is shown ends with `[message_id: <id>]` (`conversationOf` in run.ts). The
- * id is the chat message's own id; a turn with none gets its place in the history (`h<index>`), and the message being
- * answered now is `questionMessageId`, or `CURRENT_MESSAGE_ID`.
+ * id is the chat message's own id; a turn with none gets its place in the history (`gen-h<index>`, a prefix no browser
+ * id uses), and the message being answered now is `questionMessageId`, or `CURRENT_MESSAGE_ID`.
  */
 
 import type { ChatMessage } from "@/types";
@@ -25,8 +25,10 @@ export interface Evidence {
 export type EvidenceReason =
   /** The id names no turn, or a turn that is not the manager's (the app's own reply, a tool note). */
   | "evidence_not_manager_turn"
-  /** The quote is not in that turn (compared case- and space-insensitively). */
+  /** The quote is not in that turn (compared case- and space-insensitively), as whole words, of 3 characters or more. */
   | "evidence_quote_not_found"
+  /** The id names more than one turn (never first-match). */
+  | "evidence_ambiguous_id"
   /** The check needs this turn's words, and the quote is from an earlier turn. */
   | "evidence_not_this_turn"
   /**
@@ -55,9 +57,17 @@ export function messageIdTag(id: string): string {
   return `[message_id: ${id}]`;
 }
 
+/** A tag, with or without the space after the colon (QA's review). */
+export const MESSAGE_ID_TAG = /\s*\[message_id:\s*[^\]\n]+\]/g;
+
+/** The id a turn with no id of its own is given: its place in the history, prefixed so no browser id can collide. */
+export function generatedId(position: number): string {
+  return `gen-h${position}`;
+}
+
 /** Text with the tags taken out (for anything that compares or shows the manager's words). */
 export function withoutMessageIdTags(text: string): string {
-  return text.replace(/\n*\[message_id: [^\]\n]+\]/g, "");
+  return text.replace(MESSAGE_ID_TAG, "");
 }
 
 /**
@@ -68,21 +78,42 @@ export function identifiedTurns(history: readonly ChatMessage[], question: strin
   const turns: IdentifiedTurn[] = [];
   history.forEach((message, position) => {
     if (message.error || typeof message.content !== "string" || message.content.trim() === "") return;
-    turns.push({ id: message.id ?? `h${position}`, role: message.role === "assistant" ? "assistant" : "user", content: message.content, index: turns.length });
+    turns.push({ id: message.id ?? generatedId(position), role: message.role === "assistant" ? "assistant" : "user", content: message.content, index: turns.length });
   });
   turns.push({ id: questionMessageId || CURRENT_MESSAGE_ID, role: "user", content: question, index: turns.length });
   return turns;
 }
 
-/** Case- and space-insensitive, with curly quotes and dashes read as straight ones. */
+/** Case- and space-insensitive, with curly quotes, every hyphen and dash, and the ellipsis read as plain ones. */
 function normalized(text: string): string {
   return text
     .replace(/[‘’]/g, "'")
     .replace(/[“”]/g, '"')
-    .replace(/[–—]/g, "-")
+    .replace(/[\u2010-\u2015\u2212]/g, "-")
+    .replace(/\u2026/g, "...")
     .toLowerCase()
     .replace(/\s+/g, " ")
     .trim();
+}
+
+/** The shortest quote that counts (QA's review: "a", "up" and "," are not evidence). */
+const MIN_QUOTE = 3;
+const WORD_CHAR = /[\p{L}\p{N}]/u;
+
+/**
+ * Whether `quote` is in `text` as whole words: at least 3 characters, holding a letter or digit, and never the inside of
+ * a longer word ("ate" is not in "late").
+ */
+function holdsWholeWords(text: string, quote: string): boolean {
+  if (quote.length < MIN_QUOTE || !WORD_CHAR.test(quote)) return false;
+  for (let at = text.indexOf(quote); at >= 0; at = text.indexOf(quote, at + 1)) {
+    const before = text[at - 1] ?? "";
+    const after = text[at + quote.length] ?? "";
+    const startsInWord = WORD_CHAR.test(quote[0]!) && WORD_CHAR.test(before);
+    const endsInWord = WORD_CHAR.test(quote[quote.length - 1]!) && WORD_CHAR.test(after);
+    if (!startsInWord && !endsInWord) return true;
+  }
+  return false;
 }
 
 /** Evidence as the model passed it: an object with a message_id and a quote, both strings; null otherwise. */
@@ -105,14 +136,16 @@ export interface EvidenceOptions {
  */
 export function verifyEvidence(evidence: unknown, turns: readonly IdentifiedTurn[], options: EvidenceOptions = {}): EvidenceCheck {
   const claim = readEvidence(evidence);
-  const turn = claim ? turns.find((candidate) => candidate.id === claim.message_id) : undefined;
+  const named = claim ? turns.filter((candidate) => candidate.id === claim.message_id) : [];
+  if (named.length > 1) return { ok: false, reason: "evidence_ambiguous_id" };
+  const turn = named[0];
   if (!claim || !turn || turn.role !== "user") return { ok: false, reason: "evidence_not_manager_turn" };
-  const quote = normalized(claim.quote);
-  if (quote === "" || !normalized(withoutMessageIdTags(turn.content)).includes(quote)) return { ok: false, reason: "evidence_quote_not_found" };
+  if (!holdsWholeWords(normalized(withoutMessageIdTags(turn.content)), normalized(claim.quote))) return { ok: false, reason: "evidence_quote_not_found" };
   if (options.thisTurnOnly && turn.index !== turns.length - 1) return { ok: false, reason: "evidence_not_this_turn" };
-  if (options.afterMessageId) {
-    const asked = turns.find((candidate) => candidate.id === options.afterMessageId);
-    if (asked && turn.index <= asked.index) return { ok: false, reason: "evidence_after_card" };
+  if (options.afterMessageId !== undefined) {
+    // An id that names no turn, or more than one, refuses (QA's review: it must never fail open).
+    const asked = turns.filter((candidate) => candidate.id === options.afterMessageId);
+    if (asked.length !== 1 || turn.index <= asked[0]!.index) return { ok: false, reason: "evidence_after_card" };
   }
   return { ok: true, turn };
 }

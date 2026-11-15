@@ -29,7 +29,9 @@ import {
   caShortcutWordsEnabled,
   formChoiceStatedEnabled,
   formNameFromRosterEnabled,
+  terminationRequestIsCaEnabled,
 } from "@/lib/config/chat-quality-flags";
+import { allCapitalised } from "./capitalised-name";
 import { foldsToGlossaryTerm } from "@/lib/ai/chat-glossary";
 
 import { NOT_A_NAME, NOT_A_TYPED_NAME, TYPED_NAME_WORD } from "./name-words";
@@ -556,12 +558,101 @@ export function canonicalShorthand(text: string): string {
   });
 }
 
+/*
+ * TERMINATION_REQUEST_IS_CA_ENABLED (QA, 15 Nov 2026): "create a termination for <A>, she no call no showed on 11/12"
+ * got a policy answer and no card. "Termination" alone is still no form's name (see NOT_A_LEADING_NAME).
+ *
+ * A WHITELIST AT THE START OF A SENTENCE (QA's re-review, 15 Nov 2026; word lists kept leaking both ways): optional
+ * politeness ("please", "can you", "could you", "I need to", "need to"), then create | make | do | write (up) | start |
+ * draft | need, then "a termination" (optionally "CA" or "C/A"; never "form": "termination form for <A>" stays the Exit form, as
+ * "termination paperwork" does), then "for", then a NAME that resolves — a roster
+ * person's full name, a title and a roster surname only one person has ("Ms. Holloway"), or an off-roster full name in
+ * capitals. Titles (Mr, Ms, Mrs, Mx, Dr) are stripped before the name is resolved and from the request that is read on, so
+ * "Ms. Holloway" is Holloway and the name reader never takes "Ms" for the person. With no roster installed (a pure caller), a name-shaped full name. A "?" blocks only when it ends that same
+ * sentence. Anything else — "So do I create a termination for … or not", "I think we should do a termination for …",
+ * "create a termination for no call no show" — is read as it always was.
+ */
+let readTerminationRoster: () => readonly string[] | undefined = () => undefined;
+
+/** The server's roster reader (`person-guard.ts` installs it); a test or the browser reads none. */
+export function installTerminationRosterNames(read: () => readonly string[] | undefined): void {
+  readTerminationRoster = read;
+}
+
+const TERMINATION_SENTENCE =
+  /^(\s*(?:please\s+)?(?:(?:can|could)\s+you\s+(?:please\s+)?|i\s+need\s+to\s+|need\s+to\s+)?(?:create|make|do|write(?:\s+up)?|start|draft|need)\s+(?:me\s+)?(?:an?\s+)?)termination(?:\s+(?:ca|c\/a))?(\s+for\s+)/i;
+const TITLE = /^(?:mr|ms|mrs|mx|dr)\.?\s+/i;
+const NAME_SHAPED_WORD = /^[\p{L}][\p{L}'’-]*$/u;
+
+/** The words after "for" up to the sentence's end or a comma: the name, if one resolves (or can be asked about). */
+function nameResolvesAfterFor(rest: string): boolean {
+  const head = rest.split(/[,;:!?]|\s+(?:she|he|they|who|because|bc|for|since|was|is|did|didn['’]t|has|had)\b/i)[0]!.trim().replace(/[.]+$/, "");
+  const titled = TITLE.exec(head);
+  const bare = titled ? head.slice(titled[0].length) : head;
+  const words = bare.split(/\s+/).filter(Boolean);
+  const roster = readTerminationRoster();
+  const norm = (text: string) => text.toLowerCase().replace(/\s+/g, " ").trim();
+  const said = norm(bare);
+  if (roster && roster.length > 0) {
+    // A roster person's full name, as the words after "for" (the title aside) begin.
+    if (roster.some((name) => said === norm(name) || said.startsWith(`${norm(name)} `))) return true;
+    // QA round 3: a title and a surname one OR MORE roster people have ("Ms. Fairweather" with two of them) and a lone
+    // first or last name ("Marnie") are requests too: the card asks who, it never goes quiet.
+    const only = words.length === 1 ? said : "";
+    if (only && roster.some((name) => norm(name).split(" ").some((part) => part === only))) return true;
+    if (titled) {
+      const surname = said.split(" ")[0] ?? "";
+      if (surname && roster.some((name) => norm(name).split(" ").slice(-1)[0] === surname)) return true;
+    }
+  }
+  // A title with no roster person behind it is no name.
+  if (titled && !(roster && roster.length > 0)) return false;
+  // A full name: two or three name words, none a stop word; in capitals when a roster was read.
+  const name = words.slice(0, 3);
+  if (name.length < 2) return false;
+  if (!name.every((word) => NAME_SHAPED_WORD.test(word) && !NOT_A_NAME.has(word.toLowerCase()) && !NOT_A_TYPED_NAME.has(word.toLowerCase()))) return false;
+  return roster && roster.length > 0 ? allCapitalised(name) : true;
+}
+
+/** Sentence starts: the text's start, a newline, or after . ! ? (not a title's full stop, "Ms."). */
+function sentenceStarts(text: string): number[] {
+  const starts = [0];
+  const end = /(?<!\b(?:mr|ms|mrs|mx|dr))[.!?]+\s+|\n+/gi; // needs a space after: "11.12" is one word
+  for (const match of text.matchAll(end)) starts.push(match.index! + match[0].length);
+  return starts;
+}
+
+/**
+ * QA round 3 (15 Nov 2026): a question anywhere in the message — any clause or sentence — makes it a question, not a
+ * request ("…she no call no showed 11.12, is that enough?", "create a termination for <A>. Is that enough?"). A dot
+ * inside a date never ends a sentence.
+ */
+function messageAsks(text: string): boolean {
+  return text.includes("?");
+}
+
+function asTerminationRequest(text: string): string {
+  if (messageAsks(text)) return text;
+  let out = text;
+  for (const start of sentenceStarts(text).reverse()) {
+    const match = TERMINATION_SENTENCE.exec(text.slice(start));
+    if (!match) continue;
+    const after = start + match[0].length;
+    if (!nameResolvesAfterFor(text.slice(after))) continue;
+    // The title goes (Ms. Holloway → Holloway), so the name reader on the rewritten request never takes "Ms" for the name.
+    const title = TITLE.exec(text.slice(after));
+    out = `${out.slice(0, start)}${match[1]}termination corrective action${match[2]}${out.slice(after + (title ? title[0].length : 0))}`;
+  }
+  return out;
+}
+
 /** Every rewrite a form request goes through before it is read. */
 export function canonicalFormWording(text: string): string {
+  const said = terminationRequestIsCaEnabled() ? asTerminationRequest(text) : text;
   return canonicalCorrectiveAction(
     canonicalShorthand(
       // "a verbal corrective", "written corrective for …" — the noun left off (QA, 22 Oct 2026, round 3).
-      text.replace(/\b(verbal|written)\s+corrective\b(?!\s+actions?\b)/gi, "$1 corrective action"),
+      said.replace(/\b(verbal|written)\s+corrective\b(?!\s+actions?\b)/gi, "$1 corrective action"),
     ),
   );
 }
@@ -1558,7 +1649,12 @@ export function withoutLeadingGlossaryTerm(question: string): string {
 
 export function detectTemplateIntent(rawQuestion: string): TemplateIntent {
   const question = withoutLeadingGlossaryTerm(formChoiceStatedEnabled() ? withoutPolicyReference(rawQuestion) : rawQuestion);
-  const q = canonicalFormWording(normalize(question));
+  /*
+   * TERMINATION_REQUEST_IS_CA_ENABLED (QA round 3, 15 Nov 2026): `normalize` lower-cases, so the request is rewritten
+   * from the ORIGINAL-case text first, or an off-roster full name could never pass its capitals check in production.
+   */
+  const cased = terminationRequestIsCaEnabled() ? asTerminationRequest(question.replace(/\s+/g, " ").trim()) : question;
+  const q = canonicalFormWording(normalize(cased));
   /* A question about forms — compared, explained, or when to use one — is answered, never opened. */
   /*
    * "Can we put Tess Varga on a written for skipping the meeting?", "could you
