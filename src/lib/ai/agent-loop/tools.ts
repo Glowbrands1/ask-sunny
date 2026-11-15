@@ -456,6 +456,26 @@ export function addPlacement(old: string, text: string): { changed: string[]; mi
   return { changed, misplaced };
 }
 
+/* Batch G (G15): the person who acts in a sentence: a name (or "she"/"he") right before what they did or failed to do. */
+const ACTOR = /(?:^|[.!?,;:]\s+|\n)\s*(?:on [^,.]{1,30},\s*)?([A-Za-z][a-z'-]+(?:\s+[A-Za-z][a-z'-]+)?)\s+(?:failed|did not|didn't|never|was|were|left|skipped|missed|refused|forgot|marked|has not|hasn't|had not|hadn't)\b/gi;
+const PRONOUN = /^(?:she|he|they|the employee|employee)$/i;
+
+/**
+ * Batch G (G15, the tester's live re-test): the account changed WHO did it. The manager wrote "<A> failed to have
+ * <C> complete …" for <A>'s form; the card said "<C> did not complete …". The person acting in the account when the
+ * manager had the form's employee acting, and that person is someone else the manager named. Null when nothing moved.
+ */
+export function accountSubjectChanged(managerWords: string, account: string, employee: string): string | null {
+  const own = employee.toLowerCase().split(/\s+/).filter(Boolean);
+  const isEmployee = (name: string) => name.toLowerCase().split(/\s+/).some((word) => own.includes(word));
+  const actors = (text: string) => [...text.matchAll(ACTOR)].map((match) => match[1]!.trim()).filter((name) => !PRONOUN.test(name));
+  const managerHadEmployee = actors(managerWords).some(isEmployee);
+  if (!managerHadEmployee) return null;
+  const said = managerWords.toLowerCase();
+  const other = actors(account).find((name) => !isEmployee(name) && said.includes(name.toLowerCase()));
+  return other ?? null;
+}
+
 /** A position as compared: lowercase words, a plural "s" dropped ("Tanning Consultants" = "tanning consultant"). */
 function positionKey(text: string): string {
   return text.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).map((word) => (word.length > 3 && word.endsWith("s") ? word.slice(0, -1) : word)).join(" ");
@@ -1352,6 +1372,7 @@ export async function proposeForm(
     ...(lastYear && date ? { date_read_as_last_year: { said: lastYear, date } } : {}),
     ...(notInManual && policyLine ? { policy_not_in_manual: notInManual } : {}),
     ...(whatHappened && addedLinks(managerWords, whatHappened).length > 0 ? { reword_added_link: addedLinks(managerWords, whatHappened) } : {}),
+    ...(whatHappened && ACCOUNT_FORMS.has(template.key) && accountSubjectChanged(managerWords, whatHappened, employee.name) ? { account_subject_changed: { employee: employee.name, account_says_it_was: accountSubjectChanged(managerWords, whatHappened, employee.name) } } : {}),
     ...(statedSteps.length > 0 ? { prior_steps_said: statedSteps } : {}),
     ...(corrective && payroll === "yes" && !amount && statedAmount ? { payroll_amount_said: `$${statedAmount}` } : {}),
     ...(cleaning && !careAndCleaning ? { cleaning_duty: cleaning } : {}),

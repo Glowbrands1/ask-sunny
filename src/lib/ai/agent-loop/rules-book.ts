@@ -81,6 +81,7 @@ export const RULES_BOOK: readonly { readonly title: string; readonly rules: read
       "Only when the manager has said nothing the employee did (only a name or a form, or \"not late\"), propose the card without what_happened (Create waits) and ask \"What happened?\" in one short question.",
       "A place in a \"because\" or \"due to\" clause (\"late because of traffic on Dodge\") is part of the account, never the " + place + " the form is for.",
       "A number right before \"tans\" or \"transactions\" is the volume, and the metrics after \"below in\" are where the employee fell short: \"verbal 146 tans Below in PPTA, LPSVA, Average Club, CC%, Spa%\" is \"Across 146 tans, she was below target in PPTA, LPSVA, Average Club, CC% and Spa%.\", never \"146 tans below\".",
+      "The account keeps who did what as the manager said it. The form's employee stays the one responsible; another person named in the account (a new hire, a coworker, a guest) is never made the subject. \"<A> failed to have <C> complete the policy acknowledgements\" is about <A> failing to have it done, never \"<C> did not complete …\". account_subject_changed: write what_happened again with the employee as the one who did it, as the manager said, and propose again.",
     ],
   },
   {

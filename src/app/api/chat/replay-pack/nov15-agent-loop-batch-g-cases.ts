@@ -418,4 +418,34 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       }
     },
   },
+  {
+    id: "nov15-agent-loop-g15-account-keeps-who-did-it",
+    title: "G15 (accuracy): \"<A> failed to have <C> complete required policy acknowledgements\" for <A>'s CA keeps <A> as the one responsible; an account that blames <C> is a fact the model fixes",
+    report: `${REPORT}; the tester's batch E re-test: the card said "<C> did not complete required policy acknowledgements in Woven during her onboarding"`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      const blamed = "Juno Paxton did not complete required policy acknowledgements in Woven during her onboarding.";
+      const kept = "Remy Calder failed to have Juno Paxton complete required policy acknowledgements in Woven during her onboarding.";
+      // A model that first blames the new hire (the live bug), then keeps the manager's subject when the fact says so.
+      const model = loopStandIn((view): LoopDecision => {
+        const tries = view.results.filter((result) => result.tool === "propose_form").map((result) => result.output as { facts?: { account_subject_changed?: unknown } });
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
+        if (tries.length === 0) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: blamed } };
+        if (tries.length === 1 && tries[0]!.facts?.account_subject_changed) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: kept } };
+        return { text: `Here's the Corrective Action Form for **Remy Calder**.\n\n**Observation of Offense:** ${kept}` };
+      });
+      t.loopModel!(model);
+      const thread = t.thread();
+      const reply = await thread.say("ca for remy calder, Remy Calder failed to have Juno Paxton complete required policy acknowledgements in Woven during her onboarding");
+      expect(thread.proposal?.employeeName).toBe("Remy Calder");
+      expect(thread.proposal?.issue ?? "", `the account blames someone else:\n${reply.content}`).not.toMatch(/^Juno Paxton did not/);
+      expect(thread.proposal?.issue ?? "", "the employee is not the one responsible").toMatch(/Remy Calder failed to have Juno Paxton/);
+      if (offline) expect(toolResults(model.views, "propose_form")[0], "the changed subject is not a fact").toMatch(/"account_subject_changed":\{"employee":"Remy Calder","account_says_it_was":"Juno Paxton"\}/);
+    },
+  },
 ];
