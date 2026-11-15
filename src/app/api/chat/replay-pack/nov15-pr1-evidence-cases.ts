@@ -87,6 +87,60 @@ export const NOV15_PR1_EVIDENCE_CASES: ReplayCase[] = [
     },
   },
   {
+    id: "nov15-pr1-privacy-ask-is-about-this-person",
+    title: "PR 1a review (QA, ruling 1): \"write a new form for Remy Calder…\" quoted as forms_on_file_evidence never opens Juno Paxton's forms (privacy_not_this_person); the same words open Remy Calder's",
+    report: `${REPORT}: QA's review of #1026, ruling 1 (privacy evidence is tied to the person)`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      await remysDraft(t);
+      const model = loopStandIn((view): LoopDecision => {
+        const looks = view.results.filter((result) => result.tool === "find_past_forms");
+        if (looks.length === 0) return { tool: "find_past_forms", input: { employee_name: "Juno Paxton", forms_on_file_evidence: evidenceFrom(view, "new form") } };
+        if (looks.length === 1) return { tool: "find_past_forms", input: { employee_name: "Remy Calder", forms_on_file_evidence: evidenceFrom(view, "new form for Remy Calder") } };
+        return { text: "Done." };
+      });
+      t.loopModel!(model);
+      await t.thread().say("write a new form for Remy Calder, she was late to her shift on 11/14");
+      const [juno, remy] = model.views.at(-1)!.results.filter((result) => result.tool === "find_past_forms").map((result) => result.output) as { reason_code?: string; forms?: unknown[] }[];
+      expect(juno, "another person's forms opened on this person's request").toMatchObject({ reason_code: "privacy_not_this_person" });
+      expect(remy?.reason_code, "the person the manager named stayed closed").toBeUndefined();
+    },
+  },
+  {
+    id: "nov15-pr1-only-a-quoted-name-correction-renames",
+    title: "PR 1a review (QA, ruling 2): \"fix her last name please\" with employee_name \"Juno Paxton\" on Remy Calder's draft is refused (no evidence: name_evidence_missing; evidence without the name: name_not_in_evidence); the form keeps Remy Calder",
+    report: `${REPORT}: QA's review of #1026, ruling 2 (every employee_name write is a quoted name correction)`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "Remy Calder" } };
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: "She was late to her shift on 11/14.", incident_date: "2026-11-14" } };
+        return { text: "Here's the Corrective Action Form for **Remy Calder**." };
+      }));
+      const thread = t.thread();
+      await thread.say("CA for Remy Calder, she was late to her shift on 11/14");
+      const id = await thread.create();
+      const before = JSON.stringify(t.values(id));
+      const model = loopStandIn((view): LoopDecision => {
+        const edits = view.results.filter((result) => result.tool === "edit_form");
+        if (edits.length === 0) return { tool: "edit_form", input: { instance_id: id, values: { employee_name: "Juno Paxton" } } };
+        if (edits.length === 1) return { tool: "edit_form", input: { instance_id: id, values: { employee_name: "Juno Paxton" }, name_evidence: evidenceFrom(view, "fix her last name please") } };
+        return { text: (edits.map((edit) => (edit.output as { reason_code?: string }).reason_code)).join(", ") };
+      });
+      t.loopModel!(model);
+      const reply = await thread.say("fix her last name please");
+      expect(reply.content).toBe("name_evidence_missing, name_not_in_evidence");
+      expect(JSON.stringify(t.values(id)), "the form's name was changed").toBe(before);
+    },
+  },
+  {
     id: "nov15-pr1-name-correction-changes-only-the-name",
     title: "PR 1: \"fix her last name, it is Calder-Voss\" on the open draft is edit_form intent correct_name: with another field too it is refused (name_correction_other_fields), with no name_evidence it is refused (name_evidence_missing), and nothing else is written",
     report: `${REPORT}: NAME_CORRECTION (tools.ts:2348) replaced by intent correct_name + name_evidence`,
@@ -212,6 +266,78 @@ export const NOV15_PR1_EVIDENCE_CASES: ReplayCase[] = [
       const reply = await thread.say("make a CA for Tessa Varnell, she was late again on 11/14");
       expect(reply.content).toBe("request_evidence_other_person");
       expect(thread.proposal ?? null, "a card was made from another person's turn").toBeNull();
+    },
+  },
+  {
+    id: "nov15-pr1b-open-with-none-on-file-still-proposes",
+    title: "PR 1b review (QA, ruling 3): find_past_forms open: true for Remy Calder finds none on file, so propose_form stays allowed and the CA card is made",
+    report: `${REPORT}: QA's review of #1029, ruling 3 (an open request withdraws or refuses a card only after forms are found, for the same person)`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: "Remy Calder", open: true, forms_on_file_evidence: evidenceFrom(view, "open remy calder's last ca") } };
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: "She was late to her shift on 11/14.", incident_date: "2026-11-14" } };
+        return { text: "None on file, so here's a new Corrective Action Form for **Remy Calder**." };
+      }));
+      const thread = t.thread();
+      const reply = await thread.say("open remy calder's last ca, if there isn't one make a new one: she was late to her shift on 11/14");
+      expect(thread.proposal, `no card after "None on file":\n${reply.content}`).toMatchObject({ templateKey: "dpoa", employeeName: "Remy Calder" });
+    },
+  },
+  {
+    id: "nov15-pr1b-request-evidence-is-this-request-only",
+    title: "PR 1b review (QA, ruling 4): request_evidence citing a turn from before the manager turned to Juno Paxton is refused (request_evidence_not_this_request) and nothing is proposed",
+    report: `${REPORT}: QA's review of #1029, ruling 4 (a recency window: the same request only)`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      const model = loopStandIn((view): LoopDecision => {
+        const said = [...view.turns].reverse().find((turn) => turn.role === "user")?.text ?? "";
+        if (!/Tessa Varnell/.test(said)) return { text: "Noted." };
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "Tessa Varnell" } };
+        const card = lastResult(view, "propose_form") as { reason_code?: string } | null;
+        if (!card) return { tool: "propose_form", input: { template_key: "dpoa", employee_name: "Tessa Varnell", what_happened: "She left the beds dirty on 11/12.", request_evidence: [evidenceFrom(view, "she left the beds dirty", 2)] } };
+        return { text: card.reason_code ?? "proposed" };
+      });
+      t.loopModel!(model);
+      const thread = t.thread();
+      await thread.say("she left the beds dirty on 11/12");
+      await thread.say("Juno Paxton was late again on 11/13");
+      const reply = await thread.say("make a CA for Tessa Varnell");
+      expect(reply.content).toBe("request_evidence_not_this_request");
+      expect(thread.proposal ?? null, "a card was made from an earlier request's turn").toBeNull();
+    },
+  },
+  {
+    id: "nov15-pr1b-person-evidence-is-whole-words",
+    title: "PR 1b review (QA, ruling 7): person_evidence \"an exit for Wrenna\" does not hold \"Wren\" (whole words), and a job title (\"Salon Director\") is never offered as a name: no use-<name> offer",
+    report: `${REPORT}: QA's review of #1029, ruling 7 (whole-word match, title words rejected)`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      for (const [name, quote, said] of [["Wren", "an exit for Wrenna", "put together an exit for Wrenna"], ["Salon Director", "for the Salon Director", "make a coaching form for the Salon Director"]] as const) {
+        const model = loopStandIn((view): LoopDecision => {
+          const staff = lastResult(view, "find_staff") as { not_on_roster?: string } | null;
+          if (!staff) return { tool: "find_staff", input: { name, person_evidence: evidenceFrom(view, quote) } };
+          return { text: staff.not_on_roster ? `offered ${staff.not_on_roster}` : "not offered" };
+        });
+        t.loopModel!(model);
+        const reply = await t.thread().say(said);
+        expect(reply.content, `"${name}" was offered as a name`).toBe("not offered");
+      }
     },
   },
 ];
