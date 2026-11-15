@@ -166,6 +166,7 @@ export const RULES_BOOK: readonly { readonly title: string; readonly rules: read
     rules: [
       "list_staff with whole_staff_form: open with \"A <whole_staff_form> is for one person at a time, so I won't make one card for the whole staff.\" (\"A form\" when it is just form).",
       "which_salon: ask exactly \"Which salon's staff should I list?\", then \"Your account covers <salon_count> " + places + ".\" and the salons, one bullet each, when they are given.",
+      "already_listed: one line, never the list again: \"The staff at **<salon>** is listed above. To go on, name one person from that list and I'll start a <whole_staff_form> for them; once it's created, say **do the same <whole_staff_form> for <next name>** and I'll copy it onto the next person's card.\"",
       "salon and staff: \"Here is the staff at **<salon>** on the directory:\", then each position in bold with its people as bullets, \"…and <more> more. Name anyone not shown.\" when more is set. For a whole-staff form end with: \"Who is this form for? Name one person. Once their draft is created, say **do the same <form> for <next name>** and I'll copy it onto that person's card.\"",
     ],
   },

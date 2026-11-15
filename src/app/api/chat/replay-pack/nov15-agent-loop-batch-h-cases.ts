@@ -226,4 +226,28 @@ export const NOV15_AGENT_LOOP_BATCH_H_CASES: ReplayCase[] = [
       expect(reply.formProposal?.locationId, "the newest turn's salon was not the card's").toBe("loc-0309");
     },
   },
+  {
+    id: "nov15-batch-h9-staff-list-not-repeated",
+    title: "H9 STAFF_PICKER_NO_REPEAT: a second whole-staff turn for the same salon gets one next-step line, not the staff list again",
+    report: `${REPORT}; the staff list sent again on every whole-staff turn`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      const thread = start(t);
+      const model = loopStandIn((view) => {
+        const listed = lastResult(view, "list_staff") as { salon?: string; already_listed?: boolean } | null;
+        if (!listed) return { tool: "list_staff", input: { salon: "kearney" } };
+        return { text: listed.already_listed ? `The staff at **${listed.salon}** is listed above.` : `A Corrective Action Form is for one person at a time, so I won't make one card for the whole staff.\n\nHere is the staff at **${listed.salon}** on the directory:\n- Remy Calder` };
+      });
+      t.loopModel!(model);
+      await thread.say("I need a corrective action for my whole staff at kearney");
+      await thread.say("I need a corrective action for my whole staff at kearney");
+      const lists = model.views.flatMap((view) => view.results).filter((result) => result.tool === "list_staff").map((result) => result.output as { staff?: unknown[]; already_listed?: boolean });
+      expect(lists[0]?.staff?.length, "the first turn did not list the staff").toBeGreaterThan(0);
+      const second = lists.at(-1)!;
+      expect(second.already_listed, "the staff list was sent again").toBe(true);
+      expect(second.staff).toBeUndefined();
+    },
+  },
 ];

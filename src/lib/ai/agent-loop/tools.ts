@@ -437,6 +437,10 @@ export async function listStaffTool(context: ToolContext, effects: ToolEffects, 
       note: "Ask which salon's staff to list as the rules book's Staff lists teach.",
     };
   }
+  /* STAFF_PICKER_NO_REPEAT (batch H9): a whole-staff form for a salon already listed in this chat gets the next step, not the list again. */
+  if (forForm && picker.staffListedBefore(context.history, chosen.name)) {
+    return { whole_staff_form: form, one_person_per_form: true, salon: chosen.name, already_listed: true, note: "This salon's staff is listed above in this chat: never list it again. Say the next step as the rules book's Staff lists teach." };
+  }
   const facts = await roster.readDirectoryFacts(scope).catch(() => []);
   const people = facts.length > 0 ? facts.map((person) => ({ ...person, positionName: person.title })) : [];
   if (people.length === 0) return { error: ROSTER_FAILED };
