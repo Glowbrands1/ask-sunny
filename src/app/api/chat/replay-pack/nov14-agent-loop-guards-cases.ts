@@ -1489,7 +1489,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       const editor = loopStandIn((view) => {
         if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: "Tamsin Orwell", forms_on_file_evidence: evidenceFrom(view) } };
         const listed = (lastResult(view, "find_past_forms")?.forms ?? []) as { instance_id: string }[];
-        if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { instance_id: listed[0]?.instance_id ?? "" } };
+        // Changed on purpose (rebuild plan PR 1a): edit_form of a form that is not open needs the manager's own ask quoted.
+        if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { instance_id: listed[0]?.instance_id ?? "", forms_on_file_evidence: evidenceFrom(view, "my last CA for tamsin orwell") } };
         return { text: "Done." };
       });
       t.loopModel!(editor);
