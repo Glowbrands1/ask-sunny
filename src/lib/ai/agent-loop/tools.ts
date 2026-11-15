@@ -187,6 +187,20 @@ export function exitEvidenceKind(value: unknown): ExitEvidenceKind | null {
   return kind === "asks_for_exit_form" || kind === "yes_to_exit_offer" || kind === "resignation_told" ? kind : null;
 }
 
+/**
+ * Fix batch item 2 (QA's live re-test, 16 Nov 2026; Pau's ruling): "final warning CA" was ticked Written and read back
+ * "as you said". The form's Type of Warning options are Verbal Warning, Written Warning and Termination; there is no
+ * Final. A level is kept only when the manager's quoted words name that option ("final written" names Written), as
+ * name_evidence must hold the name. A check of the form's own option word in the quote, never a reading of the message.
+ */
+export function levelNamedInEvidence(evidence: unknown, level: "verbal" | "written"): boolean {
+  const quote = evidence && typeof evidence === "object" ? (evidence as { quote?: unknown }).quote : null;
+  return typeof quote === "string" && holdsPhrase(quote, level);
+}
+
+/** The question when no level option was named (Pau's ruling, fix batch item 2). */
+export const LEVEL_QUESTION = "Which is it: Verbal Warning, Written Warning or Termination?";
+
 /** A message of one word (punctuation aside): a format check, never a reading of which word (fix batch item 7). */
 export function oneWord(text: string): boolean {
   return text.trim().split(/\s+/).filter((word) => /[\p{L}\p{N}]/u.test(word)).length === 1;
@@ -1801,7 +1815,10 @@ export async function proposeForm(
     ? incidentDates(requestWords, null).find((given) => monthDayToIso(given, today) === date) ?? null
     : null;
   const askedLevel = input.warning_level === "verbal" || input.warning_level === "written" ? input.warning_level : null;
-  const levelCheck = caOnlyFields && askedLevel ? answerEvidence(context, input.level_evidence, "request", evidencePerson) : null;
+  const levelAnswer = caOnlyFields && askedLevel ? answerEvidence(context, input.level_evidence, "request", evidencePerson) : null;
+  /* Fix batch item 2: the quote must name the option ("final warning" names none: level_not_in_evidence, and ask which). */
+  const levelUnnamed = Boolean(levelAnswer?.ok && askedLevel && !levelNamedInEvidence(input.level_evidence, askedLevel));
+  const levelCheck: AnswerEvidence | null = levelUnnamed ? { ok: false, reason: "level_not_in_evidence" } : levelAnswer;
   const level = askedLevel && levelCheck?.ok ? askedLevel : null;
   /*
    * Fix batch item 7 (QA's targeted re-run, c163: a bare "yes" after "Payroll deduct and warning level aren't set" set
@@ -2050,6 +2067,7 @@ export async function proposeForm(
     ...(otherNamed.length > 0 ? { account_names_other_person: { named: otherNamed, card_person: employee.name } } : {}),
     ...(unset.length > 0 && !payrollAnswerUnclear ? { unset } : {}),
     ...(payrollAnswerUnclear ? { payroll_answer_unclear: { ask_exactly: payrollQuestion } } : {}),
+    ...(levelUnnamed ? { level_not_named: { ask_exactly: LEVEL_QUESTION } } : {}),
     ...(level || payroll || priorActions
       ? { stated: { ...(level ? { warning_level: level } : {}), ...(payroll ? { payroll_deduct: payroll } : {}), ...(payroll === "yes" && amount ? { payroll_amount: `$${amount.replace(/^\$/, "")}` } : {}), ...(priorActions ? { prior_actions: priorActions } : {}) } }
       : {}),
@@ -2352,9 +2370,11 @@ export async function editForm(
         continue;
       }
       const levelCheck = answerEvidence(context, input.level_evidence, "this_message", editPerson);
-      if (!levelCheck.ok) {
+      /* Fix batch item 2: the quote must name the option the model chose ("final warning" names none). */
+      const named = levelNamedInEvidence(input.level_evidence, kind);
+      if (!levelCheck.ok || !named) {
         unstated.push(field);
-        unstatedCodes.set(field, { reason_code: "level_not_stated", evidence_reason: levelCheck.reason });
+        unstatedCodes.set(field, { reason_code: "level_not_stated", evidence_reason: levelCheck.ok ? "level_not_in_evidence" : levelCheck.reason });
       }
     } else if (field === "payroll_deduct") {
       const answer = /^\s*yes/i.test(value) ? "yes" : /^\s*no/i.test(value) ? "no" : null;
@@ -2369,7 +2389,7 @@ export async function editForm(
     }
   }
   if (unstated.length > 0) {
-    return { reason_code: (unstated.length === 1 ? unstatedCodes.get(unstated[0]!)?.reason_code : undefined) ?? "not_stated", ...(unstated.length === 1 && unstatedCodes.get(unstated[0]!) ? { evidence_reason: unstatedCodes.get(unstated[0]!)!.evidence_reason } : {}), error: `${unstated.join(", ")} must come from the manager's own words, and this message does not state ${unstated.length === 1 ? "it" : "them"}. Nothing was written. Ask, or leave it for the manager.` };
+    return { ...(unstatedCodes.get("warning_type")?.evidence_reason === "level_not_in_evidence" ? { ask_exactly: LEVEL_QUESTION } : {}), reason_code: (unstated.length === 1 ? unstatedCodes.get(unstated[0]!)?.reason_code : undefined) ?? "not_stated", ...(unstated.length === 1 && unstatedCodes.get(unstated[0]!) ? { evidence_reason: unstatedCodes.get(unstated[0]!)!.evidence_reason } : {}), error: `${unstated.join(", ")} must come from the manager's own words, and this message does not state ${unstated.length === 1 ? "it" : "them"}. Nothing was written. Ask, or leave it for the manager.` };
   }
   /*
    * A payroll or level answer ("yes payroll, $20", "make it a written") changes only those fields (Pau, 15:05Z): the
