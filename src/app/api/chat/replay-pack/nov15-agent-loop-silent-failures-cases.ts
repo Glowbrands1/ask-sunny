@@ -89,6 +89,12 @@ export const NOV15_AGENT_LOOP_SILENT_FAILURE_CASES: ReplayCase[] = [
         const said = latest(view);
         const edit = lastResult(view, "edit_form") as { error?: string; termination_approval_line?: string } | null;
         if (/Action Plan:/.test(said)) return lastResult(view, "edit_form") ? { text: `Updated the Action Plan: ${PLAN}` } : { tool: "edit_form", input: { instance_id: id, values: { action_plan: PLAN } } };
+        /*
+         * QA's design (15 Nov 2026): the model decides. T4 carries the word "Termination", so the lock alone would pass
+         * it; the rules book teaches that "I can't select Termination" is a question about the form, and the model
+         * answers it and changes nothing. "make it a termination" says it, so the model sets it.
+         */
+        if (said === T4) return { text: "To pick Termination, open the Type of Warning box on the form; tell me if this form is a termination and I'll set it." };
         if (!edit) return { tool: "edit_form", input: { instance_id: id, values: { warning_type: "termination" } } };
         return { text: edit.error ? "To pick Termination, open the Type of Warning box on the form; tell me if this form is a termination and I'll set it." : `**Type of Warning:** Termination, as you said. ${edit.termination_approval_line ?? ""}` };
       });
