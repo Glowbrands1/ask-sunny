@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 
 import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import { businessToday } from "@/lib/business-date";
+import { isoDate, monthDayToIso, readDates, sameDate, withoutDates } from "./dates";
 import { candidateNameWords, chatFormsActor } from "@/lib/forms/chat-form-records";
 import { displayName, matchEmployeeName, nameConfirmationQuestion, type RosterEmployee } from "@/lib/forms/employee-match";
 import { offRosterTyped } from "@/lib/forms/roster-only-names";
@@ -28,7 +29,7 @@ import { sectionWording } from "@/lib/forms/policy-citation";
 import { buildProposal, extractEmployeeNames, extractJobTitle, managerContext, samePerson, tidyTypedName } from "@/lib/forms/proposal";
 import { cleaningUndonePhrase, namesCareAndCleaning } from "@/lib/forms/ca-policy";
 import { turnsFromThisPersonsRequest } from "@/lib/forms/this-persons-turns";
-import { closePolicyQuestion, namedPolicies } from "@/lib/forms/named-policy-section";
+import { closeHeadingReading, closePolicyQuestion, namedPolicies, namesHeading } from "@/lib/forms/named-policy-section";
 import { startsNewForm } from "@/lib/ai/remap-incident";
 import { payrollAmountFromConversation, statedPayrollDeduct } from "@/lib/forms/payroll-deduct";
 import { PAYROLL_AMOUNT_KEY } from "@/lib/forms/payroll-amount-field";
@@ -278,6 +279,16 @@ async function rosterTitle(scope: AccessScope, id: string): Promise<string | nul
   }
 }
 
+/** The roster row's primary salon for this person (in the manager's scope), or null. */
+async function rosterPrimarySalon(scope: AccessScope, id: string): Promise<string | null> {
+  try {
+    const facts = await (await import("@/lib/forms/employee-roster")).readDirectoryFacts(scope);
+    return facts.find((row) => row.id === id)?.primarySalonId ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** The name the manager just said no to, after this chat's own "Did you mean **<A>**?" / "Is this for **<A>**?". */
 function turnedDownName(context: Pick<ToolContext, "question" | "history">): string | null {
   if (!/^\s*(?:no|nope|nah|not\s+(?:her|him|them|that))\b/i.test(context.question)) return null;
@@ -391,7 +402,20 @@ export async function findStaff(context: ToolContext, input: { name?: unknown },
  *   scope is never listed.
  * - Only for somebody who may create a Coaching or Corrective Action Form, as today's picker.
  */
-export async function listStaffTool(context: ToolContext, effects: ToolEffects, input: { salon?: unknown }): Promise<ToolResult> {
+/* Batch E (E11): words that join two facts into a cause or a result. A reword never adds one the manager did not write. */
+const LINKING = /\b(resulting in|which resulted in|as a result(?: of)?|which led to|leading to|led to|because(?: of)?|due to|caused by|causing|so that|therefore|consequently)\b/gi;
+/** The linking phrases in `text` that `before` does not have. */
+export function addedLinks(before: string, text: string): string[] {
+  const had = new Set([...before.matchAll(LINKING)].map((match) => match[1]!.toLowerCase()));
+  return [...new Set([...text.matchAll(LINKING)].map((match) => match[1]!.toLowerCase()))].filter((phrase) => !had.has(phrase));
+}
+
+/** A position as compared: lowercase words, a plural "s" dropped ("Tanning Consultants" = "tanning consultant"). */
+function positionKey(text: string): string {
+  return text.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).map((word) => (word.length > 3 && word.endsWith("s") ? word.slice(0, -1) : word)).join(" ");
+}
+
+export async function listStaffTool(context: ToolContext, effects: ToolEffects, input: { salon?: unknown; position?: unknown }): Promise<ToolResult> {
   const scope = context.actor.scope;
   if (!["create_coaching_form", "create_corrective_action"].some((permission) => hasPermission(DEFAULT_PERMISSION_MATRIX, context.actor.role, permission as never))) {
     return { error: "This role cannot list the staff. Say so." };
@@ -441,10 +465,18 @@ export async function listStaffTool(context: ToolContext, effects: ToolEffects, 
   const facts = await roster.readDirectoryFacts(scope).catch(() => []);
   const people = facts.length > 0 ? facts.map((person) => ({ ...person, positionName: person.title })) : [];
   if (people.length === 0) return { error: ROSTER_FAILED };
-  const rows = picker.salonStaffRows(chosen, people);
+  const all = picker.salonStaffRows(chosen, people);
+  /* Batch E (E7): the head count, and one position's people when the manager asked for it (facts; the rules book words them). */
+  const asked = typeof input.position === "string" ? positionKey(input.position) : "";
+  const rows = asked ? all.filter((row) => positionKey(row.position).includes(asked)) : all;
+  if (asked && rows.length === 0) {
+    return { salon: chosen.name, staff_count: all.length, position_not_found: input.position, positions: [...new Set(all.map((row) => row.position))] };
+  }
   return {
     ...(forForm ? { whole_staff_form: form, one_person_per_form: true } : {}),
     salon: chosen.name,
+    staff_count: all.length,
+    ...(asked ? { position: input.position, position_count: rows.length } : {}),
     staff: rows.slice(0, 40),
     ...(rows.length > 40 ? { more: rows.length - 40 } : {}),
     note: forForm
@@ -597,7 +629,17 @@ export async function readPolicy(context: ToolContext, input: { heading?: unknow
   const manual = await manualFor(context.scopeId);
   if (!manual) return { error: "The JBA Policy Manual could not be read just now. Say so; do not answer from memory." };
   const heading = headingOf(manual.headings, asked);
-  if (!heading) return { error: "No section of the manual has that heading. Use one of these exactly.", headings: manual.headings };
+  if (!heading) {
+    /* Batch E (E5): a close spelling ("key holdr") is a fact: the one heading it names, or the app's Did-you-mean question. */
+    const close = closeHeadingReading(asked, manual.headings);
+    const question = close.confident ? null : closePolicyQuestion(asked, manual.chunks);
+    return {
+      error: "No section of the manual has that heading. Use one of these exactly.",
+      ...(close.confident ? { close_heading: close.confident } : {}),
+      ...(question ? { confirm_policy: question } : {}),
+      headings: manual.headings,
+    };
+  }
   const section = findManualSection(manual.chunks, [heading]);
   if (!section) return { error: "That section could not be found in the manual just now." };
   /*
@@ -625,26 +667,22 @@ export async function readPolicy(context: ToolContext, input: { heading?: unknow
 
 /* -------------------------------------------------------- propose form --- */
 
-/** "10/2" as the most recent such day not after today, in ISO form (the card's date field). */
-function monthDayToIso(monthDay: string): string {
-  const [month, day] = monthDay.split("/").map(Number) as [number, number];
-  const now = new Date();
-  let year = now.getUTCFullYear();
-  if (Date.UTC(year, month - 1, day) > now.getTime()) year -= 1;
-  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-}
+/* The card's date and edit_form's form_date are read by the shared date reader (batch E, E13/E14: `./dates`). */
+export { monthDayToIso } from "./dates";
 
 /**
  * The incident's dates as the manager wrote them, one per day, leaving out dates of earlier steps (prior actions)
  * and of payroll. Two or more, and the latest message does not pick one: the card's date waits for the manager.
  */
 export function incidentDates(managerWords: string, priorActions: string | null): string[] {
-  const prior = new Set([...(priorActions ?? "").matchAll(ACCOUNT_DATE)].map((match) => `${Number(match[1])}/${Number(match[2])}`));
+  /* Batch E (E14): every date style ("6/11", "June 11", "the 11th of June"), each day once as "M/D". */
+  const prior = readDates(priorActions ?? "");
   const seen = new Map<string, string>();
-  for (const match of managerWords.replace(PAYROLL_AMOUNT, " ").matchAll(ACCOUNT_DATE)) {
-    const key = `${Number(match[1])}/${Number(match[2])}`;
-    if (Number(match[1]) > 12 || prior.has(key) || seen.has(key)) continue;
-    if (PRIOR_STEP_BEFORE.test(sentenceBefore(managerWords, match.index!))) continue;
+  const words = managerWords.replace(PAYROLL_AMOUNT, (amount) => " ".repeat(amount.length));
+  for (const date of readDates(words)) {
+    const key = `${date.month}/${date.day}`;
+    if (prior.some((other) => sameDate(other, date)) || seen.has(key)) continue;
+    if (PRIOR_STEP_BEFORE.test(sentenceBefore(words, date.index))) continue;
     seen.set(key, key);
   }
   return [...seen.values()];
@@ -688,8 +726,7 @@ const ACCOUNT_METRIC = /\b(?:PPTA|LPSVA|UPTA|MSB|CC\s?%|Spa\s?%|Club\s+Close\s?%
  * "237 tanning transactions", "40 min"): a figure the account must keep, and a card may not add.
  */
 export function standaloneFigures(text: string): string[] {
-  const bare = text.replace(ACCOUNT_DATE, " ").replace(ACCOUNT_TIME, " ").replace(ACCOUNT_MONEY, " ");
-  ACCOUNT_DATE.lastIndex = 0;
+  const bare = withoutDates(text).replace(ACCOUNT_TIME, " ").replace(ACCOUNT_MONEY, " ");
   return [...bare.matchAll(/(?<![\d.])\d{2,}(?![\d.])/g)].map((match) => match[0]).filter((figure) => !/^(?:19|20)\d\d$/.test(figure));
 }
 
@@ -705,7 +742,6 @@ function sentenceBefore(text: string, index: number): string {
 
 /** Words before a date that make it an earlier step's date, in the same sentence. */
 const PRIOR_STEP_BEFORE = /\b(?:coached|previous(?:ly)?|prior|signed|received|given|issued|already|had (?:a|her|his|their) (?:verbal|written|ca|coaching))\b[^.\n]*$/i;
-const ACCOUNT_DATE = /\b(\d{1,2})[/-](\d{1,2})(?:[/-]\d{2,4})?\b/g;
 const ACCOUNT_TIME = /\b\d{1,2}(?::|;)\d{2}\s*(?:am|pm)?\b|\b\d{1,2}\s*(?:am|pm)\b/gi;
 const ACCOUNT_MONEY = /\$\s?\d+(?:\.\d{2})?/g;
 const ACCOUNT_WHEN = /\b(?:this morning|this afternoon|tonight|last night|last week|yesterday|in the morning|in the afternoon|at (?:open|close|opening|closing)|(?:on |last )?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)|(?:january|february|march|april|may|june|july|august|september|october|november|december))\b/gi;
@@ -713,6 +749,19 @@ const NOT_A_PLACE = new Set(["least", "all", "first", "once", "times", "a", "an"
 
 /** "$25 will be payroll deducted", "payroll deduct $50", "$20 payroll deduct applies": the amount goes on the payroll field, not the account. */
 const PAYROLL_AMOUNT = /\$\s?\d+(?:\.\d{2})?\s*(?:will be\s+|is\s+|to be\s+)?(?:payroll\s+)?deduct\w*|(?:payroll\s+)?deduct\w*\s*(?:of\s+|for\s+|is\s+)?\$\s?\d+(?:\.\d{2})?/gi;
+
+/** What kind of word the account check found missing (the trace records kinds, never the words: batch E, E15). */
+export function accountWordKind(word: string): string {
+  if (readDates(word).length > 0) return "date";
+  ACCOUNT_TIME.lastIndex = 0;
+  if (new RegExp(ACCOUNT_TIME.source, "i").test(word)) return "time";
+  if (/\$\s?\d/.test(word)) return "amount";
+  if (new RegExp(ACCOUNT_METRIC.source, "i").test(word)) return "metric";
+  if (/^\d+$/.test(word.trim())) return "figure";
+  if (new RegExp(ACCOUNT_WHEN.source, "i").test(word)) return "when";
+  if (/^at\s/i.test(word)) return "place";
+  return "word";
+}
 
 export function accountMissing(managerWords: string, account: string, priorActions: string | null = null): string[] {
   managerWords = managerWords.replace(PAYROLL_AMOUNT, " ");
@@ -723,12 +772,12 @@ export function accountMissing(managerWords: string, account: string, priorActio
    * 10-15-26", a date listed in prior_actions) belongs in Prior actions, never the Observation (the live re-run's r5,
    * coding3 and payroll-amount cases), so it is not required here.
    */
-  const priorDays = new Set([...(priorActions ?? "").matchAll(ACCOUNT_DATE)].map((match) => `${Number(match[1])}/${Number(match[2])}`));
-  for (const match of managerWords.matchAll(ACCOUNT_DATE)) {
-    const [month, day] = [Number(match[1]), Number(match[2])];
-    if (priorDays.has(`${month}/${day}`) || PRIOR_STEP_BEFORE.test(sentenceBefore(managerWords, match.index!))) continue;
-    const kept = [...said.matchAll(ACCOUNT_DATE)].some((other) => Number(other[1]) === month && Number(other[2]) === day);
-    if (!kept) missing.push(match[0]);
+  /* Batch E (E14): a date is kept when the account has the same day in any style ("9-28-26" as "September 28, 2026"). */
+  const priorDays = readDates(priorActions ?? "");
+  const accountDays = readDates(account);
+  for (const date of readDates(managerWords)) {
+    if (priorDays.some((other) => sameDate(other, date)) || PRIOR_STEP_BEFORE.test(sentenceBefore(managerWords, date.index))) continue;
+    if (!accountDays.some((other) => sameDate(other, date))) missing.push(date.text);
   }
   /*
    * A time or an amount is kept when the account has the same figure as a time or an amount ("10:40am" as "10:40 am",
@@ -749,7 +798,7 @@ export function accountMissing(managerWords: string, account: string, priorActio
   }
   const accountFigures = new Set(standaloneFigures(account));
   for (const figure of standaloneFigures(managerWords)) if (!accountFigures.has(figure)) missing.push(figure);
-  for (const match of managerWords.matchAll(ACCOUNT_WHEN)) {
+  for (const match of withoutDates(managerWords).matchAll(ACCOUNT_WHEN)) {
     const word = match[0].toLowerCase().replace(/^(?:on|last) /, "");
     if (!said.includes(word)) missing.push(match[0]);
   }
@@ -992,10 +1041,14 @@ export async function proposeForm(
    * until the manager says which.
    */
   let didYouMean: string | null = null;
+  /* Batch E (E9): a policy the manager named that no heading answers, by name or close spelling ("the key holdr policy"). */
+  let notInManual: string | null = null;
   if (manual) {
     for (const named of namedPolicies(requestWords)) {
       didYouMean = closePolicyQuestion(named.phrase, manual.chunks);
       if (didYouMean) break;
+      const close = closeHeadingReading(named.phrase, manual.headings);
+      if (!notInManual && !manual.headings.some((heading) => namesHeading(named.phrase, heading)) && !close.confident && close.candidates.length === 0) notInManual = named.phrase;
     }
   }
   // The Other topic is read from the account as the model cleaned it (SPELLING_CLEANUP: "th e10 minute sanitaion" → "the 10-minute sanitation"), else the manager's words.
@@ -1052,18 +1105,22 @@ export async function proposeForm(
    * `incidentDates`). The manager's answer sets it.
    */
   const answered = datesGiven.length > 1 && latestDates.length === 1 && datesGiven.includes(latestDates[0]!);
-  if (answered) date = monthDayToIso(latestDates[0]!);
+  if (answered) date = monthDayToIso(latestDates[0]!, today);
   /*
    * Batch B (code-check #20): with several stated dates the model's choice stands; the dates are a fact and the rules
    * book says to pick only when the account makes it clear, else ask (never both). A date that is none of the stated
    * ones is refused, as an invented value.
    */
-  if (datesGiven.length > 1 && date && !answered && !datesGiven.some((given) => monthDayToIso(given) === date)) {
+  if (datesGiven.length > 1 && date && !answered && !datesGiven.some((given) => monthDayToIso(given, today) === date)) {
     return { error: `${date} is none of the dates the manager gave (${datesGiven.join(", ")}). Leave incident_date empty and ask which, or use one of those.` };
   }
   const datesAsked = datesGiven.length > 1 && !date ? datesGiven : [];
   /* Batch C (code-check #32): a date after today is a fact with today's date; the rules book says to ask. */
   const dateAfterToday = date && date > today ? date : null;
+  /* Batch E (E10): the manager's month/day ("12/20" on 11/14) was read as last year's; the reply says so in one line. */
+  const lastYear = date && !dateAfterToday && date.slice(0, 4) < today.slice(0, 4)
+    ? incidentDates(requestWords, null).find((given) => monthDayToIso(given, today) === date) ?? null
+    : null;
   const askedLevel = input.warning_level === "verbal" || input.warning_level === "written" ? input.warning_level : null;
   const level = askedLevel && (askedLevel === "verbal" ? /\bverbal\b/i : /\bwritten\b|\bwrite[- ]?up\b/i).test(managerWords) ? askedLevel : null;
   const dropped = [askedLevel && !level ? "warning_level" : null, askedPayroll && !payroll ? "payroll_deduct" : null, typedAmount && !amount ? "payroll_amount" : null].filter(Boolean);
@@ -1110,13 +1167,14 @@ export async function proposeForm(
    * Act and state the assumption (Pau, 14 Nov 2026): no date in the manager's words, so the card is dated today, and
    * the reply says so in one line the manager can correct.
    */
-  const datedToday = ACCOUNT_FORMS.has(template.key) && !awaiting && !date && datesGiven.length === 0 && !ACCOUNT_WHEN.test(requestWords) && !ACCOUNT_DATE.test(requestWords);
-  ACCOUNT_DATE.lastIndex = 0;
+  const datedToday = ACCOUNT_FORMS.has(template.key) && !awaiting && !date && datesGiven.length === 0 && !ACCOUNT_WHEN.test(requestWords) && readDates(requestWords).length === 0;
   ACCOUNT_WHEN.lastIndex = 0;
+  /* Batch E (E12): a date after today is never on the card, the model's or today's reading (the field is refused; the fact says so). */
+  const futureDate = dateAfterToday ?? (!date && proposal.formDate && proposal.formDate > today ? proposal.formDate : null);
   const card: ChatFormProposal = {
     ...proposal,
     sourceMessageIds: sourceIds,
-    formDate: datesAsked.length > 0 ? null : date ?? proposal.formDate ?? null,
+    formDate: datesAsked.length > 0 || futureDate ? null : date ?? proposal.formDate ?? null,
     ...(level ? { warningLevel: level } : {}),
     ...(whatHappened ? { issue: whatHappened } : {}),
     ...(payroll ? { payrollDeduct: payroll } : {}),
@@ -1157,7 +1215,10 @@ export async function proposeForm(
     ...(figuresNotSaid.length > 0 ? { figures_not_said: figuresNotSaid } : {}),
     ...(formatFigures.length > 0 ? { format_figures: formatFigures } : {}),
     ...(fitsHeadings ? { fits_headings: fitsHeadings } : {}),
-    ...(dateAfterToday ? { date_after_today: { date: dateAfterToday, today } } : {}),
+    ...(futureDate ? { date_after_today: { date: futureDate, today, not_on_card: true } } : {}),
+    ...(lastYear && date ? { date_read_as_last_year: { said: lastYear, date } } : {}),
+    ...(notInManual && policyLine ? { policy_not_in_manual: notInManual } : {}),
+    ...(whatHappened && addedLinks(managerWords, whatHappened).length > 0 ? { reword_added_link: addedLinks(managerWords, whatHappened) } : {}),
     ...(statedSteps.length > 0 ? { prior_steps_said: statedSteps } : {}),
     ...(corrective && payroll === "yes" && !amount && statedAmount ? { payroll_amount_said: `$${statedAmount}` } : {}),
     ...(cleaning && !careAndCleaning ? { cleaning_duty: cleaning } : {}),
@@ -1165,6 +1226,11 @@ export async function proposeForm(
     ...(datedToday && (card.formDate ?? today) === today ? { dated_today: true } : {}),
     ...(offRosterName ? { off_roster_name: employee.name, staff_list: context.actor.scope.level === "salon" ? "your salon's" : "the", ...((await inactiveMatch(context.actor.scope, employee.name)) ? { inactive_in_woven: true } : {}) } : {}),
     ...(personId && effects.nameLines?.[personId] ? { name_from_staff_list: employee.name } : {}),
+    ...(await (async () => {
+      if (card.status !== "needs_location" || !employee.id) return {};
+      const primary = await rosterPrimarySalon(context.actor.scope, employee.id);
+      return primary && (card.authorizedLocationIds ?? []).includes(primary) ? { employee_salon: rosterSalonName(primary) ?? primary } : {};
+    })()),
     /* QA's live-app item 8: the card uses Woven's title; the manager called them something else ("Salon Director"). */
     ...(() => {
       const said = extractJobTitle(requestWords);
@@ -1251,6 +1317,12 @@ export async function editForm(
       if (!digits || !managerTurns(context).replace(/[^\d.]/g, " ").split(/\s+/).some((n) => n !== "" && Number(n) === Number(digits))) unstated.push(field);
     }
   }
+  /* Batch E (E12): a form or incident date after today (the salon's local date) is never written. */
+  const editToday = context.today || businessToday();
+  const later = Object.entries(values).filter(([field, value]) => (field === "form_date" || field === "incident_date") && (isoDate(value, editToday) ?? "") > editToday);
+  if (later.length > 0) {
+    return { error: `${later.map(([field, value]) => `${field} ${value}`).join(", ")} is after today (${editToday}, the salon's local date). Nothing was written. Ask the manager which day.`, date_after_today: { today: editToday } };
+  }
   if (unstated.length > 0) {
     return { error: `${unstated.join(", ")} must come from the manager's own words, and this message does not state ${unstated.length === 1 ? "it" : "them"}. Nothing was written. Ask, or leave it for the manager.` };
   }
@@ -1318,7 +1390,7 @@ export async function editForm(
      * A reword keeps every fact (Pau via QA): the rules book teaches it; the result says what the new wording left out
      * of the old and which fixed fields it touched, so the model puts them back (code-check #28, batch C).
      */
-    const rewordFacts: { reword_lost?: Record<string, string[]>; reword_touched_fixed_fields?: string[] } = {};
+    const rewordFacts: { reword_lost?: Record<string, string[]>; reword_touched_fixed_fields?: string[]; reword_added_link?: Record<string, string[]> } = {};
     if (REWORD_REQUEST.test(context.question) && Object.keys(values).length > 0) {
       /*
        * HARD GUARD, THE RIGHT PERSON (QA's review of batch C): a reword never changes who the form is about. Values for
@@ -1336,6 +1408,8 @@ export async function editForm(
         const old = loaded.values.find((row) => row.fieldKey === field)?.value ?? "";
         const lost = accountMissing(old, text);
         if (lost.length > 0) rewordFacts.reword_lost = { ...(rewordFacts.reword_lost ?? {}), [field]: lost };
+        const linked = addedLinks(old, text);
+        if (linked.length > 0) rewordFacts.reword_added_link = { ...(rewordFacts.reword_added_link ?? {}), [field]: linked };
       }
     }
     if (loaded.instance.status !== "draft") {
@@ -1412,7 +1486,7 @@ export async function editForm(
       refused: written.rejected.map((row) => ({ field: row.key, reason: row.reason })),
       ...rewordFacts,
       ...(answerAlsoWrote.length > 0 ? { level_or_payroll_answer_also_wrote: answerAlsoWrote } : {}),
-      ...(rewordFacts.reword_lost || rewordFacts.reword_touched_fixed_fields || answerAlsoWrote.length > 0
+      ...(rewordFacts.reword_lost || rewordFacts.reword_touched_fixed_fields || rewordFacts.reword_added_link || answerAlsoWrote.length > 0
         ? { note: "Saved. Check these facts against what the manager asked and edit again to put anything back (the rules book's Editing lines)." }
         : {}),
     };
