@@ -9,7 +9,7 @@ import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import { businessToday } from "@/lib/business-date";
 import { isoDate, monthDayToIso, readDates, sameDate, withoutDates } from "./dates";
 import { candidateNameWords, chatFormsActor } from "@/lib/forms/chat-form-records";
-import { displayName, matchEmployeeName, nameConfirmationQuestion, type RosterEmployee } from "@/lib/forms/employee-match";
+import { AFFIRMATIVE, displayName, matchEmployeeName, nameConfirmationQuestion, type RosterEmployee } from "@/lib/forms/employee-match";
 import { offRosterTyped } from "@/lib/forms/roster-only-names";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
 import { readDirectoryRoster, readScopedRoster, type DirectoryRosterRow } from "@/lib/forms/employee-roster";
@@ -414,6 +414,20 @@ function namesAPlace(typed: string): boolean {
   return readSalonMentions(typed).length > 0 || readSalonMentions(`at ${typed}`).length > 0;
 }
 
+/**
+ * Batch K1: the card's person was put there by the manager: a manager turn in this chat names them in full, or the
+ * manager said yes to the app's "Did you mean **<name>**?". A close spelling the app seated on its own never counts.
+ */
+function cardPersonEstablished(context: Pick<ToolContext, "history">, name: string): boolean {
+  const full = new RegExp(String.raw`(?<![\p{L}])${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, String.raw`\s+`)}(?![\p{L}])`, "iu");
+  return context.history.some((turn, index) => {
+    const text = typeof turn.content === "string" ? turn.content : "";
+    if (turn.role === "user") return full.test(text);
+    const next = context.history[index + 1];
+    return turn.role === "assistant" && text.includes(`Did you mean **${name}**?`) && next?.role === "user" && AFFIRMATIVE.test(String(next.content));
+  });
+}
+
 export async function findStaff(context: ToolContext, input: { name?: unknown }, effects?: ToolEffects): Promise<ToolResult> {
   const typed = typeof input.name === "string" ? input.name.trim() : "";
   if (typed === "") return { error: "Give the name to look for." };
@@ -439,8 +453,11 @@ export async function findStaff(context: ToolContext, input: { name?: unknown },
      * or no (today's NEAR_MISS_DETAILS_ACCEPT; the live re-run's proposal-name-correction). A "no" keeps asking.
      */
     const saidNo = /^\s*(?:no|nope|nah|not\s+(?:her|him|them|that))\b/i.test(context.question);
+    /* Batch K1 (NEAR_MISS_NEVER_SEATED): a close spelling is seated only as the card's person the manager typed or confirmed. */
+    const nearMissNever = (await import("@/lib/config/chat-quality-flags")).nearMissNeverSeatedEnabled();
     const onCard = close.kind === "confirm" && close.candidates.length === 1 && !saidNo
-      ? context.history.some((turn) => turn.role === "assistant" && typeof turn.content === "string" && turn.content.includes(close.candidates[0]!.name))
+      ? context.history.some((turn) => turn.role === "assistant" && typeof turn.content === "string" && turn.content.includes(close.candidates[0]!.name)) &&
+        (!nearMissNever || (cardPersonEstablished(context, close.candidates[0]!.name) && words(typed).length <= words(close.candidates[0]!.name).length))
       : false;
     if (onCard && close.kind === "confirm") {
       return { matches: [staffRow(close.candidates[0]!.employee)], note: `A close spelling of ${close.candidates[0]!.name}, the person on this chat's card. Use them; no need to ask.` };
@@ -451,7 +468,7 @@ export async function findStaff(context: ToolContext, input: { name?: unknown },
      * correct before Create ("Using **<A>** from your staff list."). Two or more → asked. A "no" to an earlier
      * Did-you-mean → asked.
      */
-    if (close.kind === "confirm" && close.candidates.length === 1 && !saidNo) {
+    if (close.kind === "confirm" && close.candidates.length === 1 && !saidNo && !nearMissNever) {
       const chosen = close.candidates[0]!;
       if (effects) effects.nameLines = { ...(effects.nameLines ?? {}), [chosen.employee.id]: chosen.name };
       return { matches: [staffRow(chosen.employee)], name_from_staff_list: chosen.name, note: `A close spelling of ${chosen.name}, the only one on the roster. Use them, and say so as the rules book's Card replies teach.` };
