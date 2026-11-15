@@ -213,6 +213,40 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
     },
   },
   {
+    id: "nov15-agent-loop-g4-single-out-the-one-with-no-salon",
+    title: "G4 follow-up (QA, 15 Nov 2026): \"open the coaching form for <B> with no salon\", when only one of her two Coaching Forms on file has no salon, opens that one instead of listing both",
+    report: `${REPORT}; QA's G4 follow-up: a description that singles out one form still listed the candidates`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      const noSalon = await onFile(t, "e-2", "Remy Calder", "coaching", "2026-10-31", "Remy Calder did not get rooms ready between guests on 10/31.");
+      await onFile(t, "e-2", "Remy Calder", "coaching", "2026-11-05", "Remy Calder was late to her shift on 11/5.");
+      // One of the two lost its salon (filed before the salon was known).
+      const row = (t.rows?.("form_instances") ?? []).find((entry) => entry.id === noSalon)!;
+      row.location_id = null;
+      row.location_name = null;
+      const model = loopStandIn((view): LoopDecision => {
+        const said = [...view.turns].reverse().find((turn) => turn.role === "user")?.text ?? "";
+        const found = lastResult(view, "find_past_forms") as { forms?: { instance_id: string; salon: string | null; form_date: string }[]; single_out?: string; which_form_question?: string } | null;
+        if (!found) return { tool: "find_past_forms", input: { employee_name: "Remy Calder", form: "coaching" } };
+        // The model decides, from the facts: the manager's "no salon" fits exactly one form's salon.
+        const fits = found.single_out && /no salon/.test(said) ? (found.forms ?? []).filter((form) => form.salon === "no salon") : [];
+        if (fits.length === 1 && !lastResult(view, "open_form")) return { tool: "open_form", input: { instance_id: fits[0]!.instance_id } };
+        if (lastResult(view, "open_form")) return { text: "Opening the 10/31 Coaching Form (no salon)." };
+        return { text: `Remy Calder has two Coaching Forms on file:\n- 10/31\n- 11/5\n\n${found.which_form_question ?? "Which one?"}` };
+      });
+      t.loopModel!(model);
+      const thread = t.thread();
+      const reply = await thread.say("open the coaching form for remy calder with no salon");
+      expect(reply.formOpened?.instanceId, `the one form with no salon was not opened:\n${reply.content}`).toBe(noSalon);
+      expect(reply.content, "the candidates were listed").not.toMatch(/Which one should I open\?/);
+    },
+  },
+  {
     id: "nov15-agent-loop-g4-edit-a-misspelled-name-ca",
     title: "G4 (REOPEN_CLOSE_SPELLING, parity gap #43): \"edit remy caldr ca\" opens the one form on file whose employee's name it closely spells; two close names are asked about",
     report: `${REPORT}; parity matrix #43: "Edit <misspelled name> CA" with that person's CA on file`,
