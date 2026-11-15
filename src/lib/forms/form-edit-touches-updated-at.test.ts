@@ -162,3 +162,29 @@ describe("FORM_EDIT_TOUCHES_UPDATED_AT_ENABLED", () => {
     expect(instanceTouches()).toEqual([]);
   });
 });
+
+/* Batch G2 (QA's live run part 2, C20): the agent loop's dictated Action Plan (dictatedPlanWrite) moves updated_at too. */
+describe("FORM_EDIT_TOUCHES_UPDATED_AT_ENABLED: a dictated Action Plan", () => {
+  const instanceTouches = () => touched.updates.filter((update) => update.table === "form_instances" && "updated_at" in update.patch);
+  it("on: the dictated plan's save touches the form's updated_at", async () => {
+    process.env.FORM_EDIT_TOUCHES_UPDATED_AT_ENABLED = "true";
+    try {
+      const { dictatedPlanWrite } = await import("./form-write");
+      const result = await dictatedPlanWrite("inst-1", "Violation of Company policy has resulted in immediate termination of employment.", "qa");
+      expect(result.saved).not.toBeNull();
+      expect(instanceTouches()).toEqual([expect.objectContaining({ id: "inst-1" })]);
+    } finally {
+      delete process.env.FORM_EDIT_TOUCHES_UPDATED_AT_ENABLED;
+    }
+  });
+  it("off: nothing is touched", async () => {
+    process.env.FORM_EDIT_TOUCHES_UPDATED_AT_ENABLED = "false";
+    try {
+      const { dictatedPlanWrite } = await import("./form-write");
+      await dictatedPlanWrite("inst-1", "Violation of Company policy has resulted in immediate termination of employment.", "qa");
+      expect(instanceTouches()).toEqual([]);
+    } finally {
+      delete process.env.FORM_EDIT_TOUCHES_UPDATED_AT_ENABLED;
+    }
+  });
+});

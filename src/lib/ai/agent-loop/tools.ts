@@ -164,6 +164,14 @@ export function exactWarningLevel(value: string): "verbal" | "written" | "termin
   return level === "verbal" || level === "written" || level === "termination" ? level : null;
 }
 
+/** Batch G2 (item 6): "12/20/2026" for the date asked, "11/05" for the form's date kept (null: the form has none). */
+function formDateKept(iso: string | null | undefined): string | null {
+  return iso && /^\d{4}-\d{2}-\d{2}$/.test(iso) ? `${iso.slice(5, 7)}/${iso.slice(8, 10)}` : null;
+}
+function askedDateText(iso: string): string {
+  return `${iso.slice(5, 7)}/${iso.slice(8, 10)}/${iso.slice(0, 4)}`;
+}
+
 /**
  * Batch G (G8; QA's design, 15 Nov 2026): the model passes action_plan; code LOCKS it. The current message must mark
  * an Action Plan ("action plan" followed within 40 characters by ":" or "to", so "leave the action plan alone" is not
@@ -1657,6 +1665,11 @@ export async function proposeForm(
     ...(jobTitleTyped ? { job_title_from_your_words: card.employeeRole } : {}),
     ...(whichSalon ? { which_salon: true } : {}),
     ...(terminationStated ? { termination_stated: { approval: stated.TERMINATION_APPROVAL_LINE, plan_closing: stated.TERMINATION_PLAN_SENTENCE } } : {}),
+    /*
+     * Batch G2 (item 3, QA's live run part 2: the hedge line was missing on 5 of 7): the manager's words name a
+     * termination but the model chose none for this form, so code informs; the rules book gives the line exactly.
+     */
+    ...(corrective && !terminationStated && (await import("@/lib/forms/termination-word")).saysTerminationWord(requestWords) ? { termination_mentioned_not_stated: true } : {}),
     /* CARRIED_PERSON_NOTICE (batch H10): the person was read from before the manager's last six turns. */
     ...((await import("@/lib/ai/carried-person-notice")).carriedFromEarlier(template.key, card.employeeName, { history: context.history as ChatMessage[], question: context.question }) ? { person_from_earlier: card.employeeName } : {}),
     ...(underPerformance ? { under_performance: true } : {}),
@@ -1873,7 +1886,8 @@ export async function editForm(
         })
       : [];
     if (later.length > 0) {
-      return { error: `${later.map(([field, value]) => `${field} ${value}`).join(", ")} is after today (${editToday}, the salon's local date). Nothing was written. Ask the manager which day.`, date_after_today: { today: editToday } };
+      const askedIso = isoDate(later[0]![1], editToday) ?? editToday;
+      return { error: `${later.map(([field, value]) => `${field} ${value}`).join(", ")} is after today (${editToday}, the salon's local date). Nothing was written. Ask the manager which day.`, date_after_today: { today: editToday, asked_date: askedDateText(askedIso), form_date_kept: formDateKept(loaded.instance.formDate) } };
     }
     /*
      * HARD GUARD, THE RIGHT PERSON'S FORM (the live run's nov6-diffemp, top severity): a message about another roster
@@ -2022,7 +2036,7 @@ export async function editForm(
        */
       if (ACCOUNT_FORMS.has(loaded.instance.templateKey)) {
         const stated = readDates(context.question).map((date) => isoDate(date.text, editToday)).find((iso) => iso !== null && iso > editToday);
-        if (stated) return { error: `${stated} is after today (${editToday}, the salon's local date). Nothing was written. Ask the manager which day.`, date_after_today: { today: editToday } };
+        if (stated) return { error: `${stated} is after today (${editToday}, the salon's local date). Nothing was written. Ask the manager which day.`, date_after_today: { today: editToday, asked_date: askedDateText(stated), form_date_kept: formDateKept(loaded.instance.formDate) } };
       }
       const revised = await openFormTurn(context, id);
       if (!revised) {
@@ -2082,7 +2096,8 @@ export async function editForm(
     const statedPayroll = [
       ...(checked.payroll_deduct ? ["payroll_deduct"] : []),
       ...(values[PAYROLL_AMOUNT_KEY] ? [PAYROLL_AMOUNT_KEY] : []),
-      ...(checked.warning_type?.[0] === "termination" ? ["warning_type"] : []),
+      /* Batch G2 (item 1): any stated level (the guard above checked it against this message) is the manager's, so "undo that, it's a written" replaces Termination. */
+      ...(checked.warning_type ? ["warning_type"] : []),
     ];
     /* Batch G (G8): a dictated Action Plan is saved after the level (below), so its closing reads the form's Termination. */
     /* QA's review: only a plan the message marks, saved as the manager typed it (from the message, never the model's string). */
@@ -2129,9 +2144,13 @@ export async function editForm(
     const dateWritten = documentDate !== null && saved.values.some((row) => row.fieldKey === "form_date" && row.value === documentDate);
     const updated = [...Object.keys(written.accepted.values ?? {}), ...Object.keys(written.accepted.checked ?? {}), ...(dateWritten ? ["form_date"] : []), ...(dictatedPlan !== null ? ["action_plan"] : [])];
     if (updated.length > 0) effects.formUpdate = { instanceId: id, updated };
+    /* Batch G2 (item 1, EDIT_SEES_SAVED_FORM): the level the saved form holds now, read back, so the reply never claims it from the card or history. */
+    const savedLevel = saved.values.find((row) => row.fieldKey === "warning_type")?.checked ?? [];
+    const levelLabel: Record<string, string> = { verbal: "Verbal", written: "Written", termination: "Termination" };
     return {
       updated,
       refused: written.rejected.map((row) => ({ field: row.key, reason: row.reason })),
+      ...(loaded.instance.templateKey === "dpoa" ? { saved_level: savedLevel.length > 0 ? savedLevel.map((key) => levelLabel[key] ?? key).join(", ") : null } : {}),
       ...rewordFacts,
       ...addFacts,
       ...(rewordAsked ? { reword_paused: true } : {}),

@@ -32,14 +32,15 @@ async function card(t: ReplayContext, words: string, termination: boolean) {
   t.directory([...STAFF]);
   t.as("salon_director", KEARNEY);
   const model = loopStandIn((view): LoopDecision => {
-    const result = lastResult(view, "propose_form") as { facts?: { termination_stated?: { approval: string; plan_closing: string } } } | null;
+    const result = lastResult(view, "propose_form") as { facts?: { termination_stated?: { approval: string; plan_closing: string }; termination_mentioned_not_stated?: boolean } } | null;
     if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
     if (!result) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: ACCOUNT, incident_date: "2026-11-12", ...(termination ? { warning_level: "termination" } : {}) } };
     const stated = result.facts?.termination_stated;
     return {
       text: stated
         ? `Here's the Corrective Action Form for **Remy Calder**.\n\n**Type of Warning:** Termination, as you said — I'll tick it on the form. Tell me if that should change.\n${stated.approval}\n\n**Observation of Offense:** ${ACCOUNT}`
-        : `Here's the Corrective Action Form for **Remy Calder**.\n\n${HEDGE}\n\n**Observation of Offense:** ${ACCOUNT}`,
+        // Batch G2 (item 3): the stand-in gives the hedge line only when the tool says so (termination_mentioned_not_stated), as the rules book teaches.
+        : `Here's the Corrective Action Form for **Remy Calder**.\n\n${result.facts?.termination_mentioned_not_stated ? `${HEDGE}\n\n` : ""}**Observation of Offense:** ${ACCOUNT}`,
     };
   });
   t.loopModel!(model);
