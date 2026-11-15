@@ -497,11 +497,13 @@ describe("the follow-up colour means follow-ups", () => {
 describe("typography keeps the display face out of body copy", () => {
   it("loads both approved faces plus a UI stack", () => {
     const layout = readFileSync(join(SOURCE_DIR, "app", "layout.tsx"), "utf8");
-    expect(layout).toContain("Passion_One");
-    expect(layout).toContain("Lato");
-    // Through next/font, so the files are self-hosted at build time rather
-    // than fetched from a third party at runtime.
-    expect(layout).toContain("next/font/google");
+    // Changed on purpose (QA, 15 Nov 2026, next/font/local): the faces are named by their committed files.
+    expect(layout).toContain("./font-files/passion-one/");
+    expect(layout).toContain("./font-files/lato/");
+    // Through next/font, so the files are self-hosted rather than fetched from a third party at runtime. Changed on
+    // purpose (QA, 15 Nov 2026): next/font/local with the files committed, so the build never needs Google Fonts.
+    expect(layout).toContain("next/font/local");
+    expect(layout).not.toMatch(/from "next\/font\/google"/);
     expect(layout).toContain('display: "swap"');
   });
 

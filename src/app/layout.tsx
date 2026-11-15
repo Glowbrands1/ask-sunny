@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Fraunces, Jost, Lato, Manrope, Passion_One, Plus_Jakarta_Sans } from "next/font/google";
+import localFont from "next/font/local";
 
 import { ACTIVE_BRAND, brandStyle } from "@/lib/brand";
 import { pageAuthorizationEnforced, pageIdentity } from "@/lib/auth/page";
@@ -10,9 +10,13 @@ import "./globals.css";
  * THE APPROVED PAIRING: Passion One for display, Lato for everything else.
  *
  * Both through `next/font`, which is why this is safe to add: the files are
- * downloaded at BUILD time and served from this origin, so there is no runtime
- * request to a font CDN, no third-party dependency in the critical path and
- * nothing to block first paint. `display: "swap"` plus the fallback stacks in
+ * served from this origin, so there is no runtime request to a font CDN, no
+ * third-party dependency in the critical path and nothing to block first paint.
+ * Since 15 Nov 2026 they are `next/font/local` with the files committed under
+ * `src/app/font-files/` (Fontsource's latin subsets, each family's OFL licence
+ * beside it): `next/font/google` downloaded them at build time, and CI's build
+ * failed whenever GitHub's runners could not reach Google Fonts (QA). Same
+ * families, weights, subset and CSS variables as before. `display: "swap"` plus the fallback stacks in
  * globals.css mean text is readable before the webfont lands rather than
  * invisible, and the metric-adjusted fallbacks Next generates keep the reflow
  * from being a visible jump.
@@ -33,23 +37,30 @@ import "./globals.css";
  * job from either display headings or body copy — a logotype, at two sizes, and
  * nothing else in the product uses it.
  */
-const passionOne = Passion_One({
-  subsets: ["latin"],
-  weight: ["400", "700"],
+const passionOne = localFont({
+  src: [
+    { path: "./font-files/passion-one/passion-one-latin-400-normal.woff2", weight: "400", style: "normal" },
+    { path: "./font-files/passion-one/passion-one-latin-700-normal.woff2", weight: "700", style: "normal" },
+  ],
   variable: "--font-passion-one",
   display: "swap",
 });
 
-const lato = Lato({
-  subsets: ["latin"],
-  weight: ["400", "700", "900"],
+const lato = localFont({
+  src: [
+    { path: "./font-files/lato/lato-latin-400-normal.woff2", weight: "400", style: "normal" },
+    { path: "./font-files/lato/lato-latin-700-normal.woff2", weight: "700", style: "normal" },
+    { path: "./font-files/lato/lato-latin-900-normal.woff2", weight: "900", style: "normal" },
+  ],
   variable: "--font-lato",
   display: "swap",
 });
 
-const jost = Jost({
-  subsets: ["latin"],
-  weight: ["400", "500"],
+const jost = localFont({
+  src: [
+    { path: "./font-files/jost/jost-latin-400-normal.woff2", weight: "400", style: "normal" },
+    { path: "./font-files/jost/jost-latin-500-normal.woff2", weight: "500", style: "normal" },
+  ],
   variable: "--font-jost",
   display: "swap",
 });
@@ -58,9 +69,13 @@ const jost = Jost({
  * FRAUNCES CARRIES THE SIGN-IN SCREEN'S TWO HEADINGS ONLY — the "soft horizon"
  * sign-in design sets them in a warm serif. Nothing else in the product uses it.
  */
-const fraunces = Fraunces({
-  subsets: ["latin"],
-  weight: ["600", "700"],
+const fraunces = localFont({
+  src: [
+    { path: "./font-files/fraunces/fraunces-latin-600-normal.woff2", weight: "600", style: "normal" },
+    { path: "./font-files/fraunces/fraunces-latin-700-normal.woff2", weight: "700", style: "normal" },
+  ],
+  // A serif, as next/font/google measured its fallback against.
+  adjustFontFallback: "Times New Roman",
   variable: "--font-fraunces",
   display: "swap",
 });
@@ -70,15 +85,23 @@ const fraunces = Fraunces({
  * heavy and rounded, from the approved clay mockup. Lato stays behind it in
  * the stack as the fallback.
  */
-const jakarta = Plus_Jakarta_Sans({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
+const jakarta = localFont({
+  src: [
+    { path: "./font-files/plus-jakarta-sans/plus-jakarta-sans-latin-400-normal.woff2", weight: "400", style: "normal" },
+    { path: "./font-files/plus-jakarta-sans/plus-jakarta-sans-latin-500-normal.woff2", weight: "500", style: "normal" },
+    { path: "./font-files/plus-jakarta-sans/plus-jakarta-sans-latin-600-normal.woff2", weight: "600", style: "normal" },
+    { path: "./font-files/plus-jakarta-sans/plus-jakarta-sans-latin-700-normal.woff2", weight: "700", style: "normal" },
+    { path: "./font-files/plus-jakarta-sans/plus-jakarta-sans-latin-800-normal.woff2", weight: "800", style: "normal" },
+  ],
   variable: "--font-jakarta",
   display: "swap",
 });
 
-const manrope = Manrope({
-  subsets: ["latin"],
+const manrope = localFont({
+  // The variable font, every weight (next/font/google loaded Manrope's variable font, no weights named).
+  src: "./font-files/manrope/manrope-latin-wght-normal.woff2",
+  weight: "200 800",
+  style: "normal",
   variable: "--font-manrope",
   display: "swap",
 });
