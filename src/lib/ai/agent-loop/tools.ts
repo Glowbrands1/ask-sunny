@@ -93,6 +93,8 @@ export interface ToolContext {
   readonly actor: ToolActor;
   readonly question: string;
   readonly questionMessageId?: string;
+  /** The chat's id, when it has one (a card's created form is looked up under it, `instanceCreatedFromProposal`). */
+  readonly conversationId?: string;
   readonly history: readonly ChatMessage[];
   readonly scopeId: string;
   /** The salon's local date (America/Chicago in production), `YYYY-MM-DD`. */
@@ -416,11 +418,18 @@ function namesAPlace(typed: string): boolean {
   return readSalonMentions(typed).length > 0 || readSalonMentions(`at ${typed}`).length > 0;
 }
 
+
+/**
+ * Batch K12b (QA's D ruling, 15 Nov 2026: Create stays held until there is an account, so at most one question): a
+ * confirm question asked before the manager said what happened also asks for it, in the same reply.
+ */
+const ALSO_ASK_ACCOUNT = "If so, tell me what happened.";
+
 export async function findStaff(context: ToolContext, input: { name?: unknown }, effects?: ToolEffects): Promise<ToolResult> {
   const typed = typeof input.name === "string" ? input.name.trim() : "";
-  if (typed === "") return { error: "Give the name to look for." };
+  if (typed === "") return { reason_code: "missing_input", error: "Give the name to look for." };
   const read = await rosterFor(context.actor.scope);
-  if (read.kind === "failed") return { error: ROSTER_FAILED };
+  if (read.kind === "failed") return { reason_code: "roster_failed", error: ROSTER_FAILED };
   if (read.kind === "unchecked") return { unchecked: true, note: ROSTER_UNCHECKED };
   let found = rosterMatches(typed, read.roster).slice(0, 10);
   /* The roster's exact full name wins over people whose names only start the same ("Test Employee" vs "Test Employee Two"). */
@@ -441,7 +450,14 @@ export async function findStaff(context: ToolContext, input: { name?: unknown },
      * or no (today's NEAR_MISS_DETAILS_ACCEPT; the live re-run's proposal-name-correction). A "no" keeps asking.
      */
     const saidNo = /^\s*(?:no|nope|nah|not\s+(?:her|him|them|that))\b/i.test(context.question);
-    const onCard = close.kind === "confirm" && close.candidates.length === 1 && !saidNo
+    /*
+     * Batch K1 (NEAR_MISS_NEVER_SEATED; Pau 15 Nov: A, replacing his 14 Nov one-strong-close-match; QA's review): a close
+     * spelling is never seated, not even as the card's person ("also a coaching for Remi Caldor" after Remy Calder's card
+     * asks). The card's person is used only on an exact full name (legal or preferred), which never reaches this branch,
+     * or after the manager confirms: a "yes" to the Did-you-mean, after which the model looks up the confirmed name.
+     */
+    const nearMissNever = (await import("@/lib/config/chat-quality-flags")).nearMissNeverSeatedEnabled();
+    const onCard = !nearMissNever && close.kind === "confirm" && close.candidates.length === 1 && !saidNo
       ? context.history.some((turn) => turn.role === "assistant" && typeof turn.content === "string" && turn.content.includes(close.candidates[0]!.name))
       : false;
     if (onCard && close.kind === "confirm") {
@@ -453,7 +469,7 @@ export async function findStaff(context: ToolContext, input: { name?: unknown },
      * correct before Create ("Using **<A>** from your staff list."). Two or more → asked. A "no" to an earlier
      * Did-you-mean → asked.
      */
-    if (close.kind === "confirm" && close.candidates.length === 1 && !saidNo) {
+    if (close.kind === "confirm" && close.candidates.length === 1 && !saidNo && !nearMissNever) {
       const chosen = close.candidates[0]!;
       if (effects) effects.nameLines = { ...(effects.nameLines ?? {}), [chosen.employee.id]: chosen.name };
       return { matches: [staffRow(chosen.employee)], name_from_staff_list: chosen.name, note: `A close spelling of ${chosen.name}, the only one on the roster. Use them, and say so as the rules book's Card replies teach.` };
@@ -464,6 +480,7 @@ export async function findStaff(context: ToolContext, input: { name?: unknown },
         matches: [],
         did_you_mean: close.candidates.slice(0, 5).map((candidate) => staffRow(candidate.employee)),
         note: `Not on the roster as typed. Ask the manager, in these words: ${nameConfirmationQuestion(typed, names)}`,
+        also_ask_if_no_account: ALSO_ASK_ACCOUNT,
       };
     }
     /*
@@ -483,7 +500,7 @@ export async function findStaff(context: ToolContext, input: { name?: unknown },
      * salon outside the manager's scope is read the same way (the roster is scoped): their existence is never shown.
      */
     const inactive = await inactiveMatch(context.actor.scope, person);
-    return { matches: [], not_on_roster: person, staff_list: context.actor.scope.level === "salon" ? "your salon's" : "the", ...(inactive ? { inactive_in_woven: inactive } : {}), note: `Not on the Woven staff list${inactive ? " (no longer active in Woven)" : ""}. Propose the card now with employee_name "${person}" as typed, and say so as the rules book's Card replies teach.` };
+    return { reason_code: "not_on_roster", matches: [], not_on_roster: person, staff_list: context.actor.scope.level === "salon" ? "your salon's" : "the", ...(inactive ? { inactive_in_woven: inactive } : {}), note: `Not on the Woven staff list${inactive ? " (no longer active in Woven)" : ""}. Propose the card now with employee_name "${person}" as typed, and say so as the rules book's Card replies teach.` };
   }
   /* A first name alone is confirmed before it goes on a form, as today ("Is this for **Rhea Calloway**?"). */
   /*
@@ -493,12 +510,27 @@ export async function findStaff(context: ToolContext, input: { name?: unknown },
    */
   if (found.length === 1 && words(typed).length === 1) {
     const only = found[0]!;
+    /*
+     * Batch K2 (QA's 266 shadow replay, c261: "edit <a typo> ca form" seated the one roster person whose first name the
+     * typo only began, and looked up her forms): only the person's own first or preferred first name, whole, is used.
+     * A part of a name, or a surname alone, is asked, in today's words.
+     */
+    const own = [only.firstName, only.preferredFirstName ?? ""].map((name) => words(name).join(" ")).filter(Boolean);
+    if (!own.includes(words(typed).join(" "))) {
+      return {
+        matches: [],
+        did_you_mean: [staffRow(only)],
+        note: `Not a whole first name on the roster. Ask the manager, in these words: ${nameConfirmationQuestion(typed, [displayName(only)])}`,
+        also_ask_if_no_account: ALSO_ASK_ACCOUNT,
+      };
+    }
     if (effects) effects.nameLines = { ...(effects.nameLines ?? {}), [only.id]: displayName(only) };
     return { matches: found.map(staffRow), name_from_staff_list: displayName(only), note: `Only a first name was given and one person has it: use ${displayName(only)}, and say so as the rules book's Card replies teach.` };
   }
   const shared = new Set(found.map((person) => displayName(person).toLowerCase())).size < found.length;
   return {
     matches: found.map(staffRow),
+    ...(found.length > 1 ? { reason_code: "ambiguous_person" } : {}),
     ...(longer.length > 0 ? { longer_names_on_roster: longer, longer_note: "Other people's names start with this one. If the manager wrote one of these longer names, look that one up instead." } : {}),
     ...(found.length > 1 ? { note: shared ? "Several people share this name: ask the manager which one (by salon) before proposing a form." : "Several people match: ask the manager which one." } : {}),
   };
@@ -619,10 +651,10 @@ function positionKey(text: string): string {
 export async function listStaffTool(context: ToolContext, effects: ToolEffects, input: { salon?: unknown; position?: unknown }): Promise<ToolResult> {
   const scope = context.actor.scope;
   if (!["create_coaching_form", "create_corrective_action"].some((permission) => hasPermission(DEFAULT_PERMISSION_MATRIX, context.actor.role, permission as never))) {
-    return { error: "This role cannot list the staff. Say so." };
+    return { reason_code: "scope", error: "This role cannot list the staff. Say so." };
   }
   if (scope.level === "district" || scope.level === "region") {
-    return { error: "This login covers a district or region, so its staff roster can't be listed here. Say so in those words; never list or guess names." };
+    return { reason_code: "scope", error: "This login covers a district or region, so its staff roster can't be listed here. Say so in those words; never list or guess names." };
   }
   const [{ authorizedSalonIds }, { PRODUCTION_SALONS, salonById }, { readSalonMentions }, picker, roster] = await Promise.all([
     import("@/lib/forms/location-scope"),
@@ -644,7 +676,7 @@ export async function listStaffTool(context: ToolContext, effects: ToolEffects, 
   const named = [...new Set([typed, context.question].flatMap((text) => (text ? readSalonMentions(text).flatMap((mention) => [...mention.salonIds]) : [])))];
   const own = named.filter((id) => allowed.has(id));
   if (own.length === 0 && named.length > 0) {
-    return { error: "That salon is not one of this manager's salons; its staff are never listed here. Say so." };
+    return { reason_code: "scope", error: "That salon is not one of this manager's salons; its staff are never listed here. Say so." };
   }
   let chosen = own.length === 1 ? locations.find((location) => location.id === own[0])! : locations.length === 1 ? locations[0]! : null;
   if (!chosen && typed) {
@@ -653,7 +685,7 @@ export async function listStaffTool(context: ToolContext, effects: ToolEffects, 
     if (hits.length === 1) chosen = hits[0]!;
   }
   if (!chosen) {
-    if (locations.length === 0) return { error: "No salon is in this login's scope, so no staff can be listed. Say so." };
+    if (locations.length === 0) return { reason_code: "scope", error: "No salon is in this login's scope, so no staff can be listed. Say so." };
     const names = locations.map((location) => location.name).sort((a, b) => a.localeCompare(b));
     return {
       ...(forForm ? { whole_staff_form: form, one_person_per_form: true } : {}),
@@ -669,7 +701,7 @@ export async function listStaffTool(context: ToolContext, effects: ToolEffects, 
   }
   const facts = await roster.readDirectoryFacts(scope).catch(() => []);
   const people = facts.length > 0 ? facts.map((person) => ({ ...person, positionName: person.title })) : [];
-  if (people.length === 0) return { error: ROSTER_FAILED };
+  if (people.length === 0) return { reason_code: "roster_failed", error: ROSTER_FAILED };
   const all = picker.salonStaffRows(chosen, people);
   /* Batch E (E7): the head count, and one position's people when the manager asked for it (facts; the rules book words them). */
   const asked = typeof input.position === "string" ? positionKey(input.position) : "";
@@ -694,11 +726,11 @@ export async function listStaffTool(context: ToolContext, effects: ToolEffects, 
 
 export async function findPastForms(context: ToolContext, input: { employee_name?: unknown; form?: unknown; date?: unknown; about?: unknown }): Promise<ToolResult> {
   const typed = typeof input.employee_name === "string" ? input.employee_name.trim() : "";
-  if (typed === "") return { error: "Give the employee's name." };
-  if (!asksAboutPastForms(context)) return { error: NOT_ASKED };
+  if (typed === "") return { reason_code: "missing_input", error: "Give the employee's name." };
+  if (!asksAboutPastForms(context)) return { reason_code: "privacy_not_asked", error: NOT_ASKED };
   const actor = await chatFormsActor(context.actor).catch(() => undefined);
-  if (actor === undefined) return { error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
-  if (actor === null) return { error: "This manager's role cannot view Form Monitoring, so past forms cannot be listed." };
+  if (actor === undefined) return { reason_code: "read_failed", error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
+  if (actor === null) return { reason_code: "scope", error: "This manager's role cannot view Form Monitoring, so past forms cannot be listed." };
   /*
    * Batch G (QA's addition 2): the typed name is one roster person's preferred or legal name, so forms under the other
    * one are theirs too ("Jo Quill" finds the forms filed as "Josephine Quill"). Never another roster person's.
@@ -786,7 +818,7 @@ export async function findPastForms(context: ToolContext, input: { employee_name
       ...(forms.length > 1 && OPEN_REQUEST.test(context.question) ? { which_form_question: WHICH_FORM_QUESTION, single_out: SINGLE_OUT_NOTE } : {}),
     };
   } catch {
-    return { error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
+    return { reason_code: "read_failed", error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
   }
 }
 
@@ -796,8 +828,8 @@ const VALUES_LIMIT = 6_000;
 
 export async function readForm(context: ToolContext, input: { instance_id?: unknown }): Promise<ToolResult> {
   const id = typeof input.instance_id === "string" ? input.instance_id.trim() : "";
-  if (id === "") return { error: "Give the form's instance_id (from find_past_forms or the open form)." };
-  if (id !== context.openFormId && !asksAboutPastForms(context)) return { error: NOT_ASKED };
+  if (id === "") return { reason_code: "missing_input", error: "Give the form's instance_id (from find_past_forms or the open form)." };
+  if (id !== context.openFormId && !asksAboutPastForms(context)) return { reason_code: "privacy_not_asked", error: NOT_ASKED };
   try {
     const { loaded } = await authorizeInstance(context.request, id, "view");
     const values: Record<string, { untrusted_text: string }> = {};
@@ -827,8 +859,8 @@ export async function readForm(context: ToolContext, input: { instance_id?: unkn
       empty_fields: [...fieldKeys].filter((key) => !filled.has(key)).slice(0, 40),
     };
   } catch (error) {
-    if (error instanceof InstanceNotVisibleError) return { error: "That form does not exist or this manager cannot open it." };
-    return { error: "That form could not be read just now." };
+    if (error instanceof InstanceNotVisibleError) return { reason_code: "form_not_visible", error: "That form does not exist or this manager cannot open it." };
+    return { reason_code: "read_failed", error: "That form could not be read just now." };
   }
 }
 
@@ -898,21 +930,21 @@ function headingOf(headings: readonly string[], asked: string): string | null {
 export async function readPolicy(context: ToolContext, input: { heading?: unknown }, effects?: ToolEffects): Promise<ToolResult> {
   const asked = typeof input.heading === "string" ? input.heading.trim() : "";
   const manual = await manualFor(context.scopeId);
-  if (!manual) return { error: "The JBA Policy Manual could not be read just now. Say so; do not answer from memory." };
+  if (!manual) return { reason_code: "read_failed", error: "The JBA Policy Manual could not be read just now. Say so; do not answer from memory." };
   const heading = headingOf(manual.headings, asked);
   if (!heading) {
     /* Batch E (E5): a close spelling ("key holdr") is a fact: the one heading it names, or the app's Did-you-mean question. */
     const close = closeHeadingReading(asked, manual.headings);
     const question = close.confident ? null : closePolicyQuestion(asked, manual.chunks);
     return {
-      error: "No section of the manual has that heading. Use one of these exactly.",
+      reason_code: "not_a_heading", error: "No section of the manual has that heading. Use one of these exactly.",
       ...(close.confident ? { close_heading: close.confident } : {}),
       ...(question ? { confirm_policy: question } : {}),
       headings: manual.headings,
     };
   }
   const section = findManualSection(manual.chunks, [heading]);
-  if (!section) return { error: "That section could not be found in the manual just now." };
+  if (!section) return { reason_code: "read_failed", error: "That section could not be found in the manual just now." };
   /*
    * QA's live-app item 9 (B1, B5, B7: the manual quoted with a page and no source card): the section read is a source
    * card, as a search_knowledge passage is (`rowToCitation`, `shownCitations`).
@@ -1197,12 +1229,12 @@ export async function proposeForm(
    */
   const anotherCard = (name: string | null) =>
     effects.proposal && (effects.proposal.templateKey !== (typeof input.template_key === "string" ? input.template_key.trim() : "") || !name || !samePerson(effects.proposal.employeeName ?? "", name))
-      ? { error: `A card for ${effects.proposal.employeeName ?? "someone"} is already shown in this reply. Offer the next person's form in your reply and propose it when the manager says yes.` }
+      ? { reason_code: "one_card", error: `A card for ${effects.proposal.employeeName ?? "someone"} is already shown in this reply. Offer the next person's form in your reply and propose it when the manager says yes.` }
       : null;
   if (effects.proposal && effects.proposal.templateKey !== (typeof input.template_key === "string" ? input.template_key.trim() : "")) return anotherCard(null)!;
   /* Batch G (G4): an open request is for a form on file (find_past_forms, open_form), never a new card (code may refuse). */
   if (OPEN_REQUEST.test(context.question) && !/\b(?:create|make|new|draw up|write up|start)\b/i.test(context.question)) {
-    return { error: "The manager asked to open a form on file, not to make one. Find it with find_past_forms and open it with open_form." };
+    return { reason_code: "wrong_tool", error: "The manager asked to open a form on file, not to make one. Find it with find_past_forms and open it with open_form." };
   }
   /*
    * Batch G (G0, Pau 15 Nov): rewording is paused; a reword request never re-proposes the card with new wording. G13:
@@ -1217,17 +1249,17 @@ export async function proposeForm(
   }
   /* HARD GUARD (STAFF_PICKER): a form asked for a whole staff is never one card for everyone. */
   if ((await import("@/lib/forms/staff-picker")).isBareWholeStaff(context.question) || (await import("@/lib/forms/staff-picker")).asksForWholeStaff(context.question)) {
-    return { error: "This form was asked for a whole staff. A form is for one person at a time: call list_staff and say what it returns." };
+    return { reason_code: "whole_staff", error: "This form was asked for a whole staff. A form is for one person at a time: call list_staff and say what it returns." };
   }
   const key = typeof input.template_key === "string" ? input.template_key.trim() : "";
   const templates = await creatableTemplates(context.actor.role).catch(() => null);
-  if (!templates) return { error: "The forms library could not be read just now." };
+  if (!templates) return { reason_code: "read_failed", error: "The forms library could not be read just now." };
   const template = templates.find((row) => row.key === key);
-  if (!template) return { error: "This manager cannot create that form. Use one of these template keys.", templates: templates.map((row) => ({ key: row.key, name: row.name })) };
+  if (!template) return { reason_code: "scope", error: "This manager cannot create that form. Use one of these template keys.", templates: templates.map((row) => ({ key: row.key, name: row.name })) };
 
   /* The person: a roster id from find_staff, or (district / region logins only) the name as typed. */
   const read = await rosterFor(context.actor.scope);
-  if (read.kind === "failed") return { error: ROSTER_FAILED };
+  if (read.kind === "failed") return { reason_code: "roster_failed", error: ROSTER_FAILED };
   let employee: { name: string; salonIds: readonly string[]; id?: string };
   let offRosterName: string | null = null;
   if (read.kind === "read") {
@@ -1240,7 +1272,7 @@ export async function proposeForm(
      */
     const turnedDown = person ? turnedDownName(context) : null;
     if (person && turnedDown && samePerson(turnedDown, displayName(person))) {
-      return { error: `The manager said no to ${displayName(person)}. Never put them on the card; ask who the form is for.` };
+      return { reason_code: "right_person", error: `The manager said no to ${displayName(person)}. Never put them on the card; ask who the form is for.` };
     }
     if (person) employee = { name: nameAsSaid(person, managerTurns(context)), salonIds: person.salonIds, id: person.id };
     /*
@@ -1259,13 +1291,13 @@ export async function proposeForm(
        */
       const ask = typed || id ? null : await policyQuestion(context, template.name);
       return {
-        error: "Give the employee_id find_staff returned for this person (call find_staff first). A name not on the roster goes on a form only after the manager answers the \"reply **use <name>**\" offer.",
+        reason_code: "not_on_roster", error: "Give the employee_id find_staff returned for this person (call find_staff first). A name not on the roster goes on a form only after the manager answers the \"reply **use <name>**\" offer.",
         ...(ask ? { ask_exactly: ask } : {}),
       };
     }
   } else {
     const typedName = typeof input.employee_name === "string" ? tidyTypedName(input.employee_name) : "";
-    if (!typedName) return { error: "Give the employee's name as the manager typed it." };
+    if (!typedName) return { reason_code: "missing_input", error: "Give the employee's name as the manager typed it." };
     employee = { name: typedName, salonIds: [] };
   }
   /*
@@ -1282,7 +1314,7 @@ export async function proposeForm(
     const open = await authorizeInstance(context.request, context.openFormId, "view").then(({ loaded }) => loaded.instance).catch(() => null);
     if (open && open.status === "draft" && open.templateKey === key && samePerson(open.employeeName, employee.name)) {
       return {
-        error: `The ${open.templateName} draft for ${open.employeeName} is open on screen: put this on that draft with edit_form (instance_id ${open.id}). Propose a new card only if the manager asks for another or a new one.`,
+        reason_code: "draft_open", error: `The ${open.templateName} draft for ${open.employeeName} is open on screen: put this on that draft with edit_form (instance_id ${open.id}). Propose a new card only if the manager asks for another or a new one.`,
         ...(mustSeeNotConduct ? { must_see_behaviors: "Must See Behaviors is part of the Standards of Conduct policy (the JBA Policy Manual has no Must See Behaviors section), so the form keeps that policy." } : {}),
       };
     }
@@ -1292,7 +1324,7 @@ export async function proposeForm(
   if (second) return second;
   /* The manager's own name is never the employee (as MANAGER_NAME_NOT_EMPLOYEE does on the old path). */
   if (context.actor.displayName && samePerson(context.actor.displayName, employee.name)) {
-    return { error: "That is the signed-in manager's own name, not an employee. Ask who the form is about." };
+    return { reason_code: "right_person", error: "That is the signed-in manager's own name, not an employee. Ask who the form is about." };
   }
 
   const whatHappened = typeof input.what_happened === "string" ? input.what_happened.trim().slice(0, 2_000) : "";
@@ -1342,7 +1374,7 @@ export async function proposeForm(
     if (roster.kind === "read") {
       const names = roster.roster.map(displayName);
       const other = names.find((name) => !samePerson(name, employee.name) && mentionsPerson(whatHappened, name, names));
-      if (other) return { error: `${other}'s form is only the format. ${other} never appears on ${employee.name}'s card; write ${employee.name}'s own account.` };
+      if (other) return { reason_code: "right_person", error: `${other}'s form is only the format. ${other} never appears on ${employee.name}'s card; write ${employee.name}'s own account.` };
       /* The format's own figures (a pasted "<C> completed 237 tanning transactions") are <C>'s, never this card's. */
       const sentences = managerTurns(context).split(/(?<=[.!?])\s+|\n+/);
       const othersNamed = names.filter((name) => !samePerson(name, employee.name) && mentionsPerson(managerTurns(context), name, names));
@@ -1374,9 +1406,9 @@ export async function proposeForm(
   const askedPolicy = askedOther && askedPolicyWhole.includes(";") ? askedPolicyWhole.split(";")[0]!.trim() : askedPolicyWhole;
   let policyHeading: string | null = null;
   if (askedPolicy && !/^other\b/i.test(askedPolicy)) {
-    if (!manual) return { error: "The JBA Policy Manual could not be read just now, so no policy can be cited. Propose without a policy or say so." };
+    if (!manual) return { reason_code: "read_failed", error: "The JBA Policy Manual could not be read just now, so no policy can be cited. Propose without a policy or say so." };
     policyHeading = headingOf(manual.headings, askedPolicy);
-    if (!policyHeading) return { error: "That is not a heading of the JBA Policy Manual (or \"Other\"). Pick the one heading that fits what happened.", headings: manual.headings };
+    if (!policyHeading) return { reason_code: "not_a_heading", error: "That is not a heading of the JBA Policy Manual (or \"Other\"). Pick the one heading that fits what happened.", headings: manual.headings };
   }
   /*
    * CLOSE_SPELLING (the manual's own reader): a policy the manager named with a misspelling that is not one confident
@@ -1473,8 +1505,18 @@ export async function proposeForm(
    * ones is refused, as an invented value.
    */
   if (datesGiven.length > 1 && date && !answered && !datesGiven.some((given) => monthDayToIso(given, today) === date)) {
-    return { error: `${date} is none of the dates the manager gave (${datesGiven.join(", ")}). Leave incident_date empty and ask which, or use one of those.` };
+    return { reason_code: "date_not_stated", error: `${date} is none of the dates the manager gave (${datesGiven.join(", ")}). Leave incident_date empty and ask which, or use one of those.` };
   }
+  /*
+   * Batch K6 (QA's 266 shadow replay, c079: a second person's coaching took 10/16 from the FIRST person's account). On an
+   * incident form, a date the manager typed only in another request's turns, none of this person's, is not kept on this
+   * person's card (not_on_card incident_date; the rules book asks or leaves it for the manager).
+   */
+  const otherRequestsDates = ACCOUNT_FORMS.has(template.key) && datesGiven.length === 0 && !readDates(requestWords).length ? incidentDates(managerTurns(context), null).map((given) => monthDayToIso(given, today)) : [];
+  /* Only another request's date: the model's choice, or today's builder reading the whole chat (`proposal.formDate`). */
+  const fromAnotherRequest = (iso: string | null | undefined) => Boolean(iso && otherRequestsDates.includes(iso));
+  const dateFromAnotherRequest = fromAnotherRequest(date);
+  if (dateFromAnotherRequest) date = null;
   const datesAsked = datesGiven.length > 1 && !date ? datesGiven : [];
   /* Batch C (code-check #32): a date after today is a fact with today's date; the rules book says to ask. */
   /* Batch G (G6): only an incident form's date is never after today; an exit's last day or effective date may be. */
@@ -1490,7 +1532,7 @@ export async function proposeForm(
    * Batch G (QA's design, 15 Nov 2026; Pau's standing approval): the MODEL decides this Corrective Action is a
    * termination (warning_level "termination", taught by the rules book's examples); code only LOCKS it. It is kept only
    * when the manager's own words for this request carry a termination word (`saysTerminationWord`), else refused
-   * (not_kept). Create checks the word again, server-side.
+   * (not_on_card). Create checks the word again, server-side.
    */
   const askedTermination = input.warning_level === "termination" && template.key === "dpoa";
   const loopTermination = askedTermination && !level && (await import("@/lib/config/chat-quality-flags")).terminationStatedTicksEnabled() && (await import("@/lib/forms/termination-word")).saysTerminationWord(requestWords);
@@ -1514,7 +1556,7 @@ export async function proposeForm(
 
   const typedSalon = typeof input.salon === "string" ? input.salon.trim() : "";
   const answeredSalonIds = typedSalon ? [...new Set([typedSalon, `at ${typedSalon}`].flatMap((text) => readSalonMentions(text).flatMap((mention) => [...mention.salonIds])))] : [];
-  if (typedSalon && answeredSalonIds.length === 0) return { error: `"${typedSalon}" is not a salon the app knows. Ask which of the manager's salons it is.` };
+  if (typedSalon && answeredSalonIds.length === 0) return { reason_code: "salon_unknown", error: `"${typedSalon}" is not a salon the app knows. Ask which of the manager's salons it is.` };
   /*
    * PLACE_SPAN_GUARD (batch H8): each of this person's turns is read on its own, so "cite animals in the workplace
    * policy" joined to "at Kearney, NE" never reads a place nobody named, and the newest turn that names one salon is
@@ -1605,7 +1647,7 @@ export async function proposeForm(
   const card: ChatFormProposal = {
     ...proposal,
     sourceMessageIds: sourceIds,
-    formDate: exitTermination ? exitTermination.date : datesAsked.length > 0 || futureDate ? null : date ?? proposal.formDate ?? null,
+    formDate: exitTermination ? exitTermination.date : datesAsked.length > 0 || futureDate ? null : date ?? (fromAnotherRequest(proposal.formDate) ? null : proposal.formDate) ?? null,
     fromAgentLoop: true as const,
     ...(level ? { warningLevel: level } : loopTermination ? { loopTermination: true as const } : {}),
     ...(whatHappened ? { issue: whatHappened } : {}),
@@ -1676,7 +1718,23 @@ export async function proposeForm(
   const terminationStated = loopTermination;
   const unset = corrective && !awaiting ? [...(payroll ? [] : ["payroll_deduct"]), ...(level || terminationStated ? [] : ["warning_level"])] : [];
   const salonNames = (ids: readonly string[] | undefined) => (ids ?? []).map((id) => ({ id, name: rosterSalonName(id) ?? id }));
+  /*
+   * Batch K4 (QA's 266 shadow replay, c137/c134: a pasted account about <Y>, off the roster, went on <X>'s card; the
+   * right-person guard reads roster names only). QA's ruling (15 Nov 2026): no code exemption for a witness. Every full
+   * name in this turn's account that is not the card's person is a fact, with the sentence it is in; the model asks
+   * which only when the account is about that person (the rules book). Never decided by code.
+   */
+  const accountText = `${context.question}\n${whatHappened}`;
+  const accountSentences = accountText.split(/\n+|(?<=[.!?])\s+/).map((sentence) => sentence.trim()).filter(Boolean);
+  /* Names read clause by clause (a format split at punctuation), each reported with its whole sentence. */
+  const otherNamed = accountSentences
+    .flatMap((sentence) => sentence.split(/[,;]\s+/).flatMap((clause) => extractEmployeeNames(clause)).map((name) => ({ name, sentence })))
+    .filter(({ name }, index, all) => all.findIndex((other) => other.name.toLowerCase() === name.toLowerCase()) === index)
+    .filter(({ name }) => words(name).length >= 2 && !samePerson(name, employee.name) && !(context.actor.displayName && samePerson(name, context.actor.displayName)))
+    .slice(0, 3)
+    .map(({ name, sentence }) => ({ name: untrusted(name), sentence: untrusted(sentence) }));
   const facts = {
+    ...(otherNamed.length > 0 ? { account_names_other_person: { named: otherNamed, card_person: employee.name } } : {}),
     ...(unset.length > 0 ? { unset } : {}),
     ...(level || payroll || priorActions
       ? { stated: { ...(level ? { warning_level: level } : {}), ...(payroll ? { payroll_deduct: payroll } : {}), ...(payroll === "yes" && amount ? { payroll_amount: `$${amount.replace(/^\$/, "")}` } : {}), ...(priorActions ? { prior_actions: priorActions } : {}) } }
@@ -1742,6 +1800,7 @@ export async function proposeForm(
    * reply never claims it. (Was the fact not_kept: names only.) Values are never in it.
    */
   const notOnCard: { field: string; reason_code: string }[] = [
+    ...(dateFromAnotherRequest ? [{ field: "incident_date", reason_code: "date_from_another_request" }] : []),
     ...((askedLevel && !level) ? [{ field: "warning_level", reason_code: "level_not_stated" }] : []),
     ...((askedTermination && !loopTermination) ? [{ field: "warning_level", reason_code: "termination_not_stated" }] : []),
     ...((askedPayroll && !payroll) ? [{ field: "payroll_deduct", reason_code: "payroll_not_stated" }] : []),
@@ -1794,6 +1853,50 @@ async function outsideScopeSalon(context: ToolContext): Promise<{ salon_outside_
 
 /* ---------------------------------------------------------- team coaching --- */
 
+/** A saved form's id: the instance uuid (a format parser, PR 4). */
+const SAVED_FORM_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const NOT_A_SAVED_FORM = "That's the card on screen; it isn't created yet. Change it with propose_form.";
+const NOT_A_FORM_ID = "That isn't a saved form's id; use the instance_id from the open form or find_past_forms.";
+/**
+ * The saved form Create made from this card, or "none" when it has not been created, or "failed" when the lookup could not
+ * be read (never "not created": that would tell the model to make a card again, which can make a duplicate form).
+ *
+ * QA's review of #1022: no scan of other managers' events. Create files a form from a chat card under an id DERIVED from the
+ * card (`cardInstanceId`: the creator, the form, the card and, when the chat has one, the conversation), so the candidates
+ * are computed, and one read by id and creator finds the form however old it is.
+ */
+export type CreatedFromProposal = { readonly kind: "created"; readonly id: string } | { readonly kind: "none" } | { readonly kind: "failed" };
+
+export async function instanceCreatedFromProposal(context: Pick<ToolContext, "actor" | "conversationId">, proposalId: string): Promise<CreatedFromProposal> {
+  try {
+    const templates = await creatableTemplates(context.actor.role);
+    const { cardInstanceId } = await import("@/lib/forms/instances");
+    const { conversationKeyOf } = await import("@/lib/forms/conversation-key");
+    const conversationKey = conversationKeyOf({ conversationId: context.conversationId });
+    const ids = [
+      ...new Set(
+        templates.flatMap((template) => [
+          cardInstanceId(context.actor.subject, template.key, proposalId, null),
+          ...(conversationKey ? [cardInstanceId(context.actor.subject, template.key, proposalId, conversationKey)] : []),
+        ]),
+      ),
+    ];
+    if (ids.length === 0) return { kind: "none" };
+    const { getSupabaseAdmin } = await import("@/lib/supabase/server");
+    const { data, error } = await getSupabaseAdmin().from("form_instances").select("id").in("id", ids).eq("created_by", context.actor.subject).limit(1);
+    if (error || !Array.isArray(data)) return { kind: "failed" };
+    const found = (data as { id: unknown }[])[0];
+    return found ? { kind: "created", id: String(found.id) } : { kind: "none" };
+  } catch {
+    return { kind: "failed" };
+  }
+}
+/** The id is the proposal id of a card shown this turn or earlier in this chat: that card is not created yet. */
+function isShownCardId(context: ToolContext, effects: ToolEffects, id: string): boolean {
+  if (effects.proposal?.proposalId === id) return true;
+  return context.history.some((message) => message.formProposal?.proposalId === id);
+}
+
 /**
  * COACHING FOR THE WHOLE TEAM (batch H2; QA's ruling: today's production behavior). Two of today's paths, reused:
  *
@@ -1819,11 +1922,11 @@ export async function coachTeam(context: ToolContext, effects: ToolEffects): Pro
   const continuing = lastAsk && /\bcoach(?:ing)?\b/i.test(String(lastAsk.content ?? "")) ? "coaching" : null;
   const team = wholeTeamRequest({ question: context.question, history: context.history as ChatMessage[], draftOpen: Boolean(context.openFormId), continuingTemplateKey: continuing });
   if (!team) {
-    return { error: "This is not a whole-team coaching request. A form for one person goes through find_staff and propose_form; with a Coaching draft open, \"this coaching for everyone on my team\" is the request for one draft each." };
+    return { reason_code: "wrong_tool", error: "This is not a whole-team coaching request. A form for one person goes through find_staff and propose_form; with a Coaching draft open, \"this coaching for everyone on my team\" is the request for one draft each." };
   }
   const templates = await creatableTemplates(context.actor.role).catch(() => null);
   const template = templates?.find((row) => row.key === "coaching");
-  if (!template) return { error: "This manager cannot create a Coaching Form." };
+  if (!template) return { reason_code: "scope", error: "This manager cannot create a Coaching Form." };
   const card = buildProposal({
     proposalId: randomUUID(),
     templateKey: template.key,
@@ -1835,7 +1938,7 @@ export async function coachTeam(context: ToolContext, effects: ToolEffects): Pro
     today: context.today,
     employee: { kind: "missing" },
   });
-  if (card.subject !== "team") return { error: "The team card could not be made from this message. Ask which salon's team, or who the form is for." };
+  if (card.subject !== "team") return { reason_code: "read_failed", error: "The team card could not be made from this message. Ask which salon's team, or who the form is for." };
   effects.proposal = card;
   return {
     card: {
@@ -1860,8 +1963,19 @@ export async function editForm(
   effects: ToolEffects,
   input: { instance_id?: unknown; values?: unknown },
 ): Promise<ToolResult> {
-  const id = typeof input.instance_id === "string" ? input.instance_id.trim() : "";
-  if (id === "") return { error: "Give the form's instance_id." };
+  let id = typeof input.instance_id === "string" ? input.instance_id.trim() : "";
+  if (id === "") return { reason_code: "missing_input", error: "Give the form's instance_id." };
+  /*
+   * PR 4 (QA's review of #1022): the card on screen. Its proposal id is a form to edit only once Create has recorded it:
+   * then the edit goes to that saved form. A card that has NOT been created is told to change with propose_form (and only
+   * that card is: any other id that is not a saved form's is not_a_form_id, below, never pointed at propose_form).
+   */
+  if (isShownCardId(context, effects, id)) {
+    const created = await instanceCreatedFromProposal(context, id);
+    if (created.kind === "failed") return { reason_code: "write_failed", error: "That form could not be changed just now. Nothing was saved." };
+    if (created.kind === "none") return { reason_code: "not_a_saved_form", error: NOT_A_SAVED_FORM };
+    id = created.id;
+  }
   const values: Record<string, string> = {};
   if (input.values && typeof input.values === "object") {
     for (const [field, value] of Object.entries(input.values as Record<string, unknown>)) {
@@ -1914,7 +2028,7 @@ export async function editForm(
     }
   }
   if (unstated.length > 0) {
-    return { error: `${unstated.join(", ")} must come from the manager's own words, and this message does not state ${unstated.length === 1 ? "it" : "them"}. Nothing was written. Ask, or leave it for the manager.` };
+    return { reason_code: "not_stated", error: `${unstated.join(", ")} must come from the manager's own words, and this message does not state ${unstated.length === 1 ? "it" : "them"}. Nothing was written. Ask, or leave it for the manager.` };
   }
   /*
    * A payroll or level answer ("yes payroll, $20", "make it a written") changes only those fields (Pau, 15:05Z): the
@@ -1926,7 +2040,7 @@ export async function editForm(
     : [];
   const otherFields = Object.keys(values).filter((field) => field !== "employee_name");
   if (NAME_CORRECTION.test(context.question) && otherFields.length > 0) {
-    return { error: `This message corrects the employee's name only. ${otherFields.join(", ")} were not changed. Call edit_form with no values (the form's reviser applies the spelling), or values for employee_name only.` };
+    return { reason_code: "name_correction_only", error: `This message corrects the employee's name only. ${otherFields.join(", ")} were not changed. Call edit_form with no values (the form's reviser applies the spelling), or values for employee_name only.` };
   }
   try {
     const { loaded } = await authorizeInstance(context.request, id, "edit");
@@ -1976,7 +2090,7 @@ export async function editForm(
       : [];
     if (later.length > 0) {
       const askedIso = isoDate(later[0]![1], editToday) ?? editToday;
-      return { error: `${later.map(([field, value]) => `${field} ${value}`).join(", ")} is after today (${editToday}, the salon's local date). Nothing was written. Ask the manager which day.`, date_after_today: { today: editToday, asked_date: askedDateText(askedIso), form_date_kept: formDateKept(loaded.instance.formDate) } };
+      return { reason_code: "date_after_today", error: `${later.map(([field, value]) => `${field} ${value}`).join(", ")} is after today (${editToday}, the salon's local date). Nothing was written. Ask the manager which day.`, date_after_today: { today: editToday, asked_date: askedDateText(askedIso), form_date_kept: formDateKept(loaded.instance.formDate) } };
     }
     /*
      * HARD GUARD, THE RIGHT PERSON'S FORM (the live run's nov6-diffemp, top severity): a message about another roster
@@ -2009,7 +2123,7 @@ export async function editForm(
       const other = names.find((name) => !sameRosterPerson(name, formsPerson, roster.roster) && mentionsPerson(context.question, name, names));
       const mentionsFormsPerson = names.some((name) => sameRosterPerson(name, formsPerson, roster.roster) && mentionsPerson(context.question, name, names)) || mentionsPerson(context.question, formsPerson, names);
       if (other && !mentionsFormsPerson) {
-        return { error: `This message is about ${other}, not ${loaded.instance.employeeName}; this form is ${loaded.instance.employeeName}'s and was not changed. Propose ${other}'s own card instead.` };
+        return { reason_code: "right_person", error: `This message is about ${other}, not ${loaded.instance.employeeName}; this form is ${loaded.instance.employeeName}'s and was not changed. Propose ${other}'s own card instead.` };
       }
     }
     /*
@@ -2030,13 +2144,23 @@ export async function editForm(
        * screen opens nothing. A revision that was already open before this call is never deleted.
        */
       if ("error" in revisedEdit && draft.opened) {
+        let cleanup: "deleted" | "failed" = "deleted";
         try {
           await deleteInstance(draft.instanceId);
-        } catch {
-          // Left as a draft; the error below still says nothing was written.
+        } catch (deleteError) {
+          // Left as a draft; the error below still says nothing was written. A failed delete is logged (PR 4), never silent.
+          cleanup = "failed";
+          console.error("agent-loop: the refused revision's draft could not be deleted", { instanceId: draft.instanceId, reason: deleteError instanceof Error ? deleteError.name : "unknown" });
         }
         effects.formOpened = openedBefore;
-        return { ...revisedEdit, original_unchanged: true, note: "Nothing was written and no new draft was opened. Say what was refused and why." };
+        return {
+          ...revisedEdit,
+          reason_code: "finalized_revision_refused",
+          ...(typeof revisedEdit.reason_code === "string" ? { refused_reason_code: revisedEdit.reason_code } : {}),
+          revision_cleanup: cleanup,
+          original_unchanged: true,
+          note: "Nothing was written and no new draft was opened. Say what was refused and why.",
+        };
       }
       return { ...revisedEdit, revision_draft: { id: draft.instanceId, from_id: id, form: draft.templateName, employee: draft.employeeName }, original_unchanged: true, note: "Say it is a new draft revising the finalized form, as the rules book's Editing lines teach." };
     }
@@ -2058,7 +2182,7 @@ export async function editForm(
        */
       const person = Object.keys(values).filter((field) => field === "employee_name" || field === "job_title");
       if (person.length > 0) {
-        return { error: `A reword never changes who the form is about: ${person.join(", ")} ${person.length === 1 ? "was" : "were"} not changed and nothing was written. Edit again with the free-text fields only.` };
+        return { reason_code: "right_person", error: `A reword never changes who the form is about: ${person.join(", ")} ${person.length === 1 ? "was" : "were"} not changed and nothing was written. Edit again with the free-text fields only.` };
       }
       const fixed = Object.keys(values).filter((field) => REWORD_KEEPS.has(field));
       if (fixed.length > 0) rewordFacts.reword_touched_fixed_fields = fixed;
@@ -2082,7 +2206,7 @@ export async function editForm(
       if (placed.misplaced) addFacts.add_not_at_end_of_observed = [...(addFacts.add_not_at_end_of_observed ?? []), field];
     }
     if (loaded.instance.status !== "draft") {
-      return { error: `This form is ${loaded.instance.status}, so it cannot be edited here. Tell the manager.` };
+      return { reason_code: "drafts_only", error: `This form is ${loaded.instance.status}, so it cannot be edited here. Tell the manager.` };
     }
     /*
      * THE ACCOUNT FIELD BY ITS OWN KEY (the live re-run's make-that-update: values for "observation", "what_happened",
@@ -2094,11 +2218,11 @@ export async function editForm(
     /* Batch B (code-check #27): no field is renamed for the model; an unknown one is refused with the form's own keys. */
     const unknown = Object.keys(values).filter((field) => !fieldKeys.has(field) && field !== "warning_type" && field !== "employee_name");
     if (unknown.length > 0) {
-      return { error: `${unknown.join(", ")} ${unknown.length === 1 ? "is not a field" : "are not fields"} of this form; nothing was written. Its fields: ${[...fieldKeys].join(", ")}.${accountField ? ` The account goes in ${accountField}.` : ""}` };
+      return { reason_code: "unknown_field", error: `${unknown.join(", ")} ${unknown.length === 1 ? "is not a field" : "are not fields"} of this form; nothing was written. Its fields: ${[...fieldKeys].join(", ")}.${accountField ? ` The account goes in ${accountField}.` : ""}` };
     }
     /* HARD GUARD, NEVER AN EMPTY ACCOUNT (QA, 16:17Z): the account field is never cleared by an edit. */
     if (accountField && accountField in values && values[accountField]!.trim() === "") {
-      return { error: `${accountField} is never written empty. Write the manager's account in it.` };
+      return { reason_code: "empty_account", error: `${accountField} is never written empty. Write the manager's account in it.` };
     }
     /*
      * "MAKE THAT UPDATE" / "WRITE THE OBSERVATION" WRITES THE ACCOUNT (MAKE_THAT_UPDATE_ACCOUNT; QA's live triage 16:17Z:
@@ -2125,7 +2249,7 @@ export async function editForm(
        */
       if (ACCOUNT_FORMS.has(loaded.instance.templateKey)) {
         const stated = readDates(context.question).map((date) => isoDate(date.text, editToday)).find((iso) => iso !== null && iso > editToday);
-        if (stated) return { error: `${stated} is after today (${editToday}, the salon's local date). Nothing was written. Ask the manager which day.`, date_after_today: { today: editToday, asked_date: askedDateText(stated), form_date_kept: formDateKept(loaded.instance.formDate) } };
+        if (stated) return { reason_code: "date_after_today", error: `${stated} is after today (${editToday}, the salon's local date). Nothing was written. Ask the manager which day.`, date_after_today: { today: editToday, asked_date: askedDateText(stated), form_date_kept: formDateKept(loaded.instance.formDate) } };
       }
       const revised = await openFormTurn(context, id);
       if (!revised) {
@@ -2155,7 +2279,7 @@ export async function editForm(
     if (values.warning_type) {
       /* Batch G (G19): verbal, written or termination only; anything else (a demotion) is refused, never ticked as termination. */
       const kind = exactWarningLevel(values.warning_type);
-      if (!kind) return { error: `That level (${values.warning_type}) is not a warning level on this form (verbal, written or termination). Nothing was written.` };
+      if (!kind) return { reason_code: "bad_level", error: `That level (${values.warning_type}) is not a warning level on this form (verbal, written or termination). Nothing was written.` };
       checked.warning_type = [kind];
       delete values.warning_type;
     }
@@ -2257,8 +2381,15 @@ export async function editForm(
         : {}),
     };
   } catch (error) {
-    if (error instanceof InstanceNotVisibleError) return { error: "That form does not exist or this manager cannot edit it." };
-    return { error: "That form could not be changed just now. Nothing was saved." };
+    if (!SAVED_FORM_ID.test(id)) return { reason_code: "not_a_form_id", error: NOT_A_FORM_ID };
+    /* A created card's proposal id (the card was on screen in an earlier turn): the edit goes to the form Create made from it. */
+    if (error instanceof InstanceNotVisibleError) {
+      const created = await instanceCreatedFromProposal(context, id);
+      if (created.kind === "created" && created.id !== id) return editForm(context, effects, { ...input, instance_id: created.id });
+      if (created.kind === "failed") return { reason_code: "write_failed", error: "That form could not be changed just now. Nothing was saved." };
+    }
+    if (error instanceof InstanceNotVisibleError) return { reason_code: "form_not_visible", error: "That form does not exist or this manager cannot edit it." };
+    return { reason_code: "write_failed", error: "That form could not be changed just now. Nothing was saved." };
   }
 }
 
@@ -2313,7 +2444,7 @@ async function plainWordsRevision(context: ToolContext, id: string, turn: Parame
  */
 export async function searchKnowledge(context: ToolContext, effects: ToolEffects, input: { query?: unknown }): Promise<ToolResult> {
   const query = typeof input.query === "string" ? input.query.trim().slice(0, 500) : "";
-  if (query === "") return { error: "Give what to search for." };
+  if (query === "") return { reason_code: "missing_input", error: "Give what to search for." };
   const limit = RETRIEVAL.topK;
   const scopeManual = currentManualScopeEnabled() || manualSectionDedupeEnabled();
   const fetchLimit = manualScopeFetchLimit(limit, scopeManual);
@@ -2326,7 +2457,7 @@ export async function searchKnowledge(context: ToolContext, effects: ToolEffects
         ? await matchHybridKnowledge({ query: searched, scopeId: context.scopeId, limit: fetchLimit })
         : await new SupabaseKnowledgeProvider().match({ query: searched, scopeId: context.scopeId, limit: fetchLimit });
   } catch {
-    return { error: "The company knowledge base could not be searched just now. Say so; never answer from memory." };
+    return { reason_code: "read_failed", error: "The company knowledge base could not be searched just now. Say so; never answer from memory." };
   }
   if (scopeManual) rows = scopeToCurrentManual(rows, { limit, dedupeBySection: manualSectionDedupeEnabled() });
   rows = rows.slice(0, limit);
@@ -2391,8 +2522,8 @@ export const NAME_CORRECTION = /\b(?:(?:first|last|sur)\s*name|name\s+is\s+spell
  */
 export async function openForm(context: ToolContext, effects: ToolEffects, input: { instance_id?: unknown }): Promise<ToolResult> {
   const id = typeof input.instance_id === "string" ? input.instance_id.trim() : "";
-  if (id === "") return { error: "Give the form's instance_id (from find_past_forms)." };
-  if (id !== context.openFormId && !asksAboutPastForms(context)) return { error: NOT_ASKED };
+  if (id === "") return { reason_code: "missing_input", error: "Give the form's instance_id (from find_past_forms)." };
+  if (id !== context.openFormId && !asksAboutPastForms(context)) return { reason_code: "privacy_not_asked", error: NOT_ASKED };
   try {
     const { loaded } = await authorizeInstance(context.request, id, "view");
     const instance = loaded.instance;
@@ -2405,8 +2536,8 @@ export async function openForm(context: ToolContext, effects: ToolEffects, input
       note: instance.status === "draft" ? "The draft is open on the manager's screen to edit." : "The form is open read-only; a change to it goes on a new draft revising it (edit_form).",
     };
   } catch (error) {
-    if (error instanceof InstanceNotVisibleError) return { error: "That form does not exist or this manager cannot open it." };
-    return { error: "That form could not be opened just now." };
+    if (error instanceof InstanceNotVisibleError) return { reason_code: "form_not_visible", error: "That form does not exist or this manager cannot open it." };
+    return { reason_code: "read_failed", error: "That form could not be opened just now." };
   }
 }
 

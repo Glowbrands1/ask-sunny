@@ -22,6 +22,7 @@ import { extractUsedMarkers } from "../prompts";
 import { shownCitations } from "@/lib/knowledge/empty-card-drop";
 import { DATA_TOOL_SPECS, dataToolHandlers } from "./data-tools";
 import { agentLoopSystem, AGENT_LOOP_RULES } from "./prompt";
+import { generatedId, identifiedTurns, messageIdTag, withoutMessageIdTags } from "./evidence";
 import { agentLoopStepLimit } from "./switch";
 import {
   appHelp,
@@ -135,30 +136,20 @@ export interface AgentLoopStep {
   readonly reason_codes?: readonly string[];
 }
 
-/* Batch E (E15): a refusal's kind, read from its fixed wording (the text itself, which can carry names, never goes in the trace). */
-const ERROR_KINDS: readonly [RegExp, string][] = [
-  [/after today/i, "date_after_today"],
-  [/never changes who the form is about|another (?:employee|person)|said no to/i, "right_person"],
-  [/must come from the manager's own words|none of the dates the manager gave|never gave/i, "not_stated"],
-  [/not a heading|No section of the manual/i, "not_a_heading"],
-  [/find_staff|not on the roster|Give the employee/i, "person_not_found"],
-  [/isn't|is not one of this manager's|outside|scope|cannot (?:list|create|edit|view)|can't be listed/i, "scope"],
-  [/whole staff/i, "whole_staff"],
-  [/already shown in this reply|already has/i, "one_card"],
-  [/finalized|cannot be edited|is (?:submitted|final)/i, "drafts_only"],
-  [/past forms|NOT_ASKED|did not ask/i, "past_forms_gate"],
-  [/could not be read|failed just now|could not be (?:found|changed)/i, "read_failed"],
-  [/no tool named/i, "unknown_tool"],
-];
+/*
+ * PR 4: a step's error_kind is the refusal's reason_code (set where the tool refuses, `tools.ts` and `data-tools.ts`), never
+ * a reading of the error's wording. A refusal with no code is "unknown:<tool>" so it shows up and gets a code. The
+ * code is also logged for a result that carries one without an error (find_staff's not_on_roster, ambiguous_person).
+ */
 /** Result keys that are data, not facts (never listed in the trace). */
-const NOT_FACT_KEYS = new Set(["error", "note", "card", "facts", "matches", "staff", "wording", "headings", "source", "salon", "salons", "positions", "templates", "updated", "saved", "refused", "not_on_card", "revision_draft", "forms", "passages", "document", "heading", "page", "fields", "values"]);
+const NOT_FACT_KEYS = new Set(["error", "reason_code", "note", "card", "facts", "matches", "staff", "wording", "headings", "source", "salon", "salons", "positions", "templates", "updated", "saved", "refused", "not_on_card", "revision_draft", "forms", "passages", "document", "heading", "page", "fields", "values"]);
 
-function stepReason(result: ToolResult): Pick<AgentLoopStep, "error_kind" | "fact_keys" | "missing_kinds" | "saved_fields" | "reason_codes"> {
+function stepReason(result: ToolResult, tool: string): Pick<AgentLoopStep, "error_kind" | "fact_keys" | "missing_kinds" | "saved_fields" | "reason_codes"> {
   const record = result as Record<string, unknown>;
   const facts = record.facts && typeof record.facts === "object" ? Object.keys(record.facts as object) : [];
   const keys = [...new Set([...facts, ...Object.keys(record).filter((key) => !NOT_FACT_KEYS.has(key))])].sort();
   const missing = (record.facts as { account_words_missing?: unknown } | undefined)?.account_words_missing;
-  const error = typeof record.error === "string" ? (ERROR_KINDS.find(([pattern]) => pattern.test(record.error as string))?.[1] ?? "refused") : null;
+  const error = typeof record.reason_code === "string" ? record.reason_code : typeof record.error === "string" ? `unknown:${tool}` : null;
   const savedFields = Array.isArray(record.saved) ? [...new Set((record.saved as { field?: unknown }[]).map((row) => String(row.field ?? "")).filter(Boolean))].sort() : [];
   const codes = [...new Set([...(Array.isArray(record.refused) ? record.refused : []), ...(Array.isArray(record.not_on_card) ? record.not_on_card : [])].map((row) => String((row as { reason_code?: unknown }).reason_code ?? "")).filter(Boolean))].sort();
   return {
@@ -180,6 +171,8 @@ export interface AgentTurnInput {
   readonly today: string;
   readonly conversationId?: string;
   readonly openFormId: string | null;
+  /** PR 4: the names of the tools the turn called, once it has finished (the route logs the turn's category from them). */
+  readonly onTools?: (tools: readonly string[]) => void;
 }
 
 const count = (value: unknown): number => (typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0);
@@ -288,16 +281,23 @@ function withCardNote(message: ChatMessage): string {
   return message.role === "assistant" && CARD_REPLY.test(content) ? `${content}\n\n${CARD_NOTE}` : content;
 }
 
-/** The conversation as model messages: the manager's and Sunny's turns, newest 20, starting with the manager's. */
-function conversationOf(history: readonly ChatMessage[], question: string): { role: "user" | "assistant"; content: unknown }[] {
-  const turns = history
-    .filter((message) => !message.error && typeof message.content === "string" && message.content.trim() !== "")
-    .map((message) => ({ role: message.role === "assistant" ? ("assistant" as const) : ("user" as const), content: withCardNote(message) as unknown }))
-    .slice(-20);
-  while (turns.length > 0 && turns[0]!.role === "assistant") turns.shift();
+/**
+ * The conversation as model messages: the manager's and Sunny's turns, newest 20, starting with the manager's. Each
+ * manager turn ends with its `[message_id: <id>]` (evidence.ts), so a tool's evidence can name the turn it quotes.
+ */
+function conversationOf(history: readonly ChatMessage[], question: string, questionMessageId?: string | null): { role: "user" | "assistant"; content: unknown }[] {
+  const shown = new Map(history.map((message) => [message, withCardNote(message)]));
+  const turns = identifiedTurns(history, question, questionMessageId).map((turn, position, all) => {
+    const message = position < all.length - 1 ? history.find((candidate, index) => (candidate.id ?? generatedId(index)) === turn.id) : undefined;
+    const content = message ? (shown.get(message) ?? turn.content) : turn.content;
+    return { role: turn.role, content: (turn.role === "user" ? `${content}\n\n${messageIdTag(turn.id)}` : content) as unknown };
+  });
+  const current = turns.pop()!;
+  const earlier = turns.slice(-20);
+  while (earlier.length > 0 && earlier[0]!.role === "assistant") earlier.shift();
   // Two turns of one role in a row (a failed reply left out) are joined, as the API needs them to alternate.
   const merged: { role: "user" | "assistant"; content: unknown }[] = [];
-  for (const turn of [...turns, { role: "user" as const, content: question as unknown }]) {
+  for (const turn of [...earlier, current]) {
     const previous = merged.at(-1);
     if (previous && previous.role === turn.role) previous.content = `${String(previous.content)}\n\n${String(turn.content)}`;
     else merged.push({ ...turn });
@@ -485,6 +485,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     actor: input.actor,
     question: input.question,
     questionMessageId: input.questionMessageId,
+    conversationId: input.conversationId,
     history: input.history,
     scopeId: input.scopeId,
     today: input.today,
@@ -520,11 +521,11 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     let result: ToolResult;
     try {
       const handler = handlers[name];
-      result = handler ? await handler((args && typeof args === "object" ? args : {}) as Record<string, unknown>) : { error: `There is no tool named ${name}.` };
+      result = handler ? await handler((args && typeof args === "object" ? args : {}) as Record<string, unknown>) : { reason_code: "unknown_tool", error: `There is no tool named ${name}.` };
     } catch {
-      result = { error: "That lookup failed just now." };
+      result = { reason_code: "tool_threw", error: "That lookup failed just now." };
     }
-    steps.push({ step, tool: name, ms: Math.round(performance.now() - started), resultChars: JSON.stringify(result).length, ok: !("error" in result), ...stepReason(result) });
+    steps.push({ step, tool: name, ms: Math.round(performance.now() - started), resultChars: JSON.stringify(result).length, ok: !("error" in result), ...stepReason(result, name) });
     return result;
   };
 
@@ -584,7 +585,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
           { role: "system", content: AGENT_LOOP_RULES, providerOptions: EPHEMERAL },
           { role: "system", content: dynamic },
         ],
-        messages: conversationOf(input.history, input.question) as never,
+        messages: conversationOf(input.history, input.question, input.questionMessageId) as never,
         tools,
         stopWhen: stepCountIs(limit),
         prepareStep: ({ messages }) => ({ messages: withLastMessageCached(messages) }),
@@ -646,7 +647,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
             { role: "system", content: AGENT_LOOP_RULES, providerOptions: EPHEMERAL },
             { role: "system", content: dynamic },
           ],
-          messages: [...(conversationOf(input.history, input.question) as never[]), ...(turn as never[])],
+          messages: [...(conversationOf(input.history, input.question, input.questionMessageId) as never[]), ...(turn as never[])],
           maxOutputTokens: CLAUDE_MAX_TOKENS.standard * 2,
           maxRetries: timed.maxRetries,
           abortSignal: timed.signal,
@@ -683,7 +684,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
             { role: "system", content: AGENT_LOOP_RULES, providerOptions: EPHEMERAL },
             { role: "system", content: dynamic },
           ],
-          messages: [...(conversationOf(input.history, input.question) as never[]), ...(response.messages as never[]), { role: "user", content: note } as never],
+          messages: [...(conversationOf(input.history, input.question, input.questionMessageId) as never[]), ...(response.messages as never[]), { role: "user", content: note } as never],
           tools,
           stopWhen: stepCountIs(Math.min(4, left)),
           maxOutputTokens: CLAUDE_MAX_TOKENS.standard,
@@ -799,6 +800,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     usage,
     ...(stoppedAt === "timeout" ? { subtype: "timeout" as const } : stoppedAt === "error" ? { subtype: "model_failed" as const } : {}),
   });
+  input.onTools?.(steps.map((step) => step.tool));
   const trace = chatTraceDraft();
   if (trace) {
     trace.slots = {
@@ -881,7 +883,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     : sources.filter((source, index, all) => content.toLowerCase().includes(source.documentTitle.toLowerCase()) && all.findIndex((row) => row.documentId === source.documentId) === index);
   content = content.replace(/\s?\[S\d{1,2}\]/g, "");
   const answer: AskResponse = {
-    content: withoutSourceMarkers(withoutSourceNotes(content)),
+    /* The evidence tags are the app's protocol, like the source markers: never shown to the manager. */
+    content: withoutMessageIdTags(withoutSourceMarkers(withoutSourceNotes(content))),
     citations: shownCitations([...cited, ...(effects.citations ?? [])]),
     coverage: "not_applicable",
     recommendedVideoIds: [],
