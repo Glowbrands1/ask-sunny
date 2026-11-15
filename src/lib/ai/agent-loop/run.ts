@@ -439,6 +439,8 @@ export const AGENT_LOOP_TOOLS = [
 ];
 
 const EPHEMERAL = { anthropic: { cacheControl: { type: "ephemeral" } } } as const;
+/** The turn's calls ask alike (batch J8): a different thinking setting is a different cache entry. */
+const LOOP_PROVIDER_OPTIONS = { anthropic: { thinking: { type: "adaptive" }, effort: CLAUDE_EFFORT } } as never;
 
 /** A reply that says the form was changed ("I've added …", "updated the draft", "the draft now reads …"). */
 export const CLAIMS_A_CHANGE =
@@ -600,7 +602,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         maxOutputTokens: CLAUDE_MAX_TOKENS.standard,
         maxRetries: timed.maxRetries,
         abortSignal: timed.signal,
-        providerOptions: { anthropic: { thinking: { type: "adaptive" }, effort: CLAUDE_EFFORT } } as never,
+        providerOptions: LOOP_PROVIDER_OPTIONS,
         /*
          * F1 (batch F): a model error mid-turn is swallowed by streamText, and its steps resolve with the last tool step,
          * which read as the step limit. It is noted here, so the turn ends as the error it was.
@@ -695,6 +697,12 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
           messages: [...(conversationOf(input.history, input.question) as never[]), ...(response.messages as never[]), { role: "user", content: note } as never],
           tools,
           stopWhen: stepCountIs(Math.min(4, left)),
+          /*
+           * Batch J8 (the J6 speed report: a hand-back read 3838 input tokens with nothing from the cache): it asks as the
+           * turn's own calls do, the same thinking and effort and the last message marked, so the same prefix is cached.
+           */
+          prepareStep: ({ messages }) => ({ messages: withLastMessageCached(messages) }),
+          providerOptions: LOOP_PROVIDER_OPTIONS,
           maxOutputTokens: CLAUDE_MAX_TOKENS.standard,
           maxRetries: timed.maxRetries,
           abortSignal: timed.signal,

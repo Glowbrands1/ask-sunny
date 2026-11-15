@@ -217,4 +217,29 @@ export const NOV15_AGENT_LOOP_BATCH_J_CASES: ReplayCase[] = [
       expect(other?.matches?.[0]?.name).toBe("Remy Calder");
     },
   },
+  {
+    id: "nov15-batch-j8-hand-back-asks-as-the-turn-did",
+    title: "J8: the self-check hand-back asks with the turn's own thinking and effort, and marks its last message for the cache",
+    report: `${REPORT}; J6's speed report: the J1 hand-back read 3838 input tokens with nothing from the cache`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      // A reply that says a level the card does not hold, so the self-check hands it back once.
+      const model = loopStandIn((view) => {
+        if (/\[app check\]/.test(view.turns.at(-1)?.text ?? "")) return { text: "Here's the Corrective Action Form for **Juno Paxton**.\n\n**Type of Warning:** Verbal Warning, as you said." };
+        return lastResult(view, "propose_form")
+          ? { text: "Here's the Corrective Action Form for **Juno Paxton**.\n\n**Type of Warning:** Written Warning, as you said." }
+          : { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-3", policy: "Late Opening", warning_level: "verbal", what_happened: "Late opening the salon on 11/12." } };
+      });
+      const thread = start(t);
+      t.loopModel!(model);
+      await thread.say("verbal CA for juno paxton, ASD, late to open 11/12");
+      const handBack = model.views.findIndex((view) => /\[app check\]/.test(view.turns.at(-1)?.text ?? ""));
+      expect(handBack, "no hand-back ran").toBeGreaterThan(0);
+      expect(model.providerOptions[handBack], "the hand-back asked with other provider options than the turn").toEqual(model.providerOptions[0]);
+      const prompt = model.prompts[handBack] as { providerOptions?: { anthropic?: { cacheControl?: unknown } } }[];
+      expect(prompt.at(-1)?.providerOptions?.anthropic?.cacheControl, "the hand-back's last message is not marked for the cache").toEqual({ type: "ephemeral" });
+    },
+  },
 ];
