@@ -307,3 +307,65 @@ describe("no Reference for the STC DM L10 (its leader's request, 13 Nov 2026)", 
     expect(reportSections("bcs-dm").map((s) => s.title)).toContain("Business Plan");
   });
 });
+
+// QA, 15 Nov 2026: Rock Review edits a rock in a panel on the right (a goal drawer), as in the Hub, not inline.
+describe("Rock Review: a rock opens in a side panel", () => {
+  const rocks = [
+    { id: "k1", title: "Open two new rooms", owner: "Avery Quill", status: "on-track", milestones: [{ id: "m1", text: "Sign the lease", done: false }] },
+    { id: "k2", title: "Hire a trainer", owner: "Cy Marlow", status: "on-track", milestones: [] },
+  ];
+  const start = () => {
+    const save = vi.fn().mockResolvedValue({ ok: true, version: 4, updatedAt: "2026-11-13T00:00:00Z" } satisfies SaveOutcome);
+    const { container } = renderView({ save: save as unknown as SaveFn, initial: loaded(3, { attendees: [], rocks }) });
+    fireEvent.click(within(screen.getByRole("region", { name: "Agenda" })).getByRole("button", { name: /Rock Review/ }));
+    return { save, container };
+  };
+  const panel = () => screen.getByRole("dialog", { name: "Edit rock" });
+  const row = (title: string) => screen.getByRole("button", { name: `Edit ${title}` });
+
+  it("clicking a rock opens the panel with its fields, and the list stays", () => {
+    const { container } = start();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(row("Open two new rooms"));
+    const p = within(panel());
+    expect((p.getByLabelText("Rock title") as HTMLInputElement).value).toBe("Open two new rooms");
+    expect((p.getByLabelText("Owner of Open two new rooms") as HTMLSelectElement).value).toBe("Avery Quill");
+    expect(p.getByLabelText("Due date of Open two new rooms")).toBeTruthy();
+    expect((p.getByLabelText("Status of Open two new rooms") as HTMLSelectElement).value).toBe("on-track");
+    expect(p.getByRole("checkbox", { name: "Milestone done: Sign the lease" })).toBeTruthy();
+    expect(p.getByLabelText("Add milestone")).toBeTruthy();
+    expect(p.getByLabelText("Notes for Open two new rooms")).toBeTruthy();
+    expect(row("Hire a trainer").getAttribute("aria-expanded")).toBe("false");
+    // Rendered in place, not portalled out, so in the app it sits inside the DM L10 frame's styles (.hub-l10), where
+    // the floating buttons move clear of it (globals.css, [data-side-panel]).
+    expect(container.contains(panel())).toBe(true);
+    expect(panel().hasAttribute("data-side-panel")).toBe(true);
+  });
+
+  it("ticking a milestone saves through the same path", async () => {
+    const { save } = start();
+    fireEvent.click(row("Open two new rooms"));
+    fireEvent.click(within(panel()).getByRole("checkbox", { name: "Milestone done: Sign the lease" }));
+    await waitFor(() => expect(save).toHaveBeenCalled());
+    const doc = save.mock.calls.at(-1)![2] as { rocks: { id: string; milestones: { done: boolean }[] }[] };
+    expect(doc.rocks.find((r) => r.id === "k1")!.milestones[0].done).toBe(true);
+  });
+
+  it("closes with the close button and with Esc", () => {
+    start();
+    fireEvent.click(row("Open two new rooms"));
+    fireEvent.click(screen.getByRole("button", { name: "Close rock editor" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(row("Open two new rooms"));
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("only one rock is open at a time", () => {
+    start();
+    fireEvent.click(row("Open two new rooms"));
+    fireEvent.click(row("Hire a trainer"));
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect((within(panel()).getByLabelText("Rock title") as HTMLInputElement).value).toBe("Hire a trainer");
+  });
+});
