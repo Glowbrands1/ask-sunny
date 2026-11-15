@@ -21,6 +21,9 @@ import { rulesBookText } from "./rules-book";
  * Re-taken on purpose on 16 Nov 2026 (fix batch item 1, an exit card nobody asked for): the Which form exit line now
  * asks for exit_evidence's kind, and one line was added for a resignation told with no ask. Both read the same under
  * every config; nothing else changed.
+ *
+ * Re-taken on purpose on 16 Nov 2026 (fix batch item 7, a bare "yes" set payroll): one Card replies line was added for
+ * payroll_answer_unclear. It reads the same under every config; nothing else changed.
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");
