@@ -1,7 +1,7 @@
 import { expect, vi } from "vitest";
 
 import { KEARNEY, STAFF, type DirectoryRow, type ReplayCase, type ReplayContext, type ReplayThread } from "./cases";
-import { lastResult, loopStandIn, type LoopDecision } from "./loop-stand-in";
+import { evidenceFrom, lastResult, loopStandIn, type LoopDecision } from "./loop-stand-in";
 
 /**
  * ============================================================================
@@ -75,6 +75,7 @@ function fixer(name: string, template = "dpoa", account = ACCOUNT, cardName = "R
   });
 }
 
+const proposed = (model: ReturnType<typeof fixer>) => model.views.flatMap((view) => view.results).find((entry) => entry.tool === "propose_form")?.output as { reason_code?: string; facts?: { name_corrected?: unknown; earlier_card?: unknown } } | undefined;
 const code = (model: ReturnType<typeof fixer>) => (model.views.flatMap((view) => view.results).find((entry) => entry.tool === "propose_form")?.output as { reason_code?: string } | undefined)?.reason_code;
 
 export const NOV16_CARD_NAME_FIX_CASES: ReplayCase[] = [
@@ -92,6 +93,9 @@ export const NOV16_CARD_NAME_FIX_CASES: ReplayCase[] = [
       await thread.say("fix her last name, its callow");
       expect(code(model), "the roster match was refused").toBeUndefined();
       expect(thread.proposal?.employeeName).toBe("Remy Callow");
+      // QA's review: the card moves to that exact roster person, and the result names both, so the reply can say "changed from <A> to <B>".
+      expect(proposed(model)?.facts?.name_corrected, "the result does not name the old and the new person").toEqual({ from: "Remy Calder", to: "Remy Callow" });
+      expect(proposed(model)?.facts?.earlier_card, "the corrected card was offered beside the old one instead of replacing it").toBeUndefined();
     },
   },
   {
@@ -155,6 +159,7 @@ export const NOV16_CARD_NAME_FIX_CASES: ReplayCase[] = [
       await thread.say("use Quill Fenwyck");
       expect(code(use)).toBeUndefined();
       expect(thread.proposal?.employeeName).toBe("Quill Fenwyck");
+      expect(proposed(use)?.facts?.name_corrected).toEqual({ from: "Quill Fenwick", to: "Quill Fenwyck" });
       expect(thread.proposal?.templateKey, "the correction changed the form").toBe("coaching");
     },
   },
@@ -172,7 +177,66 @@ export const NOV16_CARD_NAME_FIX_CASES: ReplayCase[] = [
       await thread.say("fix her last name, its hartwell");
       expect(code(model), "the roster match was refused").toBeUndefined();
       expect(thread.proposal?.employeeName).toBe("Quill Hartwell");
+      expect(proposed(model)?.facts?.name_corrected).toEqual({ from: "Quill Fenwick", to: "Quill Hartwell" });
       expect(thread.proposal?.templateKey, "the correction changed the form").toBe("coaching");
     },
   },
+  {
+    id: "nov16-s10-card-name-fix-other-form-falls-through",
+    title: "fix-name s10 (QA's review): a typed name for ANOTHER form than the card's (a Coaching Form while Remy Calder's Corrective Action card is shown) is not a correction of that card: no name_correction code, no name_corrected fact; the old path decides",
+    report: REPORT,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      const thread = await remysCard(t);
+      const model = fixer("Remy Voss", "coaching");
+      t.loopModel!(model);
+      await thread.say("coaching for remy voss, she was late to her shift on 11/14");
+      expect(code(model) ?? "", "another form's name was treated as a correction of the card").not.toMatch(/^name_correction/);
+      expect(proposed(model)?.facts?.name_corrected).toBeUndefined();
+    },
+  },
+  ...([
+    ["saves", "the card's manager"],
+    ["never-reached-without-edit-access", "a director of another salon"],
+  ] as const).map(([what, who]): ReplayCase => ({
+    id: `nov16-fix-name-fallback-${what}`,
+    title: `fix-name with FORM_EDIT_SINGLE_WRITER off (QA's review): \"fix her last name, it is Calder-Voss\" on Remy Calder's saved draft by ${who}: ${what === "saves" ? "the manager's save writes employee_name, the form's subject follows, nothing else changes" : "authorizeInstance(edit) refuses first (form_not_visible); the name and the form's subject are untouched"}`,
+    report: "QA's review of the fix-name PR (16 Nov 2026): the fallback writes form_instances.employee_name with the admin client",
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      t.loopModel!(loopStandIn((view): LoopDecision => (lastResult(view, "propose_form") ? { text: "Here's the card." } : { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: ACCOUNT } })));
+      const thread = t.thread();
+      await thread.say("CA for Remy Calder, she was late to her shift on 11/14");
+      const id = await thread.create();
+      delete process.env.FORM_EDIT_SINGLE_WRITER_ENABLED; // the harness restores it after the case
+      const before = t.values(id);
+      const subject = () => t.forms().find((row) => row.id === id)?.employee_name;
+      const editor = loopStandIn((view): LoopDecision => (lastResult(view, "edit_form") ? { text: "Done." } : { tool: "edit_form", input: { instance_id: id, intent: "correct_name", values: { employee_name: "Remy Calder-Voss" }, name_evidence: evidenceFrom(view, "Calder-Voss"), forms_on_file_evidence: evidenceFrom(view, "remy calder's ca") } }));
+      if (what === "saves") {
+        t.loopModel!(editor);
+        await thread.say("fix her last name, it is Calder-Voss");
+        const result = editor.views.at(-1)!.results.find((entry) => entry.tool === "edit_form")?.output as { reason_code?: string; saved?: { field: string; after: string }[] };
+        expect(result.reason_code, JSON.stringify(result)).toBeUndefined();
+        expect(result.saved?.map((row) => [row.field, row.after])).toEqual([["employee_name", "Remy Calder-Voss"]]);
+        expect(t.values(id)).toEqual({ ...before, employee_name: "Remy Calder-Voss" });
+        expect(subject()).toBe("Remy Calder-Voss");
+        return;
+      }
+      t.as("salon_director", { level: "salon", primaryAreaId: "loc-0410", alsoCoversAreaIds: [] }, "another-salon-director");
+      t.loopModel!(editor);
+      const other = t.thread();
+      await other.say("fix remy calder's ca, her last name is Calder-Voss");
+      const result = editor.views.at(-1)!.results.find((entry) => entry.tool === "edit_form")?.output as { reason_code?: string };
+      expect(result.reason_code, JSON.stringify(result)).toBe("form_not_visible");
+      expect(t.values(id), "another salon's director changed the form").toEqual(before);
+      expect(subject(), "the form's subject moved without edit access").toBe("Remy Calder");
+    },
+  })),
 ];

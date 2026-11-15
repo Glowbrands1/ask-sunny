@@ -1227,10 +1227,11 @@ function cardNameCorrection(
   templateKey: string,
   typed: string,
   roster: readonly RosterEmployee[],
-): { person: RosterEmployee } | { asTyped: true } | { refusal: ToolResult } | null {
+): { person: RosterEmployee; from: string } | { asTyped: true; from: string } | { refusal: ToolResult } | null {
   if (context.openFormId) return null;
   const declined = readNameConfirmation([...(context.history as ChatMessage[]).map((turn) => ({ role: turn.role, content: String(turn.content ?? "") })), { role: "user", content: context.question }])?.kind === "declined";
-  const card = context.cardOnScreen ?? (declined ? (context.earlierCard ?? null) : null);
+  /* The card on screen; after this chat's Did-you-mean ("no") or "reply **use <name>**" offer (no card shown), the chat's latest card. */
+  const card = context.cardOnScreen ?? (declined || offRosterConfirmed(context, typed) ? (context.earlierCard ?? null) : null);
   if (!card || card.templateKey !== templateKey) return null;
   /*
    * The card's name: its roster person (the record's employeeKey), or, for a name not on the roster (live s10's card
@@ -1244,7 +1245,8 @@ function cardNameCorrection(
         .flatMap((turn) => extractEmployeeNames(String(turn.content ?? "")))
         .find((name) => personKey(name) === card.nameKey) ?? null
     : null;
-  const cardName = cardPerson ? displayName(cardPerson) : offRosterCardName;
+  /* A name read from the manager's typing is shown with capitals, as the card shows it ("quill fenwick" → "Quill Fenwick"). */
+  const cardName = cardPerson ? displayName(cardPerson) : offRosterCardName?.replace(/(^|[\s'-])(\p{Ll})/gu, (_all, lead: string, letter: string) => lead + letter.toUpperCase()) ?? null;
   if (!cardName) return null;
   if ((cardPerson ? fullNamesOf(cardPerson) : [cardName]).some((full) => samePerson(full, typed))) return null;
   const said = words(typed);
@@ -1252,11 +1254,11 @@ function cardNameCorrection(
   const sharesAName = said.length >= 2 && (own.first.includes(said[0]!) || own.last.includes(said.at(-1)!));
   if (!sharesAName) return null;
   const holders = roster.filter((row) => fullNamesOf(row).some((full) => samePerson(full, typed)));
-  if (holders.length === 1) return { person: holders[0]! };
+  if (holders.length === 1) return { person: holders[0]!, from: cardName };
   if (holders.length > 1) {
     return { refusal: { reason_code: "ambiguous_person", error: `More than one person on the staff list is ${typed}. The card was not changed. Call find_staff with this name and ask which one.` } };
   }
-  if (declined || offRosterConfirmed(context, typed)) return { asTyped: true };
+  if (declined || offRosterConfirmed(context, typed)) return { asTyped: true, from: cardName };
   const close = matchEmployeeName(typed, roster);
   const candidates = close.kind === "confirm" ? close.candidates.map((candidate) => candidate.name) : [];
   if (candidates.length > 0) {
@@ -1264,8 +1266,7 @@ function cardNameCorrection(
   }
   return {
     refusal: {
-      reason_code: "name_correction_not_on_roster",
-      error: `${typed} is not on the ${staffSystem()} staff list. The card was not changed and is still for ${cardName}. Say so; it goes on the card as typed only if the manager replies **use ${typed}**.`,
+      reason_code: "name_correction_not_on_roster", error: `${typed} is not on the ${staffSystem()} staff list. The card was not changed and is still for ${cardName}. Say so; it goes on the card as typed only if the manager replies **use ${typed}**.`,
     },
   };
 }
@@ -1511,6 +1512,8 @@ export async function proposeForm(
   if (read.kind === "failed") return { reason_code: "roster_failed", error: ROSTER_FAILED };
   let employee: { name: string; salonIds: readonly string[]; id?: string };
   let offRosterName: string | null = null;
+  /* fix-name, live s10: the card's name this proposal corrects (cardNameCorrection), for the name_corrected fact. */
+  let nameCorrectedFrom: string | null = null;
   if (read.kind === "read") {
     const id = typeof input.employee_id === "string" ? input.employee_id.trim() : "";
     const person = id ? read.roster.find((row) => row.id === id) : undefined;
@@ -1526,6 +1529,7 @@ export async function proposeForm(
     /* fix-name, live s10 (Pau's ruling, 16 Nov 2026): a typed name that corrects the card's person goes through the roster check. */
     const corrected = !person && typed ? cardNameCorrection(context, key, typed, read.roster) : null;
     if (corrected && "refusal" in corrected) return corrected.refusal;
+    if (corrected) nameCorrectedFrom = corrected.from;
     if (corrected && "person" in corrected) employee = { name: displayName(corrected.person), salonIds: corrected.person.salonIds, id: corrected.person.id };
     else if (corrected && "asTyped" in corrected) {
       employee = { name: typed, salonIds: [] };
@@ -2028,7 +2032,9 @@ export async function proposeForm(
    * stays creatable (`earlierCardKept`), and the model is told so as the earlier_card fact.
    */
   const earlier = context.earlierCard ?? null;
+  /* fix-name, live s10: a corrected name REPLACES the earlier card (the same card, its name changed); it is not kept beside it. */
   const earlierKept =
+    nameCorrectedFrom === null &&
     earlier !== null &&
     card.employeeName !== null &&
     (earlier.employeeKey && employee.id ? earlier.employeeKey !== personKey(employee.id) : earlier.nameKey !== null && earlier.nameKey !== personKey(card.employeeName));
@@ -2072,6 +2078,8 @@ export async function proposeForm(
     .slice(0, 3)
     .map(({ name, sentence }) => ({ name: untrusted(name), sentence: untrusted(sentence) }));
   const facts = {
+    /* fix-name, live s10: the card's name changed from → to, so the reply can say so (the person may be another roster person, by exact match). */
+    ...(nameCorrectedFrom !== null ? { name_corrected: { from: nameCorrectedFrom, to: employee.name } } : {}),
     ...(earlierKept ? { earlier_card: { kept: true, ...(earlierRow ? { employee: displayName(earlierRow) } : {}), form: earlier!.templateName ?? earlier!.templateKey } } : {}),
     ...(otherNamed.length > 0 ? { account_names_other_person: { named: otherNamed, card_person: employee.name } } : {}),
     ...(unset.length > 0 ? { unset } : {}),
@@ -2621,15 +2629,7 @@ export async function editForm(
       /* The one writer (FORM_EDIT_SINGLE_WRITER_ENABLED, on in production); off, as today's chat correction saves a name: the manager's save, then the subject. */
       const written = formEditSingleWriterEnabled()
         ? await (await import("@/lib/forms/form-write")).nameCorrectionWrite(id, newName, { actorId: context.actor.subject, said: nameSaid, today: editToday, loaded })
-        : await (async () => {
-            const save = await (await import("@/lib/forms/instances")).saveInstanceValues(id, { values: { employee_name: newName }, checked: {} }, context.actor.subject, { via: "chat" });
-            const rejected = save.rejected.filter((row) => row.key === "employee_name");
-            if (rejected.length === 0) {
-              const { error } = await (await import("@/lib/supabase/server")).getSupabaseAdmin().from("form_instances").update({ employee_name: newName }).eq("id", id);
-              if (error) throw new Error(`Could not save the form's employee name: ${error.message}`);
-            }
-            return { accepted: { values: rejected.length === 0 ? { employee_name: newName } : {}, checked: {} }, rejected };
-          })();
+        : await managerNameSave(id, newName, context.actor.subject);
       const reasons = new Map(written.rejected.map((row) => [row.key, row.reason] as const));
       const claimed = [...Object.keys(written.accepted.values), ...written.rejected.map((row) => row.key)];
       const { saved: savedChanges, refused, unchanged } = await recordSaved(claimed.length > 0 ? claimed : ["employee_name"], reasons);
@@ -2891,6 +2891,22 @@ export function nameCorrectionRefusal(formsName: string, newName: string, quote:
     }
   }
   return null;
+}
+
+/**
+ * fix-name with FORM_EDIT_SINGLE_WRITER off (QA's review): the name as today's chat correction saves it off the one
+ * writer: the manager's save of employee_name only (via chat), then the form's subject column, and the column ONLY when
+ * the save took the name. The caller (edit_form) calls it after `authorizeInstance(…, "edit")` passed and every name check.
+ */
+export async function managerNameSave(id: string, newName: string, actor: string): Promise<{ accepted: { values: Record<string, string>; checked: Record<string, string[]> }; rejected: { key: string; reason: string }[] }> {
+  /* Only the one writer's flag-off path (form-write-one-writer.test.ts, QA condition 1); with it on, nameCorrectionWrite saves the name. */
+  const save = formEditSingleWriterEnabled() ? null : await (await import("@/lib/forms/instances")).saveInstanceValues(id, { values: { employee_name: newName }, checked: {} }, actor, { via: "chat" });
+  if (!save) throw new Error("managerNameSave is the flag-off path: with FORM_EDIT_SINGLE_WRITER on, the name is saved by nameCorrectionWrite.");
+  const rejected = save.rejected.filter((row) => row.key === "employee_name");
+  if (rejected.length > 0) return { accepted: { values: {}, checked: {} }, rejected };
+  const { error } = await (await import("@/lib/supabase/server")).getSupabaseAdmin().from("form_instances").update({ employee_name: newName }).eq("id", id);
+  if (error) throw new Error(`Could not save the form's employee name: ${error.message}`);
+  return { accepted: { values: { employee_name: newName }, checked: {} }, rejected: [] };
 }
 
 /**
