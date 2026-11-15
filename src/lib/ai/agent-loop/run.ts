@@ -594,6 +594,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
       const handBack = async (note: string): Promise<string> => {
         const left = stepsLeft();
         if (left === 0) return "";
+        const proposalBefore = effects.proposal;
         const response = await result.response;
         const review = streamText({
           model: model as never,
@@ -619,7 +620,14 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
           },
         });
         const last = (await review.steps).at(-1);
-        return last && last.finishReason !== "tool-calls" ? (last.text ?? "").trim() : "";
+        const finished = last && last.finishReason !== "tool-calls" ? (last.text ?? "").trim() : "";
+        /*
+         * F4 meets batch E's hand-back (nov14-agent-loop-msb-family after the merge): a hand-back cut off by the turn's
+         * step budget leaves no reply, so it changes nothing — the card is the one the kept reply describes, never a
+         * card the unfinished hand-back proposed on its way.
+         */
+        if (!finished) effects.proposal = proposalBefore;
+        return finished;
       };
       const reviewed = stoppedAt === "reply" && !effects.formUpdate && !effects.formOpened && !input.openFormId && (effects.proposal || cardOpenAtStart);
       const wrong = reviewed ? cardMismatch(cardClaims(text), effects.proposal) : [];
