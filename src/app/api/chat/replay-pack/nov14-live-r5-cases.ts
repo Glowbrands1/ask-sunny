@@ -413,44 +413,10 @@ export const NOV14_LIVE_R5_CASES: ReplayCase[] = [
       if (offline) expect(toolResults(model.views, "propose_form").some((result) => /"date_read_as_last_year":\{"said":"12\/20","date":"2025-12-20"\}/.test(result)), "the past-year reading is not a fact").toBe(true);
     },
   },
-  {
-    id: "nov14-live-r5-e11-reword-never-adds-a-cause",
-    title: "QA E11: \"make it professional\" on \"she didnt check the beds between clients and left towels on the floor in room 3\": grammar and tone only; never \"resulting in\" or another link between the facts",
-    report: `${REPORT_E}: E11, the reword wrote "She did not check the beds between clients, resulting in towels being left on the floor in room 3."`,
-    status: "fixed",
-    fixFlags: [FLAG],
-    async run(t) {
-      if (!t.loopOn?.()) return;
-      vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
-      t.directory([...STAFF]);
-      t.as("salon_director", KEARNEY);
-      const said = "she didnt check the beds between clients and left towels on the floor in room 3";
-      t.loopModel!(loopStandIn((view): LoopDecision => {
-        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
-        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "coaching", employee_id: "e-2", what_happened: "Remy Calder didn't check the beds between clients and left towels on the floor in room 3." } };
-        return { text: "Here's the Coaching Form for **Remy Calder**.\n\n**Observation of Offense:** Remy Calder didn't check the beds between clients and left towels on the floor in room 3." };
-      }));
-      const thread = t.thread();
-      await thread.say(`coaching form for remy calder, ${said}`);
-      const id = await thread.create();
-      t.typeOnForm(id, { coaching_details: "Remy Calder didnt check the beds between clients and left towels on the floor in room 3." });
-      // A model that first links the facts, then writes them as separate sentences when edit_form reports the link.
-      const rewriter = loopStandIn((view): LoopDecision => {
-        const edits = view.results.filter((result) => result.tool === "edit_form");
-        const linked = (edits.at(-1)?.output as { reword_added_link?: Record<string, string[]> } | undefined)?.reword_added_link;
-        if (edits.length === 0) return { tool: "edit_form", input: { instance_id: id, values: { coaching_details: "Remy Calder did not check the beds between clients, resulting in towels being left on the floor in room 3." } } };
-        if (edits.length === 1 && linked) return { tool: "edit_form", input: { instance_id: id, values: { coaching_details: "Remy Calder did not check the beds between clients during her shift. She also left used towels on the floor in room 3." } } };
-        return { text: "Reworded: Remy Calder did not check the beds between clients during her shift. She also left used towels on the floor in room 3." };
-      });
-      t.loopModel!(rewriter);
-      await thread.say("make it professional");
-      const details = t.values(id).coaching_details ?? "";
-      expect(details, `a reword added a cause or result:\n${details}`).not.toMatch(/resulting in|as a result|led to|leading to|because|due to|caused/i);
-      expect(details, "a fact was lost").toMatch(/room 3/);
-      expect(details).toMatch(/beds between clients/);
-      if (offline) expect(toolResults(rewriter.views, "edit_form").some((result) => /"reword_added_link":\{"coaching_details":\["resulting in"\]\}/.test(result)), "the added link is not a fact").toBe(true);
-    },
-  },
+  /*
+   * The E11 reword case was here. Pau (15 Nov) paused rewording, so a reword writes nothing at all (batch G, G0, below in
+   * nov15-agent-loop-batch-g-cases.ts). E11's reword_added_link fact keeps its unit test (reword-links.test.ts).
+   */
   {
     id: "nov14-live-r5-e12-a-date-after-today-is-never-on-the-card",
     title: "QA E12 (Pau's review): \"write up <name> for being late on 12/20/2026\" sent on 11/14: the card holds no date after today, and the reply asks which day; a draft's form_date after today is refused",

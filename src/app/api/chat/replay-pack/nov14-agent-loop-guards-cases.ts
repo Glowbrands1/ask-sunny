@@ -1248,7 +1248,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       const rewriter = loopStandIn((view) => (lastResult(view, "edit_form") ? { text: "Reworded." } : { tool: "edit_form", input: { instance_id: id, values: { employee_name: "Corbin Ashdown", coaching_details: "The employee did not complete the spray booth check on 11/12." } } }));
       t.loopModel!(rewriter);
       await thread.say("make it professional");
-      expect(toolResults(rewriter.views, "edit_form")[0], "a reword changing the person was not refused").toMatch(/A reword never changes who the form is about: employee_name/);
+      // Changed on purpose (Pau 15 Nov, batch G0: rewording is paused): the reword is refused before the right-person check, and nothing is written either way.
+      expect(toolResults(rewriter.views, "edit_form")[0], "a reword changing the person was not refused").toMatch(/"reword_paused":true/);
       expect(JSON.stringify(t.values(id)), "the draft changed").toBe(before);
     },
   },

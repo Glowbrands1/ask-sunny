@@ -890,6 +890,8 @@ export async function proposeForm(
       ? { error: `A card for ${effects.proposal.employeeName ?? "someone"} is already shown in this reply. Offer the next person's form in your reply and propose it when the manager says yes.` }
       : null;
   if (effects.proposal && effects.proposal.templateKey !== (typeof input.template_key === "string" ? input.template_key.trim() : "")) return anotherCard(null)!;
+  /* Batch G (G0, Pau 15 Nov): rewording is paused; a reword request never re-proposes the card with new wording. */
+  if (REWORD_REQUEST.test(context.question)) return { reword_paused: true, note: REWORD_PAUSED.note };
   /* HARD GUARD (STAFF_PICKER): a form asked for a whole staff is never one card for everyone. */
   if ((await import("@/lib/forms/staff-picker")).isBareWholeStaff(context.question) || (await import("@/lib/forms/staff-picker")).asksForWholeStaff(context.question)) {
     return { error: "This form was asked for a whole staff. A form is for one person at a time: call list_staff and say what it returns." };
@@ -1284,6 +1286,8 @@ export async function editForm(
 ): Promise<ToolResult> {
   const id = typeof input.instance_id === "string" ? input.instance_id.trim() : "";
   if (id === "") return { error: "Give the form's instance_id." };
+  /* Batch G (G0, Pau 15 Nov): rewording is paused. A reword request writes nothing (code may refuse); the fact says why. */
+  if (REWORD_REQUEST.test(context.question)) return REWORD_PAUSED;
   const values: Record<string, string> = {};
   if (input.values && typeof input.values === "object") {
     for (const [field, value] of Object.entries(input.values as Record<string, unknown>)) {
@@ -1559,6 +1563,9 @@ export async function searchKnowledge(context: ToolContext, effects: ToolEffects
 }
 
 /** "make it professional", "reword it", "clean it up", "make it sound better": a wording edit of the free-text fields. */
+/** Batch G (G0): what edit_form and propose_form return for a reword request while rewording is paused. Nothing is written. */
+const REWORD_PAUSED = { updated: [], reword_paused: true, note: "Rewording is paused. Nothing was changed. Say the rules book's reword_paused line." } as const;
+
 export const REWORD_REQUEST = /\b(?:make (?:it|this|that)(?: sound)? (?:more )?(?:professional|better|cleaner)|re-?word|re-?phrase|clean (?:it|this|that) up|sound (?:more )?(?:professional|better)|professional(?:ly)? word)/i;
 /** Fields a reword never touches. */
 const REWORD_KEEPS = new Set(["warning_type", "payroll_deduct", "payroll_deduct_amount", "form_date", "employee_name", "job_title", "policy_violated", "direct_policy"]);
