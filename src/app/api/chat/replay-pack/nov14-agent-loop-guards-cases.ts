@@ -836,8 +836,7 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       const first = t.thread();
       await first.say("coaching form for tamsin orwell, she marked a session as complete but the guest hadn't been sprayed yet");
       // Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite; code-check audit batch C): a fact, not a refusal; the model fixes the card.
-      // Changed on purpose (the rebuild plan's PR 1, 15 Nov 2026): the fact is this person's request words (request_words); the model reads the account in them, no word list does.
-      expect(toolResults(empty.views, "propose_form")[0], "the manager's words are not a fact").toMatch(/"request_words":\{"untrusted_text":"[^"]*marked a session as complete/);
+      expect(toolResults(empty.views, "propose_form")[0], "the account the manager gave is not a fact").toMatch(/"account_given":\{"untrusted_text":"[^"]*marked a session as complete/);
       expect(first.proposal?.issue ?? "").toMatch(/marked a session as complete/);
 
       // A created coaching draft: the account turn, then "make that update" with no values writes it, word for word.
@@ -851,8 +850,7 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       // returns latest_account and account_field and the model writes it with values, as the rules book teaches.
       const updater = loopStandIn((view) => {
         const edit = lastResult(view, "edit_form") as { latest_account?: { untrusted_text: string }; account_field?: string } | null;
-        // Changed on purpose (the rebuild plan's PR 1): "make that update" is the model's intent write_account, citing the manager's account message.
-        if (!edit) return { tool: "edit_form", input: { instance_id: id, intent: "write_account", account_evidence: [evidenceFrom(view, "tamsin marked a session as complete", 1)] } };
+        if (!edit) return { tool: "edit_form", input: { instance_id: id } };
         if (edit.latest_account && edit.account_field) return { tool: "edit_form", input: { instance_id: id, values: { [edit.account_field]: edit.latest_account.untrusted_text } } };
         return { text: "Done." };
       });

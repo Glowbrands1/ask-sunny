@@ -315,7 +315,7 @@ export const AGENT_LOOP_TOOLS = [
   {
     name: "find_staff",
     description: "Search this manager's staff roster by name (any case, partial first or last name). Returns roster spellings and employee_ids; several when names are shared.",
-    input_schema: object({ name: { type: "string" }, person_evidence: evidence("The manager's words naming this person as the form's person (\"a CA for Wrenna\"): their message id and words, which hold the name.") }, ["name"]),
+    input_schema: object({ name: { type: "string" } }, ["name"]),
   },
   {
     name: "find_past_forms",
@@ -357,9 +357,6 @@ export const AGENT_LOOP_TOOLS = [
         employee_id: { type: "string", description: "From find_staff." },
         employee_name: { type: "string", description: "Only when find_staff said the roster cannot be searched." },
         exit_evidence: evidence("Employee Exit Form only: where the manager asks for the exit form or tells a resignation."),
-        level_evidence: evidence("Where the manager states the warning level (verbal, written or termination): their words."),
-        payroll_evidence: evidence("Where the manager answers payroll deduct (and any amount): their words."),
-        new_form_evidence: evidence("Only when this message asks for another or a new form (a second form for the person on the open draft, or a new request after an earlier card): its words."),
         policy: { type: "string", description: "One JBA Policy Manual heading, exactly; or \"Other — <short topic>\"; or both, \"<heading>; Other — <topic>\" (a cleaning or sanitation duty left undone is Other, as the rules book says)." },
         what_happened: {
           type: "string",
@@ -388,15 +385,8 @@ export const AGENT_LOOP_TOOLS = [
         instance_id: { type: "string" },
         values: { type: "object", additionalProperties: { type: "string" } },
         forms_on_file_evidence: FORMS_ON_FILE_EVIDENCE,
-        intent: {
-          type: "string",
-          enum: ["correct_name", "write_account"],
-          description: "correct_name: this message corrects the employee's name (only employee_name changes). write_account: the manager asks you to put their account on the draft.",
-        },
+        intent: { type: "string", enum: ["correct_name"], description: "correct_name: this message corrects the employee's name (only employee_name changes)." },
         name_evidence: evidence("With intent correct_name: this message's words that give the name."),
-        level_evidence: evidence("Where the manager states the warning level (verbal, written or termination): their words."),
-        payroll_evidence: evidence("Where the manager answers payroll deduct (and any amount): their words."),
-        account_evidence: { type: "array", items: evidence("A manager message that tells what happened, and their words."), description: "With intent write_account: the manager's messages with the account." },
       },
       ["instance_id"],
     ),
