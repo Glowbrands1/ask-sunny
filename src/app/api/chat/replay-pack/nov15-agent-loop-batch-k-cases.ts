@@ -324,3 +324,30 @@ NOV15_AGENT_LOOP_BATCH_K_CASES.push(
     },
   },
 );
+
+NOV15_AGENT_LOOP_BATCH_K_CASES.push({
+  id: "nov15-k6-a-date-from-another-persons-account-is-not-kept-c079",
+  title: "K6 (QA's shadow replay, c079's shape): after Remy Calder's coaching dated from her account (10/16), \"create a coaching document for Juno Paxton\" with no date is never dated 10/16 (not_kept incident_date)",
+  report: `${REPORT}: c079, the second person's card took the first person's date`,
+  status: "fixed",
+  fixFlags: [FLAG],
+  async run(t) {
+    if (!t.loopOn?.()) return;
+    await salon(t);
+    const model = loopStandIn((view): LoopDecision => {
+      const said = latest(view);
+      const juno = /juno paxton/i.test(said);
+      if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: juno ? "Juno Paxton" : "Remy Calder" } };
+      // The model's slip: the earlier account's date carried onto the next person's card.
+      if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: juno ? { template_key: "coaching", employee_id: "e-3", incident_date: "2026-10-16" } : { template_key: "coaching", employee_id: "e-2", what_happened: "On 10-16-26 the policy acknowledgement report showed Remy Calder did not complete her acknowledgements.", incident_date: "2026-10-16" } };
+      return { text: `Here's the Coaching Form for **${juno ? "Juno Paxton" : "Remy Calder"}**.` };
+    });
+    t.loopModel!(model);
+    const thread = t.thread();
+    await thread.say("create a coaching document for Remy Calder regarding On 10-16-26 the policy acknowledgement report showed Remy did not complete her acknowledgements");
+    expect(thread.proposal?.formDate, "the first card's date is not its account's").toBe("2026-10-16");
+    await thread.say("create a coaching document for Juno Paxton");
+    expect(thread.proposal?.employeeName).toBe("Juno Paxton");
+    expect(thread.proposal?.formDate, "the second person's card took the first person's date").not.toBe("2026-10-16");
+  },
+});

@@ -1573,6 +1573,16 @@ export async function proposeForm(
   if (datesGiven.length > 1 && date && !answered && !datesGiven.some((given) => monthDayToIso(given, today) === date)) {
     return { error: `${date} is none of the dates the manager gave (${datesGiven.join(", ")}). Leave incident_date empty and ask which, or use one of those.` };
   }
+  /*
+   * Batch K6 (QA's 266 shadow replay, c079: a second person's coaching took 10/16 from the FIRST person's account). On an
+   * incident form, a date the manager typed only in another request's turns, none of this person's, is not kept on this
+   * person's card (not_kept incident_date; the rules book asks or leaves it for the manager).
+   */
+  const otherRequestsDates = ACCOUNT_FORMS.has(template.key) && datesGiven.length === 0 && !readDates(requestWords).length ? incidentDates(managerTurns(context), null).map((given) => monthDayToIso(given, today)) : [];
+  /* Only another request's date: the model's choice, or today's builder reading the whole chat (`proposal.formDate`). */
+  const fromAnotherRequest = (iso: string | null | undefined) => Boolean(iso && otherRequestsDates.includes(iso));
+  const dateFromAnotherRequest = fromAnotherRequest(date);
+  if (dateFromAnotherRequest) date = null;
   const datesAsked = datesGiven.length > 1 && !date ? datesGiven : [];
   /* Batch C (code-check #32): a date after today is a fact with today's date; the rules book says to ask. */
   /* Batch G (G6): only an incident form's date is never after today; an exit's last day or effective date may be. */
@@ -1592,7 +1602,7 @@ export async function proposeForm(
    */
   const askedTermination = input.warning_level === "termination" && template.key === "dpoa";
   const loopTermination = askedTermination && !level && (await import("@/lib/config/chat-quality-flags")).terminationStatedTicksEnabled() && (await import("@/lib/forms/termination-word")).saysTerminationWord(requestWords);
-  const dropped = [(askedLevel && !level) || (askedTermination && !loopTermination) ? "warning_level" : null, askedPayroll && !payroll ? "payroll_deduct" : null, typedAmount && !amount ? "payroll_amount" : null].filter(Boolean);
+  const dropped = [dateFromAnotherRequest ? "incident_date" : null, (askedLevel && !level) || (askedTermination && !loopTermination) ? "warning_level" : null, askedPayroll && !payroll ? "payroll_deduct" : null, typedAmount && !amount ? "payroll_amount" : null].filter(Boolean);
   /*
    * Prior actions as today reads them from the manager's own words (`statedPriorActions`: "Verbal corrective action —
    * signed 09/02/2026", a corrected date replacing the first; the live re-run's second-request-prior-step-correction
@@ -1704,7 +1714,7 @@ export async function proposeForm(
   const card: ChatFormProposal = {
     ...proposal,
     sourceMessageIds: sourceIds,
-    formDate: exitTermination ? exitTermination.date : datesAsked.length > 0 || futureDate ? null : date ?? proposal.formDate ?? null,
+    formDate: exitTermination ? exitTermination.date : datesAsked.length > 0 || futureDate ? null : date ?? (fromAnotherRequest(proposal.formDate) ? null : proposal.formDate) ?? null,
     fromAgentLoop: true as const,
     ...(level ? { warningLevel: level } : loopTermination ? { loopTermination: true as const } : {}),
     ...(whatHappened ? { issue: whatHappened } : {}),
