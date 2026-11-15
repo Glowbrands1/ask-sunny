@@ -273,6 +273,12 @@ export function MeetingView({
     }
   };
 
+  // The Bloom-style meetings' New Issue bar, inline at the top of each agenda page (not on the reference views).
+  const newIssueBar =
+    !readOnly && bloom && !isReferenceView(view) ? (
+      <NewIssueBar people={people} me={myName} onAdd={(title, owner) => edit((d) => ({ ...d, issues: [...d.issues, { id: newItemId(), title, notes: "", resolved: false, owner, ...(myName ? { addedBy: myName } : {}) }] }))} />
+    ) : null;
+
   return (
     <MentionRoster value={mentionPeople}>
       <header className="flex flex-wrap items-end justify-between gap-3">
@@ -555,10 +561,12 @@ export function MeetingView({
               <p className="m-0 mt-0.5 text-sm text-muted">{view === "business-plan" ? "Vision, core values and the 1- and 3-year picture. Edits save for everyone." : view === "accountability" ? "One name per seat. Changes save for the whole team." : hints[view]}</p>
             </div>
 
+            {/* The New Issue bar: right after the title and hint (the segue page puts it under its round-robin banner). */}
+            {newIssueBar && view !== "business-best" && newIssueBar}
             <fieldset disabled={!!readOnly} className="m-0 flex min-w-0 flex-col gap-4 border-0 p-0">
             {bloom && view === "business-best" && <SegueQuestion value={typeof doc.segueQuestion === "string" ? doc.segueQuestion : ""} onChange={(v) => edit((d) => ({ ...d, segueQuestion: v }))} />}
             {bloom && view === "conclude" && !timer.started && <LastMeetingConclusion last={last} />}
-            {view === "business-best" && <BusinessBest attendees={attendees} onChange={(next) => edit((d) => ({ ...d, attendees: keepHiddenAttendees(d.attendees, next) }))} />}
+            {view === "business-best" && <BusinessBest attendees={attendees} onChange={(next) => edit((d) => ({ ...d, attendees: keepHiddenAttendees(d.attendees, next) }))}  afterBanner={newIssueBar} />}
             {view === "scorecard" && <Scorecard doc={doc} edit={edit} people={people} />}
             {view === "rocks" && <Rocks rocks={doc.rocks} onChange={(rocks) => edit((d) => ({ ...d, rocks }))} people={people} today={today} saveStatus={statusText(status)} />}
             {view === "headlines" && <Headlines headlines={doc.headlines} onChange={(headlines) => edit((d) => ({ ...d, headlines }))} author={people[0] ?? ""} />}
@@ -589,9 +597,8 @@ export function MeetingView({
       )}
 
       {/* Room at the bottom so the floating Add to IDS button never covers the last rows. */}
-      <div aria-hidden className="h-20" />
+      {!bloom && <div aria-hidden className="h-20" />}
       {!readOnly && !bloom && <ParkIt open={parkOpen} setOpen={setParkOpen} onPark={(title) => edit((d) => ({ ...d, issues: [...d.issues, { id: newItemId(), title, notes: "", resolved: false, ...(myName ? { addedBy: myName } : {}) }] }))} />}
-      {!readOnly && bloom && <NewIssueBar people={people} me={myName} onAdd={(title, owner) => edit((d) => ({ ...d, issues: [...d.issues, { id: newItemId(), title, notes: "", resolved: false, owner, ...(myName ? { addedBy: myName } : {}) }] }))} />}
     </MentionRoster>
   );
 }

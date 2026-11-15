@@ -1,13 +1,14 @@
 "use client";
 // Copied from the Leadership Hub (src/app/meetings/_components/BusinessBest.tsx); keep in step with it. See src/features/l10/README.md.
 
+import type { ReactNode } from "react";
 import { Button, cx } from "@/features/l10/ui/ui";
 import type { Attendee } from "@/features/l10/lib/types";
 
 const initials = (name: string) => name.split(" ").map((n) => n[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
 
 /** Segue: round-robin, check off each person as they share. */
-export function BusinessBest({ attendees, onChange }: { attendees: Attendee[]; onChange: (next: Attendee[]) => void }) {
+export function BusinessBest({ attendees, onChange, afterBanner }: { attendees: Attendee[]; onChange: (next: Attendee[]) => void; /** Shown right under the round-robin banner (the Bloom-style meetings' New Issue bar). */ afterBanner?: ReactNode }) {
   const shared = attendees.filter((a) => a.shared).length;
   const set = (fn: (a: Attendee) => Attendee) => onChange(attendees.map(fn));
   return (
@@ -26,6 +27,7 @@ export function BusinessBest({ attendees, onChange }: { attendees: Attendee[]; o
           </Button>
         </div>
       </div>
+      {afterBanner}
       <ul className="m-0 grid list-none grid-cols-1 gap-2 p-0 sm:grid-cols-2">
         {attendees.map((a) => (
           <li key={a.id}>
