@@ -1,7 +1,7 @@
 import { expect, vi } from "vitest";
 
 import { KEARNEY, STAFF, type ReplayCase, type ReplayContext } from "./cases";
-import { lastResult, loopStandIn } from "./loop-stand-in";
+import { evidenceFrom, lastResult, loopStandIn } from "./loop-stand-in";
 
 /**
  * ============================================================================
@@ -69,7 +69,7 @@ export const NOV15_AGENT_LOOP_BATCH_J_KEEP_CASES: ReplayCase[] = [
       const model = loopStandIn((view) =>
         lastResult(view, "propose_form")
           ? { text: "Here is the card." }
-          : { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-3", policy: "Late Opening", what_happened: "Late opening the salon on 11/12.", payroll_deduct: /payroll/i.test(view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "") ? "yes" : undefined } },
+          : { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-3", policy: "Late Opening", what_happened: "Late opening the salon on 11/12.", payroll_deduct: /payroll/i.test(view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "") ? "yes" : undefined, payroll_evidence: evidenceFrom(view) } },
       );
       const thread = start(t);
       t.loopModel!(model);

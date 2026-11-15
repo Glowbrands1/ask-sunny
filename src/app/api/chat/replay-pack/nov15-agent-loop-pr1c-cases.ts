@@ -53,7 +53,7 @@ export const NOV15_AGENT_LOOP_PR1C_CASES: ReplayCase[] = [
       await thread.say("ca for remy calder, late on 11/12");
       const out = proposeOutputs(standIn.views)[0]!;
       expect(out.reason_code, JSON.stringify(out)).toBe("level_not_stated");
-      expect((out.facts as { not_kept?: string[] }).not_kept).toContain("warning_level");
+      expect((out.not_on_card as { field: string }[]).map((entry) => entry.field)).toContain("warning_level");
       expect((out.card as { warning_level?: unknown }).warning_level ?? null).toBeNull();
     },
   },
@@ -127,7 +127,7 @@ export const NOV15_AGENT_LOOP_PR1C_CASES: ReplayCase[] = [
       expect(out.reason_code).toBe("level_not_stated");
       expect(out.level_evidence).toBe("evidence_quote_not_found");
       expect(out.payroll_evidence).toBe("evidence_quote_not_found");
-      expect((out.facts as { not_kept?: string[] }).not_kept).toEqual(expect.arrayContaining(["warning_level", "payroll_deduct"]));
+      expect((out.not_on_card as { field: string }[]).map((entry) => entry.field)).toEqual(expect.arrayContaining(["warning_level", "payroll_deduct"]));
     },
   },
   {

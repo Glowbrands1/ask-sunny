@@ -1,7 +1,7 @@
 import { expect, vi } from "vitest";
 
 import { KEARNEY, STAFF, type ReplayCase, type ReplayContext } from "./cases";
-import { lastResult, loopStandIn, type LoopDecision, type LoopView } from "./loop-stand-in";
+import { evidenceFrom, lastResult, loopStandIn, type LoopDecision, type LoopView } from "./loop-stand-in";
 
 /**
  * ============================================================================
@@ -58,7 +58,7 @@ export const NOV15_AGENT_LOOP_SAVED_DIFF_CASES: ReplayCase[] = [
       const { thread, id } = await remyDraft(t);
       const model = loopStandIn((view): LoopDecision => (lastResult(view, "edit_form")
         ? { text: "Saved." }
-        : { tool: "edit_form", input: { instance_id: id, values: { warning_type: "written", payroll_deduct: "yes", payroll_deduct_amount: "$15" } } }));
+        : { tool: "edit_form", input: { instance_id: id, values: { warning_type: "written", payroll_deduct: "yes", payroll_deduct_amount: "$15" }, level_evidence: evidenceFrom(view, "make it a written"), payroll_evidence: evidenceFrom(view, "yes payroll $15") } }));
       t.loopModel!(model);
       await thread.say("make it a written and yes payroll $15");
       const result = lastResult({ results: model.views.at(-1)!.results } as LoopView, "edit_form") as EditResult;
