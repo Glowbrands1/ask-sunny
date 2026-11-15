@@ -109,9 +109,10 @@ describe("the DM L10 page in Ask Sunny", () => {
     renderView({ save: save as unknown as SaveFn });
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /Bo Lark/ })); // by role: the New Issue bar's owner picker lists the names too (15 Nov 2026)
-      await new Promise((r) => setTimeout(r, 20));
     });
-    expect(save).toHaveBeenCalledTimes(1);
+    // The debounced save is waited for, not slept for: a fixed sleep failed under load (QA, 15 Nov 2026).
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByTestId("save-status").textContent).toBe("All changes saved"));
     const [key, version, doc] = save.mock.calls[0] as unknown as [string, number, { attendees: { name: string; shared: boolean }[] }];
     expect(key).toBe("stc-dm");
     expect(version).toBe(3);
@@ -179,9 +180,9 @@ describe("saving: the page says saved only when the Hub has saved it", () => {
     renderView({ save: save as unknown as SaveFn });
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /Bo Lark/ })); // by role: the New Issue bar's owner picker lists the names too (15 Nov 2026)
-      await new Promise((r) => setTimeout(r, 20));
     });
-    expect(save).toHaveBeenCalledTimes(1);
+    // The debounced save is waited for, not slept for: a fixed sleep failed under load (QA, 15 Nov 2026).
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
     expect(screen.getByTestId("save-status").textContent).toBe("Saving…");
     await act(async () => {
       answer({ ok: true, version: 4, updatedAt: "t" });
@@ -198,17 +199,17 @@ describe("saving: the page says saved only when the Hub has saved it", () => {
     renderView({ save: save as unknown as SaveFn });
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /Bo Lark/ })); // by role: the New Issue bar's owner picker lists the names too (15 Nov 2026)
-      await new Promise((r) => setTimeout(r, 20));
     });
+    // The debounced save is waited for, not slept for: a fixed sleep failed under load (QA, 15 Nov 2026).
+    await waitFor(() => expect(screen.getByTestId("save-status").getAttribute("data-status")).toBe("failed"));
     const status = screen.getByTestId("save-status");
-    expect(status.getAttribute("data-status")).toBe("failed");
     expect(status.textContent).toContain("Not saved: The Leadership Hub could not be reached.");
     expect(status.textContent).not.toContain("All changes saved");
     await act(async () => {
       fireEvent.click(within(status).getByRole("button", { name: "Try again" }));
-      await new Promise((r) => setTimeout(r, 20));
     });
-    expect(save).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByTestId("save-status").textContent).toBe("All changes saved"));
     const [, version, doc] = save.mock.calls[1] as unknown as [string, number, { attendees: { name: string; shared: boolean }[] }];
     expect(version).toBe(3);
     expect(doc.attendees.find((a) => a.name === "Bo Lark")?.shared).toBe(true);
@@ -267,8 +268,9 @@ describe("the agenda, hints and roster come from the Hub (the STC DM L10 change,
     expect(document.body.textContent).not.toContain("Dex Rowan");
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /Bo Lark/ })); // by role: the New Issue bar's owner picker lists the names too (15 Nov 2026)
-      await new Promise((r) => setTimeout(r, 20));
     });
+    // The debounced save is waited for, not slept for: a fixed sleep failed under load (QA, 15 Nov 2026).
+    await waitFor(() => expect(save).toHaveBeenCalled());
     const [, , doc] = save.mock.calls[0] as unknown as [string, number, { attendees: { name: string }[] }];
     expect(doc.attendees.map((a) => a.name)).toEqual(["Avery Quill", "Bo Lark", "Cy Marlow", "Dex Rowan"]);
     expect(doc.attendees.find((a) => a.name === "Dex Rowan")).toEqual(hidden);
@@ -333,8 +335,9 @@ describe("IDS: move between the lists from the row, and no headlines where the m
     expect(buttons.indexOf("Delete")).toBeGreaterThan(buttons.indexOf("Long-term"));
     await act(async () => {
       fireEvent.click(within(shortRow).getByRole("button", { name: "Move to long-term: Weekly issue" }));
-      await new Promise((r) => setTimeout(r, 20));
     });
+    // The debounced save is waited for, not slept for: a fixed sleep failed under load (QA, 15 Nov 2026).
+    await waitFor(() => expect(save).toHaveBeenCalled());
     expect(screen.getByRole("tab", { name: "Short term (0)" })).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Long-term (2)" })).toBeTruthy();
     const [, , doc] = save.mock.calls.at(-1) as unknown as [string, number, { issues: { id: string; term?: string }[] }];
@@ -461,6 +464,58 @@ describe("Bloom-style page: what every page shares", () => {
     await waitFor(() => expect(save).toHaveBeenCalled());
     const doc = save.mock.calls.at(-1)![2] as { issues: Record<string, unknown>[] };
     expect(doc.issues.at(-1)).toMatchObject({ title: "Late shift handover", owner: "Cy Marlow", addedBy: "Avery Quill", resolved: false });
+  });
+});
+
+// Segue and Conclude on the Bloom-style STC DM L10 (the owner's request, 15 Nov 2026), as in the Hub.
+describe("Bloom-style page: Segue and Conclude", () => {
+  const recap = {
+    id: "r1",
+    meeting_key: "stc-dm",
+    session_id: "s1",
+    held_at: "2026-11-10T16:00:00Z",
+    rating_avg: 8.5,
+    attendee_count: 2,
+    duration_seconds: 3480,
+    cascade: "Share the new schedule",
+    attendees: [
+      { name: "Avery Quill", rating: 9 },
+      { name: "Bo Lark", rating: 8 },
+    ],
+    open_todos: [{ text: "Order towels", owner: "Avery Quill", dueDate: "2026-11-20" }],
+    resolved_issues: [{ title: "Front desk coverage", owner: "Bo Lark" }],
+    notes: "Talked about the holiday hours",
+    todos_done: 3,
+    todos_total: 4,
+  };
+  const view = (doc: Record<string, unknown> = {}, save: SaveFn = vi.fn() as unknown as SaveFn) =>
+    render(<MeetingView info={info} initial={loaded(3, doc)} save={save} end={vi.fn() as unknown as EndFn} viewer={viewer} roster={roster} hubMeetingUrl={HUB} pollMs={0} debounceMs={0} today="2026-11-15" recaps={[recap]} />);
+
+  it("Segue: last week's feedback, then this week's question saved as segueQuestion", async () => {
+    const save = vi.fn().mockResolvedValue({ ok: true, version: 4, updatedAt: "2026-11-15T00:00:00Z" } satisfies SaveOutcome);
+    view({ segueQuestion: "What AI tool saved you time?" }, save as unknown as SaveFn);
+    const feedback = screen.getByRole("region", { name: "Last week's feedback" });
+    expect(within(feedback).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["9Avery Quill", "8Bo Lark"]);
+    const q = within(screen.getByRole("region", { name: "This week's question" })).getByLabelText("This week's question") as HTMLTextAreaElement;
+    expect(q.value).toBe("What AI tool saved you time?");
+    fireEvent.change(q, { target: { value: "What AI tool saved you an hour?" } });
+    await waitFor(() => expect(save).toHaveBeenCalled());
+    expect((save.mock.calls.at(-1)![2] as { segueQuestion: string }).segueQuestion).toBe("What AI tool saved you an hour?");
+  });
+
+  it("Conclude before the meeting starts shows the last meeting's summary; during the meeting the existing steps", () => {
+    const { unmount } = view();
+    fireEvent.click(within(screen.getByRole("region", { name: "Agenda" })).getByRole("button", { name: /Conclude/ }));
+    const summary = within(screen.getByTestId("last-meeting-conclusion"));
+    expect(summary.getAllByRole("definition").map((d) => d.textContent)).toEqual(["8.5", "75%", "1", "58m"]);
+    expect(summary.getByRole("group", { name: "Issues solved by owner" }).textContent).toBe("BLBo LarkFront desk coverage");
+    expect(summary.getByRole("group", { name: "To-dos by owner" }).textContent).toBe("AQAvery QuillOrder towels11-20-2026");
+    expect(summary.getByText("Talked about the holiday hours")).toBeTruthy();
+    unmount();
+    view({ timer: { started: true, running: true, startedAt: Date.now(), leader: "hub-user-1", leaderLabel: "x", sessionId: "s2" } });
+    fireEvent.click(within(screen.getByRole("region", { name: "Agenda" })).getByRole("button", { name: /Conclude/ }));
+    expect(screen.queryByTestId("last-meeting-conclusion")).toBeNull();
+    expect(screen.getByLabelText("Cascading message")).toBeTruthy();
   });
 });
 

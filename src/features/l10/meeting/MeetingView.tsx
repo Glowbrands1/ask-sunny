@@ -18,6 +18,7 @@ import { Ids } from "./_components/Ids";
 import { PrintButton } from "./_components/PrintButton";
 import { ParkIt } from "./_components/ParkIt";
 import { LastMeetingSummary, MeetingNotes, NewIssueBar } from "./_components/BloomShell";
+import { LastMeetingConclusion, LastWeekFeedback, SegueQuestion } from "./_components/BloomSections";
 import { BusinessPlan } from "./_components/BusinessPlan";
 import { Rocks } from "./_components/Rocks";
 import { Scorecard } from "./_components/Scorecard";
@@ -87,6 +88,8 @@ export function MeetingView({
   const reference = referenceFromRoster(key, roster);
   // The DM L10's pages are laid out like Bloom Growth's (the owner's request, 15 Nov 2026).
   const bloom = bloomStyle(key);
+  // The most recent past meeting (a recap, or one imported from Bloom), for the summaries on those pages.
+  const last = bloom ? (pastMeetings(recaps, initial.doc)[0] ?? null) : null;
   const [view, setViewLocal] = useState<View>((reference && initialView) || agenda[0].key);
   // An old version can never save or end a meeting: whatever happens, these refuse.
   const refuse = { ok: false as const, kind: "forbidden" as const, message: "This is an old version and cannot be changed." };
@@ -512,7 +515,8 @@ export function MeetingView({
           </Card>
 
           <div className="flex min-w-0 flex-[999_1_520px] flex-col gap-4" inert={conflict ? true : undefined} aria-busy={conflict ? true : undefined}>
-            {bloom && <LastMeetingSummary last={pastMeetings(recaps, doc)[0] ?? null} />}
+            {bloom && <LastMeetingSummary last={last} />}
+            {bloom && view === "business-best" && <LastWeekFeedback last={last} />}
             {!isReferenceView(view) && index >= 0 && (
               <div role="group" aria-label="Section controls" className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-[10px] border border-line bg-white px-4 py-2.5 text-sm shadow-card print:hidden">
                 <span className="font-semibold" data-testid="section-position">
@@ -552,13 +556,15 @@ export function MeetingView({
             </div>
 
             <fieldset disabled={!!readOnly} className="m-0 flex min-w-0 flex-col gap-4 border-0 p-0">
+            {bloom && view === "business-best" && <SegueQuestion value={typeof doc.segueQuestion === "string" ? doc.segueQuestion : ""} onChange={(v) => edit((d) => ({ ...d, segueQuestion: v }))} />}
+            {bloom && view === "conclude" && !timer.started && <LastMeetingConclusion last={last} />}
             {view === "business-best" && <BusinessBest attendees={attendees} onChange={(next) => edit((d) => ({ ...d, attendees: keepHiddenAttendees(d.attendees, next) }))} />}
             {view === "scorecard" && <Scorecard doc={doc} edit={edit} people={people} />}
             {view === "rocks" && <Rocks rocks={doc.rocks} onChange={(rocks) => edit((d) => ({ ...d, rocks }))} people={people} today={today} saveStatus={statusText(status)} />}
             {view === "headlines" && <Headlines headlines={doc.headlines} onChange={(headlines) => edit((d) => ({ ...d, headlines }))} author={people[0] ?? ""} />}
             {view === "todos" && <Todos todos={doc.todos} onChange={(todos) => edit((d) => ({ ...d, todos }))} people={people} today={today} />}
             {view === "ids" && <Ids doc={doc} edit={edit} session={timer.sessionId ?? "pending"} meetingKey={info.key} voter={{ id: viewer.id, name: viewer.name || viewer.label }} attendees={attendees} addedBy={myName} headlines={agenda.some((a) => a.key === "headlines")} />}
-            {view === "conclude" && (
+            {view === "conclude" && !(bloom && !timer.started) && (
               <Conclude
                 meetingKey={info.key}
                 doc={doc}
