@@ -1,7 +1,7 @@
 import { expect, vi } from "vitest";
 
 import { KEARNEY, STAFF, type ReplayCase, type ReplayContext } from "./cases";
-import { evidenceFrom, lastResult, loopStandIn, type LoopDecision, type LoopView } from "./loop-stand-in";
+import { evidenceFrom, firstMatch, lastResult, loopStandIn, type LoopDecision, type LoopView } from "./loop-stand-in";
 
 /**
  * ============================================================================
@@ -156,6 +156,47 @@ export const NOV15_AGENT_LOOP_PR1C_CASES: ReplayCase[] = [
       const out = outs.at(-1)!;
       expect(out.reason_code, JSON.stringify(out)).toBeUndefined();
       expect((out.card as { payroll_deduct?: unknown }).payroll_deduct).toBe("yes");
+    },
+  },
+  {
+    id: "nov15-agent-loop-pr1c-one-persons-payroll-is-not-anothers",
+    title: "PR 1c (QA): Remy's card asks payroll, \"yes\", then \"do the same for juno\": Juno's card has no payroll (evidence_after_card); Remy's keeps it when proposed again",
+    report: `${REPORT}: a payroll answer counts only after the reply that asked for THAT card, tied to that card's person`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.() || !offline) return;
+      start(t);
+      const standIn = loopStandIn((view): LoopDecision => {
+        const said = view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "";
+        const who = /juno/i.test(said) ? "juno paxton" : "remy calder";
+        const cards = view.results.filter((result) => result.tool === "propose_form").length;
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: who } };
+        if (cards === 0) {
+          const id = firstMatch(view)?.employee_id;
+          // "yes payroll" was said in turn 2 (after Remy's card asked); turn 3 reuses it for the other person.
+          const answered = /^(?:yes|do the same|make it)/i.test(said);
+          return {
+            tool: "propose_form",
+            input: {
+              template_key: "dpoa", employee_id: id, what_happened: `${who === "juno paxton" ? "Juno Paxton" : "Remy Calder"} was late on 11/12.`, incident_date: "2026-11-12",
+              ...(answered ? { payroll_deduct: "yes", payroll_evidence: evidenceFrom(view, /^yes/i.test(said) ? "yes" : "yes", /^yes/i.test(said) ? 0 : 1) } : {}),
+            },
+          };
+        }
+        return { text: `Here's the Corrective Action Form for **${who === "juno paxton" ? "Juno Paxton" : "Remy Calder"}**.` };
+      });
+      t.loopModel!(standIn);
+      const thread = t.thread();
+      await thread.say("ca for remy calder, late on 11/12");
+      await thread.say("yes");
+      const remy = proposeOutputs(standIn.views).at(-1)!;
+      expect((remy.card as { payroll_deduct?: unknown }).payroll_deduct, JSON.stringify(remy)).toBe("yes");
+      await thread.say("do the same for juno paxton");
+      const juno = proposeOutputs(standIn.views).at(-1)!;
+      expect(juno.reason_code, JSON.stringify(juno)).toBe("payroll_not_stated");
+      expect(juno.payroll_evidence).toBe("evidence_after_card");
+      expect((juno.card as { payroll_deduct?: unknown }).payroll_deduct ?? null, "Remy's payroll answer reached Juno's card").toBeNull();
     },
   },
 ];

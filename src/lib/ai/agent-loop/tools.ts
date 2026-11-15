@@ -142,11 +142,25 @@ export function formsOnFileAsked(context: Pick<ToolContext, "question" | "histor
  */
 type AnswerEvidence = { readonly ok: true; readonly turnId: string; readonly wholeMessage: boolean } | { readonly ok: false; readonly reason: string };
 
-function answerEvidence(context: Pick<ToolContext, "question" | "history" | "questionMessageId">, evidence: unknown, scope: "this_message" | "request"): AnswerEvidence {
+function answerEvidence(
+  context: Pick<ToolContext, "question" | "history" | "questionMessageId">,
+  evidence: unknown,
+  scope: "this_message" | "request" | { readonly card: string },
+): AnswerEvidence {
   const turns = identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId);
   const check = verifyEvidence(evidence, turns, scope === "this_message" ? { thisTurnOnly: true } : {});
   if (!check.ok) return { ok: false, reason: check.reason };
   if (scope === "request" && !turns.filter((turn) => turn.role === "user").slice(-2).some((turn) => turn.id === check.turn.id)) return { ok: false, reason: "evidence_not_this_turn" };
+  /*
+   * A payroll answer belongs to ONE card (QA, 15 Nov 2026): the message being answered, or an earlier answer that came right
+   * after a reply naming THIS card's employee (the reply that showed their card and asked). Remy's "yes" is not Juno's: "do the
+   * same for juno" gets no payroll from it. A comparison of the employee's name with the reply, not a reading of the words.
+   */
+  if (typeof scope === "object" && check.turn.index !== turns.length - 1) {
+    const asked = turns[check.turn.index - 1];
+    const flatten = (text: string) => text.toLowerCase().replace(/[*_]/g, "").replace(/\s+/g, " ");
+    if (!asked || asked.role !== "assistant" || !flatten(asked.content).includes(flatten(scope.card).trim())) return { ok: false, reason: "evidence_after_card" };
+  }
   const flat = (text: string) => withoutMessageIdTags(text).toLowerCase().replace(/\s+/g, " ").trim();
   const quote = (evidence as { quote: string }).quote;
   return { ok: true, turnId: check.turn.id, wholeMessage: flat(quote) === flat(check.turn.content) };
@@ -1351,7 +1365,7 @@ export async function proposeForm(
   if (whatHappened && ACCOUNT_FORMS.has(template.key)) {
     /* A message that is only a level or payroll answer (the model's evidence quotes the whole message) is not the incident's account. */
     const answerOnly = new Set(
-      [answerEvidence(context, input.level_evidence, "request"), answerEvidence(context, input.payroll_evidence, "request")].flatMap((check) => (check.ok && check.wholeMessage ? [check.turnId] : [])),
+      [answerEvidence(context, input.level_evidence, "request"), answerEvidence(context, input.payroll_evidence, { card: employee.name })].flatMap((check) => (check.ok && check.wholeMessage ? [check.turnId] : [])),
     );
     const accountWords = asked.messages
       .filter((message) => sourceIds.includes(message.id ?? "") && !answerOnly.has(message.id ?? ""))
@@ -1432,7 +1446,7 @@ export async function proposeForm(
    */
   const managerWords = managerTurns(context);
   const askedPayroll = (input.payroll_deduct === "yes" || input.payroll_deduct === "no") ? input.payroll_deduct : null;
-  const payrollCheck = askedPayroll ? answerEvidence(context, input.payroll_evidence, "request") : null;
+  const payrollCheck = askedPayroll ? answerEvidence(context, input.payroll_evidence, { card: employee.name }) : null;
   const payroll = askedPayroll && payrollCheck?.ok ? askedPayroll : null;
   const typedAmount = typeof input.payroll_amount === "string" && /\d/.test(input.payroll_amount) ? input.payroll_amount.replace(/[^\d.]/g, "") : null;
   /* The amount the manager stated, read as today reads it (`payrollAmountFromConversation`) when the model left it out. */

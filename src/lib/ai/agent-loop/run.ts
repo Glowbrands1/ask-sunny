@@ -357,7 +357,7 @@ export const AGENT_LOOP_TOOLS = [
         },
         incident_date: { type: "string", description: "YYYY-MM-DD, the salon's local date." },
         level_evidence: evidence("With warning_level verbal or written: the manager message and the words from it that state this form's level, from the message being answered or the one before it. \"She was written up before\" is not this form's level."),
-        payroll_evidence: evidence("With payroll_deduct: the manager message and the words from it that answer whether payroll deduct applies, from the message being answered or the one before it."),
+        payroll_evidence: evidence("With payroll_deduct: the manager message and the words from it that answer whether payroll deduct applies: the message being answered, or an answer that came right after your reply showing THIS person's card (never another person's answer)."),
         warning_level: { type: "string", enum: ["verbal", "written", "termination"], description: "Only when the manager stated it for this form. termination: only when the rules book's Termination lines say this form is one." },
         exit_type: { type: "string", enum: ["resignation", "termination"], description: "Employee Exit Form only: which the rules book's Exit lines say this exit is." },
         effective_date: { type: "string", description: "Employee Exit Form termination only: the effective or termination date as the manager typed it (e.g. 11/28)." },
