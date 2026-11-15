@@ -29,7 +29,11 @@ export type EvidenceReason =
   | "evidence_quote_not_found"
   /** The check needs this turn's words, and the quote is from an earlier turn. */
   | "evidence_not_this_turn"
-  /** The quote is from a turn after the card it is evidence for (`beforeMessageId`). */
+  /**
+   * The answer must come AFTER the card asked (`afterMessageId`: the reply that showed the card or asked the question),
+   * and the quote is from a turn that does not: e.g. the card asked "Verbal or Written?" and the level evidence quotes an
+   * earlier "she was written up before" (QA, 15 Nov 2026).
+   */
   | "evidence_after_card";
 
 export type EvidenceCheck = { readonly ok: true; readonly turn: IdentifiedTurn } | { readonly ok: false; readonly reason: EvidenceReason };
@@ -91,8 +95,8 @@ export function readEvidence(value: unknown): Evidence | null {
 export interface EvidenceOptions {
   /** The quote must be from the message being answered now. */
   readonly thisTurnOnly?: boolean;
-  /** The quote must come from a turn before this message (the reply that showed the card it is evidence for). */
-  readonly beforeMessageId?: string;
+  /** The quote must come from a manager turn after this message (the reply that showed the card or asked the question). */
+  readonly afterMessageId?: string;
 }
 
 /**
@@ -106,9 +110,9 @@ export function verifyEvidence(evidence: unknown, turns: readonly IdentifiedTurn
   const quote = normalized(claim.quote);
   if (quote === "" || !normalized(withoutMessageIdTags(turn.content)).includes(quote)) return { ok: false, reason: "evidence_quote_not_found" };
   if (options.thisTurnOnly && turn.index !== turns.length - 1) return { ok: false, reason: "evidence_not_this_turn" };
-  if (options.beforeMessageId) {
-    const card = turns.find((candidate) => candidate.id === options.beforeMessageId);
-    if (card && turn.index > card.index) return { ok: false, reason: "evidence_after_card" };
+  if (options.afterMessageId) {
+    const asked = turns.find((candidate) => candidate.id === options.afterMessageId);
+    if (asked && turn.index <= asked.index) return { ok: false, reason: "evidence_after_card" };
   }
   return { ok: true, turn };
 }

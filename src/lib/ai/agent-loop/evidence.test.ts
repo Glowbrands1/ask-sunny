@@ -47,9 +47,17 @@ describe("verifyEvidence", () => {
     expect(verifyEvidence({ message_id: "m3", quote: "verbal" }, turns, { thisTurnOnly: true })).toEqual({ ok: false, reason: "evidence_not_this_turn" });
     expect(verifyEvidence({ message_id: "m9", quote: "a written" }, turns, { thisTurnOnly: true })).toMatchObject({ ok: true });
   });
-  it("evidence_after_card: the quote comes from a turn after the card it is evidence for", () => {
-    expect(verifyEvidence({ message_id: "m3", quote: "verbal" }, turns, { beforeMessageId: "m2" })).toEqual({ ok: false, reason: "evidence_after_card" });
-    expect(verifyEvidence({ message_id: "m1", quote: "late on 11/14" }, turns, { beforeMessageId: "m2" })).toMatchObject({ ok: true });
+  it("evidence_after_card: the answer must come after the card asked; a quote from before it (QA's example) is refused", () => {
+    const asked = identifiedTurns(
+      [
+        { id: "a1", role: "user", content: "CA for Remy Calder, she was written up before, now late on 11/14" },
+        { id: "a2", role: "assistant", content: "Here's the Corrective Action Form for **Remy Calder**. Verbal or Written?" },
+      ] as unknown as ChatMessage[],
+      "written",
+      "a3",
+    );
+    expect(verifyEvidence({ message_id: "a1", quote: "she was written up before" }, asked, { afterMessageId: "a2" })).toEqual({ ok: false, reason: "evidence_after_card" });
+    expect(verifyEvidence({ message_id: "a3", quote: "written" }, asked, { afterMessageId: "a2" })).toMatchObject({ ok: true });
   });
 });
 
