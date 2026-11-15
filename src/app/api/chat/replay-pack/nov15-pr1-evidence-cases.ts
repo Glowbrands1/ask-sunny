@@ -118,4 +118,34 @@ export const NOV15_PR1_EVIDENCE_CASES: ReplayCase[] = [
       expect(JSON.stringify(t.values(id)), "a refused name correction wrote something").toBe(before);
     },
   },
+  {
+    id: "nov15-pr1-a-one-word-name-the-manager-typed-is-offered-c134",
+    title: "PR 1 (the old K3 person slot, QA's shadow replay c134's shape): \"put together an exit for Wrenna\", nobody on the roster, with person_evidence holding the name gets \"Reply **use Wrenna**\"; \"use Wrenna\" makes the Exit card for Wrenna; without the evidence it stays \"not a person's name\"",
+    report: `${REPORT}: QA's 266 shadow replay, c134 and the B group (an off-roster first name was never offered)`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      const model = loopStandIn((view): LoopDecision => {
+        const said = [...view.turns].reverse().find((turn) => turn.role === "user")?.text ?? "";
+        const staff = lastResult(view, "find_staff") as { note?: string } | null;
+        if (/^use wrenna/i.test(said)) {
+          if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "stc-exit", employee_name: "Wrenna", effective_date: "11/14", exit_evidence: evidenceFrom(view, "put together an exit for Wrenna", 1) } };
+          return { text: "Here's the Employee Exit Form for **Wrenna**." };
+        }
+        if (!staff) return { tool: "find_staff", input: { name: "Wrenna", person_evidence: evidenceFrom(view, "an exit for Wrenna") } };
+        const asked = /Ask the manager, in these words: ([\s\S]+)$/.exec(staff.note ?? "")?.[1];
+        return { text: asked ?? "Who is this Resignation/Exit Form for?" };
+      });
+      t.loopModel!(model);
+      const thread = t.thread();
+      const offer = await thread.say("put together an exit for Wrenna");
+      expect(offer.content, `no use-<name> offer:\n${offer.content}`).toContain("Reply **use Wrenna**");
+      await thread.say("use Wrenna");
+      expect(thread.proposal?.employeeName, "the exit was not carded for the name as typed").toBe("Wrenna");
+    },
+  },
 ];
