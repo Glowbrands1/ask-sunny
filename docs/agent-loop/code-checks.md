@@ -266,6 +266,8 @@ Rules-book lines and facts first. The refusals and the narrow write paths below 
 | 2, a termination with an offense | An exit card the manager did not ask for (no exit / separation / termination paperwork, no resignation) is refused with `exit_not_asked`. | Which form: the CA with Termination, the offense's policy and date, plus "Want the Employee Exit Form for <A> too?" |
 | 3, the hedge line | `termination_mentioned_not_stated` when the manager's words name a termination and the card is not one. | The hedge line exactly, beside the warning-level line |
 | 4, prior actions | Kept only with dates the manager typed, never this incident's date, and with a stated count (`prior_actions_not_kept`). | "Written warning (2), dates not given" |
-| 5, the dictated plan | `dictatedPlanWrite` moves updated_at (F8's flag). | — |
+| 5, updated_at | Every manager save (`saveInstanceValues`, so the dictated plan too) moves updated_at under F8's flag; a failed touch is a warning. instances.ts is protected: Pau's standing approval, 15 Nov 2026; hunk in `docs/patches/g2-save-touches-updated-at.patch`. | — |
 | 6, a future form date | The refusal carries `asked_date` and `form_date_kept`. | "<asked> is after today, so I left the form's date as <kept>. Which day did you mean?" |
 
+
+Replay cases use QA's exact texts T1, T3, T4, T6–T9, T11 and T13 (invented name Remy Calder). G7a now expects the CA with Termination plus the exit offer (QA's ruling); its exit checks moved to `nov15-agent-loop-g7a-exit-paperwork-asked` ("terminate <A>, effective 11/20, exit paperwork please").

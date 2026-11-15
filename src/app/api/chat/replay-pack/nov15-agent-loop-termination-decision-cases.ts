@@ -131,7 +131,7 @@ export const NOV15_AGENT_LOOP_TERMINATION_DECISION_CASES: ReplayCase[] = [
   ...([
     ["t1", "we're terminating Remy Calder, she no call no showed 11/12"],
     ["t3", "create a termination for Remy Calder, she no call no showed on 11/12"],
-    ["t4", "we fired Remy Calder today for stealing $40 from the register on 11/12"],
+    ["t4", "we fired Remy Calder today for stealing from the register"],
   ] as const).map(([tag, words]): ReplayCase => ({
     id: `nov15-g2-termination-with-an-offense-is-the-ca-${tag}`,
     title: `G2 item 2 (QA's live run part 2, ${tag.toUpperCase()}): "${words}" is the Corrective Action Form with Termination, dated the offense's day, plus one line offering the exit form; never an exit form dated today`,
@@ -149,7 +149,7 @@ export const NOV15_AGENT_LOOP_TERMINATION_DECISION_CASES: ReplayCase[] = [
         // The live bug: the model reached for the exit form first.
         if (results.length === 0) return { tool: "propose_form", input: { template_key: "stc-exit", employee_id: "e-2", exit_type: "termination" } };
         const last = results.at(-1)!;
-        if ((last as { exit_not_asked?: boolean }).exit_not_asked && results.length === 1) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: ACCOUNT, incident_date: "2026-11-12", warning_level: "termination" } };
+        if ((last as { exit_not_asked?: boolean }).exit_not_asked && results.length === 1) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: tag === "t4" ? "She stole from the register today." : ACCOUNT, incident_date: tag === "t4" ? "2026-11-14" : "2026-11-12", warning_level: "termination" } };
         const stated = last.facts?.termination_stated;
         return { text: `Here's the Corrective Action Form for **Remy Calder**.\n\n${stated ? `**Type of Warning:** Termination, as you said — I'll tick it on the form. Tell me if that should change.\n${stated.approval}` : HEDGE}\n\nWant the Employee Exit Form for Remy Calder too?` };
       });
@@ -157,9 +157,42 @@ export const NOV15_AGENT_LOOP_TERMINATION_DECISION_CASES: ReplayCase[] = [
       const thread = t.thread();
       const reply = await thread.say(words);
       expect(thread.proposal?.templateKey, `"${words}" was not the Corrective Action Form:\n${reply.content}`).toBe("dpoa");
-      expect(thread.proposal?.formDate, "the offense's date was lost").toBe("2026-11-12");
+      expect(thread.proposal?.formDate, "the offense's date was lost").toBe(tag === "t4" ? "2026-11-14" : "2026-11-12");
       expect(reply.content).toMatch(/Termination, as you said/);
       expect(reply.content).toContain("Want the Employee Exit Form for Remy Calder too?");
+    },
+  })),
+  ...([
+    ["t7", "Remy Calder was late on 11/14, if this happens again it will result in termination"],
+    ["t8", "write up Remy Calder for lateness 11/14, she was fired from her last job btw"],
+    ["t9", "Remy Calder was terminated at Target years ago, now she was late 11/14, make a CA"],
+    ["t11", "Remy Calder got a termination warning in March, now she was late again on 11/14, make a CA"],
+    ["t13", "CA for Remy Calder, late 11/14, we fired her sister last month"],
+  ] as const).map(([tag, words]): ReplayCase => ({
+    id: `nov15-g2-termination-not-this-form-${tag}`,
+    title: `G2 item 3 (QA's live run part 2, ${tag.toUpperCase()}): "${words}" — a termination word that is not this form's: the CA with the hedge line (termination_mentioned_not_stated), and Create ticks nothing`,
+    report: `${REPORT}; QA's live run part 2 on batch G (15 Nov 2026), item 3`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      const model = loopStandIn((view): LoopDecision => {
+        const result = lastResult(view, "propose_form") as { facts?: { termination_mentioned_not_stated?: boolean } } | null;
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
+        if (!result) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: "She was late on 11/14.", incident_date: "2026-11-14" } };
+        return { text: `Here's the Corrective Action Form for **Remy Calder**.\n\n${result.facts?.termination_mentioned_not_stated ? `${HEDGE}\n\n` : ""}**Observation of Offense:** She was late on 11/14.` };
+      });
+      t.loopModel!(model);
+      const thread = t.thread();
+      const reply = await thread.say(words);
+      expect(thread.proposal?.templateKey).toBe("dpoa");
+      expect(reply.content, `"${words}" was carded as a termination`).not.toMatch(/Termination, as you said/);
+      expect(reply.content, `no hedge line for "${words}"`).toContain(HEDGE);
+      const id = await thread.create();
+      expect(t.checked(id).warning_type ?? [], `Create ticked Termination for "${words}"`).not.toContain("termination");
     },
   })),
   {
@@ -176,7 +209,7 @@ export const NOV15_AGENT_LOOP_TERMINATION_DECISION_CASES: ReplayCase[] = [
       const model = loopStandIn((view): LoopDecision => {
         const results = view.results.filter((result) => result.tool === "propose_form").map((result) => result.output as { facts?: { not_kept?: string[] } });
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
-        const input = { template_key: "dpoa", employee_id: "e-2", what_happened: "She was late again today.", incident_date: "2026-11-14", warning_level: "termination" };
+        const input = { template_key: "dpoa", employee_id: "e-2", what_happened: "She was late again on 11/14.", incident_date: "2026-11-14", warning_level: "termination" };
         // The live slip: the count lost and today's date put on the earlier steps.
         if (results.length === 0) return { tool: "propose_form", input: { ...input, prior_actions: "Written warning — 11/14/2026" } };
         if (results.length === 1 && results[0]!.facts?.not_kept?.includes("prior_actions")) return { tool: "propose_form", input: { ...input, prior_actions: "Written warning (2), dates not given" } };
@@ -184,7 +217,7 @@ export const NOV15_AGENT_LOOP_TERMINATION_DECISION_CASES: ReplayCase[] = [
       });
       t.loopModel!(model);
       const thread = t.thread();
-      await thread.say("after two prior written warnings, we are terminating Remy Calder, she was late again today");
+      await thread.say("after two prior written warnings we are terminating Remy Calder for being late again on 11/14");
       expect((thread.proposal as { priorActions?: string | null } | null)?.priorActions, "the prior actions lost the count or took the incident's date").toBe("Written warning (2), dates not given");
     },
   },
