@@ -5,6 +5,7 @@ import { payrollAmounts } from "@/lib/ai/intent-slots";
 import { businessToday } from "@/lib/business-date";
 import {
   formEditNoopGuardEnabled,
+  formEditTouchesUpdatedAtEnabled,
   formPatchReaderFixesEnabled,
   madeAboutAllOrNothingEnabled,
   madeAboutSaidDateEnabled,
@@ -165,6 +166,8 @@ export interface FormEditRules {
   readonly writable?: ReadonlySet<string>;
   /** Keys written as the manager's statement, through `applyStatedFacts` (null: its default keys). */
   readonly statedKeys?: ReadonlySet<string> | null;
+  /** Batch G5 (QA's condition 4): the manager's stated values written from chat; the event row says "via": "chat". */
+  readonly via?: "chat";
   /** Keys a draft may replace although the manager typed them. */
   readonly typedExempt?: ReadonlySet<string>;
   /** CA_NAME_FROM_CHAT_ENABLED: the form's subject column follows the Employee Name line, to this name. */
@@ -623,7 +626,7 @@ export async function writeFormEdits(instanceId: string, ops: readonly FormEditO
   let statedKeys: string[] = [];
   const count = (values: DraftValues) => Object.keys(values.values).length + Object.keys(values.checked).length;
   if (count(buckets.manager) > 0) {
-    const saved = await saveInstanceValues(instanceId, buckets.manager, rules.actorId);
+    const saved = await saveInstanceValues(instanceId, buckets.manager, rules.actorId, rules.via ? { via: rules.via } : {});
     rejected.push(...saved.rejected);
     const refusedKeys = new Set(saved.rejected.map((entry) => entry.key));
     // What the save stored (its required closing re-attached), else what was sent.
@@ -668,6 +671,16 @@ export async function writeFormEdits(instanceId: string, ops: readonly FormEditO
           ...(rules.syncPlan.amountSentence ? { amountSentence: true } : {}),
         })
       : [];
+
+  /*
+   * FORM_EDIT_TOUCHES_UPDATED_AT_ENABLED (batch F8): a value edit moves the form's updated_at, as a form_date edit
+   * always did (the touch trigger fires only on the instance row), so Form Monitoring's "recently changed" sees it.
+   */
+  if (formEditTouchesUpdatedAtEnabled() && (written.size > 0 || planKeys.length > 0)) {
+    /* The edit is already saved: a failed touch is logged (the instance id only), never reported as a failed edit. */
+    const { error } = await getSupabaseAdmin().from("form_instances").update({ updated_at: new Date().toISOString() }).eq("id", instanceId);
+    if (error) console.warn(`form-write: the edit to form ${instanceId} was saved, but its updated_at could not be moved.`);
+  }
 
   /* 6. reload → snapshotDiff */
   const reloaded = await loadInstance(instanceId);
@@ -786,24 +799,52 @@ export async function realizedClaim(answer: AskResponse, instanceId: string, bef
  * on every rewrite, all or nothing. A refusal writes nothing and reports every
  * key as rejected, so the revision's reply claims none.
  */
+/*
+ * `managerStated` (the agent loop's edit_form, batch G5; QA approved 15 Nov 2026 under Pau's rule: "if it asks these
+ * questions and manager answers, the payroll will be filled or edited"; G9, a production chat): only payroll deduct
+ * and its amount (MANAGER_STATED_KEYS) and the warning level, and only when the caller has checked that the manager
+ * stated them in this message. They are written as the manager, as the card's Create does. Every other key is written
+ * as before.
+ */
+const WRITTEN_AS_STATED: ReadonlySet<string> = new Set([...MANAGER_STATED_KEYS, "warning_type"]);
 export async function writeRevisionEdits(
   instanceId: string,
   draft: Partial<DraftValues>,
   cleared: readonly string[],
-  context: { readonly actorId: string; readonly latest: string; readonly notes?: string; readonly named?: readonly string[] },
+  context: {
+    readonly actorId: string;
+    readonly latest: string;
+    readonly notes?: string;
+    readonly named?: readonly string[];
+    /** Keys the manager stated in this message; only WRITTEN_AS_STATED count. Absent: the write layer's rules, unchanged. */
+    readonly managerStated?: readonly string[];
+  },
 ): Promise<{ accepted: DraftValues; cleared: string[]; rejected: { key: string; reason: string }[] }> {
+  const stated = new Set((context.managerStated ?? []).filter((key) => WRITTEN_AS_STATED.has(key)));
   const ops: FormEditOp[] = [
-    ...opsFrom({ values: draft.values ?? {}, checked: draft.checked ?? {} }),
+    ...opsFrom({ values: draft.values ?? {}, checked: draft.checked ?? {} }).map((op) => (stated.has(op.field) ? { ...op, by: "manager" as const } : op)),
     ...cleared.map((field) => ({ op: "clear" as const, field })),
   ];
   const result = await writeFormEdits(instanceId, ops, {
     path: "revision",
     actorId: context.actorId,
     latest: context.latest,
+    ...(stated.size > 0 ? { via: "chat" as const } : {}),
     ...(context.notes !== undefined ? { notes: context.notes } : {}),
     ...(context.named ? { named: context.named } : {}),
   });
   return { accepted: result.saved.accepted, cleared: result.saved.cleared, rejected: result.saved.rejected };
+}
+
+/**
+ * Batch G (G8; QA's conditions, Pau's standing approval, 15 Nov 2026): an Action Plan the manager dictated in chat,
+ * word for word, saved as the manager's own edit (as the form page saves their typing), via chat. Only action_plan;
+ * the caller (the agent loop's edit_form) checks the words are the manager's current message. Drafts only (the
+ * manager's save refuses a finalized form).
+ */
+export async function dictatedPlanWrite(instanceId: string, plan: string, actorId: string): Promise<{ saved: string | null }> {
+  const result = await saveInstanceValues(instanceId, { values: { action_plan: plan }, checked: {} }, actorId, { via: "chat" });
+  return { saved: result.rejected.some((row) => row.key === "action_plan") ? null : (result.values.action_plan ?? plan) };
 }
 
 /* -------------------------------- the old writers' shapes, through here ---- */

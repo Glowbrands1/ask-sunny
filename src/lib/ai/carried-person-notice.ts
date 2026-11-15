@@ -62,6 +62,19 @@ export function carriedNotice(person: string): string {
   return `I took **${person}** from earlier in this conversation — if this form is for somebody else, tell me who.`;
 }
 
+/**
+ * The same decision as a fact (the agent loop's propose_form, batch H10): this card's person came from before the
+ * manager's last six turns. Off, never.
+ */
+export function carriedFromEarlier(templateKey: string, person: string | null | undefined, request: Pick<AskRequest, "history" | "question">): boolean {
+  const name = person?.trim();
+  if (!carriedPersonNoticeEnabled() || !name || !PERFORMANCE_FORMS.has(templateKey)) return false;
+  const turns = managerTurns(request);
+  const window = turns.slice(-MANAGER_CONTEXT_TURNS);
+  const before = turns.slice(0, -MANAGER_CONTEXT_TURNS);
+  return !window.some((turn) => names(turn, name)) && before.some((turn) => names(turn, name));
+}
+
 export function withCarriedPersonNotice(response: AskResponse, request: Pick<AskRequest, "history" | "question">): AskResponse {
   if (!carriedPersonNoticeEnabled()) return response;
   const card = response.formProposal;

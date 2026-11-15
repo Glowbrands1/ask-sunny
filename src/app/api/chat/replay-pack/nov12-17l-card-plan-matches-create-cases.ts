@@ -161,9 +161,9 @@ export const NOV14_CARD_PLAN_OWN_WORDS_NOT_ACCOUNT_CASES: ReplayCase[] = [
  */
 const STATED_LATE = "Remy Calder arrived 20 minutes late for her scheduled shift on 11/9/26.";
 
-function loopCard(t: ReplayContext, whatHappened: string) {
+function loopCard(t: ReplayContext, whatHappened: string, decided: { readonly warning_level?: "termination" } = {}) {
   t.loopModel!(loopStandIn((view) => {
-    if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", policy: "Attendance", what_happened: whatHappened } };
+    if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", policy: "Attendance", what_happened: whatHappened, ...decided } };
     return { text: "Here is the Corrective Action card for Remy Calder." };
   }));
 }
@@ -199,13 +199,17 @@ export const NOV15_CARD_PLAN_AGENT_LOOP_CASES: ReplayCase[] = [
     async run(t) {
       if (!t.loopOn?.()) return;
       const thread = start(t);
-      loopCard(t, STATED_LATE);
+      /*
+       * Changed on purpose (QA's design and third review of batch G, 15 Nov 2026): in the agent loop the model decides a
+       * termination (warning_level termination), locked on the word; Create never runs today's reader for a loop card.
+       */
+      loopCard(t, STATED_LATE, { warning_level: "termination" });
       const card = await thread.say("I need a term CA for Remy Calder, she was 20 minutes late on 11/9/26");
       const shown = cardPlan(card.content);
       t.draftWrites({ observation: "Observed:\nOn November 9, 2026, Remy Calder arrived 20 minutes late." });
       const id = await thread.create();
       const saved = (t.values(id).action_plan ?? "").replace(/\s+/g, " ").trim();
-      // Create ticks the stated termination (TERMINATION_STATED_TICKS, on in production), unchanged under the loop.
+      // Create ticks the loop's locked termination (TERMINATION_STATED_TICKS, on in production).
       expect(t.checked(id).warning_type ?? [], "Create did not tick the stated termination").toContain("termination");
       expect(saved, "the saved termination plan lost its closing").toMatch(new RegExp(`${TERMINATION_SENTENCE.replace(/\./g, "\\.")}$`));
       expect(saved, "the saved termination plan promises a future violation's closing").not.toMatch(/Future policy violations/);

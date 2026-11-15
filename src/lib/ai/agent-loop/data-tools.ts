@@ -44,7 +44,11 @@ import { addSource, untrusted as envelope, type ToolActor, type ToolEffects, typ
 const REVIEWS_SOURCE = "Google Reviews page";
 const LATEST_MAX = 5;
 const REVIEW_TEXT_MAX = 400;
-const FIGURES_MAX = 12_000;
+/*
+ * F6 (QA's live check, batch F): 12,000 characters cut a 15-salon Daily Stats mid-salon ("Manhattan's PPTA not fully
+ * returned"). Room for every salon's Sales Totals and Salon Performance; past it, the cut is at a line, never inside one.
+ */
+export const FIGURES_MAX = 40_000;
 const FOCUS_GUIDE_MAX = 6_000;
 
 /**
@@ -111,6 +115,23 @@ function scopeOf(numbers: readonly string[] | null): ReportingScope {
   return numbers === null
     ? { unrestricted: true, salonNumbers: [], areaLabel: null, level: "global" }
     : { unrestricted: false, salonNumbers: numbers, areaLabel: null, level: "salon" };
+}
+
+/**
+ * THE FIGURES, NEVER CUT INSIDE A LINE (F6). Under the cap, as written. Over it, the text ends at the last whole line
+ * that fits, and every salon named only in what was left out, or in both parts (its figures are partial), is listed,
+ * so the reply can say which salons' figures are missing instead of reading a half line as a figure.
+ */
+export function figuresWithin(text: string, max: number = FIGURES_MAX): { text: string; truncatedSalons: string[] } {
+  if (text.length <= max) return { text, truncatedSalons: [] };
+  const cut = text.lastIndexOf("\n", max);
+  const kept = cut > 0 ? text.slice(0, cut) : "";
+  const left = text.slice(kept.length);
+  const truncatedSalons = PRODUCTION_SALONS.filter((salon) => {
+    const name = new RegExp(`\\b${salon.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+    return name.test(left);
+  }).map((salon) => salon.name);
+  return { text: kept, truncatedSalons };
 }
 
 /* ---------------------------------------------------------------- dependencies --- */
@@ -290,13 +311,20 @@ export async function readStats(
   }
 
   const restricted = turn.kind === "salons" && turn.restricted;
+  const figures = figuresWithin(briefing.text);
   return {
     source,
     salons: numbers === null ? "all salons" : numbers.map((number) => salonName(number, number)),
     present: briefing.present.map(label),
     missing: briefing.missing.map(label),
     freshness: briefing.freshness.map((entry) => ({ report: entry.familyLabel, as_of: entry.asOf, days_behind: entry.daysBehind, says: entry.sentence })),
-    figures: untrusted(briefing.text.slice(0, FIGURES_MAX), source),
+    figures: untrusted(figures.text, source),
+    ...(figures.truncatedSalons.length > 0
+      ? {
+          truncated_salons: figures.truncatedSalons,
+          truncated_note: "The figures were too long to send whole. These salons' figures are missing or partial: say so by name, give none for them, and suggest asking about them separately.",
+        }
+      : {}),
     ...(breakdown ? { breakdown: untrusted(breakdown, source) } : {}),
     ...(focusGuide ? { focus_guide: focusGuide } : {}),
     ...(restricted && RANKING.test(asked) ? { others: OTHERS_NOT_VISIBLE } : {}),

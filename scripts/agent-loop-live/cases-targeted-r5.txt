@@ -47,7 +47,6 @@ nov14-live-r5-e7-one-position-after-the-salon
 nov14-live-r5-e8-new-card-reply-says-what-is-on-it
 nov14-live-r5-e9-one-word-answer-is-the-cards-policy
 nov14-live-r5-e10-month-day-later-than-today-said
-nov14-live-r5-e11-reword-never-adds-a-cause
 nov14-live-r5-e12-a-date-after-today-is-never-on-the-card
 nov14-live-r5-e12-edit-form-refuses-a-form-date-after-today
 nov14-live-r5-e13-central-evening-is-still-today

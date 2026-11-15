@@ -49,3 +49,37 @@ export function agentLoopStepLimit(): number {
   if (!process.env.AGENT_LOOP_MAX_STEPS || !Number.isFinite(raw)) return AGENT_LOOP_DEFAULT_STEPS;
   return Math.min(AGENT_LOOP_MAX_STEPS, Math.max(1, Math.round(raw)));
 }
+
+/**
+ * ============================================================================
+ * TURNS THE LOOP DOES NOT TAKE YET (QA, batch F5, 15 Nov 2026)
+ * ============================================================================
+ *
+ * The loop's branch in the chat route passes the question, history, open form and conversation id. A turn that also
+ * carries one of these would lose it in the loop, so it goes to today's path instead, and the trace says why
+ * (`slots.agent_loop_skipped`). Each is a TODO in `docs/agent-loop/parity-matrix.md`.
+ *
+ * NOT `continueProposalTemplateKey`: the browser sends it on nearly every turn after a card (`continuationFor`
+ * returns the latest card's template), and the loop reads that card from the history itself. Skipping on it would take
+ * most of the loop's card follow-ups ("make it a written", the payroll answer) to today's path, so it is only noted
+ * (`loopCarriedOnly`), never a reason to skip.
+ */
+export type AgentLoopSkipReason = "attachments" | "report_context" | "pending_copy" | "answer_mode";
+
+export function agentLoopSkipReason(request: {
+  readonly attachedDocumentIds?: readonly string[];
+  readonly reportContext?: unknown;
+  readonly pendingCopyFromInstanceId?: string;
+  readonly mode?: string;
+}): AgentLoopSkipReason | null {
+  if ((request.attachedDocumentIds?.length ?? 0) > 0) return "attachments";
+  if (request.reportContext) return "report_context";
+  if (request.pendingCopyFromInstanceId) return "pending_copy";
+  if (request.mode && request.mode !== "standard") return "answer_mode";
+  return null;
+}
+
+/** What a loop turn carries that the loop reads another way (noted in the trace, never a reason to skip). */
+export function loopCarriedOnly(request: { readonly continueProposalTemplateKey?: string }): string[] {
+  return request.continueProposalTemplateKey ? ["continue_proposal"] : [];
+}
