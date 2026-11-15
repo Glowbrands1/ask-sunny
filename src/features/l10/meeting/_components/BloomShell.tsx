@@ -2,6 +2,7 @@
 // Copied from the Leadership Hub (src/app/meetings/_components/BloomShell.tsx); keep in step with it. See src/features/l10/README.md.
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Button, cx, inputClass } from "@/features/l10/ui/ui";
 import { MentionField } from "@/features/l10/ui/Mentions";
 import { durationLabel, initials, mmddyyyy } from "@/features/l10/lib/bloom";
@@ -13,7 +14,14 @@ import type { PastMeeting } from "@/features/l10/lib/past";
  * Bloom's layout only.
  */
 
-/** A panel on the right (a full-width sheet on a phone), with a close button and Esc; the floating buttons move clear of it. */
+/**
+ * A panel on the right (a full-width sheet on a phone), with a close button and Esc; the floating buttons move clear of it.
+ *
+ * It is rendered through a portal, not where it is used: a `position: fixed` element is pinned to the nearest ancestor with
+ * a backdrop-filter or transform, and the agenda card (glass) has one, so Meeting Notes opened inside it showed on the
+ * left, half off-screen (the owner's report, 15 Nov 2026). It goes to the page's `.hub-l10` root when there is one (the
+ * DM L10 tab in Ask Sunny / Ask Bubbles, which keeps that root's scoped styles), otherwise to `document.body`.
+ */
 export function SidePanel({ title, closeLabel, onClose, footer, children, testId }: { title: string; closeLabel: string; onClose: () => void; footer?: ReactNode; children: ReactNode; testId?: string }) {
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
@@ -27,7 +35,7 @@ export function SidePanel({ title, closeLabel, onClose, footer, children, testId
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
-  return (
+  return createPortal(
     <aside role="dialog" aria-modal="false" aria-label={title} data-side-panel data-testid={testId} className="fixed inset-y-0 right-0 z-[45] flex w-full flex-col border-l border-line bg-cream shadow-2xl sm:w-[max(460px,50vw)] print:hidden">
       <div className="flex items-center gap-2 border-b border-line bg-white px-4 py-3">
         <h2 ref={heading} tabIndex={-1} className="m-0 min-w-0 flex-1 truncate text-base font-bold outline-none">
@@ -39,7 +47,8 @@ export function SidePanel({ title, closeLabel, onClose, footer, children, testId
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain px-4 py-4">{children}</div>
       {footer && <div className="flex flex-wrap items-center gap-2 border-t border-line bg-white px-4 py-3">{footer}</div>}
-    </aside>
+    </aside>,
+    document.querySelector(".hub-l10") ?? document.body,
   );
 }
 
@@ -68,7 +77,7 @@ export function MeetingNotes({ notes, onChange, saveStatus, disabled }: { notes:
           footer={saveStatus ? <span className="ml-auto text-xs text-muted">{saveStatus}</span> : undefined}
         >
           <p className="m-0 text-sm text-muted">Shared with everyone in this meeting. Saves as you type.</p>
-          <MentionField multiline aria-label="Meeting notes" value={notes} disabled={disabled} onChange={onChange} placeholder="Notes for this meeting… try @ and a name" className="min-h-[50vh] py-2" />
+          <MentionField multiline aria-label="Meeting notes" value={notes} disabled={disabled} onChange={onChange} placeholder="Notes for this meeting… try @ and a name" className="min-h-64 py-2" />
         </SidePanel>
       )}
     </>
