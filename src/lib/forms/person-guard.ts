@@ -6,6 +6,7 @@ import { datesInText } from "@/lib/forms/form-date-answer";
 import { isNotAName } from "@/lib/forms/not-a-name";
 import { isAcceptedOffRoster } from "@/lib/forms/off-roster-confirm";
 import { installSlotRosterNames, namesAMetric, outsideRequestSlot } from "@/lib/forms/request-slot";
+import { installTerminationRosterNames } from "@/lib/forms/template-intent";
 
 /**
  * ============================================================================
@@ -100,6 +101,8 @@ export function personRosterNames(): readonly string[] | undefined {
 
 // FORM_NAME_FROM_ROSTER_ENABLED: the request slot never rules out somebody's whole roster name (`request-slot.ts`).
 installSlotRosterNames(personRosterNames);
+// TERMINATION_REQUEST_IS_CA_ENABLED: "create a termination for <A>" resolves <A> against the same roster.
+installTerminationRosterNames(personRosterNames);
 
 /** On the roster: the full name, or a one-word candidate that is someone's first or last name. */
 function onRoster(candidate: string): boolean {

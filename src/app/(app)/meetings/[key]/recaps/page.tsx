@@ -11,6 +11,7 @@ import { isMeetingKey } from "@/features/l10/lib/config";
 import { formatDuration, formatHeld } from "@/features/l10/lib/doc";
 import { businessDate, todoState } from "@/features/l10/lib/dueStatus";
 import { solvedOwner, solvedTitle } from "@/features/l10/lib/types";
+import { todosCompletedPct } from "@/features/l10/lib/past";
 import { DeleteRecapButton } from "@/features/l10/meeting/_components/DeleteRecapButton";
 import { PrintButton } from "@/features/l10/meeting/_components/PrintButton";
 import { MentionText } from "@/features/l10/ui/Mentions";
@@ -102,6 +103,15 @@ export default async function RecapsPage({ params, searchParams }: { params: Pro
                 <dt className="text-[11px] font-bold tracking-wide text-muted uppercase">Issues solved</dt>
                 <dd className="m-0 text-3xl font-bold">{r.resolved_issues?.length ?? 0}</dd>
               </div>
+              {/* Recaps saved from 15 Nov 2026 record how many of the meeting's to-dos were done; older ones show nothing here. */}
+              {todosCompletedPct(r) !== null && (
+                <div>
+                  <dt className="text-[11px] font-bold tracking-wide text-muted uppercase">To-dos completed</dt>
+                  <dd className="m-0 text-3xl font-bold" data-testid="recap-todos-completed">
+                    {todosCompletedPct(r)}%
+                  </dd>
+                </div>
+              )}
               <div>
                 <dt className="text-[11px] font-bold tracking-wide text-muted uppercase">Attendees</dt>
                 <dd className="m-0">

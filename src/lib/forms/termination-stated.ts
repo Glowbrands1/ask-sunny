@@ -1,4 +1,4 @@
-import { terminationStatedTicksEnabled } from "@/lib/config/chat-quality-flags";
+import { terminationRequestIsCaEnabled, terminationStatedTicksEnabled } from "@/lib/config/chat-quality-flags";
 
 import { TERMINATION_PLAN_CLOSING } from "./required-closing";
 
@@ -64,7 +64,7 @@ const HEDGE = new RegExp(
 const NEGATION = /\b(?:not|no|never|nor|cannot|without)\b|n['’]t\b/i;
 
 /** The absence, not a negation: "no call no show", "no-call/no-show", "NCNS". */
-const NO_CALL_NO_SHOW = /\bno[\s-]?call\s*[,/&-]?\s*(?:and\s+)?no[\s-]?show\b|\bncns\b/gi;
+const NO_CALL_NO_SHOW = /\bno[\s-]?call\s*[,/&-]?\s*(?:and\s+)?no[\s-]?show(?:s|ed|ing)?\b|\bncns\b/gi;
 
 /** A clause whose subject is the employee ("she never showed", "because she didn't call in"). */
 const INCIDENT_CLAUSE = /^\s*(?:(?:and|because|since|as)\s+)?(?:she|he|they|the\s+employee)\b/i;
@@ -72,8 +72,16 @@ const INCIDENT_CLAUSE = /^\s*(?:(?:and|because|since|as)\s+)?(?:she|he|they|the\
 const ATTENDANCE_CLAUSE =
   /^\s*(?:(?:and|because|since|as)\s+)?(?:did(?:n['’]?t)?|never|was(?:n['’]?t)?|had(?:n['’]?t)?)\b.*\b(?:show(?:ed)?|call(?:ed)?|came|come|clock(?:ed)?)\b/i;
 
+/**
+ * TERMINATION_REQUEST_IS_CA_ENABLED (QA round 3, 15 Nov 2026): "create a termination for <A>, she no call no showed on 11/12"
+ * IS the manager stating a termination. The request phrase (create | make | do | write up | start | draft | need, "a
+ * termination", optionally "CA", then "for" and a word; never "form" or "paperwork") ticks like "term CA" does, with the
+ * same hedge, negation and question checks. With no word after "for" ("for no call no show", blanked above) it does not.
+ */
+const REQUEST_TERMINATION = /\b(?:create|make|do|write(?:\s+up)?|start|draft|need)\s+(?:me\s+)?(?:an?\s+)?termination(?:\s+(?:ca|c\/a))?\s+for\s+\p{L}/iu;
+
 function stated(clause: string): boolean {
-  return STATED.test(clause) || TERMINATE_NAME.test(clause);
+  return STATED.test(clause) || TERMINATE_NAME.test(clause) || (terminationRequestIsCaEnabled() && REQUEST_TERMINATION.test(clause));
 }
 
 /**
