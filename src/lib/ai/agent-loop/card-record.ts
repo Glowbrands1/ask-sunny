@@ -41,9 +41,51 @@ function isCardSlot(value: unknown): value is CardSlot {
   return Boolean(row) && typeof row!.proposalId === "string" && typeof row!.templateKey === "string";
 }
 
-/** The cards this user's loop made in this conversation, oldest first. None without a conversation id, or if the read fails. */
-export async function readCardRecords(conversationId: string | undefined, userId: string): Promise<CardRecord[]> {
-  if (!conversationId) return [];
+/*
+ * THE NAME QUESTION RECORD (fix batch items 4 and 3; QA's review of #1051, 16 Nov 2026): a turn whose find_staff gave a
+ * "Did you mean" writes which roster people it offered and what the manager had typed into `slots.agent_loop.name_question`,
+ * beside the card. The next turn reads the manager's answer against this record, never against the reply's text (a
+ * paraphrased question still counts). Like the card, it holds one-way keys only (`personKey`): of each offered person's
+ * roster id, and of the typed name; the people are found again in the roster by key.
+ */
+export interface NameQuestionSlot {
+  /** `personKey` of each offered roster person's id, in the order offered. */
+  readonly offeredKeys: readonly string[];
+  /** `personKey` of the name the manager typed (as find_staff was given it). */
+  readonly typedKey: string;
+}
+
+export interface NameQuestionRecord extends NameQuestionSlot {
+  /** The manager's message the question's turn answered (the trace's message_id). */
+  readonly messageId: string | null;
+}
+
+function isNameQuestionSlot(value: unknown): value is NameQuestionSlot {
+  const row = value as Partial<NameQuestionSlot> | null;
+  return Boolean(row) && Array.isArray(row!.offeredKeys) && row!.offeredKeys.every((key) => typeof key === "string") && typeof row!.typedKey === "string";
+}
+
+/*
+ * THE PERSON ASKED RECORD (fix batch item 6; QA's review of #1051): a turn whose propose_form asked who the form is for
+ * (no person yet) writes `slots.agent_loop.person_asked = { templateKey }`. The next turn is then told up front that the
+ * manager's message answers it (`answering_who_question`), never by reading the reply. No names.
+ */
+export interface PersonAskedSlot {
+  readonly templateKey: string;
+}
+
+export interface PersonAskedRecord extends PersonAskedSlot {
+  readonly messageId: string | null;
+}
+
+type TraceRow = { message_id: string | null; slots: { agent_loop?: { card?: unknown; name_question?: unknown; person_asked?: unknown } } | null };
+
+type LoopRecords = { cards: CardRecord[]; nameQuestions: NameQuestionRecord[]; personAsked: PersonAskedRecord[] };
+const NO_RECORDS = (): LoopRecords => ({ cards: [], nameQuestions: [], personAsked: [] });
+
+/** This user's loop records in this conversation, oldest first, from one read. Empty without a conversation id, or if the read fails. */
+export async function readLoopRecords(conversationId: string | undefined, userId: string): Promise<LoopRecords> {
+  if (!conversationId) return NO_RECORDS();
   try {
     const { data, error } = await getSupabaseAdmin()
       .from("chat_traces")
@@ -51,16 +93,32 @@ export async function readCardRecords(conversationId: string | undefined, userId
       .eq("conversation_id", conversationId)
       .eq("user_id", userId)
       .order("created_at", { ascending: true });
-    if (error) return [];
-    return ((data ?? []) as { message_id: string | null; slots: { agent_loop?: { card?: unknown } } | null }[]).flatMap((row) => {
-      const card = row.slots?.agent_loop?.card;
-      return isCardSlot(card)
-        ? [{ proposalId: card.proposalId, employeeKey: card.employeeKey ?? null, nameKey: card.nameKey ?? null, templateKey: card.templateKey, templateName: card.templateName ?? null, messageId: row.message_id, asked: Array.isArray(card.asked) ? card.asked.filter((field): field is string => typeof field === "string") : [] }]
-        : [];
-    });
+    if (error) return NO_RECORDS();
+    const rows = (data ?? []) as TraceRow[];
+    return {
+      cards: rows.flatMap((row) => {
+        const card = row.slots?.agent_loop?.card;
+        return isCardSlot(card)
+          ? [{ proposalId: card.proposalId, employeeKey: card.employeeKey ?? null, nameKey: card.nameKey ?? null, templateKey: card.templateKey, templateName: card.templateName ?? null, messageId: row.message_id, asked: Array.isArray(card.asked) ? card.asked.filter((field): field is string => typeof field === "string") : [] }]
+          : [];
+      }),
+      nameQuestions: rows.flatMap((row) => {
+        const asked = row.slots?.agent_loop?.name_question;
+        return isNameQuestionSlot(asked) ? [{ offeredKeys: [...asked.offeredKeys], typedKey: asked.typedKey, messageId: row.message_id }] : [];
+      }),
+      personAsked: rows.flatMap((row) => {
+        const asked = row.slots?.agent_loop?.person_asked as Partial<PersonAskedSlot> | undefined;
+        return asked && typeof asked.templateKey === "string" ? [{ templateKey: asked.templateKey, messageId: row.message_id }] : [];
+      }),
+    };
   } catch {
-    return [];
+    return NO_RECORDS();
   }
+}
+
+/** The cards this user's loop made in this conversation, oldest first. None without a conversation id, or if the read fails. */
+export async function readCardRecords(conversationId: string | undefined, userId: string): Promise<CardRecord[]> {
+  return (await readLoopRecords(conversationId, userId)).cards;
 }
 
 /**
@@ -68,8 +126,13 @@ export async function readCardRecords(conversationId: string | undefined, userId
  * card's turn answered. Keyed by the reply's index in `history`.
  */
 export function cardTurns(history: readonly ChatMessage[], records: readonly CardRecord[]): Map<number, CardRecord> {
+  return replyTurns(history, records);
+}
+
+/** The history's assistant replies a record's turn wrote: the reply right after the manager's message that turn answered. */
+export function replyTurns<T extends { readonly messageId: string | null }>(history: readonly ChatMessage[], records: readonly T[]): Map<number, T> {
   const byMessage = new Map(records.filter((record) => record.messageId).map((record) => [record.messageId!, record]));
-  const shown = new Map<number, CardRecord>();
+  const shown = new Map<number, T>();
   history.forEach((message, index) => {
     if (message.role !== "user") return;
     const record = byMessage.get(message.id);

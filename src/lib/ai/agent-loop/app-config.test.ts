@@ -18,6 +18,10 @@ import { rulesBookText } from "./rules-book";
  * the rules book. That line names no app, place, staff system or form key, so it reads the same under every config;
  * nothing else in either text changed.
  *
+ * Updated on purpose on 16 Nov 2026 (fix batch item 4): the two "Did you mean" lines in "Who the form is for" became one
+ * consistent instruction (a yes or the full name typed back is a yes; confirmed_by_manager). Both lines name no app,
+ * place, staff system or form key; nothing else in either text changed.
+ *
  * Re-taken on purpose on 16 Nov 2026 (fix batch item 1, an exit card nobody asked for): the Which form exit line now
  * asks for exit_evidence's kind, and one line was added for a resignation told with no ask. Both read the same under
  * every config; nothing else changed.

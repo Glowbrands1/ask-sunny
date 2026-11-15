@@ -282,7 +282,9 @@ describe("the agenda, hints and roster come from the Hub (the STC DM L10 change,
     fireEvent.click(screen.getByRole("button", { name: /\d · IDS/ })); // "IDS" in the STC DM L10's Bloom agenda since 15 Nov 2026
     fireEvent.change(screen.getByLabelText("Identify a new issue"), { target: { value: "New onboarding process" } });
     fireEvent.click(screen.getByRole("button", { name: "Add issue" }));
-    expect(screen.getByTitle("Added by Avery Quill").textContent).toBe("AQ");
+    // Changed on purpose 15 Nov 2026: on the Bloom-style page the IDS quick-add has an owner picker, which starts on the
+    // person adding, so the row shows the owner's initials (here the same person) instead of "Added by".
+    expect(within(screen.getByRole("list", { name: "Open issues" })).getByTitle("Avery Quill").textContent).toBe("AQOwner: Avery Quill");
     await act(async () => {
       await vi.waitFor(() => expect(save).toHaveBeenCalled());
     });
@@ -512,16 +514,28 @@ describe("Bloom-style page: Segue and Conclude", () => {
   const view = (doc: Record<string, unknown> = {}, save: SaveFn = vi.fn() as unknown as SaveFn) =>
     render(<MeetingView info={info} initial={loaded(3, doc)} save={save} end={vi.fn() as unknown as EndFn} viewer={viewer} roster={roster} hubMeetingUrl={HUB} pollMs={0} debounceMs={0} today="2026-11-15" recaps={[recap]} />);
 
-  it("Segue: last week's feedback, then this week's question saved as segueQuestion", async () => {
+  it("Segue: last week's feedback, then this week's icebreaker question saved as segueQuestion", async () => {
     const save = vi.fn().mockResolvedValue({ ok: true, version: 4, updatedAt: "2026-11-15T00:00:00Z" } satisfies SaveOutcome);
     view({ segueQuestion: "What AI tool saved you time?" }, save as unknown as SaveFn);
     const feedback = screen.getByRole("region", { name: "Last week's feedback" });
     expect(within(feedback).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["9Avery Quill", "8Bo Lark"]);
-    const q = within(screen.getByRole("region", { name: "This week's question" })).getByLabelText("This week's question") as HTMLTextAreaElement;
+    const q = within(screen.getByRole("region", { name: "This week's icebreaker question" })).getByLabelText("This week's icebreaker question") as HTMLTextAreaElement;
     expect(q.value).toBe("What AI tool saved you time?");
     fireEvent.change(q, { target: { value: "What AI tool saved you an hour?" } });
     await waitFor(() => expect(save).toHaveBeenCalled());
     expect((save.mock.calls.at(-1)![2] as { segueQuestion: string }).segueQuestion).toBe("What AI tool saved you an hour?");
+  });
+
+  it("the icebreaker question shows the save status under it, so typing visibly saves (the owner thought it did not, 15 Nov 2026)", async () => {
+    const save = vi.fn().mockResolvedValue({ ok: true, version: 4, updatedAt: "2026-11-15T00:00:00Z" } satisfies SaveOutcome);
+    view({}, save as unknown as SaveFn);
+    const box = within(screen.getByRole("region", { name: "This week's icebreaker question" }));
+    expect(box.getByRole("heading", { name: "THIS WEEK'S ICEBREAKER QUESTION" })).toBeTruthy();
+    const field = box.getByLabelText("This week's icebreaker question") as HTMLTextAreaElement;
+    expect(field.getAttribute("placeholder")).toBe("Add this week's icebreaker question…");
+    fireEvent.change(field, { target: { value: "Best tool this week?" } });
+    await waitFor(() => expect(save).toHaveBeenCalled());
+    await waitFor(() => expect(box.getByTestId("segue-save-status").textContent).toBe("All changes saved"));
   });
 
   it("Conclude before the meeting starts shows the last meeting's summary; during the meeting the existing steps", () => {
@@ -605,6 +619,36 @@ describe("Rock Review: a rock opens in a side panel", () => {
   });
 });
 
+// The scorecard on the Bloom-style STC DM L10 (the owner's request, 15 Nov 2026), as in the Hub.
+describe("Bloom-style page: Scorecard", () => {
+  it("has Who, Metric, Goal and the weeks newest first by range, this week shaded, rows by owner, cells tinted", () => {
+    const row = (id: string, metric: string, owner: string, weeks: (number | null)[]) => ({ id, metric, owner, goal: "≥ 5", goalValue: 5, higherIsBetter: true, format: "number", weeks });
+    render(
+      <MeetingView
+        info={info}
+        initial={loaded(3, { weekEndings: ["11/01/2026", "11/08/2026", "11/15/2026"], scorecard: [row("s1", "Sales calls", "Avery Quill", [4, 6, null]), row("s2", "Reviews", "Bo Lark", [7, 2, 5]), row("s3", "Visits", "Avery Quill", [5, 5, 9])] })}
+        save={vi.fn() as unknown as SaveFn}
+        end={vi.fn() as unknown as EndFn}
+        viewer={viewer}
+        roster={roster}
+        hubMeetingUrl={HUB}
+        pollMs={0}
+        debounceMs={0}
+        today="2026-11-12"
+      />,
+    );
+    fireEvent.click(within(screen.getByRole("region", { name: "Agenda" })).getByRole("button", { name: /Scorecard/ }));
+    const table = within(screen.getByTestId("bloom-scorecard"));
+    const heads = table.getAllByRole("columnheader");
+    expect(heads.map((h) => h.textContent)).toEqual(["Who", "Metric", "Goal", "9 Nov / 15 Nov", "2 Nov / 8 Nov", "26 Oct / 1 Nov"]);
+    expect(heads.filter((h) => h.dataset.current).map((h) => h.textContent)).toEqual(["9 Nov / 15 Nov"]);
+    expect(table.getAllByRole("rowgroup").slice(1).map((g) => g.getAttribute("aria-label"))).toEqual(["Avery Quill's metrics", "Bo Lark's metrics"]);
+    expect(table.getByRole("button", { name: "Sales calls 9 Nov / 15 Nov: —" }).className).toContain("border-dashed");
+    expect(table.getByRole("button", { name: "Sales calls 2 Nov / 8 Nov: 6" }).className).toContain("bg-[#e1f1e4]");
+    expect(table.getByRole("button", { name: "Sales calls 26 Oct / 1 Nov: 4" }).className).toContain("bg-[#fbe4e4]");
+  });
+});
+
 // Rocks and To-dos on the Bloom-style STC DM L10 (the owner's request, 15 Nov 2026), as in the Hub.
 describe("Bloom-style page: Rocks and To-dos", () => {
   const doc = {
@@ -653,5 +697,35 @@ describe("Bloom-style page: Rocks and To-dos", () => {
     expect(row.getByTitle("Avery Quill").textContent).toBe("AQAvery Quill");
     expect(row.getByTestId("todo-due").textContent).toBe("11-20-2026");
     expect(within(rows.find((r) => r.textContent?.includes("Call the landlord"))!).getByRole("checkbox").getAttribute("aria-checked")).toBe("true");
+  });
+});
+
+// IDS on the Bloom-style STC DM L10 (the owner's request, 15 Nov 2026), as in the Hub.
+describe("Bloom-style page: IDS", () => {
+  it("rows have a ! circle, the owner's initials, Solve and the term button; ! issues first; Oldest / Newest", async () => {
+    const save = vi.fn().mockResolvedValue({ ok: true, version: 4, updatedAt: "2026-11-15T00:00:00Z" } satisfies SaveOutcome);
+    renderView({
+      save: save as unknown as SaveFn,
+      initial: loaded(3, {
+        issues: [
+          { id: "i1", title: "First issue", notes: "", resolved: false, owner: "Bo Lark" },
+          { id: "i2", title: "Second issue", notes: "", resolved: false },
+          { id: "i3", title: "Third issue", notes: "", resolved: false, priority: true, owner: "Cy Marlow" },
+        ],
+      }),
+    });
+    fireEvent.click(screen.getByRole("button", { name: /\d · IDS/ }));
+    const titles = () => within(screen.getByRole("list", { name: "Open issues" })).getAllByRole("listitem").map((li) => li.querySelector("[aria-expanded] .font-semibold")?.textContent);
+    expect(titles()).toEqual(["Third issue", "First issue", "Second issue"]);
+    const first = within(within(screen.getByRole("list", { name: "Open issues" })).getAllByRole("listitem")[1]);
+    expect(first.getByRole("button", { name: "Priority: First issue" }).getAttribute("aria-pressed")).toBe("false");
+    expect(first.getByTitle("Bo Lark").textContent).toBe("BLOwner: Bo Lark");
+    expect(first.getByRole("button", { name: "Solve First issue" })).toBeTruthy();
+    expect(first.getByRole("button", { name: "Move to long-term: First issue" })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Sort issues"), { target: { value: "newest" } });
+    expect(titles()).toEqual(["Third issue", "Second issue", "First issue"]);
+    fireEvent.click(screen.getByRole("button", { name: "Priority: Second issue" }));
+    await waitFor(() => expect(save).toHaveBeenCalled());
+    expect((save.mock.calls.at(-1)![2] as { issues: { id: string; priority?: boolean }[] }).issues.find((i) => i.id === "i2")?.priority).toBe(true);
   });
 });

@@ -1569,6 +1569,57 @@
   }
 }
 
+/*
+ * THE SCORECARD'S ACCENTS (the Hub's tokens, Leadership Hub #98; the owner's request, 15 Nov 2026), in Ask Sunny's
+ * yellow family. The Hub names the current week's shade and six owner avatar colours as tokens, applied by data
+ * attribute (Scorecard.tsx writes no colour of its own); here they are declared INSIDE `.hub-l10` from Ask Sunny's
+ * --approved-* tokens. Contrast (computed): owners 1–3 yellow-ink on yellow tints 12.71 / 11.20 / 9.44:1, 4 yellow on
+ * ink 13.09:1, 5 white on amber 7.42:1, 6 amber on white 7.42:1; the current week: ink on its tint 18.25:1, white on
+ * its dark head 9.52:1.
+ */
+.hub-l10 {
+  --week-current: color-mix(in srgb, var(--approved-brand-yellow) 18%, var(--approved-card));
+  --week-current-head: color-mix(in srgb, var(--approved-brand-yellow) 30%, var(--color-ink));
+  --owner-1-bg: color-mix(in srgb, var(--approved-brand-yellow) 25%, var(--approved-card));
+  --owner-1-ink: var(--approved-yellow-ink);
+  --owner-2-bg: color-mix(in srgb, var(--approved-brand-yellow) 55%, var(--approved-card));
+  --owner-2-ink: var(--approved-yellow-ink);
+  --owner-3-bg: var(--approved-brand-yellow);
+  --owner-3-ink: var(--approved-yellow-ink);
+  --owner-4-bg: var(--color-ink);
+  --owner-4-ink: var(--approved-brand-yellow);
+  --owner-5-bg: var(--approved-yellow-label);
+  --owner-5-ink: var(--approved-card);
+  --owner-6-bg: var(--approved-card);
+  --owner-6-ink: var(--approved-yellow-label);
+}
+
+/* The current week's column: its header and every cell (an empty cell's box lets the shade through). */
+.hub-l10 th[data-current-week] {
+  background-color: var(--week-current-head);
+  color: var(--approved-card);
+}
+.hub-l10 td[data-current-week] {
+  background-color: var(--week-current);
+}
+.hub-l10 td[data-current-week] [data-tone="empty"] {
+  background-color: transparent;
+}
+
+/* An owner's avatar, and a faint bar on the left of each of their rows, in the owner's colour (lib/bloom.ts ownerColor). */
+.hub-l10 [data-owner-color="1"] { background-color: var(--owner-1-bg); color: var(--owner-1-ink); }
+.hub-l10 [data-owner-color="2"] { background-color: var(--owner-2-bg); color: var(--owner-2-ink); }
+.hub-l10 [data-owner-color="3"] { background-color: var(--owner-3-bg); color: var(--owner-3-ink); }
+.hub-l10 [data-owner-color="4"] { background-color: var(--owner-4-bg); color: var(--owner-4-ink); }
+.hub-l10 [data-owner-color="5"] { background-color: var(--owner-5-bg); color: var(--owner-5-ink); }
+.hub-l10 [data-owner-color="6"] { background-color: var(--owner-6-bg); color: var(--owner-6-ink); box-shadow: inset 0 0 0 1px var(--owner-6-ink); }
+.hub-l10 [data-owner-row="1"] > td:first-child { box-shadow: inset 3px 0 0 var(--owner-1-bg); }
+.hub-l10 [data-owner-row="2"] > td:first-child { box-shadow: inset 3px 0 0 var(--owner-2-bg); }
+.hub-l10 [data-owner-row="3"] > td:first-child { box-shadow: inset 3px 0 0 var(--owner-3-bg); }
+.hub-l10 [data-owner-row="4"] > td:first-child { box-shadow: inset 3px 0 0 var(--owner-4-bg); }
+.hub-l10 [data-owner-row="5"] > td:first-child { box-shadow: inset 3px 0 0 var(--owner-5-bg); }
+.hub-l10 [data-owner-row="6"] > td:first-child { box-shadow: inset 3px 0 0 var(--owner-6-ink); }
+
 /* ── Glass utilities (the Hub's) ─────────────────────────────── */
 
 @utility glass {

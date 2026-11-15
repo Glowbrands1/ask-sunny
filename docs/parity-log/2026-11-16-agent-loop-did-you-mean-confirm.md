@@ -1,0 +1,22 @@
+# 2026-11-16 — agent loop: the "Did you mean" answer (fix batch item 4)
+
+**Stays Sunny-only for now.** The change is in the agent loop (`src/lib/ai/agent-loop/confirmed-spelling.ts`,
+`tools.ts` find_staff and propose_form, one rules-book line), which Ask Bubbles does not have yet (it is behind
+AGENT_LOOP_ENABLED + AGENT_LOOP_USERS here). Today's chat path is untouched: its `readNameConfirmation` and
+`settledNameQuestions` in `src/lib/forms/employee-match.ts` are only read, not changed.
+
+When the loop is ported, take the mechanism with it: find_staff's "Did you mean" is written to the turn's trace
+(`slots.agent_loop.name_question`: `offeredKeys`, `typedKey`, one-way keys only, beside the card record) and read back
+by the next turn, never from the reply's text. A spelling the manager confirmed (a bare yes, or <A>'s full name typed
+back as whole words) counts as <A> when the card picks this person's turns, and find_staff returns
+`confirmed_by_manager` so the model proposes instead of asking again.
+Swap Sunny's invented people and the salon/store wording; there is no word list to port.
+
+**Item 3 (same PR, also Sunny-only):** an answer to the "Did you mean **<A>**?" that names somebody else in full (a
+pasted account about <B>) is not a yes; propose_form refuses <A> with `right_person` and the model asks or looks up
+<B> (`answerNamesSomeoneElse` in the same file). Port it with item 4.
+
+**Item 6 (same PR, also Sunny-only):** with nobody named, propose_form returns ask_exactly and the turn records
+`slots.agent_loop.person_asked = { templateKey }`; the next turn's system facts say `answering_who_question` up front
+(look the answer up with find_staff; a first name is a name, never an acronym). No reply text is read and no extra
+model call is made on the answering turn. Port it with the loop.
