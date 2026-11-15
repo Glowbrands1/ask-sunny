@@ -1,7 +1,6 @@
-## 15 Nov 2026: agent loop batch K (past-forms gate, "ready", CA-only fields) — Sunny-only
+## 15 Nov 2026: agent loop batch K ("ready", CA-only fields; K7 dropped for forms_on_file_evidence) — Sunny-only
 
-QA's 266-chat shadow replay: K7 the loop's past-forms privacy gate (`asksAboutPastForms`) under-read explicit asks ("look for
-exit form <A>", "the coaching form … that we just created can you pull it back up"); K10 the reply said a card was ready when
+QA's 266-chat shadow replay: K10 the reply said a card was ready when
 `card.status` was not (rules-book line plus a `ready` fact on propose_form / edit_form cards); K11 a Coaching card made from a CA
 conversation carried payroll = no (payroll deduct, warning level and termination are kept only on a Corrective Action).
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { asksAboutPastForms, pastFormsPerson } from "./tools";
+import { asksAboutPastForms } from "./tools";
 
 /*
  * PAST FORMS ONLY WHEN ASKED (Pau's privacy rule; QA's review of #992, 14 Nov 2026). QA's probe sentences, their wording
@@ -32,38 +32,6 @@ const CLOSED = [
   // QA (14 Nov 2026): "already has one" with no form word in the same message stays closed.
   "she already has one",
   "she already has one, she was late again",
-  // QA's 266-chat shadow replay (batch K7): neighbours of the new asks stay closed.
-  "we just created a new policy for phones",
-  "we just created a new schedule, she was late on it",
-  "find a coaching form for tardiness",
-  "find me a form for the late policy",
-  "look for a better way to word this",
-  "can you look for the policy on phones",
-  "pull that policy up",
-  "bring it up with her at the next meeting",
-  "bring her back for another training shift",
-  // QA's review of #1021: asking for a NEW form (or its template) never opens the lock; only retrieving an EXISTING form of a person does.
-  "can you find the form I need for a no show",
-  "find the right form for a no call no show",
-  "find the correct form for tardiness",
-  "find me the best form for this",
-  "find the form for a termination",
-  "find the corrective action form please",
-  "find the form to write her up",
-  "can you find the CA form, I need to write Juno up",
-  "find my form, I want to make a CA for Remy",
-  "find the warning she needs for this",
-  "find their warning letter template",
-  "look for the coaching form template",
-  "find that coaching sheet",
-  "locate the exit form so I can fill it out for Remy",
-  "look for the termination form, she quit",
-  "look for exit form",
-  "write up a CA, she needs to bring it back tomorrow",
-  "give her the write up and bring it back signed",
-  "the CA, bring it up with her at the meeting",
-  "make a CA, I'll pull it up on my phone",
-  "the form that I just made a mistake on",
 ];
 
 const OPEN = [
@@ -87,29 +55,7 @@ const OPEN = [
   // QA (14 Nov 2026), the MSB family: the manager asks for another employee's CA as the format (invented names).
   "...but i need it to be in the format of Corvina Lisle's ca it needs to look exactally the same as corvina lisles but wtih all of this information",
   "make it look the same as corvinas ca",
-  // QA's 266-chat shadow replay (batch K7), their wording, people invented: explicit asks the gate under-read.
-  // Reworded only as far as QA's rule needs (retrieving an existing form of a named or possessed person).
-  "look for Marnie Holloway's exit form",
-  "find her coaching form",
-  "find Juno Paxton's CA",
-  "find the exit form for Remy Calder on file",
-  "the coaching form for Marnie Holloway that we just created, can you pull it back up",
-  "Remy Calder's CA, can you pull it back up",
-  "the coaching form we did for Juno Paxton, pull it up",
 ];
-
-describe("the past-forms gate stays tied to the person it was opened for (QA's review of #1021)", () => {
-  const person = (question: string) => pastFormsPerson({ question, history: [] });
-  it("a CA that we just made for one person does not allow another's forms", () => {
-    expect(ask("a CA that we just made for Juno, now do one for Remy")).toBe(true);
-    expect(person("a CA that we just made for Juno, now do one for Remy")?.toLowerCase()).toContain("juno");
-    expect(person("the coaching form for Marnie Holloway that we just created, can you pull it back up")?.toLowerCase()).toContain("marnie");
-  });
-  it("an ask that names no person, or the older patterns, are not tied", () => {
-    expect(person("what's on file for wren")).toBeNull();
-    expect(person("find her coaching form")).toBeNull();
-  });
-});
 
 describe("the past-forms gate", () => {
   it.each(CLOSED)("stays closed: %s", (question) => expect(ask(question)).toBe(false));
