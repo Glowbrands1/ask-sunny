@@ -158,8 +158,10 @@ function Stat({ label, value }: { label: string; value: string }) {
 }
 
 /**
- * "New Issue", pinned at the bottom of every page as in Bloom: who owns it, the issue, Enter. It takes the place of the
- * floating Add to IDS button on these meetings and saves the same way (with an owner).
+ * "New Issue": who owns it, the issue, Enter. It takes the place of the floating Add to IDS button on these meetings and
+ * saves the same way (with an owner). Inline in the main column, right after each page's title and hint (on the segue
+ * page, right under the round-robin banner): the owner asked "why is the issue at the bottom? It should be at the top"
+ * (15 Nov 2026). It was pinned to the bottom of the window across its full width, over Ask Sunny's sidebar.
  */
 export function NewIssueBar({ people, me, onAdd }: { people: string[]; me: string; onAdd: (title: string, owner: string) => void }) {
   const [title, setTitle] = useState("");
@@ -175,18 +177,17 @@ export function NewIssueBar({ people, me, onAdd }: { people: string[]; me: strin
   return (
     <form
       aria-label="New Issue"
-      data-page-fab
       data-testid="new-issue-bar"
       onSubmit={(e) => {
         e.preventDefault();
         submit();
       }}
-      className="fixed inset-x-0 bottom-0 z-40 flex items-center gap-2 border-t border-line bg-white/95 px-3 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom,0px))] shadow-[0_-8px_24px_-12px_rgb(10_10_10/0.18)] backdrop-blur print:hidden"
+      className="flex min-w-0 items-center gap-2 rounded-[10px] border border-line bg-white px-3 py-2 shadow-card print:hidden"
     >
       <span aria-hidden className="hidden size-8 flex-none items-center justify-center rounded-full bg-cream text-[11px] font-bold sm:flex" title={owner}>
         {initials(owner)}
       </span>
-      <select aria-label="Issue owner" value={owner} onChange={(e) => setOwner(e.target.value)} className={cx(inputClass, "w-36 flex-none sm:w-44")}>
+      <select aria-label="Issue owner" value={owner} onChange={(e) => setOwner(e.target.value)} className={cx(inputClass, "w-32 flex-none sm:w-44")}>
         {people.map((p) => (
           <option key={p}>{p}</option>
         ))}

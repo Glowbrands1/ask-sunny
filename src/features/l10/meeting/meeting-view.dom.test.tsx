@@ -135,7 +135,7 @@ describe("the DM L10 page in Ask Sunny", () => {
   });
 
   // Changed on purpose 15 Nov 2026: the STC DM L10's pages are laid out like Bloom Growth's, so the floating Add to IDS
-  // button became the New Issue bar pinned at the bottom (owner, issue, Enter).
+  // button became the New Issue bar (owner, issue, Enter), inline at the top of each page since the owner's report below.
   it("has the New Issue bar in place of the floating Add to IDS button", () => {
     renderView();
     expect(screen.queryByRole("button", { name: /Add to IDS/ })).toBeNull();
@@ -380,7 +380,7 @@ describe("IDS: move between the lists from the row, and no headlines where the m
 });
 
 // The STC DM L10's pages are laid out like Bloom Growth's (the owner's request, 15 Nov 2026): Meeting Notes under the
-// agenda, "Last meeting's summary" on top and the New Issue bar at the bottom, as in the Hub.
+// agenda, "Last meeting's summary" on top and the New Issue bar (inline at the top of each page), as in the Hub.
 describe("Bloom-style page: what every page shares", () => {
   const recap = {
     id: "r1",
@@ -398,6 +398,27 @@ describe("Bloom-style page: what every page shares", () => {
     open_todos: [],
     resolved_issues: ["Front desk coverage"],
   };
+
+  it('the New Issue bar is inline at the top of each page, not pinned to the bottom ("why is the issue at the bottom? It should be at the top, after Round-robin: check off")', async () => {
+    renderView();
+    const bar = () => screen.getByRole("form", { name: "New Issue" });
+    // The segue page: right under the "Round-robin: check off each attendee as they share" banner.
+    const banner = screen.getByText("Round-robin: check off each attendee as they share.").parentElement!;
+    expect(banner.nextElementSibling).toBe(bar());
+    // Not fixed to the window (it spanned the window over Ask Sunny's sidebar footer), and not a floating button.
+    expect(bar().className).not.toMatch(/\bfixed\b/);
+    expect(bar().hasAttribute("data-page-fab")).toBe(false);
+    // Every other agenda page: right after the section's title and hint.
+    for (const section of [/Scorecard/, /Rock Review/, /To-do List/, /· IDS/, /Conclude/]) {
+      fireEvent.click(within(screen.getByRole("region", { name: "Agenda" })).getAllByRole("button", { name: section })[0]);
+      const heading = screen.getByRole("heading", { level: 2, name: new RegExp(section.source.replace("· ", "")) });
+      expect(heading.parentElement!.nextElementSibling, `${section}`).toBe(bar());
+    }
+    // The "i" shortcut still goes to it.
+    (document.activeElement as HTMLElement | null)?.blur();
+    fireEvent.keyDown(document, { key: "i" });
+    expect(document.activeElement).toBe(within(bar()).getByRole("textbox", { name: "New Issue" }));
+  });
 
   it("Meeting Notes opens the shared notes pad in a side panel, saves as meetingNotes, and Esc closes it", async () => {
     const save = vi.fn().mockResolvedValue({ ok: true, version: 4, updatedAt: "2026-11-15T00:00:00Z" } satisfies SaveOutcome);

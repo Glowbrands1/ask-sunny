@@ -51,11 +51,13 @@ describe("the generated replay cases", () => {
     expect(expected.length).toBeGreaterThanOrEqual(48);
   });
 
-  it("every phrasing still open names a real case and says it is waiting for PR 1", () => {
+  it("every phrasing still open names a real case and says what it is waiting for", () => {
     const ids = NOV15_AGENT_LOOP_PHRASING_CASES.map((entry) => entry.id);
     for (const [id, why] of Object.entries(OPEN_UNTIL_PR1)) {
       expect(ids, `${id} is not a phrasing case`).toContain(id);
-      expect(why).toContain("TODO(PR1)");
+      // Changed on purpose (PR 1c): the evidence-argument phrasings are done; the one left open is an amount said in words,
+      // which is the amount check's, not PR 1's.
+      expect(why).toMatch(/TODO\((?:PR1|amount-words)\)/);
     }
   });
 });

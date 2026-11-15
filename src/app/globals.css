@@ -1475,6 +1475,74 @@
   color: var(--color-ink);
 }
 
+/* ============================================================================
+   THE DM L10 TAB IN ASK SUNNY'S YELLOW (the owner's request, via QA, 15 Nov 2026)
+   ============================================================================ */
+
+/*
+ * The Leadership Hub's page (above) accents in gold and bronze. In Ask Sunny the tab uses Ask Sunny's own brand yellow
+ * (the rail's active "DM L10" pill, --sidebar-active) by re-pointing the accent tokens INSIDE `.hub-l10` only, as Ask
+ * Bubbles does with its teal. No component changes, so later ports from the Hub still apply as they are. Every value is
+ * an existing Ask Sunny token (--approved-*, --accent-hover) or a mix of them. The neutrals (ink, paper, line, field,
+ * rule, sand) and the warning colours (warn, warn-ink, bad) stay as the Hub has them.
+ *
+ * Yellow is light, so it is a FILL with dark text on it (like the rail pill), never a text colour on a light background:
+ * links and small accent text use the dark amber label (--approved-yellow-label), and so do focus outlines and borders.
+ *
+ * Contrast (WCAG 2.x, computed): yellow-ink on yellow (Start meeting, primary buttons) 9.44:1, on the hover fill
+ * (#e7b900) 7.70:1; ink on yellow (chips, pills) 13.09:1; ink on the tint 18.96:1 and the strong tint (#fff0b2) 17.31:1;
+ * amber text (Clear, links, the current agenda item) on white 7.42:1, on the page canvas 6.95:1, on the tint 7.10:1, on
+ * the strong tint 6.48:1, on the neutral hover surface 6.46:1; yellow text on the ink bar ("← Leadership Hub", Shared,
+ * Current) 13.09:1. Focus outlines and borders (amber) on white 7.42:1, above the 3:1 non-text minimum. Yellow is never
+ * text on a light background here. Ask Sunny has no dark theme for this tab.
+ */
+.hub-l10 {
+  /* gold: progress bars, "Shared"/"Current" pills and other text on the ink bar, mention chips, unread dots. */
+  --gold: var(--approved-brand-yellow);
+  /* gold-head / gold-hover: table heads and icons on ink, the assistant chip's tints. */
+  --color-gold-head: var(--approved-brand-yellow);
+  --color-gold-hover: var(--accent-hover);
+  /* bronze: focus outlines, borders, rings, accent/caret, and the primary button (filled yellow below). */
+  --color-bronze: var(--approved-yellow-label);
+  /* bronze-deep: links (Clear, Open in…), eyebrows, the current agenda item's text, small accent text. */
+  --color-bronze-deep: var(--approved-yellow-label);
+  /* sunny / spa / bar: the current agenda item, the round-robin banner, the shared attendee cards, row highlights. */
+  --color-sunny: var(--approved-yellow-tint);
+  --color-spa: color-mix(in srgb, var(--approved-brand-yellow) 30%, var(--approved-card));
+  --color-bar: color-mix(in srgb, var(--approved-brand-yellow) 30%, var(--approved-card));
+  /* cream: the hover and chip background, here Ask Sunny's neutral clear surface. */
+  --color-cream: var(--approved-clear-surface);
+  /* The floating buttons' and glass cards' shadows had a bronze tint. */
+  --shadow-float:
+    inset 0 1px 0 rgb(255 255 255 / 0.95), 0 20px 50px -12px rgb(10 10 10 / 0.18),
+    0 4px 12px -4px color-mix(in srgb, var(--approved-yellow-label) 12%, transparent);
+  --shadow-float-hover:
+    inset 0 1px 0 rgb(255 255 255 / 0.95), 0 28px 60px -14px rgb(10 10 10 / 0.22),
+    0 6px 16px -6px color-mix(in srgb, var(--approved-yellow-label) 16%, transparent);
+}
+
+.hub-l10 ::selection {
+  background: color-mix(in srgb, var(--approved-brand-yellow) 45%, transparent);
+}
+
+/*
+ * The Hub's primary button (ui.tsx `buttonVariants.primary`: Start meeting, "Scorecard →", Add to IDS, Save) is
+ * `bg-bronze text-white` with a literal hover fill and bronze shadow. In Ask Sunny it is the yellow pill: yellow fill,
+ * yellow-ink text. Matched by class here, so the component stays as the Hub has it.
+ */
+.hub-l10 .bg-bronze.text-white {
+  background-color: var(--approved-brand-yellow);
+  color: var(--approved-yellow-ink);
+}
+.hub-l10 .bg-bronze.text-white.hover\:bg-\[\#755a0c\]:hover {
+  background-color: var(--accent-hover);
+}
+.hub-l10 [class*="rgb(138_106_15/0.6)"] {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.18),
+    0 8px 20px -8px color-mix(in srgb, var(--approved-yellow-label) 60%, transparent);
+}
+
 @media (max-width: 39.999rem) {
   .hub-l10 {
     --fab-right: 1rem;
