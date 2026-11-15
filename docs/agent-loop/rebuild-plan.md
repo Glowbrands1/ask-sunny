@@ -37,6 +37,15 @@ evidence arguments in PR 1/PR 4. Kept, as small salvage PRs off main:
   K6, K12a/b.
 - #1021 (Coding-8): K10 and K11 only; K7 dropped.
 
+## Owner's additions (15 Nov 2026, evening)
+- PR 4 (Coding-8): a test that a refused edit on a finalized form never deletes a draft that was already open
+  before the call; only the draft this call created may be cleaned up.
+- PR 4 (Coding-8): log loop turns with a real category instead of "unclassified" (route.ts:262, 265), taken from
+  the tools the turn actually called (card / edit / open_form / past_forms / policy / chat), never from the
+  message text.
+- PR 6 (Coding-9): a replay test for a turn that makes 3 saved edits in a row. It must finish under
+  AGENT_LOOP_MAX_STEPS with a reply that lists all 3 saved changes, and never the step-limit reply.
+
 ## Rebuild PRs, owners and order
 | Order | PR | Owner | Depends on |
 |---|---|---|---|
