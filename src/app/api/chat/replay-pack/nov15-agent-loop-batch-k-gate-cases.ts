@@ -1,7 +1,7 @@
 import { expect, vi } from "vitest";
 
 import { KEARNEY, STAFF, type ReplayCase } from "./cases";
-import { lastResult, loopStandIn, type LoopDecision } from "./loop-stand-in";
+import { evidenceFrom, lastResult, loopStandIn, type LoopDecision } from "./loop-stand-in";
 
 /**
  * ============================================================================
@@ -62,8 +62,8 @@ export const NOV15_AGENT_LOOP_BATCH_K_GATE_CASES: ReplayCase[] = [
         if (!lastResult(view, "propose_form")) {
           const coaching = view.turns.some((turn) => /coaching/i.test(turn.text) && turn.role === "user" && /make a coaching/i.test(turn.text));
           return coaching
-            ? { tool: "propose_form", input: { template_key: "coaching", employee_id: "e-2", what_happened: "Remy Calder was late on 11/12.", incident_date: "2026-11-12", payroll_deduct: "no", warning_level: "verbal" } }
-            : { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: "Remy Calder was late on 11/12.", incident_date: "2026-11-12", payroll_deduct: "no", warning_level: "verbal" } };
+            ? { tool: "propose_form", input: { template_key: "coaching", employee_id: "e-2", what_happened: "Remy Calder was late on 11/12.", incident_date: "2026-11-12", payroll_deduct: "no", payroll_evidence: evidenceFrom(view), warning_level: "verbal", level_evidence: evidenceFrom(view) } }
+            : { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: "Remy Calder was late on 11/12.", incident_date: "2026-11-12", payroll_deduct: "no", payroll_evidence: evidenceFrom(view), warning_level: "verbal", level_evidence: evidenceFrom(view) } };
         }
         return { text: "Here's the form." };
       }));

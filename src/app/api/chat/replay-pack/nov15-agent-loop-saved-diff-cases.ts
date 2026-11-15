@@ -153,7 +153,7 @@ export const NOV15_AGENT_LOOP_SAVED_DIFF_CASES: ReplayCase[] = [
       t.as("salon_director", KEARNEY);
       const model = loopStandIn((view): LoopDecision => {
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
-        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: "Remy Calder was 20 minutes late on 11/12.", incident_date: "2026-11-12", warning_level: "written" } };
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: "Remy Calder was 20 minutes late on 11/12.", incident_date: "2026-11-12", warning_level: "written", level_evidence: evidenceFrom(view) } };
         return { text: "Here's the Corrective Action Form for **Remy Calder**." };
       });
       t.loopModel!(model);
