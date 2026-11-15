@@ -44,4 +44,57 @@ export const NOV15_AGENT_LOOP_BATCH_J_CASES: ReplayCase[] = [
       expect(reply.content).toMatch(/\*\*Policy:\*\* Standards of Conduct Policy, JBA Policy Manual p\.12/);
     },
   },
+  {
+    id: "nov15-batch-j5-late-to-open-is-late-opening",
+    title: "J5: \"CA for <name>, ASD, late to open 11/12\" cites Late Opening, never Attendance; \"late for her opening shift\" stays Attendance",
+    report: `${REPORT}; "late to open" cited Attendance p.14, where today's chat and #786 (FAILURE_TO_OPEN_IS_LATE_OPENING) give Late Opening p.15`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      // The model's first pick, as the live one made it: Attendance. It proposes again with what propose_form says.
+      const model = loopStandIn((view) => {
+        const result = lastResult(view, "propose_form") as { card?: unknown; error?: string } | undefined;
+        if (!result) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-3", policy: "Attendance", what_happened: "Late opening the salon on 11/12." } };
+        if (result.error && /Late Opening/.test(result.error)) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-3", policy: "Late Opening", what_happened: "Late opening the salon on 11/12." } };
+        return { text: "Here's the Corrective Action Form for **Juno Paxton**." };
+      });
+      const thread = start(t);
+      t.loopModel!(model);
+      await thread.say("CA for juno paxton, ASD, late to open 11/12");
+      const policy = (thread.proposal as { policyLine?: string | null } | undefined)?.policyLine ?? "";
+      expect(policy, "\"late to open\" was cited as Attendance").toMatch(/^Late Opening Policy, JBA Policy Manual p\.15/);
+
+      // Late FOR a shift is Attendance, as today's chat reads it: never refused.
+      const shift = start(t);
+      const kept = loopStandIn((view) =>
+        lastResult(view, "propose_form") ? { text: "Here is the card." } : { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-3", policy: "Attendance", what_happened: "Late for her opening shift on 11/12." } },
+      );
+      t.loopModel!(kept);
+      await shift.say("CA for juno paxton, ASD, she was late for her opening shift 11/12");
+      expect((shift.proposal as { policyLine?: string | null } | undefined)?.policyLine ?? "").toMatch(/^Attendance Policy/);
+    },
+  },
+  {
+    id: "nov15-batch-j-h1-yes-payroll-but-amount-unknown",
+    title: "H1 follow-up: \"yes payroll but I don't know the amount\" is payroll Yes with the amount left blank, never \"tell me the figure\"",
+    report: `${REPORT}; the late-to-open conversation's second turn: "yes payroll but I don't know the amount" got "The payroll deduction amount isn't set; tell me the figure if there is one."`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      const model = loopStandIn((view) =>
+        lastResult(view, "propose_form")
+          ? { text: "Here is the card." }
+          : { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-3", policy: "Late Opening", what_happened: "Late opening the salon on 11/12.", payroll_deduct: /payroll/i.test(view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "") ? "yes" : undefined } },
+      );
+      const thread = start(t);
+      t.loopModel!(model);
+      await thread.say("CA for juno paxton, ASD, late to open 11/12");
+      await thread.say("yes payroll but I don't know the amount");
+      const facts = (model.views.flatMap((view) => view.results).filter((result) => result.tool === "propose_form").at(-1)?.output as { facts?: Record<string, unknown> } | undefined)?.facts ?? {};
+      expect(facts.payroll_amount_unknown, "the unknown amount was not a fact").toBe(true);
+      expect(facts.payroll_amount_unset, "the amount was asked for").toBeUndefined();
+    },
+  },
 ];
