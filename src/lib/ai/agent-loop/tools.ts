@@ -93,6 +93,8 @@ export interface ToolContext {
   readonly actor: ToolActor;
   readonly question: string;
   readonly questionMessageId?: string;
+  /** The chat's id, when it has one (a card's created form is looked up under it, `instanceCreatedFromProposal`). */
+  readonly conversationId?: string;
   readonly history: readonly ChatMessage[];
   readonly scopeId: string;
   /** The salon's local date (America/Chicago in production), `YYYY-MM-DD`. */
@@ -1784,21 +1786,38 @@ async function outsideScopeSalon(context: ToolContext): Promise<{ salon_outside_
 const SAVED_FORM_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const NOT_A_SAVED_FORM = "That's the card on screen; it isn't created yet. Change it with propose_form.";
 const NOT_A_FORM_ID = "That isn't a saved form's id; use the instance_id from the open form or find_past_forms.";
-/** The saved form Create made from this card (its `created` event records the proposal id), or null: the card is not created. */
-async function instanceCreatedFromProposal(proposalId: string): Promise<string | null> {
+/**
+ * The saved form Create made from this card, or "none" when it has not been created, or "failed" when the lookup could not
+ * be read (never "not created": that would tell the model to make a card again, which can make a duplicate form).
+ *
+ * QA's review of #1022: no scan of other managers' events. Create files a form from a chat card under an id DERIVED from the
+ * card (`cardInstanceId`: the creator, the form, the card and, when the chat has one, the conversation), so the candidates
+ * are computed, and one read by id and creator finds the form however old it is.
+ */
+export type CreatedFromProposal = { readonly kind: "created"; readonly id: string } | { readonly kind: "none" } | { readonly kind: "failed" };
+
+export async function instanceCreatedFromProposal(context: Pick<ToolContext, "actor" | "conversationId">, proposalId: string): Promise<CreatedFromProposal> {
   try {
+    const templates = await creatableTemplates(context.actor.role);
+    const { cardInstanceId } = await import("@/lib/forms/instances");
+    const { conversationKeyOf } = await import("@/lib/forms/conversation-key");
+    const conversationKey = conversationKeyOf({ conversationId: context.conversationId });
+    const ids = [
+      ...new Set(
+        templates.flatMap((template) => [
+          cardInstanceId(context.actor.subject, template.key, proposalId, null),
+          ...(conversationKey ? [cardInstanceId(context.actor.subject, template.key, proposalId, conversationKey)] : []),
+        ]),
+      ),
+    ];
+    if (ids.length === 0) return { kind: "none" };
     const { getSupabaseAdmin } = await import("@/lib/supabase/server");
-    const { data, error } = await getSupabaseAdmin()
-      .from("form_instance_events")
-      .select("instance_id, detail")
-      .eq("kind", "created")
-      .order("created_at", { ascending: false })
-      .limit(500);
-    if (error || !Array.isArray(data)) return null;
-    const found = (data as { instance_id: unknown; detail: unknown }[]).find((row) => (row.detail as { proposalId?: unknown } | null)?.proposalId === proposalId);
-    return found ? String(found.instance_id) : null;
+    const { data, error } = await getSupabaseAdmin().from("form_instances").select("id").in("id", ids).eq("created_by", context.actor.subject).limit(1);
+    if (error || !Array.isArray(data)) return { kind: "failed" };
+    const found = (data as { id: unknown }[])[0];
+    return found ? { kind: "created", id: String(found.id) } : { kind: "none" };
   } catch {
-    return null;
+    return { kind: "failed" };
   }
 }
 /** The id is the proposal id of a card shown this turn or earlier in this chat: that card is not created yet. */
@@ -1881,9 +1900,10 @@ export async function editForm(
    * that card is: any other id that is not a saved form's is not_a_form_id, below, never pointed at propose_form).
    */
   if (isShownCardId(context, effects, id)) {
-    const created = await instanceCreatedFromProposal(id);
-    if (!created) return { reason_code: "not_a_saved_form", error: NOT_A_SAVED_FORM };
-    id = created;
+    const created = await instanceCreatedFromProposal(context, id);
+    if (created.kind === "failed") return { reason_code: "write_failed", error: "That form could not be changed just now. Nothing was saved." };
+    if (created.kind === "none") return { reason_code: "not_a_saved_form", error: NOT_A_SAVED_FORM };
+    id = created.id;
   }
   /* Rebuild plan, PR 1 (bug 2: edit_form had no privacy gate): a saved form that is not the one open on screen is a form on file. An id that is no saved form's falls through to not_a_form_id below. */
   if (SAVED_FORM_ID.test(id) && id !== context.openFormId) {
@@ -2295,8 +2315,9 @@ export async function editForm(
     if (!SAVED_FORM_ID.test(id)) return { reason_code: "not_a_form_id", error: NOT_A_FORM_ID };
     /* A created card's proposal id (the card was on screen in an earlier turn): the edit goes to the form Create made from it. */
     if (error instanceof InstanceNotVisibleError) {
-      const created = await instanceCreatedFromProposal(id);
-      if (created && created !== id) return editForm(context, effects, { ...input, instance_id: created });
+      const created = await instanceCreatedFromProposal(context, id);
+      if (created.kind === "created" && created.id !== id) return editForm(context, effects, { ...input, instance_id: created.id });
+      if (created.kind === "failed") return { reason_code: "write_failed", error: "That form could not be changed just now. Nothing was saved." };
     }
     if (error instanceof InstanceNotVisibleError) return { reason_code: "form_not_visible", error: "That form does not exist or this manager cannot edit it." };
     return { reason_code: "write_failed", error: "That form could not be changed just now. Nothing was saved." };

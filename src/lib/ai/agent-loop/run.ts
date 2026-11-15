@@ -496,6 +496,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     actor: input.actor,
     question: input.question,
     questionMessageId: input.questionMessageId,
+    conversationId: input.conversationId,
     history: input.history,
     scopeId: input.scopeId,
     today: input.today,
