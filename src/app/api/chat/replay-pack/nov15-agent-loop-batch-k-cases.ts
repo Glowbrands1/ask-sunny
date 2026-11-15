@@ -85,22 +85,29 @@ export const NOV15_AGENT_LOOP_BATCH_K_CASES: ReplayCase[] = [
     },
   },
   {
-    id: "nov15-k1-card-shortcut-kept-for-a-person-the-manager-typed",
-    title: "K1, the control: after a card for \"Remy Calder\" typed in full, \"edit remy caldr ca\" is still that card's person, with no Did-you-mean",
-    report: `${REPORT}; the live re-run's sf-s26 shape, kept`,
+    id: "nov15-k1-card-shortcut-never-seats-a-near-miss",
+    /*
+     * Changed on purpose (QA's review of K-keep, 15 Nov 2026, under Pau's ruling A): this was the control "edit remy caldr
+     * ca after a card typed in full uses the card's person". A close spelling is never seated, not even as the card's
+     * person: it is asked. QA's own wording is the second turn here.
+     */
+    title: "K1 (QA's review, Pau 15 Nov: A): after Remy Calder's card typed in full, \"also a coaching for Remi Caldor, she was late on 11/14\" and \"edit remy caldr ca\" each get Did you mean **Remy Calder**?, never the card's person seated",
+    report: `${REPORT}; QA's review of K-keep: the card-person shortcut seated a near-miss`,
     status: "fixed",
     fixFlags: [FLAG, NEAR_MISS],
     async run(t) {
       if (!t.loopOn?.()) return;
       await salon(t);
-      const model = namingModel((said) => (/caldr\b/i.test(said) ? "remy caldr" : "Remy Calder"), "She was late to her shift on 11/14.");
-      t.loopModel!(model);
+      t.loopModel!(namingModel((said) => (/caldor/i.test(said) ? "Remi Caldor" : /caldr\b/i.test(said) ? "remy caldr" : "Remy Calder"), "She was late to her shift on 11/14."));
       const thread = t.thread();
       await thread.say("coaching for Remy Calder, she was late to her shift on 11/14");
-      const reply = await thread.say("edit remy caldr ca");
-      expect(reply.content, "the card's own person was asked about").not.toMatch(/Did you mean/);
+      for (const words of ["also a coaching for Remi Caldor, she was late on 11/14", "edit remy caldr ca"]) {
+        const reply = await thread.say(words);
+        expect(reply.content, `"${words}" seated the card's person:\n${reply.content}`).toMatch(/Did you mean \*\*Remy Calder\*\*\?/);
+      }
     },
   },
+
 ];
 
 NOV15_AGENT_LOOP_BATCH_K_CASES.push(
@@ -192,68 +199,6 @@ NOV15_AGENT_LOOP_BATCH_K_CASES.push(
     },
   },
 
-);
-
-/** Remy's Corrective Action card with Verbal, then the app's own reply, then the manager's answer (K5's shape). */
-function payrollModel(appAsks: string) {
-  return loopStandIn((view): LoopDecision => {
-    const said = latest(view);
-    const card = lastResult(view, "propose_form") as { card?: { payroll_deduct?: string | null } } | null;
-    if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "Remy Calder" } };
-    // The model's slip: every later turn passes payroll yes once the manager said "yes", and drops it again after.
-    const input = { template_key: "dpoa", employee_id: "e-2", what_happened: "She was below the company average last month in PPTA and spa %.", warning_level: "verbal" };
-    if (!card) return { tool: "propose_form", input: /^yes/i.test(said) ? { ...input, payroll_deduct: "yes" } : input };
-    // As the rules book teaches: payroll_said_earlier is passed again, once.
-    const earlier = (card as { facts?: { payroll_said_earlier?: string } }).facts?.payroll_said_earlier;
-    if (earlier && view.results.filter((result) => result.tool === "propose_form").length === 1) return { tool: "propose_form", input: { ...input, payroll_deduct: earlier } };
-    return { text: /^yes/i.test(said) || /coaching/.test(said) ? `Here's the Corrective Action Form for **Remy Calder**.` : `Here's the Corrective Action Form for **Remy Calder**.\n\n${appAsks}` };
-  });
-}
-
-NOV15_AGENT_LOOP_BATCH_K_CASES.push(
-  {
-    id: "nov15-k5b-payroll-answer-holds-on-later-turns-c163",
-    title: "K5(b) (QA's shadow replay, c163 T6): after \"yes\" ticked payroll, \"we have already done coaching\" re-proposes the card and payroll stays yes, never silently empty",
-    report: `${REPORT}: c163, at T6 payroll fell back to empty with no word to the manager`,
-    status: "fixed",
-    fixFlags: [FLAG],
-    async run(t) {
-      if (!t.loopOn?.()) return;
-      await salon(t);
-      t.loopModel!(payrollModel("Payroll deduct isn't set; tell me if it applies."));
-      const thread = t.thread();
-      await thread.say("verbal CA for Remy Calder, she was below the company average last month in PPTA and spa %");
-      await thread.say("yes");
-      await thread.say("we have already done coaching");
-      expect((thread.proposal as { payrollDeduct?: string | null } | null)?.payrollDeduct, "the payroll answer was dropped on a later turn").toBe("yes");
-    },
-  },
-  {
-    id: "nov15-k5b-payroll-answer-never-reaches-another-persons-card",
-    title: "K5(b), scoped (rebuild plan bug 3): after \"yes\" ticked payroll on Remy Calder's card, \"now a CA for Juno Paxton, she was late on 11/14\" never carries that payroll to Juno's card, even when the model passes it",
-    report: `${REPORT}; QA's rebuild plan, bug 3: one person's payroll answer unlocked another person's card`,
-    status: "fixed",
-    fixFlags: [FLAG],
-    async run(t) {
-      if (!t.loopOn?.()) return;
-      await salon(t);
-      const remy = payrollModel("Payroll deduct isn't set; tell me if it applies.");
-      t.loopModel!(remy);
-      const thread = t.thread();
-      await thread.say("verbal CA for Remy Calder, she was below the company average last month in PPTA and spa %");
-      await thread.say("yes");
-      expect((thread.proposal as { payrollDeduct?: string | null } | null)?.payrollDeduct, "Remy's payroll answer was not ticked").toBe("yes");
-      t.loopModel!(loopStandIn((view): LoopDecision => {
-        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "Juno Paxton" } };
-        // The model's slip: the earlier person's payroll answer passed onto the next person's card.
-        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-3", what_happened: "She was late on 11/14.", incident_date: "2026-11-14", payroll_deduct: "yes" } };
-        return { text: "Here's the Corrective Action Form for **Juno Paxton**." };
-      }));
-      await thread.say("now a CA for Juno Paxton, she was late on 11/14");
-      expect(thread.proposal?.employeeName).toBe("Juno Paxton");
-      expect((thread.proposal as { payrollDeduct?: string | null } | null)?.payrollDeduct ?? null, "Remy's payroll answer reached Juno's card").toBeNull();
-    },
-  },
 );
 
 NOV15_AGENT_LOOP_BATCH_K_CASES.push({
