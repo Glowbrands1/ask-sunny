@@ -24,6 +24,8 @@ const KNOWN = new Set([
   // PR 1b: the request and account evidence (requestTurns builds `${kind}_invalid` and the rest), and the open request.
   "request_evidence_invalid", "request_evidence_other_person", "request_evidence_not_this_request",
   "account_evidence_invalid", "account_evidence_other_person", "account_evidence_not_this_request", "account_evidence_missing", "open_requested",
+  // PR 3 (saved diff, #1035): the not_on_card rows propose_form returns.
+  "amount_not_stated", "level_not_stated", "payroll_not_stated", "prior_actions_not_kept", "several_dates_not_chosen", "termination_not_stated",
 ]);
 
 /** A line that returns a refusal: `error:` followed by a string, a template or a named message (not `error: Boolean(...)`). */
