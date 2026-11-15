@@ -252,6 +252,33 @@ function firstNames(employee: RosterEmployee): string[] {
 }
 
 /**
+ * FIRST_NAME_MUST_FIT_ENABLED: whether a typed first name can be this person's — their first or preferred first name, a
+ * close spelling of one (`closeWord`), or the start of one of at least three letters ("mari" for Marisol). "soren" is
+ * never Marisol.
+ */
+export function firstNameFits(typedFirst: string, employee: RosterEmployee): boolean {
+  const typed = normalize(typedFirst);
+  if (typed === "") return false;
+  return firstNames(employee).some((first) => first === typed || closeWord(typed, first) || (typed.length >= 3 && first.startsWith(typed)));
+}
+
+/**
+ * FIRST_NAME_MUST_FIT_ENABLED: a typed full name that has this person's last name and a first name that is not theirs
+ * ("Soren Fairweather" for Marisol Fairweather). A name typed with no surname, or another surname, is not this.
+ */
+export function sameSurnameOtherFirstName(typedName: string, employee: RosterEmployee): boolean {
+  return typedWithSurname(typedName, employee) && !firstNameFits(normalize(typedName).split(" ")[0]!, employee);
+}
+
+/** A typed full name whose surname is this person's (the whole surname, or its last word). */
+export function typedWithSurname(typedName: string, employee: RosterEmployee): boolean {
+  const words = normalize(typedName).split(" ").filter(Boolean);
+  if (words.length < 2) return false;
+  const last = normalize(employee.lastName);
+  return words.slice(1).join(" ") === last || words[words.length - 1] === last;
+}
+
+/**
  * Checks a typed employee name against the actor's scoped roster.
  *
  *   "Kaitlyn Smith" for Kaitlyn Smith        exact — the directory's spelling

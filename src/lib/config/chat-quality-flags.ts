@@ -4916,6 +4916,18 @@ export function modelWarningLevelDiscardedEnabled(): boolean {
 }
 
 /**
+ * FIRST_NAME_MUST_FIT_ENABLED (QA, 15 Nov 2026, raised by an Ask Bubbles report that turned out to be a preferred first
+ * name, which already matches; default off). Invented example: "Soren Fairweather" beside the roster's Marisol Fairweather. A shared last name with a different first name is never the same person:
+ * the agent loop's find_staff and its card setter refuse a roster person whose surname is a name the manager typed
+ * when the typed first name is not theirs, their preferred first name, a close spelling of either or the start of one
+ * ("mari"). The chat asks instead ("Soren Fairweather isn't on your staff list. Did you mean Marisol Fairweather, or someone
+ * else?"). The classic matcher already needs the first name close (`forms/employee-match.ts`). Off, as before.
+ */
+export function firstNameMustFitEnabled(): boolean {
+  return envFlag("FIRST_NAME_MUST_FIT_ENABLED");
+}
+
+/**
  * FORM_EDIT_TOUCHES_UPDATED_AT_ENABLED (coding 5, 15 Nov 2026; default off; QA's batch F8, from the first live test with
  * a form open). Three chat edits to a draft's Observation, Action Plan and Type of Warning (its events grew 4 → 7) left
  * form_instances.updated_at unchanged: the touch trigger fires on the instance row, and a value edit writes only
