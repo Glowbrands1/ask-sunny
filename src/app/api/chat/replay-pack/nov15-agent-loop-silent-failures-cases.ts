@@ -216,7 +216,7 @@ export const NOV15_AGENT_LOOP_SILENT_FAILURE_CASES: ReplayCase[] = [
         return {
           text: stated
             ? `Here's the Corrective Action Form for **Wren Halloway**.\n\n**Type of Warning:** Termination, as you said — I'll tick it on the form. Tell me if that should change.\n${stated.approval}\n\n**Action Plan:** Create builds the plan from the policy; it ends with: ${stated.plan_closing}\n\n**Observation of Offense:** Wren Halloway was a no call no show.`
-            : "Here's the Corrective Action Form for **Wren Halloway**.\n\nYou'll tick Termination on the form yourself; it needs DM/HR approval before it's finalized.\n\n**Observation of Offense:** Wren Halloway was a no call no show.",
+            : "Here's the Corrective Action Form for **Wren Halloway**.\n\nIf this form is a termination, tick Termination on the form yourself; it needs DM/HR approval before it's finalized.\n\n**Observation of Offense:** Wren Halloway was a no call no show.",
         };
       });
       t.loopModel!(model);
@@ -233,7 +233,7 @@ export const NOV15_AGENT_LOOP_SILENT_FAILURE_CASES: ReplayCase[] = [
       const hedge = t.thread();
       const answer = await hedge.say("Create a CA for Wren Halloway, we might terminate her if this continues, she was a no call no show");
       expect(answer.content, "a hedge was carded as a termination").not.toMatch(/Termination, as you said/);
-      expect(answer.content).toContain("You'll tick Termination on the form yourself; it needs DM/HR approval before it's finalized.");
+      expect(answer.content).toContain("If this form is a termination, tick Termination on the form yourself; it needs DM/HR approval before it's finalized.");
     },
   },
   {
@@ -256,7 +256,7 @@ export const NOV15_AGENT_LOOP_SILENT_FAILURE_CASES: ReplayCase[] = [
         return {
           text: stated
             ? `Here's the Corrective Action Form for **Wren Halloway**.\n\n**Type of Warning:** Termination, as you said — I'll tick it on the form. Tell me if that should change.\n${stated.approval}\n\n**Action Plan:** Create builds the plan from the policy; it ends with: ${stated.plan_closing}\n\n**Observation of Offense:** Wren Halloway was a no call no show on 11/12.`
-            : "Here's the Corrective Action Form for **Wren Halloway**.\n\nYou'll tick Termination on the form yourself; it needs DM/HR approval before it's finalized.",
+            : "Here's the Corrective Action Form for **Wren Halloway**.\n\nIf this form is a termination, tick Termination on the form yourself; it needs DM/HR approval before it's finalized.",
         };
       });
       t.loopModel!(model);
@@ -283,7 +283,7 @@ export const NOV15_AGENT_LOOP_SILENT_FAILURE_CASES: ReplayCase[] = [
       const { thread, id } = await wrensDraft(t);
       /* QA's design (15 Nov 2026): the model decides; this one reads a future warning as no termination, then a bare "tick it" as one, which the lock refuses. */
       const ticker = loopStandIn((view): LoopDecision => {
-        if (/I'll do his form later|will result in termination/.test(latest(view))) return { text: "You'll tick Termination on the form yourself; it needs DM/HR approval before it's finalized." };
+        if (/I'll do his form later|will result in termination/.test(latest(view))) return { text: "If this form is a termination, tick Termination on the form yourself; it needs DM/HR approval before it's finalized." };
         if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { instance_id: id, values: { warning_type: "termination" } } };
         return { text: "Done." };
       });

@@ -19,7 +19,7 @@ import { lastResult, loopStandIn, type LoopDecision, type LoopView } from "./loo
 const FLAG = "AGENT_LOOP_ENABLED";
 const REPORT = "QA's reviews of batch G (15 Nov 2026) and QA's design for terminations in the loop";
 const ACCOUNT = "She was a no call no show on 11/12.";
-const HEDGE = "You'll tick Termination on the form yourself; it needs DM/HR approval before it's finalized.";
+const HEDGE = "If this form is a termination, tick Termination on the form yourself; it needs DM/HR approval before it's finalized.";
 const offline = process.env.AGENT_LOOP_LIVE !== "1";
 const toolResults = (views: readonly LoopView[], tool: string) => views.flatMap((view) => view.results.filter((result) => result.tool === tool)).map((result) => JSON.stringify(result.output));
 
