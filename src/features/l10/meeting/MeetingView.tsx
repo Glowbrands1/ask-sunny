@@ -564,14 +564,14 @@ export function MeetingView({
             {/* The New Issue bar: right after the title and hint (the segue page puts it under its round-robin banner). */}
             {newIssueBar && view !== "business-best" && newIssueBar}
             <fieldset disabled={!!readOnly} className="m-0 flex min-w-0 flex-col gap-4 border-0 p-0">
-            {bloom && view === "business-best" && <SegueQuestion value={typeof doc.segueQuestion === "string" ? doc.segueQuestion : ""} onChange={(v) => edit((d) => ({ ...d, segueQuestion: v }))} />}
+            {bloom && view === "business-best" && <SegueQuestion value={typeof doc.segueQuestion === "string" ? doc.segueQuestion : ""} onChange={(v) => edit((d) => ({ ...d, segueQuestion: v }))} saveStatus={readOnly ? undefined : statusText(status)} />}
             {bloom && view === "conclude" && !timer.started && <LastMeetingConclusion last={last} />}
             {view === "business-best" && <BusinessBest attendees={attendees} onChange={(next) => edit((d) => ({ ...d, attendees: keepHiddenAttendees(d.attendees, next) }))} afterBanner={newIssueBar} />}
-            {view === "scorecard" && <Scorecard doc={doc} edit={edit} people={people} />}
+            {view === "scorecard" && <Scorecard doc={doc} edit={edit} people={people} bloom={bloom} today={today} />}
             {view === "rocks" && <Rocks rocks={doc.rocks} onChange={(rocks) => edit((d) => ({ ...d, rocks }))} people={people} today={today} saveStatus={statusText(status)} bloom={bloom} />}
             {view === "headlines" && <Headlines headlines={doc.headlines} onChange={(headlines) => edit((d) => ({ ...d, headlines }))} author={people[0] ?? ""} />}
             {view === "todos" && <Todos todos={doc.todos} onChange={(todos) => edit((d) => ({ ...d, todos }))} people={people} today={today} bloom={bloom} />}
-            {view === "ids" && <Ids doc={doc} edit={edit} session={timer.sessionId ?? "pending"} meetingKey={info.key} voter={{ id: viewer.id, name: viewer.name || viewer.label }} attendees={attendees} addedBy={myName} headlines={agenda.some((a) => a.key === "headlines")} />}
+            {view === "ids" && <Ids doc={doc} edit={edit} session={timer.sessionId ?? "pending"} meetingKey={info.key} voter={{ id: viewer.id, name: viewer.name || viewer.label }} attendees={attendees} addedBy={myName} headlines={agenda.some((a) => a.key === "headlines")} bloom={bloom} people={people} />}
             {view === "conclude" && !(bloom && !timer.started) && (
               <Conclude
                 meetingKey={info.key}
