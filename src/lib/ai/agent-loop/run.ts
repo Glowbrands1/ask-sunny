@@ -1,6 +1,6 @@
 import "server-only";
 
-import { cardTurns, personKey, readCardRecords, type CardRecord, type CardSlot } from "./card-record";
+import { cardTurns, personKey, readLoopRecords, type CardRecord, type CardSlot, type NameQuestionSlot } from "./card-record";
 import { CLAUDE_EFFORT, CLAUDE_MAX_TOKENS, CLAUDE_MODEL } from "@/lib/config/models";
 import { MissingConfigurationError, requireEnv } from "@/lib/config/server-env";
 import { mainAnswerTimeoutMs, streamGapTimeoutMs } from "@/lib/config/ai-timeouts";
@@ -551,7 +551,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
    * showed a card not yet created. A fact for the model (batch A); the rules book says what the reply says about it.
    */
   /* PR 2: which earlier replies showed a card, and whose, from the server's card record (never the reply's text). */
-  const records = await readCardRecords(input.conversationId, input.actor.subject);
+  const { cards: records, nameQuestions } = await readLoopRecords(input.conversationId, input.actor.subject);
   const cards = cardTurns(input.history, records);
   const lastReplyIndex = input.history.findLastIndex((turn) => turn.role === "assistant" && !turn.error);
   const cardOnScreen = !input.openFormId && lastReplyIndex >= 0 ? (cards.get(lastReplyIndex) ?? null) : null;
@@ -568,6 +568,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     openFormId: input.openFormId,
     cardOnScreen,
     earlierCard: records.at(-1) ?? null,
+    nameQuestions,
   };
   const effects: ToolEffects = { proposal: null, formUpdate: null };
   /* The open form as saved before the turn, for the no-false-"updated" guard below (FORM_EDIT_NOOP_GUARD's snapshot). */
@@ -905,11 +906,15 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   const cardSlot: CardSlot | null = effects.proposal
     ? { proposalId: effects.proposal.proposalId, employeeKey: effects.proposalEmployeeId ? personKey(effects.proposalEmployeeId) : null, nameKey: effects.proposal.employeeName ? personKey(effects.proposal.employeeName) : null, templateKey: effects.proposal.templateKey, templateName: effects.proposal.templateName ?? null }
     : null;
+  /* Fix batch items 4 and 3: this turn's "Did you mean", for the next turn's name question record (one-way keys only). */
+  const nameQuestionSlot: NameQuestionSlot | null = effects.nameQuestion && stoppedAt === "reply"
+    ? { offeredKeys: effects.nameQuestion.offeredIds.map(personKey), typedKey: personKey(effects.nameQuestion.typed) }
+    : null;
   if (trace) {
     trace.firstTokenMs = firstTokenMs;
     trace.slots = {
       ...(trace.slots ?? {}),
-      agent_loop: { ...(cardSlot ? { card: cardSlot } : {}), steps, model_steps: modelSteps, model_calls: modelCalls, step_limit: limit, steps_used: stepNumber - 1, stopped: stoppedAt, ms: latencyMs, first_token_ms: firstTokenMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}), ...(levelReview ? { level_review: levelReview } : {}), ...(whoReview ? { who_review: whoReview } : {}) },
+      agent_loop: { ...(cardSlot ? { card: cardSlot } : {}), ...(nameQuestionSlot ? { name_question: nameQuestionSlot } : {}), steps, model_steps: modelSteps, model_calls: modelCalls, step_limit: limit, steps_used: stepNumber - 1, stopped: stoppedAt, ms: latencyMs, first_token_ms: firstTokenMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}), ...(levelReview ? { level_review: levelReview } : {}), ...(whoReview ? { who_review: whoReview } : {}) },
     };
   }
 

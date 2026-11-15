@@ -5,9 +5,11 @@
 AGENT_LOOP_ENABLED + AGENT_LOOP_USERS here). Today's chat path is untouched: its `readNameConfirmation` and
 `settledNameQuestions` in `src/lib/forms/employee-match.ts` are only read, not changed.
 
-When the loop is ported, take the mechanism with it: a spelling the manager confirmed through the app's own
-"Did you mean **<A>**?" (a bare yes, or <A>'s full name typed back as whole words) counts as <A> when the card picks
-this person's turns, and find_staff returns `confirmed_by_manager` so the model proposes instead of asking again.
+When the loop is ported, take the mechanism with it: find_staff's "Did you mean" is written to the turn's trace
+(`slots.agent_loop.name_question`: `offeredKeys`, `typedKey`, one-way keys only, beside the card record) and read back
+by the next turn, never from the reply's text. A spelling the manager confirmed (a bare yes, or <A>'s full name typed
+back as whole words) counts as <A> when the card picks this person's turns, and find_staff returns
+`confirmed_by_manager` so the model proposes instead of asking again.
 Swap Sunny's invented people and the salon/store wording; there is no word list to port.
 
 **Item 3 (same PR, also Sunny-only):** an answer to the "Did you mean **<A>**?" that names somebody else in full (a

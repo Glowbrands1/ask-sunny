@@ -1,105 +1,108 @@
-import { AFFIRMATIVE, readNameConfirmation } from "@/lib/forms/employee-match";
+import { AFFIRMATIVE, displayName, type RosterEmployee } from "@/lib/forms/employee-match";
 import { notAPerson } from "@/lib/forms/person-guard";
 import { extractEmployeeNames, samePerson } from "@/lib/forms/proposal";
+import type { ChatMessage } from "@/types";
 
+import { personKey, replyTurns, type NameQuestionRecord } from "./card-record";
 import { holdsPhrase } from "./evidence";
 
 /**
  * ============================================================================
- * A SPELLING THE MANAGER CONFIRMED IS THAT PERSON (fix batch, item 4; c022)
+ * THE ANSWER TO A "DID YOU MEAN" (fix batch items 4 and 3)
  * ============================================================================
  *
- * Pau's ruling A (15 Nov 2026): a close spelling is never seated. The app asks "Did you mean **<A>**?" in fixed words
- * (`nameConfirmationQuestion`), and the manager confirms by saying yes OR by typing <A>'s full name back. In the
- * targeted re-run (c022) the full name typed back was not treated as the answer: the turn with the close spelling read
- * as another person's request, so the card lost that turn's date and account, and the chat went 4 turns without a card.
+ * Pau's ruling A (15 Nov 2026): a close spelling is never seated; find_staff gives a "Did you mean" and the manager
+ * answers. Item 4 (c022): the full name typed back is a yes, and the turn that typed the close spelling is that
+ * person's request (it was read as another person's, so the card lost its date and the chat went 4 turns with no card).
+ * Item 3 (c137): a reply that names somebody else in full is not a yes.
  *
- * This reads only the app's own question (its bolded names) and whether the manager's next turn is a bare yes to a
- * single name (today's `readNameConfirmation`) or holds one offered name in full, as whole words (`holdsPhrase`,
- * how evidence.ts reads quotes). No word list reads the manager's message. A reply that names somebody else confirms
- * nobody: it never holds the offered name.
+ * What was asked comes from the server's NAME QUESTION RECORD (`card-record.ts`; QA's review of #1051), never from the
+ * reply's text: a paraphrased question counts the same. The manager's answer is read with today's bare yes
+ * (`AFFIRMATIVE`, to one offered person) or one offered person's full name as whole words (`holdsPhrase`, as evidence.ts
+ * reads quotes). No new word list.
  */
 
-type Turn = { readonly role: string; readonly content: string };
-
-/** The app's own question: the names it offered, and the name the manager had typed. */
-function askedIn(content: string): { offered: string[]; typed: string } | null {
-  const question = /Did you mean ((?:\*\*[^*]+\*\*(?:, | or )?)+)\?/.exec(content);
-  const typed = /(?:couldn't find|a close match for) \*\*([^*]+)\*\*/.exec(content)?.[1]?.trim();
-  if (!question || !typed) return null;
-  return { offered: [...question[1]!.matchAll(/\*\*([^*]+)\*\*/g)].map((match) => match[1]!.trim()), typed };
+export interface NameQuestionView {
+  readonly history: readonly ChatMessage[];
+  readonly question: string;
+  readonly records: readonly NameQuestionRecord[];
+  readonly roster: readonly RosterEmployee[];
 }
 
-/** One settled question: the manager's turn that answered it, the name confirmed and the spelling it replaced. */
-export interface ConfirmedSpelling {
-  /** The index (in the conversation given) of the manager's answering turn. */
-  readonly answerIndex: number;
-  /** The roster name the manager confirmed, as the app offered it. */
-  readonly name: string;
-  /** What the manager had typed ("Remi Calder"). */
-  readonly typed: string;
-  /** How: a bare yes, or the full name typed back. */
-  readonly by: "yes" | "full_name";
+export interface AnsweredNameQuestion {
+  readonly record: NameQuestionRecord;
+  /** The roster people the question offered, found again by key. */
+  readonly offered: readonly RosterEmployee[];
+  /** The manager's answer (the next manager turn after the question's reply). */
+  readonly answer: string;
+  /** The answer is the message being answered now. */
+  readonly latest: boolean;
+  /** The person the answer confirmed, and how; null when it confirmed nobody. */
+  readonly confirmed: RosterEmployee | null;
+  readonly by: "yes" | "full_name" | null;
 }
 
-/** Every "Did you mean" in this chat that the manager answered with yes or with an offered full name, oldest first. */
-export function confirmedSpellings(conversation: readonly Turn[]): ConfirmedSpelling[] {
-  const turns = conversation.filter((turn) => typeof turn.content === "string");
-  const out: ConfirmedSpelling[] = [];
-  for (let index = 1; index < turns.length; index += 1) {
-    if (turns[index]!.role !== "user") continue;
-    const before = turns[index - 1]!;
-    if (before.role !== "assistant") continue;
-    const asked = askedIn(before.content);
-    if (!asked) continue;
-    const yes = readNameConfirmation(turns.slice(0, index + 1));
-    if (yes?.kind === "accepted" && asked.offered.some((name) => samePerson(name, yes.name))) {
-      out.push({ answerIndex: index, name: yes.name, typed: asked.typed, by: "yes" });
-      continue;
+/** A roster person's full names: legal, and preferred first name with the surname. */
+function fullNames(person: RosterEmployee): string[] {
+  return [...new Set([displayName(person), `${person.firstName} ${person.lastName}`, person.preferredFirstName ? `${person.preferredFirstName} ${person.lastName}` : ""])]
+    .map((name) => name.replace(/\s+/g, " ").trim())
+    .filter((name) => name.split(" ").length > 1);
+}
+
+/** Every recorded name question this chat's manager has answered, oldest first. */
+export function answeredNameQuestions(view: NameQuestionView): AnsweredNameQuestion[] {
+  const out: AnsweredNameQuestion[] = [];
+  for (const [reply, record] of [...replyTurns(view.history, view.records)].sort(([a], [b]) => a - b)) {
+    const next = view.history.findIndex((turn, at) => at > reply && turn.role === "user");
+    const latest = next < 0;
+    const answer = latest ? view.question : String(view.history[next]!.content ?? "");
+    const offered = record.offeredKeys.flatMap((key) => view.roster.filter((row) => personKey(row.id) === key));
+    let confirmed: RosterEmployee | null = null;
+    let by: AnsweredNameQuestion["by"] = null;
+    if (offered.length === 1 && AFFIRMATIVE.test(answer)) {
+      confirmed = offered[0]!;
+      by = "yes";
+    } else {
+      const held = offered.filter((person) => fullNames(person).some((name) => holdsPhrase(answer, name)));
+      if (held.length === 1) {
+        confirmed = held[0]!;
+        by = "full_name";
+      }
     }
-    // The full name typed back: exactly one offered name, in full, as whole words.
-    const held = asked.offered.filter((name) => name.split(/\s+/).length > 1 && holdsPhrase(turns[index]!.content, name));
-    if (held.length === 1) out.push({ answerIndex: index, name: held[0]!, typed: asked.typed, by: "full_name" });
+    out.push({ record, offered, answer, latest, confirmed, by });
   }
   return out;
 }
 
-/** The spellings the manager confirmed as this person (any of `names`, e.g. the legal and the shown name). */
-export function spellingsConfirmedFor(conversation: readonly Turn[], names: readonly string[]): string[] {
-  return confirmedSpellings(conversation)
-    .filter((settled) => names.some((name) => samePerson(name, settled.name)))
-    .map((settled) => settled.typed);
+/** The typed-name keys the manager confirmed as this roster person: a name with one of these keys is this person. */
+export function spellingKeysConfirmedFor(view: NameQuestionView, employeeId: string): string[] {
+  return answeredNameQuestions(view).filter((asked) => asked.confirmed?.id === employeeId).map((asked) => asked.record.typedKey);
 }
 
-/** The latest turn (the last in `conversation`) answers this chat's Did-you-mean with this person. */
-export function latestTurnConfirms(conversation: readonly Turn[], names: readonly string[]): ConfirmedSpelling | null {
-  const last = conversation.filter((turn) => typeof turn.content === "string").length - 1;
-  return confirmedSpellings(conversation).find((settled) => settled.answerIndex === last && names.some((name) => samePerson(name, settled.name))) ?? null;
+/** A name read from the manager's words is one the manager confirmed as this person. */
+export function isConfirmedSpelling(name: string, keys: readonly string[]): boolean {
+  return keys.length > 0 && keys.includes(personKey(name));
+}
+
+/** The message being answered now confirms this roster person in answer to a recorded name question. */
+export function latestTurnConfirms(view: NameQuestionView, employeeId: string): AnsweredNameQuestion | null {
+  return answeredNameQuestions(view).find((asked) => asked.latest && asked.confirmed?.id === employeeId) ?? null;
 }
 
 /**
- * Fix batch item 3 (c137): the latest turn answers this chat's own "Did you mean **<A>**?" for this person, is not a
- * yes, and names somebody else in full (a capitalised name `extractEmployeeNames` reads, or a roster person's full name
- * as whole words). That reply is not a yes: <A> is never carded from it. Null when the turn is a yes, names nobody
- * else, or answers no such question.
+ * Item 3 (c137): the message being answered now answers a recorded question that offered this person, is not a yes (no
+ * offered full name, and its first clause is not today's bare yes), and names somebody else in full (a capitalised name
+ * `extractEmployeeNames` reads, or a roster person's full name as whole words). Null otherwise.
  */
-export function answerNamesSomeoneElse(
-  conversation: readonly Turn[],
-  person: string,
-  rosterNames: readonly string[],
-): { others: string[]; typed: string } | null {
-  const turns = conversation.filter((turn) => typeof turn.content === "string");
-  const answer = turns[turns.length - 1];
-  const before = turns[turns.length - 2];
-  if (!answer || answer.role !== "user" || before?.role !== "assistant") return null;
-  const asked = askedIn(before.content);
-  if (!asked || !asked.offered.some((name) => samePerson(name, person))) return null;
-  if (latestTurnConfirms(turns, [person])) return null;
+export function answerNamesSomeoneElse(view: NameQuestionView, employeeId: string): { others: string[] } | null {
+  const asked = answeredNameQuestions(view).find((question) => question.latest && question.offered.some((person) => person.id === employeeId));
+  if (!asked || asked.confirmed) return null;
   // A yes that goes on with the account ("yes, she was late on 11/14, <B> saw it"): its first clause is today's bare yes.
-  if (AFFIRMATIVE.test(answer.content.split(/[,.;!\n]/)[0] ?? "")) return null;
-  const isOffered = (name: string) => samePerson(name, person) || samePerson(name, asked.typed) || asked.offered.some((offered) => samePerson(name, offered));
-  const read = extractEmployeeNames(answer.content).filter((name) => name.trim().split(/\s+/).length > 1 && !notAPerson(name));
-  const onRoster = rosterNames.filter((name) => name.trim().split(/\s+/).length > 1 && holdsPhrase(answer.content, name));
+  if (AFFIRMATIVE.test(asked.answer.split(/[,.;!\n]/)[0] ?? "")) return null;
+  const offeredNames = asked.offered.flatMap(fullNames);
+  const isOffered = (name: string) => personKey(name) === asked.record.typedKey || offeredNames.some((offered) => samePerson(name, offered));
+  const read = extractEmployeeNames(asked.answer).filter((name) => name.trim().split(/\s+/).length > 1 && !notAPerson(name));
+  const onRoster = view.roster.flatMap(fullNames).filter((name) => holdsPhrase(asked.answer, name));
   const others = [...new Set([...onRoster, ...read])].filter((name) => !isOffered(name));
-  return others.length > 0 ? { others, typed: asked.typed } : null;
+  return others.length > 0 ? { others } : null;
 }

@@ -28,7 +28,7 @@ type StaffResult = {
   matches?: { employee_id: string; name: string }[];
   note?: string;
   also_ask_if_no_account?: string;
-  confirmed_by_manager?: { name: string; typed_before: string; answer: string };
+  confirmed_by_manager?: { name: string; answer: string };
 } | null;
 
 async function salon(t: ReplayContext) {
@@ -41,14 +41,15 @@ async function salon(t: ReplayContext) {
  * A stand-in that does what the tool results say: it looks up what the manager typed, asks a Did-you-mean in the
  * note's own words, and proposes the card with the account the manager gave in the first turn.
  */
-function confirmingModel(seen: StaffResult[]) {
+function confirmingModel(seen: StaffResult[], paraphrase = false) {
   return loopStandIn((view): LoopDecision => {
     const said = latest(view);
     const staff = lastResult(view, "find_staff") as StaffResult;
     if (!staff) return { tool: "find_staff", input: { name: view.turns.filter((turn) => turn.role === "user").length > 1 ? said.trim() : "Remi Calder" } };
     if (!seen.includes(staff)) seen.push(staff);
     const asked = /Ask the manager, in these words: ([\s\S]+)$/.exec(staff.note ?? "")?.[1];
-    if (asked) return { text: [asked, staff.also_ask_if_no_account].filter(Boolean).join("\n\n") };
+    // QA's review of #1051: the model may paraphrase the question; the server's record, not the reply, says what was asked.
+    if (asked) return { text: paraphrase ? "Is that Remy Calder? If so, tell me what happened." : [asked, staff.also_ask_if_no_account].filter(Boolean).join("\n\n") };
     const person = staff.matches?.[0];
     if (person && !lastResult(view, "propose_form")) {
       return { tool: "propose_form", input: { template_key: "coaching", employee_id: person.employee_id, what_happened: "She was late to her shift on 11/14.", incident_date: "2026-11-14" } };
@@ -57,9 +58,13 @@ function confirmingModel(seen: StaffResult[]) {
   });
 }
 
-export const NOV16_AGENT_LOOP_DID_YOU_MEAN_CONFIRM_CASES: ReplayCase[] = (["Remy Calder", "remy calder"] as const).map((typedBack): ReplayCase => ({
-  id: `nov16-item4-full-name-typed-back-is-a-yes-${typedBack === "Remy Calder" ? "c022" : "c022-lowercase"}`,
-  title: `Item 4 (c022's shape): "put together a coaching document for Remi Calder, she was late to her shift on 11/14" asks Did you mean **Remy Calder**?; "${typedBack}" typed back is a yes: find_staff says the manager confirmed her, and the card is Remy Calder's, ready, keeping 11/14 from the first turn`,
+export const NOV16_AGENT_LOOP_DID_YOU_MEAN_CONFIRM_CASES: ReplayCase[] = ([
+  ["c022", "Remy Calder", false],
+  ["c022-lowercase", "remy calder", false],
+  ["c022-paraphrased-question", "Remy Calder", true],
+] as const).map(([tag, typedBack, paraphrase]): ReplayCase => ({
+  id: `nov16-item4-full-name-typed-back-is-a-yes-${tag}`,
+  title: `Item 4 (c022's shape): "put together a coaching document for Remi Calder, she was late to her shift on 11/14" asks ${paraphrase ? "\"Is that Remy Calder?\" (the model's paraphrase)" : "Did you mean **Remy Calder**?"}; "${typedBack}" typed back is a yes: find_staff says the manager confirmed her, and the card is Remy Calder's, ready, keeping 11/14 from the first turn`,
   report: `${REPORT}: the full name typed back after the Did-you-mean went 4 turns with no card`,
   status: "fixed",
   fixFlags: [FLAG, NEAR_MISS],
@@ -67,13 +72,13 @@ export const NOV16_AGENT_LOOP_DID_YOU_MEAN_CONFIRM_CASES: ReplayCase[] = (["Remy
     if (!t.loopOn?.()) return;
     await salon(t);
     const seen: StaffResult[] = [];
-    t.loopModel!(confirmingModel(seen));
+    t.loopModel!(confirmingModel(seen, paraphrase));
     const thread = t.thread();
     const ask = await thread.say("put together a coaching document for Remi Calder, she was late to her shift on 11/14");
     expect(thread.proposal ?? null, `a close spelling was carded:\n${ask.content}`).toBeNull();
-    expect(ask.content).toMatch(/Did you mean \*\*Remy Calder\*\*\?/);
+    expect(ask.content).toMatch(paraphrase ? /Is that Remy Calder\?/ : /Did you mean \*\*Remy Calder\*\*\?/);
     await thread.say(typedBack);
-    expect(seen.at(-1)?.confirmed_by_manager, "find_staff did not say the full name typed back confirmed her").toEqual({ name: "Remy Calder", typed_before: "Remi Calder", answer: "full_name" });
+    expect(seen.at(-1)?.confirmed_by_manager, "find_staff did not say the full name typed back confirmed her").toEqual({ name: "Remy Calder", answer: "full_name" });
     expect(thread.proposal?.employeeName).toBe("Remy Calder");
     expect(thread.proposal?.status, "the card is not ready after the answer").toBe("ready");
     expect(thread.proposal?.formDate, "the first turn's date was dropped as another person's request").toBe("2026-11-14");

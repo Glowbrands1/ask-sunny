@@ -10,7 +10,7 @@ import { appConfig } from "./app-config";
 import { isoDate, monthDayToIso, readDates, sameDate, withoutDates } from "./dates";
 import { candidateNameWords, chatFormsActor } from "@/lib/forms/chat-form-records";
 import { holdsPhrase, identifiedTurns, verifyEvidence, withoutMessageIdTags, type IdentifiedTurn } from "./evidence";
-import { answerNamesSomeoneElse, latestTurnConfirms, spellingsConfirmedFor } from "./confirmed-spelling";
+import { answerNamesSomeoneElse, isConfirmedSpelling, latestTurnConfirms, spellingKeysConfirmedFor, type NameQuestionView } from "./confirmed-spelling";
 import { displayName, matchEmployeeName, nameConfirmationQuestion, readNameConfirmation, type RosterEmployee } from "@/lib/forms/employee-match";
 import { offRosterTyped } from "@/lib/forms/roster-only-names";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
@@ -52,7 +52,7 @@ import { redactSensitiveDefaults } from "@/lib/ai/sensitive-defaults";
 import { expandPolicyQuery } from "@/lib/knowledge/policy-retrieval";
 import type { SourceCitation } from "@/types";
 import type { AccessScope, ChatFormProposal, ChatMessage, Role } from "@/types";
-import { personKey, type CardRecord } from "@/lib/ai/agent-loop/card-record";
+import { personKey, type CardRecord, type NameQuestionRecord } from "@/lib/ai/agent-loop/card-record";
 
 /**
  * ============================================================================
@@ -110,6 +110,13 @@ export interface ToolContext {
   readonly cardOnScreen?: CardRecord | null;
   /** PR 2: the latest card this chat made before this turn (the record), for the earlier_card fact. */
   readonly earlierCard?: CardRecord | null;
+  /** Fix batch items 4 and 3: the "Did you mean" questions this chat's find_staff gave, from the server's record. */
+  readonly nameQuestions?: readonly NameQuestionRecord[];
+}
+
+/** The recorded name questions and the roster, for `confirmed-spelling.ts`. */
+function nameQuestionView(context: ToolContext, roster: readonly RosterEmployee[]): NameQuestionView {
+  return { history: context.history, question: context.question, records: context.nameQuestions ?? [], roster };
 }
 
 /* ------------------------------------------------------ hard guard: privacy --- */
@@ -413,6 +420,8 @@ export interface ToolEffects {
   formUpdate: { instanceId: string; updated: string[]; saved?: SavedChange[]; putBack?: string[] } | null;
   /** Roster ids find_staff chose from a close spelling or a lone first name this turn (the card's name_from_staff_list fact). */
   nameLines?: Record<string, string>;
+  /** Fix batch items 4 and 3: this turn's last "Did you mean" (the roster ids offered, the name typed), for the record. */
+  nameQuestion?: { offeredIds: string[]; typed: string };
   /** Batch G (G4), by the rebuild plan's PR 1b: find_past_forms found forms on file to open (open: true) for this person. */
   openRequested?: string;
   /** PR 2: the roster id of the card's person (the card record); null for a team card or a name not on the roster. */
@@ -610,12 +619,12 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
    * Fix batch item 4 (c022): this turn answers this chat's own "Did you mean **<A>**?" with yes or with <A>'s full name
    * typed back, and the lookup is <A>: a fact, so the model proposes the card instead of asking again.
    */
-  const confirmed = found.length === 1 ? latestTurnConfirms(conversationTurns(context), [displayName(found[0]!)]) : null;
+  const confirmed = found.length === 1 ? latestTurnConfirms(nameQuestionView(context, read.roster), found[0]!.id) : null;
   if (confirmed) {
     return {
       matches: [staffRow(found[0]!)],
-      confirmed_by_manager: { name: displayName(found[0]!), typed_before: confirmed.typed, answer: confirmed.by },
-      note: `The manager confirmed ${displayName(found[0]!)} (their answer to Did you mean). Do not ask again: propose the card for ${displayName(found[0]!)} now, with this request's account from the earlier turns where "${confirmed.typed}" was typed.`,
+      confirmed_by_manager: { name: displayName(found[0]!), answer: confirmed.by },
+      note: `The manager confirmed ${displayName(found[0]!)} (their answer to Did you mean). Do not ask again: propose the card for ${displayName(found[0]!)} now, with this request's account from the earlier turns.`,
     };
   }
   if (found.length === 0) {
@@ -657,6 +666,7 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
     }
     if (close.kind === "confirm" && close.candidates.length > 0) {
       const names = close.candidates.map((candidate) => candidate.name);
+      if (effects) effects.nameQuestion = { offeredIds: close.candidates.slice(0, 5).map((candidate) => candidate.employee.id), typed };
       return {
         matches: [],
         did_you_mean: close.candidates.slice(0, 5).map((candidate) => staffRow(candidate.employee)),
@@ -713,6 +723,7 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
      */
     const own = [only.firstName, only.preferredFirstName ?? ""].map((name) => words(name).join(" ")).filter(Boolean);
     if (!own.includes(words(typed).join(" "))) {
+      if (effects) effects.nameQuestion = { offeredIds: [only.id], typed };
       return {
         matches: [],
         did_you_mean: [staffRow(only)],
@@ -1474,7 +1485,7 @@ export async function proposeForm(
      * Fix batch item 3 (c137): the answer to this chat's own "Did you mean **<A>**?" that names someone else in full (a
      * pasted account about <B>) is not a yes: <A> is never carded from it (`confirmed-spelling.ts`; ruling A).
      */
-    const elsewhere = person ? answerNamesSomeoneElse(conversationTurns(context), displayName(person), read.roster.map(displayName)) : null;
+    const elsewhere = person ? answerNamesSomeoneElse(nameQuestionView(context, read.roster), person.id) : null;
     if (person && elsewhere) {
       const other = elsewhere.others[0]!;
       return {
@@ -1556,12 +1567,11 @@ export async function proposeForm(
   /*
    * Fix batch item 4 (c022): a spelling the manager confirmed as this person in this chat's own "Did you mean **<A>**?",
    * by yes or by typing <A>'s full name back, is this person: the turn that typed it is this person's request, never
-   * another person's (`confirmed-spelling.ts`; the app's own question, no word list).
+   * another person's (`confirmed-spelling.ts`; the server's name question record, never the reply's text).
    */
-  const rosterPerson = read.kind === "read" && employee.id ? read.roster.find((row) => row.id === employee.id) : undefined;
-  const confirmedTyped = rosterPerson ? spellingsConfirmedFor(conversationTurns(context), [displayName(rosterPerson), employee.name]) : [];
+  const confirmedKeys = read.kind === "read" && employee.id ? spellingKeysConfirmedFor(nameQuestionView(context, read.roster), employee.id) : [];
   const sameAsThisPerson = (named: string, person: string) =>
-    samePerson(named, person) || (samePerson(person, employee.name) && confirmedTyped.some((typed) => samePerson(named, typed)));
+    samePerson(named, person) || (samePerson(person, employee.name) && isConfirmedSpelling(named, confirmedKeys));
   const personTurns = turnsFromThisPersonsRequest(asked, employee.name, { names: extractEmployeeNames, same: sameAsThisPerson }).filter((id) => {
     if (id === context.questionMessageId) return true;
     const said = asked.messages.find((message) => message.id === id)?.content ?? "";
