@@ -4914,3 +4914,15 @@ export function otherBesideDescribedEnabled(): boolean {
 export function modelWarningLevelDiscardedEnabled(): boolean {
   return envFlag("MODEL_WARNING_LEVEL_DISCARDED_ENABLED");
 }
+
+/**
+ * FIRST_NAME_MUST_FIT_ENABLED (QA, 15 Nov 2026, from Ask Bubbles: the manager typed "Salem Pool" and the card became
+ * the roster's "Melanie Pool"; default off). A shared last name with a different first name is never the same person:
+ * the agent loop's find_staff and its card setter refuse a roster person whose surname is a name the manager typed
+ * when the typed first name is not theirs, their preferred first name, a close spelling of either or the start of one
+ * ("mel"). The chat asks instead ("Salem Pool isn't on your staff list. Did you mean Melanie Pool, or someone
+ * else?"). The classic matcher already needs the first name close (`forms/employee-match.ts`). Off, as before.
+ */
+export function firstNameMustFitEnabled(): boolean {
+  return envFlag("FIRST_NAME_MUST_FIT_ENABLED");
+}
