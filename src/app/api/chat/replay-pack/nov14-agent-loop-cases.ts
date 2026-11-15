@@ -70,7 +70,8 @@ function caStandIn(view: LoopView): LoopDecision {
   const name = /Briony Calloway/i.test(said) ? "Briony Calloway" : null;
   if (!name) return { text: "Who is this form for?" };
   if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name } };
-  if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: name, forms_on_file_evidence: evidenceFrom(view) } };
+  // The rebuild plan's PR 1: nobody asked about forms on file here, so the model passes no evidence and is refused.
+  if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: name } };
   if (!lastResult(view, "propose_form")) {
     const person = firstMatch(view);
     const policy = /dress ?code|coat|crewneck|jacket/i.test(said) ? headingWith(view, /dress/i) : headingWith(view, /late open/i);
@@ -209,7 +210,7 @@ export const NOV14_AGENT_LOOP_CASES: ReplayCase[] = [
       // Where the model looked up the forms on file, it saw the Late Opening CA as a record; never an app-written "On file" line.
       const onFile = views.flatMap((view) => view.results.filter((result) => result.tool === "find_past_forms"));
       // Changed on purpose (14 Nov 2026, Pau's privacy rule via QA): forms on file are looked at only when the manager asks; nobody asked here.
-      for (const result of onFile) expect(JSON.stringify(result.output)).toMatch(/not asked about forms on file/);
+      for (const result of onFile) expect(JSON.stringify(result.output)).toMatch(/"reason_code":"privacy_not_asked"/);
       expect(views.every((view) => !/On file in Form Monitoring/.test(view.system))).toBe(true);
       historyIsTheModelsOwn(views, replies);
     },

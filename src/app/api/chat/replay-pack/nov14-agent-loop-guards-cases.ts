@@ -68,11 +68,18 @@ async function terminationOnFile(t: ReplayContext): Promise<string> {
   return id;
 }
 
-/** A model that looks at forms on file whenever it can, and tells the manager what it found. */
+/**
+ * A model that looks at forms on file whenever it can, and tells the manager what it found. Changed on purpose (the
+ * rebuild plan's PR 1, 15 Nov 2026): the gate is evidence now, so this model quotes the manager's ask only where the
+ * script's message asks (the asking sentences below); everywhere else it calls with no evidence and is refused.
+ */
+const ASKING = /write ups|had a ca before|my last CA|on file/i;
 function nosyStandIn(view: LoopView) {
-  if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: "Tamsin Orwell", forms_on_file_evidence: evidenceFrom(view) } };
+  const asked = ASKING.test(view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "");
+  const evidence = asked ? { forms_on_file_evidence: evidenceFrom(view) } : {};
+  if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: "Tamsin Orwell", ...evidence } };
   const listed = (lastResult(view, "find_past_forms")?.forms ?? []) as { instance_id: string; form: string; status: string }[];
-  if (listed.length > 0 && !lastResult(view, "read_form")) return { tool: "read_form", input: { instance_id: listed[0]!.instance_id, forms_on_file_evidence: evidenceFrom(view) } };
+  if (listed.length > 0 && !lastResult(view, "read_form")) return { tool: "read_form", input: { instance_id: listed[0]!.instance_id, ...evidence } };
   if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "tamsin orwell" } };
   if (!/before|on file/i.test(view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "") && !lastResult(view, "propose_form")) {
     return { tool: "propose_form", input: { template_key: "dpoa", employee_id: firstMatch(view)?.employee_id, what_happened: "Tamsin Orwell was on her phone at the front desk on 11/13." } };
@@ -101,7 +108,7 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       const reply = await thread.say("create a ca for tamsin orwell, she was on her phone at the front desk on 11/13");
       expect(thread.proposal, reply.content).toMatchObject({ templateKey: "dpoa", employeeName: "Tamsin Orwell" });
       for (const output of [...toolResults(nosy.views, "find_past_forms"), ...toolResults(nosy.views, "read_form")]) {
-        expect(output, "a form on file was read without the manager asking").toMatch(/not asked about forms on file/);
+        expect(output, "a form on file was read without the manager asking").toMatch(/"reason_code":"privacy_not_asked"/);
       }
       expect(reply.content, "the Termination on file was brought up").not.toMatch(/terminat/i);
       expect(JSON.stringify(thread.proposal), "the Termination on file reached the card").not.toMatch(/terminat/i);
@@ -137,7 +144,7 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
         t.loopModel!(nosy);
         const reply = await t.thread().say(said);
         for (const output of [...toolResults(nosy.views, "find_past_forms"), ...toolResults(nosy.views, "read_form")]) {
-          expect(output, `"${said}" opened forms on file`).toMatch(/not asked about forms on file/);
+          expect(output, `"${said}" opened forms on file`).toMatch(/"reason_code":"privacy_not_asked"/);
         }
         expect(reply.content, `"${said}": the Termination on file was brought up`).not.toMatch(/terminat/i);
       }
@@ -145,7 +152,7 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
         const nosy = loopStandIn(nosyStandIn);
         t.loopModel!(nosy);
         await t.thread().say(said);
-        expect(toolResults(nosy.views, "find_past_forms")[0], `"${said}" did not open forms on file`).not.toMatch(/not asked about forms on file/);
+        expect(toolResults(nosy.views, "find_past_forms")[0], `"${said}" did not open forms on file`).not.toMatch(/"reason_code":"privacy_not_asked"/);
       }
     },
   },
