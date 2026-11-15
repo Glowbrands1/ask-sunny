@@ -145,8 +145,16 @@ async function formsOnFileAskedFor(context: ToolContext, evidence: unknown, pers
   const rosterNames = [...new Set(roster.flatMap((row) => [displayName(row), ...fullNamesOf(row)]))];
   const holders = roster.filter((row) => fullNamesOf(row).some((full) => samePerson(full, person)));
   const names = [person, ...(holders.length === 1 ? fullNamesOf(holders[0]!) : [])];
+  // A close spelling of this person, as find_past_forms reads one ("edit remy caldr ca": G4, REOPEN_CLOSE_SPELLING).
+  const { closelySpelledEmployee } = await import("@/lib/forms/reopen-close-spelling");
   const namedIn = (text: string) =>
-    names.some((name) => mentionsPerson(text, name, rosterNames)) || extractEmployeeNames(text).some((typed) => names.some((name) => samePerson(typed, name)) || sameRosterPerson(typed, person, roster));
+    names.some((name) => mentionsPerson(text, name, rosterNames)) ||
+    extractEmployeeNames(text).some((typed) => names.some((name) => samePerson(typed, name)) || sameRosterPerson(typed, person, roster)) ||
+    // Two words in a row that closely spell the person's full name (names typed in lower case are not extracted).
+    text.split(/\s+/).map((word) => word.replace(/[^\p{L}'-]/gu, "")).some((word, at, all) => {
+      const pair = `${word} ${all[at + 1] ?? ""}`.trim();
+      return at + 1 < all.length && !rosterNames.some((name) => samePerson(name, pair) && !names.some((own) => samePerson(own, name))) && closelySpelledEmployee(pair, [person]) === person;
+    });
   if (namedIn(asked.said)) return { ok: true };
   const namesSomeone = (text: string) => rosterNames.some((name) => mentionsPerson(text, name, rosterNames)) || extractEmployeeNames(text).length > 0;
   if (!namesSomeone(asked.said)) {
@@ -2042,7 +2050,8 @@ export async function editForm(
    * changes the name only, and goes through the roster checks below. The reviser (no values) never changes the name.
    */
   const otherFields = Object.keys(values).filter((field) => field !== "employee_name");
-  const renames = "employee_name" in values || input.intent === "correct_name";
+  // A reword's own guard refuses a change of person (below, with reword_paused); the name gate is for everything else.
+  const renames = !rewordAsked && ("employee_name" in values || input.intent === "correct_name");
   let nameQuote: string | null = null;
   if (renames) {
     const check = verifyEvidence(input.name_evidence, identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId), { thisTurnOnly: true });
