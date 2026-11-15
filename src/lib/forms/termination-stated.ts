@@ -45,6 +45,11 @@ const STATED = new RegExp(
     String.raw`\b(?:has\s+|have\s+)?resulted\s+in\s+(?:the\s+)?(?:immediate\s+)?termination\b`,
     String.raw`\bemployment\s+(?:is|has\s+been)\s+terminated\b`,
     String.raw`\bfir(?:e|ed|ing)\s+(?:her|him|them)\b`,
+    /* QA's second list (Coding-2's findings, 15 Nov 2026): "create a termination for <A>", "she is terminated, make the CA", "write a CA, termination, for <A>", "my DM approved her termination". */
+    String.raw`\b(?:create|make|write(?:\s+up)?|do|start|need)\s+(?:a|the)\s+termination\b`,
+    String.raw`\b(?:she|he|they)\s+(?:is|are|has\s+been|have\s+been)\s+terminated\b`,
+    String.raw`\b(?:ca|c\/a|corrective\s+action)\s*[,:–—-]\s*termination\b`,
+    String.raw`\bapproved\s+(?:her|his|their|the)\s+termination\b`,
   ].join("|"),
   "i",
 );
@@ -65,7 +70,8 @@ const HEDGE = new RegExp(
     String.raw`\bsounds?\s+like\b`,
     String.raw`\bcheck(?:ing)?\s+with\b`,
     // Gate-Bubbles (QA, 12 Nov 2026): "once the DM approves", "waiting on HR before we terminate her".
-    String.raw`\b(?:wait(?:s|ed|ing)?|before|until|till|approv(?:e|es|ed|al|ing)|sign(?:s|ed)?[\s-]+off|sign-?off)\b`,
+    // "approved" (past: the DM already approved it) is a statement, not a hedge (QA's second list, 15 Nov 2026).
+    String.raw`\b(?:wait(?:s|ed|ing)?|before|until|till|approv(?:e|es|al|ing)|sign(?:s)?[\s-]+off|sign-?off)\b`,
   ].join("|"),
   "i",
 );

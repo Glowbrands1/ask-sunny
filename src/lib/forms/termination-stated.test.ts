@@ -173,6 +173,12 @@ describe("the widened termination statements", () => {
     "We fired her for the no call no show.",
     "I'm firing him today.",
     "Fire her, she stole from the register.",
+    "create a termination for Avery Lune",
+    "she is terminated, make the CA",
+    "write a CA, termination, for Avery Lune",
+    "my DM approved her termination, write up the CA",
+    "I need a term CA for Avery Lune",
+    "the DM said to terminate her",
   ])("reads %s as stated", async (text) => {
     expect(await reads(text)).toBe(true);
   });
@@ -187,6 +193,8 @@ describe("the widened termination statements", () => {
     "let her go, she no call no showed",
     "we might fire her if this continues",
     "thinking about firing her",
+    "once the DM approves, write a termination CA",
+    "waiting on approval for her termination CA",
   ])("never reads %s as stated", async (text) => {
     expect(await reads(text)).toBe(false);
   });
