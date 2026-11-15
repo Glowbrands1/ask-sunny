@@ -1,4 +1,5 @@
 import { PRODUCTION_SALONS } from "@/data/salons";
+import { ACTIVE_BRAND } from "@/lib/brand";
 import { readDirectoryFacts, readDirectoryRoster, readScopedRoster } from "@/lib/forms/employee-roster";
 
 /**
@@ -44,12 +45,13 @@ export interface AppConfig {
   };
 }
 
-/** Ask Sunny (Sun Tan City). */
+/** Ask Sunny: the brand's names and place words, plus the staff system and form keys of this app. */
 export const SUNNY_CONFIG: AppConfig = {
-  appName: "Sunny",
-  brandName: "Sun Tan City",
-  locationWord: "salon",
-  locationWordPlural: "salons",
+  // From the brand, as the loop followed it before the config existed (main: ACTIVE_BRAND in prompt.ts and rules-book.ts).
+  appName: ACTIVE_BRAND.assistantName,
+  brandName: ACTIVE_BRAND.brandName,
+  locationWord: ACTIVE_BRAND.vocabulary.salonNoun,
+  locationWordPlural: ACTIVE_BRAND.vocabulary.salonNounPlural,
   staffSystem: "Woven",
   formKeys: { exit: "stc-exit", corrective: "dpoa", coaching: "coaching", followUpCoaching: "follow-up-coaching" },
   locations: () => PRODUCTION_SALONS,
