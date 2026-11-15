@@ -27,6 +27,8 @@ const TEST_TESTY: DirectoryRow = { id: TESTY.id, firstName: TESTY.firstName, las
 
 /** The phrasings that end differently today, by case id: filled from the first run; PR 1 empties it. */
 export const OPEN_UNTIL_PR1: Readonly<Record<string, string>> = {
+  // The payroll answer itself is now kept on payroll_evidence (PR 1c); what is left is the AMOUNT said in words ("twenty dollars"): the amount check reads figures only.
+  "nov15-phrasing-answer-payroll-5": "TODO: payroll_amount said in words (\"twenty dollars\") is not a figure the amount check reads",
 };
 
 const latest = (turns: readonly { role: string; text: string }[]) => [...turns].reverse().find((turn) => turn.role === "user")?.text ?? "";
@@ -80,7 +82,7 @@ const SCRIPTS: Record<Behaviour["key"], Script> = {
     await setup(t);
     t.loopModel!(loopStandIn((view): LoopDecision => {
       const text = latest(view.turns);
-      if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: corrective(), employee_id: TESTY.id, what_happened: TESTY_ACCOUNT, ...(text === said ? { warning_level: "written" } : {}) } };
+      if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: corrective(), employee_id: TESTY.id, what_happened: TESTY_ACCOUNT, ...(text === said ? { warning_level: "written", level_evidence: evidenceFrom(view) } : {}) } };
       return { text: "Here's the card." };
     }));
     const thread = t.thread();
