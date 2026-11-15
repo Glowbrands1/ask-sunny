@@ -32,6 +32,16 @@ const CLOSED = [
   // QA (14 Nov 2026): "already has one" with no form word in the same message stays closed.
   "she already has one",
   "she already has one, she was late again",
+  // QA's 266-chat shadow replay (batch K7): neighbours of the new asks stay closed.
+  "we just created a new policy for phones",
+  "we just created a new schedule, she was late on it",
+  "find a coaching form for tardiness",
+  "find me a form for the late policy",
+  "look for a better way to word this",
+  "can you look for the policy on phones",
+  "pull that policy up",
+  "bring it up with her at the next meeting",
+  "bring her back for another training shift",
 ];
 
 const OPEN = [
@@ -55,6 +65,13 @@ const OPEN = [
   // QA (14 Nov 2026), the MSB family: the manager asks for another employee's CA as the format (invented names).
   "...but i need it to be in the format of Corvina Lisle's ca it needs to look exactally the same as corvina lisles but wtih all of this information",
   "make it look the same as corvinas ca",
+  // QA's 266-chat shadow replay (batch K7), their wording, people invented: explicit asks the gate under-read.
+  "look for exit form Marnie Holloway",
+  "find the exit form for Remy Calder",
+  "look for the coaching form for Juno Paxton",
+  "the coaching form for Marnie Holloway that we just created can you pull it back up",
+  "the CA I made for Remy Calder yesterday, bring it back up",
+  "the coaching form that we just created, bring it back",
 ];
 
 describe("the past-forms gate", () => {
