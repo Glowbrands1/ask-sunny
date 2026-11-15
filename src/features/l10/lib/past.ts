@@ -1,5 +1,5 @@
 // Ask Sunny only (not copied from the Leadership Hub): the DM L10's "Past meetings" list. See src/features/l10/README.md.
-import type { RecapRow } from "./types";
+import { solvedOwner, solvedTitle, type RecapRow } from "./types";
 
 /**
  * A meeting held before the DM L10 moved to the Hub, kept in the meeting document as `meetingHistory` (written by the
@@ -28,6 +28,10 @@ export interface PastMeeting {
   issuesSolved: number;
   /** Solved issue titles, when known (recaps list them; the Bloom import only has the count). */
   solvedTitles: string[];
+  /** The same issues with their owners ("" when the recap does not say: recaps saved before 15 Nov 2026). */
+  solvedIssues: { title: string; owner: string }[];
+  /** Share of the meeting's to-dos done when it ended (0–100), or null when the recap does not say. */
+  todosCompletedPct: number | null;
   /** The cascading message, when there was one. */
   cascade: string | null;
   /** The meeting's shared notes, when the recap has them (the Hub's 20261205120000_l10_recap_notes). */
@@ -76,7 +80,9 @@ export function pastMeetings(recaps: RecapRow[], doc: Record<string, unknown>): 
       ratingAvg: r.rating_avg ?? average((r.attendees ?? []).map((a) => a.rating)),
       attendees: r.attendees ?? [],
       issuesSolved: (r.resolved_issues ?? []).length,
-      solvedTitles: r.resolved_issues ?? [],
+      solvedTitles: (r.resolved_issues ?? []).map(solvedTitle),
+      solvedIssues: (r.resolved_issues ?? []).map((s) => ({ title: solvedTitle(s), owner: solvedOwner(s) })),
+      todosCompletedPct: typeof r.todos_total === "number" && typeof r.todos_done === "number" && r.todos_total > 0 ? Math.round((r.todos_done / r.todos_total) * 100) : null,
       cascade: str(r.cascade),
       notes: str(r.notes),
     }));
@@ -89,6 +95,8 @@ export function pastMeetings(recaps: RecapRow[], doc: Record<string, unknown>): 
     attendees: m.attendees,
     issuesSolved: m.issuesSolvedCount,
     solvedTitles: [],
+    solvedIssues: [],
+    todosCompletedPct: null,
     cascade: null,
     notes: null,
   }));
