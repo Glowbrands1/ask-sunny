@@ -512,16 +512,28 @@ describe("Bloom-style page: Segue and Conclude", () => {
   const view = (doc: Record<string, unknown> = {}, save: SaveFn = vi.fn() as unknown as SaveFn) =>
     render(<MeetingView info={info} initial={loaded(3, doc)} save={save} end={vi.fn() as unknown as EndFn} viewer={viewer} roster={roster} hubMeetingUrl={HUB} pollMs={0} debounceMs={0} today="2026-11-15" recaps={[recap]} />);
 
-  it("Segue: last week's feedback, then this week's question saved as segueQuestion", async () => {
+  it("Segue: last week's feedback, then this week's icebreaker question saved as segueQuestion", async () => {
     const save = vi.fn().mockResolvedValue({ ok: true, version: 4, updatedAt: "2026-11-15T00:00:00Z" } satisfies SaveOutcome);
     view({ segueQuestion: "What AI tool saved you time?" }, save as unknown as SaveFn);
     const feedback = screen.getByRole("region", { name: "Last week's feedback" });
     expect(within(feedback).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["9Avery Quill", "8Bo Lark"]);
-    const q = within(screen.getByRole("region", { name: "This week's question" })).getByLabelText("This week's question") as HTMLTextAreaElement;
+    const q = within(screen.getByRole("region", { name: "This week's icebreaker question" })).getByLabelText("This week's icebreaker question") as HTMLTextAreaElement;
     expect(q.value).toBe("What AI tool saved you time?");
     fireEvent.change(q, { target: { value: "What AI tool saved you an hour?" } });
     await waitFor(() => expect(save).toHaveBeenCalled());
     expect((save.mock.calls.at(-1)![2] as { segueQuestion: string }).segueQuestion).toBe("What AI tool saved you an hour?");
+  });
+
+  it("the icebreaker question shows the save status under it, so typing visibly saves (the owner thought it did not, 15 Nov 2026)", async () => {
+    const save = vi.fn().mockResolvedValue({ ok: true, version: 4, updatedAt: "2026-11-15T00:00:00Z" } satisfies SaveOutcome);
+    view({}, save as unknown as SaveFn);
+    const box = within(screen.getByRole("region", { name: "This week's icebreaker question" }));
+    expect(box.getByRole("heading", { name: "THIS WEEK'S ICEBREAKER QUESTION" })).toBeTruthy();
+    const field = box.getByLabelText("This week's icebreaker question") as HTMLTextAreaElement;
+    expect(field.getAttribute("placeholder")).toBe("Add this week's icebreaker question…");
+    fireEvent.change(field, { target: { value: "Best tool this week?" } });
+    await waitFor(() => expect(save).toHaveBeenCalled());
+    await waitFor(() => expect(box.getByTestId("segue-save-status").textContent).toBe("All changes saved"));
   });
 
   it("Conclude before the meeting starts shows the last meeting's summary; during the meeting the existing steps", () => {

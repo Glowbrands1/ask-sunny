@@ -41,12 +41,18 @@ export function LastWeekFeedback({ last }: { last: PastMeeting | null }) {
   );
 }
 
-/** Segue: "This week's question", one shared prompt for the round-robin (stored as `segueQuestion` in the meeting document). */
-export function SegueQuestion({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+/** Segue: "This week's icebreaker question" (Bloom's wording), one shared prompt for the round-robin (stored as `segueQuestion` in the meeting document). */
+export function SegueQuestion({ value, onChange, saveStatus }: { value: string; onChange: (v: string) => void; /** The page's save status, shown quietly under the box (as Meeting Notes does). */ saveStatus?: string }) {
+  // Bloom's wording ("This week's icebreaker question:"); the owner could not tell the box saved, so it says so (15 Nov 2026).
   return (
-    <section aria-label="This week's question" className={SECTION}>
-      <h3 className={LABEL}>THIS WEEK&apos;S QUESTION</h3>
-      <MentionField multiline aria-label="This week's question" value={value} onChange={onChange} placeholder="The question everyone answers this week…" className="min-h-16 py-2" />
+    <section aria-label="This week's icebreaker question" className={SECTION}>
+      <h3 className={LABEL}>THIS WEEK&apos;S ICEBREAKER QUESTION</h3>
+      <MentionField multiline aria-label="This week's icebreaker question" value={value} onChange={onChange} placeholder="Add this week's icebreaker question…" className="min-h-16 py-2" />
+      {saveStatus && (
+        <p className="m-0 text-right text-xs text-muted" aria-live="polite" data-testid="segue-save-status">
+          {saveStatus}
+        </p>
+      )}
     </section>
   );
 }
