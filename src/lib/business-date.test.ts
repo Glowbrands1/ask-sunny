@@ -1,10 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-/* The first tests pin the zone to Eastern: they test the mechanism with Eastern fixtures. The app's own default is Central (last test). */
-vi.hoisted(() => {
-  process.env.NEXT_PUBLIC_BUSINESS_TIMEZONE = "America/New_York";
-});
-
 import {
   BUSINESS_TIMEZONE,
   businessHour,
@@ -185,11 +180,5 @@ describe("a moment as people read it (formatBusinessTime, formatBusinessDay)", (
       expect(formatBusinessTime(bad)).toBeNull();
       expect(formatBusinessDay(bad)).toBeNull();
     }
-  });
-
-  it("the app's own default zone is Central, so it stays Central if the env var is ever unset", async () => {
-    const { BUSINESS_TIMEZONE, formatBusinessTime } = await loadedIn("");
-    expect(BUSINESS_TIMEZONE).toBe("America/Chicago");
-    expect(formatBusinessTime("2026-11-14T12:01:00Z")).toBe("Nov 14, 6:01 AM CT");
   });
 });

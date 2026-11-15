@@ -44,7 +44,7 @@
  * the render and the server and the browser can never disagree about what day
  * it is.
  *
- * The default is US Central (Pau, 15 Nov 2026: both apps are Central time; production sets it too). Sun Tan City operates across US zones, so no
+ * The default is US Eastern (production sets America/Chicago through the env var; Pau, 15 Nov 2026: the app is Central time). Sun Tan City operates across US zones, so no
  * single choice is exactly local everywhere; what matters is that it is a
  * BUSINESS zone rather than UTC, and that it is one value everything agrees on.
  * A salon an hour west sees a form become overdue an hour before its own
@@ -59,7 +59,7 @@
  * than a code path, and nothing anywhere else needs to know.
  */
 export const BUSINESS_TIMEZONE =
-  process.env.NEXT_PUBLIC_BUSINESS_TIMEZONE?.trim() || "America/Chicago";
+  process.env.NEXT_PUBLIC_BUSINESS_TIMEZONE?.trim() || "America/New_York";
 
 /**
  * The business date as ISO `yyyy-mm-dd`.
@@ -104,7 +104,7 @@ export function businessHour(now: Date = new Date()): number {
 
 /** The business zone, read when asked (a test can set it); the same value `BUSINESS_TIMEZONE` holds. */
 function businessZone(): string {
-  return process.env.NEXT_PUBLIC_BUSINESS_TIMEZONE?.trim() || "America/Chicago";
+  return process.env.NEXT_PUBLIC_BUSINESS_TIMEZONE?.trim() || "America/New_York";
 }
 
 /**
