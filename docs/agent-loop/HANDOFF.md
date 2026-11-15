@@ -53,9 +53,12 @@ take it:
 | 4 | [ask-sunny#1017](https://github.com/Glowbrands1/ask-sunny/pull/1017) | business-zone default America/Chicago | `46a31d74` | check | check | owner and purpose | not part of the loop work; ask Pau |
 | 5 | [ask-sunny#1015](https://github.com/Glowbrands1/ask-sunny/pull/1015) | docs: terminations in the agent loop | `8cd55154` | docs | check | still accurate after tonight? | none |
 | 6 | [ask-sunny#1005](https://github.com/Glowbrands1/ask-sunny/pull/1005) | parity log: the loop's Ask Bubbles port list (docs), branch `claude/start-here-oy5rn6` (also holds `rebuild-plan.md`) | `af65343d` | docs | check | superseded by this handoff PR for `rebuild-plan.md` | none |
-| 7 | [ask-sunny#1043](https://github.com/Glowbrands1/ask-sunny/pull/1043), [#1044](https://github.com/Glowbrands1/ask-sunny/pull/1044), [#1045](https://github.com/Glowbrands1/ask-sunny/pull/1045) | DM L10 meeting pages (c), (d), (e) | `5498c0f6`, `dbf6b160`, `575d8869` | check | check | these come from the UI session on another account, which has been merging its own L10 PRs; confirm with Pau who merges them | Pau |
+| 7 | [ask-sunny#1043](https://github.com/Glowbrands1/ask-sunny/pull/1043), [#1045](https://github.com/Glowbrands1/ask-sunny/pull/1045); Ask Bubbles [#945](https://github.com/Glowbrands1/Ask-bubbles/pull/945) | DM L10 meeting pages (c), (e); Bubbles port of (d) | `5498c0f6`, `575d8869`; `97598083` | check | check | these come from the UI session on another account, which has been merging its own L10 PRs; confirm with Pau who merges them | Pau |
 | 8 | Ask Bubbles [#930](https://github.com/Glowbrands1/Ask-bubbles/pull/930), [#931](https://github.com/Glowbrands1/Ask-bubbles/pull/931), [#933](https://github.com/Glowbrands1/Ask-bubbles/pull/933), [#928](https://github.com/Glowbrands1/Ask-bubbles/pull/928), [#923](https://github.com/Glowbrands1/Ask-bubbles/pull/923), [#935](https://github.com/Glowbrands1/Ask-bubbles/pull/935) | Bubbles ports (amount reader, payroll answer case, J11 port, readable names, Termination pick, loop helpers draft) | `328ced53`, `7f2a5c1b`, `ea956dd2`, `26f1bd00`, `8792b98f`, `24f20dc3` | not checked tonight | check against Bubbles main `ae79dec7` | each against its Sunny source; Bubbles has no agent loop yet | after the Sunny pilot |
 | — | about 150 older Sunny PRs (#53 to #994) and about 145 older Bubbles PRs | the October rebuild and port backlog, flags default off | see the inventory | stale | most will conflict | each needs a fresh replay on current main | **paused by Pau** (Gate and Coding sessions parked since 14 Nov). Do not merge without Pau. |
+
+This handoff itself: [ask-sunny#1046](https://github.com/Glowbrands1/ask-sunny/pull/1046) (branch
+`claude/agent-loop-handoff`, docs only, draft). The new QA reviews and merges it.
 
 Not waiting on QA: [ask-sunny#991](https://github.com/Glowbrands1/ask-sunny/pull/991),
 [#959](https://github.com/Glowbrands1/ask-sunny/pull/959), [#956](https://github.com/Glowbrands1/ask-sunny/pull/956),
@@ -105,7 +108,7 @@ base was that branch). Its content reached `main` through [#1026](https://github
 [#1007](https://github.com/Glowbrands1/ask-sunny/pull/1007) first-name-close (superseded).
 
 **Merged by the DM L10 UI session (another account, not QA):** #1020, #1025, #1032, #1033, #1036, #1038, #1039,
-#1040, #1041, #1042. Note **#1039 changed `src/lib/ai/agent-loop/tools.ts`** (the CA form key from app config, and
+#1040, #1041, #1042, and #1044 (`020a8604`, merged 20:09 UTC during this handoff). Note **#1039 changed `src/lib/ai/agent-loop/tools.ts`** (the CA form key from app config, and
 fixtures) to fix red tests on main: that is a loop file outside QA's review. It matches the fix in #1034 and #1028,
 but the new QA should agree with Pau that the UI session stays out of `src/lib/ai/`, `src/app/api/chat/` and the
 forms code.
@@ -115,8 +118,9 @@ the UI session ported L10 pages (latest Bubbles main `ae79dec7`, #944).
 
 ### 4. Production state (checked 20:10 UTC, 15 Nov)
 
-- `main` = `1882cdb17342c1e25e76728e6dadea1dad834eeb` (#1040, an L10 page). It contains every loop merge above
-  (last loop merge `d57b9fd5`).
+- `main` = `020a86043bfe044493285b5334e8ef653d1d5a8d` (#1044, an L10 page, merged by the UI session during this
+  handoff; it was `1882cdb1` when the checks below ran). It contains every loop merge above (last loop merge
+  `d57b9fd5`).
 - Production deployment `dpl_3hz146q7kEqskx1HDzRW1pFVBDe7`, READY, built from `1882cdb1`, served at
   `https://ask-sunny.vercel.app` (login 200). Runtime errors in the last 2 hours: 0.
 - CI on `1882cdb1` (push to main): 14 of 15 jobs green, 1 (`unit-tests`) still running at the time of writing. Check it.
@@ -258,7 +262,8 @@ are superseded: Coding-2's `11b0b0b2` ("wip rename", replaced by Bubbles #925), 
 5. Delete the Runner's private real-chat data now, or keep it until the pilot GO (needed for the post-fix re-run;
    the new account can rebuild it from the export query instead).
 6. Clean up the 11 live test chats on Pau's account (ids in 10).
-7. Who merges the DM L10 PRs (#1043–#1045): the UI session or QA?
+7. Who merges the DM L10 PRs (#1043, #1045, Bubbles #945): the UI session or QA? It merged #1044 itself during
+   this handoff.
 8. 🔴🔴 **Change Pau's admin password now**: it was typed inline in Tester-Sunny's command history (it is in no
    file and in nothing pushed). Also change both apps' admin passwords when testing ends.
 9. Open items the testers found: Bubbles F1 (a store answer becomes the job title); a future-dated Termination
