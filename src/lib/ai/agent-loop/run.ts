@@ -20,8 +20,9 @@ import { withoutSensitiveDefaults } from "../sensitive-defaults";
 import { finalReplyWithoutMarkers, withoutSourceMarkers, withoutSourceNotes } from "../source-note";
 import { extractUsedMarkers } from "../prompts";
 import { shownCitations } from "@/lib/knowledge/empty-card-drop";
-import { DATA_TOOL_SPECS, dataToolHandlers } from "./data-tools";
-import { agentLoopSystem, AGENT_LOOP_RULES } from "./prompt";
+import { dataToolHandlers, dataToolSpecs } from "./data-tools";
+import { appConfig, SUNNY_CONFIG, type AppConfig } from "./app-config";
+import { agentLoopRules, agentLoopSystem } from "./prompt";
 import { generatedId, identifiedTurns, messageIdTag, withoutMessageIdTags } from "./evidence";
 import { agentLoopStepLimit } from "./switch";
 import {
@@ -78,6 +79,7 @@ import {
 export const AGENT_LOOP_TOTAL_MS = 100_000;
 
 import { LOOP_FAILED_REPLY, STEP_LIMIT_REPLY } from "./replies";
+import { fieldLabel, readableValue } from "./saved-diff";
 
 export { LOOP_FAILED_REPLY, STEP_LIMIT_REPLY };
 
@@ -93,9 +95,18 @@ export function doneThisTurn(effects: Pick<ToolEffects, "proposal" | "formUpdate
     done.push(`Here is the **${effects.proposal.templateName}**${who} for you to review.`);
   }
   if (effects.formOpened) done.push("I opened a new draft revising the finalized form; the original stays as it was.");
+  if (effects.formUpdate && effects.formUpdate.putBack && effects.formUpdate.putBack.length > 0 && effects.formUpdate.updated.length === 0) {
+    done.push(`${effects.formUpdate.putBack.map(fieldLabel).join(", ")} ${effects.formUpdate.putBack.length === 1 ? "was" : "were"} changed and put back, so the form is unchanged there.`);
+  }
   if (effects.formUpdate && effects.formUpdate.updated.length > 0) {
-    const fields = effects.formUpdate.updated.map((field) => field.replace(/_/g, " "));
+    /* PR 3: the fields the form really holds changed, read back after the write (`saved-diff.ts`): each with its new wording, as a manager reads it. */
+    const saved = effects.formUpdate.saved ?? [];
+    const fields = saved.length > 0
+      ? saved.map((change) => `${fieldLabel(change.field)} (${change.after === "" ? "cleared" : `now ${readableValue(change.after, change.field)}`})`)
+      : effects.formUpdate.updated.map(fieldLabel);
     done.push(`I saved ${fields.length === 1 ? "the" : "these"} change${fields.length === 1 ? "" : "s"} on the form: ${fields.join(", ")}.`);
+    const back = effects.formUpdate.putBack ?? [];
+    if (back.length > 0) done.push(`${back.map(fieldLabel).join(", ")} ${back.length === 1 ? "was" : "were"} changed and put back, so ${back.length === 1 ? "it is" : "they are"} unchanged.`);
   }
   return done.length > 0 ? done.join(" ") : null;
 }
@@ -121,6 +132,9 @@ export interface AgentLoopStep {
   readonly fact_keys?: readonly string[];
   /** account_words_missing as kinds only ("date", "time", "place"), never the words. */
   readonly missing_kinds?: readonly string[];
+  /** PR 3: the names of the fields a tool saved, and the reason codes of what it refused or left off the card. Never values. */
+  readonly saved_fields?: readonly string[];
+  readonly reason_codes?: readonly string[];
 }
 
 /*
@@ -129,16 +143,20 @@ export interface AgentLoopStep {
  * code is also logged for a result that carries one without an error (find_staff's not_on_roster, ambiguous_person).
  */
 /** Result keys that are data, not facts (never listed in the trace). */
-const NOT_FACT_KEYS = new Set(["error", "reason_code", "note", "card", "facts", "matches", "staff", "wording", "headings", "source", "salon", "salons", "positions", "templates", "updated", "refused", "forms", "passages", "document", "heading", "page", "fields", "values"]);
+const NOT_FACT_KEYS = new Set(["error", "reason_code", "note", "card", "facts", "matches", "staff", "wording", "headings", "source", "salon", "salons", "positions", "templates", "updated", "saved", "refused", "not_on_card", "revision_draft", "forms", "passages", "document", "heading", "page", "fields", "values"]);
 
-function stepReason(result: ToolResult, tool: string): Pick<AgentLoopStep, "error_kind" | "fact_keys" | "missing_kinds"> {
+function stepReason(result: ToolResult, tool: string): Pick<AgentLoopStep, "error_kind" | "fact_keys" | "missing_kinds" | "saved_fields" | "reason_codes"> {
   const record = result as Record<string, unknown>;
   const facts = record.facts && typeof record.facts === "object" ? Object.keys(record.facts as object) : [];
   const keys = [...new Set([...facts, ...Object.keys(record).filter((key) => !NOT_FACT_KEYS.has(key))])].sort();
   const missing = (record.facts as { account_words_missing?: unknown } | undefined)?.account_words_missing;
   const error = typeof record.reason_code === "string" ? record.reason_code : typeof record.error === "string" ? `unknown:${tool}` : null;
+  const savedFields = Array.isArray(record.saved) ? [...new Set((record.saved as { field?: unknown }[]).map((row) => String(row.field ?? "")).filter(Boolean))].sort() : [];
+  const codes = [...new Set([...(Array.isArray(record.refused) ? record.refused : []), ...(Array.isArray(record.not_on_card) ? record.not_on_card : [])].map((row) => String((row as { reason_code?: unknown }).reason_code ?? "")).filter(Boolean))].sort();
   return {
     ...(error ? { error_kind: error } : {}),
+    ...(savedFields.length > 0 ? { saved_fields: savedFields } : {}),
+    ...(codes.length > 0 ? { reason_codes: codes } : {}),
     ...(keys.length > 0 ? { fact_keys: keys } : {}),
     ...(Array.isArray(missing) ? { missing_kinds: [...new Set(missing.map((word) => accountWordKind(String(word))))].sort() } : {}),
   };
@@ -303,11 +321,25 @@ const evidence = (description: string) => ({
 });
 const FORMS_ON_FILE_EVIDENCE = evidence("Where the manager asks about a form on file (what is on file, an earlier form, open / edit / see one). Needed for any form that is not the one open on screen.");
 
-export const AGENT_LOOP_TOOLS = [
+/** The loop's tool definitions with one app's words (the app config's place word); cached per config. */
+const toolsBuilt = new WeakMap<AppConfig, ReturnType<typeof buildAgentLoopTools>>();
+export function agentLoopTools(config: AppConfig = appConfig()) {
+  let tools = toolsBuilt.get(config);
+  if (!tools) {
+    tools = buildAgentLoopTools(config);
+    toolsBuilt.set(config, tools);
+  }
+  return tools;
+}
+
+function buildAgentLoopTools(config: AppConfig) {
+  const place = config.locationWord;
+  const places = config.locationWordPlural;
+  return [
   {
     name: "find_staff",
     description: "Search this manager's staff roster by name (any case, partial first or last name). Returns roster spellings and employee_ids; several when names are shared.",
-    input_schema: object({ name: { type: "string" } }, ["name"]),
+    input_schema: object({ name: { type: "string" }, person_evidence: evidence("The manager's words naming this person as the form's person (\"a CA for Wrenna\"): their message id and words, which hold the name.") }, ["name"]),
   },
   {
     name: "find_past_forms",
@@ -318,6 +350,7 @@ export const AGENT_LOOP_TOOLS = [
       date: { type: "string", description: "The form's date as the manager gave it (\"10/31\"), if any." },
       about: { type: "string", description: "Words the manager used about the form (\"getting rooms ready between guests\"), if any." },
       forms_on_file_evidence: FORMS_ON_FILE_EVIDENCE,
+      open: { type: "boolean", description: "true when the manager asks to open, edit or see one form on file (not a list of what is on file)." },
     }, ["employee_name"]),
   },
   {
@@ -327,8 +360,8 @@ export const AGENT_LOOP_TOOLS = [
   },
   {
     name: "list_staff",
-    description: "The staff of one of the signed-in manager's own salons, by name and position. For \"who's on my staff\" and for a form asked for a whole staff (never one card for everyone). With several salons and none named, it gives the question to ask.",
-    input_schema: object({ salon: { type: "string", description: "The salon the manager named, if any." }, position: { type: "string", description: "One position the manager asked about (\"tanning consultants\"), if any." } }, []),
+    description: "The staff of one of the signed-in manager's own " + places + ", by name and position. For \"who's on my staff\" and for a form asked for a whole staff (never one card for everyone). With several " + places + " and none named, it gives the question to ask.",
+    input_schema: object({ salon: { type: "string", description: "The " + place + " the manager named, if any." }, position: { type: "string", description: "One position the manager asked about (\"tanning consultants\"), if any." } }, []),
   },
   {
     name: "search_knowledge",
@@ -349,13 +382,19 @@ export const AGENT_LOOP_TOOLS = [
         employee_id: { type: "string", description: "From find_staff." },
         employee_name: { type: "string", description: "Only when find_staff said the roster cannot be searched." },
         exit_evidence: evidence("Employee Exit Form only: where the manager asks for the exit form or tells a resignation."),
+        request_evidence: {
+          type: "array",
+          items: evidence("An earlier manager message of this same request (for this person) that named them differently: their words."),
+          description: "Earlier messages of this request the name lookup missed (the manager typed the name differently there, and this message gives it).",
+        },
+        new_form_evidence: evidence("Only when this message asks for another or a new form (a second form for the person on the open draft, or a new request after an earlier card): its words."),
         policy: { type: "string", description: "One JBA Policy Manual heading, exactly; or \"Other — <short topic>\"; or both, \"<heading>; Other — <topic>\" (a cleaning or sanitation duty left undone is Other, as the rules book says)." },
         what_happened: {
           type: "string",
           description:
             "This incident's account in the manager's own words, all of it, with work areas and names kept as typed. Spelling, spacing and capitals cleaned; never names, dates, numbers, amounts or quoted words. No instructions (\"create a CA\", \"make it about\", \"the policy is\"), no level or payroll words, nothing invented. Leave out when the manager has not said what happened.",
         },
-        incident_date: { type: "string", description: "YYYY-MM-DD, the salon's local date." },
+        incident_date: { type: "string", description: "YYYY-MM-DD, the " + place + "'s local date." },
         level_evidence: evidence("With warning_level verbal or written: the manager message and the words from it that state this form's level, from the message being answered or the one before it. \"She was written up before\" is not this form's level."),
         payroll_evidence: evidence("With payroll_deduct: the manager message and the words from it that answer whether payroll deduct applies: the message being answered, or an answer that came right after your reply showing THIS person's card (never another person's answer)."),
         warning_level: { type: "string", enum: ["verbal", "written", "termination"], description: "Only when the manager stated it for this form. termination: only when the rules book's Termination lines say this form is one." },
@@ -365,7 +404,7 @@ export const AGENT_LOOP_TOOLS = [
         payroll_amount: { type: "string", description: "The deduction amount the manager stated, digits." },
         prior_actions: { type: "string", description: "Earlier steps only as the manager stated them (\"verbal on 10/2\", \"coached last month\"); never from records on file." },
         incident_time: { type: "string", description: "The time of the incident if the manager gave one, as they said it." },
-        salon: { type: "string", description: "The salon the form is for, as the manager named it (\"kearney\", \"IA Altoona\"), when the card asks which salon or the manager says one. Only the manager's own salons are accepted." },
+        salon: { type: "string", description: "The " + place + " the form is for, as the manager named it (\"kearney\", \"IA Altoona\"), when the card asks which " + place + " or the manager says one. Only the manager's own " + places + " are accepted." },
       },
       ["template_key"],
     ),
@@ -379,8 +418,13 @@ export const AGENT_LOOP_TOOLS = [
         instance_id: { type: "string" },
         values: { type: "object", additionalProperties: { type: "string" } },
         forms_on_file_evidence: FORMS_ON_FILE_EVIDENCE,
-        intent: { type: "string", enum: ["correct_name"], description: "correct_name: this message corrects the employee's name (only employee_name changes)." },
+        intent: {
+          type: "string",
+          enum: ["correct_name", "write_account"],
+          description: "correct_name: this message corrects the employee's name (only employee_name changes). write_account: the manager asks you to put their account on the draft.",
+        },
         name_evidence: evidence("With intent correct_name: this message's words that give the name."),
+        account_evidence: { type: "array", items: evidence("A manager message that tells what happened, and their words."), description: "With intent write_account: the manager's messages with the account." },
         level_evidence: evidence("With values warning_type verbal or written: the words from THIS message that state the level."),
         payroll_evidence: evidence("With values payroll_deduct: the words from THIS message that answer whether payroll deduct applies."),
       },
@@ -394,19 +438,24 @@ export const AGENT_LOOP_TOOLS = [
   },
   {
     name: "app_help",
-    description: "This app's own help: how to sign in, reset or change your password, and what Sunny can do. Use it for any question about using this app; never send the manager to IT when this has the answer.",
+    description: "This app's own help: how to sign in, reset or change your password, and what " + config.appName + " can do. Use it for any question about using this app; never send the manager to IT when this has the answer.",
     input_schema: object({ topic: { type: "string", enum: ["password", "sign_in", "what_sunny_does"] } }, ["topic"]),
   },
   /* The app data tools (QA, 15 Nov 2026): Google Reviews and the reports, with the scope rules in code (`data-tools.ts`). */
-  ...DATA_TOOL_SPECS,
+  ...dataToolSpecs(config),
   {
     name: "coach_team",
-    description: "A Coaching Form for the whole team: with no draft open, the team Coaching card (\"All team members\" at one salon); with a Coaching draft open, \"this coaching for everyone on my team\" and its \"create all\" confirmation make one draft each with the same Details. No arguments: it reads the manager's message.",
+    description: "A Coaching Form for the whole team: with no draft open, the team Coaching card (\"All team members\" at one " + place + "); with a Coaching draft open, \"this coaching for everyone on my team\" and its \"create all\" confirmation make one draft each with the same Details. No arguments: it reads the manager's message.",
     input_schema: object({}, []),
   },
 ];
+}
+
+export const AGENT_LOOP_TOOLS = agentLoopTools(SUNNY_CONFIG);
 
 const EPHEMERAL = { anthropic: { cacheControl: { type: "ephemeral" } } } as const;
+/** The turn's calls ask alike (batch J8): a different thinking setting is a different cache entry. */
+const LOOP_PROVIDER_OPTIONS = { anthropic: { thinking: { type: "adaptive" }, effort: CLAUDE_EFFORT } } as never;
 
 /** A reply that says the form was changed ("I've added …", "updated the draft", "the draft now reads …"). */
 export const CLAIMS_A_CHANGE =
@@ -521,7 +570,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   const modelSteps: { step: number; ms: number; stop: string | null; input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number }[] = [];
   const handlers: Record<string, (args: Record<string, unknown>) => Promise<ToolResult>> = {
     find_staff: (args) => findStaff(context, args, effects),
-    find_past_forms: (args) => findPastForms(context, args),
+    find_past_forms: (args) => findPastForms(context, args, effects),
     read_form: (args) => readForm(context, args),
     read_policy: (args) => readPolicy(context, args, effects),
     propose_form: (args) => proposeForm(context, effects, args),
@@ -564,7 +613,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   const model = modelForTests ?? (await import("@ai-sdk/anthropic")).createAnthropic({ apiKey: requireEnv("ANTHROPIC_API_KEY") })(CLAUDE_MODEL);
   let stepNumber = 1;
   const tools = Object.fromEntries(
-    AGENT_LOOP_TOOLS.map((definition) => [
+    agentLoopTools().map((definition) => [
       definition.name,
       tool({
         description: definition.description,
@@ -576,6 +625,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
 
   const limit = agentLoopStepLimit();
   const started = performance.now();
+  let firstTokenMs: number | null = null;
   let text = "";
   let stoppedAt = "step_limit" as "reply" | "step_limit" | "timeout" | "error";
   const usage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
@@ -595,7 +645,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
       const result = streamText({
         model: model as never,
         system: [
-          { role: "system", content: AGENT_LOOP_RULES, providerOptions: EPHEMERAL },
+          { role: "system", content: agentLoopRules(), providerOptions: EPHEMERAL },
           { role: "system", content: dynamic },
         ],
         messages: conversationOf(input.history, input.question, input.questionMessageId) as never,
@@ -605,7 +655,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         maxOutputTokens: CLAUDE_MAX_TOKENS.standard,
         maxRetries: timed.maxRetries,
         abortSignal: timed.signal,
-        providerOptions: { anthropic: { thinking: { type: "adaptive" }, effort: CLAUDE_EFFORT } } as never,
+        providerOptions: LOOP_PROVIDER_OPTIONS,
         /*
          * F1 (batch F): a model error mid-turn is swallowed by streamText, and its steps resolve with the last tool step,
          * which read as the step limit. It is noted here, so the turn ends as the error it was.
@@ -615,7 +665,11 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         },
         onChunk: ({ chunk }) => {
           watch.chunk();
-          if (chunk.type === "text-delta" || chunk.type === "reasoning-delta" || chunk.type === "tool-input-start" || chunk.type === "tool-call") watch.firstToken();
+          if (chunk.type === "text-delta" || chunk.type === "reasoning-delta" || chunk.type === "tool-input-start" || chunk.type === "tool-call") {
+            watch.firstToken();
+            /* Batch J10 (the J6 speed report: first_token_ms was null on every loop trace): the turn's first token. */
+            if (firstTokenMs === null) firstTokenMs = Math.round(performance.now() - started);
+          }
         },
         onStepFinish: (step) => {
           const used = tokensOf(step.usage as StepUsage);
@@ -657,7 +711,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         const again = streamText({
           model: model as never,
           system: [
-            { role: "system", content: AGENT_LOOP_RULES, providerOptions: EPHEMERAL },
+            { role: "system", content: agentLoopRules(), providerOptions: EPHEMERAL },
             { role: "system", content: dynamic },
           ],
           messages: [...(conversationOf(input.history, input.question, input.questionMessageId) as never[]), ...(turn as never[])],
@@ -694,12 +748,18 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         const review = streamText({
           model: model as never,
           system: [
-            { role: "system", content: AGENT_LOOP_RULES, providerOptions: EPHEMERAL },
+            { role: "system", content: agentLoopRules(), providerOptions: EPHEMERAL },
             { role: "system", content: dynamic },
           ],
           messages: [...(conversationOf(input.history, input.question, input.questionMessageId) as never[]), ...(response.messages as never[]), { role: "user", content: note } as never],
           tools,
           stopWhen: stepCountIs(Math.min(4, left)),
+          /*
+           * Batch J8 (the J6 speed report: a hand-back read 3838 input tokens with nothing from the cache): it asks as the
+           * turn's own calls do, the same thinking and effort and the last message marked, so the same prefix is cached.
+           */
+          prepareStep: ({ messages }) => ({ messages: withLastMessageCached(messages) }),
+          providerOptions: LOOP_PROVIDER_OPTIONS,
           maxOutputTokens: CLAUDE_MAX_TOKENS.standard,
           maxRetries: timed.maxRetries,
           abortSignal: timed.signal,
@@ -752,7 +812,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
        * the change with edit_form or say plainly it was not made. Only if the reply still claims an unsaved change does
        * the check after this block give today's FORM_EDIT_NOOP_GUARD answer from the saved diff.
        */
-      if (stoppedAt === "reply" && noop && openBefore && !effects.proposal && !effects.formOpened && CLAIMS_A_CHANGE.test(text)) {
+      if (stoppedAt === "reply" && noop && openBefore && !effects.proposal && !effects.formOpened && !(effects.formUpdate?.saved?.length) && CLAIMS_A_CHANGE.test(text)) {
         const saved = await noop.replyFromSavedDiff({ request: input.request, before: openBefore, answer: { content: text, citations: [], coverage: "not_applicable", recommendedVideoIds: [] } });
         if (!saved.formUpdate) {
           const note = [
@@ -777,13 +837,13 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         if (claimed || nothingChanged) {
           const saved = await savedWarningLevel(input.request, input.openFormId);
           if (saved) {
-            const levelWrong = claimed !== null && saved.templateKey === "dpoa" && !saved.levels.includes(claimed);
+            const levelWrong = claimed !== null && saved.templateKey === appConfig().formKeys.corrective && !saved.levels.includes(claimed);
             const changeAsked = nothingChanged && ASKS_A_CHANGE.test(input.question);
             if (levelWrong || changeAsked) {
               const label = saved.levels.length > 0 ? saved.levels.map((level) => level[0]!.toUpperCase() + level.slice(1)).join(", ") : null;
               const note = [
                 `[app check] Your reply ${levelWrong ? `says the draft's level is ${claimed}` : "says nothing changed on the draft"}, but no edit_form or read_form ran this turn, so it was not read from the saved form.`,
-                saved.templateKey === "dpoa" ? `The saved draft's level: ${JSON.stringify({ saved_level: label })}.` : "",
+                saved.templateKey === appConfig().formKeys.corrective ? `The saved draft's level: ${JSON.stringify({ saved_level: label })}.` : "",
                 "If the manager asked for a change, make it now with edit_form and say only what it reports (saved_level). Otherwise say what the saved draft holds. Then write your reply to the manager again.",
               ].filter(Boolean).join("\n");
               const again = await handBack(note);
@@ -816,9 +876,10 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   input.onTools?.(steps.map((step) => step.tool));
   const trace = chatTraceDraft();
   if (trace) {
+    trace.firstTokenMs = firstTokenMs;
     trace.slots = {
       ...(trace.slots ?? {}),
-      agent_loop: { steps, model_steps: modelSteps, model_calls: modelCalls, step_limit: limit, steps_used: stepNumber - 1, stopped: stoppedAt, ms: latencyMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}), ...(levelReview ? { level_review: levelReview } : {}) },
+      agent_loop: { steps, model_steps: modelSteps, model_calls: modelCalls, step_limit: limit, steps_used: stepNumber - 1, stopped: stoppedAt, ms: latencyMs, first_token_ms: firstTokenMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}), ...(levelReview ? { level_review: levelReview } : {}) },
     };
   }
 
@@ -868,11 +929,14 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
    */
   if (noop && openBefore && !effects.proposal && !effects.formOpened) {
     const checked = await noop.replyFromSavedDiff({ request: input.request, before: openBefore, answer: { content, citations: [], coverage: "not_applicable", recommendedVideoIds: [] } });
-    if (!checked.formUpdate && CLAIMS_A_CHANGE.test(content)) {
+    /* PR 3: a save the tools read back from the form (effects.formUpdate.saved) is never overruled by this diff of the screen's copy. */
+    const readBack = (effects.formUpdate?.saved?.length ?? 0) > 0;
+    if (!checked.formUpdate && CLAIMS_A_CHANGE.test(content) && !readBack) {
       content = checked.content;
       effects.formUpdate = null;
     } else if (checked.formUpdate) {
-      effects.formUpdate = checked.formUpdate;
+      /* The form edit_form wrote (read back) is the truth of the turn; the screen copy's diff only fills in when no tool saved. */
+      effects.formUpdate = readBack ? effects.formUpdate : checked.formUpdate;
     }
   }
 

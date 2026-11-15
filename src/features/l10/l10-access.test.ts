@@ -211,6 +211,21 @@ describe("saving, ending and the bell go to the same Hub record", () => {
     expect(hub.calls[0]).toMatchObject({ op: "end", args: { key: "stc-dm", recap } });
   });
 
+  it("ending the meeting carries the meeting notes to the Hub's recap (the Hub's 20261205120000_l10_recap_notes)", async () => {
+    hub.answer = () => ({ status: 200, body: { ok: true, created: true } });
+    const { endMeeting } = await import("./data.server");
+    const { buildRecap } = await import("./lib/doc");
+    const { readDoc } = await import("./lib/doc");
+    const recap = buildRecap(readDoc({ meetingNotes: "Talked about the schedule" }), [], "pending", "s2", 60);
+    expect(recap.notes).toBe("Talked about the schedule");
+    expect(await endMeeting("stc-dm", recap)).toEqual({ ok: true, created: true });
+    expect((hub.calls.at(-1)!.args as { recap: { notes?: string } }).recap.notes).toBe("Talked about the schedule");
+    expect(buildRecap(readDoc({}), [], "pending", "s3", 60)).not.toHaveProperty("notes");
+    // To-do counts and solved issues' owners travel the same way (the Hub's 20261205120000).
+    const counted = buildRecap(readDoc({ todos: [{ id: "t1", text: "a", owner: "x", done: true, due: "Next wk" }, { id: "t2", text: "b", owner: "x", done: false, due: "Next wk" }], issues: [{ id: "i1", title: "Door", notes: "", resolved: true, resolvedSession: "pending", owner: "Bo Lark" }] }), [], "pending", "s4", 60);
+    expect([counted.todosDone, counted.todosTotal, counted.resolvedIssues]).toEqual([1, 2, [{ title: "Door", owner: "Bo Lark" }]]);
+  });
+
   it("the bell reads and marks the person's own notes in the Hub (same read state as the Hub's bell)", async () => {
     hub.answer = (op) => (op === "notifications-count" ? { status: 200, body: { ok: true, count: 3 } } : { status: 200, body: { ok: true, notifications: [] } });
     const data = await import("./data.server");
@@ -281,6 +296,13 @@ describe("Server Functions check their inputs before anything reaches the Hub", 
     expect(await saveMeetingAction("stc-dm", -1, {})).toMatchObject({ ok: false, kind: "invalid" });
     expect(await saveMeetingAction("stc-dm", 0, [] as unknown as Record<string, unknown>)).toMatchObject({ ok: false, kind: "invalid" });
     expect(await endMeetingAction("stc-dm", { sessionId: "", cascade: "", ratingAvg: null, durationSeconds: 0, attendees: [], openTodos: [], resolvedIssues: [] })).toMatchObject({ ok: false, kind: "invalid" });
+    // Meeting notes (15 Nov 2026) are optional text of at most 64 KB.
+    expect(await endMeetingAction("stc-dm", { sessionId: "s", cascade: "", ratingAvg: null, durationSeconds: 0, attendees: [], openTodos: [], resolvedIssues: [], notes: "x".repeat(65_537) })).toMatchObject({ ok: false, kind: "invalid" });
+    expect(await endMeetingAction("stc-dm", { sessionId: "s", cascade: "", ratingAvg: null, durationSeconds: 0, attendees: [], openTodos: [], resolvedIssues: [], notes: 5 as unknown as string })).toMatchObject({ ok: false, kind: "invalid" });
+    // To-do counts: both or neither, 0 <= done <= total.
+    for (const [todosDone, todosTotal] of [[1, undefined], [3, 2], [-1, 2], [1.5, 2]] as [number | undefined, number | undefined][]) {
+      expect(await endMeetingAction("stc-dm", { sessionId: "s", cascade: "", ratingAvg: null, durationSeconds: 0, attendees: [], openTodos: [], resolvedIssues: [], todosDone, todosTotal })).toMatchObject({ ok: false, kind: "invalid" });
+    }
     expect(await loadMeetingAction("nope")).toMatchObject({ ok: false });
     expect(hub.calls).toEqual([]);
   });

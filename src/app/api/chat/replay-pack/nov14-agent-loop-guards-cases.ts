@@ -858,7 +858,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       const first = t.thread();
       await first.say("coaching form for tamsin orwell, she marked a session as complete but the guest hadn't been sprayed yet");
       // Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite; code-check audit batch C): a fact, not a refusal; the model fixes the card.
-      expect(toolResults(empty.views, "propose_form")[0], "the account the manager gave is not a fact").toMatch(/"account_given":\{"untrusted_text":"[^"]*marked a session as complete/);
+      // Changed on purpose (the rebuild plan's PR 1, 15 Nov 2026): the fact is this person's request words (request_words); the model reads the account in them, no word list does.
+      expect(toolResults(empty.views, "propose_form")[0], "the manager's words are not a fact").toMatch(/"request_words":\{"untrusted_text":"[^"]*marked a session as complete/);
       expect(first.proposal?.issue ?? "").toMatch(/marked a session as complete/);
 
       // A created coaching draft: the account turn, then "make that update" with no values writes it, word for word.
@@ -872,7 +873,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       // returns latest_account and account_field and the model writes it with values, as the rules book teaches.
       const updater = loopStandIn((view) => {
         const edit = lastResult(view, "edit_form") as { latest_account?: { untrusted_text: string }; account_field?: string } | null;
-        if (!edit) return { tool: "edit_form", input: { instance_id: id } };
+        // Changed on purpose (the rebuild plan's PR 1): "make that update" is the model's intent write_account, citing the manager's account message.
+        if (!edit) return { tool: "edit_form", input: { instance_id: id, intent: "write_account", account_evidence: [evidenceFrom(view, "tamsin marked a session as complete", 1)] } };
         if (edit.latest_account && edit.account_field) return { tool: "edit_form", input: { instance_id: id, values: { [edit.account_field]: edit.latest_account.untrusted_text } } };
         return { text: "Done." };
       });
@@ -996,7 +998,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "tamsin orwell" } };
         // The account of the turn it answers (the account check refuses one that drops the manager's date).
         const late = /late on 11\/12/i.test(view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "");
-        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, what_happened: late ? "Tamsin Orwell was late on 11/12." : "Tamsin Orwell was on her phone at the front desk." } };
+        // Changed on purpose (rebuild plan PR 1b): "make another ca" is the model's new_form_evidence.
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, what_happened: late ? "Tamsin Orwell was late on 11/12." : "Tamsin Orwell was on her phone at the front desk." , ...(late ? { new_form_evidence: evidenceFrom(view, "make another ca") } : {}) } };
         return { text: JSON.stringify(lastResult(view, "propose_form")) };
       });
       t.loopModel!(again);
@@ -1332,7 +1335,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       const proposer = loopStandIn((view) => {
         const said = view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "";
         if (!lastResult(view, "propose_form")) {
-          return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, what_happened: /opening this morning/.test(said) ? "Tamsin Orwell was late to opening this morning." : "Tamsin Orwell failed to take the trash out." } };
+          // Changed on purpose (rebuild plan PR 1b): a new form while a draft is open is the model's new_form_evidence.
+          return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, what_happened: /opening this morning/.test(said) ? "Tamsin Orwell was late to opening this morning." : "Tamsin Orwell failed to take the trash out." , ...(/make me a CA/.test(said) ? { new_form_evidence: evidenceFrom(view, "make me a CA for Tamsin Orwell") } : {}) } };
         }
         return { text: JSON.stringify(lastResult(view, "propose_form")) };
       });

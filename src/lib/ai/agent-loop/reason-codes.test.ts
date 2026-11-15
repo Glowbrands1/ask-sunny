@@ -17,7 +17,18 @@ const KNOWN = new Set([
   "form_not_visible", "not_a_heading", "one_card", "wrong_tool", "whole_staff", "right_person", "draft_open", "date_not_stated",
   "salon_unknown", "not_stated", "name_correction_only", "date_after_today", "drafts_only", "unknown_field", "empty_account",
   "bad_level", "not_a_saved_form", "not_a_form_id", "write_failed", "finalized_revision_refused", "not_configured", "not_synced",
-  "unknown_tool", "tool_threw", "name_evidence_missing", "name_correction_other_fields", "name_correction_did_you_mean", "name_correction_needs_evidence", "name_correction_no_name", "name_correction_other_person", "name_not_in_evidence", "privacy_not_this_person", "exit_not_stated", "level_not_stated", "payroll_not_stated",
+  "unknown_tool", "tool_threw",
+  // The rebuild plan's PR 1a (evidence args; QA's review of #1026): the privacy, exit and name-correction refusals.
+  "privacy_not_this_person", "exit_not_stated", "name_evidence_missing", "name_correction_other_fields", "name_correction_no_name",
+  "name_not_in_evidence", "name_correction_other_person", "name_correction_did_you_mean", "name_correction_needs_evidence",
+  // PR 1b: the request and account evidence (requestTurns builds `${kind}_invalid` and the rest), and the open request.
+  "request_evidence_invalid", "request_evidence_other_person", "request_evidence_not_this_request",
+  "account_evidence_invalid", "account_evidence_other_person", "account_evidence_not_this_request", "account_evidence_missing", "open_requested",
+  // Batch J5 (#1028): "late to open" proposed as Attendance; the words are the manual's Late Opening section.
+  "wrong_heading",
+  // Added on purpose (PR 3, tools return exactly what was saved): propose_form's not_on_card codes, a field left off the card.
+  "level_not_stated", "termination_not_stated", "payroll_not_stated", "amount_not_stated", "prior_actions_not_kept",
+  "several_dates_not_chosen", "date_from_another_request", "not_on_this_form",
 ]);
 
 /** A line that returns a refusal: `error:` followed by a string, a template or a named message (not `error: Boolean(...)`). */

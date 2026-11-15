@@ -1439,7 +1439,7 @@ const TITLE_HEAD = /^(?:managers?|directors?|consultants?|supervisors?|leads?|tr
 const TITLE_MODIFIER =
   /^(?:salon|district|regional|area|store|general|assistant|shift|training|operations|tanning|spa|senior|junior|head|key)$/i;
 
-function isJobTitlePhrase(candidate: string): boolean {
+export function isJobTitlePhrase(candidate: string): boolean {
   if (JOB_TITLES.some((entry) => entry.pattern.test(candidate) && candidate.replace(entry.pattern, "").trim() === "")) {
     return true;
   }

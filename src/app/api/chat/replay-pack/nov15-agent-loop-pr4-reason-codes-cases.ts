@@ -165,13 +165,14 @@ export const NOV15_AGENT_LOOP_PR4_CASES: ReplayCase[] = [
       if (!t.loopOn?.() || !offline) return;
       start(t);
       let finalizedId = "";
+      // Changed on purpose (the rebuild plan's PR 1a): edit_form of a form that is not open quotes the manager's ask about it.
       const standIn = loopStandIn((view): LoopDecision => {
         const said = view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "";
         if (/open a revision/i.test(said)) {
-          return lastResult(view, "edit_form") ? { text: "Opened a revision draft." } : { tool: "edit_form", input: { instance_id: finalizedId, forms_on_file_evidence: evidenceFrom(view), values: { form_date: "2026-11-12" } } };
+          return lastResult(view, "edit_form") ? { text: "Opened a revision draft." } : { tool: "edit_form", input: { instance_id: finalizedId, values: { form_date: "2026-11-12" }, forms_on_file_evidence: evidenceFrom(view, "remy calder's ca") } };
         }
         if (/\bchange\b/i.test(said)) {
-          return lastResult(view, "edit_form") ? { text: "That field isn't on the form." } : { tool: "edit_form", input: { instance_id: finalizedId, forms_on_file_evidence: evidenceFrom(view), values: { not_a_field_on_this_form: "anything" } } };
+          return lastResult(view, "edit_form") ? { text: "That field isn't on the form." } : { tool: "edit_form", input: { instance_id: finalizedId, values: { not_a_field_on_this_form: "anything" }, forms_on_file_evidence: evidenceFrom(view, "remy calder's ca") } };
         }
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
         if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: "Remy Calder was late on 11/12.", incident_date: "2026-11-12" } };

@@ -207,12 +207,12 @@ export const NOV15_AGENT_LOOP_TERMINATION_DECISION_CASES: ReplayCase[] = [
       t.directory([...STAFF]);
       t.as("salon_director", KEARNEY);
       const model = loopStandIn((view): LoopDecision => {
-        const results = view.results.filter((result) => result.tool === "propose_form").map((result) => result.output as { facts?: { not_kept?: string[] } });
+        const results = view.results.filter((result) => result.tool === "propose_form").map((result) => result.output as { not_on_card?: { field: string }[] });
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
         const input = { template_key: "dpoa", employee_id: "e-2", what_happened: "She was late again on 11/14.", incident_date: "2026-11-14", warning_level: "termination" };
         // The live slip: the count lost and today's date put on the earlier steps.
         if (results.length === 0) return { tool: "propose_form", input: { ...input, prior_actions: "Written warning — 11/14/2026" } };
-        if (results.length === 1 && results[0]!.facts?.not_kept?.includes("prior_actions")) return { tool: "propose_form", input: { ...input, prior_actions: "Written warning (2), dates not given" } };
+        if (results.length === 1 && results[0]!.not_on_card?.some((entry) => entry.field === "prior_actions")) return { tool: "propose_form", input: { ...input, prior_actions: "Written warning (2), dates not given" } };
         return { text: "Here's the Corrective Action Form for **Remy Calder**." };
       });
       t.loopModel!(model);
@@ -223,7 +223,7 @@ export const NOV15_AGENT_LOOP_TERMINATION_DECISION_CASES: ReplayCase[] = [
   },
   {
     id: "nov15-termination-decision-lock-refuses-no-word",
-    title: "QA's design, the lock: a termination the model asks for where the manager's words carry no termination word is not kept (not_kept), and Create ticks nothing; a card forged with loopTermination is refused at Create too",
+    title: "QA's design, the lock: a termination the model asks for where the manager's words carry no termination word is not kept (not_on_card), and Create ticks nothing; a card forged with loopTermination is refused at Create too",
     report: REPORT,
     status: "fixed",
     fixFlags: [FLAG],
@@ -232,7 +232,7 @@ export const NOV15_AGENT_LOOP_TERMINATION_DECISION_CASES: ReplayCase[] = [
       for (const words of NO_WORD) {
         const { thread, reply, model } = await card(t, words, true);
         expect(reply.content, `"${words}" was carded as a termination`).not.toMatch(/Termination, as you said/);
-        if (offline) expect(toolResults(model.views, "propose_form")[0] ?? "", `the lock kept a termination for "${words}"`).toMatch(/"not_kept":\[[^\]]*"warning_level"/);
+        if (offline) expect(toolResults(model.views, "propose_form")[0] ?? "", `the lock kept a termination for "${words}"`).toMatch(/"not_on_card":\[[^\]]*"field":"warning_level"/);
         expect((thread.proposal as { loopTermination?: true } | null)?.loopTermination, "the card carries a termination").toBeUndefined();
         const id = await thread.create();
         expect(t.checked(id).warning_type ?? [], `Create ticked Termination for "${words}"`).not.toContain("termination");
@@ -358,7 +358,7 @@ export const NOV15_AGENT_LOOP_TERMINATION_DECISION_CASES: ReplayCase[] = [
       // The lock: a termination the model asks for where the words carry no termination word.
       const { thread, model } = await exit("exit form for remy calder, she quit, last day 11/28", true);
       expect(thread.proposal?.formDate).toBe("2026-11-28");
-      if (offline) expect(toolResults(model.views, "propose_form")[0] ?? "", "the lock kept a termination exit with no termination word").toMatch(/"not_kept":\[[^\]]*"exit_type"/);
+      if (offline) expect(toolResults(model.views, "propose_form")[0] ?? "", "the lock kept a termination exit with no termination word").toMatch(/"not_on_card":\[[^\]]*"field":"exit_type"/);
     },
   },
 ];

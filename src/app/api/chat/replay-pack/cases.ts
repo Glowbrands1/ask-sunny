@@ -135,6 +135,12 @@ export interface ReplayContext {
   loopModel?(standIn: import("./loop-stand-in").LoopStandIn): void;
   /** AGENT_LOOP_ENABLED: find_staff's roster read fails from now on. */
   rosterFails?(): void;
+  /**
+   * AGENT_LOOP_ENABLED: watch the chat route's entry into the tool loop (its `runAgentTurn`). `entered()` counts the
+   * entries since the watch began; `stop()` ends it. The harness holds the module reference, so a case file never names it
+   * (the form-patch guard allows only the route to import the loop in production sources).
+   */
+  watchLoopEntries?(): { entered(): number; stop(): void };
 }
 
 export interface DirectoryRow {

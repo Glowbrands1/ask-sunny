@@ -592,7 +592,8 @@ const liveModel = process.env.AGENT_LOOP_LIVE === "1"
   ? (await import("@ai-sdk/anthropic")).createAnthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? "" })(process.env.ANTHROPIC_MODEL || "claude-opus-5")
   : null;
 /* AGENT_LOOP_ENABLED (QA, 14 Nov 2026): the loop's stand-in model (`t.loopModel`), and its manual cache forgotten between cases. */
-const { __setAgentLoopModelForTests } = await import("@/lib/ai/agent-loop/run");
+const agentLoopRun = await import("@/lib/ai/agent-loop/run");
+const { __setAgentLoopModelForTests } = agentLoopRun;
 const { forgetAgentLoopManualForTests, __setAgentLoopDirectoryForTests } = await import("@/lib/ai/agent-loop/tools");
 
 /** The chat route only accepts a UUID for the open form; the fake numbers rows `fake-N`. */
@@ -1049,6 +1050,10 @@ function context(): ReplayContext {
     loopActive: () => process.env.AGENT_LOOP_ENABLED === "true" && loop.standIn !== null,
     rosterFails: () => {
       loop.rosterFails = true;
+    },
+    watchLoopEntries: () => {
+      const spy = vi.spyOn(agentLoopRun, "runAgentTurn");
+      return { entered: () => spy.mock.calls.length, stop: () => spy.mockRestore() };
     },
     draftNotYetSaved: (instanceId) => {
       store.form_instance_values = store.form_instance_values.filter((row) => !(row.instance_id === instanceId && row.filled_by === "ai"));
