@@ -303,4 +303,84 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       if (offline) expect(toolResults(model.views, "edit_form")[0], "an untyped amount was not refused").toMatch(/must come from the manager's own words/);
     },
   },
+  {
+    id: "nov15-agent-loop-g6-exit-last-day-after-today-kept",
+    title: "G6 (Pau's question, via QA): an exit \"she gave notice, last day is 11/28\" on 11/15: the card is dated 11/28, never blanked as after today",
+    report: `${REPORT}; G6: E12's after-today rule blanked an exit's future last day (a regression on main for exit forms)`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-15T18:00:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      const model = loopStandIn((view): LoopDecision => {
+        const result = lastResult(view, "propose_form") as { facts?: { date_after_today?: unknown } } | null;
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
+        if (!result) return { tool: "propose_form", input: { template_key: "stc-exit", employee_id: "e-2", incident_date: "2026-11-28" } };
+        return { text: `Here's the Employee Exit Form for **Remy Calder**.\n\n${result.facts?.date_after_today ? "11/28 is after today." : "Last day 11/28/2026, as you said."}` };
+      });
+      t.loopModel!(model);
+      const thread = t.thread();
+      const reply = await thread.say("exit form for remy calder, she gave notice, last day is 11/28");
+      expect(thread.proposal?.templateKey).toBe("stc-exit");
+      expect(thread.proposal?.formDate, `the exit's last day was blanked:\n${reply.content}`).toBe("2026-11-28");
+      if (offline) expect(toolResults(model.views, "propose_form").some((result) => /date_after_today/.test(result)), "an exit's future last day was treated as after today").toBe(false);
+    },
+  },
+  {
+    id: "nov15-agent-loop-g6-follow-up-date-after-today-written",
+    title: "G6: on a Follow-Up Coaching draft, \"next follow up 12/1\" (after today) is written; a follow-up date is never refused",
+    report: `${REPORT}; G6: follow-up dates are future by design`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-15T18:00:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "follow-up-coaching", employee_id: "e-2", what_happened: "Remy Calder now checks the beds between clients." } };
+        return { text: "Here's the Follow-Up Coaching Form for **Remy Calder**." };
+      }));
+      const thread = t.thread();
+      await thread.say("follow up coaching for remy calder, she now checks the beds between clients");
+      const id = await thread.create();
+      const model = loopStandIn((view): LoopDecision => {
+        const edit = lastResult(view, "edit_form") as { error?: string } | null;
+        if (!edit) return { tool: "edit_form", input: { instance_id: id, values: { next_follow_up: "12/1/2026" } } };
+        return { text: edit.error ? "I couldn't set that date." : "Next Follow-Up: 12/1/2026." };
+      });
+      t.loopModel!(model);
+      await thread.say("next follow up 12/1/2026");
+      expect(toolResults(model.views, "edit_form")[0] ?? "", "a follow-up date after today was refused").not.toMatch(/after today/);
+      expect(t.values(id).next_follow_up ?? "", "the follow-up date was not written").toMatch(/12\/1\/2026/);
+    },
+  },
+  {
+    id: "nov15-agent-loop-exit-termination-no-incident-questions",
+    title: "Exit (Pau: coaching, exit and CA first): \"exit form for <name>, termination effective 11/20, not eligible for rehire, no call no show 3 shifts\": an exit card dated 11/20, with no \"what happened\", no policy and no warning level",
+    report: `${REPORT}; Pau via QA: the exit form (76 in 90 days) is covered as well as CA and coaching`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-15T18:00:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "stc-exit", employee_id: "e-2", incident_date: "2026-11-20" } };
+        return { text: "Here's the Employee Exit Form for **Remy Calder**: a termination, effective 11/20/2026, as you said. Not eligible for rehire; reason: no call no show for 3 shifts." };
+      }));
+      const thread = t.thread();
+      const reply = await thread.say("exit form for remy calder, termination effective 11/20, not eligible for rehire, no call no show 3 shifts");
+      expect(thread.proposal?.templateKey, `no exit card:\n${reply.content}`).toBe("stc-exit");
+      expect(thread.proposal?.formDate, "the effective date is not on the exit card").toBe("2026-11-20");
+      expect(reply.content, "an exit was asked what happened").not.toMatch(/what happened\?/i);
+      expect(reply.content, "an exit cites a policy").not.toMatch(/\*\*Policy:\*\*|JBA Policy Manual/);
+      expect(reply.content, "an exit was asked a warning level").not.toMatch(/warning level|verbal or written/i);
+    },
+  },
 ];

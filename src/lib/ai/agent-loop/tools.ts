@@ -1208,9 +1208,11 @@ export async function proposeForm(
   }
   const datesAsked = datesGiven.length > 1 && !date ? datesGiven : [];
   /* Batch C (code-check #32): a date after today is a fact with today's date; the rules book says to ask. */
-  const dateAfterToday = date && date > today ? date : null;
+  /* Batch G (G6): only an incident form's date is never after today; an exit's last day or effective date may be. */
+  const incidentForm = ACCOUNT_FORMS.has(template.key);
+  const dateAfterToday = incidentForm && date && date > today ? date : null;
   /* Batch E (E10): the manager's month/day ("12/20" on 11/14) was read as last year's; the reply says so in one line. */
-  const lastYear = date && !dateAfterToday && date.slice(0, 4) < today.slice(0, 4)
+  const lastYear = incidentForm && date && !dateAfterToday && date.slice(0, 4) < today.slice(0, 4)
     ? incidentDates(requestWords, null).find((given) => monthDayToIso(given, today) === date) ?? null
     : null;
   const askedLevel = input.warning_level === "verbal" || input.warning_level === "written" ? input.warning_level : null;
@@ -1262,7 +1264,7 @@ export async function proposeForm(
   const datedToday = ACCOUNT_FORMS.has(template.key) && !awaiting && !date && datesGiven.length === 0 && !ACCOUNT_WHEN.test(requestWords) && readDates(requestWords).length === 0;
   ACCOUNT_WHEN.lastIndex = 0;
   /* Batch E (E12): a date after today is never on the card, the model's or today's reading (the field is refused; the fact says so). */
-  const futureDate = dateAfterToday ?? (!date && proposal.formDate && proposal.formDate > today ? proposal.formDate : null);
+  const futureDate = dateAfterToday ?? (incidentForm && !date && proposal.formDate && proposal.formDate > today ? proposal.formDate : null);
   const card: ChatFormProposal = {
     ...proposal,
     sourceMessageIds: sourceIds,
@@ -1411,12 +1413,6 @@ export async function editForm(
       if (!digits || !managerTurns(context).replace(/[^\d.]/g, " ").split(/\s+/).some((n) => n !== "" && Number(n) === Number(digits))) unstated.push(field);
     }
   }
-  /* Batch E (E12): a form or incident date after today (the salon's local date) is never written. */
-  const editToday = context.today || businessToday();
-  const later = Object.entries(values).filter(([field, value]) => (field === "form_date" || field === "incident_date") && (isoDate(value, editToday) ?? "") > editToday);
-  if (later.length > 0) {
-    return { error: `${later.map(([field, value]) => `${field} ${value}`).join(", ")} is after today (${editToday}, the salon's local date). Nothing was written. Ask the manager which day.`, date_after_today: { today: editToday } };
-  }
   if (unstated.length > 0) {
     return { error: `${unstated.join(", ")} must come from the manager's own words, and this message does not state ${unstated.length === 1 ? "it" : "them"}. Nothing was written. Ask, or leave it for the manager.` };
   }
@@ -1434,6 +1430,18 @@ export async function editForm(
   }
   try {
     const { loaded } = await authorizeInstance(context.request, id, "edit");
+    /*
+     * Batch E (E12), scoped by batch G (G6, Pau via QA): an INCIDENT date after today (the salon's local date) is never
+     * written, on an incident form (CA, coaching, follow-up coaching). An exit's last day or effective date, and every
+     * follow-up or future-by-design date, may be after today and is never refused.
+     */
+    const editToday = context.today || businessToday();
+    const later = ACCOUNT_FORMS.has(loaded.instance.templateKey)
+      ? Object.entries(values).filter(([field, value]) => (field === "form_date" || field === "incident_date") && (isoDate(value, editToday) ?? "") > editToday)
+      : [];
+    if (later.length > 0) {
+      return { error: `${later.map(([field, value]) => `${field} ${value}`).join(", ")} is after today (${editToday}, the salon's local date). Nothing was written. Ask the manager which day.`, date_after_today: { today: editToday } };
+    }
     /*
      * HARD GUARD, THE RIGHT PERSON'S FORM (the live run's nov6-diffemp, top severity): a message about another roster
      * person, and not this form's employee ("now one for <B> …" with <A>'s draft open), never edits <A>'s form; it is

@@ -149,11 +149,20 @@ export const RULES_BOOK: readonly { readonly title: string; readonly rules: read
     ],
   },
   {
+    title: "Exit forms",
+    rules: [
+      "The Employee Exit Form (stc-exit) records a resignation or a termination. \"Gave notice\", \"quit\", \"resigned\", \"two weeks\" are a resignation; \"let go\", \"terminated\", \"fired\", \"termination\" are a termination. Say which in one line when the manager did not name it (\"Filed as a resignation, from 'gave notice'; say if it was a termination.\").",
+      "The exit's date is the last day worked or the effective date, and it may be after today: \"Last day 11/28/2026, as you said.\" Never call it a date after today or ask for another day because it is in the future.",
+      "Rehire eligibility and the reason go on the exit only as the manager said them. Never guess either; when the manager did not say, leave them for the draft and say so in one line.",
+      "An exit is not an incident: never ask \"what happened\", never cite or ask about a JBA Policy Manual section, and never ask a warning level. Ask at most one question, for something the exit needs that the manager did not say.",
+    ],
+  },
+  {
     title: "Card replies",
     rules: [
       "propose_form returns the card and its facts. Say every fact that is there, each on its own line, in these words (Pau's wording; fill in the brackets), and nothing the facts do not say:",
       "Every card reply names its employee in bold in its first line (\"Here's the Corrective Action Form for **<employee>**.\").",
-      "The account, on every card: \"**Observation of Offense:** <card.observation>\".",
+      "The account, on an incident card (Corrective Action, Coaching, Follow-Up Coaching): \"**Observation of Offense:** <card.observation>\". Other forms say what they hold in their own words (an exit: the type, the last day, rehire and the reason).",
       "stated: read back what the manager stated. warning_level: \"**Type of Warning:** Verbal Warning, as you said.\" (or Written Warning). prior_actions: \"**Prior actions:** <prior_actions>, as you said.\" payroll_deduct: \"**Is payroll deduct applicable?** Yes, as you said.\" (or No), with payroll_amount after it: \" **Payroll deduction amount:** <payroll_amount>.\"",
       "unset with both: \"Payroll deduct and warning level aren't set; tell me if they apply.\" Only payroll_deduct: \"Payroll deduct isn't set; tell me if it applies.\" Only warning_level: \"Warning level isn't set; tell me if it applies.\" payroll_amount_unset: \"The payroll deduction amount isn't set; tell me the figure if there is one.\"",
       "dates_given: \"You mentioned more than one date (**<a>**, **<b>**). Which date goes on the form?\" (each date in bold, comma-separated). dated_today: \"Dated today — tell me if it was another day.\"",
