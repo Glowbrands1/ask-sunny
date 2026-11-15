@@ -72,12 +72,22 @@ export function segueName(key: string): string {
   return key === "stc-dm" ? "AI Best Practice" : "Business Best";
 }
 
+/**
+ * The STC DM L10 runs its Bloom Growth agenda exactly (the owner's request, 15 Nov 2026; Bloom meeting 1675): the same
+ * titles, order and minutes, the Hub's own section keys. The Hub serves this with the roster; this copy is the fallback.
+ */
+const STC_DM_AGENDA: AgendaSection[] = [
+  { key: "business-best", title: "AI Best Practice", minutes: 5 },
+  { key: "scorecard", title: "Scorecard", minutes: 10 },
+  { key: "rocks", title: "Rock Review", minutes: 8 },
+  { key: "todos", title: "To-do List", minutes: 5 },
+  { key: "ids", title: "IDS", minutes: 25 },
+  { key: "conclude", title: "Conclude", minutes: 5 },
+];
+
 export function agendaFor(key: string): AgendaSection[] {
   if (key === "leadership") return AGENDA.filter((a) => a.key !== "headlines" && a.key !== "todos").map((a) => (a.key === "ids" ? { ...a, minutes: 70 } : a));
-  if (key === "stc-dm")
-    return AGENDA.filter((a) => a.key !== "headlines").map((a) =>
-      a.key === "ids" ? { ...a, minutes: 65 } : a.key === "business-best" ? { ...a, title: `Segue · ${segueName(key)}` } : a,
-    );
+  if (key === "stc-dm") return STC_DM_AGENDA;
   return AGENDA;
 }
 

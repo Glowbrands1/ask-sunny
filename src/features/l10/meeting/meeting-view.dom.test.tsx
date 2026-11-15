@@ -76,14 +76,15 @@ describe("the DM L10 page in Ask Sunny", () => {
     renderView();
     const agenda = within(screen.getByRole("region", { name: "Agenda" }));
     const items = agenda.getAllByRole("listitem").map((li) => li.textContent);
-    // Changed on purpose 13 Nov 2026: the STC DM L10's leader asked for "AI Best Practice" and no Headlines (IDS 65,
-    // still 90 minutes). This roster carries no agenda, so the page uses its copy of the Hub's config.
+    // Changed on purpose 13 Nov 2026: the STC DM L10's leader asked for "AI Best Practice" and no Headlines. Changed
+    // again 15 Nov 2026 (the owner's request): its Bloom Growth agenda, titles and minutes exactly (it was "Segue · AI
+    // Best Practice" 5 … "IDS · Issues" 65). This roster carries no agenda, so the page uses its copy of the Hub's config.
     expect(items).toEqual([
-      "1 · Segue · AI Best Practice5m",
-      "2 · Scorecard5m",
-      "3 · Rock Review5m",
-      "4 · To-Do List5m",
-      "5 · IDS · Issues65m",
+      "1 · AI Best Practice5m",
+      "2 · Scorecard10m",
+      "3 · Rock Review8m",
+      "4 · To-do List5m",
+      "5 · IDS25m",
       "6 · Conclude5m",
     ]);
     // Changed on purpose 13 Nov 2026: the STC DM L10 has no Reference (its leader asked), so no Business Plan or chart.
@@ -142,7 +143,7 @@ describe("the DM L10 page in Ask Sunny", () => {
       { id: "i4", title: "Newer solved", notes: "", resolved: true, resolvedAt: "2026-11-10T12:00:00.000Z" },
     ];
     renderView({ initial: loaded(3, { issues }) });
-    fireEvent.click(screen.getByRole("button", { name: /\d · IDS · Issues/ }));
+    fireEvent.click(screen.getByRole("button", { name: /\d · IDS/ }));
     expect(screen.getByRole("tab", { name: "Short term (1)" }).getAttribute("aria-selected")).toBe("true");
     expect(within(screen.getByRole("list", { name: "Open issues" })).getByText("Weekly issue")).toBeTruthy();
     fireEvent.click(screen.getByRole("tab", { name: "Long-term (1)" }));
@@ -156,7 +157,7 @@ describe("the DM L10 page in Ask Sunny", () => {
     const issues = [{ id: "i1", title: "Weekly issue", notes: "", resolved: false, votes: { "hub-user-2": { rank: 1, name: "Bo" } } }];
     renderView({ initial: loaded(3, { issues }) });
     // Any position: the STC DM agenda has no Headlines since 13 Nov 2026, so IDS is item 5 there (6 elsewhere).
-    fireEvent.click(screen.getByRole("button", { name: /\d · IDS · Issues/ }));
+    fireEvent.click(screen.getByRole("button", { name: /\d · IDS/ }));
     expect(screen.queryByRole("region", { name: "Everyone's top three" })).toBeNull();
     expect(screen.queryByRole("button", { name: /^Rank by you/ })).toBeNull();
     expect(screen.queryByTestId("room-rank")).toBeNull();
@@ -270,7 +271,7 @@ describe("the agenda, hints and roster come from the Hub (the STC DM L10 change,
   it("an issue someone adds saves their full name, so their initials show on it", async () => {
     const save = vi.fn().mockResolvedValue({ ok: true, version: 4, updatedAt: "2026-11-14T00:00:00Z" } satisfies SaveOutcome);
     renderView({ save: save as unknown as SaveFn, initial: loaded(3, { issues: [] }), mentionPeople: [{ id: "hub-user-1", name: "Avery Quill" }] });
-    fireEvent.click(screen.getByRole("button", { name: /IDS · Issues/ }));
+    fireEvent.click(screen.getByRole("button", { name: /\d · IDS/ })); // "IDS" in the STC DM L10's Bloom agenda since 15 Nov 2026
     fireEvent.change(screen.getByLabelText("Identify a new issue"), { target: { value: "New onboarding process" } });
     fireEvent.click(screen.getByRole("button", { name: "Add issue" }));
     expect(screen.getByTitle("Added by Avery Quill").textContent).toBe("AQ");
@@ -314,7 +315,7 @@ describe("IDS: move between the lists from the row, and no headlines where the m
     { id: "a2", title: "Parked issue", notes: "", resolved: false, term: "long" },
     { id: "a3", title: "Done issue", notes: "", resolved: true, resolvedAt: "2026-11-10T12:00:00.000Z" },
   ];
-  const openIds = () => fireEvent.click(screen.getByRole("button", { name: /\d · IDS · Issues/ }));
+  const openIds = () => fireEvent.click(screen.getByRole("button", { name: /\d · IDS/ }));
 
   it("each open row has Long-term / Short term next to Solve; it moves the issue and the tab counts follow", async () => {
     const save = vi.fn(async (): Promise<SaveOutcome> => ({ ok: true, version: 4, updatedAt: "t" }));
