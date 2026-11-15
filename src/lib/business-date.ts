@@ -44,7 +44,7 @@
  * the render and the server and the browser can never disagree about what day
  * it is.
  *
- * The default is US Eastern. Sun Tan City operates across US zones, so no
+ * The default is US Eastern (production sets America/Chicago through the env var; Pau, 15 Nov 2026: the app is Central time). Sun Tan City operates across US zones, so no
  * single choice is exactly local everywhere; what matters is that it is a
  * BUSINESS zone rather than UTC, and that it is one value everything agrees on.
  * A salon an hour west sees a form become overdue an hour before its own
@@ -100,6 +100,47 @@ export function businessHour(now: Date = new Date()): number {
       hourCycle: "h23",
     }).format(now),
   );
+}
+
+/** The business zone, read when asked (a test can set it); the same value `BUSINESS_TIMEZONE` holds. */
+function businessZone(): string {
+  return process.env.NEXT_PUBLIC_BUSINESS_TIMEZONE?.trim() || "America/New_York";
+}
+
+/**
+ * A MOMENT, AS PEOPLE READ IT: `Nov 14, 6:01 AM CT`, in the business zone (never the server's or the browser's).
+ *
+ * Pau, 15 Nov 2026: "The whole app and chat should be in CT." The database keeps UTC; only what a person sees moves.
+ * Central is labelled `CT` (the same label the reports' freshness line uses); any other business zone keeps its own
+ * short name (`ET`, `PT`, ...), so the label can never disagree with the zone it was formatted in. Null for nothing
+ * or a value that is not a moment, so a caller says "not recorded" rather than a wrong time.
+ */
+export function formatBusinessTime(instant: string | Date | null | undefined, options: { year?: boolean } = {}): string | null {
+  if (instant === null || instant === undefined || instant === "") return null;
+  const date = instant instanceof Date ? instant : new Date(instant);
+  if (Number.isNaN(date.getTime())) return null;
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: businessZone(),
+    month: "short",
+    day: "numeric",
+    ...(options.year ? { year: "numeric" as const } : {}),
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZoneName: "short",
+  }).formatToParts(date);
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((entry) => entry.type === type)?.value ?? "";
+  const zone = part("timeZoneName").replace(/^[A-Z]([SD])T$/, (name) => name.slice(0, 1) + "T");
+  const day = `${part("month")} ${part("day")}${options.year ? `, ${part("year")}` : ""}`;
+  return `${day}, ${part("hour")}:${part("minute")} ${part("dayPeriod").toUpperCase()} ${zone}`.trim();
+}
+
+/** The day a moment falls on in the business zone, as people read it: `Nov 14` (the zone's own day, never the host's). */
+export function formatBusinessDay(instant: string | Date | null | undefined): string | null {
+  if (instant === null || instant === undefined || instant === "") return null;
+  const date = instant instanceof Date ? instant : new Date(instant);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat("en-US", { timeZone: businessZone(), month: "short", day: "numeric" }).format(date);
 }
 
 /**

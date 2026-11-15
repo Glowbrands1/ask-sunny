@@ -98,7 +98,9 @@ export const NOV15_FIRST_NAME_FITS_CASES: ReplayCase[] = [
       t.loopModel!(surnameSearchModel("rae fairweather", "fairweather"));
       const thread = t.thread();
       const reply = await thread.say("write up rae fairweather for being late");
-      expect(thread.proposal?.employeeName, reply.content).toBe("Lorraine Fairweather");
+      // Changed on purpose (batch G on main, Pau's name ruling): the card carries the name the manager used, "Rae
+      // Fairweather", for the same roster person (nameAsSaid). The point here is no question and no other person.
+      expect(thread.proposal?.employeeName, reply.content).toBe("Rae Fairweather");
       expect(reply.content).not.toMatch(/Did you mean|isn't on your staff list/);
     },
   },

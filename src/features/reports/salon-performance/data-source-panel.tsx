@@ -1,3 +1,4 @@
+import { formatBusinessTime } from "@/lib/business-date";
 import type { ReportScope, ReportSourceQuality } from "@/lib/reporting/read/types";
 
 /**
@@ -48,14 +49,9 @@ function Row({
   );
 }
 
-/** A timestamp in UTC, or the fact that none was recorded. */
-function stamp(value: string | null): string {
-  if (!value) return "Not recorded";
-  return `${new Date(value).toLocaleString("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "UTC",
-  })} UTC`;
+/** A timestamp in Central time (the business zone), or the fact that none was recorded. */
+export function stamp(value: string | null): string {
+  return formatBusinessTime(value, { year: true }) ?? "Not recorded";
 }
 
 /**

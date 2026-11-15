@@ -444,7 +444,9 @@ function noteExtraction(input: {
   const draft = chatTraceDraft();
   if (!draft) return;
   const slots = { ...input.slots };
-  draft.slots = slots;
+  /* AGENT_LOOP_SKIPPED (batch F5): the route's note why the loop did not take this turn survives this writer. */
+  const skipped = draft.slots?.agent_loop_skipped;
+  draft.slots = skipped ? { ...slots, agent_loop_skipped: skipped } : slots;
   draft.formExtraction = {
     model: input.model,
     inputTokens: input.inputTokens,

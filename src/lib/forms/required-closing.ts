@@ -44,6 +44,27 @@ import { fieldsForVariant, type FormDocument, type FormField } from "./document"
  */
 export const TERMINATION_PLAN_CLOSING = "Effective immediately, employment is terminated following the progressive corrective action plan.";
 const TERMINATION_CLOSING = /Effective immediately, employment is terminated following the progressive corrective action plan\s*[.!]*\s*$/i;
+/** The value with any future-violations closing taken out (a termination plan never carries one). */
+function withoutFutureClosing(value: string): string {
+  return [CA_ACTION_PLAN_CLOSING, CA_ACTION_PLAN_CLOSING_REVISION_5]
+    .reduce((text, sentence) => text.replace(closingPattern(sentence), " "), value)
+    .replace(/[^\S\n]{2,}/g, " ")
+    .replace(/[^\S\n]+\n/g, "\n")
+    .trim();
+}
+
+/**
+ * A last sentence that states the termination itself (Pau's approval, 15 Nov 2026), past or perfect only: "has / have
+ * resulted in" or "resulted in" (immediate) termination of employment, "employment has been / was terminated". Never
+ * "results / will / may / could result in" (QA's review: the app's own future-violations closing, or a warning).
+ */
+const STATED_TERMINATION_LAST = /\b(?:(?:has|have)\s+)?resulted\s+in\s+(?:the\s+)?(?:immediate\s+)?termination\s+of\s+(?:(?:her|his|their)\s+)?employment\b|\bemployment\s+(?:has\s+been|was)\s+(?:immediately\s+)?terminated\b/i;
+
+/** The value's last sentence (a closing quote or bracket kept with it). */
+function lastSentence(value: string): string {
+  const sentences = value.trim().split(/(?<=[.!?])\s+/);
+  return sentences.at(-1) ?? "";
+}
 
 /** The Corrective Action Form's Action Plan closing, in the business's words (revision 6). */
 export const CA_ACTION_PLAN_CLOSING =
@@ -96,6 +117,13 @@ export function withRequiredClosing(value: string, closing: string): string {
    * future violations. Off, this line changes nothing.
    */
   if (terminationClosingEnabled() && TERMINATION_CLOSING.test(value.trim())) return value;
+  /*
+   * Edited with Pau's written approval, 15 Nov 2026 (QA relay): a plan ending in a stated termination keeps no
+   * future-violations closing. The manager's own last sentence ("Violation of Company policy has resulted in immediate
+   * termination of employment.", "employment has been terminated …") already closes the plan, so nothing is added
+   * after it. A plan that only mentions termination mid-text still gets the closing. Off, this line changes nothing.
+   */
+  if (terminationClosingEnabled() && STATED_TERMINATION_LAST.test(lastSentence(value))) return value;
 
   const body = [wanted, ...(SUPERSEDED_CLOSINGS.get(wanted) ?? [])]
     .reduce((text, sentence) => text.replace(closingPattern(sentence), " "), value)
@@ -145,6 +173,12 @@ export function applyRequiredClosings(
   document: FormDocument,
   variantKey: string | null,
   values: Record<string, string>,
+  /**
+   * Edited with Pau's written approval, 15 Nov 2026 (QA relay; batch G8): with Termination ticked on the form, the
+   * Corrective Action plan's closing is the termination closing, never "Future policy violations may result in …";
+   * a plan that already states the termination keeps nothing added (`withRequiredClosing`). Off or absent: as before.
+   */
+  options: { readonly terminationTicked?: boolean } = {},
 ): Record<string, string> {
   const fields = closingFields(document, variantKey);
   if (fields.length === 0) return values;
@@ -153,7 +187,10 @@ export function applyRequiredClosings(
   for (const field of fields) {
     const current = values[field.key];
     if (typeof current !== "string") continue;
-    const closed = withRequiredClosing(current, field.requiredClosing!);
+    const termination = options.terminationTicked === true && terminationClosingEnabled() && field.requiredClosing === CA_ACTION_PLAN_CLOSING;
+    const closed = termination
+      ? withRequiredClosing(withoutFutureClosing(current), TERMINATION_PLAN_CLOSING)
+      : withRequiredClosing(current, field.requiredClosing!);
     if (closed !== current) {
       next ??= { ...values };
       next[field.key] = closed;

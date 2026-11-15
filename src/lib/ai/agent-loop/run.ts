@@ -25,6 +25,7 @@ import { agentLoopSystem, AGENT_LOOP_RULES } from "./prompt";
 import { agentLoopStepLimit } from "./switch";
 import {
   appHelp,
+  coachTeam,
   editForm,
   openForm,
   searchKnowledge,
@@ -35,6 +36,7 @@ import {
   proposeForm,
   readForm,
   readPolicy,
+  salonLabel,
   templateChoices,
   accountWordKind,
   type ToolContext,
@@ -74,8 +76,38 @@ import {
 
 export const AGENT_LOOP_TOTAL_MS = 100_000;
 
-export const STEP_LIMIT_REPLY = "I couldn't finish that in the steps I have for one message. Could you tell me the one thing you want done first?";
-export const LOOP_FAILED_REPLY = "Sunny could not finish that answer. Nothing was saved. Please send it again in a moment.";
+import { LOOP_FAILED_REPLY, STEP_LIMIT_REPLY } from "./replies";
+
+export { LOOP_FAILED_REPLY, STEP_LIMIT_REPLY };
+
+/**
+ * WHAT THIS TURN ALREADY DID, FROM THE EFFECTS (QA, batch F1/F2): the card made, the new revising draft opened, the
+ * fields saved. Facts only, so a reply that stops early never says "nothing was saved" over a save, nor "couldn't
+ * finish" over a card ready to review. Null when the turn did nothing.
+ */
+export function doneThisTurn(effects: Pick<ToolEffects, "proposal" | "formUpdate" | "formOpened">): string | null {
+  const done: string[] = [];
+  if (effects.proposal) {
+    const who = effects.proposal.employeeName ? ` for **${effects.proposal.employeeName}**` : "";
+    done.push(`Here is the **${effects.proposal.templateName}**${who} for you to review.`);
+  }
+  if (effects.formOpened) done.push("I opened a new draft revising the finalized form; the original stays as it was.");
+  if (effects.formUpdate && effects.formUpdate.updated.length > 0) {
+    const fields = effects.formUpdate.updated.map((field) => field.replace(/_/g, " "));
+    done.push(`I saved ${fields.length === 1 ? "the" : "these"} change${fields.length === 1 ? "" : "s"} on the form: ${fields.join(", ")}.`);
+  }
+  return done.length > 0 ? done.join(" ") : null;
+}
+
+/** F1: an error or timeout after something was saved: what was, and that the rest did not finish. */
+export function partialReply(done: string, stopped: "timeout" | "error"): string {
+  return `${done} ${stopped === "timeout" ? "I ran out of time before finishing the rest of that answer" : "Something went wrong before I could finish the rest of that answer"}, so please check it and send anything still missing again.`;
+}
+
+/** F2: the step limit with a card ready or a saved edit: name it, then ask for the one thing left. */
+export function stepLimitReply(done: string | null): string {
+  return done ? `${done} I couldn't finish everything else in one message. What's the one thing still left?` : STEP_LIMIT_REPLY;
+}
 
 export interface AgentLoopStep {
   readonly step: number;
@@ -163,6 +195,7 @@ export interface CardClaims {
   payrollAmount?: string;
   policy?: string;
   date?: string;
+  salon?: string;
 }
 
 const CLAIM_LEVEL = [/\*\*Type of Warning:?\*\*:?\s*(Verbal|Written)\b/i, /\b(Verbal|Written) Warning,? as you said/i, /\b(?:warning level|level)\b[^.\n]{0,30}\b(?:is|to|now|set to)\b\s*(?:a\s+)?\**(verbal|written)\b/i, /\b(?:made|changed|updated|set)\b[^.\n]{0,30}\b(?:to|as)\s+(?:a\s+)?\**(verbal|written)\b/i];
@@ -181,12 +214,15 @@ export function cardClaims(content: string): CardClaims {
   const level = first(CLAIM_LEVEL)?.toLowerCase();
   const payroll = first(CLAIM_PAYROLL)?.toLowerCase();
   const policy = /^\s*\*\*Policy:?\*\*:?\s*(.+)$/im.exec(content)?.[1]?.trim();
+  /* Batch G (G14): the salon the reply says the card is filed at. */
+  const salon = (/\bFiled at \*\*([^*\n]+)\*\*/i.exec(content)?.[1] ?? /^\s*\*\*(?:Salon|Store|Location):?\*\*:?\s*(.+)$/im.exec(content)?.[1])?.trim();
   return {
     ...(level === "verbal" || level === "written" ? { warningLevel: level } : {}),
     ...(payroll === "yes" || payroll === "no" ? { payrollDeduct: payroll } : {}),
     ...(first(CLAIM_AMOUNT) ? { payrollAmount: first(CLAIM_AMOUNT) } : {}),
     ...(policy ? { policy } : {}),
     ...(first(CLAIM_DATE) ? { date: first(CLAIM_DATE) } : {}),
+    ...(salon ? { salon } : {}),
   };
 }
 
@@ -203,6 +239,11 @@ export function cardMismatch(claims: CardClaims, card: ChatFormProposal | null):
   if (claims.payrollAmount && Number(card?.payrollDeductAmount?.replace(/[^\d.]/g, "") ?? NaN) !== Number(claims.payrollAmount)) wrong.push(`payroll amount ($${claims.payrollAmount})`);
   if (claims.policy && card && card.policyLine !== undefined && policyLine(claims.policy) !== policyLine(card.policyLine)) wrong.push(`policy (${claims.policy})`);
   if (claims.policy && !card) wrong.push(`policy (${claims.policy})`);
+  if (claims.salon) {
+    const held = card?.locationId ? (rosterSalonName(card.locationId) ?? card.locationId) : null;
+    const key = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, "");
+    if (!held || !(key(held).includes(key(claims.salon)) || key(claims.salon).includes(key(held)))) wrong.push(`salon (${claims.salon})`);
+  }
   if (claims.date) {
     const [month, day] = claims.date.split("/").map(Number);
     const on = card?.formDate ? card.formDate.split("-").map(Number) : null;
@@ -217,7 +258,7 @@ function cardFacts(card: ChatFormProposal | null): Record<string, unknown> {
     form: card.templateName,
     employee: card.employeeName,
     form_date: card.formDate ?? null,
-    salon: card.locationId ? rosterSalonName(card.locationId) ?? card.locationId : null,
+    salon: salonLabel(card.locationId),
     policy: card.policyLine ?? null,
     warning_level: card.warningLevel ?? null,
     payroll_deduct: card.payrollDeduct ?? null,
@@ -258,7 +299,12 @@ export const AGENT_LOOP_TOOLS = [
   {
     name: "find_past_forms",
     description: "List the forms on file (Form Monitoring) for one employee. Only when the manager asks about forms on file or history; never otherwise.",
-    input_schema: object({ employee_name: { type: "string" } }, ["employee_name"]),
+    input_schema: object({
+      employee_name: { type: "string" },
+      form: { type: "string", description: "The form the manager named (\"coaching\", \"CA\"), if any." },
+      date: { type: "string", description: "The form's date as the manager gave it (\"10/31\"), if any." },
+      about: { type: "string", description: "Words the manager used about the form (\"getting rooms ready between guests\"), if any." },
+    }, ["employee_name"]),
   },
   {
     name: "read_form",
@@ -295,7 +341,9 @@ export const AGENT_LOOP_TOOLS = [
             "This incident's account in the manager's own words, all of it, with work areas and names kept as typed. Spelling, spacing and capitals cleaned; never names, dates, numbers, amounts or quoted words. No instructions (\"create a CA\", \"make it about\", \"the policy is\"), no level or payroll words, nothing invented. Leave out when the manager has not said what happened.",
         },
         incident_date: { type: "string", description: "YYYY-MM-DD, the salon's local date." },
-        warning_level: { type: "string", enum: ["verbal", "written"], description: "Only when the manager stated it for this form." },
+        warning_level: { type: "string", enum: ["verbal", "written", "termination"], description: "Only when the manager stated it for this form. termination: only when the rules book's Termination lines say this form is one." },
+        exit_type: { type: "string", enum: ["resignation", "termination"], description: "Employee Exit Form only: which the rules book's Exit lines say this exit is." },
+        effective_date: { type: "string", description: "Employee Exit Form termination only: the effective or termination date as the manager typed it (e.g. 11/28)." },
         payroll_deduct: { type: "string", enum: ["yes", "no"], description: "Only when the manager said whether payroll deduct applies." },
         payroll_amount: { type: "string", description: "The deduction amount the manager stated, digits." },
         prior_actions: { type: "string", description: "Earlier steps only as the manager stated them (\"verbal on 10/2\", \"coached last month\"); never from records on file." },
@@ -323,6 +371,11 @@ export const AGENT_LOOP_TOOLS = [
   },
   /* The app data tools (QA, 15 Nov 2026): Google Reviews and the reports, with the scope rules in code (`data-tools.ts`). */
   ...DATA_TOOL_SPECS,
+  {
+    name: "coach_team",
+    description: "A Coaching Form for the whole team: with no draft open, the team Coaching card (\"All team members\" at one salon); with a Coaching draft open, \"this coaching for everyone on my team\" and its \"create all\" confirmation make one draft each with the same Details. No arguments: it reads the manager's message.",
+    input_schema: object({}, []),
+  },
 ];
 
 const EPHEMERAL = { anthropic: { cacheControl: { type: "ephemeral" } } } as const;
@@ -402,6 +455,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     search_knowledge: (args) => searchKnowledge(context, effects, args),
     list_staff: (args) => listStaffTool(context, effects, args),
     app_help: (args) => appHelp(args),
+    coach_team: () => coachTeam(context, effects),
     ...dataToolHandlers({ actor: context.actor, question: context.question, scopeId: context.scopeId, today: context.today }, effects),
   };
 
@@ -430,7 +484,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     cardOpen: cardOpenAtStart,
     managerName: input.actor.displayName,
     role: input.actor.role,
-    salons: authorizedSalonIds(input.actor.scope).map((id) => rosterSalonName(id) ?? id),
+    salons: authorizedSalonIds(input.actor.scope).map((id) => salonLabel(id)!),
     today: input.today,
     templates,
     headings: manual?.headings ?? [],
@@ -459,6 +513,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   let modelCalls = 0;
   let selfReview: { mismatched: string[]; fixed: boolean } | null = null;
   let draftReview: { claimed: boolean; fixed: boolean } | null = null;
+  let streamError: unknown = null;
   try {
     /*
      * AI TIME LIMITS (Part 1): each step has 45 s to its first token, then 30 s between chunks, and the whole loop
@@ -481,7 +536,13 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         maxRetries: timed.maxRetries,
         abortSignal: timed.signal,
         providerOptions: { anthropic: { thinking: { type: "adaptive" }, effort: CLAUDE_EFFORT } } as never,
-        onError: () => {},
+        /*
+         * F1 (batch F): a model error mid-turn is swallowed by streamText, and its steps resolve with the last tool step,
+         * which read as the step limit. It is noted here, so the turn ends as the error it was.
+         */
+        onError: ({ error }) => {
+          streamError = error;
+        },
         onChunk: ({ chunk }) => {
           watch.chunk();
           if (chunk.type === "text-delta" || chunk.type === "reasoning-delta" || chunk.type === "tool-input-start" || chunk.type === "tool-call") watch.firstToken();
@@ -508,12 +569,18 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
       const last = steps.at(-1);
       text = (last?.text ?? "").trim();
       stoppedAt = last && last.finishReason === "tool-calls" ? "step_limit" : "reply";
+      if (streamError !== null) throw streamError;
       /*
        * TRUNCATION_RETRY (parity gap #36): a reply cut at the token limit is never shown cut. It is written again once,
        * from the same conversation and this turn's tool results (the cut text left out), with twice the budget and no
        * tools, so nothing is called twice.
        */
-      if (last?.finishReason === "length") {
+      /* F4 (QA, batch F): ONE STEP BUDGET FOR THE TURN. A retry or hand-back gets only the steps left under the cap. */
+      const stepsLeft = () => Math.max(0, limit - (stepNumber - 1));
+      if (last?.finishReason === "length" && stepsLeft() === 0) {
+        text = "";
+        stoppedAt = "step_limit";
+      } else if (last?.finishReason === "length") {
         const response = await result.response;
         const turn = [...response.messages];
         if (turn.at(-1)?.role === "assistant") turn.pop();
@@ -550,6 +617,9 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
        */
       /* The hand-back (one more model call, only on a mismatch): the turn so far and the app's note; its final text, or "". */
       const handBack = async (note: string): Promise<string> => {
+        const left = stepsLeft();
+        if (left === 0) return "";
+        const proposalBefore = effects.proposal;
         const response = await result.response;
         const review = streamText({
           model: model as never,
@@ -559,7 +629,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
           ],
           messages: [...(conversationOf(input.history, input.question) as never[]), ...(response.messages as never[]), { role: "user", content: note } as never],
           tools,
-          stopWhen: stepCountIs(4),
+          stopWhen: stepCountIs(Math.min(4, left)),
           maxOutputTokens: CLAUDE_MAX_TOKENS.standard,
           maxRetries: timed.maxRetries,
           abortSignal: timed.signal,
@@ -575,7 +645,14 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
           },
         });
         const last = (await review.steps).at(-1);
-        return last && last.finishReason !== "tool-calls" ? (last.text ?? "").trim() : "";
+        const finished = last && last.finishReason !== "tool-calls" ? (last.text ?? "").trim() : "";
+        /*
+         * F4 meets batch E's hand-back (nov14-agent-loop-msb-family after the merge): a hand-back cut off by the turn's
+         * step budget leaves no reply, so it changes nothing — the card is the one the kept reply describes, never a
+         * card the unfinished hand-back proposed on its way.
+         */
+        if (!finished) effects.proposal = proposalBefore;
+        return finished;
       };
       const reviewed = stoppedAt === "reply" && !effects.formUpdate && !effects.formOpened && !input.openFormId && (effects.proposal || cardOpenAtStart);
       const wrong = reviewed ? cardMismatch(cardClaims(text), effects.proposal) : [];
@@ -639,20 +716,28 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   if (trace) {
     trace.slots = {
       ...(trace.slots ?? {}),
-      agent_loop: { steps, model_steps: modelSteps, model_calls: modelCalls, step_limit: limit, stopped: stoppedAt, ms: latencyMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}) },
+      agent_loop: { steps, model_steps: modelSteps, model_calls: modelCalls, step_limit: limit, steps_used: stepNumber - 1, stopped: stoppedAt, ms: latencyMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}) },
     };
   }
 
-  if (stoppedAt === "timeout") throw new AiError("model_failed", AI_TIMEOUT_MESSAGE, 504);
-  if (stoppedAt === "error") throw new AiError("model_failed", LOOP_FAILED_REPLY, 502);
+  /*
+   * F1 (QA, batch F): an error or timeout says "nothing was saved" only when nothing was. When a card was made, a
+   * revising draft opened or fields saved before it, the reply says what was done and that the rest did not finish, and
+   * carries the card, the opened draft and the update, so the screen matches.
+   */
+  const done = doneThisTurn(effects);
+  if (stoppedAt === "timeout" && !done) throw new AiError("model_failed", AI_TIMEOUT_MESSAGE, 504);
+  if (stoppedAt === "error" && !done) throw new AiError("model_failed", LOOP_FAILED_REPLY, 502);
 
   /*
    * The reply is the model's own (Pau, 14 Nov 2026: "code may refuse or inform, never rewrite"; the code-check audit's
    * batch A). Code adds only the protocol marker below and the safety clean-ups at the end; the card's questions, read-
    * backs and policy line are facts on propose_form's result, worded by the rules book's Card replies.
    */
-  let content = (stoppedAt === "step_limit" ? STEP_LIMIT_REPLY : text).trim();
-  if (content === "") content = effects.proposal ? "Here is the form for you to review." : STEP_LIMIT_REPLY;
+  let content = (
+    stoppedAt === "timeout" || stoppedAt === "error" ? partialReply(done!, stoppedAt) : stoppedAt === "step_limit" ? stepLimitReply(done) : text
+  ).trim();
+  if (content === "") content = done ?? STEP_LIMIT_REPLY;
   /*
    * ANOTHER PERSON'S CARD KEEPS THE EARLIER ONE (SAME_REQUEST_KEEPS_EARLIER_CARD; the live run's same-request-keeps-
    * earlier-card): a card for a different person than an earlier card in this chat says the earlier card stays, so the

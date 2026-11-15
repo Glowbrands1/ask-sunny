@@ -311,6 +311,8 @@ const FLIPPED_AFTER_FIXTURE: readonly string[] = [
   "AGENT_LOOP_ENABLED",
   // QA 15 Nov 2026 (Pau approved): #894, the card shows the Action Plan Create will save.
   "CARD_PLAN_MATCHES_CREATE_ENABLED",
+  // QA 15 Nov 2026 (batch F8, #1002): a value edit moves the form's updated_at.
+  "FORM_EDIT_TOUCHES_UPDATED_AT_ENABLED",
 ];
 const PRODUCTION = [...PRODUCTION_FLAGS.on, ...PRODUCTION_FLAGS.assumedOn].filter((name) => !FLIPPED_AFTER_FIXTURE.includes(name));
 /*
