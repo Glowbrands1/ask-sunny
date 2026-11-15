@@ -28,7 +28,7 @@ const TEST_TESTY: DirectoryRow = { id: TESTY.id, firstName: TESTY.firstName, las
 /** The phrasings that end differently today, by case id: filled from the first run; PR 1 empties it. */
 export const OPEN_UNTIL_PR1: Readonly<Record<string, string>> = {
   // The payroll answer itself is now kept on payroll_evidence (PR 1c); what is left is the AMOUNT said in words ("twenty dollars"): the amount check reads figures only.
-  "nov15-phrasing-answer-payroll-5": "TODO: payroll_amount said in words (\"twenty dollars\") is not a figure the amount check reads",
+  "nov15-phrasing-answer-payroll-5": "TODO(amount-words): payroll_amount said in words (\"twenty dollars\") is not a figure the amount check reads",
 };
 
 const latest = (turns: readonly { role: string; text: string }[]) => [...turns].reverse().find((turn) => turn.role === "user")?.text ?? "";
