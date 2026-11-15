@@ -20,6 +20,14 @@ describe("TERMINATION_REQUEST_IS_CA_ENABLED", () => {
     ["create a termination form for Marnie Holloway"],
     ["what is the termination policy for no call no shows"],
     ["termination for Marnie Holloway"],
+    // QA's review of #1014: a question, or no person after "for", is never the request.
+    ["how do i do a termination for Marnie Holloway?"],
+    ["Do I need a termination for Marnie Holloway or just a written?"],
+    ["should I do a termination for Marnie Holloway"],
+    ["what do I need to do a termination for Marnie Holloway"],
+    ["do we need a termination for job abandonment"],
+    ["create a termination for no call no show"],
+    ["create a termination for her"],
   ])("on, unchanged: %s", (said) => {
     vi.stubEnv("TERMINATION_REQUEST_IS_CA_ENABLED", "true");
     expect(canonicalFormWording(said)).toBe(said);

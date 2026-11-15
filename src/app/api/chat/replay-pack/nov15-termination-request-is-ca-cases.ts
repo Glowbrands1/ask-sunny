@@ -68,4 +68,26 @@ export const NOV15_TERMINATION_REQUEST_IS_CA_CASES: ReplayCase[] = [
       expect(thread.proposal ?? null, reply.content).toBeNull();
     },
   },
+  ...[
+    "how do i do a termination for Marnie Holloway?",
+    "Do I need a termination for Marnie Holloway or just a written?",
+    "should I do a termination for Marnie Holloway",
+    "what do I need to do a termination for Marnie Holloway",
+    "do we need a termination for job abandonment",
+    "create a termination for no call no show",
+  ].map(
+    (said, index): ReplayCase => ({
+      id: `nov15-termination-request-is-ca-not-a-request-${index + 1}`,
+      title: `"${said}": a question, or no person after "for": never a Corrective Action card (QA's review of #1014)`,
+      report: "QA's review of #1014, 15 Nov 2026: questions and offense-only wordings became card requests",
+      status: "fixed",
+      fixFlags: [FLAG],
+      async run(t) {
+        start(t);
+        const thread = t.thread();
+        const reply = await thread.say(said, { employeeName: /marnie/i.test(said) ? "Marnie Holloway" : null });
+        expect(thread.proposal?.templateKey ?? null, reply.content).not.toBe("dpoa");
+      },
+    }),
+  ),
 ];
