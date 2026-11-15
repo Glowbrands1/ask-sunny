@@ -30,4 +30,22 @@ describe("withoutPayrollClauses", () => {
   ])("%s → unchanged", (said) => {
     expect(withoutPayrollClauses(said)).toBe(said);
   });
+
+  // QA, batch J (15 Nov 2026): the payroll answer turn itself is no account.
+  it.each([
+    ["yes payroll but I don't know the amount", ""],
+    ["yes payroll", ""],
+    ["payroll yes. i dont know the amount", ""],
+    ["she was late today. yes payroll deduct", "she was late today."],
+  ])("%s → %s", (said, account) => {
+    expect(withoutPayrollClauses(said)).toBe(account);
+  });
+
+  it.each([
+    "yes payroll but only for the shift",
+    "she said yes to payroll but was late again",
+    "no call no show on 11/9",
+  ])("%s → unchanged (says more than the payroll answer)", (said) => {
+    expect(withoutPayrollClauses(said)).toBe(said);
+  });
 });
