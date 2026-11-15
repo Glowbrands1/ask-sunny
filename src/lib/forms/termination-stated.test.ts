@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { statesTermination } from "./termination-stated";
 
@@ -155,5 +155,39 @@ describe("TERMINATION_STATED_TICKS_ENABLED: the Action Plan's closing", () => {
     expect(correctiveActionPlan({ ...input, termination: false }).endsWith(CA_ACTION_PLAN_CLOSING)).toBe(true);
     expect(withTerminationPlan(`Management will review the Attendance policy with Briony. ${CA_ACTION_PLAN_CLOSING}`, true)).toBe(terminated);
     expect(withTerminationPlan(`x. ${CA_ACTION_PLAN_CLOSING}`, false)).toBe(`x. ${CA_ACTION_PLAN_CLOSING}`);
+  });
+});
+
+/* Batch G (G9/G19; Pau's standing approval, 15 Nov 2026, QA's list): the widened statements, and what must stay false. */
+describe("the widened termination statements", () => {
+  afterEach(() => vi.unstubAllEnvs());
+  const reads = async (text: string) => {
+    vi.stubEnv("TERMINATION_STATED_TICKS_ENABLED", "true");
+    return (await import("./termination-stated")).statesTermination(text);
+  };
+  it.each([
+    "Action Plan: Violation of Company policy has resulted in immediate termination of employment.",
+    "Violation of Company policy has resulted in termination.",
+    "Her employment has been terminated.",
+    "Employment is terminated as of today.",
+    "We fired her for the no call no show.",
+    "I'm firing him today.",
+    "Fire her, she stole from the register.",
+  ])("reads %s as stated", async (text) => {
+    expect(await reads(text)).toBe(true);
+  });
+  it.each([
+    "she was fired from her last job",
+    "if this happens again it will result in termination",
+    "future violations may result in termination of employment",
+    "Future policy violations may result in additional corrective action up to and including termination of employment.",
+    "should I fire her?",
+    "she was terminated before and rehired",
+    "let her go home early",
+    "let her go, she no call no showed",
+    "we might fire her if this continues",
+    "thinking about firing her",
+  ])("never reads %s as stated", async (text) => {
+    expect(await reads(text)).toBe(false);
   });
 });

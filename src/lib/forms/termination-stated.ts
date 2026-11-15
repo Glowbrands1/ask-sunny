@@ -36,6 +36,15 @@ const STATED = new RegExp(
     String.raw`\bterminate\s+(?:her|him|them)\b`,
     String.raw`\b(?:is|are)\s+being\s+terminated\b`,
     String.raw`\b(?:we\s+are|we['’]re)\s+terminating\b`,
+    /*
+     * Batch G (G9/G19; Pau's standing approval, 15 Nov 2026, QA's list): a termination stated in the manager's own
+     * plan or words, so the loop's card, its draft and Create agree. "resulted in" only (never "will/may result in",
+     * the app's own future-violations closing); "fire(d)/firing" only with a person after it ("we fired her", "fire
+     * him"); never "let her go" (it reads as "go home early", "go on break").
+     */
+    String.raw`\b(?:has\s+|have\s+)?resulted\s+in\s+(?:the\s+)?(?:immediate\s+)?termination\b`,
+    String.raw`\bemployment\s+(?:is|has\s+been)\s+terminated\b`,
+    String.raw`\bfir(?:e|ed|ing)\s+(?:her|him|them)\b`,
   ].join("|"),
   "i",
 );
