@@ -1,7 +1,7 @@
 import { expect, vi } from "vitest";
 
 import { KEARNEY, STAFF, TWO_SALONS, type DirectoryRow, type ReplayCase, type ReplayContext } from "./cases";
-import { firstMatch, lastResult, loopStandIn, type LoopView } from "./loop-stand-in";
+import { firstMatch, lastResult, loopStandIn, type LoopView, evidenceFrom } from "./loop-stand-in";
 import { EARLIER_CARD_STAYS, isProposalSuperseded } from "@/lib/forms/proposal-continuation";
 
 /**
@@ -70,9 +70,9 @@ async function terminationOnFile(t: ReplayContext): Promise<string> {
 
 /** A model that looks at forms on file whenever it can, and tells the manager what it found. */
 function nosyStandIn(view: LoopView) {
-  if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: "Tamsin Orwell" } };
+  if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: "Tamsin Orwell", forms_on_file_evidence: evidenceFrom(view) } };
   const listed = (lastResult(view, "find_past_forms")?.forms ?? []) as { instance_id: string; form: string; status: string }[];
-  if (listed.length > 0 && !lastResult(view, "read_form")) return { tool: "read_form", input: { instance_id: listed[0]!.instance_id } };
+  if (listed.length > 0 && !lastResult(view, "read_form")) return { tool: "read_form", input: { instance_id: listed[0]!.instance_id, forms_on_file_evidence: evidenceFrom(view) } };
   if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "tamsin orwell" } };
   if (!/before|on file/i.test(view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "") && !lastResult(view, "propose_form")) {
     return { tool: "propose_form", input: { template_key: "dpoa", employee_id: firstMatch(view)?.employee_id, what_happened: "Tamsin Orwell was on her phone at the front desk on 11/13." } };
@@ -756,7 +756,7 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
           return { text: "Here's the card." };
         }
         if (/format of Corvina|look like this format/i.test(latestTurn)) {
-          if (/format of Corvina/i.test(latestTurn) && !lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: "Corvina Lisle" } };
+          if (/format of Corvina/i.test(latestTurn) && !lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: "Corvina Lisle", forms_on_file_evidence: evidenceFrom(view) } };
           if (tries === 0) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: LIORA.id, policy: "Standards of Conduct", warning_level: "verbal", what_happened: "During the month of September 2026, Liora Quenby completed 237 tanning transactions and failed to follow their Must See Behaviors in UPTA, Average Club, CC%, and Spa %." } };
           if (tries === 1) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: LIORA.id, policy: "Standards of Conduct", warning_level: "verbal", what_happened: "Like Corvina Lisle, Liora Quenby had 146 tans and was below in PPTA, LPSVA, Average Club, CC%, Spa%." } };
           if (tries === 2) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: LIORA.id, policy: "Standards of Conduct", warning_level: "verbal", what_happened: `Throughout her transactions, ${accountB}` } };
@@ -1148,9 +1148,9 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       const valuesBefore = JSON.stringify(t.values(id));
 
       const reader = loopStandIn((view) => {
-        if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: "Tamsin Orwell" } };
+        if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: "Tamsin Orwell", forms_on_file_evidence: evidenceFrom(view) } };
         const listed = (lastResult(view, "find_past_forms")?.forms ?? []) as { instance_id: string }[];
-        if (listed.length > 0 && !lastResult(view, "read_form")) return { tool: "read_form", input: { instance_id: listed[0]!.instance_id } };
+        if (listed.length > 0 && !lastResult(view, "read_form")) return { tool: "read_form", input: { instance_id: listed[0]!.instance_id, forms_on_file_evidence: evidenceFrom(view) } };
         return { text: "Tamsin Orwell has one finalized Corrective Action on file, from 11/2/26." };
       });
       t.loopModel!(reader);
@@ -1480,7 +1480,7 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       const before = JSON.stringify({ form: t.forms().find((row) => row.id === id), values: t.values(id) });
 
       const editor = loopStandIn((view) => {
-        if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: "Tamsin Orwell" } };
+        if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: "Tamsin Orwell", forms_on_file_evidence: evidenceFrom(view) } };
         const listed = (lastResult(view, "find_past_forms")?.forms ?? []) as { instance_id: string }[];
         if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { instance_id: listed[0]?.instance_id ?? "" } };
         return { text: "Done." };

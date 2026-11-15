@@ -177,3 +177,13 @@ export function liveRecording(standIn: LoopStandIn, real: unknown): unknown {
     },
   });
 }
+
+/**
+ * Evidence for a tool (the rebuild plan, `evidence.ts`): the id of the manager message this turn answers (or the one
+ * `back` manager messages before it) and a quote from it (by default its first 40 characters), as a model would pass it.
+ */
+export function evidenceFrom(view: LoopView, quote?: string, back = 0): { message_id: string; quote: string } {
+  const manager = view.turns.filter((turn) => turn.role === "user" && (turn.messageIds?.length ?? 0) > 0);
+  const turn = manager[manager.length - 1 - back] ?? manager.at(-1);
+  return { message_id: turn?.messageIds?.at(-1) ?? "current", quote: quote ?? (turn?.text ?? "").slice(0, 40) };
+}

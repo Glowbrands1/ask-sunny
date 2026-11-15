@@ -9,6 +9,7 @@ import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import { businessToday } from "@/lib/business-date";
 import { isoDate, monthDayToIso, readDates, sameDate, withoutDates } from "./dates";
 import { candidateNameWords, chatFormsActor } from "@/lib/forms/chat-form-records";
+import { identifiedTurns, verifyEvidence } from "./evidence";
 import { displayName, matchEmployeeName, nameConfirmationQuestion, type RosterEmployee } from "@/lib/forms/employee-match";
 import { offRosterTyped } from "@/lib/forms/roster-only-names";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
@@ -109,53 +110,28 @@ export interface ToolContext {
  */
 /* A form or discipline word: what a request for forms on file names (QA's review, 14 Nov 2026). */
 const FORM = String.raw`(?:c\.?a\.?s?|corrective(?:\s+actions?)?|write[- ]?ups?|written[- ]up|warnings?|coachings?|forms?|terminations?|disciplin\w*|verbals?|writtens?)`;
-const WHOSE = String.raw`(?:her|his|their|my|\w+'s|\w+s')`;
 
 /**
- * Each pattern names forms or discipline on file. Ordinary incident wording never opens the gate: "left before
- * closing", "didn't record the sales", "did she get a break", "a history of migraines", "told before", "last time I
- * told her" (QA's probe sentences, `privacy-gate.test.ts`).
+ * PAST FORMS ONLY WHEN ASKED (Pau's privacy rule, 14 Nov 2026; a hard guard), by evidence (the rebuild plan, PR 1;
+ * owner's audit, 15 Nov 2026): the word lists that read the manager's message (ASKS_ABOUT_FORMS, asksAboutPastForms)
+ * are gone. find_past_forms, read_form and open_form of a form that is not open, and edit_form of one, take
+ * forms_on_file_evidence: the id of the manager's message that asks about a form on file and their words from it.
+ * Code checks only that the words are really in one of the manager's last three messages (`evidence.ts`); the model
+ * decides what asking means, taught by the rules book.
  */
-const ASKS_ABOUT_FORMS: readonly RegExp[] = [
-  /\bon file\b|\bform monitoring\b/i,
-  /* "in the format of <C>'s ca", "the same as corvinas ca", "look like <C>s coaching": another form, asked for by the manager (QA, 14 Nov 2026). */
-  new RegExp(String.raw`\b(?:format\s+of|same\s+as|look(?:s)?\s+like|copy(?:\s+of)?)\s+(?:\w+\s+){0,2}?\w+(?:'s|’s|s)\s+${FORM}\b`, "i"),
-  new RegExp(String.raw`\bon record\b|\b${WHOSE}\s+(?:disciplinary\s+|work\s+)?records?\b`, "i"),
-  // "her history", "form history", "write-up history", never "history of <something that is not a form>".
-  new RegExp(String.raw`\b(?:${WHOSE}|form|disciplinary|write[- ]?up|ca|coaching|corrective(?:\s+action)?)\s+history\b(?!\s+of\s+(?!${FORM}\b)\w)`, "i"),
-  // "written up before", "had a CA before?", "coached her before for this"; never "before her shift / before she leaves".
-  new RegExp(String.raw`\b(?:${FORM}|coached)\s+(?:\w+\s+){0,2}before(?=\s*(?:[?.!,;]|$)|\s+(?:too|already|this|that|for (?:this|that|the same))\b)`, "i"),
-  new RegExp(String.raw`\b(?:previous(?:ly)?|prior|past|earlier|old|older|existing|finalized|finished|latest|last)\s+(?:\w+\s+)?${FORM}\b`, "i"),
-  // "has she had any write ups", "did he ever get a CA", "have they been written up".
-  // The subject is the employee, never "you / I / we" ("do you have a form for …"); "have to sign" is no question about files.
-  new RegExp(String.raw`\b(?:has|have|had|did|does|do)\s+(?!(?:you|u|i|we)\b)(?:\w+\s+){1,4}?(?:had|gotten|got|have(?!\s+to\b)|get|been|received|given)\s+(?:\w+\s+){0,3}?${FORM}\b`, "i"),
-  /\bsame as (?:last time|before|the last one|last one)\b/i,
-  /*
-   * "she already has a CA but the policy wasn't listed", "she already has a verbal, now do a written", or a form word
-   * earlier in the SAME message ("a coachong document for <name>. She already has one …"). A bare "she already has
-   * one" with no form word in that message stays closed (QA, 14 Nov 2026).
-   */
-  new RegExp(String.raw`\balready (?:has|had|got|have)\s+(?:a|an|her|his|their|one)?\s*(?:\w+\s+)?${FORM}\b`, "i"),
-  new RegExp(String.raw`(?:${FORM}|coach\w*|document)\b[^?!\n]{0,160}?\balready (?:has|had|got|have) (?:one|it)\b`, "i"),
-  // "edit <name>'s CA", "open her coaching", "pull up the write-up for <name>": a form on file, named.
-  new RegExp(String.raw`\b(?:open|reopen|edit|pull up|bring up|show me|view)\b[^.?!\n]{0,40}?\b${FORM}\b`, "i"),
-];
+const PRIVACY_WINDOW = 3;
 
-const asks = (text: string) => ASKS_ABOUT_FORMS.some((pattern) => pattern.test(text));
+export function formsOnFileAsked(context: Pick<ToolContext, "question" | "history" | "questionMessageId">, evidence: unknown): { ok: true } | { ok: false; reason: string } {
+  const turns = identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId);
+  const check = verifyEvidence(evidence, turns);
+  if (!check.ok) return { ok: false, reason: check.reason };
+  const recent = turns.filter((turn) => turn.role === "user").slice(-PRIVACY_WINDOW);
+  return recent.some((turn) => turn.id === check.turn.id) ? { ok: true } : { ok: false, reason: "evidence_not_this_turn" };
+}
 
-export function asksAboutPastForms(context: Pick<ToolContext, "question" | "history">): boolean {
-  if (asks(context.question)) return true;
-  const earlier = [...context.history].reverse().find((message) => message.role === "user");
-  /*
-   * Batch G (G4, QA's live test; tightened by QA's review): the answer to the app's own which-form question ("the 10/31
-   * one about getting rooms ready between guests") is part of the same request, however long. Only when the last two
-   * turns are exactly: the manager's message asking about forms on file, then the reply asking WHICH_FORM_QUESTION
-   * (find_past_forms gives it when several forms fit). An older forms question further back never opens the gate.
-   */
-  const [lastReply, lastAsk] = [...context.history].reverse().filter((message) => message.role === "assistant" || message.role === "user").slice(0, 2);
-  if (lastReply?.role === "assistant" && lastAsk?.role === "user" && asks(lastAsk.content) && String(lastReply.content).includes(WHICH_FORM_QUESTION)) return true;
-  if (context.question.trim().split(/\s+/).length > 6) return false;
-  return earlier ? asks(earlier.content) : false;
+/** The refusal when the manager has not asked about forms on file: privacy_not_asked, with the evidence check's reason. */
+function privacyRefusal(reason: string): ToolResult {
+  return { error: NOT_ASKED, reason_code: "privacy_not_asked", evidence: reason };
 }
 
 const COUNT_WORDS: Readonly<Record<string, number>> = { two: 2, three: 3, four: 4, five: 5, six: 6 };
@@ -187,10 +163,6 @@ export function priorActionsProblem(priorActions: string, requestWords: string, 
   return null;
 }
 
-/** Batch G2 (item 2): the manager asked for the exit form ("exit form", "separation paperwork", "termination paperwork"). */
-const EXIT_ASKED = /\bexit\b|\bseparation\b|\btermination\s+(?:paperwork|papers|form)\b|\bresignation\s+form\b/i;
-/** Batch G2 (item 2): a resignation told ("gave notice", "quit", "resigned", "two weeks", "last day"): an exit with no offense. */
-const RESIGNATION_TOLD = /\b(?:resign\w*|quit|quitting|two\s+weeks|notice|last\s+day|leaving|moving|school)\b/i;
 
 /** Batch G (QA's review, 15 Nov 2026): a warning level is exactly verbal, written or termination; anything else is refused. */
 export function exactWarningLevel(value: string): "verbal" | "written" | "termination" | null {
@@ -236,7 +208,7 @@ export const SINGLE_OUT_NOTE = "Compare these forms with the manager's words in 
 /** Batch G (G4): "open / edit / pull up / show me <a form on file>" never makes a new card. */
 export const OPEN_REQUEST = new RegExp(String.raw`\b(?:open|reopen|edit|pull up|bring up|show me|view)\b[^.?!\n]{0,40}?\b${FORM}\b`, "i");
 
-const NOT_ASKED = "The manager has not asked about forms on file, so they are not looked at (company privacy rule). Work from what the manager said; never mention other forms.";
+const NOT_ASKED = "Forms on file are looked at only when the manager asks about them (company privacy rule), shown by forms_on_file_evidence: the id of the manager's message that asks and their exact words from it. If they asked, call again with it; if not, work from what they said and never mention other forms.";
 
 /** What the turn's tools produced for the reply: the card and the edit, when there were any. */
 export interface ToolEffects {
@@ -690,10 +662,11 @@ export async function listStaffTool(context: ToolContext, effects: ToolEffects, 
 
 /* ---------------------------------------------------------- past forms --- */
 
-export async function findPastForms(context: ToolContext, input: { employee_name?: unknown; form?: unknown; date?: unknown; about?: unknown }): Promise<ToolResult> {
+export async function findPastForms(context: ToolContext, input: { employee_name?: unknown; form?: unknown; date?: unknown; about?: unknown; forms_on_file_evidence?: unknown }): Promise<ToolResult> {
   const typed = typeof input.employee_name === "string" ? input.employee_name.trim() : "";
   if (typed === "") return { error: "Give the employee's name." };
-  if (!asksAboutPastForms(context)) return { error: NOT_ASKED };
+  const asked = formsOnFileAsked(context, input.forms_on_file_evidence);
+  if (!asked.ok) return privacyRefusal(asked.reason);
   const actor = await chatFormsActor(context.actor).catch(() => undefined);
   if (actor === undefined) return { error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
   if (actor === null) return { error: "This manager's role cannot view Form Monitoring, so past forms cannot be listed." };
@@ -792,10 +765,13 @@ export async function findPastForms(context: ToolContext, input: { employee_name
 
 const VALUES_LIMIT = 6_000;
 
-export async function readForm(context: ToolContext, input: { instance_id?: unknown }): Promise<ToolResult> {
+export async function readForm(context: ToolContext, input: { instance_id?: unknown; forms_on_file_evidence?: unknown }): Promise<ToolResult> {
   const id = typeof input.instance_id === "string" ? input.instance_id.trim() : "";
   if (id === "") return { error: "Give the form's instance_id (from find_past_forms or the open form)." };
-  if (id !== context.openFormId && !asksAboutPastForms(context)) return { error: NOT_ASKED };
+  if (id !== context.openFormId) {
+    const asked = formsOnFileAsked(context, input.forms_on_file_evidence);
+    if (!asked.ok) return privacyRefusal(asked.reason);
+  }
   try {
     const { loaded } = await authorizeInstance(context.request, id, "view");
     const values: Record<string, { untrusted_text: string }> = {};
@@ -1175,6 +1151,7 @@ export async function proposeForm(
     template_key?: unknown;
     employee_id?: unknown;
     employee_name?: unknown;
+    exit_evidence?: unknown;
     policy?: unknown;
     what_happened?: unknown;
     incident_date?: unknown;
@@ -1319,8 +1296,18 @@ export async function proposeForm(
    * date lost): the manager did not ask for the exit form and told no resignation, so this exit card is refused; an
    * offense told with a termination is the Corrective Action Form (the rules book). Nothing is shown.
    */
-  if (template.key === "stc-exit" && !EXIT_ASKED.test(requestWords) && !RESIGNATION_TOLD.test(requestWords)) {
-    return { exit_not_asked: true, note: "The manager did not ask for the Employee Exit Form and told no resignation. An offense told with a termination is the Corrective Action Form with warning_level termination, citing the offense and its date; then offer the exit form in one line (the rules book's Which form lines)." };
+  /*
+   * The rebuild plan, PR 1 (owner's audit, 15 Nov 2026): EXIT_ASKED and RESIGNATION_TOLD, word lists over the request,
+   * are gone. An exit card needs exit_evidence: the manager's words, in this person's request, asking for the exit form or
+   * telling a resignation. Code checks only that the words are there (`evidence.ts`).
+   */
+  if (template.key === "stc-exit") {
+    const turns = identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId);
+    const check = verifyEvidence(input.exit_evidence, turns);
+    const inRequest = check.ok && (check.turn.index === turns.length - 1 || sourceIds.includes(check.turn.id));
+    if (!inRequest) {
+      return { exit_not_stated: true, reason_code: "exit_not_stated", evidence: check.ok ? "evidence_not_this_turn" : check.reason, note: "No exit_evidence from this person's request: the manager's words asking for the Employee Exit Form or telling a resignation. An offense told with a termination is the Corrective Action Form with warning_level termination, citing the offense and its date; then offer the exit form in one line (the rules book's Which form lines)." };
+    }
   }
   /*
    * HARD GUARD, NO INVENTED FIGURES (QA, the MSB family: "B's own numbers replace C's"): a figure in the account the
@@ -1842,10 +1829,15 @@ export async function coachTeam(context: ToolContext, effects: ToolEffects): Pro
 export async function editForm(
   context: ToolContext,
   effects: ToolEffects,
-  input: { instance_id?: unknown; values?: unknown },
+  input: { instance_id?: unknown; values?: unknown; forms_on_file_evidence?: unknown; intent?: unknown; name_evidence?: unknown },
 ): Promise<ToolResult> {
   const id = typeof input.instance_id === "string" ? input.instance_id.trim() : "";
   if (id === "") return { error: "Give the form's instance_id." };
+  /* Rebuild plan, PR 1 (bug 2: edit_form had no privacy gate): a form that is not the one open on screen is a form on file. */
+  if (id !== context.openFormId) {
+    const asked = formsOnFileAsked(context, input.forms_on_file_evidence);
+    if (!asked.ok) return privacyRefusal(asked.reason);
+  }
   const values: Record<string, string> = {};
   if (input.values && typeof input.values === "object") {
     for (const [field, value] of Object.entries(input.values as Record<string, unknown>)) {
@@ -1908,9 +1900,17 @@ export async function editForm(
   const answerAlsoWrote = LEVEL_OR_PAYROLL_ANSWER.test(context.question) && Object.keys(values).some((field) => targeted.has(field))
     ? Object.keys(values).filter((field) => !targeted.has(field))
     : [];
+  /*
+   * The rebuild plan, PR 1: NAME_CORRECTION (a word list over the message) is gone. A name correction is the model's
+   * intent "correct_name" with name_evidence from THIS message; it changes the employee's name only.
+   */
   const otherFields = Object.keys(values).filter((field) => field !== "employee_name");
-  if (NAME_CORRECTION.test(context.question) && otherFields.length > 0) {
-    return { error: `This message corrects the employee's name only. ${otherFields.join(", ")} were not changed. Call edit_form with no values (the form's reviser applies the spelling), or values for employee_name only.` };
+  if (input.intent === "correct_name") {
+    const check = verifyEvidence(input.name_evidence, identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId), { thisTurnOnly: true });
+    if (!check.ok) return { error: "A name correction needs name_evidence: the id of this message and the manager's words in it that give the name. Nothing was written.", reason_code: "name_evidence_missing", evidence: check.reason };
+    if (otherFields.length > 0) {
+      return { error: `This message corrects the employee's name only. ${otherFields.join(", ")} were not changed. Call edit_form with no values (the form's reviser applies the spelling), or values for employee_name only.`, reason_code: "name_correction_other_fields" };
+    }
   }
   try {
     const { loaded } = await authorizeInstance(context.request, id, "edit");
@@ -2344,8 +2344,6 @@ function documentFieldKeys(document: unknown): Set<string> {
 /** A short answer about the level or payroll: "yes payroll, $20", "make it a written", "no payroll". */
 export const LEVEL_OR_PAYROLL_ANSWER = /^(?=.{0,80}$)(?:.*\b(?:payroll|deduct\w*)\b|.*\b(?:make it|it'?s|change it to)\s+(?:a\s+)?(?:verbal|written)\b)/i;
 
-/** "fix her last name, it is <X>", "her name is spelled <X>", "the last name should be <X>": a name correction. */
-export const NAME_CORRECTION = /\b(?:(?:first|last|sur)\s*name|name\s+is\s+spelled|spell(?:ing|ed)?\s+(?:of\s+)?(?:her|his|their)\s+name)\b/i;
 
 /* ----------------------------------------------------------- open form --- */
 
@@ -2353,10 +2351,13 @@ export const NAME_CORRECTION = /\b(?:(?:first|last|sur)\s*name|name\s+is\s+spell
  * Puts a form on file in front of the manager, as today's chat reopen does (`formOpened`): a draft opens to edit; a
  * finalized form opens read-only (its card offers "Edit as new draft"). Past forms only when asked.
  */
-export async function openForm(context: ToolContext, effects: ToolEffects, input: { instance_id?: unknown }): Promise<ToolResult> {
+export async function openForm(context: ToolContext, effects: ToolEffects, input: { instance_id?: unknown; forms_on_file_evidence?: unknown }): Promise<ToolResult> {
   const id = typeof input.instance_id === "string" ? input.instance_id.trim() : "";
   if (id === "") return { error: "Give the form's instance_id (from find_past_forms)." };
-  if (id !== context.openFormId && !asksAboutPastForms(context)) return { error: NOT_ASKED };
+  if (id !== context.openFormId) {
+    const asked = formsOnFileAsked(context, input.forms_on_file_evidence);
+    if (!asked.ok) return privacyRefusal(asked.reason);
+  }
   try {
     const { loaded } = await authorizeInstance(context.request, id, "view");
     const instance = loaded.instance;

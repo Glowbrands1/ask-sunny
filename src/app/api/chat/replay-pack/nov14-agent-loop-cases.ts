@@ -3,7 +3,7 @@ import { appendFileSync } from "node:fs";
 import { expect, vi } from "vitest";
 
 import { KEARNEY, STAFF, type DirectoryRow, type ReplayAnswer, type ReplayCase, type ReplayContext } from "./cases";
-import { firstMatch, headingWith, lastResult, loopStandIn, type LoopDecision, type LoopView } from "./loop-stand-in";
+import { firstMatch, headingWith, lastResult, loopStandIn, type LoopDecision, type LoopView, evidenceFrom } from "./loop-stand-in";
 
 /**
  * ============================================================================
@@ -70,7 +70,7 @@ function caStandIn(view: LoopView): LoopDecision {
   const name = /Briony Calloway/i.test(said) ? "Briony Calloway" : null;
   if (!name) return { text: "Who is this form for?" };
   if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name } };
-  if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: name } };
+  if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: name, forms_on_file_evidence: evidenceFrom(view) } };
   if (!lastResult(view, "propose_form")) {
     const person = firstMatch(view);
     const policy = /dress ?code|coat|crewneck|jacket/i.test(said) ? headingWith(view, /dress/i) : headingWith(view, /late open/i);
@@ -149,7 +149,7 @@ const JOVELLE: DirectoryRow = { id: "e-jovelle", firstName: "Jovelle", lastName:
 const SF_S29 = "are there any coaching and ca's for Jovelle Kerrigan";
 
 function pastFormsStandIn(view: LoopView): LoopDecision {
-  if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: "Jovelle Kerrigan" } };
+  if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: "Jovelle Kerrigan", forms_on_file_evidence: evidenceFrom(view) } };
   const forms = (lastResult(view, "find_past_forms")?.forms ?? []) as unknown[];
   return { text: forms.length === 0 ? "There are no coaching or corrective action forms on file for Jovelle Kerrigan." : `Jovelle Kerrigan has ${forms.length} form(s) on file.` };
 }
