@@ -567,7 +567,7 @@ export function MeetingView({
             {bloom && view === "business-best" && <SegueQuestion value={typeof doc.segueQuestion === "string" ? doc.segueQuestion : ""} onChange={(v) => edit((d) => ({ ...d, segueQuestion: v }))} />}
             {bloom && view === "conclude" && !timer.started && <LastMeetingConclusion last={last} />}
             {view === "business-best" && <BusinessBest attendees={attendees} onChange={(next) => edit((d) => ({ ...d, attendees: keepHiddenAttendees(d.attendees, next) }))} afterBanner={newIssueBar} />}
-            {view === "scorecard" && <Scorecard doc={doc} edit={edit} people={people} />}
+            {view === "scorecard" && <Scorecard doc={doc} edit={edit} people={people} bloom={bloom} today={today} />}
             {view === "rocks" && <Rocks rocks={doc.rocks} onChange={(rocks) => edit((d) => ({ ...d, rocks }))} people={people} today={today} saveStatus={statusText(status)} bloom={bloom} />}
             {view === "headlines" && <Headlines headlines={doc.headlines} onChange={(headlines) => edit((d) => ({ ...d, headlines }))} author={people[0] ?? ""} />}
             {view === "todos" && <Todos todos={doc.todos} onChange={(todos) => edit((d) => ({ ...d, todos }))} people={people} today={today} bloom={bloom} />}
