@@ -90,3 +90,26 @@ describe("the account check and the incident dates read every style", () => {
     expect(incidentDates("late on June 11 (6/11)", null)).toEqual(["6/11"]);
   });
 });
+
+/* QA's batch J review (15 Nov 2026): a leading four-digit year is always the year; a time part is ignored. */
+describe("isoDate with a leading year", () => {
+  it.each([
+    ["2026-12-20T00:00", "2026-12-20"],
+    ["2026-12-20T00:00:00Z", "2026-12-20"],
+    ["2026/12/20", "2026-12-20"],
+    ["2026-12-20T09", "2026-12-20"],
+    ["2026-12-20 9am", "2026-12-20"],
+    ["2026-12-20 at 9:00", "2026-12-20"],
+    ["2026-11-12 09:30", "2026-11-12"],
+    ["2026.1.5", "2026-01-05"],
+    ["2026-11-12", "2026-11-12"],
+  ])("%s → %s, never last year's", async (value, iso) => {
+    const { isoDate } = await import("./dates");
+    expect(isoDate(value, "2026-11-15")).toBe(iso);
+  });
+  it("an impossible day is no date", async () => {
+    const { isoDate } = await import("./dates");
+    expect(isoDate("2026-13-01T00:00", "2026-11-15")).toBeNull();
+    expect(isoDate("2026/02/30 9am", "2026-11-15")).toBeNull();
+  });
+});
