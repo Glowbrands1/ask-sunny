@@ -146,10 +146,21 @@ function answerEvidence(
   context: Pick<ToolContext, "question" | "history" | "questionMessageId">,
   evidence: unknown,
   scope: "this_message" | "request" | { readonly card: string },
+  person?: { readonly name: string; readonly rosterNames: readonly string[] },
 ): AnswerEvidence {
   const turns = identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId);
   const check = verifyEvidence(evidence, turns, scope === "this_message" ? { thisTurnOnly: true } : {});
   if (!check.ok) return { ok: false, reason: check.reason };
+  /*
+   * QA's ruling (15 Nov 2026): the person guard. An evidence turn that names a DIFFERENT roster person than this card's is
+   * that person's message, not this card's ("verbal for Remy Calder" is not Juno Paxton's level): other_person. The same
+   * extractor guard as request_evidence (names compared with the roster, not a phrase list).
+   */
+  if (person) {
+    const said = withoutMessageIdTags(check.turn.content);
+    const others = person.rosterNames.filter((name) => !samePerson(name, person.name) && mentionsPerson(said, name, person.rosterNames));
+    if (others.length > 0) return { ok: false, reason: "other_person" };
+  }
   if (scope === "request" && !turns.filter((turn) => turn.role === "user").slice(-2).some((turn) => turn.id === check.turn.id)) return { ok: false, reason: "evidence_not_this_turn" };
   /*
    * A payroll answer belongs to ONE card (QA, 15 Nov 2026): the message being answered, or an earlier answer that came right
@@ -1361,11 +1372,12 @@ export async function proposeForm(
     }
   }
   /* Batch C (code-check #16): what the manager said that the account leaves out, as a fact for the model to put back. */
+  const evidencePerson = { name: employee.name, rosterNames: read.kind === "read" ? read.roster.map((person) => displayName(person)) : [] };
   let accountLost: string[] = [];
   if (whatHappened && ACCOUNT_FORMS.has(template.key)) {
     /* A message that is only a level or payroll answer (the model's evidence quotes the whole message) is not the incident's account. */
     const answerOnly = new Set(
-      [answerEvidence(context, input.level_evidence, "request"), answerEvidence(context, input.payroll_evidence, { card: employee.name })].flatMap((check) => (check.ok && check.wholeMessage ? [check.turnId] : [])),
+      [answerEvidence(context, input.level_evidence, "request", evidencePerson), answerEvidence(context, input.payroll_evidence, { card: employee.name }, evidencePerson)].flatMap((check) => (check.ok && check.wholeMessage ? [check.turnId] : [])),
     );
     const accountWords = asked.messages
       .filter((message) => sourceIds.includes(message.id ?? "") && !answerOnly.has(message.id ?? ""))
@@ -1446,7 +1458,7 @@ export async function proposeForm(
    */
   const managerWords = managerTurns(context);
   const askedPayroll = (input.payroll_deduct === "yes" || input.payroll_deduct === "no") ? input.payroll_deduct : null;
-  const payrollCheck = askedPayroll ? answerEvidence(context, input.payroll_evidence, { card: employee.name }) : null;
+  const payrollCheck = askedPayroll ? answerEvidence(context, input.payroll_evidence, { card: employee.name }, evidencePerson) : null;
   const payroll = askedPayroll && payrollCheck?.ok ? askedPayroll : null;
   const typedAmount = typeof input.payroll_amount === "string" && /\d/.test(input.payroll_amount) ? input.payroll_amount.replace(/[^\d.]/g, "") : null;
   /* The amount the manager stated, read as today reads it (`payrollAmountFromConversation`) when the model left it out. */
@@ -1498,7 +1510,7 @@ export async function proposeForm(
     ? incidentDates(requestWords, null).find((given) => monthDayToIso(given, today) === date) ?? null
     : null;
   const askedLevel = input.warning_level === "verbal" || input.warning_level === "written" ? input.warning_level : null;
-  const levelCheck = askedLevel ? answerEvidence(context, input.level_evidence, "request") : null;
+  const levelCheck = askedLevel ? answerEvidence(context, input.level_evidence, "request", evidencePerson) : null;
   const level = askedLevel && levelCheck?.ok ? askedLevel : null;
   /*
    * Batch G (QA's design, 15 Nov 2026; Pau's standing approval): the MODEL decides this Corrective Action is a

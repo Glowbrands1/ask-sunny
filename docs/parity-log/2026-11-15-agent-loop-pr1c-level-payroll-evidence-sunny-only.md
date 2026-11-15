@@ -10,3 +10,7 @@ accepts the message being answered or the manager message before it (a level sta
 card's date question); edit_form accepts only the message being answered.
 
 Sibling app (Ask Bubbles): not needed. Bubbles has no agent loop, tools or evidence arguments.
+
+Guards added at QA's ruling: an evidence turn that names a different roster person than the card's is refused (`other_person`);
+payroll counts only from the message being answered or an answer right after a reply naming this card's employee
+(`evidence_after_card`). Remaining: full per-card scoping comes with the server-side card store in PR 2.

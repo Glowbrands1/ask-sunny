@@ -199,4 +199,41 @@ export const NOV15_AGENT_LOOP_PR1C_CASES: ReplayCase[] = [
       expect((juno.card as { payroll_deduct?: unknown }).payroll_deduct ?? null, "Remy's payroll answer reached Juno's card").toBeNull();
     },
   },
+  {
+    id: "nov15-agent-loop-pr1c-another-persons-level-is-not-this-cards",
+    title: "PR 1c (QA's person guard): \"verbal for Remy Calder, late 11/9\" then \"now a ca for juno paxton, rude to a guest\": Juno's card has no level from Remy's message (other_person)",
+    report: `${REPORT}: an evidence turn that names a different roster person is that person's message`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.() || !offline) return;
+      start(t);
+      const standIn = loopStandIn((view): LoopDecision => {
+        const said = view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "";
+        const juno = /juno/i.test(said);
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: juno ? "juno paxton" : "remy calder" } };
+        if (!lastResult(view, "propose_form")) {
+          return {
+            tool: "propose_form",
+            input: {
+              template_key: "dpoa", employee_id: firstMatch(view)?.employee_id, what_happened: juno ? "Juno Paxton was rude to a guest." : "Remy Calder was late on 11/9.", incident_date: juno ? "2026-11-12" : "2026-11-09",
+              warning_level: "verbal",
+              // Juno's card quotes the manager message before it, which is about Remy.
+              level_evidence: evidenceFrom(view, "verbal for remy calder", juno ? 1 : 0),
+            },
+          };
+        }
+        return { text: "Here's the card." };
+      });
+      t.loopModel!(standIn);
+      const thread = t.thread();
+      await thread.say("verbal for remy calder, late 11/9");
+      expect(((proposeOutputs(standIn.views).at(-1)!.card) as { warning_level?: unknown }).warning_level, "Remy's own level").toBe("verbal");
+      await thread.say("now a ca for juno paxton, rude to a guest");
+      const out = proposeOutputs(standIn.views).at(-1)!;
+      expect(out.reason_code, JSON.stringify(out)).toBe("level_not_stated");
+      expect(out.level_evidence).toBe("other_person");
+      expect((out.card as { warning_level?: unknown }).warning_level ?? null, "Remy's level reached Juno's card").toBeNull();
+    },
+  },
 ];
