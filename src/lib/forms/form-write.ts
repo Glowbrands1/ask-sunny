@@ -825,6 +825,17 @@ export async function writeRevisionEdits(
   return { accepted: result.saved.accepted, cleared: result.saved.cleared, rejected: result.saved.rejected };
 }
 
+/**
+ * Batch G (G8; QA's conditions, Pau's standing approval, 15 Nov 2026): an Action Plan the manager dictated in chat,
+ * word for word, saved as the manager's own edit (as the form page saves their typing), via chat. Only action_plan;
+ * the caller (the agent loop's edit_form) checks the words are the manager's current message. Drafts only (the
+ * manager's save refuses a finalized form).
+ */
+export async function dictatedPlanWrite(instanceId: string, plan: string, actorId: string): Promise<{ saved: string | null }> {
+  const result = await saveInstanceValues(instanceId, { values: { action_plan: plan }, checked: {} }, actorId, { via: "chat" });
+  return { saved: result.rejected.some((row) => row.key === "action_plan") ? null : (result.values.action_plan ?? plan) };
+}
+
 /* -------------------------------- the old writers' shapes, through here ---- */
 
 type PathContext = Omit<FormEditRules, "actorId">;

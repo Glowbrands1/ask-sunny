@@ -1823,8 +1823,12 @@ export async function editForm(
      */
     let dictatedPlan: string | null = null;
     if (planToSave !== null) {
-      const planSaved = await (await import("@/lib/forms/instances")).saveInstanceValues(id, { values: { action_plan: planToSave }, checked: {} }, context.actor.subject, { via: "chat" });
-      if (!planSaved.rejected.some((row) => row.key === "action_plan")) dictatedPlan = planSaved.values.action_plan ?? planToSave;
+      if (formEditSingleWriterEnabled()) {
+        dictatedPlan = (await (await import("@/lib/forms/form-write")).dictatedPlanWrite(id, planToSave, context.actor.subject)).saved;
+      } else {
+        const planSaved = await (await import("@/lib/forms/instances")).saveInstanceValues(id, { values: { action_plan: planToSave }, checked: {} }, context.actor.subject, { via: "chat" });
+        dictatedPlan = planSaved.rejected.some((row) => row.key === "action_plan") ? null : (planSaved.values.action_plan ?? planToSave);
+      }
     }
     const saved = (await authorizeInstance(context.request, id, "view")).loaded;
     const dateWritten = documentDate !== null && saved.values.some((row) => row.fieldKey === "form_date" && row.value === documentDate);
