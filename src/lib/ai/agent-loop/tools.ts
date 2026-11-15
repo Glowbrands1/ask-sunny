@@ -164,6 +164,8 @@ async function formsOnFileAskedFor(context: ToolContext, evidence: unknown, pers
     const antecedent = asked.before.find(namesSomeone);
     if (antecedent !== undefined && namedIn(antecedent)) return { ok: true };
   }
+  // TODO(PR2): interim (QA, 15 Nov 2026): the card's person is read from the last card reply's text; Coding-5's
+  // server-side card record (PR 2) replaces this.
   if (context.cardReply && namedIn(context.cardReply)) return { ok: true };
   if (context.openFormId) {
     const open = await authorizeInstance(context.request, context.openFormId, "view").then(({ loaded }) => loaded.instance.employeeName).catch(() => null);

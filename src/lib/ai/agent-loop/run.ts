@@ -510,6 +510,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     scopeId: input.scopeId,
     today: input.today,
     openFormId: input.openFormId,
+    // TODO(PR2): interim; Coding-5's server-side card record replaces the reply text as the card's person.
     cardReply: cardOpenAtStart ? String(lastReply!.content) : null,
   };
   const effects: ToolEffects = { proposal: null, formUpdate: null };
