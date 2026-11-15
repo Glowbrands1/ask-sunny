@@ -122,30 +122,20 @@ export interface AgentLoopStep {
   readonly missing_kinds?: readonly string[];
 }
 
-/* Batch E (E15): a refusal's kind, read from its fixed wording (the text itself, which can carry names, never goes in the trace). */
-const ERROR_KINDS: readonly [RegExp, string][] = [
-  [/after today/i, "date_after_today"],
-  [/never changes who the form is about|another (?:employee|person)|said no to/i, "right_person"],
-  [/must come from the manager's own words|none of the dates the manager gave|never gave/i, "not_stated"],
-  [/not a heading|No section of the manual/i, "not_a_heading"],
-  [/find_staff|not on the roster|Give the employee/i, "person_not_found"],
-  [/isn't|is not one of this manager's|outside|scope|cannot (?:list|create|edit|view)|can't be listed/i, "scope"],
-  [/whole staff/i, "whole_staff"],
-  [/already shown in this reply|already has/i, "one_card"],
-  [/finalized|cannot be edited|is (?:submitted|final)/i, "drafts_only"],
-  [/past forms|NOT_ASKED|did not ask/i, "past_forms_gate"],
-  [/could not be read|failed just now|could not be (?:found|changed)/i, "read_failed"],
-  [/no tool named/i, "unknown_tool"],
-];
+/*
+ * PR 4: a step's error_kind is the refusal's reason_code (set where the tool refuses, `tools.ts` and `data-tools.ts`), never
+ * a reading of the error's wording. A refusal with no code is "unknown:<tool>" so it shows up and gets a code. The
+ * code is also logged for a result that carries one without an error (find_staff's not_on_roster, ambiguous_person).
+ */
 /** Result keys that are data, not facts (never listed in the trace). */
-const NOT_FACT_KEYS = new Set(["error", "note", "card", "facts", "matches", "staff", "wording", "headings", "source", "salon", "salons", "positions", "templates", "updated", "refused", "forms", "passages", "document", "heading", "page", "fields", "values"]);
+const NOT_FACT_KEYS = new Set(["error", "reason_code", "note", "card", "facts", "matches", "staff", "wording", "headings", "source", "salon", "salons", "positions", "templates", "updated", "refused", "forms", "passages", "document", "heading", "page", "fields", "values"]);
 
-function stepReason(result: ToolResult): Pick<AgentLoopStep, "error_kind" | "fact_keys" | "missing_kinds"> {
+function stepReason(result: ToolResult, tool: string): Pick<AgentLoopStep, "error_kind" | "fact_keys" | "missing_kinds"> {
   const record = result as Record<string, unknown>;
   const facts = record.facts && typeof record.facts === "object" ? Object.keys(record.facts as object) : [];
   const keys = [...new Set([...facts, ...Object.keys(record).filter((key) => !NOT_FACT_KEYS.has(key))])].sort();
   const missing = (record.facts as { account_words_missing?: unknown } | undefined)?.account_words_missing;
-  const error = typeof record.error === "string" ? (ERROR_KINDS.find(([pattern]) => pattern.test(record.error as string))?.[1] ?? "refused") : null;
+  const error = typeof record.reason_code === "string" ? record.reason_code : typeof record.error === "string" ? `unknown:${tool}` : null;
   return {
     ...(error ? { error_kind: error } : {}),
     ...(keys.length > 0 ? { fact_keys: keys } : {}),
@@ -503,11 +493,11 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     let result: ToolResult;
     try {
       const handler = handlers[name];
-      result = handler ? await handler((args && typeof args === "object" ? args : {}) as Record<string, unknown>) : { error: `There is no tool named ${name}.` };
+      result = handler ? await handler((args && typeof args === "object" ? args : {}) as Record<string, unknown>) : { reason_code: "unknown_tool", error: `There is no tool named ${name}.` };
     } catch {
-      result = { error: "That lookup failed just now." };
+      result = { reason_code: "tool_threw", error: "That lookup failed just now." };
     }
-    steps.push({ step, tool: name, ms: Math.round(performance.now() - started), resultChars: JSON.stringify(result).length, ok: !("error" in result), ...stepReason(result) });
+    steps.push({ step, tool: name, ms: Math.round(performance.now() - started), resultChars: JSON.stringify(result).length, ok: !("error" in result), ...stepReason(result, name) });
     return result;
   };
 
