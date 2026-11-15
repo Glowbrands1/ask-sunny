@@ -134,6 +134,59 @@ export const NOV15_AGENT_LOOP_BATCH_F_CASES: ReplayCase[] = [
     },
   },
   {
+    id: "nov15-batch-f7-forms-on-file-name-the-salon",
+    title: "F7: \"what forms does <A> have on file\": find_past_forms gives each form's salon by name, never its id",
+    report: `${REPORT}; the live test with a form open: entries showed "(loc-0468)" and "(loc-0394)"`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      const thread = start(t);
+      const model = loopStandIn((view) => {
+        const said = view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "";
+        if (/on file/i.test(said)) return lastResult(view, "find_past_forms") ? { text: "Here is what is on file." } : { tool: "find_past_forms", input: { employee_name: "remy calder" } };
+        return lastResult(view, "propose_form") ? { text: "Here is the card." } : CARD;
+      });
+      t.loopModel!(model);
+      await thread.say(SAID);
+      t.draftWrites({ observation: "Observed:\nRemy Calder arrived 20 minutes late for her shift on 11/9/26." });
+      await thread.create();
+      await thread.say("what forms does remy calder have on file");
+      const listed = model.views.flatMap((view) => view.results).filter((result) => result.tool === "find_past_forms").at(-1)?.output as { forms?: { salon?: string | null }[] } | undefined;
+      expect(listed?.forms?.length, "the form on file was not listed").toBeGreaterThan(0);
+      for (const form of listed?.forms ?? []) expect(form.salon, "a salon id reached the model").not.toMatch(/^loc-/);
+      expect(listed?.forms?.[0]?.salon).toBe("NE Kearney");
+    },
+  },
+  {
+    id: "nov15-batch-f8-value-edit-moves-updated-at",
+    title: "F8: a chat edit that changes only a value (the Observation) on a draft moves the form's updated_at",
+    report: `${REPORT}; the first live test with a form open: three value edits (events 4 → 7) left updated_at unchanged`,
+    status: { open: "a value-only edit leaves form_instances.updated_at where it was; only a form_date edit moves it" },
+    fixFlags: [FLAG, "FORM_EDIT_TOUCHES_UPDATED_AT_ENABLED"],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      const thread = start(t);
+      let draftId = "";
+      t.loopModel!(loopStandIn((view) => {
+        const said = view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "";
+        if (/\badd\b/i.test(said)) {
+          return lastResult(view, "edit_form") ? { text: "I added that to the Observation." } : { tool: "edit_form", input: { instance_id: draftId, values: { observation: "Remy Calder arrived 20 minutes late for her shift on 11/9/26. She did not call ahead." } } };
+        }
+        return lastResult(view, "propose_form") ? { text: "Here is the card." } : CARD;
+      }));
+      await thread.say(SAID);
+      t.draftWrites({ observation: "Observed:\nRemy Calder arrived 20 minutes late for her shift on 11/9/26." });
+      draftId = await thread.create();
+      const row = t.forms().find((form) => form.id === draftId)!;
+      Object.assign(row, { updated_at: "2026-11-11T16:00:00.000Z" });
+      vi.setSystemTime(new Date("2026-11-11T17:30:00Z"));
+      await thread.say("add that she did not call ahead");
+      expect(t.values(draftId).observation ?? "", "the edit was not written").toMatch(/did not call ahead/);
+      expect(String(t.forms().find((form) => form.id === draftId)!.updated_at), "a value edit left updated_at unchanged").not.toBe("2026-11-11T16:00:00.000Z");
+    },
+  },
+  {
     id: "nov15-batch-f4-one-step-budget",
     title: "F4: a self-check after the main loop used every step gets none of its own: the turn never passes the step cap",
     report: REPORT,
