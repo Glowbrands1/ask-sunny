@@ -1,7 +1,7 @@
 import { expect, vi } from "vitest";
 
 import { KEARNEY, STAFF, type DirectoryRow, type ReplayCase, type ReplayContext, type ReplayThread } from "./cases";
-import { lastResult, loopStandIn, type LoopDecision, type LoopView } from "./loop-stand-in";
+import { lastResult, loopStandIn, type LoopDecision, type LoopView, evidenceFrom } from "./loop-stand-in";
 
 /**
  * ============================================================================
@@ -126,7 +126,7 @@ export const NOV15_AGENT_LOOP_SILENT_FAILURE_CASES: ReplayCase[] = [
       const before = t.values(id).observation;
       t.loopModel!(loopStandIn((view): LoopDecision => {
         const read = lastResult(view, "read_form") as { values?: { observation?: { untrusted_text?: string } } } | null;
-        if (!read) return { tool: "read_form", input: { instance_id: id } };
+        if (!read) return { tool: "read_form", input: { instance_id: id, forms_on_file_evidence: evidenceFrom(view) } };
         return { text: `That's already on the form: "${read.values?.observation?.untrusted_text ?? ""}"` };
       }));
       const reply = await thread.say(T2);

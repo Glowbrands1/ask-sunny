@@ -3,7 +3,7 @@ import { appendFileSync } from "node:fs";
 import { expect, vi } from "vitest";
 
 import { KEARNEY, STAFF, type DirectoryRow, type ReplayAnswer, type ReplayCase, type ReplayContext } from "./cases";
-import { firstMatch, headingWith, lastResult, loopStandIn, type LoopDecision, type LoopView } from "./loop-stand-in";
+import { firstMatch, headingWith, lastResult, loopStandIn, type LoopDecision, type LoopView, evidenceFrom } from "./loop-stand-in";
 
 /**
  * ============================================================================
@@ -70,6 +70,7 @@ function caStandIn(view: LoopView): LoopDecision {
   const name = /Briony Calloway/i.test(said) ? "Briony Calloway" : null;
   if (!name) return { text: "Who is this form for?" };
   if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name } };
+  // The rebuild plan's PR 1: nobody asked about forms on file here, so the model passes no evidence and is refused.
   if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: name } };
   if (!lastResult(view, "propose_form")) {
     const person = firstMatch(view);
@@ -149,7 +150,7 @@ const JOVELLE: DirectoryRow = { id: "e-jovelle", firstName: "Jovelle", lastName:
 const SF_S29 = "are there any coaching and ca's for Jovelle Kerrigan";
 
 function pastFormsStandIn(view: LoopView): LoopDecision {
-  if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: "Jovelle Kerrigan" } };
+  if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: "Jovelle Kerrigan", forms_on_file_evidence: evidenceFrom(view) } };
   const forms = (lastResult(view, "find_past_forms")?.forms ?? []) as unknown[];
   return { text: forms.length === 0 ? "There are no coaching or corrective action forms on file for Jovelle Kerrigan." : `Jovelle Kerrigan has ${forms.length} form(s) on file.` };
 }
@@ -209,7 +210,7 @@ export const NOV14_AGENT_LOOP_CASES: ReplayCase[] = [
       // Where the model looked up the forms on file, it saw the Late Opening CA as a record; never an app-written "On file" line.
       const onFile = views.flatMap((view) => view.results.filter((result) => result.tool === "find_past_forms"));
       // Changed on purpose (14 Nov 2026, Pau's privacy rule via QA): forms on file are looked at only when the manager asks; nobody asked here.
-      for (const result of onFile) expect(JSON.stringify(result.output)).toMatch(/not asked about forms on file/);
+      for (const result of onFile) expect(JSON.stringify(result.output)).toMatch(/"reason_code":"privacy_not_asked"/);
       expect(views.every((view) => !/On file in Form Monitoring/.test(view.system))).toBe(true);
       historyIsTheModelsOwn(views, replies);
     },
