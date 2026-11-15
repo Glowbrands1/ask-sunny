@@ -634,4 +634,67 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       expect(typed.content).not.toMatch(/in Woven\)/);
     },
   },
+  {
+    id: "nov15-agent-loop-preferred-and-legal-name-are-one-person",
+    title: "QA's addition 2 to Pau's name ruling (15 Nov): Josephine Quill, who goes by Jo, is one person by either name: past forms filed as Jo Quill or Josephine Quill are found by either name, an edit naming her as Jo goes on her Josephine Quill draft, and another roster person is never merged",
+    report: `${REPORT}; QA's addition 2 (15 Nov 2026): preferred and legal names are one person in find_past_forms, read_form and edit-by-name`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
+      t.directory([...STAFF, JO]);
+      t.as("salon_director", KEARNEY);
+      const asJo = await onFile(t, JO.id, "Jo Quill", "coaching", "2026-11-05", "Jo Quill was late to her shift on 11/5.");
+      const asJosephine = await onFile(t, JO.id, "Josephine Quill", "dpoa", "2026-11-10", "Josephine Quill left the front desk unattended on 11/10.");
+      const remys = await onFile(t, "e-2", "Remy Calder", "coaching", "2026-11-06", "Remy Calder did not restock the lotion shelf on 11/6.");
+
+      // find_past_forms (the "On file" lines), by either name: both of hers, never Remy's.
+      const lookup = (typed: string) => loopStandIn((view): LoopDecision => {
+        const found = lastResult(view, "find_past_forms") as { forms?: { instance_id: string }[] } | null;
+        if (!found) return { tool: "find_past_forms", input: { employee_name: typed } };
+        const read = lastResult(view, "read_form");
+        if (!read && found.forms?.[0]) return { tool: "read_form", input: { instance_id: found.forms[0].instance_id } };
+        return { text: `On file for ${typed}: ${found.forms?.length ?? 0} forms.` };
+      });
+      for (const typed of ["Jo Quill", "Josephine Quill"]) {
+        const model = lookup(typed);
+        t.loopModel!(model);
+        const reply = await t.thread().say(`what forms are on file for ${typed.toLowerCase()}`);
+        const found = (model.views.flatMap((view) => view.results).find((result) => result.tool === "find_past_forms")?.output ?? {}) as { forms?: { instance_id: string }[] };
+        const ids = (found.forms ?? []).map((form) => form.instance_id).sort();
+        expect(ids, `${typed} did not find both of her forms:\n${reply.content}`).toEqual([asJo, asJosephine].sort());
+        expect(ids, `${typed} merged another roster person`).not.toContain(remys);
+        expect(toolResults(model.views, "read_form")[0] ?? "", `read_form did not read her form by ${typed}`).not.toMatch(/"error"/);
+      }
+      const remyModel = lookup("Remy Calder");
+      t.loopModel!(remyModel);
+      await t.thread().say("what forms are on file for remy calder");
+      const remyFound = (remyModel.views.flatMap((view) => view.results).find((result) => result.tool === "find_past_forms")?.output ?? {}) as { forms?: { instance_id: string }[] };
+      expect((remyFound.forms ?? []).map((form) => form.instance_id), "another roster person's forms were merged").toEqual([remys]);
+
+      // Edit by name: her draft is filed as Josephine Quill; the manager calls her Jo.
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "Josephine Quill" } };
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: JO.id, what_happened: "Josephine Quill was late on 11/12." } };
+        return { text: "Here's the Corrective Action Form for **Josephine Quill**.\n\n**Observation of Offense:** Josephine Quill was late on 11/12." };
+      }));
+      const thread = t.thread();
+      await thread.say("ca for josephine quill, she was late on 11/12");
+      const id = await thread.create();
+      const editor = (said: string) => loopStandIn((view): LoopDecision => {
+        if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { instance_id: id, values: { observation: `Josephine Quill was late on 11/12. ${said}` } } };
+        return { text: "Done." };
+      });
+      const jo = editor("Jo Quill was also late on 11/13.");
+      t.loopModel!(jo);
+      await thread.say("add that jo quill was also late on 11/13");
+      expect(toolResults(jo.views, "edit_form")[0] ?? "", "an edit naming her as Jo was refused as someone else's").not.toMatch(/This message is about/);
+      expect(t.values(id).observation ?? "").toMatch(/also late on 11\/13/);
+      const remy = editor("Remy Calder was also late on 11/13.");
+      t.loopModel!(remy);
+      await thread.say("now remy calder was late on 11/13 too");
+      expect(toolResults(remy.views, "edit_form")[0] ?? "", "another roster person's account went on her form").toMatch(/This message is about Remy Calder/);
+    },
+  },
 ];

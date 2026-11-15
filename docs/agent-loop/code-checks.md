@@ -252,5 +252,7 @@ Rules-book lines and facts first. The refusals and the narrow write paths below 
 | G15, who did it | `account_subject_changed` | What happened |
 | G16, which date | `dates_asked_before` | Dates: ask once |
 | G17/G18, policy named with its page | `ask_exactly` (no person yet, a policy named earlier in the chat) | Which form |
+| G19, termination on the card | propose_form takes `warning_level: "termination"` only when the manager stated one (`statesTermination`); fact `termination_stated`. A hedge leaves the level empty. | Card replies: the hedge line |
+| Names, one person (QA's addition 2) | `sameRosterPerson`: a preferred and a legal name are one person when each is a full name of exactly one roster person, the same one. Used by find_past_forms (forms filed under either name) and edit_form's right-person guard. Two roster people are never merged. | — |
 
 **Exit forms** (Pau: coaching, exit and CA first): there's a new rules-book section covering resignation vs termination, a future last day said in one line, rehire and reason only as said, and no incident questions. Batch I (the other 14 templates) is deferred.

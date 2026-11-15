@@ -614,11 +614,19 @@ export async function findPastForms(context: ToolContext, input: { employee_name
   const actor = await chatFormsActor(context.actor).catch(() => undefined);
   if (actor === undefined) return { error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
   if (actor === null) return { error: "This manager's role cannot view Form Monitoring, so past forms cannot be listed." };
-  const nameWords = candidateNameWords(typed);
+  /*
+   * Batch G (QA's addition 2): the typed name is one roster person's preferred or legal name, so forms under the other
+   * one are theirs too ("Jo Quill" finds the forms filed as "Josephine Quill"). Never another roster person's.
+   */
+  const roster = await rosterFor(context.actor.scope);
+  const people = roster.kind === "read" ? roster.roster : [];
+  const holders = people.filter((person) => fullNamesOf(person).some((full) => samePerson(full, typed)));
+  const aliases = holders.length === 1 ? fullNamesOf(holders[0]!) : [];
+  const nameWords = [...new Set([typed, ...aliases].flatMap(candidateNameWords))];
   if (nameWords.length === 0) return { forms: [] };
   try {
     let rows = visibleInstances(actor, await listInstances("all", 50, { ...instanceListFilterFor(actor), employeeNameWords: nameWords }))
-      .filter((row) => samePerson(row.employeeName, typed) || words(row.employeeName).join(" ").includes(words(typed).join(" ")));
+      .filter((row) => samePerson(row.employeeName, typed) || words(row.employeeName).join(" ").includes(words(typed).join(" ")) || (aliases.length > 0 && sameRosterPerson(row.employeeName, typed, people)));
     /*
      * Batch G (G4, REOPEN_CLOSE_SPELLING, parity gap #43): no form under the typed name, so the forms this manager may
      * open are read for an employee whose name it closely spells. One person: theirs. Two or more: ask which.
@@ -882,6 +890,26 @@ export function mentionsPerson(text: string, name: string, rosterNames: readonly
     if (!longer.some((other) => rest.startsWith(other))) return true;
   }
   return false;
+}
+
+/** A roster person's full names: the Woven preferred name with the surname, and the legal one (batch G, QA). */
+export function fullNamesOf(person: Pick<RosterEmployee, "firstName" | "lastName" | "preferredFirstName">): string[] {
+  const last = person.lastName?.trim() ?? "";
+  const names = [person.preferredFirstName?.trim(), person.firstName?.trim()].filter((first): first is string => !!first).map((first) => `${first} ${last}`.trim());
+  return [...new Set(names)];
+}
+
+/**
+ * Batch G (QA's addition 2, 15 Nov 2026; Pau: "Preferred name is fine let it be flexible"): two names are one person
+ * when they are the same name, or when each is a full name (preferred or legal) of exactly one roster person, and it is
+ * the same person. "Jo Quill" and "Josephine Quill" are one person when Woven has Josephine "Jo" Quill; two different
+ * roster people are never merged, and a name two roster people share decides nothing.
+ */
+export function sameRosterPerson(a: string, b: string, roster: readonly Pick<RosterEmployee, "id" | "firstName" | "lastName" | "preferredFirstName">[]): boolean {
+  if (samePerson(a, b)) return true;
+  const holders = (name: string) => roster.filter((person) => fullNamesOf(person).some((full) => samePerson(full, name)));
+  const [x, y] = [holders(a), holders(b)];
+  return x.length === 1 && y.length === 1 && x[0]!.id === y[0]!.id;
 }
 
 /*
@@ -1638,9 +1666,12 @@ export async function editForm(
      */
     const roster = await rosterFor(context.actor.scope);
     if (roster.kind === "read") {
-      const names = roster.roster.map(displayName);
-      const other = names.find((name) => !samePerson(name, loaded.instance.employeeName) && mentionsPerson(context.question, name, names));
-      if (other && !mentionsPerson(context.question, loaded.instance.employeeName, names)) {
+      // Batch G (QA's addition 2): every roster person by preferred and legal name; the form's employee by either.
+      const names = [...new Set(roster.roster.flatMap((person) => [displayName(person), ...fullNamesOf(person)]))];
+      const formsPerson = loaded.instance.employeeName;
+      const other = names.find((name) => !sameRosterPerson(name, formsPerson, roster.roster) && mentionsPerson(context.question, name, names));
+      const mentionsFormsPerson = names.some((name) => sameRosterPerson(name, formsPerson, roster.roster) && mentionsPerson(context.question, name, names)) || mentionsPerson(context.question, formsPerson, names);
+      if (other && !mentionsFormsPerson) {
         return { error: `This message is about ${other}, not ${loaded.instance.employeeName}; this form is ${loaded.instance.employeeName}'s and was not changed. Propose ${other}'s own card instead.` };
       }
     }

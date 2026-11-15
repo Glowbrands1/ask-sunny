@@ -215,6 +215,39 @@ export const NOV15_AGENT_LOOP_SILENT_FAILURE_CASES: ReplayCase[] = [
     },
   },
   {
+    id: "nov15-silent-g19-termination-with-the-date",
+    title: "G19 (QA's addition): \"create a termination for <A>, she no call no showed on 11/12\": a Corrective Action card dated 11/12, Type of Warning: Termination, as you said, with the DM/HR approval line, and Create ticks Termination",
+    report: `${REPORT}; QA's addition 1 to G19 (15 Nov 2026)`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
+      t.directory([...STAFF, WREN]);
+      t.as("salon_director", KEARNEY);
+      const model = loopStandIn((view): LoopDecision => {
+        const result = lastResult(view, "propose_form") as { facts?: { termination_stated?: { type_of_warning: string; approval_line: string } } } | null;
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "Wren Halloway" } };
+        if (!result) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: WREN.id, what_happened: "Wren Halloway was a no call no show on 11/12.", incident_date: "2026-11-12", warning_level: "termination" } };
+        const stated = result.facts?.termination_stated;
+        return {
+          text: stated
+            ? `Here's the Corrective Action Form for **Wren Halloway**.\n\n**Type of Warning:** ${stated.type_of_warning}.\n${stated.approval_line}\n\n**Observation of Offense:** Wren Halloway was a no call no show on 11/12.`
+            : "Here's the Corrective Action Form for **Wren Halloway**.\n\nYou'll tick Termination on the form yourself; it needs DM/HR approval before it's finalized.",
+        };
+      });
+      t.loopModel!(model);
+      const thread = t.thread();
+      const reply = await thread.say("create a termination for Wren Halloway, she no call no showed on 11/12");
+      expect(thread.proposal?.templateKey, `no Corrective Action card:\n${reply.content}`).toBe("dpoa");
+      expect(thread.proposal?.formDate, "the card is not dated the no call no show").toBe("2026-11-12");
+      expect(reply.content, `the card does not say Termination:\n${reply.content}`).toMatch(/\*\*Type of Warning:\*\* Termination, as you said\./);
+      expect(reply.content).toMatch(/Termination needs your DM\/HR approval before you finalize\./);
+      const id = await thread.create();
+      expect(t.checked(id).warning_type, "Create did not tick Termination").toEqual(["termination"]);
+    },
+  },
+  {
     id: "nov15-silent-g19-demotion-is-not-a-level",
     title: "G19: on a Corrective Action draft, a warning level of \"demotion\" is refused and nothing is ticked (verbal, written or termination only)",
     report: `${REPORT}; QA: anything that was not verbal or written was ticked as termination`,
