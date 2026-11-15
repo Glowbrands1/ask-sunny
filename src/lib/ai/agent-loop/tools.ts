@@ -1755,7 +1755,17 @@ export async function proposeForm(
   const terminationStated = loopTermination;
   const unset = corrective && !awaiting ? [...(payroll ? [] : ["payroll_deduct"]), ...(level || terminationStated ? [] : ["warning_level"])] : [];
   const salonNames = (ids: readonly string[] | undefined) => (ids ?? []).map((id) => ({ id, name: rosterSalonName(id) ?? id }));
+  /*
+   * Batch K4 (QA's 266 shadow replay, c137/c134: a pasted account about <Y>, off the roster, went on <X>'s card; the
+   * right-person guard reads roster names only). This turn's account names a full name that is not the card's person,
+   * and does not name the card's person: a fact, and the model asks which (the rules book). Never decided by code.
+   */
+  const accountText = `${context.question}\n${whatHappened}`;
+  const cardFirst = words(employee.name)[0] ?? "";
+  const namesCard = mentionsPerson(accountText, employee.name, rosterNames) || (cardFirst.length > 1 && new RegExp(String.raw`\b${cardFirst}\b`, "i").test(accountText));
+  const otherNamed = namesCard ? [] : [...new Set(extractEmployeeNames(accountText))].filter((name) => words(name).length >= 2 && !samePerson(name, employee.name) && !(context.actor.displayName && samePerson(name, context.actor.displayName)));
   const facts = {
+    ...(otherNamed.length > 0 ? { account_names_other_person: { named: otherNamed.slice(0, 3).map(untrusted), card_person: employee.name } } : {}),
     ...(unset.length > 0 ? { unset } : {}),
     ...(level || payroll || priorActions
       ? { stated: { ...(level ? { warning_level: level } : {}), ...(payroll ? { payroll_deduct: payroll } : {}), ...(payroll === "yes" && amount ? { payroll_amount: `$${amount.replace(/^\$/, "")}` } : {}), ...(priorActions ? { prior_actions: priorActions } : {}) } }

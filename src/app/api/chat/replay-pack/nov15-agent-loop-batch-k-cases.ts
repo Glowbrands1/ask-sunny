@@ -203,3 +203,56 @@ NOV15_AGENT_LOOP_BATCH_K_CASES.push(
     },
   })),
 );
+
+const PASTE = "Observation of Concern\nFollowing a review of employee hours worked, it was confirmed that Tessa Varnell utilized tanning equipment while clocked in for scheduled shifts.";
+
+NOV15_AGENT_LOOP_BATCH_K_CASES.push(
+  {
+    id: "nov15-k4-an-account-about-another-person-is-asked-c137",
+    title: "K4 (QA's shadow replay, c137's shape): after Remy Calder's coaching card, a pasted account that names only Tessa Varnell (nobody on the roster) gives account_names_other_person, and the reply asks which person the form is for, never \"Added your account\" to Remy's card",
+    report: `${REPORT}: c137 and c134, a pasted account about one person put on another person's card`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      await salon(t);
+      const model = loopStandIn((view): LoopDecision => {
+        const said = latest(view);
+        const card = lastResult(view, "propose_form") as { facts?: { account_names_other_person?: { named: { untrusted_text: string }[]; card_person: string } } } | null;
+        if (/Observation of Concern/.test(said)) {
+          if (!card) return { tool: "propose_form", input: { template_key: "coaching", employee_id: "e-2", what_happened: said } };
+          const other = card.facts?.account_names_other_person;
+          return { text: other ? `This account is about **${other.named[0]!.untrusted_text}**. Is the form for **${other.named[0]!.untrusted_text}** or **${other.card_person}**?` : "Added your account to the Coaching Form for **Remy Calder**." };
+        }
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "Remy Calder" } };
+        if (!card) return { tool: "propose_form", input: { template_key: "coaching", employee_id: "e-2" } };
+        return { text: "Here's the Coaching Form for **Remy Calder**." };
+      });
+      t.loopModel!(model);
+      const thread = t.thread();
+      await thread.say("put together a coaching document for Remy Calder");
+      const reply = await thread.say(PASTE);
+      expect(reply.content, `the other person's account went on Remy's card:\n${reply.content}`).toMatch(/This account is about \*\*Tessa Varnell\*\*/);
+    },
+  },
+  {
+    id: "nov15-k4-an-account-naming-the-card-person-is-not-asked",
+    title: "K4, the control: an account that names the card's own person (\"Remy left early on 11/14, Juno Paxton saw it\") gives no account_names_other_person",
+    report: `${REPORT}; the control`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      await salon(t);
+      const model = loopStandIn((view): LoopDecision => {
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "Remy Calder" } };
+        const card = lastResult(view, "propose_form") as { facts?: Record<string, unknown> } | null;
+        if (!card) return { tool: "propose_form", input: { template_key: "coaching", employee_id: "e-2", what_happened: "Remy left early on 11/14, Juno Paxton saw it." } };
+        return { text: card.facts?.account_names_other_person ? "This account is about someone else." : "Here's the Coaching Form for **Remy Calder**." };
+      });
+      t.loopModel!(model);
+      const reply = await t.thread().say("coaching for Remy Calder, Remy left early on 11/14, Juno Paxton saw it");
+      expect(reply.content).toBe("Here's the Coaching Form for **Remy Calder**.");
+    },
+  },
+);
