@@ -8,6 +8,7 @@ import { isoDate, monthDayToIso, readDates, sameDate, withoutDates } from "./dat
 import { candidateNameWords, chatFormsActor } from "@/lib/forms/chat-form-records";
 import { displayName, matchEmployeeName, nameConfirmationQuestion, type RosterEmployee } from "@/lib/forms/employee-match";
 import { offRosterTyped } from "@/lib/forms/roster-only-names";
+import { otherPersonQuestion, otherPersonTyped } from "./first-name-fits";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
 import { readDirectoryRoster, readScopedRoster, type DirectoryRosterRow } from "@/lib/forms/employee-roster";
 import { inlineDraftVariantKey, supportsInlineDraft } from "@/lib/forms/inline-draft";
@@ -305,6 +306,10 @@ export async function findStaff(context: ToolContext, input: { name?: unknown },
   if (read.kind === "failed") return { error: ROSTER_FAILED };
   if (read.kind === "unchecked") return { unchecked: true, note: ROSTER_UNCHECKED };
   let found = rosterMatches(typed, read.roster).slice(0, 10);
+  /* FIRST_NAME_MUST_FIT_ENABLED: a shared last name is not the person the manager typed ("Soren Fairweather" is not Marisol Fairweather). */
+  const otherFirst = found.map((person) => [person, otherPersonTyped(context, person)] as const).filter(([, other]) => other !== null);
+  if (otherFirst.length > 0 && otherFirst.length === found.length) return { matches: [], note: `Not the person the manager typed. Ask: "${otherPersonQuestion(otherFirst[0]![1]!, otherFirst[0]![0])}"` };
+  found = found.filter((person) => !otherFirst.some(([other]) => other === person));
   /* The roster's exact full name wins over people whose names only start the same ("Test Employee" vs "Test Employee Two"). */
   const exact = found.filter((person) => samePerson(displayName(person), typed) && words(displayName(person)).length === words(typed).length);
   /* r3 (right-persons-account): the longer names are a fact, so a manager's "<A> Two" is never lost to "<A>". */
@@ -917,6 +922,8 @@ export async function proposeForm(
     if (person && turnedDown && samePerson(turnedDown, displayName(person))) {
       return { error: `The manager said no to ${displayName(person)}. Never put them on the card; ask who the form is for.` };
     }
+    const otherFirst = person ? otherPersonTyped(context, person) : null;
+    if (person && otherFirst) return { error: `The manager typed ${otherFirst}, not ${displayName(person)}. Never put them on the card; ask: "${otherPersonQuestion(otherFirst, person)}"` };
     if (person) employee = { name: displayName(person), salonIds: person.salonIds, id: person.id };
     /*
      * OFF_ROSTER_CONFIRM (as today): a person not in Woven yet goes on the form by the name the manager typed, only
