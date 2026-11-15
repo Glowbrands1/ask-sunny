@@ -3,7 +3,7 @@
 
 import { useState } from "react";
 import { Button, cx, inputClass } from "@/features/l10/ui/ui";
-import { inWeek, initials, weekRange } from "@/features/l10/lib/bloom";
+import { inWeek, initials, ownerColor, weekBounds, weekRange } from "@/features/l10/lib/bloom";
 import { addWeek, cellTone, formatValue, newestFirst, newItemId, parseCell, setCell, shortDate, type CellTone } from "@/features/l10/lib/doc";
 import type { MeetingDoc, MetricFormat, ScorecardRow } from "@/features/l10/lib/types";
 
@@ -92,8 +92,37 @@ export function Scorecard({ doc, edit, people, bloom = false, today = "" }: { do
     setGoal("");
   };
 
+  const form = (
+    <div className="rounded-[10px] border border-dashed border-line bg-cream/60 p-3 print:hidden" data-testid="add-metric">
+      <div className="mb-2 text-xs font-bold text-muted">Add metric</div>
+      <div className="flex flex-wrap items-center gap-2">
+        <input aria-label="Metric name" value={metric} onChange={(e) => setMetric(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addMetric()} placeholder="Metric name…" className={cx(inputClass, "min-w-[220px] flex-1")} />
+        <select aria-label="Metric owner" value={owner} onChange={(e) => setOwner(e.target.value)} className={cx(inputClass, "w-44")}>
+          {people.map((p) => (
+            <option key={p}>{p}</option>
+          ))}
+        </select>
+        <input aria-label="Goal" value={goal} onChange={(e) => setGoal(e.target.value)} placeholder="Goal, e.g. ≥ 7%" className={cx(inputClass, "w-36")} />
+        <select aria-label="Format" title="Unit" value={format} onChange={(e) => setFormat(e.target.value as MetricFormat)} className={cx(inputClass, "w-32")}>
+          <option value="percent">Percent</option>
+          <option value="currency">Currency</option>
+          <option value="number">Number</option>
+        </select>
+        <select aria-label="Direction" value={higher ? "higher" : "lower"} onChange={(e) => setHigher(e.target.value === "higher")} className={cx(inputClass, "w-36")}>
+          <option value="higher">Higher is better</option>
+          <option value="lower">Lower is better</option>
+        </select>
+        <Button variant="primary" disabled={!metric.trim()} onClick={addMetric}>
+          Add metric
+        </Button>
+      </div>
+    </div>
+  );
+
   return (
     <div className="flex flex-col gap-3">
+      {/* Bloom-style: "Add metric" at the top, above the table, like "Add new rock" (the owner's request, 15 Nov 2026). */}
+      {bloom && form}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="m-0 text-sm text-muted print:hidden">Most recent week first. Tap any cell to edit.</p>
         <Button variant="outline" className="print:hidden" onClick={() => edit(addWeek)}>
@@ -103,7 +132,7 @@ export function Scorecard({ doc, edit, people, bloom = false, today = "" }: { do
       {doc.scorecard.length > 0 && bloom ? (
         <BloomTable doc={doc} edit={edit} order={order} today={today} />
       ) : doc.scorecard.length === 0 ? (
-        <p className="m-0 rounded-[10px] border border-dashed border-line p-4 text-sm text-muted">No metrics yet. Add the first one below.</p>
+        <p className="m-0 rounded-[10px] border border-dashed border-line p-4 text-sm text-muted">No metrics yet. Add the first one {bloom ? "above" : "below"}.</p>
       ) : (
         <div className="overflow-x-auto rounded-[10px] border border-line bg-white shadow-card">
           <table className="w-full border-collapse text-sm">
@@ -149,30 +178,7 @@ export function Scorecard({ doc, edit, people, bloom = false, today = "" }: { do
           </table>
         </div>
       )}
-      <div className="rounded-[10px] border border-dashed border-line bg-cream/60 p-3 print:hidden">
-        <div className="mb-2 text-xs font-bold text-muted">Add metric</div>
-        <div className="flex flex-wrap items-center gap-2">
-          <input aria-label="Metric name" value={metric} onChange={(e) => setMetric(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addMetric()} placeholder="Metric name…" className={cx(inputClass, "min-w-[220px] flex-1")} />
-          <select aria-label="Metric owner" value={owner} onChange={(e) => setOwner(e.target.value)} className={cx(inputClass, "w-44")}>
-            {people.map((p) => (
-              <option key={p}>{p}</option>
-            ))}
-          </select>
-          <input aria-label="Goal" value={goal} onChange={(e) => setGoal(e.target.value)} placeholder="Goal, e.g. ≥ 7%" className={cx(inputClass, "w-36")} />
-          <select aria-label="Format" value={format} onChange={(e) => setFormat(e.target.value as MetricFormat)} className={cx(inputClass, "w-32")}>
-            <option value="percent">Percent</option>
-            <option value="currency">Currency</option>
-            <option value="number">Number</option>
-          </select>
-          <select aria-label="Direction" value={higher ? "higher" : "lower"} onChange={(e) => setHigher(e.target.value === "higher")} className={cx(inputClass, "w-36")}>
-            <option value="higher">Higher is better</option>
-            <option value="lower">Lower is better</option>
-          </select>
-          <Button variant="primary" disabled={!metric.trim()} onClick={addMetric}>
-            Add metric
-          </Button>
-        </div>
-      </div>
+      {!bloom && form}
     </div>
   );
 }
@@ -203,8 +209,23 @@ function BloomTable({ doc, edit, order, today }: { doc: MeetingDoc; edit: (fn: (
               Goal
             </th>
             {order.map((i) => (
-              <th key={i} scope="col" data-current={current(i) ? "true" : undefined} className={cx("px-2 py-2.5 text-right font-mono whitespace-nowrap", current(i) && "bg-gold/30 text-white")}>
-                {weekRange(doc.weekEndings[i])}
+              <th key={i} scope="col" data-current={current(i) ? "true" : undefined} data-current-week={current(i) ? "" : undefined} className="px-2 py-2 text-right font-mono leading-tight whitespace-nowrap">
+                {(() => {
+                  // Two lines, start over end ("9 Nov" / "15 Nov"); the slash is kept for screen readers.
+                  const b = weekBounds(doc.weekEndings[i]);
+                  if (!b) return weekRange(doc.weekEndings[i]);
+                  return (
+                    <>
+                      <span className="block" data-week-start>
+                        {b.start}
+                      </span>
+                      <span className="sr-only"> / </span>
+                      <span className="block" data-week-end>
+                        {b.end}
+                      </span>
+                    </>
+                  );
+                })()}
               </th>
             ))}
           </tr>
@@ -212,9 +233,9 @@ function BloomTable({ doc, edit, order, today }: { doc: MeetingDoc; edit: (fn: (
         {[...groups].map(([owner, rows]) => (
           <tbody key={owner} aria-label={`${owner}'s metrics`} className="border-t-[10px] border-cream first-of-type:border-t-0">
             {rows.map((r) => (
-              <tr key={r.id} className="border-t border-rule">
+              <tr key={r.id} data-owner-row={ownerColor(owner)} className="border-t border-rule">
                 <td className="sticky left-0 z-10 bg-white px-3 py-2">
-                  <span title={owner} className="flex size-8 items-center justify-center rounded-full bg-cream text-[11px] font-bold">
+                  <span title={owner} data-owner-color={ownerColor(owner)} className="flex size-8 items-center justify-center rounded-full text-[11px] font-bold">
                     <span aria-hidden>{initials(owner)}</span>
                     <span className="sr-only">{owner}</span>
                   </span>
@@ -235,7 +256,7 @@ function BloomTable({ doc, edit, order, today }: { doc: MeetingDoc; edit: (fn: (
                 </td>
                 <td className="px-3 py-2 font-mono whitespace-nowrap text-muted">{r.goal}</td>
                 {order.map((i) => (
-                  <td key={i} className={cx("px-1 py-1", current(i) && "bg-gold/15")}>
+                  <td key={i} data-current-week={current(i) ? "" : undefined} className="px-1 py-1">
                     <Cell bloom row={r} week={i} label={weekRange(doc.weekEndings[i]) || `week ${i + 1}`} onCommit={(v) => edit((d) => setCell(d, r.id, i, v))} />
                   </td>
                 ))}

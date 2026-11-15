@@ -45,6 +45,30 @@ export function weekRange(ending: string | undefined): string {
   return `${day(start)} / ${day(end)}`;
 }
 
+/** A week's first and last day ("9 Nov", "15 Nov"), for the scorecard's two-line week headers; null if unreadable. */
+export function weekBounds(ending: string | undefined): { start: string; end: string } | null {
+  const range = weekRange(ending);
+  const parts = range.split(" / ");
+  return parts.length === 2 ? { start: parts[0], end: parts[1] } : null;
+}
+
+/** How many colours the owners' avatars cycle through (globals.css --owner-1 … --owner-6). */
+export const OWNER_COLORS = 6;
+
+/**
+ * An owner's avatar colour, 1 to 6, picked by a hash of the name so the same person always gets the same colour,
+ * everywhere (the owner's request, 15 Nov 2026, as in Bloom Growth). Case and spacing do not change it.
+ */
+export function ownerColor(name: string): number {
+  const key = name.trim().replace(/\s+/g, " ").toLowerCase();
+  let h = 2166136261;
+  for (let i = 0; i < key.length; i++) {
+    h ^= key.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return ((h >>> 0) % OWNER_COLORS) + 1;
+}
+
 /** Whether "YYYY-MM-DD" falls in the week ending "MM/DD/YYYY" (that day and the six before it). */
 export function inWeek(ending: string | undefined, today: string): boolean {
   const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(ending ?? "");
