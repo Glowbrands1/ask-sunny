@@ -1,3 +1,4 @@
+import { editDistance } from "@/lib/forms/employee-match";
 import { expect, vi } from "vitest";
 
 import { BEHAVIOURS, TESTY, TESTY_ACCOUNT, type Behaviour, type Phrasing } from "@/lib/ai/agent-loop/phrasing-table";
@@ -26,6 +27,14 @@ const REPORT = "QA's audit (15 Nov 2026): the same request in different phrasing
 const TEST_TESTY: DirectoryRow = { id: TESTY.id, firstName: TESTY.firstName, lastName: TESTY.lastName, preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" };
 
 /** The phrasings that end differently today, by case id: filled from the first run; PR 1 empties it. */
+/**
+ * Fix batch item 2 (16 Nov 2026): level evidence must name the option, so the stand-in quotes the manager's own level word
+ * (as typed, typos included) instead of the message's first words.
+ */
+function levelWord(said: string, level: string): string {
+  return said.split(/[\s,.]+/).find((word) => word.toLowerCase() === level || (word.length >= 4 && editDistance(word.toLowerCase(), level) === 1)) ?? said;
+}
+
 export const OPEN_UNTIL_PR1: Readonly<Record<string, string>> = {
   // The payroll answer itself is now kept on payroll_evidence (PR 1c); what is left is the AMOUNT said in words ("twenty dollars"): the amount check reads figures only.
   "nov15-phrasing-answer-payroll-5": "TODO(amount-words): payroll_amount said in words (\"twenty dollars\") is not a figure the amount check reads",
@@ -82,7 +91,7 @@ const SCRIPTS: Record<Behaviour["key"], Script> = {
     await setup(t);
     t.loopModel!(loopStandIn((view): LoopDecision => {
       const text = latest(view.turns);
-      if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: corrective(), employee_id: TESTY.id, what_happened: TESTY_ACCOUNT, ...(text === said ? { warning_level: "written", level_evidence: evidenceFrom(view) } : {}) } };
+      if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: corrective(), employee_id: TESTY.id, what_happened: TESTY_ACCOUNT, ...(text === said ? { warning_level: "written", level_evidence: evidenceFrom(view, levelWord(said, "written")) } : {}) } };
       return { text: "Here's the card." };
     }));
     const thread = t.thread();
@@ -120,7 +129,7 @@ const SCRIPTS: Record<Behaviour["key"], Script> = {
   "exit-form": async (t, said) => {
     await setup(t);
     t.loopModel!(loopStandIn((view): LoopDecision => {
-      if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: exitKey(), employee_id: TESTY.id, exit_type: "resignation", exit_evidence: evidenceFrom(view) } };
+      if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: exitKey(), employee_id: TESTY.id, exit_type: "resignation", exit_evidence: { ...evidenceFrom(view), kind: "asks_for_exit_form" } } };
       return { text: "Here's the card." };
     }));
     const thread = t.thread();
@@ -142,7 +151,7 @@ const SCRIPTS: Record<Behaviour["key"], Script> = {
   },
   "undo-level": async (t, said) => {
     const { thread, id } = await writtenDraft(t);
-    t.loopModel!(loopStandIn((view): LoopDecision => (lastResult(view, "edit_form") ? { text: "Done." } : { tool: "edit_form", input: { instance_id: id, values: { warning_type: "verbal" }, level_evidence: evidenceFrom(view) } })));
+    t.loopModel!(loopStandIn((view): LoopDecision => (lastResult(view, "edit_form") ? { text: "Done." } : { tool: "edit_form", input: { instance_id: id, values: { warning_type: "verbal" }, level_evidence: evidenceFrom(view, levelWord(said, "verbal")) } })));
     await thread.say(said);
     expect(t.checked(id).warning_type, "the level was not taken back to verbal").toEqual(["verbal"]);
   },

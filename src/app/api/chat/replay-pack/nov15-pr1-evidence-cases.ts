@@ -214,7 +214,7 @@ export const NOV15_PR1_EVIDENCE_CASES: ReplayCase[] = [
         const said = [...view.turns].reverse().find((turn) => turn.role === "user")?.text ?? "";
         const staff = lastResult(view, "find_staff") as { note?: string } | null;
         if (/^use wrenna/i.test(said)) {
-          if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "stc-exit", employee_name: "Wrenna", effective_date: "11/14", exit_evidence: evidenceFrom(view, "put together an exit for Wrenna", 1) } };
+          if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "stc-exit", employee_name: "Wrenna", effective_date: "11/14", exit_evidence: { ...evidenceFrom(view, "put together an exit for Wrenna", 1), kind: "asks_for_exit_form" } } };
           return { text: "Here's the Employee Exit Form for **Wrenna**." };
         }
         if (!staff) return { tool: "find_staff", input: { name: "Wrenna", person_evidence: evidenceFrom(view, "an exit for Wrenna") } };
@@ -252,7 +252,7 @@ export const NOV15_PR1_EVIDENCE_CASES: ReplayCase[] = [
               template_key: "stc-exit",
               employee_name: "Tessa Varnell",
               effective_date: "11/14",
-              exit_evidence: evidenceFrom(view, "I need an exit form with this information", 1),
+              exit_evidence: { ...evidenceFrom(view, "I need an exit form with this information", 1), kind: "asks_for_exit_form" },
               request_evidence: [evidenceFrom(view, "Meeting with Tesa Varnel tomorrow", 2), evidenceFrom(view, "I need an exit form with this information", 1)],
             },
           };

@@ -312,7 +312,7 @@ export const NOV15_AGENT_LOOP_TERMINATION_DECISION_CASES: ReplayCase[] = [
       ] as const) {
         t.loopModel!(loopStandIn((view): LoopDecision => {
           if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
-          if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "stc-exit", exit_evidence: evidenceFrom(view), employee_id: "e-2", exit_type: "termination", effective_date: date } };
+          if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "stc-exit", exit_evidence: { ...evidenceFrom(view), kind: "asks_for_exit_form" }, employee_id: "e-2", exit_type: "termination", effective_date: date } };
           return { text: "Here's the Employee Exit Form for **Remy Calder**." };
         }));
         const thread = t.thread();
@@ -335,7 +335,7 @@ export const NOV15_AGENT_LOOP_TERMINATION_DECISION_CASES: ReplayCase[] = [
       const exit = async (words: string, termination: boolean) => {
         const model = loopStandIn((view): LoopDecision => {
           if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
-          if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "stc-exit", exit_evidence: evidenceFrom(view), employee_id: "e-2", incident_date: "2026-11-28", exit_type: termination ? "termination" : "resignation" } };
+          if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "stc-exit", exit_evidence: { ...evidenceFrom(view), kind: "asks_for_exit_form" }, employee_id: "e-2", incident_date: "2026-11-28", exit_type: termination ? "termination" : "resignation" } };
           return { text: "Here's the Employee Exit Form for **Remy Calder**." };
         });
         t.loopModel!(model);

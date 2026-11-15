@@ -21,6 +21,16 @@ import { rulesBookText } from "./rules-book";
  * Updated on purpose on 16 Nov 2026 (fix batch item 4): the two "Did you mean" lines in "Who the form is for" became one
  * consistent instruction (a yes or the full name typed back is a yes; confirmed_by_manager). Both lines name no app,
  * place, staff system or form key; nothing else in either text changed.
+ *
+ * Re-taken on purpose on 16 Nov 2026 (fix batch item 1, an exit card nobody asked for): the Which form exit line now
+ * asks for exit_evidence's kind, and one line was added for a resignation told with no ask. Both read the same under
+ * every config; nothing else changed.
+ *
+ * Re-taken on purpose on 16 Nov 2026 (fix batch item 7, a bare "yes" set payroll): one Card replies line was added for
+ * payroll_answer_unclear. It reads the same under every config; nothing else changed.
+ *
+ * Re-taken on purpose on 16 Nov 2026 (fix batch item 2, "final warning", Pau's ruling): one Card replies line was added
+ * for level_not_named. It reads the same under every config; nothing else changed.
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");

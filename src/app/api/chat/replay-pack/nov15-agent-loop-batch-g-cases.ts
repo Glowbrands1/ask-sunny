@@ -358,7 +358,7 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       const model = loopStandIn((view): LoopDecision => {
         const result = lastResult(view, "propose_form") as { facts?: { date_after_today?: unknown } } | null;
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
-        if (!result) return { tool: "propose_form", input: { template_key: "stc-exit", exit_evidence: evidenceFrom(view), employee_id: "e-2", incident_date: "2026-11-28" } };
+        if (!result) return { tool: "propose_form", input: { template_key: "stc-exit", exit_evidence: { ...evidenceFrom(view), kind: "asks_for_exit_form" }, employee_id: "e-2", incident_date: "2026-11-28" } };
         return { text: `Here's the Employee Exit Form for **Remy Calder**.\n\n${result.facts?.date_after_today ? "11/28 is after today." : "Last day 11/28/2026, as you said."}` };
       });
       t.loopModel!(model);
@@ -413,7 +413,7 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       t.loopModel!(loopStandIn((view): LoopDecision => {
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
         // QA's design (15 Nov 2026): the model decides the exit is a termination; the tool locks it on the word.
-        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "stc-exit", exit_evidence: evidenceFrom(view), employee_id: "e-2", incident_date: "2026-11-20", exit_type: "termination", effective_date: "11/20" } };
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "stc-exit", exit_evidence: { ...evidenceFrom(view), kind: "asks_for_exit_form" }, employee_id: "e-2", incident_date: "2026-11-20", exit_type: "termination", effective_date: "11/20" } };
         return { text: "Here's the Employee Exit Form for **Remy Calder**: a termination, effective 11/20/2026, as you said. Not eligible for rehire; reason: no call no show for 3 shifts." };
       }));
       const thread = t.thread();
@@ -560,7 +560,7 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       t.as("salon_director", KEARNEY);
       t.loopModel!(loopStandIn((view): LoopDecision => {
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
-        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "stc-exit", exit_evidence: evidenceFrom(view), employee_id: "e-2", incident_date: "2026-11-28" } };
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "stc-exit", exit_evidence: { ...evidenceFrom(view), kind: "asks_for_exit_form" }, employee_id: "e-2", incident_date: "2026-11-28" } };
         return { text: "Here's the Employee Exit Form for **Remy Calder**: a resignation with notice. Last day 11/28/2026, as you said." };
       }));
       const thread = t.thread();
@@ -627,7 +627,7 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
         const result = lastResult(view, "propose_form") as { card?: { policy?: string | null }; facts?: { exit_termination?: { effective: string; dated_today?: boolean } } } | null;
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
         // A model that reaches for the CA's Attendance policy: an exit cites none.
-        if (!result) return { tool: "propose_form", input: { template_key: "stc-exit", exit_evidence: evidenceFrom(view), employee_id: "e-2", policy: "Attendance", effective_date: "11/20", exit_type: "termination" } };
+        if (!result) return { tool: "propose_form", input: { template_key: "stc-exit", exit_evidence: { ...evidenceFrom(view), kind: "asks_for_exit_form" }, employee_id: "e-2", policy: "Attendance", effective_date: "11/20", exit_type: "termination" } };
         const exit = result.facts?.exit_termination;
         return {
           text: [
@@ -661,7 +661,7 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       t.as("salon_director", TWO_SALONS);
       t.loopModel!(loopStandIn((view): LoopDecision => {
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "isla marrow" } };
-        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "stc-exit", exit_evidence: evidenceFrom(view), employee_id: ISLA.id, incident_date: "2026-11-28" } };
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "stc-exit", exit_evidence: { ...evidenceFrom(view), kind: "asks_for_exit_form" }, employee_id: ISLA.id, incident_date: "2026-11-28" } };
         return { text: "Here's the Employee Exit Form for **Isla Marrow**. Filed at **NE Kearney**, where Woven lists Isla; say if it's another salon. Last day 11/28/2026, as you said." };
       }));
       const thread = t.thread();
@@ -781,7 +781,7 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       for (const said of ["exit form for remy calder, she gave notice, last day 11/28. Not a termination.", "exit form for remy calder. She quit, last day 11/28. She was fired from her last job btw"]) {
         const model = loopStandIn((view): LoopDecision => {
           if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
-          if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "stc-exit", exit_evidence: evidenceFrom(view), employee_id: "e-2", incident_date: "2026-11-28" } };
+          if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "stc-exit", exit_evidence: { ...evidenceFrom(view), kind: "asks_for_exit_form" }, employee_id: "e-2", incident_date: "2026-11-28" } };
           return { text: "Here's the Employee Exit Form for **Remy Calder**." };
         });
         t.loopModel!(model);
