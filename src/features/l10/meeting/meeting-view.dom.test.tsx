@@ -514,3 +514,119 @@ describe("Bloom-style page: Scorecard", () => {
     expect(table.getByRole("button", { name: "Sales calls 26 Oct / 1 Nov: 4" }).className).toContain("bg-[#fbe4e4]");
   });
 });
+
+// QA, 15 Nov 2026: Rock Review edits a rock in a panel on the right (a goal drawer), as in the Hub, not inline.
+describe("Rock Review: a rock opens in a side panel", () => {
+  const rocks = [
+    { id: "k1", title: "Open two new rooms", owner: "Avery Quill", status: "on-track", milestones: [{ id: "m1", text: "Sign the lease", done: false }] },
+    { id: "k2", title: "Hire a trainer", owner: "Cy Marlow", status: "on-track", milestones: [] },
+  ];
+  const start = () => {
+    const save = vi.fn().mockResolvedValue({ ok: true, version: 4, updatedAt: "2026-11-13T00:00:00Z" } satisfies SaveOutcome);
+    const { container } = renderView({ save: save as unknown as SaveFn, initial: loaded(3, { attendees: [], rocks }) });
+    fireEvent.click(within(screen.getByRole("region", { name: "Agenda" })).getByRole("button", { name: /Rock Review/ }));
+    return { save, container };
+  };
+  const panel = () => screen.getByRole("dialog", { name: "Edit rock" });
+  const row = (title: string) => screen.getByRole("button", { name: `Edit ${title}` });
+
+  it("clicking a rock opens the panel with its fields, and the list stays", () => {
+    const { container } = start();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(row("Open two new rooms"));
+    const p = within(panel());
+    expect((p.getByLabelText("Rock title") as HTMLInputElement).value).toBe("Open two new rooms");
+    expect((p.getByLabelText("Owner of Open two new rooms") as HTMLSelectElement).value).toBe("Avery Quill");
+    expect(p.getByLabelText("Due date of Open two new rooms")).toBeTruthy();
+    expect((p.getByLabelText("Status of Open two new rooms") as HTMLSelectElement).value).toBe("on-track");
+    expect(p.getByRole("checkbox", { name: "Milestone done: Sign the lease" })).toBeTruthy();
+    expect(p.getByLabelText("Add milestone")).toBeTruthy();
+    expect(p.getByLabelText("Notes for Open two new rooms")).toBeTruthy();
+    expect(row("Hire a trainer").getAttribute("aria-expanded")).toBe("false");
+    // Rendered in place, not portalled out, so in the app it sits inside the DM L10 frame's styles (.hub-l10), where
+    // the floating buttons move clear of it (globals.css, [data-side-panel]).
+    expect(container.contains(panel())).toBe(true);
+    expect(panel().hasAttribute("data-side-panel")).toBe(true);
+  });
+
+  it("ticking a milestone saves through the same path", async () => {
+    const { save } = start();
+    fireEvent.click(row("Open two new rooms"));
+    fireEvent.click(within(panel()).getByRole("checkbox", { name: "Milestone done: Sign the lease" }));
+    await waitFor(() => expect(save).toHaveBeenCalled());
+    const doc = save.mock.calls.at(-1)![2] as { rocks: { id: string; milestones: { done: boolean }[] }[] };
+    expect(doc.rocks.find((r) => r.id === "k1")!.milestones[0].done).toBe(true);
+    // It autosaves (no Save button); the footer repeats the meeting's save status quietly, as in Bloom's goal drawer.
+    expect(within(panel()).queryByRole("button", { name: /^Save/ })).toBeNull();
+    await waitFor(() => expect(within(panel()).getByTestId("rock-panel-save-status").textContent).toBe("All changes saved"));
+  });
+
+  it("closes with the close button and with Esc", () => {
+    start();
+    fireEvent.click(row("Open two new rooms"));
+    fireEvent.click(screen.getByRole("button", { name: "Close rock editor" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(row("Open two new rooms"));
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("only one rock is open at a time", () => {
+    start();
+    fireEvent.click(row("Open two new rooms"));
+    fireEvent.click(row("Hire a trainer"));
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect((within(panel()).getByLabelText("Rock title") as HTMLInputElement).value).toBe("Hire a trainer");
+  });
+});
+
+// Rocks and To-dos on the Bloom-style STC DM L10 (the owner's request, 15 Nov 2026), as in the Hub.
+describe("Bloom-style page: Rocks and To-dos", () => {
+  const doc = {
+    rocks: [
+      {
+        id: "k1",
+        title: "Open two rooms",
+        owner: "Avery Quill",
+        status: "on-track",
+        milestones: [
+          { id: "m1", text: "Sign the lease", done: true },
+          { id: "m2", text: "Hire staff", done: false, dueDate: "2026-11-01" },
+          { id: "m3", text: "Open", done: false, dueDate: "2026-12-20" },
+        ],
+      },
+    ],
+    todos: [
+      { id: "t1", text: "Order towels", owner: "Avery Quill", done: false, due: "Next wk", dueDate: "2026-11-20" },
+      { id: "t2", text: "Call the landlord", owner: "Bo Lark", done: true, due: "Next wk" },
+    ],
+  };
+  const view = () =>
+    render(<MeetingView info={info} initial={loaded(3, doc)} save={vi.fn() as unknown as SaveFn} end={vi.fn() as unknown as EndFn} viewer={viewer} roster={roster} hubMeetingUrl={HUB} pollMs={0} debounceMs={0} today="2026-11-15" />);
+
+  it("Rocks: All rocks tab, owner header with initials, milestone bar, chevron, Expand milestones and Owner: A–Z", () => {
+    view();
+    fireEvent.click(within(screen.getByRole("region", { name: "Agenda" })).getByRole("button", { name: /Rock Review/ }));
+    expect(screen.getByRole("tab", { name: "All rocks (1)" })).toBeTruthy();
+    const avery = within(screen.getByRole("region", { name: "Avery Quill's Rocks" }));
+    expect(avery.getByTitle("Avery Quill").textContent).toBe("AQ");
+    const bar = avery.getByRole("img", { name: "Milestones: 1 done, 1 overdue, 1 to do" });
+    expect([...bar.children].map((c) => (c as HTMLElement).dataset.state)).toEqual(["done", "overdue", "open"]);
+    fireEvent.click(avery.getByRole("button", { name: "Show milestones of Open two rooms" }));
+    expect(within(screen.getByRole("list", { name: "Milestones of Open two rooms" })).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["✓Sign the lease", "Hire staff11-01-2026", "Open12-20-2026"]);
+    expect(screen.getByRole("button", { name: "Expand milestones" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Owner: A–Z" })).toBeTruthy();
+  });
+
+  it("To-dos: % Completed, round checks, initials and MM-DD-YYYY due dates", () => {
+    view();
+    fireEvent.click(within(screen.getByRole("region", { name: "Agenda" })).getByRole("button", { name: /To-do List/ }));
+    expect(screen.getByTestId("todos-completed").textContent).toBe("50% Completed");
+    const rows = within(screen.getByRole("list", { name: "To-dos" })).getAllByRole("listitem");
+    const row = within(rows.find((r) => r.textContent?.includes("Order towels"))!);
+    expect(row.getByRole("checkbox", { name: "Done: Order towels" }).getAttribute("aria-checked")).toBe("false");
+    expect(row.getByTitle("Avery Quill").textContent).toBe("AQAvery Quill");
+    expect(row.getByTestId("todo-due").textContent).toBe("11-20-2026");
+    expect(within(rows.find((r) => r.textContent?.includes("Call the landlord"))!).getByRole("checkbox").getAttribute("aria-checked")).toBe("true");
+  });
+});
