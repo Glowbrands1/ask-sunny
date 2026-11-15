@@ -1,7 +1,7 @@
 import { expect, vi } from "vitest";
 
 import { KEARNEY, STAFF, TWO_SALONS, type DirectoryRow, type ReplayCase } from "./cases";
-import { lastResult, loopStandIn, type LoopDecision, type LoopView } from "./loop-stand-in";
+import { lastResult, loopStandIn, type LoopDecision, type LoopView, saidNow } from "./loop-stand-in";
 
 /**
  * ============================================================================
@@ -245,7 +245,7 @@ export const NOV14_LIVE_R5_CASES: ReplayCase[] = [
         const checked = /\[app check\]/.test(latest(view));
         if (!checked && !lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
         if (!checked && !lastResult(view, "read_policy")) return { tool: "read_policy", input: { heading: "Attendance" } };
-        if (!checked && !lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", policy: "Attendance", what_happened: "Remy Calder was 20 minutes late on 11/12.", warning_level: "verbal" } };
+        if (!checked && !lastResult(view, "propose_form")) return { tool: "propose_form", input: { level_evidence: saidNow(view), template_key: "dpoa", employee_id: "e-2", policy: "Attendance", what_happened: "Remy Calder was 20 minutes late on 11/12.", warning_level: "verbal" } };
         // A model that shortens the line, then writes it as the card has it when the app hands its reply back.
         const line = checked ? /"policy":"([^"]+)"/.exec(latest(view))?.[1] ?? "Attendance" : "Attendance";
         return { text: `Here's the Corrective Action Form for **Remy Calder**.\n\n**Observation of Offense:** Remy Calder was 20 minutes late on 11/12.\n**Type of Warning:** Verbal Warning, as you said.\n\n**Policy:** ${line}` };

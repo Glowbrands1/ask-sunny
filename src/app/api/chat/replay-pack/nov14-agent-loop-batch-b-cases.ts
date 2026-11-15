@@ -1,7 +1,7 @@
 import { expect, vi } from "vitest";
 
 import { KEARNEY, STAFF, TWO_SALONS, type DirectoryRow, type ReplayCase } from "./cases";
-import { headingWith, lastResult, loopStandIn, type LoopView } from "./loop-stand-in";
+import { headingWith, lastResult, loopStandIn, type LoopView, saidNow } from "./loop-stand-in";
 
 /**
  * ============================================================================
@@ -167,7 +167,7 @@ export const NOV14_AGENT_LOOP_BATCH_B_CASES: ReplayCase[] = [
       const id = await thread.create();
       const reader = loopStandIn((view) => {
         const form = lastResult(view, "read_form") as { account_field?: string } | null;
-        if (!form) return { tool: "read_form", input: { instance_id: id } };
+        if (!form) return { tool: "read_form", input: { forms_on_file_evidence: saidNow(view), instance_id: id } };
         if (!lastResult(view, "edit_form") && form.account_field) return { tool: "edit_form", input: { instance_id: id, values: { [form.account_field]: "Tamsin Orwell skipped the spray booth check on 11/12." } } };
         return { text: "Added it to the Details of Coaching." };
       });

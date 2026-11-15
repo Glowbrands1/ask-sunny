@@ -3,7 +3,7 @@ import { expect, vi } from "vitest";
 import { LOOP_FAILED_REPLY, STEP_LIMIT_REPLY } from "@/lib/ai/agent-loop/replies";
 
 import { KEARNEY, STAFF, type ReplayCase, type ReplayContext } from "./cases";
-import { lastResult, loopStandIn, type LoopDecision, type LoopView } from "./loop-stand-in";
+import { lastResult, loopStandIn, type LoopDecision, type LoopView, saidNow } from "./loop-stand-in";
 
 /**
  * ============================================================================
@@ -144,7 +144,7 @@ export const NOV15_AGENT_LOOP_BATCH_F_CASES: ReplayCase[] = [
       const thread = start(t);
       const model = loopStandIn((view) => {
         const said = view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "";
-        if (/on file/i.test(said)) return lastResult(view, "find_past_forms") ? { text: "Here is what is on file." } : { tool: "find_past_forms", input: { employee_name: "remy calder" } };
+        if (/on file/i.test(said)) return lastResult(view, "find_past_forms") ? { text: "Here is what is on file." } : { tool: "find_past_forms", input: { forms_on_file_evidence: saidNow(view), employee_name: "remy calder" } };
         return lastResult(view, "propose_form") ? { text: "Here is the card." } : CARD;
       });
       t.loopModel!(model);

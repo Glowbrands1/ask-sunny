@@ -1,7 +1,7 @@
 import { expect, vi } from "vitest";
 
 import { KEARNEY, STAFF, TWO_SALONS, type DirectoryRow, type ReplayCase, type ReplayContext } from "./cases";
-import { firstMatch, lastResult, loopStandIn, type LoopView } from "./loop-stand-in";
+import { firstMatch, lastResult, loopStandIn, type LoopView, saidNow } from "./loop-stand-in";
 import { EARLIER_CARD_STAYS, isProposalSuperseded } from "@/lib/forms/proposal-continuation";
 
 /**
@@ -70,9 +70,9 @@ async function terminationOnFile(t: ReplayContext): Promise<string> {
 
 /** A model that looks at forms on file whenever it can, and tells the manager what it found. */
 function nosyStandIn(view: LoopView) {
-  if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: "Tamsin Orwell" } };
+  if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { forms_on_file_evidence: saidNow(view), employee_name: "Tamsin Orwell" } };
   const listed = (lastResult(view, "find_past_forms")?.forms ?? []) as { instance_id: string; form: string; status: string }[];
-  if (listed.length > 0 && !lastResult(view, "read_form")) return { tool: "read_form", input: { instance_id: listed[0]!.instance_id } };
+  if (listed.length > 0 && !lastResult(view, "read_form")) return { tool: "read_form", input: { forms_on_file_evidence: saidNow(view), instance_id: listed[0]!.instance_id } };
   if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "tamsin orwell" } };
   if (!/before|on file/i.test(view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "") && !lastResult(view, "propose_form")) {
     return { tool: "propose_form", input: { template_key: "dpoa", employee_id: firstMatch(view)?.employee_id, what_happened: "Tamsin Orwell was on her phone at the front desk on 11/13." } };
@@ -163,7 +163,7 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       const eager = loopStandIn((view) => {
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "tamsin orwell" } };
         if (!lastResult(view, "propose_form")) {
-          return { tool: "propose_form", input: { template_key: "dpoa", employee_id: firstMatch(view)?.employee_id, what_happened: "Tamsin Orwell was 30 minutes late on 11/12.", warning_level: "written", payroll_deduct: "yes", payroll_amount: "50" } };
+          return { tool: "propose_form", input: { level_evidence: saidNow(view), payroll_evidence: saidNow(view), template_key: "dpoa", employee_id: firstMatch(view)?.employee_id, what_happened: "Tamsin Orwell was 30 minutes late on 11/12.", warning_level: "written", payroll_deduct: "yes", payroll_amount: "50" } };
         }
         return { text: "Here is the Corrective Action Form." };
       });
@@ -194,7 +194,7 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       const terse = loopStandIn((view) => {
         const said = view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "";
         if (!lastResult(view, "propose_form")) {
-          return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, what_happened: "Tamsin Orwell was 30 minutes late on 11/12.", ...(/written/.test(said) ? { warning_level: "written", payroll_deduct: "no" } : {}) } };
+          return { tool: "propose_form", input: { level_evidence: saidNow(view), payroll_evidence: saidNow(view), template_key: "dpoa", employee_id: TAMSIN.id, what_happened: "Tamsin Orwell was 30 minutes late on 11/12.", ...(/written/.test(said) ? { warning_level: "written", payroll_deduct: "no" } : {}) } };
         }
         return { text: "Here is the Corrective Action Form for Tamsin Orwell." };
       });
@@ -305,7 +305,7 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       const payer = loopStandIn((view) => {
         const said = (lastResult(view, "propose_form")?.facts as { payroll_amount_said?: string } | undefined)?.payroll_amount_said;
         const tries = view.results.filter((result) => result.tool === "propose_form").length;
-        if (tries === 0 || (tries === 1 && said)) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, what_happened: "The register was short $20 on 11-1-26, which will be payroll deducted.", warning_level: "verbal", payroll_deduct: "yes", ...(said ? { payroll_amount: said } : {}) } };
+        if (tries === 0 || (tries === 1 && said)) return { tool: "propose_form", input: { level_evidence: saidNow(view), payroll_evidence: saidNow(view), template_key: "dpoa", employee_id: TAMSIN.id, what_happened: "The register was short $20 on 11-1-26, which will be payroll deducted.", warning_level: "verbal", payroll_deduct: "yes", ...(said ? { payroll_amount: said } : {}) } };
         return { text: "Here is the card." };
       });
       t.loopModel!(payer);
@@ -516,7 +516,7 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       const id = await post.create();
       const before = t.values(id);
       const editor = loopStandIn((view) => {
-        if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { instance_id: id, values: { warning_type: "written" } } };
+        if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { level_evidence: saidNow(view), instance_id: id, values: { warning_type: "written" } } };
         return { text: JSON.stringify(lastResult(view, "edit_form")) };
       });
       t.loopModel!(editor);
@@ -527,7 +527,7 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
 
       // An unstated level is refused by edit_form, and nothing is written.
       const eager = loopStandIn((view) => {
-        if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { instance_id: id, values: { warning_type: "verbal" } } };
+        if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { level_evidence: saidNow(view), instance_id: id, values: { warning_type: "verbal" } } };
         return { text: JSON.stringify(lastResult(view, "edit_form")) };
       });
       t.loopModel!(eager);
@@ -539,7 +539,7 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       Object.assign(t.forms().find((row) => row.id === id)!, { status: "finalized" });
       const original = JSON.stringify({ values: t.values(id), checked: t.checked(id) });
       const reviser = loopStandIn((view) => {
-        if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { instance_id: id, values: { payroll_deduct: "no" } } };
+        if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { payroll_evidence: saidNow(view), instance_id: id, values: { payroll_deduct: "no" } } };
         return { text: "Done." };
       });
       t.loopModel!(reviser);
@@ -756,16 +756,16 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
           return { text: "Here's the card." };
         }
         if (/format of Corvina|look like this format/i.test(latestTurn)) {
-          if (/format of Corvina/i.test(latestTurn) && !lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: "Corvina Lisle" } };
-          if (tries === 0) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: LIORA.id, policy: "Standards of Conduct", warning_level: "verbal", what_happened: "During the month of September 2026, Liora Quenby completed 237 tanning transactions and failed to follow their Must See Behaviors in UPTA, Average Club, CC%, and Spa %." } };
-          if (tries === 1) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: LIORA.id, policy: "Standards of Conduct", warning_level: "verbal", what_happened: "Like Corvina Lisle, Liora Quenby had 146 tans and was below in PPTA, LPSVA, Average Club, CC%, Spa%." } };
-          if (tries === 2) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: LIORA.id, policy: "Standards of Conduct", warning_level: "verbal", what_happened: `Throughout her transactions, ${accountB}` } };
+          if (/format of Corvina/i.test(latestTurn) && !lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { forms_on_file_evidence: saidNow(view), employee_name: "Corvina Lisle" } };
+          if (tries === 0) return { tool: "propose_form", input: { level_evidence: saidNow(view), template_key: "dpoa", employee_id: LIORA.id, policy: "Standards of Conduct", warning_level: "verbal", what_happened: "During the month of September 2026, Liora Quenby completed 237 tanning transactions and failed to follow their Must See Behaviors in UPTA, Average Club, CC%, and Spa %." } };
+          if (tries === 1) return { tool: "propose_form", input: { level_evidence: saidNow(view), template_key: "dpoa", employee_id: LIORA.id, policy: "Standards of Conduct", warning_level: "verbal", what_happened: "Like Corvina Lisle, Liora Quenby had 146 tans and was below in PPTA, LPSVA, Average Club, CC%, Spa%." } };
+          if (tries === 2) return { tool: "propose_form", input: { level_evidence: saidNow(view), template_key: "dpoa", employee_id: LIORA.id, policy: "Standards of Conduct", warning_level: "verbal", what_happened: `Throughout her transactions, ${accountB}` } };
           return { text: "Here's the card in that format." };
         }
         if (/liora quenby/i.test(said)) {
           if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "msb" } };
-          if (tries === 0) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: LIORA.id, policy: "Standards of Conduct", warning_level: "verbal", what_happened: "Liora Quenby was below in PPTA, LPSVA, Average Club, CC%, Spa%." } };
-          if (tries === 1) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: LIORA.id, policy: "Standards of Conduct", warning_level: "verbal", what_happened: accountB } };
+          if (tries === 0) return { tool: "propose_form", input: { level_evidence: saidNow(view), template_key: "dpoa", employee_id: LIORA.id, policy: "Standards of Conduct", warning_level: "verbal", what_happened: "Liora Quenby was below in PPTA, LPSVA, Average Club, CC%, Spa%." } };
+          if (tries === 1) return { tool: "propose_form", input: { level_evidence: saidNow(view), template_key: "dpoa", employee_id: LIORA.id, policy: "Standards of Conduct", warning_level: "verbal", what_happened: accountB } };
           return { text: "Here's the card." };
         }
         return { text: "Who is this Corrective Action Form for?" };
@@ -890,7 +890,7 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
         const said = view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "";
         const corbin = /corbin/i.test(said);
         if (!lastResult(view, "propose_form")) {
-          return { tool: "propose_form", input: { template_key: "dpoa", employee_id: corbin ? CORBIN.id : TAMSIN.id, what_happened: `${corbin ? "Corbin Ashdown" : "Tamsin Orwell"} was late on 11/3/26.`, ...(corbin ? { warning_level: "written" } : {}) } };
+          return { tool: "propose_form", input: { level_evidence: saidNow(view), template_key: "dpoa", employee_id: corbin ? CORBIN.id : TAMSIN.id, what_happened: `${corbin ? "Corbin Ashdown" : "Tamsin Orwell"} was late on 11/3/26.`, ...(corbin ? { warning_level: "written" } : {}) } };
         }
         /* Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite): the card reply is the model's, in the rules book's Card replies words. */
         return { text: `Here's the Corrective Action Form for **${corbin ? "Corbin Ashdown" : "Tamsin Orwell"}**.\n\n**Observation of Offense:** Late on 11/3/26.` };
@@ -920,7 +920,7 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
         if (!lastResult(view, "propose_form")) {
           const written = /written/i.test(view.turns.filter((turn) => turn.role === "user").map((turn) => turn.text).join(" "));
           const what = /professional/i.test(said) ? "The employee arrived late for the scheduled shift on 11/3/26." : "Late on 11/3/26.";
-          return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, what_happened: what, ...(written ? { warning_level: "written" } : {}) } };
+          return { tool: "propose_form", input: { level_evidence: saidNow(view), template_key: "dpoa", employee_id: TAMSIN.id, what_happened: what, ...(written ? { warning_level: "written" } : {}) } };
         }
         /* The first reply names the person; the edits' replies say only what changed (no name), as the live run's did. */
         if (/create a corrective action/i.test(said)) return { text: "Here's the Corrective Action Form for **Tamsin Orwell**.\n\n**Observation of Offense:** Late on 11/3/26." };
@@ -1085,9 +1085,9 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       const proposer = loopStandIn((view) => {
         const tries = view.results.filter((result) => result.tool === "propose_form").length;
         const facts = lastResult(view, "propose_form")?.facts as { confirm_policy?: string } | undefined;
-        if (tries === 0) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, policy: "Key Holder Guidelines", what_happened: "Tamsin Orwell left the back door unlocked last night.", warning_level: "verbal" } };
+        if (tries === 0) return { tool: "propose_form", input: { level_evidence: saidNow(view), template_key: "dpoa", employee_id: TAMSIN.id, policy: "Key Holder Guidelines", what_happened: "Tamsin Orwell left the back door unlocked last night.", warning_level: "verbal" } };
         // Changed on purpose (batch C, code-check #33): on confirm_policy the model proposes again with no policy, as the rules book teaches.
-        if (tries === 1 && facts?.confirm_policy) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, what_happened: "Tamsin Orwell left the back door unlocked last night.", warning_level: "verbal" } };
+        if (tries === 1 && facts?.confirm_policy) return { tool: "propose_form", input: { level_evidence: saidNow(view), template_key: "dpoa", employee_id: TAMSIN.id, what_happened: "Tamsin Orwell left the back door unlocked last night.", warning_level: "verbal" } };
         return { text: String(facts?.confirm_policy ?? "") };
       });
       t.loopModel!(proposer);
@@ -1148,9 +1148,9 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       const valuesBefore = JSON.stringify(t.values(id));
 
       const reader = loopStandIn((view) => {
-        if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: "Tamsin Orwell" } };
+        if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { forms_on_file_evidence: saidNow(view), employee_name: "Tamsin Orwell" } };
         const listed = (lastResult(view, "find_past_forms")?.forms ?? []) as { instance_id: string }[];
-        if (listed.length > 0 && !lastResult(view, "read_form")) return { tool: "read_form", input: { instance_id: listed[0]!.instance_id } };
+        if (listed.length > 0 && !lastResult(view, "read_form")) return { tool: "read_form", input: { forms_on_file_evidence: saidNow(view), instance_id: listed[0]!.instance_id } };
         return { text: "Tamsin Orwell has one finalized Corrective Action on file, from 11/2/26." };
       });
       t.loopModel!(reader);
@@ -1480,7 +1480,7 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       const before = JSON.stringify({ form: t.forms().find((row) => row.id === id), values: t.values(id) });
 
       const editor = loopStandIn((view) => {
-        if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: "Tamsin Orwell" } };
+        if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { forms_on_file_evidence: saidNow(view), employee_name: "Tamsin Orwell" } };
         const listed = (lastResult(view, "find_past_forms")?.forms ?? []) as { instance_id: string }[];
         if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { instance_id: listed[0]?.instance_id ?? "" } };
         return { text: "Done." };

@@ -1,7 +1,7 @@
 import { expect, vi } from "vitest";
 
 import { KEARNEY, STAFF, type DirectoryRow, type ReplayCase, type ReplayContext, type ReplayThread } from "./cases";
-import { lastResult, loopStandIn, type LoopDecision, type LoopView } from "./loop-stand-in";
+import { lastResult, loopStandIn, type LoopDecision, type LoopView, saidNow } from "./loop-stand-in";
 
 /**
  * ============================================================================
@@ -95,7 +95,7 @@ export const NOV15_AGENT_LOOP_SILENT_FAILURE_CASES: ReplayCase[] = [
          * answers it and changes nothing. "make it a termination" says it, so the model sets it.
          */
         if (said === T4) return { text: "To pick Termination, open the Type of Warning box on the form; tell me if this form is a termination and I'll set it." };
-        if (!edit) return { tool: "edit_form", input: { instance_id: id, values: { warning_type: "termination" } } };
+        if (!edit) return { tool: "edit_form", input: { level_evidence: saidNow(view), instance_id: id, values: { warning_type: "termination" } } };
         return { text: edit.error ? "To pick Termination, open the Type of Warning box on the form; tell me if this form is a termination and I'll set it." : `**Type of Warning:** Termination, as you said. ${edit.termination_approval_line ?? ""}` };
       });
       t.loopModel!(model);
@@ -126,7 +126,7 @@ export const NOV15_AGENT_LOOP_SILENT_FAILURE_CASES: ReplayCase[] = [
       const before = t.values(id).observation;
       t.loopModel!(loopStandIn((view): LoopDecision => {
         const read = lastResult(view, "read_form") as { values?: { observation?: { untrusted_text?: string } } } | null;
-        if (!read) return { tool: "read_form", input: { instance_id: id } };
+        if (!read) return { tool: "read_form", input: { forms_on_file_evidence: saidNow(view), instance_id: id } };
         return { text: `That's already on the form: "${read.values?.observation?.untrusted_text ?? ""}"` };
       }));
       const reply = await thread.say(T2);
@@ -181,10 +181,10 @@ export const NOV15_AGENT_LOOP_SILENT_FAILURE_CASES: ReplayCase[] = [
         const proposed = lastResult(view, "propose_form") as { reword_paused?: boolean } | null;
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "Wren Halloway" } };
         if (/professional tone/.test(said)) {
-          if (!proposed) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: WREN.id, what_happened: all, payroll_deduct: "no" } };
+          if (!proposed) return { tool: "propose_form", input: { payroll_evidence: saidNow(view), template_key: "dpoa", employee_id: WREN.id, what_happened: all, payroll_deduct: "no" } };
           return { text: `Here's the Corrective Action Form for **Wren Halloway**, with all three examples.\n\n**Observation of Offense:** ${all}\n\nRewording isn't available yet. Tell me exactly what to change and I'll update it.` };
         }
-        if (!proposed) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: WREN.id, what_happened: first, ...(/no payroll/.test(said) ? { payroll_deduct: "no" } : {}) } };
+        if (!proposed) return { tool: "propose_form", input: { payroll_evidence: saidNow(view), template_key: "dpoa", employee_id: WREN.id, what_happened: first, ...(/no payroll/.test(said) ? { payroll_deduct: "no" } : {}) } };
         return { text: `Here's the Corrective Action Form for **Wren Halloway**.\n\n**Observation of Offense:** ${first}` };
       });
       t.loopModel!(model);
@@ -211,7 +211,7 @@ export const NOV15_AGENT_LOOP_SILENT_FAILURE_CASES: ReplayCase[] = [
         const result = lastResult(view, "propose_form") as { facts?: { termination_stated?: { approval: string; plan_closing: string } } } | null;
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "Wren Halloway" } };
         // QA's design (15 Nov 2026): the model decides this form is a termination (not a hedge); the tool locks it on the word.
-        if (!result) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: WREN.id, what_happened: "Wren Halloway was a no call no show.", ...(/might terminate/.test(latest(view)) ? {} : { warning_level: "termination" }) } };
+        if (!result) return { tool: "propose_form", input: { level_evidence: saidNow(view), template_key: "dpoa", employee_id: WREN.id, what_happened: "Wren Halloway was a no call no show.", ...(/might terminate/.test(latest(view)) ? {} : { warning_level: "termination" }) } };
         const stated = result.facts?.termination_stated;
         return {
           text: stated
@@ -251,7 +251,7 @@ export const NOV15_AGENT_LOOP_SILENT_FAILURE_CASES: ReplayCase[] = [
         const result = lastResult(view, "propose_form") as { facts?: { termination_stated?: { approval: string; plan_closing: string } } } | null;
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "Wren Halloway" } };
         // QA's design (15 Nov 2026): the model decides this form is a termination; the tool locks it on the word.
-        if (!result) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: WREN.id, what_happened: "Wren Halloway was a no call no show on 11/12.", incident_date: "2026-11-12", warning_level: "termination" } };
+        if (!result) return { tool: "propose_form", input: { level_evidence: saidNow(view), template_key: "dpoa", employee_id: WREN.id, what_happened: "Wren Halloway was a no call no show on 11/12.", incident_date: "2026-11-12", warning_level: "termination" } };
         const stated = result.facts?.termination_stated;
         return {
           text: stated
@@ -284,7 +284,7 @@ export const NOV15_AGENT_LOOP_SILENT_FAILURE_CASES: ReplayCase[] = [
       /* QA's design (15 Nov 2026): the model decides; this one reads a future warning as no termination, then a bare "tick it" as one, which the lock refuses. */
       const ticker = loopStandIn((view): LoopDecision => {
         if (/I'll do his form later|will result in termination/.test(latest(view))) return { text: "If this form is a termination, tick Termination on the form yourself; it needs DM/HR approval before it's finalized." };
-        if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { instance_id: id, values: { warning_type: "termination" } } };
+        if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { level_evidence: saidNow(view), instance_id: id, values: { warning_type: "termination" } } };
         return { text: "Done." };
       });
       t.loopModel!(ticker);
@@ -324,7 +324,7 @@ export const NOV15_AGENT_LOOP_SILENT_FAILURE_CASES: ReplayCase[] = [
       if (!t.loopOn?.()) return;
       const { thread, id } = await wrensDraft(t);
       t.loopModel!(loopStandIn((view): LoopDecision => {
-        if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { instance_id: id, values: { warning_type: "written termination" } } };
+        if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { level_evidence: saidNow(view), instance_id: id, values: { warning_type: "written termination" } } };
         return { text: "Done." };
       }));
       await thread.say("make it a termination, written up today");
@@ -360,7 +360,7 @@ export const NOV15_AGENT_LOOP_SILENT_FAILURE_CASES: ReplayCase[] = [
       const model = loopStandIn((view): LoopDecision => {
         const said = latest(view);
         const edit = lastResult(view, "edit_form") as { saved_level?: string | null; error?: string } | null;
-        if (!edit) return { tool: "edit_form", input: { instance_id: id, values: { warning_type: /written/.test(said) ? "written" : "termination" } } };
+        if (!edit) return { tool: "edit_form", input: { level_evidence: saidNow(view), instance_id: id, values: { warning_type: /written/.test(said) ? "written" : "termination" } } };
         return { text: edit.saved_level ? `The form now shows **${edit.saved_level}**.` : `Nothing was changed: ${edit.error ?? "refused"}` };
       });
       t.loopModel!(model);
@@ -388,7 +388,7 @@ export const NOV15_AGENT_LOOP_SILENT_FAILURE_CASES: ReplayCase[] = [
         const edit = lastResult(view, "edit_form") as { saved_level?: string | null } | null;
         // The live slip: the undo turn answers from history, calling no tool. Only the app's note makes it look.
         if (/undo that/.test(said)) return { text: answer };
-        if (!edit) return { tool: "edit_form", input: { instance_id: id, values: { warning_type: /\[app check\]/.test(said) || /written/.test(said) ? "written" : "termination" } } };
+        if (!edit) return { tool: "edit_form", input: { level_evidence: saidNow(view), instance_id: id, values: { warning_type: /\[app check\]/.test(said) || /written/.test(said) ? "written" : "termination" } } };
         return { text: `The form now shows **${edit.saved_level}**.` };
       });
       t.loopModel!(model);
@@ -413,7 +413,7 @@ export const NOV15_AGENT_LOOP_SILENT_FAILURE_CASES: ReplayCase[] = [
         const said = latest(view);
         const edit = lastResult(view, "edit_form");
         if (/what level/.test(said)) return { text: "It's a Termination on the draft." };
-        if (!edit) return { tool: "edit_form", input: { instance_id: id, values: { warning_type: "termination" } } };
+        if (!edit) return { tool: "edit_form", input: { level_evidence: saidNow(view), instance_id: id, values: { warning_type: "termination" } } };
         return { text: "The form now shows **Termination**." };
       });
       t.loopModel!(model);
@@ -458,7 +458,7 @@ export const NOV15_AGENT_LOOP_SILENT_FAILURE_CASES: ReplayCase[] = [
       const { thread, id } = await wrensDraft(t);
       const model = loopStandIn((view): LoopDecision => {
         const edit = lastResult(view, "edit_form") as { error?: string } | null;
-        if (!edit) return { tool: "edit_form", input: { instance_id: id, values: { warning_type: "demotion" } } };
+        if (!edit) return { tool: "edit_form", input: { level_evidence: saidNow(view), instance_id: id, values: { warning_type: "demotion" } } };
         return { text: edit.error ? "A demotion isn't a warning level on the Corrective Action Form; the Demotion Form records it." : "Done." };
       });
       t.loopModel!(model);
@@ -477,7 +477,7 @@ export const NOV15_AGENT_LOOP_SILENT_FAILURE_CASES: ReplayCase[] = [
       if (!t.loopOn?.()) return;
       const { thread, id } = await wrensDraft(t);
       t.loopModel!(loopStandIn((view): LoopDecision => {
-        if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { instance_id: id, values: { warning_type: "termination", action_plan: PLAN, observation: `${ACCOUNT} She was told on 11/09.` } } };
+        if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { level_evidence: saidNow(view), instance_id: id, values: { warning_type: "termination", action_plan: PLAN, observation: `${ACCOUNT} She was told on 11/09.` } } };
         return { text: `**Type of Warning:** Termination, as you said. Termination needs your DM/HR approval before you finalize.\n\nUpdated the Action Plan: ${PLAN}` };
       }));
       await thread.say(T8);

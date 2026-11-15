@@ -1,7 +1,7 @@
 import { expect, vi } from "vitest";
 
 import { KEARNEY, STAFF, TWO_SALONS, type DirectoryRow, type ReplayCase, type ReplayContext } from "./cases";
-import { lastResult, loopStandIn, type LoopDecision, type LoopView } from "./loop-stand-in";
+import { lastResult, loopStandIn, type LoopDecision, type LoopView, saidNow } from "./loop-stand-in";
 
 /**
  * ============================================================================
@@ -164,8 +164,8 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       const model = loopStandIn((view): LoopDecision => {
         const found = lastResult(view, "find_past_forms") as { best_match?: string } | null;
         if (!view.results.some((result) => result.tool === "propose_form")) return { tool: "propose_form", input: { template_key: "coaching", employee_id: "e-2", what_happened: "Getting rooms ready between guests." } };
-        if (!found) return { tool: "find_past_forms", input: { employee_name: "Remy Calder", form: "coaching", date: "10/31", about: "getting rooms ready between guests" } };
-        if (found.best_match && !lastResult(view, "open_form")) return { tool: "open_form", input: { instance_id: found.best_match } };
+        if (!found) return { tool: "find_past_forms", input: { forms_on_file_evidence: saidNow(view), employee_name: "Remy Calder", form: "coaching", date: "10/31", about: "getting rooms ready between guests" } };
+        if (found.best_match && !lastResult(view, "open_form")) return { tool: "open_form", input: { forms_on_file_evidence: saidNow(view), instance_id: found.best_match } };
         return { text: "Opened Remy Calder's Coaching Form from 10/31." };
       });
       t.loopModel!(model);
@@ -194,11 +194,11 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
         const said = [...view.turns].reverse().find((turn) => turn.role === "user")?.text ?? "";
         const found = lastResult(view, "find_past_forms") as { forms?: unknown[]; best_match?: string; error?: string } | null;
         if (/10\/31 one/.test(said)) {
-          if (!found) return { tool: "find_past_forms", input: { employee_name: "Remy Calder", form: "coaching", date: "10/31", about: "getting rooms ready between guests" } };
-          if (found.best_match && !lastResult(view, "open_form")) return { tool: "open_form", input: { instance_id: found.best_match } };
+          if (!found) return { tool: "find_past_forms", input: { forms_on_file_evidence: saidNow(view), employee_name: "Remy Calder", form: "coaching", date: "10/31", about: "getting rooms ready between guests" } };
+          if (found.best_match && !lastResult(view, "open_form")) return { tool: "open_form", input: { forms_on_file_evidence: saidNow(view), instance_id: found.best_match } };
           return { text: found.error ? "I can't look at forms on file for that." : "Opened the 10/31 Coaching Form." };
         }
-        if (!found) return { tool: "find_past_forms", input: { employee_name: "Remy Calder", form: "coaching" } };
+        if (!found) return { tool: "find_past_forms", input: { forms_on_file_evidence: saidNow(view), employee_name: "Remy Calder", form: "coaching" } };
         return { text: `Remy Calder has two Coaching Forms on file:\n- 10/31\n- 11/5\n\n${(found as { which_form_question?: string }).which_form_question ?? "Which one?"}` };
       });
       t.loopModel!(model);
@@ -232,10 +232,10 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       const model = loopStandIn((view): LoopDecision => {
         const said = [...view.turns].reverse().find((turn) => turn.role === "user")?.text ?? "";
         const found = lastResult(view, "find_past_forms") as { forms?: { instance_id: string; salon: string | null; form_date: string }[]; single_out?: string; which_form_question?: string } | null;
-        if (!found) return { tool: "find_past_forms", input: { employee_name: "Remy Calder", form: "coaching" } };
+        if (!found) return { tool: "find_past_forms", input: { forms_on_file_evidence: saidNow(view), employee_name: "Remy Calder", form: "coaching" } };
         // The model decides, from the facts: the manager's "no salon" fits exactly one form's salon.
         const fits = found.single_out && /no salon/.test(said) ? (found.forms ?? []).filter((form) => form.salon === "no salon") : [];
-        if (fits.length === 1 && !lastResult(view, "open_form")) return { tool: "open_form", input: { instance_id: fits[0]!.instance_id } };
+        if (fits.length === 1 && !lastResult(view, "open_form")) return { tool: "open_form", input: { forms_on_file_evidence: saidNow(view), instance_id: fits[0]!.instance_id } };
         if (lastResult(view, "open_form")) return { text: "Opening the 10/31 Coaching Form (no salon)." };
         return { text: `Remy Calder has two Coaching Forms on file:\n- 10/31\n- 11/5\n\n${found.which_form_question ?? "Which one?"}` };
       });
@@ -260,8 +260,8 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       const ca = await onFile(t, "e-2", "Remy Calder", "dpoa", "2026-11-12", "Remy Calder was 20 minutes late on 11/12.");
       const model = loopStandIn((view): LoopDecision => {
         const found = lastResult(view, "find_past_forms") as { best_match?: string; close_names?: string[] } | null;
-        if (!found) return { tool: "find_past_forms", input: { employee_name: "remy caldr", form: "ca" } };
-        if (found.best_match && !lastResult(view, "open_form")) return { tool: "open_form", input: { instance_id: found.best_match } };
+        if (!found) return { tool: "find_past_forms", input: { forms_on_file_evidence: saidNow(view), employee_name: "remy caldr", form: "ca" } };
+        if (found.best_match && !lastResult(view, "open_form")) return { tool: "open_form", input: { forms_on_file_evidence: saidNow(view), instance_id: found.best_match } };
         return { text: found.close_names ? `Which one: ${found.close_names.join(" or ")}?` : "Opening **Remy Calder**'s form." };
       });
       t.loopModel!(model);
@@ -297,7 +297,7 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       const id = await thread.create();
       const model = loopStandIn((view): LoopDecision => {
         const edit = lastResult(view, "edit_form") as { updated?: string[] } | null;
-        if (!edit) return { tool: "edit_form", input: { instance_id: id, values: { warning_type: "written", payroll_deduct: "yes", payroll_deduct_amount: "$15" } } };
+        if (!edit) return { tool: "edit_form", input: { level_evidence: saidNow(view), payroll_evidence: saidNow(view), instance_id: id, values: { warning_type: "written", payroll_deduct: "yes", payroll_deduct_amount: "$15" } } };
         return { text: `Updated: ${(edit.updated ?? []).join(", ")}. **Type of Warning:** Written Warning. **Is payroll deduct applicable?** Yes. **Payroll deduction amount:** $15.` };
       });
       t.loopModel!(model);
@@ -331,8 +331,8 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       // A model that also puts an amount nobody typed: refused whole; then the tick alone, and the question.
       const model = loopStandIn((view): LoopDecision => {
         const edits = view.results.filter((result) => result.tool === "edit_form").map((result) => result.output as { error?: string; updated?: string[] });
-        if (edits.length === 0) return { tool: "edit_form", input: { instance_id: id, values: { payroll_deduct: "yes", payroll_deduct_amount: "$25" } } };
-        if (edits.length === 1 && edits[0]!.error) return { tool: "edit_form", input: { instance_id: id, values: { payroll_deduct: "yes" } } };
+        if (edits.length === 0) return { tool: "edit_form", input: { payroll_evidence: saidNow(view), instance_id: id, values: { payroll_deduct: "yes", payroll_deduct_amount: "$25" } } };
+        if (edits.length === 1 && edits[0]!.error) return { tool: "edit_form", input: { payroll_evidence: saidNow(view), instance_id: id, values: { payroll_deduct: "yes" } } };
         return { text: "Payroll deduct is now Yes. What's the payroll deduction amount?" };
       });
       t.loopModel!(model);
@@ -597,7 +597,7 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
         // A model that reaches for the exit form first: the tool refuses it, as the manager asked for no exit.
         if (results.length === 0) return { tool: "propose_form", input: { template_key: "stc-exit", employee_id: "e-2", incident_date: "2026-11-10", exit_type: "termination" } };
-        if (results.length === 1 && results[0]!.exit_not_asked) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: "3 no call no shows on 11/10, 11/12 and 11/13.", incident_date: "2026-11-13", warning_level: "termination" } };
+        if (results.length === 1 && results[0]!.exit_not_asked) return { tool: "propose_form", input: { level_evidence: saidNow(view), template_key: "dpoa", employee_id: "e-2", what_happened: "3 no call no shows on 11/10, 11/12 and 11/13.", incident_date: "2026-11-13", warning_level: "termination" } };
         const stated = results.at(-1)!.facts?.termination_stated;
         return { text: `Here's the Corrective Action Form for **Remy Calder**.\n\n${stated ? `**Type of Warning:** Termination, as you said — I'll tick it on the form. Tell me if that should change.\n${stated.approval}` : ""}\n\nWant the Employee Exit Form for Remy Calder too?` };
       });
@@ -721,9 +721,9 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       // find_past_forms (the "On file" lines), by either name: both of hers, never Remy's.
       const lookup = (typed: string) => loopStandIn((view): LoopDecision => {
         const found = lastResult(view, "find_past_forms") as { forms?: { instance_id: string }[] } | null;
-        if (!found) return { tool: "find_past_forms", input: { employee_name: typed } };
+        if (!found) return { tool: "find_past_forms", input: { forms_on_file_evidence: saidNow(view), employee_name: typed } };
         const read = lastResult(view, "read_form");
-        if (!read && found.forms?.[0]) return { tool: "read_form", input: { instance_id: found.forms[0].instance_id } };
+        if (!read && found.forms?.[0]) return { tool: "read_form", input: { forms_on_file_evidence: saidNow(view), instance_id: found.forms[0].instance_id } };
         return { text: `On file for ${typed}: ${found.forms?.length ?? 0} forms.` };
       });
       for (const typed of ["Jo Quill", "Josephine Quill"]) {

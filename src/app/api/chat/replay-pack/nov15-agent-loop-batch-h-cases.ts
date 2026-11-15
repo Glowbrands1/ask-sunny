@@ -1,7 +1,7 @@
 import { expect, vi } from "vitest";
 
 import { KEARNEY, STAFF, type DirectoryRow, type ReplayCase, type ReplayContext } from "./cases";
-import { lastResult, loopStandIn, type LoopView } from "./loop-stand-in";
+import { lastResult, loopStandIn, type LoopView, saidNow } from "./loop-stand-in";
 
 /**
  * ============================================================================
@@ -51,8 +51,8 @@ export const NOV15_AGENT_LOOP_BATCH_H_CASES: ReplayCase[] = [
     async run(t) {
       if (!t.loopOn?.()) return;
       const thread = start(t);
-      const card = { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", policy: "Attendance", what_happened: "Remy Calder was 20 minutes late on 11/9/26.", warning_level: "verbal", payroll_deduct: "yes" } } as const;
-      const model = loopStandIn((view) => (lastResult(view, "propose_form") ? { text: "Here is the card." } : card));
+      const card = (view: LoopView) => ({ tool: "propose_form", input: { level_evidence: saidNow(view), payroll_evidence: saidNow(view), template_key: "dpoa", employee_id: "e-2", policy: "Attendance", what_happened: "Remy Calder was 20 minutes late on 11/9/26.", warning_level: "verbal", payroll_deduct: "yes" } } as const);
+      const model = loopStandIn((view) => (lastResult(view, "propose_form") ? { text: "Here is the card." } : card(view)));
       t.loopModel!(model);
       await thread.say("verbal ca for remy calder, she was 20 minutes late on 11/9/26");
       await thread.say("yes payroll deduct");
@@ -313,7 +313,7 @@ export const NOV15_AGENT_LOOP_BATCH_H_CASES: ReplayCase[] = [
     async run(t) {
       if (!t.loopOn?.()) return;
       const thread = start(t);
-      const model = loopStandIn((view) => (lastResult(view, "propose_form") ? { text: "Here is the card." } : { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", policy: "Attendance", what_happened: "Remy Calder was 20 minutes late on 11/9/26.", warning_level: "termination" } }));
+      const model = loopStandIn((view) => (lastResult(view, "propose_form") ? { text: "Here is the card." } : { tool: "propose_form", input: { level_evidence: saidNow(view), template_key: "dpoa", employee_id: "e-2", policy: "Attendance", what_happened: "Remy Calder was 20 minutes late on 11/9/26.", warning_level: "termination" } }));
       // Changed on purpose (QA's design and third review, 15 Nov 2026): in the loop the model decides the termination (warning_level termination) and the tool locks it on the word; main's reader no longer decides a loop card.
       t.loopModel!(model);
       await thread.say("I need a term CA for Remy Calder, she was 20 minutes late on 11/9/26");
@@ -340,7 +340,7 @@ export const NOV15_AGENT_LOOP_BATCH_H_CASES: ReplayCase[] = [
       // The model leaves incident_date empty every turn: the date on the card is the manager's answer, read by the tool.
       const model = loopStandIn((view) => {
         const facts = (lastResult(view, "propose_form") as { facts?: { dates_given?: string[] } } | undefined)?.facts;
-        if (!facts) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", policy: "Attendance", what_happened: "Remy Calder was late on 10/5 and again on 10/15.", warning_level: "verbal" } };
+        if (!facts) return { tool: "propose_form", input: { level_evidence: saidNow(view), template_key: "dpoa", employee_id: "e-2", policy: "Attendance", what_happened: "Remy Calder was late on 10/5 and again on 10/15.", warning_level: "verbal" } };
         const asked = (facts.dates_given ?? []).length > 1 && !(lastResult(view, "propose_form") as { card?: { form_date?: string | null } }).card?.form_date;
         return { text: asked ? "Here is the card.\n\nYou mentioned more than one date (**10/5**, **10/15**). Which date goes on the form?" : "Here is the card." };
       });

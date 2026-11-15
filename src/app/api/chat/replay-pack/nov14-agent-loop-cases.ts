@@ -3,7 +3,7 @@ import { appendFileSync } from "node:fs";
 import { expect, vi } from "vitest";
 
 import { KEARNEY, STAFF, type DirectoryRow, type ReplayAnswer, type ReplayCase, type ReplayContext } from "./cases";
-import { firstMatch, headingWith, lastResult, loopStandIn, type LoopDecision, type LoopView } from "./loop-stand-in";
+import { firstMatch, headingWith, lastResult, loopStandIn, type LoopDecision, type LoopView, saidNow } from "./loop-stand-in";
 
 /**
  * ============================================================================
@@ -70,7 +70,7 @@ function caStandIn(view: LoopView): LoopDecision {
   const name = /Briony Calloway/i.test(said) ? "Briony Calloway" : null;
   if (!name) return { text: "Who is this form for?" };
   if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name } };
-  if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: name } };
+  if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { forms_on_file_evidence: saidNow(view), employee_name: name } };
   if (!lastResult(view, "propose_form")) {
     const person = firstMatch(view);
     const policy = /dress ?code|coat|crewneck|jacket/i.test(said) ? headingWith(view, /dress/i) : headingWith(view, /late open/i);
@@ -149,7 +149,7 @@ const JOVELLE: DirectoryRow = { id: "e-jovelle", firstName: "Jovelle", lastName:
 const SF_S29 = "are there any coaching and ca's for Jovelle Kerrigan";
 
 function pastFormsStandIn(view: LoopView): LoopDecision {
-  if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: "Jovelle Kerrigan" } };
+  if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { forms_on_file_evidence: saidNow(view), employee_name: "Jovelle Kerrigan" } };
   const forms = (lastResult(view, "find_past_forms")?.forms ?? []) as unknown[];
   return { text: forms.length === 0 ? "There are no coaching or corrective action forms on file for Jovelle Kerrigan." : `Jovelle Kerrigan has ${forms.length} form(s) on file.` };
 }
@@ -163,7 +163,7 @@ function sameNameStandIn(view: LoopView): LoopDecision {
   if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "marnie holloway" } };
   const matches = (lastResult(view, "find_staff")?.matches ?? []) as { name: string }[];
   if (matches.length > 1) return { text: `I found ${matches.length} people named ${matches[0]!.name}. Which one did you mean?` };
-  return { tool: "propose_form", input: { template_key: "dpoa", employee_id: firstMatch(view)?.employee_id, warning_level: "verbal" } };
+  return { tool: "propose_form", input: { level_evidence: saidNow(view), template_key: "dpoa", employee_id: firstMatch(view)?.employee_id, warning_level: "verbal" } };
 }
 
 /* ----------------------------------- (e) a salon's name is not a person --- */
@@ -178,7 +178,7 @@ function salonWordStandIn(view: LoopView): LoopDecision {
   if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "rowan kestrel" } };
   const rowan = (lastResult(view, "find_staff")?.matches ?? []) as { employee_id: string; name: string }[];
   if (rowan.length === 0) return { tool: "find_staff", input: { name: "rowan kestrel" } };
-  if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: rowan[0]!.employee_id, policy: headingWith(view, /late open/i), incident_date: "2026-10-20", warning_level: "verbal", what_happened: "Rowan Kestrel was late on 10/20 and the salon was opened late." } };
+  if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { level_evidence: saidNow(view), template_key: "dpoa", employee_id: rowan[0]!.employee_id, policy: headingWith(view, /late open/i), incident_date: "2026-10-20", warning_level: "verbal", what_happened: "Rowan Kestrel was late on 10/20 and the salon was opened late." } };
   return { text: "Here is the Corrective Action Form for Rowan Kestrel." };
 }
 
@@ -513,9 +513,9 @@ export const NOV14_AGENT_LOOP_CASES: ReplayCase[] = [
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "marnie holloway" } };
         const matches = (lastResult(view, "find_staff")?.matches ?? []) as { employee_id: string; salons: string[] }[];
         // A careless model proposes before asking: the card needs an employee_id, so it is refused.
-        if (/^verbal CA/.test(said) && !lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", warning_level: "verbal" } };
+        if (/^verbal CA/.test(said) && !lastResult(view, "propose_form")) return { tool: "propose_form", input: { level_evidence: saidNow(view), template_key: "dpoa", warning_level: "verbal" } };
         if (/^verbal CA/.test(said)) return { text: `Which Marnie Holloway did you mean? I found ${matches.length}.` };
-        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-90", warning_level: "verbal", incident_date: "2026-11-01", what_happened: "she was late on 11/1/26" } };
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { level_evidence: saidNow(view), template_key: "dpoa", employee_id: "e-90", warning_level: "verbal", incident_date: "2026-11-01", what_happened: "she was late on 11/1/26" } };
         return { text: "Here is the Corrective Action Form for Marnie Holloway." };
       });
       t.loopModel!(standIn);

@@ -177,3 +177,20 @@ export function liveRecording(standIn: LoopStandIn, real: unknown): unknown {
     },
   });
 }
+
+/**
+ * The evidence a model that follows the rules book passes (`evidence.ts`): the id of a manager message and the manager's
+ * own words from it. `saidNow` is the message being answered; `saidBefore` the manager message before it. The whole message
+ * is the quote: code checks only that the quote is really in that turn, so a case that needs a refusal passes its own.
+ */
+export function saidNow(view: LoopView): { message_id: string; quote: string } {
+  const users = view.turns.filter((turn) => turn.role === "user");
+  const turn = users.at(-1);
+  return { message_id: turn?.messageIds?.[0] ?? "current", quote: turn?.text ?? "" };
+}
+
+export function saidBefore(view: LoopView): { message_id: string; quote: string } {
+  const users = view.turns.filter((turn) => turn.role === "user");
+  const turn = users.at(-2) ?? users.at(-1);
+  return { message_id: turn?.messageIds?.[0] ?? "current", quote: turn?.text ?? "" };
+}

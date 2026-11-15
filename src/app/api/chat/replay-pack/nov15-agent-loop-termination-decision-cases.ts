@@ -1,7 +1,7 @@
 import { expect, vi } from "vitest";
 
 import { KEARNEY, STAFF, type ReplayCase, type ReplayContext } from "./cases";
-import { lastResult, loopStandIn, type LoopDecision, type LoopView } from "./loop-stand-in";
+import { lastResult, loopStandIn, type LoopDecision, type LoopView, saidNow } from "./loop-stand-in";
 
 /**
  * ============================================================================
@@ -34,7 +34,7 @@ async function card(t: ReplayContext, words: string, termination: boolean) {
   const model = loopStandIn((view): LoopDecision => {
     const result = lastResult(view, "propose_form") as { facts?: { termination_stated?: { approval: string; plan_closing: string }; termination_mentioned_not_stated?: boolean } } | null;
     if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
-    if (!result) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: ACCOUNT, incident_date: "2026-11-12", ...(termination ? { warning_level: "termination" } : {}) } };
+    if (!result) return { tool: "propose_form", input: { level_evidence: saidNow(view), template_key: "dpoa", employee_id: "e-2", what_happened: ACCOUNT, incident_date: "2026-11-12", ...(termination ? { warning_level: "termination" } : {}) } };
     const stated = result.facts?.termination_stated;
     return {
       text: stated
@@ -149,7 +149,7 @@ export const NOV15_AGENT_LOOP_TERMINATION_DECISION_CASES: ReplayCase[] = [
         // The live bug: the model reached for the exit form first.
         if (results.length === 0) return { tool: "propose_form", input: { template_key: "stc-exit", employee_id: "e-2", exit_type: "termination" } };
         const last = results.at(-1)!;
-        if ((last as { exit_not_asked?: boolean }).exit_not_asked && results.length === 1) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: tag === "t4" ? "She stole from the register today." : ACCOUNT, incident_date: tag === "t4" ? "2026-11-14" : "2026-11-12", warning_level: "termination" } };
+        if ((last as { exit_not_asked?: boolean }).exit_not_asked && results.length === 1) return { tool: "propose_form", input: { level_evidence: saidNow(view), template_key: "dpoa", employee_id: "e-2", what_happened: tag === "t4" ? "She stole from the register today." : ACCOUNT, incident_date: tag === "t4" ? "2026-11-14" : "2026-11-12", warning_level: "termination" } };
         const stated = last.facts?.termination_stated;
         return { text: `Here's the Corrective Action Form for **Remy Calder**.\n\n${stated ? `**Type of Warning:** Termination, as you said — I'll tick it on the form. Tell me if that should change.\n${stated.approval}` : HEDGE}\n\nWant the Employee Exit Form for Remy Calder too?` };
       });
@@ -264,7 +264,7 @@ export const NOV15_AGENT_LOOP_TERMINATION_DECISION_CASES: ReplayCase[] = [
         const forgedId = await forged.thread.create();
         expect(t.checked(forgedId).warning_type ?? [], "Create accepted a loop termination with the flag off").not.toContain("termination");
         // edit_form on the draft: "make it a termination".
-        t.loopModel!(loopStandIn((view): LoopDecision => (lastResult(view, "edit_form") ? { text: "Done." } : { tool: "edit_form", input: { instance_id: id, values: { warning_type: "termination" } } })));
+        t.loopModel!(loopStandIn((view): LoopDecision => (lastResult(view, "edit_form") ? { text: "Done." } : { tool: "edit_form", input: { level_evidence: saidNow(view), instance_id: id, values: { warning_type: "termination" } } })));
         await thread.say("make it a termination");
         expect(t.checked(id).warning_type ?? [], "edit_form ticked Termination with the flag off").not.toContain("termination");
       } finally {

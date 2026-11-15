@@ -29,12 +29,13 @@ import {
 import type { AskResponse } from "@/lib/ai/types";
 import { findManualSection, manualSectionHeadings, type ManualChunk } from "@/lib/forms/official-policy-manual";
 import { sectionWording } from "@/lib/forms/policy-citation";
+import { identifiedTurns, verifyEvidence, type EvidenceReason } from "./evidence";
 import { buildProposal, extractEmployeeNames, extractJobTitle, managerContext, samePerson, tidyTypedName } from "@/lib/forms/proposal";
 import { cleaningUndonePhrase, namesCareAndCleaning } from "@/lib/forms/ca-policy";
 import { turnsFromThisPersonsRequest } from "@/lib/forms/this-persons-turns";
 import { closeHeadingReading, closePolicyQuestion, namedPolicies, namesHeading } from "@/lib/forms/named-policy-section";
 import { startsNewForm } from "@/lib/ai/remap-incident";
-import { payrollAmountFromConversation, statedPayrollDeduct } from "@/lib/forms/payroll-deduct";
+import { payrollAmountFromConversation } from "@/lib/forms/payroll-deduct";
 import { PAYROLL_AMOUNT_KEY } from "@/lib/forms/payroll-amount-field";
 import { withoutPayrollClauses } from "@/lib/ai/payroll-clause-not-account";
 import { listTemplateSummaries, type TemplateSummary } from "@/lib/forms/repository";
@@ -103,59 +104,35 @@ export interface ToolContext {
 /* ------------------------------------------------------ hard guard: privacy --- */
 
 /**
- * PAST FORMS ONLY WHEN ASKED (Pau's privacy rule, 14 Nov 2026; a hard guard). Forms on file are looked at only when
- * the manager's own words ask about them: what is on file, history, an earlier form, "same as last time", "open my
- * last coaching". The manager's latest message, or the one before it when the latest is a short answer.
+ * PAST FORMS ONLY WHEN ASKED (Pau's privacy rule, 14 Nov 2026; a hard guard), now by EVIDENCE (the loop rebuild, PR 1b,
+ * owner's audit 15 Nov 2026: no word list reads the manager's message). A form on file (find_past_forms, read_form,
+ * open_form, and edit_form of a form not open on screen) is looked at only when the model passes
+ * `forms_on_file_evidence`: the id of a manager message and the words it quotes, in which the manager asks about forms on
+ * file. Code checks only that the quote is really in that turn (`evidence.ts`) and that the turn is the message being
+ * answered or the manager message before it (a short answer to the app's own question belongs to the request before
+ * it); it never reads what the words mean. The form open on screen needs none.
  */
-/* A form or discipline word: what a request for forms on file names (QA's review, 14 Nov 2026). */
+/* A form or discipline word: still read by OPEN_REQUEST below (G4), which PR 1 replaces. */
 const FORM = String.raw`(?:c\.?a\.?s?|corrective(?:\s+actions?)?|write[- ]?ups?|written[- ]up|warnings?|coachings?|forms?|terminations?|disciplin\w*|verbals?|writtens?)`;
-const WHOSE = String.raw`(?:her|his|their|my|\w+'s|\w+s')`;
 
-/**
- * Each pattern names forms or discipline on file. Ordinary incident wording never opens the gate: "left before
- * closing", "didn't record the sales", "did she get a break", "a history of migraines", "told before", "last time I
- * told her" (QA's probe sentences, `privacy-gate.test.ts`).
- */
-const ASKS_ABOUT_FORMS: readonly RegExp[] = [
-  /\bon file\b|\bform monitoring\b/i,
-  /* "in the format of <C>'s ca", "the same as corvinas ca", "look like <C>s coaching": another form, asked for by the manager (QA, 14 Nov 2026). */
-  new RegExp(String.raw`\b(?:format\s+of|same\s+as|look(?:s)?\s+like|copy(?:\s+of)?)\s+(?:\w+\s+){0,2}?\w+(?:'s|’s|s)\s+${FORM}\b`, "i"),
-  new RegExp(String.raw`\bon record\b|\b${WHOSE}\s+(?:disciplinary\s+|work\s+)?records?\b`, "i"),
-  // "her history", "form history", "write-up history", never "history of <something that is not a form>".
-  new RegExp(String.raw`\b(?:${WHOSE}|form|disciplinary|write[- ]?up|ca|coaching|corrective(?:\s+action)?)\s+history\b(?!\s+of\s+(?!${FORM}\b)\w)`, "i"),
-  // "written up before", "had a CA before?", "coached her before for this"; never "before her shift / before she leaves".
-  new RegExp(String.raw`\b(?:${FORM}|coached)\s+(?:\w+\s+){0,2}before(?=\s*(?:[?.!,;]|$)|\s+(?:too|already|this|that|for (?:this|that|the same))\b)`, "i"),
-  new RegExp(String.raw`\b(?:previous(?:ly)?|prior|past|earlier|old|older|existing|finalized|finished|latest|last)\s+(?:\w+\s+)?${FORM}\b`, "i"),
-  // "has she had any write ups", "did he ever get a CA", "have they been written up".
-  // The subject is the employee, never "you / I / we" ("do you have a form for …"); "have to sign" is no question about files.
-  new RegExp(String.raw`\b(?:has|have|had|did|does|do)\s+(?!(?:you|u|i|we)\b)(?:\w+\s+){1,4}?(?:had|gotten|got|have(?!\s+to\b)|get|been|received|given)\s+(?:\w+\s+){0,3}?${FORM}\b`, "i"),
-  /\bsame as (?:last time|before|the last one|last one)\b/i,
-  /*
-   * "she already has a CA but the policy wasn't listed", "she already has a verbal, now do a written", or a form word
-   * earlier in the SAME message ("a coachong document for <name>. She already has one …"). A bare "she already has
-   * one" with no form word in that message stays closed (QA, 14 Nov 2026).
-   */
-  new RegExp(String.raw`\balready (?:has|had|got|have)\s+(?:a|an|her|his|their|one)?\s*(?:\w+\s+)?${FORM}\b`, "i"),
-  new RegExp(String.raw`(?:${FORM}|coach\w*|document)\b[^?!\n]{0,160}?\balready (?:has|had|got|have) (?:one|it)\b`, "i"),
-  // "edit <name>'s CA", "open her coaching", "pull up the write-up for <name>": a form on file, named.
-  new RegExp(String.raw`\b(?:open|reopen|edit|pull up|bring up|show me|view)\b[^.?!\n]{0,40}?\b${FORM}\b`, "i"),
-];
+type EvidenceVerdict = { readonly ok: true } | { readonly ok: false; readonly evidence_reason: EvidenceReason };
 
-const asks = (text: string) => ASKS_ABOUT_FORMS.some((pattern) => pattern.test(text));
+/** The manager's two latest turns (the message being answered, and the one before it) are the turns evidence may quote. */
+function evidenceVerdict(context: Pick<ToolContext, "question" | "history" | "questionMessageId">, evidence: unknown, scope: "this_turn" | "recent"): EvidenceVerdict {
+  const turns = identifiedTurns(context.history, context.question, context.questionMessageId);
+  const checked = verifyEvidence(evidence, turns, scope === "this_turn" ? { thisTurnOnly: true } : {});
+  if (!checked.ok) return { ok: false, evidence_reason: checked.reason };
+  if (scope === "recent") {
+    const recent = turns.filter((turn) => turn.role === "user").slice(-2);
+    if (!recent.some((turn) => turn.id === checked.turn.id)) return { ok: false, evidence_reason: "evidence_not_this_turn" };
+  }
+  return { ok: true };
+}
 
-export function asksAboutPastForms(context: Pick<ToolContext, "question" | "history">): boolean {
-  if (asks(context.question)) return true;
-  const earlier = [...context.history].reverse().find((message) => message.role === "user");
-  /*
-   * Batch G (G4, QA's live test; tightened by QA's review): the answer to the app's own which-form question ("the 10/31
-   * one about getting rooms ready between guests") is part of the same request, however long. Only when the last two
-   * turns are exactly: the manager's message asking about forms on file, then the reply asking WHICH_FORM_QUESTION
-   * (find_past_forms gives it when several forms fit). An older forms question further back never opens the gate.
-   */
-  const [lastReply, lastAsk] = [...context.history].reverse().filter((message) => message.role === "assistant" || message.role === "user").slice(0, 2);
-  if (lastReply?.role === "assistant" && lastAsk?.role === "user" && asks(lastAsk.content) && String(lastReply.content).includes(WHICH_FORM_QUESTION)) return true;
-  if (context.question.trim().split(/\s+/).length > 6) return false;
-  return earlier ? asks(earlier.content) : false;
+/** null when the model's forms_on_file_evidence is real; else the privacy refusal. */
+function formsOnFileGate(context: Pick<ToolContext, "question" | "history" | "questionMessageId">, input: { forms_on_file_evidence?: unknown }): ToolResult | null {
+  const verdict = evidenceVerdict(context, input.forms_on_file_evidence, "recent");
+  return verdict.ok ? null : { reason_code: "privacy_not_asked", error: NOT_ASKED, evidence_reason: verdict.evidence_reason };
 }
 
 const COUNT_WORDS: Readonly<Record<string, number>> = { two: 2, three: 3, four: 4, five: 5, six: 6 };
@@ -236,7 +213,7 @@ export const SINGLE_OUT_NOTE = "Compare these forms with the manager's words in 
 /** Batch G (G4): "open / edit / pull up / show me <a form on file>" never makes a new card. */
 export const OPEN_REQUEST = new RegExp(String.raw`\b(?:open|reopen|edit|pull up|bring up|show me|view)\b[^.?!\n]{0,40}?\b${FORM}\b`, "i");
 
-const NOT_ASKED = "The manager has not asked about forms on file, so they are not looked at (company privacy rule). Work from what the manager said; never mention other forms.";
+const NOT_ASKED = "The manager has not asked about forms on file, so they are not looked at (company privacy rule). To look at one, pass forms_on_file_evidence: the message_id of the manager's message that asks about forms on file, and the words it quotes. Otherwise work from what the manager said; never mention other forms.";
 
 /** What the turn's tools produced for the reply: the card and the edit, when there were any. */
 export interface ToolEffects {
@@ -691,10 +668,11 @@ export async function listStaffTool(context: ToolContext, effects: ToolEffects, 
 
 /* ---------------------------------------------------------- past forms --- */
 
-export async function findPastForms(context: ToolContext, input: { employee_name?: unknown; form?: unknown; date?: unknown; about?: unknown }): Promise<ToolResult> {
+export async function findPastForms(context: ToolContext, input: { employee_name?: unknown; form?: unknown; date?: unknown; about?: unknown; forms_on_file_evidence?: unknown }): Promise<ToolResult> {
   const typed = typeof input.employee_name === "string" ? input.employee_name.trim() : "";
   if (typed === "") return { reason_code: "missing_input", error: "Give the employee's name." };
-  if (!asksAboutPastForms(context)) return { reason_code: "privacy_not_asked", error: NOT_ASKED };
+  const gate = formsOnFileGate(context, input);
+  if (gate) return gate;
   const actor = await chatFormsActor(context.actor).catch(() => undefined);
   if (actor === undefined) return { reason_code: "read_failed", error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
   if (actor === null) return { reason_code: "scope", error: "This manager's role cannot view Form Monitoring, so past forms cannot be listed." };
@@ -793,10 +771,13 @@ export async function findPastForms(context: ToolContext, input: { employee_name
 
 const VALUES_LIMIT = 6_000;
 
-export async function readForm(context: ToolContext, input: { instance_id?: unknown }): Promise<ToolResult> {
+export async function readForm(context: ToolContext, input: { instance_id?: unknown; forms_on_file_evidence?: unknown }): Promise<ToolResult> {
   const id = typeof input.instance_id === "string" ? input.instance_id.trim() : "";
   if (id === "") return { reason_code: "missing_input", error: "Give the form's instance_id (from find_past_forms or the open form)." };
-  if (id !== context.openFormId && !asksAboutPastForms(context)) return { reason_code: "privacy_not_asked", error: NOT_ASKED };
+  if (id !== context.openFormId) {
+    const gate = formsOnFileGate(context, input);
+    if (gate) return gate;
+  }
   try {
     const { loaded } = await authorizeInstance(context.request, id, "view");
     const values: Record<string, { untrusted_text: string }> = {};
@@ -1134,22 +1115,6 @@ function conversationTurns(context: Pick<ToolContext, "question" | "history">) {
   ];
 }
 
-/** Payroll deduct as the manager stated it: in their words, or a bare yes / no right after the payroll question. */
-function payrollStated(context: Pick<ToolContext, "question" | "history">): "yes" | "no" | null {
-  const turns = [...context.history.filter((message) => message.role === "user").map((message) => message.content), context.question];
-  for (const turn of [...turns].reverse()) {
-    const stated = statedPayrollDeduct(turn);
-    if (stated) return stated;
-  }
-  const lastAssistant = [...context.history].reverse().find((message) => message.role === "assistant");
-  if (lastAssistant && /payroll/i.test(lastAssistant.content)) {
-    const bare = context.question.trim().toLowerCase().replace(/[.!]+$/, "");
-    if (/^(?:yes|yep|yeah|y)\b/.test(bare)) return "yes";
-    if (/^(?:no|nope|nah|n)\b/.test(bare)) return "no";
-  }
-  return null;
-}
-
 async function creatableTemplates(role: Role): Promise<TemplateSummary[]> {
   const rows = await listTemplateSummaries();
   return rows.filter((row) => row.active && row.currentVersion && hasPermission(DEFAULT_PERMISSION_MATRIX, role, row.requiredPermission as never));
@@ -1173,6 +1138,8 @@ export async function proposeForm(
   context: ToolContext,
   effects: ToolEffects,
   input: {
+    level_evidence?: unknown;
+    payroll_evidence?: unknown;
     template_key?: unknown;
     employee_id?: unknown;
     employee_name?: unknown;
@@ -1433,7 +1400,14 @@ export async function proposeForm(
    */
   const managerWords = managerTurns(context);
   const askedPayroll = (input.payroll_deduct === "yes" || input.payroll_deduct === "no") ? input.payroll_deduct : null;
-  const payroll = askedPayroll && payrollStated(context) === askedPayroll ? askedPayroll : null;
+  /*
+   * PR 1b (owner's audit): a payroll answer is kept only on the model's payroll_evidence: the manager's own words in the
+   * message being answered, or the one before it (the answer to the card's payroll question belongs to that request). Code
+   * checks that the quote is really in that turn (`evidence.ts`); it never reads what the words mean. Not kept:
+   * payroll_not_stated, with the reason the evidence failed.
+   */
+  const payrollCheck = askedPayroll ? evidenceVerdict(context, input.payroll_evidence, "recent") : null;
+  const payroll = askedPayroll && payrollCheck?.ok ? askedPayroll : null;
   const typedAmount = typeof input.payroll_amount === "string" && /\d/.test(input.payroll_amount) ? input.payroll_amount.replace(/[^\d.]/g, "") : null;
   /* The amount the manager stated, read as today reads it (`payrollAmountFromConversation`) when the model left it out. */
   const statedAmount = payroll === "yes" ? payrollAmountFromConversation(conversationTurns(context), { payrollAnswer: "yes" })?.replace(/[^\d.]/g, "") ?? null : null;
@@ -1484,7 +1458,9 @@ export async function proposeForm(
     ? incidentDates(requestWords, null).find((given) => monthDayToIso(given, today) === date) ?? null
     : null;
   const askedLevel = input.warning_level === "verbal" || input.warning_level === "written" ? input.warning_level : null;
-  const level = askedLevel && (askedLevel === "verbal" ? /\bverbal\b/i : /\bwritten\b|\bwrite[- ]?up\b/i).test(managerWords) ? askedLevel : null;
+  /* PR 1b: a verbal or written level is kept only on level_evidence, the same way (level_not_stated). */
+  const levelCheck = askedLevel ? evidenceVerdict(context, input.level_evidence, "recent") : null;
+  const level = askedLevel && levelCheck?.ok ? askedLevel : null;
   /*
    * Batch G (QA's design, 15 Nov 2026; Pau's standing approval): the MODEL decides this Corrective Action is a
    * termination (warning_level "termination", taught by the rules book's examples); code only LOCKS it. It is kept only
@@ -1734,6 +1710,8 @@ export async function proposeForm(
     ...((await import("@/lib/ai/carried-person-notice")).carriedFromEarlier(template.key, card.employeeName, { history: context.history as ChatMessage[], question: context.question }) ? { person_from_earlier: card.employeeName } : {}),
     ...(underPerformance ? { under_performance: true } : {}),
     ...(didYouMean ? { confirm_policy: didYouMean } : {}),
+    ...(askedLevel && !level && levelCheck && !levelCheck.ok ? { reason_code: "level_not_stated", level_evidence_reason: levelCheck.evidence_reason } : askedPayroll && !payroll && payrollCheck && !payrollCheck.ok ? { reason_code: "payroll_not_stated" } : {}),
+    ...(askedPayroll && !payroll && payrollCheck && !payrollCheck.ok ? { payroll_evidence_reason: payrollCheck.evidence_reason } : {}),
     ...(dropped.length > 0 || (askedExitTermination && !exitTermination) || priorActionsRefused ? { not_kept: [...dropped, ...(askedExitTermination && !exitTermination ? ["exit_type"] : []), ...(priorActionsRefused ? ["prior_actions"] : [])] } : {}),
     ...(priorActionsRefused ? { prior_actions_not_kept: priorActionsRefused } : {}),
     ...((await outsideScopeSalon(context)) ?? (card.namedLocationOutOfScope ? { salon_outside_scope: card.namedLocationOutOfScope } : {})),
@@ -1870,7 +1848,7 @@ export async function coachTeam(context: ToolContext, effects: ToolEffects): Pro
 export async function editForm(
   context: ToolContext,
   effects: ToolEffects,
-  input: { instance_id?: unknown; values?: unknown },
+  input: { instance_id?: unknown; values?: unknown; forms_on_file_evidence?: unknown; level_evidence?: unknown; payroll_evidence?: unknown },
 ): Promise<ToolResult> {
   let id = typeof input.instance_id === "string" ? input.instance_id.trim() : "";
   if (id === "") return { reason_code: "missing_input", error: "Give the form's instance_id." };
@@ -1883,6 +1861,15 @@ export async function editForm(
     const created = await instanceCreatedFromProposal(id);
     if (!created) return { reason_code: "not_a_saved_form", error: NOT_A_SAVED_FORM };
     id = created;
+  }
+  /*
+   * PR 1b (owner's audit, bug 2): a saved form that is not the one open on screen is looked at only when the manager asked
+   * about forms on file, as find_past_forms and read_form (forms_on_file_evidence). An id that is no saved form's falls
+   * through to not_a_form_id below.
+   */
+  if (SAVED_FORM_ID.test(id) && id !== context.openFormId) {
+    const gate = formsOnFileGate(context, input);
+    if (gate) return gate;
   }
   const values: Record<string, string> = {};
   if (input.values && typeof input.values === "object") {
@@ -1907,6 +1894,7 @@ export async function editForm(
    * after the payroll line). Anything else is refused and nothing is written.
    */
   const unstated: string[] = [];
+  const unstatedCodes = new Map<string, { reason_code: string; evidence_reason: EvidenceReason | string }>();
   for (const [field, value] of Object.entries(values)) {
     if (field === "warning_type") {
       /*
@@ -1925,18 +1913,26 @@ export async function editForm(
         if (!(await import("@/lib/config/chat-quality-flags")).terminationStatedTicksEnabled() || !(await import("@/lib/forms/termination-word")).statesTerminationWordNow(context.question)) unstated.push(field);
         continue;
       }
-      const level = kind === "written" ? /\bwritten\b|\bwrite[- ]?up\b/i : /\bverbal\b/i;
-      if (!level.test(context.question)) unstated.push(field);
+      /* PR 1b: a verbal or written level is kept only on evidence from THIS message (level_evidence), never an earlier turn. */
+      const levelCheck = evidenceVerdict(context, input.level_evidence, "this_turn");
+      if (!levelCheck.ok) {
+        unstated.push(field);
+        unstatedCodes.set(field, { reason_code: "level_not_stated", evidence_reason: levelCheck.evidence_reason });
+      }
     } else if (field === "payroll_deduct") {
       const answer = /^\s*yes/i.test(value) ? "yes" : /^\s*no/i.test(value) ? "no" : null;
-      if (!answer || payrollStated(context) !== answer) unstated.push(field);
+      const payrollCheck = evidenceVerdict(context, input.payroll_evidence, "this_turn");
+      if (!answer || !payrollCheck.ok) {
+        unstated.push(field);
+        unstatedCodes.set(field, { reason_code: "payroll_not_stated", evidence_reason: payrollCheck.ok ? "evidence_not_manager_turn" : payrollCheck.evidence_reason });
+      }
     } else if (field === PAYROLL_AMOUNT_KEY) {
       const digits = value.replace(/[^\d.]/g, "");
       if (!digits || !managerTurns(context).replace(/[^\d.]/g, " ").split(/\s+/).some((n) => n !== "" && Number(n) === Number(digits))) unstated.push(field);
     }
   }
   if (unstated.length > 0) {
-    return { reason_code: "not_stated", error: `${unstated.join(", ")} must come from the manager's own words, and this message does not state ${unstated.length === 1 ? "it" : "them"}. Nothing was written. Ask, or leave it for the manager.` };
+    return { reason_code: (unstated.length === 1 ? unstatedCodes.get(unstated[0]!)?.reason_code : undefined) ?? "not_stated", ...(unstated.length === 1 && unstatedCodes.get(unstated[0]!)?.evidence_reason ? { evidence_reason: unstatedCodes.get(unstated[0]!)!.evidence_reason } : {}), error: `${unstated.join(", ")} must come from the manager's own words, and this message does not state ${unstated.length === 1 ? "it" : "them"}. Nothing was written. Ask, or leave it for the manager.` };
   }
   /*
    * A payroll or level answer ("yes payroll, $20", "make it a written") changes only those fields (Pau, 15:05Z): the
@@ -2407,10 +2403,13 @@ export const NAME_CORRECTION = /\b(?:(?:first|last|sur)\s*name|name\s+is\s+spell
  * Puts a form on file in front of the manager, as today's chat reopen does (`formOpened`): a draft opens to edit; a
  * finalized form opens read-only (its card offers "Edit as new draft"). Past forms only when asked.
  */
-export async function openForm(context: ToolContext, effects: ToolEffects, input: { instance_id?: unknown }): Promise<ToolResult> {
+export async function openForm(context: ToolContext, effects: ToolEffects, input: { instance_id?: unknown; forms_on_file_evidence?: unknown }): Promise<ToolResult> {
   const id = typeof input.instance_id === "string" ? input.instance_id.trim() : "";
   if (id === "") return { reason_code: "missing_input", error: "Give the form's instance_id (from find_past_forms)." };
-  if (id !== context.openFormId && !asksAboutPastForms(context)) return { reason_code: "privacy_not_asked", error: NOT_ASKED };
+  if (id !== context.openFormId) {
+    const gate = formsOnFileGate(context, input);
+    if (gate) return gate;
+  }
   try {
     const { loaded } = await authorizeInstance(context.request, id, "view");
     const instance = loaded.instance;
