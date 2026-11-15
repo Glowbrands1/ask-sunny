@@ -1,7 +1,7 @@
 import { expect, vi } from "vitest";
 
 import { KEARNEY, STAFF, type DirectoryRow, type ReplayCase } from "./cases";
-import { lastResult, loopStandIn, type LoopDecision } from "./loop-stand-in";
+import { evidenceFrom, lastResult, loopStandIn, type LoopDecision } from "./loop-stand-in";
 
 /**
  * ============================================================================
@@ -42,7 +42,7 @@ export const NOV15_AGENT_LOOP_UNCREATED_CARD_CASES: ReplayCase[] = [
         if (!answered) return lastResult(view, "propose_form") ? { text: "Here's the card." } : { tool: "propose_form", input: { template_key: "dpoa", employee_id: TEST_TESTY.id, what_happened: ACCOUNT } };
         // The model reaches for the form it has not been given, then puts the level on the card.
         if (!lastResult(view, "edit_form") && !lastResult(view, "propose_form")) return { tool: "edit_form", input: { instance_id: UNSAVED_ID, values: { warning_type: "written" } } };
-        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TEST_TESTY.id, what_happened: ACCOUNT, warning_level: "written" } };
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TEST_TESTY.id, what_happened: ACCOUNT, warning_level: "written", level_evidence: evidenceFrom(view) } };
         return { text: "Here's the card." };
       });
       t.loopModel!(model);
@@ -70,7 +70,7 @@ export const NOV15_AGENT_LOOP_UNCREATED_CARD_CASES: ReplayCase[] = [
       t.loopModel!(loopStandIn((view): LoopDecision => {
         const said = [...view.turns].reverse().find((turn) => turn.role === "user")?.text ?? "";
         if (lastResult(view, "propose_form")) return { text: "Here's the card." };
-        return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TEST_TESTY.id, what_happened: ACCOUNT, ...(said === "make it a written" ? { warning_level: "written" } : {}) } };
+        return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TEST_TESTY.id, what_happened: ACCOUNT, ...(said === "make it a written" ? { warning_level: "written", level_evidence: evidenceFrom(view) } : {}) } };
       }));
       const thread = t.thread();
       await thread.say("ca for test testy, she was late to open the salon on 11/10");

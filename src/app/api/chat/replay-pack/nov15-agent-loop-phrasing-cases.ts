@@ -27,10 +27,8 @@ const TEST_TESTY: DirectoryRow = { id: TESTY.id, firstName: TESTY.firstName, las
 
 /** The phrasings that end differently today, by case id: filled from the first run; PR 1 empties it. */
 export const OPEN_UNTIL_PR1: Readonly<Record<string, string>> = {
-  "nov15-phrasing-answer-level-2": "TODO(PR1): a misspelt level (\"writen\") is not read by LEVEL_OR_PAYROLL_ANSWER; level_evidence replaces it",
-  "nov15-phrasing-answer-payroll-4": "TODO(PR1): a bare \"yes $20\" has no payroll word for LEVEL_OR_PAYROLL_ANSWER; payroll_evidence replaces it",
-  "nov15-phrasing-answer-payroll-5": "TODO(PR1): a long payroll answer is past LEVEL_OR_PAYROLL_ANSWER's 80 characters; payroll_evidence replaces it",
-  "nov15-phrasing-undo-level-2": "TODO(PR1): a misspelt level (\"verbl\") is not read; level_evidence replaces it",
+  // The payroll answer itself is now kept on payroll_evidence (PR 1c); what is left is the AMOUNT said in words ("twenty dollars"): the amount check reads figures only.
+  "nov15-phrasing-answer-payroll-5": "TODO(amount-words): payroll_amount said in words (\"twenty dollars\") is not a figure the amount check reads",
 };
 
 const latest = (turns: readonly { role: string; text: string }[]) => [...turns].reverse().find((turn) => turn.role === "user")?.text ?? "";
@@ -64,7 +62,7 @@ async function draft(t: ReplayContext, extra: Record<string, unknown> = {}): Pro
 /** A created draft whose level was set to written by a plain answer (the phrasing that works today), then its state. */
 async function writtenDraft(t: ReplayContext): Promise<{ thread: ReplayThread; id: string }> {
   const { thread, id } = await draft(t);
-  t.loopModel!(loopStandIn((view): LoopDecision => (lastResult(view, "edit_form") ? { text: "Done." } : { tool: "edit_form", input: { instance_id: id, values: { warning_type: "written" } } })));
+  t.loopModel!(loopStandIn((view): LoopDecision => (lastResult(view, "edit_form") ? { text: "Done." } : { tool: "edit_form", input: { instance_id: id, values: { warning_type: "written" }, level_evidence: evidenceFrom(view) } })));
   await thread.say("make it a written");
   expect(t.checked(id).warning_type, "the setup draft is not a written").toEqual(["written"]);
   return { thread, id };
@@ -84,7 +82,7 @@ const SCRIPTS: Record<Behaviour["key"], Script> = {
     await setup(t);
     t.loopModel!(loopStandIn((view): LoopDecision => {
       const text = latest(view.turns);
-      if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: corrective(), employee_id: TESTY.id, what_happened: TESTY_ACCOUNT, ...(text === said ? { warning_level: "written" } : {}) } };
+      if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: corrective(), employee_id: TESTY.id, what_happened: TESTY_ACCOUNT, ...(text === said ? { warning_level: "written", level_evidence: evidenceFrom(view) } : {}) } };
       return { text: "Here's the card." };
     }));
     const thread = t.thread();
@@ -96,7 +94,7 @@ const SCRIPTS: Record<Behaviour["key"], Script> = {
     await setup(t);
     t.loopModel!(loopStandIn((view): LoopDecision => {
       const text = latest(view.turns);
-      if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: corrective(), employee_id: TESTY.id, what_happened: TESTY_ACCOUNT, ...(text === said ? { payroll_deduct: "yes", payroll_amount: "20" } : {}) } };
+      if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: corrective(), employee_id: TESTY.id, what_happened: TESTY_ACCOUNT, ...(text === said ? { payroll_deduct: "yes", payroll_amount: "20", payroll_evidence: evidenceFrom(view) } : {}) } };
       return { text: "Here's the card." };
     }));
     const thread = t.thread();
@@ -144,14 +142,14 @@ const SCRIPTS: Record<Behaviour["key"], Script> = {
   },
   "undo-level": async (t, said) => {
     const { thread, id } = await writtenDraft(t);
-    t.loopModel!(loopStandIn((view): LoopDecision => (lastResult(view, "edit_form") ? { text: "Done." } : { tool: "edit_form", input: { instance_id: id, values: { warning_type: "verbal" } } })));
+    t.loopModel!(loopStandIn((view): LoopDecision => (lastResult(view, "edit_form") ? { text: "Done." } : { tool: "edit_form", input: { instance_id: id, values: { warning_type: "verbal" }, level_evidence: evidenceFrom(view) } })));
     await thread.say(said);
     expect(t.checked(id).warning_type, "the level was not taken back to verbal").toEqual(["verbal"]);
   },
   "nothing-changed": async (t, said) => {
     const { thread, id } = await writtenDraft(t);
     const before = JSON.stringify({ values: t.values(id), checked: t.checked(id) });
-    t.loopModel!(loopStandIn((view): LoopDecision => (lastResult(view, "edit_form") ? { text: "That is already the level." } : { tool: "edit_form", input: { instance_id: id, values: { warning_type: "written" } } })));
+    t.loopModel!(loopStandIn((view): LoopDecision => (lastResult(view, "edit_form") ? { text: "That is already the level." } : { tool: "edit_form", input: { instance_id: id, values: { warning_type: "written" }, level_evidence: evidenceFrom(view) } })));
     await thread.say(said);
     expect(JSON.stringify({ values: t.values(id), checked: t.checked(id) }), "asking for the level the draft already has changed the draft").toBe(before);
   },

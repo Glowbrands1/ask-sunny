@@ -1,7 +1,7 @@
 import { expect, vi } from "vitest";
 
 import { KEARNEY, STAFF, type DirectoryRow, type ReplayCase } from "./cases";
-import { headingWith, lastResult, loopStandIn, type LoopDecision, type LoopView } from "./loop-stand-in";
+import { evidenceFrom, headingWith, lastResult, loopStandIn, type LoopDecision, type LoopView } from "./loop-stand-in";
 
 /**
  * ============================================================================
@@ -42,8 +42,8 @@ function cardModel(options: { skips: RegExp; fixes: boolean; extra?: (view: Loop
     const fields = {
       template_key: "dpoa",
       what_happened: "Tamsin Orwell did not do the 10-minute sanitation.",
-      ...(/\$20/.test(all) ? { payroll_deduct: "yes", payroll_amount: "20" } : {}),
-      ...(/written/.test(all) ? { warning_level: "written" } : {}),
+      ...(/\$20/.test(all) ? { payroll_deduct: "yes", payroll_amount: "20", payroll_evidence: evidenceFrom(view) } : {}),
+      ...(/written/.test(all) ? { warning_level: "written", level_evidence: evidenceFrom(view) } : {}),
       ...(options.extra?.(view) ?? {}),
     };
     const skip = options.skips.test(review ? view.turns.filter((turn) => turn.role === "user").at(-2)?.text ?? "" : now) && !(review && options.fixes);
