@@ -1340,6 +1340,14 @@ export async function proposeForm(
     ...(corrective && payroll === "yes" && !amount && statedAmount ? { payroll_amount_said: `$${statedAmount}` } : {}),
     ...(cleaning && !careAndCleaning ? { cleaning_duty: cleaning } : {}),
     ...(awaiting ? { policy_named_by_manager: policyNamedByManager } : {}),
+    /*
+     * Batch J4 (QA's live re-run, L5): after "Using **<A>** from your staff list … What happened?", the manager's "Yes"
+     * got the same card and "What happened?" word for word. The question the last reply asked, for the rules book's
+     * line: acknowledge, then ask it another way.
+     */
+    ...(awaiting && /\bWhat happened\?/i.test(String([...context.history].reverse().find((turn) => turn.role === "assistant")?.content ?? ""))
+      ? { question_asked_before: "What happened?" }
+      : {}),
     ...(datedToday && (card.formDate ?? today) === today ? { dated_today: true } : {}),
     ...(offRosterName ? { off_roster_name: employee.name, staff_list: context.actor.scope.level === "salon" ? "your salon's" : "the", ...((await inactiveMatch(context.actor.scope, employee.name)) ? { inactive_in_woven: true } : {}) } : {}),
     ...(personId && effects.nameLines?.[personId] ? { name_from_staff_list: employee.name } : {}),

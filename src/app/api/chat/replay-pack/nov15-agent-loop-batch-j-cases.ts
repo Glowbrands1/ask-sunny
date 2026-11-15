@@ -97,4 +97,30 @@ export const NOV15_AGENT_LOOP_BATCH_J_CASES: ReplayCase[] = [
       expect(facts.payroll_amount_unset, "the amount was asked for").toBeUndefined();
     },
   },
+  {
+    id: "nov15-batch-j4-yes-to-the-name-never-repeats-what-happened",
+    title: "J4: \"create a corrective action form for <misspelled name>\" → \"Using <name> from your staff list … What happened?\" → \"Yes\": the question is a fact, never asked again word for word",
+    report: `${REPORT}; L5: after "Yes", the reply was the same card and "What happened?" again (E2: never repeat a question word for word)`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      // The model as the rules book teaches it: the asked-before fact makes it acknowledge and ask another way.
+      const model = loopStandIn((view) => {
+        const result = lastResult(view, "propose_form") as { facts?: { question_asked_before?: string } } | undefined;
+        if (!result) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-1" } };
+        return result.facts?.question_asked_before
+          ? { text: "Got it, **Marnie Holloway**. Tell me what Marnie did, and when." }
+          : { text: "Using **Marnie Holloway** from your staff list.\n\nHere's the Corrective Action Form for **Marnie Holloway**.\n\nWhat happened?" };
+      });
+      const thread = start(t);
+      t.loopModel!(model);
+      const first = await thread.say("create a corrective action form for Marnie Holoway");
+      expect(first.content).toMatch(/What happened\?/);
+      const again = await thread.say("Yes");
+      const facts = (model.views.flatMap((view) => view.results).filter((result) => result.tool === "propose_form").at(-1)?.output as { facts?: Record<string, unknown> } | undefined)?.facts ?? {};
+      expect(facts.question_asked_before, "the question just asked was not a fact").toBe("What happened?");
+      expect(again.content, "\"What happened?\" was asked again word for word").not.toMatch(/What happened\?/);
+    },
+  },
 ];
