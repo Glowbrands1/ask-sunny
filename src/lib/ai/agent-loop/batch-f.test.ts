@@ -17,7 +17,8 @@ describe("what this turn already did (F1, F2)", () => {
   it("a card, an opened revision and saved fields, from the effects", () => {
     expect(doneThisTurn({ proposal: CARD, formUpdate: null })).toBe("Here is the **Corrective Action Form** for **Remy Calder** for you to review.");
     expect(doneThisTurn({ proposal: null, formUpdate: { instanceId: "i", updated: ["observation", "payroll_deduct"] } })).toBe(
-      "I saved these changes on the form: observation, payroll deduct.",
+      // Changed on purpose (PR 3, QA's review of #1035): field labels as a manager reads them, not raw keys.
+      "I saved these changes on the form: Observation, Payroll deduct.",
     );
     expect(doneThisTurn({ proposal: null, formUpdate: null, formOpened: { instanceId: "d" } as never })).toMatch(/new draft revising the finalized form/);
   });

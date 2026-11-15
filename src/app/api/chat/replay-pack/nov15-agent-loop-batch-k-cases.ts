@@ -203,7 +203,7 @@ NOV15_AGENT_LOOP_BATCH_K_CASES.push(
 
 NOV15_AGENT_LOOP_BATCH_K_CASES.push({
   id: "nov15-k6-a-date-from-another-persons-account-is-not-kept-c079",
-  title: "K6 (QA's shadow replay, c079's shape): after Remy Calder's coaching dated from her account (10/16), \"create a coaching document for Juno Paxton\" with no date is never dated 10/16 (not_kept incident_date)",
+  title: "K6 (QA's shadow replay, c079's shape): after Remy Calder's coaching dated from her account (10/16), \"create a coaching document for Juno Paxton\" with no date is never dated 10/16 (not_on_card incident_date)",
   report: `${REPORT}: c079, the second person's card took the first person's date`,
   status: "fixed",
   fixFlags: [FLAG],

@@ -401,7 +401,13 @@ export function buildRecap(doc: MeetingDoc, attendees: Attendee[], sessionKey: s
     durationSeconds,
     attendees: attendees.map((a) => ({ name: a.name, rating: a.rating })),
     openTodos: doc.todos.filter((t) => !t.done),
-    resolvedIssues: doc.issues.filter((i) => i.resolved && (i.resolvedSession ?? null) === sessionKey).map((i) => i.title),
+    // Each solved issue with its owner when it has one (older recaps hold plain titles; readers take both).
+    resolvedIssues: doc.issues.filter((i) => i.resolved && (i.resolvedSession ?? null) === sessionKey).map((i) => (i.owner ? { title: i.title, owner: i.owner } : i.title)),
+    // How many of the meeting's to-dos are done, of how many, for "To-dos completed".
+    todosDone: doc.todos.filter((t) => t.done).length,
+    todosTotal: doc.todos.length,
+    // The shared notes pad (Meeting Notes on the Bloom-style meetings), when there is anything in it.
+    ...(typeof doc.meetingNotes === "string" && doc.meetingNotes.trim() ? { notes: doc.meetingNotes } : {}),
   };
 }
 
