@@ -414,6 +414,8 @@ function buildAgentLoopTools(config: AppConfig) {
 export const AGENT_LOOP_TOOLS = agentLoopTools(SUNNY_CONFIG);
 
 const EPHEMERAL = { anthropic: { cacheControl: { type: "ephemeral" } } } as const;
+/** The turn's calls ask alike (batch J8): a different thinking setting is a different cache entry. */
+const LOOP_PROVIDER_OPTIONS = { anthropic: { thinking: { type: "adaptive" }, effort: CLAUDE_EFFORT } } as never;
 
 /** A reply that says the form was changed ("I've added …", "updated the draft", "the draft now reads …"). */
 export const CLAIMS_A_CHANGE =
@@ -581,6 +583,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
 
   const limit = agentLoopStepLimit();
   const started = performance.now();
+  let firstTokenMs: number | null = null;
   let text = "";
   let stoppedAt = "step_limit" as "reply" | "step_limit" | "timeout" | "error";
   const usage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
@@ -610,7 +613,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         maxOutputTokens: CLAUDE_MAX_TOKENS.standard,
         maxRetries: timed.maxRetries,
         abortSignal: timed.signal,
-        providerOptions: { anthropic: { thinking: { type: "adaptive" }, effort: CLAUDE_EFFORT } } as never,
+        providerOptions: LOOP_PROVIDER_OPTIONS,
         /*
          * F1 (batch F): a model error mid-turn is swallowed by streamText, and its steps resolve with the last tool step,
          * which read as the step limit. It is noted here, so the turn ends as the error it was.
@@ -620,7 +623,11 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         },
         onChunk: ({ chunk }) => {
           watch.chunk();
-          if (chunk.type === "text-delta" || chunk.type === "reasoning-delta" || chunk.type === "tool-input-start" || chunk.type === "tool-call") watch.firstToken();
+          if (chunk.type === "text-delta" || chunk.type === "reasoning-delta" || chunk.type === "tool-input-start" || chunk.type === "tool-call") {
+            watch.firstToken();
+            /* Batch J10 (the J6 speed report: first_token_ms was null on every loop trace): the turn's first token. */
+            if (firstTokenMs === null) firstTokenMs = Math.round(performance.now() - started);
+          }
         },
         onStepFinish: (step) => {
           const used = tokensOf(step.usage as StepUsage);
@@ -705,6 +712,12 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
           messages: [...(conversationOf(input.history, input.question, input.questionMessageId) as never[]), ...(response.messages as never[]), { role: "user", content: note } as never],
           tools,
           stopWhen: stepCountIs(Math.min(4, left)),
+          /*
+           * Batch J8 (the J6 speed report: a hand-back read 3838 input tokens with nothing from the cache): it asks as the
+           * turn's own calls do, the same thinking and effort and the last message marked, so the same prefix is cached.
+           */
+          prepareStep: ({ messages }) => ({ messages: withLastMessageCached(messages) }),
+          providerOptions: LOOP_PROVIDER_OPTIONS,
           maxOutputTokens: CLAUDE_MAX_TOKENS.standard,
           maxRetries: timed.maxRetries,
           abortSignal: timed.signal,
@@ -821,9 +834,10 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   input.onTools?.(steps.map((step) => step.tool));
   const trace = chatTraceDraft();
   if (trace) {
+    trace.firstTokenMs = firstTokenMs;
     trace.slots = {
       ...(trace.slots ?? {}),
-      agent_loop: { steps, model_steps: modelSteps, model_calls: modelCalls, step_limit: limit, steps_used: stepNumber - 1, stopped: stoppedAt, ms: latencyMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}), ...(levelReview ? { level_review: levelReview } : {}) },
+      agent_loop: { steps, model_steps: modelSteps, model_calls: modelCalls, step_limit: limit, steps_used: stepNumber - 1, stopped: stoppedAt, ms: latencyMs, first_token_ms: firstTokenMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}), ...(levelReview ? { level_review: levelReview } : {}) },
     };
   }
 
