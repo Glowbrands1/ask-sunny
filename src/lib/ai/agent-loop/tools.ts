@@ -144,15 +144,19 @@ export function asksAboutPastForms(context: Pick<ToolContext, "question" | "hist
   if (asks(context.question)) return true;
   const earlier = [...context.history].reverse().find((message) => message.role === "user");
   /*
-   * Batch G (G4, QA's live test): the answer to the app's own which-form question ("the 10/31 one about getting rooms
-   * ready between guests") is part of the same request, however long. Only when the reply just before it asked a
-   * question and the manager's message before that asked about forms on file.
+   * Batch G (G4, QA's live test; tightened by QA's review): the answer to the app's own which-form question ("the 10/31
+   * one about getting rooms ready between guests") is part of the same request, however long. Only when the last two
+   * turns are exactly: the manager's message asking about forms on file, then the reply asking WHICH_FORM_QUESTION
+   * (find_past_forms gives it when several forms fit). An older forms question further back never opens the gate.
    */
-  const lastReply = [...context.history].reverse().find((message) => message.role === "assistant");
-  if (earlier && asks(earlier.content) && typeof lastReply?.content === "string" && /\?\s*$/.test(lastReply.content.trim())) return true;
+  const [lastReply, lastAsk] = [...context.history].reverse().filter((message) => message.role === "assistant" || message.role === "user").slice(0, 2);
+  if (lastReply?.role === "assistant" && lastAsk?.role === "user" && asks(lastAsk.content) && String(lastReply.content).includes(WHICH_FORM_QUESTION)) return true;
   if (context.question.trim().split(/\s+/).length > 6) return false;
   return earlier ? asks(earlier.content) : false;
 }
+
+/** Batch G (G4): the app's own question when several forms on file fit (find_past_forms gives it; the rules book ends the reply with it). */
+export const WHICH_FORM_QUESTION = "Which one should I open?";
 
 /** Batch G (G4): "open / edit / pull up / show me <a form on file>" never makes a new card. */
 export const OPEN_REQUEST = new RegExp(String.raw`\b(?:open|reopen|edit|pull up|bring up|show me|view)\b[^.?!\n]{0,40}?\b${FORM}\b`, "i");
@@ -599,6 +603,7 @@ export async function findPastForms(context: ToolContext, input: { employee_name
       forms,
       ...(closeSpelling ? { close_spelling_of: { typed: untrusted(typed), on_file: closeSpelling } } : {}),
       ...(forms.length === 1 && (described || closeSpelling) ? { best_match: forms[0]!.instance_id, note: "One form fits what the manager described. If they asked to open, edit or see it, open it now with open_form." } : {}),
+      ...(forms.length > 1 && OPEN_REQUEST.test(context.question) ? { which_form_question: WHICH_FORM_QUESTION } : {}),
     };
   } catch {
     return { error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };

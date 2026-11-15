@@ -193,7 +193,7 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
           return { text: found.error ? "I can't look at forms on file for that." : "Opened the 10/31 Coaching Form." };
         }
         if (!found) return { tool: "find_past_forms", input: { employee_name: "Remy Calder", form: "coaching" } };
-        return { text: "Remy Calder has two Coaching Forms on file: 10/31 and 11/5. Which one?" };
+        return { text: `Remy Calder has two Coaching Forms on file:\n- 10/31\n- 11/5\n\n${(found as { which_form_question?: string }).which_form_question ?? "Which one?"}` };
       });
       t.loopModel!(model);
       const thread = t.thread();
