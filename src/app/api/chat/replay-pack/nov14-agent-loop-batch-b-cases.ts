@@ -211,7 +211,9 @@ export const NOV14_AGENT_LOOP_BATCH_B_CASES: ReplayCase[] = [
       t.as("salon_director", KEARNEY);
       const model = loopStandIn((view) => {
         const said = latest(view);
-        if (lastResult(view, "propose_form")) return { text: "Here's the card for **Tamsin Orwell**." };
+        // Changed on purpose (batch E, E8): a reply to a new card that cites a policy ends with its whole Policy line, as the rules book teaches; without it the self-review hands the reply back.
+        const card = lastResult(view, "propose_form")?.card as { policy?: string | null } | undefined;
+        if (card) return { text: `Here's the card for **Tamsin Orwell**.${card.policy ? `\n\n**Policy:** ${card.policy}` : ""}` };
         if (/must see/i.test(said)) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, policy: headingWith(view, /standards of conduct/i) ?? "Standards of Conduct" } };
         if (/beds/i.test(said)) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, what_happened: "Tamsin Orwell was late on 11/12 and did not clean the beds.", policy: `${headingWith(view, /attendance/i) ?? "Attendance"}; Other — beds not cleaned` } };
         return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, what_happened: "Tamsin Orwell was late on 11/12.", prior_actions: "Verbal CA — 10/02/2026" } };

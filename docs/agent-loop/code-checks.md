@@ -204,3 +204,31 @@ edit_form facts:
 - `EARLIER_CARD_STAYS`;
 - the safety clean-ups;
 - the two second-miss honesty lines.
+
+## Batch E (QA's tester follow-ups, part 4)
+
+Rules-book lines and facts only; no reply patches. Each item has an outcome case in `nov14-live-r5-cases.ts`, in the follow-up's own words with invented names, and the r5 live list is `scripts/agent-loop-live/cases-targeted-r5.txt`.
+
+| Item | Fact (tool) | Rules book |
+|---|---|---|
+| E1, the salon from Woven | `employee_salon` (propose_form, when the card waits for a salon; Woven's primary salon, only if it is in the manager's scope) | Card replies: file it there, "Filed at **<salon>**, where Woven lists <first name>"; ask at most once; a name is never the salon answer |
+| E2, no word-for-word repeat | — | Card replies: acknowledge the answer, ask only what is missing |
+| E3, "just make it" after a policy | — | Which form: a Corrective Action citing that policy, ONE question (who it is for) |
+| E4, "same thing for <B>" while <A>'s card waits | `employee_salon` (E1) | Which form: make <B>'s card now, never hold <B> behind <A> |
+| E5, "ca for the key holdr policy" | `close_heading` or `confirm_policy` (read_policy, on a close spelling) | Which form: name the matched policy in the question; "use that one" is the policy |
+| E6, the whole **Policy:** line | — (card.policy was already the full line; the model shortened it) | Card replies: the whole line, never the heading alone |
+| E7, staff count and one position | `staff_count`, `position`/`position_count`, `position_not_found` (list_staff, new optional `position` input) | Staff lists: the count first; only that position's people, after the salon |
+| E8, a new card's reply that says nothing about it | — | Card replies: a new card's reply says what is on it and ends with the Policy line; "still open" only with no new card |
+| E9, a policy the manual has no heading for | `policy_not_in_manual` (propose_form) | Card replies: cite the fitting section and say so in one line; The policy: a one-word answer after a card is that card's policy, never a knowledge search |
+| E10, a month/day later than today | `date_read_as_last_year` (propose_form) | Card replies: "Dated <M/D/YYYY> (last <month>)"; never a date after today |
+| E11, a reword that adds a cause | `reword_added_link` (propose_form, edit_form) | Editing and Card replies: grammar and tone only, facts stay separate |
+| E12, a date after today on a card or draft | refused: propose_form leaves the card's date empty and returns `date_after_today`; edit_form refuses `form_date` / `incident_date` after today and writes nothing | Dates: say so and ask which day |
+| E13, the server's UTC clock | — (`monthDayToIso` reads the salon's local date, `context.today`) | — |
+| E14, dates written in another style | — (one reader, `src/lib/ai/agent-loop/dates.ts`, for the account check, incident dates, the card date and edit_form's form_date: 6/11, 6-11, 06/11/2026, 6.11.26, June 11, Jun 11th, 11 June, the 11th of June, Sept 28, with or without a year) | — |
+| E15, a trace step with no reason | — (each step records `error_kind`, `fact_keys` and `missing_kinds`; never names, words or figures) | — |
+
+**E8 in code:** the self-review also hands back, once, a reply to a new card that cites a policy when the reply has no **Policy:** line. On a second miss the model's own reply is kept; only a stated value the card does not hold gets today's "That change isn't on the card yet" line.
+
+**E12 is a refusal** (approved: code may refuse): batch C made a date after today a fact only, so the card kept it when the model did not propose again. The date field is now refused and the fact stays.
+
+**E6 in code:** the card self-review compares the reply's **Policy:** line with the card's whole policy line (letters and digits only), not just the heading. A shortened line is handed back once, like any other mismatch (batch D's hand-back). Nothing new is written into the reply.
