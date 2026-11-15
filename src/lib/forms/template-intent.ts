@@ -559,39 +559,84 @@ export function canonicalShorthand(text: string): string {
 
 /*
  * TERMINATION_REQUEST_IS_CA_ENABLED (QA, 15 Nov 2026): "create a termination for <A>, she no call no showed on 11/12"
- * got a policy answer and no card. "Termination" alone is still no form's name (see NOT_A_LEADING_NAME): only a filing
- * verb, then "a termination" (or "termination"), then "for <someone>", is a termination Corrective Action. "Termination
- * form / paperwork / letter" keep naming their own documents, and a question is still a question.
+ * got a policy answer and no card. "Termination" alone is still no form's name (see NOT_A_LEADING_NAME).
  *
- * QA's review (15 Nov 2026): never in a question — a "?", or a how / should / do / does / what / can / need … lead
- * ("how do i do a termination for <A>?", "Do I need a termination for <A> or just a written?", "what do I need to do a
- * termination for <A>") — and only when "for" is followed by a person's name: never an offense ("for no call no show",
- * "for job abandonment") or a pronoun ("for her").
+ * A WHITELIST AT THE START OF A SENTENCE (QA's re-review, 15 Nov 2026; word lists kept leaking both ways): optional
+ * politeness ("please", "can you", "could you", "I need to", "need to"), then create | make | do | write (up) | start |
+ * draft | need, then "a termination" (optionally "CA", "C/A" or "form"), then "for", then a NAME that resolves — a roster
+ * person's full name, a title and a roster surname only one person has ("Ms. Holloway"), or an off-roster full name in
+ * capitals. With no roster installed (a pure caller), a name-shaped full name. A "?" blocks only when it ends that same
+ * sentence. Anything else — "So do I create a termination for … or not", "I think we should do a termination for …",
+ * "create a termination for no call no show" — is read as it always was.
  */
-const ASKS_ABOUT_IT = /\?|^\s*(?:how|should|shall|do|does|did|what|whats|what['’]s|can|could|would|will|is|are|need|when|why|which|who)\b/i;
-const NOT_A_PERSON_AFTER_FOR = new Set([
-  "no", "not", "her", "him", "them", "his", "their", "she", "he", "they", "me", "us", "you", "someone", "somebody", "an", "a", "the", "this", "that",
-  "job", "abandonment", "attendance", "lateness", "late", "tardiness", "tardy", "absence", "absences", "absent", "theft", "stealing", "misconduct",
-  "insubordination", "ncns", "missing", "missed", "poor", "performance", "cash", "policy", "violation", "violations", "violating", "harassment",
-  "dress", "code", "sanitation", "cleaning", "being", "walking", "walkout", "quitting", "fighting", "drug", "drugs", "alcohol", "fraud", "gross",
-]);
+let readTerminationRoster: () => readonly string[] | undefined = () => undefined;
 
-/** The words after "for" begin with a person's name: a name-shaped word that is no offense, pronoun or article. */
-function personFollows(rest: string): boolean {
-  const first = /^\s*([\p{L}][\p{L}'’-]*)/u.exec(rest)?.[1]?.toLowerCase();
-  return Boolean(first) && !NOT_A_PERSON_AFTER_FOR.has(first!) && !NOT_A_TYPED_NAME.has(first!) && !NOT_A_NAME.has(first!);
+/** The server's roster reader (`person-guard.ts` installs it); a test or the browser reads none. */
+export function installTerminationRosterNames(read: () => readonly string[] | undefined): void {
+  readTerminationRoster = read;
 }
-const TERMINATION_REQUEST =
-  /\b(create|make|write|start|draft|do|need|file|put\s+in|open)(\s+(?:me\s+)?(?:a|an)?\s*)termination\b(?!\s+(?:form|forms|paperwork|letter|document|ca|c\/a|corrective|warning|policy|process|procedure))(?=\s+for\s+\S)/gi;
+
+const TERMINATION_SENTENCE =
+  /^(\s*(?:please\s+)?(?:(?:can|could)\s+you\s+(?:please\s+)?|i\s+need\s+to\s+|need\s+to\s+)?(?:create|make|do|write(?:\s+up)?|start|draft|need)\s+(?:me\s+)?(?:an?\s+)?)termination(?:\s+(?:ca|c\/a|form))?(\s+for\s+)/i;
+const TITLE = /^(?:mr|ms|mrs|mx|dr)\.?\s+/i;
+const NAME_SHAPED_WORD = /^[\p{L}][\p{L}'’-]*$/u;
+
+/** The words after "for" up to the sentence's end or a comma: the name, if one resolves. */
+function nameResolvesAfterFor(rest: string): boolean {
+  const head = rest.split(/[,;:!?]|\s+(?:she|he|they|who|because|bc|for|since|was|is|did|didn['’]t|has|had)\b/i)[0]!.trim().replace(/[.]+$/, "");
+  const words = head.split(/\s+/).filter(Boolean);
+  const roster = readTerminationRoster();
+  const norm = (text: string) => text.toLowerCase().replace(/\s+/g, " ").trim();
+  const said = norm(head);
+  if (roster && roster.length > 0) {
+    // A roster person's full name, as the words after "for" begin.
+    if (roster.some((name) => said === norm(name) || said.startsWith(`${norm(name)} `))) return true;
+    // A title and a surname only one roster person has ("Ms. Holloway").
+    const titled = TITLE.exec(head);
+    if (titled) {
+      const surname = norm(head.slice(titled[0].length)).split(" ")[0] ?? "";
+      const owners = roster.filter((name) => norm(name).split(" ").slice(-1)[0] === surname);
+      if (surname && owners.length === 1) return true;
+    }
+  }
+  // A full name: two or three name words, none a stop word; in capitals when a roster was read.
+  const name = words.slice(0, 3);
+  if (name.length < 2) return false;
+  if (!name.every((word) => NAME_SHAPED_WORD.test(word) && !NOT_A_NAME.has(word.toLowerCase()) && !NOT_A_TYPED_NAME.has(word.toLowerCase()))) return false;
+  return roster && roster.length > 0 ? name.every((word) => /^\p{Lu}\p{Ll}/u.test(word)) : true;
+}
+
+/** Sentence starts: the text's start, a newline, or after . ! ? (not a title's full stop, "Ms."). */
+function sentenceStarts(text: string): number[] {
+  const starts = [0];
+  const end = /(?<!\b(?:mr|ms|mrs|mx|dr))[.!?]+\s+|\n+/gi;
+  for (const match of text.matchAll(end)) starts.push(match.index! + match[0].length);
+  return starts;
+}
+
+/** This sentence ends with a question mark (the next . ! ? or newline after `from`, not a title's). */
+function sentenceAsks(text: string, from: number): boolean {
+  const end = /(?<!\b(?:mr|ms|mrs|mx|dr))[.!?]|\n/gi;
+  end.lastIndex = from;
+  const found = end.exec(text);
+  return found?.[0] === "?";
+}
+
+function asTerminationRequest(text: string): string {
+  let out = text;
+  for (const start of sentenceStarts(text).reverse()) {
+    const match = TERMINATION_SENTENCE.exec(text.slice(start));
+    if (!match) continue;
+    const after = start + match[0].length;
+    if (sentenceAsks(text, start) || !nameResolvesAfterFor(text.slice(after))) continue;
+    out = `${out.slice(0, start)}${match[1]}termination corrective action${match[2]}${out.slice(after)}`;
+  }
+  return out;
+}
 
 /** Every rewrite a form request goes through before it is read. */
 export function canonicalFormWording(text: string): string {
-  const said =
-    terminationRequestIsCaEnabled() && !ASKS_ABOUT_IT.test(text)
-      ? text.replace(TERMINATION_REQUEST, (match: string, verb: string, between: string, offset: number, whole: string) =>
-          personFollows(whole.slice(offset + match.length).replace(/^\s+for\s+/i, "")) ? `${verb}${between}termination corrective action` : match,
-        )
-      : text;
+  const said = terminationRequestIsCaEnabled() ? asTerminationRequest(text) : text;
   return canonicalCorrectiveAction(
     canonicalShorthand(
       // "a verbal corrective", "written corrective for …" — the noun left off (QA, 22 Oct 2026, round 3).

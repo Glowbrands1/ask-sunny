@@ -1,39 +1,87 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { canonicalFormWording } from "./template-intent";
+import { canonicalFormWording, installTerminationRosterNames } from "./template-intent";
 
-/** QA, 15 Nov 2026: "create a termination for <A>, …" gave a policy answer and no card. Invented names. */
-describe("TERMINATION_REQUEST_IS_CA_ENABLED", () => {
-  afterEach(() => vi.unstubAllEnvs());
+/**
+ * QA, 15 Nov 2026: "create a termination for <A>, …" gave a policy answer and no card. QA's re-review: a whitelist at the
+ * start of a sentence, a "?" only when it ends that sentence, and a name that resolves (a roster person, a title and a
+ * roster surname, or an off-roster full name). Invented names.
+ */
+const ROSTER = ["Marnie Holloway", "Remy Calder", "Juno Paxton"];
+const CA = "termination corrective action";
+
+describe("TERMINATION_REQUEST_IS_CA_ENABLED, with the roster read", () => {
+  beforeEach(() => {
+    vi.stubEnv("TERMINATION_REQUEST_IS_CA_ENABLED", "true");
+    installTerminationRosterNames(() => ROSTER);
+  });
+  afterEach(() => {
+    installTerminationRosterNames(() => undefined);
+    vi.unstubAllEnvs();
+  });
 
   it.each([
-    ["create a termination for Marnie Holloway, she no call no showed", "create a termination corrective action for Marnie Holloway, she no call no showed"],
-    ["make termination for marnie holloway", "make termination corrective action for marnie holloway"],
-    ["I need to do a termination for Marnie", "I need to do a termination corrective action for Marnie"],
+    ["create a termination for Marnie Holloway", `create a ${CA} for Marnie Holloway`],
+    ["create a termination for Marnie Holloway, she no call no showed", `create a ${CA} for Marnie Holloway, she no call no showed`],
+    // QA's re-review: real requests the blacklist refused.
+    ["can you create a termination for Marnie Holloway", `can you create a ${CA} for Marnie Holloway`],
+    ["could you make a termination for marnie holloway", `could you make a ${CA} for marnie holloway`],
+    ["need a termination for Marnie Holloway", `need a ${CA} for Marnie Holloway`],
+    ["create a termination for Marnie Holloway. Is the DM on today?", `create a ${CA} for Marnie Holloway. Is the DM on today?`],
+    ["do a termination for Ms. Holloway", `do a ${CA} for Ms. Holloway`],
+    ["please create a termination CA for Remy Calder", `please create a ${CA} for Remy Calder`],
+    ["create a termination for Zebulon Marchbanks, he walked out", `create a ${CA} for Zebulon Marchbanks, he walked out`],
   ])("on: %s", (said, read) => {
-    vi.stubEnv("TERMINATION_REQUEST_IS_CA_ENABLED", "true");
     expect(canonicalFormWording(said)).toBe(read);
   });
 
   it.each([
     ["create termination paperwork for Marnie Holloway"],
-    ["create a termination form for Marnie Holloway"],
     ["what is the termination policy for no call no shows"],
     ["termination for Marnie Holloway"],
-    // QA's review of #1014: a question, or no person after "for", is never the request.
+    // Questions (QA's review of #1014), and the re-review's two that passed as requests.
     ["how do i do a termination for Marnie Holloway?"],
     ["Do I need a termination for Marnie Holloway or just a written?"],
     ["should I do a termination for Marnie Holloway"],
     ["what do I need to do a termination for Marnie Holloway"],
     ["do we need a termination for job abandonment"],
+    ["can you create a termination for Marnie Holloway?"],
+    ["So do I create a termination for Marnie Holloway or not"],
+    ["I think we should do a termination for Marnie Holloway"],
+    // No person after "for".
     ["create a termination for no call no show"],
+    ["create a termination for job abandonment"],
     ["create a termination for her"],
+    // A first name alone resolves to no full name (QA: a name that resolves).
+    ["I need to do a termination for Marnie"],
   ])("on, unchanged: %s", (said) => {
-    vi.stubEnv("TERMINATION_REQUEST_IS_CA_ENABLED", "true");
     expect(canonicalFormWording(said)).toBe(said);
   });
 
-  it("off: unchanged", () => {
+  it("a title with a surname two roster people have does not resolve", () => {
+    installTerminationRosterNames(() => [...ROSTER, "Cash Holloway"]);
+    expect(canonicalFormWording("do a termination for Ms. Holloway")).toBe("do a termination for Ms. Holloway");
+  });
+
+  it("\"Cash\" is a roster first name, never an offense word", () => {
+    installTerminationRosterNames(() => [...ROSTER, "Cash Holloway"]);
+    expect(canonicalFormWording("create a termination for Cash Holloway")).toBe(`create a ${CA} for Cash Holloway`);
+  });
+});
+
+describe("TERMINATION_REQUEST_IS_CA_ENABLED, no roster (a pure caller)", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("a name-shaped full name only", () => {
+    vi.stubEnv("TERMINATION_REQUEST_IS_CA_ENABLED", "true");
+    expect(canonicalFormWording("make a termination for marnie holloway")).toBe(`make a ${CA} for marnie holloway`);
+    expect(canonicalFormWording("create a termination for no call no show")).toBe("create a termination for no call no show");
+    expect(canonicalFormWording("create a termination for Marnie")).toBe("create a termination for Marnie");
+  });
+});
+
+describe("TERMINATION_REQUEST_IS_CA_ENABLED off", () => {
+  it("unchanged", () => {
     expect(canonicalFormWording("create a termination for Marnie Holloway")).toBe("create a termination for Marnie Holloway");
   });
 });

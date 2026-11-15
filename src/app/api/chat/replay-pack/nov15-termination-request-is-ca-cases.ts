@@ -1,6 +1,6 @@
 import { expect, vi } from "vitest";
 
-import { KEARNEY, STAFF, type ReplayCase } from "./cases";
+import { KEARNEY, STAFF, type DirectoryRow, type ReplayCase } from "./cases";
 
 /**
  * ============================================================================
@@ -14,6 +14,9 @@ import { KEARNEY, STAFF, type ReplayCase } from "./cases";
 
 const REPORT = "QA, 15 Nov 2026: \"create a termination for <A>, she no call no showed on 11/12\" gave a policy answer and no card";
 const FLAG = "TERMINATION_REQUEST_IS_CA_ENABLED";
+const RE_REVIEW = "QA's re-review of #1014, 15 Nov 2026: the blacklist refused real requests and let two non-requests through";
+/** An invented roster person whose first name is a word ("cash"): name resolution, not a word list, decides. */
+const CASH: DirectoryRow = { id: "e-cash-holloway-tr", firstName: "Cash", lastName: "Holloway", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" };
 
 function start(t: Parameters<ReplayCase["run"]>[0]) {
   vi.setSystemTime(new Date("2026-11-14T16:00:00Z"));
@@ -86,6 +89,49 @@ export const NOV15_TERMINATION_REQUEST_IS_CA_CASES: ReplayCase[] = [
         start(t);
         const thread = t.thread();
         const reply = await thread.say(said, { employeeName: /marnie/i.test(said) ? "Marnie Holloway" : null });
+        expect(thread.proposal?.templateKey ?? null, reply.content).not.toBe("dpoa");
+      },
+    }),
+  ),
+  ...(
+    [
+      ["can you create a termination for Marnie Holloway, she no call no showed on 11/12", "Marnie Holloway", STAFF],
+      ["could you make a termination for marnie holloway, she no call no showed on 11/12", "Marnie Holloway", STAFF],
+      ["need a termination for Marnie Holloway, she no call no showed on 11/12", "Marnie Holloway", STAFF],
+      ["create a termination for Marnie Holloway, she no call no showed on 11/12. Is the DM in today?", "Marnie Holloway", STAFF],
+      ["do a termination for Ms. Holloway, she no call no showed on 11/12", "Marnie Holloway", STAFF],
+      ["create a termination for Cash Holloway, he no call no showed on 11/12", "Cash Holloway", [...STAFF.filter((row) => row.lastName !== "Holloway"), CASH]],
+    ] as const
+  ).map(
+    ([said, person, roster], index): ReplayCase => ({
+      id: `nov15-termination-request-is-ca-whitelist-${index + 1}`,
+      title: `"${said}": a Corrective Action card for ${person}`,
+      report: RE_REVIEW,
+      status: { open: "a policy answer and no card" },
+      fixFlags: [FLAG],
+      async run(t) {
+        vi.setSystemTime(new Date("2026-11-14T16:00:00Z"));
+        t.directory([...roster]);
+        t.as("salon_director", KEARNEY);
+        const thread = t.thread();
+        const reply = await thread.say(said, { employeeName: person });
+        expect(thread.proposal?.templateKey, reply.content).toBe("dpoa");
+        // "Ms. Holloway": the request is read; the card's name reader takes "Ms" as a name, a separate gap (reported).
+        if (!said.includes("Ms.")) expect(thread.proposal?.employeeName, reply.content).toBe(person);
+      },
+    }),
+  ),
+  ...["So do I create a termination for Marnie Holloway or not", "I think we should do a termination for Marnie Holloway"].map(
+    (said, index): ReplayCase => ({
+      id: `nov15-termination-request-is-ca-not-at-start-${index + 1}`,
+      title: `"${said}": not a request at the start of a sentence, read as before (no Corrective Action card)`,
+      report: RE_REVIEW,
+      status: "fixed",
+      fixFlags: [FLAG],
+      async run(t) {
+        start(t);
+        const thread = t.thread();
+        const reply = await thread.say(said, { employeeName: "Marnie Holloway" });
         expect(thread.proposal?.templateKey ?? null, reply.content).not.toBe("dpoa");
       },
     }),
