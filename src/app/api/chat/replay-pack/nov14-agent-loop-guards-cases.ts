@@ -987,7 +987,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "tamsin orwell" } };
         // The account of the turn it answers (the account check refuses one that drops the manager's date).
         const late = /late on 11\/12/i.test(view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "");
-        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, what_happened: late ? "Tamsin Orwell was late on 11/12." : "Tamsin Orwell was on her phone at the front desk." } };
+        // Changed on purpose (rebuild plan PR 1b): "make another ca" is the model's new_form_evidence.
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, what_happened: late ? "Tamsin Orwell was late on 11/12." : "Tamsin Orwell was on her phone at the front desk." , ...(late ? { new_form_evidence: evidenceFrom(view, "make another ca") } : {}) } };
         return { text: JSON.stringify(lastResult(view, "propose_form")) };
       });
       t.loopModel!(again);
@@ -1323,7 +1324,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       const proposer = loopStandIn((view) => {
         const said = view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "";
         if (!lastResult(view, "propose_form")) {
-          return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, what_happened: /opening this morning/.test(said) ? "Tamsin Orwell was late to opening this morning." : "Tamsin Orwell failed to take the trash out." } };
+          // Changed on purpose (rebuild plan PR 1b): a new form while a draft is open is the model's new_form_evidence.
+          return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, what_happened: /opening this morning/.test(said) ? "Tamsin Orwell was late to opening this morning." : "Tamsin Orwell failed to take the trash out." , ...(/make me a CA/.test(said) ? { new_form_evidence: evidenceFrom(view, "make me a CA for Tamsin Orwell") } : {}) } };
         }
         return { text: JSON.stringify(lastResult(view, "propose_form")) };
       });

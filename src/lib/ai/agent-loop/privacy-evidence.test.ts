@@ -46,6 +46,12 @@ describe("nameCorrectionRefusal", () => {
   it("allows the new spelling the manager typed", () => {
     expect(nameCorrectionRefusal("Remy Calder", "Remy Calder-Voss", "it is Calder-Voss", roster)).toBeNull();
   });
+  it("asks about a close spelling of the form's own person, with keep-as-typed (ruling A; QA's re-review fix 3)", () => {
+    const asked = nameCorrectionRefusal("Remy Calder", "Remy Kalder", "her last name is Kalder", roster);
+    expect(asked).toMatchObject({ reason_code: "name_correction_did_you_mean" });
+    expect(String((asked as { error: string }).error)).toMatch(/Did you mean \*\*Remy Calder\*\*\?[\s\S]*"no" to keep \*\*Remy Kalder\*\*/);
+    expect(nameCorrectionRefusal("Remy Calder", "Remy Kalder", "her last name is Kalder", roster, { keepAsTyped: true })).toBeNull();
+  });
   it("refuses a name the quote does not hold", () => {
     expect(nameCorrectionRefusal("Remy Calder", "Juno Paxton", "fix her last name please", roster)).toMatchObject({ reason_code: "name_not_in_evidence" });
   });

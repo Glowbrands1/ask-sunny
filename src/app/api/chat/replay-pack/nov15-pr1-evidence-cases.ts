@@ -141,6 +141,33 @@ export const NOV15_PR1_EVIDENCE_CASES: ReplayCase[] = [
     },
   },
   {
+    id: "nov15-pr1-a-card-never-opens-another-named-persons-forms",
+    title: "PR 1a re-review (QA, fix 1): with Juno Paxton's card shown, \"has Remy Calder had a CA before?\" quoted as evidence never opens Juno Paxton's forms (privacy_not_this_person); the card fallback is only for a message that names nobody",
+    report: `${REPORT}: QA's re-review of #1026, fix 1`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-3", what_happened: "She was late to her shift on 11/14.", incident_date: "2026-11-14" } };
+        return { text: "Here's the Corrective Action Form for **Juno Paxton**.\n\n**Observation of Offense:** She was late to her shift on 11/14." };
+      }));
+      const thread = t.thread();
+      await thread.say("CA for Juno Paxton, she was late to her shift on 11/14");
+      const model = loopStandIn((view): LoopDecision => {
+        const found = lastResult(view, "find_past_forms") as { reason_code?: string } | null;
+        if (!found) return { tool: "find_past_forms", input: { employee_name: "Juno Paxton", forms_on_file_evidence: evidenceFrom(view, "had a CA before") } };
+        return { text: found.reason_code ?? "listed" };
+      });
+      t.loopModel!(model);
+      const reply = await thread.say("has Remy Calder had a CA before?");
+      expect(reply.content, "the card's person's forms opened on a question about someone else").toBe("privacy_not_this_person");
+    },
+  },
+  {
     id: "nov15-pr1-name-correction-changes-only-the-name",
     title: "PR 1: \"fix her last name, it is Calder-Voss\" on the open draft is edit_form intent correct_name: with another field too it is refused (name_correction_other_fields), with no name_evidence it is refused (name_evidence_missing), and nothing else is written",
     report: `${REPORT}: NAME_CORRECTION (tools.ts:2348) replaced by intent correct_name + name_evidence`,
