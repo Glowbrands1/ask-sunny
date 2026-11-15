@@ -21,6 +21,10 @@ import { rulesBookText } from "./rules-book";
  * Updated on purpose on 16 Nov 2026 (fix batch item 4): the two "Did you mean" lines in "Who the form is for" became one
  * consistent instruction (a yes or the full name typed back is a yes; confirmed_by_manager). Both lines name no app,
  * place, staff system or form key; nothing else in either text changed.
+ *
+ * Updated on purpose on 16 Nov 2026 (fix-name, live s10; QA's review of #1050): one line in the card replies teaches
+ * propose_form's name_corrected fact ("I changed the name on the card from <from> to <to>; nothing else changed.").
+ * It names no app, place, staff system or form key; nothing else in either text changed.
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");

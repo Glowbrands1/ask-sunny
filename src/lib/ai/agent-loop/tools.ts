@@ -10,7 +10,7 @@ import { appConfig } from "./app-config";
 import { isoDate, monthDayToIso, readDates, sameDate, withoutDates } from "./dates";
 import { candidateNameWords, chatFormsActor } from "@/lib/forms/chat-form-records";
 import { holdsPhrase, identifiedTurns, verifyEvidence, withoutMessageIdTags, type IdentifiedTurn } from "./evidence";
-import { answerNamesSomeoneElse, isConfirmedSpelling, latestTurnConfirms, spellingKeysConfirmedFor, type NameQuestionView } from "./confirmed-spelling";
+import { answerNamesSomeoneElse, isConfirmedSpelling, latestTurnAnswersFor, latestTurnConfirms, latestTurnKeepsTyped, spellingKeysConfirmedFor, type NameQuestionView } from "./confirmed-spelling";
 import { displayName, matchEmployeeName, nameConfirmationQuestion, readNameConfirmation, type RosterEmployee } from "@/lib/forms/employee-match";
 import { offRosterTyped } from "@/lib/forms/roster-only-names";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
@@ -1253,14 +1253,21 @@ export function incidentDates(managerWords: string, priorActions: string | null)
  */
 function cardNameCorrection(
   context: ToolContext,
+  effects: ToolEffects,
   templateKey: string,
   typed: string,
   roster: readonly RosterEmployee[],
 ): { person: RosterEmployee; from: string } | { asTyped: true; from: string } | { refusal: ToolResult } | null {
   if (context.openFormId) return null;
-  const declined = readNameConfirmation([...(context.history as ChatMessage[]).map((turn) => ({ role: turn.role, content: String(turn.content ?? "") })), { role: "user", content: context.question }])?.kind === "declined";
-  /* The card on screen; after this chat's Did-you-mean ("no") or "reply **use <name>**" offer (no card shown), the chat's latest card. */
-  const card = context.cardOnScreen ?? (declined || offRosterConfirmed(context, typed) ? (context.earlierCard ?? null) : null);
+  /*
+   * After #1051 (QA): this check's "Did you mean" is recorded like find_staff's (effects.nameQuestion), and the answer is
+   * read through `confirmed-spelling.ts` from the server's record, never from the reply's text. A "no" keeps the name as
+   * typed; a yes or the offered full name typed back comes back as that roster person's exact name (used below).
+   */
+  const view = nameQuestionView(context, roster);
+  const declined = latestTurnKeepsTyped(view, typed);
+  /* The card on screen; after this chat's Did-you-mean or "reply **use <name>**" offer (no card shown), the chat's latest card. */
+  const card = context.cardOnScreen ?? (latestTurnAnswersFor(view, typed) || answeredByFullName(view, typed) || offRosterConfirmed(context, typed) ? (context.earlierCard ?? null) : null);
   if (!card || card.templateKey !== templateKey) return null;
   /*
    * The card's name: its roster person (the record's employeeKey), or, for a name not on the roster (live s10's card
@@ -1290,7 +1297,8 @@ function cardNameCorrection(
   if (declined || offRosterConfirmed(context, typed)) return { asTyped: true, from: cardName };
   const close = matchEmployeeName(typed, roster);
   const candidates = close.kind === "confirm" ? close.candidates.map((candidate) => candidate.name) : [];
-  if (candidates.length > 0) {
+  if (candidates.length > 0 && close.kind === "confirm") {
+    effects.nameQuestion = { offeredIds: close.candidates.slice(0, 5).map((candidate) => candidate.employee.id), typed };
     return { refusal: { reason_code: "name_correction_did_you_mean", error: `${typed} is not on the staff list as typed. The card was not changed. Ask the manager, in these words: ${nameConfirmationQuestion(typed, candidates.slice(0, 5))}` } };
   }
   return {
@@ -1310,6 +1318,12 @@ async function askWhoFor(context: ToolContext, template: { key: string; name: st
   const ask = (await policyQuestion(context, template.name)) ?? `Who is this ${template.name} for?`;
   effects.personAsked = { templateKey: template.key };
   return { reason_code: "missing_input", error: "Nobody is named for this form yet. End your reply with ask_exactly, exactly, once.", ask_exactly: ask };
+}
+
+/** fix-name, live s10: the message being answered now confirms, in answer to a recorded name question, the roster person this typed name is. */
+function answeredByFullName(view: NameQuestionView, typed: string): boolean {
+  const person = view.roster.filter((row) => fullNamesOf(row).some((full) => samePerson(full, typed)));
+  return person.length === 1 && latestTurnConfirms(view, person[0]!.id) !== null;
 }
 
 /** The manager accepted the off-roster offer for this name ("use <name>", or yes right after the offer). */
@@ -1579,7 +1593,7 @@ export async function proposeForm(
       };
     }
     /* fix-name, live s10 (Pau's ruling, 16 Nov 2026): a typed name that corrects the card's person goes through the roster check. */
-    const corrected = !person && typed ? cardNameCorrection(context, key, typed, read.roster) : null;
+    const corrected = !person && typed ? cardNameCorrection(context, effects, key, typed, read.roster) : null;
     if (corrected && "refusal" in corrected) return corrected.refusal;
     if (corrected) nameCorrectedFrom = corrected.from;
     if (corrected && "person" in corrected) employee = { name: displayName(corrected.person), salonIds: corrected.person.salonIds, id: corrected.person.id };

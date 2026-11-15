@@ -12,5 +12,9 @@ chat, a name not on the roster), a typed name that corrects the card's name (sam
 match is used, a close spelling asks "Did you mean <name>?" with keep-as-typed, and no match is refused
 (`name_correction_not_on_roster`) and the card keeps its name until the manager replies "use <name>".
 
+After #1051 the s10 "Did you mean" is recorded like find_staff's (`effects.nameQuestion`) and its answer is read through
+`confirmed-spelling.ts`; the rules book teaches the `name_corrected` fact. `src/lib/forms/employee-match.ts` gains
+`saysNo` (an export of today's `NEGATIVE` reading, no behaviour change on the old chat path).
+
 **Ask Bubbles: not needed yet.** Ask Bubbles has no agent loop on its main. Port with the loop, on Bubbles' own data
 (store, Forms Register). `nameCorrectionWrite` is a one-writer helper used only by the loop.

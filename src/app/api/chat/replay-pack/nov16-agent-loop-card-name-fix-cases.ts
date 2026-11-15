@@ -107,16 +107,43 @@ export const NOV16_CARD_NAME_FIX_CASES: ReplayCase[] = [
     async run(t) {
       if (!t.loopOn?.()) return;
       const thread = await remysCard(t);
-      const asking = fixer("Remy Kalder");
+      // After #1051 (QA): the question is recorded (name_question) and the answer is read from the record, so a reply
+      // that paraphrases the question is answered the same way. The stand-in paraphrases on purpose.
+      const asking = loopStandIn((view): LoopDecision => (lastResult(view, "propose_form") ? { text: "I can't find Remy Kalder on your staff list. Is it Remy Calder, or should I keep Remy Kalder as you typed it?" } : { tool: "propose_form", input: { template_key: "dpoa", employee_name: "Remy Kalder", what_happened: ACCOUNT } }));
       t.loopModel!(asking);
       const reply = await thread.say("fix her last name, its kalder");
-      expect(code(asking), "a close spelling was seated without asking").toBe("name_correction_did_you_mean");
+      expect(code(asking as ReturnType<typeof fixer>), "a close spelling was seated without asking").toBe("name_correction_did_you_mean");
       expect(reply.formProposal ?? null, "a card was shown with the near miss").toBeNull();
+      const recorded = (t.rows?.("chat_traces") ?? []).map((row) => (row.slots as { agent_loop?: { name_question?: { offeredKeys: string[]; typedKey: string } } } | undefined)?.agent_loop?.name_question).filter(Boolean);
+      expect(recorded, "the Did-you-mean was not recorded like find_staff's").toHaveLength(1);
+      expect(recorded[0]!.offeredKeys).toHaveLength(1);
       const keep = fixer("Remy Kalder");
       t.loopModel!(keep);
       await thread.say("no");
       expect(code(keep), "keep-as-typed was refused after the manager's no").toBeUndefined();
       expect(thread.proposal?.employeeName).toBe("Remy Kalder");
+      expect(proposed(keep)?.facts?.name_corrected).toEqual({ from: "Remy Calder", to: "Remy Kalder" });
+    },
+  },
+  {
+    id: "nov16-s10-card-name-fix-close-spelling-yes",
+    title: "fix-name s10 (after #1051): \"fix her last name, its kalder\" on Remy Calder's uncreated card, then \"Remy Callow\" typed back in answer to \"Did you mean Remy Callow?\" (the recorded question): the card is Remy Callow's, and the result names both",
+    report: REPORT,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      const thread = await remysCard(t, [CALLOW]);
+      const asking = fixer("Remy Callw");
+      t.loopModel!(asking);
+      await thread.say("fix her last name, its callw");
+      expect(code(asking)).toBe("name_correction_did_you_mean");
+      const answer = fixer("Remy Callow");
+      t.loopModel!(answer);
+      await thread.say("Remy Callow");
+      expect(code(answer), "the confirmed name was refused").toBeUndefined();
+      expect(thread.proposal?.employeeName).toBe("Remy Callow");
+      expect(proposed(answer)?.facts?.name_corrected).toEqual({ from: "Remy Calder", to: "Remy Callow" });
     },
   },
   {
