@@ -16,17 +16,26 @@ import type { ToolContext } from "./tools";
  * chat's own question naming them is the manager choosing them.
  */
 
-/** A yes, the offered person's own first name, or a pronoun for them: the manager took the offer. */
-const TOOK = /^\s*(?:yes|yeah|yep|yup|ya|correct|right|sure|ok(?:ay)?|y)\b|^\s*(?:(?:yes|yeah|yep|yup)[\s,]+)?(?:that['’]?s\s+|it['’]?s\s+)?(?:her|him|them|she|he|that\s+one|the\s+one)\b/i;
-const REFUSED = /^\s*(?:no|nope|nah|not)\b/i;
+/*
+ * QA's re-review of #1008 (15 Nov 2026): acceptance is a WHITELIST. "yes", "yeah", "correct", "that's her/him", the
+ * offered first name alone, or "yes, <offered first name>" — and nothing that says otherwise ("not", "no", "someone
+ * else", "new", "but", another first name). "she's new", "Soren, not Marisol", "sure but it's soren", "right, it's
+ * someone else", "ok so who else is on the list?" are not acceptance.
+ */
+const YES = String.raw`(?:yes|yeah|correct)`;
+const THATS = String.raw`(?:that['’]?s|thats)\s+(?:her|him)`;
+const DENIES = /\b(?:not|no|someone\s+else|new|but)\b/i;
 
-/** The turn after one of this chat's questions about this person took them ("yes", "marisol", "yeah that's her", "her"). */
+/** The turn after one of this chat's questions about this person took them, by the whitelist above. */
 function tookOffer(turn: string, person: RosterEmployee): boolean {
-  if (REFUSED.test(turn)) return false;
-  if (TOOK.test(turn)) return true;
-  const firsts = [person.firstName, person.preferredFirstName ?? ""].map((name) => name.trim().toLowerCase()).filter(Boolean);
-  const words = turn.toLowerCase().split(/[^\p{L}'’-]+/u).filter(Boolean);
-  return firsts.some((first) => words.includes(first));
+  const said = turn.trim().toLowerCase().replace(/[.!\s]+$/, "");
+  if (DENIES.test(said)) return false;
+  const firsts = [person.firstName, person.preferredFirstName ?? ""]
+    .map((name) => name.trim().toLowerCase())
+    .filter(Boolean)
+    .map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const first = firsts.length > 0 ? `(?:${firsts.join("|")})` : "(?!)";
+  return new RegExp(String.raw`^(?:${YES}|${THATS}|${YES}[\s,]+${THATS}|${first}|${YES}[\s,]+${first})$`, "i").test(said);
 }
 
 /**
@@ -44,15 +53,59 @@ function accepted(context: ToolContext, person: RosterEmployee): boolean {
   });
 }
 
+/*
+ * QA's re-review of #1008, finding 1: the model can look up only the surname ("fairweather") and seat the roster person,
+ * so the manager's own words in THIS request are read too: "<word> <surname>", where <word> is not on the stop list
+ * below and does not fit the seated person's first or preferred name, is someone else. A stray question is cheap; a
+ * wrong person is not.
+ */
+const NOT_A_FIRST_NAME = new Set([
+  // articles and prepositions
+  "a", "an", "the", "for", "about", "with", "to", "on", "at", "of", "from", "by", "in", "up", "into", "onto", "over", "re",
+  // titles
+  "mr", "ms", "mrs", "mx", "dr", "miss",
+  // HR verbs
+  "coach", "warn", "document", "terminate", "fire", "discipline", "write", "verbal", "written", "ca",
+]);
+
+/** The manager's turns of this request: this message, and the turns before it that answered the chat's own questions. */
+function requestTurns(context: ToolContext): string[] {
+  const turns = [context.question];
+  const history = context.history.map((turn) => ({ role: turn.role, content: String(turn.content ?? "") }));
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const turn = history[index]!;
+    if (turn.role === "assistant") {
+      // A reply that asked something (a "?", "Did you mean …") is part of this request; any other reply ends it.
+      if (!/\?|Did you mean|isn['’]t on your staff list/i.test(turn.content)) break;
+      continue;
+    }
+    if (turn.role === "user") turns.unshift(turn.content);
+  }
+  return turns;
+}
+
+/** The "<word> <surname>" names the manager typed in this request, stop words left out. */
+function typedWithThisSurname(context: ToolContext, person: RosterEmployee): string[] {
+  const surname = person.lastName.trim();
+  if (!surname) return [];
+  const escaped = surname.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, String.raw`\s+`);
+  const before = new RegExp(String.raw`(?<![\p{L}'’-])(\p{L}[\p{L}'’-]*)\.?\s+${escaped}(?![\p{L}])`, "giu");
+  return requestTurns(context).flatMap((turn) =>
+    [...turn.matchAll(before)].map((match) => match[1]!).filter((word) => !NOT_A_FIRST_NAME.has(word.toLowerCase())).map((word) => `${word} ${surname}`),
+  );
+}
+
 /**
  * The name the model passed this turn (a find_staff query, the card's employee_name) that is someone else with this
  * person's last name, or null. Only names with a first name are checked: a surname alone has no first name to check.
- * The manager's own message is never read for it (QA's review of #1008: "coach fairweather", "Dr Fairweather" are a
- * verb and a title, not first names). Null with the flag off, or once the manager accepted this person.
+ * The manager's own words in this request are read too, with the stop list above ("coach fairweather", "Dr Fairweather"
+ * are a verb and a title, not first names). Null with the flag off, or once the manager accepted this person.
  */
 export function otherPersonTyped(context: ToolContext, person: RosterEmployee, names: readonly string[]): string | null {
   if (!firstNameMustFitEnabled()) return null;
-  const surname = names.filter((said) => typedWithSurname(said, person));
+  // The model's names, and the manager's own "<word> <surname>" in this request (QA's re-review, finding 1).
+  // Read in that order with the model's last: the name said back is the model's when it passed one.
+  const surname = [...typedWithThisSurname(context, person), ...names].filter((said) => typedWithSurname(said, person));
   const other = surname.filter((said) => sameSurnameOtherFirstName(said, person));
   // A name passed with this person's own first name ("marisol fairweather") is them.
   if (other.length === 0 || other.length < surname.length) return null;

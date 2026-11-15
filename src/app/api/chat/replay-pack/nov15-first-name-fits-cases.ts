@@ -152,4 +152,53 @@ export const NOV15_FIRST_NAME_FITS_CASES: ReplayCase[] = [
       expect(thread.proposal?.employeeName, reply.content).toBe("Marisol Fairweather");
     },
   },
+
+  {
+    id: "nov15-first-name-fits-surname-only-search",
+    title: "\"write up soren fairweather for being late\", the model searches only \"fairweather\" (agent loop): never Marisol Fairweather, and the chat asks",
+    report: "QA's re-review of #1008, 15 Nov 2026: a surname-only lookup seated Marisol with nothing to stop it",
+    status: { open: "the surname lookup finds Marisol Fairweather and her id seats her" },
+    fixFlags: [LOOP, FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-14T16:00:00Z"));
+      t.directory([...STAFF, MARISOL]);
+      t.as("salon_director", KEARNEY);
+      const model = surnameOnlyModel("fairweather");
+      t.loopModel!(model);
+      const thread = t.thread();
+      const reply = await thread.say("write up soren fairweather for being late");
+      expect(thread.proposal?.employeeName ?? null, reply.content).not.toBe("Marisol Fairweather");
+      expect(JSON.stringify(model.views.at(-1)?.results ?? []), reply.content).toContain("Soren Fairweather isn't on your staff list. Did you mean Marisol Fairweather, or someone else?");
+    },
+  },
+  ...["she's new", "Soren, not Marisol", "marisol is her sister, this is soren", "sure but it's soren", "right, it's someone else", "ok so who else is on the list?"].map(
+    (answer, index): ReplayCase => ({
+      id: `nov15-first-name-fits-not-acceptance-${index + 1}`,
+      title: `"write up soren fairweather for being late", asked "Did you mean Marisol Fairweather?", then "${answer}" (agent loop): still not Marisol`,
+      report: "QA's re-review of #1008, 15 Nov 2026: acceptance is a whitelist",
+      status: { open: "the surname lookup seats Marisol Fairweather on the first turn" },
+      fixFlags: [LOOP, FLAG],
+      async run(t) {
+        if (!t.loopOn?.()) return;
+        vi.setSystemTime(new Date("2026-11-14T16:00:00Z"));
+        t.directory([...STAFF, MARISOL]);
+        t.as("salon_director", KEARNEY);
+        // The stand-in asks the question the tools give it, and next turn proposes Marisol by id anyway.
+        const model = loopStandIn((view) => {
+          if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "fairweather" } };
+          const proposed = lastResult(view, "propose_form");
+          if (!proposed) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: MARISOL.id, what_happened: "She was late." } };
+          const refused = typeof proposed.error === "string" ? /ask: "([^"]+)"/.exec(proposed.error)?.[1] : undefined;
+          return { text: refused ?? "Here's the draft." };
+        });
+        t.loopModel!(model);
+        const thread = t.thread();
+        const first = await thread.say("write up soren fairweather for being late");
+        expect(first.content).toContain("Did you mean Marisol Fairweather");
+        const reply = await thread.say(answer);
+        expect(thread.proposal?.employeeName ?? null, reply.content).not.toBe("Marisol Fairweather");
+      },
+    }),
+  ),
 ];

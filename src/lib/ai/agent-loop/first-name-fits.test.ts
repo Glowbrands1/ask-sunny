@@ -104,7 +104,8 @@ describe("FIRST_NAME_MUST_FIT_ENABLED on: the loop never seats Marisol for Soren
    */
   const asked = { role: "assistant" as const, content: otherPersonQuestion("soren fairweather", MARISOL) };
   const first = { role: "user" as const, content: "write up soren fairweather" };
-  it.each([["yes"], ["marisol"], ["yes, marisol"], ["yes marisol"], ["yeah that's her"], ["her"]])(
+  // QA's re-review of #1008 (15 Nov 2026): acceptance is a whitelist; a bare "her" is no longer on it (see below).
+  it.each([["yes"], ["yeah"], ["correct"], ["that's her"], ["marisol"], ["yes, marisol"], ["yes marisol"], ["yeah that's her"], ["Marisol."]])(
     "%s, after the question → her",
     (answer) => {
       expect(otherPersonTyped(context(answer, [first, asked]), MARISOL, ["soren fairweather"])).toBeNull();
@@ -129,6 +130,53 @@ describe("FIRST_NAME_MUST_FIT_ENABLED on: the loop never seats Marisol for Soren
 
   it("the question, in QA's words", () => {
     expect(otherPersonQuestion("soren Fairweather", MARISOL)).toBe("Soren Fairweather isn't on your staff list. Did you mean Marisol Fairweather, or someone else?");
+  });
+});
+
+describe("QA's re-review of #1008 (15 Nov 2026)", () => {
+  beforeEach(() => vi.stubEnv("FIRST_NAME_MUST_FIT_ENABLED", "true"));
+  afterEach(() => vi.unstubAllEnvs());
+
+  const asked = { role: "assistant" as const, content: otherPersonQuestion("soren fairweather", MARISOL) };
+  const first = { role: "user" as const, content: "write up soren fairweather" };
+
+  // (1) The model looked up only the surname: the manager's own words in this request still name someone else.
+  it("\"write up soren fairweather for being late\", the model searched only \"fairweather\" → Soren Fairweather, asked", () => {
+    expect(otherPersonTyped(context("write up soren fairweather for being late"), MARISOL, ["fairweather"])?.toLowerCase()).toBe("soren fairweather");
+  });
+
+  it("an earlier turn of the same request is read; a finished earlier request is not", () => {
+    const sameRequest = [{ role: "user" as const, content: "write up soren fairweather" }, { role: "assistant" as const, content: "What happened?" }];
+    expect(otherPersonTyped(context("she was late", sameRequest), MARISOL, ["fairweather"])?.toLowerCase()).toBe("soren fairweather");
+    const earlier = [{ role: "user" as const, content: "write up soren fairweather" }, { role: "assistant" as const, content: "Done. The draft is open." }];
+    expect(otherPersonTyped(context("now a coaching form for fairweather", earlier), MARISOL, ["fairweather"])).toBeNull();
+  });
+
+  it.each([
+    ["coach fairweather on punctuality"],
+    ["write up Dr. Fairweather"],
+    ["a CA for Ms Fairweather"],
+    ["write up marisol fairweather"],
+    ["write up mari fairweather"],
+  ])("%s, the model searched \"fairweather\" → not someone else", (said) => {
+    expect(otherPersonTyped(context(said), MARISOL, ["fairweather"])).toBeNull();
+  });
+
+  it("any other word before the surname asks (a stray question is cheap)", () => {
+    expect(otherPersonTyped(context("write up kestrel fairweather"), MARISOL, ["fairweather"])?.toLowerCase()).toBe("kestrel fairweather");
+  });
+
+  // (2) Acceptance is a whitelist.
+  it.each([
+    ["she's new"],
+    ["Soren, not Marisol"],
+    ["marisol is her sister, this is soren"],
+    ["sure but it's soren"],
+    ["right, it's someone else"],
+    ["ok so who else is on the list?"],
+    ["her"],
+  ])("%s, after the question → not her", (answer) => {
+    expect(otherPersonTyped(context(answer, [first, asked]), MARISOL, ["soren fairweather"])?.toLowerCase()).toBe("soren fairweather");
   });
 });
 
