@@ -543,7 +543,43 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
   },
   {
     id: "nov15-agent-loop-g7a-exit-termination-not-a-resignation",
-    title: "G7a/G7b (the tester's exit sweep): \"terminate <name>, 3 no call no shows on 11/10, 11/12 and 11/13\" is an involuntary separation dated today (not the first no-show), with no Resignation Date, no policy and no CA labels",
+    /*
+     * Changed on purpose (QA's ruling, batch G2 item 2, 15 Nov 2026): "terminate <name>, 3 no call no shows on …" tells
+     * an offense with the termination, so it is the Corrective Action Form with Termination, dated the offense's day,
+     * plus one line offering the exit form; it was an exit card. The exit's own checks (no Resignation Date, no
+     * policy, no CA labels) moved to nov15-agent-loop-g7a-exit-paperwork-asked, where the manager asks for the exit.
+     */
+    title: "G7a (the tester's exit sweep; QA's ruling in batch G2): \"terminate <name>, 3 no call no shows on 11/10, 11/12 and 11/13\" is the Corrective Action Form with Termination plus one line offering the exit form, never an exit card",
+    report: `${REPORT}; the tester's exit sweep, and QA's live run part 2 on batch G (15 Nov 2026), item 2`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-15T18:00:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      const model = loopStandIn((view): LoopDecision => {
+        const results = view.results.filter((result) => result.tool === "propose_form").map((result) => result.output as { exit_not_asked?: boolean; facts?: { termination_stated?: { approval: string } } });
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
+        // A model that reaches for the exit form first: the tool refuses it, as the manager asked for no exit.
+        if (results.length === 0) return { tool: "propose_form", input: { template_key: "stc-exit", employee_id: "e-2", incident_date: "2026-11-10", exit_type: "termination" } };
+        if (results.length === 1 && results[0]!.exit_not_asked) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: "3 no call no shows on 11/10, 11/12 and 11/13.", incident_date: "2026-11-13", warning_level: "termination" } };
+        const stated = results.at(-1)!.facts?.termination_stated;
+        return { text: `Here's the Corrective Action Form for **Remy Calder**.\n\n${stated ? `**Type of Warning:** Termination, as you said — I'll tick it on the form. Tell me if that should change.\n${stated.approval}` : ""}\n\nWant the Employee Exit Form for Remy Calder too?` };
+      });
+      t.loopModel!(model);
+      const thread = t.thread();
+      const reply = await thread.say("terminate remy calder, 3 no call no shows on 11/10, 11/12 and 11/13");
+      expect(thread.proposal?.templateKey, `not the Corrective Action Form:\n${reply.content}`).toBe("dpoa");
+      expect(reply.content).toMatch(/Termination, as you said/);
+      expect(reply.content).toContain("Want the Employee Exit Form for Remy Calder too?");
+      const id = await thread.create();
+      expect(t.checked(id).warning_type, "Create did not tick Termination").toEqual(["termination"]);
+    },
+  },
+  {
+    id: "nov15-agent-loop-g7a-exit-paperwork-asked",
+    title: "G7a/G7b, exit half (QA's ruling in batch G2): \"terminate <name>, effective 11/20, exit paperwork please\" opens the Employee Exit Form as an involuntary separation dated 11/20, with no Resignation Date, no policy and no CA labels",
     report: `${REPORT}; the tester's exit sweep: read back as "**Resignation Date:** November 10, 2026", dated 11/10, with an Attendance policy line`,
     status: "fixed",
     fixFlags: [FLAG],
@@ -553,28 +589,25 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       t.directory([...STAFF]);
       t.as("salon_director", KEARNEY);
       const model = loopStandIn((view): LoopDecision => {
-        const result = lastResult(view, "propose_form") as { card?: { policy?: string | null }; facts?: { exit_termination?: { effective: string; dated_today?: boolean }; exit_dates?: string[] } } | null;
+        const result = lastResult(view, "propose_form") as { card?: { policy?: string | null }; facts?: { exit_termination?: { effective: string; dated_today?: boolean } } } | null;
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
         // A model that reaches for the CA's Attendance policy: an exit cites none.
-        // QA's design (15 Nov 2026): the model decides the exit is a termination; the tool locks it on the word.
-        if (!result) return { tool: "propose_form", input: { template_key: "stc-exit", employee_id: "e-2", policy: "Attendance", incident_date: "2026-11-10", exit_type: "termination" } };
+        if (!result) return { tool: "propose_form", input: { template_key: "stc-exit", employee_id: "e-2", policy: "Attendance", effective_date: "11/20", exit_type: "termination" } };
         const exit = result.facts?.exit_termination;
         return {
           text: [
             "Here's the Employee Exit Form for **Remy Calder**.",
             exit ? "Filed as an **Immediate involuntary separation** (a termination), as you said." : "Filed as a resignation.",
             exit?.dated_today ? "Dated today; say if the termination is effective another day." : `Effective ${exit?.effective ?? ""}, as you said.`,
-            ...(result.facts?.exit_dates ?? []),
-            "**Reason for Resignation:** 3 no call no shows (11/10, 11/12 and 11/13).",
             ...(result.card?.policy ? [`**Policy:** ${result.card.policy}`] : []),
           ].join("\n\n"),
         };
       });
       t.loopModel!(model);
       const thread = t.thread();
-      const reply = await thread.say("terminate remy calder, 3 no call no shows on 11/10, 11/12 and 11/13");
-      expect(thread.proposal?.templateKey).toBe("stc-exit");
-      expect(thread.proposal?.formDate, `the exit is dated the first no-show:\n${reply.content}`).toBe("2026-11-15");
+      const reply = await thread.say("terminate remy calder, effective 11/20, exit paperwork please");
+      expect(thread.proposal?.templateKey, `the exit form did not open:\n${reply.content}`).toBe("stc-exit");
+      expect(thread.proposal?.formDate, `the exit is not dated the day the manager typed:\n${reply.content}`).toBe("2026-11-20");
       expect((thread.proposal as { policyLine?: string | null } | undefined)?.policyLine ?? null, "an exit cites a policy").toBeNull();
       expect(reply.content, "a termination read back as a resignation").not.toMatch(/Resignation Date/);
       expect(reply.content, "an exit uses CA labels").not.toMatch(/Observation of Offense|\*\*Policy:\*\*|Type of Warning/);

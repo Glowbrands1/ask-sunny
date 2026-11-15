@@ -162,3 +162,9 @@ describe("FORM_EDIT_TOUCHES_UPDATED_AT_ENABLED", () => {
     expect(instanceTouches()).toEqual([]);
   });
 });
+
+/*
+ * Batch G2 (QA's live run part 2, C20): the dictated Action Plan's touch moved into saveInstanceValues itself (every
+ * manager save), so it is tested over the real instances.ts in save-touches-updated-at.test.ts, not here where
+ * instances.ts is a fake.
+ */

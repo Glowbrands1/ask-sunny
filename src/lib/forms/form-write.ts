@@ -849,10 +849,12 @@ export async function dictatedPlanWrite(instanceId: string, plan: string, actorI
 /**
  * Batch J2 (G8 generalized): any one field the manager dictated in chat, word for word, saved as the manager's own
  * edit (as the form page saves their typing), via chat. The caller (edit_form) checks the words are the manager's
- * current message (`agent-loop/dictated.ts`). Drafts only (the manager's save refuses a finalized form).
+ * current message (`agent-loop/dictated.ts`). Drafts only (the manager's save refuses a finalized form). A field the
+ * save rejects is not saved (null).
  */
 export async function dictatedFieldWrite(instanceId: string, field: string, text: string, actorId: string): Promise<{ saved: string | null }> {
   const result = await saveInstanceValues(instanceId, { values: { [field]: text }, checked: {} }, actorId, { via: "chat" });
+  /* Batch G2 (QA's live run C20): a dictated field moves updated_at through saveInstanceValues itself (FORM_EDIT_TOUCHES_UPDATED_AT). */
   return { saved: result.rejected.some((row) => row.key === field) ? null : (result.values[field] ?? text) };
 }
 

@@ -783,6 +783,16 @@ export async function saveInstanceValues(
 
   // `writeValues` moves `form_instances.form_date` with the Date line.
   await writeValues(instanceId, { values: changedValues, checked: changedChecked }, "manager");
+  /*
+   * FORM_EDIT_TOUCHES_UPDATED_AT_ENABLED (batch G2; QA's live run part 2: the card's "Save changes" left updated_at
+   * where it was). Edited with Pau's standing approval, 15 Nov 2026. A manager's save that writes any value moves the
+   * form's updated_at, as F8's chat edits do (the touch trigger fires only on the instance row). The values are already
+   * saved, so a failed touch is logged as a warning (the instance id only), never a failed save. Off: as before.
+   */
+  if ((Object.keys(changedValues).length > 0 || Object.keys(changedChecked).length > 0) && (await import("@/lib/config/chat-quality-flags")).formEditTouchesUpdatedAtEnabled()) {
+    const { error } = await getSupabaseAdmin().from("form_instances").update({ updated_at: new Date().toISOString() }).eq("id", instanceId);
+    if (error) console.warn(`instances: the save to form ${instanceId} was written, but its updated_at could not be moved.`);
+  }
   await recordEvent(instanceId, "edited", actor, {
     fields: Object.keys(changedValues).length,
     groups: Object.keys(changedChecked).length,

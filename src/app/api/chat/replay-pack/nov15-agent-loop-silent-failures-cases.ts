@@ -349,6 +349,105 @@ export const NOV15_AGENT_LOOP_SILENT_FAILURE_CASES: ReplayCase[] = [
     },
   },
   {
+    id: "nov15-g2-undo-termination-its-a-written",
+    title: "G2 item 1 (QA's live run part 2): after \"make it a termination\", \"undo that, it's a written\" saves Written in place of Termination (one level only), and the reply says the level the saved form holds",
+    report: `${REPORT}; QA's live run part 2 on batch G (15 Nov 2026), item 1: "The form still shows Written Warning — nothing was changed" while the draft held Termination`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      const { thread, id } = await wrensDraft(t);
+      const model = loopStandIn((view): LoopDecision => {
+        const said = latest(view);
+        const edit = lastResult(view, "edit_form") as { saved_level?: string | null; error?: string } | null;
+        if (!edit) return { tool: "edit_form", input: { instance_id: id, values: { warning_type: /written/.test(said) ? "written" : "termination" } } };
+        return { text: edit.saved_level ? `The form now shows **${edit.saved_level}**.` : `Nothing was changed: ${edit.error ?? "refused"}` };
+      });
+      t.loopModel!(model);
+      await thread.say("make it a termination");
+      expect(t.checked(id).warning_type, "Termination was not ticked first").toEqual(["termination"]);
+      const reply = await thread.say("undo that, it's a written");
+      expect(t.checked(id).warning_type, `the level was not replaced by Written:\n${reply.content}`).toEqual(["written"]);
+      expect(reply.content, "the reply does not say the saved level").toMatch(/The form now shows \*\*Written\*\*/);
+    },
+  },
+  ...([
+    ["still-shows", "The form still shows Written Warning — nothing was changed."],
+    ["nothing-to-undo", "There's nothing to undo — the draft hasn't changed."],
+  ] as const).map(([tag, answer]): ReplayCase => ({
+    id: `nov15-g2-item7-undo-answered-without-tools-${tag}`,
+    title: `G2 item 7 (QA's live run part 2, the undo turn's trace: steps []): after "make it a termination", a model that answers "undo that, it's a written" with no tool ("${answer}") is handed back once with the saved level, saves Written with edit_form, and says the saved level`,
+    report: `${REPORT}; QA's live run part 2 on batch G (15 Nov 2026), item 7: the undo turn stopped "reply" with steps [] and answered from history`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      const { thread, id } = await wrensDraft(t);
+      const model = loopStandIn((view): LoopDecision => {
+        const said = latest(view);
+        const edit = lastResult(view, "edit_form") as { saved_level?: string | null } | null;
+        // The live slip: the undo turn answers from history, calling no tool. Only the app's note makes it look.
+        if (/undo that/.test(said)) return { text: answer };
+        if (!edit) return { tool: "edit_form", input: { instance_id: id, values: { warning_type: /\[app check\]/.test(said) || /written/.test(said) ? "written" : "termination" } } };
+        return { text: `The form now shows **${edit.saved_level}**.` };
+      });
+      t.loopModel!(model);
+      await thread.say("make it a termination");
+      expect(t.checked(id).warning_type, "Termination was not ticked first").toEqual(["termination"]);
+      const reply = await thread.say("undo that, it's a written");
+      expect(model.views.some((view) => /\[app check\] Your reply/.test(latest(view)) && /"saved_level":"Termination"/.test(latest(view))), "the tool-less answer was not handed back with the saved level").toBe(true);
+      expect(t.checked(id).warning_type, `the level was not replaced by Written:\n${reply.content}`).toEqual(["written"]);
+      expect(reply.content).toMatch(/The form now shows \*\*Written\*\*/);
+    },
+  })),
+  {
+    id: "nov15-g2-item7-level-question-answered-right-is-not-handed-back",
+    title: "G2 item 7, the control: \"what level is it?\" answered without tools with the level the saved form holds, and no change asked, is not handed back",
+    report: `${REPORT}; QA's live run part 2 on batch G (15 Nov 2026), item 7`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      const { thread, id } = await wrensDraft(t);
+      const model = loopStandIn((view): LoopDecision => {
+        const said = latest(view);
+        const edit = lastResult(view, "edit_form");
+        if (/what level/.test(said)) return { text: "It's a Termination on the draft." };
+        if (!edit) return { tool: "edit_form", input: { instance_id: id, values: { warning_type: "termination" } } };
+        return { text: "The form now shows **Termination**." };
+      });
+      t.loopModel!(model);
+      await thread.say("make it a termination");
+      const reply = await thread.say("what level is it?");
+      expect(model.views.some((view) => /\[app check\]/.test(latest(view))), "a right answer was handed back").toBe(false);
+      expect(reply.content).toBe("It's a Termination on the draft.");
+      expect(t.checked(id).warning_type).toEqual(["termination"]);
+    },
+  },
+  {
+    id: "nov15-g2-future-date-keeps-the-forms-date",
+    title: "G2 item 6 (QA's live run part 2, C22): \"change the date to 12/20/2026\" on a draft that holds a date: \"12/20/2026 is after today, so I left the form's date as <its date>. Which day did you mean?\", never \"the card has no date yet\"",
+    report: `${REPORT}; QA's live run part 2 on batch G (15 Nov 2026), C22`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      const { thread, id } = await wrensDraft(t);
+      const before = t.values(id).form_date ?? "";
+      const kept = before ? `${before.slice(5, 7)}/${before.slice(8, 10)}` : "";
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        const edit = lastResult(view, "edit_form") as { date_after_today?: { asked_date?: string; form_date_kept?: string | null } } | null;
+        if (!edit) return { tool: "edit_form", input: { instance_id: id, values: { form_date: "2026-12-20" } } };
+        const fact = edit.date_after_today;
+        return { text: fact?.form_date_kept ? `${fact.asked_date} is after today, so I left the form's date as ${fact.form_date_kept}. Which day did you mean?` : "12/20/2026 is after today, so the card has no date yet. Which day was it?" };
+      }));
+      const reply = await thread.say("change the date to 12/20/2026");
+      expect(t.values(id).form_date ?? "", "a date after today was written").toBe(before);
+      expect(before, "the draft holds no date to keep").not.toBe("");
+      expect(reply.content).toBe(`12/20/2026 is after today, so I left the form's date as ${kept}. Which day did you mean?`);
+    },
+  },
+  {
     id: "nov15-silent-g19-demotion-is-not-a-level",
     title: "G19: on a Corrective Action draft, a warning level of \"demotion\" is refused and nothing is ticked (verbal, written or termination only)",
     report: `${REPORT}; QA: anything that was not verbal or written was ticked as termination`,
