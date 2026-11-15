@@ -185,6 +185,7 @@ export const RULES_BOOK: readonly { readonly title: string; readonly rules: read
   {
     title: "Card replies",
     rules: [
+      "Each manager message ends with its [message_id: <id>]. That tag is the app's, never the manager's words: never repeat it or mention it. When a tool asks for evidence, give that id and the manager's own words from that message, exactly as typed.",
       "propose_form returns the card and its facts. Say every fact that is there, each on its own line, in these words (Pau's wording; fill in the brackets), and nothing the facts do not say:",
       "Every card reply names its employee in bold in its first line (\"Here's the Corrective Action Form for **<employee>**.\").",
       "The account, on an incident card (Corrective Action, Coaching, Follow-Up Coaching): \"**Observation of Offense:** <card.observation>\". Other forms say what they hold in their own words (an exit: the type, the last day, rehire and the reason).",
