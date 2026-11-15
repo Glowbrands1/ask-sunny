@@ -83,6 +83,11 @@ const NOT_CONDUCT = /\b(?:not|instead\s+of)\s+(?:the\s+)?standards?\s+of\s+condu
 const NOTHING_CHANGED_LINE =
   /^\s*(?:I didn't change anything on the form\.|I haven'?t changed the \*\*[^*]+\*\*[^.\n]*?—\s*everything on it is as it was\.)[^\n]*(?:\n\s*\n\s*Tell me which part to change[^\n]*)?/;
 
+/** "the CA for the Must see behaviors and not the standard of conduct": a policy ask about the form already made. */
+export function asksMustSeeNotConduct(question: string): boolean {
+  return ASKS_MSB.test(question) && NOT_CONDUCT.test(question);
+}
+
 /** Why the form still cites Standards of Conduct, when the manager asked for Must See Behaviors instead; else null. */
 export function policyKeptNote(input: { question: string; policyViolated: string; policyLanguage: string }): string | null {
   if (!ASKS_MSB.test(input.question) || !NOT_CONDUCT.test(input.question)) return null;

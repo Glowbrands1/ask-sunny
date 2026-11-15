@@ -261,6 +261,11 @@ function alreadyListed(
   return `The staff at **${location.name}** is listed above. To go on, name one person from that list and I'll start ${one} for them; once it's created, say **do ${next} for <next name>** and I'll copy it onto the next person's card.`;
 }
 
+/** STAFF_PICKER_NO_REPEAT: this salon's staff was already listed in this chat (the agent loop's list_staff, batch H9). */
+export function staffListedBefore(history: readonly Pick<ChatMessage, "role" | "content">[], salonName: string): boolean {
+  return staffPickerNoRepeatEnabled() && history.some((turn) => turn.role === "assistant" && typeof turn.content === "string" && LISTED_AT.exec(turn.content)?.[1] === salonName);
+}
+
 export function staffPickerAnswer(content: string): AskResponse {
   return { content, citations: [], coverage: "not_applicable", recommendedVideoIds: [] };
 }
