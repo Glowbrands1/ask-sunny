@@ -19,6 +19,7 @@ import {
 } from "./team-subject";
 import { proposeLocation } from "./location-scope";
 import { isExitTerms, namesSomebody, notInStreetAddress } from "./answer-not-a-name";
+import { roleNamedPeople } from "./role-named-person";
 import { nameBeforeAccountVerb } from "./not-a-name";
 import { isMultiWordSalonName } from "./salon-mention";
 import { turnsFromThisPersonsRequest } from "./this-persons-turns";
@@ -1573,9 +1574,14 @@ export function employeeState(context: ManagerContext): EmployeeState {
         else if (pending.length === 0) pending = null;
       }
     }
-    const names = peopleNamed(
-      reading.names.filter((name) => !excluded.some((not) => samePerson(not, name)) && !isExitTerms(name) && notInStreetAddress(message.content)(name)),
-    );
+    const read = reading.names.filter((name) => !excluded.some((not) => samePerson(not, name)) && !isExitTerms(name) && notInStreetAddress(message.content)(name));
+    /*
+     * ACCOUNT_PERSON_NOT_SUBJECT_ENABLED (QA's J11; Pau's standing approval, 15 Nov 2026): a person the message names in
+     * a role ("with new hire <C>") is part of the account, not the subject, while someone else is (`role-named-person.ts`).
+     */
+    const inRole = roleNamedPeople(message.content, read);
+    const subjects = read.filter((name) => !inRole.includes(name));
+    const names = peopleNamed(inRole.length > 0 && (subjects.length > 0 || current !== null) ? subjects : read);
     if (names.length === 0) continue;
 
     if (names.length === 1) {
