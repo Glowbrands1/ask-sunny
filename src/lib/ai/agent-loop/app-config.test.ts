@@ -12,6 +12,11 @@ import { rulesBookText } from "./rules-book";
  * PR 5 (app config): the loop's words belong to one file. Sunny's own text must stay byte-for-byte what it was
  * before the config existed (the fixtures were written from the code at main 8f7039c), and a second app's config
  * must change every word that names the app, its place word, its staff system and its form keys.
+ *
+ * The fixtures were updated on purpose on 15 Nov 2026 for one line: batch K (#1021, merged alongside this config)
+ * added the rule 'Say a form or card is "ready" only when propose_form's card.status is "ready" …' to the prompt and
+ * the rules book. That line names no app, place, staff system or form key, so it reads the same under every config;
+ * nothing else in either text changed.
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");

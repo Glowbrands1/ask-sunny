@@ -1478,7 +1478,7 @@ export async function proposeForm(
    * deduct, the warning level and the termination are CA-only fields (Corrective Action): they are never kept for
    * another template, whatever the conversation said for the CA (code may refuse; the fact says what was dropped).
    */
-  const caOnlyFields = template.key === "dpoa";
+  const caOnlyFields = template.key === appConfig().formKeys.corrective;
   const askedPayroll = (input.payroll_deduct === "yes" || input.payroll_deduct === "no") ? input.payroll_deduct : null;
   const payroll = caOnlyFields && askedPayroll && payrollStated(context) === askedPayroll ? askedPayroll : null;
   const typedAmount = typeof input.payroll_amount === "string" && /\d/.test(input.payroll_amount) ? input.payroll_amount.replace(/[^\d.]/g, "") : null;
