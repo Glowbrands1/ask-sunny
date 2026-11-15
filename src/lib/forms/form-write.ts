@@ -844,6 +844,7 @@ export async function writeRevisionEdits(
  */
 export async function dictatedPlanWrite(instanceId: string, plan: string, actorId: string): Promise<{ saved: string | null }> {
   const result = await saveInstanceValues(instanceId, { values: { action_plan: plan }, checked: {} }, actorId, { via: "chat" });
+  /* Batch G2 (QA's live run C20): the dictated plan moves updated_at through saveInstanceValues itself (FORM_EDIT_TOUCHES_UPDATED_AT). */
   return { saved: result.rejected.some((row) => row.key === "action_plan") ? null : (result.values.action_plan ?? plan) };
 }
 

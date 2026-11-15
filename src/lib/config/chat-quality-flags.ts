@@ -4925,6 +4925,16 @@ export function terminationRequestIsCaEnabled(): boolean {
 }
 
 /**
+ * TERMINATION_TICK_NOTE_ENABLED (QA, 15 Nov 2026; default off; same flag in both apps): a Corrective Action card whose
+ * manager mentioned termination, with no level ticked, adds "If this form is a termination, tick Termination on the form
+ * yourself; it needs DM/HR approval before it's finalized." beside the verbal/written line, never replacing it
+ * (`ai/termination-tick-note.ts`). Off, as built.
+ */
+export function terminationTickNoteEnabled(): boolean {
+  return envFlag("TERMINATION_TICK_NOTE_ENABLED");
+}
+
+/**
  * FORM_EDIT_TOUCHES_UPDATED_AT_ENABLED (coding 5, 15 Nov 2026; default off; QA's batch F8, from the first live test with
  * a form open). Three chat edits to a draft's Observation, Action Plan and Type of Warning (its events grew 4 → 7) left
  * form_instances.updated_at unchanged: the touch trigger fires on the instance row, and a value edit writes only

@@ -1,6 +1,7 @@
 import { warningLevelAndClauseEnabled } from "@/lib/config/chat-quality-flags";
 import { statedWarningLevel, type StatedWarningLevel } from "@/lib/forms/warning-level";
 
+import { withTerminationTickNote } from "./termination-tick-note";
 import type { AskRequest, AskResponse } from "./types";
 
 /**
@@ -34,6 +35,11 @@ export function levelInOwnClause(turn: string): StatedWarningLevel | null {
 }
 
 export function withWarningLevelFromClause(response: AskResponse, request: AskRequest): AskResponse {
+  // TERMINATION_TICK_NOTE_ENABLED: a termination the manager mentioned and the app does not tick is theirs to tick.
+  return withTerminationTickNote(levelFromClause(response, request), request);
+}
+
+function levelFromClause(response: AskResponse, request: AskRequest): AskResponse {
   if (!warningLevelAndClauseEnabled()) return response;
   const proposal = response.formProposal;
   if (!proposal || proposal.warningLevel || !response.content.includes(ASKED)) return response;

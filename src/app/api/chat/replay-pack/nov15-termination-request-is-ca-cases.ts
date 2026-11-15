@@ -219,4 +219,30 @@ export const NOV15_TERMINATION_REQUEST_IS_CA_CASES: ReplayCase[] = [
       expect(reply.content, "a title was read as the name").not.toMatch(/\*\*(?:Ms|Mr|Mrs|Mx|Dr)\*\*/);
     },
   },
+  ...(
+    [
+      // QA's pairing (15 Nov 2026), both flags on: the stated reader ticks, or the card carries the note; never both, never neither.
+      ["create a termination for Marnie Holloway, she no call no showed on 11/12", "tick"],
+      ["write up a CA for Marnie Holloway, she no call no showed so we're terminating her", "tick"],
+      ["my DM approved her termination, write up a CA for Marnie Holloway", "note"],
+    ] as const
+  ).map(
+    ([said, path], index): ReplayCase => ({
+      id: `nov15-termination-pairing-note-or-tick-${index + 1}`,
+      title: `"${said}": exactly one of the tick note and the ticked Termination (${path} path), never both`,
+      report: "QA, 15 Nov 2026: the tick note (#1010) and the termination request (#1014) are paired; exactly one shows on a card",
+      status: "fixed",
+      fixFlags: [FLAG, TICKS, "TERMINATION_TICK_NOTE_ENABLED"],
+      async run(t) {
+        start(t);
+        const thread = t.thread();
+        const reply = await thread.say(said, { employeeName: "Marnie Holloway" });
+        expect(thread.proposal?.templateKey, reply.content).toBe("dpoa");
+        const note = reply.content.includes("If this form is a termination, tick Termination on the form yourself");
+        const tick = /\*\*Type of Warning:\*\* Termination, as you said/.test(reply.content);
+        expect(note !== tick, `note=${note} tick=${tick}:\n${reply.content}`).toBe(true);
+        expect(path === "tick" ? tick : note, `${path} path expected:\n${reply.content}`).toBe(true);
+      },
+    }),
+  ),
 ];
