@@ -466,7 +466,9 @@ export const NOV14_LIVE_R5_CASES: ReplayCase[] = [
       const editor = loopStandIn((view): LoopDecision => {
         const edit = lastResult(view, "edit_form");
         if (!edit) return { tool: "edit_form", input: { instance_id: id, values: { form_date: "2026-12-20" } } };
-        return { text: edit.error ? "That date is after today, so I didn't change it. Which day was it?" : "Dated 12/20/2026 (after today), as you asked." };
+        const asked = (edit as { date_after_today_as_asked?: string } | null)?.date_after_today_as_asked;
+        if (edit.error) return { text: "That date is after today, so I didn't change it. Which day was it?" };
+        return { text: asked ? `Dated ${asked.slice(5, 7).replace(/^0/, "")}/${asked.slice(8, 10).replace(/^0/, "")}/${asked.slice(0, 4)}, which is after today; say if you meant another day.` : "Done." };
       });
       t.loopModel!(editor);
       // A date the manager never typed (the model's own reading): refused, nothing written.
@@ -476,6 +478,9 @@ export const NOV14_LIVE_R5_CASES: ReplayCase[] = [
       // Changed on purpose (batch G, G11: a document date the manager sets may be after today): the manager's own date is written and said.
       const asked = await thread.say("change the date to 12/20/2026");
       expect(t.values(id).form_date ?? "", `the manager's own document date was not written:\n${asked.content}`).toMatch(/2026-12-20|12\/20\/2026/);
+      // QA's ruling (15 Nov 2026): a message that is only "change the date to <date>" sets the form's date; after today, the reply says so in one line.
+      if (offline) expect(toolResults(editor.views, "edit_form").at(-1) ?? "", "edit_form did not give date_after_today_as_asked").toMatch(/"date_after_today_as_asked":"2026-12-20"/);
+      expect(asked.content, "the reply does not say the date is after today").toContain("Dated 12/20/2026, which is after today; say if you meant another day.");
     },
   },
   {
