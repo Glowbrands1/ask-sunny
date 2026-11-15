@@ -158,6 +158,40 @@ export function asksAboutPastForms(context: Pick<ToolContext, "question" | "hist
   return earlier ? asks(earlier.content) : false;
 }
 
+const COUNT_WORDS: Readonly<Record<string, number>> = { two: 2, three: 3, four: 4, five: 5, six: 6 };
+/** "two prior written warnings", "3 previous write-ups": the count of earlier steps the manager stated, or null. */
+function statedStepCount(words: string): number | null {
+  const said = /\b(two|three|four|five|six|[2-6])\s+(?:prior|previous|earlier|past|other)?\s*(?:verbal|written|final)?\s*(?:warnings?|write[- ]?ups?|c\/?as?|corrective\s+actions?|coachings?)\b/i.exec(words);
+  if (!said) return null;
+  const word = said[1]!.toLowerCase();
+  return COUNT_WORDS[word] ?? Number(word);
+}
+
+/**
+ * Batch G2 (item 4): why the model's prior actions cannot be kept, or null. A date in them must be one the manager typed
+ * and never this incident's date; a stated count must be kept ("Written warning (2), dates not given").
+ */
+export function priorActionsProblem(priorActions: string, requestWords: string, incidentDate: string | null): { reason: string; count_said?: number } | null {
+  const typed = readDates(requestWords);
+  for (const date of readDates(priorActions)) {
+    const iso = date.year !== null ? `${date.year}-${String(date.month).padStart(2, "0")}-${String(date.day).padStart(2, "0")}` : null;
+    if (incidentDate && (iso === incidentDate || (iso === null && Number(incidentDate.slice(5, 7)) === date.month && Number(incidentDate.slice(8, 10)) === date.day))) {
+      return { reason: `${date.text} is this incident's date, not an earlier step's` };
+    }
+    if (!typed.some((said) => sameDate(said, date))) return { reason: `${date.text} is not a date the manager gave for an earlier step` };
+  }
+  const count = statedStepCount(requestWords);
+  if (count !== null && !new RegExp(`\\(${count}\\)|\\b${count}\\b|\\b${Object.keys(COUNT_WORDS).find((key) => COUNT_WORDS[key] === count)}\\b`, "i").test(priorActions)) {
+    return { reason: `the manager said ${count} earlier steps`, count_said: count };
+  }
+  return null;
+}
+
+/** Batch G2 (item 2): the manager asked for the exit form ("exit form", "separation paperwork", "termination paperwork"). */
+const EXIT_ASKED = /\bexit\b|\bseparation\b|\btermination\s+(?:paperwork|papers|form)\b|\bresignation\s+form\b/i;
+/** Batch G2 (item 2): a resignation told ("gave notice", "quit", "resigned", "two weeks", "last day"): an exit with no offense. */
+const RESIGNATION_TOLD = /\b(?:resign\w*|quit|quitting|two\s+weeks|notice|last\s+day|leaving|moving|school)\b/i;
+
 /** Batch G (QA's review, 15 Nov 2026): a warning level is exactly verbal, written or termination; anything else is refused. */
 export function exactWarningLevel(value: string): "verbal" | "written" | "termination" | null {
   const level = value.trim().toLowerCase();
@@ -1272,6 +1306,14 @@ export async function proposeForm(
     .map((message) => message.content)
     .join("\n");
   /*
+   * Batch G2 (item 2, QA's ruling on Pau's P15 "termination CA"; the live run gave an Exit form dated today, the incident
+   * date lost): the manager did not ask for the exit form and told no resignation, so this exit card is refused; an
+   * offense told with a termination is the Corrective Action Form (the rules book). Nothing is shown.
+   */
+  if (template.key === "stc-exit" && !EXIT_ASKED.test(requestWords) && !RESIGNATION_TOLD.test(requestWords)) {
+    return { exit_not_asked: true, note: "The manager did not ask for the Employee Exit Form and told no resignation. An offense told with a termination is the Corrective Action Form with warning_level termination, citing the offense and its date; then offer the exit form in one line (the rules book's Which form lines)." };
+  }
+  /*
    * HARD GUARD, NO INVENTED FIGURES (QA, the MSB family: "B's own numbers replace C's"): a figure in the account the
    * manager never wrote (another form's "237", a guessed count) is refused.
    */
@@ -1449,7 +1491,15 @@ export async function proposeForm(
    */
   const statedSteps = (await import("@/lib/forms/prior-actions")).statedPriorActions(requestWords, today);
   /* Batch B (code-check #23): the model's list, written from today's reading (the prior_steps_said fact). */
-  const priorActions = typeof input.prior_actions === "string" && input.prior_actions.trim() ? input.prior_actions.trim().slice(0, 600) : null;
+  const askedPriorActions = typeof input.prior_actions === "string" && input.prior_actions.trim() ? input.prior_actions.trim().slice(0, 600) : null;
+  /*
+   * Batch G2 (item 4, QA's live run part 2, T6: "after two prior written warnings…" became "Written warning —
+   * 11/14/2026", the count lost and the new incident's date put on the old steps): the model's prior actions are kept
+   * only when every date in them is one the manager typed and none is this incident's date, and a count the manager
+   * stated ("two prior written warnings") is kept. Otherwise not kept, with the reason; the rules book words the line.
+   */
+  const priorActionsRefused = askedPriorActions ? priorActionsProblem(askedPriorActions, requestWords, date) : null;
+  const priorActions = priorActionsRefused ? null : askedPriorActions;
   const incidentTime = typeof input.incident_time === "string" && input.incident_time.trim() ? input.incident_time.trim().slice(0, 40) : null;
 
   const typedSalon = typeof input.salon === "string" ? input.salon.trim() : "";
@@ -1674,7 +1724,8 @@ export async function proposeForm(
     ...((await import("@/lib/ai/carried-person-notice")).carriedFromEarlier(template.key, card.employeeName, { history: context.history as ChatMessage[], question: context.question }) ? { person_from_earlier: card.employeeName } : {}),
     ...(underPerformance ? { under_performance: true } : {}),
     ...(didYouMean ? { confirm_policy: didYouMean } : {}),
-    ...(dropped.length > 0 || (askedExitTermination && !exitTermination) ? { not_kept: [...dropped, ...(askedExitTermination && !exitTermination ? ["exit_type"] : [])] } : {}),
+    ...(dropped.length > 0 || (askedExitTermination && !exitTermination) || priorActionsRefused ? { not_kept: [...dropped, ...(askedExitTermination && !exitTermination ? ["exit_type"] : []), ...(priorActionsRefused ? ["prior_actions"] : [])] } : {}),
+    ...(priorActionsRefused ? { prior_actions_not_kept: priorActionsRefused } : {}),
     ...((await outsideScopeSalon(context)) ?? (card.namedLocationOutOfScope ? { salon_outside_scope: card.namedLocationOutOfScope } : {})),
   };
   return {

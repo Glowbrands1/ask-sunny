@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { dictatedActionPlan, exactWarningLevel, lockedExitDate } = await import("./tools");
+const { dictatedActionPlan, exactWarningLevel, lockedExitDate, priorActionsProblem } = await import("./tools");
 
 /* QA's design for batch G (15 Nov 2026): code only locks what the model decided. Invented names only. */
 
@@ -57,5 +57,25 @@ describe("the exit's locked date", () => {
     expect(lockedExitDate("11/30", "terminate her, termination date 11/28", "2026-11-15")).toBeNull();
     expect(lockedExitDate(undefined, "terminate her, termination date 11/28", "2026-11-15")).toBeNull();
     expect(lockedExitDate("", "terminate her", "2026-11-15")).toBeNull();
+  });
+});
+
+/* Batch G2 (item 4, QA's live run part 2, T6): prior actions keep the stated count and never take this incident's date. */
+describe("the prior-actions lock", () => {
+  const said = "write a CA for Remy Calder, after two prior written warnings she was late again today";
+  it("refuses this incident's date on an earlier step", () => {
+    expect(priorActionsProblem("Written warning — 11/14/2026", said, "2026-11-14")?.reason).toMatch(/this incident's date/);
+  });
+  it("refuses a date the manager never gave", () => {
+    expect(priorActionsProblem("Written warning (2) — 10/02/2026", said, "2026-11-14")?.reason).toMatch(/not a date the manager gave/);
+  });
+  it("refuses a lost count", () => {
+    expect(priorActionsProblem("Written warning, date not given", said, "2026-11-14")).toEqual({ reason: "the manager said 2 earlier steps", count_said: 2 });
+  });
+  it("keeps the count with no dates, and a date the manager attached", () => {
+    expect(priorActionsProblem("Written warning (2), dates not given", said, "2026-11-14")).toBeNull();
+    expect(priorActionsProblem("Verbal CA — 10/02/2026", "ca for remy calder, she had a verbal on 10/2/2026, late again today", "2026-11-14")).toBeNull();
+    // QA: "a termination warning in March" in Prior actions is history, and is kept.
+    expect(priorActionsProblem("Termination warning — March", "she got a termination warning in March. Now she was late again, make a CA", "2026-11-14")).toBeNull();
   });
 });

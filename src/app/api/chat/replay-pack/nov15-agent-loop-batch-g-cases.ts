@@ -572,7 +572,12 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       });
       t.loopModel!(model);
       const thread = t.thread();
-      const reply = await thread.say("terminate remy calder, 3 no call no shows on 11/10, 11/12 and 11/13");
+      /*
+       * Changed on purpose (QA's ruling, batch G2 item 2): an offense told with a termination is the Corrective Action
+       * Form unless the manager asks for the exit form, so this exit-sweep case now asks for it; what it checks is the
+       * exit card's own date and lines.
+       */
+      const reply = await thread.say("exit form: terminate remy calder, 3 no call no shows on 11/10, 11/12 and 11/13");
       expect(thread.proposal?.templateKey).toBe("stc-exit");
       expect(thread.proposal?.formDate, `the exit is dated the first no-show:\n${reply.content}`).toBe("2026-11-15");
       expect((thread.proposal as { policyLine?: string | null } | undefined)?.policyLine ?? null, "an exit cites a policy").toBeNull();
