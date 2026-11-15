@@ -334,7 +334,7 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
   },
   {
     id: "nov14-agent-loop-close-spelling-of-card-person",
-    title: "\"edit tamsen orwel ca\" after Tamsin Orwell's card in this chat (the live re-run's sf-s26): find_staff reads the close spelling as the card's person, with no Did-you-mean; one strong close match is used anyway (Pau, 14 Nov); a \"no\" to Did-you-mean still asks",
+    title: "\"edit tamsen orwel ca\" after Tamsin Orwell's card in this chat (the live re-run's sf-s26): under Pau's 15 Nov ruling A the close spelling is asked about (Did you mean), in that chat and a fresh one; a \"no\" still asks",
     report: `${REPORT}; live re-run (14 Nov 2026): "Edit <close spelling> CA" asked Did you mean instead of opening`,
     status: "fixed",
     fixFlags: [FLAG],
@@ -356,15 +356,17 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       const thread = t.thread();
       await thread.say("ca for tamsin orwell, she was late opening the salon on 11/10");
       await thread.say("edit tamsen orwel ca");
+      /*
+       * Changed on purpose (Pau 15 Nov: ruling A, replacing his 14 Nov "one strong close match is used"; batch K1): a
+       * close spelling is never seated, not even as the card's own person. "edit tamsen orwel ca" after Tamsin Orwell's
+       * card gets Did you mean **Tamsin Orwell**?, and so does a fresh chat.
+       */
       const found = toolResults(model.views, "find_staff").at(-1) ?? "";
       expect(found).toContain('"name":"Tamsin Orwell"');
-      expect(found, "asked Did you mean about the card's own person").not.toMatch(/did_you_mean/);
-
-      // Changed on purpose (Pau 14 Nov: fewer questions, act and state the assumption): one strong close match is used
-      // with no card in the chat too, and the reply says so; a "no" to an earlier Did-you-mean still asks.
+      expect(found, "a close spelling was seated as the card's person").toMatch(/did_you_mean/);
       const fresh = t.thread();
       await fresh.say("edit tamsen orwel ca");
-      expect(toolResults(model.views, "find_staff").at(-1)).toContain('"name":"Tamsin Orwell"');
+      expect(toolResults(model.views, "find_staff").at(-1), "a close spelling was seated").toMatch(/did_you_mean/);
       // Did-you-mean answered "no": still not that person.
       await fresh.say("no, edit tamsen orwel ca as typed");
       expect(toolResults(model.views, "find_staff").at(-1), "a \"no\" to Did you mean was read as yes").toMatch(/did_you_mean/);
@@ -403,7 +405,7 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
   },
   {
     id: "nov14-agent-loop-one-close-name-used",
-    title: "one strong close roster match (Pau 14 Nov: fewer questions): \"ca for tamsen orwel\" gives Tamsin Orwell's card at once and the reply says \"Using **Tamsin Orwell** from your staff list.\"",
+    title: "one close roster match: \"ca for tamsen orwel\" is asked about (Did you mean **Tamsin Orwell**?), never carded at once (Pau 15 Nov: ruling A, replacing his 14 Nov fewer-questions rule)",
     report: `${REPORT}; Pau (14 Nov 2026): "it's best if it doesn't ask too many questions, it should be intuitive"`,
     status: "fixed",
     fixFlags: [FLAG],
@@ -423,9 +425,9 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       t.loopModel!(model);
       const thread = t.thread();
       const reply = await thread.say("ca for tamsen orwel, she was late on 11/10");
-      expect(thread.proposal?.employeeName).toBe("Tamsin Orwell");
-      // Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite; code-check audit batch A): the line is the model's, from this fact.
-      expect(toolResults(model.views, "propose_form").at(-1), reply.content).toMatch(/"name_from_staff_list":"Tamsin Orwell"/);
+      // Changed on purpose (Pau 15 Nov: ruling A replaces this case's 14 Nov rule; batch K1): one close spelling is asked about, never carded at once.
+      expect(thread.proposal ?? null, `a close spelling was carded:\n${reply.content}`).toBeNull();
+      expect(toolResults(model.views, "find_staff").at(-1)).toMatch(/Did you mean \*\*Tamsin Orwell\*\*\?/);
     },
   },
   {
