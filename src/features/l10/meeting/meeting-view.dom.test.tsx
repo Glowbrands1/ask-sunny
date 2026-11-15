@@ -423,6 +423,17 @@ describe("Bloom-style page: what every page shares", () => {
     expect(body.getByText("Front desk coverage")).toBeTruthy();
   });
 
+  it("Last meeting's summary renders solved issues stored as { title, owner } as well as plain titles", () => {
+    render(
+      <MeetingView info={info} initial={loaded()} save={vi.fn() as unknown as SaveFn} end={vi.fn() as unknown as EndFn} viewer={viewer} roster={roster} hubMeetingUrl={HUB} pollMs={0} debounceMs={0} today="2026-11-15" recaps={[{ ...recap, resolved_issues: [{ title: "Door lock", owner: "Bo Lark" }, "Old style title"] }]} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Last meeting's summary/ }));
+    const body = within(screen.getByTestId("last-meeting-summary"));
+    expect(body.getByText("Door lock")).toBeTruthy();
+    expect(body.getByText("Old style title")).toBeTruthy();
+    expect(body.getByText("Issues solved").nextSibling?.textContent).toBe("2");
+  });
+
   it("the New Issue bar saves the issue with its owner and who added it", async () => {
     const save = vi.fn().mockResolvedValue({ ok: true, version: 4, updatedAt: "2026-11-15T00:00:00Z" } satisfies SaveOutcome);
     renderView({ save: save as unknown as SaveFn, initial: loaded(3, { issues: [] }), mentionPeople: [{ id: "hub-user-1", name: "Avery Quill" }] });

@@ -42,6 +42,12 @@ describe("past meetings", () => {
     expect(rows[0]).toMatchObject({ source: "l10", durationSeconds: 4200, ratingAvg: 9.5, issuesSolved: 1, solvedTitles: ["Weekly issue"], cascade: "Share the new checklist" });
   });
 
+  it("reads solved issues stored as plain titles (older recaps) and as { title, owner } (newer recaps)", () => {
+    const [row] = pastMeetings([recap({ resolved_issues: ["Old title", { title: "New title", owner: "Bo Lark" }] })], {});
+    expect(row.solvedTitles).toEqual(["Old title", "New title"]);
+    expect(row.issuesSolved).toBe(2);
+  });
+
   it("works out a Bloom meeting's length and average rating (people who did not rate are left out)", () => {
     const [row] = pastMeetings([], { meetingHistory: [bloom] });
     expect(row).toMatchObject({ source: "bloom-growth", durationSeconds: 4123, ratingAvg: 8.5, issuesSolved: 9, solvedTitles: [] });

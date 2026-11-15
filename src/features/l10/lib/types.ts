@@ -197,7 +197,8 @@ export interface RecapRow {
   cascade: string | null;
   attendees: { name: string; rating: number | null }[];
   open_todos: { text?: string; owner?: string; due?: string; dueDate?: string }[];
-  resolved_issues: string[];
+  /** Each solved issue: a plain title (older recaps) or { title, owner } (from 15 Nov 2026). Read with solvedTitle / solvedOwner. */
+  resolved_issues: SolvedIssue[];
   /** Saved by the scheduled auto-save because nobody pressed End (database column l10.meeting_recaps.auto_saved). */
   auto_saved?: boolean;
   /** Set when a hub admin deleted the recap (soft delete: hidden everywhere, restorable). */
@@ -213,4 +214,18 @@ export interface RecapInput {
   attendees: { name: string; rating: number | null }[];
   openTodos: unknown[];
   resolvedIssues: string[];
+}
+
+/** A solved issue on a recap: a plain title (recaps saved before 15 Nov 2026) or its title and owner. */
+export type SolvedIssue = string | { title: string; owner?: string };
+
+/** The title of a solved issue, whichever way the recap stored it. */
+export function solvedTitle(s: SolvedIssue | null | undefined): string {
+  if (typeof s === "string") return s;
+  return s && typeof s.title === "string" ? s.title : "";
+}
+
+/** The owner of a solved issue ("" when the recap does not say). */
+export function solvedOwner(s: SolvedIssue | null | undefined): string {
+  return s && typeof s === "object" && typeof s.owner === "string" ? s.owner : "";
 }

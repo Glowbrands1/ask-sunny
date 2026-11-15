@@ -1,5 +1,5 @@
 // Ask Sunny only (not copied from the Leadership Hub): the DM L10's "Past meetings" list. See src/features/l10/README.md.
-import type { RecapRow } from "./types";
+import { solvedTitle, type RecapRow } from "./types";
 
 /**
  * A meeting held before the DM L10 moved to the Hub, kept in the meeting document as `meetingHistory` (written by the
@@ -74,7 +74,7 @@ export function pastMeetings(recaps: RecapRow[], doc: Record<string, unknown>): 
       ratingAvg: r.rating_avg ?? average((r.attendees ?? []).map((a) => a.rating)),
       attendees: r.attendees ?? [],
       issuesSolved: (r.resolved_issues ?? []).length,
-      solvedTitles: r.resolved_issues ?? [],
+      solvedTitles: (r.resolved_issues ?? []).map(solvedTitle),
       cascade: str(r.cascade),
     }));
   const fromBloom: PastMeeting[] = importedMeetings(doc).map((m) => ({
