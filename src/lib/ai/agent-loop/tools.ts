@@ -230,8 +230,30 @@ export function requestTurns(
   rosterNames: readonly string[],
   kind: "request_evidence" | "account_evidence",
 ): { ok: true; ids: string[]; quotes: string[]; texts: string[] } | { ok: false; result: ToolResult } {
+  /*
+   * Fix batch item 5 (QA's 266 shadow replay, c219; QA's ruling, 16 Nov 2026): a pasted script names the form's person by a
+   * one-letter-off first name (<A'>) and another roster person as a party (<B>, the director). The turn is still THIS
+   * person's when it also names them, so <B> is a party there, not its owner. "Names them": the exact first name, or a
+   * word one edit from the card's first name that is no active roster person's first name. Limits (QA): (a) only once the
+   * manager named the card's person in full in this request; (b) a word one edit from two or more people's first names
+   * is ambiguous and keeps today's refusal. Code compares spellings with the roster; it never reads what the words mean.
+   */
+  const firstOf = (name: string) => name.trim().split(/\s+/)[0]!.toLowerCase();
+  const personFirst = firstOf(person);
+  const othersFirsts = rosterNames.filter((name) => !samePerson(name, person)).map(firstOf);
+  const namedInFull = person.trim().split(/\s+/).length >= 2 && turns.some((turn) => turn.role === "user" && holdsPhrase(turn.content, person));
+  const namesThisPerson = (clean: string): boolean => {
+    if (!namedInFull || personFirst.length < 3) return false;
+    const tokens = [...new Set(clean.toLowerCase().match(/[\p{L}'’-]{3,}/gu) ?? [])];
+    return tokens.some((token) => {
+      const near = othersFirsts.filter((first) => first === token || editDistance(first, token) <= 1);
+      if (token === personFirst) return near.length === 0;
+      return editDistance(token, personFirst) === 1 && !othersFirsts.includes(token) && near.length === 0;
+    });
+  };
   const namesOther = (text: string) => {
     const clean = withoutMessageIdTags(text);
+    if (namesThisPerson(clean)) return null;
     const typed = extractEmployeeNames(clean).filter((name) => rosterNames.some((roster) => samePerson(roster, name)) && !samePerson(name, person));
     const listed = rosterNames.filter((name) => !samePerson(name, person) && mentionsPerson(clean, name, rosterNames) && !mentionsPerson(clean, person, rosterNames));
     return [...typed, ...listed][0] ?? null;
