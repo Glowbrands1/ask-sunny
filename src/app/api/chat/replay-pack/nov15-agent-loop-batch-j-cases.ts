@@ -242,4 +242,28 @@ export const NOV15_AGENT_LOOP_BATCH_J_CASES: ReplayCase[] = [
       expect(prompt.at(-1)?.providerOptions?.anthropic?.cacheControl, "the hand-back's last message is not marked for the cache").toEqual({ type: "ephemeral" });
     },
   },
+  {
+    id: "nov15-batch-j9-what-happened-is-the-managers-account",
+    title: "J9: propose_form's what_happened is no longer than the manager's own account plus a small margin (the stand-in offline, the real model with AGENT_LOOP_LIVE_ALL)",
+    report: `${REPORT}; J6's speed report: one step wrote 1446 output tokens of retyped account into propose_form`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      const account = "she was 20 minutes late on 11/9/26 and did not call ahead";
+      // Offline, a model that follows the rules book's line; live, the real model is held to the same bound.
+      const model = loopStandIn((view) =>
+        lastResult(view, "propose_form")
+          ? { text: "Here's the Corrective Action Form for **Remy Calder**." }
+          : { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", policy: "Attendance", warning_level: "verbal", what_happened: `Remy Calder ${account.replace(/^she /, "")}.` } },
+      );
+      const thread = start(t);
+      t.loopModel!(model);
+      await thread.say(`verbal ca for remy calder, ${account}`);
+      const issue = thread.proposal?.issue ?? "";
+      expect(issue, "no account on the card").not.toBe("");
+      // The manager's account, the person's full name in front and a little punctuation: never an expanded retelling.
+      expect(issue.length, `what_happened was retyped longer than the account:\n${issue}`).toBeLessThanOrEqual(account.length + "Remy Calder ".length + 20);
+    },
+  },
 ];
