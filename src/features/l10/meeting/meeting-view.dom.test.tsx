@@ -108,7 +108,7 @@ describe("the DM L10 page in Ask Sunny", () => {
     const save = vi.fn(async (): Promise<SaveOutcome> => ({ ok: true, version: 4, updatedAt: "t" }));
     renderView({ save: save as unknown as SaveFn });
     await act(async () => {
-      fireEvent.click(screen.getByText("Bo Lark"));
+      fireEvent.click(screen.getByRole("button", { name: /Bo Lark/ })); // by role: the New Issue bar's owner picker lists the names too (15 Nov 2026)
       await new Promise((r) => setTimeout(r, 20));
     });
     expect(save).toHaveBeenCalledTimes(1);
@@ -129,13 +129,16 @@ describe("the DM L10 page in Ask Sunny", () => {
     });
     expect(load).toHaveBeenCalledWith("stc-dm");
     // Cy is now checked off (the Hub's edit), Avery no longer (the Hub's document replaced it).
-    const cy = screen.getByText("Cy Marlow").closest("button");
+    const cy = screen.getByRole("button", { name: /Cy Marlow/ }); // by role: the New Issue bar's owner picker lists the names too (15 Nov 2026)
     expect(cy?.getAttribute("aria-pressed")).toBe("true");
   });
 
-  it("has the floating Add to IDS button", () => {
+  // Changed on purpose 15 Nov 2026: the STC DM L10's pages are laid out like Bloom Growth's, so the floating Add to IDS
+  // button became the New Issue bar pinned at the bottom (owner, issue, Enter).
+  it("has the New Issue bar in place of the floating Add to IDS button", () => {
     renderView();
-    expect(screen.getByRole("button", { name: /Add to IDS/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Add to IDS/ })).toBeNull();
+    expect(screen.getByRole("form", { name: "New Issue" })).toBeTruthy();
   });
 
   it("IDS has Short term, Long-term and Recently solved tabs, as in the Hub", () => {
@@ -175,7 +178,7 @@ describe("saving: the page says saved only when the Hub has saved it", () => {
     const save = vi.fn(() => new Promise<SaveOutcome>((r) => (answer = r)));
     renderView({ save: save as unknown as SaveFn });
     await act(async () => {
-      fireEvent.click(screen.getByText("Bo Lark"));
+      fireEvent.click(screen.getByRole("button", { name: /Bo Lark/ })); // by role: the New Issue bar's owner picker lists the names too (15 Nov 2026)
       await new Promise((r) => setTimeout(r, 20));
     });
     expect(save).toHaveBeenCalledTimes(1);
@@ -194,7 +197,7 @@ describe("saving: the page says saved only when the Hub has saved it", () => {
       .mockResolvedValueOnce({ ok: true, version: 4, updatedAt: "t" });
     renderView({ save: save as unknown as SaveFn });
     await act(async () => {
-      fireEvent.click(screen.getByText("Bo Lark"));
+      fireEvent.click(screen.getByRole("button", { name: /Bo Lark/ })); // by role: the New Issue bar's owner picker lists the names too (15 Nov 2026)
       await new Promise((r) => setTimeout(r, 20));
     });
     const status = screen.getByTestId("save-status");
@@ -220,7 +223,7 @@ describe("saving: the page says saved only when the Hub has saved it", () => {
       .mockResolvedValueOnce({ ok: true, version: 8, updatedAt: "t" });
     renderView({ save: save as unknown as SaveFn });
     await act(async () => {
-      fireEvent.click(screen.getByText("Bo Lark"));
+      fireEvent.click(screen.getByRole("button", { name: /Bo Lark/ })); // by role: the New Issue bar's owner picker lists the names too (15 Nov 2026)
       await new Promise((r) => setTimeout(r, 30));
     });
     await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
@@ -263,7 +266,7 @@ describe("the agenda, hints and roster come from the Hub (the STC DM L10 change,
     renderView({ save: save as unknown as SaveFn, roster: { ...roster, agenda: hubAgenda }, initial: loaded(3, { attendees: [{ id: "att-avery", name: "Avery Quill", role: "Visionary", shared: true, rating: null }, hidden] }) });
     expect(document.body.textContent).not.toContain("Dex Rowan");
     await act(async () => {
-      fireEvent.click(screen.getByText("Bo Lark"));
+      fireEvent.click(screen.getByRole("button", { name: /Bo Lark/ })); // by role: the New Issue bar's owner picker lists the names too (15 Nov 2026)
       await new Promise((r) => setTimeout(r, 20));
     });
     const [, , doc] = save.mock.calls[0] as unknown as [string, number, { attendees: { name: string }[] }];
@@ -370,6 +373,94 @@ describe("IDS: move between the lists from the row, and no headlines where the m
     openIds();
     fireEvent.click(screen.getByRole("button", { name: /Weekly issue/, expanded: false }));
     expect(within(screen.getByRole("region", { name: "Issue detail" })).getByRole("button", { name: "Headline" })).toBeTruthy();
+  });
+});
+
+// The STC DM L10's pages are laid out like Bloom Growth's (the owner's request, 15 Nov 2026): Meeting Notes under the
+// agenda, "Last meeting's summary" on top and the New Issue bar at the bottom, as in the Hub.
+describe("Bloom-style page: what every page shares", () => {
+  const recap = {
+    id: "r1",
+    meeting_key: "stc-dm",
+    session_id: "s1",
+    held_at: "2026-11-10T16:00:00Z",
+    rating_avg: 8.5,
+    attendee_count: 2,
+    duration_seconds: 3480,
+    cascade: "Share the new schedule",
+    attendees: [
+      { name: "Avery Quill", rating: 9 },
+      { name: "Bo Lark", rating: 8 },
+    ],
+    open_todos: [],
+    resolved_issues: ["Front desk coverage"],
+  };
+
+  it("Meeting Notes opens the shared notes pad in a side panel, saves as meetingNotes, and Esc closes it", async () => {
+    const save = vi.fn().mockResolvedValue({ ok: true, version: 4, updatedAt: "2026-11-15T00:00:00Z" } satisfies SaveOutcome);
+    renderView({ save: save as unknown as SaveFn, initial: loaded(3, { meetingNotes: "Earlier note" }) });
+    fireEvent.click(within(screen.getByRole("region", { name: "Agenda" })).getByRole("button", { name: /Meeting Notes/ }));
+    // Not inside the agenda card: a fixed panel there was pinned to the card and showed on the left, half off-screen
+    // (the owner's report, 15 Nov 2026). It is portalled out, with its title next to the close button.
+    const panel = screen.getByRole("dialog", { name: "Meeting Notes" });
+    expect(screen.getByRole("region", { name: "Agenda" }).contains(panel)).toBe(false);
+    expect(within(panel).getByRole("heading", { name: "Meeting Notes" })).toBeTruthy();
+    const field = within(panel).getByLabelText("Meeting notes") as HTMLTextAreaElement;
+    expect(field.value).toBe("Earlier note");
+    fireEvent.change(field, { target: { value: "Earlier note and more" } });
+    await waitFor(() => expect(save).toHaveBeenCalled());
+    expect((save.mock.calls.at(-1)![2] as { meetingNotes: string }).meetingNotes).toBe("Earlier note and more");
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Meeting Notes" })).toBeNull();
+  });
+
+  it("Meeting Notes is portalled into the DM L10 frame (.hub-l10), so it keeps the tab's scoped styles", () => {
+    render(
+      <div className="hub-l10" data-testid="frame">
+        <MeetingView info={info} initial={loaded()} save={vi.fn() as unknown as SaveFn} end={vi.fn() as unknown as EndFn} viewer={viewer} roster={roster} hubMeetingUrl={HUB} pollMs={0} debounceMs={0} today="2026-11-15" />
+      </div>,
+    );
+    fireEvent.click(within(screen.getByRole("region", { name: "Agenda" })).getByRole("button", { name: /Meeting Notes/ }));
+    const panel = screen.getByRole("dialog", { name: "Meeting Notes" });
+    expect(panel.parentElement).toBe(screen.getByTestId("frame"));
+    expect(screen.getByRole("region", { name: "Agenda" }).contains(panel)).toBe(false);
+  });
+
+  it("Last meeting's summary is collapsed by default and opens on the latest recap", () => {
+    render(
+      <MeetingView info={info} initial={loaded()} save={vi.fn() as unknown as SaveFn} end={vi.fn() as unknown as EndFn} viewer={viewer} roster={roster} hubMeetingUrl={HUB} pollMs={0} debounceMs={0} today="2026-11-15" recaps={[recap]} />,
+    );
+    const toggle = within(screen.getByRole("region", { name: "Last meeting's summary" })).getByRole("button", { name: /Last meeting's summary/ });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByTestId("last-meeting-summary")).toBeNull();
+    fireEvent.click(toggle);
+    const body = within(screen.getByTestId("last-meeting-summary"));
+    expect(body.getByText("Meeting rating").nextSibling?.textContent).toBe("8.5");
+    expect(body.getByText("Total time").nextSibling?.textContent).toBe("58m");
+    expect(body.getByText("Front desk coverage")).toBeTruthy();
+  });
+
+  it("Last meeting's summary renders solved issues stored as { title, owner } as well as plain titles", () => {
+    render(
+      <MeetingView info={info} initial={loaded()} save={vi.fn() as unknown as SaveFn} end={vi.fn() as unknown as EndFn} viewer={viewer} roster={roster} hubMeetingUrl={HUB} pollMs={0} debounceMs={0} today="2026-11-15" recaps={[{ ...recap, resolved_issues: [{ title: "Door lock", owner: "Bo Lark" }, "Old style title"] }]} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Last meeting's summary/ }));
+    const body = within(screen.getByTestId("last-meeting-summary"));
+    expect(body.getByText("Door lock")).toBeTruthy();
+    expect(body.getByText("Old style title")).toBeTruthy();
+    expect(body.getByText("Issues solved").nextSibling?.textContent).toBe("2");
+  });
+
+  it("the New Issue bar saves the issue with its owner and who added it", async () => {
+    const save = vi.fn().mockResolvedValue({ ok: true, version: 4, updatedAt: "2026-11-15T00:00:00Z" } satisfies SaveOutcome);
+    renderView({ save: save as unknown as SaveFn, initial: loaded(3, { issues: [] }), mentionPeople: [{ id: "hub-user-1", name: "Avery Quill" }] });
+    const bar = within(screen.getByRole("form", { name: "New Issue" }));
+    fireEvent.change(bar.getByLabelText("Issue owner"), { target: { value: "Cy Marlow" } });
+    fireEvent.change(bar.getByRole("textbox", { name: "New Issue" }), { target: { value: "Late shift handover" } });
+    fireEvent.submit(screen.getByRole("form", { name: "New Issue" }));
+    await waitFor(() => expect(save).toHaveBeenCalled());
+    const doc = save.mock.calls.at(-1)![2] as { issues: Record<string, unknown>[] };
+    expect(doc.issues.at(-1)).toMatchObject({ title: "Late shift handover", owner: "Cy Marlow", addedBy: "Avery Quill", resolved: false });
   });
 });
 
