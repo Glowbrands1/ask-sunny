@@ -1,7 +1,5 @@
 import { expect, vi } from "vitest";
 
-import * as agentLoopRun from "@/lib/ai/agent-loop/run";
-
 import { KEARNEY, STAFF, type ReplayAnswer, type ReplayCase, type ReplayContext } from "./cases";
 import { loopStandIn } from "./loop-stand-in";
 
@@ -11,8 +9,8 @@ import { loopStandIn } from "./loop-stand-in";
  * ============================================================================
  *
  * "Everything stays behind AGENT_LOOP_ENABLED + AGENT_LOOP_USERS." With AGENT_LOOP_ENABLED off, and with it on but
- * AGENT_LOOP_USERS empty or not listing the signed-in manager, the chat route never enters `agent-loop/run.ts`
- * (`runAgentTurn`, the module the route imports dynamically; spied here) and answers a fixed set of requests with the
+ * AGENT_LOOP_USERS empty or not listing the signed-in manager, the chat route never enters the loop's run module
+ * (its `runAgentTurn`, watched by the harness through `watchLoopEntries`) and answers a fixed set of requests with the
  * same replies as today's path. The control: the manager listed, the loop answers (the spy sees it), so the spy works.
  */
 
@@ -40,7 +38,7 @@ const shape = (answer: ReplayAnswer): Outcome => ({
 /** The fixed requests, each in a fresh thread, with the loop's entry point watched. */
 async function ask(t: ReplayContext, env: { enabled: string | undefined; users: string | undefined }): Promise<{ outcomes: Outcome[]; entered: number }> {
   const saved = Object.fromEntries(NAMES.map((name) => [name, process.env[name]]));
-  const spy = vi.spyOn(agentLoopRun, "runAgentTurn");
+  const watch = t.watchLoopEntries!();
   try {
     for (const [name, value] of [["AGENT_LOOP_ENABLED", env.enabled], ["AGENT_LOOP_USERS", env.users]] as const) {
       if (value === undefined) delete process.env[name];
@@ -48,9 +46,9 @@ async function ask(t: ReplayContext, env: { enabled: string | undefined; users: 
     }
     const outcomes: Outcome[] = [];
     for (const request of REQUESTS) outcomes.push(shape(await t.thread().say(request)));
-    return { outcomes, entered: spy.mock.calls.length };
+    return { outcomes, entered: watch.entered() };
   } finally {
-    spy.mockRestore();
+    watch.stop();
     for (const name of NAMES) {
       if (saved[name] === undefined) delete process.env[name];
       else process.env[name] = saved[name];
