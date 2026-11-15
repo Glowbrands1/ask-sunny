@@ -584,7 +584,7 @@ const TERMINATION_SENTENCE =
 const TITLE = /^(?:mr|ms|mrs|mx|dr)\.?\s+/i;
 const NAME_SHAPED_WORD = /^[\p{L}][\p{L}'’-]*$/u;
 
-/** The words after "for" up to the sentence's end or a comma: the name, if one resolves. */
+/** The words after "for" up to the sentence's end or a comma: the name, if one resolves (or can be asked about). */
 function nameResolvesAfterFor(rest: string): boolean {
   const head = rest.split(/[,;:!?]|\s+(?:she|he|they|who|because|bc|for|since|was|is|did|didn['’]t|has|had)\b/i)[0]!.trim().replace(/[.]+$/, "");
   const titled = TITLE.exec(head);
@@ -596,11 +596,13 @@ function nameResolvesAfterFor(rest: string): boolean {
   if (roster && roster.length > 0) {
     // A roster person's full name, as the words after "for" (the title aside) begin.
     if (roster.some((name) => said === norm(name) || said.startsWith(`${norm(name)} `))) return true;
-    // A title and a surname only one roster person has ("Ms. Holloway").
+    // QA round 3: a title and a surname one OR MORE roster people have ("Ms. Fairweather" with two of them) and a lone
+    // first or last name ("Marnie") are requests too: the card asks who, it never goes quiet.
+    const only = words.length === 1 ? said : "";
+    if (only && roster.some((name) => norm(name).split(" ").some((part) => part === only))) return true;
     if (titled) {
       const surname = said.split(" ")[0] ?? "";
-      const owners = roster.filter((name) => norm(name).split(" ").slice(-1)[0] === surname);
-      if (surname && owners.length === 1) return true;
+      if (surname && roster.some((name) => norm(name).split(" ").slice(-1)[0] === surname)) return true;
     }
   }
   // A title with no roster person behind it is no name.
@@ -615,26 +617,28 @@ function nameResolvesAfterFor(rest: string): boolean {
 /** Sentence starts: the text's start, a newline, or after . ! ? (not a title's full stop, "Ms."). */
 function sentenceStarts(text: string): number[] {
   const starts = [0];
-  const end = /(?<!\b(?:mr|ms|mrs|mx|dr))[.!?]+\s+|\n+/gi;
+  const end = /(?<!\b(?:mr|ms|mrs|mx|dr))[.!?]+\s+|\n+/gi; // needs a space after: "11.12" is one word
   for (const match of text.matchAll(end)) starts.push(match.index! + match[0].length);
   return starts;
 }
 
-/** This sentence ends with a question mark (the next . ! ? or newline after `from`, not a title's). */
-function sentenceAsks(text: string, from: number): boolean {
-  const end = /(?<!\b(?:mr|ms|mrs|mx|dr))[.!?]|\n/gi;
-  end.lastIndex = from;
-  const found = end.exec(text);
-  return found?.[0] === "?";
+/**
+ * QA round 3 (15 Nov 2026): a question anywhere in the message — any clause or sentence — makes it a question, not a
+ * request ("…she no call no showed 11.12, is that enough?", "create a termination for <A>. Is that enough?"). A dot
+ * inside a date never ends a sentence.
+ */
+function messageAsks(text: string): boolean {
+  return text.includes("?");
 }
 
 function asTerminationRequest(text: string): string {
+  if (messageAsks(text)) return text;
   let out = text;
   for (const start of sentenceStarts(text).reverse()) {
     const match = TERMINATION_SENTENCE.exec(text.slice(start));
     if (!match) continue;
     const after = start + match[0].length;
-    if (sentenceAsks(text, start) || !nameResolvesAfterFor(text.slice(after))) continue;
+    if (!nameResolvesAfterFor(text.slice(after))) continue;
     // The title goes (Ms. Holloway → Holloway), so the name reader on the rewritten request never takes "Ms" for the name.
     const title = TITLE.exec(text.slice(after));
     out = `${out.slice(0, start)}${match[1]}termination corrective action${match[2]}${out.slice(after + (title ? title[0].length : 0))}`;
@@ -1645,7 +1649,12 @@ export function withoutLeadingGlossaryTerm(question: string): string {
 
 export function detectTemplateIntent(rawQuestion: string): TemplateIntent {
   const question = withoutLeadingGlossaryTerm(formChoiceStatedEnabled() ? withoutPolicyReference(rawQuestion) : rawQuestion);
-  const q = canonicalFormWording(normalize(question));
+  /*
+   * TERMINATION_REQUEST_IS_CA_ENABLED (QA round 3, 15 Nov 2026): `normalize` lower-cases, so the request is rewritten
+   * from the ORIGINAL-case text first, or an off-roster full name could never pass its capitals check in production.
+   */
+  const cased = terminationRequestIsCaEnabled() ? asTerminationRequest(question.replace(/\s+/g, " ").trim()) : question;
+  const q = canonicalFormWording(normalize(cased));
   /* A question about forms — compared, explained, or when to use one — is answered, never opened. */
   /*
    * "Can we put Tess Varga on a written for skipping the meeting?", "could you

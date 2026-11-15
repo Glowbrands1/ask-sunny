@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { canonicalFormWording, installTerminationRosterNames } from "./template-intent";
+import { statesTermination } from "./termination-stated";
+import { canonicalFormWording, detectTemplateIntent, installTerminationRosterNames } from "./template-intent";
 
 /**
  * QA, 15 Nov 2026: "create a termination for <A>, …" gave a policy answer and no card. QA's re-review: a whitelist at the
@@ -27,7 +28,9 @@ describe("TERMINATION_REQUEST_IS_CA_ENABLED, with the roster read", () => {
     ["can you create a termination for Marnie Holloway", `can you create a ${CA} for Marnie Holloway`],
     ["could you make a termination for marnie holloway", `could you make a ${CA} for marnie holloway`],
     ["need a termination for Marnie Holloway", `need a ${CA} for Marnie Holloway`],
-    ["create a termination for Marnie Holloway. Is the DM on today?", `create a ${CA} for Marnie Holloway. Is the DM on today?`],
+    // QA round 3: a lone first name or a title and a shared surname are requests too; the card asks who.
+    ["I need to do a termination for Marnie", `I need to do a ${CA} for Marnie`],
+    ["create a termination for Marnie", `create a ${CA} for Marnie`],
     // QA's second re-review: the title is stripped before the name resolves and from the request read on.
     ["do a termination for Ms. Holloway", `do a ${CA} for Holloway`],
     ["do a termination for Mrs. Holloway, she walked out", `do a ${CA} for Holloway, she walked out`],
@@ -61,8 +64,13 @@ describe("TERMINATION_REQUEST_IS_CA_ENABLED, with the roster read", () => {
     ["create a termination for no call no show"],
     ["create a termination for job abandonment"],
     ["create a termination for her"],
-    // A first name alone resolves to no full name (QA: a name that resolves).
-    ["I need to do a termination for Marnie"],
+    // QA round 3: a question in ANY clause or sentence makes the message a question; a dot inside a date ends nothing.
+    ["create a termination for Marnie Holloway. Is the DM on today?"],
+    ["create a termination for Marnie Holloway, she no call no showed 11.12, is that enough?"],
+    ["create a termination for Marnie Holloway. Is that enough?"],
+    ["create a termination for Marnie Holloway, she no call no showed. is that enough to terminate?"],
+    // A first name that is nobody's on the roster is no name.
+    ["create a termination for Zed"],
   ])("on, unchanged: %s", (said) => {
     expect(canonicalFormWording(said)).toBe(said);
   });
@@ -73,9 +81,9 @@ describe("TERMINATION_REQUEST_IS_CA_ENABLED, with the roster read", () => {
     }
   });
 
-  it("a title with a surname two roster people have does not resolve", () => {
+  it("a title with a surname two roster people have is a request too (QA round 3): the title goes and the card asks who", () => {
     installTerminationRosterNames(() => [...ROSTER, "Cash Holloway"]);
-    expect(canonicalFormWording("do a termination for Ms. Holloway")).toBe("do a termination for Ms. Holloway");
+    expect(canonicalFormWording("do a termination for Ms. Holloway")).toBe(`do a ${CA} for Holloway`);
   });
 
   it("\"Cash\" is a roster first name, never an offense word", () => {
@@ -92,6 +100,55 @@ describe("TERMINATION_REQUEST_IS_CA_ENABLED, no roster (a pure caller)", () => {
     expect(canonicalFormWording("make a termination for marnie holloway")).toBe(`make a ${CA} for marnie holloway`);
     expect(canonicalFormWording("create a termination for no call no show")).toBe("create a termination for no call no show");
     expect(canonicalFormWording("create a termination for Marnie")).toBe("create a termination for Marnie");
+  });
+});
+
+describe("QA round 3: detectTemplateIntent rewrites from the original-case text (production lower-cases it first)", () => {
+  beforeEach(() => {
+    vi.stubEnv("TERMINATION_REQUEST_IS_CA_ENABLED", "true");
+    installTerminationRosterNames(() => ROSTER);
+  });
+  afterEach(() => {
+    installTerminationRosterNames(() => undefined);
+    vi.unstubAllEnvs();
+  });
+
+  it("an off-roster full name in capitals is a Corrective Action request", () => {
+    expect(detectTemplateIntent("create a termination for Zebulon Marchbanks, he no call no showed on 11/12").kind).not.toBe("none");
+  });
+  it("lower case off the roster is not", () => {
+    expect(detectTemplateIntent("create a termination for zebulon marchbanks").kind).toBe("none");
+  });
+});
+
+describe("QA round 3: the request phrase IS a stated termination (the existing stated path ticks it)", () => {
+  beforeEach(() => {
+    vi.stubEnv("TERMINATION_STATED_TICKS_ENABLED", "true");
+    vi.stubEnv("TERMINATION_REQUEST_IS_CA_ENABLED", "true");
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
+  it.each([
+    "create a termination for Marnie Holloway, she no call no showed on 11/12",
+    "make a termination CA for Marnie Holloway, she no call no showed",
+    "can you write up a termination for Marnie Holloway",
+    "I need to do a termination for Marnie",
+  ])("ticks: %s", (said) => {
+    expect(statesTermination(said)).toBe(true);
+  });
+
+  it.each([
+    "create a termination for no call no show",
+    "should we create a termination for Marnie Holloway?",
+    "if she does it again create a termination for Marnie Holloway",
+    "don't create a termination for Marnie Holloway, just document it",
+  ])("does not tick: %s", (said) => {
+    expect(statesTermination(said)).toBe(false);
+  });
+
+  it("with the flag off the request phrase ticks nothing, as built", () => {
+    vi.stubEnv("TERMINATION_REQUEST_IS_CA_ENABLED", "false");
+    expect(statesTermination("create a termination for Marnie Holloway, she no call no showed on 11/12")).toBe(false);
   });
 });
 
