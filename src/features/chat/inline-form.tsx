@@ -897,7 +897,7 @@ export function InlineForm({
                   Open newer version
                 </Button>
               ) : null}
-              {!revised ? <FinalizedChangePanel instanceId={instanceId} templateName={loaded.instance.templateName} employeeName={loaded.instance.employeeName} current={edits} call={call} onOpened={showRecord} amountBox={loaded.cardChangeAmount === true && fieldsForVariant(loaded.version.document, loaded.instance.variantKey).some((field) => field.key === "payroll_deduct_amount")} /> : null}
+              {!revised ? <FinalizedChangePanel instanceId={instanceId} templateName={loaded.instance.templateName} employeeName={loaded.instance.employeeName} current={edits} call={call} onOpened={showRecord} amountBox={loaded.cardChangeAmount === true && fieldsForVariant(loaded.version.document, loaded.instance.variantKey).some((field) => field.key === "payroll_deduct_amount")} warningOptions={checkboxGroupsForVariant(loaded.version.document, loaded.instance.variantKey).find((group) => group.key === "warning_type")?.options} /> : null}
               <Button size="sm" onClick={() => void downloadPdf()} disabled={action.kind === "busy"}>
                 {action.kind === "busy" && action.what === "pdf" ? (
                   <Loader2 className="animate-spin" />

@@ -8,7 +8,7 @@ import { Input, Label, Select } from "@/components/ui/field";
 import { FormsFetchError } from "@/features/forms/forms-fetch";
 import { RevisionReasonDialog } from "@/form-revisions/revision-reason-dialog";
 import { useMayEditForm } from "@/form-revisions/use-revision-history";
-import { cardChangeFinalizedEnabled } from "@/lib/forms/card-change-flag";
+import { cardChangeFinalizedEnabled, finalizedChangeEveryWarningEnabled } from "@/lib/forms/card-change-flag";
 import { formRevisionsUiEnabled } from "@/lib/config/chat-quality-flags";
 import { managerDate } from "@/lib/forms/card-change-sentence";
 import { templateHasWarningLevel } from "@/lib/forms/warning-level";
@@ -41,7 +41,16 @@ interface Current {
 }
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
-const LEVELS = ["verbal", "written"] as const;
+const LEVEL_OPTIONS: readonly WarningOption[] = [
+  { key: "verbal", label: "Verbal Warning" },
+  { key: "written", label: "Written Warning" },
+];
+
+/** One option of the form's Type of Warning (the template's `warning_type` group). */
+export interface WarningOption {
+  readonly key: string;
+  readonly label: string;
+}
 const AMOUNT_KEY = "payroll_deduct_amount";
 const MONEY = /^\$?\s?\d{1,3}(?:,?\d{3})*(?:\.\d{1,2})?$/;
 
@@ -61,6 +70,7 @@ function Panel({
   call,
   onOpened,
   amountBox = false,
+  warningOptions,
 }: {
   instanceId: string;
   templateName: string;
@@ -71,6 +81,11 @@ function Panel({
   onOpened: (draftId: string, templateName: string) => void;
   /** The form has a Payroll deduction amount line and the server rebuilds the plan with it. */
   amountBox?: boolean;
+  /**
+   * NEXT_PUBLIC_FINALIZED_CHANGE_EVERY_WARNING_ENABLED: the template's own Type of Warning options. Off, or none given,
+   * Verbal and Written as before.
+   */
+  warningOptions?: readonly WarningOption[];
 }) {
   const mayEdit = useMayEditForm(templateName);
   const [open, setOpen] = React.useState(false);
@@ -80,9 +95,10 @@ function Panel({
   const [opened, setOpened] = React.useState<{ id: string; name: string; note: string } | null>(null);
 
   const ca = templateHasWarningLevel({ name: templateName });
+  const levels = finalizedChangeEveryWarningEnabled() && warningOptions && warningOptions.length > 0 ? warningOptions : LEVEL_OPTIONS;
   const was = {
     date: ISO.test(current.values.form_date ?? "") ? current.values.form_date! : "",
-    warning: LEVELS.find((level) => (current.checked.warning_type ?? []).includes(level)) ?? "",
+    warning: levels.map((level) => level.key).find((level) => (current.checked.warning_type ?? []).includes(level)) ?? "",
     payroll: (current.checked.payroll_deduct ?? [])[0] ?? "",
     amount: current.values[AMOUNT_KEY] ?? "",
   };
@@ -208,8 +224,11 @@ function Panel({
             <Label htmlFor={`fin-warning-${id}`}>Type of warning</Label>
             <Select id={`fin-warning-${id}`} value={warning} onChange={(event) => setWarning(event.target.value)}>
               <option value="">Not set</option>
-              <option value="verbal">Verbal Warning</option>
-              <option value="written">Written Warning</option>
+              {levels.map((level) => (
+                <option key={level.key} value={level.key}>
+                  {level.label}
+                </option>
+              ))}
             </Select>
           </div>
         ) : null}
