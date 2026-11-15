@@ -13,3 +13,8 @@ Swap Sunny's invented people and the salon/store wording; there is no word list 
 **Item 3 (same PR, also Sunny-only):** an answer to the "Did you mean **<A>**?" that names somebody else in full (a
 pasted account about <B>) is not a yes; propose_form refuses <A> with `right_person` and the model asks or looks up
 <B> (`answerNamesSomeoneElse` in the same file). Port it with item 4.
+
+**Item 6 (same PR, also Sunny-only):** when the manager's message answers the loop's own "Who is this <form> for?"
+and the reply came with no find_staff, card or staff list (a bare first name not looked up, or read as an acronym),
+run.ts hands the turn back once with an [app check] to look the name up (`answersWhoQuestion`, trace `who_review`).
+Port it with the loop.

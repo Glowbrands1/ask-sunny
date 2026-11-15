@@ -126,3 +126,45 @@ NOV16_AGENT_LOOP_DID_YOU_MEAN_CONFIRM_CASES.push(
     },
   })),
 );
+
+/*
+ * HANDOFF section 7, item 6: "c124: a bare first name answering 'Who is it for?' gets no find_staff call; c165: a first
+ * name read as an acronym." The stand-in replies as those models did, without a lookup; code hands the turn back once
+ * ([app check]) and the second pass looks the name up and cards the person.
+ */
+NOV16_AGENT_LOOP_DID_YOU_MEAN_CONFIRM_CASES.push(
+  ...([
+    ["c124", "rowan", "Rowan Kestrel", "Who is this Coaching Form for?"],
+    ["c165", "juno", "Juno Paxton", "What does JUNO stand for?"],
+  ] as const).map(([tag, answer, person, firstReply]): ReplayCase => ({
+    id: `nov16-item6-first-name-answer-is-looked-up-${tag}`,
+    title: `Item 6 (${tag}'s shape): "I need a coaching form" asks "Who is this Coaching Form for?"; the bare answer "${answer}" got a reply with no find_staff ("${firstReply}"); code hands it back once and the card is ${person}'s`,
+    report: `QA's targeted re-run (16 Nov 2026), ${tag}, from the Runner's masked set; HANDOFF section 7 item 6`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      await salon(t);
+      const notes: string[] = [];
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        const said = latest(view);
+        const managerSaid = view.turns.filter((turn) => turn.role === "user" && !turn.text.startsWith("[app check]")).map((turn) => turn.text);
+        if (managerSaid.length === 1) return { text: "Who is this Coaching Form for?" };
+        if (!said.startsWith("[app check]")) return { text: firstReply };
+        if (!notes.includes(said)) notes.push(said);
+        const staff = lastResult(view, "find_staff") as StaffResult;
+        const words = managerSaid.at(-1)!;
+        if (!staff) return { tool: "find_staff", input: { name: words, person_evidence: { message_id: view.turns.filter((turn) => turn.role === "user").at(-2)?.messageIds?.[0] ?? "", quote: words } } };
+        const match = staff.matches?.[0];
+        if (match && !lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "coaching", employee_id: match.employee_id } };
+        return { text: `Here's the Coaching Form for **${match?.name ?? ""}**. What happened?` };
+      }));
+      const thread = t.thread();
+      await thread.say("I need a coaching form");
+      const reply = await thread.say(answer);
+      expect(notes, "the turn was not handed back for a lookup").toHaveLength(1);
+      expect(notes[0]).toMatch(/no find_staff ran this turn/);
+      expect(thread.proposal?.employeeName, `the first name was never looked up:\n${reply.content}`).toBe(person);
+    },
+  })),
+);

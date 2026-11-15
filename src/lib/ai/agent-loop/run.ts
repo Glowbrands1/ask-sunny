@@ -184,6 +184,12 @@ const count = (value: unknown): number => (typeof value === "number" && Number.i
  * (and the history's own card data is the browser's, so it is not read: `parseHistory`), so a reply that reads as a
  * card's (its Policy line or its account line) gets an app-written note.
  */
+/** The reply before this message asked who the form is for, in the app's own words (the rules book; propose_form's ask_exactly). */
+export function answersWhoQuestion(history: readonly ChatMessage[]): boolean {
+  const asked = [...history].reverse().find((message) => message.role === "assistant");
+  return typeof asked?.content === "string" && /\bWho is (?:this\b[^?\n]* for|it for)\?/.test(asked.content);
+}
+
 export const CARD_NOTE = "[app note: this reply showed a card built with propose_form]";
 
 /**
@@ -637,6 +643,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   let selfReview: { mismatched: string[]; fixed: boolean } | null = null;
   let draftReview: { claimed: boolean; fixed: boolean } | null = null;
   let levelReview: { claimed: string | null; nothing_changed: boolean; saved: string | null; fixed: boolean } | null = null;
+  let whoReview: { looked_up: boolean } | null = null;
   let streamError: unknown = null;
   try {
     /*
@@ -860,6 +867,21 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
           }
         }
       }
+      /*
+       * FIX BATCH ITEM 6 (c124, c165; code informs, never rewrites): the manager's message answers this chat's own "Who
+       * is this <form> for?" (the rules book's fixed question, or propose_form's ask_exactly "… Who is it for?"), and the
+       * reply came with no find_staff, no card and no staff list: a bare first name was never looked up, or was read as
+       * an acronym. It goes back to the model once, under the turn's step budget, to look the answer up.
+       */
+      if (stoppedAt === "reply" && !effects.proposal && answersWhoQuestion(input.history) && !["find_staff", "propose_form", "list_staff", "coach_team"].some(calledThisTurn)) {
+        const note = [
+          "[app check] The manager's message answers your \"Who is this … for?\" question, and no find_staff ran this turn.",
+          "Look the person up now with find_staff (person_evidence: the manager's words). A first name alone is a name: never read it as an acronym, a topic or a product. Then do what find_staff says, and write your reply to the manager again.",
+        ].join("\n");
+        const again = await handBack(note);
+        whoReview = { looked_up: calledThisTurn("find_staff") };
+        if (again) text = again;
+      }
     });
   } catch (error) {
     if (error instanceof MissingConfigurationError) throw new AiError("not_configured", error.message, 503, error.missing);
@@ -887,7 +909,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     trace.firstTokenMs = firstTokenMs;
     trace.slots = {
       ...(trace.slots ?? {}),
-      agent_loop: { ...(cardSlot ? { card: cardSlot } : {}), steps, model_steps: modelSteps, model_calls: modelCalls, step_limit: limit, steps_used: stepNumber - 1, stopped: stoppedAt, ms: latencyMs, first_token_ms: firstTokenMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}), ...(levelReview ? { level_review: levelReview } : {}) },
+      agent_loop: { ...(cardSlot ? { card: cardSlot } : {}), steps, model_steps: modelSteps, model_calls: modelCalls, step_limit: limit, steps_used: stepNumber - 1, stopped: stoppedAt, ms: latencyMs, first_token_ms: firstTokenMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}), ...(levelReview ? { level_review: levelReview } : {}), ...(whoReview ? { who_review: whoReview } : {}) },
     };
   }
 
