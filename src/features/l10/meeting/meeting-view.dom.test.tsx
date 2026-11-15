@@ -484,3 +484,33 @@ describe("Bloom-style page: Segue and Conclude", () => {
     expect(screen.getByLabelText("Cascading message")).toBeTruthy();
   });
 });
+
+// The scorecard on the Bloom-style STC DM L10 (the owner's request, 15 Nov 2026), as in the Hub.
+describe("Bloom-style page: Scorecard", () => {
+  it("has Who, Metric, Goal and the weeks newest first by range, this week shaded, rows by owner, cells tinted", () => {
+    const row = (id: string, metric: string, owner: string, weeks: (number | null)[]) => ({ id, metric, owner, goal: "≥ 5", goalValue: 5, higherIsBetter: true, format: "number", weeks });
+    render(
+      <MeetingView
+        info={info}
+        initial={loaded(3, { weekEndings: ["11/01/2026", "11/08/2026", "11/15/2026"], scorecard: [row("s1", "Sales calls", "Avery Quill", [4, 6, null]), row("s2", "Reviews", "Bo Lark", [7, 2, 5]), row("s3", "Visits", "Avery Quill", [5, 5, 9])] })}
+        save={vi.fn() as unknown as SaveFn}
+        end={vi.fn() as unknown as EndFn}
+        viewer={viewer}
+        roster={roster}
+        hubMeetingUrl={HUB}
+        pollMs={0}
+        debounceMs={0}
+        today="2026-11-12"
+      />,
+    );
+    fireEvent.click(within(screen.getByRole("region", { name: "Agenda" })).getByRole("button", { name: /Scorecard/ }));
+    const table = within(screen.getByTestId("bloom-scorecard"));
+    const heads = table.getAllByRole("columnheader");
+    expect(heads.map((h) => h.textContent)).toEqual(["Who", "Metric", "Goal", "9 Nov / 15 Nov", "2 Nov / 8 Nov", "26 Oct / 1 Nov"]);
+    expect(heads.filter((h) => h.dataset.current).map((h) => h.textContent)).toEqual(["9 Nov / 15 Nov"]);
+    expect(table.getAllByRole("rowgroup").slice(1).map((g) => g.getAttribute("aria-label"))).toEqual(["Avery Quill's metrics", "Bo Lark's metrics"]);
+    expect(table.getByRole("button", { name: "Sales calls 9 Nov / 15 Nov: —" }).className).toContain("border-dashed");
+    expect(table.getByRole("button", { name: "Sales calls 2 Nov / 8 Nov: 6" }).className).toContain("bg-[#e1f1e4]");
+    expect(table.getByRole("button", { name: "Sales calls 26 Oct / 1 Nov: 4" }).className).toContain("bg-[#fbe4e4]");
+  });
+});

@@ -32,3 +32,25 @@ export function durationLabel(seconds: number | null | undefined): string {
   const m = Math.round(seconds / 60);
   return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`;
 }
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** A week ending "MM/DD/YYYY" as Bloom heads its column: "2 Nov / 8 Nov" (the six days before it, then the day). */
+export function weekRange(ending: string | undefined): string {
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(ending ?? "");
+  if (!m) return ending ?? "";
+  const end = new Date(Date.UTC(Number(m[3]), Number(m[1]) - 1, Number(m[2])));
+  const start = new Date(end.getTime() - 6 * 86_400_000);
+  const day = (d: Date) => `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
+  return `${day(start)} / ${day(end)}`;
+}
+
+/** Whether "YYYY-MM-DD" falls in the week ending "MM/DD/YYYY" (that day and the six before it). */
+export function inWeek(ending: string | undefined, today: string): boolean {
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(ending ?? "");
+  const t = /^(\d{4})-(\d{2})-(\d{2})$/.exec(today);
+  if (!m || !t) return false;
+  const end = Date.UTC(Number(m[3]), Number(m[1]) - 1, Number(m[2]));
+  const day = Date.UTC(Number(t[1]), Number(t[2]) - 1, Number(t[3]));
+  return day <= end && day > end - 7 * 86_400_000;
+}
