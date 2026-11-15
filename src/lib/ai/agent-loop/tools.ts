@@ -12,7 +12,7 @@ import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
 import { readDirectoryRoster, readScopedRoster, type DirectoryRosterRow } from "@/lib/forms/employee-roster";
 import { inlineDraftVariantKey, supportsInlineDraft } from "@/lib/forms/inline-draft";
 import { authorizeInstance, InstanceNotVisibleError, instanceListFilterFor, visibleInstances } from "@/lib/forms/instance-scope";
-import { applyAssistantRevision, listInstances } from "@/lib/forms/instances";
+import { applyAssistantRevision, deleteInstance, listInstances } from "@/lib/forms/instances";
 import {
   currentManualScopeEnabled,
   formEditPlainWordsEnabled,
@@ -241,13 +241,17 @@ export function rosterMatches(typed: string, roster: readonly RosterEmployee[]):
   });
 }
 
-/** The salon's name as the manager knows it (never only its id). */
-function salonLabel(id: string): string {
-  return rosterSalonName(id) ?? id;
+/**
+ * The salon's name as the manager knows it, never its id (F7, batch F: the past-forms list showed "(loc-0468)"). A
+ * stored name is the fallback; an id on no list is said as such, never shown raw.
+ */
+export function salonLabel(id: string | null | undefined, storedName?: string | null): string | null {
+  if (!id && !storedName?.trim()) return null;
+  return (id ? rosterSalonName(id) : null) ?? (storedName?.trim() || "a salon not on the app's salon list");
 }
 
 function staffRow(person: RosterEmployee) {
-  return { employee_id: person.id, name: displayName(person), salons: person.salonIds.map(salonLabel) };
+  return { employee_id: person.id, name: displayName(person), salons: person.salonIds.map((id) => salonLabel(id)!) };
 }
 
 /**
@@ -493,7 +497,8 @@ export async function findPastForms(context: ToolContext, input: { employee_name
   const nameWords = candidateNameWords(typed);
   if (nameWords.length === 0) return { forms: [] };
   try {
-    const rows = visibleInstances(actor, await listInstances("all", 50, { ...instanceListFilterFor(actor), employeeNameWords: nameWords }));
+    /* 200, not 50 (F7): any name word matches, so other people's forms could push this person's older ones off the read. */
+    const rows = visibleInstances(actor, await listInstances("all", 200, { ...instanceListFilterFor(actor), employeeNameWords: nameWords }));
     const forms = rows
       .filter((row) => samePerson(row.employeeName, typed) || words(row.employeeName).join(" ").includes(words(typed).join(" ")))
       .slice(0, 20)
@@ -504,7 +509,7 @@ export async function findPastForms(context: ToolContext, input: { employee_name
         employee: row.employeeName,
         status: row.status,
         form_date: row.formDate,
-        salon: row.locationId,
+        salon: salonLabel(row.locationId, row.locationName),
       }));
     /* "Draw me up a coaching document … she already has one" (the live re-run's sun-late-date): none on file is no reason to stop. */
     if (forms.length === 0) return { forms, note: "None on file. If the manager asked you to create or draw up a form, propose it now with their account and date, and say no earlier form was found on file." };
@@ -1242,7 +1247,7 @@ export async function proposeForm(
       form: card.templateName,
       employee: card.employeeName,
       status: card.status,
-      salon: card.locationId ? rosterSalonName(card.locationId) ?? card.locationId : null,
+      salon: salonLabel(card.locationId),
       ...(card.status === "needs_location" ? { choose_salon_from: salonNames(card.authorizedLocationIds) } : {}),
       form_date: card.formDate ?? null,
       observation: card.issue ?? null,
@@ -1356,8 +1361,24 @@ export async function editForm(
     if (loaded.instance.status === "finalized") {
       const { openEditableDraft, formOpenedFor } = await import("@/lib/forms/editable-draft");
       const draft = await openEditableDraft(context.request, id, { revise: true, reason: context.question.slice(0, 500) });
+      const openedBefore = effects.formOpened ?? null;
       effects.formOpened = formOpenedFor(draft);
       const revisedEdit = await editForm({ ...context, openFormId: draft.instanceId }, effects, { instance_id: draft.instanceId, values: input.values });
+      /*
+       * F3 (QA, batch F): A REFUSED EDIT LEAVES NO EMPTY REVISION. When the edit on the new draft is refused (an
+       * unstated level or payroll, a reword that changes the person, an unknown field…), the revision this call opened
+       * is deleted again (a draft, holding only the carried values; opening it wrote nothing on the original), and the
+       * screen opens nothing. A revision that was already open before this call is never deleted.
+       */
+      if ("error" in revisedEdit && draft.opened) {
+        try {
+          await deleteInstance(draft.instanceId);
+        } catch {
+          // Left as a draft; the error below still says nothing was written.
+        }
+        effects.formOpened = openedBefore;
+        return { ...revisedEdit, original_unchanged: true, note: "Nothing was written and no new draft was opened. Say what was refused and why." };
+      }
       return { ...revisedEdit, revision_draft: { form: draft.templateName, employee: draft.employeeName }, original_unchanged: true, note: "Say it is a new draft revising the finalized form, as the rules book's Editing lines teach." };
     }
     /*

@@ -28,7 +28,8 @@ export interface ReplayAnswer {
 
 export interface ReplayThread {
   /** `reading`: what the stand-in form-reading model returns this turn (e.g. `{ employeeName }`); none by default. */
-  say(text: string, reading?: Record<string, unknown>): Promise<ReplayAnswer>;
+  /** `extra`: other request fields the browser can send (batch F5: attachments, report context, answer mode). */
+  say(text: string, reading?: Record<string, unknown>, extra?: Record<string, unknown>): Promise<ReplayAnswer>;
   create(): Promise<string>;
   /** Create from the latest card for this person (an earlier card still on screen). */
   createCard?(employeeName: string): Promise<string>;
