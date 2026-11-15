@@ -4914,3 +4914,16 @@ export function otherBesideDescribedEnabled(): boolean {
 export function modelWarningLevelDiscardedEnabled(): boolean {
   return envFlag("MODEL_WARNING_LEVEL_DISCARDED_ENABLED");
 }
+
+/**
+ * READABLE_NAMES_ENABLED (Coding-2, 15 Nov 2026; default off; Pau via QA: "all naming conventions should be readable;
+ * some have de la Torre etc."). On: a name typed off the roster goes on the card readable ("maria de la torre" →
+ * "Maria de la Torre": particles, Mc/Mac, O'/D', hyphens and suffixes; letters never changed, mixed-case words kept);
+ * an all-caps or all-lowercase roster name is shown the same way; and the roster matchers also compare the spelling
+ * without spaces, hyphens, apostrophes or accents, so "delatorre", "dela torre" and "obrien" find "de la Torre" and
+ * "O'Brien" (`forms/readable-name.ts`). Off, as before.
+ */
+export function readableNamesEnabled(): boolean {
+  return envFlag("READABLE_NAMES_ENABLED");
+}
+

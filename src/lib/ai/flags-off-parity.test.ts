@@ -569,6 +569,8 @@ const NEW_FLAGS = [
   // #571 (default off): forced off with the others in the child run.
   "SOURCE_NOTE_GUARD_ENABLED",
   "ROSTER_COMPOUND_SURNAME_ENABLED",
+  // coding 2: READABLE_NAMES (Pau via QA, 15 Nov 2026; default off): forced off with the others.
+  "READABLE_NAMES_ENABLED",
   "ROSTER_NOT_FOUND_ANY_PHRASING_ENABLED",
   "EXIT_STATED_ONLY_ENABLED",
   // Ported from the sibling app's flip-3 gate (6 Nov 2026).
@@ -857,6 +859,14 @@ const PROTECTED = [
  * `client.messages.create` wrapped in `withAiTimeLimit("chat_revision", helperTimeoutMs(), …)`, so the revision ends
  * by the helper limit with a reply and a log line, never an empty answer; docs/patches/ai-time-limits-chat-revision.patch.
  * A call that finishes in time returns exactly what it did before. chat-revision.ts is already excluded below.
+ *
+ * The user (Pau), under the standing approval, via QA on 15 Nov 2026 ("all naming conventions should be readable; some
+ * have de la Torre etc."), in src/lib/forms/proposal.ts, exactly the lines of docs/patches/readable-names-proposal.patch:
+ * the imports `readableNamesEnabled`, `isNameParticle` and `readableName`; `nameWordCount` (the answer readers' two-word
+ * limit does not count surname particles); in readTypedName, the name-part limit and the middle-name rule do not count
+ * particles, and a particle left at the end is dropped; and tidyTypedName makes the typed name readable. Behind
+ * READABLE_NAMES_ENABLED (default off); off, every count is `words.length` / `parts.length` as before and the typed
+ * name is only trimmed (readable-name.test.ts's flag-off section). proposal.ts is already excluded below.
  */
 const APPROVED_PROTECTED_EDITS = [
   ":(exclude)src/lib/forms/salon-mention.ts",

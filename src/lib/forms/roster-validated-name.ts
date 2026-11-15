@@ -1,6 +1,9 @@
+import { readableNamesEnabled } from "@/lib/config/chat-quality-flags";
 import { isFieldLabelWord, nameAfterNameLabel, NOT_A_NAME, NOT_A_TYPED_NAME, stripFieldLabels } from "./name-words";
+
 import { matchEmployeeName, type RosterEmployee } from "./employee-match";
 import { extractEmployeeNames } from "./proposal";
+import { readableName } from "./readable-name";
 
 /**
  * The employee on the card, read in code.
@@ -34,6 +37,13 @@ const PROMO = new Set([
 const NOT_A_REPLY = /^(?:yes|yeah|yep|yup|no|nope|ok|okay)$/i;
 
 function asTyped(name: string): string {
+  // READABLE_NAMES_ENABLED (QA, 15 Nov 2026): "jacinta van der berg" reads "Jacinta van der Berg", not "Jacinta Van Der
+  // Berg"; "mcdonald" reads "McDonald". Mixed-case words and short all-caps words (initials) are kept, as below.
+  if (readableNamesEnabled()) {
+    const typed = name.trim().split(/\s+/).filter(Boolean);
+    const readable = readableName(name).split(" ");
+    return typed.map((word, index) => (word.length <= 3 && word === word.toUpperCase() && /\p{L}/u.test(word) ? word : readable[index]!)).join(" ");
+  }
   return name
     .trim()
     .replace(/\s+/g, " ")

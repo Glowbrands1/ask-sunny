@@ -1,4 +1,6 @@
-import { rosterCompoundSurnameEnabled, sharedLoginNotStaffEnabled } from "@/lib/config/chat-quality-flags";
+import { readableNamesEnabled, rosterCompoundSurnameEnabled, sharedLoginNotStaffEnabled } from "@/lib/config/chat-quality-flags";
+
+import { nameInOneCase, readableName, squashedName } from "./readable-name";
 
 /**
  * ============================================================================
@@ -119,7 +121,9 @@ export function normalizeTypedName(text: string): string {
 const MAX_SUGGESTIONS = 3;
 
 export function displayName(employee: RosterEmployee): string {
-  return `${employee.firstName.trim()} ${employee.lastName.trim()}`.replace(/\s+/g, " ").trim();
+  const name = `${employee.firstName.trim()} ${employee.lastName.trim()}`.replace(/\s+/g, " ").trim();
+  // READABLE_NAMES_ENABLED: an all-caps or all-lowercase roster row is shown readable ("DE LA TORRE" → "de la Torre").
+  return readableNamesEnabled() && nameInOneCase(name) ? readableName(name) : name;
 }
 
 function normalize(text: string): string {
@@ -336,8 +340,19 @@ export function matchEmployeeName(typed: string, roster: readonly RosterEmployee
       exact.push(employee);
       continue;
     }
+    /*
+     * READABLE_NAMES_ENABLED (Pau via QA, 15 Nov 2026): the surname compared without spaces, hyphens, apostrophes or
+     * accents, so "delatorre" and "dela torre" are "de la Torre" and "obrien" is "O'Brien"; a typo of it is close.
+     */
+    const squashedTyped = readableNamesEnabled() ? squashedName(words.slice(1).join("")) : "";
+    const squashedLast = readableNamesEnabled() ? squashedName(employee.lastName) : "";
+    if (readableNamesEnabled() && firsts.includes(typedFirst) && squashedTyped.length > 1 && squashedTyped === squashedLast) {
+      exact.push(employee);
+      continue;
+    }
     const firstClose = firsts.some((first) => closeWord(typedFirst, first));
-    const lastClose = typedLast.length > 1 && closeWord(typedLast, last);
+    const squashedClose = readableNamesEnabled() && squashedTyped.length > 3 && squashedTyped !== squashedLast && closeWord(squashedTyped, squashedLast);
+    const lastClose = (typedLast.length > 1 && closeWord(typedLast, last)) || squashedClose;
     // ROSTER_COMPOUND_SURNAME_ENABLED: a two-word surname compared word by word.
     const compound = !lastMatches && !lastClose && rosterCompoundSurnameEnabled() ? compoundSurnameScore(words.slice(1), employee.lastName) : null;
     if (compound === 0 && firsts.includes(typedFirst) && words.length - 1 === normalize(employee.lastName).split(/[\s-]+/).filter(Boolean).length) {
@@ -347,7 +362,7 @@ export function matchEmployeeName(typed: string, roster: readonly RosterEmployee
     if (firstClose && (lastMatches || lastClose || compound !== null)) {
       const score =
         Math.min(...firsts.map((first) => editDistance(typedFirst, first))) +
-        (compound !== null ? compound : typedLast.length > 1 ? editDistance(typedLast, last) : 0);
+        (compound !== null ? compound : squashedClose ? editDistance(squashedTyped, squashedLast) : typedLast.length > 1 ? editDistance(typedLast, last) : 0);
       close.push({ employee, score });
     }
   }

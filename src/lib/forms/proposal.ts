@@ -4,7 +4,7 @@ import { businessToday } from "@/lib/business-date";
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { storeNameKey } from "@/lib/reporting/store-identity";
 
-import { formNameNotATitleEnabled, groundedEntitiesEnabled, intentExtractionEnabled, thisPersonsTurnsEnabled, typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
+import { formNameNotATitleEnabled, groundedEntitiesEnabled, intentExtractionEnabled, readableNamesEnabled, thisPersonsTurnsEnabled, typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
 import { isDocumentName, isRosterStateName } from "@/lib/ai/not-a-person";
 
 import { extractFormDate } from "./form-date-answer";
@@ -18,6 +18,7 @@ import {
   TEAM_SUBJECT_LABEL,
 } from "./team-subject";
 import { proposeLocation } from "./location-scope";
+import { isNameParticle, readableName } from "./readable-name";
 import { isExitTerms, namesSomebody, notInStreetAddress } from "./answer-not-a-name";
 import { nameBeforeAccountVerb } from "./not-a-name";
 import { isMultiWordSalonName } from "./salon-mention";
@@ -152,16 +153,27 @@ const GERUND_OBJECT = /^(?:the|a|an|her|his|their|my|our|its|this|that|these|tho
  */
 const COUNTS_PEOPLE = new Set(["both", "either", "neither", "each", "all", "everyone", "everybody", "anyone", "anybody", "nobody", "none", "whoever"]);
 
+/** How many words a name answer has; READABLE_NAMES_ENABLED: its particles ("de la", "van der") are not counted. */
+function nameWordCount(words: readonly string[]): number {
+  return readableNamesEnabled() ? words.filter((word) => !isNameParticle(word)).length : words.length;
+}
+
 function readTypedName(words: readonly string[], whole: boolean): string | null {
   const parts: string[] = [];
   let endedOnPunctuation = false;
+  /*
+   * READABLE_NAMES_ENABLED (Pau via QA, 15 Nov 2026): a surname particle ("de la", "van der") is part of the name and
+   * is not counted as one of its parts, so "maria de la torre" is not cut to "maria de" nor "jacinta van der berg" to
+   * "jacinta van". Off, every word counts, as before.
+   */
+  const counted = (): number => (readableNamesEnabled() ? parts.filter((part) => !isNameParticle(part)).length : parts.length);
   for (const [index, raw] of words.entries()) {
     if (parts.length === 0 && GERUND.test(raw) && GERUND_OBJECT.test((words[index + 1] ?? "").replace(WRAPPER_AFTER, "").toLowerCase())) {
       if (whole) return null;
       break;
     }
     // A third part only where a name position was read — see below.
-    if (parts.length === (whole ? 2 : 3)) break;
+    if (counted() === (whole ? 2 : 3)) break;
     // An opening wrapper can only precede the name, so only the first word loses one.
     const opened = parts.length === 0 ? raw.replace(WRAPPER_BEFORE, "") : raw;
     const unwrapped = opened.replace(WRAPPER_AFTER, "");
@@ -205,8 +217,8 @@ function readTypedName(words: readonly string[], whole: boolean): string | null 
    * third word stays only when it ends the message, carries the punctuation,
    * or is followed by a word that cannot be part of a name.
    */
-  if (parts.length === 3 && !endedOnPunctuation) {
-    const next = words[3]?.replace(WRAPPER_AFTER, "").toLowerCase();
+  if (counted() === 3 && !endedOnPunctuation) {
+    const next = words[readableNamesEnabled() ? parts.length : 3]?.replace(WRAPPER_AFTER, "").toLowerCase();
     const boundary =
       next === undefined ||
       NOT_A_NAME.has(next) ||
@@ -215,6 +227,8 @@ function readTypedName(words: readonly string[], whole: boolean): string | null 
       /^\d/.test(next);
     if (!boundary) parts.pop();
   }
+  // READABLE_NAMES_ENABLED: a name never ends on a particle ("for maria de" with the rest cut is "maria").
+  if (readableNamesEnabled()) while (parts.length > 1 && isNameParticle(parts[parts.length - 1]!)) parts.pop();
   if (parts.length === 0) return null;
   if (whole && parts.length !== words.length) return null;
   return parts.join(" ");
@@ -946,7 +960,7 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
     const words = withoutAnswerLead(answer.trim().replace(/[.?!]+$/, ""))
       .split(/\s+/)
       .filter(Boolean);
-    const candidate = words.length <= 2 ? readTypedName(words, true) : null;
+    const candidate = nameWordCount(words) <= 2 ? readTypedName(words, true) : null;
     // "kearney", "sorry, it's grand island": a reply that is only a salon. See `isPlaceReply`.
     if (candidate && !opensWithRosterState(candidate) && !isPlaceReply(candidate)) strong.push(candidate);
   }
@@ -978,7 +992,7 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
   const listed = INTAKE_LIST.exec(text)?.[1];
   if (listed) {
     const words = listed.trim().split(/\s+/).filter(Boolean);
-    const candidate = words.length <= 2 ? readTypedName(words, true) : null;
+    const candidate = nameWordCount(words) <= 2 ? readTypedName(words, true) : null;
     if (candidate && !opensWithRosterState(candidate) && !isPlaceReply(candidate)) strong.push(candidate);
   }
 
@@ -1227,7 +1241,7 @@ function sentenceAnswers(text: string): string[] {
   const names: string[] = [];
   for (const sentence of text.split(/(?<=[.!?])\s+|\n+|\s*[,;]\s*|\s+[-–—]\s+|\s+(?:and|but|then)\s+/)) {
     const words = withoutAnswerLead(sentence.trim().replace(/[.?!]+$/, "")).split(/\s+/).filter(Boolean);
-    const candidate = words.length > 0 && words.length <= 2 ? readTypedName(words, true) : null;
+    const candidate = words.length > 0 && nameWordCount(words) <= 2 ? readTypedName(words, true) : null;
     if (candidate && !opensWithRosterState(candidate) && !isPlaceReply(candidate)) names.push(candidate);
   }
   return names;
@@ -1688,7 +1702,9 @@ function completePartialName(
  * tidied; the field stays editable on the form.
  */
 export function tidyTypedName(name: string): string {
-  return name.trim().replace(/\s+/g, " ");
+  const tidy = name.trim().replace(/\s+/g, " ");
+  // READABLE_NAMES_ENABLED (Pau via QA, 15 Nov 2026): "maria de la torre" goes on the card as "Maria de la Torre".
+  return readableNamesEnabled() ? readableName(tidy) : tidy;
 }
 
 /* ------------------------------------------------------------- proposal -- */

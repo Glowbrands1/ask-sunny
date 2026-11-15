@@ -22,7 +22,9 @@ import {
   hybridSearchEnabled,
   manualSectionDedupeEnabled,
   retrievalRecallEnabled,
+  readableNamesEnabled,
 } from "@/lib/config/chat-quality-flags";
+import { squashedSpellingMatches } from "@/lib/forms/readable-name";
 import type { AskResponse } from "@/lib/ai/types";
 import { findManualSection, manualSectionHeadings, type ManualChunk } from "@/lib/forms/official-policy-manual";
 import { sectionWording } from "@/lib/forms/policy-citation";
@@ -237,7 +239,9 @@ export function rosterMatches(typed: string, roster: readonly RosterEmployee[]):
   if (wanted.length === 0) return [];
   return roster.filter((person) => {
     const own = words([person.firstName, person.preferredFirstName ?? "", person.lastName].join(" "));
-    return wanted.every((word) => own.some((name) => name === word || (word.length >= 3 && name.startsWith(word))));
+    if (wanted.every((word) => own.some((name) => name === word || (word.length >= 3 && name.startsWith(word))))) return true;
+    // READABLE_NAMES_ENABLED: "maria delatorre", "dela torre", "obrien" are the roster's spelling without its spaces or apostrophes.
+    return readableNamesEnabled() && squashedSpellingMatches(typed, person);
   });
 }
 
