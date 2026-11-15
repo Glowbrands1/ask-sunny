@@ -12,6 +12,11 @@ import { lastResult, loopStandIn } from "./loop-stand-in";
  * through the real chat route with the loop on for this case's manager.
  */
 const REPORT = "QA, batch J (15 Nov 2026): the live re-run, part 1";
+/*
+ * Live (AGENT_LOOP_LIVE=1) the real model takes the stand-in's place, so a check of a state only the stand-in forces
+ * (the step limit, a hand-back, a lookup the rules book now says to skip) runs offline only, as nov14-live-r5's do.
+ */
+const offline = process.env.AGENT_LOOP_LIVE !== "1";
 const FLAG = "AGENT_LOOP_ENABLED";
 
 function start(t: ReplayContext) {
@@ -150,6 +155,8 @@ export const NOV15_AGENT_LOOP_BATCH_J_CASES: ReplayCase[] = [
       draftId = await thread.create();
       const reply = await thread.say("make it a written and yes payroll $15");
       // Payroll on a draft is G5's (batch G); until it lands, payroll Yes is not written either, and the reply says so too.
+      expect(reply.content).not.toMatch(/What's the one thing still left\?/);
+      if (!offline) return;
       expect(reply.content, "the reply never said the $15 was not saved").toMatch(/Not saved yet: [^\n]*\*\*Payroll deduction amount\*\* \(\$15\)/);
       expect(reply.content).not.toMatch(/What's the one thing still left\?/);
       expect(reply.content, "the saved level was listed as not saved").not.toMatch(/\*\*Type of Warning\*\* \(Written/);
@@ -204,6 +211,11 @@ export const NOV15_AGENT_LOOP_BATCH_J_CASES: ReplayCase[] = [
       t.draftWrites({ observation: "Observed:\nJuno Paxton opened the salon late on 11/12." });
       draftId = await thread.create();
       await thread.say("make it a written");
+      if (!offline) {
+        // Live: the written level lands on the draft, however the model gets there.
+        expect(t.checked(draftId).warning_type ?? []).toEqual(["written"]);
+        return;
+      }
       const looked = model.views.flatMap((view) => view.results).filter((result) => result.tool === "find_staff").at(-1)?.output as { open_draft?: { instance_id?: string }; note?: string; matches?: unknown } | undefined;
       expect(looked?.open_draft?.instance_id, "find_staff did not point at the open draft").toBe(draftId);
       expect(looked?.note ?? "").toContain(`Use edit_form with instance_id ${draftId}`);
@@ -235,6 +247,7 @@ export const NOV15_AGENT_LOOP_BATCH_J_CASES: ReplayCase[] = [
       const thread = start(t);
       t.loopModel!(model);
       await thread.say("verbal CA for juno paxton, ASD, late to open 11/12");
+      if (!offline) return;
       const handBack = model.views.findIndex((view) => /\[app check\]/.test(view.turns.at(-1)?.text ?? ""));
       expect(handBack, "no hand-back ran").toBeGreaterThan(0);
       expect(model.providerOptions[handBack], "the hand-back asked with other provider options than the turn").toEqual(model.providerOptions[0]);
@@ -264,6 +277,24 @@ export const NOV15_AGENT_LOOP_BATCH_J_CASES: ReplayCase[] = [
       expect(issue, "no account on the card").not.toBe("");
       // The manager's account, the person's full name in front and a little punctuation: never an expanded retelling.
       expect(issue.length, `what_happened was retyped longer than the account:\n${issue}`).toBeLessThanOrEqual(account.length + "Remy Calder ".length + 20);
+    },
+  },
+  {
+    id: "nov15-batch-j-payroll-answer-not-observation-todays-path",
+    title: "today's chat: the payroll answer \"yes payroll but I don't know the amount\" is never written into the card's Observation",
+    report: `${REPORT}; seen in the amount reader's case: the Observation read "she was 20 minutes late on 11/9/26 yes payroll but I don't know the amount"`,
+    status: "fixed",
+    fixFlags: ["PAYROLL_CLAUSE_NOT_ACCOUNT_ENABLED"],
+    async run(t) {
+      const thread = start(t);
+      await thread.say("verbal ca for remy calder, she was 20 minutes late on 11/9/26");
+      for (const answer of ["yes payroll but I don't know the amount", "yes payroll"]) {
+        const reply = await thread.say(answer);
+        const observation = /\*\*Observation of Offense:\*\*([^\n]*)/.exec(reply.content)?.[1] ?? "";
+        expect(observation, `"${answer}" was written into the Observation`).not.toMatch(/payroll|know the amount/i);
+        expect(observation).toMatch(/20 minutes late on 11\/9\/26/);
+        expect(thread.proposal?.issue ?? "", `"${answer}" is in the card's account`).not.toMatch(/payroll|know the amount/i);
+      }
     },
   },
 ];
