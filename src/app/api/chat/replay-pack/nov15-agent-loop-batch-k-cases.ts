@@ -101,3 +101,37 @@ export const NOV15_AGENT_LOOP_BATCH_K_CASES: ReplayCase[] = [
     },
   },
 ];
+
+NOV15_AGENT_LOOP_BATCH_K_CASES.push(
+  {
+    id: "nov15-k2-part-of-a-first-name-is-asked-c261",
+    title: "K2 (QA's shadow replay, c261's shape): \"write up rowa for being late on 11/14\", where \"rowa\" only begins Rowan Kestrel's first name, is asked about (Did you mean **Rowan Kestrel**?), never carded",
+    report: `${REPORT}: c261, a typo that began another roster person's first name seated her and looked up her forms`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      await salon(t);
+      t.loopModel!(namingModel(() => "rowa", "She was late to her shift on 11/14."));
+      const thread = t.thread();
+      const reply = await thread.say("write up rowa for being late on 11/14");
+      expect(thread.proposal ?? null, `a part of a first name was carded:\n${reply.content}`).toBeNull();
+      expect(reply.content).toMatch(/Did you mean \*\*Rowan Kestrel\*\*\?/);
+    },
+  },
+  {
+    id: "nov15-k2-a-whole-first-name-is-still-used",
+    title: "K2, the control: \"write up rowan for being late on 11/14\", the whole first name of the only Rowan, is carded at once with \"Using **Rowan Kestrel** from your staff list.\"",
+    report: `${REPORT}; Pau's 14 Nov first-name rule, kept`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      await salon(t);
+      t.loopModel!(namingModel(() => "rowan", "She was late to her shift on 11/14."));
+      const thread = t.thread();
+      const reply = await thread.say("write up rowan for being late on 11/14");
+      expect(thread.proposal?.employeeName, reply.content).toBe("Rowan Kestrel");
+    },
+  },
+);

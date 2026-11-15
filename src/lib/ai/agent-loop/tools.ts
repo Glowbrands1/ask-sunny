@@ -508,6 +508,19 @@ export async function findStaff(context: ToolContext, input: { name?: unknown },
    */
   if (found.length === 1 && words(typed).length === 1) {
     const only = found[0]!;
+    /*
+     * Batch K2 (QA's 266 shadow replay, c261: "edit <a typo> ca form" seated the one roster person whose first name the
+     * typo only began, and looked up her forms): only the person's own first or preferred first name, whole, is used.
+     * A part of a name, or a surname alone, is asked, in today's words.
+     */
+    const own = [only.firstName, only.preferredFirstName ?? ""].map((name) => words(name).join(" ")).filter(Boolean);
+    if (!own.includes(words(typed).join(" "))) {
+      return {
+        matches: [],
+        did_you_mean: [staffRow(only)],
+        note: `Not a whole first name on the roster. Ask the manager, in these words: ${nameConfirmationQuestion(typed, [displayName(only)])}`,
+      };
+    }
     if (effects) effects.nameLines = { ...(effects.nameLines ?? {}), [only.id]: displayName(only) };
     return { matches: found.map(staffRow), name_from_staff_list: displayName(only), note: `Only a first name was given and one person has it: use ${displayName(only)}, and say so as the rules book's Card replies teach.` };
   }
