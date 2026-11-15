@@ -309,7 +309,7 @@ export const AGENT_LOOP_TOOLS = [
             "This incident's account in the manager's own words, all of it, with work areas and names kept as typed. Spelling, spacing and capitals cleaned; never names, dates, numbers, amounts or quoted words. No instructions (\"create a CA\", \"make it about\", \"the policy is\"), no level or payroll words, nothing invented. Leave out when the manager has not said what happened.",
         },
         incident_date: { type: "string", description: "YYYY-MM-DD, the salon's local date." },
-        warning_level: { type: "string", enum: ["verbal", "written"], description: "Only when the manager stated it for this form." },
+        warning_level: { type: "string", enum: ["verbal", "written", "termination"], description: "Only when the manager stated it for this form (termination only when they said this form is a termination)." },
         payroll_deduct: { type: "string", enum: ["yes", "no"], description: "Only when the manager said whether payroll deduct applies." },
         payroll_amount: { type: "string", description: "The deduction amount the manager stated, digits." },
         prior_actions: { type: "string", description: "Earlier steps only as the manager stated them (\"verbal on 10/2\", \"coached last month\"); never from records on file." },

@@ -1287,7 +1287,14 @@ export async function proposeForm(
     : null;
   const askedLevel = input.warning_level === "verbal" || input.warning_level === "written" ? input.warning_level : null;
   const level = askedLevel && (askedLevel === "verbal" ? /\bverbal\b/i : /\bwritten\b|\bwrite[- ]?up\b/i).test(managerWords) ? askedLevel : null;
-  const dropped = [askedLevel && !level ? "warning_level" : null, askedPayroll && !payroll ? "payroll_deduct" : null, typedAmount && !amount ? "payroll_amount" : null].filter(Boolean);
+  /*
+   * Batch G (G19, Pau's P15 ruling "A" on the loop's card; Pau's standing approval, 15 Nov 2026): a termination the
+   * manager stated for this form, read by the same reader Create ticks it with (`statesTermination`), so the card and
+   * the saved form agree. The card's level stays empty (Create ticks it); the fact says so. A hedge states nothing.
+   */
+  const askedTermination = input.warning_level === "termination" && template.key === "dpoa";
+  const terminationStated = askedTermination && (await import("@/lib/forms/termination-stated")).statesTermination(managerWords);
+  const dropped = [(askedLevel && !level) || (askedTermination && !terminationStated) ? "warning_level" : null, askedPayroll && !payroll ? "payroll_deduct" : null, typedAmount && !amount ? "payroll_amount" : null].filter(Boolean);
   /*
    * Prior actions as today reads them from the manager's own words (`statedPriorActions`: "Verbal corrective action —
    * signed 09/02/2026", a corrected date replacing the first; the live re-run's second-request-prior-step-correction
@@ -1383,7 +1390,7 @@ export async function proposeForm(
   const underPerformance = Boolean(policyHeading && /standards of conduct/i.test(policyHeading) && (/\bunder[- ]?perform(?:ance|ing)\b|must see behaviou?rs?|\bperform[a-z]*\b/i.test(managerWords) || ACCOUNT_METRIC.test(managerWords)));
   ACCOUNT_METRIC.lastIndex = 0;
   const corrective = template.key === "dpoa";
-  const unset = corrective && !awaiting ? [...(payroll ? [] : ["payroll_deduct"]), ...(level ? [] : ["warning_level"])] : [];
+  const unset = corrective && !awaiting ? [...(payroll ? [] : ["payroll_deduct"]), ...(level || terminationStated ? [] : ["warning_level"])] : [];
   const salonNames = (ids: readonly string[] | undefined) => (ids ?? []).map((id) => ({ id, name: rosterSalonName(id) ?? id }));
   const facts = {
     ...(unset.length > 0 ? { unset } : {}),
@@ -1391,6 +1398,7 @@ export async function proposeForm(
       ? { stated: { ...(level ? { warning_level: level } : {}), ...(payroll ? { payroll_deduct: payroll } : {}), ...(payroll === "yes" && amount ? { payroll_amount: `$${amount.replace(/^\$/, "")}` } : {}), ...(priorActions ? { prior_actions: priorActions } : {}) } }
       : {}),
     ...(corrective && payroll === "yes" && !amount ? { payroll_amount_unset: true } : {}),
+    ...(terminationStated ? { termination_stated: { type_of_warning: "Termination, as you said", approval_line: (await import("@/lib/forms/termination-stated")).TERMINATION_APPROVAL_LINE } } : {}),
     ...(datesGiven.length > 1 ? { dates_given: datesGiven, ...(date ? { date_chosen: date } : {}) } : {}),
     /* Batch G (G16): this chat already asked which date; a second ask is never made (the rules book: use the best reading). */
     ...(datesGiven.length > 1 && context.history.some((message) => message.role === "assistant" && /more than one date|which date goes on the form/i.test(String(message.content))) ? { dates_asked_before: true } : {}),
@@ -1694,7 +1702,10 @@ export async function editForm(
     // The warning level is a tick box on the form: written as a checked group, never as text.
     const checked: Record<string, string[]> = {};
     if (values.warning_type) {
-      checked.warning_type = [/written/i.test(values.warning_type) ? "written" : /verbal/i.test(values.warning_type) ? "verbal" : "termination"];
+      /* Batch G (G19): verbal, written or termination only; anything else (a demotion) is refused, never ticked as termination. */
+      const kind = /^\s*written\b/i.test(values.warning_type) ? "written" : /^\s*verbal\b/i.test(values.warning_type) ? "verbal" : /^\s*terminat/i.test(values.warning_type) ? "termination" : null;
+      if (!kind) return { error: `"${values.warning_type}" is not a warning level on this form (verbal, written or termination). Nothing was written.` };
+      checked.warning_type = [kind];
       delete values.warning_type;
     }
     /*

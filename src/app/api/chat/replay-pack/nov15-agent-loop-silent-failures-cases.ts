@@ -177,4 +177,61 @@ export const NOV15_AGENT_LOOP_SILENT_FAILURE_CASES: ReplayCase[] = [
       expect(reply.content, "payroll was asked again").not.toMatch(/payroll deduct (?:isn't set|applicable\?)|tell me if (?:payroll|it) applies/i);
     },
   },
+  {
+    id: "nov15-silent-g19-termination-on-the-card",
+    title: "G19 (Pau's P15 ruling A on the loop's card): \"Create a CA for <A>, we're terminating her for the no call no show\": the card says Termination, as you said, with the DM/HR approval line, and Create ticks Termination; a hedge leaves the level empty",
+    report: `${REPORT}; QA: the loop's card said "Warning level isn't set" while Create ticked Termination`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
+      t.directory([...STAFF, WREN]);
+      t.as("salon_director", KEARNEY);
+      const model = loopStandIn((view): LoopDecision => {
+        const result = lastResult(view, "propose_form") as { facts?: { termination_stated?: { type_of_warning: string; approval_line: string }; not_kept?: string[] }; not_kept?: string[] } | null;
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "Wren Halloway" } };
+        if (!result) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: WREN.id, what_happened: "Wren Halloway was a no call no show.", warning_level: "termination" } };
+        const stated = result.facts?.termination_stated;
+        return {
+          text: stated
+            ? `Here's the Corrective Action Form for **Wren Halloway**.\n\n**Type of Warning:** ${stated.type_of_warning}.\n${stated.approval_line}\n\n**Observation of Offense:** Wren Halloway was a no call no show.`
+            : "Here's the Corrective Action Form for **Wren Halloway**.\n\nIf termination is the decision, tick Termination on the form.\n\n**Observation of Offense:** Wren Halloway was a no call no show.",
+        };
+      });
+      t.loopModel!(model);
+      const thread = t.thread();
+      const reply = await thread.say("Create a CA for Wren Halloway, we're terminating her for the no call no show");
+      expect(reply.content, `the card does not say Termination:\n${reply.content}`).toMatch(/\*\*Type of Warning:\*\* Termination, as you said\./);
+      expect(reply.content).toMatch(/Termination needs your DM\/HR approval before you finalize\./);
+      const id = await thread.create();
+      expect(t.checked(id).warning_type, "Create did not tick Termination: the card and the form disagree").toEqual(["termination"]);
+      // A hedge: no level, one line.
+      t.loopModel!(model);
+      const hedge = t.thread();
+      const answer = await hedge.say("Create a CA for Wren Halloway, we might terminate her if this continues, she was a no call no show");
+      expect(answer.content, "a hedge was carded as a termination").not.toMatch(/Termination, as you said/);
+      expect(answer.content).toMatch(/tick Termination on the form/);
+    },
+  },
+  {
+    id: "nov15-silent-g19-demotion-is-not-a-level",
+    title: "G19: on a Corrective Action draft, a warning level of \"demotion\" is refused and nothing is ticked (verbal, written or termination only)",
+    report: `${REPORT}; QA: anything that was not verbal or written was ticked as termination`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      const { thread, id } = await wrensDraft(t);
+      const model = loopStandIn((view): LoopDecision => {
+        const edit = lastResult(view, "edit_form") as { error?: string } | null;
+        if (!edit) return { tool: "edit_form", input: { instance_id: id, values: { warning_type: "demotion" } } };
+        return { text: edit.error ? "A demotion isn't a warning level on the Corrective Action Form; the Demotion Form records it." : "Done." };
+      });
+      t.loopModel!(model);
+      await thread.say("make it a demotion");
+      expect(t.checked(id).warning_type ?? [], "a demotion was ticked as a level").toEqual([]);
+      if (offline) expect(toolResults(model.views, "edit_form")[0], "a demotion level was not refused").toMatch(/"error":"(?:[^"]*is not a warning level on this form|warning_type must come from the manager's own words)/);
+    },
+  },
 ];

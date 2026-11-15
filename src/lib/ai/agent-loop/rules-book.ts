@@ -121,6 +121,8 @@ export const RULES_BOOK: readonly { readonly title: string; readonly rules: read
       "date_after_today (propose_form, or edit_form refusing form_date / incident_date): the date is after today, the " + place + "'s local date, so it is not on the card or the form. Say so in one line and ask which day (\"12/20/2026 is after today, so the card has no date yet. Which day was it?\").",
       "Two dates where the account says what each one is (the incident on 9/28; a report run on 10/16): use the incident's date and say it once, \"Dated 9/28/2026 (when it happened); say if you want 10/16.\" Ask which date only when the account does not say which one the incident is.",
       "Ask which date at most ONCE in a chat. dates_asked_before: never ask again; a \"create the ca\", \"go ahead\" or any answer that is not a date uses the incident's date (else the latest stated), proposed with incident_date, and says which in one line.",
+      "A termination the manager states for this form (\"we're terminating her\", \"term CA\"): propose_form with warning_level termination; the tool reads it the way Create does. termination_stated: say \"**Type of Warning:** <type_of_warning>.\" and then approval_line. warning_level in not_kept: the tool did not read a termination, so treat it as a hedge (below). Never infer a termination from history, a third offense or \"last chance\".",
+      "A hedge (\"might terminate her if…\", \"thinking of letting her go\"): leave the level empty and say in one line that the manager ticks Termination on the form if that is the decision. Ask nothing unless it is the only open item. A demotion is never a warning level.",
     ],
   },
   {
