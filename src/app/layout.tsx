@@ -13,8 +13,9 @@ import "./globals.css";
  * served from this origin, so there is no runtime request to a font CDN, no
  * third-party dependency in the critical path and nothing to block first paint.
  * Since 15 Nov 2026 they are `next/font/local` with the files committed under
- * `src/app/font-files/` (Fontsource's latin subsets, each family's OFL licence
- * beside it): `next/font/google` downloaded them at build time, and CI's build
+ * `src/app/font-files/` (Fontsource's files, each family's OFL licence beside
+ * it; latin, plus latin-ext and vietnamese where the family has them, each with
+ * Google's unicode-range, so a name like "Łukasz" or "Nguyễn" keeps the face): `next/font/google` downloaded them at build time, and CI's build
  * failed whenever GitHub's runners could not reach Google Fonts (QA). Same
  * families, weights, subset and CSS variables as before. `display: "swap"` plus the fallback stacks in
  * globals.css mean text is readable before the webfont lands rather than
@@ -43,7 +44,23 @@ const passionOne = localFont({
     { path: "./font-files/passion-one/passion-one-latin-700-normal.woff2", weight: "700", style: "normal" },
   ],
   variable: "--font-passion-one",
+  declarations: [{ prop: "unicode-range", value: "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD" }],
   display: "swap",
+});
+
+const passionOneLatinExt = localFont({
+  src: [
+    { path: "./font-files/passion-one/passion-one-latin-ext-400-normal.woff2", weight: "400", style: "normal" },
+    { path: "./font-files/passion-one/passion-one-latin-ext-700-normal.woff2", weight: "700", style: "normal" },
+  ],
+  declarations: [
+    { prop: "font-family", value: "passionOne" },
+    { prop: "unicode-range", value: "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF" },
+  ],
+  variable: "--font-passion-one-latin-ext",
+  display: "swap",
+  preload: false,
+  adjustFontFallback: false,
 });
 
 const lato = localFont({
@@ -53,7 +70,24 @@ const lato = localFont({
     { path: "./font-files/lato/lato-latin-900-normal.woff2", weight: "900", style: "normal" },
   ],
   variable: "--font-lato",
+  declarations: [{ prop: "unicode-range", value: "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD" }],
   display: "swap",
+});
+
+const latoLatinExt = localFont({
+  src: [
+    { path: "./font-files/lato/lato-latin-ext-400-normal.woff2", weight: "400", style: "normal" },
+    { path: "./font-files/lato/lato-latin-ext-700-normal.woff2", weight: "700", style: "normal" },
+    { path: "./font-files/lato/lato-latin-ext-900-normal.woff2", weight: "900", style: "normal" },
+  ],
+  declarations: [
+    { prop: "font-family", value: "lato" },
+    { prop: "unicode-range", value: "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF" },
+  ],
+  variable: "--font-lato-latin-ext",
+  display: "swap",
+  preload: false,
+  adjustFontFallback: false,
 });
 
 const jost = localFont({
@@ -62,7 +96,23 @@ const jost = localFont({
     { path: "./font-files/jost/jost-latin-500-normal.woff2", weight: "500", style: "normal" },
   ],
   variable: "--font-jost",
+  declarations: [{ prop: "unicode-range", value: "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD" }],
   display: "swap",
+});
+
+const jostLatinExt = localFont({
+  src: [
+    { path: "./font-files/jost/jost-latin-ext-400-normal.woff2", weight: "400", style: "normal" },
+    { path: "./font-files/jost/jost-latin-ext-500-normal.woff2", weight: "500", style: "normal" },
+  ],
+  declarations: [
+    { prop: "font-family", value: "jost" },
+    { prop: "unicode-range", value: "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF" },
+  ],
+  variable: "--font-jost-latin-ext",
+  display: "swap",
+  preload: false,
+  adjustFontFallback: false,
 });
 
 /**
@@ -77,7 +127,38 @@ const fraunces = localFont({
   // A serif, as next/font/google measured its fallback against.
   adjustFontFallback: "Times New Roman",
   variable: "--font-fraunces",
+  declarations: [{ prop: "unicode-range", value: "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD" }],
   display: "swap",
+});
+
+const frauncesLatinExt = localFont({
+  src: [
+    { path: "./font-files/fraunces/fraunces-latin-ext-600-normal.woff2", weight: "600", style: "normal" },
+    { path: "./font-files/fraunces/fraunces-latin-ext-700-normal.woff2", weight: "700", style: "normal" },
+  ],
+  declarations: [
+    { prop: "font-family", value: "fraunces" },
+    { prop: "unicode-range", value: "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF" },
+  ],
+  variable: "--font-fraunces-latin-ext",
+  display: "swap",
+  preload: false,
+  adjustFontFallback: false,
+});
+
+const frauncesVietnamese = localFont({
+  src: [
+    { path: "./font-files/fraunces/fraunces-vietnamese-600-normal.woff2", weight: "600", style: "normal" },
+    { path: "./font-files/fraunces/fraunces-vietnamese-700-normal.woff2", weight: "700", style: "normal" },
+  ],
+  declarations: [
+    { prop: "font-family", value: "fraunces" },
+    { prop: "unicode-range", value: "U+0102-0103,U+0110-0111,U+0128-0129,U+0168-0169,U+01A0-01A1,U+01AF-01B0,U+0300-0301,U+0303-0304,U+0308-0309,U+0323,U+0329,U+1EA0-1EF9,U+20AB" },
+  ],
+  variable: "--font-fraunces-vietnamese",
+  display: "swap",
+  preload: false,
+  adjustFontFallback: false,
 });
 
 /**
@@ -94,7 +175,44 @@ const jakarta = localFont({
     { path: "./font-files/plus-jakarta-sans/plus-jakarta-sans-latin-800-normal.woff2", weight: "800", style: "normal" },
   ],
   variable: "--font-jakarta",
+  declarations: [{ prop: "unicode-range", value: "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD" }],
   display: "swap",
+});
+
+const jakartaLatinExt = localFont({
+  src: [
+    { path: "./font-files/plus-jakarta-sans/plus-jakarta-sans-latin-ext-400-normal.woff2", weight: "400", style: "normal" },
+    { path: "./font-files/plus-jakarta-sans/plus-jakarta-sans-latin-ext-500-normal.woff2", weight: "500", style: "normal" },
+    { path: "./font-files/plus-jakarta-sans/plus-jakarta-sans-latin-ext-600-normal.woff2", weight: "600", style: "normal" },
+    { path: "./font-files/plus-jakarta-sans/plus-jakarta-sans-latin-ext-700-normal.woff2", weight: "700", style: "normal" },
+    { path: "./font-files/plus-jakarta-sans/plus-jakarta-sans-latin-ext-800-normal.woff2", weight: "800", style: "normal" },
+  ],
+  declarations: [
+    { prop: "font-family", value: "jakarta" },
+    { prop: "unicode-range", value: "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF" },
+  ],
+  variable: "--font-jakarta-latin-ext",
+  display: "swap",
+  preload: false,
+  adjustFontFallback: false,
+});
+
+const jakartaVietnamese = localFont({
+  src: [
+    { path: "./font-files/plus-jakarta-sans/plus-jakarta-sans-vietnamese-400-normal.woff2", weight: "400", style: "normal" },
+    { path: "./font-files/plus-jakarta-sans/plus-jakarta-sans-vietnamese-500-normal.woff2", weight: "500", style: "normal" },
+    { path: "./font-files/plus-jakarta-sans/plus-jakarta-sans-vietnamese-600-normal.woff2", weight: "600", style: "normal" },
+    { path: "./font-files/plus-jakarta-sans/plus-jakarta-sans-vietnamese-700-normal.woff2", weight: "700", style: "normal" },
+    { path: "./font-files/plus-jakarta-sans/plus-jakarta-sans-vietnamese-800-normal.woff2", weight: "800", style: "normal" },
+  ],
+  declarations: [
+    { prop: "font-family", value: "jakarta" },
+    { prop: "unicode-range", value: "U+0102-0103,U+0110-0111,U+0128-0129,U+0168-0169,U+01A0-01A1,U+01AF-01B0,U+0300-0301,U+0303-0304,U+0308-0309,U+0323,U+0329,U+1EA0-1EF9,U+20AB" },
+  ],
+  variable: "--font-jakarta-vietnamese",
+  display: "swap",
+  preload: false,
+  adjustFontFallback: false,
 });
 
 const manrope = localFont({
@@ -103,7 +221,36 @@ const manrope = localFont({
   weight: "200 800",
   style: "normal",
   variable: "--font-manrope",
+  declarations: [{ prop: "unicode-range", value: "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD" }],
   display: "swap",
+});
+
+const manropeLatinExt = localFont({
+  src: "./font-files/manrope/manrope-latin-ext-wght-normal.woff2",
+  weight: "200 800",
+  style: "normal",
+  declarations: [
+    { prop: "font-family", value: "manrope" },
+    { prop: "unicode-range", value: "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF" },
+  ],
+  variable: "--font-manrope-latin-ext",
+  display: "swap",
+  preload: false,
+  adjustFontFallback: false,
+});
+
+const manropeVietnamese = localFont({
+  src: "./font-files/manrope/manrope-vietnamese-wght-normal.woff2",
+  weight: "200 800",
+  style: "normal",
+  declarations: [
+    { prop: "font-family", value: "manrope" },
+    { prop: "unicode-range", value: "U+0102-0103,U+0110-0111,U+0128-0129,U+0168-0169,U+01A0-01A1,U+01AF-01B0,U+0300-0301,U+0303-0304,U+0308-0309,U+0323,U+0329,U+1EA0-1EF9,U+20AB" },
+  ],
+  variable: "--font-manrope-vietnamese",
+  display: "swap",
+  preload: false,
+  adjustFontFallback: false,
 });
 
 export const metadata: Metadata = {
@@ -147,7 +294,10 @@ export default async function RootLayout({
   return (
     <html
       lang="en"
-      className={`${lato.variable} ${passionOne.variable} ${jost.variable} ${manrope.variable} ${fraunces.variable} ${jakarta.variable}`}
+      // The latin-ext and vietnamese faces join their family by name (font-family in declarations); their variables are
+      // set here only so their @font-face rules are emitted with the page. Each is downloaded only when a character in its
+      // unicode-range is shown ("Łukasz", "Nguyễn"), as with next/font/google before.
+      className={`${lato.variable} ${passionOne.variable} ${jost.variable} ${manrope.variable} ${fraunces.variable} ${jakarta.variable} ${passionOneLatinExt.variable} ${latoLatinExt.variable} ${jostLatinExt.variable} ${frauncesLatinExt.variable} ${frauncesVietnamese.variable} ${jakartaLatinExt.variable} ${jakartaVietnamese.variable} ${manropeLatinExt.variable} ${manropeVietnamese.variable}`}
       // Brand palette overrides are applied here, so a second brand instance
       // (Buff City Soap) is a BrandConfig swap rather than a restyle.
       style={brandStyle(ACTIVE_BRAND)}
