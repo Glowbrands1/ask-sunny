@@ -188,11 +188,18 @@ describe("READABLE_NAMES_ENABLED off: as before", () => {
   });
 });
 
-describe("QA, 15 Nov 2026: two-letter initials stay upper case; a two-letter particle as the last word is the surname", () => {
+describe("QA, 15 Nov 2026: two-letter initials (no vowel, or AJ/JJ/EJ) stay upper case; Al/Ed/Jo/Bo/Ty are names; a two-letter particle as the last word is the surname", () => {
   it.each([
     ["JT holloway", "JT Holloway"],
     ["AJ fairweather", "AJ Fairweather"],
     ["DJ de la torre", "DJ de la Torre"],
+    ["jt holloway", "JT Holloway"],
+    ["KC FAIRWEATHER", "KC Fairweather"],
+    ["AL SMITH", "Al Smith"],
+    ["ED SMITH", "Ed Smith"],
+    ["JO SMITH", "Jo Smith"],
+    ["BO SMITH", "Bo Smith"],
+    ["TY SMITH", "Ty Smith"],
     ["THANH LE", "Thanh Le"],
     ["kim DU", "Kim Du"],
     ["maria DE la torre", "Maria de la Torre"],

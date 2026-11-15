@@ -27,8 +27,17 @@ const PARTICLES: ReadonlySet<string> = new Set(["de", "la", "del", "los", "las",
 const MAC_NAMES: ReadonlySet<string> = new Set([
   "macdonald", "macarthur", "macgregor", "macintosh", "mackenzie", "maclean", "macleod", "macmillan", "macneil", "macpherson", "macaulay", "macdougall", "mackay", "mackinnon",
 ]);
-/** Two-letter particles (QA, 15 Nov 2026): never kept upper case as initials. */
+/** Two-letter particles (QA, 15 Nov 2026): never initials. */
 const TWO_LETTER_PARTICLES: ReadonlySet<string> = new Set(["de", "la", "le", "du", "da", "di", "do", "el"]);
+/** Two-letter initials that have a vowel (QA, 15 Nov 2026). */
+const INITIALS_WITH_VOWEL: ReadonlySet<string> = new Set(["aj", "jj", "ej"]);
+
+/** A two-letter word typed in one case that is initials: no vowel (JT, DJ, KC), or AJ / JJ / EJ; never a particle. */
+function isInitials(word: string): boolean {
+  const lower = word.toLocaleLowerCase("en-US");
+  if (!/^[a-z]{2}$/.test(lower) || TWO_LETTER_PARTICLES.has(lower) || SUFFIX_DOTTED[lower]) return false;
+  return !/[aeiouy]/.test(lower) || INITIALS_WITH_VOWEL.has(lower);
+}
 const SUFFIX_DOTTED: Readonly<Record<string, string>> = { jr: "Jr.", sr: "Sr." };
 const SUFFIX_ROMAN = /^(?:ii|iii|iv)$/;
 
@@ -75,9 +84,10 @@ export function readableName(name: string): string {
   return words
     .map((word, index) => {
       if (!oneCase(word)) return word;
-      // QA, 15 Nov 2026: a two-letter all-caps word that is no particle is initials ("JT", "AJ", "DJ") and stays upper case;
-      // a two-letter particle as the last word is the surname ("LE" → "Le").
-      if (/^\p{Lu}{2}$/u.test(word) && !TWO_LETTER_PARTICLES.has(word.toLocaleLowerCase("en-US"))) return word;
+      // QA, 15 Nov 2026: a two-letter word with no vowel ("JT", "DJ", "KC") or on the initials list ("AJ", "JJ", "EJ") is
+      // initials and stays upper case; any other ("AL", "ED", "JO", "BO", "TY") is a name ("Al"). A two-letter particle as
+      // the last word is the surname ("LE" → "Le"). Mixed-case words (a roster row's own casing) never reach here.
+      if (isInitials(word)) return word.toLocaleUpperCase("en-US");
       return readableWord(word, index === 0, index === last);
     })
     .join(" ");
