@@ -87,7 +87,8 @@ export function readableName(name: string): string {
       // QA, 15 Nov 2026: a two-letter word with no vowel ("JT", "DJ", "KC") or on the initials list ("AJ", "JJ", "EJ") is
       // initials and stays upper case; any other ("AL", "ED", "JO", "BO", "TY") is a name ("Al"). A two-letter particle as
       // the last word is the surname ("LE" → "Le"). Mixed-case words (a roster row's own casing) never reach here.
-      if (isInitials(word)) return word.toLocaleUpperCase("en-US");
+      // The last word is the surname, never initials ("kim ng" → "Kim Ng"; QA's re-review, 15 Nov 2026).
+      if (index !== last && isInitials(word)) return word.toLocaleUpperCase("en-US");
       return readableWord(word, index === 0, index === last);
     })
     .join(" ");

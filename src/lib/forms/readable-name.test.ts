@@ -200,6 +200,9 @@ describe("QA, 15 Nov 2026: two-letter initials (no vowel, or AJ/JJ/EJ) stay uppe
     ["JO SMITH", "Jo Smith"],
     ["BO SMITH", "Bo Smith"],
     ["TY SMITH", "Ty Smith"],
+    // QA's re-review: the last word is the surname, never initials.
+    ["kim ng", "Kim Ng"],
+    ["KIM NG", "Kim Ng"],
     ["THANH LE", "Thanh Le"],
     ["kim DU", "Kim Du"],
     ["maria DE la torre", "Maria de la Torre"],
