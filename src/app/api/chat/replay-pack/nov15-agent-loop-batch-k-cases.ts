@@ -23,8 +23,8 @@ const resultsOf = (views: readonly { results: readonly { tool: string; output: R
 
 export const NOV15_AGENT_LOOP_BATCH_K_CASES: ReplayCase[] = [
   ...[
-    "look for exit form Marnie Holloway",
-    "the coaching form for Marnie Holloway that we just created can you pull it back up",
+    "look for Marnie Holloway's exit form",
+    "the coaching form for Marnie Holloway that we just created, can you pull it back up",
   ].map(
     (said, index): ReplayCase => ({
       id: `nov15-agent-loop-k7-explicit-ask-opens-the-gate-${index + 1}`,
@@ -49,6 +49,28 @@ export const NOV15_AGENT_LOOP_BATCH_K_CASES: ReplayCase[] = [
       },
     }),
   ),
+  {
+    id: "nov15-agent-loop-k7-the-gate-stays-tied-to-the-person",
+    title: "K7 (QA's review of #1021): \"a CA that we just made for Marnie Holloway, now do one for Remy Calder\" does not let find_past_forms ask about Remy Calder",
+    report: `${REPORT}: the gate is a lock; an ask about one person must not open another's forms`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.() || !offline) return;
+      vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      const standIn = loopStandIn((view): LoopDecision => {
+        if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: "Remy Calder" } };
+        return { text: "I can't look at that." };
+      });
+      t.loopModel!(standIn);
+      const thread = t.thread();
+      await thread.say("a CA that we just made for Marnie Holloway, now do one for Remy Calder");
+      const found = resultsOf(standIn.views, "find_past_forms").join("\n");
+      expect(found, "the gate let another person's forms be read").toMatch(new RegExp(NOT_ASKED, "i"));
+    },
+  },
   {
     id: "nov15-agent-loop-k10-ready-is-a-fact",
     title: "K10: propose_form's card carries ready (true only when card.status is ready); the rules book says \"ready\" only then",

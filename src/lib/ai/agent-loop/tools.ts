@@ -139,19 +139,55 @@ const ASKS_ABOUT_FORMS: readonly RegExp[] = [
   new RegExp(String.raw`(?:${FORM}|coach\w*|document)\b[^?!\n]{0,160}?\balready (?:has|had|got|have) (?:one|it)\b`, "i"),
   // "edit <name>'s CA", "open her coaching", "pull up the write-up for <name>": a form on file, named.
   new RegExp(String.raw`\b(?:open|reopen|edit|pull up|bring up|show me|view)\b[^.?!\n]{0,40}?\b${FORM}\b`, "i"),
-  /*
-   * Batch K7 (QA's 266-chat shadow replay): explicit asks the gate under-read. "look for exit form <A>", "find the
-   * coaching form for <A>" (the, my, her, his, their or that — "find a form for tardiness" asks for a NEW form and stays
-   * closed); "<the form> … pull it back up / bring it back"; "<the form> that we just created". Each needs a form word.
-   */
-  new RegExp(String.raw`\b(?:look(?:ing)?\s+for|find|locate)\s+(?:me\s+)?(?:the|my|her|his|their|that)\s+(?:(?!polic)\w+\s+){0,2}?(?:exit\s+form|${FORM})\b`, "i"),
-  new RegExp(String.raw`\b(?:look(?:ing)?\s+for|find|locate)\s+(?:me\s+)?exit\s+form\b`, "i"),
-  new RegExp(String.raw`\b${FORM}\b[^?!\n]{0,160}?\b(?:pull|bring)\s+(?:it|that|this|them)\s+(?:back\s+)?up\b`, "i"),
-  new RegExp(String.raw`\b${FORM}\b[^?!\n]{0,160}?\b(?:pull|bring)\s+(?:it|that|this|them)\s+back\b`, "i"),
-  new RegExp(String.raw`\b${FORM}\b[^?!\n]{0,80}?\bthat\s+(?:we|i)\s+just\s+(?:created|made|filled(?:\s+out)?|wrote|started|did)\b`, "i"),
 ];
 
-const asks = (text: string) => ASKS_ABOUT_FORMS.some((pattern) => pattern.test(text));
+/*
+ * Batch K7 (QA's 266-chat shadow replay; narrowed by QA's review of #1021): the gate opens for RETRIEVING an EXISTING form of
+ * a named or possessed person, never for a request to make a NEW form (a lock: staying closed costs a rephrase). Each
+ * pattern may capture the person it is about (group 1); the gate then stays tied to that person (`pastFormsPerson`), so
+ * "a CA that we just made for Juno, now do one for Remy" never lets find_past_forms ask about Remy.
+ */
+const FORM_NOUN = String.raw`(?:exit\s+form|${FORM})`;
+/** Not a template or a blank sheet to fill: "their warning letter template", "that coaching sheet". */
+const NOT_A_TEMPLATE = String.raw`(?!\s+(?:\w+\s+)?(?:template|sheet|letter)\b)`;
+const FILLER = String.raw`(?:(?!a\b|an\b|the\b|new\b|another\b)\w+\s+)`;
+const FIND = String.raw`(?:look(?:ing)?\s+for|find|locate)`;
+const EXISTING_FORM_ASKS: readonly RegExp[] = [
+  // "find her coaching form", "find his CA".
+  new RegExp(String.raw`\b${FIND}\s+(?:me\s+)?(?:her|his|their)\s+${FILLER}{0,2}?${FORM_NOUN}\b${NOT_A_TEMPLATE}`, "i"),
+  // "look for <Name>'s exit form", "find Juno Paxton's CA" (group 1: the person).
+  new RegExp(String.raw`\b${FIND}\s+(?:me\s+)?(?!(?:the|a|an|my|our|your|this|that)\b)((?:\w+\s+){0,2}?\w+)['’]s\s+${FILLER}{0,2}?${FORM_NOUN}\b${NOT_A_TEMPLATE}`, "i"),
+  // "find the exit form for <Name> on file / already / existing / we did / last".
+  new RegExp(String.raw`\b${FIND}\s+(?:me\s+)?(?:the\s+|an?\s+)?${FILLER}{0,2}?${FORM_NOUN}\s+(?:for|of)\s+((?:\w+\s+)?\w+)\b[^.?!\n]{0,40}?\b(?:on file|already|existing|we did|last)\b`, "i"),
+  // "<Name>'s CA … can you pull it back up" (the same sentence names the form of a person).
+  new RegExp(String.raw`\b((?:\w+\s+)?\w+)['’]s\s+${FILLER}{0,2}?${FORM}\b[^.?!\n]{0,60}?\b(?:pull\s+(?:it|that|them)\s+(?:back\s+)?up|bring\s+(?:it|that|them)\s+back(?:\s+up)?)\b`, "i"),
+  // "the coaching form we did for <Name>, pull it up".
+  new RegExp(String.raw`\b${FORM}\s+(?:that\s+)?(?:we|i)\s+(?:did|made|created|filled\s+out)\s+for\s+((?:\w+\s+)?\w+)\b[^.?!\n]{0,40}?\b(?:pull|bring)\s+(?:it|that|them)\s+(?:back\s+)?up\b`, "i"),
+  // "the coaching form for <Name> that we just created": a form word, a person, and never "a mistake".
+  new RegExp(String.raw`\b${FORM}\s+(?:for|of)\s+((?:\w+\s+)?\w+)\s+that\s+(?:we|i)\s+just\s+(?:created|made|did|filled\s+out)\b(?!\s+a\s+mistake)`, "i"),
+  // "a CA that we just made for <Name>" (the form word immediately before "that").
+  new RegExp(String.raw`\b${FORM}\s+that\s+(?:we|i)\s+just\s+(?:created|made|did|filled\s+out)\b(?!\s+a\s+mistake)[^.?!\n]{0,40}?\bfor\s+((?:\w+\s+)?\w+)`, "i"),
+];
+
+const asksOlder = (text: string) => ASKS_ABOUT_FORMS.some((pattern) => pattern.test(text));
+const asks = (text: string) => asksOlder(text) || EXISTING_FORM_ASKS.some((pattern) => pattern.test(text));
+
+/**
+ * The person the gate was opened for, when it opened only through an ask that names one (K7): find_past_forms for anyone
+ * else is refused. Null when an older pattern opened it, or the ask names nobody ("find her coaching form").
+ */
+export function pastFormsPerson(context: Pick<ToolContext, "question" | "history">): string | null {
+  const earlier = [...context.history].reverse().find((message) => message.role === "user");
+  const texts = [context.question, ...(context.question.trim().split(/\s+/).length <= 6 && earlier ? [earlier.content] : [])];
+  for (const text of texts) {
+    if (asksOlder(text)) return null;
+    for (const pattern of EXISTING_FORM_ASKS) {
+      const found = pattern.exec(text);
+      if (found) return found[1]?.trim() || null;
+    }
+  }
+  return null;
+}
 
 export function asksAboutPastForms(context: Pick<ToolContext, "question" | "history">): boolean {
   if (asks(context.question)) return true;
@@ -704,6 +740,9 @@ export async function findPastForms(context: ToolContext, input: { employee_name
   const typed = typeof input.employee_name === "string" ? input.employee_name.trim() : "";
   if (typed === "") return { error: "Give the employee's name." };
   if (!asksAboutPastForms(context)) return { error: NOT_ASKED };
+  /* K7: opened by an ask about one person ("a CA that we just made for Juno"), it stays that person's. */
+  const askedFor = pastFormsPerson(context);
+  if (askedFor && !askedFor.toLowerCase().split(/\s+/).some((word) => typed.toLowerCase().split(/\s+/)[0] === word)) return { error: NOT_ASKED };
   const actor = await chatFormsActor(context.actor).catch(() => undefined);
   if (actor === undefined) return { error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
   if (actor === null) return { error: "This manager's role cannot view Form Monitoring, so past forms cannot be listed." };
