@@ -1,6 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
+// QA's second review (15 Nov 2026): the open form is Juno Paxton's, on a roster of invented people.
+vi.mock("@/lib/forms/instance-scope", async (original) => ({
+  ...(await original<typeof import("@/lib/forms/instance-scope")>()),
+  authorizeInstance: async () => ({ loaded: { instance: { employeeName: "Juno Paxton", templateKey: "dpoa", status: "draft", variantKey: null, formDate: null }, values: [], version: { document: {} } } }),
+}));
+vi.mock("@/lib/forms/employee-roster", async (original) => ({
+  ...(await original<typeof import("@/lib/forms/employee-roster")>()),
+  readScopedRoster: async () => [
+    { id: "e-1", firstName: "Juno", lastName: "Paxton", preferredFirstName: null, salonIds: [] },
+    { id: "e-2", firstName: "Remy", lastName: "Calder", preferredFirstName: null, salonIds: [] },
+  ],
+}));
 
 const { editForm } = await import("./tools");
 
@@ -44,6 +56,18 @@ describe("edit_form's level (level_not_stated)", () => {
     const result = await editForm(open("ok", history), effects, { instance_id: FORM_ID, values: { warning_type: "written" }, level_evidence: { message_id: "a-1", quote: "make it a written" } });
     expect(result.reason_code).toBe("level_not_stated");
     expect(result.evidence_reason).toBe("evidence_not_manager_turn");
+  });
+});
+
+describe("edit_form's person guard (QA: Juno's form is open)", () => {
+  it("\"make Remy Calder's a written\" is Remy's level, not Juno's: other_person", async () => {
+    const result = await editForm(open("make Remy Calder's a written"), effects, { instance_id: FORM_ID, values: { warning_type: "written" }, level_evidence: { message_id: "m-now", quote: "make Remy Calder's a written" } });
+    expect(result.reason_code).toBe("level_not_stated");
+    expect(result.evidence_reason).toBe("other_person");
+  });
+  it("a first name alone is another person too", async () => {
+    const result = await editForm(open("make remy's a written"), effects, { instance_id: FORM_ID, values: { warning_type: "written" }, level_evidence: { message_id: "m-now", quote: "make remy's a written" } });
+    expect(result.evidence_reason).toBe("other_person");
   });
 });
 

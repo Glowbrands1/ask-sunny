@@ -197,35 +197,79 @@ async function formOnFileRefusal(context: ToolContext, id: string, evidence: unk
  */
 type AnswerEvidence = { readonly ok: true; readonly turnId: string; readonly wholeMessage: boolean } | { readonly ok: false; readonly reason: string };
 
+/** The card's person and the roster they are checked against. `rosterRead` false: the roster could not be read. */
+interface EvidencePerson {
+  readonly name: string;
+  readonly roster: readonly RosterEmployee[];
+  readonly rosterRead: boolean;
+}
+
+function evidencePersonFor(name: string, read: { kind: string; roster?: readonly RosterEmployee[] }): EvidencePerson {
+  const roster = read.kind === "read" ? (read.roster ?? []) : [];
+  return { name, roster, rosterRead: read.kind === "read" && roster.length > 0 };
+}
+
+/**
+ * QA's ruling (15 Nov 2026, second review): the person guard reads names, never phrases. A roster person other than the
+ * card's whose full, preferred or first name is in the text ("verbal for remy" names Remy Calder) is another person.
+ * A first name the card's own person also goes by is skipped (two people may share one; the full name decides).
+ */
+function otherPersonNamed(said: string, person: EvidencePerson): boolean {
+  const rosterNames = person.roster.map((row) => displayName(row));
+  if (rosterNames.some((name) => !samePerson(name, person.name) && mentionsPerson(said, name, rosterNames))) return true;
+  const own = person.roster.filter((row) => [displayName(row), ...fullNamesOf(row)].some((full) => samePerson(full, person.name)));
+  const ownFirsts = new Set([...own.flatMap((row) => [row.firstName, row.preferredFirstName]), person.name.split(/\s+/)[0]].map((first) => (first ?? "").trim().toLowerCase()).filter(Boolean));
+  const lower = said.toLowerCase();
+  return person.roster.some((row) => {
+    if (own.includes(row)) return false;
+    return [row.firstName, row.preferredFirstName].map((first) => (first ?? "").trim().toLowerCase()).filter((first) => first !== "" && !ownFirsts.has(first)).some((first) => new RegExp(`(?<![\\p{L}'-])${first.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}-])`, "u").test(lower));
+  });
+}
+
 function answerEvidence(
   context: Pick<ToolContext, "question" | "history" | "questionMessageId">,
   evidence: unknown,
   scope: "this_message" | "request" | { readonly card: string },
-  person?: { readonly name: string; readonly rosterNames: readonly string[] },
+  person?: EvidencePerson,
 ): AnswerEvidence {
   const turns = identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId);
   const check = verifyEvidence(evidence, turns, scope === "this_message" ? { thisTurnOnly: true } : {});
   if (!check.ok) return { ok: false, reason: check.reason };
-  /*
-   * QA's ruling (15 Nov 2026): the person guard. An evidence turn that names a DIFFERENT roster person than this card's is
-   * that person's message, not this card's ("verbal for Remy Calder" is not Juno Paxton's level): other_person. The same
-   * extractor guard as request_evidence (names compared with the roster, not a phrase list).
-   */
+  const current = check.turn.index === turns.length - 1;
+  const said = withoutMessageIdTags(check.turn.content);
+  const flatten = (text: string) => withoutMessageIdTags(text).toLowerCase().replace(/[*_]/g, "").replace(/\s+/g, " ").trim();
+  const namesCard = (turn: { content: string } | undefined, name: string) => turn !== undefined && flatten(turn.content).includes(flatten(name));
+  const lastTwoManagerTurns = turns.filter((turn) => turn.role === "user").slice(-2);
   if (person) {
-    const said = withoutMessageIdTags(check.turn.content);
-    const others = person.rosterNames.filter((name) => !samePerson(name, person.name) && mentionsPerson(said, name, person.rosterNames));
-    if (others.length > 0) return { ok: false, reason: "other_person" };
+    // An evidence turn that names another roster person (full, preferred or first name) is that person's message, not this card's.
+    if (otherPersonNamed(said, person)) return { ok: false, reason: "other_person" };
   }
-  if (scope === "request" && !turns.filter((turn) => turn.role === "user").slice(-2).some((turn) => turn.id === check.turn.id)) return { ok: false, reason: "evidence_not_this_turn" };
+  if (scope === "request" && !current) {
+    /*
+     * The manager message before this one counts only when the app's reply between the two showed THIS card (the card was
+     * proposed in reply to it): "she was written up before" followed by an unrelated reply and then "ca for <name>" is no
+     * level. The roster must have been read to check the names: it fails closed.
+     */
+    if (!person || !person.rosterRead) return { ok: false, reason: "evidence_not_this_turn" };
+    if (!lastTwoManagerTurns.some((turn) => turn.id === check.turn.id)) return { ok: false, reason: "evidence_not_this_turn" };
+    const reply = turns[check.turn.index + 1];
+    if (!reply || reply.role !== "assistant" || !namesCard(reply, person.name)) return { ok: false, reason: "evidence_after_card" };
+  }
   /*
-   * A payroll answer belongs to ONE card (QA, 15 Nov 2026): the message being answered, or an earlier answer that came right
-   * after a reply naming THIS card's employee (the reply that showed their card and asked). Remy's "yes" is not Juno's: "do the
-   * same for juno" gets no payroll from it. A comparison of the employee's name with the reply, not a reading of the words.
+   * A payroll answer belongs to ONE card (QA, 15 Nov 2026): the message being answered, or the manager's answer right after
+   * the MOST RECENT reply that showed THIS card's employee, and no older one. Remy's "yes", then "thanks", then a new card for
+   * Remy: that "yes" answered the first card. A comparison of the employee's name with the reply, not a reading of the words.
    */
-  if (typeof scope === "object" && check.turn.index !== turns.length - 1) {
-    const asked = turns[check.turn.index - 1];
-    const flatten = (text: string) => text.toLowerCase().replace(/[*_]/g, "").replace(/\s+/g, " ");
-    if (!asked || asked.role !== "assistant" || !flatten(asked.content).includes(flatten(scope.card).trim())) return { ok: false, reason: "evidence_after_card" };
+  if (typeof scope === "object" && !current) {
+    if (!lastTwoManagerTurns.some((turn) => turn.id === check.turn.id)) return { ok: false, reason: "evidence_after_card" };
+    let shown = -1;
+    for (let at = turns.length - 2; at >= 0; at -= 1) {
+      if (turns[at]!.role === "assistant" && namesCard(turns[at], scope.card)) {
+        shown = at;
+        break;
+      }
+    }
+    if (shown < 0 || check.turn.index !== shown + 1) return { ok: false, reason: "evidence_after_card" };
   }
   const flat = (text: string) => withoutMessageIdTags(text).toLowerCase().replace(/\s+/g, " ").trim();
   const quote = (evidence as { quote: string }).quote;
@@ -1429,7 +1473,7 @@ export async function proposeForm(
     }
   }
   /* Batch C (code-check #16): what the manager said that the account leaves out, as a fact for the model to put back. */
-  const evidencePerson = { name: employee.name, rosterNames: read.kind === "read" ? read.roster.map((person) => displayName(person)) : [] };
+  const evidencePerson = evidencePersonFor(employee.name, read);
   let accountLost: string[] = [];
   if (whatHappened && ACCOUNT_FORMS.has(template.key)) {
     /* A message that is only a level or payroll answer (the model's evidence quotes the whole message) is not the incident's account. */
@@ -2017,6 +2061,11 @@ export async function editForm(
    */
   const unstated: string[] = [];
   const unstatedCodes = new Map<string, { reason_code: string; evidence_reason: string }>();
+  /* QA's review (15 Nov 2026): a level or payroll answer that names ANOTHER roster person than this form's is theirs: other_person. */
+  const formsEmployee = Object.keys(values).some((field) => field === "warning_type" || field === "payroll_deduct")
+    ? await authorizeInstance(context.request, id, "view").then(({ loaded }) => loaded.instance.employeeName).catch(() => null)
+    : null;
+  const editPerson = formsEmployee ? evidencePersonFor(formsEmployee, await rosterFor(context.actor.scope)) : undefined;
   for (const [field, value] of Object.entries(values)) {
     if (field === "warning_type") {
       /*
@@ -2035,14 +2084,14 @@ export async function editForm(
         if (!(await import("@/lib/config/chat-quality-flags")).terminationStatedTicksEnabled() || !(await import("@/lib/forms/termination-word")).statesTerminationWordNow(context.question)) unstated.push(field);
         continue;
       }
-      const levelCheck = answerEvidence(context, input.level_evidence, "this_message");
+      const levelCheck = answerEvidence(context, input.level_evidence, "this_message", editPerson);
       if (!levelCheck.ok) {
         unstated.push(field);
         unstatedCodes.set(field, { reason_code: "level_not_stated", evidence_reason: levelCheck.reason });
       }
     } else if (field === "payroll_deduct") {
       const answer = /^\s*yes/i.test(value) ? "yes" : /^\s*no/i.test(value) ? "no" : null;
-      const payrollCheck = answerEvidence(context, input.payroll_evidence, "this_message");
+      const payrollCheck = answerEvidence(context, input.payroll_evidence, "this_message", editPerson);
       if (!answer || !payrollCheck.ok) {
         unstated.push(field);
         unstatedCodes.set(field, { reason_code: "payroll_not_stated", evidence_reason: payrollCheck.ok ? "evidence_not_manager_turn" : payrollCheck.reason });

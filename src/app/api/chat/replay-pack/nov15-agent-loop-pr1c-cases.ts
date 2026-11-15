@@ -236,4 +236,138 @@ export const NOV15_AGENT_LOOP_PR1C_CASES: ReplayCase[] = [
       expect((out.card as { warning_level?: unknown }).warning_level ?? null, "Remy's level reached Juno's card").toBeNull();
     },
   },
+  /*
+   * QA's second review of #1031 (15 Nov 2026): the manager message before the current one counts as level evidence only
+   * when the app's reply between the two showed THIS card; a first name names a person; payroll is the answer right after
+   * the most recent reply showing this card.
+   */
+  {
+    id: "nov15-agent-loop-pr1c-previous-message-needs-the-card-reply",
+    title: "PR 1c (QA): \"she was written up before\", then \"ca for remy calder, late on 11/12\": no level (the reply between did not show this card)",
+    report: `${REPORT}: the previous manager message counts only when the reply between showed this card`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.() || !offline) return;
+      start(t);
+      const standIn = loopStandIn((view): LoopDecision => {
+        const said = view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "";
+        if (/^she was written up before/i.test(said)) return { text: "Noted." };
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
+        if (!lastResult(view, "propose_form")) {
+          return { tool: "propose_form", input: { template_key: "dpoa", employee_id: firstMatch(view)?.employee_id, what_happened: "Remy Calder was late on 11/12.", incident_date: "2026-11-12", warning_level: "written", level_evidence: evidenceFrom(view, "she was written up before", 1) } };
+        }
+        return { text: "Here is the card." };
+      });
+      t.loopModel!(standIn);
+      const thread = t.thread();
+      await thread.say("she was written up before");
+      await thread.say("ca for remy calder, late on 11/12");
+      const out = proposeOutputs(standIn.views).at(-1)!;
+      expect(out.reason_code, JSON.stringify(out)).toBe("level_not_stated");
+      expect(out.level_evidence).toBe("evidence_after_card");
+      expect((out.card as { warning_level?: unknown }).warning_level ?? null).toBeNull();
+    },
+  },
+  {
+    id: "nov15-agent-loop-pr1c-level-kept-across-the-date-question",
+    title: "PR 1c (QA): \"written ca for remy calder, she was late\", the app asks the date, \"11/12\": the written is kept",
+    report: `${REPORT}: the request's level survives the card's own date question`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.() || !offline) return;
+      start(t);
+      const standIn = loopStandIn((view): LoopDecision => {
+        const said = view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "";
+        if (/^written ca/i.test(said)) return { text: "What date was Remy Calder late?" };
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
+        if (!lastResult(view, "propose_form")) {
+          return { tool: "propose_form", input: { template_key: "dpoa", employee_id: firstMatch(view)?.employee_id, what_happened: "Remy Calder was late.", incident_date: "2026-11-12", warning_level: "written", level_evidence: evidenceFrom(view, "written ca for remy calder", 1) } };
+        }
+        return { text: "Here is the card." };
+      });
+      t.loopModel!(standIn);
+      const thread = t.thread();
+      await thread.say("written ca for remy calder, she was late");
+      await thread.say("11/12");
+      const out = proposeOutputs(standIn.views).at(-1)!;
+      expect(out.reason_code, JSON.stringify(out)).toBeUndefined();
+      expect((out.card as { warning_level?: unknown }).warning_level).toBe("written");
+    },
+  },
+  {
+    id: "nov15-agent-loop-pr1c-first-name-is-another-person",
+    title: "PR 1c (QA): \"verbal for remy, late 11/9\" then \"now a ca for juno paxton, late on 11/12\": Juno has no level (a first name names Remy: other_person)",
+    report: `${REPORT}: the person guard reads first and preferred names`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.() || !offline) return;
+      start(t);
+      const standIn = loopStandIn((view): LoopDecision => {
+        const said = view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "";
+        const juno = /juno/i.test(said);
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: juno ? "juno paxton" : "remy calder" } };
+        if (!lastResult(view, "propose_form")) {
+          return {
+            tool: "propose_form",
+            input: {
+              template_key: "dpoa", employee_id: firstMatch(view)?.employee_id, what_happened: juno ? "Juno Paxton was late on 11/12." : "Remy Calder was late on 11/9.", incident_date: juno ? "2026-11-12" : "2026-11-09",
+              warning_level: "verbal", level_evidence: evidenceFrom(view, "verbal for remy", juno ? 1 : 0),
+            },
+          };
+        }
+        return { text: `Here's the card for **${juno ? "Juno Paxton" : "Remy Calder"}**.` };
+      });
+      t.loopModel!(standIn);
+      const thread = t.thread();
+      await thread.say("verbal for remy, late 11/9");
+      expect(((proposeOutputs(standIn.views).at(-1)!.card) as { warning_level?: unknown }).warning_level, "Remy's own level").toBe("verbal");
+      await thread.say("now a ca for juno paxton, late on 11/12");
+      const out = proposeOutputs(standIn.views).at(-1)!;
+      expect(out.reason_code, JSON.stringify(out)).toBe("level_not_stated");
+      expect(out.level_evidence).toBe("other_person");
+      expect((out.card as { warning_level?: unknown }).warning_level ?? null).toBeNull();
+    },
+  },
+  {
+    id: "nov15-agent-loop-pr1c-older-payroll-answer-is-not-a-new-cards",
+    title: "PR 1c (QA): Remy \"yes\", \"thanks\", then \"another ca for remy calder, late on 11/14 too\": the new card has no payroll (evidence_after_card)",
+    report: `${REPORT}: payroll is the current message, or the answer right after the most recent reply showing this card`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.() || !offline) return;
+      start(t);
+      const standIn = loopStandIn((view): LoopDecision => {
+        const said = view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "";
+        if (/^thanks/i.test(said)) return { text: "You're welcome." };
+        const again = /^another/i.test(said);
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
+        if (!lastResult(view, "propose_form")) {
+          const answered = /^yes/i.test(said) || again;
+          return {
+            tool: "propose_form",
+            input: {
+              template_key: "dpoa", employee_id: firstMatch(view)?.employee_id, what_happened: "Remy Calder was late.", incident_date: again ? "2026-11-14" : "2026-11-12",
+              ...(answered ? { payroll_deduct: "yes", payroll_evidence: evidenceFrom(view, "yes", again ? 2 : 0) } : {}),
+            },
+          };
+        }
+        return { text: "Here's the Corrective Action Form for **Remy Calder**." };
+      });
+      t.loopModel!(standIn);
+      const thread = t.thread();
+      await thread.say("ca for remy calder, late on 11/12");
+      await thread.say("yes");
+      expect(((proposeOutputs(standIn.views).at(-1)!.card) as { payroll_deduct?: unknown }).payroll_deduct, "Remy's own answer").toBe("yes");
+      await thread.say("thanks");
+      await thread.say("another ca for remy calder, late on 11/14 too");
+      const out = proposeOutputs(standIn.views).at(-1)!;
+      expect(out.reason_code, JSON.stringify(out)).toBe("payroll_not_stated");
+      expect(out.payroll_evidence).toBe("evidence_after_card");
+      expect((out.card as { payroll_deduct?: unknown }).payroll_deduct ?? null).toBeNull();
+    },
+  },
 ];
