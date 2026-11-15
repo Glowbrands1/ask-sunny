@@ -307,3 +307,129 @@ describe("no Reference for the STC DM L10 (its leader's request, 13 Nov 2026)", 
     expect(reportSections("bcs-dm").map((s) => s.title)).toContain("Business Plan");
   });
 });
+
+describe("IDS: move between the lists from the row, and no headlines where the meeting has none (15 Nov 2026)", () => {
+  const issues = [
+    { id: "a1", title: "Weekly issue", notes: "", resolved: false },
+    { id: "a2", title: "Parked issue", notes: "", resolved: false, term: "long" },
+    { id: "a3", title: "Done issue", notes: "", resolved: true, resolvedAt: "2026-11-10T12:00:00.000Z" },
+  ];
+  const openIds = () => fireEvent.click(screen.getByRole("button", { name: /\d · IDS · Issues/ }));
+
+  it("each open row has Long-term / Short term next to Solve; it moves the issue and the tab counts follow", async () => {
+    const save = vi.fn(async (): Promise<SaveOutcome> => ({ ok: true, version: 4, updatedAt: "t" }));
+    renderView({ save: save as unknown as SaveFn, initial: loaded(3, { issues }) });
+    openIds();
+    const shortRow = within(screen.getByRole("list", { name: "Open issues" })).getByRole("listitem");
+    const buttons = within(shortRow).getAllByRole("button").map((b) => b.textContent);
+    expect(buttons.indexOf("Long-term")).toBe(buttons.indexOf("Solve") + 1);
+    expect(buttons.indexOf("Delete")).toBeGreaterThan(buttons.indexOf("Long-term"));
+    await act(async () => {
+      fireEvent.click(within(shortRow).getByRole("button", { name: "Move to long-term: Weekly issue" }));
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(screen.getByRole("tab", { name: "Short term (0)" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Long-term (2)" })).toBeTruthy();
+    const [, , doc] = save.mock.calls.at(-1) as unknown as [string, number, { issues: { id: string; term?: string }[] }];
+    expect(doc.issues.find((i) => i.id === "a1")?.term).toBe("long");
+    fireEvent.click(screen.getByRole("tab", { name: "Long-term (2)" }));
+    fireEvent.click(within(screen.getByRole("list", { name: "Long-term issues" })).getByRole("button", { name: "Move to short term: Parked issue" }));
+    expect(screen.getByRole("tab", { name: "Short term (1)" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Long-term (1)" })).toBeTruthy();
+  });
+
+  it("solved rows have no move button", () => {
+    renderView({ initial: loaded(3, { issues }) });
+    openIds();
+    fireEvent.click(screen.getByRole("tab", { name: "Recently solved (1)" }));
+    const solved = within(screen.getByRole("list", { name: "Solved issues" })).getByRole("listitem");
+    expect(within(solved).queryByRole("button", { name: /^Move to/ })).toBeNull();
+  });
+
+  it("Convert to Headline shows only where the meeting's agenda has Headlines (the STC DM L10 does not)", () => {
+    renderView({ initial: loaded(3, { issues: [issues[0]] }) });
+    openIds();
+    fireEvent.click(screen.getByRole("button", { name: /Weekly issue/, expanded: false }));
+    const detail = within(screen.getByRole("region", { name: "Issue detail" }));
+    expect(detail.queryByRole("button", { name: "Headline" })).toBeNull();
+    expect(detail.getByRole("button", { name: "To-Do" })).toBeTruthy();
+    expect(detail.getByRole("button", { name: "Rock" })).toBeTruthy();
+    cleanup();
+    // A meeting whose Hub-served agenda has Headlines (as BCS DM's does) keeps the button.
+    const withHeadlines = [
+      { key: "business-best", title: "Segue · Business Best", minutes: 5 },
+      { key: "headlines", title: "Customer / Employee Headlines", minutes: 5 },
+      { key: "ids", title: "IDS · Issues", minutes: 60 },
+      { key: "conclude", title: "Conclude", minutes: 5 },
+    ] as Roster["agenda"];
+    renderView({ initial: loaded(3, { issues: [issues[0]] }), roster: { ...roster, agenda: withHeadlines } });
+    openIds();
+    fireEvent.click(screen.getByRole("button", { name: /Weekly issue/, expanded: false }));
+    expect(within(screen.getByRole("region", { name: "Issue detail" })).getByRole("button", { name: "Headline" })).toBeTruthy();
+  });
+});
+
+// QA, 15 Nov 2026: Rock Review edits a rock in a panel on the right (a goal drawer), as in the Hub, not inline.
+describe("Rock Review: a rock opens in a side panel", () => {
+  const rocks = [
+    { id: "k1", title: "Open two new rooms", owner: "Avery Quill", status: "on-track", milestones: [{ id: "m1", text: "Sign the lease", done: false }] },
+    { id: "k2", title: "Hire a trainer", owner: "Cy Marlow", status: "on-track", milestones: [] },
+  ];
+  const start = () => {
+    const save = vi.fn().mockResolvedValue({ ok: true, version: 4, updatedAt: "2026-11-13T00:00:00Z" } satisfies SaveOutcome);
+    const { container } = renderView({ save: save as unknown as SaveFn, initial: loaded(3, { attendees: [], rocks }) });
+    fireEvent.click(within(screen.getByRole("region", { name: "Agenda" })).getByRole("button", { name: /Rock Review/ }));
+    return { save, container };
+  };
+  const panel = () => screen.getByRole("dialog", { name: "Edit rock" });
+  const row = (title: string) => screen.getByRole("button", { name: `Edit ${title}` });
+
+  it("clicking a rock opens the panel with its fields, and the list stays", () => {
+    const { container } = start();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(row("Open two new rooms"));
+    const p = within(panel());
+    expect((p.getByLabelText("Rock title") as HTMLInputElement).value).toBe("Open two new rooms");
+    expect((p.getByLabelText("Owner of Open two new rooms") as HTMLSelectElement).value).toBe("Avery Quill");
+    expect(p.getByLabelText("Due date of Open two new rooms")).toBeTruthy();
+    expect((p.getByLabelText("Status of Open two new rooms") as HTMLSelectElement).value).toBe("on-track");
+    expect(p.getByRole("checkbox", { name: "Milestone done: Sign the lease" })).toBeTruthy();
+    expect(p.getByLabelText("Add milestone")).toBeTruthy();
+    expect(p.getByLabelText("Notes for Open two new rooms")).toBeTruthy();
+    expect(row("Hire a trainer").getAttribute("aria-expanded")).toBe("false");
+    // Rendered in place, not portalled out, so in the app it sits inside the DM L10 frame's styles (.hub-l10), where
+    // the floating buttons move clear of it (globals.css, [data-side-panel]).
+    expect(container.contains(panel())).toBe(true);
+    expect(panel().hasAttribute("data-side-panel")).toBe(true);
+  });
+
+  it("ticking a milestone saves through the same path", async () => {
+    const { save } = start();
+    fireEvent.click(row("Open two new rooms"));
+    fireEvent.click(within(panel()).getByRole("checkbox", { name: "Milestone done: Sign the lease" }));
+    await waitFor(() => expect(save).toHaveBeenCalled());
+    const doc = save.mock.calls.at(-1)![2] as { rocks: { id: string; milestones: { done: boolean }[] }[] };
+    expect(doc.rocks.find((r) => r.id === "k1")!.milestones[0].done).toBe(true);
+    // It autosaves (no Save button); the footer repeats the meeting's save status quietly, as in Bloom's goal drawer.
+    expect(within(panel()).queryByRole("button", { name: /^Save/ })).toBeNull();
+    await waitFor(() => expect(within(panel()).getByTestId("rock-panel-save-status").textContent).toBe("All changes saved"));
+  });
+
+  it("closes with the close button and with Esc", () => {
+    start();
+    fireEvent.click(row("Open two new rooms"));
+    fireEvent.click(screen.getByRole("button", { name: "Close rock editor" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(row("Open two new rooms"));
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("only one rock is open at a time", () => {
+    start();
+    fireEvent.click(row("Open two new rooms"));
+    fireEvent.click(row("Hire a trainer"));
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect((within(panel()).getByLabelText("Rock title") as HTMLInputElement).value).toBe("Hire a trainer");
+  });
+});
