@@ -4,7 +4,7 @@ import type { VideoResource } from "@/types";
 import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import { getLocalKnowledgeProvider } from "@/lib/knowledge";
 import { truncate } from "@/lib/utils/format";
-import type { AIProvider, ClientAskRequest, AskResponse } from "./types";
+import type { AIProvider, AskOptions, ClientAskRequest, AskResponse } from "./types";
 
 /** The seeded content this provider answers from, once it has been fetched. */
 interface DemoSeed {
@@ -108,7 +108,9 @@ export class MockAIProvider implements AIProvider {
     return this.seed;
   }
 
-  async ask(request: ClientAskRequest): Promise<AskResponse> {
+  // `_options` (onProgress, PR 6 item 5): the stand-in streams no statuses.
+  async ask(request: ClientAskRequest, _options?: AskOptions): Promise<AskResponse> {
+    void _options;
     return { ...(await this.answer(request)), turnId: demoTurnId() };
   }
 

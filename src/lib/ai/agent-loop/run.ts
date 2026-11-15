@@ -25,6 +25,7 @@ import { appConfig, SUNNY_CONFIG, type AppConfig } from "./app-config";
 import { agentLoopRules, agentLoopSystem } from "./prompt";
 import { generatedId, identifiedTurns, messageIdTag, withoutMessageIdTags } from "./evidence";
 import { agentLoopStepLimit } from "./switch";
+import { progressStatus } from "./progress";
 import {
   appHelp,
   coachTeam,
@@ -174,6 +175,8 @@ export interface AgentTurnInput {
   readonly openFormId: string | null;
   /** PR 4: the names of the tools the turn called, once it has finished (the route logs the turn's category from them). */
   readonly onTools?: (tools: readonly string[]) => void;
+  /** PR 6 item 5: a short status as each tool starts, for the screen only (`progress.ts`); never the reply, history or trace. */
+  readonly onProgress?: (status: string) => void;
 }
 
 const count = (value: unknown): number => (typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0);
@@ -594,6 +597,11 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   const runTool = async (step: number, name: string, args: unknown): Promise<ToolResult> => {
     const started = performance.now();
     let result: ToolResult;
+    try {
+      input.onProgress?.(progressStatus(name, args));
+    } catch {
+      // A screen status never changes the turn.
+    }
     try {
       const handler = handlers[name];
       result = handler ? await handler((args && typeof args === "object" ? args : {}) as Record<string, unknown>) : { reason_code: "unknown_tool", error: `There is no tool named ${name}.` };

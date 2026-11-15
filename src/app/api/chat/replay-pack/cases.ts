@@ -39,6 +39,11 @@ export interface ReplayThread {
   cardReads(line: string): void;
   readonly proposal: ReplayAnswer["formProposal"] | null;
   readonly instanceId: string | null;
+  /** PR 6 item 5: from now on the thread asks for progress lines (the browser's `x-chat-progress: 1`), as the chat screen does. */
+  askProgress?(): void;
+  /** PR 6 item 5: the statuses the last turn streamed, in order, and its stream version (`x-chat-stream`: "1", "2" or null when not streamed). */
+  readonly lastProgress?: readonly string[];
+  readonly lastStreamVersion?: string | null;
 }
 
 export interface ReplayContext {
