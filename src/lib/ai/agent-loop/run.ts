@@ -7,7 +7,6 @@ import { chatTraceEnabled } from "@/lib/config/chat-quality-flags";
 import { authorizedSalonIds } from "@/lib/forms/location-scope";
 import { rosterSalonName } from "@/lib/forms/salon-mention";
 import type { ChatFormProposal, ChatMessage } from "@/types";
-import { cardPolicyHeading } from "@/lib/forms/card-policy";
 
 import { finishChatTrace, openChatTrace } from "../chat-trace";
 import { chatTraceDraft } from "../chat-trace-store";
@@ -37,6 +36,7 @@ import {
   readForm,
   readPolicy,
   templateChoices,
+  accountWordKind,
   type ToolContext,
   type ToolEffects,
   type ToolResult,
@@ -83,6 +83,42 @@ export interface AgentLoopStep {
   readonly ms: number;
   readonly resultChars: number;
   readonly ok: boolean;
+  /** Batch E (E15): why, never what. The refusal's kind, and the names of the facts the result carried (no values). */
+  readonly error_kind?: string;
+  readonly fact_keys?: readonly string[];
+  /** account_words_missing as kinds only ("date", "time", "place"), never the words. */
+  readonly missing_kinds?: readonly string[];
+}
+
+/* Batch E (E15): a refusal's kind, read from its fixed wording (the text itself, which can carry names, never goes in the trace). */
+const ERROR_KINDS: readonly [RegExp, string][] = [
+  [/after today/i, "date_after_today"],
+  [/never changes who the form is about|another (?:employee|person)|said no to/i, "right_person"],
+  [/must come from the manager's own words|none of the dates the manager gave|never gave/i, "not_stated"],
+  [/not a heading|No section of the manual/i, "not_a_heading"],
+  [/find_staff|not on the roster|Give the employee/i, "person_not_found"],
+  [/isn't|is not one of this manager's|outside|scope|cannot (?:list|create|edit|view)|can't be listed/i, "scope"],
+  [/whole staff/i, "whole_staff"],
+  [/already shown in this reply|already has/i, "one_card"],
+  [/finalized|cannot be edited|is (?:submitted|final)/i, "drafts_only"],
+  [/past forms|NOT_ASKED|did not ask/i, "past_forms_gate"],
+  [/could not be read|failed just now|could not be (?:found|changed)/i, "read_failed"],
+  [/no tool named/i, "unknown_tool"],
+];
+/** Result keys that are data, not facts (never listed in the trace). */
+const NOT_FACT_KEYS = new Set(["error", "note", "card", "facts", "matches", "staff", "wording", "headings", "source", "salon", "salons", "positions", "templates", "updated", "refused", "forms", "passages", "document", "heading", "page", "fields", "values"]);
+
+function stepReason(result: ToolResult): Pick<AgentLoopStep, "error_kind" | "fact_keys" | "missing_kinds"> {
+  const record = result as Record<string, unknown>;
+  const facts = record.facts && typeof record.facts === "object" ? Object.keys(record.facts as object) : [];
+  const keys = [...new Set([...facts, ...Object.keys(record).filter((key) => !NOT_FACT_KEYS.has(key))])].sort();
+  const missing = (record.facts as { account_words_missing?: unknown } | undefined)?.account_words_missing;
+  const error = typeof record.error === "string" ? (ERROR_KINDS.find(([pattern]) => pattern.test(record.error as string))?.[1] ?? "refused") : null;
+  return {
+    ...(error ? { error_kind: error } : {}),
+    ...(keys.length > 0 ? { fact_keys: keys } : {}),
+    ...(Array.isArray(missing) ? { missing_kinds: [...new Set(missing.map((word) => accountWordKind(String(word))))].sort() } : {}),
+  };
 }
 
 export interface AgentTurnInput {
@@ -157,11 +193,15 @@ export function cardClaims(content: string): CardClaims {
 /** The card's facts as the model is shown them, and the fields the reply states that the card does not hold. */
 export function cardMismatch(claims: CardClaims, card: ChatFormProposal | null): string[] {
   const wrong: string[] = [];
-  const policyHeading = (line: string | null | undefined) => (line ? cardPolicyHeading(`**Policy:** ${line}`)?.toLowerCase() ?? null : null);
+  /*
+   * Batch E (E6): the whole line (heading, manual, page), letters and digits only and articles aside, so "Standards of
+   * Conduct" alone is a mismatch and "Other — 10-minute sanitation" for "Other — the 10-minute sanitation" is not.
+   */
+  const policyLine = (line: string | null | undefined) => (line ? line.toLowerCase().replace(/\b(?:the|a|an)\b/g, " ").replace(/[^a-z0-9]+/g, "") : null);
   if (claims.warningLevel && card?.warningLevel !== claims.warningLevel) wrong.push(`warning level (${claims.warningLevel})`);
   if (claims.payrollDeduct && card?.payrollDeduct !== claims.payrollDeduct) wrong.push(`payroll deduct (${claims.payrollDeduct})`);
   if (claims.payrollAmount && Number(card?.payrollDeductAmount?.replace(/[^\d.]/g, "") ?? NaN) !== Number(claims.payrollAmount)) wrong.push(`payroll amount ($${claims.payrollAmount})`);
-  if (claims.policy && card && card.policyLine !== undefined && policyHeading(claims.policy) !== policyHeading(card.policyLine)) wrong.push(`policy (${claims.policy})`);
+  if (claims.policy && card && card.policyLine !== undefined && policyLine(claims.policy) !== policyLine(card.policyLine)) wrong.push(`policy (${claims.policy})`);
   if (claims.policy && !card) wrong.push(`policy (${claims.policy})`);
   if (claims.date) {
     const [month, day] = claims.date.split("/").map(Number);
@@ -228,7 +268,7 @@ export const AGENT_LOOP_TOOLS = [
   {
     name: "list_staff",
     description: "The staff of one of the signed-in manager's own salons, by name and position. For \"who's on my staff\" and for a form asked for a whole staff (never one card for everyone). With several salons and none named, it gives the question to ask.",
-    input_schema: object({ salon: { type: "string", description: "The salon the manager named, if any." } }, []),
+    input_schema: object({ salon: { type: "string", description: "The salon the manager named, if any." }, position: { type: "string", description: "One position the manager asked about (\"tanning consultants\"), if any." } }, []),
   },
   {
     name: "search_knowledge",
@@ -375,7 +415,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     } catch {
       result = { error: "That lookup failed just now." };
     }
-    steps.push({ step, tool: name, ms: Math.round(performance.now() - started), resultChars: JSON.stringify(result).length, ok: !("error" in result) });
+    steps.push({ step, tool: name, ms: Math.round(performance.now() - started), resultChars: JSON.stringify(result).length, ok: !("error" in result), ...stepReason(result) });
     return result;
   };
 
@@ -539,19 +579,25 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
       };
       const reviewed = stoppedAt === "reply" && !effects.formUpdate && !effects.formOpened && !input.openFormId && (effects.proposal || cardOpenAtStart);
       const wrong = reviewed ? cardMismatch(cardClaims(text), effects.proposal) : [];
-      if (wrong.length > 0) {
+      /* Batch E (E8): a new card that cites a policy, and a reply with no **Policy:** line, goes back once; never rewritten. */
+      const noPolicyLine = (reply: string) => Boolean(reviewed && effects.proposal?.policyLine && !cardClaims(reply).policy);
+      const missing = noPolicyLine(text);
+      if (wrong.length > 0 || missing) {
         const note = [
-          `[app check] Your reply says the card has: ${wrong.join("; ")}. ${effects.proposal ? "The card you proposed this turn does not." : "No card was proposed this turn, so the card on the manager's screen did not change."}`,
+          ...(wrong.length > 0 ? [`[app check] Your reply says the card has: ${wrong.join("; ")}. ${effects.proposal ? "The card you proposed this turn does not." : "No card was proposed this turn, so the card on the manager's screen did not change."}`] : []),
+          ...(missing ? [`[app check] Your reply does not say what is on the card you proposed: give the form and the person, any assumption line, the Observation, and end with "**Policy:** ${effects.proposal!.policyLine}".`] : []),
           `Card now: ${JSON.stringify(cardFacts(effects.proposal))}.`,
           "If the manager asked for that change, call propose_form again for the same person and form with it (and everything else the card already has). Otherwise correct your reply. Never state a value the card does not hold. Then write your reply to the manager again.",
         ].join("\n");
         const again = await handBack(note);
         const still = again ? cardMismatch(cardClaims(again), effects.proposal) : wrong;
-        selfReview = { mismatched: wrong, fixed: still.length === 0 };
-        /* Only on a second miss: the reply says plainly what is not on the card (today's no-op honesty pattern). */
-        text = still.length === 0 && again
-          ? again
-          : `That change isn't on the card yet: ${still.join("; ")}. Tell me again and I'll update the card.`;
+        selfReview = { mismatched: [...wrong, ...(missing ? ["policy line (missing)"] : [])], fixed: still.length === 0 && Boolean(again) && !noPolicyLine(again) };
+        /*
+         * Only on a second miss of a stated value: the reply says plainly what is not on the card (today's no-op honesty
+         * pattern). A reply that only left the Policy line out keeps the model's words (the hand-back's, else the first).
+         */
+        if (still.length > 0) text = `That change isn't on the card yet: ${still.join("; ")}. Tell me again and I'll update the card.`;
+        else if (again) text = again;
       }
       /*
        * THE DRAFT'S HONESTY CHECK HANDS BACK FIRST (code-check #48, batch D): with a draft open, a reply that claims the
