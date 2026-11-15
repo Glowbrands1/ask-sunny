@@ -196,7 +196,7 @@ export const NOV15_AGENT_LOOP_SILENT_FAILURE_CASES: ReplayCase[] = [
         return {
           text: stated
             ? `Here's the Corrective Action Form for **Wren Halloway**.\n\n**Type of Warning:** ${stated.type_of_warning}.\n${stated.approval_line}\n\n**Observation of Offense:** Wren Halloway was a no call no show.`
-            : "Here's the Corrective Action Form for **Wren Halloway**.\n\nIf termination is the decision, tick Termination on the form.\n\n**Observation of Offense:** Wren Halloway was a no call no show.",
+            : "Here's the Corrective Action Form for **Wren Halloway**.\n\nYou'll tick Termination on the form yourself; it needs DM/HR approval before it's finalized.\n\n**Observation of Offense:** Wren Halloway was a no call no show.",
         };
       });
       t.loopModel!(model);
@@ -211,7 +211,7 @@ export const NOV15_AGENT_LOOP_SILENT_FAILURE_CASES: ReplayCase[] = [
       const hedge = t.thread();
       const answer = await hedge.say("Create a CA for Wren Halloway, we might terminate her if this continues, she was a no call no show");
       expect(answer.content, "a hedge was carded as a termination").not.toMatch(/Termination, as you said/);
-      expect(answer.content).toMatch(/tick Termination on the form/);
+      expect(answer.content).toContain("You'll tick Termination on the form yourself; it needs DM/HR approval before it's finalized.");
     },
   },
   {
