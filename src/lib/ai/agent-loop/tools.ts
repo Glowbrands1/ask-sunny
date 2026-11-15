@@ -180,6 +180,13 @@ async function formsOnFileAskedFor(context: ToolContext, evidence: unknown, pers
   return { ok: false, reason: "evidence_other_person", reasonCode: "privacy_not_this_person" };
 }
 
+/** What the model says its exit_evidence quote is (fix batch item 1); null when it said nothing or something else. */
+export type ExitEvidenceKind = "asks_for_exit_form" | "yes_to_exit_offer" | "resignation_told";
+export function exitEvidenceKind(value: unknown): ExitEvidenceKind | null {
+  const kind = value && typeof value === "object" ? (value as { kind?: unknown }).kind : null;
+  return kind === "asks_for_exit_form" || kind === "yes_to_exit_offer" || kind === "resignation_told" ? kind : null;
+}
+
 /**
  * QA's review of PR 1b, ruling 4: turns the model cites as this person's request (request_evidence) or account
  * (account_evidence). Each is a real manager turn of this conversation, names no other roster person, and is in THIS
@@ -1576,7 +1583,22 @@ export async function proposeForm(
     const check = verifyEvidence(input.exit_evidence, turns);
     const inRequest = check.ok && (check.turn.index === turns.length - 1 || sourceIds.includes(check.turn.id) || citedRequestIds.includes(check.turn.id));
     if (!inRequest) {
-      return { exit_not_stated: true, reason_code: "exit_not_stated", evidence: check.ok ? "evidence_not_this_turn" : check.reason, note: "No exit_evidence from this person's request: the manager's words asking for the Employee Exit Form or telling a resignation. An offense told with a termination is the Corrective Action Form with warning_level termination, citing the offense and its date; then offer the exit form in one line (the rules book's Which form lines)." };
+      return { exit_not_stated: true, reason_code: "exit_not_stated", evidence: check.ok ? "evidence_not_this_turn" : check.reason, note: "No exit_evidence from this person's request: the manager's words asking for the Employee Exit Form, or their yes to your offer of it. An offense told with a termination is the Corrective Action Form with warning_level termination, citing the offense and its date; then offer the exit form in one line (the rules book's Which form lines)." };
+    }
+    /*
+     * Fix batch item 1 (QA's live re-test, 16 Nov 2026: "ugh <D> quit yesterday, short staffed again" built an exit card
+     * nobody asked for). The quote is real, but a resignation told in passing is not an ask. The model says which its
+     * quote is (exit_evidence.kind); code checks only the kind and where the quote sits, never what the words mean.
+     */
+    const kind = exitEvidenceKind(input.exit_evidence);
+    const offer = `Want the ${template.name} for **${employee.name}**?`;
+    if (kind === "resignation_told") {
+      return { exit_not_asked: true, reason_code: "exit_not_asked", ask_exactly: offer, note: "The manager told a resignation but did not ask for the exit form. Make no card: say what you understood in a few words and end the reply with ask_exactly. Propose the exit card only when they say yes (exit_evidence kind yes_to_exit_offer)." };
+    }
+    /* A yes to the offer is this message, answering the app reply right before it. */
+    const answersOffer = kind === "yes_to_exit_offer" && check.ok && check.turn.index === turns.length - 1 && turns[turns.length - 2]?.role === "assistant";
+    if (kind !== "asks_for_exit_form" && !answersOffer) {
+      return { exit_not_stated: true, reason_code: "exit_not_stated", evidence: kind === null ? "exit_kind_missing" : "exit_offer_not_answered", ask_exactly: offer, note: "exit_evidence needs its kind: asks_for_exit_form (the manager's words ask for the exit form or its paperwork), yes_to_exit_offer (this message says yes to your offer of it, right after you asked), or resignation_told (a resignation told, no ask: make no card and end the reply with ask_exactly)." };
     }
   }
   /*

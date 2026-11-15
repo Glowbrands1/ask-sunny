@@ -17,6 +17,10 @@ import { rulesBookText } from "./rules-book";
  * added the rule 'Say a form or card is "ready" only when propose_form's card.status is "ready" …' to the prompt and
  * the rules book. That line names no app, place, staff system or form key, so it reads the same under every config;
  * nothing else in either text changed.
+ *
+ * Re-taken on purpose on 16 Nov 2026 (fix batch item 1, an exit card nobody asked for): the Which form exit line now
+ * asks for exit_evidence's kind, and one line was added for a resignation told with no ask. Both read the same under
+ * every config; nothing else changed.
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");

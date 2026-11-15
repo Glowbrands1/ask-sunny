@@ -381,7 +381,18 @@ function buildAgentLoopTools(config: AppConfig) {
         template_key: { type: "string" },
         employee_id: { type: "string", description: "From find_staff." },
         employee_name: { type: "string", description: "Only when find_staff said the roster cannot be searched." },
-        exit_evidence: evidence("Employee Exit Form only: where the manager asks for the exit form or tells a resignation."),
+        exit_evidence: {
+          ...evidence("Employee Exit Form only: the manager's words that ask for the exit form (or say yes to your offer of it), and what they are."),
+          properties: {
+            ...evidence("").properties,
+            kind: {
+              type: "string",
+              enum: ["asks_for_exit_form", "yes_to_exit_offer", "resignation_told"],
+              description: "asks_for_exit_form: the words ask for the exit form or its paperwork. yes_to_exit_offer: this message says yes to your offer of the exit form. resignation_told: a resignation told with no ask (no card is made; propose_form gives the offer to ask).",
+            },
+          },
+          required: ["message_id", "quote", "kind"],
+        },
         request_evidence: {
           type: "array",
           items: evidence("An earlier manager message of this same request (for this person) that named them differently: their words."),

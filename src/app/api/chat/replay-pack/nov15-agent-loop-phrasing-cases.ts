@@ -120,7 +120,7 @@ const SCRIPTS: Record<Behaviour["key"], Script> = {
   "exit-form": async (t, said) => {
     await setup(t);
     t.loopModel!(loopStandIn((view): LoopDecision => {
-      if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: exitKey(), employee_id: TESTY.id, exit_type: "resignation", exit_evidence: evidenceFrom(view) } };
+      if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: exitKey(), employee_id: TESTY.id, exit_type: "resignation", exit_evidence: { ...evidenceFrom(view), kind: "asks_for_exit_form" } } };
       return { text: "Here's the card." };
     }));
     const thread = t.thread();
