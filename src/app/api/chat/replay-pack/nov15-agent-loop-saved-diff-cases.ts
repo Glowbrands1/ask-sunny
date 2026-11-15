@@ -158,4 +158,29 @@ export const NOV15_AGENT_LOOP_SAVED_DIFF_CASES: ReplayCase[] = [
       expect(result.not_on_card, JSON.stringify(result)).toEqual([{ field: "warning_level", reason_code: "level_not_stated" }]);
     },
   },
+  {
+    id: "nov15-pr3-three-saved-edits-in-one-turn",
+    title: "PR 6 (owner's addition): a turn that makes 3 saved edits in a row finishes under the step limit, never gives the step-limit reply, and the turn's update lists all 3 saved changes",
+    report: REPORT,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      const { thread, id } = await remyDraft(t);
+      const edits: Record<string, string>[] = [{ warning_type: "written" }, { payroll_deduct: "yes", payroll_deduct_amount: "$15" }, { form_date: "11/13" }];
+      const model = loopStandIn((view): LoopDecision => {
+        const done = view.results.filter((result) => result.tool === "edit_form");
+        if (done.length < edits.length) return { tool: "edit_form", input: { instance_id: id, values: edits[done.length] } };
+        const fields = done.flatMap((result) => ((result.output as EditResult).saved ?? []).map((change) => change.field.replace(/_/g, " ")));
+        return { text: `Saved on the form: ${fields.join(", ")}.` };
+      });
+      t.loopModel!(model);
+      const reply = await thread.say("make it a written, yes payroll $15, and change the date to 11/13");
+      expect(reply.content, "the step-limit reply was given").not.toMatch(/couldn't finish everything else|one thing still left/i);
+      for (const field of ["warning type", "payroll deduct", "form date"]) expect(reply.content, `the reply does not list ${field}:\n${reply.content}`).toContain(field);
+      expect([...(reply.formUpdate?.updated ?? [])].sort(), "the turn's update does not list all 3 saved changes").toEqual(expect.arrayContaining(["form_date", "payroll_deduct", "warning_type"]));
+      expect(t.checked(id).warning_type).toEqual(["written"]);
+      expect(t.checked(id).payroll_deduct).toEqual(["yes"]);
+    },
+  },
 ];
