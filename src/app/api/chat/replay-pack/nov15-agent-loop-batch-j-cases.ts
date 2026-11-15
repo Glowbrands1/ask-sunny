@@ -154,13 +154,13 @@ export const NOV15_AGENT_LOOP_BATCH_J_CASES: ReplayCase[] = [
       t.draftWrites({ observation: "Observed:\nJuno Paxton opened the salon late on 11/12." });
       draftId = await thread.create();
       const reply = await thread.say("make it a written and yes payroll $15");
-      // Payroll on a draft is G5's (batch G); until it lands, payroll Yes is not written either, and the reply says so too.
       expect(reply.content).not.toMatch(/What's the one thing still left\?/);
       if (!offline) return;
-      expect(reply.content, "the reply never said the $15 was not saved").toMatch(/Not saved yet: [^\n]*\*\*Payroll deduction amount\*\* \(\$15\)/);
-      expect(reply.content).not.toMatch(/What's the one thing still left\?/);
-      expect(reply.content, "the saved level was listed as not saved").not.toMatch(/\*\*Type of Warning\*\* \(Written/);
-      expect(reply.content).toMatch(/I saved the change on the form: warning type\./);
+      // Changed on purpose (15 Nov 2026, the J3 re-test after batch G): G5 writes payroll Yes on a draft, so the reply
+      // names the level and payroll as saved and only the $15 as not saved, as QA's 9b asked.
+      expect(reply.content).toMatch(/^I saved these changes on the form: payroll deduct, warning type\./);
+      expect(reply.content, "the reply never said the $15 was not saved").toMatch(/Not saved yet: \*\*Payroll deduction amount\*\* \(\$15\)\. Tell me again and I'll add it\.$/);
+      expect(reply.content, "a saved field was listed as not saved").not.toMatch(/\*\*Type of Warning\*\* \(Written|\*\*Payroll deduct\*\* \(Yes/);
     },
   },
   {
