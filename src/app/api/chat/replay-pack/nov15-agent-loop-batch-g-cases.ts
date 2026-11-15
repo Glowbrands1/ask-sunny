@@ -89,4 +89,41 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       if (offline) expect(toolResults(model.views, "propose_form").some((result) => /"reword_paused":true/.test(result)), "propose_form did not refuse the reword").toBe(true);
     },
   },
+  {
+    id: "nov15-agent-loop-g3-added-fact-at-the-end-of-observed",
+    title: "G3: \"she also left 20 minutes early\" on a draft with Observed / Expectation / Going Forward goes at the end of Observed, and \"She is expected\" stays word for word",
+    report: `${REPORT}: the new sentence landed between Expectation and Going Forward, and "She is expected" became "<name> is expected"`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: "Remy Calder was 20 minutes late on 11/12." } };
+        return { text: "Here's the Corrective Action Form for **Remy Calder**.\n\n**Observation of Offense:** Remy Calder was 20 minutes late on 11/12." };
+      }));
+      const thread = t.thread();
+      await thread.say("ca for remy calder, she was 20 minutes late on 11/12");
+      const id = await thread.create();
+      const old = "Observed: Remy Calder was 20 minutes late on 11/12.\nExpectation: She is expected to arrive on time for every scheduled shift.\nGoing Forward: Remy will clock in by her start time.";
+      t.typeOnForm(id, { observation: old });
+      // A model that first puts the fact mid-text and renames "She", then fixes it when edit_form reports where it went.
+      const model = loopStandIn((view): LoopDecision => {
+        const edits = view.results.filter((result) => result.tool === "edit_form").map((result) => result.output as { add_changed_sentences?: unknown; add_not_at_end_of_observed?: unknown });
+        if (edits.length === 0) return { tool: "edit_form", input: { instance_id: id, values: { observation: "Observed: Remy Calder was 20 minutes late on 11/12.\nExpectation: Remy Calder is expected to arrive on time for every scheduled shift.\nShe also left 20 minutes early.\nGoing Forward: Remy will clock in by her start time." } } };
+        if (edits.length === 1 && (edits[0]!.add_changed_sentences || edits[0]!.add_not_at_end_of_observed)) return { tool: "edit_form", input: { instance_id: id, values: { observation: "Observed: Remy Calder was 20 minutes late on 11/12. She also left 20 minutes early.\nExpectation: She is expected to arrive on time for every scheduled shift.\nGoing Forward: Remy will clock in by her start time." } } };
+        return { text: "Added to the Observation: She also left 20 minutes early." };
+      });
+      t.loopModel!(model);
+      await thread.say("she also left 20 minutes early");
+      const saved = t.values(id).observation ?? "";
+      expect(saved, "the added fact is not in the Observed section").toMatch(/^Observed:[^\n]*left 20 minutes early/);
+      expect(saved, "another sentence was rewritten").toMatch(/Expectation: She is expected to arrive on time for every scheduled shift\./);
+      expect(saved.indexOf("left 20 minutes early"), "the added fact went after Expectation").toBeLessThan(saved.indexOf("Expectation:"));
+      if (offline) expect(toolResults(model.views, "edit_form")[0], "the misplaced add is not a fact").toMatch(/"add_not_at_end_of_observed":\["observation"\]/);
+    },
+  },
 ];

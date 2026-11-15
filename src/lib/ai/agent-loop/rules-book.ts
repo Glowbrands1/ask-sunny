@@ -140,6 +140,8 @@ export const RULES_BOOK: readonly { readonly title: string; readonly rules: read
       "edit_form's level_or_payroll_answer_also_wrote: a level or payroll answer changes only those fields. Put the other fields it wrote back as they were (read_form shows them).",
       "A reword (\"make it professional\") fixes grammar, spelling and tone only. It never adds a cause, a result or a link between facts (\"resulting in\", \"because\", \"which led to\", \"due to\"): \"didnt check the beds between clients and left towels on the floor in room 3\" is \"She did not check the beds between clients. She left towels on the floor in room 3.\"",
       "reword_paused (edit_form or propose_form): rewording (\"make it professional\", \"reword it\", \"clean it up\") is paused, and nothing was changed. Say exactly: \"Rewording isn't available yet. Tell me exactly what to change and I'll update it.\" Spelling and grammar fixes to the manager's own words while you write them are still yours to make.",
+      "An added fact (\"she also left 20 minutes early\") goes at the end of the Observed section, right before \"Expectation:\" (at the end when the field has no sections). Every other sentence stays word for word: never change \"She\" to the name, and never move or merge the sections.",
+      "edit_form's add_changed_sentences (old sentences the new text no longer has word for word) or add_not_at_end_of_observed: edit again with the old text exactly as it was and the new sentence at the end of the Observed section.",
     ],
   },
   {

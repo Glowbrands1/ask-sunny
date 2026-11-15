@@ -406,6 +406,36 @@ export function addedLinks(before: string, text: string): string[] {
   return [...new Set([...text.matchAll(LINKING)].map((match) => match[1]!.toLowerCase()))].filter((phrase) => !had.has(phrase));
 }
 
+/** A field's sentences, headings ("Observed:") apart, each trimmed. */
+function sentencesOf(text: string): string[] {
+  return text
+    .split(/\n+/)
+    .flatMap((line) => line.replace(/^\s*(?:Observed|Expectation|Going Forward|Expectations|Plan)\s*:\s*/i, "").split(/(?<=[.!?])\s+/))
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence.length > 0);
+}
+
+/**
+ * Batch G (G3, QA's live test): where a new wording put what it added. `changed`: the old sentences it no longer has
+ * word for word. `misplaced`: an added sentence is not at the end of the Observed section (before "Expectation:"), or,
+ * with no sections, not after every old sentence.
+ */
+export function addPlacement(old: string, text: string): { changed: string[]; misplaced: boolean } {
+  const before = sentencesOf(old);
+  const changed = before.filter((sentence) => !text.includes(sentence));
+  const added = sentencesOf(text).filter((sentence) => !old.includes(sentence));
+  if (added.length === 0) return { changed, misplaced: false };
+  const expectation = /^\s*Expectations?\s*:/im.exec(text);
+  const sectioned = /^\s*Observed\s*:/im.test(old) && expectation !== null;
+  const lastOld = (limit: number) => Math.max(-1, ...before.map((sentence) => text.indexOf(sentence)).filter((at) => at >= 0 && at < limit));
+  const misplaced = added.some((sentence) => {
+    const at = text.indexOf(sentence);
+    if (sectioned) return at > expectation!.index || at < lastOld(expectation!.index);
+    return at < lastOld(text.length);
+  });
+  return { changed, misplaced };
+}
+
 /** A position as compared: lowercase words, a plural "s" dropped ("Tanning Consultants" = "tanning consultant"). */
 function positionKey(text: string): string {
   return text.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).map((word) => (word.length > 3 && word.endsWith("s") ? word.slice(0, -1) : word)).join(" ");
@@ -1395,6 +1425,16 @@ export async function editForm(
         if (linked.length > 0) rewordFacts.reword_added_link = { ...(rewordFacts.reword_added_link ?? {}), [field]: linked };
       }
     }
+    /* Batch G (G3): an added fact keeps every other sentence word for word and sits at the end of the Observed section. */
+    const addFacts: { add_changed_sentences?: Record<string, { untrusted_text: string }[]>; add_not_at_end_of_observed?: string[] } = {};
+    for (const field of ["observation", "coaching_details"]) {
+      const text = values[field];
+      const old = loaded.values.find((row) => row.fieldKey === field)?.value ?? "";
+      if (!text || !old.trim()) continue;
+      const placed = addPlacement(old, text);
+      if (placed.changed.length > 0) addFacts.add_changed_sentences = { ...(addFacts.add_changed_sentences ?? {}), [field]: placed.changed.map(untrusted) };
+      if (placed.misplaced) addFacts.add_not_at_end_of_observed = [...(addFacts.add_not_at_end_of_observed ?? []), field];
+    }
     if (loaded.instance.status !== "draft") {
       return { error: `This form is ${loaded.instance.status}, so it cannot be edited here. Tell the manager.` };
     }
@@ -1458,6 +1498,15 @@ export async function editForm(
       checked.warning_type = [/written/i.test(values.warning_type) ? "written" : /verbal/i.test(values.warning_type) ? "verbal" : "termination"];
       delete values.warning_type;
     }
+    /*
+     * Batch G (G5, Pau's rule: level and payroll answers fill those fields): "Is payroll deduct applicable?" is a Yes / No
+     * tick on the form, written as checked like the warning level (the stated-by-the-manager guard above already ran).
+     */
+    if (values.payroll_deduct) {
+      const answer = /^\s*yes/i.test(values.payroll_deduct) ? "yes" : /^\s*no/i.test(values.payroll_deduct) ? "no" : null;
+      if (answer) checked.payroll_deduct = [answer];
+      delete values.payroll_deduct;
+    }
     // The revision's writer, as chat-revision.ts saves: the one writer with FORM_EDIT_SINGLE_WRITER_ENABLED, else the old one.
     const written = formEditSingleWriterEnabled()
       ? await (await import("@/lib/forms/form-write")).writeRevisionEdits(id, { values, checked }, [], { actorId: context.actor.subject, latest: context.question })
@@ -1468,8 +1517,9 @@ export async function editForm(
       updated,
       refused: written.rejected.map((row) => ({ field: row.key, reason: row.reason })),
       ...rewordFacts,
+      ...addFacts,
       ...(answerAlsoWrote.length > 0 ? { level_or_payroll_answer_also_wrote: answerAlsoWrote } : {}),
-      ...(rewordFacts.reword_lost || rewordFacts.reword_touched_fixed_fields || rewordFacts.reword_added_link || answerAlsoWrote.length > 0
+      ...(rewordFacts.reword_lost || rewordFacts.reword_touched_fixed_fields || rewordFacts.reword_added_link || addFacts.add_changed_sentences || addFacts.add_not_at_end_of_observed || answerAlsoWrote.length > 0
         ? { note: "Saved. Check these facts against what the manager asked and edit again to put anything back (the rules book's Editing lines)." }
         : {}),
     };
