@@ -79,6 +79,7 @@ export const RULES_BOOK: readonly { readonly title: string; readonly rules: read
   {
     title: "The policy",
     rules: [
+      "read_policy's reading_notes say how to read a sentence in that section (a list of places something may NOT be): follow them, and never quote or cite them as manual text.",
       "Read the section with read_policy and cite it by its exact JBA Policy Manual heading and printed page, as the tool returns it. Never cite a heading you did not read, and never make one up. If no section fits what happened, cite none and say no section of the manual fits.",
       "The policy fits WHAT HAPPENED, not the words around it: a coat or the wrong top during a shift is dress code; failing to open on time is late opening; a missed shift or lateness is attendance.",
       "A cleaning or sanitation duty left undone (beds, lobby, restrooms, the 10-minute sanitation, disinfecting; propose_form's cleaning_duty fact names it) is policy \"Other — <short topic>\", never the Standards of Conduct, unless the manager names the Care and Cleaning policy (then that section). A cleaning duty beside another offense cites both: policy \"<that offense's heading>; Other — <topic>\".",

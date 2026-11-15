@@ -616,9 +616,21 @@ export async function readPolicy(context: ToolContext, input: { heading?: unknow
       similarity: 1,
     };
     const marker = addSource(effects, rowToCitation(row));
-    return { document: "JBA Policy Manual", heading: section.heading, page: section.page, source: marker, wording: sectionWording(manual.chunks, section) };
+    const wording = sectionWording(manual.chunks, section);
+    return { document: "JBA Policy Manual", heading: section.heading, page: section.page, source: marker, wording, ...(await readingNotes(wording)) };
   }
-  return { document: "JBA Policy Manual", heading: section.heading, page: section.page, wording: sectionWording(manual.chunks, section) };
+  const wording = sectionWording(manual.chunks, section);
+  return { document: "JBA Policy Manual", heading: section.heading, page: section.page, wording, ...(await readingNotes(wording)) };
+}
+
+/**
+ * MANUAL_NEGATED_LIST_NOTE (batch H7): today's reading notes for a manual sentence a reply read backwards (p.19's list
+ * of places a phone may NOT be), on the section that holds it. Not manual text, never cited.
+ */
+async function readingNotes(wording: string): Promise<{ reading_notes?: string }> {
+  if (!(await import("@/lib/config/chat-quality-flags")).manualNegatedListNoteEnabled()) return {};
+  const notes = (await import("@/lib/ai/manual-reading-notes")).manualReadingNotes([wording]);
+  return notes ? { reading_notes: notes } : {};
 }
 
 /* -------------------------------------------------------- propose form --- */
@@ -1078,9 +1090,25 @@ export async function proposeForm(
   const typedSalon = typeof input.salon === "string" ? input.salon.trim() : "";
   const answeredSalonIds = typedSalon ? [...new Set([typedSalon, `at ${typedSalon}`].flatMap((text) => readSalonMentions(text).flatMap((mention) => [...mention.salonIds])))] : [];
   if (typedSalon && answeredSalonIds.length === 0) return { error: `"${typedSalon}" is not a salon the app knows. Ask which of the manager's salons it is.` };
+  /*
+   * PLACE_SPAN_GUARD (batch H8): each of this person's turns is read on its own, so "cite animals in the workplace
+   * policy" joined to "at Kearney, NE" never reads a place nobody named, and the newest turn that names one salon is
+   * the card's ("location st joe" after an earlier salon). "Primary salon is X" is where they usually work, never this.
+   */
+  const turnSalonIds: string[] = [];
+  if (!typedSalon && (await import("@/lib/config/chat-quality-flags")).placeSpanGuardEnabled()) {
+    const { labelledSalonIds } = await import("@/lib/forms/salon-cue");
+    const turns = asked.messages.filter((message) => sourceIds.includes(message.id ?? "")).map((message) => String(message.content ?? ""));
+    for (const turn of [...turns].reverse()) {
+      if (/\bprimary\s+(?:salon|store|location)\b/i.test(turn)) continue;
+      const ids = labelledSalonIds(turn);
+      if (ids.length === 1) turnSalonIds.push(ids[0]!);
+      if (ids.length > 0) break;
+    }
+  }
   const proposal = buildProposal({
     proposalId: randomUUID(),
-    ...(answeredSalonIds.length > 0 ? { answeredSalonIds } : {}),
+    ...(answeredSalonIds.length > 0 ? { answeredSalonIds } : turnSalonIds.length > 0 ? { answeredSalonIds: turnSalonIds } : {}),
     templateKey: template.key,
     templateName: template.name,
     context: asked,

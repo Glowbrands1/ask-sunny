@@ -36,6 +36,11 @@ const PERRIN: DirectoryRow = { id: "e-perrin-ashgrove", firstName: "Perrin", las
 const WREN: DirectoryRow = { id: "e-wren-tallis", firstName: "Wren", lastName: "Tallis", preferredFirstName: null, employmentStatus: "active", salonIds: [], positionName: "Tanning Consultant" };
 const GLOBAL_DM = { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] };
 
+/** A manual section, as the guards cases build them. */
+function manualChunk(index: number, page: number, heading: string, body: string) {
+  return { chunkIndex: index, chunkId: `h-${index}`, locator: `Page ${page} — ${heading}`, page: page + 1, content: `${heading}\n${body}`, section: heading, printedPage: page, sections: [{ page, heading }] };
+}
+
 export const NOV15_AGENT_LOOP_BATCH_H_CASES: ReplayCase[] = [
   {
     id: "nov15-batch-h1-amount-unknown-left-blank",
@@ -183,4 +188,42 @@ export const NOV15_AGENT_LOOP_BATCH_H_CASES: ReplayCase[] = [
       }
     },
   })),
+  {
+    id: "nov15-batch-h7-negated-list-reading-note",
+    title: "H7 MANUAL_NEGATED_LIST_NOTE: \"can phones charge in the break room?\" — read_policy carries the reading note that the p.19 list is three places a phone may NOT be",
+    report: `${REPORT}; the p.19 phone list read backwards ("charging in the break room" as allowed)`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      const thread = start(t);
+      const heading = "Cell Phone Reading Test Section";
+      t.manualAlsoHas?.([manualChunk(910, 19, heading, "Phones are kept in the employee's locker during shifts, not in back pockets, charging in the break room, or sitting on top of a drawer till.")]);
+      const model = loopStandIn((view) => (lastResult(view, "read_policy") ? { text: "No: the manual lists the break room as a place a phone may not be charged." } : { tool: "read_policy", input: { heading } }));
+      t.loopModel!(model);
+      await thread.say("can phones charge in the break room?");
+      const read = model.views.flatMap((view) => view.results).find((result) => result.tool === "read_policy")?.output as { reading_notes?: string; error?: string } | undefined;
+      expect(read?.error, "the section was not read").toBeUndefined();
+      expect(read?.reading_notes, "no reading note on the negated list").toMatch(/may NOT be/);
+    },
+  },
+  {
+    id: "nov15-batch-h8-newest-turn-salon-wins",
+    title: "H8 PLACE_SPAN_GUARD: \"… at grand island\" then \"location is kearney\": the newest turn's salon is the card's",
+    report: `${REPORT}; the sibling app's conv (24 Oct 2026): a later "store location is …" did not replace the earlier place`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-11T16:00:00Z"));
+      t.directory(STAFF);
+      t.as("salon_director", { level: "salon", primaryAreaId: "loc-0309", alsoCoversAreaIds: ["loc-0307"] });
+      const thread = t.thread();
+      const card = { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", policy: "Attendance", what_happened: "Remy Calder was 20 minutes late on 11/9/26." } } as const;
+      t.loopModel!(loopStandIn((view) => (lastResult(view, "propose_form") ? { text: "Here is the card." } : card)));
+      await thread.say("verbal ca for remy calder at grand island, she was 20 minutes late on 11/9/26");
+      const reply = await thread.say("sorry, location is kearney");
+      expect(reply.formProposal?.locationId, "the newest turn's salon was not the card's").toBe("loc-0309");
+    },
+  },
 ];
