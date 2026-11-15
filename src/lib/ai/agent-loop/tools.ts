@@ -31,6 +31,8 @@ import { findManualSection, manualSectionHeadings, type ManualChunk } from "@/li
 import { sectionWording } from "@/lib/forms/policy-citation";
 import { buildProposal, extractEmployeeNames, extractJobTitle, managerContext, samePerson, tidyTypedName } from "@/lib/forms/proposal";
 import { cleaningUndonePhrase, namesCareAndCleaning } from "@/lib/forms/ca-policy";
+import { otherPeopleInAccount } from "@/lib/ai/agent-loop/account-names";
+import { extractFormDate } from "@/lib/forms/form-date-answer";
 import { turnsFromThisPersonsRequest } from "@/lib/forms/this-persons-turns";
 import { closeHeadingReading, closePolicyQuestion, namedPolicies, namesHeading } from "@/lib/forms/named-policy-section";
 import { startsNewForm } from "@/lib/ai/remap-incident";
@@ -407,6 +409,20 @@ function turnedDownName(context: Pick<ToolContext, "question" | "history">): str
   const last = [...context.history].reverse().find((turn) => turn.role === "assistant");
   const asked = /(?:Did you mean|Is this for)\s+\*\*([^*]+)\*\*/i.exec(String(last?.content ?? ""));
   return asked ? asked[1]!.trim() : null;
+}
+
+/**
+ * Batch K (K8): the manager turns whose name the app asked about: the reply right after them held "Did you mean
+ * **<A>**?", "Is this for **<A>**?" or "reply **use <A>**". By message id.
+ */
+export function turnsNameAskedAbout(history: readonly Pick<ChatMessage, "id" | "role" | "content">[]): ReadonlySet<string> {
+  const ids = new Set<string>();
+  let lastUser: string | undefined;
+  for (const turn of history) {
+    if (turn.role === "user") lastUser = turn.id;
+    else if (turn.role === "assistant" && lastUser && /(?:Did you mean|Is this for)\s+\*\*[^*]+\*\*|reply\s+\*\*use\s+[^*]+\*\*/i.test(String(turn.content ?? ""))) ids.add(lastUser);
+  }
+  return ids;
 }
 
 /** A salon or city of the company's ("grand island", "KS Manhattan"): never a person's name. */
@@ -1302,7 +1318,12 @@ export async function proposeForm(
    * HARD GUARD, THE RIGHT PERSON'S ACCOUNT (the live run's nov6-diffemp): a turn that names another roster person and
    * not this one ("…for Test Employee, she was late…" beside "Test Employee Two") is never this card's source.
    */
-  const personTurns = turnsFromThisPersonsRequest(asked, employee.name, { names: extractEmployeeNames, same: samePerson }).filter((id) => {
+  /*
+   * Batch K (K8): a turn whose name the app asked about ("Did you mean **<A>**?", "reply **use <A>**") and the next turn
+   * corrected is the corrected person's request, so an exit asked in the first words survives the correction.
+   */
+  const windowIds = turnsFromThisPersonsRequest(asked, employee.name, { names: extractEmployeeNames, same: samePerson, nameAsked: turnsNameAskedAbout(context.history as ChatMessage[]) });
+  const personTurns = windowIds.filter((id) => {
     if (id === context.questionMessageId) return true;
     const said = asked.messages.find((message) => message.id === id)?.content ?? "";
     return mentionsPerson(said, employee.name, rosterNames) || !rosterNames.some((name) => !samePerson(name, employee.name) && mentionsPerson(said, name, rosterNames));
@@ -1315,11 +1336,30 @@ export async function proposeForm(
     .map((message) => message.content)
     .join("\n");
   /*
+   * Batch K (K6): this card's date is read from this person's own request turns, never from the chat before it ("write
+   * up <A> for being late 10/16", then "also a coaching form for <B>": <B>'s card has no 10/16).
+   */
+  const ownFormDate = extractFormDate(requestWords, context.today || businessToday());
+  /*
+   * Batch K (K4): every full name in the manager's own words for this request other than the card's person, as a fact
+   * (also a roster person a right-person filter dropped from the card's source); the model decides whether the account is
+   * about them (the rules book's line), code never reads intent.
+   */
+  const otherPeople = await (async () => {
+    const words = asked.messages
+      .filter((message) => (newRequest ? message.id === context.questionMessageId : windowIds.includes(message.id ?? "")))
+      .map((message) => String(message.content ?? ""))
+      .join("\n");
+    const fullNames = read.kind === "read" ? read.roster.flatMap((row) => fullNamesOf(row)) : [];
+    const own = [context.actor.displayName ?? "", ...(read.kind === "read" && employee.id ? read.roster.filter((row) => row.id === employee.id).flatMap((row) => fullNamesOf(row)) : [])].filter(Boolean);
+    return otherPeopleInAccount(words, employee.name, fullNames, samePerson, own).filter((other) => !namesAPlace(other.name));
+  })();
+  /*
    * Batch G2 (item 2, QA's ruling on Pau's P15 "termination CA"; the live run gave an Exit form dated today, the incident
    * date lost): the manager did not ask for the exit form and told no resignation, so this exit card is refused; an
    * offense told with a termination is the Corrective Action Form (the rules book). Nothing is shown.
    */
-  if (template.key === "stc-exit" && !EXIT_ASKED.test(requestWords) && !RESIGNATION_TOLD.test(requestWords)) {
+  if (template.key === "stc-exit" && !EXIT_ASKED.test(requestWords) && !EXIT_ASKED.test(context.question) && !RESIGNATION_TOLD.test(requestWords)) {
     return { exit_not_asked: true, note: "The manager did not ask for the Employee Exit Form and told no resignation. An offense told with a termination is the Corrective Action Form with warning_level termination, citing the offense and its date; then offer the exit form in one line (the rules book's Which form lines)." };
   }
   /*
@@ -1542,6 +1582,7 @@ export async function proposeForm(
     today,
     employee: { kind: "resolved" as const, employeeName: employee.name },
     employeeSalonIds: [...employee.salonIds],
+    formDateFromConversation: false,
   });
   let proposal = buildProposal(proposalInput(answeredSalonIds.length > 0 ? answeredSalonIds : turnSalonIds));
   /*
@@ -1600,11 +1641,11 @@ export async function proposeForm(
   const datedToday = ACCOUNT_FORMS.has(template.key) && !awaiting && !date && datesGiven.length === 0 && !ACCOUNT_WHEN.test(requestWords) && readDates(requestWords).length === 0;
   ACCOUNT_WHEN.lastIndex = 0;
   /* Batch E (E12): a date after today is never on the card, the model's or today's reading (the field is refused; the fact says so). */
-  const futureDate = dateAfterToday ?? (incidentForm && !date && proposal.formDate && proposal.formDate > today ? proposal.formDate : null);
+  const futureDate = dateAfterToday ?? (incidentForm && !date && ownFormDate && ownFormDate > today ? ownFormDate : null);
   const card: ChatFormProposal = {
     ...proposal,
     sourceMessageIds: sourceIds,
-    formDate: exitTermination ? exitTermination.date : datesAsked.length > 0 || futureDate ? null : date ?? proposal.formDate ?? null,
+    formDate: exitTermination ? exitTermination.date : datesAsked.length > 0 || futureDate ? null : date ?? ownFormDate ?? null,
     fromAgentLoop: true as const,
     ...(level ? { warningLevel: level } : loopTermination ? { loopTermination: true as const } : {}),
     ...(whatHappened ? { issue: whatHappened } : {}),
@@ -1696,6 +1737,7 @@ export async function proposeForm(
     ...(notInManual && policyLine ? { policy_not_in_manual: notInManual } : {}),
     ...(whatHappened && addedLinks(managerWords, whatHappened).length > 0 ? { reword_added_link: addedLinks(managerWords, whatHappened) } : {}),
     ...(whatHappened && ACCOUNT_FORMS.has(template.key) && accountSubjectChanged(managerWords, whatHappened, employee.name) ? { account_subject_changed: { employee: employee.name, account_says_it_was: accountSubjectChanged(managerWords, whatHappened, employee.name) } } : {}),
+    ...(otherPeople.length > 0 ? { account_names_other_person: otherPeople.map((other) => ({ name: untrusted(other.name), said_in: untrusted(other.said) })) } : {}),
     ...(statedSteps.length > 0 ? { prior_steps_said: statedSteps } : {}),
     ...(corrective && payroll === "yes" && !amount && statedAmount ? { payroll_amount_said: `$${statedAmount}` } : {}),
     ...(cleaning && !careAndCleaning ? { cleaning_duty: cleaning } : {}),

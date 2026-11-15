@@ -18,13 +18,19 @@ import { detectTemplateIntent } from "./template-intent";
  * after it; and the turns before it back to a form request that names nobody
  * ("create a coaching form" → "who is it for?" → "remy calder"), or back to
  * the start when no earlier turn names somebody else. Turns that follow an
- * earlier person's request belong to that person. Pure; the name reader is the
- * caller's (`extractEmployeeNames`).
+ * earlier person's request belong to that person. A turn whose name the app asked
+ * about, answered by the turn that corrected it, belongs to the corrected person
+ * (batch K, K8). Pure; the name reader is the caller's (`extractEmployeeNames`).
  */
 export function turnsFromThisPersonsRequest(
   context: Pick<BoundedContext, "messages" | "ids">,
   employeeName: string | null,
-  read: { names: (text: string) => string[]; same: (a: string, b: string) => boolean },
+  read: {
+    names: (text: string) => string[];
+    same: (a: string, b: string) => boolean;
+    /** Turn ids whose name the app asked about ("Did you mean **<A>**?", "reply **use <A>**"); see below. */
+    nameAsked?: ReadonlySet<string>;
+  },
 ): string[] {
   if (!employeeName) return context.ids;
   const turns = context.messages;
@@ -40,6 +46,16 @@ export function turnsFromThisPersonsRequest(
   if (last < 0) return context.ids;
   let start = last;
   for (let index = last - 1; index >= 0; index -= 1) {
+    /*
+     * Batch K (K8): a turn the app asked about the name of, followed by the turn that corrected it, is the corrected
+     * person's request ("I need an exit form for Remmy Caldar …" → "Did you mean **Remy Calder**?" → "For Remy Calder").
+     * It stays when it is right before the kept turns, so its form request and its words are this person's.
+     */
+    const id = turns[index]!.id;
+    if (id && read.nameAsked?.has(id) && index === start - 1) {
+      start = index;
+      continue;
+    }
     if (named[index]!.some((name) => !read.same(name, employeeName))) break;
     if (named[index]!.length === 0 && detectTemplateIntent(turns[index]!.content).kind === "none") {
       if (index === 0) start = 0;
