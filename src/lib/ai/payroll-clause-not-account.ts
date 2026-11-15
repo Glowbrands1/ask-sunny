@@ -29,7 +29,7 @@ const BARE_ANSWER = new RegExp(
  */
 const PAYROLL_ANSWER_ONLY =
   /^(?:(?:yes|yeah|yep|yup|no|nope|and)[,\s]+)?(?:(?:the\s+)?payroll[- ]?(?:deduct(?:ion|ed)?)?|pd)(?:\s+(?:is\s+)?(?:yes|no|applies|apply|applicable))?$/i;
-const AMOUNT_NOT_KNOWN =
+export const AMOUNT_NOT_KNOWN =
   /^(?:but\s+|and\s+)?(?:i\s+)?(?:do\s*n['’]?t|do\s+not)\s+know(?:\s+(?:what\s+)?the)?\s+(?:amount|figure|total)(?:\s+yet)?$|^(?:but\s+|and\s+)?(?:not\s+sure|unsure)\s+(?:of|about|what)\s+(?:the\s+)?(?:amount|figure|total)$|^(?:but\s+|and\s+)?idk\s+(?:the\s+)?(?:amount|figure|total)$/i;
 
 function onlyThePayrollAnswer(sentence: string): boolean {
@@ -41,11 +41,34 @@ function onlyThePayrollAnswer(sentence: string): boolean {
   return rest.every((clause) => clause.trim() === "" || AMOUNT_NOT_KNOWN.test(clause.trim()));
 }
 
+/**
+ * "yes payroll but I don't know the amount", "payroll deduct yes; not sure about the amount": the payroll answer, then
+ * the not-known amount, and nothing else. QA's #1028 review: the amount reader reads the clause only after the payroll
+ * answer in the same message, never "she was late, but I don't know the amount of time".
+ */
+export function payrollAnswerThenAmountUnknown(sentence: string): boolean {
+  const said = sentence.trim().replace(/[.!]+$/, "").trim();
+  const [answer, ...rest] = said.split(/\s*(?:,|;|\bbut\b)\s*/i);
+  if (rest.length === 0 || !PAYROLL_ANSWER_ONLY.test((answer ?? "").trim())) return false;
+  const clauses = rest.map((clause) => clause.trim()).filter(Boolean);
+  return clauses.length > 0 && clauses.every((clause) => AMOUNT_NOT_KNOWN.test(clause));
+}
+
+/*
+ * QA's #1028 review (HIGH): a payroll-only sentence is dropped IN PLACE. The other sentences keep their own separators
+ * (a newline stays a newline), so accountSentences in remap-incident.ts still splits the account where the manager did.
+ * With no payroll-only sentence the text reaching main's clean-up below is the text as given, so main's output holds.
+ */
+const SENTENCE_BREAK = /((?<=[.!?])\s+|\n+)/;
+
 export function withoutPayrollClauses(text: string): string {
   if (!payrollClauseNotAccountEnabled()) return text;
-  const kept = text
-    .split(/(?<=[.!?])\s+|\n+/)
-    .filter((sentence) => !onlyThePayrollAnswer(sentence))
-    .join(" ");
+  const pieces = text.split(SENTENCE_BREAK);
+  let kept = "";
+  for (let at = 0; at < pieces.length; at += 2) {
+    const sentence = pieces[at] ?? "";
+    if (onlyThePayrollAnswer(sentence)) continue;
+    kept += (kept === "" ? "" : (pieces[at - 1] ?? "")) + sentence;
+  }
   return kept.replace(STATE_LINE, "").replace(BARE_ANSWER, "").replace(/\s{2,}/g, " ").trim();
 }

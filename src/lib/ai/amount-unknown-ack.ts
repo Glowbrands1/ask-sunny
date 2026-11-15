@@ -1,6 +1,8 @@
 import { amountUnknownAckEnabled } from "@/lib/config/chat-quality-flags";
 import { PAYROLL_AMOUNT_QUESTION } from "@/lib/forms/payroll-amount-field";
 
+import { payrollAnswerThenAmountUnknown } from "./payroll-clause-not-account";
+
 import type { AskRequest, AskResponse } from "./types";
 
 /**
@@ -22,31 +24,38 @@ const ASKED = /Payroll deduction amount\**\s*\?/;
 
 type Turn = { readonly role: string; readonly content: string };
 
+/** The last assistant turn asked for the Payroll deduction amount. */
+export function askedTheAmount(history: readonly { readonly role: string; readonly content: unknown }[] | undefined): boolean {
+  const lastAssistant = [...(history ?? [])].reverse().find((turn) => turn.role === "assistant")?.content ?? "";
+  return ASKED.test(String(lastAssistant));
+}
+
 /**
- * "i dont know the amount", "not sure of the amount", "idk the amount" — and, after the payroll answer in the same
- * message, "yes payroll but I don't know the amount" (QA, batch J, 15 Nov 2026: the clause after "but", a comma or a
- * semicolon). The clause itself must start with the not-known words, so "yes payroll but only for the shift" is not.
+ * The amount is not known, and the words are about payroll (QA's #1028 review, MEDIUM):
+ * - a direct reply to the app's payroll-amount question that starts with the not-known words ("i dont know the
+ *   amount", "not sure of the amount", "idk the amount"), main's reader;
+ * - or the payroll answer then the not-known amount, and nothing else, in the same message ("yes payroll but I don't
+ *   know the amount"; QA, batch J). The clause is anchored (AMOUNT_NOT_KNOWN), so "she was late, but I don't know the
+ *   amount of time" and "she was $40 short, idk the total" are not.
  */
-export function saysAmountUnknown(text: string): boolean {
+export function saysAmountUnknown(text: string, history: readonly { readonly role: string; readonly content: unknown }[] | undefined): boolean {
   const line = (text ?? "").trim().split("\n").pop()?.trim().replace(/[.!]+$/, "") ?? "";
-  if (line.length <= 60 && UNKNOWN_AMOUNT.test(line)) return true;
-  const clause = line.split(/\s*(?:\bbut\b|,|;)\s*/i).pop() ?? "";
-  return clause !== line && line.length <= 90 && clause.length <= 60 && UNKNOWN_AMOUNT.test(clause);
+  if (payrollAnswerThenAmountUnknown(line)) return true;
+  return line.length <= 60 && UNKNOWN_AMOUNT.test(line) && askedTheAmount(history);
 }
 
 export function withAmountUnknownAck(response: AskResponse, request: AskRequest): AskResponse {
   if (!amountUnknownAckEnabled() || !response.formProposal || response.content.includes(AMOUNT_UNKNOWN_ACK)) return response;
-  if (!saysAmountUnknown(request.question)) return response;
+  const history = (request.history ?? []) as readonly Turn[];
+  if (!saysAmountUnknown(request.question, history)) return response;
   /*
    * Batch J (QA, 15 Nov 2026): "yes payroll but I don't know the amount" answers payroll and the amount in one
    * message, so the card's own amount question this turn is answered: the acknowledgement takes its place.
    */
-  if (response.content.includes(PAYROLL_AMOUNT_QUESTION)) {
+  if (payrollAnswerThenAmountUnknown(request.question.trim().split("\n").pop() ?? "") && response.content.includes(PAYROLL_AMOUNT_QUESTION)) {
     return { ...response, content: response.content.replace(PAYROLL_AMOUNT_QUESTION, AMOUNT_UNKNOWN_ACK) };
   }
-  const history = (request.history ?? []) as readonly Turn[];
-  const lastAssistant = [...history].reverse().find((turn) => turn.role === "assistant")?.content ?? "";
-  if (!ASKED.test(lastAssistant)) return response;
+  if (!askedTheAmount(history)) return response;
   const lines = response.content.split("\n");
   const at = lines.findIndex((line) => /^Is payroll deduct applicable\? \*\*Yes\*\*/.test(line.trim()));
   const content = at < 0 ? `${response.content}\n\n${AMOUNT_UNKNOWN_ACK}` : [...lines.slice(0, at + 1), "", AMOUNT_UNKNOWN_ACK, ...lines.slice(at + 1)].join("\n");

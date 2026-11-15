@@ -169,4 +169,44 @@ export const NOV15_AGENT_LOOP_BATCH_J_KEEP_CASES: ReplayCase[] = [
       }
     },
   },
+  {
+    id: "nov15-j-keep-review-unknown-amount-of-something-else-todays-path",
+    title: "today's chat: an unknown amount of time, of a drawer shortage or of a total is never the payroll amount; the amount question stays",
+    report: "QA's #1028 review (MEDIUM, 15 Nov 2026): saysAmountUnknown read any clause, so these replaced the payroll amount question with \"Noted — I'll leave the Payroll deduction amount blank\"",
+    status: "fixed",
+    fixFlags: ["AMOUNT_UNKNOWN_ACK_ENABLED"],
+    async run(t) {
+      for (const said of ["she was late, but I don't know the amount of time", "she was short on the drawer, not sure of the amount", "verbal for Remy, she was $40 short, idk the total"]) {
+        const thread = start(t);
+        await thread.say("verbal ca for remy calder, she was 20 minutes late on 11/9/26");
+        await thread.say("yes payroll");
+        const reply = await thread.say(said);
+        expect(reply.content, `"${said}" was read as the payroll amount`).not.toContain("I'll leave the **Payroll deduction amount** blank");
+      }
+      // The positive: the payroll answer and the not-known amount in one message.
+      const thread = start(t);
+      await thread.say("verbal ca for remy calder, she was 20 minutes late on 11/9/26");
+      const reply = await thread.say("yes payroll but I don't know the amount");
+      expect(reply.content).toContain("Noted — I'll leave the **Payroll deduction amount** blank for you to fill on the form once you know it.");
+    },
+  },
+  {
+    id: "nov15-j-keep-review-payroll-reader-keeps-lines-todays-path",
+    title: "today's chat: the payroll reader keeps the manager's line breaks, so a request line or a state line on its own line never joins the account",
+    report: "QA's #1028 review (HIGH, 15 Nov 2026): withoutPayrollClauses joined lines with \" \", so \"she was late on 11/9\\ncan you make it a written\" lost the account and \"Policy reference: Attendance\" went into the Observation",
+    status: "fixed",
+    fixFlags: ["PAYROLL_CLAUSE_NOT_ACCOUNT_ENABLED"],
+    async run(t) {
+      for (const [said, never] of [
+        ["verbal ca for remy calder\nshe was late on 11/9\ncan you make it a written", /make it a written/i],
+        ["verbal ca for remy calder\nshe was late on 11/9\nPolicy reference: Attendance", /Policy reference/i],
+      ] as const) {
+        const thread = start(t);
+        const reply = await thread.say(said);
+        const issue = /\*\*Observation of Offense:\*\*([^\n]*)/.exec(reply.content)?.[1] ?? "";
+        expect(issue, `the account was lost from ${JSON.stringify(said)}`).toMatch(/late on 11\/9/);
+        expect(issue, `a line that is not the account joined it: ${issue}`).not.toMatch(never);
+      }
+    },
+  },
 ];
