@@ -243,7 +243,7 @@ const NOT_ASKED = "The manager has not asked about forms on file, so they are no
 export interface ToolEffects {
   proposal: ChatFormProposal | null;
   /** `saved`: each field that really changed on the form written, read back from the database (PR 3; `saved-diff.ts`). */
-  formUpdate: { instanceId: string; updated: string[]; saved?: SavedChange[] } | null;
+  formUpdate: { instanceId: string; updated: string[]; saved?: SavedChange[]; putBack?: string[] } | null;
   /** Roster ids find_staff chose from a close spelling or a lone first name this turn (the card's name_from_staff_list fact). */
   nameLines?: Record<string, string>;
   /**
@@ -1948,8 +1948,13 @@ export async function editForm(
     const recordSaved = async (claimed: readonly string[], reasons: ReadonlyMap<string, string> = new Map()) => {
       const now = (await authorizeInstance(context.request, id, "view")).loaded;
       const saved = savedDiff(beforeStates, fieldStates(now.values));
-      if (saved.length > 0) effects.formUpdate = { instanceId: id, updated: saved.map((change) => change.field), saved: mergeSaved(effects.formUpdate, id, saved) };
-      return { saved, refused: refusedFields(claimed, saved, reasons), now };
+      if (saved.length > 0) {
+        /* Edits in a row add up: updated is every field changed so far this turn on this form, not this call's alone. */
+        const merged = mergeSaved(effects.formUpdate, id, saved);
+        effects.formUpdate = { instanceId: id, updated: merged.saved.map((change) => change.field), saved: merged.saved, putBack: merged.putBack };
+      }
+      const { refused, unchanged } = refusedFields(claimed, saved, reasons);
+      return { saved, refused, unchanged, now };
     };
     /*
      * Batch G (G11, a production chat: "change date of document to 11-15-2026"): a date the manager typed in this message
@@ -2130,11 +2135,12 @@ export async function editForm(
       }
       /* PR 3: what the reviser says it updated is a claim; what was saved is read back from the form. */
       const claimed = revised.formUpdate?.instanceId === id ? revised.formUpdate.updated : [];
-      const { saved, refused } = await recordSaved(claimed);
+      const { saved, refused, unchanged } = await recordSaved(claimed);
       return {
         updated: saved.map((change) => change.field),
         saved,
         refused,
+        ...(unchanged.length > 0 ? { unchanged } : {}),
         reviser_said: untrusted(revised.content.slice(0, 1_500)),
         ...(saved.length === 0 && writeAccount ? writeAccount : {}),
         note: saved.length > 0
@@ -2230,7 +2236,7 @@ export async function editForm(
     /* PR 3: claimed = what the writers accepted; the saved list is what the form shows after the write. */
     const claimed = [...Object.keys(written.accepted.values ?? {}), ...Object.keys(written.accepted.checked ?? {}), ...(documentDate !== null ? ["form_date"] : []), ...(dictatedPlan !== null ? ["action_plan"] : []), ...written.rejected.map((row) => row.key)];
     const reasons = new Map(written.rejected.map((row) => [row.key, row.reason] as const));
-    const { saved: savedChanges, refused, now: saved } = await recordSaved(claimed, reasons);
+    const { saved: savedChanges, refused, unchanged, now: saved } = await recordSaved(claimed, reasons);
     const updated = savedChanges.map((change) => change.field);
     /* Batch G2 (item 1, EDIT_SEES_SAVED_FORM): the level the saved form holds now, read back, so the reply never claims it from the card or history. */
     const savedLevel = saved.values.find((row) => row.fieldKey === "warning_type")?.checked ?? [];
@@ -2239,6 +2245,7 @@ export async function editForm(
       updated,
       saved: savedChanges,
       refused,
+      ...(unchanged.length > 0 ? { unchanged } : {}),
       ...(loaded.instance.templateKey === "dpoa" ? { saved_level: savedLevel.length > 0 ? savedLevel.map((key) => levelLabel[key] ?? key).join(", ") : null } : {}),
       ...rewordFacts,
       ...addFacts,

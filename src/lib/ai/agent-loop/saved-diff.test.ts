@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { fieldStates, mergeSaved, refusedFields, savedDiff } = await import("./saved-diff");
+const { fieldLabel, fieldStates, mergeSaved, readableValue, refusedFields, savedDiff } = await import("./saved-diff");
 const { doneThisTurn } = await import("./run");
 
 /* PR 3 (rebuild plan): the saved list is the difference between two reads of the form. Invented names only. */
@@ -27,34 +27,50 @@ describe("savedDiff", () => {
 
 describe("refusedFields", () => {
   const saved = [{ field: "observation", before: "a", after: "b" }];
-  it("a field claimed and not changed is refused with the writer's code, else not_saved", () => {
-    expect(refusedFields(["observation", "payroll_deduct", "form_date", "form_date"], saved, new Map([["payroll_deduct", "typed_by_manager"]]))).toEqual([
-      { field: "payroll_deduct", reason_code: "typed_by_manager" },
-      { field: "form_date", reason_code: "not_saved" },
-    ]);
+  it("a refusal keeps the writer's code; a field that already held the value is unchanged, not refused", () => {
+    expect(refusedFields(["observation", "payroll_deduct", "form_date", "action_plan", "form_date"], saved, new Map([["payroll_deduct", "typed_by_manager"], ["action_plan", "unchanged"]]))).toEqual({
+      refused: [{ field: "payroll_deduct", reason_code: "typed_by_manager" }],
+      unchanged: ["form_date", "action_plan"],
+    });
   });
 });
 
 describe("mergeSaved: edits in a row on one form add up", () => {
-  it("keeps the first before and the latest after; another form starts again; a field put back drops out", () => {
+  it("keeps the first before and the latest after; another form starts again; a field put back is named, not saved", () => {
     const first = { instanceId: "f1", saved: [{ field: "observation", before: "a", after: "b" }, { field: "form_date", before: "x", after: "y" }] };
-    expect(mergeSaved(first, "f1", [{ field: "observation", before: "b", after: "c" }, { field: "form_date", before: "y", after: "x" }])).toEqual([{ field: "observation", before: "a", after: "c" }]);
-    expect(mergeSaved(first, "f2", [{ field: "observation", before: "p", after: "q" }])).toEqual([{ field: "observation", before: "p", after: "q" }]);
+    expect(mergeSaved(first, "f1", [{ field: "observation", before: "b", after: "c" }, { field: "form_date", before: "y", after: "x" }])).toEqual({
+      saved: [{ field: "observation", before: "a", after: "c" }],
+      putBack: ["form_date"],
+    });
+    expect(mergeSaved(first, "f2", [{ field: "observation", before: "p", after: "q" }])).toEqual({ saved: [{ field: "observation", before: "p", after: "q" }], putBack: [] });
+  });
+});
+
+describe("labels and readable values", () => {
+  it("shows a manager's words, not keys or ISO dates", () => {
+    expect(fieldLabel("warning_type")).toBe("Type of warning");
+    expect(fieldLabel("some_new_field")).toBe("Some new field");
+    expect(readableValue("2026-11-13")).toBe("11/13/2026");
+    expect(readableValue("written", "warning_type")).toBe("Written");
+    expect(readableValue("yes", "payroll_deduct")).toBe("Yes");
+    expect(readableValue("b", "observation")).toBe("b");
+    expect(readableValue("Remy Calder was late on 11/12.")).toBe("Remy Calder was late on 11/12.");
   });
 });
 
 describe("doneThisTurn names the saved fields from the read-back list", () => {
-  it("each saved field with its new wording; no values from the input", () => {
-    const text = doneThisTurn({ proposal: null, formOpened: null as never, formUpdate: { instanceId: "f1", updated: ["warning_type", "form_date", "observation"], saved: [
+  it("each saved field with its new wording as a manager reads it; a field put back is named as unchanged", () => {
+    const text = doneThisTurn({ proposal: null, formOpened: null as never, formUpdate: { instanceId: "f1", updated: ["warning_type", "form_date", "observation"], putBack: ["payroll_deduct"], saved: [
       { field: "warning_type", before: "", after: "written" },
       { field: "form_date", before: "2026-11-12", after: "2026-11-13" },
       { field: "observation", before: "a", after: "b" },
     ] } });
-    expect(text).toContain("warning type (now \"written\")");
-    expect(text).toContain("form date (now \"2026-11-13\")");
-    expect(text).toContain("observation (now \"b\")");
+    expect(text).toContain("Type of warning (now Written)");
+    expect(text).toContain("Date (now 11/13/2026)");
+    expect(text).toContain("Observation (now b)");
+    expect(text).toContain("Payroll deduct was changed and put back, so it is unchanged.");
   });
   it("falls back to the updated names when there is no list", () => {
-    expect(doneThisTurn({ proposal: null, formOpened: null as never, formUpdate: { instanceId: "f1", updated: ["observation"] } })).toContain("observation");
+    expect(doneThisTurn({ proposal: null, formOpened: null as never, formUpdate: { instanceId: "f1", updated: ["observation"] } })).toContain("Observation");
   });
 });

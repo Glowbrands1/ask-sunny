@@ -19,11 +19,16 @@ const REPORT = "The owner's audit, PR 3: tools return exactly what was saved (15
 
 type Saved = { field: string; before: string; after: string };
 type Refused = { field: string; reason_code: string };
-type EditResult = { saved?: Saved[]; refused?: Refused[]; updated?: string[]; revision_draft?: { id?: string; from_id?: string } };
+type EditResult = { saved?: Saved[]; refused?: Refused[]; unchanged?: string[]; updated?: string[]; revision_draft?: { id?: string; from_id?: string } };
 
 const stepsOf = (t: ReplayContext) => {
   const row = [...(t.rows?.("chat_traces") ?? [])].reverse().find((entry) => (entry.slots as { agent_loop?: unknown } | undefined)?.agent_loop);
   return ((row?.slots as { agent_loop: { steps: Record<string, unknown>[] } } | undefined)?.agent_loop.steps ?? []);
+};
+
+const loopTraceOf = (t: ReplayContext) => {
+  const row = [...(t.rows?.("chat_traces") ?? [])].reverse().find((entry) => (entry.slots as { agent_loop?: unknown } | undefined)?.agent_loop);
+  return (row?.slots as { agent_loop: { stopped: string; steps_used: number; step_limit: number } }).agent_loop;
 };
 
 /** A Corrective Action draft for Remy Calder, created, dated 11/12; returns its id. */
@@ -90,8 +95,8 @@ export const NOV15_AGENT_LOOP_SAVED_DIFF_CASES: ReplayCase[] = [
     },
   },
   {
-    id: "nov15-pr3-refused-field-has-a-code",
-    title: "PR 3: a write that leaves a field as it was (the same text again) is listed in refused with its reason code, and is not in saved",
+    id: "nov15-pr3-same-value-is-unchanged-not-refused",
+    title: "PR 3: a write that leaves a field as it was (the same text again) is listed as unchanged, not refused, and is not in saved",
     report: REPORT,
     status: "fixed",
     fixFlags: [FLAG],
@@ -107,7 +112,8 @@ export const NOV15_AGENT_LOOP_SAVED_DIFF_CASES: ReplayCase[] = [
       await thread.say("put the observation on the form");
       const result = lastResult({ results: model.views.at(-1)!.results } as LoopView, "edit_form") as EditResult;
       expect((result.saved ?? []).map((change) => change.field), JSON.stringify(result)).not.toContain("observation");
-      expect(result.refused?.find((entry) => entry.field === "observation")?.reason_code, JSON.stringify(result)).toMatch(/^[a-z_]+$/);
+      expect(result.unchanged, JSON.stringify(result)).toContain("observation");
+      expect(result.refused ?? [], JSON.stringify(result)).toEqual([]);
     },
   },
   {
@@ -160,7 +166,7 @@ export const NOV15_AGENT_LOOP_SAVED_DIFF_CASES: ReplayCase[] = [
   },
   {
     id: "nov15-pr3-three-saved-edits-in-one-turn",
-    title: "PR 6 (owner's addition): a turn that makes 3 saved edits in a row finishes under the step limit, never gives the step-limit reply, and the turn's update lists all 3 saved changes",
+    title: "PR 6 (owner's addition): a turn that makes 3 saved edits in a row finishes under the step limit (the trace says stopped: reply), and the turn's update lists all 3 changes, merged across the calls",
     report: REPORT,
     status: "fixed",
     fixFlags: [FLAG],
@@ -170,17 +176,35 @@ export const NOV15_AGENT_LOOP_SAVED_DIFF_CASES: ReplayCase[] = [
       const edits: Record<string, string>[] = [{ warning_type: "written" }, { payroll_deduct: "yes", payroll_deduct_amount: "$15" }, { form_date: "11/13" }];
       const model = loopStandIn((view): LoopDecision => {
         const done = view.results.filter((result) => result.tool === "edit_form");
-        if (done.length < edits.length) return { tool: "edit_form", input: { instance_id: id, values: edits[done.length] } };
-        const fields = done.flatMap((result) => ((result.output as EditResult).saved ?? []).map((change) => change.field.replace(/_/g, " ")));
-        return { text: `Saved on the form: ${fields.join(", ")}.` };
+        return done.length < edits.length ? { tool: "edit_form", input: { instance_id: id, values: edits[done.length] } } : { text: "Done." };
       });
       t.loopModel!(model);
       const reply = await thread.say("make it a written, yes payroll $15, and change the date to 11/13");
-      expect(reply.content, "the step-limit reply was given").not.toMatch(/couldn't finish everything else|one thing still left/i);
-      for (const field of ["warning type", "payroll deduct", "form date"]) expect(reply.content, `the reply does not list ${field}:\n${reply.content}`).toContain(field);
-      expect([...(reply.formUpdate?.updated ?? [])].sort(), "the turn's update does not list all 3 saved changes").toEqual(expect.arrayContaining(["form_date", "payroll_deduct", "warning_type"]));
+      const trace = loopTraceOf(t);
+      expect(trace.stopped, "the turn hit the step limit").toBe("reply");
+      expect(trace.steps_used, "the turn used every step").toBeLessThan(trace.step_limit);
+      expect([...(reply.formUpdate?.updated ?? [])].sort(), "the turn's update lists only the last call's fields").toEqual(["form_date", "payroll_deduct", "payroll_deduct_amount", "warning_type"]);
       expect(t.checked(id).warning_type).toEqual(["written"]);
       expect(t.checked(id).payroll_deduct).toEqual(["yes"]);
+    },
+  },
+  {
+    id: "nov15-pr3-the-turn-summary-lists-all-saved-edits",
+    title: "PR 3: when the model's own reply is empty after 3 saved edits, the reply built from the saved list names all 3 with readable labels and values (Written, 11/13/2026), never \"nothing was saved\"",
+    report: REPORT,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      const { thread, id } = await remyDraft(t);
+      const edits: Record<string, string>[] = [{ warning_type: "written" }, { payroll_deduct: "yes" }, { form_date: "11/13" }];
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        const done = view.results.filter((result) => result.tool === "edit_form");
+        return done.length < edits.length ? { tool: "edit_form", input: { instance_id: id, values: edits[done.length] } } : { text: "" };
+      }));
+      const reply = await thread.say("make it a written, yes payroll, and change the date to 11/13");
+      for (const named of ["Type of warning (now Written)", "Payroll deduct (now Yes)", "Date (now 11/13/2026)"]) expect(reply.content, `missing "${named}":\n${reply.content}`).toContain(named);
+      expect(reply.content).not.toMatch(/nothing was saved|didn't change anything/i);
     },
   },
 ];

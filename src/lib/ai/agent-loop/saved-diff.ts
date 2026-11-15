@@ -46,40 +46,83 @@ export function savedDiff(before: ReadonlyMap<string, string>, after: ReadonlyMa
 }
 
 /**
- * Fields a tool claimed to write (by name) that the form does not show changed: refused, with the writer's own code when
- * it gave one (`typed_by_manager`, `unchanged`, …), else `not_saved`.
+ * Fields a tool claimed to write (by name) that the form does not show changed. A field the writer refused is `refused`,
+ * with the writer's own code (`typed_by_manager`, `would_blank`, …), else `not_saved`. A field that already held the
+ * value is not a refusal: it is `unchanged` (the writer's code `unchanged`, or no code at all with the form the same).
  */
 export function refusedFields(
   claimed: readonly string[],
   saved: readonly SavedChange[],
   writerReasons: ReadonlyMap<string, string> = new Map(),
-): RefusedField[] {
+): { refused: RefusedField[]; unchanged: string[] } {
   const changed = new Set(saved.map((change) => change.field));
   const seen = new Set<string>();
-  return claimed
-    .filter((field) => {
-      if (changed.has(field) || seen.has(field)) return false;
-      seen.add(field);
-      return true;
-    })
-    .map((field) => ({ field, reason_code: writerReasons.get(field) ?? "not_saved" }));
+  const refused: RefusedField[] = [];
+  const unchanged: string[] = [];
+  for (const field of claimed) {
+    if (changed.has(field) || seen.has(field)) continue;
+    seen.add(field);
+    const reason = writerReasons.get(field);
+    if (reason && reason !== "unchanged") refused.push({ field, reason_code: reason });
+    else unchanged.push(field);
+  }
+  return { refused, unchanged };
 }
 
 /**
- * Edits in a row on one form add up: the field's first "before" and its latest "after" (a field put back as it was
- * drops out). A different form starts again.
+ * Edits in a row on one form add up: the field's first "before" and its latest "after". A field put back as it was
+ * leaves the saved list and is named in `putBack` (it was changed and changed back, not saved). A different form starts again.
  */
 export function mergeSaved(
-  earlier: { readonly instanceId: string; readonly saved?: readonly SavedChange[] } | null,
+  earlier: { readonly instanceId: string; readonly saved?: readonly SavedChange[]; readonly putBack?: readonly string[] } | null,
   instanceId: string,
   saved: readonly SavedChange[],
-): SavedChange[] {
-  if (!earlier || earlier.instanceId !== instanceId) return [...saved];
+): { saved: SavedChange[]; putBack: string[] } {
+  if (!earlier || earlier.instanceId !== instanceId) return { saved: [...saved], putBack: [] };
   const merged = new Map<string, SavedChange>();
   for (const change of earlier.saved ?? []) merged.set(change.field, change);
+  const back = new Set(earlier.putBack ?? []);
   for (const change of saved) {
     const first = merged.get(change.field);
     merged.set(change.field, first ? { field: change.field, before: first.before, after: change.after } : change);
+    back.delete(change.field);
   }
-  return [...merged.values()].filter((change) => change.before !== change.after);
+  for (const [field, change] of [...merged]) {
+    if (change.before === change.after) {
+      merged.delete(field);
+      back.add(field);
+    }
+  }
+  return { saved: [...merged.values()], putBack: [...back] };
+}
+
+const LABELS: Record<string, string> = {
+  observation: "Observation",
+  warning_type: "Type of warning",
+  payroll_deduct: "Payroll deduct",
+  payroll_deduct_amount: "Payroll deduction amount",
+  form_date: "Date",
+  incident_date: "Incident date",
+  action_plan: "Action plan",
+  coaching_details: "Details of coaching",
+  employee_name: "Employee name",
+  job_title: "Job title",
+};
+
+/** A field's name as a manager reads it. */
+export function fieldLabel(field: string): string {
+  if (LABELS[field]) return LABELS[field];
+  const words = field.replace(/_/g, " ").trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/** The form's tick boxes: their ticked keys ("written", "yes") are shown capitalised. */
+const TICK_BOXES = new Set(["warning_type", "payroll_deduct"]);
+
+/** A saved value as a manager reads it: a date as M/D/YYYY, a ticked box capitalised ("Written", "Yes"), text shortened. */
+export function readableValue(value: string, field = ""): string {
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+  if (iso) return `${Number(iso[2])}/${Number(iso[3])}/${iso[1]}`;
+  if (TICK_BOXES.has(field)) return value.replace(/(^|, )([a-z])/g, (_m, lead: string, letter: string) => `${lead}${letter.toUpperCase()}`);
+  return value.length > 60 ? `${value.slice(0, 57)}...` : value;
 }

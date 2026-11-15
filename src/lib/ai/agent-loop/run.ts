@@ -77,6 +77,7 @@ import {
 export const AGENT_LOOP_TOTAL_MS = 100_000;
 
 import { LOOP_FAILED_REPLY, STEP_LIMIT_REPLY } from "./replies";
+import { fieldLabel, readableValue } from "./saved-diff";
 
 export { LOOP_FAILED_REPLY, STEP_LIMIT_REPLY };
 
@@ -92,14 +93,18 @@ export function doneThisTurn(effects: Pick<ToolEffects, "proposal" | "formUpdate
     done.push(`Here is the **${effects.proposal.templateName}**${who} for you to review.`);
   }
   if (effects.formOpened) done.push("I opened a new draft revising the finalized form; the original stays as it was.");
+  if (effects.formUpdate && effects.formUpdate.putBack && effects.formUpdate.putBack.length > 0 && effects.formUpdate.updated.length === 0) {
+    done.push(`${effects.formUpdate.putBack.map(fieldLabel).join(", ")} ${effects.formUpdate.putBack.length === 1 ? "was" : "were"} changed and put back, so the form is unchanged there.`);
+  }
   if (effects.formUpdate && effects.formUpdate.updated.length > 0) {
-    /* PR 3: the fields the form really holds changed, read back after the write (`saved-diff.ts`): each with its new wording, shortened. */
+    /* PR 3: the fields the form really holds changed, read back after the write (`saved-diff.ts`): each with its new wording, as a manager reads it. */
     const saved = effects.formUpdate.saved ?? [];
-    const label = (field: string) => field.replace(/_/g, " ");
     const fields = saved.length > 0
-      ? saved.map((change) => `${label(change.field)} (${change.after === "" ? "cleared" : `now "${change.after.length > 60 ? `${change.after.slice(0, 57)}...` : change.after}"`})`)
-      : effects.formUpdate.updated.map(label);
+      ? saved.map((change) => `${fieldLabel(change.field)} (${change.after === "" ? "cleared" : `now ${readableValue(change.after, change.field)}`})`)
+      : effects.formUpdate.updated.map(fieldLabel);
     done.push(`I saved ${fields.length === 1 ? "the" : "these"} change${fields.length === 1 ? "" : "s"} on the form: ${fields.join(", ")}.`);
+    const back = effects.formUpdate.putBack ?? [];
+    if (back.length > 0) done.push(`${back.map(fieldLabel).join(", ")} ${back.length === 1 ? "was" : "were"} changed and put back, so ${back.length === 1 ? "it is" : "they are"} unchanged.`);
   }
   return done.length > 0 ? done.join(" ") : null;
 }
@@ -733,7 +738,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
        * the change with edit_form or say plainly it was not made. Only if the reply still claims an unsaved change does
        * the check after this block give today's FORM_EDIT_NOOP_GUARD answer from the saved diff.
        */
-      if (stoppedAt === "reply" && noop && openBefore && !effects.proposal && !effects.formOpened && CLAIMS_A_CHANGE.test(text)) {
+      if (stoppedAt === "reply" && noop && openBefore && !effects.proposal && !effects.formOpened && !(effects.formUpdate?.saved?.length) && CLAIMS_A_CHANGE.test(text)) {
         const saved = await noop.replyFromSavedDiff({ request: input.request, before: openBefore, answer: { content: text, citations: [], coverage: "not_applicable", recommendedVideoIds: [] } });
         if (!saved.formUpdate) {
           const note = [
@@ -854,7 +859,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
       content = checked.content;
       effects.formUpdate = null;
     } else if (checked.formUpdate) {
-      effects.formUpdate = { ...checked.formUpdate, ...(effects.formUpdate?.instanceId === checked.formUpdate.instanceId && effects.formUpdate.saved ? { saved: effects.formUpdate.saved } : {}) };
+      /* The form edit_form wrote (read back) is the truth of the turn; the screen copy's diff only fills in when no tool saved. */
+      effects.formUpdate = readBack ? effects.formUpdate : checked.formUpdate;
     }
   }
 
