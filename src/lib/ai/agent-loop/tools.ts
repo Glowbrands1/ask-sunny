@@ -1204,6 +1204,59 @@ export function incidentDates(managerWords: string, priorActions: string | null)
   return [...seen.values()];
 }
 
+/**
+ * fix-name, live s10 (Pau's ruling, 16 Nov 2026; QA's handoff open question 3): on a card NOT yet created, "fix her last
+ * name" may change the card's name, but only through the same roster check as a new name. Today a typed name that
+ * missed the roster went on the card as typed (the off-roster shortcut below), with no check at all.
+ *
+ * It applies when the card the last reply showed (the server's card record), or, right after the manager's "no" to
+ * this chat's own "Did you mean", the latest card this chat made, is this form for a roster person, and the model now
+ * gives a typed name (no employee_id) that is not that person but shares their first or last name: a correction of
+ * the card's name, not another person's request. Names are compared as names; the manager's words are never read.
+ *
+ * - The typed name is exactly one roster person's: that person is used.
+ * - The manager said "no" to this chat's "Did you mean" (ruling A, keep-as-typed), or answered the "reply **use
+ *   <name>**" offer: the name goes on as typed.
+ * - A close spelling of a roster person: "Did you mean <name>?" (ruling A: a near miss is never seated).
+ * - No match: said so; the card keeps its name.
+ * Null when this is not a correction of the card's name (every other path is unchanged).
+ */
+function cardNameCorrection(
+  context: ToolContext,
+  templateKey: string,
+  typed: string,
+  roster: readonly RosterEmployee[],
+): { person: RosterEmployee } | { asTyped: true } | { refusal: ToolResult } | null {
+  if (context.openFormId) return null;
+  const declined = readNameConfirmation([...(context.history as ChatMessage[]).map((turn) => ({ role: turn.role, content: String(turn.content ?? "") })), { role: "user", content: context.question }])?.kind === "declined";
+  const card = context.cardOnScreen ?? (declined ? (context.earlierCard ?? null) : null);
+  if (!card || card.templateKey !== templateKey || !card.employeeKey) return null;
+  const cardPerson = roster.find((row) => personKey(row.id) === card.employeeKey);
+  if (!cardPerson || fullNamesOf(cardPerson).some((full) => samePerson(full, typed))) return null;
+  const said = words(typed);
+  const firstNames = words([cardPerson.firstName, cardPerson.preferredFirstName ?? ""].join(" "));
+  const lastNames = words(cardPerson.lastName);
+  const sharesAName = said.length >= 2 && (firstNames.includes(said[0]!) || lastNames.includes(said.at(-1)!));
+  if (!sharesAName) return null;
+  const holders = roster.filter((row) => fullNamesOf(row).some((full) => samePerson(full, typed)));
+  if (holders.length === 1) return { person: holders[0]! };
+  if (holders.length > 1) {
+    return { refusal: { reason_code: "ambiguous_person", error: `More than one person on the staff list is ${typed}. The card was not changed. Call find_staff with this name and ask which one.` } };
+  }
+  if (declined || offRosterConfirmed(context, typed)) return { asTyped: true };
+  const close = matchEmployeeName(typed, roster);
+  const candidates = close.kind === "confirm" ? close.candidates.map((candidate) => candidate.name) : [];
+  if (candidates.length > 0) {
+    return { refusal: { reason_code: "name_correction_did_you_mean", error: `${typed} is not on the staff list as typed. The card was not changed. Ask the manager, in these words: ${nameConfirmationQuestion(typed, candidates.slice(0, 5))}` } };
+  }
+  return {
+    refusal: {
+      reason_code: "name_correction_not_on_roster",
+      error: `${typed} is not on the ${staffSystem()} staff list. The card was not changed and is still for ${displayName(cardPerson)}. Say so; it goes on the card as typed only if the manager replies **use ${typed}**.`,
+    },
+  };
+}
+
 /** The manager accepted the off-roster offer for this name ("use <name>", or yes right after the offer). */
 function offRosterConfirmed(context: Pick<ToolContext, "question" | "history">, typed: string): boolean {
   const offered = context.history.some((message) => message.role === "assistant" && message.content.toLowerCase().includes(`reply **use ${typed.toLowerCase()}**`));
@@ -1457,7 +1510,15 @@ export async function proposeForm(
     if (person && turnedDown && samePerson(turnedDown, displayName(person))) {
       return { reason_code: "right_person", error: `The manager said no to ${displayName(person)}. Never put them on the card; ask who the form is for.` };
     }
-    if (person) employee = { name: nameAsSaid(person, managerTurns(context)), salonIds: person.salonIds, id: person.id };
+    /* fix-name, live s10 (Pau's ruling, 16 Nov 2026): a typed name that corrects the card's person goes through the roster check. */
+    const corrected = !person && typed ? cardNameCorrection(context, key, typed, read.roster) : null;
+    if (corrected && "refusal" in corrected) return corrected.refusal;
+    if (corrected && "person" in corrected) employee = { name: displayName(corrected.person), salonIds: corrected.person.salonIds, id: corrected.person.id };
+    else if (corrected && "asTyped" in corrected) {
+      employee = { name: typed, salonIds: [] };
+      offRosterName = typed;
+    }
+    else if (person) employee = { name: nameAsSaid(person, managerTurns(context)), salonIds: person.salonIds, id: person.id };
     /*
      * OFF_ROSTER_CONFIRM (as today): a person not in Woven yet goes on the form by the name the manager typed, only
      * after the app offered "reply **use <name>**" and the manager said so. Never a name nobody confirmed.
@@ -2343,6 +2404,8 @@ export async function editForm(
   // A reword's own guard refuses a change of person (below, with reword_paused); the name gate is for everything else.
   const renames = !rewordAsked && ("employee_name" in values || input.intent === "correct_name");
   let nameQuote: string | null = null;
+  /* The manager's message the name was quoted from (this one, or the turn before after a "no" to Did-you-mean). */
+  let nameSaid = "";
   /* "no" to this chat's own Did-you-mean keeps the name as typed (ruling A): the name is then quoted from the turn before. */
   const keepAsTyped = readNameConfirmation([...(context.history as ChatMessage[]).map((turn) => ({ role: turn.role, content: String(turn.content ?? "") })), { role: "user", content: context.question }])?.kind === "declined";
   if (renames) {
@@ -2362,6 +2425,7 @@ export async function editForm(
       return { error: "A name correction writes the new name: call edit_form with values for employee_name only, and name_evidence. Nothing was written.", reason_code: "name_correction_no_name" };
     }
     nameQuote = (input.name_evidence as { quote: string }).quote;
+    nameSaid = check.turn.content;
   }
   try {
     const { loaded } = await authorizeInstance(context.request, id, "edit");
@@ -2532,6 +2596,39 @@ export async function editForm(
     }
     if (loaded.instance.status !== "draft") {
       return { reason_code: "drafts_only", error: `This form is ${loaded.instance.status}, so it cannot be edited here. Tell the manager.` };
+    }
+    /*
+     * fix-name (the rebuild plan, PR 1's last step; QA's handoff, 15 Nov 2026): a name correction that passed every check
+     * above (name_evidence from this message whose quote holds the changed words, employee_name only, the roster checks
+     * and "Did you mean <name>?") is SAVED: only the Employee Name line and the form's subject column, written as the
+     * manager's correction (`nameCorrectionWrite`, as today's chat writes "fix her last name …"). Nothing else changes.
+     */
+    if (nameQuote !== null) {
+      const newName = values.employee_name!.trim();
+      /* The one writer (FORM_EDIT_SINGLE_WRITER_ENABLED, on in production); off, as today's chat correction saves a name: the manager's save, then the subject. */
+      const written = formEditSingleWriterEnabled()
+        ? await (await import("@/lib/forms/form-write")).nameCorrectionWrite(id, newName, { actorId: context.actor.subject, said: nameSaid, today: editToday, loaded })
+        : await (async () => {
+            const save = await (await import("@/lib/forms/instances")).saveInstanceValues(id, { values: { employee_name: newName }, checked: {} }, context.actor.subject, { via: "chat" });
+            const rejected = save.rejected.filter((row) => row.key === "employee_name");
+            if (rejected.length === 0) {
+              const { error } = await (await import("@/lib/supabase/server")).getSupabaseAdmin().from("form_instances").update({ employee_name: newName }).eq("id", id);
+              if (error) throw new Error(`Could not save the form's employee name: ${error.message}`);
+            }
+            return { accepted: { values: rejected.length === 0 ? { employee_name: newName } : {}, checked: {} }, rejected };
+          })();
+      const reasons = new Map(written.rejected.map((row) => [row.key, row.reason] as const));
+      const claimed = [...Object.keys(written.accepted.values), ...written.rejected.map((row) => row.key)];
+      const { saved: savedChanges, refused, unchanged } = await recordSaved(claimed.length > 0 ? claimed : ["employee_name"], reasons);
+      return {
+        updated: savedChanges.map((change) => change.field),
+        saved: savedChanges,
+        refused,
+        ...(unchanged.length > 0 ? { unchanged } : {}),
+        note: savedChanges.length > 0
+          ? "Saved: only the employee's name changed. Tell the manager the new name, from saved. Claim nothing else."
+          : "The name was not saved. Say plainly that the name was not changed.",
+      };
     }
     /*
      * THE ACCOUNT FIELD BY ITS OWN KEY (the live re-run's make-that-update: values for "observation", "what_happened",
