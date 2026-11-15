@@ -44,6 +44,7 @@ import { caSalesPolicyEnabled } from "@/lib/config/chat-quality-flags";
 import { collapseToTwoSentences } from "./action-plan-sentences";
 import { isIsoCalendarDate } from "./form-date-answer";
 import { refreshedActionPlan } from "./ca-action-plan";
+import { sameRosterPerson } from "./preferred-name-shown";
 import { getCurrentVersion, getVersion, type TemplateVersionRow } from "./repository";
 
 /** The form's own Date line — the same day as `form_instances.form_date`. */
@@ -463,7 +464,8 @@ export async function findRecentAssistantDraft(input: {
   const candidates = (data as { id: unknown; employee_name: unknown; location_id: unknown }[])
     .filter(
       (row) =>
-        String(row.employee_name ?? "").trim().replace(/\s+/g, " ").toLowerCase() === wanted &&
+        // READABLE_NAMES_ENABLED: the same roster person under their other name (preferred or legal) is the same draft.
+        (String(row.employee_name ?? "").trim().replace(/\s+/g, " ").toLowerCase() === wanted || sameRosterPerson(String(row.employee_name ?? ""), input.employeeName)) &&
         (row.location_id ?? null) === (input.locationId ?? null),
     )
     .map((row) => String(row.id));

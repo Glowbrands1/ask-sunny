@@ -10,6 +10,7 @@ import { FOLLOW_UP_LABEL, followUpState } from "./follow-up";
 import { resolveFormsVisibility } from "./forms-visibility";
 import { instanceListFilterFor, visibleInstances } from "./instance-scope";
 import { listInstances, type InstanceRow } from "./instances";
+import { rosterAliasesOf } from "./preferred-name-shown";
 import { privateAwareLimit } from "./private-creators";
 
 /**
@@ -159,6 +160,13 @@ export function matchRowsToQuestion(
     const hits = parts.filter((part) => asked.has(part)).length;
     // FORMS_ON_FILE_ORDER_MATCH_POSSIBLE_ENABLED: "Tallis Wren" for "Wren Tallis" is possibly them, never named.
     if (hits === parts.length && !(formsOnFileOrderMatchPossibleEnabled() && !inAskedOrder(parts, words, question))) named.push(row);
+    // READABLE_NAMES_ENABLED: a form saved under the person's other name (preferred or legal) is named by this one.
+    else if (
+      rosterAliasesOf(row.employeeName).some(
+        (alias) => alias.trim().toLowerCase() !== row.employeeName.trim().toLowerCase() && nameWords(alias).length > 0 && nameWords(alias).every((part) => asked.has(part)),
+      )
+    )
+      named.push(row);
     else if (hits > 0) possible.push(row);
   }
   return { named, possible };

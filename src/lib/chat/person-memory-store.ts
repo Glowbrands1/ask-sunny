@@ -3,6 +3,7 @@ import "server-only";
 import { businessToday } from "@/lib/business-date";
 import { refersBack } from "@/lib/chat/cross-chat-guard";
 import { matchEmployeeName, type RosterEmployee } from "@/lib/forms/employee-match";
+import { rosterAliasesOf } from "@/lib/forms/preferred-name-shown";
 import { samePerson } from "@/lib/forms/proposal";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import {
@@ -199,17 +200,21 @@ async function readMemory(
       ),
     ),
     Promise.all(
-      candidates.map((person) =>
-        supabase
+      candidates.map((person) => {
+        /* READABLE_NAMES_ENABLED: forms saved under the person's other first name (preferred or legal) are theirs too. */
+        const names = rosterAliasesOf(person.name);
+        const query = supabase
           .from("form_instances")
           .select("employee_name, status, form_date, form_templates(name)")
           .eq("created_by", userId)
           .is("archived_at", null)
           .neq("status", "revised")
-          .ilike("employee_name", containsPattern(person.name))
           .order("created_at", { ascending: false })
-          .limit(MAX_FORMS_PER_PERSON * 4),
-      ),
+          .limit(MAX_FORMS_PER_PERSON * 4);
+        return names.length > 1
+          ? query.or(names.map((name) => `employee_name.ilike.${containsPattern(name).replace(/%/g, "*")}`).join(","))
+          : query.ilike("employee_name", containsPattern(person.name));
+      }),
     ),
   ]);
 

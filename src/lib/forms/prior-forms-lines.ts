@@ -1,3 +1,4 @@
+import { sameRosterPerson } from "./preferred-name-shown";
 import { priorActionLine } from "./prior-actions";
 
 /**
@@ -190,5 +191,6 @@ export function classifyPriorForms(input: {
 /** Whether a row is a form for exactly this name (the same word-for-word rule). */
 export function sameName(rowName: string, employeeName: string): boolean {
   const who = nameKey(employeeName);
-  return who !== "" && nameKey(rowName) === who;
+  // READABLE_NAMES_ENABLED: one roster person's preferred and legal names are the same person (`preferred-name-shown.ts`).
+  return who !== "" && (nameKey(rowName) === who || sameRosterPerson(rowName, employeeName));
 }

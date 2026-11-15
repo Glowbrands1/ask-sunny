@@ -1,3 +1,6 @@
+import { readableNamesEnabled } from "@/lib/config/chat-quality-flags";
+import { readableName } from "@/lib/forms/readable-name";
+
 /**
  * A typed name is enough. Woven is not a gate.
  *
@@ -28,6 +31,8 @@ export function scrubRosterBlock(content: string): string {
 
 /** The name as it is printed when the directory has no spelling of its own. */
 export function displayTypedName(name: string): string {
+  // READABLE_NAMES_ENABLED (QA, 15 Nov 2026): "jacinta van der berg" prints "Jacinta van der Berg", "mcdonald" "McDonald".
+  if (readableNamesEnabled()) return readableName(name);
   return name
     .trim()
     .replace(/\s+/g, " ")

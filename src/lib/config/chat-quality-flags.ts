@@ -4916,6 +4916,18 @@ export function modelWarningLevelDiscardedEnabled(): boolean {
 }
 
 /**
+ * READABLE_NAMES_ENABLED (Coding-2, 15 Nov 2026; default off; Pau via QA: "all naming conventions should be readable;
+ * some have de la Torre etc."). On: a name typed off the roster goes on the card readable ("maria de la torre" →
+ * "Maria de la Torre": particles, Mc/Mac, O'/D', hyphens and suffixes; letters never changed, mixed-case words kept);
+ * an all-caps or all-lowercase roster name is shown the same way; and the roster matchers also compare the spelling
+ * without spaces, hyphens, apostrophes or accents, so "delatorre", "dela torre" and "obrien" find "de la Torre" and
+ * "O'Brien" (`forms/readable-name.ts`). Off, as before.
+ */
+export function readableNamesEnabled(): boolean {
+  return envFlag("READABLE_NAMES_ENABLED");
+}
+
+/**
  * FORM_EDIT_TOUCHES_UPDATED_AT_ENABLED (coding 5, 15 Nov 2026; default off; QA's batch F8, from the first live test with
  * a form open). Three chat edits to a draft's Observation, Action Plan and Type of Warning (its events grew 4 → 7) left
  * form_instances.updated_at unchanged: the touch trigger fires on the instance row, and a value edit writes only

@@ -1,4 +1,4 @@
-import { addressNotPersonEnabled, formNameFromRosterEnabled, metricChoiceOneQuestionEnabled, metricGuardEnabled, offRosterConfirmEnabled, rosterNearMissEnabled, rosterNotFoundAnyPhrasingEnabled, nearMissQuestionRulesEnabled, formNameOffRosterAskEnabled, offRosterAskBeforeCardEnabled } from "@/lib/config/chat-quality-flags";
+import { addressNotPersonEnabled, formNameFromRosterEnabled, metricChoiceOneQuestionEnabled, metricGuardEnabled, offRosterConfirmEnabled, rosterNearMissEnabled, rosterNotFoundAnyPhrasingEnabled, nearMissQuestionRulesEnabled, formNameOffRosterAskEnabled, offRosterAskBeforeCardEnabled, readableNamesEnabled } from "@/lib/config/chat-quality-flags";
 import { isGlossaryTerm } from "@/lib/ai/chat-glossary";
 import type { AskResponse } from "@/lib/ai/types";
 
@@ -8,6 +8,8 @@ import { matchEmployeeName, normalizeTypedName, type RosterEmployee } from "./em
 import { acceptedOffRoster, isAcceptedOffRoster, offRosterCardNote, offRosterOffer, offRosterTakenLine } from "./off-roster-confirm";
 import { addressNotPersonAsk, followsHouseNumber, personRosterNames } from "./person-guard";
 import { namesThisCompany } from "./company-name";
+import { withPreferredNameShown } from "./preferred-name-shown";
+import { isNameParticle, readableName } from "./readable-name";
 import { namesCompanyPositionTitle } from "./staff-picker";
 import { metricMessage, namesAMetric, requestMessage, cardOnScreen } from "./request-slot";
 import { namesAForm } from "./template-intent";
@@ -531,7 +533,23 @@ const UNNAMED_PERSON_WORD = "employee";
 const NAME_WORD = String.raw`(?:\p{Lu}(?=[\p{L}'’-]*\p{Ll})[\p{L}'’-]+|\p{Ll}[\p{Ll}'’-]+)`;
 const NAME_RUN = String.raw`(${NAME_WORD}(?:\s+${NAME_WORD}){1,2})`;
 /** Two or three name words. */
-const NAME_SHAPE = new RegExp(String.raw`^${NAME_RUN}$`, "u");
+const NAME_SHAPE_RUN = new RegExp(String.raw`^${NAME_RUN}$`, "u");
+/**
+ * READABLE_NAMES_ENABLED (QA, 15 Nov 2026: "some have de la Torre etc."): a surname's particles — "van der" in
+ * "Jacinta van der Berg", "de la" in "Maria de la Torre" — are not counted, so a four- or five-word name with them is
+ * still a name's shape. Each particle is still a lowercase name word, and two or three other words are still needed.
+ */
+const NAME_SHAPE = {
+  test(typed: string): boolean {
+    if (!readableNamesEnabled()) return NAME_SHAPE_RUN.test(typed);
+    const words = typed.trim().split(/\s+/);
+    // The last word is the surname, never a particle ("Thanh Le").
+    const particle = (word: string, index: number) => index > 0 && index < words.length - 1 && isNameParticle(word);
+    const counted = words.filter((word, index) => !particle(word, index));
+    const particles = words.filter(particle);
+    return NAME_SHAPE_RUN.test(counted.join(" ")) && particles.every((word) => /^\p{Ll}+$/u.test(word));
+  },
+};
 /**
  * Where a request types its person — "for <name>,", "for <name>" ending it, "employee, <name>" — read with the card's
  * own name, so the words after it ("…, Zebulon Marchbanks that needs …"; gate rerun 3) are never taken as part of it.
@@ -580,6 +598,8 @@ const USE_NAME = /^use\s+/i;
 
 /** "zebulon marchbanks" → "Zebulon Marchbanks"; a word already capitalised is kept. */
 function titleCased(name: string): string {
+  // READABLE_NAMES_ENABLED: "jacinta van der berg" is offered as "Jacinta van der Berg", not "Jacinta Van Der Berg".
+  if (readableNamesEnabled()) return readableName(name);
   return name.replace(/(^|[\s'’-])(\p{Ll})/gu, (_whole, lead: string, letter: string) => `${lead}${letter.toUpperCase()}`);
 }
 
@@ -643,6 +663,11 @@ export function slotName(message: string | undefined, names: readonly string[]):
 
 /** FORM_NAME_FROM_ROSTER_ENABLED: `rosterOnlyNames` with the actor's roster read this turn. Off, or no roster: as built. */
 export function withRosterOnlyNames(response: AskResponse): AskResponse {
+  // READABLE_NAMES_ENABLED: the name the manager used, preferred or legal; the legal name said once (`preferred-name-shown.ts`).
+  return withPreferredNameShown(rosterOnlyNamesOf(response), [...rosterScopeTurns(), requestMessage() ?? ""].join("\n"));
+}
+
+function rosterOnlyNamesOf(response: AskResponse): AskResponse {
   // METRIC_GUARD_ENABLED: with FORM_NAME off, the choices still never offer a metric (`withoutMetricChoices`).
   if (!formNameFromRosterEnabled()) return metricGuardEnabled() ? withoutMetricChoices(response, metricMessage(), personRosterNames() ?? []) : response;
   const names = personRosterNames();

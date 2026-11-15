@@ -3,6 +3,7 @@ import "server-only";
 import { AsyncLocalStorage } from "node:async_hooks";
 
 import { installPersonRoster } from "./person-guard";
+import { installPreferredAliases, type PreferredAlias } from "./preferred-name-shown";
 import { installRosterScope, type RosterScope } from "./roster-scope";
 
 /**
@@ -26,4 +27,13 @@ installRosterScope(() => rosterScope.getStore());
 
 export function enterRosterScope(level: string, managerTurns: readonly string[] = []): void {
   rosterScope.enterWith({ level, managerTurns });
+}
+
+/** READABLE_NAMES_ENABLED: the turn's roster people known by a preferred first name (`preferred-name-shown.ts`). */
+const preferredAliases = new AsyncLocalStorage<readonly PreferredAlias[]>();
+
+installPreferredAliases(() => preferredAliases.getStore());
+
+export function enterPreferredAliases(aliases: readonly PreferredAlias[]): void {
+  preferredAliases.enterWith(aliases);
 }

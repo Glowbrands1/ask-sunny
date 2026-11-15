@@ -1,6 +1,9 @@
+import { readableNamesEnabled } from "@/lib/config/chat-quality-flags";
 import { isFieldLabelWord, nameAfterNameLabel, NOT_A_NAME, NOT_A_TYPED_NAME, stripFieldLabels } from "./name-words";
+
 import { matchEmployeeName, type RosterEmployee } from "./employee-match";
 import { extractEmployeeNames } from "./proposal";
+import { readableName } from "./readable-name";
 
 /**
  * The employee on the card, read in code.
@@ -34,6 +37,10 @@ const PROMO = new Set([
 const NOT_A_REPLY = /^(?:yes|yeah|yep|yup|no|nope|ok|okay)$/i;
 
 function asTyped(name: string): string {
+  // READABLE_NAMES_ENABLED (QA, 15 Nov 2026, and QA's review): "jacinta van der berg" reads "Jacinta van der Berg",
+  // "mcdonald" "McDonald", "MARIA DEL RIO" "Maria del Rio", "ANA LEE" "Ana Lee": particles lowercase, other words in
+  // title case. A typed name is no roster row, so no all-caps word is kept as initials; mixed-case words are kept.
+  if (readableNamesEnabled()) return readableName(name);
   return name
     .trim()
     .replace(/\s+/g, " ")

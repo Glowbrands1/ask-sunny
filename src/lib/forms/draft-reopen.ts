@@ -2,6 +2,8 @@ import "server-only";
 
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
+import { rosterAliasesOf, sameRosterPerson } from "./preferred-name-shown";
+
 import { trigramSimilarity } from "@/lib/ai/intake-augment";
 import { draftReuseOwnOnlyEnabled } from "@/lib/config/chat-quality-flags";
 
@@ -49,7 +51,8 @@ export interface ResentDraftRow {
 }
 
 export function sameEmployee(left: string, right: string): boolean {
-  return left.trim().replace(/\s+/g, " ").toLowerCase() === right.trim().replace(/\s+/g, " ").toLowerCase();
+  // READABLE_NAMES_ENABLED: one roster person's preferred and legal names are the same person (`preferred-name-shown.ts`).
+  return left.trim().replace(/\s+/g, " ").toLowerCase() === right.trim().replace(/\s+/g, " ").toLowerCase() || sameRosterPerson(left, right);
 }
 
 /**
@@ -198,9 +201,11 @@ export async function findOpenIncidentDraft(input: ResentDraftWanted): Promise<I
     .select("id, employee_name, location_id, created_at, form_date")
     .eq("template_id", template.id)
     .eq("status", "draft")
-    .ilike("employee_name", input.employeeName.trim())
     .order("created_at", { ascending: false })
     .limit(20);
+  /* READABLE_NAMES_ENABLED: a draft saved under the roster person's other name (preferred or legal) is theirs too. */
+  const names = rosterAliasesOf(input.employeeName.trim());
+  query = names.length > 1 ? query.or(names.map((name) => `employee_name.ilike."${name.replace(/[",()]/g, "")}"`).join(",")) : query.ilike("employee_name", input.employeeName.trim());
   if (ownOnly) query = query.eq("created_by", input.createdBy);
   if (input.formDate) query = query.eq("form_date", input.formDate);
   const { data, error } = await query;

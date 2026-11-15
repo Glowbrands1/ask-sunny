@@ -10,6 +10,7 @@ import { businessToday } from "@/lib/business-date";
 import { isoDate, monthDayToIso, readDates, sameDate, withoutDates } from "./dates";
 import { candidateNameWords, chatFormsActor } from "@/lib/forms/chat-form-records";
 import { displayName, matchEmployeeName, nameConfirmationQuestion, type RosterEmployee } from "@/lib/forms/employee-match";
+import { aliasForRosterPerson, nameAsSaid as nameAsSaidOf, sameRosterPersonAmong } from "@/lib/forms/preferred-name-shown";
 import { offRosterTyped } from "@/lib/forms/roster-only-names";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
 import { readDirectoryRoster, readScopedRoster, type DirectoryRosterRow } from "@/lib/forms/employee-roster";
@@ -25,7 +26,9 @@ import {
   hybridSearchEnabled,
   manualSectionDedupeEnabled,
   retrievalRecallEnabled,
+  readableNamesEnabled,
 } from "@/lib/config/chat-quality-flags";
+import { squashedSpellingMatches } from "@/lib/forms/readable-name";
 import type { AskResponse } from "@/lib/ai/types";
 import { findManualSection, manualSectionHeadings, type ManualChunk } from "@/lib/forms/official-policy-manual";
 import { sectionWording } from "@/lib/forms/policy-citation";
@@ -281,7 +284,9 @@ export function rosterMatches(typed: string, roster: readonly RosterEmployee[]):
   if (wanted.length === 0) return [];
   return roster.filter((person) => {
     const own = words([person.firstName, person.preferredFirstName ?? "", person.lastName].join(" "));
-    return wanted.every((word) => own.some((name) => name === word || (word.length >= 3 && name.startsWith(word))));
+    if (wanted.every((word) => own.some((name) => name === word || (word.length >= 3 && name.startsWith(word))))) return true;
+    // READABLE_NAMES_ENABLED: "maria delatorre", "dela torre", "obrien" are the roster's spelling without its spaces or apostrophes.
+    return readableNamesEnabled() && squashedSpellingMatches(typed, person);
   });
 }
 
@@ -553,15 +558,8 @@ async function policyQuestion(context: ToolContext, formName: string): Promise<s
  * The person is always the roster id; the name shown never changes who it is.
  */
 export function nameAsSaid(person: Pick<RosterEmployee, "firstName" | "lastName" | "preferredFirstName">, managerWords: string): string {
-  const legal = displayName(person as RosterEmployee);
-  const preferred = person.preferredFirstName?.trim();
-  if (!preferred || preferred.toLowerCase() === person.firstName.trim().toLowerCase()) return legal;
-  const said = ` ${managerWords.toLowerCase().replace(/[^a-z'’-]+/g, " ")} `;
-  const saidLegal = said.includes(` ${person.firstName.trim().toLowerCase()} `);
-  const saidPreferred = said.includes(` ${preferred.toLowerCase()} `);
-  const asPreferred = `${preferred} ${person.lastName.trim()}`.replace(/\s+/g, " ").trim();
-  if (saidLegal && !saidPreferred) return legal;
-  return asPreferred;
+  // One rule for both paths (QA, 15 Nov 2026): `forms/preferred-name-shown.ts` nameAsSaid.
+  return nameAsSaidOf(aliasForRosterPerson(person, (row) => displayName({ ...(person as RosterEmployee), ...row })), managerWords);
 }
 
 /** A position as compared: lowercase words, a plural "s" dropped ("Tanning Consultants" = "tanning consultant"). */
@@ -958,9 +956,8 @@ export function fullNamesOf(person: Pick<RosterEmployee, "firstName" | "lastName
  */
 export function sameRosterPerson(a: string, b: string, roster: readonly Pick<RosterEmployee, "id" | "firstName" | "lastName" | "preferredFirstName">[]): boolean {
   if (samePerson(a, b)) return true;
-  const holders = (name: string) => roster.filter((person) => fullNamesOf(person).some((full) => samePerson(full, name)));
-  const [x, y] = [holders(a), holders(b)];
-  return x.length === 1 && y.length === 1 && x[0]!.id === y[0]!.id;
+  // One name-matcher for both paths (QA, 15 Nov 2026): `forms/preferred-name-shown.ts`.
+  return sameRosterPersonAmong(a, b, roster.map((person) => ({ id: person.id, names: fullNamesOf(person) })));
 }
 
 /*
