@@ -574,6 +574,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
 
   const limit = agentLoopStepLimit();
   const started = performance.now();
+  let firstTokenMs: number | null = null;
   let text = "";
   let stoppedAt = "step_limit" as "reply" | "step_limit" | "timeout" | "error";
   const usage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
@@ -612,7 +613,11 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         },
         onChunk: ({ chunk }) => {
           watch.chunk();
-          if (chunk.type === "text-delta" || chunk.type === "reasoning-delta" || chunk.type === "tool-input-start" || chunk.type === "tool-call") watch.firstToken();
+          if (chunk.type === "text-delta" || chunk.type === "reasoning-delta" || chunk.type === "tool-input-start" || chunk.type === "tool-call") {
+            watch.firstToken();
+            /* Batch J10 (the J6 speed report: first_token_ms was null on every loop trace): the turn's first token. */
+            if (firstTokenMs === null) firstTokenMs = Math.round(performance.now() - started);
+          }
         },
         onStepFinish: (step) => {
           const used = tokensOf(step.usage as StepUsage);
@@ -787,9 +792,10 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   });
   const trace = chatTraceDraft();
   if (trace) {
+    trace.firstTokenMs = firstTokenMs;
     trace.slots = {
       ...(trace.slots ?? {}),
-      agent_loop: { steps, model_steps: modelSteps, model_calls: modelCalls, step_limit: limit, steps_used: stepNumber - 1, stopped: stoppedAt, ms: latencyMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}) },
+      agent_loop: { steps, model_steps: modelSteps, model_calls: modelCalls, step_limit: limit, steps_used: stepNumber - 1, stopped: stoppedAt, ms: latencyMs, first_token_ms: firstTokenMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}) },
     };
   }
 

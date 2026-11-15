@@ -27,6 +27,8 @@ export interface ChatTraceDraft {
   prompt: string | null;
   formInProgress: boolean;
   modelCall: ModelCallSnapshot | null;
+  /** Batch J10: the agent loop's first token, from the turn's start (the loop sets no modelCall). Absent otherwise. */
+  firstTokenMs?: number | null;
   errorSubtype: ErrorSubtype | null;
   errorClass: string | null;
   errorStatus: number | null;
