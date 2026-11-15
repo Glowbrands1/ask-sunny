@@ -1,6 +1,6 @@
 import { expect, vi } from "vitest";
 
-import { KEARNEY, STAFF, type DirectoryRow, type ReplayCase, type ReplayContext } from "./cases";
+import { KEARNEY, STAFF, TWO_SALONS, type DirectoryRow, type ReplayCase, type ReplayContext } from "./cases";
 import { lastResult, loopStandIn, type LoopDecision, type LoopView } from "./loop-stand-in";
 
 /**
@@ -24,6 +24,9 @@ const offline = process.env.AGENT_LOOP_LIVE !== "1";
 
 /** Close in spelling to Remy Calder (G4's two-close-names case). */
 const REMI: DirectoryRow = { id: "e-remi-calder", firstName: "Remi", lastName: "Calder", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" };
+
+/** At both of the manager's salons; Woven lists Kearney (loc-0309) as her salon (G14). */
+const ISLA: DirectoryRow & { primarySalonId: string } = { id: "e-isla-marrow", firstName: "Isla", lastName: "Marrow", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0307", "loc-0309"], positionName: "Tanning Consultant", primarySalonId: "loc-0309" };
 
 /** A created form on file for <employee id>: form, date and account as given; returns its instance id. */
 async function onFile(t: ReplayContext, employeeId: string, name: string, templateKey: string, date: string, account: string): Promise<string> {
@@ -381,6 +384,38 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       expect(reply.content, "an exit was asked what happened").not.toMatch(/what happened\?/i);
       expect(reply.content, "an exit cites a policy").not.toMatch(/\*\*Policy:\*\*|JBA Policy Manual/);
       expect(reply.content, "an exit was asked a warning level").not.toMatch(/warning level|verbal or written/i);
+    },
+  },
+  {
+    id: "nov15-agent-loop-g14-filed-at-woven-salon-by-the-tool",
+    title: "G14 (honesty): a manager on two salons, an employee Woven lists at one: the card IS filed there on the first proposal (salon_from_woven), so \"Filed at **NE Kearney**\" is true; a reply naming another salon is handed back",
+    report: `${REPORT}; the tester's batch E re-test: "Filed at <salon>, where Woven lists <name>" while the card stayed needs_location`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
+      t.directory([...STAFF, ISLA]);
+      t.as("salon_director", TWO_SALONS);
+      // A model that proposes once with no salon, then names a salon the card does not hold until the app hands it back.
+      const model = loopStandIn((view): LoopDecision => {
+        const said = [...view.turns].reverse().find((turn) => turn.role === "user")?.text ?? "";
+        const result = lastResult(view, "propose_form") as { facts?: { salon_from_woven?: string } } | null;
+        if (/\[app check\]/.test(said)) return { text: "Here's the Corrective Action Form for **Isla Marrow**. Filed at **NE Kearney**, where Woven lists Isla; say if it's another salon." };
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "isla marrow" } };
+        if (!result) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: ISLA.id, what_happened: "Isla Marrow was late on 11/12." } };
+        return { text: `Here's the Corrective Action Form for **Isla Marrow**. Filed at **${result.facts?.salon_from_woven ? "NE Grand Island" : "?"}**, where Woven lists Isla.` };
+      });
+      t.loopModel!(model);
+      const thread = t.thread();
+      const reply = await thread.say("ca for isla marrow, she was late on 11/12");
+      expect(thread.proposal?.locationId, `the card is not filed at Woven's salon:\n${reply.content}`).toBe("loc-0309");
+      expect(thread.proposal?.status).toBe("ready");
+      expect(reply.content, `the reply names a salon the card does not hold:\n${reply.content}`).not.toMatch(/Filed at \*\*NE Grand Island\*\*/);
+      if (offline) {
+        expect(toolResults(model.views, "propose_form")[0], "salon_from_woven is not a fact").toMatch(/"salon_from_woven":"NE Kearney"/);
+        expect(model.views.some((view) => /\[app check\][^\n]*salon \(NE Grand Island\)/.test([...view.turns].reverse().find((turn) => turn.role === "user")?.text ?? "")), "a reply naming another salon was not handed back").toBe(true);
+      }
     },
   },
 ];

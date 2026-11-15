@@ -1251,9 +1251,9 @@ export async function proposeForm(
   const typedSalon = typeof input.salon === "string" ? input.salon.trim() : "";
   const answeredSalonIds = typedSalon ? [...new Set([typedSalon, `at ${typedSalon}`].flatMap((text) => readSalonMentions(text).flatMap((mention) => [...mention.salonIds])))] : [];
   if (typedSalon && answeredSalonIds.length === 0) return { error: `"${typedSalon}" is not a salon the app knows. Ask which of the manager's salons it is.` };
-  const proposal = buildProposal({
+  const proposalInput = (salonIds: readonly string[]) => ({
     proposalId: randomUUID(),
-    ...(answeredSalonIds.length > 0 ? { answeredSalonIds } : {}),
+    ...(salonIds.length > 0 ? { answeredSalonIds: [...salonIds] } : {}),
     templateKey: template.key,
     templateName: template.name,
     context: asked,
@@ -1261,9 +1261,27 @@ export async function proposeForm(
     inlineDraftSupported: supportsInlineDraft(template.key, template.currentVersion?.variants ?? []),
     variantKey: inlineDraftVariantKey(template.currentVersion?.variants ?? []),
     today,
-    employee: { kind: "resolved", employeeName: employee.name },
+    employee: { kind: "resolved" as const, employeeName: employee.name },
     employeeSalonIds: [...employee.salonIds],
   });
+  let proposal = buildProposal(proposalInput(answeredSalonIds));
+  /*
+   * Batch G (G14, honesty, the tester's live re-test): the reply said "Filed at <salon>, where Woven lists <name>" while
+   * the card still waited for a salon. Tool code fills the card from data: with no salon named and the card waiting
+   * for one, Woven's salon for this employee, when it is one of the manager's choices, is the card's salon; the fact
+   * salon_from_woven says so and the rules book words the line.
+   */
+  let salonFromWoven: string | null = null;
+  if (!typedSalon && employee.id && proposal.status === "needs_location") {
+    const primary = await rosterPrimarySalon(context.actor.scope, employee.id);
+    if (primary && (proposal.authorizedLocationIds ?? []).includes(primary)) {
+      const filed = buildProposal(proposalInput([primary]));
+      if (filed.locationId === primary) {
+        proposal = filed;
+        salonFromWoven = rosterSalonName(primary) ?? primary;
+      }
+    }
+  }
   /*
    * HARD GUARD, NEVER AN EMPTY ACCOUNT WHEN ONE WAS GIVEN (QA's live triage, 16:17Z: the lost-account cases): the
    * manager already said what happened in this person's turns, so a card with an empty what_happened is refused and
@@ -1346,6 +1364,7 @@ export async function proposeForm(
       const primary = await rosterPrimarySalon(context.actor.scope, employee.id);
       return primary && (card.authorizedLocationIds ?? []).includes(primary) ? { employee_salon: rosterSalonName(primary) ?? primary } : {};
     })()),
+    ...(salonFromWoven ? { salon_from_woven: salonFromWoven } : {}),
     /* QA's live-app item 8: the card uses Woven's title; the manager called them something else ("Salon Director"). */
     ...(() => {
       const said = extractJobTitle(requestWords);

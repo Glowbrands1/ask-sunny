@@ -163,6 +163,7 @@ export interface CardClaims {
   payrollAmount?: string;
   policy?: string;
   date?: string;
+  salon?: string;
 }
 
 const CLAIM_LEVEL = [/\*\*Type of Warning:?\*\*:?\s*(Verbal|Written)\b/i, /\b(Verbal|Written) Warning,? as you said/i, /\b(?:warning level|level)\b[^.\n]{0,30}\b(?:is|to|now|set to)\b\s*(?:a\s+)?\**(verbal|written)\b/i, /\b(?:made|changed|updated|set)\b[^.\n]{0,30}\b(?:to|as)\s+(?:a\s+)?\**(verbal|written)\b/i];
@@ -181,12 +182,15 @@ export function cardClaims(content: string): CardClaims {
   const level = first(CLAIM_LEVEL)?.toLowerCase();
   const payroll = first(CLAIM_PAYROLL)?.toLowerCase();
   const policy = /^\s*\*\*Policy:?\*\*:?\s*(.+)$/im.exec(content)?.[1]?.trim();
+  /* Batch G (G14): the salon the reply says the card is filed at. */
+  const salon = (/\bFiled at \*\*([^*\n]+)\*\*/i.exec(content)?.[1] ?? /^\s*\*\*(?:Salon|Store|Location):?\*\*:?\s*(.+)$/im.exec(content)?.[1])?.trim();
   return {
     ...(level === "verbal" || level === "written" ? { warningLevel: level } : {}),
     ...(payroll === "yes" || payroll === "no" ? { payrollDeduct: payroll } : {}),
     ...(first(CLAIM_AMOUNT) ? { payrollAmount: first(CLAIM_AMOUNT) } : {}),
     ...(policy ? { policy } : {}),
     ...(first(CLAIM_DATE) ? { date: first(CLAIM_DATE) } : {}),
+    ...(salon ? { salon } : {}),
   };
 }
 
@@ -203,6 +207,11 @@ export function cardMismatch(claims: CardClaims, card: ChatFormProposal | null):
   if (claims.payrollAmount && Number(card?.payrollDeductAmount?.replace(/[^\d.]/g, "") ?? NaN) !== Number(claims.payrollAmount)) wrong.push(`payroll amount ($${claims.payrollAmount})`);
   if (claims.policy && card && card.policyLine !== undefined && policyLine(claims.policy) !== policyLine(card.policyLine)) wrong.push(`policy (${claims.policy})`);
   if (claims.policy && !card) wrong.push(`policy (${claims.policy})`);
+  if (claims.salon) {
+    const held = card?.locationId ? (rosterSalonName(card.locationId) ?? card.locationId) : null;
+    const key = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, "");
+    if (!held || !(key(held).includes(key(claims.salon)) || key(claims.salon).includes(key(held)))) wrong.push(`salon (${claims.salon})`);
+  }
   if (claims.date) {
     const [month, day] = claims.date.split("/").map(Number);
     const on = card?.formDate ? card.formDate.split("-").map(Number) : null;
