@@ -448,4 +448,64 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       if (offline) expect(toolResults(model.views, "propose_form")[0], "the changed subject is not a fact").toMatch(/"account_subject_changed":\{"employee":"Remy Calder","account_says_it_was":"Juno Paxton"\}/);
     },
   },
+  {
+    id: "nov15-agent-loop-g16-which-date-asked-once",
+    title: "G16 (fewer questions): two dates in the account; the date is asked at most once in the chat, and \"create the ca\" afterwards uses the incident's date and says so",
+    report: `${REPORT}; the tester's batch E re-test: L4 asked "which date, 9/28 or 10/16?" on t3, t4 ("create the ca") and t5`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      const model = loopStandIn((view): LoopDecision => {
+        const result = lastResult(view, "propose_form") as { facts?: { dates_given?: string[]; dates_asked_before?: boolean } } | null;
+        const asked = view.results.filter((entry) => entry.tool === "propose_form").length;
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
+        const account = "Remy Calder was a no call no show on 9/28. The report was run on 10/16.";
+        if (asked === 0) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: account } };
+        if (asked === 1 && result?.facts?.dates_asked_before) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: account, incident_date: "2026-09-28" } };
+        if (result?.facts?.dates_asked_before || asked > 1) return { text: "Here's the Corrective Action Form for **Remy Calder**.\n\nDated 9/28/2026 (when it happened); say if you want 10/16." };
+        return { text: "Here's the Corrective Action Form for **Remy Calder**.\n\nYou mentioned more than one date (**9/28**, **10/16**). Which date goes on the form?" };
+      });
+      t.loopModel!(model);
+      const thread = t.thread();
+      const replies = [(await thread.say("ca for remy calder, she was a no call no show on 9/28, i ran the report on 10/16")).content];
+      replies.push((await thread.say("create the ca")).content);
+      const asks = replies.filter((reply) => /which date/i.test(reply)).length;
+      expect(asks, `the date was asked ${asks} times:\n${replies.join("\n---\n")}`).toBeLessThanOrEqual(1);
+      expect(thread.proposal?.formDate, "\"create the ca\" did not use the incident's date").toBe("2026-09-28");
+      expect(replies.at(-1) ?? "").toMatch(/Dated 9\/28\/2026/);
+    },
+  },
+  {
+    id: "nov15-agent-loop-g18-just-make-it-names-the-policy",
+    title: "G18: \"cite the animals in the workplace policy\" then \"just make it\": the question names the policy with its page (\"Corrective Action citing **Animals in the Workplace** (p.30). Who is it for?\")",
+    report: `${REPORT}; the tester's batch E re-test: "just make it" asked "who is this Corrective Action Form for?" without naming the policy`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      const model = loopStandIn((view): LoopDecision => {
+        const said = [...view.turns].reverse().find((turn) => turn.role === "user")?.text ?? "";
+        if (/just make it/i.test(said)) {
+          const tried = lastResult(view, "propose_form") as { ask_exactly?: string } | null;
+          if (!tried) return { tool: "propose_form", input: { template_key: "dpoa" } };
+          return { text: tried.ask_exactly ?? "Who is this Corrective Action Form for?" };
+        }
+        const read = lastResult(view, "read_policy") as { heading?: string; page?: number } | null;
+        if (!read) return { tool: "read_policy", input: { heading: "Animals in the Workplace" } };
+        return { text: `**${read.heading}** (p.${read.page}) covers animals brought to work.` };
+      });
+      t.loopModel!(model);
+      const thread = t.thread();
+      await thread.say("cite the animals in the workplace policy");
+      const reply = await thread.say("just make it");
+      expect(reply.content, `the question does not name the policy:\n${reply.content}`).toMatch(/Corrective Action citing \*\*Animals in the Workplace\*\* \(p\.30\)\. Who is it for\?/);
+    },
+  },
 ];

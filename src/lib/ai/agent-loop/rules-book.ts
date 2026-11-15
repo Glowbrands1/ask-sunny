@@ -63,6 +63,8 @@ export const RULES_BOOK: readonly { readonly title: string; readonly rules: read
       "find_past_forms' which_form_question (several forms fit an open request): list them by date, one line each, and end the reply with that question exactly.",
       "Several forms on file and the manager picks one by date or words (\"the 10/31 one about getting rooms ready between guests\"): call find_past_forms again with that date and about, then open_form the best_match. One step, no new question.",
       "find_past_forms' close_names: ask which person, by name. close_spelling_of: say \"Opening **<on_file>**'s form.\" in one line.",
+      "propose_form's ask_exactly (no person yet, a policy named in this chat): end the reply with that question exactly. Never ask \"Who is this Corrective Action Form for?\" without the policy when ask_exactly is there.",
+      "A policy is never named without read_policy's heading and page (never \"p. —\" or \"closest fit\" with no page). With policy_not_in_manual: ONE line (\"The JBA manual has no <their words> policy; the closest is **<heading>** (p.<page>).\") and ONE question, in one paragraph.",
     ],
   },
   {
@@ -117,6 +119,8 @@ export const RULES_BOOK: readonly { readonly title: string; readonly rules: read
       "payroll_amount_said (the manager stated an amount you left out): propose again with payroll_amount.",
       "With no account yet (Create waits), cite no policy unless policy_named_by_manager is true (the manager named a policy, a topic such as MSB, or a section).",
       "date_after_today (propose_form, or edit_form refusing form_date / incident_date): the date is after today, the " + place + "'s local date, so it is not on the card or the form. Say so in one line and ask which day (\"12/20/2026 is after today, so the card has no date yet. Which day was it?\").",
+      "Two dates where the account says what each one is (the incident on 9/28; a report run on 10/16): use the incident's date and say it once, \"Dated 9/28/2026 (when it happened); say if you want 10/16.\" Ask which date only when the account does not say which one the incident is.",
+      "Ask which date at most ONCE in a chat. dates_asked_before: never ask again; a \"create the ca\", \"go ahead\" or any answer that is not a date uses the incident's date (else the latest stated), proposed with incident_date, and says which in one line.",
     ],
   },
   {

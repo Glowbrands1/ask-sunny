@@ -476,6 +476,25 @@ export function accountSubjectChanged(managerWords: string, account: string, emp
   return other ?? null;
 }
 
+/** Batch G (G18): "Corrective Action citing **<heading>** (p.<page>). Who is it for?", for a policy the manager named in this chat. */
+async function policyQuestion(context: ToolContext, formName: string): Promise<string | null> {
+  const manual = await manualFor(context.scopeId);
+  if (!manual) return null;
+  const said = managerTurns(context);
+  /* The phrases today's reader names, then the words right before "policy" ("cite the animals in the workplace policy"), longest first. */
+  const before = [...said.matchAll(/((?:[a-z'&/-]+\s+){1,6})polic(?:y|ies)\b/gi)].reverse().flatMap((match) => {
+    const words = match[1]!.trim().split(/\s+/);
+    return words.map((_, at) => words.slice(at).join(" ")).filter((phrase) => phrase.split(" ").length >= 2 || phrase.length > 5);
+  });
+  const phrases = [...namedPolicies(said).map((named) => named.phrase).reverse(), ...before];
+  for (const phrase of phrases) {
+    const heading = manual.headings.find((candidate) => namesHeading(phrase, candidate)) ?? closeHeadingReading(phrase, manual.headings).confident;
+    const section = heading ? findManualSection(manual.chunks, [heading]) : null;
+    if (section) return `${/corrective/i.test(formName) ? "Corrective Action" : formName} citing **${section.heading}** (p.${section.page}). Who is it for?`;
+  }
+  return null;
+}
+
 /** A position as compared: lowercase words, a plural "s" dropped ("Tanning Consultants" = "tanning consultant"). */
 function positionKey(text: string): string {
   return text.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).map((word) => (word.length > 3 && word.endsWith("s") ? word.slice(0, -1) : word)).join(" ");
@@ -1063,7 +1082,18 @@ export async function proposeForm(
       employee = { name: typed, salonIds: [] };
       offRosterName = typed;
     }
-    else return { error: "Give the employee_id find_staff returned for this person (call find_staff first). A name not on the roster goes on a form only after the manager answers the \"reply **use <name>**\" offer." };
+    else {
+      /*
+       * Batch G (G18, the tester's re-test: "just make it" after the animals answer asked "who is this Corrective Action
+       * Form for?" without the policy): no person yet, and the manager named a policy in this chat; the question to ask
+       * names it with its heading and page.
+       */
+      const ask = typed || id ? null : await policyQuestion(context, template.name);
+      return {
+        error: "Give the employee_id find_staff returned for this person (call find_staff first). A name not on the roster goes on a form only after the manager answers the \"reply **use <name>**\" offer.",
+        ...(ask ? { ask_exactly: ask } : {}),
+      };
+    }
   } else {
     const typedName = typeof input.employee_name === "string" ? tidyTypedName(input.employee_name) : "";
     if (!typedName) return { error: "Give the employee's name as the manager typed it." };
@@ -1362,6 +1392,8 @@ export async function proposeForm(
       : {}),
     ...(corrective && payroll === "yes" && !amount ? { payroll_amount_unset: true } : {}),
     ...(datesGiven.length > 1 ? { dates_given: datesGiven, ...(date ? { date_chosen: date } : {}) } : {}),
+    /* Batch G (G16): this chat already asked which date; a second ask is never made (the rules book: use the best reading). */
+    ...(datesGiven.length > 1 && context.history.some((message) => message.role === "assistant" && /more than one date|which date goes on the form/i.test(String(message.content))) ? { dates_asked_before: true } : {}),
     ...(accountLost.length > 0 ? { account_words_missing: accountLost } : {}),
     ...(accountGiven ? { account_given: untrusted(accountGiven) } : {}),
     ...(figuresNotSaid.length > 0 ? { figures_not_said: figuresNotSaid } : {}),
