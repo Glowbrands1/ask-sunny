@@ -145,4 +145,71 @@ export const NOV15_AGENT_LOOP_PR4_CASES: ReplayCase[] = [
       expect(stepsOf(t).find((step) => step.tool === "edit_form")?.error_kind).toBe("finalized_revision_refused");
     },
   },
+  {
+    id: "nov15-agent-loop-pr4-refused-edit-never-deletes-an-already-open-draft",
+    title: "PR 4 (Pau): a refused edit on a finalized form deletes only the revision draft THIS call opened, never one that was already open",
+    report: `${REPORT}: only the draft this call created may be cleaned up`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.() || !offline) return;
+      start(t);
+      let finalizedId = "";
+      const standIn = loopStandIn((view): LoopDecision => {
+        const said = view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "";
+        if (/open a revision/i.test(said)) {
+          return lastResult(view, "edit_form") ? { text: "Opened a revision draft." } : { tool: "edit_form", input: { instance_id: finalizedId, values: { form_date: "2026-11-12" } } };
+        }
+        if (/\bchange\b/i.test(said)) {
+          return lastResult(view, "edit_form") ? { text: "That field isn't on the form." } : { tool: "edit_form", input: { instance_id: finalizedId, values: { not_a_field_on_this_form: "anything" } } };
+        }
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: "Remy Calder was late on 11/12.", incident_date: "2026-11-12" } };
+        return { text: "Here is the card." };
+      });
+      t.loopModel!(standIn);
+      const thread = t.thread();
+      await thread.say("ca for remy calder, late on 11/12");
+      t.draftWrites({ observation: "Observed:\nRemy Calder arrived 20 minutes late for her shift on 11/12/26." });
+      finalizedId = await thread.create();
+      Object.assign(t.forms().find((row) => row.id === finalizedId)!, { status: "finalized" });
+      await thread.say("open a revision and set the date to 11/12 on remy calder's ca");
+      const revisions = () => t.forms().filter((row) => row.revises_instance_id === finalizedId);
+      // The case needs a revision draft already open before the refused call.
+      expect(revisions().length, "the first edit opened no revision draft, so the case proves nothing").toBeGreaterThan(0);
+      const before = revisions().map((row) => row.id);
+      await thread.say("change the not a field on this form on remy calder's ca");
+      const refused = results(standIn.views, "edit_form").at(-1)!;
+      // No cleanup happens for a draft this call did not open, so the refusal keeps its own code (the inner reason).
+      expect(refused.reason_code, JSON.stringify(refused)).toBe("unknown_field");
+      expect(refused.revision_cleanup, "cleaned up a draft this call did not open").toBeUndefined();
+      expect(revisions().map((row) => row.id), "the already-open revision draft was deleted").toEqual(before);
+    },
+  },
+  ...[
+    ["a card", "ca for remy calder, late on 11/12", "corrective_action"],
+    ["chat", "what can you do?", "general_guidance"],
+  ].map(
+    ([what, said, category]): ReplayCase => ({
+      id: `nov15-agent-loop-pr4-turn-category-${what!.replace(/\W+/g, "-")}`,
+      title: `PR 4 (Pau): a loop turn that is ${what} is logged as ${category}, not unclassified`,
+      report: `${REPORT}: loop turns were closed as "unclassified" (route.ts)`,
+      status: "fixed",
+      fixFlags: [FLAG],
+      async run(t) {
+        if (!t.loopOn?.() || !offline) return;
+        start(t);
+        t.loopModel!(loopStandIn((view): LoopDecision => {
+          if (what === "chat") return { text: "I can help with forms and policy questions." };
+          if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
+          if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: "Remy Calder was late on 11/12.", incident_date: "2026-11-12" } };
+          return { text: "Here is the card." };
+        }));
+        await t.thread().say(said!);
+        const closed = (t.rows?.("activity_events") ?? []).at(-1) as { category?: string; succeeded?: boolean } | undefined;
+        expect(closed, "no turn was closed").toBeTruthy();
+        expect(closed!.category).toBe(category);
+      },
+    }),
+  ),
 ];

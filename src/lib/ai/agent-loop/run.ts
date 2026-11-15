@@ -153,6 +153,8 @@ export interface AgentTurnInput {
   readonly today: string;
   readonly conversationId?: string;
   readonly openFormId: string | null;
+  /** PR 4: the names of the tools the turn called, once it has finished (the route logs the turn's category from them). */
+  readonly onTools?: (tools: readonly string[]) => void;
 }
 
 const count = (value: unknown): number => (typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0);
@@ -772,6 +774,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     usage,
     ...(stoppedAt === "timeout" ? { subtype: "timeout" as const } : stoppedAt === "error" ? { subtype: "model_failed" as const } : {}),
   });
+  input.onTools?.(steps.map((step) => step.tool));
   const trace = chatTraceDraft();
   if (trace) {
     trace.slots = {
