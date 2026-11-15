@@ -21,8 +21,29 @@ describe("TERMINATION_TICK_NOTE_ENABLED on", () => {
     ["my DM approved her termination, write up the CA for Marnie Holloway"],
     ["Marnie Holloway is terminated, make the CA"],
     ["write a CA, termination, for Marnie Holloway"],
-  ])("%s → the note replaces the verbal/written line", (said) => {
-    expect(withTerminationTickNote(card(`I'll draft a CA.\n\n${ASKED}`), asked(said)).content).toBe(`I'll draft a CA.\n\n${TERMINATION_TICK_NOTE}`);
+  ])("%s → the note is added beside the verbal/written line", (said) => {
+    // Changed on purpose (QA's re-review of #1010): the level line is never removed; the neutral note goes after it.
+    expect(withTerminationTickNote(card(`I'll draft a CA.\n\n${ASKED}`), asked(said)).content).toBe(`I'll draft a CA.\n\n${ASKED}\n\n${TERMINATION_TICK_NOTE}`);
+  });
+
+  /*
+   * QA's re-review (15 Nov 2026): conditional and future mentions still read as a mention; a false note is cheap when it
+   * is neutral, a missing level prompt is harmful. So the verbal/written line stays and the note is added beside it.
+   */
+  it.each([
+    ["if she does it again she will be terminated, write up Marnie Holloway for being late"],
+    ["write up Marnie Holloway for being late, next time it's termination"],
+    ["final warning before termination for Marnie Holloway, she was late again"],
+    ["we might terminate her later, for now write up Marnie Holloway for being late"],
+    ["I'd hold off on termination, write up Marnie Holloway for being late"],
+  ])("%s → the level line stays, with the note after it", (said) => {
+    const out = withTerminationTickNote(card(`I'll draft a CA.\n\n${ASKED}`), asked(said)).content;
+    expect(out).toContain(ASKED);
+    expect(out).toBe(`I'll draft a CA.\n\n${ASKED}\n\n${TERMINATION_TICK_NOTE}`);
+  });
+
+  it("the note's wording is neutral: if this form is a termination", () => {
+    expect(TERMINATION_TICK_NOTE).toBe("If this form is a termination, tick Termination on the form yourself; it needs DM/HR approval before it's finalized.");
   });
 
   it("with no level line, the note is added after the opening line", () => {

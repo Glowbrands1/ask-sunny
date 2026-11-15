@@ -15,7 +15,9 @@ import { KEARNEY, STAFF, type ReplayCase } from "./cases";
 
 const REPORT = "QA, 15 Nov 2026: a termination mentioned in chat and not ticked left only the verbal/written line";
 const FLAG = "TERMINATION_TICK_NOTE_ENABLED";
-const NOTE = "You'll tick Termination on the form yourself; it needs DM/HR approval before it's finalized.";
+const NOTE = "If this form is a termination, tick Termination on the form yourself; it needs DM/HR approval before it's finalized.";
+/** The level prompt, alone or with prior coaching ("You'll set the verbal/written warning level and any prior …"). */
+const LEVEL_LINE = /You'll set the verbal\/written warning level/;
 
 const UNTICKED = [
   "my DM approved her termination, write up the CA for Marnie Holloway, she no call no showed on 11/12",
@@ -25,6 +27,39 @@ const UNTICKED = [
 ];
 
 export const NOV15_TERMINATION_TICK_NOTE_CASES: ReplayCase[] = [
+  /*
+   * QA's re-review (15 Nov 2026): conditional and future mentions still read as a mention, so the note is neutral and
+   * the verbal/written level line is never removed.
+   */
+  ...[
+    "if she does it again she will be terminated, write up Marnie Holloway for being late on 11/12",
+    "write up Marnie Holloway for being late on 11/12, next time it's termination",
+    "we might terminate her later, for now write up Marnie Holloway for being late on 11/12",
+    "I'd hold off on termination, write up Marnie Holloway for being late on 11/12",
+  ].map(
+    (said, index): ReplayCase => ({
+      id: `nov15-termination-tick-note-keeps-level-${index + 1}`,
+      title: `"${said}": the verbal/written line is never dropped; any note is the neutral one, beside it`,
+      report: "QA's re-review of #1010, 15 Nov 2026: a conditional or future mention dropped the level prompt",
+      status: "fixed",
+      fixFlags: [FLAG],
+      async run(t) {
+        vi.setSystemTime(new Date("2026-11-14T16:00:00Z"));
+        t.directory(STAFF);
+        t.as("salon_director", KEARNEY);
+        const thread = t.thread();
+        const reply = await thread.say(said, { employeeName: "Marnie Holloway" });
+        // Only the neutral wording, ever.
+        expect(reply.content).not.toMatch(/^You'll tick Termination on the form yourself/m);
+        if (!reply.content.includes(NOTE)) return;
+        const lines = reply.content.split("\n").map((line) => line.trim()).filter(Boolean);
+        const at = lines.indexOf(NOTE);
+        // Beside the level prompt when the card has one (never in its place); after the opening line when it has none.
+        if (lines.some((line) => LEVEL_LINE.test(line))) expect(LEVEL_LINE.test(lines[at - 1] ?? ""), reply.content).toBe(true);
+        else expect(at, reply.content).toBe(1);
+      },
+    }),
+  ),
   ...UNTICKED.map(
     (said, index): ReplayCase => ({
       id: `nov15-termination-tick-note-${index + 1}`,
@@ -40,7 +75,6 @@ export const NOV15_TERMINATION_TICK_NOTE_CASES: ReplayCase[] = [
         const reply = await thread.say(said, { employeeName: "Marnie Holloway" });
         expect(thread.proposal?.warningLevel ?? null, reply.content).toBeNull();
         expect(reply.content).toContain(NOTE);
-        expect(reply.content).not.toContain("verbal/written warning level");
       },
     }),
   ),
