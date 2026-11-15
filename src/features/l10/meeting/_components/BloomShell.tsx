@@ -125,6 +125,12 @@ export function LastMeetingSummary({ last }: { last: PastMeeting | null }) {
                   <p className="m-0 mt-1 whitespace-pre-wrap">{last.cascade}</p>
                 </div>
               )}
+              {last.notes && (
+                <div>
+                  <div className="text-xs font-bold tracking-[0.06em] text-muted">NOTES</div>
+                  <p className="m-0 mt-1 whitespace-pre-wrap">{last.notes}</p>
+                </div>
+              )}
             </>
           )}
         </div>

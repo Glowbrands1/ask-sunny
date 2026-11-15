@@ -435,3 +435,52 @@ describe("Bloom-style page: what every page shares", () => {
     expect(doc.issues.at(-1)).toMatchObject({ title: "Late shift handover", owner: "Cy Marlow", addedBy: "Avery Quill", resolved: false });
   });
 });
+
+// Segue and Conclude on the Bloom-style STC DM L10 (the owner's request, 15 Nov 2026), as in the Hub.
+describe("Bloom-style page: Segue and Conclude", () => {
+  const recap = {
+    id: "r1",
+    meeting_key: "stc-dm",
+    session_id: "s1",
+    held_at: "2026-11-10T16:00:00Z",
+    rating_avg: 8.5,
+    attendee_count: 2,
+    duration_seconds: 3480,
+    cascade: "Share the new schedule",
+    attendees: [
+      { name: "Avery Quill", rating: 9 },
+      { name: "Bo Lark", rating: 8 },
+    ],
+    open_todos: [{ text: "Order towels", owner: "Avery Quill", dueDate: "2026-11-20" }],
+    resolved_issues: ["Front desk coverage"],
+    notes: "Talked about the holiday hours",
+  };
+  const view = (doc: Record<string, unknown> = {}, save: SaveFn = vi.fn() as unknown as SaveFn) =>
+    render(<MeetingView info={info} initial={loaded(3, doc)} save={save} end={vi.fn() as unknown as EndFn} viewer={viewer} roster={roster} hubMeetingUrl={HUB} pollMs={0} debounceMs={0} today="2026-11-15" recaps={[recap]} />);
+
+  it("Segue: last week's feedback, then this week's question saved as segueQuestion", async () => {
+    const save = vi.fn().mockResolvedValue({ ok: true, version: 4, updatedAt: "2026-11-15T00:00:00Z" } satisfies SaveOutcome);
+    view({ segueQuestion: "What AI tool saved you time?" }, save as unknown as SaveFn);
+    const feedback = screen.getByRole("region", { name: "Last week's feedback" });
+    expect(within(feedback).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["9Avery Quill", "8Bo Lark"]);
+    const q = within(screen.getByRole("region", { name: "This week's question" })).getByLabelText("This week's question") as HTMLTextAreaElement;
+    expect(q.value).toBe("What AI tool saved you time?");
+    fireEvent.change(q, { target: { value: "What AI tool saved you an hour?" } });
+    await waitFor(() => expect(save).toHaveBeenCalled());
+    expect((save.mock.calls.at(-1)![2] as { segueQuestion: string }).segueQuestion).toBe("What AI tool saved you an hour?");
+  });
+
+  it("Conclude before the meeting starts shows the last meeting's summary; during the meeting the existing steps", () => {
+    const { unmount } = view();
+    fireEvent.click(within(screen.getByRole("region", { name: "Agenda" })).getByRole("button", { name: /Conclude/ }));
+    const summary = within(screen.getByTestId("last-meeting-conclusion"));
+    expect(summary.getAllByRole("definition").map((d) => d.textContent)).toEqual(["8.5", "—", "1", "58m"]);
+    expect(summary.getByRole("group", { name: "To-dos by owner" }).textContent).toBe("AQAvery QuillOrder towels11-20-2026");
+    expect(summary.getByText("Talked about the holiday hours")).toBeTruthy();
+    unmount();
+    view({ timer: { started: true, running: true, startedAt: Date.now(), leader: "hub-user-1", leaderLabel: "x", sessionId: "s2" } });
+    fireEvent.click(within(screen.getByRole("region", { name: "Agenda" })).getByRole("button", { name: /Conclude/ }));
+    expect(screen.queryByTestId("last-meeting-conclusion")).toBeNull();
+    expect(screen.getByLabelText("Cascading message")).toBeTruthy();
+  });
+});

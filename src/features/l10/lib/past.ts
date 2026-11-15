@@ -32,6 +32,8 @@ export interface PastMeeting {
   cascade: string | null;
   /** The meeting's shared notes, when the recap has them (the Hub's 20261205120000_l10_recap_notes). */
   notes: string | null;
+  /** The to-dos still open when it ended (recaps keep them; the Bloom import does not). */
+  openTodos: { text: string; owner: string; due: string }[];
 }
 
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
@@ -79,6 +81,7 @@ export function pastMeetings(recaps: RecapRow[], doc: Record<string, unknown>): 
       solvedTitles: r.resolved_issues ?? [],
       cascade: str(r.cascade),
       notes: str(r.notes),
+      openTodos: (r.open_todos ?? []).flatMap((t) => (t && typeof t.text === "string" ? [{ text: t.text, owner: typeof t.owner === "string" ? t.owner : "", due: str(t.dueDate) ?? str(t.due) ?? "" }] : [])),
     }));
   const fromBloom: PastMeeting[] = importedMeetings(doc).map((m) => ({
     key: m.id,
@@ -91,6 +94,7 @@ export function pastMeetings(recaps: RecapRow[], doc: Record<string, unknown>): 
     solvedTitles: [],
     cascade: null,
     notes: null,
+    openTodos: [],
   }));
   return [...fromRecaps, ...fromBloom].sort((a, b) => Date.parse(b.heldAt) - Date.parse(a.heldAt));
 }
