@@ -221,6 +221,37 @@ export function cardClaims(content: string): CardClaims {
   };
 }
 
+/* Batch J1 (QA's live re-run, L4 t1): the reply's "**Policy:** <card's line> [S1]" was read as another policy. */
+const SOURCE_MARKER = /\[\s*S\d+\s*\]/gi;
+/** The manual's short names, as managers and replies write them. */
+const POLICY_SHORT_NAMES: readonly [RegExp, string][] = [[/\bsoc\b/gi, "standards of conduct"]];
+
+function policyParts(line: string): { heading: string; page: string | null } {
+  const clean = line.replace(SOURCE_MARKER, " ").replace(/[*_`]/g, "").trim();
+  const page = /\bp(?:age|g)?\.?\s*(\d{1,3})\b/i.exec(clean)?.[1] ?? null;
+  let heading = clean
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/,?\s*JBA Policy Manual\b.*$/i, " ")
+    .replace(/\bp(?:age|g)?\.?\s*\d{1,3}\b.*$/i, " ");
+  for (const [short, full] of POLICY_SHORT_NAMES) heading = heading.replace(short, full);
+  heading = heading.toLowerCase().replace(/\bpolicy\b/g, " ").replace(/\b(?:the|a|an)\b/g, " ").replace(/[^a-z0-9]+/g, "");
+  return { heading, page };
+}
+
+/**
+ * The reply's Policy line names the card's policy: the same line once source markers are set aside (E6), or the same
+ * heading (the manual's short names read in full) and the same page. A heading alone, with the card on a page, is not
+ * the card's line (E6: "Standards of Conduct" is a mismatch).
+ */
+function samePolicy(claim: string, card: string | null, whole: (line: string | null | undefined) => string | null): boolean {
+  if (!card) return false;
+  if (whole(claim.replace(SOURCE_MARKER, " ")) === whole(card)) return true;
+  const said = policyParts(claim);
+  const own = policyParts(card);
+  if (!said.heading || said.heading !== own.heading) return false;
+  return own.page === null || said.page === own.page;
+}
+
 /** The card's facts as the model is shown them, and the fields the reply states that the card does not hold. */
 export function cardMismatch(claims: CardClaims, card: ChatFormProposal | null): string[] {
   const wrong: string[] = [];
@@ -232,7 +263,7 @@ export function cardMismatch(claims: CardClaims, card: ChatFormProposal | null):
   if (claims.warningLevel && card?.warningLevel !== claims.warningLevel) wrong.push(`warning level (${claims.warningLevel})`);
   if (claims.payrollDeduct && card?.payrollDeduct !== claims.payrollDeduct) wrong.push(`payroll deduct (${claims.payrollDeduct})`);
   if (claims.payrollAmount && Number(card?.payrollDeductAmount?.replace(/[^\d.]/g, "") ?? NaN) !== Number(claims.payrollAmount)) wrong.push(`payroll amount ($${claims.payrollAmount})`);
-  if (claims.policy && card && card.policyLine !== undefined && policyLine(claims.policy) !== policyLine(card.policyLine)) wrong.push(`policy (${claims.policy})`);
+  if (claims.policy && card && card.policyLine !== undefined && !samePolicy(claims.policy, card.policyLine, policyLine)) wrong.push(`policy (${claims.policy})`);
   if (claims.policy && !card) wrong.push(`policy (${claims.policy})`);
   if (claims.date) {
     const [month, day] = claims.date.split("/").map(Number);

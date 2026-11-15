@@ -30,6 +30,19 @@ describe("a stated field the card does not hold", () => {
     expect(cardMismatch({ policy: "Attendance" }, attendance)).toEqual(["policy (Attendance)"]);
     expect(cardMismatch({ policy: "Attendance Policy (JBA Policy Manual, p.14)" }, attendance)).toEqual([]);
   });
+  it("J1 (QA's live re-run, L4 t1): the card's own Policy line with a source marker is the card's policy", () => {
+    const conduct = { policyLine: "Standards of Conduct Policy, JBA Policy Manual p.12" } as never;
+    // The live reply's line, verbatim: it was handed back, then replaced by "That change isn't on the card yet: policy (…)".
+    expect(cardMismatch({ policy: "Standards of Conduct Policy, JBA Policy Manual p.12 [S1]" }, conduct)).toEqual([]);
+    expect(cardMismatch({ policy: "**Standards of Conduct Policy, JBA Policy Manual p.12** [S1][S2]" }, conduct)).toEqual([]);
+    // Normalized names and pages (QA): the manual's short name and a bracketed page are the same policy.
+    expect(cardMismatch({ policy: "SoC p.12" }, conduct)).toEqual([]);
+    expect(cardMismatch({ policy: "Standards of Conduct (p.12)" }, conduct)).toEqual([]);
+    // Still a mismatch: another page, another policy, or the heading alone (E6).
+    expect(cardMismatch({ policy: "Standards of Conduct Policy, JBA Policy Manual p.13" }, conduct)).toEqual(["policy (Standards of Conduct Policy, JBA Policy Manual p.13)"]);
+    expect(cardMismatch({ policy: "Attendance Policy, JBA Policy Manual p.12" }, conduct)).toEqual(["policy (Attendance Policy, JBA Policy Manual p.12)"]);
+    expect(cardMismatch({ policy: "Standards of Conduct" }, conduct)).toEqual(["policy (Standards of Conduct)"]);
+  });
   it("with no card this turn, every stated field differs from the card on screen", () => {
     expect(cardMismatch({ warningLevel: "written" }, null)).toEqual(["warning level (written)"]);
   });
