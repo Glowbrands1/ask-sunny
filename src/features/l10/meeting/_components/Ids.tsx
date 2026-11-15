@@ -134,6 +134,8 @@ export function Ids({
   attendees = [],
   addedBy = "",
   headlines = true,
+  bloom = false,
+  people = [],
 }: {
   doc: MeetingDoc;
   edit: (fn: (d: MeetingDoc) => MeetingDoc) => void;
@@ -147,6 +149,13 @@ export function Ids({
   addedBy?: string;
   /** Whether the meeting's agenda has a Headlines section; without one, an issue cannot be converted into a headline. */
   headlines?: boolean;
+  /**
+   * Laid out like Bloom Growth's Issues page (the DM L10s; the owner's request, 15 Nov 2026): an owner picker when
+   * adding, a "!" priority mark and the owner's initials on each row, and an Oldest / Newest sort.
+   */
+  bloom?: boolean;
+  /** The meeting's people, for the owner picker. */
+  people?: string[];
 }) {
   const plain = useMentionPlain();
   const [text, setText] = useState("");
@@ -155,9 +164,14 @@ export function Ids({
   const [activeId, setActiveId] = useState<string | null>(null);
   /** The row whose Delete was pressed and awaits a second, deliberate press. */
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [owner, setOwner] = useState(people.includes(addedBy) ? addedBy : (people[0] ?? ""));
+  const [newestFirst, setNewestFirst] = useState(false);
 
   const setIssues = (fn: (xs: Issue[]) => Issue[]) => edit((d) => ({ ...d, issues: fn(d.issues) }));
-  const filtered = searchIssues(sortIssues(doc.issues), query);
+  const sorted = sortIssues(doc.issues);
+  // Bloom-style: Oldest (the order they were added) or Newest first, with the "!" issues on top.
+  const ordered = bloom ? [...(newestFirst ? [...sorted].reverse() : sorted)].sort((a, b) => Number(!!b.priority) - Number(!!a.priority)) : sorted;
+  const filtered = searchIssues(ordered, query);
   const roomRanks = groupRanks(doc.issues);
   const shortTerm = filtered.filter((i) => !i.resolved && issueTerm(i) === "short");
   const longTerm = filtered.filter((i) => !i.resolved && issueTerm(i) === "long");
@@ -170,7 +184,7 @@ export function Ids({
     if (!t) return;
     // A new issue goes on the list being looked at (short-term when "Recently solved" is open).
     const term: IssueTerm = tab === "long" ? "long" : "short";
-    setIssues((xs) => [...xs, { id: newItemId(), title: t, notes: "", resolved: false, ...(term === "long" ? { term } : {}), ...(addedBy.trim() ? { addedBy: addedBy.trim() } : {}) }]);
+    setIssues((xs) => [...xs, { id: newItemId(), title: t, notes: "", resolved: false, ...(term === "long" ? { term } : {}), ...(addedBy.trim() ? { addedBy: addedBy.trim() } : {}), ...(bloom && owner ? { owner } : {}) }]);
     setText("");
   };
 
@@ -233,6 +247,24 @@ export function Ids({
     return (
       <li key={i.id} className={cx("rounded-[10px] border shadow-card", isActive ? "border-bronze bg-sunny" : "border-line bg-white")}>
         <div className="flex flex-wrap items-center gap-2 p-2.5">
+          {bloom && (
+            <button
+              type="button"
+              aria-pressed={!!i.priority}
+              aria-label={`Priority: ${plain(i.title)}`}
+              title={i.priority ? "Priority. Click to clear." : "Mark as a priority"}
+              onClick={() => patch(i.id, { priority: !i.priority })}
+              className={cx("flex size-8 flex-none items-center justify-center rounded-full border-2 text-sm font-extrabold", i.priority ? "border-[#b42323] bg-[#b42323] text-white" : "border-line bg-white text-muted hover:border-[#b42323] hover:text-[#b42323]")}
+            >
+              !
+            </button>
+          )}
+          {bloom && i.owner && (
+            <span title={i.owner} className="flex size-7 flex-none items-center justify-center rounded-full bg-cream text-[10px] font-bold">
+              <span aria-hidden>{initials(i.owner)}</span>
+              <span className="sr-only">Owner: {i.owner}</span>
+            </span>
+          )}
           {(() => {
             const mine = myRank(i, voter.id);
             const can = canVote(doc.issues, i.id, voter.id);
@@ -281,7 +313,7 @@ export function Ids({
             <span className="font-semibold"><MentionText text={i.title} /></span>
             {(i.files?.length ?? 0) > 0 && <span className="ml-2 text-xs text-muted">📎 {i.files!.length}</span>}
           </button>
-          {i.addedBy && (
+          {i.addedBy && !(bloom && i.owner) && (
             <span title={`Added by ${i.addedBy}`} className="flex size-6 flex-none items-center justify-center rounded-full bg-cream text-[10px] font-bold">
               {initials(i.addedBy)}
             </span>
@@ -328,12 +360,25 @@ export function Ids({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap gap-2">
+        {bloom && (
+          <select aria-label="Issue owner" value={owner} onChange={(e) => setOwner(e.target.value)} className={cx(inputClass, "w-40 max-sm:flex-1")}>
+            {people.map((p) => (
+              <option key={p}>{p}</option>
+            ))}
+          </select>
+        )}
         {/* On a phone the field takes its own line and the button and search wrap below it; from sm up they share a row. */}
         <MentionField aria-label="Identify a new issue" value={text} onChange={setText} onKeyDown={(e) => e.key === "Enter" && add()} placeholder="Identify a new issue…" wrapperClassName="basis-full sm:basis-0 sm:min-w-[220px]" />
         <Button variant="primary" disabled={!text.trim()} onClick={add}>
           Add issue
         </Button>
         <input aria-label="Search issues" type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search issues…" className={cx(inputClass, "w-48 max-sm:w-auto max-sm:flex-1")} />
+        {bloom && (
+          <select aria-label="Sort issues" value={newestFirst ? "newest" : "oldest"} onChange={(e) => setNewestFirst(e.target.value === "newest")} className={cx(inputClass, "w-32")}>
+            <option value="oldest">Oldest</option>
+            <option value="newest">Newest</option>
+          </select>
+        )}
       </div>
       <div role="tablist" aria-label="Issue lists" className="flex flex-wrap gap-1 border-b border-line">
         {(Object.keys(TAB_LABEL) as IdsTab[]).map((k) => (

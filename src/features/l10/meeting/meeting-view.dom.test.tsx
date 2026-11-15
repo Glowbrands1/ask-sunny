@@ -280,7 +280,9 @@ describe("the agenda, hints and roster come from the Hub (the STC DM L10 change,
     fireEvent.click(screen.getByRole("button", { name: /\d · IDS/ })); // "IDS" in the STC DM L10's Bloom agenda since 15 Nov 2026
     fireEvent.change(screen.getByLabelText("Identify a new issue"), { target: { value: "New onboarding process" } });
     fireEvent.click(screen.getByRole("button", { name: "Add issue" }));
-    expect(screen.getByTitle("Added by Avery Quill").textContent).toBe("AQ");
+    // Changed on purpose 15 Nov 2026: on the Bloom-style page the IDS quick-add has an owner picker, which starts on the
+    // person adding, so the row shows the owner's initials (here the same person) instead of "Added by".
+    expect(within(screen.getByRole("list", { name: "Open issues" })).getByTitle("Avery Quill").textContent).toBe("AQOwner: Avery Quill");
     await act(async () => {
       await vi.waitFor(() => expect(save).toHaveBeenCalled());
     });
@@ -628,5 +630,35 @@ describe("Bloom-style page: Rocks and To-dos", () => {
     expect(row.getByTitle("Avery Quill").textContent).toBe("AQAvery Quill");
     expect(row.getByTestId("todo-due").textContent).toBe("11-20-2026");
     expect(within(rows.find((r) => r.textContent?.includes("Call the landlord"))!).getByRole("checkbox").getAttribute("aria-checked")).toBe("true");
+  });
+});
+
+// IDS on the Bloom-style STC DM L10 (the owner's request, 15 Nov 2026), as in the Hub.
+describe("Bloom-style page: IDS", () => {
+  it("rows have a ! circle, the owner's initials, Solve and the term button; ! issues first; Oldest / Newest", async () => {
+    const save = vi.fn().mockResolvedValue({ ok: true, version: 4, updatedAt: "2026-11-15T00:00:00Z" } satisfies SaveOutcome);
+    renderView({
+      save: save as unknown as SaveFn,
+      initial: loaded(3, {
+        issues: [
+          { id: "i1", title: "First issue", notes: "", resolved: false, owner: "Bo Lark" },
+          { id: "i2", title: "Second issue", notes: "", resolved: false },
+          { id: "i3", title: "Third issue", notes: "", resolved: false, priority: true, owner: "Cy Marlow" },
+        ],
+      }),
+    });
+    fireEvent.click(screen.getByRole("button", { name: /\d · IDS/ }));
+    const titles = () => within(screen.getByRole("list", { name: "Open issues" })).getAllByRole("listitem").map((li) => li.querySelector("[aria-expanded] .font-semibold")?.textContent);
+    expect(titles()).toEqual(["Third issue", "First issue", "Second issue"]);
+    const first = within(within(screen.getByRole("list", { name: "Open issues" })).getAllByRole("listitem")[1]);
+    expect(first.getByRole("button", { name: "Priority: First issue" }).getAttribute("aria-pressed")).toBe("false");
+    expect(first.getByTitle("Bo Lark").textContent).toBe("BLOwner: Bo Lark");
+    expect(first.getByRole("button", { name: "Solve First issue" })).toBeTruthy();
+    expect(first.getByRole("button", { name: "Move to long-term: First issue" })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Sort issues"), { target: { value: "newest" } });
+    expect(titles()).toEqual(["Third issue", "Second issue", "First issue"]);
+    fireEvent.click(screen.getByRole("button", { name: "Priority: Second issue" }));
+    await waitFor(() => expect(save).toHaveBeenCalled());
+    expect((save.mock.calls.at(-1)![2] as { issues: { id: string; priority?: boolean }[] }).issues.find((i) => i.id === "i2")?.priority).toBe(true);
   });
 });

@@ -99,6 +99,8 @@ export interface Issue {
   addedBy?: string;
   /** Who owns the issue (the New Issue bar's owner picker on the Bloom-style meetings, 15 Nov 2026). */
   owner?: string;
+  /** Flagged with the "!" priority mark (the Bloom-style meetings, 15 Nov 2026). */
+  priority?: boolean;
   resolvedSession?: string | null;
   /** Which IDS list an open issue sits on. Missing means "short" (every issue written before the split). */
   term?: IssueTerm;
