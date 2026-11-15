@@ -1485,6 +1485,22 @@
   }
 }
 
+/*
+ * A side panel (Rock Review's editor, [data-side-panel]) sits on the right, above the page and below the assistant.
+ * The floating buttons move left of it on wider screens; on a phone the panel is a full-width sheet and they step aside.
+ */
+@media (min-width: 40rem) {
+  :root:has([data-side-panel]) .hub-l10 {
+    --fab-right: calc(max(460px, 50vw) + 1.25rem);
+  }
+}
+@media (max-width: 39.999rem) {
+  :root:has([data-side-panel]) .hub-l10 [data-page-fab],
+  :root:has([data-side-panel]) .hub-l10 [data-testid="assistant-launcher"] {
+    visibility: hidden;
+  }
+}
+
 /* ── Glass utilities (the Hub's) ─────────────────────────────── */
 
 @utility glass {
