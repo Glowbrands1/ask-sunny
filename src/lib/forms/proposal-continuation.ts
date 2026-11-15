@@ -191,6 +191,8 @@ function keepsEarlierCard(later: ChatMessage, earlierEmployee: string | null): b
   if (!sameRequestKeepsEarlierCardClientEnabled() || !earlierEmployee) return false;
   const laterEmployee = later.formProposal?.employeeName ?? null;
   if (!laterEmployee || laterEmployee.trim().toLowerCase() === earlierEmployee.trim().toLowerCase()) return false;
+  // The agent loop's card says so as data (PR 2: the server's card record), not as a line in the reply.
+  if (later.formProposal?.earlierCardKept === true) return true;
   return typeof later.content === "string" && later.content.includes(EARLIER_CARD_STAYS);
 }
 
