@@ -257,3 +257,15 @@ Rules-book lines and facts first. The refusals and the narrow write paths below 
 | Names, one person (QA's addition 2) | `sameRosterPerson`: a preferred and a legal name are one person when each is a full name of exactly one roster person, the same one. Used by find_past_forms (forms filed under either name) and edit_form's right-person guard. Two roster people are never merged. | — |
 
 **Exit forms** (Pau: coaching, exit and CA first): there's a new rules-book section covering resignation vs termination, a future last day said in one line, rehire and reason only as said, and no incident questions. Batch I (the other 14 templates) is deferred.
+
+## Batch G2 (QA's live run part 2 on batch G, 15 Nov 2026)
+
+| Item | Code | Rules book |
+|---|---|---|
+| 1, "undo that, it's a written" | Any stated level is the manager's (one level: Written replaces Termination). edit_form returns `saved_level`, read back from the saved form. | Editing: say only saved_level; never "nothing to undo" without edit_form |
+| 2, a termination with an offense | An exit card the manager did not ask for (no exit / separation / termination paperwork, no resignation) is refused with `exit_not_asked`. | Which form: the CA with Termination, the offense's policy and date, plus "Want the Employee Exit Form for <A> too?" |
+| 3, the hedge line | `termination_mentioned_not_stated` when the manager's words name a termination and the card is not one. | The hedge line exactly, beside the warning-level line |
+| 4, prior actions | Kept only with dates the manager typed, never this incident's date, and with a stated count (`prior_actions_not_kept`). | "Written warning (2), dates not given" |
+| 5, the dictated plan | `dictatedPlanWrite` moves updated_at (F8's flag). | — |
+| 6, a future form date | The refusal carries `asked_date` and `form_date_kept`. | "<asked> is after today, so I left the form's date as <kept>. Which day did you mean?" |
+
