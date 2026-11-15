@@ -156,4 +156,25 @@ export const NOV15_AGENT_LOOP_BATCH_J_CASES: ReplayCase[] = [
       expect(reply.content).toMatch(/I saved the change on the form: warning type\./);
     },
   },
+  {
+    id: "nov15-batch-j-amount-unknown-after-but-todays-path",
+    title: "today's chat: \"yes payroll but I don't know the amount\" is payroll Yes with the amount left blank, never asked for; \"yes payroll but only for the shift\" is not an unknown amount",
+    report: `${REPORT}; QA: fix the shared reader (saysAmountUnknown) so today's chat reads it too`,
+    status: "fixed",
+    fixFlags: ["AMOUNT_UNKNOWN_ACK_ENABLED"],
+    async run(t) {
+      const thread = start(t);
+      await thread.say("verbal ca for remy calder, she was 20 minutes late on 11/9/26");
+      const reply = await thread.say("yes payroll but I don't know the amount");
+      expect(reply.content, "the amount was not acknowledged as unknown").toContain("Noted — I'll leave the **Payroll deduction amount** blank for you to fill on the form once you know it.");
+      expect(reply.content, "the amount was asked for after the manager said it is not known").not.toContain("One more question: **Payroll deduction amount**?");
+      expect((thread.proposal as { payrollDeduct?: string | null } | undefined)?.payrollDeduct).toBe("yes");
+
+      // A clause after "but" that is not about the amount is no unknown amount: the amount question stays.
+      const other = start(t);
+      await other.say("verbal ca for remy calder, she was 20 minutes late on 11/9/26");
+      const asked = await other.say("yes payroll but only for the shift");
+      expect(asked.content).not.toContain("I'll leave the **Payroll deduction amount** blank");
+    },
+  },
 ];

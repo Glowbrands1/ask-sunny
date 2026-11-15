@@ -707,17 +707,6 @@ export function incidentDates(managerWords: string, priorActions: string | null)
   return [...seen.values()];
 }
 
-/*
- * Batch J (QA's live re-run, after H1): "yes payroll but I don't know the amount" answers payroll AND says the amount
- * is unknown. Today's reader (`saysAmountUnknown`) reads a message that starts with it; the loop also reads the clause
- * after "but", a comma or a semicolon.
- */
-function amountUnknownIn(question: string): boolean {
-  if (saysAmountUnknown(question)) return true;
-  const clause = question.split(/\s*(?:\bbut\b|,|;)\s*/i).pop() ?? "";
-  return clause !== question && saysAmountUnknown(clause);
-}
-
 /** The manager accepted the off-roster offer for this name ("use <name>", or yes right after the offer). */
 function offRosterConfirmed(context: Pick<ToolContext, "question" | "history">, typed: string): boolean {
   const offered = context.history.some((message) => message.role === "assistant" && message.content.toLowerCase().includes(`reply **use ${typed.toLowerCase()}**`));
@@ -1325,7 +1314,7 @@ export async function proposeForm(
       ? { stated: { ...(level ? { warning_level: level } : {}), ...(payroll ? { payroll_deduct: payroll } : {}), ...(payroll === "yes" && amount ? { payroll_amount: `$${amount.replace(/^\$/, "")}` } : {}), ...(priorActions ? { prior_actions: priorActions } : {}) } }
       : {}),
     /* AMOUNT_UNKNOWN_ACK (batch H1): "I don't know the amount" leaves it blank for the manager, said once, never asked again. */
-    ...(corrective && payroll === "yes" && !amount ? (amountUnknownIn(context.question) ? { payroll_amount_unknown: true } : { payroll_amount_unset: true }) : {}),
+    ...(corrective && payroll === "yes" && !amount ? (saysAmountUnknown(context.question) ? { payroll_amount_unknown: true } : { payroll_amount_unset: true }) : {}),
     ...(datesGiven.length > 1 ? { dates_given: datesGiven, ...(date ? { date_chosen: date } : {}) } : {}),
     ...(accountLost.length > 0 ? { account_words_missing: accountLost } : {}),
     ...(accountGiven ? { account_given: untrusted(accountGiven) } : {}),
