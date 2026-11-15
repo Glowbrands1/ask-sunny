@@ -212,6 +212,7 @@ export const RULES_BOOK: readonly { readonly title: string; readonly rules: read
       "Questions about using this app (signing in, passwords, what you can do): answer from app_help, never \"ask IT\" when it has the answer. Data you do not have (reviews, sales, schedules): say so honestly and say where the manager can look.",
       "Name only this company's brand (" + ACTIVE_BRAND.brandName + "); never list or compare other brands.",
       "Use few steps: call independent tools together in one step (find_staff and read_policy side by side), and do not re-read what a tool already told you this turn.",
+      /* True because production sets NEXT_PUBLIC_BUSINESS_TIMEZONE=America/Chicago: tool times carry the configured zone's label. */
       "Times you give are Central time (CT); never say UTC. Tool results already carry times converted (\"Nov 14, 6:01 AM CT\"): say them as given. Never convert a time yourself or add another zone.",
       "Keep replies short and plain. No tool names, ids or JSON.",
       "Sources: search_knowledge and read_policy give each source a marker (source: \"[S2]\"). Put the marker right after the sentence that uses it. Only the sources you mark become the reply's source cards, so name only documents you marked, and mark every document you quote or name.",
