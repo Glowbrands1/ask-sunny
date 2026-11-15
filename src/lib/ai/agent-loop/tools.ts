@@ -1782,6 +1782,24 @@ async function outsideScopeSalon(context: ToolContext): Promise<{ salon_outside_
 /** A saved form's id: the instance uuid (a format parser, PR 4). */
 const SAVED_FORM_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const NOT_A_SAVED_FORM = "That's the card on screen; it isn't created yet. Change it with propose_form.";
+const NOT_A_FORM_ID = "That isn't a saved form's id; use the instance_id from the open form or find_past_forms.";
+/** The saved form Create made from this card (its `created` event records the proposal id), or null: the card is not created. */
+async function instanceCreatedFromProposal(proposalId: string): Promise<string | null> {
+  try {
+    const { getSupabaseAdmin } = await import("@/lib/supabase/server");
+    const { data, error } = await getSupabaseAdmin()
+      .from("form_instance_events")
+      .select("instance_id, detail")
+      .eq("kind", "created")
+      .order("created_at", { ascending: false })
+      .limit(500);
+    if (error || !Array.isArray(data)) return null;
+    const found = (data as { instance_id: unknown; detail: unknown }[]).find((row) => (row.detail as { proposalId?: unknown } | null)?.proposalId === proposalId);
+    return found ? String(found.instance_id) : null;
+  } catch {
+    return null;
+  }
+}
 /** The id is the proposal id of a card shown this turn or earlier in this chat: that card is not created yet. */
 function isShownCardId(context: ToolContext, effects: ToolEffects, id: string): boolean {
   if (effects.proposal?.proposalId === id) return true;
@@ -1854,14 +1872,18 @@ export async function editForm(
   effects: ToolEffects,
   input: { instance_id?: unknown; values?: unknown },
 ): Promise<ToolResult> {
-  const id = typeof input.instance_id === "string" ? input.instance_id.trim() : "";
+  let id = typeof input.instance_id === "string" ? input.instance_id.trim() : "";
   if (id === "") return { reason_code: "missing_input", error: "Give the form's instance_id." };
   /*
-   * PR 4 (not_a_saved_form): the card on screen has no saved form behind it until Create. Its proposal id is never a form to
-   * edit, and neither is an id that is not a saved form's (a uuid) when the form cannot be loaded: say so, instead of "could
-   * not be changed just now". A uuid format check and an id compare, not a reading of the manager's words.
+   * PR 4 (QA's review of #1022): the card on screen. Its proposal id is a form to edit only once Create has recorded it:
+   * then the edit goes to that saved form. A card that has NOT been created is told to change with propose_form (and only
+   * that card is: any other id that is not a saved form's is not_a_form_id, below, never pointed at propose_form).
    */
-  if (isShownCardId(context, effects, id)) return { reason_code: "not_a_saved_form", error: NOT_A_SAVED_FORM };
+  if (isShownCardId(context, effects, id)) {
+    const created = await instanceCreatedFromProposal(id);
+    if (!created) return { reason_code: "not_a_saved_form", error: NOT_A_SAVED_FORM };
+    id = created;
+  }
   const values: Record<string, string> = {};
   if (input.values && typeof input.values === "object") {
     for (const [field, value] of Object.entries(input.values as Record<string, unknown>)) {
@@ -2247,7 +2269,12 @@ export async function editForm(
         : {}),
     };
   } catch (error) {
-    if (!SAVED_FORM_ID.test(id)) return { reason_code: "not_a_saved_form", error: NOT_A_SAVED_FORM };
+    if (!SAVED_FORM_ID.test(id)) return { reason_code: "not_a_form_id", error: NOT_A_FORM_ID };
+    /* A created card's proposal id (the card was on screen in an earlier turn): the edit goes to the form Create made from it. */
+    if (error instanceof InstanceNotVisibleError) {
+      const created = await instanceCreatedFromProposal(id);
+      if (created && created !== id) return editForm(context, effects, { ...input, instance_id: created });
+    }
     if (error instanceof InstanceNotVisibleError) return { reason_code: "form_not_visible", error: "That form does not exist or this manager cannot edit it." };
     return { reason_code: "write_failed", error: "That form could not be changed just now. Nothing was saved." };
   }

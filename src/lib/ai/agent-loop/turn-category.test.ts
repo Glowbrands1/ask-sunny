@@ -21,6 +21,10 @@ describe("loopTurnCategory", () => {
     expect(loopTurnCategory(["read_policy"], {})).toBe("policy_question");
     expect(loopTurnCategory(["search_knowledge"], { citations: [{ category: "training" }] })).toBe("training");
   });
+  it("the report tools are daily_stats (QA's review of #1022)", () => {
+    expect(loopTurnCategory(["read_stats"], {})).toBe("daily_stats");
+    expect(loopTurnCategory(["find_staff", "read_reviews"], {})).toBe("daily_stats");
+  });
   it("no tool, or a lookup tool, is chat (general guidance)", () => {
     expect(loopTurnCategory([], {})).toBe("general_guidance");
     expect(loopTurnCategory(["find_staff", "app_help"], {})).toBe("general_guidance");

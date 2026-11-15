@@ -14,6 +14,7 @@ import { classifyChatTurn, type ActivityCategory } from "@/lib/analytics/taxonom
  *   open_form   open_form                  → form_request
  *   past_forms  find_past_forms / read_form→ form_request
  *   policy      read_policy / search_knowledge → the cited knowledge category, else policy_question
+ *   stats       read_stats / read_reviews → daily_stats (the report's own category, as an attached report is)
  *   chat        anything else (or no tool) → general_guidance
  *
  * The first that applies, in that order. The values are the analytics taxonomy's existing categories (the column is that
@@ -34,5 +35,6 @@ export function loopTurnCategory(
     const cited = classifyChatTurn({ proposedTemplateKey: null, offeredFormChoices: false, hadReportContext: false, citedCategories: (answer.citations ?? []).map((citation) => citation.category), question: null });
     return cited === "unclassified" ? "policy_question" : cited;
   }
+  if (any("read_stats", "read_reviews")) return "daily_stats";
   return "general_guidance";
 }

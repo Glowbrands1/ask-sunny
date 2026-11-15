@@ -10,7 +10,7 @@ import { lastResult, loopStandIn, type LoopDecision } from "./loop-stand-in";
  *
  * A refusal says WHY with a fixed code (`reason_code`), and the trace's error_kind is that code: it was read from the
  * error's wording (`ERROR_KINDS`, run.ts), which logged the privacy and right-person refusals as plain "refused".
- * These are the codes that need no evidence: not_a_saved_form, finalized_revision_refused, not_on_roster,
+ * These are the codes that need no evidence: not_a_saved_form (unit test, `not-a-saved-form.test.ts`), not_a_form_id, finalized_revision_refused, not_on_roster,
  * ambiguous_person, date_after_today. Every person is invented; no message-reading list is added.
  */
 
@@ -39,27 +39,37 @@ function start(t: ReplayContext, extra: readonly DirectoryRow[] = []) {
 
 export const NOV15_AGENT_LOOP_PR4_CASES: ReplayCase[] = [
   {
-    id: "nov15-agent-loop-pr4-not-a-saved-form",
-    title: "PR 4: edit_form on the card on screen (no saved form behind it) says it is the card on screen and changes with propose_form; error_kind not_a_saved_form",
-    report: `${REPORT}: a non-uuid or unsaved card id gave "could not be changed just now"`,
+    id: "nov15-agent-loop-pr4-not-a-form-id",
+    title: "PR 4 (QA's review of #1022): edit_form with an id that is no saved form's (\"juno-ca\") with a draft open is not_a_form_id and never points the model at propose_form",
+    report: `${REPORT}: a made-up id was told "the card on screen; use propose_form"`,
     status: "fixed",
     fixFlags: [FLAG],
     async run(t) {
       if (!t.loopOn?.() || !offline) return;
       start(t);
+      let draftId = "";
       const standIn = loopStandIn((view): LoopDecision => {
+        const said = view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "";
+        if (/change the date/i.test(said)) {
+          return lastResult(view, "edit_form") ? { text: "That id isn't a saved form." } : { tool: "edit_form", input: { instance_id: "juno-ca", values: { form_date: "2026-11-12" } } };
+        }
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
         if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: "Remy Calder was late on 11/12.", incident_date: "2026-11-12" } };
-        if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { instance_id: "card-on-screen", values: { form_date: "2026-11-12" } } };
         return { text: "Here is the card." };
       });
       t.loopModel!(standIn);
-      await t.thread().say("ca for remy calder, late on 11/12");
+      const thread = t.thread();
+      await thread.say("ca for remy calder, late on 11/12");
+      draftId = await thread.create();
+      expect(draftId).toBeTruthy();
+      const formsBefore = t.forms().length;
+      await thread.say("change the date to 11/12");
       const edit = results(standIn.views, "edit_form")[0]!;
-      expect(edit.reason_code).toBe("not_a_saved_form");
-      expect(String(edit.error)).toMatch(/card on screen; it isn't created yet\. Change it with propose_form/);
-      expect(String(edit.error), "the old wording").not.toMatch(/could not be changed just now/);
-      expect(stepsOf(t).find((step) => step.tool === "edit_form")?.error_kind).toBe("not_a_saved_form");
+      expect(edit.reason_code, JSON.stringify(edit)).toBe("not_a_form_id");
+      expect(String(edit.error)).toMatch(/isn't a saved form's id; use the instance_id from the open form or find_past_forms/);
+      expect(String(edit.error), "pointed the model at propose_form").not.toMatch(/propose_form/);
+      expect(t.forms().length, "a form was added").toBe(formsBefore);
+      expect(stepsOf(t).find((step) => step.tool === "edit_form")?.error_kind).toBe("not_a_form_id");
     },
   },
   {

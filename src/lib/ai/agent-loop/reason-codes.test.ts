@@ -16,7 +16,7 @@ const KNOWN = new Set([
   "missing_input", "roster_failed", "not_on_roster", "ambiguous_person", "scope", "privacy_not_asked", "read_failed",
   "form_not_visible", "not_a_heading", "one_card", "wrong_tool", "whole_staff", "right_person", "draft_open", "date_not_stated",
   "salon_unknown", "not_stated", "name_correction_only", "date_after_today", "drafts_only", "unknown_field", "empty_account",
-  "bad_level", "not_a_saved_form", "write_failed", "finalized_revision_refused", "not_configured", "not_synced",
+  "bad_level", "not_a_saved_form", "not_a_form_id", "write_failed", "finalized_revision_refused", "not_configured", "not_synced",
   "unknown_tool", "tool_threw",
 ]);
 
