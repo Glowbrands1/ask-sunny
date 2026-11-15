@@ -20,6 +20,9 @@ const KNOWN = new Set([
   "unknown_tool", "tool_threw",
   // Batch J5 (#1028): "late to open" proposed as Attendance; the words are the manual's Late Opening section.
   "wrong_heading",
+  // Added on purpose (PR 3, tools return exactly what was saved): propose_form's not_on_card codes, a field left off the card.
+  "level_not_stated", "termination_not_stated", "payroll_not_stated", "amount_not_stated", "prior_actions_not_kept",
+  "several_dates_not_chosen", "date_from_another_request", "not_on_this_form",
 ]);
 
 /** A line that returns a refusal: `error:` followed by a string, a template or a named message (not `error: Boolean(...)`). */
