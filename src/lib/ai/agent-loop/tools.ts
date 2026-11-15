@@ -107,8 +107,6 @@ export interface ToolContext {
  * the manager's own words ask about them: what is on file, history, an earlier form, "same as last time", "open my
  * last coaching". The manager's latest message, or the one before it when the latest is a short answer.
  */
-/* A form or discipline word: what a request for forms on file names (QA's review, 14 Nov 2026). */
-const FORM = String.raw`(?:c\.?a\.?s?|corrective(?:\s+actions?)?|write[- ]?ups?|written[- ]up|warnings?|coachings?|forms?|terminations?|disciplin\w*|verbals?|writtens?)`;
 
 /**
  * PAST FORMS ONLY WHEN ASKED (Pau's privacy rule, 14 Nov 2026; a hard guard), by evidence (the rebuild plan, PR 1;
@@ -204,8 +202,6 @@ export const WHICH_FORM_QUESTION = "Which one should I open?";
 /** G4 follow-up: the fact beside which_form_question; the rules book's Open lines say the same. */
 export const SINGLE_OUT_NOTE = "Compare these forms with the manager's words in this request. If their words fit exactly one (its salon, \"no salon\", its status, its date or its form), open_form that one now and say which in one line; ask which_form_question only when several still fit.";
 
-/** Batch G (G4): "open / edit / pull up / show me <a form on file>" never makes a new card. */
-export const OPEN_REQUEST = new RegExp(String.raw`\b(?:open|reopen|edit|pull up|bring up|show me|view)\b[^.?!\n]{0,40}?\b${FORM}\b`, "i");
 
 const NOT_ASKED = "Forms on file are looked at only when the manager asks about them (company privacy rule), shown by forms_on_file_evidence: the id of the manager's message that asks and their exact words from it. If they asked, call again with it; if not, work from what they said and never mention other forms.";
 
@@ -215,6 +211,8 @@ export interface ToolEffects {
   formUpdate: { instanceId: string; updated: string[] } | null;
   /** Roster ids find_staff chose from a close spelling or a lone first name this turn (the card's name_from_staff_list fact). */
   nameLines?: Record<string, string>;
+  /** Batch G (G4), by the rebuild plan's PR 1b: find_past_forms was asked this turn to find a form to open (open: true). */
+  openRequested?: boolean;
   /**
    * Every source a tool read this turn, numbered from 1 in the order read: the model cites one as [S<n>] (`addSource`).
    * Only the ones the reply cites become source cards (run.ts, QA's live-app item 12), as today's grounded path does.
@@ -675,11 +673,21 @@ export async function listStaffTool(context: ToolContext, effects: ToolEffects, 
 
 /* ---------------------------------------------------------- past forms --- */
 
-export async function findPastForms(context: ToolContext, input: { employee_name?: unknown; form?: unknown; date?: unknown; about?: unknown; forms_on_file_evidence?: unknown }): Promise<ToolResult> {
+export async function findPastForms(context: ToolContext, input: { employee_name?: unknown; form?: unknown; date?: unknown; about?: unknown; forms_on_file_evidence?: unknown; open?: unknown }, effects?: ToolEffects): Promise<ToolResult> {
   const typed = typeof input.employee_name === "string" ? input.employee_name.trim() : "";
   if (typed === "") return { error: "Give the employee's name." };
   const asked = formsOnFileAsked(context, input.forms_on_file_evidence);
   if (!asked.ok) return privacyRefusal(asked.reason);
+  /* An open request this turn: propose_form then makes no new card (G4), by the model's own open: true, not a word list. */
+  let withdrawn: string | null = null;
+  if (input.open === true && effects) {
+    effects.openRequested = true;
+    // A card the model proposed earlier this turn is withdrawn: the manager asked to open a form on file, never a new one.
+    if (effects.proposal) {
+      withdrawn = effects.proposal.templateName ?? "card";
+      effects.proposal = null;
+    }
+  }
   const actor = await chatFormsActor(context.actor).catch(() => undefined);
   if (actor === undefined) return { error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
   if (actor === null) return { error: "This manager's role cannot view Form Monitoring, so past forms cannot be listed." };
@@ -757,9 +765,11 @@ export async function findPastForms(context: ToolContext, input: { employee_name
         salon: salonLabel(row.locationId, row.locationName) ?? "no salon",
       }));
     /* "Draw me up a coaching document … she already has one" (the live re-run's sun-late-date): none on file is no reason to stop. */
-    if (forms.length === 0) return { forms, note: "None on file. If the manager asked you to create or draw up a form, propose it now with their account and date, and say no earlier form was found on file." };
+    const withdrawnNote = withdrawn ? { card_withdrawn: `The ${withdrawn} card proposed earlier this turn was withdrawn: the manager asked to open a form on file, not to make one.` } : {};
+    if (forms.length === 0) return { forms, ...withdrawnNote, note: "None on file. If the manager asked you to create or draw up a form, propose it now with their account and date, and say no earlier form was found on file." };
     return {
       forms,
+      ...withdrawnNote,
       ...(closeSpelling ? { close_spelling_of: { typed: untrusted(typed), on_file: closeSpelling } } : {}),
       ...(forms.length === 1 && (described || closeSpelling) ? { best_match: forms[0]!.instance_id, note: "One form fits what the manager described. If they asked to open, edit or see it, open it now with open_form." } : {}),
       /*
@@ -767,7 +777,8 @@ export async function findPastForms(context: ToolContext, input: { employee_name
        * model is told to compare them with the manager's description ("the one with no salon", "the draft") and to open
        * the one it singles out, asking WHICH_FORM_QUESTION only when the words still fit more than one.
        */
-      ...(forms.length > 1 && OPEN_REQUEST.test(context.question) ? { which_form_question: WHICH_FORM_QUESTION, single_out: SINGLE_OUT_NOTE } : {}),
+      /* The rebuild plan, PR 1b: OPEN_REQUEST (a word list) is gone; the model says it is opening one (open: true). */
+      ...(forms.length > 1 && input.open === true ? { which_form_question: WHICH_FORM_QUESTION, single_out: SINGLE_OUT_NOTE } : {}),
     };
   } catch {
     return { error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
@@ -1181,7 +1192,7 @@ export async function proposeForm(
       : null;
   if (effects.proposal && effects.proposal.templateKey !== (typeof input.template_key === "string" ? input.template_key.trim() : "")) return anotherCard(null)!;
   /* Batch G (G4): an open request is for a form on file (find_past_forms, open_form), never a new card (code may refuse). */
-  if (OPEN_REQUEST.test(context.question) && !/\b(?:create|make|new|draw up|write up|start)\b/i.test(context.question)) {
+  if (effects.openRequested) {
     return { error: "The manager asked to open a form on file, not to make one. Find it with find_past_forms and open it with open_form." };
   }
   /*

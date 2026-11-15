@@ -326,6 +326,7 @@ export const AGENT_LOOP_TOOLS = [
       date: { type: "string", description: "The form's date as the manager gave it (\"10/31\"), if any." },
       about: { type: "string", description: "Words the manager used about the form (\"getting rooms ready between guests\"), if any." },
       forms_on_file_evidence: FORMS_ON_FILE_EVIDENCE,
+      open: { type: "boolean", description: "true when the manager asks to open, edit or see one form on file (not a list of what is on file)." },
     }, ["employee_name"]),
   },
   {
@@ -522,7 +523,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   const modelSteps: { step: number; ms: number; stop: string | null; input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number }[] = [];
   const handlers: Record<string, (args: Record<string, unknown>) => Promise<ToolResult>> = {
     find_staff: (args) => findStaff(context, args, effects),
-    find_past_forms: (args) => findPastForms(context, args),
+    find_past_forms: (args) => findPastForms(context, args, effects),
     read_form: (args) => readForm(context, args),
     read_policy: (args) => readPolicy(context, args, effects),
     propose_form: (args) => proposeForm(context, effects, args),
