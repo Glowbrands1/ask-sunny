@@ -1788,6 +1788,35 @@ async function outsideScopeSalon(context: ToolContext): Promise<{ salon_outside_
  * - WITH NO DRAFT OPEN, "a coaching form for all team members" (or a salon-wide expectation) is the team Coaching card,
  *   "All team members" at one salon (`whole-team-coaching.ts` + `buildProposal`, WHOLE_TEAM_COACHING), never a refusal.
  */
+/*
+ * Batch K9 (QA's 266-chat shadow replay): "coaching for my entire team", typed "coahcing", was refused as "not a
+ * whole-team coaching request". The team reader is handed the request with a near-miss of "coaching" (one or two letters
+ * off, swapped or missing) read as "coaching", and "my entire / whole team", "the entire team", "everyone (on my team)"
+ * read as "the whole team". Only coach_team's reading; the salon scope check is unchanged.
+ */
+function nearCoaching(word: string): boolean {
+  const target = "coaching";
+  const typed = word.toLowerCase();
+  if (typed === target || !/^(?:co|cao)/.test(typed) || Math.abs(typed.length - target.length) > 2) return false;
+  // Edit distance with adjacent swaps (Damerau), at most 2.
+  const d = Array.from({ length: typed.length + 1 }, (_, i) => Array.from({ length: target.length + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0)));
+  for (let i = 1; i <= typed.length; i += 1) {
+    for (let j = 1; j <= target.length; j += 1) {
+      const cost = typed[i - 1] === target[j - 1] ? 0 : 1;
+      d[i]![j] = Math.min(d[i - 1]![j]! + 1, d[i]![j - 1]! + 1, d[i - 1]![j - 1]! + cost);
+      if (i > 1 && j > 1 && typed[i - 1] === target[j - 2] && typed[i - 2] === target[j - 1]) d[i]![j] = Math.min(d[i]![j]!, d[i - 2]![j - 2]! + 1);
+    }
+  }
+  return d[typed.length]![target.length]! <= 2;
+}
+
+export function teamWords(question: string): string {
+  return question
+    .replace(/\b[a-z]{6,10}\b/gi, (word) => (nearCoaching(word) ? "coaching" : word))
+    .replace(/\b(?:my|our|the)\s+(?:entire|whole)\s+(?:team|staff|salon)\b/gi, "the whole team")
+    .replace(/\beveryone(?:\s+on\s+(?:my|our|the)\s+(?:team|staff))?\b/gi, "the whole team");
+}
+
 export async function coachTeam(context: ToolContext, effects: ToolEffects): Promise<ToolResult> {
   if (context.openFormId) {
     const { coachingForEveryoneTurn } = await import("@/lib/forms/coaching-for-everyone");
@@ -1801,7 +1830,7 @@ export async function coachTeam(context: ToolContext, effects: ToolEffects): Pro
    */
   const lastAsk = [...context.history].reverse().find((turn) => turn.role === "user");
   const continuing = lastAsk && /\bcoach(?:ing)?\b/i.test(String(lastAsk.content ?? "")) ? "coaching" : null;
-  const team = wholeTeamRequest({ question: context.question, history: context.history as ChatMessage[], draftOpen: Boolean(context.openFormId), continuingTemplateKey: continuing });
+  const team = wholeTeamRequest({ question: teamWords(context.question), history: context.history as ChatMessage[], draftOpen: Boolean(context.openFormId), continuingTemplateKey: continuing });
   if (!team) {
     return { error: "This is not a whole-team coaching request. A form for one person goes through find_staff and propose_form; with a Coaching draft open, \"this coaching for everyone on my team\" is the request for one draft each." };
   }
