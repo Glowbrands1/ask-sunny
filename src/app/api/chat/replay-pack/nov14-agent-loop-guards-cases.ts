@@ -381,7 +381,9 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       const id = await thread.create();
       const before = JSON.stringify(t.values(id));
       const editor = loopStandIn((view) => {
-        if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { instance_id: id, values: { observation: "Tamsin Orwell-Smith was late to open on 11/10." } } };
+        // Changed on purpose (rebuild plan PR 1a): NAME_CORRECTION's word list is gone; the model says it is a name
+        // correction (intent correct_name, quoting the manager) and code refuses the other fields it tried to write.
+        if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { instance_id: id, intent: "correct_name", name_evidence: evidenceFrom(view, "it is Orwell-Smith"), values: { observation: "Tamsin Orwell-Smith was late to open on 11/10." } } };
         return { text: JSON.stringify(lastResult(view, "edit_form")) };
       });
       t.loopModel!(editor);
@@ -440,7 +442,9 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
         const template = /exit/.test(all) ? "stc-exit" : /coaching/.test(all) ? "coaching" : "dpoa";
         if (/^(?:ca|coaching|exit)/.test(said)) {
           if (template === "coaching" && !/tamsin/.test(said)) return { text: "Who is the coaching for?" };
-          if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: template, employee_id: TAMSIN.id } };
+          // Changed on purpose (rebuild plan PR 1a): an exit card needs exit_evidence, the manager's words asking for it.
+          const exitAsked = template === "stc-exit" ? { exit_evidence: evidenceFrom(view, "exit form for tamsin orwell") } : {};
+          if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: template, employee_id: TAMSIN.id, ...exitAsked } };
           return { text: template === "stc-exit" ? "Exit form for Tamsin Orwell. What was her last day?" : "Corrective Action for Tamsin Orwell. What happened?" };
         }
         if (template === "coaching" && !lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: said.trim() } };
@@ -452,7 +456,7 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
               employee_id: TAMSIN.id,
               ...(template === "dpoa" ? { what_happened: "She was late on Tuesday." } : {}),
               ...(template === "coaching" ? { what_happened: "She skipped the spray booth check." } : {}),
-              ...(template === "stc-exit" ? { what_happened: "She resigned; her last day was Friday.", incident_date: "2026-11-13" } : {}),
+              ...(template === "stc-exit" ? { what_happened: "She resigned; her last day was Friday.", incident_date: "2026-11-13", exit_evidence: evidenceFrom(view, "exit form for tamsin orwell", 1) } : {}),
             },
           };
         }
