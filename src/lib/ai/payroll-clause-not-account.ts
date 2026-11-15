@@ -63,12 +63,13 @@ const SENTENCE_BREAK = /((?<=[.!?])\s+|\n+)/;
 
 export function withoutPayrollClauses(text: string): string {
   if (!payrollClauseNotAccountEnabled()) return text;
-  const pieces = text.split(SENTENCE_BREAK);
+  // QA's #1028 delta review: a blank line or CRLF stays a line break, never one space ("late on 11/9\n\nshe was rude" is two sentences).
+  const pieces = text.replace(/\r\n?/g, "\n").split(SENTENCE_BREAK);
   let kept = "";
   for (let at = 0; at < pieces.length; at += 2) {
     const sentence = pieces[at] ?? "";
     if (onlyThePayrollAnswer(sentence)) continue;
     kept += (kept === "" ? "" : (pieces[at - 1] ?? "")) + sentence;
   }
-  return kept.replace(STATE_LINE, "").replace(BARE_ANSWER, "").replace(/\s{2,}/g, " ").trim();
+  return kept.replace(STATE_LINE, "").replace(BARE_ANSWER, "").replace(/[^\S\n]{2,}/g, " ").trim();
 }

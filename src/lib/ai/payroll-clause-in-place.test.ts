@@ -28,6 +28,17 @@ describe("withoutPayrollClauses keeps the manager's separators", () => {
   });
 });
 
+/* QA's #1028 delta review: a blank line or CRLF was collapsed into one space, merging two sentences. */
+describe("a blank line and CRLF stay line breaks", () => {
+  it.each([
+    ["she was late on 11/9\n\nshe was rude to a guest", "she was late on 11/9\n\nshe was rude to a guest", ["she was late on 11/9", "she was rude to a guest"]],
+    ["she was late on 11/9\r\nshe was rude to a guest", "she was late on 11/9\nshe was rude to a guest", ["she was late on 11/9", "she was rude to a guest"]],
+  ])("%j", (said, cleaned, account) => {
+    expect(withoutPayrollClauses(said)).toBe(cleaned);
+    expect(accountSentences([said], "Juno Paxton")).toEqual(account);
+  });
+});
+
 describe("accountSentences (remap-incident.ts) reads the lines as main does", () => {
   it.each([
     ["she was late on 11/9\ncan you make it a written", ["she was late on 11/9"]],
