@@ -298,6 +298,9 @@ def main():
             "rating": record.get("rating"),
             "loop": loop.get(record["id"]),
             "flow": flow(record),
+            # The form's person is not on the replay's roster (carded then, gone since; Runner, 15 Nov 2026): counted apart,
+            # never scored as a loop error.
+            "off_roster": bool(truth) and norm(truth.get("employee")) not in {norm(name) for name in record.get("roster") or []},
         })
 
     if "--json" in sys.argv:
@@ -305,9 +308,13 @@ def main():
             print(json.dumps(row))
         return
 
-    with_truth = [row for row in rows if row["fields"] is not None]
+    off_roster = [row for row in rows if row["off_roster"]]
+    with_truth = [row for row in rows if row["fields"] is not None and not row["off_roster"]]
     without = [row for row in rows if row["fields"] is None]
     print(f"conversations {len(rows)}; with a truth {len(with_truth)}; without {len(without)}; turn errors {sum(bool(row['error']) for row in rows)}")
+    if off_roster:
+        convs = [row["conv"] for row in off_roster]
+        print(f"truth person no longer on the roster (not scored): {len(convs)} ({', '.join(convs[:10])}{' …' if len(convs) > 10 else ''}); card proposed {sum(row['card'] for row in off_roster)}")
     if with_truth:
         print("match over the conversations with a truth:")
         for field in FIELDS:

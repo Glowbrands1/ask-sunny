@@ -29,6 +29,7 @@ for conv in ("selftest-ca", "selftest-coaching"):
     assert row["overlap"] is not None and row["overlap"] >= 0.7, row
     assert row["guards"] == [], row
     assert row["loop"] and row["loop"]["model_calls"] > 0, row
+assert not any(row["off_roster"] for row in rows.values()), rows
 assert rows["selftest-off-roster"]["fields"] is None and not rows["selftest-off-roster"]["card"], rows["selftest-off-roster"]
 # Turns to a ready card, questions, continuity breaks: loop vs the input's "today" (QA).
 ca = rows["selftest-ca"]["flow"]

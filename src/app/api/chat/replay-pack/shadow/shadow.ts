@@ -144,22 +144,31 @@ export function shadowCaseId(conv: string): string {
  */
 export function scriptedStandIn(roster: readonly ShadowRosterRow[]): (view: LoopView) => LoopDecision {
   return (view) => {
-    const said = view.turns.filter((turn) => turn.role === "user").map((turn) => turn.text).join("\n");
+    const userTurns = view.turns.filter((turn) => turn.role === "user");
+    const said = userTurns.map((turn) => turn.text).join("\n");
     const person = roster.find((row) => said.toLowerCase().includes(`${row.firstName} ${row.lastName}`.toLowerCase()));
     if (!person) return { text: "Who is this form for?" };
     const name = `${person.firstName} ${person.lastName}`;
+    /* The card is proposed once, on the turn that names the person; later turns are answered in words (Runner, 15 Nov 2026). */
+    const named = userTurns.findIndex((turn) => turn.text.toLowerCase().includes(name.toLowerCase()));
+    if (named !== userTurns.length - 1) return { text: `Here is the form for ${name} to review.` };
+    const request = userTurns[named]!;
     if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name } };
     if (!lastResult(view, "propose_form")) {
       const date = /(\d{1,2})\/(\d{1,2})\/(\d{2,4})/.exec(said);
-      const level = /\bwritten\b/i.test(said) ? "written" : /\bverbal\b/i.test(said) ? "verbal" : undefined;
+      const levelWord = /\bwritten\b/i.exec(request.text) ?? /\bverbal\b/i.exec(request.text);
+      const level = levelWord?.[0].toLowerCase();
+      /* PR 1c (#1031): a level is kept only on evidence, the manager's message id and their own words from it. */
+      const levelEvidence = levelWord && request.messageIds?.length ? { message_id: request.messageIds.at(-1), quote: request.text } : undefined;
       return {
         tool: "propose_form",
         input: {
           template_key: /\bcoach/i.test(said) && !/\b(?:ca|corrective|warning|write[- ]?up)\b/i.test(said) ? "coaching" : "dpoa",
           employee_id: firstMatch(view)?.employee_id,
-          what_happened: said.split("\n").at(-1),
+          what_happened: request.text,
           ...(date ? { incident_date: `${date[3]!.length === 2 ? `20${date[3]}` : date[3]}-${date[1]!.padStart(2, "0")}-${date[2]!.padStart(2, "0")}` } : {}),
           ...(level ? { warning_level: level } : {}),
+          ...(levelEvidence ? { level_evidence: levelEvidence } : {}),
         },
       };
     }
