@@ -1,5 +1,6 @@
 import "server-only";
 
+import { PRODUCTION_SALONS } from "@/data/salons";
 import { saysAmountUnknown } from "@/lib/ai/amount-unknown-ack";
 
 import { randomUUID } from "node:crypto";
@@ -1127,6 +1128,23 @@ export async function proposeForm(
    * parity gaps #33, #34, #39): from the roster row's Woven title, never read off the whole chat, where it can be the
    * manager's ("my DM told me"), a coworker's or a letter signer's. A name not on the roster gets none; the manager fills it.
    */
+  /*
+   * GLOBAL_SALON_ASK (batch H5; Pau's wording, 24 Oct 2026): a global login that is not an admin never files a form with
+   * no salon unasked. A salon named in this person's turns (a short name, a one-letter typo) is the card's; otherwise
+   * the card stays ready and the which_salon fact asks once, never again after it was asked.
+   */
+  let whichSalon = false;
+  const globalAsk = await import("@/lib/forms/global-salon-ask");
+  if ((await import("@/lib/config/chat-quality-flags")).globalSalonAskEnabled() && globalAsk.globalNonAdminNeedsSalon(context.actor.role, context.actor.scope) && !card.locationId && card.employeeName) {
+    const named = globalAsk.salonIdNamedIn(requestWords);
+    if (named) {
+      Object.assign(card, { locationId: named, locationName: rosterSalonName(named) ?? card.locationName, locationResolution: "resolved", authorizedLocationIds: [named], status: card.status === "needs_location" ? "ready" : card.status });
+    } else if (card.locationResolution === "not_applicable" || card.locationResolution === "needs_selection") {
+      Object.assign(card, { locationId: null, locationResolution: "needs_selection", authorizedLocationIds: PRODUCTION_SALONS.map((salon) => salon.id), status: "ready", supportsInlineDraft: true });
+      const askedBefore = context.history.some((turn) => turn.role === "assistant" && /which salon is this about/i.test(String(turn.content ?? "")));
+      whichSalon = !askedBefore;
+    }
+  }
   card.employeeRole = employee.id ? await rosterTitle(context.actor.scope, employee.id) : null;
   /*
    * A TITLE THE MANAGER TYPED (batch H4/H6: JOB_TITLE_FROM_WORDS, JOB_TITLE_APPOSITION, TITLE_SPELLED_OUT, JOB_TITLE_CASE):
@@ -1186,6 +1204,7 @@ export async function proposeForm(
     })(),
     ...(template.key === "stc-exit" ? { exit_dates: await exitDateLines(requestWords, today) } : {}),
     ...(jobTitleTyped ? { job_title_from_your_words: card.employeeRole } : {}),
+    ...(whichSalon ? { which_salon: true } : {}),
     ...(underPerformance ? { under_performance: true } : {}),
     ...(didYouMean ? { confirm_policy: didYouMean } : {}),
     ...(dropped.length > 0 ? { not_kept: dropped } : {}),

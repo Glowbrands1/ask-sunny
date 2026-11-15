@@ -32,6 +32,10 @@ const proposed = (views: readonly LoopView[]) =>
 const JUNO: DirectoryRow = { id: "e-juno-halloway", firstName: "Juno", lastName: "Halloway", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: null as never };
 const PERRIN: DirectoryRow = { id: "e-perrin-ashgrove", firstName: "Perrin", lastName: "Ashgrove", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "ASD" };
 
+/** Invented: on the directory with no salon, so the card has none of its own. */
+const WREN: DirectoryRow = { id: "e-wren-tallis", firstName: "Wren", lastName: "Tallis", preferredFirstName: null, employmentStatus: "active", salonIds: [], positionName: "Tanning Consultant" };
+const GLOBAL_DM = { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] };
+
 export const NOV15_AGENT_LOOP_BATCH_H_CASES: ReplayCase[] = [
   {
     id: "nov15-batch-h1-amount-unknown-left-blank",
@@ -142,4 +146,41 @@ export const NOV15_AGENT_LOOP_BATCH_H_CASES: ReplayCase[] = [
       expect(proposed(model.views)?.card?.job_title).toBe("Assistant Salon Director");
     },
   },
+  ...([
+    ["asks-once", "verbal ca for wren tallis, she was 20 minutes late on 11/9/26", null],
+    ["named-salon-filled", "verbal ca for wren tallis at kearney, she was 20 minutes late on 11/9/26", "loc-0309"],
+  ] as const).map(([key, said, salon]): ReplayCase => ({
+    id: `nov15-batch-h5-global-salon-${key}`,
+    title: `H5 GLOBAL_SALON_ASK: a global district manager's card ${salon ? "takes the salon they named" : "asks once which salon, and stays ready"}`,
+    report: `${REPORT}; Pau's wording, 24 Oct 2026: a global login that is not an admin is asked the salon once`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-11T16:00:00Z"));
+      t.directory([...STAFF, WREN]);
+      t.as("district_manager", GLOBAL_DM);
+      const thread = t.thread();
+      // The stand-in follows the rules book's which_salon line, as the model does.
+      const model = loopStandIn((view) => {
+        const card = lastResult(view, "propose_form") as { facts?: { which_salon?: boolean } } | null;
+        if (!card) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: WREN.id, policy: "Attendance", what_happened: "Wren Tallis was 20 minutes late on 11/9/26." } };
+        return { text: card.facts?.which_salon ? "Here is the card. Which salon is this about? The card is ready — choose the salon before you create the draft, so it is not filed with no salon." : "Here is the card." };
+      });
+      t.loopModel!(model);
+      const reply = await thread.say(said);
+      const facts = proposed(model.views)?.facts ?? {};
+      if (salon) {
+        expect(reply.formProposal?.locationId, "the salon the manager named was not taken").toBe(salon);
+        expect(facts.which_salon).toBeUndefined();
+      } else {
+        expect(facts.which_salon, "the salon was not asked").toBe(true);
+        expect(reply.formProposal?.status, "the card was held").toBe("ready");
+        // Asked once: the next card for the same turn of the chat does not ask again.
+        const again = await thread.say("make it a written");
+        void again;
+        expect(proposed(model.views)?.facts?.which_salon, "the salon was asked twice").toBeUndefined();
+      }
+    },
+  })),
 ];
