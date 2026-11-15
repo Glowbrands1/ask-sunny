@@ -443,6 +443,13 @@ function namesAPlace(typed: string): boolean {
   return readSalonMentions(typed).length > 0 || readSalonMentions(`at ${typed}`).length > 0;
 }
 
+
+/**
+ * Batch K12b (QA's D ruling, 15 Nov 2026: Create stays held until there is an account, so at most one question): a
+ * confirm question asked before the manager said what happened also asks for it, in the same reply.
+ */
+const ALSO_ASK_ACCOUNT = "If so, tell me what happened.";
+
 export async function findStaff(context: ToolContext, input: { name?: unknown }, effects?: ToolEffects): Promise<ToolResult> {
   const typed = typeof input.name === "string" ? input.name.trim() : "";
   if (typed === "") return { error: "Give the name to look for." };
@@ -468,7 +475,14 @@ export async function findStaff(context: ToolContext, input: { name?: unknown },
      * or no (today's NEAR_MISS_DETAILS_ACCEPT; the live re-run's proposal-name-correction). A "no" keeps asking.
      */
     const saidNo = /^\s*(?:no|nope|nah|not\s+(?:her|him|them|that))\b/i.test(context.question);
-    const onCard = close.kind === "confirm" && close.candidates.length === 1 && !saidNo
+    /*
+     * Batch K1 (NEAR_MISS_NEVER_SEATED; Pau 15 Nov: A, replacing his 14 Nov one-strong-close-match; QA's review): a close
+     * spelling is never seated, not even as the card's person ("also a coaching for Remi Caldor" after Remy Calder's card
+     * asks). The card's person is used only on an exact full name (legal or preferred), which never reaches this branch,
+     * or after the manager confirms: a "yes" to the Did-you-mean, after which the model looks up the confirmed name.
+     */
+    const nearMissNever = (await import("@/lib/config/chat-quality-flags")).nearMissNeverSeatedEnabled();
+    const onCard = !nearMissNever && close.kind === "confirm" && close.candidates.length === 1 && !saidNo
       ? context.history.some((turn) => turn.role === "assistant" && typeof turn.content === "string" && turn.content.includes(close.candidates[0]!.name))
       : false;
     if (onCard && close.kind === "confirm") {
@@ -480,7 +494,7 @@ export async function findStaff(context: ToolContext, input: { name?: unknown },
      * correct before Create ("Using **<A>** from your staff list."). Two or more → asked. A "no" to an earlier
      * Did-you-mean → asked.
      */
-    if (close.kind === "confirm" && close.candidates.length === 1 && !saidNo) {
+    if (close.kind === "confirm" && close.candidates.length === 1 && !saidNo && !nearMissNever) {
       const chosen = close.candidates[0]!;
       if (effects) effects.nameLines = { ...(effects.nameLines ?? {}), [chosen.employee.id]: chosen.name };
       return { matches: [staffRow(chosen.employee)], name_from_staff_list: chosen.name, note: `A close spelling of ${chosen.name}, the only one on the roster. Use them, and say so as the rules book's Card replies teach.` };
@@ -491,6 +505,7 @@ export async function findStaff(context: ToolContext, input: { name?: unknown },
         matches: [],
         did_you_mean: close.candidates.slice(0, 5).map((candidate) => staffRow(candidate.employee)),
         note: `Not on the roster as typed. Ask the manager, in these words: ${nameConfirmationQuestion(typed, names)}`,
+        also_ask_if_no_account: ALSO_ASK_ACCOUNT,
       };
     }
     /*
@@ -520,6 +535,20 @@ export async function findStaff(context: ToolContext, input: { name?: unknown },
    */
   if (found.length === 1 && words(typed).length === 1) {
     const only = found[0]!;
+    /*
+     * Batch K2 (QA's 266 shadow replay, c261: "edit <a typo> ca form" seated the one roster person whose first name the
+     * typo only began, and looked up her forms): only the person's own first or preferred first name, whole, is used.
+     * A part of a name, or a surname alone, is asked, in today's words.
+     */
+    const own = [only.firstName, only.preferredFirstName ?? ""].map((name) => words(name).join(" ")).filter(Boolean);
+    if (!own.includes(words(typed).join(" "))) {
+      return {
+        matches: [],
+        did_you_mean: [staffRow(only)],
+        note: `Not a whole first name on the roster. Ask the manager, in these words: ${nameConfirmationQuestion(typed, [displayName(only)])}`,
+        also_ask_if_no_account: ALSO_ASK_ACCOUNT,
+      };
+    }
     if (effects) effects.nameLines = { ...(effects.nameLines ?? {}), [only.id]: displayName(only) };
     return { matches: found.map(staffRow), name_from_staff_list: displayName(only), note: `Only a first name was given and one person has it: use ${displayName(only)}, and say so as the rules book's Card replies teach.` };
   }
@@ -1517,6 +1546,16 @@ export async function proposeForm(
   if (datesGiven.length > 1 && date && !answered && !datesGiven.some((given) => monthDayToIso(given, today) === date)) {
     return { error: `${date} is none of the dates the manager gave (${datesGiven.join(", ")}). Leave incident_date empty and ask which, or use one of those.` };
   }
+  /*
+   * Batch K6 (QA's 266 shadow replay, c079: a second person's coaching took 10/16 from the FIRST person's account). On an
+   * incident form, a date the manager typed only in another request's turns, none of this person's, is not kept on this
+   * person's card (not_kept incident_date; the rules book asks or leaves it for the manager).
+   */
+  const otherRequestsDates = ACCOUNT_FORMS.has(template.key) && datesGiven.length === 0 && !readDates(requestWords).length ? incidentDates(managerTurns(context), null).map((given) => monthDayToIso(given, today)) : [];
+  /* Only another request's date: the model's choice, or today's builder reading the whole chat (`proposal.formDate`). */
+  const fromAnotherRequest = (iso: string | null | undefined) => Boolean(iso && otherRequestsDates.includes(iso));
+  const dateFromAnotherRequest = fromAnotherRequest(date);
+  if (dateFromAnotherRequest) date = null;
   const datesAsked = datesGiven.length > 1 && !date ? datesGiven : [];
   /* Batch C (code-check #32): a date after today is a fact with today's date; the rules book says to ask. */
   /* Batch G (G6): only an incident form's date is never after today; an exit's last day or effective date may be. */
@@ -1536,7 +1575,7 @@ export async function proposeForm(
    */
   const askedTermination = input.warning_level === "termination" && template.key === "dpoa";
   const loopTermination = askedTermination && !level && (await import("@/lib/config/chat-quality-flags")).terminationStatedTicksEnabled() && (await import("@/lib/forms/termination-word")).saysTerminationWord(requestWords);
-  const dropped = [(askedLevel && !level) || (askedTermination && !loopTermination) ? "warning_level" : null, askedPayroll && !payroll ? "payroll_deduct" : null, typedAmount && !amount ? "payroll_amount" : null].filter(Boolean);
+  const dropped = [dateFromAnotherRequest ? "incident_date" : null, (askedLevel && !level) || (askedTermination && !loopTermination) ? "warning_level" : null, askedPayroll && !payroll ? "payroll_deduct" : null, typedAmount && !amount ? "payroll_amount" : null].filter(Boolean);
   /*
    * Prior actions as today reads them from the manager's own words (`statedPriorActions`: "Verbal corrective action —
    * signed 09/02/2026", a corrected date replacing the first; the live re-run's second-request-prior-step-correction
@@ -1648,7 +1687,7 @@ export async function proposeForm(
   const card: ChatFormProposal = {
     ...proposal,
     sourceMessageIds: sourceIds,
-    formDate: exitTermination ? exitTermination.date : datesAsked.length > 0 || futureDate ? null : date ?? proposal.formDate ?? null,
+    formDate: exitTermination ? exitTermination.date : datesAsked.length > 0 || futureDate ? null : date ?? (fromAnotherRequest(proposal.formDate) ? null : proposal.formDate) ?? null,
     fromAgentLoop: true as const,
     ...(level ? { warningLevel: level } : loopTermination ? { loopTermination: true as const } : {}),
     ...(whatHappened ? { issue: whatHappened } : {}),
@@ -1719,7 +1758,23 @@ export async function proposeForm(
   const terminationStated = loopTermination;
   const unset = corrective && !awaiting ? [...(payroll ? [] : ["payroll_deduct"]), ...(level || terminationStated ? [] : ["warning_level"])] : [];
   const salonNames = (ids: readonly string[] | undefined) => (ids ?? []).map((id) => ({ id, name: rosterSalonName(id) ?? id }));
+  /*
+   * Batch K4 (QA's 266 shadow replay, c137/c134: a pasted account about <Y>, off the roster, went on <X>'s card; the
+   * right-person guard reads roster names only). QA's ruling (15 Nov 2026): no code exemption for a witness. Every full
+   * name in this turn's account that is not the card's person is a fact, with the sentence it is in; the model asks
+   * which only when the account is about that person (the rules book). Never decided by code.
+   */
+  const accountText = `${context.question}\n${whatHappened}`;
+  const accountSentences = accountText.split(/\n+|(?<=[.!?])\s+/).map((sentence) => sentence.trim()).filter(Boolean);
+  /* Names read clause by clause (a format split at punctuation), each reported with its whole sentence. */
+  const otherNamed = accountSentences
+    .flatMap((sentence) => sentence.split(/[,;]\s+/).flatMap((clause) => extractEmployeeNames(clause)).map((name) => ({ name, sentence })))
+    .filter(({ name }, index, all) => all.findIndex((other) => other.name.toLowerCase() === name.toLowerCase()) === index)
+    .filter(({ name }) => words(name).length >= 2 && !samePerson(name, employee.name) && !(context.actor.displayName && samePerson(name, context.actor.displayName)))
+    .slice(0, 3)
+    .map(({ name, sentence }) => ({ name: untrusted(name), sentence: untrusted(sentence) }));
   const facts = {
+    ...(otherNamed.length > 0 ? { account_names_other_person: { named: otherNamed, card_person: employee.name } } : {}),
     ...(unset.length > 0 ? { unset } : {}),
     ...(level || payroll || priorActions
       ? { stated: { ...(level ? { warning_level: level } : {}), ...(payroll ? { payroll_deduct: payroll } : {}), ...(payroll === "yes" && amount ? { payroll_amount: `$${amount.replace(/^\$/, "")}` } : {}), ...(priorActions ? { prior_actions: priorActions } : {}) } }
