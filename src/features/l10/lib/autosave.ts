@@ -1,7 +1,7 @@
 // Copied from the Leadership Hub (src/lib/meetings/autosave.ts); keep in step with it. See src/features/l10/README.md.
 import { buildRecap } from "./doc";
 import { readTimer } from "./timer";
-import type { Attendee, MeetingDoc, RecapInput, RecapRow } from "./types";
+import { solvedTitle, type Attendee, type MeetingDoc, type RecapInput, type RecapRow } from "./types";
 
 /**
  * Auto-saved recaps: a meeting that was started but never ended still gets a recap.
@@ -70,7 +70,13 @@ export function autoRecapDecision(
     attendees: Array.isArray(d.attendees) ? d.attendees : [],
     cascade: typeof d.cascade === "string" ? d.cascade : "",
   };
-  return { save: true, heldAt: new Date(startMs).toISOString(), recap: buildRecap(full, full.attendees as Attendee[], t.sessionId, t.sessionId, seconds) };
+  // The same recap the database's auto-save writes (l10.auto_save_unended_meetings, unchanged by
+  // 20261205120000_l10_recap_notes): plain solved titles, and no notes or to-do counts.
+  const recap: RecapInput = buildRecap(full, full.attendees as Attendee[], t.sessionId, t.sessionId, seconds);
+  delete recap.notes;
+  delete recap.todosDone;
+  delete recap.todosTotal;
+  return { save: true, heldAt: new Date(startMs).toISOString(), recap: { ...recap, resolvedIssues: recap.resolvedIssues.map(solvedTitle) } };
 }
 
 /** The meeting document after an auto-save: the clock stops, the meeting is over, and it says why. */

@@ -10,6 +10,7 @@ import { AUTO_SAVED_LABEL } from "@/features/l10/lib/autosave";
 import { isMeetingKey } from "@/features/l10/lib/config";
 import { formatDuration, formatHeld } from "@/features/l10/lib/doc";
 import { businessDate, todoState } from "@/features/l10/lib/dueStatus";
+import { solvedOwner, solvedTitle } from "@/features/l10/lib/types";
 import { DeleteRecapButton } from "@/features/l10/meeting/_components/DeleteRecapButton";
 import { PrintButton } from "@/features/l10/meeting/_components/PrintButton";
 import { MentionText } from "@/features/l10/ui/Mentions";
@@ -132,7 +133,8 @@ export default async function RecapsPage({ params, searchParams }: { params: Pro
                 <ul className="m-0 list-disc pl-5 text-sm">
                   {r.resolved_issues.map((t, i) => (
                     <li key={i}>
-                      <MentionText text={t} people={people} />
+                      <MentionText text={solvedTitle(t)} people={people} />
+                      {solvedOwner(t) && <span className="text-muted"> · {solvedOwner(t)}</span>}
                     </li>
                   ))}
                 </ul>

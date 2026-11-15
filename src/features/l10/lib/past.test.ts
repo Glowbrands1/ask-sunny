@@ -47,6 +47,20 @@ describe("past meetings", () => {
     expect(rows.map((r) => r.notes)).toEqual(["Talked about the schedule", null, null]);
   });
 
+  it("reads solved issues stored as plain titles (older recaps) and as { title, owner } (from 15 Nov 2026)", () => {
+    const [row] = pastMeetings([recap({ resolved_issues: ["Old title", { title: "New title", owner: "Bo Lark" }] })], {});
+    expect(row.solvedTitles).toEqual(["Old title", "New title"]);
+    expect(row.solvedIssues).toEqual([
+      { title: "Old title", owner: "" },
+      { title: "New title", owner: "Bo Lark" },
+    ]);
+  });
+
+  it("works out To-dos completed from the recap's counts, and has none on older recaps", () => {
+    expect(pastMeetings([recap({ todos_done: 3, todos_total: 4 })], {})[0].todosCompletedPct).toBe(75);
+    expect(pastMeetings([recap()], {})[0].todosCompletedPct).toBeNull();
+  });
+
   it("works out a Bloom meeting's length and average rating (people who did not rate are left out)", () => {
     const [row] = pastMeetings([], { meetingHistory: [bloom] });
     expect(row).toMatchObject({ source: "bloom-growth", durationSeconds: 4123, ratingAvg: 8.5, issuesSolved: 9, solvedTitles: [] });
