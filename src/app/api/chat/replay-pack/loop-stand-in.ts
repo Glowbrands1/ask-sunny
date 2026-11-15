@@ -186,6 +186,7 @@ export function evidenceFrom(view: LoopView, quote?: string, back = 0): { messag
   const manager = view.turns.filter((turn) => turn.role === "user" && (turn.messageIds?.length ?? 0) > 0);
   const turn = manager[manager.length - 1 - back] ?? manager.at(-1);
   // The default quote is the message's first words, whole (evidence.ts matches whole words only).
-  const opening = (turn?.text ?? "").split(/\s+/).reduce((kept, word) => (kept.length + word.length + 1 <= 40 || kept === "" ? `${kept} ${word}`.trim() : kept), "");
+  // Contiguous: it stops at the first word that does not fit (a later short word is never added after a gap).
+  const opening = (turn?.text ?? "").split(/\s+/).reduce((kept, word) => (kept.full || (kept.text !== "" && kept.text.length + word.length + 1 > 40) ? { ...kept, full: true } : { text: `${kept.text} ${word}`.trim(), full: false }), { text: "", full: false }).text;
   return { message_id: turn?.messageIds?.at(-1) ?? "current", quote: quote ?? opening };
 }
