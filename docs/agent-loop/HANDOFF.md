@@ -2,8 +2,13 @@
 
 Start here: read `CLAUDE.md`, then this file, then `docs/agent-loop/rebuild-plan.md`.
 Session starters are in `docs/agent-loop/SESSION_STARTERS.md`. The new QA's first message is in
-`docs/agent-loop/NEW_QA_START.md`. Every open PR and remote branch is listed in
+`docs/agent-loop/NEW_QA_START.md`. Every open agent-loop PR and branch is listed in
 `docs/agent-loop/handoff-inventory.md`.
+
+**Scope: the AI agent loop only.** That is `src/lib/ai/agent-loop/`, the chat route's switch into it
+(`AGENT_LOOP_ENABLED` + `AGENT_LOOP_USERS`), its replay-pack cases, the replays and live tests of the loop, and
+the pilot. The rest of Ask Sunny (today's chat path, forms, the DM L10 pages, the October backlog of default-off
+flag PRs) and Ask Bubbles are **not** part of this handoff and are not the new QA's job unless Pau says so.
 
 ## QA Success 2 handoff
 
@@ -13,9 +18,9 @@ was merged, no flag was changed and nothing was redeployed. All times are PHT un
 
 ### 1. The QA role
 
-- **QA is the only session that merges pull requests, changes Vercel environment variables (flags) or redeploys**,
-  for Ask Sunny (`Glowbrands1/ask-sunny`) and Ask Bubbles (`Glowbrands1/Ask-bubbles`). QA also rolls back, runs live
-  checks of a deploy and writes the reports to Pau.
+- **QA is the only session that merges the AI loop's pull requests, changes the loop's Vercel environment variables
+  (flags) or redeploys** (`Glowbrands1/ask-sunny`). QA also rolls back, runs live checks of a deploy and writes the
+  reports to Pau.
 - **Coding sessions** write code and open **draft** PRs only. They never merge, never mark a PR ready unless QA asks,
   never touch Vercel, Supabase writes or env vars, never put a model id in a commit or PR, and never push to `main`.
 - **Testers and the Runner** run replays and live tests and report. Live tests on Pau's account are **cards only**:
@@ -42,31 +47,19 @@ was merged, no flag was changed and nothing was redeployed. All times are PHT un
 
 ### 2. Merge queue (everything waiting on QA)
 
-Nothing in the agent-loop rebuild is waiting. All 11 rebuild PRs merged today. What is open, in the order I would
-take it:
+Nothing in the agent-loop rebuild is waiting. All 11 rebuild PRs merged today. Open AI-loop items, in order:
 
 | Order | PR | What | Head | CI | Conflicts | Still to check | Blocked by |
 |---|---|---|---|---|---|---|---|
-| 1 | (not opened) Fix batch, 7 items, see 7 | loop fixes from tonight's tests | none | none | none | the whole review | Pau's "fix batch go" |
-| 2 | [ask-sunny#1030](https://github.com/Glowbrands1/ask-sunny/pull/1030) | J11 `ACCOUNT_PERSON_NOT_SUBJECT_ENABLED` (default off) | `0aaa8810` | green on its old base | needs `main` merged in (base was a47f4c9b) | re-run CI after the merge; touches `proposal.ts` (protected) | owner (Coding-5) merges main first; draft |
-| 3 | [ask-sunny#1013](https://github.com/Glowbrands1/ask-sunny/pull/1013), [#1008](https://github.com/Glowbrands1/ask-sunny/pull/1008), [#1006](https://github.com/Glowbrands1/ask-sunny/pull/1006) | Coding-2's paused PRs (readable names, first-name fit, Termination in Change something) | `dcce0153`, `ec9ddc19`, `b8d54872` | not re-run on current main | likely, main moved a lot | full replay pack on current head; #1013 review NO-GO points (a preferred name equal to another person's; a flag-off change) | paused until after the pilot |
-| 4 | [ask-sunny#1017](https://github.com/Glowbrands1/ask-sunny/pull/1017) | business-zone default America/Chicago | `46a31d74` | check | check | owner and purpose | not part of the loop work; ask Pau |
-| 5 | [ask-sunny#1015](https://github.com/Glowbrands1/ask-sunny/pull/1015) | docs: terminations in the agent loop | `8cd55154` | docs | check | still accurate after tonight? | none |
-| 6 | [ask-sunny#1005](https://github.com/Glowbrands1/ask-sunny/pull/1005) | parity log: the loop's Ask Bubbles port list (docs), branch `claude/start-here-oy5rn6` (also holds `rebuild-plan.md`) | `af65343d` | docs | check | superseded by this handoff PR for `rebuild-plan.md` | none |
-| 7 | [ask-sunny#1043](https://github.com/Glowbrands1/ask-sunny/pull/1043), [#1045](https://github.com/Glowbrands1/ask-sunny/pull/1045); Ask Bubbles [#945](https://github.com/Glowbrands1/Ask-bubbles/pull/945) | DM L10 meeting pages (c), (e); Bubbles port of (d) | `5498c0f6`, `575d8869`; `97598083` | check | check | these come from the UI session on another account, which has been merging its own L10 PRs; confirm with Pau who merges them | Pau |
-| 8 | Ask Bubbles [#930](https://github.com/Glowbrands1/Ask-bubbles/pull/930), [#931](https://github.com/Glowbrands1/Ask-bubbles/pull/931), [#933](https://github.com/Glowbrands1/Ask-bubbles/pull/933), [#928](https://github.com/Glowbrands1/Ask-bubbles/pull/928), [#923](https://github.com/Glowbrands1/Ask-bubbles/pull/923), [#935](https://github.com/Glowbrands1/Ask-bubbles/pull/935) | Bubbles ports (amount reader, payroll answer case, J11 port, readable names, Termination pick, loop helpers draft) | `328ced53`, `7f2a5c1b`, `ea956dd2`, `26f1bd00`, `8792b98f`, `24f20dc3` | not checked tonight | check against Bubbles main `ae79dec7` | each against its Sunny source; Bubbles has no agent loop yet | after the Sunny pilot |
-| — | about 150 older Sunny PRs (#53 to #994) and about 145 older Bubbles PRs | the October rebuild and port backlog, flags default off | see the inventory | stale | most will conflict | each needs a fresh replay on current main | **paused by Pau** (Gate and Coding sessions parked since 14 Nov). Do not merge without Pau. |
+| 1 | [ask-sunny#1046](https://github.com/Glowbrands1/ask-sunny/pull/1046) | this handoff (docs only, draft), branch `claude/agent-loop-handoff` | latest on the branch | docs | none | verify against `gh` and `git` (NEW_QA_START.md) | none |
+| 2 | (not opened) Fix batch, 7 items, see 7 | loop fixes from tonight's tests | none | none | none | the whole review | Pau's "fix batch go" |
+| 3 | (not opened) `fix-name` | `edit_form` intent `correct_name` saves `employee_name` only | none | none | none | the whole review | after the fix batch |
+| 4 | [ask-sunny#1015](https://github.com/Glowbrands1/ask-sunny/pull/1015) | docs: terminations in the agent loop | `8cd55154` | docs | check | still accurate after tonight? | none |
+| 5 | [ask-sunny#1005](https://github.com/Glowbrands1/ask-sunny/pull/1005) | docs: the loop's Ask Bubbles port list, branch `claude/start-here-oy5rn6` (also holds `rebuild-plan.md`, now copied into #1046) | `af65343d` | docs | check | close or merge after #1046 | none |
 
-This handoff itself: [ask-sunny#1046](https://github.com/Glowbrands1/ask-sunny/pull/1046) (branch
-`claude/agent-loop-handoff`, docs only, draft). The new QA reviews and merges it.
-
-Not waiting on QA: [ask-sunny#991](https://github.com/Glowbrands1/ask-sunny/pull/991),
-[#959](https://github.com/Glowbrands1/ask-sunny/pull/959), [#956](https://github.com/Glowbrands1/ask-sunny/pull/956),
-[#923](https://github.com/Glowbrands1/ask-sunny/pull/923), [#899](https://github.com/Glowbrands1/ask-sunny/pull/899),
-[#871](https://github.com/Glowbrands1/ask-sunny/pull/871), [#865](https://github.com/Glowbrands1/ask-sunny/pull/865),
-[#861](https://github.com/Glowbrands1/ask-sunny/pull/861), [#840](https://github.com/Glowbrands1/ask-sunny/pull/840),
-[#834](https://github.com/Glowbrands1/ask-sunny/pull/834) are stacked on other feature branches (their base is not
-`main`); they move only after their base PR.
+Out of scope here (not AI-loop work): every other open PR, including J11 [#1030](https://github.com/Glowbrands1/ask-sunny/pull/1030)
+(a default-off flag on today's chat path in `proposal.ts`), Coding-2's paused PRs, the DM L10 pages, the October
+backlog and all Ask Bubbles PRs.
 
 ### 3. Merged today (15 Nov UTC, which is 15–16 Nov PHT)
 
@@ -75,8 +68,6 @@ Agent loop, merged by QA, in order. Squash SHAs on `main`:
 | PR | Merge SHA | What it did |
 |---|---|---|
 | [#1019](https://github.com/Glowbrands1/ask-sunny/pull/1019) | `e01da172` | G4 follow-up: a description that singles out one form on file opens it |
-| [#1010](https://github.com/Glowbrands1/ask-sunny/pull/1010) | `8f7039c5` | `TERMINATION_TICK_NOTE_ENABLED`: a termination the app does not tick is the manager's to tick |
-| [#1014](https://github.com/Glowbrands1/ask-sunny/pull/1014) | `a47f4c9b` | `TERMINATION_REQUEST_IS_CA_ENABLED`: "create a termination for <A>" is a Corrective Action request |
 | [#1023](https://github.com/Glowbrands1/ask-sunny/pull/1023) | `d081e470` | rebuild: `evidence.ts` (`{message_id, quote}` checked against the manager's real turns) and message ids on turns |
 | [#1027](https://github.com/Glowbrands1/ask-sunny/pull/1027) | `0abc038f` | K-keep: a near-miss name is never seated; "Did you mean <name>?" with keep-as-typed (Pau's ruling A) |
 | [#1022](https://github.com/Glowbrands1/ask-sunny/pull/1022) | `34740705` | PR 4: every refusal carries a `reason_code`; `error_kind` is the code |
@@ -90,14 +81,12 @@ Agent loop, merged by QA, in order. Squash SHAs on `main`:
 | [#1031](https://github.com/Glowbrands1/ask-sunny/pull/1031) | `d57b9fd5` | PR 1c + PR 4 part 2: a level or payroll answer is kept only on evidence |
 
 Earlier on 15 Nov UTC (14–15 Nov PHT), also QA: [#992](https://github.com/Glowbrands1/ask-sunny/pull/992) the agent
-loop itself `6cbf26a4`, batches A–H ([#996](https://github.com/Glowbrands1/ask-sunny/pull/996) `697b9d1c`,
+loop itself `6cbf26a4`, then batches A–H: [#996](https://github.com/Glowbrands1/ask-sunny/pull/996) `697b9d1c`,
 [#997](https://github.com/Glowbrands1/ask-sunny/pull/997) `4d9478f2`, [#998](https://github.com/Glowbrands1/ask-sunny/pull/998) `1844b2d2`,
 [#999](https://github.com/Glowbrands1/ask-sunny/pull/999) `8e913ca5`, [#1000](https://github.com/Glowbrands1/ask-sunny/pull/1000) `60a02ac9`,
 [#1001](https://github.com/Glowbrands1/ask-sunny/pull/1001) `37f64f75`, [#1003](https://github.com/Glowbrands1/ask-sunny/pull/1003) `e5691da0`,
 [#1002](https://github.com/Glowbrands1/ask-sunny/pull/1002) `fb94ba6b`, [#1009](https://github.com/Glowbrands1/ask-sunny/pull/1009) `f6c3a3ca`,
-[#1011](https://github.com/Glowbrands1/ask-sunny/pull/1011) `82d3159f`, [#1016](https://github.com/Glowbrands1/ask-sunny/pull/1016) `e02108c1`),
-[#894](https://github.com/Glowbrands1/ask-sunny/pull/894) `228eecdc`, [#1004](https://github.com/Glowbrands1/ask-sunny/pull/1004) fonts `b9092d8a`,
-[#1012](https://github.com/Glowbrands1/ask-sunny/pull/1012) Central time `02df3400`.
+[#1011](https://github.com/Glowbrands1/ask-sunny/pull/1011) `82d3159f`, [#1016](https://github.com/Glowbrands1/ask-sunny/pull/1016) `e02108c1`.
 
 **Merged into a branch, not into `main` directly:** [#1029](https://github.com/Glowbrands1/ask-sunny/pull/1029)
 (PR 1b) was squash-merged into `claude/agent-loop-pr1-evidence-args` (`1485c5b4`), PR 1a's branch, by mistake (its
@@ -107,19 +96,16 @@ base was that branch). Its content reached `main` through [#1026](https://github
 **Closed without merging:** [#1018](https://github.com/Glowbrands1/ask-sunny/pull/1018) batch J (salvaged as #1028),
 [#1007](https://github.com/Glowbrands1/ask-sunny/pull/1007) first-name-close (superseded).
 
-**Merged by the DM L10 UI session (another account, not QA):** #1020, #1025, #1032, #1033, #1036, #1038, #1039,
-#1040, #1041, #1042, and #1044 (`020a8604`, merged 20:09 UTC during this handoff). Note **#1039 changed `src/lib/ai/agent-loop/tools.ts`** (the CA form key from app config, and
-fixtures) to fix red tests on main: that is a loop file outside QA's review. It matches the fix in #1034 and #1028,
-but the new QA should agree with Pau that the UI session stays out of `src/lib/ai/`, `src/app/api/chat/` and the
-forms code.
-
-Ask Bubbles today: #932 (close-spelling guard port), the tick note and termination-CA ports, merged by QA earlier;
-the UI session ported L10 pages (latest Bubbles main `ae79dec7`, #944).
+**Loop files changed outside QA's review:** [#1039](https://github.com/Glowbrands1/ask-sunny/pull/1039), merged by
+the DM L10 UI session (another account), changed `src/lib/ai/agent-loop/tools.ts` (the CA form key from app config)
+and the snapshot fixtures to fix red tests on `main`. It matches the fix in #1034 and #1028, but the new QA should
+agree with Pau that other sessions stay out of `src/lib/ai/agent-loop/` and `src/app/api/chat/`. Other merges to
+`main` today (L10 pages, today's chat path) are outside this handoff.
 
 ### 4. Production state (checked 20:10 UTC, 15 Nov)
 
-- `main` = `020a86043bfe044493285b5334e8ef653d1d5a8d` (#1044, an L10 page, merged by the UI session during this
-  handoff; it was `1882cdb1` when the checks below ran). It contains every loop merge above (last loop merge
+- `main` = `020a86043bfe044493285b5334e8ef653d1d5a8d` (an L10 page merged by the UI session during this handoff; it
+  was `1882cdb1` when the checks below ran). It contains every loop merge above (last loop merge
   `d57b9fd5`).
 - Production deployment `dpl_3hz146q7kEqskx1HDzRW1pFVBDe7`, READY, built from `1882cdb1`, served at
   `https://ask-sunny.vercel.app` (login 200). Runtime errors in the last 2 hours: 0.
@@ -127,16 +113,15 @@ the UI session ported L10 pages (latest Bubbles main `ae79dec7`, #944).
 - Vercel project `ask-sunny` (`prj_rhnfXh2VcfnnyMk53MEbyL1yRlkG`, team `team_VMGm91g69rmb8sSWCu6scejJ`). Supabase
   production project `rbkylaavthsjepsczccv`. Never decrypt env values; list names only.
 
-**Flags (names only).** The on/off list for production chat flags is `src/config/production-flags.json` (398 on,
-17 off; the replay pack reads it). Flags that matter for the loop:
+**Loop flags (names only).** Production's on/off list for chat flags is `src/config/production-flags.json` (the
+replay pack reads it). The loop's:
 
 | Flag | State |
 |---|---|
 | `AGENT_LOOP_ENABLED` | on |
 | `AGENT_LOOP_USERS` | set to **Pau's own admin account only** (set 14 Nov). No real manager gets the loop. Pilot managers are added here only with Pau's yes. |
 | `SELF_CHECK_ENABLED` | off. **Never touch.** |
-| `TERMINATION_REQUEST_IS_CA_ENABLED`, `TERMINATION_TICK_NOTE_ENABLED`, `TERMINATION_STATED_TICKS_ENABLED`, `NEXT_PUBLIC_TERMINATION_STATED_TICKS_ENABLED` | on |
-| `MONTHLY_BUDGET_GUARD_ENABLED` | on, org-wide; `MONTHLY_BUDGET_USD` raised from 10 to 75 on 15 Nov with Pau's yes, after the cap paused chat for everyone at 09:17 UTC |
+| `MONTHLY_BUDGET_GUARD_ENABLED` | not a loop flag, but it pauses the loop too: on, org-wide; `MONTHLY_BUDGET_USD` raised from 10 to 75 on 15 Nov with Pau's yes, after the cap paused chat for everyone at 09:17 UTC |
 | `REWORD_REQUEST` / reword path | paused in the loop (code constant, not an env flag); stays paused |
 
 The loop's own behaviour switches are code, not env vars: everything new sits behind `AGENT_LOOP_ENABLED` plus
@@ -160,8 +145,8 @@ The loop's own behaviour switches are code, not env vars: everything new sits be
    invented ones), and a replay-pack case. A test for an UNSTATED level or payroll carries no evidence.
 8. Invented names only in code, tests, fixtures, commits and PR text. Real names only in private local files and in
    live tests on Pau's account.
-9. Bubbles parity: each PR says "Sibling app: ported in … / not needed because …" (Bubbles has no loop yet, so
-   loop PRs add a `docs/parity-log/` entry).
+9. Each PR's description keeps the repo's "Sibling app" line; Ask Bubbles has no loop yet, so loop PRs add a
+   `docs/parity-log/` entry saying so. Porting the loop to Bubbles is not part of this handoff.
 10. The app-config snapshot fixtures are re-taken only when the rules text changes on purpose; the diff must show
     only that change.
 11. Before merging: base is `main`, CI green on the current head, full SHA, then the deploy checks in 1.
@@ -189,7 +174,7 @@ The loop's own behaviour switches are code, not env vars: everything new sits be
 - Re-run of the same 67 chats after the fixes (about $9) and a short live check (4 scenarios).
 - `fix-name` save (Coding-7's plan: `form-write` allows `employee_name` only under a verified `correct_name`).
 - After the pilot: PR 2b, PR 6 speed (p90 is the worst number), PR 5 D2 (remaining Sun Tan City content into app
-  config), PR 7c sf-s cases, payroll amount said in words ("twenty dollars"), the Bubbles port of the loop.
+  config), PR 7c sf-s cases, payroll amount said in words ("twenty dollars").
 
 **What I would do next, in order**
 1. Verify this file against `gh` and `git` (NEW_QA_START.md).
@@ -236,21 +221,19 @@ ones you need from `SESSION_STARTERS.md`.
 | Session (old id) | Role | Current task | Branch / PR | Exact next step |
 |---|---|---|---|---|
 | Coding-7 (`session_016JaKhXFS6yvC6Jri2jKKEz`) | coding | none; stood down | owned #1023, #1027, #1026 (incl. #1029), all merged | the `fix-name` draft PR (form-write allows `employee_name` only under verified `correct_name`; update the nov15 fix-name phrasing case; form-write unit test). Not started. |
-| Coding-8 (`session_016JaKhUrPD6M8v9ZTUHjQVg`) | coding | none | owned #1010, #1014, #1021, #1022, #1031, Bubbles #927, #929, all merged | none queued. Notes: payroll-5 "twenty dollars" stays open as TODO(amount-words); keep `reason-codes.test.ts` KNOWN in sync; Bubbles needs PR 1a/1c ported later. |
-| Coding-5 (`session_016JaKhTsi4LzHDAq4hQhuKW`) | coding | none | #1028, #1037 merged; **#1030 open draft** `claude/account-person-not-subject-main` `0aaa8810`; Bubbles #930, #931, #933 open | merge `main` into #1030, re-run lint/tsc/its tests, mark ready for QA; then check Bubbles #930/#931/#933 against Bubbles main. PR 2b design notes are in the #1037 thread (not started in code). |
+| Coding-8 (`session_016JaKhUrPD6M8v9ZTUHjQVg`) | coding | none | owned #1021, #1022, #1031, all merged | none queued. Notes: payroll-5 "twenty dollars" stays open as TODO(amount-words); keep `reason-codes.test.ts` KNOWN in sync. |
+| Coding-5 (`session_016JaKhTsi4LzHDAq4hQhuKW`) | coding | none | #1028, #1037 merged | PR 2b (`reply_claims` + `verifyReply`) **after the pilot**; design notes are in the #1037 thread (about 150 lines in `run.ts`, about 10 replay-case stand-ins, 3 unit test files). Not started in code. |
 | Coding-9 (`session_016JaKhXdxBUGeE91FNVtwrJ`) | coding | none | #1035 merged | none. `claude/agent-loop-batch-k-propose` (`a42091e4`) is scrap (regex approach), safe to delete. |
 | Coding-10 (`session_016JaKhW5Jcj5Mg2odsGhuQk`) | coding | none | #1024, #1034 merged | when PR 1 items land, remove the matching `OPEN_UNTIL_PR1` entries; make the fix-name case assert the saved name once `fix-name` lands; assert `not_a_saved_form` in the uncreated-card cases. Skipped by QA: PR 7c sf-s cases, D2. |
 | Runner (`session_016JaKhXSCk8KBptKjsvrrnz`) | replay runner | none; idle | **WIP `claude/wip-runner-harness`** (`ad36c0e9` on GitHub: harness code only, no data). A second local commit `11698c9` (the export query with test-account ids replaced by placeholders, and the 67 c-ids) was **not pushed**: the session's permission check stopped it and the Runner asked Pau. | holds the real-chat data privately (see 10). Next: the post-fix re-run of the same 67. If `11698c9` never lands, the new Runner rebuilds the export query from the description in its starter (conversations from 15 Oct to 14 Nov 2026 UTC, excluding the owner's admin and the QA tester accounts, numbered by created_at). |
 | Coordinator (`session_016JaKhYY41H3epETaYT6Xrn`) | runs the testers, relays QA's GOs | none; idle | none (its event log `coordinator-notes.md` is local only, no names) | the new coordinator relays the new QA's GOs. Rules: cards only, masked names, check the production alias before every send, clear response bodies only on QA's word. |
-| Tester-Sunny (`session_016JaKhV8tdxGo6sBSJ1W8UR`) | live tester (via Coordinator) | idle after the 12-scenario re-test (`loop6`) | **WIP `claude/wip-testers` in Ask-bubbles** (`0ad4b8f3`, `testers/sunny-live/`: 46 helper scripts + README; the login comes from `SUNNY_EMAIL`/`SUNNY_PASSWORD` env vars, never a file) | after the fix batch: re-run s2, s6b, s10 and the test draft A undo with `testers/sunny-live/l6.js` on the new account, then the chat cleanup in 11. |
-| Tester-Bubbles (`session_016JaKhYUzCNWnCsrwmzYQTC`) | live tester | idle since round 17z-c | none (helper scripts kept local) | clean up its Bubbles test forms and chats (11); after Bubbles #926/#923/#925 merge, run QA's check list. Open bug F1: a store answer becomes the job title (reached Bubbles draft `acecbd55`). |
-| Coding-2 (`session_016JaKhWLadBPbNaRymBRmot`) | coding | paused | #1013 `dcce0153` (`READABLE_NAMES_ENABLED`), Bubbles #928 `26f1bd00`, #1008 `ec9ddc19` (`FIRST_NAME_MUST_FIT_ENABLED`), #1006 `b8d54872` and Bubbles #923 `8792b98f` (`NEXT_PUBLIC_FINALIZED_CHANGE_EVERY_WARNING_ENABLED`); all default off | stay paused. On resume: whole replay packs serially on #1013, #928, #1008 (expect only the intended open cases to change); then #1006/#923: close a termination through the card-change PATCH, add a Demotion note, merge main, whole packs; then a pairing test "create a termination for <name>" in both apps. |
-| Gate-Sunny, -2, -3, Gate-Bubbles, -2, -3, -4, -5, Coding-4, Coding-6 | October gate and port sessions | parked since 14 Nov by Pau's pause | the October backlog PRs | do not restart without Pau. |
+| Tester-Sunny (`session_016JaKhV8tdxGo6sBSJ1W8UR`) | live tester (via Coordinator) | idle after the 12-scenario re-test (`loop6`) | **WIP `claude/wip-testers`** (in the Ask-bubbles repository, `0ad4b8f3`; Sunny live-test helpers: `testers/sunny-live/`: 46 helper scripts + README; the login comes from `SUNNY_EMAIL`/`SUNNY_PASSWORD` env vars, never a file) | after the fix batch: re-run s2, s6b, s10 and the test draft A undo with `testers/sunny-live/l6.js` on the new account, then the chat cleanup in 11. |
 
 WIP branches pushed for the handoff: `claude/wip-runner-harness` (ask-sunny, `ad36c0e9`) and `claude/wip-testers`
-(Ask-bubbles, `0ad4b8f3`). Every other session reported a clean tree and pushed nothing. Local-only leftovers that
-are superseded: Coding-2's `11b0b0b2` ("wip rename", replaced by Bubbles #925), Coding-5's
-`claude/agent-loop-batch-k-payroll` (K5, superseded).
+(Ask-bubbles repository, `0ad4b8f3`). Every other session reported a clean tree and pushed nothing. Superseded
+local-only leftover: Coding-5's `claude/agent-loop-batch-k-payroll` (K5).
+
+Not listed (outside the loop): Coding-2, Tester-Bubbles, the Gate sessions, Coding-4 and Coding-6.
 
 ### 9. Open questions for Pau
 
@@ -261,17 +244,13 @@ are superseded: Coding-2's `11b0b0b2` ("wip rename", replaced by Bubbles #925), 
 4. Pilot managers (2–3) for `AGENT_LOOP_USERS`, once GO.
 5. Delete the Runner's private real-chat data now, or keep it until the pilot GO (needed for the post-fix re-run;
    the new account can rebuild it from the export query instead).
-6. Clean up the 11 live test chats on Pau's account (ids in 10).
-7. Who merges the DM L10 PRs (#1043, #1045, Bubbles #945): the UI session or QA? It merged #1044 itself during
-   this handoff.
-8. 🔴🔴 **Change Pau's admin password now**: it was typed inline in Tester-Sunny's command history (it is in no
+6. Clean up the loop's test chats and drafts on Pau's account (section 11).
+7. 🔴🔴 **Change Pau's admin password now**: it was typed inline in Tester-Sunny's command history (it is in no
    file and in nothing pushed). Also change both apps' admin passwords when testing ends.
-9. Open items the testers found: Bubbles F1 (a store answer becomes the job title); a future-dated Termination
-   11/15/2026 in Sunny's Form Monitoring; the L4 cross-person on-file display (Sunny).
-10. Pau's own to-dos: delete stale branches (first-name-close x2, batch-k-propose, batch-k-team,
+8. Open items the loop testers found: a future-dated Termination 11/15/2026 in Form Monitoring; the L4 cross-person
+   on-file display.
+9. Pau's own to-dos: delete stale branches (first-name-close x2, batch-k-propose, batch-k-team,
    pr1b-evidence-gates).
-11. The October backlog (about 150 Sunny and 145 Bubbles PRs, paused): keep paused, or have the new QA triage and
-   close the superseded ones.
 
 ### 10. Risks I am watching
 
@@ -281,7 +260,7 @@ are superseded: Coding-2's `11b0b0b2` ("wip rename", replaced by Bubbles #925), 
 - **"Did you mean" friction** after ruling A: inconsistent confirmation wording; extra turns on one-letter typos.
 - **Parallel PRs on the same loop files** conflict on every merge (tools.ts, run.ts, rules-book, the app-config
   fixtures). Keep the fix batch to two sessions and merge serially.
-- **The UI session edits loop files** (#1039) and merges its own PRs to `main` at night.
+- **Another session edited loop files** (#1039) and merges its own PRs to `main` at night.
 - **Monthly AI cap** ($75) is org-wide: a busy replay or pilot day can pause chat for everyone. Check spend before
   big runs. Runner's own test budget: about $47.3 of $100 used.
 - **Private data on the old account**: `/root/shadow-private/` in the Runner's container (real chats, roster,
@@ -297,7 +276,7 @@ are superseded: Coding-2's `11b0b0b2` ("wip rename", replaced by Bubbles #925), 
 
 ### 11. Cleanup list
 
-Test chats and drafts left by the testers. Nothing here was created for a real employee; the drafts use invented
+Test chats and drafts left by the loop's testers. Nothing here was created for a real employee; the drafts use invented
 names or the test employee. Clean up on QA's word.
 
 **Ask Sunny, Pau's account (chats):**
@@ -318,21 +297,7 @@ names or the test employee. Clean up on QA's word.
   `483d0367` (s38l). Test draft A (`a3e11f25…`) carries test edits and is kept for the undo re-test; test draft B
   (`b5443119…`) matches its snapshot. Form drafts on Pau's account: 344, unchanged by the loop tests.
 
-**Ask Bubbles, Admin account:**
-- Forms under invented names: `acecbd55` (draft), `e4b44064` (FINALIZED 31 Oct: archive, do not delete), `1a8678f9`
-  (draft).
-- Chats: 17z-c `conv_mwgawsdg2n2b63z`, `conv_mwgayqsv230a7sf`, `conv_mwgbe1tn2f46hr0`, `conv_mwgbg9jj2xqgrj9`,
-  `conv_mwgbi6xe2wabthp`, `conv_mwgbjasq26yrbti`, `conv_mwgbn1hn29acta9`, `conv_mwgbpz0n2lvrabr`; 17z-b control
-  `conv_mwg6uepd232y922` (5 more, ids lost); 14 Nov `conv_mwg1f5rz2rv8wln`, `conv_mwg1ei5v2opyyz9`,
-  `conv_mwg1duct2gq8h46`, `conv_mwg1d5yd2mkpcsa`, `conv_mwg1cib32zrzhku`, `conv_mwg1buls21pu6z2`,
-  `conv_mwg1al1w2os92fq`, `conv_mwg19v3h2c39g9j`; r17y `conv_mwftkpf82nkrwoa`, `conv_mwftghzw2o2snvg`. The rest: Admin
-  chats from 13 Nov on whose first message names Employee A–E or the invented names.
-- **Never touch** Pau's own Bubbles chats `conv_mvw9md0l2xg3td7`, `conv_mvw6ycmv2346ts4`, `conv_mvw6vauj2qpc67c`,
-  `conv_mvw6swp328tq6xe`, `conv_mvw6gt7x23c8omq`, or drafts `526274c5` and `69e3e05c`.
-
 **Local files on the old account's containers (they die with the containers; delete on purpose, Pau decides):**
 - Runner: `/root/shadow-private/` (real chats, roster, salon names, results), scratchpad extracts, `/tmp/loop-live*`,
   its tool-result files and transcript.
 - Tester-Sunny: response bodies (masked), `pages-0.txt` and 4 local scripts holding Pau's own email.
-- Tester-Bubbles: 6 loose driver-output files (`o2a`, `o2b`, `o2c`, `o3`, `o3b`, `all.txt`) that may hold chat
-  titles with real names.

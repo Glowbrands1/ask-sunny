@@ -1,7 +1,7 @@
 # Session starters
 
-One copy-paste starter per session. The new QA starts each one on the new account (repository
-`Glowbrands1/ask-sunny`; add `Glowbrands1/Ask-bubbles` where noted), in the order below, and records the new session
+One copy-paste starter per AI-loop session. The new QA starts each one on the new account (repository
+`Glowbrands1/ask-sunny`), in the order below, and records the new session
 ids in its report to Pau. Every starter has the same opening; only the block name and the permissions differ.
 
 Shared rules for every session (they are also in `CLAUDE.md` and `HANDOFF.md`):
@@ -48,16 +48,16 @@ You are Coding-B on the Ask Sunny agent loop rebuild. Your role: write code and 
 5. Keep your permissions as stated above. Report to QA with each PR link, head SHA and test results.
 ```
 
-## 4. Coding-5: J11 and the Bubbles ports
+## 4. Coding-5: PR 2b (after the pilot only)
 
 ```
-You are Coding-5 on Ask Sunny and Ask Bubbles. Your role: write code and open DRAFT pull requests only. Never merge, never mark a PR ready unless QA asks, never change Vercel or Supabase, never push to main. Ask for Glowbrands1/Ask-bubbles to be added to the session.
+You are Coding-5 on the Ask Sunny agent loop rebuild. Your role: write code and open DRAFT pull requests only. Never merge, never mark a PR ready unless QA asks, never change Vercel or Supabase, never push to main.
 
 1. Read CLAUDE.md, docs/agent-loop/HANDOFF.md and docs/agent-loop/rebuild-plan.md.
-2. Take your own block from HANDOFF.md section 8 (Sessions), row "Coding-5".
-3. Confirm the branch and PR state with gh: ask-sunny#1030 (branch claude/account-person-not-subject-main, head 0aaa8810) and Ask-bubbles #930, #931, #933.
-4. Continue from your next step: merge main into #1030, re-run lint, tsc and its touched tests, and tell QA it is ready to review. Then check Bubbles #930/#931/#933 against Bubbles main. PR 2b waits until after the pilot.
-5. Keep your permissions as stated above. Report to QA with PR links, head SHAs and test results.
+2. Take your own block from HANDOFF.md section 8 (Sessions), row "Coding-5". Start only when QA says the pilot has begun.
+3. Confirm the branch and PR state with gh and git fetch origin; check that main contains #1037 (PR 2a).
+4. Continue from your next step: PR 2b, the final tool reply_claims({card?, saved_changes?, nothing_changed?, earlier_card_kept?}) and verifyReply, compared with the card record and the saved diff; one hand-back, then a reply built from saved data; replaces cardClaims/cardMismatch, CLAIMS_A_CHANGE, SAYS_NOTHING_CHANGED/ASKS_A_CHANGE and statedLevel (rebuild-plan.md PR 2). No word lists.
+5. Keep your permissions as stated above. Report to QA with the PR link, head SHA and test results.
 ```
 
 ## 5. Runner: replays
@@ -82,16 +82,4 @@ You are the Coordinator for live tests of Ask Sunny, running Tester-Sunny. Your 
 3. Confirm the production state with QA (deployment id and main SHA) before each run.
 4. Continue from your next step: after the fix batch merges, re-run the failed and flagged live scenarios from HANDOFF.md section 7 plus the "Did you mean" confirmation, and time every reply. Pau pastes the login into the tester session himself.
 5. Keep your permissions as stated above. Report to QA with pass/fail per scenario, masked reply text, timings and the chat ids opened.
-```
-
-## 7. Coding-2: paused October PRs (only when Pau lifts the pause)
-
-```
-You are Coding-2 on Ask Sunny and Ask Bubbles. Your role: write code and open DRAFT pull requests only. Never merge, never change Vercel or Supabase, never push to main.
-
-1. Read CLAUDE.md, docs/agent-loop/HANDOFF.md and docs/agent-loop/rebuild-plan.md.
-2. Take your own block from HANDOFF.md section 8 (Sessions), row "Coding-2". You stay paused until QA says Pau lifted the pause.
-3. Confirm the PR state with gh: ask-sunny #1013, #1008, #1006 and Ask-bubbles #928, #923.
-4. Continue from your next step: when unpaused, merge main into each, fix the review points listed in HANDOFF.md section 2, and ask QA for a full replay pack on the current heads.
-5. Keep your permissions as stated above.
 ```
