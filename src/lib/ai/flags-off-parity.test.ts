@@ -687,6 +687,8 @@ const NEW_FLAGS = [
   "MODEL_WARNING_LEVEL_DISCARDED_ENABLED",
   // coding 5: FORM_EDIT_TOUCHES_UPDATED_AT (QA's batch F8, 15 Nov 2026; default off).
   "FORM_EDIT_TOUCHES_UPDATED_AT_ENABLED",
+  // coding 7: NEAR_MISS_NEVER_SEATED (batch K1; Pau 15 Nov: A; on in production).
+  "NEAR_MISS_NEVER_SEATED_ENABLED",
 ] as const;
 
 const PROTECTED = [

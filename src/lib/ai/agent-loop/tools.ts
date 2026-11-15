@@ -9,7 +9,7 @@ import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import { businessToday } from "@/lib/business-date";
 import { isoDate, monthDayToIso, readDates, sameDate, withoutDates } from "./dates";
 import { candidateNameWords, chatFormsActor } from "@/lib/forms/chat-form-records";
-import { displayName, matchEmployeeName, nameConfirmationQuestion, type RosterEmployee } from "@/lib/forms/employee-match";
+import { AFFIRMATIVE, displayName, matchEmployeeName, nameConfirmationQuestion, type RosterEmployee } from "@/lib/forms/employee-match";
 import { offRosterTyped } from "@/lib/forms/roster-only-names";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
 import { readDirectoryRoster, readScopedRoster, type DirectoryRosterRow } from "@/lib/forms/employee-roster";
@@ -414,6 +414,26 @@ function namesAPlace(typed: string): boolean {
   return readSalonMentions(typed).length > 0 || readSalonMentions(`at ${typed}`).length > 0;
 }
 
+/**
+ * Batch K1: the card's person was put there by the manager: a manager turn in this chat names them in full, or the
+ * manager said yes to the app's "Did you mean **<name>**?". A close spelling the app seated on its own never counts.
+ */
+function cardPersonEstablished(context: Pick<ToolContext, "history">, name: string): boolean {
+  const full = new RegExp(String.raw`(?<![\p{L}])${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, String.raw`\s+`)}(?![\p{L}])`, "iu");
+  return context.history.some((turn, index) => {
+    const text = typeof turn.content === "string" ? turn.content : "";
+    if (turn.role === "user") return full.test(text);
+    const next = context.history[index + 1];
+    return turn.role === "assistant" && text.includes(`Did you mean **${name}**?`) && next?.role === "user" && AFFIRMATIVE.test(String(next.content));
+  });
+}
+
+/**
+ * Batch K12b (QA's D ruling, 15 Nov 2026: Create stays held until there is an account, so at most one question): a
+ * confirm question asked before the manager said what happened also asks for it, in the same reply.
+ */
+const ALSO_ASK_ACCOUNT = "If so, tell me what happened.";
+
 export async function findStaff(context: ToolContext, input: { name?: unknown }, effects?: ToolEffects): Promise<ToolResult> {
   const typed = typeof input.name === "string" ? input.name.trim() : "";
   if (typed === "") return { error: "Give the name to look for." };
@@ -439,8 +459,11 @@ export async function findStaff(context: ToolContext, input: { name?: unknown },
      * or no (today's NEAR_MISS_DETAILS_ACCEPT; the live re-run's proposal-name-correction). A "no" keeps asking.
      */
     const saidNo = /^\s*(?:no|nope|nah|not\s+(?:her|him|them|that))\b/i.test(context.question);
+    /* Batch K1 (NEAR_MISS_NEVER_SEATED; Pau 15 Nov: A, replacing his 14 Nov one-strong-close-match): a close spelling is seated only as the card's person the manager typed or confirmed. */
+    const nearMissNever = (await import("@/lib/config/chat-quality-flags")).nearMissNeverSeatedEnabled();
     const onCard = close.kind === "confirm" && close.candidates.length === 1 && !saidNo
-      ? context.history.some((turn) => turn.role === "assistant" && typeof turn.content === "string" && turn.content.includes(close.candidates[0]!.name))
+      ? context.history.some((turn) => turn.role === "assistant" && typeof turn.content === "string" && turn.content.includes(close.candidates[0]!.name)) &&
+        (!nearMissNever || (cardPersonEstablished(context, close.candidates[0]!.name) && words(typed).length <= words(close.candidates[0]!.name).length))
       : false;
     if (onCard && close.kind === "confirm") {
       return { matches: [staffRow(close.candidates[0]!.employee)], note: `A close spelling of ${close.candidates[0]!.name}, the person on this chat's card. Use them; no need to ask.` };
@@ -451,7 +474,7 @@ export async function findStaff(context: ToolContext, input: { name?: unknown },
      * correct before Create ("Using **<A>** from your staff list."). Two or more → asked. A "no" to an earlier
      * Did-you-mean → asked.
      */
-    if (close.kind === "confirm" && close.candidates.length === 1 && !saidNo) {
+    if (close.kind === "confirm" && close.candidates.length === 1 && !saidNo && !nearMissNever) {
       const chosen = close.candidates[0]!;
       if (effects) effects.nameLines = { ...(effects.nameLines ?? {}), [chosen.employee.id]: chosen.name };
       return { matches: [staffRow(chosen.employee)], name_from_staff_list: chosen.name, note: `A close spelling of ${chosen.name}, the only one on the roster. Use them, and say so as the rules book's Card replies teach.` };
@@ -462,6 +485,7 @@ export async function findStaff(context: ToolContext, input: { name?: unknown },
         matches: [],
         did_you_mean: close.candidates.slice(0, 5).map((candidate) => staffRow(candidate.employee)),
         note: `Not on the roster as typed. Ask the manager, in these words: ${nameConfirmationQuestion(typed, names)}`,
+        also_ask_if_no_account: ALSO_ASK_ACCOUNT,
       };
     }
     /*
@@ -491,6 +515,20 @@ export async function findStaff(context: ToolContext, input: { name?: unknown },
    */
   if (found.length === 1 && words(typed).length === 1) {
     const only = found[0]!;
+    /*
+     * Batch K2 (QA's 266 shadow replay, c261: "edit <a typo> ca form" seated the one roster person whose first name the
+     * typo only began, and looked up her forms): only the person's own first or preferred first name, whole, is used.
+     * A part of a name, or a surname alone, is asked, in today's words.
+     */
+    const own = [only.firstName, only.preferredFirstName ?? ""].map((name) => words(name).join(" ")).filter(Boolean);
+    if (!own.includes(words(typed).join(" "))) {
+      return {
+        matches: [],
+        did_you_mean: [staffRow(only)],
+        note: `Not a whole first name on the roster. Ask the manager, in these words: ${nameConfirmationQuestion(typed, [displayName(only)])}`,
+        also_ask_if_no_account: ALSO_ASK_ACCOUNT,
+      };
+    }
     if (effects) effects.nameLines = { ...(effects.nameLines ?? {}), [only.id]: displayName(only) };
     return { matches: found.map(staffRow), name_from_staff_list: displayName(only), note: `Only a first name was given and one person has it: use ${displayName(only)}, and say so as the rules book's Card replies teach.` };
   }
@@ -1133,18 +1171,25 @@ function conversationTurns(context: Pick<ToolContext, "question" | "history">) {
   ];
 }
 
-/** Payroll deduct as the manager stated it: in their words, or a bare yes / no right after the payroll question. */
+/**
+ * Payroll deduct as the manager stated it: in their words, or a bare yes / no right after a reply about payroll (as
+ * before). Batch K5 (b) (QA's 266 shadow replay, c163 T6: a re-proposed card dropped payroll with no word): an answer
+ * given once holds on later turns, the latest winning. propose_form passes only THIS person's request turns (bug 3 in
+ * the rebuild plan: one person's payroll answer never reaches another person's card).
+ */
 function payrollStated(context: Pick<ToolContext, "question" | "history">): "yes" | "no" | null {
-  const turns = [...context.history.filter((message) => message.role === "user").map((message) => message.content), context.question];
-  for (const turn of [...turns].reverse()) {
-    const stated = statedPayrollDeduct(turn);
+  const turns = [...context.history.map((message) => ({ role: message.role, content: typeof message.content === "string" ? message.content : "" })), { role: "user" as const, content: context.question }];
+  for (let index = turns.length - 1; index >= 0; index -= 1) {
+    const turn = turns[index]!;
+    if (turn.role !== "user") continue;
+    const stated = statedPayrollDeduct(turn.content);
     if (stated) return stated;
-  }
-  const lastAssistant = [...context.history].reverse().find((message) => message.role === "assistant");
-  if (lastAssistant && /payroll/i.test(lastAssistant.content)) {
-    const bare = context.question.trim().toLowerCase().replace(/[.!]+$/, "");
-    if (/^(?:yes|yep|yeah|y)\b/.test(bare)) return "yes";
-    if (/^(?:no|nope|nah|n)\b/.test(bare)) return "no";
+    const before = turns[index - 1];
+    if (before?.role === "assistant" && /payroll/i.test(before.content)) {
+      const bare = turn.content.trim().toLowerCase().replace(/[.!]+$/, "");
+      if (/^(?:yes|yep|yeah|y)\b/.test(bare)) return "yes";
+      if (/^(?:no|nope|nah|n)\b/.test(bare)) return "no";
+    }
   }
   return null;
 }
@@ -1310,6 +1355,8 @@ export async function proposeForm(
   // A later create request with its own incident ("make me a CA for <name> for being late …") starts a new form: its own turn only.
   const newRequest = context.questionMessageId && startsNewForm(context.history, context.question);
   const sourceIds = newRequest ? personTurns.filter((id) => id === context.questionMessageId) : personTurns;
+  /* Batch K5 (b), scoped (rebuild plan bug 3): payroll is read from this person's request turns only. */
+  const personContext = { question: context.question, history: context.history.filter((message) => message.role !== "user" || sourceIds.includes(message.id ?? "")) };
   const requestWords = asked.messages
     .filter((message) => sourceIds.includes(message.id ?? ""))
     .map((message) => message.content)
@@ -1432,7 +1479,7 @@ export async function proposeForm(
    */
   const managerWords = managerTurns(context);
   const askedPayroll = (input.payroll_deduct === "yes" || input.payroll_deduct === "no") ? input.payroll_deduct : null;
-  const payroll = askedPayroll && payrollStated(context) === askedPayroll ? askedPayroll : null;
+  const payroll = askedPayroll && payrollStated(personContext) === askedPayroll ? askedPayroll : null;
   const typedAmount = typeof input.payroll_amount === "string" && /\d/.test(input.payroll_amount) ? input.payroll_amount.replace(/[^\d.]/g, "") : null;
   /* The amount the manager stated, read as today reads it (`payrollAmountFromConversation`) when the model left it out. */
   const statedAmount = payroll === "yes" ? payrollAmountFromConversation(conversationTurns(context), { payrollAnswer: "yes" })?.replace(/[^\d.]/g, "") ?? null : null;
@@ -1473,6 +1520,16 @@ export async function proposeForm(
   if (datesGiven.length > 1 && date && !answered && !datesGiven.some((given) => monthDayToIso(given, today) === date)) {
     return { error: `${date} is none of the dates the manager gave (${datesGiven.join(", ")}). Leave incident_date empty and ask which, or use one of those.` };
   }
+  /*
+   * Batch K6 (QA's 266 shadow replay, c079: a second person's coaching took 10/16 from the FIRST person's account). On an
+   * incident form, a date the manager typed only in another request's turns, none of this person's, is not kept on this
+   * person's card (not_kept incident_date; the rules book asks or leaves it for the manager).
+   */
+  const otherRequestsDates = ACCOUNT_FORMS.has(template.key) && datesGiven.length === 0 && !readDates(requestWords).length ? incidentDates(managerTurns(context), null).map((given) => monthDayToIso(given, today)) : [];
+  /* Only another request's date: the model's choice, or today's builder reading the whole chat (`proposal.formDate`). */
+  const fromAnotherRequest = (iso: string | null | undefined) => Boolean(iso && otherRequestsDates.includes(iso));
+  const dateFromAnotherRequest = fromAnotherRequest(date);
+  if (dateFromAnotherRequest) date = null;
   const datesAsked = datesGiven.length > 1 && !date ? datesGiven : [];
   /* Batch C (code-check #32): a date after today is a fact with today's date; the rules book says to ask. */
   /* Batch G (G6): only an incident form's date is never after today; an exit's last day or effective date may be. */
@@ -1492,7 +1549,7 @@ export async function proposeForm(
    */
   const askedTermination = input.warning_level === "termination" && template.key === "dpoa";
   const loopTermination = askedTermination && !level && (await import("@/lib/config/chat-quality-flags")).terminationStatedTicksEnabled() && (await import("@/lib/forms/termination-word")).saysTerminationWord(requestWords);
-  const dropped = [(askedLevel && !level) || (askedTermination && !loopTermination) ? "warning_level" : null, askedPayroll && !payroll ? "payroll_deduct" : null, typedAmount && !amount ? "payroll_amount" : null].filter(Boolean);
+  const dropped = [dateFromAnotherRequest ? "incident_date" : null, (askedLevel && !level) || (askedTermination && !loopTermination) ? "warning_level" : null, askedPayroll && !payroll ? "payroll_deduct" : null, typedAmount && !amount ? "payroll_amount" : null].filter(Boolean);
   /*
    * Prior actions as today reads them from the manager's own words (`statedPriorActions`: "Verbal corrective action —
    * signed 09/02/2026", a corrected date replacing the first; the live re-run's second-request-prior-step-correction
@@ -1604,7 +1661,7 @@ export async function proposeForm(
   const card: ChatFormProposal = {
     ...proposal,
     sourceMessageIds: sourceIds,
-    formDate: exitTermination ? exitTermination.date : datesAsked.length > 0 || futureDate ? null : date ?? proposal.formDate ?? null,
+    formDate: exitTermination ? exitTermination.date : datesAsked.length > 0 || futureDate ? null : date ?? (fromAnotherRequest(proposal.formDate) ? null : proposal.formDate) ?? null,
     fromAgentLoop: true as const,
     ...(level ? { warningLevel: level } : loopTermination ? { loopTermination: true as const } : {}),
     ...(whatHappened ? { issue: whatHappened } : {}),
@@ -1675,7 +1732,19 @@ export async function proposeForm(
   const terminationStated = loopTermination;
   const unset = corrective && !awaiting ? [...(payroll ? [] : ["payroll_deduct"]), ...(level || terminationStated ? [] : ["warning_level"])] : [];
   const salonNames = (ids: readonly string[] | undefined) => (ids ?? []).map((id) => ({ id, name: rosterSalonName(id) ?? id }));
+  /*
+   * Batch K4 (QA's 266 shadow replay, c137/c134: a pasted account about <Y>, off the roster, went on <X>'s card; the
+   * right-person guard reads roster names only). This turn's account names a full name that is not the card's person,
+   * and does not name the card's person: a fact, and the model asks which (the rules book). Never decided by code.
+   */
+  const accountText = `${context.question}\n${whatHappened}`;
+  const cardFirst = words(employee.name)[0] ?? "";
+  const namesCard = mentionsPerson(accountText, employee.name, rosterNames) || (cardFirst.length > 1 && new RegExp(String.raw`\b${cardFirst}\b`, "i").test(accountText));
+  const otherNamed = namesCard ? [] : [...new Set(extractEmployeeNames(accountText))].filter((name) => words(name).length >= 2 && !samePerson(name, employee.name) && !(context.actor.displayName && samePerson(name, context.actor.displayName)));
   const facts = {
+    /* Batch K5 (b): the manager answered payroll earlier in this chat and this call left it out: said, so the model passes it again. */
+    ...(corrective && !askedPayroll && payrollStated(personContext) ? { payroll_said_earlier: payrollStated(personContext) } : {}),
+    ...(otherNamed.length > 0 ? { account_names_other_person: { named: otherNamed.slice(0, 3).map(untrusted), card_person: employee.name } } : {}),
     ...(unset.length > 0 ? { unset } : {}),
     ...(level || payroll || priorActions
       ? { stated: { ...(level ? { warning_level: level } : {}), ...(payroll ? { payroll_deduct: payroll } : {}), ...(payroll === "yes" && amount ? { payroll_amount: `$${amount.replace(/^\$/, "")}` } : {}), ...(priorActions ? { prior_actions: priorActions } : {}) } }
