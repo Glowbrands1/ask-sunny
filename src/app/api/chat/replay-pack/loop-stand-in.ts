@@ -38,6 +38,8 @@ export interface LoopStandIn {
   readonly views: LoopView[];
   /** Each step's prompt exactly as the model received it (the provider's view, cache markers included). */
   readonly prompts: unknown[];
+  /** Batch J8: each call's provider options (thinking, effort), to see a hand-back asks as the turn's first call did. */
+  readonly providerOptions: unknown[];
   calls: number;
 }
 
@@ -95,6 +97,7 @@ export function loopStandIn(decide: (view: LoopView) => LoopDecision): LoopStand
   const standIn: LoopStandIn = {
     views: [],
     prompts: [],
+    providerOptions: [],
     calls: 0,
     model: {
       specificationVersion: "v3",
@@ -104,9 +107,10 @@ export function loopStandIn(decide: (view: LoopView) => LoopDecision): LoopStand
       async doGenerate() {
         throw new Error("the stand-in only streams");
       },
-      async doStream(options: { prompt: Message[]; abortSignal?: AbortSignal }) {
+      async doStream(options: { prompt: Message[]; abortSignal?: AbortSignal; providerOptions?: unknown }) {
         standIn.calls += 1;
         standIn.prompts.push(options.prompt);
+        standIn.providerOptions.push(options.providerOptions ?? null);
         const view = viewOf(options.prompt);
         standIn.views.push(view);
         const decision = decide(view);
