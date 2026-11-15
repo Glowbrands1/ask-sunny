@@ -168,6 +168,8 @@ export const RULES_BOOK: readonly { readonly title: string; readonly rules: read
       "The exit's date is the last day worked or the effective date, and it may be after today: \"Last day 11/28/2026, as you said.\" Never call it a date after today or ask for another day because it is in the future.",
       "Rehire eligibility and the reason go on the exit only as the manager said them. Never guess either; when the manager did not say, leave them for the draft and say so in one line.",
       "An exit is not an incident: never ask \"what happened\", never cite or ask about a JBA Policy Manual section, and never ask a warning level. Ask at most one question, for something the exit needs that the manager did not say.",
+      "exit_termination (the manager stated a termination): say \"Filed as an **Immediate involuntary separation** (a termination), as you said.\" and the date: \"Effective <effective>, as you said.\", or with dated_today \"Dated today; say if the termination is effective another day.\" Never a Resignation Date on a termination. The no-show or incident dates are the reason, never the date.",
+      "An exit reply uses the exit form's own words: \"Last Day Worked\", \"Date that notice was given\", \"Reason for Resignation\", \"Eligible for Rehire\". Never \"**Observation of Offense:**\", a Type of Warning or a **Policy:** line on an exit.",
     ],
   },
   {

@@ -274,14 +274,31 @@ function staffRow(person: RosterEmployee) {
  * An exit card's dates read back in the form's own labels and words (EXIT_DATE_LINE_AGREES; the live re-run's
  * no-notice-no-date-resigned: "the resignation date is lost"), read by today's exit reader from the manager's words.
  */
-async function exitDateLines(managerWords: string, today: string): Promise<string[]> {
+/** Batch G (G7a): an exit the manager states as a termination ("terminate <name>", "we're terminating her"); a hedge is not one. */
+function exitIsTermination(words: string): boolean {
+  if (/\b(?:might|may|could|thinking (?:of|about)|considering|if (?:she|he|they) (?:does|do)|going to have to)\b[^.\n]{0,40}\b(?:terminat|let (?:her|him|them) go|fire)/i.test(words)) return false;
+  return /\bterminat(?:e|ed|ing|ion)\b|\blet (?:her|him|them) go\b|\bfired\b|\binvoluntary\b/i.test(words);
+}
+
+/** A date right after "effective" ("effective 11/20", "effective as of Nov 20"); null when none. */
+function terminationEffectiveDateOf(words: string, today: string): string | null {
+  const effective = /\beffective(?:\s+(?:on|as of|date))?\s+([^,\n]{3,25})/i.exec(words)?.[1];
+  const [read] = effective ? readDates(effective) : [];
+  if (!read) return null;
+  /* An effective date is forward-looking: a month/day with no year is this year's, never rolled back to last year. */
+  const year = read.year ?? Number(today.slice(0, 4));
+  return `${year}-${String(read.month).padStart(2, "0")}-${String(read.day).padStart(2, "0")}`;
+}
+
+async function exitDateLines(managerWords: string, today: string, termination = false): Promise<string[]> {
   const [{ readExitFacts, EXIT_ROLE_LABEL }, { exitDateInWords }] = await Promise.all([import("@/lib/forms/exit-facts"), import("@/lib/forms/exit-intake")]);
   const facts = readExitFacts(managerWords, today);
   const lines: string[] = [];
   for (const role of ["lastDayWorked", "noticeGiven", "noticeFulfilled"] as const) {
     if (facts[role]) lines.push(`**${EXIT_ROLE_LABEL[role]}:** ${exitDateInWords(facts[role]!)}`);
   }
-  if (facts.resignationDate) lines.push(`**${EXIT_ROLE_LABEL.resigned}:** ${exitDateInWords(facts.resignationDate)}`);
+  /* Batch G (G7a): a termination has no resignation date; the no-show dates are its reason. */
+  if (facts.resignationDate && !termination) lines.push(`**${EXIT_ROLE_LABEL.resigned}:** ${exitDateInWords(facts.resignationDate)}`);
   return lines;
 }
 
@@ -1233,6 +1250,8 @@ export async function proposeForm(
    * line, no longer an override). "Other" carries the model's short topic.
    */
   let policyLine: string | null = policyHeading ? formatManualCitation(policyHeading, page) : null;
+  /* Batch G (G7a, the tester's exit sweep): an exit cites no policy; it is not an incident. */
+  if (template.key === "stc-exit") policyLine = null;
   const otherPart = askedOther || (/^other\b/i.test(askedPolicy) ? askedPolicy : "");
   if (otherPart) {
     const topic = otherPart.replace(/^other\s*[—:-]?\s*/i, "").trim() || cleaning || whatHappened.slice(0, 120);
@@ -1328,6 +1347,18 @@ export async function proposeForm(
    * for one, Woven's salon for this employee, when it is one of the manager's choices, is the card's salon; the fact
    * salon_from_woven says so and the rules book words the line.
    */
+  /*
+   * Batch G (G7a, the tester's exit sweep: "terminate <name>, 3 no call no shows on 11/10, 11/12 and 11/13" read back as
+   * "Resignation Date: November 10" and dated the first no-show): an exit the manager states as a termination is the
+   * form's "Immediate involuntary separation", dated the stated effective date, else today (said in one line). The
+   * no-show dates are the reason, never the form's date.
+   */
+  const exitTermination = template.key === "stc-exit" && exitIsTermination(managerWords)
+    ? (() => {
+        const effective = terminationEffectiveDateOf(managerWords, today);
+        return { date: effective ?? today, dated_today: !effective };
+      })()
+    : null;
   let salonFromWoven: string | null = null;
   if (!typedSalon && employee.id && proposal.status === "needs_location") {
     const primary = await rosterPrimarySalon(context.actor.scope, employee.id);
@@ -1363,7 +1394,7 @@ export async function proposeForm(
   const card: ChatFormProposal = {
     ...proposal,
     sourceMessageIds: sourceIds,
-    formDate: datesAsked.length > 0 || futureDate ? null : date ?? proposal.formDate ?? null,
+    formDate: exitTermination ? exitTermination.date : datesAsked.length > 0 || futureDate ? null : date ?? proposal.formDate ?? null,
     ...(level ? { warningLevel: level } : {}),
     ...(whatHappened ? { issue: whatHappened } : {}),
     ...(payroll ? { payrollDeduct: payroll } : {}),
@@ -1431,7 +1462,8 @@ export async function proposeForm(
       const said = extractJobTitle(requestWords);
       return said && card.employeeRole && said.trim().toLowerCase() !== card.employeeRole.trim().toLowerCase() ? { title_differs: { woven: card.employeeRole, manager_said: said } } : {};
     })(),
-    ...(template.key === "stc-exit" ? { exit_dates: await exitDateLines(requestWords, today) } : {}),
+    ...(template.key === "stc-exit" ? { exit_dates: await exitDateLines(requestWords, today, Boolean(exitTermination)) } : {}),
+    ...(exitTermination ? { exit_termination: { form_label: "Immediate involuntary separation", effective: exitTermination.date, ...(exitTermination.dated_today ? { dated_today: true } : {}) } } : {}),
     ...(underPerformance ? { under_performance: true } : {}),
     ...(didYouMean ? { confirm_policy: didYouMean } : {}),
     ...(dropped.length > 0 ? { not_kept: dropped } : {}),

@@ -508,4 +508,94 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       expect(reply.content, `the question does not name the policy:\n${reply.content}`).toMatch(/Corrective Action citing \*\*Animals in the Workplace\*\* \(p\.30\)\. Who is it for\?/);
     },
   },
+  {
+    id: "nov15-agent-loop-g7c-exit-create-fills-the-exit-fields",
+    title: "G7c: Create from the loop's exit card writes the manager's exit facts into the draft's own fields (today's exit reader): last day 11/28, notice and resignation date, rehire yes and the reason",
+    report: `${REPORT}; the tester's exit sweep: the exit card holds only employee, salon and date; the rest was only in the reply`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-15T18:00:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "stc-exit", employee_id: "e-2", incident_date: "2026-11-28" } };
+        return { text: "Here's the Employee Exit Form for **Remy Calder**: a resignation with notice. Last day 11/28/2026, as you said." };
+      }));
+      const thread = t.thread();
+      await thread.say("exit form for remy calder, she gave her two weeks notice on 11/14, her last day is 11/28, she is eligible for rehire, she is leaving to go back to school");
+      const id = await thread.create();
+      const values = t.values(id);
+      const ticked = t.checked(id);
+      expect(values.last_day_worked, "the last day is not on the draft").toBe("2026-11-28");
+      expect(values.notice_given_date, "the notice date is not on the draft").toBe("2026-11-14");
+      // A resignation with notice: the notice date is the resignation date. Notice is not fulfilled until 11/28, so "Submitted & Fulfilled Notice" stays for the manager.
+      expect(values.resignation_date, "the resignation date is not on the draft").toBe("2026-11-14");
+      expect(ticked.eligible_for_rehire ?? [], "rehire is not on the draft").toEqual(["yes"]);
+      expect(values.resignation_reason ?? values.details ?? "", "the reason is not on the draft").toMatch(/back to school/i);
+    },
+  },
+  {
+    id: "nov15-agent-loop-g7a-exit-termination-not-a-resignation",
+    title: "G7a/G7b (the tester's exit sweep): \"terminate <name>, 3 no call no shows on 11/10, 11/12 and 11/13\" is an involuntary separation dated today (not the first no-show), with no Resignation Date, no policy and no CA labels",
+    report: `${REPORT}; the tester's exit sweep: read back as "**Resignation Date:** November 10, 2026", dated 11/10, with an Attendance policy line`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-15T18:00:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      const model = loopStandIn((view): LoopDecision => {
+        const result = lastResult(view, "propose_form") as { card?: { policy?: string | null }; facts?: { exit_termination?: { effective: string; dated_today?: boolean }; exit_dates?: string[] } } | null;
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
+        // A model that reaches for the CA's Attendance policy: an exit cites none.
+        if (!result) return { tool: "propose_form", input: { template_key: "stc-exit", employee_id: "e-2", policy: "Attendance", incident_date: "2026-11-10" } };
+        const exit = result.facts?.exit_termination;
+        return {
+          text: [
+            "Here's the Employee Exit Form for **Remy Calder**.",
+            exit ? "Filed as an **Immediate involuntary separation** (a termination), as you said." : "Filed as a resignation.",
+            exit?.dated_today ? "Dated today; say if the termination is effective another day." : `Effective ${exit?.effective ?? ""}, as you said.`,
+            ...(result.facts?.exit_dates ?? []),
+            "**Reason for Resignation:** 3 no call no shows (11/10, 11/12 and 11/13).",
+            ...(result.card?.policy ? [`**Policy:** ${result.card.policy}`] : []),
+          ].join("\n\n"),
+        };
+      });
+      t.loopModel!(model);
+      const thread = t.thread();
+      const reply = await thread.say("terminate remy calder, 3 no call no shows on 11/10, 11/12 and 11/13");
+      expect(thread.proposal?.templateKey).toBe("stc-exit");
+      expect(thread.proposal?.formDate, `the exit is dated the first no-show:\n${reply.content}`).toBe("2026-11-15");
+      expect((thread.proposal as { policyLine?: string | null } | undefined)?.policyLine ?? null, "an exit cites a policy").toBeNull();
+      expect(reply.content, "a termination read back as a resignation").not.toMatch(/Resignation Date/);
+      expect(reply.content, "an exit uses CA labels").not.toMatch(/Observation of Offense|\*\*Policy:\*\*|Type of Warning/);
+    },
+  },
+  {
+    id: "nov15-agent-loop-g7d-exit-two-salons-filed-at-woven",
+    title: "G7d (the tester's exit sweep, as G14): an exit for an employee Woven lists at one of the manager's two salons is filed there, ready, with Create",
+    report: `${REPORT}; the tester's exit sweep: "Filed at **<salon>**" while the exit card stayed needs_location with no Create button`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-15T18:00:00Z"));
+      t.directory([...STAFF, ISLA]);
+      t.as("salon_director", TWO_SALONS);
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "isla marrow" } };
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "stc-exit", employee_id: ISLA.id, incident_date: "2026-11-28" } };
+        return { text: "Here's the Employee Exit Form for **Isla Marrow**. Filed at **NE Kearney**, where Woven lists Isla; say if it's another salon. Last day 11/28/2026, as you said." };
+      }));
+      const thread = t.thread();
+      const reply = await thread.say("exit form for isla marrow, she gave notice, last day is 11/28");
+      expect(thread.proposal?.locationId, `the exit is not filed at Woven's salon:\n${reply.content}`).toBe("loc-0309");
+      expect(thread.proposal?.status).toBe("ready");
+      expect(thread.proposal?.formDate).toBe("2026-11-28");
+    },
+  },
 ];
