@@ -12,10 +12,12 @@
  * live model's judgement; QA measures that on the test user.
  */
 
+import { withoutMessageIdTags } from "@/lib/ai/agent-loop/evidence";
+
 export interface LoopView {
   readonly system: string;
   /** The manager's and Sunny's turns as the model was given them, oldest first. */
-  readonly turns: readonly { readonly role: "user" | "assistant"; readonly text: string }[];
+  readonly turns: readonly { readonly role: "user" | "assistant"; readonly text: string; readonly messageIds?: readonly string[] }[];
   /** This turn's tool results so far, in order. */
   readonly results: readonly { readonly tool: string; readonly output: Record<string, unknown> }[];
   /** The model call within this turn, from 0. */
@@ -53,11 +55,14 @@ function viewOf(prompt: readonly Message[]): LoopView {
   prompt.forEach((message, index) => {
     if (message.role === "user") start = index;
   });
-  const turns: { role: "user" | "assistant"; text: string }[] = [];
+  const turns: { role: "user" | "assistant"; text: string; messageIds?: string[] }[] = [];
   for (const message of prompt.slice(0, start + 1)) {
     if (message.role !== "user" && message.role !== "assistant") continue;
-    const text = typeof message.content === "string" ? message.content : message.content.filter((part) => part.type === "text").map((part) => part.text ?? "").join("\n");
-    if (text !== "") turns.push({ role: message.role, text });
+    const shown = typeof message.content === "string" ? message.content : message.content.filter((part) => part.type === "text").map((part) => part.text ?? "").join("\n");
+    // The evidence tags (`[message_id: <id>]`, evidence.ts) are kept apart, so a case reads the manager's words as typed.
+    const messageIds = [...shown.matchAll(/\[message_id:\s*([^\]\n]+)\]/g)].map((found) => found[1]!.trim());
+    const text = withoutMessageIdTags(shown);
+    if (text !== "") turns.push({ role: message.role, text, ...(messageIds.length > 0 ? { messageIds } : {}) });
   }
   const results: { tool: string; output: Record<string, unknown> }[] = [];
   let step = 0;
