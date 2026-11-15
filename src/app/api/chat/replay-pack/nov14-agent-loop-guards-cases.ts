@@ -786,8 +786,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
         }
         if (/liora quenby/i.test(said)) {
           if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "msb" } };
-          if (tries === 0) return { tool: "propose_form", input: { level_evidence: evidenceFrom(view), template_key: "dpoa", employee_id: LIORA.id, policy: "Standards of Conduct", warning_level: "verbal", what_happened: "Liora Quenby was below in PPTA, LPSVA, Average Club, CC%, Spa%." } };
-          if (tries === 1) return { tool: "propose_form", input: { level_evidence: evidenceFrom(view), template_key: "dpoa", employee_id: LIORA.id, policy: "Standards of Conduct", warning_level: "verbal", what_happened: accountB } };
+          if (tries === 0) return { tool: "propose_form", input: { level_evidence: evidenceFrom(view, "verbal"), template_key: "dpoa", employee_id: LIORA.id, policy: "Standards of Conduct", warning_level: "verbal", what_happened: "Liora Quenby was below in PPTA, LPSVA, Average Club, CC%, Spa%." } };
+          if (tries === 1) return { tool: "propose_form", input: { level_evidence: evidenceFrom(view, "verbal"), template_key: "dpoa", employee_id: LIORA.id, policy: "Standards of Conduct", warning_level: "verbal", what_happened: accountB } };
           return { text: "Here's the card." };
         }
         return { text: "Who is this Corrective Action Form for?" };
