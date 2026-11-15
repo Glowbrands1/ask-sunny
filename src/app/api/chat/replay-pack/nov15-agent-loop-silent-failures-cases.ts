@@ -68,7 +68,8 @@ export const NOV15_AGENT_LOOP_SILENT_FAILURE_CASES: ReplayCase[] = [
       t.loopModel!(model);
       for (const turn of [T8, T9]) {
         const reply = await thread.say(turn);
-        expect(t.values(id).action_plan ?? "", `the Action Plan is not the manager's text after "${turn}":\n${reply.content}`).toMatch(/^Violation of Company policy has resulted in immediate termination of employment\./);
+        // Pau's approval (15 Nov 2026): a plan ending in a stated termination keeps no future-violations closing.
+        expect(t.values(id).action_plan ?? "", `the Action Plan is not the manager's text after "${turn}":\n${reply.content}`).toBe(PLAN);
         expect(reply.content, "the instruction was read as a policy name").not.toMatch(/couldn't find a section/i);
       }
       if (offline) expect(model.views.some((view) => view.results.some((result) => result.tool === "read_policy" || result.tool === "search_knowledge")), "an Action Plan instruction became a policy lookup").toBe(false);

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { fieldsForVariant, parseFormDocument } from "./document";
 import { TEMPLATE_SEEDS } from "./library";
@@ -140,5 +140,31 @@ describe("which fields carry it", () => {
     });
     const values = { action_plan: PLAN };
     expect(applyRequiredClosings(revision4, null, values)).toBe(values);
+  });
+});
+
+/* Pau's written approval, 15 Nov 2026 (QA relay; batch G8, a production chat): a plan ending in a stated termination keeps no future-violations closing. */
+describe("a plan that ends in a stated termination", () => {
+  const on = () => vi.stubEnv("TERMINATION_STATED_TICKS_ENABLED", "true");
+  afterEach(() => vi.unstubAllEnvs());
+  it("'… has resulted in immediate termination of employment.' gets no closing after it", () => {
+    on();
+    const plan = "Violation of Company policy has resulted in immediate termination of employment.";
+    expect(withRequiredClosing(plan, CA_ACTION_PLAN_CLOSING)).toBe(plan);
+  });
+  it("'employment has been terminated …' gets no closing after it", () => {
+    on();
+    const plan = "Due to repeated no call no shows, her employment has been terminated effective 11/15/2026.";
+    expect(withRequiredClosing(plan, CA_ACTION_PLAN_CLOSING)).toBe(plan);
+  });
+  it("a plan that only mentions termination mid-text still ends with the closing", () => {
+    on();
+    const plan = "Management will review the policy with her; termination of employment is the next step if this repeats. She will clock in on time.";
+    expect(withRequiredClosing(plan, CA_ACTION_PLAN_CLOSING)).toBe(`${plan} ${CA_ACTION_PLAN_CLOSING}`);
+  });
+  it("with the flag off, nothing changes: the closing follows", () => {
+    vi.stubEnv("TERMINATION_STATED_TICKS_ENABLED", "false");
+    const plan = "Violation of Company policy has resulted in immediate termination of employment.";
+    expect(withRequiredClosing(plan, CA_ACTION_PLAN_CLOSING)).toBe(`${plan} ${CA_ACTION_PLAN_CLOSING}`);
   });
 });

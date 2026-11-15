@@ -44,6 +44,14 @@ import { fieldsForVariant, type FormDocument, type FormField } from "./document"
  */
 export const TERMINATION_PLAN_CLOSING = "Effective immediately, employment is terminated following the progressive corrective action plan.";
 const TERMINATION_CLOSING = /Effective immediately, employment is terminated following the progressive corrective action plan\s*[.!]*\s*$/i;
+/** A last sentence that states the termination itself (Pau's approval, 15 Nov 2026). */
+const STATED_TERMINATION_LAST = /\b(?:has\s+|have\s+)?result(?:ed|s)?\s+in\s+(?:the\s+)?(?:immediate\s+)?termination\s+of\s+(?:(?:her|his|their)\s+)?employment\b|\bemployment\s+(?:is|has\s+been|was)\s+(?:immediately\s+)?terminated\b/i;
+
+/** The value's last sentence (a closing quote or bracket kept with it). */
+function lastSentence(value: string): string {
+  const sentences = value.trim().split(/(?<=[.!?])\s+/);
+  return sentences.at(-1) ?? "";
+}
 
 /** The Corrective Action Form's Action Plan closing, in the business's words (revision 6). */
 export const CA_ACTION_PLAN_CLOSING =
@@ -96,6 +104,13 @@ export function withRequiredClosing(value: string, closing: string): string {
    * future violations. Off, this line changes nothing.
    */
   if (terminationClosingEnabled() && TERMINATION_CLOSING.test(value.trim())) return value;
+  /*
+   * Edited with Pau's written approval, 15 Nov 2026 (QA relay): a plan ending in a stated termination keeps no
+   * future-violations closing. The manager's own last sentence ("Violation of Company policy has resulted in immediate
+   * termination of employment.", "employment has been terminated …") already closes the plan, so nothing is added
+   * after it. A plan that only mentions termination mid-text still gets the closing. Off, this line changes nothing.
+   */
+  if (terminationClosingEnabled() && STATED_TERMINATION_LAST.test(lastSentence(value))) return value;
 
   const body = [wanted, ...(SUPERSEDED_CLOSINGS.get(wanted) ?? [])]
     .reduce((text, sentence) => text.replace(closingPattern(sentence), " "), value)
