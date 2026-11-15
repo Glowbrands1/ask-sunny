@@ -358,6 +358,11 @@ export const AGENT_LOOP_TOOLS = [
         employee_id: { type: "string", description: "From find_staff." },
         employee_name: { type: "string", description: "Only when find_staff said the roster cannot be searched." },
         exit_evidence: evidence("Employee Exit Form only: where the manager asks for the exit form or tells a resignation."),
+        request_evidence: {
+          type: "array",
+          items: evidence("An earlier manager message of this same request (for this person) that named them differently: their words."),
+          description: "Earlier messages of this request the name lookup missed (the manager typed the name differently there, and this message gives it).",
+        },
         new_form_evidence: evidence("Only when this message asks for another or a new form (a second form for the person on the open draft, or a new request after an earlier card): its words."),
         policy: { type: "string", description: "One JBA Policy Manual heading, exactly; or \"Other — <short topic>\"; or both, \"<heading>; Other — <topic>\" (a cleaning or sanitation duty left undone is Other, as the rules book says)." },
         what_happened: {

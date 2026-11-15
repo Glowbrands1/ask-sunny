@@ -148,4 +148,70 @@ export const NOV15_PR1_EVIDENCE_CASES: ReplayCase[] = [
       expect(thread.proposal?.employeeName, "the exit was not carded for the name as typed").toBe("Wrenna");
     },
   },
+  {
+    id: "nov15-pr1b-k8-exit-asked-before-the-name-correction-c219",
+    title: "K8 (QA's shadow replay, c219's shape; ruling (a)): \"I need an exit form with this information\" typed under \"Tesa Varnel\", the app asks, then \"For Tessa Varnell\": with request_evidence citing the earlier messages, the exit card is made on the T2 evidence; without it, exit_not_stated",
+    report: `${REPORT}: QA's 266 shadow replay, c219 (the explicit exit request was ignored after the name correction)`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      const model = loopStandIn((view): LoopDecision => {
+        const said = [...view.turns].reverse().find((turn) => turn.role === "user")?.text ?? "";
+        if (!/^For Tessa Varnell/.test(said)) return { text: "I can't find **Tesa Varnel** on your staff list. Give me her full name, or reply **use Tesa Varnel**." };
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "Tessa Varnell" } };
+        const card = lastResult(view, "propose_form") as { exit_not_stated?: boolean } | null;
+        if (!card) {
+          return {
+            tool: "propose_form",
+            input: {
+              template_key: "stc-exit",
+              employee_name: "Tessa Varnell",
+              effective_date: "11/14",
+              exit_evidence: evidenceFrom(view, "I need an exit form with this information", 1),
+              request_evidence: [evidenceFrom(view, "Meeting with Tesa Varnel tomorrow", 2), evidenceFrom(view, "I need an exit form with this information", 1)],
+            },
+          };
+        }
+        return { text: card.exit_not_stated ? "No exit asked." : "Here's the Employee Exit Form for **Tessa Varnell**." };
+      });
+      t.loopModel!(model);
+      const thread = t.thread();
+      await thread.say("Meeting with Tesa Varnel tomorrow at 7:30am about the text she sent her salon director on 11/13.");
+      await thread.say("I need an exit form with this information. Tesa Varnel is being terminated.");
+      const reply = await thread.say("For Tessa Varnell");
+      expect(thread.proposal?.templateKey, `the exit asked for before the name correction was lost:\n${reply.content}`).toBe("stc-exit");
+      expect(thread.proposal?.employeeName).toBe("Tessa Varnell");
+    },
+  },
+  {
+    id: "nov15-pr1b-k8-another-persons-turn-is-never-this-request",
+    title: "K8, QA's guardrail: request_evidence citing a message about Juno Paxton (a roster person) on Tessa Varnell's card is refused (request_evidence_other_person) and nothing is proposed",
+    report: `${REPORT}: QA's K8 guardrails (a cited turn naming another roster person is refused)`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      const model = loopStandIn((view): LoopDecision => {
+        const said = [...view.turns].reverse().find((turn) => turn.role === "user")?.text ?? "";
+        if (!/Tessa Varnell/.test(said)) return { text: "Noted." };
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "Tessa Varnell" } };
+        const card = lastResult(view, "propose_form") as { reason_code?: string } | null;
+        if (!card) return { tool: "propose_form", input: { template_key: "dpoa", employee_name: "Tessa Varnell", what_happened: "She was late again on 11/14.", request_evidence: [evidenceFrom(view, "Juno Paxton was late again", 1)] } };
+        return { text: card.reason_code ?? "proposed" };
+      });
+      t.loopModel!(model);
+      const thread = t.thread();
+      await thread.say("Juno Paxton was late again on 11/14");
+      const reply = await thread.say("make a CA for Tessa Varnell, she was late again on 11/14");
+      expect(reply.content).toBe("request_evidence_other_person");
+      expect(thread.proposal ?? null, "a card was made from another person's turn").toBeNull();
+    },
+  },
 ];

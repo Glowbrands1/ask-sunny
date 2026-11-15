@@ -9,7 +9,7 @@ import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import { businessToday } from "@/lib/business-date";
 import { isoDate, monthDayToIso, readDates, sameDate, withoutDates } from "./dates";
 import { candidateNameWords, chatFormsActor } from "@/lib/forms/chat-form-records";
-import { identifiedTurns, verifyEvidence } from "./evidence";
+import { identifiedTurns, verifyEvidence, withoutMessageIdTags } from "./evidence";
 import { displayName, matchEmployeeName, nameConfirmationQuestion, type RosterEmployee } from "@/lib/forms/employee-match";
 import { offRosterTyped } from "@/lib/forms/roster-only-names";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
@@ -1168,6 +1168,7 @@ export async function proposeForm(
     employee_name?: unknown;
     exit_evidence?: unknown;
     new_form_evidence?: unknown;
+    request_evidence?: unknown;
     policy?: unknown;
     what_happened?: unknown;
     incident_date?: unknown;
@@ -1309,6 +1310,21 @@ export async function proposeForm(
   // A later create request with its own incident ("make me a CA for <name> for being late …") starts a new form: its own turn only.
   const newRequest = context.questionMessageId && asksNewForm;
   const sourceIds = newRequest ? personTurns.filter((id) => id === context.questionMessageId) : personTurns;
+  /*
+   * K8 (QA's 266 shadow replay, c219; QA's ruling (a), 15 Nov 2026): earlier manager turns of THIS request that the
+   * person turns miss (the name was typed differently there, the app asked, and this turn gives it) are the model's
+   * request_evidence. Each must be a real manager turn of this conversation that names no other roster person; they
+   * join the request for the exit check and the account, and never unlock a level, payroll or termination by themselves.
+   */
+  const conversation = identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId);
+  const citedRequestIds: string[] = [];
+  for (const claim of Array.isArray(input.request_evidence) ? input.request_evidence : []) {
+    const check = verifyEvidence(claim, conversation);
+    if (!check.ok) return { error: "request_evidence must quote the manager's own messages in this chat. Nothing was proposed.", reason_code: "request_evidence_invalid", evidence: check.reason };
+    const others = extractEmployeeNames(withoutMessageIdTags(check.turn.content)).filter((name) => rosterNames.some((roster) => samePerson(roster, name)) && !samePerson(name, employee.name));
+    if (others.length > 0) return { error: `That message is about ${others[0]}, not ${employee.name}: it is not this person's request. Nothing was proposed.`, reason_code: "request_evidence_other_person" };
+    citedRequestIds.push(check.turn.id);
+  }
   const requestWords = asked.messages
     .filter((message) => sourceIds.includes(message.id ?? ""))
     .map((message) => message.content)
@@ -1326,7 +1342,7 @@ export async function proposeForm(
   if (template.key === "stc-exit") {
     const turns = identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId);
     const check = verifyEvidence(input.exit_evidence, turns);
-    const inRequest = check.ok && (check.turn.index === turns.length - 1 || sourceIds.includes(check.turn.id));
+    const inRequest = check.ok && (check.turn.index === turns.length - 1 || sourceIds.includes(check.turn.id) || citedRequestIds.includes(check.turn.id));
     if (!inRequest) {
       return { exit_not_stated: true, reason_code: "exit_not_stated", evidence: check.ok ? "evidence_not_this_turn" : check.reason, note: "No exit_evidence from this person's request: the manager's words asking for the Employee Exit Form or telling a resignation. An offense told with a termination is the Corrective Action Form with warning_level termination, citing the offense and its date; then offer the exit form in one line (the rules book's Which form lines)." };
     }
@@ -1363,7 +1379,7 @@ export async function proposeForm(
   if (whatHappened && ACCOUNT_FORMS.has(template.key)) {
     /* A payroll or level answer ("yes payroll, $20", "make it a written") is not the incident's account. */
     const accountWords = asked.messages
-      .filter((message) => sourceIds.includes(message.id ?? "") && !LEVEL_OR_PAYROLL_ANSWER.test(String(message.content).trim()))
+      .filter((message) => (sourceIds.includes(message.id ?? "") || citedRequestIds.includes(message.id ?? "")) && !LEVEL_OR_PAYROLL_ANSWER.test(String(message.content).trim()))
       .map((message) => message.content)
       .join("\n");
     accountLost = accountMissing(withoutPayrollClauses(accountWords), whatHappened, typeof input.prior_actions === "string" ? input.prior_actions : null);
