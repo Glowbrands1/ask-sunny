@@ -8,9 +8,6 @@ different business zone shows its own label. Surfaces moved off UTC or the host'
 feedback queue and usage-shape dates, the L10 assistant history and notification dates. Calendar-date labels, report period
 labels, cron schedules and the spend guard's UTC day are unchanged on purpose.
 
-Sibling app (Ask Bubbles): same mechanism, its own zone. Bubbles' `business-date.ts` already defaults to America/Chicago.
-Checked against it: `features/admin/analytics/feedback-queue.tsx` has the same host-zone `toLocaleString`/`toLocaleDateString`
-(`longDate`/`shortDate`), so the helper and that change belong there too. Bubbles has no agent loop, no Salon Performance
-panel and no L10 panel. Not ported in this pull request (this session reads Bubbles, it cannot push there): QA to have a
-session with push access port `formatBusinessTime`/`formatBusinessDay` and the feedback-queue change as
-`Port from Ask Sunny (<sha>): times in the business zone`. Never copy Central into Bubbles: it reads its own setting.
+Sibling app (Ask Bubbles): ported (branch claude/central-time-display, fb43a993): the same helper and the feedback-queue change,
+with a test. Bubbles' business-date.ts already defaults to America/Chicago; both apps read the label from the zone and
+nothing is hard-coded twice. Bubbles has no agent loop, Salon Performance panel or L10 panel.
