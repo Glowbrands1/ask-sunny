@@ -9,6 +9,8 @@ import { milestoneState, rockState } from "@/features/l10/lib/dueStatus";
 import { duplicateRock, newItemId, ROCK_STATUS_LABEL, ROCK_STATUS_ORDER, rockSections } from "@/features/l10/lib/doc";
 import type { Milestone, Rock, RockStatus } from "@/features/l10/lib/types";
 
+const ownerInitials = (name: string) => name.split(" ").map((n) => n[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
+
 const STATUS_TONE: Record<RockStatus, string> = { "on-track": "bg-ok text-ink", "off-track": "bg-warn text-warn-ink", done: "border border-[#1b5e2a] bg-[#e1f1e4] text-[#154a21] print:border-black print:bg-white print:text-black" };
 
 function RockRow({ rock, today, open, onOpen, onChange }: { rock: Rock; today: string; open: boolean; onOpen: () => void; onChange: (r: Rock) => void }) {
@@ -59,7 +61,7 @@ function RockRow({ rock, today, open, onOpen, onChange }: { rock: Rock; today: s
  * the left (the owner's request, 15 Nov 2026). The same fields and the same save path as the inline editor it replaces;
  * the close button and Esc close it. The floating buttons move clear of it (globals.css, [data-side-panel]).
  */
-function RockPanel({ rock, owners, today, onChange, onDuplicate, onDelete, onClose }: { rock: Rock; owners: string[]; today: string; onChange: (r: Rock) => void; onDuplicate: (owner: string) => void; onDelete: () => void; onClose: () => void }) {
+function RockPanel({ rock, owners, today, saveStatus, onChange, onDuplicate, onDelete, onClose }: { rock: Rock; owners: string[]; today: string; saveStatus?: string; onChange: (r: Rock) => void; onDuplicate: (owner: string) => void; onDelete: () => void; onClose: () => void }) {
   const [newMs, setNewMs] = useState("");
   const plain = useMentionPlain();
   const patch = (p: Partial<Rock>) => onChange({ ...rock, ...p });
@@ -83,7 +85,7 @@ function RockPanel({ rock, owners, today, onChange, onDuplicate, onDelete, onClo
       aria-labelledby="rock-panel-title"
       data-side-panel
       data-testid="rock-panel"
-      className="fixed inset-y-0 right-0 z-[45] flex w-full flex-col border-l border-line bg-cream shadow-2xl sm:w-[min(460px,100vw)] print:hidden"
+      className="fixed inset-y-0 right-0 z-[45] flex w-full flex-col border-l border-line bg-cream shadow-2xl sm:w-[max(460px,50vw)] print:hidden"
     >
       <div className="flex items-center gap-2 border-b border-line bg-white px-4 py-3">
         <h2 id="rock-panel-title" ref={heading} tabIndex={-1} className="m-0 min-w-0 flex-1 truncate text-base font-bold outline-none">
@@ -93,27 +95,15 @@ function RockPanel({ rock, owners, today, onChange, onDuplicate, onDelete, onClo
           ✕
         </button>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain px-4 py-4">
-        <label className="flex flex-col gap-1 text-xs font-bold text-muted">
-          Rock title
-          <input value={rock.title} onChange={(e) => patch({ title: e.target.value })} className={inputClass} />
-        </label>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <label className="flex flex-col gap-1 text-xs font-bold text-muted">
-            Owner
-            <select aria-label={`Owner of ${rock.title}`} value={rock.owner} onChange={(e) => patch({ owner: e.target.value })} className={inputClass}>
-              {owners.map((o) => (
-                <option key={o}>{o}</option>
-              ))}
-            </select>
-          </label>
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain px-4 py-4">
+        <div className="grid grid-cols-2 gap-3">
           <label className="flex flex-col gap-1 text-xs font-bold text-muted">
             Due date
             <input type="date" aria-label={`Due date of ${rock.title}`} value={rock.dueDate ?? ""} onChange={(e) => patch({ dueDate: e.target.value || undefined })} className={inputClass} />
           </label>
           <label className="flex flex-col gap-1 text-xs font-bold text-muted">
             Status
-            <select aria-label={`Status of ${rock.title}`} value={rock.status} onChange={(e) => patch({ status: e.target.value as RockStatus })} className={inputClass}>
+            <select aria-label={`Status of ${rock.title}`} value={rock.status} onChange={(e) => patch({ status: e.target.value as RockStatus })} className={cx(inputClass, "rounded-full font-bold", STATUS_TONE[rock.status])}>
               {ROCK_STATUS_ORDER.map((st) => (
                 <option key={st} value={st}>
                   {ROCK_STATUS_LABEL[st]}
@@ -121,18 +111,15 @@ function RockPanel({ rock, owners, today, onChange, onDuplicate, onDelete, onClo
               ))}
             </select>
           </label>
-          {rock.owner === "Company" && (
-            <label className="flex flex-col gap-1 text-xs font-bold text-muted">
-              Who leads this company rock
-              <select aria-label={`Lead of ${rock.title}`} value={rock.lead ?? ""} onChange={(e) => patch({ lead: e.target.value || undefined })} className={inputClass}>
-                <option value="">—</option>
-                {owners.filter((o) => o !== "Company").map((o) => (
-                  <option key={o}>{o}</option>
-                ))}
-              </select>
-            </label>
-          )}
         </div>
+        <label className="flex flex-col gap-1 text-xs font-bold text-muted">
+          Rock title
+          <input value={rock.title} onChange={(e) => patch({ title: e.target.value })} className={cx(inputClass, "text-base font-semibold")} />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-bold text-muted">
+          Details
+          <MentionField multiline aria-label={`Notes for ${rock.title}`} value={rock.notes ?? ""} onChange={(v) => patch({ notes: v })} placeholder="Context, blockers, updates… try @ and a name" className="min-h-40 py-2" />
+        </label>
         <div>
           <div className="mb-1 text-xs font-bold text-muted">Milestones</div>
           <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
@@ -155,30 +142,58 @@ function RockPanel({ rock, owners, today, onChange, onDuplicate, onDelete, onClo
             </Button>
           </div>
         </div>
-        <label className="flex flex-col gap-1 text-xs font-bold text-muted">
-          Notes
-          <MentionField multiline aria-label={`Notes for ${rock.title}`} value={rock.notes ?? ""} onChange={(v) => patch({ notes: v })} placeholder="Context, blockers, updates… try @ and a name" className="min-h-20 py-2" />
-        </label>
-        <div className="flex flex-wrap items-center gap-2">
-          <select aria-label={`Duplicate ${rock.title} to`} value="" onChange={(e) => e.target.value && onDuplicate(e.target.value)} className={cx(inputClass, "w-56")}>
-            <option value="">Duplicate to…</option>
-            {owners.filter((o) => o !== rock.owner).map((o) => (
-              <option key={o}>{o}</option>
-            ))}
-          </select>
-          <Button variant="outline" onClick={() => patch({ archived: !rock.archived })}>
-            {rock.archived ? "Restore rock" : "Archive rock"}
-          </Button>
-          <Button variant="outline" className="text-[#8a1c1c]" onClick={() => (onDelete(), onClose())}>
-            Delete rock
-          </Button>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <label className="flex flex-col gap-1 text-xs font-bold text-muted">
+            Attach to owner
+            <span className="flex items-center gap-2">
+              <span aria-hidden className="flex size-8 flex-none items-center justify-center rounded-full bg-white text-[11px] font-bold text-ink ring-1 ring-line">
+                {ownerInitials(rock.owner)}
+              </span>
+              <select aria-label={`Owner of ${rock.title}`} value={rock.owner} onChange={(e) => patch({ owner: e.target.value })} className={cx(inputClass, "flex-1")}>
+                {owners.map((o) => (
+                  <option key={o}>{o}</option>
+                ))}
+              </select>
+            </span>
+          </label>
+          {rock.owner === "Company" && (
+            <label className="flex flex-col gap-1 text-xs font-bold text-muted">
+              Who leads this company rock
+              <select aria-label={`Lead of ${rock.title}`} value={rock.lead ?? ""} onChange={(e) => patch({ lead: e.target.value || undefined })} className={inputClass}>
+                <option value="">—</option>
+                {owners.filter((o) => o !== "Company").map((o) => (
+                  <option key={o}>{o}</option>
+                ))}
+              </select>
+            </label>
+          )}
         </div>
+        <select aria-label={`Duplicate ${rock.title} to`} value="" onChange={(e) => e.target.value && onDuplicate(e.target.value)} className={cx(inputClass, "w-56")}>
+          <option value="">Duplicate to…</option>
+          {owners.filter((o) => o !== rock.owner).map((o) => (
+            <option key={o}>{o}</option>
+          ))}
+        </select>
+      </div>
+      {/* Autosaves as you type, as everywhere on the page: no Save button. The meeting's save status, repeated quietly. */}
+      <div className="flex flex-wrap items-center gap-2 border-t border-line bg-white px-4 py-3">
+        <Button variant="outline" onClick={() => patch({ archived: !rock.archived })}>
+          {rock.archived ? "Restore rock" : "Archive rock"}
+        </Button>
+        <Button variant="outline" className="text-[#8a1c1c]" onClick={() => (onDelete(), onClose())}>
+          Delete rock
+        </Button>
+        {saveStatus && (
+          <span data-testid="rock-panel-save-status" className="ml-auto text-xs text-muted">
+            {saveStatus}
+          </span>
+        )}
       </div>
     </aside>
   );
 }
 
-export function Rocks({ rocks, onChange, people, today }: { rocks: Rock[]; onChange: (next: Rock[]) => void; people: string[]; today: string }) {
+export function Rocks({ rocks, onChange, people, today, saveStatus }: { rocks: Rock[]; onChange: (next: Rock[]) => void; people: string[]; today: string; /** The meeting's save status in words, shown quietly in the rock panel's footer. */ saveStatus?: string }) {
   const [showArchived, setShowArchived] = useState(false);
   // One rock open at a time, in the panel on the right.
   const [openId, setOpenId] = useState<string | null>(null);
@@ -245,6 +260,7 @@ export function Rocks({ rocks, onChange, people, today }: { rocks: Rock[]; onCha
           rock={opened}
           owners={owners}
           today={today}
+          saveStatus={saveStatus}
           onChange={(next) => onChange(rocks.map((x) => (x.id === opened.id ? next : x)))}
           onDuplicate={(o) => onChange([...rocks, duplicateRock(opened, o, newItemId)])}
           onDelete={() => onChange(rocks.filter((x) => x.id !== opened.id))}

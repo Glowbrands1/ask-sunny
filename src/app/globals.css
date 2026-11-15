@@ -1491,7 +1491,7 @@
  */
 @media (min-width: 40rem) {
   :root:has([data-side-panel]) .hub-l10 {
-    --fab-right: calc(min(460px, 100vw) + 1.25rem);
+    --fab-right: calc(max(460px, 50vw) + 1.25rem);
   }
 }
 @media (max-width: 39.999rem) {

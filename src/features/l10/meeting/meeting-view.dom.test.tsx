@@ -349,6 +349,9 @@ describe("Rock Review: a rock opens in a side panel", () => {
     await waitFor(() => expect(save).toHaveBeenCalled());
     const doc = save.mock.calls.at(-1)![2] as { rocks: { id: string; milestones: { done: boolean }[] }[] };
     expect(doc.rocks.find((r) => r.id === "k1")!.milestones[0].done).toBe(true);
+    // It autosaves (no Save button); the footer repeats the meeting's save status quietly, as in Bloom's goal drawer.
+    expect(within(panel()).queryByRole("button", { name: /^Save/ })).toBeNull();
+    await waitFor(() => expect(within(panel()).getByTestId("rock-panel-save-status").textContent).toBe("All changes saved"));
   });
 
   it("closes with the close button and with Esc", () => {
