@@ -21,6 +21,9 @@ const KNOWN = new Set([
   // The rebuild plan's PR 1a (evidence args; QA's review of #1026): the privacy, exit and name-correction refusals.
   "privacy_not_this_person", "exit_not_stated", "name_evidence_missing", "name_correction_other_fields", "name_correction_no_name",
   "name_not_in_evidence", "name_correction_other_person", "name_correction_did_you_mean", "name_correction_needs_evidence",
+  // PR 1b: the request and account evidence (requestTurns builds `${kind}_invalid` and the rest), and the open request.
+  "request_evidence_invalid", "request_evidence_other_person", "request_evidence_not_this_request",
+  "account_evidence_invalid", "account_evidence_other_person", "account_evidence_not_this_request", "account_evidence_missing", "open_requested",
 ]);
 
 /** A line that returns a refusal: `error:` followed by a string, a template or a named message (not `error: Boolean(...)`). */

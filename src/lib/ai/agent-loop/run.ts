@@ -307,7 +307,7 @@ export const AGENT_LOOP_TOOLS = [
   {
     name: "find_staff",
     description: "Search this manager's staff roster by name (any case, partial first or last name). Returns roster spellings and employee_ids; several when names are shared.",
-    input_schema: object({ name: { type: "string" } }, ["name"]),
+    input_schema: object({ name: { type: "string" }, person_evidence: evidence("The manager's words naming this person as the form's person (\"a CA for Wrenna\"): their message id and words, which hold the name.") }, ["name"]),
   },
   {
     name: "find_past_forms",
@@ -318,6 +318,7 @@ export const AGENT_LOOP_TOOLS = [
       date: { type: "string", description: "The form's date as the manager gave it (\"10/31\"), if any." },
       about: { type: "string", description: "Words the manager used about the form (\"getting rooms ready between guests\"), if any." },
       forms_on_file_evidence: FORMS_ON_FILE_EVIDENCE,
+      open: { type: "boolean", description: "true when the manager asks to open, edit or see one form on file (not a list of what is on file)." },
     }, ["employee_name"]),
   },
   {
@@ -349,6 +350,12 @@ export const AGENT_LOOP_TOOLS = [
         employee_id: { type: "string", description: "From find_staff." },
         employee_name: { type: "string", description: "Only when find_staff said the roster cannot be searched." },
         exit_evidence: evidence("Employee Exit Form only: where the manager asks for the exit form or tells a resignation."),
+        request_evidence: {
+          type: "array",
+          items: evidence("An earlier manager message of this same request (for this person) that named them differently: their words."),
+          description: "Earlier messages of this request the name lookup missed (the manager typed the name differently there, and this message gives it).",
+        },
+        new_form_evidence: evidence("Only when this message asks for another or a new form (a second form for the person on the open draft, or a new request after an earlier card): its words."),
         policy: { type: "string", description: "One JBA Policy Manual heading, exactly; or \"Other — <short topic>\"; or both, \"<heading>; Other — <topic>\" (a cleaning or sanitation duty left undone is Other, as the rules book says)." },
         what_happened: {
           type: "string",
@@ -377,8 +384,13 @@ export const AGENT_LOOP_TOOLS = [
         instance_id: { type: "string" },
         values: { type: "object", additionalProperties: { type: "string" } },
         forms_on_file_evidence: FORMS_ON_FILE_EVIDENCE,
-        intent: { type: "string", enum: ["correct_name"], description: "correct_name: this message corrects the employee's name (only employee_name changes)." },
+        intent: {
+          type: "string",
+          enum: ["correct_name", "write_account"],
+          description: "correct_name: this message corrects the employee's name (only employee_name changes). write_account: the manager asks you to put their account on the draft.",
+        },
         name_evidence: evidence("With intent correct_name: this message's words that give the name."),
+        account_evidence: { type: "array", items: evidence("A manager message that tells what happened, and their words."), description: "With intent write_account: the manager's messages with the account." },
       },
       ["instance_id"],
     ),
@@ -517,7 +529,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   const modelSteps: { step: number; ms: number; stop: string | null; input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number }[] = [];
   const handlers: Record<string, (args: Record<string, unknown>) => Promise<ToolResult>> = {
     find_staff: (args) => findStaff(context, args, effects),
-    find_past_forms: (args) => findPastForms(context, args),
+    find_past_forms: (args) => findPastForms(context, args, effects),
     read_form: (args) => readForm(context, args),
     read_policy: (args) => readPolicy(context, args, effects),
     propose_form: (args) => proposeForm(context, effects, args),
