@@ -4914,3 +4914,13 @@ export function otherBesideDescribedEnabled(): boolean {
 export function modelWarningLevelDiscardedEnabled(): boolean {
   return envFlag("MODEL_WARNING_LEVEL_DISCARDED_ENABLED");
 }
+
+/**
+ * TERMINATION_TICK_NOTE_ENABLED (QA, 15 Nov 2026; default off; same flag in both apps): a Corrective Action card whose
+ * manager mentioned termination, with no level ticked, says "You'll tick Termination on the form yourself; it needs
+ * DM/HR approval before it's finalized." instead of the verbal/written line (`ai/termination-tick-note.ts`). Off, as
+ * built.
+ */
+export function terminationTickNoteEnabled(): boolean {
+  return envFlag("TERMINATION_TICK_NOTE_ENABLED");
+}
