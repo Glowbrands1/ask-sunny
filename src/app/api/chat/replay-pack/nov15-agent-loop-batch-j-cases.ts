@@ -158,7 +158,9 @@ export const NOV15_AGENT_LOOP_BATCH_J_CASES: ReplayCase[] = [
       if (!offline) return;
       // Changed on purpose (15 Nov 2026, the J3 re-test after batch G): G5 writes payroll Yes on a draft, so the reply
       // names the level and payroll as saved and only the $15 as not saved, as QA's 9b asked.
-      expect(reply.content).toMatch(/^I saved these changes on the form: payroll deduct, warning type\./);
+      // Changed on purpose (15 Nov 2026): the saved fields are named in the order the writer reports them, which the
+      // case does not pin; both must be named as saved.
+      expect(reply.content).toMatch(/^I saved these changes on the form: (?:payroll deduct, warning type|warning type, payroll deduct)\./);
       expect(reply.content, "the reply never said the $15 was not saved").toMatch(/Not saved yet: \*\*Payroll deduction amount\*\* \(\$15\)\. Tell me again and I'll add it\.$/);
       expect(reply.content, "a saved field was listed as not saved").not.toMatch(/\*\*Type of Warning\*\* \(Written|\*\*Payroll deduct\*\* \(Yes/);
     },
