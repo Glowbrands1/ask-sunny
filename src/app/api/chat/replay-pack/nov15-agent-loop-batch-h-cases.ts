@@ -250,4 +250,58 @@ export const NOV15_AGENT_LOOP_BATCH_H_CASES: ReplayCase[] = [
       expect(second.staff).toBeUndefined();
     },
   },
+  {
+    id: "nov15-batch-h10-person-carried-from-earlier",
+    title: "H10 CARRIED_PERSON_NOTICE: a card whose person was named only before the last six turns carries person_from_earlier",
+    report: `${REPORT}; QA's round-6 item (8 Nov 2026): the card named <A> from earlier turns with no notice, a silent carry-over`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      const thread = start(t);
+      const model = loopStandIn((view) => {
+        const said = view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "";
+        if (!/verbal ca for her/i.test(said)) return { text: "Noted." };
+        return lastResult(view, "propose_form") ? { text: "Here is the card." } : { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", policy: "Attendance", what_happened: "Remy Calder was 20 minutes late on 11/9/26." } };
+      });
+      t.loopModel!(model);
+      await thread.say("remy calder has been late a few times this month");
+      for (const question of ["what time do we open on sundays", "how long is a lunch break", "who covers the front desk at close", "when are schedules posted", "how do I request time off", "where do we keep the lotion samples"]) {
+        await thread.say(question);
+      }
+      await thread.say("make a verbal ca for her, she was 20 minutes late on 11/9/26");
+      expect(proposed(model.views)?.facts?.person_from_earlier, "the carried person had no notice").toBe("Remy Calder");
+    },
+  },
+  {
+    id: "nov15-batch-h11-pasted-outline-goes-to-the-open-draft",
+    title: "H11 PASTED_OUTLINE_TO_OPEN_DRAFT: with Remy's CA draft open, a pasted CA for another person (its field labels as headings) is that draft's outline, never refused as \"about another person\"",
+    report: `${REPORT}; QA's Sunny round-23 live test of sf-s21: the pasted outline named another person and was read as a new request`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      const thread = start(t);
+      let draftId = "";
+      const model = loopStandIn((view) => {
+        const said = view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "";
+        if (/Observation of Offense:/.test(said)) return lastResult(view, "edit_form") ? { text: "I used that outline on Remy's draft." } : { tool: "edit_form", input: { instance_id: draftId } };
+        return lastResult(view, "propose_form") ? { text: "Here is the card." } : { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", policy: "Attendance", what_happened: "Remy Calder was 20 minutes late on 11/9/26." } };
+      });
+      t.loopModel!(model);
+      await thread.say("verbal ca for remy calder, she was 20 minutes late on 11/9/26");
+      t.draftWrites({ observation: "Observed:\nRemy Calder arrived 20 minutes late for her shift on 11/9/26." });
+      draftId = await thread.create();
+      const pasted = [
+        "use this as the outline",
+        "Employee Name: Marnie Holloway",
+        "Observation of Offense: On 10/2/26 Marnie Holloway arrived 15 minutes late for her opening shift.",
+        "Action Plan: Marnie will arrive on time for every scheduled shift. A follow-up is set for two weeks.",
+      ].join("\n");
+      await thread.say(pasted);
+      const edit = model.views.flatMap((view) => view.results).filter((result) => result.tool === "edit_form").at(-1)?.output as { error?: string } | undefined;
+      expect(edit, "edit_form was not reached").toBeDefined();
+      expect(edit?.error ?? "", "the pasted outline was refused as another person's").not.toMatch(/This message is about/);
+    },
+  },
 ];

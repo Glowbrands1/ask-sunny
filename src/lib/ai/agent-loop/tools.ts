@@ -1237,6 +1237,8 @@ export async function proposeForm(
     ...(template.key === "stc-exit" ? { exit_dates: await exitDateLines(requestWords, today) } : {}),
     ...(jobTitleTyped ? { job_title_from_your_words: card.employeeRole } : {}),
     ...(whichSalon ? { which_salon: true } : {}),
+    /* CARRIED_PERSON_NOTICE (batch H10): the person was read from before the manager's last six turns. */
+    ...((await import("@/lib/ai/carried-person-notice")).carriedFromEarlier(template.key, card.employeeName, { history: context.history as ChatMessage[], question: context.question }) ? { person_from_earlier: card.employeeName } : {}),
     ...(underPerformance ? { under_performance: true } : {}),
     ...(didYouMean ? { confirm_policy: didYouMean } : {}),
     ...(dropped.length > 0 ? { not_kept: dropped } : {}),
@@ -1396,7 +1398,17 @@ export async function editForm(
      * <B>'s own card. As today's reviser rules ("about a different person is not a revision", `chat-revision.ts`).
      */
     const roster = await rosterFor(context.actor.scope);
-    if (roster.kind === "read") {
+    /*
+     * PASTED_OUTLINE_TO_OPEN_DRAFT (batch H11): a pasted form heading two or more of THIS draft's own field labels is
+     * its outline, whatever names it carries (a manager's, a coworker's), and goes on to today's outline reader.
+     */
+    const pastedOutline = await (async () => {
+      if (!(await import("@/lib/config/chat-quality-flags")).pastedOutlineToOpenDraftEnabled()) return false;
+      const [{ fieldsForVariant, interpolate, parseFormDocument }, { headedFields }] = await Promise.all([import("@/lib/forms/document"), import("@/lib/forms/template-outline")]);
+      const fields = fieldsForVariant(parseFormDocument(loaded.version.document), loaded.instance.variantKey).map((field) => ({ key: field.key, label: interpolate(field.label, null) }));
+      return headedFields(context.question, fields).length >= 2;
+    })();
+    if (roster.kind === "read" && !pastedOutline) {
       const names = roster.roster.map(displayName);
       const other = names.find((name) => !samePerson(name, loaded.instance.employeeName) && mentionsPerson(context.question, name, names));
       if (other && !mentionsPerson(context.question, loaded.instance.employeeName, names)) {
