@@ -59,9 +59,11 @@ describe("the SQL and TypeScript halves agree", () => {
      * Overview greeting stay on the app-wide Eastern default. If these two ever
      * become the same value again it should be a decision, not a drift.
      */
+    // Changed on purpose (Pau 15 Nov: both apps are Central): the app-wide default is now Central too, so the two
+    // values agree by default. They stay SEPARATE constants: this one is a literal, never derived from the env var.
     expect(GOOGLE_REVIEWS_TIMEZONE).toBe("America/Chicago");
-    expect(BUSINESS_TIMEZONE).toBe("America/New_York");
-    expect(GOOGLE_REVIEWS_TIMEZONE).not.toBe(BUSINESS_TIMEZONE);
+    expect(BUSINESS_TIMEZONE).toBe("America/Chicago");
+    expect(readFileSync(join(process.cwd(), "src", "lib", "reviews", "timezone.ts"), "utf8")).toMatch(/export const GOOGLE_REVIEWS_TIMEZONE =\s*"America\/Chicago"/);
   });
 
   it("left the superseded Eastern declaration in its own migration untouched", () => {

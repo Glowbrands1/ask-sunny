@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { BUSINESS_TIMEZONE, businessToday } from "@/lib/business-date";
 import {
@@ -30,8 +30,11 @@ describe("the zone", () => {
      * THE SCOPE OF THE CHANGE IN ONE ASSERTION. Follow-up due dates and the
      * Overview greeting are still judged in Eastern.
      */
-    expect(BUSINESS_TIMEZONE).toBe("America/New_York");
-    expect(GOOGLE_REVIEWS_TIMEZONE).not.toBe(BUSINESS_TIMEZONE);
+    // Changed on purpose (Pau 15 Nov: both apps are Central): the default business zone is Central too, so by default
+    // they agree. The reviews zone stays its own literal constant (next test), so a deployment that sets another
+    // business zone cannot move reviews between weeks.
+    expect(BUSINESS_TIMEZONE).toBe("America/Chicago");
+    expect(GOOGLE_REVIEWS_TIMEZONE).toBe("America/Chicago");
   });
 
   it("is a constant, not a deployment setting", () => {
@@ -60,14 +63,18 @@ describe("today, in the reviews zone", () => {
     expect(googleReviewsToday(new Date("2026-09-21T02:30:00Z"))).toBe("2026-09-20");
   });
 
-  it("differs from the app-wide business date inside the boundary hour", () => {
+  it("differs from the app-wide business date inside the boundary hour when a deployment sets another business zone", async () => {
     /*
-     * 04:30Z is Sunday 00:30 Eastern and Saturday 23:30 Central. The two
-     * helpers are SUPPOSED to disagree here — that disagreement is the change.
+     * Pau 15 Nov: both apps are Central, so by default the two agree. They are still independent: with the business zone
+     * set to Eastern (the env var), 04:30Z is Sunday 00:30 Eastern and Saturday 23:30 Central, and the helpers disagree.
      */
+    vi.resetModules();
+    vi.stubEnv("NEXT_PUBLIC_BUSINESS_TIMEZONE", "America/New_York");
+    const { businessToday: eastern } = await import("@/lib/business-date");
     const instant = new Date("2026-09-20T04:30:00Z");
     expect(googleReviewsToday(instant)).toBe("2026-09-19");
-    expect(businessToday(instant)).toBe("2026-09-20");
+    expect(eastern(instant)).toBe("2026-09-20");
+    vi.unstubAllEnvs();
   });
 
   it("agrees with the app-wide business date the rest of the time", () => {
