@@ -9,7 +9,7 @@ import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import { businessToday } from "@/lib/business-date";
 import { isoDate, monthDayToIso, readDates, sameDate, withoutDates } from "./dates";
 import { candidateNameWords, chatFormsActor } from "@/lib/forms/chat-form-records";
-import { identifiedTurns, verifyEvidence } from "./evidence";
+import { identifiedTurns, verifyEvidence, withoutMessageIdTags } from "./evidence";
 import { displayName, matchEmployeeName, nameConfirmationQuestion, type RosterEmployee } from "@/lib/forms/employee-match";
 import { offRosterTyped } from "@/lib/forms/roster-only-names";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
@@ -99,6 +99,8 @@ export interface ToolContext {
   readonly today: string;
   /** The form open on the manager's screen, if any: read_form of it is never gated. */
   readonly openFormId?: string | null;
+  /** The last reply, when it showed a card not yet created: its person's forms are this conversation's (privacy gate). */
+  readonly cardReply?: string | null;
 }
 
 /* ------------------------------------------------------ hard guard: privacy --- */
@@ -121,17 +123,62 @@ const FORM = String.raw`(?:c\.?a\.?s?|corrective(?:\s+actions?)?|write[- ]?ups?|
  */
 const PRIVACY_WINDOW = 3;
 
-export function formsOnFileAsked(context: Pick<ToolContext, "question" | "history" | "questionMessageId">, evidence: unknown): { ok: true } | { ok: false; reason: string } {
+export function formsOnFileAsked(context: Pick<ToolContext, "question" | "history" | "questionMessageId">, evidence: unknown): { ok: true; said: string; before: string[] } | { ok: false; reason: string } {
   const turns = identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId);
   const check = verifyEvidence(evidence, turns);
   if (!check.ok) return { ok: false, reason: check.reason };
   const recent = turns.filter((turn) => turn.role === "user").slice(-PRIVACY_WINDOW);
-  return recent.some((turn) => turn.id === check.turn.id) ? { ok: true } : { ok: false, reason: "evidence_not_this_turn" };
+  if (!recent.some((turn) => turn.id === check.turn.id)) return { ok: false, reason: "evidence_not_this_turn" };
+  // The manager's earlier turns, nearest first: a turn that names nobody ("has she had a ca before?") is about the person last named.
+  const before = turns.filter((turn) => turn.role === "user" && turn.index < check.turn.index).reverse().map((turn) => withoutMessageIdTags(turn.content));
+  return { ok: true, said: withoutMessageIdTags(check.turn.content), before };
+}
+
+/**
+ * QA's review of PR 1a (15 Nov 2026): the ask is about THIS person. The cited turn names the person whose forms are
+ * looked at (the roster-name match request_evidence uses); or it names nobody and the manager's nearest earlier turn that
+ * names someone names this person ("has she had a ca before?"); or the person is the one on the form open on screen or
+ * on the card the last reply showed. "write a new form for Remy Calder" never opens Juno Paxton's forms.
+ */
+async function formsOnFileAskedFor(context: ToolContext, evidence: unknown, person: string): Promise<{ ok: true } | { ok: false; reason: string; reasonCode: string }> {
+  const asked = formsOnFileAsked(context, evidence);
+  if (!asked.ok) return { ok: false, reason: asked.reason, reasonCode: "privacy_not_asked" };
+  const read = await rosterFor(context.actor.scope);
+  const roster = read.kind === "read" ? read.roster : [];
+  const rosterNames = [...new Set(roster.flatMap((row) => [displayName(row), ...fullNamesOf(row)]))];
+  const holders = roster.filter((row) => fullNamesOf(row).some((full) => samePerson(full, person)));
+  const names = [person, ...(holders.length === 1 ? fullNamesOf(holders[0]!) : [])];
+  const namedIn = (text: string) =>
+    names.some((name) => mentionsPerson(text, name, rosterNames)) || extractEmployeeNames(text).some((typed) => names.some((name) => samePerson(typed, name)) || sameRosterPerson(typed, person, roster));
+  if (namedIn(asked.said)) return { ok: true };
+  const namesSomeone = (text: string) => rosterNames.some((name) => mentionsPerson(text, name, rosterNames)) || extractEmployeeNames(text).length > 0;
+  if (!namesSomeone(asked.said)) {
+    const antecedent = asked.before.find(namesSomeone);
+    if (antecedent !== undefined && namedIn(antecedent)) return { ok: true };
+  }
+  if (context.cardReply && namedIn(context.cardReply)) return { ok: true };
+  if (context.openFormId) {
+    const open = await authorizeInstance(context.request, context.openFormId, "view").then(({ loaded }) => loaded.instance.employeeName).catch(() => null);
+    if (open && sameRosterPerson(open, person, roster)) return { ok: true };
+  }
+  return { ok: false, reason: "evidence_other_person", reasonCode: "privacy_not_this_person" };
+}
+
+/** read_form, open_form and edit_form of a form that is not open: refused unless the manager asked about this form's person. */
+async function formOnFileRefusal(context: ToolContext, id: string, evidence: unknown): Promise<ToolResult | null> {
+  const basic = formsOnFileAsked(context, evidence);
+  if (!basic.ok) return privacyRefusal(basic.reason);
+  const person = await authorizeInstance(context.request, id, "view").then(({ loaded }) => loaded.instance.employeeName).catch(() => null);
+  if (!person) return null; // the form is not visible: the tool's own load says so
+  const asked = await formsOnFileAskedFor(context, evidence, person);
+  return asked.ok ? null : privacyRefusal(asked.reason, asked.reasonCode);
 }
 
 /** The refusal when the manager has not asked about forms on file: privacy_not_asked, with the evidence check's reason. */
-function privacyRefusal(reason: string): ToolResult {
-  return { error: NOT_ASKED, reason_code: "privacy_not_asked", evidence: reason };
+function privacyRefusal(reason: string, reasonCode = "privacy_not_asked"): ToolResult {
+  return reasonCode === "privacy_not_this_person"
+    ? { error: "The manager's words asking about forms on file are about someone else, not this person, so this person's forms stay closed (company privacy rule). Ask whether they want this person's forms on file.", reason_code: reasonCode, evidence: reason }
+    : { error: NOT_ASKED, reason_code: reasonCode, evidence: reason };
 }
 
 const COUNT_WORDS: Readonly<Record<string, number>> = { two: 2, three: 3, four: 4, five: 5, six: 6 };
@@ -665,8 +712,8 @@ export async function listStaffTool(context: ToolContext, effects: ToolEffects, 
 export async function findPastForms(context: ToolContext, input: { employee_name?: unknown; form?: unknown; date?: unknown; about?: unknown; forms_on_file_evidence?: unknown }): Promise<ToolResult> {
   const typed = typeof input.employee_name === "string" ? input.employee_name.trim() : "";
   if (typed === "") return { error: "Give the employee's name." };
-  const asked = formsOnFileAsked(context, input.forms_on_file_evidence);
-  if (!asked.ok) return privacyRefusal(asked.reason);
+  const asked = await formsOnFileAskedFor(context, input.forms_on_file_evidence, typed);
+  if (!asked.ok) return privacyRefusal(asked.reason, asked.reasonCode);
   const actor = await chatFormsActor(context.actor).catch(() => undefined);
   if (actor === undefined) return { error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
   if (actor === null) return { error: "This manager's role cannot view Form Monitoring, so past forms cannot be listed." };
@@ -769,8 +816,8 @@ export async function readForm(context: ToolContext, input: { instance_id?: unkn
   const id = typeof input.instance_id === "string" ? input.instance_id.trim() : "";
   if (id === "") return { error: "Give the form's instance_id (from find_past_forms or the open form)." };
   if (id !== context.openFormId) {
-    const asked = formsOnFileAsked(context, input.forms_on_file_evidence);
-    if (!asked.ok) return privacyRefusal(asked.reason);
+    const refused = await formOnFileRefusal(context, id, input.forms_on_file_evidence);
+    if (refused) return refused;
   }
   try {
     const { loaded } = await authorizeInstance(context.request, id, "view");
@@ -1835,8 +1882,8 @@ export async function editForm(
   if (id === "") return { error: "Give the form's instance_id." };
   /* Rebuild plan, PR 1 (bug 2: edit_form had no privacy gate): a form that is not the one open on screen is a form on file. */
   if (id !== context.openFormId) {
-    const asked = formsOnFileAsked(context, input.forms_on_file_evidence);
-    if (!asked.ok) return privacyRefusal(asked.reason);
+    const refused = await formOnFileRefusal(context, id, input.forms_on_file_evidence);
+    if (refused) return refused;
   }
   const values: Record<string, string> = {};
   if (input.values && typeof input.values === "object") {
@@ -1904,13 +1951,24 @@ export async function editForm(
    * The rebuild plan, PR 1: NAME_CORRECTION (a word list over the message) is gone. A name correction is the model's
    * intent "correct_name" with name_evidence from THIS message; it changes the employee's name only.
    */
+  /*
+   * QA's review of PR 1a (15 Nov 2026): EVERY write of employee_name is a name correction, with the intent or without.
+   * It needs name_evidence from THIS message whose quote holds the new name (checked once the form's name is known),
+   * changes the name only, and goes through the roster checks below. The reviser (no values) never changes the name.
+   */
   const otherFields = Object.keys(values).filter((field) => field !== "employee_name");
-  if (input.intent === "correct_name") {
+  const renames = "employee_name" in values || input.intent === "correct_name";
+  let nameQuote: string | null = null;
+  if (renames) {
     const check = verifyEvidence(input.name_evidence, identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId), { thisTurnOnly: true });
     if (!check.ok) return { error: "A name correction needs name_evidence: the id of this message and the manager's words in it that give the name. Nothing was written.", reason_code: "name_evidence_missing", evidence: check.reason };
     if (otherFields.length > 0) {
-      return { error: `This message corrects the employee's name only. ${otherFields.join(", ")} were not changed. Call edit_form with no values (the form's reviser applies the spelling), or values for employee_name only.`, reason_code: "name_correction_other_fields" };
+      return { error: `This message corrects the employee's name only. ${otherFields.join(", ")} were not changed. Call edit_form with values for employee_name only.`, reason_code: "name_correction_other_fields" };
     }
+    if (!values.employee_name?.trim()) {
+      return { error: "A name correction writes the new name: call edit_form with values for employee_name only, and name_evidence. Nothing was written.", reason_code: "name_correction_no_name" };
+    }
+    nameQuote = (input.name_evidence as { quote: string }).quote;
   }
   try {
     const { loaded } = await authorizeInstance(context.request, id, "edit");
@@ -1983,6 +2041,10 @@ export async function editForm(
         return { error: `This message is about ${other}, not ${loaded.instance.employeeName}; this form is ${loaded.instance.employeeName}'s and was not changed. Propose ${other}'s own card instead.` };
       }
     }
+    if (nameQuote !== null) {
+      const refusedName = nameCorrectionRefusal(loaded.instance.employeeName, values.employee_name!, nameQuote, roster);
+      if (refusedName) return refusedName;
+    }
     /*
      * HARD GUARD: a finalized form is never written. A change to one opens a NEW draft revising it, by the same code
      * the card's "Edit as new draft" and today's chat reopen use (`openEditableDraft` → `reviseFinalizedForm`), and the
@@ -1993,7 +2055,7 @@ export async function editForm(
       const draft = await openEditableDraft(context.request, id, { revise: true, reason: context.question.slice(0, 500) });
       const openedBefore = effects.formOpened ?? null;
       effects.formOpened = formOpenedFor(draft);
-      const revisedEdit = await editForm({ ...context, openFormId: draft.instanceId }, effects, { instance_id: draft.instanceId, values: input.values });
+      const revisedEdit = await editForm({ ...context, openFormId: draft.instanceId }, effects, { instance_id: draft.instanceId, values: input.values, intent: input.intent, name_evidence: input.name_evidence });
       /*
        * F3 (QA, batch F): A REFUSED EDIT LEAVES NO EMPTY REVISION. When the edit on the new draft is refused (an
        * unstated level or payroll, a reword that changes the person, an unknown field…), the revision this call opened
@@ -2098,7 +2160,13 @@ export async function editForm(
         const stated = readDates(context.question).map((date) => isoDate(date.text, editToday)).find((iso) => iso !== null && iso > editToday);
         if (stated) return { error: `${stated} is after today (${editToday}, the salon's local date). Nothing was written. Ask the manager which day.`, date_after_today: { today: editToday, asked_date: askedDateText(stated), form_date_kept: formDateKept(loaded.instance.formDate) } };
       }
+      const nameBefore = loaded.values.find((row) => row.fieldKey === "employee_name")?.value ?? loaded.instance.employeeName;
       const revised = await openFormTurn(context, id);
+      if (revised?.formUpdate?.instanceId === id && revised.formUpdate.updated.includes("employee_name")) {
+        // QA's review of PR 1a: the reviser never changes the employee's name; its write is put back and refused.
+        await restoreEmployeeName(id, nameBefore, context.actor.subject);
+        return { error: "The employee's name is changed only by a name correction: edit_form with values for employee_name and name_evidence quoting the new name from this message. The name was not changed.", reason_code: "name_correction_needs_evidence" };
+      }
       if (!revised) {
         return writeAccount
           ? { updated: [], ...writeAccount, note: "Nothing was saved yet. Write the manager's latest account into account_field with values: what it holds now, then the new account after it." }
@@ -2232,6 +2300,48 @@ export async function editForm(
  * being late on 11/5/26" sets the Date, Other and Details together), the revision, and last the open-draft turn.
  * The first that answers wins; null when none reads the turn as an edit of this form.
  */
+/** Words of a name, lower-cased, for the quote check (hyphens and apostrophes kept inside a word). */
+function nameWords(text: string): string[] {
+  return text.toLowerCase().replace(/[‐-―−]/g, "-").replace(/[‘’]/g, "'").split(/[^\p{L}\p{N}'-]+/u).filter(Boolean);
+}
+
+/**
+ * QA's review of PR 1a, ruling 2: the new name's changed words are in the manager's quote; the new name is not another
+ * roster person; a close spelling of someone else is asked (ruling A: a near miss is never seated). Null when allowed.
+ */
+export function nameCorrectionRefusal(formsName: string, newName: string, quote: string, roster: RosterRead): ToolResult | null {
+  const old = new Set(nameWords(formsName));
+  const said = new Set(nameWords(quote));
+  const changed = nameWords(newName).filter((word) => !old.has(word));
+  if (changed.length === 0 || changed.some((word) => !said.has(word))) {
+    return { error: `The new name must be the manager's own words in this message: name_evidence does not hold ${newName}. Nothing was written.`, reason_code: "name_not_in_evidence" };
+  }
+  if (roster.kind !== "read") return null;
+  const people = roster.roster;
+  const holders = people.filter((person) => fullNamesOf(person).some((full) => samePerson(full, newName)));
+  if (holders.length > 0 && !holders.some((person) => fullNamesOf(person).some((full) => sameRosterPerson(full, formsName, people)))) {
+    return { error: `${newName} is another person on the staff list, not ${formsName}; this form was not changed. Propose ${newName}'s own card instead.`, reason_code: "name_correction_other_person" };
+  }
+  if (holders.length === 0) {
+    const close = matchEmployeeName(newName, people);
+    const others = close.kind === "confirm" ? close.candidates.filter((candidate) => !sameRosterPerson(candidate.name, formsName, people)) : [];
+    if (others.length > 0) {
+      return { error: `Not on the staff list as typed. Nothing was written. Ask the manager, in these words: ${nameConfirmationQuestion(newName, others.map((candidate) => candidate.name))}`, reason_code: "name_correction_did_you_mean" };
+    }
+  }
+  return null;
+}
+
+/** Puts the employee's name back after a reader changed it (the form's row and its subject line). */
+async function restoreEmployeeName(id: string, name: string, actor: string): Promise<void> {
+  if (formEditSingleWriterEnabled()) {
+    await (await import("@/lib/forms/form-write")).writeRevisionEdits(id, { values: { employee_name: name }, checked: {} }, [], { actorId: actor, latest: "" });
+  } else {
+    await applyAssistantRevision(id, { values: { employee_name: name }, checked: {} }, [], actor);
+  }
+  await (await import("@/lib/supabase/server")).getSupabaseAdmin().from("form_instances").update({ employee_name: name }).eq("id", id);
+}
+
 async function openFormTurn(context: ToolContext, id: string): Promise<AskResponse | null> {
   const turn = { request: context.request, instanceId: id, question: context.question, history: context.history as ChatMessage[], today: context.today || businessToday() };
   /*
@@ -2355,8 +2465,8 @@ export async function openForm(context: ToolContext, effects: ToolEffects, input
   const id = typeof input.instance_id === "string" ? input.instance_id.trim() : "";
   if (id === "") return { error: "Give the form's instance_id (from find_past_forms)." };
   if (id !== context.openFormId) {
-    const asked = formsOnFileAsked(context, input.forms_on_file_evidence);
-    if (!asked.ok) return privacyRefusal(asked.reason);
+    const refused = await formOnFileRefusal(context, id, input.forms_on_file_evidence);
+    if (refused) return refused;
   }
   try {
     const { loaded } = await authorizeInstance(context.request, id, "view");

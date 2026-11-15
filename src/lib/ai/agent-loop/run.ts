@@ -495,6 +495,12 @@ export async function runAgentTurn(input: AgentTurnInput): Promise<AskResponse> 
 }
 
 async function loop(input: AgentTurnInput): Promise<AskResponse> {
+  /*
+   * A CARD IS OPEN (Pau, 15:00Z 14 Nov 2026: a mid-form question is answered and the open card stays): the last reply
+   * showed a card not yet created. A fact for the model (batch A); the rules book says what the reply says about it.
+   */
+  const lastReply = [...input.history].reverse().find((turn) => turn.role === "assistant" && !turn.error);
+  const cardOpenAtStart = !input.openFormId && Boolean(lastReply && CARD_REPLY.test(String(lastReply.content)));
   const context: ToolContext = {
     request: input.request,
     actor: input.actor,
@@ -504,6 +510,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     scopeId: input.scopeId,
     today: input.today,
     openFormId: input.openFormId,
+    cardReply: cardOpenAtStart ? String(lastReply!.content) : null,
   };
   const effects: ToolEffects = { proposal: null, formUpdate: null };
   /* The open form as saved before the turn, for the no-false-"updated" guard below (FORM_EDIT_NOOP_GUARD's snapshot). */
@@ -544,12 +551,6 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   };
 
   const [templates, manual] = await Promise.all([templateChoices(input.actor.role), manualFor(input.scopeId)]);
-  /*
-   * A CARD IS OPEN (Pau, 15:00Z 14 Nov 2026: a mid-form question is answered and the open card stays): the last reply
-   * showed a card not yet created. A fact for the model (batch A); the rules book says what the reply says about it.
-   */
-  const lastReply = [...input.history].reverse().find((turn) => turn.role === "assistant" && !turn.error);
-  const cardOpenAtStart = !input.openFormId && Boolean(lastReply && CARD_REPLY.test(String(lastReply.content)));
   const dynamic = agentLoopSystem({
     cardOpen: cardOpenAtStart,
     managerName: input.actor.displayName,
