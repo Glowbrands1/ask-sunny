@@ -35,7 +35,7 @@ import { cleaningUndonePhrase, namesCareAndCleaning } from "@/lib/forms/ca-polic
 import { fieldStates, mergeSaved, refusedFields, savedDiff, type SavedChange } from "@/lib/ai/agent-loop/saved-diff";
 import { turnsFromThisPersonsRequest } from "@/lib/forms/this-persons-turns";
 import { closeHeadingReading, closePolicyQuestion, namedPolicies, namesHeading } from "@/lib/forms/named-policy-section";
-import { payrollAmountFromConversation, statedPayrollDeduct } from "@/lib/forms/payroll-deduct";
+import { payrollAmountFromConversation } from "@/lib/forms/payroll-deduct";
 import { PAYROLL_AMOUNT_KEY } from "@/lib/forms/payroll-amount-field";
 import { withoutPayrollClauses } from "@/lib/ai/payroll-clause-not-account";
 import { listTemplateSummaries, type TemplateSummary } from "@/lib/forms/repository";
@@ -227,6 +227,96 @@ async function formOnFileRefusal(context: ToolContext, id: string, evidence: unk
   if (!basic.ok) return privacyRefusal(basic.reason);
   const asked = await formsOnFileAskedFor(context, evidence, person);
   return asked.ok ? null : privacyRefusal(asked.reason, asked.reasonCode);
+}
+
+/**
+ * PR 1c (owner's audit, 15 Nov 2026): a warning level and a payroll answer are kept only on the model's `level_evidence` /
+ * `payroll_evidence`: the id of a manager message and the manager's own words from it. Code checks only that the words are
+ * really in that turn (`evidence.ts`) and where the turn sits; it never reads what they mean (LEVEL_OR_PAYROLL_ANSWER, the
+ * level and payroll word readers and `payrollStated` are gone). "This message" is the one being answered, which is also the
+ * direct answer to a card that asked; "request" also allows the manager message before it, so a level stated with the
+ * request is kept when the manager answers the card's date question in the next message. An older turn ("she was written
+ * up before", three messages back) never counts: level_not_stated / payroll_not_stated, with the evidence check's reason.
+ */
+type AnswerEvidence = { readonly ok: true; readonly turnId: string; readonly wholeMessage: boolean } | { readonly ok: false; readonly reason: string };
+
+/** The card's person and the roster they are checked against. `rosterRead` false: the roster could not be read. */
+interface EvidencePerson {
+  readonly name: string;
+  readonly roster: readonly RosterEmployee[];
+  readonly rosterRead: boolean;
+}
+
+function evidencePersonFor(name: string, read: { kind: string; roster?: readonly RosterEmployee[] }): EvidencePerson {
+  const roster = read.kind === "read" ? (read.roster ?? []) : [];
+  return { name, roster, rosterRead: read.kind === "read" && roster.length > 0 };
+}
+
+/**
+ * QA's ruling (15 Nov 2026, second review): the person guard reads names, never phrases. A roster person other than the
+ * card's whose full, preferred or first name is in the text ("verbal for remy" names Remy Calder) is another person.
+ * A first name the card's own person also goes by is skipped (two people may share one; the full name decides).
+ */
+function otherPersonNamed(said: string, person: EvidencePerson): boolean {
+  const rosterNames = person.roster.map((row) => displayName(row));
+  if (rosterNames.some((name) => !samePerson(name, person.name) && mentionsPerson(said, name, rosterNames))) return true;
+  const own = person.roster.filter((row) => [displayName(row), ...fullNamesOf(row)].some((full) => samePerson(full, person.name)));
+  const ownFirsts = new Set([...own.flatMap((row) => [row.firstName, row.preferredFirstName]), person.name.split(/\s+/)[0]].map((first) => (first ?? "").trim().toLowerCase()).filter(Boolean));
+  const lower = said.toLowerCase();
+  return person.roster.some((row) => {
+    if (own.includes(row)) return false;
+    return [row.firstName, row.preferredFirstName].map((first) => (first ?? "").trim().toLowerCase()).filter((first) => first !== "" && !ownFirsts.has(first)).some((first) => new RegExp(`(?<![\\p{L}'-])${first.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}-])`, "u").test(lower));
+  });
+}
+
+function answerEvidence(
+  context: Pick<ToolContext, "question" | "history" | "questionMessageId">,
+  evidence: unknown,
+  scope: "this_message" | "request" | { readonly card: string },
+  person?: EvidencePerson,
+): AnswerEvidence {
+  const turns = identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId);
+  const check = verifyEvidence(evidence, turns, scope === "this_message" ? { thisTurnOnly: true } : {});
+  if (!check.ok) return { ok: false, reason: check.reason };
+  const current = check.turn.index === turns.length - 1;
+  const said = withoutMessageIdTags(check.turn.content);
+  const flatten = (text: string) => withoutMessageIdTags(text).toLowerCase().replace(/[*_]/g, "").replace(/\s+/g, " ").trim();
+  const namesCard = (turn: { content: string } | undefined, name: string) => turn !== undefined && flatten(turn.content).includes(flatten(name));
+  const lastTwoManagerTurns = turns.filter((turn) => turn.role === "user").slice(-2);
+  if (person) {
+    // An evidence turn that names another roster person (full, preferred or first name) is that person's message, not this card's.
+    if (otherPersonNamed(said, person)) return { ok: false, reason: "other_person" };
+  }
+  if (scope === "request" && !current) {
+    /*
+     * The manager message before this one counts only when the app's reply between the two showed THIS card (the card was
+     * proposed in reply to it): "she was written up before" followed by an unrelated reply and then "ca for <name>" is no
+     * level. The roster must have been read to check the names: it fails closed.
+     */
+    if (!person || !person.rosterRead) return { ok: false, reason: "evidence_not_this_turn" };
+    if (!lastTwoManagerTurns.some((turn) => turn.id === check.turn.id)) return { ok: false, reason: "evidence_not_this_turn" };
+    const reply = turns[check.turn.index + 1];
+    if (!reply || reply.role !== "assistant" || !namesCard(reply, person.name)) return { ok: false, reason: "evidence_after_card" };
+  }
+  /*
+   * A payroll answer belongs to ONE card (QA, 15 Nov 2026): the message being answered, or the manager's answer right after
+   * the MOST RECENT reply that showed THIS card's employee, and no older one. Remy's "yes", then "thanks", then a new card for
+   * Remy: that "yes" answered the first card. A comparison of the employee's name with the reply, not a reading of the words.
+   */
+  if (typeof scope === "object" && !current) {
+    if (!lastTwoManagerTurns.some((turn) => turn.id === check.turn.id)) return { ok: false, reason: "evidence_after_card" };
+    let shown = -1;
+    for (let at = turns.length - 2; at >= 0; at -= 1) {
+      if (turns[at]!.role === "assistant" && namesCard(turns[at], scope.card)) {
+        shown = at;
+        break;
+      }
+    }
+    if (shown < 0 || check.turn.index !== shown + 1) return { ok: false, reason: "evidence_after_card" };
+  }
+  const flat = (text: string) => withoutMessageIdTags(text).toLowerCase().replace(/\s+/g, " ").trim();
+  const quote = (evidence as { quote: string }).quote;
+  return { ok: true, turnId: check.turn.id, wholeMessage: flat(quote) === flat(check.turn.content) };
 }
 
 /** The refusal when the manager has not asked about forms on file: privacy_not_asked, with the evidence check's reason. */
@@ -1269,22 +1359,6 @@ function conversationTurns(context: Pick<ToolContext, "question" | "history">) {
   ];
 }
 
-/** Payroll deduct as the manager stated it: in their words, or a bare yes / no right after the payroll question. */
-function payrollStated(context: Pick<ToolContext, "question" | "history">): "yes" | "no" | null {
-  const turns = [...context.history.filter((message) => message.role === "user").map((message) => message.content), context.question];
-  for (const turn of [...turns].reverse()) {
-    const stated = statedPayrollDeduct(turn);
-    if (stated) return stated;
-  }
-  const lastAssistant = [...context.history].reverse().find((message) => message.role === "assistant");
-  if (lastAssistant && /payroll/i.test(lastAssistant.content)) {
-    const bare = context.question.trim().toLowerCase().replace(/[.!]+$/, "");
-    if (/^(?:yes|yep|yeah|y)\b/.test(bare)) return "yes";
-    if (/^(?:no|nope|nah|n)\b/.test(bare)) return "no";
-  }
-  return null;
-}
-
 async function creatableTemplates(role: Role): Promise<TemplateSummary[]> {
   const rows = await listTemplateSummaries();
   return rows.filter((row) => row.active && row.currentVersion && hasPermission(DEFAULT_PERMISSION_MATRIX, role, row.requiredPermission as never));
@@ -1314,6 +1388,8 @@ export async function proposeForm(
   context: ToolContext,
   effects: ToolEffects,
   input: {
+    level_evidence?: unknown;
+    payroll_evidence?: unknown;
     template_key?: unknown;
     employee_id?: unknown;
     employee_name?: unknown;
@@ -1531,11 +1607,15 @@ export async function proposeForm(
     }
   }
   /* Batch C (code-check #16): what the manager said that the account leaves out, as a fact for the model to put back. */
+  const evidencePerson = evidencePersonFor(employee.name, read);
   let accountLost: string[] = [];
   if (whatHappened && ACCOUNT_FORMS.has(template.key)) {
-    /* A payroll or level answer ("yes payroll, $20", "make it a written") is not the incident's account. */
+    /* A message that is only a level or payroll answer (the model's evidence quotes the whole message) is not the incident's account. */
+    const answerOnly = new Set(
+      [answerEvidence(context, input.level_evidence, "request", evidencePerson), answerEvidence(context, input.payroll_evidence, { card: employee.name }, evidencePerson)].flatMap((check) => (check.ok && check.wholeMessage ? [check.turnId] : [])),
+    );
     const accountWords = asked.messages
-      .filter((message) => (sourceIds.includes(message.id ?? "") || citedRequestIds.includes(message.id ?? "")) && !LEVEL_OR_PAYROLL_ANSWER.test(String(message.content).trim()))
+      .filter((message) => (sourceIds.includes(message.id ?? "") || citedRequestIds.includes(message.id ?? "")) && !answerOnly.has(message.id ?? ""))
       .map((message) => message.content)
       .join("\n");
     accountLost = accountMissing(withoutPayrollClauses(accountWords), whatHappened, typeof input.prior_actions === "string" ? input.prior_actions : null);
@@ -1630,7 +1710,8 @@ export async function proposeForm(
    */
   const caOnlyFields = template.key === appConfig().formKeys.corrective;
   const askedPayroll = (input.payroll_deduct === "yes" || input.payroll_deduct === "no") ? input.payroll_deduct : null;
-  const payroll = caOnlyFields && askedPayroll && payrollStated(context) === askedPayroll ? askedPayroll : null;
+  const payrollCheck = caOnlyFields && askedPayroll ? answerEvidence(context, input.payroll_evidence, { card: employee.name }, evidencePerson) : null;
+  const payroll = askedPayroll && payrollCheck?.ok ? askedPayroll : null;
   const typedAmount = typeof input.payroll_amount === "string" && /\d/.test(input.payroll_amount) ? input.payroll_amount.replace(/[^\d.]/g, "") : null;
   /* The amount the manager stated, read as today reads it (`payrollAmountFromConversation`) when the model left it out. */
   const statedAmount = payroll === "yes" ? payrollAmountFromConversation(conversationTurns(context), { payrollAnswer: "yes" })?.replace(/[^\d.]/g, "") ?? null : null;
@@ -1691,7 +1772,8 @@ export async function proposeForm(
     ? incidentDates(requestWords, null).find((given) => monthDayToIso(given, today) === date) ?? null
     : null;
   const askedLevel = input.warning_level === "verbal" || input.warning_level === "written" ? input.warning_level : null;
-  const level = caOnlyFields && askedLevel && (askedLevel === "verbal" ? /\bverbal\b/i : /\bwritten\b|\bwrite[- ]?up\b/i).test(managerWords) ? askedLevel : null;
+  const levelCheck = caOnlyFields && askedLevel ? answerEvidence(context, input.level_evidence, "request", evidencePerson) : null;
+  const level = askedLevel && levelCheck?.ok ? askedLevel : null;
   /*
    * Batch G (QA's design, 15 Nov 2026; Pau's standing approval): the MODEL decides this Corrective Action is a
    * termination (warning_level "termination", taught by the rules book's examples); code only LOCKS it. It is kept only
@@ -1994,6 +2076,8 @@ export async function proposeForm(
     ...(datesAsked.length > 0 ? [{ field: "form_date", reason_code: "several_dates_not_chosen" }] : []),
   ];
   return {
+    ...(askedLevel && !level && levelCheck && !levelCheck.ok ? { reason_code: "level_not_stated", level_evidence: levelCheck.reason } : askedPayroll && !payroll && payrollCheck && !payrollCheck.ok ? { reason_code: "payroll_not_stated" } : {}),
+    ...(askedPayroll && !payroll && payrollCheck && !payrollCheck.ok ? { payroll_evidence: payrollCheck.reason } : {}),
     ...(notOnCard.length > 0 ? { not_on_card: notOnCard } : {}),
     card: {
       form: card.templateName,
@@ -2148,7 +2232,7 @@ export async function coachTeam(context: ToolContext, effects: ToolEffects): Pro
 export async function editForm(
   context: ToolContext,
   effects: ToolEffects,
-  input: { instance_id?: unknown; values?: unknown; forms_on_file_evidence?: unknown; intent?: unknown; name_evidence?: unknown; account_evidence?: unknown },
+  input: { instance_id?: unknown; values?: unknown; forms_on_file_evidence?: unknown; intent?: unknown; name_evidence?: unknown; account_evidence?: unknown; level_evidence?: unknown; payroll_evidence?: unknown },
 ): Promise<ToolResult> {
   let id = typeof input.instance_id === "string" ? input.instance_id.trim() : "";
   if (id === "") return { reason_code: "missing_input", error: "Give the form's instance_id." };
@@ -2193,6 +2277,12 @@ export async function editForm(
    * after the payroll line). Anything else is refused and nothing is written.
    */
   const unstated: string[] = [];
+  const unstatedCodes = new Map<string, { reason_code: string; evidence_reason: string }>();
+  /* QA's review (15 Nov 2026): a level or payroll answer that names ANOTHER roster person than this form's is theirs: other_person. */
+  const formsEmployee = Object.keys(values).some((field) => field === "warning_type" || field === "payroll_deduct")
+    ? await authorizeInstance(context.request, id, "view").then(({ loaded }) => loaded.instance.employeeName).catch(() => null)
+    : null;
+  const editPerson = formsEmployee ? evidencePersonFor(formsEmployee, await rosterFor(context.actor.scope)) : undefined;
   for (const [field, value] of Object.entries(values)) {
     if (field === "warning_type") {
       /*
@@ -2211,25 +2301,33 @@ export async function editForm(
         if (!(await import("@/lib/config/chat-quality-flags")).terminationStatedTicksEnabled() || !(await import("@/lib/forms/termination-word")).statesTerminationWordNow(context.question)) unstated.push(field);
         continue;
       }
-      const level = kind === "written" ? /\bwritten\b|\bwrite[- ]?up\b/i : /\bverbal\b/i;
-      if (!level.test(context.question)) unstated.push(field);
+      const levelCheck = answerEvidence(context, input.level_evidence, "this_message", editPerson);
+      if (!levelCheck.ok) {
+        unstated.push(field);
+        unstatedCodes.set(field, { reason_code: "level_not_stated", evidence_reason: levelCheck.reason });
+      }
     } else if (field === "payroll_deduct") {
       const answer = /^\s*yes/i.test(value) ? "yes" : /^\s*no/i.test(value) ? "no" : null;
-      if (!answer || payrollStated(context) !== answer) unstated.push(field);
+      const payrollCheck = answerEvidence(context, input.payroll_evidence, "this_message", editPerson);
+      if (!answer || !payrollCheck.ok) {
+        unstated.push(field);
+        unstatedCodes.set(field, { reason_code: "payroll_not_stated", evidence_reason: payrollCheck.ok ? "evidence_not_manager_turn" : payrollCheck.reason });
+      }
     } else if (field === PAYROLL_AMOUNT_KEY) {
       const digits = value.replace(/[^\d.]/g, "");
       if (!digits || !managerTurns(context).replace(/[^\d.]/g, " ").split(/\s+/).some((n) => n !== "" && Number(n) === Number(digits))) unstated.push(field);
     }
   }
   if (unstated.length > 0) {
-    return { reason_code: "not_stated", error: `${unstated.join(", ")} must come from the manager's own words, and this message does not state ${unstated.length === 1 ? "it" : "them"}. Nothing was written. Ask, or leave it for the manager.` };
+    return { reason_code: (unstated.length === 1 ? unstatedCodes.get(unstated[0]!)?.reason_code : undefined) ?? "not_stated", ...(unstated.length === 1 && unstatedCodes.get(unstated[0]!) ? { evidence_reason: unstatedCodes.get(unstated[0]!)!.evidence_reason } : {}), error: `${unstated.join(", ")} must come from the manager's own words, and this message does not state ${unstated.length === 1 ? "it" : "them"}. Nothing was written. Ask, or leave it for the manager.` };
   }
   /*
    * A payroll or level answer ("yes payroll, $20", "make it a written") changes only those fields (Pau, 15:05Z): the
    * rules book teaches it; the result says which other fields this answer also wrote (code-check #30, batch C).
    */
   const targeted = new Set(["warning_type", "payroll_deduct", PAYROLL_AMOUNT_KEY]);
-  const answerAlsoWrote = LEVEL_OR_PAYROLL_ANSWER.test(context.question) && Object.keys(values).some((field) => targeted.has(field))
+  const answerEvidences = [answerEvidence(context, input.level_evidence, "this_message"), answerEvidence(context, input.payroll_evidence, "this_message")];
+  const answerAlsoWrote = answerEvidences.some((check) => check.ok && check.wholeMessage) && Object.keys(values).some((field) => targeted.has(field))
     ? Object.keys(values).filter((field) => !targeted.has(field))
     : [];
   /*
@@ -2363,7 +2461,7 @@ export async function editForm(
       const draft = await openEditableDraft(context.request, id, { revise: true, reason: context.question.slice(0, 500) });
       const openedBefore = effects.formOpened ?? null;
       effects.formOpened = formOpenedFor(draft);
-      const revisedEdit = await editForm({ ...context, openFormId: draft.instanceId }, effects, { instance_id: draft.instanceId, values: input.values, intent: input.intent, name_evidence: input.name_evidence, account_evidence: input.account_evidence });
+      const revisedEdit = await editForm({ ...context, openFormId: draft.instanceId }, effects, { instance_id: draft.instanceId, values: input.values, intent: input.intent, name_evidence: input.name_evidence, account_evidence: input.account_evidence, level_evidence: input.level_evidence, payroll_evidence: input.payroll_evidence });
       /*
        * F3 (QA, batch F): A REFUSED EDIT LEAVES NO EMPTY REVISION. When the edit on the new draft is refused (an
        * unstated level or payroll, a reword that changes the person, an unknown field…), the revision this call opened
@@ -2803,8 +2901,6 @@ function documentFieldKeys(document: unknown): Set<string> {
 }
 /** Names a model may use for the account field: the form's own key is used. */
 
-/** A short answer about the level or payroll: "yes payroll, $20", "make it a written", "no payroll". */
-export const LEVEL_OR_PAYROLL_ANSWER = /^(?=.{0,80}$)(?:.*\b(?:payroll|deduct\w*)\b|.*\b(?:make it|it'?s|change it to)\s+(?:a\s+)?(?:verbal|written)\b)/i;
 
 
 /* ----------------------------------------------------------- open form --- */

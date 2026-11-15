@@ -11,7 +11,7 @@ const context = { actor: { subject: "u-1", email: "m@example.com", displayName: 
 
 describe("edit_form on the id of a card that is not created yet", () => {
   it("an id that is no card's and no uuid never points at propose_form (not_a_form_id)", async () => {
-    const result = await editForm(context, { proposal: null, formUpdate: null } as unknown as ToolEffects, { instance_id: "juno-ca", values: { warning_type: "verbal" } });
+    const result = await editForm(context, { proposal: null, formUpdate: null } as unknown as ToolEffects, { instance_id: "juno-ca" });
     expect(result.reason_code).toBe("not_a_form_id");
     expect(String(result.error)).not.toMatch(/propose_form/);
   });

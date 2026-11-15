@@ -1,7 +1,7 @@
 import { expect, vi } from "vitest";
 
 import { KEARNEY, STAFF, type ReplayCase, type ReplayContext } from "./cases";
-import { lastResult, loopStandIn } from "./loop-stand-in";
+import { evidenceFrom, lastResult, loopStandIn } from "./loop-stand-in";
 
 /**
  * ============================================================================
@@ -69,7 +69,7 @@ export const NOV15_AGENT_LOOP_BATCH_J_KEEP_CASES: ReplayCase[] = [
       const model = loopStandIn((view) =>
         lastResult(view, "propose_form")
           ? { text: "Here is the card." }
-          : { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-3", policy: "Late Opening", what_happened: "Late opening the salon on 11/12.", payroll_deduct: /payroll/i.test(view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "") ? "yes" : undefined } },
+          : { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-3", policy: "Late Opening", what_happened: "Late opening the salon on 11/12.", payroll_deduct: /payroll/i.test(view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "") ? "yes" : undefined, payroll_evidence: evidenceFrom(view) } },
       );
       const thread = start(t);
       t.loopModel!(model);
@@ -93,7 +93,7 @@ export const NOV15_AGENT_LOOP_BATCH_J_KEEP_CASES: ReplayCase[] = [
         if (/\[app check\]/.test(view.turns.at(-1)?.text ?? "")) return { text: "Here's the Corrective Action Form for **Juno Paxton**.\n\n**Type of Warning:** Verbal Warning, as you said." };
         return lastResult(view, "propose_form")
           ? { text: "Here's the Corrective Action Form for **Juno Paxton**.\n\n**Type of Warning:** Written Warning, as you said." }
-          : { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-3", policy: "Late Opening", warning_level: "verbal", what_happened: "Late opening the salon on 11/12." } };
+          : { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-3", policy: "Late Opening", warning_level: "verbal", level_evidence: evidenceFrom(view), what_happened: "Late opening the salon on 11/12." } };
       });
       const thread = start(t);
       t.loopModel!(model);
@@ -119,7 +119,7 @@ export const NOV15_AGENT_LOOP_BATCH_J_KEEP_CASES: ReplayCase[] = [
       const model = loopStandIn((view) =>
         lastResult(view, "propose_form")
           ? { text: "Here's the Corrective Action Form for **Remy Calder**." }
-          : { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", policy: "Attendance", warning_level: "verbal", what_happened: `Remy Calder ${account.replace(/^she /, "")}.` } },
+          : { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", policy: "Attendance", warning_level: "verbal", level_evidence: evidenceFrom(view), what_happened: `Remy Calder ${account.replace(/^she /, "")}.` } },
       );
       const thread = start(t);
       t.loopModel!(model);

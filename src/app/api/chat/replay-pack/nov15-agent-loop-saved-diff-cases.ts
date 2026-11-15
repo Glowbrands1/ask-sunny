@@ -1,7 +1,7 @@
 import { expect, vi } from "vitest";
 
 import { KEARNEY, STAFF, type ReplayCase, type ReplayContext } from "./cases";
-import { lastResult, loopStandIn, type LoopDecision, type LoopView } from "./loop-stand-in";
+import { evidenceFrom, lastResult, loopStandIn, type LoopDecision, type LoopView } from "./loop-stand-in";
 
 /**
  * ============================================================================
@@ -58,7 +58,7 @@ export const NOV15_AGENT_LOOP_SAVED_DIFF_CASES: ReplayCase[] = [
       const { thread, id } = await remyDraft(t);
       const model = loopStandIn((view): LoopDecision => (lastResult(view, "edit_form")
         ? { text: "Saved." }
-        : { tool: "edit_form", input: { instance_id: id, values: { warning_type: "written", payroll_deduct: "yes", payroll_deduct_amount: "$15" } } }));
+        : { tool: "edit_form", input: { instance_id: id, values: { warning_type: "written", payroll_deduct: "yes", payroll_deduct_amount: "$15" }, level_evidence: evidenceFrom(view, "make it a written"), payroll_evidence: evidenceFrom(view, "yes payroll $15") } }));
       t.loopModel!(model);
       await thread.say("make it a written and yes payroll $15");
       const result = lastResult({ results: model.views.at(-1)!.results } as LoopView, "edit_form") as EditResult;
@@ -176,7 +176,7 @@ export const NOV15_AGENT_LOOP_SAVED_DIFF_CASES: ReplayCase[] = [
       const edits: Record<string, string>[] = [{ warning_type: "written" }, { payroll_deduct: "yes", payroll_deduct_amount: "$15" }, { form_date: "11/13" }];
       const model = loopStandIn((view): LoopDecision => {
         const done = view.results.filter((result) => result.tool === "edit_form");
-        return done.length < edits.length ? { tool: "edit_form", input: { instance_id: id, values: edits[done.length] } } : { text: "Done." };
+        return done.length < edits.length ? { tool: "edit_form", input: { instance_id: id, values: edits[done.length], ...(done.length === 0 ? { level_evidence: evidenceFrom(view, "make it a written") } : done.length === 1 ? { payroll_evidence: evidenceFrom(view, "yes payroll $15") } : {}) } } : { text: "Done." };
       });
       t.loopModel!(model);
       const reply = await thread.say("make it a written, yes payroll $15, and change the date to 11/13");
@@ -200,7 +200,7 @@ export const NOV15_AGENT_LOOP_SAVED_DIFF_CASES: ReplayCase[] = [
       const edits: Record<string, string>[] = [{ warning_type: "written" }, { payroll_deduct: "yes" }, { form_date: "11/13" }];
       t.loopModel!(loopStandIn((view): LoopDecision => {
         const done = view.results.filter((result) => result.tool === "edit_form");
-        return done.length < edits.length ? { tool: "edit_form", input: { instance_id: id, values: edits[done.length] } } : { text: "" };
+        return done.length < edits.length ? { tool: "edit_form", input: { instance_id: id, values: edits[done.length], ...(done.length === 0 ? { level_evidence: evidenceFrom(view, "make it a written") } : done.length === 1 ? { payroll_evidence: evidenceFrom(view, "yes payroll") } : {}) } } : { text: "" };
       }));
       const reply = await thread.say("make it a written, yes payroll, and change the date to 11/13");
       for (const named of ["Type of warning (now Written)", "Payroll deduct (now Yes)", "Date (now 11/13/2026)"]) expect(reply.content, `missing "${named}":\n${reply.content}`).toContain(named);
