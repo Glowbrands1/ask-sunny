@@ -384,6 +384,31 @@ const EPHEMERAL = { anthropic: { cacheControl: { type: "ephemeral" } } } as cons
 export const CLAIMS_A_CHANGE =
   /\b(?:i(?:'ve| have)?\s+(?:now\s+)?(?:added|updated|changed|put|written|wrote|moved|replaced|saved|filled|set|corrected|fixed|included)|(?:has|have) been (?:added|updated|changed|saved|written|filled|corrected)|(?:updated|changed|added to) (?:the|your|her|his) (?:draft|form|card|observation)|(?:draft|form|card|observation) now (?:reads|says|shows|has|includes)|is now (?:on|in) the (?:draft|form|card)|done[.!—-])/i;
 
+/*
+ * BATCH G2 ITEM 7 (QA's live run part 2: the undo turn's trace was stopped "reply", steps []): a reply that answers about
+ * the open draft's level, or says nothing changed, without edit_form or read_form this turn. The level it states
+ * (Termination included), and the "nothing changed / still shows / nothing to undo" words.
+ */
+const STATED_LEVEL = [
+  /\*\*Type of Warning:?\*\*:?\s*(Verbal|Written|Termination)\b/i,
+  /\b(Verbal|Written|Termination)(?: Warning)?,? as you said/i,
+  /\b(?:warning level|level|type of warning)\b[^.\n]{0,30}\b(?:is|to|now|set to|still|shows)\b\s*(?:a\s+)?\**(verbal|written|termination)\b/i,
+  /\b(?:made|changed|updated|set|switched|undid|undone|reverted)\b[^.\n]{0,30}\b(?:to|as|back to)\s+(?:a\s+)?\**(verbal|written|termination)\b/i,
+  /\b(?:still|now)\s+(?:shows|says|has|reads|is)\s+(?:a\s+|an\s+)?\**(verbal|written|termination)\b/i,
+  /\bit(?:'s| is) (?:now |still )?(?:a |an )?\**(verbal|written|termination)\b/i,
+];
+export const SAYS_NOTHING_CHANGED = /\bnothing (?:was |has been |is )?(?:changed|to undo|to change|different)\b|\bno changes? (?:were|was|has been) made\b|\b(?:still|already) (?:shows|says|reads|has|is)\b|\bdidn'?t (?:need to )?change anything\b|\bnothing on the (?:form|draft|card) changed\b|\bthere(?:'s| is) nothing to (?:undo|change)\b/i;
+const ASKS_A_CHANGE = /\b(?:undo|revert|change|make it|switch|set|update|add|remove|delete|fix|put|correct|replace|it'?s a|should be)\b/i;
+
+/** The warning level a reply states, lowercased, or null. */
+export function statedLevel(reply: string): "verbal" | "written" | "termination" | null {
+  for (const pattern of STATED_LEVEL) {
+    const found = pattern.exec(reply)?.[1]?.toLowerCase();
+    if (found === "verbal" || found === "written" || found === "termination") return found;
+  }
+  return null;
+}
+
 /**
  * PROMPT CACHING (QA, 14 Nov 2026: a 9% cache hit rate). Two of Anthropic's four breakpoints: the rules (tools + the
  * static system prompt, the first breakpoint, set on the system message) and the LAST message of each step, moved
@@ -411,6 +436,17 @@ function tokensOf(usage: StepUsage | undefined) {
   const cacheWrite = count(usage?.inputTokenDetails?.cacheWriteTokens);
   const input = usage?.inputTokenDetails?.noCacheTokens ?? Math.max(0, count(usage?.inputTokens) - cacheRead - cacheWrite);
   return { input_tokens: count(input), output_tokens: count(usage?.outputTokens), cache_read_input_tokens: cacheRead, cache_creation_input_tokens: cacheWrite };
+}
+
+/** Batch G2 item 7: the open draft's form and saved warning_type ticks, read as the manager may view it; null if it cannot be read. */
+async function savedWarningLevel(request: Request, instanceId: string): Promise<{ templateKey: string; levels: string[] } | null> {
+  try {
+    const { authorizeInstance } = await import("@/lib/forms/instance-scope");
+    const { loaded } = await authorizeInstance(request, instanceId, "view");
+    return { templateKey: loaded.instance.templateKey, levels: loaded.values.find((row) => row.fieldKey === "warning_type")?.checked ?? [] };
+  } catch {
+    return null;
+  }
 }
 
 export async function runAgentTurn(input: AgentTurnInput): Promise<AskResponse> {
@@ -442,6 +478,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   const noop = input.openFormId ? await import("@/lib/forms/form-noop-reply") : null;
   const openBefore = noop && input.openFormId ? await noop.formBeforeTurn(input.openFormId, input.request) : null;
   const steps: AgentLoopStep[] = [];
+  /* The tools this turn called so far (the hand-backs' too), for the item 7 check below. */
+  const calledThisTurn = (tool: string) => steps.some((step) => step.tool === tool);
   /* Each model call's tokens and ms, for the trace (numbers only). */
   const modelSteps: { step: number; ms: number; stop: string | null; input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number }[] = [];
   const handlers: Record<string, (args: Record<string, unknown>) => Promise<ToolResult>> = {
@@ -513,6 +551,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   let modelCalls = 0;
   let selfReview: { mismatched: string[]; fixed: boolean } | null = null;
   let draftReview: { claimed: boolean; fixed: boolean } | null = null;
+  let levelReview: { claimed: string | null; nothing_changed: boolean; saved: string | null; fixed: boolean } | null = null;
   let streamError: unknown = null;
   try {
     /*
@@ -695,6 +734,37 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
           if (again) text = again;
         }
       }
+      /*
+       * BATCH G2 ITEM 7 (QA, 15 Nov 2026; code informs, never rewrites): with a draft open, a reply that states the
+       * draft's warning level, or says nothing changed, when no edit_form or read_form ran this turn, is checked against
+       * the SAVED form. A level the saved form does not hold, or "nothing changed" when the manager's message asked for a
+       * change, goes back to the model once with the saved level as a fact, under the turn's step budget (`handBack`).
+       */
+      if (stoppedAt === "reply" && input.openFormId && !effects.proposal && !effects.formOpened && !effects.formUpdate && !calledThisTurn("edit_form") && !calledThisTurn("read_form")) {
+        const claimed = statedLevel(text);
+        const nothingChanged = SAYS_NOTHING_CHANGED.test(text);
+        if (claimed || nothingChanged) {
+          const saved = await savedWarningLevel(input.request, input.openFormId);
+          if (saved) {
+            const levelWrong = claimed !== null && saved.templateKey === "dpoa" && !saved.levels.includes(claimed);
+            const changeAsked = nothingChanged && ASKS_A_CHANGE.test(input.question);
+            if (levelWrong || changeAsked) {
+              const label = saved.levels.length > 0 ? saved.levels.map((level) => level[0]!.toUpperCase() + level.slice(1)).join(", ") : null;
+              const note = [
+                `[app check] Your reply ${levelWrong ? `says the draft's level is ${claimed}` : "says nothing changed on the draft"}, but no edit_form or read_form ran this turn, so it was not read from the saved form.`,
+                saved.templateKey === "dpoa" ? `The saved draft's level: ${JSON.stringify({ saved_level: label })}.` : "",
+                "If the manager asked for a change, make it now with edit_form and say only what it reports (saved_level). Otherwise say what the saved draft holds. Then write your reply to the manager again.",
+              ].filter(Boolean).join("\n");
+              const again = await handBack(note);
+              /* Fixed: the hand-back saved the change with edit_form, or its reply states no level the saved form does not hold. */
+              const after = again ? statedLevel(again) : null;
+              const fixed = Boolean(again) && (calledThisTurn("edit_form") || after === null || saved.levels.includes(after));
+              levelReview = { claimed, nothing_changed: nothingChanged, saved: label, fixed };
+              if (again) text = again;
+            }
+          }
+        }
+      }
     });
   } catch (error) {
     if (error instanceof MissingConfigurationError) throw new AiError("not_configured", error.message, 503, error.missing);
@@ -716,7 +786,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   if (trace) {
     trace.slots = {
       ...(trace.slots ?? {}),
-      agent_loop: { steps, model_steps: modelSteps, model_calls: modelCalls, step_limit: limit, steps_used: stepNumber - 1, stopped: stoppedAt, ms: latencyMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}) },
+      agent_loop: { steps, model_steps: modelSteps, model_calls: modelCalls, step_limit: limit, steps_used: stepNumber - 1, stopped: stoppedAt, ms: latencyMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}), ...(levelReview ? { level_review: levelReview } : {}) },
     };
   }
 
