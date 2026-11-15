@@ -10,6 +10,7 @@ import { appConfig } from "./app-config";
 import { isoDate, monthDayToIso, readDates, sameDate, withoutDates } from "./dates";
 import { candidateNameWords, chatFormsActor } from "@/lib/forms/chat-form-records";
 import { holdsPhrase, identifiedTurns, verifyEvidence, withoutMessageIdTags, type IdentifiedTurn } from "./evidence";
+import { answerNamesSomeoneElse, isConfirmedSpelling, latestTurnConfirms, spellingKeysConfirmedFor, type NameQuestionView } from "./confirmed-spelling";
 import { displayName, matchEmployeeName, nameConfirmationQuestion, readNameConfirmation, type RosterEmployee } from "@/lib/forms/employee-match";
 import { offRosterTyped } from "@/lib/forms/roster-only-names";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
@@ -51,7 +52,7 @@ import { redactSensitiveDefaults } from "@/lib/ai/sensitive-defaults";
 import { expandPolicyQuery } from "@/lib/knowledge/policy-retrieval";
 import type { SourceCitation } from "@/types";
 import type { AccessScope, ChatFormProposal, ChatMessage, Role } from "@/types";
-import { personKey, type CardRecord } from "@/lib/ai/agent-loop/card-record";
+import { personKey, type CardRecord, type NameQuestionRecord } from "@/lib/ai/agent-loop/card-record";
 
 /**
  * ============================================================================
@@ -109,6 +110,13 @@ export interface ToolContext {
   readonly cardOnScreen?: CardRecord | null;
   /** PR 2: the latest card this chat made before this turn (the record), for the earlier_card fact. */
   readonly earlierCard?: CardRecord | null;
+  /** Fix batch items 4 and 3: the "Did you mean" questions this chat's find_staff gave, from the server's record. */
+  readonly nameQuestions?: readonly NameQuestionRecord[];
+}
+
+/** The recorded name questions and the roster, for `confirmed-spelling.ts`. */
+function nameQuestionView(context: ToolContext, roster: readonly RosterEmployee[]): NameQuestionView {
+  return { history: context.history, question: context.question, records: context.nameQuestions ?? [], roster };
 }
 
 /* ------------------------------------------------------ hard guard: privacy --- */
@@ -412,6 +420,12 @@ export interface ToolEffects {
   formUpdate: { instanceId: string; updated: string[]; saved?: SavedChange[]; putBack?: string[] } | null;
   /** Roster ids find_staff chose from a close spelling or a lone first name this turn (the card's name_from_staff_list fact). */
   nameLines?: Record<string, string>;
+  /** Fix batch item 6: propose_form asked who this form is for (no person yet), for the record. */
+  personAsked?: { templateKey: string };
+  /** find_staff ran this turn: a person was named, so a card without one is not "nobody named" (item 6). */
+  staffLookedUp?: boolean;
+  /** Fix batch items 4 and 3: this turn's last "Did you mean" (the roster ids offered, the name typed), for the record. */
+  nameQuestion?: { offeredIds: string[]; typed: string };
   /** Batch G (G4), by the rebuild plan's PR 1b: find_past_forms found forms on file to open (open: true) for this person. */
   openRequested?: string;
   /** PR 2: the roster id of the card's person (the card record); null for a team card or a name not on the roster. */
@@ -596,6 +610,7 @@ const ALSO_ASK_ACCOUNT = "If so, tell me what happened.";
 export async function findStaff(context: ToolContext, input: { name?: unknown; person_evidence?: unknown }, effects?: ToolEffects): Promise<ToolResult> {
   const typed = typeof input.name === "string" ? input.name.trim() : "";
   if (typed === "") return { reason_code: "missing_input", error: "Give the name to look for." };
+  if (effects) effects.staffLookedUp = true;
   const read = await rosterFor(context.actor.scope);
   if (read.kind === "failed") return { reason_code: "roster_failed", error: ROSTER_FAILED };
   if (read.kind === "unchecked") return { unchecked: true, note: ROSTER_UNCHECKED };
@@ -605,6 +620,18 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
   /* r3 (right-persons-account): the longer names are a fact, so a manager's "<A> Two" is never lost to "<A>". */
   const longer = exact.length > 0 ? found.filter((person) => !exact.includes(person)).map(displayName) : [];
   if (exact.length > 0) found = exact;
+  /*
+   * Fix batch item 4 (c022): this turn answers this chat's own "Did you mean **<A>**?" with yes or with <A>'s full name
+   * typed back, and the lookup is <A>: a fact, so the model proposes the card instead of asking again.
+   */
+  const confirmed = found.length === 1 ? latestTurnConfirms(nameQuestionView(context, read.roster), found[0]!.id) : null;
+  if (confirmed) {
+    return {
+      matches: [staffRow(found[0]!)],
+      confirmed_by_manager: { name: displayName(found[0]!), answer: confirmed.by },
+      note: `The manager confirmed ${displayName(found[0]!)} (their answer to Did you mean). Do not ask again: propose the card for ${displayName(found[0]!)} now, with this request's account from the earlier turns.`,
+    };
+  }
   if (found.length === 0) {
     /* Close spellings, as the app's own name check reads them ("Marnie Halloway" → Marnie Holloway). */
     const close = matchEmployeeName(typed, read.roster);
@@ -644,6 +671,7 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
     }
     if (close.kind === "confirm" && close.candidates.length > 0) {
       const names = close.candidates.map((candidate) => candidate.name);
+      if (effects) effects.nameQuestion = { offeredIds: close.candidates.slice(0, 5).map((candidate) => candidate.employee.id), typed };
       return {
         matches: [],
         did_you_mean: close.candidates.slice(0, 5).map((candidate) => staffRow(candidate.employee)),
@@ -700,6 +728,7 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
      */
     const own = [only.firstName, only.preferredFirstName ?? ""].map((name) => words(name).join(" ")).filter(Boolean);
     if (!own.includes(words(typed).join(" "))) {
+      if (effects) effects.nameQuestion = { offeredIds: [only.id], typed };
       return {
         matches: [],
         did_you_mean: [staffRow(only)],
@@ -1204,6 +1233,18 @@ export function incidentDates(managerWords: string, priorActions: string | null)
   return [...seen.values()];
 }
 
+/**
+ * Fix batch item 6 (c124, c165; QA's review of #1051): nobody is named for the form (no employee, and no find_staff ran
+ * this turn: a person looked up but not yet chosen keeps the employee_id refusal). The question is always ask_exactly
+ * (with the policy when one was named: batch G18), and the turn records that it asked (`person_asked`), so the next
+ * turn is told up front that the manager's message answers it (`answering_who_question`), never by reading the reply.
+ */
+async function askWhoFor(context: ToolContext, template: { key: string; name: string }, effects: ToolEffects): Promise<ToolResult> {
+  const ask = (await policyQuestion(context, template.name)) ?? `Who is this ${template.name} for?`;
+  effects.personAsked = { templateKey: template.key };
+  return { reason_code: "missing_input", error: "Nobody is named for this form yet. End your reply with ask_exactly, exactly, once.", ask_exactly: ask };
+}
+
 /** The manager accepted the off-roster offer for this name ("use <name>", or yes right after the offer). */
 function offRosterConfirmed(context: Pick<ToolContext, "question" | "history">, typed: string): boolean {
   const offered = context.history.some((message) => message.role === "assistant" && message.content.toLowerCase().includes(`reply **use ${typed.toLowerCase()}**`));
@@ -1457,6 +1498,17 @@ export async function proposeForm(
     if (person && turnedDown && samePerson(turnedDown, displayName(person))) {
       return { reason_code: "right_person", error: `The manager said no to ${displayName(person)}. Never put them on the card; ask who the form is for.` };
     }
+    /*
+     * Fix batch item 3 (c137): the answer to this chat's own "Did you mean **<A>**?" that names someone else in full (a
+     * pasted account about <B>) is not a yes: <A> is never carded from it (`confirmed-spelling.ts`; ruling A).
+     */
+    const elsewhere = person ? answerNamesSomeoneElse(nameQuestionView(context, read.roster), person.id) : null;
+    if (person && elsewhere) {
+      const other = elsewhere.others[0]!;
+      return {
+        reason_code: "right_person", error: `The manager's answer to "Did you mean ${displayName(person)}?" names ${elsewhere.others.join(", ")}, not ${displayName(person)}: that is not a yes. Never put ${displayName(person)} on the card from it. Look up ${other} with find_staff; if the form's person is still unclear, ask: "Is this form for **${other}** or **${displayName(person)}**?"`,
+      };
+    }
     if (person) employee = { name: nameAsSaid(person, managerTurns(context)), salonIds: person.salonIds, id: person.id };
     /*
      * OFF_ROSTER_CONFIRM (as today): a person not in Woven yet goes on the form by the name the manager typed, only
@@ -1472,14 +1524,14 @@ export async function proposeForm(
        * Form for?" without the policy): no person yet, and the manager named a policy in this chat; the question to ask
        * names it with its heading and page.
        */
-      const ask = typed || id ? null : await policyQuestion(context, template.name);
+      if (!typed && !id && !effects.staffLookedUp) return askWhoFor(context, template, effects);
       return {
         reason_code: "not_on_roster", error: "Give the employee_id find_staff returned for this person (call find_staff first). A name not on the roster goes on a form only after the manager answers the \"reply **use <name>**\" offer.",
-        ...(ask ? { ask_exactly: ask } : {}),
       };
     }
   } else {
     const typedName = typeof input.employee_name === "string" ? tidyTypedName(input.employee_name) : "";
+    if (!typedName && !effects.staffLookedUp) return askWhoFor(context, template, effects);
     if (!typedName) return { reason_code: "missing_input", error: "Give the employee's name as the manager typed it." };
     employee = { name: typedName, salonIds: [] };
   }
@@ -1529,7 +1581,15 @@ export async function proposeForm(
    * HARD GUARD, THE RIGHT PERSON'S ACCOUNT (the live run's nov6-diffemp): a turn that names another roster person and
    * not this one ("…for Test Employee, she was late…" beside "Test Employee Two") is never this card's source.
    */
-  const personTurns = turnsFromThisPersonsRequest(asked, employee.name, { names: extractEmployeeNames, same: samePerson }).filter((id) => {
+  /*
+   * Fix batch item 4 (c022): a spelling the manager confirmed as this person in this chat's own "Did you mean **<A>**?",
+   * by yes or by typing <A>'s full name back, is this person: the turn that typed it is this person's request, never
+   * another person's (`confirmed-spelling.ts`; the server's name question record, never the reply's text).
+   */
+  const confirmedKeys = read.kind === "read" && employee.id ? spellingKeysConfirmedFor(nameQuestionView(context, read.roster), employee.id) : [];
+  const sameAsThisPerson = (named: string, person: string) =>
+    samePerson(named, person) || (samePerson(person, employee.name) && isConfirmedSpelling(named, confirmedKeys));
+  const personTurns = turnsFromThisPersonsRequest(asked, employee.name, { names: extractEmployeeNames, same: sameAsThisPerson }).filter((id) => {
     if (id === context.questionMessageId) return true;
     const said = asked.messages.find((message) => message.id === id)?.content ?? "";
     return mentionsPerson(said, employee.name, rosterNames) || !rosterNames.some((name) => !samePerson(name, employee.name) && mentionsPerson(said, name, rosterNames));
