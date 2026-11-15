@@ -135,3 +135,71 @@ NOV15_AGENT_LOOP_BATCH_K_CASES.push(
     },
   },
 );
+
+/** A stand-in that reads the name as a topic and asks who, until the app's check hands the name back (K3b's slip). */
+function topicModel(name: string) {
+  return loopStandIn((view): LoopDecision => {
+    const said = latest(view);
+    const staff = lastResult(view, "find_staff") as StaffResult;
+    if (!/\[app check\]/.test(said) && !staff) return { text: "Corrective Action citing **Standards of Conduct** (p.12). Who is it for?" };
+    if (!staff) return { tool: "find_staff", input: { name } };
+    const asked = /Ask the manager, in these words: ([\s\S]+)$/.exec(staff.note ?? "")?.[1];
+    return { text: asked ?? "Who is this form for?" };
+  });
+}
+
+NOV15_AGENT_LOOP_BATCH_K_CASES.push(
+  {
+    id: "nov15-k3-one-word-name-gets-the-use-offer-c134",
+    title: "K3a (QA's shadow replay, c134's shape): \"put together an exit for Wrenna\", nobody on the roster, gets \"Reply **use Wrenna**\"; \"use Wrenna\" makes the Exit card for Wrenna, never \"it does not read as a person's name\"",
+    report: `${REPORT}: c134 and the B group, an off-roster first name judged not a person's name, so the form was never carded`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      await salon(t);
+      const model = loopStandIn((view): LoopDecision => {
+        const said = latest(view);
+        const staff = lastResult(view, "find_staff") as StaffResult;
+        if (/^use wrenna/i.test(said)) {
+          if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "stc-exit", employee_name: "Wrenna", effective_date: "11/14" } };
+          return { text: "Here's the Employee Exit Form for **Wrenna**." };
+        }
+        if (!staff) return { tool: "find_staff", input: { name: "Wrenna" } };
+        const asked = /Ask the manager, in these words: ([\s\S]+)$/.exec(staff.note ?? "")?.[1];
+        return { text: asked ?? "Who is this Resignation/Exit Form for?" };
+      });
+      t.loopModel!(model);
+      const thread = t.thread();
+      const offer = await thread.say("put together an exit for Wrenna");
+      expect(offer.content, `no use-<name> offer:\n${offer.content}`).toContain("Reply **use Wrenna**");
+      await thread.say("use Wrenna");
+      expect(thread.proposal?.employeeName, "the exit was not carded for the name as typed").toBe("Wrenna");
+    },
+  },
+  ...([
+    ["c165", "I need to make a corrective action for Brisa", "Brisa"],
+    ["c124", "Talia", "Talia"],
+  ] as const).map(([tag, words, name]): ReplayCase => ({
+    id: `nov15-k3-name-not-looked-up-is-handed-back-${tag}`,
+    title: `K3b (QA's shadow replay, ${tag}'s shape): "${words}" answered with "Who is it for?" and no find_staff call goes back once with "${name}" as a fact, and the reply makes today's "use ${name}" offer`,
+    report: `${REPORT}: ${tag}, a name in the person slot read as a topic and never looked up`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      await salon(t);
+      const model = topicModel(name);
+      t.loopModel!(model);
+      const thread = t.thread();
+      if (tag === "c124") {
+        t.loopModel!(loopStandIn(() => ({ text: "Coaching Form citing **Attendance** (JBA Policy Manual p.14). Who is it for?" })));
+        await thread.say("attendance policy coaching form");
+        t.loopModel!(model);
+      }
+      const reply = await thread.say(words);
+      expect(model.views.some((view) => /\[app check\][\s\S]*find_staff was not called/.test(latest(view))), "the name was not handed back").toBe(true);
+      expect(reply.content, `no use-<name> offer:\n${reply.content}`).toContain(`Reply **use ${name}**`);
+    },
+  })),
+);

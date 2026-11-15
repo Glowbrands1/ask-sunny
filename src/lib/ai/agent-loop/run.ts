@@ -32,6 +32,7 @@ import {
   listStaffTool,
   findPastForms,
   findStaff,
+  personSlotWords,
   manualFor,
   proposeForm,
   readForm,
@@ -478,6 +479,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   const noop = input.openFormId ? await import("@/lib/forms/form-noop-reply") : null;
   const openBefore = noop && input.openFormId ? await noop.formBeforeTurn(input.openFormId, input.request) : null;
   const steps: AgentLoopStep[] = [];
+  const lookedUp: string[] = [];
   /* The tools this turn called so far (the hand-backs' too), for the item 7 check below. */
   const calledThisTurn = (tool: string) => steps.some((step) => step.tool === tool);
   /* Each model call's tokens and ms, for the trace (numbers only). */
@@ -507,6 +509,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     } catch {
       result = { error: "That lookup failed just now." };
     }
+    /* Batch K3: the names find_staff was asked about this turn (kept in memory only, for the person-slot check below). */
+    if (name === "find_staff" && args && typeof (args as { name?: unknown }).name === "string") lookedUp.push(String((args as { name: string }).name));
     steps.push({ step, tool: name, ms: Math.round(performance.now() - started), resultChars: JSON.stringify(result).length, ok: !("error" in result), ...stepReason(result) });
     return result;
   };
@@ -731,6 +735,25 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
           ].join("\n");
           const again = await handBack(note);
           draftReview = { claimed: true, fixed: Boolean(again) && (Boolean(effects.formUpdate) || !CLAIMS_A_CHANGE.test(again)) };
+          if (again) text = again;
+        }
+      }
+      /*
+       * BATCH K3 (QA's 266 shadow replay, c124/c157/c165; code informs, never rewrites): a reply that asks who the form is
+       * for while the manager's message holds a name in the person slot ("a mock coaching form for <X>", the bare answer
+       * to "Who is it for?") that find_staff was never asked about goes back to the model once, with that name as a fact.
+       */
+      if (stoppedAt === "reply" && !effects.proposal && /Who is (?:this|it)\b[^?\n]*\bfor\?/i.test(text)) {
+        const lastReply = [...input.history].reverse().find((turn) => turn.role === "assistant");
+        const slot = personSlotWords(input.question, typeof lastReply?.content === "string" ? lastReply.content : undefined);
+        const same = (a: string, b: string) => a.toLowerCase().replace(/\s+/g, " ").trim() === b.toLowerCase().replace(/\s+/g, " ").trim();
+        const missed = slot.filter((word) => !lookedUp.some((name) => same(name, word)));
+        if (missed.length > 0) {
+          const note = [
+            `[app check] Your reply asks who the form is for, but the manager's message names ${missed.map((word) => `"${word}"`).join(" and ")} where the form's person goes, and find_staff was not called for it.`,
+            "Call find_staff with that name and follow its result (a name not on the staff list gets its \"reply **use <name>**\" offer). Never read a name as a topic, an acronym or a product. Then write your reply to the manager again.",
+          ].join("\n");
+          const again = await handBack(note);
           if (again) text = again;
         }
       }

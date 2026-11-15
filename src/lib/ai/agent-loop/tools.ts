@@ -11,6 +11,9 @@ import { isoDate, monthDayToIso, readDates, sameDate, withoutDates } from "./dat
 import { candidateNameWords, chatFormsActor } from "@/lib/forms/chat-form-records";
 import { AFFIRMATIVE, displayName, matchEmployeeName, nameConfirmationQuestion, type RosterEmployee } from "@/lib/forms/employee-match";
 import { offRosterTyped } from "@/lib/forms/roster-only-names";
+import { namesCompanyPositionTitle } from "@/lib/forms/staff-picker";
+import { namesThisCompany } from "@/lib/forms/company-name";
+import { namesAForm } from "@/lib/forms/template-intent";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
 import { readDirectoryRoster, readScopedRoster, type DirectoryRosterRow } from "@/lib/forms/employee-roster";
 import { inlineDraftVariantKey, supportsInlineDraft } from "@/lib/forms/inline-draft";
@@ -415,6 +418,41 @@ function namesAPlace(typed: string): boolean {
 }
 
 /**
+ * Batch K3 (QA's 266 shadow replay, c008/c124/c134/c157/c165/c197/c219): the words in a request's person slot, as the
+ * manager typed them: after "for" ("a CA for <X>", "an exit for <X>", "a mock coaching form for <X>"), or the whole
+ * message when it answers the app's "Who is this … for?". Never a form, a title, the company, a salon or an ordinary
+ * word ("for being late", "for not signing", "for October").
+ */
+const NOT_A_PERSON_WORD = new Set([
+  "a", "an", "the", "her", "him", "his", "them", "their", "my", "our", "me", "us", "you", "it", "this", "that", "these", "those", "everyone", "everybody", "all", "team", "staff", "whole", "entire",
+  "being", "not", "no", "never", "lateness", "late", "tardiness", "attendance", "dress", "code", "sales", "performance", "underperformance", "under", "cleaning", "now", "today", "tomorrow", "yesterday", "tonight",
+  "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", "january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december",
+  "and", "or", "with", "at", "for", "from", "in", "on", "to", "about", "regarding", "because", "who", "she", "he", "they", "was", "is",
+  "last", "next", "week", "month", "year", "how", "what", "why", "when", "doing", "making", "having", "getting", "going", "leaving", "showing", "selling", "using", "violating", "failing", "missing",
+]);
+const NAME_TOKEN = String.raw`[\p{L}][\p{L}'’-]*`;
+export function personSlotWords(message: string, previousReply?: string): string[] {
+  const found: string[] = [];
+  const keep = (phrase: string) => {
+    const tokens = phrase.trim().split(/\s+/).filter(Boolean);
+    const kept: string[] = [];
+    for (const token of tokens) {
+      if (NOT_A_PERSON_WORD.has(token.toLowerCase()) || /^\d/.test(token)) break;
+      kept.push(token.replace(/[.,!?;:]+$/, ""));
+    }
+    const name = kept.join(" ");
+    if (!name || name.length < 2 || namesAForm(name) || namesCompanyPositionTitle(name) || namesThisCompany(name) || namesAPlace(name)) return;
+    found.push(name);
+  };
+  for (const match of message.matchAll(new RegExp(String.raw`\bfor\s+(${NAME_TOKEN}(?:\s+${NAME_TOKEN}){0,2})`, "giu"))) keep(match[1]!);
+  for (const match of message.matchAll(new RegExp(String.raw`\bwrite\s+up\s+(${NAME_TOKEN}(?:\s+${NAME_TOKEN}){0,2})`, "giu"))) keep(match[1]!);
+  const subject = new RegExp(String.raw`^\s*(${NAME_TOKEN}(?:\s+${NAME_TOKEN})?)\s+(?:was|is|did|didn'?t|has|had|got|came|left|called|showed|no[- ]call)\b`, "iu").exec(message);
+  if (subject) keep(subject[1]!);
+  if (previousReply && /Who is (?:this|it)\b[^?\n]*\bfor\?/i.test(previousReply) && new RegExp(String.raw`^\s*${NAME_TOKEN}(?:\s+${NAME_TOKEN}){0,2}\s*[.!]?\s*$`, "u").test(message)) keep(message);
+  return [...new Set(found)];
+}
+
+/**
  * Batch K1: the card's person was put there by the manager: a manager turn in this chat names them in full, or the
  * manager said yes to the app's "Did you mean **<name>**?". A close spelling the app seated on its own never counts.
  */
@@ -490,6 +528,18 @@ export async function findStaff(context: ToolContext, input: { name?: unknown },
      */
     const person = namesAPlace(typed) ? null : offRosterTyped(typed, context.question, read.roster.map(displayName)) ?? offRosterTyped(typed, `for ${typed}`, read.roster.map(displayName));
     if (!person) {
+      /*
+       * Batch K3: a name the manager typed in the request's person slot ("an exit for <X>", "a CA for <X>", the answer to
+       * "Who is it for?") is a person, even one word or with an apostrophe: today's OFF_ROSTER_CONFIRM offer, in its
+       * words, so "use <X>" puts it on the form as typed (propose_form's offRosterConfirmed).
+       */
+      const lastReply = [...context.history].reverse().find((turn) => turn.role === "assistant");
+      const slot = personSlotWords(context.question, typeof lastReply?.content === "string" ? lastReply.content : undefined);
+      const named = !namesAPlace(typed) && slot.some((word) => words(word).join(" ") === words(typed).join(" "));
+      if (named) {
+        const shown = typed.replace(/\s+/g, " ").trim();
+        return { matches: [], not_on_roster: shown, note: `Not on the Woven staff list. Ask the manager, in these words: I can't find **${shown}** on your staff list. Reply **use ${shown}** to put the name on the form as you typed it, or give me the full name.` };
+      }
       return { matches: [], note: "Nobody on this manager's roster has that name, and it does not read as a person's name (it may be a salon, a place, a title or a metric). Never put it on a form as a person: ask who the form is for." };
     }
     /*
