@@ -90,7 +90,7 @@ async function persistChatTrace(draft: ChatTraceDraft): Promise<void> {
       thinking_tokens: model?.thinkingTokens ?? null,
       cache_creation_input_tokens: model?.cacheCreationInputTokens ?? null,
       cache_read_input_tokens: model?.cacheReadInputTokens ?? null,
-      first_token_ms: model?.firstTokenMs ?? null,
+      first_token_ms: model?.firstTokenMs ?? draft.firstTokenMs ?? null,
       e2e_latency_ms: model?.e2eLatencyMs ?? null,
       latency_ms: model?.latencyMs ?? Date.now() - draft.startedAt,
       error_subtype: draft.errorSubtype,

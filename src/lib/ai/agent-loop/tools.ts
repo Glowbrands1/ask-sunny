@@ -1375,6 +1375,17 @@ export async function proposeForm(
     if (!manual) return { error: "The JBA Policy Manual could not be read just now, so no policy can be cited. Propose without a policy or say so." };
     policyHeading = headingOf(manual.headings, askedPolicy);
     if (!policyHeading) return { error: "That is not a heading of the JBA Policy Manual (or \"Other\"). Pick the one heading that fits what happened.", headings: manual.headings };
+    /*
+     * Batch J5 (QA's live re-run: "CA for <name>, ASD, late to open 11/12" cited Attendance p.14): "late to open" and a
+     * failure to open are the manual's Late Opening section, as today's chat reads them (`late-open.ts`,
+     * LATE_OPEN_DATE / FAILURE_TO_OPEN_IS_LATE_OPENING). Late for a shift stays Attendance (`describesAttendanceToo`).
+     */
+    const lateOpen = await import("@/lib/forms/late-open");
+    const lateOpening = manual.headings.find((heading) => headingKey(heading) === headingKey("Late Opening"));
+    const saysLateOpening = (lateOpen.lateOpenOn() && lateOpen.LATE_TO_OPEN.test(requestWords)) || lateOpen.saysFailureToOpen(requestWords);
+    if (lateOpening && saysLateOpening && headingKey(policyHeading) === headingKey("Attendance") && !lateOpen.describesAttendanceToo(requestWords)) {
+      return { error: `The manager's words ("late to open", a failure to open) are the manual's ${lateOpening} section, not Attendance. Propose the card again with policy "${lateOpening}".` };
+    }
   }
   /*
    * CLOSE_SPELLING (the manual's own reader): a policy the manager named with a misspelling that is not one confident
