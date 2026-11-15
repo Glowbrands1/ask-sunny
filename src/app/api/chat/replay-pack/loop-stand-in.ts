@@ -60,7 +60,7 @@ function viewOf(prompt: readonly Message[]): LoopView {
     if (message.role !== "user" && message.role !== "assistant") continue;
     const shown = typeof message.content === "string" ? message.content : message.content.filter((part) => part.type === "text").map((part) => part.text ?? "").join("\n");
     // The evidence tags (`[message_id: <id>]`, evidence.ts) are kept apart, so a case reads the manager's words as typed.
-    const messageIds = [...shown.matchAll(/\[message_id: ([^\]\n]+)\]/g)].map((found) => found[1]!);
+    const messageIds = [...shown.matchAll(/\[message_id:\s*([^\]\n]+)\]/g)].map((found) => found[1]!.trim());
     const text = withoutMessageIdTags(shown);
     if (text !== "") turns.push({ role: message.role, text, ...(messageIds.length > 0 ? { messageIds } : {}) });
   }
