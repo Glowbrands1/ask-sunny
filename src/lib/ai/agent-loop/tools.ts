@@ -1126,8 +1126,20 @@ export async function proposeForm(
    * on 10/5 and again on 10/15") are never clear, so the one question asks which (a prior step's date is not counted,
    * `incidentDates`). The manager's answer sets it.
    */
-  const answered = datesGiven.length > 1 && latestDates.length === 1 && datesGiven.includes(latestDates[0]!);
+  let answered = datesGiven.length > 1 && latestDates.length === 1 && datesGiven.includes(latestDates[0]!);
   if (answered) date = monthDayToIso(latestDates[0]!, today);
+  /*
+   * DATE_ANSWER_APPLIED / DATE_ANSWER_KEEPS_OPEN (batch H3): the answer to "Which date goes on the form?" read as
+   * today's chat reads it (`incident-dates.ts` dateAnsweredIn): "10-15", "the 15th", "most recent", "today", and an
+   * answer given a turn or two before ("She is at Kearney" after it). The manager's answer is the date, over the model's.
+   */
+  if (datesGiven.length > 1 && !answered && (await import("@/lib/config/chat-quality-flags")).dateAnswerAppliedEnabled()) {
+    const asked = [...new Set(datesGiven.map((given) => monthDayToIso(given, today)))].sort();
+    const choice = (await import("@/lib/forms/incident-dates")).dateAnsweredIn(conversationTurns(context), asked, today);
+    if (choice?.kind === "date" && asked.includes(choice.iso)) date = choice.iso;
+    if (choice?.kind === "today") date = today;
+    answered = Boolean(choice && date);
+  }
   /*
    * Batch B (code-check #20): with several stated dates the model's choice stands; the dates are a fact and the rules
    * book says to pick only when the account makes it clear, else ask (never both). A date that is none of the stated

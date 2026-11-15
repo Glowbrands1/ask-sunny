@@ -328,4 +328,36 @@ export const NOV15_AGENT_LOOP_BATCH_H_CASES: ReplayCase[] = [
       expect(t.checked(id).warning_type ?? [], "Create did not tick Termination").toContain("termination");
     },
   },
+  {
+    id: "nov15-batch-h3-date-answer-sets-the-date",
+    title: "H3 DATE_ANSWER_APPLIED / DATE_ANSWER_KEEPS_OPEN: after \"Which date goes on the form?\", \"10-15\", \"the 15th\" and \"most recent\" each set the date, and an answer before \"She is at Kearney\" still holds",
+    report: `${REPORT}; QA, 26 Oct 2026: "the 15th" read as nothing and the form was dated today`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      // The model leaves incident_date empty every turn: the date on the card is the manager's answer, read by the tool.
+      const model = loopStandIn((view) => {
+        const facts = (lastResult(view, "propose_form") as { facts?: { dates_given?: string[] } } | undefined)?.facts;
+        if (!facts) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", policy: "Attendance", what_happened: "Remy Calder was late on 10/5 and again on 10/15.", warning_level: "verbal" } };
+        const asked = (facts.dates_given ?? []).length > 1 && !(lastResult(view, "propose_form") as { card?: { form_date?: string | null } }).card?.form_date;
+        return { text: asked ? "Here is the card.\n\nYou mentioned more than one date (**10/5**, **10/15**). Which date goes on the form?" : "Here is the card." };
+      });
+      for (const [answer, iso] of [["10-15", "2026-10-15"], ["the 15th", "2026-10-15"], ["most recent", "2026-10-15"]] as const) {
+        const thread = start(t);
+        t.loopModel!(model);
+        await thread.say("verbal ca for remy calder, she was late on 10/5 and again on 10/15");
+        expect(thread.proposal?.formDate ?? null, "a date was picked before the manager answered").toBeNull();
+        await thread.say(answer);
+        expect(thread.proposal?.formDate ?? null, `"${answer}" did not set the date`).toBe(iso);
+      }
+      // DATE_ANSWER_KEEPS_OPEN: the answer, then another turn: the date stays answered.
+      const later = start(t);
+      t.loopModel!(model);
+      await later.say("verbal ca for remy calder, she was late on 10/5 and again on 10/15");
+      await later.say("the 15th");
+      await later.say("She is at Kearney");
+      expect(later.proposal?.formDate ?? null, "the earlier answer was lost a turn later").toBe("2026-10-15");
+    },
+  },
 ];

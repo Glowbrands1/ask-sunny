@@ -4,6 +4,7 @@
 done the loop's way, a fact on a tool's result and a rules-book line, or tool code that fills the card:
 
 - AMOUNT_UNKNOWN_ACK;
+- DATE_ANSWER_APPLIED and DATE_ANSWER_KEEPS_OPEN (today's `dateAnsweredIn`, on batch E's dates);
 - COACHING_FOR_EVERYONE and WHOLE_TEAM_COACHING (a new `coach_team` tool);
 - the job title read back, typed after the name, and spelled out;
 - GLOBAL_SALON_ASK;
@@ -15,7 +16,7 @@ done the loop's way, a fact on a tool's result and a rules-book line, or tool co
 - TERMINATION_STATED_TICKS.
 
 Shared modules only gained exports, so today's chat path is unchanged: `carriedFromEarlier`,
-`spelledOutTitle`/`titleCaseIfLower` and `staffListedBefore`.
+`spelledOutTitle`/`titleCaseIfLower`, `staffListedBefore` and `asksMustSeeNotConduct`.
 
 **Ask Bubbles: not ported yet** (v2-Coding-5, 15 Nov 2026). Ask Bubbles has no agent loop on its main. Port these with
 the loop, on Bubbles' own data (store ↔ salon).
