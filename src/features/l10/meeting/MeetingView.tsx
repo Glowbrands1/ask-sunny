@@ -4,10 +4,11 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Button, ButtonLink, Card, Modal, cx } from "@/features/l10/ui/ui";
-import { agendaFromRoster, cadenceLabel, hintsFromRoster, referenceFromRoster, segueName, type AgendaKey, type MeetingKey, type Roster } from "@/features/l10/lib/config";
+import { agendaFromRoster, bloomStyle, cadenceLabel, hintsFromRoster, referenceFromRoster, segueName, type AgendaKey, type MeetingKey, type Roster } from "@/features/l10/lib/config";
 import { buildRecap, effectiveAttendees, keepHiddenAttendees, markRecapped, newItemId } from "@/features/l10/lib/doc";
 import { elapsedSeconds, emptyTimer, endedTimer, formatClock, pausedTimer, plannedSeconds, isReferenceView, readTimer, resumedTimer, startMeeting, type View } from "@/features/l10/lib/timer";
-import type { LoadedMeeting, MeetingInfo } from "@/features/l10/lib/types";
+import type { LoadedMeeting, MeetingInfo, RecapRow } from "@/features/l10/lib/types";
+import { pastMeetings } from "@/features/l10/lib/past";
 import { AUTO_SAVED_LABEL, wasAutoSaved } from "@/features/l10/lib/autosave";
 import { AccountabilityChart } from "./_components/AccountabilityChart";
 import { BusinessBest } from "./_components/BusinessBest";
@@ -16,6 +17,7 @@ import { Headlines } from "./_components/Headlines";
 import { Ids } from "./_components/Ids";
 import { PrintButton } from "./_components/PrintButton";
 import { ParkIt } from "./_components/ParkIt";
+import { LastMeetingSummary, MeetingNotes, NewIssueBar } from "./_components/BloomShell";
 import { BusinessPlan } from "./_components/BusinessPlan";
 import { Rocks } from "./_components/Rocks";
 import { Scorecard } from "./_components/Scorecard";
@@ -48,6 +50,7 @@ export function MeetingView({
   initialView,
   debounceMs,
   pollMs,
+  recaps = [],
 }: {
   /** Open on a reference view (from a link such as ?view=accountability). */
   initialView?: "accountability" | "business-plan";
@@ -73,6 +76,8 @@ export function MeetingView({
   today: string;
   debounceMs?: number;
   pollMs?: number;
+  /** This meeting's recaps, newest first, for "Last meeting's summary" (Bloom-style meetings only). */
+  recaps?: RecapRow[];
 }) {
   const key = info.key as MeetingKey;
   // The Hub's agenda and hints, served with the roster (Ask Sunny: so a change in the Hub's config reaches this page).
@@ -80,6 +85,8 @@ export function MeetingView({
   const hints = hintsFromRoster(key, roster);
   // The Reference views exist only where the meeting has them (not the STC DM L10; the Hub says so with the roster).
   const reference = referenceFromRoster(key, roster);
+  // The DM L10's pages are laid out like Bloom Growth's (the owner's request, 15 Nov 2026).
+  const bloom = bloomStyle(key);
   const [view, setViewLocal] = useState<View>((reference && initialView) || agenda[0].key);
   // An old version can never save or end a meeting: whatever happens, these refuse.
   const refuse = { ok: false as const, kind: "forbidden" as const, message: "This is an old version and cannot be changed." };
@@ -205,7 +212,9 @@ export function MeetingView({
         setTimeout(() => document.querySelector<HTMLInputElement>('input[aria-label="New to-do"]')?.focus(), 60);
       } else if (e.key === "i" || e.key === "I") {
         e.preventDefault();
-        setParkOpen(true);
+        // A Bloom-style meeting has the New Issue bar instead of the Add to IDS window.
+        if (bloom) document.querySelector<HTMLInputElement>('form[aria-label="New Issue"] input[aria-label="New Issue"]')?.focus();
+        else setParkOpen(true);
       } else if (e.key === "?") {
         e.preventDefault();
         setHelp((h) => !h);
@@ -486,6 +495,7 @@ export function MeetingView({
                 </li>
               ))}
             </ol>
+            {bloom && <MeetingNotes notes={typeof doc.meetingNotes === "string" ? doc.meetingNotes : ""} onChange={(v) => edit((d) => ({ ...d, meetingNotes: v }))} saveStatus={readOnly ? undefined : statusText(status)} disabled={!!readOnly} />}
             {reference && (
               <>
                 <div className="mt-3 text-xs font-bold tracking-[0.06em] text-muted">REFERENCE</div>
@@ -502,6 +512,7 @@ export function MeetingView({
           </Card>
 
           <div className="flex min-w-0 flex-[999_1_520px] flex-col gap-4" inert={conflict ? true : undefined} aria-busy={conflict ? true : undefined}>
+            {bloom && <LastMeetingSummary last={pastMeetings(recaps, doc)[0] ?? null} />}
             {!isReferenceView(view) && index >= 0 && (
               <div role="group" aria-label="Section controls" className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-[10px] border border-line bg-white px-4 py-2.5 text-sm shadow-card print:hidden">
                 <span className="font-semibold" data-testid="section-position">
@@ -573,7 +584,8 @@ export function MeetingView({
 
       {/* Room at the bottom so the floating Add to IDS button never covers the last rows. */}
       <div aria-hidden className="h-20" />
-      {!readOnly && <ParkIt open={parkOpen} setOpen={setParkOpen} onPark={(title) => edit((d) => ({ ...d, issues: [...d.issues, { id: newItemId(), title, notes: "", resolved: false, ...(myName ? { addedBy: myName } : {}) }] }))} />}
+      {!readOnly && !bloom && <ParkIt open={parkOpen} setOpen={setParkOpen} onPark={(title) => edit((d) => ({ ...d, issues: [...d.issues, { id: newItemId(), title, notes: "", resolved: false, ...(myName ? { addedBy: myName } : {}) }] }))} />}
+      {!readOnly && bloom && <NewIssueBar people={people} me={myName} onAdd={(title, owner) => edit((d) => ({ ...d, issues: [...d.issues, { id: newItemId(), title, notes: "", resolved: false, owner, ...(myName ? { addedBy: myName } : {}) }] }))} />}
     </MentionRoster>
   );
 }

@@ -96,6 +96,9 @@ export function cadenceLabel(key: string, cadence: string, agenda: AgendaSection
   return /\d+\s*min/.test(cadence) ? cadence.replace(/\d+\s*min/, `${total} min`) : `${cadence} · ${total} min`;
 }
 
+/** The meetings whose pages are laid out like Bloom Growth's (the owner's request, 15 Nov 2026): here, the STC DM L10. */
+export const bloomStyle = (key: string): boolean => key === "stc-dm";
+
 export function agendaFor(key: string): AgendaSection[] {
   if (key === "leadership") return AGENDA.filter((a) => a.key !== "headlines" && a.key !== "todos").map((a) => (a.key === "ids" ? { ...a, minutes: 70 } : a));
   if (key === "stc-dm") return STC_DM_AGENDA;
