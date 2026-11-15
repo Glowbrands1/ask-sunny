@@ -29,6 +29,7 @@ import {
   caShortcutWordsEnabled,
   formChoiceStatedEnabled,
   formNameFromRosterEnabled,
+  terminationRequestIsCaEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { foldsToGlossaryTerm } from "@/lib/ai/chat-glossary";
 
@@ -556,12 +557,22 @@ export function canonicalShorthand(text: string): string {
   });
 }
 
+/*
+ * TERMINATION_REQUEST_IS_CA_ENABLED (QA, 15 Nov 2026): "create a termination for <A>, she no call no showed on 11/12"
+ * got a policy answer and no card. "Termination" alone is still no form's name (see NOT_A_LEADING_NAME): only a filing
+ * verb, then "a termination" (or "termination"), then "for <someone>", is a termination Corrective Action. "Termination
+ * form / paperwork / letter" keep naming their own documents, and a question is still a question.
+ */
+const TERMINATION_REQUEST =
+  /\b(create|make|write|start|draft|do|need|file|put\s+in|open)(\s+(?:me\s+)?(?:a|an)?\s*)termination\b(?!\s+(?:form|forms|paperwork|letter|document|ca|c\/a|corrective|warning|policy|process|procedure))(?=\s+for\s+\S)/gi;
+
 /** Every rewrite a form request goes through before it is read. */
 export function canonicalFormWording(text: string): string {
+  const said = terminationRequestIsCaEnabled() ? text.replace(TERMINATION_REQUEST, (_match, verb: string, between: string) => `${verb}${between}termination corrective action`) : text;
   return canonicalCorrectiveAction(
     canonicalShorthand(
       // "a verbal corrective", "written corrective for …" — the noun left off (QA, 22 Oct 2026, round 3).
-      text.replace(/\b(verbal|written)\s+corrective\b(?!\s+actions?\b)/gi, "$1 corrective action"),
+      said.replace(/\b(verbal|written)\s+corrective\b(?!\s+actions?\b)/gi, "$1 corrective action"),
     ),
   );
 }

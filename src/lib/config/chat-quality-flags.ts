@@ -4914,3 +4914,12 @@ export function otherBesideDescribedEnabled(): boolean {
 export function modelWarningLevelDiscardedEnabled(): boolean {
   return envFlag("MODEL_WARNING_LEVEL_DISCARDED_ENABLED");
 }
+
+/**
+ * TERMINATION_REQUEST_IS_CA_ENABLED (QA, 15 Nov 2026; default off; same flag in both apps): "create a termination for
+ * <A>, …" is a Corrective Action request (`forms/template-intent.ts` canonicalFormWording): a filing verb, "a
+ * termination", "for <someone>". Off, as before (a policy answer, no card).
+ */
+export function terminationRequestIsCaEnabled(): boolean {
+  return envFlag("TERMINATION_REQUEST_IS_CA_ENABLED");
+}
