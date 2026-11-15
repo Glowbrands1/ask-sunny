@@ -1213,18 +1213,38 @@ function conversationTurns(context: Pick<ToolContext, "question" | "history">) {
   ];
 }
 
-/** Payroll deduct as the manager stated it: in their words, or a bare yes / no right after the payroll question. */
+/**
+ * Batch K5 (QA's 266 shadow replay, c163; QA's ruling, 15 Nov 2026): the reply's open questions are the lines that ask
+ * ("…?", "tell me if it applies"). A bare yes / no answers payroll only when every open question was about payroll
+ * deduct; a reply that asked two things ("Payroll deduct and warning level aren't set; tell me if they apply", or
+ * payroll and "What happened?") is answered by asking which (the rules book), never by a tick.
+ */
+export function asksOnlyPayroll(reply: string): boolean {
+  const open = reply
+    .split(/\n+|(?<=[.?!])\s+/)
+    .map((line) => line.trim())
+    .filter((line) => /\?\s*\**\s*$/.test(line) || /\btell me (?:if|whether|the|what|which)\b/i.test(line));
+  return open.length > 0 && open.every((line) => /\bpayroll\b/i.test(line) && !/\b(?:warning\s+)?level\b|\bamount\b|\bfigure\b/i.test(line));
+}
+
+/**
+ * Payroll deduct as the manager stated it: in their words, or a bare yes / no right after a reply whose only open
+ * question was payroll. Batch K5 (b): an answer given once in the chat holds on later turns (c163's T6 re-proposed the
+ * card and payroll fell back to empty); the latest answer wins.
+ */
 function payrollStated(context: Pick<ToolContext, "question" | "history">): "yes" | "no" | null {
-  const turns = [...context.history.filter((message) => message.role === "user").map((message) => message.content), context.question];
-  for (const turn of [...turns].reverse()) {
-    const stated = statedPayrollDeduct(turn);
+  const turns = [...context.history.map((message) => ({ role: message.role, content: typeof message.content === "string" ? message.content : "" })), { role: "user" as const, content: context.question }];
+  for (let index = turns.length - 1; index >= 0; index -= 1) {
+    const turn = turns[index]!;
+    if (turn.role !== "user") continue;
+    const stated = statedPayrollDeduct(turn.content);
     if (stated) return stated;
-  }
-  const lastAssistant = [...context.history].reverse().find((message) => message.role === "assistant");
-  if (lastAssistant && /payroll/i.test(lastAssistant.content)) {
-    const bare = context.question.trim().toLowerCase().replace(/[.!]+$/, "");
-    if (/^(?:yes|yep|yeah|y)\b/.test(bare)) return "yes";
-    if (/^(?:no|nope|nah|n)\b/.test(bare)) return "no";
+    const before = turns.slice(0, index).reverse().find((earlier) => earlier.role === "assistant");
+    if (before && asksOnlyPayroll(before.content)) {
+      const bare = turn.content.trim().toLowerCase().replace(/[.!]+$/, "");
+      if (/^(?:yes|yep|yeah|y)\b/.test(bare)) return "yes";
+      if (/^(?:no|nope|nah|n)\b/.test(bare)) return "no";
+    }
   }
   return null;
 }
@@ -1765,6 +1785,8 @@ export async function proposeForm(
   const namesCard = mentionsPerson(accountText, employee.name, rosterNames) || (cardFirst.length > 1 && new RegExp(String.raw`\b${cardFirst}\b`, "i").test(accountText));
   const otherNamed = namesCard ? [] : [...new Set(extractEmployeeNames(accountText))].filter((name) => words(name).length >= 2 && !samePerson(name, employee.name) && !(context.actor.displayName && samePerson(name, context.actor.displayName)));
   const facts = {
+    /* Batch K5 (b): the manager answered payroll earlier in this chat and this call left it out: said, so the model passes it again. */
+    ...(corrective && !askedPayroll && payrollStated(context) ? { payroll_said_earlier: payrollStated(context) } : {}),
     ...(otherNamed.length > 0 ? { account_names_other_person: { named: otherNamed.slice(0, 3).map(untrusted), card_person: employee.name } } : {}),
     ...(unset.length > 0 ? { unset } : {}),
     ...(level || payroll || priorActions

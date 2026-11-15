@@ -256,3 +256,71 @@ NOV15_AGENT_LOOP_BATCH_K_CASES.push(
     },
   },
 );
+
+/** Remy's Corrective Action card with Verbal, then the app's own reply, then the manager's answer (K5's shape). */
+function payrollModel(appAsks: string) {
+  return loopStandIn((view): LoopDecision => {
+    const said = latest(view);
+    const card = lastResult(view, "propose_form") as { card?: { payroll_deduct?: string | null } } | null;
+    if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "Remy Calder" } };
+    // The model's slip: every later turn passes payroll yes once the manager said "yes", and drops it again after.
+    const input = { template_key: "dpoa", employee_id: "e-2", what_happened: "She was below the company average last month in PPTA and spa %.", warning_level: "verbal" };
+    if (!card) return { tool: "propose_form", input: /^yes/i.test(said) ? { ...input, payroll_deduct: "yes" } : input };
+    // As the rules book teaches: payroll_said_earlier is passed again, once.
+    const earlier = (card as { facts?: { payroll_said_earlier?: string } }).facts?.payroll_said_earlier;
+    if (earlier && view.results.filter((result) => result.tool === "propose_form").length === 1) return { tool: "propose_form", input: { ...input, payroll_deduct: earlier } };
+    return { text: /^yes/i.test(said) || /coaching/.test(said) ? `Here's the Corrective Action Form for **Remy Calder**.` : `Here's the Corrective Action Form for **Remy Calder**.\n\n${appAsks}` };
+  });
+}
+
+NOV15_AGENT_LOOP_BATCH_K_CASES.push(
+  {
+    id: "nov15-k5a-bare-yes-after-a-payroll-only-question-ticks-payroll-c163",
+    title: "K5(a) (QA's ruling on c163): a bare \"yes\" after a reply whose only open question was payroll (\"Payroll deduct isn't set; tell me if it applies.\") ticks payroll yes",
+    report: `${REPORT}: c163, QA's ruling that this reading stands`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      await salon(t);
+      t.loopModel!(payrollModel("Payroll deduct isn't set; tell me if it applies."));
+      const thread = t.thread();
+      await thread.say("verbal CA for Remy Calder, she was below the company average last month in PPTA and spa %");
+      await thread.say("yes");
+      expect((thread.proposal as { payrollDeduct?: string | null } | null)?.payrollDeduct).toBe("yes");
+    },
+  },
+  {
+    id: "nov15-k5a-bare-yes-after-two-questions-ticks-nothing",
+    title: "K5(a) (QA's ruling): a bare \"yes\" after a reply that asked two things (\"Payroll deduct and warning level aren't set; tell me if they apply.\") ticks no payroll",
+    report: `${REPORT}: c163, QA's ruling (ask which when two or more things were asked)`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      await salon(t);
+      t.loopModel!(payrollModel("Payroll deduct and warning level aren't set; tell me if they apply."));
+      const thread = t.thread();
+      await thread.say("CA for Remy Calder, she was below the company average last month in PPTA and spa %");
+      await thread.say("yes");
+      expect((thread.proposal as { payrollDeduct?: string | null } | null)?.payrollDeduct ?? null, "a bare yes to two questions was ticked as payroll").toBeNull();
+    },
+  },
+  {
+    id: "nov15-k5b-payroll-answer-holds-on-later-turns-c163",
+    title: "K5(b) (QA's shadow replay, c163 T6): after \"yes\" ticked payroll, \"we have already done coaching\" re-proposes the card and payroll stays yes, never silently empty",
+    report: `${REPORT}: c163, at T6 payroll fell back to empty with no word to the manager`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      await salon(t);
+      t.loopModel!(payrollModel("Payroll deduct isn't set; tell me if it applies."));
+      const thread = t.thread();
+      await thread.say("verbal CA for Remy Calder, she was below the company average last month in PPTA and spa %");
+      await thread.say("yes");
+      await thread.say("we have already done coaching");
+      expect((thread.proposal as { payrollDeduct?: string | null } | null)?.payrollDeduct, "the payroll answer was dropped on a later turn").toBe("yes");
+    },
+  },
+);
