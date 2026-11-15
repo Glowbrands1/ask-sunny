@@ -689,6 +689,16 @@ async function writeValues(
  * provenance saying so, and ONLY into empty fields — see `selectStatedFacts`.
  * A template with none of these fields gets nothing written and no event.
  */
+/**
+ * Whether the form will hold Termination on its warning level after this write: ticked in this write, else already
+ * stored (batch G8; Pau's written approval, 15 Nov 2026, QA relay). The Action Plan's closing follows it.
+ */
+function terminationTicked(loaded: LoadedInstance, checked?: Readonly<Record<string, readonly string[]>> | null): boolean {
+  const written = checked?.warning_type;
+  if (written) return written.includes("termination");
+  return loaded.values.some((row) => row.fieldKey === "warning_type" && row.checked.includes("termination"));
+}
+
 export async function applyStatedFacts(
   instanceId: string,
   stated: DraftValues,
@@ -723,6 +733,11 @@ export async function saveInstanceValues(
   instanceId: string,
   submitted: Partial<DraftValues>,
   actor: string,
+  /**
+   * Where the manager's edit came from, for the event row (batch G5, QA's condition 4; Pau's standing approval, 15 Nov
+   * 2026): "chat" when the agent loop wrote a value the manager stated in chat. Absent: the event is as before.
+   */
+  options: { readonly via?: "chat" } = {},
 ): Promise<{
   rejected: { key: string; reason: string }[];
   /** What was stored, after any required closing was re-attached. */
@@ -741,7 +756,7 @@ export async function saveInstanceValues(
    * Deleting it in the textarea, or typing after it, does not take it off the
    * record — see `required-closing.ts`. Nothing else they typed is changed.
    */
-  const values = applyRequiredClosings(document, loaded.instance.variantKey, result.values);
+  const values = applyRequiredClosings(document, loaded.instance.variantKey, result.values, { terminationTicked: terminationTicked(loaded, result.checked) });
 
   /*
    * ==========================================================================
@@ -774,6 +789,7 @@ export async function saveInstanceValues(
     fields: Object.keys(changedValues).length,
     groups: Object.keys(changedChecked).length,
     rejected: result.rejected,
+    ...(options.via ? { via: options.via } : {}),
   });
 
   return { rejected: result.rejected, values };
@@ -837,7 +853,7 @@ export async function applyAssistantDraft(
    */
   const guarded = {
     ...refused,
-    values: applyRequiredClosings(document, loaded.instance.variantKey, refused.values),
+    values: applyRequiredClosings(document, loaded.instance.variantKey, refused.values, { terminationTicked: terminationTicked(loaded, draft.checked) }),
   };
 
   await writeValues(
@@ -893,7 +909,7 @@ export async function applyAssistantRevision(
   // A redraft keeps the version's required closings, exactly as a first draft does.
   const guarded = {
     ...refused,
-    values: applyRequiredClosings(document, loaded.instance.variantKey, refused.values),
+    values: applyRequiredClosings(document, loaded.instance.variantKey, refused.values, { terminationTicked: terminationTicked(loaded, draft.checked) }),
   };
 
   const writable = new Set([
@@ -1248,7 +1264,7 @@ export async function reviseInstance(
     const textValues = Object.fromEntries(
       rows.flatMap((row) => (typeof row.value === "string" ? [[row.field_key, row.value]] : [])),
     );
-    const closed = applyRequiredClosings(target, loaded.instance.variantKey, textValues);
+    const closed = applyRequiredClosings(target, loaded.instance.variantKey, textValues, { terminationTicked: terminationTicked(loaded) });
     for (const row of rows) {
       if (typeof row.value === "string" && closed[row.field_key] !== row.value) {
         row.value = closed[row.field_key]!;

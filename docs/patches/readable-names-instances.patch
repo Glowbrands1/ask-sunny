@@ -1,5 +1,5 @@
 diff --git a/src/lib/forms/instances.ts b/src/lib/forms/instances.ts
-index e5e69a1ba..778825436 100644
+index 02793edf1..3a9af9db2 100644
 --- a/src/lib/forms/instances.ts
 +++ b/src/lib/forms/instances.ts
 @@ -44,6 +44,7 @@ import { caSalesPolicyEnabled } from "@/lib/config/chat-quality-flags";

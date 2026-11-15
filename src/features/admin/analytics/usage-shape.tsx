@@ -2,6 +2,7 @@ import { Star } from "lucide-react";
 
 import { EmptyState } from "@/components/ui/feedback";
 import { ScrollTable } from "@/components/ui/layout";
+import { formatBusinessDay } from "@/lib/business-date";
 import { cn } from "@/lib/utils/cn";
 import { formatNumber } from "@/lib/utils/format";
 import { CATEGORY_LABEL, SURFACE_LABEL } from "@/lib/analytics/taxonomy";
@@ -505,10 +506,10 @@ export function ExtractionPanel({ rows }: { rows: ExtractionRow[] }) {
   );
 }
 
-function shortDate(iso: string): string {
+export function shortDate(iso: string): string {
   const parsed = new Date(iso);
   if (Number.isNaN(parsed.getTime())) return iso;
-  return parsed.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return formatBusinessDay(parsed) ?? iso;
 }
 
 /** "10am" — the hour a column stands for, shown on hover. */

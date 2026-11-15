@@ -21,7 +21,9 @@ import type { AskResponse } from "@/lib/ai/types";
  */
 
 export interface PreferredAlias {
-  /** "Lorraine Fairweather": the name the form uses. */
+  /** The roster id: who the person is, whichever name is used. */
+  readonly id?: string;
+  /** "Lorraine Fairweather": the legal name. */
   readonly legal: string;
   /** "Rae Fairweather": the preferred first name with the last name. */
   readonly preferred: string;
@@ -76,16 +78,17 @@ export function aliasOf(employee: string, aliases: readonly PreferredAlias[]): P
  * "Lorraine Fairweather"), the preferred one with the same surname ("Rae Fairweather", never "Rae FAIRWEATHER").
  */
 export function aliasForRosterPerson(
-  person: { readonly firstName: string; readonly lastName: string; readonly preferredFirstName?: string | null },
+  person: { readonly id?: string; readonly firstName: string; readonly lastName: string; readonly preferredFirstName?: string | null },
   shown: (person: { readonly firstName: string; readonly lastName: string }) => string,
 ): PreferredAlias {
   const legal = shown(person);
   const preferred = person.preferredFirstName?.trim();
-  if (!preferred || same(preferred, person.firstName)) return { legal, preferred: legal };
+  const id = person.id;
+  if (!preferred || same(preferred, person.firstName)) return { id, legal, preferred: legal };
   const firstWords = person.firstName.trim().split(/\s+/).length;
   const surname = legal.split(" ").slice(firstWords).join(" ");
   const first = readableNamesEnabled() && nameInOneCase(preferred) ? readableName(preferred) : preferred;
-  return { legal, preferred: `${first} ${surname}`.trim() };
+  return { id, legal, preferred: `${first} ${surname}`.trim() };
 }
 
 /**
@@ -135,20 +138,43 @@ const key = (name: string) => name.toLowerCase().replace(/['’]s\b/g, "").repla
  */
 export function rosterAliasesOf(name: string): readonly string[] {
   if (!readableNamesEnabled()) return [name];
-  const aliases = readAliases() ?? [];
-  const wanted = key(name);
-  const own = aliases.filter((row) => key(row.legal) === wanted || key(row.preferred) === wanted);
+  const people = aliasPeople(readAliases() ?? []);
+  const own = holdersOf(name, people);
+  // One roster person holds the name, and each of their names belongs to them alone: a name another roster person
+  // also has (a legal "Rae Fairweather", say) decides nothing.
   if (own.length !== 1) return [name];
-  const [alias] = own;
-  // Another roster person known by either name (a legal "Rae Fairweather", say) is somebody else: no merge.
-  const taken = aliases.filter((row) => row !== alias && [row.legal, row.preferred].some((other) => key(other) === key(alias!.legal) || key(other) === key(alias!.preferred)));
-  if (taken.length > 0) return [name];
-  return [alias!.legal, alias!.preferred];
+  const names = own[0]!.names;
+  return names.every((other) => holdersOf(other, people).length === 1) && names.length > 1 ? names : [name];
 }
 
-/** Two names are one roster person by their preferred and legal names (`rosterAliasesOf`). */
+/** A roster person and every full name they are known by (legal, preferred): the one shape both paths compare. */
+export interface RosterPersonNames {
+  readonly id: string;
+  readonly names: readonly string[];
+}
+
+function holdersOf(name: string, people: readonly RosterPersonNames[]): RosterPersonNames[] {
+  const wanted = key(name);
+  return wanted === "" ? [] : people.filter((person) => person.names.some((one) => key(one) === wanted));
+}
+
+function aliasPeople(aliases: readonly PreferredAlias[]): RosterPersonNames[] {
+  return aliases.map((alias, index) => ({ id: alias.id ?? `alias-${index}`, names: [...new Set([alias.legal, alias.preferred])] }));
+}
+
+/**
+ * THE ONE NAME-MATCHER (QA, 15 Nov 2026: one helper for both paths, batch G's agent loop and today's chat). Two names
+ * are one roster person when each is a full name (preferred or legal) of exactly one roster person, and it is the same
+ * person. Two different roster people are never merged, and a name two roster people share decides nothing. Pure.
+ */
+export function sameRosterPersonAmong(a: string, b: string, people: readonly RosterPersonNames[]): boolean {
+  const [x, y] = [holdersOf(a, people), holdersOf(b, people)];
+  return x.length === 1 && y.length === 1 && x[0]!.id === y[0]!.id;
+}
+
+/** Two names are one roster person, by this turn's roster (`sameRosterPersonAmong`). READABLE_NAMES_ENABLED; off, never. */
 export function sameRosterPerson(a: string, b: string): boolean {
-  const left = rosterAliasesOf(a);
-  if (left.length < 2) return false;
-  return left.some((name) => key(name) === key(b));
+  if (!readableNamesEnabled()) return false;
+  if (key(a) === key(b)) return false;
+  return sameRosterPersonAmong(a, b, aliasPeople(readAliases() ?? []));
 }

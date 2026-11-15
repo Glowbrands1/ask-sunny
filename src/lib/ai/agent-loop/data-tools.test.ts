@@ -1,10 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 
+/* The business zone is read when business-date.ts loads: production is Central. */
+vi.hoisted(() => {
+  process.env.NEXT_PUBLIC_BUSINESS_TIMEZONE = "America/Chicago";
+});
+
 import type { LoadReportBriefingInput, ReportBriefing } from "@/lib/reporting/read/report-briefing";
 import type { ReviewFeed, ReviewsSnapshot } from "@/lib/reviews/queries";
 import type { AccessScope, Role } from "@/types";
 
-import { OTHERS_NOT_VISIBLE, OUTSIDE_ACCESS, dataToolHandlers, readReviews, readStats, salonsForTurn, type DataToolDeps } from "./data-tools";
+import { PRODUCTION_SALONS } from "@/data/salons";
+
+import { FIGURES_MAX, OTHERS_NOT_VISIBLE, OUTSIDE_ACCESS, dataToolHandlers, figuresWithin, readReviews, readStats, salonsForTurn, type DataToolDeps } from "./data-tools";
 
 /*
  * The agent loop's app data tools (QA, 15 Nov 2026): read_reviews and read_stats, with Pau's scope rules enforced in
@@ -105,6 +112,13 @@ describe("read_reviews", () => {
     expect(shown).not.toContain("Wornall");
     expect(shown).not.toContain("Pine Lake");
     expect(shown).not.toContain("0306");
+  });
+
+  it("the last sync comes back already in Central time, never UTC (Pau, 15 Nov 2026: \"the whole app and chat should be in CT\"; the chat had said \"2026-11-14 12:01 UTC\")", async () => {
+    const { deps: d } = deps();
+    const result = await readReviews(ctx(MANAGER, PAU_REVIEWS), {}, d);
+    expect(result.last_sync).toBe("Nov 14, 6:00 AM CT");
+    expect(JSON.stringify(result)).not.toMatch(/UTC|\dZ"/);
   });
 
   it("the latest reviews: at most five, newest first, the manager's salons only, never a reviewer's name, words in the untrusted envelope", async () => {
@@ -245,5 +259,35 @@ describe("the scope rules", () => {
 
   it("the handlers are keyed as the loop dispatches them", () => {
     expect(Object.keys(dataToolHandlers(ctx(MANAGER, "")))).toEqual(["read_reviews", "read_stats"]);
+  });
+});
+
+describe("the figures are never cut inside a line (F6, QA's live check: \"Manhattan's PPTA not fully returned\")", () => {
+  /** A 15-salon Daily Stats briefing: each salon's Sales Totals and Salon Performance lines, padded past the cap. */
+  const pad = "x".repeat(Math.ceil(FIGURES_MAX / 20));
+  const lines = (section: string) => PRODUCTION_SALONS.map((salon) => `${salon.name}: ${section} Grand Total 1,234.56, PPTA 2.89, Tans 101 ${pad}`);
+  const briefing = ["SALES TOTALS — 11/13/2026", ...lines("Sales Totals"), "", "SALON PERFORMANCE — NOVEMBER 2026", ...lines("Performance")].join("\n");
+
+  it("over the cap: whole lines only, and every salon whose figures are missing or partial is named", () => {
+    expect(briefing.length).toBeGreaterThan(FIGURES_MAX);
+    const { text, truncatedSalons } = figuresWithin(briefing);
+    expect(text.length).toBeLessThanOrEqual(FIGURES_MAX);
+    const whole = new Set(briefing.split("\n"));
+    for (const line of text.split("\n")) expect(whole.has(line), `a cut line reached the model: ${line.slice(0, 60)}`).toBe(true);
+    expect(truncatedSalons.length).toBeGreaterThan(0);
+    // Every salon with a line left out is named.
+    const left = briefing.slice(text.length);
+    for (const salon of PRODUCTION_SALONS) if (left.includes(`${salon.name}:`)) expect(truncatedSalons).toContain(salon.name);
+  });
+
+  it("read_stats says which salons were left out", async () => {
+    const { deps: d } = deps({ loadReportBriefing: async () => ({ ...BRIEFING, text: briefing }) as ReportBriefing });
+    const result = await readStats(ctx(ADMIN, PAU_DAILY, "admin"), { report: "daily stats", question: PAU_DAILY }, d);
+    expect(result.truncated_salons).toEqual(expect.arrayContaining([expect.any(String)]));
+    expect(result.truncated_note).toMatch(/say so by name/);
+  });
+
+  it("under the cap: the text as written, nothing named", () => {
+    expect(figuresWithin("SALES TOTALS\nNE Kearney: Grand Total 1,234")).toEqual({ text: "SALES TOTALS\nNE Kearney: Grand Total 1,234", truncatedSalons: [] });
   });
 });

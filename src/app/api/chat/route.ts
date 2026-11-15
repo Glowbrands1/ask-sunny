@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { noteSpendUser } from "@/lib/ai/spend-meter";
 import { withSpendMeter } from "@/lib/ai/spend-meter-run";
-import { agentLoopFor } from "@/lib/ai/agent-loop/switch";
+import { agentLoopFor, agentLoopSkipReason, loopCarriedOnly } from "@/lib/ai/agent-loop/switch";
 
 import { withSwitchAfterCreate } from "@/lib/ai/form-type-switch";
 import { withCorrectionNotDropped, withProposalNameCorrection } from "@/lib/forms/proposal-name-correction";
-import { enterChatRequestClock } from "@/lib/ai/chat-trace-store";
+import { chatTraceDraft, enterChatRequestClock } from "@/lib/ai/chat-trace-store";
 import { answerQuestion } from "@/lib/ai/server-ask";
 import { modelSpendGuard } from "@/lib/ai/spend-guard";
 import { isQuestionNotForm } from "@/lib/ai/question-not-form";
@@ -238,8 +238,16 @@ async function postChat(request: Request) {
      * of every handler and reply rewrite below. The loop's reply is returned as the model wrote it, so the history the
      * browser saves is the model's own. Off (or not a listed user), this branch is never taken.
      */
+    /*
+     * AGENT_LOOP_SKIPPED (QA, batch F5): a turn carrying something the loop does not take yet (attachments, report
+     * context, a pending copy, an answer mode) goes to today's path, and the trace says why (`agent-loop/switch.ts`).
+     */
     if (agentLoopFor(context.identity.email)) {
-      try {
+      const loopSkip = agentLoopSkipReason(parseAskRequest(body));
+      if (loopSkip) {
+        const trace = chatTraceDraft();
+        if (trace) trace.slots = { ...(trace.slots ?? {}), agent_loop_skipped: loopSkip };
+      } else try {
         const parsedForLoop = parseAskRequest(body);
         const looped = await (await import("@/lib/ai/agent-loop/run")).runAgentTurn({
           request,
@@ -252,6 +260,10 @@ async function postChat(request: Request) {
           conversationId: parsedForLoop.conversationId,
           openFormId: parsedForLoop.activeFormInstanceId ?? null,
         });
+        /* What the turn carried that the loop reads another way (`loopCarriedOnly`): noted, never a reason to skip. */
+        const carried = loopCarriedOnly(parsedForLoop);
+        const loopTrace = carried.length > 0 ? chatTraceDraft() : undefined;
+        if (loopTrace) loopTrace.slots = { ...(loopTrace.slots ?? {}), agent_loop_carried: carried };
         await closeTurn(turnId, { category: "unclassified", succeeded: true, latencyMs: Date.now() - askedAt });
         return NextResponse.json({ ...looped, turnId });
       } catch (error) {
@@ -425,7 +437,7 @@ async function postChat(request: Request) {
           // displayName, so an all-caps row reads "Lorraine Fairweather" (QA's review, 15 Nov 2026).
           const [{ displayName }, { aliasForRosterPerson }] = await Promise.all([import("@/lib/forms/employee-match"), import("@/lib/forms/preferred-name-shown")]);
           (await import("@/lib/forms/person-roster-store")).enterPreferredAliases(
-            roster.map((person) => aliasForRosterPerson(person, (row) => displayName({ ...person, ...row }))),
+            roster.map((person) => aliasForRosterPerson({ ...person, id: person.id }, (row) => displayName({ ...person, ...row }))),
           );
         }
         // FORM_NAME_OFF_ROSTER_ASK_ENABLED: the scope's level, so a name not on the roster is held for a salon manager only (`lib/forms/roster-scope.ts`).

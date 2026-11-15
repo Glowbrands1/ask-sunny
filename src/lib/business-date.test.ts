@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   BUSINESS_TIMEZONE,
@@ -143,6 +143,42 @@ describe("the hour of the business day", () => {
     for (const zone of ["UTC", "Pacific/Kiritimati", "Asia/Tokyo"]) {
       process.env.TZ = zone;
       expect(businessHour(instant), zone).toBe(22);
+    }
+  });
+});
+
+describe("a moment as people read it (formatBusinessTime, formatBusinessDay)", () => {
+  /* The zone is read once at import, so each case loads the module with the zone it is about. */
+  async function loadedIn(zone: string) {
+    vi.resetModules();
+    vi.stubEnv("NEXT_PUBLIC_BUSINESS_TIMEZONE", zone);
+    return import("./business-date");
+  }
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("Central: winter and summer both read CT, never UTC or CST/CDT", async () => {
+    const { formatBusinessTime } = await loadedIn("America/Chicago");
+    expect(formatBusinessTime("2026-11-14T12:01:00Z")).toBe("Nov 14, 6:01 AM CT");
+    expect(formatBusinessTime("2026-07-14T12:01:00Z")).toBe("Jul 14, 7:01 AM CT");
+    expect(formatBusinessTime("2026-11-14T12:01:00Z", { year: true })).toBe("Nov 14, 2026, 6:01 AM CT");
+  });
+
+  it("a late-evening UTC stamp is still the Central day it happened", async () => {
+    const { formatBusinessDay, formatBusinessTime } = await loadedIn("America/Chicago");
+    expect(formatBusinessDay("2026-11-15T03:30:00Z")).toBe("Nov 14");
+    expect(formatBusinessTime("2026-11-15T03:30:00Z")).toBe("Nov 14, 9:30 PM CT");
+  });
+
+  it("another business zone keeps its own label (the label cannot disagree with the zone)", async () => {
+    const { formatBusinessTime } = await loadedIn("America/New_York");
+    expect(formatBusinessTime("2026-11-14T12:01:00Z")).toBe("Nov 14, 7:01 AM ET");
+  });
+
+  it("says nothing for nothing or for a value that is not a moment", async () => {
+    const { formatBusinessTime, formatBusinessDay } = await loadedIn("America/Chicago");
+    for (const bad of [null, undefined, "", "not a date"]) {
+      expect(formatBusinessTime(bad)).toBeNull();
+      expect(formatBusinessDay(bad)).toBeNull();
     }
   });
 });
