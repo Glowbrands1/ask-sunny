@@ -1,5 +1,7 @@
 import "server-only";
 
+import { saysAmountUnknown } from "@/lib/ai/amount-unknown-ack";
+
 import { randomUUID } from "node:crypto";
 
 import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
@@ -1145,7 +1147,8 @@ export async function proposeForm(
     ...(level || payroll || priorActions
       ? { stated: { ...(level ? { warning_level: level } : {}), ...(payroll ? { payroll_deduct: payroll } : {}), ...(payroll === "yes" && amount ? { payroll_amount: `$${amount.replace(/^\$/, "")}` } : {}), ...(priorActions ? { prior_actions: priorActions } : {}) } }
       : {}),
-    ...(corrective && payroll === "yes" && !amount ? { payroll_amount_unset: true } : {}),
+    /* AMOUNT_UNKNOWN_ACK (batch H1): "I don't know the amount" leaves it blank for the manager, said once, never asked again. */
+    ...(corrective && payroll === "yes" && !amount ? (saysAmountUnknown(context.question) ? { payroll_amount_unknown: true } : { payroll_amount_unset: true }) : {}),
     ...(datesGiven.length > 1 ? { dates_given: datesGiven, ...(date ? { date_chosen: date } : {}) } : {}),
     ...(accountLost.length > 0 ? { account_words_missing: accountLost } : {}),
     ...(accountGiven ? { account_given: untrusted(accountGiven) } : {}),
@@ -1207,6 +1210,61 @@ async function outsideScopeSalon(context: ToolContext): Promise<{ salon_outside_
   if (named.length !== 1 || allowed.includes(named[0]!)) return null;
   const name = rosterSalonName(named[0]!);
   return name ? { salon_outside_scope: name } : null;
+}
+
+/* ---------------------------------------------------------- team coaching --- */
+
+/**
+ * COACHING FOR THE WHOLE TEAM (batch H2; QA's ruling: today's production behavior). Two of today's paths, reused:
+ *
+ * - WITH A COACHING DRAFT OPEN, "this coaching for everyone on my team" gets ONE confirmation listing the people at
+ *   that draft's salon, and "create all" (or "create all except <names>") then makes one draft each with the same
+ *   Details (`coaching-for-everyone.ts`, COACHING_FOR_EVERYONE). Its own words come back as app_reply, said as given:
+ *   the next turn's "create all" is read against that wording.
+ * - WITH NO DRAFT OPEN, "a coaching form for all team members" (or a salon-wide expectation) is the team Coaching card,
+ *   "All team members" at one salon (`whole-team-coaching.ts` + `buildProposal`, WHOLE_TEAM_COACHING), never a refusal.
+ */
+export async function coachTeam(context: ToolContext, effects: ToolEffects): Promise<ToolResult> {
+  if (context.openFormId) {
+    const { coachingForEveryoneTurn } = await import("@/lib/forms/coaching-for-everyone");
+    const turn = await coachingForEveryoneTurn({ request: context.request, question: context.question, history: context.history as ChatMessage[], activeInstanceId: context.openFormId });
+    if (turn) return { app_reply: untrusted(turn.content), note: "Say app_reply to the manager as given, every line: it holds the people, the counts and the exact words the next step reads." };
+  }
+  const { wholeTeamRequest } = await import("@/lib/forms/whole-team-coaching");
+  const team = wholeTeamRequest({ question: context.question, history: context.history as ChatMessage[], draftOpen: Boolean(context.openFormId) });
+  if (!team) {
+    return { error: "This is not a whole-team coaching request. A form for one person goes through find_staff and propose_form; with a Coaching draft open, \"this coaching for everyone on my team\" is the request for one draft each." };
+  }
+  const templates = await creatableTemplates(context.actor.role).catch(() => null);
+  const template = templates?.find((row) => row.key === "coaching");
+  if (!template) return { error: "This manager cannot create a Coaching Form." };
+  const card = buildProposal({
+    proposalId: randomUUID(),
+    templateKey: template.key,
+    templateName: template.name,
+    context: managerContext([], { id: context.questionMessageId, content: team.question }),
+    scope: context.actor.scope,
+    inlineDraftSupported: supportsInlineDraft(template.key, template.currentVersion?.variants ?? []),
+    variantKey: inlineDraftVariantKey(template.currentVersion?.variants ?? []),
+    today: context.today,
+    employee: { kind: "missing" },
+  });
+  if (card.subject !== "team") return { error: "The team card could not be made from this message. Ask which salon's team, or who the form is for." };
+  effects.proposal = card;
+  return {
+    card: {
+      form: card.templateName,
+      employee: card.employeeName,
+      status: card.status,
+      salon: card.locationId ? salonLabel(card.locationId) : null,
+      ...(card.status === "needs_location" ? { choose_salon_from: (card.authorizedLocationIds ?? []).map((id) => ({ id, name: salonLabel(id) })) } : {}),
+      form_date: card.formDate ?? null,
+      observation: card.issue ?? null,
+      create_offered: card.supportsInlineDraft,
+    },
+    facts: { team_card: true },
+    note: "The team Coaching card is shown under your reply: one form for all team members at one salon. Nothing is saved until the manager presses Create. To give each person their own draft afterwards, they open the created draft and say \"this coaching for everyone on my team\".",
+  };
 }
 
 /* ----------------------------------------------------------- edit form --- */
