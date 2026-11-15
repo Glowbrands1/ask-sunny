@@ -1,6 +1,6 @@
 import { expect, vi } from "vitest";
 
-import { KEARNEY, STAFF, type ReplayCase, type ReplayContext } from "./cases";
+import { KEARNEY, STAFF, type DirectoryRow, type ReplayCase, type ReplayContext } from "./cases";
 import { lastResult, loopStandIn, type LoopView } from "./loop-stand-in";
 
 /**
@@ -27,6 +27,10 @@ const proposed = (views: readonly LoopView[]) =>
   views.flatMap((view) => view.results).filter((result) => result.tool === "propose_form").at(-1)?.output as
     | { card?: Record<string, unknown>; facts?: Record<string, unknown>; error?: string }
     | undefined;
+
+/** Invented: one with no title on the staff list, one whose title is the shortcut "ASD". */
+const JUNO: DirectoryRow = { id: "e-juno-halloway", firstName: "Juno", lastName: "Halloway", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: null as never };
+const PERRIN: DirectoryRow = { id: "e-perrin-ashgrove", firstName: "Perrin", lastName: "Ashgrove", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "ASD" };
 
 export const NOV15_AGENT_LOOP_BATCH_H_CASES: ReplayCase[] = [
   {
@@ -96,6 +100,46 @@ export const NOV15_AGENT_LOOP_BATCH_H_CASES: ReplayCase[] = [
       const made = await thread.say(`create all ${count}`);
       expect(made.content).toMatch(/Created \*\*\d+\*\* draft Coaching Form/);
       expect(t.forms().length - before, "not one draft per person").toBe(count);
+    },
+  },
+  {
+    id: "nov15-batch-h4-typed-title-after-the-name",
+    title: "H4/H6 JOB_TITLE_APPOSITION + FROM_WORDS: \"<name>, tan consultant at kearney\" fills an empty staff-list title, as the title list writes it, and the card carries it",
+    report: `${REPORT}; QA S12/S1 live, 27 Oct 2026: "<name>, tan consultant at manhattan" left the Job Title empty, then saved it in lower case`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-11T16:00:00Z"));
+      t.directory([...STAFF, JUNO]);
+      t.as("salon_director", KEARNEY);
+      const thread = t.thread();
+      const model = loopStandIn((view) => (lastResult(view, "propose_form") ? { text: "Here is the card." } : { tool: "propose_form", input: { template_key: "dpoa", employee_id: JUNO.id, policy: "Attendance", what_happened: "Juno Halloway was 20 minutes late on 11/9/26." } }));
+      t.loopModel!(model);
+      const reply = await thread.say("verbal corrective action for juno halloway, tan consultant at kearney, she was 20 minutes late on 11/9/26");
+      const result = proposed(model.views);
+      expect(reply.formProposal?.employeeRole, "the typed title did not fill the card").toBe("Tan Consultant");
+      expect(result?.card?.job_title).toBe("Tan Consultant");
+      expect(result?.facts?.job_title_from_your_words).toBe("Tan Consultant");
+    },
+  },
+  {
+    id: "nov15-batch-h6-title-shortcut-spelled-out",
+    title: "H6 TITLE_SPELLED_OUT: a staff-list title \"ASD\" is on the card as \"Assistant Salon Director\" (Pau: \"spell it out but app must understand ASD\")",
+    report: `${REPORT}; Pau, 30 Oct 2026: "yeah i mean spell it out but app must understand ASD meaning"`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-11T16:00:00Z"));
+      t.directory([...STAFF, PERRIN]);
+      t.as("salon_director", KEARNEY);
+      const thread = t.thread();
+      const model = loopStandIn((view) => (lastResult(view, "propose_form") ? { text: "Here is the card." } : { tool: "propose_form", input: { template_key: "dpoa", employee_id: PERRIN.id, policy: "Attendance", what_happened: "Perrin Ashgrove was 20 minutes late on 11/9/26." } }));
+      t.loopModel!(model);
+      const reply = await thread.say("verbal ca for perrin ashgrove, he was 20 minutes late on 11/9/26");
+      expect(reply.formProposal?.employeeRole).toBe("Assistant Salon Director");
+      expect(proposed(model.views)?.card?.job_title).toBe("Assistant Salon Director");
     },
   },
 ];

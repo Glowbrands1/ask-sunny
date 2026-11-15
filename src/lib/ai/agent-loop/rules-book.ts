@@ -146,6 +146,7 @@ export const RULES_BOOK: readonly { readonly title: string; readonly rules: read
       "dates_given: \"You mentioned more than one date (**<a>**, **<b>**). Which date goes on the form?\" (each date in bold, comma-separated). dated_today: \"Dated today — tell me if it was another day.\"",
       "off_roster_name with staff_list \"your salon's\": \"**<name>** isn't on your salon's Woven staff list, so I've used the name as you typed it. Check it before you press Create.\" With staff_list \"the\": \"**<name>** isn't on the Woven staff list, so I've used the name as you typed it. Check the spelling before you press Create.\"",
       "name_from_staff_list: \"Using **<name>** from your staff list.\"",
+      "card.job_title: on an exit card, and whenever job_title_from_your_words is set, include \"**Job title:** <card.job_title>\" exactly as the card writes it (its capitals, spelled out), never the manager's typing. job_title_from_your_words: the title came from the manager's own words because the staff list has none for this person.",
       "exit_dates: each line as given, in order.",
       "under_performance: \"Under Performance isn't on the CA form. Sales performance CAs use the Standards of Conduct.\"",
       "salon_outside_scope: \"**<name>** isn't a " + place + " on your assignment, so the form stays at **<card.salon>**.\" When the card has no " + place + ": \"**<name>** isn't a " + place + " on your assignment, so I can't file a form against it. Which of your " + places + " is this about?\"",

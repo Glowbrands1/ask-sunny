@@ -1128,6 +1128,22 @@ export async function proposeForm(
    * manager's ("my DM told me"), a coworker's or a letter signer's. A name not on the roster gets none; the manager fills it.
    */
   card.employeeRole = employee.id ? await rosterTitle(context.actor.scope, employee.id) : null;
+  /*
+   * A TITLE THE MANAGER TYPED (batch H4/H6: JOB_TITLE_FROM_WORDS, JOB_TITLE_APPOSITION, TITLE_SPELLED_OUT, JOB_TITLE_CASE):
+   * with no title on the roster row, "<name>, tan consultant at …" or "<name> was a <title>" in this person's own turns
+   * fills it, written as the title list writes one and spelled out ("ASD" → "Assistant Salon Director"). A roster title
+   * always wins (gap #33); the manager's other words for it are title_differs, below.
+   */
+  let jobTitleTyped = false;
+  if (!card.employeeRole && card.employeeName) {
+    const words = await import("@/lib/ai/job-title-from-words");
+    const typed = words.jobTitleFromWordsEnabled() ? words.typedJobTitle(asked.messages.filter((message) => sourceIds.includes(message.id ?? "")).map((message) => String(message.content ?? "")), card.employeeName) : null;
+    if (typed) {
+      card.employeeRole = words.spelledOutTitle(words.titleCaseIfLower(typed));
+      jobTitleTyped = true;
+    }
+  }
+  if (card.employeeRole) card.employeeRole = (await import("@/lib/ai/job-title-from-words")).spelledOutTitle(card.employeeRole);
   /* The policy Create sends is the card's (`cardPolicyFor`), never read back from the model's reply (code-check #40). */
   card.policyLine = policyLine;
   effects.proposal = card;
@@ -1169,6 +1185,7 @@ export async function proposeForm(
       return said && card.employeeRole && said.trim().toLowerCase() !== card.employeeRole.trim().toLowerCase() ? { title_differs: { woven: card.employeeRole, manager_said: said } } : {};
     })(),
     ...(template.key === "stc-exit" ? { exit_dates: await exitDateLines(requestWords, today) } : {}),
+    ...(jobTitleTyped ? { job_title_from_your_words: card.employeeRole } : {}),
     ...(underPerformance ? { under_performance: true } : {}),
     ...(didYouMean ? { confirm_policy: didYouMean } : {}),
     ...(dropped.length > 0 ? { not_kept: dropped } : {}),
@@ -1181,6 +1198,7 @@ export async function proposeForm(
       status: card.status,
       salon: card.locationId ? rosterSalonName(card.locationId) ?? card.locationId : null,
       ...(card.status === "needs_location" ? { choose_salon_from: salonNames(card.authorizedLocationIds) } : {}),
+      job_title: card.employeeRole ?? null,
       form_date: card.formDate ?? null,
       observation: card.issue ?? null,
       warning_level: level,
