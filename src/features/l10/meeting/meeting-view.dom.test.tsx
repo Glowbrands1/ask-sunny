@@ -634,3 +634,54 @@ describe("Bloom-style page: Scorecard", () => {
     expect(table.getByRole("button", { name: "Sales calls 26 Oct / 1 Nov: 4" }).className).toContain("bg-[#fbe4e4]");
   });
 });
+
+// Rocks and To-dos on the Bloom-style STC DM L10 (the owner's request, 15 Nov 2026), as in the Hub.
+describe("Bloom-style page: Rocks and To-dos", () => {
+  const doc = {
+    rocks: [
+      {
+        id: "k1",
+        title: "Open two rooms",
+        owner: "Avery Quill",
+        status: "on-track",
+        milestones: [
+          { id: "m1", text: "Sign the lease", done: true },
+          { id: "m2", text: "Hire staff", done: false, dueDate: "2026-11-01" },
+          { id: "m3", text: "Open", done: false, dueDate: "2026-12-20" },
+        ],
+      },
+    ],
+    todos: [
+      { id: "t1", text: "Order towels", owner: "Avery Quill", done: false, due: "Next wk", dueDate: "2026-11-20" },
+      { id: "t2", text: "Call the landlord", owner: "Bo Lark", done: true, due: "Next wk" },
+    ],
+  };
+  const view = () =>
+    render(<MeetingView info={info} initial={loaded(3, doc)} save={vi.fn() as unknown as SaveFn} end={vi.fn() as unknown as EndFn} viewer={viewer} roster={roster} hubMeetingUrl={HUB} pollMs={0} debounceMs={0} today="2026-11-15" />);
+
+  it("Rocks: All rocks tab, owner header with initials, milestone bar, chevron, Expand milestones and Owner: A–Z", () => {
+    view();
+    fireEvent.click(within(screen.getByRole("region", { name: "Agenda" })).getByRole("button", { name: /Rock Review/ }));
+    expect(screen.getByRole("tab", { name: "All rocks (1)" })).toBeTruthy();
+    const avery = within(screen.getByRole("region", { name: "Avery Quill's Rocks" }));
+    expect(avery.getByTitle("Avery Quill").textContent).toBe("AQ");
+    const bar = avery.getByRole("img", { name: "Milestones: 1 done, 1 overdue, 1 to do" });
+    expect([...bar.children].map((c) => (c as HTMLElement).dataset.state)).toEqual(["done", "overdue", "open"]);
+    fireEvent.click(avery.getByRole("button", { name: "Show milestones of Open two rooms" }));
+    expect(within(screen.getByRole("list", { name: "Milestones of Open two rooms" })).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["✓Sign the lease", "Hire staff11-01-2026", "Open12-20-2026"]);
+    expect(screen.getByRole("button", { name: "Expand milestones" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Owner: A–Z" })).toBeTruthy();
+  });
+
+  it("To-dos: % Completed, round checks, initials and MM-DD-YYYY due dates", () => {
+    view();
+    fireEvent.click(within(screen.getByRole("region", { name: "Agenda" })).getByRole("button", { name: /To-do List/ }));
+    expect(screen.getByTestId("todos-completed").textContent).toBe("50% Completed");
+    const rows = within(screen.getByRole("list", { name: "To-dos" })).getAllByRole("listitem");
+    const row = within(rows.find((r) => r.textContent?.includes("Order towels"))!);
+    expect(row.getByRole("checkbox", { name: "Done: Order towels" }).getAttribute("aria-checked")).toBe("false");
+    expect(row.getByTitle("Avery Quill").textContent).toBe("AQAvery Quill");
+    expect(row.getByTestId("todo-due").textContent).toBe("11-20-2026");
+    expect(within(rows.find((r) => r.textContent?.includes("Call the landlord"))!).getByRole("checkbox").getAttribute("aria-checked")).toBe("true");
+  });
+});
