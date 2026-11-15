@@ -1773,24 +1773,15 @@ export async function editForm(
      * Only the keys this write carries that the manager stated, after the guards above passed: payroll (G5), a
      * termination level (G9), and an Action Plan that is the manager's own text in this message, word for word (G8).
      */
-    const squash = (text: string) => text.toLowerCase().replace(/\s+/g, " ").trim();
     const statedPayroll = [
       ...(checked.payroll_deduct ? ["payroll_deduct"] : []),
       ...(values[PAYROLL_AMOUNT_KEY] ? [PAYROLL_AMOUNT_KEY] : []),
       ...(checked.warning_type?.[0] === "termination" ? ["warning_type"] : []),
     ];
-    /*
-     * Batch G (G8, a production chat: "Action Plan: Violation of Company policy has resulted in immediate termination of
-     * employment."): an Action Plan the manager dictated in this message, word for word, is the manager's own edit,
-     * saved as the form page saves their typing (`saveInstanceValues`, the manager as actor; the version's required
-     * closing rules apply as they do to any manager edit). Never a policy lookup, and not rewording.
-     */
-    let dictatedPlan: string | null = null;
-    if (values.action_plan && squash(values.action_plan).length > 10 && squash(context.question).includes(squash(values.action_plan))) {
-      const saved = await (await import("@/lib/forms/instances")).saveInstanceValues(id, { values: { action_plan: values.action_plan.trim() }, checked: {} }, context.actor.subject, { via: "chat" });
-      if (!saved.rejected.some((row) => row.key === "action_plan")) dictatedPlan = saved.values.action_plan ?? values.action_plan.trim();
-      delete values.action_plan;
-    }
+    /* Batch G (G8): a dictated Action Plan is saved after the level (below), so its closing reads the form's Termination. */
+    const squashed = (text: string) => text.toLowerCase().replace(/\s+/g, " ").trim();
+    const planToSave = values.action_plan && squashed(values.action_plan).length > 10 && squashed(context.question).includes(squashed(values.action_plan)) ? values.action_plan.trim() : null;
+    if (planToSave !== null) delete values.action_plan;
     // The revision's writer, as chat-revision.ts saves: the one writer with FORM_EDIT_SINGLE_WRITER_ENABLED, else the old one.
     const written = formEditSingleWriterEnabled()
       ? await (await import("@/lib/forms/form-write")).writeRevisionEdits(id, { values, checked }, [], {
@@ -1800,6 +1791,18 @@ export async function editForm(
           ...(statedPayroll.length > 0 ? { managerStated: statedPayroll } : {}),
         })
       : await applyAssistantRevision(id, { values, checked }, [], context.actor.subject);
+    /*
+     * Batch G (G8, a production chat: "Action Plan: Violation of Company policy has resulted in immediate termination of
+     * employment."; QA's conditions, Pau's standing approval, 15 Nov 2026): an Action Plan the manager dictated in this
+     * message, word for word (and over 10 characters), is the manager's own edit, saved as the form page saves their
+     * typing (`saveInstanceValues`, the manager as actor, via chat), only action_plan, only on this draft, AFTER the
+     * level above so the version's closing reads Termination. Never a policy lookup, and not rewording.
+     */
+    let dictatedPlan: string | null = null;
+    if (planToSave !== null) {
+      const planSaved = await (await import("@/lib/forms/instances")).saveInstanceValues(id, { values: { action_plan: planToSave }, checked: {} }, context.actor.subject, { via: "chat" });
+      if (!planSaved.rejected.some((row) => row.key === "action_plan")) dictatedPlan = planSaved.values.action_plan ?? planToSave;
+    }
     const saved = (await authorizeInstance(context.request, id, "view")).loaded;
     const dateWritten = documentDate !== null && saved.values.some((row) => row.fieldKey === "form_date" && row.value === documentDate);
     const updated = [...Object.keys(written.accepted.values ?? {}), ...Object.keys(written.accepted.checked ?? {}), ...(dateWritten ? ["form_date"] : []), ...(dictatedPlan !== null ? ["action_plan"] : [])];

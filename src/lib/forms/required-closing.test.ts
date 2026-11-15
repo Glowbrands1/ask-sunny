@@ -5,6 +5,7 @@ import { TEMPLATE_SEEDS } from "./library";
 import {
   CA_ACTION_PLAN_CLOSING,
   CA_ACTION_PLAN_CLOSING_REVISION_5,
+  TERMINATION_PLAN_CLOSING,
   applyRequiredClosings,
   closingForDisplay,
   endsWithRequiredClosing,
@@ -166,5 +167,31 @@ describe("a plan that ends in a stated termination", () => {
     vi.stubEnv("TERMINATION_STATED_TICKS_ENABLED", "false");
     const plan = "Violation of Company policy has resulted in immediate termination of employment.";
     expect(withRequiredClosing(plan, CA_ACTION_PLAN_CLOSING)).toBe(`${plan} ${CA_ACTION_PLAN_CLOSING}`);
+  });
+});
+
+/* Pau's written approval, 15 Nov 2026 (QA relay; batch G8): with Termination ticked, the plan's closing is the termination closing. */
+describe("the Action Plan's closing on a form with Termination ticked", () => {
+  afterEach(() => vi.unstubAllEnvs());
+  const ca = async () => (await import("./library")).correctiveActionDocument();
+  it("the manager's own termination sentence (G8's production wording) on a termination form: nothing added", async () => {
+    vi.stubEnv("TERMINATION_STATED_TICKS_ENABLED", "true");
+    const plan = "Violation of Company policy has resulted in immediate termination of employment.";
+    expect(applyRequiredClosings(await ca(), null, { action_plan: plan }, { terminationTicked: true }).action_plan).toBe(plan);
+  });
+  it("the same plan on a form with no level: nothing added either (it states the termination)", async () => {
+    vi.stubEnv("TERMINATION_STATED_TICKS_ENABLED", "true");
+    const plan = "Violation of Company policy has resulted in immediate termination of employment.";
+    expect(applyRequiredClosings(await ca(), null, { action_plan: plan }).action_plan).toBe(plan);
+  });
+  it("a plain plan on a termination form ends with the termination closing, never the future-violations one", async () => {
+    vi.stubEnv("TERMINATION_STATED_TICKS_ENABLED", "true");
+    const closed = applyRequiredClosings(await ca(), null, { action_plan: `Management will review the attendance policy with her. ${CA_ACTION_PLAN_CLOSING}` }, { terminationTicked: true }).action_plan!;
+    expect(closed).toBe(`Management will review the attendance policy with her. ${TERMINATION_PLAN_CLOSING}`);
+    expect(closed).not.toContain("Future policy violations");
+  });
+  it("a plain plan with no termination: the closing is unchanged", async () => {
+    vi.stubEnv("TERMINATION_STATED_TICKS_ENABLED", "true");
+    expect(applyRequiredClosings(await ca(), null, { action_plan: "Management will review the attendance policy with her." }).action_plan).toBe(`Management will review the attendance policy with her. ${CA_ACTION_PLAN_CLOSING}`);
   });
 });

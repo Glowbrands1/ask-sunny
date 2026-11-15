@@ -234,4 +234,26 @@ export const NOV15_AGENT_LOOP_SILENT_FAILURE_CASES: ReplayCase[] = [
       if (offline) expect(toolResults(model.views, "edit_form")[0], "a demotion level was not refused").toMatch(/"error":"(?:[^"]*is not a warning level on this form|warning_type must come from the manager's own words)/);
     },
   },
+  {
+    id: "nov15-silent-g8-termination-form-tick-then-plan",
+    title: "G8 order (QA): Termination and the dictated Action Plan in one message: the level is ticked first, the plan is saved exactly as said (no future-violations closing), via chat; any other key in the same edit never goes through the manager's own save",
+    report: `${REPORT}: a termination plan must never end with "Future policy violations may result in…"`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      const { thread, id } = await wrensDraft(t);
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { instance_id: id, values: { warning_type: "termination", action_plan: PLAN, observation: `${ACCOUNT} She was told on 11/09.` } } };
+        return { text: `**Type of Warning:** Termination, as you said. Termination needs your DM/HR approval before you finalize.\n\nUpdated the Action Plan: ${PLAN}` };
+      }));
+      await thread.say(T8);
+      expect(t.checked(id).warning_type, "Termination was not ticked").toEqual(["termination"]);
+      expect(t.values(id).action_plan, "the termination plan carries a closing").toBe(PLAN);
+      const viaChat = (t.rows?.("form_instance_events") ?? []).filter((row) => (row.detail as { via?: string } | undefined)?.via === "chat");
+      expect(viaChat.length, "the manager's stated writes are not marked via chat").toBeGreaterThan(0);
+      // Each via-chat save carries one key (the tick, then the plan); the observation never goes through it.
+      expect(viaChat.every((row) => ((row.detail as { fields?: number }).fields ?? 0) + ((row.detail as { groups?: number }).groups ?? 0) <= 1), "another key reached the manager's own save").toBe(true);
+    },
+  },
 ];
