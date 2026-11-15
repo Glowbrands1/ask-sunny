@@ -31,6 +31,7 @@ import {
   formNameFromRosterEnabled,
   terminationRequestIsCaEnabled,
 } from "@/lib/config/chat-quality-flags";
+import { allCapitalised } from "./capitalised-name";
 import { foldsToGlossaryTerm } from "@/lib/ai/chat-glossary";
 
 import { NOT_A_NAME, NOT_A_TYPED_NAME, TYPED_NAME_WORD } from "./name-words";
@@ -608,7 +609,7 @@ function nameResolvesAfterFor(rest: string): boolean {
   const name = words.slice(0, 3);
   if (name.length < 2) return false;
   if (!name.every((word) => NAME_SHAPED_WORD.test(word) && !NOT_A_NAME.has(word.toLowerCase()) && !NOT_A_TYPED_NAME.has(word.toLowerCase()))) return false;
-  return roster && roster.length > 0 ? name.every((word) => /^\p{Lu}\p{Ll}/u.test(word)) : true;
+  return roster && roster.length > 0 ? allCapitalised(name) : true;
 }
 
 /** Sentence starts: the text's start, a newline, or after . ! ? (not a title's full stop, "Ms."). */
