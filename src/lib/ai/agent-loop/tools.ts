@@ -1755,7 +1755,7 @@ export async function editForm(
      */
     let dictatedPlan: string | null = null;
     if (values.action_plan && squash(values.action_plan).length > 10 && squash(context.question).includes(squash(values.action_plan))) {
-      const saved = await (await import("@/lib/forms/instances")).saveInstanceValues(id, { values: { action_plan: values.action_plan.trim() }, checked: {} }, context.actor.subject);
+      const saved = await (await import("@/lib/forms/instances")).saveInstanceValues(id, { values: { action_plan: values.action_plan.trim() }, checked: {} }, context.actor.subject, { via: "chat" });
       if (!saved.rejected.some((row) => row.key === "action_plan")) dictatedPlan = saved.values.action_plan ?? values.action_plan.trim();
       delete values.action_plan;
     }

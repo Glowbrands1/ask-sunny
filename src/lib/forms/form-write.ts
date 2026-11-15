@@ -165,6 +165,8 @@ export interface FormEditRules {
   readonly writable?: ReadonlySet<string>;
   /** Keys written as the manager's statement, through `applyStatedFacts` (null: its default keys). */
   readonly statedKeys?: ReadonlySet<string> | null;
+  /** Batch G5 (QA's condition 4): the manager's stated values written from chat; the event row says "via": "chat". */
+  readonly via?: "chat";
   /** Keys a draft may replace although the manager typed them. */
   readonly typedExempt?: ReadonlySet<string>;
   /** CA_NAME_FROM_CHAT_ENABLED: the form's subject column follows the Employee Name line, to this name. */
@@ -623,7 +625,7 @@ export async function writeFormEdits(instanceId: string, ops: readonly FormEditO
   let statedKeys: string[] = [];
   const count = (values: DraftValues) => Object.keys(values.values).length + Object.keys(values.checked).length;
   if (count(buckets.manager) > 0) {
-    const saved = await saveInstanceValues(instanceId, buckets.manager, rules.actorId);
+    const saved = await saveInstanceValues(instanceId, buckets.manager, rules.actorId, rules.via ? { via: rules.via } : {});
     rejected.push(...saved.rejected);
     const refusedKeys = new Set(saved.rejected.map((entry) => entry.key));
     // What the save stored (its required closing re-attached), else what was sent.
@@ -816,6 +818,7 @@ export async function writeRevisionEdits(
     path: "revision",
     actorId: context.actorId,
     latest: context.latest,
+    ...(stated.size > 0 ? { via: "chat" as const } : {}),
     ...(context.notes !== undefined ? { notes: context.notes } : {}),
     ...(context.named ? { named: context.named } : {}),
   });

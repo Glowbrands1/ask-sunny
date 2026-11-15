@@ -721,6 +721,11 @@ export async function saveInstanceValues(
   instanceId: string,
   submitted: Partial<DraftValues>,
   actor: string,
+  /**
+   * Where the manager's edit came from, for the event row (batch G5, QA's condition 4; Pau's standing approval, 15 Nov
+   * 2026): "chat" when the agent loop wrote a value the manager stated in chat. Absent: the event is as before.
+   */
+  options: { readonly via?: "chat" } = {},
 ): Promise<{
   rejected: { key: string; reason: string }[];
   /** What was stored, after any required closing was re-attached. */
@@ -772,6 +777,7 @@ export async function saveInstanceValues(
     fields: Object.keys(changedValues).length,
     groups: Object.keys(changedChecked).length,
     rejected: result.rejected,
+    ...(options.via ? { via: options.via } : {}),
   });
 
   return { rejected: result.rejected, values };
