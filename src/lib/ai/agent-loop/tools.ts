@@ -1,18 +1,18 @@
 import "server-only";
 
-import { PRODUCTION_SALONS } from "@/data/salons";
 import { saysAmountUnknown } from "@/lib/ai/amount-unknown-ack";
 
 import { randomUUID } from "node:crypto";
 
 import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import { businessToday } from "@/lib/business-date";
+import { appConfig } from "./app-config";
 import { isoDate, monthDayToIso, readDates, sameDate, withoutDates } from "./dates";
 import { candidateNameWords, chatFormsActor } from "@/lib/forms/chat-form-records";
 import { displayName, matchEmployeeName, nameConfirmationQuestion, type RosterEmployee } from "@/lib/forms/employee-match";
 import { offRosterTyped } from "@/lib/forms/roster-only-names";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
-import { readDirectoryRoster, readScopedRoster, type DirectoryRosterRow } from "@/lib/forms/employee-roster";
+import type { DirectoryRosterRow } from "@/lib/forms/employee-roster";
 import { inlineDraftVariantKey, supportsInlineDraft } from "@/lib/forms/inline-draft";
 import { authorizeInstance, InstanceNotVisibleError, instanceListFilterFor, visibleInstances } from "@/lib/forms/instance-scope";
 import { applyAssistantRevision, deleteInstance, listInstances } from "@/lib/forms/instances";
@@ -227,11 +227,16 @@ export function dictatedActionPlan(message: string, modelText: string): string |
   return found ? found[0] : null;
 }
 
+/** The app config's words, read when used (a test can swap the config). */
+const locationWord = (): string => appConfig().locationWord;
+const locationWords = (): string => appConfig().locationWordPlural;
+const staffSystem = (): string => appConfig().staffSystem;
+
 /** Batch G (G4): the app's own question when several forms on file fit (find_past_forms gives it; the rules book ends the reply with it). */
 export const WHICH_FORM_QUESTION = "Which one should I open?";
 
 /** G4 follow-up: the fact beside which_form_question; the rules book's Open lines say the same. */
-export const SINGLE_OUT_NOTE = "Compare these forms with the manager's words in this request. If their words fit exactly one (its salon, \"no salon\", its status, its date or its form), open_form that one now and say which in one line; ask which_form_question only when several still fit.";
+export const singleOutNote = (): string => "Compare these forms with the manager's words in this request. If their words fit exactly one (its " + locationWord() + ", \"no " + locationWord() + "\", its status, its date or its form), open_form that one now and say which in one line; ask which_form_question only when several still fit.";
 
 /** Batch G (G4): "open / edit / pull up / show me <a form on file>" never makes a new card. */
 export const OPEN_REQUEST = new RegExp(String.raw`\b(?:open|reopen|edit|pull up|bring up|show me|view)\b[^.?!\n]{0,40}?\b${FORM}\b`, "i");
@@ -273,7 +278,7 @@ type RosterRead = { readonly kind: "read"; readonly roster: readonly RosterEmplo
 async function rosterFor(scope: AccessScope): Promise<RosterRead> {
   if (scope.level === "district" || scope.level === "region") return { kind: "unchecked" };
   try {
-    return { kind: "read", roster: await readScopedRoster(scope) };
+    return { kind: "read", roster: await appConfig().roster.readScoped(scope) };
   } catch {
     return { kind: "failed" };
   }
@@ -297,7 +302,7 @@ export async function inactiveMatch(scope: AccessScope, typed: string): Promise<
   if (wanted.length < 2) return null;
   try {
     const allowed = scope.level === "salon" ? new Set((await import("@/lib/forms/location-scope")).authorizedSalonIds(scope)) : null;
-    const rows = (await (directoryForTests ?? readDirectoryRoster)()).filter((row) => row.employmentStatus === "terminated" && row.firstName && row.lastName && (!allowed || row.salonIds.some((id) => allowed.has(id))));
+    const rows = (await (directoryForTests ?? appConfig().roster.readDirectory)()).filter((row) => row.employmentStatus === "terminated" && row.firstName && row.lastName && (!allowed || row.salonIds.some((id) => allowed.has(id))));
     const hits = rows.filter((row) => {
       const own = words([row.firstName, row.preferredFirstName ?? "", row.lastName].join(" "));
       return wanted.every((word) => own.includes(word));
@@ -336,7 +341,7 @@ export function rosterMatches(typed: string, roster: readonly RosterEmployee[]):
  */
 export function salonLabel(id: string | null | undefined, storedName?: string | null): string | null {
   if (!id && !storedName?.trim()) return null;
-  return (id ? rosterSalonName(id) : null) ?? (storedName?.trim() || "a salon not on the app's salon list");
+  return (id ? rosterSalonName(id) : null) ?? (storedName?.trim() || "a " + locationWord() + " not on the app's " + locationWord() + " list");
 }
 
 function staffRow(person: RosterEmployee) {
@@ -384,7 +389,7 @@ async function exitDateLines(managerWords: string, today: string, termination = 
 /** The roster row's Woven title for this person, or null. */
 async function rosterTitle(scope: AccessScope, id: string): Promise<string | null> {
   try {
-    const facts = await (await import("@/lib/forms/employee-roster")).readDirectoryFacts(scope);
+    const facts = await appConfig().roster.readDirectoryFacts(scope);
     return facts.find((row) => row.id === id)?.title?.trim() || null;
   } catch {
     return null;
@@ -394,7 +399,7 @@ async function rosterTitle(scope: AccessScope, id: string): Promise<string | nul
 /** The roster row's primary salon for this person (in the manager's scope), or null. */
 async function rosterPrimarySalon(scope: AccessScope, id: string): Promise<string | null> {
   try {
-    const facts = await (await import("@/lib/forms/employee-roster")).readDirectoryFacts(scope);
+    const facts = await appConfig().roster.readDirectoryFacts(scope);
     return facts.find((row) => row.id === id)?.primarySalonId ?? null;
   } catch {
     return null;
@@ -473,7 +478,7 @@ export async function findStaff(context: ToolContext, input: { name?: unknown },
      */
     const person = namesAPlace(typed) ? null : offRosterTyped(typed, context.question, read.roster.map(displayName)) ?? offRosterTyped(typed, `for ${typed}`, read.roster.map(displayName));
     if (!person) {
-      return { matches: [], note: "Nobody on this manager's roster has that name, and it does not read as a person's name (it may be a salon, a place, a title or a metric). Never put it on a form as a person: ask who the form is for." };
+      return { matches: [], note: "Nobody on this manager's roster has that name, and it does not read as a person's name (it may be a " + locationWord() + ", a place, a title or a metric). Never put it on a form as a person: ask who the form is for." };
     }
     /*
      * QA's ruling (15:11Z 14 Nov 2026; Pau's fewer-questions rule wins over the salon-level ask-first): every login
@@ -481,7 +486,7 @@ export async function findStaff(context: ToolContext, input: { name?: unknown },
      * salon outside the manager's scope is read the same way (the roster is scoped): their existence is never shown.
      */
     const inactive = await inactiveMatch(context.actor.scope, person);
-    return { matches: [], not_on_roster: person, staff_list: context.actor.scope.level === "salon" ? "your salon's" : "the", ...(inactive ? { inactive_in_woven: inactive } : {}), note: `Not on the Woven staff list${inactive ? " (no longer active in Woven)" : ""}. Propose the card now with employee_name "${person}" as typed, and say so as the rules book's Card replies teach.` };
+    return { matches: [], not_on_roster: person, staff_list: context.actor.scope.level === "salon" ? `your ${locationWord()}'s` : "the", ...(inactive ? { inactive_in_woven: inactive } : {}), note: `Not on the ${staffSystem()} staff list${inactive ? ` (no longer active in ${staffSystem()})` : ""}. Propose the card now with employee_name "${person}" as typed, and say so as the rules book's Card replies teach.` };
   }
   /* A first name alone is confirmed before it goes on a form, as today ("Is this for **Rhea Calloway**?"). */
   /*
@@ -622,14 +627,13 @@ export async function listStaffTool(context: ToolContext, effects: ToolEffects, 
   if (scope.level === "district" || scope.level === "region") {
     return { error: "This login covers a district or region, so its staff roster can't be listed here. Say so in those words; never list or guess names." };
   }
-  const [{ authorizedSalonIds }, { PRODUCTION_SALONS, salonById }, { readSalonMentions }, picker, roster] = await Promise.all([
+  const [{ authorizedSalonIds }, { salonById }, { readSalonMentions }, picker] = await Promise.all([
     import("@/lib/forms/location-scope"),
     import("@/data/salons"),
     import("@/lib/forms/salon-mention"),
     import("@/lib/forms/staff-picker"),
-    import("@/lib/forms/employee-roster"),
   ]);
-  const ids = scope.level === "global" ? PRODUCTION_SALONS.map((salon) => salon.id) : authorizedSalonIds(scope);
+  const ids = scope.level === "global" ? appConfig().locations().map((salon) => salon.id) : authorizedSalonIds(scope);
   const locations = ids
     .map((id) => salonById(id))
     .filter((salon): salon is NonNullable<typeof salon> => Boolean(salon))
@@ -642,30 +646,30 @@ export async function listStaffTool(context: ToolContext, effects: ToolEffects, 
   const named = [...new Set([typed, context.question].flatMap((text) => (text ? readSalonMentions(text).flatMap((mention) => [...mention.salonIds]) : [])))];
   const own = named.filter((id) => allowed.has(id));
   if (own.length === 0 && named.length > 0) {
-    return { error: "That salon is not one of this manager's salons; its staff are never listed here. Say so." };
+    return { error: "That " + locationWord() + " is not one of this manager's " + locationWords() + "; its staff are never listed here. Say so." };
   }
   let chosen = own.length === 1 ? locations.find((location) => location.id === own[0])! : locations.length === 1 ? locations[0]! : null;
   if (!chosen && typed) {
-    const wanted = typed.toLowerCase().split(/[^a-z0-9']+/).filter((word) => word && !["the", "salon", "store", "location", "at", "in"].includes(word));
+    const wanted = typed.toLowerCase().split(/[^a-z0-9']+/).filter((word) => word && !["the", locationWord(), "store", "location", "at", "in"].includes(word));
     const hits = locations.filter((location) => wanted.length > 0 && wanted.every((word) => location.name.toLowerCase().split(/[^a-z0-9']+/).includes(word)));
     if (hits.length === 1) chosen = hits[0]!;
   }
   if (!chosen) {
-    if (locations.length === 0) return { error: "No salon is in this login's scope, so no staff can be listed. Say so." };
+    if (locations.length === 0) return { error: "No " + locationWord() + " is in this login's scope, so no staff can be listed. Say so." };
     const names = locations.map((location) => location.name).sort((a, b) => a.localeCompare(b));
     return {
       ...(forForm ? { whole_staff_form: form, one_person_per_form: true } : {}),
       which_salon: true,
       salon_count: names.length,
       ...(names.length <= 15 ? { salons: names } : {}),
-      note: "Ask which salon's staff to list as the rules book's Staff lists teach.",
+      note: "Ask which " + locationWord() + "'s staff to list as the rules book's Staff lists teach.",
     };
   }
   /* STAFF_PICKER_NO_REPEAT (batch H9): a whole-staff form for a salon already listed in this chat gets the next step, not the list again. */
   if (forForm && picker.staffListedBefore(context.history, chosen.name)) {
-    return { whole_staff_form: form, one_person_per_form: true, salon: chosen.name, already_listed: true, note: "This salon's staff is listed above in this chat: never list it again. Say the next step as the rules book's Staff lists teach." };
+    return { whole_staff_form: form, one_person_per_form: true, salon: chosen.name, already_listed: true, note: "This " + locationWord() + "'s staff is listed above in this chat: never list it again. Say the next step as the rules book's Staff lists teach." };
   }
-  const facts = await roster.readDirectoryFacts(scope).catch(() => []);
+  const facts = await appConfig().roster.readDirectoryFacts(scope).catch(() => []);
   const people = facts.length > 0 ? facts.map((person) => ({ ...person, positionName: person.title })) : [];
   if (people.length === 0) return { error: ROSTER_FAILED };
   const all = picker.salonStaffRows(chosen, people);
@@ -732,7 +736,7 @@ export async function findPastForms(context: ToolContext, input: { employee_name
     if (wantForm) {
       const coaching = /coach/.test(wantForm);
       const ca = /\bca\b|corrective|write[- ]?up|warning|verbal|written/.test(wantForm);
-      const narrowed = rows.filter((row) => (coaching ? /coach/i.test(row.templateName) : true) && (ca ? /corrective/i.test(row.templateName) || row.templateKey === "dpoa" : true));
+      const narrowed = rows.filter((row) => (coaching ? /coach/i.test(row.templateName) : true) && (ca ? /corrective/i.test(row.templateName) || row.templateKey === appConfig().formKeys.corrective : true));
       if (narrowed.length > 0) rows = narrowed;
     }
     const iso = typeof input.date === "string" ? isoDate(input.date, today) : null;
@@ -768,7 +772,7 @@ export async function findPastForms(context: ToolContext, input: { employee_name
         status: row.status,
         form_date: row.formDate,
         /* G4 follow-up (QA, 15 Nov 2026): "no salon" in words, so the manager's "the one with no salon" can single it out. */
-        salon: salonLabel(row.locationId, row.locationName) ?? "no salon",
+        salon: salonLabel(row.locationId, row.locationName) ?? `no ${locationWord()}`,
       }));
     /* "Draw me up a coaching document … she already has one" (the live re-run's sun-late-date): none on file is no reason to stop. */
     if (forms.length === 0) return { forms, note: "None on file. If the manager asked you to create or draw up a form, propose it now with their account and date, and say no earlier form was found on file." };
@@ -781,7 +785,7 @@ export async function findPastForms(context: ToolContext, input: { employee_name
        * model is told to compare them with the manager's description ("the one with no salon", "the draft") and to open
        * the one it singles out, asking WHICH_FORM_QUESTION only when the words still fit more than one.
        */
-      ...(forms.length > 1 && OPEN_REQUEST.test(context.question) ? { which_form_question: WHICH_FORM_QUESTION, single_out: SINGLE_OUT_NOTE } : {}),
+      ...(forms.length > 1 && OPEN_REQUEST.test(context.question) ? { which_form_question: WHICH_FORM_QUESTION, single_out: singleOutNote() } : {}),
     };
   } catch {
     return { error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
@@ -1166,7 +1170,13 @@ export async function templateChoices(role: Role): Promise<{ key: string; name: 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** The forms whose Create waits for an account of what happened. */
-const ACCOUNT_FORMS = new Set(["dpoa", "coaching", "follow-up-coaching"]);
+/** The forms that carry the manager's account of an incident (the app config's keys: corrective, coaching, follow-up). */
+const ACCOUNT_FORMS = {
+  has: (key: string): boolean => {
+    const { corrective, coaching, followUpCoaching } = appConfig().formKeys;
+    return key === corrective || key === coaching || key === followUpCoaching;
+  },
+};
 
 export async function proposeForm(
   context: ToolContext,
@@ -1319,7 +1329,7 @@ export async function proposeForm(
    * date lost): the manager did not ask for the exit form and told no resignation, so this exit card is refused; an
    * offense told with a termination is the Corrective Action Form (the rules book). Nothing is shown.
    */
-  if (template.key === "stc-exit" && !EXIT_ASKED.test(requestWords) && !RESIGNATION_TOLD.test(requestWords)) {
+  if (template.key === appConfig().formKeys.exit && !EXIT_ASKED.test(requestWords) && !RESIGNATION_TOLD.test(requestWords)) {
     return { exit_not_asked: true, note: "The manager did not ask for the Employee Exit Form and told no resignation. An offense told with a termination is the Corrective Action Form with warning_level termination, citing the offense and its date; then offer the exit form in one line (the rules book's Which form lines)." };
   }
   /*
@@ -1417,7 +1427,7 @@ export async function proposeForm(
    */
   let policyLine: string | null = policyHeading ? formatManualCitation(policyHeading, page) : null;
   /* Batch G (G7a, the tester's exit sweep): an exit cites no policy; it is not an incident. */
-  if (template.key === "stc-exit") policyLine = null;
+  if (template.key === appConfig().formKeys.exit) policyLine = null;
   const otherPart = askedOther || (/^other\b/i.test(askedPolicy) ? askedPolicy : "");
   if (otherPart) {
     const topic = otherPart.replace(/^other\s*[—:-]?\s*/i, "").trim() || cleaning || whatHappened.slice(0, 120);
@@ -1490,7 +1500,7 @@ export async function proposeForm(
    * when the manager's own words for this request carry a termination word (`saysTerminationWord`), else refused
    * (not_kept). Create checks the word again, server-side.
    */
-  const askedTermination = input.warning_level === "termination" && template.key === "dpoa";
+  const askedTermination = input.warning_level === "termination" && template.key === appConfig().formKeys.corrective;
   const loopTermination = askedTermination && !level && (await import("@/lib/config/chat-quality-flags")).terminationStatedTicksEnabled() && (await import("@/lib/forms/termination-word")).saysTerminationWord(requestWords);
   const dropped = [(askedLevel && !level) || (askedTermination && !loopTermination) ? "warning_level" : null, askedPayroll && !payroll ? "payroll_deduct" : null, typedAmount && !amount ? "payroll_amount" : null].filter(Boolean);
   /*
@@ -1513,7 +1523,7 @@ export async function proposeForm(
 
   const typedSalon = typeof input.salon === "string" ? input.salon.trim() : "";
   const answeredSalonIds = typedSalon ? [...new Set([typedSalon, `at ${typedSalon}`].flatMap((text) => readSalonMentions(text).flatMap((mention) => [...mention.salonIds])))] : [];
-  if (typedSalon && answeredSalonIds.length === 0) return { error: `"${typedSalon}" is not a salon the app knows. Ask which of the manager's salons it is.` };
+  if (typedSalon && answeredSalonIds.length === 0) return { error: `"${typedSalon}" is not a ${locationWord()} the app knows. Ask which of the manager's ${locationWords()} it is.` };
   /*
    * PLACE_SPAN_GUARD (batch H8): each of this person's turns is read on its own, so "cite animals in the workplace
    * policy" joined to "at Kearney, NE" never reads a place nobody named, and the newest turn that names one salon is
@@ -1561,7 +1571,7 @@ export async function proposeForm(
    * Exit lines); code only LOCKS it on a termination word in the request's own turns. The stated effective date, else
    * the stated last day, is always kept; today only when no date was stated.
    */
-  const askedExitTermination = template.key === "stc-exit" && input.exit_type === "termination";
+  const askedExitTermination = template.key === appConfig().formKeys.exit && input.exit_type === "termination";
   const exitTermination = askedExitTermination && (await import("@/lib/forms/termination-word")).saysTerminationWord(requestWords)
     ? await (async () => {
         const effective = lockedExitDate(input.effective_date, requestWords, today);
@@ -1631,8 +1641,8 @@ export async function proposeForm(
     if (named) {
       Object.assign(card, { locationId: named, locationName: rosterSalonName(named) ?? card.locationName, locationResolution: "resolved", authorizedLocationIds: [named], status: card.status === "needs_location" ? "ready" : card.status });
     } else if (card.locationResolution === "not_applicable" || card.locationResolution === "needs_selection") {
-      Object.assign(card, { locationId: null, locationResolution: "needs_selection", authorizedLocationIds: PRODUCTION_SALONS.map((salon) => salon.id), status: "ready", supportsInlineDraft: true });
-      const askedBefore = context.history.some((turn) => turn.role === "assistant" && /which salon is this about/i.test(String(turn.content ?? "")));
+      Object.assign(card, { locationId: null, locationResolution: "needs_selection", authorizedLocationIds: appConfig().locations().map((salon) => salon.id), status: "ready", supportsInlineDraft: true });
+      const askedBefore = context.history.some((turn) => turn.role === "assistant" && new RegExp(`which ${locationWord()} is this about`, "i").test(String(turn.content ?? "")));
       whichSalon = !askedBefore;
     }
   }
@@ -1664,7 +1674,7 @@ export async function proposeForm(
    */
   const underPerformance = Boolean(policyHeading && /standards of conduct/i.test(policyHeading) && (/\bunder[- ]?perform(?:ance|ing)\b|must see behaviou?rs?|\bperform[a-z]*\b/i.test(managerWords) || ACCOUNT_METRIC.test(managerWords)));
   ACCOUNT_METRIC.lastIndex = 0;
-  const corrective = template.key === "dpoa";
+  const corrective = template.key === appConfig().formKeys.corrective;
   /*
    * TERMINATION_STATED_TICKS (batch H12; Pau's P15 ruling): a termination the manager stated is the level, ticked at
    * Create (`api/forms/instances`); the card says so with the DM/HR approval line, and never asks the level. Batch G:
@@ -1701,7 +1711,7 @@ export async function proposeForm(
     ...(cleaning && !careAndCleaning ? { cleaning_duty: cleaning } : {}),
     ...(awaiting ? { policy_named_by_manager: policyNamedByManager } : {}),
     ...(datedToday && (card.formDate ?? today) === today ? { dated_today: true } : {}),
-    ...(offRosterName ? { off_roster_name: employee.name, staff_list: context.actor.scope.level === "salon" ? "your salon's" : "the", ...((await inactiveMatch(context.actor.scope, employee.name)) ? { inactive_in_woven: true } : {}) } : {}),
+    ...(offRosterName ? { off_roster_name: employee.name, staff_list: context.actor.scope.level === "salon" ? `your ${locationWord()}'s` : "the", ...((await inactiveMatch(context.actor.scope, employee.name)) ? { inactive_in_woven: true } : {}) } : {}),
     ...(personId && effects.nameLines?.[personId] ? { name_from_staff_list: employee.name } : {}),
     /* Pau's name ruling (15 Nov 2026): the card uses the preferred name; the reply says the Woven legal name once. */
     ...(employee.id && read.kind === "read" && (() => {
@@ -1719,7 +1729,7 @@ export async function proposeForm(
       const said = extractJobTitle(requestWords);
       return said && card.employeeRole && said.trim().toLowerCase() !== card.employeeRole.trim().toLowerCase() ? { title_differs: { woven: card.employeeRole, manager_said: said } } : {};
     })(),
-    ...(template.key === "stc-exit" ? { exit_dates: await exitDateLines(requestWords, today, Boolean(exitTermination)) } : {}),
+    ...(template.key === appConfig().formKeys.exit ? { exit_dates: await exitDateLines(requestWords, today, Boolean(exitTermination)) } : {}),
     ...(exitTermination ? { exit_termination: { form_label: "Immediate involuntary separation", effective: exitTermination.date, ...(exitTermination.dated_today ? { dated_today: true } : {}) } } : {}),
     ...(jobTitleTyped ? { job_title_from_your_words: card.employeeRole } : {}),
     ...(whichSalon ? { which_salon: true } : {}),
@@ -1800,13 +1810,13 @@ export async function coachTeam(context: ToolContext, effects: ToolEffects): Pro
    * answers who the coaching asked for is, as today's intake reads it when it is still asking about a Coaching Form.
    */
   const lastAsk = [...context.history].reverse().find((turn) => turn.role === "user");
-  const continuing = lastAsk && /\bcoach(?:ing)?\b/i.test(String(lastAsk.content ?? "")) ? "coaching" : null;
+  const continuing = lastAsk && /\bcoach(?:ing)?\b/i.test(String(lastAsk.content ?? "")) ? appConfig().formKeys.coaching : null;
   const team = wholeTeamRequest({ question: context.question, history: context.history as ChatMessage[], draftOpen: Boolean(context.openFormId), continuingTemplateKey: continuing });
   if (!team) {
     return { error: "This is not a whole-team coaching request. A form for one person goes through find_staff and propose_form; with a Coaching draft open, \"this coaching for everyone on my team\" is the request for one draft each." };
   }
   const templates = await creatableTemplates(context.actor.role).catch(() => null);
-  const template = templates?.find((row) => row.key === "coaching");
+  const template = templates?.find((row) => row.key === appConfig().formKeys.coaching);
   if (!template) return { error: "This manager cannot create a Coaching Form." };
   const card = buildProposal({
     proposalId: randomUUID(),
@@ -1819,7 +1829,7 @@ export async function coachTeam(context: ToolContext, effects: ToolEffects): Pro
     today: context.today,
     employee: { kind: "missing" },
   });
-  if (card.subject !== "team") return { error: "The team card could not be made from this message. Ask which salon's team, or who the form is for." };
+  if (card.subject !== "team") return { error: "The team card could not be made from this message. Ask which " + locationWord() + "'s team, or who the form is for." };
   effects.proposal = card;
   return {
     card: {
@@ -1833,7 +1843,7 @@ export async function coachTeam(context: ToolContext, effects: ToolEffects): Pro
       create_offered: card.supportsInlineDraft,
     },
     facts: { team_card: true },
-    note: "The team Coaching card is shown under your reply: one form for all team members at one salon. Nothing is saved until the manager presses Create. To give each person their own draft afterwards, they open the created draft and say \"this coaching for everyone on my team\".",
+    note: "The team Coaching card is shown under your reply: one form for all team members at one " + locationWord() + ". Nothing is saved until the manager presses Create. To give each person their own draft afterwards, they open the created draft and say \"this coaching for everyone on my team\".",
   };
 }
 
@@ -1947,7 +1957,7 @@ export async function editForm(
       : [];
     if (later.length > 0) {
       const askedIso = isoDate(later[0]![1], editToday) ?? editToday;
-      return { error: `${later.map(([field, value]) => `${field} ${value}`).join(", ")} is after today (${editToday}, the salon's local date). Nothing was written. Ask the manager which day.`, date_after_today: { today: editToday, asked_date: askedDateText(askedIso), form_date_kept: formDateKept(loaded.instance.formDate) } };
+      return { error: `${later.map(([field, value]) => `${field} ${value}`).join(", ")} is after today (${editToday}, the ${locationWord()}'s local date). Nothing was written. Ask the manager which day.`, date_after_today: { today: editToday, asked_date: askedDateText(askedIso), form_date_kept: formDateKept(loaded.instance.formDate) } };
     }
     /*
      * HARD GUARD, THE RIGHT PERSON'S FORM (the live run's nov6-diffemp, top severity): a message about another roster
@@ -2096,7 +2106,7 @@ export async function editForm(
        */
       if (ACCOUNT_FORMS.has(loaded.instance.templateKey)) {
         const stated = readDates(context.question).map((date) => isoDate(date.text, editToday)).find((iso) => iso !== null && iso > editToday);
-        if (stated) return { error: `${stated} is after today (${editToday}, the salon's local date). Nothing was written. Ask the manager which day.`, date_after_today: { today: editToday, asked_date: askedDateText(stated), form_date_kept: formDateKept(loaded.instance.formDate) } };
+        if (stated) return { error: `${stated} is after today (${editToday}, the ${locationWord()}'s local date). Nothing was written. Ask the manager which day.`, date_after_today: { today: editToday, asked_date: askedDateText(stated), form_date_kept: formDateKept(loaded.instance.formDate) } };
       }
       const revised = await openFormTurn(context, id);
       if (!revised) {
@@ -2210,7 +2220,7 @@ export async function editForm(
     return {
       updated,
       refused: written.rejected.map((row) => ({ field: row.key, reason: row.reason })),
-      ...(loaded.instance.templateKey === "dpoa" ? { saved_level: savedLevel.length > 0 ? savedLevel.map((key) => levelLabel[key] ?? key).join(", ") : null } : {}),
+      ...(loaded.instance.templateKey === appConfig().formKeys.corrective ? { saved_level: savedLevel.length > 0 ? savedLevel.map((key) => levelLabel[key] ?? key).join(", ") : null } : {}),
       ...rewordFacts,
       ...addFacts,
       ...(rewordAsked ? { reword_paused: true } : {}),
@@ -2382,6 +2392,6 @@ export async function appHelp(input: { topic?: unknown }): Promise<ToolResult> {
   if (input.topic === "password" || input.topic === "sign_in") return { answer: appPasswordAnswer(), note: "Give the manager these steps in your own short words." };
   return {
     answer:
-      "Sunny answers questions from the JBA Policy Manual, looks up the manager's staff and the forms on file, and prepares HR forms (coaching, corrective action and the others the manager may create) as cards they review and Create. It does not hold sales, review or scheduling data.",
+      appConfig().appName + " answers questions from the JBA Policy Manual, looks up the manager's staff and the forms on file, and prepares HR forms (coaching, corrective action and the others the manager may create) as cards they review and Create. It does not hold sales, review or scheduling data.",
   };
 }
