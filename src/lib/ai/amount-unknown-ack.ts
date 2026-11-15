@@ -38,10 +38,15 @@ export function askedTheAmount(history: readonly { readonly role: string; readon
  *   know the amount"; QA, batch J). The clause is anchored (AMOUNT_NOT_KNOWN), so "she was late, but I don't know the
  *   amount of time" and "she was $40 short, idk the total" are not.
  */
-export function saysAmountUnknown(text: string, history: readonly { readonly role: string; readonly content: unknown }[] | undefined): boolean {
+export function saysAmountUnknown(
+  text: string,
+  history: readonly { readonly role: string; readonly content: unknown }[] | undefined,
+  options: { readonly amountOpen?: boolean } = {},
+): boolean {
   const line = (text ?? "").trim().split("\n").pop()?.trim().replace(/[.!]+$/, "") ?? "";
   if (payrollAnswerThenAmountUnknown(line)) return true;
-  return line.length <= 60 && UNKNOWN_AMOUNT.test(line) && askedTheAmount(history);
+  /* `amountOpen`: the caller knows payroll is Yes and the amount is the open question (the agent loop, whose model asks it in its own words). */
+  return line.length <= 60 && UNKNOWN_AMOUNT.test(line) && (options.amountOpen === true || askedTheAmount(history));
 }
 
 export function withAmountUnknownAck(response: AskResponse, request: AskRequest): AskResponse {

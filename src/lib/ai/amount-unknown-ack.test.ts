@@ -62,3 +62,10 @@ describe("withAmountUnknownAck (AMOUNT_UNKNOWN_ACK_ENABLED)", () => {
     expect(content).not.toContain(PAYROLL_AMOUNT_QUESTION);
   });
 });
+
+describe("the agent loop: payroll Yes with the amount open", () => {
+  it("a bare not-known line is the amount when the caller says the amount is the open question", () => {
+    expect(saysAmountUnknown("i dont know the amount", [], { amountOpen: true })).toBe(true);
+    expect(saysAmountUnknown("she was short on the drawer, not sure of the amount", [], { amountOpen: true })).toBe(false);
+  });
+});

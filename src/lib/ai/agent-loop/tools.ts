@@ -1692,7 +1692,7 @@ export async function proposeForm(
       ? { stated: { ...(level ? { warning_level: level } : {}), ...(payroll ? { payroll_deduct: payroll } : {}), ...(payroll === "yes" && amount ? { payroll_amount: `$${amount.replace(/^\$/, "")}` } : {}), ...(priorActions ? { prior_actions: priorActions } : {}) } }
       : {}),
     /* AMOUNT_UNKNOWN_ACK (batch H1): "I don't know the amount" leaves it blank for the manager, said once, never asked again. */
-    ...(corrective && payroll === "yes" && !amount ? (saysAmountUnknown(context.question, context.history) ? { payroll_amount_unknown: true } : { payroll_amount_unset: true }) : {}),
+    ...(corrective && payroll === "yes" && !amount ? (saysAmountUnknown(context.question, context.history, { amountOpen: true }) ? { payroll_amount_unknown: true } : { payroll_amount_unset: true }) : {}),
     ...(datesGiven.length > 1 ? { dates_given: datesGiven, ...(date ? { date_chosen: date } : {}) } : {}),
     /* Batch G (G16): this chat already asked which date; a second ask is never made (the rules book: use the best reading). */
     ...(datesGiven.length > 1 && context.history.some((message) => message.role === "assistant" && /more than one date|which date goes on the form/i.test(String(message.content))) ? { dates_asked_before: true } : {}),
