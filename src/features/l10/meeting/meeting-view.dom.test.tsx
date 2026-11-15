@@ -400,13 +400,30 @@ describe("Bloom-style page: what every page shares", () => {
     const save = vi.fn().mockResolvedValue({ ok: true, version: 4, updatedAt: "2026-11-15T00:00:00Z" } satisfies SaveOutcome);
     renderView({ save: save as unknown as SaveFn, initial: loaded(3, { meetingNotes: "Earlier note" }) });
     fireEvent.click(within(screen.getByRole("region", { name: "Agenda" })).getByRole("button", { name: /Meeting Notes/ }));
-    const field = within(screen.getByRole("dialog", { name: "Meeting Notes" })).getByLabelText("Meeting notes") as HTMLTextAreaElement;
+    // Not inside the agenda card: a fixed panel there was pinned to the card and showed on the left, half off-screen
+    // (the owner's report, 15 Nov 2026). It is portalled out, with its title next to the close button.
+    const panel = screen.getByRole("dialog", { name: "Meeting Notes" });
+    expect(screen.getByRole("region", { name: "Agenda" }).contains(panel)).toBe(false);
+    expect(within(panel).getByRole("heading", { name: "Meeting Notes" })).toBeTruthy();
+    const field = within(panel).getByLabelText("Meeting notes") as HTMLTextAreaElement;
     expect(field.value).toBe("Earlier note");
     fireEvent.change(field, { target: { value: "Earlier note and more" } });
     await waitFor(() => expect(save).toHaveBeenCalled());
     expect((save.mock.calls.at(-1)![2] as { meetingNotes: string }).meetingNotes).toBe("Earlier note and more");
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByRole("dialog", { name: "Meeting Notes" })).toBeNull();
+  });
+
+  it("Meeting Notes is portalled into the DM L10 frame (.hub-l10), so it keeps the tab's scoped styles", () => {
+    render(
+      <div className="hub-l10" data-testid="frame">
+        <MeetingView info={info} initial={loaded()} save={vi.fn() as unknown as SaveFn} end={vi.fn() as unknown as EndFn} viewer={viewer} roster={roster} hubMeetingUrl={HUB} pollMs={0} debounceMs={0} today="2026-11-15" />
+      </div>,
+    );
+    fireEvent.click(within(screen.getByRole("region", { name: "Agenda" })).getByRole("button", { name: /Meeting Notes/ }));
+    const panel = screen.getByRole("dialog", { name: "Meeting Notes" });
+    expect(panel.parentElement).toBe(screen.getByTestId("frame"));
+    expect(screen.getByRole("region", { name: "Agenda" }).contains(panel)).toBe(false);
   });
 
   it("Last meeting's summary is collapsed by default and opens on the latest recap", () => {
