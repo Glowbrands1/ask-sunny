@@ -8,6 +8,7 @@ import { matchEmployeeName, normalizeTypedName, type RosterEmployee } from "./em
 import { acceptedOffRoster, isAcceptedOffRoster, offRosterCardNote, offRosterOffer, offRosterTakenLine } from "./off-roster-confirm";
 import { addressNotPersonAsk, followsHouseNumber, personRosterNames } from "./person-guard";
 import { namesThisCompany } from "./company-name";
+import { withPreferredNameShown } from "./preferred-name-shown";
 import { isNameParticle, readableName } from "./readable-name";
 import { namesCompanyPositionTitle } from "./staff-picker";
 import { metricMessage, namesAMetric, requestMessage, cardOnScreen } from "./request-slot";
@@ -661,6 +662,11 @@ export function slotName(message: string | undefined, names: readonly string[]):
 
 /** FORM_NAME_FROM_ROSTER_ENABLED: `rosterOnlyNames` with the actor's roster read this turn. Off, or no roster: as built. */
 export function withRosterOnlyNames(response: AskResponse): AskResponse {
+  // READABLE_NAMES_ENABLED: a preferred name the manager typed is said back with the legal name once (`preferred-name-shown.ts`).
+  return withPreferredNameShown(rosterOnlyNamesOf(response), requestMessage());
+}
+
+function rosterOnlyNamesOf(response: AskResponse): AskResponse {
   // METRIC_GUARD_ENABLED: with FORM_NAME off, the choices still never offer a metric (`withoutMetricChoices`).
   if (!formNameFromRosterEnabled()) return metricGuardEnabled() ? withoutMetricChoices(response, metricMessage(), personRosterNames() ?? []) : response;
   const names = personRosterNames();

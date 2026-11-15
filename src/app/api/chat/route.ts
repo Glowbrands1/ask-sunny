@@ -25,6 +25,7 @@ import {
   possessivePlaceNotPersonEnabled,
   groupWordsNotANameEnabled,
   formNameFromRosterEnabled,
+  readableNamesEnabled,
   offRosterConfirmEnabled,
   cardPlanMatchesCreateEnabled,
   offRosterPlaceAnswerEnabled,
@@ -418,6 +419,14 @@ async function postChat(request: Request) {
           }
         }
         enterPersonRoster(names);
+        // READABLE_NAMES_ENABLED: who is known by a preferred first name, so the reply says it the manager's way (`preferred-name-shown.ts`).
+        if (readableNamesEnabled()) {
+          (await import("@/lib/forms/person-roster-store")).enterPreferredAliases(
+            roster
+              .filter((person) => person.preferredFirstName?.trim() && person.preferredFirstName.trim() !== person.firstName.trim())
+              .map((person) => ({ legal: `${person.firstName} ${person.lastName}`.replace(/\s+/g, " ").trim(), preferred: `${person.preferredFirstName!.trim()} ${person.lastName}`.replace(/\s+/g, " ").trim() })),
+          );
+        }
         // FORM_NAME_OFF_ROSTER_ASK_ENABLED: the scope's level, so a name not on the roster is held for a salon manager only (`lib/forms/roster-scope.ts`).
         // The manager's own turns too, so a full name typed on an earlier turn is still the manager's (QA's #741 eval, g1–g6).
         if (formNameOffRosterAskEnabled()) {
