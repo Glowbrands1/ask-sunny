@@ -47,6 +47,11 @@ describe("READABLE_NAMES_ENABLED on", () => {
     }
   });
 
+  it("a plain mention of the legal name elsewhere is said the manager's way, so the legal name is said once", () => {
+    const withStore = { ...reply("Lorraine Fairweather"), content: "I'll draft it for **Lorraine Fairweather**. Store: West, from Woven (where Lorraine Fairweather is assigned)." } as AskResponse;
+    expect(withPreferredNameShown(withStore, "rae fairweather").content).toBe("I'll draft it for **Rae Fairweather** (Lorraine Fairweather in Woven). Store: West, from Woven (where Rae Fairweather is assigned).");
+  });
+
   it("the legal name typed: the legal name, with no note", () => {
     const out = withPreferredNameShown(reply("Rae Fairweather"), "Create a CA for Lorraine Fairweather, she was late");
     expect(out.content).toBe("I'll draft a **Corrective Action Form** for **Lorraine Fairweather** from what you've described.\n\nIs **Lorraine Fairweather** right?");

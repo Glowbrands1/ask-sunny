@@ -78,11 +78,17 @@ export function withPreferredNameShown(response: AskResponse, managerWords: stri
     return { ...response, content: response.content.replace(bold, `**${alias.legal}**`), formProposal: { ...proposal, employeeName: alias.legal } };
   }
   let shown = response.content.includes(`(${alias.legal} in Woven)`);
-  const content = response.content.replace(bold, () => {
+  const marked = response.content.replace(bold, () => {
     if (shown) return `**${alias.preferred}**`;
     shown = true;
     return preferredShown(alias);
   });
+  // Any other mention of the legal name ("… where <legal> is assigned") is said the manager's way: the legal name once.
+  const inWoven = `(${alias.legal} in Woven)`;
+  const content = marked
+    .split(inWoven)
+    .map((part) => part.replace(new RegExp(String.raw`(?<![\p{L}*])${escape(alias.legal)}(?![\p{L}*])`, "giu"), alias.preferred))
+    .join(inWoven);
   return {
     ...response,
     content,
