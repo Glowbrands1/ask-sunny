@@ -39,13 +39,19 @@ const MENTIONS = /\bterminat(?:e|ed|es|ing|ion)\b|\bterm\s+(?:ca|c\/a)\b/i;
 const NEGATION = /\b(?:not|no|never|don['’]?t|doesn['’]?t|didn['’]?t|won['’]?t|isn['’]?t|aren['’]?t|wasn['’]?t|without|rather\s+than|instead\s+of|avoid)\b|n['’]t\b/i;
 const QUESTION_LEAD = /^(?:how|what|why|when|where|who|which|should|shall|do|does|did|can|could|would|will|is|are|was|were|may|might)\b/i;
 
+/**
+ * QA round 3 (15 Nov 2026): "no call no showed" / "no-show" is the REASON for the termination, not a negation of it
+ * ("Marnie Holloway no call no showed so we're terminating her"). Blanked before the negation test.
+ */
+const ATTENDANCE_NO = /\bno[\s-]*call[\s/,-]*no[\s-]*show(?:s|ed|ing)?\b|\bno[\s-]+shows?(?:ed|ing)?\b|\bno[\s-]*call\b/gi;
+
 /** The clauses of a turn that state a termination: no negation, not a question. */
 function statesTerminationClause(turn: string): boolean {
   for (const sentence of turn.split(/(?<=[.!?])\s+|\n+/)) {
     const trimmed = sentence.trim();
     if (!MENTIONS.test(trimmed) || /\?\s*$/.test(trimmed) || QUESTION_LEAD.test(trimmed)) continue;
     const clause = trimmed.split(/\s*[,;]\s*|\s+(?:but|just|only)\s+/i).find((part) => MENTIONS.test(part)) ?? trimmed;
-    if (!NEGATION.test(clause)) return true;
+    if (!NEGATION.test(clause.replace(ATTENDANCE_NO, " "))) return true;
   }
   return false;
 }

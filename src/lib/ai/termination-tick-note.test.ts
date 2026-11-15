@@ -78,6 +78,13 @@ describe("QA's review of #1010: a negation, a question or another person's termi
     expect(withTerminationTickNote(before, asked(said))).toBe(before);
   });
 
+  it.each([
+    ["Marnie Holloway no call no showed so we're terminating her"],
+    ["Marnie Holloway no-showed on 11/12, we are terminating her, write the CA"],
+  ])("QA round 3: no call no show is the reason, not a negation: %s → note", (said) => {
+    expect(withTerminationTickNote(before, asked(said)).content).toContain(TERMINATION_TICK_NOTE);
+  });
+
   it("another person's termination earlier in the chat never reaches this card", () => {
     const said = history(["Remy Calder is terminated, make the CA", "thanks"], "now write up Marnie Holloway, she was late on 11/12");
     expect(withTerminationTickNote(before, said)).toBe(before);
