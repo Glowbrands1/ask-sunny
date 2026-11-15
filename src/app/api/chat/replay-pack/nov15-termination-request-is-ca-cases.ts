@@ -42,7 +42,7 @@ export const NOV15_TERMINATION_REQUEST_IS_CA_CASES: ReplayCase[] = [
       id: `nov15-termination-request-is-ca-${index + 1}`,
       title: `"${said}": a Corrective Action card for Marnie Holloway`,
       report: REPORT,
-      status: { open: "a policy answer and no card" },
+      status: "fixed", // Changed on purpose (15 Nov 2026): TERMINATION_REQUEST_IS_CA_ENABLED is now in production-flags.json (QA flips it at merge), so these no longer fail without fixFlags.
       fixFlags: [FLAG, TICKS],
       async run(t) {
         start(t);
@@ -125,7 +125,7 @@ export const NOV15_TERMINATION_REQUEST_IS_CA_CASES: ReplayCase[] = [
       id: `nov15-termination-request-is-ca-whitelist-${index + 1}`,
       title: `"${said}": a Corrective Action card for ${person}`,
       report: RE_REVIEW,
-      status: { open: "a policy answer and no card" },
+      status: "fixed", // Changed on purpose (15 Nov 2026): TERMINATION_REQUEST_IS_CA_ENABLED is now in production-flags.json (QA flips it at merge), so these no longer fail without fixFlags.
       fixFlags: [FLAG],
       async run(t) {
         vi.setSystemTime(new Date("2026-11-14T16:00:00Z"));
@@ -176,20 +176,23 @@ export const NOV15_TERMINATION_REQUEST_IS_CA_CASES: ReplayCase[] = [
     id: "nov15-termination-request-is-ca-off-roster-full-name",
     title: "\"create a termination for Zebulon Marchbanks\" (off the roster, typed in capitals): a card or an ask about him, never a policy answer",
     report: ROUND_3,
-    status: { open: "the router lower-cased the text before the capitals check, so an off-roster full name never passed" },
+    status: "fixed", // Changed on purpose (15 Nov 2026): TERMINATION_REQUEST_IS_CA_ENABLED is now in production-flags.json (QA flips it at merge), so these no longer fail without fixFlags.
     fixFlags: [FLAG, TICKS],
     async run(t) {
       start(t);
       const thread = t.thread();
       const reply = await thread.say("create a termination for Zebulon Marchbanks, he no call no showed on 11/12", { employeeName: null });
-      expect(thread.proposal?.templateKey === "dpoa" || /Zebulon/.test(reply.content), `a policy answer or nothing:\n${reply.content}`).toBe(true);
+      // QA: a CA card with no one seated AND the not-found ask, not just any reply that mentions him.
+      expect(thread.proposal?.templateKey, reply.content).toBe("dpoa");
+      expect(thread.proposal?.employeeName ?? null, "seated an off-roster name").toBeNull();
+      expect(reply.content).toMatch(/can't find \*\*Zebulon Marchbanks\*\*/);
     },
   },
   {
     id: "nov15-termination-request-is-ca-first-name-only",
     title: "\"create a termination for Marnie\": a card that seats Marnie Holloway or asks who, never a policy answer",
     report: ROUND_3,
-    status: { open: "a first name alone resolved to no name, so the request fell through to a policy answer" },
+    status: "fixed", // Changed on purpose (15 Nov 2026): TERMINATION_REQUEST_IS_CA_ENABLED is now in production-flags.json (QA flips it at merge), so these no longer fail without fixFlags.
     fixFlags: [FLAG, TICKS],
     async run(t) {
       start(t);
@@ -203,7 +206,7 @@ export const NOV15_TERMINATION_REQUEST_IS_CA_CASES: ReplayCase[] = [
     id: "nov15-termination-request-is-ca-shared-surname-asks-who",
     title: "\"create a termination for Ms. Fairweather\" with two Fairweathers: the card asks who, never a policy answer",
     report: ROUND_3,
-    status: { open: "a surname two people share did not resolve, so the request fell through to a policy answer" },
+    status: "fixed", // Changed on purpose (15 Nov 2026): TERMINATION_REQUEST_IS_CA_ENABLED is now in production-flags.json (QA flips it at merge), so these no longer fail without fixFlags.
     fixFlags: [FLAG, TICKS],
     async run(t) {
       vi.setSystemTime(new Date("2026-11-14T16:00:00Z"));
