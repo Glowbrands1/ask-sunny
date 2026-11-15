@@ -145,10 +145,51 @@ const asks = (text: string) => ASKS_ABOUT_FORMS.some((pattern) => pattern.test(t
 
 export function asksAboutPastForms(context: Pick<ToolContext, "question" | "history">): boolean {
   if (asks(context.question)) return true;
-  if (context.question.trim().split(/\s+/).length > 6) return false;
   const earlier = [...context.history].reverse().find((message) => message.role === "user");
+  /*
+   * Batch G (G4, QA's live test; tightened by QA's review): the answer to the app's own which-form question ("the 10/31
+   * one about getting rooms ready between guests") is part of the same request, however long. Only when the last two
+   * turns are exactly: the manager's message asking about forms on file, then the reply asking WHICH_FORM_QUESTION
+   * (find_past_forms gives it when several forms fit). An older forms question further back never opens the gate.
+   */
+  const [lastReply, lastAsk] = [...context.history].reverse().filter((message) => message.role === "assistant" || message.role === "user").slice(0, 2);
+  if (lastReply?.role === "assistant" && lastAsk?.role === "user" && asks(lastAsk.content) && String(lastReply.content).includes(WHICH_FORM_QUESTION)) return true;
+  if (context.question.trim().split(/\s+/).length > 6) return false;
   return earlier ? asks(earlier.content) : false;
 }
+
+/** Batch G (QA's review, 15 Nov 2026): a warning level is exactly verbal, written or termination; anything else is refused. */
+export function exactWarningLevel(value: string): "verbal" | "written" | "termination" | null {
+  const level = value.trim().toLowerCase();
+  return level === "verbal" || level === "written" || level === "termination" ? level : null;
+}
+
+/**
+ * Batch G (G8; QA's design, 15 Nov 2026): the model passes action_plan; code LOCKS it. The current message must mark
+ * an Action Plan ("action plan" followed within 40 characters by ":" or "to", so "leave the action plan alone" is not
+ * one), and the model's text must appear in the message after that marker, word for word (case and spacing aside).
+ * What is saved is that stretch of the message, in the manager's own capitals; the model sets its bounds, so "Also make
+ * it a written…" after it stays out. Null when either check fails.
+ */
+export function dictatedActionPlan(message: string, modelText: string): string | null {
+  /*
+   * QA's third review: (A) "action plan … :" with no comma, period or semicolon between (80 characters at most: T9's
+   * "the action plan section of the form needs to reflect the following verbage:" has 59); (B) "change / make / set /
+   * update / replace the action plan to".
+   */
+  const marker = /\baction\s+plan\b[^\n,.;]{0,80}:/i.exec(message) ?? /\b(?:change|make|set|update|replace)\s+(?:the\s+)?action\s+plan(?:\s+section)?\s+to\b/i.exec(message);
+  const words = (modelText ?? "").trim().split(/\s+/).filter(Boolean);
+  if (!marker || words.join(" ").length <= 10) return null;
+  const pattern = new RegExp(words.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("\\s+"), "i");
+  const found = pattern.exec(message.slice(marker.index + marker[0].length));
+  return found ? found[0] : null;
+}
+
+/** Batch G (G4): the app's own question when several forms on file fit (find_past_forms gives it; the rules book ends the reply with it). */
+export const WHICH_FORM_QUESTION = "Which one should I open?";
+
+/** Batch G (G4): "open / edit / pull up / show me <a form on file>" never makes a new card. */
+export const OPEN_REQUEST = new RegExp(String.raw`\b(?:open|reopen|edit|pull up|bring up|show me|view)\b[^.?!\n]{0,40}?\b${FORM}\b`, "i");
 
 const NOT_ASKED = "The manager has not asked about forms on file, so they are not looked at (company privacy rule). Work from what the manager said; never mention other forms.";
 
@@ -261,14 +302,37 @@ function staffRow(person: RosterEmployee) {
  * An exit card's dates read back in the form's own labels and words (EXIT_DATE_LINE_AGREES; the live re-run's
  * no-notice-no-date-resigned: "the resignation date is lost"), read by today's exit reader from the manager's words.
  */
-async function exitDateLines(managerWords: string, today: string): Promise<string[]> {
+/**
+ * Batch G (QA's third review, 15 Nov 2026): the exit's effective date the MODEL passes (effective_date), kept only when
+ * the manager typed that day in this request's turns (`sameDate`). A typed year is kept; with none, the day nearest
+ * today (E10's reading, both ways: "effective 1/5" on 12/30 is next January, "fired her on 11/12" on 11/15 is this
+ * year's). Null when the model passed none or the manager never typed it.
+ */
+export function lockedExitDate(modelDate: unknown, requestWords: string, today: string): string | null {
+  if (typeof modelDate !== "string" || modelDate.trim() === "") return null;
+  const [given] = readDates(modelDate);
+  const iso = /^\d{4}-\d{2}-\d{2}$/.test(modelDate.trim()) ? modelDate.trim() : null;
+  const asked = iso ? { month: Number(iso.slice(5, 7)), day: Number(iso.slice(8, 10)), year: Number(iso.slice(0, 4)) } : given ? { month: given.month, day: given.day, year: given.year } : null;
+  if (!asked) return null;
+  const typed = readDates(requestWords).find((date) => sameDate(date, asked));
+  if (!typed) return null;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  if (typed.year !== null) return `${typed.year}-${pad(typed.month)}-${pad(typed.day)}`;
+  const year = Number(today.slice(0, 4));
+  const candidates = [year - 1, year, year + 1].map((y) => `${y}-${pad(typed.month)}-${pad(typed.day)}`);
+  const distance = (d: string) => Math.abs(Date.parse(`${d}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`));
+  return candidates.reduce((best, d) => (distance(d) < distance(best) ? d : best));
+}
+
+async function exitDateLines(managerWords: string, today: string, termination = false): Promise<string[]> {
   const [{ readExitFacts, EXIT_ROLE_LABEL }, { exitDateInWords }] = await Promise.all([import("@/lib/forms/exit-facts"), import("@/lib/forms/exit-intake")]);
   const facts = readExitFacts(managerWords, today);
   const lines: string[] = [];
   for (const role of ["lastDayWorked", "noticeGiven", "noticeFulfilled"] as const) {
     if (facts[role]) lines.push(`**${EXIT_ROLE_LABEL[role]}:** ${exitDateInWords(facts[role]!)}`);
   }
-  if (facts.resignationDate) lines.push(`**${EXIT_ROLE_LABEL.resigned}:** ${exitDateInWords(facts.resignationDate)}`);
+  /* Batch G (G7a): a termination has no resignation date; the no-show dates are its reason. */
+  if (facts.resignationDate && !termination) lines.push(`**${EXIT_ROLE_LABEL.resigned}:** ${exitDateInWords(facts.resignationDate)}`);
   return lines;
 }
 
@@ -413,6 +477,93 @@ export function addedLinks(before: string, text: string): string[] {
   return [...new Set([...text.matchAll(LINKING)].map((match) => match[1]!.toLowerCase()))].filter((phrase) => !had.has(phrase));
 }
 
+/** A field's sentences, headings ("Observed:") apart, each trimmed. */
+function sentencesOf(text: string): string[] {
+  return text
+    .split(/\n+/)
+    .flatMap((line) => line.replace(/^\s*(?:Observed|Expectation|Going Forward|Expectations|Plan)\s*:\s*/i, "").split(/(?<=[.!?])\s+/))
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence.length > 0);
+}
+
+/**
+ * Batch G (G3, QA's live test): where a new wording put what it added. `changed`: the old sentences it no longer has
+ * word for word. `misplaced`: an added sentence is not at the end of the Observed section (before "Expectation:"), or,
+ * with no sections, not after every old sentence.
+ */
+export function addPlacement(old: string, text: string): { changed: string[]; misplaced: boolean } {
+  const before = sentencesOf(old);
+  const changed = before.filter((sentence) => !text.includes(sentence));
+  const added = sentencesOf(text).filter((sentence) => !old.includes(sentence));
+  if (added.length === 0) return { changed, misplaced: false };
+  const expectation = /^\s*Expectations?\s*:/im.exec(text);
+  const sectioned = /^\s*Observed\s*:/im.test(old) && expectation !== null;
+  const lastOld = (limit: number) => Math.max(-1, ...before.map((sentence) => text.indexOf(sentence)).filter((at) => at >= 0 && at < limit));
+  const misplaced = added.some((sentence) => {
+    const at = text.indexOf(sentence);
+    if (sectioned) return at > expectation!.index || at < lastOld(expectation!.index);
+    return at < lastOld(text.length);
+  });
+  return { changed, misplaced };
+}
+
+/* Batch G (G15): the person who acts in a sentence: a name (or "she"/"he") right before what they did or failed to do. */
+const ACTOR = /(?:^|[.!?,;:]\s+|\n)\s*(?:on [^,.]{1,30},\s*)?([A-Za-z][a-z'-]+(?:\s+[A-Za-z][a-z'-]+)?)\s+(?:failed|did not|didn't|never|was|were|left|skipped|missed|refused|forgot|marked|has not|hasn't|had not|hadn't)\b/gi;
+const PRONOUN = /^(?:she|he|they|the employee|employee)$/i;
+
+/**
+ * Batch G (G15, the tester's live re-test): the account changed WHO did it. The manager wrote "<A> failed to have
+ * <C> complete …" for <A>'s form; the card said "<C> did not complete …". The person acting in the account when the
+ * manager had the form's employee acting, and that person is someone else the manager named. Null when nothing moved.
+ */
+export function accountSubjectChanged(managerWords: string, account: string, employee: string): string | null {
+  const own = employee.toLowerCase().split(/\s+/).filter(Boolean);
+  const isEmployee = (name: string) => name.toLowerCase().split(/\s+/).some((word) => own.includes(word));
+  const actors = (text: string) => [...text.matchAll(ACTOR)].map((match) => match[1]!.trim()).filter((name) => !PRONOUN.test(name));
+  const managerHadEmployee = actors(managerWords).some(isEmployee);
+  if (!managerHadEmployee) return null;
+  const said = managerWords.toLowerCase();
+  const other = actors(account).find((name) => !isEmployee(name) && said.includes(name.toLowerCase()));
+  return other ?? null;
+}
+
+/** Batch G (G18): "Corrective Action citing **<heading>** (p.<page>). Who is it for?", for a policy the manager named in this chat. */
+async function policyQuestion(context: ToolContext, formName: string): Promise<string | null> {
+  const manual = await manualFor(context.scopeId);
+  if (!manual) return null;
+  const said = managerTurns(context);
+  /* The phrases today's reader names, then the words right before "policy" ("cite the animals in the workplace policy"), longest first. */
+  const before = [...said.matchAll(/((?:[a-z'&/-]+\s+){1,6})polic(?:y|ies)\b/gi)].reverse().flatMap((match) => {
+    const words = match[1]!.trim().split(/\s+/);
+    return words.map((_, at) => words.slice(at).join(" ")).filter((phrase) => phrase.split(" ").length >= 2 || phrase.length > 5);
+  });
+  const phrases = [...namedPolicies(said).map((named) => named.phrase).reverse(), ...before];
+  for (const phrase of phrases) {
+    const heading = manual.headings.find((candidate) => namesHeading(phrase, candidate)) ?? closeHeadingReading(phrase, manual.headings).confident;
+    const section = heading ? findManualSection(manual.chunks, [heading]) : null;
+    if (section) return `${/corrective/i.test(formName) ? "Corrective Action" : formName} citing **${section.heading}** (p.${section.page}). Who is it for?`;
+  }
+  return null;
+}
+
+/**
+ * Pau's ruling (15 Nov 2026, ~10:20 PHT: "Preferred name is fine let it be flexible"): the card's name is the one the
+ * manager used, Woven's preferred first name or the legal first name, with the surname. With neither typed (a pronoun,
+ * a carried person), the preferred first name when Woven has one, else the legal name. Never a name that is neither.
+ * The person is always the roster id; the name shown never changes who it is.
+ */
+export function nameAsSaid(person: Pick<RosterEmployee, "firstName" | "lastName" | "preferredFirstName">, managerWords: string): string {
+  const legal = displayName(person as RosterEmployee);
+  const preferred = person.preferredFirstName?.trim();
+  if (!preferred || preferred.toLowerCase() === person.firstName.trim().toLowerCase()) return legal;
+  const said = ` ${managerWords.toLowerCase().replace(/[^a-z'’-]+/g, " ")} `;
+  const saidLegal = said.includes(` ${person.firstName.trim().toLowerCase()} `);
+  const saidPreferred = said.includes(` ${preferred.toLowerCase()} `);
+  const asPreferred = `${preferred} ${person.lastName.trim()}`.replace(/\s+/g, " ").trim();
+  if (saidLegal && !saidPreferred) return legal;
+  return asPreferred;
+}
+
 /** A position as compared: lowercase words, a plural "s" dropped ("Tanning Consultants" = "tanning consultant"). */
 function positionKey(text: string): string {
   return text.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).map((word) => (word.length > 3 && word.endsWith("s") ? word.slice(0, -1) : word)).join(" ");
@@ -494,20 +645,75 @@ export async function listStaffTool(context: ToolContext, effects: ToolEffects, 
 
 /* ---------------------------------------------------------- past forms --- */
 
-export async function findPastForms(context: ToolContext, input: { employee_name?: unknown }): Promise<ToolResult> {
+export async function findPastForms(context: ToolContext, input: { employee_name?: unknown; form?: unknown; date?: unknown; about?: unknown }): Promise<ToolResult> {
   const typed = typeof input.employee_name === "string" ? input.employee_name.trim() : "";
   if (typed === "") return { error: "Give the employee's name." };
   if (!asksAboutPastForms(context)) return { error: NOT_ASKED };
   const actor = await chatFormsActor(context.actor).catch(() => undefined);
   if (actor === undefined) return { error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
   if (actor === null) return { error: "This manager's role cannot view Form Monitoring, so past forms cannot be listed." };
-  const nameWords = candidateNameWords(typed);
+  /*
+   * Batch G (QA's addition 2): the typed name is one roster person's preferred or legal name, so forms under the other
+   * one are theirs too ("Jo Quill" finds the forms filed as "Josephine Quill"). Never another roster person's.
+   */
+  const roster = await rosterFor(context.actor.scope);
+  const people = roster.kind === "read" ? roster.roster : [];
+  const holders = people.filter((person) => fullNamesOf(person).some((full) => samePerson(full, typed)));
+  const aliases = holders.length === 1 ? fullNamesOf(holders[0]!) : [];
+  const nameWords = [...new Set([typed, ...aliases].flatMap(candidateNameWords))];
   if (nameWords.length === 0) return { forms: [] };
   try {
     /* 200, not 50 (F7): any name word matches, so other people's forms could push this person's older ones off the read. */
-    const rows = visibleInstances(actor, await listInstances("all", 200, { ...instanceListFilterFor(actor), employeeNameWords: nameWords }));
+    let rows = visibleInstances(actor, await listInstances("all", 200, { ...instanceListFilterFor(actor), employeeNameWords: nameWords }))
+      .filter((row) => samePerson(row.employeeName, typed) || words(row.employeeName).join(" ").includes(words(typed).join(" ")) || (aliases.length > 0 && sameRosterPerson(row.employeeName, typed, people)));
+    /*
+     * Batch G (G4, REOPEN_CLOSE_SPELLING, parity gap #43): no form under the typed name, so the forms this manager may
+     * open are read for an employee whose name it closely spells. One person: theirs. Two or more: ask which.
+     */
+    let closeSpelling: string | null = null;
+    if (rows.length === 0) {
+      const { closelySpelledEmployee } = await import("@/lib/forms/reopen-close-spelling");
+      const visible = visibleInstances(actor, await listInstances("all", 200, instanceListFilterFor(actor)));
+      const fits = [...new Set(visible.map((row) => row.employeeName))].filter((name) => closelySpelledEmployee(typed, [name]) === name);
+      if (fits.length > 1) return { forms: [], close_names: fits.slice(0, 5), note: "Several people on file have a name close to that spelling. Ask which one, by name." };
+      if (fits.length === 1) {
+        closeSpelling = fits[0]!;
+        rows = visible.filter((row) => row.employeeName === closeSpelling);
+      }
+    }
+    /* Batch G (G4): the form, date and words the manager described, to choose one ("the 10/31 one about getting rooms ready"). */
+    const today = context.today || businessToday();
+    const wantForm = typeof input.form === "string" ? input.form.toLowerCase() : "";
+    if (wantForm) {
+      const coaching = /coach/.test(wantForm);
+      const ca = /\bca\b|corrective|write[- ]?up|warning|verbal|written/.test(wantForm);
+      const narrowed = rows.filter((row) => (coaching ? /coach/i.test(row.templateName) : true) && (ca ? /corrective/i.test(row.templateName) || row.templateKey === "dpoa" : true));
+      if (narrowed.length > 0) rows = narrowed;
+    }
+    const iso = typeof input.date === "string" ? isoDate(input.date, today) : null;
+    const wantDate = iso ? { month: Number(iso.slice(5, 7)), day: Number(iso.slice(8, 10)), year: /\d{4}|\/\d{2}$/.test(String(input.date)) ? Number(iso.slice(0, 4)) : null } : undefined;
+    if (wantDate) {
+      const narrowed = rows.filter((row) => {
+        const [year, month, day] = (row.formDate ?? "").split("-").map(Number);
+        return sameDate(wantDate, { month: month ?? 0, day: day ?? 0, year: year ?? null });
+      });
+      if (narrowed.length > 0) rows = narrowed;
+    }
+    const about = typeof input.about === "string" ? words(input.about).filter((word) => word.length > 3) : [];
+    if (about.length > 0 && rows.length > 1 && rows.length <= 8) {
+      const scored = await Promise.all(rows.map(async (row) => {
+        const text = await authorizeInstance(context.request, row.id, "view")
+          .then(({ loaded }) => loaded.values.filter((value) => value.fieldKey === "observation" || value.fieldKey === "coaching_details").map((value) => value.value ?? "").join(" "))
+          .catch(() => "");
+        const have = new Set(words(text));
+        return { row, score: about.filter((word) => have.has(word)).length };
+      }));
+      const best = Math.max(...scored.map((entry) => entry.score));
+      const top = scored.filter((entry) => entry.score === best && best > 0);
+      if (top.length > 0) rows = top.map((entry) => entry.row);
+    }
+    const described = Boolean(wantForm || wantDate || about.length > 0);
     const forms = rows
-      .filter((row) => samePerson(row.employeeName, typed) || words(row.employeeName).join(" ").includes(words(typed).join(" ")))
       .slice(0, 20)
       .map((row) => ({
         instance_id: row.id,
@@ -520,7 +726,12 @@ export async function findPastForms(context: ToolContext, input: { employee_name
       }));
     /* "Draw me up a coaching document … she already has one" (the live re-run's sun-late-date): none on file is no reason to stop. */
     if (forms.length === 0) return { forms, note: "None on file. If the manager asked you to create or draw up a form, propose it now with their account and date, and say no earlier form was found on file." };
-    return { forms };
+    return {
+      forms,
+      ...(closeSpelling ? { close_spelling_of: { typed: untrusted(typed), on_file: closeSpelling } } : {}),
+      ...(forms.length === 1 && (described || closeSpelling) ? { best_match: forms[0]!.instance_id, note: "One form fits what the manager described. If they asked to open, edit or see it, open it now with open_form." } : {}),
+      ...(forms.length > 1 && OPEN_REQUEST.test(context.question) ? { which_form_question: WHICH_FORM_QUESTION } : {}),
+    };
   } catch {
     return { error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
   }
@@ -732,6 +943,26 @@ export function mentionsPerson(text: string, name: string, rosterNames: readonly
   return false;
 }
 
+/** A roster person's full names: the Woven preferred name with the surname, and the legal one (batch G, QA). */
+export function fullNamesOf(person: Pick<RosterEmployee, "firstName" | "lastName" | "preferredFirstName">): string[] {
+  const last = person.lastName?.trim() ?? "";
+  const names = [person.preferredFirstName?.trim(), person.firstName?.trim()].filter((first): first is string => !!first).map((first) => `${first} ${last}`.trim());
+  return [...new Set(names)];
+}
+
+/**
+ * Batch G (QA's addition 2, 15 Nov 2026; Pau: "Preferred name is fine let it be flexible"): two names are one person
+ * when they are the same name, or when each is a full name (preferred or legal) of exactly one roster person, and it is
+ * the same person. "Jo Quill" and "Josephine Quill" are one person when Woven has Josephine "Jo" Quill; two different
+ * roster people are never merged, and a name two roster people share decides nothing.
+ */
+export function sameRosterPerson(a: string, b: string, roster: readonly Pick<RosterEmployee, "id" | "firstName" | "lastName" | "preferredFirstName">[]): boolean {
+  if (samePerson(a, b)) return true;
+  const holders = (name: string) => roster.filter((person) => fullNamesOf(person).some((full) => samePerson(full, name)));
+  const [x, y] = [holders(a), holders(b)];
+  return x.length === 1 && y.length === 1 && x[0]!.id === y[0]!.id;
+}
+
 /*
  * HARD GUARD, THE ACCOUNT KEEPS WHAT THE MANAGER SAID (QA, 14 Nov 2026: the live run's dominant failure was a lost or
  * cut account). A structural check, not wording: every date, time, amount, place ("at <place>") and time word the
@@ -897,6 +1128,8 @@ export async function proposeForm(
     what_happened?: unknown;
     incident_date?: unknown;
     warning_level?: unknown;
+    exit_type?: unknown;
+    effective_date?: unknown;
     payroll_deduct?: unknown;
     payroll_amount?: unknown;
     prior_actions?: unknown;
@@ -914,6 +1147,21 @@ export async function proposeForm(
       ? { error: `A card for ${effects.proposal.employeeName ?? "someone"} is already shown in this reply. Offer the next person's form in your reply and propose it when the manager says yes.` }
       : null;
   if (effects.proposal && effects.proposal.templateKey !== (typeof input.template_key === "string" ? input.template_key.trim() : "")) return anotherCard(null)!;
+  /* Batch G (G4): an open request is for a form on file (find_past_forms, open_form), never a new card (code may refuse). */
+  if (OPEN_REQUEST.test(context.question) && !/\b(?:create|make|new|draw up|write up|start)\b/i.test(context.question)) {
+    return { error: "The manager asked to open a form on file, not to make one. Find it with find_past_forms and open it with open_form." };
+  }
+  /*
+   * Batch G (G0, Pau 15 Nov): rewording is paused; a reword request never re-proposes the card with new wording. G13:
+   * a re-proposal that keeps the card's account word for word and adds the new facts is allowed (and says so).
+   */
+  const rewordAsked = REWORD_REQUEST.test(context.question);
+  if (rewordAsked) {
+    const lastCard = [...context.history].reverse().find((message) => message.role === "assistant" && (message.formProposal || /\*\*Observation of Offense:\*\*/.test(String(message.content))));
+    const onScreen = lastCard?.formProposal?.issue ?? /\*\*Observation of Offense:\*\*\s*(.+)/.exec(String(lastCard?.content ?? ""))?.[1]?.trim() ?? "";
+    const next = typeof input.what_happened === "string" ? input.what_happened : "";
+    if (!onScreen.trim() || !next.trim() || addPlacement(onScreen, next).changed.length > 0) return { reword_paused: true, note: REWORD_PAUSED.note };
+  }
   /* HARD GUARD (STAFF_PICKER): a form asked for a whole staff is never one card for everyone. */
   if ((await import("@/lib/forms/staff-picker")).isBareWholeStaff(context.question) || (await import("@/lib/forms/staff-picker")).asksForWholeStaff(context.question)) {
     return { error: "This form was asked for a whole staff. A form is for one person at a time: call list_staff and say what it returns." };
@@ -941,7 +1189,7 @@ export async function proposeForm(
     if (person && turnedDown && samePerson(turnedDown, displayName(person))) {
       return { error: `The manager said no to ${displayName(person)}. Never put them on the card; ask who the form is for.` };
     }
-    if (person) employee = { name: displayName(person), salonIds: person.salonIds, id: person.id };
+    if (person) employee = { name: nameAsSaid(person, managerTurns(context)), salonIds: person.salonIds, id: person.id };
     /*
      * OFF_ROSTER_CONFIRM (as today): a person not in Woven yet goes on the form by the name the manager typed, only
      * after the app offered "reply **use <name>**" and the manager said so. Never a name nobody confirmed.
@@ -950,7 +1198,18 @@ export async function proposeForm(
       employee = { name: typed, salonIds: [] };
       offRosterName = typed;
     }
-    else return { error: "Give the employee_id find_staff returned for this person (call find_staff first). A name not on the roster goes on a form only after the manager answers the \"reply **use <name>**\" offer." };
+    else {
+      /*
+       * Batch G (G18, the tester's re-test: "just make it" after the animals answer asked "who is this Corrective Action
+       * Form for?" without the policy): no person yet, and the manager named a policy in this chat; the question to ask
+       * names it with its heading and page.
+       */
+      const ask = typed || id ? null : await policyQuestion(context, template.name);
+      return {
+        error: "Give the employee_id find_staff returned for this person (call find_staff first). A name not on the roster goes on a form only after the manager answers the \"reply **use <name>**\" offer.",
+        ...(ask ? { ask_exactly: ask } : {}),
+      };
+    }
   } else {
     const typedName = typeof input.employee_name === "string" ? tidyTypedName(input.employee_name) : "";
     if (!typedName) return { error: "Give the employee's name as the manager typed it." };
@@ -1098,6 +1357,8 @@ export async function proposeForm(
    * line, no longer an override). "Other" carries the model's short topic.
    */
   let policyLine: string | null = policyHeading ? formatManualCitation(policyHeading, page) : null;
+  /* Batch G (G7a, the tester's exit sweep): an exit cites no policy; it is not an incident. */
+  if (template.key === "stc-exit") policyLine = null;
   const otherPart = askedOther || (/^other\b/i.test(askedPolicy) ? askedPolicy : "");
   if (otherPart) {
     const topic = otherPart.replace(/^other\s*[—:-]?\s*/i, "").trim() || cleaning || whatHappened.slice(0, 120);
@@ -1155,14 +1416,24 @@ export async function proposeForm(
   }
   const datesAsked = datesGiven.length > 1 && !date ? datesGiven : [];
   /* Batch C (code-check #32): a date after today is a fact with today's date; the rules book says to ask. */
-  const dateAfterToday = date && date > today ? date : null;
+  /* Batch G (G6): only an incident form's date is never after today; an exit's last day or effective date may be. */
+  const incidentForm = ACCOUNT_FORMS.has(template.key);
+  const dateAfterToday = incidentForm && date && date > today ? date : null;
   /* Batch E (E10): the manager's month/day ("12/20" on 11/14) was read as last year's; the reply says so in one line. */
-  const lastYear = date && !dateAfterToday && date.slice(0, 4) < today.slice(0, 4)
+  const lastYear = incidentForm && date && !dateAfterToday && date.slice(0, 4) < today.slice(0, 4)
     ? incidentDates(requestWords, null).find((given) => monthDayToIso(given, today) === date) ?? null
     : null;
   const askedLevel = input.warning_level === "verbal" || input.warning_level === "written" ? input.warning_level : null;
   const level = askedLevel && (askedLevel === "verbal" ? /\bverbal\b/i : /\bwritten\b|\bwrite[- ]?up\b/i).test(managerWords) ? askedLevel : null;
-  const dropped = [askedLevel && !level ? "warning_level" : null, askedPayroll && !payroll ? "payroll_deduct" : null, typedAmount && !amount ? "payroll_amount" : null].filter(Boolean);
+  /*
+   * Batch G (QA's design, 15 Nov 2026; Pau's standing approval): the MODEL decides this Corrective Action is a
+   * termination (warning_level "termination", taught by the rules book's examples); code only LOCKS it. It is kept only
+   * when the manager's own words for this request carry a termination word (`saysTerminationWord`), else refused
+   * (not_kept). Create checks the word again, server-side.
+   */
+  const askedTermination = input.warning_level === "termination" && template.key === "dpoa";
+  const loopTermination = askedTermination && !level && (await import("@/lib/config/chat-quality-flags")).terminationStatedTicksEnabled() && (await import("@/lib/forms/termination-word")).saysTerminationWord(requestWords);
+  const dropped = [(askedLevel && !level) || (askedTermination && !loopTermination) ? "warning_level" : null, askedPayroll && !payroll ? "payroll_deduct" : null, typedAmount && !amount ? "payroll_amount" : null].filter(Boolean);
   /*
    * Prior actions as today reads them from the manager's own words (`statedPriorActions`: "Verbal corrective action —
    * signed 09/02/2026", a corrected date replacing the first; the live re-run's second-request-prior-step-correction
@@ -1192,9 +1463,9 @@ export async function proposeForm(
       if (ids.length > 0) break;
     }
   }
-  const proposal = buildProposal({
+  const proposalInput = (salonIds: readonly string[]) => ({
     proposalId: randomUUID(),
-    ...(answeredSalonIds.length > 0 ? { answeredSalonIds } : turnSalonIds.length > 0 ? { answeredSalonIds: turnSalonIds } : {}),
+    ...(salonIds.length > 0 ? { answeredSalonIds: [...salonIds] } : {}),
     templateKey: template.key,
     templateName: template.name,
     context: asked,
@@ -1202,9 +1473,46 @@ export async function proposeForm(
     inlineDraftSupported: supportsInlineDraft(template.key, template.currentVersion?.variants ?? []),
     variantKey: inlineDraftVariantKey(template.currentVersion?.variants ?? []),
     today,
-    employee: { kind: "resolved", employeeName: employee.name },
+    employee: { kind: "resolved" as const, employeeName: employee.name },
     employeeSalonIds: [...employee.salonIds],
   });
+  let proposal = buildProposal(proposalInput(answeredSalonIds.length > 0 ? answeredSalonIds : turnSalonIds));
+  /*
+   * Batch G (G14, honesty, the tester's live re-test): the reply said "Filed at <salon>, where Woven lists <name>" while
+   * the card still waited for a salon. Tool code fills the card from data: with no salon named and the card waiting
+   * for one, Woven's salon for this employee, when it is one of the manager's choices, is the card's salon; the fact
+   * salon_from_woven says so and the rules book words the line.
+   */
+  /*
+   * Batch G (G7a, the tester's exit sweep: "terminate <name>, 3 no call no shows on 11/10, 11/12 and 11/13" read back as
+   * "Resignation Date: November 10" and dated the first no-show): an exit the manager states as a termination is the
+   * form's "Immediate involuntary separation", dated the stated effective date, else today (said in one line). The
+   * no-show dates are the reason, never the form's date.
+   */
+  /*
+   * QA's design (15 Nov 2026): the MODEL decides an exit is a termination (exit_type "termination", the rules book's
+   * Exit lines); code only LOCKS it on a termination word in the request's own turns. The stated effective date, else
+   * the stated last day, is always kept; today only when no date was stated.
+   */
+  const askedExitTermination = template.key === "stc-exit" && input.exit_type === "termination";
+  const exitTermination = askedExitTermination && (await import("@/lib/forms/termination-word")).saysTerminationWord(requestWords)
+    ? await (async () => {
+        const effective = lockedExitDate(input.effective_date, requestWords, today);
+        const lastDay = effective ? null : (await import("@/lib/forms/exit-facts")).readExitFacts(requestWords, today).lastDayWorked;
+        return { date: effective ?? lastDay ?? today, dated_today: !effective && !lastDay };
+      })()
+    : null;
+  let salonFromWoven: string | null = null;
+  if (!typedSalon && employee.id && proposal.status === "needs_location") {
+    const primary = await rosterPrimarySalon(context.actor.scope, employee.id);
+    if (primary && (proposal.authorizedLocationIds ?? []).includes(primary)) {
+      const filed = buildProposal(proposalInput([primary]));
+      if (filed.locationId === primary) {
+        proposal = filed;
+        salonFromWoven = rosterSalonName(primary) ?? primary;
+      }
+    }
+  }
   /*
    * HARD GUARD, NEVER AN EMPTY ACCOUNT WHEN ONE WAS GIVEN (QA's live triage, 16:17Z: the lost-account cases): the
    * manager already said what happened in this person's turns, so a card with an empty what_happened is refused and
@@ -1225,12 +1533,13 @@ export async function proposeForm(
   const datedToday = ACCOUNT_FORMS.has(template.key) && !awaiting && !date && datesGiven.length === 0 && !ACCOUNT_WHEN.test(requestWords) && readDates(requestWords).length === 0;
   ACCOUNT_WHEN.lastIndex = 0;
   /* Batch E (E12): a date after today is never on the card, the model's or today's reading (the field is refused; the fact says so). */
-  const futureDate = dateAfterToday ?? (!date && proposal.formDate && proposal.formDate > today ? proposal.formDate : null);
+  const futureDate = dateAfterToday ?? (incidentForm && !date && proposal.formDate && proposal.formDate > today ? proposal.formDate : null);
   const card: ChatFormProposal = {
     ...proposal,
     sourceMessageIds: sourceIds,
-    formDate: datesAsked.length > 0 || futureDate ? null : date ?? proposal.formDate ?? null,
-    ...(level ? { warningLevel: level } : {}),
+    formDate: exitTermination ? exitTermination.date : datesAsked.length > 0 || futureDate ? null : date ?? proposal.formDate ?? null,
+    fromAgentLoop: true as const,
+    ...(level ? { warningLevel: level } : loopTermination ? { loopTermination: true as const } : {}),
     ...(whatHappened ? { issue: whatHappened } : {}),
     ...(payroll ? { payrollDeduct: payroll } : {}),
     ...(payroll === "yes" && amount ? { payrollDeductAmount: amount } : {}),
@@ -1291,10 +1600,12 @@ export async function proposeForm(
   const corrective = template.key === "dpoa";
   /*
    * TERMINATION_STATED_TICKS (batch H12; Pau's P15 ruling): a termination the manager stated is the level, ticked at
-   * Create (`api/forms/instances`, unchanged); the card says so with the DM/HR approval line, and never asks the level.
+   * Create (`api/forms/instances`); the card says so with the DM/HR approval line, and never asks the level. Batch G:
+   * the model's own decision, locked above (`loopTermination`), gives the same fact, so the card and the form agree.
    */
   const stated = await import("@/lib/forms/termination-stated");
-  const terminationStated = corrective && !level && (await import("@/lib/config/chat-quality-flags")).terminationStatedTicksEnabled() && stated.statesTermination(requestWords);
+  /* QA's third review: in the loop only the model decides (locked above); main's reader never decides a loop card. */
+  const terminationStated = loopTermination;
   const unset = corrective && !awaiting ? [...(payroll ? [] : ["payroll_deduct"]), ...(level || terminationStated ? [] : ["warning_level"])] : [];
   const salonNames = (ids: readonly string[] | undefined) => (ids ?? []).map((id) => ({ id, name: rosterSalonName(id) ?? id }));
   const facts = {
@@ -1305,15 +1616,19 @@ export async function proposeForm(
     /* AMOUNT_UNKNOWN_ACK (batch H1): "I don't know the amount" leaves it blank for the manager, said once, never asked again. */
     ...(corrective && payroll === "yes" && !amount ? (saysAmountUnknown(context.question) ? { payroll_amount_unknown: true } : { payroll_amount_unset: true }) : {}),
     ...(datesGiven.length > 1 ? { dates_given: datesGiven, ...(date ? { date_chosen: date } : {}) } : {}),
+    /* Batch G (G16): this chat already asked which date; a second ask is never made (the rules book: use the best reading). */
+    ...(datesGiven.length > 1 && context.history.some((message) => message.role === "assistant" && /more than one date|which date goes on the form/i.test(String(message.content))) ? { dates_asked_before: true } : {}),
     ...(accountLost.length > 0 ? { account_words_missing: accountLost } : {}),
     ...(accountGiven ? { account_given: untrusted(accountGiven) } : {}),
     ...(figuresNotSaid.length > 0 ? { figures_not_said: figuresNotSaid } : {}),
     ...(formatFigures.length > 0 ? { format_figures: formatFigures } : {}),
     ...(fitsHeadings ? { fits_headings: fitsHeadings } : {}),
     ...(futureDate ? { date_after_today: { date: futureDate, today, not_on_card: true } } : {}),
+    ...(rewordAsked ? { reword_paused: true } : {}),
     ...(lastYear && date ? { date_read_as_last_year: { said: lastYear, date } } : {}),
     ...(notInManual && policyLine ? { policy_not_in_manual: notInManual } : {}),
     ...(whatHappened && addedLinks(managerWords, whatHappened).length > 0 ? { reword_added_link: addedLinks(managerWords, whatHappened) } : {}),
+    ...(whatHappened && ACCOUNT_FORMS.has(template.key) && accountSubjectChanged(managerWords, whatHappened, employee.name) ? { account_subject_changed: { employee: employee.name, account_says_it_was: accountSubjectChanged(managerWords, whatHappened, employee.name) } } : {}),
     ...(statedSteps.length > 0 ? { prior_steps_said: statedSteps } : {}),
     ...(corrective && payroll === "yes" && !amount && statedAmount ? { payroll_amount_said: `$${statedAmount}` } : {}),
     ...(cleaning && !careAndCleaning ? { cleaning_duty: cleaning } : {}),
@@ -1321,17 +1636,24 @@ export async function proposeForm(
     ...(datedToday && (card.formDate ?? today) === today ? { dated_today: true } : {}),
     ...(offRosterName ? { off_roster_name: employee.name, staff_list: context.actor.scope.level === "salon" ? "your salon's" : "the", ...((await inactiveMatch(context.actor.scope, employee.name)) ? { inactive_in_woven: true } : {}) } : {}),
     ...(personId && effects.nameLines?.[personId] ? { name_from_staff_list: employee.name } : {}),
+    /* Pau's name ruling (15 Nov 2026): the card uses the preferred name; the reply says the Woven legal name once. */
+    ...(employee.id && read.kind === "read" && (() => {
+      const row = read.roster.find((candidate) => candidate.id === employee.id);
+      return row && displayName(row) !== employee.name;
+    })() ? { legal_name_in_woven: displayName(read.roster.find((candidate) => candidate.id === employee.id)!) } : {}),
     ...(await (async () => {
       if (card.status !== "needs_location" || !employee.id) return {};
       const primary = await rosterPrimarySalon(context.actor.scope, employee.id);
       return primary && (card.authorizedLocationIds ?? []).includes(primary) ? { employee_salon: rosterSalonName(primary) ?? primary } : {};
     })()),
+    ...(salonFromWoven ? { salon_from_woven: salonFromWoven } : {}),
     /* QA's live-app item 8: the card uses Woven's title; the manager called them something else ("Salon Director"). */
     ...(() => {
       const said = extractJobTitle(requestWords);
       return said && card.employeeRole && said.trim().toLowerCase() !== card.employeeRole.trim().toLowerCase() ? { title_differs: { woven: card.employeeRole, manager_said: said } } : {};
     })(),
-    ...(template.key === "stc-exit" ? { exit_dates: await exitDateLines(requestWords, today) } : {}),
+    ...(template.key === "stc-exit" ? { exit_dates: await exitDateLines(requestWords, today, Boolean(exitTermination)) } : {}),
+    ...(exitTermination ? { exit_termination: { form_label: "Immediate involuntary separation", effective: exitTermination.date, ...(exitTermination.dated_today ? { dated_today: true } : {}) } } : {}),
     ...(jobTitleTyped ? { job_title_from_your_words: card.employeeRole } : {}),
     ...(whichSalon ? { which_salon: true } : {}),
     ...(terminationStated ? { termination_stated: { approval: stated.TERMINATION_APPROVAL_LINE, plan_closing: stated.TERMINATION_PLAN_SENTENCE } } : {}),
@@ -1339,7 +1661,7 @@ export async function proposeForm(
     ...((await import("@/lib/ai/carried-person-notice")).carriedFromEarlier(template.key, card.employeeName, { history: context.history as ChatMessage[], question: context.question }) ? { person_from_earlier: card.employeeName } : {}),
     ...(underPerformance ? { under_performance: true } : {}),
     ...(didYouMean ? { confirm_policy: didYouMean } : {}),
-    ...(dropped.length > 0 ? { not_kept: dropped } : {}),
+    ...(dropped.length > 0 || (askedExitTermination && !exitTermination) ? { not_kept: [...dropped, ...(askedExitTermination && !exitTermination ? ["exit_type"] : [])] } : {}),
     ...((await outsideScopeSalon(context)) ?? (card.namedLocationOutOfScope ? { salon_outside_scope: card.namedLocationOutOfScope } : {})),
   };
   return {
@@ -1458,6 +1780,13 @@ export async function editForm(
     }
   }
   /*
+   * Batch G (G0, Pau 15 Nov): rewording is paused. A reword request writes nothing that rewords (code may refuse); the
+   * fact says why. G13 (a production chat): new facts sent with the ask ("take what i said but use it in a more
+   * professional tone") are still added, when every sentence already on the form stays word for word.
+   */
+  const rewordAsked = REWORD_REQUEST.test(context.question);
+  if (rewordAsked && Object.keys(values).length === 0) return REWORD_PAUSED;
+  /*
    * HARD GUARD, A NAME CORRECTION IS THE NAME (the live re-run's nov4-edit-tool-ca-t2: "fix her last name, it is <X>"
    * rewrote the Observation). Values for any other field are refused; with no values the form's own reviser applies it.
    */
@@ -1469,8 +1798,24 @@ export async function editForm(
   const unstated: string[] = [];
   for (const [field, value] of Object.entries(values)) {
     if (field === "warning_type") {
-      const level = /written/i.test(value) ? /\bwritten\b|\bwrite[- ]?up\b/i : /verbal/i.test(value) ? /\bverbal\b/i : /terminat/i.test(value) ? /\bterminat\w*|\bterm\b/i : null;
-      if (!level || !level.test(context.question)) unstated.push(field);
+      /*
+       * Batch G (G9, a production chat): Termination only when the manager states this form is a termination, in this
+       * chat ("Action Plan: … resulted in immediate termination of employment", "make it a termination"), as today's
+       * TERMINATION_STATED_TICKS reads it; "I can't select Termination" alone is a question about the form.
+       */
+      /*
+       * Batch G (QA's design, 15 Nov 2026): the model decides this form is a termination; code only LOCKS it. The
+       * CURRENT message must carry a termination word and not be a question (`statesTerminationWordNow`); earlier turns,
+       * about another person or form, never unlock it.
+       */
+      const kind = exactWarningLevel(value);
+      if (kind === null) continue; // refused below: not a warning level on this form
+      if (kind === "termination") {
+        if (!(await import("@/lib/config/chat-quality-flags")).terminationStatedTicksEnabled() || !(await import("@/lib/forms/termination-word")).statesTerminationWordNow(context.question)) unstated.push(field);
+        continue;
+      }
+      const level = kind === "written" ? /\bwritten\b|\bwrite[- ]?up\b/i : /\bverbal\b/i;
+      if (!level.test(context.question)) unstated.push(field);
     } else if (field === "payroll_deduct") {
       const answer = /^\s*yes/i.test(value) ? "yes" : /^\s*no/i.test(value) ? "no" : null;
       if (!answer || payrollStated(context) !== answer) unstated.push(field);
@@ -1478,12 +1823,6 @@ export async function editForm(
       const digits = value.replace(/[^\d.]/g, "");
       if (!digits || !managerTurns(context).replace(/[^\d.]/g, " ").split(/\s+/).some((n) => n !== "" && Number(n) === Number(digits))) unstated.push(field);
     }
-  }
-  /* Batch E (E12): a form or incident date after today (the salon's local date) is never written. */
-  const editToday = context.today || businessToday();
-  const later = Object.entries(values).filter(([field, value]) => (field === "form_date" || field === "incident_date") && (isoDate(value, editToday) ?? "") > editToday);
-  if (later.length > 0) {
-    return { error: `${later.map(([field, value]) => `${field} ${value}`).join(", ")} is after today (${editToday}, the salon's local date). Nothing was written. Ask the manager which day.`, date_after_today: { today: editToday } };
   }
   if (unstated.length > 0) {
     return { error: `${unstated.join(", ")} must come from the manager's own words, and this message does not state ${unstated.length === 1 ? "it" : "them"}. Nothing was written. Ask, or leave it for the manager.` };
@@ -1502,6 +1841,40 @@ export async function editForm(
   }
   try {
     const { loaded } = await authorizeInstance(context.request, id, "edit");
+    if (rewordAsked) {
+      const rewords = Object.entries(values).some(([field, text]) => {
+        const old = loaded.values.find((row) => row.fieldKey === field)?.value ?? "";
+        return old.trim() !== "" && addPlacement(old, text).changed.length > 0;
+      });
+      if (rewords) return REWORD_PAUSED;
+    }
+    /*
+     * Batch E (E12), scoped by batch G (G6, Pau via QA): an INCIDENT date after today (the salon's local date) is never
+     * written, on an incident form (CA, coaching, follow-up coaching). An exit's last day or effective date, and every
+     * follow-up or future-by-design date, may be after today and is never refused.
+     */
+    const editToday = context.today || businessToday();
+    /*
+     * Batch G (G11, a production chat: "change date of document to 11-15-2026"): a date the manager typed in this message
+     * for the document is theirs to set, after today or not (the reply says so). Only a date read from the account is
+     * never after today.
+     */
+    const typedDates = readDates(context.question);
+    /*
+     * QA's design (15 Nov 2026): on an incident form (CA, coaching), form_date and incident_date after today are always
+     * refused, with one question, however the message names them. Only the follow-up date and an exit's last day or
+     * effective date may be after today (G6).
+     */
+    const later = ACCOUNT_FORMS.has(loaded.instance.templateKey)
+      ? Object.entries(values).filter(([field, value]) => {
+          if (field !== "form_date" && field !== "incident_date") return false;
+          const iso = isoDate(value, editToday);
+          return Boolean(iso && iso > editToday);
+        })
+      : [];
+    if (later.length > 0) {
+      return { error: `${later.map(([field, value]) => `${field} ${value}`).join(", ")} is after today (${editToday}, the salon's local date). Nothing was written. Ask the manager which day.`, date_after_today: { today: editToday } };
+    }
     /*
      * HARD GUARD, THE RIGHT PERSON'S FORM (the live run's nov6-diffemp, top severity): a message about another roster
      * person, and not this form's employee ("now one for <B> …" with <A>'s draft open), never edits <A>'s form; it is
@@ -1527,9 +1900,12 @@ export async function editForm(
       return outline.headedFields(context.question, fields).length >= 2;
     })();
     if (roster.kind === "read" && !pastedOutline) {
-      const names = roster.roster.map(displayName);
-      const other = names.find((name) => !samePerson(name, loaded.instance.employeeName) && mentionsPerson(context.question, name, names));
-      if (other && !mentionsPerson(context.question, loaded.instance.employeeName, names)) {
+      // Batch G (QA's addition 2): every roster person by preferred and legal name; the form's employee by either.
+      const names = [...new Set(roster.roster.flatMap((person) => [displayName(person), ...fullNamesOf(person)]))];
+      const formsPerson = loaded.instance.employeeName;
+      const other = names.find((name) => !sameRosterPerson(name, formsPerson, roster.roster) && mentionsPerson(context.question, name, names));
+      const mentionsFormsPerson = names.some((name) => sameRosterPerson(name, formsPerson, roster.roster) && mentionsPerson(context.question, name, names)) || mentionsPerson(context.question, formsPerson, names);
+      if (other && !mentionsFormsPerson) {
         return { error: `This message is about ${other}, not ${loaded.instance.employeeName}; this form is ${loaded.instance.employeeName}'s and was not changed. Propose ${other}'s own card instead.` };
       }
     }
@@ -1592,6 +1968,16 @@ export async function editForm(
         if (linked.length > 0) rewordFacts.reword_added_link = { ...(rewordFacts.reword_added_link ?? {}), [field]: linked };
       }
     }
+    /* Batch G (G3): an added fact keeps every other sentence word for word and sits at the end of the Observed section. */
+    const addFacts: { add_changed_sentences?: Record<string, { untrusted_text: string }[]>; add_not_at_end_of_observed?: string[] } = {};
+    for (const field of ["observation", "coaching_details"]) {
+      const text = values[field];
+      const old = loaded.values.find((row) => row.fieldKey === field)?.value ?? "";
+      if (!text || !old.trim()) continue;
+      const placed = addPlacement(old, text);
+      if (placed.changed.length > 0) addFacts.add_changed_sentences = { ...(addFacts.add_changed_sentences ?? {}), [field]: placed.changed.map(untrusted) };
+      if (placed.misplaced) addFacts.add_not_at_end_of_observed = [...(addFacts.add_not_at_end_of_observed ?? []), field];
+    }
     if (loaded.instance.status !== "draft") {
       return { error: `This form is ${loaded.instance.status}, so it cannot be edited here. Tell the manager.` };
     }
@@ -1630,6 +2016,14 @@ export async function editForm(
      * the protected values. Its reply says what changed.
      */
     if (Object.keys(values).length === 0) {
+      /*
+       * QA's third review: the reviser (today's path, unchanged) writes a date the message states with no today check.
+       * In the loop, on a CA or coaching form, a message stating a date after today goes no further: one question.
+       */
+      if (ACCOUNT_FORMS.has(loaded.instance.templateKey)) {
+        const stated = readDates(context.question).map((date) => isoDate(date.text, editToday)).find((iso) => iso !== null && iso > editToday);
+        if (stated) return { error: `${stated} is after today (${editToday}, the salon's local date). Nothing was written. Ask the manager which day.`, date_after_today: { today: editToday } };
+      }
       const revised = await openFormTurn(context, id);
       if (!revised) {
         return writeAccount
@@ -1652,21 +2046,98 @@ export async function editForm(
     // The warning level is a tick box on the form: written as a checked group, never as text.
     const checked: Record<string, string[]> = {};
     if (values.warning_type) {
-      checked.warning_type = [/written/i.test(values.warning_type) ? "written" : /verbal/i.test(values.warning_type) ? "verbal" : "termination"];
+      /* Batch G (G19): verbal, written or termination only; anything else (a demotion) is refused, never ticked as termination. */
+      const kind = exactWarningLevel(values.warning_type);
+      if (!kind) return { error: `That level (${values.warning_type}) is not a warning level on this form (verbal, written or termination). Nothing was written.` };
+      checked.warning_type = [kind];
       delete values.warning_type;
     }
+    /*
+     * Batch G (G5, Pau's rule: level and payroll answers fill those fields): "Is payroll deduct applicable?" is a Yes / No
+     * tick on the form, written as checked like the warning level (the stated-by-the-manager guard above already ran).
+     */
+    if (values.payroll_deduct) {
+      const answer = /^\s*yes/i.test(values.payroll_deduct) ? "yes" : /^\s*no/i.test(values.payroll_deduct) ? "no" : null;
+      if (answer) checked.payroll_deduct = [answer];
+      delete values.payroll_deduct;
+    }
+    /*
+     * Batch G (G11, a production chat: "change date of document to 11-15-2026"): the document's date the manager typed
+     * in this message is their statement, written as today's form-patch turn writes it (`correctionWrite`, else a
+     * stated fact). Any other form_date value stays with the assistant's writer, which never drafts the Date.
+     */
+    let documentDate: string | null = null;
+    if (values.form_date) {
+      const iso = isoDate(values.form_date, editToday);
+      const [year, month, day] = (iso ?? "").split("-").map(Number) as [number, number, number];
+      if (iso && typedDates.some((typed) => sameDate(typed, { month, day, year }))) {
+        documentDate = iso;
+        delete values.form_date;
+      }
+    }
+    /*
+     * Only the keys this write carries that the manager stated, after the guards above passed: payroll (G5), a
+     * termination level (G9), and an Action Plan that is the manager's own text in this message, word for word (G8).
+     */
+    const statedPayroll = [
+      ...(checked.payroll_deduct ? ["payroll_deduct"] : []),
+      ...(values[PAYROLL_AMOUNT_KEY] ? [PAYROLL_AMOUNT_KEY] : []),
+      ...(checked.warning_type?.[0] === "termination" ? ["warning_type"] : []),
+    ];
+    /* Batch G (G8): a dictated Action Plan is saved after the level (below), so its closing reads the form's Termination. */
+    /* QA's review: only a plan the message marks, saved as the manager typed it (from the message, never the model's string). */
+    const planToSave = values.action_plan ? dictatedActionPlan(context.question, values.action_plan) : null;
+    if (planToSave !== null) delete values.action_plan;
     // The revision's writer, as chat-revision.ts saves: the one writer with FORM_EDIT_SINGLE_WRITER_ENABLED, else the old one.
     const written = formEditSingleWriterEnabled()
-      ? await (await import("@/lib/forms/form-write")).writeRevisionEdits(id, { values, checked }, [], { actorId: context.actor.subject, latest: context.question })
+      ? await (await import("@/lib/forms/form-write")).writeRevisionEdits(id, { values, checked }, [], {
+          actorId: context.actor.subject,
+          latest: context.question,
+          /* Batch G (G5): the payroll answer the guard above checked against this message, written as the manager's. */
+          ...(statedPayroll.length > 0 ? { managerStated: statedPayroll } : {}),
+        })
       : await applyAssistantRevision(id, { values, checked }, [], context.actor.subject);
-    const updated = [...Object.keys(written.accepted.values ?? {}), ...Object.keys(written.accepted.checked ?? {})];
+    /*
+     * Batch G (G8, a production chat: "Action Plan: Violation of Company policy has resulted in immediate termination of
+     * employment."; QA's conditions, Pau's standing approval, 15 Nov 2026): an Action Plan the manager dictated in this
+     * message, word for word (and over 10 characters), is the manager's own edit, saved as the form page saves their
+     * typing (`saveInstanceValues`, the manager as actor, via chat), only action_plan, only on this draft, AFTER the
+     * level above so the version's closing reads Termination. Never a policy lookup, and not rewording.
+     */
+    /*
+     * Batch G (G11, QA's review): the document's date, written only after the revision's write took everything else it
+     * carried (`correctionWrite`, else a stated fact); with anything refused, the date is not written either.
+     */
+    if (documentDate !== null && written.rejected.length === 0) {
+      const fresh = (await authorizeInstance(context.request, id, "edit")).loaded;
+      if (formEditSingleWriterEnabled()) {
+        await (await import("@/lib/forms/form-write")).correctionWrite({ instanceId: id, loaded: fresh, stated: { values: { form_date: documentDate }, checked: {} }, actorId: context.actor.subject, said: context.question, today: editToday });
+      } else {
+        await (await import("@/lib/forms/instances")).applyStatedFacts(id, { values: { form_date: documentDate }, checked: {} }, context.actor.subject, new Set(["form_date"]));
+      }
+    }
+    let dictatedPlan: string | null = null;
+    if (planToSave !== null) {
+      if (formEditSingleWriterEnabled()) {
+        dictatedPlan = (await (await import("@/lib/forms/form-write")).dictatedPlanWrite(id, planToSave, context.actor.subject)).saved;
+      } else {
+        const planSaved = await (await import("@/lib/forms/instances")).saveInstanceValues(id, { values: { action_plan: planToSave }, checked: {} }, context.actor.subject, { via: "chat" });
+        dictatedPlan = planSaved.rejected.some((row) => row.key === "action_plan") ? null : (planSaved.values.action_plan ?? planToSave);
+      }
+    }
+    const saved = (await authorizeInstance(context.request, id, "view")).loaded;
+    const dateWritten = documentDate !== null && saved.values.some((row) => row.fieldKey === "form_date" && row.value === documentDate);
+    const updated = [...Object.keys(written.accepted.values ?? {}), ...Object.keys(written.accepted.checked ?? {}), ...(dateWritten ? ["form_date"] : []), ...(dictatedPlan !== null ? ["action_plan"] : [])];
     if (updated.length > 0) effects.formUpdate = { instanceId: id, updated };
     return {
       updated,
       refused: written.rejected.map((row) => ({ field: row.key, reason: row.reason })),
       ...rewordFacts,
+      ...addFacts,
+      ...(rewordAsked ? { reword_paused: true } : {}),
+      ...(checked.warning_type?.[0] === "termination" && updated.includes("warning_type") ? { termination_approval_line: (await import("@/lib/forms/termination-stated")).TERMINATION_APPROVAL_LINE } : {}),
       ...(answerAlsoWrote.length > 0 ? { level_or_payroll_answer_also_wrote: answerAlsoWrote } : {}),
-      ...(rewordFacts.reword_lost || rewordFacts.reword_touched_fixed_fields || rewordFacts.reword_added_link || answerAlsoWrote.length > 0
+      ...(rewordFacts.reword_lost || rewordFacts.reword_touched_fixed_fields || rewordFacts.reword_added_link || addFacts.add_changed_sentences || addFacts.add_not_at_end_of_observed || answerAlsoWrote.length > 0
         ? { note: "Saved. Check these facts against what the manager asked and edit again to put anything back (the rules book's Editing lines)." }
         : {}),
     };
@@ -1760,7 +2231,10 @@ export async function searchKnowledge(context: ToolContext, effects: ToolEffects
 }
 
 /** "make it professional", "reword it", "clean it up", "make it sound better": a wording edit of the free-text fields. */
-export const REWORD_REQUEST = /\b(?:make (?:it|this|that)(?: sound)? (?:more )?(?:professional|better|cleaner)|re-?word|re-?phrase|clean (?:it|this|that) up|sound (?:more )?(?:professional|better)|professional(?:ly)? word)/i;
+/** Batch G (G0): what edit_form and propose_form return for a reword request while rewording is paused. Nothing is written. */
+const REWORD_PAUSED = { updated: [], reword_paused: true, note: "Rewording is paused. Nothing was changed. Say the rules book's reword_paused line." } as const;
+
+export const REWORD_REQUEST = /\b(?:make (?:it|this|that)(?: sound)? (?:more )?(?:professional|better|cleaner)|re-?word|re-?phrase|clean (?:it|this|that) up|sound (?:more )?(?:professional|better)|professional(?:ly)? word|(?:a )?(?:more )?professional tone)/i;
 /** Fields a reword never touches. */
 const REWORD_KEEPS = new Set(["warning_type", "payroll_deduct", "payroll_deduct_amount", "form_date", "employee_name", "job_title", "policy_violated", "direct_policy"]);
 

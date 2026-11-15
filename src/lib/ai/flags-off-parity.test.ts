@@ -1319,11 +1319,12 @@ function chatHalf(half: 0 | 1): string[] {
   return half === 0 ? all.slice(0, middle) : all.slice(middle);
 }
 /*
- * THE REPLAY PACK IN QUARTERS (QA, 9 Nov 2026 in halves; thirds 12 Nov; quarters 13 Nov 2026): its child timed out at
+ * THE REPLAY PACK IN FIFTHS (QA, 9 Nov 2026 in halves; thirds 12 Nov; quarters 13 Nov; fifths 15 Nov 2026, "QA 15 Nov:
+ * quarter 2 passed 9 min after batch G's cases", ETIMEDOUT at 540 s on ask-sunny#1011): its child timed out at
  * 540 s on CI (ask-sunny#713, #717; main 7e8dcdb6 with halves; ask-sunny#839 with thirds, its first third at 540 s;
  * ETIMEDOUT, no assertion failed) as the pack grew. Nearly all of its time is one file, `replay-pack-e2e.test.ts`, so
- * it is split by case, not by file: four children run that file with one quarter of the cases each (`REPLAY_PACK_PART`
- * "i/4", interleaved by id so the heavy cases spread out), and one child runs the pack's other test files (a few
+ * it is split by case, not by file: five children run that file with one fifth of the cases each (`REPLAY_PACK_PART`
+ * "i/5", interleaved by id so the heavy cases spread out), and one child runs the pack's other test files (a few
  * seconds). Every case and every file still runs exactly once, with every new flag off. No timeout is raised.
  */
 const REPLAY_PACK_E2E = `${REPLAY_PACK}/replay-pack-e2e.test.ts`;
@@ -1340,10 +1341,11 @@ const CHILDREN: readonly { readonly name: string; readonly paths: () => readonly
   { name: `${CHAT} (without the replay pack), second half by name`, paths: () => chatHalf(1) },
   { name: "src/app/api/forms", paths: () => ["src/app/api/forms"] },
   { name: `${REPLAY_PACK}, its test files other than the e2e`, paths: () => replayPackOtherFiles() },
-  { name: `${REPLAY_PACK}, the cases in quarter 1 of 4`, paths: () => [REPLAY_PACK_E2E], env: { REPLAY_PACK_PART: "0/4" } },
-  { name: `${REPLAY_PACK}, the cases in quarter 2 of 4`, paths: () => [REPLAY_PACK_E2E], env: { REPLAY_PACK_PART: "1/4" } },
-  { name: `${REPLAY_PACK}, the cases in quarter 3 of 4`, paths: () => [REPLAY_PACK_E2E], env: { REPLAY_PACK_PART: "2/4" } },
-  { name: `${REPLAY_PACK}, the cases in quarter 4 of 4`, paths: () => [REPLAY_PACK_E2E], env: { REPLAY_PACK_PART: "3/4" } },
+  { name: `${REPLAY_PACK}, the cases in fifth 1 of 5`, paths: () => [REPLAY_PACK_E2E], env: { REPLAY_PACK_PART: "0/5" } },
+  { name: `${REPLAY_PACK}, the cases in fifth 2 of 5`, paths: () => [REPLAY_PACK_E2E], env: { REPLAY_PACK_PART: "1/5" } },
+  { name: `${REPLAY_PACK}, the cases in fifth 3 of 5`, paths: () => [REPLAY_PACK_E2E], env: { REPLAY_PACK_PART: "2/5" } },
+  { name: `${REPLAY_PACK}, the cases in fifth 4 of 5`, paths: () => [REPLAY_PACK_E2E], env: { REPLAY_PACK_PART: "3/5" } },
+  { name: `${REPLAY_PACK}, the cases in fifth 5 of 5`, paths: () => [REPLAY_PACK_E2E], env: { REPLAY_PACK_PART: "4/5" } },
 ];
 
 /*
