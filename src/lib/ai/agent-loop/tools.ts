@@ -1473,12 +1473,18 @@ export async function proposeForm(
    * state it (a level named; payroll deduct stated, or answered right after the payroll question; the amount's digits).
    */
   const managerWords = managerTurns(context);
+  /*
+   * Batch K11 (QA's 266-chat shadow replay): a Coaching card made from a CA conversation carried payroll = no. Payroll
+   * deduct, the warning level and the termination are CA-only fields (Corrective Action): they are never kept for
+   * another template, whatever the conversation said for the CA (code may refuse; the fact says what was dropped).
+   */
+  const caOnlyFields = template.key === "dpoa";
   const askedPayroll = (input.payroll_deduct === "yes" || input.payroll_deduct === "no") ? input.payroll_deduct : null;
-  const payroll = askedPayroll && payrollStated(context) === askedPayroll ? askedPayroll : null;
+  const payroll = caOnlyFields && askedPayroll && payrollStated(context) === askedPayroll ? askedPayroll : null;
   const typedAmount = typeof input.payroll_amount === "string" && /\d/.test(input.payroll_amount) ? input.payroll_amount.replace(/[^\d.]/g, "") : null;
   /* The amount the manager stated, read as today reads it (`payrollAmountFromConversation`) when the model left it out. */
   const statedAmount = payroll === "yes" ? payrollAmountFromConversation(conversationTurns(context), { payrollAnswer: "yes" })?.replace(/[^\d.]/g, "") ?? null : null;
-  const amount = typedAmount && managerWords.replace(/[^\d.]/g, " ").split(/\s+/).some((n) => n !== "" && Number(n) === Number(typedAmount)) ? typedAmount : null;
+  const amount = caOnlyFields && typedAmount && managerWords.replace(/[^\d.]/g, " ").split(/\s+/).some((n) => n !== "" && Number(n) === Number(typedAmount)) ? typedAmount : null;
   const today = context.today || businessToday();
   let date = typeof input.incident_date === "string" && DATE.test(input.incident_date.trim()) ? input.incident_date.trim() : null;
   /* Several incident dates and the latest message does not pick one: the date waits, and the card asks (today's rule). */
@@ -1535,7 +1541,7 @@ export async function proposeForm(
     ? incidentDates(requestWords, null).find((given) => monthDayToIso(given, today) === date) ?? null
     : null;
   const askedLevel = input.warning_level === "verbal" || input.warning_level === "written" ? input.warning_level : null;
-  const level = askedLevel && (askedLevel === "verbal" ? /\bverbal\b/i : /\bwritten\b|\bwrite[- ]?up\b/i).test(managerWords) ? askedLevel : null;
+  const level = caOnlyFields && askedLevel && (askedLevel === "verbal" ? /\bverbal\b/i : /\bwritten\b|\bwrite[- ]?up\b/i).test(managerWords) ? askedLevel : null;
   /*
    * Batch G (QA's design, 15 Nov 2026; Pau's standing approval): the MODEL decides this Corrective Action is a
    * termination (warning_level "termination", taught by the rules book's examples); code only LOCKS it. It is kept only
@@ -1810,6 +1816,8 @@ export async function proposeForm(
       form: card.templateName,
       employee: card.employeeName,
       status: card.status,
+      /* Batch K10: the only time the reply may call the card ready (rules book). */
+      ready: card.status === "ready",
       salon: salonLabel(card.locationId),
       ...(card.status === "needs_location" ? { choose_salon_from: salonNames(card.authorizedLocationIds) } : {}),
       job_title: card.employeeRole ?? null,
@@ -1938,6 +1946,7 @@ export async function coachTeam(context: ToolContext, effects: ToolEffects): Pro
       form: card.templateName,
       employee: card.employeeName,
       status: card.status,
+      ready: card.status === "ready",
       salon: card.locationId ? salonLabel(card.locationId) : null,
       ...(card.status === "needs_location" ? { choose_salon_from: (card.authorizedLocationIds ?? []).map((id) => ({ id, name: salonLabel(id) })) } : {}),
       form_date: card.formDate ?? null,
