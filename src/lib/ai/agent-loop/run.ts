@@ -25,6 +25,7 @@ import { agentLoopSystem, AGENT_LOOP_RULES } from "./prompt";
 import { agentLoopStepLimit } from "./switch";
 import {
   appHelp,
+  coachTeam,
   editForm,
   openForm,
   searchKnowledge,
@@ -340,7 +341,7 @@ export const AGENT_LOOP_TOOLS = [
             "This incident's account in the manager's own words, all of it, with work areas and names kept as typed. Spelling, spacing and capitals cleaned; never names, dates, numbers, amounts or quoted words. No instructions (\"create a CA\", \"make it about\", \"the policy is\"), no level or payroll words, nothing invented. Leave out when the manager has not said what happened.",
         },
         incident_date: { type: "string", description: "YYYY-MM-DD, the salon's local date." },
-        warning_level: { type: "string", enum: ["verbal", "written", "termination"], description: "Only when the manager stated it for this form (termination only when they said this form is a termination)." },
+        warning_level: { type: "string", enum: ["verbal", "written"], description: "Only when the manager stated it for this form." },
         payroll_deduct: { type: "string", enum: ["yes", "no"], description: "Only when the manager said whether payroll deduct applies." },
         payroll_amount: { type: "string", description: "The deduction amount the manager stated, digits." },
         prior_actions: { type: "string", description: "Earlier steps only as the manager stated them (\"verbal on 10/2\", \"coached last month\"); never from records on file." },
@@ -368,6 +369,11 @@ export const AGENT_LOOP_TOOLS = [
   },
   /* The app data tools (QA, 15 Nov 2026): Google Reviews and the reports, with the scope rules in code (`data-tools.ts`). */
   ...DATA_TOOL_SPECS,
+  {
+    name: "coach_team",
+    description: "A Coaching Form for the whole team: with no draft open, the team Coaching card (\"All team members\" at one salon); with a Coaching draft open, \"this coaching for everyone on my team\" and its \"create all\" confirmation make one draft each with the same Details. No arguments: it reads the manager's message.",
+    input_schema: object({}, []),
+  },
 ];
 
 const EPHEMERAL = { anthropic: { cacheControl: { type: "ephemeral" } } } as const;
@@ -447,6 +453,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     search_knowledge: (args) => searchKnowledge(context, effects, args),
     list_staff: (args) => listStaffTool(context, effects, args),
     app_help: (args) => appHelp(args),
+    coach_team: () => coachTeam(context, effects),
     ...dataToolHandlers({ actor: context.actor, question: context.question, scopeId: context.scopeId, today: context.today }, effects),
   };
 

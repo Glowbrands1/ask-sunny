@@ -1,5 +1,8 @@
 import "server-only";
 
+import { PRODUCTION_SALONS } from "@/data/salons";
+import { saysAmountUnknown } from "@/lib/ai/amount-unknown-ack";
+
 import { randomUUID } from "node:crypto";
 
 import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
@@ -586,6 +589,10 @@ export async function listStaffTool(context: ToolContext, effects: ToolEffects, 
       note: "Ask which salon's staff to list as the rules book's Staff lists teach.",
     };
   }
+  /* STAFF_PICKER_NO_REPEAT (batch H9): a whole-staff form for a salon already listed in this chat gets the next step, not the list again. */
+  if (forForm && picker.staffListedBefore(context.history, chosen.name)) {
+    return { whole_staff_form: form, one_person_per_form: true, salon: chosen.name, already_listed: true, note: "This salon's staff is listed above in this chat: never list it again. Say the next step as the rules book's Staff lists teach." };
+  }
   const facts = await roster.readDirectoryFacts(scope).catch(() => []);
   const people = facts.length > 0 ? facts.map((person) => ({ ...person, positionName: person.title })) : [];
   if (people.length === 0) return { error: ROSTER_FAILED };
@@ -844,9 +851,21 @@ export async function readPolicy(context: ToolContext, input: { heading?: unknow
       similarity: 1,
     };
     const marker = addSource(effects, rowToCitation(row));
-    return { document: "JBA Policy Manual", heading: section.heading, page: section.page, source: marker, wording: sectionWording(manual.chunks, section) };
+    const wording = sectionWording(manual.chunks, section);
+    return { document: "JBA Policy Manual", heading: section.heading, page: section.page, source: marker, wording, ...(await readingNotes(wording)) };
   }
-  return { document: "JBA Policy Manual", heading: section.heading, page: section.page, wording: sectionWording(manual.chunks, section) };
+  const wording = sectionWording(manual.chunks, section);
+  return { document: "JBA Policy Manual", heading: section.heading, page: section.page, wording, ...(await readingNotes(wording)) };
+}
+
+/**
+ * MANUAL_NEGATED_LIST_NOTE (batch H7): today's reading notes for a manual sentence a reply read backwards (p.19's list
+ * of places a phone may NOT be), on the section that holds it. Not manual text, never cited.
+ */
+async function readingNotes(wording: string): Promise<{ reading_notes?: string }> {
+  if (!(await import("@/lib/config/chat-quality-flags")).manualNegatedListNoteEnabled()) return {};
+  const notes = (await import("@/lib/ai/manual-reading-notes")).manualReadingNotes([wording]);
+  return notes ? { reading_notes: notes } : {};
 }
 
 /* -------------------------------------------------------- propose form --- */
@@ -1172,10 +1191,18 @@ export async function proposeForm(
    * draft open, a second card for the same form AND the same person is refused unless the manager asked for another or
    * a new one. Another person ("the same form for <C>", "<A> and <B>") always gets their own card.
    */
-  if (context.openFormId && !/\b(?:another|new|second|separate|fresh|different)\b/i.test(context.question) && !startsNewForm(context.history, context.question) && !NEW_REQUEST_WITH_INCIDENT(context.question)) {
+  /*
+   * sf-s21 5d (the batch H live run): "I need the CA for the Must see behaviors and not the standard of conduct" reads
+   * as a new request, but it is about the policy of the draft on screen (`template-outline.ts`): the guard holds.
+   */
+  const mustSeeNotConduct = (await import("@/lib/forms/template-outline")).asksMustSeeNotConduct(context.question);
+  if (context.openFormId && (mustSeeNotConduct || (!/\b(?:another|new|second|separate|fresh|different)\b/i.test(context.question) && !startsNewForm(context.history, context.question) && !NEW_REQUEST_WITH_INCIDENT(context.question)))) {
     const open = await authorizeInstance(context.request, context.openFormId, "view").then(({ loaded }) => loaded.instance).catch(() => null);
     if (open && open.status === "draft" && open.templateKey === key && samePerson(open.employeeName, employee.name)) {
-      return { error: `The ${open.templateName} draft for ${open.employeeName} is open on screen: put this on that draft with edit_form (instance_id ${open.id}). Propose a new card only if the manager asks for another or a new one.` };
+      return {
+        error: `The ${open.templateName} draft for ${open.employeeName} is open on screen: put this on that draft with edit_form (instance_id ${open.id}). Propose a new card only if the manager asks for another or a new one.`,
+        ...(mustSeeNotConduct ? { must_see_behaviors: "Must See Behaviors is part of the Standards of Conduct policy (the JBA Policy Manual has no Must See Behaviors section), so the form keeps that policy." } : {}),
+      };
     }
   }
 
@@ -1336,8 +1363,20 @@ export async function proposeForm(
    * on 10/5 and again on 10/15") are never clear, so the one question asks which (a prior step's date is not counted,
    * `incidentDates`). The manager's answer sets it.
    */
-  const answered = datesGiven.length > 1 && latestDates.length === 1 && datesGiven.includes(latestDates[0]!);
+  let answered = datesGiven.length > 1 && latestDates.length === 1 && datesGiven.includes(latestDates[0]!);
   if (answered) date = monthDayToIso(latestDates[0]!, today);
+  /*
+   * DATE_ANSWER_APPLIED / DATE_ANSWER_KEEPS_OPEN (batch H3): the answer to "Which date goes on the form?" read as
+   * today's chat reads it (`incident-dates.ts` dateAnsweredIn): "10-15", "the 15th", "most recent", "today", and an
+   * answer given a turn or two before ("She is at Kearney" after it). The manager's answer is the date, over the model's.
+   */
+  if (datesGiven.length > 1 && !answered && (await import("@/lib/config/chat-quality-flags")).dateAnswerAppliedEnabled()) {
+    const asked = [...new Set(datesGiven.map((given) => monthDayToIso(given, today)))].sort();
+    const choice = (await import("@/lib/forms/incident-dates")).dateAnsweredIn(conversationTurns(context), asked, today);
+    if (choice?.kind === "date" && asked.includes(choice.iso)) date = choice.iso;
+    if (choice?.kind === "today") date = today;
+    answered = Boolean(choice && date);
+  }
   /*
    * Batch B (code-check #20): with several stated dates the model's choice stands; the dates are a fact and the rules
    * book says to pick only when the account makes it clear, else ask (never both). A date that is none of the stated
@@ -1357,14 +1396,7 @@ export async function proposeForm(
     : null;
   const askedLevel = input.warning_level === "verbal" || input.warning_level === "written" ? input.warning_level : null;
   const level = askedLevel && (askedLevel === "verbal" ? /\bverbal\b/i : /\bwritten\b|\bwrite[- ]?up\b/i).test(managerWords) ? askedLevel : null;
-  /*
-   * Batch G (G19, Pau's P15 ruling "A" on the loop's card; Pau's standing approval, 15 Nov 2026): a termination the
-   * manager stated for this form, read by the same reader Create ticks it with (`statesTermination`), so the card and
-   * the saved form agree. The card's level stays empty (Create ticks it); the fact says so. A hedge states nothing.
-   */
-  const askedTermination = input.warning_level === "termination" && template.key === "dpoa";
-  const terminationStated = askedTermination && (await import("@/lib/forms/termination-stated")).statesTermination(managerWords);
-  const dropped = [(askedLevel && !level) || (askedTermination && !terminationStated) ? "warning_level" : null, askedPayroll && !payroll ? "payroll_deduct" : null, typedAmount && !amount ? "payroll_amount" : null].filter(Boolean);
+  const dropped = [askedLevel && !level ? "warning_level" : null, askedPayroll && !payroll ? "payroll_deduct" : null, typedAmount && !amount ? "payroll_amount" : null].filter(Boolean);
   /*
    * Prior actions as today reads them from the manager's own words (`statedPriorActions`: "Verbal corrective action —
    * signed 09/02/2026", a corrected date replacing the first; the live re-run's second-request-prior-step-correction
@@ -1378,6 +1410,22 @@ export async function proposeForm(
   const typedSalon = typeof input.salon === "string" ? input.salon.trim() : "";
   const answeredSalonIds = typedSalon ? [...new Set([typedSalon, `at ${typedSalon}`].flatMap((text) => readSalonMentions(text).flatMap((mention) => [...mention.salonIds])))] : [];
   if (typedSalon && answeredSalonIds.length === 0) return { error: `"${typedSalon}" is not a salon the app knows. Ask which of the manager's salons it is.` };
+  /*
+   * PLACE_SPAN_GUARD (batch H8): each of this person's turns is read on its own, so "cite animals in the workplace
+   * policy" joined to "at Kearney, NE" never reads a place nobody named, and the newest turn that names one salon is
+   * the card's ("location st joe" after an earlier salon). "Primary salon is X" is where they usually work, never this.
+   */
+  const turnSalonIds: string[] = [];
+  if (!typedSalon && (await import("@/lib/config/chat-quality-flags")).placeSpanGuardEnabled()) {
+    const { labelledSalonIds } = await import("@/lib/forms/salon-cue");
+    const turns = asked.messages.filter((message) => sourceIds.includes(message.id ?? "")).map((message) => String(message.content ?? ""));
+    for (const turn of [...turns].reverse()) {
+      if (/\bprimary\s+(?:salon|store|location)\b/i.test(turn)) continue;
+      const ids = labelledSalonIds(turn);
+      if (ids.length === 1) turnSalonIds.push(ids[0]!);
+      if (ids.length > 0) break;
+    }
+  }
   const proposalInput = (salonIds: readonly string[]) => ({
     proposalId: randomUUID(),
     ...(salonIds.length > 0 ? { answeredSalonIds: [...salonIds] } : {}),
@@ -1391,7 +1439,7 @@ export async function proposeForm(
     employee: { kind: "resolved" as const, employeeName: employee.name },
     employeeSalonIds: [...employee.salonIds],
   });
-  let proposal = buildProposal(proposalInput(answeredSalonIds));
+  let proposal = buildProposal(proposalInput(answeredSalonIds.length > 0 ? answeredSalonIds : turnSalonIds));
   /*
    * Batch G (G14, honesty, the tester's live re-test): the reply said "Filed at <salon>, where Woven lists <name>" while
    * the card still waited for a salon. Tool code fills the card from data: with no salon named and the card waiting
@@ -1459,7 +1507,40 @@ export async function proposeForm(
    * parity gaps #33, #34, #39): from the roster row's Woven title, never read off the whole chat, where it can be the
    * manager's ("my DM told me"), a coworker's or a letter signer's. A name not on the roster gets none; the manager fills it.
    */
+  /*
+   * GLOBAL_SALON_ASK (batch H5; Pau's wording, 24 Oct 2026): a global login that is not an admin never files a form with
+   * no salon unasked. A salon named in this person's turns (a short name, a one-letter typo) is the card's; otherwise
+   * the card stays ready and the which_salon fact asks once, never again after it was asked.
+   */
+  let whichSalon = false;
+  const globalAsk = await import("@/lib/forms/global-salon-ask");
+  if ((await import("@/lib/config/chat-quality-flags")).globalSalonAskEnabled() && globalAsk.globalNonAdminNeedsSalon(context.actor.role, context.actor.scope) && !card.locationId && card.employeeName) {
+    const named = globalAsk.salonIdNamedIn(requestWords);
+    if (named) {
+      Object.assign(card, { locationId: named, locationName: rosterSalonName(named) ?? card.locationName, locationResolution: "resolved", authorizedLocationIds: [named], status: card.status === "needs_location" ? "ready" : card.status });
+    } else if (card.locationResolution === "not_applicable" || card.locationResolution === "needs_selection") {
+      Object.assign(card, { locationId: null, locationResolution: "needs_selection", authorizedLocationIds: PRODUCTION_SALONS.map((salon) => salon.id), status: "ready", supportsInlineDraft: true });
+      const askedBefore = context.history.some((turn) => turn.role === "assistant" && /which salon is this about/i.test(String(turn.content ?? "")));
+      whichSalon = !askedBefore;
+    }
+  }
   card.employeeRole = employee.id ? await rosterTitle(context.actor.scope, employee.id) : null;
+  /*
+   * A TITLE THE MANAGER TYPED (batch H4/H6: JOB_TITLE_FROM_WORDS, JOB_TITLE_APPOSITION, TITLE_SPELLED_OUT, JOB_TITLE_CASE):
+   * with no title on the roster row, "<name>, tan consultant at …" or "<name> was a <title>" in this person's own turns
+   * fills it, written as the title list writes one and spelled out ("ASD" → "Assistant Salon Director"). A roster title
+   * always wins (gap #33); the manager's other words for it are title_differs, below.
+   */
+  let jobTitleTyped = false;
+  if (!card.employeeRole && card.employeeName) {
+    const words = await import("@/lib/ai/job-title-from-words");
+    const typed = words.jobTitleFromWordsEnabled() ? words.typedJobTitle(asked.messages.filter((message) => sourceIds.includes(message.id ?? "")).map((message) => String(message.content ?? "")), card.employeeName) : null;
+    if (typed) {
+      card.employeeRole = words.spelledOutTitle(words.titleCaseIfLower(typed));
+      jobTitleTyped = true;
+    }
+  }
+  if (card.employeeRole) card.employeeRole = (await import("@/lib/ai/job-title-from-words")).spelledOutTitle(card.employeeRole);
   /* The policy Create sends is the card's (`cardPolicyFor`), never read back from the model's reply (code-check #40). */
   card.policyLine = policyLine;
   effects.proposal = card;
@@ -1472,6 +1553,14 @@ export async function proposeForm(
   const underPerformance = Boolean(policyHeading && /standards of conduct/i.test(policyHeading) && (/\bunder[- ]?perform(?:ance|ing)\b|must see behaviou?rs?|\bperform[a-z]*\b/i.test(managerWords) || ACCOUNT_METRIC.test(managerWords)));
   ACCOUNT_METRIC.lastIndex = 0;
   const corrective = template.key === "dpoa";
+  /*
+   * TERMINATION_STATED_TICKS (batch H12; Pau's P15 ruling): a termination the manager stated is the level, ticked at
+   * Create (`api/forms/instances`, unchanged); the card says so with the DM/HR approval line, and never asks the level.
+   * Batch G (G19) reads it with the widened reader (`statesTermination`, the one Create ticks with), so the card and
+   * the saved form agree; a hedge states nothing.
+   */
+  const stated = await import("@/lib/forms/termination-stated");
+  const terminationStated = corrective && !level && (await import("@/lib/config/chat-quality-flags")).terminationStatedTicksEnabled() && stated.statesTermination(requestWords);
   const unset = corrective && !awaiting ? [...(payroll ? [] : ["payroll_deduct"]), ...(level || terminationStated ? [] : ["warning_level"])] : [];
   const salonNames = (ids: readonly string[] | undefined) => (ids ?? []).map((id) => ({ id, name: rosterSalonName(id) ?? id }));
   const facts = {
@@ -1479,8 +1568,8 @@ export async function proposeForm(
     ...(level || payroll || priorActions
       ? { stated: { ...(level ? { warning_level: level } : {}), ...(payroll ? { payroll_deduct: payroll } : {}), ...(payroll === "yes" && amount ? { payroll_amount: `$${amount.replace(/^\$/, "")}` } : {}), ...(priorActions ? { prior_actions: priorActions } : {}) } }
       : {}),
-    ...(corrective && payroll === "yes" && !amount ? { payroll_amount_unset: true } : {}),
-    ...(terminationStated ? { termination_stated: { type_of_warning: "Termination, as you said", approval_line: (await import("@/lib/forms/termination-stated")).TERMINATION_APPROVAL_LINE } } : {}),
+    /* AMOUNT_UNKNOWN_ACK (batch H1): "I don't know the amount" leaves it blank for the manager, said once, never asked again. */
+    ...(corrective && payroll === "yes" && !amount ? (saysAmountUnknown(context.question) ? { payroll_amount_unknown: true } : { payroll_amount_unset: true }) : {}),
     ...(datesGiven.length > 1 ? { dates_given: datesGiven, ...(date ? { date_chosen: date } : {}) } : {}),
     /* Batch G (G16): this chat already asked which date; a second ask is never made (the rules book: use the best reading). */
     ...(datesGiven.length > 1 && context.history.some((message) => message.role === "assistant" && /more than one date|which date goes on the form/i.test(String(message.content))) ? { dates_asked_before: true } : {}),
@@ -1520,6 +1609,11 @@ export async function proposeForm(
     })(),
     ...(template.key === "stc-exit" ? { exit_dates: await exitDateLines(requestWords, today, Boolean(exitTermination)) } : {}),
     ...(exitTermination ? { exit_termination: { form_label: "Immediate involuntary separation", effective: exitTermination.date, ...(exitTermination.dated_today ? { dated_today: true } : {}) } } : {}),
+    ...(jobTitleTyped ? { job_title_from_your_words: card.employeeRole } : {}),
+    ...(whichSalon ? { which_salon: true } : {}),
+    ...(terminationStated ? { termination_stated: { approval: stated.TERMINATION_APPROVAL_LINE, plan_closing: stated.TERMINATION_PLAN_SENTENCE } } : {}),
+    /* CARRIED_PERSON_NOTICE (batch H10): the person was read from before the manager's last six turns. */
+    ...((await import("@/lib/ai/carried-person-notice")).carriedFromEarlier(template.key, card.employeeName, { history: context.history as ChatMessage[], question: context.question }) ? { person_from_earlier: card.employeeName } : {}),
     ...(underPerformance ? { under_performance: true } : {}),
     ...(didYouMean ? { confirm_policy: didYouMean } : {}),
     ...(dropped.length > 0 ? { not_kept: dropped } : {}),
@@ -1532,6 +1626,7 @@ export async function proposeForm(
       status: card.status,
       salon: salonLabel(card.locationId),
       ...(card.status === "needs_location" ? { choose_salon_from: salonNames(card.authorizedLocationIds) } : {}),
+      job_title: card.employeeRole ?? null,
       form_date: card.formDate ?? null,
       observation: card.issue ?? null,
       warning_level: level,
@@ -1561,6 +1656,67 @@ async function outsideScopeSalon(context: ToolContext): Promise<{ salon_outside_
   if (named.length !== 1 || allowed.includes(named[0]!)) return null;
   const name = rosterSalonName(named[0]!);
   return name ? { salon_outside_scope: name } : null;
+}
+
+/* ---------------------------------------------------------- team coaching --- */
+
+/**
+ * COACHING FOR THE WHOLE TEAM (batch H2; QA's ruling: today's production behavior). Two of today's paths, reused:
+ *
+ * - WITH A COACHING DRAFT OPEN, "this coaching for everyone on my team" gets ONE confirmation listing the people at
+ *   that draft's salon, and "create all" (or "create all except <names>") then makes one draft each with the same
+ *   Details (`coaching-for-everyone.ts`, COACHING_FOR_EVERYONE). Its own words come back as app_reply, said as given:
+ *   the next turn's "create all" is read against that wording.
+ * - WITH NO DRAFT OPEN, "a coaching form for all team members" (or a salon-wide expectation) is the team Coaching card,
+ *   "All team members" at one salon (`whole-team-coaching.ts` + `buildProposal`, WHOLE_TEAM_COACHING), never a refusal.
+ */
+export async function coachTeam(context: ToolContext, effects: ToolEffects): Promise<ToolResult> {
+  if (context.openFormId) {
+    const { coachingForEveryoneTurn } = await import("@/lib/forms/coaching-for-everyone");
+    const turn = await coachingForEveryoneTurn({ request: context.request, question: context.question, history: context.history as ChatMessage[], activeInstanceId: context.openFormId });
+    if (turn) return { app_reply: untrusted(turn.content), note: "Say app_reply to the manager as given, every line: it holds the people, the counts and the exact words the next step reads." };
+  }
+  const { wholeTeamRequest } = await import("@/lib/forms/whole-team-coaching");
+  /*
+   * "Create a coaching form." then "for the whole salon" (nov3-team-observation-echo, the batch H live run): the turn
+   * answers who the coaching asked for is, as today's intake reads it when it is still asking about a Coaching Form.
+   */
+  const lastAsk = [...context.history].reverse().find((turn) => turn.role === "user");
+  const continuing = lastAsk && /\bcoach(?:ing)?\b/i.test(String(lastAsk.content ?? "")) ? "coaching" : null;
+  const team = wholeTeamRequest({ question: context.question, history: context.history as ChatMessage[], draftOpen: Boolean(context.openFormId), continuingTemplateKey: continuing });
+  if (!team) {
+    return { error: "This is not a whole-team coaching request. A form for one person goes through find_staff and propose_form; with a Coaching draft open, \"this coaching for everyone on my team\" is the request for one draft each." };
+  }
+  const templates = await creatableTemplates(context.actor.role).catch(() => null);
+  const template = templates?.find((row) => row.key === "coaching");
+  if (!template) return { error: "This manager cannot create a Coaching Form." };
+  const card = buildProposal({
+    proposalId: randomUUID(),
+    templateKey: template.key,
+    templateName: template.name,
+    context: managerContext([], { id: context.questionMessageId, content: team.question }),
+    scope: context.actor.scope,
+    inlineDraftSupported: supportsInlineDraft(template.key, template.currentVersion?.variants ?? []),
+    variantKey: inlineDraftVariantKey(template.currentVersion?.variants ?? []),
+    today: context.today,
+    employee: { kind: "missing" },
+  });
+  if (card.subject !== "team") return { error: "The team card could not be made from this message. Ask which salon's team, or who the form is for." };
+  effects.proposal = card;
+  return {
+    card: {
+      form: card.templateName,
+      employee: card.employeeName,
+      status: card.status,
+      salon: card.locationId ? salonLabel(card.locationId) : null,
+      ...(card.status === "needs_location" ? { choose_salon_from: (card.authorizedLocationIds ?? []).map((id) => ({ id, name: salonLabel(id) })) } : {}),
+      form_date: card.formDate ?? null,
+      observation: card.issue ?? null,
+      create_offered: card.supportsInlineDraft,
+    },
+    facts: { team_card: true },
+    note: "The team Coaching card is shown under your reply: one form for all team members at one salon. Nothing is saved until the manager presses Create. To give each person their own draft afterwards, they open the created draft and say \"this coaching for everyone on my team\".",
+  };
 }
 
 /* ----------------------------------------------------------- edit form --- */
@@ -1670,7 +1826,25 @@ export async function editForm(
      * <B>'s own card. As today's reviser rules ("about a different person is not a revision", `chat-revision.ts`).
      */
     const roster = await rosterFor(context.actor.scope);
-    if (roster.kind === "read") {
+    /*
+     * PASTED_OUTLINE_TO_OPEN_DRAFT (batch H11): a pasted form heading two or more of THIS draft's own field labels is
+     * its outline, whatever names it carries (a manager's, a coworker's), and goes on to today's outline reader.
+     */
+    const pastedOutline = await (async () => {
+      if (!(await import("@/lib/config/chat-quality-flags")).pastedOutlineToOpenDraftEnabled()) return false;
+      const [{ fieldsForVariant, interpolate, parseFormDocument }, outline] = await Promise.all([import("@/lib/forms/document"), import("@/lib/forms/template-outline")]);
+      const fields = fieldsForVariant(parseFormDocument(loaded.version.document), loaded.instance.variantKey).map((field) => ({ key: field.key, label: interpolate(field.label, null) }));
+      /*
+       * "the same out line but with <name>'s info" (sf-s21 5c, the batch H live run): the request for a pasted
+       * outline is the form's reviser's (`template-outline.ts` names each of the outline's fields for it, the Action
+       * Plan included). Values the model wrote itself are set aside, so the outline is written as today's chat writes it.
+       */
+      if (outline.templateOutlineKeys({ question: context.question, history: context.history, fields }).size > 0) {
+        for (const field of Object.keys(values)) delete values[field];
+      }
+      return outline.headedFields(context.question, fields).length >= 2;
+    })();
+    if (roster.kind === "read" && !pastedOutline) {
       // Batch G (QA's addition 2): every roster person by preferred and legal name; the form's employee by either.
       const names = [...new Set(roster.roster.flatMap((person) => [displayName(person), ...fullNamesOf(person)]))];
       const formsPerson = loaded.instance.employeeName;

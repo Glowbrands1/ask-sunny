@@ -189,20 +189,22 @@ export const NOV15_AGENT_LOOP_SILENT_FAILURE_CASES: ReplayCase[] = [
       t.directory([...STAFF, WREN]);
       t.as("salon_director", KEARNEY);
       const model = loopStandIn((view): LoopDecision => {
-        const result = lastResult(view, "propose_form") as { facts?: { termination_stated?: { type_of_warning: string; approval_line: string }; not_kept?: string[] }; not_kept?: string[] } | null;
+        const result = lastResult(view, "propose_form") as { facts?: { termination_stated?: { approval: string; plan_closing: string } } } | null;
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "Wren Halloway" } };
-        if (!result) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: WREN.id, what_happened: "Wren Halloway was a no call no show.", warning_level: "termination" } };
+        if (!result) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: WREN.id, what_happened: "Wren Halloway was a no call no show." } };
         const stated = result.facts?.termination_stated;
         return {
           text: stated
-            ? `Here's the Corrective Action Form for **Wren Halloway**.\n\n**Type of Warning:** ${stated.type_of_warning}.\n${stated.approval_line}\n\n**Observation of Offense:** Wren Halloway was a no call no show.`
+            ? `Here's the Corrective Action Form for **Wren Halloway**.\n\n**Type of Warning:** Termination, as you said — I'll tick it on the form. Tell me if that should change.\n${stated.approval}\n\n**Action Plan:** Create builds the plan from the policy; it ends with: ${stated.plan_closing}\n\n**Observation of Offense:** Wren Halloway was a no call no show.`
             : "Here's the Corrective Action Form for **Wren Halloway**.\n\nYou'll tick Termination on the form yourself; it needs DM/HR approval before it's finalized.\n\n**Observation of Offense:** Wren Halloway was a no call no show.",
         };
       });
       t.loopModel!(model);
       const thread = t.thread();
       const reply = await thread.say("Create a CA for Wren Halloway, we're terminating her for the no call no show");
-      expect(reply.content, `the card does not say Termination:\n${reply.content}`).toMatch(/\*\*Type of Warning:\*\* Termination, as you said\./);
+      // Changed on purpose (QA, 15 Nov: G19 folded into H12's one termination_stated fact, { approval, plan_closing }, and its rules line).
+      expect(reply.content, `the card does not say Termination:\n${reply.content}`).toMatch(/\*\*Type of Warning:\*\* Termination, as you said/);
+      expect(reply.content, "a termination card promised future violations").not.toMatch(/Future policy violations/);
       expect(reply.content).toMatch(/Termination needs your DM\/HR approval before you finalize\./);
       const id = await thread.create();
       expect(t.checked(id).warning_type, "Create did not tick Termination: the card and the form disagree").toEqual(["termination"]);
@@ -226,13 +228,13 @@ export const NOV15_AGENT_LOOP_SILENT_FAILURE_CASES: ReplayCase[] = [
       t.directory([...STAFF, WREN]);
       t.as("salon_director", KEARNEY);
       const model = loopStandIn((view): LoopDecision => {
-        const result = lastResult(view, "propose_form") as { facts?: { termination_stated?: { type_of_warning: string; approval_line: string } } } | null;
+        const result = lastResult(view, "propose_form") as { facts?: { termination_stated?: { approval: string; plan_closing: string } } } | null;
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "Wren Halloway" } };
-        if (!result) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: WREN.id, what_happened: "Wren Halloway was a no call no show on 11/12.", incident_date: "2026-11-12", warning_level: "termination" } };
+        if (!result) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: WREN.id, what_happened: "Wren Halloway was a no call no show on 11/12.", incident_date: "2026-11-12" } };
         const stated = result.facts?.termination_stated;
         return {
           text: stated
-            ? `Here's the Corrective Action Form for **Wren Halloway**.\n\n**Type of Warning:** ${stated.type_of_warning}.\n${stated.approval_line}\n\n**Observation of Offense:** Wren Halloway was a no call no show on 11/12.`
+            ? `Here's the Corrective Action Form for **Wren Halloway**.\n\n**Type of Warning:** Termination, as you said — I'll tick it on the form. Tell me if that should change.\n${stated.approval}\n\n**Action Plan:** Create builds the plan from the policy; it ends with: ${stated.plan_closing}\n\n**Observation of Offense:** Wren Halloway was a no call no show on 11/12.`
             : "Here's the Corrective Action Form for **Wren Halloway**.\n\nYou'll tick Termination on the form yourself; it needs DM/HR approval before it's finalized.",
         };
       });
@@ -241,7 +243,9 @@ export const NOV15_AGENT_LOOP_SILENT_FAILURE_CASES: ReplayCase[] = [
       const reply = await thread.say("create a termination for Wren Halloway, she no call no showed on 11/12");
       expect(thread.proposal?.templateKey, `no Corrective Action card:\n${reply.content}`).toBe("dpoa");
       expect(thread.proposal?.formDate, "the card is not dated the no call no show").toBe("2026-11-12");
-      expect(reply.content, `the card does not say Termination:\n${reply.content}`).toMatch(/\*\*Type of Warning:\*\* Termination, as you said\./);
+      // Changed on purpose (QA, 15 Nov: G19 folded into H12's one termination_stated fact, { approval, plan_closing }, and its rules line).
+      expect(reply.content, `the card does not say Termination:\n${reply.content}`).toMatch(/\*\*Type of Warning:\*\* Termination, as you said/);
+      expect(reply.content, "a termination card promised future violations").not.toMatch(/Future policy violations/);
       expect(reply.content).toMatch(/Termination needs your DM\/HR approval before you finalize\./);
       const id = await thread.create();
       expect(t.checked(id).warning_type, "Create did not tick Termination").toEqual(["termination"]);
