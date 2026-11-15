@@ -28,7 +28,7 @@ const REMI: DirectoryRow = { id: "e-remi-calder", firstName: "Remi", lastName: "
 /** At both of the manager's salons; Woven lists Kearney (loc-0309) as her salon (G14). */
 const ISLA: DirectoryRow & { primarySalonId: string } = { id: "e-isla-marrow", firstName: "Isla", lastName: "Marrow", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0307", "loc-0309"], positionName: "Tanning Consultant", primarySalonId: "loc-0309" };
 
-/** Legal name Josephine Quill; goes by "Jo" (Pau's ruling, 15 Nov 2026: forms show the legal name only). */
+/** Legal name Josephine Quill; goes by "Jo" in Woven (Pau's name ruling, 15 Nov 2026). */
 const JO: DirectoryRow = { id: "e-josephine-quill", firstName: "Josephine", lastName: "Quill", preferredFirstName: "Jo", employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" };
 
 /** A created form on file for <employee id>: form, date and account as given; returns its instance id. */
@@ -602,9 +602,9 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
     },
   },
   {
-    id: "nov15-agent-loop-legal-name-on-the-card",
-    title: "Pau's ruling (15 Nov): \"ca for jo quill, she was late on 11/12\" for an employee who goes by Jo: the card's Employee line is the legal name, Josephine Quill",
-    report: `${REPORT}; Pau's ruling via QA: forms show the employee's legal name only`,
+    id: "nov15-agent-loop-name-as-the-manager-said-it",
+    title: "Pau's name ruling (15 Nov, \"Preferred name is fine let it be flexible\"): \"ca for jo quill\" for Josephine Quill, who goes by Jo, puts Jo Quill on the card and the form, and the reply names the Woven legal name once; \"ca for josephine quill\" puts Josephine Quill",
+    report: `${REPORT}; Pau's ruling via QA: the name is the one the manager used, preferred or legal, with the surname`,
     status: "fixed",
     fixFlags: [FLAG],
     async run(t) {
@@ -612,17 +612,26 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
       t.directory([...STAFF, JO]);
       t.as("salon_director", KEARNEY);
-      t.loopModel!(loopStandIn((view): LoopDecision => {
-        const found = lastResult(view, "find_staff") as { matches?: { employee_id: string; name: string }[] } | null;
-        if (!found) return { tool: "find_staff", input: { name: "jo quill" } };
-        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: found.matches?.[0]?.employee_id ?? JO.id, what_happened: "Jo Quill was late on 11/12." } };
-        return { text: "Here's the Corrective Action Form for **Josephine Quill** (Jo).\n\n**Observation of Offense:** She was late on 11/12." };
-      }));
-      const thread = t.thread();
-      const reply = await thread.say("ca for jo quill, she was late on 11/12");
-      expect(thread.proposal?.employeeName, `the card does not carry the legal name:\n${reply.content}`).toBe("Josephine Quill");
-      const id = await thread.create();
-      expect(t.values(id).employee_name, "the form does not carry the legal name").toBe("Josephine Quill");
+      const model = (typed: string) => loopStandIn((view): LoopDecision => {
+        const found = lastResult(view, "find_staff") as { matches?: { employee_id: string }[] } | null;
+        const result = lastResult(view, "propose_form") as { card?: { employee?: string }; facts?: { legal_name_in_woven?: string } } | null;
+        if (!found) return { tool: "find_staff", input: { name: typed } };
+        if (!result) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: found.matches?.[0]?.employee_id ?? JO.id, what_happened: "She was late on 11/12." } };
+        const legal = result.facts?.legal_name_in_woven;
+        return { text: `Here's the Corrective Action Form for **${result.card?.employee ?? ""}**${legal ? ` (${legal} in Woven)` : ""}.\n\n**Observation of Offense:** She was late on 11/12.` };
+      });
+      t.loopModel!(model("jo quill"));
+      const preferred = t.thread();
+      const reply = await preferred.say("ca for jo quill, she was late on 11/12");
+      expect(preferred.proposal?.employeeName, `the card does not carry the name the manager used:\n${reply.content}`).toBe("Jo Quill");
+      expect(reply.content, "the reply does not name the Woven legal name once").toMatch(/\(Josephine Quill in Woven\)/);
+      const id = await preferred.create();
+      expect(t.values(id).employee_name, "the form does not carry the name the manager used").toBe("Jo Quill");
+      t.loopModel!(model("josephine quill"));
+      const legal = t.thread();
+      const typed = await legal.say("ca for josephine quill, she was late on 11/12");
+      expect(legal.proposal?.employeeName, `the legal name the manager typed is not on the card:\n${typed.content}`).toBe("Josephine Quill");
+      expect(typed.content).not.toMatch(/in Woven\)/);
     },
   },
 ];

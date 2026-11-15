@@ -512,6 +512,24 @@ async function policyQuestion(context: ToolContext, formName: string): Promise<s
   return null;
 }
 
+/**
+ * Pau's ruling (15 Nov 2026, ~10:20 PHT: "Preferred name is fine let it be flexible"): the card's name is the one the
+ * manager used, Woven's preferred first name or the legal first name, with the surname. With neither typed (a pronoun,
+ * a carried person), the preferred first name when Woven has one, else the legal name. Never a name that is neither.
+ * The person is always the roster id; the name shown never changes who it is.
+ */
+export function nameAsSaid(person: Pick<RosterEmployee, "firstName" | "lastName" | "preferredFirstName">, managerWords: string): string {
+  const legal = displayName(person as RosterEmployee);
+  const preferred = person.preferredFirstName?.trim();
+  if (!preferred || preferred.toLowerCase() === person.firstName.trim().toLowerCase()) return legal;
+  const said = ` ${managerWords.toLowerCase().replace(/[^a-z'’-]+/g, " ")} `;
+  const saidLegal = said.includes(` ${person.firstName.trim().toLowerCase()} `);
+  const saidPreferred = said.includes(` ${preferred.toLowerCase()} `);
+  const asPreferred = `${preferred} ${person.lastName.trim()}`.replace(/\s+/g, " ").trim();
+  if (saidLegal && !saidPreferred) return legal;
+  return asPreferred;
+}
+
 /** A position as compared: lowercase words, a plural "s" dropped ("Tanning Consultants" = "tanning consultant"). */
 function positionKey(text: string): string {
   return text.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).map((word) => (word.length > 3 && word.endsWith("s") ? word.slice(0, -1) : word)).join(" ");
@@ -1090,7 +1108,7 @@ export async function proposeForm(
     if (person && turnedDown && samePerson(turnedDown, displayName(person))) {
       return { error: `The manager said no to ${displayName(person)}. Never put them on the card; ask who the form is for.` };
     }
-    if (person) employee = { name: displayName(person), salonIds: person.salonIds, id: person.id };
+    if (person) employee = { name: nameAsSaid(person, managerTurns(context)), salonIds: person.salonIds, id: person.id };
     /*
      * OFF_ROSTER_CONFIRM (as today): a person not in Woven yet goes on the form by the name the manager typed, only
      * after the app offered "reply **use <name>**" and the manager said so. Never a name nobody confirmed.
@@ -1451,6 +1469,11 @@ export async function proposeForm(
     ...(datedToday && (card.formDate ?? today) === today ? { dated_today: true } : {}),
     ...(offRosterName ? { off_roster_name: employee.name, staff_list: context.actor.scope.level === "salon" ? "your salon's" : "the", ...((await inactiveMatch(context.actor.scope, employee.name)) ? { inactive_in_woven: true } : {}) } : {}),
     ...(personId && effects.nameLines?.[personId] ? { name_from_staff_list: employee.name } : {}),
+    /* Pau's name ruling (15 Nov 2026): the card uses the preferred name; the reply says the Woven legal name once. */
+    ...(employee.id && read.kind === "read" && (() => {
+      const row = read.roster.find((candidate) => candidate.id === employee.id);
+      return row && displayName(row) !== employee.name;
+    })() ? { legal_name_in_woven: displayName(read.roster.find((candidate) => candidate.id === employee.id)!) } : {}),
     ...(await (async () => {
       if (card.status !== "needs_location" || !employee.id) return {};
       const primary = await rosterPrimarySalon(context.actor.scope, employee.id);

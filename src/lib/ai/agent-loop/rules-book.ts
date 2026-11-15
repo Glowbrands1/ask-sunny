@@ -41,6 +41,7 @@ export const RULES_BOOK: readonly { readonly title: string; readonly rules: read
       "find_staff's longer_names_on_roster: other people's names start with the one you looked up (\"<A>\" and \"<A> Two\"). If the manager wrote a longer one, look that one up and use it.",
       "inactive_in_woven (find_staff or the card): the person is no longer active in Woven. Say \"**<Name>** shows as no longer active in Woven; I've used the name as you typed it.\" instead of the not-on-the-staff-list line.",
       "title_differs (the card): the card uses Woven's title. Say in one line \"Woven lists <them> as <woven title>.\" (never change it to what the manager called them).",
+      "The card's name is the one the manager used, the Woven preferred first name or the legal one, with the surname (Pau's ruling, 15 Nov 2026); propose_form sets it. legal_name_in_woven: say it once, \"**Jo Quill** (Josephine Quill in Woven)\". Never a nickname the roster does not have, and never your own spelling.",
     ],
   },
   {
