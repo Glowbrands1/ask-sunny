@@ -20,3 +20,6 @@ pasted account about <B>) is not a yes; propose_form refuses <A> with `right_per
 `slots.agent_loop.person_asked = { templateKey }`; the next turn's system facts say `answering_who_question` up front
 (look the answer up with find_staff; a first name is a name, never an acronym). No reply text is read and no extra
 model call is made on the answering turn. Port it with the loop.
+
+**Follow-up (QA's review of #1051):** the no-person result also says how to name the person ("look them up with
+find_staff and pass its employee_id"). Port it with item 6.

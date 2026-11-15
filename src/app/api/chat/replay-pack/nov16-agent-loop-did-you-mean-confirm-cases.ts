@@ -154,13 +154,15 @@ NOV16_AGENT_LOOP_DID_YOU_MEAN_CONFIRM_CASES.push(
       if (!t.loopOn?.()) return;
       await salon(t);
       const facts: boolean[] = [];
+      const noPersonErrors: string[] = [];
       // The fact itself (the rules book also names answering_who_question, so the word alone proves nothing).
       const told = (view: LoopView) => view.system.includes("answering_who_question: your last reply asked who the Coaching Form is for");
       const model = loopStandIn((view): LoopDecision => {
         const managerTurns = view.turns.filter((turn) => turn.role === "user");
-        const card = lastResult(view, "propose_form") as { ask_exactly?: string; card?: unknown } | null;
+        const card = lastResult(view, "propose_form") as { ask_exactly?: string; card?: unknown; error?: string } | null;
         if (managerTurns.length === 1) {
           if (!card) return { tool: "propose_form", input: { template_key: "coaching" } };
+          noPersonErrors.push(card.error ?? "");
           return { text: paraphrase ? "Who's this one for?" : card.ask_exactly ?? "" };
         }
         if (view.step === 0) facts.push(told(view));
@@ -176,6 +178,8 @@ NOV16_AGENT_LOOP_DID_YOU_MEAN_CONFIRM_CASES.push(
       const thread = t.thread();
       const ask = await thread.say("I need a coaching form");
       expect(ask.content).toMatch(paraphrase ? /Who's this one for\?/ : /Who is this Coaching Form for\?/);
+      // QA's review of #1051 (follow-up): the no-person result still says how to name the person (find_staff's employee_id).
+      expect(noPersonErrors.at(-1) ?? "", "the no-person result lost the employee_id hint").toMatch(/find_staff[\s\S]*employee_id/);
       const callsBefore = model.calls;
       const reply = await thread.say(answer);
       expect(facts, "the answering turn was not told answering_who_question up front").toEqual([true]);
