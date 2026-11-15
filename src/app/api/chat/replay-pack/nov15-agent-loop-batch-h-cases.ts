@@ -313,7 +313,8 @@ export const NOV15_AGENT_LOOP_BATCH_H_CASES: ReplayCase[] = [
     async run(t) {
       if (!t.loopOn?.()) return;
       const thread = start(t);
-      const model = loopStandIn((view) => (lastResult(view, "propose_form") ? { text: "Here is the card." } : { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", policy: "Attendance", what_happened: "Remy Calder was 20 minutes late on 11/9/26." } }));
+      const model = loopStandIn((view) => (lastResult(view, "propose_form") ? { text: "Here is the card." } : { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", policy: "Attendance", what_happened: "Remy Calder was 20 minutes late on 11/9/26.", warning_level: "termination" } }));
+      // Changed on purpose (QA's design and third review, 15 Nov 2026): in the loop the model decides the termination (warning_level termination) and the tool locks it on the word; main's reader no longer decides a loop card.
       t.loopModel!(model);
       await thread.say("I need a term CA for Remy Calder, she was 20 minutes late on 11/9/26");
       const facts = proposed(model.views)?.facts ?? {};

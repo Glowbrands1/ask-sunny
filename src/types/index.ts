@@ -668,6 +668,8 @@ export interface ChatFormProposal {
    * conversation's user turns carry that word again, checked server-side (`lib/forms/termination-word.ts`).
    */
   loopTermination?: true;
+  /** The agent loop's card (QA's third review): Create never runs today's termination reader for it. */
+  fromAgentLoop?: true;
   /**
    * The Corrective Action Form's prior-actions line, in the manager's words
    * ("prior = manual ack 9/01"). Optional so older proposals still read.

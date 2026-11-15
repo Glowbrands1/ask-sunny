@@ -172,7 +172,12 @@ export function exactWarningLevel(value: string): "verbal" | "written" | "termin
  * it a written…" after it stays out. Null when either check fails.
  */
 export function dictatedActionPlan(message: string, modelText: string): string | null {
-  const marker = /\baction\s+plan\b[^\n]{0,40}?(?::|\bto\b)/i.exec(message);
+  /*
+   * QA's third review: (A) "action plan … :" with no comma, period or semicolon between (80 characters at most: T9's
+   * "the action plan section of the form needs to reflect the following verbage:" has 59); (B) "change / make / set /
+   * update / replace the action plan to".
+   */
+  const marker = /\baction\s+plan\b[^\n,.;]{0,80}:/i.exec(message) ?? /\b(?:change|make|set|update|replace)\s+(?:the\s+)?action\s+plan(?:\s+section)?\s+to\b/i.exec(message);
   const words = (modelText ?? "").trim().split(/\s+/).filter(Boolean);
   if (!marker || words.join(" ").length <= 10) return null;
   const pattern = new RegExp(words.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("\\s+"), "i");
@@ -297,14 +302,26 @@ function staffRow(person: RosterEmployee) {
  * An exit card's dates read back in the form's own labels and words (EXIT_DATE_LINE_AGREES; the live re-run's
  * no-notice-no-date-resigned: "the resignation date is lost"), read by today's exit reader from the manager's words.
  */
-/** A date right after "effective" ("effective 11/20", "effective as of Nov 20"); null when none. */
-function terminationEffectiveDateOf(words: string, today: string): string | null {
-  const effective = /\beffective(?:\s+(?:on|as of|date))?\s+([^,\n]{3,25})/i.exec(words)?.[1];
-  const [read] = effective ? readDates(effective) : [];
-  if (!read) return null;
-  /* An effective date is forward-looking: a month/day with no year is this year's, never rolled back to last year. */
-  const year = read.year ?? Number(today.slice(0, 4));
-  return `${year}-${String(read.month).padStart(2, "0")}-${String(read.day).padStart(2, "0")}`;
+/**
+ * Batch G (QA's third review, 15 Nov 2026): the exit's effective date the MODEL passes (effective_date), kept only when
+ * the manager typed that day in this request's turns (`sameDate`). A typed year is kept; with none, the day nearest
+ * today (E10's reading, both ways: "effective 1/5" on 12/30 is next January, "fired her on 11/12" on 11/15 is this
+ * year's). Null when the model passed none or the manager never typed it.
+ */
+export function lockedExitDate(modelDate: unknown, requestWords: string, today: string): string | null {
+  if (typeof modelDate !== "string" || modelDate.trim() === "") return null;
+  const [given] = readDates(modelDate);
+  const iso = /^\d{4}-\d{2}-\d{2}$/.test(modelDate.trim()) ? modelDate.trim() : null;
+  const asked = iso ? { month: Number(iso.slice(5, 7)), day: Number(iso.slice(8, 10)), year: Number(iso.slice(0, 4)) } : given ? { month: given.month, day: given.day, year: given.year } : null;
+  if (!asked) return null;
+  const typed = readDates(requestWords).find((date) => sameDate(date, asked));
+  if (!typed) return null;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  if (typed.year !== null) return `${typed.year}-${pad(typed.month)}-${pad(typed.day)}`;
+  const year = Number(today.slice(0, 4));
+  const candidates = [year - 1, year, year + 1].map((y) => `${y}-${pad(typed.month)}-${pad(typed.day)}`);
+  const distance = (d: string) => Math.abs(Date.parse(`${d}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`));
+  return candidates.reduce((best, d) => (distance(d) < distance(best) ? d : best));
 }
 
 async function exitDateLines(managerWords: string, today: string, termination = false): Promise<string[]> {
@@ -1112,6 +1129,7 @@ export async function proposeForm(
     incident_date?: unknown;
     warning_level?: unknown;
     exit_type?: unknown;
+    effective_date?: unknown;
     payroll_deduct?: unknown;
     payroll_amount?: unknown;
     prior_actions?: unknown;
@@ -1479,7 +1497,7 @@ export async function proposeForm(
   const askedExitTermination = template.key === "stc-exit" && input.exit_type === "termination";
   const exitTermination = askedExitTermination && (await import("@/lib/forms/termination-word")).saysTerminationWord(requestWords)
     ? await (async () => {
-        const effective = terminationEffectiveDateOf(requestWords, today);
+        const effective = lockedExitDate(input.effective_date, requestWords, today);
         const lastDay = effective ? null : (await import("@/lib/forms/exit-facts")).readExitFacts(requestWords, today).lastDayWorked;
         return { date: effective ?? lastDay ?? today, dated_today: !effective && !lastDay };
       })()
@@ -1520,6 +1538,7 @@ export async function proposeForm(
     ...proposal,
     sourceMessageIds: sourceIds,
     formDate: exitTermination ? exitTermination.date : datesAsked.length > 0 || futureDate ? null : date ?? proposal.formDate ?? null,
+    fromAgentLoop: true as const,
     ...(level ? { warningLevel: level } : loopTermination ? { loopTermination: true as const } : {}),
     ...(whatHappened ? { issue: whatHappened } : {}),
     ...(payroll ? { payrollDeduct: payroll } : {}),
@@ -1585,7 +1604,8 @@ export async function proposeForm(
    * the model's own decision, locked above (`loopTermination`), gives the same fact, so the card and the form agree.
    */
   const stated = await import("@/lib/forms/termination-stated");
-  const terminationStated = loopTermination || (corrective && !level && (await import("@/lib/config/chat-quality-flags")).terminationStatedTicksEnabled() && stated.statesTermination(requestWords));
+  /* QA's third review: in the loop only the model decides (locked above); main's reader never decides a loop card. */
+  const terminationStated = loopTermination;
   const unset = corrective && !awaiting ? [...(payroll ? [] : ["payroll_deduct"]), ...(level || terminationStated ? [] : ["warning_level"])] : [];
   const salonNames = (ids: readonly string[] | undefined) => (ids ?? []).map((id) => ({ id, name: rosterSalonName(id) ?? id }));
   const facts = {
@@ -1791,7 +1811,7 @@ export async function editForm(
       const kind = exactWarningLevel(value);
       if (kind === null) continue; // refused below: not a warning level on this form
       if (kind === "termination") {
-        if (!(await import("@/lib/forms/termination-word")).statesTerminationWordNow(context.question)) unstated.push(field);
+        if (!(await import("@/lib/config/chat-quality-flags")).terminationStatedTicksEnabled() || !(await import("@/lib/forms/termination-word")).statesTerminationWordNow(context.question)) unstated.push(field);
         continue;
       }
       const level = kind === "written" ? /\bwritten\b|\bwrite[- ]?up\b/i : /\bverbal\b/i;
@@ -1996,6 +2016,14 @@ export async function editForm(
      * the protected values. Its reply says what changed.
      */
     if (Object.keys(values).length === 0) {
+      /*
+       * QA's third review: the reviser (today's path, unchanged) writes a date the message states with no today check.
+       * In the loop, on a CA or coaching form, a message stating a date after today goes no further: one question.
+       */
+      if (ACCOUNT_FORMS.has(loaded.instance.templateKey)) {
+        const stated = readDates(context.question).map((date) => isoDate(date.text, editToday)).find((iso) => iso !== null && iso > editToday);
+        if (stated) return { error: `${stated} is after today (${editToday}, the salon's local date). Nothing was written. Ask the manager which day.`, date_after_today: { today: editToday } };
+      }
       const revised = await openFormTurn(context, id);
       if (!revised) {
         return writeAccount

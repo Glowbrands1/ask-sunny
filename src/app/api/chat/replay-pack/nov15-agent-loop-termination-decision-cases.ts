@@ -85,6 +85,9 @@ const NOT_TERMINATION = [
   "if this continues we will terminate her",
   "HR wants us to fire her",
   "should I terminate her?",
+  // QA's third review: history that main's reader would tick at Create; in the loop only the model decides.
+  "She got a termination warning in March. Now she was late again, make a CA",
+  "termination CA last year, now she's late again, write her up",
 ];
 
 /* The words carry no termination word: the lock refuses a termination the model asked for. */
@@ -145,6 +148,83 @@ export const NOV15_AGENT_LOOP_TERMINATION_DECISION_CASES: ReplayCase[] = [
       (thread as unknown as { proposal: Record<string, unknown> }).proposal = { ...thread.proposal!, loopTermination: true };
       const id = await thread.create();
       expect(t.checked(id).warning_type ?? [], "Create accepted a termination with no termination word in the chat").not.toContain("termination");
+    },
+  },
+  {
+    id: "nov15-termination-decision-flag-off-ticks-nothing",
+    title: "QA's third review, item 1: with TERMINATION_STATED_TICKS off, nothing in the loop or at Create ticks Termination, the model's decision and the word notwithstanding",
+    report: REPORT,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.stubEnv("TERMINATION_STATED_TICKS_ENABLED", "false");
+      try {
+        const { thread, reply } = await card(t, "we're terminating her", true);
+        expect(reply.content, "a termination was carded with the flag off").not.toMatch(/Termination, as you said/);
+        const id = await thread.create();
+        expect(t.checked(id).warning_type ?? [], "Create ticked Termination with the flag off").not.toContain("termination");
+        // A card that says termination anyway: Create's own check is gated too.
+        const forged = await card(t, "we're terminating her", false);
+        (forged.thread as unknown as { proposal: Record<string, unknown> }).proposal = { ...forged.thread.proposal!, loopTermination: true, fromAgentLoop: true };
+        const forgedId = await forged.thread.create();
+        expect(t.checked(forgedId).warning_type ?? [], "Create accepted a loop termination with the flag off").not.toContain("termination");
+        // edit_form on the draft: "make it a termination".
+        t.loopModel!(loopStandIn((view): LoopDecision => (lastResult(view, "edit_form") ? { text: "Done." } : { tool: "edit_form", input: { instance_id: id, values: { warning_type: "termination" } } })));
+        await thread.say("make it a termination");
+        expect(t.checked(id).warning_type ?? [], "edit_form ticked Termination with the flag off").not.toContain("termination");
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    },
+  },
+  {
+    id: "nov15-termination-decision-no-values-future-date",
+    title: "QA's third review, item 3: \"the date is wrong, change it to 12/20/2026\" through edit_form with no values (the reviser's path) writes no date after today on a Corrective Action; one question",
+    report: REPORT,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      const { thread } = await card(t, "write her up, she has two prior warnings", false);
+      const id = await thread.create();
+      const before = t.values(id).form_date ?? "";
+      const model = loopStandIn((view): LoopDecision => {
+        const edit = lastResult(view, "edit_form") as { error?: string } | null;
+        if (!edit) return { tool: "edit_form", input: { instance_id: id } };
+        return { text: edit.error ? "12/20/2026 is after today, so I didn't change the date. Which day should it be?" : "Done." };
+      });
+      t.loopModel!(model);
+      const reply = await thread.say("the date is wrong, change it to 12/20/2026");
+      expect(t.values(id).form_date ?? "", `a date after today was written through the reviser:\n${reply.content}`).toBe(before);
+      if (offline) expect(toolResults(model.views, "edit_form")[0] ?? "", "edit_form did not refuse the date").toMatch(/is after today/);
+    },
+  },
+  {
+    id: "nov15-termination-decision-exit-keeps-the-stated-date",
+    title: "QA's third review, item 5: \"terminate her, termination date 11/28\", \"we fired her on 11/12, exit form\" and \"terminated as of 11/20\" are dated the day the manager typed (the model's effective_date, locked), never today",
+    report: REPORT,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-15T18:00:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      for (const [words, date, iso] of [
+        ["exit form for remy calder, terminate her, termination date 11/28", "11/28", "2026-11-28"],
+        ["remy calder, we fired her on 11/12, exit form", "11/12", "2026-11-12"],
+        ["exit form for remy calder, terminated as of 11/20", "11/20", "2026-11-20"],
+      ] as const) {
+        t.loopModel!(loopStandIn((view): LoopDecision => {
+          if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
+          if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "stc-exit", employee_id: "e-2", exit_type: "termination", effective_date: date } };
+          return { text: "Here's the Employee Exit Form for **Remy Calder**." };
+        }));
+        const thread = t.thread();
+        await thread.say(words);
+        expect(thread.proposal?.formDate, `"${words}" was not dated the stated day`).toBe(iso);
+      }
     },
   },
   {
