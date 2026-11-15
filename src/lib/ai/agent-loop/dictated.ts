@@ -56,21 +56,40 @@ export function pastedOutline(message: string): boolean {
   return (message.match(HEADINGS) ?? []).length >= 2 || /\b(?:format|out\s?line|template)\b/i.test(message);
 }
 
+/*
+ * QA's review (NO-GO 5): the dictation ends before the first sentence that is an instruction to the app ("Also make it
+ * a verbal", "change the date to …", any level or payroll words): an account never holds instructions or level words.
+ */
+const INSTRUCTION = /^(?:also|and\s+(?:also\s+)?(?:make|change|set|put|add|mark)|please|make\s+it|change|set|update|add|remove|tick|mark|put|yes|no)\b|\b(?:verbal|written|termination|warning\s+level|type\s+of\s+warning|payroll)\b/i;
+
+/** What follows the marker, up to the first instruction sentence. */
+function dictatedRegion(message: string, end: number): string {
+  const after = message.slice(end);
+  let kept = 0;
+  for (const sentence of after.match(/[^.!?\n]+(?:[.!?]+|\n|$)/g) ?? []) {
+    if (kept > 0 && INSTRUCTION.test(sentence.trim())) break;
+    if (kept === 0 && sentence.trim() !== "" && INSTRUCTION.test(sentence.trim())) break;
+    kept += sentence.length;
+  }
+  return after.slice(0, kept);
+}
+
 /** The manager's dictated text for the field: the model's text as it stands in the message after the marker, or null. */
-export function dictatedField(message: string, labels: readonly string[], modelText: string): string | null {
+export function dictatedField(message: string, labels: readonly string[], modelText: string, options: { stopAtInstructions?: boolean } = {}): string | null {
   const end = dictationMarkerEnd(message, labels);
   const words = (modelText ?? "").trim().split(/\s+/).filter(Boolean);
   if (end === null || words.join(" ").length <= 10) return null;
   const pattern = new RegExp(words.map(escaped).join("\\s+"), "i");
-  const found = pattern.exec(message.slice(end));
+  // The Action Plan (G8) keeps its own reading: a plan may say "termination of employment".
+  const found = pattern.exec(options.stopAtInstructions === false ? message.slice(end) : dictatedRegion(message, end));
   return found ? found[0] : null;
 }
 
-/** Everything the message dictates after the marker (to the end of the message), for a refusal to hand back. */
-export function dictatedText(message: string, labels: readonly string[]): string | null {
+/** What the message dictates after the marker, up to the first instruction sentence, for a refusal to hand back. */
+export function dictatedText(message: string, labels: readonly string[], options: { stopAtInstructions?: boolean } = {}): string | null {
   const end = dictationMarkerEnd(message, labels);
   if (end === null) return null;
-  const text = message.slice(end).trim();
+  const text = (options.stopAtInstructions === false ? message.slice(end) : dictatedRegion(message, end)).trim();
   return text.length > 10 ? text : null;
 }
 

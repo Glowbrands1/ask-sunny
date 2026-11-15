@@ -8,6 +8,7 @@ import { randomUUID } from "node:crypto";
 import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import { businessToday } from "@/lib/business-date";
 import { isoDate, monthDayToIso, readDates, sameDate, withoutDates } from "./dates";
+import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import { ACCOUNT_LABELS, ACTION_PLAN_LABELS, dictatedField, dictatedText, pastedOutline as isPastedOutline } from "./dictated";
 import { candidateNameWords, chatFormsActor } from "@/lib/forms/chat-form-records";
 import { displayName, matchEmployeeName, nameConfirmationQuestion, type RosterEmployee } from "@/lib/forms/employee-match";
@@ -214,9 +215,12 @@ function askedDateText(iso: string): string {
  * What is saved is that stretch of the message, in the manager's own capitals; the model sets its bounds, so "Also make
  * it a written…" after it stays out. Null when either check fails.
  */
+/** QA's review (NO-GO 1): never written from dictation, whatever their template calls them. */
+const DICTATION_NEVER: ReadonlySet<string> = new Set(["employee_name", "job_title", "location", "form_date", "incident_date", "date", "salon", "store"]);
+
 export function dictatedActionPlan(message: string, modelText: string): string | null {
   /* Batch J2: G8's markers and matching, now `dictated.ts`'s for any field; the Action Plan is one of its labels. */
-  return dictatedField(message, ACTION_PLAN_LABELS, modelText);
+  return dictatedField(message, ACTION_PLAN_LABELS, modelText, { stopAtInstructions: false });
 }
 
 /** Batch G (G4): the app's own question when several forms on file fit (find_past_forms gives it; the rules book ends the reply with it). */
@@ -410,19 +414,29 @@ export async function findStaff(context: ToolContext, input: { name?: unknown },
    * Batch J7 (QA, from the J6 speed report: 9b spent 3 of its 6 steps on read_form, find_staff and a refused
    * propose_form with the draft already open): the open draft's own person needs no lookup. The change goes to edit_form.
    */
+  const read = await rosterFor(context.actor.scope);
+  if (read.kind === "failed") return { error: ROSTER_FAILED };
+  if (read.kind === "unchecked") return { unchecked: true, note: ROSTER_UNCHECKED };
+  /*
+   * Batch J7, as QA's review ruled (NO-GO 4): only the draft person's full name, or a first name exactly one roster
+   * person has, and only when the message asks for no other form ("now a coaching form for <first>" with a CA draft
+   * open is a new card). Otherwise the roster is read, and the same-name "which one?" applies.
+   */
   if (context.openFormId) {
     const open = await authorizeInstance(context.request, context.openFormId, "view").then(({ loaded }) => loaded.instance).catch(() => null);
-    const first = open?.employeeName?.trim().split(/\s+/)[0] ?? "";
-    if (open?.employeeName && open.status === "draft" && (samePerson(open.employeeName, typed) || (first !== "" && typed.toLowerCase() === first.toLowerCase()))) {
+    const said = typed.toLowerCase().split(/\s+/).filter(Boolean);
+    const own = open?.employeeName?.trim().toLowerCase().split(/\s+/).filter(Boolean) ?? [];
+    const fullName = said.length >= 2 && said.length === own.length && said.every((word, index) => word === own[index]);
+    const firstOnly = said.length === 1 && said[0] === own[0] && read.roster.filter((person) => words(displayName(person))[0]?.toLowerCase() === said[0]).length === 1;
+    const intent = detectTemplateIntent(context.question);
+    const otherForm = intent.kind === "explicit" && intent.templateKey !== open?.templateKey;
+    if (open?.employeeName && open.status === "draft" && (fullName || firstOnly) && !otherForm && !/\b(?:another|new|second|separate)\b/i.test(context.question)) {
       return {
         open_draft: { instance_id: open.id, employee: open.employeeName, form: open.templateName },
         note: `${open.employeeName} is the person on the open draft. Use edit_form with instance_id ${open.id} for the change; find_staff, read_form and propose_form are not needed.`,
       };
     }
   }
-  const read = await rosterFor(context.actor.scope);
-  if (read.kind === "failed") return { error: ROSTER_FAILED };
-  if (read.kind === "unchecked") return { unchecked: true, note: ROSTER_UNCHECKED };
   let found = rosterMatches(typed, read.roster).slice(0, 10);
   /* The roster's exact full name wins over people whose names only start the same ("Test Employee" vs "Test Employee Two"). */
   const exact = found.filter((person) => samePerson(displayName(person), typed) && words(displayName(person)).length === words(typed).length);
@@ -788,6 +802,20 @@ export async function findPastForms(context: ToolContext, input: { employee_name
 /* ----------------------------------------------------------- read form --- */
 
 const VALUES_LIMIT = 6_000;
+
+/** Batch J3 (QA's review, NO-GO 6): the open form's level, payroll and amount as saved now. Null when it cannot be read. */
+export async function savedFormState(context: ToolContext, instanceId: string): Promise<{ warningLevel: string | null; payrollDeduct: string | null; payrollAmount: string | null } | null> {
+  try {
+    const { loaded } = await authorizeInstance(context.request, instanceId, "view");
+    const row = (key: string) => loaded.values.find((value) => value.fieldKey === key);
+    const level = row("warning_type")?.checked.find((value) => value === "verbal" || value === "written" || value === "termination") ?? null;
+    const payroll = row("payroll_deduct")?.checked.find((value) => value === "yes" || value === "no") ?? null;
+    const amount = row("payroll_deduct_amount")?.value?.trim() || null;
+    return { warningLevel: level, payrollDeduct: payroll, payrollAmount: amount };
+  } catch {
+    return null;
+  }
+}
 
 export async function readForm(context: ToolContext, input: { instance_id?: unknown }): Promise<ToolResult> {
   const id = typeof input.instance_id === "string" ? input.instance_id.trim() : "";
@@ -2111,6 +2139,11 @@ export async function editForm(
       for (const [field, value] of Object.entries(values)) {
         if (field === "action_plan" || typeof value !== "string" || isPastedOutline(context.question)) continue;
         const own = labelled.find((row) => row.key === field);
+        /*
+         * QA's review (NO-GO 1-3): only a free-text field the AI may write (the account, expectation, coaching details and
+         * the like). Employee info, location, job title and every date field keep their own tool paths and guards.
+         */
+        if (!own || own.responsibility !== "ai" || own.input === "date" || DICTATION_NEVER.has(field)) continue;
         const labels = [own ? interpolate(own.label, null) : "", field.replace(/_/g, " "), ...(field === accountField ? ACCOUNT_LABELS : [])].filter(Boolean);
         const said = dictatedText(context.question, labels);
         if (!said) continue;

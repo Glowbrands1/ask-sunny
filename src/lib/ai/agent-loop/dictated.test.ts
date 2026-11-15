@@ -44,4 +44,17 @@ describe("a dictated field", () => {
     expect(pastedOutline(`Observation of Offense: ${SAID}\nIt needs to look like this format but for juno paxton:`)).toBe(true);
     expect(pastedOutline(L4_T3)).toBe(false);
   });
+
+  it("QA's review (NO-GO 5): the dictation ends before an instruction to the app", () => {
+    const said = "Observation: she left the beds dirty. Also make it a verbal";
+    expect(dictatedText(said, ACCOUNT_LABELS)).toBe("she left the beds dirty.");
+    expect(dictatedField(said, ACCOUNT_LABELS, "she left the beds dirty. Also make it a verbal")).toBeNull();
+    expect(dictatedField(said, ACCOUNT_LABELS, "she left the beds dirty.")).toBe("she left the beds dirty.");
+    expect(dictatedText("Observation: she left the beds dirty and yes payroll $20", ACCOUNT_LABELS)).toBeNull();
+  });
+
+  it("the Action Plan (G8) keeps its own reading: a plan may say termination", () => {
+    const plan = "Violation of Company policy has resulted in immediate termination of employment.";
+    expect(dictatedField(`Action Plan: ${plan}`, ACTION_PLAN_LABELS, plan, { stopAtInstructions: false })).toBe(plan);
+  });
 });

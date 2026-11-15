@@ -115,6 +115,9 @@ export function monthDayToIso(monthDay: string, today: string): string {
 export function isoDate(value: string, today: string): string | null {
   const text = value.trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  /* QA's review (NO-GO 2): "2026-12-20T00:00" read as 12/20 of LAST year; an ISO date's time suffix never changes it. */
+  const stamped = /^(\d{4}-\d{2}-\d{2})[T ]\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?$/.exec(text);
+  if (stamped) return stamped[1]!;
   const [date] = readDates(text);
   if (!date) return null;
   if (date.year !== null) return `${date.year}-${String(date.month).padStart(2, "0")}-${String(date.day).padStart(2, "0")}`;

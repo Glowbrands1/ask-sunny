@@ -90,3 +90,14 @@ describe("the account check and the incident dates read every style", () => {
     expect(incidentDates("late on June 11 (6/11)", null)).toEqual(["6/11"]);
   });
 });
+
+/* QA's batch J review (NO-GO 2, 15 Nov 2026): an ISO date's time suffix never changes its year. */
+describe("isoDate with a time", () => {
+  it("2026-12-20T00:00 is 2026-12-20, never last year's 12/20", async () => {
+    const { isoDate } = await import("./dates");
+    expect(isoDate("2026-12-20T00:00", "2026-11-15")).toBe("2026-12-20");
+    expect(isoDate("2026-12-20T00:00:00Z", "2026-11-15")).toBe("2026-12-20");
+    expect(isoDate("2026-11-12 09:30", "2026-11-15")).toBe("2026-11-12");
+    expect(isoDate("2026-11-12", "2026-11-15")).toBe("2026-11-12");
+  });
+});

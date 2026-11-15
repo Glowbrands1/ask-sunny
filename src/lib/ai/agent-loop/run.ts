@@ -35,6 +35,7 @@ import {
   manualFor,
   proposeForm,
   readForm,
+  savedFormState,
   readPolicy,
   salonLabel,
   templateChoices,
@@ -101,38 +102,63 @@ export function doneThisTurn(effects: Pick<ToolEffects, "proposal" | "formUpdate
 
 /**
  * Batch J3 (QA's live re-run, 9b: "make it a written and yes payroll $15" saved the level and payroll, not the $15,
- * stopped at the step limit and never said so): what this message stated that is not on the card or the form after
- * the turn, and the fields an edit refused. Facts only, each "**<field>** (<value>)".
+ * stopped at the step limit and never said so), as QA's review ruled (NO-GO 6): only what THIS message asks to change
+ * (a level, payroll, an amount), checked against the card or the form AS SAVED at the end of the turn, and a field an
+ * edit refused only when it is still not saved by the turn's end. A history mention ("she was written up last month",
+ * "a verbal was given on 9/1") asks for nothing. Facts only, each "**<field>** (<value>)".
  */
+export interface SavedFormState {
+  readonly warningLevel: string | null;
+  readonly payrollDeduct: string | null;
+  readonly payrollAmount: string | null;
+}
+
+/** "make it a written", "verbal ca for …", "written warning", "change it to a verbal": a level asked for, never a history mention. */
+const LEVEL_ASK = /(?:^|\b(?:make|change|set|switch|update)\s+(?:it|this|the\s+(?:level|warning|ca))\s+(?:to\s+)?(?:an?\s+)?|\b(?:it\s+(?:should|needs\s+to)\s+be|as)\s+an?\s+)(verbal|written)\b|\b(verbal|written)\s+(?:warning|ca|c\/a|corrective)\b(?![^.\n]{0,30}\b(?:was|were)\s+(?:given|issued))/i;
+const HISTORY = /\b(?:was|were|got|had|been|received|given|issued)\b[^.\n]{0,25}\b(?:verbal|written)\b|\b(?:verbal|written)\s+up\b|\b(?:last|previous|prior|before|earlier|ago)\b/i;
+
+function levelAsked(question: string): "verbal" | "written" | null {
+  for (const sentence of question.split(/(?<=[.!?])\s+|\n+/)) {
+    const found = LEVEL_ASK.exec(sentence);
+    if (!found) continue;
+    const level = (found[1] ?? found[2] ?? "").toLowerCase();
+    if ((level === "verbal" || level === "written") && !HISTORY.test(sentence)) return level;
+  }
+  return null;
+}
+
 export function notSavedThisTurn(
   question: string,
   effects: Pick<ToolEffects, "proposal" | "formUpdate">,
   refused: readonly string[],
   formOpen: boolean,
+  saved: { readonly form: SavedFormState | null; readonly fields: ReadonlySet<string> } = { form: null, fields: new Set() },
 ): string[] {
   const missing: string[] = [];
-  const updated = new Set(effects.formUpdate?.updated ?? []);
   const card = effects.proposal;
-  const level = /\b(verbal|written)\b/i.exec(question)?.[1]?.toLowerCase() ?? null;
-  const saysPayroll = /\bpayroll\b/i.test(question);
+  const level = levelAsked(question);
+  const saysPayroll = /\bpayroll\b/i.test(question) && !HISTORY.test(question.replace(/\b(?:verbal|written)\b/gi, ""));
   const payrollNo = /\b(?:no|not)\s+payroll\b|\bpayroll\b[^.\n]{0,20}\b(?:no|not applicable)\b/i.test(question);
-  const payrollYes = /\b(?:yes|with)\b[^.\n]{0,20}\bpayroll\b|\bpayroll\b[^.\n]{0,20}\b(?:yes|applies)\b|\$\s?\d/i.test(question);
+  const payrollYes = /\b(?:yes|with)\b[^.\n]{0,20}\bpayroll\b|\bpayroll\b[^.\n]{0,20}\b(?:yes|applies)\b|\bpayroll\b[^.\n]{0,20}\$\s?\d/i.test(question);
   const payroll = saysPayroll ? (payrollNo ? "no" : payrollYes ? "yes" : null) : null;
-  const amount = /\$\s?(\d+(?:\.\d{1,2})?)/.exec(question)?.[1] ?? null;
+  const amount = payroll === "yes" ? (/\$\s?(\d+(?:\.\d{1,2})?)/.exec(question)?.[1] ?? null) : null;
   const levelName = level === "written" ? "Written Warning" : "Verbal Warning";
   const check = (have: boolean, label: string, value: string) => {
     if (!have) missing.push(`**${label}** (${value})`);
   };
-  if (card) {
-    if (level) check(card.warningLevel === level, "Type of Warning", levelName);
-    if (payroll) check(card.payrollDeduct === payroll, "Payroll deduct", payroll === "yes" ? "Yes" : "No");
-    if (amount && payroll !== "no") check(Number(card.payrollDeductAmount?.replace(/[^\d.]/g, "") ?? NaN) === Number(amount), "Payroll deduction amount", `$${amount}`);
-  } else if (formOpen) {
-    if (level) check(updated.has("warning_type"), "Type of Warning", levelName);
-    if (payroll) check(updated.has("payroll_deduct"), "Payroll deduct", payroll === "yes" ? "Yes" : "No");
-    if (amount && payroll !== "no") check(updated.has("payroll_deduct_amount"), "Payroll deduction amount", `$${amount}`);
+  const state: SavedFormState | null = card
+    ? { warningLevel: card.warningLevel ?? null, payrollDeduct: card.payrollDeduct ?? null, payrollAmount: card.payrollDeductAmount ?? null }
+    : formOpen
+      ? saved.form
+      : null;
+  if (state) {
+    if (level) check(state.warningLevel === level, "Type of Warning", levelName);
+    if (payroll) check(state.payrollDeduct === payroll, "Payroll deduct", payroll === "yes" ? "Yes" : "No");
+    if (amount) check(Number(state.payrollAmount?.replace(/[^\d.]/g, "") ?? NaN) === Number(amount), "Payroll deduction amount", `$${amount}`);
   }
-  for (const field of refused) {
+  for (const field of new Set(refused)) {
+    // Refused once and saved later in the turn: saved.
+    if (saved.fields.has(field)) continue;
     const label = `**${field.replace(/_/g, " ")}**`;
     if (!missing.some((line) => line.toLowerCase().startsWith(label.toLowerCase()))) missing.push(label);
   }
@@ -578,6 +604,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
 
   /* One tool call, timed and counted for the trace: its name, ms and result size; never its values. */
   const refusedFields: string[] = [];
+  const savedFields = new Set<string>();
   const runTool = async (step: number, name: string, args: unknown): Promise<ToolResult> => {
     const started = performance.now();
     let result: ToolResult;
@@ -590,6 +617,9 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     /* J3: the fields an edit refused this turn, for a reply that stops early. */
     if (name === "edit_form" && Array.isArray((result as { refused?: unknown }).refused)) {
       for (const row of (result as { refused: { field?: unknown }[] }).refused) if (typeof row?.field === "string") refusedFields.push(row.field);
+    }
+    if (name === "edit_form" && Array.isArray((result as { updated?: unknown }).updated)) {
+      for (const field of (result as { updated: unknown[] }).updated) if (typeof field === "string") savedFields.add(field);
     }
     steps.push({ step, tool: name, ms: Math.round(performance.now() - started), resultChars: JSON.stringify(result).length, ok: !("error" in result), ...stepReason(result) });
     return result;
@@ -900,7 +930,9 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
    * batch A). Code adds only the protocol marker below and the safety clean-ups at the end; the card's questions, read-
    * backs and policy line are facts on propose_form's result, worded by the rules book's Card replies.
    */
-  const missing = stoppedAt === "reply" ? [] : notSavedThisTurn(input.question, effects, refusedFields, Boolean(input.openFormId));
+  /* J3 (QA's review, NO-GO 6): the open form as saved at the end of the turn, read once, only when the turn stopped early. */
+  const formAtEnd = stoppedAt !== "reply" && input.openFormId && !effects.proposal ? await savedFormState(context, input.openFormId) : null;
+  const missing = stoppedAt === "reply" ? [] : notSavedThisTurn(input.question, effects, refusedFields, Boolean(input.openFormId), { form: formAtEnd, fields: savedFields });
   let content = (
     stoppedAt === "timeout" || stoppedAt === "error" ? partialReply(done!, stoppedAt, missing) : stoppedAt === "step_limit" ? stepLimitReply(done, missing) : text
   ).trim();
