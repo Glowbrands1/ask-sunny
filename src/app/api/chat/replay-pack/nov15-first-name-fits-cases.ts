@@ -33,6 +33,18 @@ function surnameSearchModel(typed: string, surname: string) {
   });
 }
 
+/** A loop model that looks up the surname alone and proposes whoever it found. */
+function surnameOnlyModel(surname: string) {
+  return loopStandIn((view) => {
+    if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: surname } };
+    const matches = (lastResult(view, "find_staff")?.matches ?? []) as { employee_id: string }[];
+    if (matches[0] && !lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: matches[0].employee_id, what_happened: "She was late." } };
+    return { text: "Here's the draft." };
+  });
+}
+
+const REVIEW = "QA's review of #1008, 15 Nov 2026";
+
 export const NOV15_FIRST_NAME_FITS_CASES: ReplayCase[] = [
   {
     id: "nov15-first-name-fits-soren-is-not-marisol",
@@ -88,6 +100,56 @@ export const NOV15_FIRST_NAME_FITS_CASES: ReplayCase[] = [
       const reply = await thread.say("write up rae fairweather for being late");
       expect(thread.proposal?.employeeName, reply.content).toBe("Lorraine Fairweather");
       expect(reply.content).not.toMatch(/Did you mean|isn't on your staff list/);
+    },
+  },
+  ...["coach fairweather on punctuality", "warn fairweather, she was late again", "write up Dr Fairweather for being late"].map(
+    (said, index): ReplayCase => ({
+      id: `nov15-first-name-fits-verb-or-title-${index + 1}`,
+      title: `"${said}" (agent loop, roster has Marisol Fairweather): a verb or title before the surname is no first name; the card is hers`,
+      report: REVIEW,
+      status: "fixed",
+      fixFlags: [LOOP, FLAG],
+      async run(t) {
+        if (!t.loopOn?.()) return;
+        vi.setSystemTime(new Date("2026-11-14T16:00:00Z"));
+        t.directory([...STAFF, MARISOL]);
+        t.as("salon_director", KEARNEY);
+        t.loopModel!(surnameOnlyModel("fairweather"));
+        const thread = t.thread();
+        const reply = await thread.say(said);
+        expect(thread.proposal?.employeeName, reply.content).toBe("Marisol Fairweather");
+        expect(reply.content).not.toMatch(/isn't on your staff list/);
+      },
+    }),
+  ),
+  {
+    id: "nov15-first-name-fits-answer-takes-her",
+    title: "\"write up soren fairweather for being late\", asked \"Did you mean Marisol Fairweather?\", then \"yeah that's her\" (agent loop): the card is hers",
+    report: REVIEW,
+    status: { open: "the first turn already seats Marisol Fairweather by the surname lookup" },
+    fixFlags: [LOOP, FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-14T16:00:00Z"));
+      t.directory([...STAFF, MARISOL]);
+      t.as("salon_director", KEARNEY);
+      // The stand-in asks the question the card setter gives it, as the live model does, and repeats its lookups next turn.
+      const model = loopStandIn((view) => {
+        const searches = view.results.filter((result) => result.tool === "find_staff");
+        if (searches.length === 0) return { tool: "find_staff", input: { name: "soren fairweather" } };
+        if (searches.length === 1) return { tool: "find_staff", input: { name: "fairweather" } };
+        const proposed = lastResult(view, "propose_form");
+        if (!proposed) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: MARISOL.id, what_happened: "She was late." } };
+        const refused = typeof proposed.error === "string" ? /ask: "([^"]+)"/.exec(proposed.error)?.[1] : undefined;
+        return { text: refused ?? "Here's the draft." };
+      });
+      t.loopModel!(model);
+      const thread = t.thread();
+      const first = await thread.say("write up soren fairweather for being late");
+      expect(thread.proposal?.employeeName ?? null, first.content).not.toBe("Marisol Fairweather");
+      expect(first.content).toContain("Did you mean Marisol Fairweather");
+      const reply = await thread.say("yeah that's her");
+      expect(thread.proposal?.employeeName, reply.content).toBe("Marisol Fairweather");
     },
   },
 ];

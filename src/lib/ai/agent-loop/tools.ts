@@ -165,6 +165,8 @@ export interface ToolEffects {
   citations?: SourceCitation[];
   /** A new draft revising a finalized form, opened on the manager's screen (`editable-draft.ts`). */
   formOpened?: AskResponse["formOpened"] | null;
+  /** FIRST_NAME_MUST_FIT_ENABLED: every name the model looked up with find_staff this turn (`first-name-fits.ts`). */
+  staffQueries?: string[];
 }
 
 export type ToolResult = Record<string, unknown>;
@@ -307,7 +309,9 @@ export async function findStaff(context: ToolContext, input: { name?: unknown },
   if (read.kind === "unchecked") return { unchecked: true, note: ROSTER_UNCHECKED };
   let found = rosterMatches(typed, read.roster).slice(0, 10);
   /* FIRST_NAME_MUST_FIT_ENABLED: a shared last name is not the person the manager typed ("Soren Fairweather" is not Marisol Fairweather). */
-  const otherFirst = found.map((person) => [person, otherPersonTyped(context, person)] as const).filter(([, other]) => other !== null);
+  if (effects) effects.staffQueries = [...(effects.staffQueries ?? []), typed];
+  const asked = [typed, ...(effects?.staffQueries ?? [])];
+  const otherFirst = found.map((person) => [person, otherPersonTyped(context, person, asked)] as const).filter(([, other]) => other !== null);
   if (otherFirst.length > 0 && otherFirst.length === found.length) return { matches: [], note: `Not the person the manager typed. Ask: "${otherPersonQuestion(otherFirst[0]![1]!, otherFirst[0]![0])}"` };
   found = found.filter((person) => !otherFirst.some(([other]) => other === person));
   /* The roster's exact full name wins over people whose names only start the same ("Test Employee" vs "Test Employee Two"). */
@@ -922,7 +926,7 @@ export async function proposeForm(
     if (person && turnedDown && samePerson(turnedDown, displayName(person))) {
       return { error: `The manager said no to ${displayName(person)}. Never put them on the card; ask who the form is for.` };
     }
-    const otherFirst = person ? otherPersonTyped(context, person) : null;
+    const otherFirst = person ? otherPersonTyped(context, person, [typed, ...(effects.staffQueries ?? [])].filter(Boolean)) : null;
     if (person && otherFirst) return { error: `The manager typed ${otherFirst}, not ${displayName(person)}. Never put them on the card; ask: "${otherPersonQuestion(otherFirst, person)}"` };
     if (person) employee = { name: displayName(person), salonIds: person.salonIds, id: person.id };
     /*

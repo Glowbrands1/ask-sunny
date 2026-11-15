@@ -58,28 +58,73 @@ describe("FIRST_NAME_MUST_FIT_ENABLED on: the loop never seats Marisol for Soren
   afterEach(() => vi.unstubAllEnvs());
 
   it.each([
-    ["write up soren fairweather for being late", "soren Fairweather"],
-    ["Create a CA for Soren Fairweather, she was late", "Soren Fairweather"],
-  ])("%s → someone else (%s)", (said, typed) => {
-    expect(otherPersonTyped(context(said), MARISOL)?.toLowerCase()).toBe(typed.toLowerCase());
+    [["soren fairweather"], "soren fairweather"],
+    [["Soren Fairweather"], "Soren Fairweather"],
+    // The model searched the full name, found nobody, then the surname alone: the full name is still the one it asked for.
+    [["soren fairweather", "fairweather"], "soren fairweather"],
+  ])("the model asked for %j → someone else (%s)", (names, typed) => {
+    expect(otherPersonTyped(context("write up soren fairweather for being late"), MARISOL, names)).toBe(typed);
   });
 
   it.each([
-    ["write up marisal fairweather for being late"],
-    ["write up mari fairweather for being late"],
-    ["write up fairweather for being late"],
-    ["write up soren smith for being late"],
+    [["marisal fairweather"]],
+    [["mari fairweather"]],
+    [["fairweather"]],
+    [["soren smith"]],
+    [["Marisol Fairweather"]],
+  ])("the model asked for %j → not someone else", (names) => {
+    expect(otherPersonTyped(context("write up her for being late"), MARISOL, names)).toBeNull();
+  });
+
+  /*
+   * QA's review of #1008, finding 1: the word before the surname in the MESSAGE was read as a first name, so a verb or
+   * a title was ("coach fairweather on punctuality" gave "Coach Fairweather isn't on your staff list"). The message is
+   * never read; the model's lookup of the surname alone has no first name to check.
+   */
+  it.each([
+    ["coach fairweather on punctuality"],
+    ["warn fairweather"],
+    ["document fairweather"],
+    ["terminate fairweather"],
+    ["discipline fairweather"],
+    ["verbal fairweather"],
+    ["write up Dr Fairweather"],
+    ["write up Mx Fairweather for being late"],
   ])("%s → not someone else", (said) => {
-    expect(otherPersonTyped(context(said), MARISOL)).toBeNull();
+    expect(otherPersonTyped(context(said), MARISOL, ["fairweather"])).toBeNull();
   });
 
   it("the manager's own correction to her first name is her", () => {
-    expect(otherPersonTyped(context("sorry i meant marisol fairweather", [{ role: "user", content: "write up soren fairweather" }]), MARISOL)).toBeNull();
+    expect(otherPersonTyped(context("sorry i meant marisol fairweather"), MARISOL, ["soren fairweather", "marisol fairweather"])).toBeNull();
   });
 
-  it("a yes to this chat's own question naming her is the manager choosing her", () => {
-    const asked = { role: "assistant" as const, content: `${otherPersonQuestion("soren fairweather", MARISOL)} Did you mean **Marisol Fairweather**?` };
-    expect(otherPersonTyped(context("yes", [{ role: "user", content: "write up soren fairweather" }, asked]), MARISOL)).toBeNull();
+  /*
+   * QA's review of #1008, finding 2: answering the chat's own question didn't clear it, and a later turn in the same
+   * chat was refused too. The turn right after the question is read; once it takes her, she is accepted for the chat.
+   */
+  const asked = { role: "assistant" as const, content: otherPersonQuestion("soren fairweather", MARISOL) };
+  const first = { role: "user" as const, content: "write up soren fairweather" };
+  it.each([["yes"], ["marisol"], ["yes, marisol"], ["yes marisol"], ["yeah that's her"], ["her"]])(
+    "%s, after the question → her",
+    (answer) => {
+      expect(otherPersonTyped(context(answer, [first, asked]), MARISOL, ["soren fairweather"])).toBeNull();
+    },
+  );
+
+  it("once taken, a later \"write up marisol\" in the same chat is her too", () => {
+    const history = [first, asked, { role: "user" as const, content: "yeah that's her" }, { role: "assistant" as const, content: "Done." }];
+    expect(otherPersonTyped(context("write up marisol for being late again", history), MARISOL, ["soren fairweather"])).toBeNull();
+  });
+
+  it("a no, or another name, after the question is not her", () => {
+    expect(otherPersonTyped(context("no", [first, asked]), MARISOL, ["soren fairweather"])).toBe("soren fairweather");
+    expect(otherPersonTyped(context("someone else, soren", [first, asked]), MARISOL, ["soren fairweather"])).toBe("soren fairweather");
+  });
+
+  it("only the turn right after the question counts, not every turn", () => {
+    // "her" in a later turn, after the manager said no, does not take her.
+    const history = [first, asked, { role: "user" as const, content: "no" }, { role: "assistant" as const, content: "Who is it for?" }];
+    expect(otherPersonTyped(context("her name is soren", history), MARISOL, ["soren fairweather"])).toBe("soren fairweather");
   });
 
   it("the question, in QA's words", () => {
@@ -96,12 +141,12 @@ describe("the preferred first name typed is that person, with no question", () =
     expect(found.kind).toBe("exact");
     expect(found.kind === "exact" ? found.employee.id : null).toBe("e-rae");
     expect(firstNameFits("rae", PREFERRED)).toBe(true);
-    expect(otherPersonTyped(context("write up rae fairweather for being late"), PREFERRED)).toBeNull();
+    expect(otherPersonTyped(context("write up rae fairweather for being late"), PREFERRED, ["rae fairweather"])).toBeNull();
   });
 });
 
 describe("FIRST_NAME_MUST_FIT_ENABLED off: as before", () => {
   it("nothing is refused", () => {
-    expect(otherPersonTyped(context("write up soren fairweather for being late"), MARISOL)).toBeNull();
+    expect(otherPersonTyped(context("write up soren fairweather for being late"), MARISOL, ["soren fairweather"])).toBeNull();
   });
 });
