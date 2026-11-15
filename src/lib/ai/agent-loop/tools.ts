@@ -180,6 +180,11 @@ async function formsOnFileAskedFor(context: ToolContext, evidence: unknown, pers
   return { ok: false, reason: "evidence_other_person", reasonCode: "privacy_not_this_person" };
 }
 
+/** A message of one word (punctuation aside): a format check, never a reading of which word (fix batch item 7). */
+export function oneWord(text: string): boolean {
+  return text.trim().split(/\s+/).filter((word) => /[\p{L}\p{N}]/u.test(word)).length === 1;
+}
+
 /**
  * QA's review of PR 1b, ruling 4: turns the model cites as this person's request (request_evidence) or account
  * (account_evidence). Each is a real manager turn of this conversation, names no other roster person, and is in THIS
@@ -416,6 +421,8 @@ export interface ToolEffects {
   openRequested?: string;
   /** PR 2: the roster id of the card's person (the card record); null for a team card or a name not on the roster. */
   proposalEmployeeId?: string | null;
+  /** Fix batch item 7: the CA-only fields this turn's card asks about, for the card record (`card-record.ts` asked). */
+  proposalAsked?: readonly string[];
   /**
    * Every source a tool read this turn, numbered from 1 in the order read: the model cites one as [S<n>] (`addSource`).
    * Only the ones the reply cites become source cards (run.ts, QA's live-app item 12), as today's grounded path does.
@@ -1711,7 +1718,7 @@ export async function proposeForm(
   const caOnlyFields = template.key === appConfig().formKeys.corrective;
   const askedPayroll = (input.payroll_deduct === "yes" || input.payroll_deduct === "no") ? input.payroll_deduct : null;
   const payrollCheck = caOnlyFields && askedPayroll ? answerEvidence(context, input.payroll_evidence, { card: employee.name }, evidencePerson) : null;
-  const payroll = askedPayroll && payrollCheck?.ok ? askedPayroll : null;
+  let payroll: "yes" | "no" | null = askedPayroll && payrollCheck?.ok ? askedPayroll : null;
   const typedAmount = typeof input.payroll_amount === "string" && /\d/.test(input.payroll_amount) ? input.payroll_amount.replace(/[^\d.]/g, "") : null;
   /* The amount the manager stated, read as today reads it (`payrollAmountFromConversation`) when the model left it out. */
   const statedAmount = payroll === "yes" ? payrollAmountFromConversation(conversationTurns(context), { payrollAnswer: "yes" })?.replace(/[^\d.]/g, "") ?? null : null;
@@ -1774,6 +1781,23 @@ export async function proposeForm(
   const askedLevel = input.warning_level === "verbal" || input.warning_level === "written" ? input.warning_level : null;
   const levelCheck = caOnlyFields && askedLevel ? answerEvidence(context, input.level_evidence, "request", evidencePerson) : null;
   const level = askedLevel && levelCheck?.ok ? askedLevel : null;
+  /*
+   * Fix batch item 7 (QA's targeted re-run, c163: a bare "yes" after "Payroll deduct and warning level aren't set" set
+   * payroll). The card on screen asked two things in one line (its record's `asked`), and this message is one word, quoted
+   * whole as the payroll evidence, with no level: one word answering two questions says neither ("yes payroll deduct"
+   * names which, and is kept). Payroll is not kept and the reply asks
+   * payroll alone (ask_exactly). Code compares the card record and where the quote sits; it never reads the words.
+   */
+  const onScreen = context.cardOnScreen;
+  const sameCard = Boolean(onScreen && onScreen.templateKey === template.key && ((employee.id && onScreen.employeeKey === personKey(employee.id)) || onScreen.nameKey === personKey(employee.name)));
+  const conversationTurnsNow = identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId);
+  const answersThisMessage = (check: AnswerEvidence | null): check is AnswerEvidence & { ok: true } => Boolean(check?.ok && check.turnId === conversationTurnsNow.at(-1)!.id);
+  const payrollAnswerUnclear =
+    payroll !== null && sameCard && onScreen!.asked.includes("payroll_deduct") && onScreen!.asked.includes("warning_level") &&
+    answersThisMessage(payrollCheck) && payrollCheck.wholeMessage && oneWord(withoutMessageIdTags(conversationTurnsNow.at(-1)!.content)) &&
+    !(answersThisMessage(levelCheck) && level !== null);
+  if (payrollAnswerUnclear) payroll = null;
+  const payrollQuestion = `Is payroll deduct applicable for **${employee.name}**? Yes or no.`;
   /*
    * Batch G (QA's design, 15 Nov 2026; Pau's standing approval): the MODEL decides this Corrective Action is a
    * termination (warning_level "termination", taught by the rules book's examples); code only LOCKS it. It is kept only
@@ -1981,6 +2005,8 @@ export async function proposeForm(
   /* QA's third review: in the loop only the model decides (locked above); main's reader never decides a loop card. */
   const terminationStated = loopTermination;
   const unset = corrective && !awaiting ? [...(payroll ? [] : ["payroll_deduct"]), ...(level || terminationStated ? [] : ["warning_level"])] : [];
+  /* Fix batch item 7: what this card's reply asks (the next turn's card record): payroll alone after an unclear answer. */
+  effects.proposalAsked = payrollAnswerUnclear ? ["payroll_deduct"] : unset;
   const salonNames = (ids: readonly string[] | undefined) => (ids ?? []).map((id) => ({ id, name: rosterSalonName(id) ?? id }));
   /*
    * Batch K4 (QA's 266 shadow replay, c137/c134: a pasted account about <Y>, off the roster, went on <X>'s card; the
@@ -2000,7 +2026,8 @@ export async function proposeForm(
   const facts = {
     ...(earlierKept ? { earlier_card: { kept: true, ...(earlierRow ? { employee: displayName(earlierRow) } : {}), form: earlier!.templateName ?? earlier!.templateKey } } : {}),
     ...(otherNamed.length > 0 ? { account_names_other_person: { named: otherNamed, card_person: employee.name } } : {}),
-    ...(unset.length > 0 ? { unset } : {}),
+    ...(unset.length > 0 && !payrollAnswerUnclear ? { unset } : {}),
+    ...(payrollAnswerUnclear ? { payroll_answer_unclear: { ask_exactly: payrollQuestion } } : {}),
     ...(level || payroll || priorActions
       ? { stated: { ...(level ? { warning_level: level } : {}), ...(payroll ? { payroll_deduct: payroll } : {}), ...(payroll === "yes" && amount ? { payroll_amount: `$${amount.replace(/^\$/, "")}` } : {}), ...(priorActions ? { prior_actions: priorActions } : {}) } }
       : {}),
@@ -2078,6 +2105,7 @@ export async function proposeForm(
   return {
     ...(askedLevel && !level && levelCheck && !levelCheck.ok ? { reason_code: "level_not_stated", level_evidence: levelCheck.reason } : askedPayroll && !payroll && payrollCheck && !payrollCheck.ok ? { reason_code: "payroll_not_stated" } : {}),
     ...(askedPayroll && !payroll && payrollCheck && !payrollCheck.ok ? { payroll_evidence: payrollCheck.reason } : {}),
+    ...(payrollAnswerUnclear ? { ...(askedLevel && !level ? {} : { reason_code: "payroll_not_stated" }), payroll_evidence: "answer_to_two_questions" } : {}),
     ...(notOnCard.length > 0 ? { not_on_card: notOnCard } : {}),
     card: {
       form: card.templateName,

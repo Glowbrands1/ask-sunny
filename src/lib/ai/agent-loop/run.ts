@@ -881,7 +881,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   const trace = chatTraceDraft();
   /* PR 2: the card this turn made, for later turns' card record (`card-record.ts`). */
   const cardSlot: CardSlot | null = effects.proposal
-    ? { proposalId: effects.proposal.proposalId, employeeKey: effects.proposalEmployeeId ? personKey(effects.proposalEmployeeId) : null, nameKey: effects.proposal.employeeName ? personKey(effects.proposal.employeeName) : null, templateKey: effects.proposal.templateKey, templateName: effects.proposal.templateName ?? null }
+    ? { proposalId: effects.proposal.proposalId, employeeKey: effects.proposalEmployeeId ? personKey(effects.proposalEmployeeId) : null, nameKey: effects.proposal.employeeName ? personKey(effects.proposal.employeeName) : null, templateKey: effects.proposal.templateKey, templateName: effects.proposal.templateName ?? null, ...(effects.proposalAsked?.length ? { asked: effects.proposalAsked } : {}) }
     : null;
   if (trace) {
     trace.firstTokenMs = firstTokenMs;
