@@ -173,11 +173,11 @@ describe("the widened termination statements", () => {
     "We fired her for the no call no show.",
     "I'm firing him today.",
     "Fire her, she stole from the register.",
-    "create a termination for Avery Lune",
+    "create a termination for Tamsin Lune",
     "she is terminated, make the CA",
-    "write a CA, termination, for Avery Lune",
+    "write a CA, termination, for Tamsin Lune",
     "my DM approved her termination, write up the CA",
-    "I need a term CA for Avery Lune",
+    "I need a term CA for Tamsin Lune",
     "the DM said to terminate her",
   ])("reads %s as stated", async (text) => {
     expect(await reads(text)).toBe(true);
