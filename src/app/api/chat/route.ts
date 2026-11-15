@@ -241,13 +241,12 @@ async function postChat(request: Request) {
      * AGENT_LOOP_SKIPPED (QA, batch F5): a turn carrying something the loop does not take yet (attachments, report
      * context, a pending copy, an answer mode) goes to today's path, and the trace says why (`agent-loop/switch.ts`).
      */
-    const loopSkip = agentLoopFor(context.identity.email) ? agentLoopSkipReason(parseAskRequest(body)) : null;
-    if (loopSkip) {
-      const trace = chatTraceDraft();
-      if (trace) trace.slots = { ...(trace.slots ?? {}), agent_loop_skipped: loopSkip };
-    }
-    if (agentLoopFor(context.identity.email) && !loopSkip) {
-      try {
+    if (agentLoopFor(context.identity.email)) {
+      const loopSkip = agentLoopSkipReason(parseAskRequest(body));
+      if (loopSkip) {
+        const trace = chatTraceDraft();
+        if (trace) trace.slots = { ...(trace.slots ?? {}), agent_loop_skipped: loopSkip };
+      } else try {
         const parsedForLoop = parseAskRequest(body);
         const looped = await (await import("@/lib/ai/agent-loop/run")).runAgentTurn({
           request,

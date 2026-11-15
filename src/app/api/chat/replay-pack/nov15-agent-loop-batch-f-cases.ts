@@ -1,6 +1,6 @@
 import { expect, vi } from "vitest";
 
-import { LOOP_FAILED_REPLY, STEP_LIMIT_REPLY } from "@/lib/ai/agent-loop/run";
+import { LOOP_FAILED_REPLY, STEP_LIMIT_REPLY } from "@/lib/ai/agent-loop/replies";
 
 import { KEARNEY, STAFF, type ReplayCase, type ReplayContext } from "./cases";
 import { lastResult, loopStandIn, type LoopDecision, type LoopView } from "./loop-stand-in";

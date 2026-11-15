@@ -74,8 +74,9 @@ import {
 
 export const AGENT_LOOP_TOTAL_MS = 100_000;
 
-export const STEP_LIMIT_REPLY = "I couldn't finish that in the steps I have for one message. Could you tell me the one thing you want done first?";
-export const LOOP_FAILED_REPLY = "Sunny could not finish that answer. Nothing was saved. Please send it again in a moment.";
+import { LOOP_FAILED_REPLY, STEP_LIMIT_REPLY } from "./replies";
+
+export { LOOP_FAILED_REPLY, STEP_LIMIT_REPLY };
 
 /**
  * WHAT THIS TURN ALREADY DID, FROM THE EFFECTS (QA, batch F1/F2): the card made, the new revising draft opened, the
