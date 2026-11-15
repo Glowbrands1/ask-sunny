@@ -151,11 +151,11 @@ NOV15_AGENT_LOOP_BATCH_K_CASES.push(
       await salon(t);
       const model = loopStandIn((view): LoopDecision => {
         const said = latest(view);
-        const card = lastResult(view, "propose_form") as { facts?: { account_names_other_person?: { named: { untrusted_text: string }[]; card_person: string } } } | null;
+        const card = lastResult(view, "propose_form") as { facts?: { account_names_other_person?: { named: { name: { untrusted_text: string } }[]; card_person: string } } } | null;
         if (/Observation of Concern/.test(said)) {
           if (!card) return { tool: "propose_form", input: { template_key: "coaching", employee_id: "e-2", what_happened: said } };
           const other = card.facts?.account_names_other_person;
-          return { text: other ? `This account is about **${other.named[0]!.untrusted_text}**. Is the form for **${other.named[0]!.untrusted_text}** or **${other.card_person}**?` : "Added your account to the Coaching Form for **Remy Calder**." };
+          return { text: other ? `This account is about **${other.named[0]!.name.untrusted_text}**. Is the form for **${other.named[0]!.name.untrusted_text}** or **${other.card_person}**?` : "Added your account to the Coaching Form for **Remy Calder**." };
         }
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "Remy Calder" } };
         if (!card) return { tool: "propose_form", input: { template_key: "coaching", employee_id: "e-2" } };
@@ -169,9 +169,9 @@ NOV15_AGENT_LOOP_BATCH_K_CASES.push(
     },
   },
   {
-    id: "nov15-k4-an-account-naming-the-card-person-is-not-asked",
-    title: "K4, the control: an account that names the card's own person (\"Remy left early on 11/14, Juno Paxton saw it\") gives no account_names_other_person",
-    report: `${REPORT}; the control`,
+    id: "nov15-k4-a-witness-is-a-fact-and-not-asked",
+    title: "K4, QA's ruling (no code exemption for a witness): \"coaching for Remy Calder, Remy left early on 11/14, Juno Paxton saw it\" lists Juno Paxton with her sentence in account_names_other_person, and the model, reading it as a witness, asks nothing",
+    report: `${REPORT}; QA's K4 ruling, 15 Nov 2026`,
     status: "fixed",
     fixFlags: [FLAG],
     async run(t) {
@@ -179,15 +179,19 @@ NOV15_AGENT_LOOP_BATCH_K_CASES.push(
       await salon(t);
       const model = loopStandIn((view): LoopDecision => {
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "Remy Calder" } };
-        const card = lastResult(view, "propose_form") as { facts?: Record<string, unknown> } | null;
+        const card = lastResult(view, "propose_form") as { facts?: { account_names_other_person?: unknown } } | null;
         if (!card) return { tool: "propose_form", input: { template_key: "coaching", employee_id: "e-2", what_happened: "Remy left early on 11/14, Juno Paxton saw it." } };
-        return { text: card.facts?.account_names_other_person ? "This account is about someone else." : "Here's the Coaching Form for **Remy Calder**." };
+        return { text: "Here's the Coaching Form for **Remy Calder**." };
       });
       t.loopModel!(model);
       const reply = await t.thread().say("coaching for Remy Calder, Remy left early on 11/14, Juno Paxton saw it");
+      const fact = (model.views.flatMap((view) => view.results).find((result) => result.tool === "propose_form")!.output as { facts?: { account_names_other_person?: { named: { name: { untrusted_text: string }; sentence: { untrusted_text: string } }[] } } }).facts?.account_names_other_person;
+      expect(fact?.named.map((entry) => entry.name.untrusted_text)).toEqual(["Juno Paxton"]);
+      expect(fact?.named[0]!.sentence.untrusted_text).toMatch(/Juno Paxton saw it/);
       expect(reply.content).toBe("Here's the Coaching Form for **Remy Calder**.");
     },
   },
+
 );
 
 /** Remy's Corrective Action card with Verbal, then the app's own reply, then the manager's answer (K5's shape). */
