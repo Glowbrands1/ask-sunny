@@ -33,6 +33,8 @@ export async function endMeetingAction(key: string, input: RecapInput): Promise<
   if (typeof input.cascade !== "string" || !isList(input.attendees) || !isList(input.openTodos) || !isList(input.resolvedIssues)) return { ok: false, kind: "invalid", message: "Invalid recap." };
   if (input.ratingAvg !== null && (typeof input.ratingAvg !== "number" || input.ratingAvg < 1 || input.ratingAvg > 10)) return { ok: false, kind: "invalid", message: "Invalid rating." };
   if (typeof input.durationSeconds !== "number" || input.durationSeconds < 0) return { ok: false, kind: "invalid", message: "Invalid duration." };
+  // The meeting notes are optional; the Hub takes up to 64 KB of them.
+  if (input.notes !== undefined && (typeof input.notes !== "string" || input.notes.length > 65_536)) return { ok: false, kind: "invalid", message: "Invalid notes." };
   return endMeeting(key, input);
 }
 

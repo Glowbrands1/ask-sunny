@@ -146,6 +146,14 @@ export default async function RecapsPage({ params, searchParams }: { params: Pro
                 </p>
               </div>
             )}
+            {r.notes && (
+              <div>
+                <h3 className="m-0 mb-1 text-sm font-bold">Notes</h3>
+                <p className="m-0 text-sm whitespace-pre-wrap" data-testid="recap-notes">
+                  <MentionText text={r.notes} people={people} />
+                </p>
+              </div>
+            )}
           </Card>
         </li>
       ))}

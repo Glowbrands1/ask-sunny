@@ -196,6 +196,8 @@ export interface RecapRow {
   attendees: { name: string; rating: number | null }[];
   open_todos: { text?: string; owner?: string; due?: string; dueDate?: string }[];
   resolved_issues: string[];
+  /** The meeting's shared notes when it was ended (the Hub's l10.meeting_recaps.notes, 20261205120000). */
+  notes?: string | null;
   /** Saved by the scheduled auto-save because nobody pressed End (database column l10.meeting_recaps.auto_saved). */
   auto_saved?: boolean;
   /** Set when a hub admin deleted the recap (soft delete: hidden everywhere, restorable). */
@@ -211,4 +213,6 @@ export interface RecapInput {
   attendees: { name: string; rating: number | null }[];
   openTodos: unknown[];
   resolvedIssues: string[];
+  /** The meeting's shared notes (doc.meetingNotes); left out when there are none. */
+  notes?: string;
 }
