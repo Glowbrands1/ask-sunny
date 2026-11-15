@@ -88,7 +88,8 @@ function OwnerHeading({ name }: { name: string }) {
 /**
  * Conclude before the meeting starts: the last meeting's summary, as Bloom shows it. A stats row (meeting rating, to-dos
  * completed, issues solved, total time), FEEDBACK (each person's rating), the TO-DOS still open by owner with due dates,
- * ISSUES SOLVED and NOTES. A recap does not record how many to-dos were done, so that stat shows a dash.
+ * ISSUES SOLVED by owner and NOTES. Recaps saved before 15 Nov 2026 have no to-do counts (a dash) and no issue
+ * owners (listed under "Unassigned").
  */
 export function LastMeetingConclusion({ last }: { last: PastMeeting | null }) {
   if (!last) {
@@ -100,7 +101,7 @@ export function LastMeetingConclusion({ last }: { last: PastMeeting | null }) {
   }
   const stats: [string, string][] = [
     ["Meeting rating", last.ratingAvg === null ? "—" : String(last.ratingAvg)],
-    ["To-dos completed", "—"],
+    ["To-dos completed", last.todosCompletedPct === null ? "—" : `${last.todosCompletedPct}%`],
     ["Issues solved", String(last.issuesSolved)],
     ["Total time", durationLabel(last.durationSeconds)],
   ];
@@ -113,7 +114,7 @@ export function LastMeetingConclusion({ last }: { last: PastMeeting | null }) {
         {stats.map(([label, value]) => (
           <div key={label} className="rounded-[10px] border border-line bg-white px-3 py-2 shadow-card">
             <dt className="text-xs text-muted">{label}</dt>
-            <dd className="m-0 font-mono text-lg font-bold" title={label === "To-dos completed" ? "Not recorded on the recap" : undefined}>
+            <dd className="m-0 font-mono text-lg font-bold" title={label === "To-dos completed" && value === "—" ? "Not recorded on this recap" : undefined}>
               {value}
             </dd>
           </div>
@@ -155,14 +156,21 @@ export function LastMeetingConclusion({ last }: { last: PastMeeting | null }) {
       </div>
       <div className={SECTION}>
         <h3 className={LABEL}>ISSUES SOLVED</h3>
-        {last.solvedTitles.length === 0 ? (
+        {last.solvedIssues.length === 0 ? (
           <p className="m-0 text-sm text-muted">{last.issuesSolved > 0 ? `${last.issuesSolved} solved (titles were not imported).` : "No issues were solved."}</p>
         ) : (
-          <ul aria-label="Issues solved" className="m-0 list-disc pl-5 text-sm">
-            {last.solvedTitles.map((t, i) => (
-              <li key={i}>{t}</li>
+          <div aria-label="Issues solved by owner" role="group" className="flex flex-col gap-3">
+            {byOwner(last.solvedIssues, (s) => s.owner).map(([owner, issues]) => (
+              <div key={owner} className="flex flex-col gap-1">
+                <OwnerHeading name={owner} />
+                <ul className="m-0 list-disc pl-14 text-sm">
+                  {issues.map((s, i) => (
+                    <li key={i}>{s.title}</li>
+                  ))}
+                </ul>
+              </div>
             ))}
-          </ul>
+          </div>
         )}
       </div>
       <div className={SECTION}>

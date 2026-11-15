@@ -454,8 +454,10 @@ describe("Bloom-style page: Segue and Conclude", () => {
       { name: "Bo Lark", rating: 8 },
     ],
     open_todos: [{ text: "Order towels", owner: "Avery Quill", dueDate: "2026-11-20" }],
-    resolved_issues: ["Front desk coverage"],
+    resolved_issues: [{ title: "Front desk coverage", owner: "Bo Lark" }],
     notes: "Talked about the holiday hours",
+    todos_done: 3,
+    todos_total: 4,
   };
   const view = (doc: Record<string, unknown> = {}, save: SaveFn = vi.fn() as unknown as SaveFn) =>
     render(<MeetingView info={info} initial={loaded(3, doc)} save={save} end={vi.fn() as unknown as EndFn} viewer={viewer} roster={roster} hubMeetingUrl={HUB} pollMs={0} debounceMs={0} today="2026-11-15" recaps={[recap]} />);
@@ -476,7 +478,8 @@ describe("Bloom-style page: Segue and Conclude", () => {
     const { unmount } = view();
     fireEvent.click(within(screen.getByRole("region", { name: "Agenda" })).getByRole("button", { name: /Conclude/ }));
     const summary = within(screen.getByTestId("last-meeting-conclusion"));
-    expect(summary.getAllByRole("definition").map((d) => d.textContent)).toEqual(["8.5", "—", "1", "58m"]);
+    expect(summary.getAllByRole("definition").map((d) => d.textContent)).toEqual(["8.5", "75%", "1", "58m"]);
+    expect(summary.getByRole("group", { name: "Issues solved by owner" }).textContent).toBe("BLBo LarkFront desk coverage");
     expect(summary.getByRole("group", { name: "To-dos by owner" }).textContent).toBe("AQAvery QuillOrder towels11-20-2026");
     expect(summary.getByText("Talked about the holiday hours")).toBeTruthy();
     unmount();
