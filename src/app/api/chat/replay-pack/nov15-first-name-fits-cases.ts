@@ -15,6 +15,8 @@ import { lastResult, loopStandIn } from "./loop-stand-in";
  */
 
 const MELANIE: DirectoryRow = { id: "e-melanie-pool-fn", firstName: "Melanie", lastName: "Pool", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" };
+/** QA, 15 Nov 2026: in the report the typed first name was the employee's preferred first name in Woven. */
+const LORRAINE: DirectoryRow = { id: "e-lorraine-pool-fn", firstName: "Lorraine", lastName: "Pool", preferredFirstName: "Rae", employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" };
 const REPORT = "QA, 15 Nov 2026 (from Ask Bubbles): the manager typed \"Salem Pool\" and the form switched to the roster's \"Melanie Pool\"";
 const LOOP = "AGENT_LOOP_ENABLED";
 const FLAG = "FIRST_NAME_MUST_FIT_ENABLED";
@@ -68,6 +70,24 @@ export const NOV15_FIRST_NAME_FITS_CASES: ReplayCase[] = [
       const thread = t.thread();
       const reply = await thread.say("write up melany pool for being late");
       expect(thread.proposal?.employeeName, reply.content).toBe("Melanie Pool");
+    },
+  },
+  {
+    id: "nov15-first-name-fits-preferred-first-name",
+    title: "\"write up rae pool for being late\" (agent loop, roster has Lorraine Pool, preferred Rae): the card is hers, with no question",
+    report: "QA, 15 Nov 2026: the typed first name was the employee's preferred first name in Woven; the matcher was right",
+    status: "fixed",
+    fixFlags: [LOOP, FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-14T16:00:00Z"));
+      t.directory([...STAFF, LORRAINE]);
+      t.as("salon_director", KEARNEY);
+      t.loopModel!(surnameSearchModel("rae pool", "pool"));
+      const thread = t.thread();
+      const reply = await thread.say("write up rae pool for being late");
+      expect(thread.proposal?.employeeName, reply.content).toBe("Lorraine Pool");
+      expect(reply.content).not.toMatch(/Did you mean|isn't on your staff list/);
     },
   },
 ];

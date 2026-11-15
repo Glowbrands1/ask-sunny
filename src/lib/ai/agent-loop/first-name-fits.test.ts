@@ -12,6 +12,8 @@ import { rosterMatches, type ToolContext } from "./tools";
  * Pool". A shared last name with a different first name is never a strong or close match. Every name is invented.
  */
 const MELANIE: RosterEmployee = { id: "e-melanie", firstName: "Melanie", lastName: "Pool", salonIds: ["loc-0309"] };
+/** QA, 15 Nov 2026: in the report the typed first name was the employee's preferred first name in Woven. */
+const PREFERRED: RosterEmployee = { id: "e-rae", firstName: "Lorraine", preferredFirstName: "Rae", lastName: "Pool", salonIds: ["loc-0309"] };
 const ROSTER = [MELANIE];
 
 function context(question: string, history: { role: "user" | "assistant"; content: string }[] = []): ToolContext {
@@ -82,6 +84,19 @@ describe("FIRST_NAME_MUST_FIT_ENABLED on: the loop never seats Melanie for Salem
 
   it("the question, in QA's words", () => {
     expect(otherPersonQuestion("salem Pool", MELANIE)).toBe("Salem Pool isn't on your staff list. Did you mean Melanie Pool, or someone else?");
+  });
+});
+
+describe("the preferred first name typed is that person, with no question", () => {
+  beforeEach(() => vi.stubEnv("FIRST_NAME_MUST_FIT_ENABLED", "true"));
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("\"rae pool\" is Lorraine Pool (preferred Rae): exact, and the loop never treats her as someone else", () => {
+    const found = matchEmployeeName("rae pool", [PREFERRED]);
+    expect(found.kind).toBe("exact");
+    expect(found.kind === "exact" ? found.employee.id : null).toBe("e-rae");
+    expect(firstNameFits("rae", PREFERRED)).toBe(true);
+    expect(otherPersonTyped(context("write up rae pool for being late"), PREFERRED)).toBeNull();
   });
 });
 
