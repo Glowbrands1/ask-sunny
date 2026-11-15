@@ -10,7 +10,7 @@ import { businessToday } from "@/lib/business-date";
 import { isoDate, monthDayToIso, readDates, sameDate, withoutDates } from "./dates";
 import { candidateNameWords, chatFormsActor } from "@/lib/forms/chat-form-records";
 import { identifiedTurns, verifyEvidence, withoutMessageIdTags } from "./evidence";
-import { displayName, matchEmployeeName, nameConfirmationQuestion, type RosterEmployee } from "@/lib/forms/employee-match";
+import { displayName, matchEmployeeName, nameConfirmationQuestion, readNameConfirmation, type RosterEmployee } from "@/lib/forms/employee-match";
 import { offRosterTyped } from "@/lib/forms/roster-only-names";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
 import { readDirectoryRoster, readScopedRoster, type DirectoryRosterRow } from "@/lib/forms/employee-roster";
@@ -137,8 +137,8 @@ export function formsOnFileAsked(context: Pick<ToolContext, "question" | "histor
 /**
  * QA's review of PR 1a (15 Nov 2026): the ask is about THIS person. The cited turn names the person whose forms are
  * looked at (the roster-name match request_evidence uses); or it names nobody and the manager's nearest earlier turn that
- * names someone names this person ("has she had a ca before?"); or the person is the one on the form open on screen or
- * on the card the last reply showed. "write a new form for Remy Calder" never opens Juno Paxton's forms.
+ * names someone names this person ("has she had a ca before?"); or, only when the cited turn names nobody, the person
+ * is the one on the form open on screen or on the card the last reply showed (QA's re-review, fix 1). "write a new form for Remy Calder" never opens Juno Paxton's forms.
  */
 async function formsOnFileAskedFor(context: ToolContext, evidence: unknown, person: string): Promise<{ ok: true } | { ok: false; reason: string; reasonCode: string }> {
   const asked = formsOnFileAsked(context, evidence);
@@ -160,10 +160,10 @@ async function formsOnFileAskedFor(context: ToolContext, evidence: unknown, pers
     });
   if (namedIn(asked.said)) return { ok: true };
   const namesSomeone = (text: string) => rosterNames.some((name) => mentionsPerson(text, name, rosterNames)) || extractEmployeeNames(text).length > 0;
-  if (!namesSomeone(asked.said)) {
-    const antecedent = asked.before.find(namesSomeone);
-    if (antecedent !== undefined && namedIn(antecedent)) return { ok: true };
-  }
+  /* QA's re-review (fix 1): the quoted message names someone else, so no fallback lets this person's forms through. */
+  if (namesSomeone(asked.said)) return { ok: false, reason: "evidence_other_person", reasonCode: "privacy_not_this_person" };
+  const antecedent = asked.before.find(namesSomeone);
+  if (antecedent !== undefined && namedIn(antecedent)) return { ok: true };
   // TODO(PR2): interim (QA, 15 Nov 2026): the card's person is read from the last card reply's text; Coding-5's
   // server-side card record (PR 2) replaces this.
   if (context.cardReply && namedIn(context.cardReply)) return { ok: true };
@@ -1970,8 +1970,17 @@ export async function editForm(
   // A reword's own guard refuses a change of person (below, with reword_paused); the name gate is for everything else.
   const renames = !rewordAsked && ("employee_name" in values || input.intent === "correct_name");
   let nameQuote: string | null = null;
+  /* "no" to this chat's own Did-you-mean keeps the name as typed (ruling A): the name is then quoted from the turn before. */
+  const keepAsTyped = readNameConfirmation([...(context.history as ChatMessage[]).map((turn) => ({ role: turn.role, content: String(turn.content ?? "") })), { role: "user", content: context.question }])?.kind === "declined";
   if (renames) {
-    const check = verifyEvidence(input.name_evidence, identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId), { thisTurnOnly: true });
+    const nameTurns = identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId);
+    const previousManagerTurn = nameTurns.filter((turn) => turn.role === "user").at(-2)?.index ?? -1;
+    const check = keepAsTyped
+      ? (() => {
+          const found = verifyEvidence(input.name_evidence, nameTurns);
+          return found.ok && found.turn.index < previousManagerTurn ? ({ ok: false, reason: "evidence_not_this_turn" } as const) : found;
+        })()
+      : verifyEvidence(input.name_evidence, nameTurns, { thisTurnOnly: true });
     if (!check.ok) return { error: "A name correction needs name_evidence: the id of this message and the manager's words in it that give the name. Nothing was written.", reason_code: "name_evidence_missing", evidence: check.reason };
     if (otherFields.length > 0) {
       return { error: `This message corrects the employee's name only. ${otherFields.join(", ")} were not changed. Call edit_form with values for employee_name only.`, reason_code: "name_correction_other_fields" };
@@ -2053,7 +2062,7 @@ export async function editForm(
       }
     }
     if (nameQuote !== null) {
-      const refusedName = nameCorrectionRefusal(loaded.instance.employeeName, values.employee_name!, nameQuote, roster);
+      const refusedName = nameCorrectionRefusal(loaded.instance.employeeName, values.employee_name!, nameQuote, roster, { keepAsTyped });
       if (refusedName) return refusedName;
     }
     /*
@@ -2171,12 +2180,15 @@ export async function editForm(
         const stated = readDates(context.question).map((date) => isoDate(date.text, editToday)).find((iso) => iso !== null && iso > editToday);
         if (stated) return { error: `${stated} is after today (${editToday}, the salon's local date). Nothing was written. Ask the manager which day.`, date_after_today: { today: editToday, asked_date: askedDateText(stated), form_date_kept: formDateKept(loaded.instance.formDate) } };
       }
-      const nameBefore = loaded.values.find((row) => row.fieldKey === "employee_name")?.value ?? loaded.instance.employeeName;
       const revised = await openFormTurn(context, id);
       if (revised?.formUpdate?.instanceId === id && revised.formUpdate.updated.includes("employee_name")) {
-        // QA's review of PR 1a: the reviser never changes the employee's name; its write is put back and refused.
-        await restoreEmployeeName(id, nameBefore, context.actor.subject);
-        return { error: "The employee's name is changed only by a name correction: edit_form with values for employee_name and name_evidence quoting the new name from this message. The name was not changed.", reason_code: "name_correction_needs_evidence" };
+        /* QA's review of PR 1a, and re-review fix 2: the reviser never changes the name; its WHOLE revision is rolled back. */
+        const restored = await rollBackRevision(id, loaded, revised.formUpdate.updated, context.actor.subject);
+        return {
+          error: "The employee's name is changed only by a name correction: edit_form with values for employee_name and name_evidence quoting the new name from this message. Nothing was changed.",
+          reason_code: "name_correction_needs_evidence",
+          ...(restored.length > 0 ? { not_restored: restored } : {}),
+        };
       }
       if (!revised) {
         return writeAccount
@@ -2320,7 +2332,7 @@ function nameWords(text: string): string[] {
  * QA's review of PR 1a, ruling 2: the new name's changed words are in the manager's quote; the new name is not another
  * roster person; a close spelling of someone else is asked (ruling A: a near miss is never seated). Null when allowed.
  */
-export function nameCorrectionRefusal(formsName: string, newName: string, quote: string, roster: RosterRead): ToolResult | null {
+export function nameCorrectionRefusal(formsName: string, newName: string, quote: string, roster: RosterRead, options: { keepAsTyped?: boolean } = {}): ToolResult | null {
   const old = new Set(nameWords(formsName));
   const said = new Set(nameWords(quote));
   const changed = nameWords(newName).filter((word) => !old.has(word));
@@ -2333,24 +2345,46 @@ export function nameCorrectionRefusal(formsName: string, newName: string, quote:
   if (holders.length > 0 && !holders.some((person) => fullNamesOf(person).some((full) => sameRosterPerson(full, formsName, people)))) {
     return { error: `${newName} is another person on the staff list, not ${formsName}; this form was not changed. Propose ${newName}'s own card instead.`, reason_code: "name_correction_other_person" };
   }
-  if (holders.length === 0) {
+  /*
+   * Ruling A (a near miss is never seated), QA's re-review fix 3: a new name that closely spells a roster person, the
+   * form's own person included ("her last name is Kalder" on Remy Calder's form), is asked about with keep-as-typed.
+   * After the manager's "no" to that question, the name is written as typed.
+   */
+  if (holders.length === 0 && !options.keepAsTyped) {
     const close = matchEmployeeName(newName, people);
-    const others = close.kind === "confirm" ? close.candidates.filter((candidate) => !sameRosterPerson(candidate.name, formsName, people)) : [];
-    if (others.length > 0) {
-      return { error: `Not on the staff list as typed. Nothing was written. Ask the manager, in these words: ${nameConfirmationQuestion(newName, others.map((candidate) => candidate.name))}`, reason_code: "name_correction_did_you_mean" };
+    const candidates = close.kind === "confirm" ? close.candidates.map((candidate) => candidate.name) : [];
+    if (candidates.length > 0) {
+      return { error: `Not on the staff list as typed. Nothing was written. Ask the manager, in these words: ${nameConfirmationQuestion(newName, candidates.slice(0, 5))}`, reason_code: "name_correction_did_you_mean" };
     }
   }
   return null;
 }
 
-/** Puts the employee's name back after a reader changed it (the form's row and its subject line). */
-async function restoreEmployeeName(id: string, name: string, actor: string): Promise<void> {
-  if (formEditSingleWriterEnabled()) {
-    await (await import("@/lib/forms/form-write")).writeRevisionEdits(id, { values: { employee_name: name }, checked: {} }, [], { actorId: actor, latest: "" });
-  } else {
-    await applyAssistantRevision(id, { values: { employee_name: name }, checked: {} }, [], actor);
+/**
+ * Puts every field a reader's revision wrote back as it was before the turn (QA's re-review fix 2), and the form's
+ * subject line. Returns the fields that could not be put back (never claimed as unchanged).
+ */
+export async function rollBackRevision(
+  id: string,
+  before: { readonly instance: { readonly employeeName: string }; readonly values: readonly { readonly fieldKey: string; readonly value?: string | null; readonly checked?: readonly string[] | null }[] },
+  updated: readonly string[],
+  actor: string,
+): Promise<string[]> {
+  const values: Record<string, string> = {};
+  const checked: Record<string, string[]> = {};
+  const cleared: string[] = [];
+  for (const key of new Set(updated)) {
+    const row = before.values.find((value) => value.fieldKey === key);
+    if (row?.checked && row.checked.length > 0) checked[key] = [...row.checked];
+    else if (row?.value?.trim()) values[key] = row.value;
+    else cleared.push(key);
   }
-  await (await import("@/lib/supabase/server")).getSupabaseAdmin().from("form_instances").update({ employee_name: name }).eq("id", id);
+  if (!("employee_name" in values)) values.employee_name = before.instance.employeeName;
+  const written = formEditSingleWriterEnabled()
+    ? await (await import("@/lib/forms/form-write")).writeRevisionEdits(id, { values, checked }, cleared, { actorId: actor, latest: "" })
+    : await applyAssistantRevision(id, { values, checked }, cleared, actor);
+  await (await import("@/lib/supabase/server")).getSupabaseAdmin().from("form_instances").update({ employee_name: before.instance.employeeName }).eq("id", id);
+  return written.rejected.map((row) => row.key);
 }
 
 async function openFormTurn(context: ToolContext, id: string): Promise<AskResponse | null> {
