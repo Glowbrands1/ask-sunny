@@ -222,4 +222,39 @@ export const NOV15_AGENT_LOOP_PR4_CASES: ReplayCase[] = [
       },
     }),
   ),
+  {
+    id: "nov15-agent-loop-pr4-created-cards-proposal-id-resolves-to-the-saved-form",
+    title: "PR 4 (QA's review of #1022): edit_form with the proposal id of a card Create already made saves on the saved form it made",
+    report: `${REPORT}: a created card's id is the form Create made, not a card to change with propose_form`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.() || !offline) return;
+      start(t);
+      let proposalId = "";
+      const standIn = loopStandIn((view): LoopDecision => {
+        const said = view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "";
+        if (/change the date/i.test(said)) {
+          return lastResult(view, "edit_form") ? { text: "Updated the date." } : { tool: "edit_form", input: { instance_id: proposalId, values: { form_date: "2026-11-10" } } };
+        }
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: "Remy Calder was late on 11/12.", incident_date: "2026-11-12" } };
+        return { text: "Here is the card." };
+      });
+      t.loopModel!(standIn);
+      const thread = t.thread();
+      await thread.say("ca for remy calder, late on 11/12");
+      proposalId = String((thread.proposal as { proposalId?: string } | null)?.proposalId ?? "");
+      expect(proposalId, "the card has no proposal id").not.toBe("");
+      const formId = await thread.create();
+      const formsBefore = t.forms().length;
+      await thread.say("change the date to 11/10");
+      const edit = results(standIn.views, "edit_form")[0]!;
+      expect(edit.reason_code, JSON.stringify(edit)).toBeUndefined();
+      expect(edit.error, JSON.stringify(edit)).toBeUndefined();
+      expect(t.forms().length, "a form was added").toBe(formsBefore);
+      const saved = t.values(formId).form_date ?? "";
+      expect(saved, `the date was not saved on the form Create made:\n${JSON.stringify(edit)}`).toMatch(/11\/10|2026-11-10|Nov(?:ember)? 10/);
+    },
+  },
 ];
