@@ -236,4 +236,71 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       expect(both.content).toMatch(/Remi Calder/);
     },
   },
+  {
+    id: "nov15-agent-loop-g5-written-and-payroll-on-a-draft",
+    title: "G5: \"make it a written and yes payroll $15\" on a Corrective Action draft ticks Written, ticks payroll Yes and saves $15",
+    report: `${REPORT}: warning_type written was saved but payroll was not; the reply said "Payroll deduct isn't something I'm able to tick on the form directly"`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: "Remy Calder was 20 minutes late on 11/12." } };
+        return { text: "Here's the Corrective Action Form for **Remy Calder**.\n\n**Observation of Offense:** Remy Calder was 20 minutes late on 11/12." };
+      }));
+      const thread = t.thread();
+      await thread.say("ca for remy calder, she was 20 minutes late on 11/12");
+      const id = await thread.create();
+      const model = loopStandIn((view): LoopDecision => {
+        const edit = lastResult(view, "edit_form") as { updated?: string[] } | null;
+        if (!edit) return { tool: "edit_form", input: { instance_id: id, values: { warning_type: "written", payroll_deduct: "yes", payroll_deduct_amount: "$15" } } };
+        return { text: `Updated: ${(edit.updated ?? []).join(", ")}. **Type of Warning:** Written Warning. **Is payroll deduct applicable?** Yes. **Payroll deduction amount:** $15.` };
+      });
+      t.loopModel!(model);
+      const reply = await thread.say("make it a written and yes payroll $15");
+      const ticked = t.checked(id);
+      expect(ticked.warning_type, "Written was not ticked").toEqual(["written"]);
+      expect(ticked.payroll_deduct, `payroll Yes was not ticked:\n${reply.content}`).toEqual(["yes"]);
+      expect(t.values(id).payroll_deduct_amount ?? "", "the $15 was not saved").toMatch(/15/);
+      expect(reply.content, "the reply says payroll can't be ticked").not.toMatch(/not something I'm able to tick|can't tick|cannot tick/i);
+    },
+  },
+  {
+    id: "nov15-agent-loop-g5-yes-payroll-no-amount-asks-it",
+    title: "G5: \"yes payroll\" with no amount on a draft ticks payroll Yes only, and the reply asks the amount; an amount the manager never typed is refused",
+    report: `${REPORT}: payroll on a draft (QA's G5 conditions)`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: "Remy Calder was 20 minutes late on 11/12." } };
+        return { text: "Here's the Corrective Action Form for **Remy Calder**.\n\n**Observation of Offense:** Remy Calder was 20 minutes late on 11/12." };
+      }));
+      const thread = t.thread();
+      await thread.say("ca for remy calder, she was 20 minutes late on 11/12");
+      const id = await thread.create();
+      // A model that also puts an amount nobody typed: refused whole; then the tick alone, and the question.
+      const model = loopStandIn((view): LoopDecision => {
+        const edits = view.results.filter((result) => result.tool === "edit_form").map((result) => result.output as { error?: string; updated?: string[] });
+        if (edits.length === 0) return { tool: "edit_form", input: { instance_id: id, values: { payroll_deduct: "yes", payroll_deduct_amount: "$25" } } };
+        if (edits.length === 1 && edits[0]!.error) return { tool: "edit_form", input: { instance_id: id, values: { payroll_deduct: "yes" } } };
+        return { text: "Payroll deduct is now Yes. What's the payroll deduction amount?" };
+      });
+      t.loopModel!(model);
+      const reply = await thread.say("yes payroll");
+      expect(t.checked(id).payroll_deduct, "payroll Yes was not ticked").toEqual(["yes"]);
+      expect(t.values(id).payroll_deduct_amount ?? "", "an amount nobody typed was saved").toBe("");
+      expect(reply.content, "the reply does not ask the amount").toMatch(/amount/i);
+      if (offline) expect(toolResults(model.views, "edit_form")[0], "an untyped amount was not refused").toMatch(/must come from the manager's own words/);
+    },
+  },
 ];

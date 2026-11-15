@@ -145,6 +145,7 @@ export const RULES_BOOK: readonly { readonly title: string; readonly rules: read
       "reword_paused (edit_form or propose_form): rewording (\"make it professional\", \"reword it\", \"clean it up\") is paused, and nothing was changed. Say exactly: \"Rewording isn't available yet. Tell me exactly what to change and I'll update it.\" Spelling and grammar fixes to the manager's own words while you write them are still yours to make.",
       "An added fact (\"she also left 20 minutes early\") goes at the end of the Observed section, right before \"Expectation:\" (at the end when the field has no sections). Every other sentence stays word for word: never change \"She\" to the name, and never move or merge the sections.",
       "edit_form's add_changed_sentences (old sentences the new text no longer has word for word) or add_not_at_end_of_observed: edit again with the old text exactly as it was and the new sentence at the end of the Observed section.",
+      "A payroll answer on a draft (\"yes payroll $15\") is edit_form values payroll_deduct (yes/no) and payroll_deduct_amount, only as the manager said them. \"yes payroll\" with no amount: tick it, then ask the amount once; never put a figure the manager did not type.",
     ],
   },
   {

@@ -1572,9 +1572,16 @@ export async function editForm(
       if (answer) checked.payroll_deduct = [answer];
       delete values.payroll_deduct;
     }
+    /* Only the payroll keys this write carries, after the stated-by-the-manager guard passed (an unstated one returned above). */
+    const statedPayroll = [...(checked.payroll_deduct ? ["payroll_deduct"] : []), ...(values[PAYROLL_AMOUNT_KEY] ? [PAYROLL_AMOUNT_KEY] : [])];
     // The revision's writer, as chat-revision.ts saves: the one writer with FORM_EDIT_SINGLE_WRITER_ENABLED, else the old one.
     const written = formEditSingleWriterEnabled()
-      ? await (await import("@/lib/forms/form-write")).writeRevisionEdits(id, { values, checked }, [], { actorId: context.actor.subject, latest: context.question })
+      ? await (await import("@/lib/forms/form-write")).writeRevisionEdits(id, { values, checked }, [], {
+          actorId: context.actor.subject,
+          latest: context.question,
+          /* Batch G (G5): the payroll answer the guard above checked against this message, written as the manager's. */
+          ...(statedPayroll.length > 0 ? { managerStated: statedPayroll } : {}),
+        })
       : await applyAssistantRevision(id, { values, checked }, [], context.actor.subject);
     const updated = [...Object.keys(written.accepted.values ?? {}), ...Object.keys(written.accepted.checked ?? {})];
     if (updated.length > 0) effects.formUpdate = { instanceId: id, updated };

@@ -786,14 +786,28 @@ export async function realizedClaim(answer: AskResponse, instanceId: string, bef
  * on every rewrite, all or nothing. A refusal writes nothing and reports every
  * key as rejected, so the revision's reply claims none.
  */
+/*
+ * `managerStated` (the agent loop's edit_form, batch G5; QA approved 15 Nov 2026 under Pau's rule: "if it asks these
+ * questions and manager answers, the payroll will be filled or edited"): only MANAGER_STATED_KEYS (payroll deduct and
+ * its amount), and only when the caller has checked that the manager stated them in this message. They are written as
+ * the manager, as the card's Create does. Every other manager field is refused as before.
+ */
 export async function writeRevisionEdits(
   instanceId: string,
   draft: Partial<DraftValues>,
   cleared: readonly string[],
-  context: { readonly actorId: string; readonly latest: string; readonly notes?: string; readonly named?: readonly string[] },
+  context: {
+    readonly actorId: string;
+    readonly latest: string;
+    readonly notes?: string;
+    readonly named?: readonly string[];
+    /** Keys the manager stated in this message; only MANAGER_STATED_KEYS count. Absent: the write layer's rules, unchanged. */
+    readonly managerStated?: readonly string[];
+  },
 ): Promise<{ accepted: DraftValues; cleared: string[]; rejected: { key: string; reason: string }[] }> {
+  const stated = new Set((context.managerStated ?? []).filter((key) => MANAGER_STATED_KEYS.has(key)));
   const ops: FormEditOp[] = [
-    ...opsFrom({ values: draft.values ?? {}, checked: draft.checked ?? {} }),
+    ...opsFrom({ values: draft.values ?? {}, checked: draft.checked ?? {} }).map((op) => (stated.has(op.field) ? { ...op, by: "manager" as const } : op)),
     ...cleared.map((field) => ({ op: "clear" as const, field })),
   ];
   const result = await writeFormEdits(instanceId, ops, {
