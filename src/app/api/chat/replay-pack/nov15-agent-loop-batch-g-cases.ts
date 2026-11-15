@@ -28,6 +28,9 @@ const REMI: DirectoryRow = { id: "e-remi-calder", firstName: "Remi", lastName: "
 /** At both of the manager's salons; Woven lists Kearney (loc-0309) as her salon (G14). */
 const ISLA: DirectoryRow & { primarySalonId: string } = { id: "e-isla-marrow", firstName: "Isla", lastName: "Marrow", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0307", "loc-0309"], positionName: "Tanning Consultant", primarySalonId: "loc-0309" };
 
+/** Legal name Josephine Quill; goes by "Jo" (Pau's ruling, 15 Nov 2026: forms show the legal name only). */
+const JO: DirectoryRow = { id: "e-josephine-quill", firstName: "Josephine", lastName: "Quill", preferredFirstName: "Jo", employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" };
+
 /** A created form on file for <employee id>: form, date and account as given; returns its instance id. */
 async function onFile(t: ReplayContext, employeeId: string, name: string, templateKey: string, date: string, account: string): Promise<string> {
   t.loopModel!(loopStandIn((view): LoopDecision => {
@@ -596,6 +599,30 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       expect(thread.proposal?.locationId, `the exit is not filed at Woven's salon:\n${reply.content}`).toBe("loc-0309");
       expect(thread.proposal?.status).toBe("ready");
       expect(thread.proposal?.formDate).toBe("2026-11-28");
+    },
+  },
+  {
+    id: "nov15-agent-loop-legal-name-on-the-card",
+    title: "Pau's ruling (15 Nov): \"ca for jo quill, she was late on 11/12\" for an employee who goes by Jo: the card's Employee line is the legal name, Josephine Quill",
+    report: `${REPORT}; Pau's ruling via QA: forms show the employee's legal name only`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
+      t.directory([...STAFF, JO]);
+      t.as("salon_director", KEARNEY);
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        const found = lastResult(view, "find_staff") as { matches?: { employee_id: string; name: string }[] } | null;
+        if (!found) return { tool: "find_staff", input: { name: "jo quill" } };
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: found.matches?.[0]?.employee_id ?? JO.id, what_happened: "Jo Quill was late on 11/12." } };
+        return { text: "Here's the Corrective Action Form for **Josephine Quill** (Jo).\n\n**Observation of Offense:** She was late on 11/12." };
+      }));
+      const thread = t.thread();
+      const reply = await thread.say("ca for jo quill, she was late on 11/12");
+      expect(thread.proposal?.employeeName, `the card does not carry the legal name:\n${reply.content}`).toBe("Josephine Quill");
+      const id = await thread.create();
+      expect(t.values(id).employee_name, "the form does not carry the legal name").toBe("Josephine Quill");
     },
   },
 ];
