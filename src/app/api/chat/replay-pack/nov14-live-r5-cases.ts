@@ -9,7 +9,7 @@ import { lastResult, loopStandIn, type LoopDecision, type LoopView } from "./loo
  * ============================================================================
  *
  * L3/L4: a manager on two salons; the card stayed needs_location and the loop asked "which salon" on every turn (L4:
- * five turns, then took the name "erin" as no answer). Woven already lists the employee's salon. L5: "Yes" to "Using
+ * five turns, then took the first name "oriel" as no answer). Woven already lists the employee's salon. L5: "Yes" to "Using
  * <X> from your staff list" was answered with the first reply's "What happened?" word for word.
  *
  * The fix is a fact (propose_form's employee_salon, from the roster row's primary salon in the manager's scope) and
@@ -92,7 +92,7 @@ export const NOV14_LIVE_R5_CASES: ReplayCase[] = [
   {
     id: "nov14-live-r5-l4-salon-asked-at-most-once",
     title: "QA L4's shape (five turns: the request, the account, the level, payroll, a first name): the salon is asked at most once, a first name is never taken as the salon answer, and the card ends at Woven's salon",
-    report: `${REPORT}: L4 asked for the salon five turns in a row; t5 "erin" got "I need the salon, not the name"`,
+    report: `${REPORT}: L4 asked for the salon five turns in a row; t5 "oriel" got "I need the salon, not the name"`,
     status: "fixed",
     fixFlags: [FLAG],
     async run(t) {
