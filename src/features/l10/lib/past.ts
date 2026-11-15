@@ -13,6 +13,10 @@ export interface ImportedMeeting {
   endedAt: string | null;
   attendees: { name: string; rating: number | null }[];
   issuesSolvedCount: number;
+  /** Added by the Bloom enrichment (15 Nov 2026); absent on rows imported before it. */
+  solvedIssues?: { title: string; owner: string }[];
+  todos?: { text: string; owner: string; dueDate: string | null }[];
+  notes?: string;
 }
 
 /** One row of the Past meetings list, from either a recap (ended in Ask Sunny or the Hub) or the Bloom import. */
@@ -36,8 +40,13 @@ export interface PastMeeting {
   cascade: string | null;
   /** The meeting's shared notes, when the recap has them (the Hub's 20261205120000_l10_recap_notes). */
   notes: string | null;
-  /** The to-dos still open when it ended (recaps keep them; the Bloom import does not). */
+  /** The to-dos still open when it ended (recaps), or the meeting's to-dos (a Bloom row that carries them). */
   openTodos: { text: string; owner: string; due: string }[];
+  /**
+   * Whether the record says anything about these at all. Recaps always do. A Bloom row imported before the enrichment
+   * (15 Nov 2026) has no to-dos, solved issues or notes: the summary says "Not recorded" rather than "none".
+   */
+  recorded: { todos: boolean; issues: boolean; notes: boolean };
 }
 
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
@@ -60,7 +69,22 @@ export function importedMeetings(doc: Record<string, unknown>): ImportedMeeting[
           return o && typeof o.name === "string" ? [{ name: o.name, rating: num(o.rating) }] : [];
         })
       : [];
-    out.push({ id: r.id, source: "bloom-growth", startedAt, endedAt: endedAt && !Number.isNaN(Date.parse(endedAt)) ? endedAt : null, attendees, issuesSolvedCount: num(r.issuesSolvedCount) ?? 0 });
+    const row: ImportedMeeting = { id: r.id, source: "bloom-growth", startedAt, endedAt: endedAt && !Number.isNaN(Date.parse(endedAt)) ? endedAt : null, attendees, issuesSolvedCount: num(r.issuesSolvedCount) ?? 0 };
+    // The optional fields the Bloom enrichment adds; each is read only when it is the right shape.
+    if (Array.isArray(r.solvedIssues)) {
+      row.solvedIssues = (r.solvedIssues as unknown[]).flatMap((i) => {
+        const o = i as Record<string, unknown> | null;
+        return o && typeof o.title === "string" ? [{ title: o.title, owner: typeof o.owner === "string" ? o.owner : "" }] : [];
+      });
+    }
+    if (Array.isArray(r.todos)) {
+      row.todos = (r.todos as unknown[]).flatMap((t) => {
+        const o = t as Record<string, unknown> | null;
+        return o && typeof o.text === "string" ? [{ text: o.text, owner: typeof o.owner === "string" ? o.owner : "", dueDate: str(o.dueDate) }] : [];
+      });
+    }
+    if (typeof r.notes === "string") row.notes = r.notes;
+    out.push(row);
   }
   return out;
 }
@@ -75,25 +99,29 @@ export function todosCompletedPct(r: Pick<RecapRow, "todos_done" | "todos_total"
   return typeof r.todos_total === "number" && typeof r.todos_done === "number" && r.todos_total > 0 ? Math.round((r.todos_done / r.todos_total) * 100) : null;
 }
 
+/** One recap as a past meeting (everything it records). */
+export function recapToPast(r: RecapRow): PastMeeting {
+  return {
+    key: `recap-${r.id}`,
+    source: "l10",
+    heldAt: r.held_at,
+    durationSeconds: r.duration_seconds || null,
+    ratingAvg: r.rating_avg ?? average((r.attendees ?? []).map((a) => a.rating)),
+    attendees: r.attendees ?? [],
+    issuesSolved: (r.resolved_issues ?? []).length,
+    solvedTitles: (r.resolved_issues ?? []).map(solvedTitle),
+    solvedIssues: (r.resolved_issues ?? []).map((s) => ({ title: solvedTitle(s), owner: solvedOwner(s) })),
+    todosCompletedPct: todosCompletedPct(r),
+    cascade: str(r.cascade),
+    notes: str(r.notes),
+    openTodos: (r.open_todos ?? []).flatMap((t) => (t && typeof t.text === "string" ? [{ text: t.text, owner: typeof t.owner === "string" ? t.owner : "", due: str(t.dueDate) ?? str(t.due) ?? "" }] : [])),
+    recorded: { todos: true, issues: true, notes: true },
+  };
+}
+
 /** Recaps and imported Bloom meetings together, newest first. Deleted recaps are left out. */
 export function pastMeetings(recaps: RecapRow[], doc: Record<string, unknown>): PastMeeting[] {
-  const fromRecaps: PastMeeting[] = recaps
-    .filter((r) => !r.deleted_at)
-    .map((r) => ({
-      key: `recap-${r.id}`,
-      source: "l10",
-      heldAt: r.held_at,
-      durationSeconds: r.duration_seconds || null,
-      ratingAvg: r.rating_avg ?? average((r.attendees ?? []).map((a) => a.rating)),
-      attendees: r.attendees ?? [],
-      issuesSolved: (r.resolved_issues ?? []).length,
-      solvedTitles: (r.resolved_issues ?? []).map(solvedTitle),
-      solvedIssues: (r.resolved_issues ?? []).map((s) => ({ title: solvedTitle(s), owner: solvedOwner(s) })),
-      todosCompletedPct: todosCompletedPct(r),
-      cascade: str(r.cascade),
-      notes: str(r.notes),
-      openTodos: (r.open_todos ?? []).flatMap((t) => (t && typeof t.text === "string" ? [{ text: t.text, owner: typeof t.owner === "string" ? t.owner : "", due: str(t.dueDate) ?? str(t.due) ?? "" }] : [])),
-    }));
+  const fromRecaps: PastMeeting[] = recaps.filter((r) => !r.deleted_at).map(recapToPast);
   const fromBloom: PastMeeting[] = importedMeetings(doc).map((m) => ({
     key: m.id,
     source: "bloom-growth",
@@ -101,13 +129,14 @@ export function pastMeetings(recaps: RecapRow[], doc: Record<string, unknown>): 
     durationSeconds: m.endedAt ? Math.max(0, Math.round((Date.parse(m.endedAt) - Date.parse(m.startedAt)) / 1000)) : null,
     ratingAvg: average(m.attendees.map((a) => a.rating)),
     attendees: m.attendees,
-    issuesSolved: m.issuesSolvedCount,
-    solvedTitles: [],
-    solvedIssues: [],
+    issuesSolved: Math.max(m.issuesSolvedCount, m.solvedIssues?.length ?? 0),
+    solvedTitles: (m.solvedIssues ?? []).map((i) => i.title),
+    solvedIssues: m.solvedIssues ?? [],
     todosCompletedPct: null,
     cascade: null,
-    notes: null,
-    openTodos: [],
+    notes: str(m.notes),
+    openTodos: (m.todos ?? []).map((t) => ({ text: t.text, owner: t.owner, due: t.dueDate ?? "" })),
+    recorded: { todos: m.todos !== undefined, issues: m.solvedIssues !== undefined, notes: m.notes !== undefined },
   }));
   return [...fromRecaps, ...fromBloom].sort((a, b) => Date.parse(b.heldAt) - Date.parse(a.heldAt));
 }
