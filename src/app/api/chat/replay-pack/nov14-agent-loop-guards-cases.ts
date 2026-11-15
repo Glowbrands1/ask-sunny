@@ -549,7 +549,7 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
 
       // An unstated level is refused by edit_form, and nothing is written.
       const eager = loopStandIn((view) => {
-        if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { instance_id: id, values: { warning_type: "verbal" }, level_evidence: evidenceFrom(view) } };
+        if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { instance_id: id, values: { warning_type: "verbal" } } };
         return { text: JSON.stringify(lastResult(view, "edit_form")) };
       });
       t.loopModel!(eager);
