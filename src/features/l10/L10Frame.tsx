@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { leadershipHubUrl } from "@/lib/config/app-switcher";
 import { AssistantBubble } from "./assistant/AssistantBubble";
 import { l10Viewer } from "./data.server";
-import { jetBrainsMono, publicSans } from "@/app/fonts";
+import { l10FontVariables } from "@/app/fonts";
 import { NotificationBell } from "./ui/NotificationBell";
 
 /** This meeting's page in the Leadership Hub (absolute). */
@@ -21,7 +21,7 @@ export async function L10Frame({ meetingKey, children, assistant = true }: { mee
   // The assistant's chat history is per Ask Sunny user and meeting (this browser only); no verified viewer, no assistant.
   const viewer = assistant ? await l10Viewer() : null;
   return (
-    <div data-testid="l10-frame" className={`hub-l10 ${publicSans.variable} ${jetBrainsMono.variable} flex min-h-full flex-col antialiased`}>
+    <div data-testid="l10-frame" className={`hub-l10 ${l10FontVariables} flex min-h-full flex-col antialiased`}>
       <div className="meeting-bar box-border flex items-center bg-ink px-4 py-1 text-sm text-paper print:hidden">
         <a href={hubMeetingUrl(meetingKey)} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-9 items-center font-semibold text-gold hover:text-gold-hover">
           ← Leadership Hub

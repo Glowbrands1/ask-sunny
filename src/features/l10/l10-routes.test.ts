@@ -36,7 +36,8 @@ vi.mock("@/lib/ai/spend-guard", () => ({
     return state.blocked;
   },
 }));
-vi.mock("next/font/google", () => ({ Public_Sans: () => ({ variable: "f1" }), JetBrains_Mono: () => ({ variable: "f2" }) }));
+// src/app/fonts.ts loads its files with next/font/local (15 Nov 2026), which only the Next build can run.
+vi.mock("next/font/local", () => ({ default: (options: { variable: string }) => ({ variable: options.variable }) }));
 
 const isNotFound = (e: unknown) => e instanceof Error && /NEXT_HTTP_ERROR_FALLBACK;404|NEXT_NOT_FOUND/.test((e as { digest?: string }).digest ?? e.message);
 
