@@ -297,7 +297,7 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       const id = await thread.create();
       const model = loopStandIn((view): LoopDecision => {
         const edit = lastResult(view, "edit_form") as { updated?: string[] } | null;
-        if (!edit) return { tool: "edit_form", input: { instance_id: id, values: { warning_type: "written", payroll_deduct: "yes", payroll_deduct_amount: "$15" } } };
+        if (!edit) return { tool: "edit_form", input: { level_evidence: evidenceFrom(view), payroll_evidence: evidenceFrom(view), instance_id: id, values: { warning_type: "written", payroll_deduct: "yes", payroll_deduct_amount: "$15" } } };
         return { text: `Updated: ${(edit.updated ?? []).join(", ")}. **Type of Warning:** Written Warning. **Is payroll deduct applicable?** Yes. **Payroll deduction amount:** $15.` };
       });
       t.loopModel!(model);
@@ -331,8 +331,8 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       // A model that also puts an amount nobody typed: refused whole; then the tick alone, and the question.
       const model = loopStandIn((view): LoopDecision => {
         const edits = view.results.filter((result) => result.tool === "edit_form").map((result) => result.output as { error?: string; updated?: string[] });
-        if (edits.length === 0) return { tool: "edit_form", input: { instance_id: id, values: { payroll_deduct: "yes", payroll_deduct_amount: "$25" } } };
-        if (edits.length === 1 && edits[0]!.error) return { tool: "edit_form", input: { instance_id: id, values: { payroll_deduct: "yes" } } };
+        if (edits.length === 0) return { tool: "edit_form", input: { payroll_evidence: evidenceFrom(view), instance_id: id, values: { payroll_deduct: "yes", payroll_deduct_amount: "$25" } } };
+        if (edits.length === 1 && edits[0]!.error) return { tool: "edit_form", input: { payroll_evidence: evidenceFrom(view), instance_id: id, values: { payroll_deduct: "yes" } } };
         return { text: "Payroll deduct is now Yes. What's the payroll deduction amount?" };
       });
       t.loopModel!(model);
@@ -597,7 +597,7 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
         // A model that reaches for the exit form first: the tool refuses it, as the manager asked for no exit.
         if (results.length === 0) return { tool: "propose_form", input: { template_key: "stc-exit", employee_id: "e-2", incident_date: "2026-11-10", exit_type: "termination" } };
-        if (results.length === 1 && results[0]!.exit_not_stated) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: "3 no call no shows on 11/10, 11/12 and 11/13.", incident_date: "2026-11-13", warning_level: "termination" } };
+        if (results.length === 1 && results[0]!.exit_not_stated) return { tool: "propose_form", input: { level_evidence: evidenceFrom(view), template_key: "dpoa", employee_id: "e-2", what_happened: "3 no call no shows on 11/10, 11/12 and 11/13.", incident_date: "2026-11-13", warning_level: "termination" } };
         const stated = results.at(-1)!.facts?.termination_stated;
         return { text: `Here's the Corrective Action Form for **Remy Calder**.\n\n${stated ? `**Type of Warning:** Termination, as you said — I'll tick it on the form. Tell me if that should change.\n${stated.approval}` : ""}\n\nWant the Employee Exit Form for Remy Calder too?` };
       });

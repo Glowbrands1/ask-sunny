@@ -1,7 +1,7 @@
 import { expect, vi } from "vitest";
 
 import { KEARNEY, STAFF, TWO_SALONS, type DirectoryRow, type ReplayCase } from "./cases";
-import { headingWith, lastResult, loopStandIn, type LoopDecision, type LoopView } from "./loop-stand-in";
+import { evidenceFrom, headingWith, lastResult, loopStandIn, type LoopDecision, type LoopView } from "./loop-stand-in";
 
 /**
  * ============================================================================
@@ -55,8 +55,8 @@ export const NOV14_LIVE_R4_CASES: ReplayCase[] = [
         (view) => ({
           what_happened: "Tamsin Orwell did not do the 10-minute sanitation.",
           policy: "Other — the 10-minute sanitation",
-          ...(/\$20/.test(allSaid(view)) ? { payroll_deduct: "yes", payroll_amount: "20" } : {}),
-          ...(/written/.test(allSaid(view)) ? { warning_level: "written" } : {}),
+          ...(/\$20/.test(allSaid(view)) ? { payroll_deduct: "yes", payroll_amount: "20", payroll_evidence: evidenceFrom(view) } : {}),
+          ...(/written/.test(allSaid(view)) ? { warning_level: "written", level_evidence: evidenceFrom(view) } : {}),
         }),
         (view) => [
           "Here's the Corrective Action Form for **Tamsin Orwell**.",
