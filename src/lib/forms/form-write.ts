@@ -675,8 +675,9 @@ export async function writeFormEdits(instanceId: string, ops: readonly FormEditO
    * always did (the touch trigger fires only on the instance row), so Form Monitoring's "recently changed" sees it.
    */
   if (formEditTouchesUpdatedAtEnabled() && (written.size > 0 || planKeys.length > 0)) {
+    /* The edit is already saved: a failed touch is logged (the instance id only), never reported as a failed edit. */
     const { error } = await getSupabaseAdmin().from("form_instances").update({ updated_at: new Date().toISOString() }).eq("id", instanceId);
-    if (error) throw new Error(`Could not save when the form was changed: ${error.message}`);
+    if (error) console.warn(`form-write: the edit to form ${instanceId} was saved, but its updated_at could not be moved.`);
   }
 
   /* 6. reload → snapshotDiff */

@@ -162,7 +162,8 @@ export const NOV15_AGENT_LOOP_BATCH_F_CASES: ReplayCase[] = [
     id: "nov15-batch-f8-value-edit-moves-updated-at",
     title: "F8: a chat edit that changes only a value (the Observation) on a draft moves the form's updated_at",
     report: `${REPORT}; the first live test with a form open: three value edits (events 4 → 7) left updated_at unchanged`,
-    status: { open: "a value-only edit leaves form_instances.updated_at where it was; only a form_date edit moves it" },
+    // Changed on purpose (15 Nov 2026): fixed in production by FORM_EDIT_TOUCHES_UPDATED_AT (QA turns it on with #1002). Was OPEN.
+    status: "fixed",
     fixFlags: [FLAG, "FORM_EDIT_TOUCHES_UPDATED_AT_ENABLED"],
     async run(t) {
       if (!t.loopOn?.()) return;
