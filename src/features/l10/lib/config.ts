@@ -85,6 +85,17 @@ const STC_DM_AGENDA: AgendaSection[] = [
   { key: "conclude", title: "Conclude", minutes: 5 },
 ];
 
+/**
+ * The cadence line a meeting shows ("Tuesdays · 58 min"). For the STC DM L10 the minutes are the total of the agenda the
+ * page runs (the Hub's, served with the roster), so the words cannot drift from it (QA, 15 Nov 2026). The Hub's copy
+ * takes the total from its own config; same result. Display only.
+ */
+export function cadenceLabel(key: string, cadence: string, agenda: AgendaSection[] = agendaFor(key)): string {
+  if (key !== "stc-dm") return cadence;
+  const total = agenda.reduce((t, a) => t + a.minutes, 0);
+  return /\d+\s*min/.test(cadence) ? cadence.replace(/\d+\s*min/, `${total} min`) : `${cadence} · ${total} min`;
+}
+
 export function agendaFor(key: string): AgendaSection[] {
   if (key === "leadership") return AGENDA.filter((a) => a.key !== "headlines" && a.key !== "todos").map((a) => (a.key === "ids" ? { ...a, minutes: 70 } : a));
   if (key === "stc-dm") return STC_DM_AGENDA;

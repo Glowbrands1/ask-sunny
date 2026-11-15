@@ -57,7 +57,8 @@ describe("the DM L10 page in Ask Sunny", () => {
   it("has the Hub's header: title, team and cadence, leader, Export PDF, History, Start meeting, signed-in name, save status", () => {
     renderView();
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("STC DM L10");
-    expect(document.body.textContent).toContain("Fri, Nov 13 · STC District Managers · Tuesdays · 90 min · Usually led by Bo Lark");
+    // "58 min", not the stored "90 min", since 15 Nov 2026: the cadence line shows the agenda's total (QA).
+    expect(document.body.textContent).toContain("Fri, Nov 13 · STC District Managers · Tuesdays · 58 min · Usually led by Bo Lark");
     expect(screen.getByRole("link", { name: "Export PDF" }).getAttribute("href")).toBe("/meetings/stc-dm/report");
     expect(screen.getByRole("link", { name: "History" }).getAttribute("href")).toBe("/meetings/stc-dm/history");
     expect(screen.getByRole("button", { name: "Start meeting" })).toBeTruthy();
@@ -87,6 +88,8 @@ describe("the DM L10 page in Ask Sunny", () => {
       "5 · IDS25m",
       "6 · Conclude5m",
     ]);
+    // The cadence line shows the agenda's total, so it cannot drift from it (QA, 15 Nov 2026).
+    expect(document.body.textContent).toContain("STC District Managers · Tuesdays · 58 min");
     // Changed on purpose 13 Nov 2026: the STC DM L10 has no Reference (its leader asked), so no Business Plan or chart.
     expect(agenda.queryByText("REFERENCE")).toBeNull();
     expect(agenda.queryByRole("button", { name: "Business Plan" })).toBeNull();
@@ -290,7 +293,7 @@ describe("no Reference for the STC DM L10 (its leader's request, 13 Nov 2026)", 
     );
     expect(screen.queryByRole("heading", { name: "Business Plan" })).toBeNull();
     expect(document.body.textContent).not.toContain("Vision, core values");
-    expect(screen.getByRole("heading", { level: 2, name: /Segue/ })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 2, name: /AI Best Practice/ })).toBeTruthy(); // the first section, titled "AI Best Practice" (no "Segue ·") since its Bloom agenda, 15 Nov 2026
   });
 
   it("the Hub's word that a meeting has no Reference is followed", async () => {

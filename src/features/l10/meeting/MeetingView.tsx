@@ -4,7 +4,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Button, ButtonLink, Card, Modal, cx } from "@/features/l10/ui/ui";
-import { agendaFromRoster, hintsFromRoster, referenceFromRoster, segueName, type AgendaKey, type MeetingKey, type Roster } from "@/features/l10/lib/config";
+import { agendaFromRoster, cadenceLabel, hintsFromRoster, referenceFromRoster, segueName, type AgendaKey, type MeetingKey, type Roster } from "@/features/l10/lib/config";
 import { buildRecap, effectiveAttendees, keepHiddenAttendees, markRecapped, newItemId } from "@/features/l10/lib/doc";
 import { elapsedSeconds, emptyTimer, endedTimer, formatClock, pausedTimer, plannedSeconds, isReferenceView, readTimer, resumedTimer, startMeeting, type View } from "@/features/l10/lib/timer";
 import type { LoadedMeeting, MeetingInfo } from "@/features/l10/lib/types";
@@ -272,7 +272,7 @@ export function MeetingView({
           <h1 className="m-0 mt-0.5 text-[26px] font-bold">{info.name}</h1>
           <p className="m-0 text-sm text-muted">
             {dateLabel ? `${dateLabel} · ` : ""}
-            {info.team} · {info.cadence}
+            {info.team} · {cadenceLabel(key, info.cadence, agenda)}
             {!live && roster.leader ? ` · Usually led by ${roster.leader}` : ""}
           </p>
         </div>
