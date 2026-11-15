@@ -27,6 +27,8 @@ const PARTICLES: ReadonlySet<string> = new Set(["de", "la", "del", "los", "las",
 const MAC_NAMES: ReadonlySet<string> = new Set([
   "macdonald", "macarthur", "macgregor", "macintosh", "mackenzie", "maclean", "macleod", "macmillan", "macneil", "macpherson", "macaulay", "macdougall", "mackay", "mackinnon",
 ]);
+/** Two-letter particles (QA, 15 Nov 2026): never kept upper case as initials. */
+const TWO_LETTER_PARTICLES: ReadonlySet<string> = new Set(["de", "la", "le", "du", "da", "di", "do", "el"]);
 const SUFFIX_DOTTED: Readonly<Record<string, string>> = { jr: "Jr.", sr: "Sr." };
 const SUFFIX_ROMAN = /^(?:ii|iii|iv)$/;
 
@@ -70,7 +72,15 @@ export function readableName(name: string): string {
   // The surname is the last word that is not a suffix ("maria de la torre jr" ends on "torre").
   let last = words.length - 1;
   while (last > 0 && (SUFFIX_DOTTED[words[last]!.toLocaleLowerCase("en-US").replace(/\.$/, "")] || SUFFIX_ROMAN.test(words[last]!.toLocaleLowerCase("en-US")))) last -= 1;
-  return words.map((word, index) => (oneCase(word) ? readableWord(word, index === 0, index === last) : word)).join(" ");
+  return words
+    .map((word, index) => {
+      if (!oneCase(word)) return word;
+      // QA, 15 Nov 2026: a two-letter all-caps word that is no particle is initials ("JT", "AJ", "DJ") and stays upper case;
+      // a two-letter particle as the last word is the surname ("LE" → "Le").
+      if (/^\p{Lu}{2}$/u.test(word) && !TWO_LETTER_PARTICLES.has(word.toLocaleLowerCase("en-US"))) return word;
+      return readableWord(word, index === 0, index === last);
+    })
+    .join(" ");
 }
 
 /** A surname particle ("de", "la", "van", "der", …): part of a name, never a name part of its own when counting them. */

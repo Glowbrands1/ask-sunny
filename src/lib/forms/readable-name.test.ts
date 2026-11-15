@@ -158,10 +158,10 @@ describe("READABLE_NAMES_ENABLED on: the off-roster name, as printed and as offe
     expect(displayTypedName(typed)).toBe(shown);
     expect(cleanPersonName(typed, [])).toBe(shown);
   });
-  // Changed on purpose (QA's review of #1013, finding 9): a typed all-caps word is no roster row, so it is not kept as
-  // initials; "JT holloway" reads "Jt Holloway", as "ANA LEE" reads "Ana Lee".
-  it("typed all-caps words are made readable, never kept as initials", () => {
-    expect(cleanPersonName("JT holloway", [])).toBe("Jt Holloway");
+  // QA, 15 Nov 2026 (reversing part of the review's finding 9): a two-letter all-caps word that is no particle is
+  // initials and stays upper case.
+  it("initials typed in capitals are kept", () => {
+    expect(cleanPersonName("JT holloway", [])).toBe("JT Holloway");
   });
   it("a name with particles is still a name's shape, and is offered readable", () => {
     expect(offRosterTyped("Jacinta van der Berg", "use jacinta van der berg", [])).toBe("Jacinta van der Berg");
@@ -185,5 +185,18 @@ describe("READABLE_NAMES_ENABLED off: as before", () => {
     // The bug Pau saw: the name was cut at its particles.
     expect(extractEmployeeNames("create a ca for maria de la torre, she was late")).toEqual(["maria de"]);
     expect(extractEmployeeNames("create a ca for jacinta van der berg, she was late on 11/12")).toEqual(["jacinta van"]);
+  });
+});
+
+describe("QA, 15 Nov 2026: two-letter initials stay upper case; a two-letter particle as the last word is the surname", () => {
+  it.each([
+    ["JT holloway", "JT Holloway"],
+    ["AJ fairweather", "AJ Fairweather"],
+    ["DJ de la torre", "DJ de la Torre"],
+    ["THANH LE", "Thanh Le"],
+    ["kim DU", "Kim Du"],
+    ["maria DE la torre", "Maria de la Torre"],
+  ])("%s → %s", (typed, shown) => {
+    expect(readableName(typed)).toBe(shown);
   });
 });
