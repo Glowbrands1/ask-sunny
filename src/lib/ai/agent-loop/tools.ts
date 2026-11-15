@@ -557,9 +557,32 @@ async function policyQuestion(context: ToolContext, formName: string): Promise<s
  * a carried person), the preferred first name when Woven has one, else the legal name. Never a name that is neither.
  * The person is always the roster id; the name shown never changes who it is.
  */
-export function nameAsSaid(person: Pick<RosterEmployee, "firstName" | "lastName" | "preferredFirstName">, managerWords: string): string {
-  // One rule for both paths (QA, 15 Nov 2026): `forms/preferred-name-shown.ts` nameAsSaid.
-  return nameAsSaidOf(aliasForRosterPerson(person, (row) => displayName({ ...(person as RosterEmployee), ...row })), managerWords);
+export function nameAsSaid(
+  person: Pick<RosterEmployee, "firstName" | "lastName" | "preferredFirstName"> & { readonly id?: string },
+  managerWords: string,
+  roster: readonly Pick<RosterEmployee, "id" | "firstName" | "lastName" | "preferredFirstName">[] = [],
+): string {
+  // READABLE_NAMES_ENABLED: one rule for both paths (`forms/preferred-name-shown.ts`), and a preferred name that is another
+  // roster person's full name is never used (QA's review of #1013). Off, exactly main's.
+  if (!readableNamesEnabled()) return nameAsSaidAsMain(person, managerWords);
+  const shown = (row: { readonly firstName: string; readonly lastName: string }) => displayName({ ...(person as RosterEmployee), ...row });
+  return nameAsSaidOf(
+    aliasForRosterPerson(person, shown),
+    managerWords,
+    roster.map((row) => ({ id: row.id, names: fullNamesOf(row) })),
+  );
+}
+
+function nameAsSaidAsMain(person: Pick<RosterEmployee, "firstName" | "lastName" | "preferredFirstName">, managerWords: string): string {
+  const legal = displayName(person as RosterEmployee);
+  const preferred = person.preferredFirstName?.trim();
+  if (!preferred || preferred.toLowerCase() === person.firstName.trim().toLowerCase()) return legal;
+  const said = ` ${managerWords.toLowerCase().replace(/[^a-z'’-]+/g, " ")} `;
+  const saidLegal = said.includes(` ${person.firstName.trim().toLowerCase()} `);
+  const saidPreferred = said.includes(` ${preferred.toLowerCase()} `);
+  const asPreferred = `${preferred} ${person.lastName.trim()}`.replace(/\s+/g, " ").trim();
+  if (saidLegal && !saidPreferred) return legal;
+  return asPreferred;
 }
 
 /** A position as compared: lowercase words, a plural "s" dropped ("Tanning Consultants" = "tanning consultant"). */
@@ -663,7 +686,7 @@ export async function findPastForms(context: ToolContext, input: { employee_name
   try {
     /* 200, not 50 (F7): any name word matches, so other people's forms could push this person's older ones off the read. */
     let rows = visibleInstances(actor, await listInstances("all", 200, { ...instanceListFilterFor(actor), employeeNameWords: nameWords }))
-      .filter((row) => samePerson(row.employeeName, typed) || words(row.employeeName).join(" ").includes(words(typed).join(" ")) || (aliases.length > 0 && sameRosterPerson(row.employeeName, typed, people)));
+      .filter((row) => samePerson(row.employeeName, typed) || words(row.employeeName).join(" ").includes(words(typed).join(" ")) || (aliases.length > 0 && (sameRosterPerson(row.employeeName, typed, people) || (readableNamesEnabled() && aliases.some((full) => full.trim().toLowerCase() === row.employeeName.trim().toLowerCase())))));
     /*
      * Batch G (G4, REOPEN_CLOSE_SPELLING, parity gap #43): no form under the typed name, so the forms this manager may
      * open are read for an employee whose name it closely spells. One person: theirs. Two or more: ask which.
@@ -955,9 +978,17 @@ export function fullNamesOf(person: Pick<RosterEmployee, "firstName" | "lastName
  * roster people are never merged, and a name two roster people share decides nothing.
  */
 export function sameRosterPerson(a: string, b: string, roster: readonly Pick<RosterEmployee, "id" | "firstName" | "lastName" | "preferredFirstName">[]): boolean {
+  // READABLE_NAMES_ENABLED: one name-matcher for both paths (`forms/preferred-name-shown.ts`). Off, exactly main's.
+  if (!readableNamesEnabled()) return sameRosterPersonAsMain(a, b, roster);
   if (samePerson(a, b)) return true;
-  // One name-matcher for both paths (QA, 15 Nov 2026): `forms/preferred-name-shown.ts`.
   return sameRosterPersonAmong(a, b, roster.map((person) => ({ id: person.id, names: fullNamesOf(person) })));
+}
+
+function sameRosterPersonAsMain(a: string, b: string, roster: readonly Pick<RosterEmployee, "id" | "firstName" | "lastName" | "preferredFirstName">[]): boolean {
+  if (samePerson(a, b)) return true;
+  const holders = (name: string) => roster.filter((person) => fullNamesOf(person).some((full) => samePerson(full, name)));
+  const [x, y] = [holders(a), holders(b)];
+  return x.length === 1 && y.length === 1 && x[0]!.id === y[0]!.id;
 }
 
 /*
@@ -1186,7 +1217,7 @@ export async function proposeForm(
     if (person && turnedDown && samePerson(turnedDown, displayName(person))) {
       return { error: `The manager said no to ${displayName(person)}. Never put them on the card; ask who the form is for.` };
     }
-    if (person) employee = { name: nameAsSaid(person, managerTurns(context)), salonIds: person.salonIds, id: person.id };
+    if (person) employee = { name: nameAsSaid(person, managerTurns(context), read.roster), salonIds: person.salonIds, id: person.id };
     /*
      * OFF_ROSTER_CONFIRM (as today): a person not in Woven yet goes on the form by the name the manager typed, only
      * after the app offered "reply **use <name>**" and the manager said so. Never a name nobody confirmed.

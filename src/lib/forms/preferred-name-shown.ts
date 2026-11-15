@@ -51,12 +51,26 @@ export function preferredCardNote(alias: PreferredAlias): string {
 
 const firstWord = (name: string) => name.trim().split(/\s+/)[0]!.toLowerCase();
 
-/** Which of the two names the manager used: the legal one only when they typed the legal first name and not the preferred. */
-export function nameAsSaid(alias: PreferredAlias, managerWords: string): string {
+/**
+ * Which of the two names the manager used: the legal one only when they typed the legal first name and not the preferred.
+ * A preferred name that is a full name (legal or preferred) of ANOTHER roster person is never used: a saved form keeps only
+ * employee_name, so it would be counted as theirs (QA's review of #1013); the legal name is kept.
+ */
+export function nameAsSaid(alias: PreferredAlias, managerWords: string, people: readonly RosterPersonNames[] = []): string {
   const said = ` ${managerWords.toLowerCase().replace(/[^\p{L}'’-]+/gu, " ")} `;
   const saidLegal = said.includes(` ${firstWord(alias.legal)} `);
   const saidPreferred = said.includes(` ${firstWord(alias.preferred)} `);
-  return saidLegal && !saidPreferred ? alias.legal : alias.preferred;
+  if (saidLegal && !saidPreferred) return alias.legal;
+  if (preferredIsSomeoneElses(alias, people)) return alias.legal;
+  return alias.preferred;
+}
+
+/** The preferred full name belongs to another roster person too (their legal or preferred name). */
+function preferredIsSomeoneElses(alias: PreferredAlias, people: readonly RosterPersonNames[]): boolean {
+  if (same(alias.preferred, alias.legal)) return false;
+  const own = holdersOf(alias.legal, people).filter((person) => alias.id === undefined || person.id === alias.id);
+  const ownIds = new Set(own.map((person) => person.id));
+  return holdersOf(alias.preferred, people).some((person) => !ownIds.has(person.id) || (alias.id !== undefined && person.id !== alias.id));
 }
 
 /**
@@ -101,7 +115,7 @@ export function withPreferredNameShown(response: AskResponse, managerWords: stri
   const employee = proposal?.employeeName?.trim() ?? "";
   const alias = proposal && proposal.subject !== "team" ? aliasOf(employee, readAliases() ?? []) : null;
   if (!proposal || !alias) return response;
-  const name = nameAsSaid(alias, managerWords ?? "");
+  const name = nameAsSaid(alias, managerWords ?? "", aliasPeople(readAliases() ?? []));
   const bold = new RegExp(String.raw`\*\*(?:${escape(alias.legal)}|${escape(alias.preferred)})\*\*`, "giu");
   if (name === alias.legal) {
     return { ...response, content: response.content.replace(bold, `**${alias.legal}**`), formProposal: { ...proposal, employeeName: alias.legal } };

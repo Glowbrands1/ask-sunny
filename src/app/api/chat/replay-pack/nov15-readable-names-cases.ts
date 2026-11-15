@@ -206,6 +206,62 @@ export const NOV15_READABLE_NAMES_REVIEW_CASES: ReplayCase[] = [
   },
 ];
 
+/** QA's review of #1013 @ef62a035 (invented): a preferred first name typed for one person. */
+const THOMAS: DirectoryRow = { id: "e-thomas-beck-rn", firstName: "Thomas", lastName: "Beck", preferredFirstName: "Tom", employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" };
+
+export const NOV15_READABLE_NAMES_REVIEW2_CASES: ReplayCase[] = [
+  {
+    id: "nov15-readable-names-review2-loop-never-another-persons-name",
+    title: "QA's review of #1013: Lorraine Fairweather (preferred Rae) seated beside a separate legal Rae Fairweather — \"write up rae fairweather\" keeps \"Lorraine Fairweather\" on the card (agent loop)",
+    report: "QA's review of #1013 @ef62a035, 15 Nov 2026: a saved form keeps only employee_name, so another roster person's name would count as theirs",
+    status: { open: "the card says \"Rae Fairweather\", the other roster person's name" },
+    fixFlags: [LOOP, FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-14T16:00:00Z"));
+      t.directory([...STAFF, LORRAINE, OTHER_RAE]);
+      t.as("salon_director", KEARNEY);
+      t.loopModel!(loopStandIn((view) => {
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: LORRAINE.id, what_happened: "She was late." } };
+        return { text: "Here's the draft." };
+      }));
+      const thread = t.thread();
+      const reply = await thread.say("write up rae fairweather for being late");
+      expect(thread.proposal?.employeeName, reply.content).toBe("Lorraine Fairweather");
+    },
+  },
+  {
+    id: "nov15-readable-names-review2-loop-past-forms-every-name",
+    title: "QA's review of #1013: \"Tom\" for Thomas Beck (preferred Tom) still lists the form saved as \"Thomas Beck\" (agent loop find_past_forms)",
+    report: "QA's review of #1013 @ef62a035, 15 Nov 2026: find_past_forms must accept every full name of the seated roster id",
+    status: "fixed",
+    fixFlags: [LOOP, FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-14T16:00:00Z"));
+      t.directory([...STAFF, THOMAS]);
+      t.as("salon_director", KEARNEY);
+      t.loopModel!(loopStandIn((view) => {
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: THOMAS.id, what_happened: "He was late." } };
+        return { text: "Here's the draft." };
+      }));
+      const earlier = t.thread();
+      await earlier.say("write up thomas beck for being late");
+      const id = await earlier.create();
+      const row = t.forms().find((form) => form.id === id);
+      if (row) row.employee_name = "Thomas Beck";
+      const model = loopStandIn((view) => {
+        if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: "Tom" } };
+        return { text: "Here are his forms." };
+      });
+      t.loopModel!(model);
+      await t.thread().say("what forms does tom have on file?");
+      const found = lastResult(model.views.at(-1)!, "find_past_forms") as { forms?: { instance_id: string }[] } | null;
+      expect((found?.forms ?? []).map((form) => form.instance_id), JSON.stringify(found)).toContain(id);
+    },
+  },
+];
+
 /** A Corrective Action saved under one of the person's names, in an earlier chat. */
 async function caSavedAs(t: ReplayContext, name: string): Promise<string> {
   const earlier = t.thread();
