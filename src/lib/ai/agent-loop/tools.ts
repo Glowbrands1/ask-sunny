@@ -25,7 +25,6 @@ import {
   readableNamesEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { squashedSpellingMatches } from "@/lib/forms/readable-name";
-import { loopPreferredNote } from "@/lib/forms/preferred-name-shown";
 import type { AskResponse } from "@/lib/ai/types";
 import { findManualSection, manualSectionHeadings, type ManualChunk } from "@/lib/forms/official-policy-manual";
 import { sectionWording } from "@/lib/forms/policy-citation";
@@ -384,11 +383,8 @@ export async function findStaff(context: ToolContext, input: { name?: unknown },
     return { matches: found.map(staffRow), name_from_staff_list: displayName(only), note: `Only a first name was given and one person has it: use ${displayName(only)}, and say so as the rules book's Card replies teach.` };
   }
   const shared = new Set(found.map((person) => displayName(person).toLowerCase())).size < found.length;
-  /* READABLE_NAMES_ENABLED: a preferred first name typed is said back with the legal name once; the form keeps the legal name. */
-  const preferredNote = found.length === 1 ? loopPreferredNote(typed, found[0]!) : null;
   return {
     matches: found.map(staffRow),
-    ...(preferredNote ? { preferred_name_note: preferredNote } : {}),
     ...(longer.length > 0 ? { longer_names_on_roster: longer, longer_note: "Other people's names start with this one. If the manager wrote one of these longer names, look that one up instead." } : {}),
     ...(found.length > 1 ? { note: shared ? "Several people share this name: ask the manager which one (by salon) before proposing a form." : "Several people match: ask the manager which one." } : {}),
   };

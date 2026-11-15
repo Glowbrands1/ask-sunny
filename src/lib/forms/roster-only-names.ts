@@ -662,8 +662,8 @@ export function slotName(message: string | undefined, names: readonly string[]):
 
 /** FORM_NAME_FROM_ROSTER_ENABLED: `rosterOnlyNames` with the actor's roster read this turn. Off, or no roster: as built. */
 export function withRosterOnlyNames(response: AskResponse): AskResponse {
-  // READABLE_NAMES_ENABLED: a preferred name the manager typed is said back with the legal name once (`preferred-name-shown.ts`).
-  return withPreferredNameShown(rosterOnlyNamesOf(response), requestMessage());
+  // READABLE_NAMES_ENABLED: the name the manager used, preferred or legal; the legal name said once (`preferred-name-shown.ts`).
+  return withPreferredNameShown(rosterOnlyNamesOf(response), [...rosterScopeTurns(), requestMessage() ?? ""].join("\n"));
 }
 
 function rosterOnlyNamesOf(response: AskResponse): AskResponse {

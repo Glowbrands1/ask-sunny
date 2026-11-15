@@ -1,6 +1,6 @@
 import { expect, vi } from "vitest";
 
-import { KEARNEY, STAFF, savedForm, type DirectoryRow, type ReplayCase } from "./cases";
+import { KEARNEY, STAFF, type DirectoryRow, type ReplayCase } from "./cases";
 import { lastResult, loopStandIn } from "./loop-stand-in";
 
 /**
@@ -18,7 +18,7 @@ import { lastResult, loopStandIn } from "./loop-stand-in";
 const MARIA: DirectoryRow = { id: "e-maria-delatorre-rn", firstName: "Maria", lastName: "de la Torre", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" };
 /** QA, 15 Nov 2026: the typed first name was the employee's preferred first name in Woven (invented here). */
 const LORRAINE: DirectoryRow = { id: "e-lorraine-fairweather-rn", firstName: "Lorraine", lastName: "Fairweather", preferredFirstName: "Rae", employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" };
-const PREFERRED_REPORT = "QA, 15 Nov 2026: the manager typed the preferred first name, and the card showed only the legal name; Pau: forms show the legal name only, replies may say the preferred name with the legal name once";
+const PREFERRED_REPORT = "QA, 15 Nov 2026: the manager typed the preferred first name, and the card showed only the legal name; Pau (~10:20 PHT): the card and form use the name the manager used, and the reply names the legal name once";
 const REPORT = "Pau via QA, 15 Nov 2026: \"all naming conventions should be readable; some have de la Torre etc.\"";
 const LOOP = "AGENT_LOOP_ENABLED";
 const FLAG = "READABLE_NAMES_ENABLED";
@@ -93,7 +93,7 @@ export const NOV15_READABLE_NAMES_CASES: ReplayCase[] = [
   },
   {
     id: "nov15-readable-names-preferred-name-said-back",
-    title: "\"Create a CA for Rae Fairweather, she was late on 11/12\" (Lorraine, preferred Rae): the reply says \"Rae Fairweather (Lorraine Fairweather in Woven)\" once; the card and the form keep the legal name",
+    title: "\"Create a CA for Rae Fairweather, she was late on 11/12\" (Lorraine, preferred Rae): the card is Rae Fairweather, and the reply names Lorraine Fairweather in Woven once",
     report: PREFERRED_REPORT,
     status: { open: "the reply and card show only the legal name, so it looks like another person" },
     fixFlags: [FLAG],
@@ -103,15 +103,32 @@ export const NOV15_READABLE_NAMES_CASES: ReplayCase[] = [
       t.as("salon_director", KEARNEY);
       const thread = t.thread();
       const reply = await thread.say("Create a CA for Rae Fairweather, she was late on 11/12", { employeeName: "Rae Fairweather" });
-      expect(thread.proposal?.employeeName, reply.content).toBe("Lorraine Fairweather");
-      expect(reply.content).toContain("Rae Fairweather (**Lorraine Fairweather** in Woven)");
-      expect(reply.content.split("Rae Fairweather").length - 1, "the preferred name is said once").toBe(1);
-      expect((thread.proposal as { wovenCloseMatch?: string | null } | undefined)?.wovenCloseMatch).toBe("Rae Fairweather is Lorraine Fairweather in Woven; the form uses the legal name.");
+      expect(thread.proposal?.employeeName, reply.content).toBe("Rae Fairweather");
+      expect(reply.content).toContain("**Rae Fairweather** (Lorraine Fairweather in Woven)");
+      expect(reply.content.split("Lorraine Fairweather").length - 1, "the legal name is said once").toBe(1);
     },
   },
   {
-    id: "nov15-readable-names-preferred-name-never-saved",
-    title: "Pau's ruling: a preferred name typed in chat never reaches employee_name or any other saved form field",
+    id: "nov15-readable-names-preferred-name-saved",
+    title: "Pau's ruling: the preferred name the manager typed IS the saved employee_name, for the same roster person",
+    report: PREFERRED_REPORT,
+    status: { open: "the form is saved under the legal name" },
+    fixFlags: [FLAG],
+    async run(t) {
+      vi.setSystemTime(new Date("2026-11-14T16:00:00Z"));
+      t.directory([...STAFF, LORRAINE]);
+      t.as("salon_director", KEARNEY);
+      const thread = t.thread();
+      await thread.say("Create a CA for Rae Fairweather, she was late on 11/12", { employeeName: "Rae Fairweather" });
+      const id = await thread.createCard!(thread.proposal?.employeeName ?? "");
+      const form = t.forms().find((row) => row.id === id);
+      expect(form?.employee_name).toBe("Rae Fairweather");
+      expect(JSON.stringify(form)).not.toMatch(/Lorraine/);
+    },
+  },
+  {
+    id: "nov15-readable-names-legal-name-kept",
+    title: "\"Create a CA for Lorraine Fairweather, she was late on 11/12\": the legal name typed is the card's and the form's, with no note",
     report: PREFERRED_REPORT,
     status: "fixed",
     fixFlags: [FLAG],
@@ -120,30 +137,9 @@ export const NOV15_READABLE_NAMES_CASES: ReplayCase[] = [
       t.directory([...STAFF, LORRAINE]);
       t.as("salon_director", KEARNEY);
       const thread = t.thread();
-      await thread.say("Create a CA for Rae Fairweather, she was late on 11/12", { employeeName: "Rae Fairweather" });
-      const id = await thread.createCard!("Lorraine Fairweather");
-      const form = t.forms().find((row) => row.id === id);
-      expect(form?.employee_name).toBe("Lorraine Fairweather");
-      expect(savedForm(t, id)).not.toMatch(/Rae Fairweather|\bRae\b/);
-    },
-  },
-  {
-    id: "nov15-readable-names-loop-preferred-name",
-    title: "\"write up rae fairweather for being late\" (agent loop; Lorraine, preferred Rae): the card is the legal name, and find_staff tells the model to say the preferred name with it once",
-    report: PREFERRED_REPORT,
-    status: { open: "find_staff gives only the legal name" },
-    fixFlags: [LOOP, FLAG],
-    async run(t) {
-      if (!t.loopOn?.()) return;
-      vi.setSystemTime(new Date("2026-11-14T16:00:00Z"));
-      t.directory([...STAFF, LORRAINE]);
-      t.as("salon_director", KEARNEY);
-      const model = writeUpModel("rae fairweather");
-      t.loopModel!(model);
-      const thread = t.thread();
-      const reply = await thread.say("write up rae fairweather for being late");
+      const reply = await thread.say("Create a CA for Lorraine Fairweather, she was late on 11/12", { employeeName: "Lorraine Fairweather" });
       expect(thread.proposal?.employeeName, reply.content).toBe("Lorraine Fairweather");
-      expect(String(lastResult(model.views.at(-1)!, "find_staff")?.preferred_name_note ?? "")).toContain("Rae Fairweather (Lorraine Fairweather in Woven)");
+      expect(reply.content).not.toContain("in Woven)");
     },
   },
 ];
