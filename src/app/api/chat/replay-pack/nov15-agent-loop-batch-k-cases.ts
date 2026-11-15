@@ -15,6 +15,7 @@ import { lastResult, loopStandIn, type LoopDecision, type LoopView } from "./loo
  */
 
 const FLAG = "AGENT_LOOP_ENABLED";
+/* Pau 15 Nov: A (a close spelling is never seated); on in production. */
 const NEAR_MISS = "NEAR_MISS_NEVER_SEATED_ENABLED";
 const REPORT = "QA's 266 shadow replay, part 1 (15 Nov 2026), from the Runner's masked pack";
 
@@ -53,7 +54,7 @@ export const NOV15_AGENT_LOOP_BATCH_K_CASES: ReplayCase[] = [
     id: `nov15-k1-near-miss-is-asked-${tag}`,
     title: `K1 (QA's shadow replay, ${tag}'s shape): "${words}", where "${typed}" is nobody on the roster but spells close to Remy Calder, gets today's Did-you-mean (with keeping the name as typed), never a card for Remy Calder`,
     report: `${REPORT}: ${tag}, an off-roster person carded as a roster person who only spelled close`,
-    status: { open: "\"Using **Remy Calder** from your staff list.\": the close spelling is seated (Pau's 14 Nov one-strong-close-match)" },
+    status: "fixed",
     fixFlags: [FLAG, NEAR_MISS],
     async run(t) {
       if (!t.loopOn?.()) return;
@@ -70,7 +71,7 @@ export const NOV15_AGENT_LOOP_BATCH_K_CASES: ReplayCase[] = [
     id: "nov15-k1-card-shortcut-never-overrides-a-different-name-c022",
     title: "K1 (QA's shadow replay, c022's shape): a card made from a first name alone (\"remy\"), then the manager types a different full name (\"Remi Caldor\"): asked about, never \"the person on this chat's card, use them\"",
     report: `${REPORT}: c022, the manager re-typed the truth person's full name and the card kept the close spelling`,
-    status: { open: "\"A close spelling of Remy Calder, the person on this chat's card. Use them\"" },
+    status: "fixed",
     fixFlags: [FLAG, NEAR_MISS],
     async run(t) {
       if (!t.loopOn?.()) return;
@@ -349,5 +350,35 @@ NOV15_AGENT_LOOP_BATCH_K_CASES.push({
     await thread.say("create a coaching document for Juno Paxton");
     expect(thread.proposal?.employeeName).toBe("Juno Paxton");
     expect(thread.proposal?.formDate, "the second person's card took the first person's date").not.toBe("2026-10-16");
+  },
+});
+
+NOV15_AGENT_LOOP_BATCH_K_CASES.push({
+  id: "nov15-k12b-confirm-question-also-asks-what-happened-c009",
+  title: "K12b (QA's D ruling, the c009/c015/c185 shape): \"put together a coaching document for Remi Calder\" asks \"Did you mean **Remy Calder**? … If so, tell me what happened.\" in one reply; \"yes, she was late to her shift on 11/14\" gives the ready card in the next turn, with no second question",
+  report: `${REPORT}: c009, c015, c185, the confirm question then a separate "What happened?" turn`,
+  status: "fixed",
+  fixFlags: [FLAG],
+  async run(t) {
+    if (!t.loopOn?.()) return;
+    await salon(t);
+    const model = loopStandIn((view): LoopDecision => {
+      const said = latest(view);
+      const staff = lastResult(view, "find_staff") as (StaffResult & { also_ask_if_no_account?: string }) | null;
+      const confirmed = /^yes\b/i.test(said);
+      if (!staff) return { tool: "find_staff", input: { name: confirmed ? "Remy Calder" : "Remi Calder" } };
+      const asked = /Ask the manager, in these words: ([\s\S]+)$/.exec(staff.note ?? "")?.[1];
+      if (asked) return { text: [asked, staff.also_ask_if_no_account].filter(Boolean).join("\n\n") };
+      const person = staff.matches?.[0];
+      if (person && !lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "coaching", employee_id: person.employee_id, what_happened: said.replace(/^yes,?\s*/i, ""), incident_date: "2026-11-14" } };
+      return { text: `Here's the Coaching Form for **${person?.name ?? ""}**.` };
+    });
+    t.loopModel!(model);
+    const thread = t.thread();
+    const ask = await thread.say("put together a coaching document for Remi Calder");
+    expect(ask.content).toMatch(/Did you mean \*\*Remy Calder\*\*\?[\s\S]*If so, tell me what happened\./);
+    await thread.say("yes, she was late to her shift on 11/14");
+    expect(thread.proposal?.employeeName).toBe("Remy Calder");
+    expect(thread.proposal?.status, "the card is not ready after the one answer").toBe("ready");
   },
 });

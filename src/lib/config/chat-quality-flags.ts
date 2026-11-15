@@ -4928,8 +4928,8 @@ export function formEditTouchesUpdatedAtEnabled(): boolean {
 }
 
 /**
- * NEAR_MISS_NEVER_SEATED_ENABLED (batch K1, 15 Nov 2026; default off until Pau rules, since it reverses his 14 Nov "one
- * strong close match is used"; QA's 266 shadow replay, c022/c119/c137/c134: an off-roster person typed by the manager
+ * NEAR_MISS_NEVER_SEATED_ENABLED (batch K1, 15 Nov 2026; Pau 15 Nov: A, which replaces his 14 Nov "one strong close
+ * match is used"; on in production, production-flags.json; QA's 266 shadow replay, c022/c119/c137/c134: an off-roster person typed by the manager
  * was carded as a different roster person who only spelled close). On, in the agent loop's find_staff: a close spelling
  * is never seated. It is asked with today's question (nameConfirmationQuestion, which also offers keeping the name as
  * typed), and the "person on this chat's card" shortcut is used only for a card person the manager typed or confirmed,

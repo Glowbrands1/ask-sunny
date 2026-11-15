@@ -466,6 +466,12 @@ function cardPersonEstablished(context: Pick<ToolContext, "history">, name: stri
   });
 }
 
+/**
+ * Batch K12b (QA's D ruling, 15 Nov 2026: Create stays held until there is an account, so at most one question): a
+ * confirm question asked before the manager said what happened also asks for it, in the same reply.
+ */
+const ALSO_ASK_ACCOUNT = "If so, tell me what happened.";
+
 export async function findStaff(context: ToolContext, input: { name?: unknown }, effects?: ToolEffects): Promise<ToolResult> {
   const typed = typeof input.name === "string" ? input.name.trim() : "";
   if (typed === "") return { error: "Give the name to look for." };
@@ -491,7 +497,7 @@ export async function findStaff(context: ToolContext, input: { name?: unknown },
      * or no (today's NEAR_MISS_DETAILS_ACCEPT; the live re-run's proposal-name-correction). A "no" keeps asking.
      */
     const saidNo = /^\s*(?:no|nope|nah|not\s+(?:her|him|them|that))\b/i.test(context.question);
-    /* Batch K1 (NEAR_MISS_NEVER_SEATED): a close spelling is seated only as the card's person the manager typed or confirmed. */
+    /* Batch K1 (NEAR_MISS_NEVER_SEATED; Pau 15 Nov: A, replacing his 14 Nov one-strong-close-match): a close spelling is seated only as the card's person the manager typed or confirmed. */
     const nearMissNever = (await import("@/lib/config/chat-quality-flags")).nearMissNeverSeatedEnabled();
     const onCard = close.kind === "confirm" && close.candidates.length === 1 && !saidNo
       ? context.history.some((turn) => turn.role === "assistant" && typeof turn.content === "string" && turn.content.includes(close.candidates[0]!.name)) &&
@@ -517,6 +523,7 @@ export async function findStaff(context: ToolContext, input: { name?: unknown },
         matches: [],
         did_you_mean: close.candidates.slice(0, 5).map((candidate) => staffRow(candidate.employee)),
         note: `Not on the roster as typed. Ask the manager, in these words: ${nameConfirmationQuestion(typed, names)}`,
+        also_ask_if_no_account: ALSO_ASK_ACCOUNT,
       };
     }
     /*
@@ -538,7 +545,7 @@ export async function findStaff(context: ToolContext, input: { name?: unknown },
       const named = !namesAPlace(typed) && slot.some((word) => words(word).join(" ") === words(typed).join(" "));
       if (named) {
         const shown = typed.replace(/\s+/g, " ").trim();
-        return { matches: [], not_on_roster: shown, note: `Not on the Woven staff list. Ask the manager, in these words: I can't find **${shown}** on your staff list. Reply **use ${shown}** to put the name on the form as you typed it, or give me the full name.` };
+        return { matches: [], not_on_roster: shown, note: `Not on the Woven staff list. Ask the manager, in these words: I can't find **${shown}** on your staff list. Reply **use ${shown}** to put the name on the form as you typed it, or give me the full name.`, also_ask_if_no_account: ALSO_ASK_ACCOUNT };
       }
       return { matches: [], note: "Nobody on this manager's roster has that name, and it does not read as a person's name (it may be a salon, a place, a title or a metric). Never put it on a form as a person: ask who the form is for." };
     }
@@ -569,6 +576,7 @@ export async function findStaff(context: ToolContext, input: { name?: unknown },
         matches: [],
         did_you_mean: [staffRow(only)],
         note: `Not a whole first name on the roster. Ask the manager, in these words: ${nameConfirmationQuestion(typed, [displayName(only)])}`,
+        also_ask_if_no_account: ALSO_ASK_ACCOUNT,
       };
     }
     if (effects) effects.nameLines = { ...(effects.nameLines ?? {}), [only.id]: displayName(only) };
