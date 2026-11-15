@@ -32,3 +32,49 @@ export function durationLabel(seconds: number | null | undefined): string {
   const m = Math.round(seconds / 60);
   return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`;
 }
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** A week ending "MM/DD/YYYY" as Bloom heads its column: "2 Nov / 8 Nov" (the six days before it, then the day). */
+export function weekRange(ending: string | undefined): string {
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(ending ?? "");
+  if (!m) return ending ?? "";
+  const end = new Date(Date.UTC(Number(m[3]), Number(m[1]) - 1, Number(m[2])));
+  const start = new Date(end.getTime() - 6 * 86_400_000);
+  const day = (d: Date) => `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
+  return `${day(start)} / ${day(end)}`;
+}
+
+/** A week's first and last day ("9 Nov", "15 Nov"), for the scorecard's two-line week headers; null if unreadable. */
+export function weekBounds(ending: string | undefined): { start: string; end: string } | null {
+  const range = weekRange(ending);
+  const parts = range.split(" / ");
+  return parts.length === 2 ? { start: parts[0], end: parts[1] } : null;
+}
+
+/** How many colours the owners' avatars cycle through (globals.css --owner-1 … --owner-6). */
+export const OWNER_COLORS = 6;
+
+/**
+ * An owner's avatar colour, 1 to 6, picked by a hash of the name so the same person always gets the same colour,
+ * everywhere (the owner's request, 15 Nov 2026, as in Bloom Growth). Case and spacing do not change it.
+ */
+export function ownerColor(name: string): number {
+  const key = name.trim().replace(/\s+/g, " ").toLowerCase();
+  let h = 2166136261;
+  for (let i = 0; i < key.length; i++) {
+    h ^= key.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return ((h >>> 0) % OWNER_COLORS) + 1;
+}
+
+/** Whether "YYYY-MM-DD" falls in the week ending "MM/DD/YYYY" (that day and the six before it). */
+export function inWeek(ending: string | undefined, today: string): boolean {
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(ending ?? "");
+  const t = /^(\d{4})-(\d{2})-(\d{2})$/.exec(today);
+  if (!m || !t) return false;
+  const end = Date.UTC(Number(m[3]), Number(m[1]) - 1, Number(m[2]));
+  const day = Date.UTC(Number(t[1]), Number(t[2]) - 1, Number(t[3]));
+  return day <= end && day > end - 7 * 86_400_000;
+}
